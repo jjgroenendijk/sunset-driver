@@ -36,27 +36,42 @@ function measuredWorlds(): WorldDescription[] {
 }
 
 /**
- * The road graph and the footprint of a measured world, built once. Both are
- * measured in their own right below, and the tests that only need them as
- * input read them from here rather than paying for them again.
+ * The road graph of a measured world, built once. It is measured in its own
+ * right below, and the tests that only need it as input read it from here
+ * rather than paying for it again.
  */
-const parts = new Map<number, { graph: RoadGraph; footprint: RoadFootprint }>();
+const graphs = new Map<number, RoadGraph>();
 
-function partsOf(world: WorldDescription): { graph: RoadGraph; footprint: RoadFootprint } {
-  const known = parts.get(world.seed);
+function graphOf(world: WorldDescription): RoadGraph {
+  const known = graphs.get(world.seed);
   if (known !== undefined) return known;
-  const graph = buildRoadGraph(world.roads);
-  const built = { graph, footprint: buildFootprint(world.roads, world.corridors, graph) };
-  parts.set(world.seed, built);
+  const built = buildRoadGraph(world.roads);
+  graphs.set(world.seed, built);
+  return built;
+}
+
+/**
+ * The footprint of a measured world. The test that measures laying it keeps the
+ * build it timed here, so the parcels are cut from a footprint nobody paid for
+ * twice.
+ */
+const footprints = new Map<number, RoadFootprint>();
+
+function footprintOf(world: WorldDescription): RoadFootprint {
+  const known = footprints.get(world.seed);
+  if (known !== undefined) return known;
+  const built = buildFootprint(world.roads, world.corridors, graphOf(world));
+  footprints.set(world.seed, built);
   return built;
 }
 
 /**
  * Worlds the footprint and the parcels are measured on. Laying a footprint and
  * cutting the parcels of a world are the two dearest things this file does, so
- * neither is measured on every seed.
+ * the quick tier measures one world and leaves the spread of seeds to the full
+ * tier.
  */
-const HEAVY_WORLDS = process.env.SWEEP_SEEDS ? 4 : 2;
+const HEAVY_WORLDS = process.env.SWEEP_SEEDS ? 4 : 1;
 
 describe('performance budgets', () => {
   it('keeps every enforced budget inside its spec section 2.4 slice', () => {
@@ -123,8 +138,9 @@ describe('performance budgets', () => {
 
   it('lays the road footprint of a world within its budget', () => {
     const times = measuredWorlds().slice(0, HEAVY_WORLDS).map((world) => {
-      const graph = partsOf(world).graph;
-      return bestOf(2, () => void buildFootprint(world.roads, world.corridors, graph));
+      const graph = graphOf(world);
+      // Keep the last build: the parcels below are cut from it.
+      return bestOf(2, () => footprints.set(world.seed, buildFootprint(world.roads, world.corridors, graph)));
     });
     const worst = Math.max(...times);
 
@@ -133,7 +149,8 @@ describe('performance budgets', () => {
 
   it('cuts the parcels of a world within its budget', () => {
     const times = measuredWorlds().slice(0, HEAVY_WORLDS).map((world) => {
-      const { graph, footprint } = partsOf(world);
+      const graph = graphOf(world);
+      const footprint = footprintOf(world);
       const field = buildTensorField(world);
       return bestOf(2, () => void buildParcels(world, footprint, graph, field));
     });
