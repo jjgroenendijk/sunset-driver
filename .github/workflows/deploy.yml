@@ -15,7 +15,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Docs-only changes skip the build. The filter is a job rather than a
+  # workflow-level `paths-ignore` because `build-and-deploy` is a required
+  # check: a workflow filtered out by path never reports and would block the
+  # merge, while a job skipped by `if` counts as satisfied.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - '**'
+              - '!**/*.md'
+              - '!.claude/**'
+
   build-and-deploy:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
