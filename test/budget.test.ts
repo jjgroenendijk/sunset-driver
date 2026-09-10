@@ -3,13 +3,19 @@ import { TICKS_PER_HOUR } from '../src/sim/clock.ts';
 import type { InputFrame } from '../src/sim/input.ts';
 import { createSimState, stepSim } from '../src/sim/simulation.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
+import { buildTensorField } from '../src/world/tensor.ts';
 import type { WorldDescription } from '../src/world/types.ts';
 import { generateWorld } from '../src/world/world.ts';
-import { BUDGET_MS, FRAME_MS, FRAME_SLICE_MS, SIM_SLICE_MS } from './budgets.ts';
-import { bestOf, inputStream, sweepSeeds } from './helpers.ts';
+import { BUDGET_MS, BUDGET_US, FRAME_MS, FRAME_SLICE_MS, SIM_SLICE_MS } from './budgets.ts';
+import { bestOf, inputStream, landPoints, sweepSeeds } from './helpers.ts';
 
-/** A handful of seeds: enough for a median, cheap enough for the quick tier. */
-const GEN_SEEDS = sweepSeeds(4);
+/**
+ * A handful of seeds: enough for a median, cheap enough for the quick tier.
+ * This file measures wall-clock cost, so it may not share the machine with the
+ * sweeps and its seeds are generated one after another. The full tier, which
+ * has the time, takes more of them.
+ */
+const GEN_SEEDS = sweepSeeds(process.env.SWEEP_SEEDS ? 12 : 3);
 
 /** Repetitions of each measurement; the fastest one is scored. */
 const RUNS = 3;
@@ -67,5 +73,26 @@ describe('performance budgets', () => {
     const worst = Math.max(...times);
 
     expect(worst, `${worst.toFixed(1)} ms worst`).toBeLessThan(BUDGET_MS.roadGraph);
+  });
+
+  it('builds the tensor field of a world within its budget', () => {
+    const times = measuredWorlds().map((world) => bestOf(RUNS, () => void buildTensorField(world)));
+    const worst = Math.max(...times);
+
+    expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.tensorField);
+  });
+
+  it('samples the tensor field fast enough to trace streamlines with', () => {
+    const perSample = measuredWorlds().map((world) => {
+      const field = buildTensorField(world);
+      const points = landPoints(world, 500, 0x51e);
+      const ms = bestOf(RUNS, () => {
+        for (const p of points) field.majorAt(p.x, p.y);
+      });
+      return (ms / points.length) * 1000;
+    });
+    const worst = Math.max(...perSample);
+
+    expect(worst, `${worst.toFixed(1)} µs per sample`).toBeLessThan(BUDGET_US.tensorSample);
   });
 });

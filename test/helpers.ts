@@ -1,6 +1,8 @@
 import { hashInts } from '../src/core/hash.ts';
+import { Rng } from '../src/core/rng.ts';
 import { EMPTY_INPUT, type InputFrame } from '../src/sim/input.ts';
-import type { Point } from '../src/world/types.ts';
+import { Heightfield } from '../src/world/heightfield.ts';
+import type { Point, WorldDescription } from '../src/world/types.ts';
 
 /** Fixed list of seeds for the sweeps; deterministic and spread across the space. */
 export function sweepSeeds(count: number): number[] {
@@ -128,4 +130,20 @@ export function stableJson(value: unknown): string {
     if (ArrayBuffer.isView(v)) return Array.from(v as unknown as ArrayLike<number>);
     return v;
   });
+}
+
+/**
+ * `count` dry points spread over a world's map, the same ones every run.
+ * `stream` picks an independent set for the same world.
+ */
+export function landPoints(world: WorldDescription, count: number, stream: number): Point[] {
+  const hf = new Heightfield(world.terrain);
+  const rng = new Rng(world.seed ^ stream);
+  const out: Point[] = [];
+  for (let i = 0; i < count * 40 && out.length < count; i++) {
+    const x = rng.range(-0.45, 0.45) * world.size;
+    const y = rng.range(-0.45, 0.45) * world.size;
+    if (hf.sample(x, y) >= world.water.seaLevel) out.push({ x, y });
+  }
+  return out;
 }

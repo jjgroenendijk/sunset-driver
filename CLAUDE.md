@@ -31,6 +31,8 @@ Beyond what the file names suggest:
 
 The same applies to test timing: `npm test` must stay under 15 s and `npm run test:full` under 2 min. Cut seeds or ticks in the quick tier and keep full coverage behind `SWEEP_SEEDS` — never make a test slower to make it pass.
 
+A wall-clock measurement only belongs in `test/budget.test.ts`. Vitest runs that file as its own project, on its own, because the sweeps fill every core; a timing assertion in any other file measures a busy machine and fails at random. Sweeps get their worlds from `generateWorlds` in `test/world-pool.ts`, which generates them in worker threads, so no sweep calls `generateWorld` itself. `test/world-worker.ts` runs under plain Node, not Vite, so it may import only what `src/world` imports.
+
 ## World generation gotchas
 
 - `generateWorld(seed)` builds the whole-map skeleton; chunk-level content will hang off it. The archipelago is a power diagram of island sites shrunk by half a channel and domain-warped, so straits bend but never close. The main site is the core at the origin.
