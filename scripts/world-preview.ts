@@ -8,7 +8,7 @@ import { districtAt, layoutZones } from '../src/world/districts.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { buildTensorField } from '../src/world/tensor.ts';
 import { generateWorld } from '../src/world/world.ts';
-import type { Zone } from '../src/world/types.ts';
+import type { Point, Zone } from '../src/world/types.ts';
 import { encodePng } from './png.ts';
 
 const seedText = process.argv[2] ?? 'sunset';
@@ -85,6 +85,40 @@ for (let iy = STROKE_STRIDE; iy < n - STROKE_STRIDE; iy += STROKE_STRIDE) {
     for (let t = -STROKE_HALF; t <= STROKE_HALF; t += 0.5) {
       plot(Math.round(ix + dx * t), n - 1 - Math.round(iy + dy * t), col);
     }
+  }
+}
+
+// Roads: highways heavy and dark, arterials thinner, bridge decks in orange so
+// the strait crossings stand out.
+const ROAD_STYLE = {
+  highway: { col: [20, 20, 24] as [number, number, number], half: 1 },
+  arterial: { col: [70, 60, 60] as [number, number, number], half: 0 },
+  street: { col: [110, 100, 100] as [number, number, number], half: 0 },
+  alley: { col: [130, 120, 115] as [number, number, number], half: 0 },
+  dirt: { col: [150, 130, 100] as [number, number, number], half: 0 },
+};
+const BRIDGE_COL: [number, number, number] = [255, 140, 40];
+const cellOf = (x: number, y: number): [number, number] => [
+  Math.round((x - hf.originX) / hf.cellSize),
+  Math.round((y - hf.originY) / hf.cellSize),
+];
+const stroke = (a: Point, b: Point, col: [number, number, number], half: number): void => {
+  const [ax, ay] = cellOf(a.x, a.y);
+  const [bx, by] = cellOf(b.x, b.y);
+  const steps = Math.max(1, Math.round(Math.hypot(bx - ax, by - ay)));
+  for (let i = 0; i <= steps; i++) {
+    const px = Math.round(ax + ((bx - ax) * i) / steps);
+    const py = Math.round(ay + ((by - ay) * i) / steps);
+    for (let dy = -half; dy <= half; dy++) {
+      for (let dx = -half; dx <= half; dx++) plot(px + dx, n - 1 - (py + dy), col);
+    }
+  }
+};
+for (const road of [...world.roads].sort((a, b) => (a.tier === 'highway' ? 1 : 0) - (b.tier === 'highway' ? 1 : 0))) {
+  const style = ROAD_STYLE[road.tier];
+  for (let i = 0; i + 1 < road.points.length; i++) {
+    const bridge = road.bridges.includes(i);
+    stroke(road.points[i] as Point, road.points[i + 1] as Point, bridge ? BRIDGE_COL : style.col, bridge ? 1 : style.half);
   }
 }
 

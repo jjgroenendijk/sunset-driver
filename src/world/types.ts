@@ -79,6 +79,25 @@ export interface WaterDescription {
   harbour: { x: number; y: number; radius: number };
 }
 
+/** Road hierarchy, widest first (spec section 6.2). */
+export type RoadTier = 'highway' | 'arterial' | 'street' | 'alley' | 'dirt';
+
+/**
+ * One road as a curve. Carriageway, kerbs, rails and decks are lofted along it;
+ * the road graph of spec section 6.5 is built from it.
+ */
+export interface RoadCurve {
+  id: number;
+  tier: RoadTier;
+  /** Centreline, at least two points. */
+  points: Point[];
+  /**
+   * Indices of the segments that are bridge decks: segment `i` runs from
+   * `points[i]` to `points[i + 1]`. Ascending. Every other segment is on land.
+   */
+  bridges: number[];
+}
+
 export interface WorldDescription {
   seed: number;
   /** Side length in metres; the map is square and centred on the origin. */
@@ -87,4 +106,8 @@ export interface WorldDescription {
   terrain: HeightfieldData;
   water: WaterDescription;
   districts: District[];
+  roads: RoadCurve[];
 }
+
+/** The world before its roads: what the tensor field and the road tracer read. */
+export type WorldSkeleton = Omit<WorldDescription, 'roads'>;
