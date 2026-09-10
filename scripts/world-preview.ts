@@ -8,7 +8,7 @@ import { districtAt, layoutZones } from '../src/world/districts.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { buildTensorField } from '../src/world/tensor.ts';
 import { generateWorld } from '../src/world/world.ts';
-import type { Point, Zone } from '../src/world/types.ts';
+import type { Point, RoadTier, Zone } from '../src/world/types.ts';
 import { encodePng } from './png.ts';
 
 const seedText = process.argv[2] ?? 'sunset';
@@ -88,14 +88,14 @@ for (let iy = STROKE_STRIDE; iy < n - STROKE_STRIDE; iy += STROKE_STRIDE) {
   }
 }
 
-// Roads: highways heavy and dark, arterials thinner, bridge decks in orange so
-// the strait crossings stand out.
+// Roads: one colour per tier, highways heavy and dark, and bridge decks in
+// orange so the strait crossings stand out.
 const ROAD_STYLE = {
   highway: { col: [20, 20, 24] as [number, number, number], half: 1 },
-  arterial: { col: [70, 60, 60] as [number, number, number], half: 0 },
-  street: { col: [110, 100, 100] as [number, number, number], half: 0 },
-  alley: { col: [130, 120, 115] as [number, number, number], half: 0 },
-  dirt: { col: [150, 130, 100] as [number, number, number], half: 0 },
+  arterial: { col: [150, 30, 30] as [number, number, number], half: 0 },
+  street: { col: [40, 60, 150] as [number, number, number], half: 0 },
+  alley: { col: [20, 130, 80] as [number, number, number], half: 0 },
+  dirt: { col: [190, 160, 90] as [number, number, number], half: 0 },
 };
 const BRIDGE_COL: [number, number, number] = [255, 140, 40];
 const cellOf = (x: number, y: number): [number, number] => [
@@ -114,7 +114,9 @@ const stroke = (a: Point, b: Point, col: [number, number, number], half: number)
     }
   }
 };
-for (const road of [...world.roads].sort((a, b) => (a.tier === 'highway' ? 1 : 0) - (b.tier === 'highway' ? 1 : 0))) {
+// Widest tier last, so a highway is never hidden under the streets beside it.
+const TIER_ORDER: RoadTier[] = ['alley', 'dirt', 'street', 'arterial', 'highway'];
+for (const road of [...world.roads].sort((a, b) => TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier))) {
   const style = ROAD_STYLE[road.tier];
   for (let i = 0; i + 1 < road.points.length; i++) {
     const bridge = road.bridges.includes(i);
@@ -144,8 +146,10 @@ for (const c of world.water.crossings) {
 }
 
 writeFileSync(out, encodePng(n, n, rgb));
+const perTier = TIER_ORDER.map((t) => `${t} ${world.roads.filter((r) => r.tier === t).length}`).join(', ');
 console.log(
   `seed ${seedText} size ${world.size} m, ${n}x${n}, ${world.water.islands.length} islands, ${world.water.crossings.length} crossings, ` +
     `generated in ${genMs.toFixed(0)} ms, tensor field in ${fieldMs.toFixed(0)} ms → ${out}`,
 );
+console.log(`  roads: ${perTier}`);
 for (const d of world.districts) console.log(`  ${d.id}\t${d.zone.padEnd(10)}\t${d.name.padEnd(18)}\t${d.culture}`);
