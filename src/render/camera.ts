@@ -3,7 +3,9 @@ import { PerspectiveCamera, Vector3 } from 'three';
 /** Locked pitch in radians below horizontal; the camera never rolls or yaws. */
 export const CAMERA_PITCH = (58 * Math.PI) / 180;
 export const CAMERA_HEADING = 0;
-const BASE_DISTANCE = 36;
+export const BASE_DISTANCE = 36;
+/** Close enough on the title screen to read the character's outfit and hair. */
+export const PREVIEW_DISTANCE = 6;
 const DISTANCE_PER_SPEED = 0.9;
 const LEAD_PER_SPEED = 0.6;
 const FOLLOW_RATE = 4;
@@ -17,6 +19,7 @@ export class FollowCamera {
   readonly camera: PerspectiveCamera;
   private readonly focus = new Vector3();
   private initialised = false;
+  private baseDistance = BASE_DISTANCE;
 
   constructor(aspect: number) {
     this.camera = new PerspectiveCamera(45, aspect, 1, 2000);
@@ -25,6 +28,11 @@ export class FollowCamera {
 
   private applyOrientation(): void {
     this.camera.rotation.set(-CAMERA_PITCH, CAMERA_HEADING, 0, 'YXZ');
+  }
+
+  /** How far back the camera sits at rest. The title screen pulls in close. */
+  setBaseDistance(distance: number): void {
+    this.baseDistance = distance;
   }
 
   resize(aspect: number): void {
@@ -46,7 +54,7 @@ export class FollowCamera {
     } else {
       this.focus.lerp(wanted, Math.min(1, FOLLOW_RATE * dt));
     }
-    const distance = BASE_DISTANCE + Math.abs(target.speed) * DISTANCE_PER_SPEED;
+    const distance = this.baseDistance + Math.abs(target.speed) * DISTANCE_PER_SPEED;
     // Back off along the fixed view direction so the focus stays centred.
     const back = new Vector3(0, 0, distance).applyEuler(this.camera.rotation);
     this.camera.position.copy(this.focus).add(back);
