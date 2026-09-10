@@ -2,7 +2,11 @@ import { dist2 } from '../core/math.ts';
 import { genRng, Subsystem, type Rng } from '../core/rng.ts';
 import type { Culture, District, Island, Point, WaterDescription, Zone } from './types.ts';
 import type { Heightfield } from './heightfield.ts';
+import { LandMasses } from './landmass.ts';
 import { SEA_LEVEL } from './terrain.ts';
+
+/** Metres above the sea a district site needs; the waterline itself is not buildable. */
+const DRY = SEA_LEVEL + 1;
 
 /** Zone ring radii as fractions of the world side length. */
 export const ZONE_RADII: Record<Exclude<Zone, 'wilderness' | 'industrial'>, number> = {
@@ -89,7 +93,12 @@ const SITE_SPECS: SiteSpec[] = [
   { zone: 'wilderness', count: 6, density: [0, 0.05], wealth: [0.05, 0.4] },
 ];
 
-function sampleSiteInZone(rng: Rng, layout: ZoneLayout, zone: Zone, hf: Heightfield): Point {
+/**
+ * A site for one district: dry land of the zone, on ground a road can reach.
+ * Land that carries no island of the water description is a rock in the sea
+ * that no crossing leads to, so a district there could never be built.
+ */
+function sampleSiteInZone(rng: Rng, layout: ZoneLayout, zone: Zone, hf: Heightfield, land: LandMasses): Point {
   const s = layout.size;
   const rMax: Record<Zone, [number, number]> = {
     core: [0, ZONE_RADII.core],
@@ -107,7 +116,8 @@ function sampleSiteInZone(rng: Rng, layout: ZoneLayout, zone: Zone, hf: Heightfi
     const y = layout.core.y + Math.sin(a) * r;
     if (Math.abs(x) > s / 2 || Math.abs(y) > s / 2) continue;
     if (zoneAt(layout, x, y) !== zone) continue;
-    if (hf.sample(x, y) < SEA_LEVEL + 1) continue;
+    if (hf.sample(x, y) < DRY) continue;
+    if (!land.carriesIsland(x, y)) continue;
     return { x, y };
   }
   // Deterministic fallback: the first dry cell of the zone in grid order.
@@ -115,7 +125,8 @@ function sampleSiteInZone(rng: Rng, layout: ZoneLayout, zone: Zone, hf: Heightfi
     for (let ix = 0; ix < hf.gridSize; ix += 2) {
       const x = hf.worldX(ix);
       const y = hf.worldY(iy);
-      if (zoneAt(layout, x, y) === zone && hf.at(ix, iy) >= SEA_LEVEL + 1) return { x, y };
+      if (zoneAt(layout, x, y) !== zone || hf.at(ix, iy) < DRY) continue;
+      if (land.carriesIsland(x, y)) return { x, y };
     }
   }
   return { x: layout.core.x, y: layout.core.y };
@@ -124,6 +135,7 @@ function sampleSiteInZone(rng: Rng, layout: ZoneLayout, zone: Zone, hf: Heightfi
 /** Place district sites and hand out names, cultures and stats. */
 export function generateDistricts(seed: number, layout: ZoneLayout, hf: Heightfield, water: WaterDescription): District[] {
   const rng = genRng(seed, Subsystem.Districts, 1);
+  const land = new LandMasses(hf, water.islands, DRY);
   const districts: District[] = [];
   const pools: Partial<Record<Zone, string[]>> = {};
   let id = 0;
@@ -153,7 +165,7 @@ export function generateDistricts(seed: number, layout: ZoneLayout, hf: Heightfi
 
   for (const spec of SITE_SPECS) {
     for (let i = 0; i < spec.count; i++) {
-      const p = sampleSiteInZone(rng, layout, spec.zone, hf);
+      const p = sampleSiteInZone(rng, layout, spec.zone, hf, land);
       pushDistrict(spec.zone, p, nameFor(spec.zone), 'none', spec);
     }
   }
@@ -191,7 +203,7 @@ export function generateDistricts(seed: number, layout: ZoneLayout, hf: Heightfi
   // Island district, always its own place: the developed outer island.
   const suburbIsland = layout.suburbIsland;
   if (suburbIsland) {
-    const p = sampleSiteInZone(rng, { ...layout, core: { x: suburbIsland.x, y: suburbIsland.y } }, 'core', hf);
+    const p = sampleSiteInZone(rng, { ...layout, core: { x: suburbIsland.x, y: suburbIsland.y } }, 'core', hf, land);
     districts.push({
       id: id++,
       name: 'Gull Island',

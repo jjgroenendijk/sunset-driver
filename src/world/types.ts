@@ -103,6 +103,14 @@ export interface RoadCurve {
    * segment in neither list lies on the ground (spec section 6.1).
    */
   tunnels: number[];
+  /**
+   * Indices of the points another road may join this one at. Ascending. Only a
+   * highway has them: spec section 6.2 gives a highway junctions at
+   * interchanges and nowhere else, and only a highway or an arterial ramp may
+   * use one. The list is empty on every other tier, which takes a junction
+   * anywhere along it.
+   */
+  interchanges: number[];
 }
 
 export interface WorldDescription {
