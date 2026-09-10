@@ -29,6 +29,8 @@ Roughly 50 lines. Prose in short paragraphs and tight lists, not tables — a ta
 
 The current sections are: what the project is and where the spec lives, determinism, per-directory constraints, performance budgets, world-generation gotchas, conventions, and this maintenance note. New material joins an existing section far more often than it justifies a new one.
 
+The writing rules the file states for the project apply to the file itself, and hardest here: the audience includes non-native English speakers, so every line is short, plain and literal, and carries something the reader could not get elsewhere.
+
 ## Maintaining it
 
 Update `CLAUDE.md` in the same commit as the change that makes it wrong: a new directory, a newly enforced rule, a gotcha that cost a session. Prefer editing a line over appending one, and delete a line when its reason is gone — a rule the linter now catches, a workaround for a fixed bug, a constraint that moved into a hook.
