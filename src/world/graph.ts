@@ -248,8 +248,12 @@ export class RoadGraph {
    * a highway detour beats a crawl down an alley. Nodes of equal cost are
    * settled in id order and only a strictly cheaper route replaces one already
    * found, so the answer never depends on floating-point tie order.
+   *
+   * `allow` narrows the network the route may use, which is how a vehicle that
+   * belongs to one tier — the tram on its arterials — is routed over the roads
+   * that carry it. Without it every edge is open.
    */
-  shortestPath(from: number, to: number): RoadRoute | undefined {
+  shortestPath(from: number, to: number, allow?: (edge: RoadEdge) => boolean): RoadRoute | undefined {
     const count = this.nodes.length;
     if (from < 0 || to < 0 || from >= count || to >= count) return undefined;
     if (from === to) return { nodes: [from], edges: [], length: 0, time: 0 };
@@ -270,6 +274,7 @@ export class RoadGraph {
       for (const e of (this.nodes[at] as RoadNode).edges) {
         const edge = this.edges[e] as RoadEdge;
         if (settled[edge.to] === 1) continue;
+        if (allow !== undefined && !allow(edge)) continue;
         const through = (cost[at] as number) + edge.length / edge.speedLimit;
         if (through >= (cost[edge.to] as number)) continue;
         cost[edge.to] = through;

@@ -127,6 +127,25 @@ for (const road of [...world.roads].sort((a, b) => TIER_ORDER.indexOf(a.tier) - 
   }
 }
 
+// Corridors (spec section 6.3): the outline of the ground each one claims. The
+// tram's reserved lane is drawn over its route, the pillar feet under a deck as
+// single dots, and a level crossing as a small mark.
+const CORRIDOR_COL = { elevated: [255, 200, 60] as [number, number, number], tram: [230, 60, 230] as [number, number, number] };
+const PILLAR_COL: [number, number, number] = [40, 40, 40];
+for (const corridor of world.corridors) {
+  const col = CORRIDOR_COL[corridor.kind];
+  for (let i = 0; i < corridor.polygon.length; i++) {
+    stroke(corridor.polygon[i] as Point, corridor.polygon[(i + 1) % corridor.polygon.length] as Point, col, 0);
+  }
+  for (const p of corridor.pillars) {
+    const [px, py] = cellOf(p.x, p.y);
+    plot(px, n - 1 - py, PILLAR_COL);
+  }
+}
+for (let i = 0; i + 1 < world.tram.route.length; i++) {
+  stroke(world.tram.route[i] as Point, world.tram.route[i + 1] as Point, CORRIDOR_COL.tram, 0);
+}
+
 const mark = (x: number, y: number, col: [number, number, number], size = 3): void => {
   const ix = Math.round((x - hf.originX) / hf.cellSize);
   const iy = Math.round((y - hf.originY) / hf.cellSize);
@@ -147,6 +166,8 @@ for (const c of world.water.crossings) {
   mark(c.from.x, c.from.y, [255, 255, 0]);
   mark(c.to.x, c.to.y, [255, 255, 0]);
 }
+for (const c of world.tram.crossings) mark(c.x, c.y, [255, 255, 255], 1);
+for (const s of world.tram.stops) mark(s.x, s.y, [255, 60, 160], 2);
 
 writeFileSync(out, encodePng(n, n, rgb));
 const perTier = TIER_ORDER.map((t) => `${t} ${world.roads.filter((r) => r.tier === t).length}`).join(', ');
@@ -155,4 +176,10 @@ console.log(
     `generated in ${genMs.toFixed(0)} ms, tensor field in ${fieldMs.toFixed(0)} ms → ${out}`,
 );
 console.log(`  roads: ${perTier}`);
+const elevated = world.corridors.filter((c) => c.kind === 'elevated');
+console.log(
+  `  corridors: ${elevated.length} elevated with ${elevated.reduce((k, c) => k + c.pillars.length, 0)} pillars, ` +
+    `${world.corridors.length - elevated.length} tram; tram loop ${(world.tram.length / 1000).toFixed(1)} km, ` +
+    `${world.tram.stops.length} stops, ${world.tram.crossings.length} level crossings`,
+);
 for (const d of world.districts) console.log(`  ${d.id}\t${d.zone.padEnd(10)}\t${d.name.padEnd(18)}\t${d.culture}`);

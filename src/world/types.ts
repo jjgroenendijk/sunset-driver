@@ -105,6 +105,72 @@ export interface RoadCurve {
   tunnels: number[];
 }
 
+/** What a corridor carries (spec section 6.3). */
+export type CorridorKind = 'elevated' | 'tram';
+
+/**
+ * A strip of land a road stands off or runs a reserved lane down (spec section
+ * 6.3). A corridor takes part in the same footprint subtraction as the roads,
+ * so the ground it claims belongs to it and to nothing else.
+ */
+export interface Corridor {
+  id: number;
+  kind: CorridorKind;
+  /** The road curves the corridor runs along, ascending. */
+  roads: number[];
+  /** Centreline of the strip, at least two points. */
+  points: Point[];
+  /** The strip reaches this far each side of the centreline, in metres. */
+  halfWidth: number;
+  /**
+   * The ground the corridor claims: a closed ring wound anticlockwise, with the
+   * first point not repeated at the end.
+   */
+  polygon: Point[];
+  /**
+   * Feet of the pillars that carry the deck, in pairs across the centreline and
+   * always inside {@link Corridor.polygon}. Empty on a tram corridor.
+   */
+  pillars: Point[];
+}
+
+/** A tram stop: where the line calls, and the district it serves. */
+export interface TramStop {
+  id: number;
+  x: number;
+  y: number;
+  /** Id of the district the stop stands in. */
+  district: number;
+}
+
+/** Where a road crosses the tram lane on the flat, so traffic and pedestrians must give way. */
+export interface TramLevelCrossing {
+  x: number;
+  y: number;
+  /** The road curves that cross the line here, ascending. */
+  roads: number[];
+}
+
+/** The tram line of spec section 13.2: one fixed loop through the core and inner districts. */
+export interface TramDescription {
+  /**
+   * The line the tram drives, stop to stop and back to the first, with the last
+   * point standing on the first. Empty when the arterials carry no loop.
+   */
+  route: Point[];
+  /**
+   * The corridors the reserved lane is made of, ascending. Where the loop runs
+   * down one street twice the lane is claimed once, so there are fewer of these
+   * than there are legs between stops.
+   */
+  corridors: number[];
+  /** The stops, in the order the tram calls at them. */
+  stops: TramStop[];
+  crossings: TramLevelCrossing[];
+  /** Metres around the loop. */
+  length: number;
+}
+
 export interface WorldDescription {
   seed: number;
   /** Side length in metres; the map is square and centred on the origin. */
@@ -114,7 +180,9 @@ export interface WorldDescription {
   water: WaterDescription;
   districts: District[];
   roads: RoadCurve[];
+  corridors: Corridor[];
+  tram: TramDescription;
 }
 
 /** The world before its roads: what the tensor field and the road tracer read. */
-export type WorldSkeleton = Omit<WorldDescription, 'roads'>;
+export type WorldSkeleton = Omit<WorldDescription, 'roads' | 'corridors' | 'tram'>;
