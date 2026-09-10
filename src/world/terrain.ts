@@ -355,13 +355,21 @@ export function segmentDistance(px: number, py: number, a: Point, b: Point): num
 /** Metres of land a bridge head needs behind it, so a crossing never lands on a rock in the strait. */
 const LANDFALL = 120;
 
-/** True when the two ends of a chord stand on different islands, which is what makes it a crossing. */
-function straddles(layout: TerrainLayout, noise: Noise2D, chord: { from: Point; to: Point }): boolean {
-  const size = layout.size;
-  return (
-    islandAt(layout.islands, size, noise, chord.from.x, chord.from.y) !==
-    islandAt(layout.islands, size, noise, chord.to.x, chord.to.y)
-  );
+/** The id of the island whose land a point stands on. */
+function landIdAt(layout: TerrainLayout, noise: Noise2D, p: Point): number {
+  return (layout.islands[islandAt(layout.islands, layout.size, noise, p.x, p.y)] as Island).id;
+}
+
+/**
+ * True when a chord runs from one of the two islands to the other, which is
+ * what makes it their crossing. A chord that comes back to its own shore
+ * bridges nothing, and one that reaches a third island is some other pair's
+ * crossing, not this one's.
+ */
+function joins(layout: TerrainLayout, noise: Noise2D, a: Island, b: Island, chord: { from: Point; to: Point }): boolean {
+  const from = landIdAt(layout, noise, chord.from);
+  const to = landIdAt(layout, noise, chord.to);
+  return (from === a.id && to === b.id) || (from === b.id && to === a.id);
 }
 
 /**
@@ -417,7 +425,7 @@ export function findCrossings(hf: Heightfield, layout: TerrainLayout, noise: Noi
       const mid = (lo + hi) / 2;
       const mx = a.x + ux * mid * step;
       const my = a.y + uy * mid * step;
-      const reaches = (chord: { from: Point; to: Point }): boolean => straddles(layout, noise, chord);
+      const reaches = (chord: { from: Point; to: Point }): boolean => joins(layout, noise, a, b, chord);
       let best = narrowestChord(hf, mx, my, ux, uy, reaches);
       let bestSpan = Math.hypot(best.to.x - best.from.x, best.to.y - best.from.y);
       let bestStraddles = reaches(best);
@@ -429,8 +437,9 @@ export function findCrossings(hf: Heightfield, layout: TerrainLayout, noise: Noi
           const candidate = narrowestChord(hf, px, py, ux, uy, reaches);
           const span = Math.hypot(candidate.to.x - candidate.from.x, candidate.to.y - candidate.from.y);
           // Sliding along a strait can wander into a bay of one island, where the
-          // narrowest chord lands on that island twice and bridges nothing. A
-          // chord that reaches the far island always beats one that does not.
+          // narrowest chord lands on that island twice and bridges nothing, or
+          // out to a third island. A chord that reaches the far island always
+          // beats one that does not.
           const straddling = reaches(candidate);
           if (straddling === bestStraddles ? span < bestSpan : straddling) {
             bestSpan = span;
@@ -440,7 +449,14 @@ export function findCrossings(hf: Heightfield, layout: TerrainLayout, noise: Noi
         }
       }
       const { from, to } = best;
-      out.push({ fromIsland: a.id, toIsland: b.id, from, to });
+      // The islands the chord reached, not the pair it was searched for: where
+      // no chord joins that pair, the best one found still links the two shores
+      // it does stand on, and a crossing must name them. One that came back to
+      // a single island bridges nothing and is dropped.
+      const fromIsland = landIdAt(layout, noise, from);
+      const toIsland = landIdAt(layout, noise, to);
+      if (fromIsland === toIsland) continue;
+      out.push({ fromIsland, toIsland, from, to });
     }
   }
   return out;

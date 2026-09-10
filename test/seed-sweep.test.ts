@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { hashInts } from '../src/core/hash.ts';
+import { compareNumbers } from '../src/core/sort.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { buildRoadGraph, type GradeCrossing, type RoadEdge, type RoadGraph, type RoadNode } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
@@ -241,6 +242,9 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       const hf = new Heightfield(w.terrain);
+      const noise = coastNoise(w.seed);
+      const landOf = (p: Point): number => islandAt(w.water.islands, w.size, noise, p.x, p.y);
+      const idOf = (i: number): number => (w.water.islands[i] as { id: number }).id;
       for (const isl of w.water.islands) expect(hf.sample(isl.x, isl.y), `island ${isl.id} seed ${seed}`).toBeGreaterThan(w.water.seaLevel);
       // Union-find over crossings: one connected archipelago.
       const parent = w.water.islands.map((_, i) => i);
@@ -249,6 +253,14 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
         const { from, to } = c;
         expect(hf.sample(from.x, from.y)).toBeGreaterThanOrEqual(w.water.seaLevel);
         expect(hf.sample(to.x, to.y)).toBeGreaterThanOrEqual(w.water.seaLevel);
+        // Both bridge heads stand on the island the crossing claims, so the
+        // union-find above joins the land the roads will actually reach. A
+        // chord that lands on one island twice, or on a rock in the strait,
+        // bridges nothing (spec section 7.2).
+        expect(c.fromIsland, `seed ${seed}: a crossing joins island ${c.fromIsland} to itself`).not.toBe(c.toIsland);
+        const ends = [idOf(landOf(from)), idOf(landOf(to))].sort(compareNumbers);
+        const claimed = [c.fromIsland, c.toIsland].sort(compareNumbers);
+        expect(ends, `seed ${seed}: a crossing claims islands ${claimed.join(' and ')} but lands on ${ends.join(' and ')}`).toEqual(claimed);
         // Water under most of the span. Not all of it: a crossing may step over
         // a rock in the strait to reach ground a bridge head can stand on.
         expect(wetFraction(hf, from, to, w.water.seaLevel), `seed ${seed}`).toBeGreaterThan(0.5);
