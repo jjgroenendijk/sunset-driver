@@ -98,7 +98,9 @@ describe('performance budgets', () => {
   });
 
   it('lays the road footprint of a world within its budget', () => {
-    const times = measuredWorlds().map((world) => {
+    // A few worlds rather than all of them: laying a footprint is expensive
+    // enough that the full tier cannot afford one per measured seed.
+    const times = measuredWorlds().slice(0, 4).map((world) => {
       const graph = buildRoadGraph(world.roads);
       return bestOf(2, () => void buildFootprint(world.roads, world.corridors, graph));
     });

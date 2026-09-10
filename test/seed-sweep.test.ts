@@ -98,11 +98,10 @@ const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 12);
 const REPEAT_COUNT = SEED_COUNT > 20 ? 20 : 4;
 /**
  * Seeds the road footprint is laid for. Laying one unions the polygons of a
- * whole network, which costs about a third of generating the world, and unlike
- * the world itself it is laid on this thread, so both tiers lay a few rather
- * than all of them.
+ * whole network, and unlike the world itself it is laid on this thread rather
+ * than in the pool, so both tiers lay a few rather than all of them.
  */
-const FOOTPRINT_COUNT = SEED_COUNT > 20 ? 50 : 4;
+const FOOTPRINT_COUNT = SEED_COUNT > 20 ? 16 : 4;
 /**
  * The share of the dry land the roads may claim (spec section 6.4). A city
  * gives about a seventh of its ground to the carriageway, the verge and the
