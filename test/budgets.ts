@@ -34,8 +34,8 @@ export const BUDGET_MS = {
 
   /**
    * `generateWorld`, per seed: the whole-map skeleton, not a chunk. Offline
-   * work, so it is not part of the frame; chunk generation gets its own
-   * per-frame cap when streaming lands (spec section 9.1).
+   * work, so it is not part of the frame; a chunk cut from it is capped by
+   * {@link BUDGET_US.chunkSlice} instead.
    */
   worldGen: 1500,
 
@@ -59,8 +59,7 @@ export const BUDGET_MS = {
   /**
    * `buildFootprint` over a whole-map road network: every curve offset, every
    * junction aproned and the lot unioned (spec section 6.4). Offline work like
-   * {@link BUDGET_MS.worldGen}; chunk-level parcels get their own per-frame cap
-   * when streaming lands (spec section 9.1).
+   * {@link BUDGET_MS.worldGen}.
    */
   footprint: 900,
 
@@ -71,6 +70,13 @@ export const BUDGET_MS = {
    * the footprint and the graph rather than building them itself.
    */
   parcels: 900,
+
+  /**
+   * `new ChunkSource` over a whole map: the road segments and the parcels sorted
+   * into the chunks they stand in (spec section 9.1). Paid once per seed, before
+   * the first chunk, and given the parcels rather than cutting them itself.
+   */
+  chunkSource: 5,
 } as const;
 
 /** Budgets small enough that milliseconds would round them away. */
@@ -80,4 +86,12 @@ export const BUDGET_US = {
    * streamline step, so this is the cost of every metre of road on the map.
    */
   tensorSample: 20,
+
+  /**
+   * `ChunkSource.chunk`, per chunk: the terrain slice copied and the roads and
+   * parcels inside the chunk gathered (spec section 9.1). Streaming has 2 ms of
+   * the frame and does the geometry as well, so cutting the chunk itself may
+   * only ever be a small part of that.
+   */
+  chunkSlice: 250,
 } as const;

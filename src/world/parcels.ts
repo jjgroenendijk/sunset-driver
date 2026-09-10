@@ -60,6 +60,12 @@ export interface Parcel {
   region: Region;
   /** Square metres of that ground. */
   area: number;
+  /**
+   * The centre of that ground, which is what its district and its zone are read
+   * at, and which chunk it belongs to (spec section 9.1). The centre of a parcel
+   * bent round a corner can fall just outside it.
+   */
+  at: Point;
   owner: ParcelOwner;
   /** Id of the district the parcel stands in. */
   district: number;
@@ -173,6 +179,7 @@ export function buildParcels(
       id,
       region: piece.region,
       area: piece.area,
+      at: piece.at,
       owner: ownerFor(world.seed, id, district, zone, piece.area),
       district: district.id,
       zone,

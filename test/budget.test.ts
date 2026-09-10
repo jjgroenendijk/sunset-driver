@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { TICKS_PER_HOUR } from '../src/sim/clock.ts';
 import type { InputFrame } from '../src/sim/input.ts';
 import { createSimState, stepSim } from '../src/sim/simulation.ts';
+import { ChunkSource } from '../src/world/chunk.ts';
 import { buildFootprint, type RoadFootprint } from '../src/world/footprint.ts';
-import { buildParcels } from '../src/world/parcels.ts';
+import { buildParcels, type ParcelMap } from '../src/world/parcels.ts';
 import { buildRoadGraph, type RoadGraph } from '../src/world/graph.ts';
 import { buildTensorField } from '../src/world/tensor.ts';
 import type { WorldDescription } from '../src/world/types.ts';
@@ -57,6 +58,26 @@ function partsOf(world: WorldDescription): { graph: RoadGraph; footprint: RoadFo
  * neither is measured on every seed.
  */
 const HEAVY_WORLDS = process.env.SWEEP_SEEDS ? 4 : 2;
+
+/**
+ * The parcels of the heavy worlds, kept by the test that times cutting them so
+ * the chunk tests below are not charged for cutting them again.
+ */
+const parcelMaps = new Map<number, ParcelMap>();
+
+function parcelsOf(world: WorldDescription): ParcelMap {
+  const known = parcelMaps.get(world.seed);
+  if (known !== undefined) return known;
+  const { graph, footprint } = partsOf(world);
+  const built = buildParcels(world, footprint, graph, buildTensorField(world));
+  parcelMaps.set(world.seed, built);
+  return built;
+}
+
+/** The worlds the chunk tests measure: the heavy ones, whose parcels are cut. */
+function chunkedWorlds(): WorldDescription[] {
+  return measuredWorlds().slice(0, HEAVY_WORLDS);
+}
 
 describe('performance budgets', () => {
   it('keeps every enforced budget inside its spec section 2.4 slice', () => {
@@ -135,10 +156,38 @@ describe('performance budgets', () => {
     const times = measuredWorlds().slice(0, HEAVY_WORLDS).map((world) => {
       const { graph, footprint } = partsOf(world);
       const field = buildTensorField(world);
-      return bestOf(2, () => void buildParcels(world, footprint, graph, field));
+      // The last cut is kept: the chunk tests below need the parcels, and
+      // cutting a world's parcels is the dearest thing this file does.
+      return bestOf(2, () => parcelMaps.set(world.seed, buildParcels(world, footprint, graph, field)));
     });
     const worst = Math.max(...times);
 
     expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.parcels);
+  });
+
+  it('indexes a world by chunk within its budget', () => {
+    const times = chunkedWorlds().map((world) => {
+      const parcels = parcelsOf(world).parcels;
+      return bestOf(RUNS, () => void new ChunkSource(world, parcels));
+    });
+    const worst = Math.max(...times);
+
+    expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.chunkSource);
+  });
+
+  it('cuts a chunk out of an indexed world fast enough to stream it', () => {
+    // The block around the origin, where the city is densest and a chunk holds
+    // the most: the worst chunk of the map, not an average one.
+    const perChunk = chunkedWorlds().map((world) => {
+      const source = new ChunkSource(world, parcelsOf(world).parcels);
+      let worst = 0;
+      for (let cy = -1; cy <= 1; cy++) {
+        for (let cx = -1; cx <= 1; cx++) worst = Math.max(worst, bestOf(RUNS, () => void source.chunk(cx, cy)));
+      }
+      return worst * 1000;
+    });
+    const worst = Math.max(...perChunk);
+
+    expect(worst, `${worst.toFixed(0)} µs per chunk`).toBeLessThan(BUDGET_US.chunkSlice);
   });
 });
