@@ -25,3 +25,4 @@ Requires a WebGPU-capable browser. Add `#seed=yourseed` to the URL to pick a wor
 ## Develop
 
 `npm run verify` runs the typecheck, the determinism lint and the test sweeps. See `spec.md` for the design and `CLAUDE.md` for working conventions.
+
