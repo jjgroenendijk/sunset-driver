@@ -9,17 +9,17 @@ npm install
 npm run dev
 ```
 
-Requires a WebGPU-capable browser. Add `#seed=yourseed` to the URL to pick a world.
+Requires a WebGPU-capable browser. The title screen takes the seed and the character; add `#seed=yourseed` to the URL to start it on a world.
 
 ## Controls
 
-| Context | Keys |
+| Action | Keys |
 |---|---|
-| Move / drive | W A S D or arrow keys |
-| Handbrake / jump | Space |
+| Move, drive | W A S D or arrows |
 | Sprint | Shift |
+| Handbrake, jump | Space |
 | Horn | H |
-| Interact / enter vehicle | E |
+| Interact, enter vehicle | E |
 | Fire | F |
 
 ## Develop

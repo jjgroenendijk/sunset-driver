@@ -50,6 +50,11 @@ A wall-clock measurement only belongs in `test/budget.test.ts`. Vitest runs that
 - Look at the image before judging a layout change: `node scripts/world-preview.ts <seed> out.png`. It draws one colour per tier — highways black, arterials red, streets blue, alleys green, dirt roads tan — with bridge decks orange, bores through the ground cyan and the interchanges of the highways lime, and strokes the field's major direction, dark where the field is decided and pale where influences cancel. Corridors are outlined too: the ground under a deck in amber with its pillars as dark dots, the tram's lane and route in magenta, its stops pink and its level crossings white.
 - `test/seed-sweep.test.ts` runs 16 seeds, or 200 under `SWEEP_SEEDS=200`. The quick count is what holds `npm test` under its 15 s, since a seed generates a whole world.
 
+## Player and interface
+
+- The player's look is indices into the tables in `src/sim/character.ts`, so a save carries numbers, not colours. `normaliseAppearance` folds an out-of-range index back onto a real option, and `resolveAppearance` hands the renderer the entries. `src/render/character.ts` builds the model from them as boxes; the parts a top-down camera sees carry the chosen colours.
+- `src/ui/controls.ts` is the one list of key bindings. It is shown on the title screen and copied into the README; `Keyboard.sample` must stay in step with it.
+
 ## Conventions
 
 - Relative imports carry explicit `.ts` extensions (`allowImportingTsExtensions` is on) so scripts and tests run under plain Node.
