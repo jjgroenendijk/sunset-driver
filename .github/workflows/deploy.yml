@@ -26,14 +26,25 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
     steps:
       - uses: actions/checkout@v7
-      - uses: dorny/paths-filter@v3
-        id: filter
         with:
-          filters: |
-            code:
-              - '**'
-              - '!**/*.md'
-              - '!.claude/**'
+          fetch-depth: 0
+      - id: filter
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -u
+          # Build unless every changed file is documentation. An unknown base
+          # (new branch, force push) and an empty diff both fall through to
+          # building, so a missed skip costs a CI run, never a missed check.
+          git cat-file -e "$BASE^{commit}" 2>/dev/null || { echo 'code=true' >> "$GITHUB_OUTPUT"; exit 0; }
+          changed=$(git diff --name-only "$BASE" "$HEAD")
+          echo "$changed"
+          if echo "$changed" | grep -qvE '(\.md$|^\.claude/)'; then
+            echo 'code=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'code=false' >> "$GITHUB_OUTPUT"
+          fi
 
   build-and-deploy:
     needs: changes
