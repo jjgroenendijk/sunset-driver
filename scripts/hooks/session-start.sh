@@ -14,11 +14,18 @@ if [ -n "$want" ] && [ "$have" != "$want" ]; then
   echo "warning: node $have found, .nvmrc wants $want (nvm use / fnm use)" >&2
 fi
 
-# Commit identity. Cloud containers ship a global git identity of their own, so
-# pin the repository-local one; the GIT_AUTHOR_*/GIT_COMMITTER_* variables in
-# .claude/settings.json cover the same ground for sessions that read them.
-git config --local user.name "${GIT_AUTHOR_NAME:-jjgroenendijk}"
-git config --local user.email "${GIT_AUTHOR_EMAIL:-3110270+jjgroenendijk@users.noreply.github.com}"
+# Commit identity. Whoever runs the session supplies it through the standard
+# GIT_AUTHOR_NAME / GIT_AUTHOR_EMAIL variables (in the Claude Code cloud
+# environment config, or the shell locally); the repository holds no identity of
+# its own. Copying them into the local config keeps them ahead of the global
+# identity a cloud container ships with.
+if [ -n "${GIT_AUTHOR_NAME:-}" ] && [ -n "${GIT_AUTHOR_EMAIL:-}" ]; then
+  git config --local user.name "$GIT_AUTHOR_NAME"
+  git config --local user.email "$GIT_AUTHOR_EMAIL"
+elif git config --get user.email | grep -qiE '@anthropic\.com$'; then
+  echo "git is set to commit as $(git config --get user.name) <$(git config --get user.email)>;" >&2
+  echo "set GIT_AUTHOR_NAME and GIT_AUTHOR_EMAIL in your environment config to commit as yourself" >&2
+fi
 # The global config may point commit signing at a key that is not ours; sign
 # only when this repository was given a key of its own.
 if [ -z "$(git config --local --get user.signingkey)" ]; then

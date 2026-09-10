@@ -5,12 +5,6 @@
     "pr": "",
     "sessionUrl": false
   },
-  "env": {
-    "GIT_AUTHOR_NAME": "jjgroenendijk",
-    "GIT_AUTHOR_EMAIL": "3110270+jjgroenendijk@users.noreply.github.com",
-    "GIT_COMMITTER_NAME": "jjgroenendijk",
-    "GIT_COMMITTER_EMAIL": "3110270+jjgroenendijk@users.noreply.github.com"
-  },
   "hooks": {
     "SessionStart": [
       {
