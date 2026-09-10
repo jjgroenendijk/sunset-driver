@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { hashInts } from '../src/core/hash.ts';
 import { compareNumbers } from '../src/core/sort.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
@@ -9,9 +9,8 @@ import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
 import { coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import type { Corridor, Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
-import { generateWorld } from '../src/world/world.ts';
-import { BUDGET_MS } from './budgets.ts';
 import { pointInRing, ringArea, ringsOverlap, stableJson, sweepSeeds } from './helpers.ts';
+import { worldsFor } from './world-pool.ts';
 
 /** Metres between the samples that ask whether a road segment is over water. */
 const WET_SAMPLE = 5;
@@ -86,15 +85,15 @@ function spansCrossing(a: Point, b: Point, from: Point, to: Point): boolean {
 
 /**
  * Quick tier by default; CI and `npm run test:full` set SWEEP_SEEDS=200 (spec
- * section 3). The count is what keeps `npm test` inside its 15 s: every seed
- * generated here carries the whole world, so a seed costs about a second.
+ * section 3). The quick tier takes the seeds that fit in its 15 s, and the
+ * full tier is the coverage.
  */
-const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 16);
+const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 12);
 /**
  * Seeds the byte-identical check generates a second time. Generating a world is
  * the most expensive thing this file does, so the quick tier repeats only a few.
  */
-const REPEAT_COUNT = SEED_COUNT > 20 ? 20 : 6;
+const REPEAT_COUNT = SEED_COUNT > 20 ? 20 : 4;
 
 /**
  * Every road point in buckets, so "how far is this ground from a road?" costs a
@@ -167,7 +166,8 @@ function seaFraction(world: WorldDescription): number {
 describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
   const seeds = sweepSeeds(SEED_COUNT);
   const worlds = new Map<number, WorldDescription>();
-  const timings: number[] = [];
+  /** The second generation of the repeated seeds, for the byte-identical check. */
+  const repeats = new Map<number, WorldDescription>();
   /** The graph of a seed, built once however many tests ask about it. */
   const graphs = new Map<number, RoadGraph>();
   const graphOf = (seed: number): RoadGraph => {
@@ -178,20 +178,24 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     return built;
   };
 
-  it('generates every seed within budget', () => {
-    for (const seed of seeds) {
-      const t0 = performance.now();
-      worlds.set(seed, generateWorld(seed));
-      timings.push(performance.now() - t0);
+  beforeAll(async () => {
+    // Every seed once, then the repeated seeds a second time: the pool runs the
+    // two rounds back to back so the byte-identical check costs no extra wait.
+    // What a seed costs is measured in `budget.test.ts`, on a quiet machine.
+    const repeated = seeds.slice(0, REPEAT_COUNT);
+    const generated = await worldsFor([...seeds, ...repeated]);
+    for (let i = 0; i < seeds.length; i++) {
+      worlds.set(seeds[i] as number, generated[i] as WorldDescription);
     }
-    const worst = Math.max(...timings);
-    expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.worldGenWorst);
+    for (let i = 0; i < repeated.length; i++) {
+      repeats.set(repeated[i] as number, generated[seeds.length + i] as WorldDescription);
+    }
   });
 
   it('is byte-identical across runs', () => {
     for (const seed of seeds.slice(0, REPEAT_COUNT)) {
       const a = worlds.get(seed) as WorldDescription;
-      const b = generateWorld(seed);
+      const b = repeats.get(seed) as WorldDescription;
       expect(heightsHash(b.terrain.heights)).toBe(heightsHash(a.terrain.heights));
       expect(stableJson({ ...b, terrain: null })).toBe(stableJson({ ...a, terrain: null }));
     }

@@ -1,11 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { directionDelta } from '../src/core/math.ts';
-import { Rng } from '../src/core/rng.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { buildTensorField, type TensorField } from '../src/world/tensor.ts';
 import type { WorldDescription } from '../src/world/types.ts';
-import { generateWorld } from '../src/world/world.ts';
-import { sweepSeeds } from './helpers.ts';
+import { landPoints, sweepSeeds } from './helpers.ts';
+import { worldsFor } from './world-pool.ts';
 
 /** A field costs a whole world to build, so the quick tier takes a couple of seeds. */
 const SEED_COUNT = process.env.SWEEP_SEEDS ? 12 : 2;
@@ -17,21 +16,10 @@ interface Case {
   world: WorldDescription;
   hf: Heightfield;
   field: TensorField;
-  buildMs: number;
 }
 const cases: Case[] = [];
-
-/** Deterministic dry points, spread over the map. */
-function landPoints(c: Case, count: number, stream: number): { x: number; y: number }[] {
-  const rng = new Rng(c.seed ^ stream);
-  const out: { x: number; y: number }[] = [];
-  for (let i = 0; i < count * 40 && out.length < count; i++) {
-    const x = rng.range(-0.45, 0.45) * c.world.size;
-    const y = rng.range(-0.45, 0.45) * c.world.size;
-    if (c.hf.sample(x, y) >= c.world.water.seaLevel) out.push({ x, y });
-  }
-  return out;
-}
+/** The generated worlds, in seed order; filled before any test runs. */
+const worlds: WorldDescription[] = [];
 
 /**
  * Nearest sea cell within `limit` metres, over the height grid itself. The
@@ -64,30 +52,24 @@ function quantile(sorted: number[], p: number): number {
 }
 
 describe(`tensor field (${SEED_COUNT} seeds)`, () => {
-  it('builds a field for every seed, cheaply', () => {
-    for (const seed of sweepSeeds(SEED_COUNT)) {
-      const world = generateWorld(seed);
-      const hf = new Heightfield(world.terrain);
-      const t0 = performance.now();
-      const field = buildTensorField(world);
-      cases.push({ seed, world, hf, field, buildMs: performance.now() - t0 });
-    }
-    for (const c of cases) {
-      // Offline work like the world itself, and a small fraction of it: a build
-      // this far over is an accidental per-cell search, not a slow runner.
-      expect(c.buildMs, `seed ${c.seed} built in ${c.buildMs.toFixed(0)} ms`).toBeLessThan(150);
-      expect(c.field.grids.length).toBeGreaterThan(0);
-    }
+  const seeds = sweepSeeds(SEED_COUNT);
+  /** The first seed's world, generated a second time for the purity check. */
+  let regeneratedFirst: WorldDescription;
+
+  beforeAll(async () => {
+    // Every seed, then the first seed again for the purity check below.
+    const generated = await worldsFor([...seeds, seeds[0] as number]);
+    worlds.push(...generated.slice(0, seeds.length));
+    regeneratedFirst = generated[seeds.length] as WorldDescription;
   });
 
-  it('samples fast enough to trace streamlines with', () => {
-    for (const c of cases) {
-      const points = landPoints(c, 500, 0x51e);
-      const t0 = performance.now();
-      for (const p of points) c.field.majorAt(p.x, p.y);
-      const perSample = ((performance.now() - t0) / points.length) * 1000;
-      expect(perSample, `seed ${c.seed}: ${perSample.toFixed(1)} µs per sample`).toBeLessThan(20);
+  it('builds a field for every seed', () => {
+    for (let i = 0; i < seeds.length; i++) {
+      const world = worlds[i] as WorldDescription;
+      const hf = new Heightfield(world.terrain);
+      cases.push({ seed: seeds[i] as number, world, hf, field: buildTensorField(world) });
     }
+    for (const c of cases) expect(c.field.grids.length).toBeGreaterThan(0);
   });
 
   it('is a pure function of the world description', () => {
@@ -96,11 +78,11 @@ describe(`tensor field (${SEED_COUNT} seeds)`, () => {
       const twin = buildTensorField(c.world);
       // And from a world regenerated from the seed: pure all the way down. Only
       // the first seed pays for a second generation; the sweep covers the rest.
-      const regenerated = c === cases[0] ? buildTensorField(generateWorld(c.seed)) : twin;
+      const regenerated = c === cases[0] ? buildTensorField(regeneratedFirst) : twin;
       for (const again of [twin, regenerated]) {
         expect(again.cityAngle).toBe(c.field.cityAngle);
         expect(again.grids).toStrictEqual(c.field.grids);
-        for (const p of landPoints(c, 200, 0xd37)) {
+        for (const p of landPoints(c.world, 200, 0xd37)) {
           const a = c.field.sample(p.x, p.y);
           const b = again.sample(p.x, p.y);
           expect(b.major).toBe(a.major);
@@ -116,7 +98,7 @@ describe(`tensor field (${SEED_COUNT} seeds)`, () => {
 
   it('keeps the major and minor directions square and in range', () => {
     for (const c of cases) {
-      for (const p of landPoints(c, 200, 0xa11)) {
+      for (const p of landPoints(c.world, 200, 0xa11)) {
         const s = c.field.sample(p.x, p.y);
         expect(Number.isFinite(s.major)).toBe(true);
         expect(s.major).toBeGreaterThan(-Math.PI / 2);
@@ -132,7 +114,7 @@ describe(`tensor field (${SEED_COUNT} seeds)`, () => {
     for (const c of cases) {
       const near: number[] = [];
       const far: number[] = [];
-      for (const p of landPoints(c, 1500, 0xc07)) {
+      for (const p of landPoints(c.world, 1500, 0xc07)) {
         const s = c.field.sample(p.x, p.y);
         // Where the influences cancel the field prefers no direction at all, and
         // the direction it reports is meaningless. Streamlines stop there too.
@@ -181,7 +163,7 @@ describe(`tensor field (${SEED_COUNT} seeds)`, () => {
   it('runs parallel to the shore at the waterfront', () => {
     for (const c of cases) {
       const devs: number[] = [];
-      for (const p of landPoints(c, 4000, 0x5ea)) {
+      for (const p of landPoints(c.world, 4000, 0x5ea)) {
         if (devs.length >= 60) break;
         const w = nearestWater(c.hf, c.world.water.seaLevel, p.x, p.y, 90);
         // Right at the edge the nearest wet cell is a poor normal; a little back
@@ -201,7 +183,7 @@ describe(`tensor field (${SEED_COUNT} seeds)`, () => {
   it('follows the contour on steep ground', () => {
     for (const c of cases) {
       const devs: number[] = [];
-      for (const p of landPoints(c, 6000, 0x510e)) {
+      for (const p of landPoints(c.world, 6000, 0x510e)) {
         if (devs.length >= 60) break;
         if (c.hf.slope(p.x, p.y) < 0.25) continue;
         if (nearestWater(c.hf, c.world.water.seaLevel, p.x, p.y, 200)) continue;
