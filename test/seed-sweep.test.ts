@@ -3,18 +3,17 @@ import { hashInts } from '../src/core/hash.ts';
 import { compareNumbers } from '../src/core/sort.ts';
 import { pointInRegions, regionArea, type Region } from '../src/core/geom.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
-import { buildFootprint, type RoadFootprint } from '../src/world/footprint.ts';
+import type { RoadFootprint } from '../src/world/footprint.ts';
 import { buildRoadGraph, type GradeCrossing, type RoadEdge, type RoadGraph, type RoadNode } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
-import { buildParcels, type Parcel, type ParcelMap, type ParcelOwner } from '../src/world/parcels.ts';
+import type { Parcel, ParcelMap, ParcelOwner } from '../src/world/parcels.ts';
 import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
-import { buildTensorField } from '../src/world/tensor.ts';
 import { coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import type { Corridor, Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
 import { landPoints, pointInRing, ringArea, ringsOverlap, stableJson, sweepSeeds } from './helpers.ts';
-import { worldsFor } from './world-pool.ts';
+import { buildWorlds, type PooledWorld } from './world-pool.ts';
 
 /** Metres between the samples that ask whether a road segment is over water. */
 const WET_SAMPLE = 5;
@@ -92,16 +91,16 @@ function spansCrossing(a: Point, b: Point, from: Point, to: Point): boolean {
  * section 3). The quick tier takes the seeds that fit in its 15 s, and the
  * full tier is the coverage.
  */
-const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 12);
+const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 8);
 /**
  * Seeds the byte-identical check generates a second time. Generating a world is
  * the most expensive thing this file does, so the quick tier repeats only a few.
  */
-const REPEAT_COUNT = SEED_COUNT > 20 ? 20 : 4;
+const REPEAT_COUNT = SEED_COUNT > 20 ? 20 : 3;
 /**
- * Seeds the road footprint is laid for. Laying one unions the polygons of a
- * whole network, and unlike the world itself it is laid on this thread rather
- * than in the pool, so both tiers lay a few rather than all of them.
+ * Seeds the road footprint is laid and the parcels are cut for. Laying one
+ * unions the polygons of a whole network, so both tiers do a few seeds rather
+ * than all of them. The pool does that work, next to the world it belongs to.
  */
 const FOOTPRINT_COUNT = SEED_COUNT > 20 ? 16 : 4;
 /**
@@ -265,25 +264,19 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
   const worlds = new Map<number, WorldDescription>();
   /** The second generation of the repeated seeds, for the byte-identical check. */
   const repeats = new Map<number, WorldDescription>();
-  /** The footprint of a seed, laid once however many tests ask about it. */
+  /** The footprint of a seed, laid by the pool for the first FOOTPRINT_COUNT seeds. */
   const footprints = new Map<number, RoadFootprint>();
   const footprintOf = (seed: number): RoadFootprint => {
     const known = footprints.get(seed);
-    if (known !== undefined) return known;
-    const world = worlds.get(seed) as WorldDescription;
-    const built = buildFootprint(world.roads, world.corridors, graphOf(seed));
-    footprints.set(seed, built);
-    return built;
+    if (known === undefined) throw new Error(`no footprint for seed ${seed}: the pool lays the first ${FOOTPRINT_COUNT}`);
+    return known;
   };
-  /** The parcels of a seed, cut once however many tests ask about them. */
+  /** The parcels of a seed, cut by the pool for the same seeds. */
   const parcelMaps = new Map<number, ParcelMap>();
   const parcelsOf = (seed: number): ParcelMap => {
     const known = parcelMaps.get(seed);
-    if (known !== undefined) return known;
-    const world = worlds.get(seed) as WorldDescription;
-    const built = buildParcels(world, footprintOf(seed), graphOf(seed), buildTensorField(world));
-    parcelMaps.set(seed, built);
-    return built;
+    if (known === undefined) throw new Error(`no parcels for seed ${seed}: the pool cuts the first ${FOOTPRINT_COUNT}`);
+    return known;
   };
   /** The graph of a seed, built once however many tests ask about it. */
   const graphs = new Map<number, RoadGraph>();
@@ -298,14 +291,26 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
   beforeAll(async () => {
     // Every seed once, then the repeated seeds a second time: the pool runs the
     // two rounds back to back so the byte-identical check costs no extra wait.
+    // The seeds whose footprint and parcels are read go first, because they are
+    // the longest jobs and a worker that starts one late holds up the rest.
     // What a seed costs is measured in `budget.test.ts`, on a quiet machine.
     const repeated = seeds.slice(0, REPEAT_COUNT);
-    const generated = await worldsFor([...seeds, ...repeated]);
+    const jobs = [
+      ...seeds.map((seed, i) => ({ seed, parts: i < FOOTPRINT_COUNT })),
+      ...repeated.map((seed) => ({ seed })),
+    ];
+    const generated = await buildWorlds(jobs);
     for (let i = 0; i < seeds.length; i++) {
-      worlds.set(seeds[i] as number, generated[i] as WorldDescription);
+      const seed = seeds[i] as number;
+      const built = generated[i] as PooledWorld;
+      worlds.set(seed, built.world);
+      if (built.parts !== undefined) {
+        footprints.set(seed, built.parts.footprint);
+        parcelMaps.set(seed, built.parts.parcels);
+      }
     }
     for (let i = 0; i < repeated.length; i++) {
-      repeats.set(repeated[i] as number, generated[seeds.length + i] as WorldDescription);
+      repeats.set(repeated[i] as number, (generated[seeds.length + i] as PooledWorld).world);
     }
   });
 
