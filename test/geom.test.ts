@@ -10,6 +10,7 @@ import {
   regionArea,
   regionOf,
   ringArea,
+  split,
   strip,
   union,
   type Point,
@@ -228,5 +229,34 @@ describe('difference', () => {
     // The two ten-metre strips cover 1900 m² of the land, counting their crossing once.
     expect(areaOf(parcels)).toBeCloseTo(10000 - 1900, 6);
     expect(disjoint(parcels, 0, 100, 2)).toBe(true);
+  });
+});
+
+describe('split', () => {
+  it('gives the two sides of a cut, with all the ground and none of it twice', () => {
+    const subject = regionOf(square(0, 0, 30));
+    const { inside, outside } = split([subject], [regionOf(rect(-5, -5, 40, 20))]);
+    expect(areaOf(inside)).toBe(450);
+    expect(areaOf(outside)).toBe(450);
+    expect(disjoint([...inside, ...outside], 0, 30, 1)).toBe(true);
+  });
+
+  it('keeps a hole in whichever side it falls on', () => {
+    const subject = difference([regionOf(square(0, 0, 30))], [regionOf(square(4, 4, 6))]);
+    const { inside, outside } = split(subject, [regionOf(rect(-5, -5, 40, 20))]);
+    expect((inside[0] as Region).holes).toHaveLength(1);
+    expect(areaOf(outside)).toBe(450);
+    expect(areaOf(inside)).toBe(450 - 36);
+  });
+
+  it('gives one side everything where the clip misses the subject', () => {
+    const subject = regionOf(square(0, 0, 10));
+    const { inside, outside } = split([subject], [regionOf(square(20, 20, 10))]);
+    expect(inside).toEqual([]);
+    expect(areaOf(outside)).toBe(100);
+  });
+
+  it('has nothing to give for no regions at all', () => {
+    expect(split([], [])).toEqual({ inside: [], outside: [] });
   });
 });
