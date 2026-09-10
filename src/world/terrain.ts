@@ -28,6 +28,28 @@ function power(isl: Island, x: number, y: number): number {
   return dx * dx + dy * dy - isl.radius * isl.radius;
 }
 
+/** Salt of the noise that draws the coastline. Everything that asks where the shore runs uses this one stream. */
+const COAST_SALT = 0x7e44;
+/** Reused by {@link coastOffset}, which runs once per terrain sample. Never escapes. */
+const WARP_SCRATCH: Point = { x: 0, y: 0 };
+
+/** The noise the coastline is drawn with, rebuilt from the seed. */
+export function coastNoise(seed: number): Noise2D {
+  return new Noise2D(seed ^ COAST_SALT);
+}
+
+/**
+ * The domain warp applied before the island partition is read. Island cells only
+ * line up with the coastline in warped space, so any question about which island
+ * a point belongs to has to ask here first. `out` is written and returned.
+ */
+export function warpPoint(noise: Noise2D, size: number, x: number, y: number, out: Point): Point {
+  const amp = size * 0.06;
+  out.x = x + noise.fbm(x / 1400 + 3.7, y / 1400 + 1.9, 2, 2, 0.5) * amp;
+  out.y = y + noise.fbm(x / 1400 + 8.1, y / 1400 + 6.3, 2, 2, 0.5) * amp;
+  return out;
+}
+
 /** Index of the island whose cell contains the point. */
 export function islandIndexAt(islands: readonly Island[], x: number, y: number): number {
   let best = 0;
@@ -40,6 +62,17 @@ export function islandIndexAt(islands: readonly Island[], x: number, y: number):
     }
   }
   return best;
+}
+
+/**
+ * Which island's land a point stands on: the cell of the warped point, since
+ * that is the partition the coastline was cut from. Callers that classify world
+ * points — roads picking a bridge head, a test asking where a district is —
+ * must use this rather than {@link islandIndexAt}, which reads the raw cells.
+ */
+export function islandAt(islands: readonly Island[], size: number, noise: Noise2D, x: number, y: number): number {
+  const w = warpPoint(noise, size, x, y, WARP_SCRATCH);
+  return islandIndexAt(islands, w.x, w.y);
 }
 
 /**
@@ -71,9 +104,7 @@ function cellDepth(layout: TerrainLayout, i: number, x: number, y: number): numb
 export function coastOffset(layout: TerrainLayout, noise: Noise2D, x: number, y: number): number {
   // Domain warp: bends the straits sideways without ever closing them, since the
   // whole partition is displaced together.
-  const amp = layout.size * 0.06;
-  const wx = x + noise.fbm(x / 1400 + 3.7, y / 1400 + 1.9, 2, 2, 0.5) * amp;
-  const wy = y + noise.fbm(x / 1400 + 8.1, y / 1400 + 6.3, 2, 2, 0.5) * amp;
+  const { x: wx, y: wy } = warpPoint(noise, layout.size, x, y, WARP_SCRATCH);
   const i = islandIndexAt(layout.islands, wx, wy);
   const depth = cellDepth(layout, i, wx, wy);
   const detail = noise.fbm(x / 150 + 9.2, y / 150 + 4.4, 2) * 16;
@@ -110,7 +141,7 @@ function relaxSites(islands: Island[], size: number): void {
 /** Choose the archipelago: a few large islands separated by narrow straits, then the river and harbour. */
 export function layoutTerrain(seed: number, size: number): TerrainLayout {
   const rng = genRng(seed, Subsystem.Water, 1);
-  const noise = new Noise2D(seed ^ 0x7e44);
+  const noise = coastNoise(seed);
   const islands: Island[] = [];
   // The main island's site is the core; its weight makes it the largest cell.
   islands.push({ id: 0, x: 0, y: 0, radius: size * rng.range(0.16, 0.2), main: true });
@@ -205,7 +236,7 @@ export function generateTerrain(seed: number, layout: TerrainLayout): Heightfiel
   const segments = Math.round(size / TERRAIN_CELL);
   const gridSize = segments + 1;
   const hf = Heightfield.create(gridSize, TERRAIN_CELL);
-  const noise = new Noise2D(seed ^ 0x7e44);
+  const noise = coastNoise(seed);
 
   // Raw fractal relief from the three.js generator, normalised to [0, 1].
   const gen = new TerrainGenerator({
@@ -321,11 +352,23 @@ export function segmentDistance(px: number, py: number, a: Point, b: Point): num
   return Math.hypot(px - (a.x + vx * t), py - (a.y + vy * t));
 }
 
+/** Metres of land a bridge head needs behind it, so a crossing never lands on a rock in the strait. */
+const LANDFALL = 120;
+
+/** True when the two ends of a chord stand on different islands, which is what makes it a crossing. */
+function straddles(layout: TerrainLayout, noise: Noise2D, chord: { from: Point; to: Point }): boolean {
+  const size = layout.size;
+  return (
+    islandAt(layout.islands, size, noise, chord.from.x, chord.from.y) !==
+    islandAt(layout.islands, size, noise, chord.to.x, chord.to.y)
+  );
+}
+
 /**
  * Shore-to-shore crossings between neighbouring islands, along the line between
  * their sites. Only pairs whose cells touch (no third cell in between) qualify.
  */
-export function findCrossings(hf: Heightfield, layout: TerrainLayout): Crossing[] {
+export function findCrossings(hf: Heightfield, layout: TerrainLayout, noise: Noise2D): Crossing[] {
   const out: Crossing[] = [];
   const islands = layout.islands;
   for (let i = 0; i < islands.length; i++) {
@@ -374,17 +417,24 @@ export function findCrossings(hf: Heightfield, layout: TerrainLayout): Crossing[
       const mid = (lo + hi) / 2;
       const mx = a.x + ux * mid * step;
       const my = a.y + uy * mid * step;
-      let best = narrowestChord(hf, mx, my, ux, uy);
+      const reaches = (chord: { from: Point; to: Point }): boolean => straddles(layout, noise, chord);
+      let best = narrowestChord(hf, mx, my, ux, uy, reaches);
       let bestSpan = Math.hypot(best.to.x - best.from.x, best.to.y - best.from.y);
+      let bestStraddles = reaches(best);
       for (const sign of [-1, 1]) {
         for (let d = 40; d <= layout.size * 0.15; d += 40) {
           const px = mx - uy * d * sign;
           const py = my + ux * d * sign;
           if (hf.sample(px, py) >= SEA_LEVEL) break;
-          const candidate = narrowestChord(hf, px, py, ux, uy);
+          const candidate = narrowestChord(hf, px, py, ux, uy, reaches);
           const span = Math.hypot(candidate.to.x - candidate.from.x, candidate.to.y - candidate.from.y);
-          if (span < bestSpan) {
+          // Sliding along a strait can wander into a bay of one island, where the
+          // narrowest chord lands on that island twice and bridges nothing. A
+          // chord that reaches the far island always beats one that does not.
+          const straddling = reaches(candidate);
+          if (straddling === bestStraddles ? span < bestSpan : straddling) {
             bestSpan = span;
+            bestStraddles = straddling;
             best = candidate;
           }
         }
@@ -396,11 +446,22 @@ export function findCrossings(hf: Heightfield, layout: TerrainLayout): Crossing[
   return out;
 }
 
-/** From a point in a strait, the shortest shore-to-shore chord through it, tried over a fan of directions. */
-function narrowestChord(hf: Heightfield, mx: number, my: number, ux: number, uy: number): { from: Point; to: Point } {
+/**
+ * From a point in a strait, the shortest shore-to-shore chord through it, tried
+ * over a fan of directions. A chord that reaches the far island wins over a
+ * shorter one that comes back to the near island's own shore.
+ */
+function narrowestChord(
+  hf: Heightfield,
+  mx: number,
+  my: number,
+  ux: number,
+  uy: number,
+  reaches: (chord: { from: Point; to: Point }) => boolean,
+): { from: Point; to: Point } {
   const step = hf.cellSize / 2;
   const base = Math.atan2(uy, ux);
-  let best: { from: Point; to: Point; span: number } | undefined;
+  let best: { from: Point; to: Point; span: number; straddles: boolean } | undefined;
   for (let k = -6; k <= 6; k++) {
     const a = base + (k * Math.PI) / 16;
     const dx = Math.cos(a);
@@ -409,30 +470,42 @@ function narrowestChord(hf: Heightfield, mx: number, my: number, ux: number, uy:
     const fore = shoreAlong(hf, mx, my, dx, dy, step);
     if (!back || !fore) continue;
     const span = Math.hypot(fore.x - back.x, fore.y - back.y);
-    if (!best || span < best.span) best = { from: back, to: fore, span };
+    const straddling = reaches({ from: back, to: fore });
+    if (best === undefined || (straddling === best.straddles ? span < best.span : straddling)) {
+      best = { from: back, to: fore, span, straddles: straddling };
+    }
   }
   return best ?? { from: { x: mx - ux * step, y: my - uy * step }, to: { x: mx + ux * step, y: my + uy * step } };
 }
 
+/**
+ * Walking out from a point in the water, the first shore a bridge can land on.
+ * Land that stops again within {@link LANDFALL} metres is a rock in the strait,
+ * not a shore, and the walk goes on past it.
+ */
 function shoreAlong(hf: Heightfield, x: number, y: number, dx: number, dy: number, step: number): Point | undefined {
   const limit = hf.extent;
   for (let s = 0; s < limit; s += step) {
     const px = x + dx * s;
     const py = y + dy * s;
     if (Math.abs(px) > hf.extent / 2 || Math.abs(py) > hf.extent / 2) return undefined;
-    if (hf.sample(px, py) >= SEA_LEVEL) {
-      const inland = { x: px + dx * step, y: py + dy * step };
-      return hf.sample(inland.x, inland.y) >= SEA_LEVEL ? inland : { x: px, y: py };
+    if (hf.sample(px, py) < SEA_LEVEL) continue;
+    let solid = true;
+    for (let t = step; t <= LANDFALL && solid; t += step) {
+      if (hf.sample(px + dx * t, py + dy * t) < SEA_LEVEL) solid = false;
     }
+    if (!solid) continue;
+    const inland = { x: px + dx * step, y: py + dy * step };
+    return hf.sample(inland.x, inland.y) >= SEA_LEVEL ? inland : { x: px, y: py };
   }
   return undefined;
 }
 
-export function describeWater(hf: Heightfield, layout: TerrainLayout): WaterDescription {
+export function describeWater(seed: number, hf: Heightfield, layout: TerrainLayout): WaterDescription {
   return {
     seaLevel: SEA_LEVEL,
     islands: layout.islands,
-    crossings: findCrossings(hf, layout),
+    crossings: findCrossings(hf, layout, coastNoise(seed)),
     river: layout.river,
     harbour: layout.harbour,
   };

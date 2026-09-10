@@ -4,10 +4,24 @@ import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
 import { TERRAIN_CELL } from '../src/world/terrain.ts';
-import type { WorldDescription } from '../src/world/types.ts';
+import type { Point, WorldDescription } from '../src/world/types.ts';
 import { generateWorld } from '../src/world/world.ts';
 import { BUDGET_MS } from './budgets.ts';
 import { stableJson, sweepSeeds } from './helpers.ts';
+
+/** Metres between the samples that ask whether a span stands over water. */
+const WET_SAMPLE = 5;
+
+/** How much of a straight span stands over water, in [0, 1]. */
+function wetFraction(hf: Heightfield, a: Point, b: Point, seaLevel: number): number {
+  const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / WET_SAMPLE));
+  let wet = 0;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    if (hf.sample(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t) < seaLevel) wet++;
+  }
+  return wet / (steps + 1);
+}
 
 /** Quick tier by default; CI and `npm run test:full` set SWEEP_SEEDS=200 (spec section 3). */
 const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 20);
@@ -119,8 +133,9 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
         const { from, to } = c;
         expect(hf.sample(from.x, from.y)).toBeGreaterThanOrEqual(w.water.seaLevel);
         expect(hf.sample(to.x, to.y)).toBeGreaterThanOrEqual(w.water.seaLevel);
-        const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
-        expect(hf.sample(mid.x, mid.y)).toBeLessThan(w.water.seaLevel);
+        // Water under most of the span. Not all of it: a crossing may step over
+        // a rock in the strait to reach ground a bridge head can stand on.
+        expect(wetFraction(hf, from, to, w.water.seaLevel), `seed ${seed}`).toBeGreaterThan(0.5);
         const span = Math.hypot(from.x - to.x, from.y - to.y);
         expect(span).toBeGreaterThan(20);
         expect(span, `seed ${seed}`).toBeLessThan(w.size * 0.12);

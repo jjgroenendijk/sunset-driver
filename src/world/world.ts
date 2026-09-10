@@ -11,7 +11,7 @@ export function generateWorld(seed: number): WorldDescription {
   const size = worldSizeFor(seed, TERRAIN_CELL);
   const layout = layoutTerrain(seed, size);
   const terrain = generateTerrain(seed, layout);
-  const water = describeWater(terrain, layout);
+  const water = describeWater(seed, terrain, layout);
   const zones = layoutZones(size, layout.core, water);
   const districts = generateDistricts(seed, zones, terrain, water);
   return {
