@@ -91,13 +91,14 @@ Any failure fails the build. The gate is never weakened, skipped or made optiona
 
 ## 4. Hosting and deployment
 
-- Source on GitHub; deployed to Cloudflare Pages with build command `npm run build` and output directory `dist`.
+- Source on GitHub; hosted on Cloudflare Pages as a static site.
+- Deployment runs from GitHub Actions, not from Cloudflare's Git integration: on every push to `main` and every pull request the workflow installs, typechecks, builds and publishes `dist` with `wrangler pages deploy`. Pushes to `main` become the production deployment; pull requests get preview deployments on their own branch alias.
+- The workflow needs two repository secrets: `CLOUDFLARE_ACCOUNT_ID` and a `CLOUDFLARE_API_TOKEN` with Pages edit permission.
 - Vite uses a relative `base`, so the build is path-independent.
 - `public/_headers`: immutable caching for content-hashed assets, no-cache for `index.html`, and a Content Security Policy that permits WebRTC plus outbound `wss:` to the public Nostr relays and MQTT brokers used for signalling.
 - `public/_redirects`: SPA fallback.
-- Node version pinned so local and Cloudflare builds match.
-- Pull-request preview deployments enabled.
-- The site stays fully static. No serverless functions, no KV, no D1, no secrets. If a feature seems to need a backend, the feature is wrong.
+- Node version pinned in `.nvmrc` and used by the workflow, so local and CI builds match.
+- The site stays fully static. No serverless functions, no KV, no D1, no secrets in the build. If a feature seems to need a backend, the feature is wrong.
 
 ---
 
