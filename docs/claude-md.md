@@ -1,0 +1,36 @@
+# What belongs in CLAUDE.md
+
+`CLAUDE.md` is loaded into every agent session in this repository, in full, before the agent knows what it has been asked to do. Every line is paid for on every issue. It follows Anthropic's context-engineering guidance for the Claude 5 generation of models: state the things the model cannot work out for itself, and trust it for the rest.
+
+## The test for a line
+
+Would a competent engineer who has never seen this repository get this wrong after reading the code? If no, delete it.
+
+That single test settles most edits. The corollaries:
+
+- **Non-obvious constraints earn their place.** `valleyBias: 1` produces NaN at fractional values. `src/world` must run headless because the sweeps import it. The `tsapi` alias exists because TypeScript 7 ships no JS API. None of these are visible from the file that breaks.
+- **Things the file system already says do not.** Directory names, npm scripts, dependency versions, the fact that tests live in `test/`. The model reads `package.json` faster than it reads a table describing `package.json`.
+- **Rules the tooling enforces are worth one line, not a section.** The determinism lint and the typecheck hook catch the violation and explain it at the point of failure. The file only needs to name the rule and where the helper lives, so the agent writes it right the first time.
+- **Judgment beats enumeration.** "A budget failure is a regression to find, never a threshold to bump" covers more cases than a list of budgets and their permitted movements, and stays true when the budgets change.
+- **Point instead of copying.** `spec.md`, `test/budgets.ts` and `.claude/settings.json` are the source of truth for what they describe. Duplicating them here creates a second copy that goes stale silently. A pointer costs one line and never rots.
+
+## What does not belong
+
+- Practices that apply to any codebase: write tests, handle errors, keep functions small, do not commit secrets.
+- Guardrails written for older models: reminders to read a file before editing it, to check that a command succeeded, to not invent APIs.
+- Anything already stated in the harness's own instructions — the git workflow, PR etiquette, how to use the tools.
+- Long-form explanations of a subsystem. Those go in `spec.md` or a doc under `docs/`, which the agent loads only when the work touches that subsystem.
+- Specialised workflows that apply to a fraction of sessions. Those belong in a skill under `.claude/skills/`, loaded on demand.
+- Anything that is really automation: a check, a setup step, a repeated fix-up. Put it in a hook under `scripts/hooks/` or a `scripts/` entry. A hook that fails with a message teaches the agent at the moment it matters, which prose at the top of the session does not.
+
+## Shape
+
+Roughly 50 lines. Prose in short paragraphs and tight lists, not tables — a table wide enough to hold a constraint mostly holds restated column headers.
+
+The current sections are: what the project is and where the spec lives, determinism, per-directory constraints, performance budgets, world-generation gotchas, conventions, and this maintenance note. New material joins an existing section far more often than it justifies a new one.
+
+## Maintaining it
+
+Update `CLAUDE.md` in the same commit as the change that makes it wrong: a new directory, a newly enforced rule, a gotcha that cost a session. Prefer editing a line over appending one, and delete a line when its reason is gone — a rule the linter now catches, a workaround for a fixed bug, a constraint that moved into a hook.
+
+When the file grows past a page, the fix is not smaller wording. Something in it has stopped being a gotcha and become documentation; move it to `spec.md`, a doc here, or a skill.
