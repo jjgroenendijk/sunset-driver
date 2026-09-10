@@ -48,4 +48,12 @@ export const BUDGET_MS = {
    * once and then query it.
    */
   roadGraph: 50,
+
+  /**
+   * `buildFootprint` over a whole-map road network: every curve offset, every
+   * junction aproned and the lot unioned (spec section 6.4). Offline work like
+   * {@link BUDGET_MS.worldGen}; chunk-level parcels get their own per-frame cap
+   * when streaming lands (spec section 9.1).
+   */
+  footprint: 900,
 } as const;

@@ -3,8 +3,11 @@
  * Usage: node scripts/world-preview.ts [seed] [out.png]
  */
 import { writeFileSync } from 'node:fs';
+import type { Region } from '../src/core/geom.ts';
 import { seedFromString } from '../src/core/rng.ts';
 import { districtAt, layoutZones } from '../src/world/districts.ts';
+import { buildFootprint } from '../src/world/footprint.ts';
+import { buildRoadGraph } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { buildTensorField } from '../src/world/tensor.ts';
 import { generateWorld } from '../src/world/world.ts';
@@ -87,6 +90,42 @@ for (let iy = STROKE_STRIDE; iy < n - STROKE_STRIDE; iy += STROKE_STRIDE) {
     }
   }
 }
+
+// The ground the roads claim (spec section 6.4), filled in tarmac. The blocks
+// between the roads are the holes in it, and become the parcels.
+const t2 = performance.now();
+const footprint = buildFootprint(world.roads, world.corridors, buildRoadGraph(world.roads));
+const footprintMs = performance.now() - t2;
+const FOOTPRINT_COL: [number, number, number] = [64, 62, 70];
+const fill = (region: Region, col: [number, number, number]): void => {
+  const rings = [region.outer, ...region.holes];
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const p of region.outer) {
+    lo = Math.min(lo, p.y);
+    hi = Math.max(hi, p.y);
+  }
+  const crossX: number[] = [];
+  for (let iy = Math.floor((lo - hf.originY) / hf.cellSize); iy <= Math.ceil((hi - hf.originY) / hf.cellSize); iy++) {
+    const y = hf.worldY(iy);
+    crossX.length = 0;
+    for (const ring of rings) {
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const a = ring[i] as Point;
+        const b = ring[j] as Point;
+        if (a.y > y === b.y > y) continue;
+        crossX.push(a.x + ((b.x - a.x) * (y - a.y)) / (b.y - a.y));
+      }
+    }
+    crossX.sort((p, q) => p - q);
+    for (let k = 0; k + 1 < crossX.length; k += 2) {
+      const from = Math.ceil(((crossX[k] as number) - hf.originX) / hf.cellSize);
+      const to = Math.floor(((crossX[k + 1] as number) - hf.originX) / hf.cellSize);
+      for (let ix = from; ix <= to; ix++) plot(ix, n - 1 - iy, col);
+    }
+  }
+};
+for (const region of footprint.regions) fill(region, FOOTPRINT_COL);
 
 // Roads: one colour per tier, highways heavy and dark, bridge decks in orange
 // so the strait crossings stand out, and bores through the ground in cyan.
@@ -180,6 +219,11 @@ console.log(
     `generated in ${genMs.toFixed(0)} ms, tensor field in ${fieldMs.toFixed(0)} ms → ${out}`,
 );
 console.log(`  roads: ${perTier}`);
+console.log(
+  `  footprint: ${footprint.regions.length} pieces with ` +
+    `${footprint.regions.reduce((k, r) => k + r.holes.length, 0)} blocks inside them, ` +
+    `${(footprint.area / 1e6).toFixed(2)} km² claimed, built in ${footprintMs.toFixed(0)} ms`,
+);
 const elevated = world.corridors.filter((c) => c.kind === 'elevated');
 console.log(
   `  corridors: ${elevated.length} elevated with ${elevated.reduce((k, c) => k + c.pillars.length, 0)} pillars, ` +

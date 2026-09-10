@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { TICKS_PER_HOUR } from '../src/sim/clock.ts';
 import type { InputFrame } from '../src/sim/input.ts';
 import { createSimState, stepSim } from '../src/sim/simulation.ts';
+import { buildFootprint } from '../src/world/footprint.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
 import type { WorldDescription } from '../src/world/types.ts';
 import { generateWorld } from '../src/world/world.ts';
@@ -67,5 +68,15 @@ describe('performance budgets', () => {
     const worst = Math.max(...times);
 
     expect(worst, `${worst.toFixed(1)} ms worst`).toBeLessThan(BUDGET_MS.roadGraph);
+  });
+
+  it('lays the road footprint of a world within its budget', () => {
+    const times = measuredWorlds().map((world) => {
+      const graph = buildRoadGraph(world.roads);
+      return bestOf(2, () => void buildFootprint(world.roads, world.corridors, graph));
+    });
+    const worst = Math.max(...times);
+
+    expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.footprint);
   });
 });
