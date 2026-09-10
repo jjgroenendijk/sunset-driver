@@ -161,6 +161,10 @@ const mark = (x: number, y: number, col: [number, number, number], size = 3): vo
     }
   }
 };
+// The interchanges of the highways: the only points a highway takes a junction at.
+for (const road of world.roads) {
+  for (const at of road.interchanges) mark((road.points[at] as Point).x, (road.points[at] as Point).y, [180, 255, 60], 2);
+}
 for (const d of world.districts) mark(d.x, d.y, d.culture === 'none' ? [255, 255, 255] : [255, 0, 255]);
 for (const c of world.water.crossings) {
   mark(c.from.x, c.from.y, [255, 255, 0]);

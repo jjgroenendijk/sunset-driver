@@ -40,7 +40,7 @@ function district(id: number, zone: Zone, x: number, y: number): District {
 }
 
 function curve(id: number, tier: RoadTier, coords: readonly [number, number][], bridges: number[] = []): RoadCurve {
-  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges, tunnels: [] };
+  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges, tunnels: [], interchanges: [] };
 }
 
 function build(skeleton: WorldSkeleton, roads: RoadCurve[]) {

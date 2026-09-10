@@ -27,7 +27,13 @@
  * Where the ground under an accepted step is not the line the road drives, the
  * segment is marked: a hill above it is tunnelled, a dip below it is decked.
  *
- * Three invariants hold by construction, and the seed sweep checks them:
+ * A highway is the one tier that does not take a junction wherever a road
+ * reaches it. Interchanges are placed along it, and only a highway or an
+ * arterial ramp may join it, only there (spec section 6.2). A street, an alley
+ * or a dirt road never meets one at all: it runs past, and where the two cross
+ * the road graph makes it an overpass.
+ *
+ * Four invariants hold by construction, and the seed sweep checks them:
  *
  * - Every curve starts on an existing road, ends on one, or merges into one, so
  *   the whole network is a single connected component. A trace that reaches
@@ -35,6 +41,8 @@
  * - No segment passes over water unless it is a bridge, and a bridge only ever
  *   spans one of the water description's strait crossings.
  * - No segment laid on the ground exceeds its tier's maximum grade.
+ * - No road shares a point with a highway away from one of its interchanges,
+ *   and no street, alley or dirt road shares one with a highway at all.
  */
 import { clamp, dist, directionDelta, lerp, wrapAngle } from '../core/math.ts';
 import type { Noise2D } from '../core/noise.ts';
@@ -59,6 +67,12 @@ const AVOID_TURNS = 3;
 const STALL_STEPS = 12;
 /** Metres of highway before it may merge into another one; both cross at the core. */
 const HIGHWAY_MERGE_AFTER = 400;
+/**
+ * Metres between the interchanges of a highway. A highway takes a junction
+ * only at one of them (spec section 6.2), so this is how far apart the ramps
+ * on and off it stand.
+ */
+const INTERCHANGE_SPACING = 700;
 /** Fractions of a highway's length where a branch highway leaves it. */
 const BRANCH_AT = [0.3, 0.7];
 /** A highway shorter than this fraction of the map is not worth keeping. */
@@ -99,6 +113,8 @@ const SPAN_STEPS = 8;
 const MAX_COVER = 25;
 /** Side of one bucket of the road index, in metres. Small enough that a bucket holds few streets. */
 const INDEX_CELL = 60;
+/** Metres within which two road points are the same place, and so the same junction. */
+const JOIN_EPSILON = 0.01;
 
 /** How each tier traces. */
 interface TierParams {
@@ -138,6 +154,8 @@ const MINOR_BY_ZONE: Record<Zone, { tier: RoadTier; tight: number; loose: number
 
 interface TraceOptions {
   params: TierParams;
+  /** The tier being laid, which decides the roads this one may junction with. */
+  joiner: RoadTier;
   /** Where the trace is headed. Without one it is a pure streamline. */
   target?: Point;
   /** Follow the field's cross direction rather than its major one. */
@@ -194,6 +212,20 @@ interface FillSeed {
   onParent: boolean;
 }
 
+/**
+ * True when a road of one tier may join another where the two meet. Spec
+ * section 6.2: a highway has junctions only at interchanges and no pedestrians,
+ * so only a highway or an arterial ramp joins one, and only there. Every other
+ * tier takes a junction anywhere along it.
+ *
+ * A minor road that meets a highway therefore does not meet it at all: it runs
+ * past, and where the two cross the road graph makes it an overpass.
+ */
+function mayJoin(joiner: RoadTier, met: RoadTier, interchange: boolean): boolean {
+  if (met !== 'highway') return true;
+  return interchange && (joiner === 'highway' || joiner === 'arterial');
+}
+
 /** A point of the network already laid, and the island it stands on. */
 interface NetworkHit {
   x: number;
@@ -214,6 +246,9 @@ class RoadIndex {
   private readonly ys: number[] = [];
   private readonly curves: number[] = [];
   private readonly islands: number[] = [];
+  /** The tier of the curve each point belongs to, and whether a road may join it there. */
+  private readonly tiers: RoadTier[] = [];
+  private readonly interchanges: boolean[] = [];
   private readonly islandOf: (x: number, y: number) => number;
 
   constructor(size: number, cell: number, islandOf: (x: number, y: number) => number) {
@@ -228,15 +263,25 @@ class RoadIndex {
     return clamp(Math.floor((v - this.origin) / this.cell), 0, this.n - 1);
   }
 
-  add(curve: number, points: readonly Point[]): void {
-    for (const p of points) {
+  add(curve: RoadCurve): void {
+    const points = curve.points;
+    for (let k = 0; k < points.length; k++) {
+      const p = points[k] as Point;
       const i = this.xs.length;
       this.xs.push(p.x);
       this.ys.push(p.y);
-      this.curves.push(curve);
+      this.curves.push(curve.id);
+      this.tiers.push(curve.tier);
+      this.interchanges.push(curve.interchanges.includes(k));
       this.islands.push(this.islandOf(p.x, p.y));
       (this.buckets[this.column(p.y) * this.n + this.column(p.x)] as number[]).push(i);
     }
+  }
+
+  /** True when a road of `joiner` may end on the point at `i`. */
+  private joinable(i: number, joiner: RoadTier | undefined): boolean {
+    if (joiner === undefined) return true;
+    return mayJoin(joiner, this.tiers[i] as RoadTier, this.interchanges[i] === true);
   }
 
   get empty(): boolean {
@@ -245,9 +290,11 @@ class RoadIndex {
 
   /**
    * The nearest road point within `radius`. One curve can be left out, which is
-   * how a road ignores the road it branched off.
+   * how a road ignores the road it branched off. With a `joiner` tier only
+   * points that tier may junction at are returned; without one every point
+   * counts, which is the question the fill asks about ground already covered.
    */
-  nearest(x: number, y: number, radius: number, except = -1): NetworkHit | undefined {
+  nearest(x: number, y: number, radius: number, except = -1, joiner?: RoadTier): NetworkHit | undefined {
     const cx = this.column(x);
     const cy = this.column(y);
     const reach = Math.ceil(radius / this.cell);
@@ -257,6 +304,7 @@ class RoadIndex {
       for (let ix = Math.max(0, cx - reach); ix <= Math.min(this.n - 1, cx + reach); ix++) {
         for (const i of this.buckets[iy * this.n + ix] as number[]) {
           if (this.curves[i] === except) continue;
+          if (!this.joinable(i, joiner)) continue;
           const d = dist(x, y, this.xs[i] as number, this.ys[i] as number);
           if (d > bestD) continue;
           bestD = d;
@@ -267,12 +315,32 @@ class RoadIndex {
     return best;
   }
 
-  /** The nearest road point standing on one island, at any distance. */
-  nearestOnIsland(x: number, y: number, island: number): NetworkHit | undefined {
+  /**
+   * True when a road of `joiner` may not begin where it stands, because a road
+   * it is not allowed to junction with already has a point there. A fill road
+   * starts at its seed, so a seed on such a point would junction there.
+   */
+  refuses(x: number, y: number, joiner: RoadTier): boolean {
+    const cx = this.column(x);
+    const cy = this.column(y);
+    for (let iy = Math.max(0, cy - 1); iy <= Math.min(this.n - 1, cy + 1); iy++) {
+      for (let ix = Math.max(0, cx - 1); ix <= Math.min(this.n - 1, cx + 1); ix++) {
+        for (const i of this.buckets[iy * this.n + ix] as number[]) {
+          if (this.joinable(i, joiner)) continue;
+          if (dist(x, y, this.xs[i] as number, this.ys[i] as number) <= JOIN_EPSILON) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /** The nearest road point standing on one island that `joiner` may junction at, at any distance. */
+  nearestOnIsland(x: number, y: number, island: number, joiner: RoadTier): NetworkHit | undefined {
     let best: NetworkHit | undefined;
     let bestD = Infinity;
     for (let i = 0; i < this.xs.length; i++) {
       if (this.islands[i] !== island) continue;
+      if (!this.joinable(i, joiner)) continue;
       const d = dist(x, y, this.xs[i] as number, this.ys[i] as number);
       if (d >= bestD) continue;
       bestD = d;
@@ -342,27 +410,50 @@ class RoadTracer {
 
   // ---------------------------------------------------------------- highways
 
-  /** Two highways crossing at the core, plus a branch off each arm of them. */
+  /**
+   * Two highways crossing at the core, plus a branch off each arm of them. A
+   * branch leaves its trunk at one of the trunk's interchanges, because that is
+   * the only place a highway takes a junction (spec section 6.2).
+   */
   private traceHighways(): void {
     const core = this.world.core;
     const trunks = [this.streamline(core, false), this.streamline(core, true)];
     for (let i = 0; i < trunks.length; i++) {
       const trunk = trunks[i];
       if (trunk === undefined) continue;
-      for (const at of branchPoints(trunk.points, BRANCH_AT)) this.streamline(at, i === 0);
+      for (const at of this.branchPoints(trunk, BRANCH_AT)) this.streamline(at, i === 0);
     }
+  }
+
+  /**
+   * Where a branch highway leaves its trunk: the free interchange nearest each
+   * of the given fractions of the trunk's length. An interchange another road
+   * already stands on is not free — a branch seeded there would retrace that
+   * road — and neither is an end of the trunk.
+   */
+  private branchPoints(trunk: RoadCurve, fractions: readonly number[]): Point[] {
+    const points = trunk.points;
+    const last = points.length - 1;
+    const free = trunk.interchanges.filter((i) => {
+      if (i === 0 || i === last) return false;
+      const p = points[i] as Point;
+      return this.index.nearest(p.x, p.y, JOIN_EPSILON, trunk.id) === undefined;
+    });
+    return atFractions(points, free, fractions);
   }
 
   /** One highway: the field line through a point, followed both ways. */
   private streamline(at: Point, minor: boolean): RoadCurve | undefined {
     const line = this.fieldLine(at, minor);
-    const opt: TraceOptions = { params: HIGHWAY, minor, mergeAfter: HIGHWAY_MERGE_AFTER };
+    const opt: TraceOptions = { params: HIGHWAY, joiner: 'highway', minor, mergeAfter: HIGHWAY_MERGE_AFTER };
     const forward = this.trace(at, { ...opt, heading: line });
     const backward = this.trace(at, { ...opt, heading: line + Math.PI });
     backward.points.reverse();
     const points = [...backward.points.slice(0, -1), ...forward.points];
     if (polylineLength(points) < MIN_HIGHWAY * this.size) return undefined;
-    return this.addCurve('highway', points, []);
+    // The point it was seeded at is an interchange, so the road it grew out of
+    // and this one meet at a junction both of them allow.
+    return this.addCurve('highway', points, [], interchangesOf(points, backward.points.length - 1));
   }
 
   // ----------------------------------------------------------------- islands
@@ -485,7 +576,7 @@ class RoadTracer {
       within: (x, y) => zoneAt(zones, x, y) !== 'wilderness',
     };
     const seeds: FillSeed[] = [];
-    for (const curve of this.curves) seedAlong(curve, () => spacing, 0, seeds);
+    for (const curve of this.curves) seedAlong(curve, () => spacing, 0, seeds, true, true);
     this.grow(seeds, () => plan, FILL_GENERATIONS, FILL_LIMIT);
   }
 
@@ -555,6 +646,10 @@ class RoadTracer {
       if (!this.isDry(seed.x, seed.y)) continue;
       const plan = planAt(seed.x, seed.y);
       if (!plan.within(seed.x, seed.y)) continue;
+      // A road begins at its seed, so a seed standing on a road this tier may
+      // not junction with would make the junction anyway. A street seeded where
+      // an arterial ramp meets a highway is that case (spec section 6.2).
+      if (this.index.refuses(seed.x, seed.y, plan.tier)) continue;
       // Somewhere already covered: a road within half a spacing, other than the parent.
       if (this.index.nearest(seed.x, seed.y, plan.spacing * 0.5, seed.parent) !== undefined) continue;
       const curve = this.fillRoad(seed, plan);
@@ -573,6 +668,7 @@ class RoadTracer {
     const line = alignTo(minor ? major + Math.PI / 2 : major, seed.along);
     const opt: TraceOptions = {
       params,
+      joiner: plan.tier,
       minor,
       within: plan.within,
       mergeAfter: params.step * MIN_MERGE_STEPS,
@@ -614,21 +710,22 @@ class RoadTracer {
 
   /** An arterial from a point to the network on its own island: streamline first, reroute second. */
   private routeToNetwork(from: Point, island: number): Point[] | undefined {
-    const target = this.index.nearestOnIsland(from.x, from.y, island);
+    const target = this.index.nearestOnIsland(from.x, from.y, island, 'arterial');
     if (target !== undefined) {
-      const traced = this.trace(from, { params: ARTERIAL, target, mergeAfter: 0 });
+      const traced = this.trace(from, { params: ARTERIAL, joiner: 'arterial', target, mergeAfter: 0 });
       if (traced.merged || traced.arrived) return traced.points;
     }
     if (this.index.empty) return undefined;
     return this.reroute(from, ARTERIAL.maxGrade, (x, y) => {
-      const hit = this.index.nearest(x, y, ARTERIAL.mergeRadius);
-      return hit !== undefined && this.canRun(x, y, hit.x, hit.y, ARTERIAL.maxGrade) ? hit : undefined;
+      const hit = this.index.nearest(x, y, ARTERIAL.mergeRadius, -1, 'arterial');
+      if (hit === undefined || this.index.refuses(hit.x, hit.y, 'arterial')) return undefined;
+      return this.canRun(x, y, hit.x, hit.y, ARTERIAL.maxGrade) ? hit : undefined;
     });
   }
 
   /** An arterial from a point to a place: streamline first, reroute second. */
   private routeTo(from: Point, target: Point, island: number): Point[] | undefined {
-    const traced = this.trace(from, { params: ARTERIAL, target, mergeAfter: 0 });
+    const traced = this.trace(from, { params: ARTERIAL, joiner: 'arterial', target, mergeAfter: 0 });
     if (traced.merged || traced.arrived) return traced.points;
     const goalIx = this.node(target.x);
     const goalIy = this.node(target.y);
@@ -677,10 +774,15 @@ class RoadTracer {
       // A road joins any other road on close approach, but only rejoins the one
       // it branched off after it has gone somewhere.
       const parent = opt.parentCurve ?? -1;
-      let hit = length >= mergeAfter ? this.index.nearest(qx, qy, params.mergeRadius, parent) : undefined;
+      let hit = length >= mergeAfter ? this.index.nearest(qx, qy, params.mergeRadius, parent, opt.joiner) : undefined;
       if (hit === undefined && parent >= 0 && length >= (opt.parentMergeAfter ?? mergeAfter)) {
-        hit = this.index.nearest(qx, qy, params.mergeRadius);
+        hit = this.index.nearest(qx, qy, params.mergeRadius, -1, opt.joiner);
       }
+      // Roads that meet share their point, so a road merging where two others
+      // already meet joins both. A street merging into an arterial ramp on its
+      // last point would junction with the highway under it, which spec section
+      // 6.2 refuses.
+      if (hit !== undefined && this.index.refuses(hit.x, hit.y, opt.joiner)) hit = undefined;
       if (hit !== undefined && this.canRun(px, py, hit.x, hit.y, params.maxGrade)) {
         points.push({ x: hit.x, y: hit.y });
         merged = true;
@@ -701,6 +803,7 @@ class RoadTracer {
         // Only an arrival that can be driven counts: a last step over water or
         // up a wall is no arrival, and the caller reroutes instead.
         if (!this.canRun(px, py, target.x, target.y, params.maxGrade)) break;
+        if (this.index.refuses(target.x, target.y, opt.joiner)) break;
         points.push({ x: target.x, y: target.y });
         arrived = true;
         break;
@@ -997,12 +1100,12 @@ class RoadTracer {
     return tunnels;
   }
 
-  private addCurve(tier: RoadTier, points: Point[], bridges: number[]): RoadCurve | undefined {
+  private addCurve(tier: RoadTier, points: Point[], bridges: number[], interchanges: number[] = []): RoadCurve | undefined {
     if (points.length < 2) return undefined;
     const tunnels = this.markStructures(points, bridges);
-    const curve: RoadCurve = { id: this.curves.length, tier, points, bridges, tunnels };
+    const curve: RoadCurve = { id: this.curves.length, tier, points, bridges, tunnels, interchanges };
     this.curves.push(curve);
-    this.index.add(curve.id, points);
+    this.index.add(curve);
     return curve;
   }
 }
@@ -1053,26 +1156,60 @@ function trimTo(points: readonly Point[], metres: number): Point[] {
 }
 
 /**
- * Points of a polyline at the given fractions of its length. Always one of the
- * polyline's own points, never a place along a segment, so a road that branches
- * here shares a point with its parent rather than merely touching it.
+ * The points of a highway a junction may stand at: its two ends, the point it
+ * was seeded at, and one every {@link INTERCHANGE_SPACING} along it. Ascending.
+ * Every other point of a highway takes no junction at all (spec section 6.2).
  */
-function branchPoints(points: readonly Point[], fractions: readonly number[]): Point[] {
+function interchangesOf(points: readonly Point[], seedIndex: number): number[] {
+  const at = new Array<boolean>(points.length).fill(false);
+  at[0] = true;
+  at[points.length - 1] = true;
+  if (seedIndex > 0 && seedIndex < points.length) at[seedIndex] = true;
+  let run = 0;
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i] as Point;
+    const b = points[i + 1] as Point;
+    run += dist(a.x, a.y, b.x, b.y);
+    if (run < INTERCHANGE_SPACING) continue;
+    run = 0;
+    at[i + 1] = true;
+  }
+  const out: number[] = [];
+  for (let i = 0; i < at.length; i++) if (at[i] === true) out.push(i);
+  return out;
+}
+
+/**
+ * Of the points a polyline offers as `choices`, the one nearest each fraction
+ * of its length. Each choice is taken at most once, so two fractions never
+ * return the same place, and a fraction returns nothing once the choices run
+ * out.
+ */
+function atFractions(points: readonly Point[], choices: readonly number[], fractions: readonly number[]): Point[] {
   const total = polylineLength(points);
+  const taken: number[] = [];
+  // Distance along the curve of every point, so an interchange can be measured.
+  const run: number[] = [0];
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i] as Point;
+    const b = points[i + 1] as Point;
+    run.push((run[i] as number) + dist(a.x, a.y, b.x, b.y));
+  }
   const out: Point[] = [];
   for (const f of fractions) {
     const wanted = total * f;
-    let run = 0;
-    for (let i = 0; i + 1 < points.length; i++) {
-      const a = points[i] as Point;
-      const b = points[i + 1] as Point;
-      const seg = dist(a.x, a.y, b.x, b.y);
-      if (run + seg >= wanted) {
-        out.push(wanted - run < seg / 2 ? a : b);
-        break;
-      }
-      run += seg;
+    let best = -1;
+    let bestD = Infinity;
+    for (const i of choices) {
+      if (taken.includes(i)) continue;
+      const d = Math.abs((run[i] as number) - wanted);
+      if (d >= bestD) continue;
+      bestD = d;
+      best = i;
     }
+    if (best < 0) continue;
+    taken.push(best);
+    out.push(points[best] as Point);
   }
   return out;
 }
@@ -1085,6 +1222,10 @@ function branchPoints(points: readonly Point[], fractions: readonly number[]): P
  * them together. An alley wants only the first two: it runs down the middle of
  * a block, and a block cross-hatched with alleys is no longer a block. The
  * spacing is asked for at each point, so it can follow the district under it.
+ *
+ * `ramps` says the tier being seeded may junction with a highway. Only the
+ * arterial fill sets it, and even then a seed stands on a highway only at one
+ * of its interchanges (spec section 6.2).
  */
 function seedAlong(
   curve: RoadCurve,
@@ -1092,6 +1233,7 @@ function seedAlong(
   depth: number,
   out: FillSeed[],
   across = true,
+  ramps = false,
 ): void {
   const points = curve.points;
   const head = points[0] as Point;
@@ -1113,7 +1255,11 @@ function seedAlong(
     for (const side of [1, -1]) {
       out.push({ x: b.x + nx * side, y: b.y + ny * side, along, parent: curve.id, depth, onParent: false });
     }
-    if (across) out.push({ x: b.x, y: b.y, along: along + Math.PI / 2, parent: curve.id, depth, onParent: true });
+    // A seed on the curve itself grows a road out of a junction with it. A
+    // highway takes one only at an interchange, and only from an arterial ramp
+    // (spec section 6.2), so the minor fill seeds nothing on one.
+    const junctionable = curve.tier !== 'highway' || (ramps && curve.interchanges.includes(i + 1));
+    if (across && junctionable) out.push({ x: b.x, y: b.y, along: along + Math.PI / 2, parent: curve.id, depth, onParent: true });
   }
 }
 

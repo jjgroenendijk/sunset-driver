@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { hashInts } from '../src/core/hash.ts';
+import { compareNumbers } from '../src/core/sort.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { buildRoadGraph, type GradeCrossing, type RoadEdge, type RoadGraph, type RoadNode } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
+import { LandMasses } from '../src/world/landmass.ts';
 import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
 import { coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
 import { TIERS } from '../src/world/tiers.ts';
@@ -256,6 +258,9 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       const hf = new Heightfield(w.terrain);
+      const noise = coastNoise(w.seed);
+      const landOf = (p: Point): number => islandAt(w.water.islands, w.size, noise, p.x, p.y);
+      const idOf = (i: number): number => (w.water.islands[i] as { id: number }).id;
       for (const isl of w.water.islands) expect(hf.sample(isl.x, isl.y), `island ${isl.id} seed ${seed}`).toBeGreaterThan(w.water.seaLevel);
       // Union-find over crossings: one connected archipelago.
       const parent = w.water.islands.map((_, i) => i);
@@ -264,6 +269,14 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
         const { from, to } = c;
         expect(hf.sample(from.x, from.y)).toBeGreaterThanOrEqual(w.water.seaLevel);
         expect(hf.sample(to.x, to.y)).toBeGreaterThanOrEqual(w.water.seaLevel);
+        // Both bridge heads stand on the island the crossing claims, so the
+        // union-find above joins the land the roads will actually reach. A
+        // chord that lands on one island twice, or on a rock in the strait,
+        // bridges nothing (spec section 7.2).
+        expect(c.fromIsland, `seed ${seed}: a crossing joins island ${c.fromIsland} to itself`).not.toBe(c.toIsland);
+        const ends = [idOf(landOf(from)), idOf(landOf(to))].sort(compareNumbers);
+        const claimed = [c.fromIsland, c.toIsland].sort(compareNumbers);
+        expect(ends, `seed ${seed}: a crossing claims islands ${claimed.join(' and ')} but lands on ${ends.join(' and ')}`).toEqual(claimed);
         // Water under most of the span. Not all of it: a crossing may step over
         // a rock in the strait to reach ground a bridge head can stand on.
         expect(wetFraction(hf, from, to, w.water.seaLevel), `seed ${seed}`).toBeGreaterThan(0.5);
@@ -388,6 +401,53 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
         if (over.curve === under.curve) fault(`${where} joins a road to itself`);
         if (!over.crossings.includes(k)) fault(`${where} is not marked on the road above`);
         if (!under.crossings.includes(k)) fault(`${where} is not marked on the road below`);
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
+  it('junctions a highway only at an interchange, and never with a minor road', () => {
+    // Spec section 6.2: a highway has junctions only at interchanges and no
+    // pedestrians on it. So a street, an alley or a dirt road never shares a
+    // point with one — where they cross, the graph makes it an overpass — and a
+    // highway or an arterial ramp meets one only at a point it lists.
+    for (const seed of seeds) {
+      const w = worlds.get(seed) as WorldDescription;
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+      // Every curve that owns each point, with the index the point sits at.
+      const met = new Map<string, { road: RoadCurve; at: number }[]>();
+      for (const road of w.roads) {
+        for (let i = 0; i < road.points.length; i++) {
+          const key = pointKey(road.points[i] as Point);
+          const here = met.get(key);
+          if (here === undefined) met.set(key, [{ road, at: i }]);
+          else here.push({ road, at: i });
+        }
+      }
+      for (const road of w.roads) {
+        if (road.tier !== 'highway') {
+          if (road.interchanges.length > 0) fault(`${road.tier} ${road.id} lists interchanges`);
+          continue;
+        }
+        if (road.interchanges.length === 0) fault(`highway ${road.id} has no interchange`);
+        for (let k = 1; k < road.interchanges.length; k++) {
+          if ((road.interchanges[k] as number) <= (road.interchanges[k - 1] as number)) fault(`highway ${road.id} lists its interchanges out of order`);
+        }
+        for (const at of road.interchanges) {
+          if (at < 0 || at >= road.points.length) fault(`highway ${road.id} puts an interchange past its end at ${at}`);
+        }
+        for (let i = 0; i < road.points.length; i++) {
+          const here = met.get(pointKey(road.points[i] as Point)) ?? [];
+          for (const other of here) {
+            if (other.road.id === road.id) continue;
+            const where = `highway ${road.id} meets ${other.road.tier} ${other.road.id} at point ${i}`;
+            if (other.road.tier !== 'highway' && other.road.tier !== 'arterial') fault(where);
+            else if (!road.interchanges.includes(i)) fault(`${where}, away from any interchange`);
+          }
+        }
       }
       expect(complaint, `seed ${seed}`).toBeUndefined();
     }
@@ -651,11 +711,16 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       const w = worlds.get(seed) as WorldDescription;
       const hf = new Heightfield(w.terrain);
       const zones = layoutZones(w.size, w.core, w.water);
+      const land = new LandMasses(hf, w.water.islands, w.water.seaLevel + 1);
       const names = new Set(w.districts.map((d) => d.name));
       for (const r of required) expect(names.has(r), `${r} in seed ${seed}`).toBe(true);
       expect(names.size, `duplicate district name in seed ${seed}`).toBe(w.districts.length);
       for (const d of w.districts) {
         expect(hf.sample(d.x, d.y)).toBeGreaterThanOrEqual(w.water.seaLevel);
+        // The land it stands on carries an island of the water description, so
+        // a crossing leads there and the roads can arrive. A rock in the sea
+        // would take a district that could never be reached or built.
+        expect(land.carriesIsland(d.x, d.y), `seed ${seed}: ${d.name} stands on land no island site is on`).toBe(true);
         if (d.name !== 'Gull Island') expect(zoneAt(zones, d.x, d.y)).toBe(d.zone);
         expect(d.density).toBeGreaterThanOrEqual(0);
         expect(d.density).toBeLessThanOrEqual(1);
