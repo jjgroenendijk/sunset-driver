@@ -62,7 +62,8 @@ Render (9 ms), streaming (2 ms) and the 1 ms of headroom have no measurable occu
 - `generateWorld(seed)` builds the whole-map skeleton: size (`size.ts`), archipelago layout and heightfield (`terrain.ts`), water description with straits crossings, and districts/zones (`districts.ts`). Chunk-level content will hang off this skeleton.
 - The archipelago is a power diagram of island sites shrunk by half a channel and domain-warped, so straits bend but never close. The main site is the core at the origin.
 - Terrain relief comes from three.js `TerrainGenerator` (with `valleyBias: 1`; fractional values produce NaN) at 10 m cells, reshaped per island.
-- Preview a seed with `node scripts/world-preview.ts <seed> out.png` and look at the image before judging layout changes.
+- `buildTensorField(world)` (`tensor.ts`) is the seeded field road direction follows (spec section 6.1): terrain contours, the shoreline and river banks, a radial field around the core and a per-district grid, blended as tensors so that influences facing opposite ways reinforce instead of cancelling. `sample(x, y)` gives the major and minor directions plus a `strength` saying how decided the field is there; `majorAt(x, y)` is the allocation-free hot path.
+- Preview a seed with `node scripts/world-preview.ts <seed> out.png` and look at the image before judging layout changes. The preview draws the field's major direction as strokes, dark where the field is decided and pale where the influences cancel.
 - The seed sweep (`test/seed-sweep.test.ts`) runs 20 seeds by default and 200 under `npm run test:full` (`SWEEP_SEEDS=200`).
 
 ## Rules the tooling enforces
