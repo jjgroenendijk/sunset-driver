@@ -36,6 +36,8 @@ jobs:
         run: npm ci --prefer-offline --no-audit --no-fund
 
       - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
       - run: npm run build
 
       - name: Deploy to Cloudflare Pages
