@@ -24,8 +24,16 @@ CI (`.github/workflows/deploy.yml`) runs typecheck, lint, test, build and deploy
 | `src/world/` | World generation → plain world description | Must run headless in Node (the sweeps import it); may use three.js math/generators; never the renderer, Rapier or DOM |
 | `src/render/` | WebGPU renderer, fixed tilted camera, scene building | Reads the world description, never mutates it |
 | `src/ui/` | DOM overlay: HUD, keyboard, styles | |
-| `scripts/` | Build-time tooling (`lint-determinism.ts`) | Run with plain `node` (type stripping) |
+| `scripts/` | Build-time tooling: `lint-determinism.ts`, `world-preview.ts` (PNG map of a seed) | Run with plain `node` (type stripping) |
 | `test/` | vitest sweeps and unit tests | |
+
+## World generation (`src/world`)
+
+- `generateWorld(seed)` builds the whole-map skeleton: size (`size.ts`), archipelago layout and heightfield (`terrain.ts`), water description with straits crossings, and districts/zones (`districts.ts`). Chunk-level content will hang off this skeleton.
+- The archipelago is a power diagram of island sites shrunk by half a channel and domain-warped, so straits bend but never close. The main site is the core at the origin.
+- Terrain relief comes from three.js `TerrainGenerator` (with `valleyBias: 1`; fractional values produce NaN) at 10 m cells, reshaped per island.
+- Preview a seed with `node scripts/world-preview.ts <seed> out.png` and look at the image before judging layout changes.
+- The seed sweep (`test/seed-sweep.test.ts`) runs 200 seeds by default; `SWEEP_SEEDS=20 npm test` for a quick pass.
 
 ## Rules the tooling enforces
 
@@ -36,6 +44,7 @@ CI (`.github/workflows/deploy.yml`) runs typecheck, lint, test, build and deploy
 
 ## Conventions
 
+- Relative imports carry explicit `.ts` extensions so scripts and tests run under plain Node; `allowImportingTsExtensions` is on.
 - Conventional Commits, one atomic change per commit. No AI attribution lines in commits or PRs.
 - Feature branches from `main`, merged through a PR once `build-and-deploy` is green.
 - Keep this file current when adding directories, scripts or enforced rules.
