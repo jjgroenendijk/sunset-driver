@@ -92,10 +92,17 @@ export interface RoadCurve {
   /** Centreline, at least two points. */
   points: Point[];
   /**
-   * Indices of the segments that are bridge decks: segment `i` runs from
-   * `points[i]` to `points[i + 1]`. Ascending. Every other segment is on land.
+   * Indices of the segments carried on a deck: segment `i` runs from
+   * `points[i]` to `points[i + 1]`. Ascending. A deck spans a strait crossing
+   * or a dip the road may not follow down.
    */
   bridges: number[];
+  /**
+   * Indices of the segments bored through the ground, where a hill stands above
+   * the road. Ascending, and never an index that is also a bridge. Every
+   * segment in neither list lies on the ground (spec section 6.1).
+   */
+  tunnels: number[];
 }
 
 export interface WorldDescription {

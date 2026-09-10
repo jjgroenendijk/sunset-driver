@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { buildRoadGraph, type RoadEdge } from '../src/world/graph.ts';
+import { buildRoadGraph, type GradeCrossing, type RoadEdge } from '../src/world/graph.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import type { RoadCurve, RoadTier } from '../src/world/types.ts';
 import { stableJson } from './helpers.ts';
 
 /** A hand-built curve, so a graph can be checked without generating a world. */
-function curve(id: number, tier: RoadTier, coords: readonly [number, number][], bridges: number[] = []): RoadCurve {
-  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges };
+function curve(
+  id: number,
+  tier: RoadTier,
+  coords: readonly [number, number][],
+  bridges: number[] = [],
+  tunnels: number[] = [],
+): RoadCurve {
+  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges, tunnels };
 }
 
 /** Two streets crossing at the origin, sharing the point they meet at. */
@@ -237,6 +243,84 @@ describe('road graph', () => {
     expect(found.distance).toBeCloseTo(30, 6);
     expect(graph.nearestEdge(0, 0)?.distance).toBeCloseTo(0, 6);
     expect(buildRoadGraph([]).nearestEdge(0, 0)).toBeUndefined();
+  });
+
+  it('marks the runs that are bored through the ground', () => {
+    const graph = buildRoadGraph([
+      curve(
+        0,
+        'street',
+        [
+          [0, 0],
+          [100, 0],
+          [300, 0],
+        ],
+        [],
+        [1],
+      ),
+    ]);
+    expect((graph.edges[0] as RoadEdge).tunnel).toBe(true);
+    expect((graph.edges[0] as RoadEdge).bridge).toBe(false);
+  });
+
+  it('carries a highway over a street it crosses without making a junction', () => {
+    // The two curves cross at the origin but share no point there.
+    const graph = buildRoadGraph([
+      curve(0, 'street', [
+        [0, -100],
+        [0, 100],
+      ]),
+      curve(1, 'highway', [
+        [-100, 0],
+        [100, 0],
+      ]),
+    ]);
+    // Four free ends and nothing else: the crossing is not a place to turn.
+    expect(graph.nodes.length).toBe(4);
+    for (const node of graph.nodes) expect(graph.degree(node.id)).toBe(1);
+    expect(graph.shortestPath(graph.nearestNode(0, -100) as number, graph.nearestNode(100, 0) as number)).toBeUndefined();
+
+    expect(graph.crossings.length).toBe(1);
+    const crossing = graph.crossings[0] as GradeCrossing;
+    expect(crossing.x).toBeCloseTo(0, 6);
+    expect(crossing.y).toBeCloseTo(0, 6);
+    expect((graph.edges[crossing.over] as RoadEdge).tier).toBe('highway');
+    expect((graph.edges[crossing.under] as RoadEdge).tier).toBe('street');
+    // Both roads know about it, in both directions of travel.
+    for (const id of [crossing.over, crossing.under]) {
+      const edge = graph.edges[id] as RoadEdge;
+      expect(edge.crossings, `edge ${id}`).toEqual([0]);
+      expect((graph.edges[edge.twin] as RoadEdge).crossings, `twin of ${id}`).toEqual([0]);
+    }
+  });
+
+  it('leaves a junction where the two roads share the point they cross at', () => {
+    const graph = buildRoadGraph(crossroads());
+    expect(graph.crossings.length).toBe(0);
+    for (const edge of graph.edges) expect(edge.crossings).toEqual([]);
+  });
+
+  it('carries a deck over whatever it crosses, whatever tier that is', () => {
+    // An alley on a deck crosses an arterial on the ground.
+    const graph = buildRoadGraph([
+      curve(0, 'arterial', [
+        [-100, 0],
+        [100, 0],
+      ]),
+      curve(
+        1,
+        'alley',
+        [
+          [0, -100],
+          [0, 100],
+        ],
+        [0],
+      ),
+    ]);
+    expect(graph.crossings.length).toBe(1);
+    const crossing = graph.crossings[0] as GradeCrossing;
+    expect((graph.edges[crossing.over] as RoadEdge).tier).toBe('alley');
+    expect((graph.edges[crossing.under] as RoadEdge).tier).toBe('arterial');
   });
 
   it('builds the same graph from the same curves', () => {

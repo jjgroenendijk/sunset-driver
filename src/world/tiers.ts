@@ -31,6 +31,14 @@ export interface TierSpec {
   lanes: number;
   /** Speed limit in metres per second. */
   speedLimit: number;
+  /**
+   * Steepest grade the tier accepts, as rise over run. A road that would climb
+   * harder than this is rerouted along the contour, bridged or tunnelled; it is
+   * never laid over the hill (spec section 6.1). The through-routes hold the
+   * gentle grades a fast road needs; the tiers below them take the bank, the
+   * way the streets of a hillside city do.
+   */
+  maxGrade: number;
   traffic: TierTraffic;
 }
 
@@ -40,6 +48,7 @@ export const TIERS: Record<RoadTier, TierSpec> = {
     width: 26,
     lanes: 3,
     speedLimit: kmh(110),
+    maxGrade: 0.06,
     traffic: { trucks: true, buses: true, trams: false, pedestrians: false },
   },
   // The main urban through-routes: buses, the tram lane, dense traffic.
@@ -47,6 +56,7 @@ export const TIERS: Record<RoadTier, TierSpec> = {
     width: 18,
     lanes: 2,
     speedLimit: kmh(60),
+    maxGrade: 0.08,
     traffic: { trucks: true, buses: true, trams: true, pedestrians: true },
   },
   // Residential and commercial, one lane each way with parking on both sides.
@@ -54,6 +64,7 @@ export const TIERS: Record<RoadTier, TierSpec> = {
     width: 11,
     lanes: 1,
     speedLimit: kmh(40),
+    maxGrade: 0.18,
     traffic: { trucks: false, buses: false, trams: false, pedestrians: true },
   },
   // Narrow and unmarked: bins, loading bays, shortcuts.
@@ -61,6 +72,7 @@ export const TIERS: Record<RoadTier, TierSpec> = {
     width: 4,
     lanes: 1,
     speedLimit: kmh(20),
+    maxGrade: 0.22,
     traffic: { trucks: false, buses: false, trams: false, pedestrians: true },
   },
   // Unpaved, in the outskirts and the wilderness. Farm and site traffic uses it.
@@ -68,6 +80,7 @@ export const TIERS: Record<RoadTier, TierSpec> = {
     width: 5,
     lanes: 1,
     speedLimit: kmh(40),
+    maxGrade: 0.2,
     traffic: { trucks: true, buses: false, trams: false, pedestrians: true },
   },
 };

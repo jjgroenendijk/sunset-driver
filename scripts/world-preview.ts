@@ -88,8 +88,8 @@ for (let iy = STROKE_STRIDE; iy < n - STROKE_STRIDE; iy += STROKE_STRIDE) {
   }
 }
 
-// Roads: one colour per tier, highways heavy and dark, and bridge decks in
-// orange so the strait crossings stand out.
+// Roads: one colour per tier, highways heavy and dark, bridge decks in orange
+// so the strait crossings stand out, and bores through the ground in cyan.
 const ROAD_STYLE = {
   highway: { col: [20, 20, 24] as [number, number, number], half: 1 },
   arterial: { col: [150, 30, 30] as [number, number, number], half: 0 },
@@ -98,6 +98,7 @@ const ROAD_STYLE = {
   dirt: { col: [190, 160, 90] as [number, number, number], half: 0 },
 };
 const BRIDGE_COL: [number, number, number] = [255, 140, 40];
+const TUNNEL_COL: [number, number, number] = [60, 230, 230];
 const cellOf = (x: number, y: number): [number, number] => [
   Math.round((x - hf.originX) / hf.cellSize),
   Math.round((y - hf.originY) / hf.cellSize),
@@ -120,7 +121,9 @@ for (const road of [...world.roads].sort((a, b) => TIER_ORDER.indexOf(a.tier) - 
   const style = ROAD_STYLE[road.tier];
   for (let i = 0; i + 1 < road.points.length; i++) {
     const bridge = road.bridges.includes(i);
-    stroke(road.points[i] as Point, road.points[i + 1] as Point, bridge ? BRIDGE_COL : style.col, bridge ? 1 : style.half);
+    const tunnel = road.tunnels.includes(i);
+    const col = bridge ? BRIDGE_COL : tunnel ? TUNNEL_COL : style.col;
+    stroke(road.points[i] as Point, road.points[i + 1] as Point, col, bridge || tunnel ? 1 : style.half);
   }
 }
 
