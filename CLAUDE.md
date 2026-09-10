@@ -48,6 +48,12 @@ The same applies to test timing: `npm test` must stay under 15 s and `npm run te
 - Never deploy with wrangler locally; `scripts/hooks/guard-bash.sh` blocks it.
 - Cloud sessions run `bash scripts/setup-cloud.sh` as the environment setup script. Its result is cached in a snapshot keyed on the text typed into the environment dialog, not on the script — after changing it, re-save the setup script field at claude.ai/code to force a rebuild.
 
+## Writing
+
+Prose here, in `spec.md`, in `docs/`, in commit messages and in PR bodies is read by non-native English speakers. Write for them: short sentences, plain words, one idea per sentence, the subject up front. No idioms, no wordplay, no cleverness that a reader has to decode.
+
+Effortless to read is not the same as long. Aim for the highest information per word: every sentence carries something the reader did not already know, and nothing restates the sentence before it. Cut a qualifier before you add one. When a sentence needs two readings, the fix is to split it, not to add an explanation.
+
 ## Keeping this file current
 
 Update this file whenever a directory, enforced rule or non-obvious gotcha changes. `docs/claude-md.md` says what belongs here and what does not — read it before adding a section.
