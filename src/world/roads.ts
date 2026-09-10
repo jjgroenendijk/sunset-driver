@@ -21,20 +21,29 @@
  * comes from its zone. A road that met nothing on one side is a dead end, and a
  * dead end is trimmed to a cul-de-sac rather than left running into nothing.
  *
- * Two invariants hold by construction, and the seed sweep checks them:
+ * No road climbs harder than its tier allows. Every candidate step is measured
+ * against `TIERS[tier].maxGrade`, and a step that is too steep is refused, so
+ * the trace turns along the contour instead — the reroute of spec section 6.1.
+ * Where the ground under an accepted step is not the line the road drives, the
+ * segment is marked: a hill above it is tunnelled, a dip below it is decked.
+ *
+ * Three invariants hold by construction, and the seed sweep checks them:
  *
  * - Every curve starts on an existing road, ends on one, or merges into one, so
  *   the whole network is a single connected component. A trace that reaches
  *   neither is dropped rather than left dangling.
  * - No segment passes over water unless it is a bridge, and a bridge only ever
  *   spans one of the water description's strait crossings.
+ * - No segment laid on the ground exceeds its tier's maximum grade.
  */
 import { clamp, dist, directionDelta, lerp, wrapAngle } from '../core/math.ts';
 import type { Noise2D } from '../core/noise.ts';
+import { compareNumbers } from '../core/sort.ts';
 import { districtAt, layoutZones, zoneAt } from './districts.ts';
 import { Heightfield } from './heightfield.ts';
 import { coastNoise, islandAt } from './terrain.ts';
 import type { TensorField } from './tensor.ts';
+import { TIERS } from './tiers.ts';
 import type { Island, Point, RoadCurve, RoadTier, WorldSkeleton, Zone } from './types.ts';
 
 /** Metres a road needs above sea level; the waterline itself is not road-worthy ground. */
@@ -72,6 +81,22 @@ const ALLEY_DENSITY = 0.5;
 const MIN_MERGE_STEPS = 4;
 /** Metres a bridge head may be moved inland from the crossing's shore point. */
 const ANCHOR_REACH = 100;
+/**
+ * Metres of cut and fill a road bed absorbs. Ground that stands higher than
+ * `CUT` above the line the road drives is tunnelled through; ground that falls
+ * further than `FILL` below it is carried on a deck. Fill is the cheaper of the
+ * two on real ground, so it is allowed the deeper of the two.
+ */
+const CUT = 2.5;
+const FILL = 4;
+/**
+ * Steps a road may span in one go where no ordinary step is left, and the
+ * metres of rock a bore may carry or a deck may stand above the ground. Between
+ * them they bound a structure: long enough to get through a ridge or over a
+ * ravine, short enough that the road never leaps a valley.
+ */
+const SPAN_STEPS = 8;
+const MAX_COVER = 25;
 /** Side of one bucket of the road index, in metres. Small enough that a bucket holds few streets. */
 const INDEX_CELL = 60;
 
@@ -87,13 +112,15 @@ interface TierParams {
   mergeRadius: number;
   /** Longest curve, as a fraction of the world side. */
   maxLength: number;
+  /** Steepest grade a step may climb; the tier table owns the number. */
+  maxGrade: number;
 }
 
-const HIGHWAY: TierParams = { step: 30, maxTurn: 0.09, fieldWeight: 1, mergeRadius: 110, maxLength: 1.3 };
-const ARTERIAL: TierParams = { step: 22, maxTurn: 0.17, fieldWeight: 0.75, mergeRadius: 80, maxLength: 0.8 };
-const STREET: TierParams = { step: 14, maxTurn: 0.22, fieldWeight: 0.8, mergeRadius: 26, maxLength: 0.35 };
-const ALLEY: TierParams = { step: 10, maxTurn: 0.3, fieldWeight: 0.8, mergeRadius: 18, maxLength: 0.06 };
-const DIRT: TierParams = { step: 26, maxTurn: 0.2, fieldWeight: 0.9, mergeRadius: 55, maxLength: 0.5 };
+const HIGHWAY: TierParams = { step: 30, maxTurn: 0.09, fieldWeight: 1, mergeRadius: 110, maxLength: 1.3, maxGrade: TIERS.highway.maxGrade };
+const ARTERIAL: TierParams = { step: 22, maxTurn: 0.17, fieldWeight: 0.75, mergeRadius: 80, maxLength: 0.8, maxGrade: TIERS.arterial.maxGrade };
+const STREET: TierParams = { step: 14, maxTurn: 0.22, fieldWeight: 0.8, mergeRadius: 26, maxLength: 0.35, maxGrade: TIERS.street.maxGrade };
+const ALLEY: TierParams = { step: 10, maxTurn: 0.3, fieldWeight: 0.8, mergeRadius: 18, maxLength: 0.06, maxGrade: TIERS.alley.maxGrade };
+const DIRT: TierParams = { step: 26, maxTurn: 0.2, fieldWeight: 0.9, mergeRadius: 55, maxLength: 0.5, maxGrade: TIERS.dirt.maxGrade };
 
 /**
  * What the minor fill lays in each zone: the tier, and the metres between
@@ -124,6 +151,13 @@ interface TraceOptions {
   parentMergeAfter?: number;
   /** Ground the road may not leave: the fill stays inside the built-up zones. */
   within?: (x: number, y: number) => boolean;
+}
+
+/** One step of a trace: which way it goes, and how far it reaches. */
+interface Step {
+  heading: number;
+  /** Metres to the next point. A step that spans a structure reaches further. */
+  reach: number;
 }
 
 interface TraceResult {
@@ -586,9 +620,9 @@ class RoadTracer {
       if (traced.merged || traced.arrived) return traced.points;
     }
     if (this.index.empty) return undefined;
-    return this.reroute(from, (x, y) => {
+    return this.reroute(from, ARTERIAL.maxGrade, (x, y) => {
       const hit = this.index.nearest(x, y, ARTERIAL.mergeRadius);
-      return hit !== undefined && this.isDryPath(x, y, hit.x, hit.y) ? hit : undefined;
+      return hit !== undefined && this.canRun(x, y, hit.x, hit.y, ARTERIAL.maxGrade) ? hit : undefined;
     });
   }
 
@@ -598,8 +632,10 @@ class RoadTracer {
     if (traced.merged || traced.arrived) return traced.points;
     const goalIx = this.node(target.x);
     const goalIy = this.node(target.y);
-    const route = this.reroute(from, (x, y, ix, iy) =>
-      ix === goalIx && iy === goalIy ? { x: target.x, y: target.y } : undefined,
+    const route = this.reroute(from, ARTERIAL.maxGrade, (x, y, ix, iy) =>
+      ix === goalIx && iy === goalIy && this.canRun(x, y, target.x, target.y, ARTERIAL.maxGrade)
+        ? { x: target.x, y: target.y }
+        : undefined,
     );
     if (route !== undefined) return route;
     // The island is worth reaching even when its district is not reachable: keep
@@ -633,8 +669,8 @@ class RoadTracer {
       const wanted = this.desiredHeading(px, py, heading, opt);
       const next = this.stepHeading(px, py, heading, wanted, params);
       if (next === undefined) break;
-      const qx = px + Math.cos(next) * params.step;
-      const qy = py + Math.sin(next) * params.step;
+      const qx = px + Math.cos(next.heading) * next.reach;
+      const qy = py + Math.sin(next.heading) * next.reach;
       if (Math.abs(qx) > this.half || Math.abs(qy) > this.half) break;
       if (opt.within !== undefined && !opt.within(qx, qy)) break;
 
@@ -645,7 +681,7 @@ class RoadTracer {
       if (hit === undefined && parent >= 0 && length >= (opt.parentMergeAfter ?? mergeAfter)) {
         hit = this.index.nearest(qx, qy, params.mergeRadius);
       }
-      if (hit !== undefined && this.isDryPath(px, py, hit.x, hit.y)) {
+      if (hit !== undefined && this.canRun(px, py, hit.x, hit.y, params.maxGrade)) {
         points.push({ x: hit.x, y: hit.y });
         merged = true;
         break;
@@ -653,8 +689,8 @@ class RoadTracer {
       if (foldsBack(points, qx, qy, params.step)) break;
 
       points.push({ x: qx, y: qy });
-      length += params.step;
-      heading = next;
+      length += next.reach;
+      heading = next.heading;
       px = qx;
       py = qy;
 
@@ -662,9 +698,9 @@ class RoadTracer {
       if (target === undefined) continue;
       const d = dist(px, py, target.x, target.y);
       if (d <= arrive) {
-        // Only an arrival that can be driven counts: a last step over water is
-        // no arrival, and the caller reroutes instead.
-        if (!this.isDryPath(px, py, target.x, target.y)) break;
+        // Only an arrival that can be driven counts: a last step over water or
+        // up a wall is no arrival, and the caller reroutes instead.
+        if (!this.canRun(px, py, target.x, target.y, params.maxGrade)) break;
         points.push({ x: target.x, y: target.y });
         arrived = true;
         break;
@@ -709,17 +745,46 @@ class RoadTracer {
   }
 
   /**
-   * The heading of the next step: what the field asked for, or the nearest turn
-   * to it that keeps the step on land. Water bends a road; it never floods it.
+   * The next step of a trace: how far it reaches and which way. The field's
+   * heading is tried first, then the turns to either side of it, and a step is
+   * taken only where the ground is dry and the climb is one the tier accepts.
+   * Water bends a road and never floods it; a hillside bends it and is never
+   * climbed. This is the reroute of spec section 6.1.
+   *
+   * When no ordinary step is left, the road holds its line and spans further:
+   * the ground it may not climb is bored through or carried over, which is what
+   * gets a highway past a ridge or a ravine instead of ending it there. The
+   * shortest span that works wins, so the structure is never longer than the
+   * ground demands.
    */
-  private stepHeading(x: number, y: number, heading: number, wanted: number, params: TierParams): number | undefined {
+  private stepHeading(x: number, y: number, heading: number, wanted: number, params: TierParams): Step | undefined {
     const limit = params.maxTurn * AVOID_TURNS;
-    for (let k = 0; k <= AVOID_STEPS; k++) {
-      for (const sign of k === 0 ? [1] : [1, -1]) {
-        const h = wanted + sign * k * params.maxTurn;
-        if (Math.abs(wrapAngle(h - heading)) > limit) continue;
-        if (this.isDryPath(x, y, x + Math.cos(h) * params.step, y + Math.sin(h) * params.step)) return h;
+    const here = this.hf.sample(x, y);
+    for (let span = 1; span <= SPAN_STEPS; span++) {
+      const reach = params.step * span;
+      let steep = false;
+      for (let k = 0; k <= AVOID_STEPS; k++) {
+        for (const sign of k === 0 ? [1] : [1, -1]) {
+          const h = wanted + sign * k * params.maxTurn;
+          if (Math.abs(wrapAngle(h - heading)) > limit) continue;
+          const qx = x + Math.cos(h) * reach;
+          const qy = y + Math.sin(h) * reach;
+          // The climb between the two ends costs two samples and turns most
+          // candidates away; only what survives it is worth walking over.
+          if (Math.abs(this.hf.sample(qx, qy) - here) / reach > params.maxGrade) {
+            steep = true;
+            continue;
+          }
+          const profile = this.probe(x, y, qx, qy);
+          if (!profile.dry) continue;
+          if (profile.above > MAX_COVER || profile.below > MAX_COVER) continue;
+          return { heading: h, reach };
+        }
       }
+      // Spanning further is for ground the road may not climb. Where water was
+      // what stopped it, the road stops too: a deck belongs at a strait
+      // crossing of the water description, not wherever a trace ran out.
+      if (!steep) return undefined;
     }
     return undefined;
   }
@@ -727,14 +792,22 @@ class RoadTracer {
   // ----------------------------------------------------------------- rerouting
 
   /**
-   * A road over dry land from a point to whatever the goal accepts, found
-   * breadth-first over the terrain grid. Diagonal steps need both of their
-   * neighbours dry, so the polyline never clips a wet corner.
+   * A road over dry, gentle land from a point to whatever the goal accepts,
+   * found breadth-first over the terrain grid. Diagonal steps need both of
+   * their neighbours dry, so the polyline never clips a wet corner, and no step
+   * climbs harder than the tier allows, so the route walks around a hill it may
+   * not go over.
    */
-  private reroute(from: Point, goal: (x: number, y: number, ix: number, iy: number) => Point | undefined): Point[] | undefined {
+  private reroute(
+    from: Point,
+    maxGrade: number,
+    goal: (x: number, y: number, ix: number, iy: number) => Point | undefined,
+  ): Point[] | undefined {
     const hf = this.hf;
     const n = hf.gridSize;
-    const start = this.nearestLandNode(from);
+    const straight = maxGrade * hf.cellSize;
+    const diagonal = straight * Math.SQRT2;
+    const start = this.nearestLandNode(from, maxGrade);
     if (start < 0) return undefined;
     const came = this.came;
     const queue = this.queue;
@@ -748,7 +821,7 @@ class RoadTracer {
       const ix = at % n;
       const iy = (at - ix) / n;
       const hit = goal(hf.worldX(ix), hf.worldY(iy), ix, iy);
-      if (hit !== undefined) return this.pathTo(at, from, hit);
+      if (hit !== undefined) return this.pathTo(at, from, hit, maxGrade);
       for (let k = 0; k < NEIGHBOUR_X.length; k++) {
         const dx = NEIGHBOUR_X[k] as number;
         const dy = NEIGHBOUR_Y[k] as number;
@@ -758,6 +831,8 @@ class RoadTracer {
         const to = jy * n + jx;
         if (came[to] !== -1 || this.land[to] === 0) continue;
         if (dx !== 0 && dy !== 0 && (this.land[iy * n + jx] === 0 || this.land[jy * n + ix] === 0)) continue;
+        const rise = Math.abs(hf.at(jx, jy) - hf.at(ix, iy));
+        if (rise > (dx !== 0 && dy !== 0 ? diagonal : straight)) continue;
         came[to] = at;
         queue[tail++] = to;
       }
@@ -766,7 +841,7 @@ class RoadTracer {
   }
 
   /** Walk the breadth-first tree back to the start, then straighten the staircase it left. */
-  private pathTo(end: number, from: Point, hit: Point): Point[] {
+  private pathTo(end: number, from: Point, hit: Point, maxGrade: number): Point[] {
     const hf = this.hf;
     const n = hf.gridSize;
     const nodes: Point[] = [];
@@ -782,15 +857,15 @@ class RoadTracer {
     nodes.reverse();
     nodes.unshift({ x: from.x, y: from.y });
     nodes.push({ x: hit.x, y: hit.y });
-    return this.straighten(nodes);
+    return this.straighten(nodes, maxGrade);
   }
 
   /**
    * Drop the nodes a road does not need: keep the furthest point still joined to
-   * the last kept one by a dry straight line. Every kept segment is checked, so
-   * the result stays on land.
+   * the last kept one by a straight line the tier can drive. Every kept segment
+   * is checked, so the result stays on land and inside the grade.
    */
-  private straighten(nodes: readonly Point[]): Point[] {
+  private straighten(nodes: readonly Point[], maxGrade: number): Point[] {
     const reach = ARTERIAL.step * 3;
     const out: Point[] = [nodes[0] as Point];
     let anchor = 0;
@@ -800,7 +875,7 @@ class RoadTracer {
       for (let i = anchor + 2; i < nodes.length; i++) {
         const b = nodes[i] as Point;
         if (dist(a.x, a.y, b.x, b.y) > reach) break;
-        if (this.isDryPath(a.x, a.y, b.x, b.y)) next = i;
+        if (this.canRun(a.x, a.y, b.x, b.y, maxGrade)) next = i;
       }
       out.push(nodes[next] as Point);
       anchor = next;
@@ -808,8 +883,8 @@ class RoadTracer {
     return out;
   }
 
-  /** Index of the terrain node nearest a point that is dry land, searched outward. */
-  private nearestLandNode(p: Point): number {
+  /** Index of the terrain node nearest a point that the road can reach, searched outward. */
+  private nearestLandNode(p: Point, maxGrade: number): number {
     const n = this.hf.gridSize;
     const cx = this.node(p.x);
     const cy = this.node(p.y);
@@ -821,7 +896,7 @@ class RoadTracer {
           const iy = cy + dy;
           if (ix < 0 || iy < 0 || ix >= n || iy >= n) continue;
           const i = iy * n + ix;
-          if (this.land[i] === 1 && this.isDryPath(p.x, p.y, this.hf.worldX(ix), this.hf.worldY(iy))) return i;
+          if (this.land[i] === 1 && this.canRun(p.x, p.y, this.hf.worldX(ix), this.hf.worldY(iy), maxGrade)) return i;
         }
       }
     }
@@ -865,23 +940,83 @@ class RoadTracer {
     return this.hf.sample(x, y) >= this.seaLevel + DRY_MARGIN;
   }
 
-  /** True when the whole straight line from one point to another is on dry land. */
-  private isDryPath(ax: number, ay: number, bx: number, by: number): boolean {
-    const steps = Math.max(1, Math.ceil(dist(ax, ay, bx, by) / WET_SAMPLE));
-    for (let i = 0; i <= steps; i++) {
+  /**
+   * What the ground does under a straight span: whether it stays dry, how hard
+   * the span climbs, and how far the ground leaves the line the road drives.
+   * One walk answers all three, because every caller wants at least two of them.
+   */
+  private probe(ax: number, ay: number, bx: number, by: number): Profile {
+    const run = dist(ax, ay, bx, by);
+    const start = this.hf.sample(ax, ay);
+    const end = this.hf.sample(bx, by);
+    const steps = Math.max(1, Math.ceil(run / WET_SAMPLE));
+    let dry = this.isDry(ax, ay) && this.isDry(bx, by);
+    let above = 0;
+    let below = 0;
+    for (let i = 1; i < steps; i++) {
       const t = i / steps;
-      if (!this.isDry(ax + (bx - ax) * t, ay + (by - ay) * t)) return false;
+      const h = this.hf.sample(ax + (bx - ax) * t, ay + (by - ay) * t);
+      if (h < this.seaLevel + DRY_MARGIN) dry = false;
+      const line = start + (end - start) * t;
+      if (h - line > above) above = h - line;
+      if (line - h > below) below = line - h;
     }
-    return true;
+    return { dry, grade: run > 0 ? Math.abs(end - start) / run : 0, above, below };
+  }
+
+  /**
+   * True when a road of this tier may run straight from one point to another:
+   * dry ground all the way, and a climb the tier accepts. A span that is too
+   * steep is refused here, which is what makes the caller look for another line.
+   */
+  private canRun(ax: number, ay: number, bx: number, by: number, maxGrade: number): boolean {
+    const profile = this.probe(ax, ay, bx, by);
+    return profile.dry && profile.grade <= maxGrade;
+  }
+
+  /**
+   * Mark the segments that do not lie on the ground. A hill standing more than
+   * {@link CUT} above the line the road drives is bored through; a dip falling
+   * more than {@link FILL} below it is carried on a deck. The decks already in
+   * `bridges` span water and are left alone; the new ones are added to it, and
+   * it is left ascending. The bores are returned.
+   */
+  private markStructures(points: readonly Point[], bridges: number[]): number[] {
+    const tunnels: number[] = [];
+    for (let i = 0; i + 1 < points.length; i++) {
+      if (bridges.includes(i)) continue;
+      const a = points[i] as Point;
+      const b = points[i + 1] as Point;
+      const profile = this.probe(a.x, a.y, b.x, b.y);
+      if (profile.above <= CUT && profile.below <= FILL) continue;
+      // Whichever the ground overruns by more decides which structure it takes.
+      if (profile.above - CUT >= profile.below - FILL) tunnels.push(i);
+      else bridges.push(i);
+    }
+    bridges.sort(compareNumbers);
+    return tunnels;
   }
 
   private addCurve(tier: RoadTier, points: Point[], bridges: number[]): RoadCurve | undefined {
     if (points.length < 2) return undefined;
-    const curve: RoadCurve = { id: this.curves.length, tier, points, bridges };
+    const tunnels = this.markStructures(points, bridges);
+    const curve: RoadCurve = { id: this.curves.length, tier, points, bridges, tunnels };
     this.curves.push(curve);
     this.index.add(curve.id, points);
     return curve;
   }
+}
+
+/** What the ground does under a straight span, from one walk along it. */
+interface Profile {
+  /** True when no part of the span stands over water. */
+  dry: boolean;
+  /** Rise over run between the two ends. */
+  grade: number;
+  /** Metres the ground stands above the line between the ends, at its highest. */
+  above: number;
+  /** Metres the ground falls below that line, at its lowest. */
+  below: number;
 }
 
 /** Eight-way steps of the reroute search, straight ones first. */
@@ -966,11 +1101,11 @@ function seedAlong(
     const b = points[i + 1] as Point;
     const seg = dist(a.x, a.y, b.x, b.y);
     if (seg === 0) continue;
-    // A bridge deck seeds nothing: there is no land beside it.
-    const deck = curve.bridges.includes(i);
+    // A deck or a bore seeds nothing: there is no ground beside the road there.
+    const structure = curve.bridges.includes(i) || curve.tunnels.includes(i);
     run += seg;
     const spacing = spacingAt(b.x, b.y);
-    if (run < spacing || deck) continue;
+    if (run < spacing || structure) continue;
     run -= spacing;
     const along = Math.atan2(b.y - a.y, b.x - a.x);
     const nx = -Math.sin(along) * spacing;

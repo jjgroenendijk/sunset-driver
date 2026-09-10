@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { hashInts } from '../src/core/hash.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
-import { buildRoadGraph, type RoadEdge, type RoadNode } from '../src/world/graph.ts';
+import { buildRoadGraph, type GradeCrossing, type RoadEdge, type RoadGraph, type RoadNode } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
 import { coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
+import { TIERS } from '../src/world/tiers.ts';
 import type { Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
 import { generateWorld } from '../src/world/world.ts';
 import { BUDGET_MS } from './budgets.ts';
@@ -18,6 +19,38 @@ const BRIDGE_TOLERANCE = 150;
 /** A road point as a key, so two curves that share a point share a string. */
 function pointKey(p: Point): string {
   return `${Math.round(p.x * 1000)}:${Math.round(p.y * 1000)}`;
+}
+
+/**
+ * Metres the ground has to leave the line a road drives before the road counts
+ * as standing off it. The tracer allows itself more cut and fill than this, so
+ * anything it marks as a structure clears this comfortably.
+ */
+const CLEARANCE = 1;
+
+/** How hard a road segment climbs between its ends: rise over run. */
+function gradeOf(hf: Heightfield, a: Point, b: Point): number {
+  const run = Math.hypot(b.x - a.x, b.y - a.y);
+  return run > 0 ? Math.abs(hf.sample(b.x, b.y) - hf.sample(a.x, a.y)) / run : 0;
+}
+
+/**
+ * How far the ground leaves the line a road segment drives: metres above it at
+ * its highest, and metres below it at its lowest.
+ */
+function profileUnder(hf: Heightfield, a: Point, b: Point): { above: number; below: number } {
+  const start = hf.sample(a.x, a.y);
+  const end = hf.sample(b.x, b.y);
+  const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / WET_SAMPLE));
+  let above = 0;
+  let below = 0;
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const h = hf.sample(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+    above = Math.max(above, h - (start + (end - start) * t));
+    below = Math.max(below, start + (end - start) * t - h);
+  }
+  return { above, below };
 }
 
 /** How much of a straight span stands over water, in [0, 1]. */
@@ -118,6 +151,15 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
   const seeds = sweepSeeds(SEED_COUNT);
   const worlds = new Map<number, WorldDescription>();
   const timings: number[] = [];
+  /** The graph of a seed, built once however many tests ask about it. */
+  const graphs = new Map<number, RoadGraph>();
+  const graphOf = (seed: number): RoadGraph => {
+    const known = graphs.get(seed);
+    if (known !== undefined) return known;
+    const built = buildRoadGraph((worlds.get(seed) as WorldDescription).roads);
+    graphs.set(seed, built);
+    return built;
+  };
 
   it('generates every seed within budget', () => {
     for (const seed of seeds) {
@@ -257,7 +299,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
   it('builds one road graph that holds the whole curve network', () => {
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
-      const graph = buildRoadGraph(w.roads);
+      const graph = graphOf(seed);
       expect(graph.nodes.length, `seed ${seed}`).toBeGreaterThan(0);
 
       // Every curve is on the graph, and every node has a road leaving it.
@@ -312,18 +354,46 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     }
   });
 
+  it('makes no junction where one road is carried over another', () => {
+    // Spec section 6.2: an overpass is not a junction. Both runs know about the
+    // crossing, and no node stands on it, so no car can turn there.
+    for (const seed of seeds) {
+      const graph = graphOf(seed);
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+      for (let k = 0; k < graph.crossings.length; k++) {
+        const crossing = graph.crossings[k] as GradeCrossing;
+        const where = `crossing ${k} at ${crossing.x.toFixed(0)},${crossing.y.toFixed(0)}`;
+        const node = graph.nodes[graph.nearestNode(crossing.x, crossing.y) as number] as RoadNode;
+        if (Math.hypot(node.x - crossing.x, node.y - crossing.y) <= 0.001) fault(`${where} is a junction`);
+        const over = graph.edges[crossing.over] as RoadEdge;
+        const under = graph.edges[crossing.under] as RoadEdge;
+        if (over.curve === under.curve) fault(`${where} joins a road to itself`);
+        if (!over.crossings.includes(k)) fault(`${where} is not marked on the road above`);
+        if (!under.crossings.includes(k)) fault(`${where} is not marked on the road below`);
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
   it('cuts each zone into blocks of about the size it asks for', () => {
     // Half the width of a block, near enough: the median distance from the
     // ground of a zone to the nearest road. Blocks tighten toward downtown
     // because the fill spaces its roads by the density of the district. The
     // wilderness range is wide because an island no district stands on is
     // reached by no bridge, so its ground is far from every road.
+    //
+    // The three zones on the fringe are looser than the built-up ones because
+    // ground too steep for a road now goes without one (spec section 6.1). The
+    // city itself sits on gentle ground and did not move.
     const RANGE: Record<Zone, [number, number]> = {
       core: [3, 20],
       inner: [5, 20],
       industrial: [7, 40],
-      suburban: [10, 32],
-      outskirts: [14, 120],
+      suburban: [10, 36],
+      outskirts: [14, 140],
       wilderness: [35, 800],
     };
     for (const seed of seeds) {
@@ -359,8 +429,10 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     // A minor road that met no other road on one side is trimmed to a
     // cul-de-sac, so a free end always stands near the network it hangs off:
     // within the trim, plus the spacing its seed stood off its parent. The caps
-    // are in metres, and the loosest spacing of the tier's zones sets them.
-    const CAP: Partial<Record<RoadTier, number>> = { street: 200, alley: 120, dirt: 750 };
+    // are in metres, and the loosest spacing of the tier's zones sets them. A
+    // road that has to work around steep ground reaches further before it ends,
+    // so the street and dirt caps are looser than the trim alone would ask for.
+    const CAP: Partial<Record<RoadTier, number>> = { street: 260, alley: 120, dirt: 900 };
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       const grid = new PointGrid(w.size, 100, w.roads);
@@ -400,22 +472,30 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
   });
 
   it('keeps roads out of the water except on a bridge over a strait crossing', () => {
+    // As in the grade test below: one assertion a seed, so a hundred thousand
+    // segments do not each pay for one.
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       const hf = new Heightfield(w.terrain);
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
       for (const road of w.roads) {
         for (let i = 0; i + 1 < road.points.length; i++) {
           const a = road.points[i] as Point;
           const b = road.points[i + 1] as Point;
-          const where = `seed ${seed}, ${road.tier} ${road.id} segment ${i}`;
+          const where = `${road.tier} ${road.id} segment ${i}`;
           if (road.bridges.includes(i)) {
-            // A deck stands over water and lands on dry ground at both ends. How
-            // much of it is over water is the crossing's business, checked above.
-            expect(wetFraction(hf, a, b, w.water.seaLevel), `${where} bridges dry land`).toBeGreaterThan(0);
-            expect(hf.sample(a.x, a.y), `${where} starts in the water`).toBeGreaterThanOrEqual(w.water.seaLevel);
-            expect(hf.sample(b.x, b.y), `${where} ends in the water`).toBeGreaterThanOrEqual(w.water.seaLevel);
-            const spans = w.water.crossings.some((c) => spansCrossing(a, b, c.from, c.to));
-            expect(spans, `${where} is a bridge at no crossing`).toBe(true);
+            // A deck lands on dry ground at both ends. One over water spans a
+            // strait crossing; one over land carries the road over a dip, and
+            // the grade test below is what vets that one.
+            if (hf.sample(a.x, a.y) < w.water.seaLevel) fault(`${where} starts in the water`);
+            if (hf.sample(b.x, b.y) < w.water.seaLevel) fault(`${where} ends in the water`);
+            if (wetFraction(hf, a, b, w.water.seaLevel) > 0) {
+              const spans = w.water.crossings.some((c) => spansCrossing(a, b, c.from, c.to));
+              if (!spans) fault(`${where} is a bridge at no crossing`);
+            }
             continue;
           }
           const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / WET_SAMPLE));
@@ -424,9 +504,51 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
             const t = s / steps;
             lowest = Math.min(lowest, hf.sample(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t));
           }
-          expect(lowest, `${where} runs through water`).toBeGreaterThanOrEqual(w.water.seaLevel);
+          if (lowest < w.water.seaLevel) fault(`${where} runs through water`);
         }
       }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
+  it('never lays a road over ground its tier may not climb', () => {
+    // Spec section 6.1: a segment steeper than its tier's maximum is rerouted,
+    // bridged or tunnelled. So every segment on the ground is inside the limit,
+    // and every segment outside it stands off the ground on a deck or in a bore.
+    // There are a hundred thousand segments here, so the loop collects the first
+    // complaint of each seed and asserts once rather than a hundred thousand times.
+    for (const seed of seeds) {
+      const w = worlds.get(seed) as WorldDescription;
+      const hf = new Heightfield(w.terrain);
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+      for (const road of w.roads) {
+        const limit = TIERS[road.tier].maxGrade;
+        for (const at of road.tunnels) {
+          if (at >= road.points.length - 1) fault(`${road.tier} ${road.id} bores past its end at ${at}`);
+          if (road.bridges.includes(at)) fault(`${road.tier} ${road.id} segment ${at} is deck and bore at once`);
+        }
+        for (let i = 0; i + 1 < road.points.length; i++) {
+          const a = road.points[i] as Point;
+          const b = road.points[i + 1] as Point;
+          const where = `${road.tier} ${road.id} segment ${i}`;
+          if (road.tunnels.includes(i)) {
+            if (profileUnder(hf, a, b).above <= CLEARANCE) fault(`${where} is a bore through nothing`);
+            continue;
+          }
+          if (road.bridges.includes(i)) {
+            // A deck over dry land is only worth building over a dip.
+            const dry = wetFraction(hf, a, b, w.water.seaLevel) === 0;
+            if (dry && profileUnder(hf, a, b).below <= CLEARANCE) fault(`${where} is a deck over nothing`);
+            continue;
+          }
+          const grade = gradeOf(hf, a, b);
+          if (grade > limit) fault(`${where} climbs ${(grade * 100).toFixed(0)}%, over the ${(limit * 100).toFixed(0)}% of its tier`);
+        }
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
     }
   });
 
