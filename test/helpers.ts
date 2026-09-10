@@ -1,5 +1,6 @@
 import { hashInts } from '../src/core/hash.ts';
 import { EMPTY_INPUT, type InputFrame } from '../src/sim/input.ts';
+import type { Point } from '../src/world/types.ts';
 
 /** Fixed list of seeds for the sweeps; deterministic and spread across the space. */
 export function sweepSeeds(count: number): number[] {
@@ -37,6 +38,83 @@ export function bestOf(runs: number, body: () => void): number {
     best = Math.min(best, performance.now() - t0);
   }
   return best;
+}
+
+/** Twice the signed area of a closed ring; positive when it is wound anticlockwise. */
+export function ringArea(ring: readonly Point[]): number {
+  let sum = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const p = ring[i] as Point;
+    const q = ring[(i + 1) % ring.length] as Point;
+    sum += p.x * q.y - q.x * p.y;
+  }
+  return sum / 2;
+}
+
+/** True when a point stands inside a closed ring, by counting crossings of a ray. */
+export function pointInRing(p: Point, ring: readonly Point[]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i] as Point;
+    const b = ring[j] as Point;
+    if (a.y > p.y === b.y > p.y) continue;
+    if (p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * True when two closed rings share any ground: an edge of one meets an edge of
+ * the other, or one stands wholly inside the other.
+ */
+export function ringsOverlap(a: readonly Point[], b: readonly Point[]): boolean {
+  const boxA = ringBounds(a);
+  const boxB = ringBounds(b);
+  if (boxA.maxX < boxB.minX || boxB.maxX < boxA.minX) return false;
+  if (boxA.maxY < boxB.minY || boxB.maxY < boxA.minY) return false;
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i] as Point;
+    const q = a[(i + 1) % a.length] as Point;
+    for (let j = 0; j < b.length; j++) {
+      if (segmentsMeet(p, q, b[j] as Point, b[(j + 1) % b.length] as Point)) return true;
+    }
+  }
+  return pointInRing(a[0] as Point, b) || pointInRing(b[0] as Point, a);
+}
+
+function ringBounds(ring: readonly Point[]): { minX: number; minY: number; maxX: number; maxY: number } {
+  const box = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+  for (const p of ring) {
+    box.minX = Math.min(box.minX, p.x);
+    box.minY = Math.min(box.minY, p.y);
+    box.maxX = Math.max(box.maxX, p.x);
+    box.maxY = Math.max(box.maxY, p.y);
+  }
+  return box;
+}
+
+/** Which side of the line through two points a third one falls. */
+function side(a: Point, b: Point, c: Point): number {
+  return Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
+}
+
+/** True when a point that stands on the line through a segment stands on the segment itself. */
+function within(a: Point, b: Point, c: Point): boolean {
+  return c.x >= Math.min(a.x, b.x) && c.x <= Math.max(a.x, b.x) && c.y >= Math.min(a.y, b.y) && c.y <= Math.max(a.y, b.y);
+}
+
+function segmentsMeet(a: Point, b: Point, c: Point, d: Point): boolean {
+  const s1 = side(a, b, c);
+  const s2 = side(a, b, d);
+  const s3 = side(c, d, a);
+  const s4 = side(c, d, b);
+  if (s1 * s2 < 0 && s3 * s4 < 0) return true;
+  // One end on the other segment. Two segments on one line are only touching
+  // where an end of one of them stands between the ends of the other.
+  if (s1 === 0 && within(a, b, c)) return true;
+  if (s2 === 0 && within(a, b, d)) return true;
+  if (s3 === 0 && within(c, d, a)) return true;
+  return s4 === 0 && within(c, d, b);
 }
 
 export function stableJson(value: unknown): string {

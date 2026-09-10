@@ -8,10 +8,10 @@ import { LandMasses } from '../src/world/landmass.ts';
 import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
 import { coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
 import { TIERS } from '../src/world/tiers.ts';
-import type { Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
+import type { Corridor, Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
 import { generateWorld } from '../src/world/world.ts';
 import { BUDGET_MS } from './budgets.ts';
-import { stableJson, sweepSeeds } from './helpers.ts';
+import { pointInRing, ringArea, ringsOverlap, stableJson, sweepSeeds } from './helpers.ts';
 
 /** Metres between the samples that ask whether a road segment is over water. */
 const WET_SAMPLE = 5;
@@ -29,6 +29,17 @@ function pointKey(p: Point): string {
  * anything it marks as a structure clears this comfortably.
  */
 const CLEARANCE = 1;
+
+/** Metres along a polyline. */
+function polylineLength(points: readonly Point[]): number {
+  let total = 0;
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i] as Point;
+    const b = points[i + 1] as Point;
+    total += Math.hypot(b.x - a.x, b.y - a.y);
+  }
+  return total;
+}
 
 /** How hard a road segment climbs between its ends: rise over run. */
 function gradeOf(hf: Heightfield, a: Point, b: Point): number {
@@ -73,8 +84,12 @@ function spansCrossing(a: Point, b: Point, from: Point, to: Point): boolean {
   return Math.min(near, flipped) <= BRIDGE_TOLERANCE;
 }
 
-/** Quick tier by default; CI and `npm run test:full` set SWEEP_SEEDS=200 (spec section 3). */
-const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 20);
+/**
+ * Quick tier by default; CI and `npm run test:full` set SWEEP_SEEDS=200 (spec
+ * section 3). The count is what keeps `npm test` inside its 15 s: every seed
+ * generated here carries the whole world, so a seed costs about a second.
+ */
+const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 16);
 /**
  * Seeds the byte-identical check generates a second time. Generating a world is
  * the most expensive thing this file does, so the quick tier repeats only a few.
@@ -609,6 +624,84 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
         }
       }
       expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
+  it('gives every corridor a strip of ground that no other corridor stands on', () => {
+    // Spec sections 1.1 and 6.3: a corridor claims its ground at the moment it
+    // is laid, so two of them cannot share any. The claim makes that true; this
+    // is what confirms it.
+    for (const seed of seeds) {
+      const w = worlds.get(seed) as WorldDescription;
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+      for (let i = 0; i < w.corridors.length; i++) {
+        const corridor = w.corridors[i] as Corridor;
+        const where = `${corridor.kind} corridor ${i}`;
+        if (corridor.id !== i) fault(`${where} is numbered ${corridor.id}`);
+        if (corridor.points.length < 2) fault(`${where} has no centreline`);
+        if (corridor.polygon.length < 4) fault(`${where} has no strip`);
+        if (corridor.roads.length === 0) fault(`${where} runs along no road`);
+        for (const road of corridor.roads) {
+          if (w.roads[road] === undefined) fault(`${where} runs along road ${road}, which does not exist`);
+        }
+        // A ring wound anticlockwise, about as wide as the corridor says it is.
+        const area = ringArea(corridor.polygon);
+        if (area <= 0) fault(`${where} is wound the wrong way`);
+        const length = polylineLength(corridor.points);
+        if (Math.abs(area - 2 * corridor.halfWidth * length) > 0.2 * area) {
+          fault(`${where} claims ${area.toFixed(0)} m², not the ${(2 * corridor.halfWidth * length).toFixed(0)} m² of its strip`);
+        }
+        // Nothing carries a deck from outside the ground under it.
+        for (const foot of corridor.pillars) {
+          if (!pointInRing(foot, corridor.polygon)) fault(`${where} stands a pillar outside its own ground`);
+        }
+        if (corridor.kind === 'tram' && corridor.pillars.length > 0) fault(`${where} stands on pillars`);
+        for (let j = 0; j < i; j++) {
+          const other = w.corridors[j] as Corridor;
+          if (ringsOverlap(corridor.polygon, other.polygon)) fault(`${where} overlaps ${other.kind} corridor ${j}`);
+        }
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
+  it('runs the tram round one loop of arterials, calling at the core and inner districts', () => {
+    // Spec section 13.2: a fixed loop with stops and level crossings. Every
+    // stop is a district of the core or the inner ring, the line only uses
+    // roads that allow trams, and it comes back to where it started.
+    for (const seed of seeds) {
+      const w = worlds.get(seed) as WorldDescription;
+      const tram = w.tram;
+      expect(tram.stops.length, `seed ${seed}: the tram calls nowhere`).toBeGreaterThanOrEqual(3);
+      expect(tram.route.length, `seed ${seed}`).toBeGreaterThan(1);
+      expect(tram.length, `seed ${seed}`).toBeGreaterThan(0);
+
+      const head = tram.route[0] as Point;
+      const tail = tram.route[tram.route.length - 1] as Point;
+      expect(Math.hypot(head.x - tail.x, head.y - tail.y), `seed ${seed}: the loop does not close`).toBeLessThan(1e-6);
+
+      const zones = new Set(['core', 'inner']);
+      for (const stop of tram.stops) {
+        const district = w.districts[stop.district] as (typeof w.districts)[number];
+        expect(zones.has(district.zone), `seed ${seed}: stop ${stop.id} serves the ${district.zone}`).toBe(true);
+      }
+      // No district waits at two stops, and no stop stands on top of another.
+      expect(new Set(tram.stops.map((s) => s.district)).size).toBe(tram.stops.length);
+
+      for (const id of tram.corridors) {
+        const corridor = w.corridors[id] as Corridor;
+        expect(corridor.kind, `seed ${seed}: corridor ${id}`).toBe('tram');
+        for (const road of corridor.roads) {
+          expect(TIERS[(w.roads[road] as RoadCurve).tier].traffic.trams, `seed ${seed}: road ${road}`).toBe(true);
+        }
+      }
+      for (const crossing of tram.crossings) {
+        expect(crossing.roads.length, `seed ${seed}: a level crossing with no road`).toBeGreaterThan(0);
+        for (const road of crossing.roads) expect(w.roads[road], `seed ${seed}`).toBeDefined();
+      }
     }
   });
 
