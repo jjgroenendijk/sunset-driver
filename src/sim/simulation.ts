@@ -1,10 +1,13 @@
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
 import { gameTime, TICKS_PER_HOUR } from './clock.ts';
+import { type CharacterAppearance, DEFAULT_APPEARANCE, normaliseAppearance } from './character.ts';
 
 /** The serialisable, deterministic state of a session. */
 export interface SimState {
   seed: number;
   tick: number;
+  /** The look picked on the title screen; saved and replicated with the player. */
+  character: CharacterAppearance;
   player: {
     x: number;
     y: number;
@@ -16,10 +19,15 @@ export interface SimState {
 /** Tick at which a new session starts: 08:00 on day 0. */
 export const START_TICK = 8 * TICKS_PER_HOUR;
 
-export function createSimState(seed: number, startTick = START_TICK): SimState {
+export function createSimState(
+  seed: number,
+  character: CharacterAppearance = DEFAULT_APPEARANCE,
+  startTick = START_TICK,
+): SimState {
   return {
     seed,
     tick: startTick,
+    character: normaliseAppearance(character),
     player: { x: 0, y: 0, heading: 0, speed: 0 },
   };
 }
