@@ -1,5 +1,5 @@
-import { EMPTY_INPUT, type InputFrame } from './input';
-import { gameTime, TICKS_PER_HOUR } from './clock';
+import { EMPTY_INPUT, type InputFrame } from './input.ts';
+import { gameTime, TICKS_PER_HOUR } from './clock.ts';
 
 /** The serialisable, deterministic state of a session. */
 export interface SimState {

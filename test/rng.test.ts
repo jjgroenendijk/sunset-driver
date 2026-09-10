@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { hashInts, hashString } from '../src/core/hash';
-import { Rng, rngFor, seedFromString, Subsystem } from '../src/core/rng';
+import { hashInts, hashString } from '../src/core/hash.ts';
+import { Rng, rngFor, seedFromString, Subsystem } from '../src/core/rng.ts';
 
 describe('hash', () => {
   it('is stable across runs', () => {

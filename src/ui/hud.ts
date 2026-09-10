@@ -1,5 +1,5 @@
-import { gameTime } from '../sim/clock';
-import type { SimState } from '../sim/simulation';
+import { gameTime } from '../sim/clock.ts';
+import type { SimState } from '../sim/simulation.ts';
 
 /** Minimal DOM overlay: seed and game clock. Grows into the full HUD. */
 export class Hud {

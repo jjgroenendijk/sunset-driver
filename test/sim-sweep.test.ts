@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { FixedStepClock, TICK_MS, TICKS_PER_DAY, gameTime } from '../src/sim/clock';
-import { EMPTY_INPUT, type InputFrame } from '../src/sim/input';
-import { cloneSimState, createSimState, stepSim } from '../src/sim/simulation';
-import { stableJson, sweepSeeds } from './helpers';
+import { FixedStepClock, TICK_MS, TICKS_PER_DAY, gameTime } from '../src/sim/clock.ts';
+import { EMPTY_INPUT, type InputFrame } from '../src/sim/input.ts';
+import { cloneSimState, createSimState, stepSim } from '../src/sim/simulation.ts';
+import { stableJson, sweepSeeds } from './helpers.ts';
 
 /** A deterministic recorded input stream for a seed. */
 function inputStream(seed: number, ticks: number): InputFrame[] {

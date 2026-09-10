@@ -1,4 +1,4 @@
-import { hashInts, hashString } from './hash';
+import { hashInts, hashString } from './hash.ts';
 
 /**
  * Subsystem ids used as the third key of every random stream. Adding a new
