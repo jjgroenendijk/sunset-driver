@@ -41,4 +41,11 @@ export const BUDGET_MS = {
 
   /** `generateWorld` worst case across a whole sweep, where the tail is noisier. */
   worldGenWorst: 3000,
+
+  /**
+   * `buildRoadGraph` over a whole-map road network. Offline work like
+   * {@link BUDGET_MS.worldGen}: traffic, police and navigation build the graph
+   * once and then query it.
+   */
+  roadGraph: 50,
 } as const;

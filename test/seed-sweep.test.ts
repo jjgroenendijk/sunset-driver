@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { hashInts } from '../src/core/hash.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
+import { buildRoadGraph, type RoadEdge, type RoadNode } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
 import { coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
@@ -250,6 +251,64 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       }
       const roots = new Set(w.roads.map((_, i) => find(i)));
       expect(roots.size, `seed ${seed}: ${roots.size} road networks`).toBe(1);
+    }
+  });
+
+  it('builds one road graph that holds the whole curve network', () => {
+    for (const seed of seeds) {
+      const w = worlds.get(seed) as WorldDescription;
+      const graph = buildRoadGraph(w.roads);
+      expect(graph.nodes.length, `seed ${seed}`).toBeGreaterThan(0);
+
+      // Every curve is on the graph, and every node has a road leaving it.
+      const covered = new Uint8Array(w.roads.length);
+      for (const edge of graph.edges) covered[edge.curve] = 1;
+      for (const road of w.roads) expect(covered[road.id], `seed ${seed}: curve ${road.id} has no edge`).toBe(1);
+      for (const node of graph.nodes) expect(graph.degree(node.id), `seed ${seed}: node ${node.id}`).toBeGreaterThan(0);
+
+      // The curves are one network, so the graph is one component too.
+      const seen = new Uint8Array(graph.nodes.length);
+      const queue = [0];
+      seen[0] = 1;
+      for (let i = 0; i < queue.length; i++) {
+        for (const e of graph.edgesFrom(queue[i] as number)) {
+          const to = (graph.edges[e] as RoadEdge).to;
+          if (seen[to] === 1) continue;
+          seen[to] = 1;
+          queue.push(to);
+        }
+      }
+      expect(queue.length, `seed ${seed}: the graph is not one network`).toBe(graph.nodes.length);
+
+      // Pathfinding crosses that network: the core to the node furthest from it.
+      const start = graph.nearestNode(w.core.x, w.core.y) as number;
+      let far = 0;
+      let farD = -1;
+      for (const node of graph.nodes) {
+        const d = Math.hypot(node.x - w.core.x, node.y - w.core.y);
+        if (d <= farD) continue;
+        farD = d;
+        far = node.id;
+      }
+      const route = graph.shortestPath(start, far);
+      expect(route, `seed ${seed}: no route from the core to node ${far}`).toBeDefined();
+      const taken = route as NonNullable<typeof route>;
+      expect(taken.nodes[0]).toBe(start);
+      expect(taken.nodes[taken.nodes.length - 1]).toBe(far);
+      // A drive is never shorter than the straight line it covers.
+      const head = graph.nodes[start] as RoadNode;
+      const tail = graph.nodes[far] as RoadNode;
+      expect(taken.length, `seed ${seed}`).toBeGreaterThanOrEqual(Math.hypot(head.x - tail.x, head.y - tail.y) - 1e-6);
+      for (let i = 0; i < taken.edges.length; i++) {
+        const edge = graph.edges[taken.edges[i] as number] as RoadEdge;
+        expect(edge.from, `seed ${seed}: route breaks at edge ${edge.id}`).toBe(taken.nodes[i]);
+        expect(edge.to).toBe(taken.nodes[i + 1]);
+      }
+
+      // The nearest point of the network to a node is that node's own ground.
+      const probe = graph.nodes[graph.nodes.length >> 1] as RoadNode;
+      const hit = graph.nearestEdge(probe.x, probe.y);
+      expect(hit?.distance, `seed ${seed}`).toBeLessThan(1);
     }
   });
 
