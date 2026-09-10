@@ -8,7 +8,8 @@ import type { WorldDescription } from '../src/world/types.ts';
 import { generateWorld } from '../src/world/world.ts';
 import { stableJson, sweepSeeds } from './helpers.ts';
 
-const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 200);
+/** Quick tier by default; CI and `npm run test:full` set SWEEP_SEEDS=200 (spec §3). */
+const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 20);
 
 function heightsHash(h: Float32Array): number {
   let acc = 0;
