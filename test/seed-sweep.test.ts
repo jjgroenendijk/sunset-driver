@@ -4,7 +4,7 @@ import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
 import { coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
-import type { Point, WorldDescription } from '../src/world/types.ts';
+import type { Point, RoadCurve, WorldDescription } from '../src/world/types.ts';
 import { generateWorld } from '../src/world/world.ts';
 import { BUDGET_MS } from './budgets.ts';
 import { stableJson, sweepSeeds } from './helpers.ts';
@@ -172,7 +172,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i] as number)));
       const owner = new Map<string, number>();
       for (let i = 0; i < w.roads.length; i++) {
-        const road = w.roads[i] as WorldDescription['roads'][number];
+        const road = w.roads[i] as RoadCurve;
         expect(road.id).toBe(i);
         expect(road.points.length).toBeGreaterThanOrEqual(2);
         for (const at of road.bridges) expect(at).toBeLessThan(road.points.length - 1);
