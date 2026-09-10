@@ -391,6 +391,53 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     }
   });
 
+  it('junctions a highway only at an interchange, and never with a minor road', () => {
+    // Spec section 6.2: a highway has junctions only at interchanges and no
+    // pedestrians on it. So a street, an alley or a dirt road never shares a
+    // point with one — where they cross, the graph makes it an overpass — and a
+    // highway or an arterial ramp meets one only at a point it lists.
+    for (const seed of seeds) {
+      const w = worlds.get(seed) as WorldDescription;
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+      // Every curve that owns each point, with the index the point sits at.
+      const met = new Map<string, { road: RoadCurve; at: number }[]>();
+      for (const road of w.roads) {
+        for (let i = 0; i < road.points.length; i++) {
+          const key = pointKey(road.points[i] as Point);
+          const here = met.get(key);
+          if (here === undefined) met.set(key, [{ road, at: i }]);
+          else here.push({ road, at: i });
+        }
+      }
+      for (const road of w.roads) {
+        if (road.tier !== 'highway') {
+          if (road.interchanges.length > 0) fault(`${road.tier} ${road.id} lists interchanges`);
+          continue;
+        }
+        if (road.interchanges.length === 0) fault(`highway ${road.id} has no interchange`);
+        for (let k = 1; k < road.interchanges.length; k++) {
+          if ((road.interchanges[k] as number) <= (road.interchanges[k - 1] as number)) fault(`highway ${road.id} lists its interchanges out of order`);
+        }
+        for (const at of road.interchanges) {
+          if (at < 0 || at >= road.points.length) fault(`highway ${road.id} puts an interchange past its end at ${at}`);
+        }
+        for (let i = 0; i < road.points.length; i++) {
+          const here = met.get(pointKey(road.points[i] as Point)) ?? [];
+          for (const other of here) {
+            if (other.road.id === road.id) continue;
+            const where = `highway ${road.id} meets ${other.road.tier} ${other.road.id} at point ${i}`;
+            if (other.road.tier !== 'highway' && other.road.tier !== 'arterial') fault(where);
+            else if (!road.interchanges.includes(i)) fault(`${where}, away from any interchange`);
+          }
+        }
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
   it('cuts each zone into blocks of about the size it asks for', () => {
     // Half the width of a block, near enough: the median distance from the
     // ground of a zone to the nearest road. Blocks tighten toward downtown
