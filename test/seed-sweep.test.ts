@@ -4,7 +4,7 @@ import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
 import { coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
-import type { Point, RoadCurve, WorldDescription } from '../src/world/types.ts';
+import type { Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
 import { generateWorld } from '../src/world/world.ts';
 import { BUDGET_MS } from './budgets.ts';
 import { stableJson, sweepSeeds } from './helpers.ts';
@@ -39,6 +39,65 @@ function spansCrossing(a: Point, b: Point, from: Point, to: Point): boolean {
 
 /** Quick tier by default; CI and `npm run test:full` set SWEEP_SEEDS=200 (spec section 3). */
 const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 20);
+/**
+ * Seeds the byte-identical check generates a second time. Generating a world is
+ * the most expensive thing this file does, so the quick tier repeats only a few.
+ */
+const REPEAT_COUNT = SEED_COUNT > 20 ? 20 : 6;
+
+/**
+ * Every road point in buckets, so "how far is this ground from a road?" costs a
+ * few comparisons. `cell` is the bucket side in metres.
+ */
+class PointGrid {
+  private readonly cell: number;
+  private readonly n: number;
+  private readonly half: number;
+  private readonly buckets = new Map<number, { p: Point; curve: number }[]>();
+
+  constructor(size: number, cell: number, roads: readonly RoadCurve[]) {
+    this.cell = cell;
+    this.half = size / 2;
+    this.n = Math.ceil(size / cell) + 4;
+    for (const road of roads) {
+      for (const p of road.points) {
+        const key = this.column(p.y) * this.n + this.column(p.x);
+        const bucket = this.buckets.get(key);
+        if (bucket === undefined) this.buckets.set(key, [{ p, curve: road.id }]);
+        else bucket.push({ p, curve: road.id });
+      }
+    }
+  }
+
+  private column(v: number): number {
+    return Math.max(0, Math.min(this.n - 1, Math.floor((v + this.half) / this.cell) + 1));
+  }
+
+  /** Metres to the nearest road point, ignoring one curve. Infinity when there is none. */
+  nearest(x: number, y: number, except = -1): number {
+    const cx = this.column(x);
+    const cy = this.column(y);
+    for (let ring = 1; ring <= this.n; ring++) {
+      let best = Infinity;
+      for (let iy = Math.max(0, cy - ring); iy <= Math.min(this.n - 1, cy + ring); iy++) {
+        for (let ix = Math.max(0, cx - ring); ix <= Math.min(this.n - 1, cx + ring); ix++) {
+          for (const e of this.buckets.get(iy * this.n + ix) ?? []) {
+            if (e.curve === except) continue;
+            best = Math.min(best, Math.hypot(e.p.x - x, e.p.y - y));
+          }
+        }
+      }
+      // Only trust the answer once the rings searched cover it.
+      if (best < (ring - 1) * this.cell) return best;
+    }
+    return Infinity;
+  }
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[sorted.length >> 1] as number;
+}
 
 function heightsHash(h: Float32Array): number {
   let acc = 0;
@@ -70,7 +129,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
   });
 
   it('is byte-identical across runs', () => {
-    for (const seed of seeds.slice(0, 20)) {
+    for (const seed of seeds.slice(0, REPEAT_COUNT)) {
       const a = worlds.get(seed) as WorldDescription;
       const b = generateWorld(seed);
       expect(heightsHash(b.terrain.heights)).toBe(heightsHash(a.terrain.heights));
@@ -160,11 +219,17 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     }
   });
 
-  it('joins every major road into one network', () => {
+  it('joins every road of every tier into one network', () => {
+    // Dirt roads are not in this list: on the smallest maps the outskirts ring
+    // falls almost entirely in the water, and there is no wilderness to thread.
+    // Where that ground does exist, the block sizes below ask for dirt roads.
+    const tiers: RoadTier[] = ['highway', 'arterial', 'street', 'alley'];
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       expect(w.roads.length, `seed ${seed}`).toBeGreaterThan(0);
-      expect(w.roads.some((r) => r.tier === 'highway'), `seed ${seed} has no highway`).toBe(true);
+      for (const tier of tiers) {
+        expect(w.roads.some((r) => r.tier === tier), `seed ${seed} has no ${tier}`).toBe(true);
+      }
 
       // Curves that share a point are one road network. Every curve is traced
       // from a road already laid or into one, so there is only ever one.
@@ -185,6 +250,77 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       }
       const roots = new Set(w.roads.map((_, i) => find(i)));
       expect(roots.size, `seed ${seed}: ${roots.size} road networks`).toBe(1);
+    }
+  });
+
+  it('cuts each zone into blocks of about the size it asks for', () => {
+    // Half the width of a block, near enough: the median distance from the
+    // ground of a zone to the nearest road. Blocks tighten toward downtown
+    // because the fill spaces its roads by the density of the district. The
+    // wilderness range is wide because an island no district stands on is
+    // reached by no bridge, so its ground is far from every road.
+    const RANGE: Record<Zone, [number, number]> = {
+      core: [3, 20],
+      inner: [5, 20],
+      industrial: [7, 40],
+      suburban: [10, 32],
+      outskirts: [14, 120],
+      wilderness: [35, 800],
+    };
+    for (const seed of seeds) {
+      const w = worlds.get(seed) as WorldDescription;
+      const hf = new Heightfield(w.terrain);
+      const zones = layoutZones(w.size, w.core, w.water);
+      const grid = new PointGrid(w.size, 40, w.roads);
+      const samples: Partial<Record<Zone, number[]>> = {};
+      for (let iy = 0; iy < hf.gridSize; iy += 8) {
+        for (let ix = 0; ix < hf.gridSize; ix += 8) {
+          const x = hf.worldX(ix);
+          const y = hf.worldY(iy);
+          // Dry ground only, and not the strip along the edge that roads keep off.
+          if (hf.at(ix, iy) < w.water.seaLevel + 1) continue;
+          if (Math.abs(x) > w.size / 2 - 120 || Math.abs(y) > w.size / 2 - 120) continue;
+          const zone = zoneAt(zones, x, y);
+          (samples[zone] ??= []).push(grid.nearest(x, y));
+        }
+      }
+      for (const zone of Object.keys(RANGE) as Zone[]) {
+        const found = samples[zone] ?? [];
+        // A zone can be a sliver on one seed; too few samples say nothing.
+        if (found.length < 20) continue;
+        const [lo, hi] = RANGE[zone];
+        const half = median(found);
+        expect(half, `seed ${seed}: ${zone} blocks`).toBeGreaterThanOrEqual(lo);
+        expect(half, `seed ${seed}: ${zone} blocks`).toBeLessThanOrEqual(hi);
+      }
+    }
+  });
+
+  it('caps the dead ends of streets, alleys and dirt roads', () => {
+    // A minor road that met no other road on one side is trimmed to a
+    // cul-de-sac, so a free end always stands near the network it hangs off:
+    // within the trim, plus the spacing its seed stood off its parent. The caps
+    // are in metres, and the loosest spacing of the tier's zones sets them.
+    const CAP: Partial<Record<RoadTier, number>> = { street: 200, alley: 120, dirt: 750 };
+    for (const seed of seeds) {
+      const w = worlds.get(seed) as WorldDescription;
+      const grid = new PointGrid(w.size, 100, w.roads);
+      const shared = new Map<string, number>();
+      for (const road of w.roads) {
+        for (const p of road.points) {
+          const key = pointKey(p);
+          shared.set(key, (shared.get(key) ?? 0) + 1);
+        }
+      }
+      for (const road of w.roads) {
+        const cap = CAP[road.tier];
+        if (cap === undefined) continue;
+        for (const end of [road.points[0] as Point, road.points[road.points.length - 1] as Point]) {
+          if ((shared.get(pointKey(end)) ?? 0) > 1) continue;
+          const away = grid.nearest(end.x, end.y, road.id);
+          expect(away, `seed ${seed}: ${road.tier} ${road.id} dead-ends ${away.toFixed(0)} m from any road`).toBeLessThanOrEqual(cap);
+        }
+      }
     }
   });
 
