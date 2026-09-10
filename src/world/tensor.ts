@@ -22,7 +22,7 @@ import { Noise2D } from '../core/noise.ts';
 import { genRng, Subsystem } from '../core/rng.ts';
 import { Heightfield } from './heightfield.ts';
 import { segmentDistance } from './terrain.ts';
-import type { Point, WorldDescription, Zone } from './types.ts';
+import type { Point, WorldSkeleton, Zone } from './types.ts';
 
 const HALF_PI = Math.PI / 2;
 
@@ -114,7 +114,7 @@ export class TensorField {
   /** Scratch for {@link sample} and {@link majorAt}: (a, b, total weight). Reused, never escapes. */
   private readonly acc = new Float64Array(3);
 
-  constructor(world: WorldDescription) {
+  constructor(world: WorldSkeleton) {
     const size = world.size;
     this.core = world.core;
     this.hf = new Heightfield(world.terrain);
@@ -297,7 +297,7 @@ export class TensorField {
 }
 
 /** Build the tensor field of a world. Pure: same world, same field. */
-export function buildTensorField(world: WorldDescription): TensorField {
+export function buildTensorField(world: WorldSkeleton): TensorField {
   return new TensorField(world);
 }
 
