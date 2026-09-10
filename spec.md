@@ -1,22 +1,18 @@
-# Sunset Driver — Rebuild Specification
+# Sunset Driver — Specification
 
-Sunset Driver is a top-down open-world crime game for the browser: WebGPU, Rapier, Tone.js, no assets, no server. This document is the single source of truth for rebuilding it from scratch. The existing `src/` tree is discarded. `README.md`, `prompt.md`, `todo.md` and `AGENTS.md` are historical and not authoritative.
+Sunset Driver is a top-down open-world crime game for the browser: WebGPU, Rapier, Tone.js, no assets, no server. This document is the single source of truth for building it.
 
 Sections are ordered by implementation: build from the top down. Each section stands on the ones above it.
 
 ---
 
-## 1. Purpose, provenance and vetoes
+## 1. Principles and vetoes
 
-### 1.1 Why a rebuild
+### 1.1 Layout is claimed once
 
-The previous implementation was buggy and fell short of what was asked. Its worst defect — streets, parks and car parks overlapping one another — was reported six times in four days and never fixed. The [parcel model](#6-road-network-and-parcels) makes that class of bug impossible to express, and the [verification gates](#3-verification-gates) fail the build if it ever appears.
+Streets, parks, car parks and buildings must never overlap. Rather than detecting and repairing collisions, the [parcel model](#6-road-network-and-parcels) allocates every piece of ground to exactly one owner, so overlap cannot be expressed, and the [verification gates](#3-verification-gates) fail the build if it ever appears.
 
-### 1.2 Provenance
-
-The earlier specification mixed the owner's requirements with a large amount of AI-invented content. This version was rebuilt from the owner's own inputs (37 sessions, 2026-09-06 to 2026-09-10) and confirmed feature by feature on 2026-09-10. Everything here was either requested by the owner or proposed and explicitly accepted.
-
-### 1.3 Hard vetoes
+### 1.2 Hard vetoes
 
 Do not implement these, and do not propose them again.
 
@@ -89,7 +85,7 @@ Set up before the first line of world generation, so every feature lands under t
   - an ambient actor evaluated on demand at tick N matches the same actor simulated continuously to tick N.
 - Frame-time regression check against the 60 fps integrated-graphics target.
 
-Any failure fails the build. This gate is never weakened, skipped or made optional.
+Any failure fails the build. The gate is never weakened, skipped or made optional.
 
 ---
 
@@ -275,7 +271,7 @@ Stylised, lit, hard outlines. Tone: gritty crime drama with a satirical edge.
 - `SidewalkGenerator` supplies rounded curbs and pavement slabs.
 - Selection is driven by the parcel's district, zone, wealth and size. A suburban parcel never receives a tower.
 - A handful of shop types are enterable; every other building is exterior only, with lit windows and moving silhouettes. No generated interiors beyond shops and safehouses. Inside, a `ClippingGroup` clips away the roof and front wall so the top-down camera can see in.
-- three.js also ships `CityGenerator`, which composes the above on a rigid rectangular grid with no road graph — exactly the layout this rebuild rejects. Use its building generators; do not use its layout.
+- three.js also ships `CityGenerator`, which composes the above on a rigid rectangular grid with no road graph — a layout this game does not want. Use its building generators; do not use its layout.
 
 ### 10.4 Vegetation
 
@@ -661,7 +657,7 @@ Maximise coverage, subject to the veto that no feature exists purely to justify 
 
 ## Appendix A — WebGPU notes
 
-Informational. Recorded so the rebuild does not spend a day rediscovering them.
+Informational: platform constraints that shape the implementation.
 
 - `ShaderMaterial`, `onBeforeCompile()` and `EffectComposer` do not work on `WebGPURenderer`. Custom shading uses TSL node materials; post-processing uses the `PostProcessing` class. The city and terrain generators are themselves written against `three/webgpu` and `three/tsl`.
 - Chained TSL math can fail `tsc` even when it runs. Route TSL helpers through one loosely typed wrapper module to keep the typecheck gate green without weakening typing elsewhere.
