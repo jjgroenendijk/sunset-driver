@@ -4,18 +4,17 @@ import { compareNumbers } from '../src/core/sort.ts';
 import { pointInRegions, regionArea, type Region } from '../src/core/geom.ts';
 import { CHUNK_GRID, CHUNK_SIZE, chunkBounds, chunkOf, ChunkSource } from '../src/world/chunk.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
-import { buildFootprint, type RoadFootprint } from '../src/world/footprint.ts';
+import type { RoadFootprint } from '../src/world/footprint.ts';
 import { buildRoadGraph, type GradeCrossing, type RoadEdge, type RoadGraph, type RoadNode } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
-import { buildParcels, type Parcel, type ParcelMap, type ParcelOwner } from '../src/world/parcels.ts';
+import type { Parcel, ParcelMap, ParcelOwner } from '../src/world/parcels.ts';
 import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
-import { buildTensorField } from '../src/world/tensor.ts';
 import { coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import type { Corridor, Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
 import { landPoints, pointInRing, ringArea, ringsOverlap, stableJson, sweepSeeds } from './helpers.ts';
-import { worldsFor } from './world-pool.ts';
+import { buildWorlds, type PooledWorld, type WorldJob } from './world-pool.ts';
 
 /** Metres between the samples that ask whether a road segment is over water. */
 const WET_SAMPLE = 5;
@@ -93,16 +92,16 @@ function spansCrossing(a: Point, b: Point, from: Point, to: Point): boolean {
  * section 3). The quick tier takes the seeds that fit in its 15 s, and the
  * full tier is the coverage.
  */
-const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 12);
+const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 8);
 /**
  * Seeds the byte-identical check generates a second time. Generating a world is
  * the most expensive thing this file does, so the quick tier repeats only a few.
  */
-const REPEAT_COUNT = SEED_COUNT > 20 ? 20 : 4;
+const REPEAT_COUNT = SEED_COUNT > 20 ? 20 : 3;
 /**
- * Seeds the road footprint is laid for. Laying one unions the polygons of a
- * whole network, and unlike the world itself it is laid on this thread rather
- * than in the pool, so both tiers lay a few rather than all of them.
+ * Seeds the road footprint is laid and the parcels are cut for. Laying one
+ * unions the polygons of a whole network, so both tiers do a few seeds rather
+ * than all of them. The pool does that work, next to the world it belongs to.
  */
 const FOOTPRINT_COUNT = SEED_COUNT > 20 ? 16 : 4;
 /**
@@ -152,8 +151,8 @@ for (const far of [{ cx: 5, cy: 0 }, { cx: 0, cy: -5 }, { cx: -5, cy: 4 }, { cx:
 const SLICE_PROBES = 4;
 /**
  * Seeds whose chunks are cut a second time from a second generation of the same
- * world. That second world needs its own footprint and its own parcels, which
- * are the two dearest things the sweep builds, so the quick tier repeats one.
+ * world. That second world needs its own footprint and its own parcels, so the
+ * pool cuts them for these seeds as well; the quick tier repeats one.
  */
 const CHUNK_REPEAT_COUNT = SEED_COUNT > 20 ? 4 : 1;
 
@@ -285,26 +284,22 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
   const worlds = new Map<number, WorldDescription>();
   /** The second generation of the repeated seeds, for the byte-identical check. */
   const repeats = new Map<number, WorldDescription>();
-  /** The footprint of a seed, laid once however many tests ask about it. */
+  /** The footprint of a seed, laid by the pool for the first FOOTPRINT_COUNT seeds. */
   const footprints = new Map<number, RoadFootprint>();
   const footprintOf = (seed: number): RoadFootprint => {
     const known = footprints.get(seed);
-    if (known !== undefined) return known;
-    const world = worlds.get(seed) as WorldDescription;
-    const built = buildFootprint(world.roads, world.corridors, graphOf(seed));
-    footprints.set(seed, built);
-    return built;
+    if (known === undefined) throw new Error(`no footprint for seed ${seed}: the pool lays the first ${FOOTPRINT_COUNT}`);
+    return known;
   };
-  /** The parcels of a seed, cut once however many tests ask about them. */
+  /** The parcels of a seed, cut by the pool for the same seeds. */
   const parcelMaps = new Map<number, ParcelMap>();
   const parcelsOf = (seed: number): ParcelMap => {
     const known = parcelMaps.get(seed);
-    if (known !== undefined) return known;
-    const world = worlds.get(seed) as WorldDescription;
-    const built = buildParcels(world, footprintOf(seed), graphOf(seed), buildTensorField(world));
-    parcelMaps.set(seed, built);
-    return built;
+    if (known === undefined) throw new Error(`no parcels for seed ${seed}: the pool cuts the first ${FOOTPRINT_COUNT}`);
+    return known;
   };
+  /** The parcels of the second generation of a seed, cut by the pool likewise. */
+  const repeatParcels = new Map<number, ParcelMap>();
   /** The whole-map skeleton of a seed indexed by chunk, over the parcels already cut. */
   const sourceOf = (seed: number): ChunkSource =>
     new ChunkSource(worlds.get(seed) as WorldDescription, parcelsOf(seed).parcels);
@@ -319,16 +314,41 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
   };
 
   beforeAll(async () => {
-    // Every seed once, then the repeated seeds a second time: the pool runs the
-    // two rounds back to back so the byte-identical check costs no extra wait.
-    // What a seed costs is measured in `budget.test.ts`, on a quiet machine.
+    // Every seed once, and the repeated seeds a second time: the pool runs the
+    // two rounds together so the byte-identical checks cost no extra wait. The
+    // jobs that ask for parts are three times the work of a plain world, so all
+    // of them are handed out first, whichever round they belong to: a worker
+    // that starts one late holds up the rest. What a seed costs is measured in
+    // `budget.test.ts`, on a quiet machine.
     const repeated = seeds.slice(0, REPEAT_COUNT);
-    const generated = await worldsFor([...seeds, ...repeated]);
+    const jobs: WorldJob[] = [];
+    /** Where in the pool's answers each seed's world landed, by round. */
+    const firstAt: number[] = [];
+    const againAt: number[] = [];
+    const ask = (seed: number, parts: boolean): number => {
+      jobs.push({ seed, parts });
+      return jobs.length - 1;
+    };
+    for (let i = 0; i < FOOTPRINT_COUNT; i++) firstAt[i] = ask(seeds[i] as number, true);
+    for (let i = 0; i < CHUNK_REPEAT_COUNT; i++) againAt[i] = ask(repeated[i] as number, true);
+    for (let i = FOOTPRINT_COUNT; i < seeds.length; i++) firstAt[i] = ask(seeds[i] as number, false);
+    for (let i = CHUNK_REPEAT_COUNT; i < repeated.length; i++) againAt[i] = ask(repeated[i] as number, false);
+
+    const generated = await buildWorlds(jobs);
     for (let i = 0; i < seeds.length; i++) {
-      worlds.set(seeds[i] as number, generated[i] as WorldDescription);
+      const seed = seeds[i] as number;
+      const built = generated[firstAt[i] as number] as PooledWorld;
+      worlds.set(seed, built.world);
+      if (built.parts !== undefined) {
+        footprints.set(seed, built.parts.footprint);
+        parcelMaps.set(seed, built.parts.parcels);
+      }
     }
     for (let i = 0; i < repeated.length; i++) {
-      repeats.set(repeated[i] as number, generated[seeds.length + i] as WorldDescription);
+      const seed = repeated[i] as number;
+      const built = generated[againAt[i] as number] as PooledWorld;
+      repeats.set(seed, built.world);
+      if (built.parts !== undefined) repeatParcels.set(seed, built.parts.parcels);
     }
   });
 
@@ -1120,14 +1140,11 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
 
   it('cuts identical chunks from two generations of the same seed', () => {
     // The world is byte-identical across runs (see the first test), and so is
-    // everything cut from it: the second generation's own footprint, parcels and
-    // chunks match the first to the byte.
+    // everything cut from it: the second generation gets its own footprint and
+    // its own parcels from the pool, and its chunks match the first to the byte.
     for (const seed of seeds.slice(0, CHUNK_REPEAT_COUNT)) {
       const again = repeats.get(seed) as WorldDescription;
-      const graph = buildRoadGraph(again.roads);
-      const footprint = buildFootprint(again.roads, again.corridors, graph);
-      const parcels = buildParcels(again, footprint, graph, buildTensorField(again)).parcels;
-      const source = new ChunkSource(again, parcels);
+      const source = new ChunkSource(again, (repeatParcels.get(seed) as ParcelMap).parcels);
       const first = sourceOf(seed);
       for (const at of CHUNK_BLOCK) {
         expect(stableJson(source.chunk(at.cx, at.cy)), `seed ${seed}: chunk ${at.cx},${at.cy} of the second run`).toBe(

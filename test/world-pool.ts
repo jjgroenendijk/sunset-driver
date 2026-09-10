@@ -8,9 +8,30 @@
  */
 import { availableParallelism } from 'node:os';
 import { Worker } from 'node:worker_threads';
+import type { RoadFootprint } from '../src/world/footprint.ts';
+import type { ParcelMap } from '../src/world/parcels.ts';
 import type { WorldDescription } from '../src/world/types.ts';
 
 const WORKER_URL = new URL('./world-worker.ts', import.meta.url);
+
+/** What a job asks the pool for. */
+export interface WorldJob {
+  seed: number;
+  /**
+   * Lay the footprint and cut the parcels of the world in the worker as well.
+   * They are the dearest things built on a world, so a test that reads them
+   * asks for them here rather than building them on the test thread.
+   */
+  parts?: boolean;
+}
+
+/** A world the pool built, with whatever its job asked for on top of it. */
+export interface PooledWorld {
+  world: WorldDescription;
+  /** Present when the job set `parts`. The road graph is not here: it carries
+   * methods, so it cannot cross a thread boundary, and it is cheap to rebuild. */
+  parts?: { footprint: RoadFootprint; parcels: ParcelMap };
+}
 
 /**
  * Generate one world per seed, several at a time. The result lines up with
@@ -18,11 +39,21 @@ const WORKER_URL = new URL('./world-worker.ts', import.meta.url);
  * here would be timing a busy machine: `test/budget.test.ts` owns that.
  */
 export async function worldsFor(seeds: readonly number[]): Promise<WorldDescription[]> {
-  const out: WorldDescription[] = new Array(seeds.length) as WorldDescription[];
-  if (seeds.length === 0) return out;
+  const built = await buildWorlds(seeds.map((seed) => ({ seed })));
+  return built.map((entry) => entry.world);
+}
+
+/**
+ * Run one job per element, several at a time. The result lines up with `jobs`.
+ * Jobs are handed out in order, so put the ones that ask for parts first: the
+ * pool then starts its longest work first and no worker tails the rest.
+ */
+export async function buildWorlds(jobs: readonly WorldJob[]): Promise<PooledWorld[]> {
+  const out: PooledWorld[] = new Array(jobs.length) as PooledWorld[];
+  if (jobs.length === 0) return out;
 
   // One worker per core, and never more workers than there is work for them.
-  const size = Math.max(1, Math.min(availableParallelism(), seeds.length));
+  const size = Math.max(1, Math.min(availableParallelism(), jobs.length));
   const workers: Worker[] = [];
   let next = 0;
   let done = 0;
@@ -33,8 +64,9 @@ export async function worldsFor(seeds: readonly number[]): Promise<WorldDescript
         reject(error instanceof Error ? error : new Error(String(error)));
       };
       const feed = (worker: Worker): void => {
-        if (next < seeds.length) {
-          worker.postMessage({ index: next, seed: seeds[next] as number });
+        if (next < jobs.length) {
+          const job = jobs[next] as WorldJob;
+          worker.postMessage({ index: next, seed: job.seed, parts: job.parts === true });
           next++;
         }
       };
@@ -43,10 +75,10 @@ export async function worldsFor(seeds: readonly number[]): Promise<WorldDescript
         const worker = new Worker(WORKER_URL);
         workers.push(worker);
         worker.on('error', fail);
-        worker.on('message', (result: { index: number; world: WorldDescription }) => {
-          out[result.index] = result.world;
+        worker.on('message', (result: PooledWorld & { index: number }) => {
+          out[result.index] = { world: result.world, parts: result.parts };
           done++;
-          if (done === seeds.length) resolve();
+          if (done === jobs.length) resolve();
           else feed(worker);
         });
         feed(worker);

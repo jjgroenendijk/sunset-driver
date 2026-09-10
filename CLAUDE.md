@@ -31,7 +31,7 @@ Beyond what the file names suggest:
 
 The same applies to test timing: `npm test` must stay under 15 s and `npm run test:full` under 2 min. Cut seeds or ticks in the quick tier and keep full coverage behind `SWEEP_SEEDS` — never make a test slower to make it pass.
 
-A wall-clock measurement only belongs in `test/budget.test.ts`. Vitest runs that file as its own project, on its own, because the sweeps fill every core; a timing assertion in any other file measures a busy machine and fails at random. Sweeps get their worlds from `generateWorlds` in `test/world-pool.ts`, which generates them in worker threads, so no sweep calls `generateWorld` itself. `test/world-worker.ts` runs under plain Node, not Vite, so it may import only what `src/world` imports.
+A wall-clock measurement only belongs in `test/budget.test.ts`. Vitest runs that file as its own project, on its own, because the sweeps fill every core; a timing assertion in any other file measures a busy machine and fails at random. Sweeps get their worlds from `worldsFor` in `test/world-pool.ts`, which generates them in worker threads, so no sweep calls `generateWorld` itself. `buildWorlds` takes a job per seed, and a job that sets `parts` lays the footprint and cuts the parcels in the worker as well: they are the dearest things built on a world, and building them on the test thread is what pushed the quick tier over its budget. The road graph stays on the test thread, because it carries methods and cannot cross a thread boundary. `test/world-worker.ts` runs under plain Node, not Vite, so it may import only what `src/world` imports.
 
 ## World generation gotchas
 
@@ -54,7 +54,7 @@ A wall-clock measurement only belongs in `test/budget.test.ts`. Vitest runs that
 - `generateChunk(seed, cx, cy)` (`chunk.ts`) cuts one chunk out of the whole-map skeleton (spec section 9.1). A road is cut into runs by which chunk each segment's midpoint stands in; a parcel belongs whole to the chunk its centre stands in, because cutting one would give a piece of ground two owners. Every segment and every parcel is therefore in exactly one chunk.
 - `ChunkSource` is the map indexed by chunk, and `generateChunk` keeps the source of the seed it was last asked about. Asking about two seeds in turn regenerates a whole world on every call; a caller that already holds the parcels builds the source itself.
 - Look at the image before judging a layout change: `node scripts/world-preview.ts <seed> out.png`. It draws one colour per tier — highways black, arterials red, streets blue, alleys green, dirt roads tan — with bridge decks orange, bores through the ground cyan and the interchanges of the highways lime, and strokes the field's major direction, dark where the field is decided and pale where influences cancel. Corridors are outlined too: the ground under a deck in amber with its pillars as dark dots, the tram's lane and route in magenta, its stops pink and its level crossings white. The footprint of the roads is filled in dark grey under all of it, and each parcel in the colour of its owner.
-- `test/seed-sweep.test.ts` runs 16 seeds, or 200 under `SWEEP_SEEDS=200`. The quick count is what holds `npm test` under its 15 s, since a seed generates a whole world.
+- `test/seed-sweep.test.ts` runs 8 seeds, or 200 under `SWEEP_SEEDS=200`. The quick count is what holds `npm test` under its 15 s, since a seed generates a whole world.
 
 ## Player and interface
 
