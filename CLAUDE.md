@@ -25,7 +25,7 @@ Development happens mainly in the Claude Code cloud environment, by Opus agents 
 - **Keep tests focused.** One sweep per subsystem, asserting properties, not snapshots of large structures. Budget checks (generation time, step time) are tests too.
 - **Surgical edits.** Change only the lines that need changing with Edit; never rewrite a whole file to change a few lines. Read the part of a file you need, not the whole thing. This is what keeps token use per issue small.
 - **Hooks do the repetitive work.** `.claude/settings.json` wires Claude Code hooks to `scripts/hooks/`:
-  - `SessionStart` → `session-start.sh`: checks the node version against `.nvmrc` and runs `npm ci` when `node_modules` is missing or older than the lockfile.
+  - `SessionStart` → `session-start.sh`: checks the node version against `.nvmrc`, pins the repository-local git identity, and runs `npm ci` when `node_modules` is missing or older than the lockfile.
   - `PostToolUse` on Edit/Write of a `.ts` file → `post-edit.sh`: typecheck, plus the determinism lint for `src/core`, `src/sim`, `src/world`. Failures are fed back immediately.
   - `PreToolUse` on Bash → `guard-bash.sh`: blocks local `wrangler` deploys.
   Anything else that gets repeated across sessions (setup, checks, previews) belongs in a hook or a `scripts/` entry, not in prose instructions.
@@ -75,7 +75,7 @@ Render (9 ms), streaming (2 ms) and the 1 ms of headroom have no measurable occu
 ## Conventions
 
 - Relative imports carry explicit `.ts` extensions so scripts and tests run under plain Node; `allowImportingTsExtensions` is on.
-- Conventional Commits, one atomic change per commit. No AI attribution lines in commits or PRs.
+- Conventional Commits, one atomic change per commit. No AI attribution lines in commits or PRs: `.claude/settings.json` sets `includeCoAuthoredBy: false` and empties `attribution.commit`, `attribution.pr` and `attribution.sessionUrl`, so no co-author trailer, generated-by line or session link is appended. Commit identity is yours, not the repository's: set `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL` in your own environment (the environment config at claude.ai/code for cloud sessions, your shell locally) and the `SessionStart` hook copies them into the repository-local git config, ahead of the identity a cloud container ships with; without them it warns instead of guessing. The hook also turns off commit signing unless the repository has its own key.
 - Feature branches from `main`, merged through a PR once `build-and-deploy` is green. Work is tracked as GitHub issues, one PR per issue; reference the issue in the PR. Issues are numbered in spec order; each names what it builds on. Pick the lowest open issue whose prerequisites are closed, and keep the change to that issue's scope.
 - Keep this file current when adding directories, scripts or enforced rules.
 - three.js is used at 0.186 with `@types/three` 0.185; `TerrainGenerator`, `SkyscraperGenerator` and `SidewalkGenerator` live under `three/examples/jsm/generators/` and run headless in Node.
