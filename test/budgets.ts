@@ -39,7 +39,7 @@ export const BUDGET_MS = {
    */
   worldGen: 1500,
 
-  /** `generateWorld` worst case across a whole sweep, where the tail is noisier. */
+  /** `generateWorld` worst case across the measured seeds, where the tail is noisier. */
   worldGenWorst: 3000,
 
   /**
@@ -50,10 +50,26 @@ export const BUDGET_MS = {
   roadGraph: 50,
 
   /**
+   * `buildTensorField` over a whole map: a small fraction of the world it is
+   * built from. A build this far over is an accidental per-cell search, not a
+   * slow runner.
+   */
+  tensorField: 150,
+
+  /**
    * `buildFootprint` over a whole-map road network: every curve offset, every
    * junction aproned and the lot unioned (spec section 6.4). Offline work like
    * {@link BUDGET_MS.worldGen}; chunk-level parcels get their own per-frame cap
    * when streaming lands (spec section 9.1).
    */
   footprint: 900,
+} as const;
+
+/** Budgets small enough that milliseconds would round them away. */
+export const BUDGET_US = {
+  /**
+   * `TensorField.majorAt`, per sample. The road tracer calls it once per
+   * streamline step, so this is the cost of every metre of road on the map.
+   */
+  tensorSample: 20,
 } as const;
