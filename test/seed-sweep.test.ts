@@ -6,9 +6,10 @@ import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
 import { TERRAIN_CELL } from '../src/world/terrain.ts';
 import type { WorldDescription } from '../src/world/types.ts';
 import { generateWorld } from '../src/world/world.ts';
+import { BUDGET_MS } from './budgets.ts';
 import { stableJson, sweepSeeds } from './helpers.ts';
 
-/** Quick tier by default; CI and `npm run test:full` set SWEEP_SEEDS=200 (spec §3). */
+/** Quick tier by default; CI and `npm run test:full` set SWEEP_SEEDS=200 (spec section 3). */
 const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 20);
 
 function heightsHash(h: Float32Array): number {
@@ -37,7 +38,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       timings.push(performance.now() - t0);
     }
     const worst = Math.max(...timings);
-    expect(worst).toBeLessThan(3000);
+    expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.worldGenWorst);
   });
 
   it('is byte-identical across runs', () => {

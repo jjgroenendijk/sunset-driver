@@ -1,25 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { FixedStepClock, TICK_MS, TICKS_PER_DAY, gameTime } from '../src/sim/clock.ts';
-import { EMPTY_INPUT, type InputFrame } from '../src/sim/input.ts';
+import { type InputFrame } from '../src/sim/input.ts';
 import { cloneSimState, createSimState, stepSim } from '../src/sim/simulation.ts';
-import { stableJson, sweepSeeds } from './helpers.ts';
-
-/** A deterministic recorded input stream for a seed. */
-function inputStream(seed: number, ticks: number): InputFrame[] {
-  const frames: InputFrame[] = [];
-  let x = seed >>> 0;
-  for (let i = 0; i < ticks; i++) {
-    x = (Math.imul(x, 1664525) + 1013904223) >>> 0;
-    frames.push({
-      ...EMPTY_INPUT,
-      throttle: ((x >>> 8) & 3) === 0 ? -1 : ((x >>> 8) & 3) === 1 ? 0 : 1,
-      steer: ((x >>> 12) % 3) - 1,
-      sprint: ((x >>> 16) & 1) === 1,
-      handbrake: ((x >>> 20) & 7) === 0,
-    });
-  }
-  return frames;
-}
+import { inputStream, stableJson, sweepSeeds } from './helpers.ts';
 
 /** Run the sim with a given frame pacing (ms per render frame) for a wall-clock duration. */
 function runPaced(seed: number, inputs: InputFrame[], frameMs: number): ReturnType<typeof createSimState> {

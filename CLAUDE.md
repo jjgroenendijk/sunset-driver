@@ -32,6 +32,18 @@ Development happens mainly in the Claude Code cloud environment, by Opus agents 
 
 Cloud sessions run `bash scripts/setup-cloud.sh` as the environment's setup script, before Claude Code launches. It provisions the VM: the cloud image ships Node 20-22 only, so the script installs the `.nvmrc` version into `/opt` and puts it on `PATH`, then warms `node_modules`. Per-session dependency installs stay in the `SessionStart` hook, which runs in cloud and local sessions alike. The setup script's result is cached in a filesystem snapshot keyed on the text typed into the environment dialog, not on this file — after changing the script, re-save the setup script field at claude.ai/code to force a rebuild.
 
+## Performance budgets
+
+Spec section 2.4 divides a 16 ms frame between systems and section 3 makes the frame-time check a gate. `test/budgets.ts` holds that table together with the thresholds `test/budget.test.ts` enforces, so a budget moves in one place.
+
+| What | Enforced now | Spec section 2.4 slice |
+|---|---|---|
+| `stepSim`, per tick, over one game hour | 0.02 ms | physics 2 ms + gameplay and AI 2 ms |
+| `generateWorld`, per seed, median of a handful | 1500 ms | offline, outside the frame |
+| `generateWorld`, per seed, worst of a sweep | 3000 ms | offline, outside the frame |
+
+Render (9 ms), streaming (2 ms) and the 1 ms of headroom have no measurable occupant yet; add a row when one lands. An enforced number is what the code spends today plus room for a slow runner, not the slice it will eventually grow into — raise one together with the system that spends it, never past its slice. A budget failure is a regression to find, never a threshold to bump.
+
 ## Layout
 
 | Path | Role | Constraints |
@@ -43,7 +55,7 @@ Cloud sessions run `bash scripts/setup-cloud.sh` as the environment's setup scri
 | `src/ui/` | DOM overlay: HUD, keyboard, styles | |
 | `scripts/` | Build-time tooling: `lint-determinism.ts`, `world-preview.ts` (PNG map of a seed), `setup-cloud.sh` | `.ts` scripts run with plain `node` (type stripping) |
 | `scripts/hooks/` | Claude Code hook scripts wired from `.claude/settings.json` | Must be fast and idempotent; exit 2 to report a problem |
-| `test/` | vitest sweeps and unit tests | |
+| `test/` | vitest sweeps and unit tests; `budgets.ts` is the performance-budget table | |
 
 ## World generation (`src/world`)
 
