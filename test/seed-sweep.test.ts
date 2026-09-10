@@ -2,6 +2,14 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { hashInts } from '../src/core/hash.ts';
 import { compareNumbers } from '../src/core/sort.ts';
 import { pointInRegions, regionArea, type Region } from '../src/core/geom.ts';
+import {
+  ChunkSource,
+  chunkBounds,
+  CHUNK_SIZE,
+  type ChunkParcel,
+  type ChunkRoad,
+  type WorldChunk,
+} from '../src/world/chunks.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import type { RoadFootprint } from '../src/world/footprint.ts';
 import { buildRoadGraph, type GradeCrossing, type RoadEdge, type RoadGraph, type RoadNode } from '../src/world/graph.ts';
@@ -135,6 +143,41 @@ const MAX_UNREACHED_SHARE = 0.15;
  * under an elevated deck all come later; until then no parcel carries them.
  */
 const ASSIGNED_OWNERS = new Set<ParcelOwner>(['building', 'park', 'car-park', 'plaza', 'ground']);
+/** Chunks each way of the origin in the block every seed is cut into (spec section 3). */
+const CHUNK_BLOCK = 1;
+/**
+ * The far offsets every seed is cut at, in chunks. All four stand inside a 3 km
+ * map, which is the smallest a seed draws.
+ */
+const FAR_CHUNKS: readonly (readonly [number, number])[] = [
+  [5, 0],
+  [0, -5],
+  [-4, 4],
+  [3, -5],
+];
+/** A chunk past the edge of every map, which holds nothing at all. */
+const BEYOND_MAP: readonly [number, number] = [40, 40];
+/**
+ * Seeds whose chunks are cut a second time, from a world generated
+ * independently, to check a chunk in isolation. Each one builds its own layers
+ * — the footprint and the parcels of a whole map — so both tiers take a few.
+ */
+const ISOLATED_COUNT = SEED_COUNT > 20 ? 2 : 1;
+/** Places in the block of chunks each way that are asked which parcel claims them. */
+const CHUNK_SAMPLES = 18;
+/**
+ * Metres a corner may move when a parcel is cut to a chunk. The polygon engine
+ * rounds every corner onto its millimetre grid and snaps one that lands beside
+ * an edge onto it, so a piece is bounded within about a millimetre of the
+ * ground it was cut from, and a long boundary gains or loses a little area.
+ */
+const CUT_SLACK = 2e-3;
+/**
+ * Metres from the edge of a parcel that a place is too close to the edge to ask
+ * about. The cut moves that edge by up to {@link CUT_SLACK}, so a place any
+ * nearer than this may fall on either side of it and proves nothing.
+ */
+const BOUNDARY_SLACK = 0.01;
 
 /**
  * The parcels of a world by the ground they cover, so asking which of them
@@ -259,6 +302,92 @@ function seaFraction(world: WorldDescription): number {
   return wet / h.length;
 }
 
+/**
+ * The chunks every seed is cut into: the block around the origin, then the far
+ * offsets, in a fixed order (spec section 3).
+ */
+function chunkKeys(): [number, number][] {
+  const keys: [number, number][] = [];
+  for (let cx = -CHUNK_BLOCK; cx <= CHUNK_BLOCK; cx++) {
+    for (let cy = -CHUNK_BLOCK; cy <= CHUNK_BLOCK; cy++) keys.push([cx, cy]);
+  }
+  for (const [cx, cy] of FAR_CHUNKS) keys.push([cx, cy]);
+  keys.push([BEYOND_MAP[0], BEYOND_MAP[1]]);
+  return keys;
+}
+
+/**
+ * Where the runs of a chunk meet the line the chunk shares with a neighbour, as
+ * sorted keys. Two chunks that hand a road over to each other meet it at the
+ * same places, so their keys are the same list.
+ *
+ * Two ends are left out. A run that stops there because the whole curve stops
+ * there hands nothing over. So does one that stops on a corner of the chunk
+ * grid, where the road passes through four chunks at a point and belongs to
+ * none of them.
+ */
+function handovers(chunk: WorldChunk, roads: readonly RoadCurve[], axis: 'x' | 'y', at: number): string[] {
+  const keys: string[] = [];
+  for (const run of chunk.roads) {
+    const road = roads[run.curve] as RoadCurve;
+    for (const p of [run.points[0] as Point, run.points[run.points.length - 1] as Point]) {
+      const along = axis === 'x' ? p.y : p.x;
+      if (Math.abs((axis === 'x' ? p.x : p.y) - at) > 1e-9) continue;
+      if (along % CHUNK_SIZE === 0) continue;
+      if (isCurveEnd(road, p)) continue;
+      keys.push(`${run.curve}:${along.toFixed(3)}`);
+    }
+  }
+  return keys.sort();
+}
+
+/** Metres round the boundary of a region: its outer ring and its holes. */
+function perimeterOf(region: Region): number {
+  let total = 0;
+  for (const ring of [region.outer, ...region.holes]) {
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i] as Point;
+      const b = ring[(i + 1) % ring.length] as Point;
+      total += Math.hypot(b.x - a.x, b.y - a.y);
+    }
+  }
+  return total;
+}
+
+/** True when every point stands on the ground a chunk covers, give or take `slack` metres. */
+function insideBounds(points: readonly Point[], chunk: WorldChunk, slack: number): boolean {
+  const { minX, minY, maxX, maxY } = chunk.bounds;
+  for (const p of points) {
+    if (p.x < minX - slack || p.x > maxX + slack || p.y < minY - slack || p.y > maxY + slack) return false;
+  }
+  return true;
+}
+
+/** Metres from a place to the nearest edge of a region, inside it or outside it. */
+function distanceToBoundary(p: Point, region: Region): number {
+  let best = Infinity;
+  for (const ring of [region.outer, ...region.holes]) {
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i] as Point;
+      const b = ring[(i + 1) % ring.length] as Point;
+      const vx = b.x - a.x;
+      const vy = b.y - a.y;
+      const squared = vx * vx + vy * vy;
+      let t = squared > 0 ? ((p.x - a.x) * vx + (p.y - a.y) * vy) / squared : 0;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      best = Math.min(best, Math.hypot(p.x - (a.x + vx * t), p.y - (a.y + vy * t)));
+    }
+  }
+  return best;
+}
+
+/** True when a place is one of the two ends of a curve. */
+function isCurveEnd(road: RoadCurve, p: Point): boolean {
+  const head = road.points[0] as Point;
+  const tail = road.points[road.points.length - 1] as Point;
+  return (head.x === p.x && head.y === p.y) || (tail.x === p.x && tail.y === p.y);
+}
+
 describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
   const seeds = sweepSeeds(SEED_COUNT);
   const worlds = new Map<number, WorldDescription>();
@@ -277,6 +406,26 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     const known = parcelMaps.get(seed);
     if (known === undefined) throw new Error(`no parcels for seed ${seed}: the pool cuts the first ${FOOTPRINT_COUNT}`);
     return known;
+  };
+  /** The second generation of the isolated seeds, with the layers of that generation. */
+  const repeatParts = new Map<number, { footprint: RoadFootprint; parcels: ParcelMap }>();
+  /**
+   * The chunk source of a seed, over the layers the pool has already built. A
+   * source built from the world alone would lay the footprint and cut the
+   * parcels a second time.
+   */
+  const sources = new Map<number, ChunkSource>();
+  const sourceOf = (seed: number): ChunkSource => {
+    const known = sources.get(seed);
+    if (known !== undefined) return known;
+    const world = worlds.get(seed) as WorldDescription;
+    const built = new ChunkSource(world, {
+      graph: graphOf(seed),
+      footprint: footprintOf(seed),
+      parcels: parcelsOf(seed),
+    });
+    sources.set(seed, built);
+    return built;
   };
   /** The graph of a seed, built once however many tests ask about it. */
   const graphs = new Map<number, RoadGraph>();
@@ -297,7 +446,10 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     const repeated = seeds.slice(0, REPEAT_COUNT);
     const jobs = [
       ...seeds.map((seed, i) => ({ seed, parts: i < FOOTPRINT_COUNT })),
-      ...repeated.map((seed) => ({ seed })),
+      // The repeated seeds the chunk gate cuts in isolation carry their layers
+      // too, so that side of the check is built from end to end in a worker,
+      // away from the layers the tests on this thread read.
+      ...repeated.map((seed, i) => ({ seed, parts: i < ISOLATED_COUNT })),
     ];
     const generated = await buildWorlds(jobs);
     for (let i = 0; i < seeds.length; i++) {
@@ -310,7 +462,10 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       }
     }
     for (let i = 0; i < repeated.length; i++) {
-      repeats.set(repeated[i] as number, (generated[seeds.length + i] as PooledWorld).world);
+      const seed = repeated[i] as number;
+      const built = generated[seeds.length + i] as PooledWorld;
+      repeats.set(seed, built.world);
+      if (built.parts !== undefined) repeatParts.set(seed, built.parts);
     }
   });
 
@@ -953,6 +1108,142 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
         }
       }
       expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
+  it('cuts a block of chunks around the origin and a handful far from it', () => {
+    // Spec section 9.1: a chunk holds the roads, the parcels and the heights
+    // inside it, cut from the whole-map skeleton. Every metre of a curve and
+    // every square metre of a parcel belongs to exactly one chunk, and two
+    // neighbours meet on the same heights and hand a road over at one place.
+    for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
+      const w = worlds.get(seed) as WorldDescription;
+      const source = sourceOf(seed);
+      const parcels = parcelsOf(seed).parcels;
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+
+      const cut = new Map<string, WorldChunk>();
+      for (const [cx, cy] of chunkKeys()) {
+        const chunk = source.chunk(cx, cy);
+        cut.set(`${cx}:${cy}`, chunk);
+        const where = `chunk ${cx}, ${cy}`;
+        if (chunk.seed !== seed) fault(`${where} carries seed ${chunk.seed}`);
+        if (stableJson(chunk.bounds) !== stableJson(chunkBounds(cx, cy))) fault(`${where} covers the wrong ground`);
+        if (chunk.terrain.heights.length !== chunk.terrain.gridSize ** 2) fault(`${where} is missing heights`);
+        if (chunk.terrain.originX !== chunk.bounds.minX) fault(`${where} samples its heights from elsewhere`);
+
+        for (const run of chunk.roads) {
+          const road = w.roads[run.curve] as RoadCurve;
+          const name = `${where}: run of ${road.tier} ${road.id}`;
+          if (run.points.length < 2) fault(`${name} is a single point`);
+          if (run.tier !== road.tier) fault(`${name} changes tier`);
+          if (!insideBounds(run.points, chunk, CUT_SLACK)) fault(`${name} leaves the chunk`);
+          // The run is the curve where it stands inside the chunk: only the
+          // ends of it are cut, and the points between them are the curve's own.
+          for (let k = 1; k + 1 < run.points.length; k++) {
+            const mine = run.points[k] as Point;
+            const theirs = road.points[run.from + k] as Point;
+            if (theirs === undefined || mine.x !== theirs.x || mine.y !== theirs.y) fault(`${name} strays off it`);
+          }
+          for (let k = 0; k + 1 < run.points.length; k++) {
+            const segment = run.from + k;
+            if (run.bridges.includes(k) !== road.bridges.includes(segment)) fault(`${name} disagrees about its decks`);
+            if (run.tunnels.includes(k) !== road.tunnels.includes(segment)) fault(`${name} disagrees about its bores`);
+          }
+        }
+
+        for (const piece of chunk.parcels) {
+          const parcel = parcels[piece.parcel] as Parcel | undefined;
+          const name = `${where}: piece of parcel ${piece.parcel}`;
+          if (parcel === undefined) {
+            fault(`${name}, which does not exist`);
+            continue;
+          }
+          if (piece.owner !== parcel.owner || piece.zone !== parcel.zone) fault(`${name} disowns it`);
+          if (piece.district !== parcel.district) fault(`${name} stands in another district`);
+          if (Math.abs(piece.area - regionArea(piece.region)) > 1e-6) fault(`${name} misreports its ground`);
+          if (piece.area > parcel.area + CUT_SLACK * perimeterOf(piece.region)) fault(`${name} is bigger than the parcel`);
+          if (ringArea(piece.region.outer) <= 0) fault(`${name} is wound the wrong way`);
+          if (!insideBounds(piece.region.outer, chunk, CUT_SLACK)) fault(`${name} leaves the chunk`);
+        }
+      }
+
+      const home = cut.get('0:0') as WorldChunk;
+      if (home.roads.length === 0) fault('cuts no road into the chunk on the core');
+      const far = cut.get(`${BEYOND_MAP[0]}:${BEYOND_MAP[1]}`) as WorldChunk;
+      if (far.roads.length > 0 || far.parcels.length > 0) fault('finds a city past the edge of the map');
+
+      // Two neighbours share an edge: the same heights along it, and the same
+      // places where a road crosses it.
+      for (let cx = -CHUNK_BLOCK; cx <= CHUNK_BLOCK; cx++) {
+        for (let cy = -CHUNK_BLOCK; cy <= CHUNK_BLOCK; cy++) {
+          const here = cut.get(`${cx}:${cy}`) as WorldChunk;
+          const east = cut.get(`${cx + 1}:${cy}`);
+          if (east === undefined) continue;
+          const mine = new Heightfield(here.terrain);
+          const theirs = new Heightfield(east.terrain);
+          for (let iy = 0; iy < mine.gridSize; iy++) {
+            if (theirs.at(0, iy) !== mine.at(mine.gridSize - 1, iy)) fault(`chunks ${cx} and ${cx + 1} disagree about the ground between them`);
+          }
+          const handed = handovers(here, w.roads, 'x', here.bounds.maxX);
+          const taken = handovers(east, w.roads, 'x', east.bounds.minX);
+          if (handed.join('|') !== taken.join('|')) fault(`chunk ${cx}, ${cy} hands a road over to ${cx + 1}, ${cy} nowhere it is taken`);
+        }
+      }
+
+      // A place in the block belongs to the parcel the whole map gives it, cut
+      // to the chunk that covers it and to no other.
+      const index = new ParcelIndex(parcels);
+      const step = ((2 * CHUNK_BLOCK + 1) * CHUNK_SIZE) / CHUNK_SAMPLES;
+      const corner = -CHUNK_BLOCK * CHUNK_SIZE;
+      for (let ix = 0; ix < CHUNK_SAMPLES; ix++) {
+        for (let iy = 0; iy < CHUNK_SAMPLES; iy++) {
+          const p = { x: corner + (ix + 0.5) * step, y: corner + (iy + 0.5) * step };
+          const chunk = cut.get(`${Math.floor(p.x / CHUNK_SIZE)}:${Math.floor(p.y / CHUNK_SIZE)}`) as WorldChunk;
+          const claims = chunk.parcels.filter((piece: ChunkParcel) => pointInRegions(p, [piece.region]));
+          if (claims.length > 1) fault(`two pieces of chunk ${chunk.cx}, ${chunk.cy} claim the same ground`);
+          const whole = index.at(p);
+          if (claims.map((piece) => piece.parcel).join(',') === whole.join(',')) continue;
+          // A place beside the edge of a parcel may fall on either side of it,
+          // because the cut moves that edge by a fraction of a millimetre. Only
+          // a place well inside or well outside the parcel says anything.
+          const edge = Math.min(
+            ...claims.map((piece) => distanceToBoundary(p, piece.region)),
+            ...whole.map((id) => distanceToBoundary(p, (parcels[id] as Parcel).region)),
+          );
+          if (edge > BOUNDARY_SLACK) {
+            fault(`chunk ${chunk.cx}, ${chunk.cy} gives ground the map gives to parcel ${whole.join(' and ') || 'nothing'}`);
+          }
+        }
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
+  it('cuts a chunk in isolation exactly as it cuts it with every neighbour loaded', () => {
+    // Spec section 3 and section 9.1: a chunk is the same whether it is cut on
+    // its own or after the whole block around it. The isolated side stands on a
+    // world the pool generated a second time and on the layers that worker
+    // built for it, so this is the byte-identical check of a chunk as well.
+    for (const seed of seeds.slice(0, ISOLATED_COUNT)) {
+      const loaded = sourceOf(seed);
+      for (const [cx, cy] of chunkKeys()) loaded.chunk(cx, cy);
+      const world = repeats.get(seed) as WorldDescription;
+      const parts = repeatParts.get(seed) as { footprint: RoadFootprint; parcels: ParcelMap };
+      const alone = new ChunkSource(world, {
+        graph: buildRoadGraph(world.roads),
+        footprint: parts.footprint,
+        parcels: parts.parcels,
+      });
+      // The far chunk first, before this source has cut anything at all.
+      for (const [cx, cy] of [...chunkKeys()].reverse()) {
+        expect(stableJson(alone.chunk(cx, cy)), `seed ${seed}: chunk ${cx}, ${cy}`).toBe(
+          stableJson(loaded.chunk(cx, cy)),
+        );
+      }
     }
   });
 
