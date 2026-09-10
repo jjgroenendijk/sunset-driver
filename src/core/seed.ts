@@ -1,4 +1,4 @@
-import { seedFromString } from './rng';
+import { seedFromString } from './rng.ts';
 
 export const DEFAULT_SEED = 'sunset';
 

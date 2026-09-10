@@ -17,6 +17,7 @@
     "verify": "npm run typecheck && npm run lint && npm run test"
   },
   "devDependencies": {
+    "@types/node": "^22.20.2",
     "@types/three": "^0.185.4",
     "@webgpu/types": "^0.1.72",
     "tsapi": "npm:typescript@^5.9.3",

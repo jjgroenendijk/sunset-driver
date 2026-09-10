@@ -1,4 +1,4 @@
-import type { InputFrame } from '../sim/input';
+import type { InputFrame } from '../sim/input.ts';
 
 /**
  * Keyboard state sampled once per simulation tick into an InputFrame.

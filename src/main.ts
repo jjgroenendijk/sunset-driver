@@ -1,11 +1,11 @@
-import { readSeedFromLocation, seedFromString, writeSeedToHash } from './core/seed';
-import { FollowCamera } from './render/camera';
-import { createRenderer, probeWebGpu } from './render/renderer';
-import { createPlaceholderScene } from './render/scene';
-import { FixedStepClock } from './sim/clock';
-import { createSimState, stepSim } from './sim/simulation';
-import { Hud } from './ui/hud';
-import { Keyboard } from './ui/keyboard';
+import { readSeedFromLocation, seedFromString, writeSeedToHash } from './core/seed.ts';
+import { FollowCamera } from './render/camera.ts';
+import { createRenderer, probeWebGpu } from './render/renderer.ts';
+import { createPlaceholderScene } from './render/scene.ts';
+import { FixedStepClock } from './sim/clock.ts';
+import { createSimState, stepSim } from './sim/simulation.ts';
+import { Hud } from './ui/hud.ts';
+import { Keyboard } from './ui/keyboard.ts';
 
 async function boot(): Promise<void> {
   const status = document.getElementById('status');

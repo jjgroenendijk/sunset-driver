@@ -1,4 +1,4 @@
-import { hashInts } from '../src/core/hash';
+import { hashInts } from '../src/core/hash.ts';
 
 /** Fixed list of seeds for the sweeps; deterministic and spread across the space. */
 export function sweepSeeds(count: number): number[] {
