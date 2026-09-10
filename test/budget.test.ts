@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { TICKS_PER_HOUR } from '../src/sim/clock.ts';
 import type { InputFrame } from '../src/sim/input.ts';
 import { createSimState, stepSim } from '../src/sim/simulation.ts';
+import { buildRoadGraph } from '../src/world/graph.ts';
+import type { WorldDescription } from '../src/world/types.ts';
 import { generateWorld } from '../src/world/world.ts';
 import { BUDGET_MS, FRAME_MS, FRAME_SLICE_MS, SIM_SLICE_MS } from './budgets.ts';
 import { bestOf, inputStream, sweepSeeds } from './helpers.ts';
@@ -15,6 +17,14 @@ const RUNS = 3;
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[sorted.length >> 1] as number;
+}
+
+/** The measured worlds, kept so the road graph is not charged for generating them again. */
+const worlds: WorldDescription[] = [];
+
+function measuredWorlds(): WorldDescription[] {
+  if (worlds.length === 0) for (const seed of GEN_SEEDS) worlds.push(generateWorld(seed));
+  return worlds;
 }
 
 describe('performance budgets', () => {
@@ -42,7 +52,7 @@ describe('performance budgets', () => {
   it('generates a world within the per-seed budget', () => {
     const times = GEN_SEEDS.map((seed) => {
       const t0 = performance.now();
-      generateWorld(seed);
+      worlds.push(generateWorld(seed));
       return performance.now() - t0;
     });
     const worst = Math.max(...times);
@@ -50,5 +60,12 @@ describe('performance budgets', () => {
 
     expect(typical, `${typical.toFixed(0)} ms median`).toBeLessThan(BUDGET_MS.worldGen);
     expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.worldGenWorst);
+  });
+
+  it('builds the road graph of a world within its budget', () => {
+    const times = measuredWorlds().map((world) => bestOf(RUNS, () => void buildRoadGraph(world.roads)));
+    const worst = Math.max(...times);
+
+    expect(worst, `${worst.toFixed(1)} ms worst`).toBeLessThan(BUDGET_MS.roadGraph);
   });
 });
