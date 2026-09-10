@@ -1,6 +1,9 @@
+import { pointInRing, ringArea } from '../src/core/geom.ts';
 import { hashInts } from '../src/core/hash.ts';
 import { EMPTY_INPUT, type InputFrame } from '../src/sim/input.ts';
 import type { Point } from '../src/world/types.ts';
+
+export { pointInRing, ringArea };
 
 /** Fixed list of seeds for the sweeps; deterministic and spread across the space. */
 export function sweepSeeds(count: number): number[] {
@@ -38,29 +41,6 @@ export function bestOf(runs: number, body: () => void): number {
     best = Math.min(best, performance.now() - t0);
   }
   return best;
-}
-
-/** Twice the signed area of a closed ring; positive when it is wound anticlockwise. */
-export function ringArea(ring: readonly Point[]): number {
-  let sum = 0;
-  for (let i = 0; i < ring.length; i++) {
-    const p = ring[i] as Point;
-    const q = ring[(i + 1) % ring.length] as Point;
-    sum += p.x * q.y - q.x * p.y;
-  }
-  return sum / 2;
-}
-
-/** True when a point stands inside a closed ring, by counting crossings of a ray. */
-export function pointInRing(p: Point, ring: readonly Point[]): boolean {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const a = ring[i] as Point;
-    const b = ring[j] as Point;
-    if (a.y > p.y === b.y > p.y) continue;
-    if (p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
-  }
-  return inside;
 }
 
 /**

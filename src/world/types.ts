@@ -3,6 +3,8 @@
  * physics and gameplay read it and never mutate it.
  */
 
+import type { Point as GeomPoint } from '../core/geom.ts';
+
 export type Zone = 'core' | 'inner' | 'industrial' | 'suburban' | 'outskirts' | 'wilderness';
 
 export type Culture =
@@ -41,10 +43,8 @@ export interface HeightfieldData {
   heights: Float32Array;
 }
 
-export interface Point {
-  x: number;
-  y: number;
-}
+/** A place on the map. Polygon arithmetic reads the same type (`src/core/geom.ts`). */
+export type Point = GeomPoint;
 
 export interface RiverDescription {
   /** Centreline from source to mouth. */
