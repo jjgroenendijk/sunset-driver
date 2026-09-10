@@ -28,3 +28,17 @@ export function wrapAngle(a: number): number {
   if (r > Math.PI) r -= 2 * Math.PI;
   return r;
 }
+
+/** Wrap an undirected direction to (-π/2, π/2]: θ and θ + π are the same line. */
+export function wrapDirection(a: number): number {
+  const half = Math.PI / 2;
+  let r = a % Math.PI;
+  if (r <= -half) r += Math.PI;
+  if (r > half) r -= Math.PI;
+  return r;
+}
+
+/** Angle between two undirected directions, in [0, π/2]. */
+export function directionDelta(a: number, b: number): number {
+  return Math.abs(wrapDirection(a - b));
+}

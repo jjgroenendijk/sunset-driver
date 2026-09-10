@@ -35,7 +35,8 @@ The same applies to test timing: `npm test` must stay under 15 s and `npm run te
 
 - `generateWorld(seed)` builds the whole-map skeleton; chunk-level content will hang off it. The archipelago is a power diagram of island sites shrunk by half a channel and domain-warped, so straits bend but never close. The main site is the core at the origin.
 - three.js `TerrainGenerator` needs `valleyBias: 1`; fractional values produce NaN.
-- Look at the image before judging a layout change: `node scripts/world-preview.ts <seed> out.png`.
+- `buildTensorField(world)` (`tensor.ts`) is the seeded field road direction follows (spec section 6.1). Influences blend as tensors, so ones facing opposite ways reinforce instead of cancelling; `sample(x, y)` returns both directions and a `strength` saying how decided the field is, and `majorAt(x, y)` is the allocation-free hot path.
+- Look at the image before judging a layout change: `node scripts/world-preview.ts <seed> out.png`. It strokes the field's major direction, dark where the field is decided and pale where influences cancel.
 - `test/seed-sweep.test.ts` runs 20 seeds, or 200 under `SWEEP_SEEDS=200`.
 
 ## Conventions

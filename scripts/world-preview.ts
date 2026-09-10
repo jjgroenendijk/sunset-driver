@@ -6,6 +6,7 @@ import { writeFileSync } from 'node:fs';
 import { seedFromString } from '../src/core/rng.ts';
 import { districtAt, layoutZones } from '../src/world/districts.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
+import { buildTensorField } from '../src/world/tensor.ts';
 import { generateWorld } from '../src/world/world.ts';
 import type { Zone } from '../src/world/types.ts';
 import { encodePng } from './png.ts';
@@ -17,6 +18,9 @@ const world = generateWorld(seedFromString(seedText));
 const genMs = performance.now() - t0;
 const hf = new Heightfield(world.terrain);
 const zones = layoutZones(world.size, world.core, world.water);
+const t1 = performance.now();
+const tensor = buildTensorField(world);
+const fieldMs = performance.now() - t1;
 
 const ZONE_TINT: Record<Zone, [number, number, number]> = {
   core: [255, 90, 90],
@@ -56,6 +60,34 @@ for (let iy = 0; iy < n; iy++) {
     rgb[o + 2] = b;
   }
 }
+const plot = (px: number, py: number, col: [number, number, number]): void => {
+  if (px < 0 || py < 0 || px >= n || py >= n) return;
+  const o = (py * n + px) * 3;
+  rgb[o] = col[0];
+  rgb[o + 1] = col[1];
+  rgb[o + 2] = col[2];
+};
+
+// The tensor field's major direction, as a short stroke every few cells. Dark
+// where the field is decided, pale where the influences cancel out.
+const STROKE_STRIDE = 12;
+const STROKE_HALF = 4.5;
+for (let iy = STROKE_STRIDE; iy < n - STROKE_STRIDE; iy += STROKE_STRIDE) {
+  for (let ix = STROKE_STRIDE; ix < n - STROKE_STRIDE; ix += STROKE_STRIDE) {
+    const x = hf.worldX(ix);
+    const y = hf.worldY(iy);
+    if (hf.at(ix, iy) < world.water.seaLevel) continue;
+    const s = tensor.sample(x, y);
+    const v = Math.round(230 * (1 - Math.min(1, s.strength)));
+    const col: [number, number, number] = [v, v, v];
+    const dx = Math.cos(s.major);
+    const dy = Math.sin(s.major);
+    for (let t = -STROKE_HALF; t <= STROKE_HALF; t += 0.5) {
+      plot(Math.round(ix + dx * t), n - 1 - Math.round(iy + dy * t), col);
+    }
+  }
+}
+
 const mark = (x: number, y: number, col: [number, number, number], size = 3): void => {
   const ix = Math.round((x - hf.originX) / hf.cellSize);
   const iy = Math.round((y - hf.originY) / hf.cellSize);
@@ -78,5 +110,8 @@ for (const c of world.water.crossings) {
 }
 
 writeFileSync(out, encodePng(n, n, rgb));
-console.log(`seed ${seedText} size ${world.size} m, ${n}x${n}, ${world.water.islands.length} islands, ${world.water.crossings.length} crossings, generated in ${genMs.toFixed(0)} ms → ${out}`);
+console.log(
+  `seed ${seedText} size ${world.size} m, ${n}x${n}, ${world.water.islands.length} islands, ${world.water.crossings.length} crossings, ` +
+    `generated in ${genMs.toFixed(0)} ms, tensor field in ${fieldMs.toFixed(0)} ms → ${out}`,
+);
 for (const d of world.districts) console.log(`  ${d.id}\t${d.zone.padEnd(10)}\t${d.name.padEnd(18)}\t${d.culture}`);
