@@ -30,6 +30,8 @@ Development happens mainly in the Claude Code cloud environment, by Opus agents 
   - `PreToolUse` on Bash → `guard-bash.sh`: blocks local `wrangler` deploys.
   Anything else that gets repeated across sessions (setup, checks, previews) belongs in a hook or a `scripts/` entry, not in prose instructions.
 
+Cloud sessions run `bash scripts/setup-cloud.sh` as the environment's setup script, before Claude Code launches. It provisions the VM: the cloud image ships Node 20-22 only, so the script installs the `.nvmrc` version into `/opt` and puts it on `PATH`, then warms `node_modules`. Per-session dependency installs stay in the `SessionStart` hook, which runs in cloud and local sessions alike. The setup script's result is cached in a filesystem snapshot keyed on the text typed into the environment dialog, not on this file — after changing the script, re-save the setup script field at claude.ai/code to force a rebuild.
+
 ## Layout
 
 | Path | Role | Constraints |
@@ -39,7 +41,7 @@ Development happens mainly in the Claude Code cloud environment, by Opus agents 
 | `src/world/` | World generation → plain world description | Must run headless in Node (the sweeps import it); may use three.js math/generators; never the renderer, Rapier or DOM |
 | `src/render/` | WebGPU renderer, fixed tilted camera, scene building | Reads the world description, never mutates it |
 | `src/ui/` | DOM overlay: HUD, keyboard, styles | |
-| `scripts/` | Build-time tooling: `lint-determinism.ts`, `world-preview.ts` (PNG map of a seed) | Run with plain `node` (type stripping) |
+| `scripts/` | Build-time tooling: `lint-determinism.ts`, `world-preview.ts` (PNG map of a seed), `setup-cloud.sh` | `.ts` scripts run with plain `node` (type stripping) |
 | `scripts/hooks/` | Claude Code hook scripts wired from `.claude/settings.json` | Must be fast and idempotent; exit 2 to report a problem |
 | `test/` | vitest sweeps and unit tests | |
 
