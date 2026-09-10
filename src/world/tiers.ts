@@ -25,6 +25,13 @@ export interface TierSpec {
   /** Carriageway width in metres, kerb to kerb. Verge and pavement are not in it. */
   width: number;
   /**
+   * Metres of verge each side of the carriageway: the kerb, the gutter and the
+   * strip of ground between the kerb and the pavement.
+   */
+  verge: number;
+  /** Metres of pavement each side. A tier with no pavement is walked on its own surface. */
+  pavement: number;
+  /**
    * Lanes in each direction. An alley and a dirt road have a single lane that
    * both directions share.
    */
@@ -46,6 +53,8 @@ export const TIERS: Record<RoadTier, TierSpec> = {
   // Multi-lane and fast, junctions only at interchanges, no pedestrians.
   highway: {
     width: 26,
+    verge: 4,
+    pavement: 0,
     lanes: 3,
     speedLimit: kmh(110),
     maxGrade: 0.06,
@@ -54,6 +63,8 @@ export const TIERS: Record<RoadTier, TierSpec> = {
   // The main urban through-routes: buses, the tram lane, dense traffic.
   arterial: {
     width: 18,
+    verge: 1,
+    pavement: 3,
     lanes: 2,
     speedLimit: kmh(60),
     maxGrade: 0.08,
@@ -62,6 +73,8 @@ export const TIERS: Record<RoadTier, TierSpec> = {
   // Residential and commercial, one lane each way with parking on both sides.
   street: {
     width: 11,
+    verge: 0.5,
+    pavement: 2.5,
     lanes: 1,
     speedLimit: kmh(40),
     maxGrade: 0.18,
@@ -70,6 +83,8 @@ export const TIERS: Record<RoadTier, TierSpec> = {
   // Narrow and unmarked: bins, loading bays, shortcuts.
   alley: {
     width: 4,
+    verge: 0,
+    pavement: 0,
     lanes: 1,
     speedLimit: kmh(20),
     maxGrade: 0.22,
@@ -78,9 +93,20 @@ export const TIERS: Record<RoadTier, TierSpec> = {
   // Unpaved, in the outskirts and the wilderness. Farm and site traffic uses it.
   dirt: {
     width: 5,
+    verge: 1,
+    pavement: 0,
     lanes: 1,
     speedLimit: kmh(40),
     maxGrade: 0.2,
     traffic: { trucks: true, buses: false, trams: false, pedestrians: true },
   },
 };
+
+/**
+ * How far the ground a road claims reaches each side of its centreline:
+ * carriageway, verge and pavement (spec section 6.4).
+ */
+export function footprintHalfWidth(tier: RoadTier): number {
+  const spec = TIERS[tier];
+  return spec.width / 2 + spec.verge + spec.pavement;
+}

@@ -21,6 +21,15 @@ export function dist(ax: number, ay: number, bx: number, by: number): number {
   return Math.sqrt(dist2(ax, ay, bx, by));
 }
 
+/** Metres below which two points are the same place. */
+const EPSILON = 1e-6;
+
+/** The unit vector from one point to another; the x axis where they are the same place. */
+export function direction(a: { x: number; y: number }, b: { x: number; y: number }): { x: number; y: number } {
+  const len = dist(a.x, a.y, b.x, b.y);
+  return len < EPSILON ? { x: 1, y: 0 } : { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
+}
+
 /** Wrap an angle to (-π, π]. */
 export function wrapAngle(a: number): number {
   let r = a % (2 * Math.PI);

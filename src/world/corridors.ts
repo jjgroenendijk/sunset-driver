@@ -29,7 +29,8 @@
  * Everything here is derived from the world and its roads, so the same seed
  * gives the same corridors.
  */
-import { clamp, dist } from '../core/math.ts';
+import { offsetSides } from '../core/geom.ts';
+import { clamp, direction, dist } from '../core/math.ts';
 import { compareNumbers } from '../core/sort.ts';
 import type { RoadEdge, RoadGraph, RoadNode } from './graph.ts';
 import { Heightfield } from './heightfield.ts';
@@ -57,8 +58,6 @@ const PILLAR_SPACING = 25;
 const PILLAR_INSET = 0.5;
 /** Metres of ground two corridors keep between them. */
 const CLAIM_CLEARANCE = 0.5;
-/** How far a mitred corner may reach past the half-width, so a sharp bend does not spike. */
-const MITER_LIMIT = 1.5;
 /** The sharpest corner a strip is carried round. Past a right angle it is cut instead. */
 const MAX_BEND = Math.PI / 2;
 /** Metres between the samples that ask whether the ground under a deck is water. */
@@ -446,7 +445,7 @@ class CorridorBuilder {
   private claimStraightaway(kind: CorridorKind, line: Centreline, halfWidth: number, pillars: boolean): Corridor[] {
     const points = line.points;
     if (points.length < 2) return [];
-    const { left, right } = strip(points, halfWidth);
+    const { left, right } = offsetSides(points, halfWidth);
     const run = this.nextRun++;
     const pieces: { from: number; to: number }[] = [];
     let open: { from: number; to: number } | undefined;
@@ -527,46 +526,6 @@ function bend(points: readonly Point[], at: number): number {
   const back = direction(points[at - 1] as Point, points[at] as Point);
   const ahead = direction(points[at] as Point, points[at + 1] as Point);
   return Math.acos(clamp(back.x * ahead.x + back.y * ahead.y, -1, 1));
-}
-
-/**
- * The two sides of a strip of the given half-width. A corner is mitred, so the
- * two segments that meet there hand the ground over without a gap, and the
- * mitre is clamped at {@link MITER_LIMIT} so a sharp bend does not throw a
- * spike of land far out to the side.
- */
-function strip(points: readonly Point[], halfWidth: number): { left: Point[]; right: Point[] } {
-  const left: Point[] = [];
-  const right: Point[] = [];
-  for (let i = 0; i < points.length; i++) {
-    const here = points[i] as Point;
-    const back = i > 0 ? direction(points[i - 1] as Point, here) : undefined;
-    const ahead = i + 1 < points.length ? direction(here, points[i + 1] as Point) : undefined;
-    const d0 = back ?? (ahead as Point);
-    const d1 = ahead ?? (back as Point);
-    // The mitre bisects the two segments; where they double back it is the
-    // normal of the one ahead, because there is no corner to bisect.
-    let mx = -(d0.y + d1.y);
-    let my = d0.x + d1.x;
-    const len = Math.hypot(mx, my);
-    if (len < EPSILON) {
-      mx = -d1.y;
-      my = d1.x;
-    } else {
-      mx /= len;
-      my /= len;
-    }
-    const reach = halfWidth / clamp(mx * -d1.y + my * d1.x, 1 / MITER_LIMIT, 1);
-    left.push({ x: here.x + mx * reach, y: here.y + my * reach });
-    right.push({ x: here.x - mx * reach, y: here.y - my * reach });
-  }
-  return { left, right };
-}
-
-/** The unit vector from one point to another. */
-function direction(a: Point, b: Point): Point {
-  const len = dist(a.x, a.y, b.x, b.y);
-  return len < EPSILON ? { x: 1, y: 0 } : { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
 }
 
 /**

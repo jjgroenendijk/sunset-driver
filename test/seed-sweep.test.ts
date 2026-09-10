@@ -1,7 +1,9 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { hashInts } from '../src/core/hash.ts';
 import { compareNumbers } from '../src/core/sort.ts';
+import { pointInRegions, type Region } from '../src/core/geom.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
+import { buildFootprint, type RoadFootprint } from '../src/world/footprint.ts';
 import { buildRoadGraph, type GradeCrossing, type RoadEdge, type RoadGraph, type RoadNode } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
@@ -9,7 +11,7 @@ import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
 import { coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import type { Corridor, Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
-import { pointInRing, ringArea, ringsOverlap, stableJson, sweepSeeds } from './helpers.ts';
+import { landPoints, pointInRing, ringArea, ringsOverlap, stableJson, sweepSeeds } from './helpers.ts';
 import { worldsFor } from './world-pool.ts';
 
 /** Metres between the samples that ask whether a road segment is over water. */
@@ -94,6 +96,27 @@ const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 12);
  * the most expensive thing this file does, so the quick tier repeats only a few.
  */
 const REPEAT_COUNT = SEED_COUNT > 20 ? 20 : 4;
+/**
+ * Seeds the road footprint is laid for. Laying one unions the polygons of a
+ * whole network, and unlike the world itself it is laid on this thread rather
+ * than in the pool, so both tiers lay a few rather than all of them.
+ */
+const FOOTPRINT_COUNT = SEED_COUNT > 20 ? 16 : 4;
+/**
+ * The share of the dry land the roads may claim (spec section 6.4). A city
+ * gives about a seventh of its ground to the carriageway, the verge and the
+ * pavement together, and the wilderness beyond it gives almost none. The bounds
+ * are wide: they are here to catch a footprint that has collapsed or run away,
+ * not to pin a number down.
+ */
+const MIN_FOOTPRINT_SHARE = 0.04;
+const MAX_FOOTPRINT_SHARE = 0.3;
+/** Metres from every road that ground has to stand before the footprint may not claim it. */
+const CLEAR_OF_ROADS = 80;
+/** One road segment in this many is asked whether the footprint covers it. */
+const SAMPLE_STRIDE = 40;
+/** Places a seed is asked about that stand clear of every road. */
+const CLEAR_SAMPLES = 200;
 
 /**
  * Every road point in buckets, so "how far is this ground from a road?" costs a
@@ -156,6 +179,17 @@ function heightsHash(h: Float32Array): number {
   return acc;
 }
 
+/** Square metres of dry land in a world, counted over the heightfield. */
+function landArea(world: WorldDescription): number {
+  const hf = new Heightfield(world.terrain);
+  const cell = hf.cellSize * hf.cellSize;
+  let land = 0;
+  for (let iy = 0; iy < hf.gridSize; iy++) {
+    for (let ix = 0; ix < hf.gridSize; ix++) if (hf.at(ix, iy) > world.water.seaLevel) land += cell;
+  }
+  return land;
+}
+
 function seaFraction(world: WorldDescription): number {
   const h = world.terrain.heights;
   let wet = 0;
@@ -168,6 +202,16 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
   const worlds = new Map<number, WorldDescription>();
   /** The second generation of the repeated seeds, for the byte-identical check. */
   const repeats = new Map<number, WorldDescription>();
+  /** The footprint of a seed, laid once however many tests ask about it. */
+  const footprints = new Map<number, RoadFootprint>();
+  const footprintOf = (seed: number): RoadFootprint => {
+    const known = footprints.get(seed);
+    if (known !== undefined) return known;
+    const world = worlds.get(seed) as WorldDescription;
+    const built = buildFootprint(world.roads, world.corridors, graphOf(seed));
+    footprints.set(seed, built);
+    return built;
+  };
   /** The graph of a seed, built once however many tests ask about it. */
   const graphs = new Map<number, RoadGraph>();
   const graphOf = (seed: number): RoadGraph => {
@@ -667,6 +711,86 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
           const other = w.corridors[j] as Corridor;
           if (ringsOverlap(corridor.polygon, other.polygon)) fault(`${where} overlaps ${other.kind} corridor ${j}`);
         }
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
+  it('claims a sane share of the land under the roads, with the blocks between them as holes', () => {
+    // Spec section 6.4 steps 1 and 2: the footprint is every road offset by half
+    // the width of its tier, the aprons over the junctions, and the corridor
+    // strips. What it does not claim are the parcels, so its holes are the city
+    // blocks and its share of the land is the share a city gives to its streets.
+    for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
+      const w = worlds.get(seed) as WorldDescription;
+      const footprint = footprintOf(seed);
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+      if (footprint.regions.length === 0) fault('claims no ground at all');
+      let holes = 0;
+      for (let i = 0; i < footprint.regions.length; i++) {
+        const region = footprint.regions[i] as Region;
+        const where = `piece ${i}`;
+        if (region.outer.length < 3) fault(`${where} has no outline`);
+        if (ringArea(region.outer) <= 0) fault(`${where} is wound the wrong way`);
+        for (const hole of region.holes) {
+          if (hole.length < 3) fault(`${where} has a hole with no outline`);
+          if (ringArea(hole) >= 0) fault(`${where} has a hole wound the wrong way`);
+          if (!pointInRing(hole[0] as Point, region.outer)) fault(`${where} has a hole outside it`);
+          holes++;
+        }
+      }
+      // The network is one connected thing (see the test above), so it encloses
+      // every block of the city between its roads.
+      if (holes < 20) fault(`encloses only ${holes} blocks`);
+      const share = footprint.area / landArea(w);
+      if (share <= MIN_FOOTPRINT_SHARE || share >= MAX_FOOTPRINT_SHARE) {
+        fault(`claims ${(share * 100).toFixed(1)} % of the dry land`);
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
+  it('lays the footprint under every road on the ground, and nowhere a road does not run', () => {
+    // Ground the roads stand on is claimed; water a deck spans is not, because
+    // there is no ground under a deck over water; and ground well clear of every
+    // road is left to the parcels.
+    for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
+      const w = worlds.get(seed) as WorldDescription;
+      const regions = footprintOf(seed).regions;
+      const hf = new Heightfield(w.terrain);
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+      // Point in polygon costs a walk of the whole outline, so this samples the
+      // network rather than walking every one of its hundred thousand segments.
+      let step = 0;
+      for (const road of w.roads) {
+        for (let i = 0; i + 1 < road.points.length; i++) {
+          if (step++ % SAMPLE_STRIDE !== 0) continue;
+          const a = road.points[i] as Point;
+          const b = road.points[i + 1] as Point;
+          const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+          const where = `${road.tier} ${road.id} segment ${i}`;
+          if (road.tunnels.includes(i)) continue;
+          if (road.bridges.includes(i)) {
+            // A deck over land has the corridor under it, which is claimed; a
+            // deck over water stands over no ground at all.
+            if (wetFraction(hf, a, b, w.water.seaLevel) > 0.5 && pointInRegions(mid, regions)) {
+              fault(`${where} claims the water it bridges`);
+            }
+            continue;
+          }
+          if (!pointInRegions(mid, regions)) fault(`${where} is on the ground but claims none`);
+        }
+      }
+      const grid = new PointGrid(w.size, 40, w.roads);
+      for (const p of landPoints(w, CLEAR_SAMPLES, 0xf007)) {
+        if (grid.nearest(p.x, p.y) < CLEAR_OF_ROADS) continue;
+        if (pointInRegions(p, regions)) fault(`claims ground ${CLEAR_OF_ROADS} m clear of every road`);
       }
       expect(complaint, `seed ${seed}`).toBeUndefined();
     }
