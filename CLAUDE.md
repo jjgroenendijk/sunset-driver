@@ -35,8 +35,10 @@ The same applies to test timing: `npm test` must stay under 15 s and `npm run te
 
 - `generateWorld(seed)` builds the whole-map skeleton; chunk-level content will hang off it. The archipelago is a power diagram of island sites shrunk by half a channel and domain-warped, so straits bend but never close. The main site is the core at the origin.
 - three.js `TerrainGenerator` needs `valleyBias: 1`; fractional values produce NaN.
+- Ask `islandAt(islands, size, coastNoise(seed), x, y)` which island a point stands on. `islandIndexAt` reads the raw power cells, and the coastline is cut from those cells after a domain warp that moves them by up to 6 % of the map.
 - `buildTensorField(world)` (`tensor.ts`) is the seeded field road direction follows (spec section 6.1). Influences blend as tensors, so ones facing opposite ways reinforce instead of cancelling; `sample(x, y)` returns both directions and a `strength` saying how decided the field is, and `majorAt(x, y)` is the allocation-free hot path.
-- Look at the image before judging a layout change: `node scripts/world-preview.ts <seed> out.png`. It strokes the field's major direction, dark where the field is decided and pale where influences cancel.
+- `traceMajorRoads(world, field)` (`roads.ts`) traces the highways and arterials as streamlines of that field. Two invariants hold by construction, and the sweep checks them: every curve shares a point with another curve, so the network is one component; and no segment stands over water unless its index is in the curve's `bridges` and it spans a crossing of the water description. A curve that reaches neither the network nor its target is dropped, never left dangling.
+- Look at the image before judging a layout change: `node scripts/world-preview.ts <seed> out.png`. It draws highways black, arterials grey and bridge decks orange, and strokes the field's major direction, dark where the field is decided and pale where influences cancel.
 - `test/seed-sweep.test.ts` runs 20 seeds, or 200 under `SWEEP_SEEDS=200`.
 
 ## Conventions
