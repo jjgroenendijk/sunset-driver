@@ -189,8 +189,9 @@ The network is stored as a queryable graph — nodes, edges, tiers, lanes, direc
 
 ### 7.2 Water
 
-- A seeded river and harbour system cuts the map.
-- An island district reached by a causeway; bridges wherever the road network crosses water.
+- The world is an archipelago: a few large islands (three to five) close together, separated by narrow straits, with open sea around the map edge. The core sits on the largest island; the others carry suburbs, outskirts and wilderness.
+- A seeded river cuts the main island from its interior to a harbour on the shore.
+- One outer island is developed as the island district. Bridges or causeways link the islands at the narrowest points of the straits, and wherever else the road network crosses water.
 - Boats are a drivable vehicle class.
 - Water surfaces use the three.js water addons. Wet surfaces and reflections are central to the night look.
 
@@ -207,7 +208,7 @@ The network is stored as a queryable graph — nodes, edges, tiers, lanes, direc
 
 ### 8.1 World size
 
-The map is square and its side length is drawn from the seed, between 3 km and 6 km. Zone rings, the river system and faction turfs scale with it, so a small seed is a compact, dense city and a large seed has long drives and a wide wilderness.
+The map is square and its side length is drawn from the seed, between 3 km and 6 km. Zone rings, the islands, the straits, the river system and faction turfs scale with it, so a small seed is a compact, dense city and a large seed has long drives and a wide wilderness.
 
 ### 8.2 Zones
 
