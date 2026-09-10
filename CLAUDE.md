@@ -1,6 +1,6 @@
 # Sunset Driver — working notes for agents
 
-`spec.md` is the single source of truth. Build it top down, section by section. Read the hard vetoes in §1.2 before proposing anything.
+`spec.md` is the single source of truth. Build it top down, section by section. Read the hard vetoes in section 1.2 before proposing anything.
 
 ## Commands
 
