@@ -3,12 +3,16 @@
  *
  * A ring is a closed loop of points; the first point is not repeated at the
  * end. A region is one piece of ground: an outer ring wound anticlockwise and
- * the rings of its holes wound clockwise. {@link union} and {@link difference}
- * take regions and give regions, so a hole stays a hole through every step.
+ * the rings of its holes wound clockwise. {@link union}, {@link difference} and
+ * {@link split} take regions and give regions, so a hole stays a hole through
+ * every step.
  *
- * Both operations share one engine. It cuts every edge where another edge meets
- * it, walks the faces of the planar graph that leaves, counts how many input
- * rings wind round each face, and keeps the faces the operation asks for.
+ * All three share one engine. It cuts every edge where another edge meets it,
+ * walks the faces of the planar graph that leaves, counts how many input rings
+ * wind round each face, and keeps the faces the operation asks for. A split
+ * keeps both answers off the one graph, so the two sides of a cut are bounded
+ * by the same edges and cannot overlap.
+ *
  * Coordinates are rounded to the millimetre first. Every cross product that
  * decides which side of an edge a point falls on is then an exact integer, so
  * two such answers can never contradict each other, and the same input gives
@@ -111,6 +115,27 @@ export function regionOf(ring: readonly Point[]): Region {
 }
 
 /**
+ * Rings that already wind with the ground on their left — an outline
+ * anticlockwise, a hole clockwise — gathered into regions. Each hole is put
+ * inside the smallest outline around it. Rings that come from tracing one
+ * boundary, such as a coastline, arrive this way.
+ */
+export function regionsFromRings(rings: readonly Point[][]): Region[] {
+  const outers: Region[] = [];
+  const holes: Point[][] = [];
+  for (const ring of rings) {
+    if (ring.length < 3) continue;
+    if (ringArea(ring) > 0) outers.push({ outer: ring.map((p) => ({ x: p.x, y: p.y })), holes: [] });
+    else holes.push(ring.map((p) => ({ x: p.x, y: p.y })));
+  }
+  for (const hole of holes) {
+    const home = smallestAround(outers, hole[0] as Point);
+    if (home !== undefined) home.holes.push(hole);
+  }
+  return outers;
+}
+
+/**
  * The two sides of a strip of the given half-width along a line. A corner is
  * mitred, so the two segments that meet there hand the ground over without a
  * gap, and the mitre is clamped at {@link MITER_LIMIT} so a sharp bend does not
@@ -172,12 +197,26 @@ export function disc(x: number, y: number, radius: number, sides: number): Point
 
 /** The ground all the regions cover together, as regions that do not overlap. */
 export function union(regions: readonly Region[]): Region[] {
-  return combine(regions, [], false);
+  return combine(regions, [], 'union');
 }
 
 /** The ground the subject covers and the clip does not. */
 export function difference(subject: readonly Region[], clip: readonly Region[]): Region[] {
-  return combine(subject, clip, true);
+  return combine(subject, clip, 'difference');
+}
+
+/**
+ * The subject cut by the clip: the ground it shares with the clip, and the
+ * ground it keeps to itself. Both sides come out of one pass, so they are cut
+ * on exactly the same edges and neither can overlap the other.
+ */
+export function split(subject: readonly Region[], clip: readonly Region[]): { inside: Region[]; outside: Region[] } {
+  const graph = planarise(subject, clip);
+  if (graph === undefined) return { inside: [], outside: [] };
+  return {
+    inside: assemble(graph, classify(graph, 'intersection')),
+    outside: assemble(graph, classify(graph, 'difference')),
+  };
 }
 
 // --- The boolean engine -----------------------------------------------------
@@ -215,18 +254,25 @@ function nodeKey(x: number, y: number): number {
   return (x + KEY_OFFSET) * KEY_SPAN + (y + KEY_OFFSET);
 }
 
+/** What a boolean operation keeps of the ground its two inputs cover. */
+type Operation = 'union' | 'difference' | 'intersection';
+
+/** Run one boolean operation. */
+function combine(subject: readonly Region[], clip: readonly Region[], operation: Operation): Region[] {
+  const graph = planarise(subject, clip);
+  return graph === undefined ? [] : assemble(graph, classify(graph, operation));
+}
+
 /**
- * Run one boolean operation. `cut` says what to keep: the ground the subject
- * covers and the clip does not, rather than the ground either of them covers.
+ * The planar graph two sets of regions make together, or nothing at all when
+ * neither of them has an edge. Every operation reads the same graph, so one
+ * that asks two questions of it pays for it once.
  */
-function combine(subject: readonly Region[], clip: readonly Region[], cut: boolean): Region[] {
+function planarise(subject: readonly Region[], clip: readonly Region[]): Graph | undefined {
   const edges = noEdges();
   collect(subject, 0, edges);
   collect(clip, 1, edges);
-  if (edges.ax.length === 0) return [];
-  const graph = arrange(settle(edges));
-  const inside = classify(graph, cut);
-  return assemble(graph, inside);
+  return edges.ax.length === 0 ? undefined : arrange(settle(edges));
 }
 
 /** Every edge of every ring, wound so that the ground each region owns lies to its left. */
@@ -803,7 +849,7 @@ function edgeLeftOf(graph: Graph, index: Buckets, px: number, py: number): numbe
 }
 
 /** Which faces the operation keeps: how many rings of each input wind round each one. */
-function classify(graph: Graph, cut: boolean): boolean[] {
+function classify(graph: Graph, operation: Operation): boolean[] {
   const subject = new Array<number>(graph.cycles).fill(0);
   const clip = new Array<number>(graph.cycles).fill(0);
   const known = new Array<boolean>(graph.cycles).fill(false);
@@ -831,9 +877,10 @@ function classify(graph: Graph, cut: boolean): boolean[] {
 
   for (let face = 0; face < graph.cycles; face++) {
     if (!known[face]) continue;
-    inside[face] = cut
-      ? (subject[face] as number) !== 0 && (clip[face] as number) === 0
-      : (subject[face] as number) !== 0 || (clip[face] as number) !== 0;
+    const inSubject = (subject[face] as number) !== 0;
+    const inClip = (clip[face] as number) !== 0;
+    inside[face] =
+      operation === 'union' ? inSubject || inClip : operation === 'difference' ? inSubject && !inClip : inSubject && inClip;
   }
   return inside;
 }

@@ -9,6 +9,7 @@ import { districtAt, layoutZones } from '../src/world/districts.ts';
 import { buildFootprint } from '../src/world/footprint.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
+import { buildParcels, type ParcelOwner } from '../src/world/parcels.ts';
 import { buildTensorField } from '../src/world/tensor.ts';
 import { generateWorld } from '../src/world/world.ts';
 import type { Point, RoadTier, Zone } from '../src/world/types.ts';
@@ -127,6 +128,24 @@ const fill = (region: Region, col: [number, number, number]): void => {
 };
 for (const region of footprint.regions) fill(region, FOOTPRINT_COL);
 
+// The parcels (spec section 6.4): the land the footprint leaves, one colour per
+// owner. Every one of them is filled, so ground the roads never reach shows
+// through as the bare terrain underneath.
+const t2b = performance.now();
+const parcels = buildParcels(world, footprint, buildRoadGraph(world.roads), tensor);
+const parcelMs = performance.now() - t2b;
+const OWNER_COL: Record<ParcelOwner, [number, number, number]> = {
+  building: [200, 175, 150],
+  park: [70, 150, 70],
+  'car-park': [130, 130, 140],
+  plaza: [220, 210, 180],
+  'under-structure': [110, 90, 70],
+  beach: [235, 220, 160],
+  water: [40, 100, 170],
+  ground: [120, 140, 95],
+};
+for (const parcel of parcels.parcels) fill(parcel.region, OWNER_COL[parcel.owner] as [number, number, number]);
+
 // Roads: one colour per tier, highways heavy and dark, bridge decks in orange
 // so the strait crossings stand out, and bores through the ground in cyan.
 const ROAD_STYLE = {
@@ -223,6 +242,17 @@ console.log(
   `  footprint: ${footprint.regions.length} pieces with ` +
     `${footprint.regions.reduce((k, r) => k + r.holes.length, 0)} blocks inside them, ` +
     `${(footprint.area / 1e6).toFixed(2)} km² claimed, built in ${footprintMs.toFixed(0)} ms`,
+);
+const owners = parcels.parcels.reduce<Partial<Record<ParcelOwner, number>>>((tally, p) => {
+  tally[p.owner] = (tally[p.owner] ?? 0) + 1;
+  return tally;
+}, {});
+console.log(
+  `  parcels: ${parcels.parcels.length} covering ${(parcels.area / 1e6).toFixed(2)} km², ` +
+    `cut in ${parcelMs.toFixed(0)} ms — ` +
+    (['building', 'park', 'car-park', 'plaza', 'ground'] as ParcelOwner[])
+      .map((o) => `${o} ${owners[o] ?? 0}`)
+      .join(', '),
 );
 const elevated = world.corridors.filter((c) => c.kind === 'elevated');
 console.log(

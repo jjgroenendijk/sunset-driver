@@ -1,13 +1,15 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { hashInts } from '../src/core/hash.ts';
 import { compareNumbers } from '../src/core/sort.ts';
-import { pointInRegions, type Region } from '../src/core/geom.ts';
+import { pointInRegions, regionArea, type Region } from '../src/core/geom.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { buildFootprint, type RoadFootprint } from '../src/world/footprint.ts';
 import { buildRoadGraph, type GradeCrossing, type RoadEdge, type RoadGraph, type RoadNode } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
+import { buildParcels, type Parcel, type ParcelMap, type ParcelOwner } from '../src/world/parcels.ts';
 import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
+import { buildTensorField } from '../src/world/tensor.ts';
 import { coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import type { Corridor, Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
@@ -117,6 +119,67 @@ const CLEAR_OF_ROADS = 80;
 const SAMPLE_STRIDE = 40;
 /** Places a seed is asked about that stand clear of every road. */
 const CLEAR_SAMPLES = 200;
+/** Places a seed is asked which parcels claim them. */
+const PARCEL_SAMPLES = 250;
+/** Parcels a world has to be cut into; a map that comes back with fewer has collapsed. */
+const MIN_PARCELS = 40;
+/**
+ * How much of the dry land may be neither road nor parcel. What is left over is
+ * land the road network never reaches — an outer island with no road laid on it
+ * — and nothing can be placed there, so it is no parcel. A seed with much more
+ * than this has lost ground the roads do reach.
+ */
+const MAX_UNREACHED_SHARE = 0.15;
+/**
+ * The owners spec section 6.4 step 4 names that are handed out today. The beach
+ * rules of spec section 7.3, a body of water inside the land, and the ground
+ * under an elevated deck all come later; until then no parcel carries them.
+ */
+const ASSIGNED_OWNERS = new Set<ParcelOwner>(['building', 'park', 'car-park', 'plaza', 'ground']);
+
+/**
+ * The parcels of a world by the ground they cover, so asking which of them
+ * claims a place costs a few tests rather than one per parcel.
+ */
+class ParcelIndex {
+  private readonly parcels: readonly Parcel[];
+  private readonly minX: number[] = [];
+  private readonly minY: number[] = [];
+  private readonly maxX: number[] = [];
+  private readonly maxY: number[] = [];
+
+  constructor(parcels: readonly Parcel[]) {
+    this.parcels = parcels;
+    for (const parcel of parcels) {
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const p of parcel.region.outer) {
+        minX = Math.min(minX, p.x);
+        minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x);
+        maxY = Math.max(maxY, p.y);
+      }
+      this.minX.push(minX);
+      this.minY.push(minY);
+      this.maxX.push(maxX);
+      this.maxY.push(maxY);
+    }
+  }
+
+  /** The parcels that claim a place, by id. More than one of them is a fault. */
+  at(p: Point): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < this.parcels.length; i++) {
+      if (p.x < (this.minX[i] as number) || p.x > (this.maxX[i] as number)) continue;
+      if (p.y < (this.minY[i] as number) || p.y > (this.maxY[i] as number)) continue;
+      const parcel = this.parcels[i] as Parcel;
+      if (pointInRegions(p, [parcel.region])) out.push(parcel.id);
+    }
+    return out;
+  }
+}
 
 /**
  * Every road point in buckets, so "how far is this ground from a road?" costs a
@@ -210,6 +273,16 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     const world = worlds.get(seed) as WorldDescription;
     const built = buildFootprint(world.roads, world.corridors, graphOf(seed));
     footprints.set(seed, built);
+    return built;
+  };
+  /** The parcels of a seed, cut once however many tests ask about them. */
+  const parcelMaps = new Map<number, ParcelMap>();
+  const parcelsOf = (seed: number): ParcelMap => {
+    const known = parcelMaps.get(seed);
+    if (known !== undefined) return known;
+    const world = worlds.get(seed) as WorldDescription;
+    const built = buildParcels(world, footprintOf(seed), graphOf(seed), buildTensorField(world));
+    parcelMaps.set(seed, built);
     return built;
   };
   /** The graph of a seed, built once however many tests ask about it. */
@@ -791,6 +864,88 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       for (const p of landPoints(w, CLEAR_SAMPLES, 0xf007)) {
         if (grid.nearest(p.x, p.y) < CLEAR_OF_ROADS) continue;
         if (pointInRegions(p, regions)) fault(`claims ground ${CLEAR_OF_ROADS} m clear of every road`);
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
+  it('cuts the land the footprint leaves into parcels, each owned by one thing and each on a road', () => {
+    // Spec section 6.4 steps 3 to 5: the parcels are the land less the roads,
+    // the corridors and the water. Nothing is nudged apart afterwards, so no
+    // parcel may stand on another one, on a road or on a corridor, and every
+    // parcel has exactly one owner and a road to reach it by.
+    for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
+      const w = worlds.get(seed) as WorldDescription;
+      const graph = graphOf(seed);
+      const footprint = footprintOf(seed);
+      const { parcels, area, land } = parcelsOf(seed);
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+
+      if (parcels.length < MIN_PARCELS) fault(`cuts only ${parcels.length} parcels`);
+      for (let i = 0; i < parcels.length; i++) {
+        const parcel = parcels[i] as Parcel;
+        const where = `parcel ${i}`;
+        if (parcel.id !== i) fault(`${where} is numbered ${parcel.id}`);
+        if (!ASSIGNED_OWNERS.has(parcel.owner)) fault(`${where} is owned by a ${parcel.owner}`);
+        if (Math.abs(parcel.area - regionArea(parcel.region)) > 1e-6) fault(`${where} misreports its ground`);
+        if (parcel.area <= 0) fault(`${where} owns no ground`);
+        if (ringArea(parcel.region.outer) <= 0) fault(`${where} is wound the wrong way`);
+        for (const hole of parcel.region.holes) {
+          if (ringArea(hole) >= 0) fault(`${where} has a hole wound the wrong way`);
+          if (!pointInRing(hole[0] as Point, parcel.region.outer)) fault(`${where} has a hole outside it`);
+        }
+        if (w.districts[parcel.district] === undefined) fault(`${where} is in district ${parcel.district}, which does not exist`);
+        // Every parcel has a road along it: ground no road reaches is not a parcel.
+        if (parcel.roads.length === 0) fault(`${where} stands on no road`);
+        for (let k = 0; k < parcel.roads.length; k++) {
+          const edge = parcel.roads[k] as number;
+          if (graph.edges[edge] === undefined) fault(`${where} names edge ${edge}, which does not exist`);
+          if (k > 0 && edge <= (parcel.roads[k - 1] as number)) fault(`${where} lists its roads out of order`);
+        }
+      }
+
+      // The parcels are the land less the footprint. What is neither of the two
+      // is land no road reaches, and there is never much of it.
+      if (area > land) fault('the parcels cover more ground than there is land');
+      const unreached = (land - area - footprint.area) / land;
+      if (unreached > MAX_UNREACHED_SHARE) fault(`leaves ${(unreached * 100).toFixed(1)} % of the land neither road nor parcel`);
+
+      // Nothing stands on anything else. Point in polygon over every parcel is
+      // too dear to run over the whole map, so this asks about a spread of
+      // places: on the roads, on the corridors, and out on the open ground.
+      const index = new ParcelIndex(parcels);
+      for (const p of landPoints(w, PARCEL_SAMPLES, 0x9a4c)) {
+        const owners = index.at(p);
+        if (owners.length > 1) fault(`parcels ${owners.join(' and ')} both claim the same ground`);
+        if (owners.length === 1 && pointInRegions(p, footprint.regions)) {
+          fault(`parcel ${owners[0] as number} stands on the ground the roads claim`);
+        }
+      }
+      let step = 0;
+      for (const road of w.roads) {
+        for (let i = 0; i + 1 < road.points.length; i++) {
+          if (step++ % SAMPLE_STRIDE !== 0) continue;
+          if (road.bridges.includes(i) || road.tunnels.includes(i)) continue;
+          const a = road.points[i] as Point;
+          const b = road.points[i + 1] as Point;
+          const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+          const owners = index.at(mid);
+          if (owners.length > 0) fault(`parcel ${owners[0] as number} stands on ${road.tier} ${road.id}`);
+        }
+      }
+      for (const corridor of w.corridors) {
+        // The middle of each run, not its ends: the end of a centreline stands
+        // on the edge of its own strip, where inside and outside are the same
+        // place and neither answer means anything.
+        for (let i = 0; i + 1 < corridor.points.length; i++) {
+          const a = corridor.points[i] as Point;
+          const b = corridor.points[i + 1] as Point;
+          const owners = index.at({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+          if (owners.length > 0) fault(`parcel ${owners[0] as number} stands on ${corridor.kind} corridor ${corridor.id}`);
+        }
       }
       expect(complaint, `seed ${seed}`).toBeUndefined();
     }

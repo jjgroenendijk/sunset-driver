@@ -63,6 +63,14 @@ export const BUDGET_MS = {
    * when streaming lands (spec section 9.1).
    */
   footprint: 900,
+
+  /**
+   * `buildParcels` over a whole map: the coastline traced off the heightfield,
+   * the footprint subtracted from it, and the oversized blocks cut down (spec
+   * section 6.4). Offline work like {@link BUDGET_MS.worldGen}, and it is given
+   * the footprint and the graph rather than building them itself.
+   */
+  parcels: 900,
 } as const;
 
 /** Budgets small enough that milliseconds would round them away. */

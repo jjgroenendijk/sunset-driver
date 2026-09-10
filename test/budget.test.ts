@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { TICKS_PER_HOUR } from '../src/sim/clock.ts';
 import type { InputFrame } from '../src/sim/input.ts';
 import { createSimState, stepSim } from '../src/sim/simulation.ts';
-import { buildFootprint } from '../src/world/footprint.ts';
-import { buildRoadGraph } from '../src/world/graph.ts';
+import { buildFootprint, type RoadFootprint } from '../src/world/footprint.ts';
+import { buildParcels } from '../src/world/parcels.ts';
+import { buildRoadGraph, type RoadGraph } from '../src/world/graph.ts';
 import { buildTensorField } from '../src/world/tensor.ts';
 import type { WorldDescription } from '../src/world/types.ts';
 import { generateWorld } from '../src/world/world.ts';
@@ -33,6 +34,29 @@ function measuredWorlds(): WorldDescription[] {
   if (worlds.length === 0) for (const seed of GEN_SEEDS) worlds.push(generateWorld(seed));
   return worlds;
 }
+
+/**
+ * The road graph and the footprint of a measured world, built once. Both are
+ * measured in their own right below, and the tests that only need them as
+ * input read them from here rather than paying for them again.
+ */
+const parts = new Map<number, { graph: RoadGraph; footprint: RoadFootprint }>();
+
+function partsOf(world: WorldDescription): { graph: RoadGraph; footprint: RoadFootprint } {
+  const known = parts.get(world.seed);
+  if (known !== undefined) return known;
+  const graph = buildRoadGraph(world.roads);
+  const built = { graph, footprint: buildFootprint(world.roads, world.corridors, graph) };
+  parts.set(world.seed, built);
+  return built;
+}
+
+/**
+ * Worlds the footprint and the parcels are measured on. Laying a footprint and
+ * cutting the parcels of a world are the two dearest things this file does, so
+ * neither is measured on every seed.
+ */
+const HEAVY_WORLDS = process.env.SWEEP_SEEDS ? 4 : 2;
 
 describe('performance budgets', () => {
   it('keeps every enforced budget inside its spec section 2.4 slice', () => {
@@ -98,14 +122,23 @@ describe('performance budgets', () => {
   });
 
   it('lays the road footprint of a world within its budget', () => {
-    // A few worlds rather than all of them: laying a footprint is expensive
-    // enough that the full tier cannot afford one per measured seed.
-    const times = measuredWorlds().slice(0, 4).map((world) => {
-      const graph = buildRoadGraph(world.roads);
+    const times = measuredWorlds().slice(0, HEAVY_WORLDS).map((world) => {
+      const graph = partsOf(world).graph;
       return bestOf(2, () => void buildFootprint(world.roads, world.corridors, graph));
     });
     const worst = Math.max(...times);
 
     expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.footprint);
+  });
+
+  it('cuts the parcels of a world within its budget', () => {
+    const times = measuredWorlds().slice(0, HEAVY_WORLDS).map((world) => {
+      const { graph, footprint } = partsOf(world);
+      const field = buildTensorField(world);
+      return bestOf(2, () => void buildParcels(world, footprint, graph, field));
+    });
+    const worst = Math.max(...times);
+
+    expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.parcels);
   });
 });
