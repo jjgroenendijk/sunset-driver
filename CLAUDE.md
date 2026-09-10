@@ -1,82 +1,53 @@
 # Sunset Driver — working notes for agents
 
-`spec.md` is the single source of truth. Build it top down, section by section. Read the hard vetoes in section 1.2 before proposing anything.
+A top-down open-world crime game for the browser: WebGPU render, Rapier physics, Tone.js audio, everything generated from a seed.
 
-## Commands
+`spec.md` is the single source of truth. Build it top down, section by section, and read the hard vetoes in section 1.2 before proposing anything. Work is tracked as GitHub issues numbered in spec order; take the lowest open issue whose prerequisites are closed and keep the change to that issue's scope.
 
-```
-npm run dev        # Vite dev server
-npm run verify     # typecheck + determinism lint + quick tests; run before every commit
-npm run typecheck  # tsc --noEmit (TypeScript 7 / tsgo), ~1 s
-npm run lint       # scripts/lint-determinism.ts, ~2 s
-npm test           # quick tier: 20-seed sweep, simulation sweep, unit tests, ~10 s
-npm run test:full  # full tier: 200-seed sweep (what CI runs), ~50 s
-npm run build      # vite build → dist/
-```
+Run `npm run verify` (typecheck + determinism lint + quick tests, under 20 s) before every commit. CI runs the same checks with `test:full` and deploys `dist` to Cloudflare Pages; `build-and-deploy` is required to merge. Commits touching only `**/*.md` or `.claude/**` skip that job, so keep docs commits separate from code commits.
 
-CI (`.github/workflows/deploy.yml`) runs typecheck, lint, `test:full`, build and deploys `dist` to Cloudflare Pages. The `build-and-deploy` check is required to merge into `main`. Changes touching only `**/*.md` or `.claude/**` skip that job, so keep docs commits separate from code commits to save a CI run. Never deploy with wrangler locally.
+## Determinism
 
-## Fast iteration
+The whole game is a pure function of its seed, so the tooling enforces:
 
-Development happens mainly in the Claude Code cloud environment, by Opus agents working one GitHub issue at a time. Short feedback loops and small context are what keep that productive.
+- No `Math.random()` in `src/`. Randomness comes from `rngFor(seed, tick, subsystem, entityId)` in `src/core/rng.ts`. Add new subsystems at the end of the `Subsystem` table; never renumber.
+- In `src/core`, `src/sim` and `src/world`: no iteration over `Set`, `Map`, iterators from them, `for-in` or `Object.keys/values/entries`. Use `sortedEntries`, `sortedMembers`, `sortedKeys` from `src/core/sort.ts`.
+- Simulation time is the integer `tick` (60 Hz); one game day is 86 400 ticks (24 real minutes). Nothing in `src/sim` may read wall-clock or frame delta.
 
-- **Timing budgets.** `npm test` (quick tier) must stay under 15 s and `npm run verify` under 20 s on a laptop; `vitest.config.ts` enforces a 15 s per-test timeout for the quick tier. `npm run test:full` (CI) must stay under 2 min. If a new test pushes past these, cut its seed or tick count in the quick tier and keep the full coverage behind `SWEEP_SEEDS`.
-- **Test only what changed while iterating.** `npx vitest run test/<file>.test.ts` or `-t '<name>'`; run the whole quick tier before committing. Never make a test slower to make it pass.
-- **Keep tests focused.** One sweep per subsystem, asserting properties, not snapshots of large structures. Budget checks (generation time, step time) are tests too.
-- **Surgical edits.** Change only the lines that need changing with Edit; never rewrite a whole file to change a few lines. Read the part of a file you need, not the whole thing. This is what keeps token use per issue small.
-- **Hooks do the repetitive work.** `.claude/settings.json` wires Claude Code hooks to `scripts/hooks/`:
-  - `SessionStart` → `session-start.sh`: checks the node version against `.nvmrc`, pins the repository-local git identity, and runs `npm ci` when `node_modules` is missing or older than the lockfile.
-  - `PostToolUse` on Edit/Write of a `.ts` file → `post-edit.sh`: typecheck, plus the determinism lint for `src/core`, `src/sim`, `src/world`. Failures are fed back immediately.
-  - `PreToolUse` on Bash → `guard-bash.sh`: blocks local `wrangler` deploys.
-  Anything else that gets repeated across sessions (setup, checks, previews) belongs in a hook or a `scripts/` entry, not in prose instructions.
+## Directory constraints
 
-Cloud sessions run `bash scripts/setup-cloud.sh` as the environment's setup script, before Claude Code launches. It provisions the VM: the cloud image ships Node 20-22 only, so the script installs the `.nvmrc` version into `/opt` and puts it on `PATH`, then warms `node_modules`. Per-session dependency installs stay in the `SessionStart` hook, which runs in cloud and local sessions alike. The setup script's result is cached in a filesystem snapshot keyed on the text typed into the environment dialog, not on this file — after changing the script, re-save the setup script field at claude.ai/code to force a rebuild.
+Beyond what the file names suggest:
+
+- `src/core` — pure; no DOM, no three.js renderer.
+- `src/sim` — plain serialisable state; no wall-clock, no frame delta.
+- `src/world` — must run headless in Node, since the sweeps import it. three.js math and generators are fine; the renderer, Rapier and the DOM are not. Produces a plain world description.
+- `src/render` — reads the world description, never mutates it.
+- `scripts/*.ts` — run with plain `node` (type stripping), not through Vite.
+- `scripts/hooks/` — Claude Code hooks wired from `.claude/settings.json`; fast, idempotent, exit 2 to report a problem. Anything repeated across sessions belongs in a hook or a `scripts/` entry rather than in prose here.
 
 ## Performance budgets
 
-Spec section 2.4 divides a 16 ms frame between systems and section 3 makes the frame-time check a gate. `test/budgets.ts` holds that table together with the thresholds `test/budget.test.ts` enforces, so a budget moves in one place.
+`test/budgets.ts` holds the budget table and `test/budget.test.ts` enforces it, so a budget moves in one place. An enforced number is what the code spends today plus room for a slow runner, not the spec section 2.4 slice it will grow into. **A budget failure is a regression to find, never a threshold to bump.** Raise a budget only together with the system that spends it, never past its slice.
 
-| What | Enforced now | Spec section 2.4 slice |
-|---|---|---|
-| `stepSim`, per tick, over one game hour | 0.02 ms | physics 2 ms + gameplay and AI 2 ms |
-| `generateWorld`, per seed, median of a handful | 1500 ms | offline, outside the frame |
-| `generateWorld`, per seed, worst of a sweep | 3000 ms | offline, outside the frame |
+The same applies to test timing: `npm test` must stay under 15 s and `npm run test:full` under 2 min. Cut seeds or ticks in the quick tier and keep full coverage behind `SWEEP_SEEDS` — never make a test slower to make it pass.
 
-Render (9 ms), streaming (2 ms) and the 1 ms of headroom have no measurable occupant yet; add a row when one lands. An enforced number is what the code spends today plus room for a slow runner, not the slice it will eventually grow into — raise one together with the system that spends it, never past its slice. A budget failure is a regression to find, never a threshold to bump.
+## World generation gotchas
 
-## Layout
-
-| Path | Role | Constraints |
-|---|---|---|
-| `src/core/` | Hashing, seeded RNG, seed parsing, stable sort helpers | Pure; no DOM, no three.js renderer |
-| `src/sim/` | Fixed-step clock, input frames, simulation state and `stepSim` | Never reads wall-clock or frame delta; plain serialisable state |
-| `src/world/` | World generation → plain world description | Must run headless in Node (the sweeps import it); may use three.js math/generators; never the renderer, Rapier or DOM |
-| `src/render/` | WebGPU renderer, fixed tilted camera, scene building | Reads the world description, never mutates it |
-| `src/ui/` | DOM overlay: HUD, keyboard, styles | |
-| `scripts/` | Build-time tooling: `lint-determinism.ts`, `world-preview.ts` (PNG map of a seed), `setup-cloud.sh` | `.ts` scripts run with plain `node` (type stripping) |
-| `scripts/hooks/` | Claude Code hook scripts wired from `.claude/settings.json` | Must be fast and idempotent; exit 2 to report a problem |
-| `test/` | vitest sweeps and unit tests; `budgets.ts` is the performance-budget table | |
-
-## World generation (`src/world`)
-
-- `generateWorld(seed)` builds the whole-map skeleton: size (`size.ts`), archipelago layout and heightfield (`terrain.ts`), water description with straits crossings, and districts/zones (`districts.ts`). Chunk-level content will hang off this skeleton.
-- The archipelago is a power diagram of island sites shrunk by half a channel and domain-warped, so straits bend but never close. The main site is the core at the origin.
-- Terrain relief comes from three.js `TerrainGenerator` (with `valleyBias: 1`; fractional values produce NaN) at 10 m cells, reshaped per island.
-- `buildTensorField(world)` (`tensor.ts`) is the seeded field road direction follows (spec section 6.1): terrain contours, the shoreline and river banks, a radial field around the core and a per-district grid, blended as tensors so that influences facing opposite ways reinforce instead of cancelling. `sample(x, y)` gives the major and minor directions plus a `strength` saying how decided the field is there; `majorAt(x, y)` is the allocation-free hot path.
-- Preview a seed with `node scripts/world-preview.ts <seed> out.png` and look at the image before judging layout changes. The preview draws the field's major direction as strokes, dark where the field is decided and pale where the influences cancel.
-- The seed sweep (`test/seed-sweep.test.ts`) runs 20 seeds by default and 200 under `npm run test:full` (`SWEEP_SEEDS=200`).
-
-## Rules the tooling enforces
-
-- No `Math.random()` anywhere in `src/`. Randomness comes from `rngFor(seed, tick, subsystem, entityId)` in `src/core/rng.ts`. Add new subsystems at the end of the `Subsystem` table; never renumber.
-- In `src/core`, `src/sim` and `src/world`: no iteration over `Set`, `Map`, iterators from them, `for-in` or `Object.keys/values/entries`. Use `sortedEntries`, `sortedMembers`, `sortedKeys` from `src/core/sort.ts`.
-- Simulation time is the integer `tick` (60 Hz). One game day is 86 400 ticks (24 real minutes).
-- The TypeScript compiler API for the lint script comes from the `tsapi` alias (TypeScript 5), because TypeScript 7 ships no JS API.
+- `generateWorld(seed)` builds the whole-map skeleton; chunk-level content will hang off it. The archipelago is a power diagram of island sites shrunk by half a channel and domain-warped, so straits bend but never close. The main site is the core at the origin.
+- three.js `TerrainGenerator` needs `valleyBias: 1`; fractional values produce NaN.
+- `buildTensorField(world)` (`tensor.ts`) is the seeded field road direction follows (spec section 6.1). Influences blend as tensors, so ones facing opposite ways reinforce instead of cancelling; `sample(x, y)` returns both directions and a `strength` saying how decided the field is, and `majorAt(x, y)` is the allocation-free hot path.
+- Look at the image before judging a layout change: `node scripts/world-preview.ts <seed> out.png`. It strokes the field's major direction, dark where the field is decided and pale where influences cancel.
+- `test/seed-sweep.test.ts` runs 20 seeds, or 200 under `SWEEP_SEEDS=200`.
 
 ## Conventions
 
-- Relative imports carry explicit `.ts` extensions so scripts and tests run under plain Node; `allowImportingTsExtensions` is on.
-- Conventional Commits, one atomic change per commit. No AI attribution lines in commits or PRs: `.claude/settings.json` sets `includeCoAuthoredBy: false` and empties `attribution.commit`, `attribution.pr` and `attribution.sessionUrl`, so no co-author trailer, generated-by line or session link is appended. Commit identity is yours, not the repository's: set `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL` in your own environment (the environment config at claude.ai/code for cloud sessions, your shell locally) and the `SessionStart` hook copies them into the repository-local git config, ahead of the identity a cloud container ships with; without them it warns instead of guessing. The hook also turns off commit signing unless the repository has its own key.
-- Feature branches from `main`, merged through a PR once `build-and-deploy` is green. Work is tracked as GitHub issues, one PR per issue; reference the issue in the PR. Issues are numbered in spec order; each names what it builds on. Pick the lowest open issue whose prerequisites are closed, and keep the change to that issue's scope.
-- Keep this file current when adding directories, scripts or enforced rules.
-- three.js is used at 0.186 with `@types/three` 0.185; `TerrainGenerator`, `SkyscraperGenerator` and `SidewalkGenerator` live under `three/examples/jsm/generators/` and run headless in Node.
+- Relative imports carry explicit `.ts` extensions (`allowImportingTsExtensions` is on) so scripts and tests run under plain Node.
+- The lint script's TypeScript compiler API comes from the `tsapi` alias (TypeScript 5), because the TypeScript 7 the project builds with ships no JS API.
+- three.js 0.186 with `@types/three` 0.185. `TerrainGenerator`, `SkyscraperGenerator` and `SidewalkGenerator` live under `three/examples/jsm/generators/` and run headless in Node.
+- Conventional Commits, one atomic change per commit, feature branches from `main`, one PR per issue referencing that issue.
+- Never deploy with wrangler locally; `scripts/hooks/guard-bash.sh` blocks it.
+- Cloud sessions run `bash scripts/setup-cloud.sh` as the environment setup script. Its result is cached in a snapshot keyed on the text typed into the environment dialog, not on the script — after changing it, re-save the setup script field at claude.ai/code to force a rebuild.
+
+## Keeping this file current
+
+Update this file whenever a directory, enforced rule or non-obvious gotcha changes. `docs/claude-md.md` says what belongs here and what does not — read it before adding a section.
