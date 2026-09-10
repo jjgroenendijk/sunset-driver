@@ -62,6 +62,6 @@ Development happens mainly in the Claude Code cloud environment, by Opus agents 
 
 - Relative imports carry explicit `.ts` extensions so scripts and tests run under plain Node; `allowImportingTsExtensions` is on.
 - Conventional Commits, one atomic change per commit. No AI attribution lines in commits or PRs.
-- Feature branches from `main`, merged through a PR once `build-and-deploy` is green. Work is tracked as GitHub issues, one PR per issue; reference the issue in the PR.
+- Feature branches from `main`, merged through a PR once `build-and-deploy` is green. Work is tracked as GitHub issues, one PR per issue; reference the issue in the PR. Issues are numbered in spec order; each names what it builds on. Pick the lowest open issue whose prerequisites are closed, and keep the change to that issue's scope.
 - Keep this file current when adding directories, scripts or enforced rules.
 - three.js is used at 0.186 with `@types/three` 0.185; `TerrainGenerator`, `SkyscraperGenerator` and `SidewalkGenerator` live under `three/examples/jsm/generators/` and run headless in Node.
