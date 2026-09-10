@@ -2,7 +2,7 @@
 
 A top-down open-world crime game for the browser: WebGPU render, Rapier physics, Tone.js audio, everything generated from a seed.
 
-`spec.md` is the single source of truth. Build it top down, section by section, and read the hard vetoes in section 1.2 before proposing anything. Work is tracked as GitHub issues numbered in spec order; take the lowest open issue whose prerequisites are closed and keep the change to that issue's scope.
+`spec.md` is the single source of truth. Build it top down, section by section, and read the hard vetoes in section 1.2 before proposing anything. Work is tracked as GitHub issues numbered in spec order; take the lowest open issue whose prerequisites are closed and keep the change to that issue's scope. When you find a pre-existing problem outside that scope — a bug, a wrong number, a stale comment, a missing test — open a GitHub issue for it and carry on. The issue is the deliverable; a note in a PR body or a `TODO` in the code is not.
 
 Run `npm run verify` (typecheck + determinism lint + quick tests, under 20 s) before every commit. CI runs the same checks with `test:full` and deploys `dist` to Cloudflare Pages; `build-and-deploy` is required to merge. Commits touching only `**/*.md` or `.claude/**` skip that job, so keep docs commits separate from code commits.
 
