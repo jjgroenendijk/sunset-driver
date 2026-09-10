@@ -14,6 +14,18 @@ if [ -n "$want" ] && [ "$have" != "$want" ]; then
   echo "warning: node $have found, .nvmrc wants $want (nvm use / fnm use)" >&2
 fi
 
+# Commit identity. Cloud containers ship a global git identity of their own, so
+# pin the repository-local one; the GIT_AUTHOR_*/GIT_COMMITTER_* variables in
+# .claude/settings.json cover the same ground for sessions that read them.
+git config --local user.name "${GIT_AUTHOR_NAME:-jjgroenendijk}"
+git config --local user.email "${GIT_AUTHOR_EMAIL:-3110270+jjgroenendijk@users.noreply.github.com}"
+# The global config may point commit signing at a key that is not ours; sign
+# only when this repository was given a key of its own.
+if [ -z "$(git config --local --get user.signingkey)" ]; then
+  git config --local commit.gpgsign false
+  git config --local tag.gpgsign false
+fi
+
 # Install when node_modules is missing or older than the lockfile.
 if [ ! -f node_modules/.package-lock.json ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then
   echo "installing dependencies (lockfile changed or node_modules missing)" >&2
