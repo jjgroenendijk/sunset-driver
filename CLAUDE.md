@@ -14,7 +14,7 @@ npm run test:full  # full tier: 200-seed sweep (what CI runs), ~50 s
 npm run build      # vite build → dist/
 ```
 
-CI (`.github/workflows/deploy.yml`) runs typecheck, lint, `test:full`, build and deploys `dist` to Cloudflare Pages. The `build-and-deploy` check is required to merge into `main`. Never deploy with wrangler locally.
+CI (`.github/workflows/deploy.yml`) runs typecheck, lint, `test:full`, build and deploys `dist` to Cloudflare Pages. The `build-and-deploy` check is required to merge into `main`. Changes touching only `**/*.md` or `.claude/**` skip that job, so keep docs commits separate from code commits to save a CI run. Never deploy with wrangler locally.
 
 ## Fast iteration
 
