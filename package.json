@@ -22,6 +22,7 @@
     "@types/node": "^22.20.2",
     "@types/three": "^0.185.4",
     "@webgpu/types": "^0.1.72",
+    "playwright-core": "^1.63.0",
     "tsapi": "npm:typescript@^5.9.3",
     "typescript": "^7.0.2",
     "vite": "^8.2.2",

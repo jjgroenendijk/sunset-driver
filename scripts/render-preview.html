@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sunset Driver — render preview</title>
+    <!-- An empty icon, so the browser does not report a missing one as a page error. -->
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <!--
+      The page `scripts/render-preview.ts` drives. It draws nothing itself: it
+      hands the driver `renderPreview`, which reads a frame back off a render
+      target. Vite serves it, so the `.ts` import and the bare `three` imports
+      under it resolve the way they do for the game.
+    -->
+    <script type="module">
+      import { renderPreview } from '/src/render/preview.ts';
+      window.renderPreview = renderPreview;
+      window.previewReady = true;
+    </script>
+  </body>
+</html>

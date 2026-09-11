@@ -58,3 +58,21 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<WebGPUR
   renderer.setSize(window.innerWidth, window.innerHeight, false);
   return renderer;
 }
+
+/**
+ * A renderer that draws into a render target instead of onto a page.
+ *
+ * `scripts/render-preview.ts` uses it to take a picture of the game from a
+ * session. A headless browser never puts a WebGPU canvas in front of the
+ * compositor, so a screenshot of the page is blank whatever the flags; the
+ * picture has to be read back off a render target. The swizzle shim above is
+ * needed here for the same reason it is needed on the page.
+ */
+export async function createOffscreenRenderer(width: number, height: number): Promise<WebGPURenderer> {
+  allowStringSwizzle();
+  const renderer = new WebGPURenderer({ antialias: false, forceWebGL: false });
+  await renderer.init();
+  renderer.setPixelRatio(1);
+  renderer.setSize(width, height, false);
+  return renderer;
+}
