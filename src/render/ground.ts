@@ -17,92 +17,10 @@
  * read it directly.
  */
 import { BufferAttribute, BufferGeometry, Color } from 'three';
-import { pointInRegion, type Point } from '../core/geom.ts';
 import type { WorldChunk, WorldLayers } from '../world/chunks.ts';
 import { districtAt, layoutZones } from '../world/districts.ts';
-import type { Parcel, ParcelOwner } from '../world/parcels.ts';
+import { ParcelIndex, type Parcel, type ParcelOwner } from '../world/parcels.ts';
 import type { WorldDescription, Zone } from '../world/types.ts';
-
-/** Metres each way of one bucket of the parcel index. About one city block. */
-const INDEX_CELL = 50;
-
-/** The box around a piece of geometry. */
-interface Box {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-}
-
-/**
- * Where every parcel is, so a point on the ground can be asked which one it
- * stands on. Parcels never overlap (spec section 1.1), so at most one answers.
- *
- * A parcel is filed in every bucket the box around it touches. The open ground
- * of the wilderness is one parcel the size of an island and lands in thousands
- * of them, which costs a little memory and saves the scan it would otherwise
- * force on every lookup.
- */
-export class ParcelIndex {
-  private readonly parcels: readonly Parcel[];
-  private readonly boxes: Box[];
-  private readonly buckets: number[][];
-  private readonly cols: number;
-  private readonly rows: number;
-  private readonly minX: number;
-  private readonly minY: number;
-
-  constructor(parcels: readonly Parcel[]) {
-    this.parcels = parcels;
-    this.boxes = parcels.map((parcel) => boxOf(parcel.region.outer));
-    const bounds: Box = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
-    for (const box of this.boxes) {
-      bounds.minX = Math.min(bounds.minX, box.minX);
-      bounds.minY = Math.min(bounds.minY, box.minY);
-      bounds.maxX = Math.max(bounds.maxX, box.maxX);
-      bounds.maxY = Math.max(bounds.maxY, box.maxY);
-    }
-    const empty = this.boxes.length === 0;
-    this.minX = empty ? 0 : bounds.minX;
-    this.minY = empty ? 0 : bounds.minY;
-    this.cols = empty ? 0 : Math.floor((bounds.maxX - this.minX) / INDEX_CELL) + 1;
-    this.rows = empty ? 0 : Math.floor((bounds.maxY - this.minY) / INDEX_CELL) + 1;
-    this.buckets = [];
-    for (let i = 0; i < this.cols * this.rows; i++) this.buckets.push([]);
-    for (let i = 0; i < this.boxes.length; i++) {
-      const box = this.boxes[i] as Box;
-      const c1 = this.colOf(box.maxX);
-      const r1 = this.rowOf(box.maxY);
-      for (let r = this.rowOf(box.minY); r <= r1; r++) {
-        for (let c = this.colOf(box.minX); c <= c1; c++) (this.buckets[r * this.cols + c] as number[]).push(i);
-      }
-    }
-  }
-
-  /** The parcel a point stands on, or nothing where the ground belongs to a road or to no one. */
-  at(x: number, y: number): Parcel | undefined {
-    const c = this.colOf(x);
-    const r = this.rowOf(y);
-    if (c < 0 || r < 0 || c >= this.cols || r >= this.rows) return undefined;
-    const p: Point = { x, y };
-    for (const i of this.buckets[r * this.cols + c] as number[]) {
-      const box = this.boxes[i] as Box;
-      if (x < box.minX || x > box.maxX || y < box.minY || y > box.maxY) continue;
-      const parcel = this.parcels[i] as Parcel;
-      if (pointInRegion(p, parcel.region)) return parcel;
-    }
-    return undefined;
-  }
-
-  /** Bucket column of a place, which is outside the index where it is out of range. */
-  private colOf(x: number): number {
-    return Math.floor((x - this.minX) / INDEX_CELL);
-  }
-
-  private rowOf(y: number): number {
-    return Math.floor((y - this.minY) / INDEX_CELL);
-  }
-}
 
 /** What a vertex of the ground asks about the world beneath it. */
 export interface GroundLookup {
@@ -253,18 +171,6 @@ function gridIndices(gridSize: number): Uint32Array {
     }
   }
   return out;
-}
-
-/** The box around a set of points. */
-function boxOf(points: readonly Point[]): Box {
-  const box: Box = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
-  for (const p of points) {
-    box.minX = Math.min(box.minX, p.x);
-    box.minY = Math.min(box.minY, p.y);
-    box.maxX = Math.max(box.maxX, p.x);
-    box.maxY = Math.max(box.maxY, p.y);
-  }
-  return box;
 }
 
 /** A colour as the renderer wants it: three floats in the working colour space. */

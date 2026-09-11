@@ -1,15 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { pointInRegion, regionOf, type Point } from '../src/core/geom.ts';
-import {
-  buildGroundAttributes,
-  groundGeometry,
-  groundLookup,
-  ParcelIndex,
-  type GroundAttributes,
-} from '../src/render/ground.ts';
+import { buildGroundAttributes, groundGeometry, groundLookup, type GroundAttributes } from '../src/render/ground.ts';
 import { buildLayers, ChunkSource, CHUNK_SIZE } from '../src/world/chunks.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
-import type { Parcel } from '../src/world/parcels.ts';
+import { ParcelIndex, type Parcel } from '../src/world/parcels.ts';
 import type { District, RoadCurve, WorldDescription, Zone } from '../src/world/types.ts';
 
 const SIZE = 800;
