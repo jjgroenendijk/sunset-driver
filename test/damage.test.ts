@@ -320,6 +320,27 @@ describe('crashing a car', () => {
     session.physics.dispose();
   });
 
+  it('does not read its own blast as another crash', () => {
+    const session = start();
+    const v = session.state.vehicle;
+    ignite(v.damage, session.state.tick);
+    // Up to the tick the fuse runs out, which is where the blast is felt.
+    for (let i = 0; i < FUSE_TICKS + 1; i++) drive(session, 1);
+    expect(v.damage.stage).toBe('burnt');
+    const hurtByBlast = MAX_HEALTH - session.state.player.health;
+    const left = session.state.player.health;
+    expect(hurtByBlast).toBeGreaterThan(0);
+    // The blast is felt on the tick it goes off and on no tick after it: the
+    // record is read back off the body it threw, so the throw is not a crash.
+    drive(session, 10);
+    expect(session.state.player.health).toBe(left);
+    // The shell does come back down, and landing on it is a knock and not a
+    // second explosion.
+    drive(session, 180);
+    expect(left - session.state.player.health).toBeLessThan(hurtByBlast / 10);
+    session.physics.dispose();
+  });
+
   it('will not drive a burnt-out shell', () => {
     const run = (burnt: boolean): number => {
       const session = start();

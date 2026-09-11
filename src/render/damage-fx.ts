@@ -137,6 +137,9 @@ class Puffs {
       this.mesh.setColorAt(drawn, this.colour);
       drawn++;
     }
+    // Nothing to draw and nothing drawn last frame is nothing to upload: a
+    // car that is not burning should cost the frame no buffer at all.
+    if (drawn === 0 && this.mesh.count === 0) return;
     this.mesh.count = drawn;
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor !== null) this.mesh.instanceColor.needsUpdate = true;

@@ -364,11 +364,19 @@ export class SimPhysics {
     if (!tickFire(v.damage, state.tick)) return;
     const p = state.player;
     hurt(p, blastDamageAt(p.driving ? 0 : Math.hypot(p.x - v.x, p.y - v.z)));
-    if (this.chassis === undefined) return;
+    const chassis = this.chassis;
+    if (chassis === undefined) return;
     this.force.x = 0;
     this.force.y = (BLAST_LIFT * this.spec.mass) / 1000;
     this.force.z = 0;
-    this.chassis.applyImpulse(this.force, true);
+    chassis.applyImpulse(this.force, true);
+    // An impulse moves the body at once, so the record is read again: the
+    // record and the body have to agree, or the next tick reads the blast as
+    // another crash.
+    const linear = chassis.linvel();
+    v.vx = linear.x;
+    v.vy = linear.y;
+    v.vz = linear.z;
   }
 
   /** Apply the input to the wheels: steering, engine, brakes and the grip of the ground. */
