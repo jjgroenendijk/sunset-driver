@@ -11,13 +11,14 @@
  * every chunk of that world shares them, so dropping a chunk frees its geometry
  * and nothing else.
  */
-import { BatchedMesh, Object3D, type BufferGeometry, type Material } from 'three';
+import { BatchedMesh, Object3D, type BufferGeometry } from 'three';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js';
 import type { Line2NodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import type { WorldChunk } from '../world/chunks.ts';
 import type { RoadRibbons } from '../world/ribbon.ts';
 import type { RoadTier } from '../world/types.ts';
+import { batchOf } from './batch.ts';
 import { createMarkingMaterial, createRoadMaterial } from './road-material.ts';
 import { buildChunkRoads, partsOf, TIER_ORDER } from './road-mesh.ts';
 
@@ -50,7 +51,7 @@ export class RoadScenery {
     for (const tier of buildChunkRoads(chunk, ribbons)) {
       const surface = this.surfaces[tier.tier] as MeshStandardNodeMaterial;
       const parts = partsOf(tier);
-      if (parts.length > 0) objects.push(batchOf(parts, surface));
+      if (parts.length > 0) objects.push(batchOf(parts.map((geometry) => ({ geometry })), surface));
       if (tier.markings.length === 0) continue;
       const geometry = new LineSegmentsGeometry();
       geometry.setPositions(tier.markings);
@@ -75,22 +76,3 @@ export class RoadScenery {
   }
 }
 
-/**
- * Pack one tier's geometry into a single batch. The batch is sized to exactly
- * what it is given, because a chunk's roads are known before any of them is
- * drawn, and each part is released once it has been copied in.
- */
-function batchOf(parts: readonly BufferGeometry[], material: Material): BatchedMesh {
-  let vertices = 0;
-  let indices = 0;
-  for (const part of parts) {
-    vertices += part.getAttribute('position').count;
-    indices += part.getIndex()?.count ?? 0;
-  }
-  const batch = new BatchedMesh(parts.length, vertices, indices, material);
-  for (const part of parts) {
-    batch.addInstance(batch.addGeometry(part));
-    part.dispose();
-  }
-  return batch;
-}

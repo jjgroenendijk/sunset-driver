@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { TICKS_PER_HOUR } from '../src/sim/clock.ts';
 import type { InputFrame } from '../src/sim/input.ts';
 import { createSimState, stepSim } from '../src/sim/simulation.ts';
+import { buildChunkBuildings, buildingLookup } from '../src/render/building-mesh.ts';
 import { buildCarve } from '../src/world/carve.ts';
+import { chunkAt, ChunkSource } from '../src/world/chunks.ts';
 import { buildFootprint, type RoadFootprint } from '../src/world/footprint.ts';
 import { buildBuildings } from '../src/world/buildings.ts';
 import { buildParcels, type ParcelMap } from '../src/world/parcels.ts';
@@ -193,5 +195,33 @@ describe('performance budgets', () => {
     const worst = Math.max(...times);
 
     expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.buildings);
+  });
+
+  it('builds the buildings of a chunk of the core within its budget', () => {
+    const times = measuredWorlds().slice(0, HEAVY_WORLDS).map((world) => {
+      const graph = graphOf(world);
+      const parcels = parcelsOf(world);
+      const source = new ChunkSource(world, {
+        graph,
+        footprint: footprintOf(world),
+        parcels,
+        buildings: buildBuildings(world, parcels, graph),
+        carve: buildCarve(world.terrain, world.roads),
+      });
+      const lookup = buildingLookup(world, source.layers);
+      // The chunk on the core, which is where the towers stand and so where a
+      // chunk costs the most to build.
+      const at = chunkAt(world.core.x, world.core.y);
+      const chunk = source.chunk(at.cx, at.cy);
+      return bestOf(2, () => {
+        for (const one of buildChunkBuildings(chunk, lookup)) {
+          one.shell.dispose();
+          one.hull.dispose();
+        }
+      });
+    });
+    const worst = Math.max(...times);
+
+    expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.chunkBuildings);
   });
 });

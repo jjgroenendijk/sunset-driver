@@ -2,10 +2,9 @@ import type { BufferGeometry } from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   buildChunkRoads,
-  CHUNK_DRAW_CALL_CAP,
-  chunkDrawCalls,
   markingsOf,
   partsOf,
+  roadDrawCalls,
   roadSection,
   SURFACE_STRUCTURE,
   TIER_ORDER,
@@ -295,18 +294,10 @@ describe('bridges and tunnels', () => {
 
 describe('draw calls', () => {
   it('costs a batch and a line mesh for each tier a chunk carries', () => {
-    const chunk = source.chunk(0, 0);
-    // One ground mesh, one batch of streets, one of their markings.
-    expect(chunkDrawCalls(chunk)).toBe(3);
-    expect(chunkDrawCalls(source.chunk(9, 9))).toBe(1);
-  });
-
-  it('stays inside the cap on every chunk of the map', () => {
-    const reach = Math.ceil(SIZE / 2 / CHUNK_SIZE);
-    for (let cy = -reach; cy <= reach; cy++) {
-      for (let cx = -reach; cx <= reach; cx++) {
-        expect(chunkDrawCalls(source.chunk(cx, cy))).toBeLessThanOrEqual(CHUNK_DRAW_CALL_CAP);
-      }
-    }
+    // One batch of streets, one of their markings; a chunk past the roads pays
+    // nothing. What a whole chunk costs is `chunk-cost.ts`, which adds the
+    // ground and the buildings to this.
+    expect(roadDrawCalls(source.chunk(0, 0))).toBe(2);
+    expect(roadDrawCalls(source.chunk(9, 9))).toBe(0);
   });
 });

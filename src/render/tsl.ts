@@ -46,6 +46,15 @@ export const smoothstep = tsl.smoothstep as unknown as (
   x: TslNode,
 ) => TslNode;
 
+/**
+ * A value the material reads every frame rather than at build time. Assigning
+ * to `.value` changes what every mesh drawn with that material sees.
+ */
+export const uniform = tsl.uniform as unknown as (value: number) => { value: number } & TslNode;
+
+/** The texture coordinates of the geometry. The game measures them in metres. */
+export const uv = tsl.uv as unknown as () => TslNode;
+
 /** The fragment's place in world space. */
 export const positionWorld: TslNode = tsl.positionWorld;
 

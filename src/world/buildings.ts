@@ -223,6 +223,21 @@ export function buildBuildings(world: WorldDescription, parcels: ParcelMap, grap
   return { buildings, area };
 }
 
+/**
+ * The middle of a lot: where the building on it stands, and the one place that
+ * says which chunk owns it. A lot is a rectangle, so this is the crossing of its
+ * diagonals.
+ */
+export function lotMiddle(lot: readonly Point[]): Point {
+  let x = 0;
+  let y = 0;
+  for (const corner of lot) {
+    x += corner.x;
+    y += corner.y;
+  }
+  return { x: x / lot.length, y: y / lot.length };
+}
+
 /** A lot before it is given a building. */
 interface Lot {
   corners: Point[];

@@ -18,6 +18,7 @@
  * chunk requests without writing anything back.
  */
 import { regionArea, regionOf, split, type Point, type Region } from '../core/geom.ts';
+import { buildBuildings, lotMiddle, type Building, type BuildingMap } from './buildings.ts';
 import { buildCarve, type RoadCarve } from './carve.ts';
 import { buildFootprint, type RoadFootprint } from './footprint.ts';
 import { buildRoadGraph, type RoadGraph } from './graph.ts';
@@ -110,6 +111,13 @@ export interface WorldChunk {
   roads: ChunkRoad[];
   /** The parcel pieces inside the chunk, in parcel order. */
   parcels: ChunkParcel[];
+  /**
+   * The buildings of the chunk, in building order. A building is one thing and
+   * is never cut in two: the chunk its lot's middle stands in owns the whole of
+   * it, so a lot on a boundary reaches a little into its neighbour rather than
+   * being drawn twice.
+   */
+  buildings: Building[];
 }
 
 /**
@@ -120,6 +128,7 @@ export interface WorldLayers {
   graph: RoadGraph;
   footprint: RoadFootprint;
   parcels: ParcelMap;
+  buildings: BuildingMap;
   carve: RoadCarve;
 }
 
@@ -131,10 +140,12 @@ export function buildLayers(world: WorldDescription): WorldLayers {
   const graph = buildRoadGraph(world.roads);
   const footprint = buildFootprint(world.roads, world.corridors, graph);
   const field = buildTensorField(world);
+  const parcels = buildParcels(world, footprint, graph, field);
   return {
     graph,
     footprint,
-    parcels: buildParcels(world, footprint, graph, field),
+    parcels,
+    buildings: buildBuildings(world, parcels, graph),
     carve: buildCarve(world.terrain, world.roads),
   };
 }
@@ -164,12 +175,26 @@ export class ChunkSource {
   /** The box around each road curve and each parcel, so a chunk tests a handful of them closely. */
   private readonly roadBoxes: Box[];
   private readonly parcelBoxes: Box[];
+  /**
+   * The buildings of each chunk, filed under the chunk their lot's middle
+   * stands in. A building belongs to one chunk and is never cut, so this is
+   * settled once rather than searched for per chunk.
+   */
+  private readonly buildingsByChunk = new Map<string, Building[]>();
 
   constructor(world: WorldDescription, layers: WorldLayers = buildLayers(world)) {
     this.world = world;
     this.layers = layers;
     this.roadBoxes = world.roads.map((road) => boxOf(road.points));
     this.parcelBoxes = layers.parcels.parcels.map((parcel) => boxOf(parcel.region.outer));
+    for (const building of layers.buildings.buildings) {
+      const middle = lotMiddle(building.lot);
+      const at = chunkAt(middle.x, middle.y);
+      const key = `${at.cx}:${at.cy}`;
+      const here = this.buildingsByChunk.get(key);
+      if (here === undefined) this.buildingsByChunk.set(key, [building]);
+      else here.push(building);
+    }
   }
 
   /** Cut chunk `(cx, cy)` out of the world. */
@@ -184,6 +209,7 @@ export class ChunkSource {
       seaLevel: this.world.water.seaLevel,
       roads: this.roadsIn(bounds),
       parcels: this.parcelsIn(bounds),
+      buildings: [...(this.buildingsByChunk.get(`${cx}:${cy}`) ?? [])],
     };
   }
 

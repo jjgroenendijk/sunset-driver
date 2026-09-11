@@ -37,6 +37,8 @@ export interface PreviewRequest {
   height: number;
   /** Chunks each way of the player to build before the frame is drawn. */
   chunkRadius: number;
+  /** How far into the night it is, 0 by day and 1 at midnight. */
+  night: number;
 }
 
 /** The picture, and what the frame cost to build. */
@@ -51,7 +53,7 @@ export interface PreviewResult {
   chunkMs: number;
   /** Milliseconds spent drawing and reading back the frame. */
   frameMs: number;
-  /** Draw calls the dearest chunk built costs, ground and roads together. */
+  /** Draw calls the dearest chunk built costs: ground, roads and buildings. */
   peakDrawCalls: number;
 }
 
@@ -62,7 +64,7 @@ const BYTES_PER_PIXEL = 4;
 const ROW_ALIGNMENT = 256;
 
 export async function renderPreview(request: PreviewRequest): Promise<PreviewResult> {
-  const { seed, x, y, distance, heading, speed, width, height, chunkRadius } = request;
+  const { seed, x, y, distance, heading, speed, width, height, chunkRadius, night } = request;
 
   const t0 = performance.now();
   const world = generateWorld(seed);
@@ -70,6 +72,7 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
 
   const t1 = performance.now();
   const scene = new WorldScene(world, DEFAULT_APPEARANCE);
+  scene.night = night;
   scene.prime(x, y, chunkRadius);
   const chunkMs = performance.now() - t1;
 
