@@ -1,5 +1,6 @@
 import { gameTime } from '../sim/clock.ts';
 import type { SimState } from '../sim/simulation.ts';
+import { conditionOf } from '../sim/damage.ts';
 import { specOf } from '../sim/vehicle.ts';
 
 /** Minimal DOM overlay: seed, game clock and draw calls. Grows into the full HUD. */
@@ -51,7 +52,11 @@ export class Hud {
     // The name of what is being driven, so the debug picker's choice of spec
     // section 11.3 is readable while driving it. On foot it says so instead,
     // with the health of spec section 11.5, until the full HUD lands.
-    const doing = p.driving ? specOf(state.vehicle.cls).name : `on foot  ${Math.round(p.health)} hp`;
+    // What is being driven and what is left of it (spec section 11.3), so the
+    // damage states are readable while they are being driven through.
+    const doing = p.driving
+      ? `${specOf(state.vehicle.cls).name}  ${conditionOf(state.vehicle.damage)}`
+      : `on foot  ${Math.round(p.health)} hp`;
     if (kmh !== this.shownSpeed || doing !== this.shownVehicle) {
       this.shownSpeed = kmh;
       this.shownVehicle = doing;

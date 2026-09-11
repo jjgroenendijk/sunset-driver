@@ -42,12 +42,21 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import type { Surface } from '../world/surface.ts';
 import { TICK_RATE } from './clock.ts';
+import {
+  blastDamageAt,
+  BLAST_LIFT,
+  CRASH_DAMAGE,
+  enginePowerScale,
+  hitVehicle,
+  tickFire,
+} from './damage.ts';
 import type { InputFrame } from './input.ts';
 import {
   besidePlayer,
   capsuleOf,
   exitPlace,
   EXIT_SPEED,
+  hurt,
   JUMP_SPEED,
   MAX_CLIMB,
   MIN_SLIDE,
@@ -113,6 +122,15 @@ const LIFT_POINTS = 4;
  * second and is still stiffer than the gravity it holds the bike up against.
  */
 const BALANCE_DAMPING = 0.1;
+
+/**
+ * Metres per second the vehicle has to be sliding across its own axle before a
+ * tyre counts as skidding (spec section 11.3). It is one rule for every way of
+ * getting there: a handbrake turn, a corner taken too fast and a spin all push
+ * the vehicle sideways, and a tyre that is being pushed sideways is a tyre
+ * leaving a mark. Below this the tyre is scrubbing, not sliding.
+ */
+const SKID_SLIP = 2.2;
 
 /** Height samples each way of one tile. */
 const TILE_CELLS = PHYSICS_TILE / PHYSICS_CELL;
@@ -255,11 +273,20 @@ export class SimPhysics {
    * A player on foot is stepped instead of the vehicle (spec section 11.5).
    * The ground follows whoever is moving, so the tiles stand under the player
    * and not under the car they left behind.
+   *
+   * What the vehicle was doing before the step is kept, because the speed it
+   * loses over the step is what says whether it has hit anything (spec section
+   * 11.3). Nothing a driver does reaches that: the brakes, the springs and
+   * gravity all move the vehicle by a fraction of the impact floor in a tick,
+   * so only a wall or another body can.
    */
   step(state: SimState, input: InputFrame): void {
     this.transfer(state, input);
     const v = state.vehicle;
     const chassis = this.chassis;
+    const wasX = v.vx;
+    const wasY = v.vy;
+    const wasZ = v.vz;
     if (chassis === undefined) {
       this.cover(state.player.x, state.player.y);
       this.walk(state, input);
@@ -280,6 +307,8 @@ export class SimPhysics {
     }
     this.world.step();
     this.read(state);
+    if (chassis !== undefined) this.crash(state, wasX, wasY, wasZ);
+    this.burn(state);
   }
 
   /** Release the Rapier world and everything in it. */
@@ -298,6 +327,56 @@ export class SimPhysics {
   /** The row of the roster being driven, so the HUD and the picker can name it. */
   get vehicle(): VehicleSpec {
     return this.spec;
+  }
+
+  /**
+   * The damage of spec section 11.3: what the vehicle hit over the step it has
+   * just taken.
+   *
+   * The speed it lost is what its structure absorbed, and the direction it was
+   * pushed in says which panel took it. The direction is read in the vehicle's
+   * own frame, so a shunt from behind dents the boot whichever way the car
+   * happens to be pointing. Whoever is driving takes their share of it.
+   */
+  private crash(state: SimState, wasX: number, wasY: number, wasZ: number): void {
+    const v = state.vehicle;
+    unrotate(this.point, v, v.vx - wasX, v.vy - wasY, v.vz - wasZ);
+    const severity = hitVehicle(
+      v.damage,
+      this.spec,
+      this.point.x,
+      this.point.y,
+      this.point.z,
+      state.seed,
+      state.tick,
+    );
+    if (severity > 0 && state.player.driving) hurt(state.player, severity * CRASH_DAMAGE);
+  }
+
+  /**
+   * Run the vehicle's fire for a tick (spec section 11.3). A fire that reaches
+   * the end of its fuse throws the vehicle up and hurts whoever is near enough
+   * to feel it. Fire between vehicles is `spreadFire` in `damage.ts`; there is
+   * one vehicle here until the traffic of spec section 13.1 lands.
+   */
+  private burn(state: SimState): void {
+    const v = state.vehicle;
+    if (!tickFire(v.damage, state.tick)) return;
+    const p = state.player;
+    hurt(p, blastDamageAt(p.driving ? 0 : Math.hypot(p.x - v.x, p.y - v.z)));
+    const chassis = this.chassis;
+    if (chassis === undefined) return;
+    this.force.x = 0;
+    this.force.y = (BLAST_LIFT * this.spec.mass) / 1000;
+    this.force.z = 0;
+    chassis.applyImpulse(this.force, true);
+    // An impulse moves the body at once, so the record is read again: the
+    // record and the body have to agree, or the next tick reads the blast as
+    // another crash.
+    const linear = chassis.linvel();
+    v.vx = linear.x;
+    v.vy = linear.y;
+    v.vz = linear.z;
   }
 
   /** Apply the input to the wheels: steering, engine, brakes and the grip of the ground. */
@@ -319,16 +398,19 @@ export class SimPhysics {
 
     // Throttle forward, and brake rather than change gear while still rolling
     // the other way. Reverse is geared short, so it is slow and it pulls hard.
+    // A damaged engine gives less of its power, and a burnt-out one gives none
+    // at all (spec section 11.3).
+    const power = spec.enginePower * enginePowerScale(v.damage);
     let engine = 0;
     let pedal = 0;
     if (input.throttle > 0) {
       if (speed < -0.5) pedal = input.throttle;
-      else engine = input.throttle * spec.enginePower * Math.max(0, 1 - speed / spec.topSpeed);
+      else engine = input.throttle * power * Math.max(0, 1 - speed / spec.topSpeed);
     } else if (input.throttle < 0) {
       if (speed > 0.5) pedal = -input.throttle;
       else {
         const top = spec.topSpeed * spec.reverse;
-        engine = input.throttle * spec.enginePower * spec.reverse * Math.max(0, 1 + speed / top);
+        engine = input.throttle * power * spec.reverse * Math.max(0, 1 + speed / top);
       }
     }
 
@@ -546,12 +628,19 @@ export class SimPhysics {
       v.speed = v.vx * this.point.x + v.vy * this.point.y + v.vz * this.point.z;
     } else {
       v.speed = this.wheels.currentVehicleSpeed();
+      // How fast the body is going across its own axle. A tyre on the ground
+      // that is being pushed sideways this hard is sliding, not rolling, and a
+      // sliding tyre leaves a mark (spec section 11.3).
+      rotate(this.axis, v, 0, 0, 1);
+      const across = v.vx * this.axis.x + v.vy * this.axis.y + v.vz * this.axis.z;
+      const sliding = Math.abs(across) > SKID_SLIP;
       for (let i = 0; i < v.wheels.length; i++) {
         const wheel = v.wheels[i] as WheelState;
         wheel.rotation = this.wheels.wheelRotation(i) ?? wheel.rotation;
         wheel.steer = this.wheels.wheelSteering(i) ?? 0;
         wheel.suspension = this.wheels.wheelSuspensionLength(i) ?? this.spec.suspensionRest;
         wheel.contact = this.wheels.wheelIsInContact(i);
+        wheel.skid = wheel.contact && sliding;
       }
     }
   }
@@ -803,6 +892,18 @@ export class SimPhysics {
 function approach(from: number, to: number, step: number): number {
   if (to > from) return Math.min(to, from + step);
   return Math.max(to, from - step);
+}
+
+/** Turn an offset in world axes into the vehicle's own frame: {@link rotate} the other way. */
+function unrotate(out: { x: number; y: number; z: number }, v: VehicleState, x: number, y: number, z: number): void {
+  // The conjugate of a unit quaternion is its inverse, so this is the same
+  // product with the vector part negated.
+  const tx = 2 * (v.qz * y - v.qy * z);
+  const ty = 2 * (v.qx * z - v.qz * x);
+  const tz = 2 * (v.qy * x - v.qx * y);
+  out.x = x + v.qw * tx - v.qy * tz + v.qz * ty;
+  out.y = y + v.qw * ty - v.qz * tx + v.qx * tz;
+  out.z = z + v.qw * tz - v.qx * ty + v.qy * tx;
 }
 
 /** Turn a point of the vehicle's own frame into an offset in world axes. */

@@ -17,8 +17,25 @@
  */
 import { RenderTarget, SRGBColorSpace, UnsignedByteType } from 'three';
 import { DEFAULT_APPEARANCE } from '../sim/character.ts';
+import {
+  createDamageState,
+  explode,
+  FUSE_TICKS,
+  ignite,
+  PANELS,
+  type DamageStage,
+  type DamageState,
+} from '../sim/damage.ts';
 import { exitPlace } from '../sim/on-foot.ts';
-import { createVehicleState, DEFAULT_CLASS, rideHeight, specOf, VEHICLE_CLASSES } from '../sim/vehicle.ts';
+import {
+  createVehicleState,
+  DEFAULT_CLASS,
+  rideHeight,
+  specOf,
+  VEHICLE_CLASSES,
+  type VehicleSpec,
+  type VehicleState,
+} from '../sim/vehicle.ts';
 import { generateWorld } from '../world/world.ts';
 import { FollowCamera } from './camera.ts';
 import { tickAtHour } from './daylight.ts';
@@ -59,7 +76,25 @@ export interface PreviewRequest {
    * how the character of spec sections 11.1 and 11.5 is looked at.
    */
   onFoot?: boolean;
+  /**
+   * The damage state to show the vehicle in, by name (spec section 11.3):
+   * `dented`, `smoking`, `burning` or `burnt`. Left out, the vehicle is
+   * straight out of the showroom.
+   */
+  damage?: string;
+  /**
+   * Set to lay a drift's worth of skid marks into the road behind the vehicle
+   * (spec section 11.3), which is the one way to look at them in a still frame.
+   */
+  skid?: boolean;
 }
+
+/** Ticks of smoke and flame let into the air before the picture is taken. */
+const FX_WARMUP = 240;
+
+/** Metres of drift `--skid` lays, and the radius it curves through. */
+const DRIFT_LENGTH = 24;
+const DRIFT_RADIUS = 18;
 
 /** The picture, and what the frame cost to build. */
 export interface PreviewResult {
@@ -121,11 +156,17 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   const spec = specOf(VEHICLE_CLASSES.find((cls) => cls === request.vehicle) ?? DEFAULT_CLASS);
   const rest = spec.hull === undefined ? ground : Math.max(ground, world.water.seaLevel);
   const vehicle = createVehicleState(spec, x, y, rest + rideHeight(spec), heading);
+  if (request.damage !== undefined) vehicle.damage = damageAt(request.damage, tick);
   const stand = request.onFoot === true ? exitPlace(vehicle, spec) : { x, y, heading };
   scene.character.group.position.set(stand.x, scene.heightAt(stand.x, stand.y), stand.y);
   scene.character.group.rotation.y = -stand.heading;
   scene.character.group.visible = request.onFoot === true;
   scene.vehicle.set(vehicle);
+  // A fire is what has been burning for a while, not what started this frame,
+  // so the smoke is given a run of ticks to climb before the picture is taken.
+  scene.resetDamage(tick - FX_WARMUP);
+  for (let t = tick - FX_WARMUP; t <= tick; t++) scene.damage(vehicle, seed, t);
+  if (request.skid === true) drift(scene, vehicle, spec, heading);
 
   const camera = new FollowCamera(width / height);
   camera.setBaseDistance(distance);
@@ -162,6 +203,59 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   renderer.dispose();
 
   return { width, height, rgb, worldMs, chunkMs, frameMs, peakDrawCalls, lights, shadows, quality: tier.name };
+}
+
+/**
+ * The damage a stage looks like (spec section 11.3), for the preview alone. The
+ * game gets there by being driven into things; this is how one is looked at.
+ */
+function damageAt(stage: string, tick: number): DamageState {
+  const damage = createDamageState();
+  if (stage === 'intact') return damage;
+  damage.dents[PANELS.indexOf('front')] = 0.8;
+  damage.dents[PANELS.indexOf('left')] = 0.5;
+  damage.integrity = 0.6;
+  damage.stage = 'dented';
+  if (stage === 'dented') return damage;
+  damage.dents[PANELS.indexOf('front')] = 1;
+  damage.lost[PANELS.indexOf('front')] = true;
+  damage.integrity = 0.2;
+  damage.stage = 'smoking';
+  if (stage === 'smoking') return damage;
+  ignite(damage, tick - Math.floor(FUSE_TICKS / 2));
+  if ((stage as DamageStage) === 'burning') return damage;
+  explode(damage, tick - 90);
+  return damage;
+}
+
+/**
+ * Lay a drift's worth of rubber into the road behind the vehicle, so a still
+ * frame shows what a handbrake turn leaves (spec section 11.3). The game lays
+ * these as the car slides; nothing here is simulated.
+ */
+function drift(scene: WorldScene, vehicle: VehicleState, spec: VehicleSpec, heading: number): void {
+  const sliding: VehicleState = JSON.parse(JSON.stringify(vehicle)) as VehicleState;
+  for (const wheel of sliding.wheels) {
+    wheel.contact = true;
+    wheel.skid = true;
+  }
+  const steps = Math.ceil(DRIFT_LENGTH / 0.4);
+  // An arc the car came round, with its heading along the arc: a circle whose
+  // centre stands off to one side of where the car has ended up.
+  const cx = vehicle.x - Math.sin(heading) * DRIFT_RADIUS;
+  const cz = vehicle.z + Math.cos(heading) * DRIFT_RADIUS;
+  for (let i = steps; i >= 0; i--) {
+    const back = (i / steps) * DRIFT_LENGTH;
+    const turn = back / DRIFT_RADIUS;
+    const way = heading - turn;
+    sliding.x = cx + Math.sin(way) * DRIFT_RADIUS;
+    sliding.z = cz - Math.cos(way) * DRIFT_RADIUS;
+    sliding.y = scene.heightAt(sliding.x, sliding.z) + rideHeight(spec);
+    const half = -way / 2;
+    sliding.qy = Math.sin(half);
+    sliding.qw = Math.cos(half);
+    scene.skid.update(sliding, spec, (px, py) => scene.heightAt(px, py));
+  }
 }
 
 /**
