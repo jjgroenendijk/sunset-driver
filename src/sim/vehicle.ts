@@ -16,6 +16,7 @@
  * driven and the body, the model and the handling are all rebuilt from it.
  */
 import type { Surface } from '../world/surface.ts';
+import { createDamageState, type DamageState } from './damage.ts';
 
 /**
  * The classes of spec section 11.3, in the order the debug picker shows them:
@@ -687,6 +688,13 @@ export interface WheelState {
   suspension: number;
   /** True while the wheel's ray-cast reaches the ground. */
   contact: boolean;
+  /**
+   * True while the tyre is sliding across the road rather than rolling along
+   * it, which is what leaves a skid mark (spec section 11.3). One rule covers
+   * every way of getting there: a handbrake turn, a corner taken too fast and
+   * a spin all slide the vehicle across its own axle.
+   */
+  skid: boolean;
 }
 
 /**
@@ -718,6 +726,12 @@ export interface VehicleState {
   speed: number;
   /** True while a boat's hull is in the water. Always false on a wheeled vehicle. */
   afloat: boolean;
+  /**
+   * What has been done to it: the dents, the panels it has lost, and whether
+   * it is burning (spec section 11.3). `damage.ts` holds the rules; this is
+   * where the record carries them.
+   */
+  damage: DamageState;
 }
 
 /** A vehicle at rest at a place, with its wheels hanging at their rest length. */
@@ -728,6 +742,7 @@ export function createVehicleState(spec: VehicleSpec, x = 0, z = 0, y = 0, headi
     steer: 0,
     suspension: spec.suspensionRest,
     contact: false,
+    skid: false,
   }));
   return {
     cls: spec.cls,
@@ -747,6 +762,7 @@ export function createVehicleState(spec: VehicleSpec, x = 0, z = 0, y = 0, headi
     wheels,
     speed: 0,
     afloat: false,
+    damage: createDamageState(),
   };
 }
 
