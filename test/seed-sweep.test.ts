@@ -46,7 +46,7 @@ import { ownerMaxArea, type Parcel, type ParcelMap, type ParcelOwner } from '../
 import { MITRE_SHIFT, RoadRibbons } from '../src/world/ribbon.ts';
 import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
 import { CHUNK_TERRAIN_CELL, coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
-import { nearestRoadPlace, SurfaceIndex } from '../src/world/surface.ts';
+import { nearestRoadPlace, SurfaceIndex, type Surface } from '../src/world/surface.ts';
 import { footprintHalfWidth, TIERS } from '../src/world/tiers.ts';
 import type { Beach, Corridor, Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
 import {
@@ -128,6 +128,32 @@ function distanceToLine(p: Point, line: readonly Point[]): number {
     best = Math.min(best, distanceToSegment(p, line[i] as Point, line[i + 1] as Point));
   }
   return best;
+}
+
+/**
+ * What `SurfaceIndex.at` should answer, worked out the slow and obvious way:
+ * every segment of every road measured, nearest claim wins, then the beaches.
+ * The index files the same segments in a bucket grid; this is what says the
+ * grid files them where they belong.
+ */
+function surfaceByHand(w: WorldDescription, x: number, y: number): Surface {
+  const p = { x, y };
+  let tier: RoadTier | undefined;
+  let nearest = Infinity;
+  for (const road of w.roads) {
+    const half = footprintHalfWidth(road.tier);
+    for (let i = 0; i + 1 < road.points.length; i++) {
+      const distance = distanceToSegment(p, road.points[i] as Point, road.points[i + 1] as Point);
+      if (distance > half || distance >= nearest) continue;
+      nearest = distance;
+      tier = road.tier;
+    }
+  }
+  if (tier !== undefined) return tier === 'dirt' ? 'dirt' : 'asphalt';
+  for (const beach of w.beaches) {
+    if (beach.sand.length >= 3 && pointInRing(p, beach.sand)) return 'sand';
+  }
+  return 'ground';
 }
 
 /** The middle of a ring's corners. */
@@ -278,6 +304,15 @@ const CLEAR_OF_ROADS = 80;
  * ground they share, so a made-up junction reads as tarmac.
  */
 const PAVED_CLEAR = 40;
+/**
+ * Seeds the surface index is checked against a measurement of every road
+ * segment on the map, and places each of them is asked about. Measuring one
+ * place costs a walk of the whole network, so this is a handful rather than
+ * every seed; what the index answers is a pure function of the place, so a
+ * handful of maps is enough to catch a bucket grid that files a segment wrong.
+ */
+const BY_HAND_COUNT = SEED_COUNT > 20 ? 16 : 3;
+const BY_HAND_SAMPLES = 12;
 /**
  * The share of the places sampled on a beach's sand that have to read as sand.
  * The rest is road: a boardwalk, an island link or a seafront road may cross a
@@ -1616,6 +1651,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     // Driving reads the ground through this and nothing else (spec section
     // 11.3): tarmac under a paved road, dirt under a dirt road, sand on a
     // beach and open ground everywhere else.
+    const byHand = seeds.slice(0, BY_HAND_COUNT);
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       const surfaces = new SurfaceIndex(w);
@@ -1648,13 +1684,15 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
         }
       }
 
-      // Ground well clear of every road is open ground, unless it is a beach.
-      const grid = new PointGrid(w.size, 40, w.roads);
-      for (const p of landPoints(w, CLEAR_SAMPLES, 0x5a4d)) {
-        if (grid.nearest(p.x, p.y) < CLEAR_OF_ROADS) continue;
-        const surface = surfaces.at(p.x, p.y);
-        if (surface === 'ground' || surface === 'sand') continue;
-        fault(`ground ${CLEAR_OF_ROADS} m clear of every road reads as ${surface}`);
+      // The index is a bucket grid over the segments, so a few places are asked
+      // the slow and obvious way as well: every segment of every road measured,
+      // then every beach. The two have to agree exactly.
+      if (byHand.includes(seed)) {
+        for (const p of landPoints(w, BY_HAND_SAMPLES, 0x5a4d)) {
+          const want = surfaceByHand(w, p.x, p.y);
+          const got = surfaces.at(p.x, p.y);
+          if (got !== want) fault(`${p.x.toFixed(1)},${p.y.toFixed(1)} reads as ${got} and measures as ${want}`);
+        }
       }
 
       // The sand of a beach is sand, or the road that crosses it: a resort's
