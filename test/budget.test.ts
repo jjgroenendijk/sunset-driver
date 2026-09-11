@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { InputFrame } from '../src/sim/input.ts';
 import { initPhysics, SimPhysics, type Ground } from '../src/sim/physics.ts';
 import { createSimState, stepSim } from '../src/sim/simulation.ts';
-import { MeshBasicMaterial, type BatchedMesh, type Material } from 'three';
-import { fillOfPacked } from '../src/render/batch.ts';
+import { MeshBasicMaterial, type Material } from 'three';
+import { fillOfPacked, type Batch } from '../src/render/batch.ts';
 import { buildChunkBuildings, buildingLookup } from '../src/render/building-mesh.ts';
 import { buildChunkPayload, chunkLookups, type ChunkPayload, type PackedBatch } from '../src/render/chunk-payload.ts';
 import { groundGeometry } from '../src/render/ground.ts';
@@ -272,7 +272,7 @@ function chunkSourceOf(world: WorldDescription): ChunkSource {
  * generated tower. Each step says which piece it is, so a failure names it.
  */
 function uploadSteps(payload: ChunkPayload, material: Material): { piece: string; ms: number }[] {
-  const meshes: BatchedMesh[] = [];
+  const meshes: Batch[] = [];
   const pieces = ['ground'];
   const steps: (() => void)[] = [
     () => {

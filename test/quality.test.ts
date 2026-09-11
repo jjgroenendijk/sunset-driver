@@ -1,4 +1,5 @@
-import { Matrix4, type BatchedMesh } from 'three';
+import { Matrix4 } from 'three';
+import type { Batch } from '../src/render/batch.ts';
 import { describe, expect, it } from 'vitest';
 import type { PackedPlants } from '../src/render/chunk-payload.ts';
 import { EntityFade, FADE_BAND } from '../src/render/fade.ts';
@@ -260,11 +261,11 @@ describe('a chunk thinned to its tier', () => {
     return { models: new Uint16Array(count), matrices };
   }
 
-  /** Instances a built part stands in its batch, once every step has run. */
+  /** Plants a built part copies into its batch, once every step has run. */
   function instances(part: TilePart): number {
     for (const step of part.steps) step();
-    const mesh = part.objects[0] as BatchedMesh;
-    return mesh.instanceCount;
+    const mesh = part.objects[0] as Batch;
+    return mesh.parts;
   }
 
   it('places what the tier allows and no more, in one batch either way', () => {

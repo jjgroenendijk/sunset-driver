@@ -16,8 +16,8 @@
  * every chunk of that world shares them, so dropping a chunk frees its geometry
  * and nothing else.
  */
-import { BatchedMesh, Object3D } from 'three';
-import { fillOfPacked } from './batch.ts';
+import { Object3D } from 'three';
+import { Batch, fillOfPacked } from './batch.ts';
 import type { PackedBatch } from './chunk-payload.ts';
 import { createBuildingMaterials, type BuildingMaterials } from './building-material.ts';
 import type { TilePart } from './streaming.ts';
@@ -59,7 +59,7 @@ export class BuildingScenery {
       drawCalls: 1,
       steps: fill.steps,
       dispose(): void {
-        for (const object of objects) if (object instanceof BatchedMesh) object.dispose();
+        for (const object of objects) if (object instanceof Batch) object.dispose();
       },
     };
   }
