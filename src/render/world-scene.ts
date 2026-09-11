@@ -21,7 +21,7 @@
  *
  * The scene reads the world description and never mutates it.
  */
-import { BatchedMesh, Mesh, Object3D, Scene } from 'three';
+import { Mesh, Object3D, Scene } from 'three';
 import type { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { CharacterAppearance } from '../sim/character.ts';
 import type { VehicleState } from '../sim/vehicle.ts';
@@ -31,6 +31,7 @@ import { buildRoadGraph } from '../world/graph.ts';
 import { buildJunctions } from '../world/junctions.ts';
 import { chunkAt, CHUNK_SIZE } from '../world/chunks.ts';
 import type { WorldDescription } from '../world/types.ts';
+import { Batch } from './batch.ts';
 import { BuildingScenery } from './buildings.ts';
 import { CharacterModel } from './character.ts';
 import { DamageFx } from './damage-fx.ts';
@@ -478,7 +479,7 @@ export class WorldScene {
    */
   private add(tile: ChunkTile, part: TilePart): void {
     for (const object of part.objects) {
-      if (object instanceof BatchedMesh) {
+      if (object instanceof Batch) {
         object.castShadow = true;
         object.receiveShadow = true;
       }

@@ -4,7 +4,7 @@
  * Two halves, because a lamp is two things:
  *
  * - {@link LampScenery} draws the masts. Every lamp of a chunk goes into one
- *   `BatchedMesh`, so a chunk full of them costs one draw call, and every lens
+ *   batch (`batch.ts`), so a chunk full of them costs one draw call, and every lens
  *   in the world lights at once off one uniform.
  * - {@link LampLights} throws the light. A light is paid for by every fragment
  *   it can reach, so only {@link LAMP_LIGHT_CAP} of them exist: the pool is
@@ -16,9 +16,9 @@
  * rebuilds the shader of every material in it, so a pool that changed size at
  * dusk would stall the frame; the lights are dimmed to nothing by day instead.
  */
-import { BatchedMesh, Object3D, type Scene } from 'three';
+import { Object3D, type Scene } from 'three';
 import { ProjectorLight } from 'three/webgpu';
-import { fillOf, type BatchPart } from './batch.ts';
+import { Batch, fillOf, type BatchPart } from './batch.ts';
 import type { EntityFade } from './fade.ts';
 import { createLampMaterials, type LampMaterials } from './lamp-material.ts';
 import { buildChunkLamps, type Lamp } from './lamp-mesh.ts';
@@ -86,7 +86,7 @@ export class LampScenery {
       drawCalls: 1,
       steps: fill.steps,
       dispose(): void {
-        for (const object of objects) if (object instanceof BatchedMesh) object.dispose();
+        for (const object of objects) if (object instanceof Batch) object.dispose();
       },
     };
   }

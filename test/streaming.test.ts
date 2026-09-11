@@ -1,4 +1,4 @@
-import { BatchedMesh, MeshBasicMaterial } from 'three';
+import { Matrix4, MeshBasicMaterial, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { batchOfPacked } from '../src/render/batch.ts';
 import { CHUNK_DRAW_CALL_CAP, chunkDrawCalls } from '../src/render/chunk-cost.ts';
@@ -230,21 +230,40 @@ describe('a chunk as a payload', () => {
     expect(geometry.getIndex()).not.toBeNull();
   });
 
-  it('packs a batch of buildings out of a payload, one instance each', () => {
+  it('packs a batch of buildings out of a payload, every part of it in world places', () => {
     const payload = payloadOf(MIDDLE.cx, MIDDLE.cy, 'near');
     const material = new MeshBasicMaterial();
     const firstPart = payload.outlines.parts[0]?.geometry.attributes.find((attribute) => attribute.name === 'position');
     const firstPositions = (firstPart?.array as Float32Array).slice();
     const batch = batchOfPacked(payload.outlines, material);
-    expect(batch).toBeInstanceOf(BatchedMesh);
-    expect(batch.instanceCount).toBe(payload.outlines.parts.length);
-    // The batch draws from the storage the worker allocated. A batch that
+    expect(batch.parts).toBe(payload.outlines.parts.length);
+    expect(batch.visible).toBe(true);
+    // The batch is merged into the storage the worker allocated. A batch that
     // allocated its own would do it on the frame thread, in one step.
     const storage = payload.outlines.storage.attributes.find((attribute) => attribute.name === 'position')?.array;
-    const positions = batch.geometry.getAttribute('position').array;
+    const positions = batch.geometry.getAttribute('position').array as Float32Array;
     expect(positions).toBe(storage);
     expect(batch.geometry.getIndex()?.array).toBe(payload.outlines.storage.index);
-    expect(positions.subarray(0, firstPositions.length)).toEqual(firstPositions);
+    expect(batch.geometry.drawRange.count).toBe(positions.length / 3);
+    // The first part stands at the start of that storage, moved by its own
+    // frame: a merged batch holds each part where it stands in the world, and
+    // not at the origin of the frame it was built in.
+    const stood = new Matrix4().fromArray(payload.outlines.parts[0]?.matrix as Float32Array);
+    let complaint: string | undefined;
+    for (let v = 0; v < firstPositions.length / 3; v++) {
+      const wanted = new Vector3(
+        firstPositions[v * 3] as number,
+        firstPositions[v * 3 + 1] as number,
+        firstPositions[v * 3 + 2] as number,
+      ).applyMatrix4(stood);
+      const here = new Vector3(positions[v * 3] as number, positions[v * 3 + 1] as number, positions[v * 3 + 2] as number);
+      if (here.distanceTo(wanted) > 1e-3) complaint ??= `vertex ${v} stands at ${here.toArray()}, not ${wanted.toArray()}`;
+    }
+    expect(complaint).toBeUndefined();
+    // The bounds are what the view culls a chunk by, so they hold its buildings.
+    const bounds = batch.geometry.boundingBox;
+    expect(bounds?.min.x).toBeGreaterThanOrEqual(payload.bounds.minX - 50);
+    expect(bounds?.max.x).toBeLessThanOrEqual(payload.bounds.maxX + 50);
     batch.dispose();
     material.dispose();
   });
