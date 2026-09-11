@@ -13,9 +13,11 @@ import type { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { CharacterAppearance } from '../sim/character.ts';
 import { buildLayers, chunkAt, ChunkSource, CHUNK_SIZE, type WorldLayers } from '../world/chunks.ts';
 import type { WorldDescription } from '../world/types.ts';
+import { RoadRibbons } from '../world/ribbon.ts';
 import { CharacterModel } from './character.ts';
 import { buildGroundAttributes, groundGeometry, groundLookup, type GroundLookup } from './ground.ts';
 import { createGroundMaterial } from './ground-material.ts';
+import { RoadScenery, type RoadTile } from './roads.ts';
 
 /** Chunks each way of the player that carry ground. One chunk is 250 m. */
 const CHUNK_RADIUS = 2;
@@ -34,10 +36,11 @@ const SKY = 0x9ab0c0;
 const FOG_NEAR = CHUNK_RADIUS * CHUNK_SIZE * 0.45;
 const FOG_FAR = CHUNK_RADIUS * CHUNK_SIZE;
 
-/** One chunk's ground, as the scene holds it. */
-interface GroundTile {
+/** One chunk, as the scene holds it: the ground, and the roads over it. */
+interface ChunkTile {
   mesh: Mesh;
   geometry: BufferGeometry;
+  roads: RoadTile;
   cx: number;
   cy: number;
 }
@@ -50,13 +53,18 @@ export class WorldScene {
   private readonly source: ChunkSource;
   private readonly lookup: GroundLookup;
   private readonly material: MeshStandardNodeMaterial;
-  private readonly tiles = new Map<string, GroundTile>();
+  private readonly tiles = new Map<string, ChunkTile>();
+  private readonly ribbons: RoadRibbons;
+  private readonly scenery = new RoadScenery();
+  /** Draw calls the dearest chunk built so far costs, ground and roads together. */
+  private peakDrawCalls = 0;
 
   constructor(world: WorldDescription, appearance: CharacterAppearance, layers: WorldLayers = buildLayers(world)) {
     this.world = world;
     this.source = new ChunkSource(world, layers);
     this.lookup = groundLookup(world, layers);
     this.material = createGroundMaterial(world.water.seaLevel);
+    this.ribbons = new RoadRibbons(world.terrain, world.roads);
 
     this.scene.background = new Color(SKY);
     // The ground stops at the last chunk built. The haze is what stands there
@@ -102,10 +110,21 @@ export class WorldScene {
     }
   }
 
-  /** Release every chunk and the material they share. */
+  /**
+   * Draw calls the dearest chunk built so far costs. Spec section 9.2 caps the
+   * city at a small number of draws, and `CHUNK_DRAW_CALL_CAP` is what a chunk
+   * may spend of it; the HUD shows this so a regression is visible while
+   * playing rather than only in the test that enforces the cap.
+   */
+  get drawCallsPerChunk(): number {
+    return this.peakDrawCalls;
+  }
+
+  /** Release every chunk and the materials they share. */
   dispose(): void {
     for (const tile of [...this.tiles.values()]) this.drop(tile);
     this.material.dispose();
+    this.scenery.dispose();
     this.character.dispose();
   }
 
@@ -133,12 +152,19 @@ export class WorldScene {
     const mesh = new Mesh(geometry, this.material);
     mesh.position.set(chunk.bounds.minX, 0, chunk.bounds.minY);
     this.scene.add(mesh);
-    this.tiles.set(key, { mesh, geometry, cx, cy });
+    // The road geometry is already in world places, so its meshes stand at the
+    // origin rather than at the chunk's corner.
+    const roads = this.scenery.build(chunk, this.ribbons);
+    for (const object of roads.objects) this.scene.add(object);
+    this.peakDrawCalls = Math.max(this.peakDrawCalls, 1 + roads.drawCalls);
+    this.tiles.set(key, { mesh, geometry, roads, cx, cy });
   }
 
-  private drop(tile: GroundTile): void {
+  private drop(tile: ChunkTile): void {
     this.scene.remove(tile.mesh);
     tile.geometry.dispose();
+    for (const object of tile.roads.objects) this.scene.remove(object);
+    tile.roads.dispose();
     this.tiles.delete(keyOf(tile.cx, tile.cy));
   }
 }

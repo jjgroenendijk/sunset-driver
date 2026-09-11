@@ -36,6 +36,9 @@ export const vec3 = tsl.vec3 as unknown as (
 /** Linear blend: `a` where `t` is 0, `b` where it is 1. */
 export const mix = tsl.mix as unknown as (a: TslNode, b: TslNode, t: number | TslNode) => TslNode;
 
+/** 0 below `edge`, 1 at it and above. A hard boundary, where `smoothstep` gives a soft one. */
+export const step = tsl.step as unknown as (edge: number | TslNode, x: TslNode) => TslNode;
+
 /** 0 below `low`, 1 above `high`, smooth between. `low` must be below `high`. */
 export const smoothstep = tsl.smoothstep as unknown as (
   low: number | TslNode,

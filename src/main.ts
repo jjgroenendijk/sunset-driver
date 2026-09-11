@@ -64,7 +64,7 @@ async function boot(): Promise<void> {
       session.world.character.group.rotation.y = -p.heading;
       session.world.update(p.x, p.y);
       camera.update(elapsed / 1000, { ...p, height });
-      session.hud.update(session.state);
+      session.hud.update(session.state, session.world.drawCallsPerChunk);
       void renderer.render(session.world.scene, camera.camera);
     } else {
       spin += (elapsed / 1000) * PREVIEW_SPIN;
