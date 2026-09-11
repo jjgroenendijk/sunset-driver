@@ -167,7 +167,10 @@ export function roadSection(tier: RoadTier): SectionPoint[] {
   if (spec.pavement > 0) {
     left.push({ across: -outer, rise: top }, { across: -half, rise: top }, { across: -half, rise: SURFACE_RAISE });
   } else if (spec.verge > 0) {
-    left.push({ across: -outer, rise: 0 }, { across: -half, rise: SURFACE_RAISE });
+    // The verge is level with the carriageway rather than on the bench itself:
+    // a surface laid at exactly the height of the ground under it is a surface
+    // the ground shows through wherever the grid samples it.
+    left.push({ across: -outer, rise: SURFACE_RAISE }, { across: -half, rise: SURFACE_RAISE });
   } else {
     left.push({ across: -half, rise: SURFACE_RAISE });
   }

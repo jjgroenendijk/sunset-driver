@@ -108,6 +108,11 @@ export function lampsIn(chunk: WorldChunk, ribbons: RoadRibbons): Lamp[] {
       if (!(to > from)) continue;
       for (let k = Math.ceil(from / spec.spacing); k * spec.spacing < to; k++) {
         const at = k * spec.spacing;
+        // The stretches the junctions take carry no road surface, so a mast
+        // placed there would stand in the middle of the carriageway. The gaps
+        // are the curve's own, so both chunks of a run cut at a boundary leave
+        // out the same lamps.
+        if (run.gaps.some((gap) => at >= gap.from.distance && at <= gap.to.distance)) continue;
         const t = (at - from) / (to - from);
         const x = a.x + (b.x - a.x) * t;
         const y = a.y + (b.y - a.y) * t;

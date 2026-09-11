@@ -158,9 +158,12 @@ describe('road cross section', () => {
     // A street has a pavement, so its outer edge stands a kerb above the road.
     const street = roadSection('street');
     expect((street[1] as SectionPoint).rise).toBeGreaterThan((street[2] as SectionPoint).rise * 0 + 0.1);
-    // A highway has none, so its verge falls to the ground the bench cut.
+    // A highway has none, so its verge runs out level with the carriageway.
+    // It stands over the bench rather than on it, because a surface at exactly
+    // the height of the ground is one the ground shows through.
     const highway = roadSection('highway');
-    expect((highway[1] as SectionPoint).rise).toBe(0);
+    expect((highway[1] as SectionPoint).rise).toBeGreaterThan(0);
+    expect((highway[1] as SectionPoint).rise).toBe((highway[2] as SectionPoint).rise);
   });
 });
 

@@ -175,6 +175,42 @@ describe('where the street lamps stand', () => {
     }
   });
 
+  it('leaves the stretches the junctions take unlit', () => {
+    // The roads above only cross on the map; these two share the point at the
+    // origin, which is what makes a junction and cuts a gap out of each curve.
+    const crossing = gridWorld([
+      curve(0, [[-END, 0], [0, 0], [END, 0]], 'arterial'),
+      curve(1, [[0, -END], [0, 0], [0, END]], 'street'),
+    ]);
+    const met = buildLayers(crossing);
+    const cut = new ChunkSource(crossing, met);
+    const frames = new RoadRibbons(crossing.terrain, crossing.roads, met.junctions);
+    expect(met.junctions.junctions).toHaveLength(1);
+    const gaps = met.junctions.gaps;
+    expect(gaps.some((list) => list !== undefined && list.length > 0)).toBe(true);
+
+    let complaint: string | undefined;
+    let lit = 0;
+    for (let cy = -REACH; cy <= REACH; cy++) {
+      for (let cx = -REACH; cx <= REACH; cx++) {
+        for (const lamp of lampsIn(cut.chunk(cx, cy), frames)) {
+          lit++;
+          // The arterial runs along x and the street along y, and each is one
+          // curve, so the distance along it is the distance from its start.
+          const curveId = lamp.tier === 'street' ? 1 : 0;
+          const at = curveId === 1 ? lamp.y + END : lamp.x + END;
+          for (const gap of gaps[curveId] ?? []) {
+            if (at >= gap.from.distance && at <= gap.to.distance) {
+              complaint ??= `${lamp.tier} lamp ${at} m along stands in the junction from ${gap.from.distance} to ${gap.to.distance}`;
+            }
+          }
+        }
+      }
+    }
+    expect(lit).toBeGreaterThan(10);
+    expect(complaint).toBeUndefined();
+  });
+
   it('answers the same lamps however many times a chunk is asked for', () => {
     const once = lampsIn(source.chunk(0, 0), ribbons);
     const again = lampsIn(source.chunk(0, 0), ribbons);
