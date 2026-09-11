@@ -182,8 +182,8 @@ describe('a chunk as a payload', () => {
     expect(payload.detail).toBe('near');
     expect(payload.ground.positions.length).toBeGreaterThan(0);
     expect(payload.roads.length).toBeGreaterThan(0);
-    expect(payload.blocks.length + payload.facades.length).toBe(chunk.buildings.length);
-    expect(payload.outlines).toHaveLength(chunk.buildings.length);
+    expect(payload.blocks.parts.length + payload.facades.parts.length).toBe(chunk.buildings.length);
+    expect(payload.outlines.parts).toHaveLength(chunk.buildings.length);
     // The cost of a chunk is answered off the chunk alone, before any geometry
     // is built; the payload is what that answer is checked against.
     expect(payload.drawCalls).toBe(chunkDrawCalls(chunk));
@@ -200,9 +200,9 @@ describe('a chunk as a payload', () => {
     expect(far.ground.positions[(far.ground.gridSize * far.ground.gridSize - 1) * 3]).toBe(
       near.ground.positions[(near.ground.gridSize * near.ground.gridSize - 1) * 3],
     );
-    expect(far.blocks.length).toBe(near.facades.length + near.blocks.length);
-    expect(far.facades).toHaveLength(0);
-    expect(far.outlines).toHaveLength(0);
+    expect(far.blocks.parts.length).toBe(near.facades.parts.length + near.blocks.parts.length);
+    expect(far.facades.parts).toHaveLength(0);
+    expect(far.outlines.parts).toHaveLength(0);
     expect(far.plants.models).toHaveLength(0);
     expect(near.plants.models.length).toBeGreaterThan(0);
     expect(far.lamps).toHaveLength(0);
@@ -215,16 +215,17 @@ describe('a chunk as a payload', () => {
 
   it('hands over every buffer once, and comes back the same on the other side', () => {
     const payload = payloadOf(MIDDLE.cx, MIDDLE.cy, 'near');
-    const before = (payload.roads[0]?.parts[0]?.attributes[0]?.array as Float32Array).slice();
+    const before = (payload.roads[0]?.surface.parts[0]?.geometry.attributes[0]?.array as Float32Array).slice();
     const transfers = payloadTransfers(payload);
     expect(new Set(transfers).size).toBe(transfers.length);
     expect(transfers).toContain(payload.ground.positions.buffer);
     expect(transfers).toContain(payload.plants.matrices.buffer);
+    expect(transfers).toContain(payload.roads[0]?.surface.storage.attributes[0]?.array.buffer);
 
     // What `postMessage` does to a payload, without a worker to do it.
     const copy = structuredClone(payload, { transfer: transfers }) as ChunkPayload;
     expect(copy.drawCalls).toBe(payload.drawCalls);
-    const geometry = unpackGeometry(copy.roads[0]?.parts[0] as never);
+    const geometry = unpackGeometry(copy.roads[0]?.surface.parts[0]?.geometry as never);
     expect(geometry.getAttribute('position').array).toEqual(before);
     expect(geometry.getIndex()).not.toBeNull();
   });
@@ -232,9 +233,18 @@ describe('a chunk as a payload', () => {
   it('packs a batch of buildings out of a payload, one instance each', () => {
     const payload = payloadOf(MIDDLE.cx, MIDDLE.cy, 'near');
     const material = new MeshBasicMaterial();
+    const firstPart = payload.outlines.parts[0]?.geometry.attributes.find((attribute) => attribute.name === 'position');
+    const firstPositions = (firstPart?.array as Float32Array).slice();
     const batch = batchOfPacked(payload.outlines, material);
     expect(batch).toBeInstanceOf(BatchedMesh);
-    expect(batch.instanceCount).toBe(payload.outlines.length);
+    expect(batch.instanceCount).toBe(payload.outlines.parts.length);
+    // The batch draws from the storage the worker allocated. A batch that
+    // allocated its own would do it on the frame thread, in one step.
+    const storage = payload.outlines.storage.attributes.find((attribute) => attribute.name === 'position')?.array;
+    const positions = batch.geometry.getAttribute('position').array;
+    expect(positions).toBe(storage);
+    expect(batch.geometry.getIndex()?.array).toBe(payload.outlines.storage.index);
+    expect(positions.subarray(0, firstPositions.length)).toEqual(firstPositions);
     batch.dispose();
     material.dispose();
   });

@@ -118,6 +118,10 @@ export const BUDGET_MS = {
    * The dearest single piece of putting a chunk of the core into the scene:
    * one generated tower copied into its batch (spec section 9.1).
    *
+   * The batch's storage comes from the worker. When a batch allocated its own,
+   * the first part of the facades paid for tens of megabytes, and that piece
+   * missed this budget on a slow machine while every copy stayed far inside it.
+   *
    * The streaming slice is {@link FRAME_SLICE_MS.streaming} and `spendBudget`
    * holds the upload queue to it, but a piece is indivisible — a geometry goes
    * into a batch whole — so a frame that starts one just inside the slice

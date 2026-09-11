@@ -9,7 +9,8 @@
  *
  * The result is a payload: typed arrays and numbers, and no three.js object at
  * all. A payload crosses a worker boundary by transfer rather than by copy, so
- * the main thread pays for uploading the geometry and for nothing else.
+ * the main thread pays for uploading the geometry and for nothing else. Even
+ * the buffers each batch copies its parts into are allocated here.
  * {@link unpackGeometry} is the other half, and it is the only work the frame
  * is charged for.
  *
@@ -65,11 +66,26 @@ export interface PackedPart {
   matrix?: Float32Array;
 }
 
+/**
+ * The parts of one batch, and the storage they are copied into.
+ *
+ * The storage is the batch's own buffers, sized to hold every part and still
+ * empty. The worker allocates it, because a batch that allocates its buffers
+ * itself does it on the frame thread in the step that copies its first part,
+ * and a chunk of the core allocates tens of megabytes there. That was the
+ * dearest step of an upload, and the one a collection landed in.
+ */
+export interface PackedBatch {
+  parts: PackedPart[];
+  /** Every attribute of the parts, at the length of all of them together. Empty when there are no parts. */
+  storage: PackedGeometry;
+}
+
 /** One tier of road inside a chunk: everything batched, and everything painted. */
 export interface PackedRoads {
   tier: RoadTier;
   /** Surfaces, decks and portals, all of which go into one batch. */
-  parts: PackedGeometry[];
+  surface: PackedBatch;
   /** Marking segment ends, six numbers each. Empty at far detail. */
   markings: Float32Array;
   /** The colour of each of those ends, six numbers each. */
@@ -95,11 +111,11 @@ export interface ChunkPayload {
   /** The road tiers that run through the chunk, in tier order. */
   roads: PackedRoads[];
   /** The inverted hulls that outline the buildings. Empty at far detail. */
-  outlines: PackedPart[];
+  outlines: PackedBatch;
   /** The generated facades. Empty at far detail, where a tower is a block. */
-  facades: PackedPart[];
+  facades: PackedBatch;
   /** The buildings built as blocks, which at far detail is all of them. */
-  blocks: PackedPart[];
+  blocks: PackedBatch;
   plants: PackedPlants;
   /**
    * The street lamps of the chunk (spec section 10.5), already in the places
@@ -144,7 +160,7 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
   for (const tier of buildChunkRoads(traced, lookups.ribbons, lookups.ground.heightAt)) {
     roads.push({
       tier: tier.tier,
-      parts: partsOf(tier).map(takeGeometry),
+      surface: packBatch(partsOf(tier).map((geometry) => ({ geometry: takeGeometry(geometry) }))),
       markings: far ? new Float32Array(0) : tier.markings,
       markingTints: far ? new Float32Array(0) : tier.markingTints,
     });
@@ -168,9 +184,9 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
     bounds: chunk.bounds,
     ground: buildGroundAttributes(chunk, lookups.ground, far ? FAR_GROUND_STEP : 1),
     roads,
-    outlines,
-    facades,
-    blocks,
+    outlines: packBatch(outlines),
+    facades: packBatch(facades),
+    blocks: packBatch(blocks),
     plants,
     lamps: far ? [] : lampsIn(chunk, lookups.ribbons),
     drawCalls: 0,
@@ -183,12 +199,12 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
 export function payloadDrawCalls(payload: ChunkPayload): number {
   let calls = 1;
   for (const tier of payload.roads) {
-    if (tier.parts.length > 0) calls++;
+    if (tier.surface.parts.length > 0) calls++;
     if (tier.markings.length > 0) calls++;
   }
-  if (payload.outlines.length > 0) calls++;
-  if (payload.facades.length > 0) calls++;
-  if (payload.blocks.length > 0) calls++;
+  if (payload.outlines.parts.length > 0) calls++;
+  if (payload.facades.parts.length > 0) calls++;
+  if (payload.blocks.parts.length > 0) calls++;
   if (payload.plants.models.length > 0) calls++;
   if (payload.lamps.length > 0) calls++;
   return calls;
@@ -213,15 +229,21 @@ export function payloadTransfers(payload: ChunkPayload): ArrayBuffer[] {
   for (const array of [ground.positions, ground.normals, ground.tints, ground.covers, ground.coverTints, ground.indices]) {
     take(array);
   }
+  const takeBatch = (batch: PackedBatch): void => {
+    takeGeometryBuffers(batch.storage);
+    for (const part of batch.parts) {
+      takeGeometryBuffers(part.geometry);
+      if (part.matrix !== undefined) take(part.matrix);
+    }
+  };
   for (const tier of payload.roads) {
-    for (const part of tier.parts) takeGeometryBuffers(part);
+    takeBatch(tier.surface);
     take(tier.markings);
     take(tier.markingTints);
   }
-  for (const part of [...payload.outlines, ...payload.facades, ...payload.blocks]) {
-    takeGeometryBuffers(part.geometry);
-    if (part.matrix !== undefined) take(part.matrix);
-  }
+  takeBatch(payload.outlines);
+  takeBatch(payload.facades);
+  takeBatch(payload.blocks);
   take(payload.plants.models);
   take(payload.plants.matrices);
   return [...buffers];
@@ -258,6 +280,39 @@ function takeGeometry(geometry: BufferGeometry): PackedGeometry {
   if (index !== null) packed.index = index.array as Uint32Array | Uint16Array;
   geometry.dispose();
   return packed;
+}
+
+/**
+ * A batch of parts with its storage allocated. The storage takes the array
+ * types of the first part, as `BatchedMesh` does when it allocates its own,
+ * so every copy into it is one `set` rather than a loop over components.
+ */
+function packBatch(parts: PackedPart[]): PackedBatch {
+  const first = parts[0]?.geometry;
+  if (first === undefined) return { parts, storage: { attributes: [] } };
+  let vertices = 0;
+  let indices = 0;
+  for (const part of parts) {
+    vertices += packedVertexCount(part.geometry);
+    indices += part.geometry.index?.length ?? 0;
+  }
+  const storage: PackedGeometry = {
+    attributes: first.attributes.map((attribute) => ({
+      name: attribute.name,
+      array: new (attribute.array.constructor as new (length: number) => GeometryArray)(vertices * attribute.itemSize),
+      itemSize: attribute.itemSize,
+      normalized: attribute.normalized,
+    })),
+  };
+  // The width `BatchedMesh` picks for an index it allocates itself.
+  if (first.index !== undefined) storage.index = vertices > 65535 ? new Uint32Array(indices) : new Uint16Array(indices);
+  return { parts, storage };
+}
+
+/** Vertices a packed geometry holds, read off its positions. */
+export function packedVertexCount(geometry: PackedGeometry): number {
+  const position = geometry.attributes.find((attribute) => attribute.name === 'position');
+  return position === undefined ? 0 : position.array.length / position.itemSize;
 }
 
 /** The plants of a chunk, as the model each takes and the frame it stands in. */

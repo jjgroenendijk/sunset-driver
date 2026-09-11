@@ -18,7 +18,7 @@
  */
 import { BatchedMesh, Object3D } from 'three';
 import { fillOfPacked } from './batch.ts';
-import type { PackedPart } from './chunk-payload.ts';
+import type { PackedBatch } from './chunk-payload.ts';
 import { createBuildingMaterials, type BuildingMaterials } from './building-material.ts';
 import type { TilePart } from './streaming.ts';
 
@@ -51,8 +51,8 @@ export class BuildingScenery {
    * since a hull stands behind the building that covers it and the depth test
    * is what leaves the rim.
    */
-  build(batch: BuildingBatchKind, parts: readonly PackedPart[]): TilePart {
-    const fill = fillOfPacked(parts, this.materials[batch]);
+  build(batch: BuildingBatchKind, packed: PackedBatch): TilePart {
+    const fill = fillOfPacked(packed, this.materials[batch]);
     const objects: Object3D[] = [fill.mesh];
     return {
       objects,

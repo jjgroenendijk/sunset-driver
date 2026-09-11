@@ -407,13 +407,13 @@ export class WorldScene {
     for (const roads of payload.roads) {
       this.queueJob(tile, () => this.add(tile, this.scenery.build(roads)));
     }
-    if (payload.outlines.length > 0) {
+    if (payload.outlines.parts.length > 0) {
       this.queueJob(tile, () => this.add(tile, this.buildings.build('outline', payload.outlines)));
     }
-    if (payload.facades.length > 0) {
+    if (payload.facades.parts.length > 0) {
       this.queueJob(tile, () => this.add(tile, this.buildings.build('facade', payload.facades)));
     }
-    if (payload.blocks.length > 0) {
+    if (payload.blocks.parts.length > 0) {
       this.queueJob(tile, () => this.add(tile, this.buildings.build('block', payload.blocks)));
     }
     // A chunk places only what its category's cap and the tier's density allow
