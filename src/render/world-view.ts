@@ -29,12 +29,17 @@ import { createTerrainMaterial } from './terrain-material.ts';
 const SKY = 0x9fb6c8;
 const FOG_NEAR = 300;
 const FOG_FAR = 1400;
-/** The sun: warm, low and bright enough to throw the relief into relief. */
+/**
+ * The sun and the fill. Both are placeholders until the lighting rig of spec
+ * section 10.5, and the numbers are what reads on screen rather than what the
+ * sky really does: the ground comes back at about half brightness with them,
+ * which is where the relief and the zone colours are easiest to see.
+ */
 const SUN_COLOUR = 0xffe7c4;
-const SUN_STRENGTH = 2.4;
+const SUN_STRENGTH = 5.5;
 const SUN_AT: readonly [number, number, number] = [0.5, 1, 0.35];
 const FILL_COLOUR = 0x8fa8c0;
-const FILL_STRENGTH = 0.9;
+const FILL_STRENGTH = 2.2;
 
 /** Metres the player's feet stand above the ground, so they never sink into it. */
 const FOOT_CLEARANCE = 0.02;
