@@ -69,8 +69,12 @@ export class EntityFade {
    * discards a fragment whose alpha falls to or below the test. The material
    * stays opaque: every fragment that survives is written at full strength.
    *
-   * The shadow pass reads the same material, so a plant thinning out thins its
-   * shadow with it.
+   * The shadow pass reads neither of them, and cannot be made to: it draws the
+   * whole scene through one override material shared by every object and
+   * copies only the numeric `alphaTest` across. A plant inside the band would
+   * therefore keep a whole shadow standing on empty ground. What keeps the two
+   * in step is `shadowDistance` in `quality.ts`, which stops the sun's shadow
+   * before the band starts.
    */
   dress(material: MeshStandardNodeMaterial): void {
     const dx = positionWorld.x.sub(this.atX);

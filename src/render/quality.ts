@@ -11,7 +11,7 @@
  *   of (`renderer.ts`);
  * - the effects of spec section 10.6, bloom first, then SMAA;
  * - the draw distance, as the two streaming rings of spec section 9.1;
- * - the resolution of the sun's shadow cascades (`sky.ts`);
+ * - how far the sun's shadow reaches and what it is drawn at (`sky.ts`);
  * - how much of each category's {@link ENTITY_CAPS} a chunk places;
  * - and, through the draw distance, how far the dither fade of `fade.ts`
  *   carries the plants and the street lamps.
@@ -21,9 +21,10 @@
  * tested without a renderer, and everything that applies a tier lives with the
  * thing it changes.
  */
+import { FADE_BAND } from './fade.ts';
 import { FULL_QUALITY, type PostQuality } from './post.ts';
 import { MIN_RENDER_SCALE } from './renderer.ts';
-import { SHADOW_MAP_SIZE } from './sky.ts';
+import { SHADOW_DISTANCE, SHADOW_MAP_SIZE } from './sky.ts';
 import { FAR_RADIUS, NEAR_RADIUS, type ChunkRings } from './streaming.ts';
 import { CHUNK_SIZE } from '../world/chunks.ts';
 
@@ -123,6 +124,20 @@ export function entityDistance(tier: QualityTier): number {
   // Wherever in their own chunk the player stands, every chunk within this of
   // them is one the near ring holds, so nothing fades that was never built.
   return tier.rings.near * CHUNK_SIZE;
+}
+
+/**
+ * Metres the sun's shadow follows the view for at a tier (spec section 9.2).
+ *
+ * It never reaches past where the plants and the lamps start fading. The
+ * shadow pass cannot follow the dither of `fade.ts` — it draws the whole scene
+ * through one override material that reads neither the opacity nor the alpha
+ * test — so a plant inside the band would keep a whole shadow standing on
+ * empty ground. Stopping the shadow before the band starts is what keeps the
+ * two in step, and it makes a lower tier cheaper rather than dearer.
+ */
+export function shadowDistance(tier: QualityTier): number {
+  return Math.min(SHADOW_DISTANCE, entityDistance(tier) - FADE_BAND);
 }
 
 /** How many of `count` entities of a category a chunk places at a tier. */

@@ -14,11 +14,12 @@ import {
   keptAt,
   QualityMonitor,
   QUALITY_TIERS,
+  shadowDistance,
   thinned,
   type QualityChange,
 } from '../src/render/quality.ts';
 import { MIN_RENDER_SCALE } from '../src/render/renderer.ts';
-import { SHADOW_MAP_SIZE } from '../src/render/sky.ts';
+import { SHADOW_DISTANCE, SHADOW_MAP_SIZE } from '../src/render/sky.ts';
 import { FAR_RADIUS, NEAR_RADIUS, type TilePart } from '../src/render/streaming.ts';
 import { PlantScenery } from '../src/render/vegetation.ts';
 import { CHUNK_SIZE } from '../src/world/chunks.ts';
@@ -81,6 +82,21 @@ describe('the quality tiers', () => {
       expect(entityDistance(tier)).toBeGreaterThan(FADE_BAND);
     }
     expect(entityDistance(FULL_TIER)).toBeGreaterThan(entityDistance(QUALITY_TIERS[3] as never));
+  });
+
+  it('stops the shadow of the sun before the plants start fading', () => {
+    for (const tier of QUALITY_TIERS) {
+      // The shadow pass cannot follow the dither, so a plant inside the band
+      // would keep a whole shadow standing on empty ground. The shadow ends
+      // first instead, which is also the cheaper way round.
+      expect(shadowDistance(tier)).toBeLessThanOrEqual(entityDistance(tier) - FADE_BAND);
+      expect(shadowDistance(tier)).toBeLessThanOrEqual(SHADOW_DISTANCE);
+      expect(shadowDistance(tier)).toBeGreaterThan(0);
+    }
+    // At full quality the plants reach past the shadow either way, so the
+    // shadow keeps the whole range it was given.
+    expect(shadowDistance(FULL_TIER)).toBe(SHADOW_DISTANCE);
+    expect(shadowDistance(QUALITY_TIERS[3] as never)).toBeLessThan(SHADOW_DISTANCE);
   });
 });
 

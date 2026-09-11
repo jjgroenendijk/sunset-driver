@@ -43,8 +43,12 @@ export const SHADOW_CASCADES = 2;
  */
 export const SHADOW_MAP_SIZE = 1024;
 
-/** Metres the shadow follows the view for. Past this the haze has taken over. */
-const SHADOW_DISTANCE = 420;
+/**
+ * Metres the shadow follows the view for at full quality. Past this the haze
+ * has taken over. The quality tiers of spec section 9.2 pull it in, so it is
+ * the starting value rather than the only one.
+ */
+export const SHADOW_DISTANCE = 420;
 
 /** Depth bias, in metres of surface, that keeps a lit surface from shadowing itself. */
 const SHADOW_BIAS = -0.0006;
@@ -162,6 +166,21 @@ export class SkyLighting {
 
   get shadowMapSize(): number {
     return this.sun.shadow.mapSize.width;
+  }
+
+  /**
+   * Follow the shadow this far and no further (spec section 9.2). The same two
+   * cascades are cut to the shorter range, so a tier that pulls this in pays
+   * less for the shadow and draws what is left of it sharper.
+   */
+  set shadowDistance(metres: number) {
+    if (this.cascades.maxFar === metres) return;
+    this.cascades.maxFar = metres;
+    if (this.cascades.camera !== null) this.cascades.updateFrustums();
+  }
+
+  get shadowDistance(): number {
+    return this.cascades.maxFar;
   }
 
   /** Refit the cascades after the camera's shape changes. */
