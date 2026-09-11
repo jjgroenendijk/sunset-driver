@@ -47,6 +47,16 @@ import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
 import { coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
 import { footprintHalfWidth, TIERS } from '../src/world/tiers.ts';
 import type { Beach, Corridor, Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
+import {
+  mixFor,
+  MAX_PLANT_RADIUS,
+  PLANT_CELL,
+  PLANT_JITTER,
+  PLANT_RADIUS,
+  STREET_REACH,
+  Vegetation,
+  type Plant,
+} from '../src/world/vegetation.ts';
 import { landPoints, pointInRing, ringArea, ringsOverlap, stableJson, sweepSeeds } from './helpers.ts';
 import { buildWorlds, type PooledWorld } from './world-pool.ts';
 
@@ -391,6 +401,24 @@ const BUILDING_MESH_COUNT = SEED_COUNT > 20 ? 4 : 1;
 /** Places in the block of chunks each way that are asked which parcel claims them. */
 const CHUNK_SAMPLES = 18;
 /**
+ * The chunks each seed is planted in: one on the core, where the trees stand
+ * along the pavement, and one far out, where the woods are. Cutting one is
+ * cheap next to the layers behind it, but not free, so two is the sample.
+ */
+const VEGETATION_CHUNKS: readonly (readonly [number, number])[] = [[0, 0], FAR_CHUNKS[0] as readonly [number, number]];
+/** Plants of a chunk whose whole canopy is walked, rather than only the point they stand on. */
+const VEGETATION_SAMPLES = 24;
+/** Points round the rim of a canopy that are asked which parcel they stand on. */
+const CANOPY_POINTS = 8;
+/** Plants the two chunks of a seed carry between them, at least. A map with none is a fault. */
+const MIN_PLANTS = 20;
+/**
+ * Seeds whose plants are checked. Walking the rim of a canopy asks the parcels
+ * of a whole map which of them claims a place, so the quick tier takes a few
+ * and the full tier spreads the check.
+ */
+const VEGETATION_COUNT = SEED_COUNT > 20 ? 8 : 3;
+/**
  * Metres a corner may move when a parcel is cut to a chunk. The polygon engine
  * rounds every corner onto its millimetre grid and snaps one that lands beside
  * an edge onto it, so a piece is bounded within about a millimetre of the
@@ -678,6 +706,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       parcels: parcelsOf(seed),
       buildings: buildingsOf(seed),
       carve: carveOf(seed),
+      vegetation: vegetationOf(seed),
     });
     sources.set(seed, built);
     return built;
@@ -703,6 +732,15 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     if (known !== undefined) return known;
     const built = buildBuildings(worlds.get(seed) as WorldDescription, parcelsOf(seed), graphOf(seed));
     buildingMaps.set(seed, built);
+    return built;
+  };
+  /** The vegetation of a seed, which stands on its parcels and off its lots. */
+  const vegetations = new Map<number, Vegetation>();
+  const vegetationOf = (seed: number): Vegetation => {
+    const known = vegetations.get(seed);
+    if (known !== undefined) return known;
+    const built = new Vegetation(seed, parcelsOf(seed), buildingsOf(seed));
+    vegetations.set(seed, built);
     return built;
   };
   /** The graph of a seed, built once however many tests ask about it. */
@@ -1871,6 +1909,88 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     }
   });
 
+  it('plants every chunk on the ground its parcels leave, off the roads and off the lots', () => {
+    // Spec section 10.4: placement is by parcel polygon, so no plant reaches
+    // over a road or over a building. The whole rim of a canopy is checked, not
+    // just the point the plant stands on, because it is the canopy that
+    // overhangs and the trunk never does.
+    for (const seed of seeds.slice(0, VEGETATION_COUNT)) {
+      const parcels = parcelsOf(seed).parcels;
+      const index = new ParcelIndex(parcels);
+      const lots = new Map<number, Point[][]>();
+      for (const building of buildingsOf(seed).buildings) {
+        const here = lots.get(building.parcel);
+        if (here === undefined) lots.set(building.parcel, [building.lot]);
+        else here.push(building.lot);
+      }
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+      let planted = 0;
+      for (const [cx, cy] of VEGETATION_CHUNKS) {
+        const chunk = sourceOf(seed).chunk(cx, cy);
+        planted += chunk.plants.length;
+        for (const plant of chunk.plants) {
+          const where = `${plant.species} at ${plant.at.x.toFixed(1)}, ${plant.at.y.toFixed(1)}`;
+          const bounds = chunk.bounds;
+          if (plant.at.x < bounds.minX || plant.at.x >= bounds.maxX || plant.at.y < bounds.minY || plant.at.y >= bounds.maxY) {
+            fault(`${where} stands outside the chunk that carries it`);
+          }
+          if (plant.radius !== PLANT_RADIUS[plant.species]) fault(`${where} claims ${plant.radius} m of canopy`);
+          if (plant.radius > MAX_PLANT_RADIUS) fault(`${where} claims more canopy than a cell has room for`);
+          const parcel = parcels[plant.parcel];
+          if (parcel === undefined) {
+            fault(`${where} stands on parcel ${plant.parcel}, which does not exist`);
+            break;
+          }
+          const mix = mixFor(parcel.owner, parcel.zone);
+          if (mix === undefined) fault(`${where} stands on a ${parcel.owner} parcel, which plants nothing`);
+          else if (!mix.species.some((entry) => entry.kind === plant.species)) {
+            fault(`${where} is not planted in the ${parcel.zone} on a ${parcel.owner} parcel`);
+          }
+          if (complaint !== undefined) break;
+        }
+
+        // The whole canopy of a sample of them: every point of the rim stands
+        // on the same parcel, and none of it over a lot of that parcel.
+        const step = Math.max(1, Math.floor(chunk.plants.length / VEGETATION_SAMPLES));
+        for (let i = 0; i < chunk.plants.length && complaint === undefined; i += step) {
+          const plant = chunk.plants[i] as Plant;
+          const where = `${plant.species} at ${plant.at.x.toFixed(1)}, ${plant.at.y.toFixed(1)}`;
+          // The rim is pulled in by the slack the cut allows, so a canopy that
+          // ends exactly on the boundary is not read as crossing it.
+          const reach = plant.radius - BOUNDARY_SLACK;
+          for (let k = 0; k < CANOPY_POINTS; k++) {
+            const angle = (k / CANOPY_POINTS) * Math.PI * 2;
+            const at = { x: plant.at.x + Math.cos(angle) * reach, y: plant.at.y + Math.sin(angle) * reach };
+            if (!index.at(at).includes(plant.parcel)) fault(`${where} reaches off its own parcel`);
+            for (const lot of lots.get(plant.parcel) ?? []) {
+              if (pointInRing(at, lot)) fault(`${where} reaches over a building on its parcel`);
+            }
+            if (complaint !== undefined) break;
+          }
+        }
+
+        // No two canopies share any ground. `vegetation.ts` makes that
+        // unrepresentable; this is the check on a whole map of it.
+        for (let i = 0; i < chunk.plants.length && complaint === undefined; i++) {
+          for (let j = i + 1; j < chunk.plants.length; j++) {
+            const a = chunk.plants[i] as Plant;
+            const b = chunk.plants[j] as Plant;
+            const apart = Math.hypot(a.at.x - b.at.x, a.at.y - b.at.y);
+            if (apart + 1e-9 < a.radius + b.radius) {
+              fault(`two canopies overlap at ${a.at.x.toFixed(1)}, ${a.at.y.toFixed(1)}`);
+              break;
+            }
+          }
+        }
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+      expect(planted, `seed ${seed}`).toBeGreaterThan(MIN_PLANTS);
+    }
+  });
+
   it('cuts a chunk in isolation exactly as it cuts it with every neighbour loaded', () => {
     // Spec section 3 and section 9.1: a chunk is the same whether it is cut on
     // its own or after the whole block around it. The isolated side stands on a
@@ -1882,12 +2002,14 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       const world = repeats.get(seed) as WorldDescription;
       const parts = repeatParts.get(seed) as { footprint: RoadFootprint; parcels: ParcelMap };
       const aloneGraph = buildRoadGraph(world.roads);
+      const aloneBuildings = buildBuildings(world, parts.parcels, aloneGraph);
       const alone = new ChunkSource(world, {
         graph: aloneGraph,
         footprint: parts.footprint,
         parcels: parts.parcels,
-        buildings: buildBuildings(world, parts.parcels, aloneGraph),
+        buildings: aloneBuildings,
         carve: buildCarve(world.terrain, world.roads),
+        vegetation: new Vegetation(world.seed, parts.parcels, aloneBuildings),
       });
       // The far chunk first, before this source has cut anything at all.
       for (const [cx, cy] of [...chunkKeys()].reverse()) {
