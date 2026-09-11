@@ -48,8 +48,9 @@ export function fillOf(parts: readonly BatchPart[], material: Material): BatchFi
     vertices += part.geometry.getAttribute('position').count;
     indices += part.geometry.getIndex()?.count ?? 0;
   }
-  const mesh = new BatchedMesh(parts.length, vertices, indices, material);
+  const mesh = hiddenBatch(parts.length, vertices, indices, material);
   const steps = parts.map((part) => () => {
+    mesh.visible = true;
     let id = shared.get(part.geometry) as number;
     if (id < 0) {
       id = mesh.addGeometry(part.geometry);
@@ -69,9 +70,10 @@ export function fillOf(parts: readonly BatchPart[], material: Material): BatchFi
  */
 export function fillOfPacked(batch: PackedBatch, material: Material): BatchFill {
   const { parts, storage } = batch;
-  const mesh = new BatchedMesh(parts.length, packedVertexCount(storage), storage.index?.length ?? 0, material);
+  const mesh = hiddenBatch(parts.length, packedVertexCount(storage), storage.index?.length ?? 0, material);
   if (parts.length > 0) adoptStorage(mesh, storage);
   const steps = parts.map((part) => () => {
+    mesh.visible = true;
     const geometry = unpackGeometry(part.geometry);
     const instance = mesh.addInstance(mesh.addGeometry(geometry));
     if (part.matrix !== undefined) mesh.setMatrixAt(instance, new Matrix4().fromArray(part.matrix));
@@ -88,6 +90,17 @@ export function batchOf(parts: readonly BatchPart[], material: Material): Batche
 /** Pack parts a worker built into a single batch, all at once. */
 export function batchOfPacked(batch: PackedBatch, material: Material): BatchedMesh {
   return filled(fillOfPacked(batch, material));
+}
+
+/**
+ * A batch that is not drawn until its first part is in. A batch with no part
+ * has no attributes yet, and the renderer compiles a shader for that shape of
+ * geometry the first frame it meets one: a stall, for a variant nothing needs.
+ */
+function hiddenBatch(parts: number, vertices: number, indices: number, material: Material): BatchedMesh {
+  const mesh = new BatchedMesh(parts, vertices, indices, material);
+  mesh.visible = false;
+  return mesh;
 }
 
 function filled(fill: BatchFill): BatchedMesh {
