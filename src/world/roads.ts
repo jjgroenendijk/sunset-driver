@@ -15,6 +15,10 @@
  * the field turning it back — is retried as a route over land cells. That is
  * the reroute of spec section 6.1.
  *
+ * The boardwalks of spec section 7.3 come next, and are the one road that does
+ * not follow the field at all: a resort beach hands over the line behind its
+ * dune, and the street is laid on it so the roads stay off the sand.
+ *
  * Streets, alleys and dirt roads come last. They are the same fill as the
  * arterials, with two differences: the spacing comes from the density of the
  * district under the seed, so a dense district gets tight blocks, and the tier
@@ -47,12 +51,13 @@
 import { clamp, dist, directionDelta, lerp, wrapAngle } from '../core/math.ts';
 import type { Noise2D } from '../core/noise.ts';
 import { compareNumbers } from '../core/sort.ts';
+import { BeachGround, isResort } from './beaches.ts';
 import { districtAt, layoutZones, zoneAt } from './districts.ts';
 import { Heightfield } from './heightfield.ts';
 import { coastNoise, islandAt } from './terrain.ts';
 import type { TensorField } from './tensor.ts';
 import { TIERS } from './tiers.ts';
-import type { Island, Point, RoadCurve, RoadTier, WorldSkeleton, Zone } from './types.ts';
+import type { Beach, Island, Point, RoadCurve, RoadTier, WorldSkeleton, Zone } from './types.ts';
 
 /** Metres a road needs above sea level; the waterline itself is not road-worthy ground. */
 const DRY_MARGIN = 0.8;
@@ -95,6 +100,8 @@ const ALLEY_DENSITY = 0.5;
 const MIN_MERGE_STEPS = 4;
 /** Metres a bridge head may be moved inland from the crossing's shore point. */
 const ANCHOR_REACH = 100;
+/** Metres of boardwalk that have to survive the ground before the street is worth laying. */
+export const MIN_BOARDWALK = 120;
 /**
  * Metres of cut and fill a road bed absorbs. Ground that stands higher than
  * `CUT` above the line the road drives is tunnelled through; ground that falls
@@ -350,8 +357,19 @@ class RoadIndex {
   }
 }
 
+/** The roads of a world, and the boardwalk each beach was given. */
+export interface TracedRoads {
+  roads: RoadCurve[];
+  /**
+   * The curve that runs along each beach's boardwalk line, indexed like
+   * `world.beaches`. -1 where the beach carries no boardwalk, or where the
+   * ground refused the one it asked for.
+   */
+  boardwalks: number[];
+}
+
 /** Trace every road of a world, widest tier first. Pure: same world and field, same roads. */
-export function traceRoads(world: WorldSkeleton, field: TensorField): RoadCurve[] {
+export function traceRoads(world: WorldSkeleton, field: TensorField): TracedRoads {
   return new RoadTracer(world, field).build();
 }
 
@@ -369,6 +387,8 @@ class RoadTracer {
   private readonly curves: RoadCurve[] = [];
   /** Dry land, one flag per terrain node: the grid a rerouted road walks. */
   private readonly land: Uint8Array;
+  /** The beaches as ground, so the minor fill can be kept off the sand. */
+  private readonly sand: BeachGround;
   /** Scratch for the reroute search, kept between routes so it is allocated once. */
   private readonly came: Int32Array;
   private readonly queue: Int32Array;
@@ -390,22 +410,34 @@ class RoadTracer {
         this.land[iy * n + ix] = inside && this.hf.at(ix, iy) >= this.seaLevel + DRY_MARGIN ? 1 : 0;
       }
     }
+    // Only a resort is kept clear. A resort has a boardwalk to reach it by, so
+    // a road turned away from its sand loses nothing. Every other beach is
+    // reached by whatever road happens to run behind it, and a road kept off
+    // that sand would leave it ground no road reaches — which `parcels.ts`
+    // drops, so the beach would not be a parcel at all.
+    this.sand = new BeachGround(world.beaches.filter(isResort), world.size, this.hf.cellSize);
     this.came = new Int32Array(n * n);
     this.queue = new Int32Array(n * n);
   }
+
+  /** Ground that is not the sand of a beach (spec section 7.3). */
+  private readonly offSand = (x: number, y: number): boolean => this.sand.sandAt(x, y) < 0;
 
   /** Which island's land a point stands on. */
   private islandOf(x: number, y: number): number {
     return islandAt(this.world.water.islands, this.size, this.noise, x, y);
   }
 
-  build(): RoadCurve[] {
+  build(): TracedRoads {
     this.traceHighways();
     this.linkIslands();
     this.fillArterials();
     this.serveDistricts();
+    // Before the minor fill, so the fill grows around the boardwalk instead of
+    // laying its own streets over the same ground.
+    const boardwalks = this.world.beaches.map((beach) => this.traceBoardwalk(beach));
     this.fillMinor();
-    return this.curves;
+    return { roads: this.curves, boardwalks };
   }
 
   // ---------------------------------------------------------------- highways
@@ -573,7 +605,9 @@ class RoadTracer {
       params: ARTERIAL,
       spacing,
       deadEnd: Infinity,
-      within: (x, y) => zoneAt(zones, x, y) !== 'wilderness',
+      // Off the sand, like the minor fill: a beach is served from the boardwalk
+      // behind its dune, never paved across (spec section 7.3).
+      within: (x, y) => zoneAt(zones, x, y) !== 'wilderness' && this.offSand(x, y),
     };
     const seeds: FillSeed[] = [];
     for (const curve of this.curves) seedAlong(curve, () => spacing, 0, seeds, true, true);
@@ -597,8 +631,11 @@ class RoadTracer {
       return lerp(spec.loose, spec.tight, clamp(districtAt(districts, zones, x, y).density, 0, 1));
     };
     const tierAt = (x: number, y: number): RoadTier => MINOR_BY_ZONE[zoneAt(zones, x, y)].tier;
-    const paved = (x: number, y: number): boolean => tierAt(x, y) === 'street';
-    const unpaved = (x: number, y: number): boolean => tierAt(x, y) === 'dirt';
+    // The fill is what covers the map, so it is what would otherwise pave the
+    // beaches. It stops at the sand; the boardwalk behind the dune is the road
+    // that serves them (spec section 7.3).
+    const paved = (x: number, y: number): boolean => tierAt(x, y) === 'street' && this.offSand(x, y);
+    const unpaved = (x: number, y: number): boolean => tierAt(x, y) === 'dirt' && this.offSand(x, y);
 
     // Streets in the built-up zones, dirt roads in the outskirts and the
     // wilderness. Each stays on its own ground, so a street never fades into a
@@ -701,26 +738,99 @@ class RoadTracer {
       if (!this.isDry(site.x, site.y)) continue;
       if (this.index.nearest(site.x, site.y, SERVED) !== undefined) continue;
       const island = this.islandOf(site.x, site.y);
-      const route = this.routeToNetwork({ x: site.x, y: site.y }, island);
+      // Round the beaches where it can, over them where it must: a district
+      // that can only be reached across the sand is still reached.
+      const route = this.routeToNetwork({ x: site.x, y: site.y }, island, 'arterial', ARTERIAL, this.offSand);
       if (route !== undefined) this.addCurve('arterial', route, []);
     }
   }
 
+  // --------------------------------------------------------------- boardwalks
+
+  /**
+   * The boardwalk of one beach (spec section 7.3): a street along the line the
+   * beach plan laid behind its dune. Its id, or -1.
+   *
+   * The line is taken as it stands rather than traced, because a boardwalk
+   * follows the coast and not the field. What the ground refuses is dropped —
+   * a stretch too steep for a street, or one that has gone wet — and the
+   * longest run left is kept. Each end then reaches for the network: a curve
+   * that shares a point with no other is not part of the network at all, so a
+   * boardwalk neither end can reach is not laid.
+   */
+  private traceBoardwalk(beach: Beach): number {
+    const line = this.longestRunnable(beach.boardwalk, STREET.maxGrade);
+    if (polylineLength(line) < MIN_BOARDWALK) return -1;
+    const head = this.reachNetwork(line[0] as Point);
+    const tail = this.reachNetwork(line[line.length - 1] as Point);
+    if (head.length === 0 && tail.length === 0) return -1;
+    const points = [...[...head].reverse(), ...line, ...tail];
+    return this.addCurve('street', points, [])?.id ?? -1;
+  }
+
+  /**
+   * The longest run of a polyline a street may drive: dry ground the whole way,
+   * inside the map, and no step steeper than the tier allows.
+   */
+  private longestRunnable(line: readonly Point[], maxGrade: number): Point[] {
+    const inside = (p: Point): boolean => Math.abs(p.x) <= this.half && Math.abs(p.y) <= this.half;
+    let best: Point[] = [];
+    let run: Point[] = [];
+    for (const p of line) {
+      const last = run[run.length - 1];
+      if (!inside(p) || (last !== undefined && !this.canRun(last.x, last.y, p.x, p.y, maxGrade))) {
+        if (run.length > best.length) best = run;
+        run = inside(p) ? [p] : [];
+        continue;
+      }
+      run.push(p);
+    }
+    return run.length > best.length ? run : best;
+  }
+
+  /**
+   * A street from one end of a boardwalk to the network, without its first
+   * point, so the boardwalk itself carries the join. Empty where the network is
+   * out of reach.
+   */
+  private reachNetwork(from: Point): Point[] {
+    const route = this.routeToNetwork(from, this.islandOf(from.x, from.y), 'street', STREET);
+    return route === undefined ? [] : route.slice(1);
+  }
+
   // ------------------------------------------------------------------ routes
 
-  /** An arterial from a point to the network on its own island: streamline first, reroute second. */
-  private routeToNetwork(from: Point, island: number): Point[] | undefined {
-    const target = this.index.nearestOnIsland(from.x, from.y, island, 'arterial');
+  /**
+   * A road from a point to the network on its own island: streamline first,
+   * reroute second. `within` is ground the road would rather keep to; a route
+   * that cannot be found inside it is looked for again without it, because
+   * reaching the network matters more than any ground does.
+   */
+  private routeToNetwork(
+    from: Point,
+    island: number,
+    joiner: RoadTier = 'arterial',
+    params: TierParams = ARTERIAL,
+    within?: (x: number, y: number) => boolean,
+  ): Point[] | undefined {
+    const target = this.index.nearestOnIsland(from.x, from.y, island, joiner);
     if (target !== undefined) {
-      const traced = this.trace(from, { params: ARTERIAL, joiner: 'arterial', target, mergeAfter: 0 });
+      const traced = this.trace(from, { params, joiner, target, mergeAfter: 0, within });
       if (traced.merged || traced.arrived) return traced.points;
     }
     if (this.index.empty) return undefined;
-    return this.reroute(from, ARTERIAL.maxGrade, (x, y) => {
-      const hit = this.index.nearest(x, y, ARTERIAL.mergeRadius, -1, 'arterial');
-      if (hit === undefined || this.index.refuses(hit.x, hit.y, 'arterial')) return undefined;
-      return this.canRun(x, y, hit.x, hit.y, ARTERIAL.maxGrade) ? hit : undefined;
-    });
+    const route = this.reroute(
+      from,
+      params.maxGrade,
+      (x, y) => {
+        const hit = this.index.nearest(x, y, params.mergeRadius, -1, joiner);
+        if (hit === undefined || this.index.refuses(hit.x, hit.y, joiner)) return undefined;
+        return this.canRun(x, y, hit.x, hit.y, params.maxGrade) ? hit : undefined;
+      },
+      within,
+    );
+    if (route !== undefined || within === undefined) return route;
+    return this.routeToNetwork(from, island, joiner, params);
   }
 
   /** An arterial from a point to a place: streamline first, reroute second. */
@@ -905,6 +1015,7 @@ class RoadTracer {
     from: Point,
     maxGrade: number,
     goal: (x: number, y: number, ix: number, iy: number) => Point | undefined,
+    within?: (x: number, y: number) => boolean,
   ): Point[] | undefined {
     const hf = this.hf;
     const n = hf.gridSize;
@@ -934,6 +1045,7 @@ class RoadTracer {
         const to = jy * n + jx;
         if (came[to] !== -1 || this.land[to] === 0) continue;
         if (dx !== 0 && dy !== 0 && (this.land[iy * n + jx] === 0 || this.land[jy * n + ix] === 0)) continue;
+        if (within !== undefined && !within(hf.worldX(jx), hf.worldY(jy))) continue;
         const rise = Math.abs(hf.at(jx, jy) - hf.at(ix, iy));
         if (rise > (dx !== 0 && dy !== 0 ? diagonal : straight)) continue;
         came[to] = at;

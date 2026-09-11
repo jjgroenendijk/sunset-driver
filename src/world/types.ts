@@ -79,6 +79,57 @@ export interface WaterDescription {
   harbour: { x: number; y: number; radius: number };
 }
 
+/** A pier: a deck straight out from a beach over the water (spec section 7.3). */
+export interface Pier {
+  /** Where the deck leaves the waterline. */
+  root: Point;
+  /** Its seaward end. */
+  head: Point;
+  /** The deck, wound anticlockwise. */
+  polygon: Point[];
+}
+
+/**
+ * One beach of spec section 7.3: a run of coastline the ground behind rises
+ * slowly from. Planned before the roads, because the boardwalk is a road.
+ *
+ * The rings here are the beach as the terrain draws it, before any road is
+ * traced. The ground a beach actually owns is the parcels of `parcels.ts` the
+ * sand covers, so nothing is claimed twice; the boardwalk keeps the roads
+ * behind the dune line, and the sweep confirms they stay there.
+ */
+export interface Beach {
+  id: number;
+  /** The waterline, in order along the shore with the land on the left. */
+  shore: Point[];
+  /** The dune line behind the sand: the waterline stepped inland. */
+  back: Point[];
+  /** Metres of waterline. */
+  length: number;
+  /** The sand, between the waterline and the dune line, wound anticlockwise. */
+  sand: Point[];
+  /** The shallow water in front of the waterline, wound anticlockwise. */
+  shallows: Point[];
+  /**
+   * The line a boardwalk street should run along, behind the dune. Empty on a
+   * beach too short to carry one; `roads.ts` lays the road on it, and
+   * `Beach.boardwalkRoad` says which road that turned out to be.
+   */
+  boardwalk: Point[];
+  /**
+   * The road curve that runs along {@link Beach.boardwalk}, or -1 where the
+   * ground refused one. Always -1 in the skeleton the tracer reads, since the
+   * roads do not exist yet.
+   */
+  boardwalkRoad: number;
+  /** The pier, on a beach long enough to carry one. */
+  pier: Pier | undefined;
+  /** Beach car parks behind the boardwalk, each wound anticlockwise. */
+  carParks: Point[][];
+  /** Ids of the districts the waterline runs through, ascending. */
+  districts: number[];
+}
+
 /** Road hierarchy, widest first (spec section 6.2). */
 export type RoadTier = 'highway' | 'arterial' | 'street' | 'alley' | 'dirt';
 
@@ -187,6 +238,8 @@ export interface WorldDescription {
   terrain: HeightfieldData;
   water: WaterDescription;
   districts: District[];
+  /** The beaches of spec section 7.3, in the order the coastline was walked. */
+  beaches: Beach[];
   roads: RoadCurve[];
   corridors: Corridor[];
   tram: TramDescription;

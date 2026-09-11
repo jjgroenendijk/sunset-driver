@@ -29,6 +29,7 @@ function world(ground: (x: number, y: number) => number, districts: District[]):
       harbour: { x: 0, y: 0, radius: 10 },
     },
     districts,
+    beaches: [],
   };
 }
 

@@ -64,6 +64,7 @@ function gridWorld(): WorldDescription {
       harbour: { x: 0, y: 0, radius: 10 },
     },
     districts: [district(0, 'inner', 0, 0), district(1, 'suburban', 300, 300)],
+    beaches: [],
     roads,
     corridors: [],
     tram: { route: [], corridors: [], stops: [], crossings: [], length: 0 },
