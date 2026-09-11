@@ -57,6 +57,15 @@ export const BUDGET_MS = {
   tensorField: 150,
 
   /**
+   * `buildCarve` over a whole-map road network: every segment on the ground
+   * filed by the ground it carves (spec section 7.1). Offline work like
+   * {@link BUDGET_MS.roadGraph}; a chunk then carves its own heights out of it,
+   * and that cost lands in the streaming cap when streaming does (spec section
+   * 9.1).
+   */
+  carve: 60,
+
+  /**
    * `buildFootprint` over a whole-map road network: every curve offset, every
    * junction aproned and the lot unioned (spec section 6.4). Offline work like
    * {@link BUDGET_MS.worldGen}; chunk-level parcels get their own per-frame cap

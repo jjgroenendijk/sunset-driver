@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { TICKS_PER_HOUR } from '../src/sim/clock.ts';
 import type { InputFrame } from '../src/sim/input.ts';
 import { createSimState, stepSim } from '../src/sim/simulation.ts';
+import { buildCarve } from '../src/world/carve.ts';
 import { buildFootprint, type RoadFootprint } from '../src/world/footprint.ts';
 import { buildParcels } from '../src/world/parcels.ts';
 import { buildRoadGraph, type RoadGraph } from '../src/world/graph.ts';
@@ -120,6 +121,13 @@ describe('performance budgets', () => {
     const worst = Math.max(...times);
 
     expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.tensorField);
+  });
+
+  it('builds the carve of a world within its budget', () => {
+    const times = measuredWorlds().map((world) => bestOf(RUNS, () => void buildCarve(world.terrain, world.roads)));
+    const worst = Math.max(...times);
+
+    expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.carve);
   });
 
   it('samples the tensor field fast enough to trace streamlines with', () => {
