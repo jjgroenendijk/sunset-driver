@@ -17,7 +17,7 @@
  */
 import { RenderTarget, SRGBColorSpace, UnsignedByteType } from 'three';
 import { DEFAULT_APPEARANCE } from '../sim/character.ts';
-import { createVehicleState, rideHeight, SALOON } from '../sim/vehicle.ts';
+import { createVehicleState, DEFAULT_CLASS, rideHeight, specOf, VEHICLE_CLASSES } from '../sim/vehicle.ts';
 import { generateWorld } from '../world/world.ts';
 import { FollowCamera } from './camera.ts';
 import { tickAtHour } from './daylight.ts';
@@ -47,6 +47,12 @@ export interface PreviewRequest {
    * cannot hold the frame ends up looking at.
    */
   quality?: string;
+  /**
+   * The class of vehicle to stand the player in, by name (spec section 11.3).
+   * Left out, or named something the roster does not hold, it is the class a
+   * session starts in.
+   */
+  vehicle?: string;
 }
 
 /** The picture, and what the frame cost to build. */
@@ -100,11 +106,15 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   scene.look(x, y);
   const chunkMs = performance.now() - t1;
 
-  // The player is in their car, on the ground the roads left, as in the game.
+  // The player is in their vehicle, on the ground the roads left, as in the
+  // game. `--vehicle` is how a class of the roster is looked at (spec section
+  // 11.3); a boat is stood on the waterline rather than on the ground.
   const ground = scene.heightAt(x, y);
+  const spec = specOf(VEHICLE_CLASSES.find((cls) => cls === request.vehicle) ?? DEFAULT_CLASS);
+  const rest = spec.hull === undefined ? ground : Math.max(ground, world.water.seaLevel);
   scene.character.group.position.set(x, ground, y);
   scene.character.group.rotation.y = -heading;
-  scene.vehicle.set(createVehicleState(SALOON, x, y, ground + rideHeight(SALOON), heading));
+  scene.vehicle.set(createVehicleState(spec, x, y, rest + rideHeight(spec), heading));
 
   const camera = new FollowCamera(width / height);
   camera.setBaseDistance(distance);

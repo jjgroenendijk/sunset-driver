@@ -5,7 +5,7 @@ import { initPhysics, SimPhysics, type Ground } from '../src/sim/physics.ts';
 import { cloneSimState, createSimState, stepSim, type SimState } from '../src/sim/simulation.ts';
 import { headingOf, rideHeight, SALOON } from '../src/sim/vehicle.ts';
 import type { Surface } from '../src/world/surface.ts';
-import { inputStream, stableJson, sweepSeeds } from './helpers.ts';
+import { DRY, inputStream, stableJson, sweepSeeds } from './helpers.ts';
 
 /**
  * The sweep drives the car of spec section 11.3 rather than a placeholder, so
@@ -25,12 +25,13 @@ function hills(surface: Surface = 'asphalt'): Ground {
   return {
     heightAt: (x, y) => 2.5 * Math.sin(x / 37) + 1.5 * Math.cos(y / 51) + 0.35 * Math.sin(x / 8 + y / 11),
     surfaceAt: () => surface,
+    seaLevel: DRY,
   };
 }
 
 /** A plain constant grade, for the checks that are about the gradient alone. */
 function ramp(surface: Surface, slope: number): Ground {
-  return { heightAt: (x) => x * slope, surfaceAt: () => surface };
+  return { heightAt: (x) => x * slope, surfaceAt: () => surface, seaLevel: DRY };
 }
 
 /** A session on a ground, with the car already settled on its springs. */

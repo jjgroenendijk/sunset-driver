@@ -23,3 +23,10 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #12070f; col
 .title-controls { display: grid; grid-template-columns: 8rem 1fr; gap: .2rem .5rem; margin: .25rem 0 0; font-size: .85rem; opacity: .75; }
 .title-controls dt { opacity: .8; }
 .title-controls dd { margin: 0; }
+.picker { position: fixed; top: 12px; right: 12px; width: 17rem; max-height: calc(100% - 24px); overflow-y: auto; display: grid; gap: .25rem; padding: .75rem; border: 1px solid #4a2b3f; border-radius: .5rem; background: rgba(24,11,20,.88); }
+.picker h2 { margin: 0 0 .25rem; font-size: .85rem; letter-spacing: .1em; text-transform: uppercase; opacity: .7; }
+.picker button { display: grid; gap: .1rem; padding: .35rem .5rem; border: 1px solid #6a3f58; border-radius: .25rem; background: #2a1322; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.picker button:hover { background: #3b1b30; }
+.picker-current { border-color: #ff8a5c; background: #3b1b30; }
+.picker-name { font-size: .95rem; }
+.picker-stats { font-size: .72rem; opacity: .65; font-variant-numeric: tabular-nums; }

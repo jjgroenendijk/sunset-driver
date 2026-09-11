@@ -1,66 +1,106 @@
 /**
- * The car, drawn (spec sections 10.1, 11.3).
+ * The vehicle, drawn (spec sections 10.1, 11.3).
  *
- * Boxes, as the character model is: the camera looks down from 60 m, so what a
- * vehicle needs is a silhouette that reads at a glance and a nose that says
- * which way it is pointing. The handling roster of spec section 11.3 will make
- * this a shape per class; until then it is one saloon.
+ * The shape comes from `vehicle-mesh.ts`, one plan per class of the roster.
+ * This turns that plan into a model: a mesh per box, a wheel per wheel of the
+ * row, and the outline of spec section 10.1 round the masses that make the
+ * silhouette.
  *
  * The model reads the vehicle's serialisable state and nothing else, so what is
- * drawn is a function of the simulation record: the body takes the chassis
- * pose, and each wheel hangs at the length its suspension came back with and
- * turns by the angle the physics steered it to.
+ * drawn is a function of the simulation record: the class decides the shape,
+ * the body takes the chassis pose, and each wheel hangs at the length its
+ * suspension came back with and turns by the angle the physics steered it to.
+ * A class the record changes to — the debug picker of spec section 11.3, or a
+ * loaded save — rebuilds the model on the next frame it is set from.
  */
 import {
+  BackSide,
   BoxGeometry,
+  Color,
   CylinderGeometry,
   Group,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   Object3D,
   type BufferGeometry,
   type Material,
 } from 'three';
-import { SALOON, type VehicleSpec, type VehicleState, type WheelSpec, type WheelState } from '../sim/vehicle.ts';
+import {
+  DEFAULT_CLASS,
+  specOf,
+  type VehicleClass,
+  type VehicleSpec,
+  type VehicleState,
+  type WheelSpec,
+  type WheelState,
+} from '../sim/vehicle.ts';
+import { TYRE, vehicleBoxes, type VehicleBox } from './vehicle-mesh.ts';
 
-/** Body paint until the roster of spec section 11.3 picks a colour per vehicle. */
-const PAINT = 0xb8352c;
-const GLASS = 0x243040;
-const TYRE = 0x161616;
-const LAMP = 0xffe7b0;
-const TAIL = 0x6e1210;
+/** The dark of the outline, as the buildings' is (spec section 10.1). */
+const OUTLINE = 0x150f12;
+
+/**
+ * Metres the outline stands outside the box it rims. A vehicle is two metres
+ * across and a building fifty, so this is a tenth of the buildings' width: the
+ * same line on screen from the same camera.
+ */
+export const VEHICLE_OUTLINE_WIDTH = 0.035;
+
+/** A wheel of the model, and the wheel of the record it hangs and turns with. */
+interface DrawnWheel {
+  object: Object3D;
+  index: number;
+}
 
 export class VehicleModel {
   readonly group = new Group();
-  private readonly spec: VehicleSpec;
-  private readonly wheels: Object3D[] = [];
+  private spec: VehicleSpec;
+  private readonly wheels: DrawnWheel[] = [];
   private readonly geometries: BufferGeometry[] = [];
   private readonly materials: Material[] = [];
 
-  constructor(spec: VehicleSpec = SALOON) {
-    this.spec = spec;
+  constructor(cls: VehicleClass = DEFAULT_CLASS) {
+    this.spec = specOf(cls);
     this.build();
-    this.group.traverse((object) => {
-      object.castShadow = true;
-    });
   }
 
-  /** Put the model where the state says the vehicle is. Called once a frame. */
+  /** The row of the roster the model is currently built for. */
+  get vehicle(): VehicleSpec {
+    return this.spec;
+  }
+
+  /**
+   * Put the model where the state says the vehicle is. Called once a frame.
+   * A record that names another class is a different vehicle, so the model is
+   * built again for it before it is placed.
+   */
   set(v: VehicleState): void {
+    if (v.cls !== this.spec.cls) {
+      this.spec = specOf(v.cls);
+      this.clear();
+      this.build();
+    }
     this.group.position.set(v.x, v.y, v.z);
     this.group.quaternion.set(v.qx, v.qy, v.qz, v.qw);
-    for (let i = 0; i < this.wheels.length; i++) {
-      const wheel = this.wheels[i] as Object3D;
-      const spec = this.spec.wheels[i] as WheelSpec;
-      const state = v.wheels[i] as WheelState;
+    for (const drawn of this.wheels) {
+      const spec = this.spec.wheels[drawn.index] as WheelSpec;
+      const state = v.wheels[drawn.index] as WheelState;
       // The suspension hangs the wheel below its mounting point on the chassis.
-      wheel.position.set(spec.x, spec.y - state.suspension, spec.z);
+      // A vehicle the model draws one wheel per axle for hangs it between the
+      // pair the physics stands on, which is the centreline.
+      drawn.object.position.set(spec.x, spec.y - state.suspension, this.spec.inline ? 0 : spec.z);
       // Steer about the chassis' up axis, then roll on the axle.
-      wheel.rotation.set(0, state.steer, state.rotation, 'YXZ');
+      drawn.object.rotation.set(0, state.steer, state.rotation, 'YXZ');
     }
   }
 
   dispose(): void {
+    this.clear();
+  }
+
+  /** Take the current model apart and release everything it holds. */
+  private clear(): void {
     this.group.clear();
     for (const geometry of this.geometries) geometry.dispose();
     for (const material of this.materials) material.dispose();
@@ -69,47 +109,40 @@ export class VehicleModel {
     this.wheels.length = 0;
   }
 
-  private box(w: number, h: number, d: number, colour: number, x: number, y: number, z: number): Mesh {
-    const geometry = new BoxGeometry(w, h, d);
-    const material = new MeshStandardMaterial({ color: colour, roughness: 0.45, metalness: 0.2 });
-    const mesh = new Mesh(geometry, material);
-    mesh.position.set(x, y, z);
-    this.geometries.push(geometry);
-    this.materials.push(material);
-    this.group.add(mesh);
-    return mesh;
+  private build(): void {
+    const outline = new MeshBasicMaterial({ color: new Color(OUTLINE), side: BackSide, fog: true });
+    this.materials.push(outline);
+    for (const part of vehicleBoxes(this.spec)) {
+      this.add(part);
+      // The outline is the same box grown by the width of the line and drawn
+      // back faces only, so it rims the mass instead of hiding it.
+      if (part.outlined) this.add(grown(part, VEHICLE_OUTLINE_WIDTH), outline);
+    }
+    this.buildWheels();
   }
 
-  private build(): void {
+  /**
+   * One box of the plan, in its own colour or in a material it is handed.
+   *
+   * An outline casts no shadow. It is the mass it rims grown by a few
+   * centimetres, so its shadow is the body's shadow again, drawn twice and a
+   * little too big.
+   */
+  private add(part: VehicleBox, material?: Material): void {
+    const geometry = new BoxGeometry(part.length, part.height, part.width);
+    const paint = material ?? new MeshStandardMaterial({ color: part.colour, roughness: 0.45, metalness: 0.2 });
+    if (material === undefined) this.materials.push(paint);
+    const mesh = new Mesh(geometry, paint);
+    mesh.position.set(part.x, part.y, part.z);
+    mesh.castShadow = material === undefined;
+    this.geometries.push(geometry);
+    this.group.add(mesh);
+  }
+
+  /** A tyre and a hub per wheel of the row, sharing one geometry and one material. */
+  private buildWheels(): void {
     const spec = this.spec;
-    const length = spec.halfLength * 2;
-    const width = spec.halfWidth * 2;
-    const height = spec.halfHeight * 2;
-
-    // The lower body, narrower than the track so the wheels show from above.
-    const bodyHeight = height * 0.55;
-    const bodyY = -spec.halfHeight + bodyHeight / 2;
-    this.box(length, bodyHeight, width * 0.9, PAINT, 0, bodyY, 0);
-
-    // The cabin, set back from the nose: a bonnet at one end and a boot at the
-    // other is what tells a player which way the car is facing from 60 m up.
-    const cabinHeight = height - bodyHeight;
-    const cabinY = bodyY + bodyHeight / 2 + cabinHeight / 2;
-    const cabinLength = length * 0.44;
-    const cabinX = -length * 0.05;
-    this.box(cabinLength, cabinHeight, width * 0.8, PAINT, cabinX, cabinY, 0);
-    // Glass at each end of the cabin and down both sides, a little proud of it,
-    // so the windows read as windows rather than as paint.
-    this.box(length * 0.06, cabinHeight * 0.82, width * 0.82, GLASS, cabinX + cabinLength / 2, cabinY, 0);
-    this.box(length * 0.05, cabinHeight * 0.82, width * 0.82, GLASS, cabinX - cabinLength / 2, cabinY, 0);
-    this.box(cabinLength * 0.7, cabinHeight * 0.5, width * 0.83, GLASS, cabinX, cabinY + cabinHeight * 0.08, 0);
-
-    // Lights at each end, so the nose is the end that is lit.
-    for (const side of [1, -1]) {
-      this.box(0.1, 0.14, width * 0.22, LAMP, spec.halfLength - 0.04, bodyY + bodyHeight * 0.2, side * width * 0.28);
-      this.box(0.09, 0.14, width * 0.22, TAIL, -spec.halfLength + 0.04, bodyY + bodyHeight * 0.2, side * width * 0.28);
-    }
-
+    if (spec.wheels.length === 0) return;
     const tyre = new CylinderGeometry(spec.wheelRadius, spec.wheelRadius, spec.wheelWidth, 14);
     // The cylinder is built along y; the axle runs across the car, along z.
     tyre.rotateX(Math.PI / 2);
@@ -118,14 +151,30 @@ export class VehicleModel {
     const chrome = new MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.35, metalness: 0.7 });
     this.geometries.push(tyre, hub);
     this.materials.push(rubber, chrome);
-    for (const wheel of spec.wheels) {
+    for (let i = 0; i < spec.wheels.length; i++) {
+      const wheel = spec.wheels[i] as WheelSpec;
+      // A vehicle that rides on one wheel per axle is drawn with one: the far
+      // half of each pair the physics stands on is not there to be seen.
+      if (spec.inline && wheel.z < 0) continue;
       const group = new Group();
-      group.position.set(wheel.x, wheel.y - spec.suspensionRest, wheel.z);
-      group.add(new Mesh(tyre, rubber));
-      // A spoke box on the hub, so a turning wheel is visibly turning.
-      group.add(new Mesh(hub, chrome));
-      this.wheels.push(group);
+      group.position.set(wheel.x, wheel.y - spec.suspensionRest, spec.inline ? 0 : wheel.z);
+      for (const mesh of [new Mesh(tyre, rubber), new Mesh(hub, chrome)]) {
+        // A spoke box on the hub, so a turning wheel is visibly turning.
+        mesh.castShadow = true;
+        group.add(mesh);
+      }
+      this.wheels.push({ object: group, index: i });
       this.group.add(group);
     }
   }
+}
+
+/** The same box, `reach` metres larger on every side. */
+function grown(part: VehicleBox, reach: number): VehicleBox {
+  return {
+    ...part,
+    length: part.length + 2 * reach,
+    height: part.height + 2 * reach,
+    width: part.width + 2 * reach,
+  };
 }

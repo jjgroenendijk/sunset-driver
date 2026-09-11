@@ -2,7 +2,7 @@ import { EMPTY_INPUT, type InputFrame } from './input.ts';
 import { gameTime, TICKS_PER_HOUR } from './clock.ts';
 import { type CharacterAppearance, DEFAULT_APPEARANCE, normaliseAppearance } from './character.ts';
 import type { SimPhysics } from './physics.ts';
-import { createVehicleState, SALOON, type VehicleState } from './vehicle.ts';
+import { createVehicleState, DEFAULT_CLASS, specOf, type VehicleState } from './vehicle.ts';
 
 /** The serialisable, deterministic state of a session. */
 export interface SimState {
@@ -36,7 +36,7 @@ export function createSimState(
     seed,
     tick: startTick,
     character: normaliseAppearance(character),
-    vehicle: createVehicleState(SALOON),
+    vehicle: createVehicleState(specOf(DEFAULT_CLASS)),
     player: { x: 0, y: 0, heading: 0, speed: 0 },
   };
 }

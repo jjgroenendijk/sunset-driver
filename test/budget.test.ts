@@ -20,7 +20,7 @@ import type { WorldDescription } from '../src/world/types.ts';
 import { Vegetation } from '../src/world/vegetation.ts';
 import { generateWorld } from '../src/world/world.ts';
 import { BUDGET_MS, BUDGET_US, FRAME_MS, FRAME_SLICE_MS, SIM_SLICE_MS } from './budgets.ts';
-import { bestOf, bestUnder, inputStream, landPoints, sweepSeeds } from './helpers.ts';
+import { bestOf, bestUnder, DRY, inputStream, landPoints, sweepSeeds } from './helpers.ts';
 
 /**
  * A handful of seeds: enough for a median, cheap enough for the quick tier.
@@ -129,6 +129,7 @@ describe('performance budgets', () => {
     const ground: Ground = {
       heightAt: (x, y) => 2.5 * Math.sin(x / 37) + 1.5 * Math.cos(y / 51),
       surfaceAt: () => 'asphalt',
+      seaLevel: DRY,
     };
     const inputs = inputStream(0x5717, SIM_TICKS);
     const run = (ticks: number): void => {

@@ -5,7 +5,9 @@
  * serialisable record in `simulation.ts`; this builds a Rapier world from it,
  * steps that world once per tick, and writes what came out back into the
  * record. So a session can be saved, sent or replayed as numbers, and the
- * bodies are made again from those numbers on the other side.
+ * bodies are made again from those numbers on the other side. The record says
+ * which row of the roster is being driven, so the body, the wheels and the
+ * handling are all rebuilt from it too.
  *
  * The ground is a heightfield collider per tile of a grid around the player, so
  * the physics streams the way the city does (spec section 9.1). A tile samples
@@ -14,13 +16,19 @@
  * same tile as one built early.
  *
  * The world it stands on comes in as a {@link Ground}: the height of the ground
- * at a place and what that ground is made of. The game hands it the carve and
- * the surface index of `src/world`; a test can hand it a hillside of its own.
- * That is what keeps this file free of world generation.
+ * at a place, what that ground is made of, and where the sea stands. The game
+ * hands it the carve, the surface index of `src/world` and the world's sea
+ * level; a test can hand it a hillside of its own. That is what keeps this file
+ * free of world generation.
  *
- * Only the player's car has a body. Ambient traffic is kinematic and evaluated
- * from `(seed, tick)` until something touches it (spec section 5.3), so the
- * physics slice of spec section 2.4 pays for one vehicle and the ground.
+ * A wheeled vehicle drives on Rapier's `DynamicRayCastVehicleController`. A
+ * boat has no wheels, so it gets its own controller instead: it is held up by
+ * the water it displaces, pushed from the stern and turned by a rudder that
+ * only bites while water is flowing past it (spec section 11.3).
+ *
+ * Only the player's vehicle has a body. Ambient traffic is kinematic and
+ * evaluated from `(seed, tick)` until something touches it (spec section 5.3),
+ * so the physics slice of spec section 2.4 pays for one vehicle and the ground.
  */
 import RAPIER from '@dimforge/rapier3d-compat';
 import type { Surface } from '../world/surface.ts';
@@ -32,7 +40,9 @@ import {
   gripOf,
   headingOf,
   rideHeight,
-  SALOON,
+  specOf,
+  type HullSpec,
+  type VehicleClass,
   type VehicleSpec,
   type VehicleState,
   type WheelSpec,
@@ -58,18 +68,40 @@ export const PHYSICS_RADIUS = 2;
  */
 const PARKING_SPEED = 1.5;
 
+/**
+ * Points the buoyancy of a hull is taken at: one at each quarter of it, so a
+ * boat pitches and rolls with the forces on it rather than bobbing as a point.
+ */
+const LIFT_POINTS = 4;
+
+/**
+ * How hard the rider damps the roll they are correcting, as a fraction of the
+ * spring they correct it with.
+ *
+ * Both numbers are bounded by the tick, not by what a rider could do. The
+ * correction is integrated once a step, so a damping of more than about half
+ * the roll inertia per step overshoots and the bike shakes itself over instead
+ * of settling. A motorcycle's roll inertia is about 15 kg m², so this and
+ * `VehicleSpec.balance` are together a spring that settles in a third of a
+ * second and is still stiffer than the gravity it holds the bike up against.
+ */
+const BALANCE_DAMPING = 0.1;
+
 /** Height samples each way of one tile. */
 const TILE_CELLS = PHYSICS_TILE / PHYSICS_CELL;
 
 /**
- * What the world is, as the physics needs it: how high the ground is at a place
- * and what it is made of. `src/world` answers both; nothing here knows how.
+ * What the world is, as the physics needs it: how high the ground is at a
+ * place, what it is made of, and where the sea stands. `src/world` answers all
+ * three; nothing here knows how.
  */
 export interface Ground {
   /** The carved height of the ground at a place, in metres. */
   heightAt(x: number, y: number): number;
   /** What the ground is made of there. */
   surfaceAt(x: number, y: number): Surface;
+  /** The one level the sea, the straits, the river and the harbour stand at. */
+  seaLevel: number;
 }
 
 /** Load Rapier's WebAssembly. Call once before the first {@link SimPhysics}. */
@@ -84,8 +116,14 @@ interface GroundTile {
   collider: RAPIER.Collider;
 }
 
+/** A body and the wheels it drives on, or no wheels at all on a boat. */
+interface Built {
+  chassis: RAPIER.RigidBody;
+  wheels: RAPIER.DynamicRayCastVehicleController | undefined;
+}
+
 /**
- * The physics of a session: the ground under the player and the car on it.
+ * The physics of a session: the ground under the player and the vehicle on it.
  *
  * Build one, step it once per simulation tick, and throw it away with the
  * session. It owns no simulation state; everything it decides is written back
@@ -97,33 +135,42 @@ export class SimPhysics {
 
   private readonly world: RAPIER.World;
   private readonly ground: Ground;
-  private readonly spec: VehicleSpec;
   private readonly tiles: GroundTile[] = [];
+  /** The row of the roster the body was built from. `adopt` reads it off the record. */
+  private spec: VehicleSpec;
   private chassis: RAPIER.RigidBody;
-  private vehicle: RAPIER.DynamicRayCastVehicleController;
-  /** Scratch vectors, so a tick allocates nothing. */
+  private wheels: RAPIER.DynamicRayCastVehicleController | undefined;
+  /** Scratch vectors and forces, so a tick allocates nothing. */
   private readonly point = { x: 0, y: 0, z: 0 };
+  private readonly axis = { x: 0, y: 0, z: 0 };
+  private readonly force = { x: 0, y: 0, z: 0 };
+  private readonly at = { x: 0, y: 0, z: 0 };
 
-  constructor(ground: Ground, state: SimState, spec: VehicleSpec = SALOON) {
+  constructor(ground: Ground, state: SimState) {
     this.ground = ground;
-    this.spec = spec;
+    this.spec = specOf(state.vehicle.cls);
     this.world = new RAPIER.World({ x: 0, y: -GRAVITY, z: 0 });
     // The step is the tick. Simulation code never sees a frame delta.
     this.world.timestep = 1 / TICK_RATE;
     this.cover(state.vehicle.x, state.vehicle.z);
     const built = this.build(state.vehicle);
     this.chassis = built.chassis;
-    this.vehicle = built.vehicle;
+    this.wheels = built.wheels;
   }
 
   /**
-   * Put the vehicle down on the ground at a place on the map and rebuild its
-   * body there. This is how a session starts, and how a respawn will place a
-   * car once spec section 11.7 lands.
+   * Put a vehicle down on the ground at a place on the map and rebuild its body
+   * there. This is how a session starts, how the debug picker of spec section
+   * 11.3 changes what is being driven, and how a respawn will place a vehicle
+   * once spec section 11.7 lands.
+   *
+   * A boat is put down on the water rather than on the ground, since that is
+   * what it rests on; on ground that stands above the sea it simply sits there.
    */
-  spawn(state: SimState, x: number, y: number, heading = 0): void {
-    const height = this.ground.heightAt(x, y) + rideHeight(this.spec);
-    state.vehicle = createVehicleState(this.spec, x, y, height, heading);
+  spawn(state: SimState, x: number, y: number, heading = 0, cls: VehicleClass = state.vehicle.cls): void {
+    const spec = specOf(cls);
+    const rest = spec.hull === undefined ? this.ground.heightAt(x, y) : Math.max(this.ground.heightAt(x, y), this.ground.seaLevel);
+    state.vehicle = createVehicleState(spec, x, y, rest + rideHeight(spec), heading);
     this.cover(x, y);
     this.adopt(state);
   }
@@ -135,10 +182,11 @@ export class SimPhysics {
    */
   adopt(state: SimState): void {
     this.release();
+    this.spec = specOf(state.vehicle.cls);
     this.cover(state.vehicle.x, state.vehicle.z);
     const built = this.build(state.vehicle);
     this.chassis = built.chassis;
-    this.vehicle = built.vehicle;
+    this.wheels = built.wheels;
   }
 
   /**
@@ -148,20 +196,31 @@ export class SimPhysics {
    * climb the engine force has gravity along the slope to fight, and on a
    * descent it has gravity behind it and the brakes take longer. What the
    * surface does need is a rule, and it is the grip table of `vehicle.ts`, read
-   * per wheel at the ground each wheel stands on.
+   * per wheel at the ground each wheel stands on and scaled by the tyres the
+   * vehicle is on.
    */
   step(state: SimState, input: InputFrame): void {
     const v = state.vehicle;
     this.cover(v.x, v.z);
-    this.drive(v, input);
-    this.vehicle.updateVehicle(this.world.timestep);
+    // Rapier keeps a force until it is told to forget it, so a tick that adds
+    // one has to clear the last tick's first. Without this the buoyancy of a
+    // hull and the rider of a motorcycle both grow without bound.
+    this.chassis.resetForces(false);
+    this.chassis.resetTorques(false);
+    if (this.wheels === undefined) {
+      this.sail(v, input);
+    } else {
+      this.drive(v, input);
+      this.hold(v);
+      this.wheels.updateVehicle(this.world.timestep);
+    }
     this.world.step();
     this.read(state);
   }
 
   /** Release the Rapier world and everything in it. */
   dispose(): void {
-    this.vehicle.free();
+    this.wheels?.free();
     this.world.free();
     this.tiles.length = 0;
   }
@@ -171,8 +230,14 @@ export class SimPhysics {
     return this.tiles.length;
   }
 
+  /** The row of the roster being driven, so the HUD and the picker can name it. */
+  get vehicle(): VehicleSpec {
+    return this.spec;
+  }
+
   /** Apply the input to the wheels: steering, engine, brakes and the grip of the ground. */
   private drive(v: VehicleState, input: InputFrame): void {
+    const controller = this.wheels as RAPIER.DynamicRayCastVehicleController;
     const spec = this.spec;
     const speed = v.speed;
     const forward = Math.abs(speed);
@@ -210,17 +275,17 @@ export class SimPhysics {
     for (let i = 0; i < spec.wheels.length; i++) {
       const wheel = spec.wheels[i] as WheelSpec;
       const state = v.wheels[i] as WheelState;
-      const grip = gripOf(this.surfaceUnder(v, wheel), this.wetness);
+      const grip = gripOf(this.surfaceUnder(v, wheel), this.wetness, spec.tyres);
 
       const steer = wheel.steered ? approach(state.steer, wanted, spec.steerRate / TICK_RATE) : 0;
-      this.vehicle.setWheelSteering(i, steer);
+      controller.setWheelSteering(i, steer);
 
       // What the surface costs this wheel, in newtons. A wheel the engine is
       // pushing ignores its brake, so the loss comes off the drive there and
       // off the brake everywhere else. Either way the ground is always felt.
       const rolling = (grip.roll * spec.mass * GRAVITY) / spec.wheels.length;
       const drive = wheel.driven ? engine / driven : 0;
-      this.vehicle.setWheelEngineForce(i, drive > 0 ? Math.max(0, drive - rolling) : Math.min(0, drive + rolling));
+      controller.setWheelEngineForce(i, drive > 0 ? Math.max(0, drive - rolling) : Math.min(0, drive + rolling));
 
       let brake = pedal * spec.brakeForce + rolling;
       let side = grip.side;
@@ -232,10 +297,116 @@ export class SimPhysics {
       }
       // Rapier takes the engine as a force and the brake as the impulse of one
       // step, so the brake is what the table says divided by the tick rate.
-      this.vehicle.setWheelBrake(i, brake / TICK_RATE);
-      this.vehicle.setWheelFrictionSlip(i, grip.friction);
-      this.vehicle.setWheelSideFrictionStiffness(i, side);
+      controller.setWheelBrake(i, brake / TICK_RATE);
+      controller.setWheelFrictionSlip(i, grip.friction);
+      controller.setWheelSideFrictionStiffness(i, side);
     }
+  }
+
+  /**
+   * The rider of a two-wheeler (spec section 11.3). Its wheels stand on the
+   * centreline, so the suspension gives it no roll stiffness at all and its two
+   * contact points are in line, so nothing steadies it in pitch either. The
+   * rider is both:
+   *
+   * - roll is sprung back toward level and damped, because a bike left to lean
+   *   simply falls over;
+   * - pitch is damped and never sprung, because a bike on a hill should point
+   *   up the hill. Damping alone still takes the violence out of a wheelie and
+   *   out of the porpoising two contact points fall into.
+   */
+  private hold(v: VehicleState): void {
+    const stiffness = this.spec.balance;
+    if (stiffness === 0) return;
+    const damping = stiffness * BALANCE_DAMPING;
+    // The axle is local +z, so how far its world `y` has tipped is the sine of
+    // the roll; the forward axis is the axis that roll turns about, and the
+    // axle itself is the axis pitch turns about.
+    rotate(this.axis, v, 0, 0, 1);
+    rotate(this.point, v, 1, 0, 0);
+    const rolling = v.ax * this.point.x + v.ay * this.point.y + v.az * this.point.z;
+    const pitching = v.ax * this.axis.x + v.ay * this.axis.y + v.az * this.axis.z;
+    const roll = stiffness * this.axis.y - damping * rolling;
+    const pitch = -damping * pitching;
+    this.force.x = this.point.x * roll + this.axis.x * pitch;
+    this.force.y = this.point.y * roll + this.axis.y * pitch;
+    this.force.z = this.point.z * roll + this.axis.z * pitch;
+    this.chassis.addTorque(this.force, true);
+  }
+
+  /**
+   * The boat controller of spec section 11.3.
+   *
+   * The hull is held up by the water it displaces, taken at the four quarters
+   * of it so the boat pitches and rolls; the water takes back much more across
+   * the hull than along it, which is what makes a boat track rather than slide;
+   * and the rudder's bite grows with the water flowing past it, so a boat at a
+   * standstill cannot turn on the spot. Out of the water none of it applies and
+   * the hull is a box resting on the ground.
+   */
+  private sail(v: VehicleState, input: InputFrame): void {
+    const spec = this.spec;
+    const hull = spec.hull as HullSpec;
+    const sea = this.ground.seaLevel;
+    const weight = spec.mass * GRAVITY;
+
+    let under = 0;
+    for (let i = 0; i < LIFT_POINTS; i++) {
+      const along = i < 2 ? 1 : -1;
+      const across = i % 2 === 0 ? 1 : -1;
+      rotate(
+        this.point,
+        v,
+        along * spec.halfLength * hull.liftLength,
+        -spec.halfHeight,
+        across * spec.halfWidth * hull.liftWidth,
+      );
+      const y = v.y + this.point.y;
+      const depth = sea - y;
+      if (depth <= 0) continue;
+      under++;
+      this.force.x = 0;
+      this.force.y = (Math.min(depth / hull.draft, hull.buoyancy) * weight) / LIFT_POINTS;
+      this.force.z = 0;
+      this.at.x = v.x + this.point.x;
+      this.at.y = y;
+      this.at.z = v.z + this.point.z;
+      this.chassis.addForceAtPoint(this.force, this.at, true);
+    }
+    v.afloat = under > 0;
+    if (under === 0) return;
+    // A hull half out of the water is half held, half dragged and half driven.
+    const wet = under / LIFT_POINTS;
+
+    rotate(this.point, v, 1, 0, 0);
+    rotate(this.axis, v, 0, 0, 1);
+    const along = v.vx * this.point.x + v.vy * this.point.y + v.vz * this.point.z;
+    const across = v.vx * this.axis.x + v.vy * this.axis.y + v.vz * this.axis.z;
+
+    let thrust = 0;
+    if (input.throttle > 0) {
+      thrust = input.throttle * hull.thrust * Math.max(0, 1 - along / hull.topSpeed);
+    } else if (input.throttle < 0) {
+      const top = hull.topSpeed * hull.reverse;
+      thrust = input.throttle * hull.thrust * hull.reverse * Math.max(0, 1 + along / top);
+    }
+
+    const push = (thrust - hull.waterDrag * spec.mass * along) * wet;
+    const slip = -hull.sideDrag * spec.mass * across * wet;
+    this.force.x = this.point.x * push + this.axis.x * slip;
+    this.force.y = this.point.y * push + this.axis.y * slip - hull.heave * spec.mass * v.vy * wet;
+    this.force.z = this.point.z * push + this.axis.z * slip;
+    this.chassis.addForce(this.force, true);
+
+    // The rudder turns the boat the way the wheel turns a car: the map's
+    // heading runs the other way round the up axis, so steering right is a
+    // negative yaw. It bites with the water flowing past it, and it bites the
+    // other way when the boat is going astern.
+    const flow = Math.max(-1, Math.min(1, along / hull.topSpeed));
+    this.force.x = 0;
+    this.force.y = -input.steer * hull.rudder * flow * wet;
+    this.force.z = 0;
+    this.chassis.addTorque(this.force, true);
   }
 
   /** What the ground is made of under one wheel of a vehicle at its current pose. */
@@ -264,15 +435,22 @@ export class SimPhysics {
     v.ax = angular.x;
     v.ay = angular.y;
     v.az = angular.z;
-    v.speed = this.vehicle.currentVehicleSpeed();
-    for (let i = 0; i < v.wheels.length; i++) {
-      const wheel = v.wheels[i] as WheelState;
-      wheel.rotation = this.vehicle.wheelRotation(i) ?? wheel.rotation;
-      wheel.steer = this.vehicle.wheelSteering(i) ?? 0;
-      wheel.suspension = this.vehicle.wheelSuspensionLength(i) ?? this.spec.suspensionRest;
-      wheel.contact = this.vehicle.wheelIsInContact(i);
+    if (this.wheels === undefined) {
+      // A boat has no wheel to read a speed off, so the speed is what the hull
+      // is making along its own length.
+      rotate(this.point, v, 1, 0, 0);
+      v.speed = v.vx * this.point.x + v.vy * this.point.y + v.vz * this.point.z;
+    } else {
+      v.speed = this.wheels.currentVehicleSpeed();
+      for (let i = 0; i < v.wheels.length; i++) {
+        const wheel = v.wheels[i] as WheelState;
+        wheel.rotation = this.wheels.wheelRotation(i) ?? wheel.rotation;
+        wheel.steer = this.wheels.wheelSteering(i) ?? 0;
+        wheel.suspension = this.wheels.wheelSuspensionLength(i) ?? this.spec.suspensionRest;
+        wheel.contact = this.wheels.wheelIsInContact(i);
+      }
     }
-    // The player is where their car is, until they can get out of it
+    // The player is where their vehicle is, until they can get out of it
     // (spec section 11.5).
     const p = state.player;
     p.x = v.x;
@@ -282,10 +460,7 @@ export class SimPhysics {
   }
 
   /** Build the chassis body, its collider and the wheels, from the state. */
-  private build(v: VehicleState): {
-    chassis: RAPIER.RigidBody;
-    vehicle: RAPIER.DynamicRayCastVehicleController;
-  } {
+  private build(v: VehicleState): Built {
     const spec = this.spec;
     const chassis = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
@@ -301,37 +476,40 @@ export class SimPhysics {
     this.world.createCollider(
       RAPIER.ColliderDesc.cuboid(spec.halfLength, spec.halfHeight, spec.halfWidth)
         .setMass(spec.mass)
-        .setFriction(0.6),
+        // A hull slides over what it grounds on; a car body digs in.
+        .setFriction(spec.hull === undefined ? 0.6 : 0.2),
       chassis,
     );
+    if (spec.wheels.length === 0) return { chassis, wheels: undefined };
 
-    const vehicle = this.world.createVehicleController(chassis);
+    const wheels = this.world.createVehicleController(chassis);
     // Forward is the chassis' local +x and up is +y, the frame the model and
     // the map heading already share (`vehicle.ts`).
-    vehicle.setIndexForwardAxis = 0;
-    vehicle.indexUpAxis = 1;
+    wheels.setIndexForwardAxis = 0;
+    wheels.indexUpAxis = 1;
     for (let i = 0; i < spec.wheels.length; i++) {
       const wheel = spec.wheels[i] as WheelSpec;
-      vehicle.addWheel(
+      wheels.addWheel(
         { x: wheel.x, y: wheel.y, z: wheel.z },
         { x: 0, y: -1, z: 0 },
         { x: 0, y: 0, z: 1 },
         spec.suspensionRest,
         spec.wheelRadius,
       );
-      vehicle.setWheelSuspensionStiffness(i, spec.suspensionStiffness);
-      vehicle.setWheelSuspensionCompression(i, spec.suspensionCompression);
-      vehicle.setWheelSuspensionRelaxation(i, spec.suspensionRelaxation);
-      vehicle.setWheelMaxSuspensionTravel(i, spec.suspensionTravel);
-      vehicle.setWheelMaxSuspensionForce(i, spec.maxSuspensionForce);
-      vehicle.setWheelSteering(i, (v.wheels[i] as WheelState).steer);
+      wheels.setWheelSuspensionStiffness(i, spec.suspensionStiffness);
+      wheels.setWheelSuspensionCompression(i, spec.suspensionCompression);
+      wheels.setWheelSuspensionRelaxation(i, spec.suspensionRelaxation);
+      wheels.setWheelMaxSuspensionTravel(i, spec.suspensionTravel);
+      wheels.setWheelMaxSuspensionForce(i, spec.maxSuspensionForce);
+      wheels.setWheelSteering(i, (v.wheels[i] as WheelState).steer);
     }
-    return { chassis, vehicle };
+    return { chassis, wheels };
   }
 
   /** Take the vehicle's body out of the world, so a new one can be built from the state. */
   private release(): void {
-    this.vehicle.free();
+    this.wheels?.free();
+    this.wheels = undefined;
     this.world.removeRigidBody(this.chassis);
   }
 

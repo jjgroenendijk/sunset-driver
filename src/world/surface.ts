@@ -15,6 +15,7 @@
  * grid the way `carve.ts` files them, which is what keeps that affordable.
  */
 import { pointInRing } from '../core/geom.ts';
+import { Heightfield } from './heightfield.ts';
 import { footprintHalfWidth } from './tiers.ts';
 import type { Point, RoadCurve, WorldDescription } from './types.ts';
 
@@ -189,6 +190,49 @@ export function nearestRoadPlace(world: WorldDescription, x: number, y: number):
       if (distance >= bestDistance) continue;
       bestDistance = distance;
       best = { x: px, y: py, heading: Math.atan2(vy, vx) };
+    }
+  }
+  return best;
+}
+
+/** Metres of water a boat needs under it, and of open water around it, to be put down. */
+const BOAT_DEPTH = 2;
+const BOAT_CLEARANCE = 12;
+
+/**
+ * The nearest open water a boat can be put down on, or undefined where the
+ * world has none. This is where the debug picker of spec section 11.3 puts a
+ * boat, since a boat on a street is not a boat that can be driven.
+ *
+ * Open water is a place with {@link BOAT_DEPTH} metres under it and as much
+ * again {@link BOAT_CLEARANCE} metres away on all four sides, so the boat lands
+ * in the sea or the river rather than in a puddle it cannot leave. It heads
+ * toward the deepest of those four, which is away from the shore it was put
+ * down beside.
+ *
+ * One pass over the terrain grid. The nearest place found so far bounds the
+ * search, so most cells are refused on a distance before the ground is sampled.
+ */
+export function nearestWaterPlace(world: WorldDescription, x: number, y: number): RoadPlace | undefined {
+  const field = new Heightfield(world.terrain);
+  const sea = world.water.seaLevel;
+  let best: RoadPlace | undefined;
+  let bestDistance = Infinity;
+  for (let iy = 0; iy < field.gridSize; iy++) {
+    const py = field.originY + iy * field.cellSize;
+    for (let ix = 0; ix < field.gridSize; ix++) {
+      const px = field.originX + ix * field.cellSize;
+      const distance = Math.hypot(px - x, py - y);
+      if (distance >= bestDistance) continue;
+      if (sea - field.at(ix, iy) < BOAT_DEPTH) continue;
+      const east = sea - field.sample(px + BOAT_CLEARANCE, py);
+      const west = sea - field.sample(px - BOAT_CLEARANCE, py);
+      const north = sea - field.sample(px, py + BOAT_CLEARANCE);
+      const south = sea - field.sample(px, py - BOAT_CLEARANCE);
+      if (Math.min(east, west, north, south) < BOAT_DEPTH) continue;
+      bestDistance = distance;
+      // Head for the deepest water within reach, which is away from the shore.
+      best = { x: px, y: py, heading: Math.atan2(north - south, east - west) };
     }
   }
   return best;

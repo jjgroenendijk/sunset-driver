@@ -18,6 +18,9 @@
  *   --hour           the hour of the day to light the frame at, 0 to 24.
  *   --quality        the quality tier to draw at (spec section 9.2): full,
  *                    high, medium or low. Default full.
+ *   --vehicle        the class of vehicle to stand the player in (spec section
+ *                    11.3): compact, saloon, sports, van, truck, bus,
+ *                    motorcycle, offroad, buggy, emergency or boat.
  *
  * The browser comes from Playwright. A cloud session already has one; on a
  * fresh machine run `npx playwright install chromium` first, or point
@@ -117,6 +120,7 @@ const request: PreviewRequest = {
   height: num('height', 540),
   hour: num('hour', 12),
   ...(options.has('quality') ? { quality: options.get('quality') as string } : {}),
+  ...(options.has('vehicle') ? { vehicle: options.get('vehicle') as string } : {}),
 };
 
 /**
