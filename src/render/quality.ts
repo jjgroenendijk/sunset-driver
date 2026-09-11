@@ -194,6 +194,18 @@ const GOOD_WINDOWS = 4;
 const HEADROOM = 0.7;
 
 /**
+ * How far over the budget the median may run before a window counts as missed.
+ *
+ * A frame is timed from one animation frame to the next, and those land on the
+ * display's refresh. A 60 Hz display that makes every refresh measures 16.7 ms,
+ * which is over a 16 ms budget, and one refresh missed measures 33 ms. A median
+ * between the two is the refresh and its jitter, not a machine that cannot hold
+ * the frame; judged without this, every 60 Hz display walked down to the lowest
+ * tier.
+ */
+const MISS = 1.25;
+
+/**
  * A frame longer than this is not counted. Nothing the tiers can change makes a
  * frame a fifth of a second long: a window switching back, a garbage collection
  * or the tab coming back to the front is not a frame rate, and stepping the
@@ -256,7 +268,7 @@ export class QualityMonitor {
       this.settling = false;
       return undefined;
     }
-    if (middle > this.budgetMs) return this.step(1, middle);
+    if (middle > this.budgetMs * MISS) return this.step(1, middle);
     if (middle > this.budgetMs * HEADROOM) {
       this.good = 0;
       return undefined;
