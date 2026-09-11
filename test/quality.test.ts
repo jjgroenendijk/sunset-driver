@@ -158,6 +158,17 @@ describe('the frame-time monitor', () => {
     expect(monitor.index).toBe(0);
   });
 
+  it('keeps the tier on a 60 Hz display that makes every refresh', () => {
+    const monitor = new QualityMonitor(FRAME_BUDGET_MS);
+    // Animation frames land on the refresh, so a frame that is kept measures
+    // 16.7 ms however little of it the game spent.
+    expect(run(monitor, 1000 / 60, WINDOW * 10)).toEqual([]);
+    expect(monitor.index).toBe(0);
+    // One refresh missed in every two is a frame that is not kept.
+    for (let i = 0; i < WINDOW * 2; i++) monitor.sample(i % 2 === 0 ? 1000 / 30 : 1000 / 60);
+    expect(monitor.index).toBe(1);
+  });
+
   it('steps down one tier a window until the frame fits or the table ends', () => {
     const monitor = new QualityMonitor(FRAME_BUDGET_MS);
     // The first window is the settling one; the second is what steps it down.
