@@ -268,6 +268,40 @@ describe('fire spreading', () => {
   });
 });
 
+describe('sliding a car', () => {
+  beforeAll(async () => {
+    await initPhysics();
+  });
+
+  /** Flat asphalt, so what the tyres do is the only thing being measured. */
+  const flat: Ground = { heightAt: () => 0, surfaceAt: () => 'asphalt', seaLevel: DRY };
+
+  /** Ticks of a run on which at least one tyre was sliding. */
+  function slid(input: Partial<InputFrame>, ticks: number): number {
+    const state = createSimState(3);
+    const physics = new SimPhysics(flat, state);
+    physics.spawn(state, 0, 0, 0);
+    for (let i = 0; i < 60; i++) stepSim(state, EMPTY_INPUT, physics);
+    for (let i = 0; i < 1200 && state.vehicle.speed < 22; i++) {
+      stepSim(state, { ...EMPTY_INPUT, throttle: 1 }, physics);
+    }
+    let sliding = 0;
+    for (let i = 0; i < ticks; i++) {
+      stepSim(state, { ...EMPTY_INPUT, ...input }, physics);
+      if (state.vehicle.wheels.some((wheel) => wheel.skid)) sliding++;
+    }
+    physics.dispose();
+    return sliding;
+  }
+
+  it('slides the tyres on a handbrake turn and not on an ordinary one', () => {
+    // The handbrake gives away most of the rear tyres' bite across the road,
+    // which is what turns a corner into a drift and leaves rubber on it.
+    expect(slid({ steer: 1, handbrake: true }, 180)).toBeGreaterThan(20);
+    expect(slid({ throttle: 0.3, steer: 1 }, 180)).toBe(0);
+  });
+});
+
 describe('crashing a car', () => {
   beforeAll(async () => {
     await initPhysics();
