@@ -22,6 +22,7 @@
 import { BufferAttribute, BufferGeometry } from 'three';
 import type { ChunkBounds, WorldChunk, WorldLayers } from '../world/chunks.ts';
 import { RoadRibbons } from '../world/ribbon.ts';
+import { CHUNK_TERRAIN_CELL, TERRAIN_CELL } from '../world/terrain.ts';
 import type { RoadTier, WorldDescription } from '../world/types.ts';
 import { buildChunkBuildings, buildingLookup, type BuildingLookup } from './building-mesh.ts';
 import { buildGroundAttributes, groundLookup, type GroundAttributes, type GroundLookup } from './ground.ts';
@@ -32,6 +33,13 @@ import type { ChunkDetail } from './streaming.ts';
 
 /** The tiers the far ring keeps. The minor fill is not read from that far off. */
 const FAR_TIERS: readonly RoadTier[] = ['highway', 'arterial'];
+
+/**
+ * Samples of the chunk grid the far ring's ground reads every one of: enough
+ * to land it back on the skeleton's grid, where a chunk costs a sixteenth of
+ * the near ring's ground.
+ */
+const FAR_GROUND_STEP = TERRAIN_CELL / CHUNK_TERRAIN_CELL;
 
 /** A typed array a packed geometry holds its numbers in. */
 type GeometryArray = Float32Array | Uint32Array | Uint16Array | Uint8Array;
@@ -118,7 +126,7 @@ export function chunkLookups(world: WorldDescription, layers: WorldLayers): Chun
     ground: groundLookup(world, layers),
     buildings: buildingLookup(world, layers),
     plants: plantLookup(layers),
-    ribbons: new RoadRibbons(world.terrain, world.roads),
+    ribbons: new RoadRibbons(world.terrain, world.roads, layers.junctions),
   };
 }
 
@@ -128,8 +136,12 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
   const roads: PackedRoads[] = [];
   // At far detail the minor fill is dropped before it is lofted, so the tiers
   // that are not drawn cost nothing to leave out.
-  const traced = far ? { ...chunk, roads: chunk.roads.filter((run) => FAR_TIERS.includes(run.tier)) } : chunk;
-  for (const tier of buildChunkRoads(traced, lookups.ribbons)) {
+  // The far ring keeps no junctions either: a junction is drawn where the
+  // roads that meet there are cut back, and neither can be read from that far.
+  const traced = far
+    ? { ...chunk, roads: chunk.roads.filter((run) => FAR_TIERS.includes(run.tier)).map((run) => ({ ...run, gaps: [] })), junctions: [] }
+    : chunk;
+  for (const tier of buildChunkRoads(traced, lookups.ribbons, lookups.ground.heightAt)) {
     roads.push({
       tier: tier.tier,
       parts: partsOf(tier).map(takeGeometry),
@@ -154,7 +166,7 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
     cy: chunk.cy,
     detail,
     bounds: chunk.bounds,
-    ground: buildGroundAttributes(chunk, lookups.ground),
+    ground: buildGroundAttributes(chunk, lookups.ground, far ? FAR_GROUND_STEP : 1),
     roads,
     outlines,
     facades,

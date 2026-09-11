@@ -26,6 +26,8 @@ import type { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { CharacterAppearance } from '../sim/character.ts';
 import { START_TICK } from '../sim/simulation.ts';
 import { buildCarve, type RoadCarve } from '../world/carve.ts';
+import { buildRoadGraph } from '../world/graph.ts';
+import { buildJunctions } from '../world/junctions.ts';
 import { chunkAt, CHUNK_SIZE } from '../world/chunks.ts';
 import type { WorldDescription } from '../world/types.ts';
 import { BuildingScenery } from './buildings.ts';
@@ -107,8 +109,9 @@ export class WorldScene {
     this.stream = stream;
     // The carved ground the player and the camera stand on. The chunks carry
     // their own heights from the workers; this is the one place the main
-    // thread asks the world itself, and it is the cheapest of the layers.
-    this.heights = buildCarve(world.terrain, world.roads);
+    // thread asks the world itself. The junctions are built for it too, so the
+    // ground here is levelled at every junction the way the chunks are.
+    this.heights = buildCarve(world.terrain, world.roads, buildJunctions(world.roads, buildRoadGraph(world.roads)));
     this.material = createGroundMaterial(world.water.seaLevel);
 
     // The sea, the straits, the river and the harbour are one surface at sea

@@ -22,22 +22,24 @@ import { buildBuildings, lotMiddle, type Building, type BuildingMap } from './bu
 import { buildCarve, type RoadCarve } from './carve.ts';
 import { buildFootprint, type RoadFootprint } from './footprint.ts';
 import { buildRoadGraph, type RoadGraph } from './graph.ts';
+import { buildJunctions, type Junction, type JunctionMap, type RoadGap } from './junctions.ts';
 import { buildParcels, type Parcel, type ParcelMap, type ParcelOwner } from './parcels.ts';
 import { buildTensorField } from './tensor.ts';
-import { TERRAIN_CELL } from './terrain.ts';
+import { CHUNK_TERRAIN_CELL, TERRAIN_CELL } from './terrain.ts';
 import type { HeightfieldData, RoadCurve, RoadTier, WorldDescription, Zone } from './types.ts';
 import { Vegetation, type Plant } from './vegetation.ts';
 import { generateWorld } from './world.ts';
 
-/** Terrain cells each way of one chunk. */
-const CHUNK_CELLS = 25;
-
 /**
- * Metres each way of one chunk. The chunk grid is anchored on the origin, so
- * chunk `(cx, cy)` covers `[cx * CHUNK_SIZE, (cx + 1) * CHUNK_SIZE)` each way
- * and a map 3 km to 6 km across is 12 to 24 chunks a side.
+ * Metres each way of one chunk: 25 cells of the skeleton's grid. The chunk grid
+ * is anchored on the origin, so chunk `(cx, cy)` covers
+ * `[cx * CHUNK_SIZE, (cx + 1) * CHUNK_SIZE)` each way and a map 3 km to 6 km
+ * across is 12 to 24 chunks a side.
  */
-export const CHUNK_SIZE = CHUNK_CELLS * TERRAIN_CELL;
+export const CHUNK_SIZE = 25 * TERRAIN_CELL;
+
+/** Terrain cells each way of one chunk, on the chunk's own finer grid. */
+const CHUNK_CELLS = CHUNK_SIZE / CHUNK_TERRAIN_CELL;
 
 /** Metres of one bucket of the millimetre grid the polygon engine rounds onto. */
 const MM = 1e-3;
@@ -75,6 +77,12 @@ export interface ChunkRoad {
   bridges: number[];
   /** Indices of the segments of this run bored through the ground. Ascending. */
   tunnels: number[];
+  /**
+   * The stretches of the whole curve that junctions take (spec section 6.2),
+   * ascending. They are the curve's, not the run's: a run cut short of the
+   * junction it ends at still knows where the junction wants it to stop.
+   */
+  gaps: RoadGap[];
 }
 
 /** One piece of a parcel inside a chunk. A parcel that spans a boundary gives a piece to each side. */
@@ -101,15 +109,18 @@ export interface WorldChunk {
   bounds: ChunkBounds;
   /**
    * Heights over the chunk, with the roads carved into them (spec section 7.1):
-   * `CHUNK_CELLS + 1` samples each way, so the far row and column stand on the
-   * near ones of the next chunk. The world description keeps the natural ground
-   * the roads were traced on; this is the ground they leave.
+   * `CHUNK_CELLS + 1` samples each way, every `CHUNK_TERRAIN_CELL` metres, so
+   * the far row and column stand on the near ones of the next chunk. The world
+   * description keeps the natural ground the roads were traced on, on its own
+   * coarser grid; this is the ground they leave.
    */
   terrain: HeightfieldData;
   /** Metres of the world's sea level, so the heights can be read without the world. */
   seaLevel: number;
   /** The road runs inside the chunk, in curve order. */
   roads: ChunkRoad[];
+  /** The junctions whose node stands in the chunk, in node order. */
+  junctions: Junction[];
   /** The parcel pieces inside the chunk, in parcel order. */
   parcels: ChunkParcel[];
   /**
@@ -133,6 +144,7 @@ export interface WorldChunk {
  */
 export interface WorldLayers {
   graph: RoadGraph;
+  junctions: JunctionMap;
   footprint: RoadFootprint;
   parcels: ParcelMap;
   buildings: BuildingMap;
@@ -147,16 +159,18 @@ export interface WorldLayers {
  */
 export function buildLayers(world: WorldDescription): WorldLayers {
   const graph = buildRoadGraph(world.roads);
+  const junctions = buildJunctions(world.roads, graph);
   const footprint = buildFootprint(world.roads, world.corridors, graph);
   const field = buildTensorField(world);
   const parcels = buildParcels(world, footprint, graph, field);
   const buildings = buildBuildings(world, parcels, graph);
   return {
     graph,
+    junctions,
     footprint,
     parcels,
     buildings,
-    carve: buildCarve(world.terrain, world.roads),
+    carve: buildCarve(world.terrain, world.roads, junctions),
     vegetation: new Vegetation(world.seed, parcels, buildings),
   };
 }
@@ -223,6 +237,7 @@ export class ChunkSource {
       terrain: this.terrainOf(bounds),
       seaLevel: this.world.water.seaLevel,
       roads: this.roadsIn(bounds),
+      junctions: this.junctionsIn(bounds),
       parcels,
       buildings: [...(this.buildingsByChunk.get(`${cx}:${cy}`) ?? [])],
       plants: this.layers.vegetation.plantsIn(bounds, parcels),
@@ -242,12 +257,12 @@ export class ChunkSource {
     const heights = new Float32Array(gridSize * gridSize);
     const carve = this.layers.carve;
     for (let iy = 0; iy < gridSize; iy++) {
-      const y = bounds.minY + iy * TERRAIN_CELL;
+      const y = bounds.minY + iy * CHUNK_TERRAIN_CELL;
       for (let ix = 0; ix < gridSize; ix++) {
-        heights[iy * gridSize + ix] = carve.heightAt(bounds.minX + ix * TERRAIN_CELL, y);
+        heights[iy * gridSize + ix] = carve.heightAt(bounds.minX + ix * CHUNK_TERRAIN_CELL, y);
       }
     }
-    return { gridSize, cellSize: TERRAIN_CELL, originX: bounds.minX, originY: bounds.minY, heights };
+    return { gridSize, cellSize: CHUNK_TERRAIN_CELL, originX: bounds.minX, originY: bounds.minY, heights };
   }
 
   /** The road runs inside a chunk, in curve order. */
@@ -255,9 +270,21 @@ export class ChunkSource {
     const out: ChunkRoad[] = [];
     for (let i = 0; i < this.world.roads.length; i++) {
       if (!boxesMeet(this.roadBoxes[i] as Box, bounds)) continue;
-      clipRoad(this.world.roads[i] as RoadCurve, bounds, out);
+      const road = this.world.roads[i] as RoadCurve;
+      clipRoad(road, bounds, this.layers.junctions.gaps[road.id] ?? [], out);
     }
     return out;
+  }
+
+  /**
+   * The junctions inside a chunk. A chunk owns its near edges and not its far
+   * ones, as it does for the roads, so a node on a boundary is drawn once.
+   */
+  private junctionsIn(bounds: ChunkBounds): Junction[] {
+    return this.layers.junctions.junctions.filter(
+      (junction) =>
+        junction.x >= bounds.minX && junction.x < bounds.maxX && junction.y >= bounds.minY && junction.y < bounds.maxY,
+    );
   }
 
   /** The parcel pieces inside a chunk, in parcel order. */
@@ -315,7 +342,7 @@ function pieceOf(parcel: Parcel, region: Region, area: number): ChunkParcel {
  * The point a run is cut at is solved from the two ends of the segment and the
  * edge it crosses, so the chunk on the other side cuts at the same place.
  */
-function clipRoad(road: RoadCurve, bounds: ChunkBounds, out: ChunkRoad[]): void {
+function clipRoad(road: RoadCurve, bounds: ChunkBounds, gaps: RoadGap[], out: ChunkRoad[]): void {
   const segments = Math.max(0, road.points.length - 1);
   const bridges = maskOf(road.bridges, segments);
   const tunnels = maskOf(road.tunnels, segments);
@@ -338,7 +365,7 @@ function clipRoad(road: RoadCurve, bounds: ChunkBounds, out: ChunkRoad[]): void 
     // cut open at its start begins a new run.
     if (run === undefined || span.t0 > 0) {
       flush();
-      run = { curve: road.id, tier: road.tier, from: i, points: [along(a, b, span.t0)], bridges: [], tunnels: [] };
+      run = { curve: road.id, tier: road.tier, from: i, points: [along(a, b, span.t0)], bridges: [], tunnels: [], gaps };
     }
     const segment = run.points.length - 1;
     if ((bridges[i] as number) === 1) run.bridges.push(segment);

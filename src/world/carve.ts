@@ -33,9 +33,12 @@
  * reference to any other, which is what lets a chunk carve its own heights
  * (spec section 9.1).
  */
+import { pointInRing, type Point as GeomPoint } from '../core/geom.ts';
 import { clamp, lerp, smoothstep } from '../core/math.ts';
+import { RoadBeds, type JunctionPlane } from './bed.ts';
 import { Heightfield } from './heightfield.ts';
-import { TERRAIN_CELL } from './terrain.ts';
+import type { JunctionMap } from './junctions.ts';
+import { CHUNK_TERRAIN_CELL } from './terrain.ts';
 import { footprintHalfWidth } from './tiers.ts';
 import type { HeightfieldData, Point, RoadCurve, RoadTier } from './types.ts';
 
@@ -50,9 +53,10 @@ export const CARVE_BLEND = 12;
  * between two samples of the terrain are a straight line, so a flat band
  * narrower than one cell cannot survive being sampled: an alley four metres wide
  * would leave the ground it stands on exactly as it found it. A bench at least a
- * cell wide is the narrowest one the grid can hold.
+ * cell of the chunk grid wide is the narrowest one the ground the game draws
+ * can hold; the skeleton's coarser grid is only what the roads were traced on.
  */
-const MIN_BENCH = TERRAIN_CELL;
+const MIN_BENCH = CHUNK_TERRAIN_CELL;
 
 /**
  * Metres of hillside a bench may take away, and metres of ground it may make up.
@@ -72,8 +76,8 @@ const INDEX_CELL = 48;
 
 /**
  * How far the flat bench of a tier reaches each side of its centreline: the
- * ground the road claims (spec section 6.4), or one terrain cell where that is
- * narrower than the grid can hold.
+ * ground the road claims (spec section 6.4), or one chunk terrain cell where
+ * that is narrower than the grid can hold.
  */
 export function benchHalfWidth(tier: RoadTier): number {
   return Math.max(footprintHalfWidth(tier), MIN_BENCH);
@@ -83,9 +87,10 @@ export function benchHalfWidth(tier: RoadTier): number {
  * The terrain a road network is cut into.
  *
  * Ask it for the ground at a place and it answers with the natural height there
- * moved toward the road bed of the nearest road that reaches it. Nothing is
- * stored per place, so the whole map and one chunk of it get the same answer for
- * the same place, whichever is asked first.
+ * moved toward the road bed of the nearest road that reaches it. The bed is
+ * the one `bed.ts` defines, so a junction is one plane. Nothing is stored per
+ * place, so the whole map and one chunk of it get the same answer for the same
+ * place, whichever is asked first.
  */
 export class RoadCarve {
   private readonly hf: Heightfield;
@@ -104,6 +109,12 @@ export class RoadCarve {
   private readonly curve: number[] = [];
   /** The segments filed in each bucket of the index, by index into the arrays above. */
   private readonly buckets: number[][] = [];
+  /**
+   * The junctions (spec section 6.2), each levelled to one plane over the
+   * whole of its outline, and the junctions filed in each bucket.
+   */
+  private readonly junctions: { ring: GeomPoint[]; plane: JunctionPlane; curve: number }[] = [];
+  private readonly junctionBuckets: number[][] = [];
   private readonly columns: number;
   private readonly originX: number;
   private readonly originY: number;
@@ -112,15 +123,40 @@ export class RoadCarve {
   private height = 0;
   private road = -1;
 
-  constructor(terrain: HeightfieldData, roads: readonly RoadCurve[]) {
+  constructor(terrain: HeightfieldData, roads: readonly RoadCurve[], junctions?: JunctionMap) {
     const hf = new Heightfield(terrain);
+    const beds = new RoadBeds(terrain, roads, junctions);
     this.hf = hf;
     // The index covers the map with a margin, so a road beside the edge is filed
     // rather than folded onto the last column.
     this.originX = hf.originX - INDEX_CELL;
     this.originY = hf.originY - INDEX_CELL;
     this.columns = Math.ceil((hf.extent + 4 * INDEX_CELL) / INDEX_CELL);
-    for (let i = 0; i < this.columns * this.columns; i++) this.buckets.push([]);
+    for (let i = 0; i < this.columns * this.columns; i++) {
+      this.buckets.push([]);
+      this.junctionBuckets.push([]);
+    }
+    if (junctions !== undefined) {
+      for (let j = 0; j < junctions.junctions.length; j++) {
+        const junction = junctions.junctions[j] as JunctionMap['junctions'][number];
+        const plane = beds.planes[j] as JunctionPlane;
+        const mouth = junction.mouths[0];
+        if (mouth === undefined || junction.outline.length < 3) continue;
+        const at = this.junctions.length;
+        this.junctions.push({ ring: junction.outline, plane, curve: mouth.curve });
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        for (const p of junction.outline) {
+          minX = Math.min(minX, p.x);
+          minY = Math.min(minY, p.y);
+          maxX = Math.max(maxX, p.x);
+          maxY = Math.max(maxY, p.y);
+        }
+        this.fileJunction(at, minX, minY, maxX, maxY, CARVE_BLEND);
+      }
+    }
 
     for (const road of roads) {
       const halfWidth = benchHalfWidth(road.tier);
@@ -133,24 +169,34 @@ export class RoadCarve {
         if (standing[i] === 0) continue;
         const a = road.points[i] as Point;
         const b = road.points[i + 1] as Point;
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const squared = dx * dx + dy * dy;
         // A curve that stands still carves nothing the segments beside it do not.
-        if (squared === 0) continue;
-        const at = this.ax.length;
-        this.ax.push(a.x);
-        this.ay.push(a.y);
-        this.vx.push(dx);
-        this.vy.push(dy);
-        this.inv.push(1 / squared);
-        const start = hf.sample(a.x, a.y);
-        this.h0.push(start);
-        this.rise.push(hf.sample(b.x, b.y) - start);
-        this.half.push(halfWidth);
-        this.reach.push(reach);
-        this.curve.push(road.id);
-        this.file(at, Math.min(a.x, b.x), Math.min(a.y, b.y), Math.max(a.x, b.x), Math.max(a.y, b.y), reach);
+        if (a.x === b.x && a.y === b.y) continue;
+        // The bed is straight between the knots of the segment, so each stretch
+        // between two knots is filed on its own with its own rise.
+        const knots = beds.knotsOf(road.id, i);
+        for (let k = 0; k + 1 < knots.length; k++) {
+          const from = knots[k] as { t: number; h: number };
+          const to = knots[k + 1] as { t: number; h: number };
+          if (to.t <= from.t) continue;
+          const ax = a.x + (b.x - a.x) * from.t;
+          const ay = a.y + (b.y - a.y) * from.t;
+          const dx = (b.x - a.x) * (to.t - from.t);
+          const dy = (b.y - a.y) * (to.t - from.t);
+          const squared = dx * dx + dy * dy;
+          if (squared === 0) continue;
+          const at = this.ax.length;
+          this.ax.push(ax);
+          this.ay.push(ay);
+          this.vx.push(dx);
+          this.vy.push(dy);
+          this.inv.push(1 / squared);
+          this.h0.push(from.h);
+          this.rise.push(to.h - from.h);
+          this.half.push(halfWidth);
+          this.reach.push(reach);
+          this.curve.push(road.id);
+          this.file(at, Math.min(ax, ax + dx), Math.min(ay, ay + dy), Math.max(ax, ax + dx), Math.max(ay, ay + dy), reach);
+        }
       }
     }
   }
@@ -184,17 +230,36 @@ export class RoadCarve {
     return this.road;
   }
 
-  /** Find the road whose bed carves a place, and how far the ground follows it. */
+  /**
+   * Find the road whose bed carves a place, and how far the ground follows it.
+   * A junction is one claimant among the roads: the whole of its outline is
+   * on its plane, and the ground beyond the outline blends back over
+   * {@link CARVE_BLEND} as it does beside a bench.
+   */
   private claim(x: number, y: number): void {
     this.weight = 0;
     this.height = 0;
     this.road = -1;
-    const bucket = this.buckets[this.row(y) * this.columns + this.column(x)];
+    const at = this.row(y) * this.columns + this.column(x);
+    const bucket = this.buckets[at];
     if (bucket === undefined) return;
     let bestWeight = 0;
     let bestDistance = Infinity;
     let bestHeight = 0;
     let bestRoad = -1;
+    for (const j of this.junctionBuckets[at] ?? []) {
+      const junction = this.junctions[j] as { ring: GeomPoint[]; plane: JunctionPlane; curve: number };
+      const distance = pointInRing({ x, y }, junction.ring) ? 0 : ringDistance(junction.ring, x, y);
+      if (distance >= CARVE_BLEND) continue;
+      const weight = distance <= 0 ? 1 : 1 - smoothstep(0, CARVE_BLEND, distance);
+      const plane = junction.plane;
+      const bed = plane.level + plane.gx * (x - plane.x) + plane.gy * (y - plane.y);
+      if (weight < bestWeight || (weight === bestWeight && distance >= bestDistance)) continue;
+      bestWeight = weight;
+      bestDistance = distance;
+      bestHeight = bed;
+      bestRoad = junction.curve;
+    }
     for (const i of bucket) {
       const reach = this.reach[i] as number;
       const dx = x - (this.ax[i] as number);
@@ -234,6 +299,17 @@ export class RoadCarve {
     }
   }
 
+  /** File a junction in every bucket its outline and the blend beyond it reach into. */
+  private fileJunction(at: number, minX: number, minY: number, maxX: number, maxY: number, reach: number): void {
+    const x0 = this.column(minX - reach);
+    const x1 = this.column(maxX + reach);
+    const y0 = this.row(minY - reach);
+    const y1 = this.row(maxY + reach);
+    for (let iy = y0; iy <= y1; iy++) {
+      for (let ix = x0; ix <= x1; ix++) (this.junctionBuckets[iy * this.columns + ix] as number[]).push(at);
+    }
+  }
+
   private column(x: number): number {
     return clamp(Math.floor((x - this.originX) / INDEX_CELL), 0, this.columns - 1);
   }
@@ -243,9 +319,28 @@ export class RoadCarve {
   }
 }
 
-/** Build the carve of a road network over the terrain it was traced on. */
-export function buildCarve(terrain: HeightfieldData, roads: readonly RoadCurve[]): RoadCarve {
-  return new RoadCarve(terrain, roads);
+/** Metres from a place to the nearest edge of a ring. */
+function ringDistance(ring: readonly GeomPoint[], x: number, y: number): number {
+  let best = Infinity;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[j] as GeomPoint;
+    const b = ring[i] as GeomPoint;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const squared = dx * dx + dy * dy;
+    const t = squared === 0 ? 0 : clamp(((x - a.x) * dx + (y - a.y) * dy) / squared, 0, 1);
+    best = Math.min(best, Math.hypot(x - (a.x + dx * t), y - (a.y + dy * t)));
+  }
+  return best;
+}
+
+/**
+ * Build the carve of a road network over the terrain it was traced on. Given
+ * the junctions, the ground under each is levelled to the junction's plane
+ * (`bed.ts`); without them every bed is the natural ground under its curve.
+ */
+export function buildCarve(terrain: HeightfieldData, roads: readonly RoadCurve[], junctions?: JunctionMap): RoadCarve {
+  return new RoadCarve(terrain, roads, junctions);
 }
 
 /**

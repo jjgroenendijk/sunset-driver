@@ -81,6 +81,7 @@ const world = gridWorld(gridRoads());
 const layers = buildLayers(world);
 const source = new ChunkSource(world, layers);
 const ribbons = new RoadRibbons(world.terrain, world.roads);
+const heightAt = (x: number, y: number): number => layers.carve.heightAt(x, y);
 
 /** Every vertex of every part of one tier, as triples. */
 function vertices(tier: TierGeometry): { x: number; y: number; z: number }[] {
@@ -165,7 +166,7 @@ describe('road cross section', () => {
 
 describe('road surface', () => {
   const chunk = source.chunk(0, 0);
-  const built = buildChunkRoads(chunk, ribbons);
+  const built = buildChunkRoads(chunk, ribbons, heightAt);
 
   it('builds one batch for the one tier the chunk carries', () => {
     expect(built).toHaveLength(1);
@@ -204,8 +205,8 @@ describe('road surface', () => {
 
 describe('road seams', () => {
   it('gives two neighbours the same section on the boundary they share', () => {
-    const left = streetOf(buildChunkRoads(source.chunk(0, 0), ribbons));
-    const right = streetOf(buildChunkRoads(source.chunk(1, 0), ribbons));
+    const left = streetOf(buildChunkRoads(source.chunk(0, 0), ribbons, heightAt));
+    const right = streetOf(buildChunkRoads(source.chunk(1, 0), ribbons, heightAt));
     const shared = onPlane(left, CHUNK_SIZE);
     expect(shared.length).toBeGreaterThan(0);
     expect(onPlane(right, CHUNK_SIZE)).toEqual(shared);
@@ -219,7 +220,7 @@ describe('road seams', () => {
     const start = -2 * BLOCK;
     const painted: [number, number][] = [];
     for (const cx of [0, 1]) {
-      const street = streetOf(buildChunkRoads(source.chunk(cx, 0), ribbons));
+      const street = streetOf(buildChunkRoads(source.chunk(cx, 0), ribbons, heightAt));
       const marks = street.markings;
       for (let i = 0; i < marks.length; i += 6) {
         if (Math.abs(marks[i + 2] as number) > TOLERANCE || Math.abs(marks[i + 5] as number) > TOLERANCE) continue;
@@ -258,6 +259,7 @@ describe('bridges and tunnels', () => {
   spanned.tunnels = [2];
   const spannedWorld = gridWorld([spanned]);
   const spannedSource = new ChunkSource(spannedWorld, buildLayers(spannedWorld));
+  const spannedHeightAt = (x: number, y: number): number => spannedSource.layers.carve.heightAt(x, y);
   const spannedRibbons = new RoadRibbons(spannedWorld.terrain, spannedWorld.roads);
 
   it('knows which segments stand off the ground', () => {
@@ -269,7 +271,7 @@ describe('bridges and tunnels', () => {
 
   it('hangs a deck with a parapet each side under the bridged stretch', () => {
     // Chunk (-1, 0) covers x in [-250, 0), which is the whole deck.
-    const street = streetOf(buildChunkRoads(spannedSource.chunk(-1, 0), spannedRibbons));
+    const street = streetOf(buildChunkRoads(spannedSource.chunk(-1, 0), spannedRibbons, spannedHeightAt));
     // The surface of the run, then the deck and its two parapets.
     expect(partsOf(street)).toHaveLength(4);
     expect(structuresOf(street)).toHaveLength(3);
@@ -280,14 +282,14 @@ describe('bridges and tunnels', () => {
 
   it('frames a bore at both of its mouths and nowhere else', () => {
     // The bore runs from x = 0 to x = 100, so both mouths fall in chunk (0, 0).
-    const here = streetOf(buildChunkRoads(spannedSource.chunk(0, 0), spannedRibbons));
+    const here = streetOf(buildChunkRoads(spannedSource.chunk(0, 0), spannedRibbons, spannedHeightAt));
     expect(partsOf(here)).toHaveLength(3);
     expect(structuresOf(here)).toHaveLength(2);
     const bed = spannedRibbons.frameAt(0, 2, 50, 0).height;
     // A portal stands well clear of the road it frames.
     expect(vertices(here).filter((p) => p.y > bed + 4).length).toBeGreaterThan(0);
     // The chunk beyond the far mouth carries the road on with nothing over it.
-    const beyond = streetOf(buildChunkRoads(spannedSource.chunk(1, 0), spannedRibbons));
+    const beyond = streetOf(buildChunkRoads(spannedSource.chunk(1, 0), spannedRibbons, spannedHeightAt));
     expect(structuresOf(beyond)).toHaveLength(0);
   });
 });

@@ -6,10 +6,10 @@
  * how high the bed stands there, which way is across the road, and how far along
  * the curve the place is. This holds all three.
  *
- * The bed is the line the road drives, which is the natural ground under the
- * curve's own points, straight between them. That is the same line `carve.ts`
- * cuts the bench to, so a surface laid on it sits in the bench the terrain
- * carries.
+ * The bed is the line the road drives, as `bed.ts` defines it: the natural
+ * ground under the curve's own points, straight between them, and the plane of
+ * a junction where the road meets one. That is the same line `carve.ts` cuts
+ * the bench to, so a surface laid on it sits in the bench the terrain carries.
  *
  * Every answer is a function of the curve and the place, never of the chunk that
  * asked. At a point the tracer laid, the frame is mitred between the two
@@ -17,9 +17,10 @@
  * own. A chunk boundary cuts a segment at a point both sides compute the same
  * way, so both sides get the same frame and the surfaces meet exactly.
  */
-import { clamp, lerp } from '../core/math.ts';
+import { clamp } from '../core/math.ts';
+import { RoadBeds } from './bed.ts';
+import type { JunctionMap } from './junctions.ts';
 import { footprintHalfWidth } from './tiers.ts';
-import { Heightfield } from './heightfield.ts';
 import type { HeightfieldData, Point, RoadCurve } from './types.ts';
 
 /**
@@ -58,10 +59,27 @@ export interface RoadFrame {
   distance: number;
 }
 
+/**
+ * Metres from the start of a curve at each of its points. This is the one
+ * measure of distance along a road: the dash pattern, the street lamps and the
+ * junction cuts are all laid out on it, so anything that measures a curve
+ * calls this rather than summing the segments itself.
+ */
+export function curveDistances(points: readonly Point[]): Float32Array {
+  const out = new Float32Array(points.length);
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i] as Point;
+    const b = points[i + 1] as Point;
+    out[i + 1] = (out[i] as number) + Math.hypot(b.x - a.x, b.y - a.y);
+  }
+  return out;
+}
+
 /** One curve's frame, sampled at its own points and along its segments. */
 class CurveRibbon {
   readonly points: readonly Point[];
-  private readonly heights: Float32Array;
+  private readonly beds: RoadBeds;
+  private readonly curve: number;
   /** Metres from the start of the curve at each point. */
   private readonly distances: Float32Array;
   /** Length of each segment, so a place along one is a multiply. */
@@ -78,13 +96,13 @@ class CurveRibbon {
   private readonly bridged: Uint8Array;
   private readonly bored: Uint8Array;
 
-  constructor(hf: Heightfield, road: RoadCurve) {
+  constructor(beds: RoadBeds, road: RoadCurve) {
     const points = road.points;
     const n = points.length;
     const segments = Math.max(0, n - 1);
     this.points = points;
-    this.heights = new Float32Array(n);
-    this.distances = new Float32Array(n);
+    this.beds = beds;
+    this.curve = road.id;
     this.spans = new Float32Array(segments);
     this.segX = new Float32Array(segments);
     this.segY = new Float32Array(segments);
@@ -108,10 +126,7 @@ class CurveRibbon {
       }
     }
 
-    for (let i = 0; i < n; i++) {
-      const p = points[i] as Point;
-      this.heights[i] = hf.sample(p.x, p.y);
-    }
+    this.distances = curveDistances(points);
     for (let i = 0; i < segments; i++) {
       const a = points[i] as Point;
       const b = points[i + 1] as Point;
@@ -119,7 +134,6 @@ class CurveRibbon {
       const dy = b.y - a.y;
       const span = Math.hypot(dx, dy);
       this.spans[i] = span;
-      this.distances[i + 1] = (this.distances[i] as number) + span;
       // Across the road is to the left of travel. A curve that stands still
       // says nothing about direction, so it borrows the segment before it.
       if (span > 0) {
@@ -210,7 +224,7 @@ class CurveRibbon {
             ? 0
             : clamp(((x - a.x) * (b.x - a.x) + (y - a.y) * (b.y - a.y)) / (span * span), 0, 1);
     return {
-      height: vertex >= 0 ? (this.heights[vertex] as number) : lerp(this.heights[i] as number, this.heights[i + 1] as number, t),
+      height: vertex >= 0 ? this.beds.pointHeight(this.curve, vertex) : this.beds.heightAt(this.curve, i, t),
       acrossX: this.segX[i] as number,
       acrossY: this.segY[i] as number,
       mitre: 1,
@@ -233,7 +247,7 @@ class CurveRibbon {
 
   private atPoint(i: number): RoadFrame {
     return {
-      height: this.heights[i] as number,
+      height: this.beds.pointHeight(this.curve, i),
       acrossX: this.pointX[i] as number,
       acrossY: this.pointY[i] as number,
       mitre: this.mitres[i] as number,
@@ -251,9 +265,10 @@ export class RoadRibbons {
   /** One ribbon per curve, filed under the curve's own id. */
   private readonly curves: (CurveRibbon | undefined)[] = [];
 
-  constructor(terrain: HeightfieldData, roads: readonly RoadCurve[]) {
-    const hf = new Heightfield(terrain);
-    for (const road of roads) this.curves[road.id] = new CurveRibbon(hf, road);
+  /** Without the junctions every bed is the natural ground under its curve. */
+  constructor(terrain: HeightfieldData, roads: readonly RoadCurve[], junctions?: JunctionMap) {
+    const beds = new RoadBeds(terrain, roads, junctions);
+    for (const road of roads) this.curves[road.id] = new CurveRibbon(beds, road);
   }
 
   /** The frame of curve `curve` at a place on its segment `segment`. */

@@ -13,6 +13,7 @@ import { buildFootprint, type RoadFootprint } from '../src/world/footprint.ts';
 import { buildBuildings } from '../src/world/buildings.ts';
 import { buildParcels, type ParcelMap } from '../src/world/parcels.ts';
 import { buildRoadGraph, type RoadGraph } from '../src/world/graph.ts';
+import { buildJunctions } from '../src/world/junctions.ts';
 import { buildTensorField } from '../src/world/tensor.ts';
 import type { WorldDescription } from '../src/world/types.ts';
 import { Vegetation } from '../src/world/vegetation.ts';
@@ -151,7 +152,10 @@ describe('performance budgets', () => {
   });
 
   it('builds the carve of a world within its budget', () => {
-    const times = measuredWorlds().map((world) => bestUnder(RUNS, BUDGET_MS.carve, () => void buildCarve(world.terrain, world.roads)));
+    const times = measuredWorlds().map((world) => {
+      const junctions = buildJunctions(world.roads, graphOf(world));
+      return bestUnder(RUNS, BUDGET_MS.carve, () => void buildCarve(world.terrain, world.roads, junctions));
+    });
     const worst = Math.max(...times);
 
     expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.carve);
@@ -218,12 +222,14 @@ function chunkSourceOf(world: WorldDescription): ChunkSource {
   const graph = graphOf(world);
   const parcels = parcelsOf(world);
   const buildings = buildBuildings(world, parcels, graph);
+  const junctions = buildJunctions(world.roads, graph);
   return new ChunkSource(world, {
     graph,
+    junctions,
     footprint: footprintOf(world),
     parcels,
     buildings,
-    carve: buildCarve(world.terrain, world.roads),
+    carve: buildCarve(world.terrain, world.roads, junctions),
     vegetation: new Vegetation(world.seed, parcels, buildings),
   });
 }
@@ -273,12 +279,14 @@ function uploadSteps(payload: ChunkPayload, material: Material): number[] {
       // The chunk is cut once, untimed: the scatter is handed the parcel ground
       // the chunk holds, as `ChunkSource` hands it.
       const bounds = chunkBounds(at.cx, at.cy);
+      const junctions = buildJunctions(world.roads, graph);
       const ground = new ChunkSource(world, {
         graph,
+        junctions,
         footprint: footprintOf(world),
         parcels,
         buildings: { buildings: [], area: 0 },
-        carve: buildCarve(world.terrain, world.roads),
+        carve: buildCarve(world.terrain, world.roads, junctions),
         vegetation,
       }).chunk(at.cx, at.cy).parcels;
       // Warm: the boundary index of a parcel is built the first time a plant is

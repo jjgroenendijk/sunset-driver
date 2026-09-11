@@ -5,8 +5,17 @@ import { genRng, Subsystem } from '../core/rng.ts';
 import { Heightfield } from './heightfield.ts';
 import type { Crossing, Island, Point, RiverDescription, WaterDescription } from './types.ts';
 
-/** Metres between height samples. */
+/** Metres between height samples of the whole-map skeleton. */
 export const TERRAIN_CELL = 10;
+/**
+ * Metres between height samples of a streamed chunk (spec section 9.1). The
+ * camera looks down from 60 m at a street 11 m wide, so the ground under it
+ * needs samples finer than the road: on the skeleton's grid a bench is one
+ * cell across and the hillside between two samples cuts up through the
+ * carriageway. Four samples to a skeleton cell, so the far ring can read every
+ * fourth one and land back on the skeleton's grid.
+ */
+export const CHUNK_TERRAIN_CELL = 2.5;
 export const SEA_LEVEL = 0;
 
 export interface TerrainLayout {

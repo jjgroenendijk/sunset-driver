@@ -185,7 +185,7 @@ function boxOf(points: readonly Point[]): ParcelBox {
 
 /** Square metres below which a piece of the subtraction is a sliver of rounding, not a parcel. */
 const MIN_PARCEL_AREA = 20;
-/** Square metres above which a parcel is too much open ground to pave as a square. */
+/** Square metres above which a parcel is too much open ground to pave as a square, in any zone. */
 const PLAZA_MAX_AREA = 3000;
 /** How many times a parcel may be cut in two before it is kept at whatever size it is. */
 const MAX_CUTS = 6;
@@ -223,6 +223,14 @@ interface ZoneOwnership {
   maxArea: number;
   /** Square metres a building group needs; a smaller parcel is left as ground cover. */
   minBuilt: number;
+  /**
+   * Square metres the largest park and the largest car park of the zone may
+   * cover. A parcel the roll would have given to one of them, but too big for
+   * it, stays ground cover: a car park is the size of a car park in every
+   * zone, however much ground the roads there leave.
+   */
+  maxPark: number;
+  maxCarPark: number;
   park: number;
   carPark: number;
   plaza: number;
@@ -230,16 +238,35 @@ interface ZoneOwnership {
 }
 
 const OWNERSHIP: Record<Zone, ZoneOwnership> = {
-  // Downtown: towers on nearly every block, a paved square where the money is.
-  core: { maxArea: 8_000, minBuilt: 120, park: 0.05, carPark: 0.08, plaza: 0.1, build: 0.74 },
-  inner: { maxArea: 12_000, minBuilt: 120, park: 0.08, carPark: 0.08, plaza: 0.05, build: 0.76 },
-  // Sheds and yards: the open ground is parked on rather than planted.
-  industrial: { maxArea: 24_000, minBuilt: 300, park: 0.02, carPark: 0.16, plaza: 0.01, build: 0.78 },
-  suburban: { maxArea: 20_000, minBuilt: 150, park: 0.12, carPark: 0.04, plaza: 0.02, build: 0.78 },
-  outskirts: { maxArea: 90_000, minBuilt: 300, park: 0.1, carPark: 0.03, plaza: 0.01, build: 0.4 },
-  // Open country: almost everything stays as it is.
-  wilderness: { maxArea: 250_000, minBuilt: 1500, park: 0.12, carPark: 0.01, plaza: 0, build: 0.05 },
+  // Downtown: towers on nearly every block, a paved square where the money is,
+  // a multi-storey car park on a block at most.
+  core: { maxArea: 8_000, minBuilt: 120, maxPark: 8_000, maxCarPark: 3_000, park: 0.05, carPark: 0.08, plaza: 0.1, build: 0.74 },
+  inner: { maxArea: 12_000, minBuilt: 120, maxPark: 12_000, maxCarPark: 4_000, park: 0.08, carPark: 0.08, plaza: 0.05, build: 0.76 },
+  // Sheds and yards: the open ground is parked on rather than planted, and a
+  // lorry yard is the biggest car park there is.
+  industrial: { maxArea: 24_000, minBuilt: 300, maxPark: 12_000, maxCarPark: 12_000, park: 0.02, carPark: 0.16, plaza: 0.01, build: 0.78 },
+  // A supermarket's car park, and a park the size of a few blocks.
+  suburban: { maxArea: 20_000, minBuilt: 150, maxPark: 20_000, maxCarPark: 6_000, park: 0.12, carPark: 0.04, plaza: 0.02, build: 0.78 },
+  outskirts: { maxArea: 90_000, minBuilt: 300, maxPark: 60_000, maxCarPark: 8_000, park: 0.1, carPark: 0.03, plaza: 0.01, build: 0.4 },
+  // Open country: almost everything stays as it is. A park here is a reserve
+  // and may be as large as the roads leave it; a car park is a trailhead.
+  wilderness: { maxArea: 250_000, minBuilt: 1500, maxPark: 250_000, maxCarPark: 6_000, park: 0.12, carPark: 0.01, plaza: 0, build: 0.05 },
 };
+
+/**
+ * The most ground one owner may hold in a zone, or nothing where the owner has
+ * no ceiling there: a building group takes any block up to the zone's
+ * `maxArea`, and the beach, the water and the ground are whatever size they
+ * come. The sweep reads this to pin what `ownerFor` hands out.
+ */
+export function ownerMaxArea(zone: Zone, owner: ParcelOwner): number | undefined {
+  const spec = OWNERSHIP[zone];
+  if (owner === 'park') return spec.maxPark;
+  if (owner === 'car-park') return spec.maxCarPark;
+  if (owner === 'plaza') return PLAZA_MAX_AREA;
+  if (owner === 'building') return spec.maxArea;
+  return undefined;
+}
 
 /**
  * Cut the land a world's roads leave into parcels. The footprint and the graph
@@ -439,14 +466,16 @@ function ownerFor(seed: number, id: number, district: District, zone: Zone, area
   // zone ring around it says: it is far too much land to build a group on.
   if (area > spec.maxArea) return 'ground';
   // A dense district keeps less of its ground open; a poor one parks on what is
-  // left, and a rich one paves it as a square.
+  // left, and a rich one paves it as a square. Each owner has a size it comes
+  // in: a parcel the roll gives to an owner too small for it stays ground
+  // cover rather than becoming a car park of twenty hectares.
   const park = spec.park * (1.4 - 0.8 * district.density);
   const carPark = spec.carPark * (1.3 - 0.6 * district.wealth);
-  const plaza = area <= PLAZA_MAX_AREA ? spec.plaza * (0.5 + district.wealth) : 0;
+  const plaza = spec.plaza * (0.5 + district.wealth);
   const roll = genRng(seed, Subsystem.Parcels, id).float();
-  if (roll < park) return 'park';
-  if (roll < park + carPark) return 'car-park';
-  if (roll < park + carPark + plaza) return 'plaza';
+  if (roll < park) return area <= spec.maxPark ? 'park' : 'ground';
+  if (roll < park + carPark) return area <= spec.maxCarPark ? 'car-park' : 'ground';
+  if (roll < park + carPark + plaza) return area <= PLAZA_MAX_AREA ? 'plaza' : 'ground';
   if (roll < park + carPark + plaza + spec.build && area >= spec.minBuilt) return 'building';
   return 'ground';
 }
