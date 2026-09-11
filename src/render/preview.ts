@@ -259,14 +259,14 @@ function drift(scene: WorldScene, vehicle: VehicleState, spec: VehicleSpec, head
 }
 
 /**
- * Drop the row padding and the alpha, and turn the picture the right way up.
- * A render target's first row is the bottom of the picture; a PNG's is the top.
+ * Drop the row padding and the alpha. The rows stay in the order they come: a
+ * WebGPU texture's first row is the top of the picture, as a PNG's is.
  */
 function toRgb(padded: Uint8Array, width: number, height: number): string {
   const stride = Math.ceil((width * BYTES_PER_PIXEL) / ROW_ALIGNMENT) * ROW_ALIGNMENT;
   const rgb = new Uint8Array(width * height * 3);
   for (let row = 0; row < height; row++) {
-    const from = (height - 1 - row) * stride;
+    const from = row * stride;
     const to = row * width * 3;
     for (let px = 0; px < width; px++) {
       rgb[to + px * 3] = padded[from + px * BYTES_PER_PIXEL] ?? 0;
