@@ -9,18 +9,20 @@
  */
 import type { WorldChunk } from '../world/chunks.ts';
 import { buildingDrawCalls } from './building-mesh.ts';
+import { vegetationDrawCalls } from './plant-mesh.ts';
 import { roadDrawCalls } from './road-mesh.ts';
 
 /**
  * Draw calls a chunk may cost. One ground mesh, at most eight for the roads —
- * five tiers, three of them marked — and at most three for the buildings: the
- * generated facades, the blocks and the outlines that rim both. A count over
- * this is a batching regression, not a cap to raise; a system that lands in a
- * chunk later raises it together with the batches it brings.
+ * five tiers, three of them marked — at most three for the buildings — the
+ * generated facades, the blocks and the outlines that rim both — and one for the
+ * plants, whatever species stand there. A count over this is a batching
+ * regression, not a cap to raise; a system that lands in a chunk later raises it
+ * together with the batches it brings.
  */
-export const CHUNK_DRAW_CALL_CAP = 12;
+export const CHUNK_DRAW_CALL_CAP = 13;
 
-/** Draw calls one chunk costs, ground, roads and buildings together. */
+/** Draw calls one chunk costs: the ground, the roads, the buildings and the plants. */
 export function chunkDrawCalls(chunk: WorldChunk): number {
-  return 1 + roadDrawCalls(chunk) + buildingDrawCalls(chunk);
+  return 1 + roadDrawCalls(chunk) + buildingDrawCalls(chunk) + vegetationDrawCalls(chunk);
 }

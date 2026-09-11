@@ -26,6 +26,7 @@ import { buildParcels, type Parcel, type ParcelMap, type ParcelOwner } from './p
 import { buildTensorField } from './tensor.ts';
 import { TERRAIN_CELL } from './terrain.ts';
 import type { HeightfieldData, RoadCurve, RoadTier, WorldDescription, Zone } from './types.ts';
+import { Vegetation, type Plant } from './vegetation.ts';
 import { generateWorld } from './world.ts';
 
 /** Terrain cells each way of one chunk. */
@@ -118,6 +119,12 @@ export interface WorldChunk {
    * being drawn twice.
    */
   buildings: Building[];
+  /**
+   * The plants standing in the chunk, in grid order (spec section 10.4). Like a
+   * building, a plant is one thing and is never cut: the chunk the plant stands
+   * in carries the whole of it.
+   */
+  plants: Plant[];
 }
 
 /**
@@ -130,6 +137,8 @@ export interface WorldLayers {
   parcels: ParcelMap;
   buildings: BuildingMap;
   carve: RoadCarve;
+  /** The plants of the world, which a chunk asks for the ground it covers. */
+  vegetation: Vegetation;
 }
 
 /**
@@ -141,12 +150,14 @@ export function buildLayers(world: WorldDescription): WorldLayers {
   const footprint = buildFootprint(world.roads, world.corridors, graph);
   const field = buildTensorField(world);
   const parcels = buildParcels(world, footprint, graph, field);
+  const buildings = buildBuildings(world, parcels, graph);
   return {
     graph,
     footprint,
     parcels,
-    buildings: buildBuildings(world, parcels, graph),
+    buildings,
     carve: buildCarve(world.terrain, world.roads),
+    vegetation: new Vegetation(world.seed, parcels, buildings),
   };
 }
 
@@ -200,6 +211,10 @@ export class ChunkSource {
   /** Cut chunk `(cx, cy)` out of the world. */
   chunk(cx: number, cy: number): WorldChunk {
     const bounds = chunkBounds(cx, cy);
+    // The parcel pieces are cut first, because the plants are scattered over
+    // them: a point that asks which parcel it stands on then walks the piece
+    // the chunk holds rather than the whole coastline it was cut from.
+    const parcels = this.parcelsIn(bounds);
     return {
       seed: this.world.seed,
       cx,
@@ -208,8 +223,9 @@ export class ChunkSource {
       terrain: this.terrainOf(bounds),
       seaLevel: this.world.water.seaLevel,
       roads: this.roadsIn(bounds),
-      parcels: this.parcelsIn(bounds),
+      parcels,
       buildings: [...(this.buildingsByChunk.get(`${cx}:${cy}`) ?? [])],
+      plants: this.layers.vegetation.plantsIn(bounds, parcels),
     };
   }
 

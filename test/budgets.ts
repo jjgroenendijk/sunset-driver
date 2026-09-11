@@ -91,6 +91,16 @@ export const BUDGET_MS = {
   buildings: 250,
 
   /**
+   * The plants of one chunk (spec section 10.4): every cell of the scatter grid
+   * over it asked which parcel it stands on, how much room it has and whether a
+   * building is already there. This is per-chunk work like cutting the chunk
+   * itself, so it lands in the streaming cap when streaming does (spec section
+   * 9.1); the boundary index of a parcel is built once and every chunk after
+   * that reads it.
+   */
+  chunkPlants: 8,
+
+  /**
    * The geometry of the buildings of one chunk of the core: the towers the
    * generator builds, the blocks around them and the hulls that outline both
    * (spec section 10.3). This is the dearest chunk of a world, because every

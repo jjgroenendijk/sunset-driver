@@ -2,7 +2,8 @@
  * The scene the game is played in (spec sections 9.1, 10.1).
  *
  * A world is generated once, cut into chunks, and the chunks near the player are
- * drawn: the ground, the roads over it and the buildings that stand on it.
+ * drawn: the ground, the roads over it, the buildings that stand on it and the
+ * plants that grow on what is left.
  * Chunks outside that reach are dropped and rebuilt if the player comes back,
  * which costs nothing beyond the clip and the geometry: the layers a chunk is
  * cut from are built once and never written to.
@@ -17,6 +18,8 @@ import type { WorldDescription } from '../world/types.ts';
 import { RoadRibbons } from '../world/ribbon.ts';
 import { buildingLookup, type BuildingLookup } from './building-mesh.ts';
 import { BuildingScenery, type BuildingTile } from './buildings.ts';
+import { plantLookup, type PlantLookup } from './plant-mesh.ts';
+import { PlantScenery, type VegetationTile } from './vegetation.ts';
 import { CharacterModel } from './character.ts';
 import { buildGroundAttributes, groundGeometry, groundLookup, type GroundLookup } from './ground.ts';
 import { createGroundMaterial } from './ground-material.ts';
@@ -56,6 +59,7 @@ interface ChunkTile {
   geometry: BufferGeometry;
   roads: RoadTile;
   buildings: BuildingTile;
+  plants: VegetationTile;
   cx: number;
   cy: number;
 }
@@ -73,6 +77,8 @@ export class WorldScene {
   private readonly scenery = new RoadScenery();
   private readonly buildings = new BuildingScenery();
   private readonly standing: BuildingLookup;
+  private readonly vegetation = new PlantScenery();
+  private readonly growing: PlantLookup;
   private readonly water: WaterSurface;
   /** Draw calls the dearest chunk built so far costs: ground, roads and buildings. */
   private peakDrawCalls = 0;
@@ -82,6 +88,7 @@ export class WorldScene {
     this.source = new ChunkSource(world, layers);
     this.lookup = groundLookup(world, layers);
     this.standing = buildingLookup(world, layers);
+    this.growing = plantLookup(layers);
     this.material = createGroundMaterial(world.water.seaLevel);
     this.ribbons = new RoadRibbons(world.terrain, world.roads);
 
@@ -166,6 +173,7 @@ export class WorldScene {
     this.material.dispose();
     this.scenery.dispose();
     this.buildings.dispose();
+    this.vegetation.dispose();
     this.character.dispose();
   }
 
@@ -199,8 +207,13 @@ export class WorldScene {
     for (const object of roads.objects) this.scene.add(object);
     const buildings = this.buildings.build(chunk, this.standing);
     for (const object of buildings.objects) this.scene.add(object);
-    this.peakDrawCalls = Math.max(this.peakDrawCalls, 1 + roads.drawCalls + buildings.drawCalls);
-    this.tiles.set(key, { mesh, geometry, roads, buildings, cx, cy });
+    const plants = this.vegetation.build(chunk, this.growing);
+    for (const object of plants.objects) this.scene.add(object);
+    this.peakDrawCalls = Math.max(
+      this.peakDrawCalls,
+      1 + roads.drawCalls + buildings.drawCalls + plants.drawCalls,
+    );
+    this.tiles.set(key, { mesh, geometry, roads, buildings, plants, cx, cy });
   }
 
   private drop(tile: ChunkTile): void {
@@ -210,6 +223,8 @@ export class WorldScene {
     tile.roads.dispose();
     for (const object of tile.buildings.objects) this.scene.remove(object);
     tile.buildings.dispose();
+    for (const object of tile.plants.objects) this.scene.remove(object);
+    tile.plants.dispose();
     this.tiles.delete(keyOf(tile.cx, tile.cy));
   }
 }

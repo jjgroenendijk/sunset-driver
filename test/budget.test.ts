@@ -4,13 +4,14 @@ import type { InputFrame } from '../src/sim/input.ts';
 import { createSimState, stepSim } from '../src/sim/simulation.ts';
 import { buildChunkBuildings, buildingLookup } from '../src/render/building-mesh.ts';
 import { buildCarve } from '../src/world/carve.ts';
-import { chunkAt, ChunkSource } from '../src/world/chunks.ts';
+import { chunkAt, chunkBounds, ChunkSource } from '../src/world/chunks.ts';
 import { buildFootprint, type RoadFootprint } from '../src/world/footprint.ts';
 import { buildBuildings } from '../src/world/buildings.ts';
 import { buildParcels, type ParcelMap } from '../src/world/parcels.ts';
 import { buildRoadGraph, type RoadGraph } from '../src/world/graph.ts';
 import { buildTensorField } from '../src/world/tensor.ts';
 import type { WorldDescription } from '../src/world/types.ts';
+import { Vegetation } from '../src/world/vegetation.ts';
 import { generateWorld } from '../src/world/world.ts';
 import { BUDGET_MS, BUDGET_US, FRAME_MS, FRAME_SLICE_MS, SIM_SLICE_MS } from './budgets.ts';
 import { bestOf, inputStream, landPoints, sweepSeeds } from './helpers.ts';
@@ -197,16 +198,47 @@ describe('performance budgets', () => {
     expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.buildings);
   });
 
+  it('plants a chunk within its budget', () => {
+    const times = measuredWorlds().slice(0, HEAVY_WORLDS).map((world) => {
+      const graph = graphOf(world);
+      const parcels = parcelsOf(world);
+      const vegetation = new Vegetation(world.seed, parcels, buildBuildings(world, parcels, graph));
+      const at = chunkAt(world.core.x, world.core.y);
+      // The chunk is cut once, untimed: the scatter is handed the parcel ground
+      // the chunk holds, as `ChunkSource` hands it.
+      const bounds = chunkBounds(at.cx, at.cy);
+      const ground = new ChunkSource(world, {
+        graph,
+        footprint: footprintOf(world),
+        parcels,
+        buildings: { buildings: [], area: 0 },
+        carve: buildCarve(world.terrain, world.roads),
+        vegetation,
+      }).chunk(at.cx, at.cy).parcels;
+      // Warm: the boundary index of a parcel is built the first time a plant is
+      // asked for on it, and every chunk after that reads it.
+      vegetation.plantsIn(bounds, ground);
+      return bestOf(RUNS, () => {
+        vegetation.plantsIn(bounds, ground);
+      });
+    });
+    const worst = Math.max(...times);
+
+    expect(worst, `${worst.toFixed(1)} ms worst`).toBeLessThan(BUDGET_MS.chunkPlants);
+  });
+
   it('builds the buildings of a chunk of the core within its budget', () => {
     const times = measuredWorlds().slice(0, HEAVY_WORLDS).map((world) => {
       const graph = graphOf(world);
       const parcels = parcelsOf(world);
+      const buildings = buildBuildings(world, parcels, graph);
       const source = new ChunkSource(world, {
         graph,
         footprint: footprintOf(world),
         parcels,
-        buildings: buildBuildings(world, parcels, graph),
+        buildings,
         carve: buildCarve(world.terrain, world.roads),
+        vegetation: new Vegetation(world.seed, parcels, buildings),
       });
       const lookup = buildingLookup(world, source.layers);
       // The chunk on the core, which is where the towers stand and so where a
