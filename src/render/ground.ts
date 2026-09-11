@@ -66,12 +66,19 @@ export interface GroundAttributes {
  * 7.1). Normals are taken across a ring of samples one cell beyond the chunk,
  * read from the lookup, so a vertex on a boundary has the same slope on both
  * sides of it and the shading does not crease along the seam.
+ *
+ * `step` reads every `step`-th sample each way, which is how the far ring gets
+ * the same ground at a coarser grid (spec section 9.1). It has to divide the
+ * chunk's cells, so the far row and column are still the ones the neighbour
+ * shares.
  */
-export function buildGroundAttributes(chunk: WorldChunk, lookup: GroundLookup): GroundAttributes {
-  const n = chunk.terrain.gridSize;
-  const cell = chunk.terrain.cellSize;
+export function buildGroundAttributes(chunk: WorldChunk, lookup: GroundLookup, step = 1): GroundAttributes {
+  const cells = chunk.terrain.gridSize - 1;
+  if (cells % step !== 0) throw new Error(`a step of ${step} does not divide ${cells} cells`);
+  const n = cells / step + 1;
+  const cell = chunk.terrain.cellSize * step;
   const { minX, minY } = chunk.bounds;
-  const heights = paddedHeights(chunk, lookup);
+  const heights = paddedHeights(chunk, lookup, step);
   const pad = n + 2;
 
   const positions = new Float32Array(n * n * 3);
@@ -135,16 +142,17 @@ export function groundGeometry(attributes: GroundAttributes): BufferGeometry {
  * has a neighbour each way. The ring is read from the lookup at the same places
  * the neighbouring chunks read their own heights.
  */
-function paddedHeights(chunk: WorldChunk, lookup: GroundLookup): Float32Array {
-  const n = chunk.terrain.gridSize;
-  const cell = chunk.terrain.cellSize;
+function paddedHeights(chunk: WorldChunk, lookup: GroundLookup, step: number): Float32Array {
+  const full = chunk.terrain.gridSize;
+  const n = (full - 1) / step + 1;
+  const cell = chunk.terrain.cellSize * step;
   const pad = n + 2;
   const out = new Float32Array(pad * pad);
   for (let iy = -1; iy <= n; iy++) {
     for (let ix = -1; ix <= n; ix++) {
       const inside = ix >= 0 && ix < n && iy >= 0 && iy < n;
       out[(iy + 1) * pad + (ix + 1)] = inside
-        ? (chunk.terrain.heights[iy * n + ix] as number)
+        ? (chunk.terrain.heights[iy * step * full + ix * step] as number)
         : lookup.heightAt(chunk.bounds.minX + ix * cell, chunk.bounds.minY + iy * cell);
     }
   }

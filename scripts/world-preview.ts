@@ -9,6 +9,7 @@ import { buildCarve, carvedTerrain } from '../src/world/carve.ts';
 import { districtAt, layoutZones } from '../src/world/districts.ts';
 import { buildFootprint } from '../src/world/footprint.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
+import { buildJunctions } from '../src/world/junctions.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { isResort } from '../src/world/beaches.ts';
 import { buildBuildings, type BuildingKind } from '../src/world/buildings.ts';
@@ -32,7 +33,8 @@ const fieldMs = performance.now() - t1;
 // this rather than off the natural terrain, because this is the ground the game
 // shows: benches under the roads, cut and fill blending back into the hillside.
 const t1b = performance.now();
-const carve = buildCarve(world.terrain, world.roads);
+const graph = buildRoadGraph(world.roads);
+const carve = buildCarve(world.terrain, world.roads, buildJunctions(world.roads, graph));
 const ground = carvedTerrain(world.terrain, carve);
 const carveMs = performance.now() - t1b;
 
@@ -104,7 +106,6 @@ for (let iy = STROKE_STRIDE; iy < n - STROKE_STRIDE; iy += STROKE_STRIDE) {
 
 // The ground the roads claim (spec section 6.4), filled in tarmac. The blocks
 // between the roads are the holes in it, and become the parcels.
-const graph = buildRoadGraph(world.roads);
 const t2 = performance.now();
 const footprint = buildFootprint(world.roads, world.corridors, graph);
 const footprintMs = performance.now() - t2;

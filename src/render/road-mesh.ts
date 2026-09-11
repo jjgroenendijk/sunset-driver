@@ -14,12 +14,20 @@
  * it is what makes the seam invisible rather than stitched. The same frames say
  * where a run turns too sharply to sweep through, and the loft is cut there.
  *
+ * Where roads meet they are not lofted through one another. A junction (spec
+ * section 6.2, `junctions.ts`) cuts every road back to where its kerbs leave
+ * its neighbours', and the ground between the cuts is drawn here as one
+ * carriageway polygon with a piece of pavement in each corner. The cut points
+ * are the junction's, so the polygon meets the lofts exactly, in whichever
+ * chunk each of them was built.
+ *
  * Nothing here touches the renderer or TSL, so it runs headless and the tests
  * read it directly.
  */
-import { BufferAttribute, BufferGeometry, Color, Vector3 } from 'three';
+import { BufferAttribute, BufferGeometry, Color, ShapeUtils, Vector2, Vector3 } from 'three';
 import { LoftGeometry } from 'three/examples/jsm/geometries/LoftGeometry.js';
 import type { ChunkRoad, WorldChunk } from '../world/chunks.ts';
+import type { Junction, JunctionMouth, RoadGap } from '../world/junctions.ts';
 import type { RoadFrame, RoadRibbons } from '../world/ribbon.ts';
 import { footprintHalfWidth, TIERS } from '../world/tiers.ts';
 import type { Point, RoadTier } from '../world/types.ts';
@@ -117,7 +125,13 @@ export interface RunGeometry {
 /** The geometry of one tier inside one chunk. */
 export interface TierGeometry {
   tier: RoadTier;
+  /** The runs of the tier, each cut short of the junctions it meets. */
   runs: RunGeometry[];
+  /**
+   * The junction surfaces paved as this tier: the carriageway of every junction
+   * whose widest road is this tier, and every corner whose wider road is.
+   */
+  junctions: BufferGeometry[];
   /** Marking segment ends, six numbers each. Empty where the tier is unmarked. */
   markings: Float32Array;
   /** The colour of each of those ends, six numbers each. */
@@ -128,8 +142,15 @@ export interface TierGeometry {
 export function partsOf(tier: TierGeometry): BufferGeometry[] {
   const out: BufferGeometry[] = [];
   for (const run of tier.runs) out.push(...run.surfaces, ...run.structures);
+  out.push(...tier.junctions);
   return out;
 }
+
+/** Square metres below which a junction surface is a sliver of rounding and is not drawn. */
+const MIN_SURFACE_AREA = 1e-3;
+
+/** Metres two places may stand apart and still be one vertex of a polygon. */
+const SAME_PLACE = 1e-6;
 
 /**
  * The cross section of a tier, from its left edge to its right (spec section
@@ -215,22 +236,41 @@ export function isMarked(tier: RoadTier): boolean {
 export function roadDrawCalls(chunk: WorldChunk): number {
   let calls = 0;
   for (const tier of TIER_ORDER) {
-    if (!chunk.roads.some((run) => run.tier === tier)) continue;
+    if (!chunk.roads.some((run) => run.tier === tier) && !chunk.junctions.some((junction) => pavesAs(junction, tier))) {
+      continue;
+    }
     calls += isMarked(tier) ? 2 : 1;
   }
   return calls;
 }
+
+/** True where a junction puts any surface into the batch of a tier. */
+function pavesAs(junction: Junction, tier: RoadTier): boolean {
+  return junction.tier === tier || junction.corners.some((corner) => corner.tier === tier);
+}
+
+/** The ground under a place, for the corners of a junction to stand on. */
+export type HeightAt = (x: number, y: number) => number;
 
 /**
  * Build the road geometry of one chunk, one entry per tier that runs through it.
  * The entries come back in {@link TIER_ORDER}, so two chunks of a world batch
  * their tiers the same way.
  */
-export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons): TierGeometry[] {
+export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons, heightAt: HeightAt): TierGeometry[] {
   const out: TierGeometry[] = [];
+  const junctions = new Map<RoadTier, BufferGeometry[]>();
+  for (const junction of chunk.junctions) {
+    for (const surface of junctionSurfaces(junction, ribbons, heightAt)) {
+      const list = junctions.get(surface.tier);
+      if (list === undefined) junctions.set(surface.tier, [surface.geometry]);
+      else list.push(surface.geometry);
+    }
+  }
   for (const tier of TIER_ORDER) {
-    const runs = chunk.roads.filter((run) => run.tier === tier);
-    if (runs.length === 0) continue;
+    const runs = chunk.roads.filter((run) => run.tier === tier).flatMap((run) => trimRun(run, ribbons));
+    const paved = junctions.get(tier) ?? [];
+    if (runs.length === 0 && paved.length === 0) continue;
     const section = roadSection(tier);
     const markings = markingsOf(tier);
     const built: RunGeometry[] = [];
@@ -247,9 +287,239 @@ export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons): TierGe
         for (const marking of markings) paintMarking(piece, marking, paint, tints);
       }
     }
-    out.push({ tier, runs: built, markings: new Float32Array(paint), markingTints: new Float32Array(tints) });
+    out.push({ tier, runs: built, junctions: paved, markings: new Float32Array(paint), markingTints: new Float32Array(tints) });
   }
   return out;
+}
+
+/**
+ * Cut a run short of the junctions it meets: the stretches of its curve the
+ * gaps cover are left out, and what remains comes back as runs of its own.
+ * The ends are the gaps' own points, so a run cut here ends exactly where the
+ * junction polygon starts, whichever chunk draws the junction.
+ */
+export function trimRun(run: ChunkRoad, ribbons: RoadRibbons): ChunkRoad[] {
+  if (run.gaps.length === 0) return [run];
+  const count = run.points.length;
+  const distances: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const p = run.points[i] as Point;
+    distances.push(ribbons.frameAt(run.curve, run.from + Math.max(0, i - 1), p.x, p.y).distance);
+  }
+  const out: ChunkRoad[] = [];
+  let open: { from: number; points: Point[] } | undefined;
+  const close = (): void => {
+    if (open !== undefined && open.points.length > 1) out.push(subRun(run, open.from, open.points));
+    open = undefined;
+  };
+  for (let i = 0; i + 1 < count; i++) {
+    const d0 = distances[i] as number;
+    const d1 = distances[i + 1] as number;
+    // The stretches of this segment no gap covers, in order.
+    let at = d0;
+    let atPoint = run.points[i] as Point;
+    const pieces: { a: number; aAt: Point; b: number; bAt: Point }[] = [];
+    for (const gap of run.gaps) {
+      if (gap.to.distance <= at || gap.from.distance >= d1) {
+        if (gap.from.distance >= d1) break;
+        continue;
+      }
+      if (gap.from.distance > at) pieces.push({ a: at, aAt: atPoint, b: gap.from.distance, bAt: gap.from.at });
+      at = gap.to.distance;
+      atPoint = gap.to.at;
+      if (at >= d1) break;
+    }
+    if (at < d1) pieces.push({ a: at, aAt: atPoint, b: d1, bAt: run.points[i + 1] as Point });
+    for (const piece of pieces) {
+      if (piece.a !== d0 || open === undefined) {
+        close();
+        open = { from: run.from + i, points: [piece.aAt] };
+      }
+      open.points.push(piece.bAt);
+      if (piece.b !== d1) close();
+    }
+    if (pieces.length === 0) close();
+  }
+  close();
+  return out;
+}
+
+/** A stretch of a run as a run of its own, starting on curve segment `from`. */
+function subRun(run: ChunkRoad, from: number, points: Point[]): ChunkRoad {
+  const first = from - run.from;
+  const segments = points.length - 1;
+  const within = (i: number): boolean => i >= first && i < first + segments;
+  return {
+    curve: run.curve,
+    tier: run.tier,
+    from,
+    points,
+    bridges: run.bridges.filter(within).map((i) => i - first),
+    tunnels: run.tunnels.filter(within).map((i) => i - first),
+    gaps: [],
+  };
+}
+
+/** One surface of a junction, and the tier whose batch it goes into. */
+interface JunctionSurface {
+  tier: RoadTier;
+  geometry: BufferGeometry;
+}
+
+/**
+ * The surfaces of one junction: its carriageway, paved as the widest road that
+ * meets there, and a piece of pavement in each corner, paved as the wider of the
+ * two roads beside it. The vertices along each mouth are the section the road's
+ * own loft ends on, so the two meet without a seam; the corners stand on the
+ * carved ground, which under a junction is the bench of the nearest road.
+ */
+function junctionSurfaces(junction: Junction, ribbons: RoadRibbons, heightAt: HeightAt): JunctionSurface[] {
+  const out: JunctionSurface[] = [];
+  const mouths = junction.mouths.map((mouth) => mouthSection(mouth, ribbons));
+  if (mouths.length < 2) return out;
+
+  const carriageway: Vector3[] = [];
+  for (let i = 0; i < mouths.length; i++) {
+    const mouth = mouths[i] as MouthSection;
+    const corner = junction.corners[i] as Junction['corners'][number];
+    carriageway.push(mouth.rightKerb, mouth.leftKerb);
+    for (const p of corner.kerb) carriageway.push(new Vector3(p.x, heightAt(p.x, p.y) + SURFACE_RAISE, p.y));
+  }
+  // The carriageway is fanned from the node, which stands on the carved ground
+  // as the corners do: the beds of the roads meet at the node, so a surface
+  // stretched straight from one mouth to another would cut under a junction on
+  // a ridge, and the ground would show through it.
+  const centre = new Vector3(junction.x, heightAt(junction.x, junction.y) + SURFACE_RAISE, junction.y);
+  const paved = flatSurface(carriageway, 0, centre);
+  if (paved !== undefined) out.push({ tier: junction.tier, geometry: paved });
+
+  for (let i = 0; i < mouths.length; i++) {
+    const a = mouths[i] as MouthSection;
+    const b = mouths[(i + 1) % mouths.length] as MouthSection;
+    const corner = junction.corners[i] as Junction['corners'][number];
+    const rise = vergeRise(corner.tier);
+    const ring: Vector3[] = [a.leftKerb];
+    for (const p of corner.kerb) ring.push(new Vector3(p.x, heightAt(p.x, p.y) + SURFACE_RAISE, p.y));
+    ring.push(b.rightKerb, b.rightOuter);
+    for (let k = corner.outer.length - 1; k >= 0; k--) {
+      const p = corner.outer[k] as Point;
+      ring.push(new Vector3(p.x, heightAt(p.x, p.y) + rise, p.y));
+    }
+    ring.push(a.leftOuter);
+    const pavement = flatSurface(ring, cornerAcross(corner.tier));
+    if (pavement !== undefined) out.push({ tier: corner.tier, geometry: pavement });
+  }
+  return out;
+}
+
+/** The four corners of the section a road's loft ends on at its mouth. */
+interface MouthSection {
+  leftKerb: Vector3;
+  rightKerb: Vector3;
+  leftOuter: Vector3;
+  rightOuter: Vector3;
+}
+
+/**
+ * Where a mouth's loft ends. Left is anticlockwise round the node, which is the
+ * curve's own left where the road leaves along its curve and its right where
+ * it leaves against it.
+ */
+function mouthSection(mouth: JunctionMouth, ribbons: RoadRibbons): MouthSection {
+  const frame = ribbons.frameAt(mouth.curve, mouth.segment, mouth.at.x, mouth.at.y);
+  const spec = TIERS[mouth.tier];
+  const kerb = spec.width / 2;
+  const outer = footprintHalfWidth(mouth.tier);
+  const top = vergeRise(mouth.tier);
+  const side = mouth.direction;
+  return {
+    leftKerb: place(mouth.at, frame, side * kerb, SURFACE_RAISE),
+    rightKerb: place(mouth.at, frame, -side * kerb, SURFACE_RAISE),
+    leftOuter: place(mouth.at, frame, side * outer, top),
+    rightOuter: place(mouth.at, frame, -side * outer, top),
+  };
+}
+
+/**
+ * How far across a road the material reads a junction corner as: the pavement
+ * band of the tier where it has one, its verge where it has that, and its
+ * carriageway where it has neither.
+ */
+function cornerAcross(tier: RoadTier): number {
+  const spec = TIERS[tier];
+  if (spec.pavement > 0) return footprintHalfWidth(tier);
+  return spec.width / 2 + spec.verge / 2;
+}
+
+/**
+ * A flat polygon in the scene, wound to face up. Nothing where the ring has no
+ * area to draw, which is a corner between two roads with no pavement. Given a
+ * `centre` the ring is fanned from it rather than triangulated on its own,
+ * which holds for a ring every point of which can be seen from the centre.
+ */
+function flatSurface(ring: readonly Vector3[], across: number, centre?: Vector3): BufferGeometry | undefined {
+  const points: Vector3[] = [];
+  for (const p of ring) {
+    const last = points[points.length - 1];
+    if (last !== undefined && last.distanceTo(p) < SAME_PLACE) continue;
+    points.push(p);
+  }
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (first !== undefined && last !== undefined && points.length > 1 && first.distanceTo(last) < SAME_PLACE) points.pop();
+  if (points.length < 3) return undefined;
+  const flat = points.map((p) => new Vector2(p.x, p.z));
+  if (Math.abs(ShapeUtils.area(flat)) < MIN_SURFACE_AREA) return undefined;
+  let faces: number[][];
+  if (centre === undefined) {
+    faces = ShapeUtils.triangulateShape(flat, []);
+  } else {
+    const hub = points.length;
+    points.push(centre);
+    faces = points.slice(0, hub).map((_, i) => [hub, i, (i + 1) % hub]);
+  }
+  if (faces.length === 0) return undefined;
+
+  const count = points.length;
+  const positions = new Float32Array(count * 3);
+  const normals = new Float32Array(count * 3);
+  const uvs = new Float32Array(count * 2);
+  for (let v = 0; v < count; v++) {
+    const p = points[v] as Vector3;
+    positions[v * 3] = p.x;
+    positions[v * 3 + 1] = p.y;
+    positions[v * 3 + 2] = p.z;
+    normals[v * 3 + 1] = 1;
+    uvs[v * 2] = p.x;
+    uvs[v * 2 + 1] = p.z;
+  }
+  // The map's y runs into the scene's z, which turns the winding over: a face
+  // anticlockwise on the map faces down in the scene, so every face is wound
+  // by the way its own three corners turn.
+  const index = new Uint32Array(faces.length * 3);
+  let at = 0;
+  for (const face of faces) {
+    const [a, b, c] = face as [number, number, number];
+    const pa = points[a] as Vector3;
+    const pb = points[b] as Vector3;
+    const pc = points[c] as Vector3;
+    const up = (pb.x - pa.x) * (pc.z - pa.z) - (pb.z - pa.z) * (pc.x - pa.x);
+    if (up < 0) {
+      index[at++] = a;
+      index[at++] = b;
+      index[at++] = c;
+    } else {
+      index[at++] = a;
+      index[at++] = c;
+      index[at++] = b;
+    }
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new BufferAttribute(normals, 3));
+  geometry.setAttribute('uv', new BufferAttribute(uvs, 2));
+  geometry.setIndex(new BufferAttribute(index, 1));
+  return tag(geometry, new Float32Array(count).fill(across), SURFACE_ROAD);
 }
 
 /** A stretch of a run one loft can cover: a frame for each of its points. */
