@@ -26,7 +26,6 @@ import {
 } from '../src/world/carve.ts';
 import { BEACH_REACH, BEACH_RISE, isResort, MAX_SAND, MIN_BEACH, MIN_PIER, MIN_SAND, SHORE_STEP } from '../src/world/beaches.ts';
 import {
-  buildBuildings,
   FRONT_REACH,
   MIN_LOT_AREA,
   ZONE_BUILDINGS,
@@ -60,7 +59,7 @@ import {
   type Plant,
 } from '../src/world/vegetation.ts';
 import { landPoints, pointInRing, ringArea, ringsOverlap, stableJson, sweepSeeds } from './helpers.ts';
-import { buildWorlds, type PooledWorld } from './world-pool.ts';
+import { buildWorlds, type PooledWorld, type WorldParts } from './world-pool.ts';
 
 /** Metres between the samples that ask whether a road segment is over water. */
 const WET_SAMPLE = 5;
@@ -157,8 +156,17 @@ function passesUnder(road: RoadCurve, segment: number, at: Point, reach: number)
 }
 
 /** A road point as a key, so two curves that share a point share a string. */
-function pointKey(p: Point): string {
-  return `${Math.round(p.x * 1000)}:${Math.round(p.y * 1000)}`;
+/**
+ * A point as one number, to the millimetre, so the maps keyed on it hold
+ * numbers rather than strings. A sweep keys every road point of every seed, and
+ * a string key there is a million allocations a test. The map is at most 6 km
+ * across (`size.ts`), so each coordinate fits in the 24 bits it is given and no
+ * two points share a key.
+ */
+const KEY_SPAN = 1 << 23;
+
+function pointKey(p: Point): number {
+  return (Math.round(p.x * 1000) + KEY_SPAN) * (KEY_SPAN * 2) + (Math.round(p.y * 1000) + KEY_SPAN);
 }
 
 /**
@@ -236,20 +244,22 @@ function spansCrossing(a: Point, b: Point, from: Point, to: Point): boolean {
 /**
  * Quick tier by default; CI and `npm run test:full` set SWEEP_SEEDS=200 (spec
  * section 3). The quick tier takes the seeds that fit in its 15 s, and the
- * full tier is the coverage.
+ * full tier is the coverage. Every count below reads this one, so the quick
+ * tier is a sample of the same checks and never a shorter list of them.
  */
-const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 8);
+const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 6);
 /**
  * Seeds the byte-identical check generates a second time. Generating a world is
  * the most expensive thing this file does, so the quick tier repeats only a few.
  */
 const REPEAT_COUNT = SEED_COUNT > 20 ? 20 : 3;
 /**
- * Seeds the road footprint is laid and the parcels are cut for. Laying one
- * unions the polygons of a whole network, so both tiers do a few seeds rather
- * than all of them. The pool does that work, next to the world it belongs to.
+ * Seeds the road footprint is laid, the parcels are cut and the buildings are
+ * laid for. A job that carries them costs about three times a bare world, so
+ * both tiers do a few seeds rather than all of them. The pool does that work,
+ * next to the world it belongs to.
  */
-const FOOTPRINT_COUNT = SEED_COUNT > 20 ? 16 : 4;
+const FOOTPRINT_COUNT = SEED_COUNT > 20 ? 16 : 3;
 /**
  * The share of the dry land the roads may claim (spec section 6.4). A city
  * gives about a seventh of its ground to the carriageway, the verge and the
@@ -534,24 +544,57 @@ class PointGrid {
     return Math.max(0, Math.min(this.n - 1, Math.floor((v + this.half) / this.cell) + 1));
   }
 
-  /** Metres to the nearest road point, ignoring one curve. Infinity when there is none. */
+  /**
+   * Metres to the nearest road point, ignoring one curve. Infinity when there
+   * is none.
+   *
+   * Each ring adds only its own square of cells, and the best so far is carried
+   * from one ring to the next. Scanning the whole square again at every ring
+   * costs the cube of the rings searched, and the wilderness, where the nearest
+   * road can be twenty cells away, is most of what this grid is asked.
+   */
   nearest(x: number, y: number, except = -1): number {
     const cx = this.column(x);
     const cy = this.column(y);
-    for (let ring = 1; ring <= this.n; ring++) {
-      let best = Infinity;
-      for (let iy = Math.max(0, cy - ring); iy <= Math.min(this.n - 1, cy + ring); iy++) {
-        for (let ix = Math.max(0, cx - ring); ix <= Math.min(this.n - 1, cx + ring); ix++) {
-          for (const e of this.buckets.get(iy * this.n + ix) ?? []) {
-            if (e.curve === except) continue;
-            best = Math.min(best, Math.hypot(e.p.x - x, e.p.y - y));
+    const last = this.n - 1;
+    let best = Infinity; // Squared, so the search does one square root and no more.
+    for (let ring = 0; ring <= this.n; ring++) {
+      const loY = cy - ring;
+      const hiY = cy + ring;
+      const loX = cx - ring;
+      const hiX = cx + ring;
+      for (let iy = Math.max(0, loY); iy <= Math.min(last, hiY); iy++) {
+        if (iy === loY || iy === hiY) {
+          // A full row of the ring: its top and its bottom.
+          for (let ix = Math.max(0, loX); ix <= Math.min(last, hiX); ix++) {
+            best = this.closest(iy * this.n + ix, x, y, except, best);
           }
+        } else {
+          // A row between them: only the two cells on the sides.
+          if (loX >= 0) best = this.closest(iy * this.n + loX, x, y, except, best);
+          if (hiX <= last) best = this.closest(iy * this.n + hiX, x, y, except, best);
         }
       }
       // Only trust the answer once the rings searched cover it.
-      if (best < (ring - 1) * this.cell) return best;
+      const covered = (ring - 1) * this.cell;
+      if (ring >= 1 && best < covered * covered) return Math.sqrt(best);
     }
-    return Infinity;
+    return Math.sqrt(best);
+  }
+
+  /** The squared distance to the nearest point in one cell, or `best` if it is nearer. */
+  private closest(key: number, x: number, y: number, except: number, best: number): number {
+    const bucket = this.buckets.get(key);
+    if (bucket === undefined) return best;
+    let near = best;
+    for (const e of bucket) {
+      if (e.curve === except) continue;
+      const dx = e.p.x - x;
+      const dy = e.p.y - y;
+      const d = dx * dx + dy * dy;
+      if (d < near) near = d;
+    }
+    return near;
   }
 }
 
@@ -719,7 +762,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     return known;
   };
   /** The second generation of the isolated seeds, with the layers of that generation. */
-  const repeatParts = new Map<number, { footprint: RoadFootprint; parcels: ParcelMap }>();
+  const repeatParts = new Map<number, WorldParts>();
   /**
    * The chunk source of a seed, over the layers the pool has already built. A
    * source built from the world alone would lay the footprint and cut the
@@ -772,18 +815,12 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     bedMaps.set(seed, built);
     return built;
   };
-  /**
-   * The buildings of a seed, laid once however many tests ask about them. They
-   * are laid here rather than in the pool: they are cheap next to the parcels
-   * they stand on, and the parcels are what the pool is for.
-   */
+  /** The buildings of a seed, laid by the pool for the same seeds. */
   const buildingMaps = new Map<number, BuildingMap>();
   const buildingsOf = (seed: number): BuildingMap => {
     const known = buildingMaps.get(seed);
-    if (known !== undefined) return known;
-    const built = buildBuildings(worlds.get(seed) as WorldDescription, parcelsOf(seed), graphOf(seed));
-    buildingMaps.set(seed, built);
-    return built;
+    if (known === undefined) throw new Error(`no buildings for seed ${seed}: the pool lays the first ${FOOTPRINT_COUNT}`);
+    return known;
   };
   /** The vegetation of a seed, which stands on its parcels and off its lots. */
   const vegetations = new Map<number, Vegetation>();
@@ -807,8 +844,8 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
   beforeAll(async () => {
     // Every seed once, then the repeated seeds a second time: the pool runs the
     // two rounds back to back so the byte-identical check costs no extra wait.
-    // The seeds whose footprint and parcels are read go first, because they are
-    // the longest jobs and a worker that starts one late holds up the rest.
+    // The pool itself starts the jobs that ask for layers first, so they are
+    // listed here in the order the tests read them.
     // What a seed costs is measured in `budget.test.ts`, on a quiet machine.
     const repeated = seeds.slice(0, REPEAT_COUNT);
     const jobs = [
@@ -826,6 +863,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       if (built.parts !== undefined) {
         footprints.set(seed, built.parts.footprint);
         parcelMaps.set(seed, built.parts.parcels);
+        buildingMaps.set(seed, built.parts.buildings);
       }
     }
     for (let i = 0; i < repeated.length; i++) {
@@ -907,14 +945,17 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       const w = worlds.get(seed) as WorldDescription;
       const hf = new Heightfield(w.terrain);
       const water = buildWaterAttributes(w);
-      // The cells the sheet drew, as `column,row` of its grid.
-      const drawn = new Set<string>();
-      for (let t = 0; t < water.indices.length; t += 6) {
-        const corner = water.indices[t] as number;
-        drawn.add(`${corner % water.gridSize},${Math.floor(corner / water.gridSize)}`);
-      }
-      const covers = (p: Point): boolean =>
-        drawn.has(`${Math.floor((p.x - water.minX) / water.cell)},${Math.floor((p.y - water.minY) / water.cell)}`);
+      // The cells the sheet drew, one flag per cell of its grid. A sheet holds
+      // tens of thousands of them, so the flags are a byte each rather than a
+      // key in a set.
+      const drawn = new Uint8Array(water.gridSize * water.gridSize);
+      for (let t = 0; t < water.indices.length; t += 6) drawn[water.indices[t] as number] = 1;
+      const covers = (p: Point): boolean => {
+        const column = Math.floor((p.x - water.minX) / water.cell);
+        const row = Math.floor((p.y - water.minY) / water.cell);
+        if (column < 0 || row < 0 || column >= water.gridSize || row >= water.gridSize) return false;
+        return drawn[row * water.gridSize + column] === 1;
+      };
 
       expect(covers(w.water.harbour), `seed ${seed}: the harbour is dry`).toBe(true);
       // The river is the narrowest water on the map, so it is what says whether
@@ -986,14 +1027,20 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
 
       // Curves that share a point are one road network. Every curve is traced
       // from a road already laid or into one, so there is only ever one.
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
       const parent = w.roads.map((_, i) => i);
       const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i] as number)));
-      const owner = new Map<string, number>();
+      const owner = new Map<number, number>();
       for (let i = 0; i < w.roads.length; i++) {
         const road = w.roads[i] as RoadCurve;
-        expect(road.id).toBe(i);
-        expect(road.points.length).toBeGreaterThanOrEqual(2);
-        for (const at of road.bridges) expect(at).toBeLessThan(road.points.length - 1);
+        if (road.id !== i) fault(`curve ${i} carries id ${road.id}`);
+        if (road.points.length < 2) fault(`curve ${i} has ${road.points.length} points`);
+        for (const at of road.bridges) {
+          if (at >= road.points.length - 1) fault(`curve ${i} bridges segment ${at}, past its end`);
+        }
         for (const p of road.points) {
           const key = pointKey(p);
           const met = owner.get(key);
@@ -1001,6 +1048,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
           else parent[find(met)] = find(i);
         }
       }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
       const roots = new Set(w.roads.map((_, i) => find(i)));
       expect(roots.size, `seed ${seed}: ${roots.size} road networks`).toBe(1);
     }
@@ -1013,10 +1061,15 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       expect(graph.nodes.length, `seed ${seed}`).toBeGreaterThan(0);
 
       // Every curve is on the graph, and every node has a road leaving it.
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
       const covered = new Uint8Array(w.roads.length);
       for (const edge of graph.edges) covered[edge.curve] = 1;
-      for (const road of w.roads) expect(covered[road.id], `seed ${seed}: curve ${road.id} has no edge`).toBe(1);
-      for (const node of graph.nodes) expect(graph.degree(node.id), `seed ${seed}: node ${node.id}`).toBeGreaterThan(0);
+      for (const road of w.roads) if (covered[road.id] !== 1) fault(`curve ${road.id} has no edge`);
+      for (const node of graph.nodes) if (graph.degree(node.id) <= 0) fault(`node ${node.id} has no road leaving it`);
+      expect(complaint, `seed ${seed}`).toBeUndefined();
 
       // The curves are one network, so the graph is one component too.
       const seen = new Uint8Array(graph.nodes.length);
@@ -1053,9 +1106,9 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       expect(taken.length, `seed ${seed}`).toBeGreaterThanOrEqual(Math.hypot(head.x - tail.x, head.y - tail.y) - 1e-6);
       for (let i = 0; i < taken.edges.length; i++) {
         const edge = graph.edges[taken.edges[i] as number] as RoadEdge;
-        expect(edge.from, `seed ${seed}: route breaks at edge ${edge.id}`).toBe(taken.nodes[i]);
-        expect(edge.to).toBe(taken.nodes[i + 1]);
+        if (edge.from !== taken.nodes[i] || edge.to !== taken.nodes[i + 1]) fault(`route breaks at edge ${edge.id}`);
       }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
 
       // The nearest point of the network to a node is that node's own ground.
       const probe = graph.nodes[graph.nodes.length >> 1] as RoadNode;
@@ -1100,7 +1153,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
         complaint ??= text;
       };
       // Every curve that owns each point, with the index the point sits at.
-      const met = new Map<string, { road: RoadCurve; at: number }[]>();
+      const met = new Map<number, { road: RoadCurve; at: number }[]>();
       for (const road of w.roads) {
         for (let i = 0; i < road.points.length; i++) {
           const key = pointKey(road.points[i] as Point);
@@ -1193,22 +1246,24 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       const grid = new PointGrid(w.size, 100, w.roads);
-      const shared = new Map<string, number>();
+      const shared = new Map<number, number>();
       for (const road of w.roads) {
         for (const p of road.points) {
           const key = pointKey(p);
           shared.set(key, (shared.get(key) ?? 0) + 1);
         }
       }
+      let complaint: string | undefined;
       for (const road of w.roads) {
         const cap = CAP[road.tier];
         if (cap === undefined) continue;
         for (const end of [road.points[0] as Point, road.points[road.points.length - 1] as Point]) {
           if ((shared.get(pointKey(end)) ?? 0) > 1) continue;
           const away = grid.nearest(end.x, end.y, road.id);
-          expect(away, `seed ${seed}: ${road.tier} ${road.id} dead-ends ${away.toFixed(0)} m from any road`).toBeLessThanOrEqual(cap);
+          if (away > cap) complaint ??= `${road.tier} ${road.id} dead-ends ${away.toFixed(0)} m from any road`;
         }
       }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
     }
   });
 
@@ -2114,10 +2169,10 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       const loaded = sourceOf(seed);
       for (const [cx, cy] of chunkKeys()) loaded.chunk(cx, cy);
       const world = repeats.get(seed) as WorldDescription;
-      const parts = repeatParts.get(seed) as { footprint: RoadFootprint; parcels: ParcelMap };
+      const parts = repeatParts.get(seed) as WorldParts;
       const aloneGraph = buildRoadGraph(world.roads);
       const aloneJunctions = buildJunctions(world.roads, aloneGraph);
-      const aloneBuildings = buildBuildings(world, parts.parcels, aloneGraph);
+      const aloneBuildings = parts.buildings;
       const alone = new ChunkSource(world, {
         graph: aloneGraph,
         junctions: aloneJunctions,

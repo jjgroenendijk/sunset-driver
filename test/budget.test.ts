@@ -19,7 +19,7 @@ import type { WorldDescription } from '../src/world/types.ts';
 import { Vegetation } from '../src/world/vegetation.ts';
 import { generateWorld } from '../src/world/world.ts';
 import { BUDGET_MS, BUDGET_US, FRAME_MS, FRAME_SLICE_MS, SIM_SLICE_MS } from './budgets.ts';
-import { bestOf, inputStream, landPoints, sweepSeeds } from './helpers.ts';
+import { bestOf, bestUnder, inputStream, landPoints, sweepSeeds } from './helpers.ts';
 
 /**
  * A handful of seeds: enough for a median, cheap enough for the quick tier.
@@ -138,14 +138,14 @@ describe('performance budgets', () => {
   });
 
   it('builds the road graph of a world within its budget', () => {
-    const times = measuredWorlds().map((world) => bestOf(RUNS, () => void buildRoadGraph(world.roads)));
+    const times = measuredWorlds().map((world) => bestUnder(RUNS, BUDGET_MS.roadGraph, () => void buildRoadGraph(world.roads)));
     const worst = Math.max(...times);
 
     expect(worst, `${worst.toFixed(1)} ms worst`).toBeLessThan(BUDGET_MS.roadGraph);
   });
 
   it('builds the tensor field of a world within its budget', () => {
-    const times = measuredWorlds().map((world) => bestOf(RUNS, () => void buildTensorField(world)));
+    const times = measuredWorlds().map((world) => bestUnder(RUNS, BUDGET_MS.tensorField, () => void buildTensorField(world)));
     const worst = Math.max(...times);
 
     expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.tensorField);
@@ -154,7 +154,7 @@ describe('performance budgets', () => {
   it('builds the carve of a world within its budget', () => {
     const times = measuredWorlds().map((world) => {
       const junctions = buildJunctions(world.roads, graphOf(world));
-      return bestOf(RUNS, () => void buildCarve(world.terrain, world.roads, junctions));
+      return bestUnder(RUNS, BUDGET_MS.carve, () => void buildCarve(world.terrain, world.roads, junctions));
     });
     const worst = Math.max(...times);
 
@@ -165,7 +165,9 @@ describe('performance budgets', () => {
     const perSample = measuredWorlds().map((world) => {
       const field = buildTensorField(world);
       const points = landPoints(world, 500, 0x51e);
-      const ms = bestOf(RUNS, () => {
+      // The budget is per sample, so the limit the runs are measured against is
+      // what the whole sweep of points may cost.
+      const ms = bestUnder(RUNS, (BUDGET_US.tensorSample * points.length) / 1000, () => {
         for (const p of points) field.majorAt(p.x, p.y);
       });
       return (ms / points.length) * 1000;
@@ -179,7 +181,7 @@ describe('performance budgets', () => {
     const times = measuredWorlds().slice(0, HEAVY_WORLDS).map((world) => {
       const graph = graphOf(world);
       // Keep the last build: the parcels below are cut from it.
-      return bestOf(2, () => footprints.set(world.seed, buildFootprint(world.roads, world.corridors, graph)));
+      return bestUnder(2, BUDGET_MS.footprint, () => footprints.set(world.seed, buildFootprint(world.roads, world.corridors, graph)));
     });
     const worst = Math.max(...times);
 
@@ -192,7 +194,7 @@ describe('performance budgets', () => {
       const footprint = footprintOf(world);
       const field = buildTensorField(world);
       // Keep the last cut: the buildings below stand on it.
-      return bestOf(2, () => parcelMaps.set(world.seed, buildParcels(world, footprint, graph, field)));
+      return bestUnder(2, BUDGET_MS.parcels, () => parcelMaps.set(world.seed, buildParcels(world, footprint, graph, field)));
     });
     const worst = Math.max(...times);
 
@@ -203,7 +205,7 @@ describe('performance budgets', () => {
     const times = measuredWorlds().slice(0, HEAVY_WORLDS).map((world) => {
       const graph = graphOf(world);
       const parcels = parcelsOf(world);
-      return bestOf(RUNS, () => void buildBuildings(world, parcels, graph));
+      return bestUnder(RUNS, BUDGET_MS.buildings, () => void buildBuildings(world, parcels, graph));
     });
     const worst = Math.max(...times);
 
@@ -290,7 +292,7 @@ function uploadSteps(payload: ChunkPayload, material: Material): number[] {
       // Warm: the boundary index of a parcel is built the first time a plant is
       // asked for on it, and every chunk after that reads it.
       vegetation.plantsIn(bounds, ground);
-      return bestOf(RUNS, () => {
+      return bestUnder(RUNS, BUDGET_MS.chunkPlants, () => {
         vegetation.plantsIn(bounds, ground);
       });
     });
@@ -307,7 +309,7 @@ function uploadSteps(payload: ChunkPayload, material: Material): number[] {
       // chunk costs the most to build.
       const at = chunkAt(world.core.x, world.core.y);
       const chunk = source.chunk(at.cx, at.cy);
-      return bestOf(2, () => {
+      return bestUnder(2, BUDGET_MS.chunkBuildings, () => {
         for (const one of buildChunkBuildings(chunk, lookup)) {
           one.shell.dispose();
           one.hull?.dispose();

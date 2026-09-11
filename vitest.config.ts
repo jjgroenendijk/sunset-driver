@@ -13,6 +13,10 @@ const shared = {
   // long as a test.
   hookTimeout: timeout,
   slowTestThreshold: 2_000,
+  // One environment per worker, reused by every file that worker runs. The
+  // modules under test are pure, so nothing carries from one file to the next,
+  // and the run stops re-importing three.js once per file.
+  isolate: false,
 } as const;
 
 export default defineConfig({

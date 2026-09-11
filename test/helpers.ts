@@ -46,6 +46,24 @@ export function bestOf(runs: number, body: () => void): number {
 }
 
 /**
+ * The same, but it stops as soon as a run comes in under `limit`. A budget is
+ * kept when any run is inside it, so repeating a run that already made it buys
+ * nothing, and these measurements are the dearest thing the quick tier does.
+ * The repetitions are still there for the run that misses: a cold cache or a
+ * busy moment costs one more run rather than a failed build.
+ */
+export function bestUnder(runs: number, limit: number, body: () => void): number {
+  let best = Infinity;
+  for (let i = 0; i < runs; i++) {
+    const t0 = performance.now();
+    body();
+    best = Math.min(best, performance.now() - t0);
+    if (best < limit) return best;
+  }
+  return best;
+}
+
+/**
  * True when two closed rings share any ground: an edge of one meets an edge of
  * the other, or one stands wholly inside the other.
  */
