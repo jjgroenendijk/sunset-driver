@@ -50,7 +50,7 @@ import {
   hitVehicle,
   tickFire,
 } from './damage.ts';
-import type { InputFrame } from './input.ts';
+import { EMPTY_INPUT, type InputFrame } from './input.ts';
 import {
   besidePlayer,
   capsuleOf,
@@ -71,6 +71,7 @@ import {
   turnToward,
 } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
+import { createTheft, isLocked, stepTheft, THEFT_HEAT, type TheftState } from './theft.ts';
 import {
   createVehicleState,
   gripOf,
@@ -233,6 +234,13 @@ export class SimPhysics {
     const ground = this.ground.heightAt(place.x, place.y);
     const rest = spec.hull === undefined ? ground : Math.max(ground, this.ground.seaLevel);
     state.vehicle = createVehicleState(spec, place.x, place.y, rest + rideHeight(spec), place.heading);
+    // A vehicle put down under a player who is driving is open to them, since
+    // they are sitting in it: a session does not start with a break-in. One
+    // left at the kerb beside a player on foot is not (spec section 11.4).
+    state.vehicle.hotwired = state.player.driving;
+    // An attempt at the lock of the vehicle this one replaces means nothing:
+    // the new one carries its own lock.
+    state.theft = null;
     this.adopt(state);
     // The record of a player in the vehicle says where the vehicle is, so a
     // vehicle put down somewhere else takes the player with it.
@@ -272,7 +280,9 @@ export class SimPhysics {
    *
    * A player on foot is stepped instead of the vehicle (spec section 11.5).
    * The ground follows whoever is moving, so the tiles stand under the player
-   * and not under the car they left behind.
+   * and not under the car they left behind. A player working at a lock (spec
+   * section 11.4) is stepped the same way and simply holds still, which is what
+   * keeps the world running around them while they work.
    *
    * What the vehicle was doing before the step is kept, because the speed it
    * loses over the step is what says whether it has hit anything (spec section
@@ -289,7 +299,9 @@ export class SimPhysics {
     const wasZ = v.vz;
     if (chassis === undefined) {
       this.cover(state.player.x, state.player.y);
-      this.walk(state, input);
+      // A player bent over a lock stands at the door (spec section 11.4): they
+      // are stepped with nothing held down, so only gravity moves them.
+      this.walk(state, state.theft === null ? input : EMPTY_INPUT);
     } else {
       this.cover(v.x, v.z);
       // Rapier keeps a force until it is told to forget it, so a tick that adds
@@ -743,18 +755,27 @@ export class SimPhysics {
 
   /**
    * Get in or out of the vehicle on the press of the interact key (spec
-   * sections 11.2, 11.5).
+   * sections 11.2, 11.4, 11.5).
    *
    * A press acts once: the key is held for as many ticks as the finger is on
    * it, and a door that opened every one of them would leave the player
    * stepping in and out sixty times a second. The door only opens at a crawl,
-   * and only from within reach of the body; theft of a vehicle that is not the
-   * player's own is spec section 11.4.
+   * and only from within reach of the body.
+   *
+   * A vehicle worth stealing does not open on the key at all (spec section
+   * 11.4): the press starts an attempt at its lock, and the same key then
+   * works that lock until it gives way. This runs before the step rather than
+   * after it, so the vehicle a player has just broken into is driven on the
+   * tick it opened, exactly as one they simply got into.
    */
   private transfer(state: SimState, input: InputFrame): void {
     const p = state.player;
     const pressed = input.interact && !p.held.interact;
     p.held.interact = input.interact;
+    if (state.theft !== null) {
+      this.hotwire(state, state.theft, pressed);
+      return;
+    }
     if (!pressed) return;
     if (p.driving) {
       if (Math.abs(state.vehicle.speed) > EXIT_SPEED) return;
@@ -769,8 +790,40 @@ export class SimPhysics {
       p.driving = false;
     } else {
       if (!reachesVehicle(p, state.vehicle, this.spec)) return;
+      if (isLocked(state.vehicle, this.spec)) {
+        state.theft = createTheft(this.spec, state.tick);
+        return;
+      }
       p.driving = true;
     }
+    this.adopt(state);
+  }
+
+  /**
+   * Work at a lock for one tick (spec section 11.4).
+   *
+   * The rules are in `theft.ts` and the world is not stopped for them: this is
+   * called from the same step that drives the traffic and burns the fires, so
+   * everything around the player carries on while they work. What it costs
+   * them is the heat the alarm raises, which is the hook spec section 14 reads.
+   *
+   * An attempt at a vehicle that is no longer within reach is dropped: an
+   * explosion that throws the car across the street takes its lock with it.
+   */
+  private hotwire(state: SimState, theft: TheftState, pressed: boolean): void {
+    const p = state.player;
+    if (!reachesVehicle(p, state.vehicle, this.spec)) {
+      state.theft = null;
+      return;
+    }
+    state.heat += stepTheft(theft, state.seed, state.tick, pressed);
+    if (!theft.open) return;
+    // The lock is beaten once: the record carries it, so getting out again is
+    // not a second break-in.
+    state.vehicle.hotwired = true;
+    state.heat += THEFT_HEAT;
+    state.theft = null;
+    p.driving = true;
     this.adopt(state);
   }
 

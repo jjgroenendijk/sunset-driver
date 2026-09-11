@@ -3,6 +3,7 @@ import { gameTime, TICKS_PER_HOUR } from './clock.ts';
 import { type CharacterAppearance, DEFAULT_APPEARANCE, normaliseAppearance } from './character.ts';
 import { createPlayerState, type PlayerState } from './on-foot.ts';
 import type { SimPhysics } from './physics.ts';
+import type { TheftState } from './theft.ts';
 import { createVehicleState, DEFAULT_CLASS, specOf, type VehicleState } from './vehicle.ts';
 
 /** The serialisable, deterministic state of a session. */
@@ -23,6 +24,18 @@ export interface SimState {
    * numbers for the same reason the vehicle is.
    */
   player: PlayerState;
+  /**
+   * The lock the player is working at (spec section 11.4), or null while they
+   * are not breaking into anything. The minigame is a record like everything
+   * else, so a theft replays exactly as it was played.
+   */
+  theft: TheftState | null;
+  /**
+   * How much attention the player has drawn (spec section 14). Nothing spends
+   * it yet: the alarm of a theft is the first thing that raises it, and the
+   * police issue is what will read it.
+   */
+  heat: number;
 }
 
 /** Tick at which a new session starts: 08:00 on day 0. */
@@ -39,6 +52,8 @@ export function createSimState(
     character: normaliseAppearance(character),
     vehicle: createVehicleState(specOf(DEFAULT_CLASS)),
     player: createPlayerState(),
+    theft: null,
+    heat: 0,
   };
 }
 
