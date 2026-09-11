@@ -7,6 +7,10 @@
  *
  * Usage: node scripts/render-preview.ts [seed] [out.png] [--option=value]
  *   --x, --y         where the player stands, in metres. Default the spawn.
+ *   --junction       stand at the N-th junction out from the core instead, and
+ *                    say where it is and which roads meet there. `--tiers`
+ *                    narrows the count to junctions of that mix, for example
+ *                    `--tiers=arterial+street` or `--tiers=alley`.
  *   --distance       how far back the camera sits. Default the game's.
  *   --heading        which way the player faces, in degrees.
  *   --speed          how fast the player moves, in metres per second.
@@ -23,6 +27,9 @@ import { chromium, type Browser } from 'playwright-core';
 import { createServer, type ViteDevServer } from 'vite';
 import { seedFromString } from '../src/core/rng.ts';
 import { BASE_DISTANCE } from '../src/render/camera.ts';
+import { buildRoadGraph } from '../src/world/graph.ts';
+import { buildJunctions, type Junction } from '../src/world/junctions.ts';
+import { generateWorld } from '../src/world/world.ts';
 import type { PreviewRequest, PreviewResult } from '../src/render/preview.ts';
 import { encodePng } from './png.ts';
 
@@ -66,10 +73,41 @@ function num(name: string, fallback: number): number {
   return value;
 }
 
+/**
+ * Where a junction stands, for eyeballing how roads meet. The junctions are
+ * counted out from the core, so the low numbers are the ones the player sees
+ * first, and `--tiers` counts only the junctions where exactly that mix of
+ * tiers meets.
+ */
+function junctionAt(seed: number, index: number, tiers: string | undefined): Junction {
+  const world = generateWorld(seed);
+  const junctions = buildJunctions(world.roads, buildRoadGraph(world.roads)).junctions.filter(
+    (junction) => tiers === undefined || mixOf(junction) === tiers,
+  );
+  junctions.sort(
+    (a, b) => Math.hypot(a.x - world.core.x, a.y - world.core.y) - Math.hypot(b.x - world.core.x, b.y - world.core.y),
+  );
+  const found = junctions[index];
+  if (found === undefined) throw new Error(`only ${junctions.length} junctions${tiers === undefined ? '' : ` of ${tiers}`}`);
+  return found;
+}
+
+/** The tiers that meet at a junction, each named once, as `--tiers` names them. */
+function mixOf(junction: Junction): string {
+  return [...new Set(junction.mouths.map((mouth) => mouth.tier))].sort().join('+');
+}
+
+const seed = seedFromString(seedText);
+const junction = options.has('junction') ? junctionAt(seed, num('junction', 0), options.get('tiers')) : undefined;
+if (junction !== undefined) {
+  const mouths = junction.mouths.map((mouth) => `${mouth.tier} cut ${mouth.cut.toFixed(1)} m`).join(', ');
+  console.log(`junction ${options.get('junction')} at ${junction.x.toFixed(1)},${junction.y.toFixed(1)}: ${mouths}`);
+}
+
 const request: PreviewRequest = {
-  seed: seedFromString(seedText),
-  x: num('x', 0),
-  y: num('y', 0),
+  seed,
+  x: num('x', junction?.x ?? 0),
+  y: num('y', junction?.y ?? 0),
   distance: num('distance', BASE_DISTANCE),
   heading: (num('heading', 0) * Math.PI) / 180,
   speed: num('speed', 0),

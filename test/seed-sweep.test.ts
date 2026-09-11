@@ -39,6 +39,8 @@ import { MIN_BOARDWALK } from '../src/world/roads.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import type { RoadFootprint } from '../src/world/footprint.ts';
 import { buildRoadGraph, type GradeCrossing, type RoadEdge, type RoadGraph, type RoadNode } from '../src/world/graph.ts';
+import { buildJunctions, type JunctionMap } from '../src/world/junctions.ts';
+import { RoadBeds } from '../src/world/bed.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
 import { ownerMaxArea, type Parcel, type ParcelMap, type ParcelOwner } from '../src/world/parcels.ts';
@@ -730,6 +732,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     const world = worlds.get(seed) as WorldDescription;
     const built = new ChunkSource(world, {
       graph: graphOf(seed),
+      junctions: junctionsOf(seed),
       footprint: footprintOf(seed),
       parcels: parcelsOf(seed),
       buildings: buildingsOf(seed),
@@ -739,14 +742,34 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     sources.set(seed, built);
     return built;
   };
+  /** The junctions of a seed, built once however many tests ask about them. */
+  const junctionMaps = new Map<number, JunctionMap>();
+  const junctionsOf = (seed: number): JunctionMap => {
+    const known = junctionMaps.get(seed);
+    if (known !== undefined) return known;
+    const world = worlds.get(seed) as WorldDescription;
+    const built = buildJunctions(world.roads, graphOf(seed));
+    junctionMaps.set(seed, built);
+    return built;
+  };
   /** The carve of a seed, built once however many tests ask about it. */
   const carves = new Map<number, RoadCarve>();
   const carveOf = (seed: number): RoadCarve => {
     const known = carves.get(seed);
     if (known !== undefined) return known;
     const world = worlds.get(seed) as WorldDescription;
-    const built = buildCarve(world.terrain, world.roads);
+    const built = buildCarve(world.terrain, world.roads, junctionsOf(seed));
     carves.set(seed, built);
+    return built;
+  };
+  /** The beds of a seed's roads: the line each is lofted onto and carved to. */
+  const bedMaps = new Map<number, RoadBeds>();
+  const bedsOf = (seed: number): RoadBeds => {
+    const known = bedMaps.get(seed);
+    if (known !== undefined) return known;
+    const world = worlds.get(seed) as WorldDescription;
+    const built = new RoadBeds(world.terrain, world.roads, junctionsOf(seed));
+    bedMaps.set(seed, built);
     return built;
   };
   /**
@@ -1291,8 +1314,9 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     // drives, the cut and fill blend back into the hillside, and a deck or a
     // bore leaves the terrain alone. A road is never draped over the hill.
     //
-    // Every point of a curve stands on the line that curve drives, which is the
-    // natural ground under it, so the carved ground there should be the same
+    // Every point of a curve stands on the line that curve drives — its bed,
+    // which is the natural ground under it away from a junction and the
+    // junction's plane at one — so the carved ground there should be the same
     // height: nothing floats, nothing sinks. Two things stop that from being
     // exact. The ground the game draws is the grid a chunk samples, of cells
     // CHUNK_TERRAIN_CELL metres across, so a bench comes back rounded at its
@@ -1306,6 +1330,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
       const w = worlds.get(seed) as WorldDescription;
       const carve = carveOf(seed);
+      const beds = bedsOf(seed);
       const natural = new Heightfield(w.terrain);
       const carved = { sample: (x: number, y: number): number => chunkGroundAt(carve, x, y) };
       let complaint: string | undefined;
@@ -1348,7 +1373,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
           // ground. One beside a deck or a bore does not: the ground there is
           // the ground the road leaves, which is why it leaves it.
           if (i > 0 && !structures.has(i - 1)) {
-            const stand = Math.abs(natural.sample(a.x, a.y) - carved.sample(a.x, a.y));
+            const stand = Math.abs(beds.pointHeight(road.id, i) - carved.sample(a.x, a.y));
             points++;
             if (stand > CARVE_CLEARANCE) standingOff++;
             if (stand > CARVE_STAND_OFF) fault(`${road.tier} ${road.id} point ${i} stands ${stand.toFixed(1)} m off the ground`);
@@ -1358,7 +1383,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
           const length = Math.hypot(b.x - a.x, b.y - a.y);
           if (length === 0 || i % LEVEL_STRIDE !== 0) continue;
           if (benchHalfWidth(road.tier) < LEVEL_AT + CHUNK_TERRAIN_CELL) continue;
-          const bed = (natural.sample(a.x, a.y) + natural.sample(b.x, b.y)) / 2;
+          const bed = beds.heightAt(road.id, i, 0.5);
           const nx = (-(b.y - a.y) / length) * LEVEL_AT;
           const ny = ((b.x - a.x) / length) * LEVEL_AT;
           for (const side of [1, -1]) {
@@ -1848,7 +1873,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
       const w = worlds.get(seed) as WorldDescription;
       const source = sourceOf(seed);
-      const ribbons = new RoadRibbons(w.terrain, w.roads);
+      const ribbons = new RoadRibbons(w.terrain, w.roads, junctionsOf(seed));
       let complaint: string | undefined;
       const fault = (text: string): void => {
         complaint ??= text;
@@ -1862,7 +1887,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       let carriageways = 0;
       for (const [cx, cy] of ROAD_MESH_CHUNKS) {
         const chunk = source.chunk(cx, cy);
-        for (const tier of buildChunkRoads(chunk, ribbons)) {
+        for (const tier of buildChunkRoads(chunk, ribbons, (x, y) => carveOf(seed).heightAt(x, y))) {
           const where = `chunk ${cx}, ${cy}: ${tier.tier}`;
           const section = roadSection(tier.tier);
           for (const part of partsOf(tier)) {
@@ -1920,7 +1945,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
       const w = worlds.get(seed) as WorldDescription;
       const source = sourceOf(seed);
-      const ribbons = new RoadRibbons(w.terrain, w.roads);
+      const ribbons = new RoadRibbons(w.terrain, w.roads, junctionsOf(seed));
       let complaint: string | undefined;
       const fault = (text: string): void => {
         complaint ??= text;
@@ -2091,13 +2116,15 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       const world = repeats.get(seed) as WorldDescription;
       const parts = repeatParts.get(seed) as { footprint: RoadFootprint; parcels: ParcelMap };
       const aloneGraph = buildRoadGraph(world.roads);
+      const aloneJunctions = buildJunctions(world.roads, aloneGraph);
       const aloneBuildings = buildBuildings(world, parts.parcels, aloneGraph);
       const alone = new ChunkSource(world, {
         graph: aloneGraph,
+        junctions: aloneJunctions,
         footprint: parts.footprint,
         parcels: parts.parcels,
         buildings: aloneBuildings,
-        carve: buildCarve(world.terrain, world.roads),
+        carve: buildCarve(world.terrain, world.roads, aloneJunctions),
         vegetation: new Vegetation(world.seed, parts.parcels, aloneBuildings),
       });
       // The far chunk first, before this source has cut anything at all.

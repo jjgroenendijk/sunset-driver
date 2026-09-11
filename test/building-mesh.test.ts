@@ -84,6 +84,7 @@ function chunkOf(buildings: Building[]): WorldChunk {
     terrain: { gridSize: 2, cellSize: CHUNK_SIZE, originX: 0, originY: 0, heights: new Float32Array(4).fill(GROUND) },
     seaLevel: 0,
     roads: [],
+    junctions: [],
     parcels: [],
     buildings,
     plants: [],
