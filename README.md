@@ -22,8 +22,12 @@ The game watches its own frame rate and steps the quality down when it cannot ho
 | Handbrake, jump | Space |
 | Horn | H |
 | Enter or leave vehicle, hotwire, interact | E |
-| Fire | F |
+| Fire, swing | F |
+| Aim | Q |
+| Reload | R |
+| Cycle weapon | C |
 | Vehicle picker | V |
+| Weapon picker | G |
 
 ## Develop
 

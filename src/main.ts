@@ -14,6 +14,8 @@ import { Hud } from './ui/hud.ts';
 import { Keyboard } from './ui/keyboard.ts';
 import { TitleScreen } from './ui/title.ts';
 import { PICKER_KEY, VehiclePicker } from './ui/vehicle-picker.ts';
+import { WEAPON_PICKER_KEY, WeaponPicker } from './ui/weapon-picker.ts';
+import { currentWeapon, giveWeapon } from './sim/weapon.ts';
 import { nearestRoadPlace, nearestWaterPlace, SurfaceIndex } from './world/surface.ts';
 import { generateWorld } from './world/world.ts';
 
@@ -215,8 +217,16 @@ async function boot(): Promise<void> {
     // skid marks belongs to it.
     world.resetDamage(state.tick);
   });
+  // The debug picker of spec section 11.6: every weapon of the arsenal, loaded
+  // and in the player's hands. It is what makes the table something to fire
+  // until the weapon shops and the faction dealers of spec section 11.6 land.
+  const weapons = new WeaponPicker(document.body, currentWeapon(state.loadout).id, (id) => {
+    giveWeapon(state.loadout, id);
+  });
   window.addEventListener('keydown', (event) => {
-    if (event.code === PICKER_KEY && !event.repeat) picker.toggle();
+    if (event.repeat) return;
+    if (event.code === PICKER_KEY) picker.toggle();
+    if (event.code === WEAPON_PICKER_KEY) weapons.toggle();
   });
 
   session = {

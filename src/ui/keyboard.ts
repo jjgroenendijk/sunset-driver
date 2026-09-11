@@ -2,7 +2,7 @@ import type { InputFrame } from '../sim/input.ts';
 
 /**
  * Keyboard state sampled once per simulation tick into an InputFrame.
- * Bindings: WASD / arrows to drive, Space handbrake, Shift sprint, H horn, E interact, F fire.
+ * `controls.ts` is the one list of the bindings; this must stay in step with it.
  */
 export class Keyboard {
   private readonly down = new Set<string>();
@@ -35,6 +35,9 @@ export class Keyboard {
       jump: this.is('Space'),
       interact: this.is('KeyE'),
       fire: this.is('KeyF'),
+      aim: this.is('KeyQ'),
+      reload: this.is('KeyR'),
+      cycle: this.is('KeyC'),
     };
   }
 }
