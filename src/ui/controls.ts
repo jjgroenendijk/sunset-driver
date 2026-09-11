@@ -5,8 +5,12 @@ export interface ControlBinding {
 }
 
 /**
- * The bindings `Keyboard` reads, in the order they are shown. Keep this table
- * and `Keyboard.sample` in step: nothing else should describe the bindings.
+ * Every binding, in the order they are shown. Keep this table and
+ * `Keyboard.sample` in step: nothing else should describe the bindings.
+ *
+ * The rows down to `Fire` are the per-tick input frame `Keyboard` samples. The
+ * rows after it open and close something on screen rather than driving the
+ * simulation, so `main.ts` listens for them itself.
  */
 export const CONTROLS: readonly ControlBinding[] = [
   { action: 'Move, drive', keys: 'W A S D or arrows' },
@@ -15,4 +19,5 @@ export const CONTROLS: readonly ControlBinding[] = [
   { action: 'Horn', keys: 'H' },
   { action: 'Interact, enter vehicle', keys: 'E' },
   { action: 'Fire', keys: 'F' },
+  { action: 'Vehicle picker', keys: 'V' },
 ];

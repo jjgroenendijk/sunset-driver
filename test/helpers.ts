@@ -7,6 +7,13 @@ import type { Point, WorldDescription } from '../src/world/types.ts';
 
 export { pointInRing, ringArea };
 
+/**
+ * A sea level far below any ground a test writes, so the made-up grounds the
+ * simulation tests drive on are dry land everywhere. A test about boats puts
+ * the sea somewhere it can be reached instead.
+ */
+export const DRY = -1000;
+
 /** Fixed list of seeds for the sweeps; deterministic and spread across the space. */
 export function sweepSeeds(count: number): number[] {
   const seeds: number[] = [];

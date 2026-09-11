@@ -1,5 +1,6 @@
 import { gameTime } from '../sim/clock.ts';
 import type { SimState } from '../sim/simulation.ts';
+import { specOf } from '../sim/vehicle.ts';
 
 /** Minimal DOM overlay: seed, game clock and draw calls. Grows into the full HUD. */
 export class Hud {
@@ -9,6 +10,7 @@ export class Hud {
   private readonly draws: HTMLElement;
   private readonly speed: HTMLElement;
   private shownSpeed = -1;
+  private shownVehicle = '';
   private shownDraws = -1;
   private shownLights = -1;
   private shownStreaming = -1;
@@ -45,9 +47,13 @@ export class Hud {
     const mm = String(t.minute).padStart(2, '0');
     this.clock.textContent = `day ${t.day + 1}  ${hh}:${mm}`;
     const kmh = Math.round(Math.abs(state.player.speed) * 3.6);
-    if (kmh !== this.shownSpeed) {
+    // The name of what is being driven, so the debug picker's choice of spec
+    // section 11.3 is readable while driving it.
+    const driving = specOf(state.vehicle.cls).name;
+    if (kmh !== this.shownSpeed || driving !== this.shownVehicle) {
       this.shownSpeed = kmh;
-      this.speed.textContent = `${kmh} km/h`;
+      this.shownVehicle = driving;
+      this.speed.textContent = `${kmh} km/h  ${driving}`;
     }
     if (
       drawCalls === this.shownDraws &&

@@ -12,7 +12,8 @@ import { createSimState, stepSim, type SimState } from './sim/simulation.ts';
 import { Hud } from './ui/hud.ts';
 import { Keyboard } from './ui/keyboard.ts';
 import { TitleScreen } from './ui/title.ts';
-import { nearestRoadPlace, SurfaceIndex } from './world/surface.ts';
+import { PICKER_KEY, VehiclePicker } from './ui/vehicle-picker.ts';
+import { nearestRoadPlace, nearestWaterPlace, SurfaceIndex } from './world/surface.ts';
 import { generateWorld } from './world/world.ts';
 
 /** How fast the character turns on the title screen, in radians per second. */
@@ -161,6 +162,7 @@ async function boot(): Promise<void> {
   const ground: Ground = {
     heightAt: (x, y) => world.heightAt(x, y),
     surfaceAt: (x, y) => surfaces.at(x, y),
+    seaLevel: description.water.seaLevel,
   };
   const start = nearestRoadPlace(description, state.player.x, state.player.y);
   const physics = new SimPhysics(ground, state);
@@ -187,6 +189,21 @@ async function boot(): Promise<void> {
   // `?budget=6` holds the game to a frame no machine makes at full quality, so
   // the tiers of spec section 9.2 can be watched stepping down.
   const quality = new QualityMonitor(frameBudgetFrom(location.search));
+
+  // The debug picker of spec section 11.3: every class of the roster, put down
+  // under the player. A boat goes on the nearest open water instead, since a
+  // boat on a street is not a boat that can be driven. The ground the physics
+  // reads is the carve, which answers anywhere on the map, so the vehicle is
+  // driveable the moment it lands and the chunks around it stream in after.
+  const picker = new VehiclePicker(document.body, state.vehicle.cls, (cls) => {
+    const here = { x: state.player.x, y: state.player.y, heading: state.player.heading };
+    const place = cls === 'boat' ? (nearestWaterPlace(description, here.x, here.y) ?? here) : here;
+    physics.spawn(state, place.x, place.y, place.heading, cls);
+  });
+  window.addEventListener('keydown', (event) => {
+    if (event.code === PICKER_KEY && !event.repeat) picker.toggle();
+  });
+
   session = { state, world, physics, post, quality, hud: new Hud(document.body, choice.seed) };
   preview.dispose();
   last = performance.now();
