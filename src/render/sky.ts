@@ -153,6 +153,11 @@ export class SkyLighting {
    */
   drawShadowOnce(): void {
     if (this.sun.intensity <= 0) return;
+    // A cascade is built at the first render, and each one clones the sun's own
+    // shadow as it is built. Asking on that clone template is what draws the
+    // shadow of a frame rendered before there is a cascade to ask: the first
+    // frame of a session, and the one frame a preview draws.
+    this.sun.shadow.needsUpdate = true;
     for (const light of this.cascades.lights) if (light.shadow !== undefined) light.shadow.needsUpdate = true;
   }
 
