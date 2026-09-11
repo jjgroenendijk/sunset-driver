@@ -17,7 +17,7 @@ export const CONTROLS: readonly ControlBinding[] = [
   { action: 'Sprint', keys: 'Shift' },
   { action: 'Handbrake, jump', keys: 'Space' },
   { action: 'Horn', keys: 'H' },
-  { action: 'Enter or leave vehicle, interact', keys: 'E' },
+  { action: 'Enter or leave vehicle, hotwire, interact', keys: 'E' },
   { action: 'Fire', keys: 'F' },
   { action: 'Vehicle picker', keys: 'V' },
 ];

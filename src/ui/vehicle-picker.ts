@@ -1,10 +1,12 @@
 /**
  * The debug picker of spec section 11.3: every class of the roster, drivable.
  *
- * It is a development tool, not the game. Spec section 11.4 is how a player
- * gets into a vehicle; until that lands this is what makes the handling roster
- * something to drive rather than a table to read. `V` opens and closes it, and
- * picking a row puts that vehicle down under the player.
+ * It is a development tool, not the game: it is what makes the handling roster
+ * something to drive rather than a table to read, until the traffic of spec
+ * section 13.1 fills the streets with vehicles to find. `V` opens and closes
+ * it, and picking a row puts that vehicle down under the player, or at the
+ * kerb beside them while they are on foot. One left at the kerb is locked if
+ * it is worth stealing, so it is hotwired like any other (spec section 11.4).
  *
  * The panel shows the numbers that make each row different — mass, power, top
  * speed and the tyres — so what is felt on the road can be read against what
