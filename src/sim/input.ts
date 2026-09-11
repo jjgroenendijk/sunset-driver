@@ -13,6 +13,12 @@ export interface InputFrame {
   jump: boolean;
   interact: boolean;
   fire: boolean;
+  /** Held while aiming rather than firing from the hip (spec section 11.5). */
+  aim: boolean;
+  /** Reload the weapon in hand (spec section 11.6). */
+  reload: boolean;
+  /** Take the next weapon carried (spec section 11.6). */
+  cycle: boolean;
 }
 
 export const EMPTY_INPUT: Readonly<InputFrame> = Object.freeze({
@@ -24,6 +30,9 @@ export const EMPTY_INPUT: Readonly<InputFrame> = Object.freeze({
   jump: false,
   interact: false,
   fire: false,
+  aim: false,
+  reload: false,
+  cycle: false,
 });
 
 export function inputEquals(a: InputFrame, b: InputFrame): boolean {
@@ -35,6 +44,9 @@ export function inputEquals(a: InputFrame, b: InputFrame): boolean {
     a.sprint === b.sprint &&
     a.jump === b.jump &&
     a.interact === b.interact &&
-    a.fire === b.fire
+    a.fire === b.fire &&
+    a.aim === b.aim &&
+    a.reload === b.reload &&
+    a.cycle === b.cycle
   );
 }

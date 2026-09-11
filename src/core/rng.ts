@@ -23,6 +23,7 @@ export const Subsystem = {
   Character: 16,
   Damage: 17,
   Theft: 18,
+  Weapons: 19,
 } as const;
 export type SubsystemId = (typeof Subsystem)[keyof typeof Subsystem];
 

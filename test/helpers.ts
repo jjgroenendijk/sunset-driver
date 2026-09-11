@@ -30,7 +30,10 @@ export function sweepSeeds(count: number): number[] {
  *
  * The stream presses interact and jump now and then, so a sweep run on it has
  * the character of spec section 11.5 in the loop: the player gets out, walks,
- * and gets back in.
+ * and gets back in. It presses the combat keys too, so the weapons of spec
+ * section 11.6 are run in the loop as well; what a player carries at the start
+ * of a session is their fists, so a stream fires those unless a test hands them
+ * something else.
  */
 export function inputStream(seed: number, ticks: number): InputFrame[] {
   const frames: InputFrame[] = [];
@@ -50,6 +53,10 @@ export function inputStream(seed: number, ticks: number): InputFrame[] {
         handbrake: ((x >>> 20) & 15) === 0,
         interact: ((x >>> 4) & 7) === 0,
         jump: ((x >>> 2) & 3) === 0,
+        fire: ((x >>> 6) & 3) === 0,
+        aim: ((x >>> 14) & 3) === 0,
+        reload: ((x >>> 18) & 15) === 0,
+        cycle: ((x >>> 22) & 15) === 0,
       };
     }
     frames.push(frame);

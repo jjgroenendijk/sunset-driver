@@ -46,8 +46,11 @@ import {
   blastDamageAt,
   BLAST_LIFT,
   CRASH_DAMAGE,
+  damageVehicle,
+  disableEngine,
   enginePowerScale,
   hitVehicle,
+  ignite,
   tickFire,
 } from './damage.ts';
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
@@ -69,6 +72,7 @@ import {
   TERMINAL_SPEED,
   TURN_RATE,
   turnToward,
+  vehicleGap,
 } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
 import { createTheft, isLocked, stepTheft, THEFT_HEAT, type TheftState } from './theft.ts';
@@ -85,6 +89,19 @@ import {
   type WheelSpec,
   type WheelState,
 } from './vehicle.ts';
+import {
+  blastFalloff,
+  bounceProjectile,
+  projectileDue,
+  roundSeverity,
+  stepProjectile,
+  stepWeapons,
+  swingReaches,
+  weaponOf,
+  type ProjectileState,
+  type ShotRay,
+  type WeaponSpec,
+} from './weapon.ts';
 
 /** Metres per second squared. Earth's, so a car falls the way a car falls. */
 const GRAVITY = 9.81;
@@ -198,6 +215,11 @@ export class SimPhysics {
   private wheels: RAPIER.DynamicRayCastVehicleController | undefined;
   /** The parked vehicle's fixed body, and undefined while it is being driven. */
   private parked: RAPIER.RigidBody | undefined;
+  /**
+   * The collider of whichever vehicle body stands in the world, so a shot can
+   * say whether it hit the vehicle or the ground (spec section 11.6).
+   */
+  private body: RAPIER.Collider | undefined;
   /** The player's capsule, and undefined while they are in a vehicle. */
   private walker: Walker | undefined;
   /** Scratch vectors and forces, so a tick allocates nothing. */
@@ -205,6 +227,10 @@ export class SimPhysics {
   private readonly axis = { x: 0, y: 0, z: 0 };
   private readonly force = { x: 0, y: 0, z: 0 };
   private readonly at = { x: 0, y: 0, z: 0 };
+  /** The one ray every shot and every projectile step is cast with. */
+  private readonly from = { x: 0, y: 0, z: 0 };
+  private readonly along = { x: 0, y: 0, z: 0 };
+  private readonly ray = new RAPIER.Ray(this.from, this.along);
 
   constructor(ground: Ground, state: SimState) {
     this.ground = ground;
@@ -320,6 +346,11 @@ export class SimPhysics {
     this.world.step();
     this.read(state);
     if (chassis !== undefined) this.crash(state, wasX, wasY, wasZ);
+    // The weapons are run after the step, so a shot leaves the muzzle from where
+    // the player ended the tick rather than from where they started it. A player
+    // bent over a lock cannot shoot, for the same reason they cannot walk.
+    this.arm(state, state.theft === null ? input : EMPTY_INPUT);
+    this.fly(state);
     this.burn(state);
   }
 
@@ -389,6 +420,170 @@ export class SimPhysics {
     v.vx = linear.x;
     v.vy = linear.y;
     v.vz = linear.z;
+  }
+
+  /**
+   * Fire the weapon in the player's hands for a tick (spec section 11.6).
+   *
+   * The rules are in `weapon.ts` and this is the Rapier half of them: a gun
+   * casts a ray per pellet, a melee weapon sweeps its arc, and a thrown weapon
+   * or a launcher puts something in the air for {@link SimPhysics.fly} to carry.
+   * Nothing here decides whether the weapon fires; `stepWeapons` does, and it
+   * also raises the heat a shot is worth (spec section 14).
+   *
+   * Only the player's vehicle can be hit today. The pedestrians and the police
+   * of spec sections 13.1 and 14 are what the rays will find after them.
+   */
+  private arm(state: SimState, input: InputFrame): void {
+    const shot = stepWeapons(state.loadout, input, state.player, state.seed, state.tick);
+    if (shot === undefined) return;
+    state.heat += shot.heat;
+    if (shot.projectile !== undefined) {
+      state.projectiles.push(shot.projectile);
+      return;
+    }
+    if (shot.spec.cls === 'melee') {
+      this.swing(state, shot.spec);
+      return;
+    }
+    for (const ray of shot.rays) this.scan(state, shot.spec, ray);
+  }
+
+  /**
+   * One pellet, cast against the world. The shooter's own body is left out of
+   * the cast: a driver firing from a seat would otherwise shoot their own door,
+   * and a player on foot their own chest.
+   */
+  private scan(state: SimState, spec: WeaponSpec, ray: ShotRay): void {
+    this.from.x = ray.x;
+    this.from.y = ray.h;
+    this.from.z = ray.y;
+    this.along.x = ray.dx;
+    this.along.y = ray.dh;
+    this.along.z = ray.dy;
+    const mine = state.player.driving ? this.body : this.walker?.collider;
+    const hit = this.world.castRay(this.ray, spec.range, true, undefined, undefined, mine);
+    if (hit === null) return;
+    if (this.body === undefined || hit.collider.handle !== this.body.handle) return;
+    // The round pushes the vehicle the way it was flying, which is the direction
+    // the panel rule reads, exactly as a crash pushes it away from the wall.
+    this.hit(state, spec, ray.dx, ray.dh, ray.dy, roundSeverity(spec));
+  }
+
+  /**
+   * One swing of a melee weapon (spec section 11.6). A swing is an arc rather
+   * than a line, so it is a reach and a half-angle and not a ray: whatever
+   * stands inside it is hit. Nobody swings at the vehicle they are sitting in.
+   */
+  private swing(state: SimState, spec: WeaponSpec): void {
+    const p = state.player;
+    if (p.driving) return;
+    const v = state.vehicle;
+    const bearing = Math.atan2(v.z - p.y, v.x - p.x);
+    if (!swingReaches(spec, p.heading, vehicleGap(p, v, this.spec), bearing)) return;
+    this.hit(state, spec, Math.cos(bearing), 0, Math.sin(bearing), roundSeverity(spec));
+  }
+
+  /**
+   * Put one hit into the vehicle: the dent, what it costs the vehicle, and what
+   * the round does beyond that. The direction comes in world axes and is read in
+   * the vehicle's own frame, so the panel that takes it is the panel that was
+   * facing the shot.
+   */
+  private hit(state: SimState, spec: WeaponSpec, dx: number, dh: number, dy: number, severity: number): void {
+    const v = state.vehicle;
+    unrotate(this.point, v, dx, dh, dy);
+    // `unrotate` answers the vehicle's own axes: `x` along it, `y` up and `z`
+    // across it, which is the order the panel rule reads them in.
+    damageVehicle(
+      v.damage,
+      this.spec,
+      severity,
+      this.point.x,
+      this.point.z,
+      this.point.y,
+      state.seed,
+      state.tick,
+      state.loadout.shots,
+    );
+    if (spec.effect === 'fire') ignite(v.damage, state.tick);
+    if (spec.effect === 'engine') disableEngine(v.damage);
+  }
+
+  /**
+   * Carry everything in the air one tick further (spec section 11.6).
+   *
+   * A step is a straight line between two places, so what the step ran into is
+   * a ray over it. A thing that goes off on impact goes off there; anything else
+   * bounces and carries on until its fuse burns through. The thrower's own body
+   * is left out, so a grenade does not go off in the hand that threw it.
+   */
+  private fly(state: SimState): void {
+    const live = state.projectiles;
+    for (let i = live.length - 1; i >= 0; i--) {
+      const p = live[i] as ProjectileState;
+      const flight = weaponOf(p.weapon).projectile;
+      if (flight === undefined) {
+        live.splice(i, 1);
+        continue;
+      }
+      this.from.x = p.x;
+      this.from.y = p.h;
+      this.from.z = p.y;
+      stepProjectile(p);
+      const dx = p.x - this.from.x;
+      const dh = p.h - this.from.y;
+      const dy = p.y - this.from.z;
+      const step = Math.hypot(dx, dh, dy);
+      if (step > 0) {
+        this.along.x = dx / step;
+        this.along.y = dh / step;
+        this.along.z = dy / step;
+        const mine = this.walker?.collider;
+        const hit = this.world.castRayAndGetNormal(this.ray, step, true, undefined, undefined, mine);
+        if (hit !== null) {
+          // Stand it on the surface it met rather than inside it, so the next
+          // step starts outside the ground and not under it.
+          p.x = this.from.x + this.along.x * hit.timeOfImpact + hit.normal.x * SKIN;
+          p.h = this.from.y + this.along.y * hit.timeOfImpact + hit.normal.y * SKIN;
+          p.y = this.from.z + this.along.z * hit.timeOfImpact + hit.normal.z * SKIN;
+          if (flight.burstOnImpact) {
+            this.burst(state, p);
+            live.splice(i, 1);
+            continue;
+          }
+          bounceProjectile(p, hit.normal.x, hit.normal.y, hit.normal.z);
+        }
+      }
+      if (!projectileDue(p, state.tick)) continue;
+      this.burst(state, p);
+      live.splice(i, 1);
+    }
+  }
+
+  /**
+   * Set off one projectile where it stands (spec section 11.6). A blast is felt
+   * over its radius and falls away to nothing at the edge of it; a Molotov sets
+   * what it lands on alight, which is the fire that spreads of spec section
+   * 11.3. Smoke and tear gas leave a cloud that nothing reads yet: it is the
+   * pedestrians and the police of spec sections 13.1 and 14 that will.
+   */
+  private burst(state: SimState, p: ProjectileState): void {
+    const spec = weaponOf(p.weapon);
+    const flight = spec.projectile;
+    if (flight === undefined || spec.effect === 'smoke') return;
+    const player = state.player;
+    const reach = blastFalloff(Math.hypot(player.x - p.x, player.y - p.y, player.height - p.h), flight.blastRadius);
+    if (reach > 0) hurt(player, spec.damage * reach);
+    const v = state.vehicle;
+    const dx = v.x - p.x;
+    const dh = v.y - p.h;
+    const dy = v.z - p.y;
+    const distance = Math.hypot(dx, dh, dy);
+    const share = blastFalloff(distance, flight.blastRadius);
+    if (share === 0) return;
+    const length = Math.max(distance, 1e-6);
+    this.hit(state, spec, dx / length, dh / length, dy / length, roundSeverity(spec) * share);
   }
 
   /** Apply the input to the wheels: steering, engine, brakes and the grip of the ground. */
@@ -671,7 +866,7 @@ export class SimPhysics {
         .setLinearDamping(spec.drag)
         .setAngularDamping(0.6),
     );
-    this.world.createCollider(
+    this.body = this.world.createCollider(
       RAPIER.ColliderDesc.cuboid(spec.halfLength, spec.halfHeight, spec.halfWidth)
         .setMass(spec.mass)
         // A hull slides over what it grounds on; a car body digs in.
@@ -718,7 +913,7 @@ export class SimPhysics {
         .setTranslation(v.x, v.y, v.z)
         .setRotation({ x: v.qx, y: v.qy, z: v.qz, w: v.qw }),
     );
-    this.world.createCollider(
+    this.body = this.world.createCollider(
       RAPIER.ColliderDesc.cuboid(spec.halfLength, spec.halfHeight, spec.halfWidth),
       body,
     );
@@ -877,6 +1072,8 @@ export class SimPhysics {
   private release(): void {
     this.wheels?.free();
     this.wheels = undefined;
+    // Whichever body carried it is about to go, so the collider goes with it.
+    this.body = undefined;
     if (this.chassis !== undefined) this.world.removeRigidBody(this.chassis);
     this.chassis = undefined;
     if (this.parked !== undefined) this.world.removeRigidBody(this.parked);

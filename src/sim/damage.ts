@@ -175,10 +175,9 @@ export function severityOf(spec: VehicleSpec, speedLost: number): number {
  * Take one impact, given the speed the vehicle lost in the tick, in its own
  * frame. Answers the severity, so the caller can hurt whoever was in it.
  *
- * A panel takes the dent, and a dent that reaches its depth tears the panel
- * off. What is left of the vehicle falls by the severity, and a vehicle at the
- * end of that can catch fire: the roll is the one place this reaches for
- * randomness, and it is keyed on the seed and the tick like every other.
+ * The speed lost is what says how hard the blow was; {@link damageVehicle} is
+ * what the blow then does, and gunfire (spec section 11.6) goes through that
+ * instead, because a round carries no speed the chassis can lose.
  */
 export function hitVehicle(
   damage: DamageState,
@@ -190,8 +189,31 @@ export function hitVehicle(
   tick: number,
   id = 0,
 ): number {
-  const severity = severityOf(spec, Math.hypot(along, across, up));
-  if (severity === 0) return 0;
+  return damageVehicle(damage, spec, severityOf(spec, Math.hypot(along, across, up)), along, across, up, seed, tick, id);
+}
+
+/**
+ * Take one blow of a known severity, from a direction given in the vehicle's
+ * own frame. Answers the severity it was given, so a caller can hurt whoever
+ * was in it.
+ *
+ * A panel takes the dent, and a dent that reaches its depth tears the panel
+ * off. What is left of the vehicle falls by the severity, and a vehicle at the
+ * end of that can catch fire: the roll is the one place this reaches for
+ * randomness, and it is keyed on the seed and the tick like every other.
+ */
+export function damageVehicle(
+  damage: DamageState,
+  spec: VehicleSpec,
+  severity: number,
+  along: number,
+  across: number,
+  up: number,
+  seed: number,
+  tick: number,
+  id = 0,
+): number {
+  if (severity <= 0) return 0;
   if (damage.stage === 'burnt') return severity;
 
   const panel = panelFor(along, across, up);
@@ -225,6 +247,18 @@ export function ignite(damage: DamageState, tick: number): void {
   if (damage.stage === 'burning' || damage.stage === 'burnt') return;
   damage.stage = 'burning';
   damage.litTick = tick;
+}
+
+/**
+ * Take a vehicle's engine out, without touching its panels. This is what the
+ * Barrett M82 does to what it shoots at (spec section 11.6): the car still
+ * rolls, and what is left of the engine is {@link enginePowerScale} of a
+ * smoking one. A vehicle already worse off than that is left where it is.
+ */
+export function disableEngine(damage: DamageState): void {
+  if (damage.integrity <= SMOKE_BELOW) return;
+  damage.integrity = SMOKE_BELOW;
+  settle(damage);
 }
 
 /**

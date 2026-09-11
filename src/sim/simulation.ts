@@ -5,6 +5,7 @@ import { createPlayerState, type PlayerState } from './on-foot.ts';
 import type { SimPhysics } from './physics.ts';
 import type { TheftState } from './theft.ts';
 import { createVehicleState, DEFAULT_CLASS, specOf, type VehicleState } from './vehicle.ts';
+import { createLoadout, type LoadoutState, type ProjectileState } from './weapon.ts';
 
 /** The serialisable, deterministic state of a session. */
 export interface SimState {
@@ -31,9 +32,21 @@ export interface SimState {
    */
   theft: TheftState | null;
   /**
-   * How much attention the player has drawn (spec section 14). Nothing spends
-   * it yet: the alarm of a theft is the first thing that raises it, and the
-   * police issue is what will read it.
+   * What the player is carrying and the state of the weapon in their hands
+   * (spec section 11.6): the magazines, the pools behind them, the reload and
+   * the recoil. Plain numbers for the same reason the vehicle is.
+   */
+  loadout: LoadoutState;
+  /**
+   * Everything in the air (spec section 11.6): grenades, Molotovs and rockets,
+   * each flying the line it was thrown on. They are part of the record, so a
+   * save catches them mid-flight and a replay throws them the same way.
+   */
+  projectiles: ProjectileState[];
+  /**
+   * How much attention the player has drawn (spec section 14). The alarm of a
+   * theft and every shot fired raise it; nothing spends it yet, and the police
+   * issue is what will read it.
    */
   heat: number;
 }
@@ -53,6 +66,8 @@ export function createSimState(
     vehicle: createVehicleState(specOf(DEFAULT_CLASS)),
     player: createPlayerState(),
     theft: null,
+    loadout: createLoadout(),
+    projectiles: [],
     heat: 0,
   };
 }
