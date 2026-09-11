@@ -114,7 +114,7 @@ describe('chunk grid', () => {
 });
 
 describe('chunk terrain', () => {
-  it('samples the heights off the world heightfield', () => {
+  it('carves the roads into the heights it takes off the world heightfield', () => {
     const hf = new Heightfield(world.terrain);
     const chunk = source.chunk(1, -1);
     const slice = new Heightfield(chunk.terrain);
@@ -122,11 +122,39 @@ describe('chunk terrain', () => {
     expect(slice.originY).toBe(chunk.bounds.minY);
     expect(slice.extent).toBe(CHUNK_SIZE);
     expect(chunk.seaLevel).toBe(world.water.seaLevel);
+    let carvedNodes = 0;
     for (let iy = 0; iy < slice.gridSize; iy++) {
       for (let ix = 0; ix < slice.gridSize; ix++) {
-        expect(slice.at(ix, iy)).toBeCloseTo(hf.sample(slice.worldX(ix), slice.worldY(iy)), 6);
+        const x = slice.worldX(ix);
+        const y = slice.worldY(iy);
+        // The heights are kept as 32-bit floats, so they agree to a tenth of a
+        // millimetre rather than to the last bit.
+        expect(slice.at(ix, iy)).toBeCloseTo(layers.carve.heightAt(x, y), 4);
+        // Ground no road reaches is the ground the world was given.
+        if (layers.carve.roadAt(x, y) === -1) expect(slice.at(ix, iy)).toBeCloseTo(hf.sample(x, y), 4);
+        else carvedNodes++;
       }
     }
+    expect(carvedNodes).toBeGreaterThan(0);
+  });
+
+  it('levels the ground across a street on the slope', () => {
+    // The world is a plane tilted 1 % along x, so a street running down y sits
+    // in a bench: the ground either side of it comes back at the height of the
+    // street itself rather than at the height of the hillside.
+    const hf = new Heightfield(world.terrain);
+    const street = -2 * BLOCK;
+    // Midway between two of the cross streets, so only the one street is near.
+    const along = BLOCK / 2;
+    const bed = hf.sample(street, along);
+    for (const off of [-8, -4, 4, 8]) {
+      expect(layers.carve.heightAt(street + off, along)).toBeCloseTo(bed, 4);
+      // The natural ground there is not level with it, so the bench is the
+      // carve's doing and not the terrain's.
+      expect(Math.abs(hf.sample(street + off, along) - bed)).toBeGreaterThan(0.03);
+    }
+    // Out past the blend the hillside is untouched.
+    expect(layers.carve.heightAt(street + 40, along)).toBeCloseTo(hf.sample(street + 40, along), 6);
   });
 
   it('gives two neighbours the same heights along the edge they share', () => {

@@ -10,17 +10,17 @@
  * section 3 checks, and it is what "seamless by construction" means: no edge is
  * stitched afterwards, because neither side was ever cut apart.
  *
- * The layers are whole-map: the road graph, the footprint, the tensor field and
- * the parcel model. A parcel can be far larger than a chunk and is cut from the
- * whole coastline, so there is no smaller thing to derive it from. Building
- * them is the cost of the first chunk of a world; every chunk after that is a
- * clip. A {@link ChunkSource} therefore builds them once and answers chunk
- * requests without writing anything back.
+ * The layers are whole-map: the road graph, the footprint, the tensor field,
+ * the parcel model and the carve. A parcel can be far larger than a chunk and is
+ * cut from the whole coastline, so there is no smaller thing to derive it from.
+ * Building them is the cost of the first chunk of a world; every chunk after
+ * that is a clip. A {@link ChunkSource} therefore builds them once and answers
+ * chunk requests without writing anything back.
  */
 import { regionArea, regionOf, split, type Point, type Region } from '../core/geom.ts';
+import { buildCarve, type RoadCarve } from './carve.ts';
 import { buildFootprint, type RoadFootprint } from './footprint.ts';
 import { buildRoadGraph, type RoadGraph } from './graph.ts';
-import { Heightfield } from './heightfield.ts';
 import { buildParcels, type Parcel, type ParcelMap, type ParcelOwner } from './parcels.ts';
 import { buildTensorField } from './tensor.ts';
 import { TERRAIN_CELL } from './terrain.ts';
@@ -98,8 +98,10 @@ export interface WorldChunk {
   /** The ground the chunk covers. */
   bounds: ChunkBounds;
   /**
-   * Heights over the chunk: `CHUNK_CELLS + 1` samples each way, so the far row
-   * and column stand on the near ones of the next chunk.
+   * Heights over the chunk, with the roads carved into them (spec section 7.1):
+   * `CHUNK_CELLS + 1` samples each way, so the far row and column stand on the
+   * near ones of the next chunk. The world description keeps the natural ground
+   * the roads were traced on; this is the ground they leave.
    */
   terrain: HeightfieldData;
   /** Metres of the world's sea level, so the heights can be read without the world. */
@@ -118,6 +120,7 @@ export interface WorldLayers {
   graph: RoadGraph;
   footprint: RoadFootprint;
   parcels: ParcelMap;
+  carve: RoadCarve;
 }
 
 /**
@@ -128,7 +131,12 @@ export function buildLayers(world: WorldDescription): WorldLayers {
   const graph = buildRoadGraph(world.roads);
   const footprint = buildFootprint(world.roads, world.corridors, graph);
   const field = buildTensorField(world);
-  return { graph, footprint, parcels: buildParcels(world, footprint, graph, field) };
+  return {
+    graph,
+    footprint,
+    parcels: buildParcels(world, footprint, graph, field),
+    carve: buildCarve(world.terrain, world.roads),
+  };
 }
 
 /** The box around a piece of geometry, as the chunk overlap test wants it. */
@@ -153,7 +161,6 @@ interface Box {
 export class ChunkSource {
   readonly world: WorldDescription;
   readonly layers: WorldLayers;
-  private readonly terrain: Heightfield;
   /** The box around each road curve and each parcel, so a chunk tests a handful of them closely. */
   private readonly roadBoxes: Box[];
   private readonly parcelBoxes: Box[];
@@ -161,7 +168,6 @@ export class ChunkSource {
   constructor(world: WorldDescription, layers: WorldLayers = buildLayers(world)) {
     this.world = world;
     this.layers = layers;
-    this.terrain = new Heightfield(world.terrain);
     this.roadBoxes = world.roads.map((road) => boxOf(road.points));
     this.parcelBoxes = layers.parcels.parcels.map((parcel) => boxOf(parcel.region.outer));
   }
@@ -182,19 +188,21 @@ export class ChunkSource {
   }
 
   /**
-   * The heights over a chunk. They are sampled off the world heightfield rather
-   * than copied out of it: the map's grid is centred on the origin and the
-   * chunk grid is anchored on it, so the two need not line up. Sampling agrees
-   * along a shared edge because both neighbours ask the same field the same
-   * question at the same place.
+   * The heights over a chunk, with the roads carved into them (spec section
+   * 7.1). They are read off the carve rather than copied out of the world
+   * heightfield: the map's grid is centred on the origin and the chunk grid is
+   * anchored on it, so the two need not line up. Two neighbours agree along the
+   * edge they share because both ask the carve the same question at the same
+   * place, and it answers one place at a time.
    */
   private terrainOf(bounds: ChunkBounds): HeightfieldData {
     const gridSize = CHUNK_CELLS + 1;
     const heights = new Float32Array(gridSize * gridSize);
+    const carve = this.layers.carve;
     for (let iy = 0; iy < gridSize; iy++) {
       const y = bounds.minY + iy * TERRAIN_CELL;
       for (let ix = 0; ix < gridSize; ix++) {
-        heights[iy * gridSize + ix] = this.terrain.sample(bounds.minX + ix * TERRAIN_CELL, y);
+        heights[iy * gridSize + ix] = carve.heightAt(bounds.minX + ix * TERRAIN_CELL, y);
       }
     }
     return { gridSize, cellSize: TERRAIN_CELL, originX: bounds.minX, originY: bounds.minY, heights };

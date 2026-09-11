@@ -5,6 +5,7 @@
 import { writeFileSync } from 'node:fs';
 import type { Region } from '../src/core/geom.ts';
 import { seedFromString } from '../src/core/rng.ts';
+import { buildCarve, carvedTerrain } from '../src/world/carve.ts';
 import { districtAt, layoutZones } from '../src/world/districts.ts';
 import { buildFootprint } from '../src/world/footprint.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
@@ -25,6 +26,13 @@ const zones = layoutZones(world.size, world.core, world.water);
 const t1 = performance.now();
 const tensor = buildTensorField(world);
 const fieldMs = performance.now() - t1;
+// The ground the roads leave (spec section 7.1). The relief below is shaded off
+// this rather than off the natural terrain, because this is the ground the game
+// shows: benches under the roads, cut and fill blending back into the hillside.
+const t1b = performance.now();
+const carve = buildCarve(world.terrain, world.roads);
+const ground = carvedTerrain(world.terrain, carve);
+const carveMs = performance.now() - t1b;
 
 const ZONE_TINT: Record<Zone, [number, number, number]> = {
   core: [255, 90, 90],
@@ -41,7 +49,7 @@ for (let iy = 0; iy < n; iy++) {
   for (let ix = 0; ix < n; ix++) {
     const x = hf.worldX(ix);
     const y = hf.worldY(iy);
-    const h = hf.at(ix, iy);
+    const h = ground.at(ix, iy);
     let r: number;
     let g: number;
     let b: number;
@@ -52,7 +60,7 @@ for (let iy = 0; iy < n; iy++) {
       b = 160 - d * 60;
     } else {
       const t = Math.min(1, h / 120);
-      const shade = 0.6 + 0.4 * (1 - Math.min(1, hf.slope(x, y) * 2));
+      const shade = 0.6 + 0.4 * (1 - Math.min(1, ground.slope(x, y) * 2));
       const tint = ZONE_TINT[districtAt(world.districts, zones, x, y).zone];
       r = (90 + t * 130) * 0.6 * shade + tint[0] * 0.4 * shade;
       g = (140 - t * 40) * 0.6 * shade + tint[1] * 0.4 * shade;
@@ -238,6 +246,20 @@ console.log(
     `generated in ${genMs.toFixed(0)} ms, tensor field in ${fieldMs.toFixed(0)} ms → ${out}`,
 );
 console.log(`  roads: ${perTier}`);
+let movedNodes = 0;
+let deepestCut = 0;
+let highestFill = 0;
+for (let i = 0; i < ground.heights.length; i++) {
+  const change = (ground.heights[i] as number) - (world.terrain.heights[i] as number);
+  if (change === 0) continue;
+  movedNodes++;
+  deepestCut = Math.max(deepestCut, -change);
+  highestFill = Math.max(highestFill, change);
+}
+console.log(
+  `  carve: ${carve.segments} segments on the ground moved ${((movedNodes / ground.heights.length) * 100).toFixed(0)} % of the grid, ` +
+    `deepest cut ${deepestCut.toFixed(1)} m, highest fill ${highestFill.toFixed(1)} m, built in ${carveMs.toFixed(0)} ms`,
+);
 console.log(
   `  footprint: ${footprint.regions.length} pieces with ` +
     `${footprint.regions.reduce((k, r) => k + r.holes.length, 0)} blocks inside them, ` +

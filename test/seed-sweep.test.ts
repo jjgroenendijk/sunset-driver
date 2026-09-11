@@ -10,6 +10,15 @@ import {
   type ChunkRoad,
   type WorldChunk,
 } from '../src/world/chunks.ts';
+import {
+  benchHalfWidth,
+  buildCarve,
+  CARVE_BLEND,
+  CARVE_CUT,
+  CARVE_FILL,
+  carvedTerrain,
+  type RoadCarve,
+} from '../src/world/carve.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import type { RoadFootprint } from '../src/world/footprint.ts';
 import { buildRoadGraph, type GradeCrossing, type RoadEdge, type RoadGraph, type RoadNode } from '../src/world/graph.ts';
@@ -143,6 +152,42 @@ const MAX_UNREACHED_SHARE = 0.15;
  * under an elevated deck all come later; until then no parcel carries them.
  */
 const ASSIGNED_OWNERS = new Set<ParcelOwner>(['building', 'park', 'car-park', 'plaza', 'ground']);
+/**
+ * Metres a road point may stand off the carved ground (spec section 7.1). The
+ * ground is a grid of {@link TERRAIN_CELL} cells, so a bench about one cell wide
+ * comes back a little rounded; this is the room that rounding needs.
+ */
+const CARVE_CLEARANCE = 0.5;
+/**
+ * The share of a seed's road points that may stand further off than that: one
+ * in twenty. Two roads within a bench of each other at different heights — a
+ * street beside a highway embankment, two hairpins on a cliff — ask for two beds
+ * in one grid cell, and only one of them can have it. A seed of steep ground
+ * carries a few per cent of those; the worst of 200 seeds carries 3 %.
+ */
+const CARVE_STAND_OFF_SHARE = 0.05;
+/**
+ * Metres no road point may stand off the carved ground, however crowded the
+ * ground under it. The carve moves no sample of the ground further than its own
+ * cut and fill limit, and the ground between two samples is the line between
+ * them, so this holds by construction: a point further off than this is a carve
+ * that has gone wrong, not a grid that ran out of room.
+ */
+const CARVE_STAND_OFF = Math.max(CARVE_CUT, CARVE_FILL);
+/** Metres each side of a road centreline that the carriageway is asked to be level at. */
+const LEVEL_AT = 8;
+/** One road segment in this many is asked how level the ground beside it is. */
+const LEVEL_STRIDE = 4;
+/**
+ * Where in the spread of those places the levelness is read, and what it has to
+ * come to. The median says nothing — most roads run over gentle ground, which
+ * was near enough level already — so this reads the tail, where the carve does
+ * its work.
+ */
+const LEVEL_PERCENTILE = 0.9;
+const LEVEL_WITHIN = 0.5;
+/** How much closer to the road bed the carve has to bring that ground. */
+const LEVEL_GAIN = 4;
 /** Chunks each way of the origin in the block every seed is cut into (spec section 3). */
 const CHUNK_BLOCK = 1;
 /**
@@ -275,6 +320,13 @@ class PointGrid {
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[sorted.length >> 1] as number;
+}
+
+/** The value `share` of the way up a spread; 0.5 is the median. */
+function percentile(values: number[], share: number): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const at = Math.min(sorted.length - 1, Math.floor(sorted.length * share));
+  return at < 0 ? 0 : (sorted[at] as number);
 }
 
 function heightsHash(h: Float32Array): number {
@@ -423,8 +475,19 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       graph: graphOf(seed),
       footprint: footprintOf(seed),
       parcels: parcelsOf(seed),
+      carve: carveOf(seed),
     });
     sources.set(seed, built);
+    return built;
+  };
+  /** The carve of a seed, built once however many tests ask about it. */
+  const carves = new Map<number, RoadCarve>();
+  const carveOf = (seed: number): RoadCarve => {
+    const known = carves.get(seed);
+    if (known !== undefined) return known;
+    const world = worlds.get(seed) as WorldDescription;
+    const built = buildCarve(world.terrain, world.roads);
+    carves.set(seed, built);
     return built;
   };
   /** The graph of a seed, built once however many tests ask about it. */
@@ -908,6 +971,104 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     }
   });
 
+  it('carves every road into the ground it stands on and leaves the rest of the hillside alone', () => {
+    // Spec section 7.1: the ground under the network is cut to the line the road
+    // drives, the cut and fill blend back into the hillside, and a deck or a
+    // bore leaves the terrain alone. A road is never draped over the hill.
+    //
+    // Every point of a curve stands on the line that curve drives, which is the
+    // natural ground under it, so the carved ground there should be the same
+    // height: nothing floats, nothing sinks. Two things stop that from being
+    // exact. The carved ground is a grid of cells TERRAIN_CELL metres across,
+    // and the bench cut for a street is about one cell wide; and where two roads
+    // run within a bench of each other at different heights — a street beside a
+    // highway embankment, two hairpins on a cliff — one grid cannot hold both
+    // beds at once. So this asks for two things: almost every point is within
+    // CARVE_CLEARANCE of the ground, and none of them stands further off it than
+    // CARVE_STAND_OFF.
+    for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
+      const w = worlds.get(seed) as WorldDescription;
+      const carve = carveOf(seed);
+      const natural = new Heightfield(w.terrain);
+      const carved = carvedTerrain(w.terrain, carve);
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+
+      let points = 0;
+      let standingOff = 0;
+      // How far the ground beside a road stands off the road bed, before the
+      // carve and after it, at every place the pair is measured.
+      const wasLevel: number[] = [];
+      const isLevel: number[] = [];
+      for (const road of w.roads) {
+        const structures = new Set([...road.bridges, ...road.tunnels]);
+        for (let i = 0; i + 1 < road.points.length; i++) {
+          const a = road.points[i] as Point;
+          const b = road.points[i + 1] as Point;
+          const where = `${road.tier} ${road.id} segment ${i}`;
+          if (structures.has(i)) {
+            // Nothing under a deck or over a bore is this road's to carve. Only
+            // a long one is asked: the ground beside a short one is within reach
+            // of the abutment or the portal at either end, which is on the
+            // ground and does carve. The ground may still belong to another
+            // road, one the deck flies over.
+            const reach = benchHalfWidth(road.tier) + CARVE_BLEND;
+            const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+            if (Math.hypot(b.x - a.x, b.y - a.y) > 2 * reach && carve.roadAt(mid.x, mid.y) === road.id) {
+              fault(`${where} stands off the ground but carves it`);
+            }
+            continue;
+          }
+          // A point between two segments on the ground stands on the carved
+          // ground. One beside a deck or a bore does not: the ground there is
+          // the ground the road leaves, which is why it leaves it.
+          if (i > 0 && !structures.has(i - 1)) {
+            const stand = Math.abs(natural.sample(a.x, a.y) - carved.sample(a.x, a.y));
+            points++;
+            if (stand > CARVE_CLEARANCE) standingOff++;
+            if (stand > CARVE_STAND_OFF) fault(`${road.tier} ${road.id} point ${i} stands ${stand.toFixed(1)} m off the ground`);
+          }
+          // Level across the carriageway: the bed at the middle of the segment,
+          // against the ground a few metres either side of it.
+          const length = Math.hypot(b.x - a.x, b.y - a.y);
+          if (length === 0 || i % LEVEL_STRIDE !== 0) continue;
+          const bed = (natural.sample(a.x, a.y) + natural.sample(b.x, b.y)) / 2;
+          const nx = (-(b.y - a.y) / length) * LEVEL_AT;
+          const ny = ((b.x - a.x) / length) * LEVEL_AT;
+          for (const side of [1, -1]) {
+            const x = (a.x + b.x) / 2 + nx * side;
+            const y = (a.y + b.y) / 2 + ny * side;
+            wasLevel.push(Math.abs(natural.sample(x, y) - bed));
+            isLevel.push(Math.abs(carved.sample(x, y) - bed));
+          }
+        }
+      }
+
+      if (points === 0) fault('has no road on the ground at all');
+      if (standingOff > points * CARVE_STAND_OFF_SHARE) {
+        fault(`leaves ${((standingOff / points) * 100).toFixed(1)} % of its road points more than ${CARVE_CLEARANCE} m off the ground`);
+      }
+      // The ground a few metres off a road is level with the road bed, and it
+      // was not before: a road that took the hillside as it found it would come
+      // back with the two numbers about equal.
+      const before = percentile(wasLevel, LEVEL_PERCENTILE);
+      const after = percentile(isLevel, LEVEL_PERCENTILE);
+      if (after > LEVEL_WITHIN) fault(`leaves the ground ${LEVEL_AT} m off a road ${after.toFixed(2)} m off the road bed`);
+      if (after * LEVEL_GAIN > before) fault(`levels the ground ${LEVEL_AT} m off a road from ${before.toFixed(2)} m to only ${after.toFixed(2)} m`);
+
+      // Ground well clear of every road is the ground the world was given.
+      const grid = new PointGrid(w.size, 40, w.roads);
+      for (const p of landPoints(w, CLEAR_SAMPLES, 0xca4e)) {
+        if (grid.nearest(p.x, p.y) < CLEAR_OF_ROADS) continue;
+        if (carve.roadAt(p.x, p.y) !== -1) fault(`carves ground ${CLEAR_OF_ROADS} m clear of every road`);
+        if (carved.sample(p.x, p.y) !== natural.sample(p.x, p.y)) fault(`moves ground ${CLEAR_OF_ROADS} m clear of every road`);
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
   it('gives every corridor a strip of ground that no other corridor stands on', () => {
     // Spec sections 1.1 and 6.3: a corridor claims its ground at the moment it
     // is laid, so two of them cannot share any. The claim makes that true; this
@@ -1237,6 +1398,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
         graph: buildRoadGraph(world.roads),
         footprint: parts.footprint,
         parcels: parts.parcels,
+        carve: buildCarve(world.terrain, world.roads),
       });
       // The far chunk first, before this source has cut anything at all.
       for (const [cx, cy] of [...chunkKeys()].reverse()) {
