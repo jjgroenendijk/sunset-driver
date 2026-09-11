@@ -8,6 +8,7 @@ import {
   roadSection,
   type SectionPoint,
 } from '../src/render/road-mesh.ts';
+import { buildWaterAttributes } from '../src/render/water.ts';
 import { hashInts } from '../src/core/hash.ts';
 import { compareNumbers } from '../src/core/sort.ts';
 import { pointInRegions, regionArea, type Region } from '../src/core/geom.ts';
@@ -164,6 +165,17 @@ function wetFraction(hf: Heightfield, a: Point, b: Point, seaLevel: number): num
     if (hf.sample(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t) < seaLevel) wet++;
   }
   return wet / (steps + 1);
+}
+
+/**
+ * True where the ground is dry for two cells of the water sheet each way, which
+ * is further than the sheet reaches inland past a shore.
+ */
+function standsClearOfWater(hf: Heightfield, x: number, y: number, seaLevel: number, cell: number): boolean {
+  for (let j = -2; j <= 2; j++) {
+    for (let i = -2; i <= 2; i++) if (hf.sample(x + i * cell, y + j * cell) < seaLevel) return false;
+  }
+  return true;
 }
 
 /** True when the segment spans the crossing, either way round. */
@@ -721,6 +733,40 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       const hf = new Heightfield(w.terrain);
       for (const p of w.water.river.path) expect(hf.sample(p.x, p.y)).toBeLessThan(w.water.seaLevel);
       expect(hf.sample(w.water.harbour.x, w.water.harbour.y)).toBeLessThan(-5);
+    }
+  });
+
+  it('lays one water surface over the sea, the straits, the river and the harbour', () => {
+    for (const seed of seeds) {
+      const w = worlds.get(seed) as WorldDescription;
+      const hf = new Heightfield(w.terrain);
+      const water = buildWaterAttributes(w);
+      // The cells the sheet drew, as `column,row` of its grid.
+      const drawn = new Set<string>();
+      for (let t = 0; t < water.indices.length; t += 6) {
+        const corner = water.indices[t] as number;
+        drawn.add(`${corner % water.gridSize},${Math.floor(corner / water.gridSize)}`);
+      }
+      const covers = (p: Point): boolean =>
+        drawn.has(`${Math.floor((p.x - water.minX) / water.cell)},${Math.floor((p.y - water.minY) / water.cell)}`);
+
+      expect(covers(w.water.harbour), `seed ${seed}: the harbour is dry`).toBe(true);
+      // The river is the narrowest water on the map, so it is what says whether
+      // the sheet is cut finely enough to hold a channel.
+      for (const p of w.water.river.path) {
+        expect(covers(p), `seed ${seed}: the river at ${p.x.toFixed(0)}, ${p.y.toFixed(0)} is dry`).toBe(true);
+      }
+      for (const c of w.water.crossings) {
+        const mid = { x: (c.from.x + c.to.x) / 2, y: (c.from.y + c.to.y) / 2 };
+        if (hf.sample(mid.x, mid.y) >= w.water.seaLevel) continue;
+        expect(covers(mid), `seed ${seed}: the strait between ${c.fromIsland} and ${c.toIsland} is dry`).toBe(true);
+      }
+      // Dry ground carries no water: a district that stands clear of the shore
+      // has none of the sheet over it.
+      for (const d of w.districts) {
+        if (!standsClearOfWater(hf, d.x, d.y, w.water.seaLevel, water.cell)) continue;
+        expect(covers(d), `seed ${seed}: water stands over ${d.name}`).toBe(false);
+      }
     }
   });
 
