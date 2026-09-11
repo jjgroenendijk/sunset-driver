@@ -14,10 +14,11 @@
  * scene runs the steps against its frame budget and stops when the budget is
  * spent; a batch half filled is drawn as far as it is filled. One step is
  * indivisible, because a geometry is copied into a batch whole, and it is the
- * only thing that overruns the slice.
+ * only thing that overruns the slice. A batch a worker packed arrives with its
+ * buffers already allocated, so a step is a copy and nothing else.
  */
-import { BatchedMesh, Matrix4, type BufferGeometry, type Material } from 'three';
-import { unpackGeometry, type PackedGeometry, type PackedPart } from './chunk-payload.ts';
+import { BatchedMesh, BufferAttribute, Matrix4, type BufferGeometry, type Material } from 'three';
+import { packedVertexCount, unpackGeometry, type PackedBatch, type PackedGeometry } from './chunk-payload.ts';
 
 /** One thing to draw: a geometry, and where it stands if not at the origin. */
 export interface BatchPart {
@@ -62,18 +63,14 @@ export function fillOf(parts: readonly BatchPart[], material: Material): BatchFi
 }
 
 /**
- * Prepare a batch of parts a worker built (spec section 9.1). The batch is
- * sized off the arrays, so nothing is unpacked until its step runs and the
- * frame is charged for one part at a time.
+ * Prepare a batch of parts a worker built (spec section 9.1). The batch draws
+ * from the storage the worker allocated, so nothing is allocated or unpacked
+ * until a step runs and the frame is charged for one copy at a time.
  */
-export function fillOfPacked(parts: readonly PackedPart[], material: Material): BatchFill {
-  let vertices = 0;
-  let indices = 0;
-  for (const part of parts) {
-    vertices += vertexCount(part.geometry);
-    indices += part.geometry.index?.length ?? 0;
-  }
-  const mesh = new BatchedMesh(parts.length, vertices, indices, material);
+export function fillOfPacked(batch: PackedBatch, material: Material): BatchFill {
+  const { parts, storage } = batch;
+  const mesh = new BatchedMesh(parts.length, packedVertexCount(storage), storage.index?.length ?? 0, material);
+  if (parts.length > 0) adoptStorage(mesh, storage);
   const steps = parts.map((part) => () => {
     const geometry = unpackGeometry(part.geometry);
     const instance = mesh.addInstance(mesh.addGeometry(geometry));
@@ -89,8 +86,8 @@ export function batchOf(parts: readonly BatchPart[], material: Material): Batche
 }
 
 /** Pack parts a worker built into a single batch, all at once. */
-export function batchOfPacked(parts: readonly PackedPart[], material: Material): BatchedMesh {
-  return filled(fillOfPacked(parts, material));
+export function batchOfPacked(batch: PackedBatch, material: Material): BatchedMesh {
+  return filled(fillOfPacked(batch, material));
 }
 
 function filled(fill: BatchFill): BatchedMesh {
@@ -98,8 +95,17 @@ function filled(fill: BatchFill): BatchedMesh {
   return fill.mesh;
 }
 
-/** Vertices a packed geometry holds, read off its positions. */
-function vertexCount(geometry: PackedGeometry): number {
-  const position = geometry.attributes.find((attribute) => attribute.name === 'position');
-  return position === undefined ? 0 : position.array.length / position.itemSize;
+/**
+ * Give a batch the buffers a worker allocated for it. `BatchedMesh` allocates
+ * its own when the first geometry is added, unless it has been told it already
+ * has them, and it has no public way to be told: the flag is set here and
+ * nowhere else. `test/streaming.test.ts` pins that the batch draws from these
+ * very arrays, which is what fails if a three.js upgrade renames the flag.
+ */
+function adoptStorage(mesh: BatchedMesh, storage: PackedGeometry): void {
+  for (const attribute of storage.attributes) {
+    mesh.geometry.setAttribute(attribute.name, new BufferAttribute(attribute.array, attribute.itemSize, attribute.normalized));
+  }
+  if (storage.index !== undefined) mesh.geometry.setIndex(new BufferAttribute(storage.index, 1));
+  (mesh as unknown as { _geometryInitialized: boolean })._geometryInitialized = true;
 }

@@ -5,7 +5,7 @@ import { createSimState, stepSim } from '../src/sim/simulation.ts';
 import { MeshBasicMaterial, type BatchedMesh, type Material } from 'three';
 import { fillOfPacked } from '../src/render/batch.ts';
 import { buildChunkBuildings, buildingLookup } from '../src/render/building-mesh.ts';
-import { buildChunkPayload, chunkLookups, type ChunkPayload } from '../src/render/chunk-payload.ts';
+import { buildChunkPayload, chunkLookups, type ChunkPayload, type PackedBatch } from '../src/render/chunk-payload.ts';
 import { groundGeometry } from '../src/render/ground.ts';
 import { FRAME_BUDGET_MS } from '../src/render/quality.ts';
 import { buildCarve } from '../src/world/carve.ts';
@@ -269,31 +269,35 @@ function chunkSourceOf(world: WorldDescription): ChunkSource {
  * plain ones, because what is measured is the copy into the batch and not what
  * the batch is drawn with. The plants and the lamps are left out: each is a
  * copy of one of a handful of small models, and the dearest step is a
- * generated tower.
+ * generated tower. Each step says which piece it is, so a failure names it.
  */
-function uploadSteps(payload: ChunkPayload, material: Material): number[] {
+function uploadSteps(payload: ChunkPayload, material: Material): { piece: string; ms: number }[] {
   const meshes: BatchedMesh[] = [];
+  const pieces = ['ground'];
   const steps: (() => void)[] = [
     () => {
       groundGeometry(payload.ground).dispose();
     },
   ];
-  const batches = [
-    ...payload.roads.map((tier) => tier.parts.map((geometry) => ({ geometry }))),
-    payload.outlines,
-    payload.facades,
-    payload.blocks,
+  const batches: [string, PackedBatch][] = [
+    ...payload.roads.map((tier): [string, PackedBatch] => [`${tier.tier} roads`, tier.surface]),
+    ['outlines', payload.outlines],
+    ['facades', payload.facades],
+    ['blocks', payload.blocks],
   ];
-  for (const parts of batches) {
-    if (parts.length === 0) continue;
-    const fill = fillOfPacked(parts, material);
+  for (const [name, batch] of batches) {
+    if (batch.parts.length === 0) continue;
+    const fill = fillOfPacked(batch, material);
     meshes.push(fill.mesh);
-    steps.push(...fill.steps);
+    fill.steps.forEach((step, i) => {
+      steps.push(step);
+      pieces.push(`${name} part ${i}`);
+    });
   }
-  const times = steps.map((step) => {
+  const times = steps.map((step, i) => {
     const started = performance.now();
     step();
-    return performance.now() - started;
+    return { piece: pieces[i] as string, ms: performance.now() - started };
   });
   for (const mesh of meshes) mesh.dispose();
   return times;
@@ -328,7 +332,11 @@ function uploadSteps(payload: ChunkPayload, material: Material): number[] {
       // chunk costs the most to build.
       const at = chunkAt(world.core.x, world.core.y);
       const chunk = source.chunk(at.cx, at.cy);
-      return bestUnder(2, BUDGET_MS.chunkBuildings, () => {
+      // The first run of a process costs about twice what the ones after it
+      // do, and warming the generator up on a few of the buildings first does
+      // not take that away: the run pays for the heap it grows. So a miss gets
+      // a third run, which costs nothing when the first run keeps the budget.
+      return bestUnder(RUNS, BUDGET_MS.chunkBuildings, () => {
         for (const one of buildChunkBuildings(chunk, lookup)) {
           one.shell.dispose();
           one.hull?.dispose();
@@ -350,18 +358,24 @@ function uploadSteps(payload: ChunkPayload, material: Material): number[] {
       // Building the payload is the worker's work and is not timed here; the
       // frame is charged only for the pieces of the upload. It is built once,
       // and each run uploads a copy, because an upload releases what it copies.
+      // The copy carries the storage of every batch, so the clone allocates it
+      // untimed, as the worker does.
       //
       // Each piece is scored on its fastest run, as `bestOf` scores a whole
-      // measurement: an upload allocates megabytes, so a collection lands in
-      // one piece of one run and would otherwise be read as its cost.
+      // measurement: a collection lands in one piece of one run and would
+      // otherwise be read as its cost.
       const payload = buildChunkPayload(chunk, lookups, 'near');
       const runs = [0, 1, 2].map(() => uploadSteps(structuredClone(payload), material));
-      const first = runs[0] as number[];
-      return Math.max(...first.map((_, i) => Math.min(...runs.map((run) => run[i] as number))));
+      let dearest = { piece: '', ms: 0 };
+      (runs[0] as { piece: string }[]).forEach(({ piece }, i) => {
+        const ms = Math.min(...runs.map((run) => (run[i] as { ms: number }).ms));
+        if (ms > dearest.ms) dearest = { piece: `seed ${world.seed}, ${piece}`, ms };
+      });
+      return dearest;
     });
     material.dispose();
-    const worst = Math.max(...times);
+    const worst = times.reduce((a, b) => (b.ms > a.ms ? b : a));
 
-    expect(worst, `${worst.toFixed(2)} ms worst piece`).toBeLessThan(BUDGET_MS.chunkUpload);
+    expect(worst.ms, `${worst.ms.toFixed(2)} ms worst piece: ${worst.piece}`).toBeLessThan(BUDGET_MS.chunkUpload);
   });
 });

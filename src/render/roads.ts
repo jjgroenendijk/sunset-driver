@@ -40,8 +40,8 @@ export class RoadScenery {
     const geometries: BufferGeometry[] = [];
     const steps: (() => void)[] = [];
     const surface = this.surfaces[tier.tier] as MeshStandardNodeMaterial;
-    if (tier.parts.length > 0) {
-      const fill = fillOfPacked(tier.parts.map((geometry) => ({ geometry })), surface);
+    if (tier.surface.parts.length > 0) {
+      const fill = fillOfPacked(tier.surface, surface);
       objects.push(fill.mesh);
       steps.push(...fill.steps);
     }
