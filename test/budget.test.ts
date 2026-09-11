@@ -4,7 +4,8 @@ import type { InputFrame } from '../src/sim/input.ts';
 import { createSimState, stepSim } from '../src/sim/simulation.ts';
 import { buildCarve } from '../src/world/carve.ts';
 import { buildFootprint, type RoadFootprint } from '../src/world/footprint.ts';
-import { buildParcels } from '../src/world/parcels.ts';
+import { buildBuildings } from '../src/world/buildings.ts';
+import { buildParcels, type ParcelMap } from '../src/world/parcels.ts';
 import { buildRoadGraph, type RoadGraph } from '../src/world/graph.ts';
 import { buildTensorField } from '../src/world/tensor.ts';
 import type { WorldDescription } from '../src/world/types.ts';
@@ -63,6 +64,21 @@ function footprintOf(world: WorldDescription): RoadFootprint {
   if (known !== undefined) return known;
   const built = buildFootprint(world.roads, world.corridors, graphOf(world));
   footprints.set(world.seed, built);
+  return built;
+}
+
+/**
+ * The parcels of a measured world, kept the same way: the test that measures
+ * cutting them leaves its last cut here, so the buildings stand on parcels
+ * nobody paid for twice.
+ */
+const parcelMaps = new Map<number, ParcelMap>();
+
+function parcelsOf(world: WorldDescription): ParcelMap {
+  const known = parcelMaps.get(world.seed);
+  if (known !== undefined) return known;
+  const built = buildParcels(world, footprintOf(world), graphOf(world), buildTensorField(world));
+  parcelMaps.set(world.seed, built);
   return built;
 }
 
@@ -160,10 +176,22 @@ describe('performance budgets', () => {
       const graph = graphOf(world);
       const footprint = footprintOf(world);
       const field = buildTensorField(world);
-      return bestOf(2, () => void buildParcels(world, footprint, graph, field));
+      // Keep the last cut: the buildings below stand on it.
+      return bestOf(2, () => parcelMaps.set(world.seed, buildParcels(world, footprint, graph, field)));
     });
     const worst = Math.max(...times);
 
     expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.parcels);
+  });
+
+  it('lays the buildings of a world within its budget', () => {
+    const times = measuredWorlds().slice(0, HEAVY_WORLDS).map((world) => {
+      const graph = graphOf(world);
+      const parcels = parcelsOf(world);
+      return bestOf(RUNS, () => void buildBuildings(world, parcels, graph));
+    });
+    const worst = Math.max(...times);
+
+    expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.buildings);
   });
 });

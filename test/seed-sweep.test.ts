@@ -11,7 +11,7 @@ import {
 import { buildWaterAttributes } from '../src/render/water.ts';
 import { hashInts } from '../src/core/hash.ts';
 import { compareNumbers } from '../src/core/sort.ts';
-import { pointInRegions, regionArea, type Region } from '../src/core/geom.ts';
+import { pointInRegion, pointInRegions, regionArea, type Region } from '../src/core/geom.ts';
 import {
   ChunkSource,
   chunkBounds,
@@ -30,6 +30,16 @@ import {
   type RoadCarve,
 } from '../src/world/carve.ts';
 import { BEACH_REACH, BEACH_RISE, isResort, MAX_SAND, MIN_BEACH, MIN_PIER, MIN_SAND, SHORE_STEP } from '../src/world/beaches.ts';
+import {
+  buildBuildings,
+  FRONT_REACH,
+  MIN_LOT_AREA,
+  ZONE_BUILDINGS,
+  ZONE_LOTS,
+  type Building,
+  type BuildingKind,
+  type BuildingMap,
+} from '../src/world/buildings.ts';
 import { MIN_BOARDWALK } from '../src/world/roads.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import type { RoadFootprint } from '../src/world/footprint.ts';
@@ -40,7 +50,7 @@ import type { Parcel, ParcelMap, ParcelOwner } from '../src/world/parcels.ts';
 import { MITRE_SHIFT, RoadRibbons } from '../src/world/ribbon.ts';
 import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
 import { coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
-import { TIERS } from '../src/world/tiers.ts';
+import { footprintHalfWidth, TIERS } from '../src/world/tiers.ts';
 import type { Beach, Corridor, Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
 import { landPoints, pointInRing, ringArea, ringsOverlap, stableJson, sweepSeeds } from './helpers.ts';
 import { buildWorlds, type PooledWorld } from './world-pool.ts';
@@ -80,6 +90,15 @@ function distanceToSegment(p: Point, a: Point, b: Point): number {
   let t = lengthSquared > 0 ? ((p.x - a.x) * vx + (p.y - a.y) * vy) / lengthSquared : 0;
   t = t < 0 ? 0 : t > 1 ? 1 : t;
   return Math.hypot(p.x - (a.x + vx * t), p.y - (a.y + vy * t));
+}
+
+/** How far a place stands from a line. */
+function distanceToLine(p: Point, line: readonly Point[]): number {
+  let best = Infinity;
+  for (let i = 0; i + 1 < line.length; i++) {
+    best = Math.min(best, distanceToSegment(p, line[i] as Point, line[i + 1] as Point));
+  }
+  return best;
 }
 
 /** The middle of a ring's corners. */
@@ -234,6 +253,49 @@ const MAX_UNREACHED_SHARE = 0.15;
  * then no parcel carries them.
  */
 const ASSIGNED_OWNERS = new Set<ParcelOwner>(['building', 'park', 'car-park', 'plaza', 'beach', 'ground']);
+/** Buildings a world has to be given; a map that comes back with fewer has collapsed. */
+const MIN_BUILDINGS = 200;
+/**
+ * The kind spec section 8.2 gives each zone its character from. The sweep asks
+ * that it is the commonest one the zone builds, so the core reads as towers and
+ * the suburbs as houses however the district weights fall.
+ */
+const SIGNATURE_KIND: Record<Zone, BuildingKind> = {
+  core: 'tower',
+  inner: 'mid-rise',
+  industrial: 'warehouse',
+  suburban: 'house',
+  outskirts: 'house',
+  wilderness: 'house',
+};
+/**
+ * The least share of a zone's buildings the signature kind may be, over all the
+ * seeds the test reads together. The figures are what the generator gives today
+ * with room for a seed whose districts are poor or thin: the pooled shares are
+ * about 48 % in the core, 50 % inner, 100 % industrial, 83 % suburban, 64 %
+ * outskirts and 64 % wilderness.
+ */
+const MIN_SIGNATURE_SHARE: Record<Zone, number> = {
+  core: 0.3,
+  inner: 0.35,
+  industrial: 0.95,
+  suburban: 0.6,
+  outskirts: 0.4,
+  wilderness: 0.4,
+};
+/** Buildings a zone needs before its distribution is asked about at all. */
+const MIN_KIND_SAMPLES = 60;
+/**
+ * Metres past the ground its road claims, the slack `buildings.ts` allows a
+ * frontage and the setback its zone lays it at, that the nearer corner of a
+ * building's front edge may stand. The metre is for the parcel boundary being
+ * sampled rather than followed; over 200 seeds the worst is 1.5 m inside it.
+ */
+const FRONT_SLACK = 1;
+/** Metres a building's front may stand from the middle of its own front edge. */
+const FRONT_DRIFT = 0.01;
+/** Radians a building may face away from the line out of its lot. Both come off the same corners. */
+const FACING_DRIFT = 1e-3;
 /**
  * Metres of beach outside the core that every seed has to carry, with a
  * boardwalk along it and a pier off it (spec section 7.3). The rule is that the
@@ -626,6 +688,19 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     const world = worlds.get(seed) as WorldDescription;
     const built = buildCarve(world.terrain, world.roads);
     carves.set(seed, built);
+    return built;
+  };
+  /**
+   * The buildings of a seed, laid once however many tests ask about them. They
+   * are laid here rather than in the pool: they are cheap next to the parcels
+   * they stand on, and the parcels are what the pool is for.
+   */
+  const buildingMaps = new Map<number, BuildingMap>();
+  const buildingsOf = (seed: number): BuildingMap => {
+    const known = buildingMaps.get(seed);
+    if (known !== undefined) return known;
+    const built = buildBuildings(worlds.get(seed) as WorldDescription, parcelsOf(seed), graphOf(seed));
+    buildingMaps.set(seed, built);
     return built;
   };
   /** The graph of a seed, built once however many tests ask about it. */
@@ -1447,6 +1522,127 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
         }
       }
       expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
+  it('lays every building on a lot inside its parcel, fronting a road that reaches it', () => {
+    // Spec section 10.3: a parcel the zone gave to a building group carries a
+    // row of buildings along its road frontage. A lot stands wholly inside its
+    // parcel and no two lots of one parcel meet, so nothing is nudged apart
+    // afterwards here either. Every lot fronts a road its parcel already lists,
+    // and those are graph edges, so every building stands on the one road
+    // network and can be driven to.
+    const tally: Record<Zone, Partial<Record<BuildingKind, number>>> = {
+      core: {},
+      inner: {},
+      industrial: {},
+      suburban: {},
+      outskirts: {},
+      wilderness: {},
+    };
+    for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
+      const w = worlds.get(seed) as WorldDescription;
+      const graph = graphOf(seed);
+      const { parcels } = parcelsOf(seed);
+      const { buildings } = buildingsOf(seed);
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+
+      if (buildings.length < MIN_BUILDINGS) fault(`lays only ${buildings.length} buildings`);
+      /** The lots of each parcel, so the pairs of one parcel are checked and no others. */
+      const lotsOn = new Map<number, Building[]>();
+      for (let i = 0; i < buildings.length; i++) {
+        const building = buildings[i] as Building;
+        const where = `building ${i}`;
+        if (building.id !== i) fault(`${where} is numbered ${building.id}`);
+        const parcel = parcels[building.parcel];
+        if (parcel === undefined) {
+          fault(`${where} stands on parcel ${building.parcel}, which does not exist`);
+          continue;
+        }
+        if (parcel.owner !== 'building') fault(`${where} stands on a ${parcel.owner} parcel`);
+        if (building.district !== parcel.district || building.zone !== parcel.zone) {
+          fault(`${where} disagrees with its parcel about where it stands`);
+        }
+        if (w.districts[building.district] === undefined) fault(`${where} is in district ${building.district}, which does not exist`);
+
+        const spec = ZONE_LOTS[building.zone];
+        if (building.lot.length !== 4) fault(`${where} has a lot of ${building.lot.length} corners`);
+        if (ringArea(building.lot) <= 0) fault(`${where} has a lot wound the wrong way`);
+        if (Math.abs(ringArea(building.lot) - building.area) > 1e-6) fault(`${where} misreports its lot`);
+        if (building.width + 1e-6 < spec.minWidth || building.depth + 1e-6 < spec.minDepth) {
+          fault(`${where} has a lot ${building.width.toFixed(1)} m by ${building.depth.toFixed(1)} m, under what its zone lays`);
+        }
+        // The kind fits the zone and the lot: a suburban parcel has no tower on
+        // its table at all, and no lot carries a kind it is too small for.
+        if (!ZONE_BUILDINGS[building.zone].some((entry) => entry.kind === building.kind)) {
+          fault(`${where} is a ${building.kind}, which the ${building.zone} does not build`);
+        }
+        if (building.area + 1e-6 < MIN_LOT_AREA[building.kind]) {
+          fault(`${where} is a ${building.kind} on ${building.area.toFixed(0)} m²`);
+        }
+        // The lot never leaves the parcel.
+        for (const corner of building.lot) {
+          if (!pointInRegion(corner, parcel.region)) fault(`${where} has a lot corner outside its parcel`);
+        }
+        // It fronts one of the roads the parcel runs along, and stands on the
+        // ground that road claims, plus the setback its zone lays it at.
+        if (!parcel.roads.includes(building.road)) {
+          fault(`${where} fronts edge ${building.road}, which does not run along its parcel`);
+        } else {
+          const edge = graph.edges[building.road] as RoadEdge;
+          const line = graph.edgePoints(building.road);
+          const front = [building.lot[0] as Point, building.lot[1] as Point];
+          const gap = Math.min(distanceToLine(front[0] as Point, line), distanceToLine(front[1] as Point, line));
+          const reach = footprintHalfWidth(edge.tier) + FRONT_REACH + spec.setback + FRONT_SLACK;
+          if (gap > reach) fault(`${where} stands ${gap.toFixed(1)} m from the ${edge.tier} it fronts`);
+        }
+        // The front is the middle of the lot's first edge, and it looks out of
+        // the lot, across the frontage: the way it faces is the way from the
+        // back of the lot to that edge.
+        const front = middleOf([building.lot[0] as Point, building.lot[1] as Point]);
+        const back = middleOf([building.lot[2] as Point, building.lot[3] as Point]);
+        if (Math.hypot(front.x - building.front.x, front.y - building.front.y) > FRONT_DRIFT) {
+          fault(`${where} puts its front somewhere other than the middle of its front edge`);
+        }
+        const facing = Math.atan2(front.y - back.y, front.x - back.x);
+        const turned = Math.abs(Math.atan2(Math.sin(building.facing - facing), Math.cos(building.facing - facing)));
+        if (turned > FACING_DRIFT) fault(`${where} faces ${turned.toFixed(2)} rad away from its own frontage`);
+
+        const zoneTally = tally[building.zone];
+        zoneTally[building.kind] = (zoneTally[building.kind] ?? 0) + 1;
+        const known = lotsOn.get(building.parcel);
+        if (known === undefined) lotsOn.set(building.parcel, [building]);
+        else known.push(building);
+      }
+
+      for (const parcel of parcels) {
+        const lots = lotsOn.get(parcel.id) ?? [];
+        for (let i = 0; i < lots.length; i++) {
+          for (let k = i + 1; k < lots.length; k++) {
+            const a = lots[i] as Building;
+            const b = lots[k] as Building;
+            if (ringsOverlap(a.lot, b.lot)) fault(`buildings ${a.id} and ${b.id} share the ground of parcel ${parcel.id}`);
+          }
+        }
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+
+    // Spec section 8.2: the zone's character shows in what it builds. Pooled
+    // over the seeds, because a zone of one seed can be a handful of buildings.
+    for (const zone of ['core', 'inner', 'industrial', 'suburban', 'outskirts', 'wilderness'] as Zone[]) {
+      const row = tally[zone];
+      const kinds = ZONE_BUILDINGS[zone];
+      let total = 0;
+      for (const entry of kinds) total += row[entry.kind] ?? 0;
+      if (total < MIN_KIND_SAMPLES) continue;
+      const signature = SIGNATURE_KIND[zone];
+      const share = (row[signature] ?? 0) / total;
+      const spread = kinds.map((entry) => `${entry.kind} ${(((row[entry.kind] ?? 0) / total) * 100).toFixed(0)} %`).join(', ');
+      expect(share, `${zone} of ${total} buildings: ${spread}`).toBeGreaterThanOrEqual(MIN_SIGNATURE_SHARE[zone]);
     }
   });
 

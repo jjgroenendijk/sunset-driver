@@ -11,6 +11,7 @@ import { buildFootprint } from '../src/world/footprint.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { isResort } from '../src/world/beaches.ts';
+import { buildBuildings, type BuildingKind } from '../src/world/buildings.ts';
 import { buildParcels, type ParcelOwner } from '../src/world/parcels.ts';
 import { buildTensorField } from '../src/world/tensor.ts';
 import { generateWorld } from '../src/world/world.ts';
@@ -103,8 +104,9 @@ for (let iy = STROKE_STRIDE; iy < n - STROKE_STRIDE; iy += STROKE_STRIDE) {
 
 // The ground the roads claim (spec section 6.4), filled in tarmac. The blocks
 // between the roads are the holes in it, and become the parcels.
+const graph = buildRoadGraph(world.roads);
 const t2 = performance.now();
-const footprint = buildFootprint(world.roads, world.corridors, buildRoadGraph(world.roads));
+const footprint = buildFootprint(world.roads, world.corridors, graph);
 const footprintMs = performance.now() - t2;
 const FOOTPRINT_COL: [number, number, number] = [64, 62, 70];
 const fill = (region: Region, col: [number, number, number]): void => {
@@ -141,7 +143,7 @@ for (const region of footprint.regions) fill(region, FOOTPRINT_COL);
 // owner. Every one of them is filled, so ground the roads never reach shows
 // through as the bare terrain underneath.
 const t2b = performance.now();
-const parcels = buildParcels(world, footprint, buildRoadGraph(world.roads), tensor);
+const parcels = buildParcels(world, footprint, graph, tensor);
 const parcelMs = performance.now() - t2b;
 const OWNER_COL: Record<ParcelOwner, [number, number, number]> = {
   building: [200, 175, 150],
@@ -154,6 +156,25 @@ const OWNER_COL: Record<ParcelOwner, [number, number, number]> = {
   ground: [120, 140, 95],
 };
 for (const parcel of parcels.parcels) fill(parcel.region, OWNER_COL[parcel.owner] as [number, number, number]);
+
+// The buildings (spec section 10.3): one lot per building, laid on the road
+// frontage of the parcels the zone gave to a building group, in the colour of
+// what stands on it. The tan of a building parcel shows through where the lots
+// leave ground: the back gardens and the yards.
+const t2c = performance.now();
+const buildings = buildBuildings(world, parcels, graph);
+const buildingMs = performance.now() - t2c;
+const KIND_COL: Record<BuildingKind, [number, number, number]> = {
+  tower: [245, 245, 255],
+  'mid-rise': [195, 200, 220],
+  'shop-row': [235, 165, 80],
+  house: [225, 130, 120],
+  warehouse: [140, 145, 160],
+  roadhouse: [200, 115, 205],
+};
+for (const building of buildings.buildings) {
+  fill({ outer: building.lot, holes: [] }, KIND_COL[building.kind] as [number, number, number]);
+}
 
 // Roads: one colour per tier, highways heavy and dark, bridge decks in orange
 // so the strait crossings stand out, and bores through the ground in cyan.
@@ -296,6 +317,17 @@ console.log(
     `cut in ${parcelMs.toFixed(0)} ms — ` +
     (['building', 'park', 'car-park', 'plaza', 'beach', 'ground'] as ParcelOwner[])
       .map((o) => `${o} ${owners[o] ?? 0}`)
+      .join(', '),
+);
+const kinds = buildings.buildings.reduce<Partial<Record<BuildingKind, number>>>((tally, b) => {
+  tally[b.kind] = (tally[b.kind] ?? 0) + 1;
+  return tally;
+}, {});
+console.log(
+  `  buildings: ${buildings.buildings.length} on ${(buildings.area / 1e6).toFixed(2)} km² of lots, ` +
+    `placed in ${buildingMs.toFixed(0)} ms — ` +
+    (['tower', 'mid-rise', 'shop-row', 'house', 'warehouse', 'roadhouse'] as BuildingKind[])
+      .map((k) => `${k} ${kinds[k] ?? 0}`)
       .join(', '),
 );
 const resorts = world.beaches.filter(isResort);
