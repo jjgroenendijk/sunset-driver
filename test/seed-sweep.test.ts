@@ -22,7 +22,6 @@ import {
   CARVE_BLEND,
   CARVE_CUT,
   CARVE_FILL,
-  carvedTerrain,
   type RoadCarve,
 } from '../src/world/carve.ts';
 import { BEACH_REACH, BEACH_RISE, isResort, MAX_SAND, MIN_BEACH, MIN_PIER, MIN_SAND, SHORE_STEP } from '../src/world/beaches.ts';
@@ -45,7 +44,7 @@ import { LandMasses } from '../src/world/landmass.ts';
 import { ownerMaxArea, type Parcel, type ParcelMap, type ParcelOwner } from '../src/world/parcels.ts';
 import { MITRE_SHIFT, RoadRibbons } from '../src/world/ribbon.ts';
 import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
-import { coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
+import { CHUNK_TERRAIN_CELL, coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
 import { footprintHalfWidth, TIERS } from '../src/world/tiers.ts';
 import type { Beach, Corridor, Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
 import {
@@ -96,6 +95,28 @@ function distanceToSegment(p: Point, a: Point, b: Point): number {
   let t = lengthSquared > 0 ? ((p.x - a.x) * vx + (p.y - a.y) * vy) / lengthSquared : 0;
   t = t < 0 ? 0 : t > 1 ? 1 : t;
   return Math.hypot(p.x - (a.x + vx * t), p.y - (a.y + vy * t));
+}
+
+/**
+ * The carved ground at a place as a chunk draws it: the chunk grid is anchored
+ * on the origin and samples the carve every CHUNK_TERRAIN_CELL metres, and the
+ * ground between four samples is bilinear between them, as `Heightfield.sample`
+ * reads it. Reading the four samples here costs four carve lookups rather than
+ * a whole map of them.
+ */
+function chunkGroundAt(carve: RoadCarve, x: number, y: number): number {
+  const cell = CHUNK_TERRAIN_CELL;
+  const fx = Math.floor(x / cell);
+  const fy = Math.floor(y / cell);
+  const tx = x / cell - fx;
+  const ty = y / cell - fy;
+  const x0 = fx * cell;
+  const y0 = fy * cell;
+  const h00 = carve.heightAt(x0, y0);
+  const h10 = carve.heightAt(x0 + cell, y0);
+  const h01 = carve.heightAt(x0, y0 + cell);
+  const h11 = carve.heightAt(x0 + cell, y0 + cell);
+  return (h00 * (1 - tx) + h10 * tx) * (1 - ty) + (h01 * (1 - tx) + h11 * tx) * ty;
 }
 
 /** How far a place stands from a line. */
@@ -329,8 +350,9 @@ const BEACH_STRIDE = 3;
 const BOARDWALK_DRIFT = 3;
 /**
  * Metres a road point may stand off the carved ground (spec section 7.1). The
- * ground is a grid of {@link TERRAIN_CELL} cells, so a bench about one cell wide
- * comes back a little rounded; this is the room that rounding needs.
+ * ground the game draws is a grid of {@link CHUNK_TERRAIN_CELL} cells, so a
+ * bench a few cells wide comes back a little rounded; this is the room that
+ * rounding needs.
  */
 const CARVE_CLEARANCE = 0.5;
 /**
@@ -349,8 +371,13 @@ const CARVE_STAND_OFF_SHARE = 0.05;
  * that has gone wrong, not a grid that ran out of room.
  */
 const CARVE_STAND_OFF = Math.max(CARVE_CUT, CARVE_FILL);
-/** Metres each side of a road centreline that the carriageway is asked to be level at. */
-const LEVEL_AT = 8;
+/**
+ * Metres each side of a road centreline that the carriageway is asked to be
+ * level at. Only a tier whose bench reaches that far, with a chunk cell to
+ * spare for the grid to sample it, is asked: an alley's bench is narrower than
+ * this, and the ground beside it is the hillside blending back.
+ */
+const LEVEL_AT = 6;
 /** One road segment in this many is asked how level the ground beside it is. */
 const LEVEL_STRIDE = 4;
 /**
@@ -1267,18 +1294,20 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     // Every point of a curve stands on the line that curve drives, which is the
     // natural ground under it, so the carved ground there should be the same
     // height: nothing floats, nothing sinks. Two things stop that from being
-    // exact. The carved ground is a grid of cells TERRAIN_CELL metres across,
-    // and the bench cut for a street is about one cell wide; and where two roads
-    // run within a bench of each other at different heights — a street beside a
-    // highway embankment, two hairpins on a cliff — one grid cannot hold both
-    // beds at once. So this asks for two things: almost every point is within
-    // CARVE_CLEARANCE of the ground, and none of them stands further off it than
-    // CARVE_STAND_OFF.
+    // exact. The ground the game draws is the grid a chunk samples, of cells
+    // CHUNK_TERRAIN_CELL metres across, so a bench comes back rounded at its
+    // edges; and where two roads run within a bench of each other at different
+    // heights — a street beside a highway embankment, two hairpins on a cliff —
+    // one grid cannot hold both beds at once. So this asks for two things:
+    // almost every point is within CARVE_CLEARANCE of the ground, and none of
+    // them stands further off it than CARVE_STAND_OFF. The ground is read as a
+    // chunk reads it, off the grid anchored on the origin, without cutting
+    // every chunk of the map.
     for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
       const w = worlds.get(seed) as WorldDescription;
       const carve = carveOf(seed);
       const natural = new Heightfield(w.terrain);
-      const carved = carvedTerrain(w.terrain, carve);
+      const carved = { sample: (x: number, y: number): number => chunkGroundAt(carve, x, y) };
       let complaint: string | undefined;
       const fault = (text: string): void => {
         complaint ??= text;
@@ -1328,6 +1357,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
           // against the ground a few metres either side of it.
           const length = Math.hypot(b.x - a.x, b.y - a.y);
           if (length === 0 || i % LEVEL_STRIDE !== 0) continue;
+          if (benchHalfWidth(road.tier) < LEVEL_AT + CHUNK_TERRAIN_CELL) continue;
           const bed = (natural.sample(a.x, a.y) + natural.sample(b.x, b.y)) / 2;
           const nx = (-(b.y - a.y) / length) * LEVEL_AT;
           const ny = ((b.x - a.x) / length) * LEVEL_AT;
@@ -1357,7 +1387,11 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       for (const p of landPoints(w, CLEAR_SAMPLES, 0xca4e)) {
         if (grid.nearest(p.x, p.y) < CLEAR_OF_ROADS) continue;
         if (carve.roadAt(p.x, p.y) !== -1) fault(`carves ground ${CLEAR_OF_ROADS} m clear of every road`);
-        if (carved.sample(p.x, p.y) !== natural.sample(p.x, p.y)) fault(`moves ground ${CLEAR_OF_ROADS} m clear of every road`);
+        // The chunk grid samples the natural ground between the skeleton's own
+        // samples, so the two agree to rounding rather than to the last bit.
+        if (Math.abs(carved.sample(p.x, p.y) - natural.sample(p.x, p.y)) > 1e-6) {
+          fault(`moves ground ${CLEAR_OF_ROADS} m clear of every road`);
+        }
       }
       expect(complaint, `seed ${seed}`).toBeUndefined();
     }

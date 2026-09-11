@@ -24,20 +24,21 @@ import { buildFootprint, type RoadFootprint } from './footprint.ts';
 import { buildRoadGraph, type RoadGraph } from './graph.ts';
 import { buildParcels, type Parcel, type ParcelMap, type ParcelOwner } from './parcels.ts';
 import { buildTensorField } from './tensor.ts';
-import { TERRAIN_CELL } from './terrain.ts';
+import { CHUNK_TERRAIN_CELL, TERRAIN_CELL } from './terrain.ts';
 import type { HeightfieldData, RoadCurve, RoadTier, WorldDescription, Zone } from './types.ts';
 import { Vegetation, type Plant } from './vegetation.ts';
 import { generateWorld } from './world.ts';
 
-/** Terrain cells each way of one chunk. */
-const CHUNK_CELLS = 25;
-
 /**
- * Metres each way of one chunk. The chunk grid is anchored on the origin, so
- * chunk `(cx, cy)` covers `[cx * CHUNK_SIZE, (cx + 1) * CHUNK_SIZE)` each way
- * and a map 3 km to 6 km across is 12 to 24 chunks a side.
+ * Metres each way of one chunk: 25 cells of the skeleton's grid. The chunk grid
+ * is anchored on the origin, so chunk `(cx, cy)` covers
+ * `[cx * CHUNK_SIZE, (cx + 1) * CHUNK_SIZE)` each way and a map 3 km to 6 km
+ * across is 12 to 24 chunks a side.
  */
-export const CHUNK_SIZE = CHUNK_CELLS * TERRAIN_CELL;
+export const CHUNK_SIZE = 25 * TERRAIN_CELL;
+
+/** Terrain cells each way of one chunk, on the chunk's own finer grid. */
+const CHUNK_CELLS = CHUNK_SIZE / CHUNK_TERRAIN_CELL;
 
 /** Metres of one bucket of the millimetre grid the polygon engine rounds onto. */
 const MM = 1e-3;
@@ -101,9 +102,10 @@ export interface WorldChunk {
   bounds: ChunkBounds;
   /**
    * Heights over the chunk, with the roads carved into them (spec section 7.1):
-   * `CHUNK_CELLS + 1` samples each way, so the far row and column stand on the
-   * near ones of the next chunk. The world description keeps the natural ground
-   * the roads were traced on; this is the ground they leave.
+   * `CHUNK_CELLS + 1` samples each way, every `CHUNK_TERRAIN_CELL` metres, so
+   * the far row and column stand on the near ones of the next chunk. The world
+   * description keeps the natural ground the roads were traced on, on its own
+   * coarser grid; this is the ground they leave.
    */
   terrain: HeightfieldData;
   /** Metres of the world's sea level, so the heights can be read without the world. */
@@ -242,12 +244,12 @@ export class ChunkSource {
     const heights = new Float32Array(gridSize * gridSize);
     const carve = this.layers.carve;
     for (let iy = 0; iy < gridSize; iy++) {
-      const y = bounds.minY + iy * TERRAIN_CELL;
+      const y = bounds.minY + iy * CHUNK_TERRAIN_CELL;
       for (let ix = 0; ix < gridSize; ix++) {
-        heights[iy * gridSize + ix] = carve.heightAt(bounds.minX + ix * TERRAIN_CELL, y);
+        heights[iy * gridSize + ix] = carve.heightAt(bounds.minX + ix * CHUNK_TERRAIN_CELL, y);
       }
     }
-    return { gridSize, cellSize: TERRAIN_CELL, originX: bounds.minX, originY: bounds.minY, heights };
+    return { gridSize, cellSize: CHUNK_TERRAIN_CELL, originX: bounds.minX, originY: bounds.minY, heights };
   }
 
   /** The road runs inside a chunk, in curve order. */

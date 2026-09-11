@@ -35,7 +35,7 @@
  */
 import { clamp, lerp, smoothstep } from '../core/math.ts';
 import { Heightfield } from './heightfield.ts';
-import { TERRAIN_CELL } from './terrain.ts';
+import { CHUNK_TERRAIN_CELL } from './terrain.ts';
 import { footprintHalfWidth } from './tiers.ts';
 import type { HeightfieldData, Point, RoadCurve, RoadTier } from './types.ts';
 
@@ -50,9 +50,10 @@ export const CARVE_BLEND = 12;
  * between two samples of the terrain are a straight line, so a flat band
  * narrower than one cell cannot survive being sampled: an alley four metres wide
  * would leave the ground it stands on exactly as it found it. A bench at least a
- * cell wide is the narrowest one the grid can hold.
+ * cell of the chunk grid wide is the narrowest one the ground the game draws
+ * can hold; the skeleton's coarser grid is only what the roads were traced on.
  */
-const MIN_BENCH = TERRAIN_CELL;
+const MIN_BENCH = CHUNK_TERRAIN_CELL;
 
 /**
  * Metres of hillside a bench may take away, and metres of ground it may make up.
@@ -72,8 +73,8 @@ const INDEX_CELL = 48;
 
 /**
  * How far the flat bench of a tier reaches each side of its centreline: the
- * ground the road claims (spec section 6.4), or one terrain cell where that is
- * narrower than the grid can hold.
+ * ground the road claims (spec section 6.4), or one chunk terrain cell where
+ * that is narrower than the grid can hold.
  */
 export function benchHalfWidth(tier: RoadTier): number {
   return Math.max(footprintHalfWidth(tier), MIN_BENCH);

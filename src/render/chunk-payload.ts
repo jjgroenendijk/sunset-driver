@@ -22,6 +22,7 @@
 import { BufferAttribute, BufferGeometry } from 'three';
 import type { ChunkBounds, WorldChunk, WorldLayers } from '../world/chunks.ts';
 import { RoadRibbons } from '../world/ribbon.ts';
+import { CHUNK_TERRAIN_CELL, TERRAIN_CELL } from '../world/terrain.ts';
 import type { RoadTier, WorldDescription } from '../world/types.ts';
 import { buildChunkBuildings, buildingLookup, type BuildingLookup } from './building-mesh.ts';
 import { buildGroundAttributes, groundLookup, type GroundAttributes, type GroundLookup } from './ground.ts';
@@ -32,6 +33,13 @@ import type { ChunkDetail } from './streaming.ts';
 
 /** The tiers the far ring keeps. The minor fill is not read from that far off. */
 const FAR_TIERS: readonly RoadTier[] = ['highway', 'arterial'];
+
+/**
+ * Samples of the chunk grid the far ring's ground reads every one of: enough
+ * to land it back on the skeleton's grid, where a chunk costs a sixteenth of
+ * the near ring's ground.
+ */
+const FAR_GROUND_STEP = TERRAIN_CELL / CHUNK_TERRAIN_CELL;
 
 /** A typed array a packed geometry holds its numbers in. */
 type GeometryArray = Float32Array | Uint32Array | Uint16Array | Uint8Array;
@@ -154,7 +162,7 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
     cy: chunk.cy,
     detail,
     bounds: chunk.bounds,
-    ground: buildGroundAttributes(chunk, lookups.ground),
+    ground: buildGroundAttributes(chunk, lookups.ground, far ? FAR_GROUND_STEP : 1),
     roads,
     outlines,
     facades,

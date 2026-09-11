@@ -177,7 +177,12 @@ describe('a chunk as a payload', () => {
     const near = payloadOf(MIDDLE.cx, MIDDLE.cy, 'near');
     const far = payloadOf(MIDDLE.cx, MIDDLE.cy, 'far');
     // The ground and the massing hold the skyline up; everything else goes.
-    expect(far.ground.positions.length).toBe(near.ground.positions.length);
+    // The far ground is the same ground on the skeleton's coarser grid, so it
+    // costs a sixteenth of the near ground and joins it along the same edges.
+    expect(far.ground.gridSize).toBe((near.ground.gridSize - 1) / 4 + 1);
+    expect(far.ground.positions[(far.ground.gridSize * far.ground.gridSize - 1) * 3]).toBe(
+      near.ground.positions[(near.ground.gridSize * near.ground.gridSize - 1) * 3],
+    );
     expect(far.blocks.length).toBe(near.facades.length + near.blocks.length);
     expect(far.facades).toHaveLength(0);
     expect(far.outlines).toHaveLength(0);
