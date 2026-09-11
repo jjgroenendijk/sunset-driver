@@ -1,4 +1,13 @@
+import type { BufferGeometry } from 'three';
 import { beforeAll, describe, expect, it } from 'vitest';
+import {
+  buildChunkRoads,
+  CHUNK_DRAW_CALL_CAP,
+  chunkDrawCalls,
+  partsOf,
+  roadSection,
+  type SectionPoint,
+} from '../src/render/road-mesh.ts';
 import { hashInts } from '../src/core/hash.ts';
 import { compareNumbers } from '../src/core/sort.ts';
 import { pointInRegions, regionArea, type Region } from '../src/core/geom.ts';
@@ -27,6 +36,7 @@ import { buildRoadGraph, type GradeCrossing, type RoadEdge, type RoadGraph, type
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
 import type { Parcel, ParcelMap, ParcelOwner } from '../src/world/parcels.ts';
+import { MITRE_SHIFT, RoadRibbons } from '../src/world/ribbon.ts';
 import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
 import { coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
 import { TIERS } from '../src/world/tiers.ts';
@@ -276,6 +286,16 @@ const LEVEL_GAIN = 4;
 /** Chunks each way of the origin in the block every seed is cut into (spec section 3). */
 const CHUNK_BLOCK = 1;
 /**
+ * The chunks whose roads are lofted into real geometry. Building one is far
+ * dearer than cutting one, so this is a corner of the core, where every tier,
+ * the bends and the structures all appear.
+ */
+const ROAD_MESH_CHUNKS: [number, number][] = [
+  [0, 0],
+  [1, 0],
+  [0, 1],
+];
+/**
  * The far offsets every seed is cut at, in chunks. All four stand inside a 3 km
  * map, which is the smallest a seed draws.
  */
@@ -516,6 +536,27 @@ function distanceToBoundary(p: Point, region: Region): number {
     }
   }
   return best;
+}
+
+/**
+ * How the quad of a lofted road surface between section columns `column` and
+ * `column + 1`, at row `row` of the loft, is wound and how long it is.
+ *
+ * A loft lays its rows in order along the run and its columns across the
+ * section, so the quad's corners are the two points at `row` and the two at the
+ * row after it. The camera looks down on a road, so a quad wound the other way
+ * would leave the carriageway invisible from above.
+ */
+function quadOf(surface: BufferGeometry, columns: number, row: number, column: number): { up: boolean; along: number } {
+  const position = surface.getAttribute('position');
+  const a = row * columns + column;
+  const b = a + 1;
+  const d = (row + 1) * columns + column;
+  const abx = position.getX(b) - position.getX(a);
+  const abz = position.getZ(b) - position.getZ(a);
+  const adx = position.getX(d) - position.getX(a);
+  const adz = position.getZ(d) - position.getZ(a);
+  return { up: abz * adx - abx * adz > 0, along: Math.hypot(adx, adz) };
 }
 
 /** True when a place is one of the two ends of a curve. */
@@ -1471,6 +1512,79 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
           }
         }
       }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
+  it('lofts the roads of a chunk inside the draw-call cap', () => {
+    // Spec sections 9.2 and 10.2: a chunk's roads are batched by tier, so a
+    // chunk costs a small fixed number of draws however many roads run through
+    // it. The geometry itself is built on the chunks around the core, where the
+    // tiers, the bends and the structures all appear, because a loft that comes
+    // out inside out or full of NaN only shows on real ground.
+    for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
+      const w = worlds.get(seed) as WorldDescription;
+      const source = sourceOf(seed);
+      const ribbons = new RoadRibbons(w.terrain, w.roads);
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+
+      for (const [cx, cy] of chunkKeys()) {
+        const calls = chunkDrawCalls(source.chunk(cx, cy));
+        if (calls > CHUNK_DRAW_CALL_CAP) fault(`chunk ${cx}, ${cy} costs ${calls} draw calls`);
+      }
+
+      let carriageways = 0;
+      for (const [cx, cy] of ROAD_MESH_CHUNKS) {
+        const chunk = source.chunk(cx, cy);
+        for (const tier of buildChunkRoads(chunk, ribbons)) {
+          const where = `chunk ${cx}, ${cy}: ${tier.tier}`;
+          const section = roadSection(tier.tier);
+          for (const part of partsOf(tier)) {
+            const position = part.getAttribute('position');
+            const normal = part.getAttribute('normal');
+            for (let v = 0; v < position.count; v++) {
+              if (!Number.isFinite(position.getX(v) + position.getY(v) + position.getZ(v))) {
+                fault(`${where} places a vertex nowhere`);
+              }
+              const length = Math.hypot(normal.getX(v), normal.getY(v), normal.getZ(v));
+              // A vertex two faces that cancel meet at has no normal at all;
+              // everywhere else the normal is a unit vector.
+              if (length > 1e-3 && Math.abs(length - 1) > 1e-3) fault(`${where} leaves a normal of ${length}`);
+            }
+          }
+          // The carriageway is the span between the two kerbs, and it is lofted
+          // face up: the camera looks down on a road, never through it. The
+          // column it starts at is the last one at the left kerb, because a
+          // tier with a pavement stands a kerb face there first.
+          const half = -TIERS[tier.tier].width / 2;
+          let kerb = 0;
+          for (let i = 0; i < section.length; i++) if ((section[i] as SectionPoint).across === half) kerb = i;
+          for (const { surfaces } of tier.runs) {
+            for (const surface of surfaces) {
+              const rows = surface.getAttribute('position').count / section.length;
+              for (let row = 0; row + 1 < rows; row++) {
+                const quad = quadOf(surface, section.length, row, kerb);
+                // A mitre moves a corner along the road by up to MITRE_SHIFT,
+                // so a quad shorter than that can reach past itself. A chunk
+                // boundary leaves one wherever it cuts a segment just short of
+                // a bend, and a sliver that size is below anything the camera
+                // resolves.
+                if (quad.along <= MITRE_SHIFT) continue;
+                if (quad.up) carriageways++;
+                else fault(`${where} lofts a carriageway the camera looks through`);
+              }
+            }
+          }
+          for (let i = 0; i < tier.markings.length; i++) {
+            if (!Number.isFinite(tier.markings[i] as number)) fault(`${where} paints a line nowhere`);
+          }
+          for (const part of partsOf(tier)) part.dispose();
+        }
+      }
+      if (carriageways === 0) fault('carries no carriageway at all');
       expect(complaint, `seed ${seed}`).toBeUndefined();
     }
   });
