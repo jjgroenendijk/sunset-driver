@@ -35,32 +35,37 @@ import { CharacterModel } from './character.ts';
 import type { ChunkPayload } from './chunk-payload.ts';
 import { ChunkPool, type ChunkStream } from './chunk-pool.ts';
 import { daylightAt, type Daylight } from './daylight.ts';
+import { EntityFade } from './fade.ts';
 import { groundGeometry } from './ground.ts';
 import { createGroundMaterial } from './ground-material.ts';
 import type { Lamp } from './lamp-mesh.ts';
 import { LampLights, LampScenery } from './lamps.ts';
+import { entityBudget, entityDistance, FULL_TIER, thinned, type QualityTier } from './quality.ts';
 import { RoadScenery } from './roads.ts';
 import { SkyLighting } from './sky.ts';
 import { VehicleModel } from './vehicle.ts';
 import {
   detailAt,
-  FAR_RADIUS,
   spendBudget,
   STREAM_BUDGET_MS,
   wantedChunks,
   type ChunkDetail,
+  type ChunkRings,
   type TilePart,
 } from './streaming.ts';
 import { PlantScenery } from './vegetation.ts';
 import { createWaterSurface, type WaterSurface } from './water-surface.ts';
 
 /**
- * Metres at which the haze starts, and at which it is complete. It closes at
- * the edge of the far ring, where the ground ends: nothing should be seen to
- * end. It opens where the near ring does, so the far ring is what fades.
+ * Metres at which the haze starts, and at which it is complete, for a given
+ * far ring. It closes at the edge of that ring, where the ground ends: nothing
+ * should be seen to end. It opens one chunk inside it, so the far ring is what
+ * fades. A quality tier that pulls the ring in brings the haze with it (spec
+ * section 9.2).
  */
-const FOG_NEAR = (FAR_RADIUS - 1) * CHUNK_SIZE;
-const FOG_FAR = FAR_RADIUS * CHUNK_SIZE;
+function fogOf(rings: ChunkRings): { near: number; far: number } {
+  return { near: (rings.far - 1) * CHUNK_SIZE, far: rings.far * CHUNK_SIZE };
+}
 
 /** Milliseconds {@link WorldScene.settle} waits before giving up on the workers. */
 const SETTLE_TIMEOUT_MS = 120_000;
@@ -94,13 +99,21 @@ export class WorldScene {
   private readonly tiles = new Map<string, ChunkTile>();
   private readonly scenery = new RoadScenery();
   private readonly buildings = new BuildingScenery();
-  private readonly vegetation = new PlantScenery();
-  private readonly lamps = new LampScenery();
+  /**
+   * How far the plants and the street lamps are drawn, and the dither that
+   * takes them away at that edge (spec section 9.2). It is made before the two
+   * sceneries that read it, because their materials are dressed with it.
+   */
+  private readonly fade = new EntityFade(entityDistance(FULL_TIER));
+  private readonly vegetation = new PlantScenery(this.fade);
+  private readonly lamps = new LampScenery(this.fade);
   private readonly lampLights: LampLights;
   private readonly water: WaterSurface;
   private readonly sky: SkyLighting;
   /** The light of the tick the scene was last set to. */
   private light: Daylight;
+  /** The quality tier the scene is drawn at (spec section 9.2). */
+  private tier: QualityTier = FULL_TIER;
   /** The upload the frames to come are charged for, oldest chunk first. */
   private readonly jobs: (() => void)[] = [];
   /** Draw calls the dearest near chunk built so far costs. */
@@ -125,7 +138,8 @@ export class WorldScene {
     // The sky, the sun and the shadows it casts. The ground stops at the last
     // chunk of the far ring, and the haze is what stands there until the draw
     // distance of spec section 9.2 does.
-    this.sky = new SkyLighting(this.scene, FOG_NEAR, FOG_FAR);
+    const fog = fogOf(this.tier.rings);
+    this.sky = new SkyLighting(this.scene, fog.near, fog.far);
     this.lampLights = new LampLights(this.scene);
 
     this.character = new CharacterModel(appearance);
@@ -166,15 +180,41 @@ export class WorldScene {
    */
   update(x: number, y: number, budgetMs = STREAM_BUDGET_MS, now: () => number = performance.now.bind(performance)): void {
     const here = chunkAt(x, y);
+    const rings = this.tier.rings;
     for (const tile of [...this.tiles.values()]) {
-      if (detailAt(tile.cx, tile.cy, here.cx, here.cy) === undefined) this.drop(tile);
+      if (detailAt(tile.cx, tile.cy, here.cx, here.cy, rings) === undefined) this.drop(tile);
     }
     for (let payload = this.stream.take(); payload !== undefined; payload = this.stream.take()) {
       this.queueUpload(payload);
     }
-    this.stream.want(wantedChunks(here.cx, here.cy).filter((want) => this.missing(want.cx, want.cy, want.detail)));
+    this.stream.want(wantedChunks(here.cx, here.cy, rings).filter((want) => this.missing(want.cx, want.cy, want.detail)));
     spendBudget(this.jobs, budgetMs, now);
     this.look(x, y);
+  }
+
+  /**
+   * Draw the world at a quality tier (spec section 9.2). The scene owns four
+   * of the tier's knobs: the draw distance, the haze that closes at the end of
+   * it, the resolution of the sun's shadow, and how much of each category a
+   * chunk places. `PostChain` owns the rest.
+   *
+   * Nothing already in the scene is rebuilt. A tier that pulls the rings in
+   * drops the chunks past the new far ring at once and asks for the ones that
+   * cross between the two details again, which is the change the frame feels;
+   * a chunk already standing keeps the plants it was built with until the
+   * player drives away from it. Rebuilding the whole city on a tier change
+   * would be the hitch the tiers exist to avoid.
+   */
+  set quality(tier: QualityTier) {
+    this.tier = tier;
+    const fog = fogOf(tier.rings);
+    this.sky.setFog(fog.near, fog.far);
+    this.sky.shadowMapSize = tier.shadowMapSize;
+    this.fade.distance = entityDistance(tier);
+  }
+
+  get quality(): QualityTier {
+    return this.tier;
   }
 
   /**
@@ -184,6 +224,9 @@ export class WorldScene {
    */
   look(x: number, y: number): void {
     this.sky.follow(x, y);
+    // The dither fade of spec section 9.2 measures its ring from the player,
+    // as the streaming does, and not from the camera behind them.
+    this.fade.focus(x, y);
     this.lampLights.aim(x, y, this.lampsInReach(), this.light.lamps);
   }
 
@@ -198,7 +241,7 @@ export class WorldScene {
    * is called, so the budget is the whole of the time rather than a slice of
    * it: this is the wait before the first frame, not a frame.
    */
-  async settle(x: number, y: number, radius = FAR_RADIUS, timeoutMs = SETTLE_TIMEOUT_MS): Promise<void> {
+  async settle(x: number, y: number, radius = this.tier.rings.far, timeoutMs = SETTLE_TIMEOUT_MS): Promise<void> {
     const until = performance.now() + timeoutMs;
     for (;;) {
       this.update(x, y, Infinity);
@@ -283,7 +326,7 @@ export class WorldScene {
   private outstanding(x: number, y: number, radius: number): number {
     const here = chunkAt(x, y);
     let waiting = 0;
-    for (const want of wantedChunks(here.cx, here.cy)) {
+    for (const want of wantedChunks(here.cx, here.cy, this.tier.rings)) {
       if (Math.max(Math.abs(want.cx - here.cx), Math.abs(want.cy - here.cy)) > radius) continue;
       const tile = this.tiles.get(keyOf(want.cx, want.cy));
       if (tile === undefined || tile.detail !== want.detail || !tile.whole) waiting++;
@@ -341,15 +384,24 @@ export class WorldScene {
     if (payload.blocks.length > 0) {
       this.queueJob(tile, () => this.add(tile, this.buildings.build('block', payload.blocks)));
     }
+    // A chunk places only what its category's cap and the tier's density allow
+    // (spec section 9.2). The thinning is done here rather than in the worker
+    // because the tier can change between a chunk being asked for and it
+    // arriving, and it is a walk over a list against a whole chunk built.
     if (payload.plants.models.length > 0) {
-      this.queueJob(tile, () => this.add(tile, this.vegetation.build(payload.plants)));
+      this.queueJob(tile, () => {
+        const limit = entityBudget(this.tier, 'plants', payload.plants.models.length);
+        this.add(tile, this.vegetation.build(payload.plants, limit));
+      });
     }
     if (payload.lamps.length > 0) {
       this.queueJob(tile, () => {
-        this.add(tile, this.lamps.build(payload.lamps));
+        const lamps = thinned(payload.lamps, entityBudget(this.tier, 'lamps', payload.lamps.length));
+        this.add(tile, this.lamps.build(lamps));
         // The pool is aimed at the lamps nearest the player, and a chunk that
-        // has just landed may hold some of them.
-        tile.lamps = payload.lamps;
+        // has just landed may hold some of them. It aims at the masts drawn,
+        // so a thinned lamp throws no light either.
+        tile.lamps = [...lamps];
         this.lampLights.invalidate();
       });
     }

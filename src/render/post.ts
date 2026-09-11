@@ -24,9 +24,10 @@
  * makes {@link BLOOM_THRESHOLD} a number about the frame the player sees rather
  * than about the sky's absolute brightness.
  *
- * `PostQuality` is the first of the quality tiers of spec section 9.2: render
- * scale, and a switch for each effect. Nothing steps them down automatically
- * yet; this is the surface that system is given.
+ * `PostQuality` is the part of a quality tier of spec section 9.2 this file
+ * owns: the render scale, and a switch for each effect. `quality.ts` holds the
+ * table of tiers and the frame-time monitor that walks it; `world-scene.ts`
+ * owns the rest of what a tier changes.
  */
 import { DataTexture, DataUtils, HalfFloatType, LinearFilter, NoToneMapping, RGBAFormat } from 'three';
 import { RenderPipeline, type WebGPURenderer } from 'three/webgpu';

@@ -16,6 +16,8 @@
  *   --speed          how fast the player moves, in metres per second.
  *   --width,--height the size of the picture.
  *   --hour           the hour of the day to light the frame at, 0 to 24.
+ *   --quality        the quality tier to draw at (spec section 9.2): full,
+ *                    high, medium or low. Default full.
  *
  * The browser comes from Playwright. A cloud session already has one; on a
  * fresh machine run `npx playwright install chromium` first, or point
@@ -114,6 +116,7 @@ const request: PreviewRequest = {
   width: num('width', 960),
   height: num('height', 540),
   hour: num('hour', 12),
+  ...(options.has('quality') ? { quality: options.get('quality') as string } : {}),
 };
 
 /**
@@ -176,7 +179,7 @@ try {
       ` at ${request.hour.toFixed(1)}h` +
       ` — world ${result.worldMs.toFixed(0)} ms, chunks ${result.chunkMs.toFixed(0)} ms,` +
       ` frame ${result.frameMs.toFixed(0)} ms, dearest chunk ${result.peakDrawCalls} draw calls,` +
-      ` ${result.lights} lights, ${result.shadows} shadow cascades`,
+      ` ${result.lights} lights, ${result.shadows} shadow cascades, ${result.quality} quality`,
   );
 } finally {
   await browser?.close();

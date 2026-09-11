@@ -64,6 +64,12 @@ export const smoothstep = tsl.smoothstep as unknown as (
   x: TslNode,
 ) => TslNode;
 
+/** The whole part of a number, towards minus infinity. */
+export const floor = tsl.floor as unknown as (x: TslNode) => TslNode;
+
+/** What is left of a number once its whole part is taken away, always in 0..1. */
+export const fract = tsl.fract as unknown as (x: TslNode) => TslNode;
+
 /**
  * A value the material reads every frame rather than at build time. Assigning
  * to `.value` changes what every mesh drawn with that material sees.
@@ -78,6 +84,13 @@ export const positionWorld: TslNode = tsl.positionWorld;
 
 /** The fragment's surface normal in world space. */
 export const normalWorld: TslNode = tsl.normalWorld;
+
+/**
+ * The fragment's place on the window, in whole pixels. A pattern taken from it
+ * stands still on the screen rather than on the surface, which is what a dither
+ * needs (spec section 9.2).
+ */
+export const screenCoordinate: TslNode = tsl.screenCoordinate;
 
 /**
  * Fractal value noise in -1..1, summed over `octaves`. This is the runtime

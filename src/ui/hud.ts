@@ -12,6 +12,7 @@ export class Hud {
   private shownDraws = -1;
   private shownLights = -1;
   private shownStreaming = -1;
+  private shownTier = '';
 
   constructor(parent: HTMLElement, seed: string) {
     this.root = document.createElement('div');
@@ -32,12 +33,13 @@ export class Hud {
 
   /**
    * `drawCalls` is what the dearest chunk on screen costs (spec section 9.2),
-   * `lights` is what the scene is lit by (spec section 10.5) and `streaming`
-   * how many chunks are still being built (spec section 9.1). The line is
-   * written only when one of them changes, so the overlay is not rewritten
-   * every frame for numbers that stand still.
+   * `lights` is what the scene is lit by (spec section 10.5), `streaming` how
+   * many chunks are still being built (spec section 9.1) and `tier` the
+   * quality tier the frame is drawn at (spec section 9.2). The line is written
+   * only when one of them changes, so the overlay is not rewritten every frame
+   * for numbers that stand still.
    */
-  update(state: SimState, drawCalls: number, lights: number, streaming: number): void {
+  update(state: SimState, drawCalls: number, lights: number, streaming: number, tier: string): void {
     const t = gameTime(state.tick);
     const hh = String(t.hour).padStart(2, '0');
     const mm = String(t.minute).padStart(2, '0');
@@ -47,13 +49,21 @@ export class Hud {
       this.shownSpeed = kmh;
       this.speed.textContent = `${kmh} km/h`;
     }
-    if (drawCalls === this.shownDraws && lights === this.shownLights && streaming === this.shownStreaming) return;
+    if (
+      drawCalls === this.shownDraws &&
+      lights === this.shownLights &&
+      streaming === this.shownStreaming &&
+      tier === this.shownTier
+    ) {
+      return;
+    }
     this.shownDraws = drawCalls;
     this.shownLights = lights;
     this.shownStreaming = streaming;
+    this.shownTier = tier;
     // The queue is shown only while it holds something: a settled city says
     // nothing about streaming, which is what a settled city should say.
     const queue = streaming > 0 ? `  ${streaming} streaming` : '';
-    this.draws.textContent = `${drawCalls} draws/chunk  ${lights} lights${queue}`;
+    this.draws.textContent = `${drawCalls} draws/chunk  ${lights} lights  ${tier}${queue}`;
   }
 }

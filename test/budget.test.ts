@@ -7,6 +7,7 @@ import { fillOfPacked } from '../src/render/batch.ts';
 import { buildChunkBuildings, buildingLookup } from '../src/render/building-mesh.ts';
 import { buildChunkPayload, chunkLookups, type ChunkPayload } from '../src/render/chunk-payload.ts';
 import { groundGeometry } from '../src/render/ground.ts';
+import { FRAME_BUDGET_MS } from '../src/render/quality.ts';
 import { buildCarve } from '../src/world/carve.ts';
 import { chunkAt, chunkBounds, ChunkSource } from '../src/world/chunks.ts';
 import { buildFootprint, type RoadFootprint } from '../src/world/footprint.ts';
@@ -111,6 +112,9 @@ describe('performance budgets', () => {
     const total =
       slices.render + slices.physics + slices.gameplayAndAi + slices.streaming + slices.headroom;
     expect(total).toBe(FRAME_MS);
+    // The quality tiers of spec section 9.2 watch the whole frame, so the
+    // frame they hold it to is the sum of the slices and not one of them.
+    expect(FRAME_BUDGET_MS).toBe(FRAME_MS);
     expect(BUDGET_MS.simTick).toBeLessThanOrEqual(SIM_SLICE_MS);
     // The streaming queue holds a frame to its slice apart from the piece it
     // is already running (spec section 9.1). Even that worst frame leaves the

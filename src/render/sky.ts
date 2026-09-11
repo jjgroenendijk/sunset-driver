@@ -34,7 +34,14 @@ const DOME_SIZE = 1600;
  * cover ground this camera never looks at.
  */
 export const SHADOW_CASCADES = 2;
-const SHADOW_MAP_SIZE = 1024;
+
+/**
+ * Pixels each way of one cascade at full quality. The quality tiers of spec
+ * section 9.2 step this down and nothing else about the shadows: the cascade
+ * count is fixed, because changing it rebuilds the shader of every material in
+ * the scene and that is the hitch the tiers exist to avoid.
+ */
+export const SHADOW_MAP_SIZE = 1024;
 
 /** Metres the shadow follows the view for. Past this the haze has taken over. */
 const SHADOW_DISTANCE = 420;
@@ -129,6 +136,32 @@ export class SkyLighting {
   /** Carry the dome with the player, so it is always the far side of every chunk. */
   follow(x: number, y: number): void {
     this.dome.position.set(x, 0, y);
+  }
+
+  /**
+   * Close the haze where the ground now ends (spec section 9.2). A quality tier
+   * that pulls the draw distance in moves the fog with it, or the player would
+   * see the last chunk stop in clear air.
+   */
+  setFog(near: number, far: number): void {
+    this.fog.near = near;
+    this.fog.far = far;
+  }
+
+  /**
+   * Draw the sun's cascades at this many pixels each way (spec section 9.2).
+   * The map is resized before the next shadow pass; the frustums are refitted
+   * because the snapping that keeps a shadow edge from crawling is measured in
+   * texels of it.
+   */
+  set shadowMapSize(pixels: number) {
+    if (this.sun.shadow.mapSize.width === pixels) return;
+    this.sun.shadow.mapSize.set(pixels, pixels);
+    if (this.cascades.camera !== null) this.cascades.updateFrustums();
+  }
+
+  get shadowMapSize(): number {
+    return this.sun.shadow.mapSize.width;
   }
 
   /** Refit the cascades after the camera's shape changes. */
