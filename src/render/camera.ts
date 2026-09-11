@@ -40,12 +40,16 @@ export class FollowCamera {
     this.camera.updateProjectionMatrix();
   }
 
-  /** Move toward the target. `dt` is render time; the camera is not simulation state. */
-  update(dt: number, target: { x: number; y: number; heading: number; speed: number }): void {
+  /**
+   * Move toward the target. `dt` is render time; the camera is not simulation
+   * state. `height` is the ground the target stands on, so the view rises and
+   * falls with the hill rather than cutting into it.
+   */
+  update(dt: number, target: { x: number; y: number; height: number; heading: number; speed: number }): void {
     const lead = Math.abs(target.speed) * LEAD_PER_SPEED;
     const wanted = new Vector3(
       target.x + Math.cos(target.heading) * lead,
-      0,
+      target.height,
       target.y + Math.sin(target.heading) * lead,
     );
     if (!this.initialised) {

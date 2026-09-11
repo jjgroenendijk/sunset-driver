@@ -1,36 +1,45 @@
-import {
-  AmbientLight,
-  Color,
-  DirectionalLight,
-  GridHelper,
-  Mesh,
-  MeshStandardMaterial,
-  PlaneGeometry,
-  Scene,
-} from 'three';
+import { AmbientLight, CircleGeometry, Color, DirectionalLight, Mesh, MeshStandardMaterial, Scene } from 'three';
 import type { CharacterAppearance } from '../sim/character.ts';
 import { CharacterModel } from './character.ts';
 
-/** Placeholder scene until world generation feeds the renderer. */
-export function createPlaceholderScene(appearance: CharacterAppearance): {
+/** What the title screen shows and how to release it. */
+export interface PreviewScene {
   scene: Scene;
   character: CharacterModel;
-} {
+  dispose(): void;
+}
+
+/**
+ * The scene behind the title screen: the character on a plinth, lit so the
+ * creator can be read. There is no world yet, because the seed the world is
+ * generated from is what the title screen is asking for; `WorldScene` takes
+ * over once it has one.
+ */
+export function createPreviewScene(appearance: CharacterAppearance): PreviewScene {
   const scene = new Scene();
   scene.background = new Color(0x1a0b16);
 
-  const ground = new Mesh(new PlaneGeometry(400, 400), new MeshStandardMaterial({ color: 0x2b1f2a }));
-  ground.rotation.x = -Math.PI / 2;
-  scene.add(ground);
-  scene.add(new GridHelper(400, 40, 0x5a3a55, 0x3a2438));
+  const geometry = new CircleGeometry(1.6, 48);
+  const material = new MeshStandardMaterial({ color: 0x2b1f2a, roughness: 0.9 });
+  const plinth = new Mesh(geometry, material);
+  plinth.rotation.x = -Math.PI / 2;
+  scene.add(plinth);
 
   const character = new CharacterModel(appearance);
   scene.add(character.group);
 
-  const sun = new DirectionalLight(0xffd7b0, 2.2);
-  sun.position.set(40, 80, 20);
-  scene.add(sun);
+  const key = new DirectionalLight(0xffd7b0, 2.2);
+  key.position.set(3, 6, 2);
+  scene.add(key);
   scene.add(new AmbientLight(0x6a4a70, 0.8));
 
-  return { scene, character };
+  return {
+    scene,
+    character,
+    dispose(): void {
+      character.dispose();
+      geometry.dispose();
+      material.dispose();
+    },
+  };
 }
