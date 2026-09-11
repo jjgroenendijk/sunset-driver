@@ -8,6 +8,7 @@
  */
 import { availableParallelism } from 'node:os';
 import { Worker } from 'node:worker_threads';
+import type { BuildingMap } from '../src/world/buildings.ts';
 import type { RoadFootprint } from '../src/world/footprint.ts';
 import type { ParcelMap } from '../src/world/parcels.ts';
 import type { WorldDescription } from '../src/world/types.ts';
@@ -18,19 +19,28 @@ const WORKER_URL = new URL('./world-worker.ts', import.meta.url);
 export interface WorldJob {
   seed: number;
   /**
-   * Lay the footprint and cut the parcels of the world in the worker as well.
-   * They are the dearest things built on a world, so a test that reads them
-   * asks for them here rather than building them on the test thread.
+   * Build the layers of the world in the worker as well. They are the dearest
+   * things built on a world, so a test that reads them asks for them here
+   * rather than building them on the test thread.
    */
   parts?: boolean;
+}
+
+/**
+ * The layers of a world that cross a thread boundary. The road graph is not
+ * here: it carries methods, and it is cheap to rebuild next to these.
+ */
+export interface WorldParts {
+  footprint: RoadFootprint;
+  parcels: ParcelMap;
+  buildings: BuildingMap;
 }
 
 /** A world the pool built, with whatever its job asked for on top of it. */
 export interface PooledWorld {
   world: WorldDescription;
-  /** Present when the job set `parts`. The road graph is not here: it carries
-   * methods, so it cannot cross a thread boundary, and it is cheap to rebuild. */
-  parts?: { footprint: RoadFootprint; parcels: ParcelMap };
+  /** Present when the job set `parts`. */
+  parts?: WorldParts;
 }
 
 /**
@@ -44,13 +54,24 @@ export async function worldsFor(seeds: readonly number[]): Promise<WorldDescript
 }
 
 /**
- * Run one job per element, several at a time. The result lines up with `jobs`.
- * Jobs are handed out in order, so put the ones that ask for parts first: the
- * pool then starts its longest work first and no worker tails the rest.
+ * Run one job per element, several at a time. The result lines up with `jobs`,
+ * whatever order the pool ran them in.
+ *
+ * A job that asks for parts costs about three times one that does not, so the
+ * pool hands those out first. A long job started last is what leaves every
+ * other worker idle while one of them finishes, and that tail is the whole
+ * wait: the jobs are the same work either way round.
  */
 export async function buildWorlds(jobs: readonly WorldJob[]): Promise<PooledWorld[]> {
   const out: PooledWorld[] = new Array(jobs.length) as PooledWorld[];
   if (jobs.length === 0) return out;
+
+  // Longest first, and stable within each length so a run stays repeatable.
+  const order = jobs.map((_, index) => index);
+  order.sort((a, b) => {
+    const heavy = Number((jobs[b] as WorldJob).parts === true) - Number((jobs[a] as WorldJob).parts === true);
+    return heavy !== 0 ? heavy : a - b;
+  });
 
   // One worker per core, and never more workers than there is work for them.
   const size = Math.max(1, Math.min(availableParallelism(), jobs.length));
@@ -64,9 +85,10 @@ export async function buildWorlds(jobs: readonly WorldJob[]): Promise<PooledWorl
         reject(error instanceof Error ? error : new Error(String(error)));
       };
       const feed = (worker: Worker): void => {
-        if (next < jobs.length) {
-          const job = jobs[next] as WorldJob;
-          worker.postMessage({ index: next, seed: job.seed, parts: job.parts === true });
+        if (next < order.length) {
+          const index = order[next] as number;
+          const job = jobs[index] as WorldJob;
+          worker.postMessage({ index, seed: job.seed, parts: job.parts === true });
           next++;
         }
       };
