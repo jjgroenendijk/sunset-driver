@@ -15,22 +15,12 @@ import { BatchedMesh, Object3D, type BufferGeometry } from 'three';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js';
 import type { Line2NodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
-import type { WorldChunk } from '../world/chunks.ts';
-import type { RoadRibbons } from '../world/ribbon.ts';
 import type { RoadTier } from '../world/types.ts';
-import { batchOf } from './batch.ts';
+import { fillOfPacked } from './batch.ts';
+import type { PackedRoads } from './chunk-payload.ts';
 import { createMarkingMaterial, createRoadMaterial } from './road-material.ts';
-import { buildChunkRoads, partsOf, TIER_ORDER } from './road-mesh.ts';
-
-/** One chunk's roads, as the scene holds them. */
-export interface RoadTile {
-  /** What to add to the scene. One batch per tier, and one line mesh per marked tier. */
-  objects: Object3D[];
-  /** Draw calls these objects cost. */
-  drawCalls: number;
-  /** Release the geometry. The materials are the world's and are left alone. */
-  dispose(): void;
-}
+import { TIER_ORDER } from './road-mesh.ts';
+import type { TilePart } from './streaming.ts';
 
 /**
  * The materials a world's roads are drawn with, and the chunks built from them.
@@ -44,15 +34,18 @@ export class RoadScenery {
     for (const tier of TIER_ORDER) this.surfaces[tier] = createRoadMaterial(tier);
   }
 
-  /** Build the roads of one chunk. */
-  build(chunk: WorldChunk, ribbons: RoadRibbons): RoadTile {
+  /** Put one tier of one chunk's roads into the scene. */
+  build(tier: PackedRoads): TilePart {
     const objects: Object3D[] = [];
     const geometries: BufferGeometry[] = [];
-    for (const tier of buildChunkRoads(chunk, ribbons)) {
-      const surface = this.surfaces[tier.tier] as MeshStandardNodeMaterial;
-      const parts = partsOf(tier);
-      if (parts.length > 0) objects.push(batchOf(parts.map((geometry) => ({ geometry })), surface));
-      if (tier.markings.length === 0) continue;
+    const steps: (() => void)[] = [];
+    const surface = this.surfaces[tier.tier] as MeshStandardNodeMaterial;
+    if (tier.parts.length > 0) {
+      const fill = fillOfPacked(tier.parts.map((geometry) => ({ geometry })), surface);
+      objects.push(fill.mesh);
+      steps.push(...fill.steps);
+    }
+    if (tier.markings.length > 0) {
       const geometry = new LineSegmentsGeometry();
       geometry.setPositions(tier.markings);
       geometry.setColors(tier.markingTints);
@@ -62,6 +55,7 @@ export class RoadScenery {
     return {
       objects,
       drawCalls: objects.length,
+      steps,
       dispose(): void {
         for (const object of objects) if (object instanceof BatchedMesh) object.dispose();
         for (const geometry of geometries) geometry.dispose();

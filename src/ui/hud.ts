@@ -9,6 +9,7 @@ export class Hud {
   private readonly draws: HTMLElement;
   private shownDraws = -1;
   private shownLights = -1;
+  private shownStreaming = -1;
 
   constructor(parent: HTMLElement, seed: string) {
     this.root = document.createElement('div');
@@ -25,19 +26,24 @@ export class Hud {
   }
 
   /**
-   * `drawCalls` is what the dearest chunk on screen costs (spec section 9.2)
-   * and `lights` is what the scene is lit by (spec section 10.5). Both are
-   * written only when they change, so the overlay is not rewritten every frame
-   * for numbers that move once a minute.
+   * `drawCalls` is what the dearest chunk on screen costs (spec section 9.2),
+   * `lights` is what the scene is lit by (spec section 10.5) and `streaming`
+   * how many chunks are still being built (spec section 9.1). The line is
+   * written only when one of them changes, so the overlay is not rewritten
+   * every frame for numbers that stand still.
    */
-  update(state: SimState, drawCalls: number, lights: number): void {
+  update(state: SimState, drawCalls: number, lights: number, streaming: number): void {
     const t = gameTime(state.tick);
     const hh = String(t.hour).padStart(2, '0');
     const mm = String(t.minute).padStart(2, '0');
     this.clock.textContent = `day ${t.day + 1}  ${hh}:${mm}`;
-    if (drawCalls === this.shownDraws && lights === this.shownLights) return;
+    if (drawCalls === this.shownDraws && lights === this.shownLights && streaming === this.shownStreaming) return;
     this.shownDraws = drawCalls;
     this.shownLights = lights;
-    this.draws.textContent = `${drawCalls} draws/chunk  ${lights} lights`;
+    this.shownStreaming = streaming;
+    // The queue is shown only while it holds something: a settled city says
+    // nothing about streaming, which is what a settled city should say.
+    const queue = streaming > 0 ? `  ${streaming} streaming` : '';
+    this.draws.textContent = `${drawCalls} draws/chunk  ${lights} lights${queue}`;
   }
 }

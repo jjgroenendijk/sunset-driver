@@ -18,11 +18,10 @@
  */
 import { BatchedMesh, Object3D, type Scene } from 'three';
 import { ProjectorLight } from 'three/webgpu';
-import type { WorldChunk } from '../world/chunks.ts';
-import type { RoadRibbons } from '../world/ribbon.ts';
-import { batchOf, type BatchPart } from './batch.ts';
+import { fillOf, type BatchPart } from './batch.ts';
 import { createLampMaterials, type LampMaterials } from './lamp-material.ts';
-import { buildChunkLamps, lampsIn, type Lamp } from './lamp-mesh.ts';
+import { buildChunkLamps, type Lamp } from './lamp-mesh.ts';
+import type { TilePart } from './streaming.ts';
 
 /**
  * Street lamps that throw real light at once. The rest of the city's lamps are
@@ -53,37 +52,26 @@ const RE_AIM = 6;
 /** Where an unused light of the pool is parked: under the map, burning nothing. */
 const PARKED = -10000;
 
-/** One chunk's lamps, as the scene holds them. */
-export interface LampTile {
-  /** What to add to the scene: one batch, or nothing where the chunk is unlit. */
-  objects: Object3D[];
-  drawCalls: number;
-  /** Where every lamp of the chunk stands, so the light pool can be aimed at them. */
-  lamps: Lamp[];
-  dispose(): void;
-}
-
 /** The masts of a world's lamps: one material, and a batch for each chunk. */
 export class LampScenery {
   private readonly materials: LampMaterials = createLampMaterials();
 
-  /** Build the lamps of one chunk. */
-  build(chunk: WorldChunk, ribbons: RoadRibbons): LampTile {
-    const objects: Object3D[] = [];
-    const lamps = lampsIn(chunk, ribbons);
+  /**
+   * Put one chunk's lamps into the scene. The lamps come from the worker that
+   * built the chunk (spec section 9.1), already in the places the scene works
+   * in; the mast geometry is grown here, one copy per lit tier.
+   */
+  build(lamps: readonly Lamp[]): TilePart {
     const parts: BatchPart[] = [];
     for (const tier of buildChunkLamps(lamps)) {
       for (const matrix of tier.matrices) parts.push({ geometry: tier.geometry, matrix });
     }
-    if (parts.length > 0) {
-      const batch = batchOf(parts, this.materials.lamp);
-      batch.castShadow = true;
-      objects.push(batch);
-    }
+    const fill = fillOf(parts, this.materials.lamp);
+    const objects: Object3D[] = [fill.mesh];
     return {
       objects,
-      drawCalls: objects.length,
-      lamps,
+      drawCalls: 1,
+      steps: fill.steps,
       dispose(): void {
         for (const object of objects) if (object instanceof BatchedMesh) object.dispose();
       },

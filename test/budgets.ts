@@ -106,12 +106,26 @@ export const BUDGET_MS = {
    * (spec section 10.3). This is the dearest chunk of a world, because every
    * other one is mostly houses.
    *
-   * Offline work today, like {@link BUDGET_MS.carve}: the scene builds a chunk
-   * on the main thread, and the `WorkerPool` and the per-frame cap that bring it
-   * inside the streaming slice are issue #23. Building LOD (spec section 9.2) is
-   * what takes the number itself down.
+   * Worker work (spec section 9.1): a chunk is built in a `ChunkPool` worker
+   * and the frame is charged only for {@link BUDGET_MS.chunkUpload}. It is
+   * still measured, because a worker that takes half a second to answer is a
+   * city that fills in half a second late.
    */
   chunkBuildings: 150,
+
+  /**
+   * The dearest single piece of putting a chunk of the core into the scene:
+   * one generated tower copied into its batch (spec section 9.1).
+   *
+   * The streaming slice is {@link FRAME_SLICE_MS.streaming} and `spendBudget`
+   * holds the upload queue to it, but a piece is indivisible — a geometry goes
+   * into a batch whole — so a frame that starts one just inside the slice
+   * overruns by this much. That overrun is the only one the queue allows, and
+   * it costs a frame a fraction of itself rather than a stall. What takes it
+   * down is building LOD in the near ring (spec section 9.2), not a larger
+   * number here.
+   */
+  chunkUpload: 4,
 } as const;
 
 /** Budgets small enough that milliseconds would round them away. */

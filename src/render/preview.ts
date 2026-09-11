@@ -36,8 +36,6 @@ export interface PreviewRequest {
   speed: number;
   width: number;
   height: number;
-  /** Chunks each way of the player to build before the frame is drawn. */
-  chunkRadius: number;
   /** The hour of the day to light the frame at, 0 to 24 (spec section 10.5). */
   hour: number;
 }
@@ -50,7 +48,7 @@ export interface PreviewResult {
   rgb: string;
   /** Milliseconds spent generating the world. */
   worldMs: number;
-  /** Milliseconds spent building the chunks near the player. */
+  /** Milliseconds spent building the chunks around the player. */
   chunkMs: number;
   /** Milliseconds spent drawing and reading back the frame. */
   frameMs: number;
@@ -69,7 +67,7 @@ const BYTES_PER_PIXEL = 4;
 const ROW_ALIGNMENT = 256;
 
 export async function renderPreview(request: PreviewRequest): Promise<PreviewResult> {
-  const { seed, x, y, distance, heading, speed, width, height, chunkRadius, hour } = request;
+  const { seed, x, y, distance, heading, speed, width, height, hour } = request;
 
   const t0 = performance.now();
   const world = generateWorld(seed);
@@ -78,7 +76,10 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   const t1 = performance.now();
   const scene = new WorldScene(world, DEFAULT_APPEARANCE);
   scene.time = tickAtHour(hour);
-  scene.prime(x, y, chunkRadius);
+  // The chunks are built in the workers the game uses, so the picture is the
+  // frame the game draws. Every chunk of both rings is waited for, so the same
+  // request twice takes the same picture.
+  await scene.settle(x, y);
   // Where the player stands decides which lamps burn and where the sky dome is.
   scene.look(x, y);
   const chunkMs = performance.now() - t1;
