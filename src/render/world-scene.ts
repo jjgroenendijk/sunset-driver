@@ -24,6 +24,7 @@
 import { BatchedMesh, Mesh, Object3D, Scene } from 'three';
 import type { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { CharacterAppearance } from '../sim/character.ts';
+import type { VehicleState } from '../sim/vehicle.ts';
 import { START_TICK } from '../sim/simulation.ts';
 import { buildCarve, type RoadCarve } from '../world/carve.ts';
 import { buildRoadGraph } from '../world/graph.ts';
@@ -32,6 +33,7 @@ import { chunkAt, CHUNK_SIZE } from '../world/chunks.ts';
 import type { WorldDescription } from '../world/types.ts';
 import { BuildingScenery } from './buildings.ts';
 import { CharacterModel } from './character.ts';
+import { DamageFx } from './damage-fx.ts';
 import type { ChunkPayload } from './chunk-payload.ts';
 import { ChunkPool, type ChunkStream } from './chunk-pool.ts';
 import { daylightAt, type Daylight } from './daylight.ts';
@@ -42,6 +44,7 @@ import type { Lamp } from './lamp-mesh.ts';
 import { LampLights, LampScenery } from './lamps.ts';
 import { entityBudget, entityDistance, FULL_TIER, shadowDistance, thinned, type QualityTier } from './quality.ts';
 import { RoadScenery } from './roads.ts';
+import { SkidMarks } from './skid.ts';
 import { SkyLighting } from './sky.ts';
 import { VehicleModel } from './vehicle.ts';
 import {
@@ -92,6 +95,10 @@ export class WorldScene {
   readonly scene = new Scene();
   readonly character: CharacterModel;
   readonly vehicle = new VehicleModel();
+  /** The smoke, fire and blast of the vehicle's damage (spec section 11.3). */
+  readonly fx = new DamageFx();
+  /** The rubber it leaves on the road (spec section 11.3). */
+  readonly skid = new SkidMarks();
   readonly world: WorldDescription;
   private readonly stream: ChunkStream;
   private readonly heights: RoadCarve;
@@ -118,6 +125,8 @@ export class WorldScene {
   private readonly jobs: (() => void)[] = [];
   /** Draw calls the dearest near chunk built so far costs. */
   private peakDrawCalls = 0;
+  /** The carved ground, as the skid marks read it: bound once, not made every frame. */
+  private readonly height = (x: number, y: number): number => this.heights.heightAt(x, y);
 
   constructor(world: WorldDescription, appearance: CharacterAppearance, stream: ChunkStream = new ChunkPool(world)) {
     this.world = world;
@@ -151,6 +160,8 @@ export class WorldScene {
     this.character.group.visible = false;
     this.scene.add(this.character.group);
     this.scene.add(this.vehicle.group);
+    this.scene.add(this.fx.group);
+    this.scene.add(this.skid.mesh);
 
     // A session starts at 08:00, so the first frame is already lit.
     this.light = daylightAt(START_TICK);
@@ -171,6 +182,22 @@ export class WorldScene {
   /** The carved height of the ground at a place, so things stand on it. */
   heightAt(x: number, y: number): number {
     return this.heights.heightAt(x, y);
+  }
+
+  /**
+   * Draw what the vehicle's damage calls for (spec section 11.3): the smoke and
+   * the flames over it, and the rubber its sliding tyres leave on the road.
+   * Called once a frame, after the model has been set from the same record.
+   */
+  damage(v: VehicleState, seed: number, tick: number): void {
+    this.fx.update(v, this.vehicle.vehicle, seed, tick);
+    this.skid.update(v, this.vehicle.vehicle, this.height);
+  }
+
+  /** Forget the smoke and the marks: a vehicle put down somewhere else, or a loaded save. */
+  resetDamage(tick: number): void {
+    this.fx.reset(tick);
+    this.skid.clear();
   }
 
   /**
@@ -306,6 +333,10 @@ export class WorldScene {
     this.character.dispose();
     this.scene.remove(this.vehicle.group);
     this.vehicle.dispose();
+    this.scene.remove(this.fx.group);
+    this.fx.dispose();
+    this.scene.remove(this.skid.mesh);
+    this.skid.dispose();
   }
 
   /** Hand the light of the moment to everything that reads it. */

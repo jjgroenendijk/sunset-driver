@@ -13,6 +13,7 @@
  * Every box is in the vehicle's own frame: `length` runs along local `+x`,
  * which is forward, `height` along `+y` and `width` along `+z`, the axle.
  */
+import type { Panel } from '../sim/damage.ts';
 import type { VehicleSpec } from '../sim/vehicle.ts';
 
 /** Glass, lamps and the bare metal of a cage: the colours no row picks. */
@@ -41,10 +42,44 @@ export interface VehicleBox {
    * inside it and rimming each of them would draw a scribble, not an outline.
    */
   outlined: boolean;
+  /**
+   * The panel this box belongs to (spec section 11.3), and undefined on the
+   * shell in the middle of the body. A dent pushes in the boxes of the panel
+   * it lands on, and a panel torn off takes its boxes with it; the shell stays,
+   * because a vehicle with no middle is not a vehicle.
+   */
+  panel: Panel | undefined;
 }
 
-/** The boxes one vehicle is drawn as. */
+/**
+ * The boxes one vehicle is drawn as, each told which panel it stands on.
+ *
+ * The panel is read off where the box sits rather than written into every
+ * shape: a box above the waist is the roof, one at either end is the nose or
+ * the tail, and one out at the flank is a door. A class with no box at a panel
+ * simply has nothing there to be seen to go.
+ */
 export function vehicleBoxes(spec: VehicleSpec): VehicleBox[] {
+  const boxes = shapeOf(spec);
+  for (const part of boxes) part.panel = panelAt(spec, part);
+  return boxes;
+}
+
+/**
+ * Which panel a box stands on. The roof is taken first, so a light bar goes
+ * with the roof rather than with the side it sits over, and the ends before the
+ * flanks, so a lamp at a corner goes with the nose it lights the way from.
+ */
+export function panelAt(spec: VehicleSpec, part: VehicleBox): Panel | undefined {
+  if (part.y > spec.halfHeight * 0.2) return 'roof';
+  if (part.x > spec.halfLength * 0.4) return 'front';
+  if (part.x < -spec.halfLength * 0.4) return 'rear';
+  if (Math.abs(part.z) > spec.halfWidth * 0.45) return part.z > 0 ? 'left' : 'right';
+  return undefined;
+}
+
+/** The boxes of one class, before they are told which panel they are on. */
+function shapeOf(spec: VehicleSpec): VehicleBox[] {
   switch (spec.cls) {
     case 'compact':
       return car(spec, { cabin: 0.5, cabinAt: 0, waist: 0.5 });
@@ -91,7 +126,20 @@ function box(
   z: number,
   outlined = true,
 ): VehicleBox {
-  return { length, height, width, x, y, z, colour, outlined };
+  return { length, height, width, x, y, z, colour, outlined, panel: undefined };
+}
+
+/**
+ * A door skin down each side of a body, half sunk into it so nothing z-fights.
+ * It is what a shunt from the side pushes in and what a hard one tears off:
+ * without it a flank is one face of the shell, and a shell never goes.
+ */
+function doors(spec: VehicleSpec, length: number, height: number, y: number, at: number): VehicleBox[] {
+  const out: VehicleBox[] = [];
+  for (const side of [1, -1]) {
+    out.push(box(length, height, 0.06, spec.paint, 0, y, side * spec.halfWidth * at, false));
+  }
+  return out;
 }
 
 /**
@@ -117,6 +165,12 @@ function car(spec: VehicleSpec, shape: CarShape): VehicleBox[] {
     box(length * 0.06, cabinHeight * 0.82, width * 0.82, GLASS, cabinX + cabinLength / 2, cabinY, 0, false),
     box(length * 0.05, cabinHeight * 0.82, width * 0.82, GLASS, cabinX - cabinLength / 2, cabinY, 0, false),
     box(cabinLength * 0.7, cabinHeight * 0.5, width * 0.83, GLASS, cabinX, cabinY + cabinHeight * 0.08, 0, false),
+    ...doors(spec, length * 0.46, bodyHeight * 0.6, bodyY, 0.9),
+    // A bonnet at the nose and a boot at the tail, sitting on the body: they
+    // are the panels a shunt at either end pushes in, and a hard enough one
+    // takes them off and leaves the shell.
+    box(length * 0.22, bodyHeight * 0.3, width * 0.86, spec.paint, spec.halfLength - length * 0.13, bodyY + bodyHeight * 0.36, 0, false),
+    box(length * 0.2, bodyHeight * 0.3, width * 0.86, spec.paint, -spec.halfLength + length * 0.12, bodyY + bodyHeight * 0.36, 0, false),
   ];
   return [...boxes, ...lamps(spec, bodyY + bodyHeight * 0.2)];
 }
@@ -162,6 +216,11 @@ function van(spec: VehicleSpec): VehicleBox[] {
     // The windscreen stands where the nose meets the box, which is what says
     // which end the driver sits at.
     box(length * 0.05, height * 0.4, width * 0.86, GLASS, spec.halfLength - noseLength, height * 0.06, 0, false),
+    // A vent on the roof, which is the panel a van loses off the top of it and
+    // the one thing that breaks up a flat white roof from above.
+    box(length * 0.18, 0.09, width * 0.5, spec.trim, -length * 0.1, spec.halfHeight + 0.05, 0, false),
+    // The sliding door down each side, which is the panel a van loses.
+    ...doors(spec, length * 0.4, height * 0.34, -spec.halfHeight + height * 0.3, 0.94),
     ...lamps(spec, noseY),
   ];
 }
@@ -237,6 +296,7 @@ function offroad(spec: VehicleSpec): VehicleBox[] {
     box(length * 0.42, 0.08, width * 0.74, spec.trim, -length * 0.1, spec.halfHeight + 0.05, 0, false),
     // A spare wheel on the back door.
     box(0.14, spec.wheelRadius * 1.6, spec.wheelRadius * 1.6, TYRE, -spec.halfLength - 0.07, bodyY + bodyHeight * 0.3, 0, false),
+    ...doors(spec, length * 0.44, bodyHeight * 0.56, bodyY, 0.92),
     ...lamps(spec, bodyY + bodyHeight * 0.24),
   ];
 }

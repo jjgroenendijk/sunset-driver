@@ -103,6 +103,9 @@ async function boot(): Promise<void> {
       session.world.character.group.rotation.y = -p.heading;
       session.world.character.group.visible = !p.driving;
       session.world.vehicle.set(session.state.vehicle);
+      // The damage of spec section 11.3, drawn off the same record: the smoke
+      // and flames over the car and the rubber its tyres leave behind.
+      session.world.damage(session.state.vehicle, session.state.seed, session.state.tick);
       // The light of the scene is a function of the tick, so the day runs at
       // the simulation's pace whatever the frame rate (spec section 10.5). The
       // colour grade follows the same tick (spec section 10.6).
@@ -201,6 +204,9 @@ async function boot(): Promise<void> {
     const here = { x: state.player.x, y: state.player.y, heading: state.player.heading };
     const place = cls === 'boat' ? (nearestWaterPlace(description, here.x, here.y) ?? here) : here;
     physics.spawn(state, place.x, place.y, place.heading, cls);
+    // A vehicle put down is a fresh vehicle: nothing of the last one's smoke or
+    // skid marks belongs to it.
+    world.resetDamage(state.tick);
   });
   window.addEventListener('keydown', (event) => {
     if (event.code === PICKER_KEY && !event.repeat) picker.toggle();

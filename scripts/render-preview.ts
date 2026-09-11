@@ -24,6 +24,10 @@
  *   --on-foot        stand the player beside the vehicle rather than in it,
  *                    which is how the character is looked at (spec section
  *                    11.5).
+ *   --damage         the damage state to show the vehicle in (spec section
+ *                    11.3): dented, smoking, burning or burnt.
+ *   --skid           lay a drift's worth of skid marks into the road behind
+ *                    the vehicle (spec section 11.3).
  *
  * The browser comes from Playwright. A cloud session already has one; on a
  * fresh machine run `npx playwright install chromium` first, or point
@@ -125,6 +129,8 @@ const request: PreviewRequest = {
   ...(options.has('quality') ? { quality: options.get('quality') as string } : {}),
   ...(options.has('vehicle') ? { vehicle: options.get('vehicle') as string } : {}),
   ...(options.has('on-foot') ? { onFoot: true } : {}),
+  ...(options.has('damage') ? { damage: options.get('damage') as string } : {}),
+  ...(options.has('skid') ? { skid: true } : {}),
 };
 
 /**
