@@ -44,11 +44,14 @@ export const SHADOW_CASCADES = 2;
 export const SHADOW_MAP_SIZE = 1024;
 
 /**
- * Metres the shadow follows the view for at full quality. Past this the haze
- * has taken over. The quality tiers of spec section 9.2 pull it in, so it is
- * the starting value rather than the only one.
+ * Metres of view depth the shadow follows at full quality. The camera of
+ * `camera.ts` looks down at 58 degrees and pulls back with speed. At the top
+ * speed of the roster, the far edge of its view stands about 130 m from it on
+ * flat ground, and nothing past that is ever on screen. Past this, a cascade
+ * would draw every building and tree again for ground nobody sees. A quality
+ * tier of spec section 9.2 may pull it in, never out.
  */
-export const SHADOW_DISTANCE = 420;
+export const SHADOW_DISTANCE = 160;
 
 /** Depth bias, in metres of surface, that keeps a lit surface from shadowing itself. */
 const SHADOW_BIAS = -0.0006;

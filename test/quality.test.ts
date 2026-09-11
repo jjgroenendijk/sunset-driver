@@ -93,10 +93,10 @@ describe('the quality tiers', () => {
       expect(shadowDistance(tier)).toBeLessThanOrEqual(SHADOW_DISTANCE);
       expect(shadowDistance(tier)).toBeGreaterThan(0);
     }
-    // At full quality the plants reach past the shadow either way, so the
-    // shadow keeps the whole range it was given.
+    // The shadow reaches as far as the camera sees and no tier pulls the rings
+    // in past that, so every tier keeps the whole range.
     expect(shadowDistance(FULL_TIER)).toBe(SHADOW_DISTANCE);
-    expect(shadowDistance(QUALITY_TIERS[3] as never)).toBeLessThan(SHADOW_DISTANCE);
+    expect(shadowDistance(QUALITY_TIERS[3] as never)).toBe(SHADOW_DISTANCE);
   });
 });
 
