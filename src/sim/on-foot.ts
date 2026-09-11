@@ -163,11 +163,13 @@ export interface Place {
 }
 
 /**
- * True when the player stands close enough to a vehicle to open its door. The
- * reach is measured from the body itself rather than from its middle, so a bus
- * is entered from beside the bus and not from beside its centre.
+ * Metres of clear ground between the player and a vehicle's body, and 0 where
+ * they are standing against it. It is measured from the body itself rather than
+ * from its middle, so a bus is reached from beside the bus and not from beside
+ * its centre. A door, a swing of a bat (spec section 11.6) and anything else
+ * that reaches for a vehicle asks this.
  */
-export function reachesVehicle(player: PlayerState, v: VehicleState, spec: VehicleSpec): boolean {
+export function vehicleGap(player: PlayerState, v: VehicleState, spec: VehicleSpec): number {
   const heading = headingOf(v);
   const dx = player.x - v.x;
   const dy = player.y - v.z;
@@ -175,7 +177,12 @@ export function reachesVehicle(player: PlayerState, v: VehicleState, spec: Vehic
   const across = -dx * Math.sin(heading) + dy * Math.cos(heading);
   const overLength = Math.max(0, Math.abs(along) - spec.halfLength);
   const overWidth = Math.max(0, Math.abs(across) - spec.halfWidth);
-  return Math.hypot(overLength, overWidth) <= ENTER_REACH;
+  return Math.hypot(overLength, overWidth);
+}
+
+/** True when the player stands close enough to a vehicle to open its door. */
+export function reachesVehicle(player: PlayerState, v: VehicleState, spec: VehicleSpec): boolean {
+  return vehicleGap(player, v, spec) <= ENTER_REACH;
 }
 
 /**

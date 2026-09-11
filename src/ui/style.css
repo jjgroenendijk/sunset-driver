@@ -30,6 +30,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #12070f; col
 .picker-current { border-color: #ff8a5c; background: #3b1b30; }
 .picker-name { font-size: .95rem; }
 .picker-stats { font-size: .72rem; opacity: .65; font-variant-numeric: tabular-nums; }
+.picker-left { right: auto; left: 12px; }
+.picker-group { margin: .4rem 0 .1rem; font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; opacity: .55; }
 .hotwire { position: fixed; left: 50%; bottom: 8%; transform: translateX(-50%); width: min(26rem, 80%); display: grid; justify-items: center; gap: .4rem; padding: .7rem .9rem; border: 1px solid #4a2b3f; border-radius: .5rem; background: rgba(24,11,20,.88); pointer-events: none; }
 .hotwire-label { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; opacity: .8; font-variant-numeric: tabular-nums; }
 .hotwire-alarm .hotwire-label { color: #ff8a5c; opacity: 1; }

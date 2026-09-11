@@ -2,6 +2,7 @@ import { gameTime } from '../sim/clock.ts';
 import type { SimState } from '../sim/simulation.ts';
 import { conditionOf } from '../sim/damage.ts';
 import { specOf } from '../sim/vehicle.ts';
+import { currentSlot, currentWeapon, poolOf, reloading } from '../sim/weapon.ts';
 
 /** Minimal DOM overlay: seed, game clock and draw calls. Grows into the full HUD. */
 export class Hud {
@@ -60,7 +61,9 @@ export class Hud {
     const doing =
       (p.driving
         ? `${specOf(state.vehicle.cls).name}  ${conditionOf(state.vehicle.damage)}`
-        : `on foot  ${Math.round(p.health)} hp`) + heat;
+        : `on foot  ${Math.round(p.health)} hp`) +
+      `  ${armed(state)}` +
+      heat;
     if (kmh !== this.shownSpeed || doing !== this.shownVehicle) {
       this.shownSpeed = kmh;
       this.shownVehicle = doing;
@@ -83,4 +86,16 @@ export class Hud {
     const queue = streaming > 0 ? `  ${streaming} streaming` : '';
     this.draws.textContent = `${drawCalls} draws/chunk  ${lights} lights  ${tier}${queue}`;
   }
+}
+
+/**
+ * The weapon and the ammunition of spec section 12: what is in the player's
+ * hands, the rounds in its magazine and the pool behind them. A melee weapon has
+ * neither, so it is named and nothing else, and a weapon being reloaded says so.
+ */
+function armed(state: SimState): string {
+  const spec = currentWeapon(state.loadout);
+  if (spec.capacity === 0) return spec.name;
+  if (reloading(state.loadout)) return `${spec.name}  reloading`;
+  return `${spec.name}  ${currentSlot(state.loadout).loaded}/${poolOf(state.loadout, spec)}`;
 }
