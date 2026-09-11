@@ -1,5 +1,6 @@
 import { readSeedFromLocation, seedFromString, writeSeedToHash } from './core/seed.ts';
 import { BASE_DISTANCE, FollowCamera, PREVIEW_DISTANCE } from './render/camera.ts';
+import { PostChain } from './render/post.ts';
 import { createRenderer, probeWebGpu } from './render/renderer.ts';
 import { createPreviewScene } from './render/scene.ts';
 import { WorldScene } from './render/world-scene.ts';
@@ -18,6 +19,8 @@ const PREVIEW_SPIN = 0.7;
 interface Session {
   state: SimState;
   world: WorldScene;
+  /** The effects the world is drawn through (spec section 10.6). */
+  post: PostChain;
   hud: Hud;
 }
 
@@ -66,8 +69,10 @@ async function boot(): Promise<void> {
       session.world.character.group.position.set(p.x, height, p.y);
       session.world.character.group.rotation.y = -p.heading;
       // The light of the scene is a function of the tick, so the day runs at
-      // the simulation's pace whatever the frame rate (spec section 10.5).
+      // the simulation's pace whatever the frame rate (spec section 10.5). The
+      // colour grade follows the same tick (spec section 10.6).
       session.world.time = session.state.tick;
+      session.post.time = session.state.tick;
       session.world.update(p.x, p.y);
       camera.update(elapsed / 1000, { ...p, height });
       session.hud.update(
@@ -76,7 +81,9 @@ async function boot(): Promise<void> {
         session.world.lightCount,
         session.world.streaming,
       );
-      void renderer.render(session.world.scene, camera.camera);
+      // Not `renderer.render`: the post chain draws the scene itself and the
+      // effects of spec section 10.6 over it.
+      session.post.render();
     } else {
       spin += (elapsed / 1000) * PREVIEW_SPIN;
       preview.character.group.position.set(0, 0, 0);
@@ -118,7 +125,12 @@ async function boot(): Promise<void> {
   notice.remove();
 
   camera.setBaseDistance(BASE_DISTANCE);
-  session = { state, world, hud: new Hud(document.body, choice.seed) };
+  // The chain is built on the world's scene and the camera that follows the
+  // player, so it is made here rather than beside the renderer. Waiting for it
+  // means the first frame is antialiased like every frame after it.
+  const post = new PostChain(renderer, world.scene, camera.camera);
+  await post.ready();
+  session = { state, world, post, hud: new Hud(document.body, choice.seed) };
   preview.dispose();
   last = performance.now();
 }

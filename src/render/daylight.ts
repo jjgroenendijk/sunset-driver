@@ -86,6 +86,8 @@ export interface Daylight {
   haze: Color;
   /** How far into the night it is, 0 by day and 1 at midnight. It lights the windows. */
   night: number;
+  /** How near the horizon the sun is: 0 by day and at midnight, 1 at sunrise and sunset. */
+  dusk: number;
   /** How far on the street lamps are, 0 by day and 1 after dark. */
   lamps: number;
 }
@@ -111,7 +113,7 @@ export function daylightAt(tick: number): Daylight {
   const lamps = 1 - smoothstep(DARK_ALTITUDE, LAMP_ALTITUDE, altitude);
 
   // Dusk is the band around the horizon, whichever side of it the sun is on.
-  const dusk = (1 - smoothstep(0, DAY_ALTITUDE, Math.abs(altitude))) * DUSK_SHARE;
+  const dusk = 1 - smoothstep(0, DAY_ALTITUDE, Math.abs(altitude));
 
   return {
     sun,
@@ -121,8 +123,9 @@ export function daylightAt(tick: number): Daylight {
     fillSky: blend(SKY_FILL_NIGHT, SKY_FILL_DAY, day),
     fillGround: blend(GROUND_FILL_NIGHT, GROUND_FILL_DAY, day),
     fillIntensity: FILL_NIGHT + (FILL_DAY - FILL_NIGHT) * day,
-    haze: blend(HAZE_NIGHT, HAZE_DAY, day).lerp(new Color(HAZE_DUSK), dusk),
+    haze: blend(HAZE_NIGHT, HAZE_DAY, day).lerp(new Color(HAZE_DUSK), dusk * DUSK_SHARE),
     night,
+    dusk,
     lamps,
   };
 }

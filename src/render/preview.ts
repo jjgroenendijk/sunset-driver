@@ -20,6 +20,7 @@ import { DEFAULT_APPEARANCE } from '../sim/character.ts';
 import { generateWorld } from '../world/world.ts';
 import { FollowCamera } from './camera.ts';
 import { tickAtHour } from './daylight.ts';
+import { PostChain } from './post.ts';
 import { createOffscreenRenderer } from './renderer.ts';
 import { WorldScene } from './world-scene.ts';
 
@@ -74,8 +75,9 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   const worldMs = performance.now() - t0;
 
   const t1 = performance.now();
+  const tick = tickAtHour(hour);
   const scene = new WorldScene(world, DEFAULT_APPEARANCE);
-  scene.time = tickAtHour(hour);
+  scene.time = tick;
   // The chunks are built in the workers the game uses, so the picture is the
   // frame the game draws. Every chunk of both rings is waited for, so the same
   // request twice takes the same picture.
@@ -101,8 +103,16 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   // Not `setRenderTarget`: a target set as the output of the frame is what the
   // tone mapping and the colour space conversion are written into.
   renderer.setOutputRenderTarget(target);
+  // The effects of spec section 10.6 are part of what the game draws, so the
+  // picture is taken through them. The chain tone maps and encodes the frame
+  // itself, which is what the output target is written with.
+  const post = new PostChain(renderer, scene.scene, camera.camera);
+  post.time = tick;
+  // SMAA's tables are decoded from data URLs, so a frame drawn before they
+  // land is a different picture. The same request twice takes the same one.
+  await post.ready();
   // `render` only submits the work; the readback below is what waits for it.
-  renderer.render(scene.scene, camera.camera);
+  post.render();
   const padded = await renderer.readRenderTargetPixelsAsync(target, 0, 0, width, height);
   const frameMs = performance.now() - t2;
 
@@ -110,6 +120,7 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   const lights = scene.lightCount;
   const shadows = scene.shadowCascades;
   const rgb = toRgb(padded as Uint8Array, width, height);
+  post.dispose();
   target.dispose();
   scene.dispose();
   renderer.dispose();
