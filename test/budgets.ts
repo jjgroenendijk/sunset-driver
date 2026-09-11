@@ -26,11 +26,12 @@ export const SIM_SLICE_MS = FRAME_SLICE_MS.physics + FRAME_SLICE_MS.gameplayAndA
 
 export const BUDGET_MS = {
   /**
-   * `stepSim`, per tick, measured over one game hour. Occupied so far by the
-   * placeholder character motion; driving, physics, traffic and police AI all
-   * come out of the same {@link SIM_SLICE_MS}.
+   * `stepSim`, per tick: the Rapier world of spec section 11.3 stepped once,
+   * with the player's car on the ground tiles around it. Traffic, pedestrians
+   * and police AI come out of the same {@link SIM_SLICE_MS} and are not here
+   * yet, so this claims the part the physics already spends.
    */
-  simTick: 0.02,
+  simTick: 0.2,
 
   /**
    * `generateWorld`, per seed: the whole-map skeleton, not a chunk. Offline

@@ -14,19 +14,33 @@ export function sweepSeeds(count: number): number[] {
   return seeds;
 }
 
-/** A deterministic recorded input stream for a seed. */
+/**
+ * A deterministic recorded input stream for a seed.
+ *
+ * A key is held for a fraction of a second at a time rather than changed every
+ * tick. A stream that flickers every tick leaves a car sitting where it started,
+ * and a sweep that drives nowhere checks nothing.
+ */
 export function inputStream(seed: number, ticks: number): InputFrame[] {
   const frames: InputFrame[] = [];
   let x = seed >>> 0;
+  let frame: InputFrame = { ...EMPTY_INPUT };
+  let held = 0;
   for (let i = 0; i < ticks; i++) {
-    x = (Math.imul(x, 1664525) + 1013904223) >>> 0;
-    frames.push({
-      ...EMPTY_INPUT,
-      throttle: ((x >>> 8) & 3) === 0 ? -1 : ((x >>> 8) & 3) === 1 ? 0 : 1,
-      steer: ((x >>> 12) % 3) - 1,
-      sprint: ((x >>> 16) & 1) === 1,
-      handbrake: ((x >>> 20) & 7) === 0,
-    });
+    if (held === 0) {
+      x = (Math.imul(x, 1664525) + 1013904223) >>> 0;
+      held = 12 + ((x >>> 24) % 36);
+      // Mostly forward and mostly straight, the way a recorded drive looks.
+      frame = {
+        ...EMPTY_INPUT,
+        throttle: ((x >>> 8) & 7) === 0 ? -1 : 1,
+        steer: [-1, 0, 0, 1][(x >>> 12) & 3] as number,
+        sprint: ((x >>> 16) & 1) === 1,
+        handbrake: ((x >>> 20) & 15) === 0,
+      };
+    }
+    frames.push(frame);
+    held--;
   }
   return frames;
 }

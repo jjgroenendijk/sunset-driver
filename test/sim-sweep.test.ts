@@ -1,38 +1,105 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { FixedStepClock, TICK_MS, TICKS_PER_DAY, gameTime } from '../src/sim/clock.ts';
-import { type InputFrame } from '../src/sim/input.ts';
-import { cloneSimState, createSimState, stepSim } from '../src/sim/simulation.ts';
+import { EMPTY_INPUT, type InputFrame } from '../src/sim/input.ts';
+import { initPhysics, SimPhysics, type Ground } from '../src/sim/physics.ts';
+import { cloneSimState, createSimState, stepSim, type SimState } from '../src/sim/simulation.ts';
+import { headingOf, rideHeight, SALOON } from '../src/sim/vehicle.ts';
+import type { Surface } from '../src/world/surface.ts';
 import { inputStream, stableJson, sweepSeeds } from './helpers.ts';
 
-/** Run the sim with a given frame pacing (ms per render frame) for a wall-clock duration. */
-function runPaced(seed: number, inputs: InputFrame[], frameMs: number): ReturnType<typeof createSimState> {
+/**
+ * The sweep drives the car of spec section 11.3 rather than a placeholder, so
+ * what it checks is the Rapier world in the loop: the same inputs give the same
+ * session, whatever the frame rate and whichever instance runs them.
+ *
+ * The ground is a hillside written here rather than a generated world. The
+ * simulation reads the world through a {@link Ground} and nothing more, so a
+ * seed sweep of cities would measure the city; this measures the simulation.
+ * `seed-sweep.test.ts` is where the real ground is checked.
+ */
+const SEED_COUNT = process.env.SWEEP_SEEDS ? 24 : 2;
+const TICKS = process.env.SWEEP_SEEDS ? 900 : 400;
+
+/** A hillside: rolling enough that the suspension, the grades and the grip all do something. */
+function hills(surface: Surface = 'asphalt'): Ground {
+  return {
+    heightAt: (x, y) => 2.5 * Math.sin(x / 37) + 1.5 * Math.cos(y / 51) + 0.35 * Math.sin(x / 8 + y / 11),
+    surfaceAt: () => surface,
+  };
+}
+
+/** A plain constant grade, for the checks that are about the gradient alone. */
+function ramp(surface: Surface, slope: number): Ground {
+  return { heightAt: (x) => x * slope, surfaceAt: () => surface };
+}
+
+/** A session on a ground, with the car already settled on its springs. */
+interface Session {
+  state: SimState;
+  physics: SimPhysics;
+}
+
+function start(ground: Ground, seed = 1): Session {
   const state = createSimState(seed);
+  const physics = new SimPhysics(ground, state);
+  physics.spawn(state, 0, 0, 0);
+  const session = { state, physics };
+  drive(session, 60);
+  return session;
+}
+
+function drive(session: Session, ticks: number, input: Partial<InputFrame> = {}): void {
+  const frame = { ...EMPTY_INPUT, ...input };
+  for (let i = 0; i < ticks; i++) stepSim(session.state, frame, session.physics);
+}
+
+/** Run a recorded stream from a fresh session and answer with the state it ended in. */
+function replay(seed: number, inputs: readonly InputFrame[]): SimState {
+  const state = createSimState(seed);
+  const physics = new SimPhysics(hills(), state);
+  physics.spawn(state, 0, 0, 0);
+  for (const frame of inputs) stepSim(state, frame, physics);
+  physics.dispose();
+  return state;
+}
+
+/** Drive until the car passes a speed, and answer how far it got. Gives up after a minute. */
+function accelerateTo(session: Session, speed: number): boolean {
+  for (let i = 0; i < 3600 && session.state.vehicle.speed < speed; i++) drive(session, 1, { throttle: 1 });
+  return session.state.vehicle.speed >= speed;
+}
+
+/** Run the sim with a given frame pacing (ms per render frame) for a wall-clock duration. */
+function runPaced(seed: number, inputs: readonly InputFrame[], frameMs: number): SimState {
+  const state = createSimState(seed);
+  const physics = new SimPhysics(hills(), state);
+  physics.spawn(state, 0, 0, 0);
   const clock = new FixedStepClock();
   let tick = 0;
   let elapsed = 0;
   const total = inputs.length * TICK_MS;
   while (elapsed < total + frameMs) {
     const steps = clock.advance(frameMs);
-    for (let i = 0; i < steps && tick < inputs.length; i++) stepSim(state, inputs[tick++]);
+    for (let i = 0; i < steps && tick < inputs.length; i++) stepSim(state, inputs[tick++] as InputFrame, physics);
     elapsed += frameMs;
   }
   // Drain any remaining ticks so every pacing reaches the same tick.
-  while (tick < inputs.length) stepSim(state, inputs[tick++]);
+  while (tick < inputs.length) stepSim(state, inputs[tick++] as InputFrame, physics);
+  physics.dispose();
   return state;
 }
 
-describe('simulation sweep', () => {
-  const TICKS = 600;
-  const seeds = sweepSeeds(50);
+describe(`simulation sweep (${SEED_COUNT} seeds)`, () => {
+  const seeds = sweepSeeds(SEED_COUNT);
+
+  beforeAll(async () => {
+    await initPhysics();
+  });
 
   it('replays a recorded input stream to identical state', () => {
     for (const seed of seeds) {
       const inputs = inputStream(seed, TICKS);
-      const a = createSimState(seed);
-      const b = createSimState(seed);
-      for (const f of inputs) stepSim(a, f);
-      for (const f of inputs) stepSim(b, f);
-      expect(stableJson(a)).toBe(stableJson(b));
+      expect(stableJson(replay(seed, inputs))).toBe(stableJson(replay(seed, inputs)));
     }
   });
 
@@ -51,12 +118,142 @@ describe('simulation sweep', () => {
   it('two independent instances agree at the same tick', () => {
     for (const seed of seeds) {
       const inputs = inputStream(seed, TICKS);
-      const a = createSimState(seed);
-      for (const f of inputs) stepSim(a, f);
-      const b = cloneSimState(createSimState(seed));
-      for (const f of inputs) stepSim(b, f);
+      const a = replay(seed, inputs);
+      const b = cloneSimState(replay(seed, inputs));
       expect(stableJson(a)).toBe(stableJson(b));
     }
+  });
+
+  it('drives the car somewhere, so the sweep is checking a moving vehicle', () => {
+    const inputs = inputStream(seeds[0] as number, TICKS);
+    const state = createSimState(seeds[0] as number);
+    const physics = new SimPhysics(hills(), state);
+    physics.spawn(state, 0, 0, 0);
+    // Metres of ground covered, not distance from where it set off: a car that
+    // drives a loop ends where it started and has still been driven.
+    let path = 0;
+    let x = state.player.x;
+    let y = state.player.y;
+    for (const frame of inputs) {
+      stepSim(state, frame, physics);
+      path += Math.hypot(state.player.x - x, state.player.y - y);
+      x = state.player.x;
+      y = state.player.y;
+    }
+    physics.dispose();
+    expect(path).toBeGreaterThan(50);
+  });
+});
+
+describe('driving', () => {
+  beforeAll(async () => {
+    await initPhysics();
+  });
+
+  it('stands the car on the ground it is given', () => {
+    for (const slope of [0, 0.1, -0.15]) {
+      const session = start(ramp('asphalt', slope));
+      const v = session.state.vehicle;
+      const ground = slope * v.x;
+      expect(v.wheels.every((w) => w.contact), `slope ${slope}`).toBe(true);
+      // At rest the springs carry the weight, so the body sits a little below
+      // the height it hangs at with the wheels off the ground.
+      expect(v.y - ground, `slope ${slope}`).toBeGreaterThan(rideHeight(SALOON) - 0.3);
+      expect(v.y - ground, `slope ${slope}`).toBeLessThan(rideHeight(SALOON) + 0.05);
+      session.physics.dispose();
+    }
+  });
+
+  it('steers toward the side the input steers toward', () => {
+    const session = start(ramp('asphalt', 0));
+    accelerateTo(session, 10);
+    const before = headingOf(session.state.vehicle);
+    drive(session, 90, { throttle: 0.4, steer: 1 });
+    // The map's heading grows toward +y, which is the driver's right hand.
+    expect(headingOf(session.state.vehicle)).toBeGreaterThan(before + 0.2);
+    session.physics.dispose();
+  });
+
+  it('climbs slower than it runs on the flat, and faster downhill', () => {
+    const speeds = [0.12, 0, -0.12].map((slope) => {
+      const session = start(ramp('asphalt', slope));
+      drive(session, 600, { throttle: 1 });
+      const speed = session.state.vehicle.speed;
+      session.physics.dispose();
+      return speed;
+    });
+    const [climbing, flat, descending] = speeds as [number, number, number];
+    expect(climbing).toBeLessThan(flat - 1);
+    expect(descending).toBeGreaterThan(flat + 1);
+  });
+
+  it('takes longer to stop running downhill than running uphill', () => {
+    const distances = [-0.1, 0.1].map((slope) => {
+      const session = start(ramp('asphalt', slope));
+      expect(accelerateTo(session, 20), `slope ${slope}`).toBe(true);
+      const from = session.state.vehicle.x;
+      for (let i = 0; i < 900 && session.state.vehicle.speed > 0.5; i++) drive(session, 1, { throttle: -1 });
+      const travelled = Math.abs(session.state.vehicle.x - from);
+      session.physics.dispose();
+      return travelled;
+    });
+    const [downhill, uphill] = distances as [number, number];
+    expect(downhill).toBeGreaterThan(uphill);
+  });
+
+  it('grips asphalt best, then dirt, then open ground, then sand', () => {
+    const surfaces: Surface[] = ['asphalt', 'dirt', 'ground', 'sand'];
+    const turns = surfaces.map((surface) => {
+      const session = start(ramp(surface, 0));
+      expect(accelerateTo(session, 18), surface).toBe(true);
+      const before = headingOf(session.state.vehicle);
+      drive(session, 120, { throttle: 0.3, steer: 1 });
+      const turned = headingOf(session.state.vehicle) - before;
+      session.physics.dispose();
+      return turned;
+    });
+    for (let i = 1; i < turns.length; i++) {
+      expect(turns[i] as number, `${surfaces[i]} against ${surfaces[i - 1]}`).toBeLessThan(turns[i - 1] as number);
+    }
+  });
+
+  it('leaves a parked car where it was parked, even on a hill', () => {
+    const session = start(ramp('asphalt', 0.1));
+    const from = session.state.vehicle.x;
+    drive(session, 900);
+    expect(Math.abs(session.state.vehicle.x - from)).toBeLessThan(0.5);
+    session.physics.dispose();
+  });
+
+  it('carries a session through its record and back', () => {
+    const ground = hills();
+    const session = start(ground);
+    drive(session, 300, { throttle: 1, steer: 1 });
+
+    // The record is plain data: it survives JSON, and a physics world built
+    // from it puts the car back where the record says it was.
+    const revived = cloneSimState(JSON.parse(JSON.stringify(session.state)) as SimState);
+    const physics = new SimPhysics(ground, revived);
+    physics.step(revived, EMPTY_INPUT);
+    session.physics.step(session.state, EMPTY_INPUT);
+
+    const a = session.state.vehicle;
+    const b = revived.vehicle;
+    expect(Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)).toBeLessThan(0.01);
+    expect(Math.abs(a.speed - b.speed)).toBeLessThan(0.05);
+    physics.dispose();
+    session.physics.dispose();
+  });
+
+  it('holds the ground under the car as it drives away from where it started', () => {
+    const session = start(hills());
+    const tiles = session.physics.groundTiles;
+    expect(accelerateTo(session, 25)).toBe(true);
+    drive(session, 900, { throttle: 1 });
+    // The car has left the tiles it started on, and it is still on the ground.
+    expect(session.physics.groundTiles).toBe(tiles);
+    expect(session.state.vehicle.wheels.some((w) => w.contact)).toBe(true);
+    session.physics.dispose();
   });
 });
 
