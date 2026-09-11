@@ -252,6 +252,7 @@ export class WorldScene {
    */
   look(x: number, y: number): void {
     this.sky.follow(x, y);
+    this.sky.drawShadowOnce();
     // The dither fade of spec section 9.2 measures its ring from the player,
     // as the streaming does, and not from the camera behind them.
     this.fade.focus(x, y);
