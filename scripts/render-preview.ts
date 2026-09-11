@@ -12,7 +12,7 @@
  *   --speed          how fast the player moves, in metres per second.
  *   --width,--height the size of the picture.
  *   --radius         chunks each way of the player to build.
- *   --night          how far into the night it is, 0 by day and 1 at midnight.
+ *   --hour           the hour of the day to light the frame at, 0 to 24.
  *
  * The browser comes from Playwright. A cloud session already has one; on a
  * fresh machine run `npx playwright install chromium` first, or point
@@ -77,7 +77,7 @@ const request: PreviewRequest = {
   width: num('width', 960),
   height: num('height', 540),
   chunkRadius: num('radius', 2),
-  night: num('night', 0),
+  hour: num('hour', 12),
 };
 
 /**
@@ -137,8 +137,10 @@ try {
   writeFileSync(out, encodePng(result.width, result.height, rgb));
   console.log(
     `${out}: ${result.width}x${result.height}, seed ${seedText} at ${request.x},${request.y}` +
+      ` at ${request.hour.toFixed(1)}h` +
       ` — world ${result.worldMs.toFixed(0)} ms, chunks ${result.chunkMs.toFixed(0)} ms,` +
-      ` frame ${result.frameMs.toFixed(0)} ms, dearest chunk ${result.peakDrawCalls} draw calls`,
+      ` frame ${result.frameMs.toFixed(0)} ms, dearest chunk ${result.peakDrawCalls} draw calls,` +
+      ` ${result.lights} lights, ${result.shadows} shadow cascades`,
   );
 } finally {
   await browser?.close();
