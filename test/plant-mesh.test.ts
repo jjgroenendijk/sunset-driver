@@ -59,9 +59,10 @@ function chunkOf(plants: Plant[]): WorldChunk {
   };
 }
 
-describe('plant models', () => {
-  const models = buildPlantModels();
+/** The models of a world, grown once for every test that reads them. */
+const models = buildPlantModels();
 
+describe('plant models', () => {
   it('builds one model of every species and variant, and nothing else', () => {
     expect(models.length).toBe(PLANT_SPECIES.length * SPECIES_MODELS);
     for (const species of PLANT_SPECIES) {
@@ -119,8 +120,6 @@ describe('plant models', () => {
 });
 
 describe('the plants of a chunk', () => {
-  const models = buildPlantModels();
-
   it('costs one batch whatever grows there, and nothing where nothing does', () => {
     expect(vegetationDrawCalls(chunkOf([]))).toBe(0);
     expect(vegetationDrawCalls(chunkOf([plantOf('broadleaf', 40, 40, 7)]))).toBe(1);
