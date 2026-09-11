@@ -11,8 +11,12 @@ import {
 import type { CharacterAppearance } from '../sim/character.ts';
 import { CharacterModel } from './character.ts';
 
-/** Placeholder scene until world generation feeds the renderer. */
-export function createPlaceholderScene(appearance: CharacterAppearance): {
+/**
+ * The backdrop the title screen turns the character against. It is not a place
+ * in the world: the session's own scene is `world-view.ts`, and it is only
+ * built once the title screen has handed over a seed.
+ */
+export function createTitleScene(appearance: CharacterAppearance): {
   scene: Scene;
   character: CharacterModel;
 } {

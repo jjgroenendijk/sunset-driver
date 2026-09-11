@@ -40,12 +40,18 @@ export class FollowCamera {
     this.camera.updateProjectionMatrix();
   }
 
-  /** Move toward the target. `dt` is render time; the camera is not simulation state. */
-  update(dt: number, target: { x: number; y: number; heading: number; speed: number }): void {
+  /**
+   * Move toward the target. `dt` is render time; the camera is not simulation
+   * state. `groundY` is the height of the ground under the target, so the
+   * camera rides over the hills rather than through them; the focus follows it
+   * at the same rate as the rest of the move, which keeps a crest from
+   * snapping the view.
+   */
+  update(dt: number, target: { x: number; y: number; heading: number; speed: number }, groundY = 0): void {
     const lead = Math.abs(target.speed) * LEAD_PER_SPEED;
     const wanted = new Vector3(
       target.x + Math.cos(target.heading) * lead,
-      0,
+      groundY,
       target.y + Math.sin(target.heading) * lead,
     );
     if (!this.initialised) {
