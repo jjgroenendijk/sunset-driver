@@ -15,8 +15,9 @@
  *
  * A payload is built at one of two details (spec section 9.1). Near is the city
  * as the game draws it. Far is the ground, the highways and arterials over it
- * and the massing of its buildings: no markings, no minor roads, no outlines
- * and no plants, because none of them can be told apart from the far ring.
+ * and the massing of its buildings: no markings, no minor roads, no outlines,
+ * no plants and no street lamps, because none of them can be told apart from
+ * the far ring.
  */
 import { BufferAttribute, BufferGeometry } from 'three';
 import type { ChunkBounds, WorldChunk, WorldLayers } from '../world/chunks.ts';
@@ -24,6 +25,7 @@ import { RoadRibbons } from '../world/ribbon.ts';
 import type { RoadTier, WorldDescription } from '../world/types.ts';
 import { buildChunkBuildings, buildingLookup, type BuildingLookup } from './building-mesh.ts';
 import { buildGroundAttributes, groundLookup, type GroundAttributes, type GroundLookup } from './ground.ts';
+import { lampsIn, type Lamp } from './lamp-mesh.ts';
 import { buildChunkVegetation, plantLookup, type PlantLookup } from './plant-mesh.ts';
 import { buildChunkRoads, partsOf } from './road-mesh.ts';
 import type { ChunkDetail } from './streaming.ts';
@@ -91,6 +93,13 @@ export interface ChunkPayload {
   /** The buildings built as blocks, which at far detail is all of them. */
   blocks: PackedPart[];
   plants: PackedPlants;
+  /**
+   * The street lamps of the chunk (spec section 10.5), already in the places
+   * the scene works in. A lamp is a handful of numbers, so it crosses as it
+   * stands rather than packed. Empty at far detail: a mast is three metres
+   * tall and the far ring cannot read one.
+   */
+  lamps: Lamp[];
   /** Draw calls the chunk costs once it is in the scene. */
   drawCalls: number;
 }
@@ -151,6 +160,7 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
     facades,
     blocks,
     plants,
+    lamps: far ? [] : lampsIn(chunk, lookups.ribbons),
     drawCalls: 0,
   };
   payload.drawCalls = payloadDrawCalls(payload);
@@ -168,6 +178,7 @@ export function payloadDrawCalls(payload: ChunkPayload): number {
   if (payload.facades.length > 0) calls++;
   if (payload.blocks.length > 0) calls++;
   if (payload.plants.models.length > 0) calls++;
+  if (payload.lamps.length > 0) calls++;
   return calls;
 }
 

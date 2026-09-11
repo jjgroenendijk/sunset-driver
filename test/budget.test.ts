@@ -230,8 +230,9 @@ function chunkSourceOf(world: WorldDescription): ChunkSource {
  * How long each step of putting a chunk into the scene takes: the ground, then
  * each part of each batch as the streaming queue runs it. The materials are
  * plain ones, because what is measured is the copy into the batch and not what
- * the batch is drawn with. The plants are left out: a plant is a copy of one of
- * a handful of small models, and the dearest step is a generated tower.
+ * the batch is drawn with. The plants and the lamps are left out: each is a
+ * copy of one of a handful of small models, and the dearest step is a
+ * generated tower.
  */
 function uploadSteps(payload: ChunkPayload, material: Material): number[] {
   const meshes: BatchedMesh[] = [];

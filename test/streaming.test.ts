@@ -183,6 +183,8 @@ describe('a chunk as a payload', () => {
     expect(far.outlines).toHaveLength(0);
     expect(far.plants.models).toHaveLength(0);
     expect(near.plants.models.length).toBeGreaterThan(0);
+    expect(far.lamps).toHaveLength(0);
+    expect(near.lamps.length).toBeGreaterThan(0);
     expect(far.roads.map((tier) => tier.tier)).toEqual(['arterial']);
     expect(near.roads.map((tier) => tier.tier)).toContain('street');
     for (const tier of far.roads) expect(tier.markings).toHaveLength(0);

@@ -1,4 +1,34 @@
+import { ACESFilmicToneMapping } from 'three';
+import { ClusteredLighting } from 'three/examples/jsm/lighting/ClusteredLighting.js';
 import { WebGPURenderer } from 'three/webgpu';
+
+/**
+ * How much light reaches the film. The sky of `sky.ts` is the Preetham model,
+ * which answers in real sky brightness, so the frame has to be tone mapped or
+ * the daylight sky is a white sheet. Every light in the game is set against
+ * this one number.
+ */
+const EXPOSURE = 0.62;
+
+/**
+ * Tone mapping and the lighting system, set the same way wherever a renderer is
+ * made (spec sections 10.5, 10.6).
+ *
+ * The clustered lighting of spec section 10.5 partitions the view into a grid
+ * and gives each fragment only the lights that reach it, which is what makes
+ * dense night lighting affordable. three.js 0.186 clusters shadowless point
+ * lights alone, so the projector cones of `lamps.ts` still go down the default
+ * path today; the hard cap in that file is what keeps them inside the budget,
+ * and the neon and headlights that come later land in the cluster grid.
+ */
+function configure(renderer: WebGPURenderer): void {
+  renderer.toneMapping = ACESFilmicToneMapping;
+  renderer.toneMappingExposure = EXPOSURE;
+  // Off by default on `WebGPURenderer`, and nothing else says so: without this
+  // the sun's cascades are built and never drawn, and the city is flat.
+  renderer.shadowMap.enabled = true;
+  renderer.lighting = new ClusteredLighting();
+}
 
 export type WebGpuProbe = { ok: true } | { ok: false; reason: string };
 
@@ -53,6 +83,7 @@ function allowStringSwizzle(): void {
 export async function createRenderer(canvas: HTMLCanvasElement): Promise<WebGPURenderer> {
   allowStringSwizzle();
   const renderer = new WebGPURenderer({ canvas, antialias: false, forceWebGL: false });
+  configure(renderer);
   await renderer.init();
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight, false);
@@ -71,6 +102,7 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<WebGPUR
 export async function createOffscreenRenderer(width: number, height: number): Promise<WebGPURenderer> {
   allowStringSwizzle();
   const renderer = new WebGPURenderer({ antialias: false, forceWebGL: false });
+  configure(renderer);
   await renderer.init();
   renderer.setPixelRatio(1);
   renderer.setSize(width, height, false);

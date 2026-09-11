@@ -155,6 +155,18 @@ export function roadSection(tier: RoadTier): SectionPoint[] {
 }
 
 /**
+ * Metres above the road bed that the outer edge of a tier's surface stands: the
+ * top of the kerb where the tier has a pavement, the verge where it has one, and
+ * the carriageway itself where it has neither. Street furniture set beside a
+ * road stands on this, so nothing is placed reading these numbers twice.
+ */
+export function vergeRise(tier: RoadTier): number {
+  // The first point of a section is the skirt buried in the ground beside the
+  // road; the second is the outer edge of the surface itself.
+  return (roadSection(tier)[1] as SectionPoint).rise;
+}
+
+/**
  * The lines painted on a tier (spec section 6.2). An alley and a dirt road are
  * unmarked. Everything else takes a centre line, one dashed divider between each
  * pair of lanes, and — where the tier runs fast enough to need them — a solid

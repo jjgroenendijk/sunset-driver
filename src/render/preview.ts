@@ -19,6 +19,7 @@ import { RenderTarget, SRGBColorSpace, UnsignedByteType } from 'three';
 import { DEFAULT_APPEARANCE } from '../sim/character.ts';
 import { generateWorld } from '../world/world.ts';
 import { FollowCamera } from './camera.ts';
+import { tickAtHour } from './daylight.ts';
 import { createOffscreenRenderer } from './renderer.ts';
 import { WorldScene } from './world-scene.ts';
 
@@ -35,8 +36,8 @@ export interface PreviewRequest {
   speed: number;
   width: number;
   height: number;
-  /** How far into the night it is, 0 by day and 1 at midnight. */
-  night: number;
+  /** The hour of the day to light the frame at, 0 to 24 (spec section 10.5). */
+  hour: number;
 }
 
 /** The picture, and what the frame cost to build. */
@@ -53,6 +54,10 @@ export interface PreviewResult {
   frameMs: number;
   /** Draw calls the dearest chunk built costs: ground, roads and buildings. */
   peakDrawCalls: number;
+  /** Lights the scene holds: the sun, the sky fill and the street lamp pool. */
+  lights: number;
+  /** Shadow maps the sun is split into (spec section 10.5). */
+  shadows: number;
 }
 
 /** Bytes a pixel of the render target below. */
@@ -62,7 +67,7 @@ const BYTES_PER_PIXEL = 4;
 const ROW_ALIGNMENT = 256;
 
 export async function renderPreview(request: PreviewRequest): Promise<PreviewResult> {
-  const { seed, x, y, distance, heading, speed, width, height, night } = request;
+  const { seed, x, y, distance, heading, speed, width, height, hour } = request;
 
   const t0 = performance.now();
   const world = generateWorld(seed);
@@ -70,11 +75,13 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
 
   const t1 = performance.now();
   const scene = new WorldScene(world, DEFAULT_APPEARANCE);
-  scene.night = night;
+  scene.time = tickAtHour(hour);
   // The chunks are built in the workers the game uses, so the picture is the
   // frame the game draws. Every chunk of both rings is waited for, so the same
   // request twice takes the same picture.
   await scene.settle(x, y);
+  // Where the player stands decides which lamps burn and where the sky dome is.
+  scene.look(x, y);
   const chunkMs = performance.now() - t1;
 
   // The player stands on the ground the roads left, as it does in the game.
@@ -100,12 +107,14 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   const frameMs = performance.now() - t2;
 
   const peakDrawCalls = scene.drawCallsPerChunk;
+  const lights = scene.lightCount;
+  const shadows = scene.shadowCascades;
   const rgb = toRgb(padded as Uint8Array, width, height);
   target.dispose();
   scene.dispose();
   renderer.dispose();
 
-  return { width, height, rgb, worldMs, chunkMs, frameMs, peakDrawCalls };
+  return { width, height, rgb, worldMs, chunkMs, frameMs, peakDrawCalls, lights, shadows };
 }
 
 /**

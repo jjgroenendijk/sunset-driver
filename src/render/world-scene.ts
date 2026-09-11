@@ -1,5 +1,5 @@
 /**
- * The scene the game is played in (spec sections 9.1, 10.1).
+ * The scene the game is played in (spec sections 9.1, 10.1, 10.5).
  *
  * A world is generated once and streamed as chunks around the player. The
  * chunks are built in workers (`chunk-pool.ts`) and arrive as plain arrays;
@@ -16,22 +16,29 @@
  * built again at its new detail and swapped when it lands, so nothing ever
  * disappears while its replacement is being built.
  *
+ * What the hour decides — the sky, the sun, the haze, the lit windows and the
+ * street lamps — comes from `daylight.ts` through `WorldScene.time`.
+ *
  * The scene reads the world description and never mutates it.
  */
-import { Color, DirectionalLight, Fog, HemisphereLight, Mesh, Scene, Vector3 } from 'three';
+import { BatchedMesh, Mesh, Object3D, Scene } from 'three';
 import type { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { CharacterAppearance } from '../sim/character.ts';
+import { START_TICK } from '../sim/simulation.ts';
 import { buildCarve, type RoadCarve } from '../world/carve.ts';
 import { chunkAt, CHUNK_SIZE } from '../world/chunks.ts';
 import type { WorldDescription } from '../world/types.ts';
 import { BuildingScenery } from './buildings.ts';
+import { CharacterModel } from './character.ts';
 import type { ChunkPayload } from './chunk-payload.ts';
 import { ChunkPool, type ChunkStream } from './chunk-pool.ts';
-import { CharacterModel } from './character.ts';
+import { daylightAt, type Daylight } from './daylight.ts';
 import { groundGeometry } from './ground.ts';
 import { createGroundMaterial } from './ground-material.ts';
+import type { Lamp } from './lamp-mesh.ts';
+import { LampLights, LampScenery } from './lamps.ts';
 import { RoadScenery } from './roads.ts';
-import { PlantScenery } from './vegetation.ts';
+import { SkyLighting } from './sky.ts';
 import {
   detailAt,
   FAR_RADIUS,
@@ -41,19 +48,8 @@ import {
   type ChunkDetail,
   type TilePart,
 } from './streaming.ts';
+import { PlantScenery } from './vegetation.ts';
 import { createWaterSurface, type WaterSurface } from './water-surface.ts';
-
-/** Colour of the sky and of the haze the far chunks fade into. */
-const SKY = 0x9ab0c0;
-
-/**
- * The one sun of the scene: where it stands, and the colour it burns. The water
- * takes its highlight from the same two, so the glare on the sea stands where
- * the light on the ground says it should. The day and night cycle of spec
- * section 10.5 is issue #21 and owns them after that.
- */
-const SUN_COLOUR = 0xffe2bc;
-const SUN_PLACE = new Vector3(120, 200, 60);
 
 /**
  * Metres at which the haze starts, and at which it is complete. It closes at
@@ -72,6 +68,8 @@ interface ChunkTile {
   cy: number;
   detail: ChunkDetail;
   parts: TilePart[];
+  /** Where every lamp of the chunk stands, so the light pool can be aimed at them. */
+  lamps: Lamp[];
   drawCalls: number;
   /** False while the upload queue still holds pieces of it. */
   whole: boolean;
@@ -93,7 +91,12 @@ export class WorldScene {
   private readonly scenery = new RoadScenery();
   private readonly buildings = new BuildingScenery();
   private readonly vegetation = new PlantScenery();
+  private readonly lamps = new LampScenery();
+  private readonly lampLights: LampLights;
   private readonly water: WaterSurface;
+  private readonly sky: SkyLighting;
+  /** The light of the tick the scene was last set to. */
+  private light: Daylight;
   /** The upload the frames to come are charged for, oldest chunk first. */
   private readonly jobs: (() => void)[] = [];
   /** Draw calls the dearest near chunk built so far costs. */
@@ -111,21 +114,35 @@ export class WorldScene {
     // The sea, the straits, the river and the harbour are one surface at sea
     // level (spec section 7.2), laid over the whole map rather than cut per
     // chunk: its reflection is a second pass over the scene, and one is enough.
-    this.water = createWaterSurface(world, { direction: SUN_PLACE, colour: SUN_COLOUR });
+    this.water = createWaterSurface(world);
     this.scene.add(this.water.object);
 
-    this.scene.background = new Color(SKY);
-    // The ground stops at the last chunk of the far ring. The haze is what
-    // stands there until the draw distance of spec section 9.2 does.
-    this.scene.fog = new Fog(SKY, FOG_NEAR, FOG_FAR);
-
-    const sun = new DirectionalLight(SUN_COLOUR, 2.4);
-    sun.position.copy(SUN_PLACE);
-    this.scene.add(sun);
-    this.scene.add(new HemisphereLight(0xc6dcf2, 0x3b342a, 1));
+    // The sky, the sun and the shadows it casts. The ground stops at the last
+    // chunk of the far ring, and the haze is what stands there until the draw
+    // distance of spec section 9.2 does.
+    this.sky = new SkyLighting(this.scene, FOG_NEAR, FOG_FAR);
+    this.lampLights = new LampLights(this.scene);
 
     this.character = new CharacterModel(appearance);
+    this.character.group.traverse((object) => {
+      object.castShadow = true;
+    });
     this.scene.add(this.character.group);
+
+    // A session starts at 08:00, so the first frame is already lit.
+    this.light = daylightAt(START_TICK);
+    this.apply();
+  }
+
+  /**
+   * Light the scene as it stands at a tick (spec section 10.5). One in-game day
+   * is 86 400 ticks, so the whole cycle runs in 24 real minutes. Everything the
+   * hour decides is set here: the sky, the sun, the haze, the lit windows and
+   * the street lamps.
+   */
+  set time(tick: number) {
+    this.light = daylightAt(tick);
+    this.apply();
   }
 
   /** The carved height of the ground at a place, so things stand on it. */
@@ -148,6 +165,22 @@ export class WorldScene {
     }
     this.stream.want(wantedChunks(here.cx, here.cy).filter((want) => this.missing(want.cx, want.cy, want.detail)));
     spendBudget(this.jobs, budgetMs, now);
+    this.look(x, y);
+  }
+
+  /**
+   * Point what is lit at the player without building anything: the dome is
+   * carried rather than laid around the map, and the light pool is handed to
+   * the lamps the player has come nearest to.
+   */
+  look(x: number, y: number): void {
+    this.sky.follow(x, y);
+    this.lampLights.aim(x, y, this.lampsInReach(), this.light.lamps);
+  }
+
+  /** Refit the sun's shadow cascades after the camera's shape changes. */
+  resize(): void {
+    this.sky.resize();
   }
 
   /**
@@ -184,17 +217,23 @@ export class WorldScene {
     return this.stream.pending + this.jobs.length;
   }
 
-  /**
-   * How far into the night it is, 0 by day and 1 at midnight. It lights the
-   * windows of every building; the cycle that drives it is spec section 10.5
-   * and issue #21.
-   */
+  /** How far into the night it is, 0 by day and 1 at midnight, at the tick last set. */
   get night(): number {
-    return this.buildings.night;
+    return this.light.night;
   }
 
-  set night(amount: number) {
-    this.buildings.night = amount;
+  /**
+   * Lights the scene holds (spec section 10.5): the sun, the sky fill and the
+   * street lamps that are throwing light. The HUD shows this beside the draw
+   * calls, so a light leak is visible while playing.
+   */
+  get lightCount(): number {
+    return this.sky.lightCount + this.lampLights.count;
+  }
+
+  /** Shadow maps the sun is split into. The lamps cast none. */
+  get shadowCascades(): number {
+    return this.sky.shadowCascades;
   }
 
   /** Release every chunk, the workers that built them and the materials they share. */
@@ -204,11 +243,29 @@ export class WorldScene {
     this.stream.dispose();
     this.scene.remove(this.water.object);
     this.water.dispose();
+    this.sky.dispose();
+    this.lampLights.dispose();
     this.material.dispose();
     this.scenery.dispose();
     this.buildings.dispose();
     this.vegetation.dispose();
+    this.lamps.dispose();
     this.character.dispose();
+  }
+
+  /** Hand the light of the moment to everything that reads it. */
+  private apply(): void {
+    this.sky.set(this.light);
+    this.water.setSun(this.light.sun, this.light.sunColour);
+    this.buildings.night = this.light.night;
+    this.lamps.lamps = this.light.lamps;
+  }
+
+  /** The lamps of every chunk in reach, a chunk at a time. */
+  private lampsInReach(): Lamp[][] {
+    const out: Lamp[][] = [];
+    for (const tile of [...this.tiles.values()]) if (tile.lamps.length > 0) out.push(tile.lamps);
+    return out;
   }
 
   /** Chunks within `radius` of the player that are not yet whole. */
@@ -232,9 +289,9 @@ export class WorldScene {
   /**
    * Cut a payload into the jobs that put it into the scene, one batch at a
    * time: the ground, then each tier of road, then each batch of buildings,
-   * then the plants. Each of those spreads again into a step per part of its
-   * batch as it runs, so a chunk of the core is dozens of small jobs and a
-   * chunk of open country is one.
+   * then the plants and the lamps. Each of those spreads again into a step per
+   * part of its batch as it runs, so a chunk of the core is dozens of small
+   * jobs and a chunk of open country is one.
    */
   private queueUpload(payload: ChunkPayload): void {
     const key = keyOf(payload.cx, payload.cy);
@@ -243,6 +300,7 @@ export class WorldScene {
       cy: payload.cy,
       detail: payload.detail,
       parts: [],
+      lamps: [],
       drawCalls: 0,
       whole: false,
       dead: false,
@@ -255,6 +313,9 @@ export class WorldScene {
       const geometry = groundGeometry(payload.ground);
       const mesh = new Mesh(geometry, this.material);
       mesh.position.set(payload.bounds.minX, 0, payload.bounds.minY);
+      // The ground takes the shadows of everything standing on it and casts
+      // none of its own: the relief the sun shades is already in the carve.
+      mesh.receiveShadow = true;
       this.add(tile, { objects: [mesh], drawCalls: 1, steps: [], dispose: () => geometry.dispose() });
     });
     for (const roads of payload.roads) {
@@ -271,6 +332,15 @@ export class WorldScene {
     }
     if (payload.plants.models.length > 0) {
       this.queueJob(tile, () => this.add(tile, this.vegetation.build(payload.plants)));
+    }
+    if (payload.lamps.length > 0) {
+      this.queueJob(tile, () => {
+        this.add(tile, this.lamps.build(payload.lamps));
+        // The pool is aimed at the lamps nearest the player, and a chunk that
+        // has just landed may hold some of them.
+        tile.lamps = payload.lamps;
+        this.lampLights.invalidate();
+      });
     }
     this.queueJob(tile, () => {
       tile.whole = true;
@@ -305,9 +375,19 @@ export class WorldScene {
    * batches at the front of the queue. The steps go in front so a chunk is
    * finished before the next one is started: a batch half filled is a building
    * still missing, and the frame after should be the one that finishes it.
+   *
+   * Every batch of a chunk is solid geometry standing on the ground, so it
+   * casts and takes the sun's shadow; the road markings are lines painted on
+   * the surface and do neither.
    */
   private add(tile: ChunkTile, part: TilePart): void {
-    for (const object of part.objects) this.scene.add(object);
+    for (const object of part.objects) {
+      if (object instanceof BatchedMesh) {
+        object.castShadow = true;
+        object.receiveShadow = true;
+      }
+      this.scene.add(object);
+    }
     tile.parts.push(part);
     tile.drawCalls += part.drawCalls;
     if (part.steps.length > 0) this.jobs.unshift(...part.steps.map((step) => this.guarded(tile, step)));
@@ -331,6 +411,10 @@ export class WorldScene {
       part.dispose();
     }
     tile.parts.length = 0;
+    if (tile.lamps.length > 0) {
+      tile.lamps = [];
+      this.lampLights.invalidate();
+    }
   }
 }
 

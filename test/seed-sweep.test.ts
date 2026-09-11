@@ -2,6 +2,7 @@ import { Vector3, type BufferAttribute, type BufferGeometry } from 'three';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { buildChunkBuildings, buildingLookup } from '../src/render/building-mesh.ts';
 import { CHUNK_DRAW_CALL_CAP, chunkDrawCalls } from '../src/render/chunk-cost.ts';
+import { LAMP_BY_TIER, lampsIn } from '../src/render/lamp-mesh.ts';
 import { buildChunkRoads, partsOf, roadSection, type SectionPoint } from '../src/render/road-mesh.ts';
 import { buildWaterAttributes } from '../src/render/water.ts';
 import { hashInts } from '../src/core/hash.ts';
@@ -1868,6 +1869,54 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       }
       if (carriageways === 0) fault('carries no carriageway at all');
       expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
+  it('lights the streets of a chunk once each, on the verge of the road they stand beside', () => {
+    // Spec sections 10.5 and 13.4: a lamp is placed from the curve alone, at a
+    // whole multiple of its tier's spacing from the start of it. So two chunks
+    // that share a road place the same lamps and neither places one twice,
+    // whichever of them the run was cut into.
+    for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
+      const w = worlds.get(seed) as WorldDescription;
+      const source = sourceOf(seed);
+      const ribbons = new RoadRibbons(w.terrain, w.roads);
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+
+      const seen = new Set<string>();
+      let lit = 0;
+      for (const [cx, cy] of chunkKeys()) {
+        const chunk = source.chunk(cx, cy);
+        for (const lamp of lampsIn(chunk, ribbons)) {
+          lit++;
+          const where = `${lamp.tier} lamp at ${lamp.x.toFixed(1)}, ${lamp.y.toFixed(1)}`;
+          if (LAMP_BY_TIER[lamp.tier] === undefined) fault(`${where} stands on an unlit tier`);
+          if (!Number.isFinite(lamp.height + lamp.headHeight + lamp.roadHeight)) {
+            fault(`${where} stands nowhere`);
+          }
+          // The mast stands on the verge of its own road: off the carriageway,
+          // and inside the ground that road claims.
+          const across = Math.hypot(lamp.x - lamp.roadX, lamp.y - lamp.roadY);
+          if (across <= TIERS[lamp.tier].width / 2) fault(`${where} stands on the carriageway`);
+          if (across > footprintHalfWidth(lamp.tier)) fault(`${where} stands off the ground the road claims`);
+          // The arm reaches toward the road, so the lantern hangs nearer its
+          // middle than the mast stands.
+          const head = Math.hypot(lamp.headX - lamp.roadX, lamp.headY - lamp.roadY);
+          if (head >= across) fault(`${where} reaches its arm away from the road`);
+          if (lamp.headHeight <= lamp.height) fault(`${where} hangs its lantern below its own foot`);
+
+          const key = `${lamp.x.toFixed(3)},${lamp.y.toFixed(3)}`;
+          if (seen.has(key)) fault(`${where} is placed twice`);
+          seen.add(key);
+          if (complaint !== undefined) break;
+        }
+        if (complaint !== undefined) break;
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+      expect(lit, `seed ${seed}`).toBeGreaterThan(0);
     }
   });
 

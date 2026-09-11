@@ -43,6 +43,9 @@ async function boot(): Promise<void> {
   window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight, false);
     camera.resize(window.innerWidth / window.innerHeight);
+    // The sun's shadow cascades are cut to the camera's frustum (spec section
+    // 10.5), so a new shape needs them refitted.
+    session?.world.resize();
   });
 
   // The session is null until the title screen hands over a seed and a look.
@@ -62,9 +65,17 @@ async function boot(): Promise<void> {
       const height = session.world.heightAt(p.x, p.y);
       session.world.character.group.position.set(p.x, height, p.y);
       session.world.character.group.rotation.y = -p.heading;
+      // The light of the scene is a function of the tick, so the day runs at
+      // the simulation's pace whatever the frame rate (spec section 10.5).
+      session.world.time = session.state.tick;
       session.world.update(p.x, p.y);
       camera.update(elapsed / 1000, { ...p, height });
-      session.hud.update(session.state, session.world.drawCallsPerChunk, session.world.streaming);
+      session.hud.update(
+        session.state,
+        session.world.drawCallsPerChunk,
+        session.world.lightCount,
+        session.world.streaming,
+      );
       void renderer.render(session.world.scene, camera.camera);
     } else {
       spin += (elapsed / 1000) * PREVIEW_SPIN;
