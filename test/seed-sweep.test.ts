@@ -1,13 +1,8 @@
-import type { BufferGeometry } from 'three';
+import { Vector3, type BufferAttribute, type BufferGeometry } from 'three';
 import { beforeAll, describe, expect, it } from 'vitest';
-import {
-  buildChunkRoads,
-  CHUNK_DRAW_CALL_CAP,
-  chunkDrawCalls,
-  partsOf,
-  roadSection,
-  type SectionPoint,
-} from '../src/render/road-mesh.ts';
+import { buildChunkBuildings, buildingLookup } from '../src/render/building-mesh.ts';
+import { CHUNK_DRAW_CALL_CAP, chunkDrawCalls } from '../src/render/chunk-cost.ts';
+import { buildChunkRoads, partsOf, roadSection, type SectionPoint } from '../src/render/road-mesh.ts';
 import { buildWaterAttributes } from '../src/render/water.ts';
 import { hashInts } from '../src/core/hash.ts';
 import { compareNumbers } from '../src/core/sort.ts';
@@ -387,6 +382,12 @@ const BEYOND_MAP: readonly [number, number] = [40, 40];
  * — the footprint and the parcels of a whole map — so both tiers take a few.
  */
 const ISOLATED_COUNT = SEED_COUNT > 20 ? 2 : 1;
+/**
+ * Seeds whose buildings are built into real geometry. A tower costs more to
+ * generate than the chunk it stands in costs to cut, so the quick tier builds
+ * one seed and the full tier spreads the check.
+ */
+const BUILDING_MESH_COUNT = SEED_COUNT > 20 ? 4 : 1;
 /** Places in the block of chunks each way that are asked which parcel claims them. */
 const CHUNK_SAMPLES = 18;
 /**
@@ -675,6 +676,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       graph: graphOf(seed),
       footprint: footprintOf(seed),
       parcels: parcelsOf(seed),
+      buildings: buildingsOf(seed),
       carve: carveOf(seed),
     });
     sources.set(seed, built);
@@ -1831,6 +1833,44 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     }
   });
 
+  it('builds every building of a chunk on its own lot', () => {
+    // Spec section 10.3: a building stands on the ground its lot claims and
+    // never on the road beside it. The lot is already inside the parcel and the
+    // parcel is what the road footprint left, so this is the last link of the
+    // chain — and the one that is fitted rather than laid out, because a
+    // generated facade overhangs whatever footprint it is given.
+    for (const seed of seeds.slice(0, BUILDING_MESH_COUNT)) {
+      const w = worlds.get(seed) as WorldDescription;
+      const source = sourceOf(seed);
+      const lookup = buildingLookup(w, source.layers);
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+      let built = 0;
+      // One chunk of the core is enough: it is where the towers stand, and
+      // building the geometry of a whole map would cost more than the world.
+      const [cx, cy] = ROAD_MESH_CHUNKS[0] as [number, number];
+      for (const one of buildChunkBuildings(source.chunk(cx, cy), lookup)) {
+        built++;
+        const where = `${one.building.kind} ${one.building.id}`;
+        const position = one.shell.getAttribute('position');
+        const at = new Vector3();
+        for (let v = 0; v < position.count; v++) {
+          at.fromBufferAttribute(position as BufferAttribute, v).applyMatrix4(one.matrix);
+          if (!Number.isFinite(at.x + at.y + at.z)) fault(`${where} places a vertex nowhere`);
+          else if (!pointInRing({ x: at.x, y: at.z }, one.building.lot)) fault(`${where} stands off its lot`);
+          if (complaint !== undefined) break;
+        }
+        one.shell.dispose();
+        one.hull.dispose();
+        if (complaint !== undefined) break;
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+      expect(built, `seed ${seed}`).toBeGreaterThan(0);
+    }
+  });
+
   it('cuts a chunk in isolation exactly as it cuts it with every neighbour loaded', () => {
     // Spec section 3 and section 9.1: a chunk is the same whether it is cut on
     // its own or after the whole block around it. The isolated side stands on a
@@ -1841,10 +1881,12 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       for (const [cx, cy] of chunkKeys()) loaded.chunk(cx, cy);
       const world = repeats.get(seed) as WorldDescription;
       const parts = repeatParts.get(seed) as { footprint: RoadFootprint; parcels: ParcelMap };
+      const aloneGraph = buildRoadGraph(world.roads);
       const alone = new ChunkSource(world, {
-        graph: buildRoadGraph(world.roads),
+        graph: aloneGraph,
         footprint: parts.footprint,
         parcels: parts.parcels,
+        buildings: buildBuildings(world, parts.parcels, aloneGraph),
         carve: buildCarve(world.terrain, world.roads),
       });
       // The far chunk first, before this source has cut anything at all.

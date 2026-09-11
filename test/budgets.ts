@@ -89,6 +89,19 @@ export const BUDGET_MS = {
    * costs a fraction of the parcels it stands on.
    */
   buildings: 250,
+
+  /**
+   * The geometry of the buildings of one chunk of the core: the towers the
+   * generator builds, the blocks around them and the hulls that outline both
+   * (spec section 10.3). This is the dearest chunk of a world, because every
+   * other one is mostly houses.
+   *
+   * Offline work today, like {@link BUDGET_MS.carve}: the scene builds a chunk
+   * on the main thread, and the `WorkerPool` and the per-frame cap that bring it
+   * inside the streaming slice are issue #23. Building LOD (spec section 9.2) is
+   * what takes the number itself down.
+   */
+  chunkBuildings: 150,
 } as const;
 
 /** Budgets small enough that milliseconds would round them away. */

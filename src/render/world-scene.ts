@@ -1,10 +1,11 @@
 /**
  * The scene the game is played in (spec sections 9.1, 10.1).
  *
- * A world is generated once, cut into chunks, and the chunks near the player
- * are drawn as ground meshes. Chunks outside that reach are dropped and rebuilt
- * if the player comes back, which costs nothing beyond the clip: the layers a
- * chunk is cut from are built once and never written to.
+ * A world is generated once, cut into chunks, and the chunks near the player are
+ * drawn: the ground, the roads over it and the buildings that stand on it.
+ * Chunks outside that reach are dropped and rebuilt if the player comes back,
+ * which costs nothing beyond the clip and the geometry: the layers a chunk is
+ * cut from are built once and never written to.
  *
  * The scene reads the world description and never mutates it.
  */
@@ -14,6 +15,8 @@ import type { CharacterAppearance } from '../sim/character.ts';
 import { buildLayers, chunkAt, ChunkSource, CHUNK_SIZE, type WorldLayers } from '../world/chunks.ts';
 import type { WorldDescription } from '../world/types.ts';
 import { RoadRibbons } from '../world/ribbon.ts';
+import { buildingLookup, type BuildingLookup } from './building-mesh.ts';
+import { BuildingScenery, type BuildingTile } from './buildings.ts';
 import { CharacterModel } from './character.ts';
 import { buildGroundAttributes, groundGeometry, groundLookup, type GroundLookup } from './ground.ts';
 import { createGroundMaterial } from './ground-material.ts';
@@ -24,9 +27,10 @@ import { createWaterSurface, type WaterSurface } from './water-surface.ts';
 const CHUNK_RADIUS = 2;
 
 /**
- * Chunks built per update. Cutting one costs several milliseconds, which is
- * over the streaming slice of spec section 2.4; the `WorkerPool` and the frame
- * budget that fix it are issue #23. One at a time keeps the stall to a frame.
+ * Chunks built per update. Cutting one costs several milliseconds and
+ * generating its buildings costs tens of them in the core, both well over the
+ * streaming slice of spec section 2.4; the `WorkerPool` and the frame budget
+ * that fix it are issue #23. One at a time keeps the stall to a frame.
  */
 const BUILDS_PER_UPDATE = 1;
 
@@ -46,11 +50,12 @@ const SUN_PLACE = new Vector3(120, 200, 60);
 const FOG_NEAR = CHUNK_RADIUS * CHUNK_SIZE * 0.45;
 const FOG_FAR = CHUNK_RADIUS * CHUNK_SIZE;
 
-/** One chunk, as the scene holds it: the ground, and the roads over it. */
+/** One chunk, as the scene holds it: the ground, the roads over it, and what stands on it. */
 interface ChunkTile {
   mesh: Mesh;
   geometry: BufferGeometry;
   roads: RoadTile;
+  buildings: BuildingTile;
   cx: number;
   cy: number;
 }
@@ -66,14 +71,17 @@ export class WorldScene {
   private readonly tiles = new Map<string, ChunkTile>();
   private readonly ribbons: RoadRibbons;
   private readonly scenery = new RoadScenery();
+  private readonly buildings = new BuildingScenery();
+  private readonly standing: BuildingLookup;
   private readonly water: WaterSurface;
-  /** Draw calls the dearest chunk built so far costs, ground and roads together. */
+  /** Draw calls the dearest chunk built so far costs: ground, roads and buildings. */
   private peakDrawCalls = 0;
 
   constructor(world: WorldDescription, appearance: CharacterAppearance, layers: WorldLayers = buildLayers(world)) {
     this.world = world;
     this.source = new ChunkSource(world, layers);
     this.lookup = groundLookup(world, layers);
+    this.standing = buildingLookup(world, layers);
     this.material = createGroundMaterial(world.water.seaLevel);
     this.ribbons = new RoadRibbons(world.terrain, world.roads);
 
@@ -137,6 +145,19 @@ export class WorldScene {
     return this.peakDrawCalls;
   }
 
+  /**
+   * How far into the night it is, 0 by day and 1 at midnight. It lights the
+   * windows of every building; the cycle that drives it is spec section 10.5
+   * and issue #21.
+   */
+  get night(): number {
+    return this.buildings.night;
+  }
+
+  set night(amount: number) {
+    this.buildings.night = amount;
+  }
+
   /** Release every chunk and the materials they share. */
   dispose(): void {
     for (const tile of [...this.tiles.values()]) this.drop(tile);
@@ -144,6 +165,7 @@ export class WorldScene {
     this.water.dispose();
     this.material.dispose();
     this.scenery.dispose();
+    this.buildings.dispose();
     this.character.dispose();
   }
 
@@ -175,8 +197,10 @@ export class WorldScene {
     // origin rather than at the chunk's corner.
     const roads = this.scenery.build(chunk, this.ribbons);
     for (const object of roads.objects) this.scene.add(object);
-    this.peakDrawCalls = Math.max(this.peakDrawCalls, 1 + roads.drawCalls);
-    this.tiles.set(key, { mesh, geometry, roads, cx, cy });
+    const buildings = this.buildings.build(chunk, this.standing);
+    for (const object of buildings.objects) this.scene.add(object);
+    this.peakDrawCalls = Math.max(this.peakDrawCalls, 1 + roads.drawCalls + buildings.drawCalls);
+    this.tiles.set(key, { mesh, geometry, roads, buildings, cx, cy });
   }
 
   private drop(tile: ChunkTile): void {
@@ -184,6 +208,8 @@ export class WorldScene {
     tile.geometry.dispose();
     for (const object of tile.roads.objects) this.scene.remove(object);
     tile.roads.dispose();
+    for (const object of tile.buildings.objects) this.scene.remove(object);
+    tile.buildings.dispose();
     this.tiles.delete(keyOf(tile.cx, tile.cy));
   }
 }

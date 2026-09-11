@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { pointInRegion, regionArea } from '../src/core/geom.ts';
+import { lotMiddle } from '../src/world/buildings.ts';
 import {
   buildLayers,
   ChunkSource,
@@ -280,6 +281,35 @@ describe('chunk parcels', () => {
         }
       }
     }
+  });
+});
+
+describe('chunk buildings', () => {
+  const chunks = everyChunk(world, source);
+
+  it('gives every building to exactly one chunk', () => {
+    const seen = new Set<number>();
+    for (const chunk of chunks) {
+      for (const building of chunk.buildings) {
+        expect(seen.has(building.id), `building ${building.id} twice`).toBe(false);
+        seen.add(building.id);
+      }
+    }
+    expect(seen.size).toBe(layers.buildings.buildings.length);
+    expect(seen.size).toBeGreaterThan(0);
+  });
+
+  it('gives a building to the chunk its lot stands in', () => {
+    for (const chunk of chunks) {
+      for (const building of chunk.buildings) {
+        const middle = lotMiddle(building.lot);
+        expect(chunkAt(middle.x, middle.y)).toEqual({ cx: chunk.cx, cy: chunk.cy });
+      }
+    }
+  });
+
+  it('gives an empty chunk no buildings', () => {
+    expect(source.chunk(40, -40).buildings).toEqual([]);
   });
 });
 

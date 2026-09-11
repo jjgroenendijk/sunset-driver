@@ -68,14 +68,6 @@ const DOUBLE_GAP = 0.5;
 export const SURFACE_ROAD = 0;
 export const SURFACE_STRUCTURE = 1;
 
-/**
- * Draw calls a chunk may cost (spec section 9.2): its ground, and for each tier
- * a batch of road geometry and a batch of markings. Five tiers, three of them
- * marked, is nine; the rest is room for the water and the props that land in a
- * chunk later. A count over this is a batching regression, not a cap to raise.
- */
-export const CHUNK_DRAW_CALL_CAP = 12;
-
 /** One point of a cross section: how far across the road it stands, and how high. */
 export interface SectionPoint {
   /** Metres from the centreline, negative to the left of travel. */
@@ -204,12 +196,12 @@ export function isMarked(tier: RoadTier): boolean {
 }
 
 /**
- * Draw calls one chunk costs: its ground, plus a batch of geometry and a batch
- * of markings for each tier that runs through it. A tier with no run in the
- * chunk costs nothing.
+ * Draw calls one chunk spends on its roads: a batch of geometry and a batch of
+ * markings for each tier that runs through it. A tier with no run in the chunk
+ * costs nothing. `chunk-cost.ts` adds this to what the rest of a chunk costs.
  */
-export function chunkDrawCalls(chunk: WorldChunk): number {
-  let calls = 1;
+export function roadDrawCalls(chunk: WorldChunk): number {
+  let calls = 0;
   for (const tier of TIER_ORDER) {
     if (!chunk.roads.some((run) => run.tier === tier)) continue;
     calls += isMarked(tier) ? 2 : 1;
