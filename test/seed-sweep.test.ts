@@ -42,7 +42,7 @@ import type { RoadFootprint } from '../src/world/footprint.ts';
 import { buildRoadGraph, type GradeCrossing, type RoadEdge, type RoadGraph, type RoadNode } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
-import type { Parcel, ParcelMap, ParcelOwner } from '../src/world/parcels.ts';
+import { ownerMaxArea, type Parcel, type ParcelMap, type ParcelOwner } from '../src/world/parcels.ts';
 import { MITRE_SHIFT, RoadRibbons } from '../src/world/ribbon.ts';
 import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
 import { coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
@@ -1505,6 +1505,12 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
         const where = `parcel ${i}`;
         if (parcel.id !== i) fault(`${where} is numbered ${parcel.id}`);
         if (!ASSIGNED_OWNERS.has(parcel.owner)) fault(`${where} is owned by a ${parcel.owner}`);
+        // An owner comes in a size: a car park is the size of a car park in
+        // every zone, however much ground the roads there leave.
+        const most = ownerMaxArea(parcel.zone, parcel.owner);
+        if (most !== undefined && parcel.area > most) {
+          fault(`${where} is a ${parcel.owner} of ${parcel.area.toFixed(0)} m² in the ${parcel.zone}, over its ${most} m²`);
+        }
         if (Math.abs(parcel.area - regionArea(parcel.region)) > 1e-6) fault(`${where} misreports its ground`);
         if (parcel.area <= 0) fault(`${where} owns no ground`);
         if (ringArea(parcel.region.outer) <= 0) fault(`${where} is wound the wrong way`);
