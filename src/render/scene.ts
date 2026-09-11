@@ -28,10 +28,12 @@ export function createPreviewScene(appearance: CharacterAppearance): PreviewScen
   const character = new CharacterModel(appearance);
   scene.add(character.group);
 
-  const key = new DirectionalLight(0xffd7b0, 2.2);
+  // Set against the exposure of `renderer.ts`: the frame is tone mapped, so the
+  // title screen needs the same light a lit street does.
+  const key = new DirectionalLight(0xffd7b0, 4.5);
   key.position.set(3, 6, 2);
   scene.add(key);
-  scene.add(new AmbientLight(0x6a4a70, 0.8));
+  scene.add(new AmbientLight(0x6a4a70, 1.6));
 
   return {
     scene,

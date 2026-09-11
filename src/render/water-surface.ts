@@ -66,17 +66,16 @@ const WATER_COLOUR = 0x10323c;
 export interface WaterSurface {
   /** Add this to the scene. It is the whole map's water, not a chunk's. */
   object: Object3D;
+  /**
+   * Move the glare on the sea to where the sun of the day and night cycle
+   * stands (spec section 10.5), so it agrees with the light on the ground.
+   */
+  setSun(direction: Vector3, colour: Color): void;
   dispose(): void;
 }
 
-/** Where the sun stands, as the water needs it: a direction and a colour. */
-export interface SunLight {
-  direction: Vector3;
-  colour: number;
-}
-
 /** Build the water of a world. */
-export function createWaterSurface(world: WorldDescription, sun: SunLight): WaterSurface {
+export function createWaterSurface(world: WorldDescription): WaterSurface {
   const waves = new DataTexture(waveNormalData(world.seed), WAVE_TEXTURE_SIZE, WAVE_TEXTURE_SIZE);
   waves.wrapS = RepeatWrapping;
   waves.wrapT = RepeatWrapping;
@@ -91,8 +90,8 @@ export function createWaterSurface(world: WorldDescription, sun: SunLight): Wate
     alpha: DEEP_ALPHA,
     resolutionScale: REFLECTION_SCALE,
     size: WAVE_TILING,
-    sunDirection: sun.direction.clone().normalize(),
-    sunColor: new Color(sun.colour),
+    sunDirection: new Vector3(0, 1, 0),
+    sunColor: new Color(0xffffff),
     waterColor: new Color(WATER_COLOUR),
     distortionScale: DISTORTION,
   });
@@ -111,6 +110,10 @@ export function createWaterSurface(world: WorldDescription, sun: SunLight): Wate
 
   return {
     object: mesh,
+    setSun(direction: Vector3, colour: Color): void {
+      mesh.sunDirection.value.copy(direction).normalize();
+      mesh.sunColor.value.copy(colour);
+    },
     dispose(): void {
       geometry.dispose();
       mesh.material.dispose();

@@ -10,20 +10,25 @@
  *
  * The scene reads the world description and never mutates it.
  */
-import { Color, DirectionalLight, Fog, HemisphereLight, Mesh, Scene, Vector3, type BufferGeometry } from 'three';
+import { BatchedMesh, Mesh, Object3D, Scene, type BufferGeometry } from 'three';
 import type { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { CharacterAppearance } from '../sim/character.ts';
+import { START_TICK } from '../sim/simulation.ts';
 import { buildLayers, chunkAt, ChunkSource, CHUNK_SIZE, type WorldLayers } from '../world/chunks.ts';
 import type { WorldDescription } from '../world/types.ts';
 import { RoadRibbons } from '../world/ribbon.ts';
 import { buildingLookup, type BuildingLookup } from './building-mesh.ts';
 import { BuildingScenery, type BuildingTile } from './buildings.ts';
+import { daylightAt, type Daylight } from './daylight.ts';
+import type { Lamp } from './lamp-mesh.ts';
+import { LampLights, LampScenery, type LampTile } from './lamps.ts';
 import { plantLookup, type PlantLookup } from './plant-mesh.ts';
 import { PlantScenery, type VegetationTile } from './vegetation.ts';
 import { CharacterModel } from './character.ts';
 import { buildGroundAttributes, groundGeometry, groundLookup, type GroundLookup } from './ground.ts';
 import { createGroundMaterial } from './ground-material.ts';
 import { RoadScenery, type RoadTile } from './roads.ts';
+import { SkyLighting } from './sky.ts';
 import { createWaterSurface, type WaterSurface } from './water-surface.ts';
 
 /** Chunks each way of the player that carry ground. One chunk is 250 m. */
@@ -37,18 +42,6 @@ const CHUNK_RADIUS = 2;
  */
 const BUILDS_PER_UPDATE = 1;
 
-/** Colour of the sky and of the haze the far chunks fade into. */
-const SKY = 0x9ab0c0;
-
-/**
- * The one sun of the scene: where it stands, and the colour it burns. The water
- * takes its highlight from the same two, so the glare on the sea stands where
- * the light on the ground says it should. The day and night cycle of spec
- * section 10.5 is issue #21 and owns them after that.
- */
-const SUN_COLOUR = 0xffe2bc;
-const SUN_PLACE = new Vector3(120, 200, 60);
-
 /** Metres at which the haze starts, and at which it is complete. */
 const FOG_NEAR = CHUNK_RADIUS * CHUNK_SIZE * 0.45;
 const FOG_FAR = CHUNK_RADIUS * CHUNK_SIZE;
@@ -60,6 +53,7 @@ interface ChunkTile {
   roads: RoadTile;
   buildings: BuildingTile;
   plants: VegetationTile;
+  lamps: LampTile;
   cx: number;
   cy: number;
 }
@@ -80,6 +74,11 @@ export class WorldScene {
   private readonly vegetation = new PlantScenery();
   private readonly growing: PlantLookup;
   private readonly water: WaterSurface;
+  private readonly sky: SkyLighting;
+  private readonly lamps = new LampScenery();
+  private readonly lampLights: LampLights;
+  /** The light of the tick the scene was last set to. */
+  private light: Daylight;
   /** Draw calls the dearest chunk built so far costs: ground, roads and buildings. */
   private peakDrawCalls = 0;
 
@@ -95,21 +94,35 @@ export class WorldScene {
     // The sea, the straits, the river and the harbour are one surface at sea
     // level (spec section 7.2), laid over the whole map rather than cut per
     // chunk: its reflection is a second pass over the scene, and one is enough.
-    this.water = createWaterSurface(world, { direction: SUN_PLACE, colour: SUN_COLOUR });
+    this.water = createWaterSurface(world);
     this.scene.add(this.water.object);
 
-    this.scene.background = new Color(SKY);
-    // The ground stops at the last chunk built. The haze is what stands there
-    // until the draw distance of spec section 9.2 does.
-    this.scene.fog = new Fog(SKY, FOG_NEAR, FOG_FAR);
-
-    const sun = new DirectionalLight(SUN_COLOUR, 2.4);
-    sun.position.copy(SUN_PLACE);
-    this.scene.add(sun);
-    this.scene.add(new HemisphereLight(0xc6dcf2, 0x3b342a, 1));
+    // The sky, the sun and the shadows it casts. The ground stops at the last
+    // chunk built, and the haze is what stands there until the draw distance of
+    // spec section 9.2 does.
+    this.sky = new SkyLighting(this.scene, FOG_NEAR, FOG_FAR);
+    this.lampLights = new LampLights(this.scene);
 
     this.character = new CharacterModel(appearance);
+    this.character.group.traverse((object) => {
+      object.castShadow = true;
+    });
     this.scene.add(this.character.group);
+
+    // A session starts at 08:00, so the first frame is already lit.
+    this.light = daylightAt(START_TICK);
+    this.apply();
+  }
+
+  /**
+   * Light the scene as it stands at a tick (spec section 10.5). One in-game day
+   * is 86 400 ticks, so the whole cycle runs in 24 real minutes. Everything the
+   * hour decides is set here: the sky, the sun, the haze, the lit windows and
+   * the street lamps.
+   */
+  set time(tick: number) {
+    this.light = daylightAt(tick);
+    this.apply();
   }
 
   /** The carved height of the ground at a place, so things stand on it. */
@@ -137,9 +150,25 @@ export class WorldScene {
     }
     for (let built = 0; built < BUILDS_PER_UPDATE; built++) {
       const next = this.nearestMissing(here.cx, here.cy);
-      if (next === undefined) return;
+      if (next === undefined) break;
       this.build(next.cx, next.cy);
     }
+    this.look(x, y);
+  }
+
+  /**
+   * Point what is lit at the player without building anything: the dome is
+   * carried rather than laid around the map, and the light pool is handed to
+   * the lamps the player has come nearest to.
+   */
+  look(x: number, y: number): void {
+    this.sky.follow(x, y);
+    this.lampLights.aim(x, y, this.lampsInReach(), this.light.lamps);
+  }
+
+  /** Refit the sun's shadow cascades after the camera's shape changes. */
+  resize(): void {
+    this.sky.resize();
   }
 
   /**
@@ -152,17 +181,23 @@ export class WorldScene {
     return this.peakDrawCalls;
   }
 
-  /**
-   * How far into the night it is, 0 by day and 1 at midnight. It lights the
-   * windows of every building; the cycle that drives it is spec section 10.5
-   * and issue #21.
-   */
+  /** How far into the night it is, 0 by day and 1 at midnight, at the tick last set. */
   get night(): number {
-    return this.buildings.night;
+    return this.light.night;
   }
 
-  set night(amount: number) {
-    this.buildings.night = amount;
+  /**
+   * Lights the scene holds (spec section 10.5): the sun, the sky fill and the
+   * street lamps that are throwing light. The HUD shows this beside the draw
+   * calls, so a light leak is visible while playing.
+   */
+  get lightCount(): number {
+    return this.sky.lightCount + this.lampLights.count;
+  }
+
+  /** Shadow maps the sun is split into. The lamps cast none. */
+  get shadowCascades(): number {
+    return this.sky.shadowCascades;
   }
 
   /** Release every chunk and the materials they share. */
@@ -170,11 +205,29 @@ export class WorldScene {
     for (const tile of [...this.tiles.values()]) this.drop(tile);
     this.scene.remove(this.water.object);
     this.water.dispose();
+    this.sky.dispose();
+    this.lampLights.dispose();
     this.material.dispose();
     this.scenery.dispose();
     this.buildings.dispose();
     this.vegetation.dispose();
+    this.lamps.dispose();
     this.character.dispose();
+  }
+
+  /** Hand the light of the moment to everything that reads it. */
+  private apply(): void {
+    this.sky.set(this.light);
+    this.water.setSun(this.light.sun, this.light.sunColour);
+    this.buildings.night = this.light.night;
+    this.lamps.lamps = this.light.lamps;
+  }
+
+  /** The lamps of every chunk in reach, a chunk at a time. */
+  private lampsInReach(): Lamp[][] {
+    const out: Lamp[][] = [];
+    for (const tile of [...this.tiles.values()]) if (tile.lamps.lamps.length > 0) out.push(tile.lamps.lamps);
+    return out;
   }
 
   /** The chunk in reach that is not built yet and is nearest the player, if any. */
@@ -200,20 +253,41 @@ export class WorldScene {
     const geometry = groundGeometry(buildGroundAttributes(chunk, this.lookup));
     const mesh = new Mesh(geometry, this.material);
     mesh.position.set(chunk.bounds.minX, 0, chunk.bounds.minY);
+    // The ground takes the shadows of everything standing on it and casts none
+    // of its own: the relief the sun shades is already in the carve.
+    mesh.receiveShadow = true;
     this.scene.add(mesh);
     // The road geometry is already in world places, so its meshes stand at the
     // origin rather than at the chunk's corner.
     const roads = this.scenery.build(chunk, this.ribbons);
-    for (const object of roads.objects) this.scene.add(object);
+    this.add(roads.objects);
     const buildings = this.buildings.build(chunk, this.standing);
-    for (const object of buildings.objects) this.scene.add(object);
+    this.add(buildings.objects);
     const plants = this.vegetation.build(chunk, this.growing);
-    for (const object of plants.objects) this.scene.add(object);
+    this.add(plants.objects);
+    const lamps = this.lamps.build(chunk, this.ribbons);
+    this.add(lamps.objects);
+    this.lampLights.invalidate();
     this.peakDrawCalls = Math.max(
       this.peakDrawCalls,
-      1 + roads.drawCalls + buildings.drawCalls + plants.drawCalls,
+      1 + roads.drawCalls + buildings.drawCalls + plants.drawCalls + lamps.drawCalls,
     );
-    this.tiles.set(key, { mesh, geometry, roads, buildings, plants, cx, cy });
+    this.tiles.set(key, { mesh, geometry, roads, buildings, plants, lamps, cx, cy });
+  }
+
+  /**
+   * Add a tile's objects to the scene, casting and taking the sun's shadow.
+   * Every batch of a chunk is solid geometry standing on the ground; the road
+   * markings are lines painted on the surface and neither cast nor take one.
+   */
+  private add(objects: readonly Object3D[]): void {
+    for (const object of objects) {
+      if (object instanceof BatchedMesh) {
+        object.castShadow = true;
+        object.receiveShadow = true;
+      }
+      this.scene.add(object);
+    }
   }
 
   private drop(tile: ChunkTile): void {
@@ -225,6 +299,9 @@ export class WorldScene {
     tile.buildings.dispose();
     for (const object of tile.plants.objects) this.scene.remove(object);
     tile.plants.dispose();
+    for (const object of tile.lamps.objects) this.scene.remove(object);
+    tile.lamps.dispose();
+    this.lampLights.invalidate();
     this.tiles.delete(keyOf(tile.cx, tile.cy));
   }
 }
