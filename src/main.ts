@@ -9,6 +9,7 @@ import { FixedStepClock } from './sim/clock.ts';
 import { DEFAULT_APPEARANCE } from './sim/character.ts';
 import { initPhysics, SimPhysics, type Ground } from './sim/physics.ts';
 import { createSimState, stepSim, type SimState } from './sim/simulation.ts';
+import { HotwireBar } from './ui/hotwire.ts';
 import { Hud } from './ui/hud.ts';
 import { Keyboard } from './ui/keyboard.ts';
 import { TitleScreen } from './ui/title.ts';
@@ -29,6 +30,8 @@ interface Session {
   /** What watches the frame and steps the quality tiers (spec section 9.2). */
   quality: QualityMonitor;
   hud: Hud;
+  /** The hotwire minigame of spec section 11.4, drawn while a lock is being worked at. */
+  hotwire: HotwireBar;
 }
 
 /**
@@ -125,6 +128,10 @@ async function boot(): Promise<void> {
         session.world.streaming,
         session.quality.tier.name,
       );
+      // The lock the player is working at (spec section 11.4). The panel reads
+      // the record the simulation is playing, so the bar on screen is the bar
+      // the presses are judged against.
+      session.hotwire.update(session.state.theft, session.state.seed, session.state.tick);
       // Not `renderer.render`: the post chain draws the scene itself and the
       // effects of spec section 10.6 over it.
       session.post.render();
@@ -212,7 +219,15 @@ async function boot(): Promise<void> {
     if (event.code === PICKER_KEY && !event.repeat) picker.toggle();
   });
 
-  session = { state, world, physics, post, quality, hud: new Hud(document.body, choice.seed) };
+  session = {
+    state,
+    world,
+    physics,
+    post,
+    quality,
+    hud: new Hud(document.body, choice.seed),
+    hotwire: new HotwireBar(document.body),
+  };
   preview.dispose();
   last = performance.now();
 }

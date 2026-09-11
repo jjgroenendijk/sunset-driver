@@ -732,6 +732,12 @@ export interface VehicleState {
    * where the record carries them.
    */
   damage: DamageState;
+  /**
+   * True once its lock has been beaten (spec section 11.4). A vehicle that
+   * needs no hotwiring never reads it; one that does is worked at once and not
+   * again, so stepping out to look at something is not a second break-in.
+   */
+  hotwired: boolean;
 }
 
 /** A vehicle at rest at a place, with its wheels hanging at their rest length. */
@@ -763,6 +769,7 @@ export function createVehicleState(spec: VehicleSpec, x = 0, z = 0, y = 0, headi
     speed: 0,
     afloat: false,
     damage: createDamageState(),
+    hotwired: false,
   };
 }
 

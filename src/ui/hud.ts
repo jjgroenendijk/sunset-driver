@@ -49,14 +49,18 @@ export class Hud {
     this.clock.textContent = `day ${t.day + 1}  ${hh}:${mm}`;
     const p = state.player;
     const kmh = Math.round(Math.abs(p.speed) * 3.6);
-    // The name of what is being driven, so the debug picker's choice of spec
-    // section 11.3 is readable while driving it. On foot it says so instead,
-    // with the health of spec section 11.5, until the full HUD lands.
     // What is being driven and what is left of it (spec section 11.3), so the
-    // damage states are readable while they are being driven through.
-    const doing = p.driving
-      ? `${specOf(state.vehicle.cls).name}  ${conditionOf(state.vehicle.damage)}`
-      : `on foot  ${Math.round(p.health)} hp`;
+    // debug picker's choice and the damage states are both readable while they
+    // are being driven through. On foot it says so instead, with the health of
+    // spec section 11.5, until the full HUD lands.
+    //
+    // Heat is shown only once something has raised it (spec sections 11.4, 14),
+    // so a session that has drawn no attention says nothing about attention.
+    const heat = state.heat > 0 ? `  heat ${state.heat.toFixed(1)}` : '';
+    const doing =
+      (p.driving
+        ? `${specOf(state.vehicle.cls).name}  ${conditionOf(state.vehicle.damage)}`
+        : `on foot  ${Math.round(p.health)} hp`) + heat;
     if (kmh !== this.shownSpeed || doing !== this.shownVehicle) {
       this.shownSpeed = kmh;
       this.shownVehicle = doing;
