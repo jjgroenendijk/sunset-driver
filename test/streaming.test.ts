@@ -11,6 +11,7 @@ import {
 } from '../src/render/chunk-payload.ts';
 import { ChunkPool, type ChunkStream, type ChunkWorker } from '../src/render/chunk-pool.ts';
 import type { WorkerCommand, WorkerReply } from '../src/render/chunk-worker.ts';
+import { FULL_TIER, QUALITY_TIERS, type QualityTier } from '../src/render/quality.ts';
 import {
   detailAt,
   FAR_RADIUS,
@@ -459,6 +460,36 @@ describe('the scene as the player drives', () => {
     await scene.settle(0, 0);
     const asNear = stream.asked.filter((want) => want.cx === 0 && want.cy === 0 && want.detail === 'near');
     expect(asNear.length).toBeGreaterThan(0);
+    scene.dispose();
+  });
+
+  it('pulls the rings in with the quality tier and drops what falls outside them', async () => {
+    const stream = new DirectStream();
+    const scene = new WorldScene(world, DEFAULT_APPEARANCE, stream);
+    expect(scene.quality).toBe(FULL_TIER);
+    await scene.settle(0, 0);
+    const atFull = scene.scene.children.length;
+
+    const low = QUALITY_TIERS[QUALITY_TIERS.length - 1] as QualityTier;
+    scene.quality = low;
+    stream.asked.length = 0;
+    await scene.settle(0, 0);
+
+    // The far ring is nearer, so the city the scene holds is smaller.
+    expect(scene.scene.children.length).toBeLessThan(atFull);
+    for (const want of stream.asked) {
+      expect(Math.max(Math.abs(want.cx), Math.abs(want.cy))).toBeLessThanOrEqual(low.rings.far);
+    }
+    // A chunk that stood at full detail is asked for again as massing, since
+    // the near ring no longer reaches it.
+    const crossed = stream.asked.filter((want) => want.cx === NEAR_RADIUS && want.cy === 0);
+    expect(crossed.length).toBeGreaterThan(0);
+    for (const want of crossed) expect(want.detail).toBe('far');
+
+    // Back at full quality the city comes back whole, piece for piece.
+    scene.quality = FULL_TIER;
+    await scene.settle(0, 0);
+    expect(scene.scene.children.length).toBe(atFull);
     scene.dispose();
   });
 

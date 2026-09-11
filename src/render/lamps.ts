@@ -19,6 +19,7 @@
 import { BatchedMesh, Object3D, type Scene } from 'three';
 import { ProjectorLight } from 'three/webgpu';
 import { fillOf, type BatchPart } from './batch.ts';
+import type { EntityFade } from './fade.ts';
 import { createLampMaterials, type LampMaterials } from './lamp-material.ts';
 import { buildChunkLamps, type Lamp } from './lamp-mesh.ts';
 import type { TilePart } from './streaming.ts';
@@ -57,9 +58,21 @@ export class LampScenery {
   private readonly materials: LampMaterials = createLampMaterials();
 
   /**
+   * The material is dressed with the world's fade, so a mast near the draw
+   * distance dithers away rather than popping (spec section 9.2).
+   */
+  constructor(fade: EntityFade) {
+    fade.dress(this.materials.lamp);
+  }
+
+  /**
    * Put one chunk's lamps into the scene. The lamps come from the worker that
    * built the chunk (spec section 9.1), already in the places the scene works
    * in; the mast geometry is grown here, one copy per lit tier.
+   *
+   * The caller has already thinned the list to what the quality tier allows
+   * (spec section 9.2), so the masts drawn are the lamps the light pool aims
+   * at and no lamp is lit without a mast under it.
    */
   build(lamps: readonly Lamp[]): TilePart {
     const parts: BatchPart[] = [];

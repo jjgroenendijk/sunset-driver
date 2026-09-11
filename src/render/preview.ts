@@ -22,6 +22,7 @@ import { generateWorld } from '../world/world.ts';
 import { FollowCamera } from './camera.ts';
 import { tickAtHour } from './daylight.ts';
 import { PostChain } from './post.ts';
+import { FULL_TIER, QUALITY_TIERS } from './quality.ts';
 import { createOffscreenRenderer } from './renderer.ts';
 import { WorldScene } from './world-scene.ts';
 
@@ -40,6 +41,12 @@ export interface PreviewRequest {
   height: number;
   /** The hour of the day to light the frame at, 0 to 24 (spec section 10.5). */
   hour: number;
+  /**
+   * The quality tier to draw at, by name (spec section 9.2). Left out, the
+   * frame is the game at full quality; named, it is what a machine that
+   * cannot hold the frame ends up looking at.
+   */
+  quality?: string;
 }
 
 /** The picture, and what the frame cost to build. */
@@ -60,6 +67,8 @@ export interface PreviewResult {
   lights: number;
   /** Shadow maps the sun is split into (spec section 10.5). */
   shadows: number;
+  /** The quality tier the frame was drawn at (spec section 9.2). */
+  quality: string;
 }
 
 /** Bytes a pixel of the render target below. */
@@ -70,6 +79,7 @@ const ROW_ALIGNMENT = 256;
 
 export async function renderPreview(request: PreviewRequest): Promise<PreviewResult> {
   const { seed, x, y, distance, heading, speed, width, height, hour } = request;
+  const tier = QUALITY_TIERS.find((entry) => entry.name === request.quality) ?? FULL_TIER;
 
   const t0 = performance.now();
   const world = generateWorld(seed);
@@ -78,6 +88,9 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   const t1 = performance.now();
   const tick = tickAtHour(hour);
   const scene = new WorldScene(world, DEFAULT_APPEARANCE);
+  // The tier is set before anything is built, so the chunks the picture holds
+  // are the ones that tier asks for and are thinned as it asks.
+  scene.quality = tier;
   scene.time = tick;
   // The chunks are built in the workers the game uses, so the picture is the
   // frame the game draws. Every chunk of both rings is waited for, so the same
@@ -108,7 +121,7 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   // The effects of spec section 10.6 are part of what the game draws, so the
   // picture is taken through them. The chain tone maps and encodes the frame
   // itself, which is what the output target is written with.
-  const post = new PostChain(renderer, scene.scene, camera.camera);
+  const post = new PostChain(renderer, scene.scene, camera.camera, tier.post);
   post.time = tick;
   // SMAA's tables are decoded from data URLs, so a frame drawn before they
   // land is a different picture. The same request twice takes the same one.
@@ -127,7 +140,7 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   scene.dispose();
   renderer.dispose();
 
-  return { width, height, rgb, worldMs, chunkMs, frameMs, peakDrawCalls, lights, shadows };
+  return { width, height, rgb, worldMs, chunkMs, frameMs, peakDrawCalls, lights, shadows, quality: tier.name };
 }
 
 /**

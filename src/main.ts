@@ -1,6 +1,7 @@
 import { readSeedFromLocation, seedFromString, writeSeedToHash } from './core/seed.ts';
 import { BASE_DISTANCE, FollowCamera, PREVIEW_DISTANCE } from './render/camera.ts';
 import { PostChain } from './render/post.ts';
+import { frameBudgetFrom, QualityMonitor, type QualityChange } from './render/quality.ts';
 import { createRenderer, probeWebGpu } from './render/renderer.ts';
 import { createPreviewScene } from './render/scene.ts';
 import { WorldScene } from './render/world-scene.ts';
@@ -24,7 +25,24 @@ interface Session {
   physics: SimPhysics;
   /** The effects the world is drawn through (spec section 10.6). */
   post: PostChain;
+  /** What watches the frame and steps the quality tiers (spec section 9.2). */
+  quality: QualityMonitor;
   hud: Hud;
+}
+
+/**
+ * Hand a tier to the two halves that draw at it, and say so (spec section 9.2).
+ *
+ * The line in the console is how a tier change is read back after the fact:
+ * the player sees a frame that holds its rate, and the log says what it cost.
+ */
+function applyQuality(session: Session, change: QualityChange): void {
+  session.world.quality = change.to;
+  session.post.quality = change.to.post;
+  console.info(
+    `quality: ${change.from.name} -> ${change.to.name} at ${change.frameMs.toFixed(1)} ms a frame ` +
+      `(budget ${session.quality.budget} ms)`,
+  );
 }
 
 async function boot(): Promise<void> {
@@ -89,11 +107,17 @@ async function boot(): Promise<void> {
       session.post.time = session.state.tick;
       session.world.update(p.x, p.y);
       camera.update(elapsed / 1000, { ...p, height });
+      // What the frame took is what decides the quality tier of spec section
+      // 9.2. It is measured over the whole frame, drawing included, so it is
+      // the frame before this one that is being judged.
+      const change = session.quality.sample(elapsed);
+      if (change !== undefined) applyQuality(session, change);
       session.hud.update(
         session.state,
         session.world.drawCallsPerChunk,
         session.world.lightCount,
         session.world.streaming,
+        session.quality.tier.name,
       );
       // Not `renderer.render`: the post chain draws the scene itself and the
       // effects of spec section 10.6 over it.
@@ -160,7 +184,10 @@ async function boot(): Promise<void> {
   // means the first frame is antialiased like every frame after it.
   const post = new PostChain(renderer, world.scene, camera.camera);
   await post.ready();
-  session = { state, world, physics, post, hud: new Hud(document.body, choice.seed) };
+  // `?budget=6` holds the game to a frame no machine makes at full quality, so
+  // the tiers of spec section 9.2 can be watched stepping down.
+  const quality = new QualityMonitor(frameBudgetFrom(location.search));
+  session = { state, world, physics, post, quality, hud: new Hud(document.body, choice.seed) };
   preview.dispose();
   last = performance.now();
 }

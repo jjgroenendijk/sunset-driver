@@ -11,6 +11,8 @@ npm run dev
 
 Requires a WebGPU-capable browser. The title screen takes the seed and the character; add `#seed=yourseed` to the URL to start it on a world.
 
+The game watches its own frame rate and steps the quality down when it cannot hold 60 fps, and back up when it can. The tier in force is shown in the corner, and every change is written to the console. Add `?budget=6` to the URL to hold it to a frame no machine makes at full quality, which is how the steps are watched on a machine that does not need them.
+
 ## Controls
 
 | Action | Keys |

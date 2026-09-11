@@ -13,8 +13,10 @@
 import { BatchedMesh, Matrix4, Object3D, type BufferGeometry } from 'three';
 import { fillOf, type BatchPart } from './batch.ts';
 import type { PackedPlants } from './chunk-payload.ts';
+import type { EntityFade } from './fade.ts';
 import { createPlantMaterial } from './plant-material.ts';
 import { buildPlantModels } from './plant-mesh.ts';
+import { keptAt } from './quality.ts';
 import type { TilePart } from './streaming.ts';
 
 /**
@@ -26,16 +28,31 @@ export class PlantScenery {
   private readonly models = buildPlantModels();
 
   /**
+   * The material is dressed with the world's fade, so a plant near the draw
+   * distance dithers away rather than popping (spec section 9.2).
+   */
+  constructor(fade: EntityFade) {
+    fade.dress(this.material);
+  }
+
+  /**
    * Put one chunk's plants into the scene. A placement names one of the
    * world's models rather than carrying geometry, so a chunk of forest crosses
    * the worker boundary as a matrix per tree.
+   *
+   * `limit` is what the quality tier allows the chunk (spec section 9.2). The
+   * plants kept are spread over the whole chunk rather than taken off the
+   * front, so a thinned wood is a thinner wood and not half a wood.
    */
-  build(plants: PackedPlants): TilePart {
+  build(plants: PackedPlants, limit = plants.models.length): TilePart {
     const parts: BatchPart[] = [];
     // One copy of a model serves every plant that takes it: the batch adds the
     // geometry once and stands an instance on it for each placement.
     const copies = new Map<number, BufferGeometry>();
-    for (let i = 0; i < plants.models.length; i++) {
+    const count = plants.models.length;
+    const kept = Math.min(count, limit);
+    for (let k = 0; k < kept; k++) {
+      const i = keptAt(k, count, kept);
       const model = plants.models[i] as number;
       let geometry = copies.get(model);
       if (geometry === undefined) {

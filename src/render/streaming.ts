@@ -33,7 +33,13 @@ export interface TilePart {
   dispose(): void;
 }
 
-/** Chunks each way of the player drawn at full detail. One chunk is 250 m. */
+/**
+ * Chunks each way of the player drawn at full detail. One chunk is 250 m.
+ *
+ * This is the draw distance at full quality. The quality tiers of spec section
+ * 9.2 pull both radii in on a machine that cannot hold the frame, which is why
+ * everything below takes them rather than reading them.
+ */
 export const NEAR_RADIUS = 2;
 
 /**
@@ -54,6 +60,18 @@ export const FAR_RADIUS = 3;
  */
 export const STREAM_BUDGET_MS = 2;
 
+/**
+ * How far the two rings reach, in chunks. A quality tier of spec section 9.2
+ * is what sets them; {@link FULL_RINGS} is the game at full quality.
+ */
+export interface ChunkRings {
+  near: number;
+  far: number;
+}
+
+/** The rings at full quality: {@link NEAR_RADIUS} and {@link FAR_RADIUS}. */
+export const FULL_RINGS: ChunkRings = { near: NEAR_RADIUS, far: FAR_RADIUS };
+
 /** One chunk the streamer wants, and the detail it wants it at. */
 export interface ChunkWant {
   cx: number;
@@ -70,13 +88,13 @@ export interface ChunkWant {
  * than square: a corner of the far ring is farther away than its edge and is
  * asked for last.
  */
-export function wantedChunks(cx: number, cy: number): ChunkWant[] {
+export function wantedChunks(cx: number, cy: number, rings: ChunkRings = FULL_RINGS): ChunkWant[] {
   const wants: { want: ChunkWant; distance: number }[] = [];
-  for (let dy = -FAR_RADIUS; dy <= FAR_RADIUS; dy++) {
-    for (let dx = -FAR_RADIUS; dx <= FAR_RADIUS; dx++) {
+  for (let dy = -rings.far; dy <= rings.far; dy++) {
+    for (let dx = -rings.far; dx <= rings.far; dx++) {
       const ring = Math.max(Math.abs(dx), Math.abs(dy));
-      if (ring > FAR_RADIUS) continue;
-      const detail: ChunkDetail = ring <= NEAR_RADIUS ? 'near' : 'far';
+      if (ring > rings.far) continue;
+      const detail: ChunkDetail = ring <= rings.near ? 'near' : 'far';
       wants.push({ want: { cx: cx + dx, cy: cy + dy, detail }, distance: dx * dx + dy * dy });
     }
   }
@@ -85,10 +103,16 @@ export function wantedChunks(cx: number, cy: number): ChunkWant[] {
 }
 
 /** True when a chunk stands inside the ring the detail it was built at belongs to. */
-export function detailAt(cx: number, cy: number, atX: number, atY: number): ChunkDetail | undefined {
+export function detailAt(
+  cx: number,
+  cy: number,
+  atX: number,
+  atY: number,
+  rings: ChunkRings = FULL_RINGS,
+): ChunkDetail | undefined {
   const ring = Math.max(Math.abs(cx - atX), Math.abs(cy - atY));
-  if (ring > FAR_RADIUS) return undefined;
-  return ring <= NEAR_RADIUS ? 'near' : 'far';
+  if (ring > rings.far) return undefined;
+  return ring <= rings.near ? 'near' : 'far';
 }
 
 /**
