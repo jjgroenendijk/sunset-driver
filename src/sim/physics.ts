@@ -26,14 +26,41 @@
  * the water it displaces, pushed from the stern and turned by a rudder that
  * only bites while water is flowing past it (spec section 11.3).
  *
- * Only the player's vehicle has a body. Ambient traffic is kinematic and
+ * The player on foot is a capsule on Rapier's `KinematicCharacterController`
+ * (spec sections 11.2, 11.5). Exactly one of the two is driven at a time: the
+ * record says which, and the bodies follow it. A vehicle nobody is in is a
+ * fixed body built from the record, so the player walks round their parked car
+ * rather than through it and the car is not simulated while it stands still.
+ * `on-foot.ts` holds the numbers a person is made of and the rules for getting
+ * in and out; this file is the Rapier half of them.
+ *
+ * Only the player's vehicle has a moving body. Ambient traffic is kinematic and
  * evaluated from `(seed, tick)` until something touches it (spec section 5.3),
- * so the physics slice of spec section 2.4 pays for one vehicle and the ground.
+ * so the physics slice of spec section 2.4 pays for one vehicle, one player and
+ * the ground.
  */
 import RAPIER from '@dimforge/rapier3d-compat';
 import type { Surface } from '../world/surface.ts';
 import { TICK_RATE } from './clock.ts';
 import type { InputFrame } from './input.ts';
+import {
+  besidePlayer,
+  capsuleOf,
+  exitPlace,
+  EXIT_SPEED,
+  JUMP_SPEED,
+  MAX_CLIMB,
+  MIN_SLIDE,
+  paceOf,
+  reachesVehicle,
+  SKIN,
+  SNAP_DISTANCE,
+  STEP_HEIGHT,
+  STEP_WIDTH,
+  TERMINAL_SPEED,
+  TURN_RATE,
+  turnToward,
+} from './on-foot.ts';
 import type { SimState } from './simulation.ts';
 import {
   createVehicleState,
@@ -122,6 +149,15 @@ interface Built {
   wheels: RAPIER.DynamicRayCastVehicleController | undefined;
 }
 
+/** The player on foot: the kinematic capsule and the controller that walks it. */
+interface Walker {
+  body: RAPIER.RigidBody;
+  collider: RAPIER.Collider;
+  controller: RAPIER.KinematicCharacterController;
+  /** Metres from the middle of the capsule down to the feet. */
+  rise: number;
+}
+
 /**
  * The physics of a session: the ground under the player and the vehicle on it.
  *
@@ -138,8 +174,13 @@ export class SimPhysics {
   private readonly tiles: GroundTile[] = [];
   /** The row of the roster the body was built from. `adopt` reads it off the record. */
   private spec: VehicleSpec;
-  private chassis: RAPIER.RigidBody;
+  /** The vehicle's moving body, and undefined while nobody is in it. */
+  private chassis: RAPIER.RigidBody | undefined;
   private wheels: RAPIER.DynamicRayCastVehicleController | undefined;
+  /** The parked vehicle's fixed body, and undefined while it is being driven. */
+  private parked: RAPIER.RigidBody | undefined;
+  /** The player's capsule, and undefined while they are in a vehicle. */
+  private walker: Walker | undefined;
   /** Scratch vectors and forces, so a tick allocates nothing. */
   private readonly point = { x: 0, y: 0, z: 0 };
   private readonly axis = { x: 0, y: 0, z: 0 };
@@ -152,10 +193,7 @@ export class SimPhysics {
     this.world = new RAPIER.World({ x: 0, y: -GRAVITY, z: 0 });
     // The step is the tick. Simulation code never sees a frame delta.
     this.world.timestep = 1 / TICK_RATE;
-    this.cover(state.vehicle.x, state.vehicle.z);
-    const built = this.build(state.vehicle);
-    this.chassis = built.chassis;
-    this.wheels = built.wheels;
+    this.adopt(state);
   }
 
   /**
@@ -166,27 +204,42 @@ export class SimPhysics {
    *
    * A boat is put down on the water rather than on the ground, since that is
    * what it rests on; on ground that stands above the sea it simply sits there.
+   *
+   * A vehicle put down while the player is on foot stands beside them rather
+   * than on them, and they stay on foot: the debug picker of spec section 11.3
+   * leaves a car at the kerb to walk over to.
    */
   spawn(state: SimState, x: number, y: number, heading = 0, cls: VehicleClass = state.vehicle.cls): void {
     const spec = specOf(cls);
-    const rest = spec.hull === undefined ? this.ground.heightAt(x, y) : Math.max(this.ground.heightAt(x, y), this.ground.seaLevel);
-    state.vehicle = createVehicleState(spec, x, y, rest + rideHeight(spec), heading);
-    this.cover(x, y);
+    const place = state.player.driving ? { x, y, heading } : besidePlayer(state.player, spec);
+    const ground = this.ground.heightAt(place.x, place.y);
+    const rest = spec.hull === undefined ? ground : Math.max(ground, this.ground.seaLevel);
+    state.vehicle = createVehicleState(spec, place.x, place.y, rest + rideHeight(spec), place.heading);
     this.adopt(state);
+    // The record of a player in the vehicle says where the vehicle is, so a
+    // vehicle put down somewhere else takes the player with it.
+    if (state.player.driving) this.follow(state);
   }
 
   /**
-   * Rebuild the Rapier body from the state. Call it after loading a save or
+   * Rebuild the Rapier bodies from the state. Call it after loading a save or
    * moving the player: the state is the record, and this makes the world agree
-   * with it again.
+   * with it again. The record says whether the player is driving, so it says
+   * which of the two bodies moves and which one stands still.
    */
   adopt(state: SimState): void {
     this.release();
     this.spec = specOf(state.vehicle.cls);
-    this.cover(state.vehicle.x, state.vehicle.z);
-    const built = this.build(state.vehicle);
-    this.chassis = built.chassis;
-    this.wheels = built.wheels;
+    const p = state.player;
+    this.cover(p.driving ? state.vehicle.x : p.x, p.driving ? state.vehicle.z : p.y);
+    if (p.driving) {
+      const built = this.build(state.vehicle);
+      this.chassis = built.chassis;
+      this.wheels = built.wheels;
+    } else {
+      this.parked = this.buildParked(state.vehicle);
+      this.walker = this.buildWalker(state);
+    }
   }
 
   /**
@@ -198,21 +251,32 @@ export class SimPhysics {
    * surface does need is a rule, and it is the grip table of `vehicle.ts`, read
    * per wheel at the ground each wheel stands on and scaled by the tyres the
    * vehicle is on.
+   *
+   * A player on foot is stepped instead of the vehicle (spec section 11.5).
+   * The ground follows whoever is moving, so the tiles stand under the player
+   * and not under the car they left behind.
    */
   step(state: SimState, input: InputFrame): void {
+    this.transfer(state, input);
     const v = state.vehicle;
-    this.cover(v.x, v.z);
-    // Rapier keeps a force until it is told to forget it, so a tick that adds
-    // one has to clear the last tick's first. Without this the buoyancy of a
-    // hull and the rider of a motorcycle both grow without bound.
-    this.chassis.resetForces(false);
-    this.chassis.resetTorques(false);
-    if (this.wheels === undefined) {
-      this.sail(v, input);
+    const chassis = this.chassis;
+    if (chassis === undefined) {
+      this.cover(state.player.x, state.player.y);
+      this.walk(state, input);
     } else {
-      this.drive(v, input);
-      this.hold(v);
-      this.wheels.updateVehicle(this.world.timestep);
+      this.cover(v.x, v.z);
+      // Rapier keeps a force until it is told to forget it, so a tick that adds
+      // one has to clear the last tick's first. Without this the buoyancy of a
+      // hull and the rider of a motorcycle both grow without bound.
+      chassis.resetForces(false);
+      chassis.resetTorques(false);
+      if (this.wheels === undefined) {
+        this.sail(v, input);
+      } else {
+        this.drive(v, input);
+        this.hold(v);
+        this.wheels.updateVehicle(this.world.timestep);
+      }
     }
     this.world.step();
     this.read(state);
@@ -221,6 +285,7 @@ export class SimPhysics {
   /** Release the Rapier world and everything in it. */
   dispose(): void {
     this.wheels?.free();
+    this.walker?.controller.free();
     this.world.free();
     this.tiles.length = 0;
   }
@@ -316,6 +381,7 @@ export class SimPhysics {
    *   out of the porpoising two contact points fall into.
    */
   private hold(v: VehicleState): void {
+    const chassis = this.chassis as RAPIER.RigidBody;
     const stiffness = this.spec.balance;
     if (stiffness === 0) return;
     const damping = stiffness * BALANCE_DAMPING;
@@ -331,7 +397,7 @@ export class SimPhysics {
     this.force.x = this.point.x * roll + this.axis.x * pitch;
     this.force.y = this.point.y * roll + this.axis.y * pitch;
     this.force.z = this.point.z * roll + this.axis.z * pitch;
-    this.chassis.addTorque(this.force, true);
+    chassis.addTorque(this.force, true);
   }
 
   /**
@@ -345,6 +411,7 @@ export class SimPhysics {
    * the hull is a box resting on the ground.
    */
   private sail(v: VehicleState, input: InputFrame): void {
+    const chassis = this.chassis as RAPIER.RigidBody;
     const spec = this.spec;
     const hull = spec.hull as HullSpec;
     const sea = this.ground.seaLevel;
@@ -371,7 +438,7 @@ export class SimPhysics {
       this.at.x = v.x + this.point.x;
       this.at.y = y;
       this.at.z = v.z + this.point.z;
-      this.chassis.addForceAtPoint(this.force, this.at, true);
+      chassis.addForceAtPoint(this.force, this.at, true);
     }
     v.afloat = under > 0;
     if (under === 0) return;
@@ -396,7 +463,7 @@ export class SimPhysics {
     this.force.x = this.point.x * push + this.axis.x * slip;
     this.force.y = this.point.y * push + this.axis.y * slip - hull.heave * spec.mass * v.vy * wet;
     this.force.z = this.point.z * push + this.axis.z * slip;
-    this.chassis.addForce(this.force, true);
+    chassis.addForce(this.force, true);
 
     // The rudder turns the boat the way the wheel turns a car: the map's
     // heading runs the other way round the up axis, so steering right is a
@@ -406,7 +473,7 @@ export class SimPhysics {
     this.force.x = 0;
     this.force.y = -input.steer * hull.rudder * flow * wet;
     this.force.z = 0;
-    this.chassis.addTorque(this.force, true);
+    chassis.addTorque(this.force, true);
   }
 
   /** What the ground is made of under one wheel of a vehicle at its current pose. */
@@ -415,13 +482,50 @@ export class SimPhysics {
     return this.ground.surfaceAt(v.x + this.point.x, v.z + this.point.z);
   }
 
-  /** Read the stepped world back into the state. Nothing else writes the vehicle. */
+  /**
+   * Read the stepped world back into the state. Nothing else writes the vehicle
+   * or the player.
+   *
+   * A vehicle nobody is in is not stepped, so there is nothing to read off it:
+   * the record already says where it stands. A player on foot is read off their
+   * capsule instead.
+   */
   private read(state: SimState): void {
+    const walker = this.walker;
+    if (walker !== undefined) {
+      const t = walker.body.translation();
+      const p = state.player;
+      p.x = t.x;
+      p.y = t.z;
+      p.height = t.y - walker.rise;
+      return;
+    }
+    this.readVehicle(state);
+    this.follow(state);
+  }
+
+  /** Where the player sits while they are driving: in the vehicle, facing its way. */
+  private follow(state: SimState): void {
     const v = state.vehicle;
-    const t = this.chassis.translation();
-    const r = this.chassis.rotation();
-    const linear = this.chassis.linvel();
-    const angular = this.chassis.angvel();
+    const p = state.player;
+    p.x = v.x;
+    p.y = v.z;
+    // The floor of the body, which is about where the driver's feet are.
+    p.height = v.y - this.spec.halfHeight;
+    p.heading = headingOf(v);
+    p.speed = v.speed;
+    p.vy = 0;
+    p.grounded = true;
+  }
+
+  /** Read the vehicle's body and wheels back into its record. */
+  private readVehicle(state: SimState): void {
+    const chassis = this.chassis as RAPIER.RigidBody;
+    const v = state.vehicle;
+    const t = chassis.translation();
+    const r = chassis.rotation();
+    const linear = chassis.linvel();
+    const angular = chassis.angvel();
     v.x = t.x;
     v.y = t.y;
     v.z = t.z;
@@ -450,13 +554,6 @@ export class SimPhysics {
         wheel.contact = this.wheels.wheelIsInContact(i);
       }
     }
-    // The player is where their vehicle is, until they can get out of it
-    // (spec section 11.5).
-    const p = state.player;
-    p.x = v.x;
-    p.y = v.z;
-    p.heading = headingOf(v);
-    p.speed = v.speed;
   }
 
   /** Build the chassis body, its collider and the wheels, from the state. */
@@ -506,11 +603,147 @@ export class SimPhysics {
     return { chassis, wheels };
   }
 
-  /** Take the vehicle's body out of the world, so a new one can be built from the state. */
+  /**
+   * The parked vehicle of spec section 11.5: the record's pose as a fixed body.
+   *
+   * Nothing drives it, so nothing has to simulate it, and the player walks
+   * round it rather than through it. Entering it builds the moving body again
+   * from the same record, so the car is where it was left.
+   */
+  private buildParked(v: VehicleState): RAPIER.RigidBody {
+    const spec = this.spec;
+    const body = this.world.createRigidBody(
+      RAPIER.RigidBodyDesc.fixed()
+        .setTranslation(v.x, v.y, v.z)
+        .setRotation({ x: v.qx, y: v.qy, z: v.qz, w: v.qw }),
+    );
+    this.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(spec.halfLength, spec.halfHeight, spec.halfWidth),
+      body,
+    );
+    return body;
+  }
+
+  /**
+   * The player's capsule and the controller that walks it (spec section 11.2).
+   *
+   * The capsule is the build they picked, so a broad character is a broader
+   * body than a slim one. The controller climbs a kerb, slides along a wall
+   * rather than stopping dead at it, and holds the feet on the ground over a
+   * slope instead of hopping down it.
+   */
+  private buildWalker(state: SimState): Walker {
+    const capsule = capsuleOf(state.character);
+    const p = state.player;
+    const body = this.world.createRigidBody(
+      RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(p.x, p.height + capsule.rise, p.y),
+    );
+    const collider = this.world.createCollider(
+      RAPIER.ColliderDesc.capsule(capsule.halfHeight, capsule.radius),
+      body,
+    );
+    const controller = this.world.createCharacterController(SKIN);
+    controller.setUp({ x: 0, y: 1, z: 0 });
+    controller.setSlideEnabled(true);
+    controller.setMaxSlopeClimbAngle(MAX_CLIMB);
+    controller.setMinSlopeSlideAngle(MIN_SLIDE);
+    controller.enableAutostep(STEP_HEIGHT, STEP_WIDTH, false);
+    controller.enableSnapToGround(SNAP_DISTANCE);
+    return { body, collider, controller, rise: capsule.rise };
+  }
+
+  /**
+   * Get in or out of the vehicle on the press of the interact key (spec
+   * sections 11.2, 11.5).
+   *
+   * A press acts once: the key is held for as many ticks as the finger is on
+   * it, and a door that opened every one of them would leave the player
+   * stepping in and out sixty times a second. The door only opens at a crawl,
+   * and only from within reach of the body; theft of a vehicle that is not the
+   * player's own is spec section 11.4.
+   */
+  private transfer(state: SimState, input: InputFrame): void {
+    const p = state.player;
+    const pressed = input.interact && !p.held.interact;
+    p.held.interact = input.interact;
+    if (!pressed) return;
+    if (p.driving) {
+      if (Math.abs(state.vehicle.speed) > EXIT_SPEED) return;
+      const place = exitPlace(state.vehicle, this.spec);
+      p.x = place.x;
+      p.y = place.y;
+      p.height = Math.max(this.ground.heightAt(place.x, place.y), state.vehicle.y - this.spec.halfHeight);
+      p.heading = place.heading;
+      p.speed = 0;
+      p.vy = 0;
+      p.grounded = false;
+      p.driving = false;
+    } else {
+      if (!reachesVehicle(p, state.vehicle, this.spec)) return;
+      p.driving = true;
+    }
+    this.adopt(state);
+  }
+
+  /**
+   * Walk the player one tick (spec sections 11.2, 11.5).
+   *
+   * The camera never turns (spec section 10.7), so the forward axis walks up
+   * the screen and the steering axis walks across it, whatever the player
+   * faces; they then turn to face the way they are walking. Gravity is
+   * integrated here rather than by Rapier, because a kinematic body is moved
+   * and never pushed: the jump is a speed the ground takes back.
+   */
+  private walk(state: SimState, input: InputFrame): void {
+    const walker = this.walker as Walker;
+    const p = state.player;
+
+    const jumped = input.jump && !p.held.jump;
+    p.held.jump = input.jump;
+    if (jumped && p.grounded) p.vy = JUMP_SPEED;
+
+    let dx = input.steer;
+    let dy = -input.throttle;
+    const length = Math.hypot(dx, dy);
+    if (length > 1) {
+      dx /= length;
+      dy /= length;
+    }
+    if (length > 0) p.heading = turnToward(p.heading, Math.atan2(dy, dx), TURN_RATE / TICK_RATE);
+    p.vy = Math.max(-TERMINAL_SPEED, p.vy - GRAVITY / TICK_RATE);
+
+    const pace = paceOf(input.sprint) / TICK_RATE;
+    this.point.x = dx * pace;
+    this.point.y = p.vy / TICK_RATE;
+    this.point.z = dy * pace;
+    walker.controller.computeColliderMovement(walker.collider, this.point);
+    const moved = walker.controller.computedMovement(this.force);
+    p.grounded = walker.controller.computedGrounded();
+    // Standing on the ground takes the fall back, so a step off a kerb does not
+    // build up a speed the next drop starts from.
+    if (p.grounded && p.vy < 0) p.vy = 0;
+    p.speed = Math.hypot(moved.x, moved.z) * TICK_RATE;
+
+    const t = walker.body.translation();
+    this.at.x = t.x + moved.x;
+    this.at.y = t.y + moved.y;
+    this.at.z = t.z + moved.z;
+    walker.body.setNextKinematicTranslation(this.at);
+  }
+
+  /** Take every body of the player and their vehicle out of the world, so `adopt` can build them again. */
   private release(): void {
     this.wheels?.free();
     this.wheels = undefined;
-    this.world.removeRigidBody(this.chassis);
+    if (this.chassis !== undefined) this.world.removeRigidBody(this.chassis);
+    this.chassis = undefined;
+    if (this.parked !== undefined) this.world.removeRigidBody(this.parked);
+    this.parked = undefined;
+    if (this.walker !== undefined) {
+      this.world.removeCharacterController(this.walker.controller);
+      this.world.removeRigidBody(this.walker.body);
+    }
+    this.walker = undefined;
   }
 
   /**

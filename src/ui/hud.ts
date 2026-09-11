@@ -46,14 +46,16 @@ export class Hud {
     const hh = String(t.hour).padStart(2, '0');
     const mm = String(t.minute).padStart(2, '0');
     this.clock.textContent = `day ${t.day + 1}  ${hh}:${mm}`;
-    const kmh = Math.round(Math.abs(state.player.speed) * 3.6);
+    const p = state.player;
+    const kmh = Math.round(Math.abs(p.speed) * 3.6);
     // The name of what is being driven, so the debug picker's choice of spec
-    // section 11.3 is readable while driving it.
-    const driving = specOf(state.vehicle.cls).name;
-    if (kmh !== this.shownSpeed || driving !== this.shownVehicle) {
+    // section 11.3 is readable while driving it. On foot it says so instead,
+    // with the health of spec section 11.5, until the full HUD lands.
+    const doing = p.driving ? specOf(state.vehicle.cls).name : `on foot  ${Math.round(p.health)} hp`;
+    if (kmh !== this.shownSpeed || doing !== this.shownVehicle) {
       this.shownSpeed = kmh;
-      this.shownVehicle = driving;
-      this.speed.textContent = `${kmh} km/h  ${driving}`;
+      this.shownVehicle = doing;
+      this.speed.textContent = `${kmh} km/h  ${doing}`;
     }
     if (
       drawCalls === this.shownDraws &&

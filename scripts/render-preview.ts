@@ -21,6 +21,9 @@
  *   --vehicle        the class of vehicle to stand the player in (spec section
  *                    11.3): compact, saloon, sports, van, truck, bus,
  *                    motorcycle, offroad, buggy, emergency or boat.
+ *   --on-foot        stand the player beside the vehicle rather than in it,
+ *                    which is how the character is looked at (spec section
+ *                    11.5).
  *
  * The browser comes from Playwright. A cloud session already has one; on a
  * fresh machine run `npx playwright install chromium` first, or point
@@ -121,6 +124,7 @@ const request: PreviewRequest = {
   hour: num('hour', 12),
   ...(options.has('quality') ? { quality: options.get('quality') as string } : {}),
   ...(options.has('vehicle') ? { vehicle: options.get('vehicle') as string } : {}),
+  ...(options.has('on-foot') ? { onFoot: true } : {}),
 };
 
 /**

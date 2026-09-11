@@ -17,6 +17,7 @@
  */
 import { RenderTarget, SRGBColorSpace, UnsignedByteType } from 'three';
 import { DEFAULT_APPEARANCE } from '../sim/character.ts';
+import { exitPlace } from '../sim/on-foot.ts';
 import { createVehicleState, DEFAULT_CLASS, rideHeight, specOf, VEHICLE_CLASSES } from '../sim/vehicle.ts';
 import { generateWorld } from '../world/world.ts';
 import { FollowCamera } from './camera.ts';
@@ -53,6 +54,11 @@ export interface PreviewRequest {
    * session starts in.
    */
   vehicle?: string;
+  /**
+   * Set to stand the player beside their vehicle rather than in it, which is
+   * how the character of spec sections 11.1 and 11.5 is looked at.
+   */
+  onFoot?: boolean;
 }
 
 /** The picture, and what the frame cost to build. */
@@ -108,13 +114,18 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
 
   // The player is in their vehicle, on the ground the roads left, as in the
   // game. `--vehicle` is how a class of the roster is looked at (spec section
-  // 11.3); a boat is stood on the waterline rather than on the ground.
+  // 11.3); a boat is stood on the waterline rather than on the ground. With
+  // `--on-foot` they stand beside it instead, where stepping out leaves them
+  // (spec section 11.5), and the character model is what the picture shows.
   const ground = scene.heightAt(x, y);
   const spec = specOf(VEHICLE_CLASSES.find((cls) => cls === request.vehicle) ?? DEFAULT_CLASS);
   const rest = spec.hull === undefined ? ground : Math.max(ground, world.water.seaLevel);
-  scene.character.group.position.set(x, ground, y);
-  scene.character.group.rotation.y = -heading;
-  scene.vehicle.set(createVehicleState(spec, x, y, rest + rideHeight(spec), heading));
+  const vehicle = createVehicleState(spec, x, y, rest + rideHeight(spec), heading);
+  const stand = request.onFoot === true ? exitPlace(vehicle, spec) : { x, y, heading };
+  scene.character.group.position.set(stand.x, scene.heightAt(stand.x, stand.y), stand.y);
+  scene.character.group.rotation.y = -stand.heading;
+  scene.character.group.visible = request.onFoot === true;
+  scene.vehicle.set(vehicle);
 
   const camera = new FollowCamera(width / height);
   camera.setBaseDistance(distance);
