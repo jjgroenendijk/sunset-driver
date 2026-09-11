@@ -23,12 +23,13 @@ import { BUDGET_MS, BUDGET_US, FRAME_MS, FRAME_SLICE_MS, SIM_SLICE_MS } from './
 import { bestOf, bestUnder, DRY, inputStream, landPoints, sweepSeeds } from './helpers.ts';
 
 /**
- * A handful of seeds: enough for a median, cheap enough for the quick tier.
- * This file measures wall-clock cost, so it may not share the machine with the
- * sweeps and its seeds are generated one after another. The full tier, which
- * has the time, takes more of them.
+ * A handful of seeds. This file measures wall-clock cost, so it may not share
+ * the machine with the sweeps and its seeds are generated one after another:
+ * every world here is a second of the quick tier's wall clock. The quick tier
+ * takes two, whose median is the slower of them, so it is held to the stricter
+ * number; the full tier, which has the time, takes a spread.
  */
-const GEN_SEEDS = sweepSeeds(process.env.SWEEP_SEEDS ? 12 : 3);
+const GEN_SEEDS = sweepSeeds(process.env.SWEEP_SEEDS ? 12 : 2);
 
 /** Repetitions of each measurement; the fastest one is scored. */
 const RUNS = 3;
@@ -238,14 +239,18 @@ describe('performance budgets', () => {
  * The chunk source of a measured world, over the layers already built for it.
  * The layers are the dearest thing in the project and each of them is measured
  * in its own right above; a chunk test is charged for cutting a chunk, not for
- * what it is cut from.
+ * what it is cut from. So the source is built once, however many tests read it.
  */
+const chunkSources = new Map<number, ChunkSource>();
+
 function chunkSourceOf(world: WorldDescription): ChunkSource {
+  const known = chunkSources.get(world.seed);
+  if (known !== undefined) return known;
   const graph = graphOf(world);
   const parcels = parcelsOf(world);
   const buildings = buildBuildings(world, parcels, graph);
   const junctions = buildJunctions(world.roads, graph);
-  return new ChunkSource(world, {
+  const built = new ChunkSource(world, {
     graph,
     junctions,
     footprint: footprintOf(world),
@@ -254,6 +259,8 @@ function chunkSourceOf(world: WorldDescription): ChunkSource {
     carve: buildCarve(world.terrain, world.roads, junctions),
     vegetation: new Vegetation(world.seed, parcels, buildings),
   });
+  chunkSources.set(world.seed, built);
+  return built;
 }
 
 /**
@@ -294,23 +301,13 @@ function uploadSteps(payload: ChunkPayload, material: Material): number[] {
 
   it('plants a chunk within its budget', () => {
     const times = measuredWorlds().slice(0, HEAVY_WORLDS).map((world) => {
-      const graph = graphOf(world);
-      const parcels = parcelsOf(world);
-      const vegetation = new Vegetation(world.seed, parcels, buildBuildings(world, parcels, graph));
+      const source = chunkSourceOf(world);
+      const vegetation = source.layers.vegetation;
       const at = chunkAt(world.core.x, world.core.y);
       // The chunk is cut once, untimed: the scatter is handed the parcel ground
       // the chunk holds, as `ChunkSource` hands it.
       const bounds = chunkBounds(at.cx, at.cy);
-      const junctions = buildJunctions(world.roads, graph);
-      const ground = new ChunkSource(world, {
-        graph,
-        junctions,
-        footprint: footprintOf(world),
-        parcels,
-        buildings: { buildings: [], area: 0 },
-        carve: buildCarve(world.terrain, world.roads, junctions),
-        vegetation,
-      }).chunk(at.cx, at.cy).parcels;
+      const ground = source.chunk(at.cx, at.cy).parcels;
       // Warm: the boundary index of a parcel is built the first time a plant is
       // asked for on it, and every chunk after that reads it.
       vegetation.plantsIn(bounds, ground);
@@ -351,12 +348,14 @@ function uploadSteps(payload: ChunkPayload, material: Material): number[] {
       const at = chunkAt(world.core.x, world.core.y);
       const chunk = source.chunk(at.cx, at.cy);
       // Building the payload is the worker's work and is not timed here; the
-      // frame is charged only for the pieces of the upload.
+      // frame is charged only for the pieces of the upload. It is built once,
+      // and each run uploads a copy, because an upload releases what it copies.
       //
       // Each piece is scored on its fastest run, as `bestOf` scores a whole
       // measurement: an upload allocates megabytes, so a collection lands in
       // one piece of one run and would otherwise be read as its cost.
-      const runs = [0, 1, 2].map(() => uploadSteps(buildChunkPayload(chunk, lookups, 'near'), material));
+      const payload = buildChunkPayload(chunk, lookups, 'near');
+      const runs = [0, 1, 2].map(() => uploadSteps(structuredClone(payload), material));
       const first = runs[0] as number[];
       return Math.max(...first.map((_, i) => Math.min(...runs.map((run) => run[i] as number))));
     });

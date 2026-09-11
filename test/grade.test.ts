@@ -46,29 +46,39 @@ describe('a colour grade', () => {
   });
 
   it('never answers outside the range a display can show', () => {
+    let complaint: string | undefined;
     for (const hour of [0, 6, 12, 18, 21]) {
-      for (const value of lutAt(hour)) {
-        expect(value).toBeGreaterThanOrEqual(0);
-        expect(value).toBeLessThanOrEqual(1);
+      const lut = lutAt(hour);
+      for (let i = 0; i < lut.length && complaint === undefined; i++) {
+        const value = lut[i] as number;
+        if (!(value >= 0 && value <= 1)) complaint = `hour ${hour} answers ${value} at ${i}`;
       }
     }
+    expect(complaint).toBeUndefined();
   });
 
   it('is subtle at every hour: the look is the lighting, not the grade', () => {
+    // One assertion after the loop: an `expect` per channel of every entry of
+    // every hour is most of a second of the quick tier.
     const last = LUT_SIZE - 1;
-    for (let hour = 0; hour < 24; hour++) {
+    let complaint: string | undefined;
+    for (let hour = 0; hour < 24 && complaint === undefined; hour++) {
       const lut = lutAt(hour);
       for (let b = 0; b < LUT_SIZE; b++) {
         for (let g = 0; g < LUT_SIZE; g++) {
           for (let r = 0; r < LUT_SIZE; r++) {
             const i = lutIndex(r, g, b);
-            expect(Math.abs((lut[i] ?? 0) - r / last)).toBeLessThan(SUBTLE);
-            expect(Math.abs((lut[i + 1] ?? 0) - g / last)).toBeLessThan(SUBTLE);
-            expect(Math.abs((lut[i + 2] ?? 0) - b / last)).toBeLessThan(SUBTLE);
+            const shift = Math.max(
+              Math.abs((lut[i] ?? 0) - r / last),
+              Math.abs((lut[i + 1] ?? 0) - g / last),
+              Math.abs((lut[i + 2] ?? 0) - b / last),
+            );
+            if (!(shift < SUBTLE)) complaint ??= `hour ${hour} moves ${r},${g},${b} by ${shift}`;
           }
         }
       }
     }
+    expect(complaint).toBeUndefined();
   });
 
   it('keeps a brighter colour brighter, so nothing in the frame is inverted', () => {

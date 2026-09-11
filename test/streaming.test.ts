@@ -89,8 +89,24 @@ const lookups = chunkLookups(world, layers);
 /** The chunk on the middle of the grid, which holds roads, buildings and plants. */
 const MIDDLE = chunkAt(0, 0);
 
+/** Every payload built so far, by chunk and detail. */
+const payloads = new Map<string, ChunkPayload>();
+
+/**
+ * The payload of a chunk, as a worker would hand it over. Driving the scene
+ * about asks for the same chunks again and again, and building one is most of
+ * what these tests cost, so each is built once. What goes out is a copy: a
+ * test that transfers the buffers detaches the ones it was given, and the
+ * scene releases what it uploads.
+ */
 function payloadOf(cx: number, cy: number, detail: 'near' | 'far'): ChunkPayload {
-  return buildChunkPayload(source.chunk(cx, cy), lookups, detail);
+  const key = `${cx},${cy},${detail}`;
+  let payload = payloads.get(key);
+  if (payload === undefined) {
+    payload = buildChunkPayload(source.chunk(cx, cy), lookups, detail);
+    payloads.set(key, payload);
+  }
+  return structuredClone(payload);
 }
 
 describe('the rings around the player', () => {
