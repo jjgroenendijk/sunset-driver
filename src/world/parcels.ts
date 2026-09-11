@@ -13,13 +13,18 @@
  * minor direction, across the way the roads there run, and again until each
  * piece is about the size its zone builds in.
  *
+ * The sand of a beach (spec section 7.3) is cut out before any of that. The
+ * beaches were planned on the bare terrain, so a strip of sand is split off the
+ * land the roads left and kept whole: it is already the width its dune line
+ * gives it, and the boardwalk behind it is the road that reaches it. Because the
+ * split happens after the footprint is subtracted, a beach parcel can no more
+ * stand on a road than any other parcel can.
+ *
  * Every parcel is then owned by exactly one thing (spec section 6.4, step 4).
  * The owner comes from the zone the parcel stands in, the density and wealth of
- * its district, and how much ground it has. Three of the eight owners the spec
+ * its district, and how much ground it has. Two of the eight owners the spec
  * names are not handed out yet:
  *
- * - `beach` waits for the beach rules of spec section 7.3; coastal parcels are
- *   ground cover until then.
  * - `water` waits for a body of water inside the land rather than around it;
  *   the sea, the river and the harbour are subtracted, not parcelled.
  * - `under-structure` is the ground beneath an elevated deck, and that ground is
@@ -30,7 +35,7 @@
  * footprint, not stored in it. Pure: the same world gives the same parcels, in
  * the same order, with the same owners.
  */
-import { areaOf, difference, regionArea, regionOf, split, type Point, type Region } from '../core/geom.ts';
+import { areaOf, difference, pointInRegion, regionArea, regionOf, split, type Point, type Region } from '../core/geom.ts';
 import { genRng, Subsystem } from '../core/rng.ts';
 import { compareNumbers } from '../core/sort.ts';
 import { districtAt, layoutZones, zoneAt, type ZoneLayout } from './districts.ts';
@@ -40,7 +45,7 @@ import { Heightfield } from './heightfield.ts';
 import { landRegions } from './land.ts';
 import type { TensorField } from './tensor.ts';
 import { footprintHalfWidth } from './tiers.ts';
-import type { District, RoadCurve, WorldDescription, Zone } from './types.ts';
+import type { Beach, District, RoadCurve, WorldDescription, Zone } from './types.ts';
 
 /** What owns a parcel (spec section 6.4, step 4). Exactly one of these owns each. */
 export type ParcelOwner =
@@ -158,10 +163,19 @@ export function buildParcels(
   const land = landRegions(new Heightfield(world.terrain), world.water.seaLevel);
   const zones = layoutZones(world.size, world.core, world.water);
   const reach = new RoadReach(world.roads, graph);
+  const free = difference(land, footprint.regions);
+  // The sand first, so the ground behind it is parcelled without it.
+  const sand = world.beaches.map((beach) => regionOf(beach.sand));
+  const shore = sand.length === 0 ? { inside: [], outside: free } : split(free, sand);
   const pieces: Piece[] = [];
-  for (const region of difference(land, footprint.regions)) {
-    cutToSize(region, zones, field, reach, pieces, 0);
+  for (const region of shore.inside) {
+    // A strip of sand is kept whole: the roads bound it on one side only, so
+    // cutting it would leave pieces the sea surrounds on every side but one.
+    const piece = pieceOf(region, reach);
+    if (piece !== undefined) pieces.push({ ...piece, owner: 'beach' });
   }
+  for (const region of shore.outside) cutToSize(region, zones, field, reach, pieces, 0);
+  markCarParks(pieces, world.beaches, reach);
 
   const parcels: Parcel[] = [];
   let area = 0;
@@ -173,7 +187,7 @@ export function buildParcels(
       id,
       region: piece.region,
       area: piece.area,
-      owner: ownerFor(world.seed, id, district, zone, piece.area),
+      owner: piece.owner ?? ownerFor(world.seed, id, district, zone, piece.area),
       district: district.id,
       zone,
       roads: piece.roads,
@@ -183,6 +197,48 @@ export function buildParcels(
   return { parcels, area, land: areaOf(land) };
 }
 
+/**
+ * Cut the beach car parks of spec section 7.3 out of the ground behind their
+ * boardwalk. A car park is a small rectangle and the piece it lands in can be a
+ * whole headland, so it is cut out rather than allowed to own what it stands
+ * in. A resort has two of them, so the world holds a handful.
+ *
+ * A car park no road runs along is not a parcel, and the ground it would have
+ * taken stays with the piece it came out of.
+ */
+function markCarParks(pieces: Piece[], beaches: readonly Beach[], reach: RoadReach): void {
+  for (const beach of beaches) {
+    for (const park of beach.carParks) {
+      const at = middleOf(park);
+      const host = pieces.findIndex((piece) => piece.owner === undefined && pointInRegion(at, piece.region));
+      if (host < 0) continue;
+      const halves = split([(pieces[host] as Piece).region], [regionOf(park)]);
+      const cut: Piece[] = [];
+      for (const region of halves.inside) {
+        const piece = pieceOf(region, reach);
+        if (piece !== undefined) cut.push({ ...piece, owner: 'car-park' });
+      }
+      if (cut.length === 0) continue;
+      for (const region of halves.outside) {
+        const piece = pieceOf(region, reach);
+        if (piece !== undefined) cut.push(piece);
+      }
+      pieces.splice(host, 1, ...cut);
+    }
+  }
+}
+
+/** The middle of a ring's corners. */
+function middleOf(ring: readonly Point[]): Point {
+  let x = 0;
+  let y = 0;
+  for (const p of ring) {
+    x += p.x;
+    y += p.y;
+  }
+  return { x: x / ring.length, y: y / ring.length };
+}
+
 /** A parcel before it is given an owner: its ground, its centre and the roads along it. */
 interface Piece {
   region: Region;
@@ -190,6 +246,22 @@ interface Piece {
   /** The centre of that ground, which says which district and zone it is in. */
   at: Point;
   roads: number[];
+  /** How much of its boundary runs along a road, in [0, 1]. Read while cutting. */
+  enclosed: number;
+  /** An owner the ground itself forces, whatever the zone would have rolled. */
+  owner?: ParcelOwner;
+}
+
+/**
+ * One piece of ground as a parcel, or nothing where it is a sliver of rounding
+ * or ground no road reaches. Nothing is placed on ground nothing can drive to.
+ */
+function pieceOf(region: Region, reach: RoadReach): Piece | undefined {
+  const area = regionArea(region);
+  if (area < MIN_PARCEL_AREA) return undefined;
+  const along = reach.along(region);
+  if (along.roads.length === 0) return undefined;
+  return { region, area, at: centroid(region), roads: along.roads, enclosed: along.enclosed };
 }
 
 /**
@@ -212,17 +284,14 @@ function cutToSize(
   out: Piece[],
   cuts: number,
 ): void {
-  const area = regionArea(region);
-  if (area < MIN_PARCEL_AREA) return;
-  const along = reach.along(region);
-  if (along.roads.length === 0) return;
-  const at = centroid(region);
-  const piece: Piece = { region, area, at, roads: along.roads };
+  const piece = pieceOf(region, reach);
+  if (piece === undefined) return;
+  const at = piece.at;
   // Whether the roads enclose this ground is asked of the piece they left, not
   // of the halves a cut makes: a cut adds a side that is not a road, and asking
   // again would stop the cutting halfway down a block.
-  const enclosed = cuts > 0 || along.enclosed >= MIN_ENCLOSED;
-  if (!enclosed || cuts >= MAX_CUTS || area <= OWNERSHIP[zoneAt(zones, at.x, at.y)].maxArea) {
+  const enclosed = cuts > 0 || piece.enclosed >= MIN_ENCLOSED;
+  if (!enclosed || cuts >= MAX_CUTS || piece.area <= OWNERSHIP[zoneAt(zones, at.x, at.y)].maxArea) {
     out.push(piece);
     return;
   }

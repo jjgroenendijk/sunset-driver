@@ -10,6 +10,7 @@ import { districtAt, layoutZones } from '../src/world/districts.ts';
 import { buildFootprint } from '../src/world/footprint.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
+import { isResort } from '../src/world/beaches.ts';
 import { buildParcels, type ParcelOwner } from '../src/world/parcels.ts';
 import { buildTensorField } from '../src/world/tensor.ts';
 import { generateWorld } from '../src/world/world.ts';
@@ -212,6 +213,27 @@ for (let i = 0; i + 1 < world.tram.route.length; i++) {
   stroke(world.tram.route[i] as Point, world.tram.route[i + 1] as Point, CORRIDOR_COL.tram, 0);
 }
 
+// Beaches (spec section 7.3): the shallows in pale blue, the waterline and the
+// dune line in sand, the boardwalk line, the pier deck and the car parks. The
+// sand itself is already filled in, as the parcels the beach owns.
+const SHALLOWS_COL: [number, number, number] = [110, 200, 220];
+const DUNE_COL: [number, number, number] = [225, 200, 120];
+const BOARDWALK_COL: [number, number, number] = [200, 120, 220];
+const PIER_COL: [number, number, number] = [180, 90, 40];
+const outline = (ring: readonly Point[], col: [number, number, number]): void => {
+  for (let i = 0; i < ring.length; i++) stroke(ring[i] as Point, ring[(i + 1) % ring.length] as Point, col, 0);
+};
+const trace = (line: readonly Point[], col: [number, number, number]): void => {
+  for (let i = 0; i + 1 < line.length; i++) stroke(line[i] as Point, line[i + 1] as Point, col, 0);
+};
+for (const beach of world.beaches) {
+  trace(beach.shore, SHALLOWS_COL);
+  trace(beach.back, DUNE_COL);
+  trace(beach.boardwalk, BOARDWALK_COL);
+  for (const park of beach.carParks) outline(park, BOARDWALK_COL);
+  if (beach.pier !== undefined) outline(beach.pier.polygon, PIER_COL);
+}
+
 const mark = (x: number, y: number, col: [number, number, number], size = 3): void => {
   const ix = Math.round((x - hf.originX) / hf.cellSize);
   const iy = Math.round((y - hf.originY) / hf.cellSize);
@@ -272,9 +294,15 @@ const owners = parcels.parcels.reduce<Partial<Record<ParcelOwner, number>>>((tal
 console.log(
   `  parcels: ${parcels.parcels.length} covering ${(parcels.area / 1e6).toFixed(2)} km², ` +
     `cut in ${parcelMs.toFixed(0)} ms — ` +
-    (['building', 'park', 'car-park', 'plaza', 'ground'] as ParcelOwner[])
+    (['building', 'park', 'car-park', 'plaza', 'beach', 'ground'] as ParcelOwner[])
       .map((o) => `${o} ${owners[o] ?? 0}`)
       .join(', '),
+);
+const resorts = world.beaches.filter(isResort);
+console.log(
+  `  beaches: ${world.beaches.length} covering ${(world.beaches.reduce((k, b) => k + b.length, 0) / 1000).toFixed(1)} km of coast, ` +
+    `${resorts.length} resorts with ${resorts.filter((b) => b.boardwalkRoad >= 0).length} boardwalks and ` +
+    `${resorts.filter((b) => b.pier !== undefined).length} piers; longest ${(Math.max(0, ...world.beaches.map((b) => b.length))).toFixed(0)} m`,
 );
 const elevated = world.corridors.filter((c) => c.kind === 'elevated');
 console.log(

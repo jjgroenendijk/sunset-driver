@@ -1,3 +1,4 @@
+import { planBeaches, withBeachCulture } from './beaches.ts';
 import { buildCorridors } from './corridors.ts';
 import { generateDistricts, layoutZones } from './districts.ts';
 import { buildRoadGraph } from './graph.ts';
@@ -18,18 +19,30 @@ export function generateWorld(seed: number): WorldDescription {
   const terrain = generateTerrain(seed, layout);
   const water = describeWater(seed, terrain, layout);
   const zones = layoutZones(size, layout.core, water);
-  const districts = generateDistricts(seed, zones, terrain, water);
+  const sites = generateDistricts(seed, zones, terrain, water);
+  // The beaches are planned on the terrain alone, then hand the districts they
+  // run through the beach culture of spec section 8.3. They read the district
+  // sites only, so nothing feeds back into where they are.
+  const beaches = planBeaches(size, terrain, water, zones, sites);
   const skeleton: WorldSkeleton = {
     seed,
     size,
     core: layout.core,
     terrain: terrain.toData(),
     water,
-    districts,
+    districts: withBeachCulture(sites, beaches, zones),
+    beaches,
   };
-  const roads = traceRoads(skeleton, buildTensorField(skeleton));
+  const { roads, boardwalks } = traceRoads(skeleton, buildTensorField(skeleton));
   // The graph is built here rather than stored: the corridors are the last
   // thing generation asks of it, and everything else builds it on demand.
   const { corridors, tram } = buildCorridors(skeleton, roads, buildRoadGraph(roads));
-  return { ...skeleton, roads, corridors, tram };
+  return {
+    ...skeleton,
+    // Which road a boardwalk turned out to be is only known once it is laid.
+    beaches: beaches.map((beach, i) => ({ ...beach, boardwalkRoad: boardwalks[i] ?? -1 })),
+    roads,
+    corridors,
+    tram,
+  };
 }
