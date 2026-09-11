@@ -172,8 +172,8 @@ export interface VehicleSpec {
   /**
    * True where the model draws one wheel per axle, on the centreline, whatever
    * the physics stands on. A motorcycle is the only row that sets it: it rides
-   * on two wheels and the physics stands it on the four of
-   * {@link pairedWheelsOf}.
+   * on two wheels and the physics stands it on four at a track of a few
+   * centimetres.
    */
   inline: boolean;
   /** Set on a boat, and undefined on everything that drives (spec section 11.3). */
@@ -222,20 +222,6 @@ function sixWheelsOf(halfBase: number, rearGap: number, halfTrack: number, drop:
     }
   }
   return wheels;
-}
-
-/**
- * The wheels of a two-wheeler: a pair at each end, a few centimetres apart.
- *
- * Rapier takes a vehicle's roll stiffness from where its wheels stand, so two
- * wheels on the centreline have none and the bike falls over the moment it is
- * touched. A pair a hand's width apart gives it enough to stand up and little
- * enough that it still leans and turns like a bike. {@link VehicleSpec.inline}
- * is what tells the model to draw the two wheels the rider sees rather than the
- * four the physics stands on.
- */
-function pairedWheelsOf(halfBase: number, halfTrack: number, drop: number): WheelSpec[] {
-  return wheelsOf(halfBase, halfTrack, drop);
 }
 
 /**
@@ -440,7 +426,12 @@ const MOTORCYCLE: VehicleSpec = {
   halfWidth: 0.34,
   wheelRadius: 0.32,
   wheelWidth: 0.14,
-  wheels: pairedWheelsOf(0.76, 0.085, -0.02),
+  // A pair at each end, a hand's width apart: Rapier takes a vehicle's roll
+  // stiffness from where its wheels stand, so two wheels on the centreline
+  // have none and the bike falls over the moment it is touched. A track this
+  // narrow is enough to stand it up and little enough that it still turns like
+  // a bike. `inline` below is what draws the two wheels the rider sees.
+  wheels: wheelsOf(0.76, 0.085, -0.02),
   enginePower: 2200,
   topSpeed: 58,
   brakeForce: 1400,
