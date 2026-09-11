@@ -13,9 +13,25 @@ const OPTIONS: ts.CompilerOptions = {
   skipLibCheck: true,
 };
 
+/** Every fixture, linted in one program. */
+const FIXTURES = ['no-symbol-types.ts', 'violations.ts'];
+
+/**
+ * Building the program is almost all of what a lint costs, because it loads the
+ * standard library, and the run of a file is cheap next to it. So the fixtures
+ * are linted together, once, and each test reads its own file out of the
+ * findings. The lint only walks the files it was given, so a fixture sees the
+ * same program it would have seen alone.
+ */
+const findings = lintDeterminism(
+  FIXTURES.map((name) => path.join(DIR, name)),
+  OPTIONS,
+  [DIR],
+  DIR,
+);
+
 function lint(fixture: string): Finding[] {
-  const file = path.join(DIR, fixture);
-  return lintDeterminism([file], OPTIONS, [DIR], DIR);
+  return findings.filter((finding) => finding.file === fixture);
 }
 
 describe('determinism lint', () => {
