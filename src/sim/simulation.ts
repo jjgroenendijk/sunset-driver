@@ -1,6 +1,8 @@
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
 import { gameTime, TICKS_PER_HOUR } from './clock.ts';
 import { type CharacterAppearance, DEFAULT_APPEARANCE, normaliseAppearance } from './character.ts';
+import type { SimPhysics } from './physics.ts';
+import { createVehicleState, SALOON, type VehicleState } from './vehicle.ts';
 
 /** The serialisable, deterministic state of a session. */
 export interface SimState {
@@ -8,6 +10,12 @@ export interface SimState {
   tick: number;
   /** The look picked on the title screen; saved and replicated with the player. */
   character: CharacterAppearance;
+  /**
+   * The car the player is in (spec section 11.3). Plain numbers: the Rapier
+   * body is built from this, never stored in it, so a session is saved and
+   * replayed as the record it is.
+   */
+  vehicle: VehicleState;
   player: {
     x: number;
     y: number;
@@ -28,6 +36,7 @@ export function createSimState(
     seed,
     tick: startTick,
     character: normaliseAppearance(character),
+    vehicle: createVehicleState(SALOON),
     player: { x: 0, y: 0, heading: 0, speed: 0 },
   };
 }
@@ -40,21 +49,15 @@ export function cloneSimState(state: SimState): SimState {
 /**
  * Advance the state by exactly one tick. Pure with respect to its inputs:
  * no wall-clock, no frame delta, no unseeded randomness.
+ *
+ * `physics` is the Rapier world of `physics.ts`, stepped here so the physics
+ * runs at the simulation's 60 Hz and nowhere else (spec section 2.2). It holds
+ * no state of its own: it reads the record, steps, and writes the record back.
+ * Without it the tick still advances, so the clock and everything driven by it
+ * can be exercised on their own; nothing moves.
  */
-export function stepSim(state: SimState, input: InputFrame = EMPTY_INPUT): void {
-  const dt = 1 / 60;
-  const p = state.player;
-
-  // Placeholder character motion until the driving and on-foot models land.
-  const accel = 12;
-  const drag = 2.5;
-  const target = input.throttle * (input.sprint ? 14 : 8);
-  p.speed += (target - p.speed) * Math.min(1, accel * dt);
-  p.speed -= p.speed * drag * dt;
-  p.heading += input.steer * 2.5 * dt;
-  p.x += Math.cos(p.heading) * p.speed * dt;
-  p.y += Math.sin(p.heading) * p.speed * dt;
-
+export function stepSim(state: SimState, input: InputFrame = EMPTY_INPUT, physics?: SimPhysics): void {
+  physics?.step(state, input);
   state.tick += 1;
 }
 

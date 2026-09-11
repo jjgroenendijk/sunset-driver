@@ -7,6 +7,8 @@ export class Hud {
   private readonly clock: HTMLElement;
   private readonly seedEl: HTMLElement;
   private readonly draws: HTMLElement;
+  private readonly speed: HTMLElement;
+  private shownSpeed = -1;
   private shownDraws = -1;
   private shownLights = -1;
   private shownStreaming = -1;
@@ -21,7 +23,10 @@ export class Hud {
     this.clock.className = 'hud-clock';
     this.draws = document.createElement('div');
     this.draws.className = 'hud-seed';
-    this.root.append(this.seedEl, this.clock, this.draws);
+    // The speedometer of spec section 12, until the full HUD lands.
+    this.speed = document.createElement('div');
+    this.speed.className = 'hud-clock';
+    this.root.append(this.seedEl, this.clock, this.speed, this.draws);
     parent.append(this.root);
   }
 
@@ -37,6 +42,11 @@ export class Hud {
     const hh = String(t.hour).padStart(2, '0');
     const mm = String(t.minute).padStart(2, '0');
     this.clock.textContent = `day ${t.day + 1}  ${hh}:${mm}`;
+    const kmh = Math.round(Math.abs(state.player.speed) * 3.6);
+    if (kmh !== this.shownSpeed) {
+      this.shownSpeed = kmh;
+      this.speed.textContent = `${kmh} km/h`;
+    }
     if (drawCalls === this.shownDraws && lights === this.shownLights && streaming === this.shownStreaming) return;
     this.shownDraws = drawCalls;
     this.shownLights = lights;

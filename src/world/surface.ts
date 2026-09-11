@@ -1,0 +1,206 @@
+/**
+ * What the ground is made of at a place, and where the nearest road is
+ * (spec section 11.3). Both are what a driver needs to know about the ground.
+ *
+ * Driving reads this and nothing else about the ground it is on: the grip a
+ * tyre finds on asphalt, on a dirt road, on sand and on open country differ,
+ * and that difference is what makes a beach buggy worth having. The parcel
+ * model (spec section 6.4) already gives every piece of ground exactly one
+ * owner, so this is a read of that allocation rather than a second one: a road
+ * claims the ground within `footprintHalfWidth` of its centreline, a beach
+ * claims its sand, and everything else is open ground.
+ *
+ * It answers one place at a time and stores nothing per place, so the physics
+ * may ask it for every wheel of every tick. The segments are filed in a bucket
+ * grid the way `carve.ts` files them, which is what keeps that affordable.
+ */
+import { pointInRing } from '../core/geom.ts';
+import { footprintHalfWidth } from './tiers.ts';
+import type { Point, RoadCurve, WorldDescription } from './types.ts';
+
+/**
+ * The ground a tyre is on. `ground` is everything the roads and the beaches
+ * left: grass, scrub, dust and the yards behind the buildings.
+ */
+export type Surface = 'asphalt' | 'dirt' | 'sand' | 'ground';
+
+/** Side of one bucket of the segment index, in metres. */
+const INDEX_CELL = 48;
+
+/** A beach's sand with the box around it, so a point outside is refused without walking the ring. */
+interface SandPatch {
+  ring: readonly Point[];
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+/**
+ * The surface of a world, asked one place at a time.
+ *
+ * A road wins over sand where both reach a place, because the road claimed the
+ * ground first: a boardwalk or an island link laid across a beach is driven on
+ * as the road it is.
+ */
+export class SurfaceIndex {
+  /** Segment ends, direction and the squared reach of each one. */
+  private readonly ax: number[] = [];
+  private readonly ay: number[] = [];
+  private readonly vx: number[] = [];
+  private readonly vy: number[] = [];
+  /** One over the squared length, so the projection onto a segment is a multiply. */
+  private readonly inv: number[] = [];
+  private readonly half: number[] = [];
+  private readonly paved: boolean[] = [];
+  private readonly buckets: number[][] = [];
+  private readonly sand: SandPatch[] = [];
+  private readonly columns: number;
+  private readonly originX: number;
+  private readonly originY: number;
+
+  constructor(world: WorldDescription) {
+    // The index covers the map with a margin, so a road beside the edge is
+    // filed rather than folded onto the last column.
+    const reach = world.size / 2 + 2 * INDEX_CELL;
+    this.originX = -reach;
+    this.originY = -reach;
+    this.columns = Math.ceil((2 * reach) / INDEX_CELL);
+    for (let i = 0; i < this.columns * this.columns; i++) this.buckets.push([]);
+    for (const road of world.roads) this.file(road);
+    for (const beach of world.beaches) {
+      if (beach.sand.length >= 3) this.sand.push(boxed(beach.sand));
+    }
+  }
+
+  /** What the ground is made of at a place. */
+  at(x: number, y: number): Surface {
+    const paved = this.roadAt(x, y);
+    if (paved !== undefined) return paved ? 'asphalt' : 'dirt';
+    for (const patch of this.sand) {
+      if (x < patch.minX || x > patch.maxX || y < patch.minY || y > patch.maxY) continue;
+      if (pointInRing({ x, y }, patch.ring)) return 'sand';
+    }
+    return 'ground';
+  }
+
+  /** True where a paved road claims the place, false where a dirt road does, undefined off the roads. */
+  private roadAt(x: number, y: number): boolean | undefined {
+    const column = Math.floor((x - this.originX) / INDEX_CELL);
+    const row = Math.floor((y - this.originY) / INDEX_CELL);
+    if (column < 0 || row < 0 || column >= this.columns || row >= this.columns) return undefined;
+    const bucket = this.buckets[row * this.columns + column];
+    if (bucket === undefined) return undefined;
+    let best: boolean | undefined;
+    let bestDistance = Infinity;
+    for (const i of bucket) {
+      const half = this.half[i] as number;
+      const distance = this.distanceTo(i, x, y);
+      if (distance > half || distance >= bestDistance) continue;
+      bestDistance = distance;
+      best = this.paved[i] as boolean;
+    }
+    return best;
+  }
+
+  /** Distance from a place to the centreline of one segment. */
+  private distanceTo(i: number, x: number, y: number): number {
+    const dx = x - (this.ax[i] as number);
+    const dy = y - (this.ay[i] as number);
+    const vx = this.vx[i] as number;
+    const vy = this.vy[i] as number;
+    const t = Math.max(0, Math.min(1, (dx * vx + dy * vy) * (this.inv[i] as number)));
+    const ox = dx - vx * t;
+    const oy = dy - vy * t;
+    return Math.hypot(ox, oy);
+  }
+
+  /** File every segment of one road in each bucket the box around it touches. */
+  private file(road: RoadCurve): void {
+    const half = footprintHalfWidth(road.tier);
+    const paved = road.tier !== 'dirt';
+    for (let i = 0; i + 1 < road.points.length; i++) {
+      const a = road.points[i] as Point;
+      const b = road.points[i + 1] as Point;
+      const vx = b.x - a.x;
+      const vy = b.y - a.y;
+      const length2 = vx * vx + vy * vy;
+      if (length2 === 0) continue;
+      const at = this.ax.length;
+      this.ax.push(a.x);
+      this.ay.push(a.y);
+      this.vx.push(vx);
+      this.vy.push(vy);
+      this.inv.push(1 / length2);
+      this.half.push(half);
+      this.paved.push(paved);
+      const minColumn = this.cell(Math.min(a.x, b.x) - half - this.originX);
+      const maxColumn = this.cell(Math.max(a.x, b.x) + half - this.originX);
+      const minRow = this.cell(Math.min(a.y, b.y) - half - this.originY);
+      const maxRow = this.cell(Math.max(a.y, b.y) + half - this.originY);
+      for (let row = minRow; row <= maxRow; row++) {
+        for (let column = minColumn; column <= maxColumn; column++) {
+          this.buckets[row * this.columns + column]?.push(at);
+        }
+      }
+    }
+  }
+
+  /** A coordinate measured from the index origin, as a bucket index inside the grid. */
+  private cell(offset: number): number {
+    return Math.max(0, Math.min(this.columns - 1, Math.floor(offset / INDEX_CELL)));
+  }
+}
+
+/** A place on a road, and the way the road runs there. */
+export interface RoadPlace {
+  x: number;
+  y: number;
+  /** Radians, along the road in the direction the curve was traced. */
+  heading: number;
+}
+
+/**
+ * The nearest place a car can stand on a road, or undefined where the world has
+ * none. This is where a session starts and where a respawn will put a car
+ * (spec section 11.7).
+ *
+ * Highways are skipped, because a driver should not begin on one, and so are
+ * the segments on a deck or in a bore, because the ground the physics carries
+ * is not the road there. One pass over the curves at the start of a session.
+ */
+export function nearestRoadPlace(world: WorldDescription, x: number, y: number): RoadPlace | undefined {
+  let best: RoadPlace | undefined;
+  let bestDistance = Infinity;
+  for (const road of world.roads) {
+    if (road.tier === 'highway') continue;
+    for (let i = 0; i + 1 < road.points.length; i++) {
+      if (road.bridges.includes(i) || road.tunnels.includes(i)) continue;
+      const a = road.points[i] as Point;
+      const b = road.points[i + 1] as Point;
+      const vx = b.x - a.x;
+      const vy = b.y - a.y;
+      const length2 = vx * vx + vy * vy;
+      if (length2 === 0) continue;
+      const t = Math.max(0, Math.min(1, ((x - a.x) * vx + (y - a.y) * vy) / length2));
+      const px = a.x + vx * t;
+      const py = a.y + vy * t;
+      const distance = Math.hypot(px - x, py - y);
+      if (distance >= bestDistance) continue;
+      bestDistance = distance;
+      best = { x: px, y: py, heading: Math.atan2(vy, vx) };
+    }
+  }
+  return best;
+}
+
+function boxed(ring: readonly Point[]): SandPatch {
+  const patch: SandPatch = { ring, minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+  for (const p of ring) {
+    patch.minX = Math.min(patch.minX, p.x);
+    patch.minY = Math.min(patch.minY, p.y);
+    patch.maxX = Math.max(patch.maxX, p.x);
+    patch.maxY = Math.max(patch.maxY, p.y);
+  }
+  return patch;
+}

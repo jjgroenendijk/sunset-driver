@@ -6,10 +6,12 @@ import { createPreviewScene } from './render/scene.ts';
 import { WorldScene } from './render/world-scene.ts';
 import { FixedStepClock } from './sim/clock.ts';
 import { DEFAULT_APPEARANCE } from './sim/character.ts';
+import { initPhysics, SimPhysics, type Ground } from './sim/physics.ts';
 import { createSimState, stepSim, type SimState } from './sim/simulation.ts';
 import { Hud } from './ui/hud.ts';
 import { Keyboard } from './ui/keyboard.ts';
 import { TitleScreen } from './ui/title.ts';
+import { nearestRoadPlace, SurfaceIndex } from './world/surface.ts';
 import { generateWorld } from './world/world.ts';
 
 /** How fast the character turns on the title screen, in radians per second. */
@@ -19,6 +21,7 @@ const PREVIEW_SPIN = 0.7;
 interface Session {
   state: SimState;
   world: WorldScene;
+  physics: SimPhysics;
   /** The effects the world is drawn through (spec section 10.6). */
   post: PostChain;
   hud: Hud;
@@ -29,6 +32,15 @@ async function boot(): Promise<void> {
   const probe = await probeWebGpu();
   if (!probe.ok) {
     if (status) status.textContent = probe.reason;
+    return;
+  }
+
+  // Rapier is WebAssembly and has to be loaded before a world can be built
+  // from it (spec section 2.1). It is small, and the title screen is next.
+  try {
+    await initPhysics();
+  } catch {
+    if (status) status.textContent = 'The physics engine could not be loaded.';
     return;
   }
 
@@ -62,12 +74,14 @@ async function boot(): Promise<void> {
 
     if (session) {
       const steps = clock.advance(elapsed);
-      for (let i = 0; i < steps; i++) stepSim(session.state, keyboard.sample());
+      for (let i = 0; i < steps; i++) stepSim(session.state, keyboard.sample(), session.physics);
       const p = session.state.player;
       // The player walks on the ground the roads left, not on the natural one.
       const height = session.world.heightAt(p.x, p.y);
       session.world.character.group.position.set(p.x, height, p.y);
       session.world.character.group.rotation.y = -p.heading;
+      // The car is drawn from the record the physics wrote, pose and wheels.
+      session.world.vehicle.set(session.state.vehicle);
       // The light of the scene is a function of the tick, so the day runs at
       // the simulation's pace whatever the frame rate (spec section 10.5). The
       // colour grade follows the same tick (spec section 10.6).
@@ -112,13 +126,29 @@ async function boot(): Promise<void> {
   const notice = showNotice('Generating the world…');
   await nextFrame();
   const state = createSimState(seedFromString(choice.seed), choice.character);
-  const world = new WorldScene(generateWorld(state.seed), state.character);
+  const description = generateWorld(state.seed);
+  const world = new WorldScene(description, state.character);
+
+  // The physics reads the carved ground the renderer draws and the surface the
+  // parcel model left, so the car drives on what is on screen (spec section
+  // 11.3). The session starts on the nearest road to the core rather than
+  // wherever the origin happens to fall.
+  const surfaces = new SurfaceIndex(description);
+  const ground: Ground = {
+    heightAt: (x, y) => world.heightAt(x, y),
+    surfaceAt: (x, y) => surfaces.at(x, y),
+  };
+  const start = nearestRoadPlace(description, state.player.x, state.player.y);
+  const physics = new SimPhysics(ground, state);
+  physics.spawn(state, start?.x ?? state.player.x, start?.y ?? state.player.y, start?.heading ?? 0);
+
   try {
     await world.settle(state.player.x, state.player.y, 1);
   } catch (error) {
     // A worker that never answers leaves the player standing on nothing, so
     // the notice says so rather than hanging on 'Generating the world…'.
     notice.textContent = error instanceof Error ? error.message : 'The world could not be built.';
+    physics.dispose();
     world.dispose();
     return;
   }
@@ -130,7 +160,7 @@ async function boot(): Promise<void> {
   // means the first frame is antialiased like every frame after it.
   const post = new PostChain(renderer, world.scene, camera.camera);
   await post.ready();
-  session = { state, world, post, hud: new Hud(document.body, choice.seed) };
+  session = { state, world, physics, post, hud: new Hud(document.body, choice.seed) };
   preview.dispose();
   last = performance.now();
 }

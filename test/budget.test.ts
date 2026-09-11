@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { TICKS_PER_HOUR } from '../src/sim/clock.ts';
 import type { InputFrame } from '../src/sim/input.ts';
+import { initPhysics, SimPhysics, type Ground } from '../src/sim/physics.ts';
 import { createSimState, stepSim } from '../src/sim/simulation.ts';
 import { MeshBasicMaterial, type BatchedMesh, type Material } from 'three';
 import { fillOfPacked } from '../src/render/batch.ts';
@@ -31,6 +31,13 @@ const GEN_SEEDS = sweepSeeds(process.env.SWEEP_SEEDS ? 12 : 3);
 
 /** Repetitions of each measurement; the fastest one is scored. */
 const RUNS = 3;
+
+/**
+ * Ticks the per-tick cost is averaged over. Twenty seconds of driving: long
+ * enough for the average to settle, short enough that the quick tier can pay
+ * for it three times if the first run is unlucky.
+ */
+const SIM_TICKS = 1200;
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
@@ -111,15 +118,25 @@ describe('performance budgets', () => {
     expect(slices.streaming + BUDGET_MS.chunkUpload + slices.render).toBeLessThanOrEqual(FRAME_MS);
   });
 
-  it('steps one game hour within the per-tick budget', () => {
-    const inputs = inputStream(0x5717, TICKS_PER_HOUR);
+  it('steps the simulation within the per-tick budget', async () => {
+    // The tick steps Rapier (spec section 11.3), so this is the physics slice
+    // and the gameplay slice together, driving over hills on a real surface.
+    await initPhysics();
+    const ground: Ground = {
+      heightAt: (x, y) => 2.5 * Math.sin(x / 37) + 1.5 * Math.cos(y / 51),
+      surfaceAt: () => 'asphalt',
+    };
+    const inputs = inputStream(0x5717, SIM_TICKS);
     const run = (ticks: number): void => {
       const state = createSimState(0x5717);
-      for (let i = 0; i < ticks; i++) stepSim(state, inputs[i] as InputFrame);
+      const physics = new SimPhysics(ground, state);
+      physics.spawn(state, 0, 0, 0);
+      for (let i = 0; i < ticks; i++) stepSim(state, inputs[i] as InputFrame, physics);
+      physics.dispose();
     };
 
-    run(600); // Warm up, so the measurement is of steady-state code and not of the JIT.
-    const perTick = bestOf(RUNS, () => run(TICKS_PER_HOUR)) / TICKS_PER_HOUR;
+    run(300); // Warm up, so the measurement is of steady-state code and not of the JIT.
+    const perTick = bestUnder(RUNS, BUDGET_MS.simTick * SIM_TICKS, () => run(SIM_TICKS)) / SIM_TICKS;
 
     expect(perTick, `${perTick.toFixed(4)} ms/tick`).toBeLessThan(BUDGET_MS.simTick);
   });
