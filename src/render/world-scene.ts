@@ -41,6 +41,7 @@ import type { Lamp } from './lamp-mesh.ts';
 import { LampLights, LampScenery } from './lamps.ts';
 import { RoadScenery } from './roads.ts';
 import { SkyLighting } from './sky.ts';
+import { VehicleModel } from './vehicle.ts';
 import {
   detailAt,
   FAR_RADIUS,
@@ -85,6 +86,7 @@ interface ChunkTile {
 export class WorldScene {
   readonly scene = new Scene();
   readonly character: CharacterModel;
+  readonly vehicle = new VehicleModel();
   readonly world: WorldDescription;
   private readonly stream: ChunkStream;
   private readonly heights: RoadCarve;
@@ -130,7 +132,11 @@ export class WorldScene {
     this.character.group.traverse((object) => {
       object.castShadow = true;
     });
+    // The player starts behind the wheel, so the character is built but not
+    // drawn; spec section 11.5 is what lets them get out again.
+    this.character.group.visible = false;
     this.scene.add(this.character.group);
+    this.scene.add(this.vehicle.group);
 
     // A session starts at 08:00, so the first frame is already lit.
     this.light = daylightAt(START_TICK);
@@ -254,6 +260,8 @@ export class WorldScene {
     this.vegetation.dispose();
     this.lamps.dispose();
     this.character.dispose();
+    this.scene.remove(this.vehicle.group);
+    this.vehicle.dispose();
   }
 
   /** Hand the light of the moment to everything that reads it. */

@@ -17,6 +17,7 @@
  */
 import { RenderTarget, SRGBColorSpace, UnsignedByteType } from 'three';
 import { DEFAULT_APPEARANCE } from '../sim/character.ts';
+import { createVehicleState, rideHeight, SALOON } from '../sim/vehicle.ts';
 import { generateWorld } from '../world/world.ts';
 import { FollowCamera } from './camera.ts';
 import { tickAtHour } from './daylight.ts';
@@ -84,10 +85,11 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   scene.look(x, y);
   const chunkMs = performance.now() - t1;
 
-  // The player stands on the ground the roads left, as it does in the game.
+  // The player is in their car, on the ground the roads left, as in the game.
   const ground = scene.heightAt(x, y);
   scene.character.group.position.set(x, ground, y);
   scene.character.group.rotation.y = -heading;
+  scene.vehicle.set(createVehicleState(SALOON, x, y, ground + rideHeight(SALOON), heading));
 
   const camera = new FollowCamera(width / height);
   camera.setBaseDistance(distance);
