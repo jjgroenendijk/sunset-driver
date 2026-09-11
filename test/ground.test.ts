@@ -109,8 +109,9 @@ describe('ground mesh', () => {
     }
     expect(complaint).toBeUndefined();
     // The hand-built ground rises with x and faster with y, so away from the
-    // roads the normal leans back against both.
-    const middle = 13 * n + 3;
+    // roads the normal leans back against both. The vertex is well clear of
+    // every road: a bench and the blend beside it leave the ground level.
+    const middle = 13 * n + 13;
     expect(attributes.normals[middle * 3] as number).toBeLessThan(0);
     expect(attributes.normals[middle * 3 + 2] as number).toBeLessThan(
       (attributes.normals[middle * 3] as number) + 1e-6,

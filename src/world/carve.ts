@@ -59,6 +59,19 @@ export const CARVE_BLEND = 12;
 const MIN_BENCH = CHUNK_TERRAIN_CELL;
 
 /**
+ * Metres of level ground a bench keeps past the edge of the road drawn on it.
+ *
+ * The ground is a grid of {@link CHUNK_TERRAIN_CELL} cells and a road is a
+ * surface laid over it, so a cell that holds the edge of the road has corners
+ * each side of it. A corner outside the bench stands on the hillside blending
+ * back, which on the uphill side is higher than the road: the triangle between
+ * the two corners then cuts up through the road and the ground shows through
+ * its verge. One cell diagonal of level ground past the edge is what puts every
+ * corner of every such cell on the bench itself.
+ */
+const BENCH_MARGIN = CHUNK_TERRAIN_CELL * Math.SQRT2;
+
+/**
  * Metres of hillside a bench may take away, and metres of ground it may make up.
  * A road on a slope steep enough to ask for more than this gets a retaining wall
  * rather than an endless cutting: the ground beyond the limit stays where it is.
@@ -75,12 +88,20 @@ export const CARVE_FILL = 6;
 const INDEX_CELL = 48;
 
 /**
+ * Metres two roads claiming one place may ask for and still be one bed. Below
+ * this the ground the lower of them gets is the ground the other wanted, to
+ * within what the grid can hold anyway.
+ */
+const CROWDED_BY = 0.05;
+
+/**
  * How far the flat bench of a tier reaches each side of its centreline: the
  * ground the road claims (spec section 6.4), or one chunk terrain cell where
- * that is narrower than the grid can hold.
+ * that is narrower than the grid can hold, and {@link BENCH_MARGIN} past either
+ * so the grid cannot lift the hillside through the edge of the road.
  */
 export function benchHalfWidth(tier: RoadTier): number {
-  return Math.max(footprintHalfWidth(tier), MIN_BENCH);
+  return Math.max(footprintHalfWidth(tier), MIN_BENCH) + BENCH_MARGIN;
 }
 
 /**
@@ -105,6 +126,12 @@ export class RoadCarve {
   private readonly rise: number[] = [];
   private readonly half: number[] = [];
   private readonly reach: number[] = [];
+  /**
+   * How far each side of the segment the road's own surface is drawn, which is
+   * the ground it claims (spec section 6.4). A place inside it belongs to that
+   * road before any road that merely reaches it.
+   */
+  private readonly claimed: number[] = [];
   /** The curve each segment belongs to, so a caller can ask who carved the ground. */
   private readonly curve: number[] = [];
   /** The segments filed in each bucket of the index, by index into the arrays above. */
@@ -113,7 +140,7 @@ export class RoadCarve {
    * The junctions (spec section 6.2), each levelled to one plane over the
    * whole of its outline, and the junctions filed in each bucket.
    */
-  private readonly junctions: { ring: GeomPoint[]; plane: JunctionPlane; curve: number }[] = [];
+  private readonly junctions: { ring: GeomPoint[]; plane: JunctionPlane; curve: number; claimed: number }[] = [];
   private readonly junctionBuckets: number[][] = [];
   private readonly columns: number;
   private readonly originX: number;
@@ -122,6 +149,7 @@ export class RoadCarve {
   private weight = 0;
   private height = 0;
   private road = -1;
+  private crowded = false;
 
   constructor(terrain: HeightfieldData, roads: readonly RoadCurve[], junctions?: JunctionMap) {
     const hf = new Heightfield(terrain);
@@ -143,7 +171,12 @@ export class RoadCarve {
         const mouth = junction.mouths[0];
         if (mouth === undefined || junction.outline.length < 3) continue;
         const at = this.junctions.length;
-        this.junctions.push({ ring: junction.outline, plane, curve: mouth.curve });
+        this.junctions.push({
+          ring: junction.outline,
+          plane,
+          curve: mouth.curve,
+          claimed: footprintHalfWidth(junction.tier),
+        });
         let minX = Infinity;
         let minY = Infinity;
         let maxX = -Infinity;
@@ -154,12 +187,13 @@ export class RoadCarve {
           maxX = Math.max(maxX, p.x);
           maxY = Math.max(maxY, p.y);
         }
-        this.fileJunction(at, minX, minY, maxX, maxY, CARVE_BLEND);
+        this.fileJunction(at, minX, minY, maxX, maxY, BENCH_MARGIN + CARVE_BLEND);
       }
     }
 
     for (const road of roads) {
       const halfWidth = benchHalfWidth(road.tier);
+      const claimed = footprintHalfWidth(road.tier);
       const reach = halfWidth + CARVE_BLEND;
       const segments = Math.max(0, road.points.length - 1);
       const standing = new Uint8Array(segments).fill(1);
@@ -193,6 +227,7 @@ export class RoadCarve {
           this.h0.push(from.h);
           this.rise.push(to.h - from.h);
           this.half.push(halfWidth);
+          this.claimed.push(claimed);
           this.reach.push(reach);
           this.curve.push(road.id);
           this.file(at, Math.min(ax, ax + dx), Math.min(ay, ay + dy), Math.max(ax, ax + dx), Math.max(ay, ay + dy), reach);
@@ -231,34 +266,99 @@ export class RoadCarve {
   }
 
   /**
+   * True where more than one stretch of road claims the ground at a place and
+   * they ask for different heights — two roads crowded within a bench of each
+   * other, or one road brought back beside itself by a hairpin. One grid holds
+   * one height, so the ground follows the lowest of the beds asked for and
+   * every other road there stands over the ground it drives on. Nothing in the
+   * carve can mend that; it is the road network that put two roads in one
+   * place, so the sweeps ask this before holding the carve to account for the
+   * ground under them.
+   */
+  crowdedAt(x: number, y: number): boolean {
+    this.claim(x, y);
+    return this.crowded;
+  }
+
+  /**
    * Find the road whose bed carves a place, and how far the ground follows it.
-   * A junction is one claimant among the roads: the whole of its outline is
-   * on its plane, and the ground beyond the outline blends back over
-   * {@link CARVE_BLEND} as it does beside a bench.
+   * A junction is one claimant among the roads: the whole of its outline and
+   * the margin around it are on its plane, and the ground beyond that blends
+   * back over {@link CARVE_BLEND} as it does beside a bench.
+   *
+   * Where two roads reach the same ground the ground goes to the one that
+   * draws its surface there — the point stands inside the ground that road
+   * claims (spec section 6.4) — and to the wider of them where it stands
+   * inside both. An alley crossing a highway is two metres wide and the
+   * highway is thirty; carving the ground under the highway to the alley's bed
+   * would bury the road the player is driving on. Only where no road claims
+   * the place does the nearest bench win it, and the road each bucket lists
+   * first wins where even that is a tie, so the answer never depends on the
+   * order the question is asked in.
    */
   private claim(x: number, y: number): void {
     this.weight = 0;
     this.height = 0;
     this.road = -1;
+    this.crowded = false;
     const at = this.row(y) * this.columns + this.column(x);
     const bucket = this.buckets[at];
     if (bucket === undefined) return;
+    /** The highest and lowest bed the claims ask for, which say if they differ. */
+    let asked = Infinity;
+    let askedHigh = -Infinity;
+    let bestClaimed = 0;
     let bestWeight = 0;
     let bestDistance = Infinity;
     let bestHeight = 0;
     let bestRoad = -1;
-    for (const j of this.junctionBuckets[at] ?? []) {
-      const junction = this.junctions[j] as { ring: GeomPoint[]; plane: JunctionPlane; curve: number };
-      const distance = pointInRing({ x, y }, junction.ring) ? 0 : ringDistance(junction.ring, x, y);
-      if (distance >= CARVE_BLEND) continue;
-      const weight = distance <= 0 ? 1 : 1 - smoothstep(0, CARVE_BLEND, distance);
-      const plane = junction.plane;
-      const bed = plane.level + plane.gx * (x - plane.x) + plane.gy * (y - plane.y);
-      if (weight < bestWeight || (weight === bestWeight && distance >= bestDistance)) continue;
+    /**
+     * Take a claimant where it beats the best so far. `claimed` is how wide the
+     * road that claims the place is, and zero where the place is outside the
+     * ground it claims. A claim always beats ground merely reached; between two
+     * claims the lower bed wins, then the wider road, then the nearer one.
+     */
+    const offer = (claimed: number, weight: number, distance: number, bed: number, road: number): void => {
+      if (claimed > 0) {
+        asked = Math.min(asked, bed);
+        askedHigh = Math.max(askedHigh, bed);
+      }
+      if (claimed > 0 || bestClaimed > 0) {
+        if (bestClaimed > 0 && claimed === 0) return;
+        if (
+          bestClaimed > 0 &&
+          (bed > bestHeight ||
+            (bed === bestHeight && (claimed < bestClaimed || (claimed === bestClaimed && distance >= bestDistance))))
+        ) {
+          return;
+        }
+      } else if (weight < bestWeight || (weight === bestWeight && distance >= bestDistance)) {
+        return;
+      }
+      bestClaimed = claimed;
       bestWeight = weight;
       bestDistance = distance;
       bestHeight = bed;
-      bestRoad = junction.curve;
+      bestRoad = road;
+    };
+    // A place inside a junction's outline is the junction's, whatever else
+    // reaches it: the whole outline stands on the one plane, which is what
+    // leaves no crease under the surfaces laid over it (`bed.ts`).
+    for (const j of this.junctionBuckets[at] ?? []) {
+      const junction = this.junctions[j] as (typeof this.junctions)[number];
+      const distance = pointInRing({ x, y }, junction.ring) ? 0 : ringDistance(junction.ring, x, y);
+      if (distance >= BENCH_MARGIN + CARVE_BLEND) continue;
+      const claims = distance <= BENCH_MARGIN;
+      const weight = claims ? 1 : 1 - smoothstep(BENCH_MARGIN, BENCH_MARGIN + CARVE_BLEND, distance);
+      const plane = junction.plane;
+      const bed = plane.level + plane.gx * (x - plane.x) + plane.gy * (y - plane.y);
+      if (distance === 0) {
+        this.weight = 1;
+        this.height = bed;
+        this.road = junction.curve;
+        return;
+      }
+      offer(claims ? junction.claimed : 0, weight, distance, bed, junction.curve);
     }
     for (const i of bucket) {
       const reach = this.reach[i] as number;
@@ -274,18 +374,14 @@ export class RoadCarve {
       const half = this.half[i] as number;
       const weight = distance <= half ? 1 : 1 - smoothstep(half, reach, distance);
       const bed = (this.h0[i] as number) + (this.rise[i] as number) * t;
-      // The nearest road wins the ground where two of them reach it, and the
-      // road each bucket lists first wins where even that is a tie, so the
-      // answer never depends on the order the question is asked in.
-      if (weight < bestWeight || (weight === bestWeight && distance >= bestDistance)) continue;
-      bestWeight = weight;
-      bestDistance = distance;
-      bestHeight = bed;
-      bestRoad = this.curve[i] as number;
+      // The bench is the ground the road draws its surface on, plus the margin
+      // the grid needs around it, so that is the ground the road claims.
+      offer(distance <= half ? (this.claimed[i] as number) : 0, weight, distance, bed, this.curve[i] as number);
     }
     this.weight = bestWeight;
     this.height = bestHeight;
     this.road = bestRoad;
+    this.crowded = askedHigh - asked > CROWDED_BY;
   }
 
   /** File a segment in every bucket the ground it carves reaches into. */

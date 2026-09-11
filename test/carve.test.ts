@@ -1,0 +1,196 @@
+import { describe, expect, it } from 'vitest';
+import { buildChunkRoads, partsOf } from '../src/render/road-mesh.ts';
+import { benchHalfWidth, buildCarve } from '../src/world/carve.ts';
+import { buildLayers, ChunkSource } from '../src/world/chunks.ts';
+import { Heightfield } from '../src/world/heightfield.ts';
+import { RoadRibbons } from '../src/world/ribbon.ts';
+import { CHUNK_TERRAIN_CELL } from '../src/world/terrain.ts';
+import { footprintHalfWidth } from '../src/world/tiers.ts';
+import type { District, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
+
+const SIZE = 800;
+const CELL = 10;
+
+/**
+ * Metres the ground may stand over a road surface and still be the road's own
+ * ground. The loft draws one straight surface between the sections it places at
+ * the curve's own points, and the carve levels the ground to the bed at every
+ * place between them, so the two part by the sag of that chord wherever the bed
+ * bends: a centimetre or two on the hill below, under the paint and under the
+ * tyres. The fault this looks for is the hillside beside a road standing
+ * through it, which is tens of centimetres.
+ */
+const SAG = 0.05;
+
+function district(id: number, zone: Zone, x: number, y: number): District {
+  return { id, name: `D${id}`, zone, x, y, density: 0.5, wealth: 0.5, culture: 'none' };
+}
+
+function curve(id: number, coords: readonly [number, number][], tier: RoadTier): RoadCurve {
+  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges: [], tunnels: [], interchanges: [] };
+}
+
+/**
+ * A hand-built world under a hill, given the height of the ground at a place.
+ * A flat hillside would say nothing here: the carve moves nothing on one, so a
+ * road laid over it sits on the ground it was traced on whatever the bench does.
+ */
+function hillWorld(roads: RoadCurve[], height: (x: number, y: number) => number): WorldDescription {
+  const gridSize = SIZE / CELL + 1;
+  const hf = Heightfield.create(gridSize, CELL);
+  for (let iy = 0; iy < gridSize; iy++) {
+    for (let ix = 0; ix < gridSize; ix++) hf.set(ix, iy, height(hf.worldX(ix), hf.worldY(iy)));
+  }
+  return {
+    seed: 31,
+    size: SIZE,
+    core: { x: 0, y: 0 },
+    terrain: hf.toData(),
+    water: {
+      seaLevel: 0,
+      islands: [{ id: 0, x: 0, y: 0, radius: SIZE / 2, main: true }],
+      crossings: [],
+      river: { path: [], halfWidths: [] },
+      harbour: { x: 0, y: 0, radius: 10 },
+    },
+    districts: [district(0, 'inner', 0, 0), district(1, 'suburban', 250, 250)],
+    beaches: [],
+    roads,
+    corridors: [],
+    tram: { route: [], corridors: [], stops: [], crossings: [], length: 0 },
+  };
+}
+
+/**
+ * The ground as a chunk draws it: the carve sampled on the grid anchored on the
+ * origin, and the straight line between those samples. The mesh is two triangles
+ * per cell, cut from the near corner to the far one, so a place is read off the
+ * triangle it falls in and not off all four corners.
+ */
+function groundAt(carve: ReturnType<typeof buildCarve>, x: number, y: number): number {
+  const cell = CHUNK_TERRAIN_CELL;
+  const ix = Math.floor(x / cell);
+  const iy = Math.floor(y / cell);
+  const fx = x / cell - ix;
+  const fy = y / cell - iy;
+  const near = carve.heightAt(ix * cell, iy * cell);
+  const far = carve.heightAt((ix + 1) * cell, (iy + 1) * cell);
+  if (fx >= fy) {
+    const along = carve.heightAt((ix + 1) * cell, iy * cell);
+    return near + fx * (along - near) + fy * (far - along);
+  }
+  const across = carve.heightAt(ix * cell, (iy + 1) * cell);
+  return near + fy * (across - near) + fx * (far - across);
+}
+
+describe('the ground under a road', () => {
+  // A dome, so the ground falls away across every road laid on it and the
+  // carve has a bench to cut. A street keeps a pavement above its carriageway
+  // and a highway runs out level at its verge, so the two try the rule at both
+  // heights a cross section ends at.
+  /** A straight line of points every 20 m, as a traced curve carries them. */
+  function line(from: number, to: number, at: (along: number) => [number, number]): [number, number][] {
+    const out: [number, number][] = [];
+    for (let along = from; along <= to; along += 20) out.push(at(along));
+    return out;
+  }
+  const roads = [
+    curve(0, line(-200, 150, (x) => [x, 120]), 'street'),
+    curve(1, line(-200, 240, (y) => [200, y]), 'highway'),
+  ];
+  // A ridge along x = 100 falling away each side, over ground that also falls
+  // along y, so both roads are cut into a slope across them. The grades are
+  // steep enough that the hillside a cell beyond the bench stands well above
+  // the road — a gentle slope hides the fault rather than showing it — and
+  // gentle enough that the bench is still inside the cut the carve may take,
+  // which is what leaves a retaining wall rather than a bench.
+  const world = hillWorld(roads, (x, y) => 200 - 0.2 * Math.abs(x - 100) - 0.15 * y);
+  const layers = buildLayers(world);
+  const source = new ChunkSource(world, layers);
+  const ribbons = new RoadRibbons(world.terrain, world.roads, layers.junctions);
+  const chunk = source.chunk(0, 0);
+  const built = buildChunkRoads(chunk, ribbons, (x, y) => layers.carve.heightAt(x, y));
+
+  it('never stands above the surface the road draws over it', () => {
+    expect(built.length).toBe(2);
+    let complaint: string | undefined;
+    let tested = 0;
+    for (const tier of built) {
+      for (const part of partsOf(tier)) {
+        const position = part.getAttribute('position');
+        const index = part.getIndex();
+        const count = index === null ? position.count : index.count;
+        for (let t = 0; t + 2 < count; t += 3) {
+          const ids = [0, 1, 2].map((k) => (index === null ? t + k : index.getX(t + k)));
+          const p = ids.map((v) => ({ x: position.getX(v), h: position.getY(v), y: position.getZ(v) }));
+          const [a, b, c] = p as [(typeof p)[number], (typeof p)[number], (typeof p)[number]];
+          // Only the faces the camera sees the road through. The skirt down
+          // each edge is buried in the ground on purpose.
+          const up = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+          if (Math.abs(up) < 1e-9) continue;
+          tested++;
+          for (const [wa, wb, wc] of [
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+            [1 / 3, 1 / 3, 1 / 3],
+            [0.5, 0.5, 0],
+            [0, 0.5, 0.5],
+            [0.5, 0, 0.5],
+          ] as const) {
+            const x = a.x * wa + b.x * wb + c.x * wc;
+            const y = a.y * wa + b.y * wb + c.y * wc;
+            const surface = a.h * wa + b.h * wb + c.h * wc;
+            const ground = groundAt(layers.carve, x, y);
+            if (ground > surface + SAG) {
+              complaint ??= `${tier.tier} at ${x.toFixed(1)},${y.toFixed(1)}: ground ${ground.toFixed(3)} over surface ${surface.toFixed(3)}`;
+            }
+          }
+        }
+      }
+    }
+    expect(tested).toBeGreaterThan(100);
+    expect(complaint).toBeUndefined();
+  });
+
+  it('keeps the bench level a grid cell past the edge of the road', () => {
+    // The margin is what puts every corner of a cell holding the edge of the
+    // road on the bench itself.
+    for (const tier of ['street', 'highway'] as const) {
+      expect(benchHalfWidth(tier)).toBeGreaterThan(footprintHalfWidth(tier) + CHUNK_TERRAIN_CELL);
+    }
+  });
+});
+
+describe('two roads crowded into one bench', () => {
+  // A hillside steep across the roads, with two streets close enough that the
+  // bench of each reaches the other. Their beds are the ground under their own
+  // centrelines, so they ask for heights four metres apart.
+  const roads = [
+    curve(0, [[-200, 0], [0, 0], [200, 0]], 'street'),
+    curve(1, [[-200, 14], [0, 14], [200, 14]], 'street'),
+  ];
+  const world = hillWorld(roads, (_x, y) => 30 + y * 0.3);
+  const carve = buildCarve(world.terrain, world.roads);
+  const hf = new Heightfield(world.terrain);
+
+  it('carves the ground they share to the lower of the beds they ask for', () => {
+    const lower = hf.sample(0, 0);
+    const upper = hf.sample(0, 14);
+    expect(upper - lower).toBeCloseTo(4.2, 6);
+    // Ground between the two centrelines is claimed by both.
+    for (const y of [4, 7, 10]) {
+      expect(carve.crowdedAt(0, y)).toBe(true);
+      expect(carve.heightAt(0, y)).toBeCloseTo(lower, 6);
+    }
+    // Ground only one of them claims is carved to that one's bed.
+    expect(carve.crowdedAt(0, -8)).toBe(false);
+    expect(carve.heightAt(0, -8)).toBeCloseTo(lower, 6);
+  });
+
+  it('says nothing is crowded where one road has the ground to itself', () => {
+    const alone = hillWorld([curve(0, [[-200, 0], [0, 0], [200, 0]], 'street')], (_x, y) => 30 + y * 0.3);
+    const one = buildCarve(alone.terrain, alone.roads);
+    for (const y of [0, 4, 8]) expect(one.crowdedAt(0, y)).toBe(false);
+  });
+});
