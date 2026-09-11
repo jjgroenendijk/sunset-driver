@@ -79,6 +79,56 @@ export interface WaterDescription {
   harbour: { x: number; y: number; radius: number };
 }
 
+/**
+ * A pier: the deck that reaches from the back of a beach out over the water
+ * (spec section 7.3).
+ */
+export interface Pier {
+  /** Landward end, at the back of the sand. */
+  root: Point;
+  /** Seaward end, over the water. */
+  head: Point;
+  /** The deck: a closed ring wound anticlockwise, the first point not repeated. */
+  polygon: Point[];
+  /** Metres from the root to the head. */
+  length: number;
+}
+
+/**
+ * One beach (spec section 7.3): a run of gentle coast, from the shallows in
+ * front of it to the dune line behind it. Steep coast carries no beach, so what
+ * is not listed here stays cliff, sea wall or quay.
+ */
+export interface Beach {
+  id: number;
+  /** The waterline, from one end of the beach to the other. */
+  shore: Point[];
+  /** The dune line at the back of the sand, one point for each shore point. */
+  back: Point[];
+  /**
+   * The sand: the shore and the dune line closed into a ring wound
+   * anticlockwise. It is the ground the beach asks for, not the ground it gets:
+   * the parcel model cuts the beach out of the land the roads leave.
+   */
+  sand: Point[];
+  /** The shallows in front of the sand, a ring wound anticlockwise. */
+  shallows: Point[];
+  /** Metres of waterline. */
+  length: number;
+  /** Id of the island the beach lies on. */
+  island: number;
+  /** True for the one long beach outside the core that carries the pier. */
+  main: boolean;
+  /**
+   * The road curves that run along the back of the beach, ascending: its
+   * boardwalk. Filled once the roads are traced, so it is empty on the
+   * skeleton the tracer reads. Only the main beach has one.
+   */
+  boardwalk: number[];
+  /** The pier. Only the main beach has one. */
+  pier: Pier | undefined;
+}
+
 /** Road hierarchy, widest first (spec section 6.2). */
 export type RoadTier = 'highway' | 'arterial' | 'street' | 'alley' | 'dirt';
 
@@ -186,6 +236,7 @@ export interface WorldDescription {
   core: Point;
   terrain: HeightfieldData;
   water: WaterDescription;
+  beaches: Beach[];
   districts: District[];
   roads: RoadCurve[];
   corridors: Corridor[];

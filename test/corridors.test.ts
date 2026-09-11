@@ -28,6 +28,7 @@ function world(ground: (x: number, y: number) => number, districts: District[]):
       river: { path: [], halfWidths: [] },
       harbour: { x: 0, y: 0, radius: 10 },
     },
+    beaches: [],
     districts,
   };
 }

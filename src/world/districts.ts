@@ -1,6 +1,6 @@
 import { dist2 } from '../core/math.ts';
 import { genRng, Subsystem, type Rng } from '../core/rng.ts';
-import type { Culture, District, Island, Point, WaterDescription, Zone } from './types.ts';
+import type { Beach, Culture, District, Island, Point, WaterDescription, Zone } from './types.ts';
 import type { Heightfield } from './heightfield.ts';
 import { LandMasses } from './landmass.ts';
 import { SEA_LEVEL } from './terrain.ts';
@@ -132,6 +132,13 @@ function sampleSiteInZone(rng: Rng, layout: ZoneLayout, zone: Zone, hf: Heightfi
   return { x: layout.core.x, y: layout.core.y };
 }
 
+/**
+ * Metres from the sand within which a district site is on the beach. About one
+ * suburban block: a district this close to the sand is the one whose streets
+ * run down to it.
+ */
+const BEACH_REACH = 220;
+
 /** Place district sites and hand out names, cultures and stats. */
 export function generateDistricts(seed: number, layout: ZoneLayout, hf: Heightfield, water: WaterDescription): District[] {
   const rng = genRng(seed, Subsystem.Districts, 1);
@@ -216,15 +223,6 @@ export function generateDistricts(seed: number, layout: ZoneLayout, hf: Heightfi
     });
   }
 
-  // Boardwalk: the suburban site on the main island farthest from the harbour becomes the beach neighbourhood.
-  const suburban = districts.filter((d) => d.zone === 'suburban' && d.name !== 'Gull Island');
-  const coastal = [...suburban].sort((a, b) => dist2(b.x, b.y, water.harbour.x, water.harbour.y) - dist2(a.x, a.y, water.harbour.x, water.harbour.y));
-  const boardwalk = coastal[0];
-  if (boardwalk) {
-    boardwalk.name = 'The Boardwalk';
-    boardwalk.culture = 'beach';
-  }
-
   // Outlaw MC roadhouses in the outskirts.
   const outskirts = districts.filter((d) => d.zone === 'outskirts');
   const saints = outskirts.sort((a, b) => a.wealth - b.wealth)[0];
@@ -235,6 +233,39 @@ export function generateDistricts(seed: number, layout: ZoneLayout, hf: Heightfi
 
   districts.sort((a, b) => a.id - b.id);
   return districts;
+}
+
+/**
+ * Name the beach neighbourhood of spec section 8.3: the districts that stand on
+ * the main beach, the one that carries the boardwalk and the pier. A district
+ * that already has a culture keeps it, so this never takes Chinatown or the
+ * docks. The nearest one is the Boardwalk itself, however far off it stands, so
+ * every seed has a beach neighbourhood.
+ *
+ * Called after the beaches are described, because a beach is described from the
+ * district sites. It changes the districts it is given.
+ */
+export function nameBeachNeighbourhood(districts: District[], beaches: readonly Beach[]): void {
+  const main = beaches.find((b) => b.main);
+  if (main === undefined) return;
+  const plain = districts
+    .filter((d) => d.culture === 'none')
+    .map((d) => ({ d, away: distanceToShore(main, d) }))
+    .sort((a, b) => a.away - b.away || a.d.id - b.d.id);
+  for (let i = 0; i < plain.length; i++) {
+    const entry = plain[i] as { d: District; away: number };
+    if (i > 0 && entry.away > BEACH_REACH) break;
+    entry.d.culture = 'beach';
+  }
+  const nearest = plain[0];
+  if (nearest) nearest.d.name = 'The Boardwalk';
+}
+
+/** Metres from a district site to the nearest point of a beach's waterline. */
+function distanceToShore(beach: Beach, d: District): number {
+  let best = Infinity;
+  for (const p of beach.shore) best = Math.min(best, dist2(p.x, p.y, d.x, d.y));
+  return Math.sqrt(best);
 }
 
 function angularDistance(layout: ZoneLayout, d: District, angle: number): number {

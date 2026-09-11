@@ -47,12 +47,13 @@
 import { clamp, dist, directionDelta, lerp, wrapAngle } from '../core/math.ts';
 import type { Noise2D } from '../core/noise.ts';
 import { compareNumbers } from '../core/sort.ts';
+import { sandTest } from './beaches.ts';
 import { districtAt, layoutZones, zoneAt } from './districts.ts';
 import { Heightfield } from './heightfield.ts';
 import { coastNoise, islandAt } from './terrain.ts';
 import type { TensorField } from './tensor.ts';
-import { TIERS } from './tiers.ts';
-import type { Island, Point, RoadCurve, RoadTier, WorldSkeleton, Zone } from './types.ts';
+import { footprintHalfWidth, TIERS } from './tiers.ts';
+import type { Beach, Island, Point, RoadCurve, RoadTier, WorldSkeleton, Zone } from './types.ts';
 
 /** Metres a road needs above sea level; the waterline itself is not road-worthy ground. */
 const DRY_MARGIN = 0.8;
@@ -115,6 +116,16 @@ const MAX_COVER = 25;
 const INDEX_CELL = 60;
 /** Metres within which two road points are the same place, and so the same junction. */
 const JOIN_EPSILON = 0.01;
+/**
+ * The boardwalk of spec section 7.3: the street along the back of the main
+ * beach. A beach longer than {@link MAX_BOARDWALK} gets one along its middle,
+ * because a boardwalk is a strip of shops and stalls, not the whole shore. A
+ * run shorter than {@link MIN_BOARDWALK} is not worth laying at all.
+ */
+const MAX_BOARDWALK = 900;
+const MIN_BOARDWALK = 120;
+/** Passes of a three-point average over the line the boardwalk follows. */
+const BOARDWALK_SMOOTHING = 3;
 
 /** How each tier traces. */
 interface TierParams {
@@ -404,6 +415,9 @@ class RoadTracer {
     this.linkIslands();
     this.fillArterials();
     this.serveDistricts();
+    // The boardwalk goes down before the minor fill, so the streets behind the
+    // beach grow off it rather than doubling it.
+    this.traceBoardwalk();
     this.fillMinor();
     return this.curves;
   }
@@ -580,6 +594,78 @@ class RoadTracer {
     this.grow(seeds, () => plan, FILL_GENERATIONS, FILL_LIMIT);
   }
 
+  // -------------------------------------------------------------- boardwalk
+
+  /**
+   * The boardwalk of spec section 7.3: a street along the back of the main
+   * beach. It is not traced as a streamline, because it has a line to follow —
+   * the dune line the beach already describes. It is set back by its own
+   * footprint half-width, so the ground the street claims stops where the sand
+   * starts and the two never overlap.
+   *
+   * Only the main beach gets one. The other beaches of a seed are sand and
+   * nothing else, which is what most of a coast is.
+   *
+   * Where a road already runs along the dune line — the field follows the coast,
+   * so an arterial often does — the street gives way to it and picks up on the
+   * far side. That road is part of the boardwalk too: `linkBoardwalks` in
+   * `beaches.ts` lists whatever ends up running along the back of the beach.
+   */
+  private traceBoardwalk(): void {
+    const beach = this.world.beaches.find((b) => b.main);
+    if (beach === undefined) return;
+    const setBack = footprintHalfWidth('street');
+    // The dune line wanders, because it is the waterline offset point by point.
+    // A road does not: the line is evened out before it is laid, so the street
+    // reads as a street rather than as a traced coastline.
+    const line = middleOf(evenOut(setBackLine(beach, setBack), STREET.step, BOARDWALK_SMOOTHING), MAX_BOARDWALK);
+    for (const run of this.drivableRuns(line, setBack)) {
+      if (polylineLength(run) < MIN_BOARDWALK) continue;
+      this.layBoardwalk(run);
+    }
+  }
+
+  /** One run of boardwalk, laid only once it can be joined to the network. */
+  private layBoardwalk(line: Point[]): void {
+    const links: Point[][] = [];
+    for (const end of [line[0] as Point, line[line.length - 1] as Point]) {
+      const link = this.routeToNetwork(end, this.islandOf(end.x, end.y), STREET, 'street');
+      if (link !== undefined) links.push(link);
+    }
+    // A boardwalk that reaches no road is no use to a driver.
+    if (links.length === 0) return;
+    this.addCurve('street', line, []);
+    for (const link of links) this.addCurve('street', link, []);
+  }
+
+  /**
+   * A polyline cut into the runs a street can be laid along: on the map, on dry
+   * ground inside the tier's grade, and clear of the ground another road
+   * already claims.
+   */
+  private drivableRuns(points: readonly Point[], clearance: number): Point[][] {
+    const runs: Point[][] = [];
+    let run: Point[] = [];
+    let last: Point | undefined;
+    for (const p of points) {
+      const free =
+        Math.abs(p.x) <= this.half &&
+        Math.abs(p.y) <= this.half &&
+        this.isDry(p.x, p.y) &&
+        this.index.nearest(p.x, p.y, clearance) === undefined;
+      if (free && (last === undefined || this.canRun(last.x, last.y, p.x, p.y, STREET.maxGrade))) {
+        run.push(p);
+        last = p;
+        continue;
+      }
+      if (run.length >= 2) runs.push(run);
+      run = free ? [p] : [];
+      last = free ? p : undefined;
+    }
+    if (run.length >= 2) runs.push(run);
+    return runs;
+  }
+
   // ------------------------------------------------------------ minor roads
 
   /**
@@ -597,8 +683,13 @@ class RoadTracer {
       return lerp(spec.loose, spec.tight, clamp(districtAt(districts, zones, x, y).density, 0, 1));
     };
     const tierAt = (x: number, y: number): RoadTier => MINOR_BY_ZONE[zoneAt(zones, x, y)].tier;
-    const paved = (x: number, y: number): boolean => tierAt(x, y) === 'street';
-    const unpaved = (x: number, y: number): boolean => tierAt(x, y) === 'dirt';
+    // Sand is not ground the fill builds blocks on (spec section 7.3). The
+    // boardwalk is already behind the beach by the time the fill runs, so the
+    // streets grow off it and stop at the dune line.
+    const sand = sandTest(this.world.beaches);
+    const dryLand = (x: number, y: number): boolean => !sand(x, y);
+    const paved = (x: number, y: number): boolean => tierAt(x, y) === 'street' && dryLand(x, y);
+    const unpaved = (x: number, y: number): boolean => tierAt(x, y) === 'dirt' && dryLand(x, y);
 
     // Streets in the built-up zones, dirt roads in the outskirts and the
     // wilderness. Each stays on its own ground, so a street never fades into a
@@ -708,18 +799,22 @@ class RoadTracer {
 
   // ------------------------------------------------------------------ routes
 
-  /** An arterial from a point to the network on its own island: streamline first, reroute second. */
-  private routeToNetwork(from: Point, island: number): Point[] | undefined {
-    const target = this.index.nearestOnIsland(from.x, from.y, island, 'arterial');
+  /**
+   * A road from a point to the network on its own island: streamline first,
+   * reroute second. An arterial by default, which is what a district is served
+   * by; the boardwalk asks for a street instead.
+   */
+  private routeToNetwork(from: Point, island: number, params: TierParams = ARTERIAL, joiner: RoadTier = 'arterial'): Point[] | undefined {
+    const target = this.index.nearestOnIsland(from.x, from.y, island, joiner);
     if (target !== undefined) {
-      const traced = this.trace(from, { params: ARTERIAL, joiner: 'arterial', target, mergeAfter: 0 });
+      const traced = this.trace(from, { params, joiner, target, mergeAfter: 0 });
       if (traced.merged || traced.arrived) return traced.points;
     }
     if (this.index.empty) return undefined;
-    return this.reroute(from, ARTERIAL.maxGrade, (x, y) => {
-      const hit = this.index.nearest(x, y, ARTERIAL.mergeRadius, -1, 'arterial');
-      if (hit === undefined || this.index.refuses(hit.x, hit.y, 'arterial')) return undefined;
-      return this.canRun(x, y, hit.x, hit.y, ARTERIAL.maxGrade) ? hit : undefined;
+    return this.reroute(from, params.maxGrade, (x, y) => {
+      const hit = this.index.nearest(x, y, params.mergeRadius, -1, joiner);
+      if (hit === undefined || this.index.refuses(hit.x, hit.y, joiner)) return undefined;
+      return this.canRun(x, y, hit.x, hit.y, params.maxGrade) ? hit : undefined;
     });
   }
 
@@ -1139,6 +1234,82 @@ function polylineLength(points: readonly Point[]): number {
     total += dist(a.x, a.y, b.x, b.y);
   }
   return total;
+}
+
+/**
+ * The line a boardwalk follows: the dune line of a beach, pushed further inland
+ * by the ground the street claims. The street's own footprint then stops where
+ * the sand starts, so the two never stand on the same ground.
+ */
+function setBackLine(beach: Beach, setBack: number): Point[] {
+  const out: Point[] = [];
+  for (let i = 0; i < beach.back.length; i++) {
+    const back = beach.back[i] as Point;
+    const shore = beach.shore[i] as Point;
+    const dx = back.x - shore.x;
+    const dy = back.y - shore.y;
+    const span = Math.hypot(dx, dy);
+    if (span === 0) continue;
+    out.push({ x: back.x + (dx / span) * setBack, y: back.y + (dy / span) * setBack });
+  }
+  return out;
+}
+
+/**
+ * A polyline resampled at a fixed spacing and then pulled straight, `passes`
+ * times. The ends stay where they are, so the line still starts and finishes
+ * where it was asked to.
+ */
+function evenOut(points: readonly Point[], spacing: number, passes: number): Point[] {
+  if (points.length < 2) return [...points];
+  const walked: Point[] = [points[0] as Point];
+  let since = 0;
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i] as Point;
+    const b = points[i + 1] as Point;
+    const span = dist(a.x, a.y, b.x, b.y);
+    let at = 0;
+    while (since + (span - at) >= spacing) {
+      at += spacing - since;
+      since = 0;
+      const t = span > 0 ? at / span : 0;
+      walked.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+    }
+    since += span - at;
+  }
+  const last = points[points.length - 1] as Point;
+  walked.push({ x: last.x, y: last.y });
+  let out = walked;
+  for (let pass = 0; pass < passes && out.length > 2; pass++) {
+    const next: Point[] = [out[0] as Point];
+    for (let i = 1; i + 1 < out.length; i++) {
+      const a = out[i - 1] as Point;
+      const b = out[i] as Point;
+      const c = out[i + 1] as Point;
+      next.push({ x: (a.x + 2 * b.x + c.x) / 4, y: (a.y + 2 * b.y + c.y) / 4 });
+    }
+    next.push(out[out.length - 1] as Point);
+    out = next;
+  }
+  return out;
+}
+
+/** The middle `metres` of a polyline. A polyline no longer than that is returned whole. */
+function middleOf(points: readonly Point[], metres: number): Point[] {
+  const total = polylineLength(points);
+  if (total <= metres) return [...points];
+  const skip = (total - metres) / 2;
+  const out: Point[] = [];
+  let run = 0;
+  for (let i = 0; i < points.length; i++) {
+    if (run >= skip && run <= skip + metres) out.push(points[i] as Point);
+    if (i + 1 < points.length) {
+      const a = points[i] as Point;
+      const b = points[i + 1] as Point;
+      run += dist(a.x, a.y, b.x, b.y);
+    }
+  }
+  return out;
 }
 
 /** The head of a polyline: its first point, and as much of it as `metres` covers. */

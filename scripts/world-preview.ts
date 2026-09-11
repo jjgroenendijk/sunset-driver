@@ -181,6 +181,26 @@ const stroke = (a: Point, b: Point, col: [number, number, number], half: number)
     }
   }
 };
+// Beaches (spec section 7.3): the shallows in front of the sand, the dune line
+// at its back, and the pier reaching out over the water. The sand itself is
+// already filled, because it is a parcel; these are the outlines around it.
+const SHALLOWS_COL: [number, number, number] = [90, 200, 210];
+const DUNE_COL: [number, number, number] = [210, 190, 120];
+const PIER_COL: [number, number, number] = [250, 250, 250];
+for (const beach of world.beaches) {
+  for (let i = 0; i + 1 < beach.shallows.length; i++) {
+    stroke(beach.shallows[i] as Point, beach.shallows[i + 1] as Point, SHALLOWS_COL, 0);
+  }
+  for (let i = 0; i + 1 < beach.back.length; i++) {
+    stroke(beach.back[i] as Point, beach.back[i + 1] as Point, DUNE_COL, 0);
+  }
+  const pier = beach.pier;
+  if (pier === undefined) continue;
+  for (let i = 0; i < pier.polygon.length; i++) {
+    stroke(pier.polygon[i] as Point, pier.polygon[(i + 1) % pier.polygon.length] as Point, PIER_COL, 0);
+  }
+}
+
 // Widest tier last, so a highway is never hidden under the streets beside it.
 const TIER_ORDER: RoadTier[] = ['alley', 'dirt', 'street', 'arterial', 'highway'];
 for (const road of [...world.roads].sort((a, b) => TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier))) {
@@ -272,7 +292,7 @@ const owners = parcels.parcels.reduce<Partial<Record<ParcelOwner, number>>>((tal
 console.log(
   `  parcels: ${parcels.parcels.length} covering ${(parcels.area / 1e6).toFixed(2)} km², ` +
     `cut in ${parcelMs.toFixed(0)} ms — ` +
-    (['building', 'park', 'car-park', 'plaza', 'ground'] as ParcelOwner[])
+    (['building', 'park', 'car-park', 'plaza', 'beach', 'ground'] as ParcelOwner[])
       .map((o) => `${o} ${owners[o] ?? 0}`)
       .join(', '),
 );

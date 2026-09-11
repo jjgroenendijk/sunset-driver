@@ -13,13 +13,17 @@
  * minor direction, across the way the roads there run, and again until each
  * piece is about the size its zone builds in.
  *
+ * The sand of spec section 7.3 is cut out of that land first. A beach describes
+ * the ground it asks for; what it gets is the part of it the roads leave, so a
+ * road that crosses a beach keeps the strip it stands on and the sand each side
+ * of it is two parcels. A beach parcel is never cut down to a block, because a
+ * beach is one place however long it is.
+ *
  * Every parcel is then owned by exactly one thing (spec section 6.4, step 4).
  * The owner comes from the zone the parcel stands in, the density and wealth of
- * its district, and how much ground it has. Three of the eight owners the spec
+ * its district, and how much ground it has. Two of the eight owners the spec
  * names are not handed out yet:
  *
- * - `beach` waits for the beach rules of spec section 7.3; coastal parcels are
- *   ground cover until then.
  * - `water` waits for a body of water inside the land rather than around it;
  *   the sea, the river and the harbour are subtracted, not parcelled.
  * - `under-structure` is the ground beneath an elevated deck, and that ground is
@@ -30,7 +34,7 @@
  * footprint, not stored in it. Pure: the same world gives the same parcels, in
  * the same order, with the same owners.
  */
-import { areaOf, difference, regionArea, regionOf, split, type Point, type Region } from '../core/geom.ts';
+import { areaOf, difference, regionArea, regionOf, split, union, type Point, type Region } from '../core/geom.ts';
 import { genRng, Subsystem } from '../core/rng.ts';
 import { compareNumbers } from '../core/sort.ts';
 import { districtAt, layoutZones, zoneAt, type ZoneLayout } from './districts.ts';
@@ -40,7 +44,7 @@ import { Heightfield } from './heightfield.ts';
 import { landRegions } from './land.ts';
 import type { TensorField } from './tensor.ts';
 import { footprintHalfWidth } from './tiers.ts';
-import type { District, RoadCurve, WorldDescription, Zone } from './types.ts';
+import type { Beach, District, RoadCurve, WorldDescription, Zone } from './types.ts';
 
 /** What owns a parcel (spec section 6.4, step 4). Exactly one of these owns each. */
 export type ParcelOwner =
@@ -110,6 +114,16 @@ const REACH_CELL = 48;
  * parcel it cuts. Short steps keep each side in the buckets it really crosses.
  */
 const CLIP_STEP = 16;
+/**
+ * The beach car parks of spec section 7.3: how many a beach with a boardwalk
+ * gets, how far behind the dune line one may stand, and the ground one needs.
+ * The bounds are a few dozen cars at the low end and a whole seafront car park
+ * at the high end; anything larger is a field, not a car park.
+ */
+const BEACH_CAR_PARKS = 2;
+const CAR_PARK_REACH = 90;
+const MIN_CAR_PARK = 200;
+const MAX_CAR_PARK = 12_000;
 
 /**
  * What a zone does with the ground its roads leave. The chances are what a
@@ -158,10 +172,14 @@ export function buildParcels(
   const land = landRegions(new Heightfield(world.terrain), world.water.seaLevel);
   const zones = layoutZones(world.size, world.core, world.water);
   const reach = new RoadReach(world.roads, graph);
+  const left = difference(land, footprint.regions);
+  // The sand comes out first, so a beach parcel is sand and nothing else and
+  // the ground behind the dune line is cut into blocks the ordinary way.
+  const sand = union(world.beaches.map((beach) => regionOf(beach.sand)));
+  const cut = sand.length === 0 ? { inside: [], outside: left } : split(left, sand);
   const pieces: Piece[] = [];
-  for (const region of difference(land, footprint.regions)) {
-    cutToSize(region, zones, field, reach, pieces, 0);
-  }
+  for (const region of cut.outside) cutToSize(region, zones, field, reach, pieces, 0);
+  for (const region of cut.inside) keepWhole(region, reach, pieces, 'beach');
 
   const parcels: Parcel[] = [];
   let area = 0;
@@ -173,13 +191,14 @@ export function buildParcels(
       id,
       region: piece.region,
       area: piece.area,
-      owner: ownerFor(world.seed, id, district, zone, piece.area),
+      owner: piece.owner ?? ownerFor(world.seed, id, district, zone, piece.area),
       district: district.id,
       zone,
       roads: piece.roads,
     });
     area += piece.area;
   }
+  markBeachCarParks(parcels, world.beaches);
   return { parcels, area, land: areaOf(land) };
 }
 
@@ -190,6 +209,85 @@ interface Piece {
   /** The centre of that ground, which says which district and zone it is in. */
   at: Point;
   roads: number[];
+  /** Set where the ground already belongs to something, so the zone does not decide. */
+  owner?: ParcelOwner;
+}
+
+/**
+ * Keep a piece of ground as one parcel, whatever its size. A beach is one place
+ * however long it is, so it is not cut into blocks; it still needs a road along
+ * it, because ground nothing can be driven to is no parcel.
+ */
+function keepWhole(region: Region, reach: RoadReach, out: Piece[], owner: ParcelOwner): void {
+  const area = regionArea(region);
+  if (area < MIN_PARCEL_AREA) return;
+  const along = reach.along(region);
+  if (along.roads.length === 0) return;
+  out.push({ region, area, at: centroid(region), roads: along.roads, owner });
+}
+
+/**
+ * Beach car parks (spec section 7.3): the parcels behind a beach that people
+ * leave their cars on. The nearest few to the sand are taken, whatever the zone
+ * rolled for them.
+ *
+ * A beach only gets them where the roads have left a block the size of a car
+ * park behind it. A remote beach has open country behind it instead, and a
+ * quarter of a square kilometre of car park is not a car park.
+ */
+function markBeachCarParks(parcels: Parcel[], beaches: readonly Beach[]): void {
+  for (const beach of beaches) {
+    if (beach.boardwalk.length === 0) continue;
+    for (const parcel of behindBeach(parcels, beach).slice(0, BEACH_CAR_PARKS)) parcel.owner = 'car-park';
+  }
+}
+
+/**
+ * The parcels behind a beach that a car park would fit on, nearest the sand
+ * first. Distance is to the parcel's own edge, not to its middle, because what
+ * matters is whether it reaches the back of the beach.
+ */
+export function behindBeach(parcels: readonly Parcel[], beach: Beach): Parcel[] {
+  const box = boxAround(beach.back, CAR_PARK_REACH);
+  const found: { parcel: Parcel; away: number }[] = [];
+  for (const parcel of parcels) {
+    if (parcel.owner === 'beach' || parcel.area < MIN_CAR_PARK || parcel.area > MAX_CAR_PARK) continue;
+    let away = Infinity;
+    for (const p of parcel.region.outer) {
+      if (p.x < box.minX || p.x > box.maxX || p.y < box.minY || p.y > box.maxY) continue;
+      away = Math.min(away, distanceToLine(p, beach.back));
+    }
+    if (away > CAR_PARK_REACH) continue;
+    found.push({ parcel, away });
+  }
+  found.sort((a, b) => a.away - b.away || a.parcel.id - b.parcel.id);
+  return found.map((entry) => entry.parcel);
+}
+
+/** The box around a line, grown by `margin` metres. */
+function boxAround(line: readonly Point[], margin: number): { minX: number; minY: number; maxX: number; maxY: number } {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of line) {
+    minX = Math.min(minX, p.x - margin);
+    minY = Math.min(minY, p.y - margin);
+    maxX = Math.max(maxX, p.x + margin);
+    maxY = Math.max(maxY, p.y + margin);
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+/** Metres from a point to the nearest point of a polyline. */
+function distanceToLine(p: Point, line: readonly Point[]): number {
+  let best = Infinity;
+  for (let i = 0; i + 1 < line.length; i++) {
+    const a = line[i] as Point;
+    const b = line[i + 1] as Point;
+    best = Math.min(best, Math.sqrt(distanceSquaredToSegment(p.x, p.y, a.x, a.y, b.x, b.y)));
+  }
+  return best;
 }
 
 /**

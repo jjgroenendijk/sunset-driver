@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { hashInts } from '../src/core/hash.ts';
 import { compareNumbers } from '../src/core/sort.ts';
-import { pointInRegions, regionArea, type Region } from '../src/core/geom.ts';
+import { areaOf, difference, pointInRegions, regionArea, regionOf, type Region } from '../src/core/geom.ts';
 import {
   ChunkSource,
   chunkBounds,
@@ -19,16 +19,17 @@ import {
   carvedTerrain,
   type RoadCarve,
 } from '../src/world/carve.ts';
-import { layoutZones, zoneAt } from '../src/world/districts.ts';
+import { boardwalkLength } from '../src/world/beaches.ts';
+import { layoutZones, zoneAt, ZONE_RADII } from '../src/world/districts.ts';
 import type { RoadFootprint } from '../src/world/footprint.ts';
 import { buildRoadGraph, type GradeCrossing, type RoadEdge, type RoadGraph, type RoadNode } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
-import type { Parcel, ParcelMap, ParcelOwner } from '../src/world/parcels.ts';
+import { behindBeach, type Parcel, type ParcelMap, type ParcelOwner } from '../src/world/parcels.ts';
 import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
 import { coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
 import { TIERS } from '../src/world/tiers.ts';
-import type { Corridor, Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
+import type { Beach, Corridor, Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
 import { landPoints, pointInRing, ringArea, ringsOverlap, stableJson, sweepSeeds } from './helpers.ts';
 import { buildWorlds, type PooledWorld } from './world-pool.ts';
 
@@ -147,11 +148,24 @@ const MIN_PARCELS = 40;
  */
 const MAX_UNREACHED_SHARE = 0.15;
 /**
- * The owners spec section 6.4 step 4 names that are handed out today. The beach
- * rules of spec section 7.3, a body of water inside the land, and the ground
- * under an elevated deck all come later; until then no parcel carries them.
+ * The owners spec section 6.4 step 4 names that are handed out today. A body of
+ * water inside the land and the ground under an elevated deck come later; until
+ * then no parcel carries them.
  */
-const ASSIGNED_OWNERS = new Set<ParcelOwner>(['building', 'park', 'car-park', 'plaza', 'ground']);
+const ASSIGNED_OWNERS = new Set<ParcelOwner>(['building', 'park', 'car-park', 'plaza', 'beach', 'ground']);
+/** Metres of waterline the shortest beach may have (spec section 7.3). */
+const MIN_BEACH_LENGTH = 200;
+/**
+ * Metres of the main beach's dune line its boardwalk has to run along. The
+ * tracer lays a street where the back of the beach is free and the coast road
+ * already there takes the rest, so this is well under the beach's own length:
+ * the worst of 200 seeds carries about 130 m.
+ */
+const MIN_BOARDWALK_LENGTH = 100;
+/** Metres a pier reaches out from the back of the sand, at the least. */
+const MIN_PIER_LENGTH = 60;
+/** Metres a beach's waterline may stand off the sea level. */
+const SHORE_SLACK = 1.5;
 /**
  * Metres a road point may stand off the carved ground (spec section 7.1). The
  * ground is a grid of {@link TERRAIN_CELL} cells, so a bench about one cell wide
@@ -1443,6 +1457,125 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
         expect(crossing.roads.length, `seed ${seed}: a level crossing with no road`).toBeGreaterThan(0);
         for (const road of crossing.roads) expect(w.roads[road], `seed ${seed}`).toBeDefined();
       }
+    }
+  });
+
+  it('turns the gentle coast into beaches, one of them long and outside the core', () => {
+    // Spec section 7.3: where the coast meets gentle terrain the shore becomes
+    // a beach, with sand, shallows and a dune line. Steep coast carries none,
+    // and neither does the harbour, whose frontage is quay. Every seed has one
+    // long beach outside the core, and that is the one with the pier.
+    for (const seed of seeds) {
+      const w = worlds.get(seed) as WorldDescription;
+      const hf = new Heightfield(w.terrain);
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+      if (w.beaches.length === 0) fault('has no beach at all');
+      let mains = 0;
+      for (let i = 0; i < w.beaches.length; i++) {
+        const beach = w.beaches[i] as Beach;
+        const where = `beach ${i}`;
+        if (beach.id !== i) fault(`${where} is numbered ${beach.id}`);
+        if (beach.main) mains++;
+        if (beach.shore.length < 2) fault(`${where} has no waterline`);
+        if (beach.back.length !== beach.shore.length) fault(`${where} has a dune line of another length`);
+        if (beach.length < MIN_BEACH_LENGTH) fault(`${where} is only ${beach.length.toFixed(0)} m long`);
+        if (ringArea(beach.sand) <= 0) fault(`${where} has no sand, or sand wound the wrong way`);
+        if (ringArea(beach.shallows) <= 0) fault(`${where} has no shallows, or shallows wound the wrong way`);
+        if (!beach.main && beach.pier !== undefined) fault(`${where} is not the main beach but has a pier`);
+        if (!beach.main && beach.boardwalk.length > 0) fault(`${where} is not the main beach but has a boardwalk`);
+        // The sand runs along the waterline, outside the core and clear of the
+        // harbour: downtown has quays and sea walls, and so do the docks.
+        for (const p of beach.shore) {
+          if (Math.abs(hf.sample(p.x, p.y) - w.water.seaLevel) > SHORE_SLACK) fault(`${where} runs off the waterline`);
+          if (Math.hypot(p.x - w.core.x, p.y - w.core.y) < ZONE_RADII.core * w.size) fault(`${where} reaches into the core`);
+          if (Math.hypot(p.x - w.water.harbour.x, p.y - w.water.harbour.y) < w.water.harbour.radius) {
+            fault(`${where} reaches into the harbour`);
+          }
+        }
+      }
+      if (mains !== 1) fault(`has ${mains} main beaches`);
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
+  it('gives the main beach a boardwalk along its back and a pier into the water', () => {
+    // Spec section 7.3 and section 8.3: the long beach outside the core has a
+    // boardwalk road along its back, a pier reaching into the water, and a
+    // neighbourhood of its own.
+    for (const seed of seeds) {
+      const w = worlds.get(seed) as WorldDescription;
+      const hf = new Heightfield(w.terrain);
+      const beach = w.beaches.find((b) => b.main) as Beach;
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+
+      if (beach.boardwalk.length === 0) fault('has no road along the back of its main beach');
+      for (let k = 0; k < beach.boardwalk.length; k++) {
+        const id = beach.boardwalk[k] as number;
+        if (w.roads[id] === undefined) fault(`names road ${id} as boardwalk, which does not exist`);
+        if (k > 0 && id <= (beach.boardwalk[k - 1] as number)) fault('lists its boardwalk out of order');
+      }
+      const along = boardwalkLength(beach, w.roads);
+      if (along < MIN_BOARDWALK_LENGTH) fault(`runs a boardwalk of only ${along.toFixed(0)} m`);
+
+      const pier = beach.pier;
+      if (pier === undefined) {
+        fault('has no pier');
+      } else {
+        if (pier.length < MIN_PIER_LENGTH) fault(`has a pier of only ${pier.length.toFixed(0)} m`);
+        if (hf.sample(pier.root.x, pier.root.y) < w.water.seaLevel) fault('roots its pier in the water');
+        if (hf.sample(pier.head.x, pier.head.y) >= w.water.seaLevel) fault('ends its pier on dry land');
+        if (ringArea(pier.polygon) <= 0) fault('has a pier deck wound the wrong way');
+      }
+
+      // The beach neighbourhood of spec section 8.3.
+      if (!w.districts.some((d) => d.culture === 'beach')) fault('has no beach neighbourhood');
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
+  it('cuts the sand into beach parcels with somewhere to park behind them', () => {
+    // Spec sections 6.4 and 7.3: a beach takes its ground the way everything
+    // else does, out of the land the road footprint leaves. So a beach parcel
+    // stands on sand, never on a road, and the beach has car parks behind it.
+    for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
+      const w = worlds.get(seed) as WorldDescription;
+      const footprint = footprintOf(seed);
+      const { parcels } = parcelsOf(seed);
+      const beach = w.beaches.find((b) => b.main) as Beach;
+      const sand = w.beaches.map((b) => regionOf(b.sand));
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+
+      const owned = parcels.filter((p) => p.owner === 'beach').map((p) => p.region);
+      if (owned.length === 0) fault('gives no parcel to a beach');
+      // Area, not points: a corner of a beach parcel stands on the edge of the
+      // sand, where inside and outside are the same place. What matters is that
+      // none of the ground reaches past the sand or onto a road.
+      const held = areaOf(owned);
+      // The engine rounds every corner onto its millimetre grid, so a boundary
+      // this long gains or loses that much ground however exact the cut was.
+      const slack = CUT_SLACK * owned.reduce((total, region) => total + perimeterOf(region), 0);
+      const offSand = areaOf(difference(owned, sand));
+      const onRoad = held - areaOf(difference(owned, footprint.regions));
+      if (offSand > slack) fault(`leaves ${offSand.toFixed(1)} m² of beach parcel off the sand`);
+      if (onRoad > slack) fault(`leaves ${onRoad.toFixed(1)} m² of beach parcel on a road`);
+
+      // Beach car parks, where the roads have left a block of that size behind
+      // the sand. A remote beach has open country behind it instead, and there
+      // is nothing there to make a car park of.
+      const candidates = behindBeach(parcels, beach);
+      if (candidates.length > 0 && !candidates.some((p) => p.owner === 'car-park')) {
+        fault('leaves the main beach with nowhere to park');
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
     }
   });
 
