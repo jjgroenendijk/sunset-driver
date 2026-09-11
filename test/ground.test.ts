@@ -81,12 +81,16 @@ describe('ground mesh', () => {
   it('stands every vertex on the carved ground under it', () => {
     expect(n).toBe(chunk.terrain.gridSize);
     expect(attributes.positions).toHaveLength(n * n * 3);
+    let complaint: string | undefined;
     for (let v = 0; v < n * n; v++) {
       const place = placeOf(attributes, v, chunk.bounds.minX, chunk.bounds.minY);
       // The heights are kept as 32-bit floats, so they agree to a tenth of a
       // millimetre rather than to the last bit.
-      expect(attributes.positions[v * 3 + 1] as number).toBeCloseTo(layers.carve.heightAt(place.x, place.y), 4);
+      const height = attributes.positions[v * 3 + 1] as number;
+      const carved = layers.carve.heightAt(place.x, place.y);
+      if (!(Math.abs(height - carved) < 5e-5)) complaint ??= `vertex ${v} stands at ${height}, not ${carved}`;
     }
+    expect(complaint).toBeUndefined();
     // The grid spans the whole chunk and no more.
     expect(attributes.positions[0]).toBe(0);
     expect(attributes.positions[(n * n - 1) * 3]).toBeCloseTo(CHUNK_SIZE, 6);
@@ -94,13 +98,16 @@ describe('ground mesh', () => {
   });
 
   it('takes an upward unit normal from the slope around each vertex', () => {
+    let complaint: string | undefined;
     for (let v = 0; v < n * n; v++) {
       const x = attributes.normals[v * 3] as number;
       const y = attributes.normals[v * 3 + 1] as number;
       const z = attributes.normals[v * 3 + 2] as number;
-      expect(Math.hypot(x, y, z)).toBeCloseTo(1, 5);
-      expect(y).toBeGreaterThan(0);
+      const length = Math.hypot(x, y, z);
+      if (!(Math.abs(length - 1) < 5e-6)) complaint ??= `vertex ${v} has a normal of length ${length}`;
+      if (!(y > 0)) complaint ??= `vertex ${v} has a normal facing down`;
     }
+    expect(complaint).toBeUndefined();
     // The hand-built ground rises with x and faster with y, so away from the
     // roads the normal leans back against both.
     const middle = 13 * n + 3;
@@ -113,36 +120,40 @@ describe('ground mesh', () => {
   it('winds every triangle to face upward', () => {
     const indices = attributes.indices;
     expect(indices).toHaveLength((n - 1) * (n - 1) * 6);
+    let complaint: string | undefined;
     for (let i = 0; i < indices.length; i += 3) {
       const a = indices[i] as number;
       const b = indices[i + 1] as number;
       const c = indices[i + 2] as number;
-      expect(Math.max(a, b, c)).toBeLessThan(n * n);
+      if (Math.max(a, b, c) >= n * n) complaint ??= `triangle ${i / 3} points past the grid`;
       const p = attributes.positions;
       const abx = (p[b * 3] as number) - (p[a * 3] as number);
       const abz = (p[b * 3 + 2] as number) - (p[a * 3 + 2] as number);
       const acx = (p[c * 3] as number) - (p[a * 3] as number);
       const acz = (p[c * 3 + 2] as number) - (p[a * 3 + 2] as number);
       // The y of the cross product: positive where the face is seen from above.
-      expect(acx * abz - acz * abx).toBeGreaterThan(0);
+      if (!(acx * abz - acz * abx > 0)) complaint ??= `triangle ${i / 3} faces down`;
     }
+    expect(complaint).toBeUndefined();
   });
 
   it('paints ground cover on the parcels and nowhere else', () => {
     let covered = 0;
     let bare = 0;
+    let complaint: string | undefined;
     for (let v = 0; v < n * n; v++) {
       const place = placeOf(attributes, v, chunk.bounds.minX, chunk.bounds.minY);
       const parcel = lookup.parcelAt(place.x, place.y);
       if (attributes.covers[v] === 1) {
         covered++;
-        expect(parcel).toBeDefined();
+        if (parcel === undefined) complaint ??= `vertex ${v} is covered off every parcel`;
       } else {
         bare++;
         // The only parcel without cover is a water one, and this island has none.
-        expect(parcel).toBeUndefined();
+        if (parcel !== undefined) complaint ??= `vertex ${v} is bare on parcel ${parcel.id}`;
       }
     }
+    expect(complaint).toBeUndefined();
     // Both happen: a chunk of a gridded city is part parcel and part road.
     expect(covered).toBeGreaterThan(0);
     expect(bare).toBeGreaterThan(0);

@@ -145,10 +145,23 @@ describe(`simulation sweep (${SEED_COUNT} seeds)`, () => {
     await initPhysics();
   });
 
+  /**
+   * One replay of each seed's stream, which the checks below compare a run of
+   * their own against. Each check still makes a run of its own, so two runs
+   * are compared every time; they only share the one they compare against.
+   */
+  const replays = new Map<number, string>();
+  const replayOf = (seed: number): string => {
+    const known = replays.get(seed);
+    if (known !== undefined) return known;
+    const built = stableJson(replay(seed, inputStream(seed, TICKS)));
+    replays.set(seed, built);
+    return built;
+  };
+
   it('replays a recorded input stream to identical state', () => {
     for (const seed of seeds) {
-      const inputs = inputStream(seed, TICKS);
-      expect(stableJson(replay(seed, inputs))).toBe(stableJson(replay(seed, inputs)));
+      expect(stableJson(replay(seed, inputStream(seed, TICKS)))).toBe(replayOf(seed));
     }
   });
 
@@ -177,10 +190,8 @@ describe(`simulation sweep (${SEED_COUNT} seeds)`, () => {
 
   it('two independent instances agree at the same tick', () => {
     for (const seed of seeds) {
-      const inputs = inputStream(seed, TICKS);
-      const a = replay(seed, inputs);
-      const b = cloneSimState(replay(seed, inputs));
-      expect(stableJson(a)).toBe(stableJson(b));
+      const b = cloneSimState(replay(seed, inputStream(seed, TICKS)));
+      expect(stableJson(b)).toBe(replayOf(seed));
     }
   });
 

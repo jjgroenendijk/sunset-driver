@@ -279,14 +279,15 @@ const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 6);
  * Seeds the byte-identical check generates a second time. Generating a world is
  * the most expensive thing this file does, so the quick tier repeats only a few.
  */
-const REPEAT_COUNT = SEED_COUNT > 20 ? 20 : 3;
+const REPEAT_COUNT = SEED_COUNT > 20 ? 20 : 2;
 /**
  * Seeds the road footprint is laid, the parcels are cut and the buildings are
  * laid for. A job that carries them costs about three times a bare world, so
  * both tiers do a few seeds rather than all of them. The pool does that work,
- * next to the world it belongs to.
+ * next to the world it belongs to. Every chunk check reads these layers, so
+ * this count is most of what the file costs in the quick tier.
  */
-const FOOTPRINT_COUNT = SEED_COUNT > 20 ? 16 : 3;
+const FOOTPRINT_COUNT = SEED_COUNT > 20 ? 16 : 2;
 /**
  * The share of the dry land the roads may claim (spec section 6.4). A city
  * gives about a seventh of its ground to the carriageway, the verge and the
@@ -506,7 +507,7 @@ const MIN_PLANTS = 20;
  * of a whole map which of them claims a place, so the quick tier takes a few
  * and the full tier spreads the check.
  */
-const VEGETATION_COUNT = SEED_COUNT > 20 ? 8 : 3;
+const VEGETATION_COUNT = SEED_COUNT > 20 ? 8 : 2;
 /**
  * Metres a corner may move when a parcel is cut to a chunk. The polygon engine
  * rounds every corner onto its millimetre grid and snaps one that lands beside
@@ -832,6 +833,26 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       vegetation: vegetationOf(seed),
     });
     sources.set(seed, built);
+    return built;
+  };
+  /**
+   * A chunk of a seed, cut once however many tests read it. Cutting the block
+   * again for every test was most of what the chunk checks cost. The check that
+   * a chunk cuts the same in isolation cuts its own, since that cut is what it
+   * checks.
+   */
+  const chunkMaps = new Map<number, Map<string, WorldChunk>>();
+  const chunkOf = (seed: number, cx: number, cy: number): WorldChunk => {
+    let cut = chunkMaps.get(seed);
+    if (cut === undefined) {
+      cut = new Map();
+      chunkMaps.set(seed, cut);
+    }
+    const key = `${cx}:${cy}`;
+    const known = cut.get(key);
+    if (known !== undefined) return known;
+    const built = sourceOf(seed).chunk(cx, cy);
+    cut.set(key, built);
     return built;
   };
   /** The junctions of a seed, built once however many tests ask about them. */
@@ -1944,7 +1965,6 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     // neighbours meet on the same heights and hand a road over at one place.
     for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
       const w = worlds.get(seed) as WorldDescription;
-      const source = sourceOf(seed);
       const parcels = parcelsOf(seed).parcels;
       let complaint: string | undefined;
       const fault = (text: string): void => {
@@ -1953,7 +1973,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
 
       const cut = new Map<string, WorldChunk>();
       for (const [cx, cy] of chunkKeys()) {
-        const chunk = source.chunk(cx, cy);
+        const chunk = chunkOf(seed, cx, cy);
         cut.set(`${cx}:${cy}`, chunk);
         const where = `chunk ${cx}, ${cy}`;
         if (chunk.seed !== seed) fault(`${where} carries seed ${chunk.seed}`);
@@ -2057,7 +2077,6 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     // out inside out or full of NaN only shows on real ground.
     for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
       const w = worlds.get(seed) as WorldDescription;
-      const source = sourceOf(seed);
       const ribbons = new RoadRibbons(w.terrain, w.roads, junctionsOf(seed));
       let complaint: string | undefined;
       const fault = (text: string): void => {
@@ -2065,13 +2084,13 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       };
 
       for (const [cx, cy] of chunkKeys()) {
-        const calls = chunkDrawCalls(source.chunk(cx, cy));
+        const calls = chunkDrawCalls(chunkOf(seed, cx, cy));
         if (calls > CHUNK_DRAW_CALL_CAP) fault(`chunk ${cx}, ${cy} costs ${calls} draw calls`);
       }
 
       let carriageways = 0;
       for (const [cx, cy] of ROAD_MESH_CHUNKS) {
-        const chunk = source.chunk(cx, cy);
+        const chunk = chunkOf(seed, cx, cy);
         for (const tier of buildChunkRoads(chunk, ribbons, (x, y) => carveOf(seed).heightAt(x, y))) {
           const where = `chunk ${cx}, ${cy}: ${tier.tier}`;
           const section = roadSection(tier.tier);
@@ -2129,7 +2148,6 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     // whichever of them the run was cut into.
     for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
       const w = worlds.get(seed) as WorldDescription;
-      const source = sourceOf(seed);
       const ribbons = new RoadRibbons(w.terrain, w.roads, junctionsOf(seed));
       let complaint: string | undefined;
       const fault = (text: string): void => {
@@ -2139,7 +2157,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       const seen = new Set<string>();
       let lit = 0;
       for (const [cx, cy] of chunkKeys()) {
-        const chunk = source.chunk(cx, cy);
+        const chunk = chunkOf(seed, cx, cy);
         for (const lamp of lampsIn(chunk, ribbons)) {
           lit++;
           const where = `${lamp.tier} lamp at ${lamp.x.toFixed(1)}, ${lamp.y.toFixed(1)}`;
@@ -2188,7 +2206,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       // One chunk of the core is enough: it is where the towers stand, and
       // building the geometry of a whole map would cost more than the world.
       const [cx, cy] = ROAD_MESH_CHUNKS[0] as [number, number];
-      for (const one of buildChunkBuildings(source.chunk(cx, cy), lookup)) {
+      for (const one of buildChunkBuildings(chunkOf(seed, cx, cy), lookup)) {
         built++;
         const where = `${one.building.kind} ${one.building.id}`;
         const position = one.shell.getAttribute('position');
@@ -2228,7 +2246,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
       };
       let planted = 0;
       for (const [cx, cy] of VEGETATION_CHUNKS) {
-        const chunk = sourceOf(seed).chunk(cx, cy);
+        const chunk = chunkOf(seed, cx, cy);
         planted += chunk.plants.length;
         for (const plant of chunk.plants) {
           const where = `${plant.species} at ${plant.at.x.toFixed(1)}, ${plant.at.y.toFixed(1)}`;

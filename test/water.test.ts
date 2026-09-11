@@ -92,13 +92,17 @@ describe('water surface', () => {
     const n = attributes.gridSize;
     expect(attributes.positions).toHaveLength(n * n * 3);
     expect(attributes.depths).toHaveLength(n * n);
+    let complaint: string | undefined;
     for (let v = 0; v < n * n; v++) {
       const place = placeOf(attributes, v);
-      expect(attributes.depths[v] as number).toBeCloseTo(world.water.seaLevel - lowestAround(place.x, place.y), 4);
+      const depth = attributes.depths[v] as number;
+      const wanted = world.water.seaLevel - lowestAround(place.x, place.y);
+      if (!(Math.abs(depth - wanted) < 5e-5)) complaint ??= `vertex ${v} is ${depth} deep, not ${wanted}`;
       // The sheet itself is flat: the third local axis is what the turn sends up.
-      expect(attributes.positions[v * 3 + 2] as number).toBe(0);
-      expect(attributes.normals[v * 3 + 2] as number).toBe(1);
+      if (attributes.positions[v * 3 + 2] !== 0) complaint ??= `vertex ${v} stands off the sheet`;
+      if (attributes.normals[v * 3 + 2] !== 1) complaint ??= `vertex ${v} has a normal off the sheet's`;
     }
+    expect(complaint).toBeUndefined();
   });
 
   it('reaches the open sea past every edge of the map', () => {
@@ -115,14 +119,16 @@ describe('water surface', () => {
   it('draws the cells that carry water and no others', () => {
     const n = attributes.gridSize;
     let wet = 0;
+    let complaint: string | undefined;
     for (let j = 0; j + 1 < n; j++) {
       for (let i = 0; i + 1 < n; i++) {
         const corners = [j * n + i, j * n + i + 1, (j + 1) * n + i, (j + 1) * n + i + 1];
         const any = corners.some((v) => (attributes.depths[v] as number) > 0);
-        expect(cells.has(`${i},${j}`), `cell ${i},${j}`).toBe(any);
+        if (cells.has(`${i},${j}`) !== any) complaint ??= `cell ${i},${j} is ${any ? 'wet and not drawn' : 'dry and drawn'}`;
         if (any) wet++;
       }
     }
+    expect(complaint).toBeUndefined();
     expect(cells.size).toBe(wet);
     expect(attributes.indices).toHaveLength(wet * 6);
     expect(wet).toBeGreaterThan(0);
@@ -144,6 +150,7 @@ describe('water surface', () => {
   });
 
   it('winds every triangle to face up once the sheet is laid flat', () => {
+    let complaint: string | undefined;
     for (let t = 0; t < attributes.indices.length; t += 3) {
       // The quarter turn about X sends the local (x, y, 0) to the world (x, 0, -y).
       const [a, b, c] = [0, 1, 2].map((k) => {
@@ -152,8 +159,9 @@ describe('water surface', () => {
       }) as [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }];
       // The upward component of the cross product, in the world's own plane.
       const up = -((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
-      expect(up).toBeGreaterThan(0);
+      if (!(up > 0)) complaint ??= `triangle ${t / 3} faces down`;
     }
+    expect(complaint).toBeUndefined();
   });
 
   it('is the same sheet every time it is built', () => {
