@@ -1901,7 +1901,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
           if (complaint !== undefined) break;
         }
         one.shell.dispose();
-        one.hull.dispose();
+        one.hull?.dispose();
         if (complaint !== undefined) break;
       }
       expect(complaint, `seed ${seed}`).toBeUndefined();

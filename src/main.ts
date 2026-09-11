@@ -64,7 +64,7 @@ async function boot(): Promise<void> {
       session.world.character.group.rotation.y = -p.heading;
       session.world.update(p.x, p.y);
       camera.update(elapsed / 1000, { ...p, height });
-      session.hud.update(session.state, session.world.drawCallsPerChunk);
+      session.hud.update(session.state, session.world.drawCallsPerChunk, session.world.streaming);
       void renderer.render(session.world.scene, camera.camera);
     } else {
       spin += (elapsed / 1000) * PREVIEW_SPIN;
@@ -87,13 +87,23 @@ async function boot(): Promise<void> {
 
   history.replaceState(null, '', writeSeedToHash(location.hash, choice.seed));
 
-  // Generating the world blocks the frame loop for a second or two, so say so
-  // and let the browser paint the notice before it starts.
+  // Generating the whole-map skeleton blocks the frame loop for a second or
+  // two, so say so and let the browser paint the notice before it starts. The
+  // chunks are then built in the workers, and the notice stands until there is
+  // ground under the player; the rest of the city fills in as it is played.
   const notice = showNotice('Generating the world…');
   await nextFrame();
   const state = createSimState(seedFromString(choice.seed), choice.character);
   const world = new WorldScene(generateWorld(state.seed), state.character);
-  world.prime(state.player.x, state.player.y);
+  try {
+    await world.settle(state.player.x, state.player.y, 1);
+  } catch (error) {
+    // A worker that never answers leaves the player standing on nothing, so
+    // the notice says so rather than hanging on 'Generating the world…'.
+    notice.textContent = error instanceof Error ? error.message : 'The world could not be built.';
+    world.dispose();
+    return;
+  }
   notice.remove();
 
   camera.setBaseDistance(BASE_DISTANCE);

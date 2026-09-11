@@ -8,6 +8,7 @@ export class Hud {
   private readonly seedEl: HTMLElement;
   private readonly draws: HTMLElement;
   private shown = -1;
+  private queued = -1;
 
   constructor(parent: HTMLElement, seed: string) {
     this.root = document.createElement('div');
@@ -24,17 +25,20 @@ export class Hud {
   }
 
   /**
-   * `drawCalls` is what the dearest chunk on screen costs (spec section 9.2).
-   * It is written only when it changes, so the overlay is not rewritten every
-   * frame for a number that moves once a minute.
+   * `drawCalls` is what the dearest chunk on screen costs (spec section 9.2)
+   * and `streaming` how many chunks are still being built (spec section 9.1).
+   * The line is written only when one of them changes, so the overlay is not
+   * rewritten every frame for numbers that stand still.
    */
-  update(state: SimState, drawCalls: number): void {
+  update(state: SimState, drawCalls: number, streaming = 0): void {
     const t = gameTime(state.tick);
     const hh = String(t.hour).padStart(2, '0');
     const mm = String(t.minute).padStart(2, '0');
     this.clock.textContent = `day ${t.day + 1}  ${hh}:${mm}`;
-    if (drawCalls === this.shown) return;
+    if (drawCalls === this.shown && streaming === this.queued) return;
     this.shown = drawCalls;
-    this.draws.textContent = `${drawCalls} draws/chunk`;
+    this.queued = streaming;
+    const queue = streaming > 0 ? `  ${streaming} streaming` : '';
+    this.draws.textContent = `${drawCalls} draws/chunk${queue}`;
   }
 }

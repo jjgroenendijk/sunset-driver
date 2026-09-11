@@ -34,6 +34,7 @@ import type { WorldChunk, WorldLayers } from '../world/chunks.ts';
 import type { RoadEdge, RoadGraph } from '../world/graph.ts';
 import type { District, Point, WorldDescription } from '../world/types.ts';
 import { buildBlockGeometry } from './block-mesh.ts';
+import type { ChunkDetail } from './streaming.ts';
 
 /** A colour as the renderer wants it: three floats in the working colour space. */
 export type Rgb = readonly [number, number, number];
@@ -64,8 +65,12 @@ export interface BuildingPlacement {
   batch: BuildingBatch;
   /** The shell, in the building's own frame. */
   shell: BufferGeometry;
-  /** The inverted hull that outlines it, in the same frame. */
-  hull: BufferGeometry;
+  /**
+   * The inverted hull that outlines it, in the same frame. Only near detail
+   * carries one: an outline is a line a few centimetres wide, and the far ring
+   * cannot tell it from the building it rims (spec section 9.1).
+   */
+  hull?: BufferGeometry;
   /** The building's frame in the world. */
   matrix: Matrix4;
 }
@@ -177,19 +182,29 @@ export function buildingLookup(world: WorldDescription, layers: WorldLayers): Bu
 /**
  * Build the buildings of one chunk, in the order the chunk lists them. Each
  * placement owns its geometry until the caller has copied it into a batch.
+ *
+ * Far detail is the massing alone (spec section 9.1): every building is a
+ * block, however tall it stands, and none is outlined. A generated facade is
+ * the dearest thing a chunk builds and its windows are a metre across, so the
+ * far ring pays for neither.
  */
-export function buildChunkBuildings(chunk: WorldChunk, lookup: BuildingLookup): BuildingPlacement[] {
+export function buildChunkBuildings(
+  chunk: WorldChunk,
+  lookup: BuildingLookup,
+  detail: ChunkDetail = 'near',
+): BuildingPlacement[] {
   const out: BuildingPlacement[] = [];
   for (const building of chunk.buildings) {
     const massing = massingOf(building, lookup.districtOf(building), lookup.chamferOf(building));
-    const batch = batchOf(building.kind, massing);
+    const batch = detail === 'far' ? 'block' : batchOf(building.kind, massing);
     const tint = tintOf(building, batch);
     const shell =
       batch === 'facade' ? facadeGeometry(building, massing, tint) : buildBlockGeometry(building.kind, massing, tint);
     const box = centreOnLot(shell);
     const fit = fitOf(box, massing);
-    const hull = hullOf(massing, shell, box, fit);
-    out.push({ building, massing, batch, shell, hull, matrix: matrixOf(building, lookup, fit) });
+    const placed: BuildingPlacement = { building, massing, batch, shell, matrix: matrixOf(building, lookup, fit) };
+    if (detail === 'near') placed.hull = hullOf(massing, shell, box, fit);
+    out.push(placed);
   }
   return out;
 }

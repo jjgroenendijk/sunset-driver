@@ -1,0 +1,255 @@
+/**
+ * A chunk's geometry as plain arrays, so a worker can build it (spec section
+ * 9.1).
+ *
+ * Everything a chunk draws — the ground, the roads over it, the buildings that
+ * stand on it and the plants that grow on what is left — is built here from the
+ * chunk and the whole-map lookups. Nothing in this file touches the renderer,
+ * a material or the DOM, so it runs in a worker and in a test alike.
+ *
+ * The result is a payload: typed arrays and numbers, and no three.js object at
+ * all. A payload crosses a worker boundary by transfer rather than by copy, so
+ * the main thread pays for uploading the geometry and for nothing else.
+ * {@link unpackGeometry} is the other half, and it is the only work the frame
+ * is charged for.
+ *
+ * A payload is built at one of two details (spec section 9.1). Near is the city
+ * as the game draws it. Far is the ground, the highways and arterials over it
+ * and the massing of its buildings: no markings, no minor roads, no outlines
+ * and no plants, because none of them can be told apart from the far ring.
+ */
+import { BufferAttribute, BufferGeometry } from 'three';
+import type { ChunkBounds, WorldChunk, WorldLayers } from '../world/chunks.ts';
+import { RoadRibbons } from '../world/ribbon.ts';
+import type { RoadTier, WorldDescription } from '../world/types.ts';
+import { buildChunkBuildings, buildingLookup, type BuildingLookup } from './building-mesh.ts';
+import { buildGroundAttributes, groundLookup, type GroundAttributes, type GroundLookup } from './ground.ts';
+import { buildChunkVegetation, plantLookup, type PlantLookup } from './plant-mesh.ts';
+import { buildChunkRoads, partsOf } from './road-mesh.ts';
+import type { ChunkDetail } from './streaming.ts';
+
+/** The tiers the far ring keeps. The minor fill is not read from that far off. */
+const FAR_TIERS: readonly RoadTier[] = ['highway', 'arterial'];
+
+/** A typed array a packed geometry holds its numbers in. */
+type GeometryArray = Float32Array | Uint32Array | Uint16Array | Uint8Array;
+
+/** One attribute of a packed geometry. */
+export interface PackedAttribute {
+  name: string;
+  array: GeometryArray;
+  itemSize: number;
+  normalized: boolean;
+}
+
+/** A `BufferGeometry` as arrays. {@link unpackGeometry} makes it one again. */
+export interface PackedGeometry {
+  attributes: PackedAttribute[];
+  index?: Uint32Array | Uint16Array;
+}
+
+/** One thing to draw: a geometry, and where it stands if not already in world places. */
+export interface PackedPart {
+  geometry: PackedGeometry;
+  /** Its frame in the world, sixteen numbers. */
+  matrix?: Float32Array;
+}
+
+/** One tier of road inside a chunk: everything batched, and everything painted. */
+export interface PackedRoads {
+  tier: RoadTier;
+  /** Surfaces, decks and portals, all of which go into one batch. */
+  parts: PackedGeometry[];
+  /** Marking segment ends, six numbers each. Empty at far detail. */
+  markings: Float32Array;
+  /** The colour of each of those ends, six numbers each. */
+  markingTints: Float32Array;
+}
+
+/** The plants of a chunk. A placement names one of the world's models rather than carrying geometry. */
+export interface PackedPlants {
+  /** Which model each plant takes, as `modelIndex` numbers them. */
+  models: Uint16Array;
+  /** The frame of each plant in the world, sixteen numbers each. */
+  matrices: Float32Array;
+}
+
+/** Everything one chunk draws, ready to cross a worker boundary. */
+export interface ChunkPayload {
+  cx: number;
+  cy: number;
+  detail: ChunkDetail;
+  /** The ground the chunk covers, so the mesh can be stood at its near corner. */
+  bounds: ChunkBounds;
+  ground: GroundAttributes;
+  /** The road tiers that run through the chunk, in tier order. */
+  roads: PackedRoads[];
+  /** The inverted hulls that outline the buildings. Empty at far detail. */
+  outlines: PackedPart[];
+  /** The generated facades. Empty at far detail, where a tower is a block. */
+  facades: PackedPart[];
+  /** The buildings built as blocks, which at far detail is all of them. */
+  blocks: PackedPart[];
+  plants: PackedPlants;
+  /** Draw calls the chunk costs once it is in the scene. */
+  drawCalls: number;
+}
+
+/** What a chunk's geometry asks about the world around it. */
+export interface ChunkLookups {
+  ground: GroundLookup;
+  buildings: BuildingLookup;
+  plants: PlantLookup;
+  ribbons: RoadRibbons;
+}
+
+/** The lookups a world answers with, built once and shared by every chunk of it. */
+export function chunkLookups(world: WorldDescription, layers: WorldLayers): ChunkLookups {
+  return {
+    ground: groundLookup(world, layers),
+    buildings: buildingLookup(world, layers),
+    plants: plantLookup(layers),
+    ribbons: new RoadRibbons(world.terrain, world.roads),
+  };
+}
+
+/** Build everything one chunk draws, at the detail asked for. */
+export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, detail: ChunkDetail): ChunkPayload {
+  const far = detail === 'far';
+  const roads: PackedRoads[] = [];
+  // At far detail the minor fill is dropped before it is lofted, so the tiers
+  // that are not drawn cost nothing to leave out.
+  const traced = far ? { ...chunk, roads: chunk.roads.filter((run) => FAR_TIERS.includes(run.tier)) } : chunk;
+  for (const tier of buildChunkRoads(traced, lookups.ribbons)) {
+    roads.push({
+      tier: tier.tier,
+      parts: partsOf(tier).map(takeGeometry),
+      markings: far ? new Float32Array(0) : tier.markings,
+      markingTints: far ? new Float32Array(0) : tier.markingTints,
+    });
+  }
+
+  const outlines: PackedPart[] = [];
+  const facades: PackedPart[] = [];
+  const blocks: PackedPart[] = [];
+  for (const placed of buildChunkBuildings(chunk, lookups.buildings, detail)) {
+    const matrix = new Float32Array(placed.matrix.toArray());
+    (placed.batch === 'facade' ? facades : blocks).push({ geometry: takeGeometry(placed.shell), matrix });
+    if (placed.hull !== undefined) outlines.push({ geometry: takeGeometry(placed.hull), matrix });
+  }
+
+  const plants = far ? noPlants() : packPlants(chunk, lookups.plants);
+
+  const payload: ChunkPayload = {
+    cx: chunk.cx,
+    cy: chunk.cy,
+    detail,
+    bounds: chunk.bounds,
+    ground: buildGroundAttributes(chunk, lookups.ground),
+    roads,
+    outlines,
+    facades,
+    blocks,
+    plants,
+    drawCalls: 0,
+  };
+  payload.drawCalls = payloadDrawCalls(payload);
+  return payload;
+}
+
+/** Draw calls a payload costs: one per batch it fills, and one for its ground. */
+export function payloadDrawCalls(payload: ChunkPayload): number {
+  let calls = 1;
+  for (const tier of payload.roads) {
+    if (tier.parts.length > 0) calls++;
+    if (tier.markings.length > 0) calls++;
+  }
+  if (payload.outlines.length > 0) calls++;
+  if (payload.facades.length > 0) calls++;
+  if (payload.blocks.length > 0) calls++;
+  if (payload.plants.models.length > 0) calls++;
+  return calls;
+}
+
+/**
+ * Every buffer a payload holds, so `postMessage` can hand them over rather than
+ * copy them. Each buffer is listed once, however many attributes read from it.
+ */
+export function payloadTransfers(payload: ChunkPayload): ArrayBuffer[] {
+  const buffers = new Set<ArrayBuffer>();
+  // An empty array is not handed over: it holds nothing to move, and a payload
+  // that shared one with another payload would detach a buffer twice.
+  const take = (array: ArrayBufferView): void => {
+    if (array.byteLength > 0) buffers.add(array.buffer as ArrayBuffer);
+  };
+  const takeGeometryBuffers = (geometry: PackedGeometry): void => {
+    for (const attribute of geometry.attributes) take(attribute.array);
+    if (geometry.index !== undefined) take(geometry.index);
+  };
+  const ground = payload.ground;
+  for (const array of [ground.positions, ground.normals, ground.tints, ground.covers, ground.coverTints, ground.indices]) {
+    take(array);
+  }
+  for (const tier of payload.roads) {
+    for (const part of tier.parts) takeGeometryBuffers(part);
+    take(tier.markings);
+    take(tier.markingTints);
+  }
+  for (const part of [...payload.outlines, ...payload.facades, ...payload.blocks]) {
+    takeGeometryBuffers(part.geometry);
+    if (part.matrix !== undefined) take(part.matrix);
+  }
+  take(payload.plants.models);
+  take(payload.plants.matrices);
+  return [...buffers];
+}
+
+/** Turn a packed geometry back into one the renderer can draw. */
+export function unpackGeometry(packed: PackedGeometry): BufferGeometry {
+  const geometry = new BufferGeometry();
+  for (const attribute of packed.attributes) {
+    geometry.setAttribute(attribute.name, new BufferAttribute(attribute.array, attribute.itemSize, attribute.normalized));
+  }
+  if (packed.index !== undefined) geometry.setIndex(new BufferAttribute(packed.index, 1));
+  return geometry;
+}
+
+/**
+ * Pack a geometry and let go of it. The arrays are handed over rather than
+ * copied, so the geometry must not be drawn or read again; every caller here
+ * built it a line earlier and wants only the numbers.
+ */
+function takeGeometry(geometry: BufferGeometry): PackedGeometry {
+  const attributes: PackedAttribute[] = [];
+  for (const name of Object.keys(geometry.attributes)) {
+    const attribute = geometry.getAttribute(name) as BufferAttribute;
+    attributes.push({
+      name,
+      array: attribute.array as GeometryArray,
+      itemSize: attribute.itemSize,
+      normalized: attribute.normalized,
+    });
+  }
+  const index = geometry.getIndex();
+  const packed: PackedGeometry = { attributes };
+  if (index !== null) packed.index = index.array as Uint32Array | Uint16Array;
+  geometry.dispose();
+  return packed;
+}
+
+/** The plants of a chunk, as the model each takes and the frame it stands in. */
+function packPlants(chunk: WorldChunk, lookup: PlantLookup): PackedPlants {
+  const placements = buildChunkVegetation(chunk, lookup);
+  const models = new Uint16Array(placements.length);
+  const matrices = new Float32Array(placements.length * 16);
+  for (let i = 0; i < placements.length; i++) {
+    const placement = placements[i] as (typeof placements)[number];
+    models[i] = placement.model;
+    matrices.set(placement.matrix.toArray(), i * 16);
+  }
+  return { models, matrices };
+}
+
+function noPlants(): PackedPlants {
+  return { models: new Uint16Array(0), matrices: new Float32Array(0) };
+}

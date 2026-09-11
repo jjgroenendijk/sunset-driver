@@ -35,8 +35,6 @@ export interface PreviewRequest {
   speed: number;
   width: number;
   height: number;
-  /** Chunks each way of the player to build before the frame is drawn. */
-  chunkRadius: number;
   /** How far into the night it is, 0 by day and 1 at midnight. */
   night: number;
 }
@@ -49,7 +47,7 @@ export interface PreviewResult {
   rgb: string;
   /** Milliseconds spent generating the world. */
   worldMs: number;
-  /** Milliseconds spent building the chunks near the player. */
+  /** Milliseconds spent building the chunks around the player. */
   chunkMs: number;
   /** Milliseconds spent drawing and reading back the frame. */
   frameMs: number;
@@ -64,7 +62,7 @@ const BYTES_PER_PIXEL = 4;
 const ROW_ALIGNMENT = 256;
 
 export async function renderPreview(request: PreviewRequest): Promise<PreviewResult> {
-  const { seed, x, y, distance, heading, speed, width, height, chunkRadius, night } = request;
+  const { seed, x, y, distance, heading, speed, width, height, night } = request;
 
   const t0 = performance.now();
   const world = generateWorld(seed);
@@ -73,7 +71,10 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   const t1 = performance.now();
   const scene = new WorldScene(world, DEFAULT_APPEARANCE);
   scene.night = night;
-  scene.prime(x, y, chunkRadius);
+  // The chunks are built in the workers the game uses, so the picture is the
+  // frame the game draws. Every chunk of both rings is waited for, so the same
+  // request twice takes the same picture.
+  await scene.settle(x, y);
   const chunkMs = performance.now() - t1;
 
   // The player stands on the ground the roads left, as it does in the game.

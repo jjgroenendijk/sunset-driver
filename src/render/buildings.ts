@@ -17,20 +17,13 @@
  * and nothing else.
  */
 import { BatchedMesh, Object3D } from 'three';
-import type { WorldChunk } from '../world/chunks.ts';
-import { batchOf, type BatchPart } from './batch.ts';
-import { buildChunkBuildings, type BuildingLookup } from './building-mesh.ts';
+import { fillOfPacked } from './batch.ts';
+import type { PackedPart } from './chunk-payload.ts';
 import { createBuildingMaterials, type BuildingMaterials } from './building-material.ts';
+import type { TilePart } from './streaming.ts';
 
-/** One chunk's buildings, as the scene holds them. */
-export interface BuildingTile {
-  /** What to add to the scene: the outlines, then the batches they rim. */
-  objects: Object3D[];
-  /** Draw calls these objects cost. */
-  drawCalls: number;
-  /** Release the geometry. The materials are the world's and are left alone. */
-  dispose(): void;
-}
+/** Which of a chunk's three batches of buildings is meant. */
+export type BuildingBatchKind = 'outline' | 'facade' | 'block';
 
 /**
  * The materials a world's buildings are drawn with, and the chunks built from
@@ -48,26 +41,23 @@ export class BuildingScenery {
     this.materials.night.value = amount < 0 ? 0 : amount > 1 ? 1 : amount;
   }
 
-  /** Build the buildings of one chunk. */
-  build(chunk: WorldChunk, lookup: BuildingLookup): BuildingTile {
-    const facades: BatchPart[] = [];
-    const blocks: BatchPart[] = [];
-    const hulls: BatchPart[] = [];
-    for (const placed of buildChunkBuildings(chunk, lookup)) {
-      const into = placed.batch === 'facade' ? facades : blocks;
-      into.push({ geometry: placed.shell, matrix: placed.matrix });
-      hulls.push({ geometry: placed.hull, matrix: placed.matrix });
-    }
-    const objects: Object3D[] = [];
-    // The hulls first, because that is the order they are read in; which of the
-    // two the renderer draws first does not matter, since a hull stands behind
-    // the building that covers it and the depth test is what leaves the rim.
-    if (hulls.length > 0) objects.push(batchOf(hulls, this.materials.outline));
-    if (facades.length > 0) objects.push(batchOf(facades, this.materials.facade));
-    if (blocks.length > 0) objects.push(batchOf(blocks, this.materials.block));
+  /**
+   * Put one batch of one chunk's buildings into the scene. The three are
+   * uploaded one at a time, so a chunk of the core spreads over more frames
+   * than a chunk of houses rather than stalling one of them.
+   *
+   * A chunk's outlines are read first, because that is the order they are
+   * listed in; which of the batches the renderer draws first does not matter,
+   * since a hull stands behind the building that covers it and the depth test
+   * is what leaves the rim.
+   */
+  build(batch: BuildingBatchKind, parts: readonly PackedPart[]): TilePart {
+    const fill = fillOfPacked(parts, this.materials[batch]);
+    const objects: Object3D[] = [fill.mesh];
     return {
       objects,
-      drawCalls: objects.length,
+      drawCalls: 1,
+      steps: fill.steps,
       dispose(): void {
         for (const object of objects) if (object instanceof BatchedMesh) object.dispose();
       },

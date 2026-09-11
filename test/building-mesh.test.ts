@@ -103,6 +103,13 @@ function placed(buildings: Building[], lookup = lookupOf()): BuildingPlacement[]
   return buildChunkBuildings(chunkOf(buildings), lookup);
 }
 
+/** The outline of a placement built at near detail, which always carries one. */
+function hullOf(placement: BuildingPlacement): BufferGeometry {
+  const hull = placement.hull;
+  if (hull === undefined) throw new Error('a building built at near detail is outlined');
+  return hull;
+}
+
 /**
  * Walk every vertex of a geometry, in the world the placement stands in. One
  * vector is handed out over and over: a tower has tens of thousands of vertices,
@@ -231,7 +238,7 @@ describe('the outline hull', () => {
       // The hull is wider and taller than the shell by the width of the outline,
       // and by no more than that: an outline is a rim, not a second building.
       for (const pick of [(p: Vector3) => p.x, (p: Vector3) => p.z, (p: Vector3) => p.y]) {
-        const grew = reachOf(one.hull, one, pick) - reachOf(one.shell, one, pick);
+        const grew = reachOf(hullOf(one), one, pick) - reachOf(one.shell, one, pick);
         expect(grew, kind).toBeGreaterThan(OUTLINE_WIDTH * 0.9);
         expect(grew, kind).toBeLessThan(OUTLINE_WIDTH * 1.5);
       }
@@ -243,8 +250,9 @@ describe('the outline hull', () => {
     // the near side of the hull over the building and hide it.
     for (const kind of KINDS) {
       const one = placed([buildingOf(kind, 26, 28)], lookupOf(() => GROUND, 1, QUIET))[0] as BuildingPlacement;
-      const position = one.hull.getAttribute('position') as BufferAttribute;
-      const normal = one.hull.getAttribute('normal') as BufferAttribute;
+      const hull = hullOf(one);
+      const position = hull.getAttribute('position') as BufferAttribute;
+      const normal = hull.getAttribute('normal') as BufferAttribute;
       for (let t = 0; t + 2 < position.count; t += 3) {
         const a = new Vector3().fromBufferAttribute(position, t);
         const b = new Vector3().fromBufferAttribute(position, t + 1);
@@ -254,6 +262,38 @@ describe('the outline hull', () => {
         const wants = new Vector3().fromBufferAttribute(normal, t);
         expect(face.normalize().dot(wants), `${kind} face ${t / 3}`).toBeGreaterThan(0.5);
       }
+    }
+  });
+});
+
+describe('a building at far detail', () => {
+  it('is its massing as a block, with no facade and no outline', () => {
+    const buildings = [buildingOf('tower', 26, 28), buildingOf('house', 16, 18, { front: { x: 40, y: 10 } })];
+    const lookup = lookupOf(undefined, 0, QUIET);
+    const far = buildChunkBuildings(chunkOf(buildings), lookup, 'far');
+    const near = buildChunkBuildings(chunkOf(buildings), lookup, 'near');
+    expect(far.map((one) => one.batch)).toEqual(['block', 'block']);
+    expect(near[0]?.batch).toBe('facade');
+    for (const one of far) expect(one.hull).toBeUndefined();
+  });
+
+  it('stands where the near building stands, and on the same lot', () => {
+    for (const kind of KINDS) {
+      const building = buildingOf(kind, 26, 28, { front: { x: 60, y: -40 } });
+      const lookup = lookupOf(undefined, 0, QUIET);
+      const far = buildChunkBuildings(chunkOf([building]), lookup, 'far')[0] as BuildingPlacement;
+      const near = buildChunkBuildings(chunkOf([building]), lookup, 'near')[0] as BuildingPlacement;
+      // The massing is the same, so the far ring reads as the same city: only
+      // the shell is simpler, and it stands on the same ground.
+      expect(far.massing).toEqual(near.massing);
+      expect(new Vector3().setFromMatrixPosition(far.matrix).toArray()).toEqual(
+        new Vector3().setFromMatrixPosition(near.matrix).toArray(),
+      );
+      let outside = 0;
+      eachWorldVertex(far.shell, far, (vertex) => {
+        if (!pointInRing({ x: vertex.x, y: vertex.z }, building.lot)) outside++;
+      });
+      expect(outside, kind).toBe(0);
     }
   });
 });
@@ -270,7 +310,7 @@ describe('the same chunk twice', () => {
       expect(b.matrix.elements).toEqual(a.matrix.elements);
       expect(b.massing).toEqual(a.massing);
       expect(signature(b.shell)).toBe(signature(a.shell));
-      expect(signature(b.hull)).toBe(signature(a.hull));
+      expect(signature(hullOf(b))).toBe(signature(hullOf(a)));
     }
   });
 });

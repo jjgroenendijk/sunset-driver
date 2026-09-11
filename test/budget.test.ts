@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { TICKS_PER_HOUR } from '../src/sim/clock.ts';
 import type { InputFrame } from '../src/sim/input.ts';
 import { createSimState, stepSim } from '../src/sim/simulation.ts';
+import { MeshBasicMaterial, type BatchedMesh, type Material } from 'three';
+import { fillOfPacked } from '../src/render/batch.ts';
 import { buildChunkBuildings, buildingLookup } from '../src/render/building-mesh.ts';
+import { buildChunkPayload, chunkLookups, type ChunkPayload } from '../src/render/chunk-payload.ts';
+import { groundGeometry } from '../src/render/ground.ts';
 import { buildCarve } from '../src/world/carve.ts';
 import { chunkAt, chunkBounds, ChunkSource } from '../src/world/chunks.ts';
 import { buildFootprint, type RoadFootprint } from '../src/world/footprint.ts';
@@ -100,6 +104,10 @@ describe('performance budgets', () => {
       slices.render + slices.physics + slices.gameplayAndAi + slices.streaming + slices.headroom;
     expect(total).toBe(FRAME_MS);
     expect(BUDGET_MS.simTick).toBeLessThanOrEqual(SIM_SLICE_MS);
+    // The streaming queue holds a frame to its slice apart from the piece it
+    // is already running (spec section 9.1). Even that worst frame leaves the
+    // renderer the whole of its own slice.
+    expect(slices.streaming + BUDGET_MS.chunkUpload + slices.render).toBeLessThanOrEqual(FRAME_MS);
   });
 
   it('steps one game hour within the per-tick budget', () => {
@@ -198,6 +206,61 @@ describe('performance budgets', () => {
     expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.buildings);
   });
 
+/**
+ * The chunk source of a measured world, over the layers already built for it.
+ * The layers are the dearest thing in the project and each of them is measured
+ * in its own right above; a chunk test is charged for cutting a chunk, not for
+ * what it is cut from.
+ */
+function chunkSourceOf(world: WorldDescription): ChunkSource {
+  const graph = graphOf(world);
+  const parcels = parcelsOf(world);
+  const buildings = buildBuildings(world, parcels, graph);
+  return new ChunkSource(world, {
+    graph,
+    footprint: footprintOf(world),
+    parcels,
+    buildings,
+    carve: buildCarve(world.terrain, world.roads),
+    vegetation: new Vegetation(world.seed, parcels, buildings),
+  });
+}
+
+/**
+ * How long each step of putting a chunk into the scene takes: the ground, then
+ * each part of each batch as the streaming queue runs it. The materials are
+ * plain ones, because what is measured is the copy into the batch and not what
+ * the batch is drawn with. The plants are left out: a plant is a copy of one of
+ * a handful of small models, and the dearest step is a generated tower.
+ */
+function uploadSteps(payload: ChunkPayload, material: Material): number[] {
+  const meshes: BatchedMesh[] = [];
+  const steps: (() => void)[] = [
+    () => {
+      groundGeometry(payload.ground).dispose();
+    },
+  ];
+  const batches = [
+    ...payload.roads.map((tier) => tier.parts.map((geometry) => ({ geometry }))),
+    payload.outlines,
+    payload.facades,
+    payload.blocks,
+  ];
+  for (const parts of batches) {
+    if (parts.length === 0) continue;
+    const fill = fillOfPacked(parts, material);
+    meshes.push(fill.mesh);
+    steps.push(...fill.steps);
+  }
+  const times = steps.map((step) => {
+    const started = performance.now();
+    step();
+    return performance.now() - started;
+  });
+  for (const mesh of meshes) mesh.dispose();
+  return times;
+}
+
   it('plants a chunk within its budget', () => {
     const times = measuredWorlds().slice(0, HEAVY_WORLDS).map((world) => {
       const graph = graphOf(world);
@@ -229,17 +292,7 @@ describe('performance budgets', () => {
 
   it('builds the buildings of a chunk of the core within its budget', () => {
     const times = measuredWorlds().slice(0, HEAVY_WORLDS).map((world) => {
-      const graph = graphOf(world);
-      const parcels = parcelsOf(world);
-      const buildings = buildBuildings(world, parcels, graph);
-      const source = new ChunkSource(world, {
-        graph,
-        footprint: footprintOf(world),
-        parcels,
-        buildings,
-        carve: buildCarve(world.terrain, world.roads),
-        vegetation: new Vegetation(world.seed, parcels, buildings),
-      });
+      const source = chunkSourceOf(world);
       const lookup = buildingLookup(world, source.layers);
       // The chunk on the core, which is where the towers stand and so where a
       // chunk costs the most to build.
@@ -248,12 +301,35 @@ describe('performance budgets', () => {
       return bestOf(2, () => {
         for (const one of buildChunkBuildings(chunk, lookup)) {
           one.shell.dispose();
-          one.hull.dispose();
+          one.hull?.dispose();
         }
       });
     });
     const worst = Math.max(...times);
 
     expect(worst, `${worst.toFixed(0)} ms worst`).toBeLessThan(BUDGET_MS.chunkBuildings);
+  });
+
+  it('puts a chunk of the core into the scene a piece at a time, inside the frame', () => {
+    const material = new MeshBasicMaterial();
+    const times = measuredWorlds().slice(0, HEAVY_WORLDS).map((world) => {
+      const source = chunkSourceOf(world);
+      const lookups = chunkLookups(world, source.layers);
+      const at = chunkAt(world.core.x, world.core.y);
+      const chunk = source.chunk(at.cx, at.cy);
+      // Building the payload is the worker's work and is not timed here; the
+      // frame is charged only for the pieces of the upload.
+      //
+      // Each piece is scored on its fastest run, as `bestOf` scores a whole
+      // measurement: an upload allocates megabytes, so a collection lands in
+      // one piece of one run and would otherwise be read as its cost.
+      const runs = [0, 1, 2].map(() => uploadSteps(buildChunkPayload(chunk, lookups, 'near'), material));
+      const first = runs[0] as number[];
+      return Math.max(...first.map((_, i) => Math.min(...runs.map((run) => run[i] as number))));
+    });
+    material.dispose();
+    const worst = Math.max(...times);
+
+    expect(worst, `${worst.toFixed(2)} ms worst piece`).toBeLessThan(BUDGET_MS.chunkUpload);
   });
 });

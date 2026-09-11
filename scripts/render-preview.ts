@@ -11,7 +11,6 @@
  *   --heading        which way the player faces, in degrees.
  *   --speed          how fast the player moves, in metres per second.
  *   --width,--height the size of the picture.
- *   --radius         chunks each way of the player to build.
  *   --night          how far into the night it is, 0 by day and 1 at midnight.
  *
  * The browser comes from Playwright. A cloud session already has one; on a
@@ -76,7 +75,6 @@ const request: PreviewRequest = {
   speed: num('speed', 0),
   width: num('width', 960),
   height: num('height', 540),
-  chunkRadius: num('radius', 2),
   night: num('night', 0),
 };
 
