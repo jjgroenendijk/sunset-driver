@@ -63,6 +63,7 @@ A wall-clock measurement only belongs in `test/budget.test.ts`. Vitest runs that
 ## Rendering
 
 - Chained TSL expressions do not satisfy `tsc`, so `src/render/tsl.ts` is the one door onto `three/tsl` (spec Appendix A). Add the helper you need there and import `three/tsl` nowhere else.
+- three.js 0.186 sends `GPUTextureViewDescriptor.swizzle` as a string, and a browser that has made it a dictionary throws on every `createView`, so nothing is ever drawn. `renderer.ts` drops the field where the browser refuses it. Delete that shim once three.js sends the dictionary.
 - `buildGroundAttributes` (`ground.ts`) asks the world which parcel and zone each vertex stands on, never the chunk it is building. That is what makes two chunks agree along the edge they share; reading the chunk's own parcel pieces would put a seam on every boundary. The zone and ground-cover colours live there too; nothing else should carry them.
 
 ## Player and interface
