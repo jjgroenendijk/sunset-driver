@@ -106,6 +106,11 @@ export class SkyLighting {
     this.sun.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
     this.sun.shadow.bias = SHADOW_BIAS;
     this.sun.shadow.normalBias = SHADOW_NORMAL_BIAS;
+    // The cascades copy this when they are built. Left on, a shadow map is
+    // drawn again for every camera the frame renders with, and the water's
+    // mirror is a second camera: the same map, fitted to the same view, drawn
+    // twice. `drawShadowOnce` asks for it once a frame instead.
+    this.sun.shadow.autoUpdate = false;
     this.cascades = new CSMShadowNode(this.sun, {
       cascades: SHADOW_CASCADES,
       maxFar: SHADOW_DISTANCE,
@@ -135,6 +140,17 @@ export class SkyLighting {
     this.fill.intensity = light.fillIntensity;
     this.fog.color.copy(light.haze);
     this.background.copy(light.haze);
+  }
+
+  /**
+   * Ask for the sun's shadow maps for the frame about to be drawn. The first
+   * render of the frame draws them and every later one reuses them: the
+   * cascades are fitted to the player's camera whichever camera asks. A sun
+   * with no strength throws no shadow, so at night the maps are not drawn.
+   */
+  drawShadowOnce(): void {
+    if (this.sun.intensity <= 0) return;
+    for (const light of this.cascades.lights) if (light.shadow !== undefined) light.shadow.needsUpdate = true;
   }
 
   /** Carry the dome with the player, so it is always the far side of every chunk. */
