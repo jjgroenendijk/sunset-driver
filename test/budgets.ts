@@ -80,6 +80,15 @@ export const BUDGET_MS = {
    * the footprint and the graph rather than building them itself.
    */
   parcels: 900,
+
+  /**
+   * `buildBuildings` over a whole map: every building parcel cut into lots
+   * along its frontage (spec section 10.3). Offline work like
+   * {@link BUDGET_MS.parcels}, and it is given the parcels and the graph rather
+   * than building them itself. It reads polygons but never cuts any, so it
+   * costs a fraction of the parcels it stands on.
+   */
+  buildings: 250,
 } as const;
 
 /** Budgets small enough that milliseconds would round them away. */
