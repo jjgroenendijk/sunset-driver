@@ -8,7 +8,7 @@
  *
  * The scene reads the world description and never mutates it.
  */
-import { Color, DirectionalLight, Fog, HemisphereLight, Mesh, Scene, type BufferGeometry } from 'three';
+import { Color, DirectionalLight, Fog, HemisphereLight, Mesh, Scene, Vector3, type BufferGeometry } from 'three';
 import type { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { CharacterAppearance } from '../sim/character.ts';
 import { buildLayers, chunkAt, ChunkSource, CHUNK_SIZE, type WorldLayers } from '../world/chunks.ts';
@@ -18,6 +18,7 @@ import { CharacterModel } from './character.ts';
 import { buildGroundAttributes, groundGeometry, groundLookup, type GroundLookup } from './ground.ts';
 import { createGroundMaterial } from './ground-material.ts';
 import { RoadScenery, type RoadTile } from './roads.ts';
+import { createWaterSurface, type WaterSurface } from './water-surface.ts';
 
 /** Chunks each way of the player that carry ground. One chunk is 250 m. */
 const CHUNK_RADIUS = 2;
@@ -31,6 +32,15 @@ const BUILDS_PER_UPDATE = 1;
 
 /** Colour of the sky and of the haze the far chunks fade into. */
 const SKY = 0x9ab0c0;
+
+/**
+ * The one sun of the scene: where it stands, and the colour it burns. The water
+ * takes its highlight from the same two, so the glare on the sea stands where
+ * the light on the ground says it should. The day and night cycle of spec
+ * section 10.5 is issue #21 and owns them after that.
+ */
+const SUN_COLOUR = 0xffe2bc;
+const SUN_PLACE = new Vector3(120, 200, 60);
 
 /** Metres at which the haze starts, and at which it is complete. */
 const FOG_NEAR = CHUNK_RADIUS * CHUNK_SIZE * 0.45;
@@ -56,6 +66,7 @@ export class WorldScene {
   private readonly tiles = new Map<string, ChunkTile>();
   private readonly ribbons: RoadRibbons;
   private readonly scenery = new RoadScenery();
+  private readonly water: WaterSurface;
   /** Draw calls the dearest chunk built so far costs, ground and roads together. */
   private peakDrawCalls = 0;
 
@@ -66,13 +77,19 @@ export class WorldScene {
     this.material = createGroundMaterial(world.water.seaLevel);
     this.ribbons = new RoadRibbons(world.terrain, world.roads);
 
+    // The sea, the straits, the river and the harbour are one surface at sea
+    // level (spec section 7.2), laid over the whole map rather than cut per
+    // chunk: its reflection is a second pass over the scene, and one is enough.
+    this.water = createWaterSurface(world, { direction: SUN_PLACE, colour: SUN_COLOUR });
+    this.scene.add(this.water.object);
+
     this.scene.background = new Color(SKY);
     // The ground stops at the last chunk built. The haze is what stands there
     // until the draw distance of spec section 9.2 does.
     this.scene.fog = new Fog(SKY, FOG_NEAR, FOG_FAR);
 
-    const sun = new DirectionalLight(0xffe2bc, 2.4);
-    sun.position.set(120, 200, 60);
+    const sun = new DirectionalLight(SUN_COLOUR, 2.4);
+    sun.position.copy(SUN_PLACE);
     this.scene.add(sun);
     this.scene.add(new HemisphereLight(0xc6dcf2, 0x3b342a, 1));
 
@@ -123,6 +140,8 @@ export class WorldScene {
   /** Release every chunk and the materials they share. */
   dispose(): void {
     for (const tile of [...this.tiles.values()]) this.drop(tile);
+    this.scene.remove(this.water.object);
+    this.water.dispose();
     this.material.dispose();
     this.scenery.dispose();
     this.character.dispose();
