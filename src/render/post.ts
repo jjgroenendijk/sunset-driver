@@ -1,0 +1,246 @@
+/**
+ * The post chain of spec section 10.6.
+ *
+ * Deliberately minimal: the game's look comes from geometry, lighting and
+ * materials, and this adds three things over them.
+ *
+ * - Bloom, so neon, lit windows and headlights spill light the way a camera
+ *   sees them.
+ * - SMAA, so a kerb seen from 60 m up is a line rather than a staircase.
+ * - The colour grade of `grade.ts`, as a lookup table generated at runtime and
+ *   rebuilt as the day turns.
+ *
+ * The order they run in is the whole of the design. The scene is drawn into a
+ * texture in real light, where the sun is thousands of times the strength of a
+ * street lamp; bloom reads that frame, because what glows is decided in real
+ * light and not in film. Tone mapping then brings the frame down to the 0..1 a
+ * display can show, and only then is it graded: a lookup table has nowhere to
+ * put a colour brighter than white. SMAA comes after the grade and before the
+ * encode, because it wants linear colour and the grade may sharpen an edge it
+ * has to find.
+ *
+ * `renderer.ts` owns the exposure, so the frame is multiplied by it here before
+ * anything reads it and the tone mapping is then asked for none. That is what
+ * makes {@link BLOOM_THRESHOLD} a number about the frame the player sees rather
+ * than about the sky's absolute brightness.
+ *
+ * `PostQuality` is the first of the quality tiers of spec section 9.2: render
+ * scale, and a switch for each effect. Nothing steps them down automatically
+ * yet; this is the surface that system is given.
+ */
+import { DataTexture, DataUtils, HalfFloatType, LinearFilter, NoToneMapping, RGBAFormat } from 'three';
+import { RenderPipeline, type WebGPURenderer } from 'three/webgpu';
+import type { Camera, Scene } from 'three';
+import { START_TICK } from '../sim/simulation.ts';
+import { daylightAt } from './daylight.ts';
+import {
+  gradeAt,
+  gradeStep,
+  writeLut,
+  LUT_GAMMA,
+  LUT_HEIGHT,
+  LUT_LENGTH,
+  LUT_SIZE,
+  LUT_WIDTH,
+} from './grade.ts';
+import { setRenderScale } from './renderer.ts';
+import {
+  bloom,
+  float,
+  mix,
+  pass,
+  renderOutput,
+  smaa,
+  texture,
+  toneMapping,
+  toneMappingExposure,
+  vec2,
+  vec4,
+  type TslNode,
+} from './tsl.ts';
+
+/**
+ * How much light is spread, how far it reaches as a fraction of the screen, and
+ * how bright a thing has to be before it spreads any. The threshold is measured
+ * on the exposed frame, so 1 is a surface that would burn out on its own: a
+ * little under it catches the lit windows and the lamp lenses and leaves the
+ * daylit street alone.
+ */
+const BLOOM_STRENGTH = 0.45;
+const BLOOM_RADIUS = 0.6;
+const BLOOM_THRESHOLD = 0.8;
+
+/** What the frame may be drawn at, and what the tier system may step it to. */
+export interface PostQuality {
+  /**
+   * Fraction of the display's pixels the frame is drawn at (spec section 9.2).
+   * Below 1 the whole frame, post chain included, costs that share of what it
+   * did, and the browser scales the result up to the canvas.
+   */
+  renderScale: number;
+  bloom: boolean;
+  smaa: boolean;
+  grade: boolean;
+}
+
+/** Everything on, at the display's own resolution. */
+export const FULL_QUALITY: PostQuality = { renderScale: 1, bloom: true, smaa: true, grade: true };
+
+/** The frame, drawn through the effects of spec section 10.6. */
+export class PostChain {
+  private readonly renderer: WebGPURenderer;
+  private readonly pipeline: RenderPipeline;
+  /** The scene drawn into a texture. Built once: it is what every effect reads. */
+  private readonly scenePass: TslNode;
+  private readonly colour: TslNode;
+  /** The colour grade, as a cube of colours the frame is looked up in. */
+  private readonly lut: DataTexture;
+  /** The cube in linear light, before it is packed into the texture's half floats. */
+  private readonly graded = new Float32Array(LUT_LENGTH);
+  /** The nodes of the chain as it stands, so a change of quality releases them. */
+  private effects: TslNode[] = [];
+  /** The SMAA node, which holds two tables that arrive a turn of the loop late. */
+  private antialias: TslNode | undefined;
+  private settings: PostQuality;
+  /** Which rebuild of the grade the table holds. */
+  private step = -1;
+
+  constructor(renderer: WebGPURenderer, scene: Scene, camera: Camera, quality: PostQuality = FULL_QUALITY) {
+    this.renderer = renderer;
+    this.settings = { ...quality };
+    this.pipeline = new RenderPipeline(renderer);
+    // The chain tone maps and encodes the frame itself, at the point in the
+    // order the grade and SMAA need. Left on, the pipeline would do both again
+    // after everything here had run.
+    this.pipeline.outputColorTransform = false;
+
+    this.scenePass = pass(scene, camera);
+    this.colour = vec4(this.scenePass.getTextureNode().rgb.mul(toneMappingExposure), 1);
+
+    this.lut = new DataTexture(new Uint16Array(LUT_LENGTH), LUT_WIDTH, LUT_HEIGHT, RGBAFormat, HalfFloatType);
+    // The table is read between its entries rather than at them, and half
+    // floats are what keeps a night sky smooth: eight bits of linear light
+    // band visibly once the frame is encoded for the display.
+    this.lut.minFilter = LinearFilter;
+    this.lut.magFilter = LinearFilter;
+    this.lut.generateMipmaps = false;
+
+    // A session starts at 08:00, as the scene does, so the first frame is graded.
+    this.time = START_TICK;
+    this.apply();
+  }
+
+  /** Grade the frame as the light stands at a tick (spec sections 10.5, 10.6). */
+  set time(tick: number) {
+    const step = gradeStep(tick);
+    if (step === this.step) return;
+    this.step = step;
+    writeLut(gradeAt(daylightAt(tick)), this.graded);
+    const texels = this.lut.image.data as Uint16Array;
+    for (let i = 0; i < LUT_LENGTH; i++) texels[i] = DataUtils.toHalfFloat(this.graded[i] ?? 0);
+    this.lut.needsUpdate = true;
+  }
+
+  /** What the frame is drawn at. Setting it rebuilds the chain (spec section 9.2). */
+  get quality(): PostQuality {
+    return { ...this.settings };
+  }
+
+  set quality(quality: PostQuality) {
+    this.settings = { ...quality };
+    this.apply();
+  }
+
+  /**
+   * Wait for the tables SMAA is built on.
+   *
+   * `SMAANode` decodes two of them from data URLs, and an image given a source
+   * that way arrives a turn of the event loop later however small it is. A
+   * frame drawn before they land is antialiased against nothing, so anything
+   * that wants its first frame to be its best waits here first.
+   */
+  async ready(): Promise<void> {
+    const node = this.antialias;
+    if (node === undefined) return;
+    for (const table of [node._areaTexture, node._searchTexture]) {
+      const image = table.image as HTMLImageElement;
+      if (!image.complete) await image.decode();
+      table.needsUpdate = true;
+    }
+  }
+
+  /** Draw the frame. This replaces `renderer.render`, which draws no effects. */
+  render(): void {
+    this.pipeline.render();
+  }
+
+  dispose(): void {
+    this.release();
+    this.scenePass.dispose();
+    this.pipeline.dispose();
+    this.lut.dispose();
+  }
+
+  /** Build the chain the settings ask for, and hand the renderer its scale. */
+  private apply(): void {
+    setRenderScale(this.renderer, this.settings.renderScale);
+    this.release();
+
+    let colour = this.colour;
+    if (this.settings.bloom) {
+      const glow = bloom(colour, BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
+      this.effects.push(glow);
+      colour = vec4(colour.rgb.add(glow.rgb), 1);
+    }
+    // The exposure is already in the frame, so the mapping is asked for none.
+    colour = toneMapping(this.renderer.toneMapping, 1, colour);
+    if (this.settings.grade) colour = this.lookUp(colour);
+    if (this.settings.smaa) {
+      const edges = smaa(colour);
+      this.effects.push(edges);
+      this.antialias = edges;
+      colour = edges;
+    }
+
+    // The tone mapping above is the frame's; this is the encode the display
+    // asks for, and nothing else.
+    this.pipeline.outputNode = renderOutput(colour, NoToneMapping);
+    this.pipeline.needsUpdate = true;
+  }
+
+  /**
+   * Look every colour of the frame up in the grade's table.
+   *
+   * The frame is light and the table is display values, so the colour is
+   * encoded on the way in and the answer decoded on the way out.
+   *
+   * Red and green are read across one square of the strip, and the sampler
+   * blends between the entries for us. Blue picks the square, and the two
+   * nearest squares are blended here: that is the one axis of the cube a flat
+   * texture cannot interpolate by itself. Half a texel of inset keeps each
+   * square's reading inside it, so no colour ever borrows from the slice next
+   * to it.
+   */
+  private lookUp(colour: TslNode): TslNode {
+    const last = float(LUT_SIZE - 1);
+    const rgb = colour.rgb.clamp(0, 1).pow(1 / LUT_GAMMA);
+    const across = rgb.r.mul(last).add(0.5);
+    const down = rgb.g.mul(last).add(0.5).div(LUT_HEIGHT);
+    const blue = rgb.b.mul(last);
+    const low = blue.floor();
+    const high = low.add(1).min(last);
+    const near = texture(this.lut, vec2(low.mul(LUT_SIZE).add(across).div(LUT_WIDTH), down));
+    const far = texture(this.lut, vec2(high.mul(LUT_SIZE).add(across).div(LUT_WIDTH), down));
+    // `mix` as a free function, never `near.rgb.mix(far.rgb, t)`: chained, the
+    // receiver is the factor and not the first colour, so that reads as a
+    // blend and compiles to `mix(far, t, near)`.
+    return vec4(mix(near.rgb, far.rgb, blue.sub(low)).pow(LUT_GAMMA), colour.a);
+  }
+
+  /** Release the effects of the chain as it stands, with the targets they hold. */
+  private release(): void {
+    for (const effect of this.effects) effect.dispose();
+    this.effects = [];
+    this.antialias = undefined;
+  }
+}

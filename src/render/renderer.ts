@@ -1,6 +1,7 @@
 import { ACESFilmicToneMapping } from 'three';
 import { ClusteredLighting } from 'three/examples/jsm/lighting/ClusteredLighting.js';
 import { WebGPURenderer } from 'three/webgpu';
+import { clamp } from '../core/math.ts';
 
 /**
  * How much light reaches the film. The sky of `sky.ts` is the Preetham model,
@@ -28,6 +29,31 @@ function configure(renderer: WebGPURenderer): void {
   // the sun's cascades are built and never drawn, and the city is flat.
   renderer.shadowMap.enabled = true;
   renderer.lighting = new ClusteredLighting();
+}
+
+/**
+ * The lowest the quality tiers may take the render scale (spec section 9.2).
+ * Half the pixels each way is a quarter of the frame's cost, and it is as far
+ * down as a game read at a glance from 60 m can go and still show a kerb.
+ */
+export const MIN_RENDER_SCALE = 0.5;
+
+/**
+ * The pixel ratio each renderer was made at, before the render scale. A
+ * renderer is told its ratio rather than asked for it, because asking would
+ * compound: every step down would scale the step before it.
+ */
+const basePixelRatio = new WeakMap<WebGPURenderer, number>();
+
+/**
+ * Draw the frame at a fraction of the display's pixels (spec section 9.2).
+ * This is the first quality-tier knob: everything the frame costs, the post
+ * chain included, falls with the square of it, and the browser scales the
+ * canvas back up.
+ */
+export function setRenderScale(renderer: WebGPURenderer, scale: number): void {
+  const base = basePixelRatio.get(renderer) ?? 1;
+  renderer.setPixelRatio(base * clamp(scale, MIN_RENDER_SCALE, 1));
 }
 
 export type WebGpuProbe = { ok: true } | { ok: false; reason: string };
@@ -82,10 +108,13 @@ function allowStringSwizzle(): void {
 
 export async function createRenderer(canvas: HTMLCanvasElement): Promise<WebGPURenderer> {
   allowStringSwizzle();
+  // No multisampling: SMAA in the post chain is what takes the edges down
+  // (spec section 10.6), and paying for both would be paying twice.
   const renderer = new WebGPURenderer({ canvas, antialias: false, forceWebGL: false });
   configure(renderer);
   await renderer.init();
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  basePixelRatio.set(renderer, Math.min(window.devicePixelRatio, 2));
+  setRenderScale(renderer, 1);
   renderer.setSize(window.innerWidth, window.innerHeight, false);
   return renderer;
 }
@@ -104,7 +133,8 @@ export async function createOffscreenRenderer(width: number, height: number): Pr
   const renderer = new WebGPURenderer({ antialias: false, forceWebGL: false });
   configure(renderer);
   await renderer.init();
-  renderer.setPixelRatio(1);
+  basePixelRatio.set(renderer, 1);
+  setRenderScale(renderer, 1);
   renderer.setSize(width, height, false);
   return renderer;
 }
