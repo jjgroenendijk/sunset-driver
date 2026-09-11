@@ -60,6 +60,11 @@ A wall-clock measurement only belongs in `test/budget.test.ts`. Vitest runs that
 - Look at the image before judging a layout change: `node scripts/world-preview.ts <seed> out.png`. It draws one colour per tier — highways black, arterials red, streets blue, alleys green, dirt roads tan — with bridge decks orange, bores through the ground cyan and the interchanges of the highways lime, and strokes the field's major direction, dark where the field is decided and pale where influences cancel. Corridors are outlined too: the ground under a deck in amber with its pillars as dark dots, the tram's lane and route in magenta, its stops pink and its level crossings white. Beaches show their waterline in pale blue and their dune line in sand, with a resort's boardwalk line and car parks in violet and its pier in brown. The footprint of the roads is filled in dark grey under all of it, and each parcel in the colour of its owner. The relief is shaded off the carved ground, not the natural one, and the line it prints says how much of the grid the roads moved and what the deepest cut and the highest fill came to.
 - `test/seed-sweep.test.ts` runs 8 seeds, or 200 under `SWEEP_SEEDS=200`. The quick count is what holds `npm test` under its 15 s, since a seed generates a whole world.
 
+## Rendering
+
+- Chained TSL expressions do not satisfy `tsc`, so `src/render/tsl.ts` is the one door onto `three/tsl` (spec Appendix A). Add the helper you need there and import `three/tsl` nowhere else.
+- `buildGroundAttributes` (`ground.ts`) asks the world which parcel and zone each vertex stands on, never the chunk it is building. That is what makes two chunks agree along the edge they share; reading the chunk's own parcel pieces would put a seam on every boundary. The zone and ground-cover colours live there too; nothing else should carry them.
+
 ## Player and interface
 
 - The player's look is indices into the tables in `src/sim/character.ts`, so a save carries numbers, not colours. `normaliseAppearance` folds an out-of-range index back onto a real option, and `resolveAppearance` hands the renderer the entries. `src/render/character.ts` builds the model from them as boxes; the parts a top-down camera sees carry the chosen colours.
