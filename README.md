@@ -21,7 +21,7 @@ The game watches its own frame rate and steps the quality down when it cannot ho
 | Sprint | Shift |
 | Handbrake, jump | Space |
 | Horn | H |
-| Interact, enter vehicle | E |
+| Enter or leave vehicle, interact | E |
 | Fire | F |
 | Vehicle picker | V |
 

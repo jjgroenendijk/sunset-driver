@@ -1,6 +1,13 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { FixedStepClock, TICK_MS, TICKS_PER_DAY, gameTime } from '../src/sim/clock.ts';
 import { EMPTY_INPUT, type InputFrame } from '../src/sim/input.ts';
+import {
+  createPlayerState,
+  heal,
+  HEAL_BY_SOURCE,
+  hurt,
+  MAX_HEALTH,
+} from '../src/sim/on-foot.ts';
 import { initPhysics, SimPhysics, type Ground } from '../src/sim/physics.ts';
 import { cloneSimState, createSimState, stepSim, type SimState } from '../src/sim/simulation.ts';
 import { headingOf, rideHeight, SALOON } from '../src/sim/vehicle.ts';
@@ -64,6 +71,32 @@ function replay(seed: number, inputs: readonly InputFrame[]): SimState {
   return state;
 }
 
+/**
+ * The same, with the player out of the car before the stream starts, so the
+ * sweep covers the character controller of spec section 11.5 rather than
+ * leaving it to the presses of interact the stream happens to make. It answers
+ * with the metres walked on foot as well, so a run that never left the car
+ * cannot pass for one that did.
+ */
+function walkReplay(seed: number, inputs: readonly InputFrame[]): { state: SimState; walked: number } {
+  const state = createSimState(seed);
+  const physics = new SimPhysics(hills(), state);
+  physics.spawn(state, 0, 0, 0);
+  for (let i = 0; i < 60; i++) stepSim(state, EMPTY_INPUT, physics);
+  stepSim(state, { ...EMPTY_INPUT, interact: true }, physics);
+  let walked = 0;
+  let x = state.player.x;
+  let y = state.player.y;
+  for (const frame of inputs) {
+    stepSim(state, frame, physics);
+    if (!state.player.driving) walked += Math.hypot(state.player.x - x, state.player.y - y);
+    x = state.player.x;
+    y = state.player.y;
+  }
+  physics.dispose();
+  return { state, walked };
+}
+
 /** Drive until the car passes a speed, and answer how far it got. Gives up after a minute. */
 function accelerateTo(session: Session, speed: number): boolean {
   for (let i = 0; i < 3600 && session.state.vehicle.speed < speed; i++) drive(session, 1, { throttle: 1 });
@@ -101,6 +134,17 @@ describe(`simulation sweep (${SEED_COUNT} seeds)`, () => {
     for (const seed of seeds) {
       const inputs = inputStream(seed, TICKS);
       expect(stableJson(replay(seed, inputs))).toBe(stableJson(replay(seed, inputs)));
+    }
+  });
+
+  it('replays a walk to identical state, with the character in the loop', () => {
+    for (const seed of seeds) {
+      const inputs = inputStream(seed, TICKS);
+      const run = walkReplay(seed, inputs);
+      expect(stableJson(run.state)).toBe(stableJson(walkReplay(seed, inputs).state));
+      // The player did walk, so what was replayed is a character in the loop
+      // and not someone who got straight back into the car.
+      expect(run.walked, `seed ${seed}`).toBeGreaterThan(2);
     }
   });
 
@@ -254,6 +298,169 @@ describe('driving', () => {
     // The car has left the tiles it started on, and it is still on the ground.
     expect(session.physics.groundTiles).toBe(tiles);
     expect(session.state.vehicle.wheels.some((w) => w.contact)).toBe(true);
+    session.physics.dispose();
+  });
+});
+
+describe('on foot', () => {
+  beforeAll(async () => {
+    await initPhysics();
+  });
+
+  /** Press and release a key, so the rising edge the controller reads happens once. */
+  function press(session: Session, key: 'interact' | 'jump'): void {
+    drive(session, 1, { [key]: true });
+    drive(session, 1);
+  }
+
+  /** Start a session, step out of the car and let the player settle on their feet. */
+  function onFoot(ground: Ground, seed = 1): Session {
+    const session = start(ground, seed);
+    press(session, 'interact');
+    drive(session, 30);
+    return session;
+  }
+
+  it('steps out of the car beside it, on the ground', () => {
+    const session = onFoot(hills());
+    const p = session.state.player;
+    const v = session.state.vehicle;
+    expect(p.driving).toBe(false);
+    expect(Math.hypot(p.x - v.x, p.y - v.z)).toBeLessThan(3);
+    expect(p.grounded).toBe(true);
+    expect(Math.abs(p.height - hills().heightAt(p.x, p.y))).toBeLessThan(0.4);
+    session.physics.dispose();
+  });
+
+  it('leaves the car where it was parked while the player walks away', () => {
+    const session = onFoot(hills());
+    const parked = { ...session.state.vehicle };
+    drive(session, 240, { throttle: 1 });
+    const v = session.state.vehicle;
+    expect(Math.hypot(v.x - parked.x, v.z - parked.z)).toBeLessThan(0.001);
+    expect(Math.hypot(session.state.player.x - v.x, session.state.player.y - v.z)).toBeGreaterThan(5);
+    session.physics.dispose();
+  });
+
+  it('walks back to the car and gets in again', () => {
+    const session = onFoot(hills());
+    // Out of reach of the door: the key does nothing, however often it is pressed.
+    drive(session, 240, { throttle: 1 });
+    press(session, 'interact');
+    expect(session.state.player.driving).toBe(false);
+
+    // Back toward the car, which stands the other way.
+    drive(session, 240, { throttle: -1 });
+    press(session, 'interact');
+    expect(session.state.player.driving).toBe(true);
+    // The car is driveable again: it is a body, and the throttle moves it.
+    const from = session.state.vehicle.x;
+    drive(session, 120, { throttle: 1 });
+    expect(Math.abs(session.state.vehicle.x - from)).toBeGreaterThan(1);
+    session.physics.dispose();
+  });
+
+  it('does not open the door of a car at speed', () => {
+    const session = start(ramp('asphalt', 0));
+    expect(accelerateTo(session, 12)).toBe(true);
+    press(session, 'interact');
+    expect(session.state.player.driving).toBe(true);
+    session.physics.dispose();
+  });
+
+  it('walks up a hill', () => {
+    // The ground climbs with `x`, and the steering axis walks that way.
+    const session = onFoot(ramp('asphalt', 0.3));
+    const from = { x: session.state.player.x, height: session.state.player.height };
+    drive(session, 180, { steer: 1 });
+    const p = session.state.player;
+    expect(p.x - from.x).toBeGreaterThan(2);
+    expect(p.height - from.height).toBeGreaterThan(0.5);
+    expect(p.grounded).toBe(true);
+    session.physics.dispose();
+  });
+
+  it('sprints further than it walks in the same time', () => {
+    const distances = [false, true].map((sprint) => {
+      const session = onFoot(ramp('asphalt', 0));
+      const from = session.state.player.y;
+      drive(session, 180, { throttle: 1, sprint });
+      const walked = Math.abs(session.state.player.y - from);
+      session.physics.dispose();
+      return walked;
+    });
+    const [walking, sprinting] = distances as [number, number];
+    expect(walking).toBeGreaterThan(5);
+    expect(sprinting).toBeGreaterThan(walking + 2);
+  });
+
+  it('jumps off the ground and lands back on it', () => {
+    const session = onFoot(ramp('asphalt', 0));
+    const ground = session.state.player.height;
+    drive(session, 1, { jump: true });
+    let peak = 0;
+    for (let i = 0; i < 20; i++) {
+      drive(session, 1, { jump: true });
+      peak = Math.max(peak, session.state.player.height - ground);
+    }
+    expect(peak).toBeGreaterThan(0.4);
+    drive(session, 90);
+    expect(session.state.player.grounded).toBe(true);
+    expect(Math.abs(session.state.player.height - ground)).toBeLessThan(0.1);
+    session.physics.dispose();
+  });
+
+  it('faces the way it walks', () => {
+    const session = onFoot(ramp('asphalt', 0));
+    drive(session, 60, { throttle: 1 });
+    // Forward walks up the screen, which is toward -y on the map.
+    expect(Math.abs(session.state.player.heading + Math.PI / 2)).toBeLessThan
+      (0.01);
+    drive(session, 60, { steer: 1 });
+    expect(Math.abs(session.state.player.heading)).toBeLessThan(0.01);
+    session.physics.dispose();
+  });
+
+  it('holds the ground under the player as they walk away from the car', () => {
+    const session = onFoot(hills());
+    const tiles = session.physics.groundTiles;
+    drive(session, 900, { throttle: 1, sprint: true });
+    expect(session.physics.groundTiles).toBe(tiles);
+    expect(session.state.player.grounded).toBe(true);
+    session.physics.dispose();
+  });
+});
+
+describe('health', () => {
+  it('heals only from the sources of spec section 11.5', () => {
+    const player = createPlayerState();
+    expect(player.health).toBe(MAX_HEALTH);
+    hurt(player, 60);
+    expect(player.health).toBe(MAX_HEALTH - 60);
+    heal(player, 'pickup');
+    expect(player.health).toBe(MAX_HEALTH - 60 + HEAL_BY_SOURCE.pickup);
+    heal(player, 'rest');
+    expect(player.health).toBe(MAX_HEALTH);
+  });
+
+  it('never falls below nothing or rises above full', () => {
+    const player = createPlayerState();
+    hurt(player, 1000);
+    expect(player.health).toBe(0);
+    hurt(player, -50);
+    expect(player.health).toBe(0);
+    heal(player, 'food');
+    heal(player, 'food');
+    heal(player, 'food');
+    expect(player.health).toBe(MAX_HEALTH);
+  });
+
+  it('does not heal on its own over a day of ticks', async () => {
+    await initPhysics();
+    const session = start(hills());
+    hurt(session.state.player, 40);
+    drive(session, 600, { throttle: 1 });
+    expect(session.state.player.health).toBe(MAX_HEALTH - 40);
     session.physics.dispose();
   });
 });

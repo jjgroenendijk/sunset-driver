@@ -27,6 +27,10 @@ export function sweepSeeds(count: number): number[] {
  * A key is held for a fraction of a second at a time rather than changed every
  * tick. A stream that flickers every tick leaves a car sitting where it started,
  * and a sweep that drives nowhere checks nothing.
+ *
+ * The stream presses interact and jump now and then, so a sweep run on it has
+ * the character of spec section 11.5 in the loop: the player gets out, walks,
+ * and gets back in.
  */
 export function inputStream(seed: number, ticks: number): InputFrame[] {
   const frames: InputFrame[] = [];
@@ -44,6 +48,8 @@ export function inputStream(seed: number, ticks: number): InputFrame[] {
         steer: [-1, 0, 0, 1][(x >>> 12) & 3] as number,
         sprint: ((x >>> 16) & 1) === 1,
         handbrake: ((x >>> 20) & 15) === 0,
+        interact: ((x >>> 4) & 7) === 0,
+        jump: ((x >>> 2) & 3) === 0,
       };
     }
     frames.push(frame);

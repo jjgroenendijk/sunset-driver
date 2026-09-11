@@ -1,6 +1,7 @@
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
 import { gameTime, TICKS_PER_HOUR } from './clock.ts';
 import { type CharacterAppearance, DEFAULT_APPEARANCE, normaliseAppearance } from './character.ts';
+import { createPlayerState, type PlayerState } from './on-foot.ts';
 import type { SimPhysics } from './physics.ts';
 import { createVehicleState, DEFAULT_CLASS, specOf, type VehicleState } from './vehicle.ts';
 
@@ -16,12 +17,12 @@ export interface SimState {
    * replayed as the record it is.
    */
   vehicle: VehicleState;
-  player: {
-    x: number;
-    y: number;
-    heading: number;
-    speed: number;
-  };
+  /**
+   * The player themselves (spec sections 11.2, 11.5): where they stand, which
+   * way they face, whether they are driving or on foot, and their health. Plain
+   * numbers for the same reason the vehicle is.
+   */
+  player: PlayerState;
 }
 
 /** Tick at which a new session starts: 08:00 on day 0. */
@@ -37,7 +38,7 @@ export function createSimState(
     tick: startTick,
     character: normaliseAppearance(character),
     vehicle: createVehicleState(specOf(DEFAULT_CLASS)),
-    player: { x: 0, y: 0, heading: 0, speed: 0 },
+    player: createPlayerState(),
   };
 }
 

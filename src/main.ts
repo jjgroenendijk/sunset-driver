@@ -95,11 +95,13 @@ async function boot(): Promise<void> {
       const steps = clock.advance(elapsed);
       for (let i = 0; i < steps; i++) stepSim(session.state, keyboard.sample(), session.physics);
       const p = session.state.player;
-      // The player walks on the ground the roads left, not on the natural one.
-      const height = session.world.heightAt(p.x, p.y);
-      session.world.character.group.position.set(p.x, height, p.y);
+      // The player and the car are both drawn from the record the physics
+      // wrote. The record says how high the player's feet stand, so the model
+      // follows them over a kerb and through a jump (spec section 11.5), and
+      // the character is shown only while they are out of the car.
+      session.world.character.group.position.set(p.x, p.height, p.y);
       session.world.character.group.rotation.y = -p.heading;
-      // The car is drawn from the record the physics wrote, pose and wheels.
+      session.world.character.group.visible = !p.driving;
       session.world.vehicle.set(session.state.vehicle);
       // The light of the scene is a function of the tick, so the day runs at
       // the simulation's pace whatever the frame rate (spec section 10.5). The
@@ -107,7 +109,7 @@ async function boot(): Promise<void> {
       session.world.time = session.state.tick;
       session.post.time = session.state.tick;
       session.world.update(p.x, p.y);
-      camera.update(elapsed / 1000, { ...p, height });
+      camera.update(elapsed / 1000, p);
       // What the frame took is what decides the quality tier of spec section
       // 9.2. It is measured over the whole frame, drawing included, so it is
       // the frame before this one that is being judged.
