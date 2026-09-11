@@ -21,7 +21,7 @@ Beyond what the file names suggest:
 - `src/core` — pure; no DOM, no three.js renderer.
 - `src/sim` — plain serialisable state; no wall-clock, no frame delta.
 - `src/world` — must run headless in Node, since the sweeps import it. three.js math and generators are fine; the renderer, Rapier and the DOM are not. Produces a plain world description.
-- `src/render` — reads the world description, never mutates it.
+- `src/render` — reads the world description, never mutates it. A module that imports `three/webgpu` or `three/tsl` needs a GPU, so keep it out of the modules the tests import: `terrain.ts` builds geometry and is tested, `terrain-material.ts` builds the node material and is not.
 - `scripts/*.ts` — run with plain `node` (type stripping), not through Vite.
 - `scripts/hooks/` — Claude Code hooks wired from `.claude/settings.json`; fast, idempotent, exit 2 to report a problem. Anything repeated across sessions belongs in a hook or a `scripts/` entry rather than in prose here.
 
@@ -70,6 +70,9 @@ A wall-clock measurement only belongs in `test/budget.test.ts`. Vitest runs that
 - Relative imports carry explicit `.ts` extensions (`allowImportingTsExtensions` is on) so scripts and tests run under plain Node.
 - The lint script's TypeScript compiler API comes from the `tsapi` alias (TypeScript 5), because the TypeScript 7 the project builds with ships no JS API.
 - three.js 0.186 with `@types/three` 0.185. `TerrainGenerator`, `SkyscraperGenerator` and `SidewalkGenerator` live under `three/examples/jsm/generators/` and run headless in Node.
+- Every shader is a TSL node material (spec Appendix A). `src/render/tsl.ts` is the only module that imports `three/tsl` and the only one that says `any`: chained TSL maths does not typecheck, and this keeps that in one place. Add a helper there rather than importing around it.
+- three.js 0.186 sends `GPUTextureViewDescriptor.swizzle` as a string, and a browser that has made it a dictionary throws on every `createView`. `renderer.ts` drops the field where the browser refuses it; without that nothing is ever drawn. Delete the shim once three.js sends the dictionary.
+- A WebGPU canvas comes back blank from headless Chromium, through both a CDP screenshot and `toDataURL`. Rendering work is checked by driving the page and reading the scene, not by comparing pictures.
 - Conventional Commits, one atomic change per commit, feature branches from `main`, one PR per issue referencing that issue.
 - Never deploy with wrangler locally; `scripts/hooks/guard-bash.sh` blocks it.
 - Cloud sessions run `bash scripts/setup-cloud.sh` as the environment setup script. Its result is cached in a snapshot keyed on the text typed into the environment dialog, not on the script — after changing it, re-save the setup script field at claude.ai/code to force a rebuild.
