@@ -188,6 +188,9 @@ gets wrong without it.
     off its neighbour (spec section 1.2). Two lots of an attached zone touch along the wall between
     them and two of any other zone keep `LOT_CLEARANCE`, so the sweep asks an attached zone for no
     shared ground and every other one for daylight.
+  - `Lot.shared` says which of a lot's two side edges another lot of the row lies against, and a
+    lot the row dropped leaves its neighbour's edge bare. The renderer reads it to know where it
+    may reach the edge and where it has to keep a margin; see `docs/rendering.md`.
 - `buildCorridors(world, roads, graph)` (`corridors.ts`) lays the corridors of spec section 6.3 and
   the tram route of spec section 13.2. It is the last step of `generateWorld`, and the only place
   that builds the graph during generation. A corridor claims its ground at the moment it is laid: a
