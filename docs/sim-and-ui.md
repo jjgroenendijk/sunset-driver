@@ -34,6 +34,13 @@ are the design.
 - Look at the map before judging a change to it: `node scripts/map-preview.ts <seed> out.png`, and
   `--minimap` for the round window at the minimap's own scale. It needs a Chromium but no WebGPU
   device, because the map is a 2D canvas.
+- `src/ui/seed-preview.ts` draws the map of the seed on the title screen, through the same `MapArt`,
+  so the picture the player picks a seed from is the map they will play on. A build blocks the frame
+  loop for a second or two, so it happens when the player asks for it — the dice button, the Build
+  map button, or Enter in the seed box — and never on a key press in the box.
+  `MapDrawOptions.player` is null there: the preview is the map alone, with no arrow on it. The
+  world it built travels back in `TitleChoice.world`, and `main.ts` reuses it rather than
+  generating the same seed twice.
 - `src/ui/controls.ts` is the one list of key bindings. It is shown on the title screen and copied
   into the README; `Keyboard.sample` must stay in step with the rows that are part of the input
   frame, and `main.ts` listens for the rows after them itself.
