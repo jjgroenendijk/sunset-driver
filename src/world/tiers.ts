@@ -110,3 +110,19 @@ export function footprintHalfWidth(tier: RoadTier): number {
   const spec = TIERS[tier];
   return spec.width / 2 + spec.verge + spec.pavement;
 }
+
+/**
+ * True when a road of one tier may join another where the two meet. Spec
+ * section 6.2: a highway has junctions only at interchanges and no pedestrians,
+ * so only a highway or an arterial ramp joins one, and only there. Every other
+ * tier takes a junction anywhere along it.
+ *
+ * A minor road that meets a highway therefore does not meet it at all: it runs
+ * past, and where the two cross the road graph makes it an overpass. The
+ * tracer asks this before it ends a road on another one, and `connect.ts`
+ * before it turns a crossing into a junction.
+ */
+export function mayJoin(joiner: RoadTier, met: RoadTier, interchange: boolean): boolean {
+  if (met !== 'highway') return true;
+  return interchange && (joiner === 'highway' || joiner === 'arterial');
+}

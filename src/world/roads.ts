@@ -52,11 +52,12 @@ import { clamp, dist, directionDelta, lerp, wrapAngle } from '../core/math.ts';
 import type { Noise2D } from '../core/noise.ts';
 import { compareNumbers } from '../core/sort.ts';
 import { BeachGround, isResort } from './beaches.ts';
+import { connectCrossings, type CanRun } from './connect.ts';
 import { districtAt, layoutZones, zoneAt } from './districts.ts';
 import { Heightfield } from './heightfield.ts';
 import { coastNoise, islandAt } from './terrain.ts';
 import type { TensorField } from './tensor.ts';
-import { TIERS } from './tiers.ts';
+import { mayJoin, TIERS } from './tiers.ts';
 import type { Beach, Island, Point, RoadCurve, RoadTier, WorldSkeleton, Zone } from './types.ts';
 
 /** Metres a road needs above sea level; the waterline itself is not road-worthy ground. */
@@ -217,20 +218,6 @@ interface FillSeed {
   depth: number;
   /** True when the seed sits on its parent, so the road it grows is joined to the network from its first point. */
   onParent: boolean;
-}
-
-/**
- * True when a road of one tier may join another where the two meet. Spec
- * section 6.2: a highway has junctions only at interchanges and no pedestrians,
- * so only a highway or an arterial ramp joins one, and only there. Every other
- * tier takes a junction anywhere along it.
- *
- * A minor road that meets a highway therefore does not meet it at all: it runs
- * past, and where the two cross the road graph makes it an overpass.
- */
-function mayJoin(joiner: RoadTier, met: RoadTier, interchange: boolean): boolean {
-  if (met !== 'highway') return true;
-  return interchange && (joiner === 'highway' || joiner === 'arterial');
 }
 
 /** A point of the network already laid, and the island it stands on. */
@@ -437,7 +424,10 @@ class RoadTracer {
     // laying its own streets over the same ground.
     const boardwalks = this.world.beaches.map((beach) => this.traceBoardwalk(beach));
     this.fillMinor();
-    return { roads: this.curves, boardwalks };
+    // The trace only ever ends a road on a point of another one, so two roads
+    // that cross between their points have met nothing yet.
+    const connected = connectCrossings(this.curves, groundRule(this.hf, this.seaLevel));
+    return { roads: connected, boardwalks };
   }
 
   // ---------------------------------------------------------------- highways
@@ -1155,28 +1145,9 @@ class RoadTracer {
     return this.hf.sample(x, y) >= this.seaLevel + DRY_MARGIN;
   }
 
-  /**
-   * What the ground does under a straight span: whether it stays dry, how hard
-   * the span climbs, and how far the ground leaves the line the road drives.
-   * One walk answers all three, because every caller wants at least two of them.
-   */
+  /** What the ground does under a straight span. {@link spanProfile} is the rule. */
   private probe(ax: number, ay: number, bx: number, by: number): Profile {
-    const run = dist(ax, ay, bx, by);
-    const start = this.hf.sample(ax, ay);
-    const end = this.hf.sample(bx, by);
-    const steps = Math.max(1, Math.ceil(run / WET_SAMPLE));
-    let dry = this.isDry(ax, ay) && this.isDry(bx, by);
-    let above = 0;
-    let below = 0;
-    for (let i = 1; i < steps; i++) {
-      const t = i / steps;
-      const h = this.hf.sample(ax + (bx - ax) * t, ay + (by - ay) * t);
-      if (h < this.seaLevel + DRY_MARGIN) dry = false;
-      const line = start + (end - start) * t;
-      if (h - line > above) above = h - line;
-      if (line - h > below) below = line - h;
-    }
-    return { dry, grade: run > 0 ? Math.abs(end - start) / run : 0, above, below };
+    return spanProfile(this.hf, this.seaLevel, ax, ay, bx, by);
   }
 
   /**
@@ -1222,8 +1193,45 @@ class RoadTracer {
   }
 }
 
+/**
+ * What the ground does under a straight span: whether it stays dry, how hard the
+ * span climbs, and how far the ground leaves the line the road drives. One walk
+ * answers all three, because every caller wants at least two of them.
+ */
+export function spanProfile(hf: Heightfield, seaLevel: number, ax: number, ay: number, bx: number, by: number): Profile {
+  const run = dist(ax, ay, bx, by);
+  const start = hf.sample(ax, ay);
+  const end = hf.sample(bx, by);
+  const steps = Math.max(1, Math.ceil(run / WET_SAMPLE));
+  const dryAt = (x: number, y: number): boolean => hf.sample(x, y) >= seaLevel + DRY_MARGIN;
+  let dry = dryAt(ax, ay) && dryAt(bx, by);
+  let above = 0;
+  let below = 0;
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const h = hf.sample(ax + (bx - ax) * t, ay + (by - ay) * t);
+    if (h < seaLevel + DRY_MARGIN) dry = false;
+    const line = start + (end - start) * t;
+    if (h - line > above) above = h - line;
+    if (line - h > below) below = line - h;
+  }
+  return { dry, grade: run > 0 ? Math.abs(end - start) / run : 0, above, below };
+}
+
+/**
+ * The rule the connection pass asks the ground: may a road of this tier be
+ * driven straight from one place to another? It is the rule the tracer traces
+ * by, so a junction is only cut into a road where the trace would have laid one.
+ */
+export function groundRule(hf: Heightfield, seaLevel: number): CanRun {
+  return (a, b, tier) => {
+    const profile = spanProfile(hf, seaLevel, a.x, a.y, b.x, b.y);
+    return profile.dry && profile.grade <= TIERS[tier].maxGrade;
+  };
+}
+
 /** What the ground does under a straight span, from one walk along it. */
-interface Profile {
+export interface Profile {
   /** True when no part of the span stands over water. */
   dry: boolean;
   /** Rise over run between the two ends. */
