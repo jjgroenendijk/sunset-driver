@@ -162,6 +162,14 @@ export interface RoadCurve {
    * anywhere along it.
    */
   interchanges: number[];
+  /**
+   * Metres each point of the curve stands over the natural ground, where the
+   * road is carried over something (`overpass.ts`). A curve without one drives
+   * on the ground everywhere, which is nearly all of them. It is the one thing
+   * a curve says about its own height; `bed.ts` adds it to the ground it
+   * samples, and every raised segment is in `bridges`.
+   */
+  lift?: number[];
 }
 
 /** What a corridor carries (spec section 6.3). */

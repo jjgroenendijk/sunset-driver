@@ -2,7 +2,8 @@
  * The line each road drives: its bed (spec sections 6.1, 7.1).
  *
  * Between junctions a bed is the natural ground under the curve's own points,
- * straight between them. At a junction it is not: every road that meets there
+ * straight between them, plus whatever `RoadCurve.lift` carries the road over
+ * the ground by. At a junction it is not: every road that meets there
  * would otherwise keep its own grade up to the node, and the ground under the
  * junction would be creased where two beds meet, a step no flat surface can
  * be laid over. So a junction is one plane. It passes through the node at the
@@ -97,7 +98,9 @@ export class RoadBeds {
       const bed = new CurveBed(road.points.length);
       for (let i = 0; i < road.points.length; i++) {
         const p = road.points[i] as Point;
-        bed.heights[i] = hf.sample(p.x, p.y);
+        // A road carried over another one stands off the ground it was traced
+        // on; `overpass.ts` is the only thing that lifts one.
+        bed.heights[i] = hf.sample(p.x, p.y) + (road.lift?.[i] ?? 0);
       }
       this.curves[road.id] = bed;
       distances[road.id] = curveDistances(road.points);
