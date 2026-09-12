@@ -188,19 +188,70 @@ function promotions(runs: readonly ShoreSample[][], servable: readonly boolean[]
  */
 export function withBeachCulture(districts: readonly District[], beaches: readonly Beach[], zones: ZoneLayout): District[] {
   const spare = new Set<number>();
-  let best: Beach | undefined;
   for (const beach of beaches) {
-    if (!isResort(beach)) continue;
-    for (const id of beach.districts) spare.add(id);
-    const head = beach.shore[0];
-    if (head === undefined || zoneAt(zones, head.x, head.y) === 'core') continue;
-    if (best === undefined || beach.length > best.length) best = beach;
+    if (isResort(beach)) for (const id of beach.districts) spare.add(id);
   }
+  const best = resortsOutsideCore(beaches, zones)[0];
   const claim = new Set<number>(best?.districts ?? []);
   return districts.map((d) => {
     if (claim.has(d.id) || (spare.has(d.id) && d.culture === 'none')) return { ...d, culture: 'beach' as const };
     return d;
   });
+}
+
+/** The name spec section 8.3 gives the beach neighbourhood. */
+const BOARDWALK_NAME = 'The Boardwalk';
+
+/**
+ * Give the name "The Boardwalk" to a district a resort beach really runs
+ * through. The districts are named before the beaches are planned, because a
+ * beach reads the district sites, so the name can only be placed here.
+ *
+ * The longest resort outside the core is taken first, and inside it the
+ * district that holds the most of its waterline. A district that carries a
+ * fixed name — Chinatown, The Docks, Gull Island — keeps it, because that name
+ * belongs to a faction and to a place of its own; the beach takes another of
+ * its districts instead, and on a seed whose longest resort runs through
+ * nothing else, the next resort. The culture is handed out afterwards by
+ * {@link withBeachCulture}, so a district with no culture here is exactly one
+ * holding a name from its zone's pool.
+ */
+export function nameBoardwalk(districts: readonly District[], beaches: readonly Beach[], zones: ZoneLayout): District[] {
+  for (const beach of resortsOutsideCore(beaches, zones)) {
+    const held = mostOfShore(beach, districts, zones);
+    if (held === undefined) continue;
+    return districts.map((d) => (d.id === held ? { ...d, name: BOARDWALK_NAME } : d));
+  }
+  return [...districts];
+}
+
+/** The resort beaches that lie outside the core, longest first. */
+function resortsOutsideCore(beaches: readonly Beach[], zones: ZoneLayout): Beach[] {
+  const out = beaches.filter((beach) => {
+    const head = beach.shore[0];
+    return isResort(beach) && head !== undefined && zoneAt(zones, head.x, head.y) !== 'core';
+  });
+  out.sort((a, b) => b.length - a.length || a.id - b.id);
+  return out;
+}
+
+/**
+ * The district holding the most of one beach's waterline, among those that
+ * still carry a name from their zone's pool. Districts are numbered from zero
+ * in the order `generateDistricts` places them, so the tally is an array.
+ */
+function mostOfShore(beach: Beach, districts: readonly District[], zones: ZoneLayout): number | undefined {
+  const tally = new Array<number>(districts.length).fill(0);
+  for (const p of beach.shore) {
+    const at = districtAt(districts, zones, p.x, p.y).id;
+    tally[at] = (tally[at] as number) + 1;
+  }
+  let best: District | undefined;
+  for (const d of districts) {
+    if (d.culture !== 'none' || (tally[d.id] as number) === 0) continue;
+    if (best === undefined || (tally[d.id] as number) > (tally[best.id] as number)) best = d;
+  }
+  return best?.id;
 }
 
 /** True on a beach developed as a resort: it carries the boardwalk, the pier and the car parks. */

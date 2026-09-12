@@ -1,4 +1,4 @@
-import { planBeaches, withBeachCulture } from './beaches.ts';
+import { nameBoardwalk, planBeaches, withBeachCulture } from './beaches.ts';
 import { buildCorridors } from './corridors.ts';
 import { generateDistricts, layoutZones } from './districts.ts';
 import { buildRoadGraph } from './graph.ts';
@@ -20,17 +20,18 @@ export function generateWorld(seed: number): WorldDescription {
   const water = describeWater(seed, terrain, layout);
   const zones = layoutZones(size, layout.core, water);
   const sites = generateDistricts(seed, zones, terrain, water);
-  // The beaches are planned on the terrain alone, then hand the districts they
-  // run through the beach culture of spec section 8.3. They read the district
-  // sites only, so nothing feeds back into where they are.
+  // The beaches are planned on the terrain alone, then give the districts they
+  // run through the name and the beach culture of spec section 8.3. They read
+  // the district sites only, so nothing feeds back into where they are.
   const beaches = planBeaches(size, terrain, water, zones, sites);
+  const named = nameBoardwalk(sites, beaches, zones);
   const skeleton: WorldSkeleton = {
     seed,
     size,
     core: layout.core,
     terrain: terrain.toData(),
     water,
-    districts: withBeachCulture(sites, beaches, zones),
+    districts: withBeachCulture(named, beaches, zones),
     beaches,
   };
   const { roads, boardwalks } = traceRoads(skeleton, buildTensorField(skeleton));
