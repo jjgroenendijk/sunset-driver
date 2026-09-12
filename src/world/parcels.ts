@@ -9,9 +9,10 @@
  *
  * A piece the roads leave can still be far bigger than a city block — the ground
  * inside a ring of arterials before the streets fill it in, or the open country
- * past the last dirt road. Such a piece is cut in two along the tensor field's
- * minor direction, across the way the roads there run, and again until each
- * piece is about the size its zone builds in.
+ * past the last dirt road. Such a piece is cut in two across its long side, and
+ * again until each piece is about the size its zone builds in. A block the
+ * streets already cut is kept whole: the zone's `maxArea` is set above the
+ * block its own street spacing makes.
  *
  * The sand of a beach (spec section 7.3) is cut out before any of that. The
  * beaches were planned on the bare terrain, so a strip of sand is split off the
@@ -209,9 +210,10 @@ const REACH_CELL = 48;
  */
 interface ZoneOwnership {
   /**
-   * Square metres above which a parcel is cut in two. About twice the block the
-   * zone's own street spacing cuts, so a block the streets already made is kept
-   * whole and a stretch they never reached is broken up.
+   * Square metres above which a parcel is cut in two. It stands above the block
+   * the zone's own street spacing makes — downtown that is about 90 m by the
+   * 230 m the arterials leave — so a block the streets already made is kept
+   * whole and only a stretch they never reached is broken up.
    */
   maxArea: number;
   /** Square metres a building group needs; a smaller parcel is left as ground cover. */
@@ -233,8 +235,8 @@ interface ZoneOwnership {
 const OWNERSHIP: Record<Zone, ZoneOwnership> = {
   // Downtown: towers on nearly every block, a paved square where the money is,
   // a multi-storey car park on a block at most.
-  core: { maxArea: 8_000, minBuilt: 120, maxPark: 8_000, maxCarPark: 3_000, park: 0.05, carPark: 0.08, plaza: 0.1, build: 0.74 },
-  inner: { maxArea: 12_000, minBuilt: 120, maxPark: 12_000, maxCarPark: 4_000, park: 0.08, carPark: 0.08, plaza: 0.05, build: 0.76 },
+  core: { maxArea: 22_000, minBuilt: 120, maxPark: 8_000, maxCarPark: 3_000, park: 0.05, carPark: 0.08, plaza: 0.1, build: 0.74 },
+  inner: { maxArea: 26_000, minBuilt: 120, maxPark: 12_000, maxCarPark: 4_000, park: 0.08, carPark: 0.08, plaza: 0.05, build: 0.76 },
   // Sheds and yards: the open ground is parked on rather than planted, and a
   // lorry yard is the biggest car park there is.
   industrial: { maxArea: 24_000, minBuilt: 300, maxPark: 12_000, maxCarPark: 12_000, park: 0.02, carPark: 0.16, plaza: 0.01, build: 0.78 },
@@ -245,6 +247,15 @@ const OWNERSHIP: Record<Zone, ZoneOwnership> = {
   // and may be as large as the roads leave it; a car park is a trailhead.
   wilderness: { maxArea: 250_000, minBuilt: 1500, maxPark: 250_000, maxCarPark: 6_000, park: 0.12, carPark: 0.01, plaza: 0, build: 0.05 },
 };
+
+/**
+ * Square metres a building group needs in a zone. `alleys.ts` reads it as the
+ * smallest strip a service lane may leave beside it: ground too thin to build
+ * on is not worth a road.
+ */
+export function zoneMinBuilt(zone: Zone): number {
+  return OWNERSHIP[zone].minBuilt;
+}
 
 /**
  * The most ground one owner may hold in a zone, or nothing where the owner has
@@ -379,9 +390,9 @@ function pieceOf(region: Region, reach: RoadReach): Piece | undefined {
 
 /**
  * Cut a parcel down to the size its zone builds in, then cut the halves the
- * same way. The cut runs along the field's minor direction, across the way the
- * roads there run, so a long block is shortened rather than split down its
- * length.
+ * same way. The cut runs across the block's long side, so a long block is
+ * shortened into two long blocks and never split down its length into two thin
+ * strips.
  *
  * Only a block the roads enclose is cut. Open country the network merely
  * borders — the hillside past the last dirt road, the far end of an island — is
@@ -408,13 +419,41 @@ function cutToSize(
     out.push(piece);
     return;
   }
-  const halves = cutInTwo(region, at, field.sample(at.x, at.y).minor);
+  const halves = cutInTwo(region, at, cutLine(region, at, field));
   // A cut that leaves everything on one side has cut nothing.
   if (halves.length < 2) {
     out.push(piece);
     return;
   }
   for (const half of halves) cutToSize(half, zones, field, reach, out, cuts + 1);
+}
+
+/**
+ * Which way the cut line through a block runs: across its long side, so the two
+ * pieces are each half as long and just as wide. Cutting the other way gives
+ * two strips too thin to build on, which is what a block must never become.
+ *
+ * The block is measured along the field's two directions, because those are the
+ * ways the roads around it run, and the line is laid along whichever of them
+ * the block is shorter in.
+ */
+function cutLine(region: Region, at: Point, field: TensorField): number {
+  const { major, minor } = field.sample(at.x, at.y);
+  return extentAlong(region.outer, major) >= extentAlong(region.outer, minor) ? minor : major;
+}
+
+/** How far a ring reaches in one direction, in metres. */
+function extentAlong(ring: readonly Point[], angle: number): number {
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  let low = Infinity;
+  let high = -Infinity;
+  for (const p of ring) {
+    const at = p.x * dx + p.y * dy;
+    low = Math.min(low, at);
+    high = Math.max(high, at);
+  }
+  return high - low;
 }
 
 /**
