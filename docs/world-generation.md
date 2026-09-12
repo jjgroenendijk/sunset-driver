@@ -101,6 +101,12 @@ gets wrong without it.
   what gives every seed the beach the spec asks for. The dune line is offset off a coastline that
   marching squares draws in cell steps, so the normal is taken across several samples and capped
   short of the centre of a bend; both keep it from folding over itself.
+- `nameBoardwalk` and `withBeachCulture` (`beaches.ts`) finish the districts once the beaches are
+  known. The districts are placed first, because a beach reads their sites, so the beach
+  neighbourhood can only be found afterwards. `nameBoardwalk` gives the name "The Boardwalk" to the
+  district holding most of the waterline of the longest resort outside the core; a district with a
+  fixed name of its own, such as Gull Island, keeps it and the beach takes another district.
+  `withBeachCulture` then gives that beach's districts the beach culture.
 - The beach owns no ground of its own: `beach.sand` is the sand the terrain draws, and the ground is
   claimed once, as the parcels `buildParcels` cuts out of it. The minor fill and the arterial fill
   keep off a resort's sand, so the boardwalk is what reaches it; every other beach is left to
