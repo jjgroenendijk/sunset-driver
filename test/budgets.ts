@@ -47,8 +47,18 @@ export const BUDGET_MS = {
    * `buildRoadGraph` over a whole-map road network. Offline work like
    * {@link BUDGET_MS.worldGen}: traffic, police and navigation build the graph
    * once and then query it.
+   *
+   * This, {@link BUDGET_MS.carve}, {@link BUDGET_MS.footprint} and
+   * {@link BUDGET_MS.parcels} all rose with the zone rings of spec section 8.2,
+   * which is the system that spends them: a world carries three times the
+   * curves it did. Each figure below is what the measured seeds take on an
+   * Apple M1 laptop, with the room a GitHub runner needs — the runner has been
+   * seen to take three times as long on the smallest of them, where a
+   * millisecond of collection lands on a measurement of tens.
+   *
+   * The graph takes 15 ms at worst, where it took 7 ms before.
    */
-  roadGraph: 50,
+  roadGraph: 120,
 
   /**
    * `buildTensorField` over a whole map: a small fraction of the world it is
@@ -63,8 +73,10 @@ export const BUDGET_MS = {
    * {@link BUDGET_MS.roadGraph}; a chunk then carves its own heights out of it,
    * and that cost lands in the streaming cap when streaming does (spec section
    * 9.1).
+   *
+   * It takes 17 ms at worst, where it took 8 ms before.
    */
-  carve: 60,
+  carve: 120,
 
   /**
    * `buildFootprint` over a whole-map road network: every curve offset, every
@@ -72,11 +84,7 @@ export const BUDGET_MS = {
    * {@link BUDGET_MS.worldGen}; chunk-level parcels get their own per-frame cap
    * when streaming lands (spec section 9.1).
    *
-   * This rose with the zone rings of spec section 8.2, which is the system that
-   * spends it: a world now carries three times the curves to offset. Over the
-   * four seeds measured it takes 177 ms to 580 ms on an Apple M1 laptop, where
-   * it took 54 ms to 258 ms before, and a GitHub runner about twice as long
-   * again.
+   * It takes 569 ms at worst, where it took 258 ms before.
    */
   footprint: 1500,
 
@@ -85,8 +93,10 @@ export const BUDGET_MS = {
    * the footprint subtracted from it, and the oversized blocks cut down (spec
    * section 6.4). Offline work like {@link BUDGET_MS.worldGen}, and it is given
    * the footprint and the graph rather than building them itself.
+   *
+   * It takes 353 ms at worst, where it took 182 ms before.
    */
-  parcels: 900,
+  parcels: 1500,
 
   /**
    * `buildBuildings` over a whole map: every building parcel cut into lots
