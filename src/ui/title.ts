@@ -9,21 +9,31 @@ import {
   randomAppearance,
 } from '../sim/character.ts';
 import { CONTROLS } from './controls.ts';
+import { SeedPreview } from './seed-preview.ts';
+import type { WorldDescription } from '../world/types.ts';
 
 /** What the player settled on before the session starts. */
 export interface TitleChoice {
   seed: string;
   character: CharacterAppearance;
+  /**
+   * The world the preview built for `seed`, or null where the player never
+   * asked for one. The session reuses it rather than generating the same seed
+   * a second time.
+   */
+  world: WorldDescription | null;
 }
 
 /**
- * The title screen of spec section 12: seed entry, seed randomisation,
- * character creation, continue and the control list. The character is previewed
- * in the scene, so every change is reported through `onPreview`.
+ * The title screen of spec section 12: seed entry, seed randomisation, a map
+ * of the seed, character creation, continue and the control list. The character
+ * is previewed in the scene, so every change is reported through `onPreview`;
+ * the map is drawn by `seed-preview.ts` into the panel itself.
  */
 export class TitleScreen {
   private readonly root: HTMLElement;
   private readonly seedInput: HTMLInputElement;
+  private readonly preview: SeedPreview;
   private readonly valueLabels: HTMLElement[] = [];
   private readonly onPreview: (appearance: CharacterAppearance) => void;
   private character: CharacterAppearance;
@@ -46,6 +56,7 @@ export class TitleScreen {
 
     this.seedInput = document.createElement('input');
     panel.append(this.buildSeedRow(initial.seed));
+    this.preview = new SeedPreview(panel);
 
     const choices = document.createElement('div');
     choices.className = 'title-choices';
@@ -113,19 +124,36 @@ export class TitleScreen {
     this.seedInput.className = 'title-seed';
     this.seedInput.value = seed;
     this.seedInput.spellcheck = false;
+    // Enter builds the map rather than starting the game: a seed typed in is a
+    // seed the player wants to look at before they commit to it. Continue is
+    // what starts the session.
     this.seedInput.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') this.finish();
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      void this.buildPreview();
     });
+    // `change` fires when the field is left as well, so a seed typed and
+    // clicked away from is previewed too.
+    this.seedInput.addEventListener('change', () => void this.buildPreview());
 
-    const randomise = document.createElement('button');
-    randomise.type = 'button';
-    randomise.className = 'title-secondary';
-    randomise.textContent = 'Randomise';
-    randomise.addEventListener('click', () => {
+    const dice = document.createElement('button');
+    dice.type = 'button';
+    dice.className = 'title-dice';
+    dice.textContent = '\u{1F3B2}';
+    dice.title = 'Roll a new seed';
+    dice.setAttribute('aria-label', 'Roll a new seed');
+    dice.addEventListener('click', () => {
       this.seedInput.value = randomSeedString();
+      void this.buildPreview();
     });
 
-    row.append(label, this.seedInput, randomise);
+    const build = document.createElement('button');
+    build.type = 'button';
+    build.className = 'title-secondary';
+    build.textContent = 'Build map';
+    build.addEventListener('click', () => void this.buildPreview());
+
+    row.append(label, this.seedInput, dice, build);
     return row;
   }
 
@@ -165,10 +193,29 @@ export class TitleScreen {
     }
   }
 
-  private finish(): void {
+  /** The seed in the box, or a fresh one where the box was left empty. */
+  private seed(): string {
     const typed = this.seedInput.value.trim();
+    if (typed.length > 0) return typed;
+    const fresh = randomSeedString();
+    this.seedInput.value = fresh;
+    return fresh;
+  }
+
+  /** Build the seed in the box and show its map. */
+  private async buildPreview(): Promise<void> {
+    await this.preview.build(seedFromString(this.seed()));
+  }
+
+  private finish(): void {
+    const seed = this.seed();
+    const world = this.preview.world;
     const resolve = this.resolve;
     this.resolve = null;
-    resolve?.({ seed: typed.length > 0 ? typed : randomSeedString(), character: this.character });
+    resolve?.({
+      seed,
+      character: this.character,
+      world: world && world.seed === seedFromString(seed) ? world : null,
+    });
   }
 }
