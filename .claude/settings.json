@@ -39,6 +39,12 @@
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/post-edit.sh",
             "timeout": 60,
             "statusMessage": "Typecheck + determinism lint"
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/check-size.sh",
+            "timeout": 10,
+            "statusMessage": "File size check"
           }
         ]
       }
