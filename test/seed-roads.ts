@@ -380,8 +380,11 @@ export function roadChecks(): void {
       // so the street and dirt caps are looser than the trim alone would ask for.
       // The street cap rose with the zone rings of spec section 8.2, which put
       // the street fill on hills the suburbs used to stop short of: the worst of
-      // 200 seeds reaches 273 m.
-      const CAP: Partial<Record<RoadTier, number>> = { street: 320, alley: 120, dirt: 900 };
+      // 200 seeds reaches 273 m. The alley cap rose with the strip blocks of
+      // issue #190: an alley now stands half a block off the street that seeded
+      // it, and half a city block is about 117 m rather than the 40 m half of
+      // the old street spacing.
+      const CAP: Partial<Record<RoadTier, number>> = { street: 320, alley: 220, dirt: 900 };
       for (const seed of seeds) {
         const w = worlds.get(seed) as WorldDescription;
         const grid = new PointGrid(w.size, 100, w.roads);

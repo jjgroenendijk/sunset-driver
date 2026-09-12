@@ -189,8 +189,14 @@ export const CARVE_CLEARANCE = 0.5;
  * to 136 on the worst one — while the share rose from 4.7 % to 5.0 %, because
  * the population it is measured against shrank faster. The number to watch is
  * that count.
+ *
+ * The strip blocks of issue #190 did the same thing again, and harder. A core
+ * block is now 90 m by 230 m rather than 80 m square, so a third of the street
+ * length is gone and with it a third of the points. The count fell on all
+ * sixteen seeds — 858 to 686 on the seed that was worst before — while the
+ * worst share rose from 7.9 % to 10.1 %.
  */
-export const CARVE_STAND_OFF_SHARE = 0.09;
+export const CARVE_STAND_OFF_SHARE = 0.12;
 /**
  * Metres no road point may stand off the carved ground, however crowded the
  * ground under it. The carve moves no sample of the ground further than its own
