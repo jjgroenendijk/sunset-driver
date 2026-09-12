@@ -39,6 +39,10 @@ export const BUDGET_MS = {
    * `generateWorld`, per seed: the whole-map skeleton, not a chunk. Offline
    * work, so it is not part of the frame; chunk generation gets its own
    * per-frame cap when streaming lands (spec section 9.1).
+   *
+   * Measured warm, like every other figure here: the first world of a process
+   * carries the generator's JIT and runs about a quarter slower than the cost
+   * this claims.
    */
   worldGen: 1500,
 

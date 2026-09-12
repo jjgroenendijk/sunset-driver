@@ -148,6 +148,13 @@ describe('performance budgets', () => {
   });
 
   it('generates a world within the per-seed budget', () => {
+    // The first world of a process pays for the generator's JIT: the same call
+    // made again comes out about a quarter faster. That is warm-up and not what
+    // generating a world costs, and this is the first thing the budgets project
+    // runs, so the quick tier was measuring the cold path and nothing else — a
+    // median over two seeds is the slower of them, which was always the cold
+    // one. Every other budget here warms up before it measures; so does this.
+    generateWorld(GEN_SEEDS[0] as number);
     const times = GEN_SEEDS.map((seed) => {
       const t0 = performance.now();
       worlds.push(generateWorld(seed));
