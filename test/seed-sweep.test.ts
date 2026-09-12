@@ -39,12 +39,13 @@ import { groundRule, MIN_BOARDWALK } from '../src/world/roads.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import type { RoadFootprint } from '../src/world/footprint.ts';
 import { buildRoadGraph, type GradeCrossing, type RoadEdge, type RoadGraph, type RoadNode } from '../src/world/graph.ts';
+import { CLEARANCE as OVERPASS_CLEARANCE, PLATEAU_MARGIN } from '../src/world/overpass.ts';
 import { buildJunctions, type JunctionMap } from '../src/world/junctions.ts';
 import { RoadBeds } from '../src/world/bed.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
 import { ownerMaxArea, type Parcel, type ParcelMap, type ParcelOwner } from '../src/world/parcels.ts';
-import { MITRE_SHIFT, RoadRibbons } from '../src/world/ribbon.ts';
+import { curveDistances, MITRE_SHIFT, RoadRibbons } from '../src/world/ribbon.ts';
 import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
 import { CHUNK_TERRAIN_CELL, coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
 import { nearestRoadPlace, SurfaceIndex, type Surface } from '../src/world/surface.ts';
@@ -470,13 +471,21 @@ const BOARDWALK_DRIFT = 3;
  */
 const CARVE_CLEARANCE = 0.5;
 /**
- * The share of a seed's road points that may stand further off than that: one
- * in twenty. Two roads within a bench of each other at different heights — a
+ * The share of a seed's road points on the ground that may stand further off
+ * than that. Two roads within a bench of each other at different heights — a
  * street beside a highway embankment, two hairpins on a cliff — ask for two beds
  * in one grid cell, and only one of them can have it. A seed of steep ground
- * carries a few per cent of those; the worst of 200 seeds carries 3 %.
+ * carries a few per cent of those; the worst of the sixteen seeds checked
+ * carries 5.0 %.
+ *
+ * It is a share of the points on the ground, so it moves with how many of them
+ * there are. `overpass.ts` took about a sixth of them off the ground and onto
+ * decks, and the count of points standing off fell with it on every seed — 152
+ * to 136 on the worst one — while the share rose from 4.7 % to 5.0 %, because
+ * the population it is measured against shrank faster. The number to watch is
+ * that count.
  */
-const CARVE_STAND_OFF_SHARE = 0.05;
+const CARVE_STAND_OFF_SHARE = 0.055;
 /**
  * Metres no road point may stand off the carved ground, however crowded the
  * ground under it. The carve moves no sample of the ground further than its own
@@ -1331,6 +1340,40 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     }
   });
 
+  it('carries a road over the one it crosses, or is refused for a reason', () => {
+    // Spec section 6.2: an overpass carries a road over a road. `overpass.ts`
+    // raises the road the graph calls `over`, or the other one where that road
+    // cannot be raised. It is refused where a junction of the road stands
+    // inside the ramps, where the road is bored or already on a deck there, and
+    // where the road runs out before it is down again. Nothing else may leave a
+    // crossing flat, so the check mirrors those three and no more.
+    for (const seed of seeds) {
+      const w = worlds.get(seed) as WorldDescription;
+      const graph = graphOf(seed);
+      const shared = sharedDistances(w.roads);
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+      for (let k = 0; k < graph.crossings.length; k++) {
+        const crossing = graph.crossings[k] as GradeCrossing;
+        const over = w.roads[(graph.edges[crossing.over] as RoadEdge).curve] as RoadCurve;
+        const under = w.roads[(graph.edges[crossing.under] as RoadEdge).curve] as RoadCurve;
+        const where = `crossing ${k} at ${crossing.x.toFixed(0)},${crossing.y.toFixed(0)}`;
+        const above = liftAtCrossing(over, crossing);
+        const below = liftAtCrossing(under, crossing);
+        if (Math.max(above, below) >= OVERPASS_CLEARANCE - 0.001) continue;
+        // Short of the clearance the roads still meet on the map, so the raise
+        // must have been refused. A crossing standing on the ramp of another
+        // one is lifted a little; that is a refusal too, not a separation.
+        if (canRaise(over, under, crossing, shared) || canRaise(under, over, crossing, shared)) {
+          fault(`${where} is ${Math.max(above, below).toFixed(1)} m clear, and nothing stops it being carried over`);
+        }
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
   it('junctions a highway only at an interchange, and never with a minor road', () => {
     // Spec section 6.2: a highway has junctions only at interchanges and no
     // pedestrians on it. So a street, an alley or a dirt road never shares a
@@ -1541,9 +1584,14 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
             continue;
           }
           if (road.bridges.includes(i)) {
-            // A deck over dry land is only worth building over a dip.
+            // A deck over dry land is only worth building over a dip, or to
+            // carry the road over another one (`overpass.ts`), which is what
+            // the lift says it does.
             const dry = wetFraction(hf, a, b, w.water.seaLevel) === 0;
-            if (dry && profileUnder(hf, a, b).below <= CLEARANCE) fault(`${where} is a deck over nothing`);
+            const carried = (road.lift?.[i] ?? 0) > 0 || (road.lift?.[i + 1] ?? 0) > 0;
+            if (dry && !carried && profileUnder(hf, a, b).below <= CLEARANCE) {
+              fault(`${where} is a deck over nothing`);
+            }
             continue;
           }
           const grade = gradeOf(hf, a, b);
@@ -2680,3 +2728,82 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
     }
   });
 });
+
+/**
+ * Where each curve stands on a point another curve has, as distances along it.
+ * A junction is exactly a shared point, and a raise may not reach one.
+ */
+function sharedDistances(roads: readonly RoadCurve[]): Float64Array[] {
+  const counts = new Map<number, number>();
+  const key = (p: Point): number =>
+    (Math.round(p.x * 1000) + 8_000_000) * 16_000_001 + Math.round(p.y * 1000) + 8_000_000;
+  for (const road of roads) {
+    for (const point of road.points) counts.set(key(point), (counts.get(key(point)) ?? 0) + 1);
+  }
+  return roads.map((road) => {
+    const distances = curveDistances(road.points);
+    const out: number[] = [];
+    for (let i = 0; i < road.points.length; i++) {
+      if ((counts.get(key(road.points[i] as Point)) ?? 0) > 1) out.push(distances[i] as number);
+    }
+    return Float64Array.from(out);
+  });
+}
+
+/** Where a place falls on a curve: the segment, how far along it, and the distance along the curve. */
+function placeOn(road: RoadCurve, at: Point): { segment: number; t: number; along: number } | undefined {
+  const distances = curveDistances(road.points);
+  let best: { segment: number; t: number; along: number } | undefined;
+  let bestOff = 0.01;
+  for (let i = 0; i + 1 < road.points.length; i++) {
+    const a = road.points[i] as Point;
+    const b = road.points[i + 1] as Point;
+    const vx = b.x - a.x;
+    const vy = b.y - a.y;
+    const length2 = vx * vx + vy * vy;
+    if (length2 === 0) continue;
+    const t = Math.max(0, Math.min(1, ((at.x - a.x) * vx + (at.y - a.y) * vy) / length2));
+    const off = Math.hypot(a.x + vx * t - at.x, a.y + vy * t - at.y);
+    if (off >= bestOff) continue;
+    bestOff = off;
+    best = { segment: i, t, along: (distances[i] as number) + t * Math.sqrt(length2) };
+  }
+  return best;
+}
+
+/** How far over the ground a road stands where another road crosses it. */
+function liftAtCrossing(road: RoadCurve, at: Point): number {
+  const lift = road.lift;
+  if (lift === undefined) return 0;
+  const place = placeOn(road, at);
+  if (place === undefined) return 0;
+  const from = lift[place.segment] ?? 0;
+  const to = lift[place.segment + 1] ?? 0;
+  return from + (to - from) * place.t;
+}
+
+/**
+ * True where `overpass.ts` could carry `road` over `met` at a crossing: the
+ * rule of that pass, written out again so a change to it has to be meant.
+ */
+function canRaise(road: RoadCurve, met: RoadCurve, at: Point, shared: readonly Float64Array[]): boolean {
+  const place = placeOn(road, at);
+  if (place === undefined) return false;
+  const distances = curveDistances(road.points);
+  const reach = footprintHalfWidth(met.tier) + PLATEAU_MARGIN + OVERPASS_CLEARANCE / TIERS[road.tier].maxGrade;
+  let from: number | undefined;
+  let to: number | undefined;
+  for (let i = 0; i < distances.length; i++) {
+    const here = distances[i] as number;
+    if (here <= place.along - reach) from = here;
+    if (to === undefined && here >= place.along + reach) to = here;
+  }
+  if (from === undefined || to === undefined) return false;
+  for (const node of shared[road.id] as Float64Array) {
+    if (node > from && node < to) return false;
+  }
+  for (const segment of [...road.tunnels, ...road.bridges]) {
+    if ((distances[segment + 1] as number) > from && (distances[segment] as number) < to) return false;
+  }
+  return true;
+}

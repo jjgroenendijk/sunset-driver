@@ -55,6 +55,7 @@ import { BeachGround, isResort } from './beaches.ts';
 import { connectCrossings, type CanRun } from './connect.ts';
 import { districtAt, layoutZones, zoneAt } from './districts.ts';
 import { Heightfield } from './heightfield.ts';
+import { raiseOverpasses } from './overpass.ts';
 import { coastNoise, islandAt } from './terrain.ts';
 import type { TensorField } from './tensor.ts';
 import { mayJoin, TIERS } from './tiers.ts';
@@ -427,7 +428,9 @@ class RoadTracer {
     // The trace only ever ends a road on a point of another one, so two roads
     // that cross between their points have met nothing yet.
     const connected = connectCrossings(this.curves, groundRule(this.hf, this.seaLevel));
-    return { roads: connected, boardwalks };
+    // Last, on curves that no longer move: a road that crosses another one and
+    // does not meet it there is carried over it (spec section 6.2).
+    return { roads: raiseOverpasses(connected), boardwalks };
   }
 
   // ---------------------------------------------------------------- highways

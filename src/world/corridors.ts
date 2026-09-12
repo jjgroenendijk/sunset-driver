@@ -29,7 +29,7 @@
  * Everything here is derived from the world and its roads, so the same seed
  * gives the same corridors.
  */
-import { offsetSides } from '../core/geom.ts';
+import { offsetSides, pointInRing } from '../core/geom.ts';
 import { clamp, direction, dist } from '../core/math.ts';
 import { compareNumbers } from '../core/sort.ts';
 import type { RoadEdge, RoadGraph, RoadNode } from './graph.ts';
@@ -54,6 +54,8 @@ const TRAM_HALF = 3.2;
 const STOP_CLEARANCE = 8;
 /** Metres between the pillar bays under a deck. */
 const PILLAR_SPACING = 25;
+/** How many places across the strip a foot is tried at before it is given up on. */
+const PILLAR_TRIES = 4;
 /** How far a pillar foot stands from the centreline, as a fraction of the half-width. */
 const PILLAR_INSET = 0.5;
 /** Metres of ground two corridors keep between them. */
@@ -480,7 +482,7 @@ class CorridorBuilder {
         points: own,
         halfWidth,
         polygon,
-        pillars: pillars ? pillarFeet(own, halfWidth) : [],
+        pillars: pillars ? pillarFeet(own, halfWidth, polygon) : [],
       };
       this.corridors.push(corridor);
       made.push(corridor);
@@ -531,18 +533,42 @@ function bend(points: readonly Point[], at: number): number {
 /**
  * The feet of the pillars under a deck: a pair across the centreline at every
  * bay, spaced evenly so neither abutment carries a pillar of its own.
+ *
+ * A foot stands on the ground the corridor claims and nowhere else, so one that
+ * falls outside the strip — which a short claim cut out of a longer one can do —
+ * is drawn in towards the centreline until it is inside, and dropped where even
+ * the centreline is not.
  */
-function pillarFeet(points: readonly Point[], halfWidth: number): Point[] {
+function pillarFeet(points: readonly Point[], halfWidth: number, ground: readonly Point[]): Point[] {
   const length = polylineLength(points);
   const bays = Math.max(2, Math.round(length / PILLAR_SPACING));
   const feet: Point[] = [];
   for (let i = 1; i < bays; i++) {
     const at = pointAlong(points, (length * i) / bays);
-    const side = { x: -at.dy * halfWidth * PILLAR_INSET, y: at.dx * halfWidth * PILLAR_INSET };
-    feet.push({ x: at.x + side.x, y: at.y + side.y });
-    feet.push({ x: at.x - side.x, y: at.y - side.y });
+    for (const side of [1, -1]) {
+      const foot = standing(at, side * halfWidth * PILLAR_INSET, ground);
+      if (foot !== undefined) feet.push(foot);
+    }
   }
   return feet;
+}
+
+/**
+ * A pillar foot at an offset across the line, brought in towards the line until
+ * it stands on the corridor's own ground. Undefined where nothing on the line
+ * across does.
+ */
+function standing(
+  at: { x: number; y: number; dx: number; dy: number },
+  offset: number,
+  ground: readonly Point[],
+): Point | undefined {
+  for (let step = 0; step < PILLAR_TRIES; step++) {
+    const out = offset * (1 - step / PILLAR_TRIES);
+    const foot = { x: at.x - at.dy * out, y: at.y + at.dx * out };
+    if (pointInRing(foot, ground)) return foot;
+  }
+  return undefined;
 }
 
 /** The point a given distance along a polyline, and the way the line runs there. */
