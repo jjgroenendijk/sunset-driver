@@ -249,6 +249,28 @@ describe('split', () => {
     expect(areaOf(inside)).toBe(450 - 36);
   });
 
+  it('cuts with a clip whose sides each run kilometres across the map', () => {
+    // The shape an oversized block is cut down with: a rectangle covering one
+    // side of a line, reaching far past the subject, so every side of it is one
+    // long diagonal edge. The engine files such an edge in the buckets it
+    // really crosses, so this costs what the subject is worth and not what the
+    // clip spans.
+    const reach = 3000;
+    const dx = Math.cos(Math.PI / 6) * reach;
+    const dy = Math.sin(Math.PI / 6) * reach;
+    const clip = regionOf([
+      { x: 15 - dx, y: 15 - dy },
+      { x: 15 + dx, y: 15 + dy },
+      { x: 15 + dx - dy, y: 15 + dy + dx },
+      { x: 15 - dx - dy, y: 15 - dy + dx },
+    ]);
+    const { inside, outside } = split([regionOf(square(0, 0, 30))], [clip]);
+    expect(areaOf(inside)).toBeGreaterThan(0);
+    expect(areaOf(outside)).toBeGreaterThan(0);
+    expect(areaOf(inside) + areaOf(outside)).toBeCloseTo(900, 6);
+    expect(disjoint([...inside, ...outside], 0, 30, 1)).toBe(true);
+  });
+
   it('gives one side everything where the clip misses the subject', () => {
     const subject = regionOf(square(0, 0, 10));
     const { inside, outside } = split([subject], [regionOf(square(20, 20, 10))]);

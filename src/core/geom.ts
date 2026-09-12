@@ -352,7 +352,7 @@ function crossings(edges: Edges, box: Box, add: (x: number, y: number) => void):
   const candidates: number[] = [];
   for (let i = 0; i < count; i++) {
     candidates.length = 0;
-    index.near(edges.ax[i] as number, edges.ay[i] as number, edges.bx[i] as number, edges.by[i] as number, (j) => {
+    index.near(edges.ax[i] as number, edges.ay[i] as number, edges.bx[i] as number, edges.by[i] as number, 0, (j) => {
       if (j <= i || stamp[j] === i) return;
       stamp[j] = i;
       candidates.push(j);
@@ -405,7 +405,8 @@ function cutAt(edges: Edges, nodes: { x: number[]; y: number[]; index: Buckets }
     const lengthSquared = ex * ex + ey * ey;
     found.length = 0;
     along.length = 0;
-    nodes.index.near(ax - 1, ay - 1, bx + 1, by + 1, (n) => {
+    // One grid unit past the edge, which covers the whole of the {@link SNAP} radius.
+    nodes.index.near(ax, ay, bx, by, 1, (n) => {
       const px = nodes.x[n] as number;
       const py = nodes.y[n] as number;
       if ((px === ax && py === ay) || (px === bx && py === by)) return;
@@ -451,6 +452,8 @@ class Buckets {
   private readonly columns: number;
   private readonly rows: number;
   private readonly buckets: (number[] | undefined)[];
+  /** The buckets the walk under way crosses. Kept between calls so a walk allocates nothing. */
+  private walked: Int32Array = new Int32Array(64);
 
   constructor(box: Box) {
     this.minColumn = columnOf(box.minX);
@@ -460,33 +463,81 @@ class Buckets {
     this.buckets = new Array<number[] | undefined>(this.columns * this.rows).fill(undefined);
   }
 
+  /** File a segment in every bucket it crosses. */
   add(id: number, ax: number, ay: number, bx: number, by: number): void {
-    const loX = this.clampColumn(Math.min(ax, bx));
-    const hiX = this.clampColumn(Math.max(ax, bx));
-    const loY = this.clampRow(Math.min(ay, by));
-    const hiY = this.clampRow(Math.max(ay, by));
-    for (let cx = loX; cx <= hiX; cx++) {
-      for (let cy = loY; cy <= hiY; cy++) {
-        const at = cx * this.rows + cy;
-        const bucket = this.buckets[at];
-        if (bucket === undefined) this.buckets[at] = [id];
-        else bucket.push(id);
-      }
+    const count = this.walk(ax, ay, bx, by, 0);
+    const walked = this.walked;
+    for (let k = 0; k < count; k++) {
+      const at = walked[k] as number;
+      const bucket = this.buckets[at];
+      if (bucket === undefined) this.buckets[at] = [id];
+      else bucket.push(id);
     }
   }
 
-  near(ax: number, ay: number, bx: number, by: number, visit: (id: number) => void): void {
-    const loX = this.clampColumn(Math.min(ax, bx));
-    const hiX = this.clampColumn(Math.max(ax, bx));
-    const loY = this.clampRow(Math.min(ay, by));
-    const hiY = this.clampRow(Math.max(ay, by));
-    for (let cx = loX; cx <= hiX; cx++) {
-      for (let cy = loY; cy <= hiY; cy++) {
-        const bucket = this.buckets[cx * this.rows + cy];
-        if (bucket === undefined) continue;
-        for (const id of bucket) visit(id);
-      }
+  /**
+   * Report what reaches into the buckets the segment crosses, each bucket once.
+   * `pad` is how far past the segment the walk reaches, in grid units, so a
+   * caller that asks about the ground near a segment rather than under it still
+   * finds it. An id filed in two of the buckets walked is reported twice, and
+   * `visit` may not ask the index anything itself: one walk is under way at a
+   * time.
+   */
+  near(ax: number, ay: number, bx: number, by: number, pad: number, visit: (id: number) => void): void {
+    const count = this.walk(ax, ay, bx, by, pad);
+    const walked = this.walked;
+    for (let k = 0; k < count; k++) {
+      const bucket = this.buckets[walked[k] as number];
+      if (bucket === undefined) continue;
+      for (const id of bucket) visit(id);
     }
+  }
+
+  /**
+   * Fill {@link walked} with the buckets a segment crosses, dilated by `pad`
+   * grid units, and answer how many there are. Filling the box around the
+   * segment instead would put a 2 km diagonal in the fifteen thousand buckets
+   * of its box rather than the hundred and twenty five it really crosses.
+   *
+   * Each column is clipped to the segment, and the ends of the clipped piece
+   * give the rows the segment covers there. The row range is widened by one
+   * grid unit on top of the padding, because the y of a clipped end comes of a
+   * division and can land a rounding error the wrong side of a boundary.
+   */
+  private walk(ax: number, ay: number, bx: number, by: number, pad: number): number {
+    const lowX = Math.min(ax, bx);
+    const highX = Math.max(ax, bx);
+    const loColumn = this.clampColumn(lowX - pad);
+    const hiColumn = this.clampColumn(highX + pad);
+    // An upright segment has no slope to take, and one that stays inside a
+    // single column covers the whole of its own y range there. Both cover every
+    // column of the walk with that range, and neither needs any clipping.
+    const spread = lowX !== highX && loColumn !== hiColumn;
+    const slope = spread ? (by - ay) / (bx - ax) : 0;
+    let count = 0;
+    for (let cx = loColumn; cx <= hiColumn; cx++) {
+      let loY: number;
+      let hiY: number;
+      if (spread) {
+        // The stretch of the segment standing in this column, held to its ends
+        // so a padded column outside it takes the row of the end nearest it.
+        const x0 = clamp((cx + this.minColumn) * BUCKET, lowX, highX);
+        const x1 = clamp((cx + this.minColumn + 1) * BUCKET, lowX, highX);
+        const y0 = ay + (x0 - ax) * slope;
+        const y1 = ay + (x1 - ax) * slope;
+        loY = Math.min(y0, y1);
+        hiY = Math.max(y0, y1);
+      } else {
+        loY = Math.min(ay, by);
+        hiY = Math.max(ay, by);
+      }
+      const loRow = this.clampRow(loY - pad - 1);
+      const hiRow = this.clampRow(hiY + pad + 1);
+      const base = cx * this.rows;
+      if (count + hiRow - loRow + 1 > this.walked.length) this.walked = grown(this.walked, count + hiRow - loRow + 1);
+      for (let cy = loRow; cy <= hiRow; cy++) this.walked[count++] = base + cy;
+    }
+    return count;
   }
 
   /** The column a coordinate falls in, clamped to the grid. */
@@ -511,6 +562,15 @@ class Buckets {
   private clampRow(v: number): number {
     return clamp(columnOf(v) - this.minRow, 0, this.rows - 1);
   }
+}
+
+/** The array again, at least `least` long. */
+function grown(array: Int32Array, least: number): Int32Array {
+  let size = array.length;
+  while (size < least) size *= 2;
+  const out = new Int32Array(size);
+  out.set(array);
+  return out;
 }
 
 function columnOf(v: number): number {
