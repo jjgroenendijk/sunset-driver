@@ -297,6 +297,97 @@ describe('bridges and tunnels', () => {
   });
 });
 
+describe('a turn too sharp to mitre', () => {
+  /** A street that turns 45 degrees at (100, 100), well inside one chunk. */
+  const bent = curve(0, [
+    [20, 100],
+    [100, 100],
+    [180, 180],
+  ]);
+  const bentWorld = gridWorld([bent]);
+  const bentSource = new ChunkSource(bentWorld, buildLayers(bentWorld));
+  const bentRibbons = new RoadRibbons(bentWorld.terrain, bentWorld.roads);
+  const bentHeightAt = (x: number, y: number): number => bentSource.layers.carve.heightAt(x, y);
+  const street = streetOf(buildChunkRoads(bentSource.chunk(0, 0), bentRibbons, bentHeightAt));
+  const run = street.runs[0] as { surfaces: BufferGeometry[]; joints: BufferGeometry[] };
+
+  /**
+   * The bisector of the outside of that turn. The road runs east and leaves to
+   * the north east, so the outside of the bend is south of it.
+   */
+  const outward = ((): { x: number; y: number } => {
+    const before = { x: 0, y: -1 };
+    const after = { x: Math.SQRT1_2, y: -Math.SQRT1_2 };
+    const x = before.x + after.x;
+    const y = before.y + after.y;
+    const length = Math.hypot(x, y);
+    return { x: x / length, y: y / length };
+  })();
+
+  /** True where a place on the map stands under one of the triangles of a part. */
+  function covers(part: BufferGeometry, x: number, y: number): boolean {
+    const position = part.getAttribute('position');
+    const index = part.getIndex() as { count: number; getX(i: number): number };
+    for (let i = 0; i < index.count; i += 3) {
+      const p = [0, 1, 2].map((k) => {
+        const v = index.getX(i + k);
+        return { x: position.getX(v), y: position.getZ(v) };
+      }) as [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }];
+      const side = (a: { x: number; y: number }, b: { x: number; y: number }): number =>
+        (b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x);
+      const s0 = side(p[0], p[1]);
+      const s1 = side(p[1], p[2]);
+      const s2 = side(p[2], p[0]);
+      if ((s0 >= 0 && s1 >= 0 && s2 >= 0) || (s0 <= 0 && s1 <= 0 && s2 <= 0)) return true;
+    }
+    return false;
+  }
+
+  it('cuts the loft in two and bevels the joint between them', () => {
+    // The two frames at the bend differ, so the surface comes in two pieces
+    // with one bevel between them.
+    expect(run.surfaces.length).toBe(2);
+    expect(run.joints).toHaveLength(1);
+  });
+
+  it('fills the wedge the two pieces leave outside the bend', () => {
+    const joint = run.joints[0] as BufferGeometry;
+    const reach = footprintHalfWidth('street') / 2;
+    const outside = { x: 100 + outward.x * reach, y: 100 + outward.y * reach };
+    const inside = { x: 100 - outward.x * reach, y: 100 - outward.y * reach };
+    // Neither piece of the loft reaches the outside of the bend.
+    for (const surface of run.surfaces) expect(covers(surface, outside.x, outside.y)).toBe(false);
+    expect(covers(joint, outside.x, outside.y)).toBe(true);
+    // The inside of the bend is where the two pieces overlap already.
+    expect(covers(joint, inside.x, inside.y)).toBe(false);
+    for (const surface of run.surfaces) expect(covers(surface, inside.x, inside.y)).toBe(true);
+  });
+
+  it('stands the bevel on the bend, level with the carriageway and facing up', () => {
+    const joint = run.joints[0] as BufferGeometry;
+    const position = joint.getAttribute('position');
+    const normal = joint.getAttribute('normal');
+    const across = joint.getAttribute('across');
+    const half = TIERS.street.width / 2;
+    const bed = bentRibbons.frameAt(0, 0, 100, 100).height;
+    let carriageway = 0;
+    for (let v = 0; v < position.count; v++) {
+      expect(Math.hypot(position.getX(v) - 100, position.getZ(v) - 100)).toBeLessThanOrEqual(
+        footprintHalfWidth('street') + TOLERANCE,
+      );
+      // The point at the kerb itself carries the kerb top as well, so only
+      // the carriageway inside it is level with the road.
+      if (Math.abs(across.getX(v)) >= half) continue;
+      carriageway++;
+      // The carriageway of the bevel is the carriageway of the road: same
+      // height, same normal, so nothing shows where the three meet.
+      expect(position.getY(v)).toBeCloseTo(bed + 0.06, 4);
+      expect(normal.getY(v)).toBeCloseTo(1, 6);
+    }
+    expect(carriageway).toBeGreaterThan(0);
+  });
+});
+
 describe('draw calls', () => {
   it('costs a batch and a line mesh for each tier a chunk carries', () => {
     // One batch of streets, one of their markings; a chunk past the roads pays

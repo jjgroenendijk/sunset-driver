@@ -12,7 +12,8 @@
  * the same sections: the frame at a place is a function of the curve and the
  * place, never of the chunk. That is the same rule the ground mesh follows, and
  * it is what makes the seam invisible rather than stitched. The same frames say
- * where a run turns too sharply to sweep through, and the loft is cut there.
+ * where a run turns too sharply to sweep through, and the loft is cut there and
+ * bevelled across the outside of the turn.
  *
  * Where roads meet they are not lofted through one another. A junction (spec
  * section 6.2, `junctions.ts`) cuts every road back to where its kerbs leave
@@ -118,6 +119,11 @@ export interface RunGeometry {
    * more than one piece.
    */
   surfaces: BufferGeometry[];
+  /**
+   * The bevels that close the outside of those turns, merged into one part. A
+   * run with no turn that sharp has none.
+   */
+  joints: BufferGeometry[];
   /** The decks, parapets and portals that carry it, where it stands off the ground. */
   structures: BufferGeometry[];
 }
@@ -141,7 +147,7 @@ export interface TierGeometry {
 /** Everything of one tier that goes into a batch, surfaces and structures alike. */
 export function partsOf(tier: TierGeometry): BufferGeometry[] {
   const out: BufferGeometry[] = [];
-  for (const run of tier.runs) out.push(...run.surfaces, ...run.structures);
+  for (const run of tier.runs) out.push(...run.surfaces, ...run.joints, ...run.structures);
   out.push(...tier.junctions);
   return out;
 }
@@ -281,9 +287,13 @@ export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons, heightA
     const tints: number[] = [];
     for (const run of runs) {
       const pieces = piecesOf(run, ribbons);
+      // The joints are one part rather than one each: a bevel is a handful of
+      // triangles, and a batch pays for every part it is filled from.
+      const joints = jointsOf(pieces, section);
       built.push({
         run,
         surfaces: pieces.map((piece) => surfaceOf(piece, section)),
+        joints: joints.length > 0 ? [merge(joints)] : [],
         structures: structuresOf(run, pieces, ribbons, tier, section),
       });
       for (const piece of pieces) {
@@ -594,6 +604,123 @@ function surfaceOf(piece: Piece, section: readonly SectionPoint[]): BufferGeomet
   const across = new Float32Array(count);
   for (let v = 0; v < count; v++) across[v] = (section[v % section.length] as SectionPoint).across;
   return tag(geometry, across, SURFACE_ROAD);
+}
+
+/**
+ * The bevel that closes the outside of a turn too sharp to mitre.
+ *
+ * The two pieces beside such a turn end and start at the same point on
+ * different frames, so the road is cut open there: on the inside of the turn
+ * the two surfaces overlap, and on the outside they leave a wedge of ground
+ * showing through the road. The wedge is as long as the mitre would have moved
+ * the outer corner, which is metres on an ordinary bend of an arterial.
+ *
+ * The bevel is the outer half of the cross section swung from the frame the
+ * road arrived on to the frame it leaves on, at the point itself. It carries
+ * the whole outer half — carriageway, kerb face and pavement — so the joint
+ * matches the two pieces it fills between, band for band. The inner half is
+ * left out, because the two pieces already cover it twice over.
+ */
+function jointOf(point: Point, before: RoadFrame, after: RoadFrame, section: readonly SectionPoint[]): BufferGeometry | undefined {
+  // The two frames turn one way round the point. The road bends towards the
+  // side the frames turn to, so the wedge stands on the other one.
+  const turn = before.acrossX * after.acrossY - before.acrossY * after.acrossX;
+  if (turn === 0) return undefined;
+  const outer = turn > 0 ? -1 : 1;
+  // The section from the centreline out to the outer edge. The carriageway is
+  // flat between the kerbs, so the centreline point closes the wedge exactly.
+  const half: SectionPoint[] = section.filter((s) => Math.sign(s.across) === outer);
+  if (half.length === 0) return undefined;
+  const middle: SectionPoint = { across: 0, rise: SURFACE_RAISE };
+  const strip = outer < 0 ? [...half, middle] : [middle, ...half];
+
+  const quads = strip.length - 1;
+  const positions = new Float32Array(quads * 4 * 3);
+  const normals = new Float32Array(quads * 4 * 3);
+  const uvs = new Float32Array(quads * 4 * 2);
+  const across = new Float32Array(quads * 4);
+  const index = new Uint32Array(quads * 6);
+  // The frame the joint is shaded in: the across axis of the road through the
+  // turn, and up. A face keeps the normal its band has along the road, so the
+  // bevel is lit as the surfaces each side of it are.
+  const axisX = before.acrossX + after.acrossX;
+  const axisY = before.acrossY + after.acrossY;
+  const axis = Math.hypot(axisX, axisY);
+  if (axis < 1e-9) return undefined;
+  let v = 0;
+  let at = 0;
+  for (let k = 0; k + 1 < strip.length; k++) {
+    const s = strip[k] as SectionPoint;
+    const t = strip[k + 1] as SectionPoint;
+    const corners = [
+      { point: place(point, before, s.across, s.rise), across: s.across },
+      { point: place(point, before, t.across, t.rise), across: t.across },
+      { point: place(point, after, t.across, t.rise), across: t.across },
+      { point: place(point, after, s.across, s.rise), across: s.across },
+    ];
+    // The band's own normal, taken across the section: level along the
+    // carriageway and the pavement, and outwards up a kerb face or a skirt.
+    const da = t.across - s.across;
+    const dr = t.rise - s.rise;
+    const length = Math.hypot(da, dr);
+    if (length < 1e-9) continue;
+    const nx = ((-dr / length) * axisX) / axis;
+    const ny = da / length;
+    const nz = ((-dr / length) * axisY) / axis;
+    const base = v;
+    for (const corner of corners) {
+      positions[v * 3] = corner.point.x;
+      positions[v * 3 + 1] = corner.point.y;
+      positions[v * 3 + 2] = corner.point.z;
+      normals[v * 3] = nx;
+      normals[v * 3 + 1] = ny;
+      normals[v * 3 + 2] = nz;
+      uvs[v * 2] = corner.point.x;
+      uvs[v * 2 + 1] = corner.point.z;
+      across[v] = corner.across;
+      v++;
+    }
+    // Wound by the way the four corners turn about the band's own normal, so a
+    // left turn and a right one both face outwards.
+    const a = (corners[0] as { point: Vector3 }).point;
+    const b = (corners[1] as { point: Vector3 }).point;
+    const c = (corners[2] as { point: Vector3 }).point;
+    const ux = b.x - a.x;
+    const uy = b.y - a.y;
+    const uz = b.z - a.z;
+    const wx = c.x - a.x;
+    const wy = c.y - a.y;
+    const wz = c.z - a.z;
+    const facing = (uy * wz - uz * wy) * nx + (uz * wx - ux * wz) * ny + (ux * wy - uy * wx) * nz;
+    const order = facing >= 0 ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2];
+    for (const step of order) index[at++] = base + step;
+  }
+  if (at === 0) return undefined;
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(positions.subarray(0, v * 3), 3));
+  geometry.setAttribute('normal', new BufferAttribute(normals.subarray(0, v * 3), 3));
+  geometry.setAttribute('uv', new BufferAttribute(uvs.subarray(0, v * 2), 2));
+  geometry.setIndex(new BufferAttribute(index.subarray(0, at), 1));
+  return tag(geometry, across.subarray(0, v), SURFACE_ROAD);
+}
+
+/**
+ * The bevels of a run: one at each turn its pieces were cut at. Two pieces are
+ * cut at the same turn only where the second carries on from the first, so a
+ * run cut short by a junction takes no joint at the cut.
+ */
+function jointsOf(pieces: readonly Piece[], section: readonly SectionPoint[]): BufferGeometry[] {
+  const out: BufferGeometry[] = [];
+  for (let i = 0; i + 1 < pieces.length; i++) {
+    const piece = pieces[i] as Piece;
+    const next = pieces[i + 1] as Piece;
+    if (next.from !== piece.from + piece.points.length - 1) continue;
+    const before = piece.frames[piece.frames.length - 1] as RoadFrame;
+    const after = next.frames[0] as RoadFrame;
+    const joint = jointOf(next.points[0] as Point, before, after, section);
+    if (joint !== undefined) out.push(joint);
+  }
+  return out;
 }
 
 /**
