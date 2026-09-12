@@ -343,7 +343,13 @@ export class RoadCarve {
     };
     // A place inside a junction's outline is the junction's, whatever else
     // reaches it: the whole outline stands on the one plane, which is what
-    // leaves no crease under the surfaces laid over it (`bed.ts`).
+    // leaves no crease under the surfaces laid over it (`bed.ts`). The scan
+    // carries on all the same, because another road may claim the same place at
+    // another height — a street crossing under a junction of a wider road is
+    // exactly the crowded case this answers — and that is only seen by asking
+    // every claimant.
+    let ownerHeight = 0;
+    let ownerRoad = -1;
     for (const j of this.junctionBuckets[at] ?? []) {
       const junction = this.junctions[j] as (typeof this.junctions)[number];
       const distance = pointInRing({ x, y }, junction.ring) ? 0 : ringDistance(junction.ring, x, y);
@@ -353,10 +359,13 @@ export class RoadCarve {
       const plane = junction.plane;
       const bed = plane.level + plane.gx * (x - plane.x) + plane.gy * (y - plane.y);
       if (distance === 0) {
-        this.weight = 1;
-        this.height = bed;
-        this.road = junction.curve;
-        return;
+        if (ownerRoad < 0) {
+          ownerHeight = bed;
+          ownerRoad = junction.curve;
+        }
+        asked = Math.min(asked, bed);
+        askedHigh = Math.max(askedHigh, bed);
+        continue;
       }
       offer(claims ? junction.claimed : 0, weight, distance, bed, junction.curve);
     }
@@ -378,9 +387,9 @@ export class RoadCarve {
       // the grid needs around it, so that is the ground the road claims.
       offer(distance <= half ? (this.claimed[i] as number) : 0, weight, distance, bed, this.curve[i] as number);
     }
-    this.weight = bestWeight;
-    this.height = bestHeight;
-    this.road = bestRoad;
+    this.weight = ownerRoad >= 0 ? 1 : bestWeight;
+    this.height = ownerRoad >= 0 ? ownerHeight : bestHeight;
+    this.road = ownerRoad >= 0 ? ownerRoad : bestRoad;
     this.crowded = askedHigh - asked > CROWDED_BY;
   }
 
