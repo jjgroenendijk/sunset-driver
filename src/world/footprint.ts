@@ -31,6 +31,20 @@ import type { Corridor, Point, RoadCurve } from './types.ts';
 /** Corners of the apron laid over a junction. Enough that its flats read as a curve. */
 const APRON_CORNERS = 8;
 
+/**
+ * The pieces the footprint is unioned from, kept apart by what laid them. The
+ * union loses that: a tool that asks how much ground the aprons take on top of
+ * the carriageways reads these instead.
+ */
+export interface FootprintParts {
+  /** One strip per run of a road that lies on the ground. */
+  strips: Region[];
+  /** One apron per junction that takes one. */
+  aprons: Region[];
+  /** One region per corridor of spec section 6.3. */
+  corridors: Region[];
+}
+
 /** The ground the roads and their corridors claim. */
 export interface RoadFootprint {
   /** The pieces of that ground, each with the blocks inside it as holes. They do not overlap. */
@@ -48,18 +62,28 @@ export function buildFootprint(
   corridors: readonly Corridor[],
   graph: RoadGraph,
 ): RoadFootprint {
-  const parts: Region[] = [];
+  const parts = footprintParts(roads, corridors, graph);
+  const regions = union([...parts.strips, ...parts.aprons, ...parts.corridors]);
+  return { regions, area: areaOf(regions) };
+}
+
+/** The pieces the footprint is unioned from, before the union. */
+export function footprintParts(
+  roads: readonly RoadCurve[],
+  corridors: readonly Corridor[],
+  graph: RoadGraph,
+): FootprintParts {
+  const strips: Region[] = [];
   for (const road of roads) {
     const halfWidth = footprintHalfWidth(road.tier);
-    for (const run of groundRuns(road)) parts.push(regionOf(strip(run, halfWidth)));
+    for (const run of groundRuns(road)) strips.push(regionOf(strip(run, halfWidth)));
   }
+  const aprons: Region[] = [];
   for (const node of graph.nodes) {
     const radius = apronRadius(graph, node.edges);
-    if (radius > 0) parts.push(regionOf(disc(node.x, node.y, radius, APRON_CORNERS)));
+    if (radius > 0) aprons.push(regionOf(disc(node.x, node.y, radius, APRON_CORNERS)));
   }
-  for (const corridor of corridors) parts.push(regionOf(corridor.polygon));
-  const regions = union(parts);
-  return { regions, area: areaOf(regions) };
+  return { strips, aprons, corridors: corridors.map((corridor) => regionOf(corridor.polygon)) };
 }
 
 /**
