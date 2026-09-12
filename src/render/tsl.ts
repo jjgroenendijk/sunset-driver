@@ -17,6 +17,7 @@
  * `three/tsl` anywhere else.
  */
 import { bloom as bloomNode } from 'three/examples/jsm/tsl/display/BloomNode.js';
+import { lut3D as lut3DNode } from 'three/examples/jsm/tsl/display/Lut3DNode.js';
 import { smaa as smaaNode } from 'three/examples/jsm/tsl/display/SMAANode.js';
 import type { Camera, Scene, Texture } from 'three';
 import * as tsl from 'three/tsl';
@@ -109,8 +110,22 @@ export const fractalNoise = tsl.mx_fractal_noise_float as unknown as (
 /** The scene drawn into a texture, which is what every effect below reads. */
 export const pass = tsl.pass as unknown as (scene: Scene, camera: Camera) => TslNode;
 
-/** A texture, read at a place on it. The grade's table is the only one the game holds. */
-export const texture = tsl.texture as unknown as (map: Texture, at?: TslNode) => TslNode;
+/**
+ * A 3D texture as a node an effect can read. The grade's cube is the only
+ * texture the game holds, and `lut3D` wants it in this form rather than raw.
+ */
+export const texture3D = tsl.texture3D as unknown as (map: Texture) => TslNode;
+
+/**
+ * A colour looked up in a cube of colours: `size` is the cube's side, and
+ * `intensity` how much of the answer is kept, 1 being all of it.
+ */
+export const lut3D = lut3DNode as unknown as (
+  colour: TslNode,
+  lut: TslNode,
+  size: number,
+  intensity: number,
+) => TslNode;
 
 /** Real light in, film in 0..1 out. The mapping is a `ToneMapping` constant. */
 export const toneMapping = tsl.toneMapping as unknown as (

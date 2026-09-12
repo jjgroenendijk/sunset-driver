@@ -7,8 +7,8 @@
  * - Bloom, so neon, lit windows and headlights spill light the way a camera
  *   sees them.
  * - SMAA, so a kerb seen from 60 m up is a line rather than a staircase.
- * - The colour grade of `grade.ts`, as a lookup table generated at runtime and
- *   rebuilt as the day turns.
+ * - The colour grade of `grade.ts`, as a 3D lookup table generated at runtime
+ *   and rebuilt as the day turns.
  *
  * The order they run in is the whole of the design. The scene is drawn into a
  * texture in real light, where the sun is thousands of times the strength of a
@@ -29,7 +29,7 @@
  * table of tiers and the frame-time monitor that walks it; `world-scene.ts`
  * owns the rest of what a tier changes.
  */
-import { DataTexture, DataUtils, HalfFloatType, LinearFilter, NoToneMapping, RGBAFormat } from 'three';
+import { Data3DTexture, DataUtils, HalfFloatType, LinearFilter, NoToneMapping } from 'three';
 import { RenderPipeline, type WebGPURenderer } from 'three/webgpu';
 import type { Camera, Scene } from 'three';
 import { START_TICK } from '../sim/simulation.ts';
@@ -39,23 +39,19 @@ import {
   gradeStep,
   writeLut,
   LUT_GAMMA,
-  LUT_HEIGHT,
   LUT_LENGTH,
   LUT_SIZE,
-  LUT_WIDTH,
 } from './grade.ts';
 import { setRenderScale } from './renderer.ts';
 import {
   bloom,
-  float,
-  mix,
+  lut3D,
   pass,
   renderOutput,
   smaa,
-  texture,
+  texture3D,
   toneMapping,
   toneMappingExposure,
-  vec2,
   vec4,
   type TslNode,
 } from './tsl.ts';
@@ -95,7 +91,7 @@ export class PostChain {
   private readonly scenePass: TslNode;
   private readonly colour: TslNode;
   /** The colour grade, as a cube of colours the frame is looked up in. */
-  private readonly lut: DataTexture;
+  private readonly lut: Data3DTexture;
   /** The cube in linear light, before it is packed into the texture's half floats. */
   private readonly graded = new Float32Array(LUT_LENGTH);
   /** The nodes of the chain as it stands, so a change of quality releases them. */
@@ -118,12 +114,16 @@ export class PostChain {
     this.scenePass = pass(scene, camera);
     this.colour = vec4(this.scenePass.getTextureNode().rgb.mul(toneMappingExposure), 1);
 
-    this.lut = new DataTexture(new Uint16Array(LUT_LENGTH), LUT_WIDTH, LUT_HEIGHT, RGBAFormat, HalfFloatType);
+    this.lut = new Data3DTexture(new Uint16Array(LUT_LENGTH), LUT_SIZE, LUT_SIZE, LUT_SIZE);
+    this.lut.type = HalfFloatType;
     // The table is read between its entries rather than at them, and half
     // floats are what keeps a night sky smooth: eight bits of linear light
     // band visibly once the frame is encoded for the display.
     this.lut.minFilter = LinearFilter;
     this.lut.magFilter = LinearFilter;
+    // Mipmaps of a 3D texture are built through 2D views, which WebGPU refuses.
+    // three.js 0.186 asks for them anyway, and every frame then fills the
+    // console with errors. Nothing reads them: the cube is sampled at one size.
     this.lut.generateMipmaps = false;
 
     // A session starts at 08:00, as the scene does, so the first frame is graded.
@@ -210,32 +210,21 @@ export class PostChain {
   }
 
   /**
-   * Look every colour of the frame up in the grade's table.
+   * Look every colour of the frame up in the grade's cube.
    *
-   * The frame is light and the table is display values, so the colour is
-   * encoded on the way in and the answer decoded on the way out.
+   * `Lut3DNode` does the reading. The sampler interpolates all three axes at
+   * once, so the grade is one texture fetch a pixel. The node insets the
+   * reading by half a texel, so a colour at the edge of the cube reads the
+   * entry there rather than half of it and half of nothing.
    *
-   * Red and green are read across one square of the strip, and the sampler
-   * blends between the entries for us. Blue picks the square, and the two
-   * nearest squares are blended here: that is the one axis of the cube a flat
-   * texture cannot interpolate by itself. Half a texel of inset keeps each
-   * square's reading inside it, so no colour ever borrows from the slice next
-   * to it.
+   * The frame is light and the cube is display values, so the colour is encoded
+   * on the way in and the answer decoded on the way out. The clamp is what
+   * keeps a colour brighter than white from reading off the end of the cube.
    */
   private lookUp(colour: TslNode): TslNode {
-    const last = float(LUT_SIZE - 1);
-    const rgb = colour.rgb.clamp(0, 1).pow(1 / LUT_GAMMA);
-    const across = rgb.r.mul(last).add(0.5);
-    const down = rgb.g.mul(last).add(0.5).div(LUT_HEIGHT);
-    const blue = rgb.b.mul(last);
-    const low = blue.floor();
-    const high = low.add(1).min(last);
-    const near = texture(this.lut, vec2(low.mul(LUT_SIZE).add(across).div(LUT_WIDTH), down));
-    const far = texture(this.lut, vec2(high.mul(LUT_SIZE).add(across).div(LUT_WIDTH), down));
-    // `mix` as a free function, never `near.rgb.mix(far.rgb, t)`: chained, the
-    // receiver is the factor and not the first colour, so that reads as a
-    // blend and compiles to `mix(far, t, near)`.
-    return vec4(mix(near.rgb, far.rgb, blue.sub(low)).pow(LUT_GAMMA), colour.a);
+    const encoded = vec4(colour.rgb.clamp(0, 1).pow(1 / LUT_GAMMA), colour.a);
+    const graded = lut3D(encoded, texture3D(this.lut), LUT_SIZE, 1);
+    return vec4(graded.rgb.pow(LUT_GAMMA), colour.a);
   }
 
   /** Release the effects of the chain as it stands, with the targets they hold. */
