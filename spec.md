@@ -21,7 +21,6 @@ Do not implement these, and do not propose them again.
 - No asset files. No models, textures or audio files. Everything is generated in code at runtime.
 - No hosting. No game server, signalling server, database or serverless function. The deployment is a static site.
 - No feature exists to justify an addon. Broad three.js coverage is a goal, but every addon must serve a feature that is wanted on its own merits.
-- No camera roll, bank or automatic heading rotation. The camera only translates.
 - No overlap-by-collision-checking. Layout is constrained at placement time, never detected and repaired afterwards.
 
 ---
@@ -295,7 +294,7 @@ Visual richness comes from geometry, lighting and materials rather than screen-s
 
 ### 10.7 Camera
 
-Fixed tilted top-down. Pitch is locked and heading is fixed. The camera only translates: it leads the vehicle at speed and pulls back as speed increases. It never rolls, banks or rotates.
+Fixed tilted top-down. Pitch is locked and heading is fixed. The camera only translates: it leads the vehicle at speed and pulls back as speed increases. It never rolls, banks or rotates. That is the camera the game is played through; the developer free camera of `docs/dev-tooling.md` is a tool and not a view of the game.
 
 ---
 
