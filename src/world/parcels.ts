@@ -201,13 +201,6 @@ const ROAD_REACH = 2;
 const EDGE_STEP = 8;
 /** Metres of one bucket of the road index. Small enough that a bucket holds a handful of segments. */
 const REACH_CELL = 48;
-/**
- * Metres between the corners of the rectangle a cut clips with. The boolean
- * engine files an edge by the box around it, so one long diagonal side would
- * land in every bucket of a square kilometres across and cost more than the
- * parcel it cuts. Short steps keep each side in the buckets it really crosses.
- */
-const CLIP_STEP = 16;
 
 /**
  * What a zone does with the ground its roads leave. The chances are what a
@@ -441,22 +434,8 @@ function cutInTwo(region: Region, at: Point, angle: number): Region[] {
     { x: at.x + dx - dy, y: at.y + dy + dx },
     { x: at.x - dx - dy, y: at.y - dy + dx },
   ];
-  const halves = split([region], [regionOf(stepped(corners))]);
+  const halves = split([region], [regionOf(corners)]);
   return [...halves.inside, ...halves.outside];
-}
-
-/** A ring with every side laid in steps of at most {@link CLIP_STEP} metres. */
-function stepped(corners: readonly Point[]): Point[] {
-  const ring: Point[] = [];
-  for (let i = 0; i < corners.length; i++) {
-    const a = corners[i] as Point;
-    const b = corners[(i + 1) % corners.length] as Point;
-    const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / CLIP_STEP));
-    for (let k = 0; k < steps; k++) {
-      ring.push({ x: a.x + ((b.x - a.x) * k) / steps, y: a.y + ((b.y - a.y) * k) / steps });
-    }
-  }
-  return ring;
 }
 
 /** Who owns one parcel, given its zone, its district and how much ground it has. */
