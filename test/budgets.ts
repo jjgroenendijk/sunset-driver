@@ -133,8 +133,16 @@ export const BUDGET_MS = {
    * and the frame is charged only for {@link BUDGET_MS.chunkUpload}. It is
    * still measured, because a worker that takes half a second to answer is a
    * city that fills in half a second late.
+   *
+   * The street wall of issues #190 to #192 spent this one. On the dearest of
+   * the four seeds the test measures, the chunk on the core held 21 buildings
+   * and 394 000 vertices before them and 56 buildings and 1 025 000 after, so
+   * it costs 22 ms where it cost 57 on the laptop this was measured on. A
+   * GitHub runner is two and a half to four times slower again, and two runs on
+   * one reported 155 ms and 237 ms for the same seed, so 150 left no room for a
+   * slow runner at all.
    */
-  chunkBuildings: 150,
+  chunkBuildings: 300,
 
   /**
    * The dearest single step of putting a chunk of the core into the scene:
