@@ -443,6 +443,11 @@ class CorridorBuilder {
    * corridors. The strip is claimed segment by segment: a segment whose ground
    * another corridor already holds is given up, and the run continues on the
    * far side of it as a corridor of its own.
+   *
+   * A segment standing over water is given up the same way, because there is no
+   * ground under it to claim. The tram is what needs that: its lane runs down
+   * the middle of an arterial, and an arterial crosses a strait on a deck. A
+   * deck run is cut on the same rule before it is claimed at all.
    */
   private claimStraightaway(kind: CorridorKind, line: Centreline, halfWidth: number, pillars: boolean): Corridor[] {
     const points = line.points;
@@ -453,7 +458,7 @@ class CorridorBuilder {
     let open: { from: number; to: number } | undefined;
     for (let i = 0; i + 1 < points.length; i++) {
       const quad = [left[i] as Point, left[i + 1] as Point, right[i + 1] as Point, right[i] as Point];
-      if (this.claims.taken(run, quad)) {
+      if (this.overWater(points[i] as Point, points[i + 1] as Point) || this.claims.taken(run, quad)) {
         open = undefined;
         continue;
       }
