@@ -204,17 +204,20 @@ export interface ZoneBands {
  * over the dry land of the zone.
  */
 export const LAYOUT_BANDS: Record<Zone, ZoneBands> = {
-  // 80 seeds: road 44 to 55 %, building 13 to 22 %, 2.3 to 4.0 buildings a
-  // hectare, median parcel 1235 to 3058 m². Issue #190 moved all four: the
+  // 80 seeds: road 44 to 55 %, building 13 to 25 %, 2.4 to 4.4 buildings a
+  // hectare, median parcel 1217 to 3266 m². Issue #190 moved all four: the
   // strip blocks of spec section 6.1 took the road share down from 58 to 65 %
-  // and the middle parcel up from 547 to 920 m².
+  // and the middle parcel up from 547 to 920 m². Issue #191 moved none of the
+  // bands: demoting the alley to one lane a block and keeping a real block
+  // whole put more building on the same ground — the top of the building share
+  // went from 22 to 25 % — and left the spread inside what was already pinned.
   core: {
     roadShare: { min: 0.34, max: 0.65 },
     buildingShare: { min: 0.09, max: 0.3 },
     buildingsPerHectare: { min: 1.5, max: 5.5 },
     medianParcelArea: { min: 800, max: 4500 },
   },
-  // 39 to 47 %, 15 to 22 %, 3.2 to 4.7, 1999 to 3899 m². Issue #190 moved these
+  // 40 to 47 %, 15 to 23 %, 3.4 to 5.0, 2020 to 3471 m². Issue #190 moved these
   // as well, from 46 to 54 %, 14 to 19 % and 1137 to 1634 m².
   inner: {
     roadShare: { min: 0.3, max: 0.58 },
@@ -222,7 +225,7 @@ export const LAYOUT_BANDS: Record<Zone, ZoneBands> = {
     buildingsPerHectare: { min: 2.2, max: 6.5 },
     medianParcelArea: { min: 1300, max: 5500 },
   },
-  // 21 to 39 %, 4 to 27 %, 0.3 to 1.8, 1745 to 14412 m². The wedge lies along
+  // 20 to 39 %, 10 to 27 %, 0.6 to 1.9, 2176 to 14857 m². The wedge lies along
   // the harbour, so how much of it is water — and how much city is left in it —
   // moves further from seed to seed than any other zone.
   industrial: {
@@ -231,14 +234,14 @@ export const LAYOUT_BANDS: Record<Zone, ZoneBands> = {
     buildingsPerHectare: { min: 0.15, max: 3 },
     medianParcelArea: { min: 1200, max: 20000 },
   },
-  // 21 to 36 %, 10 to 17 %, 3.8 to 6.9, 5539 to 10202 m².
+  // 21 to 36 %, 9 to 17 %, 3.4 to 6.7, 5032 to 10278 m².
   suburban: {
     roadShare: { min: 0.06, max: 0.55 },
     buildingShare: { min: 0.01, max: 0.27 },
     buildingsPerHectare: { min: 0.5, max: 10 },
     medianParcelArea: { min: 2500, max: 16000 },
   },
-  // 4 to 19 %, 3 to 8 %, 0.7 to 1.7, 11261 to 45289 m².
+  // 4 to 19 %, 2 to 8 %, 0.5 to 1.6, 11660 to 48745 m².
   outskirts: {
     roadShare: { min: 0.015, max: 0.3 },
     buildingShare: { min: 0.002, max: 0.16 },

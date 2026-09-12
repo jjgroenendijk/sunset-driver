@@ -19,11 +19,15 @@
  * not follow the field at all: a resort beach hands over the line behind its
  * dune, and the street is laid on it so the roads stay off the sand.
  *
- * Streets, alleys and dirt roads come last. They are the same fill as the
- * arterials, with two differences: the spacing comes from the density of the
- * district under the seed, so a dense district gets tight blocks, and the tier
- * comes from its zone. A road that met nothing on one side is a dead end, and a
- * dead end is trimmed to a cul-de-sac rather than left running into nothing.
+ * Streets and dirt roads come last. They are the same fill as the arterials,
+ * with two differences: the spacing comes from the density of the district
+ * under the seed, so a dense district gets tight blocks, and the tier comes
+ * from its zone. A road that met nothing on one side is a dead end, and a dead
+ * end is trimmed to a cul-de-sac rather than left running into nothing.
+ *
+ * The alleys go down after them, and are not a fill at all: one service lane
+ * inside one block, wherever a block is deep enough to be worth halving.
+ * `alleys.ts` says where those lanes go.
  *
  * No road climbs harder than its tier allows. Every candidate step is measured
  * against `TIERS[tier].maxGrade`, and a step that is too steep is refused, so
@@ -40,7 +44,8 @@
  * This file is the plan: which road is laid where, and in what order. How a
  * road is actually traced — the step along the field, the ground that refuses
  * it, the reroute and the bridges — is `road-trace.ts`, which this extends, and
- * the network laid so far is `road-index.ts`.
+ * the network laid so far is `road-index.ts`. The seed and plan the fills speak
+ * in, and the zone table they read, are `fill.ts`.
  *
  * Four invariants hold by construction, and the seed sweep checks them:
  *
@@ -54,13 +59,16 @@
  *   and no street, alley or dirt road shares one with a highway at all.
  */
 import { clamp, dist, directionDelta, lerp, wrapAngle } from '../core/math.ts';
+import { alleyPlan, alleySeeds, type AlleyGround } from './alleys.ts';
+import { ZONE_LOTS } from './buildings.ts';
 import { connectCrossings } from './connect.ts';
 import { districtAt, layoutZones, zoneAt } from './districts.ts';
+import { MINOR_BY_ZONE, type FillPlan, type FillSeed, type PlanAt, type SpacingAt } from './fill.ts';
 import { raiseOverpasses } from './overpass.ts';
+import { zoneMinBuilt } from './parcels.ts';
 import { JOIN_EPSILON } from './road-index.ts';
 import {
   alignTo,
-  ALLEY,
   ALLEY_DENSITY,
   ANCHOR_REACH,
   ARTERIAL,
@@ -95,103 +103,14 @@ import type { Beach, Island, Point, RoadCurve, RoadTier, WorldSkeleton, Zone } f
 // while the two halves were one file.
 export { groundRule, MIN_BOARDWALK, spanProfile, type Profile } from './road-trace.ts';
 
-/**
- * What the minor fill lays in each zone: the tier, and the metres between
- * neighbouring roads of it. A district holds the tight spacing when its density
- * is 1 and the loose one when it is 0, so blocks shrink toward downtown.
- *
- * Each zone has two spacings, because a block is a long strip and not a lozenge
- * (spec section 6.1). `across` is the gap between the streets that run across
- * the field's major direction, `along` the gap between the avenues that run
- * with it. One spacing both ways lays roughly three times the street per
- * hectare and leaves every block a small lozenge with nothing worth building
- * on.
- *
- * `across` is what the old single spacing was, so the rhythm of the side
- * streets is unchanged: 90 m in the core, which is a Manhattan side street.
- * `along` is two to five times that. In the core and the inner ring it is far
- * wider than the 240 m an avenue wants, because the arterial fill has already
- * laid a road every {@link ARTERIAL_SPACING} of the map — about 230 m — in both
- * directions. The streets that run with the field only fill what is left
- * between those arterials, so the avenue-grade spacing on the ground is the
- * arterial's and not this figure.
- *
- * The ratio drops toward two outside the city: the suburbs and the outskirts
- * want blocks as irregular as they fall, not strips.
- */
-const MINOR_BY_ZONE: Record<Zone, { tier: RoadTier; across: [number, number]; along: [number, number] }> = {
-  core: { tier: 'street', across: [80, 105], along: [450, 600] },
-  inner: { tier: 'street', across: [90, 120], along: [430, 570] },
-  industrial: { tier: 'street', across: [115, 155], along: [230, 310] },
-  suburban: { tier: 'street', across: [90, 135], along: [180, 270] },
-  outskirts: { tier: 'dirt', across: [190, 270], along: [330, 470] },
-  wilderness: { tier: 'dirt', across: [300, 430], along: [500, 720] },
-};
-
-/** What the fill lays where it is seeded. */
-interface FillPlan {
-  tier: RoadTier;
-  params: TierParams;
-  /**
-   * Metres to the next road of this tier running the same way. It is how far a
-   * road must run before it may rejoin the one that seeded it.
-   */
-  spacing: number;
-  /**
-   * Metres a seed must stand clear of every other road for a road to be laid
-   * there, and the shortest road worth laying. It is half the tighter of the
-   * zone's two spacings, never half of `spacing`: an avenue is seeded 240 m off
-   * its parent and crosses a street every 80 m, so a clearance taken from its
-   * own spacing would refuse every avenue after the first.
-   */
-  clearance: number;
-  /** Metres a road may run past its seed without meeting another road. */
-  deadEnd: number;
-  /** Ground this tier may stand on. */
-  within: (x: number, y: number) => boolean;
-}
-
-/** How the fill reads a zone's spacing: for a road running across the field's major direction, or with it. */
-type SpacingAt = (x: number, y: number, across: boolean) => number;
-
-/** How the fill plans a road: where it stands, and which way it will run. */
-type PlanAt = (x: number, y: number, across: boolean) => FillPlan;
-
 /** What {@link seedAlong} lays besides the two roads parallel to the curve. */
 interface SeedOptions {
-  /**
-   * Lay a seed on the curve itself pointing across it: the cross street that
-   * ties the parallel roads together. An alley wants none — it runs down the
-   * middle of a block, and a block cross-hatched with alleys is no longer a
-   * block.
-   */
-  cross?: boolean;
   /**
    * The tier being seeded may junction with a highway. Only the arterial fill
    * sets it, and even then a seed stands on a highway only at one of its
    * interchanges (spec section 6.2).
    */
   ramps?: boolean;
-  /**
-   * Lay the parallel seeds only where the curve runs with the field's major
-   * direction. That is what an alley wants: it halves the long side of a strip
-   * block, and halving the short side would only lay the streets again.
-   */
-  alongOnly?: boolean;
-}
-
-/** Where the fill should try to lay its next road. */
-interface FillSeed {
-  x: number;
-  y: number;
-  /** Direction of the road that seeded this one; the new road runs parallel to it. */
-  along: number;
-  /** Curve the seed came from, which the new road may not immediately rejoin. */
-  parent: number;
-  /** How many arterials removed from the highways this one is. */
-  depth: number;
-  /** True when the seed sits on its parent, so the road it grows is joined to the network from its first point. */
-  onParent: boolean;
 }
 
 /** The roads of a world, and the boardwalk each beach was given. */
@@ -466,11 +385,11 @@ class RoadTracer extends RoadTrace {
   // ------------------------------------------------------------ minor roads
 
   /**
-   * Streets, alleys and dirt roads between the arterials (spec section 6.2).
+   * Streets, dirt roads and alleys between the arterials (spec section 6.2).
    * The zone under a seed decides the tier and the block size it aims for, and
    * the density of the district under it decides where in that range the
-   * spacing lands. Alleys come last, seeded half a block off the streets, so
-   * they cut through the inside of a dense block rather than doubling a street.
+   * spacing lands. The alleys come last, one service lane to a block, laid from
+   * the blocks the streets have just made rather than from a spacing.
    */
   private fillMinor(): void {
     const zones = layoutZones(this.size, this.world.core, this.world.water);
@@ -506,30 +425,23 @@ class RoadTracer extends RoadTrace {
     for (const curve of [...this.curves]) seedAlong(curve, this.field, spacingAt, 0, seeds);
     const streets = this.grow(seeds, streetPlan, MINOR_GENERATIONS, MINOR_LIMIT);
 
-    const dense = (x: number, y: number): boolean =>
-      paved(x, y) && districtAt(districts, zones, x, y).density >= ALLEY_DENSITY;
-    // An alley runs down the middle of a block, so it is half a block off the
-    // street that seeded it. The block is as wide as the roads that bound it,
-    // and in the city that is the arterial fill and not `MINOR_BY_ZONE.along`,
-    // which is set wider than a block on purpose.
-    const halfBlock = (x: number, y: number): number => Math.min(spacingAt(x, y, false), this.size * ARTERIAL_SPACING) / 2;
-    const alleySpacing: SpacingAt = (x, y, across) => (across ? spacingAt(x, y, true) / 2 : halfBlock(x, y));
-    const alleyPlan: PlanAt = (x, y) => ({
-      tier: 'alley',
-      params: ALLEY,
-      spacing: halfBlock(x, y),
-      // A quarter of the tighter spacing: an alley seed stands where a cross
-      // street runs, so a clearance taken from its own half block would refuse
-      // every one of them.
-      clearance: spacingAt(x, y, true) / 4,
-      deadEnd: spacingAt(x, y, true) * 0.5 * DEAD_END_SPACINGS,
-      within: dense,
-    });
-    const alleySeeds: FillSeed[] = [];
-    for (const curve of streets) {
-      if (curve.tier === 'street') seedAlong(curve, this.field, alleySpacing, 0, alleySeeds, { cross: false, alongOnly: true });
-    }
-    this.grow(alleySeeds, alleyPlan, 1, MINOR_LIMIT);
+    // The alleys last, one to a block (spec section 6.2). The block a lane
+    // would halve is measured on the ground rather than read off the zone
+    // table, so `alleys.ts` is given what the zone says and finds the rest.
+    const ground: AlleyGround = {
+      within: (x, y) => paved(x, y) && districtAt(districts, zones, x, y).density >= ALLEY_DENSITY,
+      minStrip: (x, y) => {
+        const zone = zoneAt(zones, x, y);
+        const lot = ZONE_LOTS[zone];
+        return { depth: lot.depth + lot.setback, area: zoneMinBuilt(zone) };
+      },
+      // The long side of a block is bounded by the avenues, and in the city
+      // those are the arterial fill and not `MINOR_BY_ZONE.along`, which is set
+      // wider than a block on purpose.
+      blockLength: (x, y) => Math.min(spacingAt(x, y, false), this.size * ARTERIAL_SPACING),
+      streetGap: (x, y) => spacingAt(x, y, true),
+    };
+    this.grow(alleySeeds(streets, this.index, ground), alleyPlan(ground), 1, MINOR_LIMIT);
   }
 
   // -------------------------------------------------------------------- fill
@@ -715,8 +627,7 @@ function atFractions(points: readonly Point[], choices: readonly number[], fract
  * Seeds for the next generation of the fill. Along a curve: one seed to each
  * side, pointing the same way, and one on the curve itself pointing across it.
  * The first two lay the parallel roads that carry the traffic, the third the
- * cross streets that tie them together. {@link SeedOptions} says which of the
- * three a caller wants.
+ * cross streets that tie them together.
  *
  * A zone has two spacings, so which one a seed is placed at depends on which
  * way the curve runs here. The side seeds go out at the spacing of the curve's
@@ -733,7 +644,6 @@ function seedAlong(
   out: FillSeed[],
   opts: SeedOptions = {},
 ): void {
-  const cross = opts.cross ?? true;
   const points = curve.points;
   let run: number | undefined;
   for (let i = 0; i + 1 < points.length; i++) {
@@ -751,18 +661,16 @@ function seedAlong(
     run = (run ?? step / 2) + seg;
     if (run < step || structure) continue;
     run -= step;
-    if (!(opts.alongOnly === true && runsAcross)) {
-      const side = spacingAt(b.x, b.y, runsAcross);
-      const nx = -Math.sin(along) * side;
-      const ny = Math.cos(along) * side;
-      for (const hand of [1, -1]) {
-        out.push({ x: b.x + nx * hand, y: b.y + ny * hand, along, parent: curve.id, depth, onParent: false });
-      }
+    const side = spacingAt(b.x, b.y, runsAcross);
+    const nx = -Math.sin(along) * side;
+    const ny = Math.cos(along) * side;
+    for (const hand of [1, -1]) {
+      out.push({ x: b.x + nx * hand, y: b.y + ny * hand, along, parent: curve.id, depth, onParent: false });
     }
     // A seed on the curve itself grows a road out of a junction with it. A
     // highway takes one only at an interchange, and only from an arterial ramp
     // (spec section 6.2), so the minor fill seeds nothing on one.
     const junctionable = curve.tier !== 'highway' || (opts.ramps === true && curve.interchanges.includes(i + 1));
-    if (cross && junctionable) out.push({ x: b.x, y: b.y, along: along + Math.PI / 2, parent: curve.id, depth, onParent: true });
+    if (junctionable) out.push({ x: b.x, y: b.y, along: along + Math.PI / 2, parent: curve.id, depth, onParent: true });
   }
 }
