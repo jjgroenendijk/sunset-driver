@@ -35,6 +35,16 @@ export class FollowCamera {
     this.baseDistance = distance;
   }
 
+  /**
+   * Forget where the camera was looking, so the next update puts it straight
+   * behind the player instead of sliding there. The developer free camera of
+   * `free-camera.ts` calls this when it hands the camera back: the player may
+   * be a kilometre from where the follow was left.
+   */
+  snap(): void {
+    this.initialised = false;
+  }
+
   resize(aspect: number): void {
     this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();

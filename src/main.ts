@@ -8,9 +8,11 @@ import { WorldScene } from './render/world-scene.ts';
 import { FixedStepClock } from './sim/clock.ts';
 import { DEFAULT_APPEARANCE } from './sim/character.ts';
 import { initPhysics, SimPhysics, type Ground } from './sim/physics.ts';
+import { EMPTY_INPUT } from './sim/input.ts';
 import { createSimState, stepSim, type SimState } from './sim/simulation.ts';
 import { HotwireBar } from './ui/hotwire.ts';
 import { Hud } from './ui/hud.ts';
+import { FREE_CAMERA_KEY, FreeCameraControls } from './ui/free-camera.ts';
 import { Keyboard } from './ui/keyboard.ts';
 import { TitleScreen } from './ui/title.ts';
 import { PICKER_KEY, VehiclePicker } from './ui/vehicle-picker.ts';
@@ -78,6 +80,9 @@ async function boot(): Promise<void> {
   camera.setBaseDistance(PREVIEW_DISTANCE);
   const clock = new FixedStepClock();
   const keyboard = new Keyboard(window);
+  // The developer free camera of `docs/dev-tooling.md`. It writes into the same
+  // camera the game is played through, so nothing else in the frame changes.
+  const free = new FreeCameraControls(canvas);
 
   window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight, false);
@@ -91,14 +96,22 @@ async function boot(): Promise<void> {
   let session: Session | null = null;
   let spin = 0;
   let last = performance.now();
+  /** Whether the camera was detached last frame, so a release is noticed once. */
+  let flew = false;
 
   const frame = (now: number): void => {
     const elapsed = now - last;
     last = now;
 
     if (session) {
+      // While the camera is detached the keys drive it alone, so the simulation
+      // is stepped with an empty frame: `W` must not also drive the car left
+      // behind. The simulation itself keeps running either way.
+      const flying = free.detached;
       const steps = clock.advance(elapsed);
-      for (let i = 0; i < steps; i++) stepSim(session.state, keyboard.sample(), session.physics);
+      for (let i = 0; i < steps; i++) {
+        stepSim(session.state, flying ? EMPTY_INPUT : keyboard.sample(), session.physics);
+      }
       const p = session.state.player;
       // The player and the car are both drawn from the record the physics
       // wrote. The record says how high the player's feet stand, so the model
@@ -116,12 +129,29 @@ async function boot(): Promise<void> {
       // colour grade follows the same tick (spec section 10.6).
       session.world.time = session.state.tick;
       session.post.time = session.state.tick;
-      session.world.update(p.x, p.y);
-      camera.update(elapsed / 1000, p);
+      if (flying) {
+        free.camera.update(elapsed / 1000, keyboard.freeCamera());
+        free.camera.writeTo(camera.camera);
+        // The streaming rings and the entity fade are measured from wherever
+        // the view is, or a flight of a few hundred metres looks at empty
+        // ground. Nothing waits for it: the chunks land as they are built.
+        session.world.update(free.camera.x, free.camera.z);
+      } else {
+        session.world.update(p.x, p.y);
+        camera.update(elapsed / 1000, p);
+      }
+      if (flew && !flying) {
+        // Escape leaves the pointer lock as well as the key does, so the camera
+        // is given back here rather than where it is detached.
+        camera.snap();
+        session.quality.settle();
+      }
+      flew = flying;
       // What the frame took is what decides the quality tier of spec section
       // 9.2. It is measured over the whole frame, drawing included, so it is
-      // the frame before this one that is being judged.
-      const change = session.quality.sample(elapsed);
+      // the frame before this one that is being judged. A frame drawn with the
+      // free camera is never a performance measurement, so it is not counted.
+      const change = flying ? undefined : session.quality.sample(elapsed);
       if (change !== undefined) applyQuality(session, change);
       session.hud.update(
         session.state,
@@ -227,6 +257,9 @@ async function boot(): Promise<void> {
     if (event.repeat) return;
     if (event.code === PICKER_KEY) picker.toggle();
     if (event.code === WEAPON_PICKER_KEY) weapons.toggle();
+    // The developer free camera. It takes over from where the game camera
+    // stands, and pointer lock needs this key press to ask for it.
+    if (event.code === FREE_CAMERA_KEY) free.toggle(camera.camera);
   });
 
   session = {

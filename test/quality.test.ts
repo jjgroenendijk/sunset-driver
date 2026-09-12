@@ -211,6 +211,18 @@ describe('the frame-time monitor', () => {
     expect(run(monitor, 6, WINDOW * 20)).toEqual([]);
   });
 
+  it('judges nothing on the window after it is settled again', () => {
+    const monitor = new QualityMonitor(FRAME_BUDGET_MS, 2);
+    run(monitor, 6, WINDOW); // settle
+    run(monitor, 6, WINDOW * 3); // three good windows
+    // What the developer free camera draws is not a measurement, so the
+    // headroom it was flown with is thrown away rather than raising a tier.
+    monitor.settle();
+    expect(run(monitor, 6, WINDOW * 4)).toEqual([]);
+    expect(monitor.index).toBe(2);
+    expect(run(monitor, 6, WINDOW)).toHaveLength(1);
+  });
+
   it('forgets its headroom the moment a window misses it', () => {
     const monitor = new QualityMonitor(FRAME_BUDGET_MS, 1);
     run(monitor, 6, WINDOW); // settle
