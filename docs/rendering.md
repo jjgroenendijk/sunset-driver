@@ -116,6 +116,22 @@ are the design.
   margin, a generated facade is asked for `CORNICE` less again because its cornices overhang
   whatever footprint it is given, and the placement is then scaled by what the built shell still
   measures. Look at that number rather than trusting it — the sweep does.
+- `building-mesh.ts` is the door onto three files: it generates and places the shell,
+  `building-plan.ts` says how big a building is and what ground it may cover, and
+  `building-hull.ts` builds the outline. The plan holds no three.js, so a massing is a handful of
+  numbers a test can read.
+- The margin is not taken on a side edge the lot shares with another lot, which `Building.shared`
+  says (spec section 10.3). Past that edge stands the neighbour's wall, and a margin on both sides
+  of it is a slot cut through the street wall. A lot walled on one side only is then not centred on
+  itself, which is `BuildingMassing.offset`.
+- A generated facade comes back narrower than the massing it was asked for, because its cornices
+  overhang by less than the whole `CORNICE` they are allowed, so a wall would still stop about a
+  metre short of an edge it shares. `fitOf` stretches it along the frontage by what it measures
+  short, up to `MAX_STRETCH`. Widening the footprint instead would add a bay to every tower of the
+  core: measured on the dearest of four seeds, the whole cornice back costs 8.7 % more vertices in
+  that chunk and the stretch costs nothing. `standingGround(building)` is the ground a shell may
+  cover — the lot, and a centimetre of float error past each shared edge — and it is what both
+  sweeps ask. A shared edge never faces a road, so none of this puts a wall on the carriageway.
 - A generated facade carries the room behind each window in its vertices: `roomCenter` and
   `roomSize`, baked by the generator in the building's own frame. The material casts the view ray
   into that box against `positionLocal`, and hashes the room's furniture off `roomCenter`. So a
