@@ -12,7 +12,7 @@ import { type RoadEdge } from '../src/world/graph.ts';
 import { ownerMaxArea, type Parcel } from '../src/world/parcels.ts';
 import { footprintHalfWidth } from '../src/world/tiers.ts';
 import { type Point, type WorldDescription, type Zone } from '../src/world/types.ts';
-import { landPoints, pointInRing, ringArea, ringsOverlap } from './helpers.ts';
+import { landPoints, pointInRing, ringArea, ringsOverlap, sharedArea } from './helpers.ts';
 import {
   FOOTPRINT_COUNT,
   SAMPLE_STRIDE,
@@ -27,6 +27,8 @@ import {
   FRONT_SLACK,
   FRONT_DRIFT,
   FACING_DRIFT,
+  SHARED_LOT_AREA,
+  MIN_WALLED_SHARE,
 } from './seed-limits.ts';
 import { ParcelIndex } from './seed-index.ts';
 import { distanceToLine, middleOf } from './seed-probes.ts';
@@ -132,10 +134,13 @@ export function parcelChecks(): void {
     it('lays every building on a lot inside its parcel, fronting a road that reaches it', () => {
       // Spec section 10.3: a parcel the zone gave to a building group carries a
       // row of buildings along its road frontage. A lot stands wholly inside its
-      // parcel and no two lots of one parcel meet, so nothing is nudged apart
-      // afterwards here either. Every lot fronts a road its parcel already lists,
+      // parcel; two lots of one parcel share a wall where the zone builds a
+      // street wall and stand apart where it does not, so nothing is nudged off
+      // its neighbour afterwards here either. Every lot fronts a road its parcel already lists,
       // and those are graph edges, so every building stands on the one road
       // network and can be driven to.
+      /** Lots of an attached zone, and how many of them share a wall. */
+      const wall = { of: 0, walled: 0 };
       const tally: Record<Zone, Partial<Record<BuildingKind, number>>> = {
         core: {},
         inner: {},
@@ -204,14 +209,16 @@ export function parcelChecks(): void {
             if (gap > reach) fault(`${where} stands ${gap.toFixed(1)} m from the ${edge.tier} it fronts`);
           }
           // The front is the middle of the lot's first edge, and it looks out of
-          // the lot, across the frontage: the way it faces is the way from the
-          // back of the lot to that edge.
+          // the lot, across that edge: the way it faces is the edge's own
+          // outward normal. A lot whose side edges lean is a trapezoid, so the
+          // line from the middle of its back edge is not the same thing.
           const front = middleOf([building.lot[0] as Point, building.lot[1] as Point]);
-          const back = middleOf([building.lot[2] as Point, building.lot[3] as Point]);
           if (Math.hypot(front.x - building.front.x, front.y - building.front.y) > FRONT_DRIFT) {
             fault(`${where} puts its front somewhere other than the middle of its front edge`);
           }
-          const facing = Math.atan2(front.y - back.y, front.x - back.x);
+          const edgeX = (building.lot[1] as Point).x - (building.lot[0] as Point).x;
+          const edgeY = (building.lot[1] as Point).y - (building.lot[0] as Point).y;
+          const facing = Math.atan2(-edgeX, edgeY);
           const turned = Math.abs(Math.atan2(Math.sin(building.facing - facing), Math.cos(building.facing - facing)));
           if (turned > FACING_DRIFT) fault(`${where} faces ${turned.toFixed(2)} rad away from its own frontage`);
 
@@ -224,16 +231,44 @@ export function parcelChecks(): void {
 
         for (const parcel of parcels) {
           const lots = lotsOn.get(parcel.id) ?? [];
+          const attached = ZONE_LOTS[parcel.zone].attached;
+          /** Which lots of this parcel share a wall with another one. */
+          const walled = new Set<number>();
           for (let i = 0; i < lots.length; i++) {
             for (let k = i + 1; k < lots.length; k++) {
               const a = lots[i] as Building;
               const b = lots[k] as Building;
-              if (ringsOverlap(a.lot, b.lot)) fault(`buildings ${a.id} and ${b.id} share the ground of parcel ${parcel.id}`);
+              if (attached && ringsOverlap(a.lot, b.lot) && sharedArea(a.lot, b.lot) <= SHARED_LOT_AREA) {
+                walled.add(a.id);
+                walled.add(b.id);
+              }
+              // Where the zone builds a street wall the lots touch on purpose,
+              // so what may not happen there is overlap; elsewhere they may not
+              // meet at all (issue #192).
+              const shared = ZONE_LOTS[parcel.zone].attached
+                ? sharedArea(a.lot, b.lot) > SHARED_LOT_AREA
+                : ringsOverlap(a.lot, b.lot);
+              if (shared) fault(`buildings ${a.id} and ${b.id} share the ground of parcel ${parcel.id}`);
             }
+          }
+          // Spec section 10.3 by way of issue #192: a street of the core or the
+          // inner ring is one wall of buildings. A parcel with a row on it has
+          // its lots touching, so what is counted is the lots that do.
+          if (attached && lots.length > 1) {
+            wall.of += lots.length;
+            wall.walled += walled.size;
           }
         }
         expect(complaint, `seed ${seed}`).toBeUndefined();
       }
+
+      // Issue #192: the lots of an attached zone touch, which is what makes a
+      // downtown street a canyon. Pooled over the seeds and over the parcels
+      // with a row on them, because the far end of a row has one neighbour and
+      // a parcel whose frontage takes one lot has none.
+      expect(wall.walled / Math.max(1, wall.of), `${wall.walled} of ${wall.of} attached lots share a wall`).toBeGreaterThanOrEqual(
+        MIN_WALLED_SHARE,
+      );
 
       // Spec section 8.2: the zone's character shows in what it builds. Pooled
       // over the seeds, because a zone of one seed can be a handful of buildings.
