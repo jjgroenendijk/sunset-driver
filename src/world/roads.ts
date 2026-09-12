@@ -151,12 +151,23 @@ export function traceRoads(world: WorldSkeleton, field: TensorField): TracedRoad
   return new RoadTracer(world, field).build();
 }
 
+/** A highway line before it is laid: the points, and where its two halves meet. */
+interface Streamline {
+  points: Point[];
+  seam: number;
+}
+
 class RoadTracer extends RoadTrace {
 
   build(): TracedRoads {
     this.traceHighways();
     this.linkIslands();
     this.fillArterials();
+    // Again, now the arterials are laid. A bridge is refused where the near
+    // shore reaches no road, and the network was two highways when the islands
+    // were first linked: an island whose shore stood away from both was left
+    // carrying districts that no road reaches.
+    this.linkIslands(true);
     this.serveDistricts();
     // Before the minor fill, so the fill grows around the boardwalk instead of
     // laying its own streets over the same ground.
@@ -186,6 +197,22 @@ class RoadTracer extends RoadTrace {
   private traceHighways(): void {
     const core = this.world.core;
     const trunks = [this.streamline(core, false), this.streamline(core, true)];
+    // The highways are the spine every other road grows off: the arterials fill
+    // between them, and the minor roads between those. A map with no highway at
+    // all therefore has no roads at all. So where the ground cuts both trunks
+    // short of MIN_HIGHWAY, the longer of the two is laid whatever its length.
+    // Nothing was added to the network while they were traced, so the lines are
+    // the same two the calls above found.
+    if (trunks[0] === undefined && trunks[1] === undefined) {
+      const lines = [this.streamlineLine(core, false), this.streamlineLine(core, true)];
+      const first = lines[0] as Streamline;
+      const second = lines[1] as Streamline;
+      const i = polylineLength(second.points) > polylineLength(first.points) ? 1 : 0;
+      const best = lines[i] as Streamline;
+      if (best.points.length > 1) {
+        trunks[i] = this.addCurve('highway', best.points, [], interchangesOf(best.points, best.seam));
+      }
+    }
     for (let i = 0; i < trunks.length; i++) {
       const trunk = trunks[i];
       if (trunk === undefined) continue;
@@ -210,18 +237,26 @@ class RoadTracer extends RoadTrace {
     return atFractions(points, free, fractions);
   }
 
-  /** One highway: the field line through a point, followed both ways. */
-  private streamline(at: Point, minor: boolean): RoadCurve | undefined {
+  /**
+   * The line a highway would follow through a point: the field line, followed
+   * both ways, with the index of the point the two halves meet at.
+   */
+  private streamlineLine(at: Point, minor: boolean): Streamline {
     const line = this.fieldLine(at, minor);
     const opt: TraceOptions = { params: HIGHWAY, joiner: 'highway', minor, mergeAfter: HIGHWAY_MERGE_AFTER };
     const forward = this.trace(at, { ...opt, heading: line });
     const backward = this.trace(at, { ...opt, heading: line + Math.PI });
     backward.points.reverse();
-    const points = [...backward.points.slice(0, -1), ...forward.points];
+    return { points: [...backward.points.slice(0, -1), ...forward.points], seam: backward.points.length - 1 };
+  }
+
+  /** One highway: that line, laid as a curve if it runs as far as a highway has to. */
+  private streamline(at: Point, minor: boolean): RoadCurve | undefined {
+    const { points, seam } = this.streamlineLine(at, minor);
     if (polylineLength(points) < MIN_HIGHWAY * this.size) return undefined;
     // The point it was seeded at is an interchange, so the road it grew out of
     // and this one meet at a junction both of them allow.
-    return this.addCurve('highway', points, [], interchangesOf(points, backward.points.length - 1));
+    return this.addCurve('highway', points, [], interchangesOf(points, seam));
   }
 
   // ----------------------------------------------------------------- islands
@@ -230,8 +265,12 @@ class RoadTracer extends RoadTrace {
    * Bridge out to every island that carries a district, over the strait
    * crossings of the water description. Islands are linked outward from the
    * main one, so each bridge lands on ground the network has already reached.
+   *
+   * `again` is the second pass, run once the arterial fill has covered the main
+   * island. It leaves alone every island a road already stands on and tries the
+   * rest against the whole network rather than against the highways alone.
    */
-  private linkIslands(): void {
+  private linkIslands(again = false): void {
     const islands = this.world.water.islands;
     const crossings = this.world.water.crossings;
     const count = islands.length;
@@ -282,9 +321,23 @@ class RoadTracer extends RoadTrace {
       }
     }
 
+    const reached = again ? this.islandsWithRoads(count) : new Uint8Array(count);
     for (const island of order) {
-      if (needed[island] === 1) this.linkIsland(island, parent[island] as number);
+      if (needed[island] === 1 && reached[island] === 0) this.linkIsland(island, parent[island] as number);
     }
+  }
+
+  /** One flag per island, set where a road already stands on its dry ground. */
+  private islandsWithRoads(count: number): Uint8Array {
+    const on = new Uint8Array(count);
+    for (const curve of this.curves) {
+      for (const p of curve.points) {
+        if (!this.isDry(p.x, p.y)) continue;
+        const i = this.islandOf(p.x, p.y);
+        if (i >= 0 && i < count) on[i] = 1;
+      }
+    }
+    return on;
   }
 
   /**
