@@ -9,22 +9,17 @@
  * which row of the roster is being driven, so the body, the wheels and the
  * handling are all rebuilt from it too.
  *
- * The ground is a heightfield collider per tile of a grid around the player, so
- * the physics streams the way the city does (spec section 9.1). A tile samples
- * the same carved ground the renderer draws, on a grid anchored on the origin,
- * so two tiles agree along the edge they share and a tile built late is the
- * same tile as one built early.
+ * This file owns the world and the bodies in it. The three halves that need no
+ * such ownership are next door: `ground-bodies.ts` is the ground and the decks
+ * under the player, `drivetrain.ts` is what the driver's input does to the
+ * wheels, the rider and the hull, and `gunfire.ts` is what a shot, a swing and
+ * a thrown thing do to the world.
  *
  * The world it stands on comes in as a {@link Ground}: the height of the ground
  * at a place, what that ground is made of, and where the sea stands. The game
  * hands it the carve, the surface index of `src/world` and the world's sea
  * level; a test can hand it a hillside of its own. That is what keeps this file
  * free of world generation.
- *
- * A wheeled vehicle drives on Rapier's `DynamicRayCastVehicleController`. A
- * boat has no wheels, so it gets its own controller instead: it is held up by
- * the water it displaces, pushed from the stern and turned by a rudder that
- * only bites while water is flowing past it (spec section 11.3).
  *
  * The player on foot is a capsule on Rapier's `KinematicCharacterController`
  * (spec sections 11.2, 11.5). Exactly one of the two is driven at a time: the
@@ -40,20 +35,13 @@
  * the ground.
  */
 import RAPIER from '@dimforge/rapier3d-compat';
-import { PARAPET_HEIGHT, type DeckSpan } from '../world/decks.ts';
 import type { Surface } from '../world/surface.ts';
 import { TICK_RATE } from './clock.ts';
-import {
-  blastDamageAt,
-  BLAST_LIFT,
-  CRASH_DAMAGE,
-  damageVehicle,
-  disableEngine,
-  enginePowerScale,
-  hitVehicle,
-  ignite,
-  tickFire,
-} from './damage.ts';
+import { blastDamageAt, BLAST_LIFT, CRASH_DAMAGE, hitVehicle, tickFire } from './damage.ts';
+import { rotate, unrotate } from './frame.ts';
+import { Drivetrain } from './drivetrain.ts';
+import { GroundBodies, type Ground } from './ground-bodies.ts';
+import { Gunfire, type ShotTarget } from './gunfire.ts';
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
 import {
   besidePlayer,
@@ -90,31 +78,12 @@ import {
   type WheelSpec,
   type WheelState,
 } from './vehicle.ts';
-import {
-  blastFalloff,
-  bounceProjectile,
-  projectileDue,
-  roundSeverity,
-  stepProjectile,
-  stepWeapons,
-  swingReaches,
-  weaponOf,
-  type ProjectileState,
-  type ShotRay,
-  type WeaponSpec,
-} from './weapon.ts';
+
+
+export { PHYSICS_CELL, PHYSICS_RADIUS, PHYSICS_TILE, type Ground } from './ground-bodies.ts';
 
 /** Metres per second squared. Earth's, so a car falls the way a car falls. */
 const GRAVITY = 9.81;
-
-/** Metres each way of one tile of ground the physics holds. */
-export const PHYSICS_TILE = 50;
-
-/** Metres between height samples of a tile. Four to a cell of the chunk terrain grid. */
-export const PHYSICS_CELL = 2.5;
-
-/** Tiles each way of the player that carry a collider: a 250 m box around the car. */
-export const PHYSICS_RADIUS = 2;
 
 /**
  * Metres per second under which a car with no throttle holds its brakes. Below
@@ -149,47 +118,10 @@ const BALANCE_DAMPING = 0.1;
  * the vehicle sideways, and a tyre that is being pushed sideways is a tyre
  * leaving a mark. Below this the tyre is scrubbing, not sliding.
  */
-const SKID_SLIP = 2.2;
-
-/** Height samples each way of one tile. */
-const TILE_CELLS = PHYSICS_TILE / PHYSICS_CELL;
-
-/**
- * What the world is, as the physics needs it: how high the ground is at a
- * place, what it is made of, and where the sea stands. `src/world` answers all
- * three; nothing here knows how.
- */
-export interface Ground {
-  /** The carved height of the ground at a place, in metres. */
-  heightAt(x: number, y: number): number;
-  /** What the ground is made of there. */
-  surfaceAt(x: number, y: number): Surface;
-  /** The one level the sea, the straits, the river and the harbour stand at. */
-  seaLevel: number;
-  /**
-   * The decks the roads are carried on, which the heightfield knows nothing
-   * about: a bridged segment carves no ground. A world with no bridges, and a
-   * test that only needs a hillside, leaves them out.
-   */
-  decks?: readonly DeckSpan[];
-}
 
 /** Load Rapier's WebAssembly. Call once before the first {@link SimPhysics}. */
 export async function initPhysics(): Promise<void> {
   await RAPIER.init();
-}
-
-/** One tile of ground, and where it stands. */
-interface GroundTile {
-  cx: number;
-  cy: number;
-  collider: RAPIER.Collider;
-}
-
-/** One deck standing in the world, and the span it was built from. */
-interface DeckPiece {
-  span: DeckSpan;
-  collider: RAPIER.Collider;
 }
 
 /** A body and the wheels it drives on, or no wheels at all on a boat. */
@@ -211,7 +143,7 @@ interface Walker {
  * The physics of a session: the ground under the player and the vehicle on it.
  *
  * Build one, step it once per simulation tick, and throw it away with the
- * session. It owns no simulation state; everything it decides is written back
+
  * into the {@link SimState} it is given.
  */
 export class SimPhysics {
@@ -220,9 +152,12 @@ export class SimPhysics {
 
   private readonly world: RAPIER.World;
   private readonly ground: Ground;
-  private readonly tiles: GroundTile[] = [];
-  /** The decks standing in the world, the same box of ground around the player. */
-  private readonly decks: DeckPiece[] = [];
+  /** The tiles of ground and the decks over them, which follow whoever is moving. */
+  private readonly bodies: GroundBodies;
+  /** The Rapier half of the arsenal: the casts, the swings and the flights. */
+  private readonly shots: Gunfire;
+  /** What the driver's input does to the wheels, the rider and the hull. */
+  private readonly controls: Drivetrain;
   /** The row of the roster the body was built from. `adopt` reads it off the record. */
   private spec: VehicleSpec;
   /** The vehicle's moving body, and undefined while nobody is in it. */
@@ -251,6 +186,9 @@ export class SimPhysics {
     this.ground = ground;
     this.spec = specOf(state.vehicle.cls);
     this.world = new RAPIER.World({ x: 0, y: -GRAVITY, z: 0 });
+    this.bodies = new GroundBodies(this.world, ground);
+    this.shots = new Gunfire(this.world);
+    this.controls = new Drivetrain(ground);
     // The step is the tick. Simulation code never sees a frame delta.
     this.world.timestep = 1 / TICK_RATE;
     this.adopt(state);
@@ -298,7 +236,7 @@ export class SimPhysics {
     this.release();
     this.spec = specOf(state.vehicle.cls);
     const p = state.player;
-    this.cover(p.driving ? state.vehicle.x : p.x, p.driving ? state.vehicle.z : p.y);
+    this.bodies.cover(p.driving ? state.vehicle.x : p.x, p.driving ? state.vehicle.z : p.y);
     if (p.driving) {
       const built = this.build(state.vehicle);
       this.chassis = built.chassis;
@@ -339,22 +277,22 @@ export class SimPhysics {
     const wasY = v.vy;
     const wasZ = v.vz;
     if (chassis === undefined) {
-      this.cover(state.player.x, state.player.y);
+      this.bodies.cover(state.player.x, state.player.y);
       // A player bent over a lock stands at the door (spec section 11.4): they
       // are stepped with nothing held down, so only gravity moves them.
       this.walk(state, state.theft === null ? input : EMPTY_INPUT);
     } else {
-      this.cover(v.x, v.z);
+      this.bodies.cover(v.x, v.z);
       // Rapier keeps a force until it is told to forget it, so a tick that adds
       // one has to clear the last tick's first. Without this the buoyancy of a
       // hull and the rider of a motorcycle both grow without bound.
       chassis.resetForces(false);
       chassis.resetTorques(false);
       if (this.wheels === undefined) {
-        this.sail(v, input);
+        this.controls.sail(chassis, v, input, this.spec);
       } else {
-        this.drive(v, input);
-        this.hold(v);
+        this.controls.drive(this.wheels, v, input, this.spec, this.wetness);
+        this.controls.hold(chassis, v, this.spec);
         this.wheels.updateVehicle(this.world.timestep);
       }
     }
@@ -364,8 +302,8 @@ export class SimPhysics {
     // The weapons are run after the step, so a shot leaves the muzzle from where
     // the player ended the tick rather than from where they started it. A player
     // bent over a lock cannot shoot, for the same reason they cannot walk.
-    this.arm(state, state.theft === null ? input : EMPTY_INPUT);
-    this.fly(state);
+    this.shots.step(state, state.theft === null ? input : EMPTY_INPUT, this.target(state));
+    this.shots.fly(state, this.target(state));
     this.burn(state);
   }
 
@@ -374,12 +312,24 @@ export class SimPhysics {
     this.wheels?.free();
     this.walker?.controller.free();
     this.world.free();
-    this.tiles.length = 0;
+    this.bodies.clear();
   }
 
   /** How many tiles of ground carry a collider, which the budget test measures. */
   get groundTiles(): number {
-    return this.tiles.length;
+    return this.bodies.count;
+  }
+
+  /**
+   * What a shot fired this tick may hit, and whose body it may not. The
+   * shooter is the body they are in, so nobody shoots their own door.
+   */
+  private target(state: SimState): ShotTarget {
+    return {
+      spec: this.spec,
+      body: this.body,
+      shooter: state.player.driving ? this.body : this.walker?.collider,
+    };
   }
 
   /** The row of the roster being driven, so the HUD and the picker can name it. */
@@ -435,355 +385,6 @@ export class SimPhysics {
     v.vx = linear.x;
     v.vy = linear.y;
     v.vz = linear.z;
-  }
-
-  /**
-   * Fire the weapon in the player's hands for a tick (spec section 11.6).
-   *
-   * The rules are in `weapon.ts` and this is the Rapier half of them: a gun
-   * casts a ray per pellet, a melee weapon sweeps its arc, and a thrown weapon
-   * or a launcher puts something in the air for {@link SimPhysics.fly} to carry.
-   * Nothing here decides whether the weapon fires; `stepWeapons` does, and it
-   * also raises the heat a shot is worth (spec section 14).
-   *
-   * Only the player's vehicle can be hit today. The pedestrians and the police
-   * of spec sections 13.1 and 14 are what the rays will find after them.
-   */
-  private arm(state: SimState, input: InputFrame): void {
-    const shot = stepWeapons(state.loadout, input, state.player, state.seed, state.tick);
-    if (shot === undefined) return;
-    state.heat += shot.heat;
-    if (shot.projectile !== undefined) {
-      state.projectiles.push(shot.projectile);
-      return;
-    }
-    if (shot.spec.cls === 'melee') {
-      this.swing(state, shot.spec);
-      return;
-    }
-    for (const ray of shot.rays) this.scan(state, shot.spec, ray);
-  }
-
-  /**
-   * One pellet, cast against the world. The shooter's own body is left out of
-   * the cast: a driver firing from a seat would otherwise shoot their own door,
-   * and a player on foot their own chest.
-   */
-  private scan(state: SimState, spec: WeaponSpec, ray: ShotRay): void {
-    this.from.x = ray.x;
-    this.from.y = ray.h;
-    this.from.z = ray.y;
-    this.along.x = ray.dx;
-    this.along.y = ray.dh;
-    this.along.z = ray.dy;
-    const mine = state.player.driving ? this.body : this.walker?.collider;
-    const hit = this.world.castRay(this.ray, spec.range, true, undefined, undefined, mine);
-    if (hit === null) return;
-    if (this.body === undefined || hit.collider.handle !== this.body.handle) return;
-    // The round pushes the vehicle the way it was flying, which is the direction
-    // the panel rule reads, exactly as a crash pushes it away from the wall.
-    this.hit(state, spec, ray.dx, ray.dh, ray.dy, roundSeverity(spec));
-  }
-
-  /**
-   * One swing of a melee weapon (spec section 11.6). A swing is an arc rather
-   * than a line, so it is a reach and a half-angle and not a ray: whatever
-   * stands inside it is hit. Nobody swings at the vehicle they are sitting in.
-   */
-  private swing(state: SimState, spec: WeaponSpec): void {
-    const p = state.player;
-    if (p.driving) return;
-    const v = state.vehicle;
-    const bearing = Math.atan2(v.z - p.y, v.x - p.x);
-    if (!swingReaches(spec, p.heading, vehicleGap(p, v, this.spec), bearing)) return;
-    this.hit(state, spec, Math.cos(bearing), 0, Math.sin(bearing), roundSeverity(spec));
-  }
-
-  /**
-   * Put one hit into the vehicle: the dent, what it costs the vehicle, and what
-   * the round does beyond that. The direction comes in world axes and is read in
-   * the vehicle's own frame, so the panel that takes it is the panel that was
-   * facing the shot.
-   */
-  private hit(state: SimState, spec: WeaponSpec, dx: number, dh: number, dy: number, severity: number): void {
-    const v = state.vehicle;
-    unrotate(this.point, v, dx, dh, dy);
-    // `unrotate` answers the vehicle's own axes: `x` along it, `y` up and `z`
-    // across it, which is the order the panel rule reads them in.
-    damageVehicle(
-      v.damage,
-      this.spec,
-      severity,
-      this.point.x,
-      this.point.z,
-      this.point.y,
-      state.seed,
-      state.tick,
-      state.loadout.shots,
-    );
-    if (spec.effect === 'fire') ignite(v.damage, state.tick);
-    if (spec.effect === 'engine') disableEngine(v.damage);
-  }
-
-  /**
-   * Carry everything in the air one tick further (spec section 11.6).
-   *
-   * A step is a straight line between two places, so what the step ran into is
-   * a ray over it. A thing that goes off on impact goes off there; anything else
-   * bounces and carries on until its fuse burns through. The thrower's own body
-   * is left out, so a grenade does not go off in the hand that threw it.
-   */
-  private fly(state: SimState): void {
-    const live = state.projectiles;
-    for (let i = live.length - 1; i >= 0; i--) {
-      const p = live[i] as ProjectileState;
-      const flight = weaponOf(p.weapon).projectile;
-      if (flight === undefined) {
-        live.splice(i, 1);
-        continue;
-      }
-      this.from.x = p.x;
-      this.from.y = p.h;
-      this.from.z = p.y;
-      stepProjectile(p);
-      const dx = p.x - this.from.x;
-      const dh = p.h - this.from.y;
-      const dy = p.y - this.from.z;
-      const step = Math.hypot(dx, dh, dy);
-      if (step > 0) {
-        this.along.x = dx / step;
-        this.along.y = dh / step;
-        this.along.z = dy / step;
-        const mine = this.walker?.collider;
-        const hit = this.world.castRayAndGetNormal(this.ray, step, true, undefined, undefined, mine);
-        if (hit !== null) {
-          // Stand it on the surface it met rather than inside it, so the next
-          // step starts outside the ground and not under it.
-          p.x = this.from.x + this.along.x * hit.timeOfImpact + hit.normal.x * SKIN;
-          p.h = this.from.y + this.along.y * hit.timeOfImpact + hit.normal.y * SKIN;
-          p.y = this.from.z + this.along.z * hit.timeOfImpact + hit.normal.z * SKIN;
-          if (flight.burstOnImpact) {
-            this.burst(state, p);
-            live.splice(i, 1);
-            continue;
-          }
-          bounceProjectile(p, hit.normal.x, hit.normal.y, hit.normal.z);
-        }
-      }
-      if (!projectileDue(p, state.tick)) continue;
-      this.burst(state, p);
-      live.splice(i, 1);
-    }
-  }
-
-  /**
-   * Set off one projectile where it stands (spec section 11.6). A blast is felt
-   * over its radius and falls away to nothing at the edge of it; a Molotov sets
-   * what it lands on alight, which is the fire that spreads of spec section
-   * 11.3. Smoke and tear gas leave a cloud that nothing reads yet: it is the
-   * pedestrians and the police of spec sections 13.1 and 14 that will.
-   */
-  private burst(state: SimState, p: ProjectileState): void {
-    const spec = weaponOf(p.weapon);
-    const flight = spec.projectile;
-    if (flight === undefined || spec.effect === 'smoke') return;
-    const player = state.player;
-    const reach = blastFalloff(Math.hypot(player.x - p.x, player.y - p.y, player.height - p.h), flight.blastRadius);
-    if (reach > 0) hurt(player, spec.damage * reach);
-    const v = state.vehicle;
-    const dx = v.x - p.x;
-    const dh = v.y - p.h;
-    const dy = v.z - p.y;
-    const distance = Math.hypot(dx, dh, dy);
-    const share = blastFalloff(distance, flight.blastRadius);
-    if (share === 0) return;
-    const length = Math.max(distance, 1e-6);
-    this.hit(state, spec, dx / length, dh / length, dy / length, roundSeverity(spec) * share);
-  }
-
-  /** Apply the input to the wheels: steering, engine, brakes and the grip of the ground. */
-  private drive(v: VehicleState, input: InputFrame): void {
-    const controller = this.wheels as RAPIER.DynamicRayCastVehicleController;
-    const spec = this.spec;
-    const speed = v.speed;
-    const forward = Math.abs(speed);
-
-    // Steering closes down as the speed rises: full lock at any speed worth
-    // driving at spins the car rather than turning it.
-    const reach = Math.min(1, forward / spec.topSpeed);
-    const limit = spec.maxSteer * (1 - (1 - spec.steerAtSpeed) * reach);
-    // Rapier turns a wheel about the chassis' up axis, and the map's heading
-    // runs the other way round the same axis, so steering right is negative
-    // here. The state carries Rapier's angle, which is the one the model turns
-    // its wheels by.
-    const wanted = -input.steer * limit;
-
-    // Throttle forward, and brake rather than change gear while still rolling
-    // the other way. Reverse is geared short, so it is slow and it pulls hard.
-    // A damaged engine gives less of its power, and a burnt-out one gives none
-    // at all (spec section 11.3).
-    const power = spec.enginePower * enginePowerScale(v.damage);
-    let engine = 0;
-    let pedal = 0;
-    if (input.throttle > 0) {
-      if (speed < -0.5) pedal = input.throttle;
-      else engine = input.throttle * power * Math.max(0, 1 - speed / spec.topSpeed);
-    } else if (input.throttle < 0) {
-      if (speed > 0.5) pedal = -input.throttle;
-      else {
-        const top = spec.topSpeed * spec.reverse;
-        engine = input.throttle * power * spec.reverse * Math.max(0, 1 + speed / top);
-      }
-    }
-
-    // A car left alone at walking pace holds where it is rather than rolling
-    // off down the hill: the driver has stopped, so the car has stopped.
-    if (input.throttle === 0 && forward < PARKING_SPEED) pedal = 1;
-
-    const driven = spec.wheels.reduce((n, w) => n + (w.driven ? 1 : 0), 0) || 1;
-    for (let i = 0; i < spec.wheels.length; i++) {
-      const wheel = spec.wheels[i] as WheelSpec;
-      const state = v.wheels[i] as WheelState;
-      const grip = gripOf(this.surfaceUnder(v, wheel), this.wetness, spec.tyres);
-
-      const steer = wheel.steered ? approach(state.steer, wanted, spec.steerRate / TICK_RATE) : 0;
-      controller.setWheelSteering(i, steer);
-
-      // What the surface costs this wheel, in newtons. A wheel the engine is
-      // pushing ignores its brake, so the loss comes off the drive there and
-      // off the brake everywhere else. Either way the ground is always felt.
-      const rolling = (grip.roll * spec.mass * GRAVITY) / spec.wheels.length;
-      const drive = wheel.driven ? engine / driven : 0;
-      controller.setWheelEngineForce(i, drive > 0 ? Math.max(0, drive - rolling) : Math.min(0, drive + rolling));
-
-      let brake = pedal * spec.brakeForce + rolling;
-      let side = grip.side;
-      if (input.handbrake && wheel.handbraked) {
-        brake = spec.handbrakeForce;
-        // A locked wheel gives up most of its bite across the road, which is
-        // what turns a handbrake into a drift rather than a stop.
-        side *= 0.35;
-      }
-      // Rapier takes the engine as a force and the brake as the impulse of one
-      // step, so the brake is what the table says divided by the tick rate.
-      controller.setWheelBrake(i, brake / TICK_RATE);
-      controller.setWheelFrictionSlip(i, grip.friction);
-      controller.setWheelSideFrictionStiffness(i, side);
-    }
-  }
-
-  /**
-   * The rider of a two-wheeler (spec section 11.3). Its wheels stand on the
-   * centreline, so the suspension gives it no roll stiffness at all and its two
-   * contact points are in line, so nothing steadies it in pitch either. The
-   * rider is both:
-   *
-   * - roll is sprung back toward level and damped, because a bike left to lean
-   *   simply falls over;
-   * - pitch is damped and never sprung, because a bike on a hill should point
-   *   up the hill. Damping alone still takes the violence out of a wheelie and
-   *   out of the porpoising two contact points fall into.
-   */
-  private hold(v: VehicleState): void {
-    const chassis = this.chassis as RAPIER.RigidBody;
-    const stiffness = this.spec.balance;
-    if (stiffness === 0) return;
-    const damping = stiffness * BALANCE_DAMPING;
-    // The axle is local +z, so how far its world `y` has tipped is the sine of
-    // the roll; the forward axis is the axis that roll turns about, and the
-    // axle itself is the axis pitch turns about.
-    rotate(this.axis, v, 0, 0, 1);
-    rotate(this.point, v, 1, 0, 0);
-    const rolling = v.ax * this.point.x + v.ay * this.point.y + v.az * this.point.z;
-    const pitching = v.ax * this.axis.x + v.ay * this.axis.y + v.az * this.axis.z;
-    const roll = stiffness * this.axis.y - damping * rolling;
-    const pitch = -damping * pitching;
-    this.force.x = this.point.x * roll + this.axis.x * pitch;
-    this.force.y = this.point.y * roll + this.axis.y * pitch;
-    this.force.z = this.point.z * roll + this.axis.z * pitch;
-    chassis.addTorque(this.force, true);
-  }
-
-  /**
-   * The boat controller of spec section 11.3.
-   *
-   * The hull is held up by the water it displaces, taken at the four quarters
-   * of it so the boat pitches and rolls; the water takes back much more across
-   * the hull than along it, which is what makes a boat track rather than slide;
-   * and the rudder's bite grows with the water flowing past it, so a boat at a
-   * standstill cannot turn on the spot. Out of the water none of it applies and
-   * the hull is a box resting on the ground.
-   */
-  private sail(v: VehicleState, input: InputFrame): void {
-    const chassis = this.chassis as RAPIER.RigidBody;
-    const spec = this.spec;
-    const hull = spec.hull as HullSpec;
-    const sea = this.ground.seaLevel;
-    const weight = spec.mass * GRAVITY;
-
-    let under = 0;
-    for (let i = 0; i < LIFT_POINTS; i++) {
-      const along = i < 2 ? 1 : -1;
-      const across = i % 2 === 0 ? 1 : -1;
-      rotate(
-        this.point,
-        v,
-        along * spec.halfLength * hull.liftLength,
-        -spec.halfHeight,
-        across * spec.halfWidth * hull.liftWidth,
-      );
-      const y = v.y + this.point.y;
-      const depth = sea - y;
-      if (depth <= 0) continue;
-      under++;
-      this.force.x = 0;
-      this.force.y = (Math.min(depth / hull.draft, hull.buoyancy) * weight) / LIFT_POINTS;
-      this.force.z = 0;
-      this.at.x = v.x + this.point.x;
-      this.at.y = y;
-      this.at.z = v.z + this.point.z;
-      chassis.addForceAtPoint(this.force, this.at, true);
-    }
-    v.afloat = under > 0;
-    if (under === 0) return;
-    // A hull half out of the water is half held, half dragged and half driven.
-    const wet = under / LIFT_POINTS;
-
-    rotate(this.point, v, 1, 0, 0);
-    rotate(this.axis, v, 0, 0, 1);
-    const along = v.vx * this.point.x + v.vy * this.point.y + v.vz * this.point.z;
-    const across = v.vx * this.axis.x + v.vy * this.axis.y + v.vz * this.axis.z;
-
-    let thrust = 0;
-    if (input.throttle > 0) {
-      thrust = input.throttle * hull.thrust * Math.max(0, 1 - along / hull.topSpeed);
-    } else if (input.throttle < 0) {
-      const top = hull.topSpeed * hull.reverse;
-      thrust = input.throttle * hull.thrust * hull.reverse * Math.max(0, 1 + along / top);
-    }
-
-    const push = (thrust - hull.waterDrag * spec.mass * along) * wet;
-    const slip = -hull.sideDrag * spec.mass * across * wet;
-    this.force.x = this.point.x * push + this.axis.x * slip;
-    this.force.y = this.point.y * push + this.axis.y * slip - hull.heave * spec.mass * v.vy * wet;
-    this.force.z = this.point.z * push + this.axis.z * slip;
-    chassis.addForce(this.force, true);
-
-    // The rudder turns the boat the way the wheel turns a car: the map's
-    // heading runs the other way round the up axis, so steering right is a
-    // negative yaw. It bites with the water flowing past it, and it bites the
-    // other way when the boat is going astern.
-    const flow = Math.max(-1, Math.min(1, along / hull.topSpeed));
-    this.force.x = 0;
-    this.force.y = -input.steer * hull.rudder * flow * wet;
-    this.force.z = 0;
-    chassis.addTorque(this.force, true);
-  }
-
-  /** What the ground is made of under one wheel of a vehicle at its current pose. */
-  private surfaceUnder(v: VehicleState, wheel: WheelSpec): Surface {
-    rotate(this.point, v, wheel.x, wheel.y, wheel.z);
-    return this.ground.surfaceAt(v.x + this.point.x, v.z + this.point.z);
   }
 
   /**
@@ -1099,166 +700,13 @@ export class SimPhysics {
     }
     this.walker = undefined;
   }
-
-  /**
-   * Make sure every tile within {@link PHYSICS_RADIUS} of a place carries a
-   * collider, and drop the ones the player has left behind. The grid is
-   * anchored on the origin, so a tile is the same tile whenever it is built.
-   */
-  private cover(x: number, z: number): void {
-    const cx = Math.floor(x / PHYSICS_TILE);
-    const cy = Math.floor(z / PHYSICS_TILE);
-    for (let i = this.tiles.length - 1; i >= 0; i--) {
-      const tile = this.tiles[i] as GroundTile;
-      if (Math.max(Math.abs(tile.cx - cx), Math.abs(tile.cy - cy)) <= PHYSICS_RADIUS) continue;
-      this.world.removeCollider(tile.collider, false);
-      this.tiles.splice(i, 1);
-    }
-    // Row by row and column by column, so the colliders go into the world in
-    // the same order however the player reached the place.
-    for (let ty = cy - PHYSICS_RADIUS; ty <= cy + PHYSICS_RADIUS; ty++) {
-      for (let tx = cx - PHYSICS_RADIUS; tx <= cx + PHYSICS_RADIUS; tx++) {
-        if (this.tiles.some((tile) => tile.cx === tx && tile.cy === ty)) continue;
-        this.tiles.push({ cx: tx, cy: ty, collider: this.layTile(tx, ty) });
-      }
-    }
-    this.coverDecks(cx, cy);
-  }
-
-  /**
-   * The decks over the same box of ground the tiles cover. A whole span is laid
-   * or dropped at once, however long it is: a bridge the player is halfway
-   * across must not end under them.
-   */
-  private coverDecks(cx: number, cy: number): void {
-    const spans = this.ground.decks;
-    if (spans === undefined || spans.length === 0) return;
-    const minX = (cx - PHYSICS_RADIUS) * PHYSICS_TILE;
-    const minY = (cy - PHYSICS_RADIUS) * PHYSICS_TILE;
-    const maxX = (cx + PHYSICS_RADIUS + 1) * PHYSICS_TILE;
-    const maxY = (cy + PHYSICS_RADIUS + 1) * PHYSICS_TILE;
-    const near = (span: DeckSpan): boolean =>
-      span.minX <= maxX && span.maxX >= minX && span.minY <= maxY && span.maxY >= minY;
-    for (let i = this.decks.length - 1; i >= 0; i--) {
-      const deck = this.decks[i] as DeckPiece;
-      if (near(deck.span)) continue;
-      this.world.removeCollider(deck.collider, false);
-      this.decks.splice(i, 1);
-    }
-    // In the order the world lists them, so the colliders go into the world in
-    // the same order however the player reached the place.
-    for (const span of spans) {
-      if (!near(span)) continue;
-      if (this.decks.some((deck) => deck.span === span)) continue;
-      this.decks.push({ span, collider: this.layDeck(span) });
-    }
-  }
-
-  /**
-   * One deck as a Rapier trimesh: the strip the road drives on, and a wall up
-   * each side of it where the parapet stands. A trimesh has no thickness, which
-   * is what the wheels' rays want; the walls are what keep the car on the
-   * bridge, as the parapet keeps a driver on it.
-   *
-   * The world's `y` is Rapier's `z`, as it is for the ground tiles.
-   */
-  private layDeck(span: DeckSpan): RAPIER.Collider {
-    const count = span.points.length;
-    const vertices = new Float32Array(count * 4 * 3);
-    for (let i = 0; i < count; i++) {
-      const p = span.points[i] as DeckSpan['points'][number];
-      const ox = p.acrossX * span.halfWidth;
-      const oy = p.acrossY * span.halfWidth;
-      const corners = [
-        [p.x - ox, p.height + PARAPET_HEIGHT, p.y - oy],
-        [p.x - ox, p.height, p.y - oy],
-        [p.x + ox, p.height, p.y + oy],
-        [p.x + ox, p.height + PARAPET_HEIGHT, p.y + oy],
-      ];
-      for (let c = 0; c < 4; c++) {
-        const corner = corners[c] as number[];
-        const at = (i * 4 + c) * 3;
-        vertices[at] = corner[0] as number;
-        vertices[at + 1] = corner[1] as number;
-        vertices[at + 2] = corner[2] as number;
-      }
-    }
-    // Three quads per step of the span: the left parapet, the deck, the right
-    // parapet. Each is two triangles between one section and the next.
-    const indices = new Uint32Array((count - 1) * 3 * 6);
-    let at = 0;
-    for (let i = 0; i + 1 < count; i++) {
-      for (let c = 0; c < 3; c++) {
-        const a = i * 4 + c;
-        const b = a + 1;
-        const d = (i + 1) * 4 + c;
-        const e = d + 1;
-        indices[at] = a;
-        indices[at + 1] = b;
-        indices[at + 2] = d;
-        indices[at + 3] = b;
-        indices[at + 4] = e;
-        indices[at + 5] = d;
-        at += 6;
-      }
-    }
-    return this.world.createCollider(RAPIER.ColliderDesc.trimesh(vertices, indices).setFriction(1));
-  }
-
-  /**
-   * One tile of ground as a Rapier heightfield.
-   *
-   * Rapier lays a heightfield in the XZ plane, centred on the collider, and
-   * reads its samples as `heights[j * (rows + 1) + i]`: `i` walks `z` and `j`
-   * walks `x`. The far row and column of a tile are the near ones of the next,
-   * sampled from the same ground, so the seam between two tiles is flat.
-   */
-  private layTile(tx: number, ty: number): RAPIER.Collider {
-    const heights = new Float32Array((TILE_CELLS + 1) * (TILE_CELLS + 1));
-    const x0 = tx * PHYSICS_TILE;
-    const y0 = ty * PHYSICS_TILE;
-    for (let j = 0; j <= TILE_CELLS; j++) {
-      for (let i = 0; i <= TILE_CELLS; i++) {
-        heights[j * (TILE_CELLS + 1) + i] = this.ground.heightAt(x0 + j * PHYSICS_CELL, y0 + i * PHYSICS_CELL);
-      }
-    }
-    return this.world.createCollider(
-      RAPIER.ColliderDesc.heightfield(TILE_CELLS, TILE_CELLS, heights, {
-        x: PHYSICS_TILE,
-        y: 1,
-        z: PHYSICS_TILE,
-      })
-        .setTranslation(x0 + PHYSICS_TILE / 2, 0, y0 + PHYSICS_TILE / 2)
-        .setFriction(1),
-    );
-  }
 }
 
-/** Move `from` toward `to` by at most `step`. */
-function approach(from: number, to: number, step: number): number {
-  if (to > from) return Math.min(to, from + step);
-  return Math.max(to, from - step);
-}
-
-/** Turn an offset in world axes into the vehicle's own frame: {@link rotate} the other way. */
-function unrotate(out: { x: number; y: number; z: number }, v: VehicleState, x: number, y: number, z: number): void {
-  // The conjugate of a unit quaternion is its inverse, so this is the same
-  // product with the vector part negated.
-  const tx = 2 * (v.qz * y - v.qy * z);
-  const ty = 2 * (v.qx * z - v.qz * x);
-  const tz = 2 * (v.qy * x - v.qx * y);
-  out.x = x + v.qw * tx - v.qy * tz + v.qz * ty;
-  out.y = y + v.qw * ty - v.qz * tx + v.qx * tz;
-  out.z = z + v.qw * tz - v.qx * ty + v.qy * tx;
-}
-
-/** Turn a point of the vehicle's own frame into an offset in world axes. */
-function rotate(out: { x: number; y: number; z: number }, v: VehicleState, x: number, y: number, z: number): void {
-  // q * (x, y, z) * q⁻¹, written out so a tick allocates nothing.
-  const tx = 2 * (v.qy * z - v.qz * y);
-  const ty = 2 * (v.qz * x - v.qx * z);
-  const tz = 2 * (v.qx * y - v.qy * x);
-  out.x = x + v.qw * tx + v.qy * tz - v.qz * ty;
-  out.y = y + v.qw * ty + v.qz * tx - v.qx * tz;
-  out.z = z + v.qw * tz + v.qx * ty - v.qy * tx;
-}
+/**
+ * Metres per second the vehicle has to be sliding across its own axle before a
+ * tyre counts as skidding (spec section 11.3). It is one rule for every way of
+ * getting there: a handbrake turn, a corner taken too fast and a spin all push
+ * the vehicle sideways, and a tyre that is being pushed sideways is a tyre
+ * leaving a mark. Below this the tyre is scrubbing, not sliding.
+ */
+const SKID_SLIP = 2.2;
