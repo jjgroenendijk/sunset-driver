@@ -34,7 +34,8 @@ import {
   type BuildingKind,
   type BuildingMap,
 } from '../src/world/buildings.ts';
-import { MIN_BOARDWALK } from '../src/world/roads.ts';
+import { CROSSING_SNAP } from '../src/world/connect.ts';
+import { groundRule, MIN_BOARDWALK } from '../src/world/roads.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import type { RoadFootprint } from '../src/world/footprint.ts';
 import { buildRoadGraph, type GradeCrossing, type RoadEdge, type RoadGraph, type RoadNode } from '../src/world/graph.ts';
@@ -47,7 +48,7 @@ import { MITRE_SHIFT, RoadRibbons } from '../src/world/ribbon.ts';
 import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
 import { CHUNK_TERRAIN_CELL, coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
 import { nearestRoadPlace, SurfaceIndex, type Surface } from '../src/world/surface.ts';
-import { footprintHalfWidth, TIERS } from '../src/world/tiers.ts';
+import { footprintHalfWidth, mayJoin, TIERS } from '../src/world/tiers.ts';
 import type { Beach, Corridor, Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
 import {
   mixFor,
@@ -259,6 +260,57 @@ function standsClearOfWater(hf: Heightfield, x: number, y: number, seaLevel: num
     for (let i = -2; i <= 2; i++) if (hf.sample(x + i * cell, y + j * cell) < seaLevel) return false;
   }
   return true;
+}
+
+/** The segment of a curve a place stands on, or nothing where it stands on none. */
+function segmentUnder(road: RoadCurve, at: Point): number | undefined {
+  for (let i = 0; i + 1 < road.points.length; i++) {
+    if (distanceToSegment(at, road.points[i] as Point, road.points[i + 1] as Point) < 1e-6) return i;
+  }
+  return undefined;
+}
+
+/** The point of a curve nearest a place, within {@link CROSSING_SNAP} of it. */
+function nearestPointOf(road: RoadCurve, at: Point): Point | undefined {
+  let best: Point | undefined;
+  let bestD = CROSSING_SNAP;
+  for (const p of road.points) {
+    const d = Math.hypot(p.x - at.x, p.y - at.y);
+    if (d > bestD) continue;
+    bestD = d;
+    best = p;
+  }
+  return best;
+}
+
+/** Whichever of two candidate places stands nearer a point. */
+function nearer(first: Point | undefined, second: Point | undefined, to: Point): Point | undefined {
+  if (first === undefined) return second;
+  if (second === undefined) return first;
+  return Math.hypot(second.x - to.x, second.y - to.y) < Math.hypot(first.x - to.x, first.y - to.y) ? second : first;
+}
+
+/** True where a road of this tier may not take a point at a place another road stands on. */
+function refusedPlace(roads: readonly RoadCurve[], at: Point, joiner: RoadTier): boolean {
+  for (const road of roads) {
+    for (let i = 0; i < road.points.length; i++) {
+      const p = road.points[i] as Point;
+      if (Math.abs(p.x - at.x) > 1e-3 || Math.abs(p.y - at.y) > 1e-3) continue;
+      if (!mayJoin(joiner, road.tier, road.interchanges.includes(i))) return true;
+    }
+  }
+  return false;
+}
+
+/** A point two curves share within {@link CROSSING_SNAP} of a place. */
+function sharedNear(a: RoadCurve, b: RoadCurve, at: Point): Point | undefined {
+  for (const p of a.points) {
+    if (Math.hypot(p.x - at.x, p.y - at.y) > CROSSING_SNAP) continue;
+    for (const q of b.points) {
+      if (Math.abs(p.x - q.x) < 1e-9 && Math.abs(p.y - q.y) < 1e-9) return p;
+    }
+  }
+  return undefined;
 }
 
 /** True when the segment spans the crossing, either way round. */
@@ -1216,6 +1268,64 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
         if (over.curve === under.curve) fault(`${where} joins a road to itself`);
         if (!over.crossings.includes(k)) fault(`${where} is not marked on the road above`);
         if (!under.crossings.includes(k)) fault(`${where} is not marked on the road below`);
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
+  it('meets any road it crosses on the ground, unless the ground refuses the junction', () => {
+    // Spec section 6.2: two roads that cross on the ground meet there. The
+    // tracer only ever ends a road on a point of another one, so `connect.ts`
+    // gives both curves a point at every crossing the tiers allow a junction
+    // at. What is left is a crossing beside the junction it was given, or one
+    // the ground refuses: a junction cuts a segment in two, and the halves can
+    // climb harder than the whole did.
+    for (const seed of seeds) {
+      const w = worlds.get(seed) as WorldDescription;
+      const graph = graphOf(seed);
+      const ground = groundRule(new Heightfield(w.terrain), w.water.seaLevel);
+      const byId: RoadCurve[] = [];
+      for (const road of w.roads) byId[road.id] = road;
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+
+      for (const crossing of graph.crossings) {
+        const at = { x: crossing.x, y: crossing.y };
+        const over = byId[(graph.edges[crossing.over] as RoadEdge).curve] as RoadCurve;
+        const under = byId[(graph.edges[crossing.under] as RoadEdge).curve] as RoadCurve;
+        if (!mayJoin(over.tier, under.tier, false) || !mayJoin(under.tier, over.tier, false)) continue;
+        const first = segmentUnder(over, at);
+        const second = segmentUnder(under, at);
+        if (first === undefined || second === undefined) continue;
+        // A deck and a bore are not on the ground, so crossing one is no meeting.
+        if (over.bridges.includes(first) || over.tunnels.includes(first)) continue;
+        if (under.bridges.includes(second) || under.tunnels.includes(second)) continue;
+
+        const where = `${over.tier} ${over.id} crosses ${under.tier} ${under.id} at ${at.x.toFixed(0)},${at.y.toFixed(0)}`;
+        if (sharedNear(over, under, at) !== undefined) continue;
+        // The place a junction would have taken, and the two halves it cuts
+        // each road into. One of them has to be more than the ground allows.
+        // The place `connect.ts` would have put the junction at: the nearest
+        // point either road already has, and the crossing itself where neither
+        // has one within a snap of it.
+        const spot = nearer(nearestPointOf(over, at), nearestPointOf(under, at), at) ?? at;
+        // A place a road of either tier may not take a point at is no place for
+        // a junction: bending a street onto a point of a highway would meet the
+        // highway, which spec section 6.2 refuses.
+        if (refusedPlace(w.roads, spot, over.tier) || refusedPlace(w.roads, spot, under.tier)) continue;
+        const halves = [
+          [over, first],
+          [under, second],
+        ] as const;
+        let refused = false;
+        for (const [road, segment] of halves) {
+          const a = road.points[segment] as Point;
+          const b = road.points[segment + 1] as Point;
+          if (!ground(a, spot, road.tier) || !ground(spot, b, road.tier)) refused = true;
+        }
+        if (!refused) fault(`${where} without meeting it`);
       }
       expect(complaint, `seed ${seed}`).toBeUndefined();
     }
