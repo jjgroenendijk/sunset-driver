@@ -10,9 +10,11 @@ wrong number, a stale comment, a missing test — open a GitHub issue for it and
 is the deliverable; a note in a PR body or a `TODO` in the code is not.
 
 Run `npm run verify` (typecheck + determinism lint + file-size lint + quick tests, under 20 s)
-before every commit. CI runs the same checks with `test:full` and deploys `dist` to Cloudflare
-Pages; `build-and-deploy` is required to merge. Commits touching only `**/*.md` or `.claude/**` skip
-that job, so keep docs commits separate from code commits.
+before every commit. A pull request runs the same checks with `test:full`, and is the only place
+the full tier runs; `build-and-deploy` is required to merge. A push to main runs the quick tier
+again and deploys `dist` to Cloudflare Pages, which is the one deployment a change gets. Commits
+touching only `**/*.md` or `.claude/**` skip that job, so keep docs commits separate from code
+commits.
 
 ## The docs
 
