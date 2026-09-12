@@ -1,0 +1,72 @@
+import { describe, expect, it } from 'vitest';
+import { landUseLayers } from '../scripts/land-use.ts';
+import { ZONES, measureLayout, type ZoneMetrics } from '../scripts/layout-metrics.ts';
+import type { WorldDescription, Zone } from '../src/world/types.ts';
+import { LAYOUT_BANDS, type LayoutBand, type ZoneBands } from './budgets.ts';
+import { FOOTPRINT_COUNT, MIN_ZONE_HECTARES, MIN_ZONE_PARCELS } from './seed-limits.ts';
+import { seeds, worlds, parcelsOf, buildingsOf, graphOf } from './seed-fixture.ts';
+
+/**
+ * The seed sweep of spec section 3, on how dense the city is rather than on
+ * whether it is legal.
+ *
+ * Every other check here asks whether a layout holds together: that roads
+ * connect, that grades hold, that nothing stands on anything else. A map that
+ * gives three fifths of its downtown to tarmac passes all of them. These read
+ * the shares of `scripts/layout-metrics.ts` and hold each one to the band
+ * `budgets.ts` pins, so "the city is too sparse" is a failing check and not an
+ * opinion.
+ *
+ * `seed-sweep.test.ts` declares these inside the one suite that generates the
+ * worlds; a file of its own would generate them all again.
+ */
+export function layoutChecks(): void {
+  describe('layout', () => {
+    it('gives each zone a share of road, of building and a parcel size inside its band', () => {
+      const complaints: string[] = [];
+      for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
+        const world = worlds.get(seed) as WorldDescription;
+        const layers = landUseLayers(world, graphOf(seed), parcelsOf(seed), buildingsOf(seed));
+        const metrics = measureLayout(world, layers);
+        let complaint: string | undefined;
+        const fault = (text: string): void => {
+          complaint ??= text;
+        };
+
+        for (const zone of ZONES) {
+          const m = metrics[zone];
+          // A zone the water left a few hectares of says nothing about the
+          // layout: one block either way moves every share of it.
+          if (m.hectares < MIN_ZONE_HECTARES) continue;
+          const bands = LAYOUT_BANDS[zone];
+          for (const metric of ['roadShare', 'buildingShare', 'buildingsPerHectare'] as const) {
+            check(fault, zone, metric, m[metric], bands[metric]);
+          }
+          if (m.parcels >= MIN_ZONE_PARCELS) {
+            check(fault, zone, 'medianParcelArea', m.medianParcelArea, bands.medianParcelArea);
+          }
+          // The parcels are the land the roads left, so the two shares are the
+          // whole of the ground the map reaches. What is missing is land no road
+          // reaches, which `seed-parcels.ts` holds to its own ceiling.
+          if (m.roadShare + m.parcelShare > 1.001) {
+            fault(`the ${zone} is ${(m.roadShare * 100).toFixed(1)} % road and ${(m.parcelShare * 100).toFixed(1)} % parcel at once`);
+          }
+        }
+        if (complaint !== undefined) complaints.push(`seed ${seed}: ${complaint}`);
+      }
+      expect(complaints.join('\n')).toBe('');
+    });
+  });
+}
+
+/** Hold one reading of one zone to its band. */
+function check(
+  fault: (text: string) => void,
+  zone: Zone,
+  metric: keyof ZoneBands & keyof ZoneMetrics,
+  value: number,
+  band: LayoutBand,
+): void {
+  if (value >= band.min && value <= band.max) return;
+  fault(`the ${zone} reads ${value.toFixed(3)} for ${metric}, outside its band of ${band.min} to ${band.max}`);
+}

@@ -305,3 +305,15 @@ export const CUT_SLACK = 2e-3;
  * nearer than this may fall on either side of it and proves nothing.
  */
 export const BOUNDARY_SLACK = 0.01;
+/**
+ * Hectares of dry land a zone needs before the layout check reads its shares.
+ * The water cuts the industrial wedge of a thin seed down to a few blocks, and
+ * one block either way moves every share of a zone that small.
+ */
+export const MIN_ZONE_HECTARES = 8;
+/**
+ * Parcels a zone needs before its middle parcel is asked about. The wilderness
+ * of a seed whose rings cover almost the whole map is a handful of rocks in the
+ * sea, and the middle of three parcels says nothing about how land is cut.
+ */
+export const MIN_ZONE_PARCELS = 5;

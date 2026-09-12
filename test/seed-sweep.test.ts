@@ -5,6 +5,7 @@ import { terrainChecks } from './seed-terrain.ts';
 import { roadChecks } from './seed-roads.ts';
 import { groundChecks } from './seed-ground.ts';
 import { parcelChecks } from './seed-parcels.ts';
+import { layoutChecks } from './seed-layout.ts';
 import { chunkChecks } from './seed-chunks.ts';
 import { placeChecks } from './seed-places.ts';
 
@@ -27,6 +28,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
   roadChecks();
   groundChecks();
   parcelChecks();
+  layoutChecks();
   chunkChecks();
   placeChecks();
 });
