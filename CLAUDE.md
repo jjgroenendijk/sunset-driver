@@ -113,8 +113,8 @@ The ones that cost a session with nothing to say why. The subsystem docs hold th
 - TSL's chained `mix` takes the receiver as the factor: `a.mix(b, t)` compiles to `mix(b, t, a)`.
   Use the free `mix(a, b, t)` from `src/render/tsl.ts`, which is the one door onto `three/tsl`.
   `smoothstep` chains the same way.
-- three.js 0.186 cannot upload a `Data3DTexture` on WebGPU: it samples as zero, so a 3D LUT grades
-  every frame black.
+- A `Data3DTexture` needs `generateMipmaps = false` on WebGPU: three.js 0.186 builds mipmaps of it
+  through 2D views, which the browser refuses, and each frame fills the console with errors.
 - `renderer.shadowMap.enabled` is false by default on `WebGPURenderer`, so without the line in
   `renderer.ts` the cascades are built every frame and never drawn.
 - Rapier reads a heightfield as `heights[j * (rows + 1) + i]` with `i` walking `z`; the other way

@@ -212,10 +212,10 @@ are the design.
   rather than every frame. The grade works on display values and the frame is light, so
   `PostChain.lookUp` encodes a colour before the lookup and decodes it after: a lift big enough to
   warm a dusk shadow turns a whole night frame orange if it is added to light instead.
-- three.js 0.186 cannot upload a `Data3DTexture`: it writes one slice at a time, WebGPU refuses the
-  flat view the upload needs, and the texture samples as zero — so `Lut3DNode` grades every frame
-  black. The table is a `DataTexture` strip of the blue slices instead, and `lookUp` blends the two
-  nearest by hand. Do not reach for a 3D texture until that is fixed.
+- The table is a `Data3DTexture` read by `Lut3DNode`, so the sampler interpolates all three axes
+  and the grade costs one texture fetch. `generateMipmaps` must stay off: three.js 0.186 builds
+  mipmaps of a 3D texture through 2D views, WebGPU refuses every one of them, and the console fills
+  with validation errors. Nothing reads those levels, so turning them off is the whole fix.
 - TSL's chained `mix` takes the receiver as the factor: `a.mix(b, t)` compiles to `mix(b, t, a)`. It
   reads like a blend and is not one. Use the free `mix(a, b, t)` from `tsl.ts`. `smoothstep` chains
   the same way.
