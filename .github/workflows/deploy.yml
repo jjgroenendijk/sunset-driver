@@ -70,6 +70,7 @@ jobs:
 
       - run: npm run typecheck
       - run: npm run lint
+      - run: npm run lint:size
       - run: npm run test:full
       - run: npm run build
 
