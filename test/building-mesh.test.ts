@@ -8,6 +8,7 @@ import {
   buildingLookup,
   massingOf,
   OUTLINE_WIDTH,
+  standingGround,
   type BuildingLookup,
   type BuildingPlacement,
 } from '../src/render/building-mesh.ts';
@@ -71,6 +72,8 @@ function buildingOf(kind: BuildingKind, width: number, depth: number, options: P
     district: 0,
     zone: 'core',
     ...options,
+    // A lot with nothing against either side, unless the test says otherwise.
+    shared: options.shared ?? { left: false, right: false },
   };
 }
 
@@ -156,9 +159,51 @@ describe('a building on its lot', () => {
         const one = placed([building], lookupOf(undefined, 0, QUIET))[0] as BuildingPlacement;
         let outside = 0;
         eachWorldVertex(one.shell, one, (vertex) => {
-          if (!pointInRing({ x: vertex.x, y: vertex.z }, building.lot)) outside++;
+          if (!pointInRing({ x: vertex.x, y: vertex.z }, standingGround(building))) outside++;
         });
         expect(outside, `${kind} at ${facing}`).toBe(0);
+      }
+    }
+  });
+
+  it('reaches the wall it shares and stands in from every other edge', () => {
+    // Two lots of one street wall, meeting at x = 11: the second corner of the
+    // first lot is the first corner of the second (spec section 10.3).
+    const boundary = 11;
+    for (const kind of KINDS) {
+      const west = buildingOf(kind, 22, 26, { front: { x: 0, y: 0 }, shared: { left: false, right: true } });
+      const east = buildingOf(kind, 22, 26, { front: { x: 22, y: 0 }, shared: { left: true, right: false } });
+      const both = placed([west, east], lookupOf(undefined, 0, QUIET));
+      const one = both[0] as BuildingPlacement;
+      const other = both[1] as BuildingPlacement;
+      const span = (of: BuildingPlacement): { low: number; high: number } => {
+        let low = Infinity;
+        let high = -Infinity;
+        eachWorldVertex(of.shell, of, (vertex) => {
+          low = Math.min(low, vertex.x);
+          high = Math.max(high, vertex.x);
+        });
+        return { low, high };
+      };
+      const walls = span(one);
+      const next = span(other);
+      // Both walls stand on the boundary, so there is no slot between them and
+      // neither reaches over its neighbour.
+      expect(walls.high, `${kind} west of the wall`).toBeCloseTo(boundary, 2);
+      expect(next.low, `${kind} east of the wall`).toBeCloseTo(boundary, 2);
+      // The far side of each lot has nothing against it and keeps its margin.
+      expect(walls.low, `${kind} west end`).toBeGreaterThan(-boundary + 0.3);
+      expect(next.high, `${kind} east end`).toBeLessThan(3 * boundary - 0.3);
+      // And nothing stands on ground no wall of its own or its neighbour covers.
+      for (const one of [
+        { at: west, of: both[0] as BuildingPlacement },
+        { at: east, of: both[1] as BuildingPlacement },
+      ]) {
+        let outside = 0;
+        eachWorldVertex(one.of.shell, one.of, (vertex) => {
+          if (!pointInRing({ x: vertex.x, y: vertex.z }, standingGround(one.at))) outside++;
+        });
+        expect(outside, `${kind} off its ground`).toBe(0);
       }
     }
   });
@@ -292,7 +337,7 @@ describe('a building at far detail', () => {
       );
       let outside = 0;
       eachWorldVertex(far.shell, far, (vertex) => {
-        if (!pointInRing({ x: vertex.x, y: vertex.z }, building.lot)) outside++;
+        if (!pointInRing({ x: vertex.x, y: vertex.z }, standingGround(building))) outside++;
       });
       expect(outside, kind).toBe(0);
     }
@@ -380,7 +425,7 @@ describe('the buildings of a real chunk', () => {
           count++;
           let outside = 0;
           eachWorldVertex(one.shell, one, (vertex) => {
-            if (!pointInRing({ x: vertex.x, y: vertex.z }, one.building.lot)) outside++;
+            if (!pointInRing({ x: vertex.x, y: vertex.z }, standingGround(one.building))) outside++;
           });
           expect(outside, `${one.building.kind} ${one.building.id} in chunk ${cx}, ${cy}`).toBe(0);
         }
