@@ -186,9 +186,9 @@ export interface ZoneBands {
  * because a seed is allowed to vary.
  *
  * These are what the generator gives **today**, widened past the spread of 80
- * seeds so a seed the sweep has not read yet still passes. They are not the
+ * seeds so a seed the sweep has not read yet still passes. They are not yet the
  * city we want: a real dense downtown gives about 28 % of its ground to the
- * street and 50 % to buildings, and the core here gives 60 % and 12 %. The
+ * street and 50 % to buildings, and the core here gives 49 % and 17 %. The
  * layout issues move these bands towards that, and each of them says which band
  * it moved and why. Until one does, a number outside a band is a regression to
  * find, exactly like a performance budget.
@@ -200,22 +200,25 @@ export interface ZoneBands {
  * over the dry land of the zone.
  */
 export const LAYOUT_BANDS: Record<Zone, ZoneBands> = {
-  // 80 seeds: road 58 to 65 %, building 10 to 14 %, 2.2 to 3.4 buildings a
-  // hectare, median parcel 547 to 920 m².
+  // 80 seeds: road 44 to 55 %, building 13 to 22 %, 2.3 to 4.0 buildings a
+  // hectare, median parcel 1235 to 3058 m². Issue #190 moved all four: the
+  // strip blocks of spec section 6.1 took the road share down from 58 to 65 %
+  // and the middle parcel up from 547 to 920 m².
   core: {
-    roadShare: { min: 0.45, max: 0.75 },
-    buildingShare: { min: 0.05, max: 0.22 },
-    buildingsPerHectare: { min: 1.2, max: 5 },
-    medianParcelArea: { min: 350, max: 1400 },
+    roadShare: { min: 0.34, max: 0.65 },
+    buildingShare: { min: 0.09, max: 0.3 },
+    buildingsPerHectare: { min: 1.5, max: 5.5 },
+    medianParcelArea: { min: 800, max: 4500 },
   },
-  // 46 to 54 %, 14 to 19 %, 3.3 to 4.3, 1137 to 1634 m².
+  // 39 to 47 %, 15 to 22 %, 3.2 to 4.7, 1999 to 3899 m². Issue #190 moved these
+  // as well, from 46 to 54 %, 14 to 19 % and 1137 to 1634 m².
   inner: {
-    roadShare: { min: 0.35, max: 0.65 },
-    buildingShare: { min: 0.07, max: 0.28 },
-    buildingsPerHectare: { min: 2, max: 6 },
-    medianParcelArea: { min: 700, max: 2500 },
+    roadShare: { min: 0.3, max: 0.58 },
+    buildingShare: { min: 0.1, max: 0.3 },
+    buildingsPerHectare: { min: 2.2, max: 6.5 },
+    medianParcelArea: { min: 1300, max: 5500 },
   },
-  // 12 to 42 %, 5 to 25 %, 0.4 to 1.8, 2008 to 12845 m². The wedge lies along
+  // 21 to 39 %, 4 to 27 %, 0.3 to 1.8, 1745 to 14412 m². The wedge lies along
   // the harbour, so how much of it is water — and how much city is left in it —
   // moves further from seed to seed than any other zone.
   industrial: {
@@ -224,14 +227,14 @@ export const LAYOUT_BANDS: Record<Zone, ZoneBands> = {
     buildingsPerHectare: { min: 0.15, max: 3 },
     medianParcelArea: { min: 1200, max: 20000 },
   },
-  // 10 to 38 %, 3 to 18 %, 1.1 to 7.1, 4459 to 11049 m².
+  // 21 to 36 %, 10 to 17 %, 3.8 to 6.9, 5539 to 10202 m².
   suburban: {
     roadShare: { min: 0.06, max: 0.55 },
     buildingShare: { min: 0.01, max: 0.27 },
     buildingsPerHectare: { min: 0.5, max: 10 },
     medianParcelArea: { min: 2500, max: 16000 },
   },
-  // 3 to 19 %, 0.5 to 10 %, 0.1 to 2.0, 4602 to 50774 m².
+  // 4 to 19 %, 3 to 8 %, 0.7 to 1.7, 11261 to 45289 m².
   outskirts: {
     roadShare: { min: 0.015, max: 0.3 },
     buildingShare: { min: 0.002, max: 0.16 },

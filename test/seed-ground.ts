@@ -157,7 +157,9 @@ export function groundChecks(): void {
 
         if (points === 0) fault('has no road on the ground at all');
         if (standingOff > points * CARVE_STAND_OFF_SHARE) {
-          fault(`leaves ${((standingOff / points) * 100).toFixed(1)} % of its road points more than ${CARVE_CLEARANCE} m off the ground`);
+          // The count is what to compare against another run: the share moves
+          // with how many road points there are as well (see the limit).
+          fault(`leaves ${standingOff} of its ${points} road points more than ${CARVE_CLEARANCE} m off the ground`);
         }
         // The ground a few metres off a road is level with the road bed, and it
         // was not before: a road that took the hillside as it found it would come

@@ -147,6 +147,10 @@ describe(`tensor field (${SEED_COUNT} seeds)`, () => {
         // about the quiet interior, where nothing else is pulling.
         if (c.hf.slope(g.x, g.y) > 0.05) continue;
         if (nearestWater(c.hf, c.world.water.seaLevel, g.x, g.y, 300)) continue;
+        // Inside an organic city the water and the rings override a district's
+        // own grid, which is what makes it organic (spec section 6.1). The
+        // district grid is measured where the city leaves it alone.
+        if (c.field.planHolds(g.x, g.y) * (1 - c.field.plannedness) > 0.3) continue;
         const dev = directionDelta(c.field.majorAt(g.x, g.y), g.angle);
         expect(dev, `${d.name} (seed ${c.seed}) runs ${deg(dev)} off its grid`).toBeLessThan(25 * DEG);
         devs.push(dev);
@@ -157,7 +161,10 @@ describe(`tensor field (${SEED_COUNT} seeds)`, () => {
         expect(quantile(devs, 0.5), `seed ${c.seed} median grid deviation`).toBeLessThan(12 * DEG);
       }
     }
-    expect(checked).toBeGreaterThan(2 * SEED_COUNT);
+    // An organic city's core and inner ring are left out, so the districts this
+    // reads are the industrial wedge and whatever a planned seed drew: about
+    // one a seed, where before the plan it was three.
+    expect(checked).toBeGreaterThanOrEqual(SEED_COUNT);
   });
 
   it('runs parallel to the shore at the waterfront', () => {
@@ -169,6 +176,9 @@ describe(`tensor field (${SEED_COUNT} seeds)`, () => {
         // Right at the edge the nearest wet cell is a poor normal; a little back
         // from it the shore has a direction worth following.
         if (!w || w.d < 25) continue;
+        // A planned city's avenues stop at the water rather than bending along
+        // it (spec section 6.1), so its core is not what this measures.
+        if (c.field.planHolds(p.x, p.y) * c.field.plannedness > 0.3) continue;
         devs.push(directionDelta(c.field.majorAt(p.x, p.y), w.toWater + Math.PI / 2));
       }
       expect(devs.length, `seed ${c.seed}: waterfront samples`).toBeGreaterThan(20);
@@ -177,6 +187,39 @@ describe(`tensor field (${SEED_COUNT} seeds)`, () => {
       const p75 = quantile(devs, 0.75);
       expect(median, `seed ${c.seed}: median ${deg(median)} off the shore`).toBeLessThan(20 * DEG);
       expect(p75, `seed ${c.seed}: 75th percentile ${deg(p75)} off the shore`).toBeLessThan(30 * DEG);
+    }
+  });
+
+  it('holds one plan over the core, at whichever end of the range the seed drew', () => {
+    let planned = 0;
+    let organic = 0;
+    for (const c of cases) {
+      const devs: number[] = [];
+      for (const p of landPoints(c.world, 4000, 0x91a)) {
+        if (devs.length >= 80) break;
+        if (c.field.planHolds(p.x, p.y) < 0.99) continue;
+        devs.push(directionDelta(c.field.majorAt(p.x, p.y), c.field.cityAngle));
+      }
+      if (devs.length < 20) continue;
+      devs.sort((a, b) => a - b);
+      const median = quantile(devs, 0.5);
+      if (c.field.plannedness > 0.6) {
+        planned++;
+        // The grid outweighs everything inside the ring, so the whole city
+        // reads as one direction.
+        expect(median, `seed ${c.seed} (planned ${c.field.plannedness.toFixed(2)}) median off the plan`).toBeLessThan(15 * DEG);
+      } else if (c.field.plannedness < 0.4) {
+        organic++;
+        // An organic city follows its water and its rings instead, so its core
+        // is nothing like one direction. If it were, the seed would be drawing
+        // no range at all.
+        expect(median, `seed ${c.seed} (organic ${c.field.plannedness.toFixed(2)}) median off the plan`).toBeGreaterThan(8 * DEG);
+      }
+    }
+    // Over a dozen seeds the range has to produce both kinds of city.
+    if (SEED_COUNT >= 12) {
+      expect(planned, 'planned seeds').toBeGreaterThan(0);
+      expect(organic, 'organic seeds').toBeGreaterThan(0);
     }
   });
 

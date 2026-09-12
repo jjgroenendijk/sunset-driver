@@ -21,6 +21,14 @@ gets wrong without it.
   6.1). Influences blend as tensors, so ones facing opposite ways reinforce instead of cancelling;
   `sample(x, y)` returns both directions and a `strength` saying how decided the field is, and
   `majorAt(x, y)` is the allocation-free hot path.
+- Over the core and the inner ring the city's plan sets the weights of that field, and how firmly a
+  city holds a plan is `field.plannedness`, drawn from the seed (spec section 6.1). Near 1 the grid
+  outweighs everything, so avenues run straight and stop at the water. Near 0 the coast, the river
+  and the rings around the middle decide. Both ends cut the wander to nothing: what the range is
+  for is two kinds of coherent city, not a dial between order and noise. `planHolds(x, y)` says how
+  much of that reaches a point, and outside it the streamline field of the suburbs returns
+  unchanged. The three core districts share one grid direction, so no jitter breaks a long street
+  into three; the suburbs and the outskirts keep theirs.
 - `roads.ts` is the plan of the road network and `road-trace.ts` the trace it runs on: the step
   along the field, the ground that refuses it, the reroute and the structures. `RoadTracer` extends
   `RoadTrace`, and `road-index.ts` is the network laid so far, which every step is vetted against.
@@ -47,6 +55,15 @@ gets wrong without it.
   gives the zone's spacing range, and the density of the district there says where in that range the
   spacing lands. A road that met nothing on one side is trimmed to a cul-de-sac rather than left
   running into nothing.
+- A zone has two spacings, so its blocks are long strips and not lozenges (spec section 6.1). The
+  fill reads `field.majorAt` at the seed to know which of the two a road is being laid at: `across`
+  for a road running across the major direction, `along` for one running with it. Two things follow
+  that are easy to get wrong. A road's clearance — the ground it needs free to be laid at all — is
+  half the *tighter* of the two, never half its own spacing, because an avenue crosses a street
+  every 90 m and would otherwise refuse itself. And `MINOR_BY_ZONE.along` in the city is set far
+  wider than a block, because the arterial fill has already laid a road every `ARTERIAL_SPACING`;
+  what bounds a downtown block the long way is the arterial, which is why the alley reads that
+  figure rather than the table's.
 - A highway takes a junction only at an interchange (spec section 6.2). `interchangesOf` places them
   along the curve, `RoadCurve.interchanges` lists the point indices, and `mayJoin` (`tiers.ts`) is
   the rule: a highway or an arterial ramp joins one there, and a street, alley or dirt road never

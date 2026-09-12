@@ -14,35 +14,83 @@
  * districts. A slow noise wander keeps the result from ever being exactly
  * regular.
  *
+ * Over the core and the inner ring one more thing holds: the city's plan. How
+ * firmly a city holds a plan is drawn from its seed (spec section 6.1). A
+ * planned city gives the grid almost the whole weight, so its avenues run
+ * straight and stop at the water. An organic city gives it to the coast, the
+ * river and the rings around the middle. Both cut the wander back to nothing,
+ * because a street that wobbles every fifty metres belongs to neither.
+ *
  * The field is a pure function of the world description: no state, no
  * wall-clock, safe to build in a worker or in Node.
  */
-import { clamp, smoothstep, wrapDirection } from '../core/math.ts';
+import { clamp, lerp, smoothstep, wrapDirection } from '../core/math.ts';
 import { Noise2D } from '../core/noise.ts';
 import { genRng, Subsystem } from '../core/rng.ts';
+import { ZONE_RADII } from './districts.ts';
 import { Heightfield } from './heightfield.ts';
 import { segmentDistance } from './terrain.ts';
 import type { Point, WorldSkeleton, Zone } from './types.ts';
 
 const HALF_PI = Math.PI / 2;
 
+type Weights = Record<'coast' | 'grid' | 'river' | 'terrain' | 'radial' | 'wander', number>;
+
 /**
  * Peak weight of each influence. Only the ratios matter: an influence of weight
  * `w2` pulls a dominant influence of weight `w1` off its direction by at most
  * `½·asin(w2 / w1)`.
  */
-const WEIGHT = {
+const WEIGHT: Weights = {
   coast: 4,
   grid: 3,
   river: 1.6,
   terrain: 1.2,
   radial: 0.9,
   wander: 0.35,
-} as const;
+};
+
+/**
+ * The same weights over the core and the inner ring, at the two ends of the
+ * range a seed draws from. Inside the city one influence has to win clearly:
+ * where nothing wins, the streets fan and the result is noise rather than a
+ * city.
+ *
+ * Planned: the grid outweighs everything, so the coast bends an avenue by under
+ * four degrees and the rings are gone. Organic: the water and the rings decide,
+ * and the grid only says which way the ground between them leans.
+ */
+const PLANNED: Weights = {
+  coast: 1.2,
+  grid: 9,
+  river: 0.8,
+  terrain: 1.2,
+  radial: 0.15,
+  wander: 0.04,
+};
+const ORGANIC: Weights = {
+  coast: 4,
+  grid: 1,
+  river: 2,
+  terrain: 1.2,
+  radial: 2.2,
+  wander: 0.05,
+};
+
+/**
+ * Where the city's plan holds, as fractions of the world side: full over the
+ * core and the inner ring, gone a little way past them. Outside it the weights
+ * above give way to {@link WEIGHT} and the streamline character of the suburbs,
+ * the outskirts and the wilderness returns (spec section 6.1).
+ */
+const PLAN_HOLD = ZONE_RADII.inner;
+const PLAN_FADE = ZONE_RADII.inner * 1.25;
 
 /** How firmly a district holds its own grid, and how far that hold reaches (fraction of the world side). */
 const GRID_BY_ZONE: Record<Zone, { hold: number; radius: number; jitter: number }> = {
-  core: { hold: 1, radius: 0.08, jitter: 0.1 },
+  // The core districts share one plan, whatever plan the seed drew. Jittering
+  // each of the three separately is what broke a long street into three.
+  core: { hold: 1, radius: 0.08, jitter: 0 },
   inner: { hold: 0.9, radius: 0.09, jitter: 0.15 },
   industrial: { hold: 0.8, radius: 0.07, jitter: 0.35 },
   suburban: { hold: 0.5, radius: 0.1, jitter: 0.6 },
@@ -99,6 +147,18 @@ export class TensorField {
   readonly grids: readonly DistrictGrid[];
   /** The city's dominant street direction; every district grid is a jitter around it. */
   readonly cityAngle: number;
+  /**
+   * How firmly this city holds its plan, in [0, 1]: 0 an organic city that
+   * follows its water and its rings, 1 a planned one whose avenues run straight
+   * (spec section 6.1).
+   */
+  readonly plannedness: number;
+  /** cos 2·cityAngle and sin 2·cityAngle, for the plan the whole city shares. */
+  private readonly cityC2: number;
+  private readonly cityS2: number;
+  /** Metres from the core over which the city's plan gives way to the streamline field. */
+  private readonly planHold: number;
+  private readonly planFade: number;
   private readonly hf: Heightfield;
   /** Signed distance to the shoreline in metres, positive on land, on a coarse grid. */
   private readonly shore: Heightfield;
@@ -141,11 +201,22 @@ export class TensorField {
 
     const rng = genRng(world.seed, Subsystem.Roads, 0);
     this.cityAngle = rng.range(-HALF_PI, HALF_PI);
+    // Smoothstep of a uniform draw, so most seeds land near one end of the
+    // range and few in the middle: a city half planned reads as neither.
+    const u = rng.float();
+    this.plannedness = u * u * (3 - 2 * u);
+    this.cityC2 = Math.cos(2 * this.cityAngle);
+    this.cityS2 = Math.sin(2 * this.cityAngle);
+    this.planHold = size * PLAN_HOLD;
+    this.planFade = size * PLAN_FADE;
     const grids: DistrictGrid[] = [];
     for (const d of world.districts) {
       const spec = GRID_BY_ZONE[d.zone];
       if (spec.hold <= 0) continue;
-      const jitter = genRng(world.seed, Subsystem.Roads, d.id + 1).range(-spec.jitter, spec.jitter);
+      // Inside the city a planned seed lets no district turn off the plan; the
+      // jitter of the suburbs and the outskirts is left alone.
+      const spread = d.zone === 'inner' ? spec.jitter * (1 - this.plannedness) : spec.jitter;
+      const jitter = genRng(world.seed, Subsystem.Roads, d.id + 1).range(-spread, spread);
       const angle = wrapDirection(this.cityAngle + jitter);
       grids.push({
         districtId: d.id,
@@ -173,6 +244,16 @@ export class TensorField {
     return { major, minor: wrapDirection(major + HALF_PI), strength: total > 0 ? clamp(mag / total, 0, 1) : 0 };
   }
 
+  /**
+   * How much the city's plan holds at a point, in [0, 1]: 1 over the core and
+   * the inner ring, 0 past them. Multiplied by {@link plannedness} it says how
+   * far the ground here is a grid rather than a streamline field.
+   */
+  planHolds(x: number, y: number): number {
+    const d = Math.hypot(x - this.core.x, y - this.core.y);
+    return 1 - smoothstep(this.planHold, this.planFade, d);
+  }
+
   /** Just the major direction: the hot path for tracing streamlines. */
   majorAt(x: number, y: number): number {
     const acc = this.accumulate(x, y);
@@ -193,11 +274,31 @@ export class TensorField {
     let b = 0;
     let total = 0;
 
+    const cx = x - this.core.x;
+    const cy = y - this.core.y;
+    const cd2 = cx * cx + cy * cy;
+    const dCore = Math.sqrt(cd2);
+
+    // Inside the core and the inner ring the city's plan sets the weights, at
+    // whichever end of the range the seed drew. Past the ring they fade back to
+    // the streamline field the rest of the map runs on.
+    const inCity = 1 - smoothstep(this.planHold, this.planFade, dCore);
+    const p = this.plannedness;
+    const wGrid = lerp(WEIGHT.grid, lerp(ORGANIC.grid, PLANNED.grid, p), inCity);
+    const wCoast = lerp(WEIGHT.coast, lerp(ORGANIC.coast, PLANNED.coast, p), inCity);
+    const wRiver = lerp(WEIGHT.river, lerp(ORGANIC.river, PLANNED.river, p), inCity);
+    const wTerrain = lerp(WEIGHT.terrain, lerp(ORGANIC.terrain, PLANNED.terrain, p), inCity);
+    const wRadial = lerp(WEIGHT.radial, lerp(ORGANIC.radial, PLANNED.radial, p), inCity);
+    const wWander = lerp(WEIGHT.wander, lerp(ORGANIC.wander, PLANNED.wander, p), inCity);
+
     // District grids: planned blocks hold their own street direction. Overlapping
     // districts share one budget, so a cluster of them never outweighs the coast.
-    let ga = 0;
-    let gb = 0;
-    let gw = 0;
+    // The city's own plan is one more grid, the one that covers the whole of the
+    // core and the inner ring rather than a disc around a district site: without
+    // it the ground between two sites holds no plan at all.
+    let ga = inCity * this.cityC2;
+    let gb = inCity * this.cityS2;
+    let gw = inCity;
     for (const g of this.grids) {
       const dx = x - g.x;
       const dy = y - g.y;
@@ -209,18 +310,14 @@ export class TensorField {
       gw += w;
     }
     if (gw > 0) {
-      const scale = WEIGHT.grid / Math.max(1, gw);
+      const scale = wGrid / Math.max(1, gw);
       a += ga * scale;
       b += gb * scale;
-      total += WEIGHT.grid * Math.min(1, gw);
+      total += wGrid * Math.min(1, gw);
     }
 
     // Radial: avenues run out of the core, ring roads around it.
-    const cx = x - this.core.x;
-    const cy = y - this.core.y;
-    const cd2 = cx * cx + cy * cy;
-    const dCore = Math.sqrt(cd2);
-    const radial = WEIGHT.radial * smoothstep(0, this.radialInner, dCore) * (1 - smoothstep(this.radialPeak, this.radialOuter, dCore));
+    const radial = wRadial * smoothstep(0, this.radialInner, dCore) * (1 - smoothstep(this.radialPeak, this.radialOuter, dCore));
     if (radial > 0 && cd2 > 0) {
       a += (radial * (cx * cx - cy * cy)) / cd2;
       b += (radial * 2 * cx * cy) / cd2;
@@ -231,7 +328,7 @@ export class TensorField {
     const gx = this.hf.sample(x + TERRAIN_STEP, y) - this.hf.sample(x - TERRAIN_STEP, y);
     const gy = this.hf.sample(x, y + TERRAIN_STEP) - this.hf.sample(x, y - TERRAIN_STEP);
     const rise2 = gx * gx + gy * gy;
-    const terrain = WEIGHT.terrain * smoothstep(GENTLE_GRADE, STEEP_GRADE, Math.sqrt(rise2) / (2 * TERRAIN_STEP));
+    const terrain = wTerrain * smoothstep(GENTLE_GRADE, STEEP_GRADE, Math.sqrt(rise2) / (2 * TERRAIN_STEP));
     if (terrain > 0 && rise2 > 0) {
       a -= (terrain * (gx * gx - gy * gy)) / rise2;
       b -= (terrain * 2 * gx * gy) / rise2;
@@ -240,7 +337,7 @@ export class TensorField {
 
     // Coast: near the water, roads run along the shore. The shoreline is a level
     // set of the signed distance field, so its gradient is the shore normal.
-    const coast = WEIGHT.coast * (1 - smoothstep(COAST_HOLD, COAST_REACH, Math.abs(this.shore.sample(x, y))));
+    const coast = wCoast * (1 - smoothstep(COAST_HOLD, COAST_REACH, Math.abs(this.shore.sample(x, y))));
     if (coast > 0) {
       const nx = this.shore.sample(x + SHORE_STEP, y) - this.shore.sample(x - SHORE_STEP, y);
       const ny = this.shore.sample(x, y + SHORE_STEP) - this.shore.sample(x, y - SHORE_STEP);
@@ -276,17 +373,17 @@ export class TensorField {
       rw += w;
     }
     if (rw > 0) {
-      const scale = WEIGHT.river / Math.max(1, rw);
+      const scale = wRiver / Math.max(1, rw);
       a += ra * scale;
       b += rb * scale;
-      total += WEIGHT.river * Math.min(1, rw);
+      total += wRiver * Math.min(1, rw);
     }
 
     // A slow wander, so that even a flat inland grid bends a little.
     const t = 2 * Math.PI * this.wander.fbm(x / WANDER_SCALE + 5.5, y / WANDER_SCALE + 2.25, 3);
-    a += WEIGHT.wander * Math.cos(t);
-    b += WEIGHT.wander * Math.sin(t);
-    total += WEIGHT.wander;
+    a += wWander * Math.cos(t);
+    b += wWander * Math.sin(t);
+    total += wWander;
 
     const acc = this.acc;
     acc[0] = a;
