@@ -48,8 +48,11 @@ const DEPTH_RANGE = 20;
 
 /** What one map frame is asked to draw over the land. */
 export interface MapDrawOptions {
-  /** Where the player stands and which way they face. */
-  player: { x: number; y: number; heading: number };
+  /**
+   * Where the player stands and which way they face, or null where there is no
+   * player yet: the seed preview of the title screen draws the map alone.
+   */
+  player: { x: number; y: number; heading: number } | null;
   /** The place the player has marked, or null. A line is run to it from the player. */
   waypoint: { x: number; y: number } | null;
   /** Pixels across an icon. A minimap draws them smaller than the full map. */
@@ -138,7 +141,7 @@ export class MapArt {
 
     opts.overlay?.(ctx, view);
 
-    if (opts.waypoint) {
+    if (opts.waypoint && opts.player) {
       ctx.strokeStyle = WAYPOINT_LINE;
       ctx.lineWidth = 1.5 * view.metresPerPixel;
       ctx.setLineDash([10 * view.metresPerPixel, 8 * view.metresPerPixel]);
@@ -166,8 +169,10 @@ export class MapArt {
       drawIcon(ctx, style.shape, style.colour, p.x, p.y, opts.iconSize);
       if (named) label(ctx, poi.name ?? style.label, p.x, p.y + opts.iconSize);
     }
-    const me = projectInto(view, width, height, opts.player.x, opts.player.y);
-    drawPlayer(ctx, me.x, me.y, opts.player.heading + view.rotation, opts.iconSize * 1.15);
+    if (opts.player) {
+      const me = projectInto(view, width, height, opts.player.x, opts.player.y);
+      drawPlayer(ctx, me.x, me.y, opts.player.heading + view.rotation, opts.iconSize * 1.15);
+    }
   }
 
   /** Every tier the zoom shows, widest first, so a street lies over the highway it joins. */

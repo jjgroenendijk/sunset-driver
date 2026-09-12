@@ -164,6 +164,16 @@ export function viewRadius(view: MapView, width: number, height: number): number
   return (Math.hypot(width, height) / 2) * view.metresPerPixel;
 }
 
+/**
+ * The view that holds a whole `size`-metre world on a canvas of `width` by
+ * `height` pixels, north up and centred on the origin the world is built
+ * around. The smaller side of the canvas decides the scale, so nothing of the
+ * map is cut off.
+ */
+export function fitWorldView(size: number, width: number, height: number): MapView {
+  return { x: 0, y: 0, metresPerPixel: size / Math.max(1, Math.min(width, height)), rotation: 0 };
+}
+
 /** The world box the canvas can show, however the view is turned. */
 export interface MapBounds {
   minX: number;

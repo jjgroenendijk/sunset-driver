@@ -211,7 +211,7 @@ async function boot(): Promise<void> {
 
   const title = new TitleScreen(
     document.body,
-    { seed: readSeedFromLocation(location.hash), character: DEFAULT_APPEARANCE },
+    { seed: readSeedFromLocation(location.hash), character: DEFAULT_APPEARANCE, world: null },
     (appearance) => preview.character.set(appearance),
   );
   const choice = await title.wait();
@@ -223,10 +223,14 @@ async function boot(): Promise<void> {
   // two, so say so and let the browser paint the notice before it starts. The
   // chunks are then built in the workers, and the notice stands until there is
   // ground under the player; the rest of the city fills in as it is played.
+  //
+  // A player who looked at the seed's map on the title screen has already paid
+  // for that build, and the world is a pure function of the seed, so the
+  // preview's world is the session's world.
   const notice = showNotice('Generating the world…');
   await nextFrame();
   const state = createSimState(seedFromString(choice.seed), choice.character);
-  const description = generateWorld(state.seed);
+  const description = choice.world ?? generateWorld(state.seed);
   const world = new WorldScene(description, state.character);
 
   // The physics reads the carved ground the renderer draws and the surface the

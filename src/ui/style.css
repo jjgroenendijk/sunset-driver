@@ -20,6 +20,10 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #12070f; col
 .title button { border: 1px solid #6a3f58; border-radius: .25rem; background: #2a1322; color: inherit; font: inherit; cursor: pointer; }
 .title button:hover { background: #3b1b30; }
 .title-step { width: 2rem; padding: .2rem 0; }
+.title-dice { width: 2.2rem; padding: .3rem 0; font-size: 1.1rem; line-height: 1; }
+.title-preview { display: grid; justify-items: center; gap: .35rem; }
+.title-preview-map { width: 100%; max-width: 18rem; aspect-ratio: 1; border: 1px solid #6a3f58; border-radius: .25rem; background: #12070f; }
+.title-preview-status { margin: 0; font-size: .8rem; opacity: .75; }
 .title-secondary { padding: .35rem .7rem; }
 .title-play { padding: .6rem; font-size: 1.1rem; letter-spacing: .08em; text-transform: uppercase; background: #ff8a5c; border-color: #ff8a5c; color: #210d18; }
 .title-play:hover { background: #ffa279; }

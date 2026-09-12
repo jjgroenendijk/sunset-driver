@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   collectPois,
+  fitWorldView,
   MapPois,
   POI_STYLES,
   project,
@@ -59,6 +60,29 @@ describe('POI icon table (spec section 12)', () => {
     expect(POI_STYLES.player.maxScale).toBeGreaterThanOrEqual(furthest);
     expect(POI_STYLES.waypoint.maxScale).toBeGreaterThanOrEqual(furthest);
     expect(POI_STYLES.objective.maxScale).toBeGreaterThanOrEqual(furthest);
+  });
+});
+
+describe('whole-world view', () => {
+  it('holds every corner of the world on the canvas', () => {
+    const size = 6000;
+    const view = fitWorldView(size, 320, 240);
+    for (const x of [-size / 2, size / 2]) {
+      for (const y of [-size / 2, size / 2]) {
+        const p = project(view, 320, 240, x, y);
+        expect(p.x).toBeGreaterThanOrEqual(-0.001);
+        expect(p.x).toBeLessThanOrEqual(320.001);
+        expect(p.y).toBeGreaterThanOrEqual(-0.001);
+        expect(p.y).toBeLessThanOrEqual(240.001);
+      }
+    }
+  });
+
+  it('fills the smaller side of the canvas, north up', () => {
+    const view = fitWorldView(6000, 300, 300);
+    expect(view.metresPerPixel).toBeCloseTo(20, 9);
+    expect(view.rotation).toBe(0);
+    expect(project(view, 300, 300, 0, -3000).y).toBeCloseTo(0, 6);
   });
 });
 
