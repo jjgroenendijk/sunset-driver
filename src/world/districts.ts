@@ -216,14 +216,8 @@ export function generateDistricts(seed: number, layout: ZoneLayout, hf: Heightfi
     });
   }
 
-  // Boardwalk: the suburban site on the main island farthest from the harbour becomes the beach neighbourhood.
-  const suburban = districts.filter((d) => d.zone === 'suburban' && d.name !== 'Gull Island');
-  const coastal = [...suburban].sort((a, b) => dist2(b.x, b.y, water.harbour.x, water.harbour.y) - dist2(a.x, a.y, water.harbour.x, water.harbour.y));
-  const boardwalk = coastal[0];
-  if (boardwalk) {
-    boardwalk.name = 'The Boardwalk';
-    boardwalk.culture = 'beach';
-  }
+  // The Boardwalk is named in `beaches.ts`, once the beaches are known: the
+  // district a resort beach runs through is the only one the name fits.
 
   // Outlaw MC roadhouses in the outskirts.
   const outskirts = districts.filter((d) => d.zone === 'outskirts');

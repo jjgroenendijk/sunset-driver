@@ -233,6 +233,11 @@ export function placeChecks(): void {
         const names = new Set(w.districts.map((d) => d.name));
         for (const r of required) expect(names.has(r), `${r} in seed ${seed}`).toBe(true);
         expect(names.size, `duplicate district name in seed ${seed}`).toBe(w.districts.length);
+        // The Boardwalk is the neighbourhood of a real boardwalk: the name goes
+        // to a district a resort beach runs through (issue #104).
+        const boardwalk = w.districts.find((d) => d.name === 'The Boardwalk');
+        const onABeach = w.beaches.some((b) => isResort(b) && b.districts.includes(boardwalk?.id ?? -1));
+        expect(onABeach, `seed ${seed}: The Boardwalk stands on no resort beach`).toBe(true);
         for (const d of w.districts) {
           expect(hf.sample(d.x, d.y)).toBeGreaterThanOrEqual(w.water.seaLevel);
           // The land it stands on carries an island of the water description, so
