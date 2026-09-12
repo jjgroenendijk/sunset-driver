@@ -134,7 +134,26 @@ export const MIN_KIND_SAMPLES = 60;
 export const FRONT_SLACK = 1;
 /** Metres a building's front may stand from the middle of its own front edge. */
 export const FRONT_DRIFT = 0.01;
-/** Radians a building may face away from the line out of its lot. Both come off the same corners. */
+/**
+ * Square metres two attached lots of one parcel may share. They touch along the
+ * wall between them, so the corners they share are equal to the millimetre and
+ * the ground between them is nil; this is the rounding of a 24 m edge and
+ * nothing more.
+ */
+export const SHARED_LOT_AREA = 0.05;
+/**
+ * The share of the lots of an attached zone that have to share a wall with
+ * another lot of the same parcel, over every parcel with more than one lot on
+ * it (issue #192). It is not 1 because the two ends of a row have one neighbour
+ * each and a lot the corner rule moved off its neighbour has none; the six
+ * seeds of the quick tier read 0.81 today.
+ */
+export const MIN_WALLED_SHARE = 0.7;
+/**
+ * Radians a building may face away from the normal of its own front edge. Both
+ * come off the same two corners, so the only room here is the rounding of them
+ * onto the millimetre grid.
+ */
 export const FACING_DRIFT = 1e-3;
 /**
  * Metres of beach outside the core that every seed has to carry, with a

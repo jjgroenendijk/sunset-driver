@@ -116,6 +116,37 @@ export function ringsOverlap(a: readonly Point[], b: readonly Point[]): boolean 
   return pointInRing(a[0] as Point, b) || pointInRing(b[0] as Point, a);
 }
 
+/**
+ * Square metres two convex rings share, by clipping the first to every side of
+ * the second: nothing where they stand apart or merely touch along an edge.
+ *
+ * `ringsOverlap` answers whether two rings meet at all, which is the question
+ * to ask of lots a zone keeps apart. Attached lots share a wall, so what has to
+ * be nil there is the ground between them and not the daylight.
+ */
+export function sharedArea(a: readonly Point[], b: readonly Point[]): number {
+  let clipped: Point[] = [...a];
+  for (let i = 0; i < b.length && clipped.length > 0; i++) {
+    const p = b[i] as Point;
+    const q = b[(i + 1) % b.length] as Point;
+    const inside = (r: Point): number => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+    const kept: Point[] = [];
+    for (let k = 0; k < clipped.length; k++) {
+      const from = clipped[k] as Point;
+      const to = clipped[(k + 1) % clipped.length] as Point;
+      const here = inside(from);
+      const there = inside(to);
+      if (here >= 0) kept.push(from);
+      if (here >= 0 !== (there >= 0)) {
+        const t = here / (here - there);
+        kept.push({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t });
+      }
+    }
+    clipped = kept;
+  }
+  return clipped.length < 3 ? 0 : Math.abs(ringArea(clipped));
+}
+
 function ringBounds(ring: readonly Point[]): { minX: number; minY: number; maxX: number; maxY: number } {
   const box = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
   for (const p of ring) {
