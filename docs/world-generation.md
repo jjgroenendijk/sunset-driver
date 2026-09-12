@@ -63,7 +63,18 @@ gets wrong without it.
   every 90 m and would otherwise refuse itself. And `MINOR_BY_ZONE.along` in the city is set far
   wider than a block, because the arterial fill has already laid a road every `ARTERIAL_SPACING`;
   what bounds a downtown block the long way is the arterial, which is why the alley reads that
-  figure rather than the table's.
+  figure rather than the table's. `MINOR_BY_ZONE` and the seed and plan types live in `fill.ts`,
+  which is the vocabulary both fills are written in.
+- An alley is one service lane inside one block (`alleys.ts`), never a fill generation of its own.
+  `alleySeeds` walks each street and measures the ground to each side out to the next road; that
+  distance is the block's depth, and the lane goes down the middle of it. So the lane stands between
+  the two streets that are really there, not at a spacing read off the table. A block takes no lane
+  where nothing stands within `PROBE_REACH` of the street, which is open ground and not a block, and
+  none where the strip each side would come out shallower than the zone's own lot depth or smaller
+  than its `minBuilt`. Downtown that asks for about sixty metres of block. The candidates are sorted
+  shallowest block first, so the lane runs down the block's long axis; every later candidate in the
+  same block is then refused by the clearance of the lane already laid. Laying alleys as a second
+  streamline fill is what once gave downtown a road every 40 m and left every block in strips.
 - A highway takes a junction only at an interchange (spec section 6.2). `interchangesOf` places them
   along the curve, `RoadCurve.interchanges` lists the point indices, and `mayJoin` (`tiers.ts`) is
   the rule: a highway or an arterial ramp joins one there, and a street, alley or dirt road never
@@ -145,7 +156,11 @@ gets wrong without it.
   A parcel is a piece of the land the footprint leaves, and every one of them has a road running
   along it: ground no road reaches is dropped, because nothing can be driven to it. Only a block the
   roads enclose is cut down to the size its zone builds in, so open country past the last road stays
-  one piece rather than becoming strips no road touches. An owner comes in a size:
+  one piece rather than becoming strips no road touches. A cut runs across the block's long side,
+  which `cutLine` finds by measuring the block along the field's two directions: cutting the other
+  way gives two strips too thin to build on. The core and the inner ring keep a `maxArea` above the
+  block their own street spacing makes, so a block the size of a real one is never cut at all. An
+  owner comes in a size:
   `ownerMaxArea(zone, owner)` is the most a park, a car park, a plaza or a building group may hold
   there, and a parcel the roll gives to an owner too small for it stays ground cover.
 - `buildBuildings(world, parcels, graph)` (`buildings.ts`) places the buildings of spec section
