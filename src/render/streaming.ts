@@ -27,7 +27,7 @@ export interface TilePart {
   objects: Object3D[];
   /** Draw calls these objects cost. */
   drawCalls: number;
-  /** What is left to copy into their batches, one part of the batch each. */
+  /** What is left to copy into their batches, one step of the fill each. */
   steps: (() => void)[];
   /** Release the geometry. The materials belong to the world and are left alone. */
   dispose(): void;

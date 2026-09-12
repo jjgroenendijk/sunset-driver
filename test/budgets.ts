@@ -115,20 +115,20 @@ export const BUDGET_MS = {
   chunkBuildings: 150,
 
   /**
-   * The dearest single piece of putting a chunk of the core into the scene:
-   * one generated tower copied into its batch (spec section 9.1).
-   *
-   * The batch's storage comes from the worker. When a batch allocated its own,
-   * the first part of the facades paid for tens of megabytes, and that piece
-   * missed this budget on a slow machine while every copy stayed far inside it.
+   * The dearest single step of putting a chunk of the core into the scene:
+   * `MAX_STEP_VERTICES` of a generated tower copied into its batch (spec
+   * section 9.1).
    *
    * The streaming slice is {@link FRAME_SLICE_MS.streaming} and `spendBudget`
-   * holds the upload queue to it, but a piece is indivisible — a geometry goes
-   * into a batch whole — so a frame that starts one just inside the slice
-   * overruns by this much. That overrun is the only one the queue allows, and
-   * it costs a frame a fraction of itself rather than a stall. What takes it
-   * down is building LOD in the near ring (spec section 9.2), not a larger
-   * number here.
+   * holds the upload queue to it, but a step is indivisible, so a frame that
+   * starts one just inside the slice overruns by this much. That overrun is the
+   * only one the queue allows, and it costs a frame a fraction of itself rather
+   * than a stall.
+   *
+   * A step is a fixed count of vertices rather than a whole part, so this
+   * number is about the copy and not about the largest tower a seed happens to
+   * build. It is about 0.4 ms on an Apple M1 laptop, which leaves the room a
+   * runner several times slower needs.
    */
   chunkUpload: 4,
 } as const;
