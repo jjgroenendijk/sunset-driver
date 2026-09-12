@@ -46,6 +46,19 @@ jobs:
             echo 'code=false' >> "$GITHUB_OUTPUT"
           fi
 
+  # The size lint runs on every change, because a docs-only commit skips the
+  # build below and markdown has limits of its own. It needs no dependencies:
+  # `check-size.ts` reads files and nothing else.
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: npm run lint:size
+
   build-and-deploy:
     needs: changes
     if: needs.changes.outputs.code == 'true'
