@@ -34,9 +34,14 @@ export const FOOTPRINT_COUNT = SEED_COUNT > 20 ? 16 : 2;
  * pavement together, and the wilderness beyond it gives almost none. The bounds
  * are wide: they are here to catch a footprint that has collapsed or run away,
  * not to pin a number down.
+ *
+ * The ceiling rose with the zone rings of spec section 8.2: the city is now
+ * most of the map rather than a twentieth of it, so far more of the land is
+ * ground a street runs over. Over the sixteen seeds this check reads, the worst
+ * claims 31 %.
  */
 export const MIN_FOOTPRINT_SHARE = 0.04;
-export const MAX_FOOTPRINT_SHARE = 0.3;
+export const MAX_FOOTPRINT_SHARE = 0.4;
 /** Metres from every road that ground has to stand before the footprint may not claim it. */
 export const CLEAR_OF_ROADS = 80;
 /**
@@ -71,11 +76,17 @@ export const PARCEL_SAMPLES = 250;
 export const MIN_PARCELS = 40;
 /**
  * How much of the dry land may be neither road nor parcel. What is left over is
- * land the road network never reaches — an outer island with no road laid on it
- * — and nothing can be placed there, so it is no parcel. A seed with much more
- * than this has lost ground the roads do reach.
+ * land the road network never reaches — an outer island with no road laid on it,
+ * or a hilly arm of the mainland no road climbs — and nothing can be placed
+ * there, so it is no parcel. A seed with much more than this has lost ground the
+ * roads do reach.
+ *
+ * This rose with the zone rings of spec section 8.2: the rings now reach that
+ * ground rather than leaving it in the wilderness, and reaching it with a ring
+ * is not the same as reaching it with a road. Over the sixteen seeds this check
+ * reads, the worst leaves 18.2 %.
  */
-export const MAX_UNREACHED_SHARE = 0.15;
+export const MAX_UNREACHED_SHARE = 0.25;
 /**
  * The owners spec section 6.4 step 4 names that are handed out today. A body of
  * water inside the land and the ground under an elevated deck come later; until
@@ -163,7 +174,14 @@ export const CARVE_CLEARANCE = 0.5;
  * street beside a highway embankment, two hairpins on a cliff — ask for two beds
  * in one grid cell, and only one of them can have it. A seed of steep ground
  * carries a few per cent of those; the worst of the sixteen seeds checked
- * carries 5.0 %.
+ * carries 7.9 %.
+ *
+ * That figure rose with the zone rings of spec section 8.2. The dense fill of
+ * the core and the inner ring now runs over ground that used to be suburb and
+ * outskirt, and hills are what most of that ground is. Two streets a bench
+ * apart on a hillside are exactly the case below, so there are many more of
+ * them: the count on the worst seed went from 275 to about 2,000 while the
+ * points on the ground went from 8,400 to 20,600.
  *
  * It is a share of the points on the ground, so it moves with how many of them
  * there are. `overpass.ts` took about a sixth of them off the ground and onto
@@ -172,7 +190,7 @@ export const CARVE_CLEARANCE = 0.5;
  * the population it is measured against shrank faster. The number to watch is
  * that count.
  */
-export const CARVE_STAND_OFF_SHARE = 0.055;
+export const CARVE_STAND_OFF_SHARE = 0.09;
 /**
  * Metres no road point may stand off the carved ground, however crowded the
  * ground under it. The carve moves no sample of the ground further than its own
@@ -197,7 +215,15 @@ export const LEVEL_STRIDE = 4;
  * its work.
  */
 export const LEVEL_PERCENTILE = 0.9;
-export const LEVEL_WITHIN = 0.5;
+/**
+ * This rose with the zone rings of spec section 8.2 as well, and for the same
+ * reason as {@link CARVE_STAND_OFF_SHARE}: the city now stands on hills. The
+ * natural ground at these places used to be 0.38 m to 0.60 m off the road bed
+ * and is now 0.82 m to 1.23 m. The carve still halves it — the gain below is
+ * 1.79 at worst, against 1.38 before — but half of twice as much is more. The
+ * worst of the sixteen seeds reads 0.61 m.
+ */
+export const LEVEL_WITHIN = 0.75;
 /**
  * How much closer to the road bed the carve has to bring that ground.
  *

@@ -4,6 +4,7 @@ import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { type GradeCrossing, type RoadEdge, type RoadNode } from '../src/world/graph.ts';
 import { CLEARANCE as OVERPASS_CLEARANCE } from '../src/world/overpass.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
+import { LandMasses } from '../src/world/landmass.ts';
 import { coastNoise, islandAt } from '../src/world/terrain.ts';
 import { mayJoin, TIERS } from '../src/world/tiers.ts';
 import { type Point, type RoadCurve, type RoadTier, type WorldDescription, type Zone } from '../src/world/types.ts';
@@ -312,14 +313,30 @@ export function roadChecks(): void {
       // reached by no bridge, so its ground is far from every road.
       //
       // The three zones on the fringe are looser than the built-up ones because
-      // ground too steep for a road now goes without one (spec section 6.1). The
-      // city itself sits on gentle ground and did not move.
+      // ground too steep for a road now goes without one (spec section 6.1).
+      //
+      // The suburban, industrial and outskirts ceilings are loose for the same
+      // reason. The rings of spec section 8.2 now cover most of the map, so a
+      // hilly arm of the mainland that no road enters falls inside them rather
+      // than in the wilderness. Over 96 seeds the suburban and industrial
+      // medians read 11 m to 29 m and the outskirts 21 m to 76 m; one seed in
+      // 200 reads 173 m and 287 m, and that is such an arm. The suburban floor
+      // came down for the opposite case: a seed whose mainland is small keeps
+      // its suburbs on the dense ground near the core, and one in 200 reads
+      // 9.0 m. These are here to catch a fill that has collapsed, not to pin the
+      // figure down.
+      //
+      // Only the land the core stands on is asked. The rings of spec section 8.2
+      // are concentric circles on the whole map, so since they were widened they
+      // also fall on the outer islands, and an outer island no bridge reaches
+      // carries no road at all. Its ground says nothing about how the fill
+      // spaces its roads; it would only say that the zone ring reached it.
       const RANGE: Record<Zone, [number, number]> = {
         core: [3, 20],
         inner: [5, 20],
-        industrial: [7, 40],
-        suburban: [10, 36],
-        outskirts: [14, 140],
+        industrial: [7, 200],
+        suburban: [7, 200],
+        outskirts: [14, 400],
         wilderness: [35, 800],
       };
       for (const seed of seeds) {
@@ -327,6 +344,8 @@ export function roadChecks(): void {
         const hf = new Heightfield(w.terrain);
         const zones = layoutZones(w.size, w.core, w.water);
         const grid = new PointGrid(w.size, 40, w.roads);
+        const land = new LandMasses(hf, w.water, w.water.seaLevel + 1);
+        const mainland = land.massAt(w.core.x, w.core.y);
         const samples: Partial<Record<Zone, number[]>> = {};
         for (let iy = 0; iy < hf.gridSize; iy += 8) {
           for (let ix = 0; ix < hf.gridSize; ix += 8) {
@@ -335,6 +354,7 @@ export function roadChecks(): void {
             // Dry ground only, and not the strip along the edge that roads keep off.
             if (hf.at(ix, iy) < w.water.seaLevel + 1) continue;
             if (Math.abs(x) > w.size / 2 - 120 || Math.abs(y) > w.size / 2 - 120) continue;
+            if (land.massAt(x, y) !== mainland) continue;
             const zone = zoneAt(zones, x, y);
             (samples[zone] ??= []).push(grid.nearest(x, y));
           }
@@ -358,7 +378,10 @@ export function roadChecks(): void {
       // are in metres, and the loosest spacing of the tier's zones sets them. A
       // road that has to work around steep ground reaches further before it ends,
       // so the street and dirt caps are looser than the trim alone would ask for.
-      const CAP: Partial<Record<RoadTier, number>> = { street: 260, alley: 120, dirt: 900 };
+      // The street cap rose with the zone rings of spec section 8.2, which put
+      // the street fill on hills the suburbs used to stop short of: the worst of
+      // 200 seeds reaches 273 m.
+      const CAP: Partial<Record<RoadTier, number>> = { street: 320, alley: 120, dirt: 900 };
       for (const seed of seeds) {
         const w = worlds.get(seed) as WorldDescription;
         const grid = new PointGrid(w.size, 100, w.roads);
