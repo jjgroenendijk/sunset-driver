@@ -1,0 +1,253 @@
+import { describe, expect, it } from 'vitest';
+import { pointInRegion, pointInRegions, regionArea } from '../src/core/geom.ts';
+import {
+  FRONT_REACH,
+  MIN_LOT_AREA,
+  ZONE_BUILDINGS,
+  ZONE_LOTS,
+  type Building,
+  type BuildingKind,
+} from '../src/world/buildings.ts';
+import { type RoadEdge } from '../src/world/graph.ts';
+import { ownerMaxArea, type Parcel } from '../src/world/parcels.ts';
+import { footprintHalfWidth } from '../src/world/tiers.ts';
+import { type Point, type WorldDescription, type Zone } from '../src/world/types.ts';
+import { landPoints, pointInRing, ringArea, ringsOverlap } from './helpers.ts';
+import {
+  FOOTPRINT_COUNT,
+  SAMPLE_STRIDE,
+  PARCEL_SAMPLES,
+  MIN_PARCELS,
+  MAX_UNREACHED_SHARE,
+  ASSIGNED_OWNERS,
+  MIN_BUILDINGS,
+  SIGNATURE_KIND,
+  MIN_SIGNATURE_SHARE,
+  MIN_KIND_SAMPLES,
+  FRONT_SLACK,
+  FRONT_DRIFT,
+  FACING_DRIFT,
+} from './seed-limits.ts';
+import { ParcelIndex } from './seed-index.ts';
+import { distanceToLine, middleOf } from './seed-probes.ts';
+import { seeds, worlds, footprintOf, parcelsOf, buildingsOf, graphOf } from './seed-fixture.ts';
+
+/**
+ * The seed sweep of spec section 3, on the parcels the footprint leaves and the
+ * buildings laid on them.
+ *
+ * `seed-sweep.test.ts` declares these inside the one suite that generates the
+ * worlds; a file of its own would generate them all again.
+ */
+export function parcelChecks(): void {
+  describe('parcels', () => {
+    it('cuts the land the footprint leaves into parcels, each owned by one thing and each on a road', () => {
+      // Spec section 6.4 steps 3 to 5: the parcels are the land less the roads,
+      // the corridors and the water. Nothing is nudged apart afterwards, so no
+      // parcel may stand on another one, on a road or on a corridor, and every
+      // parcel has exactly one owner and a road to reach it by.
+      for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
+        const w = worlds.get(seed) as WorldDescription;
+        const graph = graphOf(seed);
+        const footprint = footprintOf(seed);
+        const { parcels, area, land } = parcelsOf(seed);
+        let complaint: string | undefined;
+        const fault = (text: string): void => {
+          complaint ??= text;
+        };
+
+        if (parcels.length < MIN_PARCELS) fault(`cuts only ${parcels.length} parcels`);
+        for (let i = 0; i < parcels.length; i++) {
+          const parcel = parcels[i] as Parcel;
+          const where = `parcel ${i}`;
+          if (parcel.id !== i) fault(`${where} is numbered ${parcel.id}`);
+          if (!ASSIGNED_OWNERS.has(parcel.owner)) fault(`${where} is owned by a ${parcel.owner}`);
+          // An owner comes in a size: a car park is the size of a car park in
+          // every zone, however much ground the roads there leave.
+          const most = ownerMaxArea(parcel.zone, parcel.owner);
+          if (most !== undefined && parcel.area > most) {
+            fault(`${where} is a ${parcel.owner} of ${parcel.area.toFixed(0)} m² in the ${parcel.zone}, over its ${most} m²`);
+          }
+          if (Math.abs(parcel.area - regionArea(parcel.region)) > 1e-6) fault(`${where} misreports its ground`);
+          if (parcel.area <= 0) fault(`${where} owns no ground`);
+          if (ringArea(parcel.region.outer) <= 0) fault(`${where} is wound the wrong way`);
+          for (const hole of parcel.region.holes) {
+            if (ringArea(hole) >= 0) fault(`${where} has a hole wound the wrong way`);
+            if (!pointInRing(hole[0] as Point, parcel.region.outer)) fault(`${where} has a hole outside it`);
+          }
+          if (w.districts[parcel.district] === undefined) fault(`${where} is in district ${parcel.district}, which does not exist`);
+          // Every parcel has a road along it: ground no road reaches is not a parcel.
+          if (parcel.roads.length === 0) fault(`${where} stands on no road`);
+          for (let k = 0; k < parcel.roads.length; k++) {
+            const edge = parcel.roads[k] as number;
+            if (graph.edges[edge] === undefined) fault(`${where} names edge ${edge}, which does not exist`);
+            if (k > 0 && edge <= (parcel.roads[k - 1] as number)) fault(`${where} lists its roads out of order`);
+          }
+        }
+
+        // The parcels are the land less the footprint. What is neither of the two
+        // is land no road reaches, and there is never much of it.
+        if (area > land) fault('the parcels cover more ground than there is land');
+        const unreached = (land - area - footprint.area) / land;
+        if (unreached > MAX_UNREACHED_SHARE) fault(`leaves ${(unreached * 100).toFixed(1)} % of the land neither road nor parcel`);
+
+        // Nothing stands on anything else. Point in polygon over every parcel is
+        // too dear to run over the whole map, so this asks about a spread of
+        // places: on the roads, on the corridors, and out on the open ground.
+        const index = new ParcelIndex(parcels);
+        for (const p of landPoints(w, PARCEL_SAMPLES, 0x9a4c)) {
+          const owners = index.at(p);
+          if (owners.length > 1) fault(`parcels ${owners.join(' and ')} both claim the same ground`);
+          if (owners.length === 1 && pointInRegions(p, footprint.regions)) {
+            fault(`parcel ${owners[0] as number} stands on the ground the roads claim`);
+          }
+        }
+        let step = 0;
+        for (const road of w.roads) {
+          for (let i = 0; i + 1 < road.points.length; i++) {
+            if (step++ % SAMPLE_STRIDE !== 0) continue;
+            if (road.bridges.includes(i) || road.tunnels.includes(i)) continue;
+            const a = road.points[i] as Point;
+            const b = road.points[i + 1] as Point;
+            const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+            const owners = index.at(mid);
+            if (owners.length > 0) fault(`parcel ${owners[0] as number} stands on ${road.tier} ${road.id}`);
+          }
+        }
+        for (const corridor of w.corridors) {
+          // The middle of each run, not its ends: the end of a centreline stands
+          // on the edge of its own strip, where inside and outside are the same
+          // place and neither answer means anything.
+          for (let i = 0; i + 1 < corridor.points.length; i++) {
+            const a = corridor.points[i] as Point;
+            const b = corridor.points[i + 1] as Point;
+            const owners = index.at({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+            if (owners.length > 0) fault(`parcel ${owners[0] as number} stands on ${corridor.kind} corridor ${corridor.id}`);
+          }
+        }
+        expect(complaint, `seed ${seed}`).toBeUndefined();
+      }
+    });
+
+    it('lays every building on a lot inside its parcel, fronting a road that reaches it', () => {
+      // Spec section 10.3: a parcel the zone gave to a building group carries a
+      // row of buildings along its road frontage. A lot stands wholly inside its
+      // parcel and no two lots of one parcel meet, so nothing is nudged apart
+      // afterwards here either. Every lot fronts a road its parcel already lists,
+      // and those are graph edges, so every building stands on the one road
+      // network and can be driven to.
+      const tally: Record<Zone, Partial<Record<BuildingKind, number>>> = {
+        core: {},
+        inner: {},
+        industrial: {},
+        suburban: {},
+        outskirts: {},
+        wilderness: {},
+      };
+      for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
+        const w = worlds.get(seed) as WorldDescription;
+        const graph = graphOf(seed);
+        const { parcels } = parcelsOf(seed);
+        const { buildings } = buildingsOf(seed);
+        let complaint: string | undefined;
+        const fault = (text: string): void => {
+          complaint ??= text;
+        };
+
+        if (buildings.length < MIN_BUILDINGS) fault(`lays only ${buildings.length} buildings`);
+        /** The lots of each parcel, so the pairs of one parcel are checked and no others. */
+        const lotsOn = new Map<number, Building[]>();
+        for (let i = 0; i < buildings.length; i++) {
+          const building = buildings[i] as Building;
+          const where = `building ${i}`;
+          if (building.id !== i) fault(`${where} is numbered ${building.id}`);
+          const parcel = parcels[building.parcel];
+          if (parcel === undefined) {
+            fault(`${where} stands on parcel ${building.parcel}, which does not exist`);
+            continue;
+          }
+          if (parcel.owner !== 'building') fault(`${where} stands on a ${parcel.owner} parcel`);
+          if (building.district !== parcel.district || building.zone !== parcel.zone) {
+            fault(`${where} disagrees with its parcel about where it stands`);
+          }
+          if (w.districts[building.district] === undefined) fault(`${where} is in district ${building.district}, which does not exist`);
+
+          const spec = ZONE_LOTS[building.zone];
+          if (building.lot.length !== 4) fault(`${where} has a lot of ${building.lot.length} corners`);
+          if (ringArea(building.lot) <= 0) fault(`${where} has a lot wound the wrong way`);
+          if (Math.abs(ringArea(building.lot) - building.area) > 1e-6) fault(`${where} misreports its lot`);
+          if (building.width + 1e-6 < spec.minWidth || building.depth + 1e-6 < spec.minDepth) {
+            fault(`${where} has a lot ${building.width.toFixed(1)} m by ${building.depth.toFixed(1)} m, under what its zone lays`);
+          }
+          // The kind fits the zone and the lot: a suburban parcel has no tower on
+          // its table at all, and no lot carries a kind it is too small for.
+          if (!ZONE_BUILDINGS[building.zone].some((entry) => entry.kind === building.kind)) {
+            fault(`${where} is a ${building.kind}, which the ${building.zone} does not build`);
+          }
+          if (building.area + 1e-6 < MIN_LOT_AREA[building.kind]) {
+            fault(`${where} is a ${building.kind} on ${building.area.toFixed(0)} m²`);
+          }
+          // The lot never leaves the parcel.
+          for (const corner of building.lot) {
+            if (!pointInRegion(corner, parcel.region)) fault(`${where} has a lot corner outside its parcel`);
+          }
+          // It fronts one of the roads the parcel runs along, and stands on the
+          // ground that road claims, plus the setback its zone lays it at.
+          if (!parcel.roads.includes(building.road)) {
+            fault(`${where} fronts edge ${building.road}, which does not run along its parcel`);
+          } else {
+            const edge = graph.edges[building.road] as RoadEdge;
+            const line = graph.edgePoints(building.road);
+            const front = [building.lot[0] as Point, building.lot[1] as Point];
+            const gap = Math.min(distanceToLine(front[0] as Point, line), distanceToLine(front[1] as Point, line));
+            const reach = footprintHalfWidth(edge.tier) + FRONT_REACH + spec.setback + FRONT_SLACK;
+            if (gap > reach) fault(`${where} stands ${gap.toFixed(1)} m from the ${edge.tier} it fronts`);
+          }
+          // The front is the middle of the lot's first edge, and it looks out of
+          // the lot, across the frontage: the way it faces is the way from the
+          // back of the lot to that edge.
+          const front = middleOf([building.lot[0] as Point, building.lot[1] as Point]);
+          const back = middleOf([building.lot[2] as Point, building.lot[3] as Point]);
+          if (Math.hypot(front.x - building.front.x, front.y - building.front.y) > FRONT_DRIFT) {
+            fault(`${where} puts its front somewhere other than the middle of its front edge`);
+          }
+          const facing = Math.atan2(front.y - back.y, front.x - back.x);
+          const turned = Math.abs(Math.atan2(Math.sin(building.facing - facing), Math.cos(building.facing - facing)));
+          if (turned > FACING_DRIFT) fault(`${where} faces ${turned.toFixed(2)} rad away from its own frontage`);
+
+          const zoneTally = tally[building.zone];
+          zoneTally[building.kind] = (zoneTally[building.kind] ?? 0) + 1;
+          const known = lotsOn.get(building.parcel);
+          if (known === undefined) lotsOn.set(building.parcel, [building]);
+          else known.push(building);
+        }
+
+        for (const parcel of parcels) {
+          const lots = lotsOn.get(parcel.id) ?? [];
+          for (let i = 0; i < lots.length; i++) {
+            for (let k = i + 1; k < lots.length; k++) {
+              const a = lots[i] as Building;
+              const b = lots[k] as Building;
+              if (ringsOverlap(a.lot, b.lot)) fault(`buildings ${a.id} and ${b.id} share the ground of parcel ${parcel.id}`);
+            }
+          }
+        }
+        expect(complaint, `seed ${seed}`).toBeUndefined();
+      }
+
+      // Spec section 8.2: the zone's character shows in what it builds. Pooled
+      // over the seeds, because a zone of one seed can be a handful of buildings.
+      for (const zone of ['core', 'inner', 'industrial', 'suburban', 'outskirts', 'wilderness'] as Zone[]) {
+        const row = tally[zone];
+        const kinds = ZONE_BUILDINGS[zone];
+        let total = 0;
+        for (const entry of kinds) total += row[entry.kind] ?? 0;
+        if (total < MIN_KIND_SAMPLES) continue;
+        const signature = SIGNATURE_KIND[zone];
+        const share = (row[signature] ?? 0) / total;
+        const spread = kinds.map((entry) => `${entry.kind} ${(((row[entry.kind] ?? 0) / total) * 100).toFixed(0)} %`).join(', ');
+        expect(share, `${zone} of ${total} buildings: ${spread}`).toBeGreaterThanOrEqual(MIN_SIGNATURE_SHARE[zone]);
+      }
+    });
+  });
+}
