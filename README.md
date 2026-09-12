@@ -26,6 +26,8 @@ The game watches its own frame rate and steps the quality down when it cannot ho
 | Aim | Q |
 | Reload | R |
 | Cycle weapon | C |
+| Map | M |
+| Minimap north up | N |
 | Vehicle picker | V |
 | Weapon picker | G |
 
