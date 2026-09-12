@@ -10,7 +10,8 @@ A camera that flies anywhere on the map while the simulation carries on behind i
 
 | Key | What it does |
 |---|---|
-| `` ` `` | Detach the camera, or give it back. Escape gives it back as well. |
+| `` ` `` | Detach the camera, or give it back. It is the only key that ends the flight. |
+| Mouse click | Ask for the pointer lock again after Escape took it. |
 | Mouse | Look, under pointer lock. |
 | `W A S D` | Move across the camera's own plane. `W` follows the view, pitch included. |
 | `R`, `F` | Rise and fall, whatever the pitch. |
@@ -20,6 +21,8 @@ A camera that flies anywhere on the map while the simulation carries on behind i
 While the camera is detached the keys drive the camera alone: the simulation is stepped with an empty input frame, so the car left behind is not also driven. The streaming rings and the entity fade are measured from the camera, so the ground under it is built rather than left empty; nothing waits for it, and a chunk lands when it is built. The sun's cascades are fitted to it as they are to the game camera.
 
 A frame drawn with the free camera is never a performance measurement. The quality monitor counts none of those frames, and nothing about the camera belongs in `test/budgets.ts`.
+
+Escape does not give the camera back. The browser takes the pointer lock away on Escape and whenever the window loses focus, and the flight carries on without it: the keys still fly the camera, the mouse does nothing, and a click on the canvas asks for the lock again. A hint over the canvas says which of the two states the camera is in and which key ends the flight.
 
 `src/render/free-camera.ts` is where it stands and where it looks. `src/ui/free-camera.ts` is the pointer lock, the mouse and the wheel, and `Keyboard.freeCamera` samples the keys.
 

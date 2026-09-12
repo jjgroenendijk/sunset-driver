@@ -162,8 +162,9 @@ async function boot(): Promise<void> {
         camera.update(elapsed / 1000, p);
       }
       if (flew && !flying) {
-        // Escape leaves the pointer lock as well as the key does, so the camera
-        // is given back here rather than where it is detached.
+        // The flight ended, whichever frame the key came on: the camera slides
+        // back to the player rather than jumping, and the quality monitor
+        // starts judging frames again.
         camera.snap();
         session.quality.settle();
       }
