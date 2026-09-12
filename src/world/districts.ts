@@ -8,12 +8,20 @@ import { SEA_LEVEL } from './terrain.ts';
 /** Metres above the sea a district site needs; the waterline itself is not buildable. */
 const DRY = SEA_LEVEL + 1;
 
-/** Zone ring radii as fractions of the world side length. */
+/**
+ * Zone ring radii as fractions of the world side length.
+ *
+ * The city is the subject of the map (spec section 8.2), so these rings are
+ * most of it: over the seeds measured, the core, the inner ring and the
+ * industrial wedge take about a third of the dry land and the suburbs around
+ * them another third. What is left for the outskirts and the wilderness is the
+ * margin — the corners of the map and the outer islands — and not the majority.
+ */
 export const ZONE_RADII: Record<Exclude<Zone, 'wilderness' | 'industrial'>, number> = {
-  core: 0.06,
-  inner: 0.13,
-  suburban: 0.22,
-  outskirts: 0.32,
+  core: 0.13,
+  inner: 0.28,
+  suburban: 0.4,
+  outskirts: 0.5,
 };
 
 export interface ZoneLayout {
@@ -36,8 +44,11 @@ export function layoutZones(size: number, core: Point, water: WaterDescription):
     core,
     industrialAngle: Math.atan2(water.harbour.y - core.y, water.harbour.x - core.x),
     industrialHalfAngle: (26 * Math.PI) / 180,
-    industrialInner: size * 0.09,
-    industrialOuter: size * 0.2,
+    // The wedge starts half as far out again as the core reaches and runs to
+    // just inside the suburbs, which is where it stood against the rings before
+    // they were widened.
+    industrialInner: size * ZONE_RADII.core * 1.5,
+    industrialOuter: size * ZONE_RADII.suburban * 0.9,
     suburbIsland: outer[0],
   };
 }
