@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sunset Driver — map preview</title>
+    <!-- An empty icon, so the browser does not report a missing one as a page error. -->
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <!--
+      The page `scripts/map-preview.ts` drives. The map is a 2D canvas, so this
+      needs no WebGPU device; Vite serves it so the `.ts` imports resolve the
+      way they do for the game.
+    -->
+    <script type="module">
+      import { renderMapPreview } from '/src/ui/map-preview.ts';
+      window.renderMapPreview = renderMapPreview;
+      window.previewReady = true;
+    </script>
+  </body>
+</html>

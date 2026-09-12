@@ -1,90 +1,161 @@
 import { gameTime } from '../sim/clock.ts';
 import type { SimState } from '../sim/simulation.ts';
 import { conditionOf } from '../sim/damage.ts';
+import { MAX_HEALTH } from '../sim/on-foot.ts';
 import { specOf } from '../sim/vehicle.ts';
 import { currentSlot, currentWeapon, poolOf, reloading } from '../sim/weapon.ts';
 
-/** Minimal DOM overlay: seed, game clock and draw calls. Grows into the full HUD. */
+/**
+ * The HUD of spec section 12: health, money, the weapon and its ammunition, the
+ * heat level and the current objective, over the canvas as DOM.
+ *
+ * It stands in two places. The status block at the top left is what a developer
+ * reads — the seed, the game clock, the draw calls, the quality tier and what
+ * is being driven. The panel at the bottom left is the game's own HUD, and it
+ * is the part spec section 12 describes.
+ *
+ * Every field is written only when its text changes, so a frame that moves
+ * nothing rewrites nothing. A DOM write forces the browser to lay the overlay
+ * out again, and doing that sixty times a second for numbers that stand still
+ * is a frame the city could have spent on itself.
+ */
 export class Hud {
   private readonly root: HTMLElement;
+  private readonly panel: HTMLElement;
   private readonly clock: HTMLElement;
-  private readonly seedEl: HTMLElement;
   private readonly draws: HTMLElement;
-  private readonly speed: HTMLElement;
-  private shownSpeed = -1;
-  private shownVehicle = '';
-  private shownDraws = -1;
-  private shownLights = -1;
-  private shownStreaming = -1;
-  private shownTier = '';
+  private readonly status: HTMLElement;
+  private readonly healthBar: HTMLElement;
+  private readonly healthText: HTMLElement;
+  private readonly money: HTMLElement;
+  private readonly weapon: HTMLElement;
+  private readonly heat: HTMLElement;
+  private readonly objective: HTMLElement;
+  private shownClock = '';
+  private shownStatus = '';
+  private shownDraws = '';
+  private shownHealth = -1;
+  private shownMoney = -1;
+  private shownWeapon = '';
+  private shownHeat = '';
+  private shownObjective = '';
 
   constructor(parent: HTMLElement, seed: string) {
     this.root = document.createElement('div');
     this.root.className = 'hud';
-    this.seedEl = document.createElement('div');
-    this.seedEl.className = 'hud-seed';
-    this.seedEl.textContent = `seed ${seed}`;
+    const seedEl = document.createElement('div');
+    seedEl.className = 'hud-seed';
+    seedEl.textContent = `seed ${seed}`;
     this.clock = document.createElement('div');
     this.clock.className = 'hud-clock';
     this.draws = document.createElement('div');
     this.draws.className = 'hud-seed';
-    // The speedometer of spec section 12, until the full HUD lands.
-    this.speed = document.createElement('div');
-    this.speed.className = 'hud-clock';
-    this.root.append(this.seedEl, this.clock, this.speed, this.draws);
-    parent.append(this.root);
+    this.status = document.createElement('div');
+    this.status.className = 'hud-clock';
+    this.root.append(seedEl, this.clock, this.status, this.draws);
+
+    this.panel = document.createElement('div');
+    this.panel.className = 'hud-panel';
+    // Health as a bar rather than a number: what a player needs off a glance is
+    // how much is left, not how many points it is (spec section 11.5).
+    const health = document.createElement('div');
+    health.className = 'hud-health';
+    this.healthBar = document.createElement('div');
+    this.healthBar.className = 'hud-health-fill';
+    this.healthText = document.createElement('span');
+    this.healthText.className = 'hud-health-text';
+    health.append(this.healthBar, this.healthText);
+    this.money = document.createElement('div');
+    this.money.className = 'hud-money';
+    this.weapon = document.createElement('div');
+    this.weapon.className = 'hud-weapon';
+    this.heat = document.createElement('div');
+    this.heat.className = 'hud-heat';
+    this.objective = document.createElement('div');
+    this.objective.className = 'hud-objective';
+    this.panel.append(health, this.money, this.weapon, this.heat, this.objective);
+    parent.append(this.root, this.panel);
   }
 
   /**
    * `drawCalls` is what the dearest chunk on screen costs (spec section 9.2),
    * `lights` is what the scene is lit by (spec section 10.5), `streaming` how
    * many chunks are still being built (spec section 9.1) and `tier` the
-   * quality tier the frame is drawn at (spec section 9.2). The line is written
-   * only when one of them changes, so the overlay is not rewritten every frame
-   * for numbers that stand still.
+   * quality tier the frame is drawn at (spec section 9.2).
    */
   update(state: SimState, drawCalls: number, lights: number, streaming: number, tier: string): void {
     const t = gameTime(state.tick);
     const hh = String(t.hour).padStart(2, '0');
     const mm = String(t.minute).padStart(2, '0');
-    this.clock.textContent = `day ${t.day + 1}  ${hh}:${mm}`;
+    const clock = `day ${t.day + 1}  ${hh}:${mm}`;
+    if (clock !== this.shownClock) {
+      this.shownClock = clock;
+      this.clock.textContent = clock;
+    }
+
     const p = state.player;
-    const kmh = Math.round(Math.abs(p.speed) * 3.6);
     // What is being driven and what is left of it (spec section 11.3), so the
     // debug picker's choice and the damage states are both readable while they
-    // are being driven through. On foot it says so instead, with the health of
-    // spec section 11.5, until the full HUD lands.
-    //
-    // Heat is shown only once something has raised it (spec sections 11.4, 14),
-    // so a session that has drawn no attention says nothing about attention.
-    const heat = state.heat > 0 ? `  heat ${state.heat.toFixed(1)}` : '';
-    const doing =
-      (p.driving
-        ? `${specOf(state.vehicle.cls).name}  ${conditionOf(state.vehicle.damage)}`
-        : `on foot  ${Math.round(p.health)} hp`) +
-      `  ${armed(state)}` +
-      heat;
-    if (kmh !== this.shownSpeed || doing !== this.shownVehicle) {
-      this.shownSpeed = kmh;
-      this.shownVehicle = doing;
-      this.speed.textContent = `${kmh} km/h  ${doing}`;
+    // are being driven through.
+    const kmh = Math.round(Math.abs(p.speed) * 3.6);
+    const status = p.driving
+      ? `${kmh} km/h  ${specOf(state.vehicle.cls).name}  ${conditionOf(state.vehicle.damage)}`
+      : `${kmh} km/h  on foot`;
+    if (status !== this.shownStatus) {
+      this.shownStatus = status;
+      this.status.textContent = status;
     }
-    if (
-      drawCalls === this.shownDraws &&
-      lights === this.shownLights &&
-      streaming === this.shownStreaming &&
-      tier === this.shownTier
-    ) {
-      return;
-    }
-    this.shownDraws = drawCalls;
-    this.shownLights = lights;
-    this.shownStreaming = streaming;
-    this.shownTier = tier;
+
     // The queue is shown only while it holds something: a settled city says
     // nothing about streaming, which is what a settled city should say.
     const queue = streaming > 0 ? `  ${streaming} streaming` : '';
-    this.draws.textContent = `${drawCalls} draws/chunk  ${lights} lights  ${tier}${queue}`;
+    const draws = `${drawCalls} draws/chunk  ${lights} lights  ${tier}${queue}`;
+    if (draws !== this.shownDraws) {
+      this.shownDraws = draws;
+      this.draws.textContent = draws;
+    }
+
+    const hp = Math.max(0, Math.round(p.health));
+    if (hp !== this.shownHealth) {
+      this.shownHealth = hp;
+      this.healthBar.style.width = `${(hp / MAX_HEALTH) * 100}%`;
+      this.healthText.textContent = `${hp}`;
+      // The bar turns as it empties, so a player in trouble sees it without
+      // reading the number.
+      this.healthBar.classList.toggle('hud-health-low', hp <= MAX_HEALTH * 0.3);
+    }
+
+    const money = Math.round(state.money);
+    if (money !== this.shownMoney) {
+      this.shownMoney = money;
+      this.money.textContent = `$${money.toLocaleString('en-US')}`;
+    }
+
+    const armed = weaponLine(state);
+    if (armed !== this.shownWeapon) {
+      this.shownWeapon = armed;
+      this.weapon.textContent = armed;
+    }
+
+    // Heat is shown only once something has raised it (spec sections 11.4, 14),
+    // so a session that has drawn no attention says nothing about attention.
+    const heat = state.heat > 0 ? heatLine(state.heat) : '';
+    if (heat !== this.shownHeat) {
+      this.shownHeat = heat;
+      this.heat.textContent = heat;
+      this.heat.hidden = heat === '';
+    }
+
+    if (state.objective !== this.shownObjective) {
+      this.shownObjective = state.objective;
+      this.objective.textContent = state.objective;
+      this.objective.hidden = state.objective === '';
+    }
+  }
+
+  destroy(): void {
+    this.root.remove();
+    this.panel.remove();
   }
 }
 
@@ -93,9 +164,22 @@ export class Hud {
  * hands, the rounds in its magazine and the pool behind them. A melee weapon has
  * neither, so it is named and nothing else, and a weapon being reloaded says so.
  */
-function armed(state: SimState): string {
+export function weaponLine(state: SimState): string {
   const spec = currentWeapon(state.loadout);
   if (spec.capacity === 0) return spec.name;
   if (reloading(state.loadout)) return `${spec.name}  reloading`;
   return `${spec.name}  ${currentSlot(state.loadout).loaded}/${poolOf(state.loadout, spec)}`;
 }
+
+/**
+ * Heat as stars, the way the spec section 14 police system will read it: one
+ * star a whole point, so the line grows as the attention does. The number
+ * follows, because a fraction of a star is not a star.
+ */
+export function heatLine(heat: number): string {
+  const stars = Math.min(HEAT_STARS, Math.floor(heat));
+  return `${'★'.repeat(stars)}${'☆'.repeat(Math.max(0, Math.min(HEAT_STARS, Math.ceil(heat)) - stars))}  heat ${heat.toFixed(1)}`;
+}
+
+/** The most stars the HUD draws. */
+export const HEAT_STARS = 6;

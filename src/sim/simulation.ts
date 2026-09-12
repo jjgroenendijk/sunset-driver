@@ -49,7 +49,26 @@ export interface SimState {
    * issue is what will read it.
    */
   heat: number;
+  /**
+   * What the player is carrying, in dollars (spec section 12). The economy of
+   * spec section 16 is what will move it; the HUD is what reads it today.
+   */
+  money: number;
+  /**
+   * The line the HUD shows as the current objective (spec section 12), or empty
+   * while the player has none. The mission framework of spec section 18 is what
+   * will write it.
+   */
+  objective: string;
+  /**
+   * The place the player has marked on the map (spec section 12), or null. It
+   * is part of the record, so a save keeps the mark and a replay draws it.
+   */
+  waypoint: { x: number; y: number } | null;
 }
+
+/** Dollars a new session starts with (spec section 16). */
+export const START_MONEY = 500;
 
 /** Tick at which a new session starts: 08:00 on day 0. */
 export const START_TICK = 8 * TICKS_PER_HOUR;
@@ -69,6 +88,9 @@ export function createSimState(
     loadout: createLoadout(),
     projectiles: [],
     heat: 0,
+    money: START_MONEY,
+    objective: '',
+    waypoint: null,
   };
 }
 
