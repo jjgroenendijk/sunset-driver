@@ -71,8 +71,14 @@ export const BUDGET_MS = {
    * junction aproned and the lot unioned (spec section 6.4). Offline work like
    * {@link BUDGET_MS.worldGen}; chunk-level parcels get their own per-frame cap
    * when streaming lands (spec section 9.1).
+   *
+   * This rose with the zone rings of spec section 8.2, which is the system that
+   * spends it: a world now carries three times the curves to offset. Over the
+   * four seeds measured it takes 177 ms to 580 ms on an Apple M1 laptop, where
+   * it took 54 ms to 258 ms before, and a GitHub runner about twice as long
+   * again.
    */
-  footprint: 900,
+  footprint: 1500,
 
   /**
    * `buildParcels` over a whole map: the coastline traced off the heightfield,
