@@ -30,6 +30,7 @@ import { LoftGeometry } from 'three/examples/jsm/geometries/LoftGeometry.js';
 import type { ChunkRoad, WorldChunk } from '../world/chunks.ts';
 import type { Junction, JunctionMouth, RoadGap } from '../world/junctions.ts';
 import type { RoadFrame, RoadRibbons } from '../world/ribbon.ts';
+import { PARAPET_HEIGHT } from '../world/decks.ts';
 import { footprintHalfWidth, TIERS } from '../world/tiers.ts';
 import type { Point, RoadTier } from '../world/types.ts';
 
@@ -50,10 +51,14 @@ const KERB_RISE = 0.14;
  */
 const SKIRT = 0.8;
 
-/** Metres of structure under a bridge deck, and the parapet that rims it. */
+/**
+ * Metres of structure under a bridge deck, and how thick the parapet that rims
+ * it is. The parapet stands {@link PARAPET_HEIGHT} high, which `decks.ts` owns:
+ * the physics puts a wall of that height on the deck, so the wall the car is
+ * held by and the wall the player sees are one.
+ */
 const DECK_DEPTH = 1.1;
 const PARAPET_WIDTH = 0.4;
-const PARAPET_RISE = 0.9;
 
 /** Metres of headroom in a tunnel bore, and the portal that frames its mouth. */
 const BORE_RISE = 5.5;
@@ -751,8 +756,8 @@ function structuresOf(
       const points = piece.points.slice(lo - piece.from, hi - piece.from + 2);
       const span = piece.frames.slice(lo - piece.from, hi - piece.from + 2);
       out.push(beam(points, span, -outer, outer, -SKIRT - DECK_DEPTH, -SKIRT));
-      out.push(beam(points, span, -outer, -outer + PARAPET_WIDTH, deckTop, deckTop + PARAPET_RISE));
-      out.push(beam(points, span, outer - PARAPET_WIDTH, outer, deckTop, deckTop + PARAPET_RISE));
+      out.push(beam(points, span, -outer, -outer + PARAPET_WIDTH, deckTop, deckTop + PARAPET_HEIGHT));
+      out.push(beam(points, span, outer - PARAPET_WIDTH, outer, deckTop, deckTop + PARAPET_HEIGHT));
     }
   }
   for (const stretch of stretchesOf(run.tunnels)) {
