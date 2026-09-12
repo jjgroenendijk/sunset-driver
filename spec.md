@@ -181,12 +181,24 @@ This is the most important section. It exists to make overlap unrepresentable.
 
 - Road direction follows a seeded, continuous tensor field. Influences: terrain gradient (roads
   follow contours on steep ground), coastlines and river banks (roads run parallel to water), radial
-  fields around the core, grid fields in planned districts. Blending these produces natural bends
-  and irregular blocks rather than a uniform grid.
+  fields around the core, grid fields in planned districts.
+- A city has a plan. How firmly it holds that plan is drawn from the seed, like everything else in
+  this game. One seed lays a planned city, another an organic one. Both are dense.
+- A planned city holds one grid direction across the core and the inner ring. Avenues run straight
+  for a kilometre. An avenue stops at the water rather than bending along it.
+- An organic city follows its water, its coast and its ground instead. Streets curve and blocks are
+  irregular in shape. The pattern is still coherent: streets run along the water in long lines, or
+  around the middle in rings. They never fan in every direction.
+- Both ends of that range share three things. Blocks are long and thin, not square. A district
+  holds few street directions, not many. Bends are long: a street does not wobble every fifty
+  metres.
+- The irregular streamline character belongs outside the city, whichever kind of city a seed draws.
+  In the suburbs, the outskirts and the wilderness no plan holds a road, so it follows the ground
+  and the water, and the blocks it leaves are as irregular as they fall.
 - Major roads are traced first as streamlines; minor roads fill the space between them. The result
   is a real hierarchy, not a grid with some roads recoloured.
-- Roads are curves. Bends, sweeping arcs and irregular junction angles are the default. Road
-  surfaces, kerbs, rails and decks are lofted along these curves.
+- Roads are curves. Bends, sweeping arcs and irregular junction angles are the default wherever no
+  plan holds them. Road surfaces, kerbs, rails and decks are lofted along these curves.
 - A segment whose grade exceeds the tier's maximum is rejected, rerouted, bridged or tunnelled —
   never laid over the hill.
 
@@ -279,11 +291,14 @@ minimap and pathfinding all reason about. It is not just render geometry.
 
 The map is square and its side length is drawn from the seed, between 3 km and 6 km. Zone rings, the
 islands, the straits, the river system and faction turfs scale with it, so a small seed is a
-compact, dense city and a large seed has long drives and a wide wilderness.
+compact, dense city and a large seed has long drives and a wider fringe around the same city.
 
 ### 8.2 Zones
 
-The city grades outward through concentric zones:
+The city grades outward through concentric zones. The city is most of the map: the core, the inner
+ring and the industrial wedge are the map's subject, and the suburbs around them are built ground as
+well. The outskirts and the wilderness are the margin, not the majority.
+
 
 | Zone | Character |
 |---|---|
@@ -367,7 +382,10 @@ Stylised, lit, hard outlines. Tone: gritty crime drama with a satirical edge.
   moving silhouettes. No generated interiors beyond shops and safehouses. Inside, a `ClippingGroup`
   clips away the roof and front wall so the top-down camera can see in.
 - three.js also ships `CityGenerator`, which composes the above on a rigid rectangular grid with no
-  road graph — a layout this game does not want. Use its building generators; do not use its layout.
+  road graph and no tier hierarchy — a layout this game does not want. Use its building generators;
+  do not use its layout. The warning is about the missing graph and hierarchy, not about
+  regularity: the grid the tensor field draws for a seed that asks for a planned city (section 6.1)
+  is a road network with both, and it is wanted.
 
 ### 10.4 Vegetation
 
