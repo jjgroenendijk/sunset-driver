@@ -1,0 +1,152 @@
+# Simulation and interface
+
+The gotchas of `src/sim` and `src/ui`: what Rapier does with a wheel, a force and a heightfield,
+what the record may hold, and what the HUD and the map read. `spec.md` sections 11 to 14, 16 and 18
+are the design.
+
+
+- The player's look is indices into the tables in `src/sim/character.ts`, so a save carries numbers,
+  not colours. `normaliseAppearance` folds an out-of-range index back onto a real option, and
+  `resolveAppearance` hands the renderer the entries. `src/render/character.ts` builds the model
+  from them as boxes; the parts a top-down camera sees carry the chosen colours.
+- `src/ui/hud.ts` is the HUD of spec section 12: the status block at the top left is what a
+  developer reads — seed, clock, draw calls, quality tier and what is being driven — and the panel
+  at the bottom left is the game's own HUD: health, money, weapon and ammunition, heat and the
+  current objective. Every field is written only when its text changes, because a DOM write lays the
+  whole overlay out again and doing that sixty times a second for numbers that stand still is a
+  frame the city could have spent on itself. `SimState.money`, `SimState.objective` and
+  `SimState.waypoint` are the three slots it reads that nothing writes yet; the economy of spec
+  section 16, the missions of 18 and the map are what will.
+- `src/ui/map.ts` is the map model of spec section 12, and it is pure, so the projection, the zoom
+  steps, the icon table and the culling are tested headless. The map keeps the world's own axes:
+  world `(x, y)` is drawn at pixel `(x, y)`, so north is up and the map reads the way
+  `scripts/world-preview.ts` draws the same world. `rotationForHeading` is what turns a rotating map
+  so the player faces up. `POI_STYLES` is the one icon table: every type has a shape no other type
+  uses and a colour no other type uses, and `test/map.test.ts` pins both. `MapPois.extra` is the
+  slot a system that owns places writes — the shops of spec section 16.1, the safehouses of 16.3,
+  the factions of 17, the missions of 18 — and nothing reads a second list.
+- `src/ui/map-draw.ts` is the one place that says what a map looks like. `Minimap` (`minimap.ts`)
+  and `MapScreen` (`map-screen.ts`) both draw through one `MapArt`, so the corner map and the full
+  map cannot disagree about a road or a mark. The land and the sea are a bitmap one pixel to a
+  terrain cell, drawn scaled; the roads are strokes off `RoadSegmentIndex`, so the map is sharp at
+  half a metre to the pixel and at sixteen. Both widgets redraw only when something on them has
+  moved, so a session standing still pays for neither.
+- Look at the map before judging a change to it: `node scripts/map-preview.ts <seed> out.png`, and
+  `--minimap` for the round window at the minimap's own scale. It needs a Chromium but no WebGPU
+  device, because the map is a 2D canvas.
+- `src/ui/controls.ts` is the one list of key bindings. It is shown on the title screen and copied
+  into the README; `Keyboard.sample` must stay in step with the rows that are part of the input
+  frame, and `main.ts` listens for the rows after them itself.
+- `src/sim/physics.ts` is the only place Rapier is used, with `ground-bodies.ts` (the heightfield
+  tiles and the decks), `drivetrain.ts` (what the input does to the wheels, the rider and the hull)
+  and `gunfire.ts` (the casts, the swings and the flights) beside it. `await initPhysics()` loads
+  its WebAssembly once, then `new SimPhysics(ground, state)` builds a world and `stepSim(state,
+  input, physics)` steps it once per tick. The bodies are built from `state.vehicle` and never
+  stored in it, so the state stays plain data: `adopt` makes the world agree with the record again
+  after a load, and `spawn` puts the car down on the ground.
+- `src/sim/on-foot.ts` is the player out of the car (spec sections 11.2, 11.5): their record, the
+  numbers a person is made of, and the pure rules for reaching a door and stepping out of one.
+  `physics.ts` is the Rapier half. Exactly one body moves: driving builds the vehicle's dynamic
+  body, and on foot builds the player's kinematic capsule and leaves the vehicle as a fixed body, so
+  a parked car is walked round rather than simulated. `adopt` builds whichever the record asks for,
+  and `player.driving` is what it reads.
+- The player walks in the map's own axes, because the camera never turns: the forward axis walks
+  toward `-y`, which is up the screen, and the steering axis across it. They then turn to face the
+  way they walk. Gravity is integrated in `walk` rather than by Rapier, since a kinematic body is
+  moved and never pushed.
+- The input frame carries a key as a level, not a press, so `player.held` keeps last tick's interact
+  and jump: a door that opened on the level would open sixty times a second. Health regenerates only
+  through `heal(player, source)`; nothing heals on its own (spec section 11.5).
+- `src/sim/theft.ts` is the hotwire minigame (spec section 11.4). `needsHotwire` reads the roster's
+  own `alarm` and `luxury` flags, so nothing carries a second list of what is worth stealing, and
+  `VehicleState.hotwired` says a lock is beaten once and not again. An attempt can only end in the
+  vehicle opening: `HOTWIRE_CAP` ticks after it starts the last pin gives way, so no player is ever
+  stranded at a door. `physics.ts` steps it from the tick it steps everything else from, which is
+  what keeps the world running around it, and a player working at a lock is walked with an empty
+  input rather than frozen, so the ground still holds them up. `transfer` owns the interact key
+  while an attempt runs; nothing else may read that edge.
+- `src/sim/weapon.ts` is the arsenal of spec section 11.6: what a weapon is made of and the firing
+  model. `arsenal.ts` is the table of every weapon the spec lists and `loadout.ts` what the player
+  is carrying; both come out through `weapon.ts`. Ammunition is per calibre, so a magazine is two
+  numbers — the rounds in the weapon and the pool behind it — and `AMMO_CAP` is what a player can
+  carry of each. `stepWeapons` is one tick of the whole model, the way `stepTheft` is one tick of
+  the minigame: the aim, the weapon cycle, the reload, the recoil and the trigger. A trigger is read
+  as a level on an automatic weapon and as an edge on everything else, and a pull on an empty
+  magazine starts the reload instead of firing. Recoil only comes back `RECOIL_SETTLE` ticks after
+  the last shot, which is why holding a machine gun sprays and letting go settles it. Only a pistol
+  or an SMG fires from a seat.
+- `physics.ts` is the Rapier half of that: a gun casts a ray per pellet, a melee weapon sweeps the
+  arc `swingReaches` describes, and a thrown weapon or a launcher puts a `ProjectileState` into the
+  record that `fly` carries one tick at a time, bouncing it off what it meets until its fuse burns
+  through. The shooter's own body is left out of every cast, so nobody shoots their own door. Only
+  the player's vehicle can be hit until the traffic of spec section 13.1 lands.
+- Gunfire damages a vehicle through `damageVehicle` in `damage.ts`, which is the dent, the integrity
+  and the fire roll; `hitVehicle` is the same rule with the severity read off the speed a crash
+  lost, and `disableEngine` is what the Barrett M82 does. A direction reaches those as the vehicle's
+  own `(along, across, up)`, which is `unrotate`'s `x`, `z`, `y` in that order.
+- `src/ui/weapon-picker.ts` is the debug picker for the arsenal, as `vehicle-picker.ts` is for the
+  roster: `G` opens it, and a row hands over the weapon loaded with spare ammunition behind it. The
+  weapon shops and faction dealers of spec section 11.6 are what will replace it.
+- `SimState.heat` is the attention of spec section 14. Nothing spends it yet; a sounding alarm and
+  every shot fired raise it, and melee raises none, because the spec calls it silent.
+- The physics reads the world through a `Ground`: the carved height at a place, what that ground is
+  made of, and where the sea stands. The game hands it `WorldScene.heightAt`, `SurfaceIndex` and
+  `world.water.seaLevel`; a test hands it a hillside of its own, which is why
+  `test/sim-sweep.test.ts` generates no cities.
+- `roadDecks(world)` (`decks.ts`) is the deck of every bridged stretch as plain data: the strip the
+  road drives on at its bed height, as wide as the surface `road-mesh.ts` lofts, with a parapet
+  `PARAPET_HEIGHT` high each side. A bridged segment carves nothing, so nothing else says where a
+  bridge is. The physics stands on it and the renderer draws its parapet at the same height, so what
+  holds the car is what the player sees.
+- Ground is a Rapier heightfield collider per 50 m tile, laid on a grid anchored on the origin, two
+  tiles each way of the car. The decks of `Ground.decks` are laid over the same box, one trimesh per
+  span, and a whole span is laid or dropped at once so a bridge never ends under a car halfway
+  across it. Rapier reads a heightfield as `heights[j * (rows + 1) + i]` with `i` walking `z` and
+  `j` walking `x`; getting that round the wrong way gives a world rotated a quarter turn, with no
+  error.
+- Rapier takes the engine as a force and the brake as the impulse of one step, so `setWheelBrake` is
+  given newtons divided by the tick rate. A driven wheel ignores its brake entirely while the engine
+  is pushing it, so rolling resistance comes off the drive there and off the brake everywhere else.
+- The vehicle's own frame is forward along local `+x`, up `+y`, axle `+z` — the frame the character
+  model already uses, since a yaw of `-heading` points local `+x` along the map heading. Rapier
+  turns a steered wheel the other way round the up axis, so the steering angle is the negative of
+  the input.
+- `src/sim/vehicle.ts` holds the roster of spec section 11.3 as a table of `VehicleSpec`, and
+  `SURFACE_GRIP` what a tyre finds on each surface; nothing else should carry those numbers.
+  `VehicleState.cls` names the row, so the body, the handling and the model are all rebuilt from the
+  record; `specOf` reads it and `VEHICLE_CLASSES` is the order the picker shows.
+  `src/ui/vehicle-picker.ts` is that picker.
+- Rapier keeps a force or a torque until it is told to forget it, so `step` clears the last tick's
+  before adding this tick's. Without that the buoyancy of a hull and the rider of a two-wheeler both
+  grow without bound over a few seconds, and nothing says why.
+- A boat has no wheels, so `physics.ts` gives it its own controller: lift at the four quarters of
+  the hull, drag much higher across it than along it, and a rudder whose bite grows with the water
+  flowing past it. A hull out of the water is a box resting on the ground.
+- Rapier takes a vehicle's roll stiffness from where its wheels stand, so two wheels on the
+  centreline have none and a motorcycle falls over. It stands on four at a track of a few
+  centimetres; `VehicleSpec.inline` tells the model to draw the two the rider sees.
+  `VehicleSpec.balance` is the rider on top of that: roll is sprung and damped, pitch is only
+  damped, so the bike still points up a hill.
+- `src/render/vehicle-mesh.ts` is the one place that says what shape each class is: boxes in the
+  vehicle's own frame, with the masses that carry the outline of spec section 10.1 marked. It holds
+  no three.js, so the silhouettes are measured headless.
+- `src/world/surface.ts` says what the ground is made of at a place — asphalt, dirt, sand or open
+  ground — and where the nearest road a car can start on, or the nearest open water a boat can, is.
+  It is a read of the parcel model's allocation, not a second one: a road claims the ground within
+  `footprintHalfWidth` of its centreline and a beach claims its sand.
+- `src/sim/damage.ts` is the damage, fire and explosion of spec section 11.3: what one impact does
+  to a vehicle, the panels it dents and tears off, and the progression `intact` to `dented` to
+  `smoking` to `burning` to `burnt`. A vehicle only ever moves forward through it. `physics.ts`
+  measures the impacts as the speed the chassis lost over one step, because Rapier resolves a crash
+  inside one step and nothing a driver does moves a vehicle by anything near `IMPACT_FLOOR` in a
+  tick; the direction it was pushed says which panel took the blow. `spreadFire(vehicles, seed,
+  tick)` is the rule for fire between vehicles: it reaches out every `SPREAD_PERIOD` ticks once a
+  fire has burned for `SPREAD_DELAY`, and each vehicle in reach takes one roll however many fires
+  reach it, so the answer does not depend on the order of the list. Only the player's vehicle exists
+  today, so nothing calls it until the traffic of spec section 13.1 lands.
+- `WheelState.skid` is the one definition of a sliding tyre: the body is going across its own axle
+  faster than `SKID_SLIP`, whether that came from the handbrake, a corner or a spin.
+  `src/render/skid.ts` is what draws it.
+- The gradient needs no rule of its own. The chassis is a rigid body, so a climb has gravity to
+  fight and a descent has it behind; adding a slope term on top of that would count it twice.
+
