@@ -18,6 +18,7 @@ import { TitleScreen } from './ui/title.ts';
 import { PICKER_KEY, VehiclePicker } from './ui/vehicle-picker.ts';
 import { WEAPON_PICKER_KEY, WeaponPicker } from './ui/weapon-picker.ts';
 import { currentWeapon, giveWeapon } from './sim/weapon.ts';
+import { roadDecks } from './world/decks.ts';
 import { nearestRoadPlace, nearestWaterPlace, SurfaceIndex } from './world/surface.ts';
 import { generateWorld } from './world/world.ts';
 
@@ -207,6 +208,9 @@ async function boot(): Promise<void> {
     heightAt: (x, y) => world.heightAt(x, y),
     surfaceAt: (x, y) => surfaces.at(x, y),
     seaLevel: description.water.seaLevel,
+    // A bridged segment carves no ground, so the deck is the only thing to
+    // drive on there and the physics is given it as a solid.
+    decks: roadDecks(description),
   };
   const start = nearestRoadPlace(description, state.player.x, state.player.y);
   const physics = new SimPhysics(ground, state);

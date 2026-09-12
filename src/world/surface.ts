@@ -167,8 +167,9 @@ export interface RoadPlace {
  * (spec section 11.7).
  *
  * Highways are skipped, because a driver should not begin on one, and so are
- * the segments on a deck or in a bore, because the ground the physics carries
- * is not the road there. One pass over the curves at the start of a session.
+ * the segments on a deck or in a bore: the physics carries a deck (`decks.ts`)
+ * but a session should not start halfway over a bridge, and a bore is inside a
+ * hill. One pass over the curves at the start of a session.
  */
 export function nearestRoadPlace(world: WorldDescription, x: number, y: number): RoadPlace | undefined {
   let best: RoadPlace | undefined;
