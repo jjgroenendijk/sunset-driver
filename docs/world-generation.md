@@ -164,15 +164,30 @@ gets wrong without it.
   `ownerMaxArea(zone, owner)` is the most a park, a car park, a plaza or a building group may hold
   there, and a parcel the roll gives to an owner too small for it stays ground cover.
 - `buildBuildings(world, parcels, graph)` (`buildings.ts`) places the buildings of spec section
-  10.3. It is built on demand like the parcels, not stored in the world description. A parcel the
-  zone gave to a building group carries a row of lots along its frontage: the run of its boundary
-  that stands on the ground a road claims. A lot is a rectangle set back from that frontage and
-  shortened until it stands wholly inside the parcel, so the ground behind it stays garden or yard;
-  one too shallow even for its zone's least depth is dropped rather than allowed to overhang. Two
-  lots of one parcel never meet, which is what gives a narrow block one row instead of two crossing
-  ones. `ZONE_BUILDINGS` says what a zone builds at all — a suburban parcel has no tower on its list
-  — and `MIN_LOT_AREA` what each kind needs, so a lot too small for the kind it rolled takes the
-  next smaller kind the zone allows.
+  10.3. It is built on demand like the parcels, not stored in the world description.
+  `ZONE_BUILDINGS` says what a zone builds at all — a suburban parcel has no tower on its list —
+  and `MIN_LOT_AREA` what each kind needs, so a lot too small for the kind it rolled takes the next
+  smaller kind the zone allows. `lots.ts` cuts the ground it stands on and `lot-geom.ts` is the
+  arithmetic of that cut.
+- `lotsOf(parcel, graph)` (`lots.ts`) cuts a parcel into lots along its frontage: the run of its
+  boundary that stands on the ground a road claims. Four rules decide the shape of a block, and the
+  first three are what stop a street being a row of boxes with daylight between them.
+  - A lot reaches half way across the block where the boundary opposite it fronts a road of its
+    own, so two rows back to back each get half of it. A block too narrow for two rows of the
+    zone's least depth is not shared, because one deep row is worth more there than two the zone
+    would drop.
+  - `LotSpec.attached` says the zone builds a street wall: the core and the inner ring keep no gap
+    between one lot and the next, and the side edge between two of them is the bisector of the two
+    frontages, so a wall along a bend has neither a wedge nor an overlap in it. A lot is therefore
+    a quadrilateral and not always a rectangle, and `Building.width` is the widest building that
+    stands inside it rather than the length of its frontage.
+  - Where two runs of one parcel meet at a corner, the run laid first takes the corner and the
+    second starts behind the building on it. Neither street then has a notch at the corner.
+  - A lot is shortened until it stands wholly inside the parcel and clear of the lots already laid,
+    and dropped only where even its zone's least depth overhangs. Nothing is laid and then pushed
+    off its neighbour (spec section 1.2). Two lots of an attached zone touch along the wall between
+    them and two of any other zone keep `LOT_CLEARANCE`, so the sweep asks an attached zone for no
+    shared ground and every other one for daylight.
 - `buildCorridors(world, roads, graph)` (`corridors.ts`) lays the corridors of spec section 6.3 and
   the tram route of spec section 13.2. It is the last step of `generateWorld`, and the only place
   that builds the graph during generation. A corridor claims its ground at the moment it is laid: a
