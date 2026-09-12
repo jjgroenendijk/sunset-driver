@@ -15,11 +15,16 @@ section 8.2): the same measurement on the commit before read 50 and 252 CPU-seco
 Nothing in the tests got slower; every seed now carries three times the roads. The quick tier misses
 its 15 s by that alone, and cutting the sweep from 6 seeds to 4 moves it by under a second, because
 the cost is spread over every file that builds a world or a chunk rather than over the sweep.
-Issue #198 tracks bringing both back down. On a four-core GitHub runner the full tier now takes
-about 3 min rather than the 2 min this file asks of it, and the seed sweep's one hook — every world
-of the sweep, generated in the pool while the simulation sweep runs beside it — passed the 120 s
-hang guard in `vitest.config.ts`, which is why that guard is now 300 s. The guard is not the
-ceiling; this file is.
+Issue #198 tracks bringing both back down. **On a four-core GitHub runner the full tier takes 264 s
+against the 2 min this file asks of it**, and it passes only because nothing asserts the figure. The
+seed sweep's one hook — every world of the sweep, generated in the pool while the simulation sweep
+runs beside it — also passed the 120 s hang guard in `vitest.config.ts`, which is why that guard is
+now 300 s. The guard is not the ceiling; this file is, and the tier is over it.
+
+The work is in the checks rather than in the pool: about 115 of the full tier's 386 CPU-seconds
+generate the worlds, and the rest walks them one seed at a time on the test thread. So the way back
+under the ceiling is a stride through the per-seed checks, which keeps every seed, and not a shorter
+list of seeds — spec section 3 asks the sweep for hundreds of them.
 
 That is what makes the same tier take 28 s on a cloud session of four Intel Xeon cores: half the
 cores, each about twice as slow, on the very same work. A session that measures twice the wall clock
