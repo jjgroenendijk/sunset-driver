@@ -1,4 +1,7 @@
 html, body { margin: 0; height: 100%; overflow: hidden; background: #12070f; color: #f6d6c1; font: 16px/1.5 system-ui, sans-serif; }
+/* A panel hides itself with the `hidden` attribute, and a class selector beats
+   the user agent's `[hidden]` rule, so every `display` here has to give way. */
+[hidden] { display: none !important; }
 #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 #splash { display: grid; place-items: center; height: 100%; text-align: center; }
 #splash h1 { font-size: 3rem; margin: 0 0 .5rem; letter-spacing: .1em; text-transform: uppercase; color: #ff8a5c; }
