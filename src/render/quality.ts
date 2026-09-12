@@ -278,6 +278,17 @@ export class QualityMonitor {
     return this.step(-1, middle);
   }
 
+  /**
+   * Throw away the window being filled and judge nothing on the next one. What
+   * the developer free camera of `free-camera.ts` draws is never a performance
+   * measurement, so the monitor is settled again when it hands the camera back.
+   */
+  settle(): void {
+    this.frames.length = 0;
+    this.good = 0;
+    this.settling = true;
+  }
+
   /** Move one tier, or stay where there is nowhere left to go. */
   private step(by: number, frameMs: number): QualityChange | undefined {
     this.good = 0;
