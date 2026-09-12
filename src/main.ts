@@ -4,6 +4,7 @@ import { PostChain } from './render/post.ts';
 import { frameBudgetFrom, QualityMonitor, type QualityChange } from './render/quality.ts';
 import { createRenderer, probeWebGpu } from './render/renderer.ts';
 import { createPreviewScene } from './render/scene.ts';
+import { RenderSmoother } from './render/smooth.ts';
 import { WorldScene } from './render/world-scene.ts';
 import { FixedStepClock } from './sim/clock.ts';
 import { DEFAULT_APPEARANCE } from './sim/character.ts';
@@ -44,6 +45,8 @@ interface Session {
   map: MapScreen;
   /** The hotwire minigame of spec section 11.4, drawn while a lock is being worked at. */
   hotwire: HotwireBar;
+  /** What draws the frame between two ticks, so the motion is smooth (spec section 9.2). */
+  smooth: RenderSmoother;
 }
 
 /**
@@ -118,20 +121,29 @@ async function boot(): Promise<void> {
       const flying = free.detached;
       const steps = clock.advance(elapsed);
       for (let i = 0; i < steps; i++) {
+        // The pose the step starts from is kept before it is taken, so the
+        // frame is drawn between the last two ticks rather than on the last.
+        session.smooth.capture(session.state);
         stepSim(session.state, flying ? EMPTY_INPUT : keyboard.sample(), session.physics);
       }
-      const p = session.state.player;
+      // A frame falls between two ticks, so what is drawn is the blend of them
+      // `smooth.ts` describes. Without it the record steps 0, 1 or 2 ticks a
+      // frame while the camera slides every frame, and the city judders.
+      const alpha = clock.alpha();
+      const p = session.smooth.playerAt(session.state, alpha);
+      const vehicle = session.smooth.vehicleAt(session.state, alpha);
       // The player and the car are both drawn from the record the physics
       // wrote. The record says how high the player's feet stand, so the model
       // follows them over a kerb and through a jump (spec section 11.5), and
       // the character is shown only while they are out of the car.
       session.world.character.group.position.set(p.x, p.height, p.y);
       session.world.character.group.rotation.y = -p.heading;
-      session.world.character.group.visible = !p.driving;
-      session.world.vehicle.set(session.state.vehicle);
+      session.world.character.group.visible = !session.state.player.driving;
+      session.world.vehicle.set(vehicle);
       // The damage of spec section 11.3, drawn off the same record: the smoke
-      // and flames over the car and the rubber its tyres leave behind.
-      session.world.damage(session.state.vehicle, session.state.seed, session.state.tick);
+      // and flames over the car and the rubber its tyres leave behind. It is
+      // given the drawn pose, so the smoke stands where the car is seen to be.
+      session.world.damage(vehicle, session.state.seed, session.state.tick);
       // The light of the scene is a function of the tick, so the day runs at
       // the simulation's pace whatever the frame rate (spec section 10.5). The
       // colour grade follows the same tick (spec section 10.6).
@@ -256,13 +268,16 @@ async function boot(): Promise<void> {
   // boat on a street is not a boat that can be driven. The ground the physics
   // reads is the carve, which answers anywhere on the map, so the vehicle is
   // driveable the moment it lands and the chunks around it stream in after.
+  const smooth = new RenderSmoother();
   const picker = new VehiclePicker(document.body, state.vehicle.cls, (cls) => {
     const here = { x: state.player.x, y: state.player.y, heading: state.player.heading };
     const place = cls === 'boat' ? (nearestWaterPlace(description, here.x, here.y) ?? here) : here;
     physics.spawn(state, place.x, place.y, place.heading, cls);
     // A vehicle put down is a fresh vehicle: nothing of the last one's smoke or
-    // skid marks belongs to it.
+    // skid marks belongs to it, and it is drawn where it lands rather than
+    // slid there from where the last one stood.
     world.resetDamage(state.tick);
+    smooth.reset();
   });
   // The debug picker of spec section 11.6: every weapon of the arsenal, loaded
   // and in the player's hands. It is what makes the table something to fire
@@ -310,6 +325,7 @@ async function boot(): Promise<void> {
     minimap,
     map,
     hotwire: new HotwireBar(document.body),
+    smooth,
   };
   preview.dispose();
   last = performance.now();

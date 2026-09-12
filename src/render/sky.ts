@@ -19,7 +19,7 @@
  * shows and the budget test enforces. A count over either is a regression, not
  * a cap to raise.
  */
-import { Color, Fog, HemisphereLight, DirectionalLight, Object3D, type Scene } from 'three';
+import { Color, Fog, HemisphereLight, DirectionalLight, Object3D, Vector3, type Scene } from 'three';
 import { CSMShadowNode } from 'three/examples/jsm/csm/CSMShadowNode.js';
 import { SkyMesh } from 'three/examples/jsm/objects/SkyMesh.js';
 import type { Daylight } from './daylight.ts';
@@ -55,7 +55,29 @@ export const SHADOW_DISTANCE = 160;
 
 /** Depth bias, in metres of surface, that keeps a lit surface from shadowing itself. */
 const SHADOW_BIAS = -0.0006;
-const SHADOW_NORMAL_BIAS = 0.05;
+/**
+ * How far along its own normal a surface is moved before it is looked up in
+ * the shadow map. It has to cover a shadow texel, or a surface the sun grazes
+ * shadows itself in stripes that crawl as the view moves. The near cascade of
+ * {@link SHADOW_DISTANCE} covers about 80 m across, so a texel of a
+ * {@link SHADOW_MAP_SIZE} map is about 8 cm; this is two of them.
+ */
+const SHADOW_NORMAL_BIAS = 0.16;
+
+/**
+ * Radians the sun may turn before the shadow follows it.
+ *
+ * `CSMShadowNode` holds a shadow still by snapping each cascade's centre to
+ * its own texel grid, and it builds that grid in the light's frame. So the
+ * snap only holds while the light stands still. A game day is 24 real minutes,
+ * which turns the sun a quarter of a degree a second: moved every frame, the
+ * grid turns under the snap and every shadow edge crawls.
+ *
+ * The sun the shadow is cast from therefore moves in steps, and the dome, the
+ * colours and the haze keep following the true sun. A step of this size moves
+ * the tip of a 20 m shadow by about 9 cm, once a second.
+ */
+export const SUN_SHADOW_STEP = (0.25 * Math.PI) / 180;
 
 /**
  * How thick the air is and how blue it scatters, as the Preetham model reads
@@ -88,6 +110,8 @@ export class SkyLighting {
   private readonly fog: Fog;
   private readonly background = new Color();
   private readonly scene: Scene;
+  /** The direction the shadow is cast from: the true sun, snapped to {@link SUN_SHADOW_STEP}. */
+  private readonly shadowSun = new Vector3();
 
   constructor(scene: Scene, fogNear: number, fogFar: number) {
     this.scene = scene;
@@ -135,7 +159,12 @@ export class SkyLighting {
     this.dome.sunPosition.value.copy(light.sun);
     // The sun keeps casting at night, at no strength. Turning the shadow off
     // and on again would rebuild every material's shader at dusk and at dawn.
-    this.sun.position.copy(light.sun).multiplyScalar(DOME_SIZE);
+    // Only the direction is read, so the position is the snapped sun carried
+    // out to the dome rather than the true one.
+    if (this.shadowSun.lengthSq() === 0 || this.shadowSun.angleTo(light.sun) >= SUN_SHADOW_STEP) {
+      this.shadowSun.copy(light.sun);
+      this.sun.position.copy(this.shadowSun).multiplyScalar(DOME_SIZE);
+    }
     this.sun.color.copy(light.sunColour);
     this.sun.intensity = light.sunIntensity;
     this.fill.color.copy(light.fillSky);
@@ -159,6 +188,15 @@ export class SkyLighting {
     // frame of a session, and the one frame a preview draws.
     this.sun.shadow.needsUpdate = true;
     for (const light of this.cascades.lights) if (light.shadow !== undefined) light.shadow.needsUpdate = true;
+  }
+
+  /**
+   * The direction the shadow is cast from: the true sun snapped to
+   * {@link SUN_SHADOW_STEP}. Read it; writing it moves the sun without moving
+   * the sky, and the two would drift apart over a day.
+   */
+  get shadowSunDirection(): Vector3 {
+    return this.shadowSun;
   }
 
   /** Carry the dome with the player, so it is always the far side of every chunk. */
@@ -185,6 +223,13 @@ export class SkyLighting {
   set shadowMapSize(pixels: number) {
     if (this.sun.shadow.mapSize.width === pixels) return;
     this.sun.shadow.mapSize.set(pixels, pixels);
+    // Each cascade cloned the sun's shadow when it was built, so the size has
+    // to be written onto the clones as well. Written only on the sun, a tier
+    // that asks for a smaller map draws every cascade at the old one and pays
+    // the same for its shadow as the tier above.
+    for (const cascade of this.cascades.lights) {
+      if (cascade.shadow !== undefined) cascade.shadow.mapSize.set(pixels, pixels);
+    }
     if (this.cascades.camera !== null) this.cascades.updateFrustums();
   }
 

@@ -8,6 +8,7 @@ export const BASE_DISTANCE = 36;
 export const PREVIEW_DISTANCE = 6;
 const DISTANCE_PER_SPEED = 0.9;
 const LEAD_PER_SPEED = 0.6;
+/** How fast the focus catches the target, in e-foldings a second. */
 const FOLLOW_RATE = 4;
 
 /**
@@ -66,7 +67,11 @@ export class FollowCamera {
       this.focus.copy(wanted);
       this.initialised = true;
     } else {
-      this.focus.lerp(wanted, Math.min(1, FOLLOW_RATE * dt));
+      // Exponential smoothing, not a linear factor on `dt`. A frame's length
+      // varies by a millisecond or two, and a linear factor turns that into
+      // camera movement: the same jitter the interpolation of `smooth.ts`
+      // takes out of the player would come back through the view.
+      this.focus.lerp(wanted, 1 - Math.exp(-FOLLOW_RATE * dt));
     }
     const distance = this.baseDistance + Math.abs(target.speed) * DISTANCE_PER_SPEED;
     // Back off along the fixed view direction so the focus stays centred.
