@@ -58,6 +58,34 @@ warehouses grey, roadhouses violet.
 The relief is shaded off the carved ground, not the natural one. The line it prints says how much of
 the grid the roads moved and what the deepest cut and the highest fill came to.
 
+## `node scripts/landuse-preview.ts <seed> out.png`
+
+How a city uses its land, close up. The world preview draws the whole map, where a downtown block is
+a few pixels; this draws a few hundred metres of it, so a block reads as ground rather than as a
+dot. It runs headless, like the world preview, and needs no browser.
+
+- `--half` is how much ground to draw, in metres from the middle to each edge. The default 350 is a
+  readable seven hundred metres across.
+- `--x` and `--y` are where to centre it. The default is the core.
+- `--width` is the side of the picture in pixels, which is what sets how many metres a pixel covers.
+
+It draws three layers, each over the one before: the road footprint in dark grey, then each parcel
+in the colour of its owner, then each building lot in the colour of what stands on it. The colours
+are the ones the world preview uses. What the picture is for is the three shares — how much of it is
+road, how much is parcel with nothing on it, and how much is building.
+
+Under the picture it prints those shares as numbers, for every zone of the whole map and not only
+for the part it drew: the ground the roads claim, the ground the parcels claim, the ground the lots
+cover, the ground a junction apron or a corridor takes on top of the carriageways, the buildings per
+hectare and the middle parcel size. `test/budgets.ts` pins each of them to a band per zone and
+`test/seed-layout.ts` fails when a seed falls outside it, so a layout change is judged by the
+picture and the numbers together.
+
+The shares are sampled off a grid, one reading per cell, and never added up from polygon areas: the
+pieces of the footprint overlap at every junction, so their areas together count an apron once per
+road that meets there. `scripts/land-use.ts` is that grid and `scripts/layout-metrics.ts` the
+numbers read off it; the sweep reads the same two files.
+
 ## `node scripts/render-preview.ts <seed> out.png`
 
 What the game draws, as one frame. Look at the frame before judging a rendering change.
