@@ -146,10 +146,10 @@ export function planBeaches(
   // Only a beach on land a crossing reaches can be developed: the rest are rocks
   // in the sea, and nothing can be driven to them. The same test keeps the
   // district sites off them (`landmass.ts`).
-  const land = new LandMasses(terrain, water.islands, water.seaLevel + DRY);
+  const land = new LandMasses(terrain, water, water.seaLevel + DRY);
   const servable = runs.map((run) => {
     const mid = run[Math.floor(run.length / 2)] as ShoreSample;
-    return land.carriesIsland(mid.x + mid.nx * mid.sand, mid.y + mid.ny * mid.sand);
+    return land.reaches(mid.x + mid.nx * mid.sand, mid.y + mid.ny * mid.sand);
   });
   const promoted = new Set(promotions(runs, servable, zones));
   return runs.map((run, i) =>

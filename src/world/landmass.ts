@@ -1,20 +1,26 @@
 /**
- * The connected pieces of dry land, and which of them carry an island of the
- * water description.
+ * The connected pieces of dry land, and which of them the road network can
+ * arrive at.
  *
  * An island is a power cell of the map, not the land itself. The coastline is
  * cut across those cells after a domain warp, so a cell can hold a rock in the
- * sea a few thousand square metres wide with no island site on it. Nothing
- * reaches such a rock: the roads route over land, so they find no way there and
- * lay none. Anything that places ground content asks here first, and builds
- * only where the network can arrive.
+ * sea a few thousand square metres wide, and a cell can hold several pieces of
+ * land that no crossing joins. Nothing reaches such a piece: the roads route
+ * over the ground and bridge only the crossings of the water description, so
+ * they find no way there and lay none. Anything that places ground content asks
+ * here first, and builds only where the network can arrive.
+ *
+ * A piece of land is reached when it is the one the main island stands on, or a
+ * chain of crossings leads to it from there. Asking only whether a piece
+ * carries an island site is not enough: a crossing lands where the ground is
+ * dry, and both ends of one can be pieces the mainland never reaches.
  *
  * Two nodes are one piece of land when a road could walk between them, so only
  * the four straight steps join them. A diagonal step of the road tracer needs
  * both of its neighbours dry, which is the same reachability.
  */
 import type { Heightfield } from './heightfield.ts';
-import type { Island } from './types.ts';
+import type { Island, WaterDescription } from './types.ts';
 
 /** Nodes searched around an island site for the land it stands on, in grid steps. */
 const SITE_REACH = 8;
@@ -27,10 +33,10 @@ export class LandMasses {
   private readonly hf: Heightfield;
   /** Piece of land each grid node belongs to, or -1 where it is water. */
   private readonly label: Int32Array;
-  /** 1 where the piece of land with that label carries an island site. */
-  private readonly inhabited: Uint8Array;
+  /** 1 where the road network can arrive at the piece of land with that label. */
+  private readonly reached: Uint8Array;
 
-  constructor(hf: Heightfield, islands: readonly Island[], minHeight: number) {
+  constructor(hf: Heightfield, water: WaterDescription, minHeight: number) {
     this.hf = hf;
     const n = hf.gridSize;
     const label = new Int32Array(n * n).fill(-1);
@@ -59,11 +65,38 @@ export class LandMasses {
       }
     }
     this.label = label;
-    this.inhabited = new Uint8Array(count);
-    for (const island of islands) {
-      const mass = this.massNear(island.x, island.y);
-      if (mass >= 0) this.inhabited[mass] = 1;
+    this.reached = this.floodFromMain(water, count);
+  }
+
+  /**
+   * The pieces of land the network can arrive at: the one the main island
+   * stands on, and every piece a chain of crossings leads to from it.
+   */
+  private floodFromMain(water: WaterDescription, count: number): Uint8Array {
+    const linked: number[][] = [];
+    for (let i = 0; i < count; i++) linked.push([]);
+    for (const crossing of water.crossings) {
+      const a = this.massNear(crossing.from.x, crossing.from.y);
+      const b = this.massNear(crossing.to.x, crossing.to.y);
+      if (a < 0 || b < 0 || a === b) continue;
+      (linked[a] as number[]).push(b);
+      (linked[b] as number[]).push(a);
     }
+    const reached = new Uint8Array(count);
+    let main: Island | undefined;
+    for (const island of water.islands) if (island.main) main = island;
+    const start = main === undefined ? -1 : this.massNear(main.x, main.y);
+    if (start < 0) return reached;
+    reached[start] = 1;
+    const queue = [start];
+    for (let qi = 0; qi < queue.length; qi++) {
+      for (const to of linked[queue[qi] as number] as number[]) {
+        if (reached[to] === 1) continue;
+        reached[to] = 1;
+        queue.push(to);
+      }
+    }
+    return reached;
   }
 
   /** The piece of land under a world point, or -1 over water. */
@@ -76,12 +109,12 @@ export class LandMasses {
   }
 
   /**
-   * True when the land under a point carries an island of the water
-   * description, so a road can reach it over the ground and the crossings.
+   * True when a road can arrive at the land under a point, over the ground and
+   * the crossings of the water description.
    */
-  carriesIsland(x: number, y: number): boolean {
+  reaches(x: number, y: number): boolean {
     const mass = this.massAt(x, y);
-    return mass >= 0 && this.inhabited[mass] === 1;
+    return mass >= 0 && this.reached[mass] === 1;
   }
 
   /** The piece of land at a site, or the nearest one within {@link SITE_REACH}. */

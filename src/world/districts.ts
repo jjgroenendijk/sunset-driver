@@ -117,7 +117,7 @@ function sampleSiteInZone(rng: Rng, layout: ZoneLayout, zone: Zone, hf: Heightfi
     if (Math.abs(x) > s / 2 || Math.abs(y) > s / 2) continue;
     if (zoneAt(layout, x, y) !== zone) continue;
     if (hf.sample(x, y) < DRY) continue;
-    if (!land.carriesIsland(x, y)) continue;
+    if (!land.reaches(x, y)) continue;
     return { x, y };
   }
   // Deterministic fallback: the first dry cell of the zone in grid order.
@@ -126,7 +126,7 @@ function sampleSiteInZone(rng: Rng, layout: ZoneLayout, zone: Zone, hf: Heightfi
       const x = hf.worldX(ix);
       const y = hf.worldY(iy);
       if (zoneAt(layout, x, y) !== zone || hf.at(ix, iy) < DRY) continue;
-      if (land.carriesIsland(x, y)) return { x, y };
+      if (land.reaches(x, y)) return { x, y };
     }
   }
   return { x: layout.core.x, y: layout.core.y };
@@ -135,7 +135,7 @@ function sampleSiteInZone(rng: Rng, layout: ZoneLayout, zone: Zone, hf: Heightfi
 /** Place district sites and hand out names, cultures and stats. */
 export function generateDistricts(seed: number, layout: ZoneLayout, hf: Heightfield, water: WaterDescription): District[] {
   const rng = genRng(seed, Subsystem.Districts, 1);
-  const land = new LandMasses(hf, water.islands, DRY);
+  const land = new LandMasses(hf, water, DRY);
   const districts: District[] = [];
   const pools: Partial<Record<Zone, string[]>> = {};
   let id = 0;

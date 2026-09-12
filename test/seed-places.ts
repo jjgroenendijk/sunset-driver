@@ -229,7 +229,7 @@ export function placeChecks(): void {
         const w = worlds.get(seed) as WorldDescription;
         const hf = new Heightfield(w.terrain);
         const zones = layoutZones(w.size, w.core, w.water);
-        const land = new LandMasses(hf, w.water.islands, w.water.seaLevel + 1);
+        const land = new LandMasses(hf, w.water, w.water.seaLevel + 1);
         const names = new Set(w.districts.map((d) => d.name));
         for (const r of required) expect(names.has(r), `${r} in seed ${seed}`).toBe(true);
         expect(names.size, `duplicate district name in seed ${seed}`).toBe(w.districts.length);
@@ -238,7 +238,7 @@ export function placeChecks(): void {
           // The land it stands on carries an island of the water description, so
           // a crossing leads there and the roads can arrive. A rock in the sea
           // would take a district that could never be reached or built.
-          expect(land.carriesIsland(d.x, d.y), `seed ${seed}: ${d.name} stands on land no island site is on`).toBe(true);
+          expect(land.reaches(d.x, d.y), `seed ${seed}: ${d.name} stands on land no island site is on`).toBe(true);
           if (d.name !== 'Gull Island') expect(zoneAt(zones, d.x, d.y)).toBe(d.zone);
           expect(d.density).toBeGreaterThanOrEqual(0);
           expect(d.density).toBeLessThanOrEqual(1);
