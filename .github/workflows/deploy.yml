@@ -84,12 +84,24 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run lint:size
-      - run: npm run test:full
+
+      # The full tier gates the merge; main re-runs the quick tier only. A
+      # rebase gives main new commit SHAs but the same trees, so the full tier
+      # would measure a second time what the pull request already measured.
+      # The quick tier still catches a rebase onto a main that moved under it.
+      - if: github.event_name == 'pull_request'
+        run: npm run test:full
+      - if: github.event_name == 'push'
+        run: npm test
+
       - run: npm run build
 
+      # Only main deploys. A pull request builds to prove the build works and
+      # publishes nothing, so one change reaches Cloudflare once.
       - name: Deploy to Cloudflare Pages
+        if: github.event_name == 'push'
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=sunset-driver --branch=${{ github.head_ref || github.ref_name }} --commit-dirty=true --commit-hash=${{ github.event.pull_request.head.sha || github.sha }}
+          command: pages deploy dist --project-name=sunset-driver --branch=${{ github.ref_name }} --commit-dirty=true --commit-hash=${{ github.sha }}
