@@ -6,9 +6,16 @@ How the test tiers are measured and where their cost goes. `test/budgets.ts` hol
 
 **Both ceilings are wall clock, and wall clock is the tier's work divided by the cores it is spread
 over.** So the number to compare a session against is the work, which is the same on every machine:
-`time npm test` prints it as user plus system seconds. The quick tier costs about **57 CPU-seconds**
-and the full tier about **540**, measured on an Apple M1 laptop of 8 cores, where the quick tier
-takes 14 s of wall clock at about 420 % CPU.
+`time npm test` prints it as user plus system seconds. On an Apple M1 laptop of 8 cores the quick
+tier costs about **62 CPU-seconds** and the full tier about **395**, at about 370 % CPU, which is
+17 s and 107 s of wall clock.
+
+Both grew by about half when the zone rings widened and the city became most of the map (spec
+section 8.2): the same measurement on the commit before read 50 and 252 CPU-seconds, 12 s and 60 s.
+Nothing in the tests got slower; every seed now carries three times the roads. The quick tier misses
+its 15 s by that alone, and cutting the sweep from 6 seeds to 4 moves it by under a second, because
+the cost is spread over every file that builds a world or a chunk rather than over the sweep.
+Issue #198 tracks bringing both back down.
 
 That is what makes the same tier take 28 s on a cloud session of four Intel Xeon cores: half the
 cores, each about twice as slow, on the very same work. A session that measures twice the wall clock
@@ -23,7 +30,8 @@ can be most of twice as slow as the one before it, so one time says nothing on i
 slowest of them is what the 2 min has to hold. Read CI, and a shared laptop, as a spread of several
 runs.
 
-Issue #88 tracks the wall clock the quick tier misses its 15 s by on a four-core session.
+Issue #88 tracks the wall clock the quick tier misses its 15 s by on a four-core session, and
+issue #198 what the city filling the map added to both tiers.
 
 A wall-clock measurement only belongs in `test/budget.test.ts`. Vitest runs that file as its own
 project, on its own, because the sweeps fill every core; a timing assertion in any other file
