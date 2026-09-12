@@ -33,7 +33,8 @@ import type { HeightfieldData, Point, RoadCurve } from './types.ts';
  * itself. So a bend that asks for more than this room takes no mitre at all:
  * each side keeps its own segment's frame and the surface is cut at the turn.
  * Two runs that overlap through a hairpin still read as road from above; a
- * folded one reads as a hole.
+ * folded one reads as a hole. `road-mesh.ts` bevels the joint, because the two
+ * sides leave a wedge of ground showing on the outside of the turn.
  *
  * The metre limit is what makes the rule survive a chunk boundary. A boundary
  * cuts a segment anywhere along it, so the run beside a mitred point can be far
