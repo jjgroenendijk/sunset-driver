@@ -291,7 +291,7 @@ function uploadSteps(payload: ChunkPayload, material: Material): { piece: string
     meshes.push(fill.mesh);
     fill.steps.forEach((step, i) => {
       steps.push(step);
-      pieces.push(`${name} part ${i}`);
+      pieces.push(`${name} step ${i}`);
     });
   }
   const times = steps.map((step, i) => {
@@ -361,11 +361,17 @@ function uploadSteps(payload: ChunkPayload, material: Material): { piece: string
       // The copy carries the storage of every batch, so the clone allocates it
       // untimed, as the worker does.
       //
-      // Each piece is scored on its fastest run, as `bestOf` scores a whole
-      // measurement: a collection lands in one piece of one run and would
-      // otherwise be read as its cost.
+      // Every copy is made before the first run, rather than one before each
+      // run: a clone of a chunk of the core is tens of megabytes, and made
+      // between two runs it leaves a collection to land inside the next one.
+      // That is garbage this test makes and the game does not.
+      //
+      // Each piece is then scored on its fastest run, as `bestOf` scores a
+      // whole measurement: a collection that lands in one piece of one run
+      // would otherwise be read as the cost of that piece.
       const payload = buildChunkPayload(chunk, lookups, 'near');
-      const runs = [0, 1, 2].map(() => uploadSteps(structuredClone(payload), material));
+      const copies = [0, 1, 2].map(() => structuredClone(payload));
+      const runs = copies.map((copy) => uploadSteps(copy, material));
       let dearest = { piece: '', ms: 0 };
       (runs[0] as { piece: string }[]).forEach(({ piece }, i) => {
         const ms = Math.min(...runs.map((run) => (run[i] as { ms: number }).ms));

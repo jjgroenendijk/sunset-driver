@@ -1,6 +1,6 @@
 import { Euler, Matrix3, Matrix4, MeshBasicMaterial, Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { batchOfPacked, fillOfPacked } from '../src/render/batch.ts';
+import { batchOfPacked, fillOfPacked, MAX_STEP_VERTICES } from '../src/render/batch.ts';
 import { packedVertexCount, type PackedBatch, type PackedGeometry, type PackedPart } from '../src/render/chunk-payload.ts';
 
 /**
@@ -54,6 +54,33 @@ function packed(parts: PackedPart[]): PackedBatch {
   };
   if (first.index !== undefined) storage.index = new Uint16Array(indices);
   return { parts, storage };
+}
+
+/**
+ * One part too large for a single step, indexed in order. Its `n`-th vertex
+ * stands at `x = n`, so a step that copies the wrong range of it is caught.
+ */
+function big(vertices: number): PackedPart {
+  const positions = new Float32Array(vertices * 3);
+  const normals = new Float32Array(vertices * 3);
+  const tints = new Float32Array(vertices);
+  const index = new Uint32Array(vertices);
+  for (let v = 0; v < vertices; v++) {
+    positions[v * 3] = v;
+    normals[v * 3 + 1] = 1;
+    tints[v] = 1;
+    index[v] = v;
+  }
+  return {
+    geometry: {
+      attributes: [
+        { name: 'position', array: positions, itemSize: 3, normalized: false },
+        { name: 'normal', array: normals, itemSize: 3, normalized: false },
+        { name: 'tint', array: tints, itemSize: 1, normalized: false },
+      ],
+      index,
+    },
+  };
 }
 
 /** A turn, a move and a scale together: everything a placement can do to a part. */
@@ -141,6 +168,36 @@ describe('a chunk batch', () => {
     (fill.steps[1] as () => void)();
     expect(fill.mesh.parts).toBe(2);
     expect(fill.mesh.geometry.drawRange.count).toBe(12);
+    fill.mesh.dispose();
+  });
+
+  it('copies a part larger than a step over several of them, and draws it once', () => {
+    // A tower of a chunk of the core is about sixteen steps of this size. What
+    // a frame overruns its streaming slice by is one step, so the overrun is
+    // this number of vertices and not whatever the generator built.
+    const vertices = MAX_STEP_VERTICES * 3 + 17;
+    const tower = big(vertices);
+    const fill = fillOfPacked(packed([tower]), material);
+    expect(fill.steps.length).toBe(4);
+
+    // The part is drawn only once its last step is in: the index is what the
+    // renderer reads vertices through, so a half-copied part must not be in it.
+    for (const step of fill.steps.slice(0, -1)) {
+      step();
+      expect(fill.mesh.geometry.drawRange.count).toBe(0);
+      expect(fill.mesh.parts).toBe(0);
+    }
+    (fill.steps[fill.steps.length - 1] as () => void)();
+    expect(fill.mesh.parts).toBe(1);
+    expect(fill.mesh.geometry.drawRange.count).toBe(vertices);
+
+    // Every vertex of it landed, each one once and in its own place.
+    const position = fill.mesh.geometry.getAttribute('position');
+    let complaint: string | undefined;
+    for (let v = 0; v < vertices; v++) {
+      if (position.getX(v) !== v) complaint ??= `vertex ${v} stands at ${position.getX(v)}`;
+    }
+    expect(complaint).toBeUndefined();
     fill.mesh.dispose();
   });
 });
