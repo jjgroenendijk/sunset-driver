@@ -16,7 +16,7 @@
  */
 import { Box3, BufferAttribute, BufferGeometry } from 'three';
 import type { Point } from '../world/types.ts';
-import { CHAMFER_WIDTH, FOUNDATION, type BuildingMassing } from './building-plan.ts';
+import { CHAMFER_WIDTH, FOUNDATION, type BuildingMassing, type Fit } from './building-plan.ts';
 
 /** Metres the outline hull stands outside the shell it rims (spec section 10.1). */
 export const OUTLINE_WIDTH = 0.35;
@@ -40,10 +40,13 @@ const HULL_BANDS = 80;
  * stands over the height that was asked for and a cornice outside the footprint
  * that was given. It is drawn with the shell's own matrix, so it is widened by
  * the amount the shell is taken in by and comes out {@link OUTLINE_WIDTH} wide
- * on every building whatever its fit.
+ * on every building whatever its fit. A shell stretched along the frontage to
+ * reach a wall it shares is outlined by the scale it keeps across the frontage,
+ * so its two ends are rimmed the width of the stretch more thinly — a
+ * centimetre of a line a third of a metre wide.
  */
-export function hullOf(massing: BuildingMassing, shell: BufferGeometry, box: Box3, fit: number): BufferGeometry {
-  const reach = OUTLINE_WIDTH / fit;
+export function hullOf(massing: BuildingMassing, shell: BufferGeometry, box: Box3, fit: Fit): BufferGeometry {
+  const reach = OUTLINE_WIDTH / fit.across;
   // The shell is centred on the lot, so the box around it is centred on the
   // origin and the ring of the footprint can be laid out there as well.
   const around = { ...massing, width: box.max.x - box.min.x, depth: box.max.z - box.min.z };

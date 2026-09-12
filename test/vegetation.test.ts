@@ -68,6 +68,7 @@ function lotOf(ring: Point[]): BuildingMap {
     front: ring[0] as Point,
     facing: 0,
     road: 0,
+    shared: { left: false, right: false },
     district: 0,
     zone: 'suburban',
   };

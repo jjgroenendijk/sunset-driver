@@ -14,8 +14,8 @@
  *
  * A building never stands on a road, by construction (spec section 1.1). The lot
  * is already inside its parcel, and a parcel is the land the road footprint
- * leaves; the shell is then fitted inside the massing the plan gives it, and
- * whatever still reaches past that is taken in by the scale of the placement. So
+ * leaves; the shell is then fitted inside the room the plan leaves it. Whatever
+ * still reaches past that room is taken in by the scale of the placement, so
  * the last step is measured rather than estimated, and the sweep checks it.
  *
  * A building's own frame has the middle of its lot at the origin, `x` along the
@@ -38,18 +38,20 @@ import {
   chamferOf,
   CHAMFER_WIDTH,
   facadeFootprint,
+  fitOf,
   FOUNDATION,
   massingOf,
   plan,
   type BuildingBatch,
   type BuildingMassing,
+  type Fit,
 } from './building-plan.ts';
 import type { ChunkDetail } from './streaming.ts';
 
 // The plan of a building is drawn in `building-plan.ts` and its outline in
 // `building-hull.ts`; this is the door callers already import.
 export { OUTLINE_WIDTH } from './building-hull.ts';
-export { CORNICE, massingOf, type BuildingBatch, type BuildingMassing } from './building-plan.ts';
+export { CORNICE, massingOf, standingGround, type BuildingBatch, type BuildingMassing } from './building-plan.ts';
 
 /** A colour as the renderer wants it: three floats in the working colour space. */
 export type Rgb = readonly [number, number, number];
@@ -131,8 +133,18 @@ export function buildChunkBuildings(
     const shell =
       batch === 'facade' ? facadeGeometry(building, massing, tint) : buildBlockGeometry(building.kind, massing, tint);
     const box = centreOnLot(shell);
-    const fit = fitOf(box, massing);
-    const placed: BuildingPlacement = { building, massing, batch, shell, matrix: matrixOf(building, lookup, fit) };
+    // A block fills its massing; a generated facade comes back narrower than
+    // one, so where the lot has a wall against it the shell is stretched to
+    // reach it.
+    const wall = building.shared.left || building.shared.right;
+    const fit = fitOf({ width: box.max.x - box.min.x, depth: box.max.z - box.min.z }, massing, wall);
+    const placed: BuildingPlacement = {
+      building,
+      massing,
+      batch,
+      shell,
+      matrix: matrixOf(building, lookup, massing, fit),
+    };
     if (detail === 'near') placed.hull = hullOf(massing, shell, box, fit);
     out.push(placed);
   }
@@ -223,28 +235,17 @@ function centreOnLot(shell: BufferGeometry): Box3 {
 }
 
 /**
- * How much a shell has to be taken in to stand inside its massing, and so
- * inside its lot and off the road. A generated facade reaches out past the
- * footprint it was given by however much its cornices and its crown overhang,
- * and by more of it on a narrow tower than on a wide one, so the shell is
- * measured rather than trusted. Nothing is ever made larger: a shell that fits
- * is left alone.
- */
-function fitOf(box: Box3, massing: BuildingMassing): number {
-  const width = box.max.x - box.min.x;
-  const depth = box.max.z - box.min.z;
-  return Math.min(1, width > 0 ? massing.width / width : 1, depth > 0 ? massing.depth / depth : 1);
-}
-
-/**
  * Where a building stands, as the matrix from its own frame to the world.
  *
  * The frame is turned so `z` looks at the road the lot fronts, which is the way
  * `Building.facing` points. It stands on the lowest of the lot's four corners,
  * sunk by {@link FOUNDATION}: on a slope a wall is then buried at one end rather
- * than standing clear of the ground at the other.
+ * than standing clear of the ground at the other. Where the lot takes its margin
+ * on one side only, the frame moves along the frontage by
+ * {@link BuildingMassing.offset}, and a wall it shares stretches it along the
+ * frontage.
  */
-function matrixOf(building: Building, lookup: BuildingLookup, fit: number): Matrix4 {
+function matrixOf(building: Building, lookup: BuildingLookup, massing: BuildingMassing, fit: Fit): Matrix4 {
   let ground = Infinity;
   for (const corner of building.lot) ground = Math.min(ground, lookup.heightAt(corner.x, corner.y));
   const middle = lotMiddle(building.lot);
@@ -252,5 +253,9 @@ function matrixOf(building: Building, lookup: BuildingLookup, fit: number): Matr
   // the lot faces; the quarter turn is the step from a heading on the map to an
   // angle about that axis.
   const turn = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI / 2 - building.facing);
-  return new Matrix4().compose(new Vector3(middle.x, ground - FOUNDATION, middle.y), turn, new Vector3(fit, fit, fit));
+  // The shell is built about its own middle, so the lot's margins move the frame
+  // and not the geometry. The frame's own x axis is the way along the frontage.
+  const along = new Vector3(1, 0, 0).applyQuaternion(turn).multiplyScalar(massing.offset);
+  const at = new Vector3(middle.x + along.x, ground - FOUNDATION, middle.y + along.z);
+  return new Matrix4().compose(at, turn, new Vector3(fit.along, fit.across, fit.across));
 }

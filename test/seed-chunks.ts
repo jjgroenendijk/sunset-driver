@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3, type BufferAttribute } from 'three';
-import { buildChunkBuildings, buildingLookup } from '../src/render/building-mesh.ts';
+import { buildChunkBuildings, buildingLookup, standingGround } from '../src/render/building-mesh.ts';
 import { CHUNK_DRAW_CALL_CAP, chunkDrawCalls } from '../src/render/chunk-cost.ts';
 import { LAMP_BY_TIER, lampsIn } from '../src/render/lamp-mesh.ts';
 import { buildChunkRoads, partsOf, roadSection, type SectionPoint } from '../src/render/road-mesh.ts';
@@ -292,7 +292,9 @@ export function chunkChecks(): void {
       // never on the road beside it. The lot is already inside the parcel and the
       // parcel is what the road footprint left, so this is the last link of the
       // chain — and the one that is fitted rather than laid out, because a
-      // generated facade overhangs whatever footprint it is given.
+      // generated facade overhangs whatever footprint it is given. Where the lot
+      // shares a side edge the ground past it carries the neighbour's wall, so
+      // the question is `standingGround` and not the lot alone.
       for (const seed of seeds.slice(0, BUILDING_MESH_COUNT)) {
         const w = worlds.get(seed) as WorldDescription;
         const source = sourceOf(seed);
@@ -313,7 +315,8 @@ export function chunkChecks(): void {
           for (let v = 0; v < position.count; v++) {
             at.fromBufferAttribute(position as BufferAttribute, v).applyMatrix4(one.matrix);
             if (!Number.isFinite(at.x + at.y + at.z)) fault(`${where} places a vertex nowhere`);
-            else if (!pointInRing({ x: at.x, y: at.z }, one.building.lot)) fault(`${where} stands off its lot`);
+            else if (!pointInRing({ x: at.x, y: at.z }, standingGround(one.building)))
+              fault(`${where} stands off its lot`);
             if (complaint !== undefined) break;
           }
           one.shell.dispose();

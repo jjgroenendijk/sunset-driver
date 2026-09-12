@@ -144,6 +144,21 @@ export interface Lot {
   front: Point;
   facing: number;
   road: number;
+  /**
+   * Which side edges of the lot another lot of the same row lies against: the
+   * edge at the first corner of the front edge, and the edge at the second.
+   * Only an attached zone shares an edge at all, and only where the neighbour
+   * was laid: a lot the row dropped leaves its neighbour's edge bare.
+   */
+  shared: Shared;
+}
+
+/** Which of a lot's two side edges carry a neighbour's wall. */
+export interface Shared {
+  /** The edge at the first corner of the front edge. */
+  left: boolean;
+  /** The edge at the second. */
+  right: boolean;
 }
 
 /** The daylight a zone keeps between two of its lots. Attached lots touch instead. */
@@ -187,12 +202,33 @@ export function lotsOf(parcel: Parcel, graph: RoadGraph): Lot[] {
     const count = to > from ? lotCount(to - from, spec) : 0;
     if (count === 0) continue;
     const row = rowOf(run, spec, from, (to - from) / count, count);
+    const laid: (Lot | undefined)[] = [];
     for (let i = 0; i < count; i++) {
       const lot = lotAt(row, i, parcel.region, fronts, out, daylight);
+      laid.push(lot);
       if (lot !== undefined) out.push(lot);
     }
+    markWalls(laid, spec);
   }
   return out;
+}
+
+/**
+ * Say which side edges of a row carry a neighbour's wall.
+ *
+ * Both lots at a boundary take the same side edge, so where the zone builds a
+ * street wall the ground past that edge is the neighbour's. The renderer keeps
+ * its facade clear of every other edge and reaches to this one, which is what
+ * leaves no slot in the wall. A lot the row dropped shares nothing: there is no
+ * wall on that side to stand against.
+ */
+function markWalls(laid: readonly (Lot | undefined)[], spec: LotSpec): void {
+  if (!spec.attached) return;
+  for (let i = 0; i < laid.length; i++) {
+    const lot = laid[i];
+    if (lot === undefined) continue;
+    lot.shared = { left: laid[i - 1] !== undefined, right: laid[i + 1] !== undefined };
+  }
 }
 
 /** How many lots a run of frontage is divided into; none when it is too short for one. */
@@ -315,6 +351,9 @@ function lotAt(
       front: round({ x: (f0.x + f1.x) / 2, y: (f0.y + f1.y) / 2 }),
       facing: facingOf(corners),
       road: row.run.road,
+      // The row says which of these edges has a neighbour against it, once it
+      // knows which of its lots were laid.
+      shared: { left: false, right: false },
     };
   }
   return undefined;

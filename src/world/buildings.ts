@@ -21,12 +21,12 @@
 import type { Point } from '../core/geom.ts';
 import { genRng, Rng, Subsystem } from '../core/rng.ts';
 import type { RoadGraph } from './graph.ts';
-import { lotsOf } from './lots.ts';
+import { lotsOf, type Shared } from './lots.ts';
 import type { ParcelMap } from './parcels.ts';
 import type { District, WorldDescription, Zone } from './types.ts';
 
 // The lots are cut in `lots.ts`; this is the door callers already import.
-export { FRONT_REACH, LOT_CLEARANCE, ZONE_LOTS, type Lot, type LotSpec } from './lots.ts';
+export { FRONT_REACH, LOT_CLEARANCE, ZONE_LOTS, type Lot, type LotSpec, type Shared } from './lots.ts';
 
 /** What stands on a lot (spec section 10.3). */
 export type BuildingKind = 'tower' | 'mid-rise' | 'shop-row' | 'house' | 'warehouse' | 'roadhouse';
@@ -63,6 +63,13 @@ export interface Building {
   front: Point;
   /** Which way the front faces, in radians: from the lot towards its road. */
   facing: number;
+  /**
+   * Which of the lot's two side edges carry a neighbour's wall: the edge at the
+   * first corner of the front edge, and the edge at the second. Where a zone
+   * builds a street wall the two lots at a boundary take the same edge, so the
+   * building may reach it; every other edge keeps its margin. See `lots.ts`.
+   */
+  shared: Shared;
   /** The road graph edge the lot fronts. One of a two-way pair, as `Parcel.roads` lists them. */
   road: number;
   /** Id of the district the lot stands in, as its parcel reads it. */
@@ -160,6 +167,7 @@ export function buildBuildings(world: WorldDescription, parcels: ParcelMap, grap
         front: lot.front,
         facing: lot.facing,
         road: lot.road,
+        shared: lot.shared,
         district: parcel.district,
         zone: parcel.zone,
       });
