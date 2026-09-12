@@ -12,6 +12,10 @@ import { EMPTY_INPUT } from './sim/input.ts';
 import { createSimState, stepSim, type SimState } from './sim/simulation.ts';
 import { HotwireBar } from './ui/hotwire.ts';
 import { Hud } from './ui/hud.ts';
+import { MapArt } from './ui/map-draw.ts';
+import { MapPois } from './ui/map.ts';
+import { MAP_KEY, MapScreen } from './ui/map-screen.ts';
+import { Minimap, MINIMAP_NORTH_KEY } from './ui/minimap.ts';
 import { FREE_CAMERA_KEY, FreeCameraControls } from './ui/free-camera.ts';
 import { Keyboard } from './ui/keyboard.ts';
 import { TitleScreen } from './ui/title.ts';
@@ -34,6 +38,10 @@ interface Session {
   /** What watches the frame and steps the quality tiers (spec section 9.2). */
   quality: QualityMonitor;
   hud: Hud;
+  /** The corner map of spec section 12, following the player. */
+  minimap: Minimap;
+  /** The full map of spec section 12: pan, zoom and waypoint. */
+  map: MapScreen;
   /** The hotwire minigame of spec section 11.4, drawn while a lock is being worked at. */
   hotwire: HotwireBar;
 }
@@ -164,6 +172,15 @@ async function boot(): Promise<void> {
       // the record the simulation is playing, so the bar on screen is the bar
       // the presses are judged against.
       session.hotwire.update(session.state.theft, session.state.seed, session.state.tick);
+      // The maps of spec section 12. Both follow the player from the record,
+      // and both redraw only when something on them has moved, so a session
+      // standing still pays for neither. The minimap follows the free camera
+      // while it is detached, because that is what the player is looking at.
+      const at = flying
+        ? { x: free.camera.x, y: free.camera.z, heading: p.heading }
+        : { x: p.x, y: p.y, heading: p.heading };
+      session.minimap.update(at, session.state.waypoint);
+      session.map.update(at, session.state.waypoint);
       // Not `renderer.render`: the post chain draws the scene itself and the
       // effects of spec section 10.6 over it.
       session.post.render();
@@ -253,10 +270,31 @@ async function boot(): Promise<void> {
   const weapons = new WeaponPicker(document.body, currentWeapon(state.loadout).id, (id) => {
     giveWeapon(state.loadout, id);
   });
+  // The maps of spec section 12, both drawn from one `MapArt`, so the corner
+  // map and the full map can never disagree about a road or a mark. The POI
+  // list is shared with them: a system that owns places writes `pois.extra`
+  // once and both maps show them.
+  const pois = new MapPois(description);
+  const art = new MapArt(description, pois);
+  const minimap = new Minimap(document.body, art);
+  const map = new MapScreen(document.body, art, (place) => {
+    state.waypoint = place;
+  });
+  // A click on the minimap sets a waypoint too, so a player driving does not
+  // have to stop and open the full map to mark where they are going.
+  window.addEventListener('pointerdown', (event) => {
+    if (map.open || !minimap.holds(event.clientX, event.clientY)) return;
+    state.waypoint = event.button === 2 ? null : minimap.pointAt(event.clientX, event.clientY);
+  });
   window.addEventListener('keydown', (event) => {
     if (event.repeat) return;
     if (event.code === PICKER_KEY) picker.toggle();
     if (event.code === WEAPON_PICKER_KEY) weapons.toggle();
+    if (event.code === MAP_KEY) map.toggle();
+    if (event.code === MINIMAP_NORTH_KEY) minimap.toggleNorth();
+    if (event.code === 'Escape' && map.open) map.toggle();
+    if (map.open && (event.code === 'Equal' || event.code === 'NumpadAdd')) map.zoom(-1);
+    if (map.open && (event.code === 'Minus' || event.code === 'NumpadSubtract')) map.zoom(1);
     // The developer free camera. It takes over from where the game camera
     // stands, and pointer lock needs this key press to ask for it.
     if (event.code === FREE_CAMERA_KEY) free.toggle(camera.camera);
@@ -269,6 +307,8 @@ async function boot(): Promise<void> {
     post,
     quality,
     hud: new Hud(document.body, choice.seed),
+    minimap,
+    map,
     hotwire: new HotwireBar(document.body),
   };
   preview.dispose();
