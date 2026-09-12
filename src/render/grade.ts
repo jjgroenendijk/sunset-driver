@@ -2,9 +2,9 @@
  * The colour grade of spec section 10.6.
  *
  * The frame is graded through a 3D lookup table: a small cube of colours that
- * says what every colour in the frame becomes. `post.ts` builds it into a
- * texture and reads it a pixel at a time, so the grade costs two texture
- * fetches a pixel however involved the maths here becomes.
+ * says what every colour in the frame becomes. `post.ts` builds it into a 3D
+ * texture and reads it a pixel at a time, so the grade costs one texture fetch
+ * a pixel however involved the maths here becomes.
  *
  * The build ships no image files (spec section 10.2), so the cube is generated
  * at runtime like every other texture in the game. It is generated again as the
@@ -62,17 +62,8 @@ const LUMA: Rgb = [0.2126, 0.7152, 0.0722];
  */
 export const LUT_SIZE = 16;
 
-/**
- * The cube is laid out as a strip: the blue slices side by side in one row of
- * squares, red across a square and green down it. A real 3D texture would say
- * this more plainly, and `Lut3DNode` would then read it, but three.js 0.186
- * cannot upload one: see `post.ts`.
- */
-export const LUT_WIDTH = LUT_SIZE * LUT_SIZE;
-export const LUT_HEIGHT = LUT_SIZE;
-
-/** Numbers {@link writeLut} fills: four channels a colour, the whole strip. */
-export const LUT_LENGTH = LUT_WIDTH * LUT_HEIGHT * 4;
+/** Numbers {@link writeLut} fills: four channels a colour, the whole cube. */
+export const LUT_LENGTH = LUT_SIZE * LUT_SIZE * LUT_SIZE * 4;
 
 /**
  * Times a day the table is rebuilt. One in-game day is 24 real minutes, so this
@@ -160,15 +151,16 @@ function channel(value: number, contrast: number, gain: number, lift: number): n
 }
 
 /**
- * Where a colour of the cube stands in the strip: the first of its four
- * numbers. Green is the row, and blue then red run along it.
+ * Where a colour stands in the cube: the first of its four numbers. This is the
+ * order a `Data3DTexture` reads its data in — red along a row, green down a
+ * slice, blue through the slices — so the array is uploaded as it stands.
  */
 export function lutIndex(r: number, g: number, b: number): number {
-  return (g * LUT_WIDTH + b * LUT_SIZE + r) * 4;
+  return ((b * LUT_SIZE + g) * LUT_SIZE + r) * 4;
 }
 
 /**
- * Fill the strip. `out` is {@link LUT_LENGTH} long. The alpha is never read —
+ * Fill the cube. `out` is {@link LUT_LENGTH} long. The alpha is never read —
  * the graded frame keeps its own — and is written as 1 so the texture is a
  * valid one.
  */
