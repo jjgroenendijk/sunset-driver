@@ -9,10 +9,11 @@ gets wrong without it.
   archipelago is a power diagram of island sites shrunk by half a channel and domain-warped, so
   straits bend but never close. The main site is the core at the origin.
 - three.js `TerrainGenerator` needs `valleyBias: 1`; fractional values produce NaN.
-- `new LandMasses(hf, islands, minHeight)` (`landmass.ts`) labels the connected pieces of dry land
-  and says which carry an island site. A cell of the power diagram can hold a rock in the sea that
-  no crossing reaches, so anything that places ground content asks `carriesIsland` first. District
-  sites do.
+- `new LandMasses(hf, water, minHeight)` (`landmass.ts`) labels the connected pieces of dry land and
+  says which of them a road can arrive at: the piece the main island stands on, and every piece a
+  chain of the water description's crossings leads to from there. A cell of the power diagram can
+  hold a rock in the sea, and it can hold several pieces of land that no crossing joins, so anything
+  that places ground content asks `reaches` first. District sites and beaches do.
 - Ask `islandAt(islands, size, coastNoise(seed), x, y)` which island a point stands on.
   `islandIndexAt` reads the raw power cells, and the coastline is cut from those cells after a
   domain warp that moves them by up to 6 % of the map.
@@ -23,6 +24,13 @@ gets wrong without it.
 - `roads.ts` is the plan of the road network and `road-trace.ts` the trace it runs on: the step
   along the field, the ground that refuses it, the reroute and the structures. `RoadTracer` extends
   `RoadTrace`, and `road-index.ts` is the network laid so far, which every step is vetted against.
+- The two highways through the core are the spine every other road grows off, so where the ground
+  cuts both of them short of `MIN_HIGHWAY` the longer is laid whatever its length. Without that a
+  seed whose trunks both come up short has no highway, and then no arterial, no street and no road
+  at all.
+- The islands are linked twice: once after the highways, and once after the arterial fill, for an
+  island that carries a district and still has no road on it. A bridge is refused where its near
+  shore reaches no road, and when the islands are first linked the network is two highways.
 - `traceRoads(world, field)` (`roads.ts`) traces every tier as streamlines of that field: highways,
   then arterials, then the minor fill of streets, alleys and dirt roads. Three invariants hold by
   construction, and the sweep checks them: every curve shares a point with another curve, so the
@@ -141,8 +149,11 @@ gets wrong without it.
   cannot overlap, and the sweep only confirms it. The tram claims first, so a deck over its lane
   gives way. A line that turns more than `MAX_BEND` is cut at the turn, because a strip carried
   round a corner that sharp folds over itself.
+- A corridor claims no ground where its centreline stands over water, whatever its kind: there is
+  nothing under it to claim. The tram is what needs that rule, since its lane runs down the middle
+  of an arterial and an arterial crosses a strait on a deck.
 - An elevated corridor is the ground under a deck that stands over land, with the pillar feet that
-  carry it; a deck over water owns nothing, because there is no ground under it. A tram corridor is
+  carry it; a deck over water owns nothing, for the same reason. A tram corridor is
   the reserved lane, down the middle of an arterial from one stop to the next. `world.tram` holds
   the line the tram drives, its stops, and the level crossings where another road meets it.
 - `buildJunctions(roads, graph)` (`junctions.ts`) is where roads meet (spec section 6.2). Every node
@@ -175,8 +186,11 @@ gets wrong without it.
   into the hillside over `CARVE_BLEND`. Ground a road claims — the bench it draws its surface on —
   belongs to it before ground it merely reaches, and where two roads claim one place the ground
   takes the lower of the beds they ask for, so the other road stands over the ground rather than
-  buried under it; `crowdedAt(x, y)` is how the sweeps ask whether a place is one of those. A
-  segment on a deck or in a bore carves nothing at all.
+  buried under it; `crowdedAt(x, y)` is how the sweeps ask whether a place is one of those. A place
+  inside a junction's outline is the junction's whatever else reaches it, but the scan carries on
+  past it all the same, because a street crossing under a junction of a wider road is one of those
+  crowded places and only asking every claimant sees it. A segment on a deck or in a bore carves
+  nothing at all.
 - A chunk samples the carve every `CHUNK_TERRAIN_CELL` (2.5 m), four samples to a cell of the
   skeleton's `TERRAIN_CELL` grid, because the camera looks down at an 11 m street and the hillside
   between two 10 m samples cuts up through it. The far ring reads every fourth sample and lands back
