@@ -1,4 +1,4 @@
-name: Deploy
+name: CI
 
 on:
   push:
@@ -10,18 +10,15 @@ on:
 
 permissions:
   contents: read
-  deployments: write
-  pull-requests: write
 
 concurrency:
-  group: deploy-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   # Docs-only changes skip the build. The filter is a job rather than a
-  # workflow-level `paths-ignore` because `build-and-deploy` is a required
-  # check: a workflow filtered out by path never reports and would block the
-  # merge, while a job skipped by `if` counts as satisfied.
+  # workflow-level `paths-ignore`, because a workflow filtered out by path
+  # never reports its checks and would block the merge.
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -62,46 +59,53 @@ jobs:
           node-version-file: .nvmrc
       - run: npm run lint:size
 
-  build-and-deploy:
+  # A pull request proves the code typechecks, lints and builds. Main only
+  # builds, because the pull request already checked the same tree.
+  build:
     needs: changes
     if: needs.changes.outputs.code == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      checks: ${{ github.event_name == 'pull_request' }}
+
+  # Only main deploys, from the `dist` the build uploaded. A pull request
+  # publishes nothing, so one change reaches Cloudflare once.
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      deployments: write
     steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
+      - uses: actions/download-artifact@v8
         with:
-          node-version-file: .nvmrc
+          name: dist
+          path: dist
 
-      - name: Restore node_modules
-        id: modules
-        uses: actions/cache@v6
-        with:
-          path: node_modules
-          key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc', 'package-lock.json') }}
-
-      - if: steps.modules.outputs.cache-hit != 'true'
-        run: npm ci --prefer-offline --no-audit --no-fund
-
-      # Tests run locally (`npm run verify`) and nightly (`nightly.yml`), not
-      # here. A pull request proves the code typechecks, lints and builds; main
-      # only builds and deploys.
-      - if: github.event_name == 'pull_request'
-        run: npm run typecheck
-      - if: github.event_name == 'pull_request'
-        run: npm run lint
-      - if: github.event_name == 'pull_request'
-        run: npm run lint:size
-
-      - run: npm run build
-
-      # Only main deploys. A pull request builds to prove the build works and
-      # publishes nothing, so one change reaches Cloudflare once.
       - name: Deploy to Cloudflare Pages
-        if: github.event_name != 'pull_request'
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # The job has no checkout, so the action installs wrangler itself.
+          # Keep the major version with the one in `package.json`.
+          wranglerVersion: '4'
           command: pages deploy dist --project-name=sunset-driver --branch=${{ github.ref_name }} --commit-dirty=true --commit-hash=${{ github.sha }}
+
+  # The one required check. A job that calls a reusable workflow reports under
+  # a name of its own (`build / build`), and under another when it is skipped,
+  # so the rules on main require this job instead. It fails when a job it
+  # waits for failed or was cancelled, and passes when the build was skipped.
+  ci-passed:
+    needs: [docs, build, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          echo 'docs=${{ needs.docs.result }} build=${{ needs.build.result }} deploy=${{ needs.deploy.result }}'
+          [ "$FAILED" = false ]

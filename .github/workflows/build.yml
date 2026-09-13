@@ -1,0 +1,58 @@
+name: Build
+
+# A reusable workflow: `ci.yml` calls it. It installs, optionally checks, builds
+# and uploads `dist` as an artifact for a later job to publish. It never
+# deploys and holds no secret.
+on:
+  workflow_call:
+    inputs:
+      checks:
+        description: Typecheck and run both lints before the build.
+        type: boolean
+        default: true
+      artifact:
+        description: Name of the artifact that holds `dist`.
+        type: string
+        default: dist
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Restore node_modules
+        id: modules
+        uses: actions/cache@v6
+        with:
+          path: node_modules
+          key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc', 'package-lock.json') }}
+
+      - if: steps.modules.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      # Tests run locally (`npm run verify`) and nightly (`nightly.yml`), not
+      # here.
+      - if: inputs.checks
+        run: npm run typecheck
+      - if: inputs.checks
+        run: npm run lint
+      - if: inputs.checks
+        run: npm run lint:size
+
+      - run: npm run build
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
