@@ -188,6 +188,12 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   // SMAA's tables are decoded from data URLs, so a frame drawn before they
   // land is a different picture. The same request twice takes the same one.
   await post.ready();
+  // The water's mirror is added to the scene while its shader is built, which
+  // is during the first render. That frame reflects from a mirror whose place
+  // was never computed, and draws a hard line across the sea. The game draws it
+  // once; the picture is the frame after it.
+  post.render();
+  await renderer.readRenderTargetPixelsAsync(target, 0, 0, 1, 1);
   // `render` only submits the work; the readback below is what waits for it.
   post.render();
   const padded = await renderer.readRenderTargetPixelsAsync(target, 0, 0, width, height);
