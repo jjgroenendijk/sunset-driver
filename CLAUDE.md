@@ -16,16 +16,16 @@ Tests run on your machine, not in CI. The commands:
 - `npm run typecheck` — `tsc --noEmit`.
 - `npm run lint` — the determinism lint. `npm run lint:size` — the file-size lint.
 - `npm test` — the quick tier. `npm run test:full` — the full tier of 200 seeds (`SWEEP_SEEDS=200`).
-- `npm run verify` — typecheck, both lints and the quick tier, under 20 s. Run it before every
-  commit.
+- `npm run verify` — typecheck, both lints and the quick tier, under 20 s. Run before every commit.
 - `npm run verify:full` — the same with the full tier, about 2 min. Run it before a pull request
   that changes `src/world` or `src/sim`.
 
-A pull request only typechecks, lints and builds; `build-and-deploy` is required to merge. A push to
-main builds and deploys `dist` to Cloudflare Pages, which is the one deployment a change gets.
-Commits touching only `**/*.md` or `.claude/**` skip that job, so keep docs commits separate from
-code commits. Each night `nightly.yml` runs `verify:full` on main plus the day's Dependabot updates,
-merges the updates when it passes, and opens a `nightly-failure` issue when it fails.
+`ci.yml` calls the reusable `build.yml` and deploys in a separate job. A pull request only
+typechecks, lints and builds; `ci-passed` is the check required to merge. A push to main builds and
+deploys `dist` to Cloudflare Pages. Commits touching only `**/*.md` or `.claude/**` skip the build,
+so keep docs commits separate from code commits. Each night `nightly.yml` runs `verify:full` on main
+plus the day's Dependabot updates, merges the updates when it passes, and opens a `nightly-failure`
+issue when it fails.
 
 `npm test` must stay under 15 s and `npm run test:full` under 2 min. Cut seeds or ticks in the quick
 tier and keep full coverage behind `SWEEP_SEEDS` — never make a test slower to make it pass. Both
