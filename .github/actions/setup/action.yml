@@ -4,30 +4,39 @@ description: >-
   from caches when they hit. Needs a checkout that holds both files.
 
 inputs:
-  save:
+  ignore-scripts:
     description: >-
-      Save a cache that missed. A job that runs untrusted code sets `false`, so
-      nothing it installs reaches a later job through the cache.
-    default: 'true'
+      Install without the packages' install scripts, and save no cache. A job
+      that holds a secret sets `true`, so no package's code runs beside it.
+    default: 'false'
 
 runs:
   using: composite
   steps:
     # setup-node downloads and unpacks Node on every run unless the version is
-    # already in the tool cache, which costs more than restoring it.
-    - id: node
+    # already in the tool cache, which costs more than restoring it. The key
+    # follows the lockfile, so each dependency update also fetches the newest
+    # Node of the major, and a patch release reaches CI.
+    - id: keys
       shell: bash
-      run: echo "major=$(cat .nvmrc)" >> "$GITHUB_OUTPUT"
-    - if: inputs.save == 'true'
+      env:
+        LOCK: ${{ hashFiles('package-lock.json') }}
+      run: |
+        major=$(cat .nvmrc)
+        echo "node-path=/opt/hostedtoolcache/node/$major.*" >> "$GITHUB_OUTPUT"
+        echo "node=node-$RUNNER_OS-$major-$LOCK" >> "$GITHUB_OUTPUT"
+        echo "modules=modules-$RUNNER_OS-$major-$LOCK" >> "$GITHUB_OUTPUT"
+
+    - if: inputs.ignore-scripts != 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: /opt/hostedtoolcache/node/${{ steps.node.outputs.major }}.*
-        key: node-${{ runner.os }}-${{ steps.node.outputs.major }}
-    - if: inputs.save != 'true'
+        path: ${{ steps.keys.outputs.node-path }}
+        key: ${{ steps.keys.outputs.node }}
+    - if: inputs.ignore-scripts == 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: /opt/hostedtoolcache/node/${{ steps.node.outputs.major }}.*
-        key: node-${{ runner.os }}-${{ steps.node.outputs.major }}
+        path: ${{ steps.keys.outputs.node-path }}
+        key: ${{ steps.keys.outputs.node }}
 
     - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
@@ -35,18 +44,20 @@ runs:
         package-manager-cache: false
 
     - id: saved
-      if: inputs.save == 'true'
+      if: inputs.ignore-scripts != 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: node_modules
-        key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc', 'package-lock.json') }}
+        key: ${{ steps.keys.outputs.modules }}
     - id: restored
-      if: inputs.save != 'true'
+      if: inputs.ignore-scripts == 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: node_modules
-        key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc', 'package-lock.json') }}
+        key: ${{ steps.keys.outputs.modules }}
 
     - if: steps.saved.outputs.cache-hit != 'true' && steps.restored.outputs.cache-hit != 'true'
       shell: bash
-      run: npm ci --prefer-offline --no-audit --no-fund
+      env:
+        IGNORE_SCRIPTS: ${{ inputs.ignore-scripts }}
+      run: npm ci --prefer-offline --no-audit --no-fund --ignore-scripts="$IGNORE_SCRIPTS"
