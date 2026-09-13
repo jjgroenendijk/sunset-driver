@@ -66,19 +66,6 @@ document, read by section. When a doc reaches its limit, move a subject out into
 rather than writing more tightly.
 
 
-## Taking an issue
-
-The routine that opens these sessions fires every hour, so two sessions overlap and read the same
-list. Claim an issue before the first command, because the assignee is all the next session can see.
-
-- Take the lowest open issue with no assignee, no open pull request referencing it, and its
-  prerequisites closed. An assignee means another session has it, however stale it looks.
-- Assign it to yourself, then read its state again before you push: a long run can finish after
-  someone else has merged the same issue.
-- Where two implementations exist anyway, one lands and the other is closed as superseded with a
-  comparison on it. They are never merged together.
-
-
 ## Determinism
 
 The whole game is a pure function of its seed, so the tooling enforces:
