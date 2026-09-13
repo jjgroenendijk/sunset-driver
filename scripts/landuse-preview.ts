@@ -10,7 +10,7 @@
  */
 import { writeFileSync } from 'node:fs';
 import { seedFromString } from '../src/core/rng.ts';
-import { buildBuildings } from '../src/world/buildings.ts';
+import { buildBuildings, type BuildingKind } from '../src/world/buildings.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
 import { buildFootprint } from '../src/world/footprint.ts';
 import { buildParcels } from '../src/world/parcels.ts';
@@ -64,9 +64,10 @@ const OWNER_COL: Record<string, [number, number, number]> = {
   water: [40, 100, 170],
   ground: [120, 140, 95],
 };
-const KIND_COL: Record<string, [number, number, number]> = {
+const KIND_COL: Record<BuildingKind, [number, number, number]> = {
   tower: [245, 245, 255],
   'mid-rise': [195, 200, 220],
+  'parking-garage': [120, 125, 135],
   'shop-row': [235, 165, 80],
   house: [225, 130, 120],
   warehouse: [140, 145, 160],
@@ -84,7 +85,7 @@ for (let iy = 0; iy < n; iy++) {
     if (grid.land[i] === 0 && use !== USE_ROAD) col = WATER;
     else if (use === USE_ROAD) col = ROAD;
     else if (use === USE_PARCEL) col = OWNER_COL[OWNERS[tint] as string] as [number, number, number];
-    else if (use === USE_LOT) col = KIND_COL[KINDS[tint] as string] as [number, number, number];
+    else if (use === USE_LOT) col = KIND_COL[KINDS[tint] as BuildingKind] as [number, number, number];
     // Row 0 of the grid is the south edge; row 0 of the picture is the north one.
     const o = ((n - 1 - iy) * n + ix) * 3;
     rgb[o] = col[0];

@@ -72,6 +72,8 @@ function buildingOf(kind: BuildingKind, width: number, depth: number, options: P
     road: 0,
     district: 0,
     zone: 'core',
+    // The skyline at its edge, so a tower stands low unless the test says otherwise.
+    skyline: 0,
     ...options,
     // A lot with nothing against either side, unless the test says otherwise.
     shared: options.shared ?? { left: false, right: false },
@@ -143,7 +145,7 @@ function signature(geometry: BufferGeometry): string {
 }
 
 /** The kinds a lot of every size is built in, so a test covers all of them. */
-const KINDS: readonly BuildingKind[] = ['tower', 'mid-rise', 'shop-row', 'house', 'warehouse', 'roadhouse'];
+const KINDS: readonly BuildingKind[] = ['tower', 'mid-rise', 'parking-garage', 'shop-row', 'house', 'warehouse', 'roadhouse'];
 
 describe('a building on its lot', () => {
   it('stands wholly inside the lot it was given', () => {
@@ -233,7 +235,7 @@ describe('which batch a building is built in', () => {
     // A lot this narrow leaves the generator no room for its bays once the
     // cornices have been allowed for, so the tower is built as a block.
     expect((placed([buildingOf('tower', 12, 26)])[0] as BuildingPlacement).batch).toBe('block');
-    for (const kind of ['shop-row', 'house', 'warehouse', 'roadhouse'] as const) {
+    for (const kind of ['parking-garage', 'shop-row', 'house', 'warehouse', 'roadhouse'] as const) {
       expect((placed([buildingOf(kind, 26, 28)])[0] as BuildingPlacement).batch).toBe('block');
     }
   });
@@ -252,6 +254,17 @@ describe('how tall a building stands', () => {
     const quiet = massingOf(building, { ...CORE, density: 0.1, wealth: 0.1 }, 0);
     const busy = massingOf(building, { ...CORE, density: 0.9, wealth: 0.9 }, 0);
     expect(busy.height).toBeGreaterThan(quiet.height);
+  });
+
+  it('builds higher where the skyline stands higher, so the city falls away from its middle', () => {
+    for (const kind of ['tower', 'mid-rise'] as const) {
+      const edge = massingOf(buildingOf(kind, 30, 30, { skyline: 0.1 }), CORE, 0);
+      const middle = massingOf(buildingOf(kind, 30, 30, { skyline: 0.9 }), CORE, 0);
+      expect(middle.height, kind).toBeGreaterThan(edge.height);
+    }
+    // A house is a house wherever it stands.
+    const house = (skyline: number): number => massingOf(buildingOf('house', 20, 20, { skyline }), CORE, 0).height;
+    expect(house(0.9)).toBe(house(0.1));
   });
 
   it('keeps a tower on a narrow lot from standing like a spire', () => {

@@ -71,6 +71,7 @@ function lotOf(ring: Point[]): BuildingMap {
     shared: { left: false, right: false },
     district: 0,
     zone: 'suburban',
+    skyline: 0,
   };
   return { buildings: [building], area: 0 };
 }

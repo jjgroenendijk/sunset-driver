@@ -1,4 +1,4 @@
-import { dist2 } from '../core/math.ts';
+import { dist2, smoothstep } from '../core/math.ts';
 import { genRng, Subsystem, type Rng } from '../core/rng.ts';
 import type { Culture, District, Island, Point, WaterDescription, Zone } from './types.ts';
 import type { Heightfield } from './heightfield.ts';
@@ -71,6 +71,20 @@ export function zoneAt(layout: ZoneLayout, x: number, y: number): Zone {
   if (r < ZONE_RADII.suburban * s) return 'suburban';
   if (r < ZONE_RADII.outskirts * s) return 'outskirts';
   return 'wilderness';
+}
+
+/**
+ * How high the skyline stands over a place, in [0, 1] (spec section 10.3): 1 in
+ * the middle of the city and 0 at the outer edge of the inner ring and past it.
+ *
+ * The zone rings are hard edges, and a tower height read from them would stop
+ * at a circle. This value falls off smoothly with the distance from the core
+ * instead, so the skyline tapers. It is flat at the middle and flat at the edge,
+ * so neither end shows a crease.
+ */
+export function skylineAt(layout: ZoneLayout, x: number, y: number): number {
+  const r = Math.hypot(x - layout.core.x, y - layout.core.y);
+  return 1 - smoothstep(0, ZONE_RADII.inner * layout.size, r);
 }
 
 const NAMED_INNER: { name: string; culture: Culture }[] = [

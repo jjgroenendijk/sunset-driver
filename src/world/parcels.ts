@@ -226,10 +226,13 @@ interface ZoneOwnership {
 }
 
 const OWNERSHIP: Record<Zone, ZoneOwnership> = {
-  // Downtown: towers on nearly every block, a paved square where the money is,
-  // a multi-storey car park on a block at most.
-  core: { maxArea: 22_000, minBuilt: 120, maxPark: 8_000, maxCarPark: 3_000, park: 0.05, carPark: 0.08, plaza: 0.1, build: 0.74 },
-  inner: { maxArea: 26_000, minBuilt: 120, maxPark: 12_000, maxCarPark: 4_000, park: 0.08, carPark: 0.08, plaza: 0.05, build: 0.76 },
+  // Downtown: a building on nearly every block, and a park. A paved square is a
+  // landmark, so there are few of them. There is no open car park: the dense
+  // zones park their cars in a parking garage, which is a building kind (issue
+  // #193). Whatever the roll leaves over is ground cover, so `build` fills the
+  // rest of the chances.
+  core: { maxArea: 22_000, minBuilt: 120, maxPark: 8_000, maxCarPark: 3_000, park: 0.05, carPark: 0, plaza: 0.02, build: 0.95 },
+  inner: { maxArea: 26_000, minBuilt: 120, maxPark: 12_000, maxCarPark: 4_000, park: 0.08, carPark: 0, plaza: 0.02, build: 0.92 },
   // Sheds and yards: the open ground is parked on rather than planted, and a
   // lorry yard is the biggest car park there is.
   industrial: { maxArea: 24_000, minBuilt: 300, maxPark: 12_000, maxCarPark: 12_000, park: 0.02, carPark: 0.16, plaza: 0.01, build: 0.78 },

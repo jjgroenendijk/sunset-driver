@@ -7,9 +7,10 @@
  * stands on each of them.
  *
  * The kind comes from the zone, from the density and the wealth of the
- * district, and from how much ground the lot has. `ZONE_BUILDINGS` is the
- * table: it says which kinds a zone builds at all, so a suburban parcel can
- * never receive a tower whatever it rolls. A lot too small for the kind it
+ * district, from how high the skyline stands over the lot, and from how much
+ * ground the lot has. `ZONE_BUILDINGS` is the table: it says which kinds a zone
+ * builds at all, so a suburban parcel can never receive a tower whatever it
+ * rolls. A lot too small for the kind it
  * rolled takes the next smaller kind the zone allows, which is what puts the
  * towers on the wide core lots and the shop rows on the narrow ones.
  *
@@ -20,6 +21,7 @@
  */
 import type { Point } from '../core/geom.ts';
 import { genRng, Rng, Subsystem } from '../core/rng.ts';
+import { layoutZones, skylineAt } from './districts.ts';
 import type { RoadGraph } from './graph.ts';
 import { lotsOf, type Shared } from './lots.ts';
 import type { ParcelMap } from './parcels.ts';
@@ -29,7 +31,7 @@ import type { District, WorldDescription, Zone } from './types.ts';
 export { FRONT_REACH, LOT_CLEARANCE, ZONE_LOTS, type Lot, type LotSpec, type Shared } from './lots.ts';
 
 /** What stands on a lot (spec section 10.3). */
-export type BuildingKind = 'tower' | 'mid-rise' | 'shop-row' | 'house' | 'warehouse' | 'roadhouse';
+export type BuildingKind = 'tower' | 'mid-rise' | 'parking-garage' | 'shop-row' | 'house' | 'warehouse' | 'roadhouse';
 
 /** One building on its own lot. */
 export interface Building {
@@ -75,6 +77,12 @@ export interface Building {
   /** Id of the district the lot stands in, as its parcel reads it. */
   district: number;
   zone: Zone;
+  /**
+   * How high the skyline stands over the lot, in [0, 1], as `skylineAt` reads
+   * it at the middle of the lot. It moves the choice of a tower here and the
+   * height of a tall building in the renderer.
+   */
+  skyline: number;
 }
 
 /** The buildings of a world. */
@@ -92,15 +100,19 @@ export interface BuildingMap {
  */
 export const ZONE_BUILDINGS: Record<Zone, readonly { kind: BuildingKind; weight: number }[]> = {
   // Dense downtown: tall towers on the wide lots, shops on what is left.
+  // A downtown parks its cars in a building, not on open asphalt.
   core: [
     { kind: 'tower', weight: 0.6 },
     { kind: 'mid-rise', weight: 0.3 },
+    { kind: 'parking-garage', weight: 0.08 },
     { kind: 'shop-row', weight: 0.1 },
   ],
-  // Mid-rise with commercial strips, and the odd tower where the money is.
+  // Mid-rise with commercial strips, and the odd tower where the money is and
+  // the skyline is high.
   inner: [
     { kind: 'tower', weight: 0.1 },
     { kind: 'mid-rise', weight: 0.5 },
+    { kind: 'parking-garage', weight: 0.06 },
     { kind: 'shop-row', weight: 0.25 },
     { kind: 'house', weight: 0.15 },
   ],
@@ -135,10 +147,19 @@ export const MIN_LOT_AREA: Record<BuildingKind, number> = {
   tower: 320,
   warehouse: 600,
   'mid-rise': 220,
+  // Decks with a ramp between them need a wide lot, or the ramp takes the floor.
+  'parking-garage': 450,
   roadhouse: 200,
   'shop-row': 130,
   house: 90,
 };
+
+/**
+ * How much of its zone's tower share a lot keeps where the skyline has fallen
+ * to 0. The share rises in a straight line with the skyline: it is the zone's
+ * own share where the skyline stands at one half, and 1.8 times it at 1.
+ */
+const TOWER_EDGE = 0.2;
 
 /**
  * Lay the buildings of a world on its parcels. The parcels and the graph are
@@ -147,13 +168,16 @@ export const MIN_LOT_AREA: Record<BuildingKind, number> = {
  */
 export function buildBuildings(world: WorldDescription, parcels: ParcelMap, graph: RoadGraph): BuildingMap {
   const buildings: Building[] = [];
+  const zones = layoutZones(world.size, world.core, world.water);
   let area = 0;
   for (const parcel of parcels.parcels) {
     if (parcel.owner !== 'building') continue;
     const district = world.districts[parcel.district] as District;
     const rng = genRng(world.seed, Subsystem.Buildings, parcel.id);
     for (const lot of lotsOf(parcel, graph)) {
-      const kind = kindFor(parcel.zone, district, lot.area, rng);
+      const middle = lotMiddle(lot.corners);
+      const skyline = skylineAt(zones, middle.x, middle.y);
+      const kind = kindFor(parcel.zone, district, skyline, lot.area, rng);
       if (kind === undefined) continue;
       buildings.push({
         id: buildings.length,
@@ -170,6 +194,7 @@ export function buildBuildings(world: WorldDescription, parcels: ParcelMap, grap
         shared: lot.shared,
         district: parcel.district,
         zone: parcel.zone,
+        skyline,
       });
       area += lot.area;
     }
@@ -201,9 +226,9 @@ export function lotMiddle(lot: readonly Point[]): Point {
  * both move the weights rather than the table. The lot then has the last word —
  * a kind that does not fit steps down the table until one does.
  */
-function kindFor(zone: Zone, district: District, area: number, rng: Rng): BuildingKind | undefined {
+function kindFor(zone: Zone, district: District, skyline: number, area: number, rng: Rng): BuildingKind | undefined {
   const table = ZONE_BUILDINGS[zone];
-  const weights = table.map((entry) => entry.weight * demandFor(entry.kind, district));
+  const weights = table.map((entry) => entry.weight * demandFor(entry.kind, district, skyline));
   let total = 0;
   for (const weight of weights) total += weight;
   let roll = rng.float() * total;
@@ -222,12 +247,17 @@ function kindFor(zone: Zone, district: District, area: number, rng: Rng): Buildi
   return undefined;
 }
 
-/** How much more or less of a kind a district wants than the zone's own share. */
-function demandFor(kind: BuildingKind, district: District): number {
+/**
+ * How much more or less of a kind a place wants than the zone's own share: the
+ * district's density and wealth, and for a tower how high the skyline stands.
+ */
+function demandFor(kind: BuildingKind, district: District, skyline: number): number {
   switch (kind) {
-    // Height follows the crowd, and a tower goes up where the money is.
+    // Height follows the crowd, and a tower goes up where the money is. The
+    // skyline gathers the towers towards the middle, so the inner ring builds
+    // them next to the core and hardly at all at its outer edge.
     case 'tower':
-      return 1 + 0.8 * (district.density - 0.5) + 0.6 * (district.wealth - 0.5);
+      return (1 + 0.8 * (district.density - 0.5) + 0.6 * (district.wealth - 0.5)) * (TOWER_EDGE + (1 - TOWER_EDGE) * 2 * skyline);
     case 'mid-rise':
       return 1 + 0.4 * (district.density - 0.5);
     // A poor, busy district is where the strip of shops is.

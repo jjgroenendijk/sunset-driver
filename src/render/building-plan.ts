@@ -58,6 +58,7 @@ export interface BuildingMassing {
 const KIND_MARGIN: Record<BuildingKind, number> = {
   tower: 0.5,
   'mid-rise': 0.5,
+  'parking-garage': 0.5,
   'shop-row': 0.4,
   house: 0.9,
   warehouse: 0.8,
@@ -99,6 +100,8 @@ const MIN_MASSING = 4;
 const KIND_HEIGHT: Record<BuildingKind, { low: number; high: number }> = {
   tower: { low: 48, high: 150 },
   'mid-rise': { low: 14, high: 34 },
+  // Three to five open decks.
+  'parking-garage': { low: 9, high: 16 },
   'shop-row': { low: 7.5, high: 11.5 },
   house: { low: 4.5, high: 9.5 },
   warehouse: { low: 7, high: 13 },
@@ -112,8 +115,14 @@ const KIND_HEIGHT: Record<BuildingKind, { low: number; high: number }> = {
  */
 const MAX_SLENDERNESS = 7;
 
-/** How much of a building's height comes from the district rather than its own seed. */
-const DISTRICT_SHARE = 0.45;
+/**
+ * How much of a tall building's height comes from its district and from the
+ * skyline over its lot. What is left comes from its own seed. The skyline has
+ * the larger share, so the city is tall in the middle and falls away from it
+ * rather than stopping at the edge of the core.
+ */
+const DISTRICT_SHARE = 0.25;
+const SKYLINE_SHARE = 0.45;
 
 /** Metres the base of a building is sunk, so no daylight shows under a wall on a slope. */
 export const FOUNDATION = 0.5;
@@ -125,15 +134,20 @@ const CHAMFER_REACH = 16;
 /** Edges leaving a node before it counts as a junction rather than a bend. */
 const JUNCTION_DEGREE = 3;
 
-/** The massing of a building, from its lot, its kind and the district it stands in. */
+/**
+ * The massing of a building, from its lot, its kind, the district it stands in
+ * and the skyline over it.
+ */
 export function massingOf(building: Building, district: District, chamfer: number): BuildingMassing {
   const flat = plan(building);
   const span = KIND_HEIGHT[building.kind];
-  // The district has its say on the kinds that grow tall; a house is a house
-  // wherever it stands.
   const crowd = building.kind === 'tower' ? (district.density + district.wealth) / 2 : district.density;
-  const pull = building.kind === 'tower' || building.kind === 'mid-rise' ? DISTRICT_SHARE : 0;
-  const t = unit(building.seed, 1) * (1 - pull) + crowd * pull;
+  // The district and the skyline have their say on the kinds that grow tall; a
+  // house is a house wherever it stands.
+  const tall = building.kind === 'tower' || building.kind === 'mid-rise';
+  const t = tall
+    ? unit(building.seed, 1) * (1 - DISTRICT_SHARE - SKYLINE_SHARE) + crowd * DISTRICT_SHARE + building.skyline * SKYLINE_SHARE
+    : unit(building.seed, 1);
   // A tall building needs a lot to stand on: its own narrow side is what caps it.
   const ceiling = Math.min(span.high, Math.max(span.low, Math.min(flat.width, flat.depth) * MAX_SLENDERNESS));
   return {
