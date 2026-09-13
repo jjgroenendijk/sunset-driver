@@ -592,5 +592,3 @@ export const DEFAULT_WEAPON: WeaponId = 'fists';
 export function weaponOf(id: WeaponId): WeaponSpec {
   return ARSENAL[id];
 }
-
-/** Magazines of spare ammunition a weapon comes with when it is given out. */
