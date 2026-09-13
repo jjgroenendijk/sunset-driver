@@ -119,7 +119,9 @@ The ones that cost a session with nothing to say why. The subsystem docs hold th
 - Relative imports carry explicit `.ts` extensions (`allowImportingTsExtensions` is on) so scripts
   and tests run under plain Node.
 - The lint script's TypeScript compiler API comes from the `tsapi` alias (TypeScript 5), because the
-  TypeScript 7 the project builds with ships no JS API.
+  TypeScript 7 the project builds with ships no JS API. The alias also ships a `tsc`, and npm links
+  that one into `node_modules/.bin`, so a bare `tsc` is TypeScript 5. Call
+  `node_modules/typescript/bin/tsc` by path.
 - three.js 0.186 with `@types/three` 0.185. `TerrainGenerator`, `SkyscraperGenerator` and
   `SidewalkGenerator` live under `three/examples/jsm/generators/` and run headless in Node.
 - Conventional Commits, one atomic change per commit, feature branches from `main`, one PR per issue
