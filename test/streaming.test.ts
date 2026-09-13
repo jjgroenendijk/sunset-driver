@@ -26,7 +26,6 @@ import { DEFAULT_APPEARANCE } from '../src/sim/character.ts';
 import { buildLayers, chunkAt, ChunkSource, CHUNK_SIZE } from '../src/world/chunks.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import type { District, RoadCurve, WorldDescription, Zone } from '../src/world/types.ts';
-import { FRAME_SLICE_MS } from './budgets.ts';
 
 const SIZE = 1000;
 const CELL = 10;
@@ -143,7 +142,8 @@ describe('the rings around the player', () => {
 
 describe('the frame budget', () => {
   it('is the whole of the streaming slice of the frame', () => {
-    expect(STREAM_BUDGET_MS).toBe(FRAME_SLICE_MS.streaming);
+    // Spec section 2.4 gives streaming 2 ms of the 16 ms frame.
+    expect(STREAM_BUDGET_MS).toBe(2);
   });
 
   it('runs what fits and leaves the rest for the next frame', () => {

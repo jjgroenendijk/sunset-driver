@@ -4,7 +4,7 @@
  *
  * It draws through the same `MapArt` the minimap and the full map use, so what
  * the title screen shows is what the session will show. Building the world
- * blocks the frame loop for a second or two (`test/budgets.ts`, `worldGen`),
+ * blocks the frame loop for a second or two,
  * so a build is asked for rather than run on every key press: the screen says
  * what it is doing, lets the browser paint that, and only then generates.
  *

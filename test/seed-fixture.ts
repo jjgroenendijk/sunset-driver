@@ -151,7 +151,6 @@ async function generate(): Promise<void> {
   // two rounds back to back so the byte-identical check costs no extra wait.
   // The pool itself starts the jobs that ask for layers first, so they are
   // listed here in the order the tests read them.
-  // What a seed costs is measured in `budget.test.ts`, on a quiet machine.
   const repeated = seeds.slice(0, REPEAT_COUNT);
   const jobs = [
     ...seeds.map((seed, i) => ({ seed, parts: i < FOOTPRINT_COUNT })),
