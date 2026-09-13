@@ -1,0 +1,296 @@
+/**
+ * The ground the network laid so far claims, as the tracer sees it while it
+ * lays the next road (spec section 6).
+ *
+ * `road-index.ts` holds the points of the network, which is all a merge needs.
+ * A road's width is not in it, so a trace that only asks it can run along
+ * another road's carriageway or stop in the middle of one and never know. This
+ * index holds the segments with the width of their tier, and answers the three
+ * questions that keep two roads off each other's ground:
+ *
+ * - May a step be taken? Near another road a step has to cross it or leave it
+ *   at {@link MIN_MEET} or more, and a margin besides. A step that runs along it is refused.
+ * - May a road end here? Not where its footprint stands on another road's.
+ * - May a road meet another at a shared point? Only where it leaves every road
+ *   already there at {@link MIN_MEET} or more.
+ *
+ * Two roads therefore touch only where they share a point or cross, both at an
+ * angle a junction or an overpass can be built at.
+ */
+import { clamp, directionDelta } from '../core/math.ts';
+import { footprintHalfWidth } from './tiers.ts';
+import type { Point, RoadCurve, RoadTier } from './types.ts';
+
+/** The least angle, in radians, at which one road may meet, cross or leave another. */
+export const MIN_MEET = Math.PI / 6;
+/**
+ * Radians the tracer asks for beyond {@link MIN_MEET}. The connection pass
+ * gives two crossing roads a point up to `CROSSING_SNAP` from where they
+ * cross, which turns their lines a little there, so a crossing traced at
+ * exactly the least angle can be spliced a hair under it.
+ */
+const MEET_MARGIN = (5 * Math.PI) / 180;
+const TRACE_MEET = MIN_MEET + MEET_MARGIN;
+
+/** Metres within which two road points are the same place. The index of points uses the same figure. */
+const SAME_PLACE = 0.01;
+
+/** Side of one bucket, in metres. */
+const CELL = 60;
+
+/**
+ * Where a road has crossed others so far: x, y, the curve crossed and its half
+ * width, four numbers to a crossing. {@link RoadClearance.stepOk} reads and
+ * extends it.
+ */
+export type Crossings = number[];
+
+/** The road laid so far, as the next step of it is vetted. */
+export interface Trail {
+  crossed: Crossings;
+  /** Where the road began. A junction there is the road's own, so its steps may stay near it. */
+  start?: Point;
+}
+
+/** Where two segments come closest: how far apart, and where along the second one. */
+interface Closest {
+  distance: number;
+  /** Along the second segment, from 0 at its start to 1 at its end. */
+  t: number;
+}
+
+export class RoadClearance {
+  private readonly origin: number;
+  private readonly n: number;
+  private readonly buckets: number[][] = [];
+  /** Both ends of every segment, four numbers to a segment. */
+  private readonly ends: number[] = [];
+  private readonly halfWidth: number[] = [];
+  /** The curve each segment belongs to. */
+  private readonly curve: number[] = [];
+  /** Whether each end of a segment is an end of its curve, two flags to a segment. */
+  private readonly terminal: boolean[] = [];
+  /** Segments of a reservation that has been given up, which nothing keeps off any more. */
+  private readonly released: boolean[] = [];
+  /** The last query each segment was visited by, so a segment filed twice is seen once. */
+  private readonly stamp: number[] = [];
+  private query = 0;
+  private widest = 0;
+
+  constructor(size: number) {
+    this.origin = -size / 2 - 2 * CELL;
+    this.n = Math.ceil((size + 4 * CELL) / CELL) + 1;
+    for (let i = 0; i < this.n * this.n; i++) this.buckets.push([]);
+  }
+
+  add(curve: RoadCurve): void {
+    this.lay(curve.id, curve.tier, curve.points);
+  }
+
+  /**
+   * Hold a line for a road of this tier that is not laid yet, so the roads laid
+   * before it keep off its ground as if it were. `id` is negative, so it is
+   * never the id of a curve. {@link release} gives the ground back.
+   */
+  reserve(id: number, tier: RoadTier, points: readonly Point[]): void {
+    this.lay(id, tier, points);
+  }
+
+  release(id: number): void {
+    for (let s = 0; s < this.curve.length; s++) if (this.curve[s] === id) this.released[s] = true;
+  }
+
+  private lay(id: number, tier: RoadTier, points: readonly Point[]): void {
+    const half = footprintHalfWidth(tier);
+    this.widest = Math.max(this.widest, half);
+    const last = points.length - 1;
+    for (let i = 0; i < last; i++) {
+      const a = points[i] as Point;
+      const b = points[i + 1] as Point;
+      const s = this.halfWidth.length;
+      this.ends.push(a.x, a.y, b.x, b.y);
+      this.halfWidth.push(half);
+      this.curve.push(id);
+      this.released.push(false);
+      this.terminal.push(i === 0, i + 1 === last);
+      this.stamp.push(0);
+      const x0 = this.column(Math.min(a.x, b.x));
+      const x1 = this.column(Math.max(a.x, b.x));
+      const y0 = this.column(Math.min(a.y, b.y));
+      const y1 = this.column(Math.max(a.y, b.y));
+      for (let iy = y0; iy <= y1; iy++) {
+        for (let ix = x0; ix <= x1; ix++) (this.buckets[iy * this.n + ix] as number[]).push(s);
+      }
+    }
+  }
+
+  /** True where a road of this tier may end: its footprint stands on no other road's. */
+  clearAt(x: number, y: number, tier: RoadTier): boolean {
+    const half = footprintHalfWidth(tier);
+    let clear = true;
+    this.visit(x, y, x, y, half, (s) => {
+      if (closest(x, y, x, y, this.ends, s).distance < half + (this.halfWidth[s] as number)) clear = false;
+    });
+    return clear;
+  }
+
+  /**
+   * True where a road of this tier may be driven from `a` to `b`: wherever the
+   * step comes within reach of another road, it crosses or leaves that road at
+   * {@link MIN_MEET} or more. It may not come near the end of a road at all,
+   * other than by leaving or meeting it there, and it may not cross two roads
+   * where they cross each other, or one road twice where it bends back: that
+   * is a junction it passes through without meeting. `trail` is the road laid
+   * so far: its crossings, so two steps cannot do that either, and its start,
+   * whose junction the step may stay near. The step adds its own crossings.
+   * The line of a segment that touches `meet` is left to {@link meets}.
+   */
+  stepOk(a: Point, b: Point, tier: RoadTier, trail: Trail = { crossed: [] }, meet?: Point): boolean {
+    const half = footprintHalfWidth(tier);
+    const heading = Math.atan2(b.y - a.y, b.x - a.x);
+    const crossed = trail.crossed;
+    const before = crossed.length;
+    let ok = true;
+    this.visit(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.max(a.x, b.x), Math.max(a.y, b.y), half, (s) => {
+      if (!ok) return;
+      const e = this.ends;
+      const k = s * 4;
+      const reach = half + (this.halfWidth[s] as number);
+      // The end of a road that met nothing stands on whatever passes within
+      // reach of it, crossing or not, so a step keeps that far from it. A step
+      // from that end, or meeting a road on it, is a junction there instead.
+      for (const [flag, end] of [[s * 2, k], [s * 2 + 1, k + 2]] as const) {
+        if (this.terminal[flag] !== true || touches(e, end, a) || (meet !== undefined && touches(e, end, meet))) continue;
+        if (trail.start !== undefined && touches(e, end, trail.start)) continue;
+        if (closest(a.x, a.y, b.x, b.y, [e[end] as number, e[end + 1] as number, e[end] as number, e[end + 1] as number], 0).distance < reach) {
+          ok = false;
+          return;
+        }
+      }
+      if (meet !== undefined && (touches(e, k, meet) || touches(e, k + 2, meet))) return;
+      const near = closest(a.x, a.y, b.x, b.y, e, s);
+      if (near.distance >= reach) return;
+      // Near only a corner of the segment, the step does not run beside its
+      // line; the segment on the other side of the corner answers for that.
+      if (near.distance > 0 && (near.t <= 0 || near.t >= 1)) return;
+      const along = Math.atan2((e[k + 3] as number) - (e[k + 1] as number), (e[k + 2] as number) - (e[k] as number));
+      if (directionDelta(heading, along) < TRACE_MEET) {
+        ok = false;
+        return;
+      }
+      if (near.distance > 0) return;
+      const x = (e[k] as number) + ((e[k + 2] as number) - (e[k] as number)) * near.t;
+      const y = (e[k + 1] as number) + ((e[k + 3] as number) - (e[k + 1] as number)) * near.t;
+      const width = this.halfWidth[s] as number;
+      // A step that starts on a road, or ends on one, touches it there: that is
+      // the junction, not a crossing.
+      if (Math.hypot(x - a.x, y - a.y) <= SAME_PLACE || Math.hypot(x - b.x, y - b.y) <= SAME_PLACE) return;
+      // Nor may it cross a road beside the junction it started from or ends on.
+      for (const junction of [trail.start, meet]) {
+        if (junction !== undefined && Math.hypot(x - junction.x, y - junction.y) < width + half) ok = false;
+      }
+      if (!ok) return;
+      for (let c = 0; c < crossed.length; c += 4) {
+        if (Math.hypot((crossed[c] as number) - x, (crossed[c + 1] as number) - y) < width + (crossed[c + 3] as number)) ok = false;
+      }
+      crossed.push(x, y, this.curve[s] as number, width);
+    });
+    if (!ok) crossed.length = before;
+    return ok;
+  }
+
+  /**
+   * True where a road of this tier arriving from `from` may end on `at`: it
+   * leaves every road with a point there at {@link MIN_MEET} or more, stands
+   * clear of every road it has crossed on the way, and the last step keeps off
+   * every other road.
+   */
+  meets(at: Point, from: Point, tier: RoadTier, trail: Trail = { crossed: [] }): boolean {
+    const ray = Math.atan2(from.y - at.y, from.x - at.x);
+    let ok = true;
+    this.visit(at.x, at.y, at.x, at.y, 0, (s) => {
+      const e = this.ends;
+      const k = s * 4;
+      for (const [near, far] of [[k, k + 2], [k + 2, k]] as const) {
+        if (!touches(e, near, at)) continue;
+        const other = Math.atan2((e[far + 1] as number) - at.y, (e[far] as number) - at.x);
+        let turn = Math.abs(ray - other) % (2 * Math.PI);
+        if (turn > Math.PI) turn = 2 * Math.PI - turn;
+        if (turn < TRACE_MEET) ok = false;
+      }
+    });
+    // A road that has just crossed another one meets nothing beside that
+    // crossing: the two places would stand inside one junction.
+    const half = footprintHalfWidth(tier);
+    const crossed = trail.crossed;
+    for (let c = 0; c < crossed.length; c += 4) {
+      if (Math.hypot((crossed[c] as number) - at.x, (crossed[c + 1] as number) - at.y) < half + (crossed[c + 3] as number)) return false;
+    }
+    return ok && this.stepOk(from, at, tier, { crossed: [...crossed], start: trail.start }, at);
+  }
+
+  /** Every segment filed near a box grown by `reach` plus the widest road, once each. */
+  private visit(minX: number, minY: number, maxX: number, maxY: number, reach: number, fn: (s: number) => void): void {
+    const grow = reach + this.widest + SAME_PLACE;
+    const x0 = this.column(minX - grow);
+    const x1 = this.column(maxX + grow);
+    const y0 = this.column(minY - grow);
+    const y1 = this.column(maxY + grow);
+    const query = ++this.query;
+    for (let iy = y0; iy <= y1; iy++) {
+      for (let ix = x0; ix <= x1; ix++) {
+        for (const s of this.buckets[iy * this.n + ix] as number[]) {
+          if (this.stamp[s] === query || this.released[s] === true) continue;
+          this.stamp[s] = query;
+          fn(s);
+        }
+      }
+    }
+  }
+
+  private column(v: number): number {
+    return clamp(Math.floor((v - this.origin) / CELL), 0, this.n - 1);
+  }
+}
+
+/** True when the end of a segment stored at `k` stands on a place. */
+function touches(ends: readonly number[], k: number, p: Point): boolean {
+  return Math.abs((ends[k] as number) - p.x) <= SAME_PLACE && Math.abs((ends[k + 1] as number) - p.y) <= SAME_PLACE;
+}
+
+/**
+ * Where the segment from (ax, ay) to (bx, by) comes closest to the stored
+ * segment `s`. Two segments that cross are no distance apart.
+ */
+function closest(ax: number, ay: number, bx: number, by: number, ends: readonly number[], s: number): Closest {
+  const k = s * 4;
+  const cx = ends[k] as number;
+  const cy = ends[k + 1] as number;
+  const dx = ends[k + 2] as number;
+  const dy = ends[k + 3] as number;
+  const rx = bx - ax;
+  const ry = by - ay;
+  const sx = dx - cx;
+  const sy = dy - cy;
+  const denominator = rx * sy - ry * sx;
+  if (denominator !== 0) {
+    const u = ((cx - ax) * ry - (cy - ay) * rx) / denominator;
+    const v = ((cx - ax) * sy - (cy - ay) * sx) / denominator;
+    if (u >= 0 && u <= 1 && v >= 0 && v <= 1) return { distance: 0, t: u };
+  }
+  // Apart, the closest pair has an end of one of the two segments in it.
+  let best: Closest = { distance: Infinity, t: 0 };
+  const along = sx * sx + sy * sy;
+  for (const [px, py] of [[ax, ay], [bx, by]] as const) {
+    const t = along === 0 ? 0 : clamp(((px - cx) * sx + (py - cy) * sy) / along, 0, 1);
+    const d = Math.hypot(px - cx - sx * t, py - cy - sy * t);
+    if (d < best.distance) best = { distance: d, t };
+  }
+  const span = rx * rx + ry * ry;
+  for (const [t, px, py] of [[0, cx, cy], [1, dx, dy]] as const) {
+    const u = span === 0 ? 0 : clamp(((px - ax) * rx + (py - ay) * ry) / span, 0, 1);
+    const d = Math.hypot(ax + rx * u - px, ay + ry * u - py);
+    if (d < best.distance) best = { distance: d, t };
+  }
+  return best;
+}

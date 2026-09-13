@@ -25,7 +25,8 @@
  * Pure: the same curves give the same points, in the same order.
  */
 import { compareNumbers } from '../core/sort.ts';
-import { mayJoin } from './tiers.ts';
+import { MIN_MEET } from './road-clear.ts';
+import { footprintHalfWidth, mayJoin } from './tiers.ts';
 import type { Point, RoadCurve, RoadTier } from './types.ts';
 
 /**
@@ -119,22 +120,43 @@ function connectOnce(roads: readonly RoadCurve[], canRun: CanRun): RoadCurve[] |
     // The nearest point either road already has, so the roads are bent as
     // little as the places they stand on allow. A tie goes to the curve laid
     // first, so the answer does not depend on which segment was walked first.
-    const spot = nearer(nearestPlace(places[a] as Point[], here), nearestPlace(places[b] as Point[], here), here) ?? here;
-    // A point of a road neither of these two may junction with is no place for
-    // one: a street bent onto a point of a highway would meet the highway.
-    if (taken.refuses(spot, first.tier) || taken.refuses(spot, second.tier)) continue;
-    const firstPlan = plan(first, meeting.segment, spot, places[a] as Point[], inserts[a] as Insert[], canRun);
-    const secondPlan = plan(second, meeting.otherSegment, spot, places[b] as Point[], inserts[b] as Insert[], canRun);
-    // Both roads take the point or neither does: one of them bent to a place
-    // the other never reaches is a bend for nothing.
-    if (firstPlan === undefined || secondPlan === undefined) continue;
-    if (firstPlan !== null) {
-      (places[a] as Point[]).push({ x: spot.x, y: spot.y });
-      (inserts[a] as Insert[]).push(firstPlan);
+    // Two roads that already meet here meet once: a second point a few metres
+    // from the first cuts a sliver of road that lies along the other one.
+    if (meetsNear(places[a] as Point[], places[b] as Point[], here, footprintHalfWidth(first.tier) + footprintHalfWidth(second.tier))) continue;
+    const snapped = nearer(nearestPlace(places[a] as Point[], here), nearestPlace(places[b] as Point[], here), here);
+    let firstPlan: Planned | undefined;
+    let secondPlan: Planned | undefined;
+    let spot = here;
+    // A bend onto a point nearby can turn the two roads onto each other's
+    // line, so the crossing itself is tried where the snapped place meets at
+    // too shallow an angle.
+    for (const place of snapped === undefined ? [here] : [snapped, here]) {
+      // A point of a road neither of these two may junction with is no place for
+      // one: a street bent onto a point of a highway would meet the highway.
+      if (taken.refuses(place, first.tier) || taken.refuses(place, second.tier)) continue;
+      const one = plan(first, meeting.segment, place, places[a] as Point[], inserts[a] as Insert[], canRun);
+      const two = plan(second, meeting.otherSegment, place, places[b] as Point[], inserts[b] as Insert[], canRun);
+      // Both roads take the point or neither does: one of them bent to a place
+      // the other never reaches is a bend for nothing.
+      if (one === undefined || two === undefined || shallow(place, one.around, two.around)) continue;
+      // The point also turns each road where it leaves the places beside it,
+      // and a road may already meet a third one there.
+      if (taken.bends(first.id, place, one.around) || taken.bends(second.id, place, two.around)) continue;
+      firstPlan = one;
+      secondPlan = two;
+      spot = place;
+      break;
     }
-    if (secondPlan !== null) {
+    if (firstPlan === undefined || secondPlan === undefined) continue;
+    taken.record(first.id, spot, firstPlan.around);
+    taken.record(second.id, spot, secondPlan.around);
+    if (firstPlan.insert !== null) {
+      (places[a] as Point[]).push({ x: spot.x, y: spot.y });
+      (inserts[a] as Insert[]).push(firstPlan.insert);
+    }
+    if (secondPlan.insert !== null) {
       (places[b] as Point[]).push({ x: spot.x, y: spot.y });
-      (inserts[b] as Insert[]).push(secondPlan);
+      (inserts[b] as Insert[]).push(secondPlan.insert);
     }
   }
 
@@ -142,10 +164,16 @@ function connectOnce(roads: readonly RoadCurve[], canRun: CanRun): RoadCurve[] |
   return roads.map((road, i) => splice(road, inserts[i] as Insert[]));
 }
 
+/** How a curve takes a point at a place, and the places beside it the curve runs on to. */
+interface Planned {
+  /** The point to splice in, or `null` where the curve stands there already. */
+  insert: Insert | null;
+  around: Point[];
+}
+
 /**
- * How a curve takes a point at a place: the point to splice in, `null` where it
- * stands there already, and nothing where the ground refuses the two halves the
- * point would cut the segment into.
+ * How a curve takes a point at a place, and nothing where the ground refuses
+ * the two halves the point would cut the segment into.
  *
  * The point goes into the segment the crossing was found on, at the place along
  * it nearest the point: a snapped place can stand a little off that segment.
@@ -157,12 +185,15 @@ function plan(
   places: readonly Point[],
   inserts: readonly Insert[],
   canRun: CanRun,
-): Insert | null | undefined {
-  for (const place of places) {
-    if (Math.abs(place.x - spot.x) <= SAME_PLACE && Math.abs(place.y - spot.y) <= SAME_PLACE) return null;
-  }
+): Planned | undefined {
   const a = road.points[segment] as Point;
   const b = road.points[segment + 1] as Point;
+  for (const place of places) {
+    if (Math.abs(place.x - spot.x) > SAME_PLACE || Math.abs(place.y - spot.y) > SAME_PLACE) continue;
+    const i = road.points.findIndex((p) => Math.abs(p.x - spot.x) <= SAME_PLACE && Math.abs(p.y - spot.y) <= SAME_PLACE);
+    const around = i < 0 ? [a, b] : [road.points[i - 1], road.points[i + 1]].filter((p): p is Point => p !== undefined);
+    return { insert: null, around };
+  }
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const span = dx * dx + dy * dy;
@@ -179,7 +210,34 @@ function plan(
     if (other.at > at && other.at <= after.at) after = { at: other.at, point: place };
   }
   if (!canRun(before.point, spot, road.tier) || !canRun(spot, after.point, road.tier)) return undefined;
-  return { segment, at, x: spot.x, y: spot.y };
+  return { insert: { segment, at, x: spot.x, y: spot.y }, around: [before.point, after.point] };
+}
+
+/**
+ * True when two roads leave a place along lines closer than {@link MIN_MEET}:
+ * there each lies in the other's carriageway, which no junction can be built on.
+ */
+export function shallow(at: Point, first: readonly Point[], second: readonly Point[]): boolean {
+  for (const p of first) {
+    for (const q of second) {
+      if (Math.hypot(p.x - at.x, p.y - at.y) <= SAME_PLACE || Math.hypot(q.x - at.x, q.y - at.y) <= SAME_PLACE) continue;
+      let turn = Math.abs(Math.atan2(p.y - at.y, p.x - at.x) - Math.atan2(q.y - at.y, q.x - at.x)) % (2 * Math.PI);
+      if (turn > Math.PI) turn = 2 * Math.PI - turn;
+      if (turn < MIN_MEET) return true;
+    }
+  }
+  return false;
+}
+
+/** True when two lists of places share one within `reach` of a point. */
+function meetsNear(first: readonly Point[], second: readonly Point[], at: Point, reach: number): boolean {
+  for (const p of first) {
+    if (Math.hypot(p.x - at.x, p.y - at.y) >= reach) continue;
+    for (const q of second) {
+      if (Math.abs(p.x - q.x) <= SAME_PLACE && Math.abs(p.y - q.y) <= SAME_PLACE) return true;
+    }
+  }
+  return false;
 }
 
 /** Whichever of two candidate places stands nearer a point. */
@@ -242,6 +300,8 @@ function splice(road: RoadCurve, inserts: readonly Insert[]): RoadCurve {
 class Taken {
   private readonly tiers = new Map<number, RoadTier[]>();
   private readonly interchanges = new Map<number, boolean>();
+  /** The curves at each place, and the points beside it each of them runs on to. */
+  private readonly beside = new Map<number, { curve: number; to: Point }[]>();
 
   constructor(roads: readonly RoadCurve[]) {
     for (const road of roads) {
@@ -251,8 +311,41 @@ class Taken {
         if (here === undefined) this.tiers.set(key, [road.tier]);
         else here.push(road.tier);
         if (road.interchanges.includes(i)) this.interchanges.set(key, true);
+        const next = this.beside.get(key) ?? [];
+        for (const to of [road.points[i - 1], road.points[i + 1]]) if (to !== undefined) next.push({ curve: road.id, to });
+        this.beside.set(key, next);
       }
     }
+  }
+
+  /**
+   * True when a curve given a point at `spot` would leave one of the places
+   * beside it along the line of another road that meets it there.
+   */
+  bends(curve: number, spot: Point, around: readonly Point[]): boolean {
+    if (shallow(spot, around, this.othersAt(spot, curve))) return true;
+    for (const place of around) {
+      if (shallow(place, [spot], this.othersAt(place, curve))) return true;
+    }
+    return false;
+  }
+
+  /** A curve takes a point at `spot`, running on to `around` from it. */
+  record(curve: number, spot: Point, around: readonly Point[]): void {
+    const key = placeKey(spot);
+    const here = this.beside.get(key) ?? [];
+    for (const to of around) here.push({ curve, to });
+    this.beside.set(key, here);
+    for (const place of around) {
+      const there = this.beside.get(placeKey(place)) ?? [];
+      there.push({ curve, to: spot });
+      this.beside.set(placeKey(place), there);
+    }
+  }
+
+  /** The points the curves other than one run on to from a place. */
+  private othersAt(place: Point, curve: number): Point[] {
+    return (this.beside.get(placeKey(place)) ?? []).filter((b) => b.curve !== curve).map((b) => b.to);
   }
 
   /** True where a road of this tier may not take a point at a place. */
