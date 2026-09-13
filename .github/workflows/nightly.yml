@@ -157,7 +157,7 @@ jobs:
               done
               # A merge made with this token starts no push workflow, so the
               # deploy is started by hand.
-              if [ "$merged" -gt 0 ]; then gh workflow run deploy.yml --ref main; fi
+              if [ "$merged" -gt 0 ]; then gh workflow run ci.yml --ref main; fi
               if [ -n "$failed" ]; then
                 PRS=${failed# }
                 { echo 'These Dependabot updates passed the full tier but could not be merged:'
