@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # `nightly.yml` starts a deploy after it merges updates, because a merge made
+  # with its token starts no push workflow.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -96,7 +99,7 @@ jobs:
       # Only main deploys. A pull request builds to prove the build works and
       # publishes nothing, so one change reaches Cloudflare once.
       - name: Deploy to Cloudflare Pages
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}

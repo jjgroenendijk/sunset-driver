@@ -2,86 +2,187 @@ name: Nightly
 
 on:
   schedule:
-    # 02:00 UTC, after the day's merges and the Monday Dependabot updates.
+    # 02:00 UTC, after the day's merges and after Dependabot has opened the
+    # night's updates (`.github/dependabot.yml`).
     - cron: '0 2 * * *'
   workflow_dispatch:
-
-permissions:
-  contents: read
-  issues: write
 
 concurrency:
   group: nightly
   cancel-in-progress: false
 
 jobs:
-  full-tier:
+  # Installs and runs the updates, so it holds a read-only token. Merging and
+  # reporting happen in `merge`, which never runs a package's code.
+  test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      verdict: ${{ steps.run.outputs.verdict }}
+      prs: ${{ steps.plan.outputs.prs }}
+      log: ${{ steps.run.outputs.log }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      # A night with no new commit on main skips the run. Every commit counts,
-      # the merged Dependabot updates included. A manual run always tests.
-      - id: recent
+      # Main plus every open Dependabot pull request that merges onto it
+      # cleanly, as one tree. A pull request that conflicts waits for
+      # Dependabot to rebase it.
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -u
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            echo 'changed=true' >> "$GITHUB_OUTPUT"
-          elif [ -n "$(git log --since='24 hours ago' --format=%H -1)" ]; then
-            echo 'changed=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'No commit on main in the last 24 hours; skipping.'
-            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          set -eu
+          git config user.name nightly
+          git config user.email nightly@users.noreply.github.com
+          changed=false
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] ||
+             [ -n "$(git log --since='24 hours ago' --format=%H -1)" ]; then
+            changed=true
           fi
+          prs=''
+          for pr in $(gh pr list --app dependabot --base main --state open \
+                        --json number,headRefOid --jq '.[] | "\(.number):\(.headRefOid)"'); do
+            number=${pr%%:*}
+            git fetch -q origin "pull/$number/head"
+            if git merge -q --no-edit "${pr#*:}"; then
+              prs="$prs $pr"
+            else
+              git merge --abort
+              echo "#$number does not merge onto main cleanly; skipping it."
+            fi
+          done
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "prs=${prs# }" >> "$GITHUB_OUTPUT"
 
-      - if: steps.recent.outputs.changed == 'true'
+      - if: steps.plan.outputs.changed == 'true' || steps.plan.outputs.prs != ''
         uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
+          cache: npm
 
-      - if: steps.recent.outputs.changed == 'true'
-        id: modules
-        uses: actions/cache@v6
-        with:
-          path: node_modules
-          key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc', 'package-lock.json') }}
-
-      - if: steps.recent.outputs.changed == 'true' && steps.modules.outputs.cache-hit != 'true'
-        run: npm ci --prefer-offline --no-audit --no-fund
-
-      - if: steps.recent.outputs.changed == 'true'
-        id: verify
-        run: npm run verify:full 2>&1 | tee verify.log
-
-      # One open issue collects the failures: a second failing night adds a
-      # comment to it rather than a new issue.
-      - name: Report the failure as an issue
-        if: failure() && steps.verify.outcome == 'failure'
+      # One full run on a good night. When the tree with the updates fails,
+      # main is tested alone, so the issue says which of the two is broken.
+      - id: run
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CHANGED: ${{ steps.plan.outputs.changed }}
+          PRS: ${{ steps.plan.outputs.prs }}
         run: |
           set -u
-          gh label create nightly-failure --color d73a4a \
-            --description 'The nightly full test tier failed' 2>/dev/null || true
-          {
-            echo "The nightly \`npm run verify:full\` failed on \`$GITHUB_SHA\`."
-            echo
-            echo "Run: $RUN_URL"
-            echo
-            echo 'The end of the log:'
-            echo
-            echo '```'
-            sed 's/\x1b\[[0-9;]*m//g' verify.log | tail -n 80
-            echo '```'
-          } > body.md
-          open=$(gh issue list --label nightly-failure --state open --json number --jq '.[0].number')
-          if [ -n "$open" ]; then
-            gh issue comment "$open" --body-file body.md
+          full_tier() {
+            { npm ci --prefer-offline --no-audit --no-fund && npm run verify:full; } > verify.log 2>&1
+          }
+          if [ "$CHANGED" = false ] && [ -z "$PRS" ]; then
+            echo 'No commit on main in the last 24 hours and no update; skipping.'
+            verdict=skipped
+          elif full_tier; then
+            verdict=passed
+          elif [ -z "$PRS" ]; then
+            verdict=main-failed
           else
-            gh issue create --title 'Nightly full test tier failed' \
-              --label nightly-failure --label bug --body-file body.md
+            mv verify.log updates.log
+            git reset -q --hard origin/main
+            if full_tier; then
+              verdict=updates-failed
+              mv updates.log verify.log
+            else
+              verdict=main-failed
+            fi
           fi
+          echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
+          if [ -f verify.log ]; then
+            cat verify.log
+            {
+              echo 'log<<NIGHTLY_LOG_END'
+              sed 's/\x1b\[[0-9;]*m//g' verify.log | tail -n 80
+              echo 'NIGHTLY_LOG_END'
+            } >> "$GITHUB_OUTPUT"
+          fi
+          [ "$verdict" = passed ] || [ "$verdict" = skipped ]
+
+  merge:
+    needs: test
+    if: always() && needs.test.outputs.verdict != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERDICT: ${{ needs.test.outputs.verdict || needs.test.result }}
+      PRS: ${{ needs.test.outputs.prs }}
+      LOG: ${{ needs.test.outputs.log }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - run: |
+          set -u
+          # One open issue per kind of failure: a later night comments on it.
+          report() {
+            gh label create nightly-failure --color d73a4a \
+              --description 'The nightly run failed' 2>/dev/null || true
+            open=$(gh issue list --label nightly-failure --state open --json number,title \
+                     --jq ".[] | select(.title == \"$1\") | .number" | head -n 1)
+            if [ -n "$open" ]; then
+              gh issue comment "$open" --body-file body.md
+            else
+              gh issue create --title "$1" --label nightly-failure --label bug --body-file body.md
+            fi
+          }
+          log_block() {
+            printf '\nRun: %s\n\nThe end of the log:\n\n```\n%s\n```\n' "$RUN_URL" "$LOG"
+          }
+          list_prs() {
+            for pr in $PRS; do echo "- #${pr%%:*} at \`${pr#*:}\`"; done
+          }
+
+          case "$VERDICT" in
+            passed)
+              merged=0
+              failed=''
+              for pr in $PRS; do
+                # The head must still be the commit the full tier tested.
+                if gh pr merge "${pr%%:*}" --rebase --match-head-commit "${pr#*:}"; then
+                  merged=$((merged + 1))
+                else
+                  failed="$failed $pr"
+                fi
+              done
+              # A merge made with this token starts no push workflow, so the
+              # deploy is started by hand.
+              if [ "$merged" -gt 0 ]; then gh workflow run deploy.yml --ref main; fi
+              if [ -n "$failed" ]; then
+                PRS=${failed# }
+                { echo 'These Dependabot updates passed the full tier but could not be merged:'
+                  echo; list_prs
+                  printf '\nRun: %s\n' "$RUN_URL"; } > body.md
+                report 'Nightly could not merge a Dependabot update'
+              fi
+              ;;
+            updates-failed)
+              { echo 'Main passes the full tier, but these Dependabot updates make it fail:'
+                echo; list_prs; echo
+                echo 'They were not merged.'; log_block; } > body.md
+              report 'Nightly: a Dependabot update fails the full test tier'
+              ;;
+            main-failed)
+              { echo "The full test tier fails on main at \`$GITHUB_SHA\`."
+                echo 'No Dependabot update was merged.'; log_block; } > body.md
+              report 'Nightly full test tier failed'
+              ;;
+            *)
+              # The job stopped before it reached a verdict: a checkout, a fetch
+              # or a timeout.
+              { echo "The nightly run stopped before it finished: \`$VERDICT\`."
+                echo 'No Dependabot update was merged.'
+                printf '\nRun: %s\n' "$RUN_URL"; } > body.md
+              report 'Nightly run did not finish'
+              ;;
+          esac
