@@ -126,6 +126,19 @@ export const MIN_SIGNATURE_SHARE: Record<Zone, number> = {
 /** Buildings a zone needs before its distribution is asked about at all. */
 export const MIN_KIND_SAMPLES = 60;
 /**
+ * The least share of a seed's core blocks a building group may own (issue
+ * #193). A beach is not a block and is not counted. Over the first 80 seeds the
+ * worst seed gives 80 % and most give over 90 %; before the issue the core gave
+ * about 74 %.
+ */
+export const MIN_CORE_BUILT_SHARE = 0.75;
+/**
+ * How much higher the skyline stands, on average, over the towers of the inner
+ * ring than over its mid-rise blocks, pooled over the seeds (issue #193). Over
+ * the first 80 seeds it is 0.30 against 0.22, and no seed gives less than 0.03.
+ */
+export const MIN_TOWER_SKYLINE_LEAD = 0.04;
+/**
  * Metres past the ground its road claims, the slack `buildings.ts` allows a
  * frontage and the setback its zone lays it at, that the nearer corner of a
  * building's front edge may stand. The metre is for the parcel boundary being

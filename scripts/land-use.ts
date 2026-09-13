@@ -45,7 +45,15 @@ export const OWNERS: readonly ParcelOwner[] = [
 ];
 
 /** The building kinds a cell's tint indexes, in this order. */
-export const KINDS: readonly BuildingKind[] = ['tower', 'mid-rise', 'shop-row', 'house', 'warehouse', 'roadhouse'];
+export const KINDS: readonly BuildingKind[] = [
+  'tower',
+  'mid-rise',
+  'parking-garage',
+  'shop-row',
+  'house',
+  'warehouse',
+  'roadhouse',
+];
 
 /** The ground a grid covers: a square of `2 * half` metres around a place. */
 export interface LandUseView {

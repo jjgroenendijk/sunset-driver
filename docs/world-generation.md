@@ -162,13 +162,18 @@ gets wrong without it.
   block their own street spacing makes, so a block the size of a real one is never cut at all. An
   owner comes in a size:
   `ownerMaxArea(zone, owner)` is the most a park, a car park, a plaza or a building group may hold
-  there, and a parcel the roll gives to an owner too small for it stays ground cover.
+  there, and a parcel the roll gives to an owner too small for it stays ground cover. The core and
+  the inner ring roll no open car park at all: they park in a `parking-garage`, which is a building
+  kind. An open car park there is a beach car park.
 - `buildBuildings(world, parcels, graph)` (`buildings.ts`) places the buildings of spec section
   10.3. It is built on demand like the parcels, not stored in the world description.
   `ZONE_BUILDINGS` says what a zone builds at all — a suburban parcel has no tower on its list —
   and `MIN_LOT_AREA` what each kind needs, so a lot too small for the kind it rolled takes the next
   smaller kind the zone allows. `lots.ts` cuts the ground it stands on and `lot-geom.ts` is the
   arithmetic of that cut.
+  `skylineAt` (`districts.ts`) is a smooth field that falls from 1 at the core to 0 at the outer
+  edge of the inner ring. Each building carries it as `Building.skyline`. It gathers the towers
+  towards the middle, and the renderer reads it for height, so the skyline has no edge at a ring.
 - `lotsOf(parcel, graph)` (`lots.ts`) cuts a parcel into lots along its frontage: the run of its
   boundary that stands on the ground a road claims. Four rules decide the shape of a block, and the
   first three are what stop a street being a row of boxes with daylight between them.

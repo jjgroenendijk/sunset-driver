@@ -40,27 +40,32 @@ export interface ZoneBands {
  * over the dry land of the zone.
  */
 export const LAYOUT_BANDS: Record<Zone, ZoneBands> = {
-  // 80 seeds: road 44 to 55 %, building 16 to 30 %, 3.1 to 6.1 buildings a
+  // 80 seeds: road 44 to 55 %, building 20 to 36 %, 4.0 to 7.9 buildings a
   // hectare, median parcel 1217 to 3266 m². Issue #190 moved all four: the
   // strip blocks of spec section 6.1 took the road share down from 58 to 65 %
   // and the middle parcel up from 547 to 920 m². Issue #191 moved none of them.
   // Issue #192 moved the two the buildings own: the street wall and the row
   // back to back took the building share from 13 to 25 % up to 16 to 30 %, and
-  // the buildings a hectare from 2.4 to 4.4 up to 3.1 to 6.1.
+  // the buildings a hectare from 2.4 to 4.4 up to 3.1 to 6.1. Issue #193 moved
+  // the same two again: a block that was a plaza, an open car park or ground
+  // cover now carries buildings, which took the building share up to 20 to 36 %
+  // and the buildings a hectare up to 4.0 to 7.9.
   core: {
     roadShare: { min: 0.34, max: 0.65 },
-    buildingShare: { min: 0.12, max: 0.36 },
-    buildingsPerHectare: { min: 2.4, max: 7.5 },
+    buildingShare: { min: 0.15, max: 0.42 },
+    buildingsPerHectare: { min: 3, max: 9.5 },
     medianParcelArea: { min: 800, max: 4500 },
   },
-  // 40 to 47 %, 19 to 29 %, 4.8 to 7.4, 2020 to 3471 m². Issue #190 moved the
+  // 40 to 47 %, 23 to 34 %, 5.9 to 9.1, 2020 to 3471 m². Issue #190 moved the
   // road share and the middle parcel, from 46 to 54 % and 1137 to 1634 m².
   // Issue #192 took the building share from 15 to 23 % up to 19 to 29 %, and
-  // the buildings a hectare from 3.4 to 5.0 up to 4.8 to 7.4.
+  // the buildings a hectare from 3.4 to 5.0 up to 4.8 to 7.4. Issue #193 took
+  // them up again, to 23 to 34 % and 5.9 to 9.1, for the same reason as in the
+  // core.
   inner: {
     roadShare: { min: 0.3, max: 0.58 },
-    buildingShare: { min: 0.15, max: 0.35 },
-    buildingsPerHectare: { min: 3.8, max: 9 },
+    buildingShare: { min: 0.18, max: 0.4 },
+    buildingsPerHectare: { min: 4.6, max: 11 },
     medianParcelArea: { min: 1300, max: 5500 },
   },
   // 20 to 39 %, 12 to 31 %, 0.8 to 2.4, 2176 to 14857 m². The wedge lies along

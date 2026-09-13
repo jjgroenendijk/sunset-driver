@@ -381,6 +381,11 @@ Stylised, lit, hard outlines. Tone: gritty crime drama with a satirical edge.
 - `SidewalkGenerator` supplies rounded curbs and pavement slabs.
 - Selection is driven by the parcel's district, zone, wealth and size. A suburban parcel never
   receives a tower.
+- Tower height and the chance of a tower follow a smooth skyline field: high in the middle of the
+  city and falling with distance from it, blended with the district's density and wealth. The
+  skyline therefore tapers and has no edge at a zone ring.
+- The core and the inner ring build on nearly every block. They park cars in parking garages, a
+  building kind with open decks, and not on open car parks.
 - A handful of shop types are enterable; every other building is exterior only, with lit windows and
   moving silhouettes. No generated interiors beyond shops and safehouses. Inside, a `ClippingGroup`
   clips away the roof and front wall so the top-down camera can see in.

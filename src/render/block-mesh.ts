@@ -2,12 +2,12 @@
  * The buildings that are not towers, as geometry (spec section 10.3).
  *
  * `SkyscraperGenerator` dresses the towers and the mid-rise blocks. Everything
- * else — a house, a shop row, a warehouse, a roadhouse — is a handful of boxes
- * with a roof on top, generated here. They are the bulk of the city by count, so
- * each one is cut to what a top-down camera can see of it: the massing, the
- * roof, and the bands of window the night lights up. A window is not modelled;
- * a band of glazing is, and the material cuts it into windows from the metres
- * along the wall that the band carries in its `uv`.
+ * else — a house, a shop row, a parking garage, a warehouse, a roadhouse — is a
+ * handful of boxes with a roof on top, generated here. They are the bulk of the
+ * city by count, so each one is cut to what a top-down camera can see of it:
+ * the massing, the roof, and the bands of window the night lights up. A window
+ * is not modelled; a band of glazing is, and the material cuts it into windows
+ * from the metres along the wall that the band carries in its `uv`.
  *
  * The local frame is the one {@link BuildingMassing} describes: the middle of
  * the lot at ground level, `x` along the frontage, `z` towards the road, `y` up.
@@ -69,6 +69,17 @@ const SIGN_WIDTH = 2.6;
 const SIGN_RISE = 1.4;
 const SIGN_THICK = 0.2;
 
+/**
+ * The decks of a parking garage, in metres: the height of one deck, the edge of
+ * concrete that rims it, how far the dark inside stands behind the open sides,
+ * and the columns between the decks.
+ */
+const DECK = 3;
+const DECK_EDGE = 1.1;
+const DECK_INSET = 1.5;
+const COLUMN = 0.6;
+const COLUMN_PITCH = 8;
+
 /** Which walls a band of glazing is laid on. */
 type Side = 'front' | 'back' | 'left' | 'right';
 const ALL_SIDES: readonly Side[] = ['front', 'back', 'left', 'right'];
@@ -88,6 +99,9 @@ export function buildBlockGeometry(kind: BuildingKind, massing: BuildingMassing,
       break;
     case 'roadhouse':
       roadhouse(shell, massing);
+      break;
+    case 'parking-garage':
+      parkingGarage(shell, massing);
       break;
     case 'tower':
     case 'mid-rise':
@@ -186,6 +200,49 @@ function roadhouse(shell: Shell, massing: BuildingMassing): void {
   const sign = Math.min(SIGN_WIDTH, walls.width * 0.6);
   const board = walls.depth / 2;
   shell.box(-sign / 2, sign / 2, top + 0.35, top + 0.35 + SIGN_RISE, board - SIGN_THICK, board, BLOCK_TRIM);
+}
+
+/**
+ * A parking garage: a stack of open decks. Each deck is rimmed by an edge of
+ * concrete, and the gap over the edge shows the dark floor inside, so the camera
+ * reads the floors rather than a wall. Columns carry the decks and a parapet
+ * rims the top one.
+ */
+function parkingGarage(shell: Shell, massing: BuildingMassing): void {
+  const walls = shrink(massing, PROUD);
+  const top = massing.height;
+  const hw = walls.width / 2;
+  const hd = walls.depth / 2;
+  // The dark inside, set back behind the open sides.
+  const inside = {
+    ...walls,
+    width: Math.max(MIN_WALLS, walls.width - 2 * DECK_INSET),
+    depth: Math.max(MIN_WALLS, walls.depth - 2 * DECK_INSET),
+  };
+  box(shell, inside, 0, top, BLOCK_ROOF);
+  const decks = Math.max(1, Math.round(top / DECK));
+  const pitch = top / decks;
+  // The ground floor opens onto the street; every deck above it has its edge.
+  const edge = Math.min(DECK_EDGE, pitch / 2);
+  for (let i = 1; i < decks; i++) box(shell, walls, i * pitch, i * pitch + edge, BLOCK_WALL);
+  const column = (x: number, z: number): void => {
+    shell.box(x - COLUMN / 2, x + COLUMN / 2, 0, top, z - COLUMN / 2, z + COLUMN / 2, BLOCK_WALL);
+  };
+  const acrossX = Math.max(1, Math.round((walls.width - COLUMN) / COLUMN_PITCH));
+  const acrossZ = Math.max(1, Math.round((walls.depth - COLUMN) / COLUMN_PITCH));
+  const cx = hw - COLUMN / 2;
+  const cz = hd - COLUMN / 2;
+  for (let i = 0; i <= acrossX; i++) {
+    const x = -cx + (2 * cx * i) / acrossX;
+    column(x, cz);
+    column(x, -cz);
+  }
+  for (let i = 1; i < acrossZ; i++) {
+    const z = -cz + (2 * cz * i) / acrossZ;
+    column(cx, z);
+    column(-cx, z);
+  }
+  flatRoof(shell, walls, top);
 }
 
 /**

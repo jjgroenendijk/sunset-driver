@@ -124,7 +124,9 @@ are the design.
   is boxes from `block-mesh.ts`. Nothing ever stands off its lot: the massing is the lot less a
   margin, a generated facade is asked for `CORNICE` less again because its cornices overhang
   whatever footprint it is given, and the placement is then scaled by what the built shell still
-  measures. Look at that number rather than trusting it — the sweep does.
+  measures. Look at that number rather than trusting it — the sweep does. A tower and a mid-rise
+  take their height from `Building.skyline` first, then from the district, then from their seed;
+  see `massingOf` in `building-plan.ts`.
 - `building-mesh.ts` is the door onto three files: it generates and places the shell,
   `building-plan.ts` says how big a building is and what ground it may cover, and
   `building-hull.ts` builds the outline. The plan holds no three.js, so a massing is a handful of

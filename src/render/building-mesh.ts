@@ -82,6 +82,8 @@ const FLOOR_HEIGHT = 4;
 const BLOCK_PALETTE: Record<BuildingKind, readonly number[]> = {
   tower: [0xb4afa1],
   'mid-rise': [0xb0a99d, 0xa89c8a, 0xbcae97],
+  // Bare concrete.
+  'parking-garage': [0xa7a59f, 0x9d9c98],
   'shop-row': [0xc9b394, 0xd0a07c, 0xb9a88c, 0xcdc0a6],
   house: [0xd8c9a8, 0xc9b190, 0xbfc2ad, 0xd6b7a2, 0xc0ccc6, 0xe0d3b6],
   warehouse: [0x9aa0a2, 0x8e8f8a, 0xa39a8c],

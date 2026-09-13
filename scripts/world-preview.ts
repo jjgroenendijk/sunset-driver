@@ -168,6 +168,7 @@ const buildingMs = performance.now() - t2c;
 const KIND_COL: Record<BuildingKind, [number, number, number]> = {
   tower: [245, 245, 255],
   'mid-rise': [195, 200, 220],
+  'parking-garage': [120, 125, 135],
   'shop-row': [235, 165, 80],
   house: [225, 130, 120],
   warehouse: [140, 145, 160],
@@ -327,7 +328,7 @@ const kinds = buildings.buildings.reduce<Partial<Record<BuildingKind, number>>>(
 console.log(
   `  buildings: ${buildings.buildings.length} on ${(buildings.area / 1e6).toFixed(2)} km² of lots, ` +
     `placed in ${buildingMs.toFixed(0)} ms — ` +
-    (['tower', 'mid-rise', 'shop-row', 'house', 'warehouse', 'roadhouse'] as BuildingKind[])
+    (['tower', 'mid-rise', 'parking-garage', 'shop-row', 'house', 'warehouse', 'roadhouse'] as BuildingKind[])
       .map((k) => `${k} ${kinds[k] ?? 0}`)
       .join(', '),
 );

@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { pointInRegion, pointInRegions, regionArea } from '../src/core/geom.ts';
 import {
   FRONT_REACH,
+  lotMiddle,
   MIN_LOT_AREA,
   ZONE_BUILDINGS,
   ZONE_LOTS,
   type Building,
   type BuildingKind,
 } from '../src/world/buildings.ts';
+import { layoutZones, skylineAt } from '../src/world/districts.ts';
 import { type RoadEdge } from '../src/world/graph.ts';
 import { ownerMaxArea, type Parcel } from '../src/world/parcels.ts';
 import { footprintHalfWidth } from '../src/world/tiers.ts';
@@ -29,6 +31,8 @@ import {
   FACING_DRIFT,
   SHARED_LOT_AREA,
   MIN_WALLED_SHARE,
+  MIN_CORE_BUILT_SHARE,
+  MIN_TOWER_SKYLINE_LEAD,
 } from './seed-limits.ts';
 import { ParcelIndex } from './seed-index.ts';
 import { distanceToLine, middleOf } from './seed-probes.ts';
@@ -283,6 +287,55 @@ export function parcelChecks(): void {
         const spread = kinds.map((entry) => `${entry.kind} ${(((row[entry.kind] ?? 0) / total) * 100).toFixed(0)} %`).join(', ');
         expect(share, `${zone} of ${total} buildings: ${spread}`).toBeGreaterThanOrEqual(MIN_SIGNATURE_SHARE[zone]);
       }
+    });
+
+    it('builds on nearly every downtown block, and gathers the towers where the skyline is high', () => {
+      // Issue #193: a downtown builds on its blocks rather than paving them, and
+      // parks its cars in a building. The skyline is a smooth field, so every
+      // building carries the value `skylineAt` gives at the middle of its lot,
+      // and the towers of the inner ring stand nearer the core than its
+      // mid-rise blocks do.
+      const lead = { tower: 0, towers: 0, midRise: 0, midRises: 0 };
+      for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
+        const w = worlds.get(seed) as WorldDescription;
+        const { parcels } = parcelsOf(seed);
+        const { buildings } = buildingsOf(seed);
+        const zones = layoutZones(w.size, w.core, w.water);
+        let complaint: string | undefined;
+        const fault = (text: string): void => {
+          complaint ??= text;
+        };
+
+        const core = parcels.filter((parcel) => parcel.zone === 'core' && parcel.owner !== 'beach');
+        const built = core.filter((parcel) => parcel.owner === 'building').length / Math.max(1, core.length);
+        if (built < MIN_CORE_BUILT_SHARE) fault(`builds on only ${(built * 100).toFixed(0)} % of ${core.length} core blocks`);
+        // An open car park in a dense zone is a beach car park, which the beach
+        // puts there; the zone itself never hands one out.
+        const beachParks = w.beaches.reduce((n, beach) => n + beach.carParks.length, 0);
+        const dense = parcels.filter((parcel) => parcel.owner === 'car-park' && (parcel.zone === 'core' || parcel.zone === 'inner'));
+        if (dense.length > beachParks) fault(`has ${dense.length} open car parks downtown and only ${beachParks} beach car parks`);
+
+        for (const building of buildings) {
+          const middle = lotMiddle(building.lot);
+          if (Math.abs(building.skyline - skylineAt(zones, middle.x, middle.y)) > 1e-9 || building.skyline < 0 || building.skyline > 1) {
+            fault(`building ${building.id} reads a skyline of ${building.skyline}`);
+          }
+          if (building.zone !== 'inner') continue;
+          if (building.kind === 'tower') {
+            lead.tower += building.skyline;
+            lead.towers++;
+          } else if (building.kind === 'mid-rise') {
+            lead.midRise += building.skyline;
+            lead.midRises++;
+          }
+        }
+        expect(complaint, `seed ${seed}`).toBeUndefined();
+      }
+      const tower = lead.tower / Math.max(1, lead.towers);
+      const midRise = lead.midRise / Math.max(1, lead.midRises);
+      expect(tower - midRise, `inner towers at ${tower.toFixed(2)}, mid-rise blocks at ${midRise.toFixed(2)}`).toBeGreaterThanOrEqual(
+        MIN_TOWER_SKYLINE_LEAD,
+      );
     });
   });
 }
