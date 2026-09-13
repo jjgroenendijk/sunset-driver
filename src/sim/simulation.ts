@@ -5,6 +5,7 @@ import { createPlayerState, type PlayerState } from './on-foot.ts';
 import type { SimPhysics } from './physics.ts';
 import type { TheftState } from './theft.ts';
 import { createVehicleState, DEFAULT_CLASS, specOf, type VehicleState } from './vehicle.ts';
+import { stepPickups, type PickupState } from './pickup.ts';
 import { createLoadout, type LoadoutState, type ProjectileState } from './weapon.ts';
 
 /** The serialisable, deterministic state of a session. */
@@ -43,6 +44,13 @@ export interface SimState {
    * save catches them mid-flight and a replay throws them the same way.
    */
   projectiles: ProjectileState[];
+  /**
+   * The weapons lying in the world to be picked up (spec section 11.6): what
+   * the dead dropped and what was taken out of a police car.
+   */
+  pickups: PickupState[];
+  /** The id the next pickup is given. */
+  nextPickup: number;
   /**
    * How much attention the player has drawn (spec section 14). The alarm of a
    * theft and every shot fired raise it; nothing spends it yet, and the police
@@ -87,6 +95,8 @@ export function createSimState(
     theft: null,
     loadout: createLoadout(),
     projectiles: [],
+    pickups: [],
+    nextPickup: 0,
     heat: 0,
     money: START_MONEY,
     objective: '',
@@ -107,10 +117,12 @@ export function cloneSimState(state: SimState): SimState {
  * runs at the simulation's 60 Hz and nowhere else (spec section 2.2). It holds
  * no state of its own: it reads the record, steps, and writes the record back.
  * Without it the tick still advances, so the clock and everything driven by it
- * can be exercised on their own; nothing moves.
+ * can be exercised on their own; nothing moves. The pickups are stepped after
+ * the physics, so the player takes what lies where the tick left them.
  */
 export function stepSim(state: SimState, input: InputFrame = EMPTY_INPUT, physics?: SimPhysics): void {
   physics?.step(state, input);
+  stepPickups(state);
   state.tick += 1;
 }
 

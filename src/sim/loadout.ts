@@ -144,6 +144,48 @@ export function giveWeapon(loadout: LoadoutState, id: WeaponId, spare = SPARE_MA
 }
 
 /**
+ * Take a weapon found in the world: a pickup dropped by the dead or held in a
+ * police car (spec section 11.6). A weapon not yet carried comes with the
+ * rounds in its magazine; one already carried adds those rounds to the pool
+ * instead. The rounds behind it go to the pool, up to what a player can carry,
+ * and any attachment it brings that the carried one lacks is fitted.
+ *
+ * It answers false where nothing was taken — a weapon already carried, with
+ * nothing new fitted and no room for its rounds — so a pickup that gives
+ * nothing is left where it lies. A new weapon goes into the hands only when the
+ * hands are empty, so walking over a dropped bat does not holster a rifle.
+ */
+export function takeWeapon(
+  loadout: LoadoutState,
+  id: WeaponId,
+  loaded: number,
+  rounds: number,
+  attachments: readonly Attachment[],
+): boolean {
+  const spec = weaponOf(id);
+  let index = loadout.slots.findIndex((slot) => slot.id === id);
+  const fresh = index < 0;
+  if (fresh) {
+    loadout.slots.push({ id, loaded: 0, attachments: [] });
+    index = loadout.slots.length - 1;
+  }
+  const slot = loadout.slots[index] as WeaponSlot;
+  const had = slot.attachments ?? [];
+  const merged = normaliseAttachments(spec, [...had, ...attachments]);
+  let took = fresh || merged.length > had.length;
+  slot.attachments = merged;
+  if (spec.calibre !== undefined) {
+    const magazine = Math.max(0, Math.floor(loaded));
+    let spare = Math.max(0, Math.floor(rounds));
+    if (fresh) slot.loaded = Math.min(slotSpec(slot).capacity, magazine);
+    else spare += magazine;
+    if (addAmmo(loadout, spec.calibre, spare) > 0) took = true;
+  }
+  if (fresh && currentSlot(loadout).id === DEFAULT_WEAPON) select(loadout, index);
+  return took;
+}
+
+/**
  * Fit an attachment to a carried weapon (spec section 11.6). Answers false
  * where the weapon is not carried or does not take it.
  */

@@ -15,8 +15,9 @@
  * replay in step with the session it replays.
  *
  * What an attachment does to a weapon is `attachment.ts`: a fitted weapon is a
- * row like any other, so nothing here asks what is fitted. What a weapon looks
- * like is `src/render/weapon-mesh.ts`. The weapon shops and the faction arsenals are
+ * row like any other, so nothing here asks what is fitted. What lies on the
+ * ground to be picked up is `pickup.ts`, and what a weapon looks like is
+ * `src/render/weapon-mesh.ts`. The weapon shops and the faction arsenals are
  * spec section 16.
  */
 import { rngFor, Subsystem } from '../core/rng.ts';
@@ -55,6 +56,7 @@ export {
   removeAttachment,
   showsLongGun,
   slotSpec,
+  takeWeapon,
   beginReload,
   createLoadout,
   currentSlot,
