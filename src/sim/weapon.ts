@@ -14,10 +14,10 @@
  * same way. The shot counter is part of the record, which is what keeps a
  * replay in step with the session it replays.
  *
- * Attachments, weapon shops and faction arsenals are the rest of spec section
- * 11.6 and are not here yet: this is the table, the ammunition and the act of
- * firing. What a weapon looks like is `src/render`, and it is the issue after
- * this one.
+ * What an attachment does to a weapon is `attachment.ts`: a fitted weapon is a
+ * row like any other, so nothing here asks what is fitted. What a weapon looks
+ * like is `src/render/weapon-mesh.ts`. The weapon shops and the faction arsenals are
+ * spec section 16.
  */
 import { rngFor, Subsystem } from '../core/rng.ts';
 import { TICK_RATE } from './clock.ts';
@@ -38,7 +38,23 @@ import {
 // nothing outside `src/sim` needs to know which of the three holds what.
 export { ARSENAL, DEFAULT_WEAPON, WEAPON_IDS, weaponOf } from './arsenal.ts';
 export {
+  ATTACHMENTS,
+  EXTENDED_MAG,
+  FOREGRIP_RECOIL,
+  LASER_HIP,
+  OPTIC_RANGE,
+  fits,
+  fitsOf,
+  fitted,
+  normaliseAttachments,
+  type Attachment,
+} from './attachment.ts';
+export {
   addAmmo,
+  fitAttachment,
+  removeAttachment,
+  showsLongGun,
+  slotSpec,
   beginReload,
   createLoadout,
   currentSlot,
@@ -253,6 +269,12 @@ export interface WeaponSpec {
   concealed: boolean;
   /** Set where the weapon throws or launches something rather than hitting at once. */
   projectile: ProjectileSpec | undefined;
+  /** True with a suppressor fitted: less heat a shot, and a smaller alert radius. */
+  suppressed: boolean;
+  /** How much further an aimed shot carries than {@link WeaponSpec.range}: 1 without an optic. */
+  sight: number;
+  /** How much of {@link WeaponSpec.spread} a hip-fired shot keeps: 1 without a laser. */
+  hipSpread: number;
 }
 
 
@@ -290,6 +312,16 @@ const PITCH_SHARE = 0.5;
 export const SHOT_HEAT_CONCEALED = 0.15;
 export const SHOT_HEAT_OPEN = 0.4;
 
+/** How much of a shot's heat a suppressor leaves (spec section 11.6). */
+export const SUPPRESSED_HEAT = 0.4;
+
+/**
+ * Metres a shot is heard over, which is the radius police are alerted from
+ * (spec sections 11.6, 14). A suppressed shot is heard over a much smaller one.
+ */
+export const ALERT_RADIUS = 150;
+export const SUPPRESSED_ALERT_RADIUS = 40;
+
 /**
  * How much of a vehicle one point of damage takes off it, once the round's
  * penetration is counted (spec section 11.6). A shotgun blast at a door is
@@ -317,7 +349,23 @@ export function firesFromVehicle(spec: WeaponSpec): boolean {
 /** Heat one shot of this weapon raises (spec section 14). */
 export function heatPerShot(spec: WeaponSpec): number {
   if (spec.cls === 'melee') return 0;
-  return spec.concealed ? SHOT_HEAT_CONCEALED : SHOT_HEAT_OPEN;
+  const heat = spec.concealed ? SHOT_HEAT_CONCEALED : SHOT_HEAT_OPEN;
+  return spec.suppressed ? heat * SUPPRESSED_HEAT : heat;
+}
+
+/**
+ * Metres police hear one shot of this weapon from (spec sections 11.6, 14).
+ * Melee is silent, so it is heard from nowhere. The police of spec section 14
+ * are what will read it.
+ */
+export function alertRadius(spec: WeaponSpec): number {
+  if (spec.cls === 'melee') return 0;
+  return spec.suppressed ? SUPPRESSED_ALERT_RADIUS : ALERT_RADIUS;
+}
+
+/** Metres a shot carries: further when it is aimed through an optic (spec section 11.6). */
+export function rangeOf(spec: WeaponSpec, aiming: boolean): number {
+  return aiming ? spec.range * spec.sight : spec.range;
 }
 
 /**
@@ -343,11 +391,12 @@ export function blastFalloff(distance: number, radius: number): number {
 
 /**
  * The half-angle of the cone a shot leaves in, in radians. Aiming narrows it to
- * {@link AIM_TIGHTEN} of the hip-fired cone, and the recoil still standing from
- * the last shots widens it again (spec sections 11.5, 11.6).
+ * {@link AIM_TIGHTEN} of the hip-fired cone, a laser narrows only the hip-fired
+ * one, and the recoil still standing from the last shots widens it again (spec
+ * sections 11.5, 11.6).
  */
 export function spreadOf(spec: WeaponSpec, aiming: boolean, recoil: number): number {
-  return spec.spread * (aiming ? AIM_TIGHTEN : 1) + recoil;
+  return spec.spread * (aiming ? AIM_TIGHTEN : spec.hipSpread) + recoil;
 }
 
 /** One pellet of a shot: where it starts and the unit direction it flies in. */
@@ -389,6 +438,10 @@ export interface Shot {
   projectile: ProjectileState | undefined;
   /** Heat the shot raised (spec section 14). */
   heat: number;
+  /** Metres police hear the shot from (spec sections 11.6, 14). */
+  alert: number;
+  /** Metres each ray carries. */
+  range: number;
 }
 
 /**
@@ -455,7 +508,9 @@ function fire(
   const index = loadout.shots;
   loadout.shots += 1;
   const heat = heatPerShot(spec);
-  if (spec.cls === 'melee') return { spec, rays: [], projectile: undefined, heat };
+  const alert = alertRadius(spec);
+  const range = rangeOf(spec, loadout.aiming);
+  if (spec.cls === 'melee') return { spec, rays: [], projectile: undefined, heat, alert, range };
 
   const rng = rngFor(seed, tick, Subsystem.Weapons, index);
   const cone = spreadOf(spec, loadout.aiming, loadout.recoil);
@@ -479,7 +534,7 @@ function fire(
       vh: Math.sin(pitch) * flight.speed,
       thrownTick: tick,
     };
-    return { spec, rays: [], projectile, heat };
+    return { spec, rays: [], projectile, heat, alert, range };
   }
 
   const rays: ShotRay[] = [];
@@ -496,7 +551,7 @@ function fire(
       dh: Math.sin(pitch),
     });
   }
-  return { spec, rays, projectile: undefined, heat };
+  return { spec, rays, projectile: undefined, heat, alert, range };
 }
 
 /**

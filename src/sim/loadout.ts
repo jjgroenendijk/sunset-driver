@@ -9,18 +9,28 @@
  * The record is plain numbers, like the rest of the simulation state. The
  * firing model that reads it is `weapon.ts`.
  */
-import { AMMO_CAP, CALIBRES, type Calibre, type WeaponId, type WeaponSpec } from './weapon.ts';
+import { AMMO_CAP, CALIBRES, type Calibre, type WeaponClass, type WeaponId, type WeaponSpec } from './weapon.ts';
 import { DEFAULT_WEAPON, weaponOf } from './arsenal.ts';
+import { fits, fitted, normaliseAttachments, type Attachment } from './attachment.ts';
+import type { PlayerState } from './on-foot.ts';
 
 /** Magazines of spare ammunition a weapon comes with when it is given out. */
 export const SPARE_MAGAZINES = 3;
 
-/** One weapon the player is carrying, and the rounds in its magazine. */
+/** One weapon the player is carrying, the rounds in its magazine and what is fitted to it. */
 export interface WeaponSlot {
   id: WeaponId;
   /** Rounds in the magazine. Always 0 on a melee weapon. */
   loaded: number;
+  /** What is fitted, in the order of `ATTACHMENTS` (spec section 11.6). */
+  attachments: Attachment[];
 }
+
+/**
+ * The classes that are a long gun: the ones nobody carries under a coat, so
+ * police who see one raise the heat (spec section 11.6).
+ */
+export const LONG_GUN_CLASSES: readonly WeaponClass[] = ['shotgun', 'rifle', 'precision', 'heavy'];
 
 /**
  * What the player is carrying, as the record holds it: the weapons, the pools
@@ -58,7 +68,7 @@ function emptyAmmo(): Record<Calibre, number> {
 /** A player carrying their fists and nothing else, which is how a session starts. */
 export function createLoadout(): LoadoutState {
   return {
-    slots: [{ id: DEFAULT_WEAPON, loaded: 0 }],
+    slots: [{ id: DEFAULT_WEAPON, loaded: 0, attachments: [] }],
     current: 0,
     ammo: emptyAmmo(),
     firedTick: -1,
@@ -76,9 +86,28 @@ export function currentSlot(loadout: LoadoutState): WeaponSlot {
   return slot;
 }
 
-/** The weapon in the player's hands. */
+/**
+ * A carried weapon as it fires: its row of the arsenal with its attachments
+ * fitted. A slot from an older save carries no list, and fires bare.
+ */
+export function slotSpec(slot: WeaponSlot): WeaponSpec {
+  return fitted(weaponOf(slot.id), slot.attachments ?? []);
+}
+
+/** The weapon in the player's hands, with what is fitted to it. */
 export function currentWeapon(loadout: LoadoutState): WeaponSpec {
-  return weaponOf(currentSlot(loadout).id);
+  return slotSpec(currentSlot(loadout));
+}
+
+/**
+ * True where the player shows a long gun: one in their hands while they are on
+ * foot (spec section 11.6). Police who see it raise the heat; a concealed
+ * pistol draws nothing. The police of spec section 14 are what will read it.
+ */
+export function showsLongGun(loadout: LoadoutState, player: PlayerState): boolean {
+  if (player.driving) return false;
+  const spec = currentWeapon(loadout);
+  return !spec.concealed && LONG_GUN_CLASSES.includes(spec.cls);
 }
 
 /** The pool a weapon draws on. A melee weapon needs none, so it has none. */
@@ -107,11 +136,41 @@ export function giveWeapon(loadout: LoadoutState, id: WeaponId, spare = SPARE_MA
   const spec = weaponOf(id);
   let index = loadout.slots.findIndex((slot) => slot.id === id);
   if (index < 0) {
-    loadout.slots.push({ id, loaded: spec.capacity });
+    loadout.slots.push({ id, loaded: spec.capacity, attachments: [] });
     index = loadout.slots.length - 1;
   }
   if (spec.calibre !== undefined) addAmmo(loadout, spec.calibre, spec.capacity * spare);
   select(loadout, index);
+}
+
+/**
+ * Fit an attachment to a carried weapon (spec section 11.6). Answers false
+ * where the weapon is not carried or does not take it.
+ */
+export function fitAttachment(loadout: LoadoutState, id: WeaponId, attachment: Attachment): boolean {
+  const slot = loadout.slots.find((s) => s.id === id);
+  const spec = weaponOf(id);
+  if (slot === undefined || !fits(spec, attachment)) return false;
+  slot.attachments = normaliseAttachments(spec, [...(slot.attachments ?? []), attachment]);
+  return true;
+}
+
+/**
+ * Take an attachment off a carried weapon. Rounds an extended magazine held
+ * past the standard one go back to the pool. Answers false where nothing was
+ * fitted.
+ */
+export function removeAttachment(loadout: LoadoutState, id: WeaponId, attachment: Attachment): boolean {
+  const slot = loadout.slots.find((s) => s.id === id);
+  if (slot === undefined || !(slot.attachments ?? []).includes(attachment)) return false;
+  slot.attachments = slot.attachments.filter((a) => a !== attachment);
+  const spec = slotSpec(slot);
+  const over = slot.loaded - spec.capacity;
+  if (over > 0 && spec.calibre !== undefined) {
+    slot.loaded = spec.capacity;
+    addAmmo(loadout, spec.calibre, over);
+  }
+  return true;
 }
 
 /** Put a weapon the player carries into their hands. Answers false where they do not carry it. */
@@ -154,7 +213,7 @@ export function reloading(loadout: LoadoutState): boolean {
 export function beginReload(loadout: LoadoutState, tick: number): boolean {
   if (reloading(loadout)) return false;
   const slot = currentSlot(loadout);
-  const spec = weaponOf(slot.id);
+  const spec = slotSpec(slot);
   if (spec.capacity === 0 || spec.calibre === undefined) return false;
   if (slot.loaded >= spec.capacity) return false;
   if (loadout.ammo[spec.calibre] <= 0) return false;
@@ -170,7 +229,7 @@ export function finishReload(loadout: LoadoutState, tick: number): void {
   if (!reloading(loadout) || tick < loadout.reloadTick) return;
   loadout.reloadTick = -1;
   const slot = currentSlot(loadout);
-  const spec = weaponOf(slot.id);
+  const spec = slotSpec(slot);
   if (spec.calibre === undefined) return;
   const taken = Math.min(spec.capacity - slot.loaded, loadout.ammo[spec.calibre]);
   slot.loaded += taken;

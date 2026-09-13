@@ -82,7 +82,7 @@ export class Gunfire {
       this.swing(state, shot.spec, target);
       return;
     }
-    for (const ray of shot.rays) this.scan(state, shot.spec, ray, target);
+    for (const ray of shot.rays) this.scan(state, shot.spec, ray, shot.range, target);
   }
 
   /**
@@ -90,7 +90,7 @@ export class Gunfire {
    * the cast: a driver firing from a seat would otherwise shoot their own door,
    * and a player on foot their own chest.
    */
-  private scan(state: SimState, spec: WeaponSpec, ray: ShotRay, target: ShotTarget): void {
+  private scan(state: SimState, spec: WeaponSpec, ray: ShotRay, range: number, target: ShotTarget): void {
     this.from.x = ray.x;
     this.from.y = ray.h;
     this.from.z = ray.y;
@@ -98,7 +98,7 @@ export class Gunfire {
     this.along.y = ray.dh;
     this.along.z = ray.dy;
     const mine = target.shooter;
-    const hit = this.world.castRay(this.ray, spec.range, true, undefined, undefined, mine);
+    const hit = this.world.castRay(this.ray, range, true, undefined, undefined, mine);
     if (hit === null) return;
     if (target.body === undefined || hit.collider.handle !== target.body.handle) return;
     // The round pushes the vehicle the way it was flying, which is the direction
