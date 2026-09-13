@@ -27,50 +27,12 @@ jobs:
       artifact: ${{ steps.tree.outputs.artifact }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
 
-      # setup-node downloads and unpacks Node on every run unless the version
-      # is already in the tool cache, which costs more than restoring it.
-      - id: node
-        run: echo "major=$(cat .nvmrc)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: /opt/hostedtoolcache/node/${{ steps.node.outputs.major }}.*
-          key: node-${{ runner.os }}-${{ steps.node.outputs.major }}
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .nvmrc
-          package-manager-cache: false
-
-      - name: Restore node_modules
-        id: modules
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: node_modules
-          key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc', 'package-lock.json') }}
-
-      - if: steps.modules.outputs.cache-hit != 'true'
-        run: npm ci --prefer-offline --no-audit --no-fund
-
-      # Tests run locally (`npm run verify`) and nightly (`nightly.yml`), not
-      # here. The checks and the build share nothing, so they run side by side.
-      - name: Check and build
-        env:
-          CHECKS: ${{ inputs.checks }}
-        run: |
-          set -u
-          tasks=(build)
-          if [ "$CHECKS" = true ]; then tasks+=(typecheck lint lint:size); fi
-          pids=()
-          for task in "${tasks[@]}"; do
-            (set -o pipefail; npm run -s "$task" 2>&1 | sed "s/^/[$task] /") &
-            pids+=($!)
-          done
-          failed=0
-          for i in "${!pids[@]}"; do
-            wait "${pids[$i]}" || { echo "::error::npm run ${tasks[$i]} failed"; failed=1; }
-          done
-          exit $failed
+      # Tests run locally (`npm run verify`) and on Dependabot pull requests
+      # and nightly (`full-tier.yml`), not here. `build:checked` runs the
+      # checks and the build side by side.
+      - run: npm run ${{ inputs.checks && 'build:checked' || 'build' }}
 
       - id: tree
         run: echo "artifact=dist-$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"

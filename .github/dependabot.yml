@@ -1,6 +1,6 @@
 version: 2
-# Daily, before the 02:00 UTC run of `nightly.yml`, which tests the pull
-# requests with the full tier and merges the ones that pass.
+# Daily. `ci.yml` runs the full tier on each pull request and merges the ones
+# that pass.
 updates:
   - package-ecosystem: npm
     directory: /
@@ -16,7 +16,8 @@ updates:
       prefix: "chore(deps)"
 
   - package-ecosystem: github-actions
-    directory: /
+    # The workflows, and the composite actions they use.
+    directories: ["/", "/.github/actions/*"]
     schedule:
       interval: daily
       time: "00:30"
