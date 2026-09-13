@@ -81,18 +81,15 @@ jobs:
       - if: steps.modules.outputs.cache-hit != 'true'
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm run lint:size
-
-      # The full tier gates the merge; main re-runs the quick tier only. A
-      # rebase gives main new commit SHAs but the same trees, so the full tier
-      # would measure a second time what the pull request already measured.
-      # The quick tier still catches a rebase onto a main that moved under it.
+      # Tests run locally (`npm run verify`) and nightly (`nightly.yml`), not
+      # here. A pull request proves the code typechecks, lints and builds; main
+      # only builds and deploys.
       - if: github.event_name == 'pull_request'
-        run: npm run test:full
-      - if: github.event_name == 'push'
-        run: npm test
+        run: npm run typecheck
+      - if: github.event_name == 'pull_request'
+        run: npm run lint
+      - if: github.event_name == 'pull_request'
+        run: npm run lint:size
 
       - run: npm run build
 

@@ -1,0 +1,87 @@
+name: Nightly
+
+on:
+  schedule:
+    # 02:00 UTC, after the day's merges and the Monday Dependabot updates.
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  full-tier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # A night with no new commit on main skips the run. Every commit counts,
+      # the merged Dependabot updates included. A manual run always tests.
+      - id: recent
+        run: |
+          set -u
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          elif [ -n "$(git log --since='24 hours ago' --format=%H -1)" ]; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'No commit on main in the last 24 hours; skipping.'
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.recent.outputs.changed == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - if: steps.recent.outputs.changed == 'true'
+        id: modules
+        uses: actions/cache@v6
+        with:
+          path: node_modules
+          key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc', 'package-lock.json') }}
+
+      - if: steps.recent.outputs.changed == 'true' && steps.modules.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - if: steps.recent.outputs.changed == 'true'
+        id: verify
+        run: npm run verify:full 2>&1 | tee verify.log
+
+      # One open issue collects the failures: a second failing night adds a
+      # comment to it rather than a new issue.
+      - name: Report the failure as an issue
+        if: failure() && steps.verify.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -u
+          gh label create nightly-failure --color d73a4a \
+            --description 'The nightly full test tier failed' 2>/dev/null || true
+          {
+            echo "The nightly \`npm run verify:full\` failed on \`$GITHUB_SHA\`."
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo 'The end of the log:'
+            echo
+            echo '```'
+            sed 's/\x1b\[[0-9;]*m//g' verify.log | tail -n 80
+            echo '```'
+          } > body.md
+          open=$(gh issue list --label nightly-failure --state open --json number --jq '.[0].number')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body-file body.md
+          else
+            gh issue create --title 'Nightly full test tier failed' \
+              --label nightly-failure --label bug --body-file body.md
+          fi
