@@ -3,6 +3,7 @@ import { SEED_COUNT } from './seed-limits.ts';
 import { ready } from './seed-fixture.ts';
 import { terrainChecks } from './seed-terrain.ts';
 import { roadChecks } from './seed-roads.ts';
+import { overlapChecks } from './seed-overlap.ts';
 import { groundChecks } from './seed-ground.ts';
 import { parcelChecks } from './seed-parcels.ts';
 import { layoutChecks } from './seed-layout.ts';
@@ -26,6 +27,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
 
   terrainChecks();
   roadChecks();
+  overlapChecks();
   groundChecks();
   parcelChecks();
   layoutChecks();
