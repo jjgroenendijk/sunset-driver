@@ -2,36 +2,34 @@
  * The water, drawn (spec section 7.2).
  *
  * Spec section 7.2 asks for the three.js water addon, and `WaterMesh` is the one
- * that runs on `WebGPURenderer`: it reads a tiling normal map at four scales to
- * make a moving surface, lights it from the sun, and mirrors the scene in it.
- * The mirror is a second pass over the scene, so there is one water mesh for the
- * whole world rather than one per chunk, and it renders at
- * {@link REFLECTION_SCALE} of the frame.
+ * that runs on `WebGPURenderer`. Its material is kept: the uniforms the addon
+ * holds, the transparent blend, the offset it looks its shadow up at. Its
+ * colour graph is not. The addon bakes its mirror into that graph as a function
+ * the renderer only runs while it builds the shader, so no handle on the mirror
+ * ever reaches the outside — and the quality tiers of `quality.ts` need one, to
+ * render the mirror smaller than the frame below the top tier. The graph is
+ * rebuilt here, ported from the addon, around a reflector this file holds.
  *
- * The mirror is also the dearest single thing a frame with water in view pays
- * for, and it runs wherever the sheet is drawn — the sheet spans the map, so
- * frustum culling cannot answer for it. It is drawn only where the camera can
- * see it instead: the camera of `camera.ts` looks down from a few tens of
- * metres and its view ends on the ground a couple of hundred metres out, and
- * {@link WaterSurface.follow} asks, once a frame, whether any water stands in
- * that patch. Where none does, the sheet is out of the frame and the mirror
- * with it, and a frame inland pays nothing for the sea it cannot see.
+ * The mirror is a second pass over the scene, and the dearest single thing a
+ * frame with water in view pays for. It runs wherever the sheet is drawn, and
+ * the sheet spans the map, so frustum culling cannot answer for it. Instead the
+ * sheet is drawn only where the camera can see it: the camera of `camera.ts`
+ * looks down from a few tens of metres and its view ends on the ground a couple
+ * of hundred metres out, and {@link WaterSurface.follow} asks, once a frame,
+ * whether any water stands in that patch. Where none does, the sheet is out of
+ * the frame and the mirror with it, and a frame inland pays nothing for the sea
+ * it cannot see.
  *
- * The addon adds its own colour to what the mirror shows, and it takes that
- * colour as it is: nothing lights it. The mirror, though, shows the sky dome of
+ * The colour under the mirror is lit here rather than by the addon, which adds
+ * its own colour to the mirror unlit. The mirror shows the sky dome of
  * `sky.ts`, which answers in real sky brightness. An unlit colour is lost under
- * it, and by day the sea reads as a grey sheet of sky. So the colour is lit here,
+ * it, and by day the sea reads as a grey sheet of sky. So the colour is lit,
  * each time the light of the day changes, by the same sun and sky fill that
  * light the ground, and it is in the units of the mirror.
  *
- * The addon owns the rest of the surface. What is added here is the shore:
- * every vertex of `water.ts` carries the depth of the water under it, and the
- * surface fades out over the last {@link SHORE_FADE} metres of it. So the sea
- * thins into the sand of a beach rather than ending on a line across it, and the
- * shallows keep the colour of the ground below them.
- *
  * The addon imports `three/tsl` itself; spec Appendix A is about the game's own
- * shading, which still goes through `tsl.ts`.
+ * shading, which still goes through `tsl.ts` — and the colour graph here is the
+ * game's own shading now.
  */
 import {
   Color,
@@ -46,8 +44,26 @@ import { WaterMesh } from 'three/examples/jsm/objects/WaterMesh.js';
 import type { WorldDescription } from '../world/types.ts';
 import type { Daylight } from './daylight.ts';
 import { SHADOW_DISTANCE } from './sky.ts';
-import { attribute, smoothstep } from './tsl.ts';
-import { buildWaterAttributes, waterGeometry, waterNear, waveNormalData, WAVE_TEXTURE_SIZE } from './water.ts';
+import {
+  attribute,
+  cameraPosition,
+  float,
+  mix,
+  positionWorld,
+  reflector,
+  smoothstep,
+  texture,
+  time,
+  vec2,
+  type TslNode,
+} from './tsl.ts';
+import {
+  buildWaterAttributes,
+  waterGeometry,
+  waterNear,
+  waveNormalData,
+  WAVE_TEXTURE_SIZE,
+} from './water.ts';
 
 /** Metres of depth over which the surface fades in at a shore. */
 const SHORE_FADE = 3;
@@ -57,10 +73,11 @@ const DEEP_ALPHA = 0.93;
 
 /**
  * The share of the frame the mirror is rendered at. The reflection of a top-down
- * camera is small on screen and broken up by the waves, so it costs a quarter of
- * the pass and reads the same.
+ * camera is small on screen and broken up by the waves, so it costs a fraction
+ * of the pass and reads the same. The quality tiers of `quality.ts` hold this as
+ * their top step and render it smaller below.
  */
-const REFLECTION_SCALE = 0.35;
+export const REFLECTION_SCALE = 0.35;
 
 /**
  * How tightly the wave pattern is laid. The addon spreads its normal map over
@@ -102,6 +119,12 @@ export interface WaterSurface {
    */
   shown: boolean;
   /**
+   * The share of the frame the mirror is rendered at. The quality tiers of
+   * `quality.ts` step this down; the mirror answers at the new size the next
+   * frame, and nothing is rebuilt.
+   */
+  set mirror(scale: number);
+  /**
    * Light the water as one moment of the day (spec section 10.5): the glare
    * follows the sun, and the colour takes the light that falls on the ground.
    */
@@ -117,7 +140,9 @@ export interface WaterSurface {
   dispose(): void;
 }
 
-/** Build the water of a world. */
+/**
+ * Build the water of a world.
+ */
 export function createWaterSurface(world: WorldDescription): WaterSurface {
   const waves = new DataTexture(waveNormalData(world.seed), WAVE_TEXTURE_SIZE, WAVE_TEXTURE_SIZE);
   waves.wrapS = RepeatWrapping;
@@ -146,6 +171,7 @@ export function createWaterSurface(world: WorldDescription): WaterSurface {
   // One mesh covers the whole map, so a culling test can only ever answer yes.
   // `follow` is what shows and hides it, off the water the sheet itself holds.
   mesh.frustumCulled = false;
+  const mirror = drawWater(mesh, waves);
 
   // The addon's own opacity is one number for the whole surface. This is the
   // shoreline blend: that number, faded to nothing over the last of the depth
@@ -160,6 +186,9 @@ export function createWaterSurface(world: WorldDescription): WaterSurface {
   return {
     object: mesh,
     shown: true,
+    set mirror(scale: number) {
+      mirror.resolutionScale = scale;
+    },
     setDaylight(light: Daylight): void {
       mesh.sunDirection.value.copy(light.sun).normalize();
       mesh.sunColor.value.copy(light.sunColour);
@@ -180,4 +209,74 @@ export function createWaterSurface(world: WorldDescription): WaterSurface {
       waves.dispose();
     },
   };
+}
+
+/**
+ * Replace the addon's colour graph with the same shading built here, around a
+ * mirror this file can hold, and answer that mirror. Everything the graph
+ * computes is ported from the addon as it stands in three.js 0.186: the moving
+ * surface off the wave tile, the sun's glare and diffuse light on it, and the
+ * Fresnel mix of the water's own colour with what the mirror shows. The addon's
+ * graph, left in place, would sample the waves a second time for the shadow
+ * lookup and offer no way to the mirror at all, so the lookup is rewritten over
+ * this graph's distortion too.
+ */
+function drawWater(mesh: WaterMesh, waves: DataTexture): { resolutionScale: number } {
+  const mirror = reflector();
+  const tile = texture(waves);
+  // The uniforms the addon holds, taken as the loose nodes they are used as:
+  // the operators of a typed node reject the chained graphs built below, which
+  // is the trap `tsl.ts` is the door for.
+  const sunDirection = mesh.sunDirection as TslNode;
+  const sunColor = mesh.sunColor as TslNode;
+  const waterColor = mesh.waterColor as TslNode;
+
+  // The moving surface: the wave tile of `water.ts`, sampled at four scales and
+  // speeds and summed, each sample a normal in its own frame with the surface's
+  // up in blue.
+  const laid = positionWorld.xz.mul(mesh.size);
+  const drift = [17, 29, -19, 31, 101, 97, -109, -113].map((step) => time.div(step));
+  const noise = tile
+    .sample(laid.div(103).add(vec2(drift[0], drift[1])))
+    .add(tile.sample(laid.div(107).sub(vec2(drift[2], drift[3]))))
+    .add(tile.sample(laid.div(vec2(8907, 9803)).add(vec2(drift[4], drift[5]))))
+    .add(tile.sample(laid.div(vec2(1091, 1027)).sub(vec2(drift[6], drift[7]))))
+    .mul(0.5)
+    .sub(1);
+  const surfaceNormal = noise.xzy.mul(1.5, 1, 1.5).normalize();
+  const worldToEye = cameraPosition.sub(positionWorld);
+  const eyeDirection = worldToEye.normalize();
+
+  // The sun on the surface: the glare of it reflected into the eye, and the
+  // diffuse light of how squarely it falls on the waves.
+  const glare = sunDirection
+    .negate()
+    .reflect(surfaceNormal)
+    .normalize()
+    .dot(eyeDirection)
+    .max(0)
+    .pow(100)
+    .mul(sunColor)
+    .mul(2);
+  const diffuse = sunDirection.dot(surfaceNormal).max(0).mul(sunColor).mul(0.5);
+
+  // The mirror is read through the waves: pushed about by the surface the more,
+  // the closer the water stands to the eye.
+  const distortion = surfaceNormal.xz
+    .mul(float(0.001).add(float(1).div(worldToEye.length())))
+    .mul(mesh.distortionScale);
+  mesh.material.receivedShadowPositionNode = positionWorld.add(distortion);
+  mirror.uvNode = mirror.uvNode.add(distortion);
+  mirror.reflector.resolutionScale = REFLECTION_SCALE;
+  // The mirror takes its plane from the mesh's own facing, through the place of
+  // this target in the world.
+  mesh.add(mirror.target);
+
+  // What the sea is made of: the lit colour of the water itself where the eye
+  // stands squarely on it, and what the mirror shows where it grazes it.
+  const theta = eyeDirection.dot(surfaceNormal).max(0);
+  const reflectance = float(1).sub(theta).pow(5).mul(0.98).add(0.02);
+  const scatter = surfaceNormal.dot(eyeDirection).max(0).mul(waterColor);
+  mesh.material.colorNode = mix(sunColor.mul(diffuse).mul(0.3).add(scatter), mirror.rgb.add(glare), reflectance);
+  return mirror.reflector;
 }

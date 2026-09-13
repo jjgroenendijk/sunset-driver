@@ -80,9 +80,13 @@ describe('the water surface', () => {
     surface.dispose();
   });
 
-  it('takes the light of the day without building anything', () => {
+  it("takes the light of the day and a new mirror share without rebuilding anything", () => {
     const surface = createWaterSurface(islandWorld());
-    expect(() => surface.setDaylight(daylightAt(tickAtHour(18)))).not.toThrow();
+    expect(() => {
+      surface.setDaylight(daylightAt(tickAtHour(18)));
+      surface.mirror = 0.2;
+      surface.mirror = 0.35;
+    }).not.toThrow();
     surface.dispose();
   });
 });
