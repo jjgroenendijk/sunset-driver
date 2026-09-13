@@ -89,6 +89,18 @@ are the design.
   magazine starts the reload instead of firing. Recoil only comes back `RECOIL_SETTLE` ticks after
   the last shot, which is why holding a machine gun sprays and letting go settles it. Only a pistol
   or an SMG fires from a seat.
+- `src/sim/attachment.ts` is what an attachment does. A fitted weapon is a `WeaponSpec` like any
+  row, so read a carried weapon through `slotSpec` or `currentWeapon`, never `weaponOf(slot.id)`:
+  the bare row has the wrong magazine and the wrong heat. `fitted` shares one frozen row per weapon
+  and list, because the firing model reads the weapon in hand several times a tick. A slot keeps its
+  attachments in the order of `ATTACHMENTS`, so a save does not depend on the order they were
+  fitted in. `Shot.alert` is the radius police hear a shot from and `showsLongGun` is whether they
+  see a long gun; the police of spec section 14 are what will read both.
+- `src/sim/pickup.ts` is the weapons lying in the world. `stepSim` steps them after the physics, so
+  the player takes what lies where the tick left them. `takeWeapon` answers false where a pickup
+  would give nothing, and such a pickup stays on the ground rather than vanishing. `dropCarried` and
+  `dropPoliceCar` are the calls the pedestrians of spec section 13.1 and the police of section 14
+  make; nothing calls them yet but the picker.
 - `physics.ts` is the Rapier half of that: a gun casts a ray per pellet, a melee weapon sweeps the
   arc `swingReaches` describes, and a thrown weapon or a launcher puts a `ProjectileState` into the
   record that `fly` carries one tick at a time, bouncing it off what it meets until its fuse burns
@@ -99,8 +111,10 @@ are the design.
   lost, and `disableEngine` is what the Barrett M82 does. A direction reaches those as the vehicle's
   own `(along, across, up)`, which is `unrotate`'s `x`, `z`, `y` in that order.
 - `src/ui/weapon-picker.ts` is the debug picker for the arsenal, as `vehicle-picker.ts` is for the
-  roster: `G` opens it, and a row hands over the weapon loaded with spare ammunition behind it. The
-  weapon shops and faction dealers of spec section 11.6 are what will replace it.
+  roster: `G` opens it, and a row hands over the weapon loaded with spare ammunition behind it.
+  Shift and a row drops the weapon three metres ahead as a pickup instead, and the buttons under the
+  rows fit and remove the attachments of the weapon in hand. The weapon shops and faction dealers of
+  spec section 11.6 are what will replace it.
 - `SimState.heat` is the attention of spec section 14. Nothing spends it yet; a sounding alarm and
   every shot fired raise it, and melee raises none, because the spec calls it silent.
 - The physics reads the world through a `Ground`: the carved height at a place, what that ground is
