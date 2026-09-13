@@ -20,7 +20,7 @@
     "verify:full": "npm run typecheck && npm run lint && npm run lint:size && npm run test:full"
   },
   "devDependencies": {
-    "@types/node": "^22.20.2",
+    "@types/node": "^26.5.1",
     "@types/three": "^0.185.4",
     "@webgpu/types": "^0.1.72",
     "playwright-core": "^1.63.0",
