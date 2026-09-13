@@ -28,6 +28,15 @@
  *                    11.3): dented, smoking, burning or burnt.
  *   --skid           lay a drift's worth of skid marks into the road behind
  *                    the vehicle (spec section 11.3).
+ *   --weapon         the weapon in the player's hands, by id, for example
+ *                    `ak-47` (spec section 11.6). Drawn with --on-foot.
+ *   --attachments    what is fitted to it and to the pickups, for example
+ *                    `suppressor+optic`.
+ *   --aim            hold the weapon at the shoulder.
+ *   --pickups        lay every weapon of the arsenal in rows ahead of the
+ *                    player, to compare the silhouettes.
+ *   --hover          the index of the laid pickup to draw grown, as the one
+ *                    under the mouse.
  *
  * The browser comes from Playwright. A cloud session already has one; on a
  * fresh machine run `npx playwright install chromium` first, or point
@@ -131,6 +140,11 @@ const request: PreviewRequest = {
   ...(options.has('on-foot') ? { onFoot: true } : {}),
   ...(options.has('damage') ? { damage: options.get('damage') as string } : {}),
   ...(options.has('skid') ? { skid: true } : {}),
+  ...(options.has('weapon') ? { weapon: options.get('weapon') as string } : {}),
+  ...(options.has('attachments') ? { attachments: (options.get('attachments') as string).split('+') } : {}),
+  ...(options.has('aim') ? { aim: true } : {}),
+  ...(options.has('pickups') ? { pickups: true } : {}),
+  ...(options.has('hover') ? { hover: num('hover', 0) } : {}),
 };
 
 /**

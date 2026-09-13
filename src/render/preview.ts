@@ -26,7 +26,18 @@ import {
   type DamageStage,
   type DamageState,
 } from '../sim/damage.ts';
-import { exitPlace } from '../sim/on-foot.ts';
+import { createPlayerState, exitPlace } from '../sim/on-foot.ts';
+import type { PickupState } from '../sim/pickup.ts';
+import {
+  ATTACHMENTS,
+  createLoadout,
+  fitAttachment,
+  giveWeapon,
+  normaliseAttachments,
+  WEAPON_IDS,
+  weaponOf,
+  type Attachment,
+} from '../sim/weapon.ts';
 import {
   createVehicleState,
   DEFAULT_CLASS,
@@ -87,7 +98,27 @@ export interface PreviewRequest {
    * (spec section 11.3), which is the one way to look at them in a still frame.
    */
   skid?: boolean;
+  /**
+   * The weapon to put in the player's hands, by id (spec section 11.6). It is
+   * drawn only with {@link PreviewRequest.onFoot}, as in the game.
+   */
+  weapon?: string;
+  /** The attachments to fit to that weapon and to the pickups, by name. */
+  attachments?: string[];
+  /** Set to hold the weapon at the shoulder rather than at the hip. */
+  aim?: boolean;
+  /**
+   * Set to lay every weapon of the arsenal on the ground ahead of the player as
+   * a pickup, in rows, which is how the silhouettes are compared.
+   */
+  pickups?: boolean;
+  /** The index of the laid pickup to draw as the one under the mouse, grown to its full hover size. */
+  hover?: number;
 }
+
+/** Metres between two pickups `--pickups` lays, and how many lie in a row. */
+const PICKUP_GRID = 3;
+const PICKUP_ROW = 8;
 
 /** Ticks of smoke and flame let into the air before the picture is taken. */
 const FX_WARMUP = 240;
@@ -167,6 +198,7 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   scene.resetDamage(tick - FX_WARMUP);
   for (let t = tick - FX_WARMUP; t <= tick; t++) scene.damage(vehicle, seed, t);
   if (request.skid === true) drift(scene, vehicle, spec, heading);
+  arm(scene, request, stand, tick);
 
   const camera = new FollowCamera(width / height);
   camera.setBaseDistance(distance);
@@ -209,6 +241,36 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   renderer.dispose();
 
   return { width, height, rgb, worldMs, chunkMs, frameMs, peakDrawCalls, lights, shadows, quality: tier.name };
+}
+
+/**
+ * The weapons of spec section 11.6, for the preview alone: the one in the
+ * player's hands, and with `--pickups` every weapon of the arsenal lying in
+ * rows ahead of them.
+ */
+function arm(scene: WorldScene, request: PreviewRequest, stand: { x: number; y: number; heading: number }, tick: number): void {
+  const attachments = ATTACHMENTS.filter((name: Attachment) => request.attachments?.includes(name) === true);
+  const loadout = createLoadout();
+  const weapon = WEAPON_IDS.find((id) => id === request.weapon);
+  if (weapon !== undefined) {
+    giveWeapon(loadout, weapon);
+    for (const attachment of attachments) fitAttachment(loadout, weapon, attachment);
+  }
+  loadout.aiming = request.aim === true;
+  const player = createPlayerState();
+  player.driving = request.onFoot !== true;
+  const ground = scene.heightAt(stand.x, stand.y);
+  scene.held.set(loadout, player, { ...stand, height: ground }, scene.character.height);
+  if (request.pickups !== true) return;
+  const laid: PickupState[] = WEAPON_IDS.filter((id) => id !== 'fists').map((weapon, i) => {
+    const x = stand.x + ((i % PICKUP_ROW) - (PICKUP_ROW - 1) / 2) * PICKUP_GRID;
+    const y = stand.y + (2 + Math.floor(i / PICKUP_ROW)) * PICKUP_GRID;
+    const fits = normaliseAttachments(weaponOf(weapon), attachments);
+    return { id: i, weapon, attachments: fits, loaded: 0, rounds: 0, x, y, h: scene.heightAt(x, y), droppedTick: tick };
+  });
+  scene.pickups.hovered = laid[request.hover ?? -1]?.id;
+  // A second of frames at once is long enough for the hover to grow all the way.
+  scene.pickups.update(laid, tick, 1);
 }
 
 /**
