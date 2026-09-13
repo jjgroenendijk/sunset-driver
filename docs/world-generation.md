@@ -49,10 +49,10 @@ gets wrong without it.
   gives up. The tracer asks 5° more than `MIN_MEET`, because the connection pass can bend a road by
   a snap. The reroute, the bridge anchors and the boardwalk line are vetted by the same rules; a
   reroute that fails is searched again with every grid step vetted, since the grid meets a road at
-  only eight headings. Each resort's
-  boardwalk line is reserved right after the highways and released once it is laid; without that an
-  island link can take the line, and the beach gets no boardwalk. While its two ends reach for the
-  network the line is held again, so neither end runs back along it.
+  only eight headings. Each resort's boardwalk line is reserved right after the highways and
+  released once it is laid; without that an island link can take the line, and the beach gets no
+  boardwalk. While its two ends reach for the network the line is held again, so neither end runs
+  back along it.
 - The two highways through the core are the spine every other road grows off, so where the ground
   cuts both of them short of `MIN_HIGHWAY` the longer is laid whatever its length. Without that a
   seed whose trunks both come up short has no highway, and then no arterial, no street and no road
