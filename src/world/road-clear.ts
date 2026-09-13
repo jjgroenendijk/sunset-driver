@@ -52,12 +52,8 @@ export interface Trail {
   start?: Point;
 }
 
-/** Where two segments come closest: how far apart, and where along the second one. */
-interface Closest {
-  distance: number;
-  /** Along the second segment, from 0 at its start to 1 at its end. */
-  t: number;
-}
+/** Where along the stored segment the last {@link closest} came nearest, from 0 at its start to 1 at its end. */
+let closestT = 0;
 
 export class RoadClearance {
   private readonly origin: number;
@@ -128,8 +124,12 @@ export class RoadClearance {
   clearAt(x: number, y: number, tier: RoadTier): boolean {
     const half = footprintHalfWidth(tier);
     let clear = true;
+    const p = { x, y };
     this.visit(x, y, x, y, half, (s) => {
-      if (closest(x, y, x, y, this.ends, s).distance < half + (this.halfWidth[s] as number)) clear = false;
+      if (!clear) return;
+      const reach = half + (this.halfWidth[s] as number);
+      if (apart(this.ends, s * 4, p, p, reach)) return;
+      if (closest(x, y, x, y, this.ends, s) < reach) clear = false;
     });
     return clear;
   }
@@ -156,31 +156,35 @@ export class RoadClearance {
       const e = this.ends;
       const k = s * 4;
       const reach = half + (this.halfWidth[s] as number);
+      // A segment whose box stands a reach clear of the step's is further
+      // than a reach from every part of it, so nothing below can refuse it.
+      if (apart(e, k, a, b, reach)) return;
       // The end of a road that met nothing stands on whatever passes within
       // reach of it, crossing or not, so a step keeps that far from it. A step
       // from that end, or meeting a road on it, is a junction there instead.
       for (const [flag, end] of [[s * 2, k], [s * 2 + 1, k + 2]] as const) {
         if (this.terminal[flag] !== true || touches(e, end, a) || (meet !== undefined && touches(e, end, meet))) continue;
         if (trail.start !== undefined && touches(e, end, trail.start)) continue;
-        if (closest(a.x, a.y, b.x, b.y, [e[end] as number, e[end + 1] as number, e[end] as number, e[end + 1] as number], 0).distance < reach) {
+        if (toSegment(e[end] as number, e[end + 1] as number, a.x, a.y, b.x, b.y) < reach) {
           ok = false;
           return;
         }
       }
       if (meet !== undefined && (touches(e, k, meet) || touches(e, k + 2, meet))) return;
-      const near = closest(a.x, a.y, b.x, b.y, e, s);
-      if (near.distance >= reach) return;
+      const distance = closest(a.x, a.y, b.x, b.y, e, s);
+      const t = closestT;
+      if (distance >= reach) return;
       // Near only a corner of the segment, the step does not run beside its
       // line; the segment on the other side of the corner answers for that.
-      if (near.distance > 0 && (near.t <= 0 || near.t >= 1)) return;
+      if (distance > 0 && (t <= 0 || t >= 1)) return;
       const along = Math.atan2((e[k + 3] as number) - (e[k + 1] as number), (e[k + 2] as number) - (e[k] as number));
       if (directionDelta(heading, along) < TRACE_MEET) {
         ok = false;
         return;
       }
-      if (near.distance > 0) return;
-      const x = (e[k] as number) + ((e[k + 2] as number) - (e[k] as number)) * near.t;
-      const y = (e[k + 1] as number) + ((e[k + 3] as number) - (e[k + 1] as number)) * near.t;
+      if (distance > 0) return;
+      const x = (e[k] as number) + ((e[k + 2] as number) - (e[k] as number)) * t;
+      const y = (e[k + 1] as number) + ((e[k + 3] as number) - (e[k + 1] as number)) * t;
       const width = this.halfWidth[s] as number;
       // A step that starts on a road, or ends on one, touches it there: that is
       // the junction, not a crossing.
@@ -259,10 +263,38 @@ function touches(ends: readonly number[], k: number, p: Point): boolean {
 }
 
 /**
- * Where the segment from (ax, ay) to (bx, by) comes closest to the stored
- * segment `s`. Two segments that cross are no distance apart.
+ * True when the box of the stored segment at `k` and the box of the segment
+ * from `a` to `b` stand at least `reach` apart along one axis.
  */
-function closest(ax: number, ay: number, bx: number, by: number, ends: readonly number[], s: number): Closest {
+function apart(ends: readonly number[], k: number, a: Point, b: Point, reach: number): boolean {
+  const cx = ends[k] as number;
+  const cy = ends[k + 1] as number;
+  const dx = ends[k + 2] as number;
+  const dy = ends[k + 3] as number;
+  return (
+    Math.min(cx, dx) - Math.max(a.x, b.x) >= reach ||
+    Math.min(a.x, b.x) - Math.max(cx, dx) >= reach ||
+    Math.min(cy, dy) - Math.max(a.y, b.y) >= reach ||
+    Math.min(a.y, b.y) - Math.max(cy, dy) >= reach
+  );
+}
+
+/** Metres from a point to the segment from (ax, ay) to (bx, by). */
+function toSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const rx = bx - ax;
+  const ry = by - ay;
+  const span = rx * rx + ry * ry;
+  const u = span === 0 ? 0 : clamp(((px - ax) * rx + (py - ay) * ry) / span, 0, 1);
+  return Math.hypot(ax + rx * u - px, ay + ry * u - py);
+}
+
+/**
+ * Metres between the segment from (ax, ay) to (bx, by) and the stored segment
+ * `s`, with where along `s` they come closest in {@link closestT}. Two segments
+ * that cross are no distance apart. It allocates nothing, because the tracer
+ * asks it for every segment near every step.
+ */
+function closest(ax: number, ay: number, bx: number, by: number, ends: readonly number[], s: number): number {
   const k = s * 4;
   const cx = ends[k] as number;
   const cy = ends[k + 1] as number;
@@ -276,21 +308,37 @@ function closest(ax: number, ay: number, bx: number, by: number, ends: readonly 
   if (denominator !== 0) {
     const u = ((cx - ax) * ry - (cy - ay) * rx) / denominator;
     const v = ((cx - ax) * sy - (cy - ay) * sx) / denominator;
-    if (u >= 0 && u <= 1 && v >= 0 && v <= 1) return { distance: 0, t: u };
+    if (u >= 0 && u <= 1 && v >= 0 && v <= 1) {
+      closestT = u;
+      return 0;
+    }
   }
   // Apart, the closest pair has an end of one of the two segments in it.
-  let best: Closest = { distance: Infinity, t: 0 };
+  let best = Infinity;
+  let bestT = 0;
   const along = sx * sx + sy * sy;
-  for (const [px, py] of [[ax, ay], [bx, by]] as const) {
-    const t = along === 0 ? 0 : clamp(((px - cx) * sx + (py - cy) * sy) / along, 0, 1);
-    const d = Math.hypot(px - cx - sx * t, py - cy - sy * t);
-    if (d < best.distance) best = { distance: d, t };
+  const ta = along === 0 ? 0 : clamp(((ax - cx) * sx + (ay - cy) * sy) / along, 0, 1);
+  const da = Math.hypot(ax - cx - sx * ta, ay - cy - sy * ta);
+  if (da < best) {
+    best = da;
+    bestT = ta;
   }
-  const span = rx * rx + ry * ry;
-  for (const [t, px, py] of [[0, cx, cy], [1, dx, dy]] as const) {
-    const u = span === 0 ? 0 : clamp(((px - ax) * rx + (py - ay) * ry) / span, 0, 1);
-    const d = Math.hypot(ax + rx * u - px, ay + ry * u - py);
-    if (d < best.distance) best = { distance: d, t };
+  const tb = along === 0 ? 0 : clamp(((bx - cx) * sx + (by - cy) * sy) / along, 0, 1);
+  const db = Math.hypot(bx - cx - sx * tb, by - cy - sy * tb);
+  if (db < best) {
+    best = db;
+    bestT = tb;
   }
+  const dc = toSegment(cx, cy, ax, ay, bx, by);
+  if (dc < best) {
+    best = dc;
+    bestT = 0;
+  }
+  const dd = toSegment(dx, dy, ax, ay, bx, by);
+  if (dd < best) {
+    best = dd;
+    bestT = 1;
+  }
+  closestT = bestT;
   return best;
 }
