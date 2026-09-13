@@ -8,7 +8,14 @@
  * whole world rather than one per chunk, and it renders at
  * {@link REFLECTION_SCALE} of the frame.
  *
- * The addon owns the colour of the surface. What is added here is the shore:
+ * The addon adds its own colour to what the mirror shows, and it takes that
+ * colour as it is: nothing lights it. The mirror, though, shows the sky dome of
+ * `sky.ts`, which answers in real sky brightness. An unlit colour is lost under
+ * it, and by day the sea reads as a grey sheet of sky. So the colour is lit here,
+ * each time the light of the day changes, by the same sun and sky fill that
+ * light the ground, and it is in the units of the mirror.
+ *
+ * The addon owns the rest of the surface. What is added here is the shore:
  * every vertex of `water.ts` carries the depth of the water under it, and the
  * surface fades out over the last {@link SHORE_FADE} metres of it. So the sea
  * thins into the sand of a beach rather than ending on a line across it, and the
@@ -28,6 +35,7 @@ import {
 } from 'three';
 import { WaterMesh } from 'three/examples/jsm/objects/WaterMesh.js';
 import type { WorldDescription } from '../world/types.ts';
+import type { Daylight } from './daylight.ts';
 import { attribute, smoothstep } from './tsl.ts';
 import { buildWaterAttributes, waterGeometry, waveNormalData, WAVE_TEXTURE_SIZE } from './water.ts';
 
@@ -59,18 +67,28 @@ const WAVE_TILING = 3;
  */
 const DISTORTION = 1.2;
 
-/** Deep water, before the sky and the sun are mixed into it. */
-const WATER_COLOUR = 0x10323c;
+/**
+ * The colour of the water itself, as an albedo: what it gives back of the light
+ * that falls on it, before the mirror is mixed in. It is lit like the ground.
+ */
+const WATER_COLOUR = 0x174a5a;
+
+/**
+ * The colour the water keeps when no light falls on it. By day it is lost under
+ * the lit colour. At night it is what keeps the sea a dark blue, with its waves
+ * in relief, rather than as black as the land.
+ */
+const NIGHT_WATER = 0x10323c;
 
 /** The water of one world: one mesh, and the texture and geometry it owns. */
 export interface WaterSurface {
   /** Add this to the scene. It is the whole map's water, not a chunk's. */
   object: Object3D;
   /**
-   * Move the glare on the sea to where the sun of the day and night cycle
-   * stands (spec section 10.5), so it agrees with the light on the ground.
+   * Light the water as one moment of the day (spec section 10.5): the glare
+   * follows the sun, and the colour takes the light that falls on the ground.
    */
-  setSun(direction: Vector3, colour: Color): void;
+  setDaylight(light: Daylight): void;
   dispose(): void;
 }
 
@@ -92,7 +110,7 @@ export function createWaterSurface(world: WorldDescription): WaterSurface {
     size: WAVE_TILING,
     sunDirection: new Vector3(0, 1, 0),
     sunColor: new Color(0xffffff),
-    waterColor: new Color(WATER_COLOUR),
+    waterColor: new Color(),
     distortionScale: DISTORTION,
   });
   // The sheet is built flat in the local plane; the quarter turn lays it down
@@ -108,11 +126,22 @@ export function createWaterSurface(world: WorldDescription): WaterSurface {
   const depth = attribute('depth', 'float');
   mesh.material.opacityNode = smoothstep(0, SHORE_FADE, depth).mul(mesh.alpha);
 
+  const albedo = new Color(WATER_COLOUR);
+  const night = new Color(NIGHT_WATER);
+  const sky = new Color();
+
   return {
     object: mesh,
-    setSun(direction: Vector3, colour: Color): void {
-      mesh.sunDirection.value.copy(direction).normalize();
-      mesh.sunColor.value.copy(colour);
+    setDaylight(light: Daylight): void {
+      mesh.sunDirection.value.copy(light.sun).normalize();
+      mesh.sunColor.value.copy(light.sunColour);
+      // The light on a level surface: the sun by how high it stands, and the
+      // sky fill from above. The water gives back its albedo of that, over the
+      // colour it keeps in the dark.
+      const sun = light.sunIntensity * Math.max(light.altitude, 0);
+      sky.copy(light.fillSky).multiplyScalar(light.fillIntensity);
+      const lit = mesh.waterColor.value.copy(light.sunColour).multiplyScalar(sun).add(sky);
+      lit.multiply(albedo).add(night);
     },
     dispose(): void {
       geometry.dispose();

@@ -344,7 +344,7 @@ export class WorldScene {
   /** Hand the light of the moment to everything that reads it. */
   private apply(): void {
     this.sky.set(this.light);
-    this.water.setSun(this.light.sun, this.light.sunColour);
+    this.water.setDaylight(this.light);
     this.buildings.night = this.light.night;
     this.lamps.lamps = this.light.lamps;
   }
