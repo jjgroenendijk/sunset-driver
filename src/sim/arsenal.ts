@@ -17,6 +17,9 @@ const BLANK = {
   effect: 'none' as WeaponEffect,
   concealed: false,
   projectile: undefined,
+  suppressed: false,
+  sight: 1,
+  hipSpread: 1,
 } as const;
 
 /** One melee row: a swing has no magazine, no pool and no range but its reach. */
