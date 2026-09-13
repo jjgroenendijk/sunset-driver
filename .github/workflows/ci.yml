@@ -58,7 +58,11 @@ jobs:
   # it again.
   merge-update:
     needs: [build, full-tier]
-    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    # Without a status function the job is skipped, because `find-dist`, which
+    # `build` needs, is skipped on a pull request.
+    if: >-
+      ${{ !cancelled() && github.event.pull_request.user.login == 'dependabot[bot]' &&
+      needs.build.result == 'success' && needs.full-tier.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
