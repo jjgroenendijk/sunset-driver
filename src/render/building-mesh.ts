@@ -31,7 +31,7 @@ import { hashInts } from '../core/hash.ts';
 import { lotMiddle, type Building, type BuildingKind } from '../world/buildings.ts';
 import type { WorldChunk, WorldLayers } from '../world/chunks.ts';
 import type { District, WorldDescription } from '../world/types.ts';
-import { buildBlockGeometry } from './block-mesh.ts';
+import { buildBlockGeometry, buildMassingGeometry } from './block-mesh.ts';
 import { hullOf } from './building-hull.ts';
 import {
   batchOf,
@@ -63,12 +63,8 @@ export interface BuildingPlacement {
   batch: BuildingBatch;
   /** The shell, in the building's own frame. */
   shell: BufferGeometry;
-  /**
-   * The inverted hull that outlines it, in the same frame. Only near detail
-   * carries one: an outline is a line a few centimetres wide, and the far ring
-   * cannot tell it from the building it rims (spec section 9.1).
-   */
-  hull?: BufferGeometry;
+  /** The inverted hull that outlines it, in the same frame. */
+  hull: BufferGeometry;
   /** The building's frame in the world. */
   matrix: Matrix4;
 }
@@ -115,10 +111,12 @@ export function buildingLookup(world: WorldDescription, layers: WorldLayers): Bu
  * Build the buildings of one chunk, in the order the chunk lists them. Each
  * placement owns its geometry until the caller has copied it into a batch.
  *
- * Far detail is the massing alone (spec section 9.1): every building is a
- * block, however tall it stands, and none is outlined. A generated facade is
- * the dearest thing a chunk builds and its windows are a metre across, so the
- * far ring pays for neither.
+ * The detail is the building LOD of spec section 9.2, picked once from how far
+ * the chunk stands. Near detail generates the facades. Mid detail builds every
+ * building as a block, however tall it stands: a generated facade is the
+ * dearest thing a chunk builds and its windows are a metre across. Far detail
+ * is the massing alone, one box per building. Every detail is outlined,
+ * because the outline is what the skyline reads by (spec section 10.1).
  */
 export function buildChunkBuildings(
   chunk: WorldChunk,
@@ -128,27 +126,42 @@ export function buildChunkBuildings(
   const out: BuildingPlacement[] = [];
   for (const building of chunk.buildings) {
     const massing = massingOf(building, lookup.districtOf(building), lookup.chamferOf(building));
-    const batch = detail === 'far' ? 'block' : batchOf(building.kind, massing);
-    const tint = tintOf(building, batch);
+    const generated = batchOf(building.kind, massing);
+    const batch = detail === 'near' ? generated : 'block';
+    // A tower keeps the colour of its facade at every detail, so the skyline
+    // does not change colour where the detail steps down.
+    const tint = tintOf(building, generated);
     const shell =
-      batch === 'facade' ? facadeGeometry(building, massing, tint) : buildBlockGeometry(building.kind, massing, tint);
+      batch === 'facade'
+        ? facadeGeometry(building, massing, tint)
+        : detail === 'far'
+          ? buildMassingGeometry(massing, tint)
+          : buildBlockGeometry(building.kind, massing, tint);
     const box = centreOnLot(shell);
     // A block fills its massing; a generated facade comes back narrower than
     // one, so where the lot has a wall against it the shell is stretched to
     // reach it.
     const wall = building.shared.left || building.shared.right;
     const fit = fitOf({ width: box.max.x - box.min.x, depth: box.max.z - box.min.z }, massing, wall);
-    const placed: BuildingPlacement = {
+    out.push({
       building,
       massing,
       batch,
       shell,
+      hull: hullOf(massing, shell, box, fit),
       matrix: matrixOf(building, lookup, massing, fit),
-    };
-    if (detail === 'near') placed.hull = hullOf(massing, shell, box, fit);
-    out.push(placed);
+    });
   }
   return out;
+}
+
+/** Vertices a chunk's buildings cost: every shell and every hull. */
+export function buildingVertices(placements: readonly BuildingPlacement[]): number {
+  let count = 0;
+  for (const placed of placements) {
+    count += placed.shell.getAttribute('position').count + placed.hull.getAttribute('position').count;
+  }
+  return count;
 }
 
 /**

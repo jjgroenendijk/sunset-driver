@@ -16,9 +16,11 @@ import {
   detailAt,
   FAR_RADIUS,
   NEAR_RADIUS,
+  FACADE_RADIUS,
   spendBudget,
   STREAM_BUDGET_MS,
   wantedChunks,
+  type ChunkDetail,
   type ChunkWant,
 } from '../src/render/streaming.ts';
 import { WorldScene } from '../src/render/world-scene.ts';
@@ -98,7 +100,7 @@ const payloads = new Map<string, ChunkPayload>();
  * test that transfers the buffers detaches the ones it was given, and the
  * scene releases what it uploads.
  */
-function payloadOf(cx: number, cy: number, detail: 'near' | 'far'): ChunkPayload {
+function payloadOf(cx: number, cy: number, detail: ChunkDetail): ChunkPayload {
   const key = `${cx},${cy},${detail}`;
   let payload = payloads.get(key);
   if (payload === undefined) {
@@ -112,8 +114,13 @@ describe('the rings around the player', () => {
   it('asks for the near ring in full and the far ring behind it', () => {
     const wants = wantedChunks(3, -2);
     const near = wants.filter((want) => want.detail === 'near');
+    const mid = wants.filter((want) => want.detail === 'mid');
     const far = wants.filter((want) => want.detail === 'far');
-    expect(near).toHaveLength((NEAR_RADIUS * 2 + 1) ** 2);
+    // Only the chunks nearest the player carry generated facades; the rest of
+    // the near ring builds its buildings as blocks.
+    expect(near).toHaveLength((FACADE_RADIUS * 2 + 1) ** 2);
+    expect(near.length + mid.length).toBe((NEAR_RADIUS * 2 + 1) ** 2);
+    expect(mid.length).toBeGreaterThan(0);
     expect(wants).toHaveLength((FAR_RADIUS * 2 + 1) ** 2);
     expect(far.length).toBeGreaterThan(0);
     // Every chunk is asked for once, and the player's own chunk is one of them.
@@ -125,18 +132,30 @@ describe('the rings around the player', () => {
     const wants = wantedChunks(0, 0);
     const reach = wants.map((want) => want.cx * want.cx + want.cy * want.cy);
     for (let i = 1; i < reach.length; i++) expect(reach[i]).toBeGreaterThanOrEqual(reach[i - 1] as number);
-    // A chunk of the near ring is never asked for after one of the far ring.
-    const lastNear = wants.map((want) => want.detail).lastIndexOf('near');
-    const firstFar = wants.map((want) => want.detail).indexOf('far');
-    expect(lastNear).toBeLessThan(firstFar);
+    // A chunk is never asked for after one at a simpler detail.
+    const details = wants.map((want) => want.detail);
+    expect(details.lastIndexOf('near')).toBeLessThan(details.indexOf('mid'));
+    expect(details.lastIndexOf('mid')).toBeLessThan(details.indexOf('far'));
   });
 
   it('says which detail a chunk stands at, and drops it past the far ring', () => {
     expect(detailAt(0, 0, 0, 0)).toBe('near');
-    expect(detailAt(NEAR_RADIUS, 0, 0, 0)).toBe('near');
+    expect(detailAt(FACADE_RADIUS, 0, 0, 0)).toBe('near');
+    expect(detailAt(FACADE_RADIUS + 1, 0, 0, 0)).toBe('mid');
+    expect(detailAt(NEAR_RADIUS, 0, 0, 0)).toBe('mid');
     expect(detailAt(NEAR_RADIUS + 1, 0, 0, 0)).toBe('far');
     expect(detailAt(0, FAR_RADIUS, 0, 0)).toBe('far');
     expect(detailAt(0, FAR_RADIUS + 1, 0, 0)).toBeUndefined();
+  });
+
+  it('never carries facades past the near ring of a quality tier', () => {
+    for (const tier of QUALITY_TIERS) {
+      for (let ring = 0; ring <= tier.rings.far; ring++) {
+        const detail = detailAt(ring, 0, 0, 0, tier.rings);
+        if (ring > tier.rings.near) expect(detail, `${tier.name} ring ${ring}`).toBe('far');
+        else expect(detail, `${tier.name} ring ${ring}`).not.toBe('far');
+      }
+    }
   });
 });
 
@@ -190,6 +209,19 @@ describe('a chunk as a payload', () => {
     expect(payload.drawCalls).toBeLessThanOrEqual(CHUNK_DRAW_CALL_CAP);
   });
 
+  it('builds every building as a block at mid detail, and keeps the rest of the near chunk', () => {
+    const near = payloadOf(MIDDLE.cx, MIDDLE.cy, 'near');
+    const mid = payloadOf(MIDDLE.cx, MIDDLE.cy, 'mid');
+    expect(mid.facades.parts).toHaveLength(0);
+    expect(mid.blocks.parts.length).toBe(near.facades.parts.length + near.blocks.parts.length);
+    expect(mid.outlines.parts).toHaveLength(near.outlines.parts.length);
+    expect(mid.ground.gridSize).toBe(near.ground.gridSize);
+    expect(mid.roads.map((tier) => tier.tier)).toEqual(near.roads.map((tier) => tier.tier));
+    expect(mid.plants.models).toEqual(near.plants.models);
+    expect(mid.lamps).toEqual(near.lamps);
+    expect(mid.drawCalls).toBeLessThanOrEqual(near.drawCalls);
+  });
+
   it('drops the detail the far ring cannot read', () => {
     const near = payloadOf(MIDDLE.cx, MIDDLE.cy, 'near');
     const far = payloadOf(MIDDLE.cx, MIDDLE.cy, 'far');
@@ -202,7 +234,8 @@ describe('a chunk as a payload', () => {
     );
     expect(far.blocks.parts.length).toBe(near.facades.parts.length + near.blocks.parts.length);
     expect(far.facades.parts).toHaveLength(0);
-    expect(far.outlines.parts).toHaveLength(0);
+    // The outline stays: it is what the skyline reads by.
+    expect(far.outlines.parts).toHaveLength(far.blocks.parts.length);
     expect(far.plants.models).toHaveLength(0);
     expect(near.plants.models.length).toBeGreaterThan(0);
     expect(far.lamps).toHaveLength(0);

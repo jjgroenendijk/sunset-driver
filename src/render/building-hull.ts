@@ -11,8 +11,8 @@
  * round detail the camera cannot see. It follows the shape band of height by
  * band, so a setback is outlined where it stands.
  *
- * `building-mesh.ts` builds it for near detail only, and gives it the box the
- * shell really fills rather than the massing that was asked for.
+ * `building-mesh.ts` builds it at every detail, and gives it the box the shell
+ * really fills rather than the massing that was asked for.
  */
 import { Box3, BufferAttribute, BufferGeometry } from 'three';
 import type { Point } from '../world/types.ts';

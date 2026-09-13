@@ -6,6 +6,7 @@ import {
   buildChunkBuildings,
   buildingDrawCalls,
   buildingLookup,
+  buildingVertices,
   massingOf,
   OUTLINE_WIDTH,
   standingGround,
@@ -105,13 +106,6 @@ function lookupOf(
 
 function placed(buildings: Building[], lookup = lookupOf()): BuildingPlacement[] {
   return buildChunkBuildings(chunkOf(buildings), lookup);
-}
-
-/** The outline of a placement built at near detail, which always carries one. */
-function hullOf(placement: BuildingPlacement): BufferGeometry {
-  const hull = placement.hull;
-  if (hull === undefined) throw new Error('a building built at near detail is outlined');
-  return hull;
 }
 
 /**
@@ -284,7 +278,7 @@ describe('the outline hull', () => {
       // The hull is wider and taller than the shell by the width of the outline,
       // and by no more than that: an outline is a rim, not a second building.
       for (const pick of [(p: Vector3) => p.x, (p: Vector3) => p.z, (p: Vector3) => p.y]) {
-        const grew = reachOf(hullOf(one), one, pick) - reachOf(one.shell, one, pick);
+        const grew = reachOf(one.hull, one, pick) - reachOf(one.shell, one, pick);
         expect(grew, kind).toBeGreaterThan(OUTLINE_WIDTH * 0.9);
         expect(grew, kind).toBeLessThan(OUTLINE_WIDTH * 1.5);
       }
@@ -296,7 +290,7 @@ describe('the outline hull', () => {
     // the near side of the hull over the building and hide it.
     for (const kind of KINDS) {
       const one = placed([buildingOf(kind, 26, 28)], lookupOf(() => GROUND, 1, QUIET))[0] as BuildingPlacement;
-      const hull = hullOf(one);
+      const hull = one.hull;
       const position = hull.getAttribute('position') as BufferAttribute;
       const normal = hull.getAttribute('normal') as BufferAttribute;
       for (let t = 0; t + 2 < position.count; t += 3) {
@@ -312,34 +306,41 @@ describe('the outline hull', () => {
   });
 });
 
-describe('a building at far detail', () => {
-  it('is its massing as a block, with no facade and no outline', () => {
+describe('a building past near detail', () => {
+  it('is a block at mid detail and its massing at far detail, outlined at both', () => {
     const buildings = [buildingOf('tower', 26, 28), buildingOf('house', 16, 18, { front: { x: 40, y: 10 } })];
     const lookup = lookupOf(undefined, 0, QUIET);
-    const far = buildChunkBuildings(chunkOf(buildings), lookup, 'far');
     const near = buildChunkBuildings(chunkOf(buildings), lookup, 'near');
-    expect(far.map((one) => one.batch)).toEqual(['block', 'block']);
+    const mid = buildChunkBuildings(chunkOf(buildings), lookup, 'mid');
+    const far = buildChunkBuildings(chunkOf(buildings), lookup, 'far');
     expect(near[0]?.batch).toBe('facade');
-    for (const one of far) expect(one.hull).toBeUndefined();
+    expect(mid.map((one) => one.batch)).toEqual(['block', 'block']);
+    expect(far.map((one) => one.batch)).toEqual(['block', 'block']);
+    for (const one of [...mid, ...far]) expect(one.hull.getAttribute('position').count).toBeGreaterThan(0);
+    // Each detail costs a fraction of the one before it (spec section 9.2).
+    expect(buildingVertices(mid) * 10).toBeLessThan(buildingVertices(near));
+    expect(buildingVertices(far) * 4).toBeLessThan(buildingVertices(mid));
   });
 
   it('stands where the near building stands, and on the same lot', () => {
     for (const kind of KINDS) {
       const building = buildingOf(kind, 26, 28, { front: { x: 60, y: -40 } });
       const lookup = lookupOf(undefined, 0, QUIET);
-      const far = buildChunkBuildings(chunkOf([building]), lookup, 'far')[0] as BuildingPlacement;
       const near = buildChunkBuildings(chunkOf([building]), lookup, 'near')[0] as BuildingPlacement;
-      // The massing is the same, so the far ring reads as the same city: only
-      // the shell is simpler, and it stands on the same ground.
-      expect(far.massing).toEqual(near.massing);
-      expect(new Vector3().setFromMatrixPosition(far.matrix).toArray()).toEqual(
-        new Vector3().setFromMatrixPosition(near.matrix).toArray(),
-      );
-      let outside = 0;
-      eachWorldVertex(far.shell, far, (vertex) => {
-        if (!pointInRing({ x: vertex.x, y: vertex.z }, standingGround(building))) outside++;
-      });
-      expect(outside, kind).toBe(0);
+      for (const detail of ['mid', 'far'] as const) {
+        const one = buildChunkBuildings(chunkOf([building]), lookup, detail)[0] as BuildingPlacement;
+        // The massing is the same, so the city reads the same at every detail:
+        // only the shell is simpler, and it stands on the same ground.
+        expect(one.massing).toEqual(near.massing);
+        expect(new Vector3().setFromMatrixPosition(one.matrix).toArray()).toEqual(
+          new Vector3().setFromMatrixPosition(near.matrix).toArray(),
+        );
+        let outside = 0;
+        eachWorldVertex(one.shell, one, (vertex) => {
+          if (!pointInRing({ x: vertex.x, y: vertex.z }, standingGround(building))) outside++;
+        });
+        expect(outside, `${kind} at ${detail} detail`).toBe(0);
+      }
     }
   });
 });
@@ -356,7 +357,7 @@ describe('the same chunk twice', () => {
       expect(b.matrix.elements).toEqual(a.matrix.elements);
       expect(b.massing).toEqual(a.massing);
       expect(signature(b.shell)).toBe(signature(a.shell));
-      expect(signature(hullOf(b))).toBe(signature(hullOf(a)));
+      expect(signature(b.hull)).toBe(signature(a.hull));
     }
   });
 });

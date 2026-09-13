@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3, type BufferAttribute } from 'three';
-import { buildChunkBuildings, buildingLookup, standingGround } from '../src/render/building-mesh.ts';
-import { CHUNK_DRAW_CALL_CAP, chunkDrawCalls } from '../src/render/chunk-cost.ts';
+import { buildChunkBuildings, buildingLookup, buildingVertices, standingGround } from '../src/render/building-mesh.ts';
+import { CHUNK_DRAW_CALL_CAP, CHUNK_VERTEX_CAP, chunkDrawCalls } from '../src/render/chunk-cost.ts';
+import type { ChunkDetail } from '../src/render/streaming.ts';
 import { LAMP_BY_TIER, lampsIn } from '../src/render/lamp-mesh.ts';
 import { buildChunkRoads, partsOf, roadSection, type SectionPoint } from '../src/render/road-mesh.ts';
 import { pointInRegions, regionArea } from '../src/core/geom.ts';
@@ -287,7 +288,7 @@ export function chunkChecks(): void {
       }
     });
 
-    it('builds every building of a chunk on its own lot', () => {
+    it('builds every building of a chunk on its own lot, inside the vertex cap of each detail', () => {
       // Spec section 10.3: a building stands on the ground its lot claims and
       // never on the road beside it. The lot is already inside the parcel and the
       // parcel is what the road footprint left, so this is the last link of the
@@ -307,22 +308,34 @@ export function chunkChecks(): void {
         // One chunk of the core is enough: it is where the towers stand, and
         // building the geometry of a whole map would cost more than the world.
         const [cx, cy] = ROAD_MESH_CHUNKS[0] as [number, number];
-        for (const one of buildChunkBuildings(chunkOf(seed, cx, cy), lookup)) {
-          built++;
-          const where = `${one.building.kind} ${one.building.id}`;
-          const position = one.shell.getAttribute('position');
-          const at = new Vector3();
-          for (let v = 0; v < position.count; v++) {
-            at.fromBufferAttribute(position as BufferAttribute, v).applyMatrix4(one.matrix);
-            if (!Number.isFinite(at.x + at.y + at.z)) fault(`${where} places a vertex nowhere`);
-            else if (!pointInRing({ x: at.x, y: at.z }, standingGround(one.building)))
-              fault(`${where} stands off its lot`);
+        // Spec section 9.2: each detail of the building LOD costs a fraction of
+        // the one before it, and none passes its cap.
+        const vertices: Record<ChunkDetail, number> = { near: 0, mid: 0, far: 0 };
+        for (const detail of ['near', 'mid', 'far'] as const) {
+          const placements = buildChunkBuildings(chunkOf(seed, cx, cy), lookup, detail);
+          vertices[detail] = buildingVertices(placements);
+          if (vertices[detail] > CHUNK_VERTEX_CAP[detail]) {
+            fault(`chunk ${cx}, ${cy} costs ${vertices[detail]} vertices at ${detail} detail`);
+          }
+          for (const one of placements) {
+            if (detail === 'near') built++;
+            const where = `${one.building.kind} ${one.building.id} at ${detail} detail`;
+            const position = one.shell.getAttribute('position');
+            const at = new Vector3();
+            for (let v = 0; v < position.count; v++) {
+              at.fromBufferAttribute(position as BufferAttribute, v).applyMatrix4(one.matrix);
+              if (!Number.isFinite(at.x + at.y + at.z)) fault(`${where} places a vertex nowhere`);
+              else if (!pointInRing({ x: at.x, y: at.z }, standingGround(one.building)))
+                fault(`${where} stands off its lot`);
+              if (complaint !== undefined) break;
+            }
+            one.shell.dispose();
+            one.hull.dispose();
             if (complaint !== undefined) break;
           }
-          one.shell.dispose();
-          one.hull?.dispose();
-          if (complaint !== undefined) break;
         }
+        if (vertices.mid * 10 > vertices.near) fault(`mid detail costs ${vertices.mid} of ${vertices.near} vertices`);
+        if (vertices.far * 4 > vertices.mid) fault(`far detail costs ${vertices.far} of ${vertices.mid} vertices`);
         expect(complaint, `seed ${seed}`).toBeUndefined();
         expect(built, `seed ${seed}`).toBeGreaterThan(0);
       }
