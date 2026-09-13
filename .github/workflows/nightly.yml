@@ -12,26 +12,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Installs and runs the updates, so it holds a read-only token. Merging and
-  # reporting happen in `merge`, which never runs a package's code.
-  test:
+  # Chooses the tree: main plus every open Dependabot pull request that merges
+  # onto it cleanly. A pull request that conflicts waits for Dependabot to
+  # rebase it.
+  plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: read
     outputs:
-      verdict: ${{ steps.run.outputs.verdict }}
+      run: ${{ steps.plan.outputs.run }}
       prs: ${{ steps.plan.outputs.prs }}
-      log: ${{ steps.run.outputs.log }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      # Main plus every open Dependabot pull request that merges onto it
-      # cleanly, as one tree. A pull request that conflicts waits for
-      # Dependabot to rebase it.
       - id: plan
         env:
           GH_TOKEN: ${{ github.token }}
@@ -56,75 +53,38 @@ jobs:
               echo "#$number does not merge onto main cleanly; skipping it."
             fi
           done
-          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          run=true
+          if [ "$changed" = false ] && [ -z "$prs" ]; then
+            echo 'No commit on main in the last 24 hours and no update; skipping.' |
+              tee -a "$GITHUB_STEP_SUMMARY"
+            run=false
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
           echo "prs=${prs# }" >> "$GITHUB_OUTPUT"
 
-      - if: steps.plan.outputs.changed == 'true' || steps.plan.outputs.prs != ''
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .nvmrc
-          cache: npm
+  # The full tier on the tree the plan chose.
+  test:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    uses: ./.github/workflows/full-tier.yml
+    with:
+      name: updates
+      prs: ${{ needs.plan.outputs.prs }}
 
-      # One full run on a good night. When the tree with the updates fails,
-      # main is tested alone, so the issue says which of the two is broken.
-      - id: run
-        env:
-          CHANGED: ${{ steps.plan.outputs.changed }}
-          PRS: ${{ steps.plan.outputs.prs }}
-        run: |
-          set -u
-          full_tier() {
-            npm ci --prefer-offline --no-audit --no-fund > verify.log 2>&1 || return 1
-            # `time` writes wall, user and system seconds to time.txt.
-            { TIMEFORMAT='%R %U %S'; time npm run verify:full >> verify.log 2>&1; } 2> time.txt
-          }
-          if [ "$CHANGED" = false ] && [ -z "$PRS" ]; then
-            echo 'No commit on main in the last 24 hours and no update; skipping.'
-            verdict=skipped
-          elif full_tier; then
-            verdict=passed
-          elif [ -z "$PRS" ]; then
-            verdict=main-failed
-          else
-            mv verify.log updates.log
-            git reset -q --hard origin/main
-            if full_tier; then
-              verdict=updates-failed
-              mv updates.log verify.log
-            else
-              verdict=main-failed
-            fi
-          fi
-          echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
-          if [ -f verify.log ]; then
-            cat verify.log
-            {
-              echo 'log<<NIGHTLY_LOG_END'
-              sed 's/\x1b\[[0-9;]*m//g' verify.log | tail -n 80
-              echo 'NIGHTLY_LOG_END'
-            } >> "$GITHUB_OUTPUT"
-          fi
-          # The job summary keeps the cost of the full tier from night to night.
-          {
-            echo "### Nightly: $verdict"
-            echo
-            if [ -n "$PRS" ]; then echo "Updates tested: $PRS"; echo; fi
-            if [ -s time.txt ]; then
-              read -r wall user sys < time.txt
-              echo '| Wall clock | CPU-seconds (user + system) |'
-              echo '|---|---|'
-              echo "| ${wall} s | $(awk "BEGIN { print $user + $sys }") s |"
-              echo
-            fi
-            if [ -f verify.log ]; then
-              sed 's/\x1b\[[0-9;]*m//g' verify.log | grep -E '^ *(Test Files|Tests) ' | sed 's/^ */- /'
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-          [ "$verdict" = passed ] || [ "$verdict" = skipped ]
+  # When the tree with the updates fails, main is tested alone, so the issue
+  # says which of the two is broken.
+  test-main:
+    needs: [plan, test]
+    if: always() && needs.plan.outputs.prs != '' && needs.test.result == 'failure'
+    uses: ./.github/workflows/full-tier.yml
+    with:
+      name: main
 
+  # Merges and reports. It reads the shards' artifacts as data and never runs a
+  # package's code.
   merge:
-    needs: test
-    if: always() && needs.test.outputs.verdict != 'skipped'
+    needs: [plan, test, test-main]
+    if: always() && needs.plan.outputs.run != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -135,13 +95,91 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      VERDICT: ${{ needs.test.outputs.verdict || needs.test.result }}
-      PRS: ${{ needs.test.outputs.prs }}
-      LOG: ${{ needs.test.outputs.log }}
+      PRS: ${{ needs.plan.outputs.prs }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
-      - run: |
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: results
+
+      - env:
+          TEST_RESULT: ${{ needs.test.result }}
+          MAIN_RESULT: ${{ needs.test-main.result }}
+        run: |
           set -u
+          shopt -s nullglob
+          # passed, failed or unfinished for the artifacts named `$1-<shard>`.
+          # A shard that timed out or was cancelled uploaded nothing, so a tree
+          # only passes when its whole run passed.
+          state() {
+            local result=$2 dir
+            if [ "$result" = success ]; then echo passed; return; fi
+            for dir in results/"$1"-*; do
+              if [ "$(cat "$dir/outcome" 2>/dev/null)" = failed ]; then echo failed; return; fi
+            done
+            echo unfinished
+          }
+          # The end of the log of each shard that did not pass.
+          log_of() {
+            local dir
+            for dir in results/"$1"-*; do
+              [ "$(cat "$dir/outcome" 2>/dev/null)" = passed ] && continue
+              printf '%s:\n' "${dir#results/}"
+              sed 's/\x1b\[[0-9;]*m//g' "$dir/test.log" 2>/dev/null | tail -n 80
+            done
+          }
+          # The job summary keeps the cost of the full tier from night to night.
+          summarise() {
+            local dir wall user sys cpu
+            echo "#### $1"
+            echo
+            echo '| Shard | Outcome | Wall clock | CPU-seconds (user + system) |'
+            echo '|---|---|---|---|'
+            for dir in results/"$1"-*; do
+              read -r wall user sys 2>/dev/null < "$dir/time.txt" || true
+              cpu=''
+              # The shard wrote these files, so they are checked before awk reads them.
+              if [[ "${wall-}${user-}${sys-}" =~ ^[0-9.]+$ ]]; then
+                cpu="$(awk -v u="$user" -v s="$sys" 'BEGIN { print u + s }') s"
+                wall="$wall s"
+              else
+                wall=''
+              fi
+              echo "| ${dir#results/} | $(head -c 20 "$dir/outcome" 2>/dev/null) | $wall | $cpu |"
+              unset wall user sys
+            done
+            echo
+            reports=(results/"$1"-*/report.json)
+            if [ ${#reports[@]} -gt 0 ]; then
+              jq -rs '"- Test files: \(map(.numTotalTestSuites) | add)",
+                "- Tests: \(map(.numPassedTests) | add) passed, \(map(.numFailedTests) | add) failed"' \
+                "${reports[@]}" || true
+              echo
+            fi
+          }
+
+          updates=$(state updates "$TEST_RESULT")
+          main=$(state main "$MAIN_RESULT")
+          case "$updates" in
+            passed) verdict=passed ;;
+            unfinished) verdict=unfinished ;;
+            *)
+              if [ -z "$PRS" ]; then verdict='main-failed'
+              elif [ "$main" = passed ]; then verdict='updates-failed'
+              elif [ "$main" = failed ]; then verdict='main-failed'
+              else verdict=unfinished
+              fi
+              ;;
+          esac
+
+          {
+            echo "### Nightly: $verdict"
+            echo
+            if [ -n "$PRS" ]; then echo "Updates tested: $PRS"; echo; fi
+            summarise updates
+            [ "$updates" = passed ] || [ -z "$PRS" ] || summarise main
+          } >> "$GITHUB_STEP_SUMMARY"
+
           # One open issue per kind of failure: a later night comments on it.
           report() {
             gh label create nightly-failure --color d73a4a \
@@ -155,13 +193,13 @@ jobs:
             fi
           }
           log_block() {
-            printf '\nRun: %s\n\nThe end of the log:\n\n```\n%s\n```\n' "$RUN_URL" "$LOG"
+            printf '\nRun: %s\n\nThe end of the log:\n\n```\n%s\n```\n' "$RUN_URL" "$(log_of "$1")"
           }
           list_prs() {
             for pr in $PRS; do echo "- #${pr%%:*} at \`${pr#*:}\`"; done
           }
 
-          case "$VERDICT" in
+          case "$verdict" in
             passed)
               merged=0
               failed=''
@@ -187,20 +225,21 @@ jobs:
             updates-failed)
               { echo 'Main passes the full tier, but these Dependabot updates make it fail:'
                 echo; list_prs; echo
-                echo 'They were not merged.'; log_block; } > body.md
+                echo 'They were not merged.'; log_block updates; } > body.md
               report 'Nightly: a Dependabot update fails the full test tier'
               ;;
             main-failed)
               { echo "The full test tier fails on main at \`$GITHUB_SHA\`."
-                echo 'No Dependabot update was merged.'; log_block; } > body.md
+                echo 'No Dependabot update was merged.'
+                if [ -n "$PRS" ]; then log_block main; else log_block updates; fi; } > body.md
               report 'Nightly full test tier failed'
               ;;
             *)
-              # The job stopped before it reached a verdict: a checkout, a fetch
-              # or a timeout.
-              { echo "The nightly run stopped before it finished: \`$VERDICT\`."
-                echo 'No Dependabot update was merged.'
-                printf '\nRun: %s\n' "$RUN_URL"; } > body.md
+              # A shard stopped before it reached an outcome: a checkout, an
+              # install, a timeout or a cancel.
+              { echo 'The nightly run stopped before it finished.'
+                echo 'No Dependabot update was merged.'; log_block updates; } > body.md
               report 'Nightly run did not finish'
               ;;
           esac
+          [ "$verdict" = passed ]
