@@ -1,19 +1,20 @@
 name: Build
 
 # A reusable workflow: `ci.yml` calls it. It installs, optionally checks, builds
-# and uploads `dist` as an artifact for a later job to publish. It never
-# deploys and holds no secret.
+# and uploads `dist` as an artifact named after the tree it was built from, so
+# main can deploy what a pull request built. It never deploys and holds no
+# secret.
 on:
   workflow_call:
     inputs:
       checks:
-        description: Typecheck and run both lints before the build.
+        description: Typecheck and run both lints beside the build.
         type: boolean
         default: true
+    outputs:
       artifact:
         description: Name of the artifact that holds `dist`.
-        type: string
-        default: dist
+        value: ${{ jobs.build.outputs.artifact }}
 
 permissions:
   contents: read
@@ -22,16 +23,28 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      artifact: ${{ steps.tree.outputs.artifact }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      # setup-node downloads and unpacks Node on every run unless the version
+      # is already in the tool cache, which costs more than restoring it.
+      - id: node
+        run: echo "major=$(cat .nvmrc)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /opt/hostedtoolcache/node/${{ steps.node.outputs.major }}.*
+          key: node-${{ runner.os }}-${{ steps.node.outputs.major }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       - name: Restore node_modules
         id: modules
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: node_modules
           key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc', 'package-lock.json') }}
@@ -40,19 +53,31 @@ jobs:
         run: npm ci --prefer-offline --no-audit --no-fund
 
       # Tests run locally (`npm run verify`) and nightly (`nightly.yml`), not
-      # here.
-      - if: inputs.checks
-        run: npm run typecheck
-      - if: inputs.checks
-        run: npm run lint
-      - if: inputs.checks
-        run: npm run lint:size
+      # here. The checks and the build share nothing, so they run side by side.
+      - name: Check and build
+        env:
+          CHECKS: ${{ inputs.checks }}
+        run: |
+          set -u
+          tasks=(build)
+          if [ "$CHECKS" = true ]; then tasks+=(typecheck lint lint:size); fi
+          pids=()
+          for task in "${tasks[@]}"; do
+            (set -o pipefail; npm run -s "$task" 2>&1 | sed "s/^/[$task] /") &
+            pids+=($!)
+          done
+          failed=0
+          for i in "${!pids[@]}"; do
+            wait "${pids[$i]}" || { echo "::error::npm run ${tasks[$i]} failed"; failed=1; }
+          done
+          exit $failed
 
-      - run: npm run build
+      - id: tree
+        run: echo "artifact=dist-$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ inputs.artifact }}
+          name: ${{ steps.tree.outputs.artifact }}
           path: dist
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14

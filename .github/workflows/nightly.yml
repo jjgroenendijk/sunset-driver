@@ -25,7 +25,7 @@ jobs:
       prs: ${{ steps.plan.outputs.prs }}
       log: ${{ steps.run.outputs.log }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -60,7 +60,7 @@ jobs:
           echo "prs=${prs# }" >> "$GITHUB_OUTPUT"
 
       - if: steps.plan.outputs.changed == 'true' || steps.plan.outputs.prs != ''
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -74,7 +74,9 @@ jobs:
         run: |
           set -u
           full_tier() {
-            { npm ci --prefer-offline --no-audit --no-fund && npm run verify:full; } > verify.log 2>&1
+            npm ci --prefer-offline --no-audit --no-fund > verify.log 2>&1 || return 1
+            # `time` writes wall, user and system seconds to time.txt.
+            { TIMEFORMAT='%R %U %S'; time npm run verify:full >> verify.log 2>&1; } 2> time.txt
           }
           if [ "$CHANGED" = false ] && [ -z "$PRS" ]; then
             echo 'No commit on main in the last 24 hours and no update; skipping.'
@@ -102,6 +104,22 @@ jobs:
               echo 'NIGHTLY_LOG_END'
             } >> "$GITHUB_OUTPUT"
           fi
+          # The job summary keeps the cost of the full tier from night to night.
+          {
+            echo "### Nightly: $verdict"
+            echo
+            if [ -n "$PRS" ]; then echo "Updates tested: $PRS"; echo; fi
+            if [ -s time.txt ]; then
+              read -r wall user sys < time.txt
+              echo '| Wall clock | CPU-seconds (user + system) |'
+              echo '|---|---|'
+              echo "| ${wall} s | $(awk "BEGIN { print $user + $sys }") s |"
+              echo
+            fi
+            if [ -f verify.log ]; then
+              sed 's/\x1b\[[0-9;]*m//g' verify.log | grep -E '^ *(Test Files|Tests) ' | sed 's/^ */- /'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
           [ "$verdict" = passed ] || [ "$verdict" = skipped ]
 
   merge:
