@@ -31,7 +31,28 @@ gets wrong without it.
   into three; the suburbs and the outskirts keep theirs.
 - `roads.ts` is the plan of the road network and `road-trace.ts` the trace it runs on: the step
   along the field, the ground that refuses it, the reroute and the structures. `RoadTracer` extends
-  `RoadTrace`, and `road-index.ts` is the network laid so far, which every step is vetted against.
+  `RoadTrace`, which extends `RoadRoute` (`road-route.ts`): the state every trace runs on, the
+  ground rules and the reroute over the terrain grid. `road-params.ts` holds the numbers each tier
+  traces by, and `road-ground.ts` the rule a span asks the ground. The network laid so far is held
+  twice: `road-index.ts` holds its points, which a merge lands on, and `road-clear.ts` its segments
+  with their widths.
+- A road's width has to enter the trace, not only the carve: a trace that sees points alone runs
+  along another road's carriageway or stops inside it, and nothing downstream can repair that.
+  `RoadClearance` (`road-clear.ts`) holds three rules. A step near another road crosses it or leaves
+  it at `MIN_MEET` (30°) or more, keeps a footprint's reach from the end of any road, and does not
+  cross two roads, or one road twice, within a junction's reach. A merge leaves every road at the
+  shared point at `MIN_MEET` or more, and not beside a crossing the trace has just made. A road ends
+  only where its footprint stands on no other road's. A trace that stops for any other reason is
+  walked back to its last clear point, and `trimTo` cuts a cul-de-sac on a clear point too. A step
+  that fails is first turned by up to three of the tier's turns, so a road coming in too shallow
+  meets the road at an angle instead of stopping. A merge tries the four nearest points before it
+  gives up. The tracer asks 5° more than `MIN_MEET`, because the connection pass can bend a road by
+  a snap. The reroute, the bridge anchors and the boardwalk line are vetted by the same rules; a
+  reroute that fails is searched again with every grid step vetted, since the grid meets a road at
+  only eight headings. Each resort's
+  boardwalk line is reserved right after the highways and released once it is laid; without that an
+  island link can take the line, and the beach gets no boardwalk. While its two ends reach for the
+  network the line is held again, so neither end runs back along it.
 - The two highways through the core are the spine every other road grows off, so where the ground
   cuts both of them short of `MIN_HIGHWAY` the longer is laid whatever its length. Without that a
   seed whose trunks both come up short has no highway, and then no arterial, no street and no road
@@ -89,7 +110,10 @@ gets wrong without it.
   metre apart stand inside each other. It leaves a crossing alone where `mayJoin` refuses the pair,
   where either road is on a deck or in a bore, where the place stands on a road one of the tiers may
   not join, and where the ground refuses the two halves the point cuts a segment into — `groundRule`
-  (`roads.ts`) is the one rule for that, the same one the trace ran on.
+  (`roads.ts`) is the one rule for that, the same one the trace ran on. It also leaves a crossing
+  alone where the point would make either road leave a road at that place, or at the places beside
+  it, under `MIN_MEET`. A snap moves a road by up to 4 m, which can turn a short segment onto
+  another road's line. Where the snapped place fails, the crossing itself is tried.
 - `raiseOverpasses(roads)` (`overpass.ts`) is the last step of `traceRoads`: where two roads cross
   without meeting, one is carried over the other (spec section 6.2). The narrower road climbs — a
   highway holds its line, since its grade limit is the gentlest and its ramps would be the longest —
