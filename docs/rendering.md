@@ -49,14 +49,17 @@ are the design.
   such display walked down to the lowest tier. `?budget=6` holds a session to a frame no machine
   makes, which is how a tier change is watched. `FRAME_BUDGET_MS` is the whole 16 ms frame, not a
   slice of it.
-- A tier moves five things at once, because stepping one at a time takes five windows to reach the
+- A tier moves six things at once, because stepping one at a time takes six windows to reach the
   tier one window away: the render scale and the effects (`post.ts`), the two streaming rings, how
   far the sun's shadow reaches and what it is drawn at (`sky.ts`; the cascade count is fixed,
-  because changing it rebuilds every shader), and how much of `ENTITY_CAPS` a chunk places. The near
-  ring gives way before the far one, so the city never visibly ends nearer. Nothing already in the
-  scene is rebuilt on a change: chunks past the new far ring are dropped and chunks that cross
-  between the details are asked for again, and a chunk still standing keeps the plants it was built
-  with.
+  because changing it rebuilds every shader), what the water's mirror is rendered at
+  (`water-surface.ts`), and how much of `ENTITY_CAPS` a chunk places. The mirror steps at medium and
+  goes no lower: at the low tier the render scale has already halved the frame, and the reflection
+  is small on screen and broken up by the waves, so a cheaper mirror there wrecks the look of the
+  sea for almost nothing. The near ring gives way before the far one, so the city never visibly ends
+  nearer. Nothing already in the scene is rebuilt on a change: chunks past the new far ring are
+  dropped and chunks that cross between the details are asked for again, and a chunk still standing
+  keeps the plants it was built with.
 - `RenderSmoother` (`smooth.ts`) is what makes the motion smooth. The simulation is a fixed 60 Hz
   and a display refreshes at its own rate, so a frame takes 0, 1 or 2 steps: drawn on the last tick,
   the player moves on some frames and not on others while the camera slides on every one. `main.ts`
@@ -210,15 +213,31 @@ are the design.
   takes its plane from that. A vertex carries the deepest ground within half a cell of it, so a
   channel narrower than the grid is not left dry, and the depth is what fades the surface out at a
   shore.
+- That second pass runs wherever the sheet is drawn, and the sheet spans the map, so the mirror ran
+  everywhere the player stood — about a quarter of a frame, inland included. The sheet is now drawn
+  only where the camera can see water: `waterNear` (`water.ts`) answers, from the depths the sheet
+  was built with, whether any drawn cell falls within `SHADOW_DISTANCE` of a place — the patch of
+  ground the top-down view covers — and `WorldScene.look` hides the sheet each frame where none
+  does. An invisible sheet never becomes a render object, so its reflector never renders and the
+  pass costs nothing. The check is the drawn cells exactly, so water is neither hidden where the
+  player can see it nor drawn a cell beyond where they can. It is the same at every tier: the tiers
+  step the mirror's resolution (`mirror` in `QUALITY_TIERS`), never whether this test runs.
+- `WaterMesh` bakes its mirror into its colour graph inside a shader function the renderer only
+  runs while building, so nothing outside ever reaches the mirror to steer it. `water-surface.ts`
+  therefore replaces that graph with the same shading built around a reflector it holds: the
+  mirror's resolution is then one number written, and a quality tier steps it without rebuilding
+  anything. The port also rewrites the addon's shadow-lookup offset over the same wave nodes, or
+  the waves would be sampled twice in one shader. The mirror's target goes into the mesh at
+  construction, before any frame is drawn, so the first frame no longer reflects from a mirror
+  whose place was never computed — the hard line that made `preview.ts` draw one frame and keep
+  the next is gone, and it keeps one. The look is unchanged: the preview of a waterside frame is
+  byte for byte what the addon's graph drew.
 - `WaterMesh` adds its own colour to the mirror unlit, and the mirror shows the `SkyMesh` dome in
   real sky brightness. Even at a reflectance of 2 %, the sky swamps an unlit colour, so the sea by
   day reads as a grey sheet. `setDaylight` (`water-surface.ts`) lights the colour with the sun and
   the fill that light the ground, and adds a dark blue that keeps the sea visible at night. The
   addon's diffuse term is `sunColour` squared with no tint, so a sun colour scaled by its intensity
   turns the sea white.
-- `WaterMesh` adds its mirror to the scene while its shader is built, during the first render.
-  That frame reflects from a mirror whose place was never computed, and a hard line crosses the
-  sea. So `preview.ts` draws one frame before the frame it keeps.
 - `daylightAt(tick)` (`daylight.ts`) is the day and night cycle of spec section 10.5: the sun's
   place, its colour and strength, the sky fill, the haze, how lit the windows are and how far on the
   street lamps are, all read off how high the sun stands. It is pure, so the tests run it headless.

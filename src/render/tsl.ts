@@ -19,7 +19,7 @@
 import { bloom as bloomNode } from 'three/examples/jsm/tsl/display/BloomNode.js';
 import { lut3D as lut3DNode } from 'three/examples/jsm/tsl/display/Lut3DNode.js';
 import { smaa as smaaNode } from 'three/examples/jsm/tsl/display/SMAANode.js';
-import type { Camera, Scene, Texture } from 'three';
+import type { Camera, Object3D, Scene, Texture } from 'three';
 import * as tsl from 'three/tsl';
 
 /**
@@ -97,6 +97,32 @@ export const positionWorld: TslNode = tsl.positionWorld;
 
 /** The fragment's surface normal in world space. */
 export const normalWorld: TslNode = tsl.normalWorld;
+
+/** The time the frame is drawn at, in seconds. */
+export const time: TslNode = tsl.time;
+
+/** Where the camera stands, in world space. */
+export const cameraPosition: TslNode = tsl.cameraPosition;
+
+/**
+ * A texture as a node a material samples. The value returned carries `sample`,
+ * which reads the texture at a place and answers a colour node.
+ */
+export const texture = tsl.texture as unknown as (map: Texture) => { sample(at: TslNode): TslNode } & TslNode;
+
+/**
+ * A flat mirror of the scene, as a node the material reads the mirror's picture
+ * from. The `reflector` under it is what renders that picture; its
+ * `resolutionScale` is read every frame, so it can be written at any time. The
+ * `target` is the object the mirror takes its plane from, and belongs in the
+ * scene graph of the surface that mirrors.
+ */
+export const reflector = tsl.reflector as unknown as () => {
+  uvNode: TslNode;
+  rgb: TslNode;
+  reflector: { resolutionScale: number };
+  target: Object3D;
+} & TslNode;
 
 /**
  * The fragment's place on the window, in whole pixels. A pattern taken from it

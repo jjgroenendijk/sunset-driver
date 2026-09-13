@@ -3,8 +3,8 @@
  *
  * The game aims at a 16 ms frame on integrated graphics. A machine that cannot
  * hold it is not told to try harder: the frame is made cheaper until it can,
- * and made dearer again when it turns out it could all along. Six knobs step
- * together, because stepping one at a time takes six windows to find the tier
+ * and made dearer again when it turns out it could all along. Seven knobs step
+ * together, because stepping one at a time takes seven windows to find the tier
  * one window away:
  *
  * - the render scale, which the whole frame and the post chain cost the square
@@ -12,6 +12,7 @@
  * - the effects of spec section 10.6, bloom first, then SMAA;
  * - the draw distance, as the two streaming rings of spec section 9.1;
  * - how far the sun's shadow reaches and what it is drawn at (`sky.ts`);
+ * - what the water's mirror is rendered at (`water-surface.ts`);
  * - how much of each category's {@link ENTITY_CAPS} a chunk places;
  * - and, through the draw distance, how far the dither fade of `fade.ts`
  *   carries the plants and the street lamps.
@@ -25,6 +26,7 @@ import { FADE_BAND } from './fade.ts';
 import { FULL_QUALITY, type PostQuality } from './post.ts';
 import { MIN_RENDER_SCALE } from './renderer.ts';
 import { SHADOW_DISTANCE, SHADOW_MAP_SIZE } from './sky.ts';
+import { REFLECTION_SCALE } from './water-surface.ts';
 import { FAR_RADIUS, NEAR_RADIUS, type ChunkRings } from './streaming.ts';
 import { CHUNK_SIZE } from '../world/chunks.ts';
 
@@ -45,6 +47,14 @@ export interface QualityTier {
   rings: ChunkRings;
   /** Pixels each way of one cascade of the sun's shadow map. */
   shadowMapSize: number;
+  /**
+   * The share of the frame the water's mirror is rendered at. The mirror is a
+   * second pass over the scene, and the dearest single thing a frame with
+   * water in view pays for; a tier that cannot hold the frame renders it
+   * smaller rather than not at all, because the reflection is what the sea is.
+   * It never renders where no water is in view, whatever the tier.
+   */
+  mirror: number;
   /** Fraction of {@link ENTITY_CAPS} a chunk places. */
   density: number;
 }
@@ -66,6 +76,7 @@ export const QUALITY_TIERS: readonly QualityTier[] = [
     post: FULL_QUALITY,
     rings: { near: NEAR_RADIUS, far: FAR_RADIUS },
     shadowMapSize: SHADOW_MAP_SIZE,
+    mirror: REFLECTION_SCALE,
     density: 1,
   },
   {
@@ -73,6 +84,7 @@ export const QUALITY_TIERS: readonly QualityTier[] = [
     post: { renderScale: 0.85, bloom: true, smaa: true, grade: true },
     rings: { near: NEAR_RADIUS, far: FAR_RADIUS },
     shadowMapSize: SHADOW_MAP_SIZE,
+    mirror: REFLECTION_SCALE,
     density: 0.7,
   },
   {
@@ -83,6 +95,9 @@ export const QUALITY_TIERS: readonly QualityTier[] = [
     // the camera of spec section 10.7 already reads it as massing, is not.
     rings: { near: NEAR_RADIUS - 1, far: FAR_RADIUS },
     shadowMapSize: SHADOW_MAP_SIZE / 2,
+    // The reflection is small on screen and broken up by the waves, so the
+    // mirror costs the square of this and still reads the same.
+    mirror: 0.2,
     density: 0.45,
   },
   {
@@ -90,6 +105,7 @@ export const QUALITY_TIERS: readonly QualityTier[] = [
     post: { renderScale: MIN_RENDER_SCALE, bloom: false, smaa: false, grade: true },
     rings: { near: NEAR_RADIUS - 1, far: FAR_RADIUS - 1 },
     shadowMapSize: SHADOW_MAP_SIZE / 2,
+    mirror: 0.2,
     density: 0.25,
   },
 ];

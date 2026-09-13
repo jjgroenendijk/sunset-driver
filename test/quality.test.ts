@@ -21,6 +21,7 @@ import {
 } from '../src/render/quality.ts';
 import { MIN_RENDER_SCALE } from '../src/render/renderer.ts';
 import { SHADOW_DISTANCE, SHADOW_MAP_SIZE } from '../src/render/sky.ts';
+import { REFLECTION_SCALE } from '../src/render/water-surface.ts';
 import { FAR_RADIUS, NEAR_RADIUS, type TilePart } from '../src/render/streaming.ts';
 import { PlantScenery } from '../src/render/vegetation.ts';
 import { CHUNK_SIZE } from '../src/world/chunks.ts';
@@ -45,6 +46,7 @@ describe('the quality tiers', () => {
     expect(FULL_TIER.post).toEqual({ renderScale: 1, bloom: true, smaa: true, grade: true });
     expect(FULL_TIER.rings).toEqual({ near: NEAR_RADIUS, far: FAR_RADIUS });
     expect(FULL_TIER.shadowMapSize).toBe(SHADOW_MAP_SIZE);
+    expect(FULL_TIER.mirror).toBe(REFLECTION_SCALE);
     expect(FULL_TIER.density).toBe(1);
 
     for (let i = 1; i < QUALITY_TIERS.length; i++) {
@@ -55,6 +57,10 @@ describe('the quality tiers', () => {
       expect(tier.rings.near).toBeLessThanOrEqual(above.rings.near);
       expect(tier.rings.far).toBeLessThanOrEqual(above.rings.far);
       expect(tier.shadowMapSize).toBeLessThanOrEqual(above.shadowMapSize);
+      // The mirror never renders larger on a cheaper tier, and never goes away:
+      // the reflection is what the sea is.
+      expect(tier.mirror).toBeLessThanOrEqual(above.mirror);
+      expect(tier.mirror).toBeGreaterThan(0);
       expect(tier.density).toBeLessThan(above.density);
       // An effect once off stays off: a cheaper tier never buys one back.
       expect(Number(tier.post.bloom)).toBeLessThanOrEqual(Number(above.post.bloom));

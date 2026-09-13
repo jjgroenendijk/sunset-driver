@@ -231,10 +231,11 @@ export class WorldScene {
   }
 
   /**
-   * Draw the world at a quality tier (spec section 9.2). The scene owns four
+   * Draw the world at a quality tier (spec section 9.2). The scene owns five
    * of the tier's knobs: the draw distance, the haze that closes at the end of
-   * it, the sun's shadow, and how much of each category a chunk places.
-   * `PostChain` owns the rest.
+   * it, the sun's shadow, how much of each category a chunk places, and the
+   * share of the frame the water's mirror is rendered at. `PostChain` owns the
+   * rest.
    *
    * Nothing already in the scene is rebuilt. A tier that pulls the rings in
    * drops the chunks past the new far ring at once and asks for the ones that
@@ -250,6 +251,7 @@ export class WorldScene {
     this.sky.shadowMapSize = tier.shadowMapSize;
     this.sky.shadowDistance = shadowDistance(tier);
     this.fade.distance = entityDistance(tier);
+    this.water.mirror = tier.mirror;
   }
 
   get quality(): QualityTier {
@@ -259,7 +261,10 @@ export class WorldScene {
   /**
    * Point what is lit at the player without building anything: the dome is
    * carried rather than laid around the map, and the light pool is handed to
-   * the lamps the player has come nearest to.
+   * the lamps the player has come nearest to. The water sheet is shown or
+   * hidden here too, off the water that stands near: its mirror is a second
+   * pass over the scene, and where no water is in view the frame pays for
+   * none of it.
    */
   look(x: number, y: number): void {
     this.sky.follow(x, y);
@@ -267,6 +272,7 @@ export class WorldScene {
     // The dither fade of spec section 9.2 measures its ring from the player,
     // as the streaming does, and not from the camera behind them.
     this.fade.focus(x, y);
+    this.water.follow(x, y);
     this.lampLights.aim(x, y, this.lampsInReach(), this.light.lamps);
   }
 
