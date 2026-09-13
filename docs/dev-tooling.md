@@ -100,6 +100,11 @@ What the game draws, as one frame. Look at the frame before judging a rendering 
 - `--vehicle=<class>` is the class of the roster to stand the player in, `--on-foot` stands them
   beside it rather than in it, `--damage=<stage>` shows the vehicle dented, smoking, burning or
   burnt out, and `--skid` lays a drift's worth of marks into the road behind it.
+- `--weapon=<id>` puts a weapon of the arsenal in the hands, drawn with `--on-foot`, and
+  `--attachments=suppressor+optic` fits to it what it takes. `--aim` holds it at the shoulder.
+  `--pickups` lays every weapon in rows below the player, fitted with the same attachments, which is
+  how the silhouettes are compared from the game camera. `--hover=N` draws the N-th of them grown,
+  as the pickup under the mouse is.
 - `--width` and `--height` are the size of the picture.
 
 It prints the lights and shadow cascades the frame cost beside the draw calls.
