@@ -1,16 +1,9 @@
-import { randomSeedString, seedFromString } from '../core/seed.ts';
-import {
-  CHARACTER_CHOICES,
-  type CharacterChoiceKey,
-  type CharacterAppearance,
-  cycleChoice,
-  normaliseAppearance,
-  optionLabel,
-  randomAppearance,
-} from '../sim/character.ts';
-import { CONTROLS } from './controls.ts';
-import { SeedPreview } from './seed-preview.ts';
+import { normaliseAppearance, type CharacterAppearance } from '../sim/character.ts';
 import type { WorldDescription } from '../world/types.ts';
+import { nextIndex } from './menu-nav.ts';
+import { buildControlsPage } from './title-controls.ts';
+import { page } from './title-parts.ts';
+import { NewGamePage } from './title-setup.ts';
 
 /** What the player settled on before the session starts. */
 export interface TitleChoice {
@@ -24,83 +17,67 @@ export interface TitleChoice {
   world: WorldDescription | null;
 }
 
+type PageName = 'main' | 'setup' | 'controls';
+
 /**
- * The title screen of spec section 12: seed entry, seed randomisation, a map
- * of the seed, character creation, continue and the control list. The character
- * is previewed in the scene, so every change is reported through `onPreview`;
- * the map is drawn by `seed-preview.ts` into the panel itself.
+ * The title screen of spec section 12, laid out as a game's main menu. The
+ * main page offers New game and Controls. New game is the seed
+ * entry, the map of the seed and character creation (`title-setup.ts`), and
+ * Controls is the binding list (`title-controls.ts`).
+ *
+ * The arrow keys walk the items of the page on screen, Enter picks one and
+ * Escape goes back to the main page. The pointer moves the same focus, so the
+ * keyboard and the mouse never show two different highlights.
  */
 export class TitleScreen {
   private readonly root: HTMLElement;
-  private readonly seedInput: HTMLInputElement;
-  private readonly preview: SeedPreview;
-  private readonly valueLabels: HTMLElement[] = [];
-  private readonly onPreview: (appearance: CharacterAppearance) => void;
-  private character: CharacterAppearance;
+  private readonly setup: NewGamePage;
+  private readonly pages: Record<PageName, HTMLElement>;
+  private current: PageName = 'main';
+  /** The main menu item that was picked last, which takes the focus again when the player comes back. */
+  private lastMain: HTMLElement | null = null;
   private resolve: ((choice: TitleChoice) => void) | null = null;
 
   constructor(parent: HTMLElement, initial: TitleChoice, onPreview: (appearance: CharacterAppearance) => void) {
-    this.character = normaliseAppearance(initial.character);
-    this.onPreview = onPreview;
+    const character = normaliseAppearance(initial.character);
 
     this.root = document.createElement('section');
     this.root.className = 'title';
+    this.root.setAttribute('aria-label', 'Main menu');
 
-    const heading = document.createElement('h1');
-    heading.textContent = 'Sunset Driver';
-    this.root.append(heading);
-
-    const panel = document.createElement('div');
-    panel.className = 'title-panel';
-    this.root.append(panel);
-
-    this.seedInput = document.createElement('input');
-    panel.append(this.buildSeedRow(initial.seed));
-    this.preview = new SeedPreview(panel);
-
-    const choices = document.createElement('div');
-    choices.className = 'title-choices';
-    for (const choice of CHARACTER_CHOICES) {
-      const row = document.createElement('div');
-      row.className = 'title-row';
-
-      const label = document.createElement('span');
-      label.className = 'title-label';
-      label.textContent = choice.label;
-
-      const value = document.createElement('span');
-      value.className = 'title-value';
-      this.valueLabels.push(value);
-
-      row.append(label, this.stepButton('◀', choice.key, -1), value, this.stepButton('▶', choice.key, 1));
-      choices.append(row);
-    }
-    panel.append(choices);
-
-    const surprise = document.createElement('button');
-    surprise.type = 'button';
-    surprise.className = 'title-secondary';
-    surprise.textContent = 'Random look';
-    surprise.addEventListener('click', () => {
-      this.apply(randomAppearance(seedFromString(randomSeedString())));
+    this.setup = new NewGamePage(initial.seed, character, onPreview, {
+      back: () => this.show('main'),
+      start: () => this.finish(),
     });
-    panel.append(surprise);
+    this.pages = {
+      main: this.buildMain(),
+      setup: this.setup.root,
+      controls: buildControlsPage(() => this.show('main')),
+    };
 
-    const play = document.createElement('button');
-    play.type = 'button';
-    play.className = 'title-play';
-    play.textContent = 'Continue';
-    play.addEventListener('click', () => this.finish());
-    panel.append(play);
+    const brand = document.createElement('header');
+    brand.className = 'title-brand';
+    brand.innerHTML =
+      '<span class="title-eyebrow">A city built from a seed</span>' +
+      '<h1><span>Sunset</span> <em>Driver</em></h1>' +
+      '<span class="title-rule" aria-hidden="true"></span>';
 
-    panel.append(this.buildControls());
+    const hint = document.createElement('footer');
+    hint.className = 'title-hint';
+    hint.innerHTML =
+      '<span><kbd>↑</kbd><kbd>↓</kbd> Choose</span><span><kbd>Enter</kbd> Confirm</span>' +
+      '<span><kbd>Esc</kbd> Back</span>';
+
+    this.root.append(brand, this.pages.main, this.pages.setup, this.pages.controls, hint);
+    this.root.addEventListener('pointerover', this.onPointer);
+    window.addEventListener('keydown', this.onKey);
     parent.append(this.root);
 
-    this.refresh();
-    this.onPreview(this.character);
+    onPreview(character);
+    this.show('main');
   }
 
-  /** Resolves once the player presses Continue. */
+  /** Resolves once the player starts a session. */
   wait(): Promise<TitleChoice> {
     return new Promise<TitleChoice>((resolve) => {
       this.resolve = resolve;
@@ -108,114 +85,81 @@ export class TitleScreen {
   }
 
   destroy(): void {
+    window.removeEventListener('keydown', this.onKey);
     this.root.remove();
   }
 
-  private buildSeedRow(seed: string): HTMLElement {
-    const row = document.createElement('div');
-    row.className = 'title-row';
+  private buildMain(): HTMLElement {
+    const main = page('title-page title-main');
+    const nav = document.createElement('nav');
+    nav.className = 'title-menu';
+    const items: [string, string, string, () => void][] = [
+      ['I', 'New game', 'Choose a city and a driver', () => this.show('setup')],
+      ['II', 'Controls', 'The keys for the street and the map', () => this.show('controls')],
+    ];
+    for (const [numeral, label, note, action] of items) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'title-menu-item';
+      item.dataset.nav = '';
+      item.innerHTML =
+        `<span class="title-numeral">${numeral}</span>` +
+        `<span class="title-menu-label">${label}</span>` +
+        `<span class="title-menu-note">${note}</span>`;
+      item.addEventListener('click', action);
+      nav.append(item);
+    }
+    main.append(nav);
+    return main;
+  }
 
-    const label = document.createElement('label');
-    label.className = 'title-label';
-    label.textContent = 'Seed';
-    label.htmlFor = 'seed-input';
+  private show(name: PageName): void {
+    if (this.current === 'main' && this.pages.main.contains(document.activeElement)) {
+      this.lastMain = document.activeElement as HTMLElement;
+    }
+    this.current = name;
+    this.root.dataset.page = name;
+    for (const key of ['main', 'setup', 'controls'] as const) this.pages[key].hidden = key !== name;
+    // Coming back to the main page puts the focus on the item that was left,
+    // as a game menu does; anywhere else starts on the page's own first choice.
+    const back = name === 'main' ? this.lastMain : null;
+    const first = back ?? this.pages[name].querySelector<HTMLElement>('[data-autofocus]');
+    (first ?? this.items()[0])?.focus({ preventScroll: true });
+  }
 
-    this.seedInput.id = 'seed-input';
-    this.seedInput.className = 'title-seed';
-    this.seedInput.value = seed;
-    this.seedInput.spellcheck = false;
-    // Enter builds the map rather than starting the game: a seed typed in is a
-    // seed the player wants to look at before they commit to it. Continue is
-    // what starts the session.
-    this.seedInput.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter') return;
+  /** The items of the page on screen the arrow keys walk, in reading order. */
+  private items(): HTMLElement[] {
+    return [...this.pages[this.current].querySelectorAll<HTMLElement>('[data-nav]')].filter(
+      (el) => el.tabIndex >= 0 && !el.hidden && el.offsetParent !== null,
+    );
+  }
+
+  private readonly onKey = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape' && this.current !== 'main') {
       event.preventDefault();
-      void this.buildPreview();
-    });
-    // `change` fires when the field is left as well, so a seed typed and
-    // clicked away from is previewed too.
-    this.seedInput.addEventListener('change', () => void this.buildPreview());
-
-    const dice = document.createElement('button');
-    dice.type = 'button';
-    dice.className = 'title-dice';
-    dice.textContent = '\u{1F3B2}';
-    dice.title = 'Roll a new seed';
-    dice.setAttribute('aria-label', 'Roll a new seed');
-    dice.addEventListener('click', () => {
-      this.seedInput.value = randomSeedString();
-      void this.buildPreview();
-    });
-
-    const build = document.createElement('button');
-    build.type = 'button';
-    build.className = 'title-secondary';
-    build.textContent = 'Build map';
-    build.addEventListener('click', () => void this.buildPreview());
-
-    row.append(label, this.seedInput, dice, build);
-    return row;
-  }
-
-  private stepButton(text: string, key: CharacterChoiceKey, delta: number): HTMLButtonElement {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'title-step';
-    button.textContent = text;
-    button.addEventListener('click', () => this.apply(cycleChoice(this.character, key, delta)));
-    return button;
-  }
-
-  private buildControls(): HTMLElement {
-    const list = document.createElement('dl');
-    list.className = 'title-controls';
-    for (const binding of CONTROLS) {
-      const action = document.createElement('dt');
-      action.textContent = binding.action;
-      const keys = document.createElement('dd');
-      keys.textContent = binding.keys;
-      list.append(action, keys);
+      this.show('main');
+      return;
     }
-    return list;
-  }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    const items = this.items();
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    items[nextIndex(at, event.key === 'ArrowDown' ? 1 : -1, items.length)]?.focus();
+  };
 
-  private apply(appearance: CharacterAppearance): void {
-    this.character = appearance;
-    this.refresh();
-    this.onPreview(appearance);
-  }
-
-  private refresh(): void {
-    for (let i = 0; i < CHARACTER_CHOICES.length; i++) {
-      const choice = CHARACTER_CHOICES[i];
-      const label = this.valueLabels[i];
-      if (choice && label) label.textContent = optionLabel(this.character, choice.key);
-    }
-  }
-
-  /** The seed in the box, or a fresh one where the box was left empty. */
-  private seed(): string {
-    const typed = this.seedInput.value.trim();
-    if (typed.length > 0) return typed;
-    const fresh = randomSeedString();
-    this.seedInput.value = fresh;
-    return fresh;
-  }
-
-  /** Build the seed in the box and show its map. */
-  private async buildPreview(): Promise<void> {
-    await this.preview.build(seedFromString(this.seed()));
-  }
+  /** The pointer takes the focus with it, so there is only ever one highlight. */
+  private readonly onPointer = (event: PointerEvent): void => {
+    if (event.pointerType !== 'mouse') return;
+    const item = (event.target as Element).closest<HTMLElement>('[data-nav]');
+    // A text box is left alone: moving over it must not take the caret from where the player types.
+    if (!item || item instanceof HTMLInputElement || item === document.activeElement) return;
+    if (document.activeElement instanceof HTMLInputElement) return;
+    item.focus({ preventScroll: true });
+  };
 
   private finish(): void {
-    const seed = this.seed();
-    const world = this.preview.world;
     const resolve = this.resolve;
     this.resolve = null;
-    resolve?.({
-      seed,
-      character: this.character,
-      world: world && world.seed === seedFromString(seed) ? world : null,
-    });
+    resolve?.(this.setup.choice());
   }
 }

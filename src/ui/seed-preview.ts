@@ -32,9 +32,16 @@ export class SeedPreview {
   /** Counts the builds asked for, so a build overtaken by a newer one is dropped. */
   private asked = 0;
 
-  constructor(parent: HTMLElement) {
+  /** The button laid over the empty frame, until there is a map in it. */
+  private readonly ask: HTMLButtonElement;
+
+  /** `onAsk` is what the button over the empty frame does: the title screen builds the seed in its box. */
+  constructor(parent: HTMLElement, onAsk: () => void) {
     this.root = document.createElement('div');
     this.root.className = 'title-preview';
+
+    const frame = document.createElement('div');
+    frame.className = 'title-preview-frame';
 
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'title-preview-map';
@@ -44,11 +51,19 @@ export class SeedPreview {
     this.ctx = this.canvas.getContext('2d')!;
     this.ctx.scale(dpr, dpr);
 
+    this.ask = document.createElement('button');
+    this.ask.type = 'button';
+    this.ask.className = 'title-preview-ask';
+    this.ask.dataset.nav = '';
+    this.ask.textContent = 'Show the map';
+    this.ask.addEventListener('click', onAsk);
+    frame.append(this.canvas, this.ask);
+
     this.status = document.createElement('p');
     this.status.className = 'title-preview-status';
-    this.status.textContent = 'Press Build map to see this seed.';
+    this.status.textContent = 'The map takes a moment to build.';
 
-    this.root.append(this.canvas, this.status);
+    this.root.append(frame, this.status);
     parent.append(this.root);
   }
 
@@ -68,6 +83,8 @@ export class SeedPreview {
     }
     const asked = ++this.asked;
     this.status.textContent = 'Building the map…';
+    this.root.classList.add('title-preview-busy');
+    this.ask.hidden = true;
     // The browser has to paint the line above before the main thread is taken
     // for a second or two, or the player sees nothing happen at all.
     await nextFrame();
@@ -79,6 +96,7 @@ export class SeedPreview {
     if (asked !== this.asked) return;
 
     this.built = world;
+    this.root.classList.remove('title-preview-busy');
     this.draw(world);
     this.status.textContent = `${world.districts.length} districts · ${(took / 1000).toFixed(1)} s to build`;
   }
