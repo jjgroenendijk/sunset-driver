@@ -35,6 +35,8 @@ how the steps are watched on a machine that does not need them.
 | Minimap north up | N |
 | Vehicle picker | V |
 | Weapon picker | G |
+| Debug: die | K |
+| Debug: arrest | B |
 
 ## Develop
 

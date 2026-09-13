@@ -26,4 +26,6 @@ export const CONTROLS: readonly ControlBinding[] = [
   { action: 'Minimap north up', keys: 'N' },
   { action: 'Vehicle picker', keys: 'V' },
   { action: 'Weapon picker', keys: 'G' },
+  { action: 'Debug: die', keys: 'K' },
+  { action: 'Debug: arrest', keys: 'B' },
 ];

@@ -1,8 +1,9 @@
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
 import { gameTime, TICKS_PER_HOUR } from './clock.ts';
 import { type CharacterAppearance, DEFAULT_APPEARANCE, normaliseAppearance } from './character.ts';
-import { createPlayerState, type PlayerState } from './on-foot.ts';
+import { createPlayerState, type Place, type PlayerState } from './on-foot.ts';
 import type { SimPhysics } from './physics.ts';
+import { fateOf, respawn, respawnPlace, type RespawnRecord } from './respawn.ts';
 import type { TheftState } from './theft.ts';
 import { createVehicleState, DEFAULT_CLASS, specOf, type VehicleState } from './vehicle.ts';
 import { stepPickups, type PickupState } from './pickup.ts';
@@ -73,6 +74,24 @@ export interface SimState {
    * is part of the record, so a save keeps the mark and a replay draws it.
    */
   waypoint: { x: number; y: number } | null;
+  /**
+   * Where the player comes back after a death (spec sections 11.7, 16.3). The
+   * safehouses have not landed, so a session sets it to the place it starts
+   * at; a new record holds the origin.
+   */
+  safehouse: Place;
+  /**
+   * True once the player has been taken in (spec section 11.7). The end of the
+   * tick turns it into a respawn at the nearest police station. The police of
+   * spec section 14 are what will set it; today only the debug key does.
+   */
+  arrested: boolean;
+  /**
+   * The last death or arrest, or null before the first. The renderer reads it
+   * to put the camera down at once rather than slide it across the map, and
+   * the HUD reads it to say what happened.
+   */
+  respawn: RespawnRecord | null;
 }
 
 /** Dollars a new session starts with (spec section 16). */
@@ -101,6 +120,9 @@ export function createSimState(
     money: START_MONEY,
     objective: '',
     waypoint: null,
+    safehouse: { x: 0, y: 0, heading: 0 },
+    arrested: false,
+    respawn: null,
   };
 }
 
@@ -119,10 +141,18 @@ export function cloneSimState(state: SimState): SimState {
  * Without it the tick still advances, so the clock and everything driven by it
  * can be exercised on their own; nothing moves. The pickups are stepped after
  * the physics, so the player takes what lies where the tick left them.
+ *
+ * A death or an arrest is resolved last (spec section 11.7), so the tick that
+ * ends a run is the tick the player comes back on.
  */
 export function stepSim(state: SimState, input: InputFrame = EMPTY_INPUT, physics?: SimPhysics): void {
   physics?.step(state, input);
   stepPickups(state);
+  const fate = fateOf(state);
+  if (fate !== null) {
+    respawn(state, fate, respawnPlace(state, fate, physics?.stations ?? []));
+    physics?.stand(state);
+  }
   state.tick += 1;
 }
 
