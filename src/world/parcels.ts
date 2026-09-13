@@ -33,7 +33,15 @@
  *   footprint rather than of the land the parcels are cut from.
  *
  * Built on demand from the world description like the road graph and the
- * footprint, not stored in it. Pure: the same world gives the same parcels, in
+ * footprint, not stored in it.
+ *
+ * The owner assignment also picks the police stations of spec section 11.7:
+ * in each district, the building parcel whose centre stands nearest the
+ * district's site. A station is a building group like any other, so it keeps
+ * the `building` owner and is listed in {@link ParcelMap.stations}. A district
+ * with no building parcel has no station.
+ *
+ * Pure: the same world gives the same parcels, in
  * the same order, with the same owners.
  */
 import { areaOf, difference, pointInRegion, regionArea, regionOf, split, type Point, type Region } from '../core/geom.ts';
@@ -88,6 +96,18 @@ export interface ParcelMap {
    * footprint is land no road reaches.
    */
   land: number;
+  /** The police stations, one per district that has a building parcel, by district id. */
+  stations: PoliceStation[];
+}
+
+/** A building parcel that is a police station (spec section 11.7). */
+export interface PoliceStation {
+  /** Id of the parcel it stands on, which is owned by `building`. */
+  parcel: number;
+  district: number;
+  /** The centre of the parcel's ground. */
+  x: number;
+  y: number;
 }
 
 /**
@@ -298,6 +318,7 @@ export function buildParcels(
   markCarParks(pieces, world.beaches, reach);
 
   const parcels: Parcel[] = [];
+  const stations: PoliceStation[] = [];
   let area = 0;
   for (const piece of pieces) {
     const zone = zoneAt(zones, piece.at.x, piece.at.y);
@@ -313,8 +334,28 @@ export function buildParcels(
       roads: piece.roads,
     });
     area += piece.area;
+    if ((parcels[id] as Parcel).owner === 'building') offerStation(stations, district, id, piece.at);
   }
-  return { parcels, area, land: areaOf(land) };
+  stations.sort((a, b) => a.district - b.district);
+  return { parcels, area, land: areaOf(land), stations };
+}
+
+/**
+ * Take a building parcel as its district's police station when it stands
+ * nearer the district's site than the station so far. The parcels are offered
+ * in id order and only a strictly nearer one replaces, so a tie keeps the
+ * lower id.
+ */
+function offerStation(stations: PoliceStation[], district: District, parcel: number, at: Point): void {
+  const held = stations.find((station) => station.district === district.id);
+  const distance = Math.hypot(at.x - district.x, at.y - district.y);
+  if (held === undefined) {
+    stations.push({ parcel, district: district.id, x: at.x, y: at.y });
+  } else if (distance < Math.hypot(held.x - district.x, held.y - district.y)) {
+    held.parcel = parcel;
+    held.x = at.x;
+    held.y = at.y;
+  }
 }
 
 /**
