@@ -268,6 +268,13 @@ are the design.
   spotlight's: 0 is the softest edge. Aim it across the road rather than straight down, or it has no
   orientation to project in. three.js 0.186 clusters shadowless point lights alone, so
   `ClusteredLighting` does not cover these cones and the cap is what keeps them affordable.
+- A light at intensity 0 still costs every fragment it reaches: the intensity is a uniform, and the
+  shader runs the whole light to multiply it by 0. That was 10 ms of a frame at a pixel ratio of 2,
+  by day. Taking the light out of the scene is no better. It rebuilds every shader, and three.js
+  frees the old variant as the render objects rebuild, so compiling both states at load does not
+  keep both. `LampLight` (`lamp-light.ts`) draws with a node that wraps the light in `If` on a
+  uniform, so a light that is off is a branch the fragment skips. `registerLampLight` in
+  `renderer.ts` gives the renderer that node. A renderer that is not told draws the lamps unlit.
 - `src/render/preview.ts` is the page half of that tool, and holds everything awkward about taking
   the picture: a headless WebGPU canvas never reaches the compositor, so a screenshot of the page is
   blank and the frame is read back off a render target; a render target set with `setRenderTarget`

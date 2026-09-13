@@ -77,6 +77,18 @@ export const fract = tsl.fract as unknown as (x: TslNode) => TslNode;
  */
 export const uniform = tsl.uniform as unknown as (value: number) => { value: number } & TslNode;
 
+/**
+ * The group a uniform is sent in once a render rather than once an object. A
+ * light's uniforms go here: they are the same for every mesh it reaches.
+ */
+export const renderGroup: TslNode = tsl.renderGroup;
+
+/**
+ * Run the nodes `body` builds only where `condition` holds. The shader branches
+ * rather than blending, so a fragment that fails the test does none of the work.
+ */
+export const If = tsl.If as unknown as (condition: TslNode, body: () => void) => TslNode;
+
 /** The texture coordinates of the geometry. The game measures them in metres. */
 export const uv = tsl.uv as unknown as () => TslNode;
 

@@ -15,11 +15,12 @@
  * The pool is built once and never grows or shrinks. Adding a light to a scene
  * rebuilds the shader of every material in it, so a pool that changed size at
  * dusk would stall the frame; the lights are dimmed to nothing by day instead.
+ * A light at 0 costs a fragment nothing, because `lamp-light.ts` branches past it.
  */
 import { Object3D, type Scene } from 'three';
-import { ProjectorLight } from 'three/webgpu';
 import { Batch, fillOf, type BatchPart } from './batch.ts';
 import type { EntityFade } from './fade.ts';
+import { LampLight } from './lamp-light.ts';
 import { createLampMaterials, type LampMaterials } from './lamp-material.ts';
 import { buildChunkLamps, type Lamp } from './lamp-mesh.ts';
 import type { TilePart } from './streaming.ts';
@@ -109,7 +110,7 @@ export class LampScenery {
 /** The fixed pool of lights the nearest lamps borrow. */
 export class LampLights {
   readonly count = LAMP_LIGHT_CAP;
-  private readonly lights: ProjectorLight[] = [];
+  private readonly lights: LampLight[] = [];
   private readonly targets: Object3D[] = [];
   private readonly scene: Scene;
   private atX = Infinity;
@@ -119,7 +120,7 @@ export class LampLights {
   constructor(scene: Scene) {
     this.scene = scene;
     for (let i = 0; i < LAMP_LIGHT_CAP; i++) {
-      const light = new ProjectorLight(LAMP_COLOUR, 0, LAMP_REACH, LAMP_ANGLE, LAMP_PENUMBRA, LAMP_DECAY);
+      const light = new LampLight(LAMP_COLOUR, 0, LAMP_REACH, LAMP_ANGLE, LAMP_PENUMBRA, LAMP_DECAY);
       light.position.set(PARKED, PARKED, PARKED);
       // A cone that casts is a shadow pass each; the sun's cascades are the
       // shadow budget of spec section 10.5 and these stay out of it.
@@ -158,7 +159,7 @@ export class LampLights {
 
   dispose(): void {
     for (let i = 0; i < this.lights.length; i++) {
-      const light = this.lights[i] as ProjectorLight;
+      const light = this.lights[i] as LampLight;
       const target = this.targets[i] as Object3D;
       this.scene.remove(light, target);
       light.dispose();
@@ -168,7 +169,7 @@ export class LampLights {
   /** Stand each light on a lamp, and park the ones no lamp needs. */
   private place(chosen: readonly Lamp[]): void {
     for (let i = 0; i < this.lights.length; i++) {
-      const light = this.lights[i] as ProjectorLight;
+      const light = this.lights[i] as LampLight;
       const target = this.targets[i] as Object3D;
       const lamp = chosen[i];
       if (lamp === undefined) {
