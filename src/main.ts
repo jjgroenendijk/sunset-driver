@@ -40,6 +40,10 @@ import { generateWorld } from './world/world.ts';
 /** Metres ahead of the player the weapon picker drops a weapon. */
 const DROP_AHEAD = 3;
 
+/** The debug keys that end a run (spec section 11.7), until the damage and the police do. */
+const DIE_KEY = 'KeyK';
+const ARREST_KEY = 'KeyB';
+
 /** A session in progress: the state, the world it is played in, and the overlay. */
 interface Session {
   state: SimState;
@@ -147,11 +151,18 @@ async function boot(): Promise<void> {
       // behind. The simulation itself keeps running either way.
       const flying = free.detached;
       const steps = clock.advance(elapsed);
+      const respawned = session.state.respawn;
       for (let i = 0; i < steps; i++) {
         // The pose the step starts from is kept before it is taken, so the
         // frame is drawn between the last two ticks rather than on the last.
         session.smooth.capture(session.state);
         stepSim(session.state, flying ? EMPTY_INPUT : keyboard.sample(), session.physics);
+      }
+      // A respawn moves the player across the map (spec section 11.7), so the
+      // frame puts them down there rather than sliding them over the city.
+      if (session.state.respawn !== respawned) {
+        session.smooth.reset();
+        camera.snap();
       }
       // A frame falls between two ticks, so what is drawn is the blend of them
       // `smooth.ts` describes. Without it the record steps 0, 1 or 2 ticks a
@@ -285,6 +296,9 @@ async function boot(): Promise<void> {
   const start = nearestRoadPlace(description, state.player.x, state.player.y);
   const physics = new SimPhysics(ground, state);
   physics.spawn(state, start?.x ?? state.player.x, start?.y ?? state.player.y, start?.heading ?? 0);
+  // The safehouses of spec section 16.3 have not landed, so a death comes back
+  // where the session started (spec section 11.7).
+  state.safehouse = { x: state.player.x, y: state.player.y, heading: state.player.heading };
 
   try {
     await world.settle(state.player.x, state.player.y, 1);
@@ -297,6 +311,11 @@ async function boot(): Promise<void> {
     return;
   }
   notice.remove();
+  // The parcels are built in the chunk workers, so the police stations are
+  // known once a worker has answered, which `settle` waited for. An arrest
+  // comes back on the road nearest a station (spec section 11.7).
+  const stations = world.stations ?? [];
+  ground.stations = stations.map((at) => nearestRoadPlace(description, at.x, at.y) ?? { ...at, heading: 0 });
 
   camera.setBaseDistance(BASE_DISTANCE);
   // The chain is built on the world's scene and the camera that follows the
@@ -348,6 +367,7 @@ async function boot(): Promise<void> {
   // list is shared with them: a system that owns places writes `pois.extra`
   // once and both maps show them.
   const pois = new MapPois(description);
+  pois.extra = stations.map((at) => ({ type: 'police' as const, x: at.x, y: at.y }));
   const art = new MapArt(description, pois);
   const minimap = new Minimap(document.body, art);
   const map = new MapScreen(document.body, art, (place) => {
@@ -363,6 +383,11 @@ async function boot(): Promise<void> {
     if (event.repeat) return;
     if (event.code === PICKER_KEY) picker.toggle();
     if (event.code === WEAPON_PICKER_KEY) weapons.toggle();
+    // The debug triggers of spec section 11.7. Each writes the record between
+    // two ticks, as the damage and the police will, and the next tick resolves
+    // it, so a run ended this way replays like any other.
+    if (event.code === DIE_KEY) state.player.health = 0;
+    if (event.code === ARREST_KEY) state.arrested = true;
     if (event.code === MAP_KEY) map.toggle();
     if (event.code === MINIMAP_NORTH_KEY) minimap.toggleNorth();
     if (event.code === 'Escape' && map.open) map.toggle();

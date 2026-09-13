@@ -10,6 +10,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { PARAPET_HEIGHT, type DeckSpan } from '../world/decks.ts';
 import type { Surface } from '../world/surface.ts';
+import type { Place } from './on-foot.ts';
 
 /** Metres each way of one tile of ground the physics holds. */
 export const PHYSICS_TILE = 50;
@@ -41,6 +42,11 @@ export interface Ground {
    * test that only needs a hillside, leaves them out.
    */
   decks?: readonly DeckSpan[];
+  /**
+   * The places the police stations are entered from (spec section 11.7), where
+   * an arrest puts the player back. A test that needs none leaves them out.
+   */
+  stations?: readonly Place[];
 }
 
 

@@ -31,6 +31,7 @@ export class Hud {
   private readonly weapon: HTMLElement;
   private readonly heat: HTMLElement;
   private readonly objective: HTMLElement;
+  private readonly fate: HTMLElement;
   private shownClock = '';
   private shownStatus = '';
   private shownDraws = '';
@@ -39,6 +40,7 @@ export class Hud {
   private shownWeapon = '';
   private shownHeat = '';
   private shownObjective = '';
+  private shownFate = '';
 
   constructor(parent: HTMLElement, seed: string) {
     this.root = document.createElement('div');
@@ -73,7 +75,10 @@ export class Hud {
     this.heat.className = 'hud-heat';
     this.objective = document.createElement('div');
     this.objective.className = 'hud-objective';
-    this.panel.append(health, this.money, this.weapon, this.heat, this.objective);
+    this.fate = document.createElement('div');
+    this.fate.className = 'hud-fate';
+    this.fate.hidden = true;
+    this.panel.append(this.fate, health, this.money, this.weapon, this.heat, this.objective);
     parent.append(this.root, this.panel);
   }
 
@@ -151,6 +156,13 @@ export class Hud {
       this.objective.textContent = state.objective;
       this.objective.hidden = state.objective === '';
     }
+
+    const fate = fateLine(state);
+    if (fate !== this.shownFate) {
+      this.shownFate = fate;
+      this.fate.textContent = fate;
+      this.fate.hidden = fate === '';
+    }
   }
 
   destroy(): void {
@@ -169,6 +181,21 @@ export function weaponLine(state: SimState): string {
   if (spec.capacity === 0) return spec.name;
   if (reloading(state.loadout)) return `${spec.name}  reloading`;
   return `${spec.name}  ${currentSlot(state.loadout).loaded}/${poolOf(state.loadout, spec)}`;
+}
+
+/** Ticks the HUD says how the last run ended for: four seconds. */
+export const FATE_TICKS = 240;
+
+/**
+ * How the last run ended and what it cost (spec section 11.7), for
+ * {@link FATE_TICKS} after the respawn, and empty otherwise. It is what tells a
+ * player why they are standing somewhere else.
+ */
+export function fateLine(state: SimState): string {
+  const last = state.respawn;
+  if (last === null || state.tick - last.tick > FATE_TICKS) return '';
+  const what = last.cause === 'death' ? 'Wasted  hospital fee' : 'Busted  bribe';
+  return `${what} $${last.cost.toLocaleString('en-US')}`;
 }
 
 /**

@@ -53,6 +53,7 @@ import {
   MAX_CLIMB,
   MIN_SLIDE,
   paceOf,
+  type Place,
   reachesVehicle,
   SKIN,
   SNAP_DISTANCE,
@@ -305,6 +306,22 @@ export class SimPhysics {
     this.shots.step(state, state.theft === null ? input : EMPTY_INPUT, this.target(state));
     this.shots.fly(state, this.target(state));
     this.burn(state);
+  }
+
+  /** The police stations of the ground (spec section 11.7), which an arrest reads. */
+  get stations(): readonly Place[] {
+    return this.ground.stations ?? [];
+  }
+
+  /**
+   * Stand a player the record has just moved on the ground under them, and
+   * rebuild the bodies around them. A respawn (spec section 11.7) is what calls
+   * it: the record says where they come back, and not how high the ground is.
+   */
+  stand(state: SimState): void {
+    const p = state.player;
+    p.height = this.ground.heightAt(p.x, p.y);
+    this.adopt(state);
   }
 
   /** Release the Rapier world and everything in it. */

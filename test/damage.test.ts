@@ -328,7 +328,10 @@ describe('crashing a car', () => {
     }
     expect(stages).toContain('smoking');
     expect(session.state.vehicle.damage.integrity).toBe(0);
-    expect(session.state.player.health).toBeLessThan(MAX_HEALTH);
+    // A driver the wreck kills comes back at full health (spec section 11.7),
+    // so the death is what says they were hurt.
+    const { player, respawn } = session.state;
+    expect(player.health < MAX_HEALTH || respawn?.cause === 'death').toBe(true);
     session.physics.dispose();
   });
 

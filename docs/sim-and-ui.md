@@ -119,6 +119,16 @@ are the design.
   Shift and a row drops the weapon three metres ahead as a pickup instead, and the buttons under the
   rows fit and remove the attachments of the weapon in hand. The weapon shops and faction dealers of
   spec section 11.6 are what will replace it.
+- `src/sim/respawn.ts` is death and arrest (spec section 11.7). A death is `player.health` at 0 and
+  an arrest is `SimState.arrested`; `stepSim` turns either into a respawn at the end of the tick, so
+  whatever wrote them — a crash, a blast, the debug keys `K` and `B`, the police later — replays the
+  same. The player comes back on foot with fists only; the car stays where the run ended.
+  `loadout.shots` survives, because it keys the stream of every shot. `SimState.safehouse` is where
+  the session started until spec section 16.3 lands. The police stations come from
+  `ParcelMap.stations`, built in the chunk workers, so `main.ts` reads them off
+  `WorldScene.stations` after `settle` and hands them to the physics as `Ground.stations`. A world
+  with none sends an arrest to the safehouse. `SimState.respawn` changing is what makes `main.ts`
+  snap the camera.
 - `SimState.heat` is the attention of spec section 14. Nothing spends it yet; a sounding alarm and
   every shot fired raise it, and melee raises none, because the spec calls it silent.
 - The physics reads the world through a `Ground`: the carved height at a place, what that ground is
