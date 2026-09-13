@@ -33,12 +33,18 @@ a tier a regression when those have grown. Write the machine, its core count, th
 the CPU-seconds into the pull request whenever a change moves either number.
 
 Do not trust one wall-clock reading, on any machine. The full tier on that same laptop took 96 s and
-192 s on the same commit, because the laptop was busy the second time. The nightly workflow runs
-`test:full` on a GitHub `ubuntu-latest` runner, and three runs of one commit took 71 s, 78 s and
-122 s. A runner
+192 s on the same commit, because the laptop was busy the second time. On one GitHub
+`ubuntu-latest` runner, three runs of `test:full` on one commit took 71 s, 78 s and 122 s. A runner
 can be most of twice as slow as the one before it, so one time says nothing on its own, and the
 slowest of them is what the 2 min has to hold. Read CI, and a shared laptop, as a spread of several
 runs.
+
+The nightly workflow splits the tier over two runners in `full-tier.yml`, because the seed sweep is
+most of it. On 13 September 2026 the seed sweep alone took 103 s on its runner, and every other
+file with the typecheck and both lints took 24 s on the other. The sim sweep took 4 s on its own:
+in a whole run it looks slow only because it waits for the pool while the seed sweep generates its
+worlds. So the seed sweep sets the nightly wall clock, and a third runner would not shorten it.
+Each night's job summary lists the wall clock and CPU-seconds of both shards.
 
 Issue #88 tracks the wall clock the quick tier misses its 15 s by on a four-core session, and
 issue #198 what the city filling the map added to both tiers.
