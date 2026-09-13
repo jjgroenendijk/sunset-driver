@@ -17,10 +17,10 @@ export interface PreviewScene {
  */
 export function createPreviewScene(appearance: CharacterAppearance): PreviewScene {
   const scene = new Scene();
-  scene.background = new Color(0x1a0b16);
+  scene.background = new Color(0x17110d);
 
   const geometry = new CircleGeometry(1.6, 48);
-  const material = new MeshStandardMaterial({ color: 0x2b1f2a, roughness: 0.9 });
+  const material = new MeshStandardMaterial({ color: 0x3a2e25, roughness: 0.9 });
   const plinth = new Mesh(geometry, material);
   plinth.rotation.x = -Math.PI / 2;
   scene.add(plinth);
