@@ -107,9 +107,10 @@ Set up before the first line of world generation, so every feature lands under t
     tick N.
 The gates run on the developer's machine: `npm run verify` before every commit, with the full seed
 sweep in `npm run verify:full`. A pull request typechecks, lints and builds. A nightly workflow runs
-the full gate on `main` whenever `main` changed that day, and opens an issue when it fails. The gate
-is never weakened or made optional. Frame time is watched with the frame profiler, not asserted in
-a test, because a timing assertion on a shared machine fails at random.
+the full gate on `main` with the open Dependabot updates merged in, whenever either changed that
+day. It merges the updates when the gate passes, and opens an issue when it fails. The gate is never
+weakened or made optional. Frame time is watched with the frame profiler, not asserted in a test,
+because a timing assertion on a shared machine fails at random.
 
 ---
 

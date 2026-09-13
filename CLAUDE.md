@@ -24,8 +24,8 @@ Tests run on your machine, not in CI. The commands:
 A pull request only typechecks, lints and builds; `build-and-deploy` is required to merge. A push to
 main builds and deploys `dist` to Cloudflare Pages, which is the one deployment a change gets.
 Commits touching only `**/*.md` or `.claude/**` skip that job, so keep docs commits separate from
-code commits. `nightly.yml` runs `verify:full` on main each night that main has a new commit, and
-opens an issue labelled `nightly-failure` when it fails.
+code commits. Each night `nightly.yml` runs `verify:full` on main plus the day's Dependabot updates,
+merges the updates when it passes, and opens a `nightly-failure` issue when it fails.
 
 `npm test` must stay under 15 s and `npm run test:full` under 2 min. Cut seeds or ticks in the quick
 tier and keep full coverage behind `SWEEP_SEEDS` — never make a test slower to make it pass. Both
