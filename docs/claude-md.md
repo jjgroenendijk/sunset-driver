@@ -51,9 +51,9 @@ Prose in short paragraphs and tight lists, not tables — a table wide enough to
 mostly holds restated column headers.
 
 The sections are: what the project is and where the spec lives, the tests, the docs it points at,
-the size limits, how an issue is claimed, determinism, per-directory constraints, the traps that
-cost a session with nothing to say why, conventions, the writing rules and this maintenance note.
-New material joins an existing section far more often than it justifies a new one.
+the size limits, determinism, per-directory constraints, the traps that cost a session with nothing
+to say why, conventions, the writing rules and this maintenance note. New material joins an existing
+section far more often than it justifies a new one.
 
 A subsystem gets a doc of its own — `docs/world-generation.md`, `docs/rendering.md`,
 `docs/sim-and-ui.md` — read by the session whose work touches that directory. `CLAUDE.md` keeps one
