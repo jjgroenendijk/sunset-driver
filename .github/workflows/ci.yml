@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
-  # `nightly.yml` starts a deploy after it merges updates, because a merge made
-  # with its token starts no push workflow.
+  # A merge made with the workflow token starts no push workflow, so the
+  # Dependabot merge below starts the deploy by hand.
   workflow_dispatch:
 
 permissions:
@@ -15,41 +15,31 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # The artifact a pull request built from the tree main now holds. A rebase
+  # merge of an up-to-date branch gives the same tree. A manual run has no
+  # head commit, so it does not look and builds.
+  PREBUILT: dist-${{ github.event.head_commit.tree_id }}
+
 jobs:
-  # Main deploys the `dist` a pull request already built when the tree is the
-  # same, which a rebase merge of an up-to-date branch gives. Only artifacts
-  # from runs of this repository count: a fork's run could upload anything.
+  # Only artifacts from runs of this repository count: a fork's run could upload
+  # anything.
   find-dist:
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      contents: read
       actions: read
     outputs:
       run-id: ${{ steps.find.outputs.run-id }}
-      artifact: ${{ steps.find.outputs.artifact }}
     steps:
       - id: find
         env:
           GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          REPO_ID: ${{ github.repository_id }}
-          SHA: ${{ github.sha }}
-        run: |
-          set -u
-          tree=$(gh api "repos/$REPO/commits/$SHA" --jq .commit.tree.sha) || exit 0
-          artifact="dist-$tree"
-          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
-          run=$(gh api "repos/$REPO/actions/artifacts?name=$artifact&per_page=30" --jq \
-            ".artifacts[] | select(.expired | not)
-             | select(.workflow_run.head_repository_id == $REPO_ID) | .workflow_run.id" | head -n 1)
-          if [ -n "$run" ]; then
-            echo "Deploying $artifact from run $run."
-            echo "run-id=$run" >> "$GITHUB_OUTPUT"
-          else
-            echo "No build of tree $tree yet; building it."
-          fi
+        run: >-
+          echo "run-id=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$PREBUILT" --jq
+          "[.artifacts[] | select((.expired | not) and .workflow_run.head_repository_id == $GITHUB_REPOSITORY_ID)]
+          | .[0].workflow_run.id // empty")" >> "$GITHUB_OUTPUT"
 
   # A pull request typechecks, lints and builds; this is the check required to
   # merge. Main builds only when no pull request built the same tree.
@@ -59,6 +49,37 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       checks: ${{ github.event_name == 'pull_request' }}
+
+  # CI runs no tests on other pull requests, but an update is written by no one
+  # who ran them.
+  full-tier:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    uses: ./.github/workflows/full-tier.yml
+
+  # The head must still be the commit the full tier tested. A branch that fell
+  # behind main cannot merge, so Dependabot is asked to rebase it, which tests
+  # it again.
+  merge-update:
+    needs: [build, full-tier]
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+      HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - run: |
+          if gh pr merge "$PR" --rebase --match-head-commit "$HEAD"; then
+            gh workflow run ci.yml --ref main
+          else
+            gh pr comment "$PR" --body '@dependabot rebase'
+          fi
 
   # Only main deploys. A pull request publishes nothing, so one change reaches
   # Cloudflare once.
@@ -78,45 +99,24 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
+            .github/actions
             .nvmrc
             package.json
             package-lock.json
           sparse-checkout-cone-mode: false
-
-      - id: node
-        run: echo "major=$(cat .nvmrc)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: /opt/hostedtoolcache/node/${{ steps.node.outputs.major }}.*
-          key: node-${{ runner.os }}-${{ steps.node.outputs.major }}
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .nvmrc
-          package-manager-cache: false
-
-      # The build's own cache, so wrangler is the version `package-lock.json`
-      # pins and costs a restore rather than an install.
-      - id: modules
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: node_modules
-          key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc', 'package-lock.json') }}
-      - if: steps.modules.outputs.cache-hit != 'true'
-        run: npm ci --prefer-offline --no-audit --no-fund
+      # Wrangler is the version `package-lock.json` pins, from the build's cache.
+      - uses: ./.github/actions/setup
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ needs.find-dist.outputs.run-id != '' && needs.find-dist.outputs.artifact || needs.build.outputs.artifact }}
+          name: ${{ needs.find-dist.outputs.run-id && env.PREBUILT || needs.build.outputs.artifact }}
           run-id: ${{ needs.find-dist.outputs.run-id || github.run_id }}
           github-token: ${{ github.token }}
           path: dist
 
-      - name: Deploy to Cloudflare Pages
-        env:
+      - env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          BRANCH: ${{ github.ref_name }}
-          SHA: ${{ github.sha }}
         run: >-
           node_modules/.bin/wrangler pages deploy dist --project-name=sunset-driver
-          --branch="$BRANCH" --commit-dirty=true --commit-hash="$SHA"
+          --branch="$GITHUB_REF_NAME" --commit-dirty=true --commit-hash="$GITHUB_SHA"

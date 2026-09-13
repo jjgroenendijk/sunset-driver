@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:checked": "run-p --print-label typecheck lint lint:size build",
     "preview": "vite preview",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
     "lint": "node scripts/lint-determinism.ts",
@@ -23,6 +24,7 @@
     "@types/node": "^26.5.1",
     "@types/three": "^0.185.4",
     "@webgpu/types": "^0.1.72",
+    "npm-run-all2": "^9.0.3",
     "playwright-core": "^1.63.0",
     "tsapi": "npm:typescript@^5.9.3",
     "typescript": "^7.0.2",

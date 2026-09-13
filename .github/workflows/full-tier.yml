@@ -1,26 +1,16 @@
 name: Full tier
 
-# A reusable workflow: `nightly.yml` calls it. It runs `verify:full` split over
-# two runners, each with its own four cores: the seed sweep, and every other file
-# with the typecheck and both lints. The seed sweep is most of the tier's work:
-# on a runner it takes about 100 s and the rest about 25 s. Each shard uploads an
-# artifact named `<name>-<shard>` that holds `outcome`
-# (`passed`, `failed` or `unfinished`), `test.log`, `time.txt` and `report.json`.
-#
-# The shards install and run untrusted updates, so they hold a read-only token
-# and only restore caches, never save them.
+# A reusable workflow: `ci.yml` calls it on Dependabot pull requests and
+# `nightly.yml` on main. It runs `verify:full` split over two runners: the seed
+# sweep, and every other file with the typecheck and both lints. The seed sweep
+# is most of the tier's work: on a runner it takes about 100 s and the rest about
+# 25 s. On Actions vitest adds its `github-actions` reporter, which writes the
+# job summary and marks each failure on its line.
 on:
   workflow_call:
-    inputs:
-      name:
-        description: Prefix of the artifact names.
-        type: string
-        required: true
-      prs:
-        description: Dependabot pull requests to merge onto main first, as `number:sha`.
-        type: string
-        default: ''
 
+# The shards install and run untrusted updates, so they hold a read-only token
+# and never save a cache.
 permissions:
   contents: read
 
@@ -40,71 +30,10 @@ jobs:
             checks: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
         with:
-          # A merge needs the history back to the merge base.
-          fetch-depth: ${{ inputs.prs == '' && 1 || 0 }}
+          save: false
 
-      - if: inputs.prs != ''
-        env:
-          PRS: ${{ inputs.prs }}
-        run: |
-          set -eu
-          git config user.name nightly
-          git config user.email nightly@users.noreply.github.com
-          for pr in $PRS; do
-            git fetch -q origin "pull/${pr%%:*}/head"
-            git merge -q --no-edit "${pr#*:}"
-          done
-
-      - id: node
-        run: echo "major=$(cat .nvmrc)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: /opt/hostedtoolcache/node/${{ steps.node.outputs.major }}.*
-          key: node-${{ runner.os }}-${{ steps.node.outputs.major }}
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .nvmrc
-          package-manager-cache: false
-
-      # A tree with updates has a new lockfile and misses, which costs an install.
-      - id: modules
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: node_modules
-          key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc', 'package-lock.json') }}
-
-      - env:
-          FILES: ${{ matrix.files }}
-          CHECKS: ${{ matrix.checks == true }}
-          HIT: ${{ steps.modules.outputs.cache-hit }}
-        run: |
-          set -u
-          mkdir out
-          tier() {
-            if [ "$CHECKS" = true ]; then
-              npm run typecheck && npm run lint && npm run lint:size || return 1
-            fi
-            # FILES holds several words, so it is not quoted.
-            # shellcheck disable=SC2086
-            npm run test:full -- $FILES \
-              --reporter=default --reporter=json --outputFile=out/report.json
-          }
-          if [ "$HIT" != true ] && ! npm ci --prefer-offline --no-audit --no-fund > out/test.log 2>&1; then
-            echo unfinished > out/outcome
-          # `time` writes wall, user and system seconds to time.txt.
-          elif { TIMEFORMAT='%R %U %S'; time tier >> out/test.log 2>&1; } 2> out/time.txt; then
-            echo passed > out/outcome
-          else
-            echo failed > out/outcome
-          fi
-          cat out/test.log
-          [ "$(cat out/outcome)" = passed ]
-
-      - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ${{ inputs.name }}-${{ matrix.shard }}
-          path: out
-          if-no-files-found: ignore
-          retention-days: 14
+      - if: matrix.checks
+        run: npm run typecheck && npm run lint && npm run lint:size
+      - run: npm run test:full -- ${{ matrix.files }}
