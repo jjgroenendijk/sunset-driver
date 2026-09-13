@@ -54,10 +54,11 @@ const REFLECTION_SCALE = 0.35;
 
 /**
  * How tightly the wave pattern is laid. The addon spreads its normal map over
- * 103 metres divided by this, so the swell is about a third of what the camera
- * of `camera.ts` holds on screen and the ripples over it are a few metres across.
+ * 103 metres divided by this, so one tile is about 10 metres and the ripples in
+ * it are a metre or two across. Seen from the camera of `camera.ts`, a looser
+ * pattern shows soft blotches and no ripples.
  */
-const WAVE_TILING = 3;
+const WAVE_TILING = 10;
 
 /**
  * How far the mirrored scene is pushed about by the waves, in screen widths per
