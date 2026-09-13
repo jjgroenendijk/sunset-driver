@@ -1,12 +1,13 @@
 version: 2
+# Daily, before the 02:00 UTC run of `nightly.yml`, which tests the pull
+# requests with the full tier and merges the ones that pass.
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-      timezone: Europe/Amsterdam
+      interval: daily
+      time: "00:30"
+      timezone: UTC
     groups:
       all-npm:
         patterns: ["*"]
@@ -17,10 +18,9 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-      timezone: Europe/Amsterdam
+      interval: daily
+      time: "00:30"
+      timezone: UTC
     groups:
       all-actions:
         patterns: ["*"]
