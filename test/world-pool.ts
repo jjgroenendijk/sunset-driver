@@ -45,8 +45,7 @@ export interface PooledWorld {
 
 /**
  * Generate one world per seed, several at a time. The result lines up with
- * `seeds`, so a seed given twice is generated twice. Timing a world generated
- * here would be timing a busy machine: `test/budget.test.ts` owns that.
+ * `seeds`, so a seed given twice is generated twice.
  */
 export async function worldsFor(seeds: readonly number[]): Promise<WorldDescription[]> {
   const built = await buildWorlds(seeds.map((seed) => ({ seed })));

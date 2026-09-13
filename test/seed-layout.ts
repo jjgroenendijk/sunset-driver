@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { landUseLayers } from '../scripts/land-use.ts';
 import { ZONES, measureLayout, type ZoneMetrics } from '../scripts/layout-metrics.ts';
 import type { WorldDescription, Zone } from '../src/world/types.ts';
-import { LAYOUT_BANDS, type LayoutBand, type ZoneBands } from './budgets.ts';
+import { LAYOUT_BANDS, type LayoutBand, type ZoneBands } from './layout-bands.ts';
 import { FOOTPRINT_COUNT, MIN_ZONE_HECTARES, MIN_ZONE_PARCELS } from './seed-limits.ts';
 import { seeds, worlds, parcelsOf, buildingsOf, graphOf } from './seed-fixture.ts';
 
@@ -14,7 +14,7 @@ import { seeds, worlds, parcelsOf, buildingsOf, graphOf } from './seed-fixture.t
  * connect, that grades hold, that nothing stands on anything else. A map that
  * gives three fifths of its downtown to tarmac passes all of them. These read
  * the shares of `scripts/layout-metrics.ts` and hold each one to the band
- * `budgets.ts` pins, so "the city is too sparse" is a failing check and not an
+ * `layout-bands.ts` pins, so "the city is too sparse" is a failing check and not an
  * opinion.
  *
  * `seed-sweep.test.ts` declares these inside the one suite that generates the
