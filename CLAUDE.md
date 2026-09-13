@@ -25,7 +25,8 @@ typecheck, both lints and the build run in parallel, and `build` is the check re
 hook runs `npm run verify` before `gh pr create`. Main deploys the `dist` the pull request built
 when the tree is the same, and builds only when it is not. Each night `nightly.yml` runs
 `verify:full` on main plus the day's Dependabot updates, merges the updates when it passes, and
-opens a `nightly-failure` issue when it fails.
+opens a `nightly-failure` issue when it fails. `full-tier.yml` splits that run over two runners:
+the seed sweep, and every other file with the checks.
 
 `npm test` must stay under 15 s and `npm run test:full` under 2 min. Cut seeds or ticks in the quick
 tier and keep full coverage behind `SWEEP_SEEDS` — never make a test slower to make it pass. Both
