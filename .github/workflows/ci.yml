@@ -16,96 +16,107 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Docs-only changes skip the build. The filter is a job rather than a
-  # workflow-level `paths-ignore`, because a workflow filtered out by path
-  # never reports its checks and would block the merge.
-  changes:
+  # Main deploys the `dist` a pull request already built when the tree is the
+  # same, which a rebase merge of an up-to-date branch gives. Only artifacts
+  # from runs of this repository count: a fork's run could upload anything.
+  find-dist:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     outputs:
-      code: ${{ steps.filter.outputs.code }}
+      run-id: ${{ steps.find.outputs.run-id }}
+      artifact: ${{ steps.find.outputs.artifact }}
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - id: filter
+      - id: find
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REPO_ID: ${{ github.repository_id }}
+          SHA: ${{ github.sha }}
         run: |
           set -u
-          # Build unless every changed file is documentation. An unknown base
-          # (new branch, force push) and an empty diff both fall through to
-          # building, so a missed skip costs a CI run, never a missed check.
-          git cat-file -e "$BASE^{commit}" 2>/dev/null || { echo 'code=true' >> "$GITHUB_OUTPUT"; exit 0; }
-          changed=$(git diff --name-only "$BASE" "$HEAD")
-          echo "$changed"
-          if echo "$changed" | grep -qvE '(\.md$|^\.claude/)'; then
-            echo 'code=true' >> "$GITHUB_OUTPUT"
+          tree=$(gh api "repos/$REPO/commits/$SHA" --jq .commit.tree.sha) || exit 0
+          artifact="dist-$tree"
+          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
+          run=$(gh api "repos/$REPO/actions/artifacts?name=$artifact&per_page=30" --jq \
+            ".artifacts[] | select(.expired | not)
+             | select(.workflow_run.head_repository_id == $REPO_ID) | .workflow_run.id" | head -n 1)
+          if [ -n "$run" ]; then
+            echo "Deploying $artifact from run $run."
+            echo "run-id=$run" >> "$GITHUB_OUTPUT"
           else
-            echo 'code=false' >> "$GITHUB_OUTPUT"
+            echo "No build of tree $tree yet; building it."
           fi
 
-  # The size lint runs on every change, because a docs-only commit skips the
-  # build below and markdown has limits of its own. It needs no dependencies:
-  # `check-size.ts` reads files and nothing else.
-  docs:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-      - run: npm run lint:size
-
-  # A pull request proves the code typechecks, lints and builds. Main only
-  # builds, because the pull request already checked the same tree.
+  # A pull request typechecks, lints and builds; this is the check required to
+  # merge. Main builds only when no pull request built the same tree.
   build:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
+    needs: find-dist
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || needs.find-dist.outputs.run-id == '') }}
     uses: ./.github/workflows/build.yml
     with:
       checks: ${{ github.event_name == 'pull_request' }}
 
-  # Only main deploys, from the `dist` the build uploaded. A pull request
-  # publishes nothing, so one change reaches Cloudflare once.
+  # Only main deploys. A pull request publishes nothing, so one change reaches
+  # Cloudflare once.
   deploy:
-    needs: build
-    if: github.event_name != 'pull_request'
+    needs: [find-dist, build]
+    if: >-
+      ${{ !cancelled() && github.event_name != 'pull_request' &&
+      (needs.build.result == 'success' ||
+      (needs.build.result == 'skipped' && needs.find-dist.outputs.run-id != '')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: production
     permissions:
       contents: read
-      deployments: write
+      actions: read
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: dist
+          sparse-checkout: |
+            .nvmrc
+            package.json
+            package-lock.json
+          sparse-checkout-cone-mode: false
+
+      - id: node
+        run: echo "major=$(cat .nvmrc)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /opt/hostedtoolcache/node/${{ steps.node.outputs.major }}.*
+          key: node-${{ runner.os }}-${{ steps.node.outputs.major }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      # The build's own cache, so wrangler is the version `package-lock.json`
+      # pins and costs a restore rather than an install.
+      - id: modules
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: node_modules
+          key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc', 'package-lock.json') }}
+      - if: steps.modules.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.find-dist.outputs.run-id != '' && needs.find-dist.outputs.artifact || needs.build.outputs.artifact }}
+          run-id: ${{ needs.find-dist.outputs.run-id || github.run_id }}
+          github-token: ${{ github.token }}
           path: dist
 
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # The job has no checkout, so the action installs wrangler itself.
-          # Keep the major version with the one in `package.json`.
-          wranglerVersion: '4'
-          command: pages deploy dist --project-name=sunset-driver --branch=${{ github.ref_name }} --commit-dirty=true --commit-hash=${{ github.sha }}
-
-  # The one required check. A job that calls a reusable workflow reports under
-  # a name of its own (`build / build`), and under another when it is skipped,
-  # so the rules on main require this job instead. It fails when a job it
-  # waits for failed or was cancelled, and passes when the build was skipped.
-  ci-passed:
-    needs: [docs, build, deploy]
-    if: always()
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - env:
-          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
-        run: |
-          echo 'docs=${{ needs.docs.result }} build=${{ needs.build.result }} deploy=${{ needs.deploy.result }}'
-          [ "$FAILED" = false ]
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: >-
+          node_modules/.bin/wrangler pages deploy dist --project-name=sunset-driver
+          --branch="$BRANCH" --commit-dirty=true --commit-hash="$SHA"
