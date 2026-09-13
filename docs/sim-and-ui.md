@@ -41,6 +41,10 @@ are the design.
   DOM order, and skip a disabled one. The pointer moves the same focus, so only one item is lit. A
   character row takes the focus itself and changes on left and right; its two buttons carry no
   `data-nav`. The look lives in `title.css`, which `style.css` imports.
+- `src/render/scene.ts` is the scene behind the menu: a parked car, a lit street lamp and the
+  driver, with no world. The camera swings over the front of the car and never goes all the way
+  round, because the lamp post stands on the far side. The lamp is the game's own `LampLight`, so
+  the scene draws only through a renderer from `createRenderer`, which registers that light.
 - `src/ui/seed-preview.ts` draws the map of the seed on the title screen, through the same `MapArt`,
   so the picture the player picks a seed from is the map they will play on. A build blocks the frame
   loop for a second or two, so it happens when the player asks for it — the dice button, the Show

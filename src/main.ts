@@ -1,10 +1,10 @@
 import { Raycaster, Vector2 } from 'three';
 import { readSeedFromLocation, seedFromString, writeSeedToHash } from './core/seed.ts';
-import { BASE_DISTANCE, FollowCamera, PREVIEW_DISTANCE } from './render/camera.ts';
+import { BASE_DISTANCE, FollowCamera } from './render/camera.ts';
 import { PostChain } from './render/post.ts';
 import { frameBudgetFrom, QualityMonitor, type QualityChange } from './render/quality.ts';
 import { createRenderer, probeWebGpu } from './render/renderer.ts';
-import { createPreviewScene } from './render/scene.ts';
+import { createTitleScene } from './render/scene.ts';
 import { RenderSmoother } from './render/smooth.ts';
 import { WorldScene } from './render/world-scene.ts';
 import { FixedStepClock } from './sim/clock.ts';
@@ -36,9 +36,6 @@ import {
 import { roadDecks } from './world/decks.ts';
 import { nearestRoadPlace, nearestWaterPlace, SurfaceIndex } from './world/surface.ts';
 import { generateWorld } from './world/world.ts';
-
-/** How fast the character turns on the title screen, in radians per second. */
-const PREVIEW_SPIN = 0.7;
 
 /** Metres ahead of the player the weapon picker drops a weapon. */
 const DROP_AHEAD = 3;
@@ -102,9 +99,10 @@ async function boot(): Promise<void> {
   document.getElementById('splash')?.remove();
   canvas.hidden = false;
 
-  const preview = createPreviewScene(DEFAULT_APPEARANCE);
+  // The camera behind the menu swings about the car, unless the player asks the browser for less motion.
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const preview = createTitleScene(DEFAULT_APPEARANCE, window.innerWidth / window.innerHeight, still);
   const camera = new FollowCamera(window.innerWidth / window.innerHeight);
-  camera.setBaseDistance(PREVIEW_DISTANCE);
   const clock = new FixedStepClock();
   const keyboard = new Keyboard(window);
   // The developer free camera of `docs/dev-tooling.md`. It writes into the same
@@ -114,6 +112,7 @@ async function boot(): Promise<void> {
   window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight, false);
     camera.resize(window.innerWidth / window.innerHeight);
+    preview.resize(window.innerWidth / window.innerHeight);
     // The sun's shadow cascades are cut to the camera's frustum (spec section
     // 10.5), so a new shape needs them refitted.
     session?.world.resize();
@@ -134,7 +133,6 @@ async function boot(): Promise<void> {
 
   // The session is null until the title screen hands over a seed and a look.
   let session: Session | null = null;
-  let spin = 0;
   let last = performance.now();
   /** Whether the camera was detached last frame, so a release is noticed once. */
   let flew = false;
@@ -240,11 +238,8 @@ async function boot(): Promise<void> {
       // effects of spec section 10.6 over it.
       session.post.render();
     } else {
-      spin += (elapsed / 1000) * PREVIEW_SPIN;
-      preview.character.group.position.set(0, 0, 0);
-      preview.character.group.rotation.y = spin;
-      camera.update(elapsed / 1000, { x: 0, y: 0, height: 0, heading: 0, speed: 0 });
-      void renderer.render(preview.scene, camera.camera);
+      preview.update(elapsed / 1000);
+      void renderer.render(preview.scene, preview.camera);
     }
     requestAnimationFrame(frame);
   };

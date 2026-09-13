@@ -4,8 +4,6 @@ import { PerspectiveCamera, Vector3 } from 'three';
 export const CAMERA_PITCH = (58 * Math.PI) / 180;
 export const CAMERA_HEADING = 0;
 export const BASE_DISTANCE = 36;
-/** Close enough on the title screen to read the character's outfit and hair. */
-export const PREVIEW_DISTANCE = 6;
 const DISTANCE_PER_SPEED = 0.9;
 const LEAD_PER_SPEED = 0.6;
 /** How fast the focus catches the target, in e-foldings a second. */
