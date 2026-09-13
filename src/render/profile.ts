@@ -94,6 +94,8 @@ interface SceneOwners {
   vegetation: { material: Material };
   lamps: { materials: { lamp: Material } };
   scenery: { surfaces: Record<string, Material> };
+  /** The water sheet, which `look` shows or hides every frame. */
+  water: { shown: boolean };
 }
 
 export async function runProfile(request: ProfileRequest): Promise<ProfileResult> {
@@ -114,10 +116,12 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
   scene.time = tick;
   const start = nearestRoadPlace(world, request.x, request.y) ?? { x: request.x, y: request.y, heading: 0 };
   await scene.settle(start.x, start.y);
+  // The sheet is shown or hidden every frame by where the camera stands, so
+  // `--no-water` holds it out through the surface itself rather than writing
+  // `visible`, which the next frame would write back.
+  if (request.noWater === true) (scene as unknown as SceneOwners).water.shown = false;
   scene.scene.traverse((object) => {
-    const flags = object as { isWaterMesh?: boolean; isSpotLight?: boolean };
-    if (request.noWater === true && flags.isWaterMesh === true) object.visible = false;
-    if (request.noLamps === true && flags.isSpotLight === true) object.visible = false;
+    if (request.noLamps === true && (object as { isSpotLight?: boolean }).isSpotLight === true) object.visible = false;
   });
 
   const camera = new FollowCamera(request.width / request.height);

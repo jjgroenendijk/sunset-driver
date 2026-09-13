@@ -139,6 +139,37 @@ export function buildWaterAttributes(world: WorldDescription): WaterAttributes {
   return { gridSize: n, cell: WATER_CELL, minX: lo * WATER_CELL, minY: lo * WATER_CELL, positions, normals, depths, indices };
 }
 
+/**
+ * True where the sheet draws any water within `radius` metres of a place.
+ *
+ * The mirror of `water-surface.ts` renders the whole scene a second time
+ * wherever the sheet is drawn, so the sheet is worth drawing only where the
+ * camera can see water. The camera of `camera.ts` looks down from a few tens
+ * of metres and its view ends on the ground a couple of hundred metres out, so
+ * a patch of that reach around the player is what it can cover, and this
+ * answers whether any of the sheet's drawn cells falls inside it — the same
+ * test that built the sheet, run over the cells the patch covers.
+ *
+ * The grid already reaches the open sea past every edge of the map, so a place
+ * outside it is a place no geometry covers either way.
+ */
+export function waterNear(attributes: WaterAttributes, x: number, y: number, radius: number): boolean {
+  const last = attributes.gridSize - 2;
+  const loI = clampIndex(Math.floor((x - radius - attributes.minX) / attributes.cell), last);
+  const hiI = clampIndex(Math.floor((x + radius - attributes.minX) / attributes.cell), last);
+  const loJ = clampIndex(Math.floor((y - radius - attributes.minY) / attributes.cell), last);
+  const hiJ = clampIndex(Math.floor((y + radius - attributes.minY) / attributes.cell), last);
+  for (let j = loJ; j <= hiJ; j++) {
+    for (let i = loI; i <= hiI; i++) if (cellIsWet(attributes.depths, attributes.gridSize, i, j)) return true;
+  }
+  return false;
+}
+
+/** A cell or vertex index held inside the grid, so a place past its edge reads the edge. */
+function clampIndex(at: number, last: number): number {
+  return Math.min(last, Math.max(0, at));
+}
+
 /** Wrap the attributes of a water sheet in a geometry the renderer can draw. */
 export function waterGeometry(attributes: WaterAttributes): BufferGeometry {
   const geometry = new BufferGeometry();

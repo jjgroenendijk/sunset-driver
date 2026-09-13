@@ -3,6 +3,7 @@ import {
   buildWaterAttributes,
   OPEN_SEA,
   waterGeometry,
+  waterNear,
   WATER_CELL,
   waveNormalData,
   WAVE_TEXTURE_SIZE,
@@ -178,6 +179,53 @@ describe('water surface', () => {
     expect(geometry.boundingSphere).not.toBeNull();
     geometry.dispose();
   });
+});
+
+describe('water near a place', () => {
+  it('finds no water inland and water at the shore and the sea', () => {
+    // The island's shore stands 250 m out, and the sheet's drawn water begins
+    // where the deepest of a vertex's samples crosses the waterline. A patch
+    // that keeps clear of that finds no water.
+    expect(waterNear(attributes, 0, 0, 125)).toBe(false);
+    expect(waterNear(attributes, 40, 0, 80)).toBe(false);
+    // The patch is a square, and the samples a vertex reads reach √2 cells
+    // further on the diagonal than on the axis, so the sheet's drawn water
+    // begins nearer on the diagonal: the game's 160 m patch touches it from
+    // the summit of an island this size.
+    expect(waterNear(attributes, 0, 0, 160)).toBe(true);
+    // Closer to the shore on the axis, and anywhere on the sea itself.
+    expect(waterNear(attributes, 100, 0, 160)).toBe(true);
+    expect(waterNear(attributes, 150, 0, 160)).toBe(true);
+    expect(waterNear(attributes, SHORE + 2 * WATER_CELL, 0, 0)).toBe(true);
+    expect(waterNear(attributes, SIZE / 2 + OPEN_SEA, SIZE / 2 + OPEN_SEA, 0)).toBe(true);
+  });
+
+  it('answers for the drawn sheet exactly: water near is a drawn cell in the patch', () => {
+    // A cell is drawn when any corner of it stands in water, so the answer has
+    // to be: some cell the sheet draws reaches into the patch. Anything looser
+    // draws the sheet, and its mirror, where the player can see no water;
+    // anything tighter hides water they can.
+    const cells = drawnCells(attributes);
+    for (const radius of [0, 60, 160]) {
+      for (let y = -700; y <= 700; y += 30) {
+        for (let x = -700; x <= 700; x += 30) {
+          expect(waterNear(attributes, x, y, radius), `${x},${y} within ${radius}`).toBe(patchTouchesCell(attributes, cells, x, y, radius));
+        }
+      }
+    }
+  });
+
+  /** True where any drawn cell of the sheet reaches into the patch of a place. */
+  function patchTouchesCell(water: WaterAttributes, cells: Set<string>, x: number, y: number, radius: number): boolean {
+    const loI = Math.floor((x - radius - water.minX) / water.cell);
+    const hiI = Math.floor((x + radius - water.minX) / water.cell);
+    const loJ = Math.floor((y - radius - water.minY) / water.cell);
+    const hiJ = Math.floor((y + radius - water.minY) / water.cell);
+    for (let j = loJ; j <= hiJ; j++) {
+      for (let i = loI; i <= hiI; i++) if (cells.has(`${i},${j}`)) return true;
+    }
+    return false;
+  }
 });
 
 describe('wave normal map', () => {

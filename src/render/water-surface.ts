@@ -8,6 +8,15 @@
  * whole world rather than one per chunk, and it renders at
  * {@link REFLECTION_SCALE} of the frame.
  *
+ * The mirror is also the dearest single thing a frame with water in view pays
+ * for, and it runs wherever the sheet is drawn — the sheet spans the map, so
+ * frustum culling cannot answer for it. It is drawn only where the camera can
+ * see it instead: the camera of `camera.ts` looks down from a few tens of
+ * metres and its view ends on the ground a couple of hundred metres out, and
+ * {@link WaterSurface.follow} asks, once a frame, whether any water stands in
+ * that patch. Where none does, the sheet is out of the frame and the mirror
+ * with it, and a frame inland pays nothing for the sea it cannot see.
+ *
  * The addon adds its own colour to what the mirror shows, and it takes that
  * colour as it is: nothing lights it. The mirror, though, shows the sky dome of
  * `sky.ts`, which answers in real sky brightness. An unlit colour is lost under
@@ -36,8 +45,9 @@ import {
 import { WaterMesh } from 'three/examples/jsm/objects/WaterMesh.js';
 import type { WorldDescription } from '../world/types.ts';
 import type { Daylight } from './daylight.ts';
+import { SHADOW_DISTANCE } from './sky.ts';
 import { attribute, smoothstep } from './tsl.ts';
-import { buildWaterAttributes, waterGeometry, waveNormalData, WAVE_TEXTURE_SIZE } from './water.ts';
+import { buildWaterAttributes, waterGeometry, waterNear, waveNormalData, WAVE_TEXTURE_SIZE } from './water.ts';
 
 /** Metres of depth over which the surface fades in at a shore. */
 const SHORE_FADE = 3;
@@ -86,10 +96,24 @@ export interface WaterSurface {
   /** Add this to the scene. It is the whole map's water, not a chunk's. */
   object: Object3D;
   /**
+   * False holds the sheet out of the frame whatever stands near it. The frame
+   * profiler's `--no-water` is the one caller: it needs the sheet gone for
+   * good, not until the camera has moved somewhere wet.
+   */
+  shown: boolean;
+  /**
    * Light the water as one moment of the day (spec section 10.5): the glare
    * follows the sun, and the colour takes the light that falls on the ground.
    */
   setDaylight(light: Daylight): void;
+  /**
+   * Show the sheet only where water stands within reach of a place, and hide it
+   * where none does. The reach is {@link SHADOW_DISTANCE}: the sun's shadow is
+   * sized from the same view, whose far edge stands about 130 m from the player,
+   * so the patch is the ground the camera covers with room to spare. Called
+   * once a frame, wherever the view is centred.
+   */
+  follow(x: number, y: number): void;
   dispose(): void;
 }
 
@@ -103,7 +127,8 @@ export function createWaterSurface(world: WorldDescription): WaterSurface {
   waves.generateMipmaps = true;
   waves.needsUpdate = true;
 
-  const geometry = waterGeometry(buildWaterAttributes(world));
+  const sheet = buildWaterAttributes(world);
+  const geometry = waterGeometry(sheet);
   const mesh = new WaterMesh(geometry, {
     waterNormals: waves,
     alpha: DEEP_ALPHA,
@@ -119,6 +144,7 @@ export function createWaterSurface(world: WorldDescription): WaterSurface {
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.y = world.water.seaLevel;
   // One mesh covers the whole map, so a culling test can only ever answer yes.
+  // `follow` is what shows and hides it, off the water the sheet itself holds.
   mesh.frustumCulled = false;
 
   // The addon's own opacity is one number for the whole surface. This is the
@@ -133,6 +159,7 @@ export function createWaterSurface(world: WorldDescription): WaterSurface {
 
   return {
     object: mesh,
+    shown: true,
     setDaylight(light: Daylight): void {
       mesh.sunDirection.value.copy(light.sun).normalize();
       mesh.sunColor.value.copy(light.sunColour);
@@ -143,6 +170,9 @@ export function createWaterSurface(world: WorldDescription): WaterSurface {
       sky.copy(light.fillSky).multiplyScalar(light.fillIntensity);
       const lit = mesh.waterColor.value.copy(light.sunColour).multiplyScalar(sun).add(sky);
       lit.multiply(albedo).add(night);
+    },
+    follow(x: number, y: number): void {
+      mesh.visible = this.shown && waterNear(sheet, x, y, SHADOW_DISTANCE);
     },
     dispose(): void {
       geometry.dispose();

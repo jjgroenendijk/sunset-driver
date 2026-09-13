@@ -210,6 +210,15 @@ are the design.
   takes its plane from that. A vertex carries the deepest ground within half a cell of it, so a
   channel narrower than the grid is not left dry, and the depth is what fades the surface out at a
   shore.
+- That second pass runs wherever the sheet is drawn, and the sheet spans the map, so the mirror ran
+  everywhere the player stood — about a quarter of a frame, inland included. The sheet is now drawn
+  only where the camera can see water: `waterNear` (`water.ts`) answers, from the depths the sheet
+  was built with, whether any drawn cell falls within `SHADOW_DISTANCE` of a place — the patch of
+  ground the top-down view covers — and `WorldScene.look` hides the sheet each frame where none
+  does. An invisible sheet never becomes a render object, so its reflector never renders and the
+  pass costs nothing. The check is the drawn cells exactly, so water is neither hidden where the
+  player can see it nor drawn a cell beyond where they can. It is the same at every quality tier:
+  what the tiers may step is the mirror, never whether this test runs.
 - `WaterMesh` adds its own colour to the mirror unlit, and the mirror shows the `SkyMesh` dome in
   real sky brightness. Even at a reflectance of 2 %, the sky swamps an unlit colour, so the sea by
   day reads as a grey sheet. `setDaylight` (`water-surface.ts`) lights the colour with the sun and
