@@ -34,10 +34,15 @@ are the design.
 - Look at the map before judging a change to it: `node scripts/map-preview.ts <seed> out.png`, and
   `--minimap` for the round window at the minimap's own scale. It needs a Chromium but no WebGPU
   device, because the map is a 2D canvas.
+- `src/ui/title.ts` is the title screen as a main menu of pages: the main page, New game
+  (`title-setup.ts`) and Controls (`title-controls.ts`). An element with `data-nav` is one the arrow
+  keys walk, in DOM order, and the pointer moves the same focus, so only one item is ever lit. A
+  character row takes the focus itself and changes on left and right; its two buttons carry no
+  `data-nav`. The look lives in `title.css`, which `style.css` imports.
 - `src/ui/seed-preview.ts` draws the map of the seed on the title screen, through the same `MapArt`,
   so the picture the player picks a seed from is the map they will play on. A build blocks the frame
-  loop for a second or two, so it happens when the player asks for it — the dice button, the Build
-  map button, or Enter in the seed box — and never on a key press in the box.
+  loop for a second or two, so it happens when the player asks for it — the dice button, the Show
+  the map button, or Enter in the seed box — and never on a key press in the box.
   `MapDrawOptions.player` is null there: the preview is the map alone, with no arrow on it. The
   world it built travels back in `TitleChoice.world`, and `main.ts` reuses it rather than
   generating the same seed twice.

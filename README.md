@@ -10,8 +10,8 @@ npm install
 npm run dev
 ```
 
-Requires a WebGPU-capable browser. The title screen takes the seed and the character; add
-`#seed=yourseed` to the URL to start it on a world.
+Requires a WebGPU-capable browser. New game on the title screen takes the seed and the character;
+add `#seed=yourseed` to the URL to start it on a world.
 
 The game watches its own frame rate and steps the quality down when it cannot hold 60 fps, and back
 up when it can. The tier in force is shown in the corner, and every change is written to the
