@@ -9,12 +9,29 @@ order. When you find a pre-existing problem outside the scope of the issue you a
 wrong number, a stale comment, a missing test — open a GitHub issue for it and carry on. The issue
 is the deliverable; a note in a PR body or a `TODO` in the code is not.
 
-Run `npm run verify` (typecheck + determinism lint + file-size lint + quick tests, under 20 s)
-before every commit. A pull request runs the same checks with `test:full`, and is the only place
-the full tier runs; `build-and-deploy` is required to merge. A push to main runs the quick tier
-again and deploys `dist` to Cloudflare Pages, which is the one deployment a change gets. Commits
-touching only `**/*.md` or `.claude/**` skip that job, so keep docs commits separate from code
-commits.
+## Tests
+
+Tests run on your machine, not in CI. The commands:
+
+- `npm run typecheck` — `tsc --noEmit`.
+- `npm run lint` — the determinism lint. `npm run lint:size` — the file-size lint.
+- `npm test` — the quick tier. `npm run test:full` — the full tier of 200 seeds (`SWEEP_SEEDS=200`).
+- `npm run verify` — typecheck, both lints and the quick tier, under 20 s. Run it before every
+  commit.
+- `npm run verify:full` — the same with the full tier, about 2 min. Run it before a pull request
+  that changes `src/world` or `src/sim`.
+
+A pull request only typechecks, lints and builds; `build-and-deploy` is required to merge. A push to
+main builds and deploys `dist` to Cloudflare Pages, which is the one deployment a change gets.
+Commits touching only `**/*.md` or `.claude/**` skip that job, so keep docs commits separate from
+code commits. `nightly.yml` runs `verify:full` on main each night that main has a new commit, and
+opens an issue labelled `nightly-failure` when it fails.
+
+`npm test` must stay under 15 s and `npm run test:full` under 2 min. Cut seeds or ticks in the quick
+tier and keep full coverage behind `SWEEP_SEEDS` — never make a test slower to make it pass. Both
+ceilings are wall clock, which is the work divided by the cores it runs on, so compare the
+CPU-seconds `time npm test` prints and never one machine's wall clock against another's.
+`docs/performance.md` has the measurements and where a sweep spends its time.
 
 ## The docs
 
@@ -89,20 +106,6 @@ Beyond what the file names suggest:
 - `scripts/hooks/` — Claude Code hooks wired from `.claude/settings.json`; fast, idempotent, exit 2
   to report a problem. Anything repeated across sessions belongs in a hook or a `scripts/` entry
   rather than in prose here.
-
-## Performance budgets
-
-`test/budgets.ts` holds the budget table and `test/budget.test.ts` enforces it, so a budget moves in
-one place. An enforced number is what the code spends today plus room for a slow runner, not the
-spec section 2.4 slice it will grow into. **A budget failure is a regression to find, never a
-threshold to bump.** Raise a budget only together with the system that spends it, never past its
-slice.
-
-The same holds for test timing: `npm test` must stay under 15 s and `npm run test:full` under 2 min.
-Cut seeds or ticks in the quick tier and keep full coverage behind `SWEEP_SEEDS` — never make a test
-slower to make it pass. Both ceilings are wall clock, which is the work divided by the cores it runs
-on, so compare the CPU-seconds `time npm test` prints and never one machine's wall clock against
-another's. `docs/performance.md` has the measurements and where a sweep spends its time.
 
 
 ## Traps

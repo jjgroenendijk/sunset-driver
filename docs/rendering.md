@@ -12,8 +12,8 @@ are the design.
   material, as `src/world` may.
 - The main thread pays only for the upload. `WorldScene.update` runs the queue against `spendBudget`
   (`streaming.ts`) and a batch is filled a step at a time, so a chunk of the core lands over several
-  frames. A step is indivisible and is the only thing that overruns the streaming slice;
-  `BUDGET_MS.chunkUpload` is how far it may. A step copies at most `MAX_STEP_VERTICES` (`batch.ts`),
+  frames. A step is indivisible and is the only thing that overruns the streaming slice,
+  by about 0.4 ms on an Apple M1 laptop. A step copies at most `MAX_STEP_VERTICES` (`batch.ts`),
   so that overrun is a number the renderer chose and not the largest tower a seed happens to build —
   a core chunk carries towers of 33 000 vertices, which is sixteen steps. A part larger than a step
   is copied over several of them and is drawn only once its last step is in, because the index is

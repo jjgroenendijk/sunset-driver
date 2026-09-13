@@ -30,7 +30,7 @@ waits for it, and a chunk lands when it is built. The sun's cascades are fitted 
 the game camera.
 
 A frame drawn with the free camera is never a performance measurement. The quality monitor counts
-none of those frames, and nothing about the camera belongs in `test/budgets.ts`.
+none of those frames.
 
 Escape does not give the camera back. The browser takes the pointer lock away on Escape and whenever
 the window loses focus, and the flight carries on without it: the keys still fly the camera, the
@@ -77,7 +77,7 @@ road, how much is parcel with nothing on it, and how much is building.
 Under the picture it prints those shares as numbers, for every zone of the whole map and not only
 for the part it drew: the ground the roads claim, the ground the parcels claim, the ground the lots
 cover, the ground a junction apron or a corridor takes on top of the carriageways, the buildings per
-hectare and the middle parcel size. `test/budgets.ts` pins each of them to a band per zone and
+hectare and the middle parcel size. `test/layout-bands.ts` pins each of them to a band per zone and
 `test/seed-layout.ts` fails when a seed falls outside it, so a layout change is judged by the
 picture and the numbers together.
 
