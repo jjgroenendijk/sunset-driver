@@ -1,16 +1,17 @@
 import { defineConfig } from 'vitest/config';
 
 /**
- * The quick tier (default) must finish in seconds. The full sweep
- * (SWEEP_SEEDS=200) is the only thing allowed to take longer.
+ * Both figures are hang guards, not budgets: a test that takes this long is
+ * stuck, not slow. `CLAUDE.md` holds what each tier is meant to cost, and
+ * `docs/performance.md` how to measure it.
  *
- * The full tier's figure is a hang guard and not a budget: `docs/performance.md`
- * holds what the tier is meant to cost. It has to cover the seed sweep's one
- * hook, which generates every world of the sweep in the pool's workers while
- * the simulation sweep runs beside it on the same cores. That hook alone passed
- * 120 s on a four-core GitHub runner once the city filled the map.
+ * The quick tier's guard has room for a busy laptop: the seed sweep's one hook
+ * generates its worlds in the pool's workers, and on a loaded machine it passed
+ * 15 s while the same run takes 10 s on an idle one. The full tier's guard
+ * covers that hook for every seed of the sweep, which passed 120 s on a
+ * four-core GitHub runner once the city filled the map.
  */
-const timeout = process.env.SWEEP_SEEDS ? 300_000 : 15_000;
+const timeout = process.env.SWEEP_SEEDS ? 300_000 : 60_000;
 
 export default defineConfig({
   test: {
