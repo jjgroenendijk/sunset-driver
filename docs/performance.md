@@ -39,12 +39,12 @@ can be most of twice as slow as the one before it, so one time says nothing on i
 slowest of them is what the 2 min has to hold. Read CI, and a shared laptop, as a spread of several
 runs.
 
-The nightly workflow splits the tier over two runners in `full-tier.yml`, because the seed sweep is
+`full-tier.yml` splits the tier over two runners, because the seed sweep is
 most of it. On 13 September 2026 the seed sweep alone took 103 s on its runner, and every other
 file with the typecheck and both lints took 24 s on the other. The sim sweep took 4 s on its own:
 in a whole run it looks slow only because it waits for the pool while the seed sweep generates its
-worlds. So the seed sweep sets the nightly wall clock, and a third runner would not shorten it.
-Each night's job summary lists the wall clock and CPU-seconds of both shards.
+worlds. So the seed sweep sets the wall clock of the split run, and a third runner would not
+shorten it. Vitest writes each shard's durations into its job summary.
 
 Issue #88 tracks the wall clock the quick tier misses its 15 s by on a four-core session, and
 issue #198 what the city filling the map added to both tiers.
