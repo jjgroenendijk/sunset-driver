@@ -441,7 +441,7 @@ export class WorldScene {
     }
     this.queueJob(tile, () => {
       tile.whole = true;
-      if (tile.detail === 'near') this.peakDrawCalls = Math.max(this.peakDrawCalls, tile.drawCalls);
+      if (tile.detail !== 'far') this.peakDrawCalls = Math.max(this.peakDrawCalls, tile.drawCalls);
     });
   }
 

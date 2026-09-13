@@ -14,11 +14,12 @@
  * {@link unpackGeometry} is the other half, and it is the only work the frame
  * is charged for.
  *
- * A payload is built at one of two details (spec section 9.1). Near is the city
- * as the game draws it. Far is the ground, the highways and arterials over it
- * and the massing of its buildings: no markings, no minor roads, no outlines,
- * no plants and no street lamps, because none of them can be told apart from
- * the far ring.
+ * A payload is built at one of three details (spec sections 9.1, 9.2). Near is
+ * the city as the game draws it. Mid is the same, with every building built as
+ * a block rather than a generated facade. Far is the ground, the highways and
+ * arterials over it and the outlined massing of its buildings: no markings, no
+ * minor roads, no plants and no street lamps, because none of them can be told
+ * apart from the far ring.
  */
 import { BufferAttribute, BufferGeometry } from 'three';
 import type { ChunkBounds, WorldChunk, WorldLayers } from '../world/chunks.ts';
@@ -110,11 +111,11 @@ export interface ChunkPayload {
   ground: GroundAttributes;
   /** The road tiers that run through the chunk, in tier order. */
   roads: PackedRoads[];
-  /** The inverted hulls that outline the buildings. Empty at far detail. */
+  /** The inverted hulls that outline the buildings. */
   outlines: PackedBatch;
-  /** The generated facades. Empty at far detail, where a tower is a block. */
+  /** The generated facades. Empty unless the detail is near; elsewhere a tower is a block. */
   facades: PackedBatch;
-  /** The buildings built as blocks, which at far detail is all of them. */
+  /** The buildings built as blocks, which past near detail is all of them. */
   blocks: PackedBatch;
   plants: PackedPlants;
   /**
@@ -172,7 +173,7 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
   for (const placed of buildChunkBuildings(chunk, lookups.buildings, detail)) {
     const matrix = new Float32Array(placed.matrix.toArray());
     (placed.batch === 'facade' ? facades : blocks).push({ geometry: takeGeometry(placed.shell), matrix });
-    if (placed.hull !== undefined) outlines.push({ geometry: takeGeometry(placed.hull), matrix });
+    outlines.push({ geometry: takeGeometry(placed.hull), matrix });
   }
 
   const plants = far ? noPlants() : packPlants(chunk, lookups.plants);

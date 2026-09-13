@@ -8,14 +8,21 @@
  * ends instead of stopping at a wall of haze. A chunk that leaves the far ring
  * is dropped.
  *
+ * The near ring has a middle detail of its own for the buildings (spec section
+ * 9.2). Only the chunks within {@link FACADE_RADIUS} carry generated facades;
+ * past it, a tower is an outlined block, and everything else is as near.
+ *
  * Nothing here builds or draws anything: it says which chunks are wanted, in
  * which order, and how much of a frame their upload may take. That keeps the
  * policy readable on its own and testable without a renderer.
  */
 import type { Object3D } from 'three';
 
-/** How much detail a chunk is built and drawn at. */
-export type ChunkDetail = 'near' | 'far';
+/**
+ * How much detail a chunk is built and drawn at: `near` in full, `mid` in full
+ * but with every building a block, and `far` as the massing.
+ */
+export type ChunkDetail = 'near' | 'mid' | 'far';
 
 /**
  * One piece of a chunk in the scene: what it adds, what it costs to draw and
@@ -41,6 +48,18 @@ export interface TilePart {
  * everything below takes them rather than reading them.
  */
 export const NEAR_RADIUS = 2;
+
+/**
+ * Chunks each way of the player whose towers carry their generated facades.
+ * A core chunk costs about a million vertices that way and about thirty
+ * thousand as blocks.
+ *
+ * One ring is what the camera of spec section 10.7 sees: at the top speed of
+ * the roster the far edge of its view stands about 130 m from it, and a chunk
+ * two rings out starts 250 m from the player. A tier that pulls the near ring
+ * in pulls this with it, never out past the near ring.
+ */
+export const FACADE_RADIUS = 1;
 
 /**
  * Chunks each way of the player drawn at all. Past the near ring the ground,
@@ -94,7 +113,7 @@ export function wantedChunks(cx: number, cy: number, rings: ChunkRings = FULL_RI
     for (let dx = -rings.far; dx <= rings.far; dx++) {
       const ring = Math.max(Math.abs(dx), Math.abs(dy));
       if (ring > rings.far) continue;
-      const detail: ChunkDetail = ring <= rings.near ? 'near' : 'far';
+      const detail = detailOfRing(ring, rings) as ChunkDetail;
       wants.push({ want: { cx: cx + dx, cy: cy + dy, detail }, distance: dx * dx + dy * dy });
     }
   }
@@ -110,9 +129,14 @@ export function detailAt(
   atY: number,
   rings: ChunkRings = FULL_RINGS,
 ): ChunkDetail | undefined {
-  const ring = Math.max(Math.abs(cx - atX), Math.abs(cy - atY));
+  return detailOfRing(Math.max(Math.abs(cx - atX), Math.abs(cy - atY)), rings);
+}
+
+/** The detail of a chunk that many rings out from the player, or nothing past the far ring. */
+function detailOfRing(ring: number, rings: ChunkRings): ChunkDetail | undefined {
   if (ring > rings.far) return undefined;
-  return ring <= rings.near ? 'near' : 'far';
+  if (ring <= Math.min(FACADE_RADIUS, rings.near)) return 'near';
+  return ring <= rings.near ? 'mid' : 'far';
 }
 
 /**

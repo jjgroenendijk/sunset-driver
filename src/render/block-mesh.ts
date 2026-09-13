@@ -101,6 +101,26 @@ export function buildBlockGeometry(kind: BuildingKind, massing: BuildingMassing,
 }
 
 /**
+ * The massing of a building and nothing else: four walls and a flat roof, the
+ * far detail of spec section 9.2. The camera reads a chunk that far out as a
+ * skyline, and a skyline is heights and footprints, not window bands.
+ */
+export function buildMassingGeometry(massing: BuildingMassing, tint: Rgb): BufferGeometry {
+  const shell = new Shell();
+  const hw = massing.width / 2;
+  const hd = massing.depth / 2;
+  const top = massing.height;
+  // The four walls and the roof of a box; the floor stands on the ground and is
+  // never seen.
+  shell.quad([-hw, 0, hd], [hw, 0, hd], [hw, top, hd], [-hw, top, hd], BLOCK_WALL);
+  shell.quad([hw, 0, -hd], [-hw, 0, -hd], [-hw, top, -hd], [hw, top, -hd], BLOCK_WALL);
+  shell.quad([hw, 0, hd], [hw, 0, -hd], [hw, top, -hd], [hw, top, hd], BLOCK_WALL);
+  shell.quad([-hw, 0, -hd], [-hw, 0, hd], [-hw, top, hd], [-hw, top, -hd], BLOCK_WALL);
+  shell.quad([-hw, top, hd], [hw, top, hd], [hw, top, -hd], [-hw, top, -hd], BLOCK_ROOF);
+  return shell.geometry(tint);
+}
+
+/**
  * A house: walls under a gabled roof whose ridge runs along the street, a door
  * on the front and a band of window at every storey.
  */
