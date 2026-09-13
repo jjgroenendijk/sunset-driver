@@ -48,6 +48,8 @@ import { RoadScenery } from './roads.ts';
 import { SkidMarks } from './skid.ts';
 import { SkyLighting } from './sky.ts';
 import { VehicleModel } from './vehicle.ts';
+import { HeldWeapon, WeaponArt } from './weapon.ts';
+import { PickupModels } from './pickups.ts';
 import {
   detailAt,
   spendBudget,
@@ -96,6 +98,12 @@ export class WorldScene {
   readonly scene = new Scene();
   readonly character: CharacterModel;
   readonly vehicle = new VehicleModel();
+  /** The geometry every drawn weapon shares (spec section 11.6). */
+  private readonly weaponArt = new WeaponArt();
+  /** The weapon in the player's hands. */
+  readonly held = new HeldWeapon(this.weaponArt);
+  /** The weapons lying in the world to be picked up. */
+  readonly pickups = new PickupModels(this.weaponArt);
   /** The smoke, fire and blast of the vehicle's damage (spec section 11.3). */
   readonly fx = new DamageFx();
   /** The rubber it leaves on the road (spec section 11.3). */
@@ -161,6 +169,8 @@ export class WorldScene {
     this.character.group.visible = false;
     this.scene.add(this.character.group);
     this.scene.add(this.vehicle.group);
+    this.scene.add(this.held.group);
+    this.scene.add(this.pickups.group);
     this.scene.add(this.fx.group);
     this.scene.add(this.skid.mesh);
 
@@ -335,6 +345,10 @@ export class WorldScene {
     this.character.dispose();
     this.scene.remove(this.vehicle.group);
     this.vehicle.dispose();
+    this.scene.remove(this.held.group, this.pickups.group);
+    this.held.dispose();
+    this.pickups.dispose();
+    this.weaponArt.dispose();
     this.scene.remove(this.fx.group);
     this.fx.dispose();
     this.scene.remove(this.skid.mesh);

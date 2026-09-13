@@ -169,6 +169,20 @@ are the design.
   included, and only the panel's own boxes can be torn off — a vehicle with no middle is not a
   vehicle. The vertices are moved rather than the geometry rebuilt, and only when the record's
   damage changes.
+- `weapon-mesh.ts` is the one place that says what shape each weapon is, and each attachment on it,
+  as boxes in the weapon's own frame with the muzzle along `+x`. It holds no three.js.
+  `test/weapon-mesh.test.ts` draws every weapon from above on a 5 mm grid and fails when two share a
+  silhouette or an attachment changes nothing the camera sees. An extended magazine, a laser and a
+  foregrip each carry a part that stands out to the side, because a camera above sees nothing that
+  only hangs down.
+- `WeaponArt` (`weapon.ts`) merges a weapon's boxes into one geometry with a colour per vertex, and
+  keeps one per weapon and attachment list, so the weapon in the hands and every pickup of the same
+  kind share it. A pickup (`pickups.ts`) is drawn larger than life over a pale disc: a pistol at the
+  scale of a rifle is a speck from the game camera, so a short weapon is scaled up to a metre long.
+  The disc writes no depth and stands 15 cm up, or the road surface swallows it. The pickup under
+  the mouse grows by `HOVER_GROW`: `main.ts` casts a ray from the pointer each frame, and
+  `PickupModels.pick` walks up from the mesh it hits to the group that carries the pickup's id.
+  Nothing caps how many pickups lie at once; a pickup off screen is culled and costs no draw.
 - `DamageFx` (`damage-fx.ts`) is the smoke, the flames and the blast of spec section 11.3, as two
   batches of flat discs: one blended the ordinary way and one additively. A puff is placed and
   coloured from its age alone and jittered from `rngFor(seed, tick, Subsystem.Damage, n)`, so a
