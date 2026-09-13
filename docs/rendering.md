@@ -194,6 +194,15 @@ are the design.
   takes its plane from that. A vertex carries the deepest ground within half a cell of it, so a
   channel narrower than the grid is not left dry, and the depth is what fades the surface out at a
   shore.
+- `WaterMesh` adds its own colour to the mirror unlit, and the mirror shows the `SkyMesh` dome in
+  real sky brightness. Even at a reflectance of 2 %, the sky swamps an unlit colour, so the sea by
+  day reads as a grey sheet. `setDaylight` (`water-surface.ts`) lights the colour with the sun and
+  the fill that light the ground, and adds a dark blue that keeps the sea visible at night. The
+  addon's diffuse term is `sunColour` squared with no tint, so a sun colour scaled by its intensity
+  turns the sea white.
+- `WaterMesh` adds its mirror to the scene while its shader is built, during the first render.
+  That frame reflects from a mirror whose place was never computed, and a hard line crosses the
+  sea. So `preview.ts` draws one frame before the frame it keeps.
 - `daylightAt(tick)` (`daylight.ts`) is the day and night cycle of spec section 10.5: the sun's
   place, its colour and strength, the sky fill, the haze, how lit the windows are and how far on the
   street lamps are, all read off how high the sun stands. It is pure, so the tests run it headless.
