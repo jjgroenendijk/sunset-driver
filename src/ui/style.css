@@ -11,6 +11,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #12070f; col
 .picker h2 { margin: 0 0 .25rem; font-size: .85rem; letter-spacing: .1em; text-transform: uppercase; opacity: .7; }
 .picker button { display: grid; gap: .1rem; padding: .35rem .5rem; border: 1px solid #6a3f58; border-radius: .25rem; background: #2a1322; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .picker button:hover { background: #3b1b30; }
+.picker button:disabled { opacity: .35; cursor: default; }
 .picker-current { border-color: #ff8a5c; background: #3b1b30; }
 .picker-name { font-size: .95rem; }
 .picker-stats { font-size: .72rem; opacity: .65; font-variant-numeric: tabular-nums; }

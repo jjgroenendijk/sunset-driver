@@ -23,13 +23,25 @@ import { Keyboard } from './ui/keyboard.ts';
 import { TitleScreen } from './ui/title.ts';
 import { PICKER_KEY, VehiclePicker } from './ui/vehicle-picker.ts';
 import { WEAPON_PICKER_KEY, WeaponPicker } from './ui/weapon-picker.ts';
-import { currentWeapon, giveWeapon } from './sim/weapon.ts';
+import { dropWeapon } from './sim/pickup.ts';
+import {
+  currentSlot,
+  currentWeapon,
+  fitAttachment,
+  giveWeapon,
+  removeAttachment,
+  SPARE_MAGAZINES,
+  weaponOf,
+} from './sim/weapon.ts';
 import { roadDecks } from './world/decks.ts';
 import { nearestRoadPlace, nearestWaterPlace, SurfaceIndex } from './world/surface.ts';
 import { generateWorld } from './world/world.ts';
 
 /** How fast the character turns on the title screen, in radians per second. */
 const PREVIEW_SPIN = 0.7;
+
+/** Metres ahead of the player the weapon picker drops a weapon. */
+const DROP_AHEAD = 3;
 
 /** A session in progress: the state, the world it is played in, and the overlay. */
 interface Session {
@@ -49,6 +61,8 @@ interface Session {
   hotwire: HotwireBar;
   /** What draws the frame between two ticks, so the motion is smooth (spec section 9.2). */
   smooth: RenderSmoother;
+  /** The debug picker of the arsenal, which shows the weapon in hand. */
+  weapons: WeaponPicker;
 }
 
 /**
@@ -212,6 +226,7 @@ async function boot(): Promise<void> {
       // the record the simulation is playing, so the bar on screen is the bar
       // the presses are judged against.
       session.hotwire.update(session.state.theft, session.state.seed, session.state.tick);
+      session.weapons.sync(session.state.loadout);
       // The maps of spec section 12. Both follow the player from the record,
       // and both redraw only when something on them has moved, so a session
       // standing still pays for neither. The minimap follows the free camera
@@ -315,10 +330,23 @@ async function boot(): Promise<void> {
     smooth.reset();
   });
   // The debug picker of spec section 11.6: every weapon of the arsenal, loaded
-  // and in the player's hands. It is what makes the table something to fire
-  // until the weapon shops and the faction dealers of spec section 11.6 land.
-  const weapons = new WeaponPicker(document.body, currentWeapon(state.loadout).id, (id) => {
-    giveWeapon(state.loadout, id);
+  // and in the player's hands, and the attachments of the one in hand. It is
+  // what makes the table something to fire until the weapon shops and the
+  // faction dealers of spec section 11.6 land. A weapon dropped from it lies
+  // on the ground ahead, which is how a pickup is tried before anybody dies.
+  const weapons = new WeaponPicker(document.body, currentWeapon(state.loadout).id, {
+    pick: (id) => giveWeapon(state.loadout, id),
+    drop: (id) => {
+      const spec = weaponOf(id);
+      const from = state.player.driving ? { x: state.vehicle.x, y: state.vehicle.z } : state.player;
+      const x = from.x + Math.cos(state.player.heading) * DROP_AHEAD;
+      const y = from.y + Math.sin(state.player.heading) * DROP_AHEAD;
+      dropWeapon(state, id, spec.capacity, spec.capacity * SPARE_MAGAZINES, [], x, y, world.heightAt(x, y));
+    },
+    fit: (attachment) => {
+      const slot = currentSlot(state.loadout);
+      if (!removeAttachment(state.loadout, slot.id, attachment)) fitAttachment(state.loadout, slot.id, attachment);
+    },
   });
   // The maps of spec section 12, both drawn from one `MapArt`, so the corner
   // map and the full map can never disagree about a road or a mark. The POI
@@ -361,6 +389,7 @@ async function boot(): Promise<void> {
     map,
     hotwire: new HotwireBar(document.body),
     smooth,
+    weapons,
   };
   preview.dispose();
   last = performance.now();
