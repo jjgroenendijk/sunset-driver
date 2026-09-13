@@ -26,6 +26,12 @@
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/guard-bash.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/verify-before-pr.sh",
+            "timeout": 180,
+            "statusMessage": "npm run verify before the pull request"
           }
         ]
       }
