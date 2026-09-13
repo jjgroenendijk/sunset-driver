@@ -9,8 +9,9 @@ name: Full tier
 on:
   workflow_call:
 
-# The shards install and run untrusted updates, so they hold a read-only token
-# and never save a cache.
+# On a Dependabot pull request the shards run an update nobody has read, so
+# they hold a read-only token. A cache they save stays in the pull request's
+# scope, which main never reads.
 permissions:
   contents: read
 
@@ -31,8 +32,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
-        with:
-          save: false
 
       - if: matrix.checks
         run: npm run typecheck && npm run lint && npm run lint:size
