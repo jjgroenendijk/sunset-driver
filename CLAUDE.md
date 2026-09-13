@@ -23,10 +23,10 @@ Tests run on your machine, not in CI. The commands:
 `ci.yml` calls the reusable `build.yml` and deploys in a separate job. A pull request runs no tests:
 typecheck, both lints and the build run in parallel, and `build` is the check required to merge. A
 hook runs `npm run verify` before `gh pr create`. Main deploys the `dist` the pull request built
-when the tree is the same, and builds only when it is not. Each night `nightly.yml` runs
-`verify:full` on main plus the day's Dependabot updates, merges the updates when it passes, and
-opens a `nightly-failure` issue when it fails. `full-tier.yml` splits that run over two runners:
-the seed sweep, and every other file with the checks.
+when the tree is the same, and builds only when it is not. `full-tier.yml` runs `verify:full` over
+two runners: the seed sweep, and every other file with the checks. It runs on each Dependabot pull
+request, which merges when it passes, and each night on main, which opens a `nightly-failure`
+issue when it fails. `.github/actions/setup` installs Node and `node_modules` from caches.
 
 `npm test` must stay under 15 s and `npm run test:full` under 2 min. Cut seeds or ticks in the quick
 tier and keep full coverage behind `SWEEP_SEEDS` — never make a test slower to make it pass. Both
