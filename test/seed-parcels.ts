@@ -289,6 +289,36 @@ export function parcelChecks(): void {
       }
     });
 
+    it('gives every district with a building parcel one police station, on one of its building parcels', () => {
+      // Spec section 11.7: an arrest comes back at the nearest police station,
+      // and the parcel owner assignment is what picks them.
+      for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
+        const { parcels, stations } = parcelsOf(seed);
+        let complaint: string | undefined;
+        const fault = (text: string): void => {
+          complaint ??= text;
+        };
+        const built = new Set(parcels.filter((parcel) => parcel.owner === 'building').map((parcel) => parcel.district));
+        if (stations.length === 0) fault('has no police station');
+        if (stations.length !== built.size) fault(`has ${stations.length} stations for ${built.size} built districts`);
+        for (let i = 0; i < stations.length; i++) {
+          const station = stations[i] as (typeof stations)[number];
+          const parcel = parcels[station.parcel];
+          if (i > 0 && station.district <= (stations[i - 1] as typeof station).district) fault('lists its stations out of order');
+          if (parcel?.owner !== 'building') fault(`station ${i} stands on a ${parcel?.owner} parcel`);
+          if (parcel?.district !== station.district) fault(`station ${i} is not in its district`);
+          // The mark is the centre of the parcel's ground, which is inside the
+          // box around it even where the parcel bends round a corner.
+          const xs = parcel?.region.outer.map((p) => p.x) ?? [];
+          const ys = parcel?.region.outer.map((p) => p.y) ?? [];
+          if (station.x < Math.min(...xs) || station.x > Math.max(...xs) || station.y < Math.min(...ys) || station.y > Math.max(...ys)) {
+            fault(`station ${i} is marked away from its parcel`);
+          }
+        }
+        expect(complaint, `seed ${seed}`).toBeUndefined();
+      }
+    });
+
     it('builds on nearly every downtown block, and gathers the towers where the skyline is high', () => {
       // Issue #193: a downtown builds on its blocks rather than paving them, and
       // parks its cars in a building. The skyline is a smooth field, so every

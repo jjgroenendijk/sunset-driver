@@ -51,7 +51,7 @@ function parcelOf(owner: ParcelOwner, zone: Zone, ring: Point[] = square(0, 0, S
     zone,
     roads: [0],
   };
-  return { parcels: [parcel], area: parcel.area, land: parcel.area };
+  return { parcels: [parcel], area: parcel.area, land: parcel.area, stations: [] };
 }
 
 /** One building on a lot, which is ground no plant may stand on. */
@@ -125,7 +125,7 @@ describe('vegetation', () => {
   it('plants nothing on ground no parcel owns', () => {
     // Every plant stands on a parcel, and a parcel is the land the road
     // footprint left (spec section 6.4). Ground the roads own carries none.
-    expect(new Vegetation(SEED, { parcels: [], area: 0, land: 0 }, NOTHING).plantsIn(WHOLE, [])).toEqual([]);
+    expect(new Vegetation(SEED, { parcels: [], area: 0, land: 0, stations: [] }, NOTHING).plantsIn(WHOLE, [])).toEqual([]);
   });
 
   it('keeps the whole canopy of every plant inside its parcel', () => {

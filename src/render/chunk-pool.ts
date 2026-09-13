@@ -12,7 +12,7 @@
  * One already in a worker is left to finish, because a worker cannot be
  * interrupted, and its payload is thrown away if nobody wants it by then.
  */
-import type { WorldDescription } from '../world/types.ts';
+import type { Point, WorldDescription } from '../world/types.ts';
 import type { ChunkPayload } from './chunk-payload.ts';
 import type { WorkerCommand, WorkerReply } from './chunk-worker.ts';
 import type { ChunkDetail, ChunkWant } from './streaming.ts';
@@ -33,6 +33,8 @@ export interface ChunkStream {
   take(): ChunkPayload | undefined;
   /** Chunks asked for and not yet taken. */
   readonly pending: number;
+  /** The police stations of the world (spec section 11.7), once a worker has built the parcels. */
+  readonly stations?: readonly Point[];
   dispose(): void;
 }
 
@@ -59,6 +61,8 @@ export class ChunkPool implements ChunkStream {
   private readonly wanted = new Map<string, ChunkDetail>();
   private readonly inFlight = new Map<string, ChunkDetail>();
   private readonly arrived: ChunkPayload[] = [];
+  /** Every worker builds the same parcels, so the first to answer says where the stations are. */
+  stations: readonly Point[] | undefined;
 
   constructor(world: WorldDescription, spawn: () => ChunkWorker = spawnChunkWorker, size = poolSize()) {
     for (let i = 0; i < size; i++) {
@@ -97,6 +101,7 @@ export class ChunkPool implements ChunkStream {
 
   private receive(slot: Slot, reply: WorkerReply): void {
     if (reply.type === 'ready') {
+      if (reply.stations !== undefined) this.stations ??= reply.stations;
       slot.ready = true;
       slot.busy = undefined;
       this.pump();

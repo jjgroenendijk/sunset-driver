@@ -164,7 +164,10 @@ gets wrong without it.
   `ownerMaxArea(zone, owner)` is the most a park, a car park, a plaza or a building group may hold
   there, and a parcel the roll gives to an owner too small for it stays ground cover. The core and
   the inner ring roll no open car park at all: they park in a `parking-garage`, which is a building
-  kind. An open car park there is a beach car park.
+  kind. An open car park there is a beach car park. `ParcelMap.stations` are the police stations of
+  spec section 11.7: in each district, the building parcel whose centre stands nearest the site. A
+  station keeps the `building` owner. The chunk worker sends them to the main thread on its first
+  `ready` reply, because the main thread never builds the parcels.
 - `buildBuildings(world, parcels, graph)` (`buildings.ts`) places the buildings of spec section
   10.3. It is built on demand like the parcels, not stored in the world description.
   `ZONE_BUILDINGS` says what a zone builds at all — a suburban parcel has no tower on its list —

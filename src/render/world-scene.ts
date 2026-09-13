@@ -30,7 +30,7 @@ import { buildCarve, type RoadCarve } from '../world/carve.ts';
 import { buildRoadGraph } from '../world/graph.ts';
 import { buildJunctions } from '../world/junctions.ts';
 import { chunkAt, CHUNK_SIZE } from '../world/chunks.ts';
-import type { WorldDescription } from '../world/types.ts';
+import type { Point, WorldDescription } from '../world/types.ts';
 import { Batch } from './batch.ts';
 import { BuildingScenery } from './buildings.ts';
 import { CharacterModel } from './character.ts';
@@ -302,6 +302,15 @@ export class WorldScene {
    */
   get drawCallsPerChunk(): number {
     return this.peakDrawCalls;
+  }
+
+  /**
+   * The police stations of the world (spec section 11.7), or undefined until a
+   * chunk worker has built the parcels. {@link WorldScene.settle} waits for a
+   * worker, so they are known once it returns.
+   */
+  get stations(): readonly Point[] | undefined {
+    return this.stream.stations;
   }
 
   /** Chunks asked for and not yet drawn, which the HUD shows as the city fills in. */

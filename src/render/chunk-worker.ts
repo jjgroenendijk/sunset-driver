@@ -14,7 +14,7 @@
  * `chunk-pool.ts` is the other side of this conversation.
  */
 import { buildLayers, ChunkSource } from '../world/chunks.ts';
-import type { WorldDescription } from '../world/types.ts';
+import type { Point, WorldDescription } from '../world/types.ts';
 import { buildChunkPayload, chunkLookups, payloadTransfers, type ChunkLookups, type ChunkPayload } from './chunk-payload.ts';
 import type { ChunkDetail } from './streaming.ts';
 
@@ -37,6 +37,12 @@ export type WorkerCommand = StartCommand | ChunkCommand;
 /** The layers are built and the worker is free. Sent once, then after each chunk. */
 export interface ReadyReply {
   type: 'ready';
+  /**
+   * The police stations of the parcel model (spec section 11.7), on the first
+   * reply only. The main thread never builds the parcels, so this is how the
+   * respawn and the map learn where the stations are.
+   */
+  stations?: Point[];
 }
 
 /** One chunk, built. */
@@ -69,7 +75,8 @@ scope.addEventListener('message', (event: MessageEvent) => {
     const layers = buildLayers(world);
     source = new ChunkSource(world, layers);
     lookups = chunkLookups(world, layers);
-    scope.postMessage({ type: 'ready' } satisfies ReadyReply);
+    const stations = layers.parcels.stations.map((station) => ({ x: station.x, y: station.y }));
+    scope.postMessage({ type: 'ready', stations } satisfies ReadyReply);
     return;
   }
   if (source === undefined || lookups === undefined) throw new Error('a chunk was asked for before the world arrived');
