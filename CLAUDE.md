@@ -20,12 +20,12 @@ Tests run on your machine, not in CI. The commands:
 - `npm run verify:full` — the same with the full tier, about 2 min. Run it before a pull request
   that changes `src/world` or `src/sim`.
 
-`ci.yml` calls the reusable `build.yml` and deploys in a separate job. A pull request only
-typechecks, lints and builds; `ci-passed` is the check required to merge. A push to main builds and
-deploys `dist` to Cloudflare Pages. Commits touching only `**/*.md` or `.claude/**` skip the build,
-so keep docs commits separate from code commits. Each night `nightly.yml` runs `verify:full` on main
-plus the day's Dependabot updates, merges the updates when it passes, and opens a `nightly-failure`
-issue when it fails.
+`ci.yml` calls the reusable `build.yml` and deploys in a separate job. A pull request runs no tests:
+typecheck, both lints and the build run in parallel, and `build` is the check required to merge. A
+hook runs `npm run verify` before `gh pr create`. Main deploys the `dist` the pull request built
+when the tree is the same, and builds only when it is not. Each night `nightly.yml` runs
+`verify:full` on main plus the day's Dependabot updates, merges the updates when it passes, and
+opens a `nightly-failure` issue when it fails.
 
 `npm test` must stay under 15 s and `npm run test:full` under 2 min. Cut seeds or ticks in the quick
 tier and keep full coverage behind `SWEEP_SEEDS` — never make a test slower to make it pass. Both
@@ -50,8 +50,7 @@ costs a session, and only those.
 ## File size
 
 `npm run lint:size` (`scripts/check-size.ts`) holds every limit below. It runs in `verify` and in
-CI, on markdown as well, so a docs-only commit is checked by the `docs` job even though it skips the
-build. The edit hook reports the file just written.
+CI, on markdown as well. The edit hook reports the file just written.
 
 No file under `src`, `scripts` or `test` may pass 800 lines; the hook reports a code file at 700, so
 the split happens while it is still small. A long file is a file nobody reads to the end. Split it
