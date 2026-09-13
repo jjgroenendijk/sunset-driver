@@ -100,6 +100,29 @@ export class RoadIndex {
   }
 
   /**
+   * Every road point within `radius`, nearest first, on the terms of
+   * {@link nearest}. Two points as near as each other come in the order they
+   * were laid.
+   */
+  within(x: number, y: number, radius: number, except = -1, joiner?: RoadTier): NetworkHit[] {
+    const cx = this.column(x);
+    const cy = this.column(y);
+    const reach = Math.ceil(radius / this.cell);
+    const found: { i: number; d: number }[] = [];
+    for (let iy = Math.max(0, cy - reach); iy <= Math.min(this.n - 1, cy + reach); iy++) {
+      for (let ix = Math.max(0, cx - reach); ix <= Math.min(this.n - 1, cx + reach); ix++) {
+        for (const i of this.buckets[iy * this.n + ix] as number[]) {
+          if (this.curves[i] === except || !this.joinable(i, joiner)) continue;
+          const d = dist(x, y, this.xs[i] as number, this.ys[i] as number);
+          if (d <= radius) found.push({ i, d });
+        }
+      }
+    }
+    found.sort((a, b) => a.d - b.d || a.i - b.i);
+    return found.map(({ i }) => ({ x: this.xs[i] as number, y: this.ys[i] as number, curve: this.curves[i] as number }));
+  }
+
+  /**
    * True when a road of `joiner` may not begin where it stands, because a road
    * it is not allowed to junction with already has a point there. A fill road
    * starts at its seed, so a seed on such a point would junction there.

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { shallow } from '../src/world/connect.ts';
 import { groundRule } from '../src/world/roads.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { type GradeCrossing, type RoadEdge, type RoadNode } from '../src/world/graph.ts';
@@ -166,7 +167,7 @@ export function roadChecks(): void {
       }
     });
 
-    it('meets any road it crosses on the ground, unless the ground refuses the junction', () => {
+    it('meets any road it crosses on the ground, unless the junction is refused', () => {
       // Spec section 6.2: two roads that cross on the ground meet there. The
       // tracer only ever ends a road on a point of another one, so `connect.ts`
       // gives both curves a point at every crossing the tiers allow a junction
@@ -198,27 +199,34 @@ export function roadChecks(): void {
 
           const where = `${over.tier} ${over.id} crosses ${under.tier} ${under.id} at ${at.x.toFixed(0)},${at.y.toFixed(0)}`;
           if (sharedNear(over, under, at) !== undefined) continue;
-          // The place a junction would have taken, and the two halves it cuts
-          // each road into. One of them has to be more than the ground allows.
-          // The place `connect.ts` would have put the junction at: the nearest
-          // point either road already has, and the crossing itself where neither
-          // has one within a snap of it.
-          const spot = nearer(nearestPointOf(over, at), nearestPointOf(under, at), at) ?? at;
-          // A place a road of either tier may not take a point at is no place for
-          // a junction: bending a street onto a point of a highway would meet the
-          // highway, which spec section 6.2 refuses.
-          if (refusedPlace(w.roads, spot, over.tier) || refusedPlace(w.roads, spot, under.tier)) continue;
-          const halves = [
-            [over, first],
-            [under, second],
-          ] as const;
-          let refused = false;
-          for (const [road, segment] of halves) {
-            const a = road.points[segment] as Point;
-            const b = road.points[segment + 1] as Point;
-            if (!ground(a, spot, road.tier) || !ground(spot, b, road.tier)) refused = true;
-          }
-          if (!refused) fault(`${where} without meeting it`);
+          // Each place a junction would have taken is refused: by the road
+          // standing there, by a half it cuts a road into that is more than the
+          // ground allows, or by an angle no junction can be built at. The
+          // place `connect.ts` would put the junction at first: the nearest
+          // point either road already has within a snap of the crossing.
+          // Where that place fails, the crossing itself is tried.
+          const snapped = nearer(nearestPointOf(over, at), nearestPointOf(under, at), at);
+          const refusedAt = (spot: Point): boolean => {
+            // A place a road of either tier may not take a point at is no place
+            // for a junction: bending a street onto a point of a highway would
+            // meet the highway, which spec section 6.2 refuses.
+            if (refusedPlace(w.roads, spot, over.tier) || refusedPlace(w.roads, spot, under.tier)) return true;
+            const halves = [
+              [over, first],
+              [under, second],
+            ] as const;
+            const around: Point[][] = [];
+            for (const [road, segment] of halves) {
+              const a = road.points[segment] as Point;
+              const b = road.points[segment + 1] as Point;
+              if (!ground(a, spot, road.tier) || !ground(spot, b, road.tier)) return true;
+              around.push([a, b]);
+            }
+            // A point that turns the two roads onto each other's line under
+            // MIN_MEET is no junction either.
+            return shallow(spot, around[0] as Point[], around[1] as Point[]);
+          };
+          if (!(snapped === undefined ? [at] : [snapped, at]).every(refusedAt)) fault(`${where} without meeting it`);
         }
         expect(complaint, `seed ${seed}`).toBeUndefined();
       }
@@ -379,11 +387,15 @@ export function roadChecks(): void {
       // road that has to work around steep ground reaches further before it ends,
       // so the street and dirt caps are looser than the trim alone would ask for.
       // The street cap rose with the zone rings of spec section 8.2, which put
-      // the street fill on hills the suburbs used to stop short of: the worst of
-      // 200 seeds reaches 273 m. The alley cap is loose for a different reason:
+      // the street fill on hills the suburbs used to stop short of. It rose again
+      // when the tracer began to keep roads off each other's carriageways: a road
+      // that may not merge along another one ends as a cul-de-sac more often, and
+      // the worst of 200 seeds reaches 328 m. A suburban seed stands up to 270 m
+      // off its parent and the trim adds 162 m, so neither is past what the fill
+      // lays by construction. The alley cap is loose for a different reason:
       // an alley stands half a block off the street that seeded it, and it is
       // trimmed to a cul-de-sac at each end that met nothing.
-      const CAP: Partial<Record<RoadTier, number>> = { street: 320, alley: 220, dirt: 900 };
+      const CAP: Partial<Record<RoadTier, number>> = { street: 360, alley: 220, dirt: 900 };
       for (const seed of seeds) {
         const w = worlds.get(seed) as WorldDescription;
         const grid = new PointGrid(w.size, 100, w.roads);

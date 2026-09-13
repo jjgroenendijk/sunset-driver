@@ -47,7 +47,7 @@
  * the network laid so far is `road-index.ts`. The seed and plan the fills speak
  * in, and the zone table they read, are `fill.ts`.
  *
- * Four invariants hold by construction, and the seed sweep checks them:
+ * Five invariants hold by construction, and the seed sweep checks them:
  *
  * - Every curve starts on an existing road, ends on one, or merges into one, so
  *   the whole network is a single connected component. A trace that reaches
@@ -57,6 +57,9 @@
  * - No segment laid on the ground exceeds its tier's maximum grade.
  * - No road shares a point with a highway away from one of its interchanges,
  *   and no street, alley or dirt road shares one with a highway at all.
+ * - No road runs along another road's carriageway or ends inside it. Two roads
+ *   touch only where they share a point or cross, at an angle a junction or an
+ *   overpass can be built at (`road-clear.ts`).
  */
 import { clamp, dist, directionDelta, lerp, wrapAngle } from '../core/math.ts';
 import { alleyPlan, alleySeeds, type AlleyGround } from './alleys.ts';
@@ -139,6 +142,11 @@ class RoadTracer extends RoadTrace {
 
   build(): TracedRoads {
     this.traceHighways();
+    // The line behind each resort's dune is the boardwalk's, and the roads
+    // laid before it would otherwise run along it: an island link or an
+    // arterial on that line leaves the beach a boardwalk with no ground to
+    // stand on. The highways go first, since every other road grows off them.
+    this.world.beaches.forEach((beach, i) => this.clearance.reserve(-1 - i, 'street', beach.boardwalk));
     this.linkIslands();
     this.fillArterials();
     // Again, now the arterials are laid. A bridge is refused where the near
@@ -149,7 +157,7 @@ class RoadTracer extends RoadTrace {
     this.serveDistricts();
     // Before the minor fill, so the fill grows around the boardwalk instead of
     // laying its own streets over the same ground.
-    const boardwalks = this.world.beaches.map((beach) => this.traceBoardwalk(beach));
+    const boardwalks = this.world.beaches.map((beach, i) => this.traceBoardwalk(beach, i));
     this.fillMinor();
     // The trace only ever ends a road on a point of another one, so two roads
     // that cross between their points have met nothing yet.
@@ -469,6 +477,9 @@ class RoadTracer extends RoadTrace {
       if (this.index.refuses(seed.x, seed.y, plan.tier)) continue;
       // Somewhere already covered: a road within the clearance, other than the parent.
       if (this.index.nearest(seed.x, seed.y, plan.clearance, seed.parent) !== undefined) continue;
+      // A seed beside its parent starts a road of its own, so it has to stand
+      // clear of every carriageway; one on its parent starts at a junction.
+      if (!seed.onParent && !this.clearance.clearAt(seed.x, seed.y, plan.tier)) continue;
       const curve = this.fillRoad(seed, plan, major, across);
       if (curve === undefined) continue;
       laid.push(curve);
@@ -497,8 +508,8 @@ class RoadTracer extends RoadTrace {
     // A road that starts beside the network has to find its way back to it.
     if (!seed.onParent && !forward.merged && !backward.merged) return undefined;
     // A side that met no other road is a dead end, kept only as far as a cul-de-sac runs.
-    const ahead = forward.merged ? forward.points : trimTo(forward.points, plan.deadEnd);
-    const behind = backward.merged ? backward.points : trimTo(backward.points, plan.deadEnd);
+    const ahead = forward.merged ? forward.points : trimTo(forward.points, forward.clear, plan.deadEnd);
+    const behind = backward.merged ? backward.points : trimTo(backward.points, backward.clear, plan.deadEnd);
     behind.reverse();
     const points = [...behind.slice(0, -1), ...ahead];
     if (polylineLength(points) < plan.clearance) return undefined;
@@ -538,11 +549,16 @@ class RoadTracer extends RoadTrace {
    * that shares a point with no other is not part of the network at all, so a
    * boardwalk neither end can reach is not laid.
    */
-  private traceBoardwalk(beach: Beach): number {
+  private traceBoardwalk(beach: Beach, i: number): number {
+    this.clearance.release(-1 - i);
     const line = this.longestRunnable(beach.boardwalk, STREET.maxGrade);
     if (polylineLength(line) < MIN_BOARDWALK) return -1;
+    // The line is held while its ends reach for the network, so neither end
+    // runs back along the boardwalk itself.
+    this.clearance.reserve(-1 - i, 'street', line);
     const head = this.reachNetwork(line[0] as Point);
     const tail = this.reachNetwork(line[line.length - 1] as Point);
+    this.clearance.release(-1 - i);
     if (head.length === 0 && tail.length === 0) return -1;
     const points = [...[...head].reverse(), ...line, ...tail];
     return this.addCurve('street', points, [])?.id ?? -1;
@@ -550,18 +566,23 @@ class RoadTracer extends RoadTrace {
 
 }
 
-/** The head of a polyline: its first point, and as much of it as `metres` covers. */
-function trimTo(points: readonly Point[], metres: number): Point[] {
-  const out: Point[] = [points[0] as Point];
+/**
+ * The head of a polyline: its first point, and as much of it as `metres`
+ * covers, ending on a point `clear` says a road may end on. A cut that lands on
+ * another road's carriageway is taken back to where the road stood clear.
+ */
+function trimTo(points: readonly Point[], clear: readonly boolean[], metres: number): Point[] {
+  let end = 0;
   let run = 0;
   for (let i = 0; i + 1 < points.length; i++) {
     const a = points[i] as Point;
     const b = points[i + 1] as Point;
     run += dist(a.x, a.y, b.x, b.y);
     if (run > metres) break;
-    out.push(b);
+    end = i + 1;
   }
-  return out;
+  while (end > 0 && clear[end] !== true) end--;
+  return points.slice(0, end + 1);
 }
 
 /**
