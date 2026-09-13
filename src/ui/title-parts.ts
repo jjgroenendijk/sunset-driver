@@ -36,3 +36,43 @@ export function button(className: string, text: string, onClick: () => void): HT
   el.addEventListener('click', onClick);
   return el;
 }
+
+/** One item of a menu list. An item with no action is drawn and skipped: what it opens does not exist yet. */
+export interface MenuItem {
+  numeral: string;
+  label: string;
+  note: string;
+  action: (() => void) | null;
+}
+
+/** A menu card: a roman numeral, a label and a note per item, and a heading where there is one. */
+export function menuList(items: readonly MenuItem[], heading?: string): HTMLElement {
+  const nav = document.createElement('nav');
+  nav.className = 'title-menu';
+  if (heading) {
+    const h2 = document.createElement('h2');
+    h2.className = 'title-menu-heading';
+    h2.textContent = heading;
+    nav.append(h2);
+  }
+  for (const entry of items) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'title-menu-item';
+    item.dataset.nav = '';
+    const numeral = document.createElement('span');
+    numeral.className = 'title-numeral';
+    numeral.textContent = entry.numeral;
+    const label = document.createElement('span');
+    label.className = 'title-menu-label';
+    label.textContent = entry.label;
+    const note = document.createElement('span');
+    note.className = 'title-menu-note';
+    note.textContent = entry.note;
+    item.append(numeral, label, note);
+    if (entry.action) item.addEventListener('click', entry.action);
+    else item.disabled = true;
+    nav.append(item);
+  }
+  return nav;
+}

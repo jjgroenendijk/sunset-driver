@@ -34,7 +34,7 @@
 .title-brand h1 em { font-style: italic; letter-spacing: .01em; color: var(--it-gold); }
 .title-rule { position: relative; width: min(18rem, 60%); height: 1px; margin-top: .4rem; background: linear-gradient(90deg, transparent, var(--it-gold) 20%, var(--it-gold) 80%, transparent); }
 .title-rule::after { content: ""; position: absolute; left: 50%; top: 50%; width: .45rem; height: .45rem; background: var(--it-rosso); transform: translate(-50%, -50%) rotate(45deg); box-shadow: 0 0 0 3px var(--it-night); }
-.title[data-page="setup"] .title-brand h1, .title[data-page="controls"] .title-brand h1 { font-size: clamp(2rem, 4vw, 3rem); }
+.title:not([data-page="main"]) .title-brand h1 { font-size: clamp(2rem, 4vw, 3rem); }
 
 .title-page { display: grid; align-items: center; min-height: 0; }
 .title-page:not([hidden]) > * { animation: it-rise .5s cubic-bezier(.2,.7,.2,1) both; }
@@ -53,6 +53,8 @@
 .title-menu-item:focus { padding-left: 1.3rem; background: rgba(163,34,27,.06); }
 .title-menu-item:focus .title-menu-label { color: var(--it-rosso); }
 .title-menu-item:focus-visible { outline: none; }
+.title-menu-item:disabled { cursor: default; opacity: .45; }
+.title-menu-heading { margin: .5rem .9rem .25rem; padding-bottom: .6rem; border-bottom: 1px solid rgba(35,28,22,.15); font: 400 1.75rem/1.1 var(--it-serif); }
 
 .title-card-head { display: grid; grid-template-columns: auto 1fr; column-gap: .6rem; align-items: baseline; margin-bottom: 1.1rem; padding-bottom: .8rem; border-bottom: 1px solid rgba(35,28,22,.15); }
 .title-card-head h2 { margin: 0; font: 400 1.75rem/1.1 var(--it-serif); }
@@ -90,8 +92,8 @@
 .title-cta:hover, .title-cta:focus { background: var(--it-rosso-dark); border-color: var(--it-gold); letter-spacing: .32em; }
 .title-back { border: 1px solid rgba(243,235,219,.55); background: rgba(23,17,13,.4); color: var(--it-ivory); }
 .title-back:hover, .title-back:focus { background: var(--it-ivory); color: var(--it-ink); }
-.title-card .title-back { justify-self: start; margin-top: 1.25rem; border-color: var(--it-ink); background: transparent; color: var(--it-ink); }
-.title-card .title-back:hover, .title-card .title-back:focus { background: var(--it-ink); color: var(--it-ivory); }
+.title-card .title-back, .title-menu .title-back { justify-self: start; margin-top: 1.25rem; border-color: var(--it-ink); background: transparent; color: var(--it-ink); }
+.title-card .title-back:hover, .title-card .title-back:focus, .title-menu .title-back:hover, .title-menu .title-back:focus { background: var(--it-ink); color: var(--it-ivory); }
 
 .title-keys .title-card { justify-self: start; display: grid; width: min(34rem, 100%); max-height: 100%; overflow-y: auto; }
 .title-key-list { display: grid; grid-template-columns: 1fr auto; margin: 0; }

@@ -35,8 +35,10 @@ are the design.
   `--minimap` for the round window at the minimap's own scale. It needs a Chromium but no WebGPU
   device, because the map is a 2D canvas.
 - `src/ui/title.ts` is the title screen as a main menu of pages: the main page, New game
-  (`title-setup.ts`) and Controls (`title-controls.ts`). An element with `data-nav` is one the arrow
-  keys walk, in DOM order, and the pointer moves the same focus, so only one item is ever lit. A
+  (`title-setup.ts`), Settings, and Controls under Settings (`title-controls.ts`). `PARENT` says
+  where Escape and Back go from each page. A menu item with no action is drawn disabled; Load game,
+  Graphics and Sound wait for what they open. The arrow keys walk the elements with `data-nav`, in
+  DOM order, and skip a disabled one. The pointer moves the same focus, so only one item is lit. A
   character row takes the focus itself and changes on left and right; its two buttons carry no
   `data-nav`. The look lives in `title.css`, which `style.css` imports.
 - `src/ui/seed-preview.ts` draws the map of the seed on the title screen, through the same `MapArt`,
