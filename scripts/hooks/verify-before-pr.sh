@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Claude Code PreToolUse hook for Bash: run `npm run verify` before `gh pr create`.
-# CI runs no tests, so this is the check that stops a pull request whose tests fail.
+# CI runs the full tier in about two minutes; this catches a failing quick tier first.
 # A branch that changes only documentation skips it.
 set -u
 cmd=$(jq -r '.tool_input.command // empty' 2>/dev/null)

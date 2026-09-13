@@ -1,16 +1,10 @@
 name: Build
 
-# A reusable workflow: `ci.yml` calls it. It installs, optionally checks, builds
-# and uploads `dist` as an artifact named after the tree it was built from, so
-# main can deploy what a pull request built. It never deploys and holds no
-# secret.
+# A reusable workflow: `ci.yml` calls it. It installs, builds and uploads `dist`
+# as an artifact named after the tree it was built from, so main can deploy what
+# a pull request built. It never deploys and holds no secret.
 on:
   workflow_call:
-    inputs:
-      checks:
-        description: Typecheck and run both lints beside the build.
-        type: boolean
-        default: true
     outputs:
       artifact:
         description: Name of the artifact that holds `dist`.
@@ -29,10 +23,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
 
-      # Tests run locally (`npm run verify`) and on Dependabot pull requests
-      # and nightly (`full-tier.yml`), not here. `build:checked` runs the
-      # checks and the build side by side.
-      - run: npm run ${{ inputs.checks && 'build:checked' || 'build' }}
+      - run: npm run build
 
       - id: tree
         run: echo "artifact=dist-$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"

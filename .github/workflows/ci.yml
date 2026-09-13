@@ -41,19 +41,16 @@ jobs:
           "[.artifacts[] | select((.expired | not) and .workflow_run.head_repository_id == $GITHUB_REPOSITORY_ID)]
           | .[0].workflow_run.id // empty")" >> "$GITHUB_OUTPUT"
 
-  # A pull request typechecks, lints and builds; this is the check required to
-  # merge. Main builds only when no pull request built the same tree.
+  # Main builds only when no pull request built the same tree.
   build:
     needs: find-dist
     if: ${{ !cancelled() && (github.event_name == 'pull_request' || needs.find-dist.outputs.run-id == '') }}
     uses: ./.github/workflows/build.yml
-    with:
-      checks: ${{ github.event_name == 'pull_request' }}
 
-  # CI runs no tests on other pull requests, but an update is written by no one
-  # who ran them.
+  # Every pull request runs the full tier, and main runs no tests: it holds the
+  # tree a pull request tested. The build and both shards are required to merge.
   full-tier:
-    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    if: github.event_name == 'pull_request'
     uses: ./.github/workflows/full-tier.yml
 
   # The head must still be the commit the full tier tested. A branch that fell

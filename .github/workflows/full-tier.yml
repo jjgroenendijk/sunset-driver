@@ -1,11 +1,11 @@
 name: Full tier
 
-# A reusable workflow: `ci.yml` calls it on Dependabot pull requests and
-# `nightly.yml` on main. It runs `verify:full` split over two runners: the seed
-# sweep, and every other file with the typecheck and both lints. The seed sweep
-# is most of the tier's work: on a runner it takes about 100 s and the rest about
-# 25 s. On Actions vitest adds its `github-actions` reporter, which writes the
-# job summary and marks each failure on its line.
+# A reusable workflow: `ci.yml` calls it on every pull request. It runs
+# `verify:full` split over two runners: the seed sweep, and every other file with
+# the typecheck and both lints. The seed sweep is most of the tier's work: on a
+# runner it takes about 100 s and the rest about 25 s. On Actions vitest adds its
+# `github-actions` reporter, which writes the job summary and marks each failure
+# on its line.
 on:
   workflow_call:
 
@@ -17,6 +17,9 @@ permissions:
 
 jobs:
   shard:
+    # The check names the ruleset requires: `full-tier / seed-sweep` and
+    # `full-tier / other`.
+    name: ${{ matrix.shard }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
