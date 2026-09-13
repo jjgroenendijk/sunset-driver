@@ -11,22 +11,20 @@ is the deliverable; a note in a PR body or a `TODO` in the code is not.
 
 ## Tests
 
-Tests run on your machine, not in CI. The commands:
+The commands:
 
 - `npm run typecheck` — `tsc --noEmit`.
 - `npm run lint` — the determinism lint. `npm run lint:size` — the file-size lint.
 - `npm test` — the quick tier. `npm run test:full` — the full tier of 200 seeds (`SWEEP_SEEDS=200`).
 - `npm run verify` — typecheck, both lints and the quick tier, under 20 s. Run before every commit.
-- `npm run verify:full` — the same with the full tier, about 2 min. Run it before a pull request
-  that changes `src/world` or `src/sim`.
+- `npm run verify:full` — the same with the full tier, about 2 min.
 
-`ci.yml` calls the reusable `build.yml` and deploys in a separate job. A pull request runs no tests:
-typecheck, both lints and the build run in parallel, and `build` is the check required to merge. A
-hook runs `npm run verify` before `gh pr create`. Main deploys the `dist` the pull request built
-when the tree is the same, and builds only when it is not. `full-tier.yml` runs `verify:full` over
-two runners: the seed sweep, and every other file with the checks. It runs on each Dependabot pull
-request, which merges when it passes, and each night on main, which opens a `nightly-failure`
-issue when it fails. `.github/actions/setup` installs Node and `node_modules` from caches.
+Every pull request runs `verify:full` in CI through `full-tier.yml`, over two runners: the seed
+sweep, and every other file with the checks. `ci.yml` also builds with `build.yml` and deploys main
+in a separate job. The build and both shards are the checks required to merge. A Dependabot pull
+request merges itself when they pass. Main runs no tests: it deploys the `dist` the pull request
+built when the tree is the same, and builds only when it is not. A hook runs `npm run verify`
+before `gh pr create`. `.github/actions/setup` installs Node and `node_modules` from caches.
 
 `npm test` must stay under 15 s and `npm run test:full` under 2 min. Cut seeds or ticks in the quick
 tier and keep full coverage behind `SWEEP_SEEDS` — never make a test slower to make it pass. Both
