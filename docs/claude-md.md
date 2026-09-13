@@ -21,10 +21,9 @@ That single test settles most edits. The corollaries:
 - **Rules the tooling enforces are worth one line, not a section.** The determinism lint and the
   typecheck hook catch the violation and explain it at the point of failure. The file only needs to
   name the rule and where the helper lives, so the agent writes it right the first time.
-- **Judgment beats enumeration.** "A budget failure is a regression to find, never a threshold to
-  bump" covers more cases than a list of budgets and their permitted movements, and stays true when
-  the budgets change.
-- **Point instead of copying.** `spec.md`, `test/budgets.ts` and `.claude/settings.json` are the
+- **Judgment beats enumeration.** "Never make a test slower to make it pass" covers more cases than
+  a list of tests and their permitted timings, and stays true when the tests change.
+- **Point instead of copying.** `spec.md`, `package.json` and `.claude/settings.json` are the
   source of truth for what they describe. Duplicating them here creates a second copy that goes
   stale silently. A pointer costs one line and never rots.
 
@@ -51,10 +50,10 @@ markdown file at 400. The cap is a floor on what the file has to be worth, not a
 Prose in short paragraphs and tight lists, not tables — a table wide enough to hold a constraint
 mostly holds restated column headers.
 
-The sections are: what the project is and where the spec lives, the docs it points at, the size
-limits, how an issue is claimed, determinism, per-directory constraints, performance budgets, the
-traps that cost a session with nothing to say why, conventions, the writing rules and this
-maintenance note. New material joins an existing section far more often than it justifies a new one.
+The sections are: what the project is and where the spec lives, the tests, the docs it points at,
+the size limits, how an issue is claimed, determinism, per-directory constraints, the traps that
+cost a session with nothing to say why, conventions, the writing rules and this maintenance note.
+New material joins an existing section far more often than it justifies a new one.
 
 A subsystem gets a doc of its own — `docs/world-generation.md`, `docs/rendering.md`,
 `docs/sim-and-ui.md` — read by the session whose work touches that directory. `CLAUDE.md` keeps one
