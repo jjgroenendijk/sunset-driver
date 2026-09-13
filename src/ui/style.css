@@ -1,35 +1,12 @@
+@import url('./title.css');
 html, body { margin: 0; height: 100%; overflow: hidden; background: #12070f; color: #f6d6c1; font: 16px/1.5 system-ui, sans-serif; }
 /* A panel hides itself with the `hidden` attribute, and a class selector beats
    the user agent's `[hidden]` rule, so every `display` here has to give way. */
 [hidden] { display: none !important; }
 #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-#splash { display: grid; place-items: center; height: 100%; text-align: center; }
-#splash h1 { font-size: 3rem; margin: 0 0 .5rem; letter-spacing: .1em; text-transform: uppercase; color: #ff8a5c; }
-#splash p { margin: 0; opacity: .8; }
-.notice { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(18,7,15,.92); letter-spacing: .08em; text-transform: uppercase; }
 .hud { position: fixed; top: 12px; left: 12px; pointer-events: none; font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px #000; }
 .hud-seed { opacity: .7; font-size: .85rem; }
 .hud-clock { font-size: 1.1rem; }
-.title { position: fixed; inset: 0; display: grid; place-items: center; align-content: center; gap: 1.5rem; padding: 2rem; overflow-y: auto; background: radial-gradient(120% 90% at 50% 0%, rgba(18,7,15,.55), rgba(18,7,15,.92)); }
-.title h1 { margin: 0; font-size: 3rem; letter-spacing: .1em; text-transform: uppercase; color: #ff8a5c; }
-.title-panel { display: grid; gap: .75rem; width: min(30rem, 100%); padding: 1.25rem; border: 1px solid #4a2b3f; border-radius: .5rem; background: rgba(24,11,20,.85); }
-.title-row { display: flex; align-items: center; gap: .5rem; }
-.title-label { flex: 0 0 8rem; opacity: .8; font-size: .9rem; }
-.title-value { flex: 1; text-align: center; font-variant-numeric: tabular-nums; }
-.title-seed { flex: 1; min-width: 0; padding: .4rem .6rem; border: 1px solid #6a3f58; border-radius: .25rem; background: #1c0c17; color: inherit; font: inherit; }
-.title button { border: 1px solid #6a3f58; border-radius: .25rem; background: #2a1322; color: inherit; font: inherit; cursor: pointer; }
-.title button:hover { background: #3b1b30; }
-.title-step { width: 2rem; padding: .2rem 0; }
-.title-dice { width: 2.2rem; padding: .3rem 0; font-size: 1.1rem; line-height: 1; }
-.title-preview { display: grid; justify-items: center; gap: .35rem; }
-.title-preview-map { width: 100%; max-width: 18rem; aspect-ratio: 1; border: 1px solid #6a3f58; border-radius: .25rem; background: #12070f; }
-.title-preview-status { margin: 0; font-size: .8rem; opacity: .75; }
-.title-secondary { padding: .35rem .7rem; }
-.title-play { padding: .6rem; font-size: 1.1rem; letter-spacing: .08em; text-transform: uppercase; background: #ff8a5c; border-color: #ff8a5c; color: #210d18; }
-.title-play:hover { background: #ffa279; }
-.title-controls { display: grid; grid-template-columns: 8rem 1fr; gap: .2rem .5rem; margin: .25rem 0 0; font-size: .85rem; opacity: .75; }
-.title-controls dt { opacity: .8; }
-.title-controls dd { margin: 0; }
 .picker { position: fixed; top: 12px; right: 12px; width: 17rem; max-height: calc(100% - 24px); overflow-y: auto; display: grid; gap: .25rem; padding: .75rem; border: 1px solid #4a2b3f; border-radius: .5rem; background: rgba(24,11,20,.88); }
 .picker h2 { margin: 0 0 .25rem; font-size: .85rem; letter-spacing: .1em; text-transform: uppercase; opacity: .7; }
 .picker button { display: grid; gap: .1rem; padding: .35rem .5rem; border: 1px solid #6a3f58; border-radius: .25rem; background: #2a1322; color: inherit; font: inherit; text-align: left; cursor: pointer; }
