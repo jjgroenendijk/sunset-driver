@@ -5,7 +5,7 @@ import { button, card, page } from './title-parts.ts';
 /** The Controls page of the title screen: every binding of `controls.ts`, drawn as key caps. */
 export function buildControlsPage(back: () => void): HTMLElement {
   const root = page('title-page title-keys');
-  const sheet = card('II', 'Controls', 'The same list is in the README.');
+  const sheet = card('I', 'Controls', 'The same list is in the README.');
 
   const list = document.createElement('dl');
   list.className = 'title-key-list';

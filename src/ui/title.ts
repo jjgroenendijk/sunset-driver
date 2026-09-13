@@ -2,7 +2,7 @@ import { normaliseAppearance, type CharacterAppearance } from '../sim/character.
 import type { WorldDescription } from '../world/types.ts';
 import { nextIndex } from './menu-nav.ts';
 import { buildControlsPage } from './title-controls.ts';
-import { page } from './title-parts.ts';
+import { button, menuList, page } from './title-parts.ts';
 import { NewGamePage } from './title-setup.ts';
 
 /** What the player settled on before the session starts. */
@@ -17,16 +17,26 @@ export interface TitleChoice {
   world: WorldDescription | null;
 }
 
-type PageName = 'main' | 'setup' | 'controls';
+const PAGE_NAMES = ['main', 'setup', 'settings', 'controls'] as const;
+type PageName = (typeof PAGE_NAMES)[number];
+
+/** The page Escape and Back go to from each page. */
+const PARENT: Record<PageName, PageName | null> = {
+  main: null,
+  setup: 'main',
+  settings: 'main',
+  controls: 'settings',
+};
 
 /**
  * The title screen of spec section 12, laid out as a game's main menu. The
- * main page offers New game and Controls. New game is the seed
+ * main page offers New game, Load game and Controls. Load game stays disabled
+ * until the saves of spec section 12 exist. New game is the seed
  * entry, the map of the seed and character creation (`title-setup.ts`), and
  * Controls is the binding list (`title-controls.ts`).
  *
  * The arrow keys walk the items of the page on screen, Enter picks one and
- * Escape goes back to the main page. The pointer moves the same focus, so the
+ * Escape goes back up one page. The pointer moves the same focus, so the
  * keyboard and the mouse never show two different highlights.
  */
 export class TitleScreen {
@@ -34,8 +44,8 @@ export class TitleScreen {
   private readonly setup: NewGamePage;
   private readonly pages: Record<PageName, HTMLElement>;
   private current: PageName = 'main';
-  /** The main menu item that was picked last, which takes the focus again when the player comes back. */
-  private lastMain: HTMLElement | null = null;
+  /** The item each page was left from, which takes the focus again when the player comes back up. */
+  private readonly lastFocus: Partial<Record<PageName, HTMLElement>> = {};
   private resolve: ((choice: TitleChoice) => void) | null = null;
 
   constructor(parent: HTMLElement, initial: TitleChoice, onPreview: (appearance: CharacterAppearance) => void) {
@@ -46,13 +56,14 @@ export class TitleScreen {
     this.root.setAttribute('aria-label', 'Main menu');
 
     this.setup = new NewGamePage(initial.seed, character, onPreview, {
-      back: () => this.show('main'),
+      back: () => this.back(),
       start: () => this.finish(),
     });
     this.pages = {
       main: this.buildMain(),
       setup: this.setup.root,
-      controls: buildControlsPage(() => this.show('main')),
+      settings: this.buildSettings(),
+      controls: buildControlsPage(() => this.back()),
     };
 
     const brand = document.createElement('header');
@@ -68,7 +79,7 @@ export class TitleScreen {
       '<span><kbd>↑</kbd><kbd>↓</kbd> Choose</span><span><kbd>Enter</kbd> Confirm</span>' +
       '<span><kbd>Esc</kbd> Back</span>';
 
-    this.root.append(brand, this.pages.main, this.pages.setup, this.pages.controls, hint);
+    this.root.append(brand, ...PAGE_NAMES.map((name) => this.pages[name]), hint);
     this.root.addEventListener('pointerover', this.onPointer);
     window.addEventListener('keydown', this.onKey);
     parent.append(this.root);
@@ -91,53 +102,73 @@ export class TitleScreen {
 
   private buildMain(): HTMLElement {
     const main = page('title-page title-main');
-    const nav = document.createElement('nav');
-    nav.className = 'title-menu';
-    const items: [string, string, string, () => void][] = [
-      ['I', 'New game', 'Choose a city and a driver', () => this.show('setup')],
-      ['II', 'Controls', 'The keys for the street and the map', () => this.show('controls')],
-    ];
-    for (const [numeral, label, note, action] of items) {
-      const item = document.createElement('button');
-      item.type = 'button';
-      item.className = 'title-menu-item';
-      item.dataset.nav = '';
-      item.innerHTML =
-        `<span class="title-numeral">${numeral}</span>` +
-        `<span class="title-menu-label">${label}</span>` +
-        `<span class="title-menu-note">${note}</span>`;
-      item.addEventListener('click', action);
-      nav.append(item);
-    }
-    main.append(nav);
+    main.append(
+      menuList([
+        { numeral: 'I', label: 'New game', note: 'Choose a city and a driver', action: () => this.show('setup') },
+        { numeral: 'II', label: 'Load game', note: 'Saves come in a later version', action: null },
+        {
+          numeral: 'III',
+          label: 'Settings',
+          note: 'Controls, graphics and sound',
+          action: () => this.show('settings'),
+        },
+      ]),
+    );
     return main;
   }
 
+  private buildSettings(): HTMLElement {
+    const settings = page('title-page title-settings');
+    const menu = menuList(
+      [
+        {
+          numeral: 'I',
+          label: 'Controls',
+          note: 'The keys for the street and the map',
+          action: () => this.show('controls'),
+        },
+        { numeral: 'II', label: 'Graphics', note: 'Comes in a later version', action: null },
+        { numeral: 'III', label: 'Sound', note: 'Comes in a later version', action: null },
+      ],
+      'Settings',
+    );
+    menu.append(button('title-back', 'Back', () => this.back()));
+    settings.append(menu);
+    return settings;
+  }
+
+  /**
+   * Show a page. Going back up puts the focus on the item the player left that
+   * page from, as a game menu does; going down starts on the page's own first choice.
+   */
   private show(name: PageName): void {
-    if (this.current === 'main' && this.pages.main.contains(document.activeElement)) {
-      this.lastMain = document.activeElement as HTMLElement;
-    }
+    const leaving = this.pages[this.current];
+    if (leaving.contains(document.activeElement)) this.lastFocus[this.current] = document.activeElement as HTMLElement;
+    const up = PARENT[this.current] === name;
     this.current = name;
     this.root.dataset.page = name;
-    for (const key of ['main', 'setup', 'controls'] as const) this.pages[key].hidden = key !== name;
-    // Coming back to the main page puts the focus on the item that was left,
-    // as a game menu does; anywhere else starts on the page's own first choice.
-    const back = name === 'main' ? this.lastMain : null;
-    const first = back ?? this.pages[name].querySelector<HTMLElement>('[data-autofocus]');
+    for (const key of PAGE_NAMES) this.pages[key].hidden = key !== name;
+    const first = (up ? this.lastFocus[name] : null) ?? this.pages[name].querySelector<HTMLElement>('[data-autofocus]');
     (first ?? this.items()[0])?.focus({ preventScroll: true });
+  }
+
+  /** Go to the page above the one on screen, where there is one. */
+  private back(): void {
+    const parent = PARENT[this.current];
+    if (parent) this.show(parent);
   }
 
   /** The items of the page on screen the arrow keys walk, in reading order. */
   private items(): HTMLElement[] {
     return [...this.pages[this.current].querySelectorAll<HTMLElement>('[data-nav]')].filter(
-      (el) => el.tabIndex >= 0 && !el.hidden && el.offsetParent !== null,
+      (el) => el.tabIndex >= 0 && !el.hidden && el.offsetParent !== null && !(el as HTMLButtonElement).disabled,
     );
   }
 
   private readonly onKey = (event: KeyboardEvent): void => {
-    if (event.key === 'Escape' && this.current !== 'main') {
+    if (event.key === 'Escape' && PARENT[this.current]) {
       event.preventDefault();
-      this.show('main');
+      this.back();
       return;
     }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
