@@ -1,0 +1,133 @@
+/**
+ * The weapons, drawn (spec section 11.6): the one in the player's hands, and
+ * the geometry every drawn weapon shares.
+ *
+ * The shape comes from `weapon-mesh.ts`. This merges one weapon's boxes into
+ * one geometry with a colour per vertex, so a weapon is one draw call whatever
+ * is fitted to it. A weapon with the same attachments is the same geometry, so
+ * a street of dropped pistols builds the pistol once.
+ */
+import {
+  BoxGeometry,
+  BufferGeometry,
+  Color,
+  Float32BufferAttribute,
+  Group,
+  Mesh,
+  MeshStandardMaterial,
+} from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import type { PlayerState } from '../sim/on-foot.ts';
+import { currentSlot, normaliseAttachments, weaponOf, type Attachment, type LoadoutState, type WeaponId } from '../sim/weapon.ts';
+import { weaponBoxes, type WeaponBox } from './weapon-mesh.ts';
+
+/** The geometry and the material every drawn weapon is made of. */
+export class WeaponArt {
+  readonly material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.25 });
+  private readonly built = new Map<string, BufferGeometry | undefined>();
+
+  /**
+   * The geometry of one weapon with what is fitted to it, or undefined where
+   * there is nothing to draw: bare fists. It is built once per weapon and list,
+   * and belongs to this art until {@link WeaponArt.dispose}.
+   */
+  geometry(id: WeaponId, attachments: readonly Attachment[]): BufferGeometry | undefined {
+    const list = normaliseAttachments(weaponOf(id), attachments);
+    const key = `${id}|${list.join(',')}`;
+    if (this.built.has(key)) return this.built.get(key);
+    const geometry = weaponGeometry(weaponBoxes(id, list));
+    this.built.set(key, geometry);
+    return geometry;
+  }
+
+  /** How many geometries have been built, which the tests read. */
+  get size(): number {
+    return this.built.size;
+  }
+
+  dispose(): void {
+    for (const geometry of this.built.values()) geometry?.dispose();
+    this.built.clear();
+    this.material.dispose();
+  }
+}
+
+/** Merge a weapon's boxes into one geometry, each vertex carrying the colour of its box. */
+export function weaponGeometry(boxes: readonly WeaponBox[]): BufferGeometry | undefined {
+  if (boxes.length === 0) return undefined;
+  const colour = new Color();
+  const parts = boxes.map((b) => {
+    const geometry = new BoxGeometry(b.length, b.height, b.width);
+    geometry.translate(b.x, b.y, b.z);
+    const count = geometry.getAttribute('position').count;
+    const colours = new Float32Array(count * 3);
+    colour.setHex(b.colour);
+    for (let i = 0; i < count; i++) colours.set([colour.r, colour.g, colour.b], i * 3);
+    geometry.setAttribute('color', new Float32BufferAttribute(colours, 3));
+    return geometry;
+  });
+  const merged = mergeGeometries(parts);
+  for (const part of parts) part.dispose();
+  return merged;
+}
+
+/** Metres in front of the player's middle the hand holds a weapon. */
+export const HOLD_REACH = 0.3;
+
+/** Metres to the side of the player's middle the weapon is held, toward the hand that holds it. */
+export const HOLD_SIDE = 0.14;
+
+/**
+ * How high the weapon is held, as a share of the player's height: at the hip,
+ * and at the shoulder while aiming (spec section 11.5).
+ */
+export const HIP_HEIGHT = 0.55;
+export const AIM_HEIGHT = 0.74;
+
+/**
+ * The weapon in the player's hands. It is posed like the character: the group
+ * takes the player's place and heading, and the mesh inside it stands where
+ * the hand is. It is drawn only on foot, since a weapon fired from a seat is
+ * inside the vehicle.
+ */
+export class HeldWeapon {
+  readonly group = new Group();
+  private readonly mesh: Mesh;
+  private readonly art: WeaponArt;
+  /** What the mesh holds before a weapon is first shown. */
+  private readonly empty = new BufferGeometry();
+
+  constructor(art: WeaponArt) {
+    this.art = art;
+    this.mesh = new Mesh(this.empty, art.material);
+    this.mesh.castShadow = true;
+    this.mesh.visible = false;
+    this.group.add(this.mesh);
+  }
+
+  /**
+   * Show what the record says is in the hands, where the drawn player stands.
+   * `height` is the character's height, so a tall body holds it higher.
+   */
+  set(loadout: LoadoutState, player: PlayerState, pose: { x: number; y: number; height: number; heading: number }, height: number): void {
+    const slot = currentSlot(loadout);
+    const geometry = player.driving ? undefined : this.art.geometry(slot.id, slot.attachments ?? []);
+    this.mesh.visible = geometry !== undefined;
+    if (geometry === undefined) return;
+    this.mesh.geometry = geometry;
+    this.group.position.set(pose.x, pose.height, pose.y);
+    // A yaw of -heading turns local +x, where the muzzle points, along the heading.
+    this.group.rotation.y = -pose.heading;
+    this.mesh.position.set(HOLD_REACH, height * (loadout.aiming ? AIM_HEIGHT : HIP_HEIGHT), HOLD_SIDE);
+  }
+
+  /** True while a weapon is drawn in the hands. */
+  get shown(): boolean {
+    return this.mesh.visible;
+  }
+
+  dispose(): void {
+    this.group.clear();
+    this.empty.dispose();
+  }
+}

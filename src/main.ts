@@ -1,3 +1,4 @@
+import { Raycaster, Vector2 } from 'three';
 import { readSeedFromLocation, seedFromString, writeSeedToHash } from './core/seed.ts';
 import { BASE_DISTANCE, FollowCamera, PREVIEW_DISTANCE } from './render/camera.ts';
 import { PostChain } from './render/post.ts';
@@ -104,6 +105,19 @@ async function boot(): Promise<void> {
     session?.world.resize();
   });
 
+  // Where the mouse is over the canvas, in the camera's -1 to 1 frame, which is
+  // what picks the pickup under it.
+  const pointer = { at: new Vector2(), over: false };
+  const ray = new Raycaster();
+  canvas.addEventListener('pointermove', (event) => {
+    const rect = canvas.getBoundingClientRect();
+    pointer.at.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
+    pointer.over = true;
+  });
+  canvas.addEventListener('pointerleave', () => {
+    pointer.over = false;
+  });
+
   // The session is null until the title screen hands over a seed and a look.
   let session: Session | null = null;
   let spin = 0;
@@ -140,6 +154,18 @@ async function boot(): Promise<void> {
       session.world.character.group.position.set(p.x, p.height, p.y);
       session.world.character.group.rotation.y = -p.heading;
       session.world.character.group.visible = !session.state.player.driving;
+      // The weapon in the hands and the weapons on the ground (spec section
+      // 11.6), both drawn off the record with what is fitted to them.
+      session.world.held.set(session.state.loadout, session.state.player, p, session.world.character.height);
+      // The pickup under the mouse grows, so what lies there can be read before
+      // walking to it. Nothing is picked while the camera is detached.
+      if (!flying && pointer.over && session.state.pickups.length > 0) {
+        ray.setFromCamera(pointer.at, camera.camera);
+        session.world.pickups.pick(ray);
+      } else {
+        session.world.pickups.hovered = undefined;
+      }
+      session.world.pickups.update(session.state.pickups, session.state.tick, elapsed / 1000);
       session.world.vehicle.set(vehicle);
       // The damage of spec section 11.3, drawn off the same record: the smoke
       // and flames over the car and the rubber its tyres leave behind. It is
