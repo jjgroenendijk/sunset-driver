@@ -25,9 +25,18 @@ are the design.
 - Nothing is built on the frame thread any more, so `WorldScene.settle(x, y, radius)` is how the
   game and the preview wait for the ground under the player.
 - The far ring is the same chunk at `'far'` detail: the ground, the highways and arterials over it,
-  and every building as a block, with no outline and no plants. A chunk that crosses between the
+  and every building as its outlined massing, with no plants. A chunk that crosses between the
   rings is built again and swapped when it lands, so nothing disappears while its replacement is
   built.
+- The buildings have three details of their own (spec section 9.2). Only the chunks within
+  `FACADE_RADIUS` of the player generate facades. The rest of the near ring is `'mid'` detail: the
+  chunk in full, but every building a block from `block-mesh.ts`. The far ring is one box per
+  building (`buildMassingGeometry`). Every detail keeps the outline. On the dearest core chunk of
+  24 seeds the buildings cost 1 240 000 vertices near, 87 000 mid and 7 300 far.
+  `CHUNK_VERTEX_CAP` (`chunk-cost.ts`) holds each detail, and the sweep counts it with
+  `buildingVertices`. A coarser bay and floor on the generated facade is not a middle detail: twice
+  the bay and twice the floor still costs 45 % of the full facade, because the cornices, piers and
+  finials do not scale with the bays.
 - `quality.ts` is the quality-tier system of spec section 9.2: `QUALITY_TIERS` is the table, dearest
   first, and `QualityMonitor` the frame-time monitor that walks it. The monitor is pure — it takes a
   frame length and answers a tier when it changes one — so the policy is tested headless; `main.ts`
