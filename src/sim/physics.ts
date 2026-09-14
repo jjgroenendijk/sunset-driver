@@ -29,10 +29,9 @@
  * `on-foot.ts` holds the numbers a person is made of and the rules for getting
  * in and out; this file is the Rapier half of them.
  *
- * Only the player's vehicle has a moving body. Ambient traffic is kinematic and
- * evaluated from `(seed, tick)` until something touches it (spec section 5.3),
- * so the physics slice of spec section 2.4 pays for one vehicle, one player and
- * the ground.
+ * Only the player's vehicle and the vehicles they have touched have a moving
+ * body. Ambient traffic is kinematic and evaluated from `(seed, tick)` until
+ * the player touches it (spec section 5.3); `traffic-bodies.ts` is that half.
  */
 import RAPIER from '@dimforge/rapier3d-compat';
 import { TICK_RATE } from './clock.ts';
@@ -64,6 +63,7 @@ import {
   vehicleGap,
 } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
+import { TrafficBodies } from './traffic-bodies.ts';
 import { createTheft, isLocked, stepTheft, THEFT_HEAT, type TheftState } from './theft.ts';
 import {
   createVehicleState,
@@ -135,6 +135,8 @@ export class SimPhysics {
   private body: RAPIER.Collider | undefined;
   /** The player's capsule, and undefined while they are in a vehicle. */
   private walker: Walker | undefined;
+  /** The traffic near the player, or undefined on a ground with no roads to drive. */
+  readonly traffic: TrafficBodies | undefined;
   /** Scratch vectors and forces, so a tick allocates nothing. */
   private readonly point = { x: 0, y: 0, z: 0 };
   private readonly axis = { x: 0, y: 0, z: 0 };
@@ -152,6 +154,7 @@ export class SimPhysics {
     this.bodies = new GroundBodies(this.world, ground);
     this.shots = new Gunfire(this.world);
     this.controls = new Drivetrain(ground);
+    this.traffic = ground.traffic === undefined ? undefined : new TrafficBodies(this.world, ground.traffic);
     // The step is the tick. Simulation code never sees a frame delta.
     this.world.timestep = 1 / TICK_RATE;
     this.adopt(state);
@@ -259,8 +262,12 @@ export class SimPhysics {
         this.wheels.updateVehicle(this.world.timestep);
       }
     }
+    // The traffic is aimed at the next tick once the player's own move is known.
+    if (state.player.driving) this.traffic?.lead(state, v.x, v.z);
+    else this.traffic?.lead(state, state.player.x, state.player.y);
     this.world.step();
     this.read(state);
+    this.traffic?.settle(state);
     if (chassis !== undefined) this.crash(state, wasX, wasY, wasZ);
     // The weapons are run after the step, so a shot leaves the muzzle from where
     // the player ended the tick rather than from where they started it. A player

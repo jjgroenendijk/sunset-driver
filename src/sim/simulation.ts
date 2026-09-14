@@ -7,6 +7,7 @@ import { fateOf, respawn, respawnPlace, type RespawnRecord } from './respawn.ts'
 import type { TheftState } from './theft.ts';
 import { createVehicleState, DEFAULT_CLASS, specOf, type VehicleState } from './vehicle.ts';
 import { stepPickups, type PickupState } from './pickup.ts';
+import { createTrafficState, type TrafficState } from './traffic.ts';
 import { createLoadout, type LoadoutState, type ProjectileState } from './weapon.ts';
 
 /** The serialisable, deterministic state of a session. */
@@ -92,6 +93,12 @@ export interface SimState {
    * the HUD reads it to say what happened.
    */
   respawn: RespawnRecord | null;
+  /**
+   * The ambient vehicles that have left their trajectories (spec section 5.3).
+   * The rest of the traffic is a function of the seed and the tick, so it is
+   * not in the record at all.
+   */
+  traffic: TrafficState;
 }
 
 /** Dollars a new session starts with (spec section 16). */
@@ -123,6 +130,7 @@ export function createSimState(
     safehouse: { x: 0, y: 0, heading: 0 },
     arrested: false,
     respawn: null,
+    traffic: createTrafficState(),
   };
 }
 
