@@ -4,8 +4,12 @@ import type { RoadEdge } from '../src/world/graph.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import type { Point, RoadTier, WorldDescription } from '../src/world/types.ts';
 import { TICKS_PER_HOUR } from '../src/sim/clock.ts';
-import { bedsOf, graphOf, seeds, worlds } from './seed-fixture.ts';
+import { bedsOf, graphOf, junctionsOf, seeds, worlds } from './seed-fixture.ts';
 import { TRAFFIC_COUNT, TRAFFIC_TIER_MIN } from './seed-limits.ts';
+import { signalLap } from './signal-lap.ts';
+
+/** Vehicles timed to the lights each seed follows round a whole lap. */
+const SIGNAL_LAPS = 8;
 
 /**
  * The seed sweep of spec section 3, on the traffic of spec section 13.1: every
@@ -16,13 +20,13 @@ import { TRAFFIC_COUNT, TRAFFIC_TIER_MIN } from './seed-limits.ts';
  */
 export function trafficChecks(): void {
   describe('traffic', () => {
-    it('puts traffic on every tier of the city, standing on the road it drives', () => {
-      const cursor: TrafficCursor = { id: 0, leg: 0, into: 0 };
+    it('puts traffic on every tier of the city, standing on the road it drives and stopping on red', () => {
+      const cursor: TrafficCursor = { id: 0, step: 0, into: 0 };
       const pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
       for (const seed of seeds.slice(0, TRAFFIC_COUNT)) {
         const world = worlds.get(seed) as WorldDescription;
         const graph = graphOf(seed);
-        const traffic = new AmbientTraffic(seed, trafficRoadsOf(world, graph, bedsOf(seed)));
+        const traffic = new AmbientTraffic(seed, trafficRoadsOf(world, graph, bedsOf(seed), junctionsOf(seed)));
 
         const length: Partial<Record<RoadTier, number>> = {};
         for (const edge of graph.edges) length[edge.tier] = (length[edge.tier] ?? 0) + edge.length / 2;
@@ -45,6 +49,17 @@ export function trafficChecks(): void {
             if ((length[tier] ?? 0) < TRAFFIC_TIER_MIN) continue;
             expect(carried[tier] ?? 0, `seed ${seed}: no traffic on ${Math.round(length[tier] ?? 0)} m of ${tier} at tick ${tick}`).toBeGreaterThan(0);
           }
+        }
+
+        // A city with arterials has traffic lights, and the vehicles timed to
+        // them keep to them on its real, crooked junctions.
+        if ((length.arterial ?? 0) < TRAFFIC_TIER_MIN) continue;
+        expect(traffic.signals?.junctions.length ?? 0, `seed ${seed}: no traffic lights`).toBeGreaterThan(0);
+        const timed = traffic.vehicles.filter((v) => v.tour.sync >= 0);
+        expect(timed.length, `seed ${seed}: no vehicle meets a light`).toBeGreaterThan(0);
+        const stride = Math.max(1, Math.floor(timed.length / SIGNAL_LAPS));
+        for (let i = 0; i < timed.length; i += stride) {
+          expect(signalLap(traffic, timed[i] as (typeof timed)[number]).faults, `seed ${seed}`).toEqual([]);
         }
       }
     });

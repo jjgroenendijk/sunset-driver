@@ -211,14 +211,26 @@ are the design.
   places the vehicles once for a world: per directed edge, the tier's `TierSpec.density` thinned by
   `ZONE_TRAFFIC` and the district's density, in a lane on the right of the carriageway that
   `laneOffset` divides as `road-section.ts` paints it. Each vehicle drives the closed tour
-  `traffic-tour.ts` walks for it, at `CRUISE` of the speed limit of each edge. Every vehicle on one
-  edge drives at the same speed, so none passes through the one ahead; they do meet at junctions,
-  because no vehicle reads another.
-- Every leg of a tour takes a whole number of ticks. That is why `cursorAt` (evaluated) and
-  `advance` (stepped) agree exactly rather than to a rounding, and why `test/traffic.test.ts` and
+  `traffic-tour.ts` walks for it, at `CRUISE` of the speed limit of each edge. Vehicles meet at
+  junctions and can overlap in a lane, because no vehicle reads another.
+- A tour is steps, not legs: `traffic-timing.ts` lays each one down as a drive over part of a leg or
+  a wait in one place, in a whole number of ticks. That is why `cursorAt` (evaluated) and `advance`
+  (stepped) agree exactly rather than to a rounding, and why `test/traffic.test.ts` and
   `test/sim-traffic.test.ts` can compare them with `toEqual`. A pose is read `SMOOTH` metres behind
   and ahead of the vehicle and stands between the two readings, which is how a vehicle rounds a
   corner. `poseAt` takes a fractional tick, which is what the renderer draws between two ticks.
+- `src/sim/signals.ts` is the traffic lights. A junction takes one where an arterial meets a street
+  or another arterial on the ground, and never with a highway. Its roads split into the arterial's
+  axis and the one across it, and a light is a function of the tick and the junction's seeded
+  offset alone. `crossingOpen` is the phase the pedestrians of spec section 13.1 will wait for.
+  `TrafficRoads.junctions` is what turns the lights on; a test that leaves it out gets none.
+- A light and a tour only agree for ever when the tour takes whole `SIGNAL_CYCLE`s. So a tour that
+  meets a light is timed from one stop line, its `sync`: tick 0 is that line's green. The drive back
+  to it is stretched to arrive on red, and `phaseOf` moves the vehicle by up to half a cycle so its
+  tick 0 falls on that green. A queue is estimated from the lane's density, not from the vehicles
+  in it. `test/signal-lap.ts` steps a lap and holds a vehicle to the lights.
+- On seed 1 about three vehicles in four meet a light, they spend about a third of the time
+  standing, and timing the tours takes the traffic from about 35 ms to about 180 ms to place.
 - `src/sim/traffic-bodies.ts` is the Rapier half. Inside the box of ground tiles, each vehicle is a
   kinematic body aimed at its pose on the next tick. A vehicle entering the box is evaluated on that
   tick and stepped after it. The player touches a vehicle when `footprintsTouch` finds their car or

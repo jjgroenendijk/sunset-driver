@@ -8,6 +8,7 @@ import {
   type AmbientPose,
   type TrafficCursor,
 } from '../src/sim/traffic.ts';
+import { SIGNAL_CYCLE } from '../src/sim/signals.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import type { Point, RoadCurve } from '../src/world/types.ts';
 import { sweepSeeds, stableJson } from './helpers.ts';
@@ -61,22 +62,26 @@ describe('ambient traffic (spec sections 5.3, 13.1)', () => {
           expect(edge?.to, `seed ${seed}, vehicle ${vehicle.id}, leg ${i}`).toBe(next?.from);
           expect(permitOf(vehicle.cls)(edge as (typeof graph.edges)[number]), `${vehicle.cls} on ${edge?.tier}`).toBe(true);
         }
-        expect(vehicle.tour.period).toBe(Array.from(vehicle.tour.legTicks).reduce((s, t) => s + t, 0));
+        expect(vehicle.tour.period).toBe(vehicle.tour.stepTicks.reduce((s, t) => s + t, 0));
+        // A tour timed to the lights takes whole cycles of them, or the two would drift apart.
+        if (vehicle.tour.sync >= 0) expect(vehicle.tour.period % SIGNAL_CYCLE).toBe(0);
       }
     }
   });
 
-  it('keeps to its lane on the right of the road, in the direction of travel, at the speed limit', () => {
+  it('keeps to its lane on the right of the road, in the direction of travel, never over the speed limit', () => {
     const roads = gridTrafficRoads();
     const traffic = new AmbientTraffic(SEEDS[0] as number, roads);
-    const cursor: TrafficCursor = { id: 0, leg: 0, into: 0 };
+    const cursor: TrafficCursor = { id: 0, step: 0, into: 0 };
     let checked = 0;
+    let free = 0;
     for (const vehicle of traffic.vehicles) {
       for (let tick = 0; tick < 20_000; tick += 1733) {
         traffic.cursorAt(vehicle.id, tick, cursor);
         const edge = roads.graph.edges[traffic.edgeOf(cursor)] as (typeof roads.graph.edges)[number];
-        const ticks = vehicle.tour.legTicks[cursor.leg] as number;
-        const along = (cursor.into / ticks) * edge.length;
+        const tour = vehicle.tour;
+        const from = tour.stepFrom[cursor.step] as number;
+        const along = from + (cursor.into / (tour.stepTicks[cursor.step] as number)) * ((tour.stepTo[cursor.step] as number) - from);
         // Near either end of a leg the vehicle is taking the corner.
         if (along < SMOOTH * 2 || along > edge.length - SMOOTH * 2) continue;
         const at = traffic.pose(cursor, pose());
@@ -91,11 +96,16 @@ describe('ambient traffic (spec sections 5.3, 13.1)', () => {
         expect(right, `vehicle ${vehicle.id} on ${edge.tier}`).toBeCloseTo(laneOffset(edge, vehicle.lane), 6);
         expect(Math.cos(at.heading) * dx + Math.sin(at.heading) * dy).toBeGreaterThan(0.999);
         expect(at.speed).toBeLessThanOrEqual(edge.speedLimit * 1.001);
-        expect(at.speed).toBeGreaterThan(edge.speedLimit * 0.8);
+        // A tour that meets no light drives at cruising speed all the way round.
+        if (tour.sync < 0) {
+          expect(at.speed).toBeGreaterThan(edge.speedLimit * 0.8);
+          free++;
+        }
         checked++;
       }
     }
     expect(checked).toBeGreaterThan(100);
+    expect(free).toBeGreaterThan(20);
   });
 
   it('puts traffic on every tier, as dense as the tier and the district call for', () => {
@@ -107,7 +117,7 @@ describe('ambient traffic (spec sections 5.3, 13.1)', () => {
     expect(traffic.vehicles.length).toBeGreaterThan(expected * 0.85);
     expect(traffic.vehicles.length).toBeLessThan(expected * 1.15);
 
-    const cursor: TrafficCursor = { id: 0, leg: 0, into: 0 };
+    const cursor: TrafficCursor = { id: 0, step: 0, into: 0 };
     const tiers = new Set<string>();
     for (const vehicle of traffic.vehicles) tiers.add(roads.graph.edges[traffic.edgeOf(traffic.cursorAt(vehicle.id, 0, cursor))]?.tier ?? '');
     expect([...tiers].sort()).toEqual(['alley', 'arterial', 'dirt', 'highway', 'street']);

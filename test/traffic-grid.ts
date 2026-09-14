@@ -1,6 +1,7 @@
 import type { Ground } from '../src/sim/physics.ts';
 import { AmbientTraffic, type TrafficRoads } from '../src/sim/traffic.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
+import { buildJunctions } from '../src/world/junctions.ts';
 import type { Point, RoadCurve, RoadTier } from '../src/world/types.ts';
 import { DRY } from './helpers.ts';
 
@@ -43,7 +44,8 @@ export function gridHeight(x: number, y: number): number {
 
 export function gridTrafficRoads(busyAt?: (x: number, y: number) => number): TrafficRoads {
   const roads = gridRoads();
-  return { roads, graph: buildRoadGraph(roads), busyAt, heightAt: (_c, _s, _t, x, y) => gridHeight(x, y) };
+  const graph = buildRoadGraph(roads);
+  return { roads, graph, busyAt, heightAt: (_c, _s, _t, x, y) => gridHeight(x, y), junctions: buildJunctions(roads, graph) };
 }
 
 /** The grid's traffic for a seed. */
