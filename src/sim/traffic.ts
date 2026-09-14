@@ -132,6 +132,8 @@ export interface AmbientPose {
 /** A vehicle the player has touched, and the record the physics now keeps of it (spec section 5.3). */
 export interface PromotedVehicle {
   id: number;
+  /** The colour it was painted while it drove its tour or stood in its bay. */
+  paint: number;
   vehicle: VehicleState;
 }
 

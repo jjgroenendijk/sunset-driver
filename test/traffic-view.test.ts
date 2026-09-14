@@ -38,7 +38,7 @@ describe('the traffic, drawn (spec section 13.1)', () => {
     const vehicle = traffic.vehicles[id] as (typeof traffic.vehicles)[number];
     const at = traffic.poseAt(id, tick, pose);
     const far = Math.abs(at.x) <= 180 && Math.abs(at.y) <= 180 ? 0 : 1;
-    state.traffic.promoted.push({ id, vehicle: createVehicleState(specOf(vehicle.cls), 5, 5, 1, 0) });
+    state.traffic.promoted.push({ id, paint: vehicle.paint, vehicle: createVehicleState(specOf(vehicle.cls), 5, 5, 1, 0) });
     view.update(state, tick, 0, 0);
     expect(view.drawn).toBe(inView + far);
     view.dispose();

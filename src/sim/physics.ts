@@ -263,8 +263,8 @@ export class SimPhysics {
       }
     }
     // The traffic is aimed at the next tick once the player's own move is known.
-    if (state.player.driving) this.traffic?.lead(state, v.x, v.z);
-    else this.traffic?.lead(state, state.player.x, state.player.y);
+    if (state.player.driving) this.traffic?.lead(state, v.x, v.z, this.ground.parked);
+    else this.traffic?.lead(state, state.player.x, state.player.y, this.ground.parked);
     this.world.step();
     this.read(state);
     this.traffic?.settle(state);

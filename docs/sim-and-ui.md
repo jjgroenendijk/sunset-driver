@@ -238,5 +238,15 @@ are the design.
   record goes into `SimState.traffic.promoted`, ascending by id, and it becomes a dynamic box with
   its speed. A touch is a 2D box test and not a Rapier contact: Rapier makes no contact between
   two kinematic bodies by default, and the player's capsule is one.
+- `src/sim/parked.ts` says which bay holds a car at a tick. Each bay has its own stay length and
+  offset; a stay rolls once, keyed on its first tick, against `FILL` at the middle of the stay. So
+  a car stays put for the whole stay, and a street fills and empties by the hour with nothing
+  stepped. A touched parked car is promoted like the traffic, under `PARKED_ID` plus its bay, and
+  the bay stays empty while that record lasts. `PromotedVehicle.paint` is kept because a parked
+  car's paint depends on the stay it was taken in.
+- `parked-bodies.ts` stands a fixed body in each full bay of the physics box. It asks a bay again
+  only when its stay ends, so a tick costs nothing for the bays that did not turn over. The bays
+  come from the chunk workers, so `main.ts` sets `Ground.parked` after `settle`, and the physics
+  reads it on every step rather than once when it is built.
 - The ground of the game hands the physics the traffic as `Ground.traffic`. A test that is not about
   traffic leaves it out. `test/traffic-grid.ts` is a grid of every tier for the tests that need it.

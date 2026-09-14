@@ -2,8 +2,10 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { EMPTY_INPUT, type InputFrame } from '../src/sim/input.ts';
 import { initPhysics, SimPhysics } from '../src/sim/physics.ts';
 import { createSimState, stepSim, type SimState } from '../src/sim/simulation.ts';
+import { PARKED_ID, ParkedCars, type ParkedCar } from '../src/sim/parked.ts';
 import { laneOffset, type AmbientPose, type AmbientTraffic } from '../src/sim/traffic.ts';
 import { rideHeight, SALOON } from '../src/sim/vehicle.ts';
+import { BAY_USES, type ParkingBays } from '../src/world/parking.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import { inputStream, stableJson, sweepSeeds } from './helpers.ts';
 import { SEED_COUNT, TICKS } from './sim-harness.ts';
@@ -114,6 +116,52 @@ describe(`traffic in the simulation (${SEED_COUNT} seeds)`, () => {
     const promoted = state.traffic.promoted[0] as SimState['traffic']['promoted'][number];
     expect(Math.hypot(promoted.vehicle.x - state.player.x, promoted.vehicle.z - state.player.y)).toBeLessThan(10);
     physics.dispose();
+  });
+
+  it('stands the parked cars near the player as bodies, and promotes the one they walk into', () => {
+    const seed = seeds[0] as number;
+    const traffic = gridTraffic(seed);
+    const { state, physics } = session(seed, traffic);
+    // A row of bays facing east, off the grid, at midnight when a street of houses is full.
+    const count = 12;
+    const bays: ParkingBays = {
+      count,
+      x: Float64Array.from({ length: count }, (_, i) => 1000 + 6 * i),
+      y: new Float64Array(count).fill(1000),
+      height: Float32Array.from({ length: count }, (_, i) => gridHeight(1000 + 6 * i, 1000)),
+      heading: new Float32Array(count),
+      use: new Uint8Array(count).fill(BAY_USES.indexOf('home')),
+      street: new Uint8Array(count).fill(1),
+    };
+    const parked = new ParkedCars(seed, bays);
+    const ground = gridGround(traffic);
+    ground.parked = parked;
+    physics.dispose();
+    const walked = new SimPhysics(ground, state);
+    const car: ParkedCar = { cls: 'saloon', paint: 0, since: 0 };
+    let bay = 0;
+    while (!parked.carAt(bay, state.tick, state.traffic, car)) bay++;
+    // The car is left off the row, and the player stands south of the bay and walks north into it.
+    state.vehicle.x = 5000;
+    state.vehicle.z = 5000;
+    state.player.driving = false;
+    state.player.x = bays.x[bay] as number;
+    state.player.y = 1004;
+    state.player.height = gridHeight(state.player.x, state.player.y);
+    walked.adopt(state);
+    stepSim(state, EMPTY_INPUT, walked);
+    expect(walked.traffic?.parkedBodies).toBeGreaterThan(0);
+    expect(state.traffic.promoted).toEqual([]);
+    let tick = 0;
+    for (; tick < 240 && state.traffic.promoted.length === 0; tick++) stepSim(state, { ...EMPTY_INPUT, throttle: 1 }, walked);
+    expect(state.traffic.promoted.map((record) => record.id), 'the player never reached the car').toEqual([PARKED_ID + bay]);
+    const promoted = state.traffic.promoted[0] as SimState['traffic']['promoted'][number];
+    expect(promoted.paint).toBe(car.paint);
+    expect(promoted.vehicle.cls).toBe(car.cls);
+    expect(Math.hypot(promoted.vehicle.x - (bays.x[bay] as number), promoted.vehicle.z - 1000)).toBeLessThan(0.5);
+    expect(parked.carAt(bay, state.tick, state.traffic, car)).toBe(false);
+    expect(walked.traffic?.promotedBodies).toBe(1);
+    walked.dispose();
   });
 
   it('leaves the traffic alone while nobody touches it', () => {

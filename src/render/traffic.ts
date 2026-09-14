@@ -111,9 +111,9 @@ export class TrafficView {
       const meshes: ClassMeshes = {
         cls,
         spec,
-        paint: instanced(parts.paint, paint, true),
-        trim: instanced(parts.trim, trim, false),
-        rim: instanced(parts.rim, outline, false),
+        paint: instanced(parts.paint, paint, true, CLASS_CAP),
+        trim: instanced(parts.trim, trim, false, CLASS_CAP),
+        rim: instanced(parts.rim, outline, false, CLASS_CAP),
       };
       this.classes.push(meshes);
       this.group.add(meshes.paint, meshes.trim, meshes.rim);
@@ -156,7 +156,7 @@ export class TrafficView {
       const meshes = this.meshesOf(v.cls);
       this.at.set(v.x, v.y, v.z);
       this.turn.set(v.qx, v.qy, v.qz, v.qw);
-      this.add(meshes, (traffic.vehicles[record.id] as AmbientTraffic['vehicles'][number]).paint);
+      this.add(meshes, record.paint);
     }
     for (const meshes of this.classes) {
       const count = meshes.paint.count;
@@ -201,8 +201,9 @@ export class TrafficView {
   }
 }
 
-function instanced(geometry: BufferGeometry, material: Material, shadow: boolean): InstancedMesh {
-  const mesh = new InstancedMesh(geometry, material, CLASS_CAP);
+/** An instanced mesh of up to `cap` vehicles, drawing none until it is filled. */
+export function instanced(geometry: BufferGeometry, material: Material, shadow: boolean, cap: number): InstancedMesh {
+  const mesh = new InstancedMesh(geometry, material, cap);
   // The instances are spread over hundreds of metres; the geometry's own bounds say nothing about them.
   mesh.frustumCulled = false;
   mesh.castShadow = shadow;

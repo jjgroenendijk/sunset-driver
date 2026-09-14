@@ -11,6 +11,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { PARAPET_HEIGHT, type DeckSpan } from '../world/decks.ts';
 import type { Surface } from '../world/surface.ts';
 import type { Place } from './on-foot.ts';
+import type { ParkedCars } from './parked.ts';
 import type { AmbientTraffic } from './traffic.ts';
 
 /** Metres each way of one tile of ground the physics holds. */
@@ -53,6 +54,12 @@ export interface Ground {
    * about traffic leaves it out, and nothing drives past.
    */
   traffic?: AmbientTraffic;
+  /**
+   * The parked cars of the streets and car parks (spec section 13.1). The bays
+   * are laid out in the chunk workers, so the game sets this once they answer.
+   * Nothing parks where there is no traffic.
+   */
+  parked?: ParkedCars;
 }
 
 
