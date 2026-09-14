@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shallow } from '../src/world/connect.ts';
+import { FreeEnds, shallow } from '../src/world/connect.ts';
 import { groundRule } from '../src/world/roads.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { type GradeCrossing, type RoadEdge, type RoadNode } from '../src/world/graph.ts';
@@ -197,6 +197,7 @@ export function roadChecks(): void {
         // there, or at the places beside it, is refused as `connect.ts` does.
         const bends = (curve: number, spot: Point, around: readonly Point[]): boolean =>
           shallow(spot, around, othersAt(spot, curve)) || around.some((place) => shallow(place, [spot], othersAt(place, curve)));
+        const ends = new FreeEnds(w.roads);
         let complaint: string | undefined;
         const fault = (text: string): void => {
           complaint ??= text;
@@ -244,6 +245,8 @@ export function roadChecks(): void {
                 continue;
               }
               if (!ground(a, spot, road.tier) || !ground(spot, b, road.tier)) return true;
+              // Nor a place that bends the road over the free end of a third one.
+              if (ends.buried(road, spot, [a, b])) return true;
               around.push([a, b]);
             }
             // A point that turns the two roads onto each other's line under

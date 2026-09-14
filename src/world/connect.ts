@@ -111,6 +111,7 @@ function connectOnce(roads: readonly RoadCurve[], canRun: CanRun): RoadCurve[] |
   for (let i = 0; i < roads.length; i++) order[roads[i]?.id ?? i] = i;
 
   const taken = new Taken(roads);
+  const ends = new FreeEnds(roads);
   for (const meeting of meetings) {
     const a = order[meeting.curve] as number;
     const b = order[meeting.other] as number;
@@ -142,6 +143,9 @@ function connectOnce(roads: readonly RoadCurve[], canRun: CanRun): RoadCurve[] |
       // The point also turns each road where it leaves the places beside it,
       // and a road may already meet a third one there.
       if (taken.bends(first.id, place, one.around) || taken.bends(second.id, place, two.around)) continue;
+      // A snapped place moves a road, and the carriageway it moves onto may hold
+      // the free end of a third road that stood clear of it.
+      if ((one.insert !== null && ends.buried(first, place, one.around)) || (two.insert !== null && ends.buried(second, place, two.around))) continue;
       firstPlan = one;
       secondPlan = two;
       spot = place;
@@ -380,6 +384,71 @@ class Taken {
 }
 
 /** A place as one number, to the millimetre, so two roads agree on what one place is. */
+/**
+ * The ends of roads that meet nothing there, filed in buckets. A road that
+ * takes a point is bent onto it, and a free end its carriageway then covers
+ * would stand inside a road it does not meet.
+ */
+export class FreeEnds {
+  private readonly buckets = new Map<number, { curve: number; at: Point }[]>();
+
+  constructor(roads: readonly RoadCurve[]) {
+    const count = new Map<number, number>();
+    for (const road of roads) {
+      for (const p of road.points) count.set(placeKey(p), (count.get(placeKey(p)) ?? 0) + 1);
+    }
+    for (const road of roads) {
+      const first = road.points[0];
+      const last = road.points[road.points.length - 1];
+      for (const at of first === last ? [first] : [first, last]) {
+        if (at === undefined || count.get(placeKey(at)) !== 1) continue;
+        const key = bucketKey(Math.floor(at.x / INDEX_CELL), Math.floor(at.y / INDEX_CELL));
+        const list = this.buckets.get(key) ?? [];
+        list.push({ curve: road.id, at });
+        this.buckets.set(key, list);
+      }
+    }
+  }
+
+  /**
+   * True when `road`, given a point at `spot` and running on from it to
+   * `around`, covers a free end of another road with its carriageway that the
+   * straight run between the two places beside it left clear.
+   */
+  buried(road: RoadCurve, spot: Point, around: readonly Point[]): boolean {
+    const half = footprintHalfWidth(road.tier);
+    let reach = half;
+    for (const p of around) reach = Math.max(reach, Math.hypot(p.x - spot.x, p.y - spot.y) + half);
+    for (let cy = Math.floor((spot.y - reach) / INDEX_CELL); cy <= Math.floor((spot.y + reach) / INDEX_CELL); cy++) {
+      for (let cx = Math.floor((spot.x - reach) / INDEX_CELL); cx <= Math.floor((spot.x + reach) / INDEX_CELL); cx++) {
+        for (const end of this.buckets.get(bucketKey(cx, cy)) ?? []) {
+          if (end.curve === road.id) continue;
+          let near = Infinity;
+          for (const p of around) near = Math.min(near, toSegment(end.at, spot, p));
+          if (near >= half) continue;
+          const before = around.length === 2 ? toSegment(end.at, around[0] as Point, around[1] as Point) : Infinity;
+          if (before >= half) return true;
+        }
+      }
+    }
+    return false;
+  }
+}
+
+/** A key for one bucket of {@link FreeEnds}. */
+function bucketKey(cx: number, cy: number): number {
+  return (cy + KEY_OFFSET) * KEY_SPAN + (cx + KEY_OFFSET);
+}
+
+/** Metres from a point to a segment. */
+function toSegment(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const span = dx * dx + dy * dy;
+  const t = span === 0 ? 0 : Math.min(1, Math.max(0, ((p.x - a.x) * dx + (p.y - a.y) * dy) / span));
+  return Math.hypot(p.x - a.x - dx * t, p.y - a.y - dy * t);
+}
+
 function placeKey(p: Point): number {
   const x = Math.round(p.x * KEY_SCALE) + KEY_OFFSET;
   const y = Math.round(p.y * KEY_SCALE) + KEY_OFFSET;
@@ -426,7 +495,7 @@ function crossingsOf(roads: readonly RoadCurve[]): Meeting[] {
  * is no crossing: the two roads already share that point, or they meet at the
  * next segment along.
  */
-function crossPoint(a: Point, b: Point, c: Point, d: Point): Point | undefined {
+export function crossPoint(a: Point, b: Point, c: Point, d: Point): Point | undefined {
   const rx = b.x - a.x;
   const ry = b.y - a.y;
   const sx = d.x - c.x;
