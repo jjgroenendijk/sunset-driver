@@ -185,6 +185,9 @@ export abstract class RoadTrace extends RoadRoute {
     );
     if (route !== undefined || vetSteps) return route;
     if (within !== undefined) return this.routeToNetwork(from, island, joiner, params);
+    // Vetting the steps only takes ground away, so where the goal was nowhere
+    // on the ground the search walked, it is nowhere on less of it.
+    if (this.rerouteHits === 0) return undefined;
     // The grid steps along its axes and diagonals only, so where it has to
     // cross a road that runs a few degrees off them, the shortest route runs
     // along that road for a while and is refused. Vetting every grid step as
