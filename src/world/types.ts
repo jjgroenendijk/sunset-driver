@@ -4,6 +4,7 @@
  */
 
 import type { Point as GeomPoint } from '../core/geom.ts';
+import type { ArchetypeName } from './archetype.ts';
 
 export type Zone = 'core' | 'inner' | 'industrial' | 'suburban' | 'outskirts' | 'wilderness';
 
@@ -250,6 +251,8 @@ export interface WorldDescription {
   seed: number;
   /** Side length in metres; the map is square and centred on the origin. */
   size: number;
+  /** The name of the terrain archetype the seed drew (spec section 7.2), for the tools and a bug report. */
+  archetype: ArchetypeName;
   core: Point;
   terrain: HeightfieldData;
   water: WaterDescription;

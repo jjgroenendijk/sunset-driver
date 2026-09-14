@@ -47,6 +47,7 @@ function gridWorld(roads: RoadCurve[]): WorldDescription {
   return {
     seed: 21,
     size: SIZE,
+    archetype: 'archipelago',
     core: { x: 0, y: 0 },
     terrain: hf.toData(),
     water: {

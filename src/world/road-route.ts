@@ -8,7 +8,6 @@
  */
 import { clamp, dist } from '../core/math.ts';
 import { compareNumbers } from '../core/sort.ts';
-import type { Noise2D } from '../core/noise.ts';
 import { BeachGround, isResort } from './beaches.ts';
 import { layoutZones, zoneAt, type ZoneLayout } from './districts.ts';
 import { Heightfield } from './heightfield.ts';
@@ -17,7 +16,7 @@ import { DRY_MARGIN, spanProfile, type Profile } from './road-ground.ts';
 import { ANCHOR_REACH, ARTERIAL } from './road-params.ts';
 import { RoadClearance, type Trail } from './road-clear.ts';
 import { RoadIndex } from './road-index.ts';
-import { coastNoise, islandAt } from './terrain.ts';
+import { coastNoise, islandAt, type CoastNoise } from './terrain.ts';
 import type { TensorField } from './tensor.ts';
 import type { Point, RoadCurve, RoadTier, WorldSkeleton } from './types.ts';
 
@@ -52,7 +51,7 @@ export abstract class RoadRoute {
   /** The ground the network claims, which every step keeps off. */
   protected readonly clearance: RoadClearance;
   /** The coastline's own noise, so a point can be told which island's land it stands on. */
-  protected readonly noise: Noise2D;
+  protected readonly noise: CoastNoise;
   protected readonly curves: RoadCurve[] = [];
   /** Dry land, one flag per terrain node: the grid a rerouted road walks. */
   protected readonly land: Uint8Array;

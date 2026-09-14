@@ -29,6 +29,7 @@ function islandWorld(): WorldDescription {
   return {
     seed: 7,
     size: SIZE,
+    archetype: 'archipelago',
     core: { x: 0, y: 0 },
     terrain: hf.toData(),
     water: {

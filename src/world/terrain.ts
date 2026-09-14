@@ -2,6 +2,7 @@ import { TerrainGenerator } from 'three/examples/jsm/generators/TerrainGenerator
 import { clamp, lerp, smoothstep } from '../core/math.ts';
 import { Noise2D } from '../core/noise.ts';
 import { genRng, Subsystem } from '../core/rng.ts';
+import { archetypeFor, type CoastProfile, type TerrainArchetype } from './archetype.ts';
 import { Heightfield } from './heightfield.ts';
 import type { Crossing, Island, Point, RiverDescription, WaterDescription } from './types.ts';
 
@@ -20,6 +21,8 @@ export const SEA_LEVEL = 0;
 
 export interface TerrainLayout {
   size: number;
+  /** The bundle of numbers this layout was drawn with. */
+  archetype: TerrainArchetype;
   core: Point;
   islands: Island[];
   /** Half the nominal width of the straits between islands. */
@@ -42,9 +45,19 @@ const COAST_SALT = 0x7e44;
 /** Reused by {@link coastOffset}, which runs once per terrain sample. Never escapes. */
 const WARP_SCRATCH: Point = { x: 0, y: 0 };
 
+/** The noise the coastline is drawn with, and the shape of coast the seed's archetype draws with it. */
+export class CoastNoise extends Noise2D {
+  readonly profile: CoastProfile;
+
+  constructor(seed: number, profile: CoastProfile) {
+    super(seed);
+    this.profile = profile;
+  }
+}
+
 /** The noise the coastline is drawn with, rebuilt from the seed. */
-export function coastNoise(seed: number): Noise2D {
-  return new Noise2D(seed ^ COAST_SALT);
+export function coastNoise(seed: number): CoastNoise {
+  return new CoastNoise(seed ^ COAST_SALT, archetypeFor(seed).coast);
 }
 
 /**
@@ -52,10 +65,11 @@ export function coastNoise(seed: number): Noise2D {
  * line up with the coastline in warped space, so any question about which island
  * a point belongs to has to ask here first. `out` is written and returned.
  */
-export function warpPoint(noise: Noise2D, size: number, x: number, y: number, out: Point): Point {
-  const amp = size * 0.06;
-  out.x = x + noise.fbm(x / 1400 + 3.7, y / 1400 + 1.9, 2, 2, 0.5) * amp;
-  out.y = y + noise.fbm(x / 1400 + 8.1, y / 1400 + 6.3, 2, 2, 0.5) * amp;
+export function warpPoint(noise: CoastNoise, size: number, x: number, y: number, out: Point): Point {
+  const { warp, warpWavelength: w } = noise.profile;
+  const amp = size * warp;
+  out.x = x + noise.fbm(x / w + 3.7, y / w + 1.9, 2, 2, 0.5) * amp;
+  out.y = y + noise.fbm(x / w + 8.1, y / w + 6.3, 2, 2, 0.5) * amp;
   return out;
 }
 
@@ -79,7 +93,7 @@ export function islandIndexAt(islands: readonly Island[], x: number, y: number):
  * points — roads picking a bridge head, a test asking where a district is —
  * must use this rather than {@link islandIndexAt}, which reads the raw cells.
  */
-export function islandAt(islands: readonly Island[], size: number, noise: Noise2D, x: number, y: number): number {
+export function islandAt(islands: readonly Island[], size: number, noise: CoastNoise, x: number, y: number): number {
   const w = warpPoint(noise, size, x, y, WARP_SCRATCH);
   return islandIndexAt(islands, w.x, w.y);
 }
@@ -110,20 +124,21 @@ function cellDepth(layout: TerrainLayout, i: number, x: number, y: number): numb
  * Signed distance to the nearest coastline: negative inland, positive at sea.
  * Each island is its cell shrunk by half a channel, with a wandering shore.
  */
-export function coastOffset(layout: TerrainLayout, noise: Noise2D, x: number, y: number): number {
+export function coastOffset(layout: TerrainLayout, noise: CoastNoise, x: number, y: number): number {
   // Domain warp: bends the straits sideways without ever closing them, since the
   // whole partition is displaced together.
   const { x: wx, y: wy } = warpPoint(noise, layout.size, x, y, WARP_SCRATCH);
   const i = islandIndexAt(layout.islands, wx, wy);
   const depth = cellDepth(layout, i, wx, wy);
-  const detail = noise.fbm(x / 150 + 9.2, y / 150 + 4.4, 2) * 16;
+  const { wavelength, amplitude } = noise.profile;
+  const detail = noise.fbm(x / wavelength + 9.2, y / wavelength + 4.4, 2) * amplitude;
   return layout.channelHalf - depth + detail;
 }
 
 /** Lloyd relaxation of the outer sites (the main site stays at the core) so each sits deep inside its cell. */
-function relaxSites(islands: Island[], size: number): void {
+function relaxSites(islands: Island[], size: number, rounds: number): void {
   const n = 40;
-  for (let iter = 0; iter < 3; iter++) {
+  for (let iter = 0; iter < rounds; iter++) {
     const sx = new Float64Array(islands.length);
     const sy = new Float64Array(islands.length);
     const cnt = new Float64Array(islands.length);
@@ -147,36 +162,39 @@ function relaxSites(islands: Island[], size: number): void {
   }
 }
 
-/** Choose the archipelago: a few large islands separated by narrow straits, then the river and harbour. */
+/** Choose the islands the seed's archetype asks for, separated by straits, then the river and harbour. */
 export function layoutTerrain(seed: number, size: number): TerrainLayout {
+  const archetype = archetypeFor(seed);
+  const sites = archetype.sites;
   const rng = genRng(seed, Subsystem.Water, 1);
   const noise = coastNoise(seed);
   const islands: Island[] = [];
   // The main island's site is the core; its weight makes it the largest cell.
-  islands.push({ id: 0, x: 0, y: 0, radius: size * rng.range(0.16, 0.2), main: true });
+  islands.push({ id: 0, x: 0, y: 0, radius: size * rng.range(sites.mainRadius.min, sites.mainRadius.max), main: true });
 
-  const count = rng.int(2, 4);
-  const minSpacing = size * 0.34;
+  const count = rng.int(sites.outerCount.min, sites.outerCount.max);
+  const minSpacing = size * sites.minSpacing;
   for (let i = 1; i <= count; i++) {
     for (let attempt = 0; attempt < 200; attempt++) {
-      const x = rng.range(-0.42, 0.42) * size;
-      const y = rng.range(-0.42, 0.42) * size;
+      const x = rng.range(-sites.spread, sites.spread) * size;
+      const y = rng.range(-sites.spread, sites.spread) * size;
       let ok = Math.hypot(x, y) >= minSpacing;
       for (const other of islands) if (Math.hypot(other.x - x, other.y - y) < minSpacing) ok = false;
       if (!ok) continue;
-      islands.push({ id: i, x, y, radius: size * rng.range(0.04, 0.1), main: false });
+      islands.push({ id: i, x, y, radius: size * rng.range(sites.outerRadius.min, sites.outerRadius.max), main: false });
       break;
     }
   }
 
-  relaxSites(islands, size);
+  relaxSites(islands, size, sites.relaxRounds);
 
   const layout: TerrainLayout = {
     size,
+    archetype,
     core: { x: 0, y: 0 },
     islands,
-    channelHalf: size * rng.range(0.018, 0.026),
-    seaMargin: size * 0.04,
+    channelHalf: size * rng.range(sites.channelHalf.min, sites.channelHalf.max),
+    seaMargin: size * sites.seaMargin,
     harbour: { x: 0, y: 0, radius: size * 0.035 },
     river: { path: [], halfWidths: [] },
   };
@@ -248,17 +266,18 @@ export function generateTerrain(seed: number, layout: TerrainLayout): Heightfiel
   const noise = coastNoise(seed);
 
   // Raw fractal relief from the three.js generator, normalised to [0, 1].
+  const relief = layout.archetype.relief;
   const gen = new TerrainGenerator({
     seed: seed & 0x7fffffff,
     size,
     segments,
-    frequency: 3.2 / size,
-    octaves: 6,
+    frequency: relief.frequency / size,
+    octaves: relief.octaves,
     heightScale: 1,
     // A fractional valleyBias raises a slightly negative noise sum to a fractional power and yields NaN;
     // 1 keeps the generator's own maths finite.
     valleyBias: 1,
-    talusPasses: 4,
+    talusPasses: relief.talusPasses,
   });
   gen.build();
   const raw = gen.heights as Float32Array;
@@ -278,15 +297,16 @@ export function generateTerrain(seed: number, layout: TerrainLayout): Heightfiel
     for (let ix = 0; ix < gridSize; ix++) {
       const x = hf.worldX(ix);
       const rawH = raw[iy * gridSize + ix] as number;
-      const relief = Number.isFinite(rawH) ? (rawH - rawMin) / rawRange : 0;
+      const rough = Number.isFinite(rawH) ? (rawH - rawMin) / rawRange : 0;
       const dCore = Math.hypot(x - layout.core.x, y - layout.core.y);
       const coast = coastOffset(layout, noise, x, y);
 
       // Land: gentle near the core, steep hills far from it and deep inland.
       const inland = smoothstep(0, size * 0.09, -coast);
-      const amplitude = lerp(12, 140, smoothstep(0.1 * size, 0.42 * size, dCore)) * lerp(0.2, 1, inland);
-      const base = 2.5 + 18 * smoothstep(0.06 * size, 0.4 * size, dCore) * inland;
-      let land = base + relief * amplitude;
+      const ramp = smoothstep(relief.rampFrom * size, relief.rampTo * size, dCore);
+      const amplitude = lerp(relief.nearAmplitude, relief.farAmplitude, ramp) * lerp(0.2, 1, inland);
+      const base = 2.5 + relief.baseRise * smoothstep(relief.baseFrom * size, relief.baseTo * size, dCore) * inland;
+      let land = base + rough * amplitude;
       // Fall to the shoreline over the last stretch of coast.
       land = lerp(land, 1.5, smoothstep(-220, -15, coast));
 
@@ -365,7 +385,7 @@ export function segmentDistance(px: number, py: number, a: Point, b: Point): num
 const LANDFALL = 120;
 
 /** The id of the island whose land a point stands on. */
-function landIdAt(layout: TerrainLayout, noise: Noise2D, p: Point): number {
+function landIdAt(layout: TerrainLayout, noise: CoastNoise, p: Point): number {
   return (layout.islands[islandAt(layout.islands, layout.size, noise, p.x, p.y)] as Island).id;
 }
 
@@ -375,7 +395,7 @@ function landIdAt(layout: TerrainLayout, noise: Noise2D, p: Point): number {
  * bridges nothing, and one that reaches a third island is some other pair's
  * crossing, not this one's.
  */
-function joins(layout: TerrainLayout, noise: Noise2D, a: Island, b: Island, chord: { from: Point; to: Point }): boolean {
+function joins(layout: TerrainLayout, noise: CoastNoise, a: Island, b: Island, chord: { from: Point; to: Point }): boolean {
   const from = landIdAt(layout, noise, chord.from);
   const to = landIdAt(layout, noise, chord.to);
   return (from === a.id && to === b.id) || (from === b.id && to === a.id);
@@ -385,7 +405,7 @@ function joins(layout: TerrainLayout, noise: Noise2D, a: Island, b: Island, chor
  * Shore-to-shore crossings between neighbouring islands, along the line between
  * their sites. Only pairs whose cells touch (no third cell in between) qualify.
  */
-export function findCrossings(hf: Heightfield, layout: TerrainLayout, noise: Noise2D): Crossing[] {
+export function findCrossings(hf: Heightfield, layout: TerrainLayout, noise: CoastNoise): Crossing[] {
   const out: Crossing[] = [];
   const islands = layout.islands;
   for (let i = 0; i < islands.length; i++) {

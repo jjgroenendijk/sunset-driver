@@ -48,6 +48,7 @@ function hillWorld(roads: RoadCurve[], height: (x: number, y: number) => number)
   return {
     seed: 31,
     size: SIZE,
+    archetype: 'archipelago',
     core: { x: 0, y: 0 },
     terrain: hf.toData(),
     water: {
