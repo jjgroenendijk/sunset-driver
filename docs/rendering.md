@@ -95,9 +95,10 @@ are the design.
   one part, a deck and parapets under each bridged stretch, and a portal at each mouth of a bore.
   `trimRun` first cuts every run at its curve's gaps, and each junction the chunk owns is drawn as
   one carriageway polygon fanned from the node, paved as its widest road, plus a piece of pavement
-  per corner in the batch of the wider of its two roads. The polygon's mouth vertices are the very
-  sections the lofts end on, so the two meet without a seam whichever chunk built each; its corners
-  stand on the carve, which is the junction's plane. The far ring draws neither junctions nor gaps.
+  per corner in the batch of the wider of its two roads. The rings come from `junction-shape.ts`,
+  which the carve levels as well. The polygon's mouth vertices are the very sections the lofts end
+  on, so the two meet without a seam whichever chunk built each; its corners stand on the carve,
+  which is the junction's plane. The far ring draws neither junctions nor gaps.
   The whole cross section stands over the bench rather than on it, the verge of a tier without a
   pavement included: a surface laid at exactly the height of the ground under it is one the ground
   shows through wherever the grid samples it. A vertex carries how far across the road it stands;
