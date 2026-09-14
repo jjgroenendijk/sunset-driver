@@ -109,7 +109,8 @@ are the design.
   arc `swingReaches` describes, and a thrown weapon or a launcher puts a `ProjectileState` into the
   record that `fly` carries one tick at a time, bouncing it off what it meets until its fuse burns
   through. The shooter's own body is left out of every cast, so nobody shoots their own door. Only
-  the player's vehicle can be hit until the traffic of spec section 13.1 lands.
+  the player's vehicle can be hit: a cast that meets a traffic body stops there as if it met the
+  ground, until #256 lands.
 - Gunfire damages a vehicle through `damageVehicle` in `damage.ts`, which is the dent, the integrity
   and the fire roll; `hitVehicle` is the same rule with the severity read off the speed a crash
   lost, and `disableEngine` is what the Barrett M82 does. A direction reaches those as the vehicle's
@@ -184,11 +185,31 @@ are the design.
   tick; the direction it was pushed says which panel took the blow. `spreadFire(vehicles, seed,
   tick)` is the rule for fire between vehicles: it reaches out every `SPREAD_PERIOD` ticks once a
   fire has burned for `SPREAD_DELAY`, and each vehicle in reach takes one roll however many fires
-  reach it, so the answer does not depend on the order of the list. Only the player's vehicle exists
-  today, so nothing calls it until the traffic of spec section 13.1 lands.
+  reach it, so the answer does not depend on the order of the list. Nothing calls it until #256
+  gives the promoted traffic its damage.
 - `WheelState.skid` is the one definition of a sliding tyre: the body is going across its own axle
   faster than `SKID_SLIP`, whether that came from the handbrake, a corner or a spin.
   `src/render/skid.ts` is what draws it.
 - The gradient needs no rule of its own. The chassis is a rigid body, so a climb has gravity to
   fight and a descent has it behind; adding a slope term on top of that would count it twice.
-
+- `src/sim/traffic.ts` is the ambient traffic of spec sections 5.3 and 13.1. `AmbientTraffic`
+  places the vehicles once for a world: per directed edge, the tier's `TierSpec.density` thinned by
+  `ZONE_TRAFFIC` and the district's density, in a lane on the right of the carriageway that
+  `laneOffset` divides as `road-section.ts` paints it. Each vehicle drives the closed tour
+  `traffic-tour.ts` walks for it, at `CRUISE` of the speed limit of each edge. Every vehicle on one
+  edge drives at the same speed, so none passes through the one ahead; they do meet at junctions,
+  because no vehicle reads another.
+- Every leg of a tour takes a whole number of ticks. That is why `cursorAt` (evaluated) and
+  `advance` (stepped) agree exactly rather than to a rounding, and why `test/traffic.test.ts` and
+  `test/sim-traffic.test.ts` can compare them with `toEqual`. A pose is read `SMOOTH` metres behind
+  and ahead of the vehicle and stands between the two readings, which is how a vehicle rounds a
+  corner. `poseAt` takes a fractional tick, which is what the renderer draws between two ticks.
+- `src/sim/traffic-bodies.ts` is the Rapier half. Inside the box of ground tiles, each vehicle is a
+  kinematic body aimed at its pose on the next tick. A vehicle entering the box is evaluated on that
+  tick and stepped after it. The player touches a vehicle when `footprintsTouch` finds their car or
+  their capsule within `TOUCH_MARGIN` of it. The touched vehicle leaves its tour for good: its
+  record goes into `SimState.traffic.promoted`, ascending by id, and it becomes a dynamic box with
+  its speed. A touch is a 2D box test and not a Rapier contact: Rapier makes no contact between
+  two kinematic bodies by default, and the player's capsule is one.
+- The ground of the game hands the physics the traffic as `Ground.traffic`. A test that is not about
+  traffic leaves it out. `test/traffic-grid.ts` is a grid of every tier for the tests that need it.

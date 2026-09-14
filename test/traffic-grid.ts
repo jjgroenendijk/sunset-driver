@@ -1,6 +1,8 @@
+import type { Ground } from '../src/sim/physics.ts';
 import { AmbientTraffic, type TrafficRoads } from '../src/sim/traffic.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
 import type { Point, RoadCurve, RoadTier } from '../src/world/types.ts';
+import { DRY } from './helpers.ts';
 
 /**
  * A made-up road network the traffic tests drive on: five roads each way, 120 m
@@ -47,4 +49,9 @@ export function gridTrafficRoads(busyAt?: (x: number, y: number) => number): Tra
 /** The grid's traffic for a seed. */
 export function gridTraffic(seed: number): AmbientTraffic {
   return new AmbientTraffic(seed, gridTrafficRoads());
+}
+
+/** A ground with the grid's traffic on it. */
+export function gridGround(traffic: AmbientTraffic): Ground {
+  return { heightAt: gridHeight, surfaceAt: () => 'asphalt', seaLevel: DRY, traffic };
 }

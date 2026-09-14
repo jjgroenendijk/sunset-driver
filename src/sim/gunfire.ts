@@ -67,8 +67,9 @@ export class Gunfire {
    * Nothing here decides whether the weapon fires; `stepWeapons` does, and it
    * also raises the heat a shot is worth (spec section 14).
    *
-   * Only the player's vehicle can be hit today. The pedestrians and the police
-   * of spec sections 13.1 and 14 are what the rays will find after them.
+   * Only the player's vehicle can be hit today: a ray that meets a traffic body
+   * stops there (#256). The pedestrians and the police of spec sections 13.1
+   * and 14 are what the rays will find after them.
    */
   step(state: SimState, input: InputFrame, target: ShotTarget): void {
     const shot = stepWeapons(state.loadout, input, state.player, state.seed, state.tick);

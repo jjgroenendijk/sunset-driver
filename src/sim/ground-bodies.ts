@@ -11,6 +11,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { PARAPET_HEIGHT, type DeckSpan } from '../world/decks.ts';
 import type { Surface } from '../world/surface.ts';
 import type { Place } from './on-foot.ts';
+import type { AmbientTraffic } from './traffic.ts';
 
 /** Metres each way of one tile of ground the physics holds. */
 export const PHYSICS_TILE = 50;
@@ -47,6 +48,11 @@ export interface Ground {
    * an arrest puts the player back. A test that needs none leaves them out.
    */
   stations?: readonly Place[];
+  /**
+   * The ambient traffic of the roads (spec section 13.1). A test that is not
+   * about traffic leaves it out, and nothing drives past.
+   */
+  traffic?: AmbientTraffic;
 }
 
 
