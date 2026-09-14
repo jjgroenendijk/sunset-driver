@@ -161,9 +161,7 @@ export class WorldScene {
     this.lampLights = new LampLights(this.scene);
 
     this.character = new CharacterModel(appearance);
-    this.character.group.traverse((object) => {
-      object.castShadow = true;
-    });
+    this.shadeCharacter();
     // The player starts behind the wheel, so the character is built but not
     // drawn; spec section 11.5 is what lets them get out again.
     this.character.group.visible = false;
@@ -203,6 +201,18 @@ export class WorldScene {
   damage(v: VehicleState, seed: number, tick: number): void {
     this.fx.update(v, this.vehicle.vehicle, seed, tick);
     this.skid.update(v, this.vehicle.vehicle, this.height);
+  }
+
+  /** Build the player's model for a look, such as the one a loaded save carries. Every part casts a shadow. */
+  dress(appearance: CharacterAppearance): void {
+    this.character.set(appearance);
+    this.shadeCharacter();
+  }
+
+  private shadeCharacter(): void {
+    this.character.group.traverse((object) => {
+      object.castShadow = true;
+    });
   }
 
   /** Forget the smoke and the marks: a vehicle put down somewhere else, or a loaded save. */
