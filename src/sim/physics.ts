@@ -35,7 +35,6 @@
  * the ground.
  */
 import RAPIER from '@dimforge/rapier3d-compat';
-import type { Surface } from '../world/surface.ts';
 import { TICK_RATE } from './clock.ts';
 import { blastDamageAt, BLAST_LIFT, CRASH_DAMAGE, hitVehicle, tickFire } from './damage.ts';
 import { rotate, unrotate } from './frame.ts';
@@ -68,11 +67,9 @@ import type { SimState } from './simulation.ts';
 import { createTheft, isLocked, stepTheft, THEFT_HEAT, type TheftState } from './theft.ts';
 import {
   createVehicleState,
-  gripOf,
   headingOf,
   rideHeight,
   specOf,
-  type HullSpec,
   type VehicleClass,
   type VehicleSpec,
   type VehicleState,
@@ -80,45 +77,10 @@ import {
   type WheelState,
 } from './vehicle.ts';
 
-
 export { PHYSICS_CELL, PHYSICS_RADIUS, PHYSICS_TILE, type Ground } from './ground-bodies.ts';
 
-/** Metres per second squared. Earth's, so a car falls the way a car falls. */
+/** Metres per second squared. Earth's, so a player falls the way a person falls. */
 const GRAVITY = 9.81;
-
-/**
- * Metres per second under which a car with no throttle holds its brakes. Below
- * a walking pace a parked car should stay parked, on a hill as much as on the
- * flat.
- */
-const PARKING_SPEED = 1.5;
-
-/**
- * Points the buoyancy of a hull is taken at: one at each quarter of it, so a
- * boat pitches and rolls with the forces on it rather than bobbing as a point.
- */
-const LIFT_POINTS = 4;
-
-/**
- * How hard the rider damps the roll they are correcting, as a fraction of the
- * spring they correct it with.
- *
- * Both numbers are bounded by the tick, not by what a rider could do. The
- * correction is integrated once a step, so a damping of more than about half
- * the roll inertia per step overshoots and the bike shakes itself over instead
- * of settling. A motorcycle's roll inertia is about 15 kg m², so this and
- * `VehicleSpec.balance` are together a spring that settles in a third of a
- * second and is still stiffer than the gravity it holds the bike up against.
- */
-const BALANCE_DAMPING = 0.1;
-
-/**
- * Metres per second the vehicle has to be sliding across its own axle before a
- * tyre counts as skidding (spec section 11.3). It is one rule for every way of
- * getting there: a handbrake turn, a corner taken too fast and a spin all push
- * the vehicle sideways, and a tyre that is being pushed sideways is a tyre
- * leaving a mark. Below this the tyre is scrubbing, not sliding.
- */
 
 /** Load Rapier's WebAssembly. Call once before the first {@link SimPhysics}. */
 export async function initPhysics(): Promise<void> {
@@ -143,8 +105,8 @@ interface Walker {
 /**
  * The physics of a session: the ground under the player and the vehicle on it.
  *
- * Build one, step it once per simulation tick, and throw it away with the
-
+ * Build one, step it once per simulation tick, and throw it away with
+ * {@link SimPhysics.dispose}. Every step writes what came out of the world
  * into the {@link SimState} it is given.
  */
 export class SimPhysics {
