@@ -10,7 +10,8 @@
  *
  * The traffic is evaluated where the frame stands in time, between two ticks,
  * the way `smooth.ts` draws the player. A vehicle the player has touched is
- * drawn from its record instead, since it no longer drives its tour.
+ * drawn from its record instead, since it no longer drives its tour. The
+ * traffic lights the vehicles stop at are drawn with them (`signals.ts`).
  */
 import {
   BackSide,
@@ -32,6 +33,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { SimState } from '../sim/simulation.ts';
 import { AMBIENT_CLASSES, promotedOf, type AmbientPose, type AmbientTraffic } from '../sim/traffic.ts';
 import { rideHeight, specOf, type VehicleClass, type VehicleSpec } from '../sim/vehicle.ts';
+import { SignalView } from './signals.ts';
 import { OUTLINE, VEHICLE_OUTLINE_WIDTH } from './vehicle.ts';
 import { TYRE, vehicleBoxes, type VehicleBox } from './vehicle-mesh.ts';
 
@@ -83,6 +85,8 @@ export function trafficParts(spec: VehicleSpec): TrafficParts {
 
 export class TrafficView {
   readonly group = new Group();
+  /** The traffic lights, or undefined where the roads came without them. */
+  readonly signals: SignalView | undefined;
   private readonly traffic: AmbientTraffic;
   private readonly classes: ClassMeshes[] = [];
   private readonly materials: Material[] = [];
@@ -114,6 +118,8 @@ export class TrafficView {
       this.classes.push(meshes);
       this.group.add(meshes.paint, meshes.trim, meshes.rim);
     }
+    this.signals = traffic.signals === undefined ? undefined : new SignalView(traffic.signals);
+    if (this.signals !== undefined) this.group.add(this.signals.group);
   }
 
   /** How many vehicles the last frame drew, promoted ones included. */
@@ -163,6 +169,7 @@ export class TrafficView {
       }
       if (count > 0 && meshes.paint.instanceColor !== null) meshes.paint.instanceColor.needsUpdate = true;
     }
+    this.signals?.update(time, x, y);
   }
 
   dispose(): void {
@@ -173,6 +180,7 @@ export class TrafficView {
       }
     }
     for (const material of this.materials) material.dispose();
+    this.signals?.dispose();
     this.group.clear();
   }
 
