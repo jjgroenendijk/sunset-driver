@@ -14,7 +14,7 @@
  * and `landuse-preview.ts` prints them beside the picture.
  */
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
-import type { WorldDescription, Zone } from '../src/world/types.ts';
+import type { HeightfieldData, WorldDescription, Zone } from '../src/world/types.ts';
 import {
   COVER_APRON,
   COVER_CORRIDOR,
@@ -60,6 +60,18 @@ export interface ZoneMetrics {
   /** Buildings and parcels the two counts above come from. */
   buildings: number;
   parcels: number;
+}
+
+/**
+ * The share of the whole map that is dry land: samples of the natural terrain
+ * at or above sea level, before the roads carve it. The layout above measures
+ * how a city uses its ground; this measures how much ground there is.
+ */
+export function landFraction(terrain: HeightfieldData, seaLevel: number): number {
+  const heights = terrain.heights;
+  let dry = 0;
+  for (let i = 0; i < heights.length; i++) if ((heights[i] as number) >= seaLevel) dry++;
+  return dry / heights.length;
 }
 
 /** One seed's layout, zone by zone. */

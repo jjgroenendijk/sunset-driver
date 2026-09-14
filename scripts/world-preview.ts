@@ -306,7 +306,7 @@ if (shown.includes('arterial')) {
 writeFileSync(out, encodePng(n, n, rgb));
 const perTier = TIER_ORDER.map((t) => `${t} ${world.roads.filter((r) => r.tier === t).length}`).join(', ');
 console.log(
-  `seed ${seedText} size ${world.size} m, ${n}x${n}, ${world.water.islands.length} islands, ${world.water.crossings.length} crossings, ` +
+  `seed ${seedText} size ${world.size} m, ${n}x${n}, ${world.archetype}, ${world.water.islands.length} islands, ${world.water.crossings.length} crossings, ` +
     `generated in ${genMs.toFixed(0)} ms, tensor field in ${fieldMs.toFixed(0)} ms → ${out}`,
 );
 console.log(`  roads: ${perTier}`);

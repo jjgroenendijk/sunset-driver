@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { landUseLayers } from '../scripts/land-use.ts';
-import { ZONES, measureLayout, type ZoneMetrics } from '../scripts/layout-metrics.ts';
+import { ZONES, landFraction, measureLayout, type ZoneMetrics } from '../scripts/layout-metrics.ts';
+import { ARCHETYPES, type TerrainArchetype } from '../src/world/archetype.ts';
 import type { WorldDescription, Zone } from '../src/world/types.ts';
-import { LAYOUT_BANDS, type LayoutBand, type ZoneBands } from './layout-bands.ts';
+import { LAND_FRACTION, LAYOUT_BANDS, type LayoutBand, type ZoneBands } from './layout-bands.ts';
 import { FOOTPRINT_COUNT, MIN_ZONE_HECTARES, MIN_ZONE_PARCELS } from './seed-limits.ts';
 import { seeds, worlds, parcelsOf, buildingsOf, graphOf } from './seed-fixture.ts';
 
@@ -22,6 +23,21 @@ import { seeds, worlds, parcelsOf, buildingsOf, graphOf } from './seed-fixture.t
  */
 export function layoutChecks(): void {
   describe('layout', () => {
+    it('leaves a share of the map as dry land inside the band and inside its archetype\'s target', () => {
+      const complaints: string[] = [];
+      for (const seed of seeds) {
+        const world = worlds.get(seed) as WorldDescription;
+        const fraction = landFraction(world.terrain, world.water.seaLevel);
+        const target = (ARCHETYPES.find((a) => a.name === world.archetype) as TerrainArchetype).landFraction;
+        for (const [what, band] of [['the band', LAND_FRACTION], [`the ${world.archetype} target`, target]] as const) {
+          if (fraction < band.min || fraction > band.max) {
+            complaints.push(`seed ${seed}: ${(fraction * 100).toFixed(1)} % land, outside ${what} of ${band.min} to ${band.max}`);
+          }
+        }
+      }
+      expect(complaints.join('\n')).toBe('');
+    });
+
     it('gives each zone a share of road, of building and a parcel size inside its band', () => {
       const complaints: string[] = [];
       for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {

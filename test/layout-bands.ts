@@ -22,6 +22,14 @@ export interface ZoneBands {
 }
 
 /**
+ * The share of the whole map that is dry land, whatever the archetype (spec
+ * section 7.2). Wide on purpose: the archipelago alone gave 63 to 74 % over 80
+ * seeds, and the band narrows once the other archetypes exist and the contact
+ * sheet of `scripts/terrain-sheet.ts` shows what they produce.
+ */
+export const LAND_FRACTION: LayoutBand = { min: 0.5, max: 0.9 };
+
+/**
  * How dense each zone is (spec section 8.2), as a band rather than a number,
  * because a seed is allowed to vary.
  *
