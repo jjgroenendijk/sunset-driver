@@ -327,3 +327,8 @@ are the design.
   it, so one mesh draws a saloon in every paint. A class with nothing in view is hidden, so it costs
   no draw. The traffic is evaluated at `tick - 1 + alpha`, the moment `smooth.ts` draws the player
   at, and a promoted vehicle is drawn from its record.
+- `src/render/signals.ts` draws the traffic lights, and `TrafficView` owns it, so the game and the
+  render preview draw them with no wiring of their own. Every head in view is one instance of the
+  frame and three of the lens mesh, so the lights cost two draws. The lens colour is set each frame
+  from `TrafficSignals.light`. The lenses stand proud of the housing, because the camera sees a head
+  from above and would not see a lens set flush in its face.
