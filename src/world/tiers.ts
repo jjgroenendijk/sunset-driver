@@ -47,6 +47,12 @@ export interface TierSpec {
    */
   maxGrade: number;
   traffic: TierTraffic;
+  /**
+   * Ambient vehicles per kilometre of lane in each direction, in a district as
+   * busy as the core (spec sections 6.2, 13.1). `src/sim/traffic.ts` thins it
+   * by the district a road runs through.
+   */
+  density: number;
 }
 
 export const TIERS: Record<RoadTier, TierSpec> = {
@@ -59,6 +65,7 @@ export const TIERS: Record<RoadTier, TierSpec> = {
     speedLimit: kmh(110),
     maxGrade: 0.06,
     traffic: { trucks: true, buses: true, trams: false, pedestrians: false },
+    density: 14,
   },
   // The main urban through-routes: buses, the tram lane, dense traffic.
   arterial: {
@@ -69,6 +76,7 @@ export const TIERS: Record<RoadTier, TierSpec> = {
     speedLimit: kmh(60),
     maxGrade: 0.08,
     traffic: { trucks: true, buses: true, trams: true, pedestrians: true },
+    density: 20,
   },
   // Residential and commercial, one lane each way with parking on both sides.
   street: {
@@ -79,6 +87,7 @@ export const TIERS: Record<RoadTier, TierSpec> = {
     speedLimit: kmh(40),
     maxGrade: 0.18,
     traffic: { trucks: false, buses: false, trams: false, pedestrians: true },
+    density: 12,
   },
   // Narrow and unmarked: bins, loading bays, shortcuts.
   alley: {
@@ -89,6 +98,7 @@ export const TIERS: Record<RoadTier, TierSpec> = {
     speedLimit: kmh(20),
     maxGrade: 0.22,
     traffic: { trucks: false, buses: false, trams: false, pedestrians: true },
+    density: 5,
   },
   // Unpaved, in the outskirts and the wilderness. Farm and site traffic uses it.
   dirt: {
@@ -99,6 +109,7 @@ export const TIERS: Record<RoadTier, TierSpec> = {
     speedLimit: kmh(40),
     maxGrade: 0.2,
     traffic: { trucks: true, buses: false, trams: false, pedestrians: true },
+    density: 3,
   },
 };
 
