@@ -14,7 +14,9 @@ export class Keyboard {
 
   constructor(target: Window) {
     target.addEventListener('keydown', (e) => {
-      if (e.repeat) return;
+      // A key typed into a text box is text, not a control: a seed or a save
+      // being typed must not drive the car, and must keep its spaces and arrows.
+      if (e.repeat || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       this.down.add(e.code);
       if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
     });
