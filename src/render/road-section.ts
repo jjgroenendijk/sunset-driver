@@ -130,8 +130,8 @@ export function vergeRise(tier: RoadTier): number {
 /**
  * The lines painted on a tier (spec section 6.2). An alley and a dirt road are
  * unmarked. Everything else takes a centre line, one dashed divider between each
- * pair of lanes, and — where the tier runs fast enough to need them — a solid
- * edge line inside each kerb.
+ * pair of lanes, a solid line along each parking strip, and — where the tier
+ * runs fast enough to need them — a solid edge line inside each kerb.
  */
 export function markingsOf(tier: RoadTier): Marking[] {
   const spec = TIERS[tier];
@@ -152,6 +152,13 @@ export function markingsOf(tier: RoadTier): Marking[] {
     out.push(
       { across: -i * lane, dash: DASH, gap: DASH_GAP, colour: WHITE },
       { across: i * lane, dash: DASH, gap: DASH_GAP, colour: WHITE },
+    );
+  }
+  if (spec.parking > 0) {
+    // The line between the lane and the parking strip at each kerb.
+    out.push(
+      { across: -(half - spec.parking), dash: 0, gap: 0, colour: WHITE },
+      { across: half - spec.parking, dash: 0, gap: 0, colour: WHITE },
     );
   }
   if (spec.lanes > 1) {
