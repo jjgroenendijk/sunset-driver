@@ -1,6 +1,6 @@
 import { normaliseAppearance, type CharacterAppearance } from '../sim/character.ts';
 import type { WorldDescription } from '../world/types.ts';
-import { nextIndex } from './menu-nav.ts';
+import { MenuPages } from './menu-pages.ts';
 import { buildControlsPage } from './title-controls.ts';
 import { button, menuList, page } from './title-parts.ts';
 import { NewGamePage } from './title-setup.ts';
@@ -42,10 +42,7 @@ const PARENT: Record<PageName, PageName | null> = {
 export class TitleScreen {
   private readonly root: HTMLElement;
   private readonly setup: NewGamePage;
-  private readonly pages: Record<PageName, HTMLElement>;
-  private current: PageName = 'main';
-  /** The item each page was left from, which takes the focus again when the player comes back up. */
-  private readonly lastFocus: Partial<Record<PageName, HTMLElement>> = {};
+  private readonly pages: MenuPages<PageName>;
   private resolve: ((choice: TitleChoice) => void) | null = null;
 
   constructor(parent: HTMLElement, initial: TitleChoice, onPreview: (appearance: CharacterAppearance) => void) {
@@ -59,12 +56,13 @@ export class TitleScreen {
       back: () => this.back(),
       start: () => this.finish(),
     });
-    this.pages = {
+    const pages: Record<PageName, HTMLElement> = {
       main: this.buildMain(),
       setup: this.setup.root,
       settings: this.buildSettings(),
       controls: buildControlsPage(() => this.back()),
     };
+    this.pages = new MenuPages(this.root, pages, PARENT, 'main');
 
     const brand = document.createElement('header');
     brand.className = 'title-brand';
@@ -79,8 +77,7 @@ export class TitleScreen {
       '<span><kbd>↑</kbd><kbd>↓</kbd> Choose</span><span><kbd>Enter</kbd> Confirm</span>' +
       '<span><kbd>Esc</kbd> Back</span>';
 
-    this.root.append(brand, ...PAGE_NAMES.map((name) => this.pages[name]), hint);
-    this.root.addEventListener('pointerover', this.onPointer);
+    this.root.append(brand, ...PAGE_NAMES.map((name) => pages[name]), hint);
     window.addEventListener('keydown', this.onKey);
     parent.append(this.root);
 
@@ -137,55 +134,16 @@ export class TitleScreen {
     return settings;
   }
 
-  /**
-   * Show a page. Going back up puts the focus on the item the player left that
-   * page from, as a game menu does; going down starts on the page's own first choice.
-   */
   private show(name: PageName): void {
-    const leaving = this.pages[this.current];
-    if (leaving.contains(document.activeElement)) this.lastFocus[this.current] = document.activeElement as HTMLElement;
-    const up = PARENT[this.current] === name;
-    this.current = name;
-    this.root.dataset.page = name;
-    for (const key of PAGE_NAMES) this.pages[key].hidden = key !== name;
-    const first = (up ? this.lastFocus[name] : null) ?? this.pages[name].querySelector<HTMLElement>('[data-autofocus]');
-    (first ?? this.items()[0])?.focus({ preventScroll: true });
+    this.pages.show(name);
   }
 
-  /** Go to the page above the one on screen, where there is one. */
   private back(): void {
-    const parent = PARENT[this.current];
-    if (parent) this.show(parent);
-  }
-
-  /** The items of the page on screen the arrow keys walk, in reading order. */
-  private items(): HTMLElement[] {
-    return [...this.pages[this.current].querySelectorAll<HTMLElement>('[data-nav]')].filter(
-      (el) => el.tabIndex >= 0 && !el.hidden && el.offsetParent !== null && !(el as HTMLButtonElement).disabled,
-    );
+    this.pages.back();
   }
 
   private readonly onKey = (event: KeyboardEvent): void => {
-    if (event.key === 'Escape' && PARENT[this.current]) {
-      event.preventDefault();
-      this.back();
-      return;
-    }
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-    event.preventDefault();
-    const items = this.items();
-    const at = items.indexOf(document.activeElement as HTMLElement);
-    items[nextIndex(at, event.key === 'ArrowDown' ? 1 : -1, items.length)]?.focus();
-  };
-
-  /** The pointer takes the focus with it, so there is only ever one highlight. */
-  private readonly onPointer = (event: PointerEvent): void => {
-    if (event.pointerType !== 'mouse') return;
-    const item = (event.target as Element).closest<HTMLElement>('[data-nav]');
-    // A text box is left alone: moving over it must not take the caret from where the player types.
-    if (!item || item instanceof HTMLInputElement || item === document.activeElement) return;
-    if (document.activeElement instanceof HTMLInputElement) return;
-    item.focus({ preventScroll: true });
+    this.pages.key(event);
   };
 
   private finish(): void {
