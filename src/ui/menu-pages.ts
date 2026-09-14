@@ -59,6 +59,8 @@ export class MenuPages<Name extends string> {
       return true;
     }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return false;
+    // In a text box of several lines the arrows move the caret.
+    if (document.activeElement instanceof HTMLTextAreaElement) return false;
     event.preventDefault();
     const items = this.items();
     const at = items.indexOf(document.activeElement as HTMLElement);

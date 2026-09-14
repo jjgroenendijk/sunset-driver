@@ -1,5 +1,5 @@
 import { Raycaster, Vector2 } from 'three';
-import { readSeedFromLocation, seedFromString, writeSeedToHash } from './core/seed.ts';
+import { randomSeedString, readSeedFromLocation, seedFromString, writeSeedToHash } from './core/seed.ts';
 import { BASE_DISTANCE, FollowCamera } from './render/camera.ts';
 import { PostChain } from './render/post.ts';
 import { frameBudgetFrom, QualityMonitor, type QualityChange } from './render/quality.ts';
@@ -8,10 +8,11 @@ import { createTitleScene } from './render/scene.ts';
 import { RenderSmoother } from './render/smooth.ts';
 import { TrafficView } from './render/traffic.ts';
 import { WorldScene } from './render/world-scene.ts';
-import { FixedStepClock } from './sim/clock.ts';
+import { FixedStepClock, gameTime } from './sim/clock.ts';
 import { DEFAULT_APPEARANCE } from './sim/character.ts';
 import { initPhysics, SimPhysics, type Ground } from './sim/physics.ts';
 import { EMPTY_INPUT } from './sim/input.ts';
+import { createSave, restoreSimState, saveFromText, saveToText, type SaveFile } from './sim/save.ts';
 import { createSimState, stepSim, type SimState } from './sim/simulation.ts';
 import { AmbientTraffic, trafficRoadsOf } from './sim/traffic.ts';
 import { HotwireBar } from './ui/hotwire.ts';
@@ -20,9 +21,11 @@ import { MapArt } from './ui/map-draw.ts';
 import { MapPois } from './ui/map.ts';
 import { MAP_KEY, MapScreen } from './ui/map-screen.ts';
 import { Minimap, MINIMAP_NORTH_KEY } from './ui/minimap.ts';
+import { PAUSE_KEY, PauseMenu } from './ui/pause.ts';
+import { SaveSlots, setPendingStart, takePendingStart } from './ui/saves.ts';
 import { FREE_CAMERA_KEY, FreeCameraControls } from './ui/free-camera.ts';
 import { Keyboard } from './ui/keyboard.ts';
-import { TitleScreen } from './ui/title.ts';
+import { TitleScreen, type TitleChoice } from './ui/title.ts';
 import { PICKER_KEY, VehiclePicker } from './ui/vehicle-picker.ts';
 import { WEAPON_PICKER_KEY, WeaponPicker } from './ui/weapon-picker.ts';
 import { dropWeapon } from './sim/pickup.ts';
@@ -68,6 +71,8 @@ interface Session {
   weapons: WeaponPicker;
   /** The ambient traffic of spec section 13.1, drawn. */
   traffic: TrafficView;
+  /** The pause menu of spec section 12. While it is open the simulation does not step. */
+  pause: PauseMenu;
 }
 
 /**
@@ -154,7 +159,10 @@ async function boot(): Promise<void> {
       // is stepped with an empty frame: `W` must not also drive the car left
       // behind. The simulation itself keeps running either way.
       const flying = free.detached;
-      const steps = clock.advance(elapsed);
+      // A paused session takes no steps and keeps its place between two ticks,
+      // so it resumes on the frame it stopped on. The city is still drawn.
+      const paused = session.pause.open;
+      const steps = paused ? 0 : clock.advance(elapsed);
       const respawned = session.state.respawn;
       for (let i = 0; i < steps; i++) {
         // The pose the step starts from is kept before it is taken, so the
@@ -230,7 +238,7 @@ async function boot(): Promise<void> {
       // 9.2. It is measured over the whole frame, drawing included, so it is
       // the frame before this one that is being judged. A frame drawn with the
       // free camera is never a performance measurement, so it is not counted.
-      const change = flying ? undefined : session.quality.sample(elapsed);
+      const change = flying || paused ? undefined : session.quality.sample(elapsed);
       if (change !== undefined) applyQuality(session, change);
       session.hud.update(
         session.state,
@@ -264,13 +272,21 @@ async function boot(): Promise<void> {
   };
   requestAnimationFrame(frame);
 
-  const title = new TitleScreen(
-    document.body,
-    { seed: readSeedFromLocation(location.hash), character: DEFAULT_APPEARANCE, world: null },
-    (appearance) => preview.character.set(appearance),
-  );
-  const choice = await title.wait();
-  title.destroy();
+  // A page loaded by an import of another seed's save, or by Regenerate, goes
+  // straight into its seed rather than through the title screen.
+  const pending = takePendingStart(sessionStorage);
+  let choice: TitleChoice;
+  if (pending) {
+    choice = { seed: pending.seed, character: pending.character, world: null };
+  } else {
+    const title = new TitleScreen(
+      document.body,
+      { seed: readSeedFromLocation(location.hash), character: DEFAULT_APPEARANCE, world: null },
+      (appearance) => preview.character.set(appearance),
+    );
+    choice = await title.wait();
+    title.destroy();
+  }
 
   history.replaceState(null, '', writeSeedToHash(location.hash, choice.seed));
 
@@ -306,11 +322,31 @@ async function boot(): Promise<void> {
     traffic,
   };
   const start = nearestRoadPlace(description, state.player.x, state.player.y);
-  const physics = new SimPhysics(ground, state);
+  let physics = new SimPhysics(ground, state);
   physics.spawn(state, start?.x ?? state.player.x, start?.y ?? state.player.y, start?.heading ?? 0);
   // The safehouses of spec section 16.3 have not landed, so a death comes back
   // where the session started (spec section 11.7).
   state.safehouse = { x: state.player.x, y: state.player.y, heading: state.player.heading };
+
+  // The saves of spec section 16.4, one per seed in this browser. A save is
+  // loaded into the record in place, since everything below holds the record,
+  // and the physics is built afresh from it: the bodies of the session before
+  // the load, the traffic's among them, have nothing to do with the save.
+  const slots = new SaveSlots(localStorage);
+  const loadSave = (save: SaveFile): void => {
+    restoreSimState(state, save);
+    physics.dispose();
+    physics = new SimPhysics(ground, state);
+    if (session) session.physics = physics;
+  };
+  if (pending?.load) {
+    try {
+      const save = slots.read(choice.seed);
+      if (save) loadSave(save);
+    } catch (error) {
+      console.warn('The save could not be loaded; a new session starts instead.', error);
+    }
+  }
 
   try {
     await world.settle(state.player.x, state.player.y, 1);
@@ -353,6 +389,7 @@ async function boot(): Promise<void> {
     // skid marks belongs to it, and it is drawn where it lands rather than
     // slid there from where the last one stood.
     world.resetDamage(state.tick);
+    world.dress(state.character);
     smooth.reset();
   });
   // The debug picker of spec section 11.6: every weapon of the arsenal, loaded
@@ -385,14 +422,63 @@ async function boot(): Promise<void> {
   const map = new MapScreen(document.body, art, (place) => {
     state.waypoint = place;
   });
+  const pause = new PauseMenu(document.body, choice.seed, {
+    save: () => {
+      slots.write(createSave(choice.seed, state));
+      const time = gameTime(state.tick);
+      return `Saved on day ${time.day + 1} at ${clockText(time.hour, time.minute)}.`;
+    },
+    canLoad: () => slots.has(choice.seed),
+    load: () => {
+      const save = slots.read(choice.seed);
+      if (!save) throw new Error('This seed has no save yet.');
+      loadInto(save);
+      return 'Loaded.';
+    },
+    exportText: () => saveToText(createSave(choice.seed, state)),
+    importText: (text) => {
+      const save = saveFromText(text);
+      if (save.state.seed === state.seed) {
+        loadInto(save);
+        return 'Loaded.';
+      }
+      // Another seed is another world, and a world is built from a clean page.
+      // The save is kept as that seed's save, and the page loads it.
+      slots.write(save);
+      restart(save.seed, save.state.character, true);
+      return 'Opening the city of the save…';
+    },
+    regenerate: () => restart(randomSeedString(), state.character, false),
+    quit: () => location.reload(),
+  });
+  // A load moves the player across the map and puts a different vehicle under
+  // them, so the frame snaps to it rather than sliding there.
+  const loadInto = (save: SaveFile): void => {
+    loadSave(save);
+    world.resetDamage(state.tick);
+    world.dress(state.character);
+    smooth.reset();
+    camera.snap();
+    picker.select(state.vehicle.cls);
+  };
   // A click on the minimap sets a waypoint too, so a player driving does not
   // have to stop and open the full map to mark where they are going.
   window.addEventListener('pointerdown', (event) => {
-    if (map.open || !minimap.holds(event.clientX, event.clientY)) return;
+    if (pause.open || map.open || !minimap.holds(event.clientX, event.clientY)) return;
     state.waypoint = event.button === 2 ? null : minimap.pointAt(event.clientX, event.clientY);
   });
   window.addEventListener('keydown', (event) => {
+    // The open pause menu takes every key, so nothing behind it moves.
+    if (pause.open) {
+      pause.key(event);
+      return;
+    }
     if (event.repeat) return;
+    // Escape closes the map first, and opens the pause menu when nothing else is open.
+    if (event.code === PAUSE_KEY && !map.open) {
+      pause.show();
+      return;
+    }
     if (event.code === PICKER_KEY) picker.toggle();
     if (event.code === WEAPON_PICKER_KEY) weapons.toggle();
     // The debug triggers of spec section 11.7. Each writes the record between
@@ -426,9 +512,25 @@ async function boot(): Promise<void> {
     hotwire: new HotwireBar(document.body),
     smooth,
     weapons,
+    pause,
   };
   preview.dispose();
   last = performance.now();
+}
+
+/** `07:05` from an hour and a minute. */
+function clockText(hour: number, minute: number): string {
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+/**
+ * Load the page again straight into a seed (spec section 12): from its save,
+ * for an import of another seed's save, or afresh, for Regenerate.
+ */
+function restart(seed: string, character: SimState['character'], load: boolean): void {
+  setPendingStart(sessionStorage, { seed, character, load });
+  history.replaceState(null, '', writeSeedToHash(location.hash, seed));
+  location.reload();
 }
 
 /** A full-screen message over the canvas, until it is removed. */
