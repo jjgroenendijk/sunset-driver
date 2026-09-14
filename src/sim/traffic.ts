@@ -6,8 +6,9 @@
  * number of them from its tier's density and the district it runs through,
  * each in a lane on the right-hand side of the carriageway. Each vehicle then
  * drives the loop `traffic-tour.ts` walks for it, at the speed limit of the
- * road it is on. No vehicle reads another one, so the city's traffic never has
- * to be stepped as a whole.
+ * road it is on, and stops where a traffic light (`signals.ts`) is red. No
+ * vehicle reads another one, so the city's traffic never has to be stepped as
+ * a whole.
  *
  * Where a vehicle is can be asked two ways, and they agree exactly:
  * {@link AmbientTraffic.cursorAt} evaluates it at any tick on demand, and
@@ -22,10 +23,11 @@ import { rngFor, Subsystem, type Rng } from '../core/rng.ts';
 import { RoadBeds } from '../world/bed.ts';
 import { layoutZones, districtAt } from '../world/districts.ts';
 import { buildRoadGraph, type RoadEdge, type RoadGraph } from '../world/graph.ts';
-import { buildJunctions } from '../world/junctions.ts';
+import { buildJunctions, type JunctionMap } from '../world/junctions.ts';
 import { TIERS } from '../world/tiers.ts';
 import type { Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../world/types.ts';
 import { TICK_RATE } from './clock.ts';
+import { SIGNAL_CYCLE, TrafficSignals } from './signals.ts';
 import { legAt, timeTour, walkTour, type Permit, type Tour } from './traffic-tour.ts';
 import { specOf, type VehicleClass, type VehicleState } from './vehicle.ts';
 
@@ -93,6 +95,8 @@ export interface TrafficRoads {
   busyAt?(x: number, y: number): number;
   /** The height the road drives at, `t` along a segment of a curve that stands at `(x, y)`. */
   heightAt(curve: number, segment: number, t: number, x: number, y: number): number;
+  /** The junctions, which is where the traffic lights stand. No lights when left out. */
+  junctions?: JunctionMap;
 }
 
 /** One vehicle of the traffic: what it is and the loop it drives. */
@@ -107,10 +111,10 @@ export interface AmbientVehicle {
   tour: Tour;
 }
 
-/** Where on its tour a vehicle is: the leg, and the whole ticks it has driven of it. */
+/** Where on its tour a vehicle is: the step, and the whole ticks it has spent on it. */
 export interface TrafficCursor {
   id: number;
-  leg: number;
+  step: number;
   into: number;
 }
 
@@ -172,6 +176,8 @@ interface Sample {
 
 export class AmbientTraffic {
   readonly vehicles: readonly AmbientVehicle[];
+  /** The traffic lights the vehicles stop at; undefined when the roads came without junctions. */
+  readonly signals: TrafficSignals | undefined;
   private readonly roads: TrafficRoads;
   /** Cumulative metres at each point of each edge, in its direction of travel. */
   private readonly runs: (Float64Array | undefined)[] = [];
@@ -207,19 +213,26 @@ export class AmbientTraffic {
     this.ny = Math.max(1, Math.ceil((maxY - minY) / TRAFFIC_CELL) + 1);
     for (let i = 0; i < this.nx * this.ny; i++) this.cells.push([]);
 
+    const junctions = roads.junctions;
+    this.signals = junctions === undefined ? undefined : new TrafficSignals(seed, roads.roads, graph, junctions, roads.heightAt);
+    const busy = new Float64Array(graph.edges.length);
+    for (const edge of graph.edges) {
+      const mid = this.midpoint(edge);
+      busy[edge.id] = roads.busyAt?.(mid.x, mid.y) ?? 1;
+    }
     const vehicles: AmbientVehicle[] = [];
-    for (const edge of graph.edges) this.place(seed, edge, vehicles);
+    for (const edge of graph.edges) this.place(seed, edge, busy, vehicles);
     this.vehicles = vehicles;
   }
 
   /** Where a vehicle is on its tour at a tick, evaluated without stepping it there. */
-  cursorAt(id: number, tick: number, out: TrafficCursor = { id, leg: 0, into: 0 }): TrafficCursor {
+  cursorAt(id: number, tick: number, out: TrafficCursor = { id, step: 0, into: 0 }): TrafficCursor {
     const vehicle = this.vehicles[id] as AmbientVehicle;
     const tour = vehicle.tour;
     const at = (((tick + vehicle.phase) % tour.period) + tour.period) % tour.period;
     out.id = id;
-    out.leg = legAt(tour.startTick, at);
-    out.into = at - (tour.startTick[out.leg] as number);
+    out.step = legAt(tour.stepStart, at);
+    out.into = at - (tour.stepStart[out.step] as number);
     return out;
   }
 
@@ -227,14 +240,14 @@ export class AmbientTraffic {
   advance(cursor: TrafficCursor): void {
     const tour = (this.vehicles[cursor.id] as AmbientVehicle).tour;
     cursor.into += 1;
-    if (cursor.into < (tour.legTicks[cursor.leg] as number)) return;
+    if (cursor.into < (tour.stepTicks[cursor.step] as number)) return;
     cursor.into = 0;
-    cursor.leg = (cursor.leg + 1) % tour.edges.length;
+    cursor.step = (cursor.step + 1) % tour.stepTicks.length;
   }
 
   /** The pose a cursor stands at. */
   pose(cursor: TrafficCursor, out: AmbientPose): AmbientPose {
-    return this.poseOn(cursor.id, cursor.leg, cursor.into, out);
+    return this.poseOn(cursor.id, cursor.step, cursor.into, out);
   }
 
   /**
@@ -243,16 +256,17 @@ export class AmbientTraffic {
    * exactly the pose of the cursor there.
    */
   poseAt(id: number, tick: number, out: AmbientPose): AmbientPose {
-    const tour = (this.vehicles[id] as AmbientVehicle).tour;
     const vehicle = this.vehicles[id] as AmbientVehicle;
+    const tour = vehicle.tour;
     const at = (((tick + vehicle.phase) % tour.period) + tour.period) % tour.period;
-    const leg = legAt(tour.startTick, at);
-    return this.poseOn(id, leg, at - (tour.startTick[leg] as number), out);
+    const step = legAt(tour.stepStart, at);
+    return this.poseOn(id, step, at - (tour.stepStart[step] as number), out);
   }
 
   /** The edge a cursor is driving, which is what a caller skips a far vehicle by. */
   edgeOf(cursor: TrafficCursor): number {
-    return (this.vehicles[cursor.id] as AmbientVehicle).tour.edges[cursor.leg] as number;
+    const tour = (this.vehicles[cursor.id] as AmbientVehicle).tour;
+    return tour.edges[tour.stepLeg[cursor.step] as number] as number;
   }
 
   /** True when an edge, grown by the reach of its lanes, overlaps a box. */
@@ -286,19 +300,21 @@ export class AmbientTraffic {
     return out;
   }
 
-  private poseOn(id: number, leg: number, into: number, out: AmbientPose): AmbientPose {
+  private poseOn(id: number, step: number, into: number, out: AmbientPose): AmbientPose {
     const vehicle = this.vehicles[id] as AmbientVehicle;
     const tour = vehicle.tour;
-    const edge = this.roads.graph.edges[tour.edges[leg] as number] as RoadEdge;
-    const ticks = tour.legTicks[leg] as number;
-    const along = (tour.startDistance[leg] as number) + (into / ticks) * edge.length;
+    const leg = tour.stepLeg[step] as number;
+    const ticks = tour.stepTicks[step] as number;
+    const from = tour.stepFrom[step] as number;
+    const metres = (tour.stepTo[step] as number) - from;
+    const along = (tour.startDistance[leg] as number) + from + (into / ticks) * metres;
     this.sample(vehicle, along - SMOOTH, this.behind);
     this.sample(vehicle, along + SMOOTH, this.ahead);
     out.x = (this.behind.x + this.ahead.x) / 2;
     out.y = (this.behind.y + this.ahead.y) / 2;
     out.height = (this.behind.height + this.ahead.height) / 2;
     out.heading = Math.atan2(this.ahead.y - this.behind.y, this.ahead.x - this.behind.x);
-    out.speed = (edge.length / ticks) * TICK_RATE;
+    out.speed = (metres / ticks) * TICK_RATE;
     return out;
   }
 
@@ -360,11 +376,11 @@ export class AmbientTraffic {
   }
 
   /** Put the vehicles of one directed run of road down, and walk each its tour. */
-  private place(seed: number, edge: RoadEdge, vehicles: AmbientVehicle[]): void {
+  private place(seed: number, edge: RoadEdge, busy: Float64Array, vehicles: AmbientVehicle[]): void {
     const graph = this.roads.graph;
-    const mid = this.midpoint(edge);
-    const busy = this.roads.busyAt?.(mid.x, mid.y) ?? 1;
-    const expected = (edge.length / 1000) * edge.lanes * TIERS[edge.tier].density * busy;
+    const expected = (edge.length / 1000) * edge.lanes * TIERS[edge.tier].density * (busy[edge.id] as number);
+    // Vehicles to a metre of one lane: what a queue at a red light is estimated from.
+    const crowd = (e: RoadEdge): number => (TIERS[e.tier].density * (busy[e.id] as number)) / 1000;
     const rng = rngFor(seed, 0, Subsystem.Traffic, hashInts(EDGE_STREAM, edge.id));
     const count = Math.floor(expected + rng.float());
     for (let j = 0; j < count; j++) {
@@ -374,12 +390,8 @@ export class AmbientTraffic {
       const lane = rng.int(0, edge.lanes - 1);
       const paint = cls === 'bus' ? specOf(cls).paint : (PAINTS[rng.int(0, PAINTS.length - 1)] as number);
       const walk = rngFor(seed, 0, Subsystem.Traffic, hashInts(VEHICLE_STREAM, id));
-      const tour = timeTour(graph, walkTour(graph, edge.id, walk, permitOf(cls)));
-      const home = tour.edges.indexOf(edge.id);
-      const phase =
-        home >= 0
-          ? (tour.startTick[home] as number) + Math.floor((offset / edge.length) * (tour.legTicks[home] as number))
-          : walk.int(0, tour.period - 1);
+      const tour = timeTour(graph, walkTour(graph, edge.id, walk, permitOf(cls)), this.signals, crowd);
+      const phase = phaseOf(tour, tour.edges.indexOf(edge.id), offset, walk);
       vehicles.push({ id, cls, paint, lane, phase, tour });
       for (const e of tour.edges) this.file(id, e);
     }
@@ -410,6 +422,31 @@ export class AmbientTraffic {
     const points = (this.roads.roads[edge.curve] as RoadCurve).points;
     return points[(edge.start + edge.end) >> 1] as Point;
   }
+}
+
+/**
+ * The tick of its tour a vehicle stands at on tick 0: `offset` metres along
+ * its home leg. A tour timed to the signals has to start on the tick of the
+ * cycle it was timed from, so its vehicle is moved by at most half a cycle to
+ * the nearest tick that does.
+ */
+function phaseOf(tour: Tour, home: number, offset: number, rng: Rng): number {
+  let at = -1;
+  for (let i = 0; i < tour.stepLeg.length && at < 0; i++) {
+    const from = tour.stepFrom[i] as number;
+    const to = tour.stepTo[i] as number;
+    if (tour.stepLeg[i] !== home || to <= from || offset < from || offset >= to) continue;
+    at = (tour.stepStart[i] as number) + Math.floor(((offset - from) / (to - from)) * (tour.stepTicks[i] as number));
+  }
+  if (at < 0) at = rng.int(0, tour.period - 1);
+  if (tour.sync < 0) return at;
+  let shift = mod(-tour.sync - at, SIGNAL_CYCLE);
+  if (shift >= SIGNAL_CYCLE / 2) shift -= SIGNAL_CYCLE;
+  return mod(at + shift, tour.period);
+}
+
+function mod(value: number, by: number): number {
+  return ((value % by) + by) % by;
 }
 
 /**
@@ -483,14 +520,16 @@ function extent(box: Footprint, ax: number, ay: number): number {
 
 /**
  * The road network of a generated world as traffic reads it: the graph, how
- * busy each district is, and the height of each road's bed, so a vehicle on a
- * bridge drives on the deck.
+ * busy each district is, the height of each road's bed, so a vehicle on a
+ * bridge drives on the deck, and the junctions the traffic lights stand at.
  */
 export function trafficRoadsOf(
   world: WorldDescription,
   graph: RoadGraph = buildRoadGraph(world.roads),
-  beds: RoadBeds = new RoadBeds(world.terrain, world.roads, buildJunctions(world.roads, graph)),
+  beds?: RoadBeds,
+  junctions: JunctionMap = buildJunctions(world.roads, graph),
 ): TrafficRoads {
+  const bed = beds ?? new RoadBeds(world.terrain, world.roads, junctions);
   const zones = layoutZones(world.size, world.core, world.water);
   return {
     roads: world.roads,
@@ -499,6 +538,7 @@ export function trafficRoadsOf(
       const district = districtAt(world.districts, zones, x, y);
       return ZONE_TRAFFIC[district.zone] * (0.6 + 0.4 * district.density);
     },
-    heightAt: (curve, segment, t) => beds.heightAt(curve, segment, t),
+    heightAt: (curve, segment, t) => bed.heightAt(curve, segment, t),
+    junctions,
   };
 }
