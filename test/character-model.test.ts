@@ -29,10 +29,32 @@ describe('the player model', () => {
       expect(bounds.min.y).toBeCloseTo(0, 3);
       expect(bounds.max.y).toBeCloseTo(type.height, 3);
       // Shoulders and arms are the widest part, so the model reads from above.
-      expect(bounds.max.x - bounds.min.x).toBeGreaterThan(type.shoulder);
+      // They lie across the way it faces, along local z.
+      expect(bounds.max.z - bounds.min.z).toBeGreaterThan(type.shoulder);
+      expect(bounds.max.x - bounds.min.x).toBeLessThan(type.shoulder);
       expect(model.height).toBe(type.height);
       model.dispose();
     }
+  });
+
+  it('faces local +x, the way a yaw of -heading turns along the heading', () => {
+    const tallest = HAIR_STYLES.length - 1;
+    const appearance: CharacterAppearance = { body: 1, skin: 0, hair: tallest, hairColour: 0, outfit: 0 };
+    const model = new CharacterModel(appearance);
+    const parts = resolveAppearance(appearance);
+    const centres = (colour: number): number[] => {
+      const found: number[] = [];
+      model.group.traverse((object) => {
+        if (object instanceof Mesh && (object.material as MeshStandardMaterial).color.getHex() === colour) {
+          found.push(object.position.x);
+        }
+      });
+      return found;
+    };
+    // The shoes reach forward and the long hair falls behind.
+    for (const x of centres(parts.outfit.shoe)) expect(x).toBeGreaterThan(0);
+    expect(Math.min(...centres(parts.hairColour.colour))).toBeLessThan(0);
+    model.dispose();
   });
 
   it('grows no taller when the hair does', () => {

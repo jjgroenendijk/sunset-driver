@@ -47,11 +47,16 @@ export class CharacterModel {
     this.materials = [];
   }
 
+  /**
+   * One part, sized and placed across the body, up, and along the way it faces.
+   * The model faces local +x, the way a yaw of -heading turns along the heading,
+   * so across is local z and along is local x.
+   */
   private box(w: number, h: number, d: number, colour: number, x: number, y: number, z: number): void {
-    const geometry = new BoxGeometry(w, h, d);
+    const geometry = new BoxGeometry(d, h, w);
     const material = new MeshStandardMaterial({ color: colour, roughness: 0.7 });
     const mesh = new Mesh(geometry, material);
-    mesh.position.set(x, y, z);
+    mesh.position.set(z, y, x);
     this.geometries.push(geometry);
     this.materials.push(material);
     this.group.add(mesh);
