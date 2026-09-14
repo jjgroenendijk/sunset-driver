@@ -41,6 +41,21 @@ are the design.
   DOM order, and skip a disabled one. The pointer moves the same focus, so only one item is lit. A
   character row takes the focus itself and changes on left and right; its two buttons carry no
   `data-nav`. The look lives in `title.css`, which `style.css` imports.
+- `src/ui/menu-pages.ts` is the page walk both menus share: `parent`, the arrow keys, the pointer
+  focus, and Escape going up a page. `src/ui/pause.ts` is the pause menu of spec section 12, drawn
+  with the title's classes and the few rules of `pause.css`. It listens to no key: Escape both opens
+  and closes it, so `main.ts` hands it every key while it is open. While it is open the frame loop
+  takes no steps and the clock keeps its place between two ticks.
+- A save (`src/sim/save.ts`) is the record and the seed text, nothing else, so a field added to
+  `SimState` is saved with no change there. It is read against a fresh record: a missing field or a
+  wrong type is refused, and an unknown field is dropped. Raise `SAVE_VERSION` when a field changes
+  meaning. `src/ui/saves.ts` keeps one save per seed in `localStorage`.
+- A load writes the save into the live record in place, because every closure in `main.ts` holds
+  that record, and then builds a new `SimPhysics` from it. Never `adopt` a loaded record into the
+  old physics: the traffic bodies keep their cursors and their promoted bodies from before the load.
+- A save of another seed needs another world, so an import of one, and Regenerate, load the page
+  again. The note in `sessionStorage` from `setPendingStart` tells the next boot to skip the title
+  and start that seed, from its save or afresh.
 - `src/render/scene.ts` is the scene behind the menu: a parked car, a lit street lamp and the
   driver, with no world. The camera swings over the front of the car and never goes all the way
   round, because the lamp post stands on the far side. The lamp is the game's own `LampLight`, so

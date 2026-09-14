@@ -31,7 +31,7 @@ const PARENT: Record<PageName, PageName | null> = {
 /**
  * The title screen of spec section 12, laid out as a game's main menu. The
  * main page offers New game, Load game and Controls. Load game stays disabled
- * until the saves of spec section 12 exist. New game is the seed
+ * until it lists the saves the pause menu writes (#273). New game is the seed
  * entry, the map of the seed and character creation (`title-setup.ts`), and
  * Controls is the binding list (`title-controls.ts`).
  *

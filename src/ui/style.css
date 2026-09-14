@@ -1,4 +1,5 @@
 @import url('./title.css');
+@import url('./pause.css');
 html, body { margin: 0; height: 100%; overflow: hidden; background: #12070f; color: #f6d6c1; font: 16px/1.5 system-ui, sans-serif; }
 /* A panel hides itself with the `hidden` attribute, and a class selector beats
    the user agent's `[hidden]` rule, so every `display` here has to give way. */
