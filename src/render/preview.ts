@@ -28,6 +28,8 @@ import {
 } from '../sim/damage.ts';
 import { createPlayerState, exitPlace } from '../sim/on-foot.ts';
 import type { PickupState } from '../sim/pickup.ts';
+import { createSimState } from '../sim/simulation.ts';
+import { AmbientTraffic, trafficRoadsOf } from '../sim/traffic.ts';
 import {
   ATTACHMENTS,
   createLoadout,
@@ -53,6 +55,7 @@ import { tickAtHour } from './daylight.ts';
 import { PostChain } from './post.ts';
 import { FULL_TIER, QUALITY_TIERS } from './quality.ts';
 import { createOffscreenRenderer } from './renderer.ts';
+import { TrafficView } from './traffic.ts';
 import { WorldScene } from './world-scene.ts';
 
 /** Where to stand, how far back to look from, and how big a picture to take. */
@@ -147,6 +150,8 @@ export interface PreviewResult {
   shadows: number;
   /** The quality tier the frame was drawn at (spec section 9.2). */
   quality: string;
+  /** Vehicles of the traffic drawn round the player (spec section 13.1). */
+  traffic: number;
 }
 
 /** Bytes a pixel of the render target below. */
@@ -199,6 +204,11 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   for (let t = tick - FX_WARMUP; t <= tick; t++) scene.damage(vehicle, seed, t);
   if (request.skid === true) drift(scene, vehicle, spec, heading);
   arm(scene, request, stand, tick);
+  // The traffic of spec section 13.1, where its tours put it at the tick the
+  // picture is taken, as the game draws it.
+  const traffic = new TrafficView(new AmbientTraffic(seed, trafficRoadsOf(world)));
+  scene.scene.add(traffic.group);
+  traffic.update(createSimState(seed, undefined, tick), tick, x, y);
 
   const camera = new FollowCamera(width / height);
   camera.setBaseDistance(distance);
@@ -230,10 +240,12 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   const rgb = toRgb(padded as Uint8Array, width, height);
   post.dispose();
   target.dispose();
+  const drawn = traffic.drawn;
+  traffic.dispose();
   scene.dispose();
   renderer.dispose();
 
-  return { width, height, rgb, worldMs, chunkMs, frameMs, peakDrawCalls, lights, shadows, quality: tier.name };
+  return { width, height, rgb, worldMs, chunkMs, frameMs, peakDrawCalls, lights, shadows, quality: tier.name, traffic: drawn };
 }
 
 /**

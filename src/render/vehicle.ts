@@ -49,7 +49,7 @@ import {
 import { TYRE, vehicleBoxes, type VehicleBox } from './vehicle-mesh.ts';
 
 /** The dark of the outline, as the buildings' is (spec section 10.1). */
-const OUTLINE = 0x150f12;
+export const OUTLINE = 0x150f12;
 
 /** What a burnt-out shell is painted in (spec section 11.3). */
 const SCORCH = 0x231f1e;

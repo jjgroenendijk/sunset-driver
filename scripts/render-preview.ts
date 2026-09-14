@@ -207,7 +207,8 @@ try {
       ` at ${request.hour.toFixed(1)}h` +
       ` — world ${result.worldMs.toFixed(0)} ms, chunks ${result.chunkMs.toFixed(0)} ms,` +
       ` frame ${result.frameMs.toFixed(0)} ms, dearest chunk ${result.peakDrawCalls} draw calls,` +
-      ` ${result.lights} lights, ${result.shadows} shadow cascades, ${result.quality} quality`,
+      ` ${result.lights} lights, ${result.shadows} shadow cascades, ${result.quality} quality,` +
+      ` ${result.traffic} vehicles of traffic`,
   );
 } finally {
   await browser?.close();
