@@ -40,20 +40,24 @@ which of the two states the camera is in and which key ends the flight.
 `src/render/free-camera.ts` is where it stands and where it looks. `src/ui/free-camera.ts` is the
 pointer lock, the mouse and the wheel, and `Keyboard.freeCamera` samples the keys.
 
-## `node scripts/world-preview.ts <seed> out.png`
+## `node scripts/world-preview.ts <seed> out.png [--tiers=highway]`
 
 The world description, drawn flat. Look at the image before judging a layout change.
 
 It draws one colour per road tier — highways black, arterials red, streets blue, alleys green, dirt
-roads tan — with bridge decks orange, bores through the ground cyan and the interchanges of the
-highways lime, and strokes the field's major direction, dark where the field is decided and pale
-where influences cancel. Corridors are outlined too: the ground under a deck in amber with its
-pillars as dark dots, the tram's lane and route in magenta, its stops pink and its level crossings
-white. Beaches show their waterline in pale blue and their dune line in sand, with a resort's
-boardwalk line and car parks in violet and its pier in brown. The footprint of the roads is filled
-in dark grey under all of it, each parcel in the colour of its owner, and each building's lot in the
-colour of what stands on it: towers white, mid-rise pale blue, shop rows orange, houses red,
+roads tan — with bridge decks orange, bores through the ground cyan, the slots of the highways pale
+yellow and their interchanges lime. It strokes the field's major direction, dark where the field is
+decided and pale where influences cancel. Corridors are outlined too: the ground under a deck in
+amber with its pillars as dark dots, the tram's lane and route in magenta, its stops pink and its
+level crossings white. Beaches show their waterline in pale blue and their dune line in sand, with a
+resort's boardwalk line and car parks in violet and its pier in brown. The footprint of the roads is
+filled in dark grey under all of it, each parcel in the colour of its owner, and each building's lot
+in the colour of what stands on it: towers white, mid-rise pale blue, shop rows orange, houses red,
 warehouses grey, roadhouses violet.
+
+`--tiers=highway+arterial` draws those tiers and nothing of the others: their roads, their
+interchanges and the corridors along them. The footprint, the parcels and the buildings are left
+out, because they are cut from every tier at once.
 
 The relief is shaded off the carved ground, not the natural one. The line it prints says how much of
 the grid the roads moved and what the deepest cut and the highest fill came to.
