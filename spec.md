@@ -266,9 +266,12 @@ minimap and pathfinding all reason about. It is not just render geometry.
 
 ### 7.2 Water
 
-- The world is an archipelago: a few large islands (three to five) close together, separated by
-  narrow straits, with open sea around the map edge. The core sits on the largest island; the others
-  carry suburbs, outskirts and wilderness.
+- The world is a coastal city built on a terrain archetype drawn from the seed. An archetype is a
+  coherent bundle of numbers: how the land is split into pieces, how much of the map is land, the
+  relief, the roughness of the coast, the rivers and where the harbour goes. The archipelago — a
+  few large islands close together, separated by narrow straits, with open sea around the map edge
+  — is one archetype among several. Whatever the archetype, the core sits on the largest piece of
+  land; the other land carries suburbs, outskirts and wilderness.
 - A seeded river cuts the main island from its interior to a harbour on the shore.
 - One outer island is developed as the island district. Bridges or causeways link the islands at the
   narrowest points of the straits, and wherever else the road network crosses water.
