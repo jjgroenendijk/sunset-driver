@@ -13,9 +13,15 @@
  * state like the player's own vehicle. A promoted vehicle has nobody driving
  * it, so it is a box that slides to a stop. Out of the box it keeps the pose it
  * had, the way the player's parked car does.
+ *
+ * The parked cars of the streets and car parks (`parked-bodies.ts`) stand in
+ * the same box as fixed bodies, and a touch promotes one the same way, from
+ * standing still.
  */
 import RAPIER from '@dimforge/rapier3d-compat';
 import { capsuleOf } from './on-foot.ts';
+import { ParkedBodies } from './parked-bodies.ts';
+import { PARKED_ID, type ParkedCars } from './parked.ts';
 import { rotate } from './frame.ts';
 import { PHYSICS_RADIUS, PHYSICS_TILE } from './ground-bodies.ts';
 import type { SimState } from './simulation.ts';
@@ -71,6 +77,8 @@ export class TrafficBodies {
   private readonly theirs: Footprint = { x: 0, y: 0, heading: 0, halfLength: 0, halfWidth: 0 };
   private readonly car: Footprint = { x: 0, y: 0, heading: 0, halfLength: 0, halfWidth: 0 };
   private readonly walker: Footprint = { x: 0, y: 0, heading: 0, halfLength: 0, halfWidth: 0 };
+  /** The parked cars in the box, once the game has handed them over. */
+  private parked: ParkedBodies | undefined;
 
   constructor(world: RAPIER.World, traffic: AmbientTraffic) {
     this.world = world;
@@ -82,6 +90,11 @@ export class TrafficBodies {
     return this.moving.map((entry) => entry.cursor);
   }
 
+  /** How many parked cars stand in the world as fixed bodies. */
+  get parkedBodies(): number {
+    return this.parked?.count ?? 0;
+  }
+
   /** How many promoted vehicles have a body in the world. */
   get promotedBodies(): number {
     return this.pushed.length;
@@ -90,9 +103,10 @@ export class TrafficBodies {
   /**
    * Before the world is stepped from `state.tick`: bring the vehicles that are
    * in the box round `(x, z)` into it, drop the ones that have left, and aim
-   * every kinematic body at where its tour puts it on the next tick.
+   * every kinematic body at where its tour puts it on the next tick. The parked
+   * cars of the box are stood in their bays.
    */
-  lead(state: SimState, x: number, z: number): void {
+  lead(state: SimState, x: number, z: number, parked?: ParkedCars): void {
     const cx = Math.floor(x / PHYSICS_TILE);
     const cz = Math.floor(z / PHYSICS_TILE);
     const minX = (cx - PHYSICS_RADIUS) * PHYSICS_TILE;
@@ -132,6 +146,9 @@ export class TrafficBodies {
     }
     while (k < this.moving.length) this.drop(this.moving[k++] as Moving);
     this.moving = kept;
+    // The game hands the cars over once, when the chunk workers have laid out the bays.
+    this.parked ??= parked === undefined ? undefined : new ParkedBodies(this.world, parked);
+    this.parked?.lead(state, minX, minY, maxX, maxY);
     this.standPromoted(state, minX, minY, maxX, maxY);
   }
 
@@ -159,18 +176,29 @@ export class TrafficBodies {
       else kept.push(entry);
     }
     this.moving = kept;
+    this.parked?.touched(this.car, onFoot ? this.walker : undefined, TOUCH_MARGIN, (bay, car, spec) => {
+      const cars = (this.parked as ParkedBodies).cars;
+      const bays = cars.bays;
+      const at = { x: bays.x[bay] as number, y: bays.y[bay] as number, height: bays.height[bay] as number, heading: bays.heading[bay] as number, speed: 0 };
+      this.hand(state, PARKED_ID + bay, car.paint, spec, at);
+    });
   }
 
   /** Take a vehicle off its tour and hand it to the physics, moving as it was. */
   private promote(state: SimState, entry: Moving, pose: AmbientPose): void {
     this.world.removeRigidBody(entry.body);
-    const spec = entry.spec;
+    const paint = (this.traffic.vehicles[entry.cursor.id] as AmbientVehicle).paint;
+    this.hand(state, entry.cursor.id, paint, entry.spec, pose);
+  }
+
+  /** Put a vehicle's record into the state and give it a dynamic body, moving as its pose says. */
+  private hand(state: SimState, id: number, paint: number, spec: VehicleSpec, pose: AmbientPose): void {
     const vehicle = createVehicleState(spec, pose.x, pose.y, pose.height + rideHeight(spec), pose.heading);
     vehicle.vx = Math.cos(pose.heading) * pose.speed;
     vehicle.vz = Math.sin(pose.heading) * pose.speed;
     vehicle.speed = pose.speed;
-    addPromoted(state.traffic, { id: entry.cursor.id, vehicle });
-    this.addPushed({ id: entry.cursor.id, spec, body: this.buildPushed(vehicle, spec) });
+    addPromoted(state.traffic, { id, paint, vehicle });
+    this.addPushed({ id, spec, body: this.buildPushed(vehicle, spec) });
   }
 
   /** Give a body to every promoted vehicle in the box, and take it from those that have left. */
