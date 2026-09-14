@@ -3,14 +3,16 @@
  * per seed, in a grid. This is how the terrain archetypes of spec section 7.2
  * are compared, because one preview per seed hides that the maps look alike.
  *
- * Usage: node scripts/terrain-sheet.ts [count] [out.png] [--cols=6] [--tile=160]
+ * Usage: node scripts/terrain-sheet.ts [count] [out.png] [--cols=6] [--tile=160] [--archetype=name]
  *
  * The seeds are the seeds of the sweep, in order, so a map on the sheet is a map
  * the tests read. Each tile shows its whole map, whatever the map's size. The
  * console lists the tiles row by row with the seed, the archetype and the land
- * fraction.
+ * fraction. `--archetype` builds every seed on that one archetype instead of the
+ * one the seed draws, which is how the numbers of one archetype are tuned.
  */
 import { writeFileSync } from 'node:fs';
+import { archetypeNamed, ARCHETYPES, type ArchetypeName } from '../src/world/archetype.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { worldSizeFor } from '../src/world/size.ts';
 import { generateTerrain, layoutTerrain, SEA_LEVEL, TERRAIN_CELL } from '../src/world/terrain.ts';
@@ -28,6 +30,10 @@ const count = Number(positional[0] ?? 24);
 const out = positional[1] ?? 'terrain-sheet.png';
 const cols = flag('cols', 6);
 const tile = flag('tile', 160);
+const forced = args.find((a) => a.startsWith('--archetype='))?.slice('--archetype='.length);
+if (forced !== undefined && !ARCHETYPES.some((a) => a.name === forced)) {
+  throw new Error(`no archetype ${forced}: ${ARCHETYPES.map((a) => a.name).join(', ')}`);
+}
 /** Pixels of gutter between tiles. */
 const GAP = 4;
 
@@ -41,7 +47,8 @@ const seeds = sweepSeeds(count);
 const lines: string[] = [];
 for (let k = 0; k < seeds.length; k++) {
   const seed = seeds[k] as number;
-  const layout = layoutTerrain(seed, worldSizeFor(seed, TERRAIN_CELL));
+  const size = worldSizeFor(seed, TERRAIN_CELL);
+  const layout = forced === undefined ? layoutTerrain(seed, size) : layoutTerrain(seed, size, archetypeNamed(forced as ArchetypeName));
   const hf = generateTerrain(seed, layout);
   const col = k % cols;
   const row = Math.floor(k / cols);
