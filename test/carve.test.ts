@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { buildChunkRoads, partsOf } from '../src/render/road-mesh.ts';
+import { RoadBeds } from '../src/world/bed.ts';
 import { benchHalfWidth, buildCarve } from '../src/world/carve.ts';
 import { buildLayers, ChunkSource } from '../src/world/chunks.ts';
+import { buildRoadGraph } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
+import { junctionShape } from '../src/world/junction-shape.ts';
+import { buildJunctions } from '../src/world/junctions.ts';
 import { RoadRibbons } from '../src/world/ribbon.ts';
 import { CHUNK_TERRAIN_CELL } from '../src/world/terrain.ts';
 import { footprintHalfWidth } from '../src/world/tiers.ts';
@@ -192,5 +196,50 @@ describe('two roads crowded into one bench', () => {
     const alone = hillWorld([curve(0, [[-200, 0], [0, 0], [200, 0]], 'street')], (_x, y) => 30 + y * 0.3);
     const one = buildCarve(alone.terrain, alone.roads);
     for (const y of [0, 4, 8]) expect(one.crowdedAt(0, y)).toBe(false);
+  });
+});
+
+describe('the ground under a junction', () => {
+  // A street leaves an arterial at 30 degrees on a slope. The corner between
+  // them is so sharp that the fan of the carriageway from the node reaches past
+  // the junction's outline, which is the ground the carve used to level.
+  const angle = (30 * Math.PI) / 180;
+  const roads = [
+    curve(0, [[-200, 0], [0, 0], [200, 0]], 'arterial'),
+    curve(1, [[0, 0], [200 * Math.cos(angle), 200 * Math.sin(angle)]], 'street'),
+  ];
+  const world = hillWorld(roads, (x, y) => 60 + 0.08 * x - 0.12 * y);
+  const junctions = buildJunctions(world.roads, buildRoadGraph(world.roads));
+  const carve = buildCarve(world.terrain, world.roads, junctions);
+  const beds = new RoadBeds(world.terrain, world.roads, junctions);
+  const ribbons = new RoadRibbons(world.terrain, world.roads, junctions);
+
+  it('levels all the ground the carriageway is drawn over to the plane', () => {
+    expect(junctions.junctions).toHaveLength(1);
+    const junction = junctions.junctions[0] as (typeof junctions.junctions)[number];
+    const plane = beds.planes[0] as (typeof beds.planes)[number];
+    const fan = junctionShape(junction, ribbons).carriageway;
+    let complaint: string | undefined;
+    let tested = 0;
+    for (let i = 0; i < fan.length; i++) {
+      const a = fan[i] as (typeof fan)[number];
+      const b = fan[(i + 1) % fan.length] as (typeof fan)[number];
+      for (const [wa, wb] of [
+        [0.1, 0.8],
+        [0.8, 0.1],
+        [0.45, 0.45],
+        [1 / 3, 1 / 3],
+      ] as const) {
+        const x = junction.x * (1 - wa - wb) + a.x * wa + b.x * wb;
+        const y = junction.y * (1 - wa - wb) + a.y * wa + b.y * wb;
+        const onPlane = plane.level + plane.gx * (x - plane.x) + plane.gy * (y - plane.y);
+        tested++;
+        if (Math.abs(carve.heightAt(x, y) - onPlane) > 1e-6) {
+          complaint ??= `at ${x.toFixed(1)},${y.toFixed(1)}: ground ${carve.heightAt(x, y).toFixed(3)}, plane ${onPlane.toFixed(3)}`;
+        }
+      }
+    }
+    expect(tested).toBeGreaterThan(20);
+    expect(complaint).toBeUndefined();
   });
 });

@@ -253,8 +253,13 @@ gets wrong without it.
   least-squares fit of the grades its mouths leave at, solved along the axes the mouths span so a
   shallow pair cannot tilt it across them and never steeper than the steepest mouth. Every mouth
   follows the plane to its cut and blends back onto its own line over one cut more. The carve and
-  the ribbons both read the beds, and the carve levels the whole junction `outline` to the plane, so
-  the ground and the road agree by construction and no crease can show through a junction.
+  the ribbons both read the beds, so the ground and the road agree by construction and no crease
+  can show through a junction.
+- `junctionShape(junction, ribbons)` (`junction-shape.ts`) gives the rings a junction's surfaces are
+  drawn on: the carriageway, fanned from the node, and one ring per corner. `junction-mesh.ts` draws
+  them and the carve levels the ground under them. The carve levels the `outline` and every ring
+  (`JunctionCover`), not the outline alone. A mouth is drawn on its curve but the outline is cut on
+  a straight line, and a fan from the node reaches past a ring that is not convex.
 - `buildCarve(terrain, roads, junctions)` (`carve.ts`) is the terrain the roads leave (spec section
   7.1). It is built on demand like the graph, the footprint and the parcels: `world.terrain` stays
   the natural ground the roads were traced on, and the carved ground is what a chunk carries and

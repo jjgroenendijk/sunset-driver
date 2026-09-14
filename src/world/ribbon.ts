@@ -266,9 +266,13 @@ export class RoadRibbons {
   /** One ribbon per curve, filed under the curve's own id. */
   private readonly curves: (CurveRibbon | undefined)[] = [];
 
-  /** Without the junctions every bed is the natural ground under its curve. */
-  constructor(terrain: HeightfieldData, roads: readonly RoadCurve[], junctions?: JunctionMap) {
-    const beds = new RoadBeds(terrain, roads, junctions);
+  /**
+   * Without the junctions every bed is the natural ground under its curve.
+   * Given beds already built, the ribbons read those instead of building them
+   * again.
+   */
+  constructor(terrain: HeightfieldData | RoadBeds, roads: readonly RoadCurve[], junctions?: JunctionMap) {
+    const beds = terrain instanceof RoadBeds ? terrain : new RoadBeds(terrain, roads, junctions);
     for (const road of roads) this.curves[road.id] = new CurveRibbon(beds, road);
   }
 
