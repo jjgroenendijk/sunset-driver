@@ -85,6 +85,13 @@ const RESORT_ZONES: Zone[][] = [
 ];
 /** How many beaches are promoted to resorts to be sure of getting one. */
 const PROMOTED_RESORTS = 2;
+/**
+ * Metres of waterline a promoted beach needs before its zone counts. A shorter
+ * one is a cove with a boardwalk, so any beach this long ranks above it, in
+ * whatever zone. Where the coast runs in a bay or a strait, the suburban shore
+ * often holds only coves.
+ */
+const LONG_BEACH = 300;
 
 /**
  * Metres behind the dune line that the boardwalk's centreline runs: exactly the
@@ -106,6 +113,12 @@ const DRY = 1;
 /** Metres of quay each side of the harbour, and of river bank each side of the mouth. */
 const HARBOUR_MARGIN = 70;
 const RIVER_MARGIN = 40;
+/**
+ * Metres of shore round each end of a crossing that stay clear of sand. A
+ * bridge lands there, and its approach needs ground a resort's boardwalk
+ * would otherwise hold.
+ */
+const CROSSING_MARGIN = 40;
 
 /** The car parks behind a long beach: where along it they stand, and how big they are. */
 const CAR_PARK_AT = [0.25, 0.75];
@@ -151,7 +164,7 @@ export function planBeaches(
     const mid = run[Math.floor(run.length / 2)] as ShoreSample;
     return land.reaches(mid.x + mid.nx * mid.sand, mid.y + mid.ny * mid.sand);
   });
-  const promoted = new Set(promotions(runs, servable, zones));
+  const promoted = new Set(promotions(runs, servable, zones, districts));
   return runs.map((run, i) =>
     beachOf(i, run, servable[i] === true && (shoreLength(run) >= RESORT_BEACH || promoted.has(i)), terrain, water, zones, districts),
   );
@@ -167,13 +180,22 @@ export function planBeaches(
  * only known once the roads are traced: a beach on an island with no road on it
  * gets none, and the next candidate is what saves the seed.
  */
-function promotions(runs: readonly ShoreSample[][], servable: readonly boolean[], zones: ZoneLayout): number[] {
+function promotions(runs: readonly ShoreSample[][], servable: readonly boolean[], zones: ZoneLayout, districts: readonly District[]): number[] {
   const ranked: { at: number; rank: number; length: number }[] = [];
+  const groups = RESORT_ZONES.length;
   for (let i = 0; i < runs.length; i++) {
-    const head = (runs[i] as ShoreSample[])[0] as ShoreSample;
-    const rank = RESORT_ZONES.findIndex((group) => group.includes(zoneAt(zones, head.x, head.y)));
-    if (servable[i] !== true || rank < 0) continue;
-    ranked.push({ at: i, rank, length: shoreLength(runs[i] as ShoreSample[]) });
+    const run = runs[i] as ShoreSample[];
+    const head = run[0] as ShoreSample;
+    const zone = RESORT_ZONES.findIndex((group) => group.includes(zoneAt(zones, head.x, head.y)));
+    if (servable[i] !== true || zone < 0) continue;
+    const length = shoreLength(run);
+    // A beach long enough is a resort already, and promoting it again would not add one.
+    if (length >= RESORT_BEACH) continue;
+    // A beach that runs past no district with a name from its zone's pool has
+    // nowhere to put The Boardwalk (`nameBoardwalk`), so it ranks below one that does.
+    const nameable = districtsAlong(run, zones, districts).some((id) => (districts[id] as District).culture === 'none');
+    const rank = zone + (nameable ? 0 : groups) + (length >= LONG_BEACH ? 0 : 2 * groups);
+    ranked.push({ at: i, rank, length });
   }
   ranked.sort((a, b) => a.rank - b.rank || b.length - a.length || a.at - b.at);
   return ranked.slice(0, PROMOTED_RESORTS).map((r) => r.at);
@@ -336,6 +358,7 @@ function sampleShore(
   if (Math.abs(x) > half - room || Math.abs(y) > half - room) return none;
   if (Math.hypot(x - water.harbour.x, y - water.harbour.y) < water.harbour.radius + HARBOUR_MARGIN) return none;
   if (nearRiver(x, y, water)) return none;
+  if (nearCrossing(x, y, water)) return none;
   const sea = water.seaLevel;
   const rise = terrain.sample(x + nx * BEACH_REACH, y + ny * BEACH_REACH) - sea;
   // Ground below the sea behind the waterline is not gentle coast: it is the
@@ -349,12 +372,22 @@ function sampleShore(
   return { x, y, nx, ny, sand };
 }
 
-/** True where a point stands on the banks of the river, which are not beach. */
+/** True where a point stands on the banks of a river, which are not beach. */
 function nearRiver(x: number, y: number, water: WaterDescription): boolean {
-  const path = water.river.path;
-  for (let i = 0; i + 1 < path.length; i++) {
-    const halfWidth = Math.max(water.river.halfWidths[i] ?? 0, water.river.halfWidths[i + 1] ?? 0);
-    if (segmentDistance(x, y, path[i] as WorldPoint, path[i + 1] as WorldPoint) < halfWidth + RIVER_MARGIN) return true;
+  for (const river of water.rivers) {
+    const path = river.path;
+    for (let i = 0; i + 1 < path.length; i++) {
+      const halfWidth = Math.max(river.halfWidths[i] ?? 0, river.halfWidths[i + 1] ?? 0);
+      if (segmentDistance(x, y, path[i] as WorldPoint, path[i + 1] as WorldPoint) < halfWidth + RIVER_MARGIN) return true;
+    }
+  }
+  return false;
+}
+
+/** True within {@link CROSSING_MARGIN} of either end of a crossing. */
+function nearCrossing(x: number, y: number, water: WaterDescription): boolean {
+  for (const c of water.crossings) {
+    if (Math.hypot(x - c.from.x, y - c.from.y) < CROSSING_MARGIN || Math.hypot(x - c.to.x, y - c.to.y) < CROSSING_MARGIN) return true;
   }
   return false;
 }

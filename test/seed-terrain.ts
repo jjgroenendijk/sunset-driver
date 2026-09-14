@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildWaterAttributes } from '../src/render/water.ts';
 import { compareNumbers } from '../src/core/sort.ts';
+import { archetypeNamed } from '../src/world/archetype.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { MAX_WORLD_SIZE, MIN_WORLD_SIZE } from '../src/world/size.ts';
 import { coastNoise, islandAt, TERRAIN_CELL } from '../src/world/terrain.ts';
@@ -56,14 +57,14 @@ export function terrainChecks(): void {
       }
     });
 
-    it('is mostly land: a few large islands close together', () => {
+    it('holds as many islands as its archetype asks for, and some sea', () => {
       for (const seed of seeds) {
         const w = worlds.get(seed) as WorldDescription;
         const f = seaFraction(w);
         expect(f, `seed ${seed}`).toBeGreaterThan(0.12);
-        expect(f, `seed ${seed}`).toBeLessThan(0.4);
-        expect(w.water.islands.length).toBeGreaterThanOrEqual(3);
-        expect(w.water.islands.length).toBeLessThanOrEqual(5);
+        const { islands } = archetypeNamed(w.archetype);
+        expect(w.water.islands.length, `seed ${seed}, ${w.archetype}`).toBeGreaterThanOrEqual(islands.min);
+        expect(w.water.islands.length, `seed ${seed}, ${w.archetype}`).toBeLessThanOrEqual(islands.max);
       }
     });
 
@@ -76,11 +77,13 @@ export function terrainChecks(): void {
       }
     });
 
-    it('carves the river below sea level from source to harbour', () => {
+    it('carves every river below sea level from source to mouth, and the harbour', () => {
       for (const seed of seeds) {
         const w = worlds.get(seed) as WorldDescription;
         const hf = new Heightfield(w.terrain);
-        for (const p of w.water.river.path) expect(hf.sample(p.x, p.y)).toBeLessThan(w.water.seaLevel);
+        for (const river of w.water.rivers) {
+          for (const p of river.path) expect(hf.sample(p.x, p.y)).toBeLessThan(w.water.seaLevel);
+        }
         expect(hf.sample(w.water.harbour.x, w.water.harbour.y)).toBeLessThan(-5);
       }
     });
@@ -105,7 +108,7 @@ export function terrainChecks(): void {
         expect(covers(w.water.harbour), `seed ${seed}: the harbour is dry`).toBe(true);
         // The river is the narrowest water on the map, so it is what says whether
         // the sheet is cut finely enough to hold a channel.
-        for (const p of w.water.river.path) {
+        for (const p of w.water.rivers.flatMap((river) => river.path)) {
           expect(covers(p), `seed ${seed}: the river at ${p.x.toFixed(0)}, ${p.y.toFixed(0)} is dry`).toBe(true);
         }
         for (const c of w.water.crossings) {

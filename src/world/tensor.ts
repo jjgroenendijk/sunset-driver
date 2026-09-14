@@ -163,7 +163,9 @@ export class TensorField {
   /** Signed distance to the shoreline in metres, positive on land, on a coarse grid. */
   private readonly shore: Heightfield;
   private readonly wander: Noise2D;
-  private readonly riverPath: readonly Point[];
+  /** The two ends of every segment of every river, and how far its pull reaches. */
+  private readonly riverFrom: readonly Point[];
+  private readonly riverTo: readonly Point[];
   private readonly riverReach: readonly number[];
   /** cos 2θ and sin 2θ of each river segment's own direction, one per segment. */
   private readonly riverC2: Float64Array;
@@ -180,14 +182,24 @@ export class TensorField {
     this.hf = new Heightfield(world.terrain);
     this.shore = buildShoreField(this.hf, world.water.seaLevel);
     this.wander = new Noise2D(world.seed ^ 0x2f11);
-    const path = world.water.river.path;
-    this.riverPath = path;
-    this.riverReach = world.water.river.halfWidths.map((hw) => hw + RIVER_REACH);
-    this.riverC2 = new Float64Array(Math.max(0, path.length - 1));
-    this.riverS2 = new Float64Array(this.riverC2.length);
-    for (let i = 0; i + 1 < path.length; i++) {
-      const p = path[i] as Point;
-      const q = path[i + 1] as Point;
+    const from: Point[] = [];
+    const to: Point[] = [];
+    const reach: number[] = [];
+    for (const river of world.water.rivers) {
+      for (let i = 0; i + 1 < river.path.length; i++) {
+        from.push(river.path[i] as Point);
+        to.push(river.path[i + 1] as Point);
+        reach.push((river.halfWidths[i] as number) + RIVER_REACH);
+      }
+    }
+    this.riverFrom = from;
+    this.riverTo = to;
+    this.riverReach = reach;
+    this.riverC2 = new Float64Array(from.length);
+    this.riverS2 = new Float64Array(from.length);
+    for (let i = 0; i < from.length; i++) {
+      const p = from[i] as Point;
+      const q = to[i] as Point;
       const vx = q.x - p.x;
       const vy = q.y - p.y;
       const len2 = vx * vx + vy * vy;
@@ -356,13 +368,13 @@ export class TensorField {
 
     // River banks pull the same way a coast does; nearby segments share one budget
     // so a meander doubling back on itself does not count twice.
-    const path = this.riverPath;
+    const from = this.riverFrom;
     let ra = 0;
     let rb = 0;
     let rw = 0;
-    for (let i = 0; i + 1 < path.length; i++) {
-      const p = path[i] as Point;
-      const q = path[i + 1] as Point;
+    for (let i = 0; i < from.length; i++) {
+      const p = from[i] as Point;
+      const q = this.riverTo[i] as Point;
       const reach = this.riverReach[i] as number;
       if (x < Math.min(p.x, q.x) - reach || x > Math.max(p.x, q.x) + reach) continue;
       if (y < Math.min(p.y, q.y) - reach || y > Math.max(p.y, q.y) + reach) continue;

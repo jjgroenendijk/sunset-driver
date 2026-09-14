@@ -54,14 +54,24 @@ export interface RiverDescription {
   halfWidths: number[];
 }
 
-export interface Island {
-  id: number;
+/** A weighted site of the power diagram the land is cut from. */
+export interface Site {
   x: number;
   y: number;
-  /** Nominal radius; the coastline wanders around it. */
+  /** The weight: a larger radius wins a larger cell. */
   radius: number;
+}
+
+export interface Island extends Site {
+  id: number;
   /** True for the island that carries the core. */
   main: boolean;
+  /**
+   * The cells of the power diagram that make up this island, where it is more
+   * than one. No channel runs between two cells of one island, so a landmass
+   * need not be convex. Absent, the island's own site is its one cell.
+   */
+  cells?: Site[];
 }
 
 /** Where a road should bridge a channel: shore to shore between two islands. */
@@ -76,8 +86,14 @@ export interface WaterDescription {
   seaLevel: number;
   islands: Island[];
   crossings: Crossing[];
-  river: RiverDescription;
+  /** Every river of the map; an archetype may have none. */
+  rivers: RiverDescription[];
   harbour: { x: number; y: number; radius: number };
+  /**
+   * The direction from the core, in radians, the industrial wedge runs along:
+   * towards the harbour, turned along the shore where that way is sea.
+   */
+  industry: number;
 }
 
 /** A pier: a deck straight out from a beach over the water (spec section 7.3). */

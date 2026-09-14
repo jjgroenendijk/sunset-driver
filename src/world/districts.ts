@@ -1,4 +1,4 @@
-import { dist2, smoothstep } from '../core/math.ts';
+import { dist2, lerp, smoothstep } from '../core/math.ts';
 import { genRng, Subsystem, type Rng } from '../core/rng.ts';
 import type { Culture, District, Island, Point, WaterDescription, Zone } from './types.ts';
 import type { Heightfield } from './heightfield.ts';
@@ -36,21 +36,74 @@ export interface ZoneLayout {
   suburbIsland: Island | undefined;
 }
 
+/**
+ * The industrial wedge, with its reach as fractions of the world side. It
+ * starts half as far out again as the core reaches and runs to just inside the
+ * suburbs, which is where it stood against the rings before they were widened.
+ */
+const INDUSTRIAL_HALF_ANGLE = (26 * Math.PI) / 180;
+const INDUSTRIAL_INNER = ZONE_RADII.core * 1.5;
+const INDUSTRIAL_OUTER = ZONE_RADII.suburban * 0.9;
+/** The share of the wedge that must be dry, gentle land for the wedge to stand there. */
+const INDUSTRIAL_DRY = 0.6;
+/** The steepest ground, as rise over run, that counts as gentle to the wedge: yards and warehouses stand on flat land. */
+const INDUSTRIAL_SLOPE = 0.15;
+/** The step the wedge turns by, each way in turn, while it looks for land. */
+const INDUSTRIAL_TURN = (5 * Math.PI) / 180;
+/** The most steps it turns each way: a quarter turn. */
+const INDUSTRIAL_TURNS = 18;
+
 export function layoutZones(size: number, core: Point, water: WaterDescription): ZoneLayout {
   const outer = water.islands.filter((i) => !i.main);
   outer.sort((a, b) => dist2(a.x, a.y, water.harbour.x, water.harbour.y) - dist2(b.x, b.y, water.harbour.x, water.harbour.y));
   return {
     size,
     core,
-    industrialAngle: Math.atan2(water.harbour.y - core.y, water.harbour.x - core.x),
-    industrialHalfAngle: (26 * Math.PI) / 180,
-    // The wedge starts half as far out again as the core reaches and runs to
-    // just inside the suburbs, which is where it stood against the rings before
-    // they were widened.
-    industrialInner: size * ZONE_RADII.core * 1.5,
-    industrialOuter: size * ZONE_RADII.suburban * 0.9,
+    industrialAngle: water.industry,
+    industrialHalfAngle: INDUSTRIAL_HALF_ANGLE,
+    industrialInner: size * INDUSTRIAL_INNER,
+    industrialOuter: size * INDUSTRIAL_OUTER,
     suburbIsland: outer[0],
   };
+}
+
+/**
+ * The direction of the industrial wedge. It points at the harbour where that
+ * way is mostly dry, gentle land. A harbour on a waterfront faces open water,
+ * so there the wedge turns along the shore, a step each way in turn, to the
+ * first direction with land enough. With none, it takes the best direction it
+ * tried.
+ */
+export function industryAngle(hf: Heightfield, size: number, core: Point, harbour: Point): number {
+  const toward = Math.atan2(harbour.y - core.y, harbour.x - core.x);
+  let best = toward;
+  let bestDry = -1;
+  for (let k = 0; k <= INDUSTRIAL_TURNS * 2; k++) {
+    const angle = toward + (k % 2 === 1 ? 1 : -1) * Math.ceil(k / 2) * INDUSTRIAL_TURN;
+    const dry = wedgeDry(hf, size, core, angle);
+    if (dry >= INDUSTRIAL_DRY) return angle;
+    if (dry > bestDry) {
+      best = angle;
+      bestDry = dry;
+    }
+  }
+  return best;
+}
+
+/** The share of a wedge along `angle` that is dry, gentle land inside the map, from a grid of samples. */
+function wedgeDry(hf: Heightfield, size: number, core: Point, angle: number): number {
+  const steps = 5;
+  let dry = 0;
+  for (let i = 0; i < steps; i++) {
+    const r = size * lerp(INDUSTRIAL_INNER, INDUSTRIAL_OUTER, (i + 0.5) / steps);
+    for (let j = 0; j < steps; j++) {
+      const a = angle + INDUSTRIAL_HALF_ANGLE * ((2 * j + 1) / steps - 1);
+      const x = core.x + Math.cos(a) * r;
+      const y = core.y + Math.sin(a) * r;
+      if (Math.abs(x) < size / 2 && Math.abs(y) < size / 2 && hf.sample(x, y) >= DRY && hf.slope(x, y) < INDUSTRIAL_SLOPE) dry++;
+    }
+  }
+  return dry / (steps * steps);
 }
 
 /** Which zone ring a point falls in, ignoring water. */
