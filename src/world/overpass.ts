@@ -51,6 +51,9 @@ export const PLATEAU_MARGIN = 4;
 /** Metres a raised point has to stand over the ground before its segment is a deck. */
 const DECK_LIFT = 0.2;
 
+/** Metres short of the clearance a lift still counts as the full clearance, for the rounding of a blend. */
+const SEPARATED_SLACK = 1e-6;
+
 /** Millimetres: two points this close are the same place, so no knot is inserted. */
 const SAME_PLACE = 0.5;
 
@@ -82,14 +85,20 @@ export function raiseOverpasses(roads: readonly RoadCurve[]): RoadCurve[] {
   if (graph.crossings.length === 0) return roads.slice();
   const along: Float32Array[] = roads.map((road) => curveDistances(road.points));
   const shared = sharedPoints(roads, along);
+  const pairs = graph.crossings.map((crossing) => {
+    const one = roads[graph.edges[crossing.over]?.curve ?? -1];
+    const other = roads[graph.edges[crossing.under]?.curve ?? -1];
+    return one === undefined || other === undefined ? undefined : { crossing, one, other };
+  });
+  // A highway was laid on its decks, so where a road passes under one the two
+  // are apart already. That road may not climb there, or it would climb into
+  // the deck, so the place blocks a raise the way a junction does.
+  const separated = pairs.map((pair) => pair !== undefined && underDeck(pair.one, pair.other, pair.crossing, shared));
   const raises: Raise[][] = roads.map(() => []);
-  for (const crossing of graph.crossings) {
-    const over = graph.edges[crossing.over];
-    const under = graph.edges[crossing.under];
-    if (over === undefined || under === undefined) continue;
-    const one = roads[over.curve];
-    const other = roads[under.curve];
-    if (one === undefined || other === undefined) continue;
+  for (let k = 0; k < pairs.length; k++) {
+    const pair = pairs[k];
+    if (pair === undefined || separated[k] === true) continue;
+    const { crossing, one, other } = pair;
     // The narrower road is the one that climbs. A highway holds its line: it is
     // the road that does not stop, its grade limit is the gentlest of any tier,
     // so its ramps would be the longest, and a local road hopping over a trunk
@@ -99,7 +108,7 @@ export function raiseOverpasses(roads: readonly RoadCurve[]): RoadCurve[] {
     const second = first === one ? other : one;
     for (const road of [first, second]) {
       const met = road === first ? second : first;
-      const plan = planRaise(road, met, crossing, along[road.id] as Float32Array, shared[road.id] as Float64Array);
+      const plan = planRaise(road, met, crossing, along[road.id] as Float32Array, shared[road.id] as number[]);
       if (plan === undefined) continue;
       (raises[road.id] as Raise[]).push(plan);
       break;
@@ -119,7 +128,7 @@ function planRaise(
   met: RoadCurve,
   at: Point,
   distances: Float32Array,
-  nodes: Float64Array,
+  nodes: readonly number[],
 ): Raise | undefined {
   const along = distanceOf(road, distances, at);
   if (along === undefined) return undefined;
@@ -185,8 +194,41 @@ function distanceOf(road: RoadCurve, distances: Float64Array | Float32Array, at:
   return best;
 }
 
+/**
+ * True where one of two crossing roads already stands a clearance over the
+ * other at the crossing. The distance along the lower road is added to its
+ * places a raise may not reach.
+ */
+function underDeck(one: RoadCurve, other: RoadCurve, at: Point, blocked: number[][]): boolean {
+  for (const [high, low] of [[one, other], [other, one]] as const) {
+    const lift = high.lift;
+    if (lift === undefined) continue;
+    const place = distanceOf(high, curveDistances(high.points), at);
+    if (place === undefined || liftAlong(high, place) < CLEARANCE - SEPARATED_SLACK) continue;
+    const below = distanceOf(low, curveDistances(low.points), at);
+    if (below !== undefined) (blocked[low.id] as number[]).push(below);
+    return true;
+  }
+  return false;
+}
+
+/** The lift a curve carries at a distance along it, straight between its points. */
+function liftAlong(road: RoadCurve, along: number): number {
+  const lift = road.lift;
+  if (lift === undefined) return 0;
+  const distances = curveDistances(road.points);
+  for (let i = 0; i + 1 < distances.length; i++) {
+    const from = distances[i] as number;
+    const to = distances[i + 1] as number;
+    if (along > to) continue;
+    const t = to === from ? 0 : (along - from) / (to - from);
+    return (lift[i] as number) * (1 - t) + (lift[i + 1] as number) * t;
+  }
+  return 0;
+}
+
 /** The distance along each curve of every point it shares with another curve. */
-function sharedPoints(roads: readonly RoadCurve[], along: readonly Float32Array[]): Float64Array[] {
+function sharedPoints(roads: readonly RoadCurve[], along: readonly Float32Array[]): number[][] {
   const counts = new Map<number, number>();
   for (const road of roads) {
     for (const point of road.points) {
@@ -200,7 +242,7 @@ function sharedPoints(roads: readonly RoadCurve[], along: readonly Float32Array[
     for (let i = 0; i < road.points.length; i++) {
       if ((counts.get(placeKey(road.points[i] as Point)) ?? 0) > 1) out.push(distances[i] as number);
     }
-    return Float64Array.from(out);
+    return out;
   });
 }
 
@@ -228,7 +270,9 @@ function raised(road: RoadCurve, raises: readonly Raise[]): RoadCurve {
   const cut = insertAt(road, distances, wanted);
   const after = curveDistances(cut.points);
   const lift: number[] = [];
-  for (let i = 0; i < cut.points.length; i++) lift.push(liftAt(raises, after[i] as number));
+  // A highway already stands on the decks it was planned with; a raise only
+  // ever adds to that.
+  for (let i = 0; i < cut.points.length; i++) lift.push(Math.max(cut.lift?.[i] ?? 0, liftAt(raises, after[i] as number)));
   const bridges = cut.bridges.slice();
   for (let i = 0; i + 1 < cut.points.length; i++) {
     if ((lift[i] as number) < DECK_LIFT && (lift[i + 1] as number) < DECK_LIFT) continue;
@@ -255,12 +299,14 @@ function liftAt(raises: readonly Raise[], along: number): number {
 
 /**
  * A curve with a point at each of `wanted`, measured along it. The decks, the
- * bores and the interchanges move with the points they stand on.
+ * bores, the slots, the interchanges and the lift move with the points they
+ * stand on.
  */
 function insertAt(road: RoadCurve, distances: Float32Array, wanted: readonly number[]): RoadCurve {
   const points: Point[] = [];
   /** How far each old point moved along the new list. */
   const shift: number[] = [];
+  const lift: number[] = [];
   let next = 0;
   for (let i = 0; i < road.points.length; i++) {
     const here = distances[i] as number;
@@ -274,11 +320,13 @@ function insertAt(road: RoadCurve, distances: Float32Array, wanted: readonly num
       const b = road.points[i] as Point;
       const t = (want - from) / (here - from);
       points.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+      lift.push((road.lift?.[i - 1] ?? 0) * (1 - t) + (road.lift?.[i] ?? 0) * t);
     }
     // A knot within half a millimetre of a point is that point.
     while (next < wanted.length && Math.abs((wanted[next] as number) - here) <= SAME_PLACE / 1000) next++;
     shift[i] = points.length;
     points.push(road.points[i] as Point);
+    lift.push(road.lift?.[i] ?? 0);
   }
   // A segment a knot was inserted into is now several, and all of them stand on
   // the structure the one segment did.
@@ -289,11 +337,14 @@ function insertAt(road: RoadCurve, distances: Float32Array, wanted: readonly num
     }
     return out.sort(compareNumbers);
   };
-  return {
+  const cut: RoadCurve = {
     ...road,
     points,
     bridges: spread(road.bridges),
     tunnels: spread(road.tunnels),
     interchanges: road.interchanges.map((i) => shift[i] as number).sort(compareNumbers),
   };
+  if (road.slots !== undefined) cut.slots = spread(road.slots);
+  if (road.lift !== undefined) cut.lift = lift;
+  return cut;
 }

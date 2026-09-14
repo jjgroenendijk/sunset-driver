@@ -271,25 +271,45 @@ function splice(road: RoadCurve, inserts: readonly Insert[]): RoadCurve {
   const points: Point[] = [];
   /** How many points have been spliced in before each of the curve's own. */
   const shift: number[] = [];
+  /** The lift of a highway at each point, a spliced point taking the height of its segment there. */
+  const lift: number[] = [];
   let next = 0;
   for (let i = 0; i < road.points.length; i++) {
     shift[i] = points.length - i;
-    points.push(road.points[i] as Point);
+    const here = road.points[i] as Point;
+    points.push(here);
+    lift.push(road.lift?.[i] ?? 0);
     while (next < sorted.length && (sorted[next] as Insert).segment === i) {
       const insert = sorted[next++] as Insert;
       const last = points[points.length - 1] as Point;
       // A point on top of the one before it is no point at all, and a segment
       // of no length has no direction for the frame of a road to follow.
-      if (Math.hypot(insert.x - last.x, insert.y - last.y) > SAME_PLACE) points.push({ x: insert.x, y: insert.y });
+      if (Math.hypot(insert.x - last.x, insert.y - last.y) <= SAME_PLACE) continue;
+      points.push({ x: insert.x, y: insert.y });
+      const ahead = road.points[i + 1] ?? here;
+      const span = Math.hypot(ahead.x - here.x, ahead.y - here.y);
+      const t = span === 0 ? 0 : Math.hypot(insert.x - here.x, insert.y - here.y) / span;
+      lift.push((road.lift?.[i] ?? 0) * (1 - t) + (road.lift?.[i + 1] ?? 0) * t);
     }
   }
-  return {
+  const spread = (segments: readonly number[]): number[] => {
+    const out: number[] = [];
+    for (const at of segments) {
+      const end = at + 1 < road.points.length ? at + 1 + (shift[at + 1] as number) : points.length - 1;
+      for (let k = at + (shift[at] ?? 0); k < end; k++) out.push(k);
+    }
+    return out;
+  };
+  const cut: RoadCurve = {
     ...road,
     points,
-    bridges: road.bridges.map((at) => at + (shift[at] ?? 0)),
-    tunnels: road.tunnels.map((at) => at + (shift[at] ?? 0)),
+    bridges: spread(road.bridges),
+    tunnels: spread(road.tunnels),
     interchanges: road.interchanges.map((at) => at + (shift[at] ?? 0)),
   };
+  if (road.slots !== undefined) cut.slots = spread(road.slots);
+  if (road.lift !== undefined) cut.lift = lift;
+  return cut;
 }
 
 /**

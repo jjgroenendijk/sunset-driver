@@ -12,8 +12,19 @@ export const HIGHWAY_MERGE_AFTER = 400;
  * on and off it stand.
  */
 export const INTERCHANGE_SPACING = 700;
-/** Fractions of a highway's length where a branch highway leaves it. */
+/** Fractions of a trunk's length where a branch highway leaves it. */
 export const BRANCH_AT = [0.3, 0.7];
+/** Fractions of a radial's length where a branch highway leaves it. */
+export const RADIAL_BRANCH_AT = [0.5];
+/** Metres the ring highway's centreline stands outside the core. */
+export const RING_MARGIN = 80;
+/** Most radials the ring sends out, and the shortest worth laying as a fraction of the map. */
+export const MAX_RADIALS = 4;
+export const MIN_RADIAL = 0.1;
+/** Share of seeds whose ring is a square along the field rather than a circle. */
+export const SQUARE_RING_SHARE = 0.5;
+/** Places on its ring the ring is traced from, looking for one that closes. */
+export const RING_STARTS = 8;
 /** A highway shorter than this fraction of the map is not worth keeping. */
 export const MIN_HIGHWAY = 0.25;
 /** Metres from a road within which a district counts as already served. */

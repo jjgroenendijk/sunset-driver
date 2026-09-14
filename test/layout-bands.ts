@@ -40,7 +40,7 @@ export interface ZoneBands {
  * over the dry land of the zone.
  */
 export const LAYOUT_BANDS: Record<Zone, ZoneBands> = {
-  // 80 seeds: road 44 to 55 %, building 20 to 36 %, 4.0 to 7.9 buildings a
+  // 80 seeds: road 42 to 53 %, building 20 to 36 %, 4.0 to 7.9 buildings a
   // hectare, median parcel 1217 to 3266 m². Issue #190 moved all four: the
   // strip blocks of spec section 6.1 took the road share down from 58 to 65 %
   // and the middle parcel up from 547 to 920 m². Issue #191 moved none of them.
@@ -49,9 +49,11 @@ export const LAYOUT_BANDS: Record<Zone, ZoneBands> = {
   // the buildings a hectare from 2.4 to 4.4 up to 3.1 to 6.1. Issue #193 moved
   // the same two again: a block that was a plaza, an open car park or ground
   // cover now carries buildings, which took the building share up to 20 to 36 %
-  // and the buildings a hectare up to 4.0 to 7.9.
+  // and the buildings a hectare up to 4.0 to 7.9. Issue #262 moved the road
+  // share from 44 to 55 % down to 42 to 53 %: the highways
+  // run on a ring outside the core, not through it.
   core: {
-    roadShare: { min: 0.34, max: 0.65 },
+    roadShare: { min: 0.32, max: 0.63 },
     buildingShare: { min: 0.15, max: 0.42 },
     buildingsPerHectare: { min: 3, max: 9.5 },
     medianParcelArea: { min: 800, max: 4500 },

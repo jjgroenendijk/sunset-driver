@@ -4,6 +4,7 @@ import { type Region } from '../src/core/geom.ts';
 import { CHUNK_SIZE, type WorldChunk } from '../src/world/chunks.ts';
 import { type RoadCarve } from '../src/world/carve.ts';
 import { CROSSING_SNAP } from '../src/world/connect.ts';
+import { type RoadEdge, type RoadGraph } from '../src/world/graph.ts';
 import { CLEARANCE as OVERPASS_CLEARANCE, PLATEAU_MARGIN } from '../src/world/overpass.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { curveDistances } from '../src/world/ribbon.ts';
@@ -439,6 +440,26 @@ export function sharedDistances(roads: readonly RoadCurve[]): Float64Array[] {
     }
     return Float64Array.from(out);
   });
+}
+
+/**
+ * The same distances with every place a road passes under a deck added: a
+ * crossing where the other road already stands a clearance over it. A raise
+ * may not reach one of those either, or the road would climb into the deck.
+ */
+export function withUnderDecks(roads: readonly RoadCurve[], graph: RoadGraph, shared: readonly Float64Array[]): Float64Array[] {
+  const out = shared.map((distances) => Array.from(distances));
+  for (const crossing of graph.crossings) {
+    const one = roads[(graph.edges[crossing.over] as RoadEdge).curve] as RoadCurve;
+    const other = roads[(graph.edges[crossing.under] as RoadEdge).curve] as RoadCurve;
+    for (const [high, low] of [[one, other], [other, one]] as const) {
+      if (liftAtCrossing(high, crossing) < OVERPASS_CLEARANCE - 1e-6) continue;
+      const place = placeOn(low, crossing);
+      if (place !== undefined) (out[low.id] as number[]).push(place.along);
+      break;
+    }
+  }
+  return out.map((distances) => Float64Array.from(distances));
 }
 
 /** Where a place falls on a curve: the segment, how far along it, and the distance along the curve. */

@@ -163,8 +163,16 @@ export interface RoadCurve {
    */
   interchanges: number[];
   /**
+   * Indices of the segments a lower road may cross under. Ascending. Only a
+   * highway has them: they are the level decks `highway-plan.ts` planned when
+   * the highway was laid, and a road laid later crosses a highway there or
+   * nowhere (spec section 6.2). Absent on every other tier, which any road may
+   * cross.
+   */
+  slots?: number[];
+  /**
    * Metres each point of the curve stands over the natural ground, where the
-   * road is carried over something (`overpass.ts`). A curve without one drives
+   * road is carried over something (`overpass.ts`, `highway-plan.ts`). A curve without one drives
    * on the ground everywhere, which is nearly all of them. It is the one thing
    * a curve says about its own height; `bed.ts` adds it to the ground it
    * samples, and every raised segment is in `bridges`.

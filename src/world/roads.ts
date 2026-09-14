@@ -2,11 +2,9 @@
  * The road network: highways, arterials, streets, alleys and dirt roads, all
  * traced as streamlines of the tensor field (spec sections 6.1 and 6.2).
  *
- * Highways go down first. Two of them cross at the core, one along the field's
- * major direction and one along its minor direction, and a few more branch off
- * those at right angles. A highway is a pure streamline: it bends with the
- * terrain and runs along the shore because the field does, not because anything
- * steers it.
+ * Highways go down first: a ring round the core and the radials that leave it
+ * (`highways.ts`). Each is planned as it is laid, with its decks and the slots
+ * a lower road may cross it at (`highway-plan.ts`).
  *
  * Arterials come second and have somewhere to be: first the islands that carry
  * a district, then the districts themselves. They follow the field too, but
@@ -38,12 +36,14 @@
  * A highway is the one tier that does not take a junction wherever a road
  * reaches it. Interchanges are placed along it, and only a highway or an
  * arterial ramp may join it, only there (spec section 6.2). A street, an alley
- * or a dirt road never meets one at all: it runs past, and where the two cross
- * the road graph makes it an overpass.
+ * or a dirt road never meets one at all. A road laid later crosses a highway
+ * only at one of its slots, under its deck, and every other crossing is refused
+ * while the road is traced.
  *
  * This file is the plan: which road is laid where, and in what order. How a
  * road is actually traced — the step along the field, the ground that refuses
- * it, the reroute and the bridges — is `road-trace.ts`, which this extends, and
+ * it, the reroute and the bridges — is `road-trace.ts`, which `highways.ts`
+ * extends and this extends in turn, and
  * the network laid so far is `road-index.ts`. The seed and plan the fills speak
  * in, and the zone table they read, are `fill.ts`.
  *
@@ -56,7 +56,8 @@
  *   spans one of the water description's strait crossings.
  * - No segment laid on the ground exceeds its tier's maximum grade.
  * - No road shares a point with a highway away from one of its interchanges,
- *   and no street, alley or dirt road shares one with a highway at all.
+ *   and no street, alley or dirt road shares one with a highway at all. No
+ *   road crosses a highway away from one of its slots.
  * - No road runs along another road's carriageway or ends inside it. Two roads
  *   touch only where they share a point or cross, at an angle a junction or an
  *   overpass can be built at (`road-clear.ts`).
@@ -69,6 +70,7 @@ import { districtAt, layoutZones, zoneAt } from './districts.ts';
 import { MINOR_BY_ZONE, type FillPlan, type FillSeed, type PlanAt, type SpacingAt } from './fill.ts';
 import { raiseOverpasses } from './overpass.ts';
 import { zoneMinBuilt } from './parcels.ts';
+import { HighwayTrace } from './highways.ts';
 import { JOIN_EPSILON } from './road-index.ts';
 import {
   alignTo,
@@ -76,22 +78,16 @@ import {
   ANCHOR_REACH,
   ARTERIAL,
   ARTERIAL_SPACING,
-  BRANCH_AT,
   DEAD_END_SPACINGS,
   DIRT,
   FILL_GENERATIONS,
   FILL_LIMIT,
   groundRule,
-  HIGHWAY,
-  HIGHWAY_MERGE_AFTER,
-  INTERCHANGE_SPACING,
   MIN_BOARDWALK,
-  MIN_HIGHWAY,
   MIN_MERGE_STEPS,
   MINOR_GENERATIONS,
   MINOR_LIMIT,
   polylineLength,
-  RoadTrace,
   SERVED,
   STREET,
   type TierParams,
@@ -105,6 +101,9 @@ import type { Beach, Island, Point, RoadCurve, RoadTier, WorldSkeleton, Zone } f
 // ground rules and the boardwalk length come out through here, as they did
 // while the two halves were one file.
 export { groundRule, MIN_BOARDWALK, spanProfile, type Profile } from './road-trace.ts';
+
+/** Places a bridge's near head is tried at before the crossing is given up. */
+const HEAD_TRIES = 12;
 
 /** What {@link seedAlong} lays besides the two roads parallel to the curve. */
 interface SeedOptions {
@@ -132,13 +131,7 @@ export function traceRoads(world: WorldSkeleton, field: TensorField): TracedRoad
   return new RoadTracer(world, field).build();
 }
 
-/** A highway line before it is laid: the points, and where its two halves meet. */
-interface Streamline {
-  points: Point[];
-  seam: number;
-}
-
-class RoadTracer extends RoadTrace {
+class RoadTracer extends HighwayTrace {
 
   build(): TracedRoads {
     this.traceHighways();
@@ -165,84 +158,6 @@ class RoadTracer extends RoadTrace {
     // Last, on curves that no longer move: a road that crosses another one and
     // does not meet it there is carried over it (spec section 6.2).
     return { roads: raiseOverpasses(connected), boardwalks };
-  }
-
-  // ---------------------------------------------------------------- highways
-
-  /**
-   * Two highways crossing at the core, plus a branch off each arm of them. A
-   * branch leaves its trunk at one of the trunk's interchanges, because that is
-   * the only place a highway takes a junction (spec section 6.2).
-   */
-
-  /**
-   * Two highways crossing at the core, plus a branch off each arm of them. A
-   * branch leaves its trunk at one of the trunk's interchanges, because that is
-   * the only place a highway takes a junction (spec section 6.2).
-   */
-  private traceHighways(): void {
-    const core = this.world.core;
-    const trunks = [this.streamline(core, false), this.streamline(core, true)];
-    // The highways are the spine every other road grows off: the arterials fill
-    // between them, and the minor roads between those. A map with no highway at
-    // all therefore has no roads at all. So where the ground cuts both trunks
-    // short of MIN_HIGHWAY, the longer of the two is laid whatever its length.
-    // Nothing was added to the network while they were traced, so the lines are
-    // the same two the calls above found.
-    if (trunks[0] === undefined && trunks[1] === undefined) {
-      const lines = [this.streamlineLine(core, false), this.streamlineLine(core, true)];
-      const first = lines[0] as Streamline;
-      const second = lines[1] as Streamline;
-      const i = polylineLength(second.points) > polylineLength(first.points) ? 1 : 0;
-      const best = lines[i] as Streamline;
-      if (best.points.length > 1) {
-        trunks[i] = this.addCurve('highway', best.points, [], interchangesOf(best.points, best.seam));
-      }
-    }
-    for (let i = 0; i < trunks.length; i++) {
-      const trunk = trunks[i];
-      if (trunk === undefined) continue;
-      for (const at of this.branchPoints(trunk, BRANCH_AT)) this.streamline(at, i === 0);
-    }
-  }
-
-  /**
-   * Where a branch highway leaves its trunk: the free interchange nearest each
-   * of the given fractions of the trunk's length. An interchange another road
-   * already stands on is not free — a branch seeded there would retrace that
-   * road — and neither is an end of the trunk.
-   */
-  private branchPoints(trunk: RoadCurve, fractions: readonly number[]): Point[] {
-    const points = trunk.points;
-    const last = points.length - 1;
-    const free = trunk.interchanges.filter((i) => {
-      if (i === 0 || i === last) return false;
-      const p = points[i] as Point;
-      return this.index.nearest(p.x, p.y, JOIN_EPSILON, trunk.id) === undefined;
-    });
-    return atFractions(points, free, fractions);
-  }
-
-  /**
-   * The line a highway would follow through a point: the field line, followed
-   * both ways, with the index of the point the two halves meet at.
-   */
-  private streamlineLine(at: Point, minor: boolean): Streamline {
-    const line = this.fieldLine(at, minor);
-    const opt: TraceOptions = { params: HIGHWAY, joiner: 'highway', minor, mergeAfter: HIGHWAY_MERGE_AFTER };
-    const forward = this.trace(at, { ...opt, heading: line });
-    const backward = this.trace(at, { ...opt, heading: line + Math.PI });
-    backward.points.reverse();
-    return { points: [...backward.points.slice(0, -1), ...forward.points], seam: backward.points.length - 1 };
-  }
-
-  /** One highway: that line, laid as a curve if it runs as far as a highway has to. */
-  private streamline(at: Point, minor: boolean): RoadCurve | undefined {
-    const { points, seam } = this.streamlineLine(at, minor);
-    if (polylineLength(points) < MIN_HIGHWAY * this.size) return undefined;
-    // The point it was seeded at is an interchange, so the road it grew out of
-    // and this one meet at a junction both of them allow.
-    return this.addCurve('highway', points, [], interchangesOf(points, seam));
   }
 
   // ----------------------------------------------------------------- islands
@@ -338,16 +253,43 @@ class RoadTracer extends RoadTrace {
     for (const flip of [false, true]) {
       const nearShore = flip ? crossing.to : crossing.from;
       const farShore = flip ? crossing.from : crossing.to;
-      const near = this.dryAnchor(nearShore, farShore);
-      const far = this.dryAnchor(farShore, nearShore);
-      if (near === undefined || far === undefined) continue;
-      const approach = this.routeToNetwork(near, this.islandOf(near.x, near.y));
+      const heads = this.bridgeHeads(nearShore, farShore);
+      if (heads === undefined) continue;
+      const [near, far] = heads;
+      // A head on the network is where the bridge joins it already.
+      const joined = this.index.nearest(near.x, near.y, JOIN_EPSILON) !== undefined;
+      const approach = joined ? [near] : this.routeToNetwork(near, this.islandOf(near.x, near.y));
       if (approach === undefined) continue;
       approach.reverse();
       const landing = this.landOnIsland(far, island);
       this.addCurve('arterial', [...approach, ...landing], [approach.length - 1]);
       return;
     }
+  }
+
+  /**
+   * The two heads of a bridge, the best places first. The deck between them is
+   * one straight segment, and a highway it would cross away from one of its
+   * slots refuses the pair.
+   *
+   * Where no pair on open ground will do, the near head may stand on a point of
+   * the network an arterial may join, nearest first. That is the highway that
+   * runs along the shore and took the ground a head would stand on: the bridge
+   * joins it at its interchange instead of crossing it.
+   */
+  private bridgeHeads(nearShore: Point, farShore: Point): [Point, Point] | undefined {
+    const fars = this.dryAnchors(farShore, nearShore);
+    for (const near of this.dryAnchors(nearShore, farShore).slice(0, HEAD_TRIES)) {
+      const far = fars.find((p) => this.clearance.crossesAtSlots(near, p, 'arterial'));
+      if (far !== undefined) return [near, far];
+    }
+    for (const hit of this.index.within(nearShore.x, nearShore.y, ANCHOR_REACH, -1, 'arterial')) {
+      const near = { x: hit.x, y: hit.y };
+      if (this.index.refuses(near.x, near.y, 'arterial')) continue;
+      const far = fars.find((p) => this.clearance.meets(near, p, 'arterial'));
+      if (far !== undefined) return [near, far];
+    }
+    return undefined;
   }
 
   /** The far side of a bridge, carried on to the nearest district of the island it reached. */
@@ -583,65 +525,6 @@ function trimTo(points: readonly Point[], clear: readonly boolean[], metres: num
   }
   while (end > 0 && clear[end] !== true) end--;
   return points.slice(0, end + 1);
-}
-
-/**
- * The points of a highway a junction may stand at: its two ends, the point it
- * was seeded at, and one every {@link INTERCHANGE_SPACING} along it. Ascending.
- * Every other point of a highway takes no junction at all (spec section 6.2).
- */
-function interchangesOf(points: readonly Point[], seedIndex: number): number[] {
-  const at = new Array<boolean>(points.length).fill(false);
-  at[0] = true;
-  at[points.length - 1] = true;
-  if (seedIndex > 0 && seedIndex < points.length) at[seedIndex] = true;
-  let run = 0;
-  for (let i = 0; i + 1 < points.length; i++) {
-    const a = points[i] as Point;
-    const b = points[i + 1] as Point;
-    run += dist(a.x, a.y, b.x, b.y);
-    if (run < INTERCHANGE_SPACING) continue;
-    run = 0;
-    at[i + 1] = true;
-  }
-  const out: number[] = [];
-  for (let i = 0; i < at.length; i++) if (at[i] === true) out.push(i);
-  return out;
-}
-
-/**
- * Of the points a polyline offers as `choices`, the one nearest each fraction
- * of its length. Each choice is taken at most once, so two fractions never
- * return the same place, and a fraction returns nothing once the choices run
- * out.
- */
-function atFractions(points: readonly Point[], choices: readonly number[], fractions: readonly number[]): Point[] {
-  const total = polylineLength(points);
-  const taken: number[] = [];
-  // Distance along the curve of every point, so an interchange can be measured.
-  const run: number[] = [0];
-  for (let i = 0; i + 1 < points.length; i++) {
-    const a = points[i] as Point;
-    const b = points[i + 1] as Point;
-    run.push((run[i] as number) + dist(a.x, a.y, b.x, b.y));
-  }
-  const out: Point[] = [];
-  for (const f of fractions) {
-    const wanted = total * f;
-    let best = -1;
-    let bestD = Infinity;
-    for (const i of choices) {
-      if (taken.includes(i)) continue;
-      const d = Math.abs((run[i] as number) - wanted);
-      if (d >= bestD) continue;
-      bestD = d;
-      best = i;
-    }
-    if (best < 0) continue;
-    taken.push(best);
-    out.push(points[best] as Point);
-  }
-  return out;
 }
 
 /**

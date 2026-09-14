@@ -10,7 +10,9 @@ import { clamp, dist } from '../core/math.ts';
 import { compareNumbers } from '../core/sort.ts';
 import type { Noise2D } from '../core/noise.ts';
 import { BeachGround, isResort } from './beaches.ts';
+import { layoutZones, zoneAt, type ZoneLayout } from './districts.ts';
 import { Heightfield } from './heightfield.ts';
+import { crossingsWith, planHighway } from './highway-plan.ts';
 import { DRY_MARGIN, spanProfile, type Profile } from './road-ground.ts';
 import { ANCHOR_REACH, ARTERIAL } from './road-params.ts';
 import { RoadClearance, type Trail } from './road-clear.ts';
@@ -56,6 +58,8 @@ export abstract class RoadRoute {
   protected readonly land: Uint8Array;
   /** The beaches as ground, so the minor fill can be kept off the sand. */
   protected readonly sand: BeachGround;
+  /** The zone rings of spec section 8.2. */
+  protected readonly zones: ZoneLayout;
   /** Scratch for the reroute search, kept between routes so it is allocated once. */
   protected readonly came: Int32Array;
   protected readonly queue: Int32Array;
@@ -84,9 +88,16 @@ export abstract class RoadRoute {
     // that sand would leave it ground no road reaches — which `parcels.ts`
     // drops, so the beach would not be a parcel at all.
     this.sand = new BeachGround(world.beaches.filter(isResort), world.size, this.hf.cellSize);
+    this.zones = layoutZones(world.size, world.core, world.water);
     this.came = new Int32Array(n * n);
     this.queue = new Int32Array(n * n);
   }
+
+  /** Ground in a zone that builds a city: where a highway runs on a deck (`highway-plan.ts`). */
+  protected readonly builtUp = (x: number, y: number): boolean => {
+    const zone = zoneAt(this.zones, x, y);
+    return zone !== 'outskirts' && zone !== 'wilderness';
+  };
 
   /** Ground that is not the sand of a beach (spec section 7.3). */
   protected readonly offSand = (x: number, y: number): boolean => this.sand.sandAt(x, y) < 0;
@@ -249,24 +260,26 @@ export abstract class RoadRoute {
 
   /**
    * Dry ground near a crossing's shore point, a little inland so the bridge head
-   * stands on something. Walks away from the water first, then searches around.
-   * Which island the ground belongs to is not asked here: the caller decides
-   * which end of the crossing is which by trying to reach the network from it.
+   * stands on something: every place that will do, best first. Walks away from
+   * the water first, then searches around. Which island the ground belongs to
+   * is not asked here: the caller decides which end of the crossing is which by
+   * trying to reach the network from it.
    */
-  protected dryAnchor(shore: Point, across: Point): Point | undefined {
+  protected dryAnchors(shore: Point, across: Point): Point[] {
     const away = Math.atan2(shore.y - across.y, shore.x - across.x);
+    const out: Point[] = [];
     for (let s = 0; s <= ANCHOR_REACH; s += 5) {
       const p = { x: shore.x + Math.cos(away) * s, y: shore.y + Math.sin(away) * s };
-      if (this.acceptAnchor(p)) return p;
+      if (this.acceptAnchor(p)) out.push(p);
     }
     for (let s = 10; s <= ANCHOR_REACH; s += 10) {
       for (let k = 1; k < 24; k++) {
         const a = away + (k * Math.PI) / 12;
         const p = { x: shore.x + Math.cos(a) * s, y: shore.y + Math.sin(a) * s };
-        if (this.acceptAnchor(p)) return p;
+        if (this.acceptAnchor(p)) out.push(p);
       }
     }
-    return undefined;
+    return out;
   }
 
   /** A bridge head stands on dry ground inside the map, clear of every road it does not meet. */
@@ -317,10 +330,55 @@ export abstract class RoadRoute {
     return tunnels;
   }
 
+  /**
+   * A highway's interchanges, with one more at each strait crossing whose shore
+   * it runs past. A highway along the shore takes the ground a bridge head
+   * would stand on, and a bridge may cross it only under a slot; the ramps of
+   * a deck can stand just there. An interchange there lets the bridge join the
+   * highway instead.
+   */
+  private withBridgeHeads(points: readonly Point[], bridges: readonly number[], tunnels: readonly number[], interchanges: readonly number[]): number[] {
+    const out = interchanges.slice();
+    const last = points.length - 1;
+    for (const crossing of this.world.water.crossings) {
+      for (const shore of [crossing.from, crossing.to]) {
+        let best = -1;
+        let bestD = ANCHOR_REACH / 2;
+        for (let i = 1; i < last; i++) {
+          const p = points[i] as Point;
+          const d = dist(p.x, p.y, shore.x, shore.y);
+          if (d >= bestD) continue;
+          bestD = d;
+          best = i;
+        }
+        if (best < 0) continue;
+        // The junction stands on the ground, so neither segment beside it is a structure.
+        if ([...bridges, ...tunnels].some((i) => i === best || i === best - 1)) continue;
+        if (out.some((i) => dist((points[i] as Point).x, (points[i] as Point).y, shore.x, shore.y) < ANCHOR_REACH)) continue;
+        out.push(best);
+      }
+    }
+    return out.sort(compareNumbers);
+  }
+
+  /**
+   * Lay a road. A highway's decks and slots are planned here, before the road
+   * goes into the network, so every road laid after it is traced against them.
+   */
   protected addCurve(tier: RoadTier, points: Point[], bridges: number[], interchanges: number[] = []): RoadCurve | undefined {
     if (points.length < 2) return undefined;
     const tunnels = this.markStructures(points, bridges);
     const curve: RoadCurve = { id: this.curves.length, tier, points, bridges, tunnels, interchanges };
+    if (tier === 'highway') {
+      curve.interchanges = this.withBridgeHeads(points, bridges, tunnels, interchanges);
+      // A highway passes under one laid before it on the ground, since the one
+      // before it is on its deck there.
+      const under = crossingsWith(points, this.curves.filter((c) => c.tier === 'highway'));
+      const plan = planHighway(points, bridges, tunnels, curve.interchanges, under, this.builtUp);
+      curve.bridges = plan.bridges;
+      curve.slots = plan.slots;
+      if (plan.lift !== undefined) curve.lift = plan.lift;
+    }
     this.curves.push(curve);
     this.index.add(curve);
     this.clearance.add(curve);
