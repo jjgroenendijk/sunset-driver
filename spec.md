@@ -272,7 +272,12 @@ minimap and pathfinding all reason about. It is not just render geometry.
   few large islands close together, separated by narrow straits, with open sea around the map edge
   — is one archetype among several. Whatever the archetype, the core sits on the largest piece of
   land; the other land carries suburbs, outskirts and wilderness.
-- A seeded river cuts the main island from its interior to a harbour on the shore.
+- The six archetypes are the archipelago, the bay, the strait, the delta, the ridge and the lagoon.
+  Only the archipelago relaxes its sites; the others keep the shape they are drawn along. The
+  ridge's relief climbs towards a spine of high ground behind the core, and the delta is near flat.
+- An archetype seeds no river, one or several. A river runs from inland to the sea and never cuts
+  the land in two. The harbour stands at the mouth of the first river, or on the shore the core
+  faces, as the archetype says.
 - One outer island is developed as the island district. Bridges or causeways link the islands at the
   narrowest points of the straits, and wherever else the road network crosses water.
 - Boats are a drivable vehicle class.

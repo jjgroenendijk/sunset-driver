@@ -9,10 +9,26 @@ gets wrong without it.
   land is a power diagram of island sites shrunk by half a channel and domain-warped, so straits
   bend but never close. The main site is the core at the origin.
 - Every number of that layout comes from the seed's `TerrainArchetype` (`archetype.ts`, spec
-  section 7.2): the sites, the relief, the coast, the rivers and the harbour. Only `terrain.ts`
-  reads it. `coastNoise(seed)` returns a `CoastNoise` that carries the coast profile, so a caller of
-  `islandAt` gets the right warp without knowing archetypes exist. The draw uses stream 3 of
-  `Subsystem.Water`; streams 1 and 2 are the layout's and the render's.
+  section 7.2), and the six tables are in `archetypes.ts`. `layoutTerrain` reads it and passes it on
+  to `sites.ts`, which places the sites by the archetype's pattern, and to `rivers.ts`, which plans
+  the rivers and the harbour. `coastNoise(seed)` returns a `CoastNoise` that carries the coast
+  profile, so a caller of `islandAt` gets the right warp without knowing archetypes exist. The draw
+  uses stream 3 of `Subsystem.Water`; streams 1 and 2 are the layout's and the render's. Never
+  reorder `ARCHETYPES`: the draw picks by index.
+- An island can be several cells (`Island.cells`), and the layout's `seas` are cells of open water.
+  No channel runs between two cells of one island, so a landmass need not be convex. The layout
+  draws from stream 1 in the order sites, channel, rivers; the archipelago kept its old order.
+- A river that runs close to a shore above its mouth cuts the land in two, and no road crosses a
+  river, so `rivers.ts` drops it. A harbour at the river mouth needs its river and keeps the first
+  try. A harbour on the waterfront already cuts the highway ring, so its rivers keep `RING_CLEAR`
+  off the core: a river across the ring as well leaves no arc long enough to lay.
+- `findCrossings` (`crossings.ts`) searches between the nearest pairs of cells of two islands. A
+  chord that lands on ground an arterial can climb to from the core ranks above one that lands in a
+  pocket closed off by steep slopes, up to `GRADED_SPAN`. No arterial reaches a bridge head in such
+  a pocket, so the roads never build that bridge.
+- `water.industry` is the direction of the industrial wedge. It points at the harbour, and turns
+  along the shore until the wedge is mostly dry, gentle land. A wedge in the sea puts the industrial
+  districts on the core, since `sampleSiteInZone` falls back there.
 - three.js `TerrainGenerator` needs `valleyBias: 1`; fractional values produce NaN.
 - `new LandMasses(hf, water, minHeight)` (`landmass.ts`) labels the connected pieces of dry land and
   says which of them a road can arrive at: the piece the main island stands on, and every piece a
@@ -132,7 +148,8 @@ gets wrong without it.
   (`roads.ts`) is the one rule for that, the same one the trace ran on. It also leaves a crossing
   alone where the point would make either road leave a road at that place, or at the places beside
   it, under `MIN_MEET`. A snap moves a road by up to 4 m, which can turn a short segment onto
-  another road's line. Where the snapped place fails, the crossing itself is tried.
+  another road's line, or lay its carriageway over the free end of a third road (`FreeEnds`). Where
+  the snapped place fails, the crossing itself is tried.
 - `raiseOverpasses(roads)` (`overpass.ts`) is the last step of `traceRoads`: where two roads cross
   without meeting, one is carried over the other (spec section 6.2). A crossing where one road is
   already `CLEARANCE` up, a highway slot, is left as it is, and the road below may not be raised
@@ -177,11 +194,13 @@ gets wrong without it.
 - `planBeaches` (`beaches.ts`) is spec section 7.3. It runs before `traceRoads`, because a boardwalk
   is a road, so `world.beaches` is in the skeleton the tracer reads. A beach is a run of coastline
   the ground behind rises slowly from; the harbour, the river mouth and the rock in the sea that no
-  crossing reaches are cut out first. `isResort` says which beaches carry a boardwalk line, a pier
-  and car parks: the long ones, plus the best two outside the core whatever their length, which is
-  what gives every seed the beach the spec asks for. The dune line is offset off a coastline that
-  marching squares draws in cell steps, so the normal is taken across several samples and capped
-  short of the centre of a bend; both keep it from folding over itself.
+  crossing reaches and the ends of the crossings are cut out first. `isResort` says which beaches
+  carry a boardwalk line, a pier and car parks: the long ones, plus two more outside the core
+  whatever their length, which is what gives every seed the beach the spec asks for. Those two rank
+  a beach of `LONG_BEACH` first, then one that runs past a district The Boardwalk can be named for.
+  The dune line is offset off a coastline that marching squares draws in cell steps, so the normal
+  is taken across several samples and capped short of the centre of a bend; both keep it from
+  folding over itself.
 - `nameBoardwalk` and `withBeachCulture` (`beaches.ts`) finish the districts once the beaches are
   known. The districts are placed first, because a beach reads their sites, so the beach
   neighbourhood can only be found afterwards. `nameBoardwalk` gives the name "The Boardwalk" to the
