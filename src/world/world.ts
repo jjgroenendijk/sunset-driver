@@ -28,6 +28,7 @@ export function generateWorld(seed: number): WorldDescription {
   const skeleton: WorldSkeleton = {
     seed,
     size,
+    archetype: layout.archetype.name,
     core: layout.core,
     terrain: terrain.toData(),
     water,

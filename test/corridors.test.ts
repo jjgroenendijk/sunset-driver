@@ -19,6 +19,7 @@ function world(ground: (x: number, y: number) => number, districts: District[]):
   return {
     seed: 1,
     size: SIZE,
+    archetype: 'archipelago',
     core: { x: 0, y: 0 },
     terrain: hf.toData(),
     water: {

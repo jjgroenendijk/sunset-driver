@@ -6,8 +6,13 @@ gets wrong without it.
 
 
 - `generateWorld(seed)` builds the whole-map skeleton; chunk-level content will hang off it. The
-  archipelago is a power diagram of island sites shrunk by half a channel and domain-warped, so
-  straits bend but never close. The main site is the core at the origin.
+  land is a power diagram of island sites shrunk by half a channel and domain-warped, so straits
+  bend but never close. The main site is the core at the origin.
+- Every number of that layout comes from the seed's `TerrainArchetype` (`archetype.ts`, spec
+  section 7.2): the sites, the relief, the coast, the rivers and the harbour. Only `terrain.ts`
+  reads it. `coastNoise(seed)` returns a `CoastNoise` that carries the coast profile, so a caller of
+  `islandAt` gets the right warp without knowing archetypes exist. The draw uses stream 3 of
+  `Subsystem.Water`; streams 1 and 2 are the layout's and the render's.
 - three.js `TerrainGenerator` needs `valleyBias: 1`; fractional values produce NaN.
 - `new LandMasses(hf, water, minHeight)` (`landmass.ts`) labels the connected pieces of dry land and
   says which of them a road can arrive at: the piece the main island stands on, and every piece a
