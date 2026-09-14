@@ -232,6 +232,11 @@ gets wrong without it.
   spec section 11.7: in each district, the building parcel whose centre stands nearest the site. A
   station keeps the `building` owner. The chunk worker sends them to the main thread on its first
   `ready` reply, because the main thread never builds the parcels.
+- `buildParkingBays` (`parking.ts`) lays out the bays of spec section 13.1, and the worker sends
+  them on the same reply. A street bay is a length of the `TierSpec.parking` strip inside each kerb,
+  and `laneOffset` shares only what is left between the lanes. A bay is refused where it would
+  reach the ground another road claims, its own street's lanes, or its neighbour on a bend. A car
+  park is laid in rows `STREET_REACH` inside its edge, because that rim is where its trees stand.
 - `buildBuildings(world, parcels, graph)` (`buildings.ts`) places the buildings of spec section
   10.3. It is built on demand like the parcels, not stored in the world description.
   `ZONE_BUILDINGS` says what a zone builds at all — a suburban parcel has no tower on its list —
