@@ -9,6 +9,7 @@ import { parcelChecks } from './seed-parcels.ts';
 import { layoutChecks } from './seed-layout.ts';
 import { chunkChecks } from './seed-chunks.ts';
 import { placeChecks } from './seed-places.ts';
+import { trafficChecks } from './seed-traffic.ts';
 
 /**
  * The seed sweep of spec section 3: every check the generated world has to pass,
@@ -33,4 +34,5 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
   layoutChecks();
   chunkChecks();
   placeChecks();
+  trafficChecks();
 });

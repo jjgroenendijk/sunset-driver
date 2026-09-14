@@ -1,0 +1,504 @@
+/**
+ * Ambient traffic (spec sections 5.3, 13.1): every vehicle of the city's
+ * traffic as a function of `(seed, tick)` and a stable id.
+ *
+ * The vehicles are placed once for a world. Each directed run of road gets a
+ * number of them from its tier's density and the district it runs through,
+ * each in a lane on the right-hand side of the carriageway. Each vehicle then
+ * drives the loop `traffic-tour.ts` walks for it, at the speed limit of the
+ * road it is on. No vehicle reads another one, so the city's traffic never has
+ * to be stepped as a whole.
+ *
+ * Where a vehicle is can be asked two ways, and they agree exactly:
+ * {@link AmbientTraffic.cursorAt} evaluates it at any tick on demand, and
+ * {@link AmbientTraffic.advance} steps a cursor one tick. The physics steps the
+ * vehicles near the player and evaluates the ones that come into range; the
+ * renderer evaluates between two ticks. Nothing here is simulation state. The
+ * record only holds the vehicles the player has touched, in
+ * {@link TrafficState}, because from then on the physics owns them.
+ */
+import { hashInts } from '../core/hash.ts';
+import { rngFor, Subsystem, type Rng } from '../core/rng.ts';
+import { RoadBeds } from '../world/bed.ts';
+import { layoutZones, districtAt } from '../world/districts.ts';
+import { buildRoadGraph, type RoadEdge, type RoadGraph } from '../world/graph.ts';
+import { buildJunctions } from '../world/junctions.ts';
+import { TIERS } from '../world/tiers.ts';
+import type { Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../world/types.ts';
+import { TICK_RATE } from './clock.ts';
+import { legAt, timeTour, walkTour, type Permit, type Tour } from './traffic-tour.ts';
+import { specOf, type VehicleClass, type VehicleState } from './vehicle.ts';
+
+/** Metres each way of one bucket of the index that says which vehicles can be near a place. */
+export const TRAFFIC_CELL = 100;
+
+/**
+ * Metres behind and ahead of a vehicle its pose is read at. The vehicle stands
+ * between the two readings and faces from one to the other, so it takes a
+ * corner as a curve rather than snapping round at the node.
+ */
+export const SMOOTH = 4;
+
+/** Metres a vehicle may stand off the line of its road: its lane and the corner it cuts. */
+const REACH = 16;
+
+/** How busy each zone's roads are, as a share of the tier's density. */
+export const ZONE_TRAFFIC: Record<Zone, number> = {
+  core: 1,
+  inner: 0.85,
+  industrial: 0.6,
+  suburban: 0.45,
+  outskirts: 0.25,
+  wilderness: 0.15,
+};
+
+/**
+ * The classes of the roster each tier's traffic is made of, and how often each
+ * comes up. The patrol car, the boat and the buggy are not ambient traffic.
+ */
+export const TIER_MIX: Record<RoadTier, Partial<Record<VehicleClass, number>>> = {
+  highway: { saloon: 4, compact: 2, sports: 2, van: 2, truck: 2, bus: 1 },
+  arterial: { saloon: 4, compact: 3, sports: 1, van: 2, truck: 1, bus: 1, motorcycle: 1 },
+  street: { compact: 4, saloon: 3, sports: 1, van: 1, motorcycle: 1, offroad: 1 },
+  alley: { compact: 3, van: 2, motorcycle: 1 },
+  dirt: { offroad: 4, truck: 2, van: 1, compact: 1 },
+};
+
+/** Every class that drives in ambient traffic, in roster order. */
+export const AMBIENT_CLASSES: readonly VehicleClass[] = [
+  'compact',
+  'saloon',
+  'sports',
+  'van',
+  'truck',
+  'bus',
+  'motorcycle',
+  'offroad',
+];
+
+/** The paints a car of the traffic comes in. A bus keeps the livery of its row. */
+export const PAINTS: readonly number[] = [
+  0x3f7d63, 0xb8352c, 0xe0b13a, 0xd8d4c8, 0x2f5d86, 0x1f1f24, 0x8a8f96, 0x6b2f4a, 0xf2f4f5, 0x4a5a3a, 0xc4592f, 0x27404f,
+];
+
+/** The keys of the two streams traffic draws from, so neither shifts the other. */
+const EDGE_STREAM = 1;
+const VEHICLE_STREAM = 2;
+
+/** The road network as traffic needs it. */
+export interface TrafficRoads {
+  roads: readonly RoadCurve[];
+  graph: RoadGraph;
+  /** How busy the roads at a place are, 0 to 1. Everywhere as busy as the core when left out. */
+  busyAt?(x: number, y: number): number;
+  /** The height the road drives at, `t` along a segment of a curve that stands at `(x, y)`. */
+  heightAt(curve: number, segment: number, t: number, x: number, y: number): number;
+}
+
+/** One vehicle of the traffic: what it is and the loop it drives. */
+export interface AmbientVehicle {
+  id: number;
+  cls: VehicleClass;
+  paint: number;
+  /** Lanes out from the middle of the road, 0 nearest it. A road with fewer lanes uses its outermost. */
+  lane: number;
+  /** The tick of its tour it stands at on tick 0. */
+  phase: number;
+  tour: Tour;
+}
+
+/** Where on its tour a vehicle is: the leg, and the whole ticks it has driven of it. */
+export interface TrafficCursor {
+  id: number;
+  leg: number;
+  into: number;
+}
+
+/** A vehicle placed on the map. `y` is the map's; `height` is up. */
+export interface AmbientPose {
+  x: number;
+  y: number;
+  /** The road under the middle of the vehicle. */
+  height: number;
+  heading: number;
+  /** Metres per second along the heading. */
+  speed: number;
+}
+
+/** A vehicle the player has touched, and the record the physics now keeps of it (spec section 5.3). */
+export interface PromotedVehicle {
+  id: number;
+  vehicle: VehicleState;
+}
+
+/** What the simulation record holds of the traffic: only what has left its trajectory. */
+export interface TrafficState {
+  /** Ascending by id. */
+  promoted: PromotedVehicle[];
+}
+
+export function createTrafficState(): TrafficState {
+  return { promoted: [] };
+}
+
+/** The record of a promoted vehicle, or undefined while it still drives its tour. */
+export function promotedOf(state: TrafficState, id: number): PromotedVehicle | undefined {
+  const list = state.promoted;
+  let lo = 0;
+  let hi = list.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const at = (list[mid] as PromotedVehicle).id;
+    if (at === id) return list[mid];
+    if (at < id) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return undefined;
+}
+
+/** Add a promoted vehicle, keeping the list in id order. */
+export function addPromoted(state: TrafficState, promoted: PromotedVehicle): void {
+  let i = state.promoted.length;
+  while (i > 0 && (state.promoted[i - 1] as PromotedVehicle).id > promoted.id) i--;
+  state.promoted.splice(i, 0, promoted);
+}
+
+/** One reading along a tour: a point in the lane, and the road height under it. */
+interface Sample {
+  x: number;
+  y: number;
+  height: number;
+}
+
+export class AmbientTraffic {
+  readonly vehicles: readonly AmbientVehicle[];
+  private readonly roads: TrafficRoads;
+  /** Cumulative metres at each point of each edge, in its direction of travel. */
+  private readonly runs: (Float64Array | undefined)[] = [];
+  /** The box round each edge, grown by {@link REACH}: minX, minY, maxX, maxY. */
+  private readonly boxes: Float64Array;
+  private readonly cells: number[][] = [];
+  private readonly originX: number;
+  private readonly originY: number;
+  private readonly nx: number;
+  private readonly ny: number;
+  private readonly behind: Sample = { x: 0, y: 0, height: 0 };
+  private readonly ahead: Sample = { x: 0, y: 0, height: 0 };
+
+  constructor(seed: number, roads: TrafficRoads) {
+    this.roads = roads;
+    const graph = roads.graph;
+    this.boxes = new Float64Array(graph.edges.length * 4);
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const edge of graph.edges) {
+      this.boxEdge(edge);
+      minX = Math.min(minX, this.boxes[edge.id * 4] as number);
+      minY = Math.min(minY, this.boxes[edge.id * 4 + 1] as number);
+      maxX = Math.max(maxX, this.boxes[edge.id * 4 + 2] as number);
+      maxY = Math.max(maxY, this.boxes[edge.id * 4 + 3] as number);
+    }
+    if (graph.edges.length === 0) minX = minY = maxX = maxY = 0;
+    this.originX = minX;
+    this.originY = minY;
+    this.nx = Math.max(1, Math.ceil((maxX - minX) / TRAFFIC_CELL) + 1);
+    this.ny = Math.max(1, Math.ceil((maxY - minY) / TRAFFIC_CELL) + 1);
+    for (let i = 0; i < this.nx * this.ny; i++) this.cells.push([]);
+
+    const vehicles: AmbientVehicle[] = [];
+    for (const edge of graph.edges) this.place(seed, edge, vehicles);
+    this.vehicles = vehicles;
+  }
+
+  /** Where a vehicle is on its tour at a tick, evaluated without stepping it there. */
+  cursorAt(id: number, tick: number, out: TrafficCursor = { id, leg: 0, into: 0 }): TrafficCursor {
+    const vehicle = this.vehicles[id] as AmbientVehicle;
+    const tour = vehicle.tour;
+    const at = (((tick + vehicle.phase) % tour.period) + tour.period) % tour.period;
+    out.id = id;
+    out.leg = legAt(tour.startTick, at);
+    out.into = at - (tour.startTick[out.leg] as number);
+    return out;
+  }
+
+  /** Step a cursor one tick along its tour. */
+  advance(cursor: TrafficCursor): void {
+    const tour = (this.vehicles[cursor.id] as AmbientVehicle).tour;
+    cursor.into += 1;
+    if (cursor.into < (tour.legTicks[cursor.leg] as number)) return;
+    cursor.into = 0;
+    cursor.leg = (cursor.leg + 1) % tour.edges.length;
+  }
+
+  /** The pose a cursor stands at. */
+  pose(cursor: TrafficCursor, out: AmbientPose): AmbientPose {
+    return this.poseOn(cursor.id, cursor.leg, cursor.into, out);
+  }
+
+  /**
+   * The pose of a vehicle at a tick, which may fall between two ticks: the
+   * renderer draws the traffic between the last two. At a whole tick it is
+   * exactly the pose of the cursor there.
+   */
+  poseAt(id: number, tick: number, out: AmbientPose): AmbientPose {
+    const tour = (this.vehicles[id] as AmbientVehicle).tour;
+    const vehicle = this.vehicles[id] as AmbientVehicle;
+    const at = (((tick + vehicle.phase) % tour.period) + tour.period) % tour.period;
+    const leg = legAt(tour.startTick, at);
+    return this.poseOn(id, leg, at - (tour.startTick[leg] as number), out);
+  }
+
+  /** The edge a cursor is driving, which is what a caller skips a far vehicle by. */
+  edgeOf(cursor: TrafficCursor): number {
+    return (this.vehicles[cursor.id] as AmbientVehicle).tour.edges[cursor.leg] as number;
+  }
+
+  /** True when an edge, grown by the reach of its lanes, overlaps a box. */
+  edgeMeets(edge: number, minX: number, minY: number, maxX: number, maxY: number): boolean {
+    const b = this.boxes;
+    return (b[edge * 4] as number) <= maxX && (b[edge * 4 + 2] as number) >= minX && (b[edge * 4 + 1] as number) <= maxY && (b[edge * 4 + 3] as number) >= minY;
+  }
+
+  /**
+   * The ids of every vehicle whose tour passes through a box, ascending and
+   * without repeats. Those are the only vehicles that can be in it at any tick.
+   */
+  near(minX: number, minY: number, maxX: number, maxY: number, out: number[]): number[] {
+    out.length = 0;
+    const x0 = this.column(minX, this.originX, this.nx);
+    const x1 = this.column(maxX, this.originX, this.nx);
+    const y0 = this.column(minY, this.originY, this.ny);
+    const y1 = this.column(maxY, this.originY, this.ny);
+    for (let iy = y0; iy <= y1; iy++) {
+      for (let ix = x0; ix <= x1; ix++) {
+        for (const id of this.cells[iy * this.nx + ix] as number[]) out.push(id);
+      }
+    }
+    out.sort((a, b) => a - b);
+    let kept = 0;
+    for (let i = 0; i < out.length; i++) {
+      if (i > 0 && out[i] === out[i - 1]) continue;
+      out[kept++] = out[i] as number;
+    }
+    out.length = kept;
+    return out;
+  }
+
+  private poseOn(id: number, leg: number, into: number, out: AmbientPose): AmbientPose {
+    const vehicle = this.vehicles[id] as AmbientVehicle;
+    const tour = vehicle.tour;
+    const edge = this.roads.graph.edges[tour.edges[leg] as number] as RoadEdge;
+    const ticks = tour.legTicks[leg] as number;
+    const along = (tour.startDistance[leg] as number) + (into / ticks) * edge.length;
+    this.sample(vehicle, along - SMOOTH, this.behind);
+    this.sample(vehicle, along + SMOOTH, this.ahead);
+    out.x = (this.behind.x + this.ahead.x) / 2;
+    out.y = (this.behind.y + this.ahead.y) / 2;
+    out.height = (this.behind.height + this.ahead.height) / 2;
+    out.heading = Math.atan2(this.ahead.y - this.behind.y, this.ahead.x - this.behind.x);
+    out.speed = (edge.length / ticks) * TICK_RATE;
+    return out;
+  }
+
+  /** The point in a vehicle's lane a distance round its tour, and the road height there. */
+  private sample(vehicle: AmbientVehicle, distance: number, out: Sample): void {
+    const tour = vehicle.tour;
+    let d = distance % tour.length;
+    if (d < 0) d += tour.length;
+    const leg = legAt(tour.startDistance, d);
+    const edge = this.roads.graph.edges[tour.edges[leg] as number] as RoadEdge;
+    const run = this.runOf(edge);
+    const s = d - (tour.startDistance[leg] as number);
+    const k = Math.min(legAt(run, s), run.length - 2);
+    const span = (run[k + 1] as number) - (run[k] as number);
+    const f = span > 0 ? Math.min(1, Math.max(0, (s - (run[k] as number)) / span)) : 0;
+    const step = edge.end >= edge.start ? 1 : -1;
+    const points = (this.roads.roads[edge.curve] as RoadCurve).points;
+    const a = points[edge.start + k * step] as Point;
+    const b = points[edge.start + (k + 1) * step] as Point;
+    const cx = a.x + (b.x - a.x) * f;
+    const cy = a.y + (b.y - a.y) * f;
+    const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const offset = laneOffset(edge, vehicle.lane);
+    // The right hand of the direction of travel, which is where the lane is.
+    out.x = cx - ((b.y - a.y) / length) * offset;
+    out.y = cy + ((b.x - a.x) / length) * offset;
+    out.height = step > 0 ? this.roads.heightAt(edge.curve, edge.start + k, f, cx, cy) : this.roads.heightAt(edge.curve, edge.start - k - 1, 1 - f, cx, cy);
+  }
+
+  private runOf(edge: RoadEdge): Float64Array {
+    const known = this.runs[edge.id];
+    if (known !== undefined) return known;
+    const points = (this.roads.roads[edge.curve] as RoadCurve).points;
+    const step = edge.end >= edge.start ? 1 : -1;
+    const run = new Float64Array(Math.abs(edge.end - edge.start) + 1);
+    for (let k = 1; k < run.length; k++) {
+      const a = points[edge.start + (k - 1) * step] as Point;
+      const b = points[edge.start + k * step] as Point;
+      run[k] = (run[k - 1] as number) + Math.hypot(b.x - a.x, b.y - a.y);
+    }
+    this.runs[edge.id] = run;
+    return run;
+  }
+
+  private boxEdge(edge: RoadEdge): void {
+    const points = (this.roads.roads[edge.curve] as RoadCurve).points;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (let i = Math.min(edge.start, edge.end); i <= Math.max(edge.start, edge.end); i++) {
+      const p = points[i] as Point;
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+    this.boxes.set([minX - REACH, minY - REACH, maxX + REACH, maxY + REACH], edge.id * 4);
+  }
+
+  /** Put the vehicles of one directed run of road down, and walk each its tour. */
+  private place(seed: number, edge: RoadEdge, vehicles: AmbientVehicle[]): void {
+    const graph = this.roads.graph;
+    const mid = this.midpoint(edge);
+    const busy = this.roads.busyAt?.(mid.x, mid.y) ?? 1;
+    const expected = (edge.length / 1000) * edge.lanes * TIERS[edge.tier].density * busy;
+    const rng = rngFor(seed, 0, Subsystem.Traffic, hashInts(EDGE_STREAM, edge.id));
+    const count = Math.floor(expected + rng.float());
+    for (let j = 0; j < count; j++) {
+      const id = vehicles.length;
+      const cls = pickClass(TIER_MIX[edge.tier], rng);
+      const offset = ((j + rng.range(0.25, 0.75)) / count) * edge.length;
+      const lane = rng.int(0, edge.lanes - 1);
+      const paint = cls === 'bus' ? specOf(cls).paint : (PAINTS[rng.int(0, PAINTS.length - 1)] as number);
+      const walk = rngFor(seed, 0, Subsystem.Traffic, hashInts(VEHICLE_STREAM, id));
+      const tour = timeTour(graph, walkTour(graph, edge.id, walk, permitOf(cls)));
+      const home = tour.edges.indexOf(edge.id);
+      const phase =
+        home >= 0
+          ? (tour.startTick[home] as number) + Math.floor((offset / edge.length) * (tour.legTicks[home] as number))
+          : walk.int(0, tour.period - 1);
+      vehicles.push({ id, cls, paint, lane, phase, tour });
+      for (const e of tour.edges) this.file(id, e);
+    }
+  }
+
+  /** File a vehicle in every bucket one edge of its tour covers. */
+  private file(id: number, edge: number): void {
+    const b = this.boxes;
+    const x0 = this.column(b[edge * 4] as number, this.originX, this.nx);
+    const x1 = this.column(b[edge * 4 + 2] as number, this.originX, this.nx);
+    const y0 = this.column(b[edge * 4 + 1] as number, this.originY, this.ny);
+    const y1 = this.column(b[edge * 4 + 3] as number, this.originY, this.ny);
+    for (let iy = y0; iy <= y1; iy++) {
+      for (let ix = x0; ix <= x1; ix++) {
+        const bucket = this.cells[iy * this.nx + ix] as number[];
+        // A tour files all its edges before the next vehicle files any.
+        if (bucket[bucket.length - 1] !== id) bucket.push(id);
+      }
+    }
+  }
+
+  private column(v: number, origin: number, count: number): number {
+    const i = Math.floor((v - origin) / TRAFFIC_CELL);
+    return i < 0 ? 0 : i >= count ? count - 1 : i;
+  }
+
+  private midpoint(edge: RoadEdge): Point {
+    const points = (this.roads.roads[edge.curve] as RoadCurve).points;
+    return points[(edge.start + edge.end) >> 1] as Point;
+  }
+}
+
+/**
+ * Metres from the centreline to the middle of a lane. The lanes of one
+ * direction share the right half of the carriageway evenly, as the markings of
+ * `road-section.ts` divide it. An alley and a dirt road have one lane both ways
+ * share, and a vehicle keeps to its right half of it.
+ */
+export function laneOffset(edge: Pick<RoadEdge, 'tier' | 'lanes'>, lane: number): number {
+  const width = TIERS[edge.tier].width / (2 * edge.lanes);
+  return (Math.min(lane, edge.lanes - 1) + 0.5) * width;
+}
+
+/** Which tiers a class may drive: a truck and a bus keep to the tiers that let them on. */
+export function permitOf(cls: VehicleClass): Permit {
+  if (cls === 'truck') return (edge) => TIERS[edge.tier].traffic.trucks;
+  if (cls === 'bus') return (edge) => TIERS[edge.tier].traffic.buses;
+  return () => true;
+}
+
+function pickClass(mix: Partial<Record<VehicleClass, number>>, rng: Rng): VehicleClass {
+  let total = 0;
+  for (const cls of AMBIENT_CLASSES) total += mix[cls] ?? 0;
+  let pick = rng.float() * total;
+  for (const cls of AMBIENT_CLASSES) {
+    pick -= mix[cls] ?? 0;
+    if (pick < 0) return cls;
+  }
+  return 'saloon';
+}
+
+/** A vehicle or a person seen from above: a box about its middle, turned to a heading. */
+export interface Footprint {
+  x: number;
+  y: number;
+  heading: number;
+  halfLength: number;
+  halfWidth: number;
+}
+
+/**
+ * True when two footprints overlap or stand within `margin` of each other.
+ * The separating-axis test on the four sides of the two boxes, which is exact
+ * for two rectangles.
+ */
+export function footprintsTouch(a: Footprint, b: Footprint, margin: number): boolean {
+  const ca = Math.cos(a.heading);
+  const sa = Math.sin(a.heading);
+  const cb = Math.cos(b.heading);
+  const sb = Math.sin(b.heading);
+  // Each box's length and then its width: the axis a quarter turn on is (-sin, cos).
+  return (
+    overlapsAlong(a, b, ca, sa, margin) &&
+    overlapsAlong(a, b, -sa, ca, margin) &&
+    overlapsAlong(a, b, cb, sb, margin) &&
+    overlapsAlong(a, b, -sb, cb, margin)
+  );
+}
+
+/** True when the two boxes overlap along one axis, grown by the margin. */
+function overlapsAlong(a: Footprint, b: Footprint, ax: number, ay: number, margin: number): boolean {
+  const reach = extent(a, ax, ay) + extent(b, ax, ay) + margin;
+  return Math.abs((b.x - a.x) * ax + (b.y - a.y) * ay) <= reach;
+}
+
+function extent(box: Footprint, ax: number, ay: number): number {
+  const fx = Math.cos(box.heading);
+  const fy = Math.sin(box.heading);
+  return box.halfLength * Math.abs(fx * ax + fy * ay) + box.halfWidth * Math.abs(-fy * ax + fx * ay);
+}
+
+/**
+ * The road network of a generated world as traffic reads it: the graph, how
+ * busy each district is, and the height of each road's bed, so a vehicle on a
+ * bridge drives on the deck.
+ */
+export function trafficRoadsOf(
+  world: WorldDescription,
+  graph: RoadGraph = buildRoadGraph(world.roads),
+  beds: RoadBeds = new RoadBeds(world.terrain, world.roads, buildJunctions(world.roads, graph)),
+): TrafficRoads {
+  const zones = layoutZones(world.size, world.core, world.water);
+  return {
+    roads: world.roads,
+    graph,
+    busyAt: (x, y) => {
+      const district = districtAt(world.districts, zones, x, y);
+      return ZONE_TRAFFIC[district.zone] * (0.6 + 0.4 * district.density);
+    },
+    heightAt: (curve, segment, t) => beds.heightAt(curve, segment, t),
+  };
+}
