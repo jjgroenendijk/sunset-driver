@@ -23,11 +23,11 @@ export interface ZoneBands {
 
 /**
  * The share of the whole map that is dry land, whatever the archetype (spec
- * section 7.2). Wide on purpose: the archipelago alone gave 63 to 74 % over 80
- * seeds, and the band narrows once the other archetypes exist and the contact
- * sheet of `scripts/terrain-sheet.ts` shows what they produce.
+ * section 7.2). Over 200 seeds the lagoon gave 41 to 50 %, the ridge 46 to 58 %
+ * and the other four 60 to 73 %. Each archetype holds a narrower target of its
+ * own; this band holds them all.
  */
-export const LAND_FRACTION: LayoutBand = { min: 0.5, max: 0.9 };
+export const LAND_FRACTION: LayoutBand = { min: 0.38, max: 0.78 };
 
 /**
  * How dense each zone is (spec section 8.2), as a band rather than a number,
@@ -115,9 +115,11 @@ export const LAYOUT_BANDS: Record<Zone, ZoneBands> = {
   // parcel is low for the same reason: seed 4240293950 leaves 58 ha of
   // wilderness in eight pieces, most of them slivers along the coast, and its
   // middle parcel is 750 m². Out here the band catches a wilderness parcelled
-  // like a suburb and nothing finer than that.
+  // like a suburb and nothing finer than that. The road ceiling is loose for
+  // the same slivers: a ridge seed of 3.3 km leaves 32 ha of wilderness in the
+  // corners, with a highway along the coast through them, and reads 18.5 %.
   wilderness: {
-    roadShare: { min: 0, max: 0.12 },
+    roadShare: { min: 0, max: 0.2 },
     buildingShare: { min: 0, max: 0.05 },
     buildingsPerHectare: { min: 0, max: 1.5 },
     medianParcelArea: { min: 400, max: 6e5 },

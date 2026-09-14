@@ -4,7 +4,8 @@ import { generateDistricts, layoutZones } from './districts.ts';
 import { buildRoadGraph } from './graph.ts';
 import { traceRoads } from './roads.ts';
 import { buildTensorField } from './tensor.ts';
-import { describeWater, generateTerrain, layoutTerrain, TERRAIN_CELL } from './terrain.ts';
+import { describeWater } from './crossings.ts';
+import { generateTerrain, layoutTerrain, TERRAIN_CELL } from './terrain.ts';
 import { worldSizeFor } from './size.ts';
 import type { WorldDescription, WorldSkeleton } from './types.ts';
 

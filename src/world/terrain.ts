@@ -1,10 +1,14 @@
 import { TerrainGenerator } from 'three/examples/jsm/generators/TerrainGenerator.js';
-import { clamp, lerp, smoothstep } from '../core/math.ts';
+import { lerp, smoothstep } from '../core/math.ts';
 import { Noise2D } from '../core/noise.ts';
 import { genRng, Subsystem } from '../core/rng.ts';
 import { archetypeFor, type CoastProfile, type TerrainArchetype } from './archetype.ts';
 import { Heightfield } from './heightfield.ts';
-import type { Crossing, Island, Point, RiverDescription, WaterDescription } from './types.ts';
+import { carveHarbour, carveRiver, planWater, segmentDistance, type Harbour } from './rivers.ts';
+import { placeSites } from './sites.ts';
+import type { Island, Point, RiverDescription, Site } from './types.ts';
+
+export { segmentDistance } from './rivers.ts';
 
 /** Metres between height samples of the whole-map skeleton. */
 export const TERRAIN_CELL = 10;
@@ -19,25 +23,36 @@ export const TERRAIN_CELL = 10;
 export const CHUNK_TERRAIN_CELL = 2.5;
 export const SEA_LEVEL = 0;
 
+/**
+ * Every cell of the power diagram as flat arrays, land and sea alike, because
+ * the coast reads them once per terrain sample. `mass` is the index of the
+ * island a cell belongs to, or -1 for a cell of open sea.
+ */
+export interface PowerCells {
+  x: Float64Array;
+  y: Float64Array;
+  /** The squared weight. */
+  w2: Float64Array;
+  mass: Int32Array;
+}
+
 export interface TerrainLayout {
   size: number;
   /** The bundle of numbers this layout was drawn with. */
   archetype: TerrainArchetype;
   core: Point;
   islands: Island[];
+  /** Cells of open sea: a bay, a strait or a lagoon. */
+  seas: Site[];
+  cells: PowerCells;
+  /** The ridge line the relief climbs towards, for an archetype whose relief is keyed to one. */
+  spine: { from: Point; to: Point } | undefined;
   /** Half the nominal width of the straits between islands. */
   channelHalf: number;
   /** Sea band around the map edge. */
   seaMargin: number;
-  harbour: { x: number; y: number; radius: number };
-  river: RiverDescription;
-}
-
-/** Power-diagram distance from a point to an island's site; smaller wins the cell. */
-function power(isl: Island, x: number, y: number): number {
-  const dx = x - isl.x;
-  const dy = y - isl.y;
-  return dx * dx + dy * dy - isl.radius * isl.radius;
+  harbour: Harbour;
+  rivers: RiverDescription[];
 }
 
 /** Salt of the noise that draws the coastline. Everything that asks where the shore runs uses this one stream. */
@@ -56,8 +71,8 @@ export class CoastNoise extends Noise2D {
 }
 
 /** The noise the coastline is drawn with, rebuilt from the seed. */
-export function coastNoise(seed: number): CoastNoise {
-  return new CoastNoise(seed ^ COAST_SALT, archetypeFor(seed).coast);
+export function coastNoise(seed: number, archetype: TerrainArchetype = archetypeFor(seed)): CoastNoise {
+  return new CoastNoise(seed ^ COAST_SALT, archetype.coast);
 }
 
 /**
@@ -73,15 +88,22 @@ export function warpPoint(noise: CoastNoise, size: number, x: number, y: number,
   return out;
 }
 
-/** Index of the island whose cell contains the point. */
+/**
+ * Index of the island whose cell contains the point. The sea cells take no part:
+ * a point on dry land stands in the same island's cell with them or without
+ * them, and a point in the water belongs to no island at all.
+ */
 export function islandIndexAt(islands: readonly Island[], x: number, y: number): number {
   let best = 0;
   let bestP = Infinity;
   for (let i = 0; i < islands.length; i++) {
-    const p = power(islands[i] as Island, x, y);
-    if (p < bestP) {
-      bestP = p;
-      best = i;
+    const isl = islands[i] as Island;
+    for (const c of isl.cells ?? [isl]) {
+      const p = (x - c.x) ** 2 + (y - c.y) ** 2 - c.radius * c.radius;
+      if (p < bestP) {
+        bestP = p;
+        best = i;
+      }
     }
   }
   return best;
@@ -98,163 +120,132 @@ export function islandAt(islands: readonly Island[], size: number, noise: CoastN
   return islandIndexAt(islands, w.x, w.y);
 }
 
-/**
- * Distance from a point inside cell `i` to the cell's boundary (positive inside),
- * taking the map's sea margin as one more boundary.
- */
-function cellDepth(layout: TerrainLayout, i: number, x: number, y: number): number {
-  const islands = layout.islands;
-  const me = islands[i] as Island;
-  const pMe = power(me, x, y);
-  let depth = Infinity;
-  for (let j = 0; j < islands.length; j++) {
-    if (j === i) continue;
-    const other = islands[j] as Island;
-    const d = Math.hypot(other.x - me.x, other.y - me.y);
-    if (d === 0) continue;
-    const toBisector = (power(other, x, y) - pMe) / (2 * d);
-    if (toBisector < depth) depth = toBisector;
-  }
-  const half = layout.size / 2 - layout.seaMargin;
-  const edge = Math.min(half - Math.abs(x), half - Math.abs(y));
-  return Math.min(depth, edge);
+/** Flatten the land cells of every island and the sea cells into one table. */
+function powerCells(islands: readonly Island[], seas: readonly Site[]): PowerCells {
+  const all: { site: Site; mass: number }[] = [];
+  islands.forEach((isl, i) => {
+    for (const site of isl.cells ?? [isl]) all.push({ site, mass: i });
+  });
+  for (const site of seas) all.push({ site, mass: -1 });
+  const cells: PowerCells = {
+    x: new Float64Array(all.length),
+    y: new Float64Array(all.length),
+    w2: new Float64Array(all.length),
+    mass: new Int32Array(all.length),
+  };
+  all.forEach(({ site, mass }, k) => {
+    cells.x[k] = site.x;
+    cells.y[k] = site.y;
+    cells.w2[k] = site.radius * site.radius;
+    cells.mass[k] = mass;
+  });
+  return cells;
 }
 
 /**
  * Signed distance to the nearest coastline: negative inland, positive at sea.
- * Each island is its cell shrunk by half a channel, with a wandering shore.
+ * Each island is the union of its cells, shrunk by half a channel wherever it
+ * meets another island or a cell of sea, with a wandering shore. A cell of sea
+ * reads the same distance with the sign turned, so the coast is continuous
+ * across the boundary between the two.
  */
 export function coastOffset(layout: TerrainLayout, noise: CoastNoise, x: number, y: number): number {
   // Domain warp: bends the straits sideways without ever closing them, since the
   // whole partition is displaced together.
   const { x: wx, y: wy } = warpPoint(noise, layout.size, x, y, WARP_SCRATCH);
-  const i = islandIndexAt(layout.islands, wx, wy);
-  const depth = cellDepth(layout, i, wx, wy);
+  const cells = layout.cells;
+  const n = cells.mass.length;
+  let k = 0;
+  let pk = Infinity;
+  for (let j = 0; j < n; j++) {
+    const p = (wx - (cells.x[j] as number)) ** 2 + (wy - (cells.y[j] as number)) ** 2 - (cells.w2[j] as number);
+    if (p < pk) {
+      pk = p;
+      k = j;
+    }
+  }
+  // Distance to the nearest bisector with a cell of another island or of the sea.
+  const mass = cells.mass[k] as number;
+  const kx = cells.x[k] as number;
+  const ky = cells.y[k] as number;
+  let depth = Infinity;
+  for (let j = 0; j < n; j++) {
+    const other = cells.mass[j] as number;
+    // Two cells of one island are one land, and two cells of sea are one water.
+    if (other === mass) continue;
+    const d = Math.hypot((cells.x[j] as number) - kx, (cells.y[j] as number) - ky);
+    if (d === 0) continue;
+    const pj = (wx - (cells.x[j] as number)) ** 2 + (wy - (cells.y[j] as number)) ** 2 - (cells.w2[j] as number);
+    const toBisector = (pj - pk) / (2 * d);
+    if (toBisector < depth) depth = toBisector;
+  }
   const { wavelength, amplitude } = noise.profile;
   const detail = noise.fbm(x / wavelength + 9.2, y / wavelength + 4.4, 2) * amplitude;
-  return layout.channelHalf - depth + detail;
+  if (mass < 0) return layout.channelHalf + depth + detail;
+  const half = layout.size / 2 - layout.seaMargin;
+  const edge = Math.min(half - Math.abs(wx), half - Math.abs(wy));
+  return layout.channelHalf - Math.min(depth, edge) + detail;
 }
 
-/** Lloyd relaxation of the outer sites (the main site stays at the core) so each sits deep inside its cell. */
-function relaxSites(islands: Island[], size: number, rounds: number): void {
-  const n = 40;
-  for (let iter = 0; iter < rounds; iter++) {
-    const sx = new Float64Array(islands.length);
-    const sy = new Float64Array(islands.length);
-    const cnt = new Float64Array(islands.length);
-    for (let iy = 0; iy < n; iy++) {
-      for (let ix = 0; ix < n; ix++) {
-        const x = ((ix + 0.5) / n - 0.5) * size;
-        const y = ((iy + 0.5) / n - 0.5) * size;
-        const k = islandIndexAt(islands, x, y);
-        sx[k] = (sx[k] as number) + x;
-        sy[k] = (sy[k] as number) + y;
-        cnt[k] = (cnt[k] as number) + 1;
-      }
-    }
-    for (let k = 1; k < islands.length; k++) {
-      const c = cnt[k] as number;
-      if (c === 0) continue;
-      const isl = islands[k] as Island;
-      isl.x = (sx[k] as number) / c;
-      isl.y = (sy[k] as number) / c;
-    }
-  }
-}
-
-/** Choose the islands the seed's archetype asks for, separated by straits, then the river and harbour. */
-export function layoutTerrain(seed: number, size: number): TerrainLayout {
-  const archetype = archetypeFor(seed);
-  const sites = archetype.sites;
+/** Choose the islands and seas the seed's archetype asks for, then its rivers and its harbour. */
+export function layoutTerrain(seed: number, size: number, archetype: TerrainArchetype = archetypeFor(seed)): TerrainLayout {
   const rng = genRng(seed, Subsystem.Water, 1);
-  const noise = coastNoise(seed);
-  const islands: Island[] = [];
-  // The main island's site is the core; its weight makes it the largest cell.
-  islands.push({ id: 0, x: 0, y: 0, radius: size * rng.range(sites.mainRadius.min, sites.mainRadius.max), main: true });
-
-  const count = rng.int(sites.outerCount.min, sites.outerCount.max);
-  const minSpacing = size * sites.minSpacing;
-  for (let i = 1; i <= count; i++) {
-    for (let attempt = 0; attempt < 200; attempt++) {
-      const x = rng.range(-sites.spread, sites.spread) * size;
-      const y = rng.range(-sites.spread, sites.spread) * size;
-      let ok = Math.hypot(x, y) >= minSpacing;
-      for (const other of islands) if (Math.hypot(other.x - x, other.y - y) < minSpacing) ok = false;
-      if (!ok) continue;
-      islands.push({ id: i, x, y, radius: size * rng.range(sites.outerRadius.min, sites.outerRadius.max), main: false });
-      break;
-    }
-  }
-
-  relaxSites(islands, size, sites.relaxRounds);
-
+  const noise = coastNoise(seed, archetype);
+  const sites = placeSites(archetype, rng, size);
   const layout: TerrainLayout = {
     size,
     archetype,
     core: { x: 0, y: 0 },
-    islands,
-    channelHalf: size * rng.range(sites.channelHalf.min, sites.channelHalf.max),
-    seaMargin: size * sites.seaMargin,
-    harbour: { x: 0, y: 0, radius: size * 0.035 },
-    river: { path: [], halfWidths: [] },
+    islands: sites.islands,
+    seas: sites.seas,
+    cells: powerCells(sites.islands, sites.seas),
+    spine: sites.spine,
+    channelHalf: size * rng.range(archetype.sites.channelHalf.min, archetype.sites.channelHalf.max),
+    seaMargin: size * archetype.sites.seaMargin,
+    harbour: { x: 0, y: 0, radius: 0 },
+    rivers: [],
   };
-
-  // River: from the main island's interior to its shore, harbour at the mouth. The mouth faces
-  // the widest stretch of the main island's own coast, found by walking outward from the core.
-  const mouthAngle = rng.range(-Math.PI, Math.PI);
-  let mouth: Point = { x: 0, y: 0 };
-  let bestReach = -Infinity;
-  for (let k = 0; k < 16; k++) {
-    const a = mouthAngle + (k / 16) * Math.PI * 2;
-    let reach = 0;
-    for (let s = 0; s < size; s += 20) {
-      if (coastOffset(layout, noise, Math.cos(a) * s, Math.sin(a) * s) > 0) break;
-      reach = s;
-    }
-    if (reach > bestReach) {
-      bestReach = reach;
-      mouth = { x: Math.cos(a) * reach, y: Math.sin(a) * reach };
-    }
-  }
-  const mouthDir = Math.atan2(mouth.y, mouth.x);
-  const sourceAngle = mouthDir + Math.PI + (rng.chance(0.5) ? 1 : -1) * rng.range(0.6, 1.3);
-  let sourceReach = 0;
-  for (let s = 0; s < size; s += 20) {
-    if (coastOffset(layout, noise, Math.cos(sourceAngle) * s, Math.sin(sourceAngle) * s) > -80) break;
-    sourceReach = s;
-  }
-  let source: Point = { x: Math.cos(sourceAngle) * sourceReach * 0.3, y: Math.sin(sourceAngle) * sourceReach * 0.3 };
-  for (let f = 0.6; f >= 0.3; f -= 0.05) {
-    const candidate = { x: Math.cos(sourceAngle) * sourceReach * f, y: Math.sin(sourceAngle) * sourceReach * f };
-    if (coastOffset(layout, noise, candidate.x, candidate.y) < -200) {
-      source = candidate;
-      break;
-    }
-  }
-  layout.river = traceRiver(seed, source, mouth, size);
-  layout.harbour = { x: mouth.x, y: mouth.y, radius: size * 0.035 };
+  for (let i = 0; i < layout.islands.length; i++) standOnLand(layout, noise, i);
+  const water = planWater(seed, archetype, sites, rng, size, (x, y) => coastOffset(layout, noise, x, y));
+  layout.rivers = water.rivers;
+  layout.harbour = water.harbour;
   return layout;
 }
 
-function traceRiver(seed: number, source: Point, mouth: Point, size: number): RiverDescription {
-  const noise = new Noise2D(seed ^ 0x51e4);
-  const steps = 96;
-  const path: Point[] = [];
-  const halfWidths: number[] = [];
-  const dx = mouth.x - source.x;
-  const dy = mouth.y - source.y;
-  const len = Math.hypot(dx, dy);
-  const nx = -dy / len;
-  const ny = dx / len;
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    // Meander fades to zero at both ends so the source and mouth stay put.
-    const envelope = Math.sin(t * Math.PI);
-    const meander = noise.fbm(t * 3.2 + 3.1, 0.7, 2, 2, 0.35) * size * 0.05 * envelope;
-    path.push({ x: source.x + dx * t + nx * meander, y: source.y + dy * t + ny * meander });
-    halfWidths.push(lerp(size * 0.003, size * 0.009, smoothstep(0, 1, t)));
+/**
+ * Move the named site of an outer island of several cells, or of one cell
+ * weighted apart from its size, to the place deepest inside its own land. The
+ * power diagram reads the cells, never this site, so nothing about the land
+ * moves; what moves is where a district or a crossing search looks for the
+ * island, which has to be dry ground.
+ */
+function standOnLand(layout: TerrainLayout, noise: CoastNoise, index: number): void {
+  const isl = layout.islands[index] as Island;
+  const cells = isl.cells;
+  if (isl.main || cells === undefined) return;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const c of cells) {
+    minX = Math.min(minX, c.x - c.radius);
+    minY = Math.min(minY, c.y - c.radius);
+    maxX = Math.max(maxX, c.x + c.radius);
+    maxY = Math.max(maxY, c.y + c.radius);
   }
-  return { path, halfWidths };
+  const half = layout.size / 2;
+  const step = layout.size / 120;
+  let best = coastOffset(layout, noise, isl.x, isl.y);
+  if (islandAt(layout.islands, layout.size, noise, isl.x, isl.y) !== index) best = Infinity;
+  for (let y = Math.max(-half, minY); y <= Math.min(half, maxY); y += step) {
+    for (let x = Math.max(-half, minX); x <= Math.min(half, maxX); x += step) {
+      const coast = coastOffset(layout, noise, x, y);
+      if (coast >= best || islandAt(layout.islands, layout.size, noise, x, y) !== index) continue;
+      best = coast;
+      isl.x = x;
+      isl.y = y;
+    }
+  }
 }
 
 /** Bake the full heightfield for a world. */
@@ -263,7 +254,7 @@ export function generateTerrain(seed: number, layout: TerrainLayout): Heightfiel
   const segments = Math.round(size / TERRAIN_CELL);
   const gridSize = segments + 1;
   const hf = Heightfield.create(gridSize, TERRAIN_CELL);
-  const noise = coastNoise(seed);
+  const noise = coastNoise(seed, layout.archetype);
 
   // Raw fractal relief from the three.js generator, normalised to [0, 1].
   const relief = layout.archetype.relief;
@@ -291,6 +282,8 @@ export function generateTerrain(seed: number, layout: TerrainLayout): Heightfiel
     if (v > rawMax) rawMax = v;
   }
   const rawRange = Math.max(1e-6, rawMax - rawMin);
+  // From the core the relief climbs outward; from a spine it climbs inward.
+  const spine = relief.keyedTo === 'spine' ? layout.spine : undefined;
 
   for (let iy = 0; iy < gridSize; iy++) {
     const y = hf.worldY(iy);
@@ -298,14 +291,23 @@ export function generateTerrain(seed: number, layout: TerrainLayout): Heightfiel
       const x = hf.worldX(ix);
       const rawH = raw[iy * gridSize + ix] as number;
       const rough = Number.isFinite(rawH) ? (rawH - rawMin) / rawRange : 0;
-      const dCore = Math.hypot(x - layout.core.x, y - layout.core.y);
       const coast = coastOffset(layout, noise, x, y);
 
-      // Land: gentle near the core, steep hills far from it and deep inland.
+      // Land: gentle near the core, or far from the spine; steep far from the one or close to the other, and deep inland.
       const inland = smoothstep(0, size * 0.09, -coast);
-      const ramp = smoothstep(relief.rampFrom * size, relief.rampTo * size, dCore);
+      let ramp: number;
+      let rise: number;
+      if (spine === undefined) {
+        const d = Math.hypot(x - layout.core.x, y - layout.core.y);
+        ramp = smoothstep(relief.rampFrom * size, relief.rampTo * size, d);
+        rise = smoothstep(relief.baseFrom * size, relief.baseTo * size, d);
+      } else {
+        const d = segmentDistance(x, y, spine.from, spine.to);
+        ramp = 1 - smoothstep(relief.rampFrom * size, relief.rampTo * size, d);
+        rise = 1 - smoothstep(relief.baseFrom * size, relief.baseTo * size, d);
+      }
       const amplitude = lerp(relief.nearAmplitude, relief.farAmplitude, ramp) * lerp(0.2, 1, inland);
-      const base = 2.5 + relief.baseRise * smoothstep(relief.baseFrom * size, relief.baseTo * size, dCore) * inland;
+      const base = 2.5 + relief.baseRise * rise * inland;
       let land = base + rough * amplitude;
       // Fall to the shoreline over the last stretch of coast.
       land = lerp(land, 1.5, smoothstep(-220, -15, coast));
@@ -317,241 +319,7 @@ export function generateTerrain(seed: number, layout: TerrainLayout): Heightfiel
     }
   }
 
-  carveRiver(hf, layout.river);
+  for (const river of layout.rivers) carveRiver(hf, river);
   carveHarbour(hf, layout.harbour);
   return hf;
-}
-
-/** Cut the river valley: bed below sea level, banks blending into the hillside. */
-function carveRiver(hf: Heightfield, river: RiverDescription): void {
-  const bed = -4;
-  const bank = 70;
-  const path = river.path;
-  for (let i = 0; i + 1 < path.length; i++) {
-    const a = path[i] as Point;
-    const b = path[i + 1] as Point;
-    const hw = river.halfWidths[i] as number;
-    const reach = hw + bank;
-    const minX = Math.min(a.x, b.x) - reach;
-    const maxX = Math.max(a.x, b.x) + reach;
-    const minY = Math.min(a.y, b.y) - reach;
-    const maxY = Math.max(a.y, b.y) + reach;
-    const ix0 = clamp(Math.floor((minX - hf.originX) / hf.cellSize), 0, hf.gridSize - 1);
-    const ix1 = clamp(Math.ceil((maxX - hf.originX) / hf.cellSize), 0, hf.gridSize - 1);
-    const iy0 = clamp(Math.floor((minY - hf.originY) / hf.cellSize), 0, hf.gridSize - 1);
-    const iy1 = clamp(Math.ceil((maxY - hf.originY) / hf.cellSize), 0, hf.gridSize - 1);
-    for (let iy = iy0; iy <= iy1; iy++) {
-      for (let ix = ix0; ix <= ix1; ix++) {
-        const x = hf.worldX(ix);
-        const y = hf.worldY(iy);
-        const d = segmentDistance(x, y, a, b);
-        if (d > reach) continue;
-        const h = hf.at(ix, iy);
-        const target = d < hw ? bed : lerp(bed, h, smoothstep(hw, reach, d));
-        if (target < h) hf.set(ix, iy, target);
-      }
-    }
-  }
-}
-
-function carveHarbour(hf: Heightfield, harbour: { x: number; y: number; radius: number }): void {
-  const depth = -9;
-  const reach = harbour.radius + 60;
-  const ix0 = clamp(Math.floor((harbour.x - reach - hf.originX) / hf.cellSize), 0, hf.gridSize - 1);
-  const ix1 = clamp(Math.ceil((harbour.x + reach - hf.originX) / hf.cellSize), 0, hf.gridSize - 1);
-  const iy0 = clamp(Math.floor((harbour.y - reach - hf.originY) / hf.cellSize), 0, hf.gridSize - 1);
-  const iy1 = clamp(Math.ceil((harbour.y + reach - hf.originY) / hf.cellSize), 0, hf.gridSize - 1);
-  for (let iy = iy0; iy <= iy1; iy++) {
-    for (let ix = ix0; ix <= ix1; ix++) {
-      const d = Math.hypot(hf.worldX(ix) - harbour.x, hf.worldY(iy) - harbour.y);
-      if (d > reach) continue;
-      const h = hf.at(ix, iy);
-      const target = d < harbour.radius ? depth : lerp(depth, h, smoothstep(harbour.radius, reach, d));
-      if (target < h) hf.set(ix, iy, target);
-    }
-  }
-}
-
-export function segmentDistance(px: number, py: number, a: Point, b: Point): number {
-  const vx = b.x - a.x;
-  const vy = b.y - a.y;
-  const l2 = vx * vx + vy * vy;
-  let t = l2 > 0 ? ((px - a.x) * vx + (py - a.y) * vy) / l2 : 0;
-  t = clamp(t, 0, 1);
-  return Math.hypot(px - (a.x + vx * t), py - (a.y + vy * t));
-}
-
-/** Metres of land a bridge head needs behind it, so a crossing never lands on a rock in the strait. */
-const LANDFALL = 120;
-
-/** The id of the island whose land a point stands on. */
-function landIdAt(layout: TerrainLayout, noise: CoastNoise, p: Point): number {
-  return (layout.islands[islandAt(layout.islands, layout.size, noise, p.x, p.y)] as Island).id;
-}
-
-/**
- * True when a chord runs from one of the two islands to the other, which is
- * what makes it their crossing. A chord that comes back to its own shore
- * bridges nothing, and one that reaches a third island is some other pair's
- * crossing, not this one's.
- */
-function joins(layout: TerrainLayout, noise: CoastNoise, a: Island, b: Island, chord: { from: Point; to: Point }): boolean {
-  const from = landIdAt(layout, noise, chord.from);
-  const to = landIdAt(layout, noise, chord.to);
-  return (from === a.id && to === b.id) || (from === b.id && to === a.id);
-}
-
-/**
- * Shore-to-shore crossings between neighbouring islands, along the line between
- * their sites. Only pairs whose cells touch (no third cell in between) qualify.
- */
-export function findCrossings(hf: Heightfield, layout: TerrainLayout, noise: CoastNoise): Crossing[] {
-  const out: Crossing[] = [];
-  const islands = layout.islands;
-  for (let i = 0; i < islands.length; i++) {
-    for (let j = i + 1; j < islands.length; j++) {
-      const a = islands[i] as Island;
-      const b = islands[j] as Island;
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const len = Math.hypot(dx, dy);
-      const ux = dx / len;
-      const uy = dy / len;
-      // Sample ownership and wetness along the line; the strait is the wet run around the ownership flip.
-      const step = hf.cellSize / 2;
-      const count = Math.floor(len / step);
-      let flip = -1;
-      let adjacent = true;
-      const wet: boolean[] = [];
-      for (let k = 0; k <= count; k++) {
-        const x = a.x + ux * k * step;
-        const y = a.y + uy * k * step;
-        const owner = islandIndexAt(islands, x, y);
-        if (owner !== i && owner !== j) {
-          adjacent = false;
-          break;
-        }
-        if (owner === j && flip < 0) flip = k;
-        wet.push(hf.sample(x, y) < SEA_LEVEL);
-      }
-      if (!adjacent || flip < 0) continue;
-      let lo = flip;
-      let hi = flip;
-      if (!wet[flip]) {
-        // The flip landed on land (a wandering shore); find the nearest wet sample.
-        let found = -1;
-        for (let d = 1; d < count && found < 0; d++) {
-          if (wet[flip - d]) found = flip - d;
-          else if (wet[flip + d]) found = flip + d;
-        }
-        if (found < 0) continue;
-        lo = hi = found;
-      }
-      while (lo > 0 && wet[lo - 1]) lo--;
-      while (hi < count && wet[hi + 1]) hi++;
-      if (lo === 0 || hi === count) continue;
-      // Slide along the strait (perpendicular to the site line) looking for its narrowest point.
-      const mid = (lo + hi) / 2;
-      const mx = a.x + ux * mid * step;
-      const my = a.y + uy * mid * step;
-      const reaches = (chord: { from: Point; to: Point }): boolean => joins(layout, noise, a, b, chord);
-      let best = narrowestChord(hf, mx, my, ux, uy, reaches);
-      let bestSpan = Math.hypot(best.to.x - best.from.x, best.to.y - best.from.y);
-      let bestStraddles = reaches(best);
-      for (const sign of [-1, 1]) {
-        for (let d = 40; d <= layout.size * 0.15; d += 40) {
-          const px = mx - uy * d * sign;
-          const py = my + ux * d * sign;
-          if (hf.sample(px, py) >= SEA_LEVEL) break;
-          const candidate = narrowestChord(hf, px, py, ux, uy, reaches);
-          const span = Math.hypot(candidate.to.x - candidate.from.x, candidate.to.y - candidate.from.y);
-          // Sliding along a strait can wander into a bay of one island, where the
-          // narrowest chord lands on that island twice and bridges nothing, or
-          // out to a third island. A chord that reaches the far island always
-          // beats one that does not.
-          const straddling = reaches(candidate);
-          if (straddling === bestStraddles ? span < bestSpan : straddling) {
-            bestSpan = span;
-            bestStraddles = straddling;
-            best = candidate;
-          }
-        }
-      }
-      const { from, to } = best;
-      // The islands the chord reached, not the pair it was searched for: where
-      // no chord joins that pair, the best one found still links the two shores
-      // it does stand on, and a crossing must name them. One that came back to
-      // a single island bridges nothing and is dropped.
-      const fromIsland = landIdAt(layout, noise, from);
-      const toIsland = landIdAt(layout, noise, to);
-      if (fromIsland === toIsland) continue;
-      out.push({ fromIsland, toIsland, from, to });
-    }
-  }
-  return out;
-}
-
-/**
- * From a point in a strait, the shortest shore-to-shore chord through it, tried
- * over a fan of directions. A chord that reaches the far island wins over a
- * shorter one that comes back to the near island's own shore.
- */
-function narrowestChord(
-  hf: Heightfield,
-  mx: number,
-  my: number,
-  ux: number,
-  uy: number,
-  reaches: (chord: { from: Point; to: Point }) => boolean,
-): { from: Point; to: Point } {
-  const step = hf.cellSize / 2;
-  const base = Math.atan2(uy, ux);
-  let best: { from: Point; to: Point; span: number; straddles: boolean } | undefined;
-  for (let k = -6; k <= 6; k++) {
-    const a = base + (k * Math.PI) / 16;
-    const dx = Math.cos(a);
-    const dy = Math.sin(a);
-    const back = shoreAlong(hf, mx, my, -dx, -dy, step);
-    const fore = shoreAlong(hf, mx, my, dx, dy, step);
-    if (!back || !fore) continue;
-    const span = Math.hypot(fore.x - back.x, fore.y - back.y);
-    const straddling = reaches({ from: back, to: fore });
-    if (best === undefined || (straddling === best.straddles ? span < best.span : straddling)) {
-      best = { from: back, to: fore, span, straddles: straddling };
-    }
-  }
-  return best ?? { from: { x: mx - ux * step, y: my - uy * step }, to: { x: mx + ux * step, y: my + uy * step } };
-}
-
-/**
- * Walking out from a point in the water, the first shore a bridge can land on.
- * Land that stops again within {@link LANDFALL} metres is a rock in the strait,
- * not a shore, and the walk goes on past it.
- */
-function shoreAlong(hf: Heightfield, x: number, y: number, dx: number, dy: number, step: number): Point | undefined {
-  const limit = hf.extent;
-  for (let s = 0; s < limit; s += step) {
-    const px = x + dx * s;
-    const py = y + dy * s;
-    if (Math.abs(px) > hf.extent / 2 || Math.abs(py) > hf.extent / 2) return undefined;
-    if (hf.sample(px, py) < SEA_LEVEL) continue;
-    let solid = true;
-    for (let t = step; t <= LANDFALL && solid; t += step) {
-      if (hf.sample(px + dx * t, py + dy * t) < SEA_LEVEL) solid = false;
-    }
-    if (!solid) continue;
-    const inland = { x: px + dx * step, y: py + dy * step };
-    return hf.sample(inland.x, inland.y) >= SEA_LEVEL ? inland : { x: px, y: py };
-  }
-  return undefined;
-}
-
-export function describeWater(seed: number, hf: Heightfield, layout: TerrainLayout): WaterDescription {
-  return {
-    seaLevel: SEA_LEVEL,
-    islands: layout.islands,
-    crossings: findCrossings(hf, layout, coastNoise(seed)),
-    river: layout.river,
-    harbour: layout.harbour,
-  };
 }
