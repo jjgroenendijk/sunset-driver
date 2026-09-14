@@ -65,7 +65,7 @@
 import { clamp, dist, directionDelta, lerp, wrapAngle } from '../core/math.ts';
 import { alleyPlan, alleySeeds, type AlleyGround } from './alleys.ts';
 import { ZONE_LOTS } from './buildings.ts';
-import { connectCrossings } from './connect.ts';
+import { connectCrossings, crossPoint } from './connect.ts';
 import { districtAt, layoutZones, zoneAt } from './districts.ts';
 import { MINOR_BY_ZONE, type FillPlan, type FillSeed, type PlanAt, type SpacingAt } from './fill.ts';
 import { raiseOverpasses } from './overpass.ts';
@@ -94,7 +94,7 @@ import {
   type TraceOptions,
 } from './road-trace.ts';
 import type { TensorField } from './tensor.ts';
-import { TIERS } from './tiers.ts';
+import { footprintHalfWidth, TIERS } from './tiers.ts';
 import type { Beach, Island, Point, RoadCurve, RoadTier, WorldSkeleton, Zone } from './types.ts';
 
 // The trace itself is next door, and `roads.ts` is the door onto both: the
@@ -498,12 +498,38 @@ class RoadTracer extends HighwayTrace {
     // The line is held while its ends reach for the network, so neither end
     // runs back along the boardwalk itself.
     this.clearance.reserve(-1 - i, 'street', line);
-    const head = this.reachNetwork(line[0] as Point);
-    const tail = this.reachNetwork(line[line.length - 1] as Point);
+    const head = this.besideOwnCrossing(line, this.reachNetwork(line[0] as Point));
+    const tail = this.besideOwnCrossing(line, this.reachNetwork(line[line.length - 1] as Point));
     this.clearance.release(-1 - i);
     if (head.length === 0 && tail.length === 0) return -1;
     const points = [...[...head].reverse(), ...line, ...tail];
     return this.addCurve('street', points, [])?.id ?? -1;
+  }
+
+  /**
+   * A route from a boardwalk end to the network, or nothing where it ends on a
+   * road beside a place the boardwalk line crosses that road. `connect.ts`
+   * gives two roads that already meet no second junction inside the first
+   * one, so that crossing would stay a crossing on the ground.
+   */
+  private besideOwnCrossing(line: readonly Point[], route: Point[]): Point[] {
+    const end = route[route.length - 1];
+    if (end === undefined) return route;
+    const reach = footprintHalfWidth('street');
+    for (const curve of this.curves) {
+      if (!curve.points.some((p) => dist(p.x, p.y, end.x, end.y) <= JOIN_EPSILON)) continue;
+      const within = reach + footprintHalfWidth(curve.tier);
+      for (let s = 0; s + 1 < curve.points.length; s++) {
+        const c = curve.points[s] as Point;
+        const d = curve.points[s + 1] as Point;
+        if (dist(c.x, c.y, end.x, end.y) > within + dist(c.x, c.y, d.x, d.y) && dist(d.x, d.y, end.x, end.y) > within + dist(c.x, c.y, d.x, d.y)) continue;
+        for (let k = 0; k + 1 < line.length; k++) {
+          const at = crossPoint(line[k] as Point, line[k + 1] as Point, c, d);
+          if (at !== undefined && dist(at.x, at.y, end.x, end.y) < within) return [];
+        }
+      }
+    }
+    return route;
   }
 
 }
