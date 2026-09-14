@@ -62,6 +62,12 @@ export abstract class RoadRoute {
   /** Scratch for the reroute search, kept between routes so it is allocated once. */
   protected readonly came: Int32Array;
   protected readonly queue: Int32Array;
+  /**
+   * How many places the last reroute found that its goal accepted, vetted or
+   * not. None means no goal stands on the ground it could walk, and a search
+   * over less of that ground finds none either.
+   */
+  protected rerouteHits = 0;
 
   constructor(world: WorldSkeleton, field: TensorField) {
     this.world = world;
@@ -129,6 +135,7 @@ export abstract class RoadRoute {
     const n = hf.gridSize;
     const straight = maxGrade * hf.cellSize;
     const diagonal = straight * Math.SQRT2;
+    this.rerouteHits = 0;
     const start = this.nearestLandNode(from, maxGrade);
     if (start < 0) return undefined;
     const came = this.came;
@@ -144,9 +151,12 @@ export abstract class RoadRoute {
       const ix = at % n;
       const iy = (at - ix) / n;
       const hit = goal(hf.worldX(ix), hf.worldY(iy), ix, iy);
+      if (hit !== undefined) this.rerouteHits++;
       if (hit !== undefined && tries++ < ROUTE_TRIES) {
         const path = this.pathTo(at, from, hit, maxGrade, tier);
         if (this.keepsClear(path, tier)) return path;
+        // Every try is spent, so nothing the search reaches from here is tried.
+        if (tries === ROUTE_TRIES) return undefined;
       }
       for (let k = 0; k < NEIGHBOUR_X.length; k++) {
         const dx = NEIGHBOUR_X[k] as number;
