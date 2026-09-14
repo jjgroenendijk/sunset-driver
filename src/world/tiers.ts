@@ -36,6 +36,11 @@ export interface TierSpec {
    * both directions share.
    */
   lanes: number;
+  /**
+   * Metres of parking strip inside each kerb (spec section 13.1). It is part of
+   * the carriageway, but no lane runs over it: the lanes share what is left.
+   */
+  parking: number;
   /** Speed limit in metres per second. */
   speedLimit: number;
   /**
@@ -62,6 +67,7 @@ export const TIERS: Record<RoadTier, TierSpec> = {
     verge: 4,
     pavement: 0,
     lanes: 3,
+    parking: 0,
     speedLimit: kmh(110),
     maxGrade: 0.06,
     traffic: { trucks: true, buses: true, trams: false, pedestrians: false },
@@ -73,6 +79,7 @@ export const TIERS: Record<RoadTier, TierSpec> = {
     verge: 1,
     pavement: 3,
     lanes: 2,
+    parking: 0,
     speedLimit: kmh(60),
     maxGrade: 0.08,
     traffic: { trucks: true, buses: true, trams: true, pedestrians: true },
@@ -84,6 +91,7 @@ export const TIERS: Record<RoadTier, TierSpec> = {
     verge: 0.5,
     pavement: 2.5,
     lanes: 1,
+    parking: 2.2,
     speedLimit: kmh(40),
     maxGrade: 0.18,
     traffic: { trucks: false, buses: false, trams: false, pedestrians: true },
@@ -95,6 +103,7 @@ export const TIERS: Record<RoadTier, TierSpec> = {
     verge: 0,
     pavement: 0,
     lanes: 1,
+    parking: 0,
     speedLimit: kmh(20),
     maxGrade: 0.22,
     traffic: { trucks: false, buses: false, trams: false, pedestrians: true },
@@ -106,6 +115,7 @@ export const TIERS: Record<RoadTier, TierSpec> = {
     verge: 1,
     pavement: 0,
     lanes: 1,
+    parking: 0,
     speedLimit: kmh(40),
     maxGrade: 0.2,
     traffic: { trucks: true, buses: false, trams: false, pedestrians: true },

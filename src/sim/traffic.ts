@@ -451,12 +451,14 @@ function mod(value: number, by: number): number {
 
 /**
  * Metres from the centreline to the middle of a lane. The lanes of one
- * direction share the right half of the carriageway evenly, as the markings of
- * `road-section.ts` divide it. An alley and a dirt road have one lane both ways
- * share, and a vehicle keeps to its right half of it.
+ * direction share the right half of the carriageway evenly, less the parking
+ * strip at the kerb, as the markings of `road-section.ts` divide it. An alley
+ * and a dirt road have one lane both ways share, and a vehicle keeps to its
+ * right half of it.
  */
 export function laneOffset(edge: Pick<RoadEdge, 'tier' | 'lanes'>, lane: number): number {
-  const width = TIERS[edge.tier].width / (2 * edge.lanes);
+  const spec = TIERS[edge.tier];
+  const width = (spec.width / 2 - spec.parking) / edge.lanes;
   return (Math.min(lane, edge.lanes - 1) + 0.5) * width;
 }
 
