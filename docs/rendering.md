@@ -332,3 +332,8 @@ are the design.
   frame and three of the lens mesh, so the lights cost two draws. The lens colour is set each frame
   from `TrafficSignals.light`. The lenses stand proud of the housing, because the camera sees a head
   from above and would not see a lens set flush in its face.
+- `src/render/parked.ts` draws the parked cars with the traffic's own parts, three meshes per class.
+  A parked car does not move, so `ParkedView` writes its instances only when the view has moved
+  `MOVE` metres, `REFRESH` ticks have passed, or a car was promoted. A frame between those uploads
+  nothing. `needsUpdate` on an instance matrix uploads the whole buffer, and at `PARKED_CAP` that is
+  about a megabyte a frame.

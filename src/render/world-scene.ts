@@ -30,6 +30,7 @@ import { buildCarve, type RoadCarve } from '../world/carve.ts';
 import { buildRoadGraph } from '../world/graph.ts';
 import { buildJunctions } from '../world/junctions.ts';
 import { chunkAt, CHUNK_SIZE } from '../world/chunks.ts';
+import type { ParkingBays } from '../world/parking.ts';
 import type { Point, WorldDescription } from '../world/types.ts';
 import { Batch } from './batch.ts';
 import { BuildingScenery } from './buildings.ts';
@@ -327,6 +328,11 @@ export class WorldScene {
    */
   get stations(): readonly Point[] | undefined {
     return this.stream.stations;
+  }
+
+  /** The parking bays of the world (spec section 13.1), or undefined until a chunk worker has laid them out. */
+  get bays(): ParkingBays | undefined {
+    return this.stream.bays;
   }
 
   /** Chunks asked for and not yet drawn, which the HUD shows as the city fills in. */

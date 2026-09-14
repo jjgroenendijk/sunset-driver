@@ -6,10 +6,12 @@ import { frameBudgetFrom, QualityMonitor, type QualityChange } from './render/qu
 import { createRenderer, probeWebGpu } from './render/renderer.ts';
 import { createTitleScene } from './render/scene.ts';
 import { RenderSmoother } from './render/smooth.ts';
+import { ParkedView } from './render/parked.ts';
 import { TrafficView } from './render/traffic.ts';
 import { WorldScene } from './render/world-scene.ts';
 import { FixedStepClock, gameTime } from './sim/clock.ts';
 import { DEFAULT_APPEARANCE } from './sim/character.ts';
+import { ParkedCars } from './sim/parked.ts';
 import { initPhysics, SimPhysics, type Ground } from './sim/physics.ts';
 import { EMPTY_INPUT } from './sim/input.ts';
 import { createSave, restoreSimState, saveFromText, saveToText, type SaveFile } from './sim/save.ts';
@@ -71,6 +73,8 @@ interface Session {
   weapons: WeaponPicker;
   /** The ambient traffic of spec section 13.1, drawn. */
   traffic: TrafficView;
+  /** The parked cars of spec section 13.1, drawn; undefined where no worker laid out the bays. */
+  parked: ParkedView | undefined;
   /** The pause menu of spec section 12. While it is open the simulation does not step. */
   pause: PauseMenu;
 }
@@ -206,6 +210,7 @@ async function boot(): Promise<void> {
       // frame stands at: one tick behind the record, as the player is.
       const round = flying ? { x: free.camera.x, y: free.camera.z } : p;
       session.traffic.update(session.state, session.state.tick - 1 + alpha, round.x, round.y);
+      session.parked?.update(session.state, round.x, round.y);
       // The damage of spec section 11.3, drawn off the same record: the smoke
       // and flames over the car and the rubber its tyres leave behind. It is
       // given the drawn pose, so the smoke stands where the car is seen to be.
@@ -364,6 +369,10 @@ async function boot(): Promise<void> {
   // comes back on the road nearest a station (spec section 11.7).
   const stations = world.stations ?? [];
   ground.stations = stations.map((at) => nearestRoadPlace(description, at.x, at.y) ?? { ...at, heading: 0 });
+  // The parking bays come from the same answer. Which bay holds a car is a
+  // function of the tick, so the physics and the renderer share one plan.
+  const parked = world.bays === undefined ? undefined : new ParkedCars(state.seed, world.bays);
+  ground.parked = parked;
 
   camera.setBaseDistance(BASE_DISTANCE);
   // The chain is built on the world's scene and the camera that follows the
@@ -498,9 +507,12 @@ async function boot(): Promise<void> {
 
   const trafficView = new TrafficView(traffic);
   world.scene.add(trafficView.group);
+  const parkedView = parked === undefined ? undefined : new ParkedView(parked);
+  if (parkedView !== undefined) world.scene.add(parkedView.group);
 
   session = {
     traffic: trafficView,
+    parked: parkedView,
     state,
     world,
     physics,

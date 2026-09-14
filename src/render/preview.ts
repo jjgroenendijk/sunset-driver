@@ -29,6 +29,7 @@ import {
 import { createPlayerState, exitPlace } from '../sim/on-foot.ts';
 import type { PickupState } from '../sim/pickup.ts';
 import { createSimState } from '../sim/simulation.ts';
+import { ParkedCars } from '../sim/parked.ts';
 import { AmbientTraffic, trafficRoadsOf } from '../sim/traffic.ts';
 import {
   ATTACHMENTS,
@@ -55,6 +56,7 @@ import { tickAtHour } from './daylight.ts';
 import { PostChain } from './post.ts';
 import { FULL_TIER, QUALITY_TIERS } from './quality.ts';
 import { createOffscreenRenderer } from './renderer.ts';
+import { ParkedView } from './parked.ts';
 import { TrafficView } from './traffic.ts';
 import { WorldScene } from './world-scene.ts';
 
@@ -152,6 +154,8 @@ export interface PreviewResult {
   quality: string;
   /** Vehicles of the traffic drawn round the player (spec section 13.1). */
   traffic: number;
+  /** Parked cars drawn round the player (spec section 13.1). */
+  parked: number;
 }
 
 /** Bytes a pixel of the render target below. */
@@ -208,7 +212,12 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   // picture is taken, as the game draws it.
   const traffic = new TrafficView(new AmbientTraffic(seed, trafficRoadsOf(world)));
   scene.scene.add(traffic.group);
-  traffic.update(createSimState(seed, undefined, tick), tick, x, y);
+  const record = createSimState(seed, undefined, tick);
+  traffic.update(record, tick, x, y);
+  // The parked cars, from the bays the chunk workers laid out.
+  const parked = scene.bays === undefined ? undefined : new ParkedView(new ParkedCars(seed, scene.bays));
+  if (parked !== undefined) scene.scene.add(parked.group);
+  parked?.update(record, x, y);
 
   const camera = new FollowCamera(width / height);
   camera.setBaseDistance(distance);
@@ -241,11 +250,13 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   post.dispose();
   target.dispose();
   const drawn = traffic.drawn;
+  const standing = parked?.drawn ?? 0;
   traffic.dispose();
+  parked?.dispose();
   scene.dispose();
   renderer.dispose();
 
-  return { width, height, rgb, worldMs, chunkMs, frameMs, peakDrawCalls, lights, shadows, quality: tier.name, traffic: drawn };
+  return { width, height, rgb, worldMs, chunkMs, frameMs, peakDrawCalls, lights, shadows, quality: tier.name, traffic: drawn, parked: standing };
 }
 
 /**
