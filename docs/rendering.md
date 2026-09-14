@@ -320,4 +320,9 @@ are the design.
   never the chunk it is building. That is what makes two chunks agree along the edge they share;
   reading the chunk's own parcel pieces would put a seam on every boundary. The zone and
   ground-cover colours live there too; nothing else should carry them.
-
+- `src/render/traffic.ts` draws the traffic of spec section 13.1 as three `InstancedMesh`es per
+  class: the boxes in the row's paint, the trim with its colours per vertex, and the outline. A box
+  whose colour is `VehicleSpec.paint` goes into the paint mesh, and the instance colour replaces
+  it, so one mesh draws a saloon in every paint. A class with nothing in view is hidden, so it costs
+  no draw. The traffic is evaluated at `tick - 1 + alpha`, the moment `smooth.ts` draws the player
+  at, and a promoted vehicle is drawn from its record.

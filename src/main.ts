@@ -6,12 +6,14 @@ import { frameBudgetFrom, QualityMonitor, type QualityChange } from './render/qu
 import { createRenderer, probeWebGpu } from './render/renderer.ts';
 import { createTitleScene } from './render/scene.ts';
 import { RenderSmoother } from './render/smooth.ts';
+import { TrafficView } from './render/traffic.ts';
 import { WorldScene } from './render/world-scene.ts';
 import { FixedStepClock } from './sim/clock.ts';
 import { DEFAULT_APPEARANCE } from './sim/character.ts';
 import { initPhysics, SimPhysics, type Ground } from './sim/physics.ts';
 import { EMPTY_INPUT } from './sim/input.ts';
 import { createSimState, stepSim, type SimState } from './sim/simulation.ts';
+import { AmbientTraffic, trafficRoadsOf } from './sim/traffic.ts';
 import { HotwireBar } from './ui/hotwire.ts';
 import { Hud } from './ui/hud.ts';
 import { MapArt } from './ui/map-draw.ts';
@@ -64,6 +66,8 @@ interface Session {
   smooth: RenderSmoother;
   /** The debug picker of the arsenal, which shows the weapon in hand. */
   weapons: WeaponPicker;
+  /** The ambient traffic of spec section 13.1, drawn. */
+  traffic: TrafficView;
 }
 
 /**
@@ -190,6 +194,10 @@ async function boot(): Promise<void> {
       }
       session.world.pickups.update(session.state.pickups, session.state.tick, elapsed / 1000);
       session.world.vehicle.set(vehicle);
+      // The traffic is a function of the tick, so it is drawn at the moment the
+      // frame stands at: one tick behind the record, as the player is.
+      const round = flying ? { x: free.camera.x, y: free.camera.z } : p;
+      session.traffic.update(session.state, session.state.tick - 1 + alpha, round.x, round.y);
       // The damage of spec section 11.3, drawn off the same record: the smoke
       // and flames over the car and the rubber its tyres leave behind. It is
       // given the drawn pose, so the smoke stands where the car is seen to be.
@@ -285,6 +293,9 @@ async function boot(): Promise<void> {
   // 11.3). The session starts on the nearest road to the core rather than
   // wherever the origin happens to fall.
   const surfaces = new SurfaceIndex(description);
+  // The traffic of spec section 13.1 is placed once for the world and then
+  // evaluated from the tick, so the physics and the renderer share one plan.
+  const traffic = new AmbientTraffic(state.seed, trafficRoadsOf(description));
   const ground: Ground = {
     heightAt: (x, y) => world.heightAt(x, y),
     surfaceAt: (x, y) => surfaces.at(x, y),
@@ -292,6 +303,7 @@ async function boot(): Promise<void> {
     // A bridged segment carves no ground, so the deck is the only thing to
     // drive on there and the physics is given it as a solid.
     decks: roadDecks(description),
+    traffic,
   };
   const start = nearestRoadPlace(description, state.player.x, state.player.y);
   const physics = new SimPhysics(ground, state);
@@ -398,7 +410,11 @@ async function boot(): Promise<void> {
     if (event.code === FREE_CAMERA_KEY) free.toggle(camera.camera);
   });
 
+  const trafficView = new TrafficView(traffic);
+  world.scene.add(trafficView.group);
+
   session = {
+    traffic: trafficView,
     state,
     world,
     physics,
