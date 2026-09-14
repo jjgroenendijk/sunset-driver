@@ -14,6 +14,7 @@
  * `chunk-pool.ts` is the other side of this conversation.
  */
 import { buildLayers, ChunkSource } from '../world/chunks.ts';
+import { buildParkingBays, type ParkingBays } from '../world/parking.ts';
 import type { Point, WorldDescription } from '../world/types.ts';
 import { buildChunkPayload, chunkLookups, payloadTransfers, type ChunkLookups, type ChunkPayload } from './chunk-payload.ts';
 import type { ChunkDetail } from './streaming.ts';
@@ -43,6 +44,8 @@ export interface ReadyReply {
    * respawn and the map learn where the stations are.
    */
   stations?: Point[];
+  /** The parking bays of spec section 13.1, on the first reply only, for the same reason. */
+  bays?: ParkingBays;
 }
 
 /** One chunk, built. */
@@ -76,7 +79,10 @@ scope.addEventListener('message', (event: MessageEvent) => {
     source = new ChunkSource(world, layers);
     lookups = chunkLookups(world, layers);
     const stations = layers.parcels.stations.map((station) => ({ x: station.x, y: station.y }));
-    scope.postMessage({ type: 'ready', stations } satisfies ReadyReply);
+    const bays = buildParkingBays(world, layers.junctions, layers.parcels, layers.carve);
+    // Handed over rather than copied, like a chunk: the worker keeps no reference to them.
+    const arrays = [bays.x, bays.y, bays.height, bays.heading, bays.use, bays.street].map((array) => array.buffer);
+    scope.postMessage({ type: 'ready', stations, bays } satisfies ReadyReply, arrays);
     return;
   }
   if (source === undefined || lookups === undefined) throw new Error('a chunk was asked for before the world arrived');
