@@ -27,6 +27,8 @@ import {
   sharedDistances,
   liftAtCrossing,
   canRaise,
+  placeOn,
+  withUnderDecks,
 } from './seed-probes.ts';
 import { seeds, worlds, graphOf } from './seed-fixture.ts';
 
@@ -180,6 +182,21 @@ export function roadChecks(): void {
         const ground = groundRule(new Heightfield(w.terrain), w.water.seaLevel);
         const byId: RoadCurve[] = [];
         for (const road of w.roads) byId[road.id] = road;
+        // The points each curve runs on to from every place it stands on.
+        const beside = new Map<number, { curve: number; to: Point }[]>();
+        for (const road of w.roads) {
+          road.points.forEach((p, i) => {
+            const here = beside.get(pointKey(p)) ?? [];
+            for (const to of [road.points[i - 1], road.points[i + 1]]) if (to !== undefined) here.push({ curve: road.id, to });
+            beside.set(pointKey(p), here);
+          });
+        }
+        const othersAt = (place: Point, curve: number): Point[] =>
+          (beside.get(pointKey(place)) ?? []).filter((b) => b.curve !== curve).map((b) => b.to);
+        // A point that turns a road onto the line of a third road meeting it
+        // there, or at the places beside it, is refused as `connect.ts` does.
+        const bends = (curve: number, spot: Point, around: readonly Point[]): boolean =>
+          shallow(spot, around, othersAt(spot, curve)) || around.some((place) => shallow(place, [spot], othersAt(place, curve)));
         let complaint: string | undefined;
         const fault = (text: string): void => {
           complaint ??= text;
@@ -219,12 +236,20 @@ export function roadChecks(): void {
             for (const [road, segment] of halves) {
               const a = road.points[segment] as Point;
               const b = road.points[segment + 1] as Point;
+              // A place the road already stands on bends it nowhere new; there
+              // it leaves along the points either side, as `connect.ts` measures.
+              const i = road.points.findIndex((p) => Math.hypot(p.x - spot.x, p.y - spot.y) <= 1e-3);
+              if (i >= 0) {
+                around.push([road.points[i - 1], road.points[i + 1]].filter((p): p is Point => p !== undefined));
+                continue;
+              }
               if (!ground(a, spot, road.tier) || !ground(spot, b, road.tier)) return true;
               around.push([a, b]);
             }
             // A point that turns the two roads onto each other's line under
             // MIN_MEET is no junction either.
-            return shallow(spot, around[0] as Point[], around[1] as Point[]);
+            if (shallow(spot, around[0] as Point[], around[1] as Point[])) return true;
+            return bends(over.id, spot, around[0] as Point[]) || bends(under.id, spot, around[1] as Point[]);
           };
           if (!(snapped === undefined ? [at] : [snapped, at]).every(refusedAt)) fault(`${where} without meeting it`);
         }
@@ -236,13 +261,14 @@ export function roadChecks(): void {
       // Spec section 6.2: an overpass carries a road over a road. `overpass.ts`
       // raises the road the graph calls `over`, or the other one where that road
       // cannot be raised. It is refused where a junction of the road stands
-      // inside the ramps, where the road is bored or already on a deck there, and
-      // where the road runs out before it is down again. Nothing else may leave a
-      // crossing flat, so the check mirrors those three and no more.
+      // inside the ramps, where the road passes under a highway's deck there,
+      // where the road is bored or already on a deck there, and where the road
+      // runs out before it is down again. Nothing else may leave a crossing
+      // flat, so the check mirrors those four and no more.
       for (const seed of seeds) {
         const w = worlds.get(seed) as WorldDescription;
         const graph = graphOf(seed);
-        const shared = sharedDistances(w.roads);
+        const shared = withUnderDecks(w.roads, graph, sharedDistances(w.roads));
         let complaint: string | undefined;
         const fault = (text: string): void => {
           complaint ??= text;
@@ -313,12 +339,52 @@ export function roadChecks(): void {
       }
     });
 
+    it('crosses a highway only under the level deck of one of its slots', () => {
+      // Spec section 6.2: a highway is planned with its decks when it is laid,
+      // and a road laid later passes under a slot or joins the highway at an
+      // interchange. Every other crossing is refused while the road is traced,
+      // so none is left for `overpass.ts` to raise between two junctions.
+      for (const seed of seeds) {
+        const w = worlds.get(seed) as WorldDescription;
+        const graph = graphOf(seed);
+        let complaint: string | undefined;
+        const fault = (text: string): void => {
+          complaint ??= text;
+        };
+        for (const road of w.roads) {
+          const slots = road.slots ?? [];
+          if (road.tier !== 'highway' && slots.length > 0) fault(`${road.tier} ${road.id} lists slots`);
+          for (const at of slots) {
+            const level = (road.lift?.[at] ?? 0) >= OVERPASS_CLEARANCE - 1e-6 && (road.lift?.[at + 1] ?? 0) >= OVERPASS_CLEARANCE - 1e-6;
+            if (!road.bridges.includes(at) || !level) fault(`highway ${road.id} has slot ${at} off its level deck`);
+          }
+        }
+        for (const crossing of graph.crossings) {
+          const pair = [crossing.over, crossing.under].map((e) => w.roads[(graph.edges[e] as RoadEdge).curve] as RoadCurve);
+          if (!pair.some((road) => road.tier === 'highway')) continue;
+          const where = `${(pair[0] as RoadCurve).tier} ${(pair[0] as RoadCurve).id} crosses ${(pair[1] as RoadCurve).tier} ${(pair[1] as RoadCurve).id} at ${crossing.x.toFixed(0)},${crossing.y.toFixed(0)}`;
+          const above = pair.find((road) => (road.slots ?? []).includes(placeOn(road, crossing)?.segment ?? -1));
+          if (above === undefined) {
+            fault(`${where}, at no slot`);
+            continue;
+          }
+          // The road underneath stays on the ground, or it would climb into the deck.
+          const below = pair[0] === above ? (pair[1] as RoadCurve) : (pair[0] as RoadCurve);
+          if (liftAtCrossing(below, crossing) > 0) fault(`${where}, and climbs into the deck`);
+        }
+        expect(complaint, `seed ${seed}`).toBeUndefined();
+      }
+    });
+
     it('cuts each zone into blocks of about the size it asks for', () => {
       // Half the width of a block, near enough: the median distance from the
       // ground of a zone to the nearest road. Blocks tighten toward downtown
       // because the fill spaces its roads by the density of the district. The
       // wilderness range is wide because an island no district stands on is
-      // reached by no bridge, so its ground is far from every road.
+      // reached by no bridge, so its ground is far from every road. Its floor
+      // came down when the highways became a ring with radials: a radial and its
+      // branch run further into the wilderness than the two trunks did, and one
+      // seed in 200 reads 34 m.
       //
       // The three zones on the fringe are looser than the built-up ones because
       // ground too steep for a road now goes without one (spec section 6.1).
@@ -345,7 +411,7 @@ export function roadChecks(): void {
         industrial: [7, 200],
         suburban: [7, 200],
         outskirts: [14, 400],
-        wilderness: [35, 800],
+        wilderness: [30, 800],
       };
       for (const seed of seeds) {
         const w = worlds.get(seed) as WorldDescription;
@@ -392,10 +458,14 @@ export function roadChecks(): void {
       // that may not merge along another one ends as a cul-de-sac more often, and
       // the worst of 200 seeds reaches 328 m. A suburban seed stands up to 270 m
       // off its parent and the trim adds 162 m, so neither is past what the fill
-      // lays by construction. The alley cap is loose for a different reason:
+      // lays by construction. It rose once more when the highways left the core
+      // for a ring: an inner street seeded at the edge of the built-up ground,
+      // with no arterial between it and its parent, stands up to the inner
+      // zone's 570 m along spacing off it. The worst of 200 seeds reaches 517 m.
+      // The alley cap is loose for a different reason:
       // an alley stands half a block off the street that seeded it, and it is
       // trimmed to a cul-de-sac at each end that met nothing.
-      const CAP: Partial<Record<RoadTier, number>> = { street: 360, alley: 220, dirt: 900 };
+      const CAP: Partial<Record<RoadTier, number>> = { street: 560, alley: 220, dirt: 900 };
       for (const seed of seeds) {
         const w = worlds.get(seed) as WorldDescription;
         const grid = new PointGrid(w.size, 100, w.roads);

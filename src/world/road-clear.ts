@@ -13,6 +13,8 @@
  * - May a road end here? Not where its footprint stands on another road's.
  * - May a road meet another at a shared point? Only where it leaves every road
  *   already there at {@link MIN_MEET} or more.
+ * - May a step cross a highway? Only under one of its slots, where the deck
+ *   `highway-plan.ts` planned is level over the segment and both beside it.
  *
  * Two roads therefore touch only where they share a point or cross, both at an
  * angle a junction or an overpass can be built at.
@@ -66,6 +68,8 @@ export class RoadClearance {
   private readonly curve: number[] = [];
   /** Whether each end of a segment is an end of its curve, two flags to a segment. */
   private readonly terminal: boolean[] = [];
+  /** Whether another road may cross each segment: every segment but a highway's away from its slots. */
+  private readonly crossable: boolean[] = [];
   /** Segments of a reservation that has been given up, which nothing keeps off any more. */
   private readonly released: boolean[] = [];
   /** The last query each segment was visited by, so a segment filed twice is seen once. */
@@ -80,7 +84,13 @@ export class RoadClearance {
   }
 
   add(curve: RoadCurve): void {
-    this.lay(curve.id, curve.tier, curve.points);
+    const slots = curve.slots ?? [];
+    // A crossing is only allowed well inside a run of slots. The connection
+    // pass may move the road that crosses by a snap, and the crossing moves
+    // along the highway with it; it has to stay under the level deck.
+    const open = (i: number): boolean =>
+      curve.tier !== 'highway' || (slots.includes(i - 1) && slots.includes(i) && slots.includes(i + 1));
+    this.lay(curve.id, curve.tier, curve.points, open);
   }
 
   /**
@@ -96,7 +106,7 @@ export class RoadClearance {
     for (let s = 0; s < this.curve.length; s++) if (this.curve[s] === id) this.released[s] = true;
   }
 
-  private lay(id: number, tier: RoadTier, points: readonly Point[]): void {
+  private lay(id: number, tier: RoadTier, points: readonly Point[], open: (segment: number) => boolean = () => true): void {
     const half = footprintHalfWidth(tier);
     this.widest = Math.max(this.widest, half);
     const last = points.length - 1;
@@ -108,6 +118,7 @@ export class RoadClearance {
       this.halfWidth.push(half);
       this.curve.push(id);
       this.released.push(false);
+      this.crossable.push(open(i));
       this.terminal.push(i === 0, i + 1 === last);
       this.stamp.push(0);
       const x0 = this.column(Math.min(a.x, b.x));
@@ -194,12 +205,38 @@ export class RoadClearance {
         if (junction !== undefined && Math.hypot(x - junction.x, y - junction.y) < width + half) ok = false;
       }
       if (!ok) return;
+      // A highway is crossed at one of its slots or not at all (spec section 6.2).
+      if (this.crossable[s] !== true) {
+        ok = false;
+        return;
+      }
       for (let c = 0; c < crossed.length; c += 4) {
         if (Math.hypot((crossed[c] as number) - x, (crossed[c + 1] as number) - y) < width + (crossed[c + 3] as number)) ok = false;
       }
       crossed.push(x, y, this.curve[s] as number, width);
     });
     if (!ok) crossed.length = before;
+    return ok;
+  }
+
+  /**
+   * True where a straight run from `a` to `b` crosses no highway away from its
+   * slots. It asks nothing else: the deck of an island link spans a strait and
+   * is carried over what stands at the shore, but a highway still keeps the
+   * rule of spec section 6.2.
+   */
+  crossesAtSlots(a: Point, b: Point, tier: RoadTier): boolean {
+    let ok = true;
+    this.visit(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.max(a.x, b.x), Math.max(a.y, b.y), footprintHalfWidth(tier), (s) => {
+      if (!ok || this.crossable[s] === true) return;
+      if (closest(a.x, a.y, b.x, b.y, this.ends, s) > 0) return;
+      const e = this.ends;
+      const k = s * 4;
+      const x = (e[k] as number) + ((e[k + 2] as number) - (e[k] as number)) * closestT;
+      const y = (e[k + 1] as number) + ((e[k + 3] as number) - (e[k + 1] as number)) * closestT;
+      // A run that starts or ends on the highway joins it there.
+      if (Math.hypot(x - a.x, y - a.y) > SAME_PLACE && Math.hypot(x - b.x, y - b.y) > SAME_PLACE) ok = false;
+    });
     return ok;
   }
 

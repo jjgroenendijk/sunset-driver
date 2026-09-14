@@ -42,6 +42,25 @@ const MAX_COVER = 25;
 const MERGE_TRIES = 4;
 /** Radians the last step of a merge may turn from the road's heading. */
 const MAX_MERGE_TURN = Math.PI / 2;
+/** Metres off its circle at which a ring trace turns back towards it as hard as it may. */
+const RING_PULL = 120;
+/** Radians off the tangent a ring trace heads at most, to get back onto its circle. */
+const RING_TURN = Math.PI / 4;
+
+/** Share of a square ring's half-side its corners are rounded over. */
+const SQUARE_CORNER = 0.5;
+
+/** A circle, or a square with rounded corners, that a trace runs round instead of following the field. */
+export interface Ring {
+  x: number;
+  y: number;
+  /** The circle's radius, or the square's half-side. */
+  radius: number;
+  /** Radians of the ring the trace may sweep, measured round its middle, before it stops. */
+  sweep: number;
+  /** The heading of one pair of the square's sides, or undefined for a circle. */
+  square?: number;
+}
 
 /** What a trace is asked to do. */
 export interface TraceOptions {
@@ -61,6 +80,8 @@ export interface TraceOptions {
   parentMergeAfter?: number;
   /** Ground the road may not leave: the fill stays inside the built-up zones. */
   within?: (x: number, y: number) => boolean;
+  /** Run round this circle rather than along the field: the ring highway of `highways.ts`. */
+  around?: Ring;
 }
 
 /** One step of a trace: which way it goes, and how far it reaches. */
@@ -82,6 +103,8 @@ interface TraceResult {
    * it always may.
    */
   clear: boolean[];
+  /** Radians the trace swept round its ring; 0 for a trace with none. */
+  swept: number;
 }
 
 /** A trace over the ground and the network {@link RoadRoute} holds. */
@@ -214,6 +237,9 @@ export abstract class RoadTrace extends RoadRoute {
     let arrived = false;
     let closest = opt.target === undefined ? 0 : dist(px, py, opt.target.x, opt.target.y);
     let stalled = 0;
+    const ring = opt.around;
+    let bearing = ring === undefined ? 0 : Math.atan2(py - ring.y, px - ring.x);
+    let swept = 0;
 
     while (length < maxLength) {
       const wanted = this.desiredHeading(px, py, heading, opt);
@@ -256,6 +282,12 @@ export abstract class RoadTrace extends RoadRoute {
       heading = next.heading;
       px = qx;
       py = qy;
+      if (ring !== undefined) {
+        const now = Math.atan2(py - ring.y, px - ring.x);
+        swept += Math.abs(wrapAngle(now - bearing));
+        bearing = now;
+        if (swept >= ring.sweep) break;
+      }
 
       const target = opt.target;
       if (target === undefined) continue;
@@ -284,7 +316,7 @@ export abstract class RoadTrace extends RoadRoute {
         clear.pop();
       }
     }
-    return { points, merged, arrived, clear };
+    return { points, merged, arrived, clear, swept };
   }
 
   /**
@@ -361,7 +393,15 @@ export abstract class RoadTrace extends RoadRoute {
     const line = this.fieldLine({ x, y }, opt.minor);
     const target = opt.target;
     let wanted: number;
-    if (target === undefined) {
+    const ring = opt.around;
+    if (ring !== undefined) {
+      // Along the ring the way the road is already going, turned in towards
+      // it when the road has drifted out and out when it has drifted in.
+      const { out, off } = ringOffset(ring, x, y);
+      const tangent = alignTo(out + Math.PI / 2, heading);
+      const inward = wrapAngle(out + Math.PI - tangent) > 0 ? 1 : -1;
+      wanted = tangent + inward * clamp(off / RING_PULL, -1, 1) * RING_TURN;
+    } else if (target === undefined) {
       wanted = alignTo(line, heading);
     } else {
       const bearing = Math.atan2(target.y - y, target.x - x);
@@ -415,6 +455,39 @@ export abstract class RoadTrace extends RoadRoute {
     return undefined;
   }
 
+}
+
+/**
+ * How far a point is off a ring, outward positive, and the heading straight
+ * out from the ring there. A square ring is measured as a rounded box in the
+ * frame of its sides.
+ */
+export function ringOffset(ring: Ring, x: number, y: number): { out: number; off: number } {
+  const dx = x - ring.x;
+  const dy = y - ring.y;
+  if (ring.square === undefined) return { out: Math.atan2(dy, dx), off: Math.hypot(dx, dy) - ring.radius };
+  const c = Math.cos(ring.square);
+  const s = Math.sin(ring.square);
+  const u = dx * c + dy * s;
+  const v = dy * c - dx * s;
+  const corner = ring.radius * SQUARE_CORNER;
+  const qu = Math.abs(u) - (ring.radius - corner);
+  const qv = Math.abs(v) - (ring.radius - corner);
+  let nu: number;
+  let nv: number;
+  let off: number;
+  if (qu > 0 && qv > 0) {
+    off = Math.hypot(qu, qv) - corner;
+    nu = qu;
+    nv = qv;
+  } else {
+    off = Math.max(qu, qv) - corner;
+    nu = qu >= qv ? 1 : 0;
+    nv = qu >= qv ? 0 : 1;
+  }
+  nu *= Math.sign(u) || 1;
+  nv *= Math.sign(v) || 1;
+  return { out: ring.square + Math.atan2(nv, nu), off };
 }
 
 /** The one of `line` and `line + π` that points the same way as `reference`. */

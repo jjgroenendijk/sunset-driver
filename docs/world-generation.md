@@ -53,13 +53,21 @@ gets wrong without it.
   released once it is laid; without that an island link can take the line, and the beach gets no
   boardwalk. While its two ends reach for the network the line is held again, so neither end runs
   back along it.
-- The two highways through the core are the spine every other road grows off, so where the ground
-  cuts both of them short of `MIN_HIGHWAY` the longer is laid whatever its length. Without that a
-  seed whose trunks both come up short has no highway, and then no arterial, no street and no road
-  at all.
+- The highways are a ring just outside the core and up to `MAX_RADIALS` radials out of its free
+  interchanges, the longest first, each with a branch (`highways.ts`). The seed picks the ring's
+  shape: a circle, or a square with rounded corners whose sides follow the field at the core. Where
+  that shape does not fit, the other is tried. A ring broken by water keeps its longest arc. Only
+  where no arc runs `MIN_HIGHWAY` do the two old trunks cross the core, and where both of those come
+  up short the longer is laid whatever its length. Without that a seed has no highway, and then no
+  road at all.
+- A ring trace (`TraceOptions.around`) aims along the ring's tangent and turns back towards it by up
+  to `RING_TURN`, so the ground can still bend it. It stops once it has swept the whole ring, or the
+  part the other half left.
 - The islands are linked twice: once after the highways, and once after the arterial fill, for an
   island that carries a district and still has no road on it. A bridge is refused where its near
-  shore reaches no road, and when the islands are first linked the network is two highways.
+  shore reaches no road. Both bridge heads are vetted by `stepOk`, so a link never crosses a
+  highway away from a slot. `bridgeHeads` tries several anchors on each shore, then points of the
+  network near the shore, because a shore highway often takes the first anchor.
 - `traceRoads(world, field)` (`roads.ts`) traces every tier as streamlines of that field: highways,
   then arterials, then the minor fill of streets, alleys and dirt roads. Three invariants hold by
   construction, and the sweep checks them: every curve shares a point with another curve, so the
@@ -99,8 +107,14 @@ gets wrong without it.
 - A highway takes a junction only at an interchange (spec section 6.2). `interchangesOf` places them
   along the curve, `RoadCurve.interchanges` lists the point indices, and `mayJoin` (`tiers.ts`) is
   the rule: a highway or an arterial ramp joins one there, and a street, alley or dirt road never
-  joins a highway anywhere. Where a minor road crosses a highway instead, `graph.crossings` makes it
-  an overpass.
+  joins a highway anywhere.
+- Each highway's structure is planned when it is laid (`highway-plan.ts`, called from `addCurve`).
+  Between two interchanges it leaves the ground, clear of `INTERCHANGE_CLEAR` each side. In the
+  built-up zones it runs on a deck from one to the next; in the country it rises on one
+  `COUNTRY_DECK` in the middle of the stretch. The level segments of a deck are its `slots`. A
+  highway that passes under an earlier one stays on the ground there. `RoadClearance` refuses every
+  step of a later road that crosses a highway away from a slot, so every highway crossing is at a
+  slot or an interchange by construction.
 - `connectCrossings(roads, canRun)` (`connect.ts`) runs after the minor fill, before
   `raiseOverpasses`: two roads that cross on the ground meet there (spec section 6.2). The trace
   only ever ends a road on a *point* of another one, so a road crossing another between its points
@@ -115,7 +129,9 @@ gets wrong without it.
   it, under `MIN_MEET`. A snap moves a road by up to 4 m, which can turn a short segment onto
   another road's line. Where the snapped place fails, the crossing itself is tried.
 - `raiseOverpasses(roads)` (`overpass.ts`) is the last step of `traceRoads`: where two roads cross
-  without meeting, one is carried over the other (spec section 6.2). The narrower road climbs — a
+  without meeting, one is carried over the other (spec section 6.2). A crossing where one road is
+  already `CLEARANCE` up, a highway slot, is left as it is, and the road below may not be raised
+  there. Otherwise the narrower road climbs — a
   highway holds its line, since its grade limit is the gentlest and its ramps would be the longest —
   and the wider one climbs only where the narrow one cannot. The lift is `CLEARANCE` over the
   crossing, held level past the ground the road below claims, and ramped back down no harder than
