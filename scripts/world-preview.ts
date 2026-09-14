@@ -1,6 +1,10 @@
 /**
  * Render a top-down map of a seed's world description to a PNG for eyeballing.
- * Usage: node scripts/world-preview.ts [seed] [out.png]
+ * Usage: node scripts/world-preview.ts [seed] [out.png] [--tiers=highway+arterial]
+ *
+ * `--tiers` draws those road tiers alone, so the highways can be seen without
+ * the streets around them. The footprint, the parcels and the buildings are
+ * left out then, because they are cut from every tier at once.
  */
 import { writeFileSync } from 'node:fs';
 import type { Region } from '../src/core/geom.ts';
@@ -19,8 +23,16 @@ import { generateWorld } from '../src/world/world.ts';
 import type { Point, RoadTier, Zone } from '../src/world/types.ts';
 import { encodePng } from './png.ts';
 
-const seedText = process.argv[2] ?? 'sunset';
-const out = process.argv[3] ?? `preview-${seedText}.png`;
+const args = process.argv.slice(2);
+const positional = args.filter((a) => !a.startsWith('--'));
+const seedText = positional[0] ?? 'sunset';
+const out = positional[1] ?? `preview-${seedText}.png`;
+const ALL_TIERS: RoadTier[] = ['highway', 'arterial', 'street', 'alley', 'dirt'];
+const tiersFlag = args.find((a) => a.startsWith('--tiers='))?.slice('--tiers='.length);
+const shown = tiersFlag === undefined ? ALL_TIERS : (tiersFlag.split('+') as RoadTier[]);
+for (const tier of shown) {
+  if (!ALL_TIERS.includes(tier)) throw new Error(`--tiers: no tier ${tier}; the tiers are ${ALL_TIERS.join(', ')}`);
+}
 const t0 = performance.now();
 const world = generateWorld(seedFromString(seedText));
 const genMs = performance.now() - t0;
@@ -138,7 +150,8 @@ const fill = (region: Region, col: [number, number, number]): void => {
     }
   }
 };
-for (const region of footprint.regions) fill(region, FOOTPRINT_COL);
+const everyTier = tiersFlag === undefined;
+if (everyTier) for (const region of footprint.regions) fill(region, FOOTPRINT_COL);
 
 // The parcels (spec section 6.4): the land the footprint leaves, one colour per
 // owner. Every one of them is filled, so ground the roads never reach shows
@@ -156,7 +169,7 @@ const OWNER_COL: Record<ParcelOwner, [number, number, number]> = {
   water: [40, 100, 170],
   ground: [120, 140, 95],
 };
-for (const parcel of parcels.parcels) fill(parcel.region, OWNER_COL[parcel.owner] as [number, number, number]);
+if (everyTier) for (const parcel of parcels.parcels) fill(parcel.region, OWNER_COL[parcel.owner] as [number, number, number]);
 
 // The buildings (spec section 10.3): one lot per building, laid on the road
 // frontage of the parcels the zone gave to a building group, in the colour of
@@ -174,7 +187,7 @@ const KIND_COL: Record<BuildingKind, [number, number, number]> = {
   warehouse: [140, 145, 160],
   roadhouse: [200, 115, 205],
 };
-for (const building of buildings.buildings) {
+for (const building of everyTier ? buildings.buildings : []) {
   fill({ outer: building.lot, holes: [] }, KIND_COL[building.kind] as [number, number, number]);
 }
 
@@ -207,12 +220,15 @@ const stroke = (a: Point, b: Point, col: [number, number, number], half: number)
 };
 // Widest tier last, so a highway is never hidden under the streets beside it.
 const TIER_ORDER: RoadTier[] = ['alley', 'dirt', 'street', 'arterial', 'highway'];
-for (const road of [...world.roads].sort((a, b) => TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier))) {
+// The level deck a lower road may cross a highway under (`highway-plan.ts`).
+const SLOT_COL: [number, number, number] = [255, 255, 170];
+const drawn = world.roads.filter((road) => shown.includes(road.tier));
+for (const road of drawn.sort((a, b) => TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier))) {
   const style = ROAD_STYLE[road.tier];
   for (let i = 0; i + 1 < road.points.length; i++) {
     const bridge = road.bridges.includes(i);
     const tunnel = road.tunnels.includes(i);
-    const col = bridge ? BRIDGE_COL : tunnel ? TUNNEL_COL : style.col;
+    const col = road.slots?.includes(i) === true ? SLOT_COL : bridge ? BRIDGE_COL : tunnel ? TUNNEL_COL : style.col;
     stroke(road.points[i] as Point, road.points[i + 1] as Point, col, bridge || tunnel ? 1 : style.half);
   }
 }
@@ -223,6 +239,7 @@ for (const road of [...world.roads].sort((a, b) => TIER_ORDER.indexOf(a.tier) - 
 const CORRIDOR_COL = { elevated: [255, 200, 60] as [number, number, number], tram: [230, 60, 230] as [number, number, number] };
 const PILLAR_COL: [number, number, number] = [40, 40, 40];
 for (const corridor of world.corridors) {
+  if (!corridor.roads.some((id) => shown.includes((world.roads[id] as (typeof world.roads)[number]).tier))) continue;
   const col = CORRIDOR_COL[corridor.kind];
   for (let i = 0; i < corridor.polygon.length; i++) {
     stroke(corridor.polygon[i] as Point, corridor.polygon[(i + 1) % corridor.polygon.length] as Point, col, 0);
@@ -232,7 +249,7 @@ for (const corridor of world.corridors) {
     plot(px, n - 1 - py, PILLAR_COL);
   }
 }
-for (let i = 0; i + 1 < world.tram.route.length; i++) {
+for (let i = 0; shown.includes('arterial') && i + 1 < world.tram.route.length; i++) {
   stroke(world.tram.route[i] as Point, world.tram.route[i + 1] as Point, CORRIDOR_COL.tram, 0);
 }
 
@@ -273,7 +290,7 @@ const mark = (x: number, y: number, col: [number, number, number], size = 3): vo
   }
 };
 // The interchanges of the highways: the only points a highway takes a junction at.
-for (const road of world.roads) {
+for (const road of drawn) {
   for (const at of road.interchanges) mark((road.points[at] as Point).x, (road.points[at] as Point).y, [180, 255, 60], 2);
 }
 for (const d of world.districts) mark(d.x, d.y, d.culture === 'none' ? [255, 255, 255] : [255, 0, 255]);
@@ -281,8 +298,10 @@ for (const c of world.water.crossings) {
   mark(c.from.x, c.from.y, [255, 255, 0]);
   mark(c.to.x, c.to.y, [255, 255, 0]);
 }
-for (const c of world.tram.crossings) mark(c.x, c.y, [255, 255, 255], 1);
-for (const s of world.tram.stops) mark(s.x, s.y, [255, 60, 160], 2);
+if (shown.includes('arterial')) {
+  for (const c of world.tram.crossings) mark(c.x, c.y, [255, 255, 255], 1);
+  for (const s of world.tram.stops) mark(s.x, s.y, [255, 60, 160], 2);
+}
 
 writeFileSync(out, encodePng(n, n, rgb));
 const perTier = TIER_ORDER.map((t) => `${t} ${world.roads.filter((r) => r.tier === t).length}`).join(', ');
