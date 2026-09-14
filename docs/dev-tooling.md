@@ -62,6 +62,17 @@ out, because they are cut from every tier at once.
 The relief is shaded off the carved ground, not the natural one. The line it prints says how much of
 the grid the roads moved and what the deepest cut and the highest fill came to.
 
+## `node scripts/terrain-sheet.ts [count] out.png [--cols=6] [--tile=160]`
+
+The terrain of many seeds on one sheet: sea in blue, land shaded by height, one small map per seed.
+Judge a change to the terrain archetypes here, not seed by seed in the world preview. One preview
+at a time hides that the maps all look alike.
+
+The seeds are the sweep's, in order. It builds the terrain alone, without roads, so 80 seeds take
+about 20 s. The console lists each tile with its seed, its archetype, its island count and the share
+of the map that is dry land. `test/layout-bands.ts` holds that share to `LAND_FRACTION`, and each
+archetype holds it to its own `landFraction`.
+
 ## `node scripts/landuse-preview.ts <seed> out.png`
 
 How a city uses its land, close up. The world preview draws the whole map, where a downtown block is
