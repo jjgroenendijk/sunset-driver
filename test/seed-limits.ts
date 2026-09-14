@@ -355,3 +355,11 @@ export const MIN_ZONE_HECTARES = 8;
  * sea, and the middle of three parcels says nothing about how land is cut.
  */
 export const MIN_ZONE_PARCELS = 5;
+/**
+ * Seeds the traffic of spec section 13.1 is placed on and checked for. Placing
+ * it costs a few tens of milliseconds a seed on top of the road beds, so the
+ * full tier checks a sample rather than every seed.
+ */
+export const TRAFFIC_COUNT = SEED_COUNT > 20 ? 24 : 2;
+/** Metres of a tier a world must carry before the sweep expects traffic on it. */
+export const TRAFFIC_TIER_MIN = 1000;
