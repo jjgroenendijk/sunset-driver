@@ -1,6 +1,7 @@
 import { Vector3, type BufferAttribute, type BufferGeometry } from 'three';
 import { describe, expect, it } from 'vitest';
 import { pointInRing, type Point } from '../src/core/geom.ts';
+import { sideReach } from './helpers.ts';
 import { hashInts } from '../src/core/hash.ts';
 import {
   buildChunkBuildings,
@@ -200,6 +201,54 @@ describe('a building on its lot', () => {
           if (!pointInRing({ x: vertex.x, y: vertex.z }, standingGround(one.at))) outside++;
         });
         expect(outside, `${kind} off its ground`).toBe(0);
+      }
+    }
+  });
+
+  it('leans its wall onto a side edge it shares where the frontage bends', () => {
+    // Two lots of one street wall on a bend: the edge between them leans 4 m
+    // over its 26 m of depth, so a box square to the frontage cannot reach it
+    // at both ends (spec section 10.3).
+    const west = [
+      { x: -22, y: 0 },
+      { x: 0, y: 0 },
+      { x: 4, y: 26 },
+      { x: -22, y: 26 },
+    ];
+    const east = [
+      { x: 0, y: 0 },
+      { x: 22, y: 0 },
+      { x: 22, y: 26 },
+      { x: 4, y: 26 },
+    ];
+    for (const kind of KINDS) {
+      const lots = [
+        buildingOf(kind, 20, 26, { lot: west, front: { x: -11, y: 0 }, shared: { left: false, right: true } }),
+        buildingOf(kind, 16, 26, { lot: east, front: { x: 11, y: 0 }, shared: { left: true, right: false } }),
+      ];
+      const both = placed(lots, lookupOf(undefined, 0, QUIET));
+      for (const [i, side] of [
+        [0, 'right'],
+        [1, 'left'],
+      ] as const) {
+        const one = both[i] as BuildingPlacement;
+        const where = `${kind} ${side} of the bend`;
+        const reach = sideReach(one.building.lot, side, (visit) =>
+          eachWorldVertex(one.shell, one, (vertex) => visit({ x: vertex.x, y: vertex.z })),
+        );
+        // It stands on the edge and never over it.
+        expect(reach.most, where).toBeCloseTo(0, 2);
+        // A block fills its massing, so its wall reaches the edge at both ends.
+        // A generated facade is measured at its widest, which is not both ends.
+        if (one.batch === 'block') {
+          expect(reach.front, `${where}, front`).toBeCloseTo(0, 2);
+          expect(reach.back, `${where}, back`).toBeCloseTo(0, 2);
+        }
+        let outside = 0;
+        eachWorldVertex(one.shell, one, (vertex) => {
+          if (!pointInRing({ x: vertex.x, y: vertex.z }, standingGround(one.building))) outside++;
+        });
+        expect(outside, `${where}, off its ground`).toBe(0);
       }
     }
   });

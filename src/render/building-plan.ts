@@ -14,6 +14,10 @@
  * past the room is taken in by the scale of the placement, which
  * `building-mesh.ts` measures.
  *
+ * The massing is a box, and a lot on a bend is not: its side edges lean. A lot
+ * that shares a side edge therefore has its shell leaned onto both of them,
+ * which {@link leanOf} says, so the wall it shares has no wedge in it.
+ *
  * Pure, and free of three.js: the massing of a building is a handful of
  * numbers in its own frame.
  */
@@ -255,6 +259,75 @@ export function fitOf(covers: { width: number; depth: number }, massing: Buildin
   const room = covers.width > 0 ? massing.width / covers.width : 1;
   const across = Math.min(1, room, covers.depth > 0 ? massing.depth / covers.depth : 1);
   return { along: shared ? Math.max(across, Math.min(MAX_STRETCH, room)) : across, across };
+}
+
+/**
+ * How a shell is leaned to follow the side edges of its lot, in the building's
+ * own frame and in metres.
+ *
+ * The shell is built square, in the box of its massing. A lot on a bend is a
+ * trapezoid or a parallelogram, so a box inside it cannot reach both side
+ * edges, and a wall shared with a neighbour keeps a wedge of daylight. The lean
+ * moves each place along the frontage and keeps its depth: at depth `z` it
+ * takes `x` to `(scale + scaleSlope * z) * x + shift + shiftSlope * z`. That
+ * maps the massing's two sides onto the lot's two side edges at every depth,
+ * less the margin on a side that needs one. The map is linear in `x` at each
+ * depth, so what stood inside the box stands inside the lot.
+ */
+export interface Lean {
+  scale: number;
+  scaleSlope: number;
+  shift: number;
+  shiftSlope: number;
+}
+
+/**
+ * The lean that stands a shell on its lot, or nothing where the shell stays
+ * square. Only a lot with a wall against it leans: a lot that shares no side
+ * edge keeps its margin all round, and a box inside it is all it needs.
+ *
+ * The frame's `x` in the world is `(sin facing, -cos facing)` and its `z` is
+ * `(cos facing, sin facing)`, with the middle of the lot at the origin. The
+ * massing covers `offset ± width / 2` along `x`. A side edge that keeps its
+ * margin keeps it square to the edge, so a leaning edge takes more of it
+ * along `x`.
+ */
+export function leanOf(building: Building, massing: BuildingMassing): Lean | undefined {
+  if (!building.shared.left && !building.shared.right) return undefined;
+  const margin = KIND_MARGIN[building.kind];
+  let middleX = 0;
+  let middleY = 0;
+  for (const corner of building.lot) {
+    middleX += corner.x / building.lot.length;
+    middleY += corner.y / building.lot.length;
+  }
+  const sin = Math.sin(building.facing);
+  const cos = Math.cos(building.facing);
+  const local = (p: Point): { x: number; z: number } => {
+    const dx = p.x - middleX;
+    const dy = p.y - middleY;
+    return { x: dx * sin - dy * cos, z: dx * cos + dy * sin };
+  };
+  // Each side edge as `x = at + slope * z`, pulled in by its margin. The first
+  // corner of the front edge stands at +x, so the left edge bounds the lot
+  // from above and the right edge from below.
+  const edge = (front: Point, back: Point, inset: number, sign: number): { at: number; slope: number } => {
+    const a = local(front);
+    const b = local(back);
+    const slope = (b.x - a.x) / (b.z - a.z);
+    const along = inset * Math.hypot(1, slope);
+    return { at: a.x - slope * a.z - sign * along, slope };
+  };
+  const lot = building.lot;
+  const left = edge(lot[0] as Point, lot[3] as Point, building.shared.left ? 0 : margin, 1);
+  const right = edge(lot[1] as Point, lot[2] as Point, building.shared.right ? 0 : margin, -1);
+  return {
+    scale: (left.at - right.at) / massing.width,
+    scaleSlope: (left.slope - right.slope) / massing.width,
+    // The frame is already moved by the offset, so the shift is what is left.
+    shift: (left.at + right.at) / 2 - massing.offset,
+    shiftSlope: (left.slope + right.slope) / 2,
+  };
 }
 
 /**

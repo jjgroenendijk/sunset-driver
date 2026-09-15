@@ -12,7 +12,8 @@
  * band, so a setback is outlined where it stands.
  *
  * `building-mesh.ts` builds it at every detail, and gives it the box the shell
- * really fills rather than the massing that was asked for.
+ * really fills rather than the massing that was asked for. It is built square,
+ * and leaned onto the lot with the shell.
  */
 import { Box3, BufferAttribute, BufferGeometry } from 'three';
 import type { Point } from '../world/types.ts';

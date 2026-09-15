@@ -20,7 +20,10 @@
  *
  * A building's own frame has the middle of its lot at the origin, `x` along the
  * frontage, `z` towards the road and `y` up from the ground it stands on. The
- * matrix of a placement is what puts that frame in the world.
+ * matrix of a placement is what puts that frame in the world. A shell is built
+ * square in that frame; where its lot shares a side edge, its places are then
+ * leaned along `x` to follow the lot's side edges, which a matrix cannot do on
+ * a lot that is wider at its front than at its back.
  *
  * Nothing here touches the renderer or TSL, so it runs headless and the tests
  * read it directly.
@@ -40,11 +43,13 @@ import {
   facadeFootprint,
   fitOf,
   FOUNDATION,
+  leanOf,
   massingOf,
   plan,
   type BuildingBatch,
   type BuildingMassing,
   type Fit,
+  type Lean,
 } from './building-plan.ts';
 import type { ChunkDetail } from './streaming.ts';
 
@@ -145,14 +150,14 @@ export function buildChunkBuildings(
     // reach it.
     const wall = building.shared.left || building.shared.right;
     const fit = fitOf({ width: box.max.x - box.min.x, depth: box.max.z - box.min.z }, massing, wall);
-    out.push({
-      building,
-      massing,
-      batch,
-      shell,
-      hull: hullOf(massing, shell, box, fit),
-      matrix: matrixOf(building, lookup, massing, fit),
-    });
+    const hull = hullOf(massing, shell, box, fit);
+    // A lot on a bend leans its side edges, and a wall it shares follows them.
+    const lean = leanOf(building, massing);
+    if (lean !== undefined) {
+      leanGeometry(shell, lean, fit);
+      leanGeometry(hull, lean, fit);
+    }
+    out.push({ building, massing, batch, shell, hull, matrix: matrixOf(building, lookup, massing, fit) });
   }
   return out;
 }
@@ -247,6 +252,49 @@ function centreOnLot(shell: BufferGeometry): Box3 {
   box.min.z += dz;
   box.max.z += dz;
   return box;
+}
+
+/**
+ * Lean a geometry built square in its massing onto the side edges of its lot,
+ * as {@link Lean} says, in place.
+ *
+ * The lean is in metres of the building's frame, and a shell is drawn through
+ * a matrix that scales it by the fit, so each place is taken to metres, leaned
+ * and taken back. A generated facade carries the room behind each window as a
+ * place, and it is leaned with the wall. The normals are turned by the inverse
+ * transpose of the lean, so a leaning wall is lit as the way it now faces.
+ */
+function leanGeometry(geometry: BufferGeometry, lean: Lean, fit: Fit): void {
+  const place = (name: string): Float32Array | undefined =>
+    (geometry.getAttribute(name) as BufferAttribute | undefined)?.array as Float32Array | undefined;
+  const positions = place('position') as Float32Array;
+  const normals = place('normal');
+  // Normals first: they are turned by the lean at the place before it moves.
+  if (normals !== undefined) {
+    for (let i = 0; i < positions.length; i += 3) {
+      const x = positions[i] as number;
+      const depth = (positions[i + 2] as number) * fit.across;
+      const scale = lean.scale + lean.scaleSlope * depth;
+      // How far `x` moves for each unit of `z`, in the shell's own units.
+      const shear = fit.across * (lean.scaleSlope * x + lean.shiftSlope / fit.along);
+      const nx = (normals[i] as number) / scale;
+      const ny = normals[i + 1] as number;
+      const nz = (normals[i + 2] as number) - shear * nx;
+      const span = Math.hypot(nx, ny, nz) || 1;
+      normals[i] = nx / span;
+      normals[i + 1] = ny / span;
+      normals[i + 2] = nz / span;
+    }
+  }
+  for (const array of [positions, place('roomCenter')]) {
+    if (array === undefined) continue;
+    for (let i = 0; i < array.length; i += 3) {
+      const depth = (array[i + 2] as number) * fit.across;
+      const scale = lean.scale + lean.scaleSlope * depth;
+      array[i] = scale * (array[i] as number) + (lean.shift + lean.shiftSlope * depth) / fit.along;
+    }
+  }
+  geometry.computeBoundingBox();
 }
 
 /**

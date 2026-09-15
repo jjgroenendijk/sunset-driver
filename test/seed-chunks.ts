@@ -16,7 +16,7 @@ import { MITRE_SHIFT, RoadRibbons } from '../src/world/ribbon.ts';
 import { footprintHalfWidth, TIERS } from '../src/world/tiers.ts';
 import { type Point, type RoadCurve, type WorldDescription } from '../src/world/types.ts';
 import { mixFor, MAX_PLANT_RADIUS, PLANT_RADIUS, Vegetation, type Plant } from '../src/world/vegetation.ts';
-import { pointInRing, ringArea, stableJson } from './helpers.ts';
+import { pointInRing, ringArea, sideReach, stableJson } from './helpers.ts';
 import { type WorldParts } from './world-pool.ts';
 import {
   FOOTPRINT_COUNT,
@@ -33,6 +33,7 @@ import {
   VEGETATION_COUNT,
   CUT_SLACK,
   BOUNDARY_SLACK,
+  WALL_REACH,
 } from './seed-limits.ts';
 import { ParcelIndex } from './seed-index.ts';
 import { chunkKeys, handovers, perimeterOf, insideBounds, distanceToBoundary, quadOf } from './seed-probes.ts';
@@ -328,6 +329,19 @@ export function chunkChecks(): void {
               else if (!pointInRing({ x: at.x, y: at.z }, standingGround(one.building)))
                 fault(`${where} stands off its lot`);
               if (complaint !== undefined) break;
+            }
+            // A block fills its massing, so at mid detail every wall a lot shares
+            // stands on that edge from its front to its back, however the edge
+            // leans. A generated facade is measured at its widest instead.
+            for (const side of detail === 'mid' ? (['left', 'right'] as const) : []) {
+              if (!one.building.shared[side]) continue;
+              const reach = sideReach(one.building.lot, side, (visit) => {
+                for (let v = 0; v < position.count; v++) {
+                  at.fromBufferAttribute(position as BufferAttribute, v).applyMatrix4(one.matrix);
+                  visit({ x: at.x, y: at.z });
+                }
+              });
+              if (Math.min(reach.front, reach.back) < -WALL_REACH) fault(`${where} stops short of its ${side} wall`);
             }
             one.shell.dispose();
             one.hull.dispose();

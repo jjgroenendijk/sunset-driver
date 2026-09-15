@@ -344,6 +344,11 @@ export const CUT_SLACK = 2e-3;
  */
 export const BOUNDARY_SLACK = 0.01;
 /**
+ * Metres a block may stand short of a side edge its lot shares, at either end
+ * of that edge. A centimetre is float error; more is daylight in the street wall.
+ */
+export const WALL_REACH = 0.01;
+/**
  * Hectares of dry land a zone needs before the layout check reads its shares.
  * The water cuts the industrial wedge of a thin seed down to a few blocks, and
  * one block either way moves every share of a zone that small.

@@ -134,9 +134,9 @@ export interface Lot {
   corners: Point[];
   area: number;
   /**
-   * Metres across the lot: the widest building that stands inside it, square to
-   * its front edge and in the middle of it. That is the frontage itself only
-   * where the side edges do not lean; see {@link widthOf}.
+   * Metres across the lot: the widest box that stands inside it, square to its
+   * front edge and in the middle of it. That is the frontage itself only where
+   * the side edges do not lean; see {@link widthOf}.
    */
   width: number;
   /** Metres from the front edge to the back of the lot. */
@@ -375,8 +375,9 @@ function facingOf(corners: readonly Point[]): number {
 /**
  * Metres across a lot: the widest building that stands inside it.
  *
- * The renderer stands a box of this width in the middle of the lot, square to
- * its front edge. The front and back edges of a lot are parallel, so the box is
+ * The renderer builds a box of this width in the middle of the lot, square to
+ * its front edge, and leans it onto the side edges only where the lot shares
+ * one. The front and back edges of a lot are parallel, so the box is
  * bounded by whichever of the two leaning side edges comes nearer the middle —
  * on a frontage that curves one way the lot is a parallelogram, and its
  * frontage is then wider than anything that fits inside it.

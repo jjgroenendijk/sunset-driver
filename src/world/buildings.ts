@@ -55,8 +55,9 @@ export interface Building {
   /** Square metres of the lot. */
   area: number;
   /**
-   * Metres across the lot: the shorter of its front and back edges, which is
-   * the widest building that stands inside it. See `lots.ts`.
+   * Metres across the lot: the widest box that stands inside it, square to its
+   * front edge. The renderer builds that box, and leans it onto the side edges
+   * where the lot shares one. See `lots.ts`.
    */
   width: number;
   /** Metres from the front edge to the back of the lot. */

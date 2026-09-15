@@ -178,3 +178,44 @@ export function landPoints(world: WorldDescription, count: number, stream: numbe
   }
   return out;
 }
+
+/** How far a shell reaches towards one side edge of its lot, as {@link sideReach} measures it. */
+export interface SideReach {
+  /** Metres past the edge the furthest place stands: negative where it stands inside the lot. */
+  most: number;
+  /** The same over the front third of the edge and over the back third. */
+  front: number;
+  back: number;
+}
+
+/**
+ * How far the places a shell covers reach towards one side edge of its lot
+ * (spec section 10.3). The left edge runs from the first front corner to the
+ * last corner, and the right edge from the second front corner to the third.
+ * A wall that stands on its edge from front to back reaches it in both thirds,
+ * and a wall leaning the wrong way reaches it at one end only.
+ */
+export function sideReach(lot: readonly Point[], side: 'left' | 'right', each: (visit: (p: Point) => void) => void): SideReach {
+  const a = lot[side === 'left' ? 0 : 1] as Point;
+  const b = lot[side === 'left' ? 3 : 2] as Point;
+  const length = Math.hypot(b.x - a.x, b.y - a.y);
+  const e = { x: (b.x - a.x) / length, y: (b.y - a.y) / length };
+  let n = { x: -e.y, y: e.x };
+  // Out of the lot: away from the middle of its corners.
+  let middleX = 0;
+  let middleY = 0;
+  for (const corner of lot) {
+    middleX += corner.x / lot.length;
+    middleY += corner.y / lot.length;
+  }
+  if ((middleX - a.x) * n.x + (middleY - a.y) * n.y > 0) n = { x: -n.x, y: -n.y };
+  const out = { most: -Infinity, front: -Infinity, back: -Infinity };
+  each((p) => {
+    const d = (p.x - a.x) * n.x + (p.y - a.y) * n.y;
+    const t = ((p.x - a.x) * e.x + (p.y - a.y) * e.y) / length;
+    out.most = Math.max(out.most, d);
+    if (t < 1 / 3) out.front = Math.max(out.front, d);
+    else if (t > 2 / 3) out.back = Math.max(out.back, d);
+  });
+  return out;
+}
