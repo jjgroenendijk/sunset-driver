@@ -42,8 +42,13 @@ const MIN_TURN = 0.25;
  */
 const NODE_REACH = 16;
 
-/** How many pavement widths from the junction a corner may stand before the lines are joined instead. */
-const CORNER_REACH = 3;
+/**
+ * How far from the node a corner may stand, in pavement offsets, before the
+ * lines are joined instead. A square corner stands at the square root of two;
+ * two arms that meet at a narrow angle cross far out, over the block between
+ * them.
+ */
+export const CORNER_REACH = 1.5;
 
 /** One loop of pavement, ready to walk. */
 export interface WalkRoute {
@@ -218,9 +223,12 @@ export class Pavements {
       const wy = by - ay;
       const t = (wx * b.dy - wy * b.dx) / cross;
       const u = (wx * a.dy - wy * a.dx) / cross;
-      if (Math.abs(t) <= reach && Math.abs(u) <= reach) {
-        route.cornerX[i] = ax + a.dx * t;
-        route.cornerY[i] = ay + a.dy * t;
+      const cx = ax + a.dx * t;
+      const cy = ay + a.dy * t;
+      // `a` is the end of the first edge, which is the node the two turn at.
+      if (Math.hypot(cx - a.x, cy - a.y) <= reach) {
+        route.cornerX[i] = cx;
+        route.cornerY[i] = cy;
         leave[i] = edgeA.length + t;
         enter[i] = u;
         return;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pavementOffset } from '../src/sim/pedestrian-route.ts';
+import { CORNER_REACH, pavementOffset } from '../src/sim/pedestrian-route.ts';
 import { AmbientPedestrians, crowdDistrictsOf, type PedestrianPose } from '../src/sim/pedestrians.ts';
 import { trafficRoadsOf } from '../src/sim/traffic.ts';
 import type { RoadEdge } from '../src/world/graph.ts';
@@ -34,8 +34,9 @@ export function pedestrianChecks(): void {
           crowd.poseAt(id, tick, pose);
           const off = graph.nearestEdge(pose.x, pose.y)?.distance ?? Infinity;
           expect(Number.isFinite(pose.x + pose.y + pose.height + pose.heading), `seed ${seed}: person ${id}`).toBe(true);
-          // Never further from a road than the middle of the widest pavement and the corner of a junction.
-          expect(off, `seed ${seed}: person ${id} off the ${edge.tier} they walk`).toBeLessThan(pavementOffset({ tier: 'arterial' }) + 1);
+          // Never further from a road than a corner may stand from its junction, which is further
+          // than the middle of the widest pavement.
+          expect(off, `seed ${seed}: person ${id} off the ${edge.tier} they walk`).toBeLessThan(CORNER_REACH * pavementOffset({ tier: 'arterial' }));
         }
       }
     });
