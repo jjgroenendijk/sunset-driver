@@ -1,38 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { FreeEnds, shallow } from '../src/world/connect.ts';
-import { groundRule } from '../src/world/roads.ts';
-import { bendOverlaps } from '../src/world/self-overlap.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { type GradeCrossing, type RoadEdge, type RoadNode } from '../src/world/graph.ts';
 import { CLEARANCE as OVERPASS_CLEARANCE } from '../src/world/overpass.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
 import { coastNoise, islandAt } from '../src/world/terrain.ts';
-import { mayJoin, TIERS } from '../src/world/tiers.ts';
+import { TIERS } from '../src/world/tiers.ts';
 import { type Point, type RoadCurve, type RoadTier, type WorldDescription, type Zone } from '../src/world/types.ts';
 import { PointGrid } from './seed-index.ts';
 import {
   WET_SAMPLE,
   nodePoints,
   nodeVisits,
-  pointsAt,
-  type Spot,
   CLEARANCE,
   gradeOf,
   profileUnder,
   wetFraction,
-  segmentUnder,
-  nearestPointOf,
-  nearer,
-  refusedPlace,
-  sharedNear,
   spansCrossing,
   median,
-  sharedDistances,
   liftAtCrossing,
-  canRaise,
   placeOn,
-  withUnderDecks,
+  standAt,
 } from './seed-probes.ts';
 import { seeds, worlds, graphOf } from './seed-fixture.ts';
 
@@ -183,129 +171,31 @@ export function roadChecks(): void {
       }
     });
 
-    it('meets any road it crosses on the ground, unless the junction is refused', () => {
-      // Spec section 6.2: two roads that cross on the ground meet there. The
-      // tracer only ever ends a road on a point of another one, so `connect.ts`
-      // gives both curves a point at every crossing the tiers allow a junction
-      // at. What is left is a crossing beside the junction it was given, or one
-      // the ground refuses: a junction cuts a segment in two, and the halves can
-      // climb harder than the whole did.
+    it('leaves no crossing flat: two roads that cross meet, or one stands a clearance over the other', () => {
+      // Spec section 6.2: a crossing is decided when its second road is added,
+      // never afterwards. The two roads take a junction there, which is a node
+      // and no crossing at all, or one is carried over the other: a lift of the
+      // clearance over a road on the ground, or a deck or a bore whose bed
+      // stands a clearance off the other road's. Where none of those holds the
+      // road is shortened or refused, so no refusal leaves a crossing flat.
       for (const seed of seeds) {
         const w = worlds.get(seed) as WorldDescription;
         const graph = graphOf(seed);
-        const ground = groundRule(new Heightfield(w.terrain), w.water.seaLevel);
-        const byId: RoadCurve[] = [];
-        for (const road of w.roads) byId[road.id] = road;
-        const on = nodePoints(w.roads);
-        // The points the curves other than one run on to from a spot, read off
-        // the node it stands on.
-        const othersAt = (place: Spot, curve: number): Point[] =>
-          pointsAt(on, place)
-            .filter(({ road }) => road.id !== curve)
-            .flatMap(({ road, at }) => [road.points[at - 1], road.points[at + 1]].filter((p): p is Point => p !== undefined));
-        // A point that turns a road onto the line of a third road meeting it
-        // there, or at the places beside it, is refused as `connect.ts` does.
-        const bends = (curve: number, spot: Spot, around: readonly Spot[]): boolean =>
-          shallow(spot, around, othersAt(spot, curve)) || around.some((place) => shallow(place, [spot], othersAt(place, curve)));
-        const ends = new FreeEnds(w.roads);
+        const hf = new Heightfield(w.terrain);
         let complaint: string | undefined;
-        const fault = (text: string): void => {
-          complaint ??= text;
-        };
-
         for (const crossing of graph.crossings) {
-          const at = { x: crossing.x, y: crossing.y };
-          const over = byId[(graph.edges[crossing.over] as RoadEdge).curve] as RoadCurve;
-          const under = byId[(graph.edges[crossing.under] as RoadEdge).curve] as RoadCurve;
-          if (!mayJoin(over.tier, under.tier, false) || !mayJoin(under.tier, over.tier, false)) continue;
-          const first = segmentUnder(over, at);
-          const second = segmentUnder(under, at);
-          if (first === undefined || second === undefined) continue;
-          // A deck and a bore are not on the ground, so crossing one is no meeting.
-          if (over.bridges.includes(first) || over.tunnels.includes(first)) continue;
-          if (under.bridges.includes(second) || under.tunnels.includes(second)) continue;
-
-          const where = `${over.tier} ${over.id} crosses ${under.tier} ${under.id} at ${at.x.toFixed(0)},${at.y.toFixed(0)}`;
-          if (sharedNear(over, under, at) !== undefined) continue;
-          // Each place a junction would have taken is refused: by the road
-          // standing there, by a half it cuts a road into that is more than the
-          // ground allows, or by an angle no junction can be built at. The
-          // place `connect.ts` would put the junction at first: the nearest
-          // point either road already has within a snap of the crossing.
-          // Where that place fails, the crossing itself is tried.
-          const snapped = nearer(nearestPointOf(over, at), nearestPointOf(under, at), at);
-          const refusedAt = (spot: Spot): boolean => {
-            // A place a road of either tier may not take a point at is no place
-            // for a junction: bending a street onto a point of a highway would
-            // meet the highway, which spec section 6.2 refuses.
-            if (refusedPlace(on, spot, over.tier) || refusedPlace(on, spot, under.tier)) return true;
-            const halves = [
-              [over, first],
-              [under, second],
-            ] as const;
-            const around: Spot[][] = [];
-            const spotOf = (road: RoadCurve, at: number): Spot | undefined => {
-              const p = road.points[at];
-              return p === undefined ? undefined : { x: p.x, y: p.y, road, at };
-            };
-            for (const [road, segment] of halves) {
-              const a = spotOf(road, segment) as Spot;
-              const b = spotOf(road, segment + 1) as Spot;
-              // A place the road already stands on bends it nowhere new; there
-              // it leaves along the points either side, as `connect.ts` measures.
-              const i = spot.road === road ? (spot.at as number) : -1;
-              if (i >= 0) {
-                around.push([spotOf(road, i - 1), spotOf(road, i + 1)].filter((p): p is Spot => p !== undefined));
-                continue;
-              }
-              if (!ground(a, spot, road.tier) || !ground(spot, b, road.tier)) return true;
-              // Nor a place that bends the road back over its own carriageway.
-              if (bendOverlaps(road.points, segment, spot, road.tier)) return true;
-              // Nor a place that bends the road over the free end of a third one.
-              if (ends.buried(road, spot, [a, b])) return true;
-              around.push([a, b]);
-            }
-            // A point that turns the two roads onto each other's line under
-            // MIN_MEET is no junction either.
-            if (shallow(spot, around[0] as Spot[], around[1] as Spot[])) return true;
-            return bends(over.id, spot, around[0] as Spot[]) || bends(under.id, spot, around[1] as Spot[]);
-          };
-          if (!(snapped === undefined ? [at] : [snapped, at]).every(refusedAt)) fault(`${where} without meeting it`);
-        }
-        expect(complaint, `seed ${seed}`).toBeUndefined();
-      }
-    });
-
-    it('carries a road over the one it crosses, or is refused for a reason', () => {
-      // Spec section 6.2: an overpass carries a road over a road. `overpass.ts`
-      // raises the road the graph calls `over`, or the other one where that road
-      // cannot be raised. It is refused where a junction of the road stands
-      // inside the ramps, where the road passes under a highway's deck there,
-      // where the road is bored or already on a deck there, and where the road
-      // runs out before it is down again. Nothing else may leave a crossing
-      // flat, so the check mirrors those four and no more.
-      for (const seed of seeds) {
-        const w = worlds.get(seed) as WorldDescription;
-        const graph = graphOf(seed);
-        const shared = withUnderDecks(w.roads, graph, sharedDistances(w.roads));
-        let complaint: string | undefined;
-        const fault = (text: string): void => {
-          complaint ??= text;
-        };
-        for (let k = 0; k < graph.crossings.length; k++) {
-          const crossing = graph.crossings[k] as GradeCrossing;
           const over = w.roads[(graph.edges[crossing.over] as RoadEdge).curve] as RoadCurve;
           const under = w.roads[(graph.edges[crossing.under] as RoadEdge).curve] as RoadCurve;
-          const where = `crossing ${k} at ${crossing.x.toFixed(0)},${crossing.y.toFixed(0)}`;
-          const above = liftAtCrossing(over, crossing);
-          const below = liftAtCrossing(under, crossing);
-          if (Math.max(above, below) >= OVERPASS_CLEARANCE - 0.001) continue;
-          // Short of the clearance the roads still meet on the map, so the raise
-          // must have been refused. A crossing standing on the ramp of another
-          // one is lifted a little; that is a refusal too, not a separation.
-          if (canRaise(over, under, crossing, shared) || canRaise(under, over, crossing, shared)) {
-            fault(`${where} is ${Math.max(above, below).toFixed(1)} m clear, and nothing stops it being carried over`);
+          const one = standAt(hf, over, crossing);
+          const other = standAt(hf, under, crossing);
+          if (one === undefined || other === undefined) {
+            complaint ??= `crossing at ${crossing.x.toFixed(0)},${crossing.y.toFixed(0)} stands on neither road`;
+            continue;
           }
+          const lifted = (one.lift >= OVERPASS_CLEARANCE - 1e-6 && other.ground) || (other.lift >= OVERPASS_CLEARANCE - 1e-6 && one.ground);
+          const structure = !(one.ground && other.ground) && Math.abs(one.bed - other.bed) >= OVERPASS_CLEARANCE;
+          if (lifted || structure) continue;
+          complaint ??= `${over.tier} ${over.id} crosses ${under.tier} ${under.id} flat at ${crossing.x.toFixed(0)},${crossing.y.toFixed(0)}`;
         }
         expect(complaint, `seed ${seed}`).toBeUndefined();
       }
@@ -395,7 +285,9 @@ export function roadChecks(): void {
       // reached by no bridge, so its ground is far from every road. Its floor
       // came down when the highways became a ring with radials: a radial and its
       // branch run further into the wilderness than the two trunks did, and one
-      // seed in 200 reads 34 m.
+      // seed in 200 reads 34 m. It came down again when each crossing was
+      // decided as its road is added: a road takes its junctions at once, so the
+      // fill grows on in a different order, and one seed in 200 reads 29 m.
       //
       // The three zones on the fringe are looser than the built-up ones because
       // ground too steep for a road now goes without one (spec section 6.1).
@@ -408,8 +300,10 @@ export function roadChecks(): void {
       // 200 reads 173 m and 287 m, and that is such an arm. The suburban floor
       // came down for the opposite case: a seed whose mainland is small keeps
       // its suburbs on the dense ground near the core, and one in 200 reads
-      // 9.0 m. These are here to catch a fill that has collapsed, not to pin the
-      // figure down.
+      // 9.0 m. The inner ceiling rose when each crossing was decided as its road
+      // is added, since a road that cannot meet or clear a crossing is cut back
+      // from it; over 200 seeds the inner medians read 11.8 m to 20.2 m. These
+      // are here to catch a fill that has collapsed, not to pin the figure down.
       //
       // Only the land the core stands on is asked. The rings of spec section 8.2
       // are concentric circles on the whole map, so since they were widened they
@@ -418,11 +312,11 @@ export function roadChecks(): void {
       // spaces its roads; it would only say that the zone ring reached it.
       const RANGE: Record<Zone, [number, number]> = {
         core: [3, 20],
-        inner: [5, 20],
+        inner: [5, 22],
         industrial: [7, 200],
         suburban: [7, 200],
         outskirts: [14, 400],
-        wilderness: [30, 800],
+        wilderness: [25, 800],
       };
       for (const seed of seeds) {
         const w = worlds.get(seed) as WorldDescription;

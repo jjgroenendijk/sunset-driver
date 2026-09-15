@@ -151,8 +151,8 @@ export function footprintHalfWidth(tier: RoadTier): number {
  *
  * A minor road that meets a highway therefore does not meet it at all: it runs
  * past, and where the two cross the road graph makes it an overpass. The
- * tracer asks this before it ends a road on another one, and `connect.ts`
- * before it turns a crossing into a junction.
+ * tracer asks this before it ends a road on another one, and the network
+ * before it makes a crossing a junction (`crossing-plan.ts`).
  */
 export function mayJoin(joiner: RoadTier, met: RoadTier, interchange: boolean): boolean {
   if (met !== 'highway') return true;

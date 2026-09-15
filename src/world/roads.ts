@@ -47,7 +47,7 @@
  * the graph every road is added to is `road-network.ts`. The seed and plan the fills speak
  * in, and the zone table they read, are `fill.ts`.
  *
- * Six invariants hold by construction, and the seed sweep checks them:
+ * Seven invariants hold by construction, and the seed sweep checks them:
  *
  * - Every curve starts on an existing road, ends on one, or merges into one, so
  *   it shares a node with the network and the whole network is a single
@@ -62,6 +62,9 @@
  * - No road runs along another road's carriageway or ends inside it. Two roads
  *   touch only where they share a node or cross, at an angle a junction or an
  *   overpass can be built at (`network-clearance.ts`).
+ * - No crossing is flat. Each is decided when its second road is added: a
+ *   junction, a crossing under a deck already there, a raise of the new road,
+ *   or a road shortened back from it (`crossing-plan.ts`).
  * - No road lies over its own carriageway (`self-overlap.ts`): the network
  *   refuses one that would, and the roads proposed to it have their folds cut
  *   out or turn away before they fold.
@@ -69,10 +72,9 @@
 import { clamp, dist, directionDelta, lerp, wrapAngle } from '../core/math.ts';
 import { alleyPlan, alleySeeds, type AlleyGround } from './alleys.ts';
 import { ZONE_LOTS } from './buildings.ts';
-import { connectCrossings, crossPoint } from './connect.ts';
 import { districtAt, layoutZones, zoneAt } from './districts.ts';
+import { crossPoint } from './network-clearance.ts';
 import { MINOR_BY_ZONE, type FillPlan, type FillSeed, type PlanAt, type SpacingAt } from './fill.ts';
-import { raiseOverpasses } from './overpass.ts';
 import { zoneMinBuilt } from './parcels.ts';
 import { HighwayTrace } from './highways.ts';
 import {
@@ -85,7 +87,6 @@ import {
   DIRT,
   FILL_GENERATIONS,
   FILL_LIMIT,
-  groundRule,
   MIN_BOARDWALK,
   MIN_MERGE_STEPS,
   MINOR_GENERATIONS,
@@ -158,12 +159,9 @@ class RoadTracer extends HighwayTrace {
     // laying its own streets over the same ground.
     const boardwalks = this.world.beaches.map((beach, i) => this.traceBoardwalk(beach, i));
     this.fillMinor();
-    // The trace only ever ends a road on a point of another one, so two roads
-    // that cross between their points have met nothing yet.
-    const connected = connectCrossings(this.curves, groundRule(this.hf, this.seaLevel));
-    // Last, on curves that no longer move: a road that crosses another one and
-    // does not meet it there is carried over it (spec section 6.2).
-    return { roads: raiseOverpasses(connected), boardwalks };
+    // Every crossing was decided as its road was added (`crossing-plan.ts`), so
+    // the curves are the network as it stands.
+    return { roads: [...this.curves], boardwalks };
   }
 
   // ----------------------------------------------------------------- islands
@@ -281,7 +279,8 @@ class RoadTracer extends HighwayTrace {
         }
         if (selfOverlap([...approach, far], 'arterial') !== undefined) continue;
         const points = [...approach, ...this.landOnIsland(far, island, [near, far])];
-        if (this.addCurve('arterial', points, [approach.length - 1]) !== undefined) return;
+        // A link cut short of its deck reaches no island, so it is laid whole or not at all.
+        if (this.addCurve('arterial', points, [approach.length - 1], [], true) !== undefined) return;
       }
     }
   }
@@ -300,14 +299,14 @@ class RoadTracer extends HighwayTrace {
     const fars = this.dryAnchors(farShore, nearShore);
     const open: [Point, Point][] = [];
     for (const near of this.dryAnchors(nearShore, farShore).slice(0, HEAD_TRIES)) {
-      const far = fars.find((p) => this.network.crossesAtSlots(near, p, 'arterial'));
+      const far = fars.find((p) => this.network.crossesAtSlots(near, p, 'arterial') && this.network.deckApart(near, p, 'arterial'));
       if (far !== undefined) open.push([near, far]);
     }
     const joined: [Point, Point][] = [];
     for (const hit of this.network.within(nearShore.x, nearShore.y, ANCHOR_REACH, -1, 'arterial')) {
       const near = { x: hit.x, y: hit.y };
       if (this.network.refuses(near.x, near.y, 'arterial')) continue;
-      const far = fars.find((p) => this.network.meets(near, p, 'arterial'));
+      const far = fars.find((p) => this.network.meets(near, p, 'arterial') && this.network.deckApart(near, p, 'arterial'));
       if (far !== undefined) joined.push([near, far]);
     }
     return { open, joined };
@@ -539,9 +538,9 @@ class RoadTracer extends HighwayTrace {
 
   /**
    * A route from a boardwalk end to the network, or nothing where it ends on a
-   * road beside a place the boardwalk line crosses that road. `connect.ts`
-   * gives two roads that already meet no second junction inside the first
-   * one, so that crossing would stay a crossing on the ground.
+   * road beside a place the boardwalk line crosses that road. Two roads that
+   * already meet take no second junction inside the first one, so the network
+   * would shorten the boardwalk back from that crossing (`crossing-plan.ts`).
    */
   private besideOwnCrossing(line: readonly Point[], route: Point[]): Point[] {
     const end = route[route.length - 1];

@@ -20,16 +20,26 @@
  * angle a junction or an overpass can be built at.
  */
 import { clamp, directionDelta } from '../core/math.ts';
+import { CLEARANCE } from './overpass.ts';
 import { footprintHalfWidth } from './tiers.ts';
 import type { Point, RoadCurve, RoadTier } from './types.ts';
+
+/** Where a straight run crosses a segment of a laid curve. */
+export interface SegmentCrossing {
+  curve: number;
+  /** The index of the crossed segment in its curve. */
+  segment: number;
+  x: number;
+  y: number;
+}
 
 /** The least angle, in radians, at which one road may meet, cross or leave another. */
 export const MIN_MEET = Math.PI / 6;
 /**
- * Radians the tracer asks for beyond {@link MIN_MEET}. The connection pass
- * gives two crossing roads a point up to `CROSSING_SNAP` from where they
- * cross, which turns their lines a little there, so a crossing traced at
- * exactly the least angle can be spliced a hair under it.
+ * Radians the tracer asks for beyond {@link MIN_MEET}. A road added to the
+ * network gives a crossing its junction up to `CROSSING_SNAP` from where the
+ * two cross (`crossing-plan.ts`), which turns their lines a little there, so a
+ * crossing traced at exactly the least angle can be joined a hair under it.
  */
 const MEET_MARGIN = (5 * Math.PI) / 180;
 const TRACE_MEET = MIN_MEET + MEET_MARGIN;
@@ -68,12 +78,14 @@ export class NetworkClearance {
   private readonly curve: number[] = [];
   /** Whether each end of a segment is an end of its curve, two flags to a segment. */
   private readonly terminal: boolean[] = [];
-  /** Whether another road may cross each segment: every segment but a highway's away from its slots. */
+  /** Whether another road may cross each segment: not a highway away from its slots, nor the ramp of a raise. */
   private readonly crossable: boolean[] = [];
-  /** Segments of a reservation that has been given up, which nothing keeps off any more. */
+  /** Segments of a reservation given up, or of a segment cut in two, which nothing keeps off any more. */
   private readonly released: boolean[] = [];
   /** The last query each segment was visited by, so a segment filed twice is seen once. */
   private readonly stamp: number[] = [];
+  /** The stored segments of each laid curve, by the index of the segment in the curve. */
+  private readonly segmentsOf: number[][] = [];
   private query = 0;
   private widest = 0;
 
@@ -86,12 +98,64 @@ export class NetworkClearance {
   /** File the segments of a curve the network has just taken. */
   protected fileSegments(curve: RoadCurve): void {
     const slots = curve.slots ?? [];
-    // A crossing is only allowed well inside a run of slots. The connection
-    // pass may move the road that crosses by a snap, and the crossing moves
-    // along the highway with it; it has to stay under the level deck.
-    const open = (i: number): boolean =>
-      curve.tier !== 'highway' || (slots.includes(i - 1) && slots.includes(i) && slots.includes(i + 1));
+    const lift = curve.lift ?? [];
+    // A crossing is only allowed well inside a run of slots. A road that
+    // crosses may be moved by a snap as it is added, and the crossing moves
+    // along the highway with it; it has to stay under the level deck. Any
+    // other road is crossed on the ground or under the level top of a raise,
+    // never on a ramp.
+    const open = (i: number): boolean => {
+      if (curve.tier === 'highway') return slots.includes(i - 1) && slots.includes(i) && slots.includes(i + 1);
+      const low = Math.min(lift[i] ?? 0, lift[i + 1] ?? 0);
+      const high = Math.max(lift[i] ?? 0, lift[i + 1] ?? 0);
+      return high === 0 || low >= CLEARANCE;
+    };
+    const first = this.halfWidth.length;
     this.lay(curve.id, curve.tier, curve.points, open);
+    const own: number[] = [];
+    for (let s = first; s < this.halfWidth.length; s++) own.push(s);
+    this.segmentsOf[curve.id] = own;
+  }
+
+  /**
+   * Cut segment `segment` of a curve in two at the point the curve has just
+   * taken after it. The one stored segment is given up and two take its place,
+   * each as crossable as the one they replace.
+   */
+  protected splitSegment(curve: RoadCurve, segment: number): void {
+    const own = this.segmentsOf[curve.id] as number[];
+    const s = own[segment] as number;
+    this.released[s] = true;
+    const first = this.halfWidth.length;
+    const points = curve.points.slice(segment, segment + 3);
+    this.lay(curve.id, curve.tier, points, () => this.crossable[s] === true);
+    const last = curve.points.length - 1;
+    this.terminal[first * 2] = segment === 0;
+    this.terminal[first * 2 + 1] = false;
+    this.terminal[(first + 1) * 2] = false;
+    this.terminal[(first + 1) * 2 + 1] = segment + 2 === last;
+    own.splice(segment, 1, first, first + 1);
+  }
+
+  /**
+   * Every segment of a laid curve that the straight run from `a` to `b` crosses
+   * strictly inside both, with the place they cross. A reservation is no road,
+   * so it crosses nothing here.
+   */
+  crossingsAlong(a: Point, b: Point): SegmentCrossing[] {
+    const out: SegmentCrossing[] = [];
+    this.visit(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.max(a.x, b.x), Math.max(a.y, b.y), 0, (s) => {
+      const curve = this.curve[s] as number;
+      if (curve < 0) return;
+      const e = this.ends;
+      const k = s * 4;
+      const c = { x: e[k] as number, y: e[k + 1] as number };
+      const d = { x: e[k + 2] as number, y: e[k + 3] as number };
+      const at = crossPoint(a, b, c, d);
+      if (at === undefined) return;
+      out.push({ curve, segment: (this.segmentsOf[curve] as number[]).indexOf(s), x: at.x, y: at.y });
+    });
+    return out;
   }
 
   /**
@@ -293,6 +357,28 @@ export class NetworkClearance {
   private column(v: number): number {
     return clamp(Math.floor((v - this.origin) / CELL), 0, this.n - 1);
   }
+}
+
+/**
+ * Where two segments cross, or undefined. A crossing within {@link SAME_PLACE}
+ * of an end of either is no crossing: the two roads share that point, or meet
+ * at the segment beside it.
+ */
+export function crossPoint(a: Point, b: Point, c: Point, d: Point): Point | undefined {
+  const rx = b.x - a.x;
+  const ry = b.y - a.y;
+  const sx = d.x - c.x;
+  const sy = d.y - c.y;
+  const denominator = rx * sy - ry * sx;
+  if (denominator === 0) return undefined;
+  const ox = c.x - a.x;
+  const oy = c.y - a.y;
+  const t = (ox * sy - oy * sx) / denominator;
+  const u = (ox * ry - oy * rx) / denominator;
+  if (t <= 0 || t >= 1 || u <= 0 || u >= 1) return undefined;
+  const at = { x: a.x + rx * t, y: a.y + ry * t };
+  for (const end of [a, b, c, d]) if (Math.hypot(at.x - end.x, at.y - end.y) < SAME_PLACE) return undefined;
+  return at;
 }
 
 /** True when the end of a segment stored at `k` stands on a place. */

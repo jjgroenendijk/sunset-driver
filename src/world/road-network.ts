@@ -16,12 +16,17 @@
  *   curve's edge there, and both roads join the new node.
  * - Both ends of a road are nodes, whether they meet anything or not.
  * - A road that lies over its own carriageway is refused (`self-overlap.ts`).
+ * - Every place the road crosses a laid one is decided now: a junction both
+ *   take a point at, a crossing already a clearance apart, a raise of the new
+ *   road, or a road shortened back from the crossing (`crossing-plan.ts`).
  *
  * The points of the network are filed in buckets, so "is there a road here?"
  * costs a handful of comparisons. The segments and the rules of the ground they
  * claim are {@link NetworkClearance}, which this extends.
  */
-import { clamp, dist } from '../core/math.ts';
+import { clamp, dist, lerp } from '../core/math.ts';
+import { deckApart, settleCrossings } from './crossing-plan.ts';
+import type { CrossingNetwork } from './crossing-rules.ts';
 import { NetworkClearance, SAME_PLACE } from './network-clearance.ts';
 import { selfOverlap } from './self-overlap.ts';
 import { mayJoin } from './tiers.ts';
@@ -41,6 +46,17 @@ export interface NetworkHit {
 /** A road as it is proposed: everything the network does not decide. */
 export type RoadDraft = Omit<RoadCurve, 'id' | 'nodes'>;
 
+/** The ground a network decides its crossings on. */
+export interface NetworkGround {
+  /** True where a road of this tier may run straight from `a` to `b`: dry, and no steeper than the tier allows. */
+  canRun(a: Point, b: Point, tier: RoadTier): boolean;
+  /** The natural ground at a place. */
+  heightAt(x: number, y: number): number;
+}
+
+/** Dry, level ground everywhere: what a network built by hand stands on. */
+const FLAT_GROUND: NetworkGround = { canRun: () => true, heightAt: () => 0 };
+
 /** A node of the network, and every curve point that stands on it. */
 interface NetworkNode {
   x: number;
@@ -48,7 +64,7 @@ interface NetworkNode {
   on: { curve: number; index: number }[];
 }
 
-export class RoadNetwork extends NetworkClearance {
+export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
   /** Every road laid, by id. */
   readonly curves: RoadCurve[] = [];
   private readonly nodes: NetworkNode[] = [];
@@ -60,9 +76,11 @@ export class RoadNetwork extends NetworkClearance {
   /** The island each point stands on, by curve and index. */
   private readonly islands: number[][] = [];
   private readonly islandOf: (x: number, y: number) => number;
+  private readonly ground: NetworkGround;
 
-  constructor(size: number, islandOf: (x: number, y: number) => number, cell = CELL) {
+  constructor(size: number, islandOf: (x: number, y: number) => number, cell = CELL, ground: NetworkGround = FLAT_GROUND) {
     super(size);
+    this.ground = ground;
     this.pointCell = cell;
     this.pointOrigin = -size / 2 - 2 * cell;
     this.rows = Math.ceil((size + 4 * cell) / cell) + 1;
@@ -75,12 +93,21 @@ export class RoadNetwork extends NetworkClearance {
   }
 
   /**
-   * Add a road to the graph. It is joined to the nodes it stands on and splits
-   * the edges whose points it stands on. Undefined where the network refuses
-   * the road: fewer than two points, or a road that lies over itself.
+   * Add a road to the graph. It is joined to the nodes it stands on, splits the
+   * edges whose points it stands on, and has each of its crossings decided. The
+   * curve that comes back can be shorter than the road proposed, or raised in
+   * places. Undefined where the network refuses the road: fewer than two
+   * points, a road that lies over itself, or a crossing no piece of it can be
+   * kept clear of. A road asked for `whole` is refused rather than shortened.
    */
-  add(draft: RoadDraft): RoadCurve | undefined {
-    if (draft.points.length < 2 || selfOverlap(draft.points, draft.tier) !== undefined) return undefined;
+  add(proposed: RoadDraft, whole = false): RoadCurve | undefined {
+    if (proposed.points.length < 2 || selfOverlap(proposed.points, proposed.tier) !== undefined) return undefined;
+    const settled = settleCrossings(this, proposed, whole);
+    if (settled === undefined) return undefined;
+    // From the last point back, so an index still to be used never moves.
+    const edits = [...settled.edits].sort((m, n) => m.curve - n.curve || n.segment - m.segment || n.at - m.at);
+    for (const edit of edits) this.insertPoint(edit.curve, edit.segment, edit);
+    const draft = settled.road;
     const id = this.curves.length;
     const points = draft.points.slice();
     const nodes = new Array<number>(points.length).fill(-1);
@@ -207,6 +234,103 @@ export class RoadNetwork extends NetworkClearance {
     return this.nearest(x, y, SAME_PLACE);
   }
 
+  /**
+   * Put a point into segment `segment` of a laid curve. Every index the curve
+   * holds past it moves on by one: its nodes, decks, bores, slots,
+   * interchanges and lift, and the entries the network files it under.
+   */
+  private insertPoint(id: number, segment: number, p: Point): void {
+    const road = this.curves[id] as RoadCurve;
+    const a = road.points[segment] as Point;
+    const b = road.points[segment + 1] as Point;
+    const span = dist(a.x, a.y, b.x, b.y);
+    const t = span === 0 ? 0 : clamp(((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / (span * span), 0, 1);
+    const at = segment + 1;
+    const shift = (segments: readonly number[]): number[] => {
+      const out: number[] = [];
+      for (const s of segments) {
+        if (s < segment) out.push(s);
+        else if (s === segment) out.push(s, s + 1);
+        else out.push(s + 1);
+      }
+      return out;
+    };
+    // The entries filed past the new point move on by one, from the last back,
+    // so no entry is moved onto one still to be moved.
+    for (let k = road.points.length - 1; k >= at; k--) {
+      const q = road.points[k] as Point;
+      const bucket = this.pointBuckets[this.pointColumn(q.y) * this.rows + this.pointColumn(q.x)] as number[];
+      for (let e = 0; e < bucket.length; e += 2) {
+        if (bucket[e] === id && bucket[e + 1] === k) bucket[e + 1] = k + 1;
+      }
+      const node = road.nodes[k] as number;
+      if (node < 0) continue;
+      for (const entry of (this.nodes[node] as NetworkNode).on) if (entry.curve === id && entry.index === k) entry.index = k + 1;
+    }
+    road.points.splice(at, 0, { x: p.x, y: p.y });
+    road.nodes.splice(at, 0, -1);
+    road.bridges = shift(road.bridges);
+    road.tunnels = shift(road.tunnels);
+    if (road.slots !== undefined) road.slots = shift(road.slots);
+    road.interchanges = road.interchanges.map((i) => (i >= at ? i + 1 : i));
+    if (road.lift !== undefined) road.lift.splice(at, 0, lerp(road.lift[segment] as number, road.lift[at] as number, t));
+    (this.islands[id] as number[]).splice(at, 0, this.islandOf(p.x, p.y));
+    (this.pointBuckets[this.pointColumn(p.y) * this.rows + this.pointColumn(p.x)] as number[]).push(id, at);
+    this.splitSegment(road, segment);
+  }
+
+  // ------------------------------------------------------ what a plan asks
+
+  /** The points the roads other than `except` run on to from a place. */
+  neighboursAt(p: Point, except: number): Point[] {
+    const hit = this.pointAt(p.x, p.y);
+    if (hit === undefined) return [];
+    const out: Point[] = [];
+    for (const { curve, index } of this.pointsOn(hit)) {
+      if (curve === except) continue;
+      const road = this.curves[curve] as RoadCurve;
+      for (const q of [road.points[index - 1], road.points[index + 1]]) if (q !== undefined) out.push(q);
+    }
+    return out;
+  }
+
+  /** True where a road of this tier may take a junction at every road point standing on a place. */
+  joinableAt(p: Point, tier: RoadTier): boolean {
+    const hit = this.pointAt(p.x, p.y);
+    return hit === undefined || this.pointsOn(hit).every(({ curve, index }) => this.joinable(curve, index, tier));
+  }
+
+  /** The free ends of laid roads within `reach` of a place: ends no other road meets. */
+  freeEnds(x: number, y: number, reach: number): { curve: number; at: Point }[] {
+    const out: { curve: number; at: Point }[] = [];
+    this.eachPoint(x, y, reach, (curve, index, p) => {
+      const road = this.curves[curve] as RoadCurve;
+      if (index !== 0 && index !== road.points.length - 1) return;
+      if (this.pointsOn({ x: p.x, y: p.y, curve, index }).some((o) => o.curve !== curve)) return;
+      out.push({ curve, at: p });
+    });
+    return out;
+  }
+
+  /** True where a deck from `a` to `b` stands a clearance apart from every road it crosses (`crossing-plan.ts`). */
+  deckApart(a: Point, b: Point, tier: RoadTier): boolean {
+    return deckApart(this, a, b, tier);
+  }
+
+  canRun(a: Point, b: Point, tier: RoadTier): boolean {
+    return this.ground.canRun(a, b, tier);
+  }
+
+  heightAt(x: number, y: number): number {
+    return this.ground.heightAt(x, y);
+  }
+
+  /** Every curve point on the node a point of the network stands on: the point alone where it is no node. */
+  private pointsOn(hit: NetworkHit): { curve: number; index: number }[] {
+    const node = (this.curves[hit.curve] as RoadCurve).nodes[hit.index] ?? -1;
+    return node < 0 ? [{ curve: hit.curve, index: hit.index }] : (this.nodes[node] as NetworkNode).on;
+  }
+
   /** The node at a point of a curve, made there first where the point is not one yet: the edge is split. */
   private nodeOf(curve: number, index: number): number {
     const road = this.curves[curve] as RoadCurve;
@@ -223,6 +347,8 @@ export class RoadNetwork extends NetworkClearance {
   private joinable(curve: number, index: number, joiner: RoadTier | undefined): boolean {
     if (joiner === undefined) return true;
     const road = this.curves[curve] as RoadCurve;
+    // A raised point stands off the ground, and a junction is on it.
+    if ((road.lift?.[index] ?? 0) > 0) return false;
     return mayJoin(joiner, road.tier, road.interchanges.includes(index));
   }
 

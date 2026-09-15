@@ -89,24 +89,4 @@ describe('road network', () => {
     expect(folded).toBeUndefined();
     expect(roads.curves).toHaveLength(0);
   });
-
-  it('keeps two roads apart where they only cross on the map', () => {
-    // No point of either stands on the other, so the graph makes no junction.
-    const roads = network();
-    roads.add(
-      draft([
-        [-50, 0],
-        [50, 0],
-      ]),
-    );
-    roads.add(
-      draft([
-        [0, -50],
-        [0, 50],
-      ]),
-    );
-    const graph = buildRoadGraph(roads.curves);
-    expect(graph.nodes).toHaveLength(4);
-    expect(graph.crossings).toHaveLength(1);
-  });
 });

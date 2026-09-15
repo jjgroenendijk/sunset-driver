@@ -3,14 +3,11 @@ import { hashInts } from '../src/core/hash.ts';
 import { type Region } from '../src/core/geom.ts';
 import { CHUNK_SIZE, type WorldChunk } from '../src/world/chunks.ts';
 import { type RoadCarve } from '../src/world/carve.ts';
-import { CROSSING_SNAP } from '../src/world/connect.ts';
-import { type RoadEdge, type RoadGraph } from '../src/world/graph.ts';
-import { CLEARANCE as OVERPASS_CLEARANCE, PLATEAU_MARGIN } from '../src/world/overpass.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { curveDistances } from '../src/world/ribbon.ts';
 import { CHUNK_TERRAIN_CELL } from '../src/world/terrain.ts';
 import { type Surface } from '../src/world/surface.ts';
-import { footprintHalfWidth, mayJoin, TIERS } from '../src/world/tiers.ts';
+import { footprintHalfWidth } from '../src/world/tiers.ts';
 import { type Point, type RoadCurve, type RoadTier, type WorldDescription } from '../src/world/types.ts';
 import { pointInRing } from './helpers.ts';
 import { BOARDWALK_DRIFT, CHUNK_BLOCK, FAR_CHUNKS, BEYOND_MAP } from './seed-limits.ts';
@@ -229,63 +226,6 @@ export function standsClearOfWater(hf: Heightfield, x: number, y: number, seaLev
   return true;
 }
 
-/** The segment of a curve a place stands on, or nothing where it stands on none. */
-export function segmentUnder(road: RoadCurve, at: Point): number | undefined {
-  for (let i = 0; i + 1 < road.points.length; i++) {
-    if (distanceToSegment(at, road.points[i] as Point, road.points[i + 1] as Point) < 1e-6) return i;
-  }
-  return undefined;
-}
-
-/** A place a junction could stand at: a point of a curve, or a crossing no curve has a point at. */
-export interface Spot extends Point {
-  road?: RoadCurve;
-  at?: number;
-}
-
-/** The point of a curve nearest a place, within {@link CROSSING_SNAP} of it. */
-export function nearestPointOf(road: RoadCurve, at: Point): Spot | undefined {
-  let best: Spot | undefined;
-  let bestD = CROSSING_SNAP;
-  road.points.forEach((p, i) => {
-    const d = Math.hypot(p.x - at.x, p.y - at.y);
-    if (d > bestD) return;
-    bestD = d;
-    best = { x: p.x, y: p.y, road, at: i };
-  });
-  return best;
-}
-
-/** Whichever of two candidate places stands nearer a point. */
-export function nearer(first: Spot | undefined, second: Spot | undefined, to: Point): Spot | undefined {
-  if (first === undefined) return second;
-  if (second === undefined) return first;
-  return Math.hypot(second.x - to.x, second.y - to.y) < Math.hypot(first.x - to.x, first.y - to.y) ? second : first;
-}
-
-/** The curve points on the node a spot stands on: the spot's own point where it is no node, and none for a bare crossing. */
-export function pointsAt(on: Map<number, { road: RoadCurve; at: number }[]>, spot: Spot): { road: RoadCurve; at: number }[] {
-  if (spot.road === undefined || spot.at === undefined) return [];
-  const node = spot.road.nodes[spot.at] ?? -1;
-  return node < 0 ? [{ road: spot.road, at: spot.at }] : (on.get(node) ?? []);
-}
-
-/** True where a road of this tier may not take a point at a spot another road stands on. */
-export function refusedPlace(on: Map<number, { road: RoadCurve; at: number }[]>, spot: Spot, joiner: RoadTier): boolean {
-  return pointsAt(on, spot).some(({ road, at }) => !mayJoin(joiner, road.tier, road.interchanges.includes(at)));
-}
-
-/** A node two curves share within {@link CROSSING_SNAP} of a place. */
-export function sharedNear(a: RoadCurve, b: RoadCurve, at: Point): Point | undefined {
-  for (let i = 0; i < a.points.length; i++) {
-    const p = a.points[i] as Point;
-    const node = a.nodes[i] ?? -1;
-    if (node < 0 || Math.hypot(p.x - at.x, p.y - at.y) > CROSSING_SNAP) continue;
-    if (b.nodes.includes(node)) return p;
-  }
-  return undefined;
-}
-
 /** True when the segment spans the crossing, either way round. */
 export function spansCrossing(a: Point, b: Point, from: Point, to: Point): boolean {
   const near = Math.max(Math.hypot(a.x - from.x, a.y - from.y), Math.hypot(b.x - to.x, b.y - to.y));
@@ -437,42 +377,6 @@ export function isCurveEnd(road: RoadCurve, p: Point): boolean {
   return (head.x === p.x && head.y === p.y) || (tail.x === p.x && tail.y === p.y);
 }
 
-/**
- * Where each curve stands on a node another curve has, as distances along it.
- * A junction is exactly a shared node, and a raise may not reach one.
- */
-export function sharedDistances(roads: readonly RoadCurve[]): Float64Array[] {
-  const on = nodePoints(roads);
-  return roads.map((road) => {
-    const distances = curveDistances(road.points);
-    const out: number[] = [];
-    for (let i = 0; i < road.points.length; i++) {
-      if (nodeVisits(on, road, i) > 1) out.push(distances[i] as number);
-    }
-    return Float64Array.from(out);
-  });
-}
-
-/**
- * The same distances with every place a road passes under a deck added: a
- * crossing where the other road already stands a clearance over it. A raise
- * may not reach one of those either, or the road would climb into the deck.
- */
-export function withUnderDecks(roads: readonly RoadCurve[], graph: RoadGraph, shared: readonly Float64Array[]): Float64Array[] {
-  const out = shared.map((distances) => Array.from(distances));
-  for (const crossing of graph.crossings) {
-    const one = roads[(graph.edges[crossing.over] as RoadEdge).curve] as RoadCurve;
-    const other = roads[(graph.edges[crossing.under] as RoadEdge).curve] as RoadCurve;
-    for (const [high, low] of [[one, other], [other, one]] as const) {
-      if (liftAtCrossing(high, crossing) < OVERPASS_CLEARANCE - 1e-6) continue;
-      const place = placeOn(low, crossing);
-      if (place !== undefined) (out[low.id] as number[]).push(place.along);
-      break;
-    }
-  }
-  return out.map((distances) => Float64Array.from(distances));
-}
-
 /** Where a place falls on a curve: the segment, how far along it, and the distance along the curve. */
 export function placeOn(road: RoadCurve, at: Point): { segment: number; t: number; along: number } | undefined {
   const distances = curveDistances(road.points);
@@ -506,28 +410,22 @@ export function liftAtCrossing(road: RoadCurve, at: Point): number {
 }
 
 /**
- * True where `overpass.ts` could carry `road` over `met` at a crossing: the
- * rule of that pass, written out again so a change to it has to be meant.
+ * How a road stands where another crosses it: its lift there, whether that
+ * segment lies on the ground (no deck, no bore, no lift), and the height of the
+ * line it drives — the ground under its two points, straight between them, and
+ * the lift.
  */
-export function canRaise(road: RoadCurve, met: RoadCurve, at: Point, shared: readonly Float64Array[]): boolean {
+export function standAt(hf: Heightfield, road: RoadCurve, at: Point): { lift: number; ground: boolean; bed: number } | undefined {
   const place = placeOn(road, at);
-  if (place === undefined) return false;
-  const distances = curveDistances(road.points);
-  const reach = footprintHalfWidth(met.tier) + PLATEAU_MARGIN + OVERPASS_CLEARANCE / TIERS[road.tier].maxGrade;
-  let from: number | undefined;
-  let to: number | undefined;
-  for (let i = 0; i < distances.length; i++) {
-    const here = distances[i] as number;
-    if (here <= place.along - reach) from = here;
-    if (to === undefined && here >= place.along + reach) to = here;
-  }
-  if (from === undefined || to === undefined) return false;
-  for (const node of shared[road.id] as Float64Array) {
-    if (node > from && node < to) return false;
-  }
-  for (const segment of [...road.tunnels, ...road.bridges]) {
-    if ((distances[segment + 1] as number) > from && (distances[segment] as number) < to) return false;
-  }
-  return true;
+  if (place === undefined) return undefined;
+  const i = place.segment;
+  const a = road.points[i] as Point;
+  const b = road.points[i + 1] as Point;
+  const from = road.lift?.[i] ?? 0;
+  const to = road.lift?.[i + 1] ?? 0;
+  const lift = from + (to - from) * place.t;
+  const ground = !road.bridges.includes(i) && !road.tunnels.includes(i) && from === 0 && to === 0;
+  const low = hf.sample(a.x, a.y);
+  const bed = low + (hf.sample(b.x, b.y) - low) * place.t + lift;
+  return { lift, ground, bed };
 }
-

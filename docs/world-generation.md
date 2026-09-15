@@ -57,8 +57,8 @@ gets wrong without it.
   traces by, and `road-ground.ts` the rule a span asks the ground. The network laid so far is one
   planar graph, `RoadNetwork` (`road-network.ts`), and every road goes into it through `add`. A
   point that stands on a point of the network joins its node, or splits that edge into a new one,
-  and both ends of a road are nodes. The result is `RoadCurve.nodes`, which `graph.ts`,
-  `connect.ts`, `overpass.ts` and the sweeps read. Nothing finds a node by comparing coordinates.
+  and both ends of a road are nodes. The result is `RoadCurve.nodes`, which `graph.ts` and the
+  sweeps read. Nothing finds a node by comparing coordinates.
   The segments and their rules are `NetworkClearance` (`network-clearance.ts`), which the network
   extends.
 - A test that builds curves by hand gives them `nodes: []` and passes the list through `withNodes`
@@ -81,8 +81,8 @@ gets wrong without it.
   reason is walked back to its last clear point, and `trimTo` cuts a cul-de-sac on a clear point
   too. A step that fails is first turned by up to three of the tier's turns, so a road coming in too
   shallow meets the road at an angle instead of stopping. A merge tries the four nearest points
-  before it gives up. The tracer asks 5° more than `MIN_MEET`, because the connection pass can bend
-  a road by a snap. The reroute, the bridge anchors and the boardwalk line are vetted by the same
+  before it gives up. The tracer asks 5° more than `MIN_MEET`, because a junction snap bends a road
+  as it is added. The reroute, the bridge anchors and the boardwalk line are vetted by the same
   rules; a reroute that fails is searched again with every grid step vetted, since the grid meets a
   road at only eight headings. Each resort's boardwalk line is reserved right after the highways and
   released once it is laid; without that an island link can take the line, and the beach gets no
@@ -147,38 +147,25 @@ gets wrong without it.
   Between two interchanges it leaves the ground, clear of `INTERCHANGE_CLEAR` each side. In the
   built-up zones it runs on a deck from one to the next; in the country it rises on one
   `COUNTRY_DECK` in the middle of the stretch. The level segments of a deck are its `slots`. A
-  highway that passes under an earlier one stays on the ground there. `RoadClearance` refuses every
-  step of a later road that crosses a highway away from a slot, so every highway crossing is at a
-  slot or an interchange by construction.
-- `connectCrossings(roads, canRun)` (`connect.ts`) runs after the minor fill, before
-  `raiseOverpasses`: two roads that cross on the ground meet there (spec section 6.2). The trace
-  only ever ends a road on a *point* of another one, so a road crossing another between its points
-  met nothing and the two were drawn through each other. The pass splits both edges at the crossing
-  into one node, which `junctions.ts` turns into a junction. A place it names on one curve becomes a
-  node only once a second curve takes it, and two names for one place are merged. A crossing within
-  `CROSSING_SNAP` of a point one curve already has takes that point instead, because two junctions a
-  metre apart stand inside each other. It leaves a crossing alone where `mayJoin` refuses the pair,
-  where either road is on a deck or in a bore, where the place stands on a road one of the tiers may
-  not join, and where the ground refuses the two halves the point cuts a segment into — `groundRule`
-  (`roads.ts`) is the one rule for that, the same one the trace ran on. It also leaves a crossing
-  alone where the point would make either road leave a road at that place, or at the places beside
-  it, under `MIN_MEET`, and where the bend would fold a road over itself. A snap moves a road by up
-  to 4 m, which can turn a short segment onto another road's line, or lay its carriageway over the
-  free end of a third road (`FreeEnds`). Where the snapped place fails, the crossing itself is
-  tried.
-- `raiseOverpasses(roads)` (`overpass.ts`) is the last step of `traceRoads`: where two roads cross
-  without meeting, one is carried over the other (spec section 6.2). A crossing where one road is
-  already `CLEARANCE` up, a highway slot, is left as it is, and the road below may not be raised
-  there. Otherwise the narrower road climbs — a
-  highway holds its line, since its grade limit is the gentlest and its ramps would be the longest —
-  and the wider one climbs only where the narrow one cannot. The lift is `CLEARANCE` over the
-  crossing, held level past the ground the road below claims, and ramped back down no harder than
-  the tier's `maxGrade`. `RoadCurve.lift` carries the height and every raised segment goes in
-  `bridges`, so the carve leaves that ground alone, `road-mesh.ts` lofts the deck and the physics
-  stands on it. A ramp ends on a point the curve already had: one ending between two points would
-  cut the segment there in two, and half a segment can climb harder than the whole. The raise is
-  refused where a junction of the road stands inside the reach, where the road is already bored or
-  decked there, and where it would run out before it is down again; those crossings stay flat.
+  highway that passes under an earlier one stays on the ground there. `NetworkClearance` refuses
+  every step of a later road that crosses a highway away from a slot, so every highway crossing is
+  at a slot or an interchange by construction.
+- `RoadNetwork.add` decides every crossing of a road as it adds it (`crossing-plan.ts`, spec
+  section 6.2); nothing decides one afterwards. Where the two roads are on the ground and `mayJoin`
+  allows it, the crossing is a junction: both take a point there, and a laid road takes its point
+  through `insertPoint`, which moves every index the curve holds. The place is the nearest point
+  either road has within `CROSSING_SNAP`, else the crossing itself. `crossing-rules.ts` refuses a
+  place a road standing on it may not be joined at, a half of a segment the ground refuses
+  (`groundRule`), a bend that folds a road, buries a free end or crosses a road it did not cross
+  before, and two roads leaving a place under `MIN_MEET`. Otherwise a crossing is apart where one
+  road stands a `CLEARANCE` lift over the other on the ground, a highway slot or the top of a raise,
+  or where a deck or a bore puts the two beds that far apart. Otherwise the new road is raised over
+  the other (`overpass.ts` is the lift profile): the reach may hold no junction, no deck or bore of
+  its own and no place it passes under a road, and the road has to land again. A highway is never
+  raised and never raised over. A crossing none of these decide shortens the road back to the
+  longest piece that still meets the network, cut where it may end; with no such piece the road is
+  refused. Nothing is written to a laid road until the whole plan holds. A raised point takes no
+  junction later, and the ramp of a raise is crossed nowhere.
 - `buildRoadGraph(roads)` (`graph.ts`) is the queryable road graph of spec section 6.5. It is built
   on demand from the curves' `nodes`, which the tracer stored. Two curves meet only where they carry
   the same node, so two roads that only cross on the map stay grade separated. `graph.crossings`

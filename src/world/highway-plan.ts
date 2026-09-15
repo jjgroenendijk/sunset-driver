@@ -11,9 +11,9 @@
  *
  * The level part of each deck is where a lower road may pass under the highway.
  * Those segments are the highway's slots. A road laid later crosses a highway
- * only at a slot or joins it at an interchange; `network-clearance.ts` refuses every
- * other crossing when the road is traced. Nothing decides this afterwards, so
- * `overpass.ts` never has to find room for a raise between two streets.
+ * only at a slot or joins it at an interchange. `network-clearance.ts` refuses
+ * every other crossing when the road is traced, and the network when it is
+ * added (`crossing-plan.ts`). A road is never raised over a highway.
  *
  * Pure: the same line gives the same plan.
  */
