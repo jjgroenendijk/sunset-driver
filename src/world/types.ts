@@ -240,12 +240,16 @@ export interface TramStop {
   y: number;
   /** Id of the district the stop stands in. */
   district: number;
+  /** Index into {@link TramDescription.edges} of the run the tram drives away from the stop on. */
+  leaves: number;
 }
 
 /** Where a road crosses the tram lane on the flat, so traffic and pedestrians must give way. */
 export interface TramLevelCrossing {
   x: number;
   y: number;
+  /** The junction of the road graph (`graph.ts`) the crossing stands at. */
+  node: number;
   /** The road curves that cross the line here, ascending. */
   roads: number[];
 }
@@ -257,6 +261,12 @@ export interface TramDescription {
    * point standing on the first. Empty when the arterials carry no loop.
    */
   route: Point[];
+  /**
+   * The runs of the road graph (`graph.ts`) the loop drives, in order; the last
+   * one ends where the first one starts. The graph is built from the roads on
+   * demand, and the same roads give the same ids.
+   */
+  edges: number[];
   /**
    * The corridors the reserved lane is made of, ascending. Where the loop runs
    * down one street twice the lane is claimed once, so there are fewer of these

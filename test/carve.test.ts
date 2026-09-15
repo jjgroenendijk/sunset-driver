@@ -64,7 +64,7 @@ function hillWorld(roads: RoadCurve[], height: (x: number, y: number) => number)
     beaches: [],
     roads: withNodes(roads),
     corridors: [],
-    tram: { route: [], corridors: [], stops: [], crossings: [], length: 0 },
+    tram: { route: [], edges: [], corridors: [], stops: [], crossings: [], length: 0 },
   };
 }
 

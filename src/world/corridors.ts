@@ -49,7 +49,7 @@ import type {
 /** Metres of verge each side of a deck, so the strip is wider than the carriageway it carries. */
 const DECK_VERGE = 2;
 /** Half the width of the reserved lane: two tram tracks and the clearance between them. */
-const TRAM_HALF = 3.2;
+export const TRAM_HALF = 3.2;
 /** Metres of a leg given up at each end, so the strips of two legs never meet at a stop. */
 const STOP_CLEARANCE = 8;
 /** Metres between the pillar bays under a deck. */
@@ -137,7 +137,7 @@ class CorridorBuilder {
 
   /** The tram loop: the line it drives, the ground its lane claims, and where roads cross it. */
   private buildTram(): TramDescription {
-    const empty: TramDescription = { route: [], corridors: [], stops: [], crossings: [], length: 0 };
+    const empty: TramDescription = { route: [], edges: [], corridors: [], stops: [], crossings: [], length: 0 };
     const planned = this.planTram();
     if (planned === undefined) return empty;
 
@@ -154,14 +154,14 @@ class CorridorBuilder {
       const line = trimEnds(leg, STOP_CLEARANCE);
       for (const corridor of this.claim('tram', line, TRAM_HALF, false)) corridors.push(corridor.id);
     }
-    return { route, corridors, stops: planned.stops, crossings: planned.crossings, length };
+    return { route, edges: planned.edges, corridors, stops: planned.stops, crossings: planned.crossings, length };
   }
 
   /**
    * The route itself: which stops the loop calls at, the run of arterials
    * between each pair of them, and the roads that cross the line on the flat.
    */
-  private planTram(): { legs: Centreline[]; stops: TramStop[]; crossings: TramLevelCrossing[] } | undefined {
+  private planTram(): { legs: Centreline[]; edges: number[]; stops: TramStop[]; crossings: TramLevelCrossing[] } | undefined {
     const candidates = this.stopNodes();
     if (candidates.length < MIN_STOPS) return undefined;
 
@@ -195,8 +195,15 @@ class CorridorBuilder {
       for (const e of routes.pop() ?? []) this.release(taken, e);
     }
     if (called.length < MIN_STOPS || legs.length !== called.length) return undefined;
-    const stops = called.map((site, id) => ({ id, x: site.x, y: site.y, district: site.district }));
-    return { legs, stops, crossings: this.levelCrossings(routes) };
+    // Stop `i` is where leg `i` starts, so it leaves on the first run of that leg.
+    const edges: number[] = [];
+    const stops: TramStop[] = [];
+    for (let id = 0; id < called.length; id++) {
+      const site = called[id] as StopSite;
+      stops.push({ id, x: site.x, y: site.y, district: site.district, leaves: edges.length });
+      edges.push(...(routes[id] as number[]));
+    }
+    return { legs, edges, stops, crossings: this.levelCrossings(routes) };
   }
 
   /**
@@ -374,7 +381,7 @@ class CorridorBuilder {
       }
       if (roads.length === 0) continue;
       roads.sort(compareNumbers);
-      crossings.push({ x: node.x, y: node.y, roads });
+      crossings.push({ x: node.x, y: node.y, node: id, roads });
     }
     return crossings;
   }

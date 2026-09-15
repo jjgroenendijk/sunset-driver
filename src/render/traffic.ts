@@ -213,14 +213,14 @@ export function instanced(geometry: BufferGeometry, material: Material, shadow: 
 }
 
 /** One box of the plan as a geometry already standing in the vehicle's frame, grown by `reach`. */
-function boxOf(part: VehicleBox, reach: number): BufferGeometry {
+export function boxOf(part: Omit<VehicleBox, 'panel' | 'outlined'>, reach: number): BufferGeometry {
   const geometry = new BoxGeometry(part.length + 2 * reach, part.height + 2 * reach, part.width + 2 * reach).toNonIndexed();
   geometry.translate(part.x, part.y, part.z);
   return geometry;
 }
 
 /** A geometry with one colour on every vertex, so it can be merged with parts of other colours. */
-function coloured(geometry: BufferGeometry, colour: number): BufferGeometry {
+export function coloured(geometry: BufferGeometry, colour: number): BufferGeometry {
   const c = new Color(colour);
   const count = geometry.getAttribute('position').count;
   const colours = new Float32Array(count * 3);
@@ -229,7 +229,7 @@ function coloured(geometry: BufferGeometry, colour: number): BufferGeometry {
   return geometry;
 }
 
-function merged(parts: BufferGeometry[]): BufferGeometry {
+export function merged(parts: BufferGeometry[]): BufferGeometry {
   if (parts.length === 0) return new BoxGeometry(0, 0, 0).toNonIndexed();
   const geometry = mergeGeometries(parts) as BufferGeometry;
   for (const part of parts) part.dispose();

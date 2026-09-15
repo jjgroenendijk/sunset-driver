@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { AmbientTraffic, SMOOTH, trafficRoadsOf, type AmbientPose, type TrafficCursor } from '../src/sim/traffic.ts';
 import type { RoadEdge } from '../src/world/graph.ts';
 import { TIERS } from '../src/world/tiers.ts';
-import type { Point, RoadTier, WorldDescription } from '../src/world/types.ts';
+import type { RoadTier, WorldDescription } from '../src/world/types.ts';
 import { TICKS_PER_HOUR } from '../src/sim/clock.ts';
 import { bedsOf, graphOf, junctionsOf, seeds, worlds } from './seed-fixture.ts';
 import { TRAFFIC_COUNT, TRAFFIC_TIER_MIN } from './seed-limits.ts';
 import { signalLap } from './signal-lap.ts';
+import { checkTram, distanceTo } from './seed-tram.ts';
 
 /** Vehicles timed to the lights each seed follows round a whole lap. */
 const SIGNAL_LAPS = 8;
@@ -20,13 +21,14 @@ const SIGNAL_LAPS = 8;
  */
 export function trafficChecks(): void {
   describe('traffic', () => {
-    it('puts traffic on every tier of the city, standing on the road it drives and stopping on red', () => {
+    it('puts traffic on every tier of the city, stopping on red, and runs the tram round its lights', () => {
       const cursor: TrafficCursor = { id: 0, step: 0, into: 0 };
       const pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
       for (const seed of seeds.slice(0, TRAFFIC_COUNT)) {
         const world = worlds.get(seed) as WorldDescription;
         const graph = graphOf(seed);
-        const traffic = new AmbientTraffic(seed, trafficRoadsOf(world, graph, bedsOf(seed), junctionsOf(seed)));
+        const roads = trafficRoadsOf(world, graph, bedsOf(seed), junctionsOf(seed));
+        const traffic = new AmbientTraffic(seed, roads);
 
         const length: Partial<Record<RoadTier, number>> = {};
         for (const edge of graph.edges) length[edge.tier] = (length[edge.tier] ?? 0) + edge.length / 2;
@@ -61,21 +63,8 @@ export function trafficChecks(): void {
         for (let i = 0; i < timed.length; i += stride) {
           expect(signalLap(traffic, timed[i] as (typeof timed)[number]).faults, `seed ${seed}`).toEqual([]);
         }
+        checkTram(seed, world, roads, traffic);
       }
     });
   });
-}
-
-function distanceTo(points: readonly Point[], x: number, y: number): number {
-  let best = Infinity;
-  for (let i = 0; i + 1 < points.length; i++) {
-    const a = points[i] as Point;
-    const b = points[i + 1] as Point;
-    const vx = b.x - a.x;
-    const vy = b.y - a.y;
-    const l2 = vx * vx + vy * vy;
-    const t = l2 > 0 ? Math.min(1, Math.max(0, ((x - a.x) * vx + (y - a.y) * vy) / l2)) : 0;
-    best = Math.min(best, Math.hypot(x - a.x - vx * t, y - a.y - vy * t));
-  }
-  return best;
 }

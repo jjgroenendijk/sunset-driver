@@ -154,7 +154,7 @@ export class SimPhysics {
     this.bodies = new GroundBodies(this.world, ground);
     this.shots = new Gunfire(this.world);
     this.controls = new Drivetrain(ground);
-    this.traffic = ground.traffic === undefined ? undefined : new TrafficBodies(this.world, ground.traffic);
+    this.traffic = ground.traffic === undefined ? undefined : new TrafficBodies(this.world, ground.traffic, ground.tram);
     // The step is the tick. Simulation code never sees a frame delta.
     this.world.timestep = 1 / TICK_RATE;
     this.adopt(state);

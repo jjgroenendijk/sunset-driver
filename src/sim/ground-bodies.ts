@@ -13,6 +13,7 @@ import type { Surface } from '../world/surface.ts';
 import type { Place } from './on-foot.ts';
 import type { ParkedCars } from './parked.ts';
 import type { AmbientTraffic } from './traffic.ts';
+import type { TramLine } from './tram.ts';
 
 /** Metres each way of one tile of ground the physics holds. */
 export const PHYSICS_TILE = 50;
@@ -60,6 +61,8 @@ export interface Ground {
    * Nothing parks where there is no traffic.
    */
   parked?: ParkedCars;
+  /** The trams of spec section 13.2. They run with the traffic, so a ground without traffic has none. */
+  tram?: TramLine;
 }
 
 

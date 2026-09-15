@@ -10,7 +10,8 @@
  *
  * The crowd is evaluated where the frame stands in time, between two ticks,
  * as the traffic is. A person who has left their loop is drawn from their
- * record in `SimState.pedestrians` instead.
+ * record in `SimState.pedestrians` instead. The people waiting at the tram
+ * stops (spec section 13.2) are drawn in the same mesh, standing.
  */
 import {
   Color,
@@ -29,6 +30,8 @@ import {
 import { GAITS, STRIDE_HEIGHT } from '../sim/pedestrian-look.ts';
 import { startledOf, startledPose, type AmbientPedestrians, type PedestrianPose } from '../sim/pedestrians.ts';
 import type { SimState } from '../sim/simulation.ts';
+import type { TramLine, WaitingPassenger } from '../sim/tram.ts';
+import type { PedestrianLook } from '../sim/pedestrian-look.ts';
 import { createPedestrianMaterial } from './pedestrian-material.ts';
 import { bakeWalks, BONES, FRAMES, pedestrianBody } from './pedestrian-rig.ts';
 
@@ -48,6 +51,8 @@ const STRIDE = 20;
 export class PedestrianView {
   readonly group = new Group();
   private readonly crowd: AmbientPedestrians;
+  private readonly tram: TramLine | undefined;
+  private readonly waiting: WaitingPassenger[] = [];
   private readonly mesh: Mesh;
   private readonly geometry: InstancedBufferGeometry;
   private readonly bones: DataTexture;
@@ -59,8 +64,9 @@ export class PedestrianView {
   private readonly pose: PedestrianPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0, cycle: 0, gait: 'stand' };
   private readonly colour = new Color();
 
-  constructor(crowd: AmbientPedestrians) {
+  constructor(crowd: AmbientPedestrians, tram?: TramLine) {
     this.crowd = crowd;
+    this.tram = tram;
     this.bones = new DataTexture(bakeWalks(), BONES.length * 4, GAITS.length * FRAMES, RGBAFormat, FloatType);
     this.bones.minFilter = NearestFilter;
     this.bones.magFilter = NearestFilter;
@@ -117,13 +123,18 @@ export class PedestrianView {
       if (startled.length > 0 && startledOf(state.pedestrians, id) !== undefined) continue;
       const pose = crowd.poseAt(id, time, this.pose);
       if (pose.x < minX || pose.x > maxX || pose.y < minY || pose.y > maxY) continue;
-      this.write(count++, id, pose);
+      this.write(count++, this.lookOf(id), pose);
     }
     for (const record of startled) {
       if (count >= PEDESTRIAN_CAP) break;
       const pose = startledPose(record, time, this.pose);
       if (pose.x < minX || pose.x > maxX || pose.y < minY || pose.y > maxY) continue;
-      this.write(count++, record.id, pose);
+      this.write(count++, this.lookOf(record.id), pose);
+    }
+    const waiting = this.tram?.passengers(minX, minY, maxX, maxY, time, this.waiting) ?? 0;
+    for (let i = 0; i < waiting && count < PEDESTRIAN_CAP; i++) {
+      const passenger = this.waiting[i] as WaitingPassenger;
+      this.write(count++, passenger.look, passenger.pose);
     }
     this.geometry.instanceCount = count;
     this.mesh.visible = count > 0;
@@ -140,9 +151,12 @@ export class PedestrianView {
     this.group.clear();
   }
 
+  private lookOf(id: number): PedestrianLook {
+    return (this.crowd.people[id] as AmbientPedestrians['people'][number]).look;
+  }
+
   /** Write one person into instance `index`. */
-  private write(index: number, id: number, pose: PedestrianPose): void {
-    const look = (this.crowd.people[id] as AmbientPedestrians['people'][number]).look;
+  private write(index: number, look: PedestrianLook, pose: PedestrianPose): void {
     this.place.setXYZW(index, pose.x, pose.height, pose.y, pose.heading);
     this.motion.setXYZW(index, GAITS.indexOf(pose.gait) * FRAMES, pose.cycle, look.height / STRIDE_HEIGHT, 0);
     const [skin, hair, top, legs] = this.colours as [InterleavedBufferAttribute, InterleavedBufferAttribute, InterleavedBufferAttribute, InterleavedBufferAttribute];

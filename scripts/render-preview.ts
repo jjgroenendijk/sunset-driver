@@ -39,6 +39,9 @@
  *                    player, to compare the silhouettes.
  *   --hover          the index of the laid pickup to draw grown, as the one
  *                    under the mouse.
+ *   --tram           stand beside the first tram at the hour of the picture
+ *                    (spec section 13.2), and --stop=N at the N-th tram stop.
+ *                    Either one overrides --x, --y and --junction.
  *
  * The browser comes from Playwright. A cloud session already has one; on a
  * fresh machine run `npx playwright install chromium` first, or point
@@ -53,6 +56,9 @@ import { BASE_DISTANCE } from '../src/render/camera.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
 import { buildJunctions, type Junction } from '../src/world/junctions.ts';
 import { generateWorld } from '../src/world/world.ts';
+import { tickAtHour } from '../src/render/daylight.ts';
+import { AmbientTraffic, trafficRoadsOf, type AmbientPose } from '../src/sim/traffic.ts';
+import { TramLine } from '../src/sim/tram.ts';
 import type { PreviewRequest, PreviewResult } from '../src/render/preview.ts';
 import { encodePng } from './png.ts';
 
@@ -127,10 +133,27 @@ if (junction !== undefined) {
   console.log(`junction ${options.get('junction')} at ${junction.x.toFixed(1)},${junction.y.toFixed(1)}: ${mouths}`);
 }
 
+/** Where `--tram` or `--stop` stands the player: beside the first tram at the hour, or at a stop. */
+function tramPlace(): { x: number; y: number } | undefined {
+  if (!options.has('tram') && !options.has('stop')) return undefined;
+  const world = generateWorld(seed);
+  if (options.has('stop')) {
+    const stop = world.tram.stops[num('stop', 0)];
+    if (stop === undefined) throw new Error(`only ${world.tram.stops.length} tram stops`);
+    return stop;
+  }
+  const roads = trafficRoadsOf(world);
+  const line = new TramLine(seed, roads, world.tram, world.districts, new AmbientTraffic(seed, roads).signals);
+  if (line.trams === 0) throw new Error('no tram runs on this seed');
+  const pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
+  return line.carPose(0, 1, tickAtHour(num('hour', 12)), pose);
+}
+const tram = tramPlace();
+
 const request: PreviewRequest = {
   seed,
-  x: num('x', junction?.x ?? 0),
-  y: num('y', junction?.y ?? 0),
+  x: tram?.x ?? num('x', junction?.x ?? 0),
+  y: tram?.y ?? num('y', junction?.y ?? 0),
   distance: num('distance', BASE_DISTANCE),
   heading: (num('heading', 0) * Math.PI) / 180,
   speed: num('speed', 0),

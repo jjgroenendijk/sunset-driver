@@ -25,9 +25,11 @@ import { layoutZones, districtAt } from '../world/districts.ts';
 import { buildRoadGraph, type RoadEdge, type RoadGraph } from '../world/graph.ts';
 import { buildJunctions, type JunctionMap } from '../world/junctions.ts';
 import { TIERS } from '../world/tiers.ts';
-import type { Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../world/types.ts';
+import { TRAM_HALF } from '../world/corridors.ts';
+import type { Point, RoadCurve, RoadTier, TramDescription, WorldDescription, Zone } from '../world/types.ts';
 import { TICK_RATE } from './clock.ts';
 import { EdgeIndex } from './edge-index.ts';
+import { RouteSampler, type RoutePoint } from './route-sample.ts';
 import { SIGNAL_CYCLE, TrafficSignals } from './signals.ts';
 import { legAt, timeTour, walkTour, type Permit, type Tour } from './traffic-tour.ts';
 import { specOf, type VehicleClass, type VehicleState } from './vehicle.ts';
@@ -98,6 +100,12 @@ export interface TrafficRoads {
   heightAt(curve: number, segment: number, t: number, x: number, y: number): number;
   /** The junctions, which is where the traffic lights stand. No lights when left out. */
   junctions?: JunctionMap;
+  /**
+   * The tram line (spec section 13.2): the runs it drives, whose middle the
+   * traffic keeps out of, and the level crossings, each of which takes a light.
+   * No tram when left out.
+   */
+  tram?: Pick<TramDescription, 'edges' | 'crossings'>;
 }
 
 /** One vehicle of the traffic: what it is and the loop it drives. */
@@ -182,8 +190,10 @@ export class AmbientTraffic {
   /** The traffic lights the vehicles stop at; undefined when the roads came without junctions. */
   readonly signals: TrafficSignals | undefined;
   private readonly roads: TrafficRoads;
-  /** Cumulative metres at each point of each edge, in its direction of travel. */
-  private readonly runs: (Float64Array | undefined)[] = [];
+  private readonly sampler: RouteSampler;
+  private readonly point: RoutePoint;
+  /** 1 on each run the tram drives either way, whose middle is its reserved lane. */
+  private readonly tramLane: Uint8Array;
   /** Which vehicles can be near a place: each is filed under the edges of its tour. */
   private readonly index: EdgeIndex;
   private readonly behind: Sample = { x: 0, y: 0, height: 0 };
@@ -193,9 +203,13 @@ export class AmbientTraffic {
     this.roads = roads;
     const graph = roads.graph;
     this.index = new EdgeIndex(roads.roads, graph, REACH, TRAFFIC_CELL);
+    this.sampler = new RouteSampler(roads.roads, graph, roads.heightAt);
+    this.point = { x: 0, y: 0, height: 0, rightX: 0, rightY: 0, edge: graph.edges[0] as RoadEdge };
+    this.tramLane = tramLaneOf(graph, roads.tram?.edges ?? []);
 
     const junctions = roads.junctions;
-    this.signals = junctions === undefined ? undefined : new TrafficSignals(seed, roads.roads, graph, junctions, roads.heightAt);
+    const crossings = (roads.tram?.crossings ?? []).map((crossing) => crossing.node);
+    this.signals = junctions === undefined ? undefined : new TrafficSignals(seed, roads.roads, graph, junctions, roads.heightAt, crossings);
     const busy = new Float64Array(graph.edges.length);
     for (const edge of graph.edges) {
       const mid = this.midpoint(edge);
@@ -283,43 +297,12 @@ export class AmbientTraffic {
 
   /** The point in a vehicle's lane a distance round its tour, and the road height there. */
   private sample(vehicle: AmbientVehicle, distance: number, out: Sample): void {
-    const tour = vehicle.tour;
-    let d = distance % tour.length;
-    if (d < 0) d += tour.length;
-    const leg = legAt(tour.startDistance, d);
-    const edge = this.roads.graph.edges[tour.edges[leg] as number] as RoadEdge;
-    const run = this.runOf(edge);
-    const s = d - (tour.startDistance[leg] as number);
-    const k = Math.min(legAt(run, s), run.length - 2);
-    const span = (run[k + 1] as number) - (run[k] as number);
-    const f = span > 0 ? Math.min(1, Math.max(0, (s - (run[k] as number)) / span)) : 0;
-    const step = edge.end >= edge.start ? 1 : -1;
-    const points = (this.roads.roads[edge.curve] as RoadCurve).points;
-    const a = points[edge.start + k * step] as Point;
-    const b = points[edge.start + (k + 1) * step] as Point;
-    const cx = a.x + (b.x - a.x) * f;
-    const cy = a.y + (b.y - a.y) * f;
-    const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-    const offset = laneOffset(edge, vehicle.lane);
+    const at = this.sampler.sample(vehicle.tour, distance, this.point);
+    const offset = laneOffset(at.edge, vehicle.lane, this.tramLane[at.edge.id] === 1);
     // The right hand of the direction of travel, which is where the lane is.
-    out.x = cx - ((b.y - a.y) / length) * offset;
-    out.y = cy + ((b.x - a.x) / length) * offset;
-    out.height = step > 0 ? this.roads.heightAt(edge.curve, edge.start + k, f, cx, cy) : this.roads.heightAt(edge.curve, edge.start - k - 1, 1 - f, cx, cy);
-  }
-
-  private runOf(edge: RoadEdge): Float64Array {
-    const known = this.runs[edge.id];
-    if (known !== undefined) return known;
-    const points = (this.roads.roads[edge.curve] as RoadCurve).points;
-    const step = edge.end >= edge.start ? 1 : -1;
-    const run = new Float64Array(Math.abs(edge.end - edge.start) + 1);
-    for (let k = 1; k < run.length; k++) {
-      const a = points[edge.start + (k - 1) * step] as Point;
-      const b = points[edge.start + k * step] as Point;
-      run[k] = (run[k - 1] as number) + Math.hypot(b.x - a.x, b.y - a.y);
-    }
-    this.runs[edge.id] = run;
-    return run;
+    out.x = at.x + at.rightX * offset;
+    out.y = at.y + at.rightY * offset;
+    out.height = at.height;
   }
 
   /** Put the vehicles of one directed run of road down, and walk each its tour. */
@@ -380,12 +363,25 @@ function mod(value: number, by: number): number {
  * direction share the right half of the carriageway evenly, less the parking
  * strip at the kerb, as the markings of `road-section.ts` divide it. An alley
  * and a dirt road have one lane both ways share, and a vehicle keeps to its
- * right half of it.
+ * right half of it. On a run the tram drives, the lanes also give up the
+ * middle of the road, which is the tram's reserved lane (spec section 6.3).
  */
-export function laneOffset(edge: Pick<RoadEdge, 'tier' | 'lanes'>, lane: number): number {
+export function laneOffset(edge: Pick<RoadEdge, 'tier' | 'lanes'>, lane: number, tram = false): number {
   const spec = TIERS[edge.tier];
-  const width = (spec.width / 2 - spec.parking) / edge.lanes;
-  return (Math.min(lane, edge.lanes - 1) + 0.5) * width;
+  const inner = tram ? TRAM_HALF : 0;
+  const width = (spec.width / 2 - spec.parking - inner) / edge.lanes;
+  return inner + (Math.min(lane, edge.lanes - 1) + 0.5) * width;
+}
+
+/** One flag per edge: 1 on the runs a tram drives, and on the same runs the other way. */
+function tramLaneOf(graph: RoadGraph, edges: readonly number[]): Uint8Array {
+  const flags = new Uint8Array(graph.edges.length);
+  for (const id of edges) {
+    const edge = graph.edges[id] as RoadEdge;
+    flags[edge.id] = 1;
+    if (edge.twin >= 0) flags[edge.twin] = 1;
+  }
+  return flags;
 }
 
 /** Which tiers a class may drive: a truck and a bus keep to the tiers that let them on. */
@@ -449,7 +445,8 @@ function extent(box: Footprint, ax: number, ay: number): number {
 /**
  * The road network of a generated world as traffic reads it: the graph, how
  * busy each district is, the height of each road's bed, so a vehicle on a
- * bridge drives on the deck, and the junctions the traffic lights stand at.
+ * bridge drives on the deck, the junctions the traffic lights stand at, and
+ * the tram line.
  */
 export function trafficRoadsOf(
   world: WorldDescription,
@@ -468,5 +465,6 @@ export function trafficRoadsOf(
     },
     heightAt: (curve, segment, t) => bed.heightAt(curve, segment, t),
     junctions,
+    tram: world.tram,
   };
 }

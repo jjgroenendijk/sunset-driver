@@ -14,6 +14,11 @@
  * so a replay, a save and a vehicle evaluated far in the future all read the
  * same colour. A highway takes no signal: it meets other roads only at
  * interchanges.
+ *
+ * A level crossing of the tram (spec section 13.2) always takes a signal, even
+ * where only an alley joins the arterial. The tram crosses on the green of the
+ * road it runs down, so the light is what holds the crossing traffic while it
+ * passes.
  */
 import { hashInts } from '../core/hash.ts';
 import { rngFor, Subsystem } from '../core/rng.ts';
@@ -95,8 +100,11 @@ export class TrafficSignals {
   /** The approach each edge is, or -1 where the edge arrives at no signal. */
   private readonly byEdge: Int32Array;
 
-  constructor(seed: number, roads: readonly RoadCurve[], graph: RoadGraph, map: JunctionMap, heightAt: RoadHeight) {
+  /** `crossings` are the nodes of the tram's level crossings, which take a light whatever joins them. */
+  constructor(seed: number, roads: readonly RoadCurve[], graph: RoadGraph, map: JunctionMap, heightAt: RoadHeight, crossings: readonly number[] = []) {
     const junctions: SignalJunction[] = [];
+    const level = new Uint8Array(graph.nodes.length);
+    for (const node of crossings) level[node] = 1;
     const approaches: SignalApproach[] = [];
     this.byEdge = new Int32Array(graph.edges.length).fill(-1);
     for (const junction of map.junctions) {
@@ -133,7 +141,8 @@ export class TrafficSignals {
       }
       // A junction whose roads all lie on one axis has nobody to take turns with,
       // and an alley or a dirt track that joins an arterial gives way without a light.
-      if (!found.some((f) => f.axis === 0) || !found.some((f) => f.axis === 1 && SIGNALLED_CROSS.includes(tierOf(graph, f.edge)))) continue;
+      const crossed = (f: SignalApproach): boolean => f.axis === 1 && (level[junction.node] === 1 || SIGNALLED_CROSS.includes(tierOf(graph, f.edge)));
+      if (!found.some((f) => f.axis === 0) || !found.some(crossed)) continue;
       const indices: number[] = [];
       for (const approach of found) {
         this.byEdge[approach.edge] = approaches.length;

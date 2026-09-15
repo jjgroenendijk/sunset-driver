@@ -9,6 +9,7 @@ import { RenderSmoother } from './render/smooth.ts';
 import { ParkedView } from './render/parked.ts';
 import { PedestrianView } from './render/pedestrians.ts';
 import { TrafficView } from './render/traffic.ts';
+import { TramView } from './render/tram.ts';
 import { WorldScene } from './render/world-scene.ts';
 import { FixedStepClock, gameTime } from './sim/clock.ts';
 import { DEFAULT_APPEARANCE } from './sim/character.ts';
@@ -19,6 +20,7 @@ import { EMPTY_INPUT } from './sim/input.ts';
 import { createSave, restoreSimState, saveFromText, saveToText, type SaveFile } from './sim/save.ts';
 import { createSimState, stepSim, type SimState } from './sim/simulation.ts';
 import { AmbientTraffic, trafficRoadsOf } from './sim/traffic.ts';
+import { TramLine } from './sim/tram.ts';
 import { HotwireBar } from './ui/hotwire.ts';
 import { Hud } from './ui/hud.ts';
 import { MapArt } from './ui/map-draw.ts';
@@ -78,6 +80,8 @@ interface Session {
   traffic: TrafficView;
   /** The parked cars of spec section 13.1, drawn; undefined where no worker laid out the bays. */
   parked: ParkedView | undefined;
+  /** The trams of spec section 13.2, drawn. */
+  tram: TramView;
   /** The pedestrians of spec section 13.1, drawn. */
   crowd: PedestrianView;
   /** The pause menu of spec section 12. While it is open the simulation does not step. */
@@ -227,6 +231,7 @@ async function boot(): Promise<void> {
       // frame stands at: one tick behind the record, as the player is.
       const round = flying ? { x: free.camera.x, y: free.camera.z } : p;
       session.traffic.update(session.state, session.state.tick - 1 + alpha, round.x, round.y);
+      session.tram.update(session.state.tick - 1 + alpha, round.x, round.y);
       session.parked?.update(session.state, round.x, round.y);
       session.crowd.update(session.state, session.state.tick - 1 + alpha, round.x, round.y);
       // The damage of spec section 11.3, drawn off the same record: the smoke
@@ -346,6 +351,8 @@ async function boot(): Promise<void> {
   const traffic = new AmbientTraffic(state.seed, roads);
   // The crowd walks the pavements of the same roads, and is placed once the same way.
   const crowd = new AmbientPedestrians(state.seed, roads, crowdDistrictsOf(description));
+  // The trams of spec section 13.2 keep to the traffic's own lights.
+  const tram = new TramLine(state.seed, roads, description.tram, description.districts, traffic.signals);
   const ground: Ground = {
     heightAt: (x, y) => world.heightAt(x, y),
     surfaceAt: (x, y) => surfaces.at(x, y),
@@ -354,6 +361,7 @@ async function boot(): Promise<void> {
     // drive on there and the physics is given it as a solid.
     decks: roadDecks(description),
     traffic,
+    tram,
   };
   const start = nearestRoadPlace(description, state.player.x, state.player.y);
   let physics = new SimPhysics(ground, state);
@@ -539,12 +547,15 @@ async function boot(): Promise<void> {
   world.scene.add(trafficView.group);
   const parkedView = parked === undefined ? undefined : new ParkedView(parked);
   if (parkedView !== undefined) world.scene.add(parkedView.group);
-  const crowdView = new PedestrianView(crowd);
+  const tramView = new TramView(tram);
+  world.scene.add(tramView.group);
+  const crowdView = new PedestrianView(crowd, tram);
   world.scene.add(crowdView.group);
 
   session = {
     traffic: trafficView,
     parked: parkedView,
+    tram: tramView,
     crowd: crowdView,
     state,
     world,

@@ -120,6 +120,8 @@ What the game draws, as one frame. Look at the frame before judging a rendering 
   `--pickups` lays every weapon in rows below the player, fitted with the same attachments, which is
   how the silhouettes are compared from the game camera. `--hover=N` draws the N-th of them grown,
   as the pickup under the mouse is.
+- `--tram` stands the player beside the first tram at the hour of the picture, and `--stop=N` at
+  the N-th tram stop, where its queue waits.
 - `--width` and `--height` are the size of the picture.
 
 It prints the lights and shadow cascades the frame cost beside the draw calls, and how many

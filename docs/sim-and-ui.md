@@ -228,12 +228,14 @@ are the design.
   or another arterial on the ground, and never with a highway. Its roads split into the arterial's
   axis and the one across it, and a light is a function of the tick and the junction's seeded
   offset alone. `crossingOpen` is the phase the pedestrians of spec section 13.1 will wait for.
-  `TrafficRoads.junctions` is what turns the lights on; a test that leaves it out gets none.
+  `TrafficRoads.junctions` is what turns the lights on; a test that leaves it out gets none. A
+  level crossing of the tram takes a light whatever joins it, an alley included.
 - A light and a tour only agree for ever when the tour takes whole `SIGNAL_CYCLE`s. So a tour that
   meets a light is timed from one stop line, its `sync`: tick 0 is that line's green. The drive back
   to it is stretched to arrive on red, and `phaseOf` moves the vehicle by up to half a cycle so its
   tick 0 falls on that green. A queue is estimated from the lane's density, not from the vehicles
-  in it. `test/signal-lap.ts` steps a lap and holds a vehicle to the lights.
+  in it, and its back stops `QUEUE_CLEAR` short of the junction behind, where a tram may cross.
+  `test/signal-lap.ts` steps a lap and holds a vehicle to the lights.
 - On seed 1 about three vehicles in four meet a light, they spend about a third of the time
   standing, and timing the tours takes the traffic from about 35 ms to about 180 ms to place.
 - `src/sim/traffic-bodies.ts` is the Rapier half. Inside the box of ground tiles, each vehicle is a
@@ -255,6 +257,27 @@ are the design.
   reads it on every step rather than once when it is built.
 - The ground of the game hands the physics the traffic as `Ground.traffic`. A test that is not about
   traffic leaves it out. `test/traffic-grid.ts` is a grid of every tier for the tests that need it.
+- `src/sim/tram.ts` is the tram of spec section 13.2, a function of the tick like the traffic.
+  `tram-timing.ts` lays the loop down as the steps of a traffic tour: it halts short of every stop,
+  light and level crossing, stands `DWELL` at a stop, and goes on at a light only with `TRAM_CLEAR`
+  of its green left. So a level crossing is obeyed through the lights: the tram never crosses on the
+  green of the road across it. The loop takes whole `SIGNAL_CYCLE`s, and each further tram runs it
+  whole cycles behind, for the reason a traffic tour does.
+- A tram is 32 m long, and many arterial runs are shorter than that and a junction. A tram waiting
+  at such a light leaves its tail across the junction behind. `hold` waits at the light before
+  instead, for a start that meets the short lights ahead on green. One wait seldom fits more than
+  two of them, so on seed 1 about a third of the tram's waits are still on a short run.
+- The loop is read from `TramDescription.edges`, which are graph ids: the graph is rebuilt from the
+  roads on demand and the same roads give the same ids. A car is read at its two bogies on the
+  track, `TRAM_TRACK` right of the centreline. On a run the tram drives, `laneOffset` moves the
+  traffic lanes out of the middle `TRAM_HALF`, so no car drives through a tram.
+- `tram-bodies.ts` stands each car in the physics box as a kinematic box, under `TrafficBodies`, so
+  a ground without traffic has no tram. A touch does not take a tram off its loop. The people at a
+  stop are a count of the ticks since the last tram left, and fall to none while one boards them;
+  `PedestrianView` draws them standing. `TramLine.bells` is the hook the tram bells of spec section
+  15 will ring: a tram pulling away from a halt on that tick.
+- The pedestrians do not wait at a level crossing yet, as they wait at no light (#286). Once they
+  keep to `crossingOpen`, they keep to the tram too, since it only crosses on their red.
 - `src/sim/pedestrians.ts` is the crowd of spec sections 5.3 and 13.1. `AmbientPedestrians` places
   people per directed edge of a tier with a pavement, from `TierSpec.walkers` thinned by
   `ZONE_PEDESTRIANS`. A person walks one pavement round a loop, at a pace of their gait. The loop
