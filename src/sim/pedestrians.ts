@@ -28,7 +28,7 @@ import { districtAt, layoutZones } from '../world/districts.ts';
 import type { District, Point, RoadCurve, WorldDescription, Zone } from '../world/types.ts';
 import { TICK_RATE } from './clock.ts';
 import { EdgeIndex } from './edge-index.ts';
-import { GAITS, lookOf, strideOf, type Gait, type PedestrianLook } from './pedestrian-look.ts';
+import { lookOf, strideOf, type Gait, type PedestrianLook } from './pedestrian-look.ts';
 import { Pavements, pavementOffset, type WalkPoint, type WalkRoute } from './pedestrian-route.ts';
 import { backOf, walkOut } from './traffic-tour.ts';
 import type { TrafficRoads } from './traffic.ts';
@@ -363,11 +363,6 @@ function loopFrom(graph: RoadGraph, first: number, rng: Rng): number[] {
 /** True for a run people walk: a tier with a pavement, not bored through the ground. */
 function walkable(edge: RoadEdge): boolean {
   return TIERS[edge.tier].walkers > 0 && TIERS[edge.tier].pavement > 0 && !edge.tunnel;
-}
-
-/** The index of a gait in {@link GAITS}, which is its row of baked clips. */
-export function gaitIndex(gait: Gait): number {
-  return GAITS.indexOf(gait);
 }
 
 function midpoint(roads: readonly RoadCurve[], edge: RoadEdge): Point {

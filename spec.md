@@ -844,7 +844,7 @@ Maximise coverage, subject to the veto that no feature exists purely to justify 
 | `LoftGeometry` | Road surfaces, kerbs, tram rails, bridge decks and tunnels swept along the tensor-field curves |
 | `MeshSurfaceSampler` | Scattering vegetation and ground detail across parcels |
 | `BatchedMesh` and instancing | Draw-call budget, GPU-side per-instance culling |
-| `SkinnedMesh` with `AnimationClipCreator`, instanced skinning | Animated pedestrians with moving limbs, in few draws |
+| `SkinnedMesh` with `AnimationClip` keyframe tracks, baked for instanced skinning | Animated pedestrians with moving limbs, in one draw |
 | `DecalGeometry` | Skid marks, bullet holes, blood, road stains, graffiti |
 | `ClippingGroup` | Enterable shops: roof and front wall clipped away when the player is inside |
 | `Bayer` dither | Per-instance near-camera fade without transparency sorting |

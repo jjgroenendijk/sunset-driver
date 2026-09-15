@@ -354,3 +354,16 @@ are the design.
   `MOVE` metres, `REFRESH` ticks have passed, or a car was promoted. A frame between those uploads
   nothing. `needsUpdate` on an instance matrix uploads the whole buffer, and at `PARKED_CAP` that is
   about a megabyte a frame.
+- `src/render/pedestrians.ts` draws the crowd as one `Mesh` over an `InstancedBufferGeometry`, not
+  an `InstancedMesh`. An `InstancedMesh` applies its instance matrix before `positionNode` runs, so
+  a shader that skins the body has to do the placing too. `pedestrian-material.ts` reads each
+  vertex's bone matrix from the texture `bakeWalks` fills, at two frames of the gait's cycle, blends
+  them, and then scales, turns and places the body. It assigns `normalLocal` in the same `Fn`, or
+  the lighting sees the bind pose.
+- A WebGPU pipeline reads at most eight vertex buffers, and a `BufferAttribute` is a buffer each.
+  Over eight, the pipeline fails and nothing is drawn, with only a console error to say so. The
+  crowd packs its bone and colour part into one `rig` attribute and its six instance attributes into
+  one `InstancedInterleavedBuffer`, and it uploads only the `STRIDE` floats of each person written.
+- `AnimationClipCreator` makes no clip that swings a limb, so `walkClip` builds its keyframe tracks
+  itself. A test reads the baked texture on the processor with `bakedPoint`: the legs swing against
+  each other, and each arm against its leg.

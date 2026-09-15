@@ -30,6 +30,7 @@ import { createPlayerState, exitPlace } from '../sim/on-foot.ts';
 import type { PickupState } from '../sim/pickup.ts';
 import { createSimState } from '../sim/simulation.ts';
 import { ParkedCars } from '../sim/parked.ts';
+import { AmbientPedestrians, crowdDistrictsOf } from '../sim/pedestrians.ts';
 import { AmbientTraffic, trafficRoadsOf } from '../sim/traffic.ts';
 import {
   ATTACHMENTS,
@@ -57,6 +58,7 @@ import { PostChain } from './post.ts';
 import { FULL_TIER, QUALITY_TIERS } from './quality.ts';
 import { createOffscreenRenderer } from './renderer.ts';
 import { ParkedView } from './parked.ts';
+import { PedestrianView } from './pedestrians.ts';
 import { TrafficView } from './traffic.ts';
 import { WorldScene } from './world-scene.ts';
 
@@ -156,6 +158,8 @@ export interface PreviewResult {
   traffic: number;
   /** Parked cars drawn round the player (spec section 13.1). */
   parked: number;
+  /** People of the crowd drawn round the player (spec section 13.1). */
+  pedestrians: number;
 }
 
 /** Bytes a pixel of the render target below. */
@@ -210,10 +214,15 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   arm(scene, request, stand, tick);
   // The traffic of spec section 13.1, where its tours put it at the tick the
   // picture is taken, as the game draws it.
-  const traffic = new TrafficView(new AmbientTraffic(seed, trafficRoadsOf(world)));
+  const roads = trafficRoadsOf(world);
+  const traffic = new TrafficView(new AmbientTraffic(seed, roads));
   scene.scene.add(traffic.group);
   const record = createSimState(seed, undefined, tick);
   traffic.update(record, tick, x, y);
+  // The crowd on the pavements, on the same roads.
+  const crowd = new PedestrianView(new AmbientPedestrians(seed, roads, crowdDistrictsOf(world)));
+  scene.scene.add(crowd.group);
+  crowd.update(record, tick, x, y);
   // The parked cars, from the bays the chunk workers laid out.
   const parked = scene.bays === undefined ? undefined : new ParkedView(new ParkedCars(seed, scene.bays));
   if (parked !== undefined) scene.scene.add(parked.group);
@@ -251,12 +260,14 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   target.dispose();
   const drawn = traffic.drawn;
   const standing = parked?.drawn ?? 0;
+  const walking = crowd.drawn;
   traffic.dispose();
+  crowd.dispose();
   parked?.dispose();
   scene.dispose();
   renderer.dispose();
 
-  return { width, height, rgb, worldMs, chunkMs, frameMs, peakDrawCalls, lights, shadows, quality: tier.name, traffic: drawn, parked: standing };
+  return { width, height, rgb, worldMs, chunkMs, frameMs, peakDrawCalls, lights, shadows, quality: tier.name, traffic: drawn, parked: standing, pedestrians: walking };
 }
 
 /**
