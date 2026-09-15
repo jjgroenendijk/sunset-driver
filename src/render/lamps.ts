@@ -4,7 +4,7 @@
  * Two halves, because a lamp is two things:
  *
  * - {@link LampScenery} draws the masts. Every lamp of a chunk goes into one
- *   batch (`batch.ts`), so a chunk full of them costs one draw call, and every lens
+ *   batch per cell (`batch.ts`), so a cell full of them costs one draw call, and every lens
  *   in the world lights at once off one uniform.
  * - {@link LampLights} throws the light. A light is paid for by every fragment
  *   it can reach, so only {@link LAMP_LIGHT_CAP} of them exist: the pool is
@@ -18,7 +18,8 @@
  * A light at 0 costs a fragment nothing, because `lamp-light.ts` branches past it.
  */
 import { Object3D, type Scene } from 'three';
-import { Batch, fillOf, type BatchPart } from './batch.ts';
+import { fillsOf, tilePartOf, type BatchPart } from './batch.ts';
+import type { CellGrid } from './cells.ts';
 import type { EntityFade } from './fade.ts';
 import { LampLight } from './lamp-light.ts';
 import { createLampMaterials, type LampMaterials } from './lamp-material.ts';
@@ -54,7 +55,7 @@ const RE_AIM = 6;
 /** Where an unused light of the pool is parked: under the map, burning nothing. */
 const PARKED = -10000;
 
-/** The masts of a world's lamps: one material, and a batch for each chunk. */
+/** The masts of a world's lamps: one material, and a batch for each cell of a chunk. */
 export class LampScenery {
   private readonly materials: LampMaterials = createLampMaterials();
 
@@ -75,21 +76,12 @@ export class LampScenery {
    * (spec section 9.2), so the masts drawn are the lamps the light pool aims
    * at and no lamp is lit without a mast under it.
    */
-  build(lamps: readonly Lamp[]): TilePart {
+  build(grid: CellGrid, lamps: readonly Lamp[]): TilePart {
     const parts: BatchPart[] = [];
     for (const tier of buildChunkLamps(lamps)) {
       for (const matrix of tier.matrices) parts.push({ geometry: tier.geometry, matrix });
     }
-    const fill = fillOf(parts, this.materials.lamp);
-    const objects: Object3D[] = [fill.mesh];
-    return {
-      objects,
-      drawCalls: 1,
-      steps: fill.steps,
-      dispose(): void {
-        for (const object of objects) if (object instanceof Batch) object.dispose();
-      },
-    };
+    return tilePartOf(fillsOf(grid, parts, this.materials.lamp));
   }
 
   /** How far on the lenses are, 0 by day and 1 after dark. */

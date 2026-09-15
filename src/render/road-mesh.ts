@@ -108,17 +108,17 @@ export function partsOf(tier: TierGeometry): BufferGeometry[] {
 }
 
 /**
- * Draw calls one chunk spends on its roads: a batch of geometry and a batch of
- * markings for each tier that runs through it. A tier with no run in the chunk
- * costs nothing. `chunk-cost.ts` adds this to what the rest of a chunk costs.
+ * Draw calls one chunk spends on its roads: a batch of geometry in each of
+ * `cells` cells and a batch of markings for each tier that runs through it. A
+ * tier with no run in the chunk costs nothing. `chunk-cost.ts` adds this to what the rest of a chunk costs.
  */
-export function roadDrawCalls(chunk: WorldChunk): number {
+export function roadDrawCalls(chunk: WorldChunk, cells = 1): number {
   let calls = 0;
   for (const tier of TIER_ORDER) {
     if (!chunk.roads.some((run) => run.tier === tier) && !chunk.junctions.some((junction) => pavesAs(junction, tier))) {
       continue;
     }
-    calls += isMarked(tier) ? 2 : 1;
+    calls += cells + (isMarked(tier) ? 1 : 0);
   }
   return calls;
 }

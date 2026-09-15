@@ -1,33 +1,46 @@
 /**
  * What one chunk costs the frame (spec section 9.2).
  *
- * Every layer a chunk draws is batched by kind, so its cost is a count of kinds
- * rather than a count of things: the ground, the tiers of road that run through
- * it, and the batches its buildings need. The count is answered off the chunk
- * alone, without building any geometry, so the gate can ask it of every chunk of
- * a map and the HUD can show it while playing.
+ * Every layer a chunk draws is batched by kind and by cell (`cells.ts`), so its
+ * cost is a count of kinds and cells rather than a count of things: the ground,
+ * the tiers of road that run through it, and the batches its buildings need.
+ * The count is answered off the chunk alone, without building any geometry, so
+ * the gate can ask it of every chunk of a map. It is the most the chunk costs:
+ * it takes every kind to fill every cell. `payloadDrawCalls` counts the cells a
+ * built chunk fills, and the HUD shows that.
  */
 import type { WorldChunk } from '../world/chunks.ts';
 import { buildingDrawCalls } from './building-mesh.ts';
+import { CHUNK_CELLS } from './cells.ts';
 import { lampDrawCalls } from './lamp-mesh.ts';
 import { vegetationDrawCalls } from './plant-mesh.ts';
 import { roadDrawCalls } from './road-mesh.ts';
 import type { ChunkDetail } from './streaming.ts';
 
 /**
- * Draw calls a chunk may cost. One ground mesh, at most eight for the roads —
- * five tiers, three of them marked — at most three for the buildings — the
- * generated facades, the blocks and the outlines that rim both — one for the
- * plants, whatever species stand there, and one for the street lamps, whatever
- * tiers carry them. A count over this is a batching regression, not a cap to
- * raise; a system that lands in a chunk later raises it together with the
- * batches it brings.
+ * Batches one cell of a chunk may draw: at most five for the roads, one per
+ * tier, at most three for the buildings — the generated facades, the blocks
+ * and the outlines that rim both — one for the plants, whatever species stand
+ * there, and one for the street lamps, whatever tiers carry them.
  */
-export const CHUNK_DRAW_CALL_CAP = 14;
+export const CELL_BATCH_CAP = 10;
 
-/** Draw calls one chunk costs: the ground, the roads, the buildings, the plants and the lamps. */
+/**
+ * Draw calls a chunk may cost: {@link CELL_BATCH_CAP} in each of its
+ * {@link CHUNK_CELLS} cells, one ground mesh, and one line of markings for each
+ * of the three marked tiers, which are not cut into cells. That is 44. A count
+ * over this is a batching regression, not a cap to raise; a system that lands
+ * in a chunk later raises it together with the batches it brings.
+ */
+export const CHUNK_DRAW_CALL_CAP = 1 + 3 + CELL_BATCH_CAP * CHUNK_CELLS;
+
+/**
+ * The most draw calls one chunk costs at near detail: the ground, and the
+ * roads, the buildings, the plants and the lamps with every kind in every cell.
+ */
 export function chunkDrawCalls(chunk: WorldChunk): number {
-  return 1 + roadDrawCalls(chunk) + buildingDrawCalls(chunk) + vegetationDrawCalls(chunk) + lampDrawCalls(chunk);
+  const batches = buildingDrawCalls(chunk) + vegetationDrawCalls(chunk) + lampDrawCalls(chunk);
+  return 1 + roadDrawCalls(chunk, CHUNK_CELLS) + batches * CHUNK_CELLS;
 }
 
 /**

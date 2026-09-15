@@ -1,6 +1,7 @@
-import { Euler, Matrix3, Matrix4, MeshBasicMaterial, Quaternion, Vector3 } from 'three';
+import { BoxGeometry, Euler, Matrix3, Matrix4, MeshBasicMaterial, Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { batchOfPacked, fillOfPacked, MAX_STEP_VERTICES } from '../src/render/batch.ts';
+import { batchOfPacked, fillOfPacked, fillsOf, MAX_STEP_VERTICES, tilePartOf } from '../src/render/batch.ts';
+import { cellGrid } from '../src/render/cells.ts';
 import { packedVertexCount, type PackedBatch, type PackedGeometry, type PackedPart } from '../src/render/chunk-payload.ts';
 
 /**
@@ -199,5 +200,35 @@ describe('a chunk batch', () => {
     }
     expect(complaint).toBeUndefined();
     fill.mesh.dispose();
+  });
+
+  it('cuts parts into the cells they stand in, and lets a shared model go once, after its last copy', () => {
+    const grid = cellGrid({ minX: 0, minY: 0, maxX: 250, maxY: 250 }, 'near');
+    const model = new BoxGeometry(1, 1, 1);
+    let disposed = 0;
+    model.addEventListener('dispose', () => disposed++);
+    // Three copies of one model: two in the far corner cell, one in the near
+    // corner. The far corner is listed first, and the near corner comes first
+    // in cell order.
+    const at = (x: number, z: number): Matrix4 => new Matrix4().makeTranslation(x, 0, z);
+    const parts = [at(200, 200), at(10, 20), at(180, 240)].map((matrix) => ({ geometry: model, matrix }));
+    const fills = fillsOf(grid, parts, material);
+    expect(fills).toHaveLength(2);
+    const tile = tilePartOf(fills);
+    expect(tile.drawCalls).toBe(2);
+    expect(tile.objects).toHaveLength(2);
+
+    // Each cell's bounds hold only its own parts, which is what lets the view
+    // cull one cell and draw the other.
+    const [near, far] = fills as [(typeof fills)[number], (typeof fills)[number]];
+    for (const step of tile.steps.slice(0, -1)) step();
+    expect(disposed).toBe(0);
+    (tile.steps[tile.steps.length - 1] as () => void)();
+    expect(disposed).toBe(1);
+    expect(near.mesh.parts).toBe(1);
+    expect(far.mesh.parts).toBe(2);
+    expect(near.mesh.geometry.boundingBox?.max.x).toBeLessThan(125);
+    expect(far.mesh.geometry.boundingBox?.min.x).toBeGreaterThan(125);
+    tile.dispose();
   });
 });

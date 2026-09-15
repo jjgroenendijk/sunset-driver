@@ -1,16 +1,18 @@
 /**
  * The plants of one chunk, as meshes (spec sections 9.2, 10.4).
  *
- * A chunk draws its plants in one batch and no more. Every species shares one
- * material, and each plant is copied into the batch where it stands, so a chunk
- * of forest costs the same draw call as a street with three trees on it.
+ * A chunk draws its plants in one batch per cell (`cells.ts`) and no more.
+ * Every species shares one material, and each plant is copied into the batch of
+ * the cell it stands in, so a cell of forest costs the same draw call as a
+ * street with three trees on it.
  *
  * The models and the material belong to the world, not to the chunk: they are
  * built once and every chunk of that world copies from them, so dropping a chunk
  * frees its batch and nothing else.
  */
-import { Matrix4, Object3D, type BufferGeometry } from 'three';
-import { Batch, fillOf, type BatchPart } from './batch.ts';
+import { Matrix4, type BufferGeometry } from 'three';
+import { fillsOf, tilePartOf, type BatchPart } from './batch.ts';
+import type { CellGrid } from './cells.ts';
 import type { PackedPlants } from './chunk-payload.ts';
 import type { EntityFade } from './fade.ts';
 import { createPlantMaterial } from './plant-material.ts';
@@ -43,7 +45,7 @@ export class PlantScenery {
    * plants kept are spread over the whole chunk rather than taken off the
    * front, so a thinned wood is a thinner wood and not half a wood.
    */
-  build(plants: PackedPlants, limit = plants.models.length): TilePart {
+  build(grid: CellGrid, plants: PackedPlants, limit = plants.models.length): TilePart {
     const parts: BatchPart[] = [];
     // One clone of a model serves every plant of the chunk that takes it, and is
     // released once the last of those plants has been copied into the batch.
@@ -60,16 +62,7 @@ export class PlantScenery {
       }
       parts.push({ geometry, matrix: new Matrix4().fromArray(plants.matrices, i * 16) });
     }
-    const fill = fillOf(parts, this.material);
-    const objects: Object3D[] = [fill.mesh];
-    return {
-      objects,
-      drawCalls: 1,
-      steps: fill.steps,
-      dispose(): void {
-        for (const object of objects) if (object instanceof Batch) object.dispose();
-      },
-    };
+    return tilePartOf(fillsOf(grid, parts, this.material));
   }
 
   /** Release the models and the material every chunk shared. */

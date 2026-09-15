@@ -1,11 +1,12 @@
 /**
  * The buildings of one chunk, as meshes (spec sections 9.2, 10.1, 10.3).
  *
- * A chunk draws its buildings in three batches and no more: the generated
- * facades, the blocks, and the inverted hulls that outline both of them. So a
- * chunk of houses costs two draw calls and a chunk of the core costs three,
- * whether it holds five buildings or fifty, which is what keeps the visible city
- * inside the budget of spec section 9.2.
+ * A chunk draws its buildings in three kinds of batch and no more: the
+ * generated facades, the blocks, and the inverted hulls that outline both of
+ * them. Each kind is one batch per cell of the chunk (`cells.ts`). So a cell of
+ * houses costs two draw calls and a cell of the core costs three, whether it
+ * holds five buildings or fifty, which is what keeps the visible city inside
+ * the budget of spec section 9.2.
  *
  * The outlines are drawn as one batch of their own rather than as a shell behind
  * each building, because a hull needs the opposite face and so the opposite
@@ -16,8 +17,7 @@
  * every chunk of that world shares them, so dropping a chunk frees its geometry
  * and nothing else.
  */
-import { Object3D } from 'three';
-import { Batch, fillOfPacked } from './batch.ts';
+import { fillOfPacked, tilePartOf } from './batch.ts';
 import type { PackedBatch } from './chunk-payload.ts';
 import { createBuildingMaterials, type BuildingMaterials } from './building-material.ts';
 import type { TilePart } from './streaming.ts';
@@ -42,7 +42,7 @@ export class BuildingScenery {
   }
 
   /**
-   * Put one batch of one chunk's buildings into the scene. The three are
+   * Put one kind of one chunk's buildings into the scene, a batch per cell. The three are
    * uploaded one at a time, so a chunk of the core spreads over more frames
    * than a chunk of houses rather than stalling one of them.
    *
@@ -51,17 +51,8 @@ export class BuildingScenery {
    * since a hull stands behind the building that covers it and the depth test
    * is what leaves the rim.
    */
-  build(batch: BuildingBatchKind, packed: PackedBatch): TilePart {
-    const fill = fillOfPacked(packed, this.materials[batch]);
-    const objects: Object3D[] = [fill.mesh];
-    return {
-      objects,
-      drawCalls: 1,
-      steps: fill.steps,
-      dispose(): void {
-        for (const object of objects) if (object instanceof Batch) object.dispose();
-      },
-    };
+  build(batch: BuildingBatchKind, cells: readonly PackedBatch[]): TilePart {
+    return tilePartOf(cells.map((cell) => fillOfPacked(cell, this.materials[batch])));
   }
 
   /** Release the materials every chunk shared. */

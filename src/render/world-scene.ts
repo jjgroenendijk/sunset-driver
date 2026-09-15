@@ -34,6 +34,7 @@ import type { ParkingBays } from '../world/parking.ts';
 import type { Point, WorldDescription } from '../world/types.ts';
 import { Batch } from './batch.ts';
 import { BuildingScenery } from './buildings.ts';
+import { cellGrid } from './cells.ts';
 import { CharacterModel } from './character.ts';
 import { DamageFx } from './damage-fx.ts';
 import type { ChunkPayload } from './chunk-payload.ts';
@@ -312,9 +313,9 @@ export class WorldScene {
   }
 
   /**
-   * Draw calls the dearest chunk of the near ring costs. Spec section 9.2 caps
-   * the city at a small number of draws, and `CHUNK_DRAW_CALL_CAP` is what a
-   * chunk may spend of it; the HUD shows this so a regression is visible while
+   * Draw calls the dearest chunk of the near ring costs, a draw for each cell
+   * of each batch. Spec section 9.2 caps the city at a small number of draws,
+   * and `CHUNK_DRAW_CALL_CAP` is what a chunk may spend of it; the HUD shows this so a regression is visible while
    * playing rather than only in the test that enforces the cap.
    */
   get drawCallsPerChunk(): number {
@@ -428,6 +429,7 @@ export class WorldScene {
    */
   private queueUpload(payload: ChunkPayload): void {
     const key = keyOf(payload.cx, payload.cy);
+    const grid = cellGrid(payload.bounds, payload.detail);
     const tile: ChunkTile = {
       cx: payload.cx,
       cy: payload.cy,
@@ -454,13 +456,13 @@ export class WorldScene {
     for (const roads of payload.roads) {
       this.queueJob(tile, () => this.add(tile, this.scenery.build(roads)));
     }
-    if (payload.outlines.parts.length > 0) {
+    if (payload.outlines.length > 0) {
       this.queueJob(tile, () => this.add(tile, this.buildings.build('outline', payload.outlines)));
     }
-    if (payload.facades.parts.length > 0) {
+    if (payload.facades.length > 0) {
       this.queueJob(tile, () => this.add(tile, this.buildings.build('facade', payload.facades)));
     }
-    if (payload.blocks.parts.length > 0) {
+    if (payload.blocks.length > 0) {
       this.queueJob(tile, () => this.add(tile, this.buildings.build('block', payload.blocks)));
     }
     // A chunk places only what its category's cap and the tier's density allow
@@ -470,13 +472,13 @@ export class WorldScene {
     if (payload.plants.models.length > 0) {
       this.queueJob(tile, () => {
         const limit = entityBudget(this.tier, 'plants', payload.plants.models.length);
-        this.add(tile, this.vegetation.build(payload.plants, limit));
+        this.add(tile, this.vegetation.build(grid, payload.plants, limit));
       });
     }
     if (payload.lamps.length > 0) {
       this.queueJob(tile, () => {
         const lamps = thinned(payload.lamps, entityBudget(this.tier, 'lamps', payload.lamps.length));
-        this.add(tile, this.lamps.build(lamps));
+        this.add(tile, this.lamps.build(grid, lamps));
         // The pool is aimed at the lamps nearest the player, and a chunk that
         // has just landed may hold some of them. It aims at the masts drawn,
         // so a thinned lamp throws no light either.

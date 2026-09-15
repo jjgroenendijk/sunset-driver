@@ -2,9 +2,11 @@
  * Packing a chunk's geometry into as few draw calls as it can be (spec sections
  * 9.1, 9.2).
  *
- * Everything of one kind in a chunk — every run of road, every tower, every
- * outline, every tree — is merged into one geometry and drawn as one mesh. Each
- * part is copied in already standing where it stands in the world.
+ * Everything of one kind in a cell of a chunk — every run of road, every
+ * tower, every outline, every tree — is merged into one geometry and drawn as
+ * one mesh. Each part is copied in already standing where it stands in the
+ * world. The cells are `cells.ts`: a batch that spanned its whole chunk was
+ * drawn whole wherever any corner of the chunk was seen.
  *
  * It is not a `BatchedMesh`. In three.js 0.186 on WebGPU a `BatchedMesh` is
  * drawn as one draw call per instance, after its instances are culled and
@@ -29,7 +31,9 @@
  * of megabytes in one frame, and the piece a collection lands in.
  */
 import { Box3, BufferAttribute, BufferGeometry, Matrix3, Matrix4, Mesh, Sphere, type Material } from 'three';
+import { byCell, cellOfPart, type CellGrid } from './cells.ts';
 import { packedVertexCount, type PackedAttribute, type PackedBatch, type PackedGeometry } from './chunk-payload.ts';
+import type { TilePart } from './streaming.ts';
 
 /** One thing to draw: a geometry, and where it stands if not at the origin. */
 export interface BatchPart {
@@ -92,21 +96,28 @@ interface PartArrays {
 }
 
 /**
- * Prepare a batch of parts and the steps that copy them in. A geometry is
- * disposed once the last part standing on it is copied, so a caller hands over
- * its geometry rather than keeping it.
+ * Prepare a batch per cell of parts, and the steps that copy them in. Run the
+ * fills in the order they come, because a geometry is disposed once the last
+ * part standing on it is copied, whichever cell that part is in. A caller hands
+ * over its geometry rather than keeping it.
  *
  * These parts are built on the frame thread — the plants and the street lamps,
  * which are copies of a handful of small models — so the storage is allocated
  * here as well.
  */
-export function fillOf(parts: readonly BatchPart[], material: Material): BatchFill {
-  const last = new Map<BufferGeometry, number>();
-  parts.forEach((part, i) => last.set(part.geometry, i));
-  const arrays = parts.map((part) => arraysOf(part.geometry, part.matrix));
-  return fill(arrays, storageFor(arrays), material, (i) => {
-    const geometry = (parts[i] as BatchPart).geometry;
-    if (last.get(geometry) === i) geometry.dispose();
+export function fillsOf(grid: CellGrid, parts: readonly BatchPart[], material: Material): BatchFill[] {
+  const cells = byCell(grid, parts, (part) => {
+    const position = part.geometry.getAttribute('position') as BufferAttribute | undefined;
+    return cellOfPart(grid, position?.array ?? [], part.matrix?.elements);
+  });
+  const last = new Map<BufferGeometry, BatchPart>();
+  for (const cell of cells) for (const part of cell) last.set(part.geometry, part);
+  return cells.map((cell) => {
+    const arrays = cell.map((part) => arraysOf(part.geometry, part.matrix));
+    return fill(arrays, storageFor(arrays), material, (i) => {
+      const part = cell[i] as BatchPart;
+      if (last.get(part.geometry) === part) part.geometry.dispose();
+    });
   });
 }
 
@@ -124,11 +135,6 @@ export function fillOfPacked(batch: PackedBatch, material: Material): BatchFill 
   return fill(parts, batch.storage, material, () => {});
 }
 
-/** Pack parts into a single batch, all at once. */
-export function batchOf(parts: readonly BatchPart[], material: Material): Batch {
-  return filled(fillOf(parts, material));
-}
-
 /** Pack parts a worker built into a single batch, all at once. */
 export function batchOfPacked(batch: PackedBatch, material: Material): Batch {
   return filled(fillOfPacked(batch, material));
@@ -137,6 +143,22 @@ export function batchOfPacked(batch: PackedBatch, material: Material): Batch {
 function filled(fill: BatchFill): Batch {
   for (const step of fill.steps) step();
   return fill.mesh;
+}
+
+/**
+ * The fills of one kind of a chunk as one piece of the chunk: a mesh and a
+ * draw per cell, and the steps of every cell in the order the fills came.
+ */
+export function tilePartOf(fills: readonly BatchFill[]): TilePart {
+  const meshes = fills.map((fill) => fill.mesh);
+  return {
+    objects: meshes,
+    drawCalls: meshes.length,
+    steps: fills.flatMap((fill) => fill.steps),
+    dispose(): void {
+      for (const mesh of meshes) mesh.dispose();
+    },
+  };
 }
 
 /**

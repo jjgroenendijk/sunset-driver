@@ -20,6 +20,10 @@
  * arterials over it and the outlined massing of its buildings: no markings, no
  * minor roads, no plants and no street lamps, because none of them can be told
  * apart from the far ring.
+ *
+ * Each batch is cut into the cells of `cells.ts`, so the renderer culls a
+ * quarter of a chunk rather than the whole of it. A payload holds one batch per
+ * cell that has anything of that kind in it.
  */
 import { BufferAttribute, BufferGeometry } from 'three';
 import type { ChunkBounds, WorldChunk, WorldLayers } from '../world/chunks.ts';
@@ -27,6 +31,7 @@ import { RoadRibbons } from '../world/ribbon.ts';
 import { CHUNK_TERRAIN_CELL, TERRAIN_CELL } from '../world/terrain.ts';
 import type { RoadTier, WorldDescription } from '../world/types.ts';
 import { buildChunkBuildings, buildingLookup, type BuildingLookup } from './building-mesh.ts';
+import { byCell, cellGrid, cellOfPart, cellsHolding, type CellGrid } from './cells.ts';
 import { buildGroundAttributes, groundLookup, type GroundAttributes, type GroundLookup } from './ground.ts';
 import { lampsIn, type Lamp } from './lamp-mesh.ts';
 import { buildChunkVegetation, plantLookup, type PlantLookup } from './plant-mesh.ts';
@@ -85,8 +90,8 @@ export interface PackedBatch {
 /** One tier of road inside a chunk: everything batched, and everything painted. */
 export interface PackedRoads {
   tier: RoadTier;
-  /** Surfaces, decks and portals, all of which go into one batch. */
-  surface: PackedBatch;
+  /** Surfaces, decks and portals, all of which go into one batch per cell. */
+  surface: PackedBatch[];
   /** Marking segment ends, six numbers each. Empty at far detail. */
   markings: Float32Array;
   /** The colour of each of those ends, six numbers each. */
@@ -111,12 +116,12 @@ export interface ChunkPayload {
   ground: GroundAttributes;
   /** The road tiers that run through the chunk, in tier order. */
   roads: PackedRoads[];
-  /** The inverted hulls that outline the buildings. */
-  outlines: PackedBatch;
-  /** The generated facades. Empty unless the detail is near; elsewhere a tower is a block. */
-  facades: PackedBatch;
-  /** The buildings built as blocks, which past near detail is all of them. */
-  blocks: PackedBatch;
+  /** The inverted hulls that outline the buildings, a batch per cell. */
+  outlines: PackedBatch[];
+  /** The generated facades, a batch per cell. Empty unless the detail is near; elsewhere a tower is a block. */
+  facades: PackedBatch[];
+  /** The buildings built as blocks, which past near detail is all of them, a batch per cell. */
+  blocks: PackedBatch[];
   plants: PackedPlants;
   /**
    * The street lamps of the chunk (spec section 10.5), already in the places
@@ -150,6 +155,7 @@ export function chunkLookups(world: WorldDescription, layers: WorldLayers): Chun
 /** Build everything one chunk draws, at the detail asked for. */
 export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, detail: ChunkDetail): ChunkPayload {
   const far = detail === 'far';
+  const grid = cellGrid(chunk.bounds, detail);
   const roads: PackedRoads[] = [];
   // At far detail the minor fill is dropped before it is lofted, so the tiers
   // that are not drawn cost nothing to leave out.
@@ -161,7 +167,7 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
   for (const tier of buildChunkRoads(traced, lookups.ribbons, lookups.ground.heightAt)) {
     roads.push({
       tier: tier.tier,
-      surface: packBatch(partsOf(tier).map((geometry) => ({ geometry: takeGeometry(geometry) }))),
+      surface: packCells(grid, partsOf(tier).map((geometry) => ({ geometry: takeGeometry(geometry) }))),
       markings: far ? new Float32Array(0) : tier.markings,
       markingTints: far ? new Float32Array(0) : tier.markingTints,
     });
@@ -185,9 +191,9 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
     bounds: chunk.bounds,
     ground: buildGroundAttributes(chunk, lookups.ground, far ? FAR_GROUND_STEP : 1),
     roads,
-    outlines: packBatch(outlines),
-    facades: packBatch(facades),
-    blocks: packBatch(blocks),
+    outlines: packCells(grid, outlines),
+    facades: packCells(grid, facades),
+    blocks: packCells(grid, blocks),
     plants,
     lamps: far ? [] : lampsIn(chunk, lookups.ribbons),
     drawCalls: 0,
@@ -196,19 +202,33 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
   return payload;
 }
 
-/** Draw calls a payload costs: one per batch it fills, and one for its ground. */
+/**
+ * Draw calls a payload costs with nothing thinned: one per cell of each batch,
+ * one per tier of markings, and one for its ground. The plants and the lamps
+ * are cut into cells on the frame thread, so their cells are counted here off
+ * where each one stands.
+ */
 export function payloadDrawCalls(payload: ChunkPayload): number {
+  const grid = cellGrid(payload.bounds, payload.detail);
   let calls = 1;
   for (const tier of payload.roads) {
-    if (tier.surface.parts.length > 0) calls++;
+    calls += tier.surface.length;
     if (tier.markings.length > 0) calls++;
   }
-  if (payload.outlines.parts.length > 0) calls++;
-  if (payload.facades.parts.length > 0) calls++;
-  if (payload.blocks.parts.length > 0) calls++;
-  if (payload.plants.models.length > 0) calls++;
-  if (payload.lamps.length > 0) calls++;
+  calls += payload.outlines.length + payload.facades.length + payload.blocks.length;
+  const matrices = payload.plants.matrices;
+  const plantAt = (i: number): { x: number; y: number } => ({
+    x: matrices[i * 16 + 12] as number,
+    y: matrices[i * 16 + 14] as number,
+  });
+  calls += cellsHolding(grid, payload.plants.models.length, plantAt);
+  calls += cellsHolding(grid, payload.lamps.length, (i) => payload.lamps[i] as Lamp);
   return calls;
+}
+
+/** Parts in a batch cut into cells, over every cell of it. */
+export function partsIn(cells: readonly PackedBatch[]): number {
+  return cells.reduce((sum, cell) => sum + cell.parts.length, 0);
 }
 
 /**
@@ -238,13 +258,13 @@ export function payloadTransfers(payload: ChunkPayload): ArrayBuffer[] {
     }
   };
   for (const tier of payload.roads) {
-    takeBatch(tier.surface);
+    tier.surface.forEach(takeBatch);
     take(tier.markings);
     take(tier.markingTints);
   }
-  takeBatch(payload.outlines);
-  takeBatch(payload.facades);
-  takeBatch(payload.blocks);
+  payload.outlines.forEach(takeBatch);
+  payload.facades.forEach(takeBatch);
+  payload.blocks.forEach(takeBatch);
   take(payload.plants.models);
   take(payload.plants.matrices);
   return [...buffers];
@@ -281,6 +301,13 @@ function takeGeometry(geometry: BufferGeometry): PackedGeometry {
   if (index !== null) packed.index = index.array as Uint32Array | Uint16Array;
   geometry.dispose();
   return packed;
+}
+
+/** Parts sorted into the cells they stand in, and packed as a batch per cell. */
+function packCells(grid: CellGrid, parts: PackedPart[]): PackedBatch[] {
+  const positionsOf = (part: PackedPart): ArrayLike<number> =>
+    part.geometry.attributes.find((attribute) => attribute.name === 'position')?.array ?? [];
+  return byCell(grid, parts, (part) => cellOfPart(grid, positionsOf(part), part.matrix)).map(packBatch);
 }
 
 /**
