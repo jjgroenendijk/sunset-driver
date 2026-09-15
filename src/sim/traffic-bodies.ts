@@ -16,13 +16,16 @@
  *
  * The parked cars of the streets and car parks (`parked-bodies.ts`) stand in
  * the same box as fixed bodies, and a touch promotes one the same way, from
- * standing still.
+ * standing still. The trams (`tram-bodies.ts`) stand in it as kinematic bodies
+ * that no touch takes off their loop.
  */
 import RAPIER from '@dimforge/rapier3d-compat';
 import { capsuleOf } from './on-foot.ts';
 import { ParkedBodies } from './parked-bodies.ts';
 import { PARKED_ID, type ParkedCars } from './parked.ts';
 import { rotate } from './frame.ts';
+import { TramBodies } from './tram-bodies.ts';
+import type { TramLine } from './tram.ts';
 import { PHYSICS_RADIUS, PHYSICS_TILE } from './ground-bodies.ts';
 import type { SimState } from './simulation.ts';
 import {
@@ -79,10 +82,13 @@ export class TrafficBodies {
   private readonly walker: Footprint = { x: 0, y: 0, heading: 0, halfLength: 0, halfWidth: 0 };
   /** The parked cars in the box, once the game has handed them over. */
   private parked: ParkedBodies | undefined;
+  /** The cars of the trams in the box, or undefined where no tram runs. */
+  readonly trams: TramBodies | undefined;
 
-  constructor(world: RAPIER.World, traffic: AmbientTraffic) {
+  constructor(world: RAPIER.World, traffic: AmbientTraffic, tram?: TramLine) {
     this.world = world;
     this.traffic = traffic;
+    this.trams = tram === undefined ? undefined : new TramBodies(world, tram);
   }
 
   /** The cursors of the vehicles being stepped, ascending by id. The sweep compares them with evaluation. */
@@ -150,6 +156,7 @@ export class TrafficBodies {
     this.parked ??= parked === undefined ? undefined : new ParkedBodies(this.world, parked);
     this.parked?.lead(state, minX, minY, maxX, maxY);
     this.standPromoted(state, minX, minY, maxX, maxY);
+    this.trams?.lead(state.tick, minX, minY, maxX, maxY);
   }
 
   /**

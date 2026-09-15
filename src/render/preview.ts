@@ -32,6 +32,7 @@ import { createSimState } from '../sim/simulation.ts';
 import { ParkedCars } from '../sim/parked.ts';
 import { AmbientPedestrians, crowdDistrictsOf } from '../sim/pedestrians.ts';
 import { AmbientTraffic, trafficRoadsOf } from '../sim/traffic.ts';
+import { TramLine } from '../sim/tram.ts';
 import {
   ATTACHMENTS,
   createLoadout,
@@ -60,6 +61,7 @@ import { createOffscreenRenderer } from './renderer.ts';
 import { ParkedView } from './parked.ts';
 import { PedestrianView } from './pedestrians.ts';
 import { TrafficView } from './traffic.ts';
+import { TramView } from './tram.ts';
 import { WorldScene } from './world-scene.ts';
 
 /** Where to stand, how far back to look from, and how big a picture to take. */
@@ -221,12 +223,18 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   // The traffic of spec section 13.1, where its tours put it at the tick the
   // picture is taken, as the game draws it.
   const roads = trafficRoadsOf(world);
-  const traffic = new TrafficView(new AmbientTraffic(seed, roads));
+  const ambient = new AmbientTraffic(seed, roads);
+  const traffic = new TrafficView(ambient);
   scene.scene.add(traffic.group);
   const record = createSimState(seed, undefined, tick);
   traffic.update(record, tick, x, y);
-  // The crowd on the pavements, on the same roads.
-  const crowd = new PedestrianView(new AmbientPedestrians(seed, roads, crowdDistrictsOf(world)));
+  // The trams of spec section 13.2, on the traffic's own lights.
+  const line = new TramLine(seed, roads, world.tram, world.districts, ambient.signals);
+  const trams = new TramView(line);
+  scene.scene.add(trams.group);
+  trams.update(tick, x, y);
+  // The crowd on the pavements, on the same roads, and the people at the tram stops.
+  const crowd = new PedestrianView(new AmbientPedestrians(seed, roads, crowdDistrictsOf(world)), line);
   scene.scene.add(crowd.group);
   crowd.update(record, tick, x, y);
   // The parked cars, from the bays the chunk workers laid out.
@@ -272,6 +280,7 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   const standing = parked?.drawn ?? 0;
   const walking = crowd.drawn;
   traffic.dispose();
+  trams.dispose();
   crowd.dispose();
   parked?.dispose();
   scene.dispose();

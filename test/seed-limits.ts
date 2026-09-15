@@ -385,3 +385,9 @@ export const MIN_ZONE_PARCELS = 5;
 export const TRAFFIC_COUNT = SEED_COUNT > 20 ? 24 : 2;
 /** Metres of a tier a world must carry before the sweep expects traffic on it. */
 export const TRAFFIC_TIER_MIN = 1000;
+/**
+ * The share of the tram's level crossings that must take a light (spec section
+ * 13.2). The rest stand where a run is too short for a stop line or a highway
+ * meets the arterial on the flat, and the tram only halts and rings there.
+ */
+export const TRAM_LIT_SHARE = 0.85;

@@ -30,6 +30,8 @@ export const CRUISE = 0.9;
 /** Metres one queued vehicle takes up: a car and the gap behind it. */
 export const QUEUE_GAP = 7;
 
+/** Metres of a run the junction behind a queue may take: the back of the queue stops short of it. */
+export const QUEUE_CLEAR = 20;
 
 /** One closed route and how it is driven. */
 export interface Tour {
@@ -60,8 +62,8 @@ export interface Tour {
 /** Vehicles per metre of one lane of an edge, which is how long a queue grows. */
 export type Crowd = (edge: RoadEdge) => number;
 
-/** The steps of a tour while they are laid down. */
-class Steps {
+/** The steps of a tour while they are laid down. The tram (`tram-timing.ts`) lays its own down with it. */
+export class Steps {
   readonly leg: number[] = [];
   readonly from: number[] = [];
   readonly to: number[] = [];
@@ -176,7 +178,7 @@ function anchoredAt(
     const late = held ? SIGNAL_CYCLE - green - wait : 0;
     const pace = edge.length / driveTicks(edge);
     // No longer than the road, and short enough for its back to reach the line in half the green.
-    const queue = held ? Math.min(approach.stop, (green / 2) * pace, Math.floor(late * crowd(edge) * pace) * QUEUE_GAP) : 0;
+    const queue = held ? Math.min(Math.max(0, approach.stop - QUEUE_CLEAR), (green / 2) * pace, Math.floor(late * crowd(edge) * pace) * QUEUE_GAP) : 0;
     const halt = approach.stop - queue;
     steps.add(i, 0, halt, share(edge, halt));
     if (held) steps.add(i, halt, halt, arrive + wait - steps.tick);
@@ -199,7 +201,8 @@ function share(edge: RoadEdge, metres: number): number {
   return metres <= 0 ? 0 : Math.ceil((driveTicks(edge) * metres) / edge.length);
 }
 
-function finish(graph: RoadGraph, route: readonly number[], steps: Steps, sync: number): Tour {
+/** Pack the steps of a route into a {@link Tour}. */
+export function finish(graph: RoadGraph, route: readonly number[], steps: Steps, sync: number): Tour {
   const count = route.length;
   const tour: Tour = {
     edges: Int32Array.from(route),
