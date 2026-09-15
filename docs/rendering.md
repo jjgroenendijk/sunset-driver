@@ -98,7 +98,8 @@ are the design.
   drawn as one carriageway polygon fanned from the node, paved as its widest road. The ring comes
   from `junction-shape.ts`, which the carve levels as well. Its mouth vertices are the very sections
   the lofts end on, so the two meet without a seam whichever chunk built each. The far ring draws
-  neither junctions nor gaps, and only the pavement of its own tiers.
+  neither junctions nor gaps, and only the pavement of its own tiers. The piers and the tram track
+  go into the same tier batches; `docs/corridors.md` has them.
 - `pavement-mesh.ts` draws each pavement piece of the chunk in its tier's batch: a surface on
   `RoadCarve.surfaceAt` lifted by `vergeRise`, and a face down every edge that is not on the chunk
   boundary, which is the kerb where the edge meets a carriageway. The triangulation drops a vertex

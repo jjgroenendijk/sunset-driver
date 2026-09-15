@@ -135,6 +135,19 @@ export const TIERS: Record<RoadTier, TierSpec> = {
 };
 
 /**
+ * The tram's reserved lane down the middle of an arterial (spec sections 6.3,
+ * 13.2), in metres. Two tracks of standard gauge stand `trackSpacing` apart
+ * centre to centre. A tram car is 2.6 m wide (`src/sim/tram.ts`), so two of
+ * them passing need 3.2 + 2.6 = 5.8 m, and the lane keeps a 0.3 m margin each
+ * side of that. The lane is 6.4 m of the arterial's 18 m carriageway.
+ */
+export const TRAM_LANE = {
+  halfWidth: 3.2,
+  trackSpacing: 3.2,
+  gauge: 1.435,
+} as const;
+
+/**
  * How far the ground a road claims reaches each side of its centreline:
  * carriageway, verge and pavement (spec section 6.4).
  */

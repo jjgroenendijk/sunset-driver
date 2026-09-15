@@ -5,7 +5,8 @@
  * exist. An elevated corridor is the ground under a deck: the road stands off
  * it, so the strip is a parcel of its own — the under-structure of spec section
  * 6.3, where car parks, dealers' pitches and alley-grade access go — and the
- * pillars that carry the deck stand inside it and nowhere else. A tram corridor
+ * pillars that carry the deck stand inside it, off every road that passes under
+ * the deck (`piers.ts`). A tram corridor
  * is the reserved lane of spec section 13.2: a strip down the middle of an
  * arterial, from one stop to the next.
  *
@@ -32,9 +33,11 @@
 import { offsetSides, pointInRing } from '../core/geom.ts';
 import { clamp, direction, dist } from '../core/math.ts';
 import { compareNumbers } from '../core/sort.ts';
+import { ClaimIndex } from './corridor-claims.ts';
 import type { RoadEdge, RoadGraph, RoadNode } from './graph.ts';
 import { Heightfield } from './heightfield.ts';
-import { TIERS } from './tiers.ts';
+import { deckHalfWidth, deckRuns, overWater, pierFeet, pointAlong, polylineLength, RoadGround } from './piers.ts';
+import { TIERS, TRAM_LANE } from './tiers.ts';
 import type {
   Corridor,
   CorridorKind,
@@ -46,24 +49,10 @@ import type {
   WorldSkeleton,
 } from './types.ts';
 
-/** Metres of verge each side of a deck, so the strip is wider than the carriageway it carries. */
-const DECK_VERGE = 2;
-/** Half the width of the reserved lane: two tram tracks and the clearance between them. */
-export const TRAM_HALF = 3.2;
 /** Metres of a leg given up at each end, so the strips of two legs never meet at a stop. */
 const STOP_CLEARANCE = 8;
-/** Metres between the pillar bays under a deck. */
-const PILLAR_SPACING = 25;
-/** How many places across the strip a foot is tried at before it is given up on. */
-const PILLAR_TRIES = 4;
-/** How far a pillar foot stands from the centreline, as a fraction of the half-width. */
-const PILLAR_INSET = 0.5;
-/** Metres of ground two corridors keep between them. */
-const CLAIM_CLEARANCE = 0.5;
 /** The sharpest corner a strip is carried round. Past a right angle it is cut instead. */
 const MAX_BEND = Math.PI / 2;
-/** Metres between the samples that ask whether the ground under a deck is water. */
-const WET_SAMPLE = 4;
 /**
  * How far a district may stand from the arterial that serves it before it goes
  * without a stop, as a fraction of the world side. It is a little under the
@@ -115,6 +104,8 @@ class CorridorBuilder {
   private readonly graph: RoadGraph;
   private readonly hf: Heightfield;
   private readonly claims: ClaimIndex;
+  /** The ground the roads stand on, which no pillar foot may stand on. */
+  private readonly ground: RoadGround;
   private readonly corridors: Corridor[] = [];
   /** Which run of centreline each claimed quad belongs to; a run never blocks itself. */
   private nextRun = 0;
@@ -125,6 +116,7 @@ class CorridorBuilder {
     this.graph = graph;
     this.hf = new Heightfield(world.terrain);
     this.claims = new ClaimIndex(world.size, INDEX_CELL);
+    this.ground = new RoadGround(roads);
   }
 
   build(): CorridorDescription {
@@ -152,7 +144,7 @@ class CorridorBuilder {
       }
       // The lane gives up the ground at each stop, so two legs never meet there.
       const line = trimEnds(leg, STOP_CLEARANCE);
-      for (const corridor of this.claim('tram', line, TRAM_HALF, false)) corridors.push(corridor.id);
+      for (const corridor of this.claim('tram', line, TRAM_LANE.halfWidth, -1)) corridors.push(corridor.id);
     }
     return { route, edges: planned.edges, corridors, stops: planned.stops, crossings: planned.crossings, length };
   }
@@ -394,41 +386,16 @@ class CorridorBuilder {
    */
   private buildElevated(): void {
     for (const road of this.roads) {
-      const halfWidth = TIERS[road.tier].width / 2 + DECK_VERGE;
-      for (const run of this.deckRuns(road)) {
+      for (const run of deckRuns(road, (a, b) => this.overWater(a, b), false)) {
         const line = new Centreline();
         for (let i = run.from; i <= run.to + 1; i++) line.push(road.points[i] as Point, road.id);
-        this.claim('elevated', line, halfWidth, true);
+        this.claim('elevated', line, deckHalfWidth(road), road.id);
       }
     }
   }
 
-  /** Runs of neighbouring deck segments of one curve that stand over land. */
-  private deckRuns(road: RoadCurve): { from: number; to: number }[] {
-    const runs: { from: number; to: number }[] = [];
-    let open: { from: number; to: number } | undefined;
-    for (const at of road.bridges) {
-      const a = road.points[at] as Point | undefined;
-      const b = road.points[at + 1] as Point | undefined;
-      if (a === undefined || b === undefined || this.overWater(a, b)) {
-        open = undefined;
-        continue;
-      }
-      if (open !== undefined && open.to === at - 1) open.to = at;
-      else runs.push((open = { from: at, to: at }));
-    }
-    return runs;
-  }
-
-  /** True when any part of a span stands over water, so no land lies under it. */
   private overWater(a: Point, b: Point): boolean {
-    const sea = this.world.water.seaLevel;
-    const steps = Math.max(1, Math.ceil(dist(a.x, a.y, b.x, b.y) / WET_SAMPLE));
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      if (this.hf.sample(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t) < sea) return true;
-    }
-    return false;
+    return overWater(this.hf, this.world.water.seaLevel, a, b);
   }
 
   // ------------------------------------------------------------------ claims
@@ -437,11 +404,12 @@ class CorridorBuilder {
    * Claim the strip along a centreline. A line that turns back on itself is cut
    * at the turn first: a strip that folded over a corner would claim the same
    * ground twice, and the two halves of it then claim against each other like
-   * any other pair.
+   * any other pair. `deck` is the curve an elevated corridor carries, which
+   * stands its pillars; a tram corridor passes -1 and stands none.
    */
-  private claim(kind: CorridorKind, line: Centreline, halfWidth: number, pillars: boolean): Corridor[] {
+  private claim(kind: CorridorKind, line: Centreline, halfWidth: number, deck: number): Corridor[] {
     const made: Corridor[] = [];
-    for (const part of unfold(line)) made.push(...this.claimStraightaway(kind, part, halfWidth, pillars));
+    for (const part of unfold(line)) made.push(...this.claimStraightaway(kind, part, halfWidth, deck));
     return made;
   }
 
@@ -456,7 +424,7 @@ class CorridorBuilder {
    * the middle of an arterial, and an arterial crosses a strait on a deck. A
    * deck run is cut on the same rule before it is claimed at all.
    */
-  private claimStraightaway(kind: CorridorKind, line: Centreline, halfWidth: number, pillars: boolean): Corridor[] {
+  private claimStraightaway(kind: CorridorKind, line: Centreline, halfWidth: number, deck: number): Corridor[] {
     const points = line.points;
     if (points.length < 2) return [];
     const { left, right } = offsetSides(points, halfWidth);
@@ -494,12 +462,21 @@ class CorridorBuilder {
         points: own,
         halfWidth,
         polygon,
-        pillars: pillars ? pillarFeet(own, halfWidth, polygon) : [],
+        pillars: deck < 0 ? [] : this.pillarsOf(own, halfWidth, polygon, deck),
       };
       this.corridors.push(corridor);
       made.push(corridor);
     }
     return made;
+  }
+
+  /**
+   * The feet of the pillars under a deck. A foot stands on the ground the
+   * corridor claims and nowhere else — a short claim cut out of a longer one
+   * can leave a bay outside it — and never on a road that passes under the deck.
+   */
+  private pillarsOf(points: readonly Point[], halfWidth: number, polygon: readonly Point[], deck: number): Point[] {
+    return pierFeet(points, halfWidth, (foot) => pointInRing(foot, polygon) && !this.ground.covers(foot, deck));
   }
 }
 
@@ -542,67 +519,6 @@ function bend(points: readonly Point[], at: number): number {
   return Math.acos(clamp(back.x * ahead.x + back.y * ahead.y, -1, 1));
 }
 
-/**
- * The feet of the pillars under a deck: a pair across the centreline at every
- * bay, spaced evenly so neither abutment carries a pillar of its own.
- *
- * A foot stands on the ground the corridor claims and nowhere else, so one that
- * falls outside the strip — which a short claim cut out of a longer one can do —
- * is drawn in towards the centreline until it is inside, and dropped where even
- * the centreline is not.
- */
-function pillarFeet(points: readonly Point[], halfWidth: number, ground: readonly Point[]): Point[] {
-  const length = polylineLength(points);
-  const bays = Math.max(2, Math.round(length / PILLAR_SPACING));
-  const feet: Point[] = [];
-  for (let i = 1; i < bays; i++) {
-    const at = pointAlong(points, (length * i) / bays);
-    for (const side of [1, -1]) {
-      const foot = standing(at, side * halfWidth * PILLAR_INSET, ground);
-      if (foot !== undefined) feet.push(foot);
-    }
-  }
-  return feet;
-}
-
-/**
- * A pillar foot at an offset across the line, brought in towards the line until
- * it stands on the corridor's own ground. Undefined where nothing on the line
- * across does.
- */
-function standing(
-  at: { x: number; y: number; dx: number; dy: number },
-  offset: number,
-  ground: readonly Point[],
-): Point | undefined {
-  for (let step = 0; step < PILLAR_TRIES; step++) {
-    const out = offset * (1 - step / PILLAR_TRIES);
-    const foot = { x: at.x - at.dy * out, y: at.y + at.dx * out };
-    if (pointInRing(foot, ground)) return foot;
-  }
-  return undefined;
-}
-
-/** The point a given distance along a polyline, and the way the line runs there. */
-function pointAlong(points: readonly Point[], metres: number): { x: number; y: number; dx: number; dy: number } {
-  let run = 0;
-  for (let i = 0; i + 1 < points.length; i++) {
-    const a = points[i] as Point;
-    const b = points[i + 1] as Point;
-    const seg = dist(a.x, a.y, b.x, b.y);
-    if (seg <= 0) continue;
-    if (run + seg >= metres) {
-      const t = (metres - run) / seg;
-      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, dx: (b.x - a.x) / seg, dy: (b.y - a.y) / seg };
-    }
-    run += seg;
-  }
-  const last = points[points.length - 1] as Point;
-  const before = points[points.length - 2] as Point;
-  const d = direction(before, last);
-  return { x: last.x, y: last.y, dx: d.x, dy: d.y };
-}
-
 /** A centreline with both ends pulled back by the given distance, curve by curve. */
 function trimEnds(line: Centreline, metres: number): Centreline {
   const out = new Centreline();
@@ -622,120 +538,4 @@ function trimEnds(line: Centreline, metres: number): Centreline {
   const tail = pointAlong(line.points, length - metres);
   out.push({ x: tail.x, y: tail.y }, line.curves[line.curves.length - 1] as number);
   return out;
-}
-
-function polylineLength(points: readonly Point[]): number {
-  let total = 0;
-  for (let i = 0; i + 1 < points.length; i++) {
-    const a = points[i] as Point;
-    const b = points[i + 1] as Point;
-    total += dist(a.x, a.y, b.x, b.y);
-  }
-  return total;
-}
-
-/** One claimed piece of ground: a convex quad, and the run of centreline it came from. */
-interface Claim {
-  run: number;
-  quad: Point[];
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-}
-
-/**
- * The ground the corridors have claimed, in a uniform grid of buckets, so
- * "is this strip free?" costs a handful of comparisons rather than a walk over
- * everything claimed so far.
- */
-class ClaimIndex {
-  private readonly cell: number;
-  private readonly n: number;
-  private readonly origin: number;
-  private readonly buckets: Claim[][] = [];
-
-  constructor(size: number, cell: number) {
-    this.cell = cell;
-    this.origin = -size / 2 - 2 * cell;
-    this.n = Math.ceil((size + 4 * cell) / cell) + 1;
-    for (let i = 0; i < this.n * this.n; i++) this.buckets.push([]);
-  }
-
-  private column(v: number): number {
-    return clamp(Math.floor((v - this.origin) / this.cell), 0, this.n - 1);
-  }
-
-  add(run: number, quad: Point[]): void {
-    const claim = { run, quad, ...boundsOf(quad) };
-    for (let iy = this.column(claim.minY); iy <= this.column(claim.maxY); iy++) {
-      for (let ix = this.column(claim.minX); ix <= this.column(claim.maxX); ix++) {
-        (this.buckets[iy * this.n + ix] as Claim[]).push(claim);
-      }
-    }
-  }
-
-  /** True when a quad stands within {@link CLAIM_CLEARANCE} of ground another run holds. */
-  taken(run: number, quad: Point[]): boolean {
-    const box = boundsOf(quad);
-    for (let iy = this.column(box.minY); iy <= this.column(box.maxY); iy++) {
-      for (let ix = this.column(box.minX); ix <= this.column(box.maxX); ix++) {
-        for (const claim of this.buckets[iy * this.n + ix] as Claim[]) {
-          if (claim.run === run) continue;
-          if (claim.minX - box.maxX >= CLAIM_CLEARANCE || box.minX - claim.maxX >= CLAIM_CLEARANCE) continue;
-          if (claim.minY - box.maxY >= CLAIM_CLEARANCE || box.minY - claim.maxY >= CLAIM_CLEARANCE) continue;
-          if (near(quad, claim.quad, CLAIM_CLEARANCE)) return true;
-        }
-      }
-    }
-    return false;
-  }
-}
-
-function boundsOf(quad: readonly Point[]): { minX: number; minY: number; maxX: number; maxY: number } {
-  const box = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
-  for (const p of quad) {
-    if (p.x < box.minX) box.minX = p.x;
-    if (p.y < box.minY) box.minY = p.y;
-    if (p.x > box.maxX) box.maxX = p.x;
-    if (p.y > box.maxY) box.maxY = p.y;
-  }
-  return box;
-}
-
-/**
- * True when two convex rings stand less than `gap` metres apart. Separating
- * axes: where the two shapes cast disjoint shadows on the normal of any of
- * their edges, and the shadows stand `gap` apart, nothing of one is that close
- * to the other.
- */
-function near(a: readonly Point[], b: readonly Point[], gap: number): boolean {
-  return !apart(a, b, gap) && !apart(b, a, gap);
-}
-
-function apart(a: readonly Point[], b: readonly Point[], gap: number): boolean {
-  for (let i = 0; i < a.length; i++) {
-    const p = a[i] as Point;
-    const q = a[(i + 1) % a.length] as Point;
-    const len = dist(p.x, p.y, q.x, q.y);
-    if (len < EPSILON) continue;
-    const nx = -(q.y - p.y) / len;
-    const ny = (q.x - p.x) / len;
-    const sa = span(a, nx, ny);
-    const sb = span(b, nx, ny);
-    if (sb.lo - sa.hi >= gap || sa.lo - sb.hi >= gap) return true;
-  }
-  return false;
-}
-
-/** The shadow a ring casts on an axis. */
-function span(ring: readonly Point[], nx: number, ny: number): { lo: number; hi: number } {
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (const p of ring) {
-    const v = p.x * nx + p.y * ny;
-    if (v < lo) lo = v;
-    if (v > hi) hi = v;
-  }
-  return { lo, hi };
 }

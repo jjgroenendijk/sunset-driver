@@ -96,6 +96,9 @@ function chunkOf(buildings: Building[]): WorldChunk {
     parcels: [],
     buildings,
     plants: [],
+    piers: [],
+    tram: [],
+    tramCrossings: [],
   };
 }
 

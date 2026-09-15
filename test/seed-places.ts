@@ -212,9 +212,12 @@ export function placeChecks(): void {
             // wherever the beach has any width at all.
             const at = { x: (p.x + back.x) / 2, y: (p.y + back.y) / 2 };
             if (pointInRegions(at, footprint.regions)) continue;
-            free++;
+            // Sand under a deck is the deck's under-structure, as road ground is the road's.
             const owners = index.at(at);
-            if (owners.length === 1 && (parcels[owners[0] as number] as Parcel).owner === 'beach') owned++;
+            const owner = owners.length === 1 ? (parcels[owners[0] as number] as Parcel).owner : undefined;
+            if (owner === 'under-structure') continue;
+            free++;
+            if (owner === 'beach') owned++;
           }
           if (owned < free * MIN_SAND_OWNED) fault(`leaves ${free - owned} of ${free} free places on its beach unclaimed`);
           if (owned < MIN_SAND_PLACES) fault(`has only ${owned} places of beach parcel on its longest beach`);

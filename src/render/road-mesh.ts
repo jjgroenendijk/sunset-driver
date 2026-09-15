@@ -32,12 +32,15 @@ import type { ChunkRoad, WorldChunk } from '../world/chunks.ts';
 import type { RoadFrame, RoadRibbons } from '../world/ribbon.ts';
 import { piecesOf, trimRun, type Piece } from '../world/road-pieces.ts';
 import { PARAPET_HEIGHT } from '../world/decks.ts';
-import { footprintHalfWidth, TIERS } from '../world/tiers.ts';
+import { footprintHalfWidth, TIERS, TRAM_LANE } from '../world/tiers.ts';
 import type { Point, RoadTier } from '../world/types.ts';
+import { buildChunkCorridors } from './corridor-mesh.ts';
 import { junctionSurfaces, pavesAs, type HeightAt } from './junction-mesh.ts';
 import { pavementSurface, type SurfaceAt } from './pavement-mesh.ts';
 import {
+  beam,
   between,
+  DECK_DEPTH,
   isMarked,
   markingsOf,
   merge,
@@ -103,6 +106,8 @@ export interface TierGeometry {
   junctions: BufferGeometry[];
   /** The pieces of pavement and verge drawn in this tier's material. */
   pavement: BufferGeometry[];
+  /** The piers under this tier's decks, and the tram track down its roads (`corridor-mesh.ts`). */
+  corridors: BufferGeometry[];
   /** Marking segment ends, six numbers each. Empty where the tier is unmarked. */
   markings: Float32Array;
   /** The colour of each of those ends, six numbers each. */
@@ -113,14 +118,15 @@ export interface TierGeometry {
 export function partsOf(tier: TierGeometry): BufferGeometry[] {
   const out: BufferGeometry[] = [];
   for (const run of tier.runs) out.push(...run.surfaces, ...run.joints, ...run.structures);
-  out.push(...tier.junctions, ...tier.pavement);
+  out.push(...tier.junctions, ...tier.pavement, ...tier.corridors);
   return out;
 }
 
 /**
  * Draw calls one chunk spends on its roads: a batch of geometry in each of
  * `cells` cells and a batch of markings for each tier that runs through it. A
- * tier with no run, no junction and no pavement in the chunk costs nothing.
+ * tier with no run, no junction, no pavement, no pier and no tram track in the
+ * chunk costs nothing.
  * `chunk-cost.ts` adds this to what the rest of a chunk costs.
  */
 export function roadDrawCalls(chunk: WorldChunk, cells = 1): number {
@@ -129,7 +135,10 @@ export function roadDrawCalls(chunk: WorldChunk, cells = 1): number {
     const drawn =
       chunk.roads.some((run) => run.tier === tier) ||
       chunk.junctions.some((junction) => pavesAs(junction, tier)) ||
-      chunk.pavement.some((piece) => piece.tier === tier);
+      chunk.pavement.some((piece) => piece.tier === tier) ||
+      chunk.piers.some((pier) => pier.tier === tier) ||
+      chunk.tram.some((run) => run.tier === tier) ||
+      chunk.tramCrossings.some((crossing) => crossing.tier === tier);
     if (!drawn) continue;
     calls += cells + (isMarked(tier) ? 1 : 0);
   }
@@ -137,13 +146,11 @@ export function roadDrawCalls(chunk: WorldChunk, cells = 1): number {
 }
 
 /**
- * Metres of structure under a bridge deck, and how thick the parapet that rims
- * it is. The parapet stands {@link PARAPET_HEIGHT} high, which `decks.ts` owns:
- * the physics puts a wall of that height on the deck, so the wall the car is
- * held by and the wall the player sees are one.
+ * How thick the parapet that rims a deck is. The parapet stands
+ * {@link PARAPET_HEIGHT} high, which `decks.ts` owns: the physics puts a wall of
+ * that height on the deck, so the wall the car is held by and the wall the
+ * player sees are one.
  */
-const DECK_DEPTH = 1.1;
-
 const PARAPET_WIDTH = 0.4;
 
 /** Metres of headroom in a tunnel bore, and the portal that frames its mouth. */
@@ -177,13 +184,24 @@ export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons, surface
     if (list === undefined) pavement.set(piece.tier, [geometry]);
     else list.push(geometry);
   }
+  const corridors = new Map<RoadTier, BufferGeometry[]>();
+  for (const part of buildChunkCorridors(chunk, ribbons, surfaceAt)) {
+    const list = corridors.get(part.tier);
+    if (list === undefined) corridors.set(part.tier, [part.geometry]);
+    else list.push(part.geometry);
+  }
+  // The curve segments the tram runs down. No paint is laid on its lane there,
+  // because the lane is the tram's and a line would show between the rails.
+  const tracked = new Set<string>();
+  for (const run of chunk.tram) for (let k = 0; k + 1 < run.points.length; k++) tracked.add(`${run.curve}:${run.from + k}`);
   for (const tier of TIER_ORDER) {
     const runs = chunk.roads.filter((run) => run.tier === tier).flatMap((run) => trimRun(run, ribbons));
     const paved = junctions.get(tier) ?? [];
     // Each piece of pavement is a part of its own, so it goes into the cell it
     // stands in rather than stretching one part over the whole chunk.
     const kerbside = pavement.get(tier) ?? [];
-    if (runs.length === 0 && paved.length === 0 && kerbside.length === 0) continue;
+    const carried = corridors.get(tier) ?? [];
+    if (runs.length === 0 && paved.length === 0 && kerbside.length === 0 && carried.length === 0) continue;
     const ground = roadSection(tier);
     const raised = structureSection(tier);
     const markings = markingsOf(tier);
@@ -204,8 +222,12 @@ export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons, surface
         joints: joints.length > 0 ? [merge(joints)] : [],
         structures: structuresOf(run, pieces, ribbons, tier, raised),
       });
+      const onTrack = (segment: number): boolean => tracked.has(`${run.curve}:${run.from + segment}`);
       for (const piece of pieces) {
-        for (const marking of markings) paintMarking(piece, marking, paint, tints);
+        for (const marking of markings) {
+          const inLane = Math.abs(marking.across) < TRAM_LANE.halfWidth;
+          paintMarking(piece, marking, paint, tints, (i) => inLane && onTrack(piece.from + i));
+        }
       }
     }
     out.push({
@@ -213,6 +235,7 @@ export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons, surface
       runs: built,
       junctions: paved,
       pavement: kerbside,
+      corridors: carried,
       markings: new Float32Array(paint),
       markingTints: new Float32Array(tints),
     });
@@ -441,34 +464,6 @@ function stretchesOf(indices: readonly number[]): { from: number; to: number }[]
 }
 
 /**
- * A rectangular beam swept along a stretch of a run: the deck under a bridge,
- * or the parapet along its edge. Closed and capped, so it is solid from every
- * side the top-down camera can reach.
- */
-function beam(
-  points: readonly Point[],
-  frames: readonly RoadFrame[],
-  low: number,
-  high: number,
-  bottom: number,
-  top: number,
-): BufferGeometry {
-  // Wound so the loft faces outward: seen from the far end, the ring runs
-  // clockwise from the top of the right side.
-  const ring: SectionPoint[] = [
-    { across: high, rise: top },
-    { across: high, rise: bottom },
-    { across: low, rise: bottom },
-    { across: low, rise: top },
-  ];
-  const sections = points.map((point, i) =>
-    ring.map((s) => place(point, frames[i] as RoadFrame, s.across, s.rise)),
-  );
-  const geometry = new LoftGeometry(sections, { closed: true, capStart: true, capEnd: true });
-  return tag(geometry, new Float32Array(geometry.getAttribute('position').count), SURFACE_STRUCTURE);
-}
-
-/**
  * The portal framing one mouth of a bore: two jambs and a lintel around the
  * opening, standing out of the hillside the road disappears into. `out` is -1
  * where the road enters the bore and 1 where it leaves it, so the portal always
@@ -501,9 +496,9 @@ function portal(piece: Piece, at: number, tier: RoadTier, out: number): BufferGe
  * Lay one painted line along a piece of a run, six numbers per segment of paint.
  * The dash pattern is measured from the start of the whole curve rather than of
  * the piece, so the dashes of a road that crosses a chunk boundary carry
- * straight on.
+ * straight on. A segment of the piece `bare` names is left unpainted.
  */
-function paintMarking(piece: Piece, marking: Marking, out: number[], tints: number[]): void {
+function paintMarking(piece: Piece, marking: Marking, out: number[], tints: number[], bare: (segment: number) => boolean): void {
   const period = marking.dash + marking.gap;
   const paint = (a: Vector3, b: Vector3): void => {
     out.push(a.x, a.y, a.z, b.x, b.y, b.z);
@@ -511,6 +506,7 @@ function paintMarking(piece: Piece, marking: Marking, out: number[], tints: numb
     tints.push(r, g, blue, r, g, blue);
   };
   for (let i = 0; i + 1 < piece.points.length; i++) {
+    if (bare(i)) continue;
     const fa = piece.frames[i] as RoadFrame;
     const fb = piece.frames[i + 1] as RoadFrame;
     const from = fa.distance;
