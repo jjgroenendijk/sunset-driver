@@ -7,6 +7,7 @@ import { fateOf, respawn, respawnPlace, type RespawnRecord } from './respawn.ts'
 import type { TheftState } from './theft.ts';
 import { createVehicleState, DEFAULT_CLASS, specOf, type VehicleState } from './vehicle.ts';
 import { stepPickups, type PickupState } from './pickup.ts';
+import { createPedestrianState, type PedestrianState } from './pedestrians.ts';
 import { createTrafficState, type TrafficState } from './traffic.ts';
 import { createLoadout, type LoadoutState, type ProjectileState } from './weapon.ts';
 
@@ -99,6 +100,11 @@ export interface SimState {
    * not in the record at all.
    */
   traffic: TrafficState;
+  /**
+   * The pedestrians who have left their loops (spec sections 5.3, 20.1). The
+   * rest of the crowd is a function of the seed and the tick.
+   */
+  pedestrians: PedestrianState;
 }
 
 /** Dollars a new session starts with (spec section 16). */
@@ -131,6 +137,7 @@ export function createSimState(
     arrested: false,
     respawn: null,
     traffic: createTrafficState(),
+    pedestrians: createPedestrianState(),
   };
 }
 
