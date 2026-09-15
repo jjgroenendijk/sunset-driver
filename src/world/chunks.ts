@@ -20,10 +20,11 @@
 import { regionArea, regionOf, split, type Point, type Region } from '../core/geom.ts';
 import { buildBuildings, lotMiddle, type Building, type BuildingMap } from './buildings.ts';
 import { buildCarve, type RoadCarve } from './carve.ts';
-import { buildFootprint, type RoadFootprint } from './footprint.ts';
+import { apronOf, buildFootprint, type RoadFootprint } from './footprint.ts';
 import { buildRoadGraph, type RoadGraph } from './graph.ts';
 import { buildJunctions, type Junction, type JunctionMap, type RoadGap } from './junctions.ts';
 import { buildParcels, type Parcel, type ParcelMap, type ParcelOwner } from './parcels.ts';
+import { PAVEMENT_WINDOW, pavementIn, type ChunkPavement, type PavementApron } from './pavement.ts';
 import { buildTensorField } from './tensor.ts';
 import { CHUNK_TERRAIN_CELL, TERRAIN_CELL } from './terrain.ts';
 import type { HeightfieldData, RoadCurve, RoadTier, WorldDescription, Zone } from './types.ts';
@@ -124,6 +125,11 @@ export interface WorldChunk {
   /** The parcel pieces inside the chunk, in parcel order. */
   parcels: ChunkParcel[];
   /**
+   * The pavement and the verges inside the chunk (spec section 6.4): the ground
+   * the roads claim less the carriageway, cut by tier, widest tier first.
+   */
+  pavement: ChunkPavement[];
+  /**
    * The buildings of the chunk, in building order. A building is one thing and
    * is never cut in two: the chunk its lot's middle stands in owns the whole of
    * it, so a lot on a boundary reaches a little into its neighbour rather than
@@ -200,6 +206,10 @@ export class ChunkSource {
   /** The box around each road curve and each parcel, so a chunk tests a handful of them closely. */
   private readonly roadBoxes: Box[];
   private readonly parcelBoxes: Box[];
+  /** The box around each junction's outline, in junction order. */
+  private readonly junctionBoxes: Box[];
+  /** The apron over each junction of three roads or more, and the box around each. */
+  private readonly aprons: { apron: PavementApron; box: Box }[] = [];
   /**
    * The buildings of each chunk, filed under the chunk their lot's middle
    * stands in. A building belongs to one chunk and is never cut, so this is
@@ -212,6 +222,11 @@ export class ChunkSource {
     this.layers = layers;
     this.roadBoxes = world.roads.map((road) => boxOf(road.points));
     this.parcelBoxes = layers.parcels.parcels.map((parcel) => boxOf(parcel.region.outer));
+    this.junctionBoxes = layers.junctions.junctions.map((junction) => boxOf(junction.outline));
+    for (const node of layers.graph.nodes) {
+      const apron = apronOf(layers.graph, node);
+      if (apron !== undefined) this.aprons.push({ apron, box: boxOf(apron.ring) });
+    }
     for (const building of layers.buildings.buildings) {
       const middle = lotMiddle(building.lot);
       const at = chunkAt(middle.x, middle.y);
@@ -239,6 +254,7 @@ export class ChunkSource {
       roads: this.roadsIn(bounds),
       junctions: this.junctionsIn(bounds),
       parcels,
+      pavement: this.pavementOf(bounds),
       buildings: [...(this.buildingsByChunk.get(`${cx}:${cy}`) ?? [])],
       plants: this.layers.vegetation.plantsIn(bounds, parcels),
     };
@@ -285,6 +301,22 @@ export class ChunkSource {
       (junction) =>
         junction.x >= bounds.minX && junction.x < bounds.maxX && junction.y >= bounds.minY && junction.y < bounds.maxY,
     );
+  }
+
+  /**
+   * The pavement of a chunk, cut from every road, junction and apron that
+   * reaches a window {@link PAVEMENT_WINDOW} wider than the chunk each way.
+   */
+  private pavementOf(bounds: ChunkBounds): ChunkPavement[] {
+    const window: ChunkBounds = {
+      minX: bounds.minX - PAVEMENT_WINDOW,
+      minY: bounds.minY - PAVEMENT_WINDOW,
+      maxX: bounds.maxX + PAVEMENT_WINDOW,
+      maxY: bounds.maxY + PAVEMENT_WINDOW,
+    };
+    const junctions = this.layers.junctions.junctions.filter((_, j) => boxesMeet(this.junctionBoxes[j] as Box, window));
+    const aprons = this.aprons.filter((entry) => boxesMeet(entry.box, window)).map((entry) => entry.apron);
+    return pavementIn(bounds, { roads: this.roadsIn(window), junctions, aprons }, this.layers.carve.ribbons);
   }
 
   /** The parcel pieces inside a chunk, in parcel order. */

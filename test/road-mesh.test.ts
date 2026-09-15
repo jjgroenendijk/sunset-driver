@@ -6,6 +6,7 @@ import {
   partsOf,
   roadDrawCalls,
   roadSection,
+  structureSection,
   SURFACE_STRUCTURE,
   TIER_ORDER,
   type SectionPoint,
@@ -84,7 +85,7 @@ const world = gridWorld(gridRoads());
 const layers = buildLayers(world);
 const source = new ChunkSource(world, layers);
 const ribbons = new RoadRibbons(world.terrain, world.roads);
-const heightAt = (x: number, y: number): number => layers.carve.heightAt(x, y);
+const heightAt = (x: number, y: number, tier: RoadTier): number => layers.carve.surfaceAt(x, y, tier);
 
 /** Every vertex of every part of one tier, as triples. */
 function vertices(tier: TierGeometry): { x: number; y: number; z: number }[] {
@@ -100,10 +101,9 @@ function vertices(tier: TierGeometry): { x: number; y: number; z: number }[] {
 
 /** The vertices on one line of constant x, as a sorted list of strings. */
 function onPlane(tier: TierGeometry, x: number): string[] {
-  return vertices(tier)
-    .filter((p) => Math.abs(p.x - x) < TOLERANCE)
-    .map((p) => `${p.y}:${p.z}`)
-    .sort();
+  // Each place once: how many faces of a pavement's edge meet at a place on the
+  // boundary depends on the side, and the seam only asks where they stand.
+  return [...new Set(vertices(tier).filter((p) => Math.abs(p.x - x) < TOLERANCE).map((p) => `${p.y}:${p.z}`))].sort();
 }
 
 /** True of a deck, a parapet or a portal: everything that is not a road surface. */
@@ -123,9 +123,20 @@ function streetOf(chunk: TierGeometry[]): TierGeometry {
 }
 
 describe('road cross section', () => {
-  it('spans exactly the ground the tier claims', () => {
+  it('draws the carriageway alone on the ground, from kerb to kerb', () => {
+    // The pavement and the verge are cut out of the blocks (issue #266).
     for (const tier of TIER_ORDER) {
       const section = roadSection(tier);
+      const half = TIERS[tier].width / 2;
+      expect(section.map((point) => Math.abs(point.across))).toEqual(section.map(() => half));
+      expect((section[0] as SectionPoint).rise).toBeLessThan(0);
+      expect((section[section.length - 1] as SectionPoint).rise).toBeLessThan(0);
+    }
+  });
+
+  it('spans exactly the ground the tier claims on a structure', () => {
+    for (const tier of TIER_ORDER) {
+      const section = structureSection(tier);
       const half = footprintHalfWidth(tier);
       expect((section[0] as SectionPoint).across).toBeCloseTo(-half, 9);
       expect((section[section.length - 1] as SectionPoint).across).toBeCloseTo(half, 9);
@@ -159,12 +170,12 @@ describe('road cross section', () => {
 
   it('raises a pavement over the carriageway and lays a verge beside one without', () => {
     // A street has a pavement, so its outer edge stands a kerb above the road.
-    const street = roadSection('street');
+    const street = structureSection('street');
     expect((street[1] as SectionPoint).rise).toBeGreaterThan((street[2] as SectionPoint).rise * 0 + 0.1);
     // A highway has none, so its verge runs out level with the carriageway.
     // It stands over the bench rather than on it, because a surface at exactly
     // the height of the ground is one the ground shows through.
-    const highway = roadSection('highway');
+    const highway = structureSection('highway');
     expect((highway[1] as SectionPoint).rise).toBeGreaterThan(0);
     expect((highway[1] as SectionPoint).rise).toBe((highway[2] as SectionPoint).rise);
   });
@@ -265,7 +276,7 @@ describe('bridges and tunnels', () => {
   spanned.tunnels = [2];
   const spannedWorld = gridWorld([spanned]);
   const spannedSource = new ChunkSource(spannedWorld, buildLayers(spannedWorld));
-  const spannedHeightAt = (x: number, y: number): number => spannedSource.layers.carve.heightAt(x, y);
+  const spannedHeightAt = (x: number, y: number, tier: RoadTier): number => spannedSource.layers.carve.surfaceAt(x, y, tier);
   const spannedRibbons = new RoadRibbons(spannedWorld.terrain, spannedWorld.roads);
 
   it('knows which segments stand off the ground', () => {
@@ -278,8 +289,9 @@ describe('bridges and tunnels', () => {
   it('hangs a deck with a parapet each side under the bridged stretch', () => {
     // Chunk (-1, 0) covers x in [-250, 0), which is the whole deck.
     const street = streetOf(buildChunkRoads(spannedSource.chunk(-1, 0), spannedRibbons, spannedHeightAt));
-    // The surface of the run, then the deck and its two parapets.
-    expect(partsOf(street)).toHaveLength(4);
+    // The surface of the run, cut where it leaves the ground onto the deck
+    // (the deck runs on past the chunk), then the deck and its two parapets.
+    expect(street.runs.flatMap((run) => run.surfaces)).toHaveLength(2);
     expect(structuresOf(street)).toHaveLength(3);
     const bed = spannedRibbons.frameAt(0, 1, -100, 0).height;
     const under = vertices(street).filter((p) => Math.abs(p.x + 100) < TOLERANCE && p.y < bed - 1);
@@ -289,7 +301,8 @@ describe('bridges and tunnels', () => {
   it('frames a bore at both of its mouths and nowhere else', () => {
     // The bore runs from x = 0 to x = 100, so both mouths fall in chunk (0, 0).
     const here = streetOf(buildChunkRoads(spannedSource.chunk(0, 0), spannedRibbons, spannedHeightAt));
-    expect(partsOf(here)).toHaveLength(3);
+    // The bore from the boundary, then the road on the ground past its far mouth.
+    expect(here.runs.flatMap((run) => run.surfaces)).toHaveLength(2);
     expect(structuresOf(here)).toHaveLength(2);
     const bed = spannedRibbons.frameAt(0, 2, 50, 0).height;
     // A portal stands well clear of the road it frames.
@@ -310,7 +323,7 @@ describe('a turn too sharp to mitre', () => {
   const bentWorld = gridWorld([bent]);
   const bentSource = new ChunkSource(bentWorld, buildLayers(bentWorld));
   const bentRibbons = new RoadRibbons(bentWorld.terrain, bentWorld.roads);
-  const bentHeightAt = (x: number, y: number): number => bentSource.layers.carve.heightAt(x, y);
+  const bentHeightAt = (x: number, y: number, tier: RoadTier): number => bentSource.layers.carve.surfaceAt(x, y, tier);
   const street = streetOf(buildChunkRoads(bentSource.chunk(0, 0), bentRibbons, bentHeightAt));
   const run = street.runs[0] as { surfaces: BufferGeometry[]; joints: BufferGeometry[] };
 

@@ -258,6 +258,12 @@ export const SURFACE_ABOVE = 0.05;
  */
 export const SURFACE_STRIDE = SEED_COUNT > 20 ? 1 : 4;
 /**
+ * Metres a place of the pavement may stand inside a carriageway before it lies
+ * over it (issue #266). The pavement is cut on the millimetre grid, and the
+ * carriageway the sweep asks is the roads' own, so this is rounding.
+ */
+export const PAVEMENT_SLACK = 0.01;
+/**
  * Where in the spread of those places the levelness is read, and what it has to
  * come to. The median says nothing — most roads run over gentle ground, which
  * was near enough level already — so this reads the tail, where the carve does

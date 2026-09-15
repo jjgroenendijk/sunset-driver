@@ -137,8 +137,15 @@ export class RoadCarve {
    * road before any road that merely reaches it.
    */
   private readonly claimed: number[] = [];
+  /**
+   * The frames of the roads over the beds this carve cuts to, so a caller that
+   * lofts or cuts a surface on the same beds does not build them again.
+   */
+  readonly ribbons: RoadRibbons;
   /** The curve each segment belongs to, so a caller can ask who carved the ground. */
   private readonly curve: number[] = [];
+  /** The tier of the road each segment belongs to. */
+  private readonly tier: RoadTier[] = [];
   /**
    * How far past its ends a stretch carries its grade, as a share of it: without
    * limit where the road leaves the ground there — the end of a curve, a deck or
@@ -172,6 +179,7 @@ export class RoadCarve {
     const hf = new Heightfield(terrain);
     const beds = new RoadBeds(terrain, roads, junctions);
     this.hf = hf;
+    this.ribbons = new RoadRibbons(beds, roads);
     // The index covers the map with a margin, so a road beside the edge is filed
     // rather than folded onto the last column.
     this.originX = hf.originX - INDEX_CELL;
@@ -182,7 +190,7 @@ export class RoadCarve {
       this.junctionBuckets.push([]);
     }
     if (junctions !== undefined) {
-      const ribbons = new RoadRibbons(beds, roads);
+      const ribbons = this.ribbons;
       for (let j = 0; j < junctions.junctions.length; j++) {
         const junction = junctions.junctions[j] as JunctionMap['junctions'][number];
         const plane = beds.planes[j] as JunctionPlane;
@@ -238,6 +246,7 @@ export class RoadCarve {
           this.claimed.push(claimed);
           this.reach.push(reach);
           this.curve.push(road.id);
+          this.tier.push(road.tier);
           this.before.push(k === 0 && standing[i - 1] !== 1 ? -Infinity : 0);
           this.after.push(k === knots.length - 2 && standing[i + 1] !== 1 ? Infinity : 1);
           this.file(at, Math.min(ax, ax + dx), Math.min(ay, ay + dy), Math.max(ax, ax + dx), Math.max(ay, ay + dy), reach);
@@ -266,6 +275,55 @@ export class RoadCarve {
     if (this.benched) return this.height;
     const bed = natural + clamp(this.height - natural, -CARVE_CUT, CARVE_FILL);
     return lerp(natural, bed, this.weight);
+  }
+
+  /**
+   * The height of the surface drawn at a place beside a road: the plane of a
+   * junction whose cover holds it, the lowest where several do, and otherwise
+   * the bed of the nearest stretch of road whose bench holds it, carried across
+   * to the place as the road tilts and on past an end as the carve carries it.
+   * Given a tier, a stretch of that tier is nearer than any other. Where no road
+   * reaches the place it is the carved ground.
+   *
+   * The pavement stands on this (`pavement-mesh.ts`), asking with its own tier.
+   * The ground takes the lowest bed that claims a place, and a pavement laid on
+   * that would sink below the kerb of the road it runs along, down to a street
+   * that ends beside it on lower ground.
+   */
+  surfaceAt(x: number, y: number, tier?: RoadTier): number {
+    const at = this.row(y) * this.columns + this.column(x);
+    let plane = Infinity;
+    for (const j of this.junctionBuckets[at] ?? []) {
+      const junction = this.junctions[j] as (typeof this.junctions)[number];
+      if (junction.cover.distance(x, y, 1) === 0) plane = Math.min(plane, planeHeight(junction.plane, x, y));
+    }
+    if (plane < Infinity) return plane;
+    let nearest = Infinity;
+    let own = false;
+    let surface: number | undefined;
+    for (const i of this.buckets[at] ?? []) {
+      const dx = x - (this.ax[i] as number);
+      const dy = y - (this.ay[i] as number);
+      const vx = this.vx[i] as number;
+      const vy = this.vy[i] as number;
+      const along = (dx * vx + dy * vy) * (this.inv[i] as number);
+      const t = clamp(along, 0, 1);
+      const distance = Math.hypot(dx - vx * t, dy - vy * t);
+      if (distance > (this.half[i] as number)) continue;
+      const mine = this.tier[i] === tier;
+      if ((own && !mine) || (own === mine && distance >= nearest)) continue;
+      own = mine;
+      nearest = distance;
+      const grade = clamp(along, this.before[i] as number, this.after[i] as number);
+      surface = surfaceHeight(
+        (this.h0[i] as number) + (this.rise[i] as number) * grade,
+        (this.gx0[i] as number) + (this.dgx[i] as number) * t,
+        (this.gy0[i] as number) + (this.dgy[i] as number) * t,
+        dx - vx * grade,
+        dy - vy * grade,
+      );
+    }
+    return surface ?? this.heightAt(x, y);
   }
 
   /**

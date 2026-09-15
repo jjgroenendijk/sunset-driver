@@ -88,20 +88,26 @@ are the design.
 - three.js 0.186 sends `GPUTextureViewDescriptor.swizzle` as a string, and a browser that has made
   it a dictionary throws on every `createView`, so nothing is ever drawn. `renderer.ts` drops the
   field where the browser refuses it. Delete that shim once three.js sends the dictionary.
-- `buildChunkRoads(chunk, ribbons, heightAt)` (`road-mesh.ts`) lofts a chunk's roads (spec section
-  10), with the cross section and the markings table in `road-section.ts` and the junction surfaces
-  in `junction-mesh.ts`: one `LoftGeometry` per piece of a run, with carriageway, verge, kerb and
-  pavement in one cross section, one bevel per turn too sharp to mitre and all of a run's bevels in
-  one part, a deck and parapets under each bridged stretch, and a portal at each mouth of a bore.
-  `trimRun` first cuts every run at its curve's gaps, and each junction the chunk owns is drawn as
-  one carriageway polygon fanned from the node, paved as its widest road, plus a piece of pavement
-  per corner in the batch of the wider of its two roads. The rings come from `junction-shape.ts`,
-  which the carve levels as well. The polygon's mouth vertices are the very sections the lofts end
-  on, so the two meet without a seam whichever chunk built each; its corners stand on the carve,
-  which is the junction's plane. The far ring draws neither junctions nor gaps.
-  The whole cross section stands over the bench rather than on it, the verge of a tier without a
-  pavement included: a surface laid at exactly the height of the ground under it is one the ground
-  shows through wherever the grid samples it. A vertex carries how far across the road it stands;
+- `buildChunkRoads(chunk, ribbons, surfaceAt)` (`road-mesh.ts`) lofts a chunk's roads (spec section
+  10), with the cross sections and the markings table in `road-section.ts` and the junction surfaces
+  in `junction-mesh.ts`: one `LoftGeometry` per piece of a run, one bevel per turn too sharp to
+  mitre and all of a run's bevels in one part, a deck and parapets under each bridged stretch, and a
+  portal at each mouth of a bore. On the ground the section is the carriageway alone; on a deck or
+  in a bore it is the whole width the tier claims (`structureSection`), since no block stands
+  beside it. `trimRun` first cuts every run at its curve's gaps, and each junction the chunk owns is
+  drawn as one carriageway polygon fanned from the node, paved as its widest road. The ring comes
+  from `junction-shape.ts`, which the carve levels as well. Its mouth vertices are the very sections
+  the lofts end on, so the two meet without a seam whichever chunk built each. The far ring draws
+  neither junctions nor gaps, and only the pavement of its own tiers.
+- `pavement-mesh.ts` draws each pavement piece of the chunk in its tier's batch: a surface on
+  `RoadCarve.surfaceAt` lifted by `vergeRise`, and a face down every edge that is not on the chunk
+  boundary, which is the kerb where the edge meets a carriageway. The triangulation drops a vertex
+  in line with its neighbours and fans a band into triangles tens of metres long, which cut under
+  the ground on a crest. So an edge is split, in both triangles that hold it, where the surface
+  stands more than `PAVEMENT_SAG` off its middle or it runs past `PAVEMENT_EDGE`.
+- Every surface stands over the bench rather than on it, the verge of a tier without a pavement
+  included: a surface laid at exactly the height of the ground under it is one the ground shows
+  through wherever the grid samples it. A vertex carries how far across the road it stands;
   `road-material.ts` steps between the bands at the tier's own widths and holds the road colours, as
   `ground.ts` holds the ground's. A dash pattern is measured from the start of the whole curve, so
   it carries on across a boundary.

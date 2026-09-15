@@ -24,9 +24,9 @@
  * description. Pure: the same roads and corridors give the same footprint.
  */
 import { areaOf, disc, regionOf, strip, union, type Region } from '../core/geom.ts';
-import type { RoadGraph } from './graph.ts';
+import type { RoadGraph, RoadNode } from './graph.ts';
 import { footprintHalfWidth } from './tiers.ts';
-import type { Corridor, Point, RoadCurve } from './types.ts';
+import type { Corridor, Point, RoadCurve, RoadTier } from './types.ts';
 
 /** Corners of the apron laid over a junction. Enough that its flats read as a curve. */
 const APRON_CORNERS = 8;
@@ -80,8 +80,8 @@ export function footprintParts(
   }
   const aprons: Region[] = [];
   for (const node of graph.nodes) {
-    const radius = apronRadius(graph, node.edges);
-    if (radius > 0) aprons.push(regionOf(disc(node.x, node.y, radius, APRON_CORNERS)));
+    const ring = apronOf(graph, node);
+    if (ring !== undefined) aprons.push(regionOf(ring.ring));
   }
   return { strips, aprons, corridors: corridors.map((corridor) => regionOf(corridor.polygon)) };
 }
@@ -110,18 +110,19 @@ function groundRuns(road: RoadCurve): Point[][] {
 }
 
 /**
- * How far the apron over a junction reaches: as far as the widest road that
- * meets there on the ground. A place where only decks and bores meet gets none,
- * because nothing meets on the ground at all.
+ * The apron over a junction, and the tier that claims it: a disc as wide as the
+ * widest road that meets there on the ground. A place where only decks and
+ * bores meet gets none, because nothing meets on the ground at all, and nor do
+ * two roads that meet end to end, since they hand the strip over in line.
  */
-function apronRadius(graph: RoadGraph, edges: readonly number[]): number {
-  // Two roads that meet end to end need no apron; they hand the strip over in line.
-  if (edges.length < 3) return 0;
-  let radius = 0;
-  for (const id of edges) {
+export function apronOf(graph: RoadGraph, node: RoadNode): { ring: Point[]; tier: RoadTier } | undefined {
+  if (node.edges.length < 3) return undefined;
+  let tier: RoadTier | undefined;
+  for (const id of node.edges) {
     const edge = graph.edges[id];
     if (edge === undefined || edge.bridge || edge.tunnel) continue;
-    radius = Math.max(radius, footprintHalfWidth(edge.tier));
+    if (tier === undefined || footprintHalfWidth(edge.tier) > footprintHalfWidth(tier)) tier = edge.tier;
   }
-  return radius;
+  if (tier === undefined) return undefined;
+  return { ring: disc(node.x, node.y, footprintHalfWidth(tier), APRON_CORNERS), tier };
 }

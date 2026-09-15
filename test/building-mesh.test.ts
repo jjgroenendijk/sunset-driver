@@ -92,6 +92,7 @@ function chunkOf(buildings: Building[]): WorldChunk {
     seaLevel: 0,
     roads: [],
     junctions: [],
+    pavement: [],
     parcels: [],
     buildings,
     plants: [],

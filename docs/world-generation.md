@@ -309,13 +309,20 @@ gets wrong without it.
   tilts across the road as the plane does inside a mouth and levels out over the blend
   (`surfaceHeight`). The loft, the junction rings and the carve all read it, so the ground and the
   road agree by construction.
-- `junctionShape(junction, ribbons)` (`junction-shape.ts`) gives the rings a junction's surfaces are
-  drawn on: the carriageway, fanned from the node, and one ring per corner. Every vertex carries its
-  height from the one surface: a mouth's banked section, and the plane everywhere else.
-  `junction-mesh.ts` draws them and the carve levels the ground under them. The carve levels the
-  `outline` and every ring (`JunctionCover`), not the outline alone. A mouth is drawn on its curve
-  but the outline is cut on a straight line, and a fan from the node reaches past a ring that is not
-  convex.
+- `junctionShape(junction, ribbons)` (`junction-shape.ts`) gives the ring a junction's carriageway
+  is drawn on, fanned from the node. A junction holds no pavement. Every vertex carries its height
+  from the one surface: a mouth's banked section, and the plane everywhere else. `junction-mesh.ts`
+  draws it and the carve levels the ground under it. The carve levels the `outline` and the fan
+  (`JunctionCover`), not the outline alone. A mouth is drawn on its curve but the outline is cut on
+  a straight line, and a fan from the node reaches past a ring that is not convex.
+- `ChunkSource` cuts the pavement and the verges of each chunk (`pavement.ts`, spec section 6.4) as
+  the inset of each block: the ground the roads claim, without the corridors, less the carriageway
+  as the lofts and the fans draw it. One pass takes the carriageway and the ground outside the chunk
+  away, and each tier then takes what it claims, the widest first. So no pavement lies on a
+  carriageway, no ring of it crosses itself, and a corner with no room has none. The carriageway
+  holds every segment a junction takes, because the fan of two mouths at a shallow angle leaves
+  some of a road's own carriageway out; that ground is left bare. Each claimed stretch ends on the
+  loft's frame, or a sliver of verge lies on the deck it runs onto.
 - `buildCarve(terrain, roads, junctions)` (`carve.ts`) is the terrain the roads leave (spec section
   7.1). It is built on demand like the graph, the footprint and the parcels: `world.terrain` stays
   the natural ground the roads were traced on, and the carved ground is what a chunk carries and
@@ -337,7 +344,9 @@ gets wrong without it.
   junction's outline is the junction's whatever else reaches it, but the scan carries on past it all
   the same, because a street crossing under a junction of a wider road is one of those crowded
   places and only asking every claimant sees it. A segment on a deck or in a bore carves nothing at
-  all.
+  all. `surfaceAt(x, y, tier)` is the surface drawn at a place rather than the ground: a junction's
+  plane, or the bed of the nearest road of the tier. The pavement stands on it, because on the
+  ground it would sink to the lowest bed that claims the place.
 - A chunk samples the carve every `CHUNK_TERRAIN_CELL` (2.5 m), four samples to a cell of the
   skeleton's `TERRAIN_CELL` grid, because the camera looks down at an 11 m street and the hillside
   between two 10 m samples cuts up through it. The far ring reads every fourth sample and lands back

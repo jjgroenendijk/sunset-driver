@@ -27,7 +27,7 @@
  */
 import { BufferAttribute, BufferGeometry } from 'three';
 import type { ChunkBounds, WorldChunk, WorldLayers } from '../world/chunks.ts';
-import { RoadRibbons } from '../world/ribbon.ts';
+import type { RoadRibbons } from '../world/ribbon.ts';
 import { CHUNK_TERRAIN_CELL, TERRAIN_CELL } from '../world/terrain.ts';
 import type { RoadTier, WorldDescription } from '../world/types.ts';
 import { buildChunkBuildings, buildingLookup, type BuildingLookup } from './building-mesh.ts';
@@ -36,6 +36,7 @@ import { buildGroundAttributes, groundLookup, type GroundAttributes, type Ground
 import { lampsIn, type Lamp } from './lamp-mesh.ts';
 import { ROOF_STRIDE, writeRoof } from './roofs.ts';
 import { buildChunkVegetation, plantLookup, type PlantLookup } from './plant-mesh.ts';
+import type { SurfaceAt } from './pavement-mesh.ts';
 import { buildChunkRoads, partsOf } from './road-mesh.ts';
 import type { ChunkDetail } from './streaming.ts';
 
@@ -143,6 +144,8 @@ export interface ChunkLookups {
   buildings: BuildingLookup;
   plants: PlantLookup;
   ribbons: RoadRibbons;
+  /** The surface drawn at a place beside a road, which the pavement stands on. */
+  surfaceAt: SurfaceAt;
 }
 
 /** The lookups a world answers with, built once and shared by every chunk of it. */
@@ -151,7 +154,8 @@ export function chunkLookups(world: WorldDescription, layers: WorldLayers): Chun
     ground: groundLookup(world, layers),
     buildings: buildingLookup(world, layers),
     plants: plantLookup(layers),
-    ribbons: new RoadRibbons(world.terrain, world.roads, layers.junctions),
+    ribbons: layers.carve.ribbons,
+    surfaceAt: (x, y, tier) => layers.carve.surfaceAt(x, y, tier),
   };
 }
 
@@ -165,9 +169,14 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
   // The far ring keeps no junctions either: a junction is drawn where the
   // roads that meet there are cut back, and neither can be read from that far.
   const traced = far
-    ? { ...chunk, roads: chunk.roads.filter((run) => FAR_TIERS.includes(run.tier)).map((run) => ({ ...run, gaps: [] })), junctions: [] }
+    ? {
+        ...chunk,
+        roads: chunk.roads.filter((run) => FAR_TIERS.includes(run.tier)).map((run) => ({ ...run, gaps: [] })),
+        junctions: [],
+        pavement: chunk.pavement.filter((piece) => FAR_TIERS.includes(piece.tier)),
+      }
     : chunk;
-  for (const tier of buildChunkRoads(traced, lookups.ribbons, lookups.ground.heightAt)) {
+  for (const tier of buildChunkRoads(traced, lookups.ribbons, lookups.surfaceAt)) {
     roads.push({
       tier: tier.tier,
       surface: packCells(grid, partsOf(tier).map((geometry) => ({ geometry: takeGeometry(geometry) }))),

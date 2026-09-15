@@ -116,7 +116,7 @@ describe('the ground under a road', () => {
   const source = new ChunkSource(world, layers);
   const ribbons = new RoadRibbons(world.terrain, world.roads, layers.junctions);
   const chunk = source.chunk(0, 0);
-  const built = buildChunkRoads(chunk, ribbons, (x, y) => layers.carve.heightAt(x, y));
+  const built = buildChunkRoads(chunk, ribbons, (x, y, tier) => layers.carve.surfaceAt(x, y, tier));
 
   it('never stands above the surface the road draws over it', () => {
     expect(built.length).toBe(2);
@@ -255,10 +255,10 @@ describe('the ground under a junction', () => {
     const shape = junctionShape(junction, ribbons);
     expect(shape.centre).toBeCloseTo(plane.level, 6);
     let complaint: string | undefined;
-    for (const v of [...shape.carriageway, ...shape.corners.flat()]) {
+    for (const v of shape.carriageway) {
       const onPlane = plane.level + plane.gx * (v.x - plane.x) + plane.gy * (v.y - plane.y);
       if (v.bed === undefined || Math.abs(v.bed - onPlane) > 1e-6 || Math.abs(carve.heightAt(v.x, v.y) - onPlane) > 1e-6) {
-        complaint ??= `${v.edge} at ${v.x.toFixed(1)},${v.y.toFixed(1)}: bed ${v.bed?.toFixed(3)}, plane ${onPlane.toFixed(3)}`;
+        complaint ??= `kerb at ${v.x.toFixed(1)},${v.y.toFixed(1)}: bed ${v.bed?.toFixed(3)}, plane ${onPlane.toFixed(3)}`;
       }
     }
     expect(complaint).toBeUndefined();

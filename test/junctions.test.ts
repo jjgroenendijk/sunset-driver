@@ -206,7 +206,7 @@ describe('junction geometry', () => {
   const layers = buildLayers(world);
   const source = new ChunkSource(world, layers);
   const ribbons = new RoadRibbons(world.terrain, world.roads, layers.junctions);
-  const heightAt = (x: number, y: number): number => layers.carve.heightAt(x, y);
+  const heightAt = (x: number, y: number, tier: RoadTier): number => layers.carve.surfaceAt(x, y, tier);
   const chunk = source.chunk(0, 0);
   const built = buildChunkRoads(chunk, ribbons, heightAt);
 
@@ -236,12 +236,12 @@ describe('junction geometry', () => {
     expect(second.gaps).toHaveLength(0);
   });
 
-  it('paves the junction as the widest road that meets there and puts its corners in the batch of the wider road', () => {
+  it('paves the junction as the widest road that meets there, and nothing but its carriageway', () => {
     const arterial = tierOf('arterial');
     // The crossing at the origin is on the boundary of chunk (0, 0), which
-    // owns it; the T is inside it. Each has a carriageway and four or three
-    // corners, all paved as arterial.
-    expect(arterial.junctions).toHaveLength(1 + 4 + 1 + 3);
+    // owns it; the T is inside it. Each is one carriageway, paved as arterial:
+    // the pavement round the corners is cut out of the blocks (issue #266).
+    expect(arterial.junctions).toHaveLength(2);
     expect(built.find((entry) => entry.tier === 'street')?.junctions ?? []).toHaveLength(0);
     for (const part of arterial.junctions) {
       const position = part.getAttribute('position');
@@ -279,10 +279,10 @@ describe('junction geometry', () => {
         }
       }
     }
-    // Four corners of every mouth section: two kerbs and two outer edges, at
-    // four mouths of the crossing and three of the T, less the mouths whose
-    // cut lies outside the chunk and its runs.
-    expect(met).toBeGreaterThanOrEqual(4 * 3);
+    // The two kerbs of every mouth section, at four mouths of the crossing and
+    // three of the T, less the mouths whose cut lies outside the chunk and its
+    // runs.
+    expect(met).toBeGreaterThanOrEqual(2 * 3);
   });
 
   it('faces every junction surface up', () => {
