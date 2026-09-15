@@ -23,7 +23,6 @@
 import { directionDelta, dist } from '../core/math.ts';
 import { genRng, Subsystem } from '../core/rng.ts';
 import { ZONE_RADII } from './districts.ts';
-import { JOIN_EPSILON } from './road-index.ts';
 import {
   alignTo,
   BRANCH_AT,
@@ -246,17 +245,13 @@ export abstract class HighwayTrace extends RoadTrace {
   }
 
   /**
-   * The interchanges of a highway a new highway may leave it at. One another
-   * road already stands on is not free — a highway seeded there would retrace
-   * that road — and neither is an end of the curve.
+   * The interchanges of a highway a new highway may leave it at. One that is a
+   * node another road already stands on is not free — a highway seeded there
+   * would retrace that road — and neither is an end of the curve.
    */
   private freeInterchanges(curve: RoadCurve): number[] {
     const last = curve.points.length - 1;
-    return curve.interchanges.filter((i) => {
-      if (i === 0 || i === last) return false;
-      const p = curve.points[i] as Point;
-      return this.index.nearest(p.x, p.y, JOIN_EPSILON, curve.id) === undefined;
-    });
+    return curve.interchanges.filter((i) => i !== 0 && i !== last && !this.network.sharedAt(curve.id, i));
   }
 
   /** Where a branch highway leaves its trunk: the free interchange nearest each of the given fractions of its length. */

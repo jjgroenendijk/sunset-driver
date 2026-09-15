@@ -44,7 +44,7 @@
  * road is actually traced — the step along the field, the ground that refuses
  * it, the reroute and the bridges — is `road-trace.ts`, which `highways.ts`
  * extends and this extends in turn, and
- * the network laid so far is `road-index.ts`. The seed and plan the fills speak
+ * the graph every road is added to is `road-network.ts`. The seed and plan the fills speak
  * in, and the zone table they read, are `fill.ts`.
  *
  * Five invariants hold by construction, and the seed sweep checks them:
@@ -60,7 +60,7 @@
  *   road crosses a highway away from one of its slots.
  * - No road runs along another road's carriageway or ends inside it. Two roads
  *   touch only where they share a point or cross, at an angle a junction or an
- *   overpass can be built at (`road-clear.ts`).
+ *   overpass can be built at (`network-clearance.ts`).
  */
 import { clamp, dist, directionDelta, lerp, wrapAngle } from '../core/math.ts';
 import { alleyPlan, alleySeeds, type AlleyGround } from './alleys.ts';
@@ -71,7 +71,6 @@ import { MINOR_BY_ZONE, type FillPlan, type FillSeed, type PlanAt, type SpacingA
 import { raiseOverpasses } from './overpass.ts';
 import { zoneMinBuilt } from './parcels.ts';
 import { HighwayTrace } from './highways.ts';
-import { JOIN_EPSILON } from './road-index.ts';
 import {
   alignTo,
   ALLEY_DENSITY,
@@ -139,7 +138,7 @@ class RoadTracer extends HighwayTrace {
     // laid before it would otherwise run along it: an island link or an
     // arterial on that line leaves the beach a boardwalk with no ground to
     // stand on. The highways go first, since every other road grows off them.
-    this.world.beaches.forEach((beach, i) => this.clearance.reserve(-1 - i, 'street', beach.boardwalk));
+    this.world.beaches.forEach((beach, i) => this.network.reserve(-1 - i, 'street', beach.boardwalk));
     this.linkIslands();
     this.fillArterials();
     // Again, now the arterials are laid. A bridge is refused where the near
@@ -255,9 +254,8 @@ class RoadTracer extends HighwayTrace {
       const farShore = flip ? crossing.from : crossing.to;
       const heads = this.bridgeHeads(nearShore, farShore);
       if (heads === undefined) continue;
-      const [near, far] = heads;
+      const [near, far, joined] = heads;
       // A head on the network is where the bridge joins it already.
-      const joined = this.index.nearest(near.x, near.y, JOIN_EPSILON) !== undefined;
       const approach = joined ? [near] : this.routeToNetwork(near, this.islandOf(near.x, near.y));
       if (approach === undefined) continue;
       approach.reverse();
@@ -268,26 +266,26 @@ class RoadTracer extends HighwayTrace {
   }
 
   /**
-   * The two heads of a bridge, the best places first. The deck between them is
-   * one straight segment, and a highway it would cross away from one of its
-   * slots refuses the pair.
+   * The two heads of a bridge, the best places first, and whether the near head
+   * is a point of the network. The deck between them is one straight segment,
+   * and a highway it would cross away from one of its slots refuses the pair.
    *
    * Where no pair on open ground will do, the near head may stand on a point of
    * the network an arterial may join, nearest first. That is the highway that
    * runs along the shore and took the ground a head would stand on: the bridge
    * joins it at its interchange instead of crossing it.
    */
-  private bridgeHeads(nearShore: Point, farShore: Point): [Point, Point] | undefined {
+  private bridgeHeads(nearShore: Point, farShore: Point): [Point, Point, boolean] | undefined {
     const fars = this.dryAnchors(farShore, nearShore);
     for (const near of this.dryAnchors(nearShore, farShore).slice(0, HEAD_TRIES)) {
-      const far = fars.find((p) => this.clearance.crossesAtSlots(near, p, 'arterial'));
-      if (far !== undefined) return [near, far];
+      const far = fars.find((p) => this.network.crossesAtSlots(near, p, 'arterial'));
+      if (far !== undefined) return [near, far, false];
     }
-    for (const hit of this.index.within(nearShore.x, nearShore.y, ANCHOR_REACH, -1, 'arterial')) {
+    for (const hit of this.network.within(nearShore.x, nearShore.y, ANCHOR_REACH, -1, 'arterial')) {
       const near = { x: hit.x, y: hit.y };
-      if (this.index.refuses(near.x, near.y, 'arterial')) continue;
-      const far = fars.find((p) => this.clearance.meets(near, p, 'arterial'));
-      if (far !== undefined) return [near, far];
+      if (this.network.refuses(near.x, near.y, 'arterial')) continue;
+      const far = fars.find((p) => this.network.meets(near, p, 'arterial'));
+      if (far !== undefined) return [near, far, true];
     }
     return undefined;
   }
@@ -391,7 +389,7 @@ class RoadTracer extends HighwayTrace {
       blockLength: (x, y) => Math.min(spacingAt(x, y, false), this.size * ARTERIAL_SPACING),
       streetGap: (x, y) => spacingAt(x, y, true),
     };
-    this.grow(alleySeeds(streets, this.index, ground), alleyPlan(ground), 1, MINOR_LIMIT);
+    this.grow(alleySeeds(streets, this.network, ground), alleyPlan(ground), 1, MINOR_LIMIT);
   }
 
   // -------------------------------------------------------------------- fill
@@ -416,12 +414,12 @@ class RoadTracer extends HighwayTrace {
       // A road begins at its seed, so a seed standing on a road this tier may
       // not junction with would make the junction anyway. A street seeded where
       // an arterial ramp meets a highway is that case (spec section 6.2).
-      if (this.index.refuses(seed.x, seed.y, plan.tier)) continue;
+      if (this.network.refuses(seed.x, seed.y, plan.tier)) continue;
       // Somewhere already covered: a road within the clearance, other than the parent.
-      if (this.index.nearest(seed.x, seed.y, plan.clearance, seed.parent) !== undefined) continue;
+      if (this.network.nearest(seed.x, seed.y, plan.clearance, seed.parent) !== undefined) continue;
       // A seed beside its parent starts a road of its own, so it has to stand
       // clear of every carriageway; one on its parent starts at a junction.
-      if (!seed.onParent && !this.clearance.clearAt(seed.x, seed.y, plan.tier)) continue;
+      if (!seed.onParent && !this.network.clearAt(seed.x, seed.y, plan.tier)) continue;
       const curve = this.fillRoad(seed, plan, major, across);
       if (curve === undefined) continue;
       laid.push(curve);
@@ -469,7 +467,7 @@ class RoadTracer extends HighwayTrace {
       .sort((a, b) => a.d - b.d || a.id - b.id);
     for (const site of sites) {
       if (!this.isDry(site.x, site.y)) continue;
-      if (this.index.nearest(site.x, site.y, SERVED) !== undefined) continue;
+      if (this.network.nearest(site.x, site.y, SERVED) !== undefined) continue;
       const island = this.islandOf(site.x, site.y);
       // Round the beaches where it can, over them where it must: a district
       // that can only be reached across the sand is still reached.
@@ -492,15 +490,15 @@ class RoadTracer extends HighwayTrace {
    * boardwalk neither end can reach is not laid.
    */
   private traceBoardwalk(beach: Beach, i: number): number {
-    this.clearance.release(-1 - i);
+    this.network.release(-1 - i);
     const line = this.longestRunnable(beach.boardwalk, STREET.maxGrade);
     if (polylineLength(line) < MIN_BOARDWALK) return -1;
     // The line is held while its ends reach for the network, so neither end
     // runs back along the boardwalk itself.
-    this.clearance.reserve(-1 - i, 'street', line);
+    this.network.reserve(-1 - i, 'street', line);
     const head = this.besideOwnCrossing(line, this.reachNetwork(line[0] as Point));
     const tail = this.besideOwnCrossing(line, this.reachNetwork(line[line.length - 1] as Point));
-    this.clearance.release(-1 - i);
+    this.network.release(-1 - i);
     if (head.length === 0 && tail.length === 0) return -1;
     const points = [...[...head].reverse(), ...line, ...tail];
     return this.addCurve('street', points, [])?.id ?? -1;
@@ -516,8 +514,8 @@ class RoadTracer extends HighwayTrace {
     const end = route[route.length - 1];
     if (end === undefined) return route;
     const reach = footprintHalfWidth('street');
-    for (const curve of this.curves) {
-      if (!curve.points.some((p) => dist(p.x, p.y, end.x, end.y) <= JOIN_EPSILON)) continue;
+    for (const id of this.network.curvesAt(end)) {
+      const curve = this.curves[id] as RoadCurve;
       const within = reach + footprintHalfWidth(curve.tier);
       for (let s = 0; s + 1 < curve.points.length; s++) {
         const c = curve.points[s] as Point;

@@ -3,7 +3,7 @@ import { AmbientTraffic, type TrafficRoads } from '../src/sim/traffic.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
 import { buildJunctions } from '../src/world/junctions.ts';
 import type { Point, RoadCurve, RoadTier } from '../src/world/types.ts';
-import { DRY } from './helpers.ts';
+import { DRY, withNodes } from './helpers.ts';
 
 /**
  * A made-up road network the traffic tests drive on: five roads each way, 120 m
@@ -28,11 +28,11 @@ export function gridRoads(): RoadCurve[] {
   };
   for (const [i, line] of LINES.entries()) {
     const tier = ROWS[i] as RoadTier;
-    roads.push({ id: roads.length, tier, points: along(line * GRID_SPACING, true), bridges: [], tunnels: [], interchanges: [] });
+    roads.push({ id: roads.length, tier, points: along(line * GRID_SPACING, true), bridges: [], tunnels: [], interchanges: [], nodes: [] });
   }
   for (const [i, line] of LINES.entries()) {
     const tier = COLUMNS[i] as RoadTier;
-    roads.push({ id: roads.length, tier, points: along(line * GRID_SPACING, false), bridges: [], tunnels: [], interchanges: [] });
+    roads.push({ id: roads.length, tier, points: along(line * GRID_SPACING, false), bridges: [], tunnels: [], interchanges: [], nodes: [] });
   }
   return roads;
 }
@@ -44,6 +44,7 @@ export function gridHeight(x: number, y: number): number {
 
 export function gridTrafficRoads(busyAt?: (x: number, y: number) => number): TrafficRoads {
   const roads = gridRoads();
+  withNodes(roads);
   const graph = buildRoadGraph(roads);
   return { roads, graph, busyAt, heightAt: (_c, _s, _t, x, y) => gridHeight(x, y), junctions: buildJunctions(roads, graph) };
 }

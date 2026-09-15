@@ -4,9 +4,10 @@
  * of. It is not render geometry.
  *
  * A node stands where roads meet: both ends of every curve, and every point two
- * curves share. The tracer joins a road to another one by copying the point it
- * met, so a junction is exactly a shared point. Two roads that only cross on
- * the map without sharing a point do not meet on the ground either — one is
+ * curves share. The tracer's network (`road-network.ts`) decides that when it
+ * adds a road, and writes it into `RoadCurve.nodes`, which is all this reads.
+ * Two roads that only cross on the map without sharing a node do not meet on
+ * the ground either — one is
  * carried over the other — so grade separation holds by construction and an
  * overpass is never turned into a junction (spec section 6.2). Those crossings
  * are found and listed in {@link RoadGraph.crossings}, and both of the runs
@@ -29,11 +30,6 @@ import type { Point, RoadCurve, RoadTier } from './types.ts';
 
 /** Side of one bucket of the spatial index, in metres. */
 const INDEX_CELL = 60;
-/** Millimetres: two road points this close are the same junction. */
-const KEY_SCALE = 1000;
-/** Half the span of the key grid in millimetres; keys stay safe integers well past a 6 km map. */
-const KEY_OFFSET = 8_000_000;
-const KEY_SPAN = 2 * KEY_OFFSET + 1;
 /**
  * Metres a crossing has to stand clear of the ends of both segments. Roads that
  * meet share a point exactly, so a junction is not a crossing at all; but a road
@@ -324,25 +320,20 @@ export class RoadGraph {
 
 /**
  * Cut every curve into runs between its nodes, and lay a pair of edges along
- * each run. A point is a node when it is an end of its curve or when more than
- * one curve point stands there.
+ * each run. A point is a node where the curve says so in `nodes`, and both ends
+ * of a curve are nodes whatever it says. The nodes are numbered in the order
+ * the curves reach them.
  */
 function build(roads: readonly RoadCurve[], nodes: RoadNode[], edges: RoadEdge[]): void {
-  const visits = new Map<number, number>();
-  for (const road of roads) {
-    for (const p of road.points) {
-      const key = pointKey(p);
-      visits.set(key, (visits.get(key) ?? 0) + 1);
-    }
-  }
-
   const nodeOf = new Map<number, number>();
-  const nodeAt = (p: Point): number => {
-    const key = pointKey(p);
-    const known = nodeOf.get(key);
+  const nodeAt = (road: RoadCurve, i: number): number => {
+    const p = road.points[i] as Point;
+    // An end the curve gave no node is a free end of its own.
+    const key = road.nodes[i] ?? -1;
+    const known = key >= 0 ? nodeOf.get(key) : undefined;
     if (known !== undefined) return known;
     const id = nodes.length;
-    nodeOf.set(key, id);
+    if (key >= 0) nodeOf.set(key, id);
     nodes.push({ id, x: p.x, y: p.y, edges: [] });
     return id;
   };
@@ -356,7 +347,7 @@ function build(roads: readonly RoadCurve[], nodes: RoadNode[], edges: RoadEdge[]
     for (const at of road.tunnels) if (at >= 0 && at < bore.length) bore[at] = 1;
 
     let startIndex = 0;
-    let startNode = nodeAt(points[0] as Point);
+    let startNode = nodeAt(road, 0);
     let length = 0;
     let bridge = false;
     let tunnel = false;
@@ -366,9 +357,8 @@ function build(roads: readonly RoadCurve[], nodes: RoadNode[], edges: RoadEdge[]
       length += Math.hypot(b.x - a.x, b.y - a.y);
       if (deck[i - 1] === 1) bridge = true;
       if (bore[i - 1] === 1) tunnel = true;
-      const junction = (visits.get(pointKey(b)) ?? 0) > 1;
-      if (i !== last && !junction) continue;
-      const endNode = nodeAt(b);
+      if (i !== last && (road.nodes[i] ?? -1) < 0) continue;
+      const endNode = nodeAt(road, i);
       // A run of no length is no road: two curves can share two points a
       // rounding apart, and an edge between them would only confuse a route.
       if (length > 0) {
@@ -563,13 +553,6 @@ function addPair(
   edges.push({ id: backward, from: toNode, to: fromNode, twin: forward, start: endIndex, end: startIndex, crossings: [], ...shared });
   (nodes[fromNode] as RoadNode).edges.push(forward);
   (nodes[toNode] as RoadNode).edges.push(backward);
-}
-
-/** A road point as one safe integer, so points that coincide share a key. */
-function pointKey(p: Point): number {
-  const x = Math.round(p.x * KEY_SCALE) + KEY_OFFSET;
-  const y = Math.round(p.y * KEY_SCALE) + KEY_OFFSET;
-  return x * KEY_SPAN + y;
 }
 
 interface Bounds {

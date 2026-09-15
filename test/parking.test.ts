@@ -9,9 +9,11 @@ import { TIERS } from '../src/world/tiers.ts';
 import { STREET_REACH } from '../src/world/vegetation.ts';
 import { bayFaults } from './parking-checks.ts';
 import { gridHeight, gridRoads, GRID_SPACING } from './traffic-grid.ts';
+import { withNodes } from './helpers.ts';
 
 describe('parking bays (spec section 13.1)', () => {
   const roads = gridRoads();
+  withNodes(roads);
   const junctions = buildJunctions(roads, buildRoadGraph(roads));
 
   it('lines both kerbs of every street, and nothing else, clear of every lane and of each other', () => {

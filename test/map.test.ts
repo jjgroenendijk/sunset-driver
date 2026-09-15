@@ -23,7 +23,7 @@ import { worldsFor } from './world-pool.ts';
 
 /** A hand-built curve, so the index can be checked without generating a world. */
 function curve(id: number, tier: RoadTier, coords: readonly [number, number][]): RoadCurve {
-  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges: [], tunnels: [], interchanges: [] };
+  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges: [], tunnels: [], interchanges: [], nodes: [] };
 }
 
 const VIEW: MapView = { x: 120, y: -40, metresPerPixel: 2, rotation: 0.7 };

@@ -14,8 +14,8 @@ import { Heightfield } from './heightfield.ts';
 import { crossingsWith, planHighway } from './highway-plan.ts';
 import { DRY_MARGIN, spanProfile, type Profile } from './road-ground.ts';
 import { ANCHOR_REACH, ARTERIAL } from './road-params.ts';
-import { RoadClearance, type Trail } from './road-clear.ts';
-import { RoadIndex } from './road-index.ts';
+import type { Trail } from './network-clearance.ts';
+import { RoadNetwork, type RoadDraft } from './road-network.ts';
 import { coastNoise, islandAt, type CoastNoise } from './terrain.ts';
 import type { TensorField } from './tensor.ts';
 import type { Point, RoadCurve, RoadTier, WorldSkeleton } from './types.ts';
@@ -34,8 +34,6 @@ const FILL = 4;
 const STRAIGHTEN_REACH = 3;
 /** Routes a reroute may straighten and vet before it gives up on reaching its goal. */
 const ROUTE_TRIES = 40;
-/** Side of one bucket of the road index, in metres. Small enough that a bucket holds few streets. */
-const INDEX_CELL = 60;
 
 /** The state every trace runs on: the ground, the field and the network laid so far. */
 export abstract class RoadRoute {
@@ -47,12 +45,13 @@ export abstract class RoadRoute {
   protected readonly size: number;
   /** Half the map, less the margin roads keep from the edge. */
   protected readonly half: number;
-  protected readonly index: RoadIndex;
-  /** The ground the network claims, which every step keeps off. */
-  protected readonly clearance: RoadClearance;
+  /**
+   * The road graph laid so far: the store every road is added to, the points a
+   * trace merges on, and the ground every step keeps off.
+   */
+  protected readonly network: RoadNetwork;
   /** The coastline's own noise, so a point can be told which island's land it stands on. */
   protected readonly noise: CoastNoise;
-  protected readonly curves: RoadCurve[] = [];
   /** Dry land, one flag per terrain node: the grid a rerouted road walks. */
   protected readonly land: Uint8Array;
   /** The beaches as ground, so the minor fill can be kept off the sand. */
@@ -77,8 +76,7 @@ export abstract class RoadRoute {
     this.size = world.size;
     this.half = world.size / 2 - EDGE_MARGIN;
     this.noise = coastNoise(world.seed);
-    this.index = new RoadIndex(world.size, INDEX_CELL, (x, y) => this.islandOf(x, y));
-    this.clearance = new RoadClearance(world.size);
+    this.network = new RoadNetwork(world.size, (x, y) => this.islandOf(x, y));
     const n = this.hf.gridSize;
     this.land = new Uint8Array(n * n);
     for (let iy = 0; iy < n; iy++) {
@@ -170,7 +168,7 @@ export abstract class RoadRoute {
         if (within !== undefined && !within(hf.worldX(jx), hf.worldY(jy))) continue;
         const rise = Math.abs(hf.at(jx, jy) - hf.at(ix, iy));
         if (rise > (dx !== 0 && dy !== 0 ? diagonal : straight)) continue;
-        if (vetSteps && !this.clearance.stepOk({ x: hf.worldX(ix), y: hf.worldY(iy) }, { x: hf.worldX(jx), y: hf.worldY(jy) }, tier)) continue;
+        if (vetSteps && !this.network.stepOk({ x: hf.worldX(ix), y: hf.worldY(iy) }, { x: hf.worldX(jx), y: hf.worldY(jy) }, tier)) continue;
         came[to] = at;
         queue[tail++] = to;
       }
@@ -202,10 +200,10 @@ export abstract class RoadRoute {
   protected keepsClear(route: readonly Point[], tier: RoadTier): boolean {
     const trail: Trail = { crossed: [], start: route[0] };
     for (let i = 0; i + 2 < route.length; i++) {
-      if (!this.clearance.stepOk(route[i] as Point, route[i + 1] as Point, tier, trail)) return false;
+      if (!this.network.stepOk(route[i] as Point, route[i + 1] as Point, tier, trail)) return false;
     }
     if (route.length < 2) return true;
-    return this.clearance.meets(route[route.length - 1] as Point, route[route.length - 2] as Point, tier, trail);
+    return this.network.meets(route[route.length - 1] as Point, route[route.length - 2] as Point, tier, trail);
   }
 
   /**
@@ -230,7 +228,7 @@ export abstract class RoadRoute {
         if (far > reach * (next < 0 ? STRAIGHTEN_REACH : 1)) break;
         const last = i === nodes.length - 1;
         if (i > anchor + 1 && !this.canRun(a.x, a.y, b.x, b.y, maxGrade)) continue;
-        if (last ? this.clearance.meets(b, a, tier) : this.clearance.stepOk(a, b, tier)) next = i;
+        if (last ? this.network.meets(b, a, tier) : this.network.stepOk(a, b, tier)) next = i;
         else if (i === anchor + 1) continue;
         if (next >= 0 && far > reach) break;
       }
@@ -294,7 +292,7 @@ export abstract class RoadRoute {
   /** A bridge head stands on dry ground inside the map, clear of every road it does not meet. */
   protected acceptAnchor(p: Point): boolean {
     if (Math.abs(p.x) > this.half || Math.abs(p.y) > this.half) return false;
-    return this.isDry(p.x, p.y) && this.clearance.clearAt(p.x, p.y, 'arterial');
+    return this.isDry(p.x, p.y) && this.network.clearAt(p.x, p.y, 'arterial');
   }
 
   protected isDry(x: number, y: number): boolean {
@@ -370,28 +368,32 @@ export abstract class RoadRoute {
     return out.sort(compareNumbers);
   }
 
+  /** Every road laid so far, by id. */
+  protected get curves(): readonly RoadCurve[] {
+    return this.network.curves;
+  }
+
   /**
-   * Lay a road. A highway's decks and slots are planned here, before the road
-   * goes into the network, so every road laid after it is traced against them.
+   * Propose a road to the network, which joins it to the roads it meets or
+   * refuses it (`road-network.ts`). A highway's decks and slots are planned
+   * here, before the road goes in, so every road laid after it is traced
+   * against them.
    */
   protected addCurve(tier: RoadTier, points: Point[], bridges: number[], interchanges: number[] = []): RoadCurve | undefined {
     if (points.length < 2) return undefined;
     const tunnels = this.markStructures(points, bridges);
-    const curve: RoadCurve = { id: this.curves.length, tier, points, bridges, tunnels, interchanges };
+    const draft: RoadDraft = { tier, points, bridges, tunnels, interchanges };
     if (tier === 'highway') {
-      curve.interchanges = this.withBridgeHeads(points, bridges, tunnels, interchanges);
+      draft.interchanges = this.withBridgeHeads(points, bridges, tunnels, interchanges);
       // A highway passes under one laid before it on the ground, since the one
       // before it is on its deck there.
       const under = crossingsWith(points, this.curves.filter((c) => c.tier === 'highway'));
-      const plan = planHighway(points, bridges, tunnels, curve.interchanges, under, this.builtUp);
-      curve.bridges = plan.bridges;
-      curve.slots = plan.slots;
-      if (plan.lift !== undefined) curve.lift = plan.lift;
+      const plan = planHighway(points, bridges, tunnels, draft.interchanges, under, this.builtUp);
+      draft.bridges = plan.bridges;
+      draft.slots = plan.slots;
+      if (plan.lift !== undefined) draft.lift = plan.lift;
     }
-    this.curves.push(curve);
-    this.index.add(curve);
-    this.clearance.add(curve);
-    return curve;
+    return this.network.add(draft);
   }
 }
 

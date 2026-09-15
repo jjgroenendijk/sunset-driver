@@ -2,11 +2,11 @@
  * The ground the network laid so far claims, as the tracer sees it while it
  * lays the next road (spec section 6).
  *
- * `road-index.ts` holds the points of the network, which is all a merge needs.
- * A road's width is not in it, so a trace that only asks it can run along
- * another road's carriageway or stop in the middle of one and never know. This
- * index holds the segments with the width of their tier, and answers the three
- * questions that keep two roads off each other's ground:
+ * This is the half of the road network (`road-network.ts`) that holds its
+ * edges as segments, with the width of their tier. A trace that only knew the
+ * points of the network could run along another road's carriageway or stop in
+ * the middle of one and never know. The segments answer the questions that
+ * keep two roads off each other's ground:
  *
  * - May a step be taken? Near another road a step has to cross it or leave it
  *   at {@link MIN_MEET} or more, and a margin besides. A step that runs along it is refused.
@@ -16,7 +16,7 @@
  * - May a step cross a highway? Only under one of its slots, where the deck
  *   `highway-plan.ts` planned is level over the segment and both beside it.
  *
- * Two roads therefore touch only where they share a point or cross, both at an
+ * Two roads therefore touch only where they share a node or cross, both at an
  * angle a junction or an overpass can be built at.
  */
 import { clamp, directionDelta } from '../core/math.ts';
@@ -34,15 +34,15 @@ export const MIN_MEET = Math.PI / 6;
 const MEET_MARGIN = (5 * Math.PI) / 180;
 const TRACE_MEET = MIN_MEET + MEET_MARGIN;
 
-/** Metres within which two road points are the same place. The index of points uses the same figure. */
-const SAME_PLACE = 0.01;
+/** Metres within which two road points are the same place. The network snaps a point to a node by the same figure. */
+export const SAME_PLACE = 0.01;
 
 /** Side of one bucket, in metres. */
 const CELL = 60;
 
 /**
  * Where a road has crossed others so far: x, y, the curve crossed and its half
- * width, four numbers to a crossing. {@link RoadClearance.stepOk} reads and
+ * width, four numbers to a crossing. {@link NetworkClearance.stepOk} reads and
  * extends it.
  */
 export type Crossings = number[];
@@ -57,7 +57,7 @@ export interface Trail {
 /** Where along the stored segment the last {@link closest} came nearest, from 0 at its start to 1 at its end. */
 let closestT = 0;
 
-export class RoadClearance {
+export class NetworkClearance {
   private readonly origin: number;
   private readonly n: number;
   private readonly buckets: number[][] = [];
@@ -83,7 +83,8 @@ export class RoadClearance {
     for (let i = 0; i < this.n * this.n; i++) this.buckets.push([]);
   }
 
-  add(curve: RoadCurve): void {
+  /** File the segments of a curve the network has just taken. */
+  protected fileSegments(curve: RoadCurve): void {
     const slots = curve.slots ?? [];
     // A crossing is only allowed well inside a run of slots. The connection
     // pass may move the road that crosses by a snap, and the crossing moves

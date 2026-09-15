@@ -219,3 +219,28 @@ export function sideReach(lot: readonly Point[], side: 'left' | 'right', each: (
   });
   return out;
 }
+
+/**
+ * Hand-built curves given the nodes the tracer's network would give them: a
+ * node at both ends of every curve and at every point two curves share. The
+ * curves are changed in place and returned, so a test keeps its references.
+ * A test writes a network by its coordinates; the code under test reads only
+ * the nodes.
+ */
+export function withNodes<T extends { points: readonly Point[]; nodes: number[] }>(roads: T[]): T[] {
+  const key = (p: Point): string => `${Math.round(p.x * 1000)},${Math.round(p.y * 1000)}`;
+  const count = new Map<string, number>();
+  for (const road of roads) for (const p of road.points) count.set(key(p), (count.get(key(p)) ?? 0) + 1);
+  const names = new Map<string, number>();
+  const name = (p: Point): number => {
+    const known = names.get(key(p));
+    if (known !== undefined) return known;
+    names.set(key(p), names.size);
+    return names.size - 1;
+  };
+  for (const road of roads) {
+    const last = road.points.length - 1;
+    road.nodes = road.points.map((p, i) => (i === 0 || i === last || (count.get(key(p)) ?? 0) > 1 ? name(p) : -1));
+  }
+  return roads;
+}

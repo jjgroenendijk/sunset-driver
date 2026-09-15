@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildRoadGraph, type GradeCrossing, type RoadEdge } from '../src/world/graph.ts';
+import { buildRoadGraph as graphOf, type GradeCrossing, type RoadEdge } from '../src/world/graph.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import type { RoadCurve, RoadTier } from '../src/world/types.ts';
-import { stableJson } from './helpers.ts';
+import { stableJson, withNodes } from './helpers.ts';
+
+/** The graph of hand-built curves, joined where their points meet. */
+const buildRoadGraph = (roads: RoadCurve[]): ReturnType<typeof graphOf> => graphOf(withNodes(roads));
 
 /** A hand-built curve, so a graph can be checked without generating a world. */
 function curve(
@@ -13,7 +16,7 @@ function curve(
   tunnels: number[] = [],
   interchanges: number[] = [],
 ): RoadCurve {
-  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges, tunnels, interchanges };
+  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges, tunnels, interchanges, nodes: [] };
 }
 
 /** Two streets crossing at the origin, sharing the point they meet at. */

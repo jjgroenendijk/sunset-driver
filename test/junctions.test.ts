@@ -10,6 +10,7 @@ import { buildJunctions, FILLET_RADIUS, MAX_CUT, type Junction } from '../src/wo
 import { RoadRibbons } from '../src/world/ribbon.ts';
 import { footprintHalfWidth, TIERS } from '../src/world/tiers.ts';
 import type { District, Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
+import { withNodes } from './helpers.ts';
 
 const SIZE = 800;
 const CELL = 10;
@@ -21,7 +22,7 @@ function district(id: number, zone: Zone, x: number, y: number): District {
 }
 
 function curve(id: number, coords: readonly [number, number][], tier: RoadTier = 'street'): RoadCurve {
-  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges: [], tunnels: [], interchanges: [] };
+  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges: [], tunnels: [], interchanges: [], nodes: [] };
 }
 
 /**
@@ -51,7 +52,7 @@ function hillWorld(roads: RoadCurve[]): WorldDescription {
     },
     districts: [district(0, 'inner', 0, 0)],
     beaches: [],
-    roads,
+    roads: withNodes(roads),
     corridors: [],
     tram: { route: [], corridors: [], stops: [], crossings: [], length: 0 },
   };

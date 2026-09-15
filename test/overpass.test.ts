@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { buildRoadGraph } from '../src/world/graph.ts';
-import { CLEARANCE, raiseOverpasses } from '../src/world/overpass.ts';
+import { CLEARANCE, raiseOverpasses as raise } from '../src/world/overpass.ts';
 import type { Point, RoadCurve, RoadTier } from '../src/world/types.ts';
+import { withNodes } from './helpers.ts';
+
+/** Carry hand-built curves, joined where their points meet, over each other. */
+const raiseOverpasses = (roads: RoadCurve[]): RoadCurve[] => raise(withNodes(roads));
 
 /** A straight road along x, with a point every `step` metres. */
 function along(id: number, tier: RoadTier, fromX: number, toX: number, y = 0, step = 20): RoadCurve {
   const points: Point[] = [];
   for (let x = fromX; x <= toX; x += step) points.push({ x, y });
-  return { id, tier, points, bridges: [], tunnels: [], interchanges: [] };
+  return { id, tier, points, bridges: [], tunnels: [], interchanges: [], nodes: [] };
 }
 
 /**
@@ -18,7 +22,7 @@ function along(id: number, tier: RoadTier, fromX: number, toX: number, y = 0, st
 function across(id: number, tier: RoadTier, x: number, fromY = -70, toY = 70, step = 20): RoadCurve {
   const points: Point[] = [];
   for (let y = fromY; y <= toY; y += step) points.push({ x, y });
-  return { id, tier, points, bridges: [], tunnels: [], interchanges: [] };
+  return { id, tier, points, bridges: [], tunnels: [], interchanges: [], nodes: [] };
 }
 
 /** The lift of a curve at the point nearest a place, and 0 where the curve has none. */

@@ -160,6 +160,13 @@ export interface RoadCurve {
   /** Centreline, at least two points. */
   points: Point[];
   /**
+   * The node of the road graph each point stands on, or -1 where the point is
+   * no node, indexed like `points`. Both ends are always nodes. Two curves meet
+   * where they carry the same node, and nowhere else: `road-network.ts` decides
+   * it when a road is added, and `graph.ts` reads it (spec section 6.5).
+   */
+  nodes: number[];
+  /**
    * Indices of the segments carried on a deck: segment `i` runs from
    * `points[i]` to `points[i + 1]`. Ascending. A deck spans a strait crossing
    * or a dip the road may not follow down.
