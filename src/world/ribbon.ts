@@ -10,6 +10,8 @@
  * ground under the curve's own points, straight between them, and the plane of
  * a junction where the road meets one. That is the same line `carve.ts` cuts
  * the bench to, so a surface laid on it sits in the bench the terrain carries.
+ * The bank is how the surface tilts across the road, which is the plane's tilt
+ * inside a mouth, and the bench tilts with it.
  *
  * Every answer is a function of the curve and the place, never of the chunk that
  * asked. At a point the tracer laid, the frame is mitred between the two
@@ -18,7 +20,7 @@
  * way, so both sides get the same frame and the surfaces meet exactly.
  */
 import { clamp } from '../core/math.ts';
-import { RoadBeds } from './bed.ts';
+import { RoadBeds, type Knot } from './bed.ts';
 import type { JunctionMap } from './junctions.ts';
 import { footprintHalfWidth } from './tiers.ts';
 import type { HeightfieldData, Point, RoadCurve } from './types.ts';
@@ -45,8 +47,14 @@ const MITRE_SHARE = 0.25;
 
 /** Where a place on a road stands, and which way the road runs there. */
 export interface RoadFrame {
-  /** Height of the road bed, in metres. */
+  /** Height of the road bed on the centreline, in metres. */
   height: number;
+  /**
+   * Metres the surface rises per metre across the road, to the left of travel.
+   * Zero away from a junction; inside a mouth it is the tilt of the junction's
+   * plane, so a place `off` metres across stands at `height + bank * off`.
+   */
+  bank: number;
   /** Unit vector across the road, to the left of travel, in the x of the map. */
   acrossX: number;
   /** The same vector in the y of the map. */
@@ -224,8 +232,10 @@ class CurveRibbon {
           : span === 0
             ? 0
             : clamp(((x - a.x) * (b.x - a.x) + (y - a.y) * (b.y - a.y)) / (span * span), 0, 1);
+    const profile = vertex >= 0 ? this.beds.pointProfile(this.curve, vertex) : this.beds.profileAt(this.curve, i, t);
     return {
-      height: vertex >= 0 ? this.beds.pointHeight(this.curve, vertex) : this.beds.heightAt(this.curve, i, t),
+      height: profile.h,
+      bank: bankOf(profile, this.segX[i] as number, this.segY[i] as number),
       acrossX: this.segX[i] as number,
       acrossY: this.segY[i] as number,
       mitre: 1,
@@ -247,14 +257,21 @@ class CurveRibbon {
   }
 
   private atPoint(i: number): RoadFrame {
+    const profile = this.beds.pointProfile(this.curve, i);
     return {
-      height: this.beds.pointHeight(this.curve, i),
+      height: profile.h,
+      bank: bankOf(profile, this.pointX[i] as number, this.pointY[i] as number),
       acrossX: this.pointX[i] as number,
       acrossY: this.pointY[i] as number,
       mitre: this.mitres[i] as number,
       distance: this.distances[i] as number,
     };
   }
+}
+
+/** How steeply a profile's surface rises along the unit vector `(x, y)`. */
+function bankOf(profile: Knot, x: number, y: number): number {
+  return profile.gx * x + profile.gy * y;
 }
 
 /**
@@ -265,6 +282,8 @@ class CurveRibbon {
 export class RoadRibbons {
   /** One ribbon per curve, filed under the curve's own id. */
   private readonly curves: (CurveRibbon | undefined)[] = [];
+  /** The beds the frames stand on, and the junction planes with them. */
+  readonly beds: RoadBeds;
 
   /**
    * Without the junctions every bed is the natural ground under its curve.
@@ -273,6 +292,7 @@ export class RoadRibbons {
    */
   constructor(terrain: HeightfieldData | RoadBeds, roads: readonly RoadCurve[], junctions?: JunctionMap) {
     const beds = terrain instanceof RoadBeds ? terrain : new RoadBeds(terrain, roads, junctions);
+    this.beds = beds;
     for (const road of roads) this.curves[road.id] = new CurveRibbon(beds, road);
   }
 

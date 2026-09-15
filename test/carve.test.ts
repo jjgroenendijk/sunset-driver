@@ -245,4 +245,59 @@ describe('the ground under a junction', () => {
     expect(tested).toBeGreaterThan(20);
     expect(complaint).toBeUndefined();
   });
+
+  it('puts every vertex of the junction on the ground the carve leaves, mouths and all', () => {
+    // The plane tilts across each mouth, so a road section laid level from
+    // kerb to kerb would stand off the plane on one side and under it on the
+    // other. The section banks as the plane does instead (issue #265).
+    const junction = junctions.junctions[0] as (typeof junctions.junctions)[number];
+    const plane = beds.planes[0] as (typeof beds.planes)[number];
+    const shape = junctionShape(junction, ribbons);
+    expect(shape.centre).toBeCloseTo(plane.level, 6);
+    let complaint: string | undefined;
+    for (const v of [...shape.carriageway, ...shape.corners.flat()]) {
+      const onPlane = plane.level + plane.gx * (v.x - plane.x) + plane.gy * (v.y - plane.y);
+      if (v.bed === undefined || Math.abs(v.bed - onPlane) > 1e-6 || Math.abs(carve.heightAt(v.x, v.y) - onPlane) > 1e-6) {
+        complaint ??= `${v.edge} at ${v.x.toFixed(1)},${v.y.toFixed(1)}: bed ${v.bed?.toFixed(3)}, plane ${onPlane.toFixed(3)}`;
+      }
+    }
+    expect(complaint).toBeUndefined();
+    for (const mouth of junction.mouths) {
+      const frame = ribbons.frameAt(mouth.curve, mouth.segment, mouth.at.x, mouth.at.y);
+      expect(frame.bank).toBeCloseTo(plane.gx * frame.acrossX + plane.gy * frame.acrossY, 6);
+    }
+  });
+
+  it('banks the road back to level where the blend ends, on a point of its curve', () => {
+    // A road's loft has a section at each point of its curve and none between,
+    // so the blend has no knot of its own inside a segment.
+    const arterial = world.roads[0] as RoadCurve;
+    const last = arterial.points.length - 1;
+    const end = ribbons.frameAt(0, last - 1, (arterial.points[last] as { x: number }).x, 0);
+    expect(end.bank).toBe(0);
+    // The one knot inside the segment is the cut itself.
+    const east = junctions.junctions[0]?.mouths.find((m) => m.curve === 0 && m.direction === 1);
+    const knots = beds.knotsOf(0, last - 1);
+    expect(knots).toHaveLength(3);
+    expect((knots[1]?.t ?? 0) * 200).toBeCloseTo(east?.cut ?? -1, 6);
+    // Past its cut and short of the end, the road leans part of the way.
+    const between = ribbons.frameAt(0, last - 1, 100, 0);
+    expect(Math.abs(between.bank)).toBeGreaterThan(0);
+    expect(Math.abs(between.bank)).toBeLessThan(Math.hypot(beds.planes[0]?.gx ?? 0, beds.planes[0]?.gy ?? 0));
+  });
+});
+
+describe('the ground past the end of a steep road', () => {
+  // A street ends on a hillside that climbs 15 % along it. A bench levelled
+  // past its end is a kink the chunk grid lifts through the last section.
+  const roads = [curve(0, [[0, 0], [100, 0], [200, 0]], 'street')];
+  const world = hillWorld(roads, (x) => 40 + 0.15 * x);
+  const carve = buildCarve(world.terrain, world.roads);
+
+  it('carries the road on at its grade rather than level', () => {
+    for (const across of [0, 4, 8]) {
+      expect(carve.heightAt(-2, across)).toBeCloseTo(40 - 0.3, 6);
+      expect(carve.heightAt(203, across)).toBeCloseTo(40 + 0.15 * 203, 6);
+    }
+  });
 });

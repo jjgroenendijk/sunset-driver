@@ -34,7 +34,7 @@
  * (spec section 9.1).
  */
 import { clamp, lerp, smoothstep } from '../core/math.ts';
-import { RoadBeds, type JunctionPlane } from './bed.ts';
+import { planeHeight, RoadBeds, surfaceHeight, type JunctionPlane, type Knot } from './bed.ts';
 import { Heightfield } from './heightfield.ts';
 import { JunctionCover } from './junction-cover.ts';
 import { junctionShape } from './junction-shape.ts';
@@ -74,14 +74,12 @@ const MIN_BENCH = CHUNK_TERRAIN_CELL;
 const BENCH_MARGIN = CHUNK_TERRAIN_CELL * Math.SQRT2;
 
 /**
- * Metres of hillside a bench may take away, and metres of ground it may make up.
- * A road on a slope steep enough to ask for more than this gets a retaining wall
- * rather than an endless cutting: the ground beyond the limit stays where it is.
- *
- * This is also what bounds how far a road can end up standing off its own bed.
- * The carved ground between two samples is the straight line between them, so a
- * place on it is never further from the natural ground than the furthest of the
- * samples around it — and none of them moves further than this.
+ * Metres of hillside the cut and fill slopes past a bench may take away, and
+ * metres of ground they may make up. A road on a slope steep enough to ask for
+ * more than this gets a retaining wall at the edge of its bench rather than an
+ * endless cutting: the ground beyond the limit stays where it is. The bench
+ * itself is the road's surface whatever the hillside asks, because a limit there
+ * leaves the hillside standing through the edge of the road.
  */
 export const CARVE_CUT = 6;
 export const CARVE_FILL = 6;
@@ -126,6 +124,11 @@ export class RoadCarve {
   private readonly inv: number[] = [];
   private readonly h0: number[] = [];
   private readonly rise: number[] = [];
+  /** The tilt of the surface at the start of each stretch, and how it changes to the end. */
+  private readonly gx0: number[] = [];
+  private readonly gy0: number[] = [];
+  private readonly dgx: number[] = [];
+  private readonly dgy: number[] = [];
   private readonly half: number[] = [];
   private readonly reach: number[] = [];
   /**
@@ -136,6 +139,15 @@ export class RoadCarve {
   private readonly claimed: number[] = [];
   /** The curve each segment belongs to, so a caller can ask who carved the ground. */
   private readonly curve: number[] = [];
+  /**
+   * How far past its ends a stretch carries its grade, as a share of it: without
+   * limit where the road leaves the ground there — the end of a curve, a deck or
+   * a bore — and to the end itself everywhere else. Past such an end the bench
+   * goes on at the road's grade rather than level, because a level disc beyond a
+   * steep end is a kink the grid lifts through the last section of the road.
+   */
+  private readonly before: number[] = [];
+  private readonly after: number[] = [];
   /** The segments filed in each bucket of the index, by index into the arrays above. */
   private readonly buckets: number[][] = [];
   /**
@@ -153,6 +165,8 @@ export class RoadCarve {
   private height = 0;
   private road = -1;
   private crowded = false;
+  /** True where the last place asked is on a bench or a junction's cover: ground a surface is drawn over. */
+  private benched = false;
 
   constructor(terrain: HeightfieldData, roads: readonly RoadCurve[], junctions?: JunctionMap) {
     const hf = new Heightfield(terrain);
@@ -199,8 +213,8 @@ export class RoadCarve {
         // between two knots is filed on its own with its own rise.
         const knots = beds.knotsOf(road.id, i);
         for (let k = 0; k + 1 < knots.length; k++) {
-          const from = knots[k] as { t: number; h: number };
-          const to = knots[k + 1] as { t: number; h: number };
+          const from = knots[k] as Knot;
+          const to = knots[k + 1] as Knot;
           if (to.t <= from.t) continue;
           const ax = a.x + (b.x - a.x) * from.t;
           const ay = a.y + (b.y - a.y) * from.t;
@@ -216,10 +230,16 @@ export class RoadCarve {
           this.inv.push(1 / squared);
           this.h0.push(from.h);
           this.rise.push(to.h - from.h);
+          this.gx0.push(from.gx);
+          this.gy0.push(from.gy);
+          this.dgx.push(to.gx - from.gx);
+          this.dgy.push(to.gy - from.gy);
           this.half.push(halfWidth);
           this.claimed.push(claimed);
           this.reach.push(reach);
           this.curve.push(road.id);
+          this.before.push(k === 0 && standing[i - 1] !== 1 ? -Infinity : 0);
+          this.after.push(k === knots.length - 2 && standing[i + 1] !== 1 ? Infinity : 1);
           this.file(at, Math.min(ax, ax + dx), Math.min(ay, ay + dy), Math.max(ax, ax + dx), Math.max(ay, ay + dy), reach);
         }
       }
@@ -241,6 +261,9 @@ export class RoadCarve {
     const natural = this.hf.sample(x, y);
     this.claim(x, y);
     if (this.weight <= 0) return natural;
+    // A road's own bench is its surface, whatever the hillside asks: a limit
+    // there leaves the ground standing through the edge of the road.
+    if (this.benched) return this.height;
     const bed = natural + clamp(this.height - natural, -CARVE_CUT, CARVE_FILL);
     return lerp(natural, bed, this.weight);
   }
@@ -291,6 +314,7 @@ export class RoadCarve {
     this.height = 0;
     this.road = -1;
     this.crowded = false;
+    this.benched = false;
     const at = this.row(y) * this.columns + this.column(x);
     const bucket = this.buckets[at];
     if (bucket === undefined) return;
@@ -338,27 +362,34 @@ export class RoadCarve {
     // another height — a street crossing under a junction of a wider road is
     // exactly the crowded case this answers — and that is only seen by asking
     // every claimant.
-    let ownerHeight = 0;
-    let ownerRoad = -1;
+    //
+    // Two junctions that both claim a place take the lower plane there, as two
+    // roads do, so a junction beside another one on a different plane stands
+    // over the ground rather than under it.
+    let inside = false;
+    let lowestHeight = Infinity;
+    let lowestRoad = -1;
     for (const j of this.junctionBuckets[at] ?? []) {
       const junction = this.junctions[j] as (typeof this.junctions)[number];
       const distance = junction.cover.distance(x, y, BENCH_MARGIN + CARVE_BLEND);
       if (distance >= BENCH_MARGIN + CARVE_BLEND) continue;
       const claims = distance <= BENCH_MARGIN;
       const weight = claims ? 1 : 1 - smoothstep(BENCH_MARGIN, BENCH_MARGIN + CARVE_BLEND, distance);
-      const plane = junction.plane;
-      const bed = plane.level + plane.gx * (x - plane.x) + plane.gy * (y - plane.y);
+      const bed = planeHeight(junction.plane, x, y);
+      if (claims && bed < lowestHeight) {
+        lowestHeight = bed;
+        lowestRoad = junction.curve;
+      }
       if (distance === 0) {
-        if (ownerRoad < 0) {
-          ownerHeight = bed;
-          ownerRoad = junction.curve;
-        }
+        inside = true;
         asked = Math.min(asked, bed);
         askedHigh = Math.max(askedHigh, bed);
         continue;
       }
       offer(claims ? junction.claimed : 0, weight, distance, bed, junction.curve);
     }
+    const ownerHeight = inside ? lowestHeight : 0;
+    const ownerRoad = inside ? lowestRoad : -1;
     for (const i of bucket) {
       const reach = this.reach[i] as number;
       const dx = x - (this.ax[i] as number);
@@ -372,7 +403,16 @@ export class RoadCarve {
       if (distance >= reach) continue;
       const half = this.half[i] as number;
       const weight = distance <= half ? 1 : 1 - smoothstep(half, reach, distance);
-      const bed = (this.h0[i] as number) + (this.rise[i] as number) * t;
+      // The bench stands on the road's surface carried out past its edge, so
+      // a bench inside a mouth tilts as the junction's plane does.
+      const grade = clamp((dx * vx + dy * vy) * (this.inv[i] as number), this.before[i] as number, this.after[i] as number);
+      const bed = surfaceHeight(
+        (this.h0[i] as number) + (this.rise[i] as number) * grade,
+        (this.gx0[i] as number) + (this.dgx[i] as number) * t,
+        (this.gy0[i] as number) + (this.dgy[i] as number) * t,
+        dx - vx * grade,
+        dy - vy * grade,
+      );
       // The bench is the ground the road draws its surface on, plus the margin
       // the grid needs around it, so that is the ground the road claims.
       offer(distance <= half ? (this.claimed[i] as number) : 0, weight, distance, bed, this.curve[i] as number);
@@ -381,6 +421,7 @@ export class RoadCarve {
     this.height = ownerRoad >= 0 ? ownerHeight : bestHeight;
     this.road = ownerRoad >= 0 ? ownerRoad : bestRoad;
     this.crowded = askedHigh - asked > CROWDED_BY;
+    this.benched = ownerRoad >= 0 || bestClaimed > 0;
   }
 
   /** File a segment in every bucket the ground it carves reaches into. */

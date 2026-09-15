@@ -33,9 +33,10 @@ export interface JunctionSurface {
 /**
  * The surfaces of one junction: its carriageway, paved as the widest road that
  * meets there, and a piece of pavement in each corner, paved as the wider of the
- * two roads beside it. The vertices along each mouth stand on the road's bed, so
- * they meet the road's own loft without a seam; the rest stand on the carved
- * ground, which under a junction is its plane.
+ * two roads beside it. Every vertex stands on the surface `junction-shape.ts`
+ * gives it: along each mouth that is the road's own banked section, so the two
+ * meet without a seam, and everywhere else the junction's plane, which is the
+ * ground the carve levels under it.
  */
 export function junctionSurfaces(junction: Junction, ribbons: RoadRibbons, heightAt: HeightAt): JunctionSurface[] {
   const out: JunctionSurface[] = [];
@@ -44,11 +45,11 @@ export function junctionSurfaces(junction: Junction, ribbons: RoadRibbons, heigh
   const lift = (v: JunctionVertex): Vector3 =>
     new Vector3(v.x, (v.bed ?? heightAt(v.x, v.y)) + (v.edge === 'kerb' ? SURFACE_RAISE : vergeRise(v.tier)), v.y);
 
-  // The carriageway is fanned from the node, which stands on the carved ground
-  // as the corners do: the beds of the roads meet at the node, so a surface
+  // The carriageway is fanned from the node, which stands on the plane as the
+  // corners do: the beds of the roads meet at the node, so a surface
   // stretched straight from one mouth to another would cut under a junction on
   // a ridge, and the ground would show through it.
-  const centre = new Vector3(junction.x, heightAt(junction.x, junction.y) + SURFACE_RAISE, junction.y);
+  const centre = new Vector3(junction.x, (shape.centre ?? heightAt(junction.x, junction.y)) + SURFACE_RAISE, junction.y);
   const paved = flatSurface(shape.carriageway.map(lift), 0, centre);
   if (paved !== undefined) out.push({ tier: junction.tier, geometry: paved });
 
