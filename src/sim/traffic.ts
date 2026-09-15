@@ -27,6 +27,7 @@ import { buildJunctions, type JunctionMap } from '../world/junctions.ts';
 import { TIERS } from '../world/tiers.ts';
 import type { Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../world/types.ts';
 import { TICK_RATE } from './clock.ts';
+import { EdgeIndex } from './edge-index.ts';
 import { SIGNAL_CYCLE, TrafficSignals } from './signals.ts';
 import { legAt, timeTour, walkTour, type Permit, type Tour } from './traffic-tour.ts';
 import { specOf, type VehicleClass, type VehicleState } from './vehicle.ts';
@@ -183,37 +184,15 @@ export class AmbientTraffic {
   private readonly roads: TrafficRoads;
   /** Cumulative metres at each point of each edge, in its direction of travel. */
   private readonly runs: (Float64Array | undefined)[] = [];
-  /** The box round each edge, grown by {@link REACH}: minX, minY, maxX, maxY. */
-  private readonly boxes: Float64Array;
-  private readonly cells: number[][] = [];
-  private readonly originX: number;
-  private readonly originY: number;
-  private readonly nx: number;
-  private readonly ny: number;
+  /** Which vehicles can be near a place: each is filed under the edges of its tour. */
+  private readonly index: EdgeIndex;
   private readonly behind: Sample = { x: 0, y: 0, height: 0 };
   private readonly ahead: Sample = { x: 0, y: 0, height: 0 };
 
   constructor(seed: number, roads: TrafficRoads) {
     this.roads = roads;
     const graph = roads.graph;
-    this.boxes = new Float64Array(graph.edges.length * 4);
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const edge of graph.edges) {
-      this.boxEdge(edge);
-      minX = Math.min(minX, this.boxes[edge.id * 4] as number);
-      minY = Math.min(minY, this.boxes[edge.id * 4 + 1] as number);
-      maxX = Math.max(maxX, this.boxes[edge.id * 4 + 2] as number);
-      maxY = Math.max(maxY, this.boxes[edge.id * 4 + 3] as number);
-    }
-    if (graph.edges.length === 0) minX = minY = maxX = maxY = 0;
-    this.originX = minX;
-    this.originY = minY;
-    this.nx = Math.max(1, Math.ceil((maxX - minX) / TRAFFIC_CELL) + 1);
-    this.ny = Math.max(1, Math.ceil((maxY - minY) / TRAFFIC_CELL) + 1);
-    for (let i = 0; i < this.nx * this.ny; i++) this.cells.push([]);
+    this.index = new EdgeIndex(roads.roads, graph, REACH, TRAFFIC_CELL);
 
     const junctions = roads.junctions;
     this.signals = junctions === undefined ? undefined : new TrafficSignals(seed, roads.roads, graph, junctions, roads.heightAt);
@@ -273,8 +252,7 @@ export class AmbientTraffic {
 
   /** True when an edge, grown by the reach of its lanes, overlaps a box. */
   edgeMeets(edge: number, minX: number, minY: number, maxX: number, maxY: number): boolean {
-    const b = this.boxes;
-    return (b[edge * 4] as number) <= maxX && (b[edge * 4 + 2] as number) >= minX && (b[edge * 4 + 1] as number) <= maxY && (b[edge * 4 + 3] as number) >= minY;
+    return this.index.meets(edge, minX, minY, maxX, maxY);
   }
 
   /**
@@ -282,24 +260,7 @@ export class AmbientTraffic {
    * without repeats. Those are the only vehicles that can be in it at any tick.
    */
   near(minX: number, minY: number, maxX: number, maxY: number, out: number[]): number[] {
-    out.length = 0;
-    const x0 = this.column(minX, this.originX, this.nx);
-    const x1 = this.column(maxX, this.originX, this.nx);
-    const y0 = this.column(minY, this.originY, this.ny);
-    const y1 = this.column(maxY, this.originY, this.ny);
-    for (let iy = y0; iy <= y1; iy++) {
-      for (let ix = x0; ix <= x1; ix++) {
-        for (const id of this.cells[iy * this.nx + ix] as number[]) out.push(id);
-      }
-    }
-    out.sort((a, b) => a - b);
-    let kept = 0;
-    for (let i = 0; i < out.length; i++) {
-      if (i > 0 && out[i] === out[i - 1]) continue;
-      out[kept++] = out[i] as number;
-    }
-    out.length = kept;
-    return out;
+    return this.index.near(minX, minY, maxX, maxY, out);
   }
 
   private poseOn(id: number, step: number, into: number, out: AmbientPose): AmbientPose {
@@ -361,22 +322,6 @@ export class AmbientTraffic {
     return run;
   }
 
-  private boxEdge(edge: RoadEdge): void {
-    const points = (this.roads.roads[edge.curve] as RoadCurve).points;
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (let i = Math.min(edge.start, edge.end); i <= Math.max(edge.start, edge.end); i++) {
-      const p = points[i] as Point;
-      minX = Math.min(minX, p.x);
-      minY = Math.min(minY, p.y);
-      maxX = Math.max(maxX, p.x);
-      maxY = Math.max(maxY, p.y);
-    }
-    this.boxes.set([minX - REACH, minY - REACH, maxX + REACH, maxY + REACH], edge.id * 4);
-  }
-
   /** Put the vehicles of one directed run of road down, and walk each its tour. */
   private place(seed: number, edge: RoadEdge, busy: Float64Array, vehicles: AmbientVehicle[]): void {
     const graph = this.roads.graph;
@@ -395,29 +340,8 @@ export class AmbientTraffic {
       const tour = timeTour(graph, walkTour(graph, edge.id, walk, permitOf(cls)), this.signals, crowd);
       const phase = phaseOf(tour, tour.edges.indexOf(edge.id), offset, walk);
       vehicles.push({ id, cls, paint, lane, phase, tour });
-      for (const e of tour.edges) this.file(id, e);
+      for (const e of tour.edges) this.index.file(id, e);
     }
-  }
-
-  /** File a vehicle in every bucket one edge of its tour covers. */
-  private file(id: number, edge: number): void {
-    const b = this.boxes;
-    const x0 = this.column(b[edge * 4] as number, this.originX, this.nx);
-    const x1 = this.column(b[edge * 4 + 2] as number, this.originX, this.nx);
-    const y0 = this.column(b[edge * 4 + 1] as number, this.originY, this.ny);
-    const y1 = this.column(b[edge * 4 + 3] as number, this.originY, this.ny);
-    for (let iy = y0; iy <= y1; iy++) {
-      for (let ix = x0; ix <= x1; ix++) {
-        const bucket = this.cells[iy * this.nx + ix] as number[];
-        // A tour files all its edges before the next vehicle files any.
-        if (bucket[bucket.length - 1] !== id) bucket.push(id);
-      }
-    }
-  }
-
-  private column(v: number, origin: number, count: number): number {
-    const i = Math.floor((v - origin) / TRAFFIC_CELL);
-    return i < 0 ? 0 : i >= count ? count - 1 : i;
   }
 
   private midpoint(edge: RoadEdge): Point {
