@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SURFACE_RAISE, roadSection, vergeRise } from '../src/render/road-section.ts';
+import { SURFACE_RAISE, roadSection } from '../src/render/road-section.ts';
 import { junctionShape, type JunctionVertex } from '../src/world/junction-shape.ts';
 import type { JunctionMap, RoadGap } from '../src/world/junctions.ts';
 import { RoadRibbons, type RoadFrame } from '../src/world/ribbon.ts';
@@ -50,12 +50,7 @@ export function surfaceChecks(): void {
           const shape = junctionShape(junction, ribbons);
           if (shape.centre === undefined) continue;
           const where = `junction ${junction.node}`;
-          const drawn = (v: JunctionVertex): number =>
-            (v.bed as number) + (v.edge === 'kerb' ? SURFACE_RAISE : vergeRise(v.tier));
-          // Every vertex of the carriageway is a vertex of a corner as well.
-          for (const ring of shape.corners) {
-            for (const v of ring) ask(v.x, v.y, drawn(v), where);
-          }
+          const drawn = (v: JunctionVertex): number => (v.bed as number) + SURFACE_RAISE;
           // The carriageway is a fan from the node, so each triangle's middle
           // stands at the mean of its three corners.
           const centre = shape.centre + SURFACE_RAISE;
@@ -63,6 +58,7 @@ export function surfaceChecks(): void {
           for (let i = 0; i < fan.length; i++) {
             const a = fan[i] as JunctionVertex;
             const b = fan[(i + 1) % fan.length] as JunctionVertex;
+            ask(a.x, a.y, drawn(a), where);
             const x = (junction.x + a.x + b.x) / 3;
             const y = (junction.y + a.y + b.y) / 3;
             ask(x, y, (centre + drawn(a) + drawn(b)) / 3, `${where} carriageway`);

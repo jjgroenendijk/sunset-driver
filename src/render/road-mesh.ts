@@ -3,9 +3,12 @@
  *
  * A road is a curve, so its surface is lofted along it: a cross section is
  * placed at every point of the run and `LoftGeometry` skins the sections
- * together. The section carries the whole width the tier claims — carriageway,
- * verge, kerb and pavement — so one loft draws all of it, and the material tells
- * the parts apart by how far across the road each vertex stands.
+ * together. On the ground the section is the carriageway alone: the pavement and
+ * the verge are cut out of each block by `pavement.ts` and drawn by
+ * `pavement-mesh.ts`, so no road lays its pavement over another road. A deck or
+ * a bore has no block beside it, and its section carries the whole width the
+ * tier claims. The material tells the parts apart by how far across the road
+ * each vertex stands.
  *
  * Everything is placed on the road bed that {@link RoadRibbons} answers with, so
  * a run cut at a chunk boundary and its other half in the next chunk stand on
@@ -26,12 +29,13 @@
 import { BufferAttribute, BufferGeometry, Vector3 } from 'three';
 import { LoftGeometry } from 'three/examples/jsm/geometries/LoftGeometry.js';
 import type { ChunkRoad, WorldChunk } from '../world/chunks.ts';
-import type { Junction, JunctionMouth, RoadGap } from '../world/junctions.ts';
 import type { RoadFrame, RoadRibbons } from '../world/ribbon.ts';
+import { piecesOf, trimRun, type Piece } from '../world/road-pieces.ts';
 import { PARAPET_HEIGHT } from '../world/decks.ts';
 import { footprintHalfWidth, TIERS } from '../world/tiers.ts';
 import type { Point, RoadTier } from '../world/types.ts';
 import { junctionSurfaces, pavesAs, type HeightAt } from './junction-mesh.ts';
+import { pavementSurface, type SurfaceAt } from './pavement-mesh.ts';
 import {
   between,
   isMarked,
@@ -41,6 +45,7 @@ import {
   place,
   roadSection,
   SKIRT,
+  structureSection,
   SURFACE_RAISE,
   SURFACE_ROAD,
   SURFACE_STRUCTURE,
@@ -53,10 +58,12 @@ import {
 // The cross section and the junction surfaces are next door. Both come out
 // through this file, so a caller asks one place for a chunk's road geometry.
 export type { HeightAt } from './junction-mesh.ts';
+export { trimRun } from '../world/road-pieces.ts';
 export {
   isMarked,
   markingsOf,
   roadSection,
+  structureSection,
   SURFACE_ROAD,
   SURFACE_STRUCTURE,
   TIER_ORDER,
@@ -69,9 +76,10 @@ export {
 export interface RunGeometry {
   run: ChunkRoad;
   /**
-   * The lofted surface, one section of `roadSection(run.tier)` per point. A run
-   * that turns somewhere too sharply to mitre is cut there, so it comes back in
-   * more than one piece.
+   * The lofted surface: one section of `roadSection(run.tier)` per point on the
+   * ground, and of `structureSection(run.tier)` on a deck or in a bore. A run
+   * that turns somewhere too sharply to mitre, or leaves the ground, is cut
+   * there, so it comes back in more than one piece.
    */
   surfaces: BufferGeometry[];
   /**
@@ -90,9 +98,11 @@ export interface TierGeometry {
   runs: RunGeometry[];
   /**
    * The junction surfaces paved as this tier: the carriageway of every junction
-   * whose widest road is this tier, and every corner whose wider road is.
+   * whose widest road is this tier.
    */
   junctions: BufferGeometry[];
+  /** The pieces of pavement and verge drawn in this tier's material. */
+  pavement: BufferGeometry[];
   /** Marking segment ends, six numbers each. Empty where the tier is unmarked. */
   markings: Float32Array;
   /** The colour of each of those ends, six numbers each. */
@@ -103,21 +113,24 @@ export interface TierGeometry {
 export function partsOf(tier: TierGeometry): BufferGeometry[] {
   const out: BufferGeometry[] = [];
   for (const run of tier.runs) out.push(...run.surfaces, ...run.joints, ...run.structures);
-  out.push(...tier.junctions);
+  out.push(...tier.junctions, ...tier.pavement);
   return out;
 }
 
 /**
  * Draw calls one chunk spends on its roads: a batch of geometry in each of
  * `cells` cells and a batch of markings for each tier that runs through it. A
- * tier with no run in the chunk costs nothing. `chunk-cost.ts` adds this to what the rest of a chunk costs.
+ * tier with no run, no junction and no pavement in the chunk costs nothing.
+ * `chunk-cost.ts` adds this to what the rest of a chunk costs.
  */
 export function roadDrawCalls(chunk: WorldChunk, cells = 1): number {
   let calls = 0;
   for (const tier of TIER_ORDER) {
-    if (!chunk.roads.some((run) => run.tier === tier) && !chunk.junctions.some((junction) => pavesAs(junction, tier))) {
-      continue;
-    }
+    const drawn =
+      chunk.roads.some((run) => run.tier === tier) ||
+      chunk.junctions.some((junction) => pavesAs(junction, tier)) ||
+      chunk.pavement.some((piece) => piece.tier === tier);
+    if (!drawn) continue;
     calls += cells + (isMarked(tier) ? 1 : 0);
   }
   return calls;
@@ -143,157 +156,90 @@ const PORTAL_DEPTH = 1.2;
 /**
  * Build the road geometry of one chunk, one entry per tier that runs through it.
  * The entries come back in {@link TIER_ORDER}, so two chunks of a world batch
- * their tiers the same way.
+ * their tiers the same way. `surfaceAt` is the surface drawn at a place beside
+ * a road, `RoadCarve.surfaceAt`, which the pavement stands on.
  */
-export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons, heightAt: HeightAt): TierGeometry[] {
+export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons, surfaceAt: SurfaceAt): TierGeometry[] {
   const out: TierGeometry[] = [];
   const junctions = new Map<RoadTier, BufferGeometry[]>();
   for (const junction of chunk.junctions) {
-    for (const surface of junctionSurfaces(junction, ribbons, heightAt)) {
+    for (const surface of junctionSurfaces(junction, ribbons, (x, y) => surfaceAt(x, y, junction.tier))) {
       const list = junctions.get(surface.tier);
       if (list === undefined) junctions.set(surface.tier, [surface.geometry]);
       else list.push(surface.geometry);
     }
   }
+  const pavement = new Map<RoadTier, BufferGeometry[]>();
+  for (const piece of chunk.pavement) {
+    const geometry = pavementSurface(piece, chunk.bounds, surfaceAt);
+    if (geometry === undefined) continue;
+    const list = pavement.get(piece.tier);
+    if (list === undefined) pavement.set(piece.tier, [geometry]);
+    else list.push(geometry);
+  }
   for (const tier of TIER_ORDER) {
     const runs = chunk.roads.filter((run) => run.tier === tier).flatMap((run) => trimRun(run, ribbons));
     const paved = junctions.get(tier) ?? [];
-    if (runs.length === 0 && paved.length === 0) continue;
-    const section = roadSection(tier);
+    // Each piece of pavement is a part of its own, so it goes into the cell it
+    // stands in rather than stretching one part over the whole chunk.
+    const kerbside = pavement.get(tier) ?? [];
+    if (runs.length === 0 && paved.length === 0 && kerbside.length === 0) continue;
+    const ground = roadSection(tier);
+    const raised = structureSection(tier);
     const markings = markingsOf(tier);
     const built: RunGeometry[] = [];
     const paint: number[] = [];
     const tints: number[] = [];
     for (const run of runs) {
       const pieces = piecesOf(run, ribbons);
+      const off = (segment: number): boolean => run.bridges.includes(segment) || run.tunnels.includes(segment);
       // The joints are one part rather than one each: a bevel is a handful of
       // triangles, and a batch pays for every part it is filled from.
-      const joints = jointsOf(pieces, section);
+      const joints = jointsOf(pieces, (segment) => (off(segment) ? raised : ground));
       built.push({
         run,
-        surfaces: pieces.map((piece) => surfaceOf(piece, section)),
+        surfaces: pieces.flatMap((piece) =>
+          stretchesOn(piece, off).map((stretch) => surfaceOf(stretch.piece, stretch.off ? raised : ground)),
+        ),
         joints: joints.length > 0 ? [merge(joints)] : [],
-        structures: structuresOf(run, pieces, ribbons, tier, section),
+        structures: structuresOf(run, pieces, ribbons, tier, raised),
       });
       for (const piece of pieces) {
         for (const marking of markings) paintMarking(piece, marking, paint, tints);
       }
     }
-    out.push({ tier, runs: built, junctions: paved, markings: new Float32Array(paint), markingTints: new Float32Array(tints) });
+    out.push({
+      tier,
+      runs: built,
+      junctions: paved,
+      pavement: kerbside,
+      markings: new Float32Array(paint),
+      markingTints: new Float32Array(tints),
+    });
   }
   return out;
 }
 
+
 /**
- * Cut a run short of the junctions it meets: the stretches of its curve the
- * gaps cover are left out, and what remains comes back as runs of its own.
- * The ends are the gaps' own points, so a run cut here ends exactly where the
- * junction polygon starts, whichever chunk draws the junction.
+ * A piece cut where it leaves the ground and where it lands again, so each
+ * stretch is lofted in one section. `off` says whether a segment of the run
+ * stands on a deck or in a bore. The two stretches either side of a cut share
+ * the point and its frame.
  */
-export function trimRun(run: ChunkRoad, ribbons: RoadRibbons): ChunkRoad[] {
-  if (run.gaps.length === 0) return [run];
-  const count = run.points.length;
-  const distances: number[] = [];
-  for (let i = 0; i < count; i++) {
-    const p = run.points[i] as Point;
-    distances.push(ribbons.frameAt(run.curve, run.from + Math.max(0, i - 1), p.x, p.y).distance);
+function stretchesOn(piece: Piece, off: (segment: number) => boolean): { piece: Piece; off: boolean }[] {
+  const out: { piece: Piece; off: boolean }[] = [];
+  const segments = piece.points.length - 1;
+  let start = 0;
+  for (let k = 1; k <= segments; k++) {
+    if (k < segments && off(piece.from + k) === off(piece.from + start)) continue;
+    out.push({
+      piece: { from: piece.from + start, points: piece.points.slice(start, k + 1), frames: piece.frames.slice(start, k + 1) },
+      off: off(piece.from + start),
+    });
+    start = k;
   }
-  const out: ChunkRoad[] = [];
-  let open: { from: number; points: Point[] } | undefined;
-  const close = (): void => {
-    if (open !== undefined && open.points.length > 1) out.push(subRun(run, open.from, open.points));
-    open = undefined;
-  };
-  for (let i = 0; i + 1 < count; i++) {
-    const d0 = distances[i] as number;
-    const d1 = distances[i + 1] as number;
-    // The stretches of this segment no gap covers, in order.
-    let at = d0;
-    let atPoint = run.points[i] as Point;
-    const pieces: { a: number; aAt: Point; b: number; bAt: Point }[] = [];
-    for (const gap of run.gaps) {
-      if (gap.to.distance <= at || gap.from.distance >= d1) {
-        if (gap.from.distance >= d1) break;
-        continue;
-      }
-      if (gap.from.distance > at) pieces.push({ a: at, aAt: atPoint, b: gap.from.distance, bAt: gap.from.at });
-      at = gap.to.distance;
-      atPoint = gap.to.at;
-      if (at >= d1) break;
-    }
-    if (at < d1) pieces.push({ a: at, aAt: atPoint, b: d1, bAt: run.points[i + 1] as Point });
-    for (const piece of pieces) {
-      if (piece.a !== d0 || open === undefined) {
-        close();
-        open = { from: run.from + i, points: [piece.aAt] };
-      }
-      open.points.push(piece.bAt);
-      if (piece.b !== d1) close();
-    }
-    if (pieces.length === 0) close();
-  }
-  close();
   return out;
-}
-
-/** A stretch of a run as a run of its own, starting on curve segment `from`. */
-function subRun(run: ChunkRoad, from: number, points: Point[]): ChunkRoad {
-  const first = from - run.from;
-  const segments = points.length - 1;
-  const within = (i: number): boolean => i >= first && i < first + segments;
-  return {
-    curve: run.curve,
-    tier: run.tier,
-    from,
-    points,
-    bridges: run.bridges.filter(within).map((i) => i - first),
-    tunnels: run.tunnels.filter(within).map((i) => i - first),
-    gaps: [],
-  };
-}
-
-/** A stretch of a run one loft can cover: a frame for each of its points. */
-interface Piece {
-  /** Index in the run of the segment this piece starts at. */
-  from: number;
-  points: Point[];
-  frames: RoadFrame[];
-}
-
-/**
- * Cut a run into the pieces one loft each can cover.
- *
- * Point `i` of a run stands at the end of segment `from + i - 1` of the curve
- * and at the start of segment `from + i`. Where the curve mitres the point, the
- * two answers are the same frame and the loft runs straight through it. Where
- * the turn is too sharp to mitre they differ, and the surface is cut there: one
- * piece ends on the frame it arrived with, the next starts on the frame it
- * leaves with. Both chunks of a run cut at a boundary make the same cuts,
- * because the curve decides them and not the run.
- */
-function piecesOf(run: ChunkRoad, ribbons: RoadRibbons): Piece[] {
-  const last = run.points.length - 1;
-  const out: Piece[] = [];
-  let from = 0;
-  let points: Point[] = [];
-  let frames: RoadFrame[] = [];
-  for (let i = 0; i <= last; i++) {
-    const p = run.points[i] as Point;
-    const before = i > 0 ? ribbons.frameAt(run.curve, run.from + i - 1, p.x, p.y) : undefined;
-    const after = i < last ? ribbons.frameAt(run.curve, run.from + i, p.x, p.y) : undefined;
-    points.push(p);
-    frames.push(before ?? (after as RoadFrame));
-    if (before === undefined || after === undefined) continue;
-    if (before.acrossX === after.acrossX && before.acrossY === after.acrossY) continue;
-    out.push({ from, points, frames });
-    from = i;
-    points = [p];
-    frames = [after];
-  }
-  out.push({ from, points, frames });
-  // A piece of one point is the far side of a turn at the very end of a run,
-  // and there is nothing left of the run to loft it along.
-  return out.filter((piece) => piece.points.length > 1);
 }
 
 /** The piece covering a run segment, and where in that piece the segment starts. */
@@ -328,7 +274,7 @@ function surfaceOf(piece: Piece, section: readonly SectionPoint[]): BufferGeomet
  *
  * The bevel is the outer half of the cross section swung from the frame the
  * road arrived on to the frame it leaves on, at the point itself. It carries
- * the whole outer half — carriageway, kerb face and pavement — so the joint
+ * the whole outer half of the section it is given, so the joint
  * matches the two pieces it fills between, band for band. The inner half is
  * left out, because the two pieces already cover it twice over.
  */
@@ -418,9 +364,11 @@ function jointOf(point: Point, before: RoadFrame, after: RoadFrame, section: rea
 /**
  * The bevels of a run: one at each turn its pieces were cut at. Two pieces are
  * cut at the same turn only where the second carries on from the first, so a
- * run cut short by a junction takes no joint at the cut.
+ * run cut short by a junction takes no joint at the cut. A joint takes the
+ * section of the segment it leaves on, which is the carriageway alone unless
+ * that segment is on a deck or in a bore.
  */
-function jointsOf(pieces: readonly Piece[], section: readonly SectionPoint[]): BufferGeometry[] {
+function jointsOf(pieces: readonly Piece[], sectionOf: (segment: number) => readonly SectionPoint[]): BufferGeometry[] {
   const out: BufferGeometry[] = [];
   for (let i = 0; i + 1 < pieces.length; i++) {
     const piece = pieces[i] as Piece;
@@ -428,7 +376,7 @@ function jointsOf(pieces: readonly Piece[], section: readonly SectionPoint[]): B
     if (next.from !== piece.from + piece.points.length - 1) continue;
     const before = piece.frames[piece.frames.length - 1] as RoadFrame;
     const after = next.frames[0] as RoadFrame;
-    const joint = jointOf(next.points[0] as Point, before, after, section);
+    const joint = jointOf(next.points[0] as Point, before, after, sectionOf(next.from));
     if (joint !== undefined) out.push(joint);
   }
   return out;

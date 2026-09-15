@@ -2,9 +2,9 @@
  * The cross section of a road and the lines painted on it (spec section 6.2),
  * with the small geometry helpers every road part is built with.
  *
- * The section carries the whole width the tier claims — carriageway, verge,
- * kerb and pavement — so one loft draws all of it, and the material tells the
- * parts apart by how far across the road each vertex stands. `tiers.ts` holds
+ * On the ground the section is the carriageway; on a deck or in a bore it
+ * carries the whole width the tier claims. The material tells the parts apart
+ * by how far across the road each vertex stands. `tiers.ts` holds
  * the widths themselves; nothing here or in `road-mesh.ts` carries a second
  * copy of them.
  *
@@ -90,41 +90,53 @@ const MIN_SURFACE_AREA = 1e-3;
 const SAME_PLACE = 1e-6;
 
 /**
- * The cross section of a tier, from its left edge to its right (spec section
- * 6.2). The carriageway is flat between the kerbs; a tier with a pavement takes
- * a kerb face up to it, and one without takes its verge down to the ground.
- * Both ends drop into the skirt that buries the edge.
+ * The cross section of a tier on the ground: the carriageway, flat from kerb to
+ * kerb, with each edge dropped into the skirt that buries it. The pavement and
+ * the verge beside it are drawn as pieces of their own (`pavement-mesh.ts`),
+ * and so is the kerb face, which stands on the edge of the pavement.
  */
 export function roadSection(tier: RoadTier): SectionPoint[] {
+  const half = TIERS[tier].width / 2;
+  return [
+    { across: -half, rise: -SKIRT },
+    { across: -half, rise: SURFACE_RAISE },
+    { across: half, rise: SURFACE_RAISE },
+    { across: half, rise: -SKIRT },
+  ];
+}
+
+/**
+ * The cross section of a tier on a deck or in a bore, from its left edge to its
+ * right (spec section 6.2). No block stands beside a structure to cut a
+ * pavement from, so the section carries the whole width the tier claims. The
+ * carriageway is flat between the kerbs; a tier with a pavement takes a kerb
+ * face up to it, and one without takes its verge level with the carriageway.
+ * Both ends drop into the skirt that buries the edge.
+ */
+export function structureSection(tier: RoadTier): SectionPoint[] {
   const spec = TIERS[tier];
   const half = spec.width / 2;
   const outer = footprintHalfWidth(tier);
-  const top = SURFACE_RAISE + KERB_RISE;
   const left: SectionPoint[] = [{ across: -outer, rise: -SKIRT }];
-  if (spec.pavement > 0) {
-    left.push({ across: -outer, rise: top }, { across: -half, rise: top }, { across: -half, rise: SURFACE_RAISE });
-  } else if (spec.verge > 0) {
-    // The verge is level with the carriageway rather than on the bench itself:
-    // a surface laid at exactly the height of the ground under it is a surface
-    // the ground shows through wherever the grid samples it.
-    left.push({ across: -outer, rise: SURFACE_RAISE }, { across: -half, rise: SURFACE_RAISE });
-  } else {
-    left.push({ across: -half, rise: SURFACE_RAISE });
+  if (outer > half) {
+    const rise = vergeRise(tier);
+    left.push({ across: -outer, rise }, { across: -half, rise });
   }
+  left.push({ across: -half, rise: SURFACE_RAISE });
   const right = left.map((point) => ({ across: -point.across, rise: point.rise })).reverse();
   return [...left, ...right];
 }
 
 /**
  * Metres above the road bed that the outer edge of a tier's surface stands: the
- * top of the kerb where the tier has a pavement, the verge where it has one, and
- * the carriageway itself where it has neither. Street furniture set beside a
- * road stands on this, so nothing is placed reading these numbers twice.
+ * top of the kerb where the tier has a pavement, and the carriageway where it
+ * has a verge or nothing. A verge is laid level with the carriageway rather than
+ * on the bench itself: a surface laid at exactly the height of the ground under
+ * it is a surface the ground shows through wherever the grid samples it. The
+ * pavement pieces and street furniture set beside a road stand on this.
  */
 export function vergeRise(tier: RoadTier): number {
-  // The first point of a section is the skirt buried in the ground beside the
-  // road; the second is the outer edge of the surface itself.
-  return (roadSection(tier)[1] as SectionPoint).rise;
+  return TIERS[tier].pavement > 0 ? SURFACE_RAISE + KERB_RISE : SURFACE_RAISE;
 }
 
 /**

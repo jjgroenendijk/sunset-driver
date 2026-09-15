@@ -6,6 +6,7 @@ import { roadChecks } from './seed-roads.ts';
 import { overlapChecks } from './seed-overlap.ts';
 import { groundChecks } from './seed-ground.ts';
 import { surfaceChecks } from './seed-surface.ts';
+import { pavementChecks } from './seed-pavement.ts';
 import { parcelChecks } from './seed-parcels.ts';
 import { layoutChecks } from './seed-layout.ts';
 import { chunkChecks } from './seed-chunks.ts';
@@ -34,6 +35,7 @@ describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
   overlapChecks();
   groundChecks();
   surfaceChecks();
+  pavementChecks();
   parcelChecks();
   layoutChecks();
   chunkChecks();

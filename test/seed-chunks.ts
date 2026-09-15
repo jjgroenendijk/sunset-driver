@@ -4,7 +4,7 @@ import { buildChunkBuildings, buildingLookup, buildingVertices, standingGround }
 import { CHUNK_DRAW_CALL_CAP, CHUNK_VERTEX_CAP, chunkDrawCalls } from '../src/render/chunk-cost.ts';
 import type { ChunkDetail } from '../src/render/streaming.ts';
 import { LAMP_BY_TIER, lampsIn } from '../src/render/lamp-mesh.ts';
-import { buildChunkRoads, partsOf, roadSection, type SectionPoint } from '../src/render/road-mesh.ts';
+import { buildChunkRoads, partsOf, roadSection, structureSection, type SectionPoint } from '../src/render/road-mesh.ts';
 import { pointInRegions, regionArea } from '../src/core/geom.ts';
 import { ChunkSource, chunkBounds, CHUNK_SIZE, type ChunkParcel, type WorldChunk } from '../src/world/chunks.ts';
 import { buildCarve } from '../src/world/carve.ts';
@@ -192,9 +192,8 @@ export function chunkChecks(): void {
         let carriageways = 0;
         for (const [cx, cy] of ROAD_MESH_CHUNKS) {
           const chunk = chunkOf(seed, cx, cy);
-          for (const tier of buildChunkRoads(chunk, ribbons, (x, y) => carveOf(seed).heightAt(x, y))) {
+          for (const tier of buildChunkRoads(chunk, ribbons, (x, y, tier) => carveOf(seed).surfaceAt(x, y, tier))) {
             const where = `chunk ${cx}, ${cy}: ${tier.tier}`;
-            const section = roadSection(tier.tier);
             for (const part of partsOf(tier)) {
               const position = part.getAttribute('position');
               const normal = part.getAttribute('normal');
@@ -211,12 +210,16 @@ export function chunkChecks(): void {
             // The carriageway is the span between the two kerbs, and it is lofted
             // face up: the camera looks down on a road, never through it. The
             // column it starts at is the last one at the left kerb, because a
-            // tier with a pavement stands a kerb face there first.
+            // deck of a tier with a pavement stands a kerb face there first. A
+            // surface on the ground starts at the kerb, and one on a structure
+            // at the outer edge of the whole section.
             const half = -TIERS[tier.tier].width / 2;
-            let kerb = 0;
-            for (let i = 0; i < section.length; i++) if ((section[i] as SectionPoint).across === half) kerb = i;
             for (const { surfaces } of tier.runs) {
               for (const surface of surfaces) {
+                const ground = surface.getAttribute('across').getX(0) === half;
+                const section = ground ? roadSection(tier.tier) : structureSection(tier.tier);
+                let kerb = 0;
+                for (let i = 0; i < section.length; i++) if ((section[i] as SectionPoint).across === half) kerb = i;
                 const rows = surface.getAttribute('position').count / section.length;
                 for (let row = 0; row + 1 < rows; row++) {
                   const quad = quadOf(surface, section.length, row, kerb);
@@ -439,12 +442,12 @@ export function chunkChecks(): void {
 
     it('cuts a chunk in isolation exactly as it cuts it with every neighbour loaded', () => {
       // Spec section 3 and section 9.1: a chunk is the same whether it is cut on
-      // its own or after the whole block around it. The isolated side stands on a
+      // its own or after the whole block around it. The loaded side is the
+      // block the fixture already cut, in order. The isolated side stands on a
       // world the pool generated a second time and on the layers that worker
       // built for it, so this is the byte-identical check of a chunk as well.
       for (const seed of seeds.slice(0, ISOLATED_COUNT)) {
-        const loaded = sourceOf(seed);
-        for (const [cx, cy] of chunkKeys()) loaded.chunk(cx, cy);
+        for (const [cx, cy] of chunkKeys()) chunkOf(seed, cx, cy);
         const world = repeats.get(seed) as WorldDescription;
         const parts = repeatParts.get(seed) as WorldParts;
         const aloneGraph = buildRoadGraph(world.roads);
@@ -462,7 +465,7 @@ export function chunkChecks(): void {
         // The far chunk first, before this source has cut anything at all.
         for (const [cx, cy] of [...chunkKeys()].reverse()) {
           expect(stableJson(alone.chunk(cx, cy)), `seed ${seed}: chunk ${cx}, ${cy}`).toBe(
-            stableJson(loaded.chunk(cx, cy)),
+            stableJson(chunkOf(seed, cx, cy)),
           );
         }
       }

@@ -201,7 +201,9 @@ This is the most important section. It exists to make overlap unrepresentable.
 - Major roads are traced first as streamlines; minor roads fill the space between them. The result
   is a real hierarchy, not a grid with some roads recoloured.
 - Roads are curves. Bends, sweeping arcs and irregular junction angles are the default wherever no
-  plan holds them. Road surfaces, kerbs, rails and decks are lofted along these curves.
+  plan holds them. Road surfaces, rails and decks are lofted along these curves. The pavement and
+  its kerb are the inset of each block the curves enclose, so no road lays its pavement over
+  another.
 - A segment whose grade exceeds the tier's maximum is rejected, rerouted, bridged or tunnelled —
   never laid over the hill.
 

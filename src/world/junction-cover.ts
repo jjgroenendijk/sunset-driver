@@ -1,13 +1,13 @@
 /**
  * The ground the carve levels to a junction's plane (spec section 6.2): its
- * outline, and every surface `junction-shape.ts` says is drawn over it.
+ * outline, and the carriageway `junction-shape.ts` says is drawn over it.
  *
- * The outline alone leaves ground uncovered under the surfaces. A mouth's
+ * The outline alone leaves ground uncovered under the carriageway. A mouth's
  * section stands on its curve and the outline is cut on a straight line, and
  * the carriageway is fanned from the node, which reaches past its own ring
  * where the node cannot see all of that ring. So the cover is the union of the
- * outline, the triangles of the fan and the corner rings, and the distance to it
- * is the distance to the nearest of them.
+ * outline and the triangles of the fan, and the distance to it is the distance
+ * to the nearer of them.
  *
  * The carve asks this for every place near a junction, so each piece keeps the
  * box around it and is skipped where the box is further than the nearest piece
@@ -43,7 +43,6 @@ export class JunctionCover {
     this.node = { x: node.x, y: node.y };
     this.add(outline, false);
     if (shape.carriageway.length >= 3) this.add(shape.carriageway, !seenWhole(shape.carriageway, node));
-    for (const corner of shape.corners) if (corner.length >= 3) this.add(corner, false);
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
