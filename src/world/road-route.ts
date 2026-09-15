@@ -16,6 +16,7 @@ import { DRY_MARGIN, spanProfile, type Profile } from './road-ground.ts';
 import { ANCHOR_REACH, ARTERIAL } from './road-params.ts';
 import type { Trail } from './network-clearance.ts';
 import { RoadNetwork, type RoadDraft } from './road-network.ts';
+import { selfOverlap, stepOverlaps, untangle } from './self-overlap.ts';
 import { coastNoise, islandAt, type CoastNoise } from './terrain.ts';
 import type { TensorField } from './tensor.ts';
 import type { Point, RoadCurve, RoadTier, WorldSkeleton } from './types.ts';
@@ -128,6 +129,7 @@ export abstract class RoadRoute {
     goal: (x: number, y: number, ix: number, iy: number) => Point | undefined,
     within?: (x: number, y: number) => boolean,
     vetSteps = false,
+    before: readonly Point[] = [],
   ): Point[] | undefined {
     const hf = this.hf;
     const n = hf.gridSize;
@@ -151,14 +153,20 @@ export abstract class RoadRoute {
       const hit = goal(hf.worldX(ix), hf.worldY(iy), ix, iy);
       if (hit !== undefined) this.rerouteHits++;
       if (hit !== undefined && tries++ < ROUTE_TRIES) {
-        const path = this.pathTo(at, from, hit, maxGrade, tier);
-        if (this.keepsClear(path, tier)) return path;
+        const path = this.untangled(this.pathTo(at, from, hit, maxGrade, tier, before), tier, maxGrade);
+        if (path !== undefined && this.keepsClear(path, tier, before)) return path;
         // Every try is spent, so nothing the search reaches from here is tried.
         if (tries === ROUTE_TRIES) return undefined;
       }
+      // The step that reached this node. A road that turns more than a right
+      // angle within one cell of the grid folds over its own carriageway.
+      const back = came[at] as number;
+      const inX = ix - (back % n);
+      const inY = iy - (back - (back % n)) / n;
       for (let k = 0; k < NEIGHBOUR_X.length; k++) {
         const dx = NEIGHBOUR_X[k] as number;
         const dy = NEIGHBOUR_Y[k] as number;
+        if (dx * inX + dy * inY < 0) continue;
         const jx = ix + dx;
         const jy = iy + dy;
         if (jx < 0 || jy < 0 || jx >= n || jy >= n) continue;
@@ -176,8 +184,17 @@ export abstract class RoadRoute {
     return undefined;
   }
 
+  /**
+   * A proposed road with the stretches that turn back over its own carriageway
+   * cut out, each cut a straight run the tier can drive and that keeps off the
+   * roads it passes; undefined where a cut cannot be made (`self-overlap.ts`).
+   */
+  protected untangled(points: readonly Point[], tier: RoadTier, maxGrade: number): Point[] | undefined {
+    return untangle(points, tier, (a, b) => this.canRun(a.x, a.y, b.x, b.y, maxGrade) && this.network.stepOk(a, b, tier));
+  }
+
   /** Walk the breadth-first tree back to the start, then straighten the staircase it left. */
-  protected pathTo(end: number, from: Point, hit: Point, maxGrade: number, tier: RoadTier): Point[] {
+  protected pathTo(end: number, from: Point, hit: Point, maxGrade: number, tier: RoadTier, before: readonly Point[] = []): Point[] {
     const hf = this.hf;
     const n = hf.gridSize;
     const nodes: Point[] = [];
@@ -193,11 +210,16 @@ export abstract class RoadRoute {
     nodes.reverse();
     nodes.unshift({ x: from.x, y: from.y });
     nodes.push({ x: hit.x, y: hit.y });
-    return this.straighten(nodes, maxGrade, tier);
+    return this.straighten(nodes, maxGrade, tier, before);
   }
 
-  /** True when every step of a route keeps off the roads it passes, and its last point meets the one it ends on. */
-  protected keepsClear(route: readonly Point[], tier: RoadTier): boolean {
+  /**
+   * True when every step of a route keeps off the roads it passes and off the
+   * route's own carriageway, and its last point meets the one it ends on.
+   * `before` is the road the route carries on from, ending where it starts.
+   */
+  protected keepsClear(route: readonly Point[], tier: RoadTier, before: readonly Point[] = []): boolean {
+    if (selfOverlap([...before.slice(0, -1), ...route], tier) !== undefined) return false;
     const trail: Trail = { crossed: [], start: route[0] };
     for (let i = 0; i + 2 < route.length; i++) {
       if (!this.network.stepOk(route[i] as Point, route[i + 1] as Point, tier, trail)) return false;
@@ -208,17 +230,19 @@ export abstract class RoadRoute {
 
   /**
    * Drop the nodes a road does not need: keep the furthest point still joined to
-   * the last kept one by a straight line the tier can drive and that keeps off
-   * the roads it passes. Every kept segment is checked, so the result stays on
-   * land and inside the grade.
+   * the last kept one by a straight line the tier can drive, that keeps off the
+   * roads it passes, and that does not turn back over the points kept before
+   * it. Every kept segment is checked, so the result stays on land and inside
+   * the grade.
    */
-  protected straighten(nodes: readonly Point[], maxGrade: number, tier: RoadTier): Point[] {
+  protected straighten(nodes: readonly Point[], maxGrade: number, tier: RoadTier, before: readonly Point[] = []): Point[] {
     const reach = ARTERIAL.step * 3;
     const out: Point[] = [nodes[0] as Point];
     let anchor = 0;
     while (anchor < nodes.length - 1) {
       const a = nodes[anchor] as Point;
       let next = -1;
+      const fits: number[] = [];
       for (let i = anchor + 1; i < nodes.length; i++) {
         const b = nodes[i] as Point;
         // The grid only steps along its axes and diagonals, so a road it meets
@@ -228,11 +252,15 @@ export abstract class RoadRoute {
         if (far > reach * (next < 0 ? STRAIGHTEN_REACH : 1)) break;
         const last = i === nodes.length - 1;
         if (i > anchor + 1 && !this.canRun(a.x, a.y, b.x, b.y, maxGrade)) continue;
-        if (last ? this.network.meets(b, a, tier) : this.network.stepOk(a, b, tier)) next = i;
-        else if (i === anchor + 1) continue;
+        if (last ? this.network.meets(b, a, tier) : this.network.stepOk(a, b, tier)) {
+          next = i;
+          fits.push(i);
+        } else if (i === anchor + 1) continue;
         if (next >= 0 && far > reach) break;
       }
-      if (next < 0) next = anchor + 1;
+      // The furthest node that fits is kept, unless it turns back over the
+      // points kept before it; then the next furthest is.
+      next = fits.reverse().find((i) => !stepOverlaps(out, nodes[i] as Point, tier, before)) ?? anchor + 1;
       out.push(nodes[next] as Point);
       anchor = next;
     }

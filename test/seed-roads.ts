@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FreeEnds, shallow } from '../src/world/connect.ts';
 import { groundRule } from '../src/world/roads.ts';
+import { bendOverlaps } from '../src/world/self-overlap.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { type GradeCrossing, type RoadEdge, type RoadNode } from '../src/world/graph.ts';
 import { CLEARANCE as OVERPASS_CLEARANCE } from '../src/world/overpass.ts';
@@ -258,6 +259,8 @@ export function roadChecks(): void {
                 continue;
               }
               if (!ground(a, spot, road.tier) || !ground(spot, b, road.tier)) return true;
+              // Nor a place that bends the road back over its own carriageway.
+              if (bendOverlaps(road.points, segment, spot, road.tier)) return true;
               // Nor a place that bends the road over the free end of a third one.
               if (ends.buried(road, spot, [a, b])) return true;
               around.push([a, b]);

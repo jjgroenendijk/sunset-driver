@@ -54,23 +54,37 @@ gets wrong without it.
   along the field, the ground that refuses it, the reroute and the structures. `RoadTracer` extends
   `RoadTrace`, which extends `RoadRoute` (`road-route.ts`): the state every trace runs on, the
   ground rules and the reroute over the terrain grid. `road-params.ts` holds the numbers each tier
-  traces by, and `road-ground.ts` the rule a span asks the ground. The network laid so far is held
-  twice: `road-index.ts` holds its points, which a merge lands on, and `road-clear.ts` its segments
-  with their widths.
+  traces by, and `road-ground.ts` the rule a span asks the ground. The network laid so far is one
+  planar graph, `RoadNetwork` (`road-network.ts`), and every road goes into it through `add`. A
+  point that stands on a point of the network joins its node, or splits that edge into a new one,
+  and both ends of a road are nodes. The result is `RoadCurve.nodes`, which `graph.ts`,
+  `connect.ts`, `overpass.ts` and the sweeps read. Nothing finds a node by comparing coordinates.
+  The segments and their rules are `NetworkClearance` (`network-clearance.ts`), which the network
+  extends.
+- A test that builds curves by hand gives them `nodes: []` and passes the list through `withNodes`
+  (`test/helpers.ts`). Without it every curve is an island of its own and no junction is found.
+- No road lies over its own carriageway (`self-overlap.ts`): two places closer than the width,
+  with more than `π / 2` times the width of curve between them. Every place of a segment is tried,
+  so a point added on a straight stretch never changes the answer. `RoadNetwork.add` refuses such a
+  road. The trace stops before a step that would fold, and `before` names the road a trace carries
+  on from: the other half of a fill road, or the deck of a bridge. The reroute never turns more than
+  a right angle in one grid cell, `straighten` keeps no node that folds, and `untangle` cuts a fold
+  out of a proposed route where the straight cut may be driven. A bridge head whose approach folds
+  under the deck gives way to the next pair of heads.
 - A road's width has to enter the trace, not only the carve: a trace that sees points alone runs
   along another road's carriageway or stops inside it, and nothing downstream can repair that.
-  `RoadClearance` (`road-clear.ts`) holds three rules. A step near another road crosses it or leaves
-  it at `MIN_MEET` (30°) or more, keeps a footprint's reach from the end of any road, and does not
-  cross two roads, or one road twice, within a junction's reach. A merge leaves every road at the
-  shared point at `MIN_MEET` or more, and not beside a crossing the trace has just made. A road ends
-  only where its footprint stands on no other road's. A trace that stops for any other reason is
-  walked back to its last clear point, and `trimTo` cuts a cul-de-sac on a clear point too. A step
-  that fails is first turned by up to three of the tier's turns, so a road coming in too shallow
-  meets the road at an angle instead of stopping. A merge tries the four nearest points before it
-  gives up. The tracer asks 5° more than `MIN_MEET`, because the connection pass can bend a road by
-  a snap. The reroute, the bridge anchors and the boardwalk line are vetted by the same rules; a
-  reroute that fails is searched again with every grid step vetted, since the grid meets a road at
-  only eight headings. Each resort's boardwalk line is reserved right after the highways and
+  `NetworkClearance` (`network-clearance.ts`) holds three rules. A step near another road crosses it
+  or leaves it at `MIN_MEET` (30°) or more, keeps a footprint's reach from the end of any road, and
+  does not cross two roads, or one road twice, within a junction's reach. A merge leaves every road
+  at the shared point at `MIN_MEET` or more, and not beside a crossing the trace has just made. A
+  road ends only where its footprint stands on no other road's. A trace that stops for any other
+  reason is walked back to its last clear point, and `trimTo` cuts a cul-de-sac on a clear point
+  too. A step that fails is first turned by up to three of the tier's turns, so a road coming in too
+  shallow meets the road at an angle instead of stopping. A merge tries the four nearest points
+  before it gives up. The tracer asks 5° more than `MIN_MEET`, because the connection pass can bend
+  a road by a snap. The reroute, the bridge anchors and the boardwalk line are vetted by the same
+  rules; a reroute that fails is searched again with every grid step vetted, since the grid meets a
+  road at only eight headings. Each resort's boardwalk line is reserved right after the highways and
   released once it is laid; without that an island link can take the line, and the beach gets no
   boardwalk. While its two ends reach for the network the line is held again, so neither end runs
   back along it.
@@ -139,17 +153,19 @@ gets wrong without it.
 - `connectCrossings(roads, canRun)` (`connect.ts`) runs after the minor fill, before
   `raiseOverpasses`: two roads that cross on the ground meet there (spec section 6.2). The trace
   only ever ends a road on a *point* of another one, so a road crossing another between its points
-  met nothing and the two were drawn through each other. The pass gives both curves a point at the
-  crossing, which the graph turns into a node and `junctions.ts` into a junction. A crossing within
+  met nothing and the two were drawn through each other. The pass splits both edges at the crossing
+  into one node, which `junctions.ts` turns into a junction. A place it names on one curve becomes a
+  node only once a second curve takes it, and two names for one place are merged. A crossing within
   `CROSSING_SNAP` of a point one curve already has takes that point instead, because two junctions a
   metre apart stand inside each other. It leaves a crossing alone where `mayJoin` refuses the pair,
   where either road is on a deck or in a bore, where the place stands on a road one of the tiers may
   not join, and where the ground refuses the two halves the point cuts a segment into — `groundRule`
   (`roads.ts`) is the one rule for that, the same one the trace ran on. It also leaves a crossing
   alone where the point would make either road leave a road at that place, or at the places beside
-  it, under `MIN_MEET`. A snap moves a road by up to 4 m, which can turn a short segment onto
-  another road's line, or lay its carriageway over the free end of a third road (`FreeEnds`). Where
-  the snapped place fails, the crossing itself is tried.
+  it, under `MIN_MEET`, and where the bend would fold a road over itself. A snap moves a road by up
+  to 4 m, which can turn a short segment onto another road's line, or lay its carriageway over the
+  free end of a third road (`FreeEnds`). Where the snapped place fails, the crossing itself is
+  tried.
 - `raiseOverpasses(roads)` (`overpass.ts`) is the last step of `traceRoads`: where two roads cross
   without meeting, one is carried over the other (spec section 6.2). A crossing where one road is
   already `CLEARANCE` up, a highway slot, is left as it is, and the road below may not be raised
@@ -164,13 +180,13 @@ gets wrong without it.
   refused where a junction of the road stands inside the reach, where the road is already bored or
   decked there, and where it would run out before it is down again; those crossings stay flat.
 - `buildRoadGraph(roads)` (`graph.ts`) is the queryable road graph of spec section 6.5. It is built
-  on demand from the curves, not stored in the world description. A node is a point two curves
-  share, so two roads that only cross on the map stay grade separated. `graph.crossings` lists those
-  crossings and says which road is carried over the other; both runs of both roads carry the index.
-  `shortestPath(from, to, allow?)` narrows the network to the edges `allow` accepts, which is how
-  the tram is routed over the arterials alone. `tiers.ts` holds the width, verge, pavement, lanes,
-  speed limit, permitted traffic and maximum grade of each tier; nothing else should carry those
-  numbers.
+  on demand from the curves' `nodes`, which the tracer stored. Two curves meet only where they carry
+  the same node, so two roads that only cross on the map stay grade separated. `graph.crossings`
+  lists those crossings and says which road is carried over the other; both runs of both roads carry
+  the index. `shortestPath(from, to, allow?)` narrows the network to the edges `allow` accepts,
+  which is how the tram is routed over the arterials alone. `tiers.ts` holds the width, verge,
+  pavement, lanes, speed limit, permitted traffic and maximum grade of each tier; nothing else
+  should carry those numbers.
 - `buildFootprint(roads, corridors, graph)` (`footprint.ts`) is the ground the roads claim (spec
   section 6.4). It is built on demand like the graph, not stored in the world description. Each
   curve is offset by `footprintHalfWidth(tier)`, an apron is laid where three roads or more meet,
@@ -237,6 +253,8 @@ gets wrong without it.
   and `laneOffset` shares only what is left between the lanes. A bay is refused where it would
   reach the ground another road claims, its own street's lanes, or its neighbour on a bend. A car
   park is laid in rows `STREET_REACH` inside its edge, because that rim is where its trees stand.
+  Its bays keep off the ground every road claims as well: a deck whose elevated corridor another
+  corridor cut short leaves the ground under its ramp to a parcel.
 - `buildBuildings(world, parcels, graph)` (`buildings.ts`) places the buildings of spec section
   10.3. It is built on demand like the parcels, not stored in the world description.
   `ZONE_BUILDINGS` says what a zone builds at all — a suburban parcel has no tower on its list —

@@ -18,6 +18,7 @@ import { ARTERIAL, STREET, type TierParams } from './road-params.ts';
 import type { Trail } from './network-clearance.ts';
 import type { NetworkHit } from './road-network.ts';
 import { RoadRoute } from './road-route.ts';
+import { stepOverlaps } from './self-overlap.ts';
 import type { Point, RoadTier } from './types.ts';
 
 // The numbers a trace runs on and the rule it asks the ground are next door;
@@ -82,6 +83,8 @@ export interface TraceOptions {
   within?: (x: number, y: number) => boolean;
   /** Run round this circle rather than along the field: the ring highway of `highways.ts`. */
   around?: Ring;
+  /** The road the trace carries on from, ending at its start, which it may not turn back over. */
+  before?: readonly Point[];
 }
 
 /** One step of a trace: which way it goes, and how far it reaches. */
@@ -112,8 +115,9 @@ export abstract class RoadTrace extends RoadRoute {
 
   /**
    * The longest run of a polyline a street may drive: dry ground the whole way,
-   * inside the map, no step steeper than the tier allows, and no step along
-   * another road's carriageway. A run ends where the street may end.
+   * inside the map, no step steeper than the tier allows, no step along
+   * another road's carriageway, and none back over the run's own. A run ends
+   * where the street may end.
    */
   protected longestRunnable(line: readonly Point[], maxGrade: number): Point[] {
     const inside = (p: Point): boolean => Math.abs(p.x) <= this.half && Math.abs(p.y) <= this.half;
@@ -126,7 +130,15 @@ export abstract class RoadTrace extends RoadRoute {
     };
     for (const p of line) {
       const last = run[run.length - 1];
-      if (last === undefined ? !ends(p) : !inside(p) || !this.canRun(last.x, last.y, p.x, p.y, maxGrade) || !this.network.stepOk(last, p, 'street')) {
+      const runs = (from: Point): boolean => inside(p) && this.canRun(from.x, from.y, p.x, p.y, maxGrade) && this.network.stepOk(from, p, 'street');
+      // A line that turns back over itself at one point is a spike, and the
+      // point is dropped rather than the line cut there.
+      const spike = run[run.length - 2];
+      if (last !== undefined && spike !== undefined && runs(last) && stepOverlaps(run, p, 'street') && runs(spike) && !stepOverlaps(run.slice(0, -1), p, 'street')) {
+        run[run.length - 1] = p;
+        continue;
+      }
+      if (last === undefined ? !ends(p) : !runs(last) || stepOverlaps(run, p, 'street')) {
         close();
         run = ends(p) ? [p] : [];
         continue;
@@ -154,7 +166,8 @@ export abstract class RoadTrace extends RoadRoute {
    * reroute second. `within` is ground the road would rather keep to; a route
    * that cannot be found inside it is looked for again without it, because
    * reaching the network matters more than any ground does. Last, it is looked
-   * for once more with every grid step kept off the roads it passes.
+   * for once more with every grid step kept off the roads it passes. `before`
+   * is the road the route carries on from, ending at `from`.
    */
   protected routeToNetwork(
     from: Point,
@@ -163,10 +176,11 @@ export abstract class RoadTrace extends RoadRoute {
     params: TierParams = ARTERIAL,
     within?: (x: number, y: number) => boolean,
     vetSteps = false,
+    before: readonly Point[] = [],
   ): Point[] | undefined {
     const target = this.network.nearestOnIsland(from.x, from.y, island, joiner);
     if (target !== undefined) {
-      const traced = this.trace(from, { params, joiner, target, mergeAfter: 0, within });
+      const traced = this.trace(from, { params, joiner, target, mergeAfter: 0, within, before });
       if (traced.merged || traced.arrived) return traced.points;
     }
     if (this.network.empty) return undefined;
@@ -182,9 +196,10 @@ export abstract class RoadTrace extends RoadRoute {
       },
       within,
       vetSteps,
+      before,
     );
     if (route !== undefined || vetSteps) return route;
-    if (within !== undefined) return this.routeToNetwork(from, island, joiner, params);
+    if (within !== undefined) return this.routeToNetwork(from, island, joiner, params, undefined, false, before);
     // Vetting the steps only takes ground away, so where the goal was nowhere
     // on the ground the search walked, it is nowhere on less of it.
     if (this.rerouteHits === 0) return undefined;
@@ -192,12 +207,15 @@ export abstract class RoadTrace extends RoadRoute {
     // cross a road that runs a few degrees off them, the shortest route runs
     // along that road for a while and is refused. Vetting every grid step as
     // well finds the route that crosses it cleanly.
-    return this.routeToNetwork(from, island, joiner, params, undefined, true);
+    return this.routeToNetwork(from, island, joiner, params, undefined, true, before);
   }
 
-  /** An arterial from a point to a place: streamline first, reroute second. */
-  protected routeTo(from: Point, target: Point, island: number): Point[] | undefined {
-    const traced = this.trace(from, { params: ARTERIAL, joiner: 'arterial', target, mergeAfter: 0 });
+  /**
+   * An arterial from a point to a place: streamline first, reroute second.
+   * `before` is the road it carries on from, ending at `from`.
+   */
+  protected routeTo(from: Point, target: Point, island: number, before: readonly Point[] = []): Point[] | undefined {
+    const traced = this.trace(from, { params: ARTERIAL, joiner: 'arterial', target, mergeAfter: 0, before });
     if (traced.merged || traced.arrived) return traced.points;
     const goalIx = this.node(target.x);
     const goalIy = this.node(target.y);
@@ -205,6 +223,9 @@ export abstract class RoadTrace extends RoadRoute {
       ix === goalIx && iy === goalIy && this.canRun(x, y, target.x, target.y, ARTERIAL.maxGrade)
         ? { x: target.x, y: target.y }
         : undefined,
+      undefined,
+      false,
+      before,
     );
     if (route !== undefined) return route;
     // The island is worth reaching even when its district is not reachable: keep
@@ -261,7 +282,8 @@ export abstract class RoadTrace extends RoadRoute {
         candidates.push(...this.network.within(qx, qy, params.mergeRadius, -1, opt.joiner));
       }
       const here = { x: px, y: py };
-      const hit = this.mergeAt(candidates, here, heading, opt.joiner, params, trail);
+      const turnsBack = (p: Point): boolean => stepOverlaps(points, p, opt.joiner, opt.before);
+      const hit = this.mergeAt(candidates, here, heading, opt.joiner, params, trail, turnsBack);
       if (hit !== undefined) {
         points.push({ x: hit.x, y: hit.y });
         clear.push(true);
@@ -277,7 +299,9 @@ export abstract class RoadTrace extends RoadRoute {
         qx = px + Math.cos(next.heading) * next.reach;
         qy = py + Math.sin(next.heading) * next.reach;
       }
-      if (foldsBack(points, qx, qy, params.step)) break;
+      // A road never comes back onto its own carriageway: it ends where the
+      // next step would, as it ends where the field curls it back.
+      if (foldsBack(points, qx, qy, params.step) || stepOverlaps(points, { x: qx, y: qy }, opt.joiner, opt.before)) break;
 
       points.push({ x: qx, y: qy });
       clear.push(this.network.clearAt(qx, qy, opt.joiner));
@@ -301,6 +325,7 @@ export abstract class RoadTrace extends RoadRoute {
         if (!this.canRun(px, py, target.x, target.y, params.maxGrade)) break;
         if (this.network.refuses(target.x, target.y, opt.joiner)) break;
         if (!this.network.meets(target, { x: px, y: py }, opt.joiner, trail)) break;
+        if (stepOverlaps(points, target, opt.joiner, opt.before)) break;
         points.push({ x: target.x, y: target.y });
         clear.push(true);
         arrived = true;
@@ -330,8 +355,9 @@ export abstract class RoadTrace extends RoadRoute {
    * under it, which spec section 6.2 refuses. A road that meets another along
    * its line lies in its carriageway, so a merge is taken only at an angle a
    * junction can be built at, and never by turning back onto a road the trace
-   * has just stepped across. The nearest point can fail where the one beside
-   * it does not, so a few are tried.
+   * has just stepped across, nor over the road's own carriageway (`turnsBack`).
+   * The nearest point can fail where the one beside it does not, so a few are
+   * tried.
    */
   protected mergeAt(
     candidates: readonly NetworkHit[],
@@ -340,12 +366,13 @@ export abstract class RoadTrace extends RoadRoute {
     joiner: RoadTier,
     params: TierParams,
     trail: Trail,
+    turnsBack: (p: Point) => boolean = () => false,
   ): NetworkHit | undefined {
     for (const hit of candidates.slice(0, MERGE_TRIES)) {
       if (this.network.refuses(hit.x, hit.y, joiner)) continue;
       if (Math.abs(wrapAngle(Math.atan2(hit.y - from.y, hit.x - from.x) - heading)) > MAX_MERGE_TURN) continue;
       if (!this.network.meets(hit, from, joiner, trail)) continue;
-      if (this.canRun(from.x, from.y, hit.x, hit.y, params.maxGrade)) return hit;
+      if (this.canRun(from.x, from.y, hit.x, hit.y, params.maxGrade) && !turnsBack(hit)) return hit;
     }
     return undefined;
   }

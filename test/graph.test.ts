@@ -60,6 +60,17 @@ describe('tier table', () => {
 });
 
 describe('road graph', () => {
+  it('meets where the curves carry one node, not where their points happen to stand', () => {
+    const [across, down] = crossroads();
+    (across as RoadCurve).nodes = [0, -1, 1];
+    (down as RoadCurve).nodes = [2, -1, 3];
+    // The two curves both have a point at the origin, but neither is a node.
+    expect(graphOf([across as RoadCurve, down as RoadCurve]).nodes).toHaveLength(4);
+    (across as RoadCurve).nodes = [0, 4, 1];
+    (down as RoadCurve).nodes = [2, 4, 3];
+    expect(graphOf([across as RoadCurve, down as RoadCurve]).nodes).toHaveLength(5);
+  });
+
   it('makes a node where curves meet and one at every free end', () => {
     const graph = buildRoadGraph(crossroads());
     // Four ends and the junction. The bends of a curve are not nodes.
