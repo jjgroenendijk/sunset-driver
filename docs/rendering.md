@@ -147,6 +147,13 @@ are the design.
   that chunk and the stretch costs nothing. `standingGround(building)` is the ground a shell may
   cover — the lot, and a centimetre of float error past each shared edge — and it is what both
   sweeps ask. A shared edge never faces a road, so none of this puts a wall on the carriageway.
+- A lot on a bend is a trapezoid or a parallelogram, and a box inside it cannot reach both of its
+  side edges. So a lot that shares a side edge has its shell and hull leaned (`leanOf` in
+  `building-plan.ts`): each place moves along `x` by an amount linear in `x` at its depth, which
+  maps the massing's sides onto the lot's side edges. A shear in the matrix cannot do this, because
+  a trapezoid is wider at one end. The normals and the facade's `roomCenter` are leaned with the
+  places. `node scripts/wall-gaps.ts <seed> [near|mid|far]` measures the daylight left at each
+  shared edge around the core.
 - A generated facade carries the room behind each window in its vertices: `roomCenter` and
   `roomSize`, baked by the generator in the building's own frame. The material casts the view ray
   into that box against `positionLocal`, and hashes the room's furniture off `roomCenter`. So a
