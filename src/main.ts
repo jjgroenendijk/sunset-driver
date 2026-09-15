@@ -7,11 +7,13 @@ import { createRenderer, probeWebGpu } from './render/renderer.ts';
 import { createTitleScene } from './render/scene.ts';
 import { RenderSmoother } from './render/smooth.ts';
 import { ParkedView } from './render/parked.ts';
+import { PedestrianView } from './render/pedestrians.ts';
 import { TrafficView } from './render/traffic.ts';
 import { WorldScene } from './render/world-scene.ts';
 import { FixedStepClock, gameTime } from './sim/clock.ts';
 import { DEFAULT_APPEARANCE } from './sim/character.ts';
 import { ParkedCars } from './sim/parked.ts';
+import { AmbientPedestrians, crowdDistrictsOf } from './sim/pedestrians.ts';
 import { initPhysics, SimPhysics, type Ground } from './sim/physics.ts';
 import { EMPTY_INPUT } from './sim/input.ts';
 import { createSave, restoreSimState, saveFromText, saveToText, type SaveFile } from './sim/save.ts';
@@ -75,6 +77,8 @@ interface Session {
   traffic: TrafficView;
   /** The parked cars of spec section 13.1, drawn; undefined where no worker laid out the bays. */
   parked: ParkedView | undefined;
+  /** The pedestrians of spec section 13.1, drawn. */
+  crowd: PedestrianView;
   /** The pause menu of spec section 12. While it is open the simulation does not step. */
   pause: PauseMenu;
 }
@@ -211,6 +215,7 @@ async function boot(): Promise<void> {
       const round = flying ? { x: free.camera.x, y: free.camera.z } : p;
       session.traffic.update(session.state, session.state.tick - 1 + alpha, round.x, round.y);
       session.parked?.update(session.state, round.x, round.y);
+      session.crowd.update(session.state, session.state.tick - 1 + alpha, round.x, round.y);
       // The damage of spec section 11.3, drawn off the same record: the smoke
       // and flames over the car and the rubber its tyres leave behind. It is
       // given the drawn pose, so the smoke stands where the car is seen to be.
@@ -316,7 +321,10 @@ async function boot(): Promise<void> {
   const surfaces = new SurfaceIndex(description);
   // The traffic of spec section 13.1 is placed once for the world and then
   // evaluated from the tick, so the physics and the renderer share one plan.
-  const traffic = new AmbientTraffic(state.seed, trafficRoadsOf(description));
+  const roads = trafficRoadsOf(description);
+  const traffic = new AmbientTraffic(state.seed, roads);
+  // The crowd walks the pavements of the same roads, and is placed once the same way.
+  const crowd = new AmbientPedestrians(state.seed, roads, crowdDistrictsOf(description));
   const ground: Ground = {
     heightAt: (x, y) => world.heightAt(x, y),
     surfaceAt: (x, y) => surfaces.at(x, y),
@@ -509,10 +517,13 @@ async function boot(): Promise<void> {
   world.scene.add(trafficView.group);
   const parkedView = parked === undefined ? undefined : new ParkedView(parked);
   if (parkedView !== undefined) world.scene.add(parkedView.group);
+  const crowdView = new PedestrianView(crowd);
+  world.scene.add(crowdView.group);
 
   session = {
     traffic: trafficView,
     parked: parkedView,
+    crowd: crowdView,
     state,
     world,
     physics,

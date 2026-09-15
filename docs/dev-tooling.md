@@ -123,7 +123,7 @@ What the game draws, as one frame. Look at the frame before judging a rendering 
 - `--width` and `--height` are the size of the picture.
 
 It prints the lights and shadow cascades the frame cost beside the draw calls, and how many
-vehicles of the traffic and parked cars it drew.
+vehicles of the traffic, parked cars and pedestrians it drew.
 
 ## `node scripts/render-profile.ts <seed>`
 

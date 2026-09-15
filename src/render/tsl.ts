@@ -193,3 +193,25 @@ export const bloom = bloomNode as unknown as (
 /** Subpixel morphological antialiasing. It wants linear colour, not encoded. */
 export const smaa = smaaNode as unknown as (colour: TslNode) => TslNode;
 
+
+// The crowd of spec section 13.1: a skinned body drawn instanced, its bones read from a texture.
+
+/** A shader function: the body builds nodes, and may assign to the vertex's own values. */
+export const Fn = tsl.Fn as unknown as (body: () => TslNode) => () => TslNode;
+
+/** One texel of a texture, by whole column and row, with no filtering. */
+export const textureLoad = tsl.textureLoad as unknown as (map: Texture, at: TslNode) => TslNode;
+
+/** Two whole numbers, most often a texel's column and row. */
+export const ivec2 = tsl.ivec2 as unknown as (x: number | TslNode, y?: number | TslNode) => TslNode;
+
+/** The vertex's place and normal as the geometry holds them, before anything moves them. */
+export const positionGeometry: TslNode = tsl.positionGeometry;
+export const normalGeometry: TslNode = tsl.normalGeometry;
+
+/** The vertex's normal in the object's frame, which the lighting reads; assignable in the vertex stage. */
+export const normalLocal: TslNode = tsl.normalLocal;
+
+/** Sine and cosine of an angle in radians. */
+export const sin = tsl.sin as unknown as (x: TslNode) => TslNode;
+export const cos = tsl.cos as unknown as (x: TslNode) => TslNode;

@@ -208,7 +208,7 @@ try {
       ` — world ${result.worldMs.toFixed(0)} ms, chunks ${result.chunkMs.toFixed(0)} ms,` +
       ` frame ${result.frameMs.toFixed(0)} ms, dearest chunk ${result.peakDrawCalls} draw calls,` +
       ` ${result.lights} lights, ${result.shadows} shadow cascades, ${result.quality} quality,` +
-      ` ${result.traffic} vehicles of traffic, ${result.parked} parked cars`,
+      ` ${result.traffic} vehicles of traffic, ${result.parked} parked cars, ${result.pedestrians} pedestrians`,
   );
 } finally {
   await browser?.close();
