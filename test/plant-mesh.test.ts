@@ -58,6 +58,9 @@ function chunkOf(plants: Plant[]): WorldChunk {
     parcels: [],
     buildings: [],
     plants,
+    piers: [],
+    tram: [],
+    tramCrossings: [],
   };
 }
 

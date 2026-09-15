@@ -12,6 +12,7 @@
  * read it directly.
  */
 import { BufferAttribute, BufferGeometry, Color, ShapeUtils, Vector2, Vector3 } from 'three';
+import { LoftGeometry } from 'three/examples/jsm/geometries/LoftGeometry.js';
 import type { RoadFrame } from '../world/ribbon.ts';
 import { footprintHalfWidth, TIERS } from '../world/tiers.ts';
 import type { Point, RoadTier } from '../world/types.ts';
@@ -46,9 +47,19 @@ const EDGE_INSET = 0.4;
 /** Metres between the two lines of a solid double centre line. */
 const DOUBLE_GAP = 0.5;
 
-/** What a vertex belongs to: the cross section of a road, or a structure carrying one. */
+/**
+ * What a vertex belongs to: the cross section of a road, a structure carrying
+ * one, or the tram's reserved lane, its rails and its level crossings, which are
+ * laid over the road (spec section 13.2).
+ */
 export const SURFACE_ROAD = 0;
 export const SURFACE_STRUCTURE = 1;
+export const SURFACE_TRAM_LANE = 2;
+export const SURFACE_RAIL = 3;
+export const SURFACE_CROSSING = 4;
+
+/** Metres of structure under a bridge deck, down from the skirt of its surface. */
+export const DECK_DEPTH = 1.1;
 
 /** One point of a cross section: how far across the road it stands, and how high. */
 export interface SectionPoint {
@@ -308,4 +319,34 @@ export function merge(parts: readonly BufferGeometry[]): BufferGeometry {
   }
   geometry.setIndex(new BufferAttribute(index, 1));
   return geometry;
+}
+
+/**
+ * A rectangular beam swept along a stretch of a run: the deck under a bridge,
+ * the parapet along its edge, a pier or a rail. `kind` is the surface the
+ * material paints it as. Closed and capped, so it is solid from every
+ * side the top-down camera can reach.
+ */
+export function beam(
+  points: readonly Point[],
+  frames: readonly RoadFrame[],
+  low: number,
+  high: number,
+  bottom: number,
+  top: number,
+  kind = SURFACE_STRUCTURE,
+): BufferGeometry {
+  // Wound so the loft faces outward: seen from the far end, the ring runs
+  // clockwise from the top of the right side.
+  const ring: SectionPoint[] = [
+    { across: high, rise: top },
+    { across: high, rise: bottom },
+    { across: low, rise: bottom },
+    { across: low, rise: top },
+  ];
+  const sections = points.map((point, i) =>
+    ring.map((s) => place(point, frames[i] as RoadFrame, s.across, s.rise)),
+  );
+  const geometry = new LoftGeometry(sections, { closed: true, capStart: true, capEnd: true });
+  return tag(geometry, new Float32Array(geometry.getAttribute('position').count), kind);
 }

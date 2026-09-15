@@ -21,16 +21,19 @@
  * split happens after the footprint is subtracted, a beach parcel can no more
  * stand on a road than any other parcel can.
  *
+ * The ground under a deck is split off the same way, and first. An elevated
+ * corridor (spec section 6.3) claims the strip under its deck, but the road
+ * stands off that ground, so the strip is not footprint: it is a parcel the
+ * `under-structure` owns, kept whole, for the car parks, dealers' pitches and
+ * alley-grade access the spec puts there. A road that passes under the deck is
+ * footprint, so it cuts the strip into a parcel each side of it.
+ *
  * Every parcel is then owned by exactly one thing (spec section 6.4, step 4).
  * The owner comes from the zone the parcel stands in, the density and wealth of
- * its district, and how much ground it has. Two of the eight owners the spec
- * names are not handed out yet:
- *
- * - `water` waits for a body of water inside the land rather than around it;
- *   the sea, the river and the harbour are subtracted, not parcelled.
- * - `under-structure` is the ground beneath an elevated deck, and that ground is
- *   claimed by the deck's own corridor (spec section 6.3), so it is part of the
- *   footprint rather than of the land the parcels are cut from.
+ * its district, and how much ground it has. One of the eight owners the spec
+ * names is not handed out yet: `water` waits for a body of water inside the
+ * land rather than around it; the sea, the river and the harbour are
+ * subtracted, not parcelled.
  *
  * Built on demand from the world description like the road graph and the
  * footprint, not stored in it.
@@ -44,7 +47,7 @@
  * Pure: the same world gives the same parcels, in
  * the same order, with the same owners.
  */
-import { areaOf, difference, pointInRegion, regionArea, regionOf, split, type Point, type Region } from '../core/geom.ts';
+import { areaOf, difference, pointInRegion, regionArea, regionOf, split, union, type Point, type Region } from '../core/geom.ts';
 import { genRng, Subsystem } from '../core/rng.ts';
 import { districtAt, layoutZones, zoneAt, type ZoneLayout } from './districts.ts';
 import type { RoadFootprint } from './footprint.ts';
@@ -300,11 +303,16 @@ export function buildParcels(
   graph: RoadGraph,
   field: TensorField,
 ): ParcelMap {
-  const land = landRegions(new Heightfield(world.terrain), world.water.seaLevel);
+  const dry = landRegions(new Heightfield(world.terrain), world.water.seaLevel);
   const zones = layoutZones(world.size, world.core, world.water);
   const reach = new RoadReach(world.roads, graph);
-  const free = difference(land, footprint.regions);
-  // The sand first, so the ground behind it is parcelled without it.
+  // The ground under the decks first: it is the corridor's, whatever else the
+  // zone would have made of it.
+  const decks = world.corridors.filter((corridor) => corridor.kind === 'elevated').map((c) => regionOf(c.polygon));
+  const land = difference(dry, footprint.regions);
+  const under = decks.length === 0 ? { inside: [], outside: land } : split(land, union(decks));
+  const free = under.outside;
+  // The sand next, so the ground behind it is parcelled without it.
   const sand = world.beaches.map((beach) => regionOf(beach.sand));
   const shore = sand.length === 0 ? { inside: [], outside: free } : split(free, sand);
   const pieces: Piece[] = [];
@@ -316,6 +324,10 @@ export function buildParcels(
   }
   for (const region of shore.outside) cutToSize(region, zones, field, reach, pieces, 0);
   markCarParks(pieces, world.beaches, reach);
+  for (const region of under.inside) {
+    const piece = pieceOf(region, reach);
+    if (piece !== undefined) pieces.push({ ...piece, owner: 'under-structure' });
+  }
 
   const parcels: Parcel[] = [];
   const stations: PoliceStation[] = [];
@@ -337,7 +349,7 @@ export function buildParcels(
     if ((parcels[id] as Parcel).owner === 'building') offerStation(stations, district, id, piece.at);
   }
   stations.sort((a, b) => a.district - b.district);
-  return { parcels, area, land: areaOf(land), stations };
+  return { parcels, area, land: areaOf(dry), stations };
 }
 
 /**

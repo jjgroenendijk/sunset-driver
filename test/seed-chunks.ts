@@ -12,8 +12,10 @@ import { buildRoadGraph } from '../src/world/graph.ts';
 import { buildJunctions } from '../src/world/junctions.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { type Parcel } from '../src/world/parcels.ts';
+import { deckPiers } from '../src/world/piers.ts';
 import { MITRE_SHIFT, RoadRibbons } from '../src/world/ribbon.ts';
 import { footprintHalfWidth, TIERS } from '../src/world/tiers.ts';
+import { tramTrack } from '../src/world/tram-track.ts';
 import { type Point, type RoadCurve, type WorldDescription } from '../src/world/types.ts';
 import { mixFor, MAX_PLANT_RADIUS, PLANT_RADIUS, Vegetation, type Plant } from '../src/world/vegetation.ts';
 import { pointInRing, ringArea, sideReach, stableJson } from './helpers.ts';
@@ -461,6 +463,8 @@ export function chunkChecks(): void {
           buildings: aloneBuildings,
           carve: buildCarve(world.terrain, world.roads, aloneJunctions),
           vegetation: new Vegetation(world.seed, parts.parcels, aloneBuildings),
+          piers: deckPiers(world),
+          tram: tramTrack(world, aloneGraph),
         });
         // The far chunk first, before this source has cut anything at all.
         for (const [cx, cy] of [...chunkKeys()].reverse()) {

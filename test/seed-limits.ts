@@ -89,10 +89,17 @@ export const MIN_PARCELS = 40;
 export const MAX_UNREACHED_SHARE = 0.25;
 /**
  * The owners spec section 6.4 step 4 names that are handed out today. A body of
- * water inside the land and the ground under an elevated deck come later; until
- * then no parcel carries them.
+ * water inside the land comes later; until then no parcel carries it.
  */
-export const ASSIGNED_OWNERS = new Set<ParcelOwner>(['building', 'park', 'car-park', 'plaza', 'beach', 'ground']);
+export const ASSIGNED_OWNERS = new Set<ParcelOwner>([
+  'building',
+  'park',
+  'car-park',
+  'plaza',
+  'under-structure',
+  'beach',
+  'ground',
+]);
 /** Buildings a world has to be given; a map that comes back with fewer has collapsed. */
 export const MIN_BUILDINGS = 200;
 /**

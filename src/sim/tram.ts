@@ -17,6 +17,7 @@
 import { hashInts } from '../core/hash.ts';
 import { rngFor, Subsystem } from '../core/rng.ts';
 import type { RoadEdge } from '../world/graph.ts';
+import { TRAM_LANE } from '../world/tiers.ts';
 import type { District, TramDescription } from '../world/types.ts';
 import { TICK_RATE } from './clock.ts';
 import { lookOf, type PedestrianLook } from './pedestrian-look.ts';
@@ -42,7 +43,7 @@ export const CAR_HALF_HEIGHT = 1.65;
 /** Metres of a whole tram, nose to tail. */
 export const TRAM_LENGTH = TRAM_CARS * CAR_LENGTH + (TRAM_CARS - 1) * CAR_GAP;
 /** Metres from the middle of the road to the track: the middle of the right half of the reserved lane. */
-export const TRAM_TRACK = 1.6;
+export const TRAM_TRACK = TRAM_LANE.trackSpacing / 2;
 /** Metres from the middle of a car to each of its bogies, where the car is read on the track. */
 export const BOGIE = 3.5;
 

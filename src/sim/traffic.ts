@@ -24,8 +24,7 @@ import { RoadBeds } from '../world/bed.ts';
 import { layoutZones, districtAt } from '../world/districts.ts';
 import { buildRoadGraph, type RoadEdge, type RoadGraph } from '../world/graph.ts';
 import { buildJunctions, type JunctionMap } from '../world/junctions.ts';
-import { TIERS } from '../world/tiers.ts';
-import { TRAM_HALF } from '../world/corridors.ts';
+import { TIERS, TRAM_LANE } from '../world/tiers.ts';
 import type { Point, RoadCurve, RoadTier, TramDescription, WorldDescription, Zone } from '../world/types.ts';
 import { TICK_RATE } from './clock.ts';
 import { EdgeIndex } from './edge-index.ts';
@@ -368,7 +367,7 @@ function mod(value: number, by: number): number {
  */
 export function laneOffset(edge: Pick<RoadEdge, 'tier' | 'lanes'>, lane: number, tram = false): number {
   const spec = TIERS[edge.tier];
-  const inner = tram ? TRAM_HALF : 0;
+  const inner = tram ? TRAM_LANE.halfWidth : 0;
   const width = (spec.width / 2 - spec.parking - inner) / edge.lanes;
   return inner + (Math.min(lane, edge.lanes - 1) + 0.5) * width;
 }

@@ -4,9 +4,8 @@ import { SIGNAL_CYCLE, TrafficSignals } from '../src/sim/signals.ts';
 import { laneOffset, type AmbientPose } from '../src/sim/traffic.ts';
 import { QUEUE_CLEAR } from '../src/sim/traffic-timing.ts';
 import { ARRIVAL_TICKS, BOARD_TICKS, CAR_GAP, CAR_HALF_HEIGHT, CAR_HALF_WIDTH, CAR_LENGTH, DWELL, STOP_CAP, TRAM_CARS, TRAM_CLEAR, TRAM_TRACK, TramLine } from '../src/sim/tram.ts';
-import { TRAM_HALF } from '../src/world/corridors.ts';
 import type { RoadEdge } from '../src/world/graph.ts';
-import { TIERS } from '../src/world/tiers.ts';
+import { TIERS, TRAM_LANE } from '../src/world/tiers.ts';
 import { RING, ring } from './tram-ring.ts';
 
 describe('the tram (spec section 13.2)', () => {
@@ -95,9 +94,9 @@ describe('the tram (spec section 13.2)', () => {
 
   it('keeps the traffic out of the reserved lane of the roads it runs down', () => {
     const arterial = { tier: 'arterial' as const, lanes: TIERS.arterial.lanes };
-    expect(laneOffset(arterial, 0, true) - 1).toBeGreaterThanOrEqual(TRAM_HALF);
+    expect(laneOffset(arterial, 0, true) - 1).toBeGreaterThanOrEqual(TRAM_LANE.halfWidth);
     expect(laneOffset(arterial, arterial.lanes - 1, true) + 1).toBeLessThanOrEqual(TIERS.arterial.width / 2);
-    expect(TRAM_TRACK + CAR_HALF_WIDTH).toBeLessThanOrEqual(TRAM_HALF);
+    expect(TRAM_TRACK + CAR_HALF_WIDTH).toBeLessThanOrEqual(TRAM_LANE.halfWidth);
     // A vehicle down a side of the ring drives clear of the tram's lane.
     let seen = 0;
     for (const vehicle of traffic.vehicles) {
@@ -108,7 +107,7 @@ describe('the tram (spec section 13.2)', () => {
         const across = Math.min(Math.abs(Math.abs(at.x) - RING), Math.abs(Math.abs(at.y) - RING));
         if (Math.max(Math.abs(at.x), Math.abs(at.y)) > RING + 20 || Math.min(Math.abs(at.x), Math.abs(at.y)) > RING - 30) continue;
         if (Math.min(Math.abs(at.x), Math.abs(at.y)) < 30) continue;
-        expect(across, `vehicle ${vehicle.id} at tick ${tick}`).toBeGreaterThanOrEqual(TRAM_HALF);
+        expect(across, `vehicle ${vehicle.id} at tick ${tick}`).toBeGreaterThanOrEqual(TRAM_LANE.halfWidth);
         seen++;
       }
     }

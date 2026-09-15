@@ -6,7 +6,8 @@
  * tells them apart by the `across` attribute `road-mesh.ts` writes — metres from
  * the centreline. The boundaries are hard steps at the tier's own widths, so the
  * kerb reads as a kerb rather than as a gradient. The `kind` attribute marks the
- * decks, parapets and portals, which are concrete whatever they stand over.
+ * decks, parapets, piers and portals, which are concrete whatever they stand
+ * over, and the tram's lane, rails and level crossings (`road-section.ts`).
  *
  * The build ships no image files, so the grain of asphalt, concrete and gravel
  * is fractal noise in the shader, as the ground's is.
@@ -23,8 +24,16 @@ import { attribute, float, fractalNoise, mix, positionWorld, step, vec3, type Ts
 const GRAIN_METRES = 1.6;
 const PATCH_METRES = 26;
 
-/** Concrete: every deck, parapet and portal, whatever tier carries it. */
+/** Concrete: every deck, parapet, pier and portal, whatever tier carries it. */
 const CONCRETE = 0x8f8c85;
+/**
+ * The tram's reserved lane is paved in red, so a driver reads it as a lane of
+ * its own; its rails are steel, and a level crossing is a pale concrete panel
+ * the rails run across.
+ */
+const TRAM_LANE_RGB = 0x6e3b32;
+const RAIL_RGB = 0xa9aaae;
+const CROSSING_RGB = 0xb3ab98;
 
 /** Metres a painted line is wide, and how bright the paint is. */
 const PAINT_WIDTH = 0.16;
@@ -75,8 +84,16 @@ export function createRoadMaterial(tier: RoadTier): MeshStandardNodeMaterial {
   const road = paved.mul(float(0.82).add(patch.mul(0.26)).add(grain.mul(0.2)));
   const structure = rgb(CONCRETE).mul(float(0.86).add(grain.mul(0.22)));
 
+  // The kinds are whole numbers, so a step half-way between two picks one out.
   const kind = attribute('kind', 'float');
-  material.colorNode = mix(road, structure, kind);
+  const at = (k: number): TslNode => step(k - 0.5, kind).sub(step(k + 0.5, kind));
+  const lane = rgb(TRAM_LANE_RGB).mul(float(0.8).add(patch.mul(0.2)).add(grain.mul(0.2)));
+  const crossing = rgb(CROSSING_RGB).mul(float(0.86).add(grain.mul(0.22)));
+  let colour = mix(road, structure, at(1));
+  colour = mix(colour, lane, at(2));
+  colour = mix(colour, rgb(RAIL_RGB), at(3));
+  colour = mix(colour, crossing, at(4));
+  material.colorNode = colour;
   // Asphalt is smoother than the ground beside it, and the fine grain varies it.
   material.roughnessNode = mix(float(palette.roughness), float(palette.roughness - 0.16), grain);
   return material;

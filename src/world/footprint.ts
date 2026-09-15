@@ -4,17 +4,16 @@
  * Every road is a curve, so the ground it covers is its centreline offset by
  * half the width of its tier — carriageway, verge and pavement, from the tier
  * table in `tiers.ts`. Where roads meet, an apron is laid over the junction so
- * the corner between them is rounded rather than notched. The corridors of
- * spec section 6.3 claim their strips here too, because the ground under a deck
- * and the tram's reserved lane are taken out of the land the same way a
- * carriageway is.
+ * the corner between them is rounded rather than notched. The tram's reserved
+ * lane (spec section 6.3) claims its strip here too, because it is taken out of
+ * the land the same way a carriageway is.
  *
  * A road only claims ground it stands on. A segment carried on a deck or bored
- * through a hill claims nothing: the ground under a deck over land belongs to
- * that road's elevated corridor, the ground under a deck over water is not land
- * at all, and the hill over a bore is untouched. So the footprint is laid along
- * the runs of each curve that are on the ground, and stops at every abutment
- * and portal.
+ * through a hill claims nothing: the ground under a deck over land is the
+ * under-structure parcel `parcels.ts` cuts from the deck's elevated corridor,
+ * the ground under a deck over water is not land at all, and the hill over a
+ * bore is untouched. So the footprint is laid along the runs of each curve that
+ * are on the ground, and stops at every abutment and portal.
  *
  * The pieces are unioned, so the result does not overlap itself and the blocks
  * between the roads come back as its holes. Subtracting it from the land is
@@ -41,7 +40,10 @@ export interface FootprintParts {
   strips: Region[];
   /** One apron per junction that takes one. */
   aprons: Region[];
-  /** One region per corridor of spec section 6.3. */
+  /**
+   * One region per tram corridor of spec section 6.3. An elevated corridor is
+   * not here: the ground under a deck is a parcel, not footprint.
+   */
   corridors: Region[];
 }
 
@@ -83,7 +85,8 @@ export function footprintParts(
     const ring = apronOf(graph, node);
     if (ring !== undefined) aprons.push(regionOf(ring.ring));
   }
-  return { strips, aprons, corridors: corridors.map((corridor) => regionOf(corridor.polygon)) };
+  const lanes = corridors.filter((corridor) => corridor.kind === 'tram');
+  return { strips, aprons, corridors: lanes.map((corridor) => regionOf(corridor.polygon)) };
 }
 
 /**

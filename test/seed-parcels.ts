@@ -101,11 +101,18 @@ export function parcelChecks(): void {
         // too dear to run over the whole map, so this asks about a spread of
         // places: on the roads, on the corridors, and out on the open ground.
         const index = new ParcelIndex(parcels);
+        const decks = w.corridors.filter((corridor) => corridor.kind === 'elevated');
         for (const p of landPoints(w, PARCEL_SAMPLES, 0x9a4c)) {
           const owners = index.at(p);
           if (owners.length > 1) fault(`parcels ${owners.join(' and ')} both claim the same ground`);
           if (owners.length === 1 && pointInRegions(p, footprint.regions)) {
             fault(`parcel ${owners[0] as number} stands on the ground the roads claim`);
+          }
+          // Spec section 6.3: the ground under a deck is the one place an
+          // under-structure parcel stands.
+          const owner = owners.length === 1 ? (parcels[owners[0] as number] as Parcel).owner : undefined;
+          if (owner === 'under-structure' && !decks.some((deck) => pointInRing(p, deck.polygon))) {
+            fault(`under-structure parcel ${owners[0] as number} stands outside every elevated corridor`);
           }
         }
         let step = 0;
@@ -128,7 +135,12 @@ export function parcelChecks(): void {
             const a = corridor.points[i] as Point;
             const b = corridor.points[i + 1] as Point;
             const owners = index.at({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
-            if (owners.length > 0) fault(`parcel ${owners[0] as number} stands on ${corridor.kind} corridor ${corridor.id}`);
+            // The ground under a deck is a parcel of its own; the tram's lane is footprint.
+            const owner = owners.length > 0 ? (parcels[owners[0] as number] as Parcel).owner : undefined;
+            const allowed = corridor.kind === 'elevated' ? 'under-structure' : undefined;
+            if (owner !== undefined && owner !== allowed) {
+              fault(`${owner} parcel ${owners[0] as number} stands on ${corridor.kind} corridor ${corridor.id}`);
+            }
           }
         }
         expect(complaint, `seed ${seed}`).toBeUndefined();

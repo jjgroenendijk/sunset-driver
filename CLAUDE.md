@@ -41,6 +41,8 @@ costs a session, and only those.
   profiler. Look at the image before judging a layout change, the frame before judging a rendering
   change, and the frame times before judging a performance change.
 - `docs/world-generation.md` — `src/world`.
+- `docs/corridors.md` — the corridors, the piers under the decks and the tram track, world and
+  render.
 - `docs/rendering.md` — `src/render`.
 - `docs/sim-and-ui.md` — `src/sim` and `src/ui`.
 - `docs/performance.md` — how the test tiers are measured and where their cost goes.

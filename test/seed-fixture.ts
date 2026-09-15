@@ -6,6 +6,8 @@ import { buildRoadGraph, type RoadGraph } from '../src/world/graph.ts';
 import { buildJunctions, type JunctionMap } from '../src/world/junctions.ts';
 import { RoadBeds } from '../src/world/bed.ts';
 import { type ParcelMap } from '../src/world/parcels.ts';
+import { deckPiers } from '../src/world/piers.ts';
+import { tramTrack } from '../src/world/tram-track.ts';
 import { type WorldDescription } from '../src/world/types.ts';
 import { Vegetation } from '../src/world/vegetation.ts';
 import { sweepSeeds } from './helpers.ts';
@@ -55,6 +57,8 @@ export const sourceOf = (seed: number): ChunkSource => {
     buildings: buildingsOf(seed),
     carve: carveOf(seed),
     vegetation: vegetationOf(seed),
+    piers: deckPiers(world),
+    tram: tramTrack(world, graphOf(seed)),
   });
   sources.set(seed, built);
   return built;

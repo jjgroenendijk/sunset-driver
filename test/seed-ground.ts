@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { pointInRegions, type Region } from '../src/core/geom.ts';
 import { benchHalfWidth, CARVE_BLEND } from '../src/world/carve.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
+import { deckPiers, RoadGround } from '../src/world/piers.ts';
 import { CHUNK_TERRAIN_CELL } from '../src/world/terrain.ts';
 import { nearestRoadPlace, SurfaceIndex } from '../src/world/surface.ts';
-import { type Corridor, type Point, type WorldDescription } from '../src/world/types.ts';
+import { type Corridor, type Point, type RoadCurve, type WorldDescription } from '../src/world/types.ts';
 import { landPoints, pointInRing, ringArea, ringsOverlap } from './helpers.ts';
 import {
   FOOTPRINT_COUNT,
@@ -224,6 +225,43 @@ export function groundChecks(): void {
             const other = w.corridors[j] as Corridor;
             if (ringsOverlap(corridor.polygon, other.polygon)) fault(`${where} overlaps ${other.kind} corridor ${j}`);
           }
+        }
+        expect(complaint, `seed ${seed}`).toBeUndefined();
+      }
+    });
+
+    it('stands piers in the water under every deck over water, and never on a road', () => {
+      // Spec section 6.3: a pier stands only on the ground its deck's corridor
+      // claims, or in the water; issue #267 draws them, so a bridge never floats.
+      for (const seed of seeds) {
+        const w = worlds.get(seed) as WorldDescription;
+        const hf = new Heightfield(w.terrain);
+        const sea = w.water.seaLevel;
+        const ground = new RoadGround(w.roads);
+        const piers = deckPiers(w);
+        let complaint: string | undefined;
+        const fault = (text: string): void => {
+          complaint ??= text;
+        };
+        for (const pier of piers) {
+          const road = w.roads[pier.curve] as RoadCurve;
+          const where = `pier at ${pier.x.toFixed(1)}, ${pier.y.toFixed(1)} under ${road.tier} ${road.id}`;
+          if (!road.bridges.includes(pier.segment)) fault(`${where} carries segment ${pier.segment}, which is no deck`);
+          if (ground.covers(pier, road.id)) fault(`${where} stands on a road`);
+          const wet = hf.sample(pier.x, pier.y) < sea;
+          const under = w.corridors.some(
+            (c) => c.kind === 'elevated' && c.roads.includes(road.id) && pointInRing(pier, c.polygon),
+          );
+          if (!wet && !under) fault(`${where} stands on dry ground outside its corridor`);
+        }
+        // A deck whose both ends of a segment stand over deep water carries a pier on that curve.
+        for (const road of w.roads) {
+          const crosses = road.bridges.some((i) => {
+            const a = road.points[i] as Point;
+            const b = road.points[i + 1] as Point;
+            return hf.sample(a.x, a.y) < sea && hf.sample(b.x, b.y) < sea && Math.hypot(b.x - a.x, b.y - a.y) > 50;
+          });
+          if (crosses && !piers.some((pier) => pier.curve === road.id)) fault(`${road.tier} ${road.id} crosses water on no pier`);
         }
         expect(complaint, `seed ${seed}`).toBeUndefined();
       }

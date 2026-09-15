@@ -25,8 +25,10 @@ import { buildRoadGraph, type RoadGraph } from './graph.ts';
 import { buildJunctions, type Junction, type JunctionMap, type RoadGap } from './junctions.ts';
 import { buildParcels, type Parcel, type ParcelMap, type ParcelOwner } from './parcels.ts';
 import { PAVEMENT_WINDOW, pavementIn, type ChunkPavement, type PavementApron } from './pavement.ts';
+import { deckPiers, type DeckPier } from './piers.ts';
 import { buildTensorField } from './tensor.ts';
 import { CHUNK_TERRAIN_CELL, TERRAIN_CELL } from './terrain.ts';
+import { tramTrack, type TramCrossing, type TramTrack } from './tram-track.ts';
 import type { HeightfieldData, RoadCurve, RoadTier, WorldDescription, Zone } from './types.ts';
 import { Vegetation, type Plant } from './vegetation.ts';
 import { generateWorld } from './world.ts';
@@ -86,6 +88,13 @@ export interface ChunkRoad {
   gaps: RoadGap[];
 }
 
+/** A pier under a deck, with the height of the carved ground its foot stands on. */
+export interface ChunkPier extends DeckPier {
+  /** The tier of the deck the pier carries, whose batch it is drawn in. */
+  tier: RoadTier;
+  ground: number;
+}
+
 /** One piece of a parcel inside a chunk. A parcel that spans a boundary gives a piece to each side. */
 export interface ChunkParcel {
   /** Id of the whole-map parcel this piece comes from. */
@@ -142,6 +151,16 @@ export interface WorldChunk {
    * in carries the whole of it.
    */
   plants: Plant[];
+  /** The piers whose foot stands in the chunk, in the order `deckPiers` lists them. */
+  piers: ChunkPier[];
+  /**
+   * The tram track inside the chunk (spec section 13.2): runs of the curves the
+   * tram drives down, cut where the track leaves the chunk. A run is never cut
+   * at a junction, because the rails carry on across it.
+   */
+  tram: ChunkRoad[];
+  /** The level crossings whose node stands in the chunk. */
+  tramCrossings: TramCrossing[];
 }
 
 /**
@@ -157,6 +176,9 @@ export interface WorldLayers {
   carve: RoadCarve;
   /** The plants of the world, which a chunk asks for the ground it covers. */
   vegetation: Vegetation;
+  /** Every pier under every deck. */
+  piers: DeckPier[];
+  tram: TramTrack;
 }
 
 /**
@@ -178,6 +200,8 @@ export function buildLayers(world: WorldDescription): WorldLayers {
     buildings,
     carve: buildCarve(world.terrain, world.roads, junctions),
     vegetation: new Vegetation(world.seed, parcels, buildings),
+    piers: deckPiers(world),
+    tram: tramTrack(world, graph),
   };
 }
 
@@ -257,7 +281,34 @@ export class ChunkSource {
       pavement: this.pavementOf(bounds),
       buildings: [...(this.buildingsByChunk.get(`${cx}:${cy}`) ?? [])],
       plants: this.layers.vegetation.plantsIn(bounds, parcels),
+      piers: this.piersIn(bounds),
+      tram: this.tramIn(bounds),
+      tramCrossings: this.layers.tram.crossings.filter((crossing) => inside(crossing, bounds)),
     };
+  }
+
+  /** The piers whose foot stands in a chunk, each with the carved ground under it. */
+  private piersIn(bounds: ChunkBounds): ChunkPier[] {
+    const carve = this.layers.carve;
+    return this.layers.piers
+      .filter((pier) => inside(pier, bounds))
+      .map((pier) => ({
+        ...pier,
+        tier: (this.world.roads[pier.curve] as RoadCurve).tier,
+        ground: carve.heightAt(pier.x, pier.y),
+      }));
+  }
+
+  /** The runs of tram track inside a chunk, in curve order. */
+  private tramIn(bounds: ChunkBounds): ChunkRoad[] {
+    const out: ChunkRoad[] = [];
+    const segments = this.layers.tram.segments;
+    for (let i = 0; i < this.world.roads.length; i++) {
+      const mask = segments[i];
+      if (mask === undefined || !boxesMeet(this.roadBoxes[i] as Box, bounds)) continue;
+      clipRoad(this.world.roads[i] as RoadCurve, bounds, [], out, mask);
+    }
+    return out;
   }
 
   /**
@@ -297,10 +348,7 @@ export class ChunkSource {
    * ones, as it does for the roads, so a node on a boundary is drawn once.
    */
   private junctionsIn(bounds: ChunkBounds): Junction[] {
-    return this.layers.junctions.junctions.filter(
-      (junction) =>
-        junction.x >= bounds.minX && junction.x < bounds.maxX && junction.y >= bounds.minY && junction.y < bounds.maxY,
-    );
+    return this.layers.junctions.junctions.filter((junction) => inside(junction, bounds));
   }
 
   /**
@@ -373,8 +421,10 @@ function pieceOf(parcel: Parcel, region: Region, area: number): ChunkParcel {
  * comes back, so a road that wanders across a boundary twice gives two runs.
  * The point a run is cut at is solved from the two ends of the segment and the
  * edge it crosses, so the chunk on the other side cuts at the same place.
+ * Given `only`, a mask of the curve's segments, a segment the mask leaves out
+ * is cut as if it lay outside the chunk.
  */
-function clipRoad(road: RoadCurve, bounds: ChunkBounds, gaps: RoadGap[], out: ChunkRoad[]): void {
+function clipRoad(road: RoadCurve, bounds: ChunkBounds, gaps: RoadGap[], out: ChunkRoad[], only?: Uint8Array): void {
   const segments = Math.max(0, road.points.length - 1);
   const bridges = maskOf(road.bridges, segments);
   const tunnels = maskOf(road.tunnels, segments);
@@ -386,7 +436,7 @@ function clipRoad(road: RoadCurve, bounds: ChunkBounds, gaps: RoadGap[], out: Ch
   for (let i = 0; i < segments; i++) {
     const a = road.points[i] as Point;
     const b = road.points[i + 1] as Point;
-    const span = clipSegment(a, b, bounds);
+    const span = only === undefined || only[i] === 1 ? clipSegment(a, b, bounds) : undefined;
     // A segment that misses the chunk, or only touches a corner of it, ends the
     // run before it and carries nothing of its own.
     if (span === undefined || span.t0 === span.t1) {
@@ -496,6 +546,11 @@ function boxOf(points: readonly Point[]): Box {
 /** True when two boxes share any ground, edges included. */
 function boxesMeet(a: Box, b: Box): boolean {
   return a.minX <= b.maxX && b.minX <= a.maxX && a.minY <= b.maxY && b.minY <= a.maxY;
+}
+
+/** True when a place stands in a chunk. A chunk owns its near edges and not its far ones. */
+function inside(p: { x: number; y: number }, bounds: ChunkBounds): boolean {
+  return p.x >= bounds.minX && p.x < bounds.maxX && p.y >= bounds.minY && p.y < bounds.maxY;
 }
 
 /** True when the first box stands wholly inside the second. */

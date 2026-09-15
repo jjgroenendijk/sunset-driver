@@ -177,8 +177,8 @@ gets wrong without it.
 - `buildFootprint(roads, corridors, graph)` (`footprint.ts`) is the ground the roads claim (spec
   section 6.4). It is built on demand like the graph, not stored in the world description. Each
   curve is offset by `footprintHalfWidth(tier)`, an apron is laid where three roads or more meet,
-  and the corridor strips join them. Only the runs a road stands on are claimed: the ground under a
-  deck belongs to that road's elevated corridor, or is not land at all. The holes of the union are
+  and the tram's lane joins them. Only the runs a road stands on are claimed: the ground under a
+  deck is an under-structure parcel, or is not land at all. The holes of the union are
   the city blocks, and subtracting it from the land gives the parcels.
 - `src/core/geom.ts` is the door onto the polygon arithmetic: `ring.ts` holds the shapes, `edges.ts`
   the edge soup and its spatial index, and `planar.ts` the graph the operations are read off. It is
@@ -240,8 +240,7 @@ gets wrong without it.
   and `laneOffset` shares only what is left between the lanes. A bay is refused where it would
   reach the ground another road claims, its own street's lanes, or its neighbour on a bend. A car
   park is laid in rows `STREET_REACH` inside its edge, because that rim is where its trees stand.
-  Its bays keep off the ground every road claims as well: a deck whose elevated corridor another
-  corridor cut short leaves the ground under its ramp to a parcel.
+  Its bays keep off the ground every road claims as well.
 - `buildBuildings(world, parcels, graph)` (`buildings.ts`) places the buildings of spec section
   10.3. It is built on demand like the parcels, not stored in the world description.
   `ZONE_BUILDINGS` says what a zone builds at all — a suburban parcel has no tower on its list —
@@ -273,21 +272,7 @@ gets wrong without it.
   - `Lot.shared` says which of a lot's two side edges another lot of the row lies against, and a
     lot the row dropped leaves its neighbour's edge bare. The renderer reads it to know where it
     may reach the edge and where it has to keep a margin; see `docs/rendering.md`.
-- `buildCorridors(world, roads, graph)` (`corridors.ts`) lays the corridors of spec section 6.3 and
-  the tram route of spec section 13.2. It is the last step of `generateWorld`, and the only place
-  that builds the graph during generation. A corridor claims its ground at the moment it is laid: a
-  strip is claimed segment by segment, ground within `CLAIM_CLEARANCE` of a claimed strip is not
-  free, and a run that meets claimed ground is cut and continues past it. Two corridors therefore
-  cannot overlap, and the sweep only confirms it. The tram claims first, so a deck over its lane
-  gives way. A line that turns more than `MAX_BEND` is cut at the turn, because a strip carried
-  round a corner that sharp folds over itself.
-- A corridor claims no ground where its centreline stands over water, whatever its kind: there is
-  nothing under it to claim. The tram is what needs that rule, since its lane runs down the middle
-  of an arterial and an arterial crosses a strait on a deck.
-- An elevated corridor is the ground under a deck that stands over land, with the pillar feet that
-  carry it; a deck over water owns nothing, for the same reason. A tram corridor is
-  the reserved lane, down the middle of an arterial from one stop to the next. `world.tram` holds
-  the line the tram drives, its stops, and the level crossings where another road meets it.
+- The corridors, the piers under the decks and the tram track are in `docs/corridors.md`.
 - `buildJunctions(roads, graph)` (`junctions.ts`) is where roads meet (spec section 6.2). Every node
   with two or more roads on the ground is a junction unless the two carry straight on into each
   other. Each road is a mouth, cut back along its curve to where its kerbs leave its neighbours'
