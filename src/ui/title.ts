@@ -1,6 +1,8 @@
 import { normaliseAppearance, type CharacterAppearance } from '../sim/character.ts';
 import type { WorldDescription } from '../world/types.ts';
 import { MenuPages } from './menu-pages.ts';
+import type { BuildingViewChoice } from './settings.ts';
+import { buildCameraPage } from './title-camera.ts';
 import { buildControlsPage } from './title-controls.ts';
 import { button, menuList, page } from './title-parts.ts';
 import { NewGamePage } from './title-setup.ts';
@@ -17,7 +19,7 @@ export interface TitleChoice {
   world: WorldDescription | null;
 }
 
-const PAGE_NAMES = ['main', 'setup', 'settings', 'controls'] as const;
+const PAGE_NAMES = ['main', 'setup', 'settings', 'controls', 'camera'] as const;
 type PageName = (typeof PAGE_NAMES)[number];
 
 /** The page Escape and Back go to from each page. */
@@ -26,11 +28,13 @@ const PARENT: Record<PageName, PageName | null> = {
   setup: 'main',
   settings: 'main',
   controls: 'settings',
+  camera: 'settings',
 };
 
 /**
  * The title screen of spec section 12, laid out as a game's main menu. The
- * main page offers New game, Load game and Controls. Load game stays disabled
+ * main page offers New game, Load game and Settings, and Settings offers
+ * Controls and Camera (`title-camera.ts`). Load game stays disabled
  * until it lists the saves the pause menu writes (#273). New game is the seed
  * entry, the map of the seed and character creation (`title-setup.ts`), and
  * Controls is the binding list (`title-controls.ts`).
@@ -45,7 +49,12 @@ export class TitleScreen {
   private readonly pages: MenuPages<PageName>;
   private resolve: ((choice: TitleChoice) => void) | null = null;
 
-  constructor(parent: HTMLElement, initial: TitleChoice, onPreview: (appearance: CharacterAppearance) => void) {
+  constructor(
+    parent: HTMLElement,
+    initial: TitleChoice,
+    onPreview: (appearance: CharacterAppearance) => void,
+    buildingView: BuildingViewChoice,
+  ) {
     const character = normaliseAppearance(initial.character);
 
     this.root = document.createElement('section');
@@ -61,6 +70,7 @@ export class TitleScreen {
       setup: this.setup.root,
       settings: this.buildSettings(),
       controls: buildControlsPage(() => this.back()),
+      camera: buildCameraPage(buildingView, () => this.back()),
     };
     this.pages = new MenuPages(this.root, pages, PARENT, 'main');
 
@@ -106,7 +116,7 @@ export class TitleScreen {
         {
           numeral: 'III',
           label: 'Settings',
-          note: 'Controls, graphics and sound',
+          note: 'Controls, camera, graphics and sound',
           action: () => this.show('settings'),
         },
       ]),
@@ -124,8 +134,14 @@ export class TitleScreen {
           note: 'The keys for the street and the map',
           action: () => this.show('controls'),
         },
-        { numeral: 'II', label: 'Graphics', note: 'Comes in a later version', action: null },
-        { numeral: 'III', label: 'Sound', note: 'Comes in a later version', action: null },
+        {
+          numeral: 'II',
+          label: 'Camera',
+          note: 'When a building is in the way',
+          action: () => this.show('camera'),
+        },
+        { numeral: 'III', label: 'Graphics', note: 'Comes in a later version', action: null },
+        { numeral: 'IV', label: 'Sound', note: 'Comes in a later version', action: null },
       ],
       'Settings',
     );

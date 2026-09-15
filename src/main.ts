@@ -1,6 +1,6 @@
 import { Raycaster, Vector2 } from 'three';
 import { randomSeedString, readSeedFromLocation, seedFromString, writeSeedToHash } from './core/seed.ts';
-import { BASE_DISTANCE, FollowCamera } from './render/camera.ts';
+import { BASE_DISTANCE, FollowCamera, PULL_MARGIN, type RoofHeight } from './render/camera.ts';
 import { PostChain } from './render/post.ts';
 import { frameBudgetFrom, QualityMonitor, type QualityChange } from './render/quality.ts';
 import { createRenderer, probeWebGpu } from './render/renderer.ts';
@@ -27,6 +27,7 @@ import { MAP_KEY, MapScreen } from './ui/map-screen.ts';
 import { Minimap, MINIMAP_NORTH_KEY } from './ui/minimap.ts';
 import { PAUSE_KEY, PauseMenu } from './ui/pause.ts';
 import { SaveSlots, setPendingStart, takePendingStart } from './ui/saves.ts';
+import { readSettings, writeSettings, type BuildingViewChoice } from './ui/settings.ts';
 import { FREE_CAMERA_KEY, FreeCameraControls } from './ui/free-camera.ts';
 import { Keyboard } from './ui/keyboard.ts';
 import { TitleScreen, type TitleChoice } from './ui/title.ts';
@@ -152,8 +153,20 @@ async function boot(): Promise<void> {
     pointer.over = false;
   });
 
+  // The settings hold for every seed, so they are read before the title screen.
+  const settings = readSettings(localStorage);
+  const buildingView: BuildingViewChoice = {
+    current: () => settings.buildingView,
+    choose: (view) => {
+      settings.buildingView = view;
+      writeSettings(localStorage, settings);
+    },
+  };
+
   // The session is null until the title screen hands over a seed and a look.
   let session: Session | null = null;
+  /** The roof over a ground point, which the camera pulls back over when the player asks it to. */
+  const roofTop: RoofHeight = (x, z) => session?.world.roofOver(x, z, PULL_MARGIN)?.top;
   let last = performance.now();
   /** Whether the camera was detached last frame, so a release is noticed once. */
   let flew = false;
@@ -232,9 +245,16 @@ async function boot(): Promise<void> {
         // the view is, or a flight of a few hundred metres looks at empty
         // ground. Nothing waits for it: the chunks land as they are built.
         session.world.update(free.camera.x, free.camera.z);
+        // The cut is aimed at the player, and a flight looks at buildings whole.
+        session.world.cutaway.enabled = false;
       } else {
         session.world.update(p.x, p.y);
-        camera.update(elapsed / 1000, p);
+        // A building between the camera and the player (spec section 10.7):
+        // it is cut to a ghost, and with Pull back the camera first moves over
+        // the roofs. Off does neither.
+        camera.update(elapsed / 1000, p, settings.buildingView === 'pull-back' ? roofTop : undefined);
+        session.world.cutaway.enabled = settings.buildingView !== 'whole';
+        session.world.seeThrough(camera.camera.position, p.x, p.height, p.y);
       }
       if (flew && !flying) {
         // The flight ended, whichever frame the key came on: the camera slides
@@ -293,6 +313,7 @@ async function boot(): Promise<void> {
       document.body,
       { seed: readSeedFromLocation(location.hash), character: DEFAULT_APPEARANCE, world: null },
       (appearance) => preview.character.set(appearance),
+      buildingView,
     );
     choice = await title.wait();
     title.destroy();
@@ -467,6 +488,7 @@ async function boot(): Promise<void> {
     },
     regenerate: () => restart(randomSeedString(), state.character, false),
     quit: () => location.reload(),
+    buildingView,
   });
   // A load moves the player across the map and puts a different vehicle under
   // them, so the frame snaps to it rather than sliding there.

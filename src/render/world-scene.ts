@@ -21,7 +21,7 @@
  *
  * The scene reads the world description and never mutates it.
  */
-import { Mesh, Object3D, Scene } from 'three';
+import { Mesh, Object3D, Scene, type Vector3 } from 'three';
 import type { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { CharacterAppearance } from '../sim/character.ts';
 import type { VehicleState } from '../sim/vehicle.ts';
@@ -34,6 +34,7 @@ import type { ParkingBays } from '../world/parking.ts';
 import type { Point, WorldDescription } from '../world/types.ts';
 import { Batch } from './batch.ts';
 import { BuildingScenery } from './buildings.ts';
+import { BuildingCutaway, CAMERA_ROOF_MARGIN } from './cutaway.ts';
 import { cellGrid } from './cells.ts';
 import { CharacterModel } from './character.ts';
 import { DamageFx } from './damage-fx.ts';
@@ -47,6 +48,7 @@ import type { Lamp } from './lamp-mesh.ts';
 import { LampLights, LampScenery } from './lamps.ts';
 import { entityBudget, entityDistance, FULL_TIER, shadowDistance, thinned, type QualityTier } from './quality.ts';
 import { RoadScenery } from './roads.ts';
+import { roofOver, type RoofBox } from './roofs.ts';
 import { SkidMarks } from './skid.ts';
 import { SkyLighting } from './sky.ts';
 import { VehicleModel } from './vehicle.ts';
@@ -86,6 +88,8 @@ interface ChunkTile {
   parts: TilePart[];
   /** Where every lamp of the chunk stands, so the light pool can be aimed at them. */
   lamps: Lamp[];
+  /** The box of every building of the chunk, as `roofs.ts` packs them. */
+  roofs: Float32Array;
   drawCalls: number;
   /** False while the upload queue still holds pieces of it. */
   whole: boolean;
@@ -116,7 +120,9 @@ export class WorldScene {
   private readonly material: MeshStandardNodeMaterial;
   private readonly tiles = new Map<string, ChunkTile>();
   private readonly scenery = new RoadScenery();
-  private readonly buildings = new BuildingScenery();
+  /** What cuts away a building that hides the player (spec section 10.7). */
+  readonly cutaway = new BuildingCutaway();
+  private readonly buildings = new BuildingScenery(this.cutaway);
   /**
    * How far the plants and the street lamps are drawn, and the dither that
    * takes them away at that edge (spec section 9.2). It is made before the two
@@ -288,6 +294,33 @@ export class WorldScene {
     this.lampLights.aim(x, y, this.lampsInReach(), this.light.lamps);
   }
 
+  /**
+   * The tallest building standing over a ground point, from the chunks around
+   * it, or undefined over open ground. The camera of spec section 10.7 reads it
+   * to find the building it is in. `margin` grows every footprint.
+   */
+  roofOver(x: number, z: number, margin = 0): RoofBox | undefined {
+    const here = chunkAt(x, z);
+    const near: Float32Array[] = [];
+    for (let cy = here.cy - 1; cy <= here.cy + 1; cy++) {
+      for (let cx = here.cx - 1; cx <= here.cx + 1; cx++) {
+        const tile = this.tiles.get(keyOf(cx, cy));
+        if (tile !== undefined) near.push(tile.roofs);
+      }
+    }
+    return roofOver(near, x, z, margin);
+  }
+
+  /**
+   * Aim the cutaway for the frame about to be drawn: the camera as it now
+   * stands, and the player at the height of their feet.
+   */
+  seeThrough(camera: Vector3, x: number, height: number, y: number): void {
+    const over = this.cutaway.enabled ? this.roofOver(camera.x, camera.z, CAMERA_ROOF_MARGIN) : undefined;
+    const inside = over !== undefined && over.top + CAMERA_ROOF_MARGIN > camera.y ? over : undefined;
+    this.cutaway.aim(camera, x, height, y, inside);
+  }
+
   /** Refit the sun's shadow cascades after the camera's shape changes. */
   resize(): void {
     this.sky.resize();
@@ -436,6 +469,7 @@ export class WorldScene {
       detail: payload.detail,
       parts: [],
       lamps: [],
+      roofs: payload.roofs,
       drawCalls: 0,
       whole: false,
       dead: false,

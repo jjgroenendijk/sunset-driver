@@ -183,6 +183,15 @@ are the design.
 - `building-material.ts` holds the three materials and the one `night` uniform they share: the glass
   of every building is picked out, some of it is lit, and the whole of it is multiplied by that
   uniform. It is 0 by daylight, and `WorldScene.time` sets it off the day and night cycle.
+- `cutaway.ts` cuts a building that hides the player (spec section 10.7) with the dither of
+  `fade.ts`. Inside the cone the shell keeps `GHOST` of its pixels and the outline hull is cut away
+  whole, or its dark shows through the holes. The building the camera is inside is cut away whole,
+  because even a ghost of walls on every side veils the screen. It is known from `roofs.ts`: each
+  chunk payload carries one turned box per building, because the batches cannot say which building a
+  triangle belongs to. `WorldScene.roofOver` reads the boxes of the nine chunks around a point. The
+  cut sits in `opacityNode` and `alphaTestNode` on every building material, so the Off setting sets
+  a uniform to 0 and rebuilds nothing. The shadow pass does not see the cut, so a ghost casts its
+  whole shadow.
 - `vehicle-mesh.ts` tells each box of a vehicle which panel it stands on, read off where the box
   sits: above the waist is the roof, either end is the nose or the tail, and out at the flank is a
   door. A box in the middle is the shell and belongs to no panel. `vehicle.ts` then draws the damage

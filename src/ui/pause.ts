@@ -1,7 +1,7 @@
 /**
  * The pause menu of spec section 12: resume, save, load, export and import of a
- * save, the controls, the seed and a copy of it, regenerate, quit, and the
- * button multiplayer will hang off.
+ * save, the controls, the camera setting, the seed and a copy of it,
+ * regenerate, quit, and the button multiplayer will hang off.
  *
  * It is drawn in the look of the title screen and walked the same way, through
  * `MenuPages`. It holds no session: every item calls an action `main.ts` hands
@@ -9,6 +9,8 @@
  * key itself, because Escape both opens it and closes it, and `main.ts` is what
  * decides which one a press means.
  */
+import type { BuildingViewChoice } from './settings.ts';
+import { buildCameraPage } from './title-camera.ts';
 import { buildControlsPage } from './title-controls.ts';
 import { MenuPages } from './menu-pages.ts';
 import { button, card, menuList, page } from './title-parts.ts';
@@ -31,12 +33,14 @@ export interface PauseActions {
   regenerate(): void;
   /** Leave the session for the title screen. */
   quit(): void;
+  /** What happens when a building is in the way (spec section 10.7). A choice takes effect at once. */
+  buildingView: BuildingViewChoice;
 }
 
-const PAGE_NAMES = ['main', 'transfer', 'controls'] as const;
+const PAGE_NAMES = ['main', 'transfer', 'controls', 'camera'] as const;
 type PageName = (typeof PAGE_NAMES)[number];
 
-const PARENT: Record<PageName, PageName | null> = { main: null, transfer: 'main', controls: 'main' };
+const PARENT: Record<PageName, PageName | null> = { main: null, transfer: 'main', controls: 'main', camera: 'main' };
 
 export class PauseMenu {
   private readonly root: HTMLElement;
@@ -64,6 +68,7 @@ export class PauseMenu {
       main,
       transfer: this.buildTransfer(),
       controls: buildControlsPage(() => this.pages.back()),
+      camera: buildCameraPage(actions.buildingView, () => this.pages.back()),
     };
     this.pages = new MenuPages(this.root, pages, PARENT, 'main');
 
@@ -115,8 +120,9 @@ export class PauseMenu {
       { numeral: 'IV', label: 'Export save', note: 'As text for the clipboard', action: () => this.exportSave() },
       { numeral: 'V', label: 'Import save', note: 'From text of a save', action: () => this.importPage() },
       { numeral: 'VI', label: 'Controls', note: 'The keys for the street and the map', action: () => this.pages.show('controls') },
-      { numeral: 'VII', label: 'Open game to others', note: 'Multiplayer comes in a later version', action: null },
-      { numeral: 'VIII', label: 'Quit to title', note: 'Progress since the last save is lost', action: () => this.actions.quit() },
+      { numeral: 'VII', label: 'Camera', note: 'When a building is in the way', action: () => this.pages.show('camera') },
+      { numeral: 'VIII', label: 'Open game to others', note: 'Multiplayer comes in a later version', action: null },
+      { numeral: 'IX', label: 'Quit to title', note: 'Progress since the last save is lost', action: () => this.actions.quit() },
     ]);
 
     const city = card('I', 'The city', 'Share the seed and anyone can drive this city.');

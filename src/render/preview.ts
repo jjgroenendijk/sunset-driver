@@ -52,7 +52,7 @@ import {
   type VehicleState,
 } from '../sim/vehicle.ts';
 import { generateWorld } from '../world/world.ts';
-import { FollowCamera } from './camera.ts';
+import { FollowCamera, PULL_MARGIN } from './camera.ts';
 import { tickAtHour } from './daylight.ts';
 import { PostChain } from './post.ts';
 import { FULL_TIER, QUALITY_TIERS } from './quality.ts';
@@ -83,6 +83,12 @@ export interface PreviewRequest {
    * cannot hold the frame ends up looking at.
    */
   quality?: string;
+  /**
+   * What a building between the camera and the player does (spec section
+   * 10.7): `see-through`, `pull-back` or `whole`. Left out, it is see-through,
+   * as the game starts.
+   */
+  buildings?: string;
   /**
    * The class of vehicle to stand the player in, by name (spec section 11.3).
    * Left out, or named something the roster does not hold, it is the class a
@@ -232,7 +238,11 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   camera.setBaseDistance(distance);
   // The first update snaps the camera onto its target rather than easing in,
   // so one call is a settled frame and no render time has to be simulated.
-  camera.update(0, { x, y, height: ground, heading, speed });
+  const view = request.buildings ?? 'see-through';
+  const roofs = view === 'pull-back' ? (px: number, pz: number) => scene.roofOver(px, pz, PULL_MARGIN)?.top : undefined;
+  camera.update(0, { x, y, height: ground, heading, speed }, roofs);
+  scene.cutaway.enabled = view !== 'whole';
+  scene.seeThrough(camera.camera.position, stand.x, scene.heightAt(stand.x, stand.y), stand.y);
 
   const t2 = performance.now();
   const renderer = await createOffscreenRenderer(width, height);

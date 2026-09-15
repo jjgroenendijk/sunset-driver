@@ -34,6 +34,7 @@ import { buildChunkBuildings, buildingLookup, type BuildingLookup } from './buil
 import { byCell, cellGrid, cellOfPart, cellsHolding, type CellGrid } from './cells.ts';
 import { buildGroundAttributes, groundLookup, type GroundAttributes, type GroundLookup } from './ground.ts';
 import { lampsIn, type Lamp } from './lamp-mesh.ts';
+import { ROOF_STRIDE, writeRoof } from './roofs.ts';
 import { buildChunkVegetation, plantLookup, type PlantLookup } from './plant-mesh.ts';
 import { buildChunkRoads, partsOf } from './road-mesh.ts';
 import type { ChunkDetail } from './streaming.ts';
@@ -122,6 +123,8 @@ export interface ChunkPayload {
   facades: PackedBatch[];
   /** The buildings built as blocks, which past near detail is all of them, a batch per cell. */
   blocks: PackedBatch[];
+  /** One box per building, as `roofs.ts` packs them, so the camera knows what it stands in. */
+  roofs: Float32Array;
   plants: PackedPlants;
   /**
    * The street lamps of the chunk (spec section 10.5), already in the places
@@ -176,7 +179,10 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
   const outlines: PackedPart[] = [];
   const facades: PackedPart[] = [];
   const blocks: PackedPart[] = [];
-  for (const placed of buildChunkBuildings(chunk, lookups.buildings, detail)) {
+  const placements = buildChunkBuildings(chunk, lookups.buildings, detail);
+  const roofs = new Float32Array(placements.length * ROOF_STRIDE);
+  for (const [i, placed] of placements.entries()) {
+    writeRoof(roofs, i * ROOF_STRIDE, placed.hull, placed.matrix);
     const matrix = new Float32Array(placed.matrix.toArray());
     (placed.batch === 'facade' ? facades : blocks).push({ geometry: takeGeometry(placed.shell), matrix });
     outlines.push({ geometry: takeGeometry(placed.hull), matrix });
@@ -194,6 +200,7 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
     outlines: packCells(grid, outlines),
     facades: packCells(grid, facades),
     blocks: packCells(grid, blocks),
+    roofs,
     plants,
     lamps: far ? [] : lampsIn(chunk, lookups.ribbons),
     drawCalls: 0,
@@ -265,6 +272,7 @@ export function payloadTransfers(payload: ChunkPayload): ArrayBuffer[] {
   payload.outlines.forEach(takeBatch);
   payload.facades.forEach(takeBatch);
   payload.blocks.forEach(takeBatch);
+  take(payload.roofs);
   take(payload.plants.models);
   take(payload.plants.matrices);
   return [...buffers];
