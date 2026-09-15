@@ -249,7 +249,7 @@ export function flatSurface(ring: readonly Vector3[], across: number, centre?: V
 /** Where one point of a cross section stands in the scene. */
 export function place(point: Point, frame: RoadFrame, across: number, rise: number): Vector3 {
   const off = across * frame.mitre;
-  return new Vector3(point.x + frame.acrossX * off, frame.height + rise, point.y + frame.acrossY * off);
+  return new Vector3(point.x + frame.acrossX * off, frame.height + frame.bank * off + rise, point.y + frame.acrossY * off);
 }
 
 export function between(a: Vector3, b: Vector3, t: number): Vector3 {

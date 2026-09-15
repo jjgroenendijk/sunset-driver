@@ -9,15 +9,16 @@
  * be laid over. So a junction is one plane. It passes through the node at the
  * height of the ground there and tilts the way the roads leaving it tilt, fitted
  * by least squares, and each road follows that plane out to its cut and then
- * blends back onto its own line over as far again.
+ * blends back onto its own line over as far again. The road tilts across as the
+ * plane does inside its cut, and levels out over the blend.
  *
- * This is the one place the bed is defined. The carve cuts its bench to it and
- * the ribbons loft the surface onto it, so the ground and the road agree by
- * construction. Pure: the same terrain, roads and junctions give the same beds.
+ * This is the one place the surface height is defined. The carve cuts its bench
+ * to it, the ribbons loft the road onto it and the junction rings stand on it,
+ * so the ground and the road agree by construction. Pure: the same terrain, roads and junctions give the same beds.
  */
 import { lerp } from '../core/math.ts';
 import { Heightfield } from './heightfield.ts';
-import { alongCurve, type JunctionMap, type JunctionMouth } from './junctions.ts';
+import type { JunctionMap, JunctionMouth } from './junctions.ts';
 import { curveDistances } from './ribbon.ts';
 import type { HeightfieldData, Point, RoadCurve } from './types.ts';
 
@@ -35,42 +36,66 @@ const MIN_FIT_CUT = 0.5;
  */
 const MIN_SPAN = 0.5;
 
-/** A knot of a bed profile: how far along its segment it stands, and the bed height there. */
-interface Knot {
+/**
+ * A knot of a bed profile: how far along its segment it stands, the bed height
+ * on the centreline there, and how the surface tilts there. The tilt is rise per
+ * metre along x and along y of the map, so the surface a metre off the
+ * centreline stands `gx * dx + gy * dy` above the bed whichever way the road
+ * runs.
+ */
+export interface Knot {
   t: number;
   h: number;
+  gx: number;
+  gy: number;
 }
 
 /** The bed of one curve. */
 class CurveBed {
-  /** The bed height at each point of the curve. */
+  /** The bed height at each point of the curve, and the tilt of the surface there. */
   readonly heights: Float64Array;
+  readonly tiltX: Float64Array;
+  readonly tiltY: Float64Array;
   /** Knots inside a segment, ascending in `t`, for the segments a junction plane ends in. */
   readonly inner: (Knot[] | undefined)[];
 
   constructor(count: number) {
     this.heights = new Float64Array(count);
+    this.tiltX = new Float64Array(count);
+    this.tiltY = new Float64Array(count);
     this.inner = new Array<Knot[] | undefined>(Math.max(0, count - 1)).fill(undefined);
   }
 
-  heightAt(segment: number, t: number): number {
-    const from = this.heights[segment] as number;
-    const to = this.heights[segment + 1] as number;
-    const knots = this.inner[segment];
-    if (knots === undefined) return lerp(from, to, t);
-    let lastT = 0;
-    let lastH = from;
-    for (const knot of knots) {
-      if (t <= knot.t) return knot.t === lastT ? knot.h : lerp(lastH, knot.h, (t - lastT) / (knot.t - lastT));
-      lastT = knot.t;
-      lastH = knot.h;
+  /** The knot a point of the curve is. */
+  point(i: number, t: number): Knot {
+    return { t, h: this.heights[i] as number, gx: this.tiltX[i] as number, gy: this.tiltY[i] as number };
+  }
+
+  /** The profile at `t` along a segment: straight between its knots. */
+  at(segment: number, t: number): Knot {
+    let last = this.point(segment, 0);
+    for (const knot of [...(this.inner[segment] ?? []), this.point(segment + 1, 1)]) {
+      if (t <= knot.t) {
+        if (knot.t === last.t) return { ...knot, t };
+        const share = (t - last.t) / (knot.t - last.t);
+        return { t, h: lerp(last.h, knot.h, share), gx: lerp(last.gx, knot.gx, share), gy: lerp(last.gy, knot.gy, share) };
+      }
+      last = knot;
     }
-    return lastT === 1 ? lastH : lerp(lastH, to, (t - lastT) / (1 - lastT));
+    return { ...last, t };
   }
 
   /** The knots of a segment from its start to its end, both included. */
   knotsOf(segment: number): Knot[] {
-    return [{ t: 0, h: this.heights[segment] as number }, ...(this.inner[segment] ?? []), { t: 1, h: this.heights[segment + 1] as number }];
+    return [this.point(segment, 0), ...(this.inner[segment] ?? []), this.point(segment + 1, 1)];
+  }
+
+  /** Add a knot inside a segment, keeping the knots in order. */
+  insert(segment: number, knot: Knot): void {
+    const knots = this.inner[segment] ?? [];
+    knots.push(knot);
+    knots.sort((p, q) => p.t - q.t);
+    this.inner[segment] = knots;
   }
 }
 
@@ -84,16 +109,44 @@ export interface JunctionPlane {
   gy: number;
 }
 
-/** The beds of a whole road network, built once and asked about a place at a time. */
+/** The height of a junction's plane at a place. */
+export function planeHeight(plane: JunctionPlane, x: number, y: number): number {
+  return plane.level + plane.gx * (x - plane.x) + plane.gy * (y - plane.y);
+}
+
+/**
+ * The height of the drivable surface `dx, dy` metres off a place of a bed,
+ * where the bed stands at `h` and tilts by `gx, gy` (see {@link Knot}). This is
+ * the one rule for how high a road surface stands off its centreline: the loft
+ * and the junction rings read it through `RoadFrame.bank`, and the carve here.
+ * Scalars rather than a knot, because the carve asks it for every place.
+ */
+export function surfaceHeight(h: number, gx: number, gy: number, dx: number, dy: number): number {
+  return h + gx * dx + gy * dy;
+}
+
+/**
+ * The beds of a whole road network, built once and asked about a place at a time.
+ *
+ * Together with the planes this is the one surface height function of the
+ * network. A junction's surface is its plane. A road's surface is its bed on
+ * the centreline and tilts across the road: level away from a junction, tilted
+ * as the plane is inside a mouth's cut, and back to level where the blend ends.
+ * So the section a road's loft ends on at a mouth lies on the junction's plane.
+ */
 export class RoadBeds {
   private readonly curves: (CurveBed | undefined)[] = [];
   /** The plane of each junction, in the order the junctions were given. Empty without them. */
   readonly planes: JunctionPlane[] = [];
+  /** The plane of each junction, filed under its node. */
+  private readonly byNode: (JunctionPlane | undefined)[] = [];
 
   constructor(terrain: HeightfieldData, roads: readonly RoadCurve[], junctions?: JunctionMap) {
     const hf = new Heightfield(terrain);
     const distances: (Float32Array | undefined)[] = [];
     const fixed: (Uint8Array | undefined)[] = [];
+    /** Each curve's own line, before any junction moved it: what a blend returns to. */
+    const own: (Float64Array | undefined)[] = [];
     for (const road of roads) {
       const bed = new CurveBed(road.points.length);
       for (let i = 0; i < road.points.length; i++) {
@@ -105,24 +158,32 @@ export class RoadBeds {
       this.curves[road.id] = bed;
       distances[road.id] = curveDistances(road.points);
       fixed[road.id] = new Uint8Array(road.points.length);
+      own[road.id] = bed.heights.slice();
     }
     if (junctions === undefined) return;
     for (const junction of junctions.junctions) {
       const node = { x: junction.x, y: junction.y };
       const level = hf.sample(node.x, node.y);
       const plane = planeOf(hf, node, level, junction.mouths);
-      this.planes.push({ x: node.x, y: node.y, level, gx: plane.x, gy: plane.y });
+      const fitted = { x: node.x, y: node.y, level, gx: plane.x, gy: plane.y };
+      this.planes.push(fitted);
+      this.byNode[junction.node] = fitted;
       for (const mouth of junction.mouths) {
         const road = roads[mouth.curve] as RoadCurve;
         const bed = this.curves[road.id] as CurveBed;
-        this.follow(road, bed, distances[road.id] as Float32Array, fixed[road.id] as Uint8Array, hf, mouth, node, level, plane);
+        this.follow(road, bed, distances[road.id] as Float32Array, fixed[road.id] as Uint8Array, own[road.id] as Float64Array, mouth, node, level, plane);
       }
     }
   }
 
   /** The bed height at `t` along segment `segment` of curve `curve`. */
   heightAt(curve: number, segment: number, t: number): number {
-    return this.bed(curve).heightAt(segment, t);
+    return this.bed(curve).at(segment, t).h;
+  }
+
+  /** The profile at `t` along segment `segment` of curve `curve`: the bed and its tilt. */
+  profileAt(curve: number, segment: number, t: number): Knot {
+    return this.bed(curve).at(segment, t);
   }
 
   /** The bed height at a point of a curve. */
@@ -130,9 +191,19 @@ export class RoadBeds {
     return this.bed(curve).heights[point] as number;
   }
 
+  /** The profile at a point of a curve. */
+  pointProfile(curve: number, point: number): Knot {
+    return this.bed(curve).point(point, 0);
+  }
+
   /** The knots of one segment, from its start to its end, as `carve.ts` files them. */
-  knotsOf(curve: number, segment: number): { t: number; h: number }[] {
+  knotsOf(curve: number, segment: number): Knot[] {
     return this.bed(curve).knotsOf(segment);
+  }
+
+  /** The plane of the junction at a node, or undefined where no junction was given there. */
+  planeAt(node: number): JunctionPlane | undefined {
+    return this.byNode[node];
   }
 
   private bed(curve: number): CurveBed {
@@ -151,7 +222,7 @@ export class RoadBeds {
     bed: CurveBed,
     distances: Float32Array,
     fixed: Uint8Array,
-    hf: Heightfield,
+    own: Float64Array,
     mouth: JunctionMouth,
     node: Point,
     level: number,
@@ -162,51 +233,51 @@ export class RoadBeds {
     const along = (i: number): number => Math.abs((distances[i] as number) - start);
     const cutHeight = onPlane(mouth.at);
     const blendEnd = mouth.cut * (1 + BLEND_CUTS);
+    const lay = (k: number, h: number, share: number): void => {
+      bed.heights[k] = h;
+      bed.tiltX[k] = plane.x * share;
+      bed.tiltY[k] = plane.y * share;
+    };
 
-    // The points inside the cut take the plane; the cut itself is a knot.
+    // The points inside the cut take the plane, tilt and all; the cut itself
+    // is a knot.
     fixed[mouth.point] = 1;
-    bed.heights[mouth.point] = level;
+    lay(mouth.point, level, 1);
     let i = mouth.point + mouth.direction;
     while (i >= 0 && i < road.points.length && along(i) < mouth.cut) {
       fixed[i] = 1;
-      bed.heights[i] = onPlane(road.points[i] as Point);
+      lay(i, onPlane(road.points[i] as Point), 1);
       i += mouth.direction;
     }
     if (i >= 0 && i < road.points.length && along(i) === mouth.cut) {
       // The cut falls on a point of the curve, which is the knot then.
       fixed[i] = 1;
-      bed.heights[i] = cutHeight;
+      lay(i, cutHeight, 1);
       i += mouth.direction;
     } else if (mouth.cut > 0) {
       const a = road.points[mouth.segment] as Point;
       const b = road.points[mouth.segment + 1] as Point;
-      const t = fractionAlong(a, b, mouth.at);
-      const knots = bed.inner[mouth.segment] ?? [];
-      knots.push({ t, h: cutHeight });
-      knots.sort((p, q) => p.t - q.t);
-      bed.inner[mouth.segment] = knots;
+      bed.insert(mouth.segment, { t: fractionAlong(a, b, mouth.at), h: cutHeight, gx: plane.x, gy: plane.y });
     }
-    // The blend: the cut stands off the natural ground by some height, and
-    // that offset falls away to nothing where the blend ends. The points
-    // inside the blend take their share of it, and the end is a knot of its
-    // own, so a long segment past the cut is not tilted all the way along.
+    // The blend: the cut stands off the road's own line by some height and
+    // tilts as the plane does, and both fall away to nothing where the blend
+    // ends. The points inside the blend take their share of it. The blend ends
+    // on the first point of the curve at least `blendEnd` from the node, never
+    // inside a segment: a road's loft has a section at every point and none
+    // between them, so a knot there would stand off the surface drawn over it.
     if (blendEnd <= mouth.cut) return;
-    const offset = cutHeight - hf.sample(mouth.at.x, mouth.at.y);
-    for (let k = i; k >= 0 && k < road.points.length && along(k) < blendEnd; k += mouth.direction) {
+    const first = road.points[mouth.segment] as Point;
+    const second = road.points[mouth.segment + 1] as Point | undefined;
+    const t = second === undefined ? 0 : fractionAlong(first, second, mouth.at);
+    const offset = cutHeight - lerp(own[mouth.segment] as number, (own[mouth.segment + 1] ?? own[mouth.segment]) as number, t);
+    let end = i;
+    while (end >= 0 && end < road.points.length && along(end) < blendEnd) end += mouth.direction;
+    const span = end >= 0 && end < road.points.length ? along(end) - mouth.cut : blendEnd - mouth.cut;
+    for (let k = i; k !== end; k += mouth.direction) {
       if (fixed[k] === 1) continue;
-      const p = road.points[k] as Point;
-      const share = (along(k) - mouth.cut) / (blendEnd - mouth.cut);
-      bed.heights[k] = hf.sample(p.x, p.y) + offset * (1 - share);
+      const share = 1 - (along(k) - mouth.cut) / span;
+      lay(k, (own[k] as number) + offset * share, share);
     }
-    const end = alongCurve(road.points, mouth.point, mouth.direction, blendEnd);
-    const a = road.points[end.segment] as Point;
-    const b = road.points[end.segment + 1] as Point;
-    const t = fractionAlong(a, b, end.at);
-    if (t <= 0 || t >= 1) return;
-    const knots = bed.inner[end.segment] ?? [];
-    knots.push({ t, h: hf.sample(end.at.x, end.at.y) });
-    knots.sort((p, q) => p.t - q.t);
-    bed.inner[end.segment] = knots;
   }
 }
 

@@ -302,14 +302,20 @@ gets wrong without it.
   between them. A junction is one plane: through the node at ground height, tilted by a
   least-squares fit of the grades its mouths leave at, solved along the axes the mouths span so a
   shallow pair cannot tilt it across them and never steeper than the steepest mouth. Every mouth
-  follows the plane to its cut and blends back onto its own line over one cut more. The carve and
-  the ribbons both read the beds, so the ground and the road agree by construction and no crease
-  can show through a junction.
+  follows the plane to its cut and blends back onto its own line over one cut more, ending on the
+  next point of its curve: a loft has a section at every point and none between, so a knot inside a
+  segment stands off the surface drawn over it. The beds and the planes are the one surface height
+  function of spec section 6.1. A bed knot carries a tilt as well as a height, so a road's section
+  tilts across the road as the plane does inside a mouth and levels out over the blend
+  (`surfaceHeight`). The loft, the junction rings and the carve all read it, so the ground and the
+  road agree by construction.
 - `junctionShape(junction, ribbons)` (`junction-shape.ts`) gives the rings a junction's surfaces are
-  drawn on: the carriageway, fanned from the node, and one ring per corner. `junction-mesh.ts` draws
-  them and the carve levels the ground under them. The carve levels the `outline` and every ring
-  (`JunctionCover`), not the outline alone. A mouth is drawn on its curve but the outline is cut on
-  a straight line, and a fan from the node reaches past a ring that is not convex.
+  drawn on: the carriageway, fanned from the node, and one ring per corner. Every vertex carries its
+  height from the one surface: a mouth's banked section, and the plane everywhere else.
+  `junction-mesh.ts` draws them and the carve levels the ground under them. The carve levels the
+  `outline` and every ring (`JunctionCover`), not the outline alone. A mouth is drawn on its curve
+  but the outline is cut on a straight line, and a fan from the node reaches past a ring that is not
+  convex.
 - `buildCarve(terrain, roads, junctions)` (`carve.ts`) is the terrain the roads leave (spec section
   7.1). It is built on demand like the graph, the footprint and the parcels: `world.terrain` stays
   the natural ground the roads were traced on, and the carved ground is what a chunk carries and
@@ -319,15 +325,19 @@ gets wrong without it.
   `CHUNK_TERRAIN_CELL` where that is narrower, and `BENCH_MARGIN` — one cell diagonal — past either.
   That margin is what keeps the hillside out of the road: a grid cell holding the edge of a road has
   corners each side of it, and a corner off the bench stands higher than the road on an uphill side,
-  so the triangle between them cuts up through the verge. Past the bench the cut and fill blend back
-  into the hillside over `CARVE_BLEND`. Ground a road claims — the bench it draws its surface on —
-  belongs to it before ground it merely reaches, and where two roads claim one place the ground
-  takes the lower of the beds they ask for, so the other road stands over the ground rather than
-  buried under it; `crowdedAt(x, y)` is how the sweeps ask whether a place is one of those. A place
-  inside a junction's outline is the junction's whatever else reaches it, but the scan carries on
-  past it all the same, because a street crossing under a junction of a wider road is one of those
-  crowded places and only asking every claimant sees it. A segment on a deck or in a bore carves
-  nothing at all.
+  so the triangle between them cuts up through the verge. On the bench the ground is the road's
+  surface whatever the hillside asks; only past it do `CARVE_CUT` and `CARVE_FILL` hold, and the cut
+  and fill blend back into the hillside over `CARVE_BLEND`. Where a road leaves the ground — the end
+  of its curve, a deck or a bore — the bench carries on at the road's grade: a level disc past a
+  steep end is a kink the grid lifts through the last section. Ground a road claims — the bench it
+  draws its surface on — belongs to it before ground it merely reaches, and where two roads claim
+  one place the ground takes the lower of the beds they ask for, so the other road stands over the
+  ground rather than buried under it, and two junctions claiming one place take the lower plane;
+  `crowdedAt(x, y)` is how the sweeps ask whether a place is one of those. A place inside a
+  junction's outline is the junction's whatever else reaches it, but the scan carries on past it all
+  the same, because a street crossing under a junction of a wider road is one of those crowded
+  places and only asking every claimant sees it. A segment on a deck or in a bore carves nothing at
+  all.
 - A chunk samples the carve every `CHUNK_TERRAIN_CELL` (2.5 m), four samples to a cell of the
   skeleton's `TERRAIN_CELL` grid, because the camera looks down at an 11 m street and the hillside
   between two 10 m samples cuts up through it. The far ring reads every fourth sample and lands back
@@ -339,14 +349,15 @@ gets wrong without it.
   out the ground `crowdedAt` reports, because that ground is carved to a bed that is not the road's
   own.
 - `new RoadRibbons(world.terrain, world.roads, junctions)` (`ribbon.ts`) is the frame anything swept
-  along a road needs: the bed height at a place on a curve, which way is across the road there, and
-  how far along the curve it is. The bed is the line `carve.ts` cuts its bench to. A point two
-  segments meet at takes a mitred frame only where the mitre moves its outer corner less than
-  `MITRE_SHIFT`; a sharper turn answers with the frame of the segment asked about, so the two sides
-  differ and the caller cuts its geometry there rather than folding it over. `road-mesh.ts` then
-  bevels the joint: without it the outside of the turn is a wedge of ground showing through the
-  road, and half of every arterial bend asks for one. The rule reads the curve and never the chunk,
-  which is what keeps two chunks in step.
+  along a road needs: the bed height at a place on a curve, its `bank` across the road, which way is
+  across the road there, and how far along the curve it is. A place `off` metres across stands at
+  `height + bank * off`; anything placed beside a road reads both. The bed is the line `carve.ts`
+  cuts its bench to. A point two segments meet at takes a mitred frame only where the mitre moves
+  its outer corner less than `MITRE_SHIFT`; a sharper turn answers with the frame of the segment
+  asked about, so the two sides differ and the caller cuts its geometry there rather than folding it
+  over. `road-mesh.ts` then bevels the joint: without it the outside of the turn is a wedge of
+  ground showing through the road, and half of every arterial bend asks for one. The rule reads the
+  curve and never the chunk, which is what keeps two chunks in step.
 - `new Vegetation(seed, parcels, buildings)` (`vegetation.ts`) scatters the plants of spec section
   10.4, and `plantsIn(bounds, ground)` answers one window on the map at a time. The grid is anchored
   on the origin and a cell carries at most one plant, so what grows somewhere is a function of the
@@ -368,6 +379,8 @@ gets wrong without it.
   boundary gives a piece to each side, and each piece carries the id and the owner of the whole
   parcel. A building is never cut: the chunk its lot's middle stands in owns the whole of it, and a
   plant belongs to the chunk it stands in the same way.
+- `test/seed-surface.ts` asks the chunk grid's ground against every road and junction vertex drawn,
+  and the middle of the triangles between them, and allows `SURFACE_ABOVE` above none of them.
 - `test/seed-sweep.test.ts` runs 6 seeds, or 200 under `SWEEP_SEEDS=200`. The quick count is what
   holds `npm test` under its 15 s, since a seed generates a whole world. The checks are grouped by
   subject in `test/seed-*.ts` and declared inside that one suite: they all read the worlds

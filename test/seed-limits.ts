@@ -230,11 +230,11 @@ export const CARVE_CLEARANCE = 0.5;
  */
 export const CARVE_STAND_OFF_SHARE = 0.12;
 /**
- * Metres no road point may stand off the carved ground, however crowded the
- * ground under it. The carve moves no sample of the ground further than its own
- * cut and fill limit, and the ground between two samples is the line between
- * them, so this holds by construction: a point further off than this is a carve
- * that has gone wrong, not a grid that ran out of room.
+ * Metres no road point may stand off the carved ground where the ground is not
+ * crowded. On a bench the ground is the road's own surface, and past it the
+ * carve moves no sample further than its cut and fill limit. The ground between
+ * two samples is the line between them, so a point further off than this is a
+ * carve that has gone wrong, not a grid that ran out of room.
  */
 export const CARVE_STAND_OFF = Math.max(CARVE_CUT, CARVE_FILL);
 /**
@@ -246,6 +246,17 @@ export const CARVE_STAND_OFF = Math.max(CARVE_CUT, CARVE_FILL);
 export const LEVEL_AT = 6;
 /** One road segment in this many is asked how level the ground beside it is. */
 export const LEVEL_STRIDE = 4;
+/**
+ * Metres the ground may stand above a road or junction surface where it is
+ * drawn (spec section 7.1, issue #265). The surface and the carve read one
+ * height function, so this is only the rounding of the chunk grid.
+ */
+export const SURFACE_ABOVE = 0.05;
+/**
+ * One junction and one road segment in this many are asked whether the ground
+ * stands through their surface. Asking every one costs about a second a seed.
+ */
+export const SURFACE_STRIDE = SEED_COUNT > 20 ? 1 : 4;
 /**
  * Where in the spread of those places the levelness is read, and what it has to
  * come to. The median says nothing — most roads run over gentle ground, which

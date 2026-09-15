@@ -121,7 +121,10 @@ export function lampsIn(chunk: WorldChunk, ribbons: RoadRibbons): Lamp[] {
         // is never left dark for a whole block.
         const sides = spec.bothSides ? [-1, 1] : [k % 2 === 0 ? -1 : 1];
         for (const side of sides) {
-          out.push(lampAt(run.tier, spec, x, y, frame.height, rise, frame.acrossX * side, frame.acrossY * side, offset));
+          // Inside a mouth's blend the road banks, so the pavement under the
+          // mast stands off the centreline's height by the bank.
+          const foot = frame.height + frame.bank * side * offset + rise;
+          out.push(lampAt(run.tier, spec, x, y, frame.height, foot, frame.acrossX * side, frame.acrossY * side, offset));
         }
       }
     }
@@ -136,14 +139,13 @@ function lampAt(
   x: number,
   y: number,
   bed: number,
-  rise: number,
+  foot: number,
   outX: number,
   outY: number,
   offset: number,
 ): Lamp {
   const postX = x + outX * offset;
   const postY = y + outY * offset;
-  const foot = bed + rise;
   return {
     tier,
     x: postX,

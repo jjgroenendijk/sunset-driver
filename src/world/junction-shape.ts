@@ -4,21 +4,26 @@
  *
  * `junction-mesh.ts` lays a surface on each ring and `carve.ts` levels the
  * ground under every one of them to the junction's plane. Both read the rings
- * from here, so the carve covers exactly what is drawn. The outline of
- * `junctions.ts` alone does not: a mouth is drawn on its curve and the outline
- * is cut on a straight line, and a fan from the node reaches past a ring that is
- * not convex.
+ * from here, so the carve covers exactly what is drawn, and every vertex carries
+ * its height from the one surface `bed.ts` defines. The outline of
+ * `junctions.ts` alone does not cover what is drawn: a mouth is drawn on its
+ * curve and the outline is cut on a straight line, and a fan from the node
+ * reaches past a ring that is not convex.
  */
+import { planeHeight } from './bed.ts';
 import type { Junction, JunctionMouth } from './junctions.ts';
 import type { RoadRibbons } from './ribbon.ts';
 import { footprintHalfWidth, TIERS } from './tiers.ts';
 import type { Point, RoadTier } from './types.ts';
 
 /**
- * One corner of a junction ring. `bed` is the height of the road bed where the
- * vertex stands on a mouth's section, and undefined where it stands on the
- * carved ground. `edge` says whether it is on a kerb or on the outer edge of the
- * surface, and `tier` is the tier whose section says how high that edge stands.
+ * One corner of a junction ring. `bed` is the height of the surface there, read
+ * off the one surface of `bed.ts`: the road's banked section where the vertex
+ * stands on a mouth, and the junction's plane everywhere else. It is undefined
+ * only where the ribbons were built without the junctions, and the vertex then
+ * stands on the carved ground. `edge` says whether it is on a kerb or on the
+ * outer edge of the surface, and `tier` is the tier whose section says how high
+ * that edge stands.
  */
 export interface JunctionVertex {
   x: number;
@@ -37,6 +42,8 @@ export interface JunctionShape {
   carriageway: JunctionVertex[];
   /** The pavement of each corner, `corners[i]` after `junction.mouths[i]`. */
   corners: JunctionVertex[][];
+  /** The height of the surface at the node, which the carriageway is fanned from. */
+  centre: number | undefined;
 }
 
 /**
@@ -45,9 +52,17 @@ export interface JunctionShape {
  * nothing is drawn.
  */
 export function junctionShape(junction: Junction, ribbons: RoadRibbons): JunctionShape {
-  const shape: JunctionShape = { carriageway: [], corners: [] };
+  const plane = ribbons.beds.planeAt(junction.node);
+  const shape: JunctionShape = { carriageway: [], corners: [], centre: plane?.level };
   const sections = junction.mouths.map((mouth) => mouthSection(mouth, ribbons));
   if (sections.length < 2) return shape;
+  const ground = (p: Point, edge: 'kerb' | 'outer', tier: RoadTier): JunctionVertex => ({
+    x: p.x,
+    y: p.y,
+    bed: plane === undefined ? undefined : planeHeight(plane, p.x, p.y),
+    edge,
+    tier,
+  });
   for (let i = 0; i < sections.length; i++) {
     const a = sections[i] as MouthSection;
     const b = sections[(i + 1) % sections.length] as MouthSection;
@@ -80,7 +95,13 @@ function mouthSection(mouth: JunctionMouth, ribbons: RoadRibbons): MouthSection 
   const outer = footprintHalfWidth(mouth.tier);
   const at = (across: number, edge: 'kerb' | 'outer'): JunctionVertex => {
     const off = across * frame.mitre;
-    return { x: mouth.at.x + frame.acrossX * off, y: mouth.at.y + frame.acrossY * off, bed: frame.height, edge, tier: mouth.tier };
+    return {
+      x: mouth.at.x + frame.acrossX * off,
+      y: mouth.at.y + frame.acrossY * off,
+      bed: frame.height + frame.bank * off,
+      edge,
+      tier: mouth.tier,
+    };
   };
   const side = mouth.direction;
   return {
@@ -89,8 +110,4 @@ function mouthSection(mouth: JunctionMouth, ribbons: RoadRibbons): MouthSection 
     leftOuter: at(side * outer, 'outer'),
     rightOuter: at(-side * outer, 'outer'),
   };
-}
-
-function ground(p: Point, edge: 'kerb' | 'outer', tier: RoadTier): JunctionVertex {
-  return { x: p.x, y: p.y, bed: undefined, edge, tier };
 }

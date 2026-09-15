@@ -10,6 +10,7 @@ import {
   type WorldChunk,
 } from '../src/world/chunks.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
+import { RoadRibbons } from '../src/world/ribbon.ts';
 import type { District, Point, RoadCurve, WorldDescription, Zone } from '../src/world/types.ts';
 import { stableJson, withNodes } from './helpers.ts';
 
@@ -145,14 +146,22 @@ describe('chunk terrain', () => {
   it('levels the ground across a street on the slope', () => {
     // The world is a plane tilted 1 % along x, so a street running down y sits
     // in a bench: the ground either side of it comes back at the height of the
-    // street itself rather than at the height of the hillside.
+    // street's own surface rather than at the height of the hillside. The
+    // street has a point only at each junction, so the whole block between two
+    // of them is in a mouth's blend, and the surface there still leans a little
+    // the way the junction planes do.
     const hf = new Heightfield(world.terrain);
     const street = -2 * BLOCK;
     // Midway between two of the cross streets, so only the one street is near.
     const along = BLOCK / 2;
+    const road = world.roads[0] as RoadCurve;
+    const segment = road.points.findIndex((p, i) => p.y <= along && (road.points[i + 1]?.y ?? -Infinity) > along);
+    const frame = new RoadRibbons(world.terrain, world.roads, layers.junctions).frameAt(road.id, segment, street, along);
     const bed = hf.sample(street, along);
+    expect(frame.height).toBeCloseTo(bed, 2);
     for (const off of [-8, -4, 4, 8]) {
-      expect(layers.carve.heightAt(street + off, along)).toBeCloseTo(bed, 4);
+      const surface = frame.height + frame.bank * off * frame.acrossX;
+      expect(layers.carve.heightAt(street + off, along)).toBeCloseTo(surface, 4);
       // The natural ground there is not level with it, so the bench is the
       // carve's doing and not the terrain's.
       expect(Math.abs(hf.sample(street + off, along) - bed)).toBeGreaterThan(0.03);
