@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_MEET } from '../src/world/road-clear.ts';
+import { MIN_MEET } from '../src/world/network-clearance.ts';
 import { footprintHalfWidth } from '../src/world/tiers.ts';
 import { type Point, type RoadCurve, type WorldDescription } from '../src/world/types.ts';
 import { seeds, worlds } from './seed-fixture.ts';
-import { distanceToSegment, pointKey } from './seed-probes.ts';
+import { distanceToSegment, nodePoints, nodeVisits } from './seed-probes.ts';
 
 /**
  * The seed sweep of spec section 6 on the ground two roads share. Spec section 2
@@ -36,23 +36,23 @@ export function overlapChecks(): void {
   });
 }
 
-/** Where two curves leave a shared point closest to each other's line, and the angle between them. */
+/** Where two curves leave a shared node closest to each other's line, and the angle between them. */
 function shallowestMeeting(roads: readonly RoadCurve[]): { turn: number; text: string } | undefined {
   const rays = new Map<number, { curve: RoadCurve; to: Point }[]>();
-  for (const road of roads) {
-    for (let i = 0; i < road.points.length; i++) {
-      const key = pointKey(road.points[i] as Point);
-      const here = rays.get(key) ?? [];
-      for (const to of [road.points[i - 1], road.points[i + 1]]) {
+  for (const [node, on] of nodePoints(roads)) {
+    const here: { curve: RoadCurve; to: Point }[] = [];
+    for (const { road, at } of on) {
+      for (const to of [road.points[at - 1], road.points[at + 1]]) {
         if (to !== undefined) here.push({ curve: road, to });
       }
-      rays.set(key, here);
     }
+    rays.set(node, here);
   }
   let worst: { turn: number; text: string } | undefined;
   for (const road of roads) {
-    for (const p of road.points) {
-      const here = rays.get(pointKey(p)) ?? [];
+    for (let i = 0; i < road.points.length; i++) {
+      const p = road.points[i] as Point;
+      const here = rays.get(road.nodes[i] ?? -1) ?? [];
       for (const u of here) {
         if (u.curve.id !== road.id) continue;
         for (const v of here) {
@@ -72,11 +72,10 @@ function shallowestMeeting(roads: readonly RoadCurve[]): { turn: number; text: s
 /** The first end of a curve that meets nothing and stands inside another road's footprint on the ground. */
 function endOnCarriageway(roads: readonly RoadCurve[]): string | undefined {
   const CELL = 50;
-  const shared = new Map<number, number>();
+  const shared = nodePoints(roads);
   const cells = new Map<number, { road: RoadCurve; i: number }[]>();
   const cell = (cx: number, cy: number): number => (cy + 10_000) * 20_000 + cx + 10_000;
   for (const road of roads) {
-    for (const p of road.points) shared.set(pointKey(p), (shared.get(pointKey(p)) ?? 0) + 1);
     for (let i = 0; i + 1 < road.points.length; i++) {
       // A deck and a bore are not on the ground, so nothing stands in them.
       if (road.bridges.includes(i) || road.tunnels.includes(i)) continue;
@@ -94,8 +93,9 @@ function endOnCarriageway(roads: readonly RoadCurve[]): string | undefined {
   }
   const reach = footprintHalfWidth('highway');
   for (const road of roads) {
-    for (const end of [road.points[0] as Point, road.points[road.points.length - 1] as Point]) {
-      if ((shared.get(pointKey(end)) ?? 0) > 1) continue;
+    for (const i of [0, road.points.length - 1]) {
+      const end = road.points[i] as Point;
+      if (nodeVisits(shared, road, i) > 1) continue;
       for (let cy = Math.floor((end.y - reach) / CELL); cy <= Math.floor((end.y + reach) / CELL); cy++) {
         for (let cx = Math.floor((end.x - reach) / CELL); cx <= Math.floor((end.x + reach) / CELL); cx++) {
           for (const { road: other, i } of cells.get(cell(cx, cy)) ?? []) {

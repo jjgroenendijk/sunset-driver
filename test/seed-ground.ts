@@ -35,10 +35,9 @@ import {
   polylineLength,
   wetFraction,
   percentile,
-  pointKey,
   landArea,
 } from './seed-probes.ts';
-import { seeds, worlds, footprintOf, carves, carveOf, bedsOf, junctionsOf } from './seed-fixture.ts';
+import { seeds, worlds, footprintOf, carves, carveOf, bedsOf, graphOf, junctionsOf } from './seed-fixture.ts';
 
 /**
  * The seed sweep of spec section 3, on the ground the roads leave: the carve,
@@ -82,7 +81,12 @@ export function groundChecks(): void {
         // one is not carving its own ground: the junction is levelled to its
         // plane, and the plane reaches further along the curve than the portal
         // or the abutment at that end does.
-        const atJunction = new Set(junctionsOf(seed).junctions.map((j) => pointKey({ x: j.x, y: j.y })));
+        const junctionNodes = new Set(junctionsOf(seed).junctions.map((j) => j.node));
+        const atJunction = new Set<string>();
+        for (const edge of graphOf(seed).edges) {
+          if (junctionNodes.has(edge.from)) atJunction.add(`${edge.curve}:${edge.start}`);
+          if (junctionNodes.has(edge.to)) atJunction.add(`${edge.curve}:${edge.end}`);
+        }
 
         let points = 0;
         let standingOff = 0;
@@ -109,8 +113,8 @@ export function groundChecks(): void {
               if (
                 Math.hypot(b.x - a.x, b.y - a.y) > 2 * reach &&
                 carve.roadAt(mid.x, mid.y) === road.id &&
-                !atJunction.has(pointKey(a)) &&
-                !atJunction.has(pointKey(b)) &&
+                !atJunction.has(`${road.id}:${i}`) &&
+                !atJunction.has(`${road.id}:${i + 1}`) &&
                 !passesUnder(road, i, mid, reach)
               ) {
                 fault(`${where} stands off the ground but carves it`);

@@ -11,7 +11,7 @@ import {
 } from '../src/world/chunks.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import type { District, Point, RoadCurve, WorldDescription, Zone } from '../src/world/types.ts';
-import { stableJson } from './helpers.ts';
+import { stableJson, withNodes } from './helpers.ts';
 
 const SIZE = 1000;
 const CELL = 10;
@@ -31,7 +31,7 @@ function district(id: number, zone: Zone, x: number, y: number): District {
 }
 
 function curve(id: number, coords: readonly [number, number][]): RoadCurve {
-  return { id, tier: 'street', points: coords.map(([x, y]) => ({ x, y })), bridges: [], tunnels: [], interchanges: [] };
+  return { id, tier: 'street', points: coords.map(([x, y]) => ({ x, y })), bridges: [], tunnels: [], interchanges: [], nodes: [] };
 }
 
 /**
@@ -68,7 +68,7 @@ function gridWorld(): WorldDescription {
     },
     districts: [district(0, 'inner', 0, 0), district(1, 'suburban', 300, 300)],
     beaches: [],
-    roads,
+    roads: withNodes(roads),
     corridors: [],
     tram: { route: [], corridors: [], stops: [], crossings: [], length: 0 },
   };

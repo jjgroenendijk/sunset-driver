@@ -140,18 +140,28 @@ export function passesUnder(road: RoadCurve, segment: number, at: Point, reach: 
   return false;
 }
 
-/** A road point as a key, so two curves that share a point share a string. */
 /**
- * A point as one number, to the millimetre, so the maps keyed on it hold
- * numbers rather than strings. A sweep keys every road point of every seed, and
- * a string key there is a million allocations a test. The map is at most 6 km
- * across (`size.ts`), so each coordinate fits in the 24 bits it is given and no
- * two points share a key.
+ * Every curve point that stands on each node of the road graph, by node, as
+ * the curves store it in `RoadCurve.nodes`. A sweep asks this where roads meet,
+ * never where their points happen to stand.
  */
-export const KEY_SPAN = 1 << 23;
+export function nodePoints(roads: readonly RoadCurve[]): Map<number, { road: RoadCurve; at: number }[]> {
+  const out = new Map<number, { road: RoadCurve; at: number }[]>();
+  for (const road of roads) {
+    road.nodes.forEach((node, at) => {
+      if (node < 0) return;
+      const here = out.get(node);
+      if (here === undefined) out.set(node, [{ road, at }]);
+      else here.push({ road, at });
+    });
+  }
+  return out;
+}
 
-export function pointKey(p: Point): number {
-  return (Math.round(p.x * 1000) + KEY_SPAN) * (KEY_SPAN * 2) + (Math.round(p.y * 1000) + KEY_SPAN);
+/** How many curve points stand on the node at the point of a curve at `index`: 0 where it is no node. */
+export function nodeVisits(on: Map<number, readonly unknown[]>, road: RoadCurve, index: number): number {
+  const node = road.nodes[index] ?? -1;
+  return node < 0 ? 0 : (on.get(node)?.length ?? 0);
 }
 
 /**
@@ -227,45 +237,51 @@ export function segmentUnder(road: RoadCurve, at: Point): number | undefined {
   return undefined;
 }
 
+/** A place a junction could stand at: a point of a curve, or a crossing no curve has a point at. */
+export interface Spot extends Point {
+  road?: RoadCurve;
+  at?: number;
+}
+
 /** The point of a curve nearest a place, within {@link CROSSING_SNAP} of it. */
-export function nearestPointOf(road: RoadCurve, at: Point): Point | undefined {
-  let best: Point | undefined;
+export function nearestPointOf(road: RoadCurve, at: Point): Spot | undefined {
+  let best: Spot | undefined;
   let bestD = CROSSING_SNAP;
-  for (const p of road.points) {
+  road.points.forEach((p, i) => {
     const d = Math.hypot(p.x - at.x, p.y - at.y);
-    if (d > bestD) continue;
+    if (d > bestD) return;
     bestD = d;
-    best = p;
-  }
+    best = { x: p.x, y: p.y, road, at: i };
+  });
   return best;
 }
 
 /** Whichever of two candidate places stands nearer a point. */
-export function nearer(first: Point | undefined, second: Point | undefined, to: Point): Point | undefined {
+export function nearer(first: Spot | undefined, second: Spot | undefined, to: Point): Spot | undefined {
   if (first === undefined) return second;
   if (second === undefined) return first;
   return Math.hypot(second.x - to.x, second.y - to.y) < Math.hypot(first.x - to.x, first.y - to.y) ? second : first;
 }
 
-/** True where a road of this tier may not take a point at a place another road stands on. */
-export function refusedPlace(roads: readonly RoadCurve[], at: Point, joiner: RoadTier): boolean {
-  for (const road of roads) {
-    for (let i = 0; i < road.points.length; i++) {
-      const p = road.points[i] as Point;
-      if (Math.abs(p.x - at.x) > 1e-3 || Math.abs(p.y - at.y) > 1e-3) continue;
-      if (!mayJoin(joiner, road.tier, road.interchanges.includes(i))) return true;
-    }
-  }
-  return false;
+/** The curve points on the node a spot stands on: the spot's own point where it is no node, and none for a bare crossing. */
+export function pointsAt(on: Map<number, { road: RoadCurve; at: number }[]>, spot: Spot): { road: RoadCurve; at: number }[] {
+  if (spot.road === undefined || spot.at === undefined) return [];
+  const node = spot.road.nodes[spot.at] ?? -1;
+  return node < 0 ? [{ road: spot.road, at: spot.at }] : (on.get(node) ?? []);
 }
 
-/** A point two curves share within {@link CROSSING_SNAP} of a place. */
+/** True where a road of this tier may not take a point at a spot another road stands on. */
+export function refusedPlace(on: Map<number, { road: RoadCurve; at: number }[]>, spot: Spot, joiner: RoadTier): boolean {
+  return pointsAt(on, spot).some(({ road, at }) => !mayJoin(joiner, road.tier, road.interchanges.includes(at)));
+}
+
+/** A node two curves share within {@link CROSSING_SNAP} of a place. */
 export function sharedNear(a: RoadCurve, b: RoadCurve, at: Point): Point | undefined {
-  for (const p of a.points) {
-    if (Math.hypot(p.x - at.x, p.y - at.y) > CROSSING_SNAP) continue;
-    for (const q of b.points) {
-      if (Math.abs(p.x - q.x) < 1e-9 && Math.abs(p.y - q.y) < 1e-9) return p;
-    }
+  for (let i = 0; i < a.points.length; i++) {
+    const p = a.points[i] as Point;
+    const node = a.nodes[i] ?? -1;
+    if (node < 0 || Math.hypot(p.x - at.x, p.y - at.y) > CROSSING_SNAP) continue;
+    if (b.nodes.includes(node)) return p;
   }
   return undefined;
 }
@@ -422,21 +438,16 @@ export function isCurveEnd(road: RoadCurve, p: Point): boolean {
 }
 
 /**
- * Where each curve stands on a point another curve has, as distances along it.
- * A junction is exactly a shared point, and a raise may not reach one.
+ * Where each curve stands on a node another curve has, as distances along it.
+ * A junction is exactly a shared node, and a raise may not reach one.
  */
 export function sharedDistances(roads: readonly RoadCurve[]): Float64Array[] {
-  const counts = new Map<number, number>();
-  const key = (p: Point): number =>
-    (Math.round(p.x * 1000) + 8_000_000) * 16_000_001 + Math.round(p.y * 1000) + 8_000_000;
-  for (const road of roads) {
-    for (const point of road.points) counts.set(key(point), (counts.get(key(point)) ?? 0) + 1);
-  }
+  const on = nodePoints(roads);
   return roads.map((road) => {
     const distances = curveDistances(road.points);
     const out: number[] = [];
     for (let i = 0; i < road.points.length; i++) {
-      if ((counts.get(key(road.points[i] as Point)) ?? 0) > 1) out.push(distances[i] as number);
+      if (nodeVisits(on, road, i) > 1) out.push(distances[i] as number);
     }
     return Float64Array.from(out);
   });

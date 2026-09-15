@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { COUNTRY_DECK, HIGHWAY_RAMP, INTERCHANGE_CLEAR, planHighway } from '../src/world/highway-plan.ts';
 import { CLEARANCE } from '../src/world/overpass.ts';
-import { RoadClearance } from '../src/world/road-clear.ts';
+import { RoadNetwork } from '../src/world/road-network.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import type { Point, RoadCurve } from '../src/world/types.ts';
 
@@ -58,12 +58,13 @@ describe('the clearance of a highway', () => {
   it('lets a later road cross it under a slot and nowhere else', () => {
     const points = line(1500);
     const plan = planHighway(points, [], [], [0, points.length - 1], [], city);
-    const highway: RoadCurve = { id: 0, tier: 'highway', points, bridges: plan.bridges, tunnels: [], interchanges: [0, points.length - 1], slots: plan.slots, lift: plan.lift };
-    const clearance = new RoadClearance(4000);
-    clearance.add(highway);
+    const network = new RoadNetwork(4000, () => 0);
+    network.add({ tier: 'highway', points, bridges: plan.bridges, tunnels: [], interchanges: [0, points.length - 1], slots: plan.slots, lift: plan.lift });
+
+
     const slot = (plan.slots[plan.slots.length >> 1] as number) + 0.5;
     const at = slot * 30;
-    expect(clearance.stepOk({ x: at, y: -40 }, { x: at, y: 40 }, 'street')).toBe(true);
-    expect(clearance.stepOk({ x: 115, y: -40 }, { x: 115, y: 40 }, 'street')).toBe(false);
+    expect(network.stepOk({ x: at, y: -40 }, { x: at, y: 40 }, 'street')).toBe(true);
+    expect(network.stepOk({ x: 115, y: -40 }, { x: 115, y: 40 }, 'street')).toBe(false);
   });
 });

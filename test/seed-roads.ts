@@ -12,7 +12,10 @@ import { type Point, type RoadCurve, type RoadTier, type WorldDescription, type 
 import { PointGrid } from './seed-index.ts';
 import {
   WET_SAMPLE,
-  pointKey,
+  nodePoints,
+  nodeVisits,
+  pointsAt,
+  type Spot,
   CLEARANCE,
   gradeOf,
   profileUnder,
@@ -53,7 +56,7 @@ export function roadChecks(): void {
           expect(w.roads.some((r) => r.tier === tier), `seed ${seed} has no ${tier}`).toBe(true);
         }
 
-        // Curves that share a point are one road network. Every curve is traced
+        // Curves that share a node are one road network. Every curve is traced
         // from a road already laid or into one, so there is only ever one.
         let complaint: string | undefined;
         const fault = (text: string): void => {
@@ -69,11 +72,21 @@ export function roadChecks(): void {
           for (const at of road.bridges) {
             if (at >= road.points.length - 1) fault(`curve ${i} bridges segment ${at}, past its end`);
           }
-          for (const p of road.points) {
-            const key = pointKey(p);
-            const met = owner.get(key);
-            if (met === undefined) owner.set(key, i);
+          if (road.nodes.length !== road.points.length) fault(`curve ${i} has ${road.nodes.length} nodes for ${road.points.length} points`);
+          if ((road.nodes[0] ?? -1) < 0 || (road.nodes[road.nodes.length - 1] ?? -1) < 0) fault(`curve ${i} has an end that is no node`);
+          for (const node of road.nodes) {
+            if (node < 0) continue;
+            const met = owner.get(node);
+            if (met === undefined) owner.set(node, i);
             else parent[find(met)] = find(i);
+          }
+        }
+        // A node is one place: every point that stands on it stands there.
+        for (const [node, here] of nodePoints(w.roads)) {
+          const first = here[0]?.road.points[here[0].at] as Point;
+          for (const { road, at } of here) {
+            const p = road.points[at] as Point;
+            if (p.x !== first.x || p.y !== first.y) fault(`node ${node} stands at two places, on ${road.tier} ${road.id}`);
           }
         }
         expect(complaint, `seed ${seed}`).toBeUndefined();
@@ -182,20 +195,16 @@ export function roadChecks(): void {
         const ground = groundRule(new Heightfield(w.terrain), w.water.seaLevel);
         const byId: RoadCurve[] = [];
         for (const road of w.roads) byId[road.id] = road;
-        // The points each curve runs on to from every place it stands on.
-        const beside = new Map<number, { curve: number; to: Point }[]>();
-        for (const road of w.roads) {
-          road.points.forEach((p, i) => {
-            const here = beside.get(pointKey(p)) ?? [];
-            for (const to of [road.points[i - 1], road.points[i + 1]]) if (to !== undefined) here.push({ curve: road.id, to });
-            beside.set(pointKey(p), here);
-          });
-        }
-        const othersAt = (place: Point, curve: number): Point[] =>
-          (beside.get(pointKey(place)) ?? []).filter((b) => b.curve !== curve).map((b) => b.to);
+        const on = nodePoints(w.roads);
+        // The points the curves other than one run on to from a spot, read off
+        // the node it stands on.
+        const othersAt = (place: Spot, curve: number): Point[] =>
+          pointsAt(on, place)
+            .filter(({ road }) => road.id !== curve)
+            .flatMap(({ road, at }) => [road.points[at - 1], road.points[at + 1]].filter((p): p is Point => p !== undefined));
         // A point that turns a road onto the line of a third road meeting it
         // there, or at the places beside it, is refused as `connect.ts` does.
-        const bends = (curve: number, spot: Point, around: readonly Point[]): boolean =>
+        const bends = (curve: number, spot: Spot, around: readonly Spot[]): boolean =>
           shallow(spot, around, othersAt(spot, curve)) || around.some((place) => shallow(place, [spot], othersAt(place, curve)));
         const ends = new FreeEnds(w.roads);
         let complaint: string | undefined;
@@ -224,24 +233,28 @@ export function roadChecks(): void {
           // point either road already has within a snap of the crossing.
           // Where that place fails, the crossing itself is tried.
           const snapped = nearer(nearestPointOf(over, at), nearestPointOf(under, at), at);
-          const refusedAt = (spot: Point): boolean => {
+          const refusedAt = (spot: Spot): boolean => {
             // A place a road of either tier may not take a point at is no place
             // for a junction: bending a street onto a point of a highway would
             // meet the highway, which spec section 6.2 refuses.
-            if (refusedPlace(w.roads, spot, over.tier) || refusedPlace(w.roads, spot, under.tier)) return true;
+            if (refusedPlace(on, spot, over.tier) || refusedPlace(on, spot, under.tier)) return true;
             const halves = [
               [over, first],
               [under, second],
             ] as const;
-            const around: Point[][] = [];
+            const around: Spot[][] = [];
+            const spotOf = (road: RoadCurve, at: number): Spot | undefined => {
+              const p = road.points[at];
+              return p === undefined ? undefined : { x: p.x, y: p.y, road, at };
+            };
             for (const [road, segment] of halves) {
-              const a = road.points[segment] as Point;
-              const b = road.points[segment + 1] as Point;
+              const a = spotOf(road, segment) as Spot;
+              const b = spotOf(road, segment + 1) as Spot;
               // A place the road already stands on bends it nowhere new; there
               // it leaves along the points either side, as `connect.ts` measures.
-              const i = road.points.findIndex((p) => Math.hypot(p.x - spot.x, p.y - spot.y) <= 1e-3);
+              const i = spot.road === road ? (spot.at as number) : -1;
               if (i >= 0) {
-                around.push([road.points[i - 1], road.points[i + 1]].filter((p): p is Point => p !== undefined));
+                around.push([spotOf(road, i - 1), spotOf(road, i + 1)].filter((p): p is Spot => p !== undefined));
                 continue;
               }
               if (!ground(a, spot, road.tier) || !ground(spot, b, road.tier)) return true;
@@ -251,8 +264,8 @@ export function roadChecks(): void {
             }
             // A point that turns the two roads onto each other's line under
             // MIN_MEET is no junction either.
-            if (shallow(spot, around[0] as Point[], around[1] as Point[])) return true;
-            return bends(over.id, spot, around[0] as Point[]) || bends(under.id, spot, around[1] as Point[]);
+            if (shallow(spot, around[0] as Spot[], around[1] as Spot[])) return true;
+            return bends(over.id, spot, around[0] as Spot[]) || bends(under.id, spot, around[1] as Spot[]);
           };
           if (!(snapped === undefined ? [at] : [snapped, at]).every(refusedAt)) fault(`${where} without meeting it`);
         }
@@ -306,16 +319,8 @@ export function roadChecks(): void {
         const fault = (text: string): void => {
           complaint ??= text;
         };
-        // Every curve that owns each point, with the index the point sits at.
-        const met = new Map<number, { road: RoadCurve; at: number }[]>();
-        for (const road of w.roads) {
-          for (let i = 0; i < road.points.length; i++) {
-            const key = pointKey(road.points[i] as Point);
-            const here = met.get(key);
-            if (here === undefined) met.set(key, [{ road, at: i }]);
-            else here.push({ road, at: i });
-          }
-        }
+        // Every curve point on each node, with the index the point sits at.
+        const met = nodePoints(w.roads);
         for (const road of w.roads) {
           if (road.tier !== 'highway') {
             if (road.interchanges.length > 0) fault(`${road.tier} ${road.id} lists interchanges`);
@@ -329,7 +334,7 @@ export function roadChecks(): void {
             if (at < 0 || at >= road.points.length) fault(`highway ${road.id} puts an interchange past its end at ${at}`);
           }
           for (let i = 0; i < road.points.length; i++) {
-            const here = met.get(pointKey(road.points[i] as Point)) ?? [];
+            const here = met.get(road.nodes[i] ?? -1) ?? [];
             for (const other of here) {
               if (other.road.id === road.id) continue;
               const where = `highway ${road.id} meets ${other.road.tier} ${other.road.id} at point ${i}`;
@@ -472,19 +477,14 @@ export function roadChecks(): void {
       for (const seed of seeds) {
         const w = worlds.get(seed) as WorldDescription;
         const grid = new PointGrid(w.size, 100, w.roads);
-        const shared = new Map<number, number>();
-        for (const road of w.roads) {
-          for (const p of road.points) {
-            const key = pointKey(p);
-            shared.set(key, (shared.get(key) ?? 0) + 1);
-          }
-        }
+        const on = nodePoints(w.roads);
         let complaint: string | undefined;
         for (const road of w.roads) {
           const cap = CAP[road.tier];
           if (cap === undefined) continue;
-          for (const end of [road.points[0] as Point, road.points[road.points.length - 1] as Point]) {
-            if ((shared.get(pointKey(end)) ?? 0) > 1) continue;
+          for (const i of [0, road.points.length - 1]) {
+            const end = road.points[i] as Point;
+            if (nodeVisits(on, road, i) > 1) continue;
             const away = grid.nearest(end.x, end.y, road.id);
             if (away > cap) complaint ??= `${road.tier} ${road.id} dead-ends ${away.toFixed(0)} m from any road`;
           }

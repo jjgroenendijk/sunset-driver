@@ -15,8 +15,8 @@
  */
 import { clamp, dist, wrapAngle } from '../core/math.ts';
 import { ARTERIAL, STREET, type TierParams } from './road-params.ts';
-import type { Trail } from './road-clear.ts';
-import type { NetworkHit } from './road-index.ts';
+import type { Trail } from './network-clearance.ts';
+import type { NetworkHit } from './road-network.ts';
 import { RoadRoute } from './road-route.ts';
 import type { Point, RoadTier } from './types.ts';
 
@@ -117,7 +117,7 @@ export abstract class RoadTrace extends RoadRoute {
    */
   protected longestRunnable(line: readonly Point[], maxGrade: number): Point[] {
     const inside = (p: Point): boolean => Math.abs(p.x) <= this.half && Math.abs(p.y) <= this.half;
-    const ends = (p: Point): boolean => inside(p) && this.clearance.clearAt(p.x, p.y, 'street');
+    const ends = (p: Point): boolean => inside(p) && this.network.clearAt(p.x, p.y, 'street');
     let best: Point[] = [];
     let run: Point[] = [];
     const close = (): void => {
@@ -126,7 +126,7 @@ export abstract class RoadTrace extends RoadRoute {
     };
     for (const p of line) {
       const last = run[run.length - 1];
-      if (last === undefined ? !ends(p) : !inside(p) || !this.canRun(last.x, last.y, p.x, p.y, maxGrade) || !this.clearance.stepOk(last, p, 'street')) {
+      if (last === undefined ? !ends(p) : !inside(p) || !this.canRun(last.x, last.y, p.x, p.y, maxGrade) || !this.network.stepOk(last, p, 'street')) {
         close();
         run = ends(p) ? [p] : [];
         continue;
@@ -164,20 +164,20 @@ export abstract class RoadTrace extends RoadRoute {
     within?: (x: number, y: number) => boolean,
     vetSteps = false,
   ): Point[] | undefined {
-    const target = this.index.nearestOnIsland(from.x, from.y, island, joiner);
+    const target = this.network.nearestOnIsland(from.x, from.y, island, joiner);
     if (target !== undefined) {
       const traced = this.trace(from, { params, joiner, target, mergeAfter: 0, within });
       if (traced.merged || traced.arrived) return traced.points;
     }
-    if (this.index.empty) return undefined;
+    if (this.network.empty) return undefined;
     const route = this.reroute(
       from,
       params.maxGrade,
       joiner,
       (x, y) => {
-        const hit = this.index.nearest(x, y, params.mergeRadius, -1, joiner);
-        if (hit === undefined || this.index.refuses(hit.x, hit.y, joiner)) return undefined;
-        if (!this.clearance.meets(hit, { x, y }, joiner)) return undefined;
+        const hit = this.network.nearest(x, y, params.mergeRadius, -1, joiner);
+        if (hit === undefined || this.network.refuses(hit.x, hit.y, joiner)) return undefined;
+        if (!this.network.meets(hit, { x, y }, joiner)) return undefined;
         return this.canRun(x, y, hit.x, hit.y, params.maxGrade) ? hit : undefined;
       },
       within,
@@ -220,7 +220,7 @@ export abstract class RoadTrace extends RoadRoute {
    * land or runs out of length.
    *
    * No step runs along another road, and a road meets another only at an angle
-   * a junction can be built at ({@link RoadClearance}). A trace that stops for
+   * a junction can be built at (`network-clearance.ts`). A trace that stops for
    * any other reason is walked back to the last point clear of every other
    * road, so it never ends inside another road's carriageway.
    */
@@ -256,9 +256,9 @@ export abstract class RoadTrace extends RoadRoute {
       // A road joins any other road on close approach, but only rejoins the one
       // it branched off after it has gone somewhere.
       const parent = opt.parentCurve ?? -1;
-      const candidates = length >= mergeAfter ? this.index.within(qx, qy, params.mergeRadius, parent, opt.joiner) : [];
+      const candidates = length >= mergeAfter ? this.network.within(qx, qy, params.mergeRadius, parent, opt.joiner) : [];
       if (candidates.length === 0 && parent >= 0 && length >= (opt.parentMergeAfter ?? mergeAfter)) {
-        candidates.push(...this.index.within(qx, qy, params.mergeRadius, -1, opt.joiner));
+        candidates.push(...this.network.within(qx, qy, params.mergeRadius, -1, opt.joiner));
       }
       const here = { x: px, y: py };
       const hit = this.mergeAt(candidates, here, heading, opt.joiner, params, trail);
@@ -271,7 +271,7 @@ export abstract class RoadTrace extends RoadRoute {
       // Whether this road may junction with the one it comes near or not, it
       // crosses it or leaves it; it never runs along it. A road coming in too
       // shallow turns until it does, and stops where no turn is left.
-      if (!this.clearance.stepOk(here, { x: qx, y: qy }, opt.joiner, trail)) {
+      if (!this.network.stepOk(here, { x: qx, y: qy }, opt.joiner, trail)) {
         next = this.turnClear(here, heading, next, opt, trail);
         if (next === undefined) break;
         qx = px + Math.cos(next.heading) * next.reach;
@@ -280,7 +280,7 @@ export abstract class RoadTrace extends RoadRoute {
       if (foldsBack(points, qx, qy, params.step)) break;
 
       points.push({ x: qx, y: qy });
-      clear.push(this.clearance.clearAt(qx, qy, opt.joiner));
+      clear.push(this.network.clearAt(qx, qy, opt.joiner));
       length += next.reach;
       heading = next.heading;
       px = qx;
@@ -299,8 +299,8 @@ export abstract class RoadTrace extends RoadRoute {
         // Only an arrival that can be driven counts: a last step over water or
         // up a wall is no arrival, and the caller reroutes instead.
         if (!this.canRun(px, py, target.x, target.y, params.maxGrade)) break;
-        if (this.index.refuses(target.x, target.y, opt.joiner)) break;
-        if (!this.clearance.meets(target, { x: px, y: py }, opt.joiner, trail)) break;
+        if (this.network.refuses(target.x, target.y, opt.joiner)) break;
+        if (!this.network.meets(target, { x: px, y: py }, opt.joiner, trail)) break;
         points.push({ x: target.x, y: target.y });
         clear.push(true);
         arrived = true;
@@ -342,9 +342,9 @@ export abstract class RoadTrace extends RoadRoute {
     trail: Trail,
   ): NetworkHit | undefined {
     for (const hit of candidates.slice(0, MERGE_TRIES)) {
-      if (this.index.refuses(hit.x, hit.y, joiner)) continue;
+      if (this.network.refuses(hit.x, hit.y, joiner)) continue;
       if (Math.abs(wrapAngle(Math.atan2(hit.y - from.y, hit.x - from.x) - heading)) > MAX_MERGE_TURN) continue;
-      if (!this.clearance.meets(hit, from, joiner, trail)) continue;
+      if (!this.network.meets(hit, from, joiner, trail)) continue;
       if (this.canRun(from.x, from.y, hit.x, hit.y, params.maxGrade)) return hit;
     }
     return undefined;
@@ -370,7 +370,7 @@ export abstract class RoadTrace extends RoadRoute {
         if (Math.abs(this.hf.sample(to.x, to.y) - here) / step.reach > params.maxGrade) continue;
         const profile = this.probe(from.x, from.y, to.x, to.y);
         if (!profile.dry || profile.above > MAX_COVER || profile.below > MAX_COVER) continue;
-        if (this.clearance.stepOk(from, to, opt.joiner, trail)) return { heading: h, reach: step.reach };
+        if (this.network.stepOk(from, to, opt.joiner, trail)) return { heading: h, reach: step.reach };
       }
     }
     return undefined;

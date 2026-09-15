@@ -29,7 +29,7 @@
 import { dist } from '../core/math.ts';
 import { compareNumbers } from '../core/sort.ts';
 import type { FillSeed, PlanAt } from './fill.ts';
-import type { RoadIndex } from './road-index.ts';
+import type { RoadNetwork } from './road-network.ts';
 import { ALLEY, DEAD_END_SPACINGS } from './road-trace.ts';
 import { footprintHalfWidth } from './tiers.ts';
 import type { Point, RoadCurve } from './types.ts';
@@ -84,7 +84,7 @@ interface Candidate {
  * block is measured from the street that runs along its long side, so that
  * candidate is taken and the one across it is refused.
  */
-export function alleySeeds(streets: readonly RoadCurve[], index: RoadIndex, ground: AlleyGround): FillSeed[] {
+export function alleySeeds(streets: readonly RoadCurve[], network: Pick<RoadNetwork, 'nearest'>, ground: AlleyGround): FillSeed[] {
   const found: Candidate[] = [];
   for (const curve of streets) {
     if (curve.tier !== 'street') continue;
@@ -106,7 +106,7 @@ export function alleySeeds(streets: readonly RoadCurve[], index: RoadIndex, grou
       for (const hand of [1, -1]) {
         const nx = -Math.sin(along) * hand;
         const ny = Math.cos(along) * hand;
-        const depth = blockDepth(index, b, nx, ny, step * PROBE_REACH, curve.id);
+        const depth = blockDepth(network, b, nx, ny, step * PROBE_REACH, curve.id);
         if (depth === undefined) continue;
         const strip = depth / 2 - footprintHalfWidth('alley');
         const least = ground.minStrip(b.x, b.y);
@@ -130,9 +130,9 @@ export function alleySeeds(streets: readonly RoadCurve[], index: RoadIndex, grou
  * road, sampled a step at a time. Nothing within reach means open ground rather
  * than a block, and open ground takes no alley.
  */
-function blockDepth(index: RoadIndex, from: Point, nx: number, ny: number, reach: number, parent: number): number | undefined {
+function blockDepth(network: Pick<RoadNetwork, 'nearest'>, from: Point, nx: number, ny: number, reach: number, parent: number): number | undefined {
   for (let out = PROBE_STEP; out <= reach; out += PROBE_STEP) {
-    const hit = index.nearest(from.x + nx * out, from.y + ny * out, PROBE_STEP, parent);
+    const hit = network.nearest(from.x + nx * out, from.y + ny * out, PROBE_STEP, parent);
     if (hit !== undefined) return dist(from.x, from.y, hit.x, hit.y);
   }
   return undefined;

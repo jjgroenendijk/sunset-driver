@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { connectCrossings, CROSSING_SNAP, type CanRun } from '../src/world/connect.ts';
-import { buildRoadGraph } from '../src/world/graph.ts';
+import { connectCrossings as connect, CROSSING_SNAP, type CanRun } from '../src/world/connect.ts';
+import { buildRoadGraph as graphOf } from '../src/world/graph.ts';
 import type { Point, RoadCurve, RoadTier } from '../src/world/types.ts';
+import { withNodes } from './helpers.ts';
+
+/** Hand-built curves are joined where their points meet; a pass's own output keeps the nodes it made. */
+const joined = (roads: RoadCurve[]): RoadCurve[] => (roads.every((r) => r.nodes.length === r.points.length) ? roads : withNodes(roads));
+const connectCrossings = (roads: RoadCurve[], canRun: CanRun): RoadCurve[] => connect(joined(roads), canRun);
+const buildRoadGraph = (roads: RoadCurve[]): ReturnType<typeof graphOf> => graphOf(joined(roads));
 
 /** Ground that refuses nothing, so only the crossings themselves decide. */
 const anywhere: CanRun = () => true;
 
 function curve(id: number, coords: readonly [number, number][], tier: RoadTier = 'street'): RoadCurve {
-  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges: [], tunnels: [], interchanges: [] };
+  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges: [], tunnels: [], interchanges: [], nodes: [] };
 }
 
 /** The points of a curve as pairs, so a whole line can be compared at once. */

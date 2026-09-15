@@ -1,7 +1,7 @@
 import { Vector3, type BufferAttribute, type BufferGeometry } from 'three';
 import { describe, expect, it } from 'vitest';
 import { pointInRing, type Point } from '../src/core/geom.ts';
-import { sideReach } from './helpers.ts';
+import { sideReach, withNodes } from './helpers.ts';
 import { hashInts } from '../src/core/hash.ts';
 import {
   buildChunkBuildings,
@@ -437,7 +437,7 @@ function district(id: number, zone: Zone, x: number, y: number): District {
 }
 
 function curve(id: number, coords: readonly [number, number][], tier: RoadTier = 'street'): RoadCurve {
-  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges: [], tunnels: [], interchanges: [] };
+  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges: [], tunnels: [], interchanges: [], nodes: [] };
 }
 
 function gridWorld(): WorldDescription {
@@ -469,7 +469,7 @@ function gridWorld(): WorldDescription {
     },
     districts: [district(0, 'inner', 0, 0), district(1, 'suburban', 250, 250)],
     beaches: [],
-    roads,
+    roads: withNodes(roads),
     corridors: [],
     tram: { route: [], corridors: [], stops: [], crossings: [], length: 0 },
   };

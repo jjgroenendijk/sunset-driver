@@ -4,7 +4,7 @@ import { buildRoadGraph } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import type { Corridor, District, Point, RoadCurve, RoadTier, WorldSkeleton, Zone } from '../src/world/types.ts';
-import { pointInRing, ringArea, ringsOverlap } from './helpers.ts';
+import { pointInRing, ringArea, ringsOverlap, withNodes } from './helpers.ts';
 
 const SIZE = 1024;
 const CELL = 16;
@@ -43,10 +43,11 @@ function district(id: number, zone: Zone, x: number, y: number): District {
 }
 
 function curve(id: number, tier: RoadTier, coords: readonly [number, number][], bridges: number[] = []): RoadCurve {
-  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges, tunnels: [], interchanges: [] };
+  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges, tunnels: [], interchanges: [], nodes: [] };
 }
 
 function build(skeleton: WorldSkeleton, roads: RoadCurve[]) {
+  withNodes(roads);
   return buildCorridors(skeleton, roads, buildRoadGraph(roads));
 }
 

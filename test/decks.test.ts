@@ -24,6 +24,7 @@ function bridgedRoad(): RoadCurve {
     bridges: [1],
     tunnels: [],
     interchanges: [],
+    nodes: [],
   };
 }
 

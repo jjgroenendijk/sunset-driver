@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { alleySeeds, type AlleyGround } from '../src/world/alleys.ts';
-import { RoadIndex } from '../src/world/road-index.ts';
+import { RoadNetwork } from '../src/world/road-network.ts';
 import type { RoadCurve } from '../src/world/types.ts';
 
 /**
@@ -13,7 +13,7 @@ import type { RoadCurve } from '../src/world/types.ts';
 function street(id: number, y: number, from = -300, to = 300): RoadCurve {
   const points = [];
   for (let x = from; x <= to; x += 20) points.push({ x, y });
-  return { id, tier: 'street', points, bridges: [], tunnels: [], interchanges: [] };
+  return { id, tier: 'street', points, bridges: [], tunnels: [], interchanges: [], nodes: [] };
 }
 
 /** Downtown: 28 m of lot front to back, and a block 200 m long. */
@@ -25,8 +25,8 @@ const GROUND: AlleyGround = {
 };
 
 /** The index the seeds are measured against: every street already laid. */
-function indexOf(streets: readonly RoadCurve[]): RoadIndex {
-  const index = new RoadIndex(2000, 25, () => 0);
+function indexOf(streets: readonly RoadCurve[]): RoadNetwork {
+  const index = new RoadNetwork(2000, () => 0, 25);
   for (const curve of streets) index.add(curve);
   return index;
 }

@@ -11,6 +11,7 @@ import { RoadRibbons } from '../src/world/ribbon.ts';
 import { CHUNK_TERRAIN_CELL } from '../src/world/terrain.ts';
 import { footprintHalfWidth } from '../src/world/tiers.ts';
 import type { District, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
+import { withNodes } from './helpers.ts';
 
 const SIZE = 800;
 const CELL = 10;
@@ -31,7 +32,7 @@ function district(id: number, zone: Zone, x: number, y: number): District {
 }
 
 function curve(id: number, coords: readonly [number, number][], tier: RoadTier): RoadCurve {
-  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges: [], tunnels: [], interchanges: [] };
+  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges: [], tunnels: [], interchanges: [], nodes: [] };
 }
 
 /**
@@ -61,7 +62,7 @@ function hillWorld(roads: RoadCurve[], height: (x: number, y: number) => number)
     },
     districts: [district(0, 'inner', 0, 0), district(1, 'suburban', 250, 250)],
     beaches: [],
-    roads,
+    roads: withNodes(roads),
     corridors: [],
     tram: { route: [], corridors: [], stops: [], crossings: [], length: 0 },
   };

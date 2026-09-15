@@ -227,30 +227,24 @@ function liftAlong(road: RoadCurve, along: number): number {
   return 0;
 }
 
-/** The distance along each curve of every point it shares with another curve. */
+/**
+ * The distances along each curve of the nodes it shares with another curve:
+ * the junctions a raise may not reach into.
+ */
 function sharedPoints(roads: readonly RoadCurve[], along: readonly Float32Array[]): number[][] {
   const counts = new Map<number, number>();
   for (const road of roads) {
-    for (const point of road.points) {
-      const key = placeKey(point);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
+    for (const node of road.nodes) if (node >= 0) counts.set(node, (counts.get(node) ?? 0) + 1);
   }
   return roads.map((road) => {
     const distances = along[road.id] as Float32Array;
     const out: number[] = [];
     for (let i = 0; i < road.points.length; i++) {
-      if ((counts.get(placeKey(road.points[i] as Point)) ?? 0) > 1) out.push(distances[i] as number);
+      const node = road.nodes[i] ?? -1;
+      if (node >= 0 && (counts.get(node) ?? 0) > 1) out.push(distances[i] as number);
     }
     return out;
   });
-}
-
-/** Millimetres of the map as one number, so two points at one place share a key. */
-function placeKey(point: Point): number {
-  const x = Math.round(point.x * 1000) + 8_000_000;
-  const y = Math.round(point.y * 1000) + 8_000_000;
-  return x * 16_000_001 + y;
 }
 
 /**
@@ -307,6 +301,7 @@ function insertAt(road: RoadCurve, distances: Float32Array, wanted: readonly num
   /** How far each old point moved along the new list. */
   const shift: number[] = [];
   const lift: number[] = [];
+  const nodes: number[] = [];
   let next = 0;
   for (let i = 0; i < road.points.length; i++) {
     const here = distances[i] as number;
@@ -320,12 +315,15 @@ function insertAt(road: RoadCurve, distances: Float32Array, wanted: readonly num
       const b = road.points[i] as Point;
       const t = (want - from) / (here - from);
       points.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+      // A knot is where a deck begins, not where roads meet.
+      nodes.push(-1);
       lift.push((road.lift?.[i - 1] ?? 0) * (1 - t) + (road.lift?.[i] ?? 0) * t);
     }
     // A knot within half a millimetre of a point is that point.
     while (next < wanted.length && Math.abs((wanted[next] as number) - here) <= SAME_PLACE / 1000) next++;
     shift[i] = points.length;
     points.push(road.points[i] as Point);
+    nodes.push(road.nodes[i] ?? -1);
     lift.push(road.lift?.[i] ?? 0);
   }
   // A segment a knot was inserted into is now several, and all of them stand on
@@ -340,6 +338,7 @@ function insertAt(road: RoadCurve, distances: Float32Array, wanted: readonly num
   const cut: RoadCurve = {
     ...road,
     points,
+    nodes,
     bridges: spread(road.bridges),
     tunnels: spread(road.tunnels),
     interchanges: road.interchanges.map((i) => shift[i] as number).sort(compareNumbers),
