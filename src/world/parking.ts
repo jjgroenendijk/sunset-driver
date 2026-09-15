@@ -111,8 +111,16 @@ export function layBays(
   for (const road of roads) {
     if (road.tier === 'street') streetBays(road, junctions, grid, (x, y) => STREET_USE[zoneOf(x, y)], out);
   }
+  const lots: Bay[] = [];
   for (const parcel of parcels) {
-    if (parcel.owner === 'car-park') lotBays(parcel.region, LOT_USE[parcel.zone], out);
+    if (parcel.owner === 'car-park') lotBays(parcel.region, LOT_USE[parcel.zone], lots);
+  }
+  // A car park is land the roads left, but a deck another corridor cut short
+  // can leave the ground under its ramp to one. No bay stands under a road.
+  const none = new Float64Array(0);
+  for (const bay of lots) {
+    const ring = rectangle(bay.x, bay.y, Math.cos(bay.heading), Math.sin(bay.heading), LOT_BAY_LENGTH / 2, LOT_BAY_WIDTH / 2);
+    if (grid.clear(ring, -1, none, 0)) out.push(bay);
   }
   const bays: ParkingBays = {
     count: out.length,
