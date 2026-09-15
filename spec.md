@@ -432,6 +432,18 @@ the vehicle at speed and pulls back as speed increases. It never rolls, banks or
 the camera the game is played through; the developer free camera of `docs/dev-tooling.md` is a tool
 and not a view of the game.
 
+The camera stands about 30 m over the street, and a tower stands up to 150 m. A building therefore
+often stands between the camera and the player, or holds the camera inside it. A setting on the
+Camera page of the title screen and of the pause menu says what happens then:
+
+- **See-through**, the default, as in GTA Chinatown Wars. A building nearer the camera than the
+  player, inside a cone around the player, keeps a dithered scatter of its pixels, and its outline
+  is left out there. The building the camera stands inside is not drawn.
+- **Pull back.** The camera moves back along its fixed view until it stands over the roof under it.
+  It climbs fast and comes down slowly. Pitch and heading do not change. A building that still
+  hides the player is cut as with See-through.
+- **Off.** Every building is drawn whole.
+
 ---
 
 ## 11. Player: character, controls, driving, on foot

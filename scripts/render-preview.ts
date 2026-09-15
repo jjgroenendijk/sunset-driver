@@ -16,6 +16,8 @@
  *   --speed          how fast the player moves, in metres per second.
  *   --width,--height the size of the picture.
  *   --hour           the hour of the day to light the frame at, 0 to 24.
+ *   --buildings      what a building in the way does (spec section 10.7):
+ *                    see-through, pull-back or whole. Default see-through.
  *   --quality        the quality tier to draw at (spec section 9.2): full,
  *                    high, medium or low. Default full.
  *   --vehicle        the class of vehicle to stand the player in (spec section
@@ -136,6 +138,7 @@ const request: PreviewRequest = {
   height: num('height', 540),
   hour: num('hour', 12),
   ...(options.has('quality') ? { quality: options.get('quality') as string } : {}),
+  ...(options.has('buildings') ? { buildings: options.get('buildings') as string } : {}),
   ...(options.has('vehicle') ? { vehicle: options.get('vehicle') as string } : {}),
   ...(options.has('on-foot') ? { onFoot: true } : {}),
   ...(options.has('damage') ? { damage: options.get('damage') as string } : {}),

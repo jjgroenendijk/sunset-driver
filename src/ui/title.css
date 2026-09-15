@@ -54,6 +54,8 @@
 .title-menu-item:focus .title-menu-label { color: var(--it-rosso); }
 .title-menu-item:focus-visible { outline: none; }
 .title-menu-item:disabled { cursor: default; opacity: .45; }
+/* The choice that holds on a page of choices, such as the Camera page. */
+.title-menu-item[aria-pressed="true"] .title-menu-label::after { content: " \2713"; color: var(--it-rosso); }
 .title-menu-heading { margin: .5rem .9rem .25rem; padding-bottom: .6rem; border-bottom: 1px solid rgba(35,28,22,.15); font: 400 1.75rem/1.1 var(--it-serif); }
 
 .title-card-head { display: grid; grid-template-columns: auto 1fr; column-gap: .6rem; align-items: baseline; margin-bottom: 1.1rem; padding-bottom: .8rem; border-bottom: 1px solid rgba(35,28,22,.15); }

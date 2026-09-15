@@ -65,6 +65,9 @@ export const smoothstep = tsl.smoothstep as unknown as (
   x: TslNode,
 ) => TslNode;
 
+/** The larger of two numbers. */
+export const max = tsl.max as unknown as (a: number | TslNode, b: number | TslNode) => TslNode;
+
 /** The whole part of a number, towards minus infinity. */
 export const floor = tsl.floor as unknown as (x: TslNode) => TslNode;
 

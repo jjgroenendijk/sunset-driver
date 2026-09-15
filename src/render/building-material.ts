@@ -25,6 +25,7 @@ import { BackSide, Color } from 'three';
 import { createSkyscraperMaterial } from 'three/examples/jsm/generators/city/SkyscraperGenerator.js';
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import { BLOCK_GLASS, BLOCK_ROOF, BLOCK_TRIM } from './block-mesh.ts';
+import type { BuildingCutaway } from './cutaway.ts';
 import {
   attribute,
   float,
@@ -85,12 +86,18 @@ export interface BuildingMaterials {
   dispose(): void;
 }
 
-/** Build the three materials every chunk of a world shares. */
-export function createBuildingMaterials(): BuildingMaterials {
+/**
+ * Build the three materials every chunk of a world shares. All three are cut
+ * where a building hides the player (`cutaway.ts`).
+ */
+export function createBuildingMaterials(cutaway: BuildingCutaway): BuildingMaterials {
   const night = uniform(0);
   const facade = createFacadeMaterial(night);
   const block = createBlockMaterial(night);
   const outline = new MeshBasicNodeMaterial({ color: new Color(OUTLINE), side: BackSide, fog: true });
+  cutaway.dressShell(facade);
+  cutaway.dressShell(block);
+  cutaway.dressOutline(outline);
   return {
     facade,
     block,

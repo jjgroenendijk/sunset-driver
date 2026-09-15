@@ -20,6 +20,7 @@
 import { fillOfPacked, tilePartOf } from './batch.ts';
 import type { PackedBatch } from './chunk-payload.ts';
 import { createBuildingMaterials, type BuildingMaterials } from './building-material.ts';
+import type { BuildingCutaway } from './cutaway.ts';
 import type { TilePart } from './streaming.ts';
 
 /** Which of a chunk's three batches of buildings is meant. */
@@ -30,7 +31,11 @@ export type BuildingBatchKind = 'outline' | 'facade' | 'block';
  * them. One instance serves a whole world.
  */
 export class BuildingScenery {
-  private readonly materials: BuildingMaterials = createBuildingMaterials();
+  private readonly materials: BuildingMaterials;
+
+  constructor(cutaway: BuildingCutaway) {
+    this.materials = createBuildingMaterials(cutaway);
+  }
 
   /** How far into the night it is, 0 by day and 1 at midnight (spec section 10.5). */
   get night(): number {

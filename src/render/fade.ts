@@ -102,7 +102,7 @@ export class EntityFade {
  * part left in a 32-bit float, so a pattern taken from the raw coordinate comes
  * out in bands.
  */
-function bayer4(at: TslNode): TslNode {
+export function bayer4(at: TslNode): TslNode {
   const tile = wrap(at, 4);
   return bayer2(tile.mul(0.5)).mul(0.25).add(bayer2(tile));
 }
