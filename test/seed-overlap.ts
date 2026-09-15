@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MIN_MEET } from '../src/world/network-clearance.ts';
+import { selfOverlap } from '../src/world/self-overlap.ts';
 import { footprintHalfWidth } from '../src/world/tiers.ts';
 import { type Point, type RoadCurve, type WorldDescription } from '../src/world/types.ts';
 import { seeds, worlds } from './seed-fixture.ts';
@@ -10,7 +11,7 @@ import { distanceToSegment, nodePoints, nodeVisits } from './seed-probes.ts';
  * promises no two roads overlap, so two roads touch only where they share a
  * point or cross. These checks read the two ways a road once lay on another
  * with nothing joining them: along its line from a shared point, and with an
- * end standing in its carriageway.
+ * end standing in its carriageway. A road may not lie over itself either.
  */
 export function overlapChecks(): void {
   describe('road overlap', () => {
@@ -21,6 +22,24 @@ export function overlapChecks(): void {
         const w = worlds.get(seed) as WorldDescription;
         const worst = shallowestMeeting(w.roads);
         const complaint = worst !== undefined && worst.turn < MIN_MEET ? `${worst.text} at ${((worst.turn * 180) / Math.PI).toFixed(0)}°` : undefined;
+        expect(complaint, `seed ${seed}`).toBeUndefined();
+      }
+    });
+
+    it('lays no road over its own carriageway', () => {
+      // A curve that turns back on itself tighter than a half turn of its own
+      // width lies over itself, and a road that crosses there crosses it two or
+      // three times in a few metres (#252). The network refuses such a road
+      // when it is added, and the passes after the trace may not bend one into it.
+      for (const seed of seeds) {
+        const w = worlds.get(seed) as WorldDescription;
+        let complaint: string | undefined;
+        for (const road of w.roads) {
+          const fold = selfOverlap(road.points, road.tier);
+          if (fold === undefined) continue;
+          const p = road.points[fold.second] as Point;
+          complaint ??= `${road.tier} ${road.id} lies over itself between segments ${fold.first} and ${fold.second}, at ${p.x.toFixed(0)},${p.y.toFixed(0)}`;
+        }
         expect(complaint, `seed ${seed}`).toBeUndefined();
       }
     });

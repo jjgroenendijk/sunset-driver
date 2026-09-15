@@ -23,6 +23,7 @@
  */
 import { clamp, dist } from '../core/math.ts';
 import { NetworkClearance, SAME_PLACE } from './network-clearance.ts';
+import { selfOverlap } from './self-overlap.ts';
 import { mayJoin } from './tiers.ts';
 import type { Point, RoadCurve, RoadTier } from './types.ts';
 
@@ -79,7 +80,7 @@ export class RoadNetwork extends NetworkClearance {
    * the road: fewer than two points, or a road that lies over itself.
    */
   add(draft: RoadDraft): RoadCurve | undefined {
-    if (draft.points.length < 2) return undefined;
+    if (draft.points.length < 2 || selfOverlap(draft.points, draft.tier) !== undefined) return undefined;
     const id = this.curves.length;
     const points = draft.points.slice();
     const nodes = new Array<number>(points.length).fill(-1);
