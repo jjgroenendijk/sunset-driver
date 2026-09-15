@@ -2,14 +2,20 @@
  * The rule a road asks the ground: whether a straight span stays dry, how hard
  * it climbs, and how far the ground leaves the line the road drives.
  *
- * The tracer vets every step with it and the connection pass every junction it
- * cuts, so a junction is only cut into a road where the trace would have laid
- * one.
+ * The tracer vets every step with it and the network every junction it cuts
+ * into a road as the road is added, so a junction is only cut where the trace
+ * would have laid one.
  */
 import { dist } from '../core/math.ts';
-import type { CanRun } from './connect.ts';
 import type { Heightfield } from './heightfield.ts';
 import { TIERS } from './tiers.ts';
+import type { Point, RoadTier } from './types.ts';
+
+/**
+ * True when a road of a tier can be driven from one place straight to another:
+ * dry ground all the way, and no steeper than the tier allows.
+ */
+export type CanRun = (a: Point, b: Point, tier: RoadTier) => boolean;
 
 /** Metres a road needs above sea level; the waterline itself is not road-worthy ground. */
 export const DRY_MARGIN = 0.8;
@@ -42,7 +48,7 @@ export function spanProfile(hf: Heightfield, seaLevel: number, ax: number, ay: n
 }
 
 /**
- * The rule the connection pass asks the ground: may a road of this tier be
+ * The rule the network asks the ground at a junction: may a road of this tier be
  * driven straight from one place to another? It is the rule the tracer traces
  * by, so a junction is only cut into a road where the trace would have laid one.
  */

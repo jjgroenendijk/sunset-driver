@@ -12,7 +12,7 @@ import { BeachGround, isResort } from './beaches.ts';
 import { layoutZones, zoneAt, type ZoneLayout } from './districts.ts';
 import { Heightfield } from './heightfield.ts';
 import { crossingsWith, planHighway } from './highway-plan.ts';
-import { DRY_MARGIN, spanProfile, type Profile } from './road-ground.ts';
+import { DRY_MARGIN, groundRule, spanProfile, type Profile } from './road-ground.ts';
 import { ANCHOR_REACH, ARTERIAL } from './road-params.ts';
 import type { Trail } from './network-clearance.ts';
 import { RoadNetwork, type RoadDraft } from './road-network.ts';
@@ -77,7 +77,9 @@ export abstract class RoadRoute {
     this.size = world.size;
     this.half = world.size / 2 - EDGE_MARGIN;
     this.noise = coastNoise(world.seed);
-    this.network = new RoadNetwork(world.size, (x, y) => this.islandOf(x, y));
+    // The network decides each crossing on the ground the trace runs on.
+    const ground = { canRun: groundRule(this.hf, this.seaLevel), heightAt: (x: number, y: number) => this.hf.sample(x, y) };
+    this.network = new RoadNetwork(world.size, (x, y) => this.islandOf(x, y), undefined, ground);
     const n = this.hf.gridSize;
     this.land = new Uint8Array(n * n);
     for (let iy = 0; iy < n; iy++) {
@@ -407,7 +409,7 @@ export abstract class RoadRoute {
    * here, before the road goes in, so every road laid after it is traced
    * against them.
    */
-  protected addCurve(tier: RoadTier, points: Point[], bridges: number[], interchanges: number[] = []): RoadCurve | undefined {
+  protected addCurve(tier: RoadTier, points: Point[], bridges: number[], interchanges: number[] = [], whole = false): RoadCurve | undefined {
     if (points.length < 2) return undefined;
     const tunnels = this.markStructures(points, bridges);
     const draft: RoadDraft = { tier, points, bridges, tunnels, interchanges };
@@ -421,7 +423,7 @@ export abstract class RoadRoute {
       draft.slots = plan.slots;
       if (plan.lift !== undefined) draft.lift = plan.lift;
     }
-    return this.network.add(draft);
+    return this.network.add(draft, whole);
   }
 }
 

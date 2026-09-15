@@ -99,7 +99,7 @@ export class RoadBeds {
       for (let i = 0; i < road.points.length; i++) {
         const p = road.points[i] as Point;
         // A road carried over another one stands off the ground it was traced
-        // on; `overpass.ts` is the only thing that lifts one.
+        // on; the lift is the only thing that says so (`overpass.ts`).
         bed.heights[i] = hf.sample(p.x, p.y) + (road.lift?.[i] ?? 0);
       }
       this.curves[road.id] = bed;
