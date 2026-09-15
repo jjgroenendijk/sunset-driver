@@ -1,6 +1,7 @@
 import { Matrix4 } from 'three';
 import type { Batch } from '../src/render/batch.ts';
 import { describe, expect, it } from 'vitest';
+import { cellGrid } from '../src/render/cells.ts';
 import type { PackedPlants } from '../src/render/chunk-payload.ts';
 import { EntityFade, FADE_BAND } from '../src/render/fade.ts';
 import { createLampMaterials } from '../src/render/lamp-material.ts';
@@ -24,7 +25,7 @@ import { SHADOW_DISTANCE, SHADOW_MAP_SIZE } from '../src/render/sky.ts';
 import { REFLECTION_SCALE } from '../src/render/water-surface.ts';
 import { FAR_RADIUS, NEAR_RADIUS, type TilePart } from '../src/render/streaming.ts';
 import { PlantScenery } from '../src/render/vegetation.ts';
-import { CHUNK_SIZE } from '../src/world/chunks.ts';
+import { chunkBounds, CHUNK_SIZE } from '../src/world/chunks.ts';
 
 /** Frames of one window, as the monitor counts them. */
 const WINDOW = 30;
@@ -272,34 +273,37 @@ describe('the frame-time monitor', () => {
 });
 
 describe('a chunk thinned to its tier', () => {
-  /** A chunk's worth of plants, all of the first model the world grows. */
+  /** The cells of the chunk the plants stand in. */
+  const grid = cellGrid(chunkBounds(0, 0), 'near');
+
+  /** A chunk's worth of plants in a row across it, all of the first model the world grows. */
   function plantsOf(count: number): PackedPlants {
     const matrices = new Float32Array(count * 16);
-    for (let i = 0; i < count; i++) new Matrix4().makeTranslation(i, 0, 0).toArray(matrices, i * 16);
+    for (let i = 0; i < count; i++) new Matrix4().makeTranslation((i * CHUNK_SIZE) / count, 0, 10).toArray(matrices, i * 16);
     return { models: new Uint16Array(count), matrices };
   }
 
-  /** Plants a built part copies into its batch, once every step has run. */
+  /** Plants a built part copies into its batches, once every step has run. */
   function instances(part: TilePart): number {
     for (const step of part.steps) step();
-    const mesh = part.objects[0] as Batch;
-    return mesh.parts;
+    return part.objects.reduce((sum, mesh) => sum + (mesh as Batch).parts, 0);
   }
 
-  it('places what the tier allows and no more, in one batch either way', () => {
+  it('places what the tier allows and no more, in the same batches either way', () => {
     const scenery = new PlantScenery(new EntityFade(500));
     const plants = plantsOf(300);
 
-    const whole = scenery.build(plants);
-    expect(whole.drawCalls).toBe(1);
+    // The row crosses both cells of the near side of the chunk.
+    const whole = scenery.build(grid, plants);
+    expect(whole.drawCalls).toBe(2);
     expect(instances(whole)).toBe(300);
     whole.dispose();
 
     const limit = entityBudget(QUALITY_TIERS[3] as never, 'plants', 300);
-    const thin = scenery.build(plants, limit);
-    // A thinned chunk is still one draw call: the tiers cut what is drawn, not
-    // how many draws it takes (spec section 9.2).
-    expect(thin.drawCalls).toBe(1);
+    const thin = scenery.build(grid, plants, limit);
+    // A thinned chunk costs the same draw calls: the tiers cut what is drawn,
+    // not how many draws it takes (spec section 9.2).
+    expect(thin.drawCalls).toBe(2);
     expect(instances(thin)).toBe(limit);
     expect(limit).toBeLessThan(300);
     thin.dispose();

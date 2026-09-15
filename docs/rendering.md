@@ -116,11 +116,21 @@ are the design.
   each shadow cascade and the water's mirror. Its shaders are keyed on the batch itself, so a batch
   that comes into view in a pass for the first time builds them again, at 25 to 35 ms. Neither the
   GPU-side culling nor the single draw that spec section 9.2 asks for is what the class does today.
-  A merged mesh shares its shaders with every chunk in the same material and is one draw, and
-  per-chunk bounds are what culls it. `chunkDrawCalls(chunk)` (`chunk-cost.ts`) is what a chunk
-  costs — the ground, the road batches, the building batches, the one batch of plants and the one
-  batch of street lamps — and `CHUNK_DRAW_CALL_CAP` is the most it may; the HUD shows the dearest
-  chunk built. A count over the cap is a batching regression, not a cap to raise.
+  A merged mesh shares its shaders with every chunk in the same material and is one draw, and its
+  bounds are what culls it. `chunkDrawCalls(chunk)` (`chunk-cost.ts`) is the most a chunk costs —
+  the ground, the markings, and each batch in every cell — and `CHUNK_DRAW_CALL_CAP` is the most it
+  may; `payloadDrawCalls` counts the cells a built chunk fills, and the HUD shows the dearest chunk
+  built. A count over the cap is a batching regression, not a cap to raise.
+- A batch is cut into cells (`cells.ts`): a quarter of a chunk at near and mid detail, and the whole
+  chunk in the far ring. A mesh is culled whole in the view, in each shadow cascade and in the
+  mirror, so a batch that spanned its 250 m chunk was drawn whole wherever a corner of it was seen.
+  A part goes into the cell its frame's origin stands in, or the middle of its box when it has no
+  frame, so a building's shell and its outline always share a cell. On seed `sunset`, standing on
+  the core at full quality on an Apple M1 laptop, cells cut the still frame from 19.7 to 14.4 ms and
+  the triangles from 3.42 M to 1.89 M, for 66 more draws and about 1 ms more processor time. At a
+  pixel ratio of 2 the frame went from 35 to 28 ms. Cells of a ninth of a chunk drew 1.46 M
+  triangles but no faster a frame, with a worse 95th percentile, so the draws cost what they saved.
+  The far ring is not cut: its batches are a few thousand vertices each.
 - `buildChunkBuildings(chunk, lookup)` (`building-mesh.ts`) is the geometry of a chunk's buildings
   (spec section 10.3), and `BuildingScenery` (`buildings.ts`) packs it into three batches: the
   generated facades, the blocks, and the hulls that outline both. A tower and a mid-rise block are

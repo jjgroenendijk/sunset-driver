@@ -1,11 +1,12 @@
 /**
  * The roads of one chunk, as meshes (spec sections 9.2, 10.2).
  *
- * Everything a chunk draws for one tier goes into one batch (`batch.ts`) — every
- * run of road, every bridge deck and every tunnel portal — and everything painted on
- * that tier goes into one `LineSegments2`. So a chunk costs two draw calls per
- * tier that runs through it and nothing for a tier that does not, which is what
- * keeps the visible city inside the budget of spec section 9.2.
+ * Everything a chunk draws for one tier goes into one batch per cell
+ * (`batch.ts`) — every run of road, every bridge deck and every tunnel portal —
+ * and everything painted on that tier goes into one `LineSegments2`. So a chunk
+ * costs a draw call per cell and one for the paint for each tier that runs
+ * through it, and nothing for a tier that does not, which is what keeps the
+ * visible city inside the budget of spec section 9.2.
  *
  * The materials belong to the world, not to the chunk: they are built once and
  * every chunk of that world shares them, so dropping a chunk frees its geometry
@@ -40,8 +41,8 @@ export class RoadScenery {
     const geometries: BufferGeometry[] = [];
     const steps: (() => void)[] = [];
     const surface = this.surfaces[tier.tier] as MeshStandardNodeMaterial;
-    if (tier.surface.parts.length > 0) {
-      const fill = fillOfPacked(tier.surface, surface);
+    for (const cell of tier.surface) {
+      const fill = fillOfPacked(cell, surface);
       objects.push(fill.mesh);
       steps.push(...fill.steps);
     }

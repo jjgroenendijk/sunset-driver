@@ -1,10 +1,12 @@
 import { Matrix4, MeshBasicMaterial, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { batchOfPacked } from '../src/render/batch.ts';
+import { cellAt, cellGrid } from '../src/render/cells.ts';
 import { CHUNK_DRAW_CALL_CAP, chunkDrawCalls } from '../src/render/chunk-cost.ts';
 import {
   buildChunkPayload,
   chunkLookups,
+  partsIn,
   payloadTransfers,
   unpackGeometry,
   type ChunkPayload,
@@ -203,20 +205,41 @@ describe('a chunk as a payload', () => {
     expect(payload.detail).toBe('near');
     expect(payload.ground.positions.length).toBeGreaterThan(0);
     expect(payload.roads.length).toBeGreaterThan(0);
-    expect(payload.blocks.parts.length + payload.facades.parts.length).toBe(chunk.buildings.length);
-    expect(payload.outlines.parts).toHaveLength(chunk.buildings.length);
-    // The cost of a chunk is answered off the chunk alone, before any geometry
-    // is built; the payload is what that answer is checked against.
-    expect(payload.drawCalls).toBe(chunkDrawCalls(chunk));
-    expect(payload.drawCalls).toBeLessThanOrEqual(CHUNK_DRAW_CALL_CAP);
+    expect(partsIn(payload.blocks) + partsIn(payload.facades)).toBe(chunk.buildings.length);
+    expect(partsIn(payload.outlines)).toBe(chunk.buildings.length);
+    // The most a chunk costs is answered off the chunk alone, before any
+    // geometry is built; the payload counts the cells it fills.
+    expect(payload.drawCalls).toBeLessThanOrEqual(chunkDrawCalls(chunk));
+    expect(chunkDrawCalls(chunk)).toBeLessThanOrEqual(CHUNK_DRAW_CALL_CAP);
+  });
+
+  it('cuts each batch into the cells its parts stand in', () => {
+    const payload = payloadOf(MIDDLE.cx, MIDDLE.cy, 'near');
+    const grid = cellGrid(payload.bounds, 'near');
+    // A core chunk has buildings in more than one quarter of it, so the view
+    // culls a quarter rather than the whole chunk.
+    expect(payload.outlines.length).toBeGreaterThan(1);
+    for (const cells of [payload.outlines, payload.facades, payload.blocks]) {
+      const held = cells.map((cell) => {
+        const where = new Set(cell.parts.map((part) => cellAt(grid, part.matrix?.[12] as number, part.matrix?.[14] as number)));
+        expect(where.size).toBe(1);
+        return [...where][0];
+      });
+      // No two batches of a kind share a cell.
+      expect(new Set(held).size).toBe(cells.length);
+    }
+    // The far ring is not cut: a draw costs more there than culling saves.
+    const far = payloadOf(MIDDLE.cx, MIDDLE.cy, 'far');
+    expect(far.outlines).toHaveLength(1);
+    expect(far.drawCalls).toBe(1 + far.roads.length + 2);
   });
 
   it('builds every building as a block at mid detail, and keeps the rest of the near chunk', () => {
     const near = payloadOf(MIDDLE.cx, MIDDLE.cy, 'near');
     const mid = payloadOf(MIDDLE.cx, MIDDLE.cy, 'mid');
-    expect(mid.facades.parts).toHaveLength(0);
-    expect(mid.blocks.parts.length).toBe(near.facades.parts.length + near.blocks.parts.length);
-    expect(mid.outlines.parts).toHaveLength(near.outlines.parts.length);
+    expect(mid.facades).toHaveLength(0);
+    expect(partsIn(mid.blocks)).toBe(partsIn(near.facades) + partsIn(near.blocks));
+    expect(partsIn(mid.outlines)).toBe(partsIn(near.outlines));
     expect(mid.ground.gridSize).toBe(near.ground.gridSize);
     expect(mid.roads.map((tier) => tier.tier)).toEqual(near.roads.map((tier) => tier.tier));
     expect(mid.plants.models).toEqual(near.plants.models);
@@ -234,10 +257,10 @@ describe('a chunk as a payload', () => {
     expect(far.ground.positions[(far.ground.gridSize * far.ground.gridSize - 1) * 3]).toBe(
       near.ground.positions[(near.ground.gridSize * near.ground.gridSize - 1) * 3],
     );
-    expect(far.blocks.parts.length).toBe(near.facades.parts.length + near.blocks.parts.length);
-    expect(far.facades.parts).toHaveLength(0);
+    expect(partsIn(far.blocks)).toBe(partsIn(near.facades) + partsIn(near.blocks));
+    expect(far.facades).toHaveLength(0);
     // The outline stays: it is what the skyline reads by.
-    expect(far.outlines.parts).toHaveLength(far.blocks.parts.length);
+    expect(partsIn(far.outlines)).toBe(partsIn(far.blocks));
     expect(far.plants.models).toHaveLength(0);
     expect(near.plants.models.length).toBeGreaterThan(0);
     expect(far.lamps).toHaveLength(0);
@@ -250,17 +273,17 @@ describe('a chunk as a payload', () => {
 
   it('hands over every buffer once, and comes back the same on the other side', () => {
     const payload = payloadOf(MIDDLE.cx, MIDDLE.cy, 'near');
-    const before = (payload.roads[0]?.surface.parts[0]?.geometry.attributes[0]?.array as Float32Array).slice();
+    const before = (payload.roads[0]?.surface[0]?.parts[0]?.geometry.attributes[0]?.array as Float32Array).slice();
     const transfers = payloadTransfers(payload);
     expect(new Set(transfers).size).toBe(transfers.length);
     expect(transfers).toContain(payload.ground.positions.buffer);
     expect(transfers).toContain(payload.plants.matrices.buffer);
-    expect(transfers).toContain(payload.roads[0]?.surface.storage.attributes[0]?.array.buffer);
+    expect(transfers).toContain(payload.roads[0]?.surface[0]?.storage.attributes[0]?.array.buffer);
 
     // What `postMessage` does to a payload, without a worker to do it.
     const copy = structuredClone(payload, { transfer: transfers }) as ChunkPayload;
     expect(copy.drawCalls).toBe(payload.drawCalls);
-    const geometry = unpackGeometry(copy.roads[0]?.surface.parts[0]?.geometry as never);
+    const geometry = unpackGeometry(copy.roads[0]?.surface[0]?.parts[0]?.geometry as never);
     expect(geometry.getAttribute('position').array).toEqual(before);
     expect(geometry.getIndex()).not.toBeNull();
   });
@@ -268,22 +291,23 @@ describe('a chunk as a payload', () => {
   it('packs a batch of buildings out of a payload, every part of it in world places', () => {
     const payload = payloadOf(MIDDLE.cx, MIDDLE.cy, 'near');
     const material = new MeshBasicMaterial();
-    const firstPart = payload.outlines.parts[0]?.geometry.attributes.find((attribute) => attribute.name === 'position');
+    const cell = payload.outlines[0] as ChunkPayload['outlines'][number];
+    const firstPart = cell.parts[0]?.geometry.attributes.find((attribute) => attribute.name === 'position');
     const firstPositions = (firstPart?.array as Float32Array).slice();
-    const batch = batchOfPacked(payload.outlines, material);
-    expect(batch.parts).toBe(payload.outlines.parts.length);
+    const batch = batchOfPacked(cell, material);
+    expect(batch.parts).toBe(cell.parts.length);
     expect(batch.visible).toBe(true);
     // The batch is merged into the storage the worker allocated. A batch that
     // allocated its own would do it on the frame thread, in one step.
-    const storage = payload.outlines.storage.attributes.find((attribute) => attribute.name === 'position')?.array;
+    const storage = cell.storage.attributes.find((attribute) => attribute.name === 'position')?.array;
     const positions = batch.geometry.getAttribute('position').array as Float32Array;
     expect(positions).toBe(storage);
-    expect(batch.geometry.getIndex()?.array).toBe(payload.outlines.storage.index);
+    expect(batch.geometry.getIndex()?.array).toBe(cell.storage.index);
     expect(batch.geometry.drawRange.count).toBe(positions.length / 3);
     // The first part stands at the start of that storage, moved by its own
     // frame: a merged batch holds each part where it stands in the world, and
     // not at the origin of the frame it was built in.
-    const stood = new Matrix4().fromArray(payload.outlines.parts[0]?.matrix as Float32Array);
+    const stood = new Matrix4().fromArray(cell.parts[0]?.matrix as Float32Array);
     let complaint: string | undefined;
     for (let v = 0; v < firstPositions.length / 3; v++) {
       const wanted = new Vector3(
