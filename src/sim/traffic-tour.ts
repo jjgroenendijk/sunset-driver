@@ -38,27 +38,44 @@ export type Permit = (edge: RoadEdge) => boolean;
  * graph, edge and stream give the same route.
  */
 export function walkTour(graph: RoadGraph, first: number, rng: Rng, permit: Permit): number[] {
+  const { route, loop } = walkOut(graph, first, rng, permit);
+  if (loop >= 0) return route.slice(loop);
+  // No loop: drive back along the same road the other way.
+  return route.concat(backOf(graph, route));
+}
+
+/**
+ * The walk from one edge until it closes a loop, and the leg the loop starts
+ * at; -1 when the walk gave up first. The legs before the loop lead to it.
+ * `reach` and `minLoop` stand in for {@link MAX_REACH} and {@link MIN_LOOP}
+ * for a walker, who goes less far than a car.
+ */
+export function walkOut(graph: RoadGraph, first: number, rng: Rng, permit: Permit, reach = MAX_REACH, minLoop = MIN_LOOP): { route: number[]; loop: number } {
   const home = (graph.edges[first] as RoadEdge).tier;
   const route = [first];
   // `nodes[i]` is where leg `i` starts; the last entry is where the walk stands.
   const nodes = [(graph.edges[first] as RoadEdge).from, (graph.edges[first] as RoadEdge).to];
-  let reach = (graph.edges[first] as RoadEdge).length;
-  while (route.length < MAX_LEGS && reach < MAX_REACH) {
+  let covered = (graph.edges[first] as RoadEdge).length;
+  while (route.length < MAX_LEGS && covered < reach) {
     const last = graph.edges[route[route.length - 1] as number] as RoadEdge;
     const next = graph.edges[choose(graph, last, home, rng, permit)] as RoadEdge;
     route.push(next.id);
     nodes.push(next.to);
-    reach += next.length;
-    const loop = loopBack(graph, route, nodes);
-    if (loop >= 0) return route.slice(loop);
+    covered += next.length;
+    const loop = loopBack(graph, route, nodes, minLoop);
+    if (loop >= 0) return { route, loop };
   }
-  // No loop: drive back along the same road the other way.
+  return { route, loop: -1 };
+}
+
+/** The legs of a walk driven back the other way, last leg first. */
+export function backOf(graph: RoadGraph, route: readonly number[]): number[] {
   const back: number[] = [];
   for (let i = route.length - 1; i >= 0; i--) {
     const edge = graph.edges[route[i] as number] as RoadEdge;
     back.push(edge.twin >= 0 ? edge.twin : edge.id);
   }
-  return route.concat(back);
+  return back;
 }
 
 /**
@@ -67,12 +84,12 @@ export function walkTour(graph: RoadGraph, first: number, rng: Rng, permit: Perm
  * The latest visit is tried first, so the loop is the tightest that is long
  * enough.
  */
-function loopBack(graph: RoadGraph, route: readonly number[], nodes: readonly number[]): number {
+function loopBack(graph: RoadGraph, route: readonly number[], nodes: readonly number[], minLoop: number): number {
   const at = nodes[nodes.length - 1] as number;
   let length = 0;
   for (let i = route.length - 1; i >= 0; i--) {
     length += (graph.edges[route[i] as number] as RoadEdge).length;
-    if (nodes[i] === at && length >= MIN_LOOP) return i;
+    if (nodes[i] === at && length >= minLoop) return i;
   }
   return -1;
 }

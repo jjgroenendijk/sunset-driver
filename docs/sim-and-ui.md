@@ -250,3 +250,20 @@ are the design.
   reads it on every step rather than once when it is built.
 - The ground of the game hands the physics the traffic as `Ground.traffic`. A test that is not about
   traffic leaves it out. `test/traffic-grid.ts` is a grid of every tier for the tests that need it.
+- `src/sim/pedestrians.ts` is the crowd of spec sections 5.3 and 13.1. `AmbientPedestrians` places
+  people per directed edge of a tier with a pavement, from `TierSpec.walkers` thinned by
+  `ZONE_PEDESTRIANS`. A person walks one pavement round a loop, at a pace of their gait. The loop
+  starts on the edge they were placed on: `walkOut` walks as the traffic does but only
+  `WALK_REACH`, and a loop that closes some way off is walked out to and back from. Without that a
+  person spawns up to a loop away from their district, and wears its clothes in the wrong zone.
+- A loop takes a whole number of ticks and a whole number of strides, so `cursorAt` and `advance`
+  agree exactly and the walk cycle comes round without a jump. `pedestrian-route.ts` cuts two
+  pavement lines where they cross, which is how a turn one way keeps to the kerb and a turn the
+  other way crosses both roads. A pose within `NODE_REACH` of a node checks `onCarriageway` too:
+  a pavement that runs straight over a junction crosses the side road, and stands lower there.
+- The candidates `near` answers are every loop through the box, and on seed 1 that is about 1300
+  people round the core for 160 in view. `edgeAt` and `edgeMeets` skip the far ones before a pose
+  is read. Reading the rest costs about 0.6 ms a frame on an M-series core.
+- `startle` is the hook for spec section 20.1: it takes everyone in a radius off their loops into
+  `SimState.pedestrians.startled`, and `startledPose` moves them off and stands them still. Nothing
+  calls it yet. `releaseFar` gives them back to their loops where the player cannot see the jump.

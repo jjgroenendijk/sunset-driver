@@ -23,7 +23,7 @@ export const TIER_ORDER: readonly RoadTier[] = ['highway', 'arterial', 'street',
 export const SURFACE_RAISE = 0.06;
 
 /** Metres a kerb stands above the carriageway, where the tier has one. */
-const KERB_RISE = 0.14;
+export const KERB_RISE = 0.14;
 
 /**
  * Metres the outer edge of a road drops below its bed, burying the edge in the
