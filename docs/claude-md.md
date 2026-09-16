@@ -55,11 +55,21 @@ the size limits, determinism, per-directory constraints, the traps that cost a s
 to say why, conventions, the writing rules and this maintenance note. New material joins an existing
 section far more often than it justifies a new one.
 
-A subsystem gets a doc of its own — `docs/world-generation.md`, `docs/rendering.md`,
-`docs/sim-and-ui.md` — read by the session whose work touches that directory. `CLAUDE.md` keeps one
-line pointing at each, plus the traps that break a session in a way no file explains. When
-`CLAUDE.md` reaches its limit, move a subject into one of those docs; when a doc reaches its own,
-split the subject. Neither is ever fixed by writing more tightly.
+A subsystem gets a doc of its own, read by the session whose work touches that directory.
+`CLAUDE.md` keeps the traps that break a session in a way no file explains, and names `docs/` once
+rather than listing it: the skill for each subsystem carries that pointer, and a list in two places
+goes stale in one of them. When `CLAUDE.md` reaches its limit, move a subject into a doc; when a doc
+reaches its own, split the subject. Neither is ever fixed by writing more tightly.
+
+Every doc over a hundred lines opens with a contents list and is cut into `##` sections, because a
+session that reads part of a file reads a window with no heading in it and takes away half an
+answer. A doc is read by section.
+
+A skill under `.claude/skills/` is the other half of this. A doc waits to be remembered; a skill's
+`description` is matched against the task, so it loads itself. The rule between them: the doc holds
+the gotchas, the skill holds the pointer into the doc and the first moves, and neither repeats the
+other. A skill is held to the same 100 columns and 400 lines as a doc, its frontmatter excepted, and
+its body is kept far shorter than that — a skill nobody finishes reading has failed twice over.
 
 The writing rules the file states for the project apply to the file itself, and hardest here: the
 audience includes non-native English speakers, so every line is short, plain and literal, and
