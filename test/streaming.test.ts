@@ -385,7 +385,10 @@ describe('the pool of chunk workers', () => {
   it('sends every worker the world and waits for it to be ready', () => {
     const { pool, workers } = pooled();
     expect(workers).toHaveLength(2);
-    for (const worker of workers) expect(worker.orders[0]).toEqual({ type: 'start', world });
+    for (const worker of workers) expect(worker.orders[0]).toMatchObject({ type: 'start', world });
+    // Every worker would lay out the same parking bays, and the pool keeps one
+    // answer, so only the first is asked to spend the time on them.
+    expect(workers.map((worker) => (worker.orders[0] as { bays?: boolean }).bays)).toEqual([true, false]);
 
     // Nothing is handed out before a worker says its layers are built.
     pool.want([{ cx: 0, cy: 0, detail: 'near' }]);
@@ -526,6 +529,24 @@ describe('the scene as the player drives', () => {
     expect(frames).toBeGreaterThan((FAR_RADIUS * 2 + 1) ** 2);
     expect(scene.drawCallsPerChunk).toBeGreaterThan(0);
     expect(scene.drawCallsPerChunk).toBeLessThanOrEqual(CHUNK_DRAW_CALL_CAP);
+    scene.dispose();
+  });
+
+  it('counts the chunks of the wait as it settles, so the loading screen can draw it', async () => {
+    // One chunk a frame, so the wait has steps to report rather than being over
+    // in a single pass.
+    const scene = new WorldScene(world, DEFAULT_APPEARANCE, new DirectStream(1));
+    const seen: { done: number; total: number }[] = [];
+    await scene.settle(0, 0, 1, undefined, (done, total) => seen.push({ done, total }));
+
+    // The near ring is three chunks each way, and the count neither moves
+    // backwards nor stops short of the whole ring.
+    expect(seen[0]).toEqual({ done: 0, total: 9 });
+    expect(seen.at(-1)).toEqual({ done: 9, total: 9 });
+    for (let i = 1; i < seen.length; i++) {
+      expect(seen[i]!.done).toBeGreaterThanOrEqual(seen[i - 1]!.done);
+      expect(seen[i]!.total).toBe(9);
+    }
     scene.dispose();
   });
 

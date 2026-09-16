@@ -4,14 +4,14 @@
  *
  * It draws through the same `MapArt` the minimap and the full map use, so what
  * the title screen shows is what the session will show. Building the world
- * blocks the frame loop for a second or two,
- * so a build is asked for rather than run on every key press: the screen says
- * what it is doing, lets the browser paint that, and only then generates.
+ * takes a second or more, so it is asked for rather than run on every key
+ * press, and it is built in the worker of `world-source.ts`: the scene behind
+ * the menu keeps turning while the map is built.
  *
- * The world it built is kept, so the session that follows the title screen
- * reuses it instead of generating the same seed twice.
+ * The source holds the world it built, so the session that follows the title
+ * screen reuses it instead of generating the same seed twice.
  */
-import { generateWorld } from '../world/world.ts';
+import type { WorldSource } from '../render/world-source.ts';
 import type { WorldDescription } from '../world/types.ts';
 import { MapArt } from './map-draw.ts';
 import { fitWorldView, MapPois } from './map.ts';
@@ -34,9 +34,12 @@ export class SeedPreview {
 
   /** The button laid over the empty frame, until there is a map in it. */
   private readonly ask: HTMLButtonElement;
+  /** Where the world of a seed is built, off the frame. */
+  private readonly worlds: WorldSource;
 
   /** `onAsk` is what the button over the empty frame does: the title screen builds the seed in its box. */
-  constructor(parent: HTMLElement, onAsk: () => void) {
+  constructor(parent: HTMLElement, worlds: WorldSource, onAsk: () => void) {
+    this.worlds = worlds;
     this.root = document.createElement('div');
     this.root.className = 'title-preview';
 
@@ -85,13 +88,20 @@ export class SeedPreview {
     this.status.textContent = 'Building the map…';
     this.root.classList.add('title-preview-busy');
     this.ask.hidden = true;
-    // The browser has to paint the line above before the main thread is taken
-    // for a second or two, or the player sees nothing happen at all.
-    await nextFrame();
-    if (asked !== this.asked) return;
 
     const started = performance.now();
-    const world = generateWorld(seed);
+    let world: WorldDescription;
+    try {
+      world = await this.worlds.get(seed);
+    } catch (error) {
+      // A build the player overtook with another seed is given up on, and the
+      // build that replaced it is the one that draws.
+      if (asked !== this.asked) return;
+      this.root.classList.remove('title-preview-busy');
+      this.status.textContent = 'The map could not be built.';
+      console.warn('the seed preview could not build its world', error);
+      return;
+    }
     const took = performance.now() - started;
     if (asked !== this.asked) return;
 
@@ -111,9 +121,4 @@ export class SeedPreview {
       labels: false,
     });
   }
-}
-
-/** Resolve after the browser has painted: the second frame starts once the first is on screen. */
-function nextFrame(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 }

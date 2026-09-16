@@ -9,6 +9,7 @@ are the design. Read the section the work touches, not the file.
 - The player and the HUD
 - The map
 - The title screen, the settings and the menu walk
+- The loading screen
 - Saves
 - The scene behind the menu
 - Physics
@@ -81,6 +82,19 @@ are the design. Read the section the work touches, not the file.
   and closes it, so `main.ts` hands it every key while it is open. While it is open the frame loop
   takes no steps and the clock keeps its place between two ticks.
 
+## The loading screen
+
+- `src/ui/loading.ts` is the screen between Start and the street. It names the step being taken —
+  the world, the ground under the player, the shaders of the first frame — and shows how far
+  through the whole wait it is. `main.ts` drives it, and every step it shows is a real one: the
+  chunk count comes from `settle`, not from a guess.
+- Nothing on that path blocks the frame loop any more, which is what lets the screen draw its own
+  progress: the world is built in the worker of `world-source.ts`, and Rapier is fetched beside the
+  renderer rather than in front of it and waited for where the physics is first built.
+- The screen is opaque, so the scene behind the menu is never seen once Start is pressed, and it
+  hands the city over by waiting for the first frame of the session to be drawn under it and then
+  fading off it. A player who asked the browser for less motion gets no fade.
+
 ## Saves
 
 - A save (`src/sim/save.ts`) is the record and the seed text, nothing else, so a field added to
@@ -103,9 +117,10 @@ are the design. Read the section the work touches, not the file.
   round, because the lamp post stands on the far side. The lamp is the game's own `LampLight`, so
   the scene draws only through a renderer from `createRenderer`, which registers that light.
 - `src/ui/seed-preview.ts` draws the map of the seed on the title screen, through the same `MapArt`,
-  so the picture the player picks a seed from is the map they will play on. A build blocks the frame
-  loop for a second or two, so it happens when the player asks for it — the dice button, the Show
-  the map button, or Enter in the seed box — and never on a key press in the box.
+  so the picture the player picks a seed from is the map they will play on. A build takes a second
+  or more and runs in the worker of `world-source.ts`, so the scene behind the menu keeps turning;
+  it still happens only when the player asks for it — the dice button, the Show the map button, or
+  Enter in the seed box — and never on a key press in the box.
   `MapDrawOptions.player` is null there: the preview is the map alone, with no arrow on it. The
   world it built travels back in `TitleChoice.world`, and `main.ts` reuses it rather than
   generating the same seed twice.

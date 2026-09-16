@@ -10,6 +10,7 @@ import { ParkedView } from './render/parked.ts';
 import { PedestrianView } from './render/pedestrians.ts';
 import { TrafficView } from './render/traffic.ts';
 import { TramView } from './render/tram.ts';
+import { WorldSource } from './render/world-source.ts';
 import { WorldScene } from './render/world-scene.ts';
 import { FixedStepClock, gameTime } from './sim/clock.ts';
 import { DEFAULT_APPEARANCE } from './sim/character.ts';
@@ -33,6 +34,7 @@ import { SaveSlots, setPendingStart, takePendingStart } from './ui/saves.ts';
 import { readSettings, writeSettings, type BuildingViewChoice } from './ui/settings.ts';
 import { FREE_CAMERA_KEY, FreeCameraControls } from './ui/free-camera.ts';
 import { Keyboard } from './ui/keyboard.ts';
+import { LoadingScreen } from './ui/loading.ts';
 import { TitleScreen, type TitleChoice } from './ui/title.ts';
 import { TravelPanel } from './ui/travel.ts';
 import { PICKER_KEY, VehiclePicker } from './ui/vehicle-picker.ts';
@@ -49,10 +51,17 @@ import {
 } from './sim/weapon.ts';
 import { roadDecks } from './world/decks.ts';
 import { nearestRoadPlace, nearestWaterPlace, SurfaceIndex } from './world/surface.ts';
-import { generateWorld } from './world/world.ts';
+import type { WorldDescription } from './world/types.ts';
 
 /** Metres ahead of the player the weapon picker drops a weapon. */
 const DROP_AHEAD = 3;
+
+/**
+ * How far through the loading screen's bar each step of the wait stands. The
+ * world is built first, the ground under the player second, and the shaders of
+ * the first frame last; the shares are roughly what each step takes.
+ */
+const LOADED = { plan: 0.35, ground: 0.85 };
 
 /** The debug keys that end a run (spec section 11.7), until the damage and the police do. */
 const DIE_KEY = 'KeyK';
@@ -111,21 +120,27 @@ function applyQuality(session: Session, change: QualityChange): void {
 
 async function boot(): Promise<void> {
   const status = document.getElementById('status');
-  const probe = await probeWebGpu();
-  if (!probe.ok) {
-    if (status) status.textContent = probe.reason;
-    return;
-  }
+  const say = (text: string): void => {
+    if (status) status.textContent = text;
+  };
 
   // Rapier is WebAssembly and has to be loaded before a world can be built
-  // from it (spec section 2.1). It is small, and the title screen is next.
-  try {
-    await initPhysics();
-  } catch {
-    if (status) status.textContent = 'The physics engine could not be loaded.';
+  // from it (spec section 2.1). Nothing before the session touches it, so it
+  // is fetched beside the graphics rather than in front of them and waited for
+  // where it is first needed. The error is carried rather than thrown, because
+  // nothing is awaiting this promise yet.
+  const physicsReady: Promise<Error | null> = initPhysics().then(
+    () => null,
+    (error: unknown) => (error instanceof Error ? error : new Error(String(error))),
+  );
+
+  const probe = await probeWebGpu();
+  if (!probe.ok) {
+    say(probe.reason);
     return;
   }
 
+  say('Starting the graphics…');
   const canvas = document.getElementById('game') as HTMLCanvasElement;
   const renderer = await createRenderer(canvas);
   document.getElementById('splash')?.remove();
@@ -172,6 +187,10 @@ async function boot(): Promise<void> {
       writeSettings(localStorage, settings);
     },
   };
+
+  // Where the world of a seed is built (spec section 9.1). It is a worker, so
+  // neither the title screen's map nor the wait after Start stops the frame.
+  const worlds = new WorldSource();
 
   // The session is null until the title screen hands over a seed and a look.
   let session: Session | null = null;
@@ -325,9 +344,15 @@ async function boot(): Promise<void> {
   if (pending) {
     choice = { seed: pending.seed, character: pending.character, world: null };
   } else {
+    const opening = readSeedFromLocation(location.hash);
+    // The seed the menu opens on is built while the player is still choosing a
+    // look, so Start usually finds it finished. A player who changes the seed
+    // pays for the build then, as they did before.
+    worlds.warm(seedFromString(opening));
     const title = new TitleScreen(
       document.body,
-      { seed: readSeedFromLocation(location.hash), character: DEFAULT_APPEARANCE, world: null },
+      { seed: opening, character: DEFAULT_APPEARANCE, world: null },
+      worlds,
       (appearance) => preview.character.set(appearance),
       buildingView,
     );
@@ -337,19 +362,29 @@ async function boot(): Promise<void> {
 
   history.replaceState(null, '', writeSeedToHash(location.hash, choice.seed));
 
-  // Generating the whole-map skeleton blocks the frame loop for a second or
-  // two, so say so and let the browser paint the notice before it starts. The
-  // chunks are then built in the workers, and the notice stands until there is
-  // ground under the player; the rest of the city fills in as it is played.
+  // The wait between the title screen and the street. It is drawn rather than
+  // announced: every step the screen shows is one really being taken, and
+  // nothing on this path blocks the frame loop, so the screen keeps drawing
+  // its own progress. The chunks are built in the workers, and the screen
+  // stands until there is ground under the player; the rest of the city fills
+  // in as it is played.
   //
   // A player who looked at the seed's map on the title screen has already paid
   // for that build, and the world is a pure function of the seed, so the
   // preview's world is the session's world.
-  const notice = showNotice('Generating the world…');
-  await nextFrame();
+  const loading = new LoadingScreen(document.body, choice.seed);
+  loading.say('Drawing the city plan', 0);
   const state = createSimState(seedFromString(choice.seed), choice.character);
-  const description = choice.world ?? generateWorld(state.seed);
+  let description: WorldDescription;
+  try {
+    description = choice.world ?? (await worlds.get(state.seed));
+  } catch (error) {
+    loading.fail('The world could not be built.');
+    console.error(error);
+    return;
+  }
   const world = new WorldScene(description, state.character);
+  loading.say('Laying out the streets', LOADED.plan);
 
   // The physics reads the carved ground the renderer draws and the surface the
   // parcel model left, so the car drives on what is on screen (spec section
@@ -375,6 +410,15 @@ async function boot(): Promise<void> {
     tram,
   };
   const start = nearestRoadPlace(description, state.player.x, state.player.y);
+  // Rapier was fetched while the graphics were being set up, and this is the
+  // first line that needs it.
+  const physicsError = await physicsReady;
+  if (physicsError !== null) {
+    loading.fail('The physics engine could not be loaded.');
+    console.error(physicsError);
+    world.dispose();
+    return;
+  }
   let physics = new SimPhysics(ground, state);
   physics.spawn(state, start?.x ?? state.player.x, start?.y ?? state.player.y, start?.heading ?? 0);
   // The safehouses of spec section 16.3 have not landed, so a death comes back
@@ -402,16 +446,21 @@ async function boot(): Promise<void> {
   }
 
   try {
-    await world.settle(state.player.x, state.player.y, 1);
+    await world.settle(state.player.x, state.player.y, 1, undefined, (done, total) => {
+      // Nothing is done while the workers are still building their layers, and
+      // that is the longest part of the wait: it is named rather than shown as
+      // a bar that does not move.
+      const step = done === 0 ? 'Laying out the streets' : `Building the ground · ${done} of ${total}`;
+      loading.say(step, LOADED.plan + (done / Math.max(total, 1)) * (LOADED.ground - LOADED.plan));
+    });
   } catch (error) {
     // A worker that never answers leaves the player standing on nothing, so
-    // the notice says so rather than hanging on 'Generating the world…'.
-    notice.textContent = error instanceof Error ? error.message : 'The world could not be built.';
+    // the screen says so rather than standing on the last step for ever.
+    loading.fail(error instanceof Error ? error.message : 'The world could not be built.');
     physics.dispose();
     world.dispose();
     return;
   }
-  notice.remove();
   // The parcels are built in the chunk workers, so the police stations are
   // known once a worker has answered, which `settle` waited for. An arrest
   // comes back on the road nearest a station (spec section 11.7).
@@ -430,12 +479,22 @@ async function boot(): Promise<void> {
   const parked = world.bays === undefined ? undefined : new ParkedCars(state.seed, world.bays);
   ground.parked = parked;
 
+  loading.say('Getting the first frame ready', LOADED.ground);
+  // The camera is put where the session starts before anything is compiled,
+  // because what is compiled is what the camera can see.
+  const smooth = new RenderSmoother();
   camera.setBaseDistance(BASE_DISTANCE);
+  camera.update(0, smooth.playerAt(state, 1));
   // The chain is built on the world's scene and the camera that follows the
   // player, so it is made here rather than beside the renderer. Waiting for it
   // means the first frame is antialiased like every frame after it.
   const post = new PostChain(renderer, world.scene, camera.camera);
   await post.ready();
+  // WebGPU compiles a pipeline the first time it draws with it, so a session
+  // that starts here compiles the whole city over its first frames: the street
+  // stutters into place while the player is already driving on it. The wait is
+  // paid once, here, where there is a screen saying so.
+  await renderer.compileAsync(world.scene, camera.camera);
   // `?budget=6` holds the game to a frame no machine makes at full quality, so
   // the tiers of spec section 9.2 can be watched stepping down.
   const quality = new QualityMonitor(frameBudgetFrom(location.search));
@@ -445,7 +504,6 @@ async function boot(): Promise<void> {
   // boat on a street is not a boat that can be driven. The ground the physics
   // reads is the carve, which answers anywhere on the map, so the vehicle is
   // driveable the moment it lands and the chunks around it stream in after.
-  const smooth = new RenderSmoother();
   const picker = new VehiclePicker(document.body, state.vehicle.cls, (cls) => {
     const here = { x: state.player.x, y: state.player.y, heading: state.player.heading };
     const place = cls === 'boat' ? (nearestWaterPlace(description, here.x, here.y) ?? here) : here;
@@ -596,6 +654,9 @@ async function boot(): Promise<void> {
   };
   preview.dispose();
   last = performance.now();
+  // The city is handed over rather than cut to: the screen waits for the first
+  // frame of the session to be drawn under it and then fades off it.
+  await loading.reveal();
 }
 
 /** `07:05` from an hour and a minute. */
@@ -611,20 +672,6 @@ function restart(seed: string, character: SimState['character'], load: boolean):
   setPendingStart(sessionStorage, { seed, character, load });
   history.replaceState(null, '', writeSeedToHash(location.hash, seed));
   location.reload();
-}
-
-/** A full-screen message over the canvas, until it is removed. */
-function showNotice(text: string): HTMLElement {
-  const el = document.createElement('div');
-  el.className = 'notice';
-  el.textContent = text;
-  document.body.append(el);
-  return el;
-}
-
-/** Resolve after the browser has painted: the second frame starts once the first is on screen. */
-function nextFrame(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 }
 
 void boot();
