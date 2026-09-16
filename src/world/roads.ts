@@ -74,7 +74,7 @@ import { alleyPlan, alleySeeds, type AlleyGround } from './alleys.ts';
 import { ZONE_LOTS } from './buildings.ts';
 import { districtAt, layoutZones, zoneAt } from './districts.ts';
 import { crossPoint } from './network-clearance.ts';
-import { MINOR_BY_ZONE, type FillPlan, type FillSeed, type PlanAt, type SpacingAt } from './fill.ts';
+import { ARTERIAL_CROSS_BY_ZONE, MINOR_BY_ZONE, type FillPlan, type FillSeed, type PlanAt, type SpacingAt } from './fill.ts';
 import { zoneMinBuilt } from './parcels.ts';
 import { HighwayTrace } from './highways.ts';
 import {
@@ -357,23 +357,37 @@ class RoadTracer extends HighwayTrace {
    * Arterials between the highways: streamlines seeded one spacing off the roads
    * already laid, running parallel to them, generation after generation until
    * the built-up zones are covered.
+   *
+   * The fill has two spacings, as the minor fill has (spec section 6.1). The
+   * arterials that run with the field's major direction are the city's avenues
+   * and stand `ARTERIAL_SPACING` apart. The ones that cross them stand
+   * `ARTERIAL_CROSS_BY_ZONE` times as far apart, which in the city is four,
+   * because what ties two avenues together is a street and not another
+   * arterial.
    */
   private fillArterials(): void {
     const zones = layoutZones(this.size, this.world.core, this.world.water);
-    const spacing = this.size * ARTERIAL_SPACING;
-    const plan: FillPlan = {
-      tier: 'arterial',
-      params: ARTERIAL,
-      spacing,
-      clearance: spacing * 0.5,
-      deadEnd: Infinity,
+    const avenues = this.size * ARTERIAL_SPACING;
+    const spacingAt: SpacingAt = (x, y, across) =>
+      across ? avenues * ARTERIAL_CROSS_BY_ZONE[zoneAt(zones, x, y)] : avenues;
+    const within = (x: number, y: number): boolean =>
       // Off the sand, like the minor fill: a beach is served from the boardwalk
       // behind its dune, never paved across (spec section 7.3).
-      within: (x, y) => zoneAt(zones, x, y) !== 'wilderness' && this.offSand(x, y),
-    };
+      zoneAt(zones, x, y) !== 'wilderness' && this.offSand(x, y);
+    const plan: PlanAt = (x, y, across) => ({
+      tier: 'arterial',
+      params: ARTERIAL,
+      spacing: spacingAt(x, y, across),
+      // Half the tighter of the two, never half its own spacing: a cross
+      // arterial meets an avenue every 230 m, and a clearance taken from its
+      // own spacing would refuse every one of them.
+      clearance: avenues * 0.5,
+      deadEnd: Infinity,
+      within,
+    });
     const seeds: FillSeed[] = [];
-    for (const curve of this.curves) seedAlong(curve, this.field, () => spacing, 0, seeds, { ramps: true });
-    this.grow(seeds, () => plan, FILL_GENERATIONS, FILL_LIMIT);
+    for (const curve of this.curves) seedAlong(curve, this.field, spacingAt, 0, seeds, { ramps: true });
+    this.grow(seeds, plan, FILL_GENERATIONS, FILL_LIMIT);
   }
 
   // ------------------------------------------------------------ minor roads

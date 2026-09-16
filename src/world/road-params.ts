@@ -29,7 +29,11 @@ export const RING_STARTS = 8;
 export const MIN_HIGHWAY = 0.25;
 /** Metres from a road within which a district counts as already served. */
 export const SERVED = 130;
-/** Spacing between arterials, as a fraction of the world side. */
+/**
+ * Spacing between the arterial avenues, as a fraction of the world side. An
+ * avenue runs with the field's major direction, so this is the gap between
+ * neighbouring avenues: about 230 m on a 4.7 km map.
+ */
 export const ARTERIAL_SPACING = 0.05;
 /** How many arterials deep the fill grows from the highways, and how many it may lay in all. */
 export const FILL_GENERATIONS = 4;

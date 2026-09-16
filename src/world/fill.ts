@@ -24,12 +24,15 @@ import type { TierParams } from './road-trace.ts';
  *
  * `across` is what the old single spacing was, so the rhythm of the side
  * streets is unchanged: 90 m in the core, which is a Manhattan side street.
- * `along` is two to five times that. In the core and the inner ring it is far
- * wider than the 240 m an avenue wants, because the arterial fill has already
- * laid a road every `ARTERIAL_SPACING` of the map — about 230 m — in both
- * directions. The streets that run with the field only fill what is left
- * between those arterials, so the avenue-grade spacing on the ground is the
- * arterial's and not this figure.
+ * In the city these streets are what ties one avenue to the next, since the
+ * arterial fill widens its cross family there (`ARTERIAL_CROSS_BY_ZONE`).
+ *
+ * `along` is two to five times `across`. In the core and the inner ring it is
+ * far wider than the 240 m an avenue wants, because the arterial fill has
+ * already laid an avenue every `ARTERIAL_SPACING` of the map — about 230 m.
+ * The streets that run with the field only fill what is left between those
+ * arterials, so the avenue-grade spacing on the ground is the arterial's and
+ * not this figure.
  *
  * The ratio drops toward two outside the city: the suburbs and the outskirts
  * want blocks as irregular as they fall, not strips.
@@ -41,6 +44,36 @@ export const MINOR_BY_ZONE: Record<Zone, { tier: RoadTier; across: [number, numb
   suburban: { tier: 'street', across: [90, 135], along: [180, 270] },
   outskirts: { tier: 'dirt', across: [190, 270], along: [330, 470] },
   wilderness: { tier: 'dirt', across: [300, 430], along: [500, 720] },
+};
+
+/**
+ * How much wider apart the arterials running across the avenues stand in each
+ * zone, as a multiple of `ARTERIAL_SPACING`.
+ *
+ * The arterial fill has two spacings, as the minor fill above has. The
+ * arterials running with the field's major direction are the city's avenues and
+ * stand `ARTERIAL_SPACING` apart everywhere; these are the gaps between the
+ * arterials that cross them.
+ *
+ * A real city has no mesh of arterial squares. Its avenues run one way, and
+ * what ties two of them together is a cross street and not another arterial. So
+ * the city zones widen the cross family and let `MINOR_BY_ZONE.across` — a
+ * street every 90 m — carry that direction instead. An arterial is 26 m wide
+ * with its verge and its pavement, and downtown once carried a 230 m mesh of
+ * them.
+ *
+ * Outside the city the number is one, so the fill there is the square mesh it
+ * always was. The suburbs and the outskirts have no avenue grid to thin out,
+ * and out there an arterial is the road that reaches the next district rather
+ * than one of a pair.
+ */
+export const ARTERIAL_CROSS_BY_ZONE: Record<Zone, number> = {
+  core: 4,
+  inner: 4,
+  industrial: 1,
+  suburban: 1,
+  outskirts: 1,
+  wilderness: 1,
 };
 
 /** What the fill lays where it is seeded. */
