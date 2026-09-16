@@ -24,6 +24,7 @@ are the design. Read the section the work touches, not the file.
 - Parked cars
 - The tram
 - Pedestrians
+- The metro
 
 ## The player and the HUD
 
@@ -83,7 +84,9 @@ are the design. Read the section the work touches, not the file.
 ## Saves
 
 - A save (`src/sim/save.ts`) is the record and the seed text, nothing else, so a field added to
-  `SimState` is saved with no change there. It is read against a fresh record: a missing field or a
+  `SimState` is saved with no change there. Raise `SAVE_VERSION` when you add one all the same: an
+  older save has no such field, is refused either way, and the version is the only refusal a player
+  can read. It is read against a fresh record: a missing field or a
   wrong type is refused, and an unknown field is dropped. Raise `SAVE_VERSION` when a field changes
   meaning. `src/ui/saves.ts` keeps one save per seed in `localStorage`.
 - A load writes the save into the live record in place, because every closure in `main.ts` holds
@@ -368,3 +371,22 @@ are the design. Read the section the work touches, not the file.
 - `startle` is the hook for spec section 20.1: it takes everyone in a radius off their loops into
   `SimState.pedestrians.startled`, and `startledPose` moves them off and stands them still. Nothing
   calls it yet. `releaseFar` gives them back to their loops where the player cannot see the jump.
+
+## The metro
+
+- `src/sim/metro.ts` is the fast travel of spec section 13.3, and nothing of the line itself is
+  simulated: what the player meets is a station entrance on the street. `src/world/metro.ts` picks
+  the parcels, out of the same pass that picks the police stations, and `main.ts` turns each one
+  into the road place beside it. A player on foot within `ENTRANCE_REACH` of one has visited it, so
+  a station is earned by walking to it and never by driving past.
+- A trip is `TRAVEL_TICKS` of fade, teleport and arrival, and those ticks are stepped like any
+  others: the clock never skips, which is what makes the trip safe in the shared session of spec
+  section 19. `stepMetro` runs before the physics, and while a trip is in the record the physics is
+  stepped with an empty frame, so nothing the player presses steers the walk under the fade.
+- The destination is `InputFrame.travel`: a place in the list the panel shows, counted from 1, not
+  a station id. A recorded stream therefore replays the trip the player picked. `src/ui/travel.ts`
+  draws that list and the black sheet over the frame; the number keys are read as an edge in
+  `Keyboard`, or a held key would ride the line back and forth.
+- `MetroState.trips` is what `main.ts` watches to stand the camera down at the far station, the way
+  it watches `SimState.respawn`. Heat and a vehicle are the two refusals, and nothing spends heat
+  yet (spec section 14), so a session that has fired a shot travels no further until it ends.

@@ -28,6 +28,12 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #12070f; col
 .hotwire-window { position: absolute; top: 0; bottom: 0; background: rgba(255,138,92,.35); }
 .hotwire-marker { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #f6d6c1; }
 
+.travel { position: fixed; left: 50%; bottom: 8%; transform: translateX(-50%); min-width: min(20rem, 80%); display: grid; gap: .35rem; padding: .7rem .9rem; border: 1px solid #2b4a3f; border-radius: .5rem; background: rgba(11,24,20,.88); pointer-events: none; }
+.travel-title { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; color: #5ad08a; }
+.travel-list { display: grid; gap: .15rem; font-size: .95rem; }
+.travel-refused { color: #ff8a5c; }
+.travel-fade { position: fixed; inset: 0; background: #000; pointer-events: none; }
+
 .free-camera-hint { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); padding: .3rem .7rem; border: 1px solid #6a3f58; border-radius: .25rem; background: rgba(24,11,20,.85); font-size: .85rem; letter-spacing: .06em; pointer-events: none; }
 .hud-panel { position: fixed; left: 12px; bottom: 12px; display: grid; gap: .25rem; justify-items: start; pointer-events: none; text-shadow: 0 1px 3px #000; font-variant-numeric: tabular-nums; }
 .hud-health { position: relative; width: 11rem; height: 1.1rem; border: 1px solid #6a3f58; border-radius: .2rem; background: rgba(28,12,23,.7); overflow: hidden; }
