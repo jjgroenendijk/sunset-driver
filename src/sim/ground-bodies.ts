@@ -14,6 +14,7 @@ import type { MetroPlace } from './metro.ts';
 import type { Place } from './on-foot.ts';
 import type { ParkedCars } from './parked.ts';
 import type { AmbientTraffic } from './traffic.ts';
+import type { PoliceForce } from './police.ts';
 import type { TramLine } from './tram.ts';
 
 /** Metres each way of one tile of ground the physics holds. */
@@ -69,6 +70,11 @@ export interface Ground {
   parked?: ParkedCars;
   /** The trams of spec section 13.2. They run with the traffic, so a ground without traffic has none. */
   tram?: TramLine;
+  /**
+   * The police of spec section 14, who route over the same roads the traffic
+   * drives. A test that is not about the police leaves it out, and nobody comes.
+   */
+  police?: PoliceForce;
 }
 
 

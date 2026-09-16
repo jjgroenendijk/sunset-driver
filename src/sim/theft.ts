@@ -67,9 +67,6 @@ export const MISS_PENALTY = 24;
  */
 export const HOTWIRE_CAP = 480;
 
-/** Heat one finished theft is worth (spec section 14). */
-export const THEFT_HEAT = 1;
-
 /** Heat a sounding alarm is worth per second, on top of the theft itself. */
 export const ALARM_HEAT_PER_SECOND = 0.5;
 

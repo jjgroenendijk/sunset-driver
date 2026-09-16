@@ -6,9 +6,9 @@
  * rounds in it and behind it, what is fitted to it, and where it lies. The
  * player takes one by walking over it. `src/render/pickups.ts` draws them.
  *
- * Nothing kills a pedestrian or a police officer yet, and no police car exists.
- * {@link dropCarried} and {@link dropPoliceCar} are the calls the pedestrians of
- * spec section 13.1 and the police of spec section 14 make when they land.
+ * A wrecked police unit leaves what its car held through {@link dropPoliceCar}
+ * (`police.ts`). Nothing kills a pedestrian yet, so {@link dropCarried} is the
+ * call the crowd of spec section 13.1 will make when it lands.
  */
 import { rngFor, Subsystem } from '../core/rng.ts';
 import { TICK_RATE } from './clock.ts';

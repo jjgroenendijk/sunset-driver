@@ -38,7 +38,7 @@ import { TICK_RATE } from './clock.ts';
 import { blastDamageAt, BLAST_LIFT, CRASH_DAMAGE, hitVehicle, tickFire } from './damage.ts';
 import { rotate, unrotate } from './frame.ts';
 import { Drivetrain } from './drivetrain.ts';
-import { GroundBodies, type Ground } from './ground-bodies.ts';
+import { GroundBodies, PHYSICS_RADIUS, PHYSICS_TILE, type Ground } from './ground-bodies.ts';
 import { Gunfire, type ShotTarget } from './gunfire.ts';
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
 import type { MetroPlace } from './metro.ts';
@@ -65,7 +65,9 @@ import {
 } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
 import { TrafficBodies } from './traffic-bodies.ts';
-import { createTheft, isLocked, stepTheft, THEFT_HEAT, type TheftState } from './theft.ts';
+import { PoliceBodies } from './police-bodies.ts';
+import { commitCrime, report } from './police.ts';
+import { createTheft, isLocked, stepTheft, type TheftState } from './theft.ts';
 import {
   createVehicleState,
   headingOf,
@@ -136,6 +138,8 @@ export class SimPhysics {
   private walker: Walker | undefined;
   /** The traffic near the player, or undefined on a ground with no roads to drive. */
   readonly traffic: TrafficBodies | undefined;
+  /** The police cars near the player as solids (spec section 14), so a roadblock is a wall. */
+  readonly police: PoliceBodies;
   /** Scratch vectors and forces, so a tick allocates nothing. */
   private readonly point = { x: 0, y: 0, z: 0 };
   private readonly axis = { x: 0, y: 0, z: 0 };
@@ -154,6 +158,7 @@ export class SimPhysics {
     this.shots = new Gunfire(this.world);
     this.controls = new Drivetrain(ground);
     this.traffic = ground.traffic === undefined ? undefined : new TrafficBodies(this.world, ground.traffic, ground.tram);
+    this.police = new PoliceBodies(this.world);
     // The step is the tick. Simulation code never sees a frame delta.
     this.world.timestep = 1 / TICK_RATE;
     this.adopt(state);
@@ -270,6 +275,15 @@ export class SimPhysics {
     this.world.step();
     this.read(state);
     this.traffic?.settle(state);
+    // The police answer the tick the player has just driven, so they are
+    // stepped once the record says where that left them (spec section 14).
+    this.ground.police?.step(state);
+    this.standPolice(state);
+    // The helicopter flies over the ground rather than over the roads, so the
+    // record is told how high the ground under it stands (spec section 14).
+    for (const unit of state.police.units) {
+      if (unit.kind === 'helicopter') unit.height = this.ground.heightAt(unit.x, unit.y);
+    }
     if (chassis !== undefined) this.crash(state, wasX, wasY, wasZ);
     // The weapons are run after the step, so a shot leaves the muzzle from where
     // the player ended the tick rather than from where they started it. A player
@@ -300,8 +314,28 @@ export class SimPhysics {
     this.adopt(state);
   }
 
+  /**
+   * Give the police units near the player a body and take it from the ones that
+   * have left, over the same box of ground the tiles cover.
+   */
+  private standPolice(state: SimState): void {
+    const p = state.player;
+    const x = p.driving ? state.vehicle.x : p.x;
+    const y = p.driving ? state.vehicle.z : p.y;
+    const cx = Math.floor(x / PHYSICS_TILE);
+    const cy = Math.floor(y / PHYSICS_TILE);
+    this.police.settle(
+      state,
+      (cx - PHYSICS_RADIUS) * PHYSICS_TILE,
+      (cy - PHYSICS_RADIUS) * PHYSICS_TILE,
+      (cx + PHYSICS_RADIUS + 1) * PHYSICS_TILE,
+      (cy + PHYSICS_RADIUS + 1) * PHYSICS_TILE,
+    );
+  }
+
   /** Release the Rapier world and everything in it. */
   dispose(): void {
+    this.police.clear();
     this.wheels?.free();
     this.walker?.controller.free();
     this.world.free();
@@ -322,6 +356,7 @@ export class SimPhysics {
       spec: this.spec,
       body: this.body,
       shooter: state.player.driving ? this.body : this.walker?.collider,
+      police: this.police,
     };
   }
 
@@ -620,12 +655,12 @@ export class SimPhysics {
       state.theft = null;
       return;
     }
-    state.heat += stepTheft(theft, state.seed, state.tick, pressed);
+    report(state, stepTheft(theft, state.seed, state.tick, pressed));
     if (!theft.open) return;
     // The lock is beaten once: the record carries it, so getting out again is
     // not a second break-in.
     state.vehicle.hotwired = true;
-    state.heat += THEFT_HEAT;
+    commitCrime(state, 'theft');
     state.theft = null;
     p.driving = true;
     this.adopt(state);

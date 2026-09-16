@@ -30,9 +30,10 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * new field is refused either way, and the version is what says so in words a
  * player understands. A save of another version is refused.
  *
- * Version 2 added the metro of spec section 13.3.
+ * Version 2 added the metro of spec section 13.3, and version 3 the police of
+ * spec section 14.
  */
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export interface SaveFile {
   format: typeof SAVE_FORMAT;
