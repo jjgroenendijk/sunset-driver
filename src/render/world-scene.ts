@@ -30,6 +30,7 @@ import { buildCarve, type RoadCarve } from '../world/carve.ts';
 import { buildRoadGraph } from '../world/graph.ts';
 import { buildJunctions } from '../world/junctions.ts';
 import { chunkAt, CHUNK_SIZE } from '../world/chunks.ts';
+import type { MetroStation } from '../world/metro.ts';
 import type { ParkingBays } from '../world/parking.ts';
 import type { Point, WorldDescription } from '../world/types.ts';
 import { Batch } from './batch.ts';
@@ -362,6 +363,11 @@ export class WorldScene {
    */
   get stations(): readonly Point[] | undefined {
     return this.stream.stations;
+  }
+
+  /** The metro stations of the world (spec section 13.3), known with the police stations. */
+  get metro(): readonly MetroStation[] | undefined {
+    return this.stream.metro;
   }
 
   /** The parking bays of the world (spec section 13.1), or undefined until a chunk worker has laid them out. */

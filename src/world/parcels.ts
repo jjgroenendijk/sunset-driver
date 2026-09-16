@@ -42,7 +42,9 @@
  * in each district, the building parcel whose centre stands nearest the
  * district's site. A station is a building group like any other, so it keeps
  * the `building` owner and is listed in {@link ParcelMap.stations}. A district
- * with no building parcel has no station.
+ * with no building parcel has no station. The metro stations of spec section
+ * 13.3 come out of the same pass, by the rule in `metro.ts`, and keep their
+ * parcel's owner in the same way.
  *
  * Pure: the same world gives the same parcels, in
  * the same order, with the same owners.
@@ -54,6 +56,7 @@ import type { RoadFootprint } from './footprint.ts';
 import type { RoadGraph } from './graph.ts';
 import { Heightfield } from './heightfield.ts';
 import { landRegions } from './land.ts';
+import { MetroPlan, type MetroStation } from './metro.ts';
 import { ringsOf, RoadReach } from './road-reach.ts';
 import type { TensorField } from './tensor.ts';
 import type { Beach, District, WorldDescription, Zone } from './types.ts';
@@ -101,6 +104,8 @@ export interface ParcelMap {
   land: number;
   /** The police stations, one per district that has a building parcel, by district id. */
   stations: PoliceStation[];
+  /** The metro stations of spec section 13.3, by district id. */
+  metro: MetroStation[];
 }
 
 /** A building parcel that is a police station (spec section 11.7). */
@@ -331,6 +336,7 @@ export function buildParcels(
 
   const parcels: Parcel[] = [];
   const stations: PoliceStation[] = [];
+  const metro = new MetroPlan(world);
   let area = 0;
   for (const piece of pieces) {
     const zone = zoneAt(zones, piece.at.x, piece.at.y);
@@ -346,10 +352,12 @@ export function buildParcels(
       roads: piece.roads,
     });
     area += piece.area;
-    if ((parcels[id] as Parcel).owner === 'building') offerStation(stations, district, id, piece.at);
+    const owner = (parcels[id] as Parcel).owner;
+    if (owner === 'building') offerStation(stations, district, id, piece.at);
+    metro.offer(district, id, owner, piece.at);
   }
   stations.sort((a, b) => a.district - b.district);
-  return { parcels, area, land: areaOf(dry), stations };
+  return { parcels, area, land: areaOf(dry), stations, metro: metro.stations() };
 }
 
 /**
