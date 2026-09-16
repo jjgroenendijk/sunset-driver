@@ -16,12 +16,32 @@ const SETTINGS_KEY = 'sunset-driver.settings';
  */
 export type BuildingView = 'see-through' | 'pull-back' | 'whole';
 
+/**
+ * How loud the game is (spec section 15). Off is not a gain of zero: the audio
+ * graph is torn down, so a muted session synthesises nothing at all.
+ */
+export type SoundLevel = 'off' | 'quiet' | 'normal' | 'loud';
+
 export interface Settings {
   buildingView: BuildingView;
+  sound: SoundLevel;
 }
 
 /** See-through is what GTA Chinatown Wars does, and it keeps the camera where it is. */
-export const DEFAULT_SETTINGS: Settings = { buildingView: 'see-through' };
+export const DEFAULT_SETTINGS: Settings = { buildingView: 'see-through', sound: 'normal' };
+
+/** Each level, in the order a menu lists them, with the master volume it means. */
+export const SOUND_LEVELS: readonly { value: SoundLevel; label: string; note: string; volume: number }[] = [
+  { value: 'off', label: 'Off', note: 'Nothing is synthesised at all', volume: 0 },
+  { value: 'quiet', label: 'Quiet', note: 'Under a conversation', volume: 0.3 },
+  { value: 'normal', label: 'Normal', note: 'The engine, the street and the shooting', volume: 0.6 },
+  { value: 'loud', label: 'Loud', note: 'As loud as the mix goes', volume: 1 },
+];
+
+/** The master volume a level means, 0 to 1. */
+export function volumeOf(level: SoundLevel): number {
+  return SOUND_LEVELS.find((choice) => choice.value === level)?.volume ?? 0.6;
+}
 
 /** Each choice of {@link BuildingView}, in the order a menu lists them, with what it is called there. */
 export const BUILDING_VIEWS: readonly { value: BuildingView; label: string; note: string }[] = [
@@ -31,10 +51,13 @@ export const BUILDING_VIEWS: readonly { value: BuildingView; label: string; note
 ];
 
 /** What a menu page reads a setting from and hands a new choice to. */
-export interface BuildingViewChoice {
-  current(): BuildingView;
-  choose(view: BuildingView): void;
+export interface SettingChoice<T> {
+  current(): T;
+  choose(value: T): void;
 }
+
+export type BuildingViewChoice = SettingChoice<BuildingView>;
+export type SoundChoice = SettingChoice<SoundLevel>;
 
 /** The settings kept in a store, with the default for anything missing or not understood. */
 export function readSettings(store: KeyValueStore): Settings {
@@ -44,9 +67,15 @@ export function readSettings(store: KeyValueStore): Settings {
   } catch {
     raw = {};
   }
-  const view = (raw as { buildingView?: unknown } | null)?.buildingView;
-  const known = BUILDING_VIEWS.some((choice) => choice.value === view);
-  return { buildingView: known ? (view as BuildingView) : DEFAULT_SETTINGS.buildingView };
+  const held = raw as { buildingView?: unknown; sound?: unknown } | null;
+  const view = held?.buildingView;
+  const sound = held?.sound;
+  return {
+    buildingView: BUILDING_VIEWS.some((choice) => choice.value === view)
+      ? (view as BuildingView)
+      : DEFAULT_SETTINGS.buildingView,
+    sound: SOUND_LEVELS.some((choice) => choice.value === sound) ? (sound as SoundLevel) : DEFAULT_SETTINGS.sound,
+  };
 }
 
 /** Keep the settings. A browser that refuses the write keeps them for this page only. */

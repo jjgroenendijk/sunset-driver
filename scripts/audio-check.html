@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sunset Driver — audio check</title>
+    <!-- An empty icon, so the browser does not report a missing one as a page error. -->
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <!--
+      The page `scripts/audio-check.ts` drives. It makes no sound: it renders
+      each case of `src/audio/offline.ts` through an offline audio context and
+      hands the measurements back. Vite serves it, so the `.ts` import and the
+      bare `tone` import under it resolve the way they do for the game.
+    -->
+    <script type="module">
+      import * as Tone from 'tone';
+      import { renderCases } from '/src/audio/offline.ts';
+      window.renderAudioCases = () => renderCases(Tone);
+      window.audioCheckReady = true;
+    </script>
+  </body>
+</html>

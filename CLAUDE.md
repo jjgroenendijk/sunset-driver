@@ -87,9 +87,11 @@ Beyond what the file names suggest:
 - `src/world` — must run headless in Node, since the sweeps import it. three.js math and generators
   are fine; the renderer, Rapier and the DOM are not. Produces a plain world description.
 - `src/render` — reads the world description, never mutates it.
+- `src/audio` — reads the record, never mutates it. Tone.js is loaded on the player's first gesture
+  and reached only from the `tone-*.ts` files, so everything above them is tested headless.
 - `scripts/*.ts` — run with plain `node` (type stripping), not through Vite.
-  `scripts/render-preview.html` and `scripts/map-preview.html` are the exceptions a script serves
-  rather than runs; they are not build inputs.
+  `scripts/render-preview.html`, `scripts/map-preview.html` and `scripts/audio-check.html` are the
+  exceptions a script serves rather than runs; they are not build inputs.
 - `scripts/hooks/` — Claude Code hooks wired from `.claude/settings.json`; fast, idempotent, exit 2
   to report a problem. Anything repeated across sessions belongs in a hook or a `scripts/` entry
   rather than in prose here.
@@ -114,6 +116,9 @@ The ones that cost a session with nothing to say why. The subsystem docs hold th
   it is told to forget it.
 - WebGPU pads each row of a readback to 256 bytes, so a picture read without unpadding the rows
   comes back sheared — which looks exactly like a broken mesh.
+- Tone's `Limiter` is a compressor with a 3 ms attack, so it does not stop a transient: the mix ends
+  in a soft clip instead. A voice's gain is not its loudness either. Measure both with
+  `node scripts/audio-check.ts`.
 
 ## Conventions
 

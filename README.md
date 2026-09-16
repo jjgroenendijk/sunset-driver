@@ -13,6 +13,10 @@ npm run dev
 Requires a WebGPU-capable browser. New game on the title screen takes the seed and the character;
 add `#seed=yourseed` to the URL to start it on a world.
 
+The sound starts on the first key or click, because a browser gives no audio before one. Settings ·
+Sound, on the title screen and in the pause menu, sets how loud it is; Off synthesises nothing at
+all.
+
 The game watches its own frame rate and steps the quality down when it cannot hold 60 fps, and back
 up when it can. The tier in force is shown in the corner, and every change is written to the
 console. Add `?budget=6` to the URL to hold it to a frame no machine makes at full quality, which is

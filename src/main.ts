@@ -35,7 +35,8 @@ import { Minimap } from './ui/minimap.ts';
 import { PauseMenu } from './ui/pause.ts';
 import { listenForSessionKeys } from './ui/session-keys.ts';
 import { SaveSlots, setPendingStart, takePendingStart } from './ui/saves.ts';
-import { readSettings, writeSettings, type BuildingViewChoice } from './ui/settings.ts';
+import { readSettings, volumeOf, writeSettings, type BuildingViewChoice, type SoundChoice } from './ui/settings.ts';
+import { SessionAudio } from './audio/session-audio.ts';
 import { FreeCameraControls } from './ui/free-camera.ts';
 import { Keyboard } from './ui/keyboard.ts';
 import { LoadingScreen } from './ui/loading.ts';
@@ -103,6 +104,8 @@ interface Session {
   crowd: PedestrianView;
   /** The pause menu of spec section 12. While it is open the simulation does not step. */
   pause: PauseMenu;
+  /** The sound of spec section 15, read off the record once a frame. */
+  audio: SessionAudio;
 }
 
 async function boot(): Promise<void> {
@@ -175,6 +178,20 @@ async function boot(): Promise<void> {
     },
   };
 
+  // The sound of spec section 15. Nothing is built and Tone.js is not even
+  // fetched until the player's first key or click, which is what a browser
+  // gives audio on; a session left at Off never builds it at all.
+  const audio = new SessionAudio(volumeOf(settings.sound));
+  audio.arm(window);
+  const sound: SoundChoice = {
+    current: () => settings.sound,
+    choose: (level) => {
+      settings.sound = level;
+      writeSettings(localStorage, settings);
+      audio.volume = volumeOf(level);
+    },
+  };
+
   // Where the world of a seed is built (spec section 9.1). It is a worker, so
   // neither the title screen's map nor the wait after Start stops the frame.
   const worlds = new WorldSource();
@@ -186,6 +203,8 @@ async function boot(): Promise<void> {
   let last = performance.now();
   /** Whether the camera was detached last frame, so a release is noticed once. */
   let flew = false;
+  /** The input the last tick was stepped with, which is what the engine note is read off. */
+  let lastInput = EMPTY_INPUT;
 
   const frame = (now: number): void => {
     const elapsed = now - last;
@@ -202,11 +221,13 @@ async function boot(): Promise<void> {
       const steps = paused ? 0 : clock.advance(elapsed);
       const respawned = session.state.respawn;
       const trips = session.state.metro.trips;
+      const wasTick = session.state.tick;
       for (let i = 0; i < steps; i++) {
         // The pose the step starts from is kept before it is taken, so the
         // frame is drawn between the last two ticks rather than on the last.
         session.smooth.capture(session.state);
-        stepSim(session.state, flying ? EMPTY_INPUT : keyboard.sample(), session.physics);
+        lastInput = flying ? EMPTY_INPUT : keyboard.sample();
+        stepSim(session.state, lastInput, session.physics);
       }
       // A respawn and a metro trip both put the player down somewhere else on
       // the map (spec sections 11.7, 13.3), so the frame stands the camera
@@ -321,6 +342,11 @@ async function boot(): Promise<void> {
         : { x: p.x, y: p.y, heading: p.heading };
       session.minimap.update(at, session.state.waypoint);
       session.map.update(at, session.state.waypoint);
+      // The sound of spec section 15, read off the same record the frame draws:
+      // the engine, the sirens, the shots and the bells of the ticks just
+      // stepped. A paused session lets the lot go rather than holding a note.
+      if (paused) session.audio.hush();
+      else session.audio.frame(session.state, lastInput, at, wasTick);
       // Not `renderer.render`: the post chain draws the scene itself and the
       // effects of spec section 10.6 over it.
       session.post.render();
@@ -350,6 +376,7 @@ async function boot(): Promise<void> {
       worlds,
       (appearance) => preview.character.set(appearance),
       buildingView,
+      sound,
     );
     choice = await title.wait();
     title.destroy();
@@ -583,6 +610,7 @@ async function boot(): Promise<void> {
     regenerate: () => restart(randomSeedString(), state.character, false),
     quit: () => location.reload(),
     buildingView,
+    sound,
   });
   // A load moves the player across the map and puts a different vehicle under
   // them, so the frame snaps to it rather than sliding there.
@@ -612,6 +640,7 @@ async function boot(): Promise<void> {
   world.scene.add(tramView.group);
   const crowdView = new PedestrianView(crowd, tram);
   world.scene.add(crowdView.group);
+  audio.attach(tram);
 
   session = {
     traffic: trafficView,
@@ -627,6 +656,7 @@ async function boot(): Promise<void> {
     hud: new Hud(document.body, choice.seed),
     minimap,
     map,
+    audio,
     hotwire: new HotwireBar(document.body),
     travel: new TravelPanel(document.body),
     metro,
