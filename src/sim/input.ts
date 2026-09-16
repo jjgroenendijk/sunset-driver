@@ -20,6 +20,13 @@ export interface InputFrame {
   /** Take the next weapon carried (spec section 11.6). */
   cycle: boolean;
   /**
+   * The turn of the radio dial this tick (spec section 15): 1 for the next
+   * station, -1 for the one before, 0 for no turn. It is an edge rather than a
+   * level, like {@link InputFrame.travel}, because a held key would run the
+   * whole dial round in a fifth of a second.
+   */
+  station: number;
+  /**
    * The metro destination chosen this tick (spec section 13.3): a place in the
    * list of stations a trip may go to, counted from 1, and 0 for no choice. It
    * is a number in the frame rather than a station id, so a recorded stream
@@ -40,6 +47,7 @@ export const EMPTY_INPUT: Readonly<InputFrame> = Object.freeze({
   aim: false,
   reload: false,
   cycle: false,
+  station: 0,
   travel: 0,
 });
 
@@ -56,6 +64,7 @@ export function inputEquals(a: InputFrame, b: InputFrame): boolean {
     a.aim === b.aim &&
     a.reload === b.reload &&
     a.cycle === b.cycle &&
+    a.station === b.station &&
     a.travel === b.travel
   );
 }

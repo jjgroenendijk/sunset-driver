@@ -12,6 +12,7 @@ import { createTrafficState, type TrafficState } from './traffic.ts';
 import { createLoadout, type LoadoutState, type ProjectileState } from './weapon.ts';
 import { createMetroState, stepMetro, travelling, type MetroState } from './metro.ts';
 import { createPoliceState, type PoliceState } from './police.ts';
+import { stepRadio } from './radio.ts';
 
 /** The serialisable, deterministic state of a session. */
 export interface SimState {
@@ -182,6 +183,9 @@ export function cloneSimState(state: SimState): SimState {
  * ends a run is the tick the player comes back on.
  */
 export function stepSim(state: SimState, input: InputFrame = EMPTY_INPUT, physics?: SimPhysics): void {
+  // The radio of spec section 15 is a turn of a number in the record and
+  // nothing else, so it is taken before anything moves.
+  stepRadio(state, input);
   if (stepMetro(state, input, physics?.metro ?? [])) physics?.stand(state);
   physics?.step(state, travelling(state) ? EMPTY_INPUT : input);
   stepPickups(state);

@@ -17,8 +17,11 @@ import type { PoliceKind, PoliceUnit } from '../sim/police.ts';
 import { createSimState, type SimState } from '../sim/simulation.ts';
 import type { TramBell } from '../sim/tram.ts';
 import { giveWeapon } from '../sim/weapon.ts';
+import { barTicks } from './dial.ts';
 import { Mixer } from './mixer.ts';
 import { AudioPlanner, type BellSource } from './plan.ts';
+import { SONG_BARS } from './song.ts';
+import { STATIONS, type Station } from './stations.ts';
 
 /** What one case came to. */
 export interface AudioLevel {
@@ -31,8 +34,8 @@ export interface AudioLevel {
   quiet: number;
 }
 
-/** Seconds each case is rendered for. Long enough for the tail of an explosion. */
-const SECONDS = 2;
+/** Seconds each case is rendered for. Long enough for a bar of music and the tail of an explosion. */
+const SECONDS = 3;
 
 /** Samples under this count as silence. */
 const FLOOR = 1e-4;
@@ -53,11 +56,15 @@ function unit(id: number, kind: PoliceKind, x: number, y: number): PoliceUnit {
   return { id, kind, task: 'chase', x, y, heading: 0, height: 0, speed: 20, health: 100, edges: [], distance: 0, planned: 0, goalX: x, goalY: y };
 }
 
-/** A session driving a saloon at speed. */
+/**
+ * A session driving a saloon at speed, with the dial at Off: a case that is not
+ * about the radio measures the voice it is named for and not the music over it.
+ */
 function driving(): SimState {
   const state = createSimState(1234);
   state.player.driving = true;
   state.vehicle.speed = 22;
+  state.vehicle.station = -1;
   return state;
 }
 
@@ -69,6 +76,17 @@ function afoot(): SimState {
   const state = createSimState(1234);
   state.player.driving = false;
   state.player.grounded = true;
+  return state;
+}
+
+/**
+ * A session driving with the dial on `dial`, standing a tick short of a bar
+ * boundary so the bar it hands the band starts at once rather than a bar later.
+ */
+function listening(dial: number, bar = 0): SimState {
+  const state = driving();
+  state.vehicle.station = dial;
+  state.tick = Math.ceil(barTicks(STATIONS[dial] as Station) * (bar + 1)) - 1;
   return state;
 }
 
@@ -156,10 +174,31 @@ const CASES: readonly AudioCase[] = [
     frames: 20,
   },
   { name: 'tram bell', state: afoot, trams: RINGING, frames: 2 },
+  { name: 'radio: a song', state: () => listening(0) },
+  { name: 'radio: the beach', state: () => listening(1) },
+  { name: 'radio: between songs', state: () => listening(0, SONG_BARS - 1) },
+  {
+    name: 'score: a chase',
+    state: () => {
+      const state = listening(0);
+      state.heat = 2;
+      state.police.units = [unit(1, 'patrol', 90, 0)];
+      return state;
+    },
+  },
+  {
+    name: 'score: a fight',
+    state: () => {
+      const state = listening(0);
+      state.heat = 5;
+      state.police.units = [unit(1, 'patrol', 10, 0), unit(2, 'swat', 18, 6)];
+      return state;
+    },
+  },
   {
     name: 'the lot at once',
     state: () => {
-      const state = driving();
+      const state = listening(0);
       giveWeapon(state.loadout, 'ak-47');
       state.police.units = [unit(1, 'patrol', 20, 0), unit(2, 'interceptor', -25, 10), unit(3, 'swat', 40, 30)];
       for (const wheel of state.vehicle.wheels) {

@@ -22,6 +22,15 @@ import type { Listener } from './space.ts';
 /** The events that count as the first user gesture. */
 const GESTURES = ['pointerdown', 'keydown'] as const;
 
+/** What the HUD shows of the radio: the station, and the line on air over it. */
+export interface OnAirLine {
+  name: string;
+  /** The ident or the announcement being read, or empty while a song is playing. */
+  text: string;
+  /** Who the announcement is from, empty on an ident. */
+  from: string;
+}
+
 export class GameAudio {
   private readonly planner = new AudioPlanner();
   private mixer: Mixer | null = null;
@@ -31,6 +40,8 @@ export class GameAudio {
   private target: Window | null = null;
   /** The trams of spec section 13.2, whose bells are not in the record. */
   private trams: BellSource | null = null;
+  /** What the radio is putting out, for the HUD, or null while nothing is. */
+  private air: OnAirLine | null = null;
 
   constructor(muted = false) {
     this.silent = muted;
@@ -66,6 +77,16 @@ export class GameAudio {
     if (value) this.close();
   }
 
+  /**
+   * What the radio is playing (spec section 15), for the HUD: the station and
+   * the line of an ident or an announcement. Null while the game is muted, the
+   * dial is at Off or the player is out of the car — a radio is a thing in a
+   * car, and nothing is on air when nothing is playing it.
+   */
+  get onAir(): OnAirLine | null {
+    return this.air;
+  }
+
   /** Cues dropped for want of a voice, or 0 while there is no graph. */
   get dropped(): number {
     return this.mixer?.dropped ?? 0;
@@ -77,18 +98,25 @@ export class GameAudio {
    * screen.
    */
   update(state: SimState, input: InputFrame, listener: Listener): void {
-    if (this.silent || !this.running) return;
+    if (this.silent || !this.running) {
+      this.air = null;
+      return;
+    }
     if (this.mixer === null) {
       this.mixer = new Mixer();
       this.mixer.start();
       this.planner.resync(state);
     }
-    this.mixer.apply(this.planner.plan(state, input, listener, this.trams ?? undefined), listener);
+    const plan = this.planner.plan(state, input, listener, this.trams ?? undefined);
+    this.mixer.apply(plan, listener);
+    const radio = plan.radio;
+    this.air = radio.station === null ? null : { name: radio.name, text: radio.text, from: radio.from };
   }
 
   /** Take every held note off. A paused session and a detached camera both do this. */
   hush(): void {
     this.mixer?.hush();
+    this.air = null;
   }
 
   /**

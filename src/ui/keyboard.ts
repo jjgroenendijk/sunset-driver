@@ -16,6 +16,8 @@ export class Keyboard {
   private readonly down = new Set<string>();
   /** The number key a destination was last read from, so holding it asks once. */
   private travelHeld = '';
+  /** Whether a dial key was down last tick, so a held key turns the dial once. */
+  private stationHeld = 0;
 
   constructor(target: Window) {
     target.addEventListener('keydown', (e) => {
@@ -50,8 +52,21 @@ export class Keyboard {
       aim: this.is('KeyQ'),
       reload: this.is('KeyR'),
       cycle: this.is('KeyC'),
+      station: this.dial(),
       travel: this.destination(),
     };
+  }
+
+  /**
+   * The turn of the radio dial (spec section 15). A held key turns it once, as
+   * the number keys of the metro panel ask once: the dial has ten positions and
+   * a level would run round them all in a fifth of a second.
+   */
+  private dial(): number {
+    const turn = (this.is('BracketRight') ? 1 : 0) - (this.is('BracketLeft') ? 1 : 0);
+    if (turn === this.stationHeld) return 0;
+    this.stationHeld = turn;
+    return turn;
   }
 
   /**

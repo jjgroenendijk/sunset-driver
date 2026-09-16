@@ -28,8 +28,12 @@ import type { TramBell } from '../sim/tram.ts';
 import { specOf } from '../sim/vehicle.ts';
 import { currentWeapon, type WeaponSpec } from '../sim/weapon.ts';
 import { CUES, type Cue } from './cue.ts';
+import { barSeconds, dialAt, dialName, wrapDial } from './dial.ts';
 import { enginePitch, engineSound, type EngineSound } from './engine.ts';
+import { broadcastAt, type OnAir } from './programme.ts';
+import { scoreOf, type Score } from './score.ts';
 import { hear, type Heard, type Listener } from './space.ts';
+import type { Station } from './stations.ts';
 
 /** Sirens the mix carries at once. The rest of a chase is heard through these. */
 export const SIREN_VOICES = 3;
@@ -73,6 +77,31 @@ export interface SirenPlan {
   wail: number;
 }
 
+/**
+ * The radio of spec section 15 this frame: where the dial stands, what is going
+ * out on it, and the next bar the band should be handed.
+ *
+ * The bar is scheduled rather than played now, because music is played on the
+ * audio clock and the record moves on the game's. `dial.ts` reads the bar off
+ * the tick, so the two never drift.
+ */
+export interface RadioPlan {
+  /** The seed of the session, which is what the station's songs are written from. */
+  seed: number;
+  /** Where the dial stands, unwrapped, so a change of station is noticed. */
+  dial: number;
+  /** The station it is on, or null: the dial is at Off, or nobody is at a wheel. */
+  station: Station | null;
+  /** What the HUD calls it, and the line under it while an ident or a PSA is out. */
+  name: string;
+  text: string;
+  from: string;
+  /** The bar to hand the band next, and how many seconds until it starts. */
+  next: { song: number; bar: number; kind: OnAir; seconds: number } | null;
+  /** How loud the radio is, which the score pulls down. */
+  gain: number;
+}
+
 /** Everything the mixer should be doing this frame. */
 export interface AudioPlan {
   /** The player's own engine, or null while they are not in a vehicle. */
@@ -87,11 +116,29 @@ export interface AudioPlan {
   cues: Cue[];
   /** How far the music bus is pulled down, 0 to 1. */
   duck: number;
+  /** The radio of spec section 15. */
+  radio: RadioPlan;
+  /** What the chase is doing to the music (spec section 15). */
+  score: Score;
+}
+
+/** The radio of a session with the dial at Off, which is what silence looks like. */
+export function silentRadio(): RadioPlan {
+  return { seed: 0, dial: 0, station: null, name: '', text: '', from: '', next: null, gain: 0 };
 }
 
 /** A plan that asks for nothing, which is what a paused or muted session gets. */
 export function silentPlan(): AudioPlan {
-  return { engine: null, squeal: 0, horn: 0, sirens: [], cues: [], duck: 0 };
+  return {
+    engine: null,
+    squeal: 0,
+    horn: 0,
+    sirens: [],
+    cues: [],
+    duck: 0,
+    radio: silentRadio(),
+    score: { mood: 'calm', intensity: 0, radio: 1 },
+  };
 }
 
 /**
@@ -139,6 +186,7 @@ export class AudioPlanner {
     this.gunfire(state, cues);
     this.footsteps(state, ticks, cues);
     this.bells(state, was, trams, cues);
+    const score = scoreOf(state);
     return {
       engine: this.engine(state, input, listener),
       squeal: squealOf(state),
@@ -146,6 +194,8 @@ export class AudioPlanner {
       sirens: sirensOf(state, listener),
       cues: cues.slice(0, CUES_PER_FRAME),
       duck: duckOf(cues),
+      radio: radioOf(state, score),
+      score,
     };
   }
 
@@ -271,6 +321,38 @@ export function sirensOf(state: SimState, listener: Listener): SirenPlan[] {
     pan: at.pan,
     wail: ((((state.tick + unit.id * 37) % WAIL_TICKS) + WAIL_TICKS) % WAIL_TICKS) / WAIL_TICKS,
   }));
+}
+
+/**
+ * The radio this frame (spec section 15). It plays for a player behind a wheel
+ * and nobody else: a radio is a thing in a car, and a player on foot has left
+ * it there.
+ *
+ * The score is what decides how loud it is. A chase pulls it down and a fight
+ * takes it off, which is the "layered over or replacing" of the spec.
+ */
+export function radioOf(state: SimState, score: Score): RadioPlan {
+  const dial = state.vehicle.station;
+  const at = state.player.driving ? dialAt(state.seed, dial, state.tick) : null;
+  if (at === null) return { ...silentRadio(), dial, name: dialName(dial) };
+  const seconds = (1 - at.phase) * barSeconds(at.station);
+  const ahead = broadcastOfNextBar(state.seed, dial, at.bar);
+  return {
+    seed: state.seed,
+    dial,
+    station: at.station,
+    name: at.station.name,
+    text: at.broadcast.text,
+    from: at.broadcast.from,
+    next: { song: ahead.song, bar: ahead.bar, kind: ahead.kind, seconds },
+    gain: score.radio,
+  };
+}
+
+/** What the bar after this one carries, which is the one the band is handed. */
+function broadcastOfNextBar(seed: number, dial: number, bar: number): { song: number; bar: number; kind: OnAir } {
+  const after = broadcastAt(seed, wrapDial(dial), bar + 1);
+  return { song: after.song, bar: after.bar, kind: after.kind };
 }
 
 /** How far this frame's cues pull the music bus down. The table says which of them do. */

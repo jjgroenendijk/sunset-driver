@@ -349,6 +349,7 @@ async function boot(): Promise<void> {
         session.world.lightCount,
         session.world.streaming,
         session.quality.tier.name,
+        audio.onAir,
       );
       // The lock the player is working at (spec section 11.4). The panel reads
       // the record the simulation is playing, so the bar on screen is the bar
