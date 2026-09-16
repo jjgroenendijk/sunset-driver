@@ -12,6 +12,7 @@
  * One already in a worker is left to finish, because a worker cannot be
  * interrupted, and its payload is thrown away if nobody wants it by then.
  */
+import type { MetroStation } from '../world/metro.ts';
 import type { ParkingBays } from '../world/parking.ts';
 import type { Point, WorldDescription } from '../world/types.ts';
 import type { ChunkPayload } from './chunk-payload.ts';
@@ -36,6 +37,8 @@ export interface ChunkStream {
   readonly pending: number;
   /** The police stations of the world (spec section 11.7), once a worker has built the parcels. */
   readonly stations?: readonly Point[];
+  /** The metro stations of the world (spec section 13.3), from the same answer. */
+  readonly metro?: readonly MetroStation[];
   /** The parking bays of the world (spec section 13.1), from the same worker's answer. */
   readonly bays?: ParkingBays;
   dispose(): void;
@@ -66,6 +69,7 @@ export class ChunkPool implements ChunkStream {
   private readonly arrived: ChunkPayload[] = [];
   /** Every worker builds the same parcels, so the first to answer says where the stations are. */
   stations: readonly Point[] | undefined;
+  metro: readonly MetroStation[] | undefined;
   bays: ParkingBays | undefined;
 
   constructor(world: WorldDescription, spawn: () => ChunkWorker = spawnChunkWorker, size = poolSize()) {
@@ -106,6 +110,7 @@ export class ChunkPool implements ChunkStream {
   private receive(slot: Slot, reply: WorkerReply): void {
     if (reply.type === 'ready') {
       if (reply.stations !== undefined) this.stations ??= reply.stations;
+      if (reply.metro !== undefined) this.metro ??= reply.metro;
       if (reply.bays !== undefined) this.bays ??= reply.bays;
       slot.ready = true;
       slot.busy = undefined;

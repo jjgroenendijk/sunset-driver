@@ -97,8 +97,12 @@ corridors in `docs/corridors.md`.
   the inner ring roll no open car park at all: they park in a `parking-garage`, which is a building
   kind. An open car park there is a beach car park. `ParcelMap.stations` are the police stations of
   spec section 11.7: in each district, the building parcel whose centre stands nearest the site. A
-  station keeps the `building` owner. The chunk worker sends them to the main thread on its first
-  `ready` reply, because the main thread never builds the parcels.
+  station keeps the `building` owner. The metro stations of spec section 13.3 come out of the same
+  pass through `MetroPlan` (`metro.ts`): the core and inner districts and the suburb farthest from
+  the core each take the plaza nearest their site, or the second nearest building parcel, since the
+  police station holds the first. They keep their parcel's owner too. The chunk worker sends both
+  lists to the main thread on its first `ready` reply, because the main thread never builds the
+  parcels.
 - `buildParkingBays` (`parking.ts`) lays out the bays of spec section 13.1, and the worker sends
   them on the same reply. A street bay is a length of the `TierSpec.parking` strip inside each kerb,
   and `laneOffset` shares only what is left between the lanes. A bay is refused where it would

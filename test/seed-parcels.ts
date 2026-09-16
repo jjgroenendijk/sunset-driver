@@ -11,6 +11,7 @@ import {
 } from '../src/world/buildings.ts';
 import { layoutZones, skylineAt } from '../src/world/districts.ts';
 import { type RoadEdge } from '../src/world/graph.ts';
+import { metroDistricts } from '../src/world/metro.ts';
 import { ownerMaxArea, type Parcel } from '../src/world/parcels.ts';
 import { footprintHalfWidth } from '../src/world/tiers.ts';
 import { type Point, type WorldDescription, type Zone } from '../src/world/types.ts';
@@ -326,6 +327,34 @@ export function parcelChecks(): void {
           if (station.x < Math.min(...xs) || station.x > Math.max(...xs) || station.y < Math.min(...ys) || station.y > Math.max(...ys)) {
             fault(`station ${i} is marked away from its parcel`);
           }
+        }
+        expect(complaint, `seed ${seed}`).toBeUndefined();
+      }
+    });
+
+    it('gives the metro a station in the core, the inner districts and the suburb edge', () => {
+      // Spec section 13.3: the stations are parcels with a street entrance, and
+      // fast travel needs at least two of them to be a journey. A station never
+      // shares its parcel with the police station of the same district.
+      for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
+        const w = worlds.get(seed) as WorldDescription;
+        const { parcels, stations, metro } = parcelsOf(seed);
+        const served = new Set(metroDistricts(w));
+        let complaint: string | undefined;
+        const fault = (text: string): void => {
+          complaint ??= text;
+        };
+        if (metro.length < 2) fault(`has ${metro.length} metro stations`);
+        for (let i = 0; i < metro.length; i++) {
+          const station = metro[i] as (typeof metro)[number];
+          const parcel = parcels[station.parcel];
+          if (i > 0 && station.district <= (metro[i - 1] as typeof station).district) fault('lists its stations out of order');
+          if (!served.has(station.district)) fault(`station ${i} is in district ${station.district}, which the line does not call at`);
+          if (parcel?.owner !== 'plaza' && parcel?.owner !== 'building') fault(`station ${i} stands on a ${parcel?.owner} parcel`);
+          if (parcel?.district !== station.district) fault(`station ${i} is not in its district`);
+          if (stations.some((police) => police.parcel === station.parcel)) fault(`station ${i} shares a parcel with a police station`);
+          // Every parcel has a road along it, which is the street entrance.
+          if ((parcel?.roads.length ?? 0) === 0) fault(`station ${i} has no street entrance`);
         }
         expect(complaint, `seed ${seed}`).toBeUndefined();
       }
