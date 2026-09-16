@@ -2,13 +2,8 @@ import { Raycaster, Vector2 } from 'three';
 import { GameAudio } from './audio/game-audio.ts';
 import { randomSeedString, readSeedFromLocation, seedFromString, writeSeedToHash } from './core/seed.ts';
 import { BASE_DISTANCE, FollowCamera, PULL_MARGIN, type RoofHeight } from './render/camera.ts';
-import { PostChain, postGraphs } from './render/post.ts';
-import {
-  frameBudgetFrom,
-  QUALITY_TIERS,
-  QualityMonitor,
-  type QualityChange,
-} from './render/quality.ts';
+import { PostChain } from './render/post.ts';
+import { frameBudgetFrom, QualityMonitor, type QualityChange } from './render/quality.ts';
 import { createRenderer, probeWebGpu } from './render/renderer.ts';
 import { createTitleScene } from './render/scene.ts';
 import { RenderSmoother } from './render/smooth.ts';
@@ -18,6 +13,7 @@ import { PoliceView } from './render/police.ts';
 import { TrafficView } from './render/traffic.ts';
 import { TramView } from './render/tram.ts';
 import { WorldSource } from './render/world-source.ts';
+import { warmPasses } from './render/warm.ts';
 import { WorldScene } from './render/world-scene.ts';
 import { FixedStepClock, gameTime } from './sim/clock.ts';
 import { DEFAULT_APPEARANCE } from './sim/character.ts';
@@ -133,31 +129,6 @@ function applyQuality(session: Session, change: QualityChange): void {
     `quality: ${change.from.name} -> ${change.to.name} at ${change.frameMs.toFixed(1)} ms a frame ` +
       `(budget ${session.quality.budget} ms)`,
   );
-}
-
-/**
- * Draw one frame through each post graph, with the water in view, before the
- * session starts (spec sections 9.2, 10.6).
- *
- * The four quality tiers come to three graphs, and a graph is built once and
- * kept, so a tier change later swaps to a chain the renderer has compiled. The
- * water sheet is shown for each of these frames, which is what compiles the
- * mirror pass on an inland session that would otherwise meet it the first time
- * it drives to the sea. The render scale stays where it stands: what a program
- * is keyed on is the graph, not the size the frame is drawn at.
- *
- * An animation frame is waited for between them, so the loading screen is drawn
- * rather than held still.
- */
-async function warmPasses(world: WorldScene, post: PostChain): Promise<void> {
-  const standing = post.quality;
-  for (const graph of postGraphs(QUALITY_TIERS.map((tier) => tier.post))) {
-    post.quality = { ...graph, renderScale: standing.renderScale };
-    world.showWater();
-    post.render();
-    await new Promise((frame) => requestAnimationFrame(frame));
-  }
-  post.quality = standing;
 }
 
 async function boot(): Promise<void> {
@@ -569,18 +540,6 @@ async function boot(): Promise<void> {
   // means the first frame is antialiased like every frame after it.
   const post = new PostChain(renderer, world.scene, camera.camera, undefined, state.seed);
   await post.ready();
-  // WebGPU compiles a pipeline the first time it draws with it, so a session
-  // that starts here compiles the whole city over its first frames: the street
-  // stutters into place while the player is already driving on it. The wait is
-  // paid once, here, where there is a screen saying so.
-  await renderer.compileAsync(world.scene, camera.camera);
-  // `compileAsync` compiles what that camera can see in the pass it draws, and
-  // the frame is more passes than that: the water's mirror, the sun's shadow
-  // cascades and the post chain of each quality tier. Every one of them builds
-  // its WGSL on the frame thread the first time it runs, which is a frame the
-  // player is driving through. Drawing them here pays for them behind the
-  // loading screen instead.
-  await warmPasses(world, post);
   // `?budget=6` holds the game to a frame no machine makes at full quality, so
   // the tiers of spec section 9.2 can be watched stepping down.
   const quality = new QualityMonitor(frameBudgetFrom(location.search));
@@ -722,6 +681,14 @@ async function boot(): Promise<void> {
   world.scene.add(tramView.group);
   const crowdView = new PedestrianView(crowd, tram);
   world.scene.add(crowdView.group);
+
+  // WebGPU compiles a pipeline the first time it draws with it, so a session
+  // that starts here compiles the whole city over its first frames: the street
+  // stutters into place while the player is already driving on it. The wait is
+  // paid once, here, where there is a screen saying so. It comes after every
+  // view is in the scene, because a shader is compiled for the object that is
+  // drawn with it and not for the material alone (`warm.ts`).
+  await warmPasses(renderer, world, post, camera.camera);
 
   session = {
     traffic: trafficView,
