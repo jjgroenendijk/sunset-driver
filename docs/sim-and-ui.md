@@ -16,7 +16,6 @@ play — the title screen, the loading screen, the pause menu and the saves — 
 - Death, arrest and heat
 - The ground the physics reads
 - Vehicles
-- Weather
 - Damage, fire and skids
 - Ambient traffic
 - Traffic lights
@@ -198,31 +197,11 @@ play — the title screen, the loading screen, the pause menu and the saves — 
 - `src/render/vehicle-mesh.ts` is the one place that says what shape each class is: boxes in the
   vehicle's own frame, with the masses that carry the outline of spec section 10.1 marked. It holds
   no three.js, so the silhouettes are measured headless.
+- How wet the road is comes from the weather of spec section 13.4, which is `docs/weather.md`.
 - `src/world/surface.ts` says what the ground is made of at a place — asphalt, dirt, sand or open
   ground — and where the nearest road a car can start on, or the nearest open water a boat can, is.
   It is a read of the parcel model's allocation, not a second one: a road claims the ground within
   `footprintHalfWidth` of its centreline and a beach claims its sand.
-
-## Weather
-
-- `src/sim/weather.ts` is the weather of spec section 13.4, and it is a pure function of the seed
-  and the tick: nothing is kept, nothing is saved, and a save carries the tick so it carries the
-  weather. The day is cut into spells of `SPELL_TICKS` — two game hours — and each spell draws its
-  kind and its strength from its own stream. A spell hands over to the next across `TURN_TICKS`, so
-  nothing on screen or under the tyres jumps.
-- Wetness is the one quantity with a memory, and it still holds no state: `wetnessAt` reads the rain
-  of the last `WET_HORIZON` ticks backwards and weights each sample by how long ago it fell. So a
-  session joined at any tick sees the same puddles as one that watched it rain, and a replay drives
-  on the same water. Nothing integrates, which is what makes that true.
-- `physics.ts` hands `weatherAt(seed, tick).wetness` to the wheels every step, and `gripOf` in
-  `vehicle.ts` is where it lands: a road under standing water keeps `WET_GRIP` of what it had. That
-  is the whole of what weather does to the handling; nothing else reads the wetness.
-- A test that drives a car flat out over a hillside is now a test of the weather as well. Full
-  throttle on a wet hill launches the car and the crash that follows is the rain doing its job, so
-  a test about something else should drive at a speed that keeps the wheels down.
-- `outInThis(id, share)` is the hook of "storms empty the streets". The ambient traffic and the
-  ambient crowd are laid out once from the seed and never rebuilt, so weather cannot take anyone off
-  the street; it decides who is drawn. `docs/rendering.md` has where the views read it.
 
 ## Damage, fire and skids
 
