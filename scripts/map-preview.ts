@@ -21,12 +21,12 @@
  * fresh machine run `npx playwright install chromium` first, or point
  * CHROMIUM_PATH at a Chromium binary.
  */
-import { existsSync, readdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { writeFileSync } from 'node:fs';
 import { chromium, type Browser } from 'playwright-core';
 import { createServer, type ViteDevServer } from 'vite';
 import { seedFromString } from '../src/core/rng.ts';
 import type { MapPreviewRequest, MapPreviewResult } from '../src/ui/map-preview.ts';
+import { chromiumPath } from './chromium.ts';
 import { encodePng } from './png.ts';
 
 /** How long the world and the picture may take together. */
@@ -76,31 +76,6 @@ const request: MapPreviewRequest = {
   height: num('height', minimap ? 380 : 720),
   waypoint: waypoint(),
 };
-
-/**
- * A Chromium to drive. Playwright names the build it shipped with, which is not
- * always the build an environment installed, so the browser directory is
- * searched before giving up.
- */
-function chromiumPath(): string {
-  const fromEnv = process.env.CHROMIUM_PATH;
-  if (fromEnv !== undefined && fromEnv !== '') return fromEnv;
-  const expected = chromium.executablePath();
-  if (existsSync(expected)) return expected;
-  const root = process.env.PLAYWRIGHT_BROWSERS_PATH;
-  if (root !== undefined && root !== '' && existsSync(root)) {
-    for (const entry of readdirSync(root).sort()) {
-      if (!entry.startsWith('chromium-')) continue;
-      for (const dir of ['chrome-linux64', 'chrome-linux']) {
-        const candidate = join(root, entry, dir, 'chrome');
-        if (existsSync(candidate)) return candidate;
-      }
-    }
-  }
-  throw new Error(
-    `No Chromium at ${expected}. Run \`npx playwright install chromium\`, or set CHROMIUM_PATH to a binary.`,
-  );
-}
 
 let server: ViteDevServer | undefined;
 let browser: Browser | undefined;
