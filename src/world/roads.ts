@@ -279,10 +279,34 @@ class RoadTracer extends HighwayTrace {
         }
         if (selfOverlap([...approach, far], 'arterial') !== undefined) continue;
         const points = [...approach, ...this.landOnIsland(far, island, [near, far])];
+        const bridges = [approach.length - 1];
+        if (!this.structuresAtSlots(points, bridges)) continue;
         // A link cut short of its deck reaches no island, so it is laid whole or not at all.
-        if (this.addCurve('arterial', points, [approach.length - 1], [], true) !== undefined) return;
+        if (this.addCurve('arterial', points, bridges, [], true) !== undefined) return;
       }
     }
+  }
+
+  /**
+   * True where every structure of a link crosses a highway only at one of its
+   * slots (spec section 6.2).
+   *
+   * {@link bridgeHeads} checks the one span the bridge was planned as, and the
+   * ground rules of the trace check the approach. The segments of the approach
+   * that `markStructures` turns into a deck or a bore keep neither check: a
+   * structure is not on the ground, so the crossing plan asks it for a
+   * clearance and nothing else, and a link whose approach ends up elevated may
+   * then cross a highway anywhere. `bridges` comes back as the mark left it, so
+   * the caller lays the link with the decks already found.
+   */
+  private structuresAtSlots(points: readonly Point[], bridges: number[]): boolean {
+    const tunnels = this.markStructures(points, bridges);
+    for (const i of [...bridges, ...tunnels]) {
+      const a = points[i] as Point;
+      const b = points[i + 1] as Point;
+      if (!this.network.crossesAtSlots(a, b, 'arterial')) return false;
+    }
+    return true;
   }
 
   /**

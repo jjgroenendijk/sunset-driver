@@ -139,6 +139,11 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   highway that passes under an earlier one stays on the ground there. `NetworkClearance` refuses
   every step of a later road that crosses a highway away from a slot, so every highway crossing is
   at a slot or an interchange by construction.
+- Those step rules hold for a road on the ground. A deck or a bore is not on the ground, so the
+  crossing plan asks it for a clearance and nothing else, and it may cross a highway anywhere. An
+  island link is checked twice for that reason: `bridgeHeads` checks the span the bridge is planned
+  as, and `structuresAtSlots` checks every segment `markStructures` turned into a deck or a bore,
+  which is how a link whose approach ends up elevated is kept off a highway away from its slots.
 - `RoadNetwork.add` decides every crossing of a road as it adds it (`crossing-plan.ts`, spec
   section 6.2); nothing decides one afterwards. Where the two roads are on the ground and `mayJoin`
   allows it, the crossing is a junction: both take a point there, and a laid road takes its point
