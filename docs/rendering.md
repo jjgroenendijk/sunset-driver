@@ -15,7 +15,6 @@ and the crowd — is in `docs/render-entities.md`.
 - Batches and cells
 - Water and its mirror
 - Daylight, shadows and the sky
-- Weather
 - Post and the colour grade
 - Street lamps
 - The preview page and the ground
@@ -258,35 +257,7 @@ and the crowd — is in `docs/render-entities.md`.
   `renderer.ts` is the one number every light in the game is set against. Change a light's strength
   only against a rendered frame.
 - `WorldScene.time = tick` sets the weather of spec section 13.4 as well as the light, and `apply`
-  lays one over the other. See Weather below.
-
-## Weather
-
-- `weatherAt(seed, tick)` (`src/sim/weather.ts`) says what the weather is; `weather-look.ts` says
-  what it looks like. `overcast(light, weather)` bends the `Daylight` the day gave — the sun drops
-  behind cloud, the fill rises to take its place, the haze goes grey and the street lamps come on
-  early — and `WorldScene.apply` hands the bent light to the sky, the water, the windows and the
-  lamps. Nothing downstream knows the weather: it reads the same `Daylight` it always read.
-- `fogRange(near, far, weather)` is how fog cuts the draw distance. The camera of spec section 10.7
-  sees the ground from about 15 m in front of it out to about 60, and the far streaming ring stands
-  at 750 m, so pulling the ring in by a share of itself cuts the distance where nobody is looking.
-  The two ends are brought in geometrically instead, and only past `FOG_ONSET`, so a shower leaves
-  the street alone and fog closes it to 15 m and 70 m.
-- `WeatherFx` (`weather-fx.ts`) is the rain, the puddles and the litter: three instanced batches,
-  three draw calls, every piece placed from its own index and the tick and nothing held between
-  frames. The pieces stand on a lattice in world space rather than at an offset from the player, or
-  the whole curtain slides along with the car and reads as a windscreen.
-- A puddle is placed at the height of the carve, and everything it is drawn on stands over that
-  carve: the carriageway by `SURFACE_RAISE`, the kerb by `KERB_RISE` more. `PUDDLE_LIFT` clears the
-  tallest of them. The first draft lifted a puddle 2.5 cm and every disc was inside the road, which
-  looks exactly like a puddle nobody built.
-- The scene carries no environment map, so a smooth metal disc reflects nothing and a puddle comes
-  out black on black asphalt: three.js throws image-based light off an environment, and a hemisphere
-  light is not one. A puddle reads from straight above by its colour, a pale sheet of sky over a
-  dark road, and not by its reflection.
-- The ambient crowd is laid out once from the seed and never rebuilt, so weather cannot take anyone
-  off the street. `outInThis(id, share)` decides who is drawn instead, and `TrafficView.share` and
-  `PedestrianView.share` are where `Weather.crowd` is handed to them.
+  lays one over the other. `docs/weather.md` is the whole of that.
 
 ## Post and the colour grade
 
