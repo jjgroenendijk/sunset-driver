@@ -32,6 +32,7 @@ import { startledOf, startledPose, type AmbientPedestrians, type PedestrianPose 
 import type { SimState } from '../sim/simulation.ts';
 import type { TramLine, WaitingPassenger } from '../sim/tram.ts';
 import type { PedestrianLook } from '../sim/pedestrian-look.ts';
+import { outInThis } from '../sim/weather.ts';
 import { createPedestrianMaterial } from './pedestrian-material.ts';
 import { bakeWalks, BONES, FRAMES, pedestrianBody } from './pedestrian-rig.ts';
 
@@ -50,6 +51,12 @@ const STRIDE = 20;
 
 export class PedestrianView {
   readonly group = new Group();
+  /**
+   * The share of the crowd that is out (spec section 13.4). 1 on a clear day;
+   * a storm keeps the rest of it indoors. The people waiting for a tram and
+   * anyone the player has startled are drawn whatever the sky is doing.
+   */
+  share = 1;
   private readonly crowd: AmbientPedestrians;
   private readonly tram: TramLine | undefined;
   private readonly waiting: WaitingPassenger[] = [];
@@ -121,6 +128,7 @@ export class PedestrianView {
       if (count >= PEDESTRIAN_CAP) break;
       if (!crowd.edgeMeets(crowd.edgeAt(id, time), minX, minY, maxX, maxY)) continue;
       if (startled.length > 0 && startledOf(state.pedestrians, id) !== undefined) continue;
+      if (!outInThis(id, this.share)) continue;
       const pose = crowd.poseAt(id, time, this.pose);
       if (pose.x < minX || pose.x > maxX || pose.y < minY || pose.y > maxY) continue;
       this.write(count++, this.lookOf(id), pose);

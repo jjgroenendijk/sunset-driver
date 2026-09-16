@@ -656,10 +656,10 @@ export function isLoose(surface: Surface): boolean {
 }
 
 /**
- * What is left of the grip when the surface is wet, as a fraction. Weather does
- * not exist yet (spec section 13.4), so nothing sets a wetness above zero; the
- * term is here so the grip has one definition when weather arrives rather than
- * a second one written beside it.
+ * What is left of the grip when the surface is wet, as a fraction. A road
+ * under standing water gives up a little over a third of what it had, which is
+ * enough that a corner taken at a dry speed runs wide. `weather.ts` is what
+ * sets the wetness, and `physics.ts` what hands it to the wheels.
  */
 export const WET_GRIP = 0.62;
 

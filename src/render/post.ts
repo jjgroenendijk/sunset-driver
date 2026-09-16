@@ -8,7 +8,7 @@
  *   sees them.
  * - SMAA, so a kerb seen from 60 m up is a line rather than a staircase.
  * - The colour grade of `grade.ts`, as a 3D lookup table generated at runtime
- *   and rebuilt as the day turns.
+ *   and rebuilt as the day and the weather turn.
  *
  * The order they run in is the whole of the design. The scene is drawn into a
  * texture in real light, where the sun is thousands of times the strength of a
@@ -33,6 +33,7 @@ import { Data3DTexture, DataUtils, HalfFloatType, LinearFilter, NoToneMapping } 
 import { RenderPipeline, type WebGPURenderer } from 'three/webgpu';
 import type { Camera, Scene } from 'three';
 import { START_TICK } from '../sim/simulation.ts';
+import { weatherAt } from '../sim/weather.ts';
 import { daylightAt } from './daylight.ts';
 import {
   gradeAt,
@@ -101,9 +102,18 @@ export class PostChain {
   private settings: PostQuality;
   /** Which rebuild of the grade the table holds. */
   private step = -1;
+  /** The world's seed, which with the tick is what the weather is read from. */
+  private readonly seed: number;
 
-  constructor(renderer: WebGPURenderer, scene: Scene, camera: Camera, quality: PostQuality = FULL_QUALITY) {
+  constructor(
+    renderer: WebGPURenderer,
+    scene: Scene,
+    camera: Camera,
+    quality: PostQuality = FULL_QUALITY,
+    seed = 0,
+  ) {
     this.renderer = renderer;
+    this.seed = seed;
     this.settings = { ...quality };
     this.pipeline = new RenderPipeline(renderer);
     // The chain tone maps and encodes the frame itself, at the point in the
@@ -131,12 +141,17 @@ export class PostChain {
     this.apply();
   }
 
-  /** Grade the frame as the light stands at a tick (spec sections 10.5, 10.6). */
+  /**
+   * Grade the frame as the light and the weather stand at a tick (spec sections
+   * 10.5, 10.6, 13.4). The table is rebuilt a fixed number of times a day and
+   * not otherwise, so the weather reaches the grade within six seconds of
+   * changing rather than on the frame it changes.
+   */
   set time(tick: number) {
     const step = gradeStep(tick);
     if (step === this.step) return;
     this.step = step;
-    writeLut(gradeAt(daylightAt(tick)), this.graded);
+    writeLut(gradeAt(daylightAt(tick), weatherAt(this.seed, tick)), this.graded);
     const texels = this.lut.image.data as Uint16Array;
     for (let i = 0; i < LUT_LENGTH; i++) texels[i] = DataUtils.toHalfFloat(this.graded[i] ?? 0);
     this.lut.needsUpdate = true;

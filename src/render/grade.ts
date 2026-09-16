@@ -9,7 +9,8 @@
  * The build ships no image files (spec section 10.2), so the cube is generated
  * at runtime like every other texture in the game. It is generated again as the
  * day turns: the grade is a function of the light, warm at dusk and cool after
- * dark. Weather joins it when spec section 13.4 lands.
+ * dark, and of the weather over it (spec section 13.4), which washes the colour
+ * out of the frame.
  *
  * Everything here is pure arithmetic, so the tests run it headless and the
  * table is the same on every machine.
@@ -22,8 +23,10 @@
  * that warms a dusk shadow would turn a dark frame orange.
  */
 import { clamp, lerp } from '../core/math.ts';
+import { CLEAR_WEATHER, type Weather } from '../sim/weather.ts';
 import type { Daylight } from './daylight.ts';
 import { dayFraction } from './daylight.ts';
+import { overcastOf } from './weather-look.ts';
 
 /** A colour as three channels, black at 0 and white at 1. */
 export type Rgb = readonly [number, number, number];
@@ -104,15 +107,29 @@ const NIGHT_GRADE: ColourGrade = {
 };
 
 /**
- * The grade one moment of the day asks for.
+ * The grade under cloud (spec section 13.4). The colour goes out of the frame,
+ * the contrast with it, and what is left leans blue: a wet street reads as one
+ * flat grey sheet, and the tail lights and neon on it are the only colour left.
+ */
+const CLOUD_GRADE: ColourGrade = {
+  contrast: 0.94,
+  saturation: 0.72,
+  lift: [0.004, 0.006, 0.012],
+  gain: [0.94, 0.96, 1],
+};
+
+/**
+ * The grade one moment of the day and its weather ask for.
  *
  * The day grade gives way to the night one as the light goes, and dusk is laid
  * over whatever that leaves: the sun stands on the horizon for a few minutes
  * either side of the turn, and that band is the one the eye reads as sunset.
+ * The cloud grade goes over all of it, because rain at sunset is still rain.
  */
-export function gradeAt(light: Daylight): ColourGrade {
+export function gradeAt(light: Daylight, weather: Weather = CLEAR_WEATHER): ColourGrade {
   const dark = mixGrade(DAY_GRADE, NIGHT_GRADE, light.night);
-  return mixGrade(dark, DUSK_GRADE, light.dusk);
+  const hour = mixGrade(dark, DUSK_GRADE, light.dusk);
+  return mixGrade(hour, CLOUD_GRADE, overcastOf(weather));
 }
 
 /**

@@ -270,6 +270,11 @@ async function boot(): Promise<void> {
       // colour grade follows the same tick (spec section 10.6).
       session.world.time = session.state.tick;
       session.post.time = session.state.tick;
+      // A storm keeps the ambient life off the street (spec section 13.4). The
+      // crowd is laid out once from the seed, so the weather decides who is
+      // drawn rather than who exists.
+      session.traffic.share = session.world.weatherNow.crowd;
+      session.crowd.share = session.world.weatherNow.crowd;
       if (flying) {
         free.camera.update(elapsed / 1000, keyboard.freeCamera());
         free.camera.writeTo(camera.camera);
@@ -488,7 +493,7 @@ async function boot(): Promise<void> {
   // The chain is built on the world's scene and the camera that follows the
   // player, so it is made here rather than beside the renderer. Waiting for it
   // means the first frame is antialiased like every frame after it.
-  const post = new PostChain(renderer, world.scene, camera.camera);
+  const post = new PostChain(renderer, world.scene, camera.camera, undefined, state.seed);
   await post.ready();
   // WebGPU compiles a pipeline the first time it draws with it, so a session
   // that starts here compiles the whole city over its first frames: the street

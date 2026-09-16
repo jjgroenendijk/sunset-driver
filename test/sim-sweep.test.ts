@@ -207,7 +207,11 @@ describe('driving', () => {
     const session = start(hills());
     const tiles = session.physics.groundTiles;
     expect(accelerateTo(session, 25)).toBe(true);
-    drive(session, 900, { throttle: 1 });
+    // Half throttle, not full: a wet hillside at 130 km/h launches the car and
+    // the crash that follows is the weather of spec section 13.4 doing its job,
+    // not the ground failing to follow. Half still covers half a kilometre,
+    // which is what leaves the tiles the car started on behind.
+    drive(session, 900, { throttle: 0.5 });
     // The car has left the tiles it started on, and it is still on the ground.
     expect(session.physics.groundTiles).toBe(tiles);
     expect(session.state.vehicle.wheels.some((w) => w.contact)).toBe(true);

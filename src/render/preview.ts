@@ -261,7 +261,7 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   // The effects of spec section 10.6 are part of what the game draws, so the
   // picture is taken through them. The chain tone maps and encodes the frame
   // itself, which is what the output target is written with.
-  const post = new PostChain(renderer, scene.scene, camera.camera, tier.post);
+  const post = new PostChain(renderer, scene.scene, camera.camera, tier.post, scene.world.seed);
   post.time = tick;
   // SMAA's tables are decoded from data URLs, so a frame drawn before they
   // land is a different picture. The same request twice takes the same one.
