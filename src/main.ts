@@ -1,13 +1,9 @@
 import { Raycaster, Vector2 } from 'three';
 import { randomSeedString, readSeedFromLocation, seedFromString, writeSeedToHash } from './core/seed.ts';
 import { BASE_DISTANCE, FollowCamera, PULL_MARGIN, type RoofHeight } from './render/camera.ts';
-import { PostChain, postGraphs } from './render/post.ts';
-import {
-  frameBudgetFrom,
-  QUALITY_TIERS,
-  QualityMonitor,
-  type QualityChange,
-} from './render/quality.ts';
+import { PostChain } from './render/post.ts';
+import { frameBudgetFrom, QualityMonitor } from './render/quality.ts';
+import { applyQuality, warmPasses } from './render/warm.ts';
 import { createRenderer, probeWebGpu } from './render/renderer.ts';
 import { createTitleScene } from './render/scene.ts';
 import { RenderSmoother } from './render/smooth.ts';
@@ -27,25 +23,26 @@ import { EMPTY_INPUT } from './sim/input.ts';
 import { createSave, restoreSimState, saveFromText, saveToText, type SaveFile } from './sim/save.ts';
 import { createSimState, stepSim, type SimState } from './sim/simulation.ts';
 import { AmbientTraffic, trafficRoadsOf } from './sim/traffic.ts';
-import { commitCrime, PoliceForce, policeDistrictsOf } from './sim/police.ts';
+import { PoliceForce, policeDistrictsOf } from './sim/police.ts';
 import { TramLine } from './sim/tram.ts';
 import { stationAt, type MetroPlace } from './sim/metro.ts';
 import { HotwireBar } from './ui/hotwire.ts';
 import { Hud } from './ui/hud.ts';
 import { MapArt } from './ui/map-draw.ts';
 import { MapPois } from './ui/map.ts';
-import { MAP_KEY, MapScreen } from './ui/map-screen.ts';
-import { Minimap, MINIMAP_NORTH_KEY } from './ui/minimap.ts';
-import { PAUSE_KEY, PauseMenu } from './ui/pause.ts';
+import { MapScreen } from './ui/map-screen.ts';
+import { Minimap } from './ui/minimap.ts';
+import { PauseMenu } from './ui/pause.ts';
+import { listenForSessionKeys } from './ui/session-keys.ts';
 import { SaveSlots, setPendingStart, takePendingStart } from './ui/saves.ts';
 import { readSettings, writeSettings, type BuildingViewChoice } from './ui/settings.ts';
-import { FREE_CAMERA_KEY, FreeCameraControls } from './ui/free-camera.ts';
+import { FreeCameraControls } from './ui/free-camera.ts';
 import { Keyboard } from './ui/keyboard.ts';
 import { LoadingScreen } from './ui/loading.ts';
 import { TitleScreen, type TitleChoice } from './ui/title.ts';
 import { TravelPanel } from './ui/travel.ts';
-import { PICKER_KEY, VehiclePicker } from './ui/vehicle-picker.ts';
-import { WEAPON_PICKER_KEY, WeaponPicker } from './ui/weapon-picker.ts';
+import { VehiclePicker } from './ui/vehicle-picker.ts';
+import { WeaponPicker } from './ui/weapon-picker.ts';
 import { dropWeapon } from './sim/pickup.ts';
 import {
   currentSlot,
@@ -69,17 +66,6 @@ const DROP_AHEAD = 3;
  * the first frame last; the shares are roughly what each step takes.
  */
 const LOADED = { plan: 0.35, ground: 0.85 };
-
-/** The debug keys that end a run (spec section 11.7), until the damage does. */
-const DIE_KEY = 'KeyK';
-const ARREST_KEY = 'KeyB';
-
-/**
- * The debug key that commits a crime (spec section 14), so a chase can be
- * started without shooting anybody. Each press is one assault, which is most of
- * a star.
- */
-const CRIME_KEY = 'KeyL';
 
 /** A session in progress: the state, the world it is played in, and the overlay. */
 interface Session {
@@ -117,46 +103,6 @@ interface Session {
   crowd: PedestrianView;
   /** The pause menu of spec section 12. While it is open the simulation does not step. */
   pause: PauseMenu;
-}
-
-/**
- * Hand a tier to the two halves that draw at it, and say so (spec section 9.2).
- *
- * The line in the console is how a tier change is read back after the fact:
- * the player sees a frame that holds its rate, and the log says what it cost.
- */
-function applyQuality(session: Session, change: QualityChange): void {
-  session.world.quality = change.to;
-  session.post.quality = change.to.post;
-  console.info(
-    `quality: ${change.from.name} -> ${change.to.name} at ${change.frameMs.toFixed(1)} ms a frame ` +
-      `(budget ${session.quality.budget} ms)`,
-  );
-}
-
-/**
- * Draw one frame through each post graph, with the water in view, before the
- * session starts (spec sections 9.2, 10.6).
- *
- * The four quality tiers come to three graphs, and a graph is built once and
- * kept, so a tier change later swaps to a chain the renderer has compiled. The
- * water sheet is shown for each of these frames, which is what compiles the
- * mirror pass on an inland session that would otherwise meet it the first time
- * it drives to the sea. The render scale stays where it stands: what a program
- * is keyed on is the graph, not the size the frame is drawn at.
- *
- * An animation frame is waited for between them, so the loading screen is drawn
- * rather than held still.
- */
-async function warmPasses(world: WorldScene, post: PostChain): Promise<void> {
-  const standing = post.quality;
-  for (const graph of postGraphs(QUALITY_TIERS.map((tier) => tier.post))) {
-    post.quality = { ...graph, renderScale: standing.renderScale };
-    world.showWater();
-    post.render();
-    await new Promise((frame) => requestAnimationFrame(frame));
-  }
-  post.quality = standing;
 }
 
 async function boot(): Promise<void> {
@@ -350,7 +296,7 @@ async function boot(): Promise<void> {
       // the frame before this one that is being judged. A frame drawn with the
       // free camera is never a performance measurement, so it is not counted.
       const change = flying || paused ? undefined : session.quality.sample(elapsed);
-      if (change !== undefined) applyQuality(session, change);
+      if (change !== undefined) applyQuality(session.world, session.post, change, session.quality.budget);
       session.hud.update(
         session.state,
         session.world.drawCallsPerChunk,
@@ -654,35 +600,7 @@ async function boot(): Promise<void> {
     if (pause.open || map.open || !minimap.holds(event.clientX, event.clientY)) return;
     state.waypoint = event.button === 2 ? null : minimap.pointAt(event.clientX, event.clientY);
   });
-  window.addEventListener('keydown', (event) => {
-    // The open pause menu takes every key, so nothing behind it moves.
-    if (pause.open) {
-      pause.key(event);
-      return;
-    }
-    if (event.repeat) return;
-    // Escape closes the map first, and opens the pause menu when nothing else is open.
-    if (event.code === PAUSE_KEY && !map.open) {
-      pause.show();
-      return;
-    }
-    if (event.code === PICKER_KEY) picker.toggle();
-    if (event.code === WEAPON_PICKER_KEY) weapons.toggle();
-    // The debug triggers of spec section 11.7. Each writes the record between
-    // two ticks, as the damage and the police will, and the next tick resolves
-    // it, so a run ended this way replays like any other.
-    if (event.code === DIE_KEY) state.player.health = 0;
-    if (event.code === ARREST_KEY) state.arrested = true;
-    if (event.code === CRIME_KEY) commitCrime(state, 'assault');
-    if (event.code === MAP_KEY) map.toggle();
-    if (event.code === MINIMAP_NORTH_KEY) minimap.toggleNorth();
-    if (event.code === 'Escape' && map.open) map.toggle();
-    if (map.open && (event.code === 'Equal' || event.code === 'NumpadAdd')) map.zoom(-1);
-    if (map.open && (event.code === 'Minus' || event.code === 'NumpadSubtract')) map.zoom(1);
-    // The developer free camera. It takes over from where the game camera
-    // stands, and pointer lock needs this key press to ask for it.
-    if (event.code === FREE_CAMERA_KEY) free.toggle(camera.camera);
-  });
+  listenForSessionKeys(window, { state, pause, map, minimap, picker, weapons, free, camera });
 
   const trafficView = new TrafficView(traffic);
   world.scene.add(trafficView.group);
