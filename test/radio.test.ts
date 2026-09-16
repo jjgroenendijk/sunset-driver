@@ -10,6 +10,7 @@ import { TICK_RATE } from '../src/sim/clock.ts';
 import { EMPTY_INPUT, type InputFrame } from '../src/sim/input.ts';
 import type { PoliceKind, PoliceUnit } from '../src/sim/police.ts';
 import { stepRadio } from '../src/sim/radio.ts';
+import { createSave, restoreSimState, saveFromText, saveToText } from '../src/sim/save.ts';
 import { createSimState, type SimState } from '../src/sim/simulation.ts';
 import type { Culture } from '../src/world/types.ts';
 
@@ -81,6 +82,15 @@ describe('the dial', () => {
     state.player.driving = false;
     stepRadio(state, input({ station: 1 }));
     expect(state.vehicle.station).toBe(0);
+  });
+
+  it('is carried by a save, so a car is found on the station it was left on', () => {
+    const state = session();
+    state.vehicle.station = 3;
+    const save = saveFromText(saveToText(createSave('4321', state)));
+    const loaded = createSimState(state.seed);
+    restoreSimState(loaded, save);
+    expect(loaded.vehicle.station).toBe(3);
   });
 
   it('keeps every station running whether or not anybody is listening', () => {
