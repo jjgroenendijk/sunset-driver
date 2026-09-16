@@ -1,0 +1,58 @@
+/* The phone (`touch-fly.ts`, `touch-bar.ts`, `docs/menus.md`).
+   Two kinds of rule live here: the fly pad, which exists nowhere else, and what
+   `body.touch` changes about the interface the mouse already had. The safe-area
+   insets are the notch and the home bar of an iPhone; with `viewport-fit=cover`
+   in `index.html` the page runs under both, and nothing may be laid out over
+   them. `body.flying` is set while the free camera has the screen. */
+
+.touch-key { display: grid; place-items: center; box-sizing: border-box; min-width: 3rem; min-height: 3rem; padding: 0 .6rem; border: 1px solid rgba(243,235,219,.4); border-radius: 1.5rem; background: rgba(24,11,20,.72); color: #f6d6c1; font: 600 .8rem/1 var(--it-sans); letter-spacing: .08em; text-transform: uppercase; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); touch-action: none; }
+.touch-key-held { border-color: #ff8a5c; background: rgba(163,34,27,.6); color: #fff; }
+
+.touch-bar { position: fixed; z-index: 12; top: calc(12px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right)); display: flex; gap: .5rem; }
+
+.touch-fly { position: fixed; z-index: 5; inset: 0; pointer-events: none; }
+.touch-fly > * { pointer-events: auto; }
+/* The whole screen turns the view. It lies under everything else of the pad,
+   so a thumb on the stick or a key is never also dragging the camera round. */
+.touch-look { position: absolute; inset: 0; touch-action: none; }
+.touch-stick { position: absolute; left: calc(16px + env(safe-area-inset-left)); bottom: calc(20px + env(safe-area-inset-bottom)); width: 8rem; height: 8rem; border: 1px solid rgba(243,235,219,.35); border-radius: 50%; background: rgba(24,11,20,.45); touch-action: none; }
+.touch-knob { position: absolute; left: 50%; top: 50%; width: 3.25rem; height: 3.25rem; border-radius: 50%; background: rgba(243,235,219,.5); transform: translate(-50%, -50%); }
+.touch-side { position: absolute; right: calc(16px + env(safe-area-inset-right)); top: 50%; display: grid; gap: .6rem; transform: translateY(-50%); }
+.touch-readout { position: absolute; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom)); padding: .2rem .6rem; border-radius: .8rem; background: rgba(24,11,20,.6); font-size: .8rem; font-variant-numeric: tabular-nums; transform: translateX(-50%); pointer-events: none; }
+
+/* The map has to come out over the pad, and the pause menu over both. */
+.map-screen { z-index: 8; }
+
+body.touch #game { touch-action: none; }
+/* A finger has no hover and no arrow keys, so the hints for them say nothing. */
+body.touch .title-hint { display: none; }
+/* Every tap target of the menus, at the 44 px Apple asks for and a little over. */
+body.touch .title-menu-item { padding: 1.15rem .9rem; }
+body.touch .title-cta, body.touch .title-back { padding: 1.1rem 2rem; }
+body.touch .title-step, body.touch .title-icon { width: 2.9rem; height: 2.9rem; }
+body.touch .title-choice { grid-template-columns: 6rem 2.9rem 1fr 2.9rem; }
+/* Safari zooms the page in on a field set under 16 px and never zooms back out. */
+body.touch .title-seed, body.touch .pause-text { font-size: 16px; }
+body.touch .title, body.touch .pause { padding: calc(1rem + env(safe-area-inset-top)) calc(1rem + env(safe-area-inset-right)) calc(1rem + env(safe-area-inset-bottom)) calc(1rem + env(safe-area-inset-left)); }
+/* The status block is held short of the bar in the same corner: it is a line
+   of developer text, and running under the buttons is what it would do. */
+body.touch .hud { top: calc(12px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); max-width: 52vw; font-size: .8rem; }
+body.touch .hud-panel { left: calc(12px + env(safe-area-inset-left)); bottom: calc(12px + env(safe-area-inset-bottom)); }
+body.touch .minimap { right: calc(12px + env(safe-area-inset-right)); bottom: calc(12px + env(safe-area-inset-bottom)); width: 120px; height: 120px; }
+/* The developer pickers are key-only, and a phone reaches neither key. */
+body.touch .picker { display: none; }
+/* Nothing of the street's own HUD means anything from the air. */
+body.touch.flying .hud-panel, body.touch.flying .hotwire, body.touch.flying .travel { display: none; }
+/* The stick would stand on the corner map, so the map goes up out of its way. */
+body.touch.flying .minimap { bottom: calc(9.5rem + env(safe-area-inset-bottom)); }
+
+@media (orientation: landscape) and (max-height: 480px) {
+  /* A phone held sideways has no room under the stick for the corner map. */
+  body.touch.flying .minimap { display: none; }
+  .touch-stick { width: 7rem; height: 7rem; }
+}
+
+/* The map's own buttons, over the picture rather than under it: the footer is
+   a line of text, and a row of keys under that would push the map up. */
+body.touch .map-hint { padding-bottom: calc(.5rem + env(safe-area-inset-bottom)); }
+.map-keys { position: absolute; z-index: 1; right: calc(12px + env(safe-area-inset-right)); bottom: calc(2.5rem + env(safe-area-inset-bottom)); display: flex; gap: .5rem; }

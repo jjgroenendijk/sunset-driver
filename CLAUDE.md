@@ -112,6 +112,8 @@ The ones that cost a session with nothing to say why. The subsystem docs hold th
 - Rapier reads a heightfield as `heights[j * (rows + 1) + i]` with `i` walking `z`; the other way
   round gives a world rotated a quarter turn, with no error. It also keeps a force or a torque until
   it is told to forget it.
+- iOS Safari has no pointer lock and no wheel, so `ui/free-camera.ts` raises the touch pad instead;
+  a field under 16 px zooms the page in and never zooms back out.
 - WebGPU pads each row of a readback to 256 bytes, so a picture read without unpadding the rows
   comes back sheared — which looks exactly like a broken mesh.
 

@@ -34,6 +34,13 @@ it back where the player stands.
 | `Shift` | Fly six times as fast. |
 | Wheel | Set the speed, between 2 and 600 metres a second. |
 
+On a touch browser the camera is flown with the pad of `src/ui/touch-fly.ts` instead. There is no
+pointer lock to ask for — iOS Safari has never had one — so the view is turned by dragging anywhere
+on the screen, the stick under the left thumb moves the camera, a pinch sets the speed, and the keys
+down the right edge rise, fall and go fast. The flight is started and ended from the bar of
+`src/ui/touch-bar.ts` rather than from `` ` ``. `docs/menus.md` holds the rest of what a phone
+changes.
+
 While the camera is detached the keys drive the camera alone: the simulation is stepped with an
 empty input frame, so the car left behind is not also driven. The streaming rings and the entity
 fade are measured from the camera, so the ground under it is built rather than left empty; nothing
@@ -49,7 +56,7 @@ mouse does nothing, and a click on the canvas asks for the lock again. A hint ov
 which of the two states the camera is in and which key ends the flight.
 
 `src/render/free-camera.ts` is where it stands and where it looks. `src/ui/free-camera.ts` is the
-pointer lock, the mouse and the wheel, and `Keyboard.freeCamera` samples the keys.
+pointer lock, the mouse, the wheel and the touch pad, and `Keyboard.freeCamera` samples the keys.
 
 ## `node scripts/world-preview.ts <seed> out.png [--tiers=highway]`
 

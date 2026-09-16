@@ -36,6 +36,18 @@ export const LOOK_PER_PIXEL = 0.0025;
  */
 export const MAX_PITCH = (89 * Math.PI) / 180;
 
+/**
+ * Where a survey flight starts: metres over the ground it was let go at, and
+ * how far below the horizon it looks from there.
+ *
+ * It is what a phone opens the world on (`ui/touch-fly.ts`). High enough that a
+ * district reads as a district rather than as the street the player stood in,
+ * and tipped far enough down that the ground fills the frame rather than the
+ * sky.
+ */
+export const SURVEY_HEIGHT = 220;
+export const SURVEY_PITCH = (-35 * Math.PI) / 180;
+
 /** The keys, as the camera reads them. `ui/free-camera.ts` samples them. */
 export interface FreeCameraInput {
   /** -1..1 along the view direction. */
@@ -81,6 +93,16 @@ export class FreeCamera {
     this.z = camera.position.z;
     this.pitch = clampPitch(camera.rotation.x);
     this.yaw = camera.rotation.y;
+  }
+
+  /**
+   * Rise to {@link SURVEY_HEIGHT} over the ground at `groundHeight` and tip the
+   * view down at it. Where it stands on the map and which way it faces are
+   * left alone, so the flight opens on the city the session started in.
+   */
+  survey(groundHeight: number): void {
+    this.y = groundHeight + SURVEY_HEIGHT;
+    this.pitch = SURVEY_PITCH;
   }
 
   /** Turn by a mouse movement in pixels, as pointer lock reports it. */

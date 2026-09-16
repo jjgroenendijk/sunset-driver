@@ -40,6 +40,8 @@ import { PAUSE_KEY, PauseMenu } from './ui/pause.ts';
 import { SaveSlots, setPendingStart, takePendingStart } from './ui/saves.ts';
 import { readSettings, writeSettings, type BuildingViewChoice } from './ui/settings.ts';
 import { FREE_CAMERA_KEY, FreeCameraControls } from './ui/free-camera.ts';
+import { isTouchDevice, readTouchProbe } from './ui/touch.ts';
+import { markTouchUi, mountTouchBar } from './ui/touch-bar.ts';
 import { Keyboard } from './ui/keyboard.ts';
 import { LoadingScreen } from './ui/loading.ts';
 import { TitleScreen, type TitleChoice } from './ui/title.ts';
@@ -80,6 +82,17 @@ const ARREST_KEY = 'KeyB';
  * a star.
  */
 const CRIME_KEY = 'KeyL';
+
+/**
+ * The quality tier a touch session starts on (spec section 9.2).
+ *
+ * A phone is not integrated graphics on a desk. The monitor would find this
+ * level on its own inside a second, but the second it spends there is the
+ * first second of the flight, and the frame it warms and compiles at full
+ * quality is the dearest one the session ever draws. Starting here spends
+ * neither. The monitor is free to walk back up if the phone can hold it.
+ */
+const TOUCH_START_TIER = 2;
 
 /** A session in progress: the state, the world it is played in, and the overlay. */
 interface Session {
@@ -193,9 +206,13 @@ async function boot(): Promise<void> {
   const camera = new FollowCamera(window.innerWidth / window.innerHeight);
   const clock = new FixedStepClock();
   const keyboard = new Keyboard(window);
+  // A phone has no keys and no pointer lock, so it is given the buttons of
+  // `touch-bar.ts` and the fly pad of `touch-fly.ts` instead (`docs/menus.md`).
+  const touch = isTouchDevice(readTouchProbe(window));
+  if (touch) markTouchUi(document);
   // The developer free camera of `docs/dev-tooling.md`. It writes into the same
   // camera the game is played through, so nothing else in the frame changes.
-  const free = new FreeCameraControls(canvas);
+  const free = new FreeCameraControls(canvas, touch);
 
   window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight, false);
@@ -320,7 +337,7 @@ async function boot(): Promise<void> {
       session.traffic.share = session.world.weatherNow.crowd;
       session.crowd.share = session.world.weatherNow.crowd;
       if (flying) {
-        free.camera.update(elapsed / 1000, keyboard.freeCamera());
+        free.camera.update(elapsed / 1000, free.input(keyboard.freeCamera()));
         free.camera.writeTo(camera.camera);
         // The streaming rings and the entity fade are measured from wherever
         // the view is, or a flight of a few hundred metres looks at empty
@@ -391,7 +408,7 @@ async function boot(): Promise<void> {
   const pending = takePendingStart(sessionStorage);
   let choice: TitleChoice;
   if (pending) {
-    choice = { seed: pending.seed, character: pending.character, world: null };
+    choice = { seed: pending.seed, character: pending.character, world: null, explore: false };
   } else {
     const opening = readSeedFromLocation(location.hash);
     // The seed the menu opens on is built while the player is still choosing a
@@ -400,10 +417,11 @@ async function boot(): Promise<void> {
     worlds.warm(seedFromString(opening));
     const title = new TitleScreen(
       document.body,
-      { seed: opening, character: DEFAULT_APPEARANCE, world: null },
+      { seed: opening, character: DEFAULT_APPEARANCE, world: null, explore: false },
       worlds,
       (appearance) => preview.character.set(appearance),
       buildingView,
+      touch,
     );
     choice = await title.wait();
     title.destroy();
@@ -557,7 +575,11 @@ async function boot(): Promise<void> {
   await warmPasses(world, post);
   // `?budget=6` holds the game to a frame no machine makes at full quality, so
   // the tiers of spec section 9.2 can be watched stepping down.
-  const quality = new QualityMonitor(frameBudgetFrom(location.search));
+  const quality = new QualityMonitor(frameBudgetFrom(location.search), touch ? TOUCH_START_TIER : 0);
+  // The tier the monitor opens on has to be put on the two halves that draw at
+  // it, because nothing has changed a tier yet for `applyQuality` to report.
+  world.quality = quality.tier;
+  post.quality = quality.tier.post;
 
   // The debug picker of spec section 11.3: every class of the roster, put down
   // under the player. A boat goes on the nearest open water instead, since a
@@ -605,9 +627,14 @@ async function boot(): Promise<void> {
   ];
   const art = new MapArt(description, pois);
   const minimap = new Minimap(document.body, art);
-  const map = new MapScreen(document.body, art, (place) => {
-    state.waypoint = place;
-  });
+  const map = new MapScreen(
+    document.body,
+    art,
+    (place) => {
+      state.waypoint = place;
+    },
+    touch,
+  );
   const pause = new PauseMenu(document.body, choice.seed, {
     save: () => {
       slots.write(createSave(choice.seed, state));
@@ -716,6 +743,15 @@ async function boot(): Promise<void> {
     weapons,
     pause,
   };
+  // The three buttons a phone drives a session from, over the canvas.
+  if (touch) mountTouchBar(document.body, free, camera.camera, { menu: () => pause.show(), map: () => map.toggle() });
+  // Explore opens the city from the air rather than from the driver's seat: the
+  // camera is detached before the first frame and lifted over where the session
+  // started, so the screen the loading screen fades off is already the flight.
+  if (choice.explore) {
+    free.toggle(camera.camera);
+    free.camera.survey(world.heightAt(state.player.x, state.player.y));
+  }
   preview.dispose();
   last = performance.now();
   // The city is handed over rather than cut to: the screen waits for the first
