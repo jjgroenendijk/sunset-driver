@@ -16,7 +16,7 @@ import { start } from 'tone';
 import type { InputFrame } from '../sim/input.ts';
 import type { SimState } from '../sim/simulation.ts';
 import { Mixer } from './mixer.ts';
-import { AudioPlanner } from './plan.ts';
+import { AudioPlanner, type BellSource } from './plan.ts';
 import type { Listener } from './space.ts';
 
 /** The events that count as the first user gesture. */
@@ -29,6 +29,8 @@ export class GameAudio {
   private running = false;
   private silent: boolean;
   private target: Window | null = null;
+  /** The trams of spec section 13.2, whose bells are not in the record. */
+  private trams: BellSource | null = null;
 
   constructor(muted = false) {
     this.silent = muted;
@@ -43,6 +45,14 @@ export class GameAudio {
   arm(target: Window): void {
     this.target = target;
     for (const event of GESTURES) target.addEventListener(event, this.onGesture);
+  }
+
+  /**
+   * Take the session's tram line, so the bells of spec section 13.2 are rung.
+   * A session without one simply has no trams to ring.
+   */
+  watch(trams: BellSource): void {
+    this.trams = trams;
   }
 
   get muted(): boolean {
@@ -73,7 +83,7 @@ export class GameAudio {
       this.mixer.start();
       this.planner.resync(state);
     }
-    this.mixer.apply(this.planner.plan(state, input, listener), listener);
+    this.mixer.apply(this.planner.plan(state, input, listener, this.trams ?? undefined), listener);
   }
 
   /** Take every held note off. A paused session and a detached camera both do this. */

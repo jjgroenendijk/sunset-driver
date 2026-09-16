@@ -16,6 +16,7 @@ import type { Cue } from '../src/audio/cue.ts';
 import { TICK_RATE } from '../src/sim/clock.ts';
 import { EMPTY_INPUT, type InputFrame } from '../src/sim/input.ts';
 import type { PoliceKind, PoliceUnit } from '../src/sim/police.ts';
+import type { TramBell } from '../src/sim/tram.ts';
 import { createSimState, type SimState } from '../src/sim/simulation.ts';
 import { giveWeapon } from '../src/sim/weapon.ts';
 import { specOf, type VehicleClass } from '../src/sim/vehicle.ts';
@@ -312,6 +313,36 @@ describe('audio: the plan', () => {
     expect(duckOf([step])).toBe(0);
     expect(duckOf([shot])).toBeGreaterThan(0);
     expect(duckOf([step, shot])).toBe(duckOf([shot]));
+  });
+
+  it('rings a tram bell on every tick the frame stepped, and none twice', () => {
+    // A line whose trams ring on two ticks, which a frame of three ticks covers.
+    const rung = [12, 14];
+    const line = {
+      bells: (tick: number, out: TramBell[] = []) => {
+        out.length = 0;
+        if (rung.includes(tick)) out.push({ tram: 0, x: 3, y: 4 });
+        return out;
+      },
+    };
+    const state = session();
+    const planner = new AudioPlanner();
+    state.tick = 10;
+    planner.plan(state, input(), state.player, line);
+    state.tick = 14;
+    const bells = planner.plan(state, input(), state.player, line).cues.filter((cue) => cue.kind === 'bell');
+    expect(bells).toHaveLength(2);
+    expect(bells[0]).toMatchObject({ x: 3, y: 4 });
+    // The same frame again rings nothing: those ticks are behind it now.
+    expect(planner.plan(state, input(), state.player, line).cues).toEqual([]);
+  });
+
+  it('rings no bell where the session has no tram line', () => {
+    const state = session();
+    const planner = new AudioPlanner();
+    planner.plan(state, input(), state.player);
+    state.tick += 1;
+    expect(planner.plan(state, input(), state.player).cues).toEqual([]);
   });
 
   it('gives the same cues for the same seed and tick', () => {

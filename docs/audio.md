@@ -47,6 +47,10 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
   or a metro trip. `main.ts` already does, and forgetting it is the loudest bug in this directory.
 - Footfalls are paced by the ground covered, not by the clock, so a sprint quickens on its own and
   standing still takes no step.
+- A tram's bell is the one cue that is not in the record at all: `TramLine.bells(tick)` is a
+  function of the tick (spec section 13.2), so the planner is handed the line itself through
+  `GameAudio.watch` and asks it about **every tick the frame stepped**. Asking only about the tick
+  the frame landed on drops about half the bells at the frame rate the game is written for.
 - `CUES_PER_FRAME` caps what one frame may fire, and `VOICE_CAP` caps what the bank holds. A cue
   that finds no free voice is **dropped, never stolen**: stealing would restart an oscillator that
   is still scheduled to stop, and Tone.js refuses a start before a pending stop.
@@ -84,7 +88,10 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
   from and to `FLOOR`, not to silence.
 - The camera of spec section 10.7 never yaws, so the screen's right is the map's `+x` and the pan is
   the sideways offset alone. If the camera ever turns, `space.ts` is the one file that has to know.
-- Checking this directory by ear needs a browser. A page that imports `src/audio/mixer.ts` from the
-  dev server, clicks once for the gesture and reads a `Tone.Analyser` on the effects bus is enough
-  to show it makes sound and throws nothing; the full game on software WebGPU takes too long to
-  reach the street to be useful for it.
+- Checking this directory by ear needs a browser, so check it by meter instead:
+  `node scripts/audio-check.ts` renders a made-up moment of each kind through an offline audio
+  context in a headless Chromium and prints the peak, the loudness and the silence of each. Run it
+  after changing a voice or a level. The full game on software WebGPU takes far too long to reach
+  the street to be useful for this.
+- A voice's gain is not its loudness. A band of noise through a closing filter comes out well under
+  an oscillator at the same gain, so a level is read off that meter rather than reasoned about.
