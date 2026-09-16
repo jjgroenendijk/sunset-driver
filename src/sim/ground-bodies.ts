@@ -10,6 +10,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { PARAPET_HEIGHT, type DeckSpan } from '../world/decks.ts';
 import type { Surface } from '../world/surface.ts';
+import type { MetroPlace } from './metro.ts';
 import type { Place } from './on-foot.ts';
 import type { ParkedCars } from './parked.ts';
 import type { AmbientTraffic } from './traffic.ts';
@@ -50,6 +51,11 @@ export interface Ground {
    * an arrest puts the player back. A test that needs none leaves them out.
    */
   stations?: readonly Place[];
+  /**
+   * The street entrances of the metro stations (spec section 13.3), which fast
+   * travel goes between. A test that needs none leaves them out.
+   */
+  metro?: readonly MetroPlace[];
   /**
    * The ambient traffic of the roads (spec section 13.1). A test that is not
    * about traffic leaves it out, and nothing drives past.

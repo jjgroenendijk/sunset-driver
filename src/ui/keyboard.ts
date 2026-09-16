@@ -1,6 +1,9 @@
 import type { FreeCameraInput } from '../render/free-camera.ts';
 import type { InputFrame } from '../sim/input.ts';
 
+/** How many stations the number keys reach, which is what the panel shows. */
+export const TRAVEL_KEYS = 9;
+
 /**
  * Keyboard state sampled once per simulation tick into an InputFrame.
  * `controls.ts` is the one list of the bindings; this must stay in step with it.
@@ -11,6 +14,8 @@ import type { InputFrame } from '../sim/input.ts';
  */
 export class Keyboard {
   private readonly down = new Set<string>();
+  /** The number key a destination was last read from, so holding it asks once. */
+  private travelHeld = '';
 
   constructor(target: Window) {
     target.addEventListener('keydown', (e) => {
@@ -45,7 +50,28 @@ export class Keyboard {
       aim: this.is('KeyQ'),
       reload: this.is('KeyR'),
       cycle: this.is('KeyC'),
+      travel: this.destination(),
     };
+  }
+
+  /**
+   * The metro destination a number key asks for (spec section 13.3): a place in
+   * the list the station panel shows, counted from 1, and 0 for no choice.
+   *
+   * A held key asks once. The panel lists the stations of the record, so the
+   * same key held down at the far end of a trip would leave the player riding
+   * the line back and forth as long as their finger was on it.
+   */
+  private destination(): number {
+    for (let i = 1; i <= TRAVEL_KEYS; i++) {
+      const code = `Digit${i}`;
+      if (!this.is(code)) continue;
+      if (this.travelHeld === code) return 0;
+      this.travelHeld = code;
+      return i;
+    }
+    this.travelHeld = '';
+    return 0;
   }
 
   /**

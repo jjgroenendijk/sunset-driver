@@ -31,6 +31,7 @@ how the steps are watched on a machine that does not need them.
 | Aim | Q |
 | Reload | R |
 | Cycle weapon | C |
+| Metro: travel to the station on the panel | 1 to 9 |
 | Pause menu | Esc |
 | Map | M |
 | Minimap north up | N |
