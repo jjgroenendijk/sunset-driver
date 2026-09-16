@@ -28,6 +28,15 @@
  * owns: the render scale, and a switch for each effect. `quality.ts` holds the
  * table of tiers and the frame-time monitor that walks it; `world-scene.ts`
  * owns the rest of what a tier changes.
+ *
+ * A graph is built once and kept. Building one costs a WGSL program, which
+ * three.js generates on the frame thread: a chain rebuilt on every tier change
+ * held the game still for about half a second each time, and never got cheaper,
+ * because a fresh node is a fresh cache key however many times the same effects
+ * have been compiled before. So each combination of effects is built on the
+ * first tier that asks for it and kept in {@link PostChain.chains}, and a tier
+ * change swaps the pipeline's output node to one the renderer has already
+ * compiled. A tier that moves only the render scale changes no node at all.
  */
 import { Data3DTexture, DataUtils, HalfFloatType, LinearFilter, NoToneMapping } from 'three';
 import { RenderPipeline, type WebGPURenderer } from 'three/webgpu';
@@ -81,6 +90,19 @@ export interface PostQuality {
   grade: boolean;
 }
 
+/**
+ * One graph of the chain, built once and kept for every tier that draws it.
+ * The effects are held because each owns render targets, which are released
+ * with the chain and not before.
+ */
+interface Chain {
+  /** What the pipeline draws the frame through. */
+  output: TslNode;
+  effects: TslNode[];
+  /** The SMAA node, where this graph has one. */
+  antialias: TslNode | undefined;
+}
+
 /** Everything on, at the display's own resolution. */
 export const FULL_QUALITY: PostQuality = { renderScale: 1, bloom: true, smaa: true, grade: true };
 
@@ -95,10 +117,8 @@ export class PostChain {
   private readonly lut: Data3DTexture;
   /** The cube in linear light, before it is packed into the texture's half floats. */
   private readonly graded = new Float32Array(LUT_LENGTH);
-  /** The nodes of the chain as it stands, so a change of quality releases them. */
-  private effects: TslNode[] = [];
-  /** The SMAA node, which holds two tables that arrive a turn of the loop late. */
-  private antialias: TslNode | undefined;
+  /** Every graph built so far, by the effects it draws, so a tier change reuses one. */
+  private readonly chains = new Map<string, Chain>();
   private settings: PostQuality;
   /** Which rebuild of the grade the table holds. */
   private step = -1;
@@ -138,7 +158,8 @@ export class PostChain {
 
     // A session starts at 08:00, as the scene does, so the first frame is graded.
     this.time = START_TICK;
-    this.apply();
+    setRenderScale(this.renderer, this.settings.renderScale);
+    this.select();
   }
 
   /**
@@ -157,14 +178,24 @@ export class PostChain {
     this.lut.needsUpdate = true;
   }
 
-  /** What the frame is drawn at. Setting it rebuilds the chain (spec section 9.2). */
+  /**
+   * What the frame is drawn at (spec section 9.2). Setting it hands the render
+   * scale to the renderer, and draws through the graph the effects ask for,
+   * which is built the first time a tier asks for it and reused after that.
+   */
   get quality(): PostQuality {
     return { ...this.settings };
   }
 
   set quality(quality: PostQuality) {
+    const standing = this.settings;
     this.settings = { ...quality };
-    this.apply();
+    setRenderScale(this.renderer, quality.renderScale);
+    // The render scale is handed to the renderer and nothing else. A tier that
+    // moves only that keeps the graph it is drawn through, which is what makes
+    // the cheapest tier change cost no compile at all.
+    if (graphKey(standing) === graphKey(quality)) return;
+    this.select();
   }
 
   /**
@@ -176,12 +207,14 @@ export class PostChain {
    * that wants its first frame to be its best waits here first.
    */
   async ready(): Promise<void> {
-    const node = this.antialias;
-    if (node === undefined) return;
-    for (const table of [node._areaTexture, node._searchTexture]) {
-      const image = table.image as HTMLImageElement;
-      if (!image.complete) await image.decode();
-      table.needsUpdate = true;
+    for (const [, chain] of this.chains) {
+      const node = chain.antialias;
+      if (node === undefined) continue;
+      for (const table of [node._areaTexture, node._searchTexture]) {
+        const image = table.image as HTMLImageElement;
+        if (!image.complete) await image.decode();
+        table.needsUpdate = true;
+      }
     }
   }
 
@@ -191,21 +224,40 @@ export class PostChain {
   }
 
   dispose(): void {
-    this.release();
+    for (const [, chain] of this.chains) {
+      for (const effect of chain.effects) effect.dispose();
+    }
+    this.chains.clear();
     this.scenePass.dispose();
     this.pipeline.dispose();
     this.lut.dispose();
   }
 
-  /** Build the chain the settings ask for, and hand the renderer its scale. */
-  private apply(): void {
-    setRenderScale(this.renderer, this.settings.renderScale);
-    this.release();
+  /**
+   * Draw through the graph the settings ask for, building it if this is the
+   * first tier to ask. The pipeline is handed a node it may have drawn before,
+   * so the renderer answers out of its own caches and compiles nothing.
+   */
+  private select(): void {
+    const key = graphKey(this.settings);
+    let chain = this.chains.get(key);
+    if (chain === undefined) {
+      chain = this.build();
+      this.chains.set(key, chain);
+    }
+    this.pipeline.outputNode = chain.output;
+    this.pipeline.needsUpdate = true;
+  }
+
+  /** Build one graph of the effects the settings stand at. */
+  private build(): Chain {
+    const effects: TslNode[] = [];
+    let antialias: TslNode | undefined;
 
     let colour = this.colour;
     if (this.settings.bloom) {
       const glow = bloom(colour, BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
-      this.effects.push(glow);
+      effects.push(glow);
       colour = vec4(colour.rgb.add(glow.rgb), 1);
     }
     // The exposure is already in the frame, so the mapping is asked for none.
@@ -213,15 +265,14 @@ export class PostChain {
     if (this.settings.grade) colour = this.lookUp(colour);
     if (this.settings.smaa) {
       const edges = smaa(colour);
-      this.effects.push(edges);
-      this.antialias = edges;
+      effects.push(edges);
+      antialias = edges;
       colour = edges;
     }
 
     // The tone mapping above is the frame's; this is the encode the display
     // asks for, and nothing else.
-    this.pipeline.outputNode = renderOutput(colour, NoToneMapping);
-    this.pipeline.needsUpdate = true;
+    return { output: renderOutput(colour, NoToneMapping), effects, antialias };
   }
 
   /**
@@ -241,11 +292,29 @@ export class PostChain {
     const graded = lut3D(encoded, texture3D(this.lut), LUT_SIZE, 1);
     return vec4(graded.rgb.pow(LUT_GAMMA), colour.a);
   }
+}
 
-  /** Release the effects of the chain as it stands, with the targets they hold. */
-  private release(): void {
-    for (const effect of this.effects) effect.dispose();
-    this.effects = [];
-    this.antialias = undefined;
+/**
+ * What a graph is built from: the effects, and not the size the frame is drawn
+ * at. Two tiers that draw the same effects share one chain.
+ */
+function graphKey(quality: PostQuality): string {
+  return `${quality.bloom ? 'b' : '-'}${quality.grade ? 'g' : '-'}${quality.smaa ? 's' : '-'}`;
+}
+
+/**
+ * The distinct graphs a list of quality settings asks for, in the order they
+ * first appear. The four tiers of `quality.ts` come to three graphs, so warming
+ * the chain behind the loading screen is three frames rather than four.
+ */
+export function postGraphs(qualities: readonly PostQuality[]): readonly PostQuality[] {
+  const seen = new Set<string>();
+  const graphs: PostQuality[] = [];
+  for (const quality of qualities) {
+    const key = graphKey(quality);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    graphs.push({ ...quality });
   }
+  return graphs;
 }

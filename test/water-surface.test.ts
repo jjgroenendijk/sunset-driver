@@ -82,6 +82,27 @@ describe('the water surface', () => {
     surface.dispose();
   });
 
+  it('shows the sheet for one frame wherever the camera stands, to warm the mirror', () => {
+    const surface = createWaterSurface(islandWorld());
+    // Inland, where the mirror would otherwise never run and so never compile.
+    surface.follow(0, 0);
+    expect(surface.object.visible).toBe(false);
+    surface.show();
+    expect(surface.object.visible).toBe(true);
+    // The next frame takes it back: this is one frame behind the loading
+    // screen, not a sheet drawn over the whole map for the session.
+    surface.follow(0, 0);
+    expect(surface.object.visible).toBe(false);
+
+    // Held out by hand, it stays out: the frame profiler's `--no-water` is
+    // asking for no water at all.
+    surface.shown = false;
+    surface.show();
+    expect(surface.object.visible).toBe(false);
+
+    surface.dispose();
+  });
+
   it("takes the light of the day and a new mirror share without rebuilding anything", () => {
     const surface = createWaterSurface(islandWorld());
     expect(() => {

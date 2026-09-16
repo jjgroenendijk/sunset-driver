@@ -137,6 +137,15 @@ export interface WaterSurface {
    * once a frame, wherever the view is centred.
    */
   follow(x: number, y: number): void;
+  /**
+   * Draw the sheet on the next frame wherever the camera stands, so that frame
+   * compiles the mirror pass. The mirror is a second pass over the scene and
+   * its programs are built the first time it runs, which on an inland session
+   * is the first frame the sea comes into view — a frame the player is already
+   * driving through. This is how that cost is paid behind the loading screen
+   * instead. {@link WaterSurface.follow} takes the sheet back the next frame.
+   */
+  show(): void;
   dispose(): void;
 }
 
@@ -202,6 +211,9 @@ export function createWaterSurface(world: WorldDescription): WaterSurface {
     },
     follow(x: number, y: number): void {
       mesh.visible = this.shown && waterNear(sheet, x, y, SHADOW_DISTANCE);
+    },
+    show(): void {
+      mesh.visible = this.shown;
     },
     dispose(): void {
       geometry.dispose();

@@ -20,6 +20,7 @@ import {
   thinned,
   type QualityChange,
 } from '../src/render/quality.ts';
+import { postGraphs } from '../src/render/post.ts';
 import { MIN_RENDER_SCALE } from '../src/render/renderer.ts';
 import { SHADOW_DISTANCE, SHADOW_MAP_SIZE } from '../src/render/sky.ts';
 import { REFLECTION_SCALE } from '../src/render/water-surface.ts';
@@ -105,6 +106,31 @@ describe('the quality tiers', () => {
     // in past that, so every tier keeps the whole range.
     expect(shadowDistance(FULL_TIER)).toBe(SHADOW_DISTANCE);
     expect(shadowDistance(QUALITY_TIERS[3] as never)).toBe(SHADOW_DISTANCE);
+  });
+});
+
+describe('the post graphs of the tiers', () => {
+  it('holds one graph per set of effects, whatever the render scale', () => {
+    const graphs = postGraphs(QUALITY_TIERS.map((tier) => tier.post));
+    // A graph is what a WGSL program is built from, and the render scale is not
+    // part of it: the top two tiers draw the same effects at different sizes
+    // and share one chain, so four tiers come to three graphs.
+    expect(graphs.length).toBeLessThan(QUALITY_TIERS.length);
+    const keys = graphs.map((graph) => `${graph.bloom}|${graph.grade}|${graph.smaa}`);
+    expect(new Set(keys).size).toBe(graphs.length);
+    // Every tier is drawn through one of them.
+    for (const tier of QUALITY_TIERS) {
+      const key = `${tier.post.bloom}|${tier.post.grade}|${tier.post.smaa}`;
+      expect(keys).toContain(key);
+    }
+  });
+
+  it('answers the graphs in the order they are first asked for', () => {
+    const full = FULL_TIER.post;
+    const graphs = postGraphs([full, { ...full, renderScale: 0.5 }, { ...full, bloom: false }]);
+    expect(graphs).toHaveLength(2);
+    expect(graphs[0]?.bloom).toBe(true);
+    expect(graphs[1]?.bloom).toBe(false);
   });
 });
 
