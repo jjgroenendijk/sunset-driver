@@ -105,16 +105,24 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   gives the zone's spacing range, and the density of the district there says where in that range the
   spacing lands. A road that met nothing on one side is trimmed to a cul-de-sac rather than left
   running into nothing.
-- A zone has two spacings, so its blocks are long strips and not lozenges (spec section 6.1). The
-  fill reads `field.majorAt` at the seed to know which of the two a road is being laid at: `across`
-  for a road running across the major direction, `along` for one running with it. Two things follow
-  that are easy to get wrong. A road's clearance — the ground it needs free to be laid at all — is
-  half the *tighter* of the two, never half its own spacing, because an avenue crosses a street
-  every 90 m and would otherwise refuse itself. And `MINOR_BY_ZONE.along` in the city is set far
-  wider than a block, because the arterial fill has already laid a road every `ARTERIAL_SPACING`;
-  what bounds a downtown block the long way is the arterial, which is why the alley reads that
-  figure rather than the table's. `MINOR_BY_ZONE` and the seed and plan types live in `fill.ts`,
-  which is the vocabulary both fills are written in.
+- Both fills have two spacings, so their blocks are long strips and not lozenges (spec section
+  6.1). A fill reads `field.majorAt` at the seed to know which of the two a road is being laid at:
+  `across` for a road running across the major direction, `along` for one running with it. Two
+  things follow that are easy to get wrong. A road's clearance — the ground it needs free to be laid
+  at all — is half the *tighter* of the two, never half its own spacing, because an avenue crosses a
+  street every 90 m and would otherwise refuse itself. And `MINOR_BY_ZONE.along` in the city is set
+  far wider than a block, because the arterial fill has already laid an avenue every
+  `ARTERIAL_SPACING`; what bounds a downtown block the long way is the arterial, which is why the
+  alley reads that figure rather than the table's. `MINOR_BY_ZONE` and the seed and plan types live
+  in `fill.ts`, which is the vocabulary both fills are written in.
+- In the city the arterials are the avenue family and the streets are the cross streets between
+  them. The arterial fill lays its avenues — the arterials running with the major direction — every
+  `ARTERIAL_SPACING`, and the arterials that cross them `ARTERIAL_CROSS_BY_ZONE` times wider, which
+  in the core and the inner ring is four. A real city ties two avenues together with a street and
+  not with another arterial, and one spacing both ways laid a mesh of 230 m arterial squares over
+  downtown, where an arterial is 26 m wide with its verge and its pavement. Outside the city the
+  multiple is one: the suburbs have no avenue grid, and out there an arterial is the road that
+  reaches the next district.
 - An alley is one service lane inside one block (`alleys.ts`), never a fill generation of its own.
   `alleySeeds` walks each street and measures the ground to each side out to the next road; that
   distance is the block's depth, and the lane goes down the middle of it. So the lane stands between
