@@ -97,6 +97,14 @@ and the crowd — is in `docs/render-entities.md`.
   nearer. Nothing already in the scene is rebuilt on a change: chunks past the new far ring are
   dropped and chunks that cross between the details are asked for again, and a chunk still standing
   keeps the plants it was built with.
+- **A tier change must compile nothing.** three.js builds a WGSL program on the frame thread, which
+  takes about a quarter of a second each, so a tier change that rebuilt the post chain held the game
+  still for half a second — and it never got cheaper, because a rebuilt node is a fresh cache key
+  however often the same effects have been compiled before. `PostChain` therefore builds a graph
+  once and keeps it, one per set of effects, and a tier change swaps the pipeline's output node to a
+  chain the renderer has already compiled. A tier that moves only the render scale changes no node
+  at all. `main.ts` draws one frame through each graph behind the loading screen before the session
+  starts, so the first change of the session swaps rather than builds.
 
 ## Smoothing and fading
 
@@ -206,6 +214,11 @@ and the crowd — is in `docs/render-entities.md`.
   pass costs nothing. The check is the drawn cells exactly, so water is neither hidden where the
   player can see it nor drawn a cell beyond where they can. It is the same at every tier: the tiers
   step the mirror's resolution (`mirror` in `QUALITY_TIERS`), never whether this test runs.
+- The pass a session never runs is a pass it never compiles. An inland session first shows the sheet
+  when the player reaches the sea, and that frame compiled every material again for the mirror:
+  about 1.4 s, on a frame the player is driving through. `WaterSurface.show`, through
+  `WorldScene.showWater`, draws the sheet wherever the camera stands for the warm-up frames of
+  `main.ts`, behind the loading screen; `look` hides it again the frame after.
 - `WaterMesh` bakes its mirror into its colour graph inside a shader function the renderer only
   runs while building, so nothing outside ever reaches the mirror to steer it. `water-surface.ts`
   therefore replaces that graph with the same shading built around a reflector it holds: the
@@ -268,6 +281,11 @@ and the crowd — is in `docs/render-entities.md`.
   because it wants linear colour. The chain therefore tone maps and encodes the frame itself, and
   `outputColorTransform` is off so the pipeline does not do both again. `PostQuality` is the part of
   a quality tier this file owns: `setRenderScale` (`renderer.ts`) and a switch for each effect.
+- The graphs are built once and kept, by the effects they draw: `postGraphs` names the distinct ones
+  a list of tiers asks for, and the four tiers come to three. Setting `quality` hands the render
+  scale to the renderer and swaps the output node, and builds only where no tier has asked for that
+  set of effects yet. Hence `ready()` waits for the SMAA tables of every graph built, not only the
+  one standing.
 - `gradeAt(light)` (`grade.ts`) is the colour grade, as a table of colours the frame is looked up
   in. It is pure, so the tests run it headless, and it is rebuilt `GRADE_STEPS` times a game day
   rather than every frame. The grade works on display values and the frame is light, so

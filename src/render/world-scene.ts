@@ -304,6 +304,18 @@ export class WorldScene {
   }
 
   /**
+   * Draw the water sheet on the next frame wherever the player stands, so that
+   * frame compiles the mirror pass. {@link WorldScene.look} hides it again the
+   * frame after, off the water that stands near. The one caller is the warm-up
+   * behind the loading screen: an inland session that never showed the sheet
+   * compiles every material again for the mirror the first time the sea comes
+   * into view, which is a frame the player is driving through.
+   */
+  showWater(): void {
+    this.water.show();
+  }
+
+  /**
    * Point what is lit at the player without building anything: the dome is
    * carried rather than laid around the map, and the light pool is handed to
    * the lamps the player has come nearest to. The water sheet is shown or
