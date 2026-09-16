@@ -11,6 +11,7 @@ import { createPedestrianState, type PedestrianState } from './pedestrians.ts';
 import { createTrafficState, type TrafficState } from './traffic.ts';
 import { createLoadout, type LoadoutState, type ProjectileState } from './weapon.ts';
 import { createMetroState, stepMetro, travelling, type MetroState } from './metro.ts';
+import { createPoliceState, type PoliceState } from './police.ts';
 
 /** The serialisable, deterministic state of a session. */
 export interface SimState {
@@ -56,9 +57,10 @@ export interface SimState {
   /** The id the next pickup is given. */
   nextPickup: number;
   /**
-   * How much attention the player has drawn (spec section 14). The alarm of a
-   * theft and every shot fired raise it; nothing spends it yet, and the police
-   * issue is what will read it.
+   * How much attention the player has drawn (spec section 14). A crime raises
+   * it by what `crime.ts` weighs the crime at, and it falls again only while
+   * nobody is looking. `police.ts` reads it as how many units come and what
+   * kind.
    */
   heat: number;
   /**
@@ -85,8 +87,8 @@ export interface SimState {
   safehouse: Place;
   /**
    * True once the player has been taken in (spec section 11.7). The end of the
-   * tick turns it into a respawn at the nearest police station. The police of
-   * spec section 14 are what will set it; today only the debug key does.
+   * tick turns it into a respawn at the nearest police station. A unit that
+   * reaches a player on foot sets it (spec section 14), as does the debug key.
    */
   arrested: boolean;
   /**
@@ -112,6 +114,12 @@ export interface SimState {
    * session earned is still there when it is loaded.
    */
   metro: MetroState;
+  /**
+   * The police of spec section 14: the units that are out, where they last saw
+   * the player and when. The heat above is what calls them, and `police.ts`
+   * steps them from the physics.
+   */
+  police: PoliceState;
 }
 
 /** Dollars a new session starts with (spec section 16). */
@@ -146,6 +154,7 @@ export function createSimState(
     traffic: createTrafficState(),
     pedestrians: createPedestrianState(),
     metro: createMetroState(),
+    police: createPoliceState(),
   };
 }
 

@@ -14,6 +14,7 @@ play — the title screen, the loading screen, the pause menu and the saves — 
 - Hotwiring
 - Weapons
 - Death, arrest and heat
+- Heat and the police
 - The ground the physics reads
 - Vehicles
 - Damage, fire and skids
@@ -148,8 +149,42 @@ play — the title screen, the loading screen, the pause menu and the saves — 
   `WorldScene.stations` after `settle` and hands them to the physics as `Ground.stations`. A world
   with none sends an arrest to the safehouse. `SimState.respawn` changing is what makes `main.ts`
   snap the camera.
-- `SimState.heat` is the attention of spec section 14. Nothing spends it yet; a sounding alarm and
-  every shot fired raise it, and melee raises none, because the spec calls it silent.
+- `SimState.heat` is the attention of spec section 14: a sounding alarm, every shot fired and every
+  crime raise it, and melee raises none, because the spec calls it silent. The police read it, and
+  an arrest is what a chase ends in.
+
+## Heat and the police
+
+- `src/sim/crime.ts` is the heat of spec section 14 and nothing else: `CRIME_HEAT` weighs a crime,
+  `HEAT_CAP` is the six stars the HUD has room for, and `decayHeat` runs the heat down once nobody
+  has seen the player for `COOL_DELAY`. It is the one table; `theft.ts` and `weapon.ts` no longer
+  carry a weight of their own.
+- Every raise of the heat goes through `report` in `src/sim/police.ts`, which also writes down where
+  it happened. That is what makes the cooling honest: the clock is measured from the last thing the
+  police know, so a crime nobody stood next to still tells them the street to start on. Writing
+  `state.heat` by hand instead leaves them looking in the wrong place, and the heat cools from the
+  wrong tick.
+- `PoliceForce` is stepped by the physics, after the world has moved, so the units answer the tick
+  the player has just driven. It holds no state of the chase: `SimState.police` is the record, so a
+  save is loaded and the same force carries on from it. `PoliceRoads` (`police-route.ts`) is the
+  routing — `RoadGraph.shortestPath` over travel time — and it caches the legs of a route per unit,
+  because a route is planned every two seconds and read every tick.
+- A unit is routed to a place, never along the player's path: a chase is aimed at the last sighting,
+  a cut-off and a roadblock at a point ahead of the way the player was going, and a search at a
+  place round the last sighting that its own stream picks. A unit within `HOLD_RANGE` of its goal
+  pulls up and stands there, or a car that had arrived would drive round the block for ever.
+- A unit comes in on a road `SPAWN_RANGE` from **what the police know**, not from where the player
+  is. Sending it out round the player is what makes hiding impossible: the car arrives on top of
+  them, sees them, and the heat never cools.
+- `PoliceBodies` (`police-bodies.ts`) gives the units inside the physics box a kinematic body, the
+  way the trams have one, so a roadblock is a wall. It also answers `unitAt(handle)`, which is how a
+  round that went into a police car finds the unit it hit; `gunfire.ts` calls `shootUnit` with the
+  share of the car the round took. The helicopter carries no body at all.
+- The two exits of the spec are one rule reached two ways. Both hiding and wrecking the pursuers end
+  the sighting, and the heat cools from there. Wrecking one costs `officerKilling`, which is the
+  hard escalation the spec asks for, so the second exit is the longer one.
+- `src/render/police.ts` draws the units off the record. They are stepped once a tick like the
+  player, so nothing is evaluated between two ticks there, unlike the traffic and the trams.
 
 ## The ground the physics reads
 
@@ -335,5 +370,5 @@ play — the title screen, the loading screen, the pause menu and the saves — 
   draws that list and the black sheet over the frame; the number keys are read as an edge in
   `Keyboard`, or a held key would ride the line back and forth.
 - `MetroState.trips` is what `main.ts` watches to stand the camera down at the far station, the way
-  it watches `SimState.respawn`. Heat and a vehicle are the two refusals, and nothing spends heat
-  yet (spec section 14), so a session that has fired a shot travels no further until it ends.
+  it watches `SimState.respawn`. Heat and a vehicle are the two refusals, so a player has to lose
+  the police before the line will take them (spec section 14).
