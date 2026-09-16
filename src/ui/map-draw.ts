@@ -463,6 +463,15 @@ export function drawIcon(
       ctx.arc(r * 0.6, -r * 0.05, r * 0.4, -Math.PI / 2, Math.PI / 2);
       ctx.stroke();
       break;
+    case 'roundel':
+      // The underground's own mark: a ring with a bar across it.
+      ctx.arc(0, 0, r * 0.7, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-r, 0);
+      ctx.lineTo(r, 0);
+      ctx.stroke();
+      break;
     case 'arrow':
       ctx.moveTo(r, 0);
       ctx.lineTo(-r * 0.7, r * 0.7);

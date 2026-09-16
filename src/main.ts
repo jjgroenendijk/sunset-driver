@@ -21,6 +21,7 @@ import { createSave, restoreSimState, saveFromText, saveToText, type SaveFile } 
 import { createSimState, stepSim, type SimState } from './sim/simulation.ts';
 import { AmbientTraffic, trafficRoadsOf } from './sim/traffic.ts';
 import { TramLine } from './sim/tram.ts';
+import { stationAt, type MetroPlace } from './sim/metro.ts';
 import { HotwireBar } from './ui/hotwire.ts';
 import { Hud } from './ui/hud.ts';
 import { MapArt } from './ui/map-draw.ts';
@@ -33,6 +34,7 @@ import { readSettings, writeSettings, type BuildingViewChoice } from './ui/setti
 import { FREE_CAMERA_KEY, FreeCameraControls } from './ui/free-camera.ts';
 import { Keyboard } from './ui/keyboard.ts';
 import { TitleScreen, type TitleChoice } from './ui/title.ts';
+import { TravelPanel } from './ui/travel.ts';
 import { PICKER_KEY, VehiclePicker } from './ui/vehicle-picker.ts';
 import { WEAPON_PICKER_KEY, WeaponPicker } from './ui/weapon-picker.ts';
 import { dropWeapon } from './sim/pickup.ts';
@@ -72,6 +74,10 @@ interface Session {
   map: MapScreen;
   /** The hotwire minigame of spec section 11.4, drawn while a lock is being worked at. */
   hotwire: HotwireBar;
+  /** The metro station panel and the fade of a trip (spec section 13.3). */
+  travel: TravelPanel;
+  /** The station entrances the panel names, in the order the record numbers them. */
+  metro: readonly MetroPlace[];
   /** What draws the frame between two ticks, so the motion is smooth (spec section 9.2). */
   smooth: RenderSmoother;
   /** The debug picker of the arsenal, which shows the weapon in hand. */
@@ -189,15 +195,17 @@ async function boot(): Promise<void> {
       const paused = session.pause.open;
       const steps = paused ? 0 : clock.advance(elapsed);
       const respawned = session.state.respawn;
+      const trips = session.state.metro.trips;
       for (let i = 0; i < steps; i++) {
         // The pose the step starts from is kept before it is taken, so the
         // frame is drawn between the last two ticks rather than on the last.
         session.smooth.capture(session.state);
         stepSim(session.state, flying ? EMPTY_INPUT : keyboard.sample(), session.physics);
       }
-      // A respawn moves the player across the map (spec section 11.7), so the
-      // frame puts them down there rather than sliding them over the city.
-      if (session.state.respawn !== respawned) {
+      // A respawn and a metro trip both put the player down somewhere else on
+      // the map (spec sections 11.7, 13.3), so the frame stands the camera
+      // there rather than sliding it over the city.
+      if (session.state.respawn !== respawned || session.state.metro.trips !== trips) {
         session.smooth.reset();
         camera.snap();
       }
@@ -286,6 +294,9 @@ async function boot(): Promise<void> {
       // the record the simulation is playing, so the bar on screen is the bar
       // the presses are judged against.
       session.hotwire.update(session.state.theft, session.state.seed, session.state.tick);
+      // The metro panel of spec section 13.3: where the player may travel from
+      // the station they are standing at, and the fade of a trip in progress.
+      session.travel.update(session.state, session.metro, stationAt(session.metro, session.state), session.state.tick);
       session.weapons.sync(session.state.loadout);
       // The maps of spec section 12. Both follow the player from the record,
       // and both redraw only when something on them has moved, so a session
@@ -406,6 +417,14 @@ async function boot(): Promise<void> {
   // comes back on the road nearest a station (spec section 11.7).
   const stations = world.stations ?? [];
   ground.stations = stations.map((at) => nearestRoadPlace(description, at.x, at.y) ?? { ...at, heading: 0 });
+  // The metro stations come from the same answer (spec section 13.3). A station
+  // is entered from the street, so its place is the road that runs along its
+  // parcel, and it is named for the district it serves.
+  const metro: MetroPlace[] = (world.metro ?? []).map((at) => ({
+    ...(nearestRoadPlace(description, at.x, at.y) ?? { x: at.x, y: at.y, heading: 0 }),
+    name: description.districts[at.district]?.name ?? 'Metro',
+  }));
+  ground.metro = metro;
   // The parking bays come from the same answer. Which bay holds a car is a
   // function of the tick, so the physics and the renderer share one plan.
   const parked = world.bays === undefined ? undefined : new ParkedCars(state.seed, world.bays);
@@ -462,7 +481,10 @@ async function boot(): Promise<void> {
   // list is shared with them: a system that owns places writes `pois.extra`
   // once and both maps show them.
   const pois = new MapPois(description);
-  pois.extra = stations.map((at) => ({ type: 'police' as const, x: at.x, y: at.y }));
+  pois.extra = [
+    ...stations.map((at) => ({ type: 'police' as const, x: at.x, y: at.y })),
+    ...metro.map((at) => ({ type: 'metro-station' as const, x: at.x, y: at.y, name: `Metro · ${at.name}` })),
+  ];
   const art = new MapArt(description, pois);
   const minimap = new Minimap(document.body, art);
   const map = new MapScreen(document.body, art, (place) => {
@@ -566,6 +588,8 @@ async function boot(): Promise<void> {
     minimap,
     map,
     hotwire: new HotwireBar(document.body),
+    travel: new TravelPanel(document.body),
+    metro,
     smooth,
     weapons,
     pause,

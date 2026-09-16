@@ -26,6 +26,7 @@ export type PoiType =
   | 'waypoint'
   | 'objective'
   | 'tram-stop'
+  | 'metro-station'
   | 'pier'
   | 'car-park'
   | 'harbour'
@@ -56,7 +57,8 @@ export type IconShape =
   | 'ring'
   | 'bars'
   | 'hexagon'
-  | 'cup';
+  | 'cup'
+  | 'roundel';
 
 /** How one kind of place is drawn, and what the full map calls it. */
 export interface PoiStyle {
@@ -82,6 +84,9 @@ export const POI_STYLES: Readonly<Record<PoiType, PoiStyle>> = Object.freeze({
   waypoint: { shape: 'pin', colour: '#ff8a5c', label: 'Waypoint', maxScale: Infinity },
   objective: { shape: 'star', colour: '#ffd166', label: 'Objective', maxScale: Infinity },
   'tram-stop': { shape: 'disc', colour: '#e05ad0', label: 'Tram stop', maxScale: 6 },
+  // A station is a landmark: a player who has visited one travels to it from
+  // across the map (spec section 13.3), so it is on the map at every zoom.
+  'metro-station': { shape: 'roundel', colour: '#5ad08a', label: 'Metro', maxScale: Infinity },
   pier: { shape: 'bars', colour: '#c08a5a', label: 'Pier', maxScale: 8 },
   'car-park': { shape: 'square', colour: '#9a8ad0', label: 'Car park', maxScale: 4 },
   harbour: { shape: 'hexagon', colour: '#5ab0d0', label: 'Harbour', maxScale: Infinity },
