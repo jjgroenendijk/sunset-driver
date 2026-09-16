@@ -11,7 +11,7 @@
  */
 
 /** The one-shots the game fires. Nothing else should name them. */
-export type CueKind = 'impact' | 'explosion' | 'gunshot' | 'swing' | 'footstep' | 'bell';
+export type CueKind = 'impact' | 'explosion' | 'gunshot' | 'swing' | 'footstep' | 'bell' | 'bird' | 'gull';
 
 /** What one cue is made of: a falling tone, a band of noise, and the envelope over both. */
 export interface CueVoice {
@@ -50,6 +50,11 @@ export const CUES: Readonly<Record<CueKind, CueVoice>> = Object.freeze({
   // A tram's bell (spec section 13.2): struck metal, so the note barely falls
   // and rings on. The noise is the strike itself and nothing after it.
   bell: { tone: 1046, toneEnd: 988, noise: 0.15, cutoff: 6400, cutoffEnd: 2400, attack: 0.001, decay: 0.85, gain: 0.5, ducks: false },
+  // A songbird (spec section 15): a short high note that falls away, with a
+  // breath of noise in it so it is a bird rather than a beep.
+  bird: { tone: 2400, toneEnd: 1850, noise: 0.12, cutoff: 5200, cutoffEnd: 2600, attack: 0.012, decay: 0.13, gain: 0.3, ducks: false },
+  // A gull: lower, harsher and longer, and mostly the cry rather than the note.
+  gull: { tone: 1250, toneEnd: 820, noise: 0.45, cutoff: 3800, cutoffEnd: 1100, attack: 0.03, decay: 0.42, gain: 0.34, ducks: false },
 });
 
 /** One sound to make, once, at a place on the map. */

@@ -11,9 +11,12 @@ import {
   squealOf,
   STRIDE,
 } from '../src/audio/plan.ts';
+import { bedsFor, callsFor, chorusAt, silentBeds, sunUp, townAwake, type Site } from '../src/audio/ambience.ts';
+import { builtOf, greenOf, shoreNearness, SURF_FAR, SURF_NEAR } from '../src/audio/site.ts';
 import { FAR, hear, NEAR, PAN_WIDTH, rolloff } from '../src/audio/space.ts';
 import type { Cue } from '../src/audio/cue.ts';
-import { TICK_RATE } from '../src/sim/clock.ts';
+import { TICK_RATE, TICKS_PER_HOUR } from '../src/sim/clock.ts';
+import { CLEAR_WEATHER, weatherAt, type Weather } from '../src/sim/weather.ts';
 import { EMPTY_INPUT, type InputFrame } from '../src/sim/input.ts';
 import type { PoliceKind, PoliceUnit } from '../src/sim/police.ts';
 import type { TramBell } from '../src/sim/tram.ts';
@@ -355,5 +358,170 @@ describe('audio: the plan', () => {
     one.loadout.shots += 2;
     two.loadout.shots += 2;
     expect(a.plan(one, input(), one.player).cues).toEqual(b.plan(two, input(), two.player).cues);
+  });
+});
+
+/** The three places the beds are read against: the core, the sand, and the country. */
+const DOWNTOWN: Site = { built: 1, green: 0.05, shore: 0 };
+const BEACH: Site = { built: 0.2, green: 0.2, shore: 1 };
+const COUNTRY: Site = { built: 0.02, green: 1, shore: 0 };
+
+/** The weather of one kind at its full strength, for a bed that is about the sky. */
+function weather(over: Partial<Weather> = {}): Weather {
+  return { ...CLEAR_WEATHER, ...over };
+}
+
+/** The first tick at `hour` on any of the first days the seed keeps dry. */
+function dryHour(seed: number, hour: number): number {
+  for (let day = 0; day < 7; day++) {
+    const tick = (day * 24 + hour) * TICKS_PER_HOUR;
+    if (weatherAt(seed, tick).rain < 0.05) return tick;
+  }
+  return hour * TICKS_PER_HOUR;
+}
+
+describe('audio: the ambient beds', () => {
+  it('changes audibly between downtown and the beach, which is what the bed is for', () => {
+    const city = bedsFor(DOWNTOWN, weather(), 12);
+    const sand = bedsFor(BEACH, weather(), 12);
+    expect(city.traffic).toBeGreaterThan(sand.traffic + 0.3);
+    expect(sand.surf).toBeGreaterThan(city.surf + 0.3);
+    expect(city.surf).toBe(0);
+  });
+
+  it('thins the hum in the small hours and brings it back by the working day', () => {
+    const night = bedsFor(DOWNTOWN, weather(), 4);
+    const day = bedsFor(DOWNTOWN, weather(), 12);
+    expect(night.traffic).toBeGreaterThan(0);
+    expect(night.traffic).toBeLessThan(day.traffic * 0.6);
+  });
+
+  it('takes the traffic off the road in weather that clears the streets', () => {
+    const fair = bedsFor(DOWNTOWN, weather(), 12);
+    const foul = bedsFor(DOWNTOWN, weather({ kind: 'storm', crowd: 0.32 }), 12);
+    expect(foul.traffic).toBeLessThan(fair.traffic);
+  });
+
+  it('carries the wind in the open and shelters the streets from it', () => {
+    const gale = weather({ kind: 'storm', wind: 1 });
+    expect(bedsFor(COUNTRY, gale, 12).wind).toBeGreaterThan(bedsFor(DOWNTOWN, gale, 12).wind);
+    // A still day is a still bed wherever it is heard.
+    expect(bedsFor(COUNTRY, weather({ wind: 0 }), 12).wind).toBe(0);
+  });
+
+  it('rings the rain on metal in the city and not in a field', () => {
+    const wet = weather({ kind: 'rain', rain: 0.8 });
+    expect(bedsFor(DOWNTOWN, wet, 12).rain).toBeCloseTo(bedsFor(COUNTRY, wet, 12).rain, 6);
+    expect(bedsFor(DOWNTOWN, wet, 12).metal).toBeGreaterThan(bedsFor(COUNTRY, wet, 12).metal * 3);
+    expect(bedsFor(DOWNTOWN, weather(), 12).rain).toBe(0);
+  });
+
+  it('asks for nothing where the session has no world', () => {
+    expect(silentBeds()).toEqual({ traffic: 0, surf: 0, wind: 0, rain: 0, metal: 0 });
+  });
+
+  it('keeps every bed inside the 0 to 1 a gain is allowed', () => {
+    const storm = weather({ kind: 'storm', rain: 1, wind: 1, crowd: 1 });
+    for (const site of [DOWNTOWN, BEACH, COUNTRY, { built: 1, green: 1, shore: 1 }]) {
+      for (const hour of [0, 6, 12, 18, 23.9]) {
+        for (const sky of [weather(), storm]) {
+          for (const gain of Object.values(bedsFor(site, sky, hour))) {
+            expect(gain).toBeGreaterThanOrEqual(0);
+            expect(gain).toBeLessThanOrEqual(1);
+          }
+        }
+      }
+    }
+  });
+});
+
+describe('audio: birds and gulls', () => {
+  it('sings in the country by day, loudest at dawn, and not at night', () => {
+    expect(callsFor(COUNTRY, weather(), 6).bird).toBeGreaterThan(callsFor(COUNTRY, weather(), 14).bird);
+    expect(callsFor(COUNTRY, weather(), 1).bird).toBe(0);
+    expect(callsFor(DOWNTOWN, weather(), 6).bird).toBeLessThan(callsFor(COUNTRY, weather(), 6).bird * 0.2);
+  });
+
+  it('cries over the sand and nowhere else', () => {
+    expect(callsFor(BEACH, weather(), 12).gull).toBeGreaterThan(0);
+    expect(callsFor(COUNTRY, weather(), 12).gull).toBe(0);
+    // A gull is about at first light as well, where a songbird has stopped.
+    expect(callsFor(BEACH, weather(), 2).gull).toBeGreaterThan(0);
+  });
+
+  it('shelters from the rain, as the crowd does', () => {
+    const wet = weather({ kind: 'rain', rain: 1 });
+    expect(callsFor(COUNTRY, wet, 6).bird).toBe(0);
+    expect(callsFor(BEACH, wet, 12).gull).toBe(0);
+  });
+
+  it('keeps the day curves inside 0 and 1', () => {
+    for (let hour = 0; hour < 24; hour += 0.5) {
+      for (const curve of [sunUp(hour), townAwake(hour), chorusAt(hour)]) {
+        expect(curve).toBeGreaterThanOrEqual(0);
+        expect(curve).toBeLessThanOrEqual(1);
+      }
+    }
+    expect(sunUp(12)).toBeCloseTo(1, 6);
+    expect(sunUp(0)).toBe(0);
+  });
+});
+
+describe('audio: the place the planner reads', () => {
+  it('hums where the world says the player is downtown, and is silent without one', () => {
+    const state = session();
+    state.tick = dryHour(state.seed, 12);
+    const planner = new AudioPlanner();
+    const beds = planner.plan(state, input(), state.player, undefined, { siteAt: () => DOWNTOWN }).beds;
+    expect(beds.traffic).toBeGreaterThan(0.3);
+    expect(new AudioPlanner().plan(state, input(), state.player).beds).toEqual(silentBeds());
+  });
+
+  it('calls a bird over the ticks a frame stepped, and none in the core at night', () => {
+    const state = session();
+    state.player.driving = false;
+    const planner = new AudioPlanner();
+    const country = { siteAt: () => COUNTRY };
+    state.tick = dryHour(state.seed, 6);
+    planner.plan(state, input(), state.player, undefined, country);
+    let birds = 0;
+    // Ten frames of a second each: a call is a few a minute, so a couple of
+    // frames would say nothing either way.
+    for (let frame = 0; frame < 10; frame++) {
+      state.tick += TICK_RATE;
+      birds += planner.plan(state, input(), state.player, undefined, country).cues.filter((c) => c.kind === 'bird').length;
+    }
+    expect(birds).toBeGreaterThan(0);
+
+    const night = session();
+    night.player.driving = false;
+    night.tick = dryHour(night.seed, 1);
+    const quiet = new AudioPlanner();
+    quiet.plan(night, input(), night.player, undefined, { siteAt: () => DOWNTOWN });
+    for (let frame = 0; frame < 10; frame++) {
+      night.tick += TICK_RATE;
+      const cues = quiet.plan(night, input(), night.player, undefined, { siteAt: () => DOWNTOWN }).cues;
+      expect(cues.filter((c) => c.kind === 'bird' || c.kind === 'gull')).toEqual([]);
+    }
+  });
+});
+
+describe('audio: the ground a site is read off', () => {
+  it('reads the core as built and the wilderness as green', () => {
+    expect(builtOf('core', 1)).toBeGreaterThan(builtOf('suburban', 1));
+    expect(builtOf('suburban', 1)).toBeGreaterThan(builtOf('wilderness', 1));
+    expect(greenOf('wilderness', 0)).toBeGreaterThan(greenOf('core', 0));
+    // A denser district is more built up and less green, whatever its zone.
+    expect(builtOf('suburban', 1)).toBeGreaterThan(builtOf('suburban', 0));
+    expect(greenOf('suburban', 1)).toBeLessThan(greenOf('suburban', 0));
+  });
+
+  it('hears the surf at the waterline and not from inland', () => {
+    expect(shoreNearness(0)).toBe(1);
+    expect(shoreNearness(SURF_NEAR)).toBe(1);
+    expect(shoreNearness(SURF_FAR)).toBe(0);
+    expect(shoreNearness(Infinity)).toBe(0);
+    expect(shoreNearness(SURF_FAR / 2)).toBeGreaterThan(0);
+    expect(shoreNearness(SURF_FAR / 2)).toBeLessThan(1);
   });
 });

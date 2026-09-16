@@ -1,5 +1,6 @@
 import { Raycaster, Vector2 } from 'three';
 import { GameAudio } from './audio/game-audio.ts';
+import { WorldSites } from './audio/site.ts';
 import { randomSeedString, readSeedFromLocation, seedFromString, writeSeedToHash } from './core/seed.ts';
 import { BASE_DISTANCE, FollowCamera, PULL_MARGIN, type RoofHeight } from './render/camera.ts';
 import { PostChain } from './render/post.ts';
@@ -449,6 +450,9 @@ async function boot(): Promise<void> {
   // The bells of spec section 13.2 are a function of the tick rather than part
   // of the record, so the audio is given the line itself to ask.
   audio.watch(tram);
+  // The ambient beds of spec section 15 are the place itself, which is not in
+  // the record either: the audio reads it off the world where the player stands.
+  audio.survey(new WorldSites(description));
   // The police drive the same roads the traffic does, and answer from the
   // district the player stands in (spec section 14).
   const police = new PoliceForce(roads, policeDistrictsOf(description));

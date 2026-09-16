@@ -87,9 +87,10 @@ Beyond what the file names suggest:
 - `src/world` — must run headless in Node, since the sweeps import it. three.js math and generators
   are fine; the renderer, Rapier and the DOM are not. Produces a plain world description.
 - `src/render` — reads the world description, never mutates it.
-- `src/audio` — two halves. `plan.ts`, `engine.ts`, `space.ts` and `cue.ts` read the record and hold
-  no Tone.js and no DOM, so they run headless; `voices.ts`, `one-shots.ts` and `mixer.ts` own the
-  Web Audio graph. Nothing here may write to the record.
+- `src/audio` — two halves. `plan.ts`, `engine.ts`, `space.ts`, `cue.ts`, `ambience.ts` and
+  `site.ts` read the record and hold no Tone.js and no DOM, so they run headless; `voices.ts`,
+  `one-shots.ts`, `beds.ts` and `mixer.ts` own the Web Audio graph. Nothing here may write to the
+  record.
 - `scripts/*.ts` — run with plain `node` (type stripping), not through Vite.
   `scripts/render-preview.html`, `scripts/map-preview.html` and `scripts/audio-check.html` are the
   exceptions a script serves rather than runs; they are not build inputs.
