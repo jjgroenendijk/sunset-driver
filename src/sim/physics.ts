@@ -77,6 +77,7 @@ import {
   type WheelSpec,
   type WheelState,
 } from './vehicle.ts';
+import { weatherAt } from './weather.ts';
 
 export { PHYSICS_CELL, PHYSICS_RADIUS, PHYSICS_TILE, type Ground } from './ground-bodies.ts';
 
@@ -111,9 +112,6 @@ interface Walker {
  * into the {@link SimState} it is given.
  */
 export class SimPhysics {
-  /** How wet the ground is, 0 to 1. Weather (spec section 13.4) will set it. */
-  wetness = 0;
-
   private readonly world: RAPIER.World;
   private readonly ground: Ground;
   /** The tiles of ground and the decks over them, which follow whoever is moving. */
@@ -258,7 +256,10 @@ export class SimPhysics {
       if (this.wheels === undefined) {
         this.controls.sail(chassis, v, input, this.spec);
       } else {
-        this.controls.drive(this.wheels, v, input, this.spec, this.wetness);
+        // How wet the road is is the weather of the tick (spec section 13.4),
+        // which is a pure function of the seed and the tick like everything
+        // else, so a replay drives on the same water the session did.
+        this.controls.drive(this.wheels, v, input, this.spec, weatherAt(state.seed, state.tick).wetness);
         this.controls.hold(chassis, v, this.spec);
         this.wheels.updateVehicle(this.world.timestep);
       }

@@ -125,7 +125,7 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
   });
 
   const camera = new FollowCamera(request.width / request.height);
-  const post = new PostChain(renderer, scene.scene, camera.camera, tier.post);
+  const post = new PostChain(renderer, scene.scene, camera.camera, tier.post, scene.world.seed);
   post.time = tick;
   await post.ready();
   const device = (renderer.backend as unknown as { device: GPUDevice }).device;

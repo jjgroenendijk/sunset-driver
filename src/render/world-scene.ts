@@ -64,7 +64,10 @@ import {
   type ChunkRings,
   type TilePart,
 } from './streaming.ts';
+import { CLEAR_WEATHER, weatherAt, type Weather } from '../sim/weather.ts';
 import { PlantScenery } from './vegetation.ts';
+import { WeatherFx } from './weather-fx.ts';
+import { fogRange, overcast } from './weather-look.ts';
 import { createWaterSurface, type WaterSurface } from './water-surface.ts';
 
 /**
@@ -74,8 +77,11 @@ import { createWaterSurface, type WaterSurface } from './water-surface.ts';
  * fades. A quality tier that pulls the ring in brings the haze with it (spec
  * section 9.2).
  */
-function fogOf(rings: ChunkRings): { near: number; far: number } {
-  return { near: (rings.far - 1) * CHUNK_SIZE, far: rings.far * CHUNK_SIZE };
+function fogOf(rings: ChunkRings, weather: Weather): { near: number; far: number } {
+  // Fog is the one weather that cuts the draw distance (spec section 13.4): the
+  // haze is brought in front of the last chunk rather than standing at it, so
+  // the ground still ends where it ended and nothing is seen to stop.
+  return fogRange((rings.far - 1) * CHUNK_SIZE, rings.far * CHUNK_SIZE, weather);
 }
 
 /** Milliseconds {@link WorldScene.settle} waits before giving up on the workers. */
@@ -135,8 +141,15 @@ export class WorldScene {
   private readonly lampLights: LampLights;
   private readonly water: WaterSurface;
   private readonly sky: SkyLighting;
-  /** The light of the tick the scene was last set to. */
+  /** The light of the tick the scene was last set to, before the weather is laid over it. */
   private light: Daylight;
+  /** That light with the weather over it, which is what the scene is actually lit by. */
+  private lit: Daylight;
+  /** The weather of that same tick (spec section 13.4), and the tick itself. */
+  private weather: Weather = CLEAR_WEATHER;
+  private tick = START_TICK;
+  /** The rain, the puddles and the litter that weather is drawn as. */
+  private readonly weatherFx: WeatherFx;
   /** The quality tier the scene is drawn at (spec section 9.2). */
   private tier: QualityTier = FULL_TIER;
   /** The upload the frames to come are charged for, oldest chunk first. */
@@ -165,9 +178,14 @@ export class WorldScene {
     // The sky, the sun and the shadows it casts. The ground stops at the last
     // chunk of the far ring, and the haze is what stands there until the draw
     // distance of spec section 9.2 does.
-    const fog = fogOf(this.tier.rings);
+    const fog = fogOf(this.tier.rings, this.weather);
     this.sky = new SkyLighting(this.scene, fog.near, fog.far);
     this.lampLights = new LampLights(this.scene);
+
+    // The rain falls on the carved ground, so it is built after the carve and
+    // handed the same height the player stands on.
+    this.weatherFx = new WeatherFx(world.seed, this.height);
+    this.scene.add(this.weatherFx.group);
 
     this.character = new CharacterModel(appearance);
     this.shadeCharacter();
@@ -183,6 +201,7 @@ export class WorldScene {
 
     // A session starts at 08:00, so the first frame is already lit.
     this.light = daylightAt(START_TICK);
+    this.lit = this.light;
     this.apply();
   }
 
@@ -193,8 +212,15 @@ export class WorldScene {
    * the street lamps.
    */
   set time(tick: number) {
+    this.tick = tick;
     this.light = daylightAt(tick);
+    this.weather = weatherAt(this.world.seed, tick);
     this.apply();
+  }
+
+  /** The weather at the tick the scene was last set to. The HUD reads it. */
+  get weatherNow(): Weather {
+    return this.weather;
   }
 
   /** The carved height of the ground at a place, so things stand on it. */
@@ -265,7 +291,7 @@ export class WorldScene {
    */
   set quality(tier: QualityTier) {
     this.tier = tier;
-    const fog = fogOf(tier.rings);
+    const fog = fogOf(tier.rings, this.weather);
     this.sky.setFog(fog.near, fog.far);
     this.sky.shadowMapSize = tier.shadowMapSize;
     this.sky.shadowDistance = shadowDistance(tier);
@@ -292,7 +318,8 @@ export class WorldScene {
     // as the streaming does, and not from the camera behind them.
     this.fade.focus(x, y);
     this.water.follow(x, y);
-    this.lampLights.aim(x, y, this.lampsInReach(), this.light.lamps);
+    this.lampLights.aim(x, y, this.lampsInReach(), this.lit.lamps);
+    this.weatherFx.update(this.weather, this.tick, x, y);
   }
 
   /**
@@ -438,14 +465,24 @@ export class WorldScene {
     this.fx.dispose();
     this.scene.remove(this.skid.mesh);
     this.skid.dispose();
+    this.scene.remove(this.weatherFx.group);
+    this.weatherFx.dispose();
   }
 
-  /** Hand the light of the moment to everything that reads it. */
+  /**
+   * Hand the light of the moment to everything that reads it. The weather is
+   * laid over the day's own light first, so the sky, the water and the lamps
+   * all read one number and none of them learns a second rule.
+   */
   private apply(): void {
-    this.sky.set(this.light);
-    this.water.setDaylight(this.light);
-    this.buildings.night = this.light.night;
-    this.lamps.lamps = this.light.lamps;
+    const light = overcast(this.light, this.weather);
+    this.lit = light;
+    this.sky.set(light);
+    const fog = fogOf(this.tier.rings, this.weather);
+    this.sky.setFog(fog.near, fog.far);
+    this.water.setDaylight(light);
+    this.buildings.night = light.night;
+    this.lamps.lamps = light.lamps;
   }
 
   /** The lamps of every chunk in reach, a chunk at a time. */

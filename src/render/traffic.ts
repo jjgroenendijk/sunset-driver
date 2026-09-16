@@ -33,6 +33,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { SimState } from '../sim/simulation.ts';
 import { AMBIENT_CLASSES, promotedOf, type AmbientPose, type AmbientTraffic } from '../sim/traffic.ts';
 import { rideHeight, specOf, type VehicleClass, type VehicleSpec } from '../sim/vehicle.ts';
+import { outInThis } from '../sim/weather.ts';
 import { SignalView } from './signals.ts';
 import { OUTLINE, VEHICLE_OUTLINE_WIDTH } from './vehicle.ts';
 import { TYRE, vehicleBoxes, type VehicleBox } from './vehicle-mesh.ts';
@@ -87,6 +88,12 @@ export class TrafficView {
   readonly group = new Group();
   /** The traffic lights, or undefined where the roads came without them. */
   readonly signals: SignalView | undefined;
+  /**
+   * The share of the ambient traffic that is out (spec section 13.4). 1 on a
+   * clear day; a storm keeps the rest of it at home. `outInThis` decides who,
+   * so the same storm hides the same cars on every machine.
+   */
+  share = 1;
   private readonly traffic: AmbientTraffic;
   private readonly classes: ClassMeshes[] = [];
   private readonly materials: Material[] = [];
@@ -142,6 +149,7 @@ export class TrafficView {
     const maxY = y + TRAFFIC_VIEW;
     for (const id of traffic.near(minX, minY, maxX, maxY, this.ids)) {
       if (promotedOf(state.traffic, id) !== undefined) continue;
+      if (!outInThis(id, this.share)) continue;
       const pose = traffic.poseAt(id, time, this.pose);
       if (pose.x < minX || pose.x > maxX || pose.y < minY || pose.y > maxY) continue;
       const vehicle = traffic.vehicles[id] as AmbientTraffic['vehicles'][number];

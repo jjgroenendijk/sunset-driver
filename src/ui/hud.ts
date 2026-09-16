@@ -4,14 +4,15 @@ import { conditionOf } from '../sim/damage.ts';
 import { MAX_HEALTH } from '../sim/on-foot.ts';
 import { specOf } from '../sim/vehicle.ts';
 import { currentSlot, currentWeapon, poolOf, reloading } from '../sim/weapon.ts';
+import { weatherAt } from '../sim/weather.ts';
 
 /**
  * The HUD of spec section 12: health, money, the weapon and its ammunition, the
  * heat level and the current objective, over the canvas as DOM.
  *
  * It stands in two places. The status block at the top left is what a developer
- * reads — the seed, the game clock, the draw calls, the quality tier and what
- * is being driven. The panel at the bottom left is the game's own HUD, and it
+ * reads — the seed, the game clock, the weather, the draw calls, the quality
+ * tier and what is being driven. The panel at the bottom left is the game's own HUD, and it
  * is the part spec section 12 describes.
  *
  * Every field is written only when its text changes, so a frame that moves
@@ -92,7 +93,11 @@ export class Hud {
     const t = gameTime(state.tick);
     const hh = String(t.hour).padStart(2, '0');
     const mm = String(t.minute).padStart(2, '0');
-    const clock = `day ${t.day + 1}  ${hh}:${mm}`;
+    // The weather beside the clock (spec section 13.4), with how wet the road
+    // is: the grip a corner is taken with is the number, not the word.
+    const weather = weatherAt(state.seed, state.tick);
+    const wet = Math.round(weather.wetness * 100);
+    const clock = `day ${t.day + 1}  ${hh}:${mm}  ${weather.kind}  wet ${wet}%`;
     if (clock !== this.shownClock) {
       this.shownClock = clock;
       this.clock.textContent = clock;
