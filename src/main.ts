@@ -8,6 +8,7 @@ import { createTitleScene } from './render/scene.ts';
 import { RenderSmoother } from './render/smooth.ts';
 import { ParkedView } from './render/parked.ts';
 import { PedestrianView } from './render/pedestrians.ts';
+import { PoliceView } from './render/police.ts';
 import { TrafficView } from './render/traffic.ts';
 import { TramView } from './render/tram.ts';
 import { WorldSource } from './render/world-source.ts';
@@ -21,6 +22,7 @@ import { EMPTY_INPUT } from './sim/input.ts';
 import { createSave, restoreSimState, saveFromText, saveToText, type SaveFile } from './sim/save.ts';
 import { createSimState, stepSim, type SimState } from './sim/simulation.ts';
 import { AmbientTraffic, trafficRoadsOf } from './sim/traffic.ts';
+import { commitCrime, PoliceForce, policeDistrictsOf } from './sim/police.ts';
 import { TramLine } from './sim/tram.ts';
 import { stationAt, type MetroPlace } from './sim/metro.ts';
 import { HotwireBar } from './ui/hotwire.ts';
@@ -63,9 +65,16 @@ const DROP_AHEAD = 3;
  */
 const LOADED = { plan: 0.35, ground: 0.85 };
 
-/** The debug keys that end a run (spec section 11.7), until the damage and the police do. */
+/** The debug keys that end a run (spec section 11.7), until the damage does. */
 const DIE_KEY = 'KeyK';
 const ARREST_KEY = 'KeyB';
+
+/**
+ * The debug key that commits a crime (spec section 14), so a chase can be
+ * started without shooting anybody. Each press is one assault, which is most of
+ * a star.
+ */
+const CRIME_KEY = 'KeyL';
 
 /** A session in progress: the state, the world it is played in, and the overlay. */
 interface Session {
@@ -93,6 +102,8 @@ interface Session {
   weapons: WeaponPicker;
   /** The ambient traffic of spec section 13.1, drawn. */
   traffic: TrafficView;
+  /** The police units of spec section 14, drawn. */
+  police: PoliceView;
   /** The parked cars of spec section 13.1, drawn; undefined where no worker laid out the bays. */
   parked: ParkedView | undefined;
   /** The trams of spec section 13.2, drawn. */
@@ -259,6 +270,9 @@ async function boot(): Promise<void> {
       const round = flying ? { x: free.camera.x, y: free.camera.z } : p;
       session.traffic.update(session.state, session.state.tick - 1 + alpha, round.x, round.y);
       session.tram.update(session.state.tick - 1 + alpha, round.x, round.y);
+      // The units are stepped once a tick like the player, so they are drawn
+      // where the last tick left them rather than between two of them.
+      session.police.update(session.state, round.x, round.y);
       session.parked?.update(session.state, round.x, round.y);
       session.crowd.update(session.state, session.state.tick - 1 + alpha, round.x, round.y);
       // The damage of spec section 11.3, drawn off the same record: the smoke
@@ -404,6 +418,9 @@ async function boot(): Promise<void> {
   const crowd = new AmbientPedestrians(state.seed, roads, crowdDistrictsOf(description));
   // The trams of spec section 13.2 keep to the traffic's own lights.
   const tram = new TramLine(state.seed, roads, description.tram, description.districts, traffic.signals);
+  // The police drive the same roads the traffic does, and answer from the
+  // district the player stands in (spec section 14).
+  const police = new PoliceForce(roads, policeDistrictsOf(description));
   const ground: Ground = {
     heightAt: (x, y) => world.heightAt(x, y),
     surfaceAt: (x, y) => surfaces.at(x, y),
@@ -413,6 +430,7 @@ async function boot(): Promise<void> {
     decks: roadDecks(description),
     traffic,
     tram,
+    police,
   };
   const start = nearestRoadPlace(description, state.player.x, state.player.y);
   // Rapier was fetched while the graphics were being set up, and this is the
@@ -618,6 +636,7 @@ async function boot(): Promise<void> {
     // it, so a run ended this way replays like any other.
     if (event.code === DIE_KEY) state.player.health = 0;
     if (event.code === ARREST_KEY) state.arrested = true;
+    if (event.code === CRIME_KEY) commitCrime(state, 'assault');
     if (event.code === MAP_KEY) map.toggle();
     if (event.code === MINIMAP_NORTH_KEY) minimap.toggleNorth();
     if (event.code === 'Escape' && map.open) map.toggle();
@@ -630,6 +649,8 @@ async function boot(): Promise<void> {
 
   const trafficView = new TrafficView(traffic);
   world.scene.add(trafficView.group);
+  const policeView = new PoliceView();
+  world.scene.add(policeView.group);
   const parkedView = parked === undefined ? undefined : new ParkedView(parked);
   if (parkedView !== undefined) world.scene.add(parkedView.group);
   const tramView = new TramView(tram);
@@ -639,6 +660,7 @@ async function boot(): Promise<void> {
 
   session = {
     traffic: trafficView,
+    police: policeView,
     parked: parkedView,
     tram: tramView,
     crowd: crowdView,
