@@ -22,6 +22,7 @@ export const CONTROLS: readonly ControlBinding[] = [
   { action: 'Aim', keys: 'Q' },
   { action: 'Reload', keys: 'R' },
   { action: 'Cycle weapon', keys: 'C' },
+  { action: 'Radio: next, previous station', keys: '] and [' },
   { action: 'Metro: travel to the station on the panel', keys: '1 to 9' },
   { action: 'Pause menu', keys: 'Esc' },
   { action: 'Map', keys: 'M' },

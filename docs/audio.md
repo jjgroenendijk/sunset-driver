@@ -8,6 +8,8 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
 - The split, and why it is there
 - The engine has a gearbox the physics does not
 - Cues, and what a frame is allowed to fire
+- The radio, and how a bar gets played
+- The score over the radio
 - The buses and the duck
 - The gesture and the mute
 - Traps
@@ -56,9 +58,45 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
   is still scheduled to stop, and Tone.js refuses a start before a pending stop.
 - The cap is the CPU budget of spec section 15. `Mixer.dropped` counts what it cost.
 
+## The radio, and how a bar gets played
+
+- The dial is one number per vehicle in the record (`VehicleState.station`) and nothing else. It is
+  unbounded there on purpose: how many stations there are is no business of `src/sim`, so
+  `dial.ts` wraps it and Off is a position on the dial after the last station, the way a car
+  radio's is. A stolen car comes with its owner's station because the number belongs to the vehicle.
+- `stations.ts` is the whole of what makes two stations sound unlike each other: the key, the mode,
+  the tempo, the chords, the drum feel and the waveforms. Every culture of spec section 8.3 has a
+  station and `Sunset FM` covers the rest. Adding a station is a row there and nothing else.
+- `song.ts` turns a bar of a station's song into notes, seeded on the session, the station, the song
+  and the bar — so a bar is a pure function of its number. The tune leans on a note of the chord on
+  every strong beat and walks the mode between them, which is what keeps a generated melody from
+  wandering into a wrong note.
+- **A station's bar is read off the simulation tick** (`dialAt`), so every station is always
+  playing: tuning away and back finds the station where it would have been, and a paused game stops
+  the music with the city rather than running on under it.
+- The band is scheduled, not played now. `plan.ts` says which bar is next and how many seconds away
+  it is; `radio.ts` hands the whole bar to the instruments at absolute context times once it is
+  within `LOOKAHEAD`. That is the one place in `src/audio` where the audio clock and the game clock
+  meet, and `dial.ts` is what keeps them from drifting.
+- `programme.ts` is the schedule: a song, then a break of the station's ident, and every
+  `PSA_EVERY` songs one of the harm-reduction announcements of spec section 19 (`psa.ts`). Nothing
+  synthesises a voice, so an announcement is a line on the HUD over a bed of the station's chords
+  and drums. The posters and the clinic of section 19 are issue #53.
+
+## The score over the radio
+
+- `score.ts` reads the heat of spec section 14 and how near the nearest unit is, and answers a mood.
+  Calm leaves the radio alone, a chase lays a pulse over it and pulls it down to `RADIO_UNDER`, and
+  a fight takes the radio off altogether — the "layered over or replacing" of spec section 15.
+- The score holds rather than being scheduled, so it is a drone with an LFO beating on its gain:
+  the faster and brighter it beats, the worse the trouble. A fight adds a tritone, which is the
+  interval that agrees with nothing.
+- The mood is read fresh every frame off the record, so nothing has to be told when a chase starts
+  or ends.
+
 ## The buses and the duck
 
-- Three buses meet at the master: `music` — empty until the radio stations land — `effects`, and the
+- Three buses meet at the master: `music` — the radio and the score — `effects`, and the
   player's engine on its own. A limiter sits on the master, so nothing a stacked explosion does can
   clip the output.
 - `music` is what ducks. A cue whose row in `CUES` says `ducks` pulls it down by `DUCK_DEPTH` and it

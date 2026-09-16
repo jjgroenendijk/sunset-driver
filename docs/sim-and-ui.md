@@ -36,9 +36,10 @@ play — the title screen, the loading screen, the pause menu and the saves — 
   at the bottom left is the game's own HUD: health, money, weapon and ammunition, heat and the
   current objective. Every field is written only when its text changes, because a DOM write lays the
   whole overlay out again and doing that sixty times a second for numbers that stand still is a
-  frame the city could have spent on itself. `SimState.money`, `SimState.objective` and
-  `SimState.waypoint` are the three slots it reads that nothing writes yet; the economy of spec
-  section 16, the missions of 18 and the map are what will.
+  frame the city could have spent on itself. The radio line under it is what `src/audio` says is on
+  air (spec section 15), so it is there only while something is playing. `SimState.money`,
+  `SimState.objective` and `SimState.waypoint` are the three slots it reads that nothing writes yet;
+  the economy of spec section 16, the missions of 18 and the map are what will.
 
 ## The map
 

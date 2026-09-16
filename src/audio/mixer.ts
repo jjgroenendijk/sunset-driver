@@ -6,9 +6,11 @@
  * own engine, kept apart so it can be held under the rest of the mix. A limiter
  * sits on the master so nothing an explosion does can clip the output.
  *
- * The music bus is what ducks. A cue marked `ducks` in `cue.ts` pulls it down
- * and it climbs back over {@link DUCK_RECOVER}, so gunfire and collisions open
- * a hole for themselves without the radio jumping back the instant they stop.
+ * The music bus is what ducks, and it is what the radio stations and the
+ * situational score of spec section 15 play into. A cue marked `ducks` in
+ * `cue.ts` pulls it down and it climbs back over {@link DUCK_RECOVER}, so
+ * gunfire and collisions open a hole for themselves without the radio jumping
+ * back the instant they stop.
  *
  * The siren voices follow units rather than places in the list: a voice keeps
  * the unit it was given as long as that unit is still one of the nearest, so a
@@ -18,6 +20,7 @@ import { Gain, getDestination, Limiter, now } from 'tone';
 import type { AudioPlan } from './plan.ts';
 import { SIREN_VOICES } from './plan.ts';
 import { ShotBank } from './one-shots.ts';
+import { RadioVoice, ScoreVoice } from './radio.ts';
 import type { Listener } from './space.ts';
 import { EngineVoice, HornVoice, RAMP, SirenVoice, SquealVoice } from './voices.ts';
 
@@ -25,7 +28,7 @@ import { EngineVoice, HornVoice, RAMP, SirenVoice, SquealVoice } from './voices.
 export const MASTER_GAIN = 0.55;
 
 /** What each family of voices is worth against the others. */
-export const LEVELS = Object.freeze({ engine: 0.8, siren: 0.5, squeal: 0.35, horn: 0.5, cue: 0.9 });
+export const LEVELS = Object.freeze({ engine: 0.8, siren: 0.5, squeal: 0.35, horn: 0.5, cue: 0.9, radio: 0.7, score: 0.5 });
 
 /** Seconds the music bus takes to climb back after a cue has ducked it. */
 export const DUCK_RECOVER = 0.9;
@@ -43,6 +46,9 @@ export class Mixer {
   private readonly squeal: SquealVoice;
   private readonly horn: HornVoice;
   private readonly shots: ShotBank;
+  /** The radio of spec section 15 and the score over it, both on the music bus. */
+  private readonly radio: RadioVoice;
+  private readonly score: ScoreVoice;
   /** How far the music is pulled down, and the context time that was last measured at. */
   private duck = 0;
   private at = 0;
@@ -57,6 +63,10 @@ export class Mixer {
     this.squeal = new SquealVoice(this.effects);
     this.horn = new HornVoice(this.effects);
     this.shots = new ShotBank(this.effects);
+    // Both ride the music bus, so a gunshot ducks the station and the score
+    // with it, and the radio of spec section 15 needs no bus of its own.
+    this.radio = new RadioVoice(this.music);
+    this.score = new ScoreVoice(this.music);
   }
 
   /** Set every oscillator running. Called once the browser has given a context. */
@@ -65,6 +75,7 @@ export class Mixer {
     for (const siren of this.sirens) siren.start();
     this.squeal.start();
     this.horn.start();
+    this.score.start();
     this.at = now();
   }
 
@@ -79,6 +90,8 @@ export class Mixer {
     this.horn.set(plan.horn, LEVELS.horn);
     this.setSirens(plan);
     this.shots.play(plan.cues, listener, LEVELS.cue);
+    this.radio.set(plan.radio, LEVELS.radio, at);
+    this.score.set(plan.score, LEVELS.score);
     // The duck falls away on its own and is pushed back down by anything this
     // frame asked for, so a run of shots holds the hole open rather than
     // reopening it.
@@ -92,6 +105,8 @@ export class Mixer {
     for (const siren of this.sirens) siren.silence();
     this.squeal.silence();
     this.horn.silence();
+    this.radio.silence();
+    this.score.silence();
   }
 
   /** Cues dropped for want of a voice, which says whether the cap is biting. */
@@ -105,6 +120,8 @@ export class Mixer {
     this.squeal.dispose();
     this.horn.dispose();
     this.shots.dispose();
+    this.radio.dispose();
+    this.score.dispose();
     for (const node of [this.music, this.effects, this.engineBus, this.master, this.limiter]) node.dispose();
   }
 
