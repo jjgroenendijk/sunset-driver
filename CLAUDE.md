@@ -7,7 +7,9 @@ everything generated from a seed.
 vetoes in section 1.2 before proposing anything. Work is tracked as GitHub issues numbered in spec
 order. When you find a pre-existing problem outside the scope of the issue you are on — a bug, a
 wrong number, a stale comment, a missing test — open a GitHub issue for it and carry on. The issue
-is the deliverable; a note in a PR body or a `TODO` in the code is not.
+is the deliverable; a note in a PR body or a `TODO` in the code is not. File it with
+`node scripts/file-issue.ts "<title>"`, which searches open and closed issues first and stops on a
+near match: the same problem has been filed twice before.
 
 ## Tests
 
@@ -26,44 +28,42 @@ request merges itself when they pass. Main runs no tests: it deploys the `dist` 
 built when the tree is the same, and builds only when it is not. A hook runs `npm run verify`
 before `gh pr create`. `.github/actions/setup` installs Node and `node_modules` from caches.
 
+`node scripts/pr-wait.ts <pr>` waits for the checks that gate the merge and prints one verdict: a
+line per check, and on a failure the failing step's own output. It exits 0 when they all passed, so
+`&& gh pr merge` is safe. Use it instead of a poll loop of your own — a bare `sleep` before a check
+is refused, and `--watch` costs a tool call for every turn of the loop. `--all` adds the checks that
+do not gate the merge.
+
 `npm test` must stay under 15 s and `npm run test:full` under 2 min. Cut seeds or ticks in the quick
 tier and keep full coverage behind `SWEEP_SEEDS` — never make a test slower to make it pass. Both
 ceilings are wall clock, which is the work divided by the cores it runs on, so compare the
 CPU-seconds `time npm test` prints and never one machine's wall clock against another's.
 `docs/performance.md` has the measurements and where a sweep spends its time.
 
-## The docs
+## The docs and the skills
 
-One doc per subsystem, read when the work touches it. Each holds the gotchas that file's directory
-costs a session, and only those.
+One doc per subsystem under `docs/`, named for it, read when the work touches it. Each holds the
+gotchas that directory costs a session and opens with a contents list: read the section, not the
+file. `docs/performance.md` is how the test tiers are measured and where their cost goes, and
+`docs/claude-md.md` what belongs in this file.
 
-- `docs/dev-tooling.md` — the free camera, the world preview, the render preview and the frame
-  profiler. Look at the image before judging a layout change, the frame before judging a rendering
-  change, and the frame times before judging a performance change.
-- `docs/world-generation.md` — `src/world`.
-- `docs/corridors.md` — the corridors, the piers under the decks and the tram track, world and
-  render.
-- `docs/rendering.md` — `src/render`.
-- `docs/sim-and-ui.md` — `src/sim` and `src/ui`.
-- `docs/performance.md` — how the test tiers are measured and where their cost goes.
-- `docs/claude-md.md` — what belongs in this file.
+A skill under `.claude/skills/` carries the pointers and the first moves for the work it names, and
+loads itself when the work matches it. `rendering`, `world-generation` and `sim-and-ui` open the
+subsystem they name; `previewing-changes` says which preview answers which question, and
+`working-issues` is the whole job for one issue, from claiming it to landing the pull request.
 
 ## File size
 
-`npm run lint:size` (`scripts/check-size.ts`) holds every limit below. It runs in `verify` and in
-CI, on markdown as well. The edit hook reports the file just written.
+`npm run lint:size` (`scripts/check-size.ts`) holds every limit, in `verify` and in CI, and the edit
+hook reports the file just written against the one it passed: 800 lines of code, 400 of markdown,
+160 for this file, 100 columns of prose. `spec.md` is exempt, being the whole design as one
+document.
 
-No file under `src`, `scripts` or `test` may pass 800 lines; the hook reports a code file at 700, so
-the split happens while it is still small. A long file is a file nobody reads to the end. Split it
-along the seams it already has — one concern per file — and keep the name that callers import as the
-door onto the pieces: `geom.ts` re-exports the shapes it moved to `ring.ts`, and `weapon.ts` the
-table it moved to `arsenal.ts`. Never cut a file in half at the line count.
-
-Markdown wraps at 100 columns; a table row and the body of a fenced code block are the only lines
-exempt. A markdown file may not pass 400 lines, and this one may not pass 160, because it is loaded
-into every session in full. `spec.md` is exempt from the line limit: it is the whole design as one
-document, read by section. When a doc reaches its limit, move a subject out into a doc of its own
-rather than writing more tightly.
+A long file is a file nobody reads to the end. Split it along the seams it already has — one
+concern per file — and keep the name callers import as the door onto the pieces: `geom.ts`
+re-exports the shapes it moved to `ring.ts`, and `weapon.ts` the table it moved to `arsenal.ts`.
+Never cut a file in half at the line count, and never answer a doc that reached its limit by
+writing more tightly: move a subject out into a doc of its own.
 
 
 ## Determinism

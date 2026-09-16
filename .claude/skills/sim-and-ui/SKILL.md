@@ -1,0 +1,34 @@
+---
+name: sim-and-ui
+description: The gotchas of src/sim and src/ui in Sunset Driver — Rapier physics, vehicles, weapons, damage, on-foot movement, saves, the HUD, the map, the title screen, ambient traffic, parked cars, the tram and pedestrians. Use before editing anything under src/sim or src/ui, and when a vehicle behaves wrongly, a save will not load, the HUD reads wrong or traffic drifts out of step.
+---
+
+# Changing the simulation or the interface
+
+`src/sim` is plain serialisable state. Simulation time is the integer `tick` at 60 Hz, and nothing
+in it may read a wall clock or a frame delta. `spec.md` sections 11 to 14, 16 and 18 are the design.
+
+The determinism rules apply: `rngFor` rather than `Math.random()`, and the sorted helpers in
+`src/core/sort.ts` rather than iterating a `Set` or a `Map`.
+
+## The gotchas
+
+`docs/sim-and-ui.md` holds them, under eighteen headings — the player and the HUD, the map, saves,
+physics, on foot, weapons, vehicles, damage, ambient traffic, traffic lights, parked cars, the tram,
+pedestrians and the rest. It opens with a contents list. Read the section the work touches, not the
+file.
+
+The two that catch a session most often:
+
+- Rapier reads a heightfield as `heights[j * (rows + 1) + i]` with `i` walking `z`. The other way
+  round gives a world rotated a quarter turn, with no error.
+- Rapier keeps a force or a torque until it is told to forget it, so `step` clears the last tick's.
+
+## Look at the interface
+
+A map or HUD change is judged from the picture:
+
+```
+node scripts/map-preview.ts <seed> out.png
+node scripts/map-preview.ts <seed> mini.png --minimap
+```
