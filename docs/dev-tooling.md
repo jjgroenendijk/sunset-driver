@@ -156,7 +156,9 @@ Four tiles take about 45 seconds together, against about 50 seconds each on thei
 What the frame costs. Measure the frame before judging a performance change.
 
 It draws a few hundred frames, standing still and then driving, and prints the frame times, the
-draws, and what each long frame compiled or built. Its switches take one part of the frame away —
+draws, and what each long frame compiled or built. It runs the warm-up of `src/render/warm.ts`
+first, as a session does, so a long frame here is a long frame in the game and not one the game
+had already paid for behind its loading screen. Its switches take one part of the frame away —
 `--no-water`, `--no-shadows`, `--no-lamps`, `--no-post` — so two runs say what that part costs, and
 `--dpr=2` is what a Retina display draws.
 
