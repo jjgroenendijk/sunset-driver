@@ -7,6 +7,7 @@ import {
   optionLabel,
   randomAppearance,
 } from '../sim/character.ts';
+import type { WorldSource } from '../render/world-source.ts';
 import type { WorldDescription } from '../world/types.ts';
 import { SeedPreview } from './seed-preview.ts';
 import { button, card, page } from './title-parts.ts';
@@ -35,6 +36,7 @@ export class NewGamePage {
   constructor(
     seed: string,
     character: CharacterAppearance,
+    worlds: WorldSource,
     onPreview: (appearance: CharacterAppearance) => void,
     actions: { back(): void; start(): void },
   ) {
@@ -45,7 +47,7 @@ export class NewGamePage {
     const city = card('I', 'The city', 'Every seed builds a different city.');
     this.seedInput = document.createElement('input');
     city.append(this.buildSeedRow(seed));
-    this.preview = new SeedPreview(city, () => void this.buildPreview());
+    this.preview = new SeedPreview(city, worlds, () => void this.buildPreview());
 
     const driver = card('II', 'The driver', 'Use ◀ ▶ or the arrow keys to change a detail.');
     for (const choice of CHARACTER_CHOICES) driver.append(this.buildChoiceRow(choice.key, choice.label));

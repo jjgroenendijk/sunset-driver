@@ -1,4 +1,5 @@
 import { normaliseAppearance, type CharacterAppearance } from '../sim/character.ts';
+import type { WorldSource } from '../render/world-source.ts';
 import type { WorldDescription } from '../world/types.ts';
 import { MenuPages } from './menu-pages.ts';
 import type { BuildingViewChoice } from './settings.ts';
@@ -52,6 +53,7 @@ export class TitleScreen {
   constructor(
     parent: HTMLElement,
     initial: TitleChoice,
+    worlds: WorldSource,
     onPreview: (appearance: CharacterAppearance) => void,
     buildingView: BuildingViewChoice,
   ) {
@@ -61,7 +63,7 @@ export class TitleScreen {
     this.root.className = 'title';
     this.root.setAttribute('aria-label', 'Main menu');
 
-    this.setup = new NewGamePage(initial.seed, character, onPreview, {
+    this.setup = new NewGamePage(initial.seed, character, worlds, onPreview, {
       back: () => this.back(),
       start: () => this.finish(),
     });

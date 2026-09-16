@@ -70,6 +70,7 @@ export class ChunkPool implements ChunkStream {
   /** Every worker builds the same parcels, so the first to answer says where the stations are. */
   stations: readonly Point[] | undefined;
   metro: readonly MetroStation[] | undefined;
+  /** The bays the one worker that was asked for them laid out. */
   bays: ParkingBays | undefined;
 
   constructor(world: WorldDescription, spawn: () => ChunkWorker = spawnChunkWorker, size = poolSize()) {
@@ -77,7 +78,9 @@ export class ChunkPool implements ChunkStream {
       const slot: Slot = { worker: spawn(), ready: false };
       this.slots.push(slot);
       slot.worker.onReply((reply) => this.receive(slot, reply));
-      slot.worker.post({ type: 'start', world });
+      // Only the first worker lays out the parking bays: the answer is the
+      // same from every one of them, and building it delays a worker's first chunk.
+      slot.worker.post({ type: 'start', world, bays: i === 0 });
     }
   }
 

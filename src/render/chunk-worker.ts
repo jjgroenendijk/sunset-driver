@@ -24,6 +24,13 @@ import type { ChunkDetail } from './streaming.ts';
 export interface StartCommand {
   type: 'start';
   world: WorldDescription;
+  /**
+   * Whether this worker lays out the parking bays of spec section 13.1. Every
+   * worker builds the same bays from the same layers, and the pool keeps one
+   * answer, so one worker is asked and the rest start on chunks that much
+   * sooner.
+   */
+  bays: boolean;
 }
 
 /** Build one chunk at one detail. */
@@ -51,7 +58,7 @@ export interface ReadyReply {
    * they are the same way.
    */
   metro?: MetroStation[];
-  /** The parking bays of spec section 13.1, on the first reply only, for the same reason. */
+  /** The parking bays of spec section 13.1, from the one worker that laid them out, on its first reply. */
   bays?: ParkingBays;
 }
 
@@ -85,10 +92,13 @@ scope.addEventListener('message', (event: MessageEvent) => {
     const layers = buildLayers(world);
     source = new ChunkSource(world, layers);
     lookups = chunkLookups(world, layers);
+    // The stations fall out of the parcels every worker builds, so they cost
+    // nothing; the bays are laid out by the one worker that was asked to.
     const stations = layers.parcels.stations.map((station) => ({ x: station.x, y: station.y }));
-    const bays = buildParkingBays(world, layers.junctions, layers.parcels, layers.carve);
+    const bays = command.bays ? buildParkingBays(world, layers.junctions, layers.parcels, layers.carve) : undefined;
     // Handed over rather than copied, like a chunk: the worker keeps no reference to them.
-    const arrays = [bays.x, bays.y, bays.height, bays.heading, bays.use, bays.street].map((array) => array.buffer);
+    const arrays =
+      bays === undefined ? [] : [bays.x, bays.y, bays.height, bays.heading, bays.use, bays.street].map((a) => a.buffer);
     scope.postMessage({ type: 'ready', stations, metro: layers.parcels.metro, bays } satisfies ReadyReply, arrays);
     return;
   }

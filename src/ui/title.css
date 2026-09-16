@@ -1,4 +1,5 @@
-/* The title screen, the splash before it and the notice after it (`title.ts`).
+/* The title screen, the splash before it and the loading screen after it
+   (`title.ts`, `loading.ts`).
    The look is classic Italian print: ivory card stock, a Didone serif, a deep
    red and fine gold rules, over the dark scene the character turns in. */
 :root {
@@ -17,8 +18,14 @@
 #splash { display: grid; place-items: center; height: 100%; text-align: center; background: var(--it-night); color: var(--it-ivory); }
 #splash h1 { margin: 0 0 .75rem; font: 400 clamp(2.5rem, 7vw, 4.5rem)/1 var(--it-serif); letter-spacing: .08em; text-transform: uppercase; }
 #splash p { margin: 0; font: .75rem var(--it-sans); letter-spacing: .3em; text-transform: uppercase; color: var(--it-gold); }
-.notice { position: fixed; inset: 0; display: grid; place-items: center; align-content: center; gap: 1.25rem; background: var(--it-night); color: var(--it-ivory); font: italic 400 clamp(1.5rem, 3vw, 2.25rem) var(--it-serif); letter-spacing: .02em; }
-.notice::after { content: ""; width: 12rem; height: 1px; background: linear-gradient(90deg, transparent, var(--it-gold), transparent); background-size: 50% 100%; background-repeat: no-repeat; animation: it-sweep 1.6s ease-in-out infinite; }
+.loading { position: fixed; inset: 0; display: grid; place-items: center; align-content: center; gap: 1rem; background: var(--it-night); color: var(--it-ivory); transition: opacity .6s ease; }
+.loading-gone { opacity: 0; pointer-events: none; }
+.loading-seed { margin: 0; font: .72rem var(--it-sans); letter-spacing: .3em; text-transform: uppercase; color: var(--it-gold); }
+.loading-step { margin: 0; font: italic 400 clamp(1.5rem, 3vw, 2.25rem) var(--it-serif); letter-spacing: .02em; text-align: center; }
+.loading-bar { width: min(22rem, 60vw); height: 1px; background: rgba(193,154,83,.25); }
+.loading-fill { width: 0; height: 100%; background: var(--it-gold); transition: width .3s ease; }
+.loading-failed .loading-step { color: #d8746a; }
+.loading-failed .loading-fill { background: #d8746a; }
 
 .title { position: fixed; inset: 0; display: grid; grid-template-rows: auto 1fr auto; gap: 1rem; padding: clamp(1rem, 3vw, 2.5rem) clamp(1rem, 4vw, 4rem); overflow-y: auto; color: var(--it-ivory); font-family: var(--it-sans); background: radial-gradient(ellipse 42% 55% at 50% 52%, rgba(23,17,13,0) 0%, rgba(23,17,13,.55) 60%, rgba(23,17,13,.92) 100%); }
 .title::before { content: ""; position: fixed; inset: .75rem; border: 1px solid rgba(193,154,83,.35); pointer-events: none; }
@@ -120,9 +127,8 @@
   .title-menu { justify-self: stretch; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .title *, .title *::after, .notice::after { animation: none !important; transition: none !important; }
+  .title *, .title *::after, .loading, .loading * { animation: none !important; transition: none !important; }
 }
 
 @keyframes it-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 @keyframes it-breathe { 50% { opacity: .55; } }
-@keyframes it-sweep { from { background-position: -100% 0; } to { background-position: 200% 0; } }

@@ -332,12 +332,26 @@ export class WorldScene {
    * last of them is in the scene. The frame loop has not started yet when this
    * is called, so the budget is the whole of the time rather than a slice of
    * it: this is the wait before the first frame, not a frame.
+   *
+   * `onProgress` is told how many chunks are done out of how many are wanted,
+   * which is what the loading screen of `loading.ts` draws. The total is the
+   * most ever outstanding rather than a count made in advance, because a chunk
+   * already in the scene was never outstanding at all.
    */
-  async settle(x: number, y: number, radius = this.tier.rings.far, timeoutMs = SETTLE_TIMEOUT_MS): Promise<void> {
+  async settle(
+    x: number,
+    y: number,
+    radius = this.tier.rings.far,
+    timeoutMs = SETTLE_TIMEOUT_MS,
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<void> {
     const until = performance.now() + timeoutMs;
+    let total = 0;
     for (;;) {
       this.update(x, y, Infinity);
       const outstanding = this.outstanding(x, y, radius);
+      total = Math.max(total, outstanding);
+      onProgress?.(total - outstanding, total);
       if (outstanding === 0) return;
       if (performance.now() > until) {
         throw new Error(`the chunk workers did not answer: ${outstanding} chunks outstanding`);
