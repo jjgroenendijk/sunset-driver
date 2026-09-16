@@ -124,7 +124,9 @@ The ones that cost a session with nothing to say why. The subsystem docs hold th
 ## Conventions
 
 - Relative imports carry explicit `.ts` extensions (`allowImportingTsExtensions` is on) so scripts
-  and tests run under plain Node.
+  and tests run under plain Node. Node strips types rather than compiling them, so a constructor
+  parameter property (`constructor(private readonly x: T)`) throws there, though `tsc` and vitest
+  both accept it. Write the field out.
 - The lint script's TypeScript compiler API comes from the `tsapi` alias (TypeScript 5), because the
   TypeScript 7 the project builds with ships no JS API. The alias also ships a `tsc`, and npm links
   that one into `node_modules/.bin`, so a bare `tsc` is TypeScript 5. Call
