@@ -19,6 +19,13 @@ export interface InputFrame {
   reload: boolean;
   /** Take the next weapon carried (spec section 11.6). */
   cycle: boolean;
+  /**
+   * The metro destination chosen this tick (spec section 13.3): a place in the
+   * list of stations a trip may go to, counted from 1, and 0 for no choice. It
+   * is a number in the frame rather than a station id, so a recorded stream
+   * replays the trip the player picked off the panel they were shown.
+   */
+  travel: number;
 }
 
 export const EMPTY_INPUT: Readonly<InputFrame> = Object.freeze({
@@ -33,6 +40,7 @@ export const EMPTY_INPUT: Readonly<InputFrame> = Object.freeze({
   aim: false,
   reload: false,
   cycle: false,
+  travel: 0,
 });
 
 export function inputEquals(a: InputFrame, b: InputFrame): boolean {
@@ -47,6 +55,7 @@ export function inputEquals(a: InputFrame, b: InputFrame): boolean {
     a.fire === b.fire &&
     a.aim === b.aim &&
     a.reload === b.reload &&
-    a.cycle === b.cycle
+    a.cycle === b.cycle &&
+    a.travel === b.travel
   );
 }

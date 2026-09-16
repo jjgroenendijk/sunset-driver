@@ -10,6 +10,7 @@ import { stepPickups, type PickupState } from './pickup.ts';
 import { createPedestrianState, type PedestrianState } from './pedestrians.ts';
 import { createTrafficState, type TrafficState } from './traffic.ts';
 import { createLoadout, type LoadoutState, type ProjectileState } from './weapon.ts';
+import { createMetroState, stepMetro, travelling, type MetroState } from './metro.ts';
 
 /** The serialisable, deterministic state of a session. */
 export interface SimState {
@@ -105,6 +106,12 @@ export interface SimState {
    * rest of the crowd is a function of the seed and the tick.
    */
   pedestrians: PedestrianState;
+  /**
+   * The metro of spec section 13.3: the stations the player has been to and the
+   * trip they are on. A save carries the visited set, so the fast travel a
+   * session earned is still there when it is loaded.
+   */
+  metro: MetroState;
 }
 
 /** Dollars a new session starts with (spec section 16). */
@@ -138,6 +145,7 @@ export function createSimState(
     respawn: null,
     traffic: createTrafficState(),
     pedestrians: createPedestrianState(),
+    metro: createMetroState(),
   };
 }
 
@@ -157,11 +165,16 @@ export function cloneSimState(state: SimState): SimState {
  * can be exercised on their own; nothing moves. The pickups are stepped after
  * the physics, so the player takes what lies where the tick left them.
  *
+ * The metro of spec section 13.3 runs first, because a trip freezes the player:
+ * the physics is then stepped with an empty frame, so the city carries on
+ * around them and nothing they press steers the walk under the fade.
+ *
  * A death or an arrest is resolved last (spec section 11.7), so the tick that
  * ends a run is the tick the player comes back on.
  */
 export function stepSim(state: SimState, input: InputFrame = EMPTY_INPUT, physics?: SimPhysics): void {
-  physics?.step(state, input);
+  if (stepMetro(state, input, physics?.metro ?? [])) physics?.stand(state);
+  physics?.step(state, travelling(state) ? EMPTY_INPUT : input);
   stepPickups(state);
   const fate = fateOf(state);
   if (fate !== null) {

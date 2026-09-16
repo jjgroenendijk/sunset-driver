@@ -41,6 +41,7 @@ import { Drivetrain } from './drivetrain.ts';
 import { GroundBodies, type Ground } from './ground-bodies.ts';
 import { Gunfire, type ShotTarget } from './gunfire.ts';
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
+import type { MetroPlace } from './metro.ts';
 import {
   besidePlayer,
   capsuleOf,
@@ -280,6 +281,11 @@ export class SimPhysics {
   /** The police stations of the ground (spec section 11.7), which an arrest reads. */
   get stations(): readonly Place[] {
     return this.ground.stations ?? [];
+  }
+
+  /** The metro station entrances of the ground (spec section 13.3), which fast travel reads. */
+  get metro(): readonly MetroPlace[] {
+    return this.ground.metro ?? [];
   }
 
   /**

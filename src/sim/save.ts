@@ -25,9 +25,14 @@ export const SAVE_FORMAT = 'sunset-driver-save';
 
 /**
  * The version of the record a save holds. Raise it when a field of
- * {@link SimState} changes meaning; a save of another version is refused.
+ * {@link SimState} changes meaning, and when one is added that an older save
+ * cannot have: the record is read against a fresh one, so a save without the
+ * new field is refused either way, and the version is what says so in words a
+ * player understands. A save of another version is refused.
+ *
+ * Version 2 added the metro of spec section 13.3.
  */
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export interface SaveFile {
   format: typeof SAVE_FORMAT;
