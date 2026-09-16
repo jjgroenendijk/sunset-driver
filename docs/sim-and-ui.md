@@ -2,16 +2,13 @@
 
 The gotchas of `src/sim` and `src/ui`: what Rapier does with a wheel, a force and a heightfield,
 what the record may hold, and what the HUD and the map read. `spec.md` sections 11 to 14, 16 and 18
-are the design. Read the section the work touches, not the file.
+are the design. Read the section the work touches, not the file. The menus and the screens around
+play — the title screen, the loading screen, the pause menu and the saves — are in `docs/menus.md`.
 
 ## Contents
 
 - The player and the HUD
 - The map
-- The title screen, the settings and the menu walk
-- The loading screen
-- Saves
-- The scene behind the menu
 - Physics
 - On foot
 - Hotwiring
@@ -61,72 +58,6 @@ are the design. Read the section the work touches, not the file.
 - Look at the map before judging a change to it: `node scripts/map-preview.ts <seed> out.png`, and
   `--minimap` for the round window at the minimap's own scale. It needs a Chromium but no WebGPU
   device, because the map is a 2D canvas.
-
-## The title screen, the settings and the menu walk
-
-- `src/ui/title.ts` is the title screen as a main menu of pages: the main page, New game
-  (`title-setup.ts`), Settings, and Controls and Camera under Settings (`title-controls.ts`,
-  `title-camera.ts`). `PARENT` says
-  where Escape and Back go from each page. A menu item with no action is drawn disabled; Load game,
-  Graphics and Sound wait for what they open. The arrow keys walk the elements with `data-nav`, in
-  DOM order, and skip a disabled one. The pointer moves the same focus, so only one item is lit. A
-  character row takes the focus itself and changes on left and right; its two buttons carry no
-  `data-nav`. The look lives in `title.css`, which `style.css` imports.
-- `src/ui/settings.ts` holds the settings that belong to the browser rather than to a save, in
-  `localStorage` under one key. A value it does not know falls back to the default. The Camera page
-  (`title-camera.ts`) is shared by the title screen and the pause menu, and a choice takes effect on
-  the next frame.
-- `src/ui/menu-pages.ts` is the page walk both menus share: `parent`, the arrow keys, the pointer
-  focus, and Escape going up a page. `src/ui/pause.ts` is the pause menu of spec section 12, drawn
-  with the title's classes and the few rules of `pause.css`. It listens to no key: Escape both opens
-  and closes it, so `main.ts` hands it every key while it is open. While it is open the frame loop
-  takes no steps and the clock keeps its place between two ticks.
-
-## The loading screen
-
-- `src/ui/loading.ts` is the screen between Start and the street. It names the step being taken —
-  the world, the ground under the player, the shaders of the first frame — and shows how far
-  through the whole wait it is. `main.ts` drives it, and every step it shows is a real one: the
-  chunk count comes from `settle`, not from a guess.
-- Nothing on that path blocks the frame loop any more, which is what lets the screen draw its own
-  progress: the world is built in the worker of `world-source.ts`, and Rapier is fetched beside the
-  renderer rather than in front of it and waited for where the physics is first built.
-- The screen is opaque, so the scene behind the menu is never seen once Start is pressed, and it
-  hands the city over by waiting for the first frame of the session to be drawn under it and then
-  fading off it. A player who asked the browser for less motion gets no fade.
-
-## Saves
-
-- A save (`src/sim/save.ts`) is the record and the seed text, nothing else, so a field added to
-  `SimState` is saved with no change there. Raise `SAVE_VERSION` when you add one all the same: an
-  older save has no such field, is refused either way, and the version is the only refusal a player
-  can read. It is read against a fresh record: a missing field or a
-  wrong type is refused, and an unknown field is dropped. Raise `SAVE_VERSION` when a field changes
-  meaning. `src/ui/saves.ts` keeps one save per seed in `localStorage`.
-- A load writes the save into the live record in place, because every closure in `main.ts` holds
-  that record, and then builds a new `SimPhysics` from it. Never `adopt` a loaded record into the
-  old physics: the traffic bodies keep their cursors and their promoted bodies from before the load.
-- A save of another seed needs another world, so an import of one, and Regenerate, load the page
-  again. The note in `sessionStorage` from `setPendingStart` tells the next boot to skip the title
-  and start that seed, from its save or afresh.
-
-## The scene behind the menu
-
-- `src/render/scene.ts` is the scene behind the menu: a parked car, a lit street lamp and the
-  driver, with no world. The camera swings over the front of the car and never goes all the way
-  round, because the lamp post stands on the far side. The lamp is the game's own `LampLight`, so
-  the scene draws only through a renderer from `createRenderer`, which registers that light.
-- `src/ui/seed-preview.ts` draws the map of the seed on the title screen, through the same `MapArt`,
-  so the picture the player picks a seed from is the map they will play on. A build takes a second
-  or more and runs in the worker of `world-source.ts`, so the scene behind the menu keeps turning;
-  it still happens only when the player asks for it — the dice button, the Show the map button, or
-  Enter in the seed box — and never on a key press in the box.
-  `MapDrawOptions.player` is null there: the preview is the map alone, with no arrow on it. The
-  world it built travels back in `TitleChoice.world`, and `main.ts` reuses it rather than
-  generating the same seed twice.
-- `src/ui/controls.ts` is the one list of key bindings. It is shown on the title screen and copied
-  into the README; `Keyboard.sample` must stay in step with the rows that are part of the input
-  frame, and `main.ts` listens for the rows after them itself.
 
 ## Physics
 

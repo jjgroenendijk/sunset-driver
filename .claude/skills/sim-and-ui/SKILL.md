@@ -1,6 +1,6 @@
 ---
 name: sim-and-ui
-description: The gotchas of src/sim and src/ui in Sunset Driver — Rapier physics, vehicles, weapons, damage, on-foot movement, saves, the HUD, the map, the title screen, ambient traffic, parked cars, the tram and pedestrians. Use before editing anything under src/sim or src/ui, and when a vehicle behaves wrongly, a save will not load, the HUD reads wrong or traffic drifts out of step.
+description: The gotchas of src/sim and src/ui in Sunset Driver — Rapier physics, vehicles, weapons, damage, on-foot movement, the HUD, the map, the title screen, the loading screen, saves, ambient traffic, parked cars, the tram and pedestrians. Use before editing anything under src/sim or src/ui, and when a vehicle behaves wrongly, a save will not load, the HUD reads wrong or traffic drifts out of step.
 ---
 
 # Changing the simulation or the interface
@@ -13,10 +13,14 @@ The determinism rules apply: `rngFor` rather than `Math.random()`, and the sorte
 
 ## The gotchas
 
-`docs/sim-and-ui.md` holds them, under eighteen headings — the player and the HUD, the map, saves,
+`docs/sim-and-ui.md` holds them, under seventeen headings — the player and the HUD, the map,
 physics, on foot, weapons, vehicles, damage, ambient traffic, traffic lights, parked cars, the tram,
 pedestrians and the rest. It opens with a contents list. Read the section the work touches, not the
 file.
+
+`docs/menus.md` holds the screens around play: the title screen and its menu walk, the loading
+screen after Start, the pause menu, the saves and the scene behind the menu. Read it instead when
+the work is one of those.
 
 The two that catch a session most often:
 
