@@ -77,8 +77,6 @@ export class WorldSites implements SiteSource {
   private atY = Number.NaN;
   private readonly world: WorldDescription;
 
-  // A parameter property would be tidier and is not allowed: `scripts/*.ts` run
-  // under plain Node's type stripping, which refuses one.
   constructor(world: WorldDescription) {
     this.world = world;
     this.zones = layoutZones(world.size, world.core, world.water);
