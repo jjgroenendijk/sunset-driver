@@ -6,6 +6,17 @@ None of it is part of the game. A tool may read the world, the scene and the rec
 them may change the simulation: `src/sim` knows about none of this, and a save carries no trace of
 it.
 
+## Contents
+
+- The free camera
+- `node scripts/world-preview.ts <seed> out.png [--tiers=highway]`
+- `node scripts/terrain-sheet.ts [count] out.png [--cols=6] [--tile=160]`
+- `node scripts/landuse-preview.ts <seed> out.png`
+- `node scripts/render-preview.ts <seed> out.png`
+- `node scripts/render-sheet.ts <count> out.png [--cols=3] [--tile=480]`
+- `node scripts/render-profile.ts <seed>`
+- The browser the previews need
+
 ## The free camera
 
 A camera that flies anywhere on the map while the simulation carries on behind it. It is how a
@@ -127,6 +138,19 @@ What the game draws, as one frame. Look at the frame before judging a rendering 
 It prints the lights and shadow cascades the frame cost beside the draw calls, and how many
 vehicles of the traffic, parked cars and pedestrians it drew.
 
+## `node scripts/render-sheet.ts <count> out.png [--cols=3] [--tile=480]`
+
+What the renderer makes of many seeds, as one grid. Use it to compare seeds, not to judge a
+rendering change: a tile is too small to see a shadow edge or a material in, and a full-size frame
+from `render-preview.ts` is what that needs.
+
+The seeds are the seeds of the sweep, in order, so a tile is a world the tests read. `--seeds=7,9`
+names them instead, for looking at the ones a failure named. `--hour`, `--x`, `--y`, `--distance`
+and `--quality` mean what they mean for `render-preview.ts`.
+
+One browser draws every tile, which is most of the saving: starting it costs more than a frame.
+Four tiles take about 45 seconds together, against about 50 seconds each on their own.
+
 ## `node scripts/render-profile.ts <seed>`
 
 What the frame costs. Measure the frame before judging a performance change.
@@ -142,8 +166,17 @@ more than once each.
 ## The browser the previews need
 
 Both previews serve the project with Vite and drive a headless Chromium from `playwright-core`,
-because the renderer needs a real WebGPU device and Node has none. A machine without that browser
-runs `npx playwright install chromium` once, or points `CHROMIUM_PATH` at a binary.
+because the renderer needs a real WebGPU device and Node has none.
 
-The profiler needs a hardware WebGPU adapter, so point `CHROMIUM_PATH` at an installed Chrome:
-SwiftShader draws on the processor and says nothing about a frame.
+`scripts/chromium.ts` finds that browser, and no session should have to set a path by hand.
+`playwright-core` ships no browser: it names the build it was released against, and the machine
+holds whatever build some earlier install put there. The two disagree after every `playwright-core`
+bump, so the named path is only a hint. The resolver searches the whole browser cache for any build,
+on every platform layout, and takes an installed Chrome when the cache holds none.
+
+The profiler asks for a hardware WebGPU adapter, so it takes an installed Chrome first and the
+cached build second: the cached build falls back to SwiftShader, which draws on the processor and
+says nothing about a frame.
+
+A machine with no browser at all runs `npx playwright install chromium` once. `CHROMIUM_PATH`
+overrides the search, and the error names every place that was looked in.
