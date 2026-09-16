@@ -15,6 +15,7 @@
 import { start } from 'tone';
 import type { InputFrame } from '../sim/input.ts';
 import type { SimState } from '../sim/simulation.ts';
+import type { SiteSource } from './ambience.ts';
 import { Mixer } from './mixer.ts';
 import { AudioPlanner, type BellSource } from './plan.ts';
 import type { Listener } from './space.ts';
@@ -42,6 +43,8 @@ export class GameAudio {
   private trams: BellSource | null = null;
   /** What the radio is putting out, for the HUD, or null while nothing is. */
   private air: OnAirLine | null = null;
+  /** The world the ambient beds are read from, or null before a session has one. */
+  private sites: SiteSource | null = null;
 
   constructor(muted = false) {
     this.silent = muted;
@@ -64,6 +67,15 @@ export class GameAudio {
    */
   watch(trams: BellSource): void {
     this.trams = trams;
+  }
+
+  /**
+   * Take the session's world, so the ambient beds of spec section 15 know what
+   * the player is standing in. Without one the beds stay silent and the rest of
+   * the mix is unchanged, which is what a session before its world sounds like.
+   */
+  survey(sites: SiteSource): void {
+    this.sites = sites;
   }
 
   get muted(): boolean {
@@ -107,7 +119,7 @@ export class GameAudio {
       this.mixer.start();
       this.planner.resync(state);
     }
-    const plan = this.planner.plan(state, input, listener, this.trams ?? undefined);
+    const plan = this.planner.plan(state, input, listener, this.trams ?? undefined, this.sites ?? undefined);
     this.mixer.apply(plan, listener);
     const radio = plan.radio;
     this.air = radio.station === null ? null : { name: radio.name, text: radio.text, from: radio.from };

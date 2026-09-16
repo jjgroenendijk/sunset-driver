@@ -20,13 +20,24 @@
  * to do.
  */
 import { rngFor, Subsystem } from '../core/rng.ts';
-import { TICK_RATE } from '../sim/clock.ts';
+import { gameTime, TICK_RATE } from '../sim/clock.ts';
 import type { InputFrame } from '../sim/input.ts';
 import type { PoliceUnit } from '../sim/police.ts';
 import type { SimState } from '../sim/simulation.ts';
 import type { TramBell } from '../sim/tram.ts';
 import { specOf } from '../sim/vehicle.ts';
+import { weatherAt } from '../sim/weather.ts';
 import { currentWeapon, type WeaponSpec } from '../sim/weapon.ts';
+import {
+  bedsFor,
+  callsFor,
+  CALL_FAR,
+  CALL_NEAR,
+  silentBeds,
+  type BedPlan,
+  type CallRates,
+  type SiteSource,
+} from './ambience.ts';
 import { CUES, type Cue } from './cue.ts';
 import { barSeconds, dialAt, dialName, wrapDial } from './dial.ts';
 import { enginePitch, engineSound, type EngineSound } from './engine.ts';
@@ -66,6 +77,13 @@ export const WAIL_TICKS = 90;
 
 /** How far the music bus is pulled down under a cue that ducks (spec section 15). */
 export const DUCK_DEPTH = 0.65;
+
+/**
+ * The streams the bird and the gull calls are drawn from. They are their own
+ * entity ids, negative so no bird ever shares a stream with a shot, a tram or a
+ * tick.
+ */
+const CALL_STREAM: Readonly<Record<'bird' | 'gull', number>> = Object.freeze({ bird: -1, gull: -2 });
 
 /** One siren in the mix. */
 export interface SirenPlan {
@@ -120,6 +138,8 @@ export interface AudioPlan {
   radio: RadioPlan;
   /** What the chase is doing to the music (spec section 15). */
   score: Score;
+  /** The ambient beds of the place the player is standing in (spec section 15). */
+  beds: BedPlan;
 }
 
 /** The radio of a session with the dial at Off, which is what silence looks like. */
@@ -138,6 +158,7 @@ export function silentPlan(): AudioPlan {
     duck: 0,
     radio: silentRadio(),
     score: { mood: 'calm', intensity: 0, radio: 1 },
+    beds: silentBeds(),
   };
 }
 
@@ -176,7 +197,7 @@ export class AudioPlanner {
    * session has one: its bells are a function of the tick rather than part of
    * the record, so they are read here for every tick the frame stepped.
    */
-  plan(state: SimState, input: InputFrame, listener: Listener, trams?: BellSource): AudioPlan {
+  plan(state: SimState, input: InputFrame, listener: Listener, trams?: BellSource, around?: SiteSource): AudioPlan {
     if (this.tick < 0) this.resync(state);
     const ticks = Math.max(0, Math.min(state.tick - this.tick, TICK_RATE));
     const was = state.tick - ticks;
@@ -187,6 +208,19 @@ export class AudioPlanner {
     this.footsteps(state, ticks, cues);
     this.bells(state, was, trams, cues);
     const score = scoreOf(state);
+    // Where the player is standing, what the sky is doing and what hour it is:
+    // the three the ambient beds of spec section 15 are read from. All of it is
+    // a function of the record, so two machines on the same tick agree. A
+    // session with no world is in no place, and a place is what a bed is.
+    const site = around?.siteAt(listener.x, listener.y);
+    let beds = silentBeds();
+    if (site !== undefined) {
+      const weather = weatherAt(state.seed, state.tick);
+      const hour = gameTime(state.tick).dayFraction * 24;
+      beds = bedsFor(site, weather, hour);
+      // Last of the cues, so a frame at the cap drops a bird and not a gunshot.
+      this.calls(state, was, listener, callsFor(site, weather, hour), cues);
+    }
     return {
       engine: this.engine(state, input, listener),
       squeal: squealOf(state),
@@ -196,6 +230,7 @@ export class AudioPlanner {
       duck: duckOf(cues),
       radio: radioOf(state, score),
       score,
+      beds,
     };
   }
 
@@ -269,6 +304,36 @@ export class AudioPlanner {
     for (let tick = was + 1; tick <= state.tick; tick++) {
       for (const bell of trams.bells(tick, this.ringing)) {
         cues.push(cueAt(state, 'bell', bell.x, bell.y, BELL_STRENGTH, bell.tram));
+      }
+    }
+  }
+
+  /**
+   * The birds and the gulls of spec section 15. A call is drawn per tick rather
+   * than per frame, over every tick the frame stepped, so how often one is
+   * heard is the same on a machine drawing thirty frames a second and one
+   * drawing a hundred and forty.
+   *
+   * Each call is placed on a ring around the listener rather than at a bird,
+   * because there is no bird: the wildlife of spec section 20.4 has not landed,
+   * and a call from somewhere over there is what the ear expects anyway.
+   */
+  private calls(state: SimState, was: number, listener: Listener, rates: CallRates, cues: Cue[]): void {
+    for (let tick = was + 1; tick <= state.tick; tick++) {
+      for (const kind of ['bird', 'gull'] as const) {
+        const rate = rates[kind];
+        if (rate <= 0) continue;
+        const rng = rngFor(state.seed, tick, Subsystem.Audio, CALL_STREAM[kind]);
+        if (!rng.chance(rate)) continue;
+        const angle = rng.range(0, Math.PI * 2);
+        const away = rng.range(CALL_NEAR, CALL_FAR);
+        cues.push({
+          kind,
+          x: listener.x + Math.cos(angle) * away,
+          y: listener.y + Math.sin(angle) * away,
+          strength: rng.range(0.55, 1),
+          pitch: rng.range(0.88, 1.14),
+        });
       }
     }
   }

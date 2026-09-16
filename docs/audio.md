@@ -10,16 +10,17 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
 - Cues, and what a frame is allowed to fire
 - The radio, and how a bar gets played
 - The score over the radio
+- The ambient beds, and where a place comes from
 - The buses and the duck
 - The gesture and the mute
 - Traps
 
 ## The split, and why it is there
 
-- `src/audio` is two halves and one door. `plan.ts`, `engine.ts`, `space.ts` and `cue.ts` hold no
-  Tone.js and no DOM: they read the record and answer an `AudioPlan`. `voices.ts`, `one-shots.ts`
-  and `mixer.ts` own the Web Audio node graph and play that plan. `game-audio.ts` is the door
-  `main.ts` holds.
+- `src/audio` is two halves and one door. `plan.ts`, `engine.ts`, `space.ts`, `cue.ts`,
+  `ambience.ts` and `site.ts` hold no Tone.js and no DOM: they read the record and answer an
+  `AudioPlan`. `voices.ts`, `one-shots.ts`, `beds.ts` and `mixer.ts` own the Web Audio node graph
+  and play that plan. `game-audio.ts` is the door `main.ts` holds.
 - The split is what lets `test/audio.test.ts` run in Node. A rule that decides whether a sound
   happens belongs in the pure half; a rule about how it sounds belongs in the other. When adding
   something, put the decision in `plan.ts` and let the mixer take it as given.
@@ -37,8 +38,8 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
   section 11.3, and a boat has one — direct drive.
 - `enginePitch` shifts the whole note by the roster's own mass, so a bus rumbles and a buggy buzzes
   with nothing written down per class. Add a vehicle and its engine is already pitched.
-- The engine is the player's own vehicle and nothing else. Ambient traffic makes no sound yet; that
-  belongs with the ambient beds of spec section 15.
+- The engine is the player's own vehicle and nothing else. No ambient car has an engine of its own:
+  the traffic is heard as the hum of the bed below, which is the whole street at once.
 
 ## Cues, and what a frame is allowed to fire
 
@@ -94,11 +95,32 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
 - The mood is read fresh every frame off the record, so nothing has to be told when a chase starts
   or ends.
 
+## The ambient beds, and where a place comes from
+
+- A bed is the place itself: the hum of a city, surf, wind and rain (spec section 15). Nothing in
+  the record says what a place sounds like, so `ambience.ts` reads it off three numbers — how built
+  up, how green and how near the sea it is — with the weather of spec section 13.4 and the hour.
+  `site.ts` answers those three from the world description; `beds.ts` is the noise.
+- The beds crossfade over `BED_RAMP`, which is far longer than the `RAMP` the rest of the mix uses.
+  That is the crossfade on movement: walking downtown to the beach takes about a second and a half,
+  so neither bed is heard to switch.
+- Birds and gulls are **not** beds. A call is a one-shot with silence after it, so `plan.ts` draws
+  one per tick from a rate `ambience.ts` gives it, over every tick the frame stepped — the same rule
+  the tram bells follow, and for the same reason. Calls are pushed last, so a frame at
+  `CUES_PER_FRAME` drops a bird rather than a gunshot.
+- Sampling a site walks every beach point of the map, so `WorldSites` keeps its last answer until
+  the player has moved `RESAMPLE` metres. The beds ramp over more than a second either way, so the
+  step is never heard.
+- A session whose audio was never given a world has no place, and so no beds at all. That is what
+  `GameAudio.survey` is for, and forgetting it in `main.ts` is a silent city with working gunfire.
+
 ## The buses and the duck
 
-- Three buses meet at the master: `music` — the radio and the score — `effects`, and the
-  player's engine on its own. A limiter sits on the master, so nothing a stacked explosion does can
-  clip the output.
+- Four buses meet at the master: `music` — the radio and the score — `effects`, the player's engine
+  on its own, and the ambient beds. A limiter sits on the master, so nothing a stacked explosion
+  does can clip the output.
+- The beds are on their own bus because they must not duck: a city does not stop humming because
+  somebody fired a gun in it.
 - `music` is what ducks. A cue whose row in `CUES` says `ducks` pulls it down by `DUCK_DEPTH` and it
   climbs back over `DUCK_RECOVER`, so a run of shots holds one hole open instead of reopening it.
 - Siren voices follow **units**, not places in the list. A voice keeps the unit it was given while

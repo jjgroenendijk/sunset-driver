@@ -1,10 +1,14 @@
 /**
  * The bus layout of spec section 15, and the one place that plays a plan.
  *
- * Three buses meet at the master: the music the radio of spec section 15 will
- * hang off, the effects — cues, sirens, tyres and the horn — and the player's
- * own engine, kept apart so it can be held under the rest of the mix. A limiter
- * sits on the master so nothing an explosion does can clip the output.
+ * Four buses meet at the master: the music — the radio and the score — the
+ * effects, being cues, sirens, tyres and the horn, the player's own engine,
+ * kept apart so it can be held under the rest of the mix, and the ambient beds
+ * of the place itself. A limiter sits on the master so nothing an explosion
+ * does can clip the output.
+ *
+ * The beds have their own bus because they are not an effect and must not duck:
+ * the city does not stop humming because somebody fired a gun in it.
  *
  * The music bus is what ducks, and it is what the radio stations and the
  * situational score of spec section 15 play into. A cue marked `ducks` in
@@ -17,6 +21,7 @@
  * second car joining a chase does not make the first one's siren change pitch.
  */
 import { Gain, getDestination, Limiter, now } from 'tone';
+import { AmbientBeds } from './beds.ts';
 import type { AudioPlan } from './plan.ts';
 import { SIREN_VOICES } from './plan.ts';
 import { ShotBank } from './one-shots.ts';
@@ -28,7 +33,16 @@ import { EngineVoice, HornVoice, RAMP, SirenVoice, SquealVoice } from './voices.
 export const MASTER_GAIN = 0.55;
 
 /** What each family of voices is worth against the others. */
-export const LEVELS = Object.freeze({ engine: 0.8, siren: 0.5, squeal: 0.35, horn: 0.5, cue: 0.9, radio: 0.7, score: 0.5 });
+export const LEVELS = Object.freeze({
+  engine: 0.8,
+  siren: 0.5,
+  squeal: 0.35,
+  horn: 0.5,
+  cue: 0.9,
+  radio: 0.7,
+  score: 0.5,
+  bed: 0.5,
+});
 
 /** Seconds the music bus takes to climb back after a cue has ducked it. */
 export const DUCK_RECOVER = 0.9;
@@ -41,6 +55,9 @@ export class Mixer {
   private readonly master = new Gain(MASTER_GAIN);
   private readonly limiter = new Limiter(-1);
   private readonly engineBus = new Gain(1);
+  /** The ambient beds, on their own bus: the place does not duck for a gunshot. */
+  private readonly ambience = new Gain(1);
+  private readonly beds: AmbientBeds;
   private readonly engine: EngineVoice;
   private readonly sirens: SirenVoice[];
   private readonly squeal: SquealVoice;
@@ -58,6 +75,8 @@ export class Mixer {
     this.music.connect(this.master);
     this.effects.connect(this.master);
     this.engineBus.connect(this.master);
+    this.ambience.connect(this.master);
+    this.beds = new AmbientBeds(this.ambience);
     this.engine = new EngineVoice(this.engineBus);
     this.sirens = Array.from({ length: SIREN_VOICES }, () => new SirenVoice(this.effects));
     this.squeal = new SquealVoice(this.effects);
@@ -76,6 +95,7 @@ export class Mixer {
     this.squeal.start();
     this.horn.start();
     this.score.start();
+    this.beds.start();
     this.at = now();
   }
 
@@ -89,6 +109,7 @@ export class Mixer {
     this.squeal.set(plan.squeal, LEVELS.squeal);
     this.horn.set(plan.horn, LEVELS.horn);
     this.setSirens(plan);
+    this.beds.set(plan.beds, LEVELS.bed);
     this.shots.play(plan.cues, listener, LEVELS.cue);
     this.radio.set(plan.radio, LEVELS.radio, at);
     this.score.set(plan.score, LEVELS.score);
@@ -107,6 +128,7 @@ export class Mixer {
     this.horn.silence();
     this.radio.silence();
     this.score.silence();
+    this.beds.silence();
   }
 
   /** Cues dropped for want of a voice, which says whether the cap is biting. */
@@ -122,7 +144,10 @@ export class Mixer {
     this.shots.dispose();
     this.radio.dispose();
     this.score.dispose();
-    for (const node of [this.music, this.effects, this.engineBus, this.master, this.limiter]) node.dispose();
+    this.beds.dispose();
+    for (const node of [this.music, this.effects, this.engineBus, this.ambience, this.master, this.limiter]) {
+      node.dispose();
+    }
   }
 
   /**

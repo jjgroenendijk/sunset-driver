@@ -12,11 +12,14 @@
  * page it opens. Nothing in the game imports this.
  */
 import { Offline } from 'tone';
+import { TICKS_PER_HOUR } from '../sim/clock.ts';
 import { EMPTY_INPUT, type InputFrame } from '../sim/input.ts';
 import type { PoliceKind, PoliceUnit } from '../sim/police.ts';
 import { createSimState, type SimState } from '../sim/simulation.ts';
 import type { TramBell } from '../sim/tram.ts';
+import { weatherAt, type Weather } from '../sim/weather.ts';
 import { giveWeapon } from '../sim/weapon.ts';
+import type { Site, SiteSource } from './ambience.ts';
 import { barTicks } from './dial.ts';
 import { Mixer } from './mixer.ts';
 import { AudioPlanner, type BellSource } from './plan.ts';
@@ -46,6 +49,8 @@ interface AudioCase {
   state: () => SimState;
   input?: InputFrame;
   trams?: BellSource;
+  /** The ground the case stands on, for a bed. Left out, the place is silent. */
+  sites?: SiteSource;
   /** What changes between the first frame and the second, which is what a one-shot is read from. */
   move?: (state: SimState) => void;
   /** Frames the case is driven for. More than two where a sound takes time to come round. */
@@ -89,6 +94,39 @@ function listening(dial: number, bar = 0): SimState {
   state.tick = Math.ceil(barTicks(STATIONS[dial] as Station) * (bar + 1)) - 1;
   return state;
 }
+
+/** A place that is the same everywhere, which is what a bed case wants. */
+function everywhere(site: Site): SiteSource {
+  return { siteAt: () => site };
+}
+
+const DOWNTOWN = everywhere({ built: 1, green: 0.05, shore: 0 });
+const BEACH = everywhere({ built: 0.2, green: 0.2, shore: 1 });
+const COUNTRY = everywhere({ built: 0.02, green: 1, shore: 0 });
+
+/**
+ * The first tick from `from` on whose weather the case is about — a dry hour
+ * for a bed that must not be measured through rain, a wet one for the rain
+ * itself. The weather is a function of the seed (spec section 13.4), so the
+ * case has to find its hour rather than ask for it.
+ */
+function tickWhen(seed: number, from: number, want: (weather: Weather) => boolean): number {
+  for (let hour = 0; hour < 24 * 7; hour++) {
+    const tick = from + hour * TICKS_PER_HOUR;
+    if (want(weatherAt(seed, tick))) return tick;
+  }
+  return from;
+}
+
+/** A session on foot at an hour of the day the weather suits. */
+function outside(hour: number, want: (weather: Weather) => boolean): SimState {
+  const state = afoot();
+  state.tick = tickWhen(state.seed, hour * TICKS_PER_HOUR, want);
+  return state;
+}
+
+const DRY = (weather: Weather): boolean => weather.rain < 0.05;
+const POURING = (weather: Weather): boolean => weather.rain > 0.5;
 
 /** A line whose tram rings on every tick, which is what a bell sounds like at its loudest. */
 const RINGING: BellSource = {
@@ -195,6 +233,19 @@ const CASES: readonly AudioCase[] = [
       return state;
     },
   },
+  // The beds of spec section 15. Each one holds a level rather than being
+  // struck, so what is read off these is the loudness and not the peak, and the
+  // first {@link BED_RAMP} of every one of them is the crossfade coming up.
+  { name: 'bed: downtown at noon', state: () => outside(12, DRY), sites: DOWNTOWN },
+  { name: 'bed: downtown at 4am', state: () => outside(4, DRY), sites: DOWNTOWN },
+  { name: 'bed: beach at noon', state: () => outside(12, DRY), sites: BEACH },
+  { name: 'bed: country at noon', state: () => outside(12, DRY), sites: COUNTRY },
+  { name: 'bed: rain on the city', state: () => outside(12, POURING), sites: DOWNTOWN },
+  { name: 'bed: gale over the country', state: () => outside(12, (w) => w.wind > 0.8), sites: COUNTRY },
+  // A call is drawn per tick at a few a minute, so this case walks a few
+  // minutes of dawn rather than two frames of it.
+  { name: 'birdsong at dawn', state: () => outside(6, DRY), sites: COUNTRY, frames: 400 },
+  { name: 'gulls over the beach', state: () => outside(12, DRY), sites: BEACH, frames: 400 },
   {
     name: 'the lot at once',
     state: () => {
@@ -209,6 +260,9 @@ const CASES: readonly AudioCase[] = [
     },
     input: { ...EMPTY_INPUT, throttle: 1, horn: true },
     trams: RINGING,
+    // Downtown, because the loudest moment the game has is one with the city
+    // humming under it as well.
+    sites: DOWNTOWN,
     move: (state) => {
       state.loadout.shots += 3;
       state.vehicle.damage.integrity -= 0.3;
@@ -230,11 +284,11 @@ export async function renderCases(): Promise<AudioLevel[]> {
       const planner = new AudioPlanner();
       // The first frame has nothing to compare against, so what a case is about
       // is made to happen between it and the next, as it does in play.
-      mixer.apply(planner.plan(state, input, listener, test.trams), listener);
+      mixer.apply(planner.plan(state, input, listener, test.trams, test.sites), listener);
       for (let i = 1; i < (test.frames ?? 2); i++) {
         state.tick += 1;
         test.move?.(state);
-        mixer.apply(planner.plan(state, input, listener, test.trams), listener);
+        mixer.apply(planner.plan(state, input, listener, test.trams, test.sites), listener);
       }
     }, SECONDS);
     out.push({ name: test.name, ...measure(buffer.getChannelData(0)) });
