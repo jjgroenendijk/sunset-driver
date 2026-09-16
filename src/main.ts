@@ -474,6 +474,9 @@ async function boot(): Promise<void> {
   const crowd = new AmbientPedestrians(state.seed, roads, crowdDistrictsOf(description));
   // The trams of spec section 13.2 keep to the traffic's own lights.
   const tram = new TramLine(state.seed, roads, description.tram, description.districts, traffic.signals);
+  // The bells of spec section 13.2 are a function of the tick rather than part
+  // of the record, so the audio is given the line itself to ask.
+  audio.watch(tram);
   // The police drive the same roads the traffic does, and answer from the
   // district the player stands in (spec section 14).
   const police = new PoliceForce(roads, policeDistrictsOf(description));

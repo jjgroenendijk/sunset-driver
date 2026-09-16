@@ -91,8 +91,8 @@ Beyond what the file names suggest:
   no Tone.js and no DOM, so they run headless; `voices.ts`, `one-shots.ts` and `mixer.ts` own the
   Web Audio graph. Nothing here may write to the record.
 - `scripts/*.ts` — run with plain `node` (type stripping), not through Vite.
-  `scripts/render-preview.html` and `scripts/map-preview.html` are the exceptions a script serves
-  rather than runs; they are not build inputs.
+  `scripts/render-preview.html`, `scripts/map-preview.html` and `scripts/audio-check.html` are the
+  exceptions a script serves rather than runs; they are not build inputs.
 - `scripts/hooks/` — Claude Code hooks wired from `.claude/settings.json`; fast, idempotent, exit 2
   to report a problem. Anything repeated across sessions belongs in a hook or a `scripts/` entry
   rather than in prose here.

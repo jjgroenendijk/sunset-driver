@@ -15,6 +15,7 @@ it.
 - `node scripts/render-preview.ts <seed> out.png`
 - `node scripts/render-sheet.ts <count> out.png [--cols=3] [--tile=480]`
 - `node scripts/render-profile.ts <seed>`
+- `node scripts/audio-check.ts`
 - The browser the previews need
 
 ## The free camera
@@ -162,6 +163,17 @@ draws, and what each long frame compiled or built. Its switches take one part of
 
 GPU times move by several milliseconds between runs, so compare two builds by running them in turn,
 more than once each.
+
+## `node scripts/audio-check.ts`
+
+What the game sounds like, as numbers. A headless run has no ears, so this is the meter: it renders
+a made-up moment of each kind — the engine idling and at speed, the horn, sliding tyres, sirens, a
+gunshot, a swing, a collision, an explosion, a footfall, a tram bell, and the lot at once — through
+an offline audio context and prints the peak, the loudness and how much of it was silence.
+
+Run it after changing a voice or a level in `src/audio`. It fails on a case that should make a
+sound and is silent, which is what a node that was never connected looks like, and on one that
+clips. The cases live in `src/audio/offline.ts` and each drives the real planner and the real mixer.
 
 ## The browser the previews need
 

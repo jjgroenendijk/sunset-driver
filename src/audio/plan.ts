@@ -6,7 +6,7 @@
  * `SimState` the simulation wrote, the input frame the player pressed and where
  * the player is listening from, and answers a plan. It makes no sound, holds no
  * Web Audio node and imports nothing from Tone.js, so every rule below is
- * exercised headless in `test/audio-plan.test.ts`. `mixer.ts` takes the plan and
+ * exercised headless in `test/audio.test.ts`. `mixer.ts` takes the plan and
  * plays it.
  *
  * Only the little that cannot be read off one tick is kept: what the shot
@@ -24,6 +24,7 @@ import { TICK_RATE } from '../sim/clock.ts';
 import type { InputFrame } from '../sim/input.ts';
 import type { PoliceUnit } from '../sim/police.ts';
 import type { SimState } from '../sim/simulation.ts';
+import type { TramBell } from '../sim/tram.ts';
 import { specOf } from '../sim/vehicle.ts';
 import { currentWeapon, type WeaponSpec } from '../sim/weapon.ts';
 import { CUES, type Cue } from './cue.ts';
@@ -44,6 +45,17 @@ export const SQUEAL_SPEED = 3;
 
 /** How far the integrity must fall in one frame to be worth a collision. */
 export const IMPACT_MIN = 0.004;
+
+/**
+ * What the planner needs of the trams of spec section 13.2. `TramLine` is it;
+ * the interface is what lets a test ring a bell without building a city.
+ */
+export interface BellSource {
+  bells(tick: number, out?: TramBell[]): TramBell[];
+}
+
+/** How loud a tram's bell is, against the other one-shots. */
+export const BELL_STRENGTH = 0.8;
 
 /** Ticks one full siren wail takes, up and back down. */
 export const WAIL_TICKS = 90;
@@ -95,6 +107,8 @@ export class AudioPlanner {
   private stride = 0;
   /** The tick the last plan was made on, so the walk is measured over real ticks. */
   private tick = -1;
+  /** Reused by the bells, so a frame allocates nothing for the ones that did not ring. */
+  private readonly ringing: TramBell[] = [];
 
   /**
    * Take up the record as it stands without making a sound of it. A load, a
@@ -109,15 +123,22 @@ export class AudioPlanner {
     this.tick = state.tick;
   }
 
-  /** What the mixer should be doing, given the record and where the player listens from. */
-  plan(state: SimState, input: InputFrame, listener: Listener): AudioPlan {
+  /**
+   * What the mixer should be doing, given the record and where the player
+   * listens from. `trams` is the tram line of spec section 13.2, where the
+   * session has one: its bells are a function of the tick rather than part of
+   * the record, so they are read here for every tick the frame stepped.
+   */
+  plan(state: SimState, input: InputFrame, listener: Listener, trams?: BellSource): AudioPlan {
     if (this.tick < 0) this.resync(state);
     const ticks = Math.max(0, Math.min(state.tick - this.tick, TICK_RATE));
+    const was = state.tick - ticks;
     this.tick = state.tick;
     const cues: Cue[] = [];
     this.collisions(state, cues);
     this.gunfire(state, cues);
     this.footsteps(state, ticks, cues);
+    this.bells(state, was, trams, cues);
     return {
       engine: this.engine(state, input, listener),
       squeal: squealOf(state),
@@ -185,6 +206,21 @@ export class AudioPlanner {
     if (this.stride < STRIDE) return;
     this.stride -= STRIDE;
     cues.push(cueAt(state, 'footstep', player.x, player.y, 1, state.tick));
+  }
+
+  /**
+   * The trams that rang on any tick this frame stepped (spec section 13.2). A
+   * bell is a function of the tick, so a frame that stepped two ticks has to
+   * ask about both: asking only about the tick it landed on drops half the
+   * bells of a session running at the frame rate the game is written for.
+   */
+  private bells(state: SimState, was: number, trams: BellSource | undefined, cues: Cue[]): void {
+    if (trams === undefined) return;
+    for (let tick = was + 1; tick <= state.tick; tick++) {
+      for (const bell of trams.bells(tick, this.ringing)) {
+        cues.push(cueAt(state, 'bell', bell.x, bell.y, BELL_STRENGTH, bell.tram));
+      }
+    }
   }
 }
 

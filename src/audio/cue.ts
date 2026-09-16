@@ -11,7 +11,7 @@
  */
 
 /** The one-shots the game fires. Nothing else should name them. */
-export type CueKind = 'impact' | 'explosion' | 'gunshot' | 'swing' | 'footstep';
+export type CueKind = 'impact' | 'explosion' | 'gunshot' | 'swing' | 'footstep' | 'bell';
 
 /** What one cue is made of: a falling tone, a band of noise, and the envelope over both. */
 export interface CueVoice {
@@ -47,6 +47,9 @@ export const CUES: Readonly<Record<CueKind, CueVoice>> = Object.freeze({
   swing: { tone: 0, toneEnd: 0, noise: 1, cutoff: 1800, cutoffEnd: 260, attack: 0.03, decay: 0.16, gain: 0.35, ducks: false },
   // A heel on pavement: quiet, dry and over at once.
   footstep: { tone: 150, toneEnd: 60, noise: 0.7, cutoff: 3000, cutoffEnd: 300, attack: 0.001, decay: 0.09, gain: 0.22, ducks: false },
+  // A tram's bell (spec section 13.2): struck metal, so the note barely falls
+  // and rings on. The noise is the strike itself and nothing after it.
+  bell: { tone: 1046, toneEnd: 988, noise: 0.15, cutoff: 6400, cutoffEnd: 2400, attack: 0.001, decay: 0.85, gain: 0.5, ducks: false },
 });
 
 /** One sound to make, once, at a place on the map. */
