@@ -1,4 +1,5 @@
 import { Raycaster, Vector2 } from 'three';
+import { GameAudio } from './audio/game-audio.ts';
 import { randomSeedString, readSeedFromLocation, seedFromString, writeSeedToHash } from './core/seed.ts';
 import { BASE_DISTANCE, FollowCamera, PULL_MARGIN, type RoofHeight } from './render/camera.ts';
 import { PostChain, postGraphs } from './render/post.ts';
@@ -23,7 +24,7 @@ import { DEFAULT_APPEARANCE } from './sim/character.ts';
 import { ParkedCars } from './sim/parked.ts';
 import { AmbientPedestrians, crowdDistrictsOf } from './sim/pedestrians.ts';
 import { initPhysics, SimPhysics, type Ground } from './sim/physics.ts';
-import { EMPTY_INPUT } from './sim/input.ts';
+import { EMPTY_INPUT, type InputFrame } from './sim/input.ts';
 import { createSave, restoreSimState, saveFromText, saveToText, type SaveFile } from './sim/save.ts';
 import { createSimState, stepSim, type SimState } from './sim/simulation.ts';
 import { AmbientTraffic, trafficRoadsOf } from './sim/traffic.ts';
@@ -38,7 +39,7 @@ import { MAP_KEY, MapScreen } from './ui/map-screen.ts';
 import { Minimap, MINIMAP_NORTH_KEY } from './ui/minimap.ts';
 import { PAUSE_KEY, PauseMenu } from './ui/pause.ts';
 import { SaveSlots, setPendingStart, takePendingStart } from './ui/saves.ts';
-import { readSettings, writeSettings, type BuildingViewChoice } from './ui/settings.ts';
+import { readSettings, writeSettings, type BuildingViewChoice, type SoundChoice } from './ui/settings.ts';
 import { FREE_CAMERA_KEY, FreeCameraControls } from './ui/free-camera.ts';
 import { Keyboard } from './ui/keyboard.ts';
 import { LoadingScreen } from './ui/loading.ts';
@@ -229,6 +230,20 @@ async function boot(): Promise<void> {
     },
   };
 
+  // The audio of spec section 15. It is armed here rather than with the
+  // session, so the click or the key that starts one is the gesture the browser
+  // wants before it will give an audio context. A muted game builds no graph.
+  const audio = new GameAudio(settings.muted);
+  audio.arm(window);
+  const sound: SoundChoice = {
+    muted: () => settings.muted,
+    mute: (muted) => {
+      settings.muted = muted;
+      audio.muted = muted;
+      writeSettings(localStorage, settings);
+    },
+  };
+
   // Where the world of a seed is built (spec section 9.1). It is a worker, so
   // neither the title screen's map nor the wait after Start stops the frame.
   const worlds = new WorldSource();
@@ -240,6 +255,8 @@ async function boot(): Promise<void> {
   let last = performance.now();
   /** Whether the camera was detached last frame, so a release is noticed once. */
   let flew = false;
+  /** The last frame of input the simulation was stepped with, which the mix reads. */
+  let heard: InputFrame = EMPTY_INPUT;
 
   const frame = (now: number): void => {
     const elapsed = now - last;
@@ -260,7 +277,8 @@ async function boot(): Promise<void> {
         // The pose the step starts from is kept before it is taken, so the
         // frame is drawn between the last two ticks rather than on the last.
         session.smooth.capture(session.state);
-        stepSim(session.state, flying ? EMPTY_INPUT : keyboard.sample(), session.physics);
+        heard = flying ? EMPTY_INPUT : keyboard.sample();
+        stepSim(session.state, heard, session.physics);
       }
       // A respawn and a metro trip both put the player down somewhere else on
       // the map (spec sections 11.7, 13.3), so the frame stands the camera
@@ -268,6 +286,9 @@ async function boot(): Promise<void> {
       if (session.state.respawn !== respawned || session.state.metro.trips !== trips) {
         session.smooth.reset();
         camera.snap();
+        // The record has jumped across the map, and the difference between two
+        // records is not a crash (spec section 15).
+        audio.resync(session.state);
       }
       // A frame falls between two ticks, so what is drawn is the blend of them
       // `smooth.ts` describes. Without it the record steps 0, 1 or 2 ticks a
@@ -375,6 +396,10 @@ async function boot(): Promise<void> {
         : { x: p.x, y: p.y, heading: p.heading };
       session.minimap.update(at, session.state.waypoint);
       session.map.update(at, session.state.waypoint);
+      // The mix of spec section 15 stands where the frame is drawn from, which
+      // is the player or the free camera. A paused session holds no note.
+      if (paused) audio.hush();
+      else audio.update(session.state, heard, round);
       // Not `renderer.render`: the post chain draws the scene itself and the
       // effects of spec section 10.6 over it.
       session.post.render();
@@ -404,6 +429,7 @@ async function boot(): Promise<void> {
       worlds,
       (appearance) => preview.character.set(appearance),
       buildingView,
+      sound,
     );
     choice = await title.wait();
     title.destroy();
@@ -634,6 +660,7 @@ async function boot(): Promise<void> {
       restart(save.seed, save.state.character, true);
       return 'Opening the city of the save…';
     },
+    sound,
     regenerate: () => restart(randomSeedString(), state.character, false),
     quit: () => location.reload(),
     buildingView,
@@ -642,6 +669,7 @@ async function boot(): Promise<void> {
   // them, so the frame snaps to it rather than sliding there.
   const loadInto = (save: SaveFile): void => {
     loadSave(save);
+    audio.resync(state);
     world.resetDamage(state.tick);
     world.dress(state.character);
     smooth.reset();
