@@ -40,8 +40,12 @@ export const MD_HARD_LIMIT = 400;
  * points at. `docs/claude-md.md` says what belongs in it.
  */
 export const CLAUDE_MD_LIMIT = 160;
-/** Where the markdown lives: the project root, not walked, and `docs`. */
-export const DOC_DIRS = ['.', 'docs'];
+/**
+ * Where the markdown lives: the project root, not walked, `docs`, and the
+ * skills. A skill is loaded into a session like a doc, so it is held to the
+ * same shape.
+ */
+export const DOC_DIRS = ['.', 'docs', '.claude/skills'];
 /**
  * Markdown the line limit does not apply to. `spec.md` is the whole design as
  * one document, which is the point of it; it is read by section, not in full.
@@ -109,17 +113,24 @@ export function markdownLimit(file: string, root: string = ROOT): number {
 
 /**
  * The lines of `fileNames` wider than `limit` columns, widest first. A table
- * row and the body of a fenced code block are left alone: neither can be
- * wrapped without breaking what it means. A column is a code point, so an em
- * dash counts once however many bytes it takes.
+ * row, the body of a fenced code block and a skill's YAML frontmatter are left
+ * alone: none can be wrapped without breaking what it means. A column is a code
+ * point, so an em dash counts once however many bytes it takes.
  */
 export function lintWidths(fileNames: readonly string[], limit: number, root: string = ROOT): WidthFinding[] {
   const findings: WidthFinding[] = [];
   for (const file of fileNames) {
     let fenced = false;
     const lines = fs.readFileSync(file, 'utf8').split('\n');
+    // A file that opens with `---` opens with YAML frontmatter, which runs to
+    // the next `---`. A skill's `description` is one line by definition.
+    let front = lines[0] === '---';
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]!;
+      if (front) {
+        if (i > 0 && line === '---') front = false;
+        continue;
+      }
       if (/^\s*(```|~~~)/.test(line)) {
         fenced = !fenced;
         continue;
