@@ -2,8 +2,30 @@
 
 The gotchas of `src/sim` and `src/ui`: what Rapier does with a wheel, a force and a heightfield,
 what the record may hold, and what the HUD and the map read. `spec.md` sections 11 to 14, 16 and 18
-are the design.
+are the design. Read the section the work touches, not the file.
 
+## Contents
+
+- The player and the HUD
+- The map
+- The title screen, the settings and the menu walk
+- Saves
+- The scene behind the menu
+- Physics
+- On foot
+- Hotwiring
+- Weapons
+- Death, arrest and heat
+- The ground the physics reads
+- Vehicles
+- Damage, fire and skids
+- Ambient traffic
+- Traffic lights
+- Parked cars
+- The tram
+- Pedestrians
+
+## The player and the HUD
 
 - The player's look is indices into the tables in `src/sim/character.ts`, so a save carries numbers,
   not colours. `normaliseAppearance` folds an out-of-range index back onto a real option, and
@@ -17,6 +39,9 @@ are the design.
   frame the city could have spent on itself. `SimState.money`, `SimState.objective` and
   `SimState.waypoint` are the three slots it reads that nothing writes yet; the economy of spec
   section 16, the missions of 18 and the map are what will.
+
+## The map
+
 - `src/ui/map.ts` is the map model of spec section 12, and it is pure, so the projection, the zoom
   steps, the icon table and the culling are tested headless. The map keeps the world's own axes:
   world `(x, y)` is drawn at pixel `(x, y)`, so north is up and the map reads the way
@@ -34,6 +59,9 @@ are the design.
 - Look at the map before judging a change to it: `node scripts/map-preview.ts <seed> out.png`, and
   `--minimap` for the round window at the minimap's own scale. It needs a Chromium but no WebGPU
   device, because the map is a 2D canvas.
+
+## The title screen, the settings and the menu walk
+
 - `src/ui/title.ts` is the title screen as a main menu of pages: the main page, New game
   (`title-setup.ts`), Settings, and Controls and Camera under Settings (`title-controls.ts`,
   `title-camera.ts`). `PARENT` says
@@ -51,6 +79,9 @@ are the design.
   with the title's classes and the few rules of `pause.css`. It listens to no key: Escape both opens
   and closes it, so `main.ts` hands it every key while it is open. While it is open the frame loop
   takes no steps and the clock keeps its place between two ticks.
+
+## Saves
+
 - A save (`src/sim/save.ts`) is the record and the seed text, nothing else, so a field added to
   `SimState` is saved with no change there. It is read against a fresh record: a missing field or a
   wrong type is refused, and an unknown field is dropped. Raise `SAVE_VERSION` when a field changes
@@ -61,6 +92,9 @@ are the design.
 - A save of another seed needs another world, so an import of one, and Regenerate, load the page
   again. The note in `sessionStorage` from `setPendingStart` tells the next boot to skip the title
   and start that seed, from its save or afresh.
+
+## The scene behind the menu
+
 - `src/render/scene.ts` is the scene behind the menu: a parked car, a lit street lamp and the
   driver, with no world. The camera swings over the front of the car and never goes all the way
   round, because the lamp post stands on the far side. The lamp is the game's own `LampLight`, so
@@ -75,6 +109,9 @@ are the design.
 - `src/ui/controls.ts` is the one list of key bindings. It is shown on the title screen and copied
   into the README; `Keyboard.sample` must stay in step with the rows that are part of the input
   frame, and `main.ts` listens for the rows after them itself.
+
+## Physics
+
 - `src/sim/physics.ts` is the only place Rapier is used, with `ground-bodies.ts` (the heightfield
   tiles and the decks), `drivetrain.ts` (what the input does to the wheels, the rider and the hull)
   and `gunfire.ts` (the casts, the swings and the flights) beside it. `await initPhysics()` loads
@@ -82,6 +119,9 @@ are the design.
   input, physics)` steps it once per tick. The bodies are built from `state.vehicle` and never
   stored in it, so the state stays plain data: `adopt` makes the world agree with the record again
   after a load, and `spawn` puts the car down on the ground.
+
+## On foot
+
 - `src/sim/on-foot.ts` is the player out of the car (spec sections 11.2, 11.5): their record, the
   numbers a person is made of, and the pure rules for reaching a door and stepping out of one.
   `physics.ts` is the Rapier half. Exactly one body moves: driving builds the vehicle's dynamic
@@ -95,6 +135,9 @@ are the design.
 - The input frame carries a key as a level, not a press, so `player.held` keeps last tick's interact
   and jump: a door that opened on the level would open sixty times a second. Health regenerates only
   through `heal(player, source)`; nothing heals on its own (spec section 11.5).
+
+## Hotwiring
+
 - `src/sim/theft.ts` is the hotwire minigame (spec section 11.4). `needsHotwire` reads the roster's
   own `alarm` and `luxury` flags, so nothing carries a second list of what is worth stealing, and
   `VehicleState.hotwired` says a lock is beaten once and not again. An attempt can only end in the
@@ -103,6 +146,9 @@ are the design.
   what keeps the world running around it, and a player working at a lock is walked with an empty
   input rather than frozen, so the ground still holds them up. `transfer` owns the interact key
   while an attempt runs; nothing else may read that edge.
+
+## Weapons
+
 - `src/sim/weapon.ts` is the arsenal of spec section 11.6: what a weapon is made of and the firing
   model. `arsenal.ts` is the table of every weapon the spec lists and `loadout.ts` what the player
   is carrying; both come out through `weapon.ts`. Ammunition is per calibre, so a magazine is two
@@ -140,6 +186,9 @@ are the design.
   Shift and a row drops the weapon three metres ahead as a pickup instead, and the buttons under the
   rows fit and remove the attachments of the weapon in hand. The weapon shops and faction dealers of
   spec section 11.6 are what will replace it.
+
+## Death, arrest and heat
+
 - `src/sim/respawn.ts` is death and arrest (spec section 11.7). A death is `player.health` at 0 and
   an arrest is `SimState.arrested`; `stepSim` turns either into a respawn at the end of the tick, so
   whatever wrote them — a crash, a blast, the debug keys `K` and `B`, the police later — replays the
@@ -152,6 +201,9 @@ are the design.
   snap the camera.
 - `SimState.heat` is the attention of spec section 14. Nothing spends it yet; a sounding alarm and
   every shot fired raise it, and melee raises none, because the spec calls it silent.
+
+## The ground the physics reads
+
 - The physics reads the world through a `Ground`: the carved height at a place, what that ground is
   made of, and where the sea stands. The game hands it `WorldScene.heightAt`, `SurfaceIndex` and
   `world.water.seaLevel`; a test hands it a hillside of its own, which is why
@@ -167,6 +219,9 @@ are the design.
   across it. Rapier reads a heightfield as `heights[j * (rows + 1) + i]` with `i` walking `z` and
   `j` walking `x`; getting that round the wrong way gives a world rotated a quarter turn, with no
   error.
+
+## Vehicles
+
 - Rapier takes the engine as a force and the brake as the impulse of one step, so `setWheelBrake` is
   given newtons divided by the tick rate. A driven wheel ignores its brake entirely while the engine
   is pushing it, so rolling resistance comes off the drive there and off the brake everywhere else.
@@ -197,6 +252,9 @@ are the design.
   ground — and where the nearest road a car can start on, or the nearest open water a boat can, is.
   It is a read of the parcel model's allocation, not a second one: a road claims the ground within
   `footprintHalfWidth` of its centreline and a beach claims its sand.
+
+## Damage, fire and skids
+
 - `src/sim/damage.ts` is the damage, fire and explosion of spec section 11.3: what one impact does
   to a vehicle, the panels it dents and tears off, and the progression `intact` to `dented` to
   `smoking` to `burning` to `burnt`. A vehicle only ever moves forward through it. `physics.ts`
@@ -212,6 +270,9 @@ are the design.
   `src/render/skid.ts` is what draws it.
 - The gradient needs no rule of its own. The chassis is a rigid body, so a climb has gravity to
   fight and a descent has it behind; adding a slope term on top of that would count it twice.
+
+## Ambient traffic
+
 - `src/sim/traffic.ts` is the ambient traffic of spec sections 5.3 and 13.1. `AmbientTraffic`
   places the vehicles once for a world: per directed edge, the tier's `TierSpec.density` thinned by
   `ZONE_TRAFFIC` and the district's density, in a lane on the right of the carriageway that
@@ -224,6 +285,9 @@ are the design.
   `test/sim-traffic.test.ts` can compare them with `toEqual`. A pose is read `SMOOTH` metres behind
   and ahead of the vehicle and stands between the two readings, which is how a vehicle rounds a
   corner. `poseAt` takes a fractional tick, which is what the renderer draws between two ticks.
+
+## Traffic lights
+
 - `src/sim/signals.ts` is the traffic lights. A junction takes one where an arterial meets a street
   or another arterial on the ground, and never with a highway. Its roads split into the arterial's
   axis and the one across it, and a light is a function of the tick and the junction's seeded
@@ -245,6 +309,9 @@ are the design.
   record goes into `SimState.traffic.promoted`, ascending by id, and it becomes a dynamic box with
   its speed. A touch is a 2D box test and not a Rapier contact: Rapier makes no contact between
   two kinematic bodies by default, and the player's capsule is one.
+
+## Parked cars
+
 - `src/sim/parked.ts` says which bay holds a car at a tick. Each bay has its own stay length and
   offset; a stay rolls once, keyed on its first tick, against `FILL` at the middle of the stay. So
   a car stays put for the whole stay, and a street fills and empties by the hour with nothing
@@ -257,6 +324,9 @@ are the design.
   reads it on every step rather than once when it is built.
 - The ground of the game hands the physics the traffic as `Ground.traffic`. A test that is not about
   traffic leaves it out. `test/traffic-grid.ts` is a grid of every tier for the tests that need it.
+
+## The tram
+
 - `src/sim/tram.ts` is the tram of spec section 13.2, a function of the tick like the traffic.
   `tram-timing.ts` lays the loop down as the steps of a traffic tour: it halts short of every stop,
   light and level crossing, stands `DWELL` at a stop, and goes on at a light only with `TRAM_CLEAR`
@@ -278,6 +348,9 @@ are the design.
   15 will ring: a tram pulling away from a halt on that tick.
 - The pedestrians do not wait at a level crossing yet, as they wait at no light (#286). Once they
   keep to `crossingOpen`, they keep to the tram too, since it only crosses on their red.
+
+## Pedestrians
+
 - `src/sim/pedestrians.ts` is the crowd of spec sections 5.3 and 13.1. `AmbientPedestrians` places
   people per directed edge of a tier with a pavement, from `TierSpec.walkers` thinned by
   `ZONE_PEDESTRIANS`. A person walks one pavement round a loop, at a pace of their gait. The loop
