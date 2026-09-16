@@ -32,6 +32,7 @@ import { chromium } from 'playwright-core';
 import { createServer, type ViteDevServer } from 'vite';
 import { seedFromString } from '../src/core/rng.ts';
 import type { FrameSample, ProfileRequest, ProfileResult } from '../src/render/profile.ts';
+import { chromiumPath } from './chromium.ts';
 
 const args = process.argv.slice(2);
 const positional = args.filter((a) => !a.startsWith('--'));
@@ -128,9 +129,8 @@ function summarise(profile: { nodes: ProfileNode[]; samples: number[]; timeDelta
 }
 
 let server: ViteDevServer | undefined;
-const executablePath = process.env.CHROMIUM_PATH;
 const browser = await chromium.launch({
-  ...(executablePath !== undefined && executablePath !== '' ? { executablePath } : {}),
+  executablePath: chromiumPath({ hardware: true }),
   headless: true,
   args: ['--enable-unsafe-webgpu', '--enable-gpu', '--disable-gpu-vsync', '--disable-frame-rate-limit'],
 });
