@@ -14,6 +14,7 @@
  */
 import type { MetroStation } from '../world/metro.ts';
 import type { ParkingBays } from '../world/parking.ts';
+import type { Shop } from '../world/shops.ts';
 import type { Point, WorldDescription } from '../world/types.ts';
 import type { ChunkPayload } from './chunk-payload.ts';
 import type { WorkerCommand, WorkerReply } from './chunk-worker.ts';
@@ -39,6 +40,8 @@ export interface ChunkStream {
   readonly stations?: readonly Point[];
   /** The metro stations of the world (spec section 13.3), from the same answer. */
   readonly metro?: readonly MetroStation[];
+  /** The shops of the world (spec section 16.1), from the same answer. */
+  readonly shops?: readonly Shop[];
   /** The parking bays of the world (spec section 13.1), from the same worker's answer. */
   readonly bays?: ParkingBays;
   dispose(): void;
@@ -70,6 +73,7 @@ export class ChunkPool implements ChunkStream {
   /** Every worker builds the same parcels, so the first to answer says where the stations are. */
   stations: readonly Point[] | undefined;
   metro: readonly MetroStation[] | undefined;
+  shops: readonly Shop[] | undefined;
   /** The bays the one worker that was asked for them laid out. */
   bays: ParkingBays | undefined;
 
@@ -114,6 +118,7 @@ export class ChunkPool implements ChunkStream {
     if (reply.type === 'ready') {
       if (reply.stations !== undefined) this.stations ??= reply.stations;
       if (reply.metro !== undefined) this.metro ??= reply.metro;
+      if (reply.shops !== undefined) this.shops ??= reply.shops;
       if (reply.bays !== undefined) this.bays ??= reply.bays;
       slot.ready = true;
       slot.busy = undefined;
