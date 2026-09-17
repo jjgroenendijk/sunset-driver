@@ -1,5 +1,6 @@
 /**
- * The roads a police unit drives (spec section 14).
+ * The roads a unit on a route drives or walks: the police of spec section 14
+ * and the faction enforcers of spec section 17.2.
  *
  * A unit is not steered at a target: it is routed to one. `RoadGraph.shortestPath`
  * is Dijkstra over travel time, so a car takes the arterial that gets there
@@ -27,17 +28,17 @@ export interface DrivePose {
 }
 
 /** The lane a police car drives in, which is the one nearest the kerb of its own side. */
-const POLICE_LANE = 0;
+const KERB_LANE = 0;
 
 /** Metres behind and ahead of a car its heading is read over, so it turns a corner as a curve. */
 const SMOOTH = 4;
 
 /**
  * The road network as the police read it: the graph to route over and the bed
- * to drive on. {@link PoliceRoads} is built once for a world and holds no
+ * to drive on. {@link UnitRoads} is built once for a world and holds no
  * state of the chase.
  */
-export class PoliceRoads {
+export class UnitRoads {
   readonly graph: RoadGraph;
   private readonly sampler: RouteSampler;
   /** The legs of the route last asked about, keyed by the unit that drives it. */
@@ -99,18 +100,18 @@ export class PoliceRoads {
     const legs = this.legsOf(unit, edges);
     const here = this.clamp(legs, distance);
     const at = this.sampler.sample(legs, here, this.point);
-    const offset = laneOffset(at.edge, POLICE_LANE);
+    const offset = laneOffset(at.edge, KERB_LANE);
     out.x = at.x + at.rightX * offset;
     out.y = at.y + at.rightY * offset;
     out.height = at.height;
     // The heading is read from a point behind to a point ahead, so a car rounds
     // a corner rather than snapping round at the node.
     const back = this.sampler.sample(legs, this.clamp(legs, here - SMOOTH), this.point);
-    const bx = back.x + back.rightX * laneOffset(back.edge, POLICE_LANE);
-    const by = back.y + back.rightY * laneOffset(back.edge, POLICE_LANE);
+    const bx = back.x + back.rightX * laneOffset(back.edge, KERB_LANE);
+    const by = back.y + back.rightY * laneOffset(back.edge, KERB_LANE);
     const front = this.sampler.sample(legs, this.clamp(legs, here + SMOOTH), this.point);
-    const fx = front.x + front.rightX * laneOffset(front.edge, POLICE_LANE);
-    const fy = front.y + front.rightY * laneOffset(front.edge, POLICE_LANE);
+    const fx = front.x + front.rightX * laneOffset(front.edge, KERB_LANE);
+    const fy = front.y + front.rightY * laneOffset(front.edge, KERB_LANE);
     out.heading = fx === bx && fy === by ? 0 : Math.atan2(fy - by, fx - bx);
     return out;
   }

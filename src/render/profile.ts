@@ -21,6 +21,7 @@ import { tickAtHour } from './daylight.ts';
 import { PostChain } from './post.ts';
 import { FULL_TIER, QUALITY_TIERS } from './quality.ts';
 import { createRenderer } from './renderer.ts';
+import { warmPasses } from './warm.ts';
 import { WorldScene } from './world-scene.ts';
 
 /** What to draw, for how long, and what to leave out. */
@@ -129,6 +130,10 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
   post.time = tick;
   await post.ready();
   const device = (renderer.backend as unknown as { device: GPUDevice }).device;
+  // The same warm-up the game runs behind its loading screen (`warm.ts`), so
+  // the frames timed here are the frames a session draws rather than a session
+  // that skipped it.
+  await warmPasses(renderer, scene, post, camera.camera);
 
   const frame = async (x: number, y: number, heading: number, speed: number): Promise<FrameSample> => {
     renderer.info.reset();

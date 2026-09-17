@@ -16,6 +16,8 @@
  */
 import { seedFromString } from '../core/rng.ts';
 import { sortedKeys } from '../core/sort.ts';
+import { GOODS } from './contraband.ts';
+import { FACTIONS } from './faction.ts';
 import { cloneSimState, createSimState, type SimState } from './simulation.ts';
 import { VEHICLE_CLASSES } from './vehicle.ts';
 import { WEAPON_IDS } from './weapon.ts';
@@ -30,10 +32,18 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * new field is refused either way, and the version is what says so in words a
  * player understands. A save of another version is refused.
  *
- * Version 2 added the metro of spec section 13.3, and version 3 the police of
- * spec section 14.
+ * Version 2 added the metro of spec section 13.3, version 3 the police of spec
+ * section 14, version 4 the radio dial of spec section 15, version 5 the
+ * shops of spec section 16.1 with the paint a respray leaves on a vehicle,
+ * version 6 the contraband stash of spec section 16.2, version 7 the
+ * safehouses of spec section 16.3 with their stashes and their garages,
+ * version 8 the factions of spec section 17 with their reputation, the blocks
+ * the player has taken and the enforcers that are out, and version 9 the
+ * missions of spec section 18 with the job being carried. Version 10 added the
+ * authored chain of the same section: how far it has been walked, the side the
+ * player took at its fork, and whether it ended.
  */
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 10;
 
 export interface SaveFile {
   format: typeof SAVE_FORMAT;
@@ -107,6 +117,32 @@ function checkSave(value: unknown): SaveFile {
   if (!VEHICLE_CLASSES.includes(state.vehicle.cls)) throw new SaveError('The save names a vehicle this game does not have.');
   for (const slot of state.loadout.slots) {
     if (!WEAPON_IDS.includes(slot.id)) throw new SaveError('The save names a weapon this game does not have.');
+  }
+  // An array is conformed element by element, so a stash of the wrong length is
+  // still a stash of numbers. The market of spec section 16.2 reads a row per
+  // good, and a row that is not there is a good that cannot be sold.
+  if (state.market.stash.length !== GOODS.length || state.market.paid.length !== GOODS.length) {
+    throw new SaveError('The save carries a stash this game does not know.');
+  }
+  // A fresh record owns no safehouse, so the template has no element to conform
+  // the owned ones against (spec section 16.3): they are checked here instead.
+  for (const owned of state.property.owned) {
+    if (owned.stash.length !== GOODS.length || owned.paid.length !== GOODS.length) {
+      throw new SaveError('The save carries a stash this game does not know.');
+    }
+    for (const car of owned.garage) {
+      if (!VEHICLE_CLASSES.includes(car.cls)) throw new SaveError('The save names a vehicle this game does not have.');
+    }
+  }
+  // The reputation of spec section 17.3 is a row per faction, so a save one row
+  // short is a save that would read somebody else's standing.
+  if (state.factions.standing.length !== FACTIONS.length) {
+    throw new SaveError('The save carries a reputation this game does not know.');
+  }
+  // A fresh record has sent nobody, so the template has no enforcer to conform
+  // the ones out against (spec section 17.2): their weapons are checked here.
+  for (const unit of state.enforcers.units) {
+    if (!WEAPON_IDS.includes(unit.weapon)) throw new SaveError('The save names a weapon this game does not have.');
   }
   return { format: SAVE_FORMAT, version: SAVE_VERSION, seed, state };
 }

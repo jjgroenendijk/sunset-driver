@@ -12,9 +12,15 @@ import { PARAPET_HEIGHT, type DeckSpan } from '../world/decks.ts';
 import type { Surface } from '../world/surface.ts';
 import type { MetroPlace } from './metro.ts';
 import type { Place } from './on-foot.ts';
+import type { ShopPlace } from './shop.ts';
+import type { DealerPlace } from './dealer.ts';
+import type { SafehousePlace } from './safehouse.ts';
+import type { MissionWorld } from './job.ts';
 import type { ParkedCars } from './parked.ts';
 import type { AmbientTraffic } from './traffic.ts';
 import type { PoliceForce } from './police.ts';
+import type { EnforcerGang } from './enforcer.ts';
+import type { TerritoryMap } from './territory.ts';
 import type { TramLine } from './tram.ts';
 
 /** Metres each way of one tile of ground the physics holds. */
@@ -58,6 +64,23 @@ export interface Ground {
    */
   metro?: readonly MetroPlace[];
   /**
+   * The shops of spec section 16.1, which the player walks into and buys from.
+   * A test that is not about them leaves them out, and every door is shut.
+   */
+  shops?: readonly ShopPlace[];
+  /**
+   * The dealers of spec section 16.2, one to a district, whose corners the
+   * player trades contraband at. A test that is not about them leaves them out,
+   * and nobody is dealing.
+   */
+  dealers?: readonly DealerPlace[];
+  /**
+   * The safehouses of spec section 16.3, one to a district, whose front doors
+   * the player buys and comes back to. A test that is not about them leaves
+   * them out, and the city has no property for sale.
+   */
+  safehouses?: readonly SafehousePlace[];
+  /**
    * The ambient traffic of the roads (spec section 13.1). A test that is not
    * about traffic leaves it out, and nothing drives past.
    */
@@ -75,6 +98,19 @@ export interface Ground {
    * drives. A test that is not about the police leaves it out, and nobody comes.
    */
   police?: PoliceForce;
+  /**
+   * The turf of spec section 17.2: which block is whose, and the enforcers a
+   * faction sends after a capture. A test that is not about the factions leaves
+   * them out, and no ground is anybody's.
+   */
+  turf?: TerritoryMap;
+  enforcers?: EnforcerGang;
+  /**
+   * The work of spec section 18: the contacts who hand it out and the corners
+   * they send the player to. A test that is not about the missions leaves them
+   * out, and nobody is offering anything.
+   */
+  missions?: MissionWorld;
 }
 
 

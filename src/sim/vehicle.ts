@@ -733,11 +733,25 @@ export interface VehicleState {
    */
   damage: DamageState;
   /**
+   * How far round the radio dial this vehicle has been turned (spec section
+   * 15). It is per vehicle, so a car keeps the station it was left on and a
+   * stolen one comes with whatever its owner was listening to. Unbounded on
+   * purpose: `src/audio/dial.ts` wraps it, because the number of stations is
+   * no business of the simulation's.
+   */
+  station: number;
+  /**
    * True once its lock has been beaten (spec section 11.4). A vehicle that
    * needs no hotwiring never reads it; one that does is worked at once and not
    * again, so stepping out to look at something is not a second break-in.
    */
   hotwired: boolean;
+  /**
+   * The colour its body is painted: the colour of its row of the roster until a
+   * workshop resprays it (spec section 16.1). It is per vehicle, because a
+   * respray is what was done to one car and not what the class is built in.
+   */
+  paint: number;
 }
 
 /** A vehicle at rest at a place, with its wheels hanging at their rest length. */
@@ -769,7 +783,9 @@ export function createVehicleState(spec: VehicleSpec, x = 0, z = 0, y = 0, headi
     speed: 0,
     afloat: false,
     damage: createDamageState(),
+    station: 0,
     hotwired: false,
+    paint: spec.paint,
   };
 }
 

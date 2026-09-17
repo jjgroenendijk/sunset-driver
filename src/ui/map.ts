@@ -12,6 +12,7 @@
  * `-y`, which is up the screen, so a fixed-north map already has their usual
  * heading pointing up.
  */
+import type { ShopKind } from '../world/shops.ts';
 import type { Point, RoadCurve, RoadTier, WorldDescription } from '../world/types.ts';
 
 /**
@@ -36,9 +37,11 @@ export type PoiType =
   | 'police'
   | 'mission-giver'
   | 'dealer'
+  | 'enforcer'
   | 'gun-shop'
   | 'clothes-shop'
-  | 'food-shop';
+  | 'food-shop'
+  | 'broker';
 
 /** The shapes an icon is drawn as. No two POI types share one (see `POI_STYLES`). */
 export type IconShape =
@@ -58,7 +61,9 @@ export type IconShape =
   | 'bars'
   | 'hexagon'
   | 'cup'
-  | 'roundel';
+  | 'roundel'
+  | 'key'
+  | 'burst';
 
 /** How one kind of place is drawn, and what the full map calls it. */
 export interface PoiStyle {
@@ -96,9 +101,28 @@ export const POI_STYLES: Readonly<Record<PoiType, PoiStyle>> = Object.freeze({
   police: { shape: 'shield', colour: '#5a7ad0', label: 'Police', maxScale: 8 },
   'mission-giver': { shape: 'flag', colour: '#ffb03a', label: 'Contact', maxScale: 8 },
   dealer: { shape: 'diamond', colour: '#b06ad0', label: 'Dealer', maxScale: 4 },
+  // The enforcers of spec section 17.2, while a wave is out. They are marked at
+  // every zoom a street is readable at, because they are what is shooting.
+  enforcer: { shape: 'burst', colour: '#ff4d4d', label: 'Enforcer', maxScale: 8 },
   'gun-shop': { shape: 'triangle', colour: '#d05a5a', label: 'Gun shop', maxScale: 4 },
   'clothes-shop': { shape: 'ring', colour: '#d0c05a', label: 'Clothes', maxScale: 4 },
   'food-shop': { shape: 'cup', colour: '#7ad0c0', label: 'Food', maxScale: 4 },
+  broker: { shape: 'key', colour: '#c0a0e0', label: 'Property broker', maxScale: 6 },
+});
+
+/**
+ * The icon each trade of spec section 16.1 is marked with. A workshop is the
+ * garage mark and a clinic the clinic mark, because that is what they are; the
+ * broker has its own. Whoever owns the shops writes these into
+ * {@link MapPois.extra}.
+ */
+export const SHOP_POIS: Readonly<Record<ShopKind, PoiType>> = Object.freeze({
+  weapons: 'gun-shop',
+  workshop: 'garage',
+  convenience: 'food-shop',
+  clothing: 'clothes-shop',
+  clinic: 'clinic',
+  broker: 'broker',
 });
 
 /** One marked place on the map. */

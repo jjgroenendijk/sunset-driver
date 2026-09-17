@@ -29,6 +29,18 @@ export const REPEAT_COUNT = SEED_COUNT > 20 ? 20 : 2;
  */
 export const FOOTPRINT_COUNT = SEED_COUNT > 20 ? 16 : 2;
 /**
+ * Seeds the dealers of spec section 16.2 are placed on. Each corner is snapped
+ * by one pass over every road of the world, and a city has about forty
+ * districts with four corners each, so a seed costs a tenth of a second.
+ */
+export const DEALER_COUNT = SEED_COUNT > 20 ? 4 : 1;
+/**
+ * Seeds the authored chain of spec section 18 is walked on. It costs what the
+ * dealers cost, and for the same reason: the contacts and the corners its legs
+ * stand on are snapped by a pass over every road.
+ */
+export const CHAIN_COUNT = SEED_COUNT > 20 ? 4 : 1;
+/**
  * The share of the dry land the roads may claim (spec section 6.4). A city
  * gives about a seventh of its ground to the carriageway, the verge and the
  * pavement together, and the wilderness beyond it gives almost none. The bounds

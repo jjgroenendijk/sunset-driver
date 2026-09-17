@@ -16,6 +16,7 @@
 import { buildLayers, ChunkSource } from '../world/chunks.ts';
 import type { MetroStation } from '../world/metro.ts';
 import { buildParkingBays, type ParkingBays } from '../world/parking.ts';
+import { buildShops, type Shop } from '../world/shops.ts';
 import type { Point, WorldDescription } from '../world/types.ts';
 import { buildChunkPayload, chunkLookups, payloadTransfers, type ChunkLookups, type ChunkPayload } from './chunk-payload.ts';
 import type { ChunkDetail } from './streaming.ts';
@@ -58,6 +59,12 @@ export interface ReadyReply {
    * they are the same way.
    */
   metro?: MetroStation[];
+  /**
+   * The shops of spec section 16.1, on the first reply only. They are dealt out
+   * over the buildings every worker builds, so they cost nothing here and the
+   * main thread never has to build the buildings to find them.
+   */
+  shops?: Shop[];
   /** The parking bays of spec section 13.1, from the one worker that laid them out, on its first reply. */
   bays?: ParkingBays;
 }
@@ -99,7 +106,8 @@ scope.addEventListener('message', (event: MessageEvent) => {
     // Handed over rather than copied, like a chunk: the worker keeps no reference to them.
     const arrays =
       bays === undefined ? [] : [bays.x, bays.y, bays.height, bays.heading, bays.use, bays.street].map((a) => a.buffer);
-    scope.postMessage({ type: 'ready', stations, metro: layers.parcels.metro, bays } satisfies ReadyReply, arrays);
+    const shops = buildShops(world, layers.buildings);
+    scope.postMessage({ type: 'ready', stations, metro: layers.parcels.metro, shops, bays } satisfies ReadyReply, arrays);
     return;
   }
   if (source === undefined || lookups === undefined) throw new Error('a chunk was asked for before the world arrived');

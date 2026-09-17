@@ -42,6 +42,40 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .travel-title { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; color: #5ad08a; }
 .travel-list { display: grid; gap: .15rem; font-size: .95rem; }
 .travel-refused { color: #ff8a5c; }
+.shop { position: fixed; left: 50%; bottom: 21%; transform: translateX(-50%); min-width: min(22rem, 80%); display: grid; gap: .35rem; padding: .7rem .9rem; border: 1px solid #6a5a2b; border-radius: .5rem; background: rgba(24,20,11,.88); pointer-events: none; }
+.shop-title { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; color: #ffd166; }
+.shop-list { display: grid; gap: .15rem; font-size: .95rem; font-variant-numeric: tabular-nums; }
+.shop-dear { color: #8a8079; }
+.shop-said { color: #7ad07a; }
+.shop-refused { color: #ff8a5c; }
+.home { position: fixed; left: 50%; bottom: 21%; transform: translateX(-50%); min-width: min(22rem, 80%); display: grid; gap: .35rem; padding: .7rem .9rem; border: 1px solid #2b6a3a; border-radius: .5rem; background: rgba(11,24,15,.88); pointer-events: none; }
+.home-title { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; color: #7ad07a; }
+.home-list { display: grid; gap: .15rem; font-size: .95rem; font-variant-numeric: tabular-nums; }
+.home-here { color: #8a8079; }
+.home-price { color: #ffd166; }
+.home-said { color: #7ad07a; }
+.job { position: fixed; left: 50%; bottom: 21%; transform: translateX(-50%); min-width: min(24rem, 84%); display: grid; gap: .35rem; padding: .7rem .9rem; border: 1px solid #6a4a1b; border-radius: .5rem; background: rgba(24,17,8,.88); pointer-events: none; }
+.job-title { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; color: #ffb03a; }
+.job-list { display: grid; gap: .15rem; font-size: .95rem; font-variant-numeric: tabular-nums; }
+.job-offer { color: #f2e2c8; }
+.job-terms { color: #ffd166; }
+.job-brief { color: #c9b89a; font-style: italic; }
+.job-said { color: #7ad07a; }
+.job-refused { color: #ff8a5c; }
+.trade { position: fixed; left: 50%; bottom: 34%; transform: translateX(-50%); min-width: min(38rem, 92%); display: grid; gap: .35rem; padding: .7rem .9rem; border: 1px solid #4a2b5a; border-radius: .5rem; background: rgba(20,11,24,.9); pointer-events: none; }
+.trade-title { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; color: #b06ad0; }
+.trade-purse { font-size: .85rem; color: #cfc2d8; font-variant-numeric: tabular-nums; }
+.trade-list { display: grid; gap: .15rem; font-size: .95rem; font-variant-numeric: tabular-nums; }
+.trade-row { display: grid; grid-template-columns: 14rem 8rem 7rem 5rem auto; align-items: baseline; gap: .4rem; }
+.trade-buy { text-align: right; }
+.trade-sell { text-align: right; color: #a89ab0; }
+.trade-held { text-align: right; color: #ffd166; }
+.trade-history { letter-spacing: -.05em; color: #8a7a98; }
+.trade-spike { color: #ff8a5c; }
+.trade-glut { color: #7ad07a; }
+.trade-said { color: #7ad07a; }
+.trade-refused { color: #ff8a5c; }
+.trade-foot { font-size: .8rem; color: #8a8079; }
 .travel-fade { position: fixed; inset: 0; background: #000; pointer-events: none; }
 
 .free-camera-hint { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); padding: .3rem .7rem; border: 1px solid #6a3f58; border-radius: .25rem; background: rgba(24,11,20,.85); font-size: .85rem; letter-spacing: .06em; pointer-events: none; }
@@ -53,7 +87,9 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .hud-money { font-size: 1.35rem; color: #7ad07a; }
 .hud-weapon { font-size: .95rem; }
 .hud-heat { font-size: .95rem; color: #ff8a5c; letter-spacing: .1em; }
+.hud-turf { font-size: .9rem; color: #f0b27a; }
 .hud-fate { font-size: 1.6rem; color: #ff7a8a; letter-spacing: .08em; }
+.hud-radio { max-width: 26rem; padding: .15rem .5rem; border-left: 2px solid #7ad7ff; background: rgba(10,20,28,.55); font-size: .85rem; color: #cfe9f5; }
 .hud-objective { max-width: 22rem; padding: .2rem .5rem; border-left: 2px solid #ffd166; background: rgba(24,11,20,.6); font-size: .9rem; }
 .minimap { position: fixed; right: 12px; bottom: 12px; width: 190px; height: 190px; border-radius: 50%; border: 2px solid rgba(106,63,88,.9); box-shadow: 0 2px 10px rgba(0,0,0,.6); overflow: hidden; background: #123048; }
 .minimap canvas { display: block; }

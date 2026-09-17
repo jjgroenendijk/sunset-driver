@@ -42,6 +42,11 @@ import { GroundBodies, PHYSICS_RADIUS, PHYSICS_TILE, type Ground } from './groun
 import { Gunfire, type ShotTarget } from './gunfire.ts';
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
 import type { MetroPlace } from './metro.ts';
+import type { ShopPlace } from './shop.ts';
+import type { DealerPlace } from './dealer.ts';
+import type { SafehousePlace } from './safehouse.ts';
+import type { MissionWorld } from './job.ts';
+import type { TerritoryMap } from './territory.ts';
 import {
   besidePlayer,
   capsuleOf,
@@ -278,6 +283,9 @@ export class SimPhysics {
     // The police answer the tick the player has just driven, so they are
     // stepped once the record says where that left them (spec section 14).
     this.ground.police?.step(state);
+    // The faction enforcers of spec section 17.2 answer the same tick for the
+    // same reason: they walk at where the player has just got to.
+    this.ground.enforcers?.step(state);
     this.standPolice(state);
     // The helicopter flies over the ground rather than over the roads, so the
     // record is told how high the ground under it stands (spec section 14).
@@ -301,6 +309,55 @@ export class SimPhysics {
   /** The metro station entrances of the ground (spec section 13.3), which fast travel reads. */
   get metro(): readonly MetroPlace[] {
     return this.ground.metro ?? [];
+  }
+
+  /** The shops of the ground (spec section 16.1), which the doors and the counters read. */
+  get shops(): readonly ShopPlace[] {
+    return this.ground.shops ?? [];
+  }
+
+  /** The dealers of the ground (spec section 16.2), whose corners the contraband is traded at. */
+  get dealers(): readonly DealerPlace[] {
+    return this.ground.dealers ?? [];
+  }
+
+  /** The safehouses of the ground (spec section 16.3), which the doors and a respawn read. */
+  get safehouses(): readonly SafehousePlace[] {
+    return this.ground.safehouses ?? [];
+  }
+
+  /** The turf of the ground (spec section 17.2), which a takeover and the map overlay read. */
+  get turf(): TerritoryMap | undefined {
+    return this.ground.turf;
+  }
+
+  /** The work of the ground (spec section 18): the contacts, and where they send the player. */
+  get missions(): MissionWorld | undefined {
+    return this.ground.missions;
+  }
+
+  /**
+   * Stand the vehicle the record now holds at a place, resting on the ground,
+   * and rebuild its body there. `spawn` puts down a fresh vehicle; this keeps
+   * the one the record carries, which is what a car taken out of a safehouse
+   * garage needs (spec section 16.3): its paint, its dents and the station it
+   * was left on are exactly what the garage kept.
+   */
+  settle(state: SimState, x: number, y: number, heading: number): void {
+    const was = state.vehicle;
+    const spec = specOf(was.cls);
+    const ground = this.ground.heightAt(x, y);
+    const rest = spec.hull === undefined ? ground : Math.max(ground, this.ground.seaLevel);
+    const car = createVehicleState(spec, x, y, rest + rideHeight(spec), heading);
+    // A garage keeps what was done to a car and not where it stood, so the
+    // dents, the paint, the station it was left on and its beaten lock all come
+    // out with it while the pose is fresh.
+    car.damage = was.damage;
+    car.paint = was.paint;
+    car.station = was.station;
+    car.hotwired = was.hotwired;
+    state.vehicle = car;
+    this.adopt(state);
   }
 
   /**

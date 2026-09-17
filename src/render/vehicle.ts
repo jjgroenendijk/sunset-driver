@@ -131,7 +131,7 @@ export class VehicleModel {
       this.clear();
       this.build();
     }
-    this.damage(v.damage);
+    this.damage(v.damage, v.paint);
     this.group.position.set(v.x, v.y, v.z);
     this.group.quaternion.set(v.qx, v.qy, v.qz, v.qw);
     for (const drawn of this.wheels) {
@@ -188,14 +188,15 @@ export class VehicleModel {
 
   /**
    * Draw the damage the record carries (spec section 11.3): the dents, the
-   * panels that have gone, and the scorch of a vehicle that has burned.
+   * panels that have gone, the scorch of a vehicle that has burned, and the
+   * colour its body is painted (spec section 16.1).
    *
    * It is redrawn only when the record's damage changes, because a car that is
    * merely being driven has nothing to redraw and a frame should not pay for
    * one.
    */
-  private damage(damage: DamageState): void {
-    const key = `${damage.stage}|${damage.dents.map((dent) => dent.toFixed(3)).join(',')}|${damage.lost.join(',')}`;
+  private damage(damage: DamageState, paint: number): void {
+    const key = `${damage.stage}|${damage.dents.map((dent) => dent.toFixed(3)).join(',')}|${damage.lost.join(',')}|${paint}`;
     if (key === this.shown) return;
     this.shown = key;
     const depth = Math.min(this.spec.halfWidth, this.spec.halfHeight) * DENT_DEPTH;
@@ -207,7 +208,10 @@ export class VehicleModel {
       const gone = index >= 0 && (damage.lost[index] as boolean);
       drawn.mesh.visible = !gone;
       if (drawn.rim !== undefined) drawn.rim.visible = !gone;
-      drawn.material.color.set(scorched ? SCORCH : drawn.colour);
+      // A respray (spec section 16.1) changes the body and nothing else, so it
+      // reaches the boxes the roster painted in the class's own colour.
+      const colour = drawn.colour === this.spec.paint ? paint : drawn.colour;
+      drawn.material.color.set(scorched ? SCORCH : colour);
       if (gone) continue;
       crumple(drawn.mesh, drawn.base, damage.dents, depth, i);
       if (drawn.rim !== undefined && drawn.rimBase !== undefined) {

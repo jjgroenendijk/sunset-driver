@@ -87,9 +87,13 @@ Beyond what the file names suggest:
 - `src/world` — must run headless in Node, since the sweeps import it. three.js math and generators
   are fine; the renderer, Rapier and the DOM are not. Produces a plain world description.
 - `src/render` — reads the world description, never mutates it.
+- `src/audio` — two halves. `plan.ts`, `engine.ts`, `space.ts`, `cue.ts`, `ambience.ts` and
+  `site.ts` read the record and hold no Tone.js and no DOM, so they run headless; `voices.ts`,
+  `one-shots.ts`, `beds.ts` and `mixer.ts` own the Web Audio graph. Nothing here may write to the
+  record.
 - `scripts/*.ts` — run with plain `node` (type stripping), not through Vite.
-  `scripts/render-preview.html` and `scripts/map-preview.html` are the exceptions a script serves
-  rather than runs; they are not build inputs.
+  `scripts/render-preview.html`, `scripts/map-preview.html` and `scripts/audio-check.html` are the
+  exceptions a script serves rather than runs; they are not build inputs.
 - `scripts/hooks/` — Claude Code hooks wired from `.claude/settings.json`; fast, idempotent, exit 2
   to report a problem. Anything repeated across sessions belongs in a hook or a `scripts/` entry
   rather than in prose here.
@@ -105,6 +109,8 @@ The ones that cost a session with nothing to say why. The subsystem docs hold th
 - TSL's chained `mix` takes the receiver as the factor: `a.mix(b, t)` compiles to `mix(b, t, a)`.
   Use the free `mix(a, b, t)` from `src/render/tsl.ts`, which is the one door onto `three/tsl`.
   `smoothstep` chains the same way.
+- Tone.js refuses to start an oscillator before a stop it has already scheduled, so a one-shot voice
+  is reused only after its own tail, never stolen. An exponential ramp may not touch zero either.
 - A `Data3DTexture` needs `generateMipmaps = false` on WebGPU: three.js 0.186 builds mipmaps of it
   through 2D views, which the browser refuses, and each frame fills the console with errors.
 - `renderer.shadowMap.enabled` is false by default on `WebGPURenderer`, so without the line in
@@ -120,7 +126,9 @@ The ones that cost a session with nothing to say why. The subsystem docs hold th
 ## Conventions
 
 - Relative imports carry explicit `.ts` extensions (`allowImportingTsExtensions` is on) so scripts
-  and tests run under plain Node.
+  and tests run under plain Node. Node strips types rather than compiling them, so a constructor
+  parameter property (`constructor(private readonly x: T)`) throws there, though `tsc` and vitest
+  both accept it. Write the field out.
 - The lint script's TypeScript compiler API comes from the `tsapi` alias (TypeScript 5), because the
   TypeScript 7 the project builds with ships no JS API. The alias also ships a `tsc`, and npm links
   that one into `node_modules/.bin`, so a bare `tsc` is TypeScript 5. Call

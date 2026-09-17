@@ -31,6 +31,7 @@ import { buildRoadGraph } from '../world/graph.ts';
 import { buildJunctions } from '../world/junctions.ts';
 import { chunkAt, CHUNK_SIZE } from '../world/chunks.ts';
 import type { MetroStation } from '../world/metro.ts';
+import type { Shop, ShopKind, ShopRoom } from '../world/shops.ts';
 import type { ParkingBays } from '../world/parking.ts';
 import type { Point, WorldDescription } from '../world/types.ts';
 import { Batch } from './batch.ts';
@@ -55,6 +56,7 @@ import { SkyLighting } from './sky.ts';
 import { VehicleModel } from './vehicle.ts';
 import { HeldWeapon, WeaponArt } from './weapon.ts';
 import { PickupModels } from './pickups.ts';
+import { ShopInterior } from './interior.ts';
 import {
   detailAt,
   spendBudget,
@@ -117,6 +119,8 @@ export class WorldScene {
   readonly held = new HeldWeapon(this.weaponArt);
   /** The weapons lying in the world to be picked up. */
   readonly pickups = new PickupModels(this.weaponArt);
+  /** The room of the shop the player is standing in (spec section 16.1). */
+  readonly interior = new ShopInterior();
   /** The smoke, fire and blast of the vehicle's damage (spec section 11.3). */
   readonly fx = new DamageFx();
   /** The rubber it leaves on the road (spec section 11.3). */
@@ -196,6 +200,7 @@ export class WorldScene {
     this.scene.add(this.vehicle.group);
     this.scene.add(this.held.group);
     this.scene.add(this.pickups.group);
+    this.scene.add(this.interior.group);
     this.scene.add(this.fx.group);
     this.scene.add(this.skid.mesh);
 
@@ -355,10 +360,26 @@ export class WorldScene {
    * Aim the cutaway for the frame about to be drawn: the camera as it now
    * stands, and the player at the height of their feet.
    */
-  seeThrough(camera: Vector3, x: number, height: number, y: number): void {
-    const over = this.cutaway.enabled ? this.roofOver(camera.x, camera.z, CAMERA_ROOF_MARGIN) : undefined;
-    const inside = over !== undefined && over.top + CAMERA_ROOF_MARGIN > camera.y ? over : undefined;
+  seeThrough(camera: Vector3, x: number, height: number, y: number, inShop = false): void {
+    // A player inside a shop is under the building that holds it, and the
+    // camera is over its roof: it is the shell over the player that has to go,
+    // or the room the clip of `interior.ts` opened is roofed over again.
+    const over = this.cutaway.enabled ? this.roofOver(inShop ? x : camera.x, inShop ? y : camera.z, CAMERA_ROOF_MARGIN) : undefined;
+    const inside = inShop || (over !== undefined && over.top + CAMERA_ROOF_MARGIN > camera.y) ? over : undefined;
     this.cutaway.aim(camera, x, height, y, inside);
+  }
+
+  /**
+   * Draw the inside of the shop the player is standing in (spec section 16.1),
+   * and nothing where they are out on the street. The room stands on the carved
+   * ground under its own floor.
+   */
+  shopInside(place: { kind: ShopKind; room: ShopRoom } | undefined): void {
+    if (place === undefined) {
+      this.interior.hide();
+      return;
+    }
+    this.interior.show(place.room, this.heightAt(place.room.x, place.room.y), place.kind);
   }
 
   /** Refit the sun's shadow cascades after the camera's shape changes. */
@@ -421,6 +442,11 @@ export class WorldScene {
   /** The metro stations of the world (spec section 13.3), known with the police stations. */
   get metro(): readonly MetroStation[] | undefined {
     return this.stream.metro;
+  }
+
+  /** The shops of the world (spec section 16.1), known with the police stations. */
+  get shops(): readonly Shop[] | undefined {
+    return this.stream.shops;
   }
 
   /** The parking bays of the world (spec section 13.1), or undefined until a chunk worker has laid them out. */

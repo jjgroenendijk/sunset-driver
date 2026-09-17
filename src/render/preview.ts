@@ -63,6 +63,7 @@ import { PedestrianView } from './pedestrians.ts';
 import { TrafficView } from './traffic.ts';
 import { TramView } from './tram.ts';
 import { WorldScene } from './world-scene.ts';
+import { roomOf, SHOP_KINDS, type Shop } from '../world/shops.ts';
 
 /** Where to stand, how far back to look from, and how big a picture to take. */
 export interface PreviewRequest {
@@ -129,6 +130,37 @@ export interface PreviewRequest {
   pickups?: boolean;
   /** The index of the laid pickup to draw as the one under the mouse, grown to its full hover size. */
   hover?: number;
+  /**
+   * The trade of the shop to stand the player inside (spec section 16.1), by
+   * name, or `any` for the nearest shop of any trade. It is the one way to look
+   * at an interior: the frame is taken from inside the room, with the vehicle
+   * left at the kerb, and it overrides {@link PreviewRequest.onFoot}.
+   */
+  shop?: string;
+}
+
+/** Metres out of a shop door `--shop` leaves the vehicle. */
+const KERB = 4;
+
+/**
+ * The shop `--shop` asks for: the nearest one of that trade to where the player
+ * was going to stand, or the nearest of any trade for `any`. Nothing is asked
+ * for, or no shop of that trade was built, and the frame is the street.
+ */
+function shopFor(shops: readonly Shop[] | undefined, wanted: string | undefined, x: number, y: number): Shop | undefined {
+  if (wanted === undefined || shops === undefined) return undefined;
+  const kind = SHOP_KINDS.find((name) => name === wanted);
+  if (kind === undefined && wanted !== 'any') throw new Error(`no shop trade called ${wanted}`);
+  let found: Shop | undefined;
+  let near = Infinity;
+  for (const shop of shops) {
+    if (kind !== undefined && shop.kind !== kind) continue;
+    const away = Math.hypot(shop.x - x, shop.y - y);
+    if (away >= near) continue;
+    near = away;
+    found = shop;
+  }
+  return found;
 }
 
 /** Metres between two pickups `--pickups` lays, and how many lie in a row. */
@@ -146,6 +178,9 @@ const DRIFT_RADIUS = 18;
 export interface PreviewResult {
   width: number;
   height: number;
+  /** Where the frame was taken from, which `--shop` moves off what was asked for. */
+  x: number;
+  y: number;
   /** The rows, top row first, three bytes a pixel, base64 encoded. */
   rgb: string;
   /** Milliseconds spent generating the world. */
@@ -177,7 +212,11 @@ const BYTES_PER_PIXEL = 4;
 const ROW_ALIGNMENT = 256;
 
 export async function renderPreview(request: PreviewRequest): Promise<PreviewResult> {
-  const { seed, x, y, distance, heading, speed, width, height, hour } = request;
+  const { seed, distance, heading, speed, width, height, hour } = request;
+  // `--shop` moves the frame to the room of a shop, which is only known once a
+  // worker has answered, so where the player stands is settled below.
+  let x = request.x;
+  let y = request.y;
   const tier = QUALITY_TIERS.find((entry) => entry.name === request.quality) ?? FULL_TIER;
 
   const t0 = performance.now();
@@ -195,6 +234,17 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   // frame the game draws. Every chunk of both rings is waited for, so the same
   // request twice takes the same picture.
   await scene.settle(x, y);
+  // The shops of spec section 16.1 come back with the first chunk, so the
+  // nearest one of the trade asked for is picked here and the ground round it
+  // built in turn. The room is then the frame's own middle.
+  const shop = shopFor(scene.shops, request.shop, x, y);
+  if (shop !== undefined) {
+    const room = roomOf(shop);
+    x = room.x;
+    y = room.y;
+    await scene.settle(x, y);
+    scene.shopInside({ kind: shop.kind, room });
+  }
   // Where the player stands decides which lamps burn and where the sky dome is.
   scene.look(x, y);
   const chunkMs = performance.now() - t1;
@@ -207,12 +257,18 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   const ground = scene.heightAt(x, y);
   const spec = specOf(VEHICLE_CLASSES.find((cls) => cls === request.vehicle) ?? DEFAULT_CLASS);
   const rest = spec.hull === undefined ? ground : Math.max(ground, world.water.seaLevel);
-  const vehicle = createVehicleState(spec, x, y, rest + rideHeight(spec), heading);
+  // Inside a shop the vehicle waits at the kerb outside its door, because a
+  // car parked in the shop is not what the room looks like.
+  const kerb =
+    shop === undefined
+      ? { x, y }
+      : { x: shop.x + Math.cos(shop.facing) * KERB, y: shop.y + Math.sin(shop.facing) * KERB };
+  const vehicle = createVehicleState(spec, kerb.x, kerb.y, rest + rideHeight(spec), heading);
   if (request.damage !== undefined) vehicle.damage = damageAt(request.damage, tick);
-  const stand = request.onFoot === true ? exitPlace(vehicle, spec) : { x, y, heading };
+  const stand = request.onFoot === true && shop === undefined ? exitPlace(vehicle, spec) : { x, y, heading };
   scene.character.group.position.set(stand.x, scene.heightAt(stand.x, stand.y), stand.y);
   scene.character.group.rotation.y = -stand.heading;
-  scene.character.group.visible = request.onFoot === true;
+  scene.character.group.visible = request.onFoot === true || shop !== undefined;
   scene.vehicle.set(vehicle);
   // A fire is what has been burning for a while, not what started this frame,
   // so the smoke is given a run of ticks to climb before the picture is taken.
@@ -250,7 +306,7 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   const roofs = view === 'pull-back' ? (px: number, pz: number) => scene.roofOver(px, pz, PULL_MARGIN)?.top : undefined;
   camera.update(0, { x, y, height: ground, heading, speed }, roofs);
   scene.cutaway.enabled = view !== 'whole';
-  scene.seeThrough(camera.camera.position, stand.x, scene.heightAt(stand.x, stand.y), stand.y);
+  scene.seeThrough(camera.camera.position, stand.x, scene.heightAt(stand.x, stand.y), stand.y, shop !== undefined);
 
   const t2 = performance.now();
   const renderer = await createOffscreenRenderer(width, height);
@@ -286,7 +342,7 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   scene.dispose();
   renderer.dispose();
 
-  return { width, height, rgb, worldMs, chunkMs, frameMs, peakDrawCalls, lights, shadows, quality: tier.name, traffic: drawn, parked: standing, pedestrians: walking };
+  return { width, height, x, y, rgb, worldMs, chunkMs, frameMs, peakDrawCalls, lights, shadows, quality: tier.name, traffic: drawn, parked: standing, pedestrians: walking };
 }
 
 /**

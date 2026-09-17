@@ -97,8 +97,9 @@ describe('the building view setting', () => {
 
   it('keeps a choice, and falls back on a value it does not know', () => {
     const store = memoryStore();
-    writeSettings(store, { buildingView: 'pull-back' });
+    writeSettings(store, { buildingView: 'pull-back', muted: true });
     expect(readSettings(store).buildingView).toBe('pull-back');
+    expect(readSettings(store).muted).toBe(true);
     store.setItem('sunset-driver.settings', '{"buildingView":"sideways"}');
     expect(readSettings(store)).toEqual(DEFAULT_SETTINGS);
     store.setItem('sunset-driver.settings', 'not json');

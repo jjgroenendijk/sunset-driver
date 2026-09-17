@@ -3,7 +3,10 @@
 The gotchas of `src/sim` and `src/ui`: what Rapier does with a wheel, a force and a heightfield,
 what the record may hold, and what the HUD and the map read. `spec.md` sections 11 to 14, 16 and 18
 are the design. Read the section the work touches, not the file. The menus and the screens around
-play — the title screen, the loading screen, the pause menu and the saves — are in `docs/menus.md`.
+play — the title screen, the loading screen, the pause menu and the saves — are in `docs/menus.md`,
+and the shops, the counters and the interiors of spec section 16 in `docs/shops.md`. The properties
+the player buys are in `docs/safehouses.md`, the factions, their reputation and their turf in
+`docs/factions.md`, and the work their contacts hand out in `docs/missions.md`.
 
 ## Contents
 
@@ -36,9 +39,14 @@ play — the title screen, the loading screen, the pause menu and the saves — 
   at the bottom left is the game's own HUD: health, money, weapon and ammunition, heat and the
   current objective. Every field is written only when its text changes, because a DOM write lays the
   whole overlay out again and doing that sixty times a second for numbers that stand still is a
-  frame the city could have spent on itself. `SimState.money`, `SimState.objective` and
-  `SimState.waypoint` are the three slots it reads that nothing writes yet; the economy of spec
-  section 16, the missions of 18 and the map are what will.
+  frame the city could have spent on itself. The radio line under it is what `src/audio` says is on
+  air (spec section 15), so it is there only while something is playing. `SimState.money` is moved
+  by the shops of spec section 16.1 and the contraband market of 16.2 (`docs/market.md`).
+  `SimState.objective` is the leg of the job being carried and what is left of its clock, written
+  by the missions of spec section 18 (`docs/missions.md`) and by nothing else. The turf line under
+  the heat is whose block the player is standing on and how far
+  through taking it they are (spec section 17.2); `main.ts` reads it off `turfLine` and hands it in,
+  because the HUD knows the record and not the world.
 
 ## The map
 
@@ -50,6 +58,9 @@ play — the title screen, the loading screen, the pause menu and the saves — 
   uses and a colour no other type uses, and `test/map.test.ts` pins both. `MapPois.extra` is the
   slot a system that owns places writes — the shops of spec section 16.1, the safehouses of 16.3,
   the factions of 17, the missions of 18 — and nothing reads a second list.
+- `MapDrawOptions.overlay` is the slot the territory of spec section 17.2 draws through
+  (`docs/factions.md`). It is handed the canvas in world metres and the world box the view can show,
+  so an overlay over the whole map draws only the part on screen.
 - `src/ui/map-draw.ts` is the one place that says what a map looks like. `Minimap` (`minimap.ts`)
   and `MapScreen` (`map-screen.ts`) both draw through one `MapArt`, so the corner map and the full
   map cannot disagree about a road or a mark. The land and the sea are a bitmap one pixel to a
@@ -146,12 +157,15 @@ play — the title screen, the loading screen, the pause menu and the saves — 
   an arrest is `SimState.arrested`; `stepSim` turns either into a respawn at the end of the tick, so
   whatever wrote them — a crash, a blast, the debug keys `K` and `B`, the police later — replays the
   same. The player comes back on foot with fists only; the car stays where the run ended.
-  `loadout.shots` survives, because it keys the stream of every shot. `SimState.safehouse` is where
-  the session started until spec section 16.3 lands. The police stations come from
+  `loadout.shots` survives, because it keys the stream of every shot. An arrest also takes the
+  contraband in the player's hands, and neither fate can reach a safehouse stash
+  (`docs/safehouses.md`). A death sends the player to their active safehouse and an arrest to the
+  nearest police station; a player who owns no safehouse comes back at `SimState.origin`, where the
+  session started. The police stations come from
   `ParcelMap.stations`, built in the chunk workers, so `main.ts` reads them off
   `WorldScene.stations` after `settle` and hands them to the physics as `Ground.stations`. A world
-  with none sends an arrest to the safehouse. `SimState.respawn` changing is what makes `main.ts`
-  snap the camera.
+  with none sends an arrest to the safehouse too. `SimState.respawn` changing is what makes
+  `main.ts` snap the camera.
 - `SimState.heat` is the attention of spec section 14: a sounding alarm, every shot fired and every
   crime raise it, and melee raises none, because the spec calls it silent. The police read it, and
   an arrest is what a chase ends in.
@@ -169,9 +183,11 @@ play — the title screen, the loading screen, the pause menu and the saves — 
   wrong tick.
 - `PoliceForce` is stepped by the physics, after the world has moved, so the units answer the tick
   the player has just driven. It holds no state of the chase: `SimState.police` is the record, so a
-  save is loaded and the same force carries on from it. `PoliceRoads` (`police-route.ts`) is the
+  save is loaded and the same force carries on from it. `UnitRoads` (`unit-route.ts`) is the
   routing — `RoadGraph.shortestPath` over travel time — and it caches the legs of a route per unit,
-  because a route is planned every two seconds and read every tick.
+  because a route is planned every two seconds and read every tick. The faction enforcers of spec
+  section 17.2 walk the same roads through the same class, which is why it is named for a unit and
+  not for the police.
 - A unit is routed to a place, never along the player's path: a chase is aimed at the last sighting,
   a cut-off and a roadblock at a point ahead of the way the player was going, and a search at a
   place round the last sighting that its own stream picks. A unit within `HOLD_RANGE` of its goal
@@ -372,6 +388,3 @@ play — the title screen, the loading screen, the pause menu and the saves — 
   a station id. A recorded stream therefore replays the trip the player picked. `src/ui/travel.ts`
   draws that list and the black sheet over the frame; the number keys are read as an edge in
   `Keyboard`, or a held key would ride the line back and forth.
-- `MetroState.trips` is what `main.ts` watches to stand the camera down at the far station, the way
-  it watches `SimState.respawn`. Heat and a vehicle are the two refusals, so a player has to lose
-  the police before the line will take them (spec section 14).

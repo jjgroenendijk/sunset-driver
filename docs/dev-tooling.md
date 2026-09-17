@@ -15,6 +15,7 @@ it.
 - `node scripts/render-preview.ts <seed> out.png`
 - `node scripts/render-sheet.ts <count> out.png [--cols=3] [--tile=480]`
 - `node scripts/render-profile.ts <seed>`
+- `node scripts/audio-check.ts`
 - The browser the previews need
 
 ## The free camera
@@ -140,6 +141,11 @@ What the game draws, as one frame. Look at the frame before judging a rendering 
   as the pickup under the mouse is.
 - `--tram` stands the player beside the first tram at the hour of the picture, and `--stop=N` at
   the N-th tram stop, where its queue waits.
+- `--shop=<trade>` stands the player inside the nearest shop of that trade — `weapons`, `workshop`,
+  `convenience`, `clothing`, `clinic`, `broker`, or `any` — with the vehicle left at the kerb. It is
+  the one way to look at an interior (spec section 16.1), and it moves the frame off `--x` and
+  `--y`: the line the run prints says where it ended up. A room is about 7 m across, so
+  `--distance=22` is the frame that holds it.
 - `--width` and `--height` are the size of the picture.
 
 It prints the lights and shadow cascades the frame cost beside the draw calls, and how many
@@ -163,12 +169,25 @@ Four tiles take about 45 seconds together, against about 50 seconds each on thei
 What the frame costs. Measure the frame before judging a performance change.
 
 It draws a few hundred frames, standing still and then driving, and prints the frame times, the
-draws, and what each long frame compiled or built. Its switches take one part of the frame away —
+draws, and what each long frame compiled or built. It runs the warm-up of `src/render/warm.ts`
+first, as a session does, so a long frame here is a long frame in the game and not one the game
+had already paid for behind its loading screen. Its switches take one part of the frame away —
 `--no-water`, `--no-shadows`, `--no-lamps`, `--no-post` — so two runs say what that part costs, and
 `--dpr=2` is what a Retina display draws.
 
 GPU times move by several milliseconds between runs, so compare two builds by running them in turn,
 more than once each.
+
+## `node scripts/audio-check.ts`
+
+What the game sounds like, as numbers. A headless run has no ears, so this is the meter: it renders
+a made-up moment of each kind — the engine idling and at speed, the horn, sliding tyres, sirens, a
+gunshot, a swing, a collision, an explosion, a footfall, a tram bell, and the lot at once — through
+an offline audio context and prints the peak, the loudness and how much of it was silence.
+
+Run it after changing a voice or a level in `src/audio`. It fails on a case that should make a
+sound and is silent, which is what a node that was never connected looks like, and on one that
+clips. The cases live in `src/audio/offline.ts` and each drives the real planner and the real mixer.
 
 ## The browser the previews need
 

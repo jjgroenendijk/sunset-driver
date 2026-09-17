@@ -9,6 +9,7 @@ and the crowd — is in `docs/render-entities.md`.
 
 - Streaming the city
 - Quality tiers
+- Warming the shaders
 - Smoothing and fading
 - TSL and the three.js traps
 - Roads and pavement
@@ -102,9 +103,39 @@ and the crowd — is in `docs/render-entities.md`.
   still for half a second — and it never got cheaper, because a rebuilt node is a fresh cache key
   however often the same effects have been compiled before. `PostChain` therefore builds a graph
   once and keeps it, one per set of effects, and a tier change swaps the pipeline's output node to a
-  chain the renderer has already compiled. A tier that moves only the render scale changes no node
-  at all. `main.ts` draws one frame through each graph behind the loading screen before the session
-  starts, so the first change of the session swaps rather than builds.
+  chain the renderer has already compiled. `warm.ts` draws one frame through each graph behind the
+  loading screen before the session starts, so the first change of the session swaps rather than
+  builds.
+- **The render scale is what a tier change still pays for.** Every tier carries its own
+  `renderScale`, and `setRenderScale` hands it to `renderer.setPixelRatio`, which changes the
+  drawing buffer size. `ClusteredLightsNode.updateProgram` builds its cluster grid from that size
+  and rebuilds the whole compute program when it moves, and the lights node hashes that program
+  into its cache key, so every render object in the scene is thrown away and every shader in the
+  city is built again: about two seconds, measured on every tier change of a drive. Nothing in this
+  directory can warm it away — the renderer frees a program as its render objects are discarded, so
+  the scale that is not standing is never held. Issue #323 carries the measurements.
+
+## Warming the shaders
+
+- `warm.ts` compiles the session's shaders behind the loading screen. three.js keys a WGSL program
+  on the material, the geometry layout it is drawn over, the object itself and the pass, and builds
+  it on the frame thread the first time it meets that combination. Met while driving, that is a
+  frame of about a quarter of a second per program, and they come in batches.
+- `renderer.compileAsync(scene, camera)` alone is not enough, and four things widen it. It walks the
+  camera's frustum, so **frustum culling comes off**: a low block a street behind the player is
+  otherwise compiled the frame it first comes into view. It walks only what is drawn, so **hidden
+  objects are shown and an empty instanced pool is given one instance**: the ambient traffic, the
+  parked cars, the police and the crowd each hold a pool per class that is empty until the first one
+  of that class comes near, and three hashes the mesh's own `uuid` into the program key, so an empty
+  pool is a program nobody has built. It compiles the view pass only, so **a frame is drawn through
+  each post graph**, which runs the sun's cascades and the water's mirror as well. And **every
+  quality tier's graph** is drawn, so a tier change later swaps rather than builds.
+- It therefore runs last of everything the loading screen covers, after every view is in the scene.
+  A view added after it would compile on the frame it first draws.
+- An object that streams or spawns afterwards costs nothing: a chunk worker builds every batch of a
+  kind the same way, and an entity is drawn out of a pool made before the session started.
+- It costs about 0.8 s more on the loading screen on an M1 laptop, 2.5 s to 3.3 s, and takes the
+  drive's worst frame from about 2 s to about 20 ms.
 
 ## Smoothing and fading
 
@@ -218,7 +249,7 @@ and the crowd — is in `docs/render-entities.md`.
   when the player reaches the sea, and that frame compiled every material again for the mirror:
   about 1.4 s, on a frame the player is driving through. `WaterSurface.show`, through
   `WorldScene.showWater`, draws the sheet wherever the camera stands for the warm-up frames of
-  `main.ts`, behind the loading screen; `look` hides it again the frame after.
+  `warm.ts`, behind the loading screen; `look` hides it again the frame after.
 - `WaterMesh` bakes its mirror into its colour graph inside a shader function the renderer only
   runs while building, so nothing outside ever reaches the mirror to steer it. `water-surface.ts`
   therefore replaces that graph with the same shading built around a reflector it holds: the

@@ -1,13 +1,10 @@
 import { Raycaster, Vector2 } from 'three';
+import { GameAudio } from './audio/game-audio.ts';
+import { WorldSites } from './audio/site.ts';
 import { randomSeedString, readSeedFromLocation, seedFromString, writeSeedToHash } from './core/seed.ts';
 import { BASE_DISTANCE, FollowCamera, PULL_MARGIN, type RoofHeight } from './render/camera.ts';
-import { PostChain, postGraphs } from './render/post.ts';
-import {
-  frameBudgetFrom,
-  QUALITY_TIERS,
-  QualityMonitor,
-  type QualityChange,
-} from './render/quality.ts';
+import { PostChain } from './render/post.ts';
+import { frameBudgetFrom, QualityMonitor } from './render/quality.ts';
 import { createRenderer, probeWebGpu } from './render/renderer.ts';
 import { createTitleScene } from './render/scene.ts';
 import { RenderSmoother } from './render/smooth.ts';
@@ -17,38 +14,50 @@ import { PoliceView } from './render/police.ts';
 import { TrafficView } from './render/traffic.ts';
 import { TramView } from './render/tram.ts';
 import { WorldSource } from './render/world-source.ts';
+import { warmPasses } from './render/warm.ts';
 import { WorldScene } from './render/world-scene.ts';
 import { FixedStepClock, gameTime } from './sim/clock.ts';
 import { DEFAULT_APPEARANCE } from './sim/character.ts';
-import { ParkedCars } from './sim/parked.ts';
+import { buildPlaces } from './places.ts';
 import { AmbientPedestrians, crowdDistrictsOf } from './sim/pedestrians.ts';
 import { initPhysics, SimPhysics, type Ground } from './sim/physics.ts';
-import { EMPTY_INPUT } from './sim/input.ts';
+import { EMPTY_INPUT, type InputFrame } from './sim/input.ts';
 import { createSave, restoreSimState, saveFromText, saveToText, type SaveFile } from './sim/save.ts';
 import { createSimState, stepSim, type SimState } from './sim/simulation.ts';
 import { AmbientTraffic, trafficRoadsOf } from './sim/traffic.ts';
 import { commitCrime, PoliceForce, policeDistrictsOf } from './sim/police.ts';
 import { TramLine } from './sim/tram.ts';
-import { stationAt, type MetroPlace } from './sim/metro.ts';
+import { stationAt } from './sim/metro.ts';
+import { visiting } from './sim/shop.ts';
+import { turfLine } from './sim/territory.ts';
+import { DealerMarks } from './ui/dealers.ts';
+import { EnforcerMarks } from './ui/enforcers.ts';
+import { MissionMarks } from './ui/missions.ts';
+import { JobPanel } from './ui/job-panel.ts';
+import { TerritoryOverlay } from './ui/territory.ts';
+import { TradePanel } from './ui/trade-panel.ts';
 import { HotwireBar } from './ui/hotwire.ts';
 import { Hud } from './ui/hud.ts';
 import { MapArt } from './ui/map-draw.ts';
-import { MapPois } from './ui/map.ts';
+import { MapPois, SHOP_POIS } from './ui/map.ts';
 import { MAP_KEY, MapScreen } from './ui/map-screen.ts';
 import { Minimap, MINIMAP_NORTH_KEY } from './ui/minimap.ts';
 import { PAUSE_KEY, PauseMenu } from './ui/pause.ts';
 import { SaveSlots, setPendingStart, takePendingStart } from './ui/saves.ts';
-import { readSettings, writeSettings, type BuildingViewChoice } from './ui/settings.ts';
+import { readSettings, writeSettings, type BuildingViewChoice, type SoundChoice } from './ui/settings.ts';
 import { FREE_CAMERA_KEY, FreeCameraControls } from './ui/free-camera.ts';
 import { isTouchDevice, readTouchProbe } from './ui/touch.ts';
 import { markTouchUi, mountTouchBar } from './ui/touch-bar.ts';
 import { Keyboard } from './ui/keyboard.ts';
 import { LoadingScreen } from './ui/loading.ts';
 import { TitleScreen, type TitleChoice } from './ui/title.ts';
+import { HomePanel } from './ui/home-panel.ts';
+import { ShopPanel } from './ui/shop-panel.ts';
 import { TravelPanel } from './ui/travel.ts';
 import { PICKER_KEY, VehiclePicker } from './ui/vehicle-picker.ts';
 import { WEAPON_PICKER_KEY, WeaponPicker } from './ui/weapon-picker.ts';
 import { dropWeapon } from './sim/pickup.ts';
+import { applyQuality, type Session } from './session.ts';
 import {
   currentSlot,
   currentWeapon,
@@ -93,84 +102,6 @@ const CRIME_KEY = 'KeyL';
  * neither. The monitor is free to walk back up if the phone can hold it.
  */
 const TOUCH_START_TIER = 2;
-
-/** A session in progress: the state, the world it is played in, and the overlay. */
-interface Session {
-  state: SimState;
-  world: WorldScene;
-  physics: SimPhysics;
-  /** The effects the world is drawn through (spec section 10.6). */
-  post: PostChain;
-  /** What watches the frame and steps the quality tiers (spec section 9.2). */
-  quality: QualityMonitor;
-  hud: Hud;
-  /** The corner map of spec section 12, following the player. */
-  minimap: Minimap;
-  /** The full map of spec section 12: pan, zoom and waypoint. */
-  map: MapScreen;
-  /** The hotwire minigame of spec section 11.4, drawn while a lock is being worked at. */
-  hotwire: HotwireBar;
-  /** The metro station panel and the fade of a trip (spec section 13.3). */
-  travel: TravelPanel;
-  /** The station entrances the panel names, in the order the record numbers them. */
-  metro: readonly MetroPlace[];
-  /** What draws the frame between two ticks, so the motion is smooth (spec section 9.2). */
-  smooth: RenderSmoother;
-  /** The debug picker of the arsenal, which shows the weapon in hand. */
-  weapons: WeaponPicker;
-  /** The ambient traffic of spec section 13.1, drawn. */
-  traffic: TrafficView;
-  /** The police units of spec section 14, drawn. */
-  police: PoliceView;
-  /** The parked cars of spec section 13.1, drawn; undefined where no worker laid out the bays. */
-  parked: ParkedView | undefined;
-  /** The trams of spec section 13.2, drawn. */
-  tram: TramView;
-  /** The pedestrians of spec section 13.1, drawn. */
-  crowd: PedestrianView;
-  /** The pause menu of spec section 12. While it is open the simulation does not step. */
-  pause: PauseMenu;
-}
-
-/**
- * Hand a tier to the two halves that draw at it, and say so (spec section 9.2).
- *
- * The line in the console is how a tier change is read back after the fact:
- * the player sees a frame that holds its rate, and the log says what it cost.
- */
-function applyQuality(session: Session, change: QualityChange): void {
-  session.world.quality = change.to;
-  session.post.quality = change.to.post;
-  console.info(
-    `quality: ${change.from.name} -> ${change.to.name} at ${change.frameMs.toFixed(1)} ms a frame ` +
-      `(budget ${session.quality.budget} ms)`,
-  );
-}
-
-/**
- * Draw one frame through each post graph, with the water in view, before the
- * session starts (spec sections 9.2, 10.6).
- *
- * The four quality tiers come to three graphs, and a graph is built once and
- * kept, so a tier change later swaps to a chain the renderer has compiled. The
- * water sheet is shown for each of these frames, which is what compiles the
- * mirror pass on an inland session that would otherwise meet it the first time
- * it drives to the sea. The render scale stays where it stands: what a program
- * is keyed on is the graph, not the size the frame is drawn at.
- *
- * An animation frame is waited for between them, so the loading screen is drawn
- * rather than held still.
- */
-async function warmPasses(world: WorldScene, post: PostChain): Promise<void> {
-  const standing = post.quality;
-  for (const graph of postGraphs(QUALITY_TIERS.map((tier) => tier.post))) {
-    post.quality = { ...graph, renderScale: standing.renderScale };
-    world.showWater();
-    post.render();
-    await new Promise((frame) => requestAnimationFrame(frame));
-  }
-  post.quality = standing;
-}
 
 async function boot(): Promise<void> {
   const status = document.getElementById('status');
@@ -246,6 +177,20 @@ async function boot(): Promise<void> {
     },
   };
 
+  // The audio of spec section 15. It is armed here rather than with the
+  // session, so the click or the key that starts one is the gesture the browser
+  // wants before it will give an audio context. A muted game builds no graph.
+  const audio = new GameAudio(settings.muted);
+  audio.arm(window);
+  const sound: SoundChoice = {
+    muted: () => settings.muted,
+    mute: (muted) => {
+      settings.muted = muted;
+      audio.muted = muted;
+      writeSettings(localStorage, settings);
+    },
+  };
+
   // Where the world of a seed is built (spec section 9.1). It is a worker, so
   // neither the title screen's map nor the wait after Start stops the frame.
   const worlds = new WorldSource();
@@ -257,6 +202,8 @@ async function boot(): Promise<void> {
   let last = performance.now();
   /** Whether the camera was detached last frame, so a release is noticed once. */
   let flew = false;
+  /** The last frame of input the simulation was stepped with, which the mix reads. */
+  let heard: InputFrame = EMPTY_INPUT;
 
   const frame = (now: number): void => {
     const elapsed = now - last;
@@ -277,7 +224,8 @@ async function boot(): Promise<void> {
         // The pose the step starts from is kept before it is taken, so the
         // frame is drawn between the last two ticks rather than on the last.
         session.smooth.capture(session.state);
-        stepSim(session.state, flying ? EMPTY_INPUT : keyboard.sample(), session.physics);
+        heard = flying ? EMPTY_INPUT : keyboard.sample();
+        stepSim(session.state, heard, session.physics);
       }
       // A respawn and a metro trip both put the player down somewhere else on
       // the map (spec sections 11.7, 13.3), so the frame stands the camera
@@ -285,12 +233,19 @@ async function boot(): Promise<void> {
       if (session.state.respawn !== respawned || session.state.metro.trips !== trips) {
         session.smooth.reset();
         camera.snap();
+        // The record has jumped across the map, and the difference between two
+        // records is not a crash (spec section 15).
+        audio.resync(session.state);
       }
       // A frame falls between two ticks, so what is drawn is the blend of them
       // `smooth.ts` describes. Without it the record steps 0, 1 or 2 ticks a
       // frame while the camera slides every frame, and the city judders.
       const alpha = clock.alpha();
       const p = session.smooth.playerAt(session.state, alpha);
+      // The shop the player is standing in (spec section 16.1), or undefined.
+      // Two things read it: the room that is drawn, and the shell over it,
+      // which has to be cut away or the room is roofed over again.
+      const inShop = visiting(session.state, session.shops);
       const vehicle = session.smooth.vehicleAt(session.state, alpha);
       // The player and the car are both drawn from the record the physics
       // wrote. The record says how high the player's feet stand, so the model
@@ -352,7 +307,7 @@ async function boot(): Promise<void> {
         // the roofs. Off does neither.
         camera.update(elapsed / 1000, p, settings.buildingView === 'pull-back' ? roofTop : undefined);
         session.world.cutaway.enabled = settings.buildingView !== 'whole';
-        session.world.seeThrough(camera.camera.position, p.x, p.height, p.y);
+        session.world.seeThrough(camera.camera.position, p.x, p.height, p.y, inShop !== undefined);
       }
       if (flew && !flying) {
         // The flight ended, whichever frame the key came on: the camera slides
@@ -374,6 +329,8 @@ async function boot(): Promise<void> {
         session.world.lightCount,
         session.world.streaming,
         session.quality.tier.name,
+        audio.onAir,
+        turfLine(session.state, session.turf),
       );
       // The lock the player is working at (spec section 11.4). The panel reads
       // the record the simulation is playing, so the bar on screen is the bar
@@ -382,6 +339,24 @@ async function boot(): Promise<void> {
       // The metro panel of spec section 13.3: where the player may travel from
       // the station they are standing at, and the fade of a trip in progress.
       session.travel.update(session.state, session.metro, stationAt(session.metro, session.state), session.state.tick);
+      // The shop of spec section 16.1: the counter on screen, and the room the
+      // player is standing in, which is the only interior the scene ever holds.
+      session.shopPanel.update(session.state, session.shops, session.safehouses);
+      session.world.shopInside(inShop);
+      // The contraband market of spec section 16.2: where the dealers are
+      // standing this spell, and the prices of the one the player is with.
+      session.dealerMarks.update(session.state.tick, session.world);
+      session.tradePanel.update(session.state, session.dealers);
+      // The enforcers of spec section 17.2, where the record left them this
+      // tick, and the dealers standing behind them in the same list.
+      session.enforcerMarks.update(session.state, session.world, session.dealerMarks);
+      // The work of spec section 18: the board at the contact the player is
+      // standing at, and the mark on wherever the job in hand is going.
+      session.jobPanel.update(session.state, session.missions);
+      session.missionMarks.update(session.state, session.enforcerMarks);
+      // The safehouses of spec section 16.3: what a front door costs, or what
+      // the house the player is standing in does for them.
+      session.homePanel.update(session.state, session.safehouses);
       session.weapons.sync(session.state.loadout);
       // The maps of spec section 12. Both follow the player from the record,
       // and both redraw only when something on them has moved, so a session
@@ -392,6 +367,10 @@ async function boot(): Promise<void> {
         : { x: p.x, y: p.y, heading: p.heading };
       session.minimap.update(at, session.state.waypoint);
       session.map.update(at, session.state.waypoint);
+      // The mix of spec section 15 stands where the frame is drawn from, which
+      // is the player or the free camera. A paused session holds no note.
+      if (paused) audio.hush();
+      else audio.update(session.state, heard, round);
       // Not `renderer.render`: the post chain draws the scene itself and the
       // effects of spec section 10.6 over it.
       session.post.render();
@@ -422,6 +401,7 @@ async function boot(): Promise<void> {
       (appearance) => preview.character.set(appearance),
       buildingView,
       touch,
+      sound,
     );
     choice = await title.wait();
     title.destroy();
@@ -466,6 +446,12 @@ async function boot(): Promise<void> {
   const crowd = new AmbientPedestrians(state.seed, roads, crowdDistrictsOf(description));
   // The trams of spec section 13.2 keep to the traffic's own lights.
   const tram = new TramLine(state.seed, roads, description.tram, description.districts, traffic.signals);
+  // The bells of spec section 13.2 are a function of the tick rather than part
+  // of the record, so the audio is given the line itself to ask.
+  audio.watch(tram);
+  // The ambient beds of spec section 15 are the place itself, which is not in
+  // the record either: the audio reads it off the world where the player stands.
+  audio.survey(new WorldSites(description));
   // The police drive the same roads the traffic does, and answer from the
   // district the player stands in (spec section 14).
   const police = new PoliceForce(roads, policeDistrictsOf(description));
@@ -492,9 +478,9 @@ async function boot(): Promise<void> {
   }
   let physics = new SimPhysics(ground, state);
   physics.spawn(state, start?.x ?? state.player.x, start?.y ?? state.player.y, start?.heading ?? 0);
-  // The safehouses of spec section 16.3 have not landed, so a death comes back
-  // where the session started (spec section 11.7).
-  state.safehouse = { x: state.player.x, y: state.player.y, heading: state.player.heading };
+  // Where a player who owns no safehouse comes back to (spec sections 11.7,
+  // 16.3): the place the session started at.
+  state.origin = { x: state.player.x, y: state.player.y, heading: state.player.heading };
 
   // The saves of spec section 16.4, one per seed in this browser. A save is
   // loaded into the record in place, since everything below holds the record,
@@ -532,23 +518,16 @@ async function boot(): Promise<void> {
     world.dispose();
     return;
   }
-  // The parcels are built in the chunk workers, so the police stations are
-  // known once a worker has answered, which `settle` waited for. An arrest
-  // comes back on the road nearest a station (spec section 11.7).
-  const stations = world.stations ?? [];
-  ground.stations = stations.map((at) => nearestRoadPlace(description, at.x, at.y) ?? { ...at, heading: 0 });
-  // The metro stations come from the same answer (spec section 13.3). A station
-  // is entered from the street, so its place is the road that runs along its
-  // parcel, and it is named for the district it serves.
-  const metro: MetroPlace[] = (world.metro ?? []).map((at) => ({
-    ...(nearestRoadPlace(description, at.x, at.y) ?? { x: at.x, y: at.y, heading: 0 }),
-    name: description.districts[at.district]?.name ?? 'Metro',
-  }));
-  ground.metro = metro;
-  // The parking bays come from the same answer. Which bay holds a car is a
-  // function of the tick, so the physics and the renderer share one plan.
-  const parked = world.bays === undefined ? undefined : new ParkedCars(state.seed, world.bays);
-  ground.parked = parked;
+  // The parcels are built in the chunk workers, so every place dealt over them
+  // is known once a worker has answered, which `settle` waited for. `places.ts`
+  // asks each system where its own places stand and fills the ground with them.
+  const { stations, metro, shops, dealers, safehouses, turf, missions, parked } = buildPlaces(
+    state.seed,
+    description,
+    world,
+    roads,
+    ground,
+  );
 
   loading.say('Getting the first frame ready', LOADED.ground);
   // The camera is put where the session starts before anything is compiled,
@@ -561,18 +540,6 @@ async function boot(): Promise<void> {
   // means the first frame is antialiased like every frame after it.
   const post = new PostChain(renderer, world.scene, camera.camera, undefined, state.seed);
   await post.ready();
-  // WebGPU compiles a pipeline the first time it draws with it, so a session
-  // that starts here compiles the whole city over its first frames: the street
-  // stutters into place while the player is already driving on it. The wait is
-  // paid once, here, where there is a screen saying so.
-  await renderer.compileAsync(world.scene, camera.camera);
-  // `compileAsync` compiles what that camera can see in the pass it draws, and
-  // the frame is more passes than that: the water's mirror, the sun's shadow
-  // cascades and the post chain of each quality tier. Every one of them builds
-  // its WGSL on the frame thread the first time it runs, which is a frame the
-  // player is driving through. Drawing them here pays for them behind the
-  // loading screen instead.
-  await warmPasses(world, post);
   // `?budget=6` holds the game to a frame no machine makes at full quality, so
   // the tiers of spec section 9.2 can be watched stepping down.
   const quality = new QualityMonitor(frameBudgetFrom(location.search), touch ? TOUCH_START_TIER : 0);
@@ -624,9 +591,26 @@ async function boot(): Promise<void> {
   pois.extra = [
     ...stations.map((at) => ({ type: 'police' as const, x: at.x, y: at.y })),
     ...metro.map((at) => ({ type: 'metro-station' as const, x: at.x, y: at.y, name: `Metro · ${at.name}` })),
+    ...shops.map((at) => ({ type: SHOP_POIS[at.kind], x: at.x, y: at.y, name: at.name })),
+    ...safehouses.map((at) => ({ type: 'safehouse' as const, x: at.x, y: at.y, name: at.name })),
+    // The contacts of spec section 18 stand where the seed put them and never
+    // move, so they are marked once with the rest.
+    ...missions.givers.map((at) => ({ type: 'mission-giver' as const, x: at.x, y: at.y, name: at.name })),
   ];
+  // The dealers are marked after the rest, because they are the only marks that
+  // move: `DealerMarks` keeps the list above and writes its own after it.
+  const dealerMarks = new DealerMarks(state.seed, dealers, pois);
+  // The enforcers are marked after the dealers, because they move every tick
+  // and the dealers do not: `EnforcerMarks` writes the list both of them stand
+  // in (spec section 17.2).
+  const enforcerMarks = new EnforcerMarks(pois);
+  // The objective is marked last of all, because it moves with the leg of the
+  // job the record is carrying (spec section 18).
+  const missionMarks = new MissionMarks(pois);
+  const overlay = new TerritoryOverlay(turf, state).draw;
   const art = new MapArt(description, pois);
   const minimap = new Minimap(document.body, art);
+  minimap.overlay = overlay;
   const map = new MapScreen(
     document.body,
     art,
@@ -635,6 +619,7 @@ async function boot(): Promise<void> {
     },
     touch,
   );
+  map.overlay = overlay;
   const pause = new PauseMenu(document.body, choice.seed, {
     save: () => {
       slots.write(createSave(choice.seed, state));
@@ -661,6 +646,7 @@ async function boot(): Promise<void> {
       restart(save.seed, save.state.character, true);
       return 'Opening the city of the save…';
     },
+    sound,
     regenerate: () => restart(randomSeedString(), state.character, false),
     quit: () => location.reload(),
     buildingView,
@@ -669,6 +655,7 @@ async function boot(): Promise<void> {
   // them, so the frame snaps to it rather than sliding there.
   const loadInto = (save: SaveFile): void => {
     loadSave(save);
+    audio.resync(state);
     world.resetDamage(state.tick);
     world.dress(state.character);
     smooth.reset();
@@ -720,7 +707,19 @@ async function boot(): Promise<void> {
   const tramView = new TramView(tram);
   world.scene.add(tramView.group);
   const crowdView = new PedestrianView(crowd, tram);
+  // The dealers and the faction enforcers are drawn with the crowd, and the
+  // list they stand in is written by `EnforcerMarks` for both of them (spec
+  // sections 16.2, 17.2): this hands it over once and never again.
+  crowdView.standing = enforcerMarks.standing;
   world.scene.add(crowdView.group);
+
+  // WebGPU compiles a pipeline the first time it draws with it, so a session
+  // that starts here compiles the whole city over its first frames: the street
+  // stutters into place while the player is already driving on it. The wait is
+  // paid once, here, where there is a screen saying so. It comes after every
+  // view is in the scene, because a shader is compiled for the object that is
+  // drawn with it and not for the material alone (`warm.ts`).
+  await warmPasses(renderer, world, post, camera.camera);
 
   session = {
     traffic: trafficView,
@@ -739,6 +738,18 @@ async function boot(): Promise<void> {
     hotwire: new HotwireBar(document.body),
     travel: new TravelPanel(document.body),
     metro,
+    shopPanel: new ShopPanel(document.body),
+    shops,
+    tradePanel: new TradePanel(document.body),
+    dealers,
+    dealerMarks,
+    enforcerMarks,
+    turf,
+    homePanel: new HomePanel(document.body),
+    safehouses,
+    jobPanel: new JobPanel(document.body),
+    missions,
+    missionMarks,
     smooth,
     weapons,
     pause,

@@ -21,6 +21,7 @@ times before judging a performance change.
 | Do several seeds look right, in one image? | `node scripts/render-sheet.ts 4 sheet.png` |
 | Did that change cost frame time? | `node scripts/render-profile.ts <seed>` |
 | Is the map or the minimap right? | `node scripts/map-preview.ts <seed> out.png` |
+| Whose turf is whose, and how it spreads? | `node scripts/map-preview.ts <seed> out.png --turf --day=8` |
 
 Then read the image back with the Read tool. A run that writes a PNG nobody opens has answered
 nothing.

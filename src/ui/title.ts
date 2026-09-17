@@ -2,8 +2,9 @@ import { normaliseAppearance, type CharacterAppearance } from '../sim/character.
 import type { WorldSource } from '../render/world-source.ts';
 import type { WorldDescription } from '../world/types.ts';
 import { MenuPages } from './menu-pages.ts';
-import type { BuildingViewChoice } from './settings.ts';
+import type { BuildingViewChoice, SoundChoice } from './settings.ts';
 import { buildCameraPage } from './title-camera.ts';
+import { buildSoundPage } from './title-sound.ts';
 import { buildControlsPage } from './title-controls.ts';
 import { button, menuList, type MenuItem, page } from './title-parts.ts';
 import { NewGamePage } from './title-setup.ts';
@@ -30,7 +31,7 @@ export interface TitleChoice {
 /** The numerals the main page counts its items with, however many it has. */
 const NUMERALS = ['I', 'II', 'III', 'IV'];
 
-const PAGE_NAMES = ['main', 'setup', 'settings', 'controls', 'camera'] as const;
+const PAGE_NAMES = ['main', 'setup', 'settings', 'controls', 'camera', 'sound'] as const;
 type PageName = (typeof PAGE_NAMES)[number];
 
 /** The page Escape and Back go to from each page. */
@@ -40,12 +41,14 @@ const PARENT: Record<PageName, PageName | null> = {
   settings: 'main',
   controls: 'settings',
   camera: 'settings',
+  sound: 'settings',
 };
 
 /**
  * The title screen of spec section 12, laid out as a game's main menu. The
  * main page offers New game, Load game and Settings, and Settings offers
- * Controls and Camera (`title-camera.ts`). Load game stays disabled
+ * Controls, Camera (`title-camera.ts`) and Sound (`title-sound.ts`). Load game
+ * stays disabled
  * until it lists the saves the pause menu writes (#273). New game is the seed
  * entry, the map of the seed and character creation (`title-setup.ts`), and
  * Controls is the binding list (`title-controls.ts`).
@@ -72,7 +75,8 @@ export class TitleScreen {
     worlds: WorldSource,
     onPreview: (appearance: CharacterAppearance) => void,
     buildingView: BuildingViewChoice,
-    touch = false,
+    touch: boolean,
+    sound: SoundChoice,
   ) {
     this.touch = touch;
     const character = normaliseAppearance(initial.character);
@@ -91,6 +95,7 @@ export class TitleScreen {
       settings: this.buildSettings(),
       controls: buildControlsPage(() => this.back(), touch),
       camera: buildCameraPage(buildingView, () => this.back()),
+      sound: buildSoundPage(sound, () => this.back()),
     };
     this.pages = new MenuPages(this.root, pages, PARENT, 'main');
 
@@ -173,7 +178,12 @@ export class TitleScreen {
           action: () => this.show('camera'),
         },
         { numeral: 'III', label: 'Graphics', note: 'Comes in a later version', action: null },
-        { numeral: 'IV', label: 'Sound', note: 'Comes in a later version', action: null },
+        {
+          numeral: 'IV',
+          label: 'Sound',
+          note: 'The engine, the street and the mute',
+          action: () => this.show('sound'),
+        },
       ],
       'Settings',
     );

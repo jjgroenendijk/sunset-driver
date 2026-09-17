@@ -11,15 +11,25 @@ import {
   SHORE_STEP,
 } from '../src/world/beaches.ts';
 import { MIN_BOARDWALK } from '../src/world/roads.ts';
+import { nearestRoadPlace } from '../src/world/surface.ts';
+import { CHAPTERS, chainSides, chapterJob } from '../src/sim/chain.ts';
+import { dealerPlaces, PITCH_LIMIT } from '../src/sim/dealer.ts';
+import { giverPlaces } from '../src/sim/giver.ts';
+import { jobSites, type MissionWorld } from '../src/sim/job.ts';
+import type { Place } from '../src/sim/on-foot.ts';
+import { createSimState } from '../src/sim/simulation.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
 import { type Parcel } from '../src/world/parcels.ts';
+import { buildShops, roomOf, MAX_LICENCE, MIN_LICENCE, SHOP_KINDS } from '../src/world/shops.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import { type Beach, type Corridor, type Point, type RoadCurve, type WorldDescription } from '../src/world/types.ts';
 import { ringArea } from './helpers.ts';
 import {
   FOOTPRINT_COUNT,
+  CHAIN_COUNT,
+  DEALER_COUNT,
   SAMPLE_STRIDE,
   GUARANTEED_BEACH,
   MIN_SAND_OWNED,
@@ -28,7 +38,7 @@ import {
 } from './seed-limits.ts';
 import { ParcelIndex } from './seed-index.ts';
 import { coverOf, polylineLength } from './seed-probes.ts';
-import { seeds, worlds, footprintOf, parcelsOf } from './seed-fixture.ts';
+import { buildingsOf, seeds, worlds, footprintOf, parcelsOf } from './seed-fixture.ts';
 
 /**
  * The seed sweep of spec section 3, on the places a world is given: the tram,
@@ -221,6 +231,109 @@ export function placeChecks(): void {
           }
           if (owned < free * MIN_SAND_OWNED) fault(`leaves ${free - owned} of ${free} free places on its beach unclaimed`);
           if (owned < MIN_SAND_PLACES) fault(`has only ${owned} places of beach parcel on its longest beach`);
+        }
+        expect(complaint, `seed ${seed}`).toBeUndefined();
+      }
+    });
+
+    it('deals every trade of the shops over the shop rows of its own district', () => {
+      // Spec section 16.1: a handful of shop types are enterable, placed by
+      // district. Every shop stands on a shop row of the district it belongs to,
+      // no building holds two trades, and a city has every trade somewhere.
+      for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
+        const w = worlds.get(seed) as WorldDescription;
+        const buildings = buildingsOf(seed);
+        const shops = buildShops(w, buildings);
+        let complaint: string | undefined;
+        const fault = (text: string): void => {
+          complaint ??= text;
+        };
+        for (const shop of shops) {
+          const row = buildings.buildings[shop.building];
+          if (row === undefined) fault(`shop ${shop.id} stands on no building`);
+          else if (row.kind !== 'shop-row') fault(`shop ${shop.id} stands on a ${row.kind}`);
+          else if (row.district !== shop.district) fault(`shop ${shop.id} is in the wrong district`);
+          if (shop.licence < MIN_LICENCE || shop.licence > MAX_LICENCE) fault(`shop ${shop.id} holds licence ${shop.licence}`);
+          // The room it holds stands inside the lot the building was given.
+          const room = roomOf(shop);
+          if (Math.hypot(room.x - shop.x, room.y - shop.y) > shop.depth) fault(`shop ${shop.id} has a room off its lot`);
+        }
+        if (new Set(shops.map((shop) => shop.building)).size !== shops.length) fault('two trades share one building');
+        for (const kind of SHOP_KINDS) {
+          if (!shops.some((shop) => shop.kind === kind)) fault(`has no ${kind}`);
+        }
+        expect(complaint, `seed ${seed}`).toBeUndefined();
+      }
+    });
+
+    it('stands a dealer on the streets of every district that has streets', () => {
+      // Spec section 16.2: one dealer to a district, on its own corners. A
+      // district with no street near its middle keeps none, which over the
+      // seeds is the wilderness and nothing else.
+      for (const seed of seeds.slice(0, DEALER_COUNT)) {
+        const w = worlds.get(seed) as WorldDescription;
+        const dealers = dealerPlaces(seed, w.districts, (x, y) => nearestRoadPlace(w, x, y));
+        let complaint: string | undefined;
+        const fault = (text: string): void => {
+          complaint ??= text;
+        };
+        const dealt = new Set(dealers.map((dealer) => dealer.district.id));
+        for (const district of w.districts) {
+          if (district.zone !== 'wilderness' && !dealt.has(district.id)) fault(`${district.name} has no dealer`);
+        }
+        for (const dealer of dealers) {
+          if (dealer.pitches.length === 0) fault(`${dealer.name} works no corner`);
+          for (const pitch of dealer.pitches) {
+            const away = Math.hypot(pitch.x - dealer.district.x, pitch.y - dealer.district.y);
+            if (away > PITCH_LIMIT) fault(`${dealer.name} works a corner ${away.toFixed(0)} m out of their district`);
+            if (Math.abs(pitch.x) > w.size / 2 || Math.abs(pitch.y) > w.size / 2) fault(`${dealer.name} works a corner off the map`);
+          }
+        }
+        expect(complaint, `seed ${seed}`).toBeUndefined();
+      }
+    });
+
+    it('walks the authored chain from end to end over the corners a real city gave it', () => {
+      // Spec section 18: the hand-written spine is anchored to whatever the seed
+      // produced. Both of its sides find a contact, every chapter of both
+      // branches builds against the world, and every leg of every chapter
+      // stands on a street of the map with a clock long enough to reach it.
+      for (const seed of seeds.slice(0, CHAIN_COUNT)) {
+        const w = worlds.get(seed) as WorldDescription;
+        const snap = (x: number, y: number): Place | undefined => nearestRoadPlace(w, x, y);
+        const world: MissionWorld = {
+          givers: giverPlaces(seed, w.districts, snap),
+          sites: jobSites(seed, w.districts, snap),
+        };
+        const state = createSimState(seed);
+        const sides = chainSides(world);
+        let complaint: string | undefined;
+        const fault = (text: string): void => {
+          complaint ??= text;
+        };
+
+        if (sides.patron === undefined || sides.rival === undefined) fault('has nobody to run the chain through');
+        else {
+          for (const chapter of CHAPTERS) {
+            const job = chapterJob(state, world, chapter, sides);
+            if (job === undefined) {
+              fault(`${chapter.id} could not be built`);
+              continue;
+            }
+            if (job.legs.length !== chapter.legs.length) fault(`${chapter.id} lost a leg`);
+            if (job.limit <= 0) fault(`${chapter.id} allows no time`);
+            for (const leg of job.legs) {
+              if (Math.abs(leg.x) > w.size / 2 || Math.abs(leg.y) > w.size / 2) fault(`${chapter.id} sends the player off the map`);
+              if (leg.label.includes('{where}')) fault(`${chapter.id} has a leg that names no district`);
+            }
+          }
+          // The fork is a choice only where the two sides stand apart, which is
+          // what the fallback in `chain.ts` is for.
+          const fork = CHAPTERS.filter((chapter) => chapter.branch !== '');
+          const at = Math.min(...fork.map((chapter) => chapter.step));
+          const roles = new Set(fork.filter((chapter) => chapter.step === at).map((chapter) => chapter.role));
+          if (roles.size !== 2) fault('offers both sides of the fork from one side');
+          if (sides.patron.id === sides.rival.id) fault('runs both sides of the chain through one contact');
         }
         expect(complaint, `seed ${seed}`).toBeUndefined();
       }
