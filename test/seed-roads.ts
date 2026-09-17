@@ -377,15 +377,21 @@ export function roadChecks(): void {
       // The alley cap is loose for a different reason:
       // an alley stands half a block off the street that seeded it, and it is
       // trimmed to a cul-de-sac at each end that met nothing.
+      //
+      // A boardwalk is not asked at all. It has no seed and no parent: it is
+      // laid along the line behind a dune, and it is laid when one of its two
+      // ends reaches the network, so the other end stops where the sand stops
+      // (issue #401).
       const CAP: Partial<Record<RoadTier, number>> = { street: 580, alley: 220, dirt: 900 };
       for (const seed of seeds) {
         const w = worlds.get(seed) as WorldDescription;
         const grid = new PointGrid(w.size, 100, w.roads);
         const on = nodePoints(w.roads);
+        const boardwalks = new Set(w.beaches.map((beach) => beach.boardwalkRoad));
         let complaint: string | undefined;
         for (const road of w.roads) {
           const cap = CAP[road.tier];
-          if (cap === undefined) continue;
+          if (cap === undefined || boardwalks.has(road.id)) continue;
           for (const i of [0, road.points.length - 1]) {
             const end = road.points[i] as Point;
             if (nodeVisits(on, road, i) > 1) continue;
