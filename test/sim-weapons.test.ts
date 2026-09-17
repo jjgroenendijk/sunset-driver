@@ -224,6 +224,20 @@ describe('weapons', () => {
     session.physics.dispose();
   });
 
+  it('reaches an enforcer with a bat, and only from within reach', () => {
+    const near = armed('baseball-bat', ramp('asphalt', 0));
+    const hit = plant(near, 1.5);
+    shoot(near, 120);
+    expect(hit.health).toBeLessThan(ENFORCER_HEALTH);
+    near.physics.dispose();
+
+    const far = armed('baseball-bat', ramp('asphalt', 0));
+    const missed = plant(far, 4);
+    shoot(far, 120);
+    expect(missed.health).toBe(ENFORCER_HEALTH);
+    far.physics.dispose();
+  });
+
   it('drives through one: a person is not a post to stop a car dead', () => {
     const session = start(ramp('asphalt', 0));
     const { state } = session;

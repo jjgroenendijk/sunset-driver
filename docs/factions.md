@@ -108,6 +108,9 @@ block is whose, and who comes when a block is taken. The contraband the standing
 - **The capsule is a sensor**, which in Rapier is a shape a ray finds and nothing pushes. A solid
   one is an immovable post: a car driven at an enforcer stops dead against them, which a test holds.
   Knocking somebody down is spec section 13.1's question, not this one.
+- A melee swing does not use the capsule at all. An arc is not a cast, so `Gunfire.swing` sweeps the
+  record with `swingReaches` and the capsule's radius says only how wide an enforcer is. That is why
+  a bat reaches somebody a round cannot yet: a swing needs no body.
 - A collider is found by a cast only from the step after it was built, so an enforcer who has just
   walked into the physics box cannot be shot until the next tick. A Rapier query against a world
   that has never been stepped finds nothing at all, which looks exactly like a shape that is not

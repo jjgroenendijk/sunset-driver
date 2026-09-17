@@ -16,6 +16,7 @@ import type { InputFrame } from './input.ts';
 import { hurt, SKIN, vehicleGap } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
 import type { VehicleSpec } from './vehicle.ts';
+import { ENFORCER_CAPSULE } from './enforcer-bodies.ts';
 import { blastEnforcers, hurtEnforcer } from './enforcer.ts';
 import { blastUnits, report, shootUnit } from './police.ts';
 import {
@@ -142,11 +143,27 @@ export class Gunfire {
   /**
    * One swing of a melee weapon (spec section 11.6). A swing is an arc rather
    * than a line, so it is a reach and a half-angle and not a ray: whatever
-   * stands inside it is hit. Nobody swings at the vehicle they are sitting in.
+   * stands inside it is hit, which is everybody and not one thing. Nobody
+   * swings at the vehicle they are sitting in.
+   *
+   * The enforcers of spec section 17.2 are swept off the record rather than out
+   * of the world, because an arc is not a cast: their capsule says how wide they
+   * are and nothing more. So a bat reaches an enforcer who has just walked into
+   * the physics box, which a round does not until the next tick.
    */
   private swing(state: SimState, spec: WeaponSpec, target: ShotTarget): void {
     const p = state.player;
     if (p.driving) return;
+    // The list is copied because one put down is taken out of it.
+    for (const unit of [...state.enforcers.units]) {
+      const dx = unit.x - p.x;
+      const dy = unit.y - p.y;
+      // The reach is measured to their body rather than to the line down their
+      // middle, exactly as the vehicle's is measured to its panels.
+      const gap = Math.max(0, Math.hypot(dx, dy) - ENFORCER_CAPSULE.radius);
+      if (!swingReaches(spec, p.heading, gap, Math.atan2(dy, dx))) continue;
+      hurtEnforcer(state, unit.id, spec.damage);
+    }
     const v = state.vehicle;
     const bearing = Math.atan2(v.z - p.y, v.x - p.x);
     if (!swingReaches(spec, p.heading, vehicleGap(p, v, target.spec), bearing)) return;
