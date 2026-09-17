@@ -8,6 +8,7 @@ How those meshes reach the screen — batches, cells, quality tiers and the fram
 ## Contents
 
 - Buildings
+- The player
 - Vehicles and weapons
 - Plants
 - Traffic, parked cars and the crowd
@@ -75,6 +76,24 @@ How those meshes reach the screen — batches, cells, quality tiers and the fram
   cut sits in `opacityNode` and `alphaTestNode` on every building material, so the Off setting sets
   a uniform to 0 and rebuilds nothing. The shadow pass does not see the cut, so a ghost casts its
   whole shadow.
+
+## The player
+
+- `character.ts` builds the player of spec section 11.1 from boxes, and hangs them off a rig of
+  groups: a hip and a knee each side, a shoulder each side, the torso over the hips, and the body
+  itself. The rig stands in its bind pose, so a model nobody animates is a person standing up.
+- `character-pose.ts` says what angle every joint takes, and holds no three.js, so the whole of the
+  movement is read and tested without a renderer. There are four stances and the record picks
+  between them: `stand` breathes, `walk` swings the legs and the arms against each other, `air`
+  holds the pose of a jump or a fall, and `swim` lies the body forward and turns the arms. Deep
+  water beats the others, because a swimmer is neither on the ground nor falling.
+- The cycle is carried by the speed, not by the clock: `advancePhase` turns metres covered into
+  radians, so the feet keep pace with the ground at any frame rate and a sprint reads as a run. The
+  air has no cycle at all — its pose is read off the speed the body has up.
+- `WorldScene.walkPlayer` is the one door: it stands the model where the frame says and animates it.
+  Nothing else writes the player's pose, and a player behind the wheel is not animated at all. The
+  model is a handful of meshes rather than a crowd, so it is plain three.js groups and not the baked
+  bone texture `pedestrian-rig.ts` needs.
 
 ## Vehicles and weapons
 

@@ -1,20 +1,54 @@
-import { BoxGeometry, Group, Mesh, MeshStandardMaterial, type BufferGeometry, type Material } from 'three';
+import {
+  BoxGeometry,
+  Group,
+  Mesh,
+  MeshStandardMaterial,
+  type BufferGeometry,
+  type Material,
+  type Object3D,
+} from 'three';
 import {
   type CharacterAppearance,
   normaliseAppearance,
   resolveAppearance,
 } from '../sim/character.ts';
+import {
+  advancePhase,
+  poseFor,
+  stanceOf,
+  type CharacterMotion,
+  type CharacterPose,
+  type Stance,
+} from './character-pose.ts';
 
 /**
  * The player model, built from boxes at the proportions the chosen body type
  * asks for (spec section 11.1). The camera looks down, so the parts that read
  * from above — shoulders, hair, shoes — carry the colours the player picked.
+ *
+ * The boxes hang off a rig of groups rather than off one group, so the model
+ * moves: a hip and a knee each side, a shoulder each side, the torso over the
+ * hips, and the body itself, which a swimmer tips forward. `character-pose.ts`
+ * says what angle each of them takes; {@link CharacterModel.animate} carries
+ * the cycle along and writes it in.
  */
 export class CharacterModel {
   readonly group = new Group();
   private geometries: BufferGeometry[] = [];
   private materials: Material[] = [];
   private appearance: CharacterAppearance;
+  /** The body, which the pose tips and lifts, and the hips it hangs from. */
+  private body = new Group();
+  private hips = new Group();
+  private torso = new Group();
+  /** The hip and knee of each leg, and the shoulder of each arm: left, then right. */
+  private legs: { hip: Group; knee: Group }[] = [];
+  private arms: Group[] = [];
+  /** Metres from the ground to the hips, which is where the rig hangs from. */
+  private hipHeight = 0;
+  /** How far through the current cycle the body is, in radians. */
+  private phase = 0;
+  private stance: Stance = 'stand';
 
   constructor(appearance: CharacterAppearance) {
     this.appearance = normaliseAppearance(appearance);
@@ -34,6 +68,44 @@ export class CharacterModel {
     this.build();
   }
 
+  /**
+   * Move the model on by `dt` seconds of the record it is drawn from: the
+   * walk, the jump, the fall and the swim of spec sections 11.2 and 11.5. The
+   * cycle is carried by the speed rather than by the clock, so the feet keep
+   * pace with the ground at any frame rate.
+   */
+  animate(motion: CharacterMotion, dt: number): void {
+    const stance = stanceOf(motion);
+    // A change of stance starts the new cycle where the old one stopped, which
+    // is what keeps a walk that becomes a run from snapping to another step.
+    this.stance = stance;
+    this.phase = advancePhase(this.phase, stance, motion.speed, dt);
+    this.pose(poseFor(stance, this.phase, motion));
+  }
+
+  /** Where the model is in its cycle, which is what a test reads. */
+  get at(): { stance: Stance; phase: number } {
+    return { stance: this.stance, phase: this.phase };
+  }
+
+  /** Write one pose into the rig. */
+  pose(pose: CharacterPose): void {
+    this.body.rotation.z = pose.pitch;
+    this.body.position.y = pose.lift;
+    this.hips.position.y = this.hipHeight + pose.bob;
+    // A turn about +z carries a hanging limb forward, to local +x; the torso
+    // stands up rather than hangs, so it leans forward the other way.
+    this.torso.rotation.z = -pose.lean;
+    const [left, right] = this.legs as [{ hip: Group; knee: Group }, { hip: Group; knee: Group }];
+    left.hip.rotation.z = pose.thighL;
+    right.hip.rotation.z = pose.thighR;
+    left.knee.rotation.z = pose.kneeL;
+    right.knee.rotation.z = pose.kneeR;
+    const [armL, armR] = this.arms as [Group, Group];
+    armL.rotation.z = pose.armL;
+    armR.rotation.z = pose.armR;
+  }
+
   /** Release the GPU resources of the current model. */
   dispose(): void {
     this.clear();
@@ -45,21 +117,41 @@ export class CharacterModel {
     for (const material of this.materials) material.dispose();
     this.geometries = [];
     this.materials = [];
+    this.legs = [];
+    this.arms = [];
   }
 
   /**
-   * One part, sized and placed across the body, up, and along the way it faces.
-   * The model faces local +x, the way a yaw of -heading turns along the heading,
-   * so across is local z and along is local x.
+   * One part, sized and placed across the body, up, and along the way it faces,
+   * within the piece of the rig it hangs from. The model faces local +x, the
+   * way a yaw of -heading turns along the heading, so across is local z and
+   * along is local x.
    */
-  private box(w: number, h: number, d: number, colour: number, x: number, y: number, z: number): void {
+  private box(
+    parent: Object3D,
+    w: number,
+    h: number,
+    d: number,
+    colour: number,
+    x: number,
+    y: number,
+    z: number,
+  ): void {
     const geometry = new BoxGeometry(d, h, w);
     const material = new MeshStandardMaterial({ color: colour, roughness: 0.7 });
     const mesh = new Mesh(geometry, material);
     mesh.position.set(z, y, x);
     this.geometries.push(geometry);
     this.materials.push(material);
-    this.group.add(mesh);
+    parent.add(mesh);
+  }
+
+  /** A piece of the rig, hanging from another at a place given across, up and along. */
+  private joint(parent: Object3D, x: number, y: number, z: number): Group {
+    const group = new Group();
+    group.position.set(z, y, x);
+    parent.add(group);
+    return group;
   }
 
   private build(): void {
@@ -67,51 +159,70 @@ export class CharacterModel {
     const h = body.height;
     const shoeHeight = 0.06 * h * 0.6;
     const legTop = 0.52 * h;
+    const kneeTop = 0.28 * h;
     const shoulderTop = 0.82 * h;
     const headHeight = h - shoulderTop;
     const legWidth = body.hip * 0.44;
     const armWidth = body.shoulder * 0.16;
     const depth = body.shoulder * 0.52;
+    const torsoHeight = shoulderTop - legTop;
 
-    // Feet first: the shoes stand under the legs, so the model starts at y = 0.
+    this.hipHeight = legTop;
+    this.body = this.joint(this.group, 0, 0, 0);
+    this.hips = this.joint(this.body, 0, legTop, 0);
+    this.torso = this.joint(this.hips, 0, 0, 0);
+
+    // Each leg hangs from its hip, and the shin and the shoe from the knee, so
+    // a bent knee carries the foot with it.
     for (const side of [-1, 1]) {
       const x = side * body.hip * 0.26;
-      this.box(legWidth * 1.1, shoeHeight, depth * 1.2, outfit.shoe, x, shoeHeight / 2, depth * 0.1);
-      this.box(legWidth, legTop - shoeHeight, depth * 0.8, outfit.bottom, x, (legTop + shoeHeight) / 2, 0);
+      const hip = this.joint(this.hips, x, 0, 0);
+      const knee = this.joint(hip, 0, -(legTop - kneeTop), 0);
+      this.box(hip, legWidth, legTop - kneeTop, depth * 0.8, outfit.bottom, 0, -(legTop - kneeTop) / 2, 0);
+      this.box(knee, legWidth, kneeTop - shoeHeight, depth * 0.8, outfit.bottom, 0, -(kneeTop - shoeHeight) / 2, 0);
+      this.box(knee, legWidth * 1.1, shoeHeight, depth * 1.2, outfit.shoe, 0, -kneeTop + shoeHeight / 2, depth * 0.1);
+      this.legs.push({ hip, knee });
     }
 
-    const torsoHeight = shoulderTop - legTop;
-    this.box(body.shoulder, torsoHeight, depth, outfit.top, 0, legTop + torsoHeight / 2, 0);
+    this.box(this.torso, body.shoulder, torsoHeight, depth, outfit.top, 0, torsoHeight / 2, 0);
 
+    // Each arm hangs from its shoulder, just under the top of the torso.
+    const armLength = torsoHeight * 0.86;
+    const handLength = torsoHeight * 0.14;
     for (const side of [-1, 1]) {
       const x = side * (body.shoulder / 2 + armWidth / 2);
-      this.box(armWidth, torsoHeight * 0.86, depth * 0.7, outfit.top, x, legTop + torsoHeight * 0.52, 0);
+      const shoulder = this.joint(this.torso, x, torsoHeight * 0.95, 0);
+      this.box(shoulder, armWidth, armLength, depth * 0.7, outfit.top, 0, -armLength / 2, 0);
       // Hands read as the skin tone from above, at the end of each arm.
-      this.box(armWidth, torsoHeight * 0.14, depth * 0.7, skin.colour, x, legTop + torsoHeight * 0.09, 0);
+      this.box(shoulder, armWidth, handLength, depth * 0.7, skin.colour, 0, -armLength - handLength / 2, 0);
+      this.arms.push(shoulder);
     }
 
     const headWidth = h * 0.13;
-    this.box(headWidth, headHeight, headWidth * 1.05, skin.colour, 0, shoulderTop + headHeight / 2, 0);
+    this.box(this.torso, headWidth, headHeight, headWidth * 1.05, skin.colour, 0, torsoHeight + headHeight / 2, 0);
 
     // The hair sits on the crown and, when it is long enough, falls behind.
     const capHeight = headHeight * 0.34 + hair.volume;
+    const crown = h - legTop;
     this.box(
+      this.torso,
       headWidth + hair.volume * 2,
       capHeight,
       headWidth * 1.05 + hair.volume * 2,
       hairColour.colour,
       0,
-      h - capHeight / 2,
+      crown - capHeight / 2,
       0,
     );
     if (hair.length > 0.03) {
       this.box(
+        this.torso,
         headWidth + hair.volume,
         hair.length,
         headWidth * 0.3,
         hairColour.colour,
         0,
-        h - capHeight - hair.length / 2,
+        crown - capHeight - hair.length / 2,
         -headWidth * 0.5,
       );
     }
