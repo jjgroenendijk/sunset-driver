@@ -115,10 +115,13 @@ export function raised<T extends RaisedLine>(road: T, raises: readonly Raise[]):
 function liftAt(raises: readonly Raise[], along: number): number {
   let lift = 0;
   // The distances along a line are single precision, so a knot of the level
-  // deck can come back a fraction of a millimetre outside it.
+  // deck can come back a fraction of a millimetre outside it. The foot of a
+  // ramp moves the same way, and a point a fraction of a millimetre inside it
+  // would take a lift of a micrometre: off the ground by the arithmetic, on it
+  // by every other measure. So both ends of the profile carry the tolerance.
   const knot = SAME_PLACE / 1000;
   for (const raise of raises) {
-    if (along <= raise.from || along >= raise.to) continue;
+    if (along <= raise.from + knot || along >= raise.to - knot) continue;
     if (along >= raise.low - knot && along <= raise.high + knot) lift = Math.max(lift, CLEARANCE);
     else if (along < raise.low) {
       lift = Math.max(lift, (CLEARANCE * (along - raise.from)) / (raise.low - raise.from));
