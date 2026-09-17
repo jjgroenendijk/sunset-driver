@@ -89,7 +89,10 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   part the other half left.
 - The islands are linked twice: once after the highways, and once after the arterial fill, for an
   island that carries a district and still has no road on it. A bridge is refused where its near
-  shore reaches no road. Both bridge heads are vetted by `stepOk`, so a link never crosses a
+  shore reaches no road. The span between the two heads is a deck because it stands over water;
+  where a strait runs dry at its narrowest, the two heads stand on dry, gentle ground the whole way
+  between them and the link is laid on the ground instead, with `markStructures` finding what it
+  really needs (issue #371). Both bridge heads are vetted by `stepOk`, so a link never crosses a
   highway away from a slot. `bridgeHeads` tries several anchors on each shore, then points of the
   network near the shore, because a shore highway often takes the first anchor.
 - `linkIsland` runs over the two shores twice. The first round gives a shore up as soon as its best
