@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
+import { MINOR_BY_ZONE } from '../src/world/fill.ts';
 import { type GradeCrossing, type RoadEdge, type RoadNode } from '../src/world/graph.ts';
 import { CLEARANCE as OVERPASS_CLEARANCE } from '../src/world/overpass.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
 import { coastNoise, islandAt } from '../src/world/terrain.ts';
 import { TIERS } from '../src/world/tiers.ts';
-import { type Point, type RoadCurve, type RoadTier, type WorldDescription, type Zone } from '../src/world/types.ts';
+import { type District, type Point, type RoadCurve, type RoadTier, type WorldDescription, type Zone } from '../src/world/types.ts';
 import { PointGrid } from './seed-index.ts';
 import {
   WET_SAMPLE,
@@ -280,39 +281,30 @@ export function roadChecks(): void {
     it('cuts each zone into blocks of about the size it asks for', () => {
       // Half the width of a block, near enough: the median distance from the
       // ground of a zone to the nearest road. Blocks tighten toward downtown
-      // because the fill spaces its roads by the density of the district. The
-      // wilderness range is wide because an island no district stands on is
-      // reached by no bridge, so its ground is far from every road. Its floor
-      // came down when the highways became a ring with radials: a radial and its
-      // branch run further into the wilderness than the two trunks did, and one
-      // seed in 200 reads 34 m. It came down again when each crossing was
-      // decided as its road is added: a road takes its junctions at once, so the
-      // fill grows on in a different order, and one seed in 200 reads 29 m.
+      // because the fill spaces its roads by the density of the district.
       //
-      // The three zones on the fringe are looser than the built-up ones because
-      // ground too steep for a road now goes without one (spec section 6.1).
+      // The floor reads every sample of the zone and the ceiling only the
+      // ground the fill was asked to cover. Ground it was never asked to cover
+      // — an outer island no bridge reaches, a hilly arm of the mainland no
+      // district stands on, a shelf behind a cliff — only ever puts the median
+      // up, never down, so a floor may read all of it and a ceiling may not.
+      // What the fill was asked to cover is the land the core stands on, inside
+      // {@link CATCHMENT} of a district of that zone, that a road of the zone's
+      // minor tier can climb to from the core. The rings of spec section 8.2
+      // are concentric circles over the whole map, and the fill is seeded from
+      // the district sites, so the two are not the same ground.
       //
-      // The suburban, industrial and outskirts ceilings are loose for the same
-      // reason. The rings of spec section 8.2 now cover most of the map, so a
-      // hilly arm of the mainland that no road enters falls inside them rather
-      // than in the wilderness. Over 96 seeds the suburban and industrial
-      // medians read 11 m to 29 m and the outskirts 21 m to 76 m; one seed in
-      // 200 reads 173 m and 287 m, and that is such an arm. The suburban floor
-      // came down for the opposite case: a seed whose mainland is small keeps
-      // its suburbs on the dense ground near the core, and one in 200 reads
-      // 9.0 m. The inner ceiling rose when each crossing was decided as its road
-      // is added, since a road that cannot meet or clear a crossing is cut back
-      // from it; over 200 seeds the inner medians read 11.8 m to 20.2 m. These
-      // are here to catch a fill that has collapsed, not to pin the figure down.
-      //
-      // Only the land the core stands on is asked. The rings of spec section 8.2
-      // are concentric circles on the whole map, so since they were widened they
-      // also fall on the outer islands, and an outer island no bridge reaches
-      // carries no road at all. Its ground says nothing about how the fill
-      // spaces its roads; it would only say that the zone ring reached it.
+      // The ceilings are the spacing the fill asks for, with room for the
+      // ground that refuses a road: a mesh of streets `across` apart leaves a
+      // median half-block of a quarter of `across`, which is 30 m for the
+      // inner ring's widest 120 m. The outer zones keep the looser ceilings
+      // they were given, since their fill works around far more refused ground.
+      // The floors catch the opposite fault, a fill collapsed into a mesh far
+      // tighter than the zone asks for. These are here to catch a fill that has
+      // gone wrong, not to pin the figure down.
       const RANGE: Record<Zone, [number, number]> = {
         core: [3, 20],
-        inner: [5, 22],
+        inner: [5, 30],
         industrial: [7, 200],
         suburban: [7, 200],
         outskirts: [14, 400],
@@ -325,7 +317,15 @@ export function roadChecks(): void {
         const grid = new PointGrid(w.size, 40, w.roads);
         const land = new LandMasses(hf, w.water, w.water.seaLevel + 1);
         const mainland = land.massAt(w.core.x, w.core.y);
+        const climbable: Partial<Record<RoadTier, Uint8Array>> = {
+          street: climbableFrom(hf, w, 'street'),
+          dirt: climbableFrom(hf, w, 'dirt'),
+        };
+        // Every sample of a zone, and the ones on the ground its fill was asked
+        // to cover. Ground the fill was never asked to cover only ever puts the
+        // median up, so the floor reads all of it and the ceiling the rest.
         const samples: Partial<Record<Zone, number[]>> = {};
+        const filled: Partial<Record<Zone, number[]>> = {};
         for (let iy = 0; iy < hf.gridSize; iy += 8) {
           for (let ix = 0; ix < hf.gridSize; ix += 8) {
             const x = hf.worldX(ix);
@@ -335,17 +335,21 @@ export function roadChecks(): void {
             if (Math.abs(x) > w.size / 2 - 120 || Math.abs(y) > w.size / 2 - 120) continue;
             if (land.massAt(x, y) !== mainland) continue;
             const zone = zoneAt(zones, x, y);
-            (samples[zone] ??= []).push(grid.nearest(x, y));
+            const half = grid.nearest(x, y);
+            (samples[zone] ??= []).push(half);
+            const reach = climbable[MINOR_BY_ZONE[zone].tier] as Uint8Array;
+            if (reach[iy * hf.gridSize + ix] !== 1) continue;
+            if (!nearADistrict(w, zone, x, y, (d) => onClimbable(hf, reach, d.x, d.y))) continue;
+            (filled[zone] ??= []).push(half);
           }
         }
         for (const zone of Object.keys(RANGE) as Zone[]) {
           const found = samples[zone] ?? [];
-          // A zone can be a sliver on one seed; too few samples say nothing.
-          if (found.length < 20) continue;
+          const covered = filled[zone] ?? [];
           const [lo, hi] = RANGE[zone];
-          const half = median(found);
-          expect(half, `seed ${seed}: ${zone} blocks`).toBeGreaterThanOrEqual(lo);
-          expect(half, `seed ${seed}: ${zone} blocks`).toBeLessThanOrEqual(hi);
+          // A zone can be a sliver on one seed; too few samples say nothing.
+          if (found.length >= 20) expect(median(found), `seed ${seed}: ${zone} blocks`).toBeGreaterThanOrEqual(lo);
+          if (covered.length >= 20) expect(median(covered), `seed ${seed}: ${zone} blocks`).toBeLessThanOrEqual(hi);
         }
       }
     });
@@ -505,4 +509,68 @@ export function roadChecks(): void {
       }
     });
   });
+}
+
+/**
+ * How far from a district site of its own zone the ground still belongs to that
+ * district's fill, as a multiple of the zone's widest `along` spacing. The
+ * minor fill is seeded at the district sites and grows outward, so ground
+ * further out than this is ground the fill was never asked to cover.
+ */
+const CATCHMENT = 2;
+
+/**
+ * True where a district of a zone stands within the zone's catchment of a
+ * place, on ground a road can climb to. A site on a knoll no road reaches
+ * (issue #399) seeds no fill, so the ground around it is nobody's blocks.
+ */
+function nearADistrict(w: WorldDescription, zone: Zone, x: number, y: number, served: (d: District) => boolean): boolean {
+  const reach = CATCHMENT * (MINOR_BY_ZONE[zone].along[1] as number);
+  return w.districts.some((d) => d.zone === zone && Math.hypot(d.x - x, d.y - y) <= reach && served(d));
+}
+
+/** True where a place stands on ground of a climbable flag grid. */
+function onClimbable(hf: Heightfield, reach: Uint8Array, x: number, y: number): boolean {
+  const ix = Math.round((x - hf.originX) / hf.cellSize);
+  const iy = Math.round((y - hf.originY) / hf.cellSize);
+  if (ix < 0 || iy < 0 || ix >= hf.gridSize || iy >= hf.gridSize) return false;
+  return reach[iy * hf.gridSize + ix] === 1;
+}
+
+/**
+ * The ground a road of a tier could be laid on: every terrain node joined to
+ * the core by steps over dry land no steeper than the tier climbs. Ground
+ * outside it — a knoll, a ledge, a shelf behind a cliff — carries no road
+ * whatever the fill does, so it says nothing about how the fill spaces them.
+ */
+function climbableFrom(hf: Heightfield, w: WorldDescription, tier: RoadTier): Uint8Array {
+  const n = hf.gridSize;
+  const rise = TIERS[tier].maxGrade * hf.cellSize;
+  const dry = w.water.seaLevel + 1;
+  const reached = new Uint8Array(n * n);
+  const queue = new Int32Array(n * n);
+  const cx = Math.round((w.core.x - hf.originX) / hf.cellSize);
+  const cy = Math.round((w.core.y - hf.originY) / hf.cellSize);
+  let tail = 0;
+  if (cx >= 0 && cy >= 0 && cx < n && cy < n) {
+    reached[cy * n + cx] = 1;
+    queue[tail++] = cy * n + cx;
+  }
+  for (let head = 0; head < tail; head++) {
+    const at = queue[head] as number;
+    const ix = at % n;
+    const iy = (at - ix) / n;
+    const h = hf.at(ix, iy);
+    for (let k = 0; k < 4; k++) {
+      const jx = ix + (k === 0 ? 1 : k === 1 ? -1 : 0);
+      const jy = iy + (k === 2 ? 1 : k === 3 ? -1 : 0);
+      if (jx < 0 || jy < 0 || jx >= n || jy >= n) continue;
+      const to = jy * n + jx;
+      const g = hf.at(jx, jy);
+      if (reached[to] === 1 || g < dry || Math.abs(g - h) > rise) continue;
+      reached[to] = 1;
+      queue[tail++] = to;
+    }
+  }
+  return reached;
 }
