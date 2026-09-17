@@ -29,6 +29,9 @@ import { commitCrime, PoliceForce, policeDistrictsOf } from './sim/police.ts';
 import { TramLine } from './sim/tram.ts';
 import { stationAt, type MetroPlace } from './sim/metro.ts';
 import { shopPlaces, visiting, type ShopPlace } from './sim/shop.ts';
+import { dealerPlaces, type DealerPlace } from './sim/dealer.ts';
+import { DealerMarks } from './ui/dealers.ts';
+import { TradePanel } from './ui/trade-panel.ts';
 import { HotwireBar } from './ui/hotwire.ts';
 import { Hud } from './ui/hud.ts';
 import { MapArt } from './ui/map-draw.ts';
@@ -105,6 +108,12 @@ interface Session {
   shopPanel: ShopPanel;
   /** The shops the panel names, in the order the record numbers them. */
   shops: readonly ShopPlace[];
+  /** The trading panel of spec section 16.2, drawn at a dealer's corner and in a deal. */
+  tradePanel: TradePanel;
+  /** The dealers the panel names, in the order the record numbers them. */
+  dealers: readonly DealerPlace[];
+  /** Their marks on the maps and their bodies in the crowd, moved when they move. */
+  dealerMarks: DealerMarks;
   /** What draws the frame between two ticks, so the motion is smooth (spec section 9.2). */
   smooth: RenderSmoother;
   /** The debug picker of the arsenal, which shows the weapon in hand. */
@@ -373,6 +382,10 @@ async function boot(): Promise<void> {
       // player is standing in, which is the only interior the scene ever holds.
       session.shopPanel.update(session.state, session.shops);
       session.world.shopInside(inShop);
+      // The contraband market of spec section 16.2: where the dealers are
+      // standing this spell, and the prices of the one the player is with.
+      session.dealerMarks.update(session.state.tick, session.world);
+      session.tradePanel.update(session.state, session.dealers);
       session.weapons.sync(session.state.loadout);
       // The maps of spec section 12. Both follow the player from the record,
       // and both redraw only when something on them has moved, so a session
@@ -551,6 +564,10 @@ async function boot(): Promise<void> {
   // road, so their places need no lookup.
   const shops = shopPlaces(world.shops ?? [], description.districts);
   ground.shops = shops;
+  // The dealers of spec section 16.2 stand on the streets of their own district
+  // rather than in a doorway, so each corner is snapped to the road nearest it.
+  const dealers = dealerPlaces(state.seed, description.districts, (x, y) => nearestRoadPlace(description, x, y));
+  ground.dealers = dealers;
   // The parking bays come from the same answer. Which bay holds a car is a
   // function of the tick, so the physics and the renderer share one plan.
   const parked = world.bays === undefined ? undefined : new ParkedCars(state.seed, world.bays);
@@ -616,6 +633,9 @@ async function boot(): Promise<void> {
     ...metro.map((at) => ({ type: 'metro-station' as const, x: at.x, y: at.y, name: `Metro · ${at.name}` })),
     ...shops.map((at) => ({ type: SHOP_POIS[at.kind], x: at.x, y: at.y, name: at.name })),
   ];
+  // The dealers are marked after the rest, because they are the only marks that
+  // move: `DealerMarks` keeps the list above and writes its own after it.
+  const dealerMarks = new DealerMarks(state.seed, dealers, pois);
   const art = new MapArt(description, pois);
   const minimap = new Minimap(document.body, art);
   const map = new MapScreen(document.body, art, (place) => {
@@ -708,6 +728,9 @@ async function boot(): Promise<void> {
   const tramView = new TramView(tram);
   world.scene.add(tramView.group);
   const crowdView = new PedestrianView(crowd, tram);
+  // The dealers are drawn with the crowd, and the list they stand in is theirs
+  // to write: this hands it over once and never again.
+  crowdView.standing = dealerMarks.standing;
   world.scene.add(crowdView.group);
 
   // WebGPU compiles a pipeline the first time it draws with it, so a session
@@ -737,6 +760,9 @@ async function boot(): Promise<void> {
     metro,
     shopPanel: new ShopPanel(document.body),
     shops,
+    tradePanel: new TradePanel(document.body),
+    dealers,
+    dealerMarks,
     smooth,
     weapons,
     pause,
