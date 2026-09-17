@@ -305,7 +305,7 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   scene.character.group.rotation.y = -stand.heading;
   scene.character.group.visible = request.onFoot === true || shop !== undefined;
   hold(scene, request);
-  scene.vehicle.set(vehicle);
+  scene.setVehicle(vehicle);
   // A fire is what has been burning for a while, not what started this frame,
   // so the smoke is given a run of ticks to climb before the picture is taken.
   scene.resetDamage(tick - FX_WARMUP);
@@ -317,6 +317,7 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   const roads = trafficRoadsOf(world);
   const ambient = new AmbientTraffic(seed, roads);
   const traffic = new TrafficView(ambient);
+  traffic.lamps = scene.lampsNow;
   scene.scene.add(traffic.group);
   const record = createSimState(seed, undefined, tick);
   traffic.update(record, tick, x, y);

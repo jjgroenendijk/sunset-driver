@@ -19,6 +19,7 @@ import type { SimState } from '../sim/simulation.ts';
 import { rideHeight, specOf } from '../sim/vehicle.ts';
 import { boxOf, coloured, instanced, merged, trafficParts, TRAFFIC_VIEW } from './traffic.ts';
 import { OUTLINE, VEHICLE_OUTLINE_WIDTH } from './vehicle.ts';
+import { createVehicleTrim, type VehicleTrim } from './vehicle-glow.ts';
 import { GLASS, METAL, TYRE } from './vehicle-mesh.ts';
 
 /** Units of each mesh drawn at most, which is more than the force ever has out. */
@@ -44,6 +45,7 @@ export class PoliceView {
   private readonly heli: InstancedMesh;
   private readonly rotor: InstancedMesh;
   private readonly materials: Material[];
+  private readonly trimMaterial: VehicleTrim;
   private readonly matrix = new Matrix4();
   private readonly at = new Vector3();
   private readonly turn = new Quaternion();
@@ -59,10 +61,11 @@ export class PoliceView {
     this.roof = spec.halfHeight * 2 + BAR.height / 2;
     const parts = trafficParts(spec);
     const paint = new MeshStandardMaterial({ roughness: 0.4, metalness: 0.2 });
-    const trim = new MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.1 });
+    this.trimMaterial = createVehicleTrim();
+    const trim = this.trimMaterial.material;
     const lamp = new MeshBasicMaterial({ toneMapped: false });
     const outline = new MeshBasicMaterial({ color: new Color(OUTLINE), side: BackSide, fog: true });
-    this.materials = [paint, trim, lamp, outline];
+    this.materials = [paint, lamp, outline];
     this.paint = instanced(parts.paint, paint, true, UNIT_CAP);
     this.trim = instanced(parts.trim, trim, false, UNIT_CAP);
     this.rim = instanced(parts.rim, outline, false, UNIT_CAP);
@@ -70,6 +73,19 @@ export class PoliceView {
     this.heli = instanced(heliBody(), trim, true, UNIT_CAP);
     this.rotor = instanced(rotorBlades(), trim, false, UNIT_CAP);
     this.group.add(this.paint, this.trim, this.rim, this.bar, this.heli, this.rotor);
+  }
+
+  /**
+   * How far on the headlamps and tail lights of the patrol cars are, 0 by day
+   * and 1 after dark. The light bar is not on this switch: it flashes whenever
+   * a unit is out, day or night.
+   */
+  set lamps(amount: number) {
+    this.trimMaterial.lamps.value = amount;
+  }
+
+  get lamps(): number {
+    return this.trimMaterial.lamps.value;
   }
 
   /** How many units the last frame drew, the helicopter among them. */
@@ -122,6 +138,7 @@ export class PoliceView {
       mesh.dispose();
     }
     for (const material of this.materials) material.dispose();
+    this.trimMaterial.dispose();
     this.group.clear();
   }
 

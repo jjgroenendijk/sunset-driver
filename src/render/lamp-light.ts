@@ -1,5 +1,6 @@
 /**
- * The light a street lamp throws, and the shader that skips it when it is dark.
+ * The light a street lamp or a headlamp throws, and the shader that skips it
+ * while it is off.
  *
  * A light in a scene is evaluated by every fragment it can reach, and its
  * intensity is a uniform, so a lamp dimmed to 0 by day costs as much as one at
@@ -17,7 +18,12 @@
 import { ProjectorLight, ProjectorLightNode, type NodeBuilder, type NodeFrame, type WebGPURenderer } from 'three/webgpu';
 import { If, renderGroup, uniform } from './tsl.ts';
 
-/** A projector light that {@link LampLightNode} draws. It adds nothing but its class. */
+/**
+ * A projector light that {@link LampLightNode} draws. It adds nothing but its
+ * class. `lamps.ts` throws the street lamps with it and `headlights.ts` the
+ * beams of the player's vehicle; both are off by day, and this is what makes
+ * that free.
+ */
 export class LampLight extends ProjectorLight {}
 
 /** A projector light whose shader does nothing while the light is off. */

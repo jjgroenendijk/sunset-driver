@@ -46,6 +46,7 @@ import {
   type WheelSpec,
   type WheelState,
 } from '../sim/vehicle.ts';
+import { glowOf } from './vehicle-glow.ts';
 import { TYRE, vehicleBoxes, type VehicleBox } from './vehicle-mesh.ts';
 
 /** The dark of the outline, as the buildings' is (spec section 10.1). */
@@ -109,10 +110,30 @@ export class VehicleModel {
   private readonly materials: Material[] = [];
   /** The damage the model currently shows, so it is redrawn only when it changes. */
   private shown = '';
+  /** How far on the vehicle's own headlamps and tail lights are (spec section 13.4). */
+  private lit = 0;
+  /** Whether the shell has burned, in which case nothing on it burns any more. */
+  private scorched = false;
 
   constructor(cls: VehicleClass = DEFAULT_CLASS) {
     this.spec = specOf(cls);
     this.build();
+  }
+
+  /**
+   * How far on the vehicle's headlamps and tail lights are, 0 by day and 1
+   * after dark. It is the number the street lamps run off (`daylight.ts`), so
+   * the car lights up with the street it stands in. The beams it throws on the
+   * road are separate: those are the projector cones of `headlights.ts`.
+   */
+  set lamps(amount: number) {
+    if (amount === this.lit) return;
+    this.lit = amount;
+    this.applyLamps();
+  }
+
+  get lamps(): number {
+    return this.lit;
   }
 
   /** The row of the roster the model is currently built for. */
@@ -184,6 +205,21 @@ export class VehicleModel {
       });
     }
     this.buildWheels();
+    this.applyLamps();
+  }
+
+  /**
+   * Burn the lamps of the model at the amount last set. The intensity is a
+   * uniform of the material, so a lamp coming on at dusk compiles nothing; a
+   * burnt-out shell burns nothing at all.
+   */
+  private applyLamps(): void {
+    for (const drawn of this.boxes) {
+      const glow = glowOf(drawn.colour);
+      if (glow === 0) continue;
+      drawn.material.emissive.set(drawn.colour);
+      drawn.material.emissiveIntensity = this.scorched ? 0 : glow * this.lit;
+    }
   }
 
   /**
@@ -201,6 +237,8 @@ export class VehicleModel {
     this.shown = key;
     const depth = Math.min(this.spec.halfWidth, this.spec.halfHeight) * DENT_DEPTH;
     const scorched = damage.stage === 'burnt';
+    this.scorched = scorched;
+    this.applyLamps();
     for (let i = 0; i < this.boxes.length; i++) {
       const drawn = this.boxes[i] as DrawnBox;
       const panel = drawn.part.panel;

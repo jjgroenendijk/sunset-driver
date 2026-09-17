@@ -49,6 +49,7 @@ import { EntityFade } from './fade.ts';
 import { groundGeometry } from './ground.ts';
 import { createGroundMaterial } from './ground-material.ts';
 import type { Lamp } from './lamp-mesh.ts';
+import { Headlights } from './headlights.ts';
 import { LampLights, LampScenery } from './lamps.ts';
 import { entityBudget, entityDistance, FULL_TIER, shadowDistance, thinned, type QualityTier } from './quality.ts';
 import { RoadScenery } from './roads.ts';
@@ -145,6 +146,8 @@ export class WorldScene {
   private readonly vegetation = new PlantScenery(this.fade);
   private readonly lamps = new LampScenery(this.fade);
   private readonly lampLights: LampLights;
+  /** The beams the player's vehicle throws (spec section 13.4). */
+  private readonly headlights: Headlights;
   private readonly water: WaterSurface;
   private readonly sky: SkyLighting;
   /** The light of the tick the scene was last set to, before the weather is laid over it. */
@@ -187,6 +190,7 @@ export class WorldScene {
     const fog = fogOf(this.tier.rings, this.weather);
     this.sky = new SkyLighting(this.scene, fog.near, fog.far);
     this.lampLights = new LampLights(this.scene);
+    this.headlights = new Headlights(this.scene);
 
     // The rain falls on the carved ground, so it is built after the carve and
     // handed the same height the player stands on.
@@ -223,6 +227,27 @@ export class WorldScene {
     this.light = daylightAt(tick);
     this.weather = weatherAt(this.world.seed, tick);
     this.apply();
+  }
+
+  /**
+   * Put the player's vehicle where the record says it is, and light it for the
+   * hour: the lamps of the model itself, and the beams it lays on the road.
+   * This is the door onto the model, because a car drawn without it is a car
+   * driving through the night with its lights off.
+   */
+  setVehicle(v: VehicleState): void {
+    this.vehicle.set(v);
+    this.vehicle.lamps = this.lit.lamps;
+    this.headlights.aim(v, this.vehicle.vehicle, this.lit.lamps);
+  }
+
+  /**
+   * How far on the street lamps are, 0 by day and 1 after dark, with the
+   * weather over them. Everything that lights up at dusk and is not drawn by
+   * this scene — the traffic and the police — runs off this one number.
+   */
+  get lampsNow(): number {
+    return this.lit.lamps;
   }
 
   /** The weather at the tick the scene was last set to. The HUD reads it. */
@@ -494,11 +519,12 @@ export class WorldScene {
 
   /**
    * Lights the scene holds (spec section 10.5): the sun, the sky fill and the
-   * street lamps that are throwing light. The HUD shows this beside the draw
-   * calls, so a light leak is visible while playing.
+   * street lamps that are throwing light, and the player's own headlights. The
+   * HUD shows this beside the draw calls, so a light leak is visible while
+   * playing.
    */
   get lightCount(): number {
-    return this.sky.lightCount + this.lampLights.count;
+    return this.sky.lightCount + this.lampLights.count + this.headlights.count;
   }
 
   /** Shadow maps the sun is split into. The lamps cast none. */
@@ -515,6 +541,7 @@ export class WorldScene {
     this.water.dispose();
     this.sky.dispose();
     this.lampLights.dispose();
+    this.headlights.dispose();
     this.material.dispose();
     this.scenery.dispose();
     this.buildings.dispose();

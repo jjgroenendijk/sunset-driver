@@ -265,7 +265,7 @@ async function boot(): Promise<void> {
         session.world.pickups.hovered = undefined;
       }
       session.world.pickups.update(session.state.pickups, session.state.tick, elapsed / 1000);
-      session.world.vehicle.set(vehicle);
+      session.world.setVehicle(vehicle);
       // The traffic is a function of the tick, so it is drawn at the moment the
       // frame stands at: one tick behind the record, as the player is.
       const round = flying ? { x: free.camera.x, y: free.camera.z } : p;
@@ -290,6 +290,10 @@ async function boot(): Promise<void> {
       // drawn rather than who exists.
       session.traffic.share = session.world.weatherNow.crowd;
       session.crowd.share = session.world.weatherNow.crowd;
+      // The headlamps and tail lights of everything the scene does not draw
+      // itself come on with the street lamps (spec section 13.4).
+      session.traffic.lamps = session.world.lampsNow;
+      session.police.lamps = session.world.lampsNow;
       if (flying) {
         free.camera.update(elapsed / 1000, free.input(keyboard.freeCamera()));
         free.camera.writeTo(camera.camera);
