@@ -86,6 +86,11 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   shore reaches no road. Both bridge heads are vetted by `stepOk`, so a link never crosses a
   highway away from a slot. `bridgeHeads` tries several anchors on each shore, then points of the
   network near the shore, because a shore highway often takes the first anchor.
+- `linkIsland` runs over the two shores twice. The first round gives a shore up as soon as its best
+  pair of heads reaches no road, since the other shore is usually the one that can. Where neither
+  shore has a way on at its best pair, the second round routes every head of both. An island that
+  carries a district has to have a road, so the cheap round is an ordering and never the end of the
+  search.
 
 ## The tiers and the fill
 
