@@ -156,13 +156,18 @@ export function planBeaches(
       if (shoreLength(run) >= MIN_BEACH) runs.push(run);
     }
   }
-  // Only a beach on land a crossing reaches can be developed: the rest are rocks
-  // in the sea, and nothing can be driven to them. The same test keeps the
-  // district sites off them (`landmass.ts`).
+  // Only a beach on land a road is really laid on can be developed. The rest
+  // are rocks in the sea and islands the network never bridges to: a resort
+  // there would carry a boardwalk, a pier and two car parks that nobody can
+  // drive to. `linkIslands` bridges to an island that carries a district and to
+  // the islands on the way there, so `servedMasses` is that same rule read from
+  // the other end (`landmass.ts`).
   const land = new LandMasses(terrain, water, water.seaLevel + DRY);
+  const served = land.servedMasses(districts);
   const servable = runs.map((run) => {
     const mid = run[Math.floor(run.length / 2)] as ShoreSample;
-    return land.reaches(mid.x + mid.nx * mid.sand, mid.y + mid.ny * mid.sand);
+    const mass = land.massAt(mid.x + mid.nx * mid.sand, mid.y + mid.ny * mid.sand);
+    return mass >= 0 && served[mass] === 1;
   });
   const promoted = new Set(promotions(runs, servable, zones, districts));
   return runs.map((run, i) =>
@@ -177,8 +182,8 @@ export function planBeaches(
  * beach usually is, before the ones on ground the city never reaches.
  *
  * More than one is taken, because whether a boardwalk can be laid at all is
- * only known once the roads are traced: a beach on an island with no road on it
- * gets none, and the next candidate is what saves the seed.
+ * only known once the roads are traced: a beach whose ends reach no road gets
+ * none, and the next candidate is what saves the seed.
  */
 function promotions(runs: readonly ShoreSample[][], servable: readonly boolean[], zones: ZoneLayout, districts: readonly District[]): number[] {
   const ranked: { at: number; rank: number; length: number }[] = [];
