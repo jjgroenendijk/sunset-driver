@@ -34,6 +34,9 @@ export const attribute = tsl.attribute as unknown as (name: string, type: string
 /** A constant, or another node read as a single float. */
 export const float = tsl.float as unknown as (value: number | TslNode) => TslNode;
 
+/** A constant, or another node read as a single whole number. */
+export const int = tsl.int as unknown as (value: number | TslNode) => TslNode;
+
 /** A constant colour or vector, or three nodes read as one. */
 export const vec3 = tsl.vec3 as unknown as (
   x: number | TslNode,
@@ -68,6 +71,16 @@ export const smoothstep = tsl.smoothstep as unknown as (
 /** The larger of two numbers. */
 export const max = tsl.max as unknown as (a: number | TslNode, b: number | TslNode) => TslNode;
 
+/** A number held between `low` and `high`, at either edge where it passes them. */
+export const clamp = tsl.clamp as unknown as (
+  x: TslNode,
+  low: number | TslNode,
+  high: number | TslNode,
+) => TslNode;
+
+/** The natural logarithm. */
+export const log = tsl.log as unknown as (x: TslNode) => TslNode;
+
 /** The whole part of a number, towards minus infinity. */
 export const floor = tsl.floor as unknown as (x: TslNode) => TslNode;
 
@@ -97,6 +110,9 @@ export const uv = tsl.uv as unknown as () => TslNode;
 
 /** The fragment's place in world space. */
 export const positionWorld: TslNode = tsl.positionWorld;
+
+/** The fragment's place in front of the camera, before projection. */
+export const positionView: TslNode = tsl.positionView;
 
 /** The fragment's surface normal in world space. */
 export const normalWorld: TslNode = tsl.normalWorld;
@@ -133,6 +149,13 @@ export const reflector = tsl.reflector as unknown as () => {
  * needs (spec section 9.2).
  */
 export const screenCoordinate: TslNode = tsl.screenCoordinate;
+
+/**
+ * The fragment's place on the window as a share of it, 0 to 1 across whichever
+ * target the frame is being drawn into. Unlike `screenCoordinate` it names the
+ * same place on the picture whatever resolution that target is drawn at.
+ */
+export const screenUV: TslNode = tsl.screenUV;
 
 /**
  * Fractal value noise in -1..1, summed over `octaves`. This is the runtime

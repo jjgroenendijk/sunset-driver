@@ -103,16 +103,27 @@ and the crowd — is in `docs/render-entities.md`.
   still for half a second — and it never got cheaper, because a rebuilt node is a fresh cache key
   however often the same effects have been compiled before. `PostChain` therefore builds a graph
   once and keeps it, one per set of effects, and a tier change swaps the pipeline's output node to
-  a chain the renderer has already compiled. The scale the change also moves throws even that away
-  (the point below), so nothing is warmed for a tier that is not standing.
-- **The render scale is what a tier change still pays for.** Every tier carries its own
-  `renderScale`, and `setRenderScale` hands it to `renderer.setPixelRatio`, which changes the
-  drawing buffer size. `ClusteredLightsNode.updateProgram` builds its cluster grid from that size
-  and rebuilds the whole compute program when it moves, and the lights node hashes that program
-  into its cache key, so every render object in the scene is thrown away and every shader in the
-  city is built again: about two seconds, measured on every tier change of a drive. Nothing in this
-  directory can warm it away — the renderer frees a program as its render objects are discarded, so
-  the scale that is not standing is never held. Issue #323 carries the measurements.
+  a chain the renderer has already compiled. The first tier to ask for a set of effects still builds
+  it, once: measured with `--tier-at`, a change that turns bloom off builds four nodes and one
+  pipeline and holds the frame for 35 ms, and nothing after that.
+- **The render scale moves the buffer, and the cluster grid must not follow it.** Every tier carries
+  its own `renderScale`, and `setRenderScale` hands it to `renderer.setPixelRatio`, which changes
+  the drawing buffer size. `ClusteredLightsNode.updateProgram` builds its cluster grid from that
+  size and rebuilds the whole compute program when it moves, and the lights node hashes that
+  program into its cache key, so every render object in the scene is thrown away and every shader
+  in the city is built again: about two seconds, on every tier change of a drive, and a machine
+  near a boundary changes tier twice a second. The renderer frees a program as its render objects
+  are discarded, so the scale that is not standing cannot be warmed either. `clustered-lights.ts`
+  therefore stands the addon's node on its head: the grid is pinned to the largest buffer the
+  renderer draws at — the display at the full pixel ratio, before the render scale — and grows past
+  the pin only when the window is enlarged. That is safe only because the fragment lookup is built
+  with it: the addon finds a fragment's cluster from its pixel coordinate divided by the tile size,
+  which names another cluster at every scale, and `create` replaces it with the fragment's share of
+  the target (`screenUV`) against the grid's dimensions — the compute cuts every cluster's bounds
+  from that same share of the frame (NDC), so lookup and bounds agree at whatever resolution the
+  frame is drawn at. Measured with `--tier-at` on a full-high-full round trip: the frames either
+  side of each change build nothing, against about two seconds a change before. Issue #323 carries
+  the measurements.
 
 ## Warming the shaders
 
