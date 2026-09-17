@@ -44,6 +44,13 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #12070f; col
 .home-here { color: #8a8079; }
 .home-price { color: #ffd166; }
 .home-said { color: #7ad07a; }
+.job { position: fixed; left: 50%; bottom: 21%; transform: translateX(-50%); min-width: min(24rem, 84%); display: grid; gap: .35rem; padding: .7rem .9rem; border: 1px solid #6a4a1b; border-radius: .5rem; background: rgba(24,17,8,.88); pointer-events: none; }
+.job-title { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; color: #ffb03a; }
+.job-list { display: grid; gap: .15rem; font-size: .95rem; font-variant-numeric: tabular-nums; }
+.job-offer { color: #f2e2c8; }
+.job-terms { color: #ffd166; }
+.job-said { color: #7ad07a; }
+.job-refused { color: #ff8a5c; }
 .trade { position: fixed; left: 50%; bottom: 34%; transform: translateX(-50%); min-width: min(38rem, 92%); display: grid; gap: .35rem; padding: .7rem .9rem; border: 1px solid #4a2b5a; border-radius: .5rem; background: rgba(20,11,24,.9); pointer-events: none; }
 .trade-title { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; color: #b06ad0; }
 .trade-purse { font-size: .85rem; color: #cfc2d8; font-variant-numeric: tabular-nums; }

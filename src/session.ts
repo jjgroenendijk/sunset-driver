@@ -22,10 +22,13 @@ import type { MetroPlace } from './sim/metro.ts';
 import type { SafehousePlace } from './sim/safehouse.ts';
 import type { ShopPlace } from './sim/shop.ts';
 import type { DealerPlace } from './sim/dealer.ts';
+import type { MissionWorld } from './sim/job.ts';
 import type { TerritoryMap } from './sim/territory.ts';
 import type { DealerMarks } from './ui/dealers.ts';
 import type { EnforcerMarks } from './ui/enforcers.ts';
 import type { HomePanel } from './ui/home-panel.ts';
+import type { JobPanel } from './ui/job-panel.ts';
+import type { MissionMarks } from './ui/missions.ts';
 import type { TradePanel } from './ui/trade-panel.ts';
 import type { HotwireBar } from './ui/hotwire.ts';
 import type { Hud } from './ui/hud.ts';
@@ -73,6 +76,12 @@ export interface Session {
   homePanel: HomePanel;
   /** The properties the panel names and the broker sells, in the order they are numbered. */
   safehouses: readonly SafehousePlace[];
+  /** The board at a contact's corner (spec section 18), drawn where the shop counter is. */
+  jobPanel: JobPanel;
+  /** The contacts the board names and the corners their work runs between. */
+  missions: MissionWorld;
+  /** The mark on wherever the job in hand is going, moved as its legs are worked through. */
+  missionMarks: MissionMarks;
   /** What draws the frame between two ticks, so the motion is smooth (spec section 9.2). */
   smooth: RenderSmoother;
   /** The debug picker of the arsenal, which shows the weapon in hand. */

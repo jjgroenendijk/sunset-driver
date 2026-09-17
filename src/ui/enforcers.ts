@@ -33,12 +33,20 @@ const ENFORCER_DRESS = 'inner';
 export class EnforcerMarks {
   /** The people the crowd mesh is to draw. The array is never replaced. */
   readonly standing: StandingPerson[] = [];
+  /**
+   * The marks this last wrote to the map, which is everything else's plus the
+   * enforcers'. The objective of spec section 18 is marked after these, and
+   * reads this rather than the map's list, which it is about to replace
+   * (`missions.ts`).
+   */
+  marks: readonly MapPoi[] = [];
   private readonly looks = new Map<number, PedestrianLook>();
   private readonly pois: MapPois;
   private drawn = 0;
 
   constructor(pois: MapPois) {
     this.pois = pois;
+    this.marks = pois.extra;
   }
 
   /**
@@ -48,7 +56,12 @@ export class EnforcerMarks {
    */
   update(state: SimState, ground: { heightAt(x: number, y: number): number }, dealers: DealerMarks): void {
     const units = state.enforcers.units;
-    if (units.length === 0 && this.drawn === 0) return;
+    if (units.length === 0 && this.drawn === 0) {
+      // Nobody is out, but the dealers may have moved on to the next corner,
+      // and this is the list the objective's own mark is written after.
+      this.marks = dealers.marks;
+      return;
+    }
     this.standing.length = 0;
     for (const person of dealers.standing) this.standing.push(person);
     const marks: MapPoi[] = [];
@@ -71,7 +84,8 @@ export class EnforcerMarks {
     // a face for every enforcer it ever met.
     if (units.length === 0) this.looks.clear();
     this.drawn = units.length;
-    this.pois.extra = [...dealers.marks, ...marks];
+    this.marks = [...dealers.marks, ...marks];
+    this.pois.extra = this.marks;
   }
 
   /** The face one wears, drawn once off their own id and kept for as long as they are out. */

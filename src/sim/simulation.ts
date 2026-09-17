@@ -17,6 +17,7 @@ import { createPropertyState, stepHome, type PropertyState } from './safehouse.t
 import { createPoliceState, type PoliceState } from './police.ts';
 import { createEnforcerState, type EnforcerState } from './enforcer.ts';
 import { createFactionState, type FactionState } from './faction.ts';
+import { createMissionState, stepMissions, type MissionState } from './mission.ts';
 import { stepTerritory, type TerritoryMap } from './territory.ts';
 import { stepRadio } from './radio.ts';
 
@@ -91,8 +92,8 @@ export interface SimState {
   money: number;
   /**
    * The line the HUD shows as the current objective (spec section 12), or empty
-   * while the player has none. The mission framework of spec section 18 is what
-   * will write it.
+   * while the player has none. The missions of spec section 18 write it, off
+   * the leg of the job being carried (`mission.ts`).
    */
   objective: string;
   /**
@@ -159,6 +160,13 @@ export interface SimState {
    * sends the same people down it.
    */
   enforcers: EnforcerState;
+  /**
+   * The work of spec section 18: the job being carried, the contact being
+   * talked to, and what has been finished and lost. What a contact is offering
+   * is not here, because an offer is a function of the seed, the contact and
+   * the tick (`job.ts`) and a record may not hold a second copy of one.
+   */
+  missions: MissionState;
 }
 
 /** Dollars a new session starts with (spec section 16). */
@@ -199,6 +207,7 @@ export function createSimState(
     police: createPoliceState(),
     factions: createFactionState(),
     enforcers: createEnforcerState(),
+    missions: createMissionState(),
   };
 }
 
@@ -250,6 +259,12 @@ export function stepSim(state: SimState, input: InputFrame = EMPTY_INPUT, physic
   // after those two, so one press never opens two panels. Nothing here moves
   // the player, so the physics is told nothing.
   if (!travelling(state)) stepMarket(state, input, physics?.dealers ?? []);
+  // The contacts of spec section 18 take the last of the interact key, after
+  // every door and every corner, so one press never opens two panels. The job
+  // being carried is judged here too, before the turf, because a job to take a
+  // block is what allows the block to be taken (`territory.ts`).
+  const missions = physics?.missions;
+  if (missions !== undefined && !travelling(state)) stepMissions(state, input, missions);
   // The turf of spec section 17.2 is a rule of the record rather than a thing
   // on the street: standing on a block is what takes it, so it is read before
   // the physics moves the player off it. The enforcers it calls out are people,

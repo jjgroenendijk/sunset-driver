@@ -36,11 +36,12 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * section 14, version 4 the radio dial of spec section 15, version 5 the
  * shops of spec section 16.1 with the paint a respray leaves on a vehicle,
  * version 6 the contraband stash of spec section 16.2, version 7 the
- * safehouses of spec section 16.3 with their stashes and their garages, and
+ * safehouses of spec section 16.3 with their stashes and their garages,
  * version 8 the factions of spec section 17 with their reputation, the blocks
- * the player has taken and the enforcers that are out.
+ * the player has taken and the enforcers that are out, and version 9 the
+ * missions of spec section 18 with the job being carried.
  */
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 9;
 
 export interface SaveFile {
   format: typeof SAVE_FORMAT;

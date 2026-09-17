@@ -15,6 +15,7 @@ import type { Place } from './on-foot.ts';
 import type { ShopPlace } from './shop.ts';
 import type { DealerPlace } from './dealer.ts';
 import type { SafehousePlace } from './safehouse.ts';
+import type { MissionWorld } from './job.ts';
 import type { ParkedCars } from './parked.ts';
 import type { AmbientTraffic } from './traffic.ts';
 import type { PoliceForce } from './police.ts';
@@ -104,6 +105,12 @@ export interface Ground {
    */
   turf?: TerritoryMap;
   enforcers?: EnforcerGang;
+  /**
+   * The work of spec section 18: the contacts who hand it out and the corners
+   * they send the player to. A test that is not about the missions leaves them
+   * out, and nobody is offering anything.
+   */
+  missions?: MissionWorld;
 }
 
 

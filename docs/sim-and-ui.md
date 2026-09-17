@@ -5,8 +5,8 @@ what the record may hold, and what the HUD and the map read. `spec.md` sections 
 are the design. Read the section the work touches, not the file. The menus and the screens around
 play — the title screen, the loading screen, the pause menu and the saves — are in `docs/menus.md`,
 and the shops, the counters and the interiors of spec section 16 in `docs/shops.md`. The properties
-the player buys are in `docs/safehouses.md`, and the factions, their reputation and their turf in
-`docs/factions.md`.
+the player buys are in `docs/safehouses.md`, the factions, their reputation and their turf in
+`docs/factions.md`, and the work their contacts hand out in `docs/missions.md`.
 
 ## Contents
 
@@ -42,8 +42,9 @@ the player buys are in `docs/safehouses.md`, and the factions, their reputation 
   frame the city could have spent on itself. The radio line under it is what `src/audio` says is on
   air (spec section 15), so it is there only while something is playing. `SimState.money` is moved
   by the shops of spec section 16.1 and the contraband market of 16.2 (`docs/market.md`).
-  `SimState.objective` is the slot it reads that nothing writes yet; the missions of spec section 18
-  are what will. The turf line under the heat is whose block the player is standing on and how far
+  `SimState.objective` is the leg of the job being carried and what is left of its clock, written
+  by the missions of spec section 18 (`docs/missions.md`) and by nothing else. The turf line under
+  the heat is whose block the player is standing on and how far
   through taking it they are (spec section 17.2); `main.ts` reads it off `turfLine` and hands it in,
   because the HUD knows the record and not the world.
 
