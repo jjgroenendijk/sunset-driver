@@ -161,8 +161,11 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   (`groundRule`), a bend that folds a road, buries a free end or crosses a road it did not cross
   before, and two roads leaving a place under `MIN_MEET`. Otherwise a crossing is apart where one
   road stands a `CLEARANCE` lift over the other on the ground, a highway slot or the top of a raise,
-  or where a deck or a bore puts the two beds that far apart. Otherwise the new road is raised over
-  the other (`overpass.ts` is the lift profile): the reach may hold no junction, no deck or bore of
+  or where a deck or a bore puts the two beds that far apart. The foot of a ramp is snapped to the
+  ground within half a millimetre: the distances along a line are single precision, so without it a
+  point at the foot takes a lift of a micrometre, and a road a micrometre up is not on the ground by
+  any rule that reads the lift. Otherwise the new road is raised over the other (`overpass.ts` is
+  the lift profile): the reach may hold no junction, no deck or bore of
   its own and no place it passes under a road, and the road has to land again. A highway is never
   raised and never raised over. A crossing none of these decide shortens the road back to the
   longest piece that still meets the network, cut where it may end; with no such piece the road is
