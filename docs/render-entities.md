@@ -91,6 +91,20 @@ scene ever holds is in `docs/shops.md`.
 - The cycle is carried by the speed, not by the clock: `advancePhase` turns metres covered into
   radians, so the feet keep pace with the ground at any frame rate and a sprint reads as a run. The
   air has no cycle at all — its pose is read off the speed the body has up.
+- A swing of a melee weapon (spec section 11.6) is laid **over** whichever stance is running, so the
+  legs keep walking under the blow. `swingOver` writes it: the weapon arm is drawn back, thrown
+  through and carried home by `swingAngle`, the torso turns with it, the off arm swings the other
+  way, and the body steps into the blow. The turn is about **up** (`yawL`, `yawR`, `twist`), not
+  across, because the camera of spec section 10.7 looks straight down: an arm swung forward and back
+  reads as nothing from there. How far through the swing the body is comes from `swingOf` in
+  `src/sim/melee.ts`, which reads it off the record, so the blow is drawn between two ticks like the
+  rest of the frame.
+- `HeldWeapon` hangs the weapon off a **hand** group that takes the same `swingAngle`, so the weapon
+  sweeps the arc the arm does rather than hanging level through it. Bare fists have no geometry, so
+  the arm is the whole of that animation.
+- `MeleeFx` (`melee-fx.ts`) throws the burst each blow leaves: one additive batch of discs, drawn
+  from `SimState.hits` and coloured by what was struck. It reads the record the way `DamageFx`
+  does — every hit newer than the tick it last drew — and `WorldScene.damage` steps both.
 - `WorldScene.walkPlayer` is the one door: it stands the model where the frame says and animates it.
   Nothing else writes the player's pose, and a player behind the wheel is not animated at all. The
   model is a handful of meshes rather than a crowd, so it is plain three.js groups and not the baked

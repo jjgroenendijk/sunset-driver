@@ -40,6 +40,14 @@ import { BuildingScenery } from './buildings.ts';
 import { BuildingCutaway, CAMERA_ROOF_MARGIN } from './cutaway.ts';
 import { cellGrid } from './cells.ts';
 import { CharacterModel } from './character.ts';
+import { MeleeFx } from './melee-fx.ts';
+import type { MeleeHit } from '../sim/melee.ts';
+
+/** What the damage of a frame is drawn from, beyond the vehicle itself. */
+export interface DrawnDamage {
+  seed: number;
+  hits: readonly MeleeHit[];
+}
 import type { DrawnPlayer } from './smooth.ts';
 import { DamageFx } from './damage-fx.ts';
 import type { ChunkPayload } from './chunk-payload.ts';
@@ -126,6 +134,8 @@ export class WorldScene {
   readonly interior = new ShopInterior();
   /** The smoke, fire and blast of the vehicle's damage (spec section 11.3). */
   readonly fx = new DamageFx();
+  /** The bursts a melee weapon throws off what it lands on (spec section 11.6). */
+  readonly melee = new MeleeFx();
   /** The rubber it leaves on the road (spec section 11.3). */
   readonly skid = new SkidMarks();
   readonly world: WorldDescription;
@@ -208,6 +218,7 @@ export class WorldScene {
     this.scene.add(this.pickups.group);
     this.scene.add(this.interior.group);
     this.scene.add(this.fx.group);
+    this.scene.add(this.melee.group);
     this.scene.add(this.skid.mesh);
 
     // A session starts at 08:00, so the first frame is already lit.
@@ -264,10 +275,15 @@ export class WorldScene {
    * Draw what the vehicle's damage calls for (spec section 11.3): the smoke and
    * the flames over it, and the rubber its sliding tyres leave on the road.
    * Called once a frame, after the model has been set from the same record.
+   *
+   * The blows a melee weapon has landed are drawn here too (spec section
+   * 11.6), because they are the same thing: a burst thrown off the record at a
+   * tick, coloured by what it says was struck.
    */
-  damage(v: VehicleState, seed: number, tick: number): void {
-    this.fx.update(v, this.vehicle.vehicle, seed, tick);
+  damage(v: VehicleState, record: DrawnDamage, tick: number): void {
+    this.fx.update(v, this.vehicle.vehicle, record.seed, tick);
     this.skid.update(v, this.vehicle.vehicle, this.height);
+    this.melee.update(record.hits, record.seed, tick);
   }
 
   /**
@@ -278,7 +294,7 @@ export class WorldScene {
    * frame, which carries the cycle along. A player behind the wheel is not
    * drawn, so nothing is animated for them.
    */
-  walkPlayer(drawn: DrawnPlayer, player: PlayerState, dt: number): void {
+  walkPlayer(drawn: DrawnPlayer, player: PlayerState, dt: number, swing = -1): void {
     const model = this.character;
     model.group.position.set(drawn.x, drawn.height, drawn.y);
     model.group.rotation.y = -drawn.heading;
@@ -291,6 +307,7 @@ export class WorldScene {
         vy: player.vy,
         depth: Math.max(0, this.world.water.seaLevel - drawn.height),
         stature: model.height,
+        swing,
       },
       dt,
     );
@@ -311,6 +328,7 @@ export class WorldScene {
   /** Forget the smoke and the marks: a vehicle put down somewhere else, or a loaded save. */
   resetDamage(tick: number): void {
     this.fx.reset(tick);
+    this.melee.reset(tick);
     this.skid.clear();
   }
 
@@ -554,8 +572,9 @@ export class WorldScene {
     this.held.dispose();
     this.pickups.dispose();
     this.weaponArt.dispose();
-    this.scene.remove(this.fx.group);
+    this.scene.remove(this.fx.group, this.melee.group);
     this.fx.dispose();
+    this.melee.dispose();
     this.scene.remove(this.skid.mesh);
     this.skid.dispose();
     this.scene.remove(this.weatherFx.group);

@@ -112,6 +112,12 @@ export interface PreviewRequest {
    */
   stance?: string;
   /**
+   * How far through a swing of a melee weapon to hold the player, 0 to 1 (spec
+   * section 11.6). Left out, nothing is being swung. The blow is thrown and
+   * over in a fifth of a second, so a still is the only way to look at it.
+   */
+  swing?: number;
+  /**
    * The damage state to show the vehicle in, by name (spec section 11.3):
    * `dented`, `smoking`, `burning` or `burnt`. Left out, the vehicle is
    * straight out of the showroom.
@@ -157,9 +163,10 @@ const POSE_PHASE = Math.PI / 2;
  */
 function hold(scene: WorldScene, request: PreviewRequest): void {
   const asked = request.stance;
-  if (asked === undefined) return;
-  const stance = (['stand', 'walk', 'air', 'swim'] as const).find((name) => name === asked);
-  if (stance === undefined) throw new Error(`no stance named ${asked}`);
+  const swing = request.swing ?? -1;
+  if (asked === undefined && swing < 0) return;
+  const stance = (['stand', 'walk', 'air', 'swim'] as const).find((name) => name === (asked ?? 'stand'));
+  if (stance === undefined) throw new Error(`no stance named ${String(asked)}`);
   const stature = scene.character.height;
   scene.character.pose(
     poseFor(stance, POSE_PHASE, {
@@ -170,6 +177,7 @@ function hold(scene: WorldScene, request: PreviewRequest): void {
       // the stroke needs: the body lies on the ground rather than in the sea.
       depth: stance === 'swim' ? SWIM_DEPTH * stature * 1.1 : 0,
       stature,
+      swing,
     }),
   );
 }
@@ -309,7 +317,7 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   // A fire is what has been burning for a while, not what started this frame,
   // so the smoke is given a run of ticks to climb before the picture is taken.
   scene.resetDamage(tick - FX_WARMUP);
-  for (let t = tick - FX_WARMUP; t <= tick; t++) scene.damage(vehicle, seed, t);
+  for (let t = tick - FX_WARMUP; t <= tick; t++) scene.damage(vehicle, { seed, hits: [] }, t);
   if (request.skid === true) drift(scene, vehicle, spec, heading);
   arm(scene, request, stand, tick);
   // The traffic of spec section 13.1, where its tours put it at the tick the
@@ -399,7 +407,7 @@ function arm(scene: WorldScene, request: PreviewRequest, stand: { x: number; y: 
   const player = createPlayerState();
   player.driving = request.onFoot !== true;
   const ground = scene.heightAt(stand.x, stand.y);
-  scene.held.set(loadout, player, { ...stand, height: ground }, scene.character.height);
+  scene.held.set(loadout, player, { ...stand, height: ground }, scene.character.height, request.swing ?? -1);
   if (request.pickups !== true) return;
   const laid: PickupState[] = WEAPON_IDS.filter((id) => id !== 'fists').map((weapon, i) => {
     const x = stand.x + ((i % PICKUP_ROW) - (PICKUP_ROW - 1) / 2) * PICKUP_GRID;
