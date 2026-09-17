@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The game in one glyph: the sun going down over the road out of town.
+       The colours are the ones src/ui/style.css uses for the interface. One
+       band across the sun, not three: the rest close up at 16 px. -->
+  <defs>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd166"/>
+      <stop offset="1" stop-color="#ff8a5c"/>
+    </linearGradient>
+    <clipPath id="sky"><rect x="0" y="0" width="32" height="19"/></clipPath>
+  </defs>
+  <rect width="32" height="32" rx="6" fill="#12070f"/>
+  <g clip-path="url(#sky)">
+    <circle cx="16" cy="17" r="11" fill="url(#sun)"/>
+    <rect x="3" y="14.2" width="26" height="2" fill="#12070f"/>
+  </g>
+  <rect x="0" y="19" width="32" height="13" fill="#2a1322"/>
+  <path d="M13.8 19 L18.2 19 L24 32 L8 32 Z" fill="#4a2b3f"/>
+  <path d="M15.3 20 L16.7 20 L17 24 L15 24 Z M14.6 26 L17.4 26 L17.9 32 L14.1 32 Z" fill="#f6d6c1"/>
+</svg>
