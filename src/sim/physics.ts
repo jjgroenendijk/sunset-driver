@@ -40,6 +40,7 @@ import { rotate, unrotate } from './frame.ts';
 import { Drivetrain } from './drivetrain.ts';
 import { GroundBodies, type Ground } from './ground-bodies.ts';
 import { Gunfire, type ShotTarget } from './gunfire.ts';
+import { buildWalker, type Walker } from './walker-body.ts';
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
 import type { MetroPlace } from './metro.ts';
 import type { ShopPlace } from './shop.ts';
@@ -49,21 +50,15 @@ import type { MissionWorld } from './job.ts';
 import type { TerritoryMap } from './territory.ts';
 import {
   besidePlayer,
-  capsuleOf,
   exitPlace,
   EXIT_SPEED,
   FLOAT_DEPTH,
   hurt,
   JUMP_SPEED,
-  MAX_CLIMB,
-  MIN_SLIDE,
   paceOf,
   type Place,
   reachesVehicle,
   SKIN,
-  SNAP_DISTANCE,
-  STEP_HEIGHT,
-  STEP_WIDTH,
   swimPaceOf,
   swimRise,
   swims,
@@ -104,15 +99,6 @@ export async function initPhysics(): Promise<void> {
 interface Built {
   chassis: RAPIER.RigidBody;
   wheels: RAPIER.DynamicRayCastVehicleController | undefined;
-}
-
-/** The player on foot: the kinematic capsule and the controller that walks it. */
-interface Walker {
-  body: RAPIER.RigidBody;
-  collider: RAPIER.Collider;
-  controller: RAPIER.KinematicCharacterController;
-  /** Metres from the middle of the capsule down to the feet. */
-  rise: number;
 }
 
 /**
@@ -225,7 +211,7 @@ export class SimPhysics {
       this.wheels = built.wheels;
     } else {
       this.parked = this.buildParked(state.vehicle);
-      this.walker = this.buildWalker(state);
+      this.walker = buildWalker(this.world, state);
     }
   }
 
@@ -608,34 +594,6 @@ export class SimPhysics {
       body,
     );
     return body;
-  }
-
-  /**
-   * The player's capsule and the controller that walks it (spec section 11.2).
-   *
-   * The capsule is the build they picked, so a broad character is a broader
-   * body than a slim one. The controller climbs a kerb, slides along a wall
-   * rather than stopping dead at it, and holds the feet on the ground over a
-   * slope instead of hopping down it.
-   */
-  private buildWalker(state: SimState): Walker {
-    const capsule = capsuleOf(state.character);
-    const p = state.player;
-    const body = this.world.createRigidBody(
-      RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(p.x, p.height + capsule.rise, p.y),
-    );
-    const collider = this.world.createCollider(
-      RAPIER.ColliderDesc.capsule(capsule.halfHeight, capsule.radius),
-      body,
-    );
-    const controller = this.world.createCharacterController(SKIN);
-    controller.setUp({ x: 0, y: 1, z: 0 });
-    controller.setSlideEnabled(true);
-    controller.setMaxSlopeClimbAngle(MAX_CLIMB);
-    controller.setMinSlopeSlideAngle(MIN_SLIDE);
-    controller.enableAutostep(STEP_HEIGHT, STEP_WIDTH, false);
-    controller.enableSnapToGround(SNAP_DISTANCE);
-    return { body, collider, controller, rise: capsule.rise };
   }
 
   /**
