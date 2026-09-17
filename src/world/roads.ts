@@ -310,7 +310,12 @@ class RoadTracer extends HighwayTrace {
       }
       if (selfOverlap([...approach, far], 'arterial') !== undefined) continue;
       const points = [...approach, ...this.landOnIsland(far, island, [near, far])];
-      const bridges = [approach.length - 1];
+      // The span is a deck because it stands over water. Where the two heads
+      // end up on dry, gentle ground the whole way between them — a strait that
+      // runs dry at its narrowest — the link is a road on the ground, and the
+      // structures it does need are found with the rest (issue #371).
+      const span = this.probe(near.x, near.y, far.x, far.y);
+      const bridges = span.dry && span.grade <= ARTERIAL.maxGrade ? [] : [approach.length - 1];
       if (!this.structuresAtSlots(points, bridges)) continue;
       // A link cut short of its deck reaches no island, so it is laid whole or not at all.
       if (this.addCurve('arterial', points, bridges, [], true) !== undefined) return true;
