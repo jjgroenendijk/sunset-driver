@@ -38,9 +38,10 @@ and the shops, the counters and the interiors of spec section 16 in `docs/shops.
   current objective. Every field is written only when its text changes, because a DOM write lays the
   whole overlay out again and doing that sixty times a second for numbers that stand still is a
   frame the city could have spent on itself. The radio line under it is what `src/audio` says is on
-  air (spec section 15), so it is there only while something is playing. `SimState.money`,
-  `SimState.objective` and `SimState.waypoint` are the three slots it reads that nothing writes yet;
-  the economy of spec section 16, the missions of 18 and the map are what will.
+  air (spec section 15), so it is there only while something is playing. `SimState.money` is moved
+  by the shops of spec section 16.1 and the contraband market of 16.2 (`docs/market.md`).
+  `SimState.objective` is the slot it reads that nothing writes yet; the missions of spec section 18
+  are what will.
 
 ## The map
 

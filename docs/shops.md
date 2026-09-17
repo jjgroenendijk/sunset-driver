@@ -4,7 +4,8 @@ The gotchas of the shops of spec section 16: which building is a trade, how a pl
 one, what the counter holds and what a room looks like from a camera 30 m overhead. Four
 directories share the subject, which is why it has a page rather than a paragraph in each of them.
 The record they all read and write is `src/sim/simulation.ts`; see `docs/sim-and-ui.md` for the
-rest of it.
+rest of it. The contraband market of spec section 16.2 is a different trade, out on the street
+corners, and has its own page in `docs/market.md`.
 
 ## Contents
 
