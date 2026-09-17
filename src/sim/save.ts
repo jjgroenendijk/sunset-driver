@@ -41,9 +41,11 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * the player has taken and the enforcers that are out, and version 9 the
  * missions of spec section 18 with the job being carried. Version 10 added the
  * authored chain of the same section: how far it has been walked, the side the
- * player took at its fork, and whether it ended.
+ * player took at its fork, and whether it ended. Version 11 made the enforcers
+ * of spec section 17.2 shootable: what is left of each of them, and how many a
+ * wave has sent.
  */
-export const SAVE_VERSION = 10;
+export const SAVE_VERSION = 11;
 
 export interface SaveFile {
   format: typeof SAVE_FORMAT;

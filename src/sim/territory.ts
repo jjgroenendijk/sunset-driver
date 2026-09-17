@@ -316,7 +316,7 @@ export const WAVE_TICKS = 50 * 60;
 export function callWave(state: SimState, faction: number, block: number, round: number): void {
   const f = state.factions;
   if (f.wave !== null && f.wave.round >= round) return;
-  f.wave = { faction, block, called: state.tick, until: state.tick + WAVE_TICKS, round };
+  f.wave = { faction, block, called: state.tick, until: state.tick + WAVE_TICKS, round, sent: 0 };
 }
 
 /**

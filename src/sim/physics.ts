@@ -38,7 +38,7 @@ import { TICK_RATE } from './clock.ts';
 import { blastDamageAt, BLAST_LIFT, CRASH_DAMAGE, hitVehicle, tickFire } from './damage.ts';
 import { rotate, unrotate } from './frame.ts';
 import { Drivetrain } from './drivetrain.ts';
-import { GroundBodies, PHYSICS_RADIUS, PHYSICS_TILE, type Ground } from './ground-bodies.ts';
+import { GroundBodies, type Ground } from './ground-bodies.ts';
 import { Gunfire, type ShotTarget } from './gunfire.ts';
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
 import type { MetroPlace } from './metro.ts';
@@ -70,7 +70,7 @@ import {
 } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
 import { TrafficBodies } from './traffic-bodies.ts';
-import { PoliceBodies } from './police-bodies.ts';
+import { UnitBodies } from './unit-bodies.ts';
 import { commitCrime, report } from './police.ts';
 import { createTheft, isLocked, stepTheft, type TheftState } from './theft.ts';
 import {
@@ -143,8 +143,11 @@ export class SimPhysics {
   private walker: Walker | undefined;
   /** The traffic near the player, or undefined on a ground with no roads to drive. */
   readonly traffic: TrafficBodies | undefined;
-  /** The police cars near the player as solids (spec section 14), so a roadblock is a wall. */
-  readonly police: PoliceBodies;
+  /**
+   * The police cars and the faction enforcers near the player as bodies (spec
+   * sections 14, 17.2), so a roadblock is a wall and a wave can be shot at.
+   */
+  readonly units: UnitBodies;
   /** Scratch vectors and forces, so a tick allocates nothing. */
   private readonly point = { x: 0, y: 0, z: 0 };
   private readonly axis = { x: 0, y: 0, z: 0 };
@@ -163,7 +166,7 @@ export class SimPhysics {
     this.shots = new Gunfire(this.world);
     this.controls = new Drivetrain(ground);
     this.traffic = ground.traffic === undefined ? undefined : new TrafficBodies(this.world, ground.traffic, ground.tram);
-    this.police = new PoliceBodies(this.world);
+    this.units = new UnitBodies(this.world);
     // The step is the tick. Simulation code never sees a frame delta.
     this.world.timestep = 1 / TICK_RATE;
     this.adopt(state);
@@ -286,7 +289,7 @@ export class SimPhysics {
     // The faction enforcers of spec section 17.2 answer the same tick for the
     // same reason: they walk at where the player has just got to.
     this.ground.enforcers?.step(state);
-    this.standPolice(state);
+    this.units.settle(state);
     // The helicopter flies over the ground rather than over the roads, so the
     // record is told how high the ground under it stands (spec section 14).
     for (const unit of state.police.units) {
@@ -371,28 +374,9 @@ export class SimPhysics {
     this.adopt(state);
   }
 
-  /**
-   * Give the police units near the player a body and take it from the ones that
-   * have left, over the same box of ground the tiles cover.
-   */
-  private standPolice(state: SimState): void {
-    const p = state.player;
-    const x = p.driving ? state.vehicle.x : p.x;
-    const y = p.driving ? state.vehicle.z : p.y;
-    const cx = Math.floor(x / PHYSICS_TILE);
-    const cy = Math.floor(y / PHYSICS_TILE);
-    this.police.settle(
-      state,
-      (cx - PHYSICS_RADIUS) * PHYSICS_TILE,
-      (cy - PHYSICS_RADIUS) * PHYSICS_TILE,
-      (cx + PHYSICS_RADIUS + 1) * PHYSICS_TILE,
-      (cy + PHYSICS_RADIUS + 1) * PHYSICS_TILE,
-    );
-  }
-
   /** Release the Rapier world and everything in it. */
   dispose(): void {
-    this.police.clear();
+    this.units.clear();
     this.wheels?.free();
     this.walker?.controller.free();
     this.world.free();
@@ -413,7 +397,8 @@ export class SimPhysics {
       spec: this.spec,
       body: this.body,
       shooter: state.player.driving ? this.body : this.walker?.collider,
-      police: this.police,
+      police: this.units.police,
+      enforcers: this.units.enforcers,
     };
   }
 

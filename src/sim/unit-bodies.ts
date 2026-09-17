@@ -1,0 +1,56 @@
+/**
+ * Everybody but the player and the traffic who stands in the physics world as a
+ * body: the police cars of spec section 14 and the faction enforcers of spec
+ * section 17.2.
+ *
+ * The two are held together because they are given a body over the same box of
+ * ground — the one the tiles of `ground-bodies.ts` cover, centred on whoever
+ * the player is moving — and taken out of the world at the same moment. Each
+ * half keeps its own file, because a car is a box moved with its heading and a
+ * person is an upright capsule: `police-bodies.ts` and `enforcer-bodies.ts`.
+ *
+ * `physics.ts` owns one of these and hands both halves to `gunfire.ts`, which
+ * asks each of them which unit a collider belongs to.
+ */
+import type RAPIER from '@dimforge/rapier3d-compat';
+import { EnforcerBodies } from './enforcer-bodies.ts';
+import { PHYSICS_RADIUS, PHYSICS_TILE } from './ground-bodies.ts';
+import { PoliceBodies } from './police-bodies.ts';
+import type { SimState } from './simulation.ts';
+
+export class UnitBodies {
+  /** The police cars near the player as solids (spec section 14), so a roadblock is a wall. */
+  readonly police: PoliceBodies;
+  /** The faction enforcers near the player as capsules (spec section 17.2), so they can be shot. */
+  readonly enforcers: EnforcerBodies;
+
+  constructor(world: RAPIER.World) {
+    this.police = new PoliceBodies(world);
+    this.enforcers = new EnforcerBodies(world);
+  }
+
+  /**
+   * Give everybody near the player a body and take it from everybody who has
+   * left the box or been put down. Called once the record says where the tick
+   * left them, so a body stands where its unit ended it.
+   */
+  settle(state: SimState): void {
+    const p = state.player;
+    const x = p.driving ? state.vehicle.x : p.x;
+    const y = p.driving ? state.vehicle.z : p.y;
+    const cx = Math.floor(x / PHYSICS_TILE);
+    const cy = Math.floor(y / PHYSICS_TILE);
+    const minX = (cx - PHYSICS_RADIUS) * PHYSICS_TILE;
+    const minY = (cy - PHYSICS_RADIUS) * PHYSICS_TILE;
+    const maxX = (cx + PHYSICS_RADIUS + 1) * PHYSICS_TILE;
+    const maxY = (cy + PHYSICS_RADIUS + 1) * PHYSICS_TILE;
+    this.police.settle(state, minX, minY, maxX, maxY);
+    this.enforcers.settle(state, minX, minY, maxX, maxY);
+  }
+
+  /** Take every body out of the world. */
+  clear(): void {
+    this.police.clear();
+    this.enforcers.clear();
+  }
+}
