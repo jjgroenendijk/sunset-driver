@@ -120,13 +120,23 @@ export abstract class RoadTrace extends RoadRoute {
    * where the street may end.
    */
   protected longestRunnable(line: readonly Point[], maxGrade: number): Point[] {
+    return this.runnableRuns(line, maxGrade)[0] ?? [];
+  }
+
+  /**
+   * Every run of a polyline a street may drive, longest first. The ground cuts
+   * a line into runs, and the longest of them is the one road worth laying —
+   * unless it turns out to reach nothing, which is only known once a way on to
+   * the network is looked for. So the caller is handed all of them in turn.
+   */
+  protected runnableRuns(line: readonly Point[], maxGrade: number): Point[][] {
     const inside = (p: Point): boolean => Math.abs(p.x) <= this.half && Math.abs(p.y) <= this.half;
     const ends = (p: Point): boolean => inside(p) && this.network.clearAt(p.x, p.y, 'street');
-    let best: Point[] = [];
+    const found: Point[][] = [];
     let run: Point[] = [];
     const close = (): void => {
       while (run.length > 0 && !ends(run[run.length - 1] as Point)) run.pop();
-      if (run.length > best.length) best = run;
+      if (run.length > 1) found.push(run);
     };
     for (const p of line) {
       const last = run[run.length - 1];
@@ -146,7 +156,9 @@ export abstract class RoadTrace extends RoadRoute {
       run.push(p);
     }
     close();
-    return best;
+    // A stable sort, so two runs of the same length stay in the order the line
+    // laid them down.
+    return found.sort((a, b) => b.length - a.length);
   }
 
   /**

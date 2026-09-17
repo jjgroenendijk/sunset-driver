@@ -70,7 +70,10 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   routed with the boardwalk as the road it carries on from, so neither end runs back along it. Where
   that finds nothing the search is run again without it: the road behind a beach runs along the
   boardwalk, and a way on that comes back beside it leaves a fold that is cut out of the boardwalk
-  itself, a point at a time, until there is no boardwalk left to lay.
+  itself, a point at a time, until there is no boardwalk left to lay. The ground cuts the line into
+  runs a street may drive, and `runnableRuns` hands them over longest first: the longest run may
+  reach no road at either end while a shorter one on the same sand does, and a short boardwalk is
+  worth more than none (issue #381).
 
 ## Highways and the ring
 
