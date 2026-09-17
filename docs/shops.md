@@ -74,6 +74,10 @@ corners, and has its own page in `docs/market.md`.
 - `offersOf(state, place)` (`src/sim/shop-stock.ts`) is the counter: a line, a price, and what
   buying it does to the record. A row that cannot be taken is never offered, so a store sells
   nothing to a player at full health and the panel says so.
+- A clinic is the exception to that first rule. `CLINIC_SUPPLIES` — the naloxone, the test strips
+  and the clean works of spec section 19 — is on the counter whatever the player's health, priced
+  at nothing and changing no state: the factual line the row answers with is the thing the player
+  leaves with. Treatment is the trade above it, and only when they are hurt.
 - No price is written down twice. A weapon costs what its licence and its own damage say and a
   round costs what the pool a player may carry of it says, so the arsenal (`arsenal.ts`) keeps the
   only copy of those numbers and a new weapon is priced the moment it is added.
