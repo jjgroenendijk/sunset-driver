@@ -89,7 +89,8 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
 - `programme.ts` is the schedule: a song, then a break of the station's ident, and every
   `PSA_EVERY` songs one of the harm-reduction announcements of spec section 19 (`psa.ts`). Nothing
   synthesises a voice, so an announcement is a line on the HUD over a bed of the station's chords
-  and drums. The posters and the clinic of section 19 are issue #53.
+  and drums. The posters of section 19 are `src/render/poster-art.ts` and what the clinic hands
+  out free is `src/sim/shop-stock.ts`.
 
 ## The score over the radio
 

@@ -12,6 +12,7 @@ scene ever holds is in `docs/shops.md`.
 - The player
 - Vehicles and weapons
 - Plants
+- Posters and hoardings
 - Traffic, parked cars and the crowd
 
 ## Buildings
@@ -156,6 +157,30 @@ scene ever holds is in `docs/shops.md`.
   off. A model stands inside the canopy its species claims and a placement never scales one up,
   which is what carries the parcel model's rule through to the frame; `test/plant-mesh.test.ts` pins
   both.
+
+## Posters and hoardings
+
+- The harm-reduction posters of spec section 19. `poster-art.ts` draws all six of them into one
+  picture in code, `pixel-canvas.ts` is the buffer and the 5 by 7 font that writes on it, and
+  `poster-material.ts` uploads that picture as the one `DataTexture` the whole city shares. There
+  are no asset files (spec section 1.2), so the letters are a table of pixel rows.
+- `poster-mesh.ts` says which building carries one, from the building's own seed and its district:
+  a poorer district carries more, a suburb and the wilderness none. It runs over the placements
+  `buildChunkBuildings` answers, before the shells are packed into their batches, because it
+  measures the shell that was really built rather than the massing that was asked for.
+- A hoarding stands on the front of the roof and leans `BOARD_TILT` back over it. The camera looks
+  down at `CAMERA_PITCH`, so a board upright against a wall is a line to it and cannot be read at
+  all; leaning it back is what puts its face where the camera is. The small sheet by a door stays
+  flat on the wall, where a player on foot reads it.
+- `DataTexture` holds its first row at `v` 0 and the art is drawn top row first, so `posterGeometry`
+  turns `v` over. Without that the board reads upside down — which the tests cannot see and a
+  frame can.
+- The atlas is a row of cells with no gutter, so the material carries no mipmaps and the texture
+  coordinates stop half a texel inside the cell. Both are there to keep one poster's paper out of
+  the next one's edge.
+- Looking at one in `render-preview.ts` takes some aiming: the camera's heading is fixed, so only a
+  board with open ground to the south of it is in view at all, and a building between the camera
+  and the player is cut away unless `--buildings=whole` is passed.
 
 ## Traffic, parked cars and the crowd
 

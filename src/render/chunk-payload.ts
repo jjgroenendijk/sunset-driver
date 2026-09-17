@@ -34,6 +34,7 @@ import { buildChunkBuildings, buildingLookup, type BuildingLookup } from './buil
 import { byCell, cellGrid, cellOfPart, cellsHolding, type CellGrid } from './cells.ts';
 import { buildGroundAttributes, groundLookup, type GroundAttributes, type GroundLookup } from './ground.ts';
 import { lampsIn, type Lamp } from './lamp-mesh.ts';
+import { postersIn, type Poster } from './poster-mesh.ts';
 import { ROOF_STRIDE, writeRoof } from './roofs.ts';
 import { buildChunkVegetation, plantLookup, type PlantLookup } from './plant-mesh.ts';
 import type { SurfaceAt } from './pavement-mesh.ts';
@@ -134,6 +135,13 @@ export interface ChunkPayload {
    * tall and the far ring cannot read one.
    */
   lamps: Lamp[];
+  /**
+   * The harm-reduction posters fly-posted on the chunk's buildings (spec
+   * section 19), in the places the scene works in. Empty unless the detail is
+   * near: a sheet is a metre across and nothing past the near ring can read
+   * one.
+   */
+  posters: Poster[];
   /** Draw calls the chunk costs once it is in the scene. */
   drawCalls: number;
 }
@@ -194,6 +202,9 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
   const facades: PackedPart[] = [];
   const blocks: PackedPart[] = [];
   const placements = buildChunkBuildings(chunk, lookups.buildings, detail);
+  // Asked before the shells are packed away, because a board is hung on the
+  // wall that was really built rather than on the one the massing asked for.
+  const posters = detail === 'near' ? postersIn(placements, lookups.buildings) : [];
   const roofs = new Float32Array(placements.length * ROOF_STRIDE);
   for (const [i, placed] of placements.entries()) {
     writeRoof(roofs, i * ROOF_STRIDE, placed.hull, placed.matrix);
@@ -217,6 +228,7 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
     roofs,
     plants,
     lamps: far ? [] : lampsIn(chunk, lookups.ribbons),
+    posters,
     drawCalls: 0,
   };
   payload.drawCalls = payloadDrawCalls(payload);
@@ -225,9 +237,9 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
 
 /**
  * Draw calls a payload costs with nothing thinned: one per cell of each batch,
- * one per tier of markings, and one for its ground. The plants and the lamps
- * are cut into cells on the frame thread, so their cells are counted here off
- * where each one stands.
+ * one per tier of markings, and one for its ground. The plants, the lamps and
+ * the posters are cut into cells on the frame thread, so their cells are
+ * counted here off where each one stands.
  */
 export function payloadDrawCalls(payload: ChunkPayload): number {
   const grid = cellGrid(payload.bounds, payload.detail);
@@ -244,6 +256,7 @@ export function payloadDrawCalls(payload: ChunkPayload): number {
   });
   calls += cellsHolding(grid, payload.plants.models.length, plantAt);
   calls += cellsHolding(grid, payload.lamps.length, (i) => payload.lamps[i] as Lamp);
+  calls += cellsHolding(grid, payload.posters.length, (i) => payload.posters[i] as Poster);
   return calls;
 }
 
