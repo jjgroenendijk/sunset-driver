@@ -1,10 +1,17 @@
 /**
- * The smoke, the flames and the blast of a damaged vehicle (spec section 11.3).
+ * The smoke, the flames, the embers and the blast of a damaged vehicle (spec
+ * sections 11.3, 20.3).
  *
  * `src/sim/damage.ts` says what state a vehicle is in and this draws it. A car
  * that is merely dented shows nothing here; one that is smoking trails a plume
  * from its engine, one that is burning stands in flames, and one that reaches
  * the end of its fuse throws a burst out and then smoulders.
+ *
+ * The blazes of `src/sim/fire.ts` — what a wreck leaves burning on the ground
+ * — are drawn from the same two batches, so every fire in the scene costs the
+ * frame the same two draw calls however many there are. A blaze throws embers
+ * as well as flame: a few small puffs that fly further and live longer, which
+ * is what tells a fire on the ground from a car alight.
  *
  * It is two draw calls, whatever is going on: one batch of puffs blended the
  * ordinary way for the smoke and one blended additively for the fire. A puff is
@@ -30,6 +37,7 @@ import {
 } from 'three';
 import { rngFor, Subsystem } from '../core/rng.ts';
 import { isSmoking, type DamageState } from '../sim/damage.ts';
+import type { Blaze } from '../sim/fire.ts';
 import { TICK_RATE } from '../sim/clock.ts';
 import type { VehicleSpec, VehicleState } from '../sim/vehicle.ts';
 
@@ -44,6 +52,17 @@ const FLAME_PERIOD = 4;
 /** Ticks a puff of smoke lives for, and a flame. */
 const SMOKE_LIFE = 110;
 const FLAME_LIFE = 40;
+
+/** Ticks between the flames of a blaze, and between its embers. */
+const BLAZE_PERIOD = 5;
+const EMBER_PERIOD = 7;
+
+/** Metres a blaze reaches across, and how fast an ember leaves it. */
+const BLAZE_SPREAD = 2.4;
+const EMBER_SPEED = 2.2;
+
+/** Ticks an ember lives for, which is longer than a flame: it is what carries a fire. */
+const EMBER_LIFE = 90;
 
 /** Puffs one explosion throws out, and how fast they leave it. */
 const BLAST_PUFFS = 20;
@@ -166,6 +185,9 @@ export class DamageFx {
   private spawned = -1;
   /** The explosion already drawn, so a blast is thrown out once and not every frame. */
   private blown = -1;
+  /** The blazes of the record, and the ground under them; set by {@link watch}. */
+  private blazes: readonly Blaze[] = [];
+  private groundAt: (x: number, y: number) => number = () => 0;
   private readonly turn = new Quaternion();
   private readonly at = new Vector3();
 
@@ -174,8 +196,18 @@ export class DamageFx {
   }
 
   /**
-   * Draw what the vehicle's damage calls for at this tick. Call it once a
-   * frame, after the record has been stepped.
+   * The blazes to draw with the vehicle, and the ground under a place. A blaze
+   * on the record is a place and not a height, because the simulation drives on
+   * the roads and the renderer is what knows how high the ground is.
+   */
+  watch(blazes: readonly Blaze[], groundAt: (x: number, y: number) => number): void {
+    this.blazes = blazes;
+    this.groundAt = groundAt;
+  }
+
+  /**
+   * Draw what the vehicle's damage and the blazes call for at this tick. Call
+   * it once a frame, after the record has been stepped.
    */
   update(v: VehicleState, spec: VehicleSpec, seed: number, tick: number): void {
     if (tick < this.spawned) this.reset(tick);
@@ -202,6 +234,7 @@ export class DamageFx {
 
   /** What one tick of this vehicle's state puts into the air. */
   private spawn(v: VehicleState, spec: VehicleSpec, seed: number, tick: number): void {
+    for (const blaze of this.blazes) this.spawnBlaze(blaze, seed, tick);
     const damage = v.damage;
     if (damage.blownTick >= 0 && damage.blownTick !== this.blown && tick >= damage.blownTick) {
       this.blown = damage.blownTick;
@@ -241,6 +274,44 @@ export class DamageFx {
         size: spec.halfWidth * rng.range(0.45, 0.8),
       });
     }
+  }
+
+  /**
+   * One tick of one blaze: a low flame over the ground it covers, and now and
+   * then an ember thrown clear of it. Both are keyed on the blaze's own id, so
+   * two fires in one street never draw the same puff twice.
+   */
+  private spawnBlaze(blaze: Blaze, seed: number, tick: number): void {
+    const height = this.groundAt(blaze.x, blaze.y);
+    if (tick % BLAZE_PERIOD === 0) {
+      const rng = rngFor(seed, tick, Subsystem.Damage, 300 + blaze.id);
+      this.flame.add({
+        born: tick,
+        life: FLAME_LIFE,
+        x: blaze.x + rng.range(-1, 1) * BLAZE_SPREAD,
+        y: height + 0.3,
+        z: blaze.y + rng.range(-1, 1) * BLAZE_SPREAD,
+        dx: 0,
+        dy: rng.range(1, 2.4),
+        dz: 0,
+        size: rng.range(0.8, 1.6),
+      });
+    }
+    if (tick % EMBER_PERIOD !== 0) return;
+    const rng = rngFor(seed, tick, Subsystem.Damage, 400 + blaze.id);
+    const heading = rng.range(0, Math.PI * 2);
+    const speed = rng.range(0.3, 1) * EMBER_SPEED;
+    this.flame.add({
+      born: tick,
+      life: EMBER_LIFE,
+      x: blaze.x,
+      y: height + 0.5,
+      z: blaze.y,
+      dx: Math.cos(heading) * speed,
+      dy: rng.range(1.5, 3.5),
+      dz: Math.sin(heading) * speed,
+      size: rng.range(0.12, 0.28),
+    });
   }
 
   /** The explosion itself: a burst of fire thrown out from the vehicle. */

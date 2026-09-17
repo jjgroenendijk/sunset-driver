@@ -36,6 +36,8 @@
  *                    11.3): dented, smoking, burning or burnt.
  *   --skid           lay a drift's worth of skid marks into the road behind
  *                    the vehicle (spec section 11.3).
+ *   --emergency      put a blaze in the road ahead, with a fire engine at it
+ *                    and an ambulance behind (spec section 20.3).
  *   --weapon         the weapon in the player's hands, by id, for example
  *                    `ak-47` (spec section 11.6). Drawn with --on-foot.
  *   --attachments    what is fitted to it and to the pickups, for example
@@ -177,6 +179,7 @@ const request: PreviewRequest = {
   ...(options.has('swing') ? { swing: num('swing', 0.4) } : {}),
   ...(options.has('damage') ? { damage: options.get('damage') as string } : {}),
   ...(options.has('skid') ? { skid: true } : {}),
+  ...(options.has('emergency') ? { emergency: true } : {}),
   ...(options.has('weapon') ? { weapon: options.get('weapon') as string } : {}),
   ...(options.has('attachments') ? { attachments: (options.get('attachments') as string).split('+') } : {}),
   ...(options.has('aim') ? { aim: true } : {}),

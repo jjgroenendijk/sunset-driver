@@ -28,7 +28,10 @@ import {
 } from '../sim/damage.ts';
 import { createPlayerState, exitPlace, JUMP_SPEED, SPRINT_SPEED, SWIM_DEPTH } from '../sim/on-foot.ts';
 import type { PickupState } from '../sim/pickup.ts';
-import { createSimState } from '../sim/simulation.ts';
+import { createSimState, type SimState } from '../sim/simulation.ts';
+import type { EmergencyKind, EmergencyUnit } from '../sim/emergency.ts';
+import { light } from '../sim/fire.ts';
+import { EmergencyView } from './emergency.ts';
 import { ParkedCars } from '../sim/parked.ts';
 import { AmbientPedestrians, crowdDistrictsOf } from '../sim/pedestrians.ts';
 import { AmbientTraffic, trafficRoadsOf } from '../sim/traffic.ts';
@@ -129,6 +132,13 @@ export interface PreviewRequest {
    */
   skid?: boolean;
   /**
+   * Set to put the emergency services of spec section 20.3 in the picture: a
+   * blaze in the road ahead, with a fire engine standing at it and an
+   * ambulance behind. They are put down rather than driven to, because a
+   * preview is one frame and a call takes the best part of a minute.
+   */
+  emergency?: boolean;
+  /**
    * The weapon to put in the player's hands, by id (spec section 11.6). It is
    * drawn only with {@link PreviewRequest.onFoot}, as in the game.
    */
@@ -214,6 +224,11 @@ const PICKUP_ROW = 8;
 const FX_WARMUP = 240;
 
 /** Metres of drift `--skid` lays, and the radius it curves through. */
+/** Metres ahead of the player the preview's blaze burns, and how far back each unit stands. */
+const FIRE_AHEAD = 11;
+const ENGINE_BACK = 9;
+const AMBULANCE_BACK = 18;
+
 const DRIFT_LENGTH = 24;
 const DRIFT_RADIUS = 18;
 
@@ -314,10 +329,12 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   scene.character.group.visible = request.onFoot === true || shop !== undefined;
   hold(scene, request);
   scene.setVehicle(vehicle);
+  const record = createSimState(seed, undefined, tick);
+  const services = request.emergency === true ? callOut(record, scene, kerb.x, kerb.y, heading) : undefined;
   // A fire is what has been burning for a while, not what started this frame,
   // so the smoke is given a run of ticks to climb before the picture is taken.
   scene.resetDamage(tick - FX_WARMUP);
-  for (let t = tick - FX_WARMUP; t <= tick; t++) scene.damage(vehicle, { seed, hits: [] }, t);
+  for (let t = tick - FX_WARMUP; t <= tick; t++) scene.damage(vehicle, record, t);
   if (request.skid === true) drift(scene, vehicle, spec, heading);
   arm(scene, request, stand, tick);
   // The traffic of spec section 13.1, where its tours put it at the tick the
@@ -327,7 +344,6 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   const traffic = new TrafficView(ambient);
   traffic.lamps = scene.lampsNow;
   scene.scene.add(traffic.group);
-  const record = createSimState(seed, undefined, tick);
   traffic.update(record, tick, x, y);
   // The trams of spec section 13.2, on the traffic's own lights.
   const line = new TramLine(seed, roads, world.tram, world.districts, ambient.signals);
@@ -384,6 +400,7 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   trams.dispose();
   crowd.dispose();
   parked?.dispose();
+  services?.dispose();
   scene.dispose();
   renderer.dispose();
 
@@ -418,6 +435,49 @@ function arm(scene: WorldScene, request: PreviewRequest, stand: { x: number; y: 
   scene.pickups.hovered = laid[request.hover ?? -1]?.id;
   // A second of frames at once is long enough for the hover to grow all the way.
   scene.pickups.update(laid, tick, 1);
+}
+
+/**
+ * The scene of spec section 20.3: a blaze in the road ahead of the player, a
+ * fire engine standing at it and an ambulance behind. It answers the view, so
+ * the caller can keep it alive while the frame is drawn.
+ */
+function callOut(record: SimState, scene: WorldScene, x: number, y: number, heading: number): EmergencyView {
+  const ahead = (metres: number): { x: number; y: number } => ({
+    x: x + Math.cos(heading) * metres,
+    y: y + Math.sin(heading) * metres,
+  });
+  const fire = ahead(FIRE_AHEAD);
+  light(record, fire.x, fire.y);
+  const stand = (id: number, kind: EmergencyKind, metres: number): EmergencyUnit => {
+    const at = ahead(metres);
+    return {
+      id,
+      kind,
+      task: 'work',
+      call: 0,
+      x: at.x,
+      y: at.y,
+      heading: heading + Math.PI,
+      height: scene.heightAt(at.x, at.y),
+      speed: 0,
+      edges: [],
+      distance: 0,
+      stop: 0,
+      planned: 0,
+      goalX: fire.x,
+      goalY: fire.y,
+      homeX: at.x,
+      homeY: at.y,
+      until: -1,
+    };
+  };
+  record.emergency.units.push(stand(0, 'engine', FIRE_AHEAD + ENGINE_BACK), stand(1, 'ambulance', FIRE_AHEAD + AMBULANCE_BACK));
+  const view = new EmergencyView();
+  view.lamps = scene.lampsNow;
+  scene.scene.add(view.group);
+  view.update(record, x, y);
+  return view;
 }
 
 /**
