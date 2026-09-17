@@ -8,6 +8,7 @@ physics and the vehicles the player drives — is in `docs/sim-and-ui.md`.
 ## Contents
 
 - Ambient traffic
+- The drivers
 - Traffic lights
 - Parked cars
 - The tram
@@ -28,6 +29,32 @@ physics and the vehicles the player drives — is in `docs/sim-and-ui.md`.
   `test/sim-traffic.test.ts` can compare them with `toEqual`. A pose is read `SMOOTH` metres behind
   and ahead of the vehicle and stands between the two readings, which is how a vehicle rounds a
   corner. `poseAt` takes a fractional tick, which is what the renderer draws between two ticks.
+
+## The drivers
+
+- `src/sim/driver.ts` is who is at the wheel of each ambient vehicle (spec section 20.2): a
+  `Personality` drawn once from the vehicle's own stream, and four numbers. `cruise` is the share
+  of the speed limit they drive at, `gap` the metres they leave for each car ahead of them at a
+  red, `react` the ticks they stand after their green before pulling away, and `runsAmber` whether
+  they take an amber or wait the cycle out. Nothing else is a driver: add a row to `PERSONALITIES`
+  rather than a branch to a caller.
+- `traffic-timing.ts` reads those four while it lays the tour down, so a personality is a lap timed
+  the way that driver would have driven it, not a vehicle reacting to the road. That is what keeps
+  a vehicle a pure function of the tick. It also means tailgating is a shorter gap in the queue the
+  driver takes their own place in, and hesitation a wait of their own after a green — never a car
+  reading the one in front, which no ambient vehicle ever does.
+- The place in the queue is counted in cars at the steady driver's gap, so a `place` is the same
+  car of the queue whoever is driving; the driver's own gap then says how many metres back that car
+  stands, capped at the room the approach has. Counting it at the driver's own gap instead makes
+  every place land at about the same metre and the personality stops showing.
+- The spread of `cruise` is narrow on purpose. Two vehicles on one stretch pass through each other
+  rather than queue, and `test/seed-traffic.ts` caps the pairs that stand on the same ground at
+  `TRAFFIC_OVERLAP`. The roster as it stands reads about 0.21 pairs a vehicle on the worst of the
+  first 24 sweep seeds, against 0.24 before there were drivers and a cap of 0.3: the varied speeds
+  and gaps spread the city out rather than pile it up.
+- `test/signal-lap.ts` is what holds a driver honest over a whole lap. It allows standing still on
+  a green only within that driver's own `react` of the green starting, and crossing on an amber
+  only for a driver who takes ambers. Nobody crosses on red.
 
 ## Traffic lights
 

@@ -25,16 +25,22 @@
  * of the lap. The lap closes at the anchor the same way, so a light that many
  * tours anchor at spreads them over its approach rather than standing them all
  * on the line.
+ *
+ * Who is at the wheel is a {@link Driver} from `driver.ts` (spec section 20.2),
+ * and it is read here rather than stepped. The driver sets the speed every
+ * drive is timed at, the metres each car of the queue takes up, the ticks spent
+ * standing after a green before pulling away, and whether an amber is taken or
+ * waited out. A personality is therefore a lap timed the way that driver would
+ * have driven it, which is what lets it show on the road without a vehicle ever
+ * reading the one in front.
  */
 import type { RoadEdge, RoadGraph } from '../world/graph.ts';
 import { TICK_RATE } from './clock.ts';
-import { SIGNAL_CYCLE, SIGNAL_GREEN, type SignalApproach, type TrafficSignals } from './signals.ts';
+import { STEADY, type Driver } from './driver.ts';
+import { SIGNAL_AMBER, SIGNAL_CYCLE, SIGNAL_GREEN, type SignalApproach, type TrafficSignals } from './signals.ts';
 
 /** Fraction of the speed limit ambient traffic drives at. */
 export const CRUISE = 0.9;
-
-/** Metres one queued vehicle takes up: a car and the gap behind it. */
-export const QUEUE_GAP = 7;
 
 /** Metres of a run the junction behind a queue may take: the back of the queue stops short of it. */
 export const QUEUE_CLEAR = 20;
@@ -109,9 +115,9 @@ export class Steps {
   }
 }
 
-/** Ticks a whole edge takes at cruising speed. */
-export function driveTicks(edge: RoadEdge): number {
-  return Math.max(1, Math.round((edge.length / (edge.speedLimit * CRUISE)) * TICK_RATE));
+/** Ticks a whole edge takes at a cruising speed, {@link CRUISE} of the limit unless a driver says otherwise. */
+export function driveTicks(edge: RoadEdge, cruise: number = CRUISE): number {
+  return Math.max(1, Math.round((edge.length / (edge.speedLimit * cruise)) * TICK_RATE));
 }
 
 /**
@@ -120,16 +126,18 @@ export function driveTicks(edge: RoadEdge): number {
  * it least, and comes back turned so that its first leg follows that anchor.
  *
  * `place` is where in a queue this vehicle stands, 0 at the line and 1 at the
- * back of it.
+ * back of it. `driver` is who is at the wheel (`driver.ts`): how fast they
+ * cruise, how close they queue, how long they take to pull away on a green and
+ * whether they take an amber.
  */
-export function timeTour(graph: RoadGraph, route: readonly number[], signals?: TrafficSignals, place = 0): Tour {
+export function timeTour(graph: RoadGraph, route: readonly number[], signals?: TrafficSignals, place = 0, driver: Driver = STEADY): Tour {
   const count = route.length;
   let best: Plan | undefined;
   if (signals !== undefined) {
     for (let k = 0; k < count; k++) {
       const approach = signals.approachOf(route[k] as number);
       if (approach === undefined) continue;
-      const plan = anchoredAt(graph, route, k, approach, signals, place);
+      const plan = anchoredAt(graph, route, k, approach, signals, place, driver);
       if (best === undefined || plan.slow < best.slow) best = plan;
     }
   }
@@ -137,7 +145,7 @@ export function timeTour(graph: RoadGraph, route: readonly number[], signals?: T
   const steps = new Steps();
   for (let i = 0; i < count; i++) {
     const edge = graph.edges[route[i] as number] as RoadEdge;
-    steps.add(i, 0, edge.length, driveTicks(edge));
+    steps.add(i, 0, edge.length, driveTicks(edge, driver.cruise));
   }
   return finish(graph, route, steps, -1);
 }
@@ -151,7 +159,7 @@ interface Plan {
   slow: number;
 }
 
-/** The route timed from the stop line of leg `k`. */
+/** The route timed from the stop line of leg `k`, as `driver` would drive it. */
 function anchoredAt(
   graph: RoadGraph,
   route: readonly number[],
@@ -159,6 +167,7 @@ function anchoredAt(
   anchor: SignalApproach,
   signals: TrafficSignals,
   place: number,
+  driver: Driver,
 ): Plan {
   const count = route.length;
   const turned: number[] = [];
@@ -166,37 +175,48 @@ function anchoredAt(
   const sync = signals.greenStart(anchor);
   const steps = new Steps();
   const last = graph.edges[turned[count - 1] as number] as RoadEdge;
-  // Tick 0 is the anchor's green: the vehicle pulls away from where it waited,
-  // which is its own place back in the queue, and drives over the line. The
-  // stretch below puts it there on amber or red, so no cap on how far back it
-  // stands is needed here.
-  const stand = anchor.stop - queueBack(last, anchor, place);
-  steps.add(count - 1, stand, last.length, share(last, last.length - stand));
-  let free = 0;
+  // Tick 0 is the anchor's green. The driver takes their own moment over it and
+  // then pulls away from where they waited, which is their own place back in the
+  // queue. The stretch below puts them there on amber or red, so no cap on how
+  // far back they stand is needed here.
+  const stand = anchor.stop - queueBack(last, anchor, place, driver);
+  steps.add(count - 1, stand, stand, driver.react);
+  // The stretch to the anchor may only slow drives. It starts after the wait
+  // the driver spent pulling away, or the wait would grow with it and the
+  // vehicle would still be standing on a green it was sent away on.
+  let free = steps.ticks.length;
+  steps.add(count - 1, stand, last.length, share(last, last.length - stand, driver));
   for (let i = 0; i < count - 1; i++) {
     const edge = graph.edges[turned[i] as number] as RoadEdge;
     const approach = signals.approachOf(edge.id);
     if (approach === undefined) {
-      steps.add(i, 0, edge.length, driveTicks(edge));
+      steps.add(i, 0, edge.length, driveTicks(edge, driver.cruise));
       continue;
     }
-    const arrive = steps.tick + share(edge, approach.stop);
+    const arrive = steps.tick + share(edge, approach.stop, driver);
     const wait = mod(signals.greenStart(approach) - sync - arrive, SIGNAL_CYCLE);
-    // A light that is green when the vehicle reaches it is driven through.
-    const held = signals.light(approach, sync + arrive) !== 'green';
+    // A light that is green when the vehicle reaches it is driven through, and
+    // so is an amber by a driver who takes ambers. The line is crossed on the
+    // tick the drive to it ends, which is the tick the colour was read at, so
+    // an amber taken here is an amber the vehicle is really still on.
+    const colour = signals.light(approach, sync + arrive);
+    const held = colour === 'red' || (colour === 'amber' && !driver.runsAmber);
     const green = SIGNAL_GREEN[approach.axis];
     const late = held ? SIGNAL_CYCLE - green - wait : 0;
-    const halt = approach.stop - (held ? queueBack(edge, approach, place, late) : 0);
-    steps.add(i, 0, halt, share(edge, halt));
-    if (held) steps.add(i, halt, halt, arrive + wait - steps.tick);
-    steps.add(i, halt, edge.length, share(edge, edge.length - halt));
+    const halt = approach.stop - (held ? queueBack(edge, approach, place, driver, late) : 0);
+    steps.add(i, 0, halt, share(edge, halt, driver));
+    if (held) steps.add(i, halt, halt, arrive + wait - steps.tick + driver.react);
+    steps.add(i, halt, edge.length, share(edge, edge.length - halt, driver));
     free = steps.ticks.length;
   }
-  steps.add(count - 1, 0, stand, share(last, stand));
-  // Arrive at the back of the anchor's queue on amber or red, never on its green.
+  steps.add(count - 1, 0, stand, share(last, stand, driver));
+  // Arrive at the back of the anchor's queue on a light this driver will not
+  // cross: amber or red for most, and red alone for one who takes ambers. A
+  // driver who arrived on an amber they would take would drive over the line
+  // instead of closing the lap there.
   const early = steps.tick % SIGNAL_CYCLE;
-  const green = SIGNAL_GREEN[anchor.axis];
-  const extra = early < green ? green - early : 0;
+  const shut = SIGNAL_GREEN[anchor.axis] + (driver.runsAmber ? SIGNAL_AMBER : 0);
+  const extra = early < shut ? shut - early : 0;
   const slow = extra / (steps.ticksFrom(free) + extra);
   steps.stretch(free, extra);
   steps.add(count - 1, stand, stand, SIGNAL_CYCLE - (steps.tick % SIGNAL_CYCLE));
@@ -204,27 +224,35 @@ function anchoredAt(
 }
 
 /**
- * Metres behind a stop line one vehicle waits: its own place, in whole cars,
- * in the queue the approach can hold. Three things bound that queue. It never
- * reaches the junction behind it, where a tram may cross. A vehicle at its back
- * still reaches the line within half the green. And it is no longer than the
- * road that has filled since the light stopped being green, `late` ticks ago,
- * which is what keeps the vehicle from standing still while its light is still
- * green.
+ * Metres behind a stop line one vehicle waits: its own place in the queue, in
+ * whole cars, at the gap this driver leaves. Three things bound the queue. It
+ * never reaches the junction behind it, where a tram may cross. A vehicle at
+ * its back still reaches the line within half the green. And it is no longer
+ * than the road that has filled since the light stopped being green, `late`
+ * ticks ago, which is what keeps the vehicle from standing still while its
+ * light is still green.
+ *
+ * The queue is counted in cars at the gap a steady driver leaves, so a place
+ * is the same car of the queue whoever is at the wheel; what the driver then
+ * changes is how far back that car stands. A tailgater is the fourth car half
+ * a length off the third, and a careful driver is the fourth car well back.
+ * Neither ever stands past the room the approach has, so a queue of careful
+ * drivers ends at the last metre that fits rather than out in the junction.
  */
-function queueBack(edge: RoadEdge, approach: SignalApproach, place: number, late = Infinity): number {
-  const pace = edge.length / driveTicks(edge);
+function queueBack(edge: RoadEdge, approach: SignalApproach, place: number, driver: Driver, late = Infinity): number {
+  const pace = edge.length / driveTicks(edge, driver.cruise);
   const room = Math.min(
     Math.max(0, approach.stop - QUEUE_CLEAR),
     (SIGNAL_GREEN[approach.axis] / 2) * pace,
     Math.max(0, late - 1) * pace,
   );
-  return Math.floor(place * (Math.floor(room / QUEUE_GAP) + 1)) * QUEUE_GAP;
+  const cars = Math.floor(place * (Math.floor(room / STEADY.gap) + 1));
+  return Math.min(cars * driver.gap, room);
 }
 
-/** Ticks a stretch of an edge takes at cruising speed, rounded up so it never drives faster. */
-function share(edge: RoadEdge, metres: number): number {
-  return metres <= 0 ? 0 : Math.ceil((driveTicks(edge) * metres) / edge.length);
+/** Ticks a stretch of an edge takes at this driver's cruising speed, rounded up so it never drives faster. */
+function share(edge: RoadEdge, metres: number, driver: Driver): number {
+  return metres <= 0 ? 0 : Math.ceil((driveTicks(edge, driver.cruise) * metres) / edge.length);
 }
 
 /** Pack the steps of a route into a {@link Tour}. */

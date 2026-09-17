@@ -6,9 +6,11 @@
  * number of them from its tier's density and the district it runs through,
  * each in a lane on the right-hand side of the carriageway. Each vehicle then
  * drives the loop `traffic-tour.ts` walks for it, at the speed limit of the
- * road it is on, and stops where a traffic light (`signals.ts`) is red. No
- * vehicle reads another one, so the city's traffic never has to be stepped as
- * a whole.
+ * road it is on, and stops where a traffic light (`signals.ts`) is red. Each
+ * carries a driver from `driver.ts` (spec section 20.2), and its tour is timed
+ * the way that driver drives: their speed, their gap in a queue, the moment
+ * they take over a green, and whether they run an amber. No vehicle reads
+ * another one, so the city's traffic never has to be stepped as a whole.
  *
  * Where a vehicle is can be asked two ways, and they agree exactly:
  * {@link AmbientTraffic.cursorAt} evaluates it at any tick on demand, and
@@ -27,6 +29,7 @@ import { buildJunctions, type JunctionMap } from '../world/junctions.ts';
 import { TIERS, TRAM_LANE } from '../world/tiers.ts';
 import type { Point, RoadCurve, RoadTier, TramDescription, WorldDescription, Zone } from '../world/types.ts';
 import { TICK_RATE } from './clock.ts';
+import { drawDriver, type Driver } from './driver.ts';
 import { EdgeIndex } from './edge-index.ts';
 import { RouteSampler, type RoutePoint } from './route-sample.ts';
 import { SIGNAL_CYCLE, TrafficSignals } from './signals.ts';
@@ -107,7 +110,7 @@ export interface TrafficRoads {
   tram?: Pick<TramDescription, 'edges' | 'crossings'>;
 }
 
-/** One vehicle of the traffic: what it is and the loop it drives. */
+/** One vehicle of the traffic: what it is, who is driving it and the loop it drives. */
 export interface AmbientVehicle {
   id: number;
   cls: VehicleClass;
@@ -116,6 +119,8 @@ export interface AmbientVehicle {
   lane: number;
   /** The tick of its tour it stands at on tick 0. */
   phase: number;
+  /** Who is behind the wheel (spec section 20.2). Its tour was timed the way they drive. */
+  driver: Driver;
   tour: Tour;
 }
 
@@ -319,10 +324,13 @@ export class AmbientTraffic {
       const walk = rngFor(seed, 0, Subsystem.Traffic, hashInts(VEHICLE_STREAM, id));
       const route = walkTour(graph, edge.id, walk, permitOf(cls));
       // Its own place in every queue it joins, which is what holds it off the
-      // vehicles that wait at the same lights.
-      const tour = timeTour(graph, route, this.signals, walk.float());
+      // vehicles that wait at the same lights, and the driver whose speed, gap,
+      // reaction and nerve at an amber the whole lap is then timed to.
+      const place = walk.float();
+      const driver = drawDriver(walk);
+      const tour = timeTour(graph, route, this.signals, place, driver);
       const phase = phaseOf(tour, tour.edges.indexOf(edge.id), offset, walk);
-      vehicles.push({ id, cls, paint, lane, phase, tour });
+      vehicles.push({ id, cls, paint, lane, phase, driver, tour });
       for (const e of tour.edges) this.index.file(id, e);
     }
   }
