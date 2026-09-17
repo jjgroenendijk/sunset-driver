@@ -29,7 +29,8 @@ metro of spec section 13 — is in `docs/city-life.md`.
 - The player's look is indices into the tables in `src/sim/character.ts`, so a save carries numbers,
   not colours. `normaliseAppearance` folds an out-of-range index back onto a real option, and
   `resolveAppearance` hands the renderer the entries. `src/render/character.ts` builds the model
-  from them as boxes; the parts a top-down camera sees carry the chosen colours.
+  from them as boxes; the parts a top-down camera sees carry the chosen colours. What moves those
+  boxes — the walk, the jump and the stroke — is in `docs/render-entities.md`.
 - `src/ui/hud.ts` is the HUD of spec section 12: the status block at the top left is what a
   developer reads — seed, clock, draw calls, quality tier and what is being driven — and the panel
   at the bottom left is the game's own HUD: health, money, weapon and ammunition, heat and the

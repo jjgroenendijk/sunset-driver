@@ -24,6 +24,7 @@
 import { Mesh, Object3D, Scene, type Vector3 } from 'three';
 import type { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { CharacterAppearance } from '../sim/character.ts';
+import type { PlayerState } from '../sim/on-foot.ts';
 import type { VehicleState } from '../sim/vehicle.ts';
 import { START_TICK } from '../sim/simulation.ts';
 import { buildCarve, type RoadCarve } from '../world/carve.ts';
@@ -39,6 +40,7 @@ import { BuildingScenery } from './buildings.ts';
 import { BuildingCutaway, CAMERA_ROOF_MARGIN } from './cutaway.ts';
 import { cellGrid } from './cells.ts';
 import { CharacterModel } from './character.ts';
+import type { DrawnPlayer } from './smooth.ts';
 import { DamageFx } from './damage-fx.ts';
 import type { ChunkPayload } from './chunk-payload.ts';
 import { ChunkPool, type ChunkStream } from './chunk-pool.ts';
@@ -241,6 +243,32 @@ export class WorldScene {
   damage(v: VehicleState, seed: number, tick: number): void {
     this.fx.update(v, this.vehicle.vehicle, seed, tick);
     this.skid.update(v, this.vehicle.vehicle, this.height);
+  }
+
+  /**
+   * Stand the player's model where the frame says they are, and move it (spec
+   * sections 11.2, 11.5). `drawn` is the pose between the last two ticks and
+   * `player` the record itself, which says whether the feet are on the ground
+   * and how fast the body is going up; `dt` is the seconds since the last
+   * frame, which carries the cycle along. A player behind the wheel is not
+   * drawn, so nothing is animated for them.
+   */
+  walkPlayer(drawn: DrawnPlayer, player: PlayerState, dt: number): void {
+    const model = this.character;
+    model.group.position.set(drawn.x, drawn.height, drawn.y);
+    model.group.rotation.y = -drawn.heading;
+    model.group.visible = !player.driving;
+    if (player.driving) return;
+    model.animate(
+      {
+        speed: drawn.speed,
+        grounded: player.grounded,
+        vy: player.vy,
+        depth: Math.max(0, this.world.water.seaLevel - drawn.height),
+        stature: model.height,
+      },
+      dt,
+    );
   }
 
   /** Build the player's model for a look, such as the one a loaded save carries. Every part casts a shadow. */

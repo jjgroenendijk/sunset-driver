@@ -248,12 +248,11 @@ async function boot(): Promise<void> {
       const inShop = visiting(session.state, session.shops);
       const vehicle = session.smooth.vehicleAt(session.state, alpha);
       // The player and the car are both drawn from the record the physics
-      // wrote. The record says how high the player's feet stand, so the model
-      // follows them over a kerb and through a jump (spec section 11.5), and
-      // the character is shown only while they are out of the car.
-      session.world.character.group.position.set(p.x, p.height, p.y);
-      session.world.character.group.rotation.y = -p.heading;
-      session.world.character.group.visible = !session.state.player.driving;
+      // wrote. The record says how high the player's feet stand and how fast
+      // they are going, so the model follows them over a kerb, through a jump
+      // and across the water (spec section 11.5), and the character is shown
+      // only while they are out of the car.
+      session.world.walkPlayer(p, session.state.player, elapsed / 1000);
       // The weapon in the hands and the weapons on the ground (spec section
       // 11.6), both drawn off the record with what is fitted to them.
       session.world.held.set(session.state.loadout, session.state.player, p, session.world.character.height);
