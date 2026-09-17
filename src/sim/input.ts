@@ -41,6 +41,14 @@ export interface InputFrame {
    * shop may not take the metro.
    */
   buy: number;
+  /**
+   * The row of a dealer's panel traded this tick (spec section 16.2): the good
+   * counted from 1 to buy it, the same number negative to sell it, and 0 for no
+   * trade. It is the number keys again, with the sprint key held for a sale,
+   * and it is only ever read while a deal is open, which is when neither the
+   * metro panel nor a shop counter is.
+   */
+  trade: number;
 }
 
 export const EMPTY_INPUT: Readonly<InputFrame> = Object.freeze({
@@ -58,6 +66,7 @@ export const EMPTY_INPUT: Readonly<InputFrame> = Object.freeze({
   station: 0,
   travel: 0,
   buy: 0,
+  trade: 0,
 });
 
 export function inputEquals(a: InputFrame, b: InputFrame): boolean {

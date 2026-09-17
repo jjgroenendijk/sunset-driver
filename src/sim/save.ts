@@ -16,6 +16,7 @@
  */
 import { seedFromString } from '../core/rng.ts';
 import { sortedKeys } from '../core/sort.ts';
+import { GOODS } from './contraband.ts';
 import { cloneSimState, createSimState, type SimState } from './simulation.ts';
 import { VEHICLE_CLASSES } from './vehicle.ts';
 import { WEAPON_IDS } from './weapon.ts';
@@ -31,10 +32,11 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * player understands. A save of another version is refused.
  *
  * Version 2 added the metro of spec section 13.3, version 3 the police of spec
- * section 14, version 4 the radio dial of spec section 15, and version 5 the
- * shops of spec section 16.1 with the paint a respray leaves on a vehicle.
+ * section 14, version 4 the radio dial of spec section 15, version 5 the
+ * shops of spec section 16.1 with the paint a respray leaves on a vehicle, and
+ * version 6 the contraband stash of spec section 16.2.
  */
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 export interface SaveFile {
   format: typeof SAVE_FORMAT;
@@ -108,6 +110,12 @@ function checkSave(value: unknown): SaveFile {
   if (!VEHICLE_CLASSES.includes(state.vehicle.cls)) throw new SaveError('The save names a vehicle this game does not have.');
   for (const slot of state.loadout.slots) {
     if (!WEAPON_IDS.includes(slot.id)) throw new SaveError('The save names a weapon this game does not have.');
+  }
+  // An array is conformed element by element, so a stash of the wrong length is
+  // still a stash of numbers. The market of spec section 16.2 reads a row per
+  // good, and a row that is not there is a good that cannot be sold.
+  if (state.market.stash.length !== GOODS.length || state.market.paid.length !== GOODS.length) {
+    throw new SaveError('The save carries a stash this game does not know.');
   }
   return { format: SAVE_FORMAT, version: SAVE_VERSION, seed, state };
 }

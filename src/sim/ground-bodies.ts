@@ -13,6 +13,7 @@ import type { Surface } from '../world/surface.ts';
 import type { MetroPlace } from './metro.ts';
 import type { Place } from './on-foot.ts';
 import type { ShopPlace } from './shop.ts';
+import type { DealerPlace } from './dealer.ts';
 import type { ParkedCars } from './parked.ts';
 import type { AmbientTraffic } from './traffic.ts';
 import type { PoliceForce } from './police.ts';
@@ -63,6 +64,12 @@ export interface Ground {
    * A test that is not about them leaves them out, and every door is shut.
    */
   shops?: readonly ShopPlace[];
+  /**
+   * The dealers of spec section 16.2, one to a district, whose corners the
+   * player trades contraband at. A test that is not about them leaves them out,
+   * and nobody is dealing.
+   */
+  dealers?: readonly DealerPlace[];
   /**
    * The ambient traffic of the roads (spec section 13.1). A test that is not
    * about traffic leaves it out, and nothing drives past.
