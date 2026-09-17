@@ -15,6 +15,7 @@ import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
 import { type Parcel } from '../src/world/parcels.ts';
+import { buildShops, roomOf, MAX_LICENCE, MIN_LICENCE, SHOP_KINDS } from '../src/world/shops.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import { type Beach, type Corridor, type Point, type RoadCurve, type WorldDescription } from '../src/world/types.ts';
 import { ringArea } from './helpers.ts';
@@ -28,7 +29,7 @@ import {
 } from './seed-limits.ts';
 import { ParcelIndex } from './seed-index.ts';
 import { coverOf, polylineLength } from './seed-probes.ts';
-import { seeds, worlds, footprintOf, parcelsOf } from './seed-fixture.ts';
+import { buildingsOf, seeds, worlds, footprintOf, parcelsOf } from './seed-fixture.ts';
 
 /**
  * The seed sweep of spec section 3, on the places a world is given: the tram,
@@ -221,6 +222,36 @@ export function placeChecks(): void {
           }
           if (owned < free * MIN_SAND_OWNED) fault(`leaves ${free - owned} of ${free} free places on its beach unclaimed`);
           if (owned < MIN_SAND_PLACES) fault(`has only ${owned} places of beach parcel on its longest beach`);
+        }
+        expect(complaint, `seed ${seed}`).toBeUndefined();
+      }
+    });
+
+    it('deals every trade of the shops over the shop rows of its own district', () => {
+      // Spec section 16.1: a handful of shop types are enterable, placed by
+      // district. Every shop stands on a shop row of the district it belongs to,
+      // no building holds two trades, and a city has every trade somewhere.
+      for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
+        const w = worlds.get(seed) as WorldDescription;
+        const buildings = buildingsOf(seed);
+        const shops = buildShops(w, buildings);
+        let complaint: string | undefined;
+        const fault = (text: string): void => {
+          complaint ??= text;
+        };
+        for (const shop of shops) {
+          const row = buildings.buildings[shop.building];
+          if (row === undefined) fault(`shop ${shop.id} stands on no building`);
+          else if (row.kind !== 'shop-row') fault(`shop ${shop.id} stands on a ${row.kind}`);
+          else if (row.district !== shop.district) fault(`shop ${shop.id} is in the wrong district`);
+          if (shop.licence < MIN_LICENCE || shop.licence > MAX_LICENCE) fault(`shop ${shop.id} holds licence ${shop.licence}`);
+          // The room it holds stands inside the lot the building was given.
+          const room = roomOf(shop);
+          if (Math.hypot(room.x - shop.x, room.y - shop.y) > shop.depth) fault(`shop ${shop.id} has a room off its lot`);
+        }
+        if (new Set(shops.map((shop) => shop.building)).size !== shops.length) fault('two trades share one building');
+        for (const kind of SHOP_KINDS) {
+          if (!shops.some((shop) => shop.kind === kind)) fault(`has no ${kind}`);
         }
         expect(complaint, `seed ${seed}`).toBeUndefined();
       }
