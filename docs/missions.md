@@ -7,19 +7,23 @@ territory job is aimed at is in the same place, and the record all of it is writ
 
 ## Contents
 
-- Three files, three subjects
+- Four files, four subjects
 - Where a contact stands
 - The board is a function, not a list
 - A job is legs and a clock
 - The seven kinds
 - Taking, finishing and losing
+- The authored chain
+- What the chain does not ask for
 - A territory job is permission to take the block
 - The panel and the marks
 
-## Three files, three subjects
+## Four files, four subjects
 
 - `src/sim/giver.ts` is where the contacts stand and whether one will talk.
 - `src/sim/job.ts` is what a job is made of and how one is drawn from the seed. It keeps nothing.
+- `src/sim/chain.ts` is the authored spine: the chapters as they are written, and how one is built
+  against a seeded world. It keeps nothing either.
 - `src/sim/mission.ts` is the state machine: the board, the job on the record, and the objective
   line the HUD reads.
 
@@ -100,6 +104,42 @@ Nothing else writes `SimState.missions`, and nothing else writes `SimState.objec
 - A job is lost when the clock runs out, and when the player dies or is taken in carrying it: the
   respawn record is what says so, because it carries the tick it happened on.
 - Handing a job back counts as a job lost, which is how the board moves on.
+
+## The authored chain
+
+- The spine of spec section 18 is eight chapters over six slots in `chain.ts`: three every player
+  walks, a fork of two, and two more on each side of it. A chapter is an ordinary `MissionJob` with
+  a `chapter` field naming it, so the state machine, the HUD, the panel and the save all carry one
+  without knowing it is written rather than drawn.
+- It is written between two sides, a patron and a rival, which are two factions of spec section
+  17.1. `chainSides` resolves each to a contact: their own faction's where the seed gave it a
+  district, else the first contact of the world for the patron and the contact furthest from it for
+  the rival. A city of one contact runs both sides through them.
+- A chapter's legs are placed on the same corners the side work uses. `{where}` in a written label
+  is replaced with the district the corner landed in, so the HUD names a real place on every seed.
+  The clock is read off the ground the legs cover, as a drawn job's is; the pay is written.
+- The fork is two chapters sharing one slot, held out at once by the two sides' contacts.
+  **Finishing** one writes the branch, not taking it: a chapter handed back leaves the fork open.
+  `chainLost` is told which of the two happened, and hands a back a chapter without counting it.
+- Losing the last chapter of either side ends the chain: `ended` becomes `burned` and nothing more
+  is offered. Every earlier chapter is offered again by the same contact.
+- A chapter is offered above the contact's side work rather than instead of it, so the spine never
+  shuts the endless stream off. Both go through `jobOffers`, and `jobRows` is that list in order,
+  which is what the number keys count.
+- The chain stalls, without ending, for a player the side's faction has crossed off: `giverRefusal`
+  shuts the whole board, chapter and side work together (spec section 17.3).
+
+## What the chain does not ask for
+
+- No chapter carries a `take` leg. A block is takeable only where a faction holds it, and which
+  faction holds which block is a function of the districts a seed laid out — so a seed could put
+  the spine's climax on ground nobody runs. The territory work of spec section 18 is the side
+  stream's, where a job that cannot be built is simply not offered.
+- No chapter asks for a vehicle class the roster does not park in the street. `plates` asks for a
+  van, which every city has.
+- `test/sim-chain.test.ts` walks both sides end to end on three worlds, and `seed-places.ts` builds
+  every chapter against real cities in the sweep. A chapter that cannot be built on a seed fails the
+  sweep rather than stranding a player.
 
 ## A territory job is permission to take the block
 

@@ -23,11 +23,12 @@
  *
  * Pure: it reads the record and writes the record, and takes no wall-clock.
  */
+import { chainFinished, chainLost, chainOffers, createChainState, type ChainState } from './chain.ts';
 import { TICK_RATE } from './clock.ts';
 import { shiftStanding } from './faction.ts';
 import { giverAt, giverRefusal, GIVER_REACH, type GiverPlace } from './giver.ts';
 import type { InputFrame } from './input.ts';
-import { offerFor, type JobLeg, type MissionJob, type MissionWorld } from './job.ts';
+import { offerFor, type JobLeg, type JobOffer, type MissionJob, type MissionWorld } from './job.ts';
 import { dollars } from './market.ts';
 import { reachesVehicle } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
@@ -61,6 +62,8 @@ export interface MissionState {
   /** Jobs finished and jobs lost, which the board reads: the offer turns over on both. */
   done: number;
   failed: number;
+  /** How far the authored chain has been walked (`chain.ts`), which the save carries. */
+  chain: ChainState;
   /** What the end of the last job said, in the words the HUD shows, and when it said it. */
   said: string;
   saidTick: number;
@@ -84,7 +87,7 @@ export interface JobRow {
 }
 
 export function createMissionState(): MissionState {
-  return { active: null, visit: null, done: 0, failed: 0, said: '', saidTick: -SAID_TICKS };
+  return { active: null, visit: null, done: 0, failed: 0, chain: createChainState(), said: '', saidTick: -SAID_TICKS };
 }
 
 /** The contact whose board is open, or undefined while the player is out on the street. */
@@ -100,9 +103,25 @@ export function activeLeg(state: SimState): JobLeg | undefined {
 }
 
 /**
- * The rows of the board at a contact: the job on offer, or the way out of the
- * one they already handed over. A contact who will not talk at all shows no
- * rows, and the panel says why instead (`giver.ts`).
+ * What a contact is offering: the chapter of the authored chain they are
+ * holding, first, and then the one piece of side work their board has. Most
+ * contacts in most sessions have only the second; at the fork of the chain, two
+ * contacts each hold a chapter at once (`chain.ts`).
+ *
+ * A contact who will not talk offers nothing, and the panel says why instead
+ * (`giver.ts`).
+ */
+export function jobOffers(state: SimState, world: MissionWorld, giver: GiverPlace): JobOffer[] {
+  if (state.missions.active !== null || giverRefusal(state, giver) !== null) return [];
+  const offers = chainOffers(state, world, giver);
+  const side = offerFor(state, world, giver);
+  if (side !== undefined) offers.push({ job: side, label: 'Take it', note: '' });
+  return offers;
+}
+
+/**
+ * The rows of the board at a contact: the jobs on offer, or the way out of the
+ * one they already handed over.
  */
 export function jobRows(state: SimState, world: MissionWorld, giver: GiverPlace): JobRow[] {
   const job = state.missions.active;
@@ -110,10 +129,10 @@ export function jobRows(state: SimState, world: MissionWorld, giver: GiverPlace)
     if (job.giver !== giver.id) return [];
     return [{ label: 'Give the job up', take: (s) => give(s) }];
   }
-  if (giverRefusal(state, giver) !== null) return [];
-  const offer = offerFor(state, world, giver);
-  if (offer === undefined) return [];
-  return [{ label: `Take it · ${dollars(offer.pay)}`, take: (s, w) => accept(s, w, giver) }];
+  return jobOffers(state, world, giver).map((offer) => ({
+    label: `${offer.label} · ${dollars(offer.job.pay)}`,
+    take: (s: SimState) => accept(s, offer.job),
+  }));
 }
 
 /**
@@ -186,10 +205,9 @@ function use(state: SimState, world: MissionWorld, giver: GiverPlace, row: numbe
   visit.said = chosen.take(state, world);
 }
 
-/** Take the job on the board. It is copied onto the record: the board keeps nothing. */
-function accept(state: SimState, world: MissionWorld, giver: GiverPlace): string {
-  const offer = offerFor(state, world, giver);
-  if (offer === undefined || state.missions.active !== null) return '';
+/** Take a job off the board. It is copied onto the record: the board keeps nothing. */
+function accept(state: SimState, offer: MissionJob): string {
+  if (state.missions.active !== null) return '';
   offer.taken = state.tick;
   state.missions.active = offer;
   return `${offer.title}. You have ${countdown(offer.limit)}.`;
@@ -199,7 +217,7 @@ function accept(state: SimState, world: MissionWorld, giver: GiverPlace): string
 function give(state: SimState): string {
   const job = state.missions.active;
   if (job === null) return '';
-  lose(state, job, 'You handed it back.');
+  lose(state, job, 'You handed it back.', true);
   return 'Handed back.';
 }
 
@@ -263,7 +281,11 @@ function stand(state: SimState, job: MissionJob, leg: JobLeg, away: number): boo
   return job.held >= leg.ticks;
 }
 
-/** A job finished: it pays, it is worth a name with the faction, and it is gone. */
+/**
+ * A job finished: it pays, it is worth a name with the faction, and it is gone.
+ * A chapter of the chain carries the record a step further as well, and says so
+ * in its own words rather than in the words a job of the street gets.
+ */
 function finish(state: SimState, job: MissionJob): void {
   state.money += job.pay;
   shiftStanding(state, job.faction, JOB_STANDING);
@@ -274,15 +296,21 @@ function finish(state: SimState, job: MissionJob): void {
   }
   state.missions.done += 1;
   state.missions.active = null;
-  say(state, `Paid ${dollars(job.pay)}. ${job.title}.`);
+  const written = job.chapter === '' ? '' : chainFinished(state, job);
+  say(state, `Paid ${dollars(job.pay)}. ${written === '' ? `${job.title}.` : written}`);
 }
 
-/** A job lost: no money, a little of the standing it would have earned, and it is gone. */
-function lose(state: SimState, job: MissionJob, why: string): void {
+/**
+ * A job lost: no money, a little of the standing it would have earned, and it
+ * is gone. `gaveUp` is the one loss the player chose, which the chain does not
+ * hold against them: a chapter handed back is a chapter still on offer.
+ */
+function lose(state: SimState, job: MissionJob, why: string, gaveUp = false): void {
   shiftStanding(state, job.faction, -JOB_FAILURE);
   state.missions.failed += 1;
   state.missions.active = null;
-  say(state, `${why} ${job.title} is off.`);
+  const written = job.chapter === '' ? '' : chainLost(state, job, gaveUp);
+  say(state, `${why} ${written === '' ? `${job.title} is off.` : written}`);
 }
 
 function say(state: SimState, line: string): void {

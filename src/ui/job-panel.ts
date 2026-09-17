@@ -16,9 +16,9 @@
  * standing still writes nothing.
  */
 import { giverAt, giverRefusal, type GiverPlace } from '../sim/giver.ts';
-import { offerFor, type MissionJob, type MissionWorld } from '../sim/job.ts';
+import { type JobOffer, type MissionJob, type MissionWorld } from '../sim/job.ts';
 import { dollars } from '../sim/market.ts';
-import { countdown, jobRows, visitingGiver } from '../sim/mission.ts';
+import { countdown, jobOffers, jobRows, visitingGiver } from '../sim/mission.ts';
 import type { SimState } from '../sim/simulation.ts';
 import { CHOICE_KEYS } from './keyboard.ts';
 
@@ -120,14 +120,23 @@ function board(state: SimState, world: MissionWorld, giver: GiverPlace): Row[] {
   return rows;
 }
 
-/** The job on the board: what it is, what it pays, and how long it allows. */
+/**
+ * The jobs on the board: what each is, what it pays and how long it allows. A
+ * chapter of the authored chain is read first and carries a line of its own,
+ * which is the contact saying what the work is for (`chain.ts`).
+ */
 function offered(state: SimState, world: MissionWorld, giver: GiverPlace): Row[] {
-  const offer = offerFor(state, world, giver);
-  if (offer === undefined) return [{ text: 'Nothing today.', className: 'job-refused' }];
-  return [
-    { text: offer.title, className: 'job-offer' },
-    { text: `${dollars(offer.pay)} · ${countdown(offer.limit)} · ${legsLine(offer)}`, className: 'job-terms' },
-  ];
+  const offers = jobOffers(state, world, giver);
+  if (offers.length === 0) return [{ text: 'Nothing today.', className: 'job-refused' }];
+  return offers.flatMap((offer: JobOffer) => {
+    const rows: Row[] = [{ text: offer.job.title, className: 'job-offer' }];
+    if (offer.note !== '') rows.push({ text: offer.note, className: 'job-brief' });
+    rows.push({
+      text: `${dollars(offer.job.pay)} · ${countdown(offer.job.limit)} · ${legsLine(offer.job)}`,
+      className: 'job-terms',
+    });
+    return rows;
+  });
 }
 
 /** The job in hand: the leg being worked on and what is left of the clock. */
