@@ -173,7 +173,11 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   either road has within `CROSSING_SNAP`, else the crossing itself. `crossing-rules.ts` refuses a
   place a road standing on it may not be joined at, a half of a segment the ground refuses
   (`groundRule`), a bend that folds a road, buries a free end or crosses a road it did not cross
-  before, and two roads leaving a place under `MIN_MEET`. Otherwise a crossing is apart where one
+  before, and two roads leaving a place, or a place beside it, under `MIN_MEET`. That last rule
+  reads the other road of the pair off its planned line and not off the network: the draft is not
+  laid yet, and a laid road's given points are written only once the whole plan holds. Without
+  that, a junction planned here bends the road out from under a meeting one point along, and the
+  two are left at 29° (issue #372). Otherwise a crossing is apart where one
   road stands a `CLEARANCE` lift over the other on the ground, a highway slot or the top of a raise,
   or where a deck or a bore puts the two beds that far apart. The foot of a ramp is snapped to the
   ground within half a millimetre: the distances along a line are single precision, so without it a

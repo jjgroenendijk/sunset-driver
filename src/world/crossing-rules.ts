@@ -95,7 +95,7 @@ export function junctionAt(
     const mine = sideAt(network, draftLine, draft.lift, crossing.segment, spot, -1, undefined);
     if (mine === undefined) continue;
     if (shallow(spot, theirs.around, mine.around)) continue;
-    if (bends(network, spot, theirs.around, other.id) || bends(network, spot, mine.around, -1)) continue;
+    if (bends(network, spot, theirs.around, other.id, draftLine) || bends(network, spot, mine.around, -1, otherLine)) continue;
     const junction: Junction = { x: spot.x, y: spot.y };
     if (mine.given !== undefined) junction.draft = mine.given;
     if (theirs.given !== undefined) {
@@ -162,9 +162,18 @@ function crossesNew(network: CrossingNetwork, before: Point, spot: Point, after:
  * would leave the place or a place beside it along the line of another road
  * that meets it there.
  */
-function bends(network: CrossingNetwork, spot: Point, around: readonly Point[], curve: number): boolean {
-  if (shallow(spot, around, network.neighboursAt(spot, curve))) return true;
-  return around.some((place) => shallow(place, [spot], network.neighboursAt(place, curve)));
+function bends(network: CrossingNetwork, spot: Point, around: readonly Point[], curve: number, other: PlannedLine): boolean {
+  // The road on the other side of the crossing is not in the network yet: the
+  // draft is not laid, and a laid road's given points are only written once the
+  // whole plan holds. Its own rays count all the same, or a junction planned
+  // here leaves a meeting one point along under `MIN_MEET` (issue #372).
+  const rays = (p: Point): Point[] => {
+    const out = network.neighboursAt(p, curve);
+    const place = other.placeAt(p);
+    return place === undefined ? out : [...out, ...other.around(place)];
+  };
+  if (shallow(spot, around, rays(spot))) return true;
+  return around.some((place) => shallow(place, [spot], rays(place)));
 }
 
 /**
