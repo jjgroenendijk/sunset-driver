@@ -11,6 +11,8 @@ import {
   SHORE_STEP,
 } from '../src/world/beaches.ts';
 import { MIN_BOARDWALK } from '../src/world/roads.ts';
+import { nearestRoadPlace } from '../src/world/surface.ts';
+import { dealerPlaces, PITCH_LIMIT } from '../src/sim/dealer.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
@@ -21,6 +23,7 @@ import { type Beach, type Corridor, type Point, type RoadCurve, type WorldDescri
 import { ringArea } from './helpers.ts';
 import {
   FOOTPRINT_COUNT,
+  DEALER_COUNT,
   SAMPLE_STRIDE,
   GUARANTEED_BEACH,
   MIN_SAND_OWNED,
@@ -252,6 +255,33 @@ export function placeChecks(): void {
         if (new Set(shops.map((shop) => shop.building)).size !== shops.length) fault('two trades share one building');
         for (const kind of SHOP_KINDS) {
           if (!shops.some((shop) => shop.kind === kind)) fault(`has no ${kind}`);
+        }
+        expect(complaint, `seed ${seed}`).toBeUndefined();
+      }
+    });
+
+    it('stands a dealer on the streets of every district that has streets', () => {
+      // Spec section 16.2: one dealer to a district, on its own corners. A
+      // district with no street near its middle keeps none, which over the
+      // seeds is the wilderness and nothing else.
+      for (const seed of seeds.slice(0, DEALER_COUNT)) {
+        const w = worlds.get(seed) as WorldDescription;
+        const dealers = dealerPlaces(seed, w.districts, (x, y) => nearestRoadPlace(w, x, y));
+        let complaint: string | undefined;
+        const fault = (text: string): void => {
+          complaint ??= text;
+        };
+        const dealt = new Set(dealers.map((dealer) => dealer.district.id));
+        for (const district of w.districts) {
+          if (district.zone !== 'wilderness' && !dealt.has(district.id)) fault(`${district.name} has no dealer`);
+        }
+        for (const dealer of dealers) {
+          if (dealer.pitches.length === 0) fault(`${dealer.name} works no corner`);
+          for (const pitch of dealer.pitches) {
+            const away = Math.hypot(pitch.x - dealer.district.x, pitch.y - dealer.district.y);
+            if (away > PITCH_LIMIT) fault(`${dealer.name} works a corner ${away.toFixed(0)} m out of their district`);
+            if (Math.abs(pitch.x) > w.size / 2 || Math.abs(pitch.y) > w.size / 2) fault(`${dealer.name} works a corner off the map`);
+          }
         }
         expect(complaint, `seed ${seed}`).toBeUndefined();
       }

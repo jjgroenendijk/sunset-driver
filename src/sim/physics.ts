@@ -43,6 +43,7 @@ import { Gunfire, type ShotTarget } from './gunfire.ts';
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
 import type { MetroPlace } from './metro.ts';
 import type { ShopPlace } from './shop.ts';
+import type { DealerPlace } from './dealer.ts';
 import {
   besidePlayer,
   capsuleOf,
@@ -307,6 +308,11 @@ export class SimPhysics {
   /** The shops of the ground (spec section 16.1), which the doors and the counters read. */
   get shops(): readonly ShopPlace[] {
     return this.ground.shops ?? [];
+  }
+
+  /** The dealers of the ground (spec section 16.2), whose corners the contraband is traded at. */
+  get dealers(): readonly DealerPlace[] {
+    return this.ground.dealers ?? [];
   }
 
   /**

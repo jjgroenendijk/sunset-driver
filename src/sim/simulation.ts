@@ -12,6 +12,7 @@ import { createTrafficState, type TrafficState } from './traffic.ts';
 import { createLoadout, type LoadoutState, type ProjectileState } from './weapon.ts';
 import { createMetroState, stepMetro, travelling, type MetroState } from './metro.ts';
 import { stepShops, type ShopVisit } from './shop.ts';
+import { createMarketState, stepMarket, type MarketState } from './market.ts';
 import { createPoliceState, type PoliceState } from './police.ts';
 import { stepRadio } from './radio.ts';
 
@@ -65,6 +66,13 @@ export interface SimState {
    */
   shop: ShopVisit | null;
   /**
+   * The contraband trade of spec section 16.2: what the player is carrying,
+   * what they paid for it, and the dealer they have a deal open with. The
+   * prices are not here, because a price is a function of the seed and the
+   * tick (`contraband.ts`) and a record may not hold a second copy of one.
+   */
+  market: MarketState;
+  /**
    * How much attention the player has drawn (spec section 14). A crime raises
    * it by what `crime.ts` weighs the crime at, and it falls again only while
    * nobody is looking. `police.ts` reads it as how many units come and what
@@ -72,8 +80,9 @@ export interface SimState {
    */
   heat: number;
   /**
-   * What the player is carrying, in dollars (spec section 12). The economy of
-   * spec section 16 is what will move it; the HUD is what reads it today.
+   * What the player is carrying, in dollars (spec section 12). The shop
+   * counters of spec section 16.1 and the contraband market of 16.2 are what
+   * move it; the HUD and both panels read it.
    */
   money: number;
   /**
@@ -153,6 +162,7 @@ export function createSimState(
     projectiles: [],
     pickups: [],
     nextPickup: 0,
+    market: createMarketState(),
     heat: 0,
     money: START_MONEY,
     objective: '',
@@ -185,7 +195,10 @@ export function cloneSimState(state: SimState): SimState {
  *
  * The metro of spec section 13.3 runs first, because a trip freezes the player:
  * the physics is then stepped with an empty frame, so the city carries on
- * around them and nothing they press steers the walk under the fade.
+ * around them and nothing they press steers the walk under the fade. A player
+ * with a deal open at a dealer (spec section 16.2) hands the metro an empty
+ * frame for the other half of that reason: the number keys are the trading
+ * panel's while it is up, and a dealer may be standing at a station entrance.
  *
  * A death or an arrest is resolved last (spec section 11.7), so the tick that
  * ends a run is the tick the player comes back on.
@@ -194,13 +207,17 @@ export function stepSim(state: SimState, input: InputFrame = EMPTY_INPUT, physic
   // The radio of spec section 15 is a turn of a number in the record and
   // nothing else, so it is taken before anything moves.
   stepRadio(state, input);
-  if (stepMetro(state, input, physics?.metro ?? [])) physics?.stand(state);
+  if (stepMetro(state, state.market.deal === null ? input : EMPTY_INPUT, physics?.metro ?? [])) physics?.stand(state);
   // The shops of spec section 16.1 run before the physics for the reason the
   // metro does: a door walked through moves the player, and the physics has to
   // stand them on the ground where they landed. It is also where the interact
   // key is spent when a door opens on it, before `transfer` looks for the same
   // edge. A player under the fade of a trip is holding nothing.
   if (!travelling(state) && stepShops(state, input, physics?.shops ?? [])) physics?.stand(state);
+  // The dealers of spec section 16.2 take what the shops left of the interact
+  // key, so a press that opened a shop door does not also open a deal. Nothing
+  // here moves the player, so the physics is told nothing.
+  if (!travelling(state)) stepMarket(state, input, physics?.dealers ?? []);
   physics?.step(state, travelling(state) ? EMPTY_INPUT : input);
   stepPickups(state);
   const fate = fateOf(state);

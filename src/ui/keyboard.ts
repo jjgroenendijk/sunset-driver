@@ -44,6 +44,10 @@ export class Keyboard {
     // take them: the metro of spec section 13.3 and the shop counters of 16.1.
     // A player inside a shop may not take the metro, so only one can act on it.
     const chosen = this.choice();
+    // The sprint key doubles as the sell key at a dealer's corner (spec section
+    // 16.2): a number alone buys the good, and the same number with it held
+    // sells the holding. A player standing still to deal is not sprinting.
+    const selling = this.is('ShiftLeft') || this.is('ShiftRight');
     const forward = this.is('KeyW') || this.is('ArrowUp');
     const back = this.is('KeyS') || this.is('ArrowDown');
     const left = this.is('KeyA') || this.is('ArrowLeft');
@@ -53,7 +57,7 @@ export class Keyboard {
       steer: (right ? 1 : 0) - (left ? 1 : 0),
       handbrake: this.is('Space'),
       horn: this.is('KeyH'),
-      sprint: this.is('ShiftLeft') || this.is('ShiftRight'),
+      sprint: selling,
       jump: this.is('Space'),
       interact: this.is('KeyE'),
       fire: this.is('KeyF'),
@@ -63,6 +67,7 @@ export class Keyboard {
       station: this.dial(),
       travel: chosen,
       buy: chosen,
+      trade: selling ? -chosen : chosen,
     };
   }
 
