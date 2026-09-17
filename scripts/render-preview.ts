@@ -26,6 +26,9 @@
  *   --on-foot        stand the player beside the vehicle rather than in it,
  *                    which is how the character is looked at (spec section
  *                    11.5).
+ *   --stance         the stance to hold the player in for the picture (spec
+ *                    sections 11.2, 11.5): stand, walk, air or swim. Drawn with
+ *                    --on-foot.
  *   --damage         the damage state to show the vehicle in (spec section
  *                    11.3): dented, smoking, burning or burnt.
  *   --skid           lay a drift's worth of skid marks into the road behind
@@ -167,6 +170,7 @@ const request: PreviewRequest = {
   ...(options.has('buildings') ? { buildings: options.get('buildings') as string } : {}),
   ...(options.has('vehicle') ? { vehicle: options.get('vehicle') as string } : {}),
   ...(options.has('on-foot') ? { onFoot: true } : {}),
+  ...(options.has('stance') ? { stance: options.get('stance') as string } : {}),
   ...(options.has('damage') ? { damage: options.get('damage') as string } : {}),
   ...(options.has('skid') ? { skid: true } : {}),
   ...(options.has('weapon') ? { weapon: options.get('weapon') as string } : {}),
