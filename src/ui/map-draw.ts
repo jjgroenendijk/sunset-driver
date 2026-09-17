@@ -480,6 +480,17 @@ export function drawIcon(
       ctx.closePath();
       ctx.fill();
       break;
+    case 'key':
+      // A key on its side: the bow at the left, the shank and one tooth.
+      ctx.arc(-r * 0.5, 0, r * 0.45, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.05, 0);
+      ctx.lineTo(r, 0);
+      ctx.moveTo(r * 0.55, 0);
+      ctx.lineTo(r * 0.55, r * 0.5);
+      ctx.stroke();
+      break;
   }
   ctx.restore();
 }
