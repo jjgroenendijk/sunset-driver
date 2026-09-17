@@ -106,14 +106,25 @@ export interface PedestrianPose {
 }
 
 /** What makes a person leave their loop. */
-export type Reaction = 'flee' | 'scatter';
+export type Reaction = 'flee' | 'scatter' | 'gather';
+
+/** How a reaction moves a person: their pace, how long for, and the gait they move in. */
+export interface ReactionSpec {
+  speed: number;
+  ticks: number;
+  gait: Gait;
+  /** True for a reaction that walks a person to the place rather than off it. */
+  toward: boolean;
+}
 
 /** How far and how fast each reaction moves a person, and the gait they move in. */
-export const REACTIONS: Record<Reaction, { speed: number; ticks: number; gait: Gait }> = {
+export const REACTIONS: Record<Reaction, ReactionSpec> = {
   // Away from gunfire, at a run, for a good distance.
-  flee: { speed: 4, ticks: 8 * TICK_RATE, gait: 'run' },
+  flee: { speed: 4, ticks: 8 * TICK_RATE, gait: 'run', toward: false },
   // Out of the way of a car: a few quick steps to the side.
-  scatter: { speed: 3.2, ticks: Math.round(1.2 * TICK_RATE), gait: 'run' },
+  scatter: { speed: 3.2, ticks: Math.round(1.2 * TICK_RATE), gait: 'run', toward: false },
+  // Towards a crash, for a few steps, and then they stand and watch it.
+  gather: { speed: 1.5, ticks: 2 * TICK_RATE, gait: 'brisk', toward: true },
 };
 
 /** A person who has left their loop, and the record the simulation keeps of them. */
@@ -239,8 +250,8 @@ export class AmbientPedestrians {
    * Take everyone within `radius` of a place off their loops at a tick, as the
    * reaction asks. A person already startled keeps the reaction they have.
    * `flee` runs straight away from the place; `scatter` jumps aside, to
-   * whichever side of the threat's line they already stand on. Answers how
-   * many reacted.
+   * whichever side of the threat's line they already stand on; `gather` walks
+   * a few steps to the place and stands facing it. Answers how many reacted.
    */
   startle(state: PedestrianState, tick: number, x: number, y: number, radius: number, reaction: Reaction, ids: number[] = []): number {
     const pose: PedestrianPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0, cycle: 0, gait: 'stand' };
@@ -257,6 +268,8 @@ export class AmbientPedestrians {
         const across = dx * Math.sin(pose.heading) - dy * Math.cos(pose.heading) >= 0 ? -1 : 1;
         const rng = rngFor(this.seed, tick, Subsystem.Pedestrians, hashInts(REACTION_STREAM, id));
         heading = pose.heading + across * (Math.PI / 2 + rng.range(-0.4, 0.4));
+      } else if (REACTIONS[reaction].toward) {
+        heading += Math.PI;
       }
       addStartled(state, { id, reaction, since: tick, x: pose.x, y: pose.y, height: pose.height, heading });
       count++;

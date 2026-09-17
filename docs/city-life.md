@@ -116,9 +116,20 @@ physics and the vehicles the player drives — is in `docs/sim-and-ui.md`.
 - The candidates `near` answers are every loop through the box, and on seed 1 that is about 1300
   people round the core for 160 in view. `edgeAt` and `edgeMeets` skip the far ones before a pose
   is read. Reading the rest costs about 0.6 ms a frame on an M-series core.
-- `startle` is the hook for spec section 20.1: it takes everyone in a radius off their loops into
-  `SimState.pedestrians.startled`, and `startledPose` moves them off and stands them still. Nothing
-  calls it yet. `releaseFar` gives them back to their loops where the player cannot see the jump.
+- `startle` takes everyone in a radius off their loops into `SimState.pedestrians.startled`, and
+  `startledPose` moves them off and stands them still. `releaseFar` gives them back to their loops
+  where the player cannot see the jump. A person is startled once: a second fright over the same
+  people does nothing, which is why the crash writes its fleeing ring before its watching one.
+- `src/sim/crowd-reaction.ts` is what calls those: the reactions of spec section 20.1. It holds the
+  reach of each — a gunshot, a blast, a car, a crash — and nothing else. `gunfire.ts` calls
+  `crowdHearsShot` on the tick a loud weapon goes off and `crowdFeelsBlast` when a projectile
+  bursts; `physics.ts` calls `stepCrowdReactions` once a tick with the severity its `crash` answers,
+  which scatters the people the player's car is about to reach, rings a crash, and releases whoever
+  the player has driven away from. The release runs every tick: without it the startled list only
+  ever grows, and the whole city ends up standing still.
+- A reaction moves a person off the place, except `gather`, whose `toward` walks them to it and
+  stands them facing it. Add one to `REACTIONS` rather than to the callers, so what it costs a
+  reader is one row of a table.
 
 ## The metro
 
