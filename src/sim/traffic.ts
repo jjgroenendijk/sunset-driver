@@ -325,10 +325,12 @@ export class AmbientTraffic {
       const route = walkTour(graph, edge.id, walk, permitOf(cls));
       // Its own place in every queue it joins, which is what holds it off the
       // vehicles that wait at the same lights, and the driver whose speed, gap,
-      // reaction and nerve at an amber the whole lap is then timed to.
+      // reaction and nerve at an amber the whole lap is then timed to. A bus
+      // also calls at the stops of its route (spec section 20.2), so its lap
+      // carries the dwell at every kerb it pulls in at.
       const place = walk.float();
       const driver = drawDriver(walk);
-      const tour = timeTour(graph, route, this.signals, place, driver);
+      const tour = timeTour(graph, route, this.signals, { place, driver, calls: cls === 'bus' });
       const phase = phaseOf(tour, tour.edges.indexOf(edge.id), offset, walk);
       vehicles.push({ id, cls, paint, lane, phase, driver, tour });
       for (const e of tour.edges) this.index.file(id, e);

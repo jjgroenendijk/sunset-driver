@@ -82,13 +82,13 @@ describe('the driver behind the wheel (spec section 20.2)', () => {
     const roads = gridTrafficRoads();
     const walk = rngFor(3, 0, Subsystem.Traffic, 11);
     const route = walkTour(roads.graph, 0, walk, () => true);
-    const slow = timeTour(roads.graph, route, undefined, 0, driverNamed('hesitant'));
-    const quick = timeTour(roads.graph, route, undefined, 0, driverNamed('tailgater'));
+    const slow = timeTour(roads.graph, route, undefined, { driver: driverNamed('hesitant') });
+    const quick = timeTour(roads.graph, route, undefined, { driver: driverNamed('tailgater') });
     expect(slow.length).toBe(quick.length);
     expect(slow.period).toBeGreaterThan(quick.period);
     // The steady driver is the traffic as it drove before there were drivers.
-    const steady = timeTour(roads.graph, route, undefined, 0);
-    expect(steady.period).toBe(timeTour(roads.graph, route, undefined, 0, STEADY).period);
+    const steady = timeTour(roads.graph, route, undefined);
+    expect(steady.period).toBe(timeTour(roads.graph, route, undefined, { driver: STEADY }).period);
     expect(steady.period).toBeLessThan(slow.period);
     expect(steady.period).toBeGreaterThan(quick.period);
   });
@@ -101,8 +101,8 @@ describe('the driver behind the wheel (spec section 20.2)', () => {
     // and the same place, so the gap is the only thing that moved.
     const walk = rngFor(5, 0, Subsystem.Traffic, 23);
     const route = walkTour(roads.graph, signals.approaches[0]?.edge ?? 0, walk, () => true);
-    const near = queuedBack(timeTour(roads.graph, route, signals, 1, driverNamed('tailgater')), signals);
-    const far = queuedBack(timeTour(roads.graph, route, signals, 1, driverNamed('careful')), signals);
+    const near = queuedBack(timeTour(roads.graph, route, signals, { place: 1, driver: driverNamed('tailgater') }), signals);
+    const far = queuedBack(timeTour(roads.graph, route, signals, { place: 1, driver: driverNamed('careful') }), signals);
     expect(near).toBeGreaterThan(0);
     expect(near).toBeLessThan(far);
   });

@@ -9,6 +9,7 @@ physics and the vehicles the player drives — is in `docs/sim-and-ui.md`.
 
 - Ambient traffic
 - The drivers
+- The buses
 - Traffic lights
 - Parked cars
 - The tram
@@ -55,6 +56,30 @@ physics and the vehicles the player drives — is in `docs/sim-and-ui.md`.
 - `test/signal-lap.ts` is what holds a driver honest over a whole lap. It allows standing still on
   a green only within that driver's own `react` of the green starting, and crossing on an amber
   only for a driver who takes ambers. Nobody crosses on red.
+
+## The buses
+
+- `src/sim/bus.ts` says where a bus calls. A bus of the ambient traffic drives the same closed
+  route every other vehicle does, and that route is its line. `busCalls` walks the route and takes a
+  stop on the first leg that can hold one and on every leg after `STOP_SPACING` metres of route
+  since the last call, so a line has stops every few blocks rather than at every corner.
+- A stop stands `STOP_IN` metres past the junction the bus came in through. That has to stay under
+  `QUEUE_CLEAR`, the least road a signalled approach keeps clear behind its queue: a stop further in
+  could fall inside the queue for the lights, and the halt for the light would land on the same
+  metre as the halt at the kerb. `test/bus.test.ts` holds the two constants to that.
+- `traffic-timing.ts` lays a call down with `driveLeg`, which splits the drive over a leg in two
+  around a halt of `BUS_DWELL`. `legTicks` is the same arithmetic before anything is laid down,
+  which is how the tick a bus reaches a stop line already carries the dwell it spent at the kerb;
+  reading the light without it would read the wrong colour.
+- `Tour.stepCall` is 1 on each of those halts. Without it nothing downstream can tell a bus at a
+  kerb from a vehicle the timing forgot to send on: `test/signal-lap.ts` reads it to allow the one
+  and still fault the other, and it has to allow the step behind the cursor as well, since the tick
+  a call ends on is the first tick of the drive out of it and the bus has not moved yet.
+- `Steps.stretch` never grows a wait, for the same reason. The stretch that brings a lap round to
+  its anchor may only slow drives; growing a dwell would stand the bus at the kerb for longer than
+  its own stop.
+- Nothing here knows about passengers, and the dwell is the same at every stop. A bus that stood for
+  as long as its passengers took would have to be stepped, and the traffic is never stepped.
 
 ## Traffic lights
 
