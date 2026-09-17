@@ -138,7 +138,18 @@ scene ever holds is in `docs/shops.md`.
   batches of flat discs: one blended the ordinary way and one additively. A puff is placed and
   coloured from its age alone and jittered from `rngFor(seed, tick, Subsystem.Damage, n)`, so a
   replay burns the way the drive did. The pools are fixed, so a fire that burns all day costs what
-  one that burns for a second does.
+  one that burns for a second does. The blazes of spec section 20.3 — what a wreck leaves burning on
+  the ground — draw from the same two batches, so every fire in a scene costs those two draw calls
+  and no more. `watch` is how they are handed in, with the ground under them: a blaze on the record
+  is a place and not a height. A blaze throws embers as well as flame, which is how a fire on the
+  ground reads as one rather than as a car alight.
+- `EmergencyView` (`emergency.ts`) draws the fire engines and the ambulances of spec section 20.3
+  the way `police.ts` draws the police: instanced bodies off a row of the roster, an outline, and a
+  light bar whose colour flips on a beat of the tick. Neither service has a row of its own, so an
+  engine is a truck repainted red and an ambulance a van repainted white. They are stepped once a
+  tick like the police, so nothing here is evaluated between two ticks.
+  `node scripts/render-preview.ts <seed> out.png --emergency` is how a still frame of them is
+  taken.
 - `SkidMarks` (`skid.ts`) is the rubber a sliding tyre leaves (spec section 11.3): a `DecalGeometry`
   per `SKID_STEP` metres of ground, all of them in one buffer with one material, so a whole drive of
   marks is one draw call. The decal is not cut from the chunk — a chunk's ground is twenty thousand

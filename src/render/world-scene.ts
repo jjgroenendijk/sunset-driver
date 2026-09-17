@@ -47,9 +47,12 @@ import type { MeleeHit } from '../sim/melee.ts';
 export interface DrawnDamage {
   seed: number;
   hits: readonly MeleeHit[];
+  /** What the wrecks have left burning on the ground (spec section 20.3). */
+  fires: { blazes: readonly Blaze[] };
 }
 import type { DrawnPlayer } from './smooth.ts';
 import { DamageFx } from './damage-fx.ts';
+import type { Blaze } from '../sim/fire.ts';
 import type { ChunkPayload } from './chunk-payload.ts';
 import { ChunkPool, type ChunkStream } from './chunk-pool.ts';
 import { daylightAt, type Daylight } from './daylight.ts';
@@ -284,6 +287,9 @@ export class WorldScene {
    * tick, coloured by what it says was struck.
    */
   damage(v: VehicleState, record: DrawnDamage, tick: number): void {
+    // The blazes stand on the ground, and how high the ground is here is
+    // something only the scene knows.
+    this.fx.watch(record.fires.blazes, (x, y) => this.heightAt(x, y));
     this.fx.update(v, this.vehicle.vehicle, record.seed, tick);
     this.skid.update(v, this.vehicle.vehicle, this.height);
     this.melee.update(record.hits, record.seed, tick);

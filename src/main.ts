@@ -10,6 +10,7 @@ import { createTitleScene } from './render/scene.ts';
 import { RenderSmoother } from './render/smooth.ts';
 import { ParkedView } from './render/parked.ts';
 import { PedestrianView } from './render/pedestrians.ts';
+import { EmergencyView } from './render/emergency.ts';
 import { PoliceView } from './render/police.ts';
 import { TrafficView } from './render/traffic.ts';
 import { TramView } from './render/tram.ts';
@@ -274,6 +275,7 @@ async function boot(): Promise<void> {
       // The units are stepped once a tick like the player, so they are drawn
       // where the last tick left them rather than between two of them.
       session.police.update(session.state, round.x, round.y);
+      session.emergency.update(session.state, round.x, round.y);
       session.parked?.update(session.state, round.x, round.y);
       session.crowd.update(session.state, session.state.tick - 1 + alpha, round.x, round.y);
       // The damage of spec section 11.3, drawn off the same record: the smoke
@@ -294,6 +296,7 @@ async function boot(): Promise<void> {
       // itself come on with the street lamps (spec section 13.4).
       session.traffic.lamps = session.world.lampsNow;
       session.police.lamps = session.world.lampsNow;
+      session.emergency.lamps = session.world.lampsNow;
       if (flying) {
         free.camera.update(elapsed / 1000, free.input(keyboard.freeCamera()));
         free.camera.writeTo(camera.camera);
@@ -683,6 +686,8 @@ async function boot(): Promise<void> {
   world.scene.add(trafficView.group);
   const policeView = new PoliceView();
   world.scene.add(policeView.group);
+  const emergencyView = new EmergencyView();
+  world.scene.add(emergencyView.group);
   const parkedView = parked === undefined ? undefined : new ParkedView(parked);
   if (parkedView !== undefined) world.scene.add(parkedView.group);
   const tramView = new TramView(tram);
@@ -710,6 +715,7 @@ async function boot(): Promise<void> {
   session = {
     traffic: trafficView,
     police: policeView,
+    emergency: emergencyView,
     parked: parkedView,
     tram: tramView,
     crowd: crowdView,
