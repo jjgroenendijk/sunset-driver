@@ -6,7 +6,7 @@ import type { BuildingViewChoice, SoundChoice } from './settings.ts';
 import { buildCameraPage } from './title-camera.ts';
 import { buildSoundPage } from './title-sound.ts';
 import { buildControlsPage } from './title-controls.ts';
-import { button, menuList, page } from './title-parts.ts';
+import { button, menuList, type MenuItem, page } from './title-parts.ts';
 import { NewGamePage } from './title-setup.ts';
 
 /** What the player settled on before the session starts. */
@@ -19,7 +19,17 @@ export interface TitleChoice {
    * a second time.
    */
   world: WorldDescription | null;
+  /**
+   * True where the player asked to look at the city rather than to play in it:
+   * the session opens on the free camera, high over the streets. It is what a
+   * phone is offered (`docs/menus.md`), because a phone reaches none of the
+   * keys the game is driven with.
+   */
+  explore: boolean;
 }
+
+/** The numerals the main page counts its items with, however many it has. */
+const NUMERALS = ['I', 'II', 'III', 'IV'];
 
 const PAGE_NAMES = ['main', 'setup', 'settings', 'controls', 'camera', 'sound'] as const;
 type PageName = (typeof PAGE_NAMES)[number];
@@ -46,11 +56,17 @@ const PARENT: Record<PageName, PageName | null> = {
  * The arrow keys walk the items of the page on screen, Enter picks one and
  * Escape goes back up one page. The pointer moves the same focus, so the
  * keyboard and the mouse never show two different highlights.
+ *
+ * A touch browser is given one item more, at the top of the main page: Explore
+ * the city, which starts the seed the menu opened on straight into the free
+ * camera. It is put first because it is the only thing on the list a phone can
+ * actually do.
  */
 export class TitleScreen {
   private readonly root: HTMLElement;
   private readonly setup: NewGamePage;
   private readonly pages: MenuPages<PageName>;
+  private readonly touch: boolean;
   private resolve: ((choice: TitleChoice) => void) | null = null;
 
   constructor(
@@ -59,8 +75,10 @@ export class TitleScreen {
     worlds: WorldSource,
     onPreview: (appearance: CharacterAppearance) => void,
     buildingView: BuildingViewChoice,
+    touch: boolean,
     sound: SoundChoice,
   ) {
+    this.touch = touch;
     const character = normaliseAppearance(initial.character);
 
     this.root = document.createElement('section');
@@ -75,7 +93,7 @@ export class TitleScreen {
       main: this.buildMain(),
       setup: this.setup.root,
       settings: this.buildSettings(),
-      controls: buildControlsPage(() => this.back()),
+      controls: buildControlsPage(() => this.back(), touch),
       camera: buildCameraPage(buildingView, () => this.back()),
       sound: buildSoundPage(sound, () => this.back()),
     };
@@ -116,12 +134,24 @@ export class TitleScreen {
 
   private buildMain(): HTMLElement {
     const main = page('title-page title-main');
+    const explore: MenuItem[] = this.touch
+      ? [
+          {
+            numeral: 'I',
+            label: 'Explore the city',
+            note: 'Fly over the world with two thumbs',
+            action: () => this.finish(true),
+          },
+        ]
+      : [];
+    const numeral = (at: number): string => NUMERALS[at + explore.length] ?? '';
     main.append(
       menuList([
-        { numeral: 'I', label: 'New game', note: 'Choose a city and a driver', action: () => this.show('setup') },
-        { numeral: 'II', label: 'Load game', note: 'Saves come in a later version', action: null },
+        ...explore,
+        { numeral: numeral(0), label: 'New game', note: 'Choose a city and a driver', action: () => this.show('setup') },
+        { numeral: numeral(1), label: 'Load game', note: 'Saves come in a later version', action: null },
         {
-          numeral: 'III',
+          numeral: numeral(2),
           label: 'Settings',
           note: 'Controls, camera, graphics and sound',
           action: () => this.show('settings'),
@@ -174,9 +204,14 @@ export class TitleScreen {
     this.pages.key(event);
   };
 
-  private finish(): void {
+  /**
+   * Hand the session over. Explore takes the seed the New game page holds
+   * without the player having opened it, which is the seed the URL or the roll
+   * left there and the one the menu has already been building in the worker.
+   */
+  private finish(explore = false): void {
     const resolve = this.resolve;
     this.resolve = null;
-    resolve?.(this.setup.choice());
+    resolve?.({ ...this.setup.choice(), explore });
   }
 }

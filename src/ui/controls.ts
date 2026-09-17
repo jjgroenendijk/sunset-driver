@@ -33,3 +33,21 @@ export const CONTROLS: readonly ControlBinding[] = [
   { action: 'Debug: die', keys: 'K' },
   { action: 'Debug: arrest', keys: 'B' },
 ];
+
+/**
+ * What a finger does instead, while the free camera has the screen
+ * (`touch-fly.ts`). A phone is shown this list rather than the keys: it reaches
+ * none of them, and the flight is all it is offered (`docs/menus.md`).
+ *
+ * `keys` is prose here rather than key caps, so `keyParts` draws each word as a
+ * cap and the page reads as a list of gestures.
+ */
+export const TOUCH_CONTROLS: readonly ControlBinding[] = [
+  { action: 'Fly the camera', keys: 'Stick' },
+  { action: 'Look around', keys: 'Drag' },
+  { action: 'Set the speed', keys: 'Pinch' },
+  { action: 'Rise and fall', keys: '▲ or ▼' },
+  { action: 'Six times the speed', keys: 'Fast' },
+  { action: 'Start or end the flight', keys: 'Fly or Land' },
+  { action: 'Pause menu, map', keys: 'Menu or Map' },
+];

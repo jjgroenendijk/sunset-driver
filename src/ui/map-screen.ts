@@ -47,6 +47,7 @@ export class MapScreen {
     parent: HTMLElement,
     art: MapArt,
     onWaypoint: (place: { x: number; y: number } | null) => void,
+    touch = false,
   ) {
     this.art = art;
     this.onWaypoint = onWaypoint;
@@ -58,9 +59,13 @@ export class MapScreen {
     this.ctx = this.canvas.getContext('2d')!;
     this.hint = document.createElement('div');
     this.hint.className = 'map-hint';
-    this.hint.textContent =
-      'Drag to pan · wheel or + − to zoom · click to set a waypoint · right-click to clear · M to close';
+    // A phone has no wheel to zoom with and no `M` to close with, so the two
+    // are buttons there. The hint names what that screen actually has.
+    this.hint.textContent = touch
+      ? 'Drag to pan · tap to set a waypoint'
+      : 'Drag to pan · wheel or + − to zoom · click to set a waypoint · right-click to clear · M to close';
     this.root.append(this.canvas, this.hint);
+    if (touch) this.root.append(this.buildKeys());
     parent.append(this.root);
 
     this.canvas.addEventListener('pointerdown', (e) => {
@@ -106,6 +111,26 @@ export class MapScreen {
       },
       { passive: false },
     );
+  }
+
+  /** The zoom and close buttons a touch browser is given in place of the keys. */
+  private buildKeys(): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'map-keys';
+    for (const key of [
+      { text: '−', label: 'Zoom out', act: () => this.zoom(1) },
+      { text: '+', label: 'Zoom in', act: () => this.zoom(-1) },
+      { text: 'Close', label: 'Close the map', act: () => this.toggle() },
+    ]) {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'touch-key';
+      el.textContent = key.text;
+      el.setAttribute('aria-label', key.label);
+      el.addEventListener('click', key.act);
+      row.append(el);
+    }
+    return row;
   }
 
   /** The places the map marks. The same list the minimap reads. */

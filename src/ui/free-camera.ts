@@ -1,39 +1,52 @@
 /**
- * The mouse half of the developer free camera. `render/free-camera.ts` is
+ * The pointer half of the developer free camera. `render/free-camera.ts` is
  * where it stands and where it looks; this is what the browser tells it.
  *
- * The pointer is locked while the camera is detached, so the mouse reports a
- * movement rather than a place and the view can turn without end. Leaving the
- * lock does not give the camera back: the browser takes the lock away on
- * Escape and whenever the window loses focus, and a camera that dropped back to
- * the player there would end a flight on a key the player never meant for it.
- * The camera is detached and given back by {@link FREE_CAMERA_KEY} alone. While
- * it is detached without the lock the keys still fly it and the mouse does
- * nothing; a click on the canvas asks for the lock again.
+ * With a mouse the pointer is locked while the camera is detached, so the mouse
+ * reports a movement rather than a place and the view can turn without end.
+ * Leaving the lock does not give the camera back: the browser takes the lock
+ * away on Escape and whenever the window loses focus, and a camera that dropped
+ * back to the player there would end a flight on a key the player never meant
+ * for it. The camera is detached and given back by {@link FREE_CAMERA_KEY}
+ * alone. While it is detached without the lock the keys still fly it and the
+ * mouse does nothing; a click on the canvas asks for the lock again.
  *
  * The hint over the canvas says which of those two states the camera is in and
  * which key ends the flight, because nothing else on screen would say so.
  *
- * `docs/dev-tooling.md` holds the keys. The movement keys are sampled by
- * `Keyboard.freeCamera`, because `keyboard.ts` is where a key is read.
+ * With a finger there is no lock to ask for — iOS Safari has none — and the
+ * {@link TouchFly} pad is raised instead: it turns the view from a drag, and
+ * the bar of `touch-bar.ts` is what ends the flight, so neither the hint nor
+ * the lock has anything to say. `body.flying` is set while it runs, which is
+ * how `touch.css` takes the playing HUD off a screen that is only being flown
+ * over.
+ *
+ * `docs/dev-tooling.md` holds the keys and the pad. The movement keys are
+ * sampled by `Keyboard.freeCamera`, because `keyboard.ts` is where a key is
+ * read, and the pad is laid over them by {@link FreeCameraControls.input}.
  */
 import type { PerspectiveCamera } from 'three';
-import { FreeCamera } from '../render/free-camera.ts';
+import { FreeCamera, type FreeCameraInput } from '../render/free-camera.ts';
+import { TouchFly } from './touch-fly.ts';
 
 /** The key that detaches the camera and gives it back. */
 export const FREE_CAMERA_KEY = 'Backquote';
 
-/** Pointer lock, the mouse look and the wheel, around one {@link FreeCamera}. */
+/** Pointer lock, the mouse look, the wheel and the touch pad, around one {@link FreeCamera}. */
 export class FreeCameraControls {
   readonly camera = new FreeCamera();
+  /** Called whenever the flight starts or ends, so a button can say which it is. */
+  onChange: (() => void) | null = null;
   private readonly canvas: HTMLCanvasElement;
   private readonly hint: HTMLElement;
+  private readonly pad: TouchFly | null;
   private on = false;
   private locked = false;
   private shownHint = '';
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, touch = false) {
     this.canvas = canvas;
+    this.pad = touch ? new TouchFly(document.body, this.camera) : null;
     this.hint = document.createElement('div');
     this.hint.className = 'free-camera-hint';
     this.hint.hidden = true;
@@ -67,6 +80,11 @@ export class FreeCameraControls {
     return this.on;
   }
 
+  /** The keys, with whatever the touch pad is asking laid over them. */
+  input(keys: FreeCameraInput): FreeCameraInput {
+    return this.pad ? this.pad.input(keys) : keys;
+  }
+
   /**
    * Detach the camera from the player, or give it back. It takes over from
    * where the game camera stands, so the first frame of the flight is the frame
@@ -79,14 +97,15 @@ export class FreeCameraControls {
     }
     this.camera.from(from);
     this.on = true;
-    this.showHint();
-    this.lock();
+    this.show();
+    // A pad of its own is the whole interface on a phone, and it needs no lock.
+    if (!this.pad) this.lock();
   }
 
   /** Give the camera back to the player and let the pointer go. */
   release(): void {
     this.on = false;
-    this.showHint();
+    this.show();
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();
   }
 
@@ -99,13 +118,22 @@ export class FreeCameraControls {
     void Promise.resolve(this.canvas.requestPointerLock() as unknown).catch(() => {});
   }
 
+  /** Put what the flight's state changed on screen, and say it changed. */
+  private show(): void {
+    if (this.pad) this.pad.shown = this.on;
+    document.body.classList.toggle('flying', this.on);
+    this.showHint();
+    this.onChange?.();
+  }
+
   /** The line over the canvas, written only when it changes. */
   private showHint(): void {
-    const text = !this.on
-      ? ''
-      : this.locked
-        ? 'Free camera — press ` to return to the player'
-        : 'Free camera — click to look around, ` to return to the player';
+    const text =
+      !this.on || this.pad
+        ? ''
+        : this.locked
+          ? 'Free camera — press ` to return to the player'
+          : 'Free camera — click to look around, ` to return to the player';
     if (text === this.shownHint) return;
     this.shownHint = text;
     this.hint.hidden = text === '';

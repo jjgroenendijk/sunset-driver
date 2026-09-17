@@ -15,6 +15,8 @@ import {
   MAX_SPEED,
   MIN_SPEED,
   SPEED_STEP,
+  SURVEY_HEIGHT,
+  SURVEY_PITCH,
 } from '../src/render/free-camera.ts';
 
 /** One second of flight with the given keys held. */
@@ -34,6 +36,20 @@ describe('free camera', () => {
     // The game camera looks down at a fixed pitch and never yaws.
     expect(free.pitch).toBeCloseTo(-CAMERA_PITCH, 6);
     expect(free.yaw).toBeCloseTo(0, 6);
+  });
+
+  it('surveys from over the ground without moving off the spot', () => {
+    const free = new FreeCamera();
+    free.x = 400;
+    free.z = -120;
+    free.yaw = 1.2;
+    free.survey(35);
+    expect(free.y).toBeCloseTo(35 + SURVEY_HEIGHT, 6);
+    expect(free.pitch).toBeCloseTo(SURVEY_PITCH, 6);
+    // Where it stands on the map and which way it faces are the session's.
+    expect(free.x).toBe(400);
+    expect(free.z).toBe(-120);
+    expect(free.yaw).toBe(1.2);
   });
 
   it('holds still with no key held', () => {

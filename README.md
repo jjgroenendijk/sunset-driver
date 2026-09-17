@@ -45,6 +45,16 @@ how the steps are watched on a machine that does not need them.
 | Debug: die | K |
 | Debug: arrest | B |
 
+## On a phone
+
+A phone reaches none of those keys, so it is offered the city instead of the game. The title screen
+opens on **Explore the city**, which starts the seed in the box straight into the free camera, two
+hundred metres over the streets. The left thumb flies it, a drag anywhere turns the view, a pinch
+sets the speed, and the keys down the right edge rise, fall and go six times as fast. Menu, Map and
+Land sit in the top corner.
+
+It needs WebGPU, which on an iPhone means iOS 26 or later; an older one is told so and stops.
+
 ## Develop
 
 `npm run verify` runs the typecheck, the determinism lint and the test sweeps. See `spec.md` for the

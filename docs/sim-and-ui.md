@@ -67,6 +67,9 @@ the player buys are in `docs/safehouses.md`, the factions, their reputation and 
   terrain cell, drawn scaled; the roads are strokes off `RoadSegmentIndex`, so the map is sharp at
   half a metre to the pixel and at sixteen. Both widgets redraw only when something on them has
   moved, so a session standing still pays for neither.
+- `MapScreen` is given a `touch` flag, and a touch browser is drawn a row of zoom and close keys
+  over the picture: it has no wheel to zoom with and no `M` to close with. `docs/menus.md` holds
+  the rest of what a phone changes.
 - Look at the map before judging a change to it: `node scripts/map-preview.ts <seed> out.png`, and
   `--minimap` for the round window at the minimap's own scale. It needs a Chromium but no WebGPU
   device, because the map is a 2D canvas.

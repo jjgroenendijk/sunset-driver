@@ -2,7 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- `viewport-fit=cover` runs the canvas under the notch and the home bar;
+         `touch.css` keeps the interface out from under them with the safe-area
+         insets. Safari ignores `user-scalable`, so the zoom is held off by
+         `touch-action` and by the gesture handler in `touch-bar.ts`. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#12070f" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Sunset Driver</title>
     <link rel="stylesheet" href="/src/ui/style.css" />
   </head>
