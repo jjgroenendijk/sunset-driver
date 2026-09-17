@@ -361,6 +361,7 @@ function job(kind: JobKind, legs: MissionJob['legs'], cls: MissionJob['cls'] = '
     pay: 100,
     cls,
     block: -1,
+    chapter: '',
   };
 }
 

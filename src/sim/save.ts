@@ -39,9 +39,11 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * safehouses of spec section 16.3 with their stashes and their garages,
  * version 8 the factions of spec section 17 with their reputation, the blocks
  * the player has taken and the enforcers that are out, and version 9 the
- * missions of spec section 18 with the job being carried.
+ * missions of spec section 18 with the job being carried. Version 10 added the
+ * authored chain of the same section: how far it has been walked, the side the
+ * player took at its fork, and whether it ended.
  */
-export const SAVE_VERSION = 9;
+export const SAVE_VERSION = 10;
 
 export interface SaveFile {
   format: typeof SAVE_FORMAT;

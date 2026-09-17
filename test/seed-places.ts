@@ -12,7 +12,12 @@ import {
 } from '../src/world/beaches.ts';
 import { MIN_BOARDWALK } from '../src/world/roads.ts';
 import { nearestRoadPlace } from '../src/world/surface.ts';
+import { CHAPTERS, chainSides, chapterJob } from '../src/sim/chain.ts';
 import { dealerPlaces, PITCH_LIMIT } from '../src/sim/dealer.ts';
+import { giverPlaces } from '../src/sim/giver.ts';
+import { jobSites, type MissionWorld } from '../src/sim/job.ts';
+import type { Place } from '../src/sim/on-foot.ts';
+import { createSimState } from '../src/sim/simulation.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
@@ -23,6 +28,7 @@ import { type Beach, type Corridor, type Point, type RoadCurve, type WorldDescri
 import { ringArea } from './helpers.ts';
 import {
   FOOTPRINT_COUNT,
+  CHAIN_COUNT,
   DEALER_COUNT,
   SAMPLE_STRIDE,
   GUARANTEED_BEACH,
@@ -282,6 +288,52 @@ export function placeChecks(): void {
             if (away > PITCH_LIMIT) fault(`${dealer.name} works a corner ${away.toFixed(0)} m out of their district`);
             if (Math.abs(pitch.x) > w.size / 2 || Math.abs(pitch.y) > w.size / 2) fault(`${dealer.name} works a corner off the map`);
           }
+        }
+        expect(complaint, `seed ${seed}`).toBeUndefined();
+      }
+    });
+
+    it('walks the authored chain from end to end over the corners a real city gave it', () => {
+      // Spec section 18: the hand-written spine is anchored to whatever the seed
+      // produced. Both of its sides find a contact, every chapter of both
+      // branches builds against the world, and every leg of every chapter
+      // stands on a street of the map with a clock long enough to reach it.
+      for (const seed of seeds.slice(0, CHAIN_COUNT)) {
+        const w = worlds.get(seed) as WorldDescription;
+        const snap = (x: number, y: number): Place | undefined => nearestRoadPlace(w, x, y);
+        const world: MissionWorld = {
+          givers: giverPlaces(seed, w.districts, snap),
+          sites: jobSites(seed, w.districts, snap),
+        };
+        const state = createSimState(seed);
+        const sides = chainSides(world);
+        let complaint: string | undefined;
+        const fault = (text: string): void => {
+          complaint ??= text;
+        };
+
+        if (sides.patron === undefined || sides.rival === undefined) fault('has nobody to run the chain through');
+        else {
+          for (const chapter of CHAPTERS) {
+            const job = chapterJob(state, world, chapter, sides);
+            if (job === undefined) {
+              fault(`${chapter.id} could not be built`);
+              continue;
+            }
+            if (job.legs.length !== chapter.legs.length) fault(`${chapter.id} lost a leg`);
+            if (job.limit <= 0) fault(`${chapter.id} allows no time`);
+            for (const leg of job.legs) {
+              if (Math.abs(leg.x) > w.size / 2 || Math.abs(leg.y) > w.size / 2) fault(`${chapter.id} sends the player off the map`);
+              if (leg.label.includes('{where}')) fault(`${chapter.id} has a leg that names no district`);
+            }
+          }
+          // The fork is a choice only where the two sides stand apart, which is
+          // what the fallback in `chain.ts` is for.
+          const fork = CHAPTERS.filter((chapter) => chapter.branch !== '');
+          const at = Math.min(...fork.map((chapter) => chapter.step));
+          const roles = new Set(fork.filter((chapter) => chapter.step === at).map((chapter) => chapter.role));
+          if (roles.size !== 2) fault('offers both sides of the fork from one side');
+          if (sides.patron.id === sides.rival.id) fault('runs both sides of the chain through one contact');
         }
         expect(complaint, `seed ${seed}`).toBeUndefined();
       }

@@ -79,6 +79,17 @@ export interface MissionJob {
   cls: VehicleClass | '';
   /** The block a `take` leg is for, or -1 on every other kind. */
   block: number;
+  /** The chapter of the authored chain this is (`chain.ts`), or '' for side work. */
+  chapter: string;
+}
+
+/** A job as a board offers it: what it is, the row that takes it, and what the giver says with it. */
+export interface JobOffer {
+  job: MissionJob;
+  /** What the row that takes it says, which is the choice at the fork of the chain. */
+  label: string;
+  /** A line about the offer, which the chain's chapters carry and the side work does not. */
+  note: string;
 }
 
 /** A street corner a job's legs are placed on. */
@@ -185,14 +196,14 @@ export function offerFor(state: SimState, world: MissionWorld, giver: GiverPlace
   const sites = world.sites;
   if (sites.length < 2) return undefined;
   const rng = rngFor(state.seed, offerIndex(state), Subsystem.Missions, giver.id);
-  const first = nearest(sites, giver.x, giver.y, rng.int(0, Math.min(2, sites.length - 1)));
-  const away = further(sites, first, rng.int(0, sites.length - 1));
+  const first = nearestSite(sites, giver.x, giver.y, rng.int(0, Math.min(2, sites.length - 1)));
+  const away = furtherSite(sites, first, rng.int(0, sites.length - 1));
   const kind = kindOf(rng.int(0, 6), giver);
   const job: MissionJob = {
     kind,
     giver: giver.id,
     faction: giver.faction,
-    against: rivalOf(giver, rng.int(0, 1)),
+    against: rivalOf(giver.faction, rng.int(0, 1)),
     title: '',
     legs: [],
     leg: 0,
@@ -202,6 +213,7 @@ export function offerFor(state: SimState, world: MissionWorld, giver: GiverPlace
     pay: 0,
     cls: kind === 'theft' ? (THEFT_CLASSES[rng.int(0, THEFT_CLASSES.length - 1)] as VehicleClass) : '',
     block: kind === 'territory' ? blockKeyAt(away.x, away.y) : -1,
+    chapter: '',
   };
   job.legs = legsOf(job, first, away, sites, rng.int(0, sites.length - 1));
   job.title = titleOf(job, first, away);
@@ -242,7 +254,7 @@ function raceLegs(sites: readonly JobSite[], start: JobSite, from: number): JobL
   const legs: JobLeg[] = [leg('drive', start, `Get to the start line in ${start.district.name}`)];
   let at = start;
   for (let i = 1; i < RACE_LEGS; i++) {
-    at = further(sites, at, from + i);
+    at = furtherSite(sites, at, from + i);
     legs.push(leg('drive', at, `Checkpoint ${i} of ${RACE_LEGS - 1} in ${at.district.name}`));
   }
   return legs;
@@ -277,18 +289,18 @@ function kindOf(draw: number, giver: GiverPlace): JobKind {
   const kinds: readonly JobKind[] = ['delivery', 'theft', 'pursuit', 'protection', 'sabotage', 'race', 'territory'];
   const kind = kinds[Math.min(draw, kinds.length - 1)] as JobKind;
   if (kind !== 'territory' && kind !== 'protection' && kind !== 'sabotage') return kind;
-  return rivalOf(giver, 0) < 0 ? 'delivery' : kind;
+  return rivalOf(giver.faction, 0) < 0 ? 'delivery' : kind;
 }
 
-/** A rival of the contact's faction, which is who the work is aimed at. */
-function rivalOf(giver: GiverPlace, draw: number): number {
-  const rivals = (FACTIONS[giver.faction] as Faction | undefined)?.rivals ?? [];
+/** A rival of a faction, which is who the work it pays for is aimed at. */
+export function rivalOf(faction: number, draw: number): number {
+  const rivals = (FACTIONS[faction] as Faction | undefined)?.rivals ?? [];
   if (rivals.length === 0) return -1;
   return factionIndex(rivals[draw % rivals.length] as (typeof rivals)[number]);
 }
 
 /** The corner nearest a place, counting from the `skip`-th nearest, so two jobs do not share one. */
-function nearest(sites: readonly JobSite[], x: number, y: number, skip: number): JobSite {
+export function nearestSite(sites: readonly JobSite[], x: number, y: number, skip: number): JobSite {
   const order = sites.map((site, i) => ({ i, away: Math.hypot(site.x - x, site.y - y) }));
   order.sort((a, b) => a.away - b.away || a.i - b.i);
   return sites[(order[Math.min(skip, order.length - 1)] as { i: number }).i] as JobSite;
@@ -300,7 +312,7 @@ function nearest(sites: readonly JobSite[], x: number, y: number, skip: number):
  * of the world answers where nothing is far enough, which is a small world
  * rather than a broken one.
  */
-function further(sites: readonly JobSite[], from: JobSite, draw: number): JobSite {
+export function furtherSite(sites: readonly JobSite[], from: JobSite, draw: number): JobSite {
   let best = from;
   let bestAway = -1;
   for (let i = 0; i < sites.length; i++) {
@@ -336,7 +348,7 @@ function titleOf(job: MissionJob, first: JobSite, away: JobSite): string {
 }
 
 /** Metres a job covers: the walk from the contact to the first leg, then leg to leg. */
-function runOf(job: MissionJob, from: Place): number {
+export function runOf(job: MissionJob, from: Place): number {
   let run = 0;
   let at: { x: number; y: number } = from;
   for (const leg of job.legs) {
@@ -352,7 +364,7 @@ function runOf(job: MissionJob, from: Place): number {
  * takeover of spec section 17.2 is forty seconds of standing on it, and a
  * territory job that did not allow for them could not be finished.
  */
-function limitOf(job: MissionJob, run: number): number {
+export function limitOf(job: MissionJob, run: number): number {
   let held = job.kind === 'territory' ? TAKEOVER_TICKS : 0;
   for (const leg of job.legs) held += leg.ticks;
   const pace = job.kind === 'race' || job.kind === 'pursuit' ? FAST_PACE : PACE;
