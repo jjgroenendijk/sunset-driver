@@ -28,10 +28,11 @@ import { AmbientTraffic, trafficRoadsOf } from './sim/traffic.ts';
 import { commitCrime, PoliceForce, policeDistrictsOf } from './sim/police.ts';
 import { TramLine } from './sim/tram.ts';
 import { stationAt, type MetroPlace } from './sim/metro.ts';
+import { shopPlaces, visiting, type ShopPlace } from './sim/shop.ts';
 import { HotwireBar } from './ui/hotwire.ts';
 import { Hud } from './ui/hud.ts';
 import { MapArt } from './ui/map-draw.ts';
-import { MapPois } from './ui/map.ts';
+import { MapPois, SHOP_POIS } from './ui/map.ts';
 import { MAP_KEY, MapScreen } from './ui/map-screen.ts';
 import { Minimap, MINIMAP_NORTH_KEY } from './ui/minimap.ts';
 import { PAUSE_KEY, PauseMenu } from './ui/pause.ts';
@@ -41,6 +42,7 @@ import { FREE_CAMERA_KEY, FreeCameraControls } from './ui/free-camera.ts';
 import { Keyboard } from './ui/keyboard.ts';
 import { LoadingScreen } from './ui/loading.ts';
 import { TitleScreen, type TitleChoice } from './ui/title.ts';
+import { ShopPanel } from './ui/shop-panel.ts';
 import { TravelPanel } from './ui/travel.ts';
 import { PICKER_KEY, VehiclePicker } from './ui/vehicle-picker.ts';
 import { WEAPON_PICKER_KEY, WeaponPicker } from './ui/weapon-picker.ts';
@@ -99,6 +101,10 @@ interface Session {
   travel: TravelPanel;
   /** The station entrances the panel names, in the order the record numbers them. */
   metro: readonly MetroPlace[];
+  /** The shop counter of spec section 16.1, drawn at a door and inside a shop. */
+  shopPanel: ShopPanel;
+  /** The shops the panel names, in the order the record numbers them. */
+  shops: readonly ShopPlace[];
   /** What draws the frame between two ticks, so the motion is smooth (spec section 9.2). */
   smooth: RenderSmoother;
   /** The debug picker of the arsenal, which shows the weapon in hand. */
@@ -267,6 +273,10 @@ async function boot(): Promise<void> {
       // frame while the camera slides every frame, and the city judders.
       const alpha = clock.alpha();
       const p = session.smooth.playerAt(session.state, alpha);
+      // The shop the player is standing in (spec section 16.1), or undefined.
+      // Two things read it: the room that is drawn, and the shell over it,
+      // which has to be cut away or the room is roofed over again.
+      const inShop = visiting(session.state, session.shops);
       const vehicle = session.smooth.vehicleAt(session.state, alpha);
       // The player and the car are both drawn from the record the physics
       // wrote. The record says how high the player's feet stand, so the model
@@ -328,7 +338,7 @@ async function boot(): Promise<void> {
         // the roofs. Off does neither.
         camera.update(elapsed / 1000, p, settings.buildingView === 'pull-back' ? roofTop : undefined);
         session.world.cutaway.enabled = settings.buildingView !== 'whole';
-        session.world.seeThrough(camera.camera.position, p.x, p.height, p.y);
+        session.world.seeThrough(camera.camera.position, p.x, p.height, p.y, inShop !== undefined);
       }
       if (flew && !flying) {
         // The flight ended, whichever frame the key came on: the camera slides
@@ -359,6 +369,10 @@ async function boot(): Promise<void> {
       // The metro panel of spec section 13.3: where the player may travel from
       // the station they are standing at, and the fade of a trip in progress.
       session.travel.update(session.state, session.metro, stationAt(session.metro, session.state), session.state.tick);
+      // The shop of spec section 16.1: the counter on screen, and the room the
+      // player is standing in, which is the only interior the scene ever holds.
+      session.shopPanel.update(session.state, session.shops);
+      session.world.shopInside(inShop);
       session.weapons.sync(session.state.loadout);
       // The maps of spec section 12. Both follow the player from the record,
       // and both redraw only when something on them has moved, so a session
@@ -532,6 +546,11 @@ async function boot(): Promise<void> {
     name: description.districts[at.district]?.name ?? 'Metro',
   }));
   ground.metro = metro;
+  // The shops of spec section 16.1 are dealt over the buildings by the same
+  // worker, and a shop is entered from its own shopfront rather than from the
+  // road, so their places need no lookup.
+  const shops = shopPlaces(world.shops ?? [], description.districts);
+  ground.shops = shops;
   // The parking bays come from the same answer. Which bay holds a car is a
   // function of the tick, so the physics and the renderer share one plan.
   const parked = world.bays === undefined ? undefined : new ParkedCars(state.seed, world.bays);
@@ -595,6 +614,7 @@ async function boot(): Promise<void> {
   pois.extra = [
     ...stations.map((at) => ({ type: 'police' as const, x: at.x, y: at.y })),
     ...metro.map((at) => ({ type: 'metro-station' as const, x: at.x, y: at.y, name: `Metro · ${at.name}` })),
+    ...shops.map((at) => ({ type: SHOP_POIS[at.kind], x: at.x, y: at.y, name: at.name })),
   ];
   const art = new MapArt(description, pois);
   const minimap = new Minimap(document.body, art);
@@ -715,6 +735,8 @@ async function boot(): Promise<void> {
     hotwire: new HotwireBar(document.body),
     travel: new TravelPanel(document.body),
     metro,
+    shopPanel: new ShopPanel(document.body),
+    shops,
     smooth,
     weapons,
     pause,

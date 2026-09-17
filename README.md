@@ -30,13 +30,13 @@ how the steps are watched on a machine that does not need them.
 | Sprint | Shift |
 | Handbrake, jump | Space |
 | Horn | H |
-| Enter or leave vehicle, hotwire, interact | E |
+| Enter or leave vehicle or shop, hotwire, interact | E |
 | Fire, swing | F |
 | Aim | Q |
 | Reload | R |
 | Cycle weapon | C |
 | Radio: next, previous station | ] and [ |
-| Metro: travel to the station on the panel | 1 to 9 |
+| Metro or shop: the row on the panel | 1 to 9 |
 | Pause menu | Esc |
 | Map | M |
 | Minimap north up | N |

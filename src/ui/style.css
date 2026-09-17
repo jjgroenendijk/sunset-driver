@@ -32,6 +32,12 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #12070f; col
 .travel-title { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; color: #5ad08a; }
 .travel-list { display: grid; gap: .15rem; font-size: .95rem; }
 .travel-refused { color: #ff8a5c; }
+.shop { position: fixed; left: 50%; bottom: 21%; transform: translateX(-50%); min-width: min(22rem, 80%); display: grid; gap: .35rem; padding: .7rem .9rem; border: 1px solid #6a5a2b; border-radius: .5rem; background: rgba(24,20,11,.88); pointer-events: none; }
+.shop-title { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; color: #ffd166; }
+.shop-list { display: grid; gap: .15rem; font-size: .95rem; font-variant-numeric: tabular-nums; }
+.shop-dear { color: #8a8079; }
+.shop-said { color: #7ad07a; }
+.shop-refused { color: #ff8a5c; }
 .travel-fade { position: fixed; inset: 0; background: #000; pointer-events: none; }
 
 .free-camera-hint { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); padding: .3rem .7rem; border: 1px solid #6a3f58; border-radius: .25rem; background: rgba(24,11,20,.85); font-size: .85rem; letter-spacing: .06em; pointer-events: none; }
