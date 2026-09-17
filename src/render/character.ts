@@ -92,10 +92,14 @@ export class CharacterModel {
   pose(pose: CharacterPose): void {
     this.body.rotation.z = pose.pitch;
     this.body.position.y = pose.lift;
+    // The model faces local +x, so a lunge steps along it.
+    this.body.position.x = pose.lunge;
     this.hips.position.y = this.hipHeight + pose.bob;
     // A turn about +z carries a hanging limb forward, to local +x; the torso
-    // stands up rather than hangs, so it leans forward the other way.
+    // stands up rather than hangs, so it leans forward the other way. A turn
+    // about +y carries it round, which is the wind-up of a swing.
     this.torso.rotation.z = -pose.lean;
+    this.torso.rotation.y = pose.twist;
     const [left, right] = this.legs as [{ hip: Group; knee: Group }, { hip: Group; knee: Group }];
     left.hip.rotation.z = pose.thighL;
     right.hip.rotation.z = pose.thighR;
@@ -104,6 +108,11 @@ export class CharacterModel {
     const [armL, armR] = this.arms as [Group, Group];
     armL.rotation.z = pose.armL;
     armR.rotation.z = pose.armR;
+    // Three.js turns about x, then y, then z, so the arm is raised in front of
+    // the body first and carried round after it: an arc across the body, which
+    // is what a swing reads as from overhead.
+    armL.rotation.y = pose.yawL;
+    armR.rotation.y = pose.yawR;
   }
 
   /** Release the GPU resources of the current model. */

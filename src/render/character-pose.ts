@@ -31,6 +31,12 @@ export interface CharacterMotion {
   depth: number;
   /** Metres from the feet to the top of the head. It says how deep is deep. */
   stature: number;
+  /**
+   * How far through a swing of a melee weapon the body is, 0 to 1, or -1 while
+   * nothing is being swung (spec section 11.6). `swingProgress` in
+   * `src/sim/melee.ts` reads it off the record.
+   */
+  swing?: number;
 }
 
 export type Stance = 'stand' | 'walk' | 'air' | 'swim';
@@ -39,6 +45,10 @@ export type Stance = 'stand' | 'walk' | 'air' | 'swim';
 export interface CharacterPose {
   /** Radians the whole body tips forward. A swimmer lies nearly flat. */
   pitch: number;
+  /** Radians the torso turns about the body's own up axis, which is a swing's wind-up. */
+  twist: number;
+  /** Metres the whole body steps forward along its heading, which is a swing's lunge. */
+  lunge: number;
   /** Metres the whole body is lifted, which is how a swimmer reaches the surface. */
   lift: number;
   /** Metres the hips rise over the step. */
@@ -51,6 +61,13 @@ export interface CharacterPose {
   kneeR: number;
   armL: number;
   armR: number;
+  /**
+   * Radians each shoulder turns about up, which is what carries an arm across
+   * the body rather than along it. The camera of spec section 10.7 looks
+   * straight down, so this is the half of a swing that reads.
+   */
+  yawL: number;
+  yawR: number;
 }
 
 /** Metres walked for one full cycle of two steps. It sets the pace of the legs. */
@@ -122,7 +139,22 @@ export function advancePhase(phase: number, stance: Stance, speed: number, dt: n
 
 /** A body standing straight, which every stance is written over. */
 function rest(): CharacterPose {
-  return { pitch: 0, lift: 0, bob: 0, lean: 0, thighL: 0, thighR: 0, kneeL: 0, kneeR: 0, armL: 0, armR: 0 };
+  return {
+    pitch: 0,
+    twist: 0,
+    lunge: 0,
+    lift: 0,
+    bob: 0,
+    lean: 0,
+    thighL: 0,
+    thighR: 0,
+    kneeL: 0,
+    kneeR: 0,
+    armL: 0,
+    armR: 0,
+    yawL: 0,
+    yawR: 0,
+  };
 }
 
 /**
@@ -198,10 +230,74 @@ function swimPose(phase: number, motion: CharacterMotion): CharacterPose {
   return pose;
 }
 
-/** The pose of a stance at a point of its cycle. */
+/**
+ * The three parts of a swing, as shares of it (spec section 11.6): the weapon
+ * is drawn back, thrown through, and carried to rest. The strike is the short
+ * middle, which is what makes a blow read as a blow rather than as a wave.
+ */
+export const WIND_END = 0.3;
+export const STRIKE_END = 0.52;
+
+/** Radians the arm is drawn back behind the body, and carried past it. */
+export const SWING_WIND = 0.95;
+export const SWING_FOLLOW = 1.25;
+
+/** Radians the arm is raised in front of the body while the blow is thrown. */
+export const SWING_RAISE = 1.15;
+
+/** How much of the arm's turn the torso and the off arm take. */
+export const TWIST_SHARE = 0.4;
+export const OFF_ARM_SHARE = 0.35;
+
+/** Metres the body steps into the blow at the moment it lands. */
+export const SWING_LUNGE = 0.2;
+
+/** Ease a share of a part of the swing: slow at the ends and quick in the middle. */
+function ease(t: number): number {
+  const clamped = Math.min(1, Math.max(0, t));
+  return clamped * clamped * (3 - 2 * clamped);
+}
+
+/**
+ * Where the swinging arm stands, in radians about up, `progress` of the way
+ * through a swing: behind the body while it is drawn back, past the body once
+ * the blow is through, and home again as it comes to rest.
+ */
+export function swingAngle(progress: number): number {
+  if (progress < WIND_END) return -SWING_WIND * ease(progress / WIND_END);
+  if (progress < STRIKE_END) {
+    const t = ease((progress - WIND_END) / (STRIKE_END - WIND_END));
+    return -SWING_WIND + (SWING_WIND + SWING_FOLLOW) * t;
+  }
+  return SWING_FOLLOW * (1 - ease((progress - STRIKE_END) / (1 - STRIKE_END)));
+}
+
+/**
+ * Lay a swing over a stance (spec section 11.6). The body keeps walking,
+ * standing or falling underneath: the arm is carried across it, the torso
+ * turns with the arm, the off arm swings the other way to balance it, and the
+ * body steps into the blow as it lands. `progress` is what `swingProgress` in
+ * `src/sim/melee.ts` answers, and a negative one leaves the pose alone.
+ */
+export function swingOver(pose: CharacterPose, progress: number): CharacterPose {
+  if (progress < 0) return pose;
+  const angle = swingAngle(progress);
+  const through = Math.sin(Math.PI * Math.min(1, progress));
+  pose.yawR = angle;
+  pose.yawL = -angle * OFF_ARM_SHARE;
+  // The weapon is held out in front while the blow is thrown, and the arm falls
+  // back to whatever the stance underneath was doing as the swing ends.
+  pose.armR = pose.armR * (1 - through) - SWING_RAISE * through;
+  pose.armL = pose.armL * (1 - through);
+  pose.twist = angle * TWIST_SHARE;
+  pose.lunge = SWING_LUNGE * through;
+  return pose;
+}
+
+/** The pose of a stance at a point of its cycle, with any swing laid over it. */
 export function poseFor(stance: Stance, phase: number, motion: CharacterMotion): CharacterPose {
-  if (stance === 'swim') return swimPose(phase, motion);
-  if (stance === 'air') return airPose(motion.vy);
-  if (stance === 'walk') return walkPose(phase, motion.speed);
-  return standPose(phase);
+  if (stance === 'swim') return swingOver(swimPose(phase, motion), motion.swing ?? -1);
+  if (stance === 'air') return swingOver(airPose(motion.vy), motion.swing ?? -1);
+  if (stance === 'walk') return swingOver(walkPose(phase, motion.speed), motion.swing ?? -1);
+  return swingOver(standPose(phase), motion.swing ?? -1);
 }
