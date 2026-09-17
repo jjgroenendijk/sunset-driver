@@ -64,24 +64,36 @@ corridors in `docs/corridors.md`.
   is a road, so `world.beaches` is in the skeleton the tracer reads. A beach is a run of coastline
   the ground behind rises slowly from; the harbour, the river mouth and the rock in the sea that no
   crossing reaches and the ends of the crossings are cut out first. A run on land no road is laid on
-  is never developed, only left as plain sand. `isResort` says which beaches
-  carry a boardwalk line, a pier and car parks: the long ones, plus two more outside the core
-  whatever their length, which is what gives every seed the beach the spec asks for. Those two rank
-  a beach of `LONG_BEACH` first, then one that runs past a district The Boardwalk can be named for.
+  is never developed, and neither is one whose boardwalk line comes back over itself with less than
+  `MIN_BOARDWALK` left on either side of the fold: the coast rounds a headland narrower than a
+  carriageway, and a street may not lie over its own. Both are left as plain sand. `isResort` says
+  which beaches carry a boardwalk line, a pier and car parks: the long ones, plus two more outside
+  the core whatever their length, which is what gives every seed the beach the spec asks for. Those
+  two rank a beach of `LONG_BEACH` first, then one that runs past a district The Boardwalk can be
+  named for.
   The dune line is offset off a coastline that marching squares draws in cell steps, so the normal
   is taken across several samples and capped short of the centre of a bend; both keep it from
   folding over itself.
-- `nameBoardwalk` and `withBeachCulture` (`beaches.ts`) finish the districts once the beaches are
-  known. The districts are placed first, because a beach reads their sites, so the beach
-  neighbourhood can only be found afterwards. `nameBoardwalk` gives the name "The Boardwalk" to the
-  district holding most of the waterline of the longest resort outside the core; a district with a
-  fixed name of its own, such as Gull Island, keeps it and the beach takes another district.
+- `nameBoardwalk` and `withBeachCulture` (`beaches.ts`) finish the districts once the roads are
+  traced, in `world.ts`. The districts are placed first, because a beach reads their sites, so the
+  beach neighbourhood can only be found afterwards; and the beaches are only final after the trace,
+  because a resort that got no boardwalk is no resort. Naming them before it left The Boardwalk as
+  the neighbourhood of a beach that ended as plain sand. Nothing in the trace or the corridors reads
+  a district's name or its culture — the simulation does, and it reads the finished world.
+  `nameBoardwalk` gives the name "The Boardwalk" to the district holding most of the waterline of
+  the longest resort outside the core; a district with a fixed name of its own, such as Gull
+  Island, keeps it and the beach takes another district.
   `withBeachCulture` then gives that beach's districts the beach culture.
 - The beach owns no ground of its own: `beach.sand` is the sand the terrain draws, and the ground is
   claimed once, as the parcels `buildParcels` cuts out of it. The minor fill and the arterial fill
   keep off a resort's sand, so the boardwalk is what reaches it; every other beach is left to
   whatever road runs behind it, because sand no road reaches is not a parcel at all. A highway or an
   island link may still cross a beach, and a seafront road is not a fault.
+- `withBoardwalkRoad` (`beaches.ts`) is the last word on a resort, in `world.ts` once the roads are
+  traced. A beach the trace gave no boardwalk gives up its pier and its car parks with it and keeps
+  its sand: a resort is a beach with a boardwalk on it, and three things no road reaches are worse
+  than plain sand. The plan cannot decide this itself, because what the ground refuses and which
+  roads stand near the line are only known once the tracer has run.
 - `traceRoads` returns the roads and the boardwalk each beach was given. A boardwalk is the one road
   not traced from the field: the line comes from the beach, the ground decides how much of it
   survives, and each end reaches on to the network.

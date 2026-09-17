@@ -24,6 +24,8 @@ import { districtAt, zoneAt, type ZoneLayout } from './districts.ts';
 import { Heightfield } from './heightfield.ts';
 import { landRings } from './land.ts';
 import { LandMasses } from './landmass.ts';
+import { MIN_BOARDWALK } from './road-params.ts';
+import { stepOverlaps } from './self-overlap.ts';
 import { segmentDistance } from './terrain.ts';
 import { footprintHalfWidth } from './tiers.ts';
 import type { Beach, District, Pier, Point as WorldPoint, WaterDescription, Zone } from './types.ts';
@@ -169,10 +171,48 @@ export function planBeaches(
     const mass = land.massAt(mid.x + mid.nx * mid.sand, mid.y + mid.ny * mid.sand);
     return mass >= 0 && served[mass] === 1;
   });
-  const promoted = new Set(promotions(runs, servable, zones, districts));
+  // A resort is a beach with a boardwalk on it, so a run whose boardwalk line
+  // cannot carry one is left as plain sand however long it is.
+  const developable = runs.map((run, i) => servable[i] === true && carriesBoardwalk(run));
+  const promoted = new Set(promotions(runs, developable, zones, districts));
   return runs.map((run, i) =>
-    beachOf(i, run, servable[i] === true && (shoreLength(run) >= RESORT_BEACH || promoted.has(i)), terrain, water, zones, districts),
+    beachOf(i, run, developable[i] === true && (shoreLength(run) >= RESORT_BEACH || promoted.has(i)), terrain, water, zones, districts),
   );
+}
+
+/**
+ * True when a run's boardwalk line can carry the street a resort needs.
+ *
+ * The line is the dune line a street's half-width further inland, and it is laid
+ * as it stands rather than traced (`traceBoardwalk` in `roads.ts`). Where the
+ * coast rounds a headland narrower than a carriageway, the two legs of the line
+ * come back beside each other, and a street may not lie over its own carriageway
+ * (spec section 6.2). The trace then keeps only the longer leg, which on a short
+ * beach is under `MIN_BOARDWALK`, and the beach is left with a pier and two car
+ * parks that no road reaches.
+ *
+ * The ground can still refuse the line once the roads are traced, which is why
+ * more than one beach is promoted. This is the half of it the plan can see.
+ */
+function carriesBoardwalk(run: readonly ShoreSample[]): boolean {
+  const line = run.map((s) => offsetBy(s, s.sand + BOARDWALK_SET_BACK));
+  // The longest stretch that does not come back over itself, as
+  // `longestRunnable` keeps it: a fold ends the stretch and starts the next.
+  let best = 0;
+  let length = 0;
+  let stretch: WorldPoint[] = [];
+  for (const p of line) {
+    const last = stretch[stretch.length - 1];
+    if (last !== undefined && stepOverlaps(stretch, p, 'street')) {
+      best = Math.max(best, length);
+      length = 0;
+      stretch = [p];
+      continue;
+    }
+    if (last !== undefined) length += Math.hypot(p.x - last.x, p.y - last.y);
+    stretch.push(p);
+  }
+  return Math.max(best, length) >= MIN_BOARDWALK;
 }
 
 /**
@@ -279,6 +319,21 @@ function mostOfShore(beach: Beach, districts: readonly District[], zones: ZoneLa
     if (best === undefined || (tally[d.id] as number) > (tally[best.id] as number)) best = d;
   }
   return best?.id;
+}
+
+/**
+ * A beach with the boardwalk road the trace gave it, dropped back to plain sand
+ * where it got none.
+ *
+ * A resort is a beach with a boardwalk on it. Whether the boardwalk can be laid
+ * at all is only known once the roads are traced: the ground refuses a stretch,
+ * or neither end of the line reaches a road. A beach left with the pier and the
+ * two car parks and no boardwalk has three things nobody can drive to, so it
+ * gives them up and keeps its sand (issue #374).
+ */
+export function withBoardwalkRoad(beach: Beach, boardwalkRoad: number): Beach {
+  if (boardwalkRoad >= 0 || !isResort(beach)) return { ...beach, boardwalkRoad };
+  return { ...beach, boardwalkRoad: -1, boardwalk: [], pier: undefined, carParks: [] };
 }
 
 /** True on a beach developed as a resort: it carries the boardwalk, the pier and the car parks. */
