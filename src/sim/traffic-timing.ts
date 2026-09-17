@@ -242,6 +242,9 @@ function anchoredAt(
   // far back they stand is needed here.
   const stand = anchor.stop - queueBack(last, anchor, place, driver);
   steps.add(count - 1, stand, stand, driver.react);
+  // Where the stretch to the anchor starts. It moves to after every light on
+  // the way, since slowing a drive before a light would change the colour the
+  // vehicle finds there; only the run from the last light to the anchor is free.
   let free = steps.ticks.length;
   // The closing leg is driven in two: away from the queue on tick 0, and back
   // round to it at the end of the lap. A call on it falls in the drive back,
