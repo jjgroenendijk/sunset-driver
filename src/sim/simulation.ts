@@ -21,6 +21,7 @@ import { createFactionState, type FactionState } from './faction.ts';
 import { createMissionState, stepMissions, type MissionState } from './mission.ts';
 import { stepTerritory, type TerritoryMap } from './territory.ts';
 import { stepRadio } from './radio.ts';
+import { stepTowing } from './tow.ts';
 
 /** The serialisable, deterministic state of a session. */
 export interface SimState {
@@ -245,6 +246,10 @@ export function cloneSimState(state: SimState): SimState {
  *
  * A death or an arrest is resolved last (spec section 11.7), so the tick that
  * ends a run is the tick the player comes back on.
+ *
+ * The burnt-out shells the player has left behind are cleared after the physics
+ * (`tow.ts`), which is the one thing that ever takes a vehicle back out of the
+ * record.
  */
 export function stepSim(state: SimState, input: InputFrame = EMPTY_INPUT, physics?: SimPhysics): void {
   // The radio of spec section 15 is a turn of a number in the record and
@@ -282,6 +287,9 @@ export function stepSim(state: SimState, input: InputFrame = EMPTY_INPUT, physic
   if (turf !== undefined && !travelling(state)) stepTerritory(state, turf);
   physics?.step(state, travelling(state) ? EMPTY_INPUT : input);
   stepPickups(state);
+  // The wrecks of spec section 20.2 are cleared after the physics has settled
+  // them, so a shell is only ever taken from where the tick left it.
+  stepTowing(state);
   const fate = fateOf(state);
   if (fate !== null) {
     respawn(state, fate, respawnPlace(state, fate, physics?.stations ?? [], homes));
