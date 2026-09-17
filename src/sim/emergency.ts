@@ -201,17 +201,20 @@ export class EmergencyServices {
    * player has just driven and a fire is seen where the record left it.
    */
   step(state: SimState, crash = 0): void {
-    this.listen(state, crash);
+    // What is alight is read once and used twice: it is what raises a call and
+    // what says an unanswered one is over.
+    const fires = firesOf(state);
+    this.listen(state, fires, crash);
     this.dispatch(state);
     for (const unit of state.emergency.units) this.drive(state, unit);
-    this.close(state);
+    this.close(state, fires);
     this.retire(state);
     this.sweep(state);
   }
 
   /** What has happened this tick: the fires on the record, and the crash the player took. */
-  private listen(state: SimState, crash: number): void {
-    for (const fire of firesOf(state)) raiseCall(state, 'engine', fire.x, fire.y);
+  private listen(state: SimState, fires: readonly { x: number; y: number }[], crash: number): void {
+    for (const fire of fires) raiseCall(state, 'engine', fire.x, fire.y);
     if (crash >= CALL_SEVERITY) callAmbulance(state, state.vehicle.x, state.vehicle.z);
   }
 
@@ -230,7 +233,13 @@ export class EmergencyServices {
     const rng = rngFor(state.seed, state.tick, Subsystem.Emergency, id);
     const bearing = rng.float() * Math.PI * 2;
     const unit = this.raise(id, call, call.x + Math.cos(bearing) * SPAWN_RANGE, call.y + Math.sin(bearing) * SPAWN_RANGE);
-    if (unit === undefined) return;
+    if (unit === undefined) {
+      // No road to come in on: a fire out in the wilderness is one nobody can
+      // answer. It is tried again on the dispatch cadence rather than every
+      // tick, until the call goes stale.
+      service.dispatchTick = state.tick + DISPATCH_GAP;
+      return;
+    }
     service.nextUnit = id + 1;
     service.units.push(unit);
     call.unit = id;
@@ -387,9 +396,8 @@ export class EmergencyServices {
    * {@link CALL_STALE}. A call a unit is on is left alone — the unit is what
    * closes it.
    */
-  private close(state: SimState): void {
+  private close(state: SimState, fires: readonly { x: number; y: number }[]): void {
     const calls = state.emergency.calls;
-    const fires = firesOf(state);
     for (let i = calls.length - 1; i >= 0; i--) {
       const call = calls[i] as EmergencyCall;
       if (call.unit >= 0) continue;
