@@ -43,9 +43,10 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * authored chain of the same section: how far it has been walked, the side the
  * player took at its fork, and whether it ended. Version 11 made the enforcers
  * of spec section 17.2 shootable: what is left of each of them, and how many a
- * wave has sent.
+ * wave has sent. Version 12 added the blows a melee weapon has landed (spec
+ * section 11.6), so a loaded save throws the same sparks the session did.
  */
-export const SAVE_VERSION = 11;
+export const SAVE_VERSION = 12;
 
 export interface SaveFile {
   format: typeof SAVE_FORMAT;

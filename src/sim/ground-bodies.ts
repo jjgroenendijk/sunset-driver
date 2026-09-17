@@ -18,6 +18,7 @@ import type { SafehousePlace } from './safehouse.ts';
 import type { MissionWorld } from './job.ts';
 import type { ParkedCars } from './parked.ts';
 import type { AmbientTraffic } from './traffic.ts';
+import type { CrowdSource } from './melee.ts';
 import type { PoliceForce } from './police.ts';
 import type { EnforcerGang } from './enforcer.ts';
 import type { TerritoryMap } from './territory.ts';
@@ -91,6 +92,12 @@ export interface Ground {
    * Nothing parks where there is no traffic.
    */
   parked?: ParkedCars;
+  /**
+   * The crowd of spec section 13.1, who walk the pavements of the same roads.
+   * A test that is not about them leaves it out, and the street is empty: a
+   * swing meets nobody and nobody is put to flight.
+   */
+  crowd?: CrowdSource;
   /** The trams of spec section 13.2. They run with the traffic, so a ground without traffic has none. */
   tram?: TramLine;
   /**

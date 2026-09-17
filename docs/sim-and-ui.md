@@ -144,9 +144,28 @@ metro of spec section 13 — is in `docs/city-life.md`.
 - `physics.ts` is the Rapier half of that: a gun casts a ray per pellet, a melee weapon sweeps the
   arc `swingReaches` describes, and a thrown weapon or a launcher puts a `ProjectileState` into the
   record that `fly` carries one tick at a time, bouncing it off what it meets until its fuse burns
-  through. The shooter's own body is left out of every cast, so nobody shoots their own door. Only
-  the player's vehicle can be hit: a cast that meets a traffic body stops there as if it met the
-  ground, until #256 lands.
+  through. The shooter's own body is left out of every cast, so nobody shoots their own door. A
+  round can hit the player's vehicle, a police car or an enforcer; a cast that meets a traffic body
+  stops there as if it met the ground, until #256 lands.
+- A swing reaches four things, and one blow may meet several. The enforcers of spec section 17.2 and
+  the crowd of section 13.1 are swept **off the record** rather than out of the world, because an
+  arc is not a cast: so a bat reaches an enforcer who has just walked into the physics box, and a
+  person on the pavement, who stands in no physics at all. The player's own vehicle is measured to
+  its panels as a round is. Everything else — a police car, a parked car, the traffic, a kerb — is
+  found by the fan of `SWING_RAYS` rays `Gunfire.sweep` casts through the arc, and only a police car
+  is taken further once the swing has already landed on something the record knows.
+- A blow on a person of the crowd puts them to flight and is a `brawl`; a blow on a police car costs
+  what shooting at one costs. The crowd reaches the physics through `Ground.crowd`, which is a
+  `CrowdSource` — who is near, where they are and a fright — so a test hands it a bystander rather
+  than a city.
+- Every blow that lands is written into `SimState.hits` by `src/sim/melee.ts`: what was struck
+  (`person`, `vehicle` or `hard`), where, and how hard. It is on the record because two readers need
+  it a frame later and neither is the simulation — `src/render/melee-fx.ts` throws the burst and
+  `src/audio/plan.ts` fires the cue — and both read every hit newer than the tick they last read, so
+  a frame that stepped six ticks sees all six. A hit is forgotten `HIT_MEMORY` ticks after it lands.
+  `swingProgress` is how far through a swing the weapon is, which is what the pose is drawn from.
+- A swing never shoves a car: a player on foot is a player whose own vehicle is a **fixed** body, so
+  it takes the dent and stands still.
 - Gunfire damages a vehicle through `damageVehicle` in `damage.ts`, which is the dent, the integrity
   and the fire roll; `hitVehicle` is the same rule with the severity read off the speed a crash
   lost, and `disableEngine` is what the Barrett M82 does. A direction reaches those as the vehicle's

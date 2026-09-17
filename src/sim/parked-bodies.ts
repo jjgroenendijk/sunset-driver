@@ -46,6 +46,11 @@ export class ParkedBodies {
     return count;
   }
 
+  /** True where a body standing in the world is one of these parked cars. */
+  holds(body: number): boolean {
+    return this.bays.some((entry) => entry.body?.handle === body);
+  }
+
   /** Before the world is stepped: stand a body in every bay of the box that holds a car on this tick. */
   lead(state: SimState, minX: number, minY: number, maxX: number, maxY: number): void {
     const box = this.box;
