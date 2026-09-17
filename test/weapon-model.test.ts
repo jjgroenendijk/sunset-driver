@@ -1,4 +1,4 @@
-import type { Mesh } from 'three';
+import type { Group, Mesh } from 'three';
 import { describe, expect, it } from 'vitest';
 import { PICKUP_MIN_LENGTH, PICKUP_SCALE, PickupModels, pickupScale } from '../src/render/pickups.ts';
 import { HeldWeapon, WeaponArt } from '../src/render/weapon.ts';
@@ -50,7 +50,9 @@ describe('the drawn weapons', () => {
     held.set(loadout, player, pose, 1.8);
     expect(held.shown).toBe(true);
     expect(held.group.position.toArray()).toEqual([10, 3, 20]);
-    const mesh = held.group.children[0] as Mesh;
+    // The weapon hangs off the hand, which is what a swing turns.
+    const hand = held.group.children[0] as Group;
+    const mesh = hand.children[0] as Mesh;
     expect(mesh.geometry).toBe(art.geometry('ak-47', ['optic']));
     player.driving = true;
     held.set(loadout, player, pose, 1.8);

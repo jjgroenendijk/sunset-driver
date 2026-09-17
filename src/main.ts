@@ -67,6 +67,7 @@ import {
   SPARE_MAGAZINES,
   weaponOf,
 } from './sim/weapon.ts';
+import { swingOf } from './sim/melee.ts';
 import { roadDecks } from './world/decks.ts';
 import { nearestRoadPlace, nearestWaterPlace, SurfaceIndex } from './world/surface.ts';
 import type { WorldDescription } from './world/types.ts';
@@ -252,10 +253,12 @@ async function boot(): Promise<void> {
       // they are going, so the model follows them over a kerb, through a jump
       // and across the water (spec section 11.5), and the character is shown
       // only while they are out of the car.
-      session.world.walkPlayer(p, session.state.player, elapsed / 1000);
+      // A swing is drawn between two ticks like the rest of the frame (11.6).
+      const swing = swingOf(session.state.loadout, session.state.tick - 1 + alpha);
+      session.world.walkPlayer(p, session.state.player, elapsed / 1000, swing);
       // The weapon in the hands and the weapons on the ground (spec section
-      // 11.6), both drawn off the record with what is fitted to them.
-      session.world.held.set(session.state.loadout, session.state.player, p, session.world.character.height);
+      // 11.6), with what is fitted. The one in hand follows the arm swinging it.
+      session.world.held.set(session.state.loadout, session.state.player, p, session.world.character.height, swing);
       // The pickup under the mouse grows, so what lies there can be read before
       // walking to it. Nothing is picked while the camera is detached.
       if (!flying && pointer.over && session.state.pickups.length > 0) {
@@ -279,7 +282,7 @@ async function boot(): Promise<void> {
       // The damage of spec section 11.3, drawn off the same record: the smoke
       // and flames over the car and the rubber its tyres leave behind. It is
       // given the drawn pose, so the smoke stands where the car is seen to be.
-      session.world.damage(vehicle, session.state.seed, session.state.tick);
+      session.world.damage(vehicle, session.state, session.state.tick);
       // The light of the scene is a function of the tick, so the day runs at
       // the simulation's pace whatever the frame rate (spec section 10.5). The
       // colour grade follows the same tick (spec section 10.6).
@@ -466,6 +469,7 @@ async function boot(): Promise<void> {
     // drive on there and the physics is given it as a solid.
     decks: roadDecks(description),
     traffic,
+    crowd,
     tram,
     police,
   };
