@@ -36,6 +36,7 @@ import { rideHeight, specOf, type VehicleClass, type VehicleSpec } from '../sim/
 import { outInThis } from '../sim/weather.ts';
 import { SignalView } from './signals.ts';
 import { OUTLINE, VEHICLE_OUTLINE_WIDTH } from './vehicle.ts';
+import { createVehicleTrim, glowOf, type VehicleTrim } from './vehicle-glow.ts';
 import { TYRE, vehicleBoxes, type VehicleBox } from './vehicle-mesh.ts';
 
 /** Metres each way of the point the frame is drawn round that traffic is drawn in. */
@@ -96,6 +97,7 @@ export class TrafficView {
   share = 1;
   private readonly traffic: AmbientTraffic;
   private readonly classes: ClassMeshes[] = [];
+  private readonly trim: VehicleTrim;
   private readonly materials: Material[] = [];
   private readonly ids: number[] = [];
   private readonly pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
@@ -109,9 +111,10 @@ export class TrafficView {
   constructor(traffic: AmbientTraffic) {
     this.traffic = traffic;
     const paint = new MeshStandardMaterial({ roughness: 0.45, metalness: 0.2 });
-    const trim = new MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.1 });
+    this.trim = createVehicleTrim();
+    const trim = this.trim.material;
     const outline = new MeshBasicMaterial({ color: new Color(OUTLINE), side: BackSide, fog: true });
-    this.materials.push(paint, trim, outline);
+    this.materials.push(paint, outline);
     for (const cls of AMBIENT_CLASSES) {
       const spec = specOf(cls);
       const parts = trafficParts(spec);
@@ -127,6 +130,19 @@ export class TrafficView {
     }
     this.signals = traffic.signals === undefined ? undefined : new SignalView(traffic.signals);
     if (this.signals !== undefined) this.group.add(this.signals.group);
+  }
+
+  /**
+   * How far on the headlamps and tail lights of the traffic are, 0 by day and
+   * 1 after dark. It is the number the street lamps run off (`daylight.ts`), so
+   * the traffic lights up with the street it is on.
+   */
+  set lamps(amount: number) {
+    this.trim.lamps.value = amount;
+  }
+
+  get lamps(): number {
+    return this.trim.lamps.value;
   }
 
   /** How many vehicles the last frame drew, promoted ones included. */
@@ -188,6 +204,7 @@ export class TrafficView {
       }
     }
     for (const material of this.materials) material.dispose();
+    this.trim.dispose();
     this.signals?.dispose();
     this.group.clear();
   }
@@ -227,13 +244,19 @@ export function boxOf(part: Omit<VehicleBox, 'panel' | 'outlined'>, reach: numbe
   return geometry;
 }
 
-/** A geometry with one colour on every vertex, so it can be merged with parts of other colours. */
+/**
+ * A geometry with one colour on every vertex, so it can be merged with parts of
+ * other colours. Each vertex also carries how hard it burns after dark
+ * (`vehicle-glow.ts`), which is what makes a headlamp a headlamp once the parts
+ * are merged and the colour alone can no longer be asked.
+ */
 export function coloured(geometry: BufferGeometry, colour: number): BufferGeometry {
   const c = new Color(colour);
   const count = geometry.getAttribute('position').count;
   const colours = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) colours.set([c.r, c.g, c.b], i * 3);
   geometry.setAttribute('color', new BufferAttribute(colours, 3));
+  geometry.setAttribute('glow', new BufferAttribute(new Float32Array(count).fill(glowOf(colour)), 1));
   return geometry;
 }
 
