@@ -14,14 +14,17 @@
  * id)`, so the same crash at the same tick of the same seed always burns the
  * same way.
  *
- * Damage is a progression of states, and a vehicle only ever moves forward
- * through them:
+ * Damage is a progression of states:
  *
  * - `intact` — nothing has touched it;
  * - `dented` — panels are pushed in, and some may be torn off;
  * - `smoking` — the engine is hurt and trailing smoke;
  * - `burning` — it is on fire, and a timer is running;
  * - `burnt` — it has exploded, and what is left is a shell.
+ *
+ * A vehicle only ever moves forward through them, with one exception:
+ * {@link extinguish} takes a fire the fire engine of spec section 20.3 has
+ * reached back to `smoking`. Nothing takes a vehicle out of `burnt`.
  */
 import { rngFor, Subsystem } from '../core/rng.ts';
 import type { VehicleSpec } from './vehicle.ts';
@@ -247,6 +250,24 @@ export function ignite(damage: DamageState, tick: number): void {
   if (damage.stage === 'burning' || damage.stage === 'burnt') return;
   damage.stage = 'burning';
   damage.litTick = tick;
+}
+
+/**
+ * Put a fire out (spec section 20.3): what the hose of a fire engine does when
+ * it reaches a vehicle that is still alight. Answers true where there was a
+ * fire to put out.
+ *
+ * This is the one step back through the progression, and it is a short one. A
+ * doused vehicle comes back to `smoking` and keeps everything the fire has
+ * already cost it, so it is still a wreck and can still be set alight again. A
+ * vehicle that has already gone up is `burnt`, and nothing takes it out of
+ * that.
+ */
+export function extinguish(damage: DamageState): boolean {
+  if (damage.stage !== 'burning') return false;
+  damage.stage = 'smoking';
+  damage.litTick = -1;
+  return true;
 }
 
 /**

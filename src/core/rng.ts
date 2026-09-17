@@ -35,6 +35,7 @@ export const Subsystem = {
   Factions: 28,
   Enforcers: 29,
   Missions: 30,
+  Emergency: 31,
 } as const;
 export type SubsystemId = (typeof Subsystem)[keyof typeof Subsystem];
 

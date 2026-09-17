@@ -19,6 +19,7 @@ import type { MissionWorld } from './job.ts';
 import type { ParkedCars } from './parked.ts';
 import type { AmbientTraffic } from './traffic.ts';
 import type { CrowdSource } from './melee.ts';
+import type { EmergencyServices } from './emergency.ts';
 import type { PoliceForce } from './police.ts';
 import type { EnforcerGang } from './enforcer.ts';
 import type { TerritoryMap } from './territory.ts';
@@ -105,6 +106,12 @@ export interface Ground {
    * drives. A test that is not about the police leaves it out, and nobody comes.
    */
   police?: PoliceForce;
+  /**
+   * The fire engines and the ambulances of spec section 20.3, who route over
+   * the same roads. A test that is not about them leaves it out, and nobody
+   * answers a fire.
+   */
+  emergency?: EmergencyServices;
   /**
    * The turf of spec section 17.2: which block is whose, and the enforcers a
    * faction sends after a capture. A test that is not about the factions leaves

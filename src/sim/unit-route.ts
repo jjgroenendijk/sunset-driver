@@ -33,6 +33,9 @@ const KERB_LANE = 0;
 /** Metres behind and ahead of a car its heading is read over, so it turns a corner as a curve. */
 const SMOOTH = 4;
 
+/** Metres between the readings {@link UnitRoads.nearestAlong} walks a drive in. */
+const NEAR_STEP = 4;
+
 /**
  * The road network as the police read it: the graph to route over and the bed
  * to drive on. {@link UnitRoads} is built once for a world and holds no
@@ -67,14 +70,38 @@ export class UnitRoads {
    * the goal. Undefined where the graph cannot join the two.
    */
   plan(from: number, goalX: number, goalY: number): number[] | undefined {
+    const goal = this.nodeNear(goalX, goalY);
+    return goal < 0 ? undefined : this.planToNode(from, goal);
+  }
+
+  /** The edges of a drive from one edge to a node, as {@link plan} describes it. */
+  planToNode(from: number, goal: number): number[] | undefined {
     const edge = this.graph.edges[from];
     if (edge === undefined) return undefined;
-    const goal = this.nodeNear(goalX, goalY);
-    if (goal < 0) return undefined;
     if (goal === edge.to) return [from];
     const route = this.graph.shortestPath(edge.to, goal);
     if (route === undefined) return undefined;
     return [from, ...route.edges];
+  }
+
+  /**
+   * A drive that ends beside a place rather than at the node nearest it: the
+   * route to the start of the run of road the place stands on, and then that
+   * run itself.
+   *
+   * {@link plan} ends at a node, and the nodes of a city are a block apart, so
+   * a unit sent to a fire in the middle of a street would stop at the junction
+   * it is nearest. This drives the street itself, and {@link nearestAlong}
+   * says where along it to pull up. It falls back on {@link plan} where the
+   * graph cannot join the two.
+   */
+  planBeside(from: number, goalX: number, goalY: number): number[] | undefined {
+    const near = this.graph.nearestEdge(goalX, goalY);
+    if (near === undefined) return undefined;
+    const target = this.graph.edges[near.edge] as RoadEdge;
+    const head = this.planToNode(from, target.from);
+    if (head === undefined) return this.plan(from, goalX, goalY);
+    return (head[head.length - 1] as number) === target.id ? head : [...head, target.id];
   }
 
   /** Metres from one end of a drive to the other. */
@@ -114,6 +141,29 @@ export class UnitRoads {
     const fy = front.y + front.rightY * laneOffset(front.edge, KERB_LANE);
     out.heading = fx === bx && fy === by ? 0 : Math.atan2(fy - by, fx - bx);
     return out;
+  }
+
+  /**
+   * Metres along a drive at which it passes nearest a place, read every
+   * {@link NEAR_STEP} metres.
+   *
+   * A drive is planned between nodes, and the nodes of a city are a block
+   * apart, so the end of a route can be well down the street from what the
+   * unit was sent to. A unit that pulls up here instead stops beside the
+   * scene.
+   */
+  nearestAlong(unit: number, edges: readonly number[], x: number, y: number): number {
+    const legs = this.legsOf(unit, edges);
+    let best = 0;
+    let gap = Infinity;
+    for (let along = 0; along <= legs.length; along += NEAR_STEP) {
+      const at = this.sampler.sample(legs, this.clamp(legs, along), this.point);
+      const here = Math.hypot(at.x - x, at.y - y);
+      if (here >= gap) continue;
+      gap = here;
+      best = along;
+    }
+    return Math.min(best, legs.length);
   }
 
   /**

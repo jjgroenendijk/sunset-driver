@@ -5,15 +5,17 @@
  *
  * `main.ts` builds the pieces of a session and runs the frame. This is the
  * piece that is a city rather than a screen: the ambient traffic of spec
- * section 13.1 and the crowd that walks beside it, the tram of 13.2 and the
- * police of 14. Each is placed once for a world and then evaluated from the
- * tick, so the physics and the renderer share one plan.
+ * section 13.1 and the crowd that walks beside it, the tram of 13.2, the
+ * police of 14 and the emergency services of 20.3. Each is placed once for a
+ * world and then evaluated from the tick, so the physics and the renderer
+ * share one plan.
  *
  * Nothing here is state of a session: the record holds all of that. A city is
  * a pure function of the seed and the world built from it, so two sessions of
  * one seed are driven through the same streets.
  */
 import type { Ground } from './sim/ground-bodies.ts';
+import { EmergencyServices } from './sim/emergency.ts';
 import { AmbientPedestrians, crowdDistrictsOf } from './sim/pedestrians.ts';
 import { PoliceForce, policeDistrictsOf } from './sim/police.ts';
 import { AmbientTraffic, trafficRoadsOf, type TrafficRoads } from './sim/traffic.ts';
@@ -52,8 +54,12 @@ export function buildCity(seed: number, description: WorldDescription, world: Wo
   // The trams of spec section 13.2 keep to the traffic's own lights.
   const tram = new TramLine(seed, roads, description.tram, description.districts, traffic.signals);
   // The police drive the same roads the traffic does, and answer from the
-  // district the player stands in (spec section 14).
-  const police = new PoliceForce(roads, policeDistrictsOf(description));
+  // district the player stands in (spec section 14). The fire engines and the
+  // ambulances of spec section 20.3 answer from the district the call came
+  // from, over the same roads.
+  const districts = policeDistrictsOf(description);
+  const police = new PoliceForce(roads, districts);
+  const emergency = new EmergencyServices(roads, districts);
   const ground: Ground = {
     heightAt: (x, y) => world.heightAt(x, y),
     surfaceAt: (x, y) => surfaces.at(x, y),
@@ -65,6 +71,7 @@ export function buildCity(seed: number, description: WorldDescription, world: Wo
     crowd,
     tram,
     police,
+    emergency,
   };
   return { ground, roads, traffic, crowd, tram, police };
 }

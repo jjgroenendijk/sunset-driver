@@ -36,6 +36,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { TICK_RATE } from './clock.ts';
 import { stepCrowdReactions } from './crowd-reaction.ts';
+import { stepFires } from './fire.ts';
 import { blastDamageAt, BLAST_LIFT, CRASH_DAMAGE, hitVehicle, tickFire } from './damage.ts';
 import { rotate, unrotate } from './frame.ts';
 import { Drivetrain } from './drivetrain.ts';
@@ -300,6 +301,13 @@ export class SimPhysics {
     this.shots.step(state, state.theft === null ? input : EMPTY_INPUT, this.target(state));
     this.shots.fly(state, this.target(state));
     this.burn(state);
+    // The fires of every vehicle but the player's own, the spread between them
+    // and the blazes the wrecks leave (spec section 11.3). It runs after
+    // `burn`, so a player's car that went up this tick leaves its own blaze on
+    // this tick. The services of spec section 20.3 then answer what is burning
+    // and the crash just measured.
+    stepFires(state);
+    this.ground.emergency?.step(state, crash);
   }
 
   /** The police stations of the ground (spec section 11.7), which an arrest reads. */
@@ -434,10 +442,11 @@ export class SimPhysics {
   }
 
   /**
-   * Run the vehicle's fire for a tick (spec section 11.3). A fire that reaches
-   * the end of its fuse throws the vehicle up and hurts whoever is near enough
-   * to feel it. Fire between vehicles is `spreadFire` in `damage.ts`; there is
-   * one vehicle here until the traffic of spec section 13.1 lands.
+   * Run the player's own vehicle's fire for a tick (spec section 11.3). A fire
+   * that reaches the end of its fuse throws the vehicle up and hurts whoever is
+   * near enough to feel it. Only this one is burned here, because only this one
+   * has a body to throw: every other vehicle of the record burns in `fire.ts`,
+   * which is also where the fire spreads between them.
    */
   private burn(state: SimState): void {
     const v = state.vehicle;

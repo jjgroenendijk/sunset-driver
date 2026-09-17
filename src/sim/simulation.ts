@@ -16,6 +16,8 @@ import { stepShops, type ShopVisit } from './shop.ts';
 import { createMarketState, stepMarket, type MarketState } from './market.ts';
 import { createPropertyState, stepHome, type PropertyState } from './safehouse.ts';
 import { createPoliceState, type PoliceState } from './police.ts';
+import { createEmergencyState, type EmergencyState } from './emergency.ts';
+import { createFireState, type FireState } from './fire.ts';
 import { createEnforcerState, type EnforcerState } from './enforcer.ts';
 import { createFactionState, type FactionState } from './faction.ts';
 import { createMissionState, stepMissions, type MissionState } from './mission.ts';
@@ -156,6 +158,20 @@ export interface SimState {
    */
   police: PoliceState;
   /**
+   * What is burning on the ground (spec sections 11.3, 20.3): the blazes the
+   * wrecks have left, which outlast the vehicles that started them and are
+   * what a fire engine is really called to. What is burning in a vehicle is in
+   * its own damage, and not here.
+   */
+  fires: FireState;
+  /**
+   * The fire engines and the ambulances of spec section 20.3: the calls the
+   * city has made and the units that are out on them. A call is what has
+   * happened — a fire, a crash, a blast — so it is on the record, while the
+   * police above come out on the heat instead.
+   */
+  emergency: EmergencyState;
+  /**
    * The factions of spec section 17: how the player stands with each of the
    * eight, the blocks they have taken, and the retaliation that is out after
    * them. Whose ground a block is otherwise is a function of the seed and the
@@ -214,6 +230,8 @@ export function createSimState(
     pedestrians: createPedestrianState(),
     metro: createMetroState(),
     police: createPoliceState(),
+    fires: createFireState(),
+    emergency: createEmergencyState(),
     factions: createFactionState(),
     enforcers: createEnforcerState(),
     missions: createMissionState(),
