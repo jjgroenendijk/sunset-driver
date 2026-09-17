@@ -12,6 +12,7 @@
  * Heading is the way they face, and it follows the way they walk.
  */
 import { type CharacterAppearance, resolveAppearance } from './character.ts';
+import { TICK_RATE } from './clock.ts';
 import { headingOf, type VehicleSpec, type VehicleState } from './vehicle.ts';
 
 /** Metres per second at a walk, and at a sprint. */
@@ -29,6 +30,33 @@ export const JUMP_SPEED = 4.2;
 
 /** Metres per second a fall is capped at, so a long drop stays a number. */
 export const TERMINAL_SPEED = 55;
+
+/**
+ * Water over the feet at which the player leaves the bottom and swims, as a
+ * share of their height: chest deep. Below it they wade, which is walking.
+ */
+export const SWIM_DEPTH = 0.7;
+
+/**
+ * How deep the feet hang below the surface once they float, as a share of
+ * their height. It is more than {@link SWIM_DEPTH}, so a player who starts
+ * swimming keeps swimming rather than bobbing in and out of the stance.
+ */
+export const FLOAT_DEPTH = 0.8;
+
+/** Metres per second the player swims at, and at a sprint. */
+export const SWIM_SPEED = 1.5;
+export const SWIM_SPRINT_SPEED = 2.4;
+
+/** Metres per second squared of lift per metre the body is held under where it floats. */
+export const BUOYANCY = 18;
+
+/** How much of the speed up or down the water takes back, per second. */
+export const SWIM_DRAG = 6;
+
+/** Metres per second the water lets a body rise and sink at. */
+export const SWIM_RISE = 2.5;
+export const SWIM_SINK = 3;
 
 /** Metres of kerb or step the player walks up without jumping. */
 export const STEP_HEIGHT = 0.35;
@@ -147,6 +175,33 @@ export function capsuleOf(appearance: CharacterAppearance): Capsule {
 /** Metres per second the player walks at, given whether they are sprinting. */
 export function paceOf(sprint: boolean): number {
   return sprint ? SPRINT_SPEED : WALK_SPEED;
+}
+
+/** Metres per second the player swims at, given whether they are sprinting. */
+export function swimPaceOf(sprint: boolean): number {
+  return sprint ? SWIM_SPRINT_SPEED : SWIM_SPEED;
+}
+
+/**
+ * True when the water over the player's feet is deep enough to swim in (spec
+ * section 11.5). `feet` and `seaLevel` are both metres from sea level, and
+ * `stature` is the height of the body, so a short character swims where a tall
+ * one still wades.
+ */
+export function swims(feet: number, seaLevel: number, stature: number): boolean {
+  return seaLevel - feet > SWIM_DEPTH * stature;
+}
+
+/**
+ * Metres per second up for a body in the water, one tick on. `below` is how
+ * far the feet are held under the depth they float at: positive lifts them.
+ * The water pushes the body back to the surface and takes the speed of the
+ * fall that carried it in, which is why a jump off a bridge sinks and comes
+ * back up rather than reaching the sea floor.
+ */
+export function swimRise(below: number, vy: number): number {
+  const next = vy + (below * BUOYANCY - vy * SWIM_DRAG) / TICK_RATE;
+  return Math.max(-SWIM_SINK, Math.min(SWIM_RISE, next));
 }
 
 /** Move an angle toward another by at most `step`, the short way round. */
