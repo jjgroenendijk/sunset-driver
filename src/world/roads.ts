@@ -570,17 +570,29 @@ class RoadTracer extends HighwayTrace {
    *
    * The line is taken as it stands rather than traced, because a boardwalk
    * follows the coast and not the field. What the ground refuses is dropped —
-   * a stretch too steep for a street, or one that has gone wet — and the
-   * longest run left is kept. Each end then reaches for the network: a curve
+   * a stretch too steep for a street, or one that has gone wet — which leaves
+   * one run or several. Each end of a run then reaches for the network: a curve
    * that shares a node with no other is not part of the network at all, so a
-   * boardwalk neither end can reach is not laid.
+   * run neither end can reach is not laid. The runs are tried longest first,
+   * and the first one laid is the boardwalk, because a shorter boardwalk on the
+   * same sand is worth more than none (issue #381).
    */
   private traceBoardwalk(beach: Beach, i: number): number {
     this.network.release(-1 - i);
-    const line = this.longestRunnable(beach.boardwalk, STREET.maxGrade);
-    if (polylineLength(line) < MIN_BOARDWALK) return -1;
-    // The line is held while its ends reach for the network, so neither end
-    // runs back along the boardwalk itself.
+    for (const line of this.runnableRuns(beach.boardwalk, STREET.maxGrade)) {
+      if (polylineLength(line) < MIN_BOARDWALK) continue;
+      const laid = this.layBoardwalk(beach, i, line);
+      if (laid >= 0) return laid;
+    }
+    return -1;
+  }
+
+  /**
+   * Lay one runnable run of a boardwalk line as a street, and give back its id
+   * or -1. The run is held while its ends reach for the network, so neither end
+   * runs back along the boardwalk itself.
+   */
+  private layBoardwalk(beach: Beach, i: number, line: readonly Point[]): number {
     this.network.reserve(-1 - i, 'street', line);
     const head = this.besideOwnCrossing(line, this.reachNetwork(line[0] as Point, [...line].reverse()));
     const tail = this.besideOwnCrossing(line, this.reachNetwork(line[line.length - 1] as Point, line));
