@@ -122,7 +122,10 @@ export function light(state: SimState, x: number, y: number): Blaze {
   const fires = state.fires;
   const id = fires.nextBlaze;
   fires.nextBlaze = id + 1;
-  const rng = rngFor(state.seed, state.tick, Subsystem.Damage, id);
+  // `Subsystem.Emergency`, not `Damage`: the spread rolls of `spreadFire` are
+  // keyed on a vehicle id at the same tick, and two decisions must never be
+  // drawn from one stream.
+  const rng = rngFor(state.seed, state.tick, Subsystem.Emergency, id);
   const seconds = rng.range(BLAZE_SECONDS[0], BLAZE_SECONDS[1]);
   const blaze: Blaze = { id, x, y, lit: state.tick, out: state.tick + Math.round(seconds * TICK_RATE) };
   fires.blazes.push(blaze);
@@ -169,9 +172,12 @@ export function alight(damage: DamageState): boolean {
 }
 
 /**
- * The fire a blaze sets to the vehicles around it. It is the timer
- * `spreadFire` runs on and rolls the same chance, so a car that stands next to
- * a burning wreck goes up the same way whichever of the two lit it.
+ * The fire a blaze sets to the vehicles around it. It runs on the timer
+ * `spreadFire` runs on and rolls the same chance from the same stream, keyed
+ * on the vehicle and the tick. That is on purpose: a car reached by a burning
+ * vehicle and by a blaze on the same tick draws the same number twice, so it
+ * takes one roll however many fires reach it, which is the rule `spreadFire`
+ * states and the reason the answer does not depend on the order of the list.
  */
 function spreadFromBlazes(state: SimState, burnables: readonly Burnable[]): void {
   if (state.tick % SPREAD_PERIOD !== 0) return;
