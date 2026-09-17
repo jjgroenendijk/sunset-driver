@@ -30,6 +30,7 @@ import { TramLine } from './sim/tram.ts';
 import { stationAt, type MetroPlace } from './sim/metro.ts';
 import { shopPlaces, visiting } from './sim/shop.ts';
 import { dealerPlaces } from './sim/dealer.ts';
+import { safehousePlaces } from './sim/safehouse.ts';
 import { DealerMarks } from './ui/dealers.ts';
 import { TradePanel } from './ui/trade-panel.ts';
 import { HotwireBar } from './ui/hotwire.ts';
@@ -45,6 +46,7 @@ import { FREE_CAMERA_KEY, FreeCameraControls } from './ui/free-camera.ts';
 import { Keyboard } from './ui/keyboard.ts';
 import { LoadingScreen } from './ui/loading.ts';
 import { TitleScreen, type TitleChoice } from './ui/title.ts';
+import { HomePanel } from './ui/home-panel.ts';
 import { ShopPanel } from './ui/shop-panel.ts';
 import { TravelPanel } from './ui/travel.ts';
 import { PICKER_KEY, VehiclePicker } from './ui/vehicle-picker.ts';
@@ -318,12 +320,15 @@ async function boot(): Promise<void> {
       session.travel.update(session.state, session.metro, stationAt(session.metro, session.state), session.state.tick);
       // The shop of spec section 16.1: the counter on screen, and the room the
       // player is standing in, which is the only interior the scene ever holds.
-      session.shopPanel.update(session.state, session.shops);
+      session.shopPanel.update(session.state, session.shops, session.safehouses);
       session.world.shopInside(inShop);
       // The contraband market of spec section 16.2: where the dealers are
       // standing this spell, and the prices of the one the player is with.
       session.dealerMarks.update(session.state.tick, session.world);
       session.tradePanel.update(session.state, session.dealers);
+      // The safehouses of spec section 16.3: what a front door costs, or what
+      // the house the player is standing in does for them.
+      session.homePanel.update(session.state, session.safehouses);
       session.weapons.sync(session.state.loadout);
       // The maps of spec section 12. Both follow the player from the record,
       // and both redraw only when something on them has moved, so a session
@@ -444,9 +449,9 @@ async function boot(): Promise<void> {
   }
   let physics = new SimPhysics(ground, state);
   physics.spawn(state, start?.x ?? state.player.x, start?.y ?? state.player.y, start?.heading ?? 0);
-  // The safehouses of spec section 16.3 have not landed, so a death comes back
-  // where the session started (spec section 11.7).
-  state.safehouse = { x: state.player.x, y: state.player.y, heading: state.player.heading };
+  // Where a player who owns no safehouse comes back to (spec sections 11.7,
+  // 16.3): the place the session started at.
+  state.origin = { x: state.player.x, y: state.player.y, heading: state.player.heading };
 
   // The saves of spec section 16.4, one per seed in this browser. A save is
   // loaded into the record in place, since everything below holds the record,
@@ -506,6 +511,10 @@ async function boot(): Promise<void> {
   // rather than in a doorway, so each corner is snapped to the road nearest it.
   const dealers = dealerPlaces(state.seed, description.districts, (x, y) => nearestRoadPlace(description, x, y));
   ground.dealers = dealers;
+  // The properties of spec section 16.3 stand on a street of their own district
+  // for the same reason, so each front door is snapped to the road nearest it.
+  const safehouses = safehousePlaces(state.seed, description.districts, (x, y) => nearestRoadPlace(description, x, y));
+  ground.safehouses = safehouses;
   // The parking bays come from the same answer. Which bay holds a car is a
   // function of the tick, so the physics and the renderer share one plan.
   const parked = world.bays === undefined ? undefined : new ParkedCars(state.seed, world.bays);
@@ -570,6 +579,7 @@ async function boot(): Promise<void> {
     ...stations.map((at) => ({ type: 'police' as const, x: at.x, y: at.y })),
     ...metro.map((at) => ({ type: 'metro-station' as const, x: at.x, y: at.y, name: `Metro · ${at.name}` })),
     ...shops.map((at) => ({ type: SHOP_POIS[at.kind], x: at.x, y: at.y, name: at.name })),
+    ...safehouses.map((at) => ({ type: 'safehouse' as const, x: at.x, y: at.y, name: at.name })),
   ];
   // The dealers are marked after the rest, because they are the only marks that
   // move: `DealerMarks` keeps the list above and writes its own after it.
@@ -701,6 +711,8 @@ async function boot(): Promise<void> {
     tradePanel: new TradePanel(document.body),
     dealers,
     dealerMarks,
+    homePanel: new HomePanel(document.body),
+    safehouses,
     smooth,
     weapons,
     pause,

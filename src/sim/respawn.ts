@@ -13,12 +13,16 @@
  * clock, so a run that ends on the same tick of the same stream comes back the
  * same.
  *
- * The safehouse stash and garage are never touched (spec section 11.7). The
- * safehouses of spec section 16.3 have not landed, so `SimState.safehouse` is
- * a placeholder: where the session started. The inventory of spec section 16.2
- * has not landed either, so an arrest has no contraband to take yet.
+ * The safehouse stash and garage are never touched (spec section 11.7). They
+ * are a store of their own (`safehouse.ts`), so nothing here can reach them:
+ * what an arrest takes is the contraband in the player's hands, and the drive
+ * home is what puts a run's takings out of its reach.
+ *
+ * A player who owns no safehouse comes back at `SimState.origin`, which is
+ * where the session started. There is nowhere else to put them.
  */
 import { MAX_HEALTH, type Place } from './on-foot.ts';
+import { activeHome, type SafehousePlace } from './safehouse.ts';
 import type { SimState } from './simulation.ts';
 import { createLoadout } from './weapon.ts';
 
@@ -64,13 +68,20 @@ export function nearestStation(stations: readonly Place[], x: number, y: number)
 }
 
 /**
- * Where a player comes back after a fate. An arrest in a world with no police
- * station comes back at the safehouse, because a player has to come back
- * somewhere.
+ * Where a player comes back after a fate: their active safehouse after a death,
+ * and the nearest police station after an arrest (spec section 11.7). An arrest
+ * in a world with no police station falls back on the safehouse, and a player
+ * who owns none falls back on where the session started, because a player has
+ * to come back somewhere.
  */
-export function respawnPlace(state: SimState, fate: Fate, stations: readonly Place[]): Place {
+export function respawnPlace(
+  state: SimState,
+  fate: Fate,
+  stations: readonly Place[],
+  homes: readonly SafehousePlace[] = [],
+): Place {
   const station = fate === 'arrest' ? nearestStation(stations, state.player.x, state.player.y) : undefined;
-  return station ?? state.safehouse;
+  return station ?? activeHome(state, homes) ?? state.origin;
 }
 
 /**
@@ -79,8 +90,11 @@ export function respawnPlace(state: SimState, fate: Fate, stations: readonly Pla
  *
  * The weapons go, with their attachments and their rounds. `shots` is kept,
  * because it keys the random stream of every shot, and a shot after a respawn
- * must not repeat a shot before it. The fee takes what the player has and no more. Heat is
- * cleared: the police have what they wanted, or the player is gone.
+ * must not repeat a shot before it. An arrest takes the contraband in the
+ * player's hands as well (spec section 11.7); a death leaves it, because a
+ * hospital is not an evidence room. The fee takes what the player has and no
+ * more. Heat is cleared: the police have what they wanted, or the player is
+ * gone.
  */
 export function respawn(state: SimState, fate: Fate, place: Place): void {
   const p = state.player;
@@ -95,13 +109,23 @@ export function respawn(state: SimState, fate: Fate, place: Place): void {
   const shots = state.loadout.shots;
   state.loadout = createLoadout();
   state.loadout.shots = shots;
+  if (fate === 'arrest') {
+    for (let good = 0; good < state.market.stash.length; good++) {
+      state.market.stash[good] = 0;
+      state.market.paid[good] = 0;
+    }
+  }
   const cost = Math.min(Math.max(0, state.money), fate === 'death' ? HOSPITAL_FEE : ARREST_BRIBE);
   state.money -= cost;
   state.heat = 0;
   state.theft = null;
-  // Whatever they were doing is over: a lock half picked, and a shop they were
-  // standing in (spec section 16.1), which is nowhere near where they come back.
+  // Whatever they were doing is over: a lock half picked, a shop they were
+  // standing in, a deal open on a corner (spec sections 16.1, 16.2) and a front
+  // door they had open (spec section 16.3). None of them is anywhere near where
+  // they come back.
   state.shop = null;
+  state.market.deal = null;
+  state.property.visit = null;
   state.arrested = false;
   state.respawn = { cause: fate, tick: state.tick, cost };
 }

@@ -31,6 +31,7 @@ import { wrapAngle } from '../core/math.ts';
 import { roomOf, type Shop, type ShopKind, type ShopRoom } from '../world/shops.ts';
 import type { InputFrame } from './input.ts';
 import { reachesVehicle, type Place } from './on-foot.ts';
+import type { SafehousePlace } from './safehouse.ts';
 import { offersOf, type ShopOffer } from './shop-stock.ts';
 import type { SimState } from './simulation.ts';
 import { specOf } from './vehicle.ts';
@@ -136,10 +137,18 @@ export function visiting(state: SimState, places: readonly ShopPlace[]): ShopPla
   return visit === null ? undefined : places[visit.shop];
 }
 
-/** The counter of the shop the player is inside: nothing at all while they are outside one. */
-export function shopOffers(state: SimState, places: readonly ShopPlace[]): ShopOffer[] {
+/**
+ * The counter of the shop the player is inside: nothing at all while they are
+ * outside one. `homes` is what the property broker sells (spec section 16.3);
+ * every other trade reads it for nothing.
+ */
+export function shopOffers(
+  state: SimState,
+  places: readonly ShopPlace[],
+  homes: readonly SafehousePlace[] = [],
+): ShopOffer[] {
   const place = visiting(state, places);
-  return place === undefined ? [] : offersOf(state, place);
+  return place === undefined ? [] : offersOf(state, place, homes);
 }
 
 /** True where a point stands inside a shop's room, walls and all. */
@@ -159,7 +168,12 @@ export function inRoom(room: ShopRoom, x: number, y: number): boolean {
  * Answers true on the tick the player is moved, which is the tick the physics
  * has to stand them on the ground where they landed.
  */
-export function stepShops(state: SimState, input: InputFrame, places: readonly ShopPlace[]): boolean {
+export function stepShops(
+  state: SimState,
+  input: InputFrame,
+  places: readonly ShopPlace[],
+  homes: readonly SafehousePlace[] = [],
+): boolean {
   const p = state.player;
   // A player bent over a lock is not going shopping, and the interact key is
   // the lock's while an attempt runs (spec section 11.4): nothing else may read
@@ -186,7 +200,7 @@ export function stepShops(state: SimState, input: InputFrame, places: readonly S
       return false;
     }
     const row = Math.trunc(input.buy);
-    if (row >= 1) trade(state, place, row - 1);
+    if (row >= 1) trade(state, place, row - 1, homes);
     return false;
   }
   if (!pressed || p.driving) return false;
@@ -227,10 +241,10 @@ function leave(state: SimState, place: ShopPlace): void {
  * enough both leave the record as it was; what happened is written into the
  * visit, because the panel draws the record and nothing else.
  */
-function trade(state: SimState, place: ShopPlace, row: number): void {
+function trade(state: SimState, place: ShopPlace, row: number, homes: readonly SafehousePlace[]): void {
   const visit = state.shop;
   if (visit === null) return;
-  const offer = offersOf(state, place)[row];
+  const offer = offersOf(state, place, homes)[row];
   if (offer === undefined) return;
   if (state.money < offer.price) {
     visit.said = 'Not enough money.';

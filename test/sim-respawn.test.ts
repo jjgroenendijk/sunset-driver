@@ -29,10 +29,10 @@ describe('death and arrest', () => {
     await initPhysics();
   });
 
-  it('brings a dead player back at the safehouse, unarmed and a hospital fee poorer', () => {
+  it('brings a dead player back where the session started, unarmed and a hospital fee poorer', () => {
     const session = start(policed());
     const { state } = session;
-    state.safehouse = { x: 30, y: -20, heading: 2 };
+    state.origin = { x: 30, y: -20, heading: 2 };
     giveWeapon(state.loadout, 'ak-47');
     state.heat = 3;
     state.player.health = 0;
@@ -98,13 +98,13 @@ describe('death and arrest', () => {
     session.physics.dispose();
   });
 
-  it('brings an arrest back at the safehouse in a world with no station', () => {
+  it('brings an arrest back where the session started in a world with no station', () => {
     const session = start(hills());
     const { state } = session;
     state.arrested = true;
     drive(session, 1);
-    expect(state.player.x).toBe(state.safehouse.x);
-    expect(state.player.y).toBe(state.safehouse.y);
+    expect(state.player.x).toBe(state.origin.x);
+    expect(state.player.y).toBe(state.origin.y);
     session.physics.dispose();
   });
 

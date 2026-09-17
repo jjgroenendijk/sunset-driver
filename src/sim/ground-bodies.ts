@@ -14,6 +14,7 @@ import type { MetroPlace } from './metro.ts';
 import type { Place } from './on-foot.ts';
 import type { ShopPlace } from './shop.ts';
 import type { DealerPlace } from './dealer.ts';
+import type { SafehousePlace } from './safehouse.ts';
 import type { ParkedCars } from './parked.ts';
 import type { AmbientTraffic } from './traffic.ts';
 import type { PoliceForce } from './police.ts';
@@ -70,6 +71,12 @@ export interface Ground {
    * and nobody is dealing.
    */
   dealers?: readonly DealerPlace[];
+  /**
+   * The safehouses of spec section 16.3, one to a district, whose front doors
+   * the player buys and comes back to. A test that is not about them leaves
+   * them out, and the city has no property for sale.
+   */
+  safehouses?: readonly SafehousePlace[];
   /**
    * The ambient traffic of the roads (spec section 13.1). A test that is not
    * about traffic leaves it out, and nothing drives past.

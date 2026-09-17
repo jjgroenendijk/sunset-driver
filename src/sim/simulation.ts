@@ -13,6 +13,7 @@ import { createLoadout, type LoadoutState, type ProjectileState } from './weapon
 import { createMetroState, stepMetro, travelling, type MetroState } from './metro.ts';
 import { stepShops, type ShopVisit } from './shop.ts';
 import { createMarketState, stepMarket, type MarketState } from './market.ts';
+import { createPropertyState, stepHome, type PropertyState } from './safehouse.ts';
 import { createPoliceState, type PoliceState } from './police.ts';
 import { stepRadio } from './radio.ts';
 
@@ -97,11 +98,16 @@ export interface SimState {
    */
   waypoint: { x: number; y: number } | null;
   /**
-   * Where the player comes back after a death (spec sections 11.7, 16.3). The
-   * safehouses have not landed, so a session sets it to the place it starts
-   * at; a new record holds the origin.
+   * The properties the player has bought, and what is in them (spec section
+   * 16.3): the stash, the garage and which one they come back to.
    */
-  safehouse: Place;
+  property: PropertyState;
+  /**
+   * Where the player comes back with no safehouse to their name (spec sections
+   * 11.7, 16.3): the place the session started at. A new record holds the
+   * origin, and the game writes it once the world is built.
+   */
+  origin: Place;
   /**
    * True once the player has been taken in (spec section 11.7). The end of the
    * tick turns it into a respawn at the nearest police station. A unit that
@@ -167,7 +173,8 @@ export function createSimState(
     money: START_MONEY,
     objective: '',
     waypoint: null,
-    safehouse: { x: 0, y: 0, heading: 0 },
+    property: createPropertyState(),
+    origin: { x: 0, y: 0, heading: 0 },
     arrested: false,
     respawn: null,
     traffic: createTrafficState(),
@@ -213,16 +220,23 @@ export function stepSim(state: SimState, input: InputFrame = EMPTY_INPUT, physic
   // stand them on the ground where they landed. It is also where the interact
   // key is spent when a door opens on it, before `transfer` looks for the same
   // edge. A player under the fade of a trip is holding nothing.
-  if (!travelling(state) && stepShops(state, input, physics?.shops ?? [])) physics?.stand(state);
-  // The dealers of spec section 16.2 take what the shops left of the interact
-  // key, so a press that opened a shop door does not also open a deal. Nothing
-  // here moves the player, so the physics is told nothing.
+  const homes = physics?.safehouses ?? [];
+  if (!travelling(state) && stepShops(state, input, physics?.shops ?? [], homes)) physics?.stand(state);
+  // The front doors of spec section 16.3 take what the shops left of the
+  // interact key. Nothing here moves the player — a safehouse is a door and not
+  // a room — but a car taken out of the garage has to be stood on the ground
+  // outside it, and the record does not know how high that ground is.
+  const fetched = travelling(state) ? null : stepHome(state, input, homes);
+  if (fetched !== null) physics?.settle(state, fetched.x, fetched.y, fetched.heading);
+  // The dealers of spec section 16.2 take what is left of the interact key
+  // after those two, so one press never opens two panels. Nothing here moves
+  // the player, so the physics is told nothing.
   if (!travelling(state)) stepMarket(state, input, physics?.dealers ?? []);
   physics?.step(state, travelling(state) ? EMPTY_INPUT : input);
   stepPickups(state);
   const fate = fateOf(state);
   if (fate !== null) {
-    respawn(state, fate, respawnPlace(state, fate, physics?.stations ?? []));
+    respawn(state, fate, respawnPlace(state, fate, physics?.stations ?? [], homes));
     physics?.stand(state);
   }
   state.tick += 1;

@@ -4,7 +4,8 @@ The gotchas of `src/sim` and `src/ui`: what Rapier does with a wheel, a force an
 what the record may hold, and what the HUD and the map read. `spec.md` sections 11 to 14, 16 and 18
 are the design. Read the section the work touches, not the file. The menus and the screens around
 play — the title screen, the loading screen, the pause menu and the saves — are in `docs/menus.md`,
-and the shops, the counters and the interiors of spec section 16 in `docs/shops.md`.
+and the shops, the counters and the interiors of spec section 16 in `docs/shops.md`. The properties
+the player buys are in `docs/safehouses.md`.
 
 ## Contents
 
@@ -146,12 +147,15 @@ and the shops, the counters and the interiors of spec section 16 in `docs/shops.
   an arrest is `SimState.arrested`; `stepSim` turns either into a respawn at the end of the tick, so
   whatever wrote them — a crash, a blast, the debug keys `K` and `B`, the police later — replays the
   same. The player comes back on foot with fists only; the car stays where the run ended.
-  `loadout.shots` survives, because it keys the stream of every shot. `SimState.safehouse` is where
-  the session started until spec section 16.3 lands. The police stations come from
+  `loadout.shots` survives, because it keys the stream of every shot. An arrest also takes the
+  contraband in the player's hands, and neither fate can reach a safehouse stash
+  (`docs/safehouses.md`). A death sends the player to their active safehouse and an arrest to the
+  nearest police station; a player who owns no safehouse comes back at `SimState.origin`, where the
+  session started. The police stations come from
   `ParcelMap.stations`, built in the chunk workers, so `main.ts` reads them off
   `WorldScene.stations` after `settle` and hands them to the physics as `Ground.stations`. A world
-  with none sends an arrest to the safehouse. `SimState.respawn` changing is what makes `main.ts`
-  snap the camera.
+  with none sends an arrest to the safehouse too. `SimState.respawn` changing is what makes
+  `main.ts` snap the camera.
 - `SimState.heat` is the attention of spec section 14: a sounding alarm, every shot fired and every
   crime raise it, and melee raises none, because the spec calls it silent. The police read it, and
   an arrest is what a chase ends in.

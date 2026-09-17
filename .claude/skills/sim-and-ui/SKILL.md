@@ -24,7 +24,8 @@ the work is one of those.
 
 `docs/shops.md` holds the shops the player walks into, and `docs/market.md` the contraband market
 of spec section 16.2: what a good is worth in a district, where the dealers stand and what a deal
-writes into the record.
+writes into the record. `docs/safehouses.md` holds the properties of spec section 16.3: what a door
+costs, the stash and the garage behind it, and why a respawn reads it.
 
 The two that catch a session most often:
 

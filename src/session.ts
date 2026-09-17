@@ -19,9 +19,11 @@ import type { WorldScene } from './render/world-scene.ts';
 import type { SimPhysics } from './sim/physics.ts';
 import type { SimState } from './sim/simulation.ts';
 import type { MetroPlace } from './sim/metro.ts';
+import type { SafehousePlace } from './sim/safehouse.ts';
 import type { ShopPlace } from './sim/shop.ts';
 import type { DealerPlace } from './sim/dealer.ts';
 import type { DealerMarks } from './ui/dealers.ts';
+import type { HomePanel } from './ui/home-panel.ts';
 import type { TradePanel } from './ui/trade-panel.ts';
 import type { HotwireBar } from './ui/hotwire.ts';
 import type { Hud } from './ui/hud.ts';
@@ -61,6 +63,10 @@ export interface Session {
   dealers: readonly DealerPlace[];
   /** Their marks on the maps and their bodies in the crowd, moved when they move. */
   dealerMarks: DealerMarks;
+  /** The safehouse panel of spec section 16.3, drawn at a front door. */
+  homePanel: HomePanel;
+  /** The properties the panel names and the broker sells, in the order they are numbered. */
+  safehouses: readonly SafehousePlace[];
   /** What draws the frame between two ticks, so the motion is smooth (spec section 9.2). */
   smooth: RenderSmoother;
   /** The debug picker of the arsenal, which shows the weapon in hand. */

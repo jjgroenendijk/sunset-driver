@@ -93,8 +93,12 @@ corners, and has its own page in `docs/market.md`.
   clothes takes `CLOTHES_HEAT` off instead. The workshop works on the vehicle of the record, which
   is the one the player arrived in and left at the door — the record carries one vehicle, and that
   is it.
-- The property broker sells the safehouses of spec section 16.3, which have not landed: it is
-  enterable and its counter is empty until they do.
+- The property broker sells the safehouses of spec section 16.3. Its counter is every property of
+  the city that is still for sale, nearest this office first. A counter shows `CHOICE_KEYS` rows,
+  so one office sells the doors round it and a player who wants one across the city walks into the
+  broker there. `docs/safehouses.md` is what a property then does. This is the one counter whose
+  rows come from outside the record: `offersOf` takes the city's properties as an argument, because
+  a price and a door both belong to the world.
 
 ## The interior, drawn
 

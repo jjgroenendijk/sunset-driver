@@ -24,6 +24,7 @@ import { genRng, Subsystem } from '../core/rng.ts';
 import { OUTFITS } from './character.ts';
 import { createDamageState } from './damage.ts';
 import { heal, MAX_HEALTH } from './on-foot.ts';
+import { buySafehouse, ownedAt, type SafehousePlace } from './safehouse.ts';
 import type { ShopPlace } from './shop.ts';
 import type { SimState } from './simulation.ts';
 import {
@@ -127,8 +128,11 @@ export const RESPRAY_PAINTS: readonly { label: string; colour: number }[] = [
   { label: 'Crimson', colour: 0xa32b28 },
 ];
 
-/** The rows of the counter of the shop the player is standing in. */
-export function offersOf(state: SimState, place: ShopPlace): ShopOffer[] {
+/**
+ * The rows of the counter of the shop the player is standing in. `homes` is the
+ * city's properties, which only the broker reads (spec section 16.3).
+ */
+export function offersOf(state: SimState, place: ShopPlace, homes: readonly SafehousePlace[] = []): ShopOffer[] {
   switch (place.kind) {
     case 'weapons':
       return weaponOffers(state, place);
@@ -140,11 +144,29 @@ export function offersOf(state: SimState, place: ShopPlace): ShopOffer[] {
       return clothesOffers(state);
     case 'clinic':
       return clinicOffers(state);
-    // The broker sells the safehouses of spec section 16.3, which have not
-    // landed: the shop is open and its counter is empty until they do.
     case 'broker':
-      return [];
+      return brokerOffers(state, place, homes);
   }
+}
+
+/**
+ * The counter of a property broker: the safehouses of spec section 16.3 that
+ * are still for sale, the nearest to this office first. A broker has the keys
+ * to the whole city, but a counter shows `CHOICE_KEYS` rows, so what one office
+ * sells is the doors round it. A player who wants a door across the city walks
+ * into the broker there, which is why the list is by distance and not by price.
+ */
+function brokerOffers(state: SimState, place: ShopPlace, homes: readonly SafehousePlace[]): ShopOffer[] {
+  const forSale = homes.filter((home) => ownedAt(state, home.id) === undefined);
+  const away = (home: SafehousePlace): number => Math.hypot(home.x - place.x, home.y - place.y);
+  // The ids break a tie, so two doors at the same distance are always listed in
+  // the same order and the row a key buys is the row the record replays.
+  const sorted = [...forSale].sort((a, b) => away(a) - away(b) || a.id - b.id);
+  return sorted.map((home) => ({
+    label: home.name,
+    price: home.price,
+    take: (s) => buySafehouse(s, home),
+  }));
 }
 
 /** The licence a weapon needs to be sold over a counter. */
