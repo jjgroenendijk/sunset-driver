@@ -225,8 +225,10 @@ describe('shops', () => {
     enter(session, 'clinic');
     buy(session, 1);
     expect(session.state.player.health).toBe(MAX_HEALTH);
-    // Nothing is left to sell to a player who needs none of it.
-    expect(shopOffers(session.state, PLACES)).toEqual([]);
+    // There is nothing left to sell a player who needs none of it, but the
+    // exchange of spec section 19 gives out the same things whatever their
+    // health, and gives them out free.
+    expect(shopOffers(session.state, PLACES).map((offer) => offer.price)).toEqual([0, 0, 0]);
     session.physics.dispose();
   });
 

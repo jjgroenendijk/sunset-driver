@@ -333,20 +333,52 @@ function clothesOffers(state: SimState): ShopOffer[] {
   return rows;
 }
 
-/** The counter of a clinic: treatment, which is health by the point (spec section 16.1). */
+/**
+ * What the clinic hands over the counter for nothing (spec section 19). The
+ * needle exchange is part of the clinic, and what it gives out is the same
+ * harm-reduction content the radio reads and the posters carry: what the thing
+ * is, what it does, and nothing else. It is free because it is free, and the
+ * counter asks no name because the exchange asks no name.
+ *
+ * Taking one changes no state. There is no overdose in the simulation for a
+ * kit to reverse, and inventing one to justify the row would be the lecture
+ * spec section 19 forbids: the information is the thing the player leaves with.
+ */
+const CLINIC_SUPPLIES: readonly { label: string; said: string }[] = [
+  {
+    label: 'Naloxone kit',
+    said: 'Two doses and the card that says how. It reverses an opioid overdose and it keeps in a glovebox.',
+  },
+  {
+    label: 'Fentanyl test strips',
+    said: 'Ten strips. Fentanyl turns up in more than dope now, and a strip is how you know before you use.',
+  },
+  {
+    label: 'Clean works',
+    said: 'A week of works and a bin for the old ones. No name asked, no number kept, every day of the week.',
+  },
+];
+
+/**
+ * The counter of a clinic: treatment, which is health by the point (spec
+ * section 16.1), and the free supplies of the needle exchange above, which are
+ * there whether the player is hurt or not.
+ */
 function clinicOffers(state: SimState): ShopOffer[] {
+  const rows: ShopOffer[] = [];
   const missing = MAX_HEALTH - state.player.health;
-  if (missing <= 0) return [];
-  return [
-    {
+  if (missing > 0) {
+    rows.push({
       label: 'Treatment',
       price: Math.max(STEP, round(missing * TREATMENT_PER_POINT)),
       take: (s) => {
         heal(s.player, 'clinic');
         return `Health ${Math.round(s.player.health)}.`;
       },
-    },
-  ];
+    });
+  }
+  for (const supply of CLINIC_SUPPLIES) rows.push({ label: supply.label, price: 0, take: () => supply.said });
+  return rows;
 }
 
 /** A price, rounded to the step a counter asks in. */
