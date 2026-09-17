@@ -32,7 +32,11 @@ corridors in `docs/corridors.md`.
 - A river that runs close to a shore above its mouth cuts the land in two, and no road crosses a
   river, so `rivers.ts` drops it. A harbour at the river mouth needs its river and keeps the first
   try. A harbour on the waterfront already cuts the highway ring, so its rivers keep `RING_CLEAR`
-  off the core: a river across the ring as well leaves no arc long enough to lay.
+  off the core: a river across the ring as well leaves no arc long enough to lay. The waterfront
+  harbour is dug on the shore the core faces, and on a lagoon that shore can stand 200 m from the
+  core, closer than the basin is wide. So the basin is pushed out into the water until
+  it clears the core, blend and all; without that the core stands on the rim of a bowl nine metres
+  deep, on a slope of 0.28 (issue #369).
 - `findCrossings` (`crossings.ts`) searches between the nearest pairs of cells of two islands. A
   chord that lands on ground an arterial can climb to from the core ranks above one that lands in a
   pocket closed off by steep slopes, up to `GRADED_SPAN`. No arterial reaches a bridge head in such
