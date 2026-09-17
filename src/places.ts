@@ -10,13 +10,15 @@
  * Two kinds of place come out of it. The parcels the chunk workers laid out
  * carry the police stations, the metro entrances, the shops and the parking
  * bays, so those are read off the scene once it has settled. The rest — the
- * dealers' corners and the front doors — are a function of the seed and the
- * districts, and each is snapped to the road nearest it, because a person
- * stands on a street.
+ * dealers' corners, the front doors, the contacts and the corners their work
+ * sends the player to — are a function of the seed and the districts, and each
+ * is snapped to the road nearest it, because a person stands on a street.
  */
 import type { WorldScene } from './render/world-scene.ts';
 import { dealerPlaces, type DealerPlace } from './sim/dealer.ts';
 import { EnforcerGang } from './sim/enforcer.ts';
+import { giverPlaces } from './sim/giver.ts';
+import { jobSites, type MissionWorld } from './sim/job.ts';
 import type { MetroPlace } from './sim/metro.ts';
 import { ParkedCars } from './sim/parked.ts';
 import type { Ground } from './sim/physics.ts';
@@ -41,6 +43,8 @@ export interface WorldPlaces {
   safehouses: readonly SafehousePlace[];
   /** Whose block is whose (spec section 17.2). */
   turf: TerritoryMap;
+  /** The contacts and the corners their work runs between (spec section 18). */
+  missions: MissionWorld;
   /** The parked cars (spec section 13.1), or undefined where no worker laid out the bays. */
   parked: ParkedCars | undefined;
 }
@@ -81,9 +85,14 @@ export function buildPlaces(
   const turf = new TerritoryMap(description);
   ground.turf = turf;
   ground.enforcers = new EnforcerGang(roads, turf);
+  const missions: MissionWorld = {
+    givers: giverPlaces(seed, description.districts, snap),
+    sites: jobSites(seed, description.districts, snap),
+  };
+  ground.missions = missions;
   // Which bay holds a car is a function of the tick, so the physics and the
   // renderer share one plan.
   const parked = world.bays === undefined ? undefined : new ParkedCars(seed, world.bays);
   ground.parked = parked;
-  return { stations, metro, shops, dealers, safehouses, turf, parked };
+  return { stations, metro, shops, dealers, safehouses, turf, missions, parked };
 }

@@ -283,7 +283,11 @@ export function stepTerritory(state: SimState, map: TerritoryMap): void {
   const standing = !p.driving && state.shop === null && state.property.visit === null && state.market.deal === null && p.health > 0;
   const holder = key < 0 ? NOBODY : map.holderAt(state, at.bx, at.by);
   if (f.takeover !== null && (f.takeover.block !== key || !standing)) f.takeover = null;
-  if (f.takeover === null && standing && holder >= 0 && holder < FACTIONS.length && hostileTo(state, holder)) {
+  // A block is taken off a faction that has crossed the player off, or off one
+  // somebody else is paying to have it taken off: a territory job of spec
+  // section 18 is what makes the block it names takeable at all.
+  const takeable = hostileTo(state, holder) || hired(state, key);
+  if (f.takeover === null && standing && holder >= 0 && holder < FACTIONS.length && takeable) {
     f.takeover = { block: key, faction: holder, started: state.tick };
     callWave(state, holder, key, 1);
   }
@@ -293,6 +297,16 @@ export function stepTerritory(state: SimState, map: TerritoryMap): void {
     f.takeover = null;
   }
   if (f.wave !== null && state.tick >= f.wave.until) f.wave = null;
+}
+
+/**
+ * True where the player is being paid to take this block (spec section 18). The
+ * field is read rather than the missions imported, because `mission.ts` reads
+ * this file and two files may not read each other.
+ */
+function hired(state: SimState, key: number): boolean {
+  const job = state.missions.active;
+  return job !== null && job.block === key;
 }
 
 /** Ticks a wave keeps coming before the faction gives the block up for now. */

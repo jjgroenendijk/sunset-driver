@@ -32,6 +32,8 @@ import { visiting } from './sim/shop.ts';
 import { turfLine } from './sim/territory.ts';
 import { DealerMarks } from './ui/dealers.ts';
 import { EnforcerMarks } from './ui/enforcers.ts';
+import { MissionMarks } from './ui/missions.ts';
+import { JobPanel } from './ui/job-panel.ts';
 import { TerritoryOverlay } from './ui/territory.ts';
 import { TradePanel } from './ui/trade-panel.ts';
 import { HotwireBar } from './ui/hotwire.ts';
@@ -331,6 +333,10 @@ async function boot(): Promise<void> {
       // The enforcers of spec section 17.2, where the record left them this
       // tick, and the dealers standing behind them in the same list.
       session.enforcerMarks.update(session.state, session.world, session.dealerMarks);
+      // The work of spec section 18: the board at the contact the player is
+      // standing at, and the mark on wherever the job in hand is going.
+      session.jobPanel.update(session.state, session.missions);
+      session.missionMarks.update(session.state, session.enforcerMarks);
       // The safehouses of spec section 16.3: what a front door costs, or what
       // the house the player is standing in does for them.
       session.homePanel.update(session.state, session.safehouses);
@@ -497,7 +503,7 @@ async function boot(): Promise<void> {
   // The parcels are built in the chunk workers, so every place dealt over them
   // is known once a worker has answered, which `settle` waited for. `places.ts`
   // asks each system where its own places stand and fills the ground with them.
-  const { stations, metro, shops, dealers, safehouses, turf, parked } = buildPlaces(
+  const { stations, metro, shops, dealers, safehouses, turf, missions, parked } = buildPlaces(
     state.seed,
     description,
     world,
@@ -565,6 +571,9 @@ async function boot(): Promise<void> {
     ...metro.map((at) => ({ type: 'metro-station' as const, x: at.x, y: at.y, name: `Metro · ${at.name}` })),
     ...shops.map((at) => ({ type: SHOP_POIS[at.kind], x: at.x, y: at.y, name: at.name })),
     ...safehouses.map((at) => ({ type: 'safehouse' as const, x: at.x, y: at.y, name: at.name })),
+    // The contacts of spec section 18 stand where the seed put them and never
+    // move, so they are marked once with the rest.
+    ...missions.givers.map((at) => ({ type: 'mission-giver' as const, x: at.x, y: at.y, name: at.name })),
   ];
   // The dealers are marked after the rest, because they are the only marks that
   // move: `DealerMarks` keeps the list above and writes its own after it.
@@ -573,6 +582,9 @@ async function boot(): Promise<void> {
   // and the dealers do not: `EnforcerMarks` writes the list both of them stand
   // in (spec section 17.2).
   const enforcerMarks = new EnforcerMarks(pois);
+  // The objective is marked last of all, because it moves with the leg of the
+  // job the record is carrying (spec section 18).
+  const missionMarks = new MissionMarks(pois);
   const overlay = new TerritoryOverlay(turf, state).draw;
   const art = new MapArt(description, pois);
   const minimap = new Minimap(document.body, art);
@@ -708,6 +720,9 @@ async function boot(): Promise<void> {
     turf,
     homePanel: new HomePanel(document.body),
     safehouses,
+    jobPanel: new JobPanel(document.body),
+    missions,
+    missionMarks,
     smooth,
     weapons,
     pause,

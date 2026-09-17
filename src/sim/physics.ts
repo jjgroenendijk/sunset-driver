@@ -45,6 +45,7 @@ import type { MetroPlace } from './metro.ts';
 import type { ShopPlace } from './shop.ts';
 import type { DealerPlace } from './dealer.ts';
 import type { SafehousePlace } from './safehouse.ts';
+import type { MissionWorld } from './job.ts';
 import type { TerritoryMap } from './territory.ts';
 import {
   besidePlayer,
@@ -328,6 +329,11 @@ export class SimPhysics {
   /** The turf of the ground (spec section 17.2), which a takeover and the map overlay read. */
   get turf(): TerritoryMap | undefined {
     return this.ground.turf;
+  }
+
+  /** The work of the ground (spec section 18): the contacts, and where they send the player. */
+  get missions(): MissionWorld | undefined {
+    return this.ground.missions;
   }
 
   /**
