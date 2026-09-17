@@ -3,7 +3,8 @@
 The gotchas of `src/sim` and `src/ui`: what Rapier does with a wheel, a force and a heightfield,
 what the record may hold, and what the HUD and the map read. `spec.md` sections 11 to 14, 16 and 18
 are the design. Read the section the work touches, not the file. The menus and the screens around
-play — the title screen, the loading screen, the pause menu and the saves — are in `docs/menus.md`.
+play — the title screen, the loading screen, the pause menu and the saves — are in `docs/menus.md`,
+and the shops, the counters and the interiors of spec section 16 in `docs/shops.md`.
 
 ## Contents
 
@@ -370,6 +371,3 @@ play — the title screen, the loading screen, the pause menu and the saves — 
   a station id. A recorded stream therefore replays the trip the player picked. `src/ui/travel.ts`
   draws that list and the black sheet over the frame; the number keys are read as an edge in
   `Keyboard`, or a held key would ride the line back and forth.
-- `MetroState.trips` is what `main.ts` watches to stand the camera down at the far station, the way
-  it watches `SimState.respawn`. Heat and a vehicle are the two refusals, so a player has to lose
-  the police before the line will take them (spec section 14).
