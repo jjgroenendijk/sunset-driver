@@ -10,6 +10,8 @@ export interface SignalLap {
   crossings: number;
   /** Those of them it took on an amber, which only a driver who takes ambers does. */
   ambers: number;
+  /** Ticks it stood at a stop on its route, which only a bus does. */
+  calling: number;
   /** Every tick it stood still where no light held it, or drove over a line on amber or red. */
   faults: string[];
 }
@@ -23,16 +25,26 @@ export interface SignalLap {
  */
 export function signalLap(traffic: AmbientTraffic, vehicle: AmbientVehicle): SignalLap {
   const signals = traffic.signals;
-  const lap: SignalLap = { stops: 0, crossings: 0, ambers: 0, faults: [] };
+  const lap: SignalLap = { stops: 0, crossings: 0, ambers: 0, calling: 0, faults: [] };
   if (signals === undefined) return lap;
   const driver = vehicle.driver;
   const cursor = traffic.cursorAt(vehicle.id, 0);
   let last = placeOf(vehicle.tour, cursor);
   for (let tick = 1; tick <= vehicle.tour.period; tick++) {
+    // The tick a call ends on is the first tick of the drive out of it, and the
+    // vehicle has not moved yet, so the step behind counts as well as the one
+    // it is on.
+    const left = cursor.step;
     traffic.advance(cursor);
     const now = placeOf(vehicle.tour, cursor);
     const approach = signals.approachOf(now.edge);
     if (now.edge === last.edge && now.along === last.along) {
+      // A bus at a stop on its route is held by its passengers, not by a light.
+      if (vehicle.tour.stepCall[cursor.step] === 1 || vehicle.tour.stepCall[left] === 1) {
+        lap.calling++;
+        last = now;
+        continue;
+      }
       lap.stops++;
       // A driver who is still standing more than their own reaction after the
       // green started is one the timing forgot to send on.

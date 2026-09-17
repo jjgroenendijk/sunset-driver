@@ -96,9 +96,10 @@ describe('ambient traffic (spec sections 5.3, 13.1)', () => {
         expect(right, `vehicle ${vehicle.id} on ${edge.tier}`).toBeCloseTo(laneOffset(edge, vehicle.lane), 6);
         expect(Math.cos(at.heading) * dx + Math.sin(at.heading) * dy).toBeGreaterThan(0.999);
         expect(at.speed).toBeLessThanOrEqual(edge.speedLimit * 1.001);
-        // A tour that meets no light drives at cruising speed all the way round.
-        if (tour.sync < 0) {
-          expect(at.speed).toBeGreaterThan(edge.speedLimit * 0.8);
+        // A tour that meets no light drives at its driver's cruising speed all
+        // the way round, but for the kerbs a bus calls at (spec section 20.2).
+        if (tour.sync < 0 && tour.stepCall[cursor.step] !== 1) {
+          expect(at.speed, `vehicle ${vehicle.id}`).toBeGreaterThan(edge.speedLimit * vehicle.driver.cruise * 0.97);
           free++;
         }
         checked++;
