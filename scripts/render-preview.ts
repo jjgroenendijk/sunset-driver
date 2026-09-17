@@ -39,6 +39,9 @@
  *                    player, to compare the silhouettes.
  *   --hover          the index of the laid pickup to draw grown, as the one
  *                    under the mouse.
+ *   --shop           stand inside the nearest shop of a trade (spec section
+ *                    16.1): weapons, workshop, convenience, clothing, clinic,
+ *                    broker, or `any`. The vehicle waits at the kerb.
  *   --tram           stand beside the first tram at the hour of the picture
  *                    (spec section 13.2), and --stop=N at the N-th tram stop.
  *                    Either one overrides --x, --y and --junction.
@@ -171,6 +174,7 @@ const request: PreviewRequest = {
   ...(options.has('aim') ? { aim: true } : {}),
   ...(options.has('pickups') ? { pickups: true } : {}),
   ...(options.has('hover') ? { hover: num('hover', 0) } : {}),
+  ...(options.has('shop') ? { shop: (options.get('shop') as string) || 'any' } : {}),
 };
 
 let server: ViteDevServer | undefined;
@@ -204,7 +208,7 @@ try {
   const rgb = new Uint8Array(Buffer.from(result.rgb, 'base64'));
   writeFileSync(out, encodePng(result.width, result.height, rgb));
   console.log(
-    `${out}: ${result.width}x${result.height}, seed ${seedText} at ${request.x},${request.y}` +
+    `${out}: ${result.width}x${result.height}, seed ${seedText} at ${result.x.toFixed(0)},${result.y.toFixed(0)}` +
       ` at ${request.hour.toFixed(1)}h` +
       ` — world ${result.worldMs.toFixed(0)} ms, chunks ${result.chunkMs.toFixed(0)} ms,` +
       ` frame ${result.frameMs.toFixed(0)} ms, dearest chunk ${result.peakDrawCalls} draw calls,` +

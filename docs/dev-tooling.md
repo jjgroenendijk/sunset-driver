@@ -134,6 +134,11 @@ What the game draws, as one frame. Look at the frame before judging a rendering 
   as the pickup under the mouse is.
 - `--tram` stands the player beside the first tram at the hour of the picture, and `--stop=N` at
   the N-th tram stop, where its queue waits.
+- `--shop=<trade>` stands the player inside the nearest shop of that trade — `weapons`, `workshop`,
+  `convenience`, `clothing`, `clinic`, `broker`, or `any` — with the vehicle left at the kerb. It is
+  the one way to look at an interior (spec section 16.1), and it moves the frame off `--x` and
+  `--y`: the line the run prints says where it ended up. A room is about 7 m across, so
+  `--distance=22` is the frame that holds it.
 - `--width` and `--height` are the size of the picture.
 
 It prints the lights and shadow cascades the frame cost beside the draw calls, and how many
