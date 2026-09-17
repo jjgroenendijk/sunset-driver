@@ -67,6 +67,7 @@ import { SkyLighting } from './sky.ts';
 import { VehicleModel } from './vehicle.ts';
 import { HeldWeapon, WeaponArt } from './weapon.ts';
 import { PickupModels } from './pickups.ts';
+import { PosterScenery } from './posters.ts';
 import { ShopInterior } from './interior.ts';
 import {
   detailAt,
@@ -155,6 +156,8 @@ export class WorldScene {
   private readonly fade = new EntityFade(entityDistance(FULL_TIER));
   private readonly vegetation = new PlantScenery(this.fade);
   private readonly lamps = new LampScenery(this.fade);
+  /** The harm-reduction posters on the walls (spec section 19). */
+  private readonly posters = new PosterScenery(this.fade);
   private readonly lampLights: LampLights;
   /** The beams the player's vehicle throws (spec section 13.4). */
   private readonly headlights: Headlights;
@@ -565,6 +568,7 @@ export class WorldScene {
     this.buildings.dispose();
     this.vegetation.dispose();
     this.lamps.dispose();
+    this.posters.dispose();
     this.character.dispose();
     this.scene.remove(this.vehicle.group);
     this.vehicle.dispose();
@@ -625,7 +629,7 @@ export class WorldScene {
   /**
    * Cut a payload into the jobs that put it into the scene, one batch at a
    * time: the ground, then each tier of road, then each batch of buildings,
-   * then the plants and the lamps. Each of those spreads again into a step per
+   * then the plants, the lamps and the posters. Each spreads again into a step per
    * part of its batch as it runs, so a chunk of the core is dozens of small
    * jobs and a chunk of open country is one.
    */
@@ -688,6 +692,11 @@ export class WorldScene {
         tile.lamps = [...lamps];
         this.lampLights.invalidate();
       });
+    }
+    // The posters are not thinned by the tier: a chunk carries a handful, and
+    // the information of spec section 19 is not what a low tier drops.
+    if (payload.posters.length > 0) {
+      this.queueJob(tile, () => this.add(tile, this.posters.build(grid, payload.posters)));
     }
     this.queueJob(tile, () => {
       tile.whole = true;

@@ -14,6 +14,7 @@ import { buildingDrawCalls } from './building-mesh.ts';
 import { CHUNK_CELLS } from './cells.ts';
 import { lampDrawCalls } from './lamp-mesh.ts';
 import { vegetationDrawCalls } from './plant-mesh.ts';
+import { posterDrawCalls } from './poster-mesh.ts';
 import { roadDrawCalls } from './road-mesh.ts';
 import type { ChunkDetail } from './streaming.ts';
 
@@ -21,14 +22,15 @@ import type { ChunkDetail } from './streaming.ts';
  * Batches one cell of a chunk may draw: at most five for the roads, one per
  * tier, at most three for the buildings — the generated facades, the blocks
  * and the outlines that rim both — one for the plants, whatever species stand
- * there, and one for the street lamps, whatever tiers carry them.
+ * there, one for the street lamps, whatever tiers carry them, and one for the
+ * harm-reduction posters, whatever designs they carry.
  */
-export const CELL_BATCH_CAP = 10;
+export const CELL_BATCH_CAP = 11;
 
 /**
  * Draw calls a chunk may cost: {@link CELL_BATCH_CAP} in each of its
  * {@link CHUNK_CELLS} cells, one ground mesh, and one line of markings for each
- * of the three marked tiers, which are not cut into cells. That is 44. A count
+ * of the three marked tiers, which are not cut into cells. That is 48. A count
  * over this is a batching regression, not a cap to raise; a system that lands
  * in a chunk later raises it together with the batches it brings.
  */
@@ -36,10 +38,15 @@ export const CHUNK_DRAW_CALL_CAP = 1 + 3 + CELL_BATCH_CAP * CHUNK_CELLS;
 
 /**
  * The most draw calls one chunk costs at near detail: the ground, and the
- * roads, the buildings, the plants and the lamps with every kind in every cell.
+ * roads, the buildings, the plants, the lamps and the posters with every kind
+ * in every cell.
  */
 export function chunkDrawCalls(chunk: WorldChunk): number {
-  const batches = buildingDrawCalls(chunk) + vegetationDrawCalls(chunk) + lampDrawCalls(chunk);
+  const batches =
+    buildingDrawCalls(chunk) +
+    vegetationDrawCalls(chunk) +
+    lampDrawCalls(chunk) +
+    posterDrawCalls(chunk.buildings.length);
   return 1 + roadDrawCalls(chunk, CHUNK_CELLS) + batches * CHUNK_CELLS;
 }
 
