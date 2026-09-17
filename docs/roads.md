@@ -103,6 +103,9 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   (`streetApproach`): a street climbs what an arterial may not, so it gets out of a pocket of steep
   ground that holds streets and no arterial. The street is a road of its own and the link begins
   where it ends, so the bridge and the island's road are still arterial (issue #277).
+- `serveDistricts` lays an arterial from every built-up district to the nearest road, and a street
+  where no arterial line reaches the site, for the same reason (issue #398). A site on ground no
+  road of any tier can climb to gets neither; that is issue #399.
 
 ## The tiers and the fill
 
