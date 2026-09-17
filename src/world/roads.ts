@@ -250,41 +250,66 @@ class RoadTracer extends HighwayTrace {
    * the island's nearest district. Which end of the crossing is the near one is
    * decided by trying both: the near end is the one that can reach the roads
    * already laid.
+   *
+   * The search runs twice over the two shores. The first round gives a shore up
+   * as soon as its best pair of heads reaches no road, because the other shore
+   * is usually the one that can. Where neither shore has a way on at its best
+   * pair, the second round works through the rest of the heads instead, and
+   * routes as many of them as there are. An island that carries a district has
+   * to have a road (spec section 6.2), so the cheap round is an ordering and
+   * never the end of the search.
    */
   private linkIsland(island: number, crossingIndex: number): void {
     const crossing = this.world.water.crossings[crossingIndex];
     if (crossing === undefined) return;
-    for (const flip of [false, true]) {
-      const nearShore = flip ? crossing.to : crossing.from;
-      const farShore = flip ? crossing.from : crossing.to;
-      const { open, joined } = this.bridgeHeads(nearShore, farShore);
-      // The best pair on open ground first. Where its approach turns back under
-      // the deck, the heads on the network come next, since they need no
-      // approach at all, and then the rest of the open ground.
-      const pairs = [...open.slice(0, 1), ...joined, ...open.slice(1)];
-      let routed = 0;
-      for (const [near, far] of pairs) {
-        const onNetwork = joined.some((pair) => pair[0] === near);
-        let approach: Point[] | undefined = [near];
-        if (!onNetwork) {
-          if (routed++ >= LINK_TRIES) break;
-          // The approach carries on from the deck, so it is looked for first
-          // among the routes that do not turn back under it.
-          const shore = this.islandOf(near.x, near.y);
-          approach = this.routeToNetwork(near, shore, 'arterial', ARTERIAL, undefined, false, [far, near]) ?? this.routeToNetwork(near, shore);
-          // A near shore the network cannot be reached from is the other shore's to try.
-          if (approach === undefined && routed === 1) break;
-          if (approach === undefined) continue;
-          approach.reverse();
-        }
-        if (selfOverlap([...approach, far], 'arterial') !== undefined) continue;
-        const points = [...approach, ...this.landOnIsland(far, island, [near, far])];
-        const bridges = [approach.length - 1];
-        if (!this.structuresAtSlots(points, bridges)) continue;
-        // A link cut short of its deck reaches no island, so it is laid whole or not at all.
-        if (this.addCurve('arterial', points, bridges, [], true) !== undefined) return;
+    for (const patient of [false, true]) {
+      for (const flip of [false, true]) {
+        if (this.linkOverShore(island, crossingIndex, flip, patient)) return;
       }
     }
+  }
+
+  /**
+   * One shore of one crossing, tried as the near side of the bridge. True where
+   * the link was laid. `patient` is the second round of {@link linkIsland}: it
+   * routes every head rather than the first few, and never gives the shore up
+   * because the best pair found no way on to the network.
+   */
+  private linkOverShore(island: number, crossingIndex: number, flip: boolean, patient: boolean): boolean {
+    const crossing = this.world.water.crossings[crossingIndex];
+    if (crossing === undefined) return false;
+    const nearShore = flip ? crossing.to : crossing.from;
+    const farShore = flip ? crossing.from : crossing.to;
+    const { open, joined } = this.bridgeHeads(nearShore, farShore);
+    // The best pair on open ground first. Where its approach turns back under
+    // the deck, the heads on the network come next, since they need no
+    // approach at all, and then the rest of the open ground.
+    const pairs = [...open.slice(0, 1), ...joined, ...open.slice(1)];
+    const tries = patient ? HEAD_TRIES : LINK_TRIES;
+    let routed = 0;
+    for (const [near, far] of pairs) {
+      const onNetwork = joined.some((pair) => pair[0] === near);
+      let approach: Point[] | undefined = [near];
+      if (!onNetwork) {
+        if (routed++ >= tries) break;
+        // The approach carries on from the deck, so it is looked for first
+        // among the routes that do not turn back under it.
+        const shore = this.islandOf(near.x, near.y);
+        approach = this.routeToNetwork(near, shore, 'arterial', ARTERIAL, undefined, false, [far, near]) ?? this.routeToNetwork(near, shore);
+        // A near shore the network cannot be reached from is the other shore's
+        // to try, in the round that has another shore left to try.
+        if (approach === undefined && routed === 1 && !patient) break;
+        if (approach === undefined) continue;
+        approach.reverse();
+      }
+      if (selfOverlap([...approach, far], 'arterial') !== undefined) continue;
+      const points = [...approach, ...this.landOnIsland(far, island, [near, far])];
+      const bridges = [approach.length - 1];
+      if (!this.structuresAtSlots(points, bridges)) continue;
+      // A link cut short of its deck reaches no island, so it is laid whole or not at all.
+      if (this.addCurve('arterial', points, bridges, [], true) !== undefined) return true;
+    }
+    return false;
   }
 
   /**
