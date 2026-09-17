@@ -134,6 +134,9 @@ What the game draws, as one frame. Look at the frame before judging a rendering 
 - `--vehicle=<class>` is the class of the roster to stand the player in, `--on-foot` stands them
   beside it rather than in it, `--damage=<stage>` shows the vehicle dented, smoking, burning or
   burnt out, and `--skid` lays a drift's worth of marks into the road behind it.
+- `--stance=<name>` holds the player in one stance for the picture — `stand`, `walk`, `air` or
+  `swim` — which is the one way to look at the movement of spec sections 11.2 and 11.5 in a still
+  frame. The frame is taken a quarter of the way through the cycle, where the swing is widest.
 - `--weapon=<id>` puts a weapon of the arsenal in the hands, drawn with `--on-foot`, and
   `--attachments=suppressor+optic` fits to it what it takes. `--aim` holds it at the shoulder.
   `--pickups` lays every weapon in rows below the player, fitted with the same attachments, which is

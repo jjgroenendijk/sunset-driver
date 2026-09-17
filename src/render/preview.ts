@@ -26,7 +26,7 @@ import {
   type DamageStage,
   type DamageState,
 } from '../sim/damage.ts';
-import { createPlayerState, exitPlace } from '../sim/on-foot.ts';
+import { createPlayerState, exitPlace, JUMP_SPEED, SPRINT_SPEED, SWIM_DEPTH } from '../sim/on-foot.ts';
 import type { PickupState } from '../sim/pickup.ts';
 import { createSimState } from '../sim/simulation.ts';
 import { ParkedCars } from '../sim/parked.ts';
@@ -54,6 +54,7 @@ import {
 } from '../sim/vehicle.ts';
 import { generateWorld } from '../world/world.ts';
 import { FollowCamera, PULL_MARGIN } from './camera.ts';
+import { poseFor } from './character-pose.ts';
 import { tickAtHour } from './daylight.ts';
 import { PostChain } from './post.ts';
 import { FULL_TIER, QUALITY_TIERS } from './quality.ts';
@@ -104,6 +105,13 @@ export interface PreviewRequest {
    */
   onFoot?: boolean;
   /**
+   * The stance to hold the player in, for looking at the movement of spec
+   * sections 11.2 and 11.5 in a still frame: `stand`, `walk`, `air` or `swim`.
+   * Left out, they stand. A cycle has no still of its own, so the frame is
+   * taken a quarter of the way through, where the swing is widest.
+   */
+  stance?: string;
+  /**
    * The damage state to show the vehicle in, by name (spec section 11.3):
    * `dented`, `smoking`, `burning` or `burnt`. Left out, the vehicle is
    * straight out of the showroom.
@@ -137,6 +145,33 @@ export interface PreviewRequest {
    * left at the kerb, and it overrides {@link PreviewRequest.onFoot}.
    */
   shop?: string;
+}
+
+/** A quarter through a cycle, where a leg is furthest forward and the other furthest back. */
+const POSE_PHASE = Math.PI / 2;
+
+/**
+ * Hold the player in one stance of spec sections 11.2 and 11.5, so a still
+ * frame shows the walk, the jump or the stroke that a running game shows over
+ * time. Left unasked, the model keeps the standing pose it was built in.
+ */
+function hold(scene: WorldScene, request: PreviewRequest): void {
+  const asked = request.stance;
+  if (asked === undefined) return;
+  const stance = (['stand', 'walk', 'air', 'swim'] as const).find((name) => name === asked);
+  if (stance === undefined) throw new Error(`no stance named ${asked}`);
+  const stature = scene.character.height;
+  scene.character.pose(
+    poseFor(stance, POSE_PHASE, {
+      speed: stance === 'walk' ? SPRINT_SPEED : 0,
+      grounded: stance !== 'air',
+      vy: stance === 'air' ? JUMP_SPEED : 0,
+      // A swimmer is drawn where they stand, so the water is only as deep as
+      // the stroke needs: the body lies on the ground rather than in the sea.
+      depth: stance === 'swim' ? SWIM_DEPTH * stature * 1.1 : 0,
+      stature,
+    }),
+  );
 }
 
 /** Metres out of a shop door `--shop` leaves the vehicle. */
@@ -269,6 +304,7 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   scene.character.group.position.set(stand.x, scene.heightAt(stand.x, stand.y), stand.y);
   scene.character.group.rotation.y = -stand.heading;
   scene.character.group.visible = request.onFoot === true || shop !== undefined;
+  hold(scene, request);
   scene.vehicle.set(vehicle);
   // A fire is what has been burning for a while, not what started this frame,
   // so the smoke is given a run of ticks to climb before the picture is taken.
