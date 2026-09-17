@@ -48,6 +48,13 @@ export interface ProfileRequest {
   noLamps?: boolean;
   /** Kinds of batch that cast no shadow: road, facade, block, outline, plant, lamp. */
   noCast?: string[];
+  /**
+   * Quality changes during the drive, as `frame:tier` pairs: at each drive
+   * frame named, the tier is applied the way the game applies one. This is how
+   * a tier change is timed rather than guessed at: the frames around it say
+   * whether it compiled anything.
+   */
+  tierAt?: string[];
   /** Wait for `window.startDrive()` before the drive, so a profiler can be started on it alone. */
   gate?: boolean;
 }
@@ -177,7 +184,22 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
   const drive: FrameSample[] = [];
   const dx = Math.cos(start.heading);
   const dy = Math.sin(start.heading);
+  // The quality changes asked for, by the drive frame they land on. The tier is
+  // put to the two halves that draw at it exactly as `applyQuality` puts it.
+  const changes = new Map(
+    (request.tierAt ?? []).map((pair) => {
+      const [at, name] = pair.split(':');
+      const to = QUALITY_TIERS.find((entry) => entry.name === name);
+      if (to === undefined) throw new Error(`No quality tier named '${name}'.`);
+      return [Number(at), to] as const;
+    }),
+  );
   for (let i = 0; i < request.drive; i++) {
+    const to = changes.get(i);
+    if (to !== undefined) {
+      scene.quality = to;
+      post.quality = to.post;
+    }
     const s = (i / 60) * request.speed;
     drive.push(await frame(start.x + dx * s, start.y + dy * s, start.heading, request.speed));
   }

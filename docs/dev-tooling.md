@@ -173,7 +173,9 @@ draws, and what each long frame compiled or built. It runs the warm-up of `src/r
 first, as a session does, so a long frame here is a long frame in the game and not one the game
 had already paid for behind its loading screen. Its switches take one part of the frame away —
 `--no-water`, `--no-shadows`, `--no-lamps`, `--no-post` — so two runs say what that part costs, and
-`--dpr=2` is what a Retina display draws.
+`--dpr=2` is what a Retina display draws. `--tier-at=150:high,300:full` changes quality during the
+drive, at the drive frames named, the way the game's own monitor changes it — which is how a tier
+change is timed, by what the frames around it compiled.
 
 GPU times move by several milliseconds between runs, so compare two builds by running them in turn,
 more than once each.
