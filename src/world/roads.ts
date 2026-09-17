@@ -257,7 +257,8 @@ class RoadTracer extends HighwayTrace {
    * pair, the second round works through the rest of the heads instead, and
    * routes as many of them as there are. An island that carries a district has
    * to have a road (spec section 6.2), so the cheap round is an ordering and
-   * never the end of the search.
+   * never the end of the search. In the second round a head no arterial reaches
+   * is given a street instead ({@link streetApproach}).
    */
   private linkIsland(island: number, crossingIndex: number): void {
     const crossing = this.world.water.crossings[crossingIndex];
@@ -299,8 +300,13 @@ class RoadTracer extends HighwayTrace {
         // A near shore the network cannot be reached from is the other shore's
         // to try, in the round that has another shore left to try.
         if (approach === undefined && routed === 1 && !patient) break;
-        if (approach === undefined) continue;
-        approach.reverse();
+        if (approach === undefined) {
+          // Every arterial way on is spent, so the patient round lays a street
+          // instead. An island that carries a district has to have a road.
+          const climbed = patient ? this.streetApproach(near, far, shore) : undefined;
+          if (climbed === undefined) continue;
+          approach = climbed;
+        } else approach.reverse();
       }
       if (selfOverlap([...approach, far], 'arterial') !== undefined) continue;
       const points = [...approach, ...this.landOnIsland(far, island, [near, far])];
@@ -310,6 +316,22 @@ class RoadTracer extends HighwayTrace {
       if (this.addCurve('arterial', points, bridges, [], true) !== undefined) return true;
     }
     return false;
+  }
+
+  /**
+   * A way on to the network for a bridge head no arterial can reach: a street,
+   * which climbs what an arterial may not. The head can stand in a pocket of
+   * ground that steep slopes close off, and a pocket holds streets where it
+   * holds no arterial (issue #277). The street is laid as a road of its own and
+   * the link begins where it ends, so the bridge and the island's road are
+   * still arterial. Undefined where no street reaches the head either.
+   */
+  private streetApproach(near: Point, far: Point, shore: number): Point[] | undefined {
+    const route =
+      this.routeToNetwork(near, shore, 'street', STREET, undefined, false, [far, near]) ??
+      this.routeToNetwork(near, shore, 'street', STREET);
+    if (route === undefined) return undefined;
+    return this.addCurve('street', [...route].reverse(), []) === undefined ? undefined : [near];
   }
 
   /**
