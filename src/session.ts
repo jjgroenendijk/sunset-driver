@@ -22,7 +22,9 @@ import type { MetroPlace } from './sim/metro.ts';
 import type { SafehousePlace } from './sim/safehouse.ts';
 import type { ShopPlace } from './sim/shop.ts';
 import type { DealerPlace } from './sim/dealer.ts';
+import type { TerritoryMap } from './sim/territory.ts';
 import type { DealerMarks } from './ui/dealers.ts';
+import type { EnforcerMarks } from './ui/enforcers.ts';
 import type { HomePanel } from './ui/home-panel.ts';
 import type { TradePanel } from './ui/trade-panel.ts';
 import type { HotwireBar } from './ui/hotwire.ts';
@@ -63,6 +65,10 @@ export interface Session {
   dealers: readonly DealerPlace[];
   /** Their marks on the maps and their bodies in the crowd, moved when they move. */
   dealerMarks: DealerMarks;
+  /** The enforcers of spec section 17.2 on the maps and in the crowd, with the dealers behind them. */
+  enforcerMarks: EnforcerMarks;
+  /** Whose block is whose (spec section 17.2), which the HUD line and the map overlay read. */
+  turf: TerritoryMap;
   /** The safehouse panel of spec section 16.3, drawn at a front door. */
   homePanel: HomePanel;
   /** The properties the panel names and the broker sells, in the order they are numbered. */

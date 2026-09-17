@@ -19,6 +19,12 @@ import type { MapPoi, MapPois } from './map.ts';
 export class DealerMarks {
   /** The people the crowd mesh is to stand on the corners. The array is never replaced. */
   readonly standing: StandingPerson[] = [];
+  /**
+   * The marks this last wrote to the map, which is everything else's plus the
+   * dealers'. A system that marks places of its own after these reads it rather
+   * than the map's list, which it is about to replace (`enforcers.ts`).
+   */
+  marks: readonly MapPoi[] = [];
   private readonly dealers: readonly DealerPlace[];
   private readonly looks: PedestrianLook[];
   private readonly pois: MapPois;
@@ -32,6 +38,7 @@ export class DealerMarks {
     this.looks = dealers.map((dealer) => dealerLook(seed, dealer));
     this.pois = pois;
     this.others = pois.extra;
+    this.marks = pois.extra;
   }
 
   /**
@@ -55,6 +62,7 @@ export class DealerMarks {
         pose: { x: pitch.x, y: pitch.y, height: ground.heightAt(pitch.x, pitch.y), heading: pitch.heading, speed: 0, cycle: 0, gait: 'stand' },
       });
     }
-    this.pois.extra = [...this.others, ...marks];
+    this.marks = [...this.others, ...marks];
+    this.pois.extra = this.marks;
   }
 }

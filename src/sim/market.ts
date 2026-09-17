@@ -22,6 +22,7 @@ import { clamp } from '../core/math.ts';
 import { GOODS } from './contraband.ts';
 import { priceAt, standingPrice, GLUT, SPIKE } from './contraband.ts';
 import { dealerAt, dealRefusal, pitchOf, DEALER_REACH, type DealerPlace } from './dealer.ts';
+import { factionForCulture, shiftStanding, standingOf } from './faction.ts';
 import type { InputFrame } from './input.ts';
 import { reachesVehicle } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
@@ -42,6 +43,9 @@ const CUT_FAVOUR = 0.06;
 
 /** Metres past the pitch a player may drift before the deal is over. */
 const DEAL_MARGIN = 2;
+
+/** How far one trade moves the standing of the faction whose corner it was made on. */
+const TRADE_STANDING = 0.01;
 
 /** What the player is carrying and who they are dealing with (spec section 16.2). */
 export interface MarketState {
@@ -100,12 +104,25 @@ export function dealing(state: SimState, dealers: readonly DealerPlace[]): Deale
 /**
  * How well a dealer thinks of the player, -1..1 (spec section 17.3). It is what
  * moves their cut, so standing with a faction is worth money on the corners it
- * holds. Nothing carries a reputation yet, so every dealer is even with
- * everybody: when the factions land, this function is the only one that
- * changes.
+ * holds. A dealer works a district, and a district's culture says which faction
+ * runs it (`faction.ts`); one in nobody's district has no opinion, so they deal
+ * at the standing cut whatever the player has been doing elsewhere.
  */
 export function favourOf(state: SimState, dealer: DealerPlace): number {
-  return 0;
+  const faction = factionForCulture(dealer.district.culture);
+  return faction < 0 ? 0 : standingOf(state, faction);
+}
+
+/**
+ * Deal with the faction whose district this is (spec section 17.3). Business is
+ * how a stranger becomes a name, so every trade moves the standing a hair —
+ * and, through `shiftStanding`, moves their rivals' the other way. It is small
+ * on purpose: a reputation is built over a session of driving, not over one
+ * sale.
+ */
+function credit(state: SimState, dealer: DealerPlace): void {
+  const faction = factionForCulture(dealer.district.culture);
+  if (faction >= 0) shiftStanding(state, faction, TRADE_STANDING);
 }
 
 /** Dollars a unit costs from this dealer on this tick. */
@@ -174,7 +191,7 @@ export function stepMarket(state: SimState, input: InputFrame, dealers: readonly
     }
     const pitch = pitchOf(dealer, state.tick);
     const away = Math.hypot(pitch.x - p.x, pitch.y - p.y);
-    if (away > DEALER_REACH + DEAL_MARGIN || dealRefusal(state) !== null) {
+    if (away > DEALER_REACH + DEAL_MARGIN || dealRefusal(state, dealer) !== null) {
       state.market.deal = null;
       return;
     }
@@ -188,7 +205,7 @@ export function stepMarket(state: SimState, input: InputFrame, dealers: readonly
   // door: a dealer stands on the pavement the player parks against.
   if (reachesVehicle(p, state.vehicle, specOf(state.vehicle.cls))) return;
   const at = dealerAt(dealers, state);
-  if (dealers[at] === undefined || dealRefusal(state) !== null) return;
+  if (dealers[at] === undefined || dealRefusal(state, dealers[at]) !== null) return;
   p.held.interact = true;
   state.market.deal = { dealer: at, started: state.tick, said: '' };
 }
@@ -213,6 +230,7 @@ function buy(state: SimState, dealer: DealerPlace, good: number): void {
   state.money -= cost;
   state.market.stash[good] = (state.market.stash[good] ?? 0) + units;
   state.market.paid[good] = (state.market.paid[good] ?? 0) + cost;
+  credit(state, dealer);
   deal.said = `Bought ${units} × ${spec.name} at ${dollars(price)}.`;
 }
 
@@ -232,6 +250,7 @@ function sell(state: SimState, dealer: DealerPlace, good: number): void {
   state.money += take;
   state.market.stash[good] = 0;
   state.market.paid[good] = 0;
+  credit(state, dealer);
   const made = profit >= 0 ? `Up ${dollars(profit)}.` : `Down ${dollars(-profit)}.`;
   deal.said = `Sold ${held} × ${spec.name} for ${dollars(take)}. ${made}`;
 }

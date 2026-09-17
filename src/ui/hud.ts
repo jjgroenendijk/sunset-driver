@@ -35,6 +35,7 @@ export class Hud {
   private readonly objective: HTMLElement;
   private readonly radio: HTMLElement;
   private readonly fate: HTMLElement;
+  private readonly turf: HTMLElement;
   private shownClock = '';
   private shownStatus = '';
   private shownDraws = '';
@@ -45,6 +46,7 @@ export class Hud {
   private shownObjective = '';
   private shownRadio = '';
   private shownFate = '';
+  private shownTurf = '';
 
   constructor(parent: HTMLElement, seed: string) {
     this.root = document.createElement('div');
@@ -87,7 +89,13 @@ export class Hud {
     this.fate = document.createElement('div');
     this.fate.className = 'hud-fate';
     this.fate.hidden = true;
-    this.panel.append(this.fate, health, this.money, this.weapon, this.heat, this.radio, this.objective);
+    // Whose ground the player is standing on (spec section 17.2), and how far
+    // through taking it they are. It sits under the heat because it is the
+    // other thing on screen that says who is about to shoot.
+    this.turf = document.createElement('div');
+    this.turf.className = 'hud-turf';
+    this.turf.hidden = true;
+    this.panel.append(this.fate, health, this.money, this.weapon, this.heat, this.turf, this.radio, this.objective);
     parent.append(this.root, this.panel);
   }
 
@@ -96,7 +104,9 @@ export class Hud {
    * `lights` is what the scene is lit by (spec section 10.5), `streaming` how
    * many chunks are still being built (spec section 9.1) and `tier` the
    * quality tier the frame is drawn at (spec section 9.2). `onAir` is what the
-   * radio of spec section 15 is playing, or null while nothing is.
+   * radio of spec section 15 is playing, or null while nothing is. `turf` is
+   * what the factions of spec section 17.2 say about the block underfoot, and
+   * is empty on ground nobody runs.
    */
   update(
     state: SimState,
@@ -105,6 +115,7 @@ export class Hud {
     streaming: number,
     tier: string,
     onAir: OnAirLine | null = null,
+    turf = '',
   ): void {
     const t = gameTime(state.tick);
     const hh = String(t.hour).padStart(2, '0');
@@ -176,6 +187,12 @@ export class Hud {
       this.shownObjective = state.objective;
       this.objective.textContent = state.objective;
       this.objective.hidden = state.objective === '';
+    }
+
+    if (turf !== this.shownTurf) {
+      this.shownTurf = turf;
+      this.turf.textContent = turf;
+      this.turf.hidden = turf === '';
     }
 
     const radio = radioLine(onAir);

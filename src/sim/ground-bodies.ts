@@ -18,6 +18,8 @@ import type { SafehousePlace } from './safehouse.ts';
 import type { ParkedCars } from './parked.ts';
 import type { AmbientTraffic } from './traffic.ts';
 import type { PoliceForce } from './police.ts';
+import type { EnforcerGang } from './enforcer.ts';
+import type { TerritoryMap } from './territory.ts';
 import type { TramLine } from './tram.ts';
 
 /** Metres each way of one tile of ground the physics holds. */
@@ -95,6 +97,13 @@ export interface Ground {
    * drives. A test that is not about the police leaves it out, and nobody comes.
    */
   police?: PoliceForce;
+  /**
+   * The turf of spec section 17.2: which block is whose, and the enforcers a
+   * faction sends after a capture. A test that is not about the factions leaves
+   * them out, and no ground is anybody's.
+   */
+  turf?: TerritoryMap;
+  enforcers?: EnforcerGang;
 }
 
 

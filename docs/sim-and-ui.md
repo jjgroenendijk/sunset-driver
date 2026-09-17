@@ -5,7 +5,8 @@ what the record may hold, and what the HUD and the map read. `spec.md` sections 
 are the design. Read the section the work touches, not the file. The menus and the screens around
 play — the title screen, the loading screen, the pause menu and the saves — are in `docs/menus.md`,
 and the shops, the counters and the interiors of spec section 16 in `docs/shops.md`. The properties
-the player buys are in `docs/safehouses.md`.
+the player buys are in `docs/safehouses.md`, and the factions, their reputation and their turf in
+`docs/factions.md`.
 
 ## Contents
 
@@ -42,7 +43,9 @@ the player buys are in `docs/safehouses.md`.
   air (spec section 15), so it is there only while something is playing. `SimState.money` is moved
   by the shops of spec section 16.1 and the contraband market of 16.2 (`docs/market.md`).
   `SimState.objective` is the slot it reads that nothing writes yet; the missions of spec section 18
-  are what will.
+  are what will. The turf line under the heat is whose block the player is standing on and how far
+  through taking it they are (spec section 17.2); `main.ts` reads it off `turfLine` and hands it in,
+  because the HUD knows the record and not the world.
 
 ## The map
 
@@ -54,6 +57,9 @@ the player buys are in `docs/safehouses.md`.
   uses and a colour no other type uses, and `test/map.test.ts` pins both. `MapPois.extra` is the
   slot a system that owns places writes — the shops of spec section 16.1, the safehouses of 16.3,
   the factions of 17, the missions of 18 — and nothing reads a second list.
+- `MapDrawOptions.overlay` is the slot the territory of spec section 17.2 draws through
+  (`docs/factions.md`). It is handed the canvas in world metres and the world box the view can show,
+  so an overlay over the whole map draws only the part on screen.
 - `src/ui/map-draw.ts` is the one place that says what a map looks like. `Minimap` (`minimap.ts`)
   and `MapScreen` (`map-screen.ts`) both draw through one `MapArt`, so the corner map and the full
   map cannot disagree about a road or a mark. The land and the sea are a bitmap one pixel to a
@@ -173,9 +179,11 @@ the player buys are in `docs/safehouses.md`.
   wrong tick.
 - `PoliceForce` is stepped by the physics, after the world has moved, so the units answer the tick
   the player has just driven. It holds no state of the chase: `SimState.police` is the record, so a
-  save is loaded and the same force carries on from it. `PoliceRoads` (`police-route.ts`) is the
+  save is loaded and the same force carries on from it. `UnitRoads` (`unit-route.ts`) is the
   routing — `RoadGraph.shortestPath` over travel time — and it caches the legs of a route per unit,
-  because a route is planned every two seconds and read every tick.
+  because a route is planned every two seconds and read every tick. The faction enforcers of spec
+  section 17.2 walk the same roads through the same class, which is why it is named for a unit and
+  not for the police.
 - A unit is routed to a place, never along the player's path: a chase is aimed at the last sighting,
   a cut-off and a roadblock at a point ahead of the way the player was going, and a search at a
   place round the last sighting that its own stream picks. A unit within `HOLD_RANGE` of its goal

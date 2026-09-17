@@ -31,7 +31,11 @@ import { stationAt, type MetroPlace } from './sim/metro.ts';
 import { shopPlaces, visiting } from './sim/shop.ts';
 import { dealerPlaces } from './sim/dealer.ts';
 import { safehousePlaces } from './sim/safehouse.ts';
+import { EnforcerGang } from './sim/enforcer.ts';
+import { TerritoryMap, turfLine } from './sim/territory.ts';
 import { DealerMarks } from './ui/dealers.ts';
+import { EnforcerMarks } from './ui/enforcers.ts';
+import { TerritoryOverlay } from './ui/territory.ts';
 import { TradePanel } from './ui/trade-panel.ts';
 import { HotwireBar } from './ui/hotwire.ts';
 import { Hud } from './ui/hud.ts';
@@ -310,6 +314,7 @@ async function boot(): Promise<void> {
         session.world.streaming,
         session.quality.tier.name,
         audio.onAir,
+        turfLine(session.state, session.turf),
       );
       // The lock the player is working at (spec section 11.4). The panel reads
       // the record the simulation is playing, so the bar on screen is the bar
@@ -326,6 +331,9 @@ async function boot(): Promise<void> {
       // standing this spell, and the prices of the one the player is with.
       session.dealerMarks.update(session.state.tick, session.world);
       session.tradePanel.update(session.state, session.dealers);
+      // The enforcers of spec section 17.2, where the record left them this
+      // tick, and the dealers standing behind them in the same list.
+      session.enforcerMarks.update(session.state, session.world, session.dealerMarks);
       // The safehouses of spec section 16.3: what a front door costs, or what
       // the house the player is standing in does for them.
       session.homePanel.update(session.state, session.safehouses);
@@ -515,6 +523,12 @@ async function boot(): Promise<void> {
   // for the same reason, so each front door is snapped to the road nearest it.
   const safehouses = safehousePlaces(state.seed, description.districts, (x, y) => nearestRoadPlace(description, x, y));
   ground.safehouses = safehouses;
+  // The turf of spec section 17.2: which block is whose, seeded from the
+  // district cultures the seed handed out, and the enforcers a faction sends
+  // when the player takes one. They walk the roads the police drive.
+  const turf = new TerritoryMap(description);
+  ground.turf = turf;
+  ground.enforcers = new EnforcerGang(roads, turf);
   // The parking bays come from the same answer. Which bay holds a car is a
   // function of the tick, so the physics and the renderer share one plan.
   const parked = world.bays === undefined ? undefined : new ParkedCars(state.seed, world.bays);
@@ -584,11 +598,18 @@ async function boot(): Promise<void> {
   // The dealers are marked after the rest, because they are the only marks that
   // move: `DealerMarks` keeps the list above and writes its own after it.
   const dealerMarks = new DealerMarks(state.seed, dealers, pois);
+  // The enforcers are marked after the dealers, because they move every tick
+  // and the dealers do not: `EnforcerMarks` writes the list both of them stand
+  // in (spec section 17.2).
+  const enforcerMarks = new EnforcerMarks(pois);
+  const overlay = new TerritoryOverlay(turf, state).draw;
   const art = new MapArt(description, pois);
   const minimap = new Minimap(document.body, art);
+  minimap.overlay = overlay;
   const map = new MapScreen(document.body, art, (place) => {
     state.waypoint = place;
   });
+  map.overlay = overlay;
   const pause = new PauseMenu(document.body, choice.seed, {
     save: () => {
       slots.write(createSave(choice.seed, state));
@@ -676,9 +697,10 @@ async function boot(): Promise<void> {
   const tramView = new TramView(tram);
   world.scene.add(tramView.group);
   const crowdView = new PedestrianView(crowd, tram);
-  // The dealers are drawn with the crowd, and the list they stand in is theirs
-  // to write: this hands it over once and never again.
-  crowdView.standing = dealerMarks.standing;
+  // The dealers and the faction enforcers are drawn with the crowd, and the
+  // list they stand in is written by `EnforcerMarks` for both of them (spec
+  // sections 16.2, 17.2): this hands it over once and never again.
+  crowdView.standing = enforcerMarks.standing;
   world.scene.add(crowdView.group);
 
   // WebGPU compiles a pipeline the first time it draws with it, so a session
@@ -711,6 +733,8 @@ async function boot(): Promise<void> {
     tradePanel: new TradePanel(document.body),
     dealers,
     dealerMarks,
+    enforcerMarks,
+    turf,
     homePanel: new HomePanel(document.body),
     safehouses,
     smooth,

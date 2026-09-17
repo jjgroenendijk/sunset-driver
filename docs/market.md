@@ -13,6 +13,7 @@ trade, in `docs/shops.md`; the record both of them write is `src/sim/simulation.
 - The deal
 - The panel
 - The map and the crowd
+- The factions
 
 ## Nothing about a price is stored
 
@@ -75,9 +76,6 @@ trade, in `docs/shops.md`; the record both of them write is `src/sim/simulation.
   units into a keyboard.
 - `MarketState.paid` is what was paid for the units held, which is what lets a sale say what it
   made. A sale is all of a good, so the arithmetic is exact and no average cost is ever carried.
-- `favourOf` is the seam for the faction reputation of spec section 17.3: it moves the dealer's
-  cut, and it is the only place a reputation will enter a price. Nothing carries one yet, so it
-  answers 0 for everybody.
 
 ## The panel
 
@@ -96,6 +94,23 @@ trade, in `docs/shops.md`; the record both of them write is `src/sim/simulation.
   leaves them alone every other frame.
 - The body is one instance of the crowd's own mesh (`PedestrianView.standing`), so a dealer costs
   no draw call. They are dressed as the district they work in, from `lookOf`.
+- That list is not written here, though. `EnforcerMarks` (`src/ui/enforcers.ts`) writes it for the
+  dealers and the faction enforcers of spec section 17.2 together, because the mesh reads one list
+  and the enforcers move every tick. `DealerMarks.marks` is what it reads the dealers' own marks
+  off, and not `MapPois.extra`, which it is about to replace.
 - The minimap redraws only when the player has moved, so a dealer who moves while the player stands
   still is marked at their last corner until the player takes a step. It is the map that is late,
   never the deal: `dealerAt` reads `pitchOf` on the tick.
+
+## The factions
+
+- `favourOf` is where the faction reputation of spec section 17.3 enters a price, and the only place
+  it does: it moves the dealer's cut, so standing with the faction whose district this is is worth
+  money on its corners. A dealer in a district nobody runs has no opinion. `docs/factions.md` is the
+  rest of it.
+- Every trade credits that faction a hundredth of the range (`credit`), which through
+  `shiftStanding` costs their rivals half as much. Business is how a stranger becomes a name, and
+  until the missions of spec section 18 land it is the only way the player builds a reputation at
+  all.
+- `dealRefusal` takes the dealer as well as the record, because the third reason they will not trade
+  is who the player has crossed. Call it without one and you get the two old reasons only.

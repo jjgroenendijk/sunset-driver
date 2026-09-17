@@ -15,6 +15,9 @@ import { stepShops, type ShopVisit } from './shop.ts';
 import { createMarketState, stepMarket, type MarketState } from './market.ts';
 import { createPropertyState, stepHome, type PropertyState } from './safehouse.ts';
 import { createPoliceState, type PoliceState } from './police.ts';
+import { createEnforcerState, type EnforcerState } from './enforcer.ts';
+import { createFactionState, type FactionState } from './faction.ts';
+import { stepTerritory, type TerritoryMap } from './territory.ts';
 import { stepRadio } from './radio.ts';
 
 /** The serialisable, deterministic state of a session. */
@@ -143,6 +146,19 @@ export interface SimState {
    * steps them from the physics.
    */
   police: PoliceState;
+  /**
+   * The factions of spec section 17: how the player stands with each of the
+   * eight, the blocks they have taken, and the retaliation that is out after
+   * them. Whose ground a block is otherwise is a function of the seed and the
+   * tick (`territory.ts`), so the record holds the captures and never a map.
+   */
+  factions: FactionState;
+  /**
+   * The enforcers a faction has sent (spec section 17.2). They are the record's
+   * like the police units are, so a save catches a wave mid-street and a replay
+   * sends the same people down it.
+   */
+  enforcers: EnforcerState;
 }
 
 /** Dollars a new session starts with (spec section 16). */
@@ -181,6 +197,8 @@ export function createSimState(
     pedestrians: createPedestrianState(),
     metro: createMetroState(),
     police: createPoliceState(),
+    factions: createFactionState(),
+    enforcers: createEnforcerState(),
   };
 }
 
@@ -232,6 +250,12 @@ export function stepSim(state: SimState, input: InputFrame = EMPTY_INPUT, physic
   // after those two, so one press never opens two panels. Nothing here moves
   // the player, so the physics is told nothing.
   if (!travelling(state)) stepMarket(state, input, physics?.dealers ?? []);
+  // The turf of spec section 17.2 is a rule of the record rather than a thing
+  // on the street: standing on a block is what takes it, so it is read before
+  // the physics moves the player off it. The enforcers it calls out are people,
+  // so they are stepped with the police, after the world has moved.
+  const turf = physics?.turf;
+  if (turf !== undefined && !travelling(state)) stepTerritory(state, turf);
   physics?.step(state, travelling(state) ? EMPTY_INPUT : input);
   stepPickups(state);
   const fate = fateOf(state);

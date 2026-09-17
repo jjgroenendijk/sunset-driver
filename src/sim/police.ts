@@ -5,7 +5,7 @@
  * The heat of `crime.ts` says how many units are out and what kind. A unit is
  * dispatched a district's response time after the force finds itself short of
  * one, comes in on a road near the player, and from then on is routed over the
- * road graph by `police-route.ts`. It is routed to a place, never along the
+ * road graph by `unit-route.ts`. It is routed to a place, never along the
  * player's own path: one car drives at where the player was last seen, another
  * at a junction ahead of them, and a third parks across one as a roadblock.
  * That is what lets the police cut a player off rather than trail them.
@@ -27,7 +27,7 @@ import type { District, WorldDescription } from '../world/types.ts';
 import { TICK_RATE } from './clock.ts';
 import { CRIME_HEAT, decayHeat, heatStars, raiseHeat, type Crime } from './crime.ts';
 import { dropPoliceCar } from './pickup.ts';
-import { PoliceRoads, type DrivePose } from './police-route.ts';
+import { UnitRoads, type DrivePose } from './unit-route.ts';
 import type { SimState } from './simulation.ts';
 import type { TrafficRoads } from './traffic.ts';
 import { headingOf } from './vehicle.ts';
@@ -277,14 +277,14 @@ export function quarryOf(state: SimState): Quarry {
  * a save is loaded and the same force carries on from it.
  */
 export class PoliceForce {
-  private readonly roads: PoliceRoads;
+  private readonly roads: UnitRoads;
   private readonly districtAt: DistrictAt;
   private readonly pose: DrivePose = { x: 0, y: 0, height: 0, heading: 0 };
   /** The units that were out last tick, so the routes of the ones that have gone are forgotten. */
   private out: number[] = [];
 
   constructor(roads: TrafficRoads, districtAt: DistrictAt) {
-    this.roads = new PoliceRoads(roads);
+    this.roads = new UnitRoads(roads);
     this.districtAt = districtAt;
   }
 
