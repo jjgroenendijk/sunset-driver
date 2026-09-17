@@ -30,6 +30,22 @@ export function direction(a: { x: number; y: number }, b: { x: number; y: number
   return len < EPSILON ? { x: 1, y: 0 } : { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
 }
 
+/**
+ * `count` distinct indices into a list of `total` things, spread down it from
+ * `offset`. They step by the share of the list one pick gets, so a few picks
+ * out of many stand far apart rather than in a run, and the step is small
+ * enough that no two of them meet. Asking for more than the list holds gives
+ * every index once.
+ */
+export function spread(total: number, count: number, offset: number): number[] {
+  const take = Math.min(count, total);
+  if (take <= 0) return [];
+  const stride = Math.floor(total / take);
+  const out: number[] = [];
+  for (let i = 0; i < take; i++) out.push((offset + i * stride) % total);
+  return out;
+}
+
 /** Wrap an angle to (-π, π]. */
 export function wrapAngle(a: number): number {
   let r = a % (2 * Math.PI);
