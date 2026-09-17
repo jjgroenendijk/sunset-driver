@@ -367,10 +367,17 @@ export function roadChecks(): void {
       // for a ring: an inner street seeded at the edge of the built-up ground,
       // with no arterial between it and its parent, stands up to the inner
       // zone's 570 m along spacing off it. The worst of 200 seeds reaches 517 m.
+      // It rose a last time for the street that leaves the city. The street fill
+      // keeps to paved ground, so such a street ends where that ground ends, and
+      // the nearest road past it is a dirt road of the wilderness fill, which
+      // stands up to `MINOR_BY_ZONE.wilderness.across` — 430 m — from the edge.
+      // The trim adds up to 1.2 of the street's own widest spacing, 120 m in the
+      // inner ring, so 574 m is what the fill lays by construction there, and the
+      // cap is 580. Seed 2699365466 reads 564 m (issue #389).
       // The alley cap is loose for a different reason:
       // an alley stands half a block off the street that seeded it, and it is
       // trimmed to a cul-de-sac at each end that met nothing.
-      const CAP: Partial<Record<RoadTier, number>> = { street: 560, alley: 220, dirt: 900 };
+      const CAP: Partial<Record<RoadTier, number>> = { street: 580, alley: 220, dirt: 900 };
       for (const seed of seeds) {
         const w = worlds.get(seed) as WorldDescription;
         const grid = new PointGrid(w.size, 100, w.roads);
