@@ -493,6 +493,9 @@ Driving is the primary mechanic.
 
 ### 11.5 On foot
 
+- The player is animated from the record: a walk that keeps pace with the ground, a run at a sprint,
+  a pose of its own in the air, and a swimming stroke.
+- Water chest deep or deeper floats the player and is swum across, slower than it is walked.
 - A light cover mechanic, aimed and hip fire, melee with a range of weapons.
 - Health regenerates only through pickups, food from shops or safehouse rest. No armour.
 - Foot combat is a real alternative to driving; driving stays primary.

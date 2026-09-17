@@ -1,5 +1,14 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { createPlayerState, heal, HEAL_BY_SOURCE, hurt, MAX_HEALTH } from '../src/sim/on-foot.ts';
+import { resolveAppearance } from '../src/sim/character.ts';
+import {
+  createPlayerState,
+  heal,
+  HEAL_BY_SOURCE,
+  hurt,
+  JUMP_SPEED,
+  MAX_HEALTH,
+  swims,
+} from '../src/sim/on-foot.ts';
 import { initPhysics, type Ground } from '../src/sim/physics.ts';
 import { hills, ramp, type Session, start, drive, accelerateTo } from './sim-harness.ts';
 
@@ -133,6 +142,63 @@ describe('on foot', () => {
     drive(session, 900, { throttle: 1, sprint: true });
     expect(session.physics.groundTiles).toBe(tiles);
     expect(session.state.player.grounded).toBe(true);
+    session.physics.dispose();
+  });
+});
+
+describe('swimming', () => {
+  beforeAll(async () => {
+    await initPhysics();
+  });
+
+  /** A beach: the sand runs down into a sea that stands at zero. */
+  function beach(): Ground {
+    return { heightAt: (x) => -0.25 * x, surfaceAt: () => 'sand', seaLevel: 0 };
+  }
+
+  /** Start on the dry sand, step out of the car and walk toward the water. */
+  function wadeIn(ticks: number): Session {
+    const session = start(beach());
+    drive(session, 1, { interact: true });
+    drive(session, 30);
+    drive(session, ticks, { steer: 1 });
+    return session;
+  }
+
+  it('floats the player at the surface once the water is chest deep', () => {
+    const session = wadeIn(300);
+    const p = session.state.player;
+    const stature = resolveAppearance(session.state.character).body.height;
+    const floor = beach().heightAt(p.x, p.y);
+    expect(swims(p.height, 0, stature)).toBe(true);
+    // They are off the bottom, and their head is out of the water.
+    expect(p.height - floor).toBeGreaterThan(0.5);
+    expect(p.height).toBeGreaterThan(-stature);
+    expect(p.height).toBeLessThan(-0.2);
+    session.physics.dispose();
+  });
+
+  it('holds them there rather than sinking, however long they swim', () => {
+    const session = wadeIn(300);
+    const settled = session.state.player.height;
+    drive(session, 400, { steer: 1 });
+    const p = session.state.player;
+    // They have swum well out: the sea floor is metres under them now.
+    expect(beach().heightAt(p.x, p.y)).toBeLessThan(-4);
+    expect(Math.abs(p.height - settled)).toBeLessThan(0.3);
+    expect(Math.abs(p.vy)).toBeLessThan(0.2);
+    session.physics.dispose();
+  });
+
+  it('swims slower than it walks, and cannot jump off the water', () => {
+    const dry = wadeIn(20);
+    const walked = dry.state.player.speed;
+    dry.physics.dispose();
+    const session = wadeIn(300);
+    expect(session.state.player.speed).toBeLessThan(walked);
+    expect(session.state.player.speed).toBeGreaterThan(0.5);
+    drive(session, 1, { steer: 1, jump: true });
+    expect(session.state.player.vy).toBeLessThan(JUMP_SPEED / 2);
     session.physics.dispose();
   });
 });

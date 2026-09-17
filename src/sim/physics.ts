@@ -52,6 +52,7 @@ import {
   capsuleOf,
   exitPlace,
   EXIT_SPEED,
+  FLOAT_DEPTH,
   hurt,
   JUMP_SPEED,
   MAX_CLIMB,
@@ -63,6 +64,9 @@ import {
   SNAP_DISTANCE,
   STEP_HEIGHT,
   STEP_WIDTH,
+  swimPaceOf,
+  swimRise,
+  swims,
   TERMINAL_SPEED,
   TURN_RATE,
   turnToward,
@@ -716,14 +720,22 @@ export class SimPhysics {
    * faces; they then turn to face the way they are walking. Gravity is
    * integrated here rather than by Rapier, because a kinematic body is moved
    * and never pushed: the jump is a speed the ground takes back.
+   *
+   * Water chest deep or deeper swims instead (spec section 11.5): the sea
+   * holds the body at the surface rather than pulling it down, the pace is a
+   * swimmer's, and there is nothing to jump off.
    */
   private walk(state: SimState, input: InputFrame): void {
     const walker = this.walker as Walker;
     const p = state.player;
+    // The capsule stands the player's own height, so half of it up from the
+    // feet is the middle of the body and twice that is how tall they are.
+    const stature = walker.rise * 2;
+    const swimming = swims(p.height, this.ground.seaLevel, stature);
 
     const jumped = input.jump && !p.held.jump;
     p.held.jump = input.jump;
-    if (jumped && p.grounded) p.vy = JUMP_SPEED;
+    if (jumped && p.grounded && !swimming) p.vy = JUMP_SPEED;
 
     let dx = input.steer;
     let dy = -input.throttle;
@@ -733,9 +745,14 @@ export class SimPhysics {
       dy /= length;
     }
     if (length > 0) p.heading = turnToward(p.heading, Math.atan2(dy, dx), TURN_RATE / TICK_RATE);
-    p.vy = Math.max(-TERMINAL_SPEED, p.vy - GRAVITY / TICK_RATE);
+    if (swimming) {
+      const float = this.ground.seaLevel - FLOAT_DEPTH * stature;
+      p.vy = swimRise(float - p.height, p.vy);
+    } else {
+      p.vy = Math.max(-TERMINAL_SPEED, p.vy - GRAVITY / TICK_RATE);
+    }
 
-    const pace = paceOf(input.sprint) / TICK_RATE;
+    const pace = (swimming ? swimPaceOf(input.sprint) : paceOf(input.sprint)) / TICK_RATE;
     this.point.x = dx * pace;
     this.point.y = p.vy / TICK_RATE;
     this.point.z = dy * pace;
@@ -743,8 +760,9 @@ export class SimPhysics {
     const moved = walker.controller.computedMovement(this.force);
     p.grounded = walker.controller.computedGrounded();
     // Standing on the ground takes the fall back, so a step off a kerb does not
-    // build up a speed the next drop starts from.
-    if (p.grounded && p.vy < 0) p.vy = 0;
+    // build up a speed the next drop starts from. The sea floor under a swimmer
+    // takes nothing back: the water owns their speed up and down.
+    if (p.grounded && p.vy < 0 && !swimming) p.vy = 0;
     p.speed = Math.hypot(moved.x, moved.z) * TICK_RATE;
 
     const t = walker.body.translation();

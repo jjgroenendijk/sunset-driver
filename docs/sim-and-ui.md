@@ -95,6 +95,15 @@ metro of spec section 13 — is in `docs/city-life.md`.
 - The input frame carries a key as a level, not a press, so `player.held` keeps last tick's interact
   and jump: a door that opened on the level would open sixty times a second. Health regenerates only
   through `heal(player, source)`; nothing heals on its own (spec section 11.5).
+- Water over the feet deeper than `SWIM_DEPTH` of the player's own height — chest deep — swims
+  instead of walking (spec section 11.5). `swims` is the test and `swimRise` the water: it holds the
+  body at `FLOAT_DEPTH` of its height under the surface and takes back the speed of whatever fall
+  carried it in, so a jump off a bridge sinks and comes back up rather than reaching the sea floor.
+  `FLOAT_DEPTH` is deeper than `SWIM_DEPTH` on purpose, or a floating player would bob in and out of
+  swimming. The pace is `swimPaceOf`, there is nothing to jump off, and the sea floor under a
+  swimmer takes nothing back: the water owns their speed up and down. No field is added to the
+  record — whether they swim is a function of where they stand — so a save from before it still
+  loads.
 
 ## Hotwiring
 
