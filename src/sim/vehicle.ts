@@ -746,6 +746,12 @@ export interface VehicleState {
    * again, so stepping out to look at something is not a second break-in.
    */
   hotwired: boolean;
+  /**
+   * The colour its body is painted: the colour of its row of the roster until a
+   * workshop resprays it (spec section 16.1). It is per vehicle, because a
+   * respray is what was done to one car and not what the class is built in.
+   */
+  paint: number;
 }
 
 /** A vehicle at rest at a place, with its wheels hanging at their rest length. */
@@ -779,6 +785,7 @@ export function createVehicleState(spec: VehicleSpec, x = 0, z = 0, y = 0, headi
     damage: createDamageState(),
     station: 0,
     hotwired: false,
+    paint: spec.paint,
   };
 }
 

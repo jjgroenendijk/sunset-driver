@@ -13,9 +13,11 @@
  * trip safe to take in a session shared with other players (spec section 19).
  * The player is frozen while it runs, so the walk is not steered under the fade.
  *
- * Two things refuse a trip. Heat means the police are looking for the player,
+ * Three things refuse a trip. Heat means the police are looking for the player,
  * and the metro is not a way out of that; a vehicle cannot be taken down the
- * stairs, so the player has to get out first.
+ * stairs, so the player has to get out first; and a player standing inside a
+ * shop is buying, because the number keys are that counter's while they are in
+ * there (spec section 16.1).
  *
  * Pure: it reads the record and the stations, and writes the record. The
  * destination is taken from the input frame as a number, so a replay of a
@@ -98,6 +100,9 @@ export function destinations(state: SimState, from: number): number[] {
  */
 export function travelRefusal(state: SimState): string | null {
   if (state.player.driving) return 'Not with a vehicle.';
+  // The number keys are the shop counter's while the player is in one (spec
+  // section 16.1), so the panel says why the line is not theirs to take.
+  if (state.shop !== null) return 'Not from inside a shop.';
   if (state.heat > 0) return 'Not while the police want you.';
   return null;
 }

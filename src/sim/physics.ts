@@ -42,6 +42,7 @@ import { GroundBodies, PHYSICS_RADIUS, PHYSICS_TILE, type Ground } from './groun
 import { Gunfire, type ShotTarget } from './gunfire.ts';
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
 import type { MetroPlace } from './metro.ts';
+import type { ShopPlace } from './shop.ts';
 import {
   besidePlayer,
   capsuleOf,
@@ -301,6 +302,11 @@ export class SimPhysics {
   /** The metro station entrances of the ground (spec section 13.3), which fast travel reads. */
   get metro(): readonly MetroPlace[] {
     return this.ground.metro ?? [];
+  }
+
+  /** The shops of the ground (spec section 16.1), which the doors and the counters read. */
+  get shops(): readonly ShopPlace[] {
+    return this.ground.shops ?? [];
   }
 
   /**

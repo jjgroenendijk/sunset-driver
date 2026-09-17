@@ -12,6 +12,7 @@ import { PARAPET_HEIGHT, type DeckSpan } from '../world/decks.ts';
 import type { Surface } from '../world/surface.ts';
 import type { MetroPlace } from './metro.ts';
 import type { Place } from './on-foot.ts';
+import type { ShopPlace } from './shop.ts';
 import type { ParkedCars } from './parked.ts';
 import type { AmbientTraffic } from './traffic.ts';
 import type { PoliceForce } from './police.ts';
@@ -57,6 +58,11 @@ export interface Ground {
    * travel goes between. A test that needs none leaves them out.
    */
   metro?: readonly MetroPlace[];
+  /**
+   * The shops of spec section 16.1, which the player walks into and buys from.
+   * A test that is not about them leaves them out, and every door is shut.
+   */
+  shops?: readonly ShopPlace[];
   /**
    * The ambient traffic of the roads (spec section 13.1). A test that is not
    * about traffic leaves it out, and nothing drives past.

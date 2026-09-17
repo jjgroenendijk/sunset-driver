@@ -11,6 +11,7 @@ import { createPedestrianState, type PedestrianState } from './pedestrians.ts';
 import { createTrafficState, type TrafficState } from './traffic.ts';
 import { createLoadout, type LoadoutState, type ProjectileState } from './weapon.ts';
 import { createMetroState, stepMetro, travelling, type MetroState } from './metro.ts';
+import { stepShops, type ShopVisit } from './shop.ts';
 import { createPoliceState, type PoliceState } from './police.ts';
 import { stepRadio } from './radio.ts';
 
@@ -57,6 +58,12 @@ export interface SimState {
   pickups: PickupState[];
   /** The id the next pickup is given. */
   nextPickup: number;
+  /**
+   * The shop the player is standing inside (spec section 16.1), or null while
+   * they are out on the street. What they bought there is already in the
+   * fields around it: the loadout, the money, the health and the paint.
+   */
+  shop: ShopVisit | null;
   /**
    * How much attention the player has drawn (spec section 14). A crime raises
    * it by what `crime.ts` weighs the crime at, and it falls again only while
@@ -141,6 +148,7 @@ export function createSimState(
     vehicle: createVehicleState(specOf(DEFAULT_CLASS)),
     player: createPlayerState(),
     theft: null,
+    shop: null,
     loadout: createLoadout(),
     projectiles: [],
     pickups: [],
@@ -187,6 +195,12 @@ export function stepSim(state: SimState, input: InputFrame = EMPTY_INPUT, physic
   // nothing else, so it is taken before anything moves.
   stepRadio(state, input);
   if (stepMetro(state, input, physics?.metro ?? [])) physics?.stand(state);
+  // The shops of spec section 16.1 run before the physics for the reason the
+  // metro does: a door walked through moves the player, and the physics has to
+  // stand them on the ground where they landed. It is also where the interact
+  // key is spent when a door opens on it, before `transfer` looks for the same
+  // edge. A player under the fade of a trip is holding nothing.
+  if (!travelling(state) && stepShops(state, input, physics?.shops ?? [])) physics?.stand(state);
   physics?.step(state, travelling(state) ? EMPTY_INPUT : input);
   stepPickups(state);
   const fate = fateOf(state);
