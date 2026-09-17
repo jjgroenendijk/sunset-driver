@@ -26,6 +26,9 @@
  *   --on-foot        stand the player beside the vehicle rather than in it,
  *                    which is how the character is looked at (spec section
  *                    11.5).
+ *   --swing          how far through a swing of a melee weapon to hold the
+ *                    player, 0 to 1 (spec section 11.6). Needs --on-foot, and
+ *                    reads best with --weapon.
  *   --stance         the stance to hold the player in for the picture (spec
  *                    sections 11.2, 11.5): stand, walk, air or swim. Drawn with
  *                    --on-foot.
@@ -171,6 +174,7 @@ const request: PreviewRequest = {
   ...(options.has('vehicle') ? { vehicle: options.get('vehicle') as string } : {}),
   ...(options.has('on-foot') ? { onFoot: true } : {}),
   ...(options.has('stance') ? { stance: options.get('stance') as string } : {}),
+  ...(options.has('swing') ? { swing: num('swing', 0.4) } : {}),
   ...(options.has('damage') ? { damage: options.get('damage') as string } : {}),
   ...(options.has('skid') ? { skid: true } : {}),
   ...(options.has('weapon') ? { weapon: options.get('weapon') as string } : {}),
