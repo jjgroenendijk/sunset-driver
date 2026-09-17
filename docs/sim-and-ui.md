@@ -1,14 +1,14 @@
 # Simulation and interface
 
 The gotchas of `src/sim` and `src/ui`: what Rapier does with a wheel, a force and a heightfield,
-what the record may hold, and what the HUD and the map read. `spec.md` sections 11, 12, 14, 16 and
-18 are the design. Read the section the work touches, not the file. The menus and the screens around
-play — the title screen, the loading screen, the pause menu and the saves — are in `docs/menus.md`,
-and the shops, the counters and the interiors of spec section 16 in `docs/shops.md`. The properties
-the player buys are in `docs/safehouses.md`, the factions, their reputation and their turf in
-`docs/factions.md`, and the work their contacts hand out in `docs/missions.md`. The city that lives
-around the player — the ambient traffic, the lights, the parked cars, the tram, the crowd and the
-metro of spec section 13 — is in `docs/city-life.md`.
+what the record may hold, and what the HUD and the map read. `spec.md` sections 11, 12, 14, 16, 18
+and 20.3 are the design. Read the section the work touches, not the file. The menus and the screens
+around play — the title screen, the loading screen, the pause menu and the saves — are in
+`docs/menus.md`, and the shops, the counters and the interiors of spec section 16 in
+`docs/shops.md`. The properties the player buys are in `docs/safehouses.md`, the factions, their
+reputation and their turf in `docs/factions.md`, and the work their contacts hand out in
+`docs/missions.md`. The city that lives around the player — the ambient traffic, the lights, the
+parked cars, the tram, the crowd and the metro of spec section 13 — is in `docs/city-life.md`.
 
 ## Contents
 
@@ -20,6 +20,7 @@ metro of spec section 13 — is in `docs/city-life.md`.
 - Weapons
 - Death, arrest and heat
 - Heat and the police
+- The emergency services
 - The ground the physics reads
 - Vehicles
 - Damage, fire and skids
@@ -80,6 +81,10 @@ metro of spec section 13 — is in `docs/city-life.md`.
   input, physics)` steps it once per tick. The bodies are built from `state.vehicle` and never
   stored in it, so the state stays plain data: `adopt` makes the world agree with the record again
   after a load, and `spawn` puts the car down on the ground.
+- The `Ground` it is built from is `src/city.ts`: everything placed once for a seed and then read
+  every tick — the traffic, the crowd, the tram, the police, the emergency services — and the
+  heights and decks under them. `main.ts` calls `buildCity` and runs the frame; a test builds the
+  pieces it needs by hand instead, because every field but the heights is optional.
 
 ## On foot
 
@@ -234,6 +239,28 @@ metro of spec section 13 — is in `docs/city-life.md`.
 - `src/render/police.ts` draws the units off the record. They are stepped once a tick like the
   player, so nothing is evaluated between two ticks there, unlike the traffic and the trams.
 
+## The emergency services
+
+- `src/sim/emergency.ts` is the fire engines and the ambulances of spec section 20.3. It is not the
+  police: the police come out on the heat, which is about the player, and these come out on what has
+  happened, which is not — a car left burning across town draws an engine whether anybody is
+  watching or not. What has happened is written down as an `EmergencyCall` on the record. A call
+  within `CALL_RANGE` of one already open is the same scene, so a street of burning cars and a
+  firefight that goes on for a minute are each one call.
+- A call waits the district's own `responseTicks`, the police's own function, and is then given to a
+  unit. `UNITS_OUT` is the ceiling on both services together, so a long fire never empties the city.
+  A unit comes in on a road `SPAWN_RANGE` from the scene, drives to it, works it for
+  `WORK_TICKS`, and drives back out; it is taken off the map once it is `RETIRE_RANGE` from the
+  player, and drives another `SPAWN_RANGE` out rather than standing in the street if it gets home
+  while still in sight.
+- Routing is `unit-route.ts`, the police's own, with one addition. `plan` ends at the node nearest
+  the goal, and the nodes of a city are a block apart, so an engine sent to a fire in the middle of
+  a street would stop at the corner and hose nothing. `planBeside` drives the run of road the scene
+  stands on, and `nearestAlong` says where along it to pull up. A unit's `stop` is that distance,
+  and reaching it is what counts as arriving.
+- A fire engine that has arrived calls `douseFires` every tick it stands there, so a fire that
+  reaches the next car along while it is working is put out too.
+
 ## The ground the physics reads
 
 - The physics reads the world through a `Ground`: the carved height at a place, what that ground is
@@ -296,8 +323,18 @@ metro of spec section 13 — is in `docs/city-life.md`.
   tick; the direction it was pushed says which panel took the blow. `spreadFire(vehicles, seed,
   tick)` is the rule for fire between vehicles: it reaches out every `SPREAD_PERIOD` ticks once a
   fire has burned for `SPREAD_DELAY`, and each vehicle in reach takes one roll however many fires
-  reach it, so the answer does not depend on the order of the list. Nothing calls it until #256
-  gives the promoted traffic its damage.
+  reach it, so the answer does not depend on the order of the list. `extinguish` is the one step
+  back through the progression, from `burning` to `smoking`, and nothing takes a vehicle out of
+  `burnt`.
+- `src/sim/fire.ts` is the list those rules are run over: the player's vehicle and every promoted
+  one, which is everything in the record that can burn. `physics.ts` calls `stepFires` after `burn`,
+  because `burn` is where the player's own car goes up and it has the body to throw.
+- A vehicle burns for `FUSE_TICKS`, which is seven seconds, and nothing can cross a city in seven
+  seconds. So a fire engine never saves the car that started a fire: what it fights is the `Blaze`
+  the wreck leaves where it stood. A blaze burns for `BLAZE_SECONDS`, lights the vehicles within
+  `SPREAD_RADIUS` on the same timer and the same roll `spreadFire` uses, and goes out when it burns
+  itself out or a hose reaches it. That is the fire that spreads, and the one spec section 20.3 has
+  an engine put out.
 - `WheelState.skid` is the one definition of a sliding tyre: the body is going across its own axle
   faster than `SKID_SLIP`, whether that came from the handbrake, a corner or a spin.
   `src/render/skid.ts` is what draws it.
