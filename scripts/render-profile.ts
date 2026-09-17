@@ -19,6 +19,10 @@
  *                    take one part of the frame away, to see what it cost.
  *   --no-cast        kinds of batch that cast no shadow, as a list:
  *                    road, facade, block, outline, plant, lamp.
+ *   --tier-at        quality changes during the drive, as frame:tier pairs
+ *                    separated by commas: --tier-at=150:high,300:full applies
+ *                    those tiers at those drive frames. This is how a tier
+ *                    change is timed: the frames around it say what it cost.
  *   --long           list every frame over 33 ms, with what it compiled.
  *   --cpuprofile     profile the drive and list where its time went.
  *
@@ -71,6 +75,7 @@ const request: ProfileRequest = {
   noPost: options.has('no-post'),
   noLamps: options.has('no-lamps'),
   noCast: options.get('no-cast')?.split(',') ?? [],
+  tierAt: options.get('tier-at')?.split(','),
   gate: options.has('cpuprofile'),
 };
 
