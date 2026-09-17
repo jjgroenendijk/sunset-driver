@@ -252,13 +252,35 @@ class CorridorBuilder {
    * than no line at all.
    */
   private stopNodes(): StopSite[] {
-    const core = this.world.core;
     const network = this.tramNetwork();
-    const served: (StopSite & { away: number; bearing: number })[] = [];
+    const nearest = this.servedDistricts(network, false);
+    // Where the districts crowd round one or two junctions, each after the
+    // first finds the junction taken and goes without a stop, and a line of
+    // two stops is no loop, so the seed gets no tram at all. So the districts
+    // are asked again, each taking the nearest junction still free (issue #373).
+    const served = nearest.length >= MIN_STOPS ? nearest : this.servedDistricts(network, true);
+
+    const reach = this.world.size * STOP_REACH;
+    let chosen = served.filter((s) => s.away <= reach);
+    if (chosen.length < MIN_STOPS) {
+      chosen = [...served].sort((a, b) => a.away - b.away || a.district - b.district).slice(0, MIN_STOPS);
+    }
+    return chosen.sort((a, b) => a.bearing - b.bearing || a.district - b.district);
+  }
+
+  /**
+   * One stop for each core and inner district, at a junction of the tram
+   * network. Two districts never share a stop: the second of them goes without.
+   * `spread` gives it the nearest junction still free instead, which is the
+   * answer where too few districts are left to make a loop.
+   */
+  private servedDistricts(network: Uint8Array, spread: boolean): StopChoice[] {
+    const core = this.world.core;
+    const served: StopChoice[] = [];
     const used = new Set<number>();
     for (const d of this.world.districts) {
       if (d.zone !== 'core' && d.zone !== 'inner') continue;
-      const node = this.nearestTramNode(network, d.x, d.y);
+      const node = this.nearestTramNode(network, d.x, d.y, spread ? used : undefined);
       if (node === undefined || used.has(node.id)) continue;
       used.add(node.id);
       served.push({
@@ -270,13 +292,7 @@ class CorridorBuilder {
         bearing: Math.atan2(d.y - core.y, d.x - core.x),
       });
     }
-
-    const reach = this.world.size * STOP_REACH;
-    let chosen = served.filter((s) => s.away <= reach);
-    if (chosen.length < MIN_STOPS) {
-      chosen = [...served].sort((a, b) => a.away - b.away || a.district - b.district).slice(0, MIN_STOPS);
-    }
-    return chosen.sort((a, b) => a.bearing - b.bearing || a.district - b.district);
+    return served;
   }
 
   /**
@@ -323,12 +339,12 @@ class CorridorBuilder {
     return network;
   }
 
-  /** The nearest junction of a network to a place. */
-  private nearestTramNode(network: Uint8Array, x: number, y: number): RoadNode | undefined {
+  /** The nearest junction of a network to a place, leaving out the ones already `taken`. */
+  private nearestTramNode(network: Uint8Array, x: number, y: number, taken?: ReadonlySet<number>): RoadNode | undefined {
     let best: RoadNode | undefined;
     let bestD = Infinity;
     for (const node of this.graph.nodes) {
-      if (network[node.id] !== 1) continue;
+      if (network[node.id] !== 1 || taken?.has(node.id) === true) continue;
       const d = dist(x, y, node.x, node.y);
       if (d >= bestD) continue;
       bestD = d;
@@ -486,6 +502,12 @@ interface StopSite {
   x: number;
   y: number;
   district: number;
+}
+
+/** A stop as it is chosen: how far its district stands from it, and where it lies round the core. */
+interface StopChoice extends StopSite {
+  away: number;
+  bearing: number;
 }
 
 /**
