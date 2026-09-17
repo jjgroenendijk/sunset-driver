@@ -20,6 +20,10 @@ they are laid in `src/world`, and how `src/render` draws them.
   nothing. A tram corridor is the reserved lane, down the middle of an arterial from one stop to
   the next. `TRAM_LANE` (`tiers.ts`) is its width and the track inside it. `world.tram` holds the
   line the tram drives, its stops, and the level crossings where another road meets it.
+- One stop per core and inner district, at the nearest junction of the largest run of arterial. Two
+  districts never share a stop: the second of them goes without. Where the districts crowd round one
+  or two junctions that leaves fewer stops than a loop needs, and the seed gets no tram at all, so
+  the districts are asked a second time, each taking the nearest junction still free (issue #373).
 - The ground under a deck is not footprint. `buildFootprint` takes only the tram's lane, and
   `buildParcels` splits the land the roads leave by the elevated corridors first. What falls inside
   one is an `under-structure` parcel, kept whole. A road that passes under the deck is footprint,
