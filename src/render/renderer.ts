@@ -1,7 +1,7 @@
 import { ACESFilmicToneMapping } from 'three';
-import { ClusteredLighting } from 'three/examples/jsm/lighting/ClusteredLighting.js';
 import { WebGPURenderer } from 'three/webgpu';
 import { clamp } from '../core/math.ts';
+import { PinnedClusterLighting } from './clustered-lights.ts';
 import { registerLampLight } from './lamp-light.ts';
 
 /**
@@ -18,11 +18,13 @@ const EXPOSURE = 0.62;
  *
  * The clustered lighting of spec section 10.5 partitions the view into a grid
  * and gives each fragment only the lights that reach it, which is what makes
- * dense night lighting affordable. three.js 0.186 clusters shadowless point
- * lights alone, so the projector cones of `lamps.ts` still go down the default
- * path today; the hard cap in that file and the branch of `lamp-light.ts`,
- * which skips a cone while it is off, keep them inside the budget. The neon
- * and headlights that come later land in the cluster grid.
+ * dense night lighting affordable. `clustered-lights.ts` holds the grid still
+ * across a render-scale change, which is what keeps a quality change from
+ * rebuilding every shader in the city. three.js 0.186 clusters shadowless
+ * point lights alone, so the projector cones of `lamps.ts` still go down the
+ * default path today; the hard cap in that file and the branch of
+ * `lamp-light.ts`, which skips a cone while it is off, keep them inside the
+ * budget. The neon and headlights that come later land in the cluster grid.
  */
 function configure(renderer: WebGPURenderer): void {
   renderer.toneMapping = ACESFilmicToneMapping;
@@ -30,8 +32,17 @@ function configure(renderer: WebGPURenderer): void {
   // Off by default on `WebGPURenderer`, and nothing else says so: without this
   // the sun's cascades are built and never drawn, and the city is flat.
   renderer.shadowMap.enabled = true;
-  renderer.lighting = new ClusteredLighting();
   registerLampLight(renderer);
+}
+
+/**
+ * Give the renderer the clustered lighting, its grid pinned to the largest
+ * buffer it will draw at: the page or picture at the full pixel ratio, before
+ * any render scale. It is set after the size, because the pin is read from the
+ * size the renderer has just been given.
+ */
+function pinClusterGrid(renderer: WebGPURenderer, width: number, height: number, pixelRatio: number): void {
+  renderer.lighting = new PinnedClusterLighting(width * pixelRatio, height * pixelRatio);
 }
 
 /**
@@ -116,9 +127,11 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<WebGPUR
   const renderer = new WebGPURenderer({ canvas, antialias: false, forceWebGL: false });
   configure(renderer);
   await renderer.init();
-  basePixelRatio.set(renderer, Math.min(window.devicePixelRatio, 2));
+  const base = Math.min(window.devicePixelRatio, 2);
+  basePixelRatio.set(renderer, base);
   setRenderScale(renderer, 1);
   renderer.setSize(window.innerWidth, window.innerHeight, false);
+  pinClusterGrid(renderer, window.innerWidth, window.innerHeight, base);
   return renderer;
 }
 
@@ -139,5 +152,6 @@ export async function createOffscreenRenderer(width: number, height: number): Pr
   basePixelRatio.set(renderer, 1);
   setRenderScale(renderer, 1);
   renderer.setSize(width, height, false);
+  pinClusterGrid(renderer, width, height, 1);
   return renderer;
 }
