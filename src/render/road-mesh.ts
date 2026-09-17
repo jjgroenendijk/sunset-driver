@@ -493,6 +493,19 @@ function portal(piece: Piece, at: number, tier: RoadTier, out: number): BufferGe
 }
 
 /**
+ * Metres of paint in one drawn segment (spec section 22.1).
+ *
+ * A fat line is drawn as a box the width of the paint, turned the one way the
+ * middle of the segment faces the camera. The ends of a long segment near the
+ * camera face another way entirely, so the box misses the paint it stands for:
+ * the line thins, breaks into dots and flashes as the camera moves. The points
+ * of a road curve stand as much as 176 m apart, and a solid line runs from one
+ * to the next in a single segment, so every segment is cut to this length. A
+ * dash is shorter than it already and is never cut.
+ */
+const PAINT_PIECE = 4;
+
+/**
  * Lay one painted line along a piece of a run, six numbers per segment of paint.
  * The dash pattern is measured from the start of the whole curve rather than of
  * the piece, so the dashes of a road that crosses a chunk boundary carry
@@ -501,9 +514,14 @@ function portal(piece: Piece, at: number, tier: RoadTier, out: number): BufferGe
 function paintMarking(piece: Piece, marking: Marking, out: number[], tints: number[], bare: (segment: number) => boolean): void {
   const period = marking.dash + marking.gap;
   const paint = (a: Vector3, b: Vector3): void => {
-    out.push(a.x, a.y, a.z, b.x, b.y, b.z);
     const [r, g, blue] = marking.colour;
-    tints.push(r, g, blue, r, g, blue);
+    const pieces = Math.max(1, Math.ceil(a.distanceTo(b) / PAINT_PIECE));
+    for (let i = 0; i < pieces; i++) {
+      const from = i === 0 ? a : between(a, b, i / pieces);
+      const to = i === pieces - 1 ? b : between(a, b, (i + 1) / pieces);
+      out.push(from.x, from.y, from.z, to.x, to.y, to.z);
+      tints.push(r, g, blue, r, g, blue);
+    }
   };
   for (let i = 0; i + 1 < piece.points.length; i++) {
     if (bare(i)) continue;

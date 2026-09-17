@@ -215,6 +215,12 @@ lamps and the lights a vehicle carries — in `docs/lighting.md`.
   `road-material.ts` steps between the bands at the tier's own widths and holds the road colours, as
   `ground.ts` holds the ground's. A dash pattern is measured from the start of the whole curve, so
   it carries on across a boundary.
+- A fat line is drawn as a box the width of the paint, turned the one way the middle of the segment
+  faces the camera. The ends of a long segment near the camera face another way, so the box misses
+  the paint it stands for: the line thins, breaks into dots and flashes as the camera moves, and a
+  double yellow line smears into one band. The points of a road curve stand as much as 176 m apart,
+  so `paintMarking` cuts every segment to `PAINT_PIECE` metres. A dash is shorter than that already
+  and is never cut, which is why the dashes looked right while the solid lines did not.
 - `RoadScenery` (`roads.ts`) packs each tier of a chunk into one batch, and that tier's markings
   into one `LineSegments2`. `batch.ts` is the one place geometry is packed into a batch, and a batch
   is one merged `Mesh`, never a `BatchedMesh`: it merges the parts into the storage the worker
