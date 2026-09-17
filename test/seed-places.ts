@@ -144,6 +144,10 @@ export function placeChecks(): void {
             const mid = beach.back[Math.floor(beach.back.length / 2)] as Point;
             const mass = land.massAt(mid.x, mid.y);
             if (mass < 0 || roaded[mass] !== 1) fault(`${where} is a resort on land no road is laid on`);
+            // A resort is a beach with a boardwalk on it. One whose boardwalk
+            // was never laid keeps a pier and two car parks that no road
+            // reaches, so spec section 7.3 is not kept (issue #374).
+            if (beach.boardwalkRoad < 0) fault(`${where} is a resort whose boardwalk was never laid`);
           } else {
             if (beach.boardwalk.length > 0) fault(`${where} is no resort but carries a boardwalk line`);
             if (beach.pier !== undefined) fault(`${where} is no resort but carries a pier`);
