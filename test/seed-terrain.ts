@@ -72,8 +72,8 @@ export function terrainChecks(): void {
       for (const seed of seeds) {
         const w = worlds.get(seed) as WorldDescription;
         const hf = new Heightfield(w.terrain);
-        expect(hf.sample(w.core.x, w.core.y)).toBeGreaterThan(w.water.seaLevel);
-        expect(hf.slope(w.core.x, w.core.y)).toBeLessThan(0.15);
+        expect(hf.sample(w.core.x, w.core.y), `seed ${seed}, ${w.archetype}`).toBeGreaterThan(w.water.seaLevel);
+        expect(hf.slope(w.core.x, w.core.y), `seed ${seed}, ${w.archetype}`).toBeLessThan(0.15);
       }
     });
 

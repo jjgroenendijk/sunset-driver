@@ -277,9 +277,14 @@ corridors in `docs/corridors.md`.
   plant belongs to the chunk it stands in the same way.
 - `test/seed-surface.ts` asks the chunk grid's ground against every road and junction vertex drawn,
   and the middle of the triangles between them, and allows `SURFACE_ABOVE` above none of them.
-- `test/seed-sweep.test.ts` runs 6 seeds, or 200 under `SWEEP_SEEDS=200`. The quick count is what
+- `test/seed-sweep.test.ts` runs 6 seeds, or 500 under `SWEEP_SEEDS=500`. The quick count is what
   holds `npm test` under its 15 s, since a seed generates a whole world. The checks are grouped by
   subject in `test/seed-*.ts` and declared inside that one suite: they all read the worlds
   `seed-fixture.ts` builds, and a suite per file would run in parallel with the others and generate
   every world again. `seed-limits.ts` holds the numbers, `seed-probes.ts` the readings and
   `seed-index.ts` the two indexes.
+- `SWEEP_SHARD=2/4` reads one of four shares of those 500 seeds, which is how CI runs the sweep on
+  four runners at once. The shares together read exactly the seeds one unsharded run reads, so a
+  seed named in a failure is found again with the shard that holds it; `docs/performance.md` has
+  the measurements. A check that fails stops at its first bad seed, so a green shard elsewhere does
+  not mean that check holds on every seed of it.

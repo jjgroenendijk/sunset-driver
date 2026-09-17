@@ -1,11 +1,12 @@
 name: Full tier
 
 # A reusable workflow: `ci.yml` calls it on every pull request. It runs
-# `verify:full` split over two runners: the seed sweep, and every other file with
-# the typecheck and both lints. The seed sweep is most of the tier's work: on a
-# runner it takes about 100 s and the rest about 25 s. On Actions vitest adds its
-# `github-actions` reporter, which writes the job summary and marks each failure
-# on its line.
+# `verify:full` over five runners: four shares of the seed sweep's 500 seeds,
+# and every other file with the typecheck and both lints. Generating a world is
+# most of what the sweep costs and the pool already uses every core of one
+# runner, so the only way under the 2 min each job is given is more runners.
+# On Actions vitest adds its `github-actions` reporter, which writes the job
+# summary and marks each failure on its line.
 on:
   workflow_call:
 
@@ -15,27 +16,54 @@ on:
 permissions:
   contents: read
 
+env:
+  # The shares the seed sweep is split into. `seed-limits.ts` hands each run the
+  # seeds of its share, and the shares together are the whole tier.
+  SWEEP_SHARDS: 4
+
 jobs:
-  shard:
-    # The check names the ruleset requires: `full-tier / seed-sweep` and
-    # `full-tier / other`.
-    name: ${{ matrix.shard }}
+  sweep:
+    name: sweep ${{ matrix.shard }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - shard: seed-sweep
-            files: test/seed-sweep.test.ts
-          # Every other file, so a new test file runs here without a change.
-          - shard: other
-            files: --exclude test/seed-sweep.test.ts
-            checks: true
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
 
-      - if: matrix.checks
-        run: npm run typecheck && npm run lint && npm run lint:size
-      - run: npm run test:full -- ${{ matrix.files }}
+      - env:
+          SWEEP_SHARD: ${{ matrix.shard }}/${{ env.SWEEP_SHARDS }}
+        run: npm run test:full -- test/seed-sweep.test.ts
+
+  # One status for the four shares, so the ruleset keeps asking for the one
+  # check name `full-tier / seed-sweep` however many runners the sweep takes.
+  seed-sweep:
+    name: seed-sweep
+    needs: sweep
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          RESULT: ${{ needs.sweep.result }}
+        run: |
+          if [ "$RESULT" != success ]; then
+            echo "A share of the seed sweep failed. Its own check — sweep 1 to sweep 4 —"
+            echo "holds the output: node scripts/pr-wait.ts <pr> --all."
+            exit 1
+          fi
+
+  # Every other file, so a new test file runs here without a change.
+  other:
+    name: other
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+
+      - run: npm run typecheck && npm run lint && npm run lint:size
+      - run: npm run test:full -- --exclude test/seed-sweep.test.ts
