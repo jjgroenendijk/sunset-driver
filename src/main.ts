@@ -4,7 +4,7 @@ import { WorldSites } from './audio/site.ts';
 import { randomSeedString, readSeedFromLocation, seedFromString, writeSeedToHash } from './core/seed.ts';
 import { BASE_DISTANCE, FollowCamera, PULL_MARGIN, type RoofHeight } from './render/camera.ts';
 import { PostChain } from './render/post.ts';
-import { frameBudgetFrom, QualityMonitor, type QualityChange } from './render/quality.ts';
+import { frameBudgetFrom, QualityMonitor } from './render/quality.ts';
 import { createRenderer, probeWebGpu } from './render/renderer.ts';
 import { createTitleScene } from './render/scene.ts';
 import { RenderSmoother } from './render/smooth.ts';
@@ -28,8 +28,8 @@ import { AmbientTraffic, trafficRoadsOf } from './sim/traffic.ts';
 import { commitCrime, PoliceForce, policeDistrictsOf } from './sim/police.ts';
 import { TramLine } from './sim/tram.ts';
 import { stationAt, type MetroPlace } from './sim/metro.ts';
-import { shopPlaces, visiting, type ShopPlace } from './sim/shop.ts';
-import { dealerPlaces, type DealerPlace } from './sim/dealer.ts';
+import { shopPlaces, visiting } from './sim/shop.ts';
+import { dealerPlaces } from './sim/dealer.ts';
 import { DealerMarks } from './ui/dealers.ts';
 import { TradePanel } from './ui/trade-panel.ts';
 import { HotwireBar } from './ui/hotwire.ts';
@@ -50,6 +50,7 @@ import { TravelPanel } from './ui/travel.ts';
 import { PICKER_KEY, VehiclePicker } from './ui/vehicle-picker.ts';
 import { WEAPON_PICKER_KEY, WeaponPicker } from './ui/weapon-picker.ts';
 import { dropWeapon } from './sim/pickup.ts';
+import { applyQuality, type Session } from './session.ts';
 import {
   currentSlot,
   currentWeapon,
@@ -83,69 +84,6 @@ const ARREST_KEY = 'KeyB';
  * a star.
  */
 const CRIME_KEY = 'KeyL';
-
-/** A session in progress: the state, the world it is played in, and the overlay. */
-interface Session {
-  state: SimState;
-  world: WorldScene;
-  physics: SimPhysics;
-  /** The effects the world is drawn through (spec section 10.6). */
-  post: PostChain;
-  /** What watches the frame and steps the quality tiers (spec section 9.2). */
-  quality: QualityMonitor;
-  hud: Hud;
-  /** The corner map of spec section 12, following the player. */
-  minimap: Minimap;
-  /** The full map of spec section 12: pan, zoom and waypoint. */
-  map: MapScreen;
-  /** The hotwire minigame of spec section 11.4, drawn while a lock is being worked at. */
-  hotwire: HotwireBar;
-  /** The metro station panel and the fade of a trip (spec section 13.3). */
-  travel: TravelPanel;
-  /** The station entrances the panel names, in the order the record numbers them. */
-  metro: readonly MetroPlace[];
-  /** The shop counter of spec section 16.1, drawn at a door and inside a shop. */
-  shopPanel: ShopPanel;
-  /** The shops the panel names, in the order the record numbers them. */
-  shops: readonly ShopPlace[];
-  /** The trading panel of spec section 16.2, drawn at a dealer's corner and in a deal. */
-  tradePanel: TradePanel;
-  /** The dealers the panel names, in the order the record numbers them. */
-  dealers: readonly DealerPlace[];
-  /** Their marks on the maps and their bodies in the crowd, moved when they move. */
-  dealerMarks: DealerMarks;
-  /** What draws the frame between two ticks, so the motion is smooth (spec section 9.2). */
-  smooth: RenderSmoother;
-  /** The debug picker of the arsenal, which shows the weapon in hand. */
-  weapons: WeaponPicker;
-  /** The ambient traffic of spec section 13.1, drawn. */
-  traffic: TrafficView;
-  /** The police units of spec section 14, drawn. */
-  police: PoliceView;
-  /** The parked cars of spec section 13.1, drawn; undefined where no worker laid out the bays. */
-  parked: ParkedView | undefined;
-  /** The trams of spec section 13.2, drawn. */
-  tram: TramView;
-  /** The pedestrians of spec section 13.1, drawn. */
-  crowd: PedestrianView;
-  /** The pause menu of spec section 12. While it is open the simulation does not step. */
-  pause: PauseMenu;
-}
-
-/**
- * Hand a tier to the two halves that draw at it, and say so (spec section 9.2).
- *
- * The line in the console is how a tier change is read back after the fact:
- * the player sees a frame that holds its rate, and the log says what it cost.
- */
-function applyQuality(session: Session, change: QualityChange): void {
-  session.world.quality = change.to;
-  session.post.quality = change.to.post;
-  console.info(
-    `quality: ${change.from.name} -> ${change.to.name} at ${change.frameMs.toFixed(1)} ms a frame ` +
-      `(budget ${session.quality.budget} ms)`,
-  );
-}
 
 async function boot(): Promise<void> {
   const status = document.getElementById('status');
