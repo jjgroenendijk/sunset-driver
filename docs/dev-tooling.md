@@ -137,6 +137,10 @@ What the game draws, as one frame. Look at the frame before judging a rendering 
 - `--stance=<name>` holds the player in one stance for the picture — `stand`, `walk`, `air` or
   `swim` — which is the one way to look at the movement of spec sections 11.2 and 11.5 in a still
   frame. The frame is taken a quarter of the way through the cycle, where the swing is widest.
+- `--swing=<share>` holds the player part way through a swing of a melee weapon, 0 to 1 (spec
+  section 11.6). The blow is thrown and over in a fifth of a second, so a still is the only way to
+  look at it; `--swing=0.4` is the moment it lands. It reads best with `--weapon` and `--on-foot`,
+  and it lays over whatever `--stance` asks for.
 - `--weapon=<id>` puts a weapon of the arsenal in the hands, drawn with `--on-foot`, and
   `--attachments=suppressor+optic` fits to it what it takes. `--aim` holds it at the shoulder.
   `--pickups` lays every weapon in rows below the player, fitted with the same attachments, which is
