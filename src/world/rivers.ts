@@ -36,8 +36,18 @@ export function planWater(
   const profile = archetype.rivers;
   const count = profile.count.min === profile.count.max ? profile.count.min : rng.int(profile.count.min, profile.count.max);
   const waterfront = (): Harbour => {
-    const at = shoreToward(coast, { x: 0, y: 0 }, Math.atan2(sites.waterfront.y, sites.waterfront.x), size);
-    return { x: at.x, y: at.y, radius };
+    const toward = Math.atan2(sites.waterfront.y, sites.waterfront.x);
+    const at = shoreToward(coast, { x: 0, y: 0 }, toward, size);
+    // The basin is dug nine metres down and blends back into the ground over
+    // {@link HARBOUR_REACH}. Where the core faces water closer than the basin is
+    // wide — the inner shore of a lagoon — a basin dug at the shore leaves the
+    // core on the rim of the bowl, and the core stands on gentle ground (spec
+    // section 7.2). So the basin is pushed out into the water until it clears
+    // the core, blend and all. It still faces the shore the core faces, which is
+    // what the archetype asks for, and one seed in 500 is far enough in to move.
+    const want = radius + HARBOUR_REACH;
+    if (Math.hypot(at.x, at.y) >= want) return { x: at.x, y: at.y, radius };
+    return { x: Math.cos(toward) * want, y: Math.sin(toward) * want, radius };
   };
   // A harbour on the waterfront is placed first, and the rivers keep clear of the water it carves.
   const placed = archetype.harbour === 'waterfront' ? waterfront() : undefined;
