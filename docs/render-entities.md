@@ -3,7 +3,8 @@
 The gotchas of the meshes `src/render` builds for the things standing in the world: buildings,
 vehicles, weapons, plants, traffic and the crowd. `spec.md` sections 10, 11 and 13 are the design.
 How those meshes reach the screen — batches, cells, quality tiers and the frame budget — is in
-`docs/rendering.md`, and the one interior the scene ever holds is in `docs/shops.md`.
+`docs/rendering.md`, what lights them after dark is in `docs/lighting.md`, and the one interior the
+scene ever holds is in `docs/shops.md`.
 
 ## Contents
 

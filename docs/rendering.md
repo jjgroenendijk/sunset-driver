@@ -3,7 +3,8 @@
 The gotchas of `src/render`: what three.js 0.186 and WebGPU refuse, what is packed into a batch and
 why, and how a chunk, a quality tier and the frame budget fit together. `spec.md` sections 9 and 10
 are the design. What the renderer draws on top of the ground — buildings, vehicles, weapons, plants
-and the crowd — is in `docs/render-entities.md`.
+and the crowd — is in `docs/render-entities.md`, and what lights it — the sun, the sky, the street
+lamps and the lights a vehicle carries — in `docs/lighting.md`.
 
 ## Contents
 
@@ -15,9 +16,7 @@ and the crowd — is in `docs/render-entities.md`.
 - Roads and pavement
 - Batches and cells
 - Water and its mirror
-- Daylight, shadows and the sky
 - Post and the colour grade
-- Street lamps
 - The preview page and the ground
 
 ## Streaming the city
@@ -286,42 +285,6 @@ and the crowd — is in `docs/render-entities.md`.
   addon's diffuse term is `sunColour` squared with no tint, so a sun colour scaled by its intensity
   turns the sea white.
 
-## Daylight, shadows and the sky
-
-- `daylightAt(tick)` (`daylight.ts`) is the day and night cycle of spec section 10.5: the sun's
-  place, its colour and strength, the sky fill, the haze, how lit the windows are and how far on the
-  street lamps are, all read off how high the sun stands. It is pure, so the tests run it headless.
-  `SkyLighting` (`sky.ts`) turns it into the `SkyMesh` dome, one directional light with
-  `SHADOW_CASCADES` cascades and the fog; `WorldScene.time = tick` is the only way in, and one game
-  day is 24 real minutes.
-- A shadow map is drawn again for every camera a frame renders with, and the water's mirror is a
-  second camera. The cascades are fitted to the player's camera whichever camera asks, so the second
-  draw is the same map twice: `sun.shadow.autoUpdate` is off and `SkyLighting.drawShadowOnce`,
-  called once a frame from `WorldScene.look`, is what asks for them. A sun with no strength asks for
-  nothing, so a night frame draws no shadow at all. `SHADOW_DISTANCE` is view depth, and it is what
-  the camera can see rather than what the haze reaches: past it a cascade draws every building again
-  for ground nobody looks at.
-- `CSMShadowNode` holds a shadow edge still by snapping each cascade's centre to a texel grid, and
-  it builds that grid in the light's own frame. So the snap only holds while the light stands still,
-  and a game day of 24 real minutes turns the sun a quarter of a degree a second. `SkyLighting.set`
-  therefore moves the sun the shadow is cast from in steps of `SUN_SHADOW_STEP`, while the dome, the
-  colours and the haze follow the true sun every frame. Moved every frame, the grid turns under the
-  snap and every shadow edge crawls.
-- Each cascade clones the sun's shadow when it is built, so a size written on `sun.shadow.mapSize`
-  alone reaches none of them: `SkyLighting.shadowMapSize` writes the clones as well, or a quality
-  tier draws every cascade at the size of the tier above and pays for it. `SHADOW_NORMAL_BIAS` is
-  measured in shadow texels — the near cascade of `SHADOW_DISTANCE` covers about 80 m at
-  `SHADOW_MAP_SIZE`, so a texel is about 8 cm — and a bias under a texel lets a grazed surface
-  stripe itself.
-- `renderer.shadowMap.enabled` is false by default on `WebGPURenderer`. Without the line in
-  `renderer.ts` the cascades are built every frame and never drawn, and the city is flat with
-  nothing to say why.
-- The Preetham sky answers in real sky brightness, so the frame is tone mapped and `EXPOSURE` in
-  `renderer.ts` is the one number every light in the game is set against. Change a light's strength
-  only against a rendered frame.
-- `WorldScene.time = tick` sets the weather of spec section 13.4 as well as the light, and `apply`
-  lays one over the other. `docs/weather.md` is the whole of that.
-
 ## Post and the colour grade
 
 - `PostChain` (`post.ts`) is the post chain of spec section 10.6, and it draws the frame:
@@ -351,28 +314,6 @@ and the crowd — is in `docs/render-entities.md`.
 - The camera of spec section 10.7 looks down and never sees the sky, so the dome is drawn after the
   ground and the buildings and the depth buffer throws most of it away. It is still worth its draw:
   the water mirror looks up, so the sky is what the sea reflects.
-
-## Street lamps
-
-- `lampsIn` (`lamp-mesh.ts`) places a street lamp at each whole multiple of its tier's spacing
-  measured from the start of the curve, so two chunks that share a road place the same lamps and
-  neither places one twice. Only runs on the ground are lit, and the stretches the junctions take
-  are left unlit, because a road carries no surface there and a mast would stand in the carriageway;
-  `LAMP_BY_TIER` says which tiers carry lamps at all.
-- `LampLights` (`lamps.ts`) is a fixed pool of `LAMP_LIGHT_CAP` projector cones, aimed at the lamps
-  nearest the player; every other lamp is a lit lens and no light. The pool never grows or shrinks,
-  because adding a light to a scene rebuilds the shader of every material in it. A `ProjectorLight`
-  throws a rectangle rather than a disc, and its penumbra reads the other way round from a
-  spotlight's: 0 is the softest edge. Aim it across the road rather than straight down, or it has no
-  orientation to project in. three.js 0.186 clusters shadowless point lights alone, so
-  `ClusteredLighting` does not cover these cones and the cap is what keeps them affordable.
-- A light at intensity 0 still costs every fragment it reaches: the intensity is a uniform, and the
-  shader runs the whole light to multiply it by 0. That was 10 ms of a frame at a pixel ratio of 2,
-  by day. Taking the light out of the scene is no better. It rebuilds every shader, and three.js
-  frees the old variant as the render objects rebuild, so compiling both states at load does not
-  keep both. `LampLight` (`lamp-light.ts`) draws with a node that wraps the light in `If` on a
-  uniform, so a light that is off is a branch the fragment skips. `registerLampLight` in
-  `renderer.ts` gives the renderer that node. A renderer that is not told draws the lamps unlit.
 
 ## The preview page and the ground
 
