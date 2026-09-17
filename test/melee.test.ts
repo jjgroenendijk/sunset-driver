@@ -62,7 +62,7 @@ describe('melee', () => {
 
   it('lands a heavier blow with a heavier weapon', () => {
     expect(blowStrength(weaponOf('fists'))).toBeLessThan(blowStrength(weaponOf('baseball-bat')));
-    expect(blowStrength(weaponOf('baseball-bat'))).toBeLessThan(blowStrength(weaponOf('katana'))); 
+    expect(blowStrength(weaponOf('baseball-bat'))).toBeLessThan(blowStrength(weaponOf('katana')));
     expect(blowStrength(weaponOf('chainsaw'))).toBe(1);
   });
 
