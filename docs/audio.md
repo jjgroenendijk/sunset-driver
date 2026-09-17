@@ -50,6 +50,13 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
   or a metro trip. `main.ts` already does, and forgetting it is the loudest bug in this directory.
 - Footfalls are paced by the ground covered, not by the clock, so a sprint quickens on its own and
   standing still takes no step.
+- A blow of a melee weapon is the one cue read off a list rather than off a difference: `state.hits`
+  carries what a swing struck for a few ticks (`src/sim/melee.ts`), and the planner fires a cue for
+  every hit newer than the tick it last heard. `HIT_CUES` maps what was struck onto the sound —
+  `thud` for a body, `clang` for a panel, `knock` for a wall — and the place in the list is part of
+  the stream the pitch is jittered from, so a swing through a crowd is a run of knocks and not one
+  knock played over. `swing` is the whoosh of the weapon itself, and it is fired whether or not the
+  blow landed.
 - A tram's bell is the one cue that is not in the record at all: `TramLine.bells(tick)` is a
   function of the tick (spec section 13.2), so the planner is handed the line itself through
   `GameAudio.watch` and asks it about **every tick the frame stepped**. Asking only about the tick
