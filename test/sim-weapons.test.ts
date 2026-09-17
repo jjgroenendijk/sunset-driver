@@ -3,7 +3,8 @@ import { initPhysics, type Ground } from '../src/sim/physics.ts';
 import { cloneSimState } from '../src/sim/simulation.ts';
 import { enginePowerScale, PANELS } from '../src/sim/damage.ts';
 import { giveWeapon, SHOT_HEAT_CONCEALED, weaponOf, type WeaponId } from '../src/sim/weapon.ts';
-import { hills, type Session, start, drive } from './sim-harness.ts';
+import { ENFORCER_HEALTH, type EnforcerUnit } from '../src/sim/enforcer.ts';
+import { hills, ramp, type Session, start, drive } from './sim-harness.ts';
 
 /**
  * The arsenal of spec section 11.6 fired in a session: what `weapon.test.ts`
@@ -165,6 +166,97 @@ describe('weapons', () => {
     const copy = cloneSimState(state);
     expect(copy.projectiles).toEqual(state.projectiles);
     expect(copy.loadout).toEqual(state.loadout);
+    session.physics.dispose();
+  });
+
+  /**
+   * An enforcer of spec section 17.2 standing `gap` metres in front of the
+   * player, aimed at. The record is written straight, because this is about the
+   * capsule and the round that goes into it and not about the walk that brought
+   * them there.
+   */
+  function plant(session: Session, gap: number): EnforcerUnit {
+    const { state } = session;
+    const p = state.player;
+    // Away from the car, so the round meets the person and not a door.
+    p.heading = Math.atan2(p.y - state.vehicle.z, p.x - state.vehicle.x);
+    const unit: EnforcerUnit = {
+      id: 1,
+      faction: 0,
+      weapon: 'glock-17',
+      x: p.x + Math.cos(p.heading) * gap,
+      y: p.y + Math.sin(p.heading) * gap,
+      height: 0,
+      heading: p.heading + Math.PI,
+      speed: 0,
+      cycle: 0,
+      edges: [],
+      distance: 0,
+      planned: 0,
+      fired: -1_000_000,
+      health: ENFORCER_HEALTH,
+      goalX: p.x,
+      goalY: p.y,
+    };
+    state.enforcers.units.push(unit);
+    // One tick to stand them in the world before anything is fired at them.
+    drive(session, 1);
+    return unit;
+  }
+
+  it('takes health off an enforcer the round goes into (spec section 17.2)', () => {
+    const session = armed('ak-47', ramp('asphalt', 0));
+    const unit = plant(session, 6);
+    shoot(session, 2);
+    expect(unit.health).toBeLessThan(ENFORCER_HEALTH);
+    expect(unit.health).toBeGreaterThan(0);
+    expect(session.state.enforcers.units).toHaveLength(1);
+    session.physics.dispose();
+  });
+
+  it('puts one down with enough rounds, and they drop what they carried', () => {
+    const session = armed('ak-47', ramp('asphalt', 0));
+    const { state } = session;
+    plant(session, 6);
+    shoot(session, 30);
+    expect(state.enforcers.units).toHaveLength(0);
+    expect(state.pickups.some((pickup) => pickup.weapon === 'glock-17')).toBe(true);
+    session.physics.dispose();
+  });
+
+  it('drives through one: a person is not a post to stop a car dead', () => {
+    const session = start(ramp('asphalt', 0));
+    const { state } = session;
+    state.enforcers.units.push({
+      id: 1,
+      faction: 0,
+      weapon: 'glock-17',
+      x: state.vehicle.x + 30,
+      y: state.vehicle.z,
+      height: 0,
+      heading: Math.PI,
+      speed: 0,
+      cycle: 0,
+      edges: [],
+      distance: 0,
+      planned: 0,
+      fired: -1_000_000,
+      health: ENFORCER_HEALTH,
+      goalX: 0,
+      goalY: 0,
+    });
+    const standing = state.enforcers.units[0] as EnforcerUnit;
+    drive(session, 600, { throttle: 1 });
+    expect(state.vehicle.x).toBeGreaterThan(standing.x + 10);
+    session.physics.dispose();
+  });
+
+  it('misses the enforcer standing behind the player', () => {
+    const session = armed('ak-47', ramp('asphalt', 0));
+    const unit = plant(session, 6);
+    session.state.player.heading += Math.PI;
+    shoot(session, 30);
+    expect(unit.health).toBe(ENFORCER_HEALTH);
     session.physics.dispose();
   });
 });

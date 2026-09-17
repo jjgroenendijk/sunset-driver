@@ -199,6 +199,10 @@ the player buys are in `docs/safehouses.md`, the factions, their reputation and 
   way the trams have one, so a roadblock is a wall. It also answers `unitAt(handle)`, which is how a
   round that went into a police car finds the unit it hit; `gunfire.ts` calls `shootUnit` with the
   share of the car the round took. The helicopter carries no body at all.
+- `EnforcerBodies` (`enforcer-bodies.ts`) is the same file for the faction enforcers of spec section
+  17.2, in an upright capsule rather than a box; `docs/factions.md` has it. `UnitBodies`
+  (`unit-bodies.ts`) holds both and is what `physics.ts` settles once a tick, because both are given
+  a body over the same box of ground.
 - The two exits of the spec are one rule reached two ways. Both hiding and wrecking the pursuers end
   the sighting, and the heat cools from there. Wrecking one costs `officerKilling`, which is the
   hard escalation the spec asks for, so the second exit is the longer one.

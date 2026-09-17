@@ -12,7 +12,7 @@ block is whose, and who comes when a block is taken. The contraband the standing
 - Reputation, and why a rivalry is symmetric
 - Nothing about a holding is stored
 - Taking a block
-- The enforcers, and the two things they cannot do
+- The enforcers, and the fight they put up
 - The overlay
 
 ## The roster is one table
@@ -89,7 +89,7 @@ block is whose, and who comes when a block is taken. The contraband the standing
 - Held ground pays once a game day, in `payIncome`. It is paid a day after the last payment rather
   than on the stroke of midnight, so a session that was not running at midnight is not skipped.
 
-## The enforcers, and the two things they cannot do
+## The enforcers, and the fight they put up
 
 - `EnforcerGang` (`src/sim/enforcer.ts`) is stepped by the physics beside `PoliceForce`, and for the
   same reason: they answer the tick the player has just walked. It holds no state of the fight, so a
@@ -99,12 +99,29 @@ block is whose, and who comes when a block is taken. The contraband the standing
 - They are drawn in the crowd's own mesh, so a wave costs no draw call. `src/ui/enforcers.ts` writes
   the list of people the mesh reads for both them and the dealers, because the mesh reads one list
   and the enforcers move every tick while the dealers move every few hours.
-- **They cannot be shot back at.** Nobody on foot in this game carries a collider, so a round goes
-  straight through one. Issue #347 is that gap.
+- **They are the only people on foot with a collider.** `EnforcerBodies` (`enforcer-bodies.ts`)
+  stands each one inside the physics box in a kinematic capsule, the shape `capsuleOf` gives the
+  average build, and answers `unitAt(handle)` the way `PoliceBodies` does. `gunfire.ts` calls
+  `hurtEnforcer` with the weapon's own `damage`, because a person is measured on the player's health
+  scale and not in the share of a panel a round takes. The crowd of spec section 13.1 still carries
+  nothing: a collider per pedestrian on screen is a larger question.
+- **The capsule is a sensor**, which in Rapier is a shape a ray finds and nothing pushes. A solid
+  one is an immovable post: a car driven at an enforcer stops dead against them, which a test holds.
+  Knocking somebody down is spec section 13.1's question, not this one.
+- A collider is found by a cast only from the step after it was built, so an enforcer who has just
+  walked into the physics box cannot be shot until the next tick. A Rapier query against a world
+  that has never been stepped finds nothing at all, which looks exactly like a shape that is not
+  there.
+- A wave is a fixed number of people. `WaveState.sent` counts who it has put on the street rather
+  than who is still standing, so shooting one does not call another in their place, and a wave whose
+  last enforcer falls is over (`beaten`). Counting the survivors instead gives you a wave that never
+  ends.
+- One put down drops the weapon they carried, loaded and with no spare rounds, which is how a player
+  arms themselves off a wave.
 - **There is no line of sight in the record**, so they fire only inside `ENFORCER_RANGE`, which is
   short enough that a wall is rarely between them. Widening that range without a sight test gives
   you enforcers shooting through buildings.
-- The player's answers are the two the spec gives them: hold the ground and take it, or get in a car
+- The player's answers are three: shoot the wave down, hold the ground and take it, or get in a car
   and leave. A player in a car is walked after but not fired at, and a wave gives up once they are
   `GIVE_UP_RANGE` from the block that started it.
 

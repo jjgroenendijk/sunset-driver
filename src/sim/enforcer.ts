@@ -13,12 +13,15 @@
  * no draw call of their own (`src/ui/enforcers.ts`), exactly as the dealers of
  * spec section 16.2 do.
  *
- * Two things they do not do yet, and both are limits of what is around them
- * rather than of this file. Nobody on foot in this game carries a collider, so
- * an enforcer cannot be shot back at; and there is no line of sight in the
- * record, so they fire only inside {@link ENFORCER_RANGE}, which is short
- * enough that a wall is rarely between them. The player's answer is the one the
- * spec gives them: hold the ground and take it, or get in a car and leave.
+ * They can be shot back at: `enforcer-bodies.ts` stands each of them in a
+ * Rapier capsule, {@link hurtEnforcer} takes the round off them, and a wave
+ * whose last enforcer falls is over. So the player's answer is the fight the
+ * spec describes, or the two it already had: hold the ground and take it, or
+ * get in a car and leave.
+ *
+ * One thing they still do not do. There is no line of sight in the record, so
+ * they fire only inside {@link ENFORCER_RANGE}, which is short enough that a
+ * wall is rarely between them.
  *
  * Everything here is plain data stepped from `(seed, tick)`, and the units are
  * stepped in id order, so a replayed session is met by the same people on the
@@ -27,8 +30,9 @@
 import { rngFor, Subsystem } from '../core/rng.ts';
 import { TICK_RATE } from './clock.ts';
 import { FACTIONS, type Faction } from './faction.ts';
-import { hurt } from './on-foot.ts';
+import { hurt, MAX_HEALTH } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
+import { dropWeapon } from './pickup.ts';
 import { blockAt, blockMiddle, type TerritoryMap } from './territory.ts';
 import type { TrafficRoads } from './traffic.ts';
 import { UnitRoads, type DrivePose } from './unit-route.ts';
@@ -58,6 +62,8 @@ export interface EnforcerUnit {
   planned: number;
   /** The tick they last fired on. */
   fired: number;
+  /** What is left of them, out of {@link ENFORCER_HEALTH}. At zero they fall. */
+  health: number;
   goalX: number;
   goalY: number;
 }
@@ -70,6 +76,12 @@ export interface EnforcerState {
   /** The earliest tick the next one may come out on. */
   sentTick: number;
 }
+
+/**
+ * What an enforcer can take before they fall, on the player's own scale
+ * ({@link MAX_HEALTH}), so a rifle puts one down in a handful of rounds.
+ */
+export const ENFORCER_HEALTH = MAX_HEALTH;
 
 /** Enforcers one wave puts on the street. A later round sends one more. */
 export const WAVE_UNITS = 3;
@@ -149,6 +161,7 @@ export class EnforcerGang {
       this.walk(state, unit);
       this.shoot(state, unit);
     }
+    this.beaten(state);
     this.standDown(state);
     this.sweep(state);
   }
@@ -175,8 +188,10 @@ export class EnforcerGang {
     const wave = state.factions.wave;
     const enforcers = state.enforcers;
     if (wave === null) return;
-    const wanted = WAVE_UNITS + wave.round - 1;
-    if (enforcers.units.length >= wanted) {
+    // What the wave has sent is counted rather than who is still standing, so
+    // shooting one does not call another in their place: a wave is a fixed
+    // number of people, and putting them all down ends it.
+    if (wave.sent >= WAVE_UNITS + wave.round - 1) {
       enforcers.sentTick = Math.max(enforcers.sentTick, state.tick);
       return;
     }
@@ -190,6 +205,7 @@ export class EnforcerGang {
     if (unit === undefined) return;
     enforcers.nextUnit = id + 1;
     enforcers.units.push(unit);
+    wave.sent += 1;
     enforcers.sentTick = state.tick + SEND_GAP;
   }
 
@@ -215,6 +231,7 @@ export class EnforcerGang {
       distance: 0,
       planned: -REPLAN,
       fired: -1_000_000,
+      health: ENFORCER_HEALTH,
       goalX: x,
       goalY: y,
     };
@@ -281,6 +298,18 @@ export class EnforcerGang {
     hurt(p, weaponOf(unit.weapon).damage * HIT_SHARE);
   }
 
+  /**
+   * A wave that has sent everybody it had and has nobody left standing has been
+   * put down, so it is over: the player shot their way out of it.
+   */
+  private beaten(state: SimState): void {
+    const wave = state.factions.wave;
+    if (wave === null) return;
+    if (wave.sent < WAVE_UNITS + wave.round - 1) return;
+    if (state.enforcers.units.length > 0) return;
+    state.factions.wave = null;
+  }
+
   /** With no wave out, the ones far enough away to go unseen are taken off the map. */
   private standDown(state: SimState): void {
     if (state.factions.wave !== null) return;
@@ -305,5 +334,38 @@ export class EnforcerGang {
   /** The turf the gang was built over, for whoever holds the gang and needs it. */
   get turf(): TerritoryMap {
     return this.territory;
+  }
+}
+
+/**
+ * Take health off one enforcer, and take them off the map once they have none
+ * left (spec section 17.2). Answers true where this was the round that put them
+ * down. The weapon they carried is left where they fell, loaded, which is how
+ * the player arms themselves off a wave (spec section 11.6).
+ */
+export function hurtEnforcer(state: SimState, id: number, amount: number): boolean {
+  const units = state.enforcers.units;
+  for (let i = 0; i < units.length; i++) {
+    const unit = units[i] as EnforcerUnit;
+    if (unit.id !== id) continue;
+    unit.health -= Math.max(0, amount);
+    if (unit.health > 0) return false;
+    dropWeapon(state, unit.weapon, weaponOf(unit.weapon).capacity, 0, [], unit.x, unit.y, unit.height);
+    units.splice(i, 1);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Put a blast into every enforcer inside its radius, in id order. `falloff`
+ * answers how much of it is felt at a distance, which is `weapon.ts`'s own rule,
+ * exactly as the police feel a blast (`police.ts`).
+ */
+export function blastEnforcers(state: SimState, x: number, y: number, damage: number, falloff: (distance: number) => number): void {
+  for (const unit of [...state.enforcers.units]) {
+    const share = falloff(Math.hypot(unit.x - x, unit.y - y));
+    if (share <= 0) continue;
+    hurtEnforcer(state, unit.id, damage * share);
   }
 }

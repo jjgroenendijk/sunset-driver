@@ -233,6 +233,12 @@ export interface WaveState {
   until: number;
   /** Which wave of the fight this is, counted from 1. */
   round: number;
+  /**
+   * How many enforcers it has put on the street so far. A wave is a fixed
+   * number of people, so this is what says when it has sent them all, and a
+   * shot one is not replaced.
+   */
+  sent: number;
 }
 
 export function createFactionState(): FactionState {

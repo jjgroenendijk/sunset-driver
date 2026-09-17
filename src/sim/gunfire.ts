@@ -5,8 +5,9 @@
  * `weapon.ts` holds the model and decides whether the weapon fires; this casts
  * the ray per pellet, sweeps the melee arc and carries everything in the air a
  * tick at a time. `physics.ts` owns the world and hands in what can be hit: the
- * player's vehicle, and the police cars of spec section 14. The pedestrians of
- * spec section 13.1 are what the rays will find after them.
+ * player's vehicle, the police cars of spec section 14 and the faction
+ * enforcers of spec section 17.2. The pedestrians of spec section 13.1 are what
+ * the rays will find after them.
  */
 import RAPIER from '@dimforge/rapier3d-compat';
 import { damageVehicle, disableEngine, ignite } from './damage.ts';
@@ -15,6 +16,7 @@ import type { InputFrame } from './input.ts';
 import { hurt, SKIN, vehicleGap } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
 import type { VehicleSpec } from './vehicle.ts';
+import { blastEnforcers, hurtEnforcer } from './enforcer.ts';
 import { blastUnits, report, shootUnit } from './police.ts';
 import {
   blastFalloff,
@@ -49,6 +51,12 @@ export interface ShotTarget {
    * leaves it out.
    */
   police?: { unitAt(handle: number): number | undefined };
+  /**
+   * The faction enforcers standing in the world (spec section 17.2), which is
+   * how a round that went into one finds the person it hit. A ground with no
+   * factions leaves it out.
+   */
+  enforcers?: { unitAt(handle: number): number | undefined };
 }
 
 /** The casts and the flights of one session. It owns no state but its scratch. */
@@ -75,9 +83,10 @@ export class Gunfire {
    * Nothing here decides whether the weapon fires; `stepWeapons` does, and it
    * also raises the heat a shot is worth (spec section 14).
    *
-   * The player's vehicle and the police cars of spec section 14 can be hit: a
-   * ray that meets a traffic body stops there (#256), and the pedestrians of
-   * spec section 13.1 are what the rays will find after them.
+   * The player's vehicle, the police cars of spec section 14 and the faction
+   * enforcers of spec section 17.2 can be hit: a ray that meets a traffic body
+   * stops there (#256), and the pedestrians of spec section 13.1 are what the
+   * rays will find after them.
    */
   step(state: SimState, input: InputFrame, target: ShotTarget): void {
     const shot = stepWeapons(state.loadout, input, state.player, state.seed, state.tick);
@@ -114,6 +123,14 @@ export class Gunfire {
     const unit = target.police?.unitAt(hit.collider.handle);
     if (unit !== undefined) {
       shootUnit(state, unit, roundSeverity(spec) * VEHICLE_SHARE_PER_POINT);
+      return;
+    }
+    // A round that went into an enforcer is taken off them, on the health scale
+    // people are measured in rather than the share a panel takes (spec section
+    // 17.2). Enough of them puts the wave down.
+    const enforcer = target.enforcers?.unitAt(hit.collider.handle);
+    if (enforcer !== undefined) {
+      hurtEnforcer(state, enforcer, spec.damage);
       return;
     }
     if (target.body === undefined || hit.collider.handle !== target.body.handle) return;
@@ -235,6 +252,9 @@ export class Gunfire {
     // A blast is felt by every police car inside it, wherever the player's own
     // car stands (spec section 14).
     blastUnits(state, p.x, p.y, roundSeverity(spec) * VEHICLE_SHARE_PER_POINT, (gap) => blastFalloff(gap, flight.blastRadius));
+    // And by every enforcer inside it, who feel it as people rather than as
+    // panels (spec section 17.2).
+    blastEnforcers(state, p.x, p.y, spec.damage, (gap) => blastFalloff(gap, flight.blastRadius));
     const share = blastFalloff(distance, flight.blastRadius);
     if (share === 0) return;
     const length = Math.max(distance, 1e-6);

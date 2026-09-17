@@ -15,7 +15,14 @@ import {
 } from '../src/sim/faction.ts';
 import { TICKS_PER_DAY } from '../src/sim/clock.ts';
 import { dealRefusal, type DealerPlace } from '../src/sim/dealer.ts';
-import { EnforcerGang, ENFORCER_RANGE, type EnforcerUnit } from '../src/sim/enforcer.ts';
+import {
+  EnforcerGang,
+  ENFORCER_HEALTH,
+  ENFORCER_RANGE,
+  WAVE_UNITS,
+  hurtEnforcer,
+  type EnforcerUnit,
+} from '../src/sim/enforcer.ts';
 import { favourOf, sellPrice } from '../src/sim/market.ts';
 import { createSimState, type SimState } from '../src/sim/simulation.ts';
 import {
@@ -401,7 +408,7 @@ describe('the enforcers of spec section 17.2', () => {
   /** A wave out after a player standing in the middle of the grid. */
   function siege(): { state: SimState; gang: EnforcerGang } {
     const state = walker(0, 0, { family: -1 });
-    state.factions.wave = { faction: FAMILY, block: blockKey(0, 0), called: 0, until: 100_000, round: 1 };
+    state.factions.wave = { faction: FAMILY, block: blockKey(0, 0), called: 0, until: 100_000, round: 1, sent: 0 };
     return { state, gang: new EnforcerGang(roads, turf) };
   }
 
@@ -451,7 +458,7 @@ describe('the enforcers of spec section 17.2', () => {
     const { state, gang } = siege();
     run(state, gang, 900);
     const first = state.enforcers.units.length;
-    state.factions.wave = { faction: FAMILY, block: blockKey(0, 0), called: state.tick, until: state.tick + 100_000, round: 3 };
+    state.factions.wave = { faction: FAMILY, block: blockKey(0, 0), called: state.tick, until: state.tick + 100_000, round: 3, sent: 0 };
     run(state, gang, 900);
     expect(state.enforcers.units.length).toBeGreaterThan(first);
   });
@@ -476,6 +483,31 @@ describe('the enforcers of spec section 17.2', () => {
       state.enforcers.units.map((u: EnforcerUnit) => `${u.id}:${u.weapon}:${u.x.toFixed(3)}:${u.y.toFixed(3)}`).join('|');
     expect(poses(one.state)).toBe(poses(two.state));
     expect(one.state.player.health).toBe(two.state.player.health);
+  });
+
+  it('is over once the whole wave has been put down', () => {
+    const { state, gang } = siege();
+    run(state, gang, 900);
+    expect(state.factions.wave?.sent).toBe(WAVE_UNITS);
+    for (const unit of [...state.enforcers.units]) {
+      expect(hurtEnforcer(state, unit.id, ENFORCER_HEALTH)).toBe(true);
+    }
+    // What they carried is left where they fell, which is how a player arms
+    // themselves off a wave (spec section 11.6).
+    expect(state.pickups.length).toBe(WAVE_UNITS);
+    run(state, gang, 1);
+    expect(state.factions.wave).toBeNull();
+    expect(state.enforcers.units).toHaveLength(0);
+  });
+
+  it('sends nobody in place of one who was shot: a wave is a fixed number of people', () => {
+    const { state, gang } = siege();
+    run(state, gang, 300);
+    const first = state.enforcers.units[0] as EnforcerUnit;
+    hurtEnforcer(state, first.id, ENFORCER_HEALTH);
+    run(state, gang, 900);
+    expect(state.factions.wave?.sent).toBe(WAVE_UNITS);
+    expect(state.enforcers.units.length).toBe(WAVE_UNITS - 1);
   });
 
   it('leaves a player in a car alone: they are already driving away', () => {
