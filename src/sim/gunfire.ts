@@ -18,7 +18,9 @@ import type { SimState } from './simulation.ts';
 import type { VehicleSpec } from './vehicle.ts';
 import { ENFORCER_CAPSULE } from './enforcer-bodies.ts';
 import { blastEnforcers, hurtEnforcer } from './enforcer.ts';
-import { blastUnits, report, shootUnit } from './police.ts';
+import { blastUnits, commitCrime, report, shootUnit } from './police.ts';
+import { blowStrength, forgetHits, markHit, SWING_HEIGHT, type CrowdSource, type HitSurface } from './melee.ts';
+import type { PedestrianPose } from './pedestrians.ts';
 import {
   blastFalloff,
   bounceProjectile,
@@ -58,7 +60,35 @@ export interface ShotTarget {
    * factions leaves it out.
    */
   enforcers?: { unitAt(handle: number): number | undefined };
+  /**
+   * The crowd of spec section 13.1, so a swing can reach the people on the
+   * pavement. They walk loops rather than stand in the physics world, so they
+   * are found off the loop and never by a cast. A ground with no crowd leaves
+   * it out and the street is empty.
+   */
+  crowd?: CrowdSource;
+  /**
+   * The cars of the city standing in the world (spec section 13.1): the traffic
+   * and the parked. Neither takes damage yet (#256); this is what tells a bat
+   * that met a bonnet from one that met a wall.
+   */
+  cars?: { isCar(handle: number): boolean };
 }
+
+/**
+ * Rays one swing fans through its arc to find the world it met. One down the
+ * middle and one to each edge is enough for a lamp post at arm's length, and it
+ * is three casts rather than a shape sweep, which Rapier would charge far more
+ * for on every punch.
+ */
+export const SWING_RAYS: number = 3;
+
+/**
+ * Metres of a person's width a swing counts as reach, so a blow is measured to
+ * somebody's body rather than to the line down their middle.
+ */
+export const PERSON_RADIUS = 0.3;
+
 
 /** The casts and the flights of one session. It owns no state but its scratch. */
 export class Gunfire {
@@ -69,6 +99,9 @@ export class Gunfire {
   private readonly along = { x: 0, y: 0, z: 0 };
   /** The one ray every shot and every projectile step is cast with. */
   private readonly ray: RAPIER.Ray;
+  /** Reused by the swing that looks for the crowd, so a punch allocates nothing. */
+  private readonly ids: number[] = [];
+  private readonly pose: PedestrianPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0, cycle: 0, gait: 'stand' };
 
   constructor(world: RAPIER.World) {
     this.world = world;
@@ -90,6 +123,9 @@ export class Gunfire {
    * rays will find after them.
    */
   step(state: SimState, input: InputFrame, target: ShotTarget): void {
+    // A blow is remembered for a few ticks and no longer: what reads one has
+    // had every frame of those ticks to see it (`melee.ts`).
+    forgetHits(state.hits, state.tick);
     const shot = stepWeapons(state.loadout, input, state.player, state.seed, state.tick);
     if (shot === undefined) return;
     report(state, shot.heat);
@@ -146,14 +182,22 @@ export class Gunfire {
    * stands inside it is hit, which is everybody and not one thing. Nobody
    * swings at the vehicle they are sitting in.
    *
-   * The enforcers of spec section 17.2 are swept off the record rather than out
-   * of the world, because an arc is not a cast: their capsule says how wide they
-   * are and nothing more. So a bat reaches an enforcer who has just walked into
-   * the physics box, which a round does not until the next tick.
+   * Four things can be met, and a blow may meet several at once. The enforcers
+   * of spec section 17.2 and the crowd of spec section 13.1 are swept off the
+   * record rather than out of the world, because an arc is not a cast: so a bat
+   * reaches an enforcer who has just walked into the physics box, and a person
+   * on the pavement, who stands in no physics at all. The player's own vehicle
+   * is measured to its panels as a round is. Everything else — a police car, a
+   * parked car, the traffic, a kerb — is what the fan of rays finds.
+   *
+   * Every blow that lands is written into the record by {@link land}, which is
+   * what the burst and the knock are drawn and played from.
    */
   private swing(state: SimState, spec: WeaponSpec, target: ShotTarget): void {
     const p = state.player;
     if (p.driving) return;
+    const h = p.height + SWING_HEIGHT;
+    let met = false;
     // The list is copied because one put down is taken out of it.
     for (const unit of [...state.enforcers.units]) {
       const dx = unit.x - p.x;
@@ -163,11 +207,112 @@ export class Gunfire {
       const gap = Math.max(0, Math.hypot(dx, dy) - ENFORCER_CAPSULE.radius);
       if (!swingReaches(spec, p.heading, gap, Math.atan2(dy, dx))) continue;
       hurtEnforcer(state, unit.id, spec.damage);
+      this.land(state, spec, 'person', unit.x, unit.y, unit.height + SWING_HEIGHT);
+      met = true;
     }
+    if (this.strike(state, spec, target)) met = true;
     const v = state.vehicle;
     const bearing = Math.atan2(v.z - p.y, v.x - p.x);
-    if (!swingReaches(spec, p.heading, vehicleGap(p, v, target.spec), bearing)) return;
-    this.hit(state, spec, Math.cos(bearing), 0, Math.sin(bearing), roundSeverity(spec), target);
+    if (swingReaches(spec, p.heading, vehicleGap(p, v, target.spec), bearing)) {
+      this.hit(state, spec, Math.cos(bearing), 0, Math.sin(bearing), roundSeverity(spec), target);
+      this.land(state, spec, 'vehicle', v.x, v.z, v.y);
+      met = true;
+    }
+    this.sweep(state, spec, h, target, met);
+  }
+
+  /**
+   * The person of the crowd a swing reaches, if any (spec section 13.1). They
+   * walk a loop rather than stand in the world, so the nearest of the loops
+   * passing through the reach is read at the tick and measured against the arc.
+   *
+   * A blow puts them to flight and it is a brawl, which the police weigh (spec
+   * section 14). Somebody already in flight is left alone: they are drawn from
+   * their own record rather than from their loop, so the loop no longer says
+   * where they are.
+   */
+  private strike(state: SimState, spec: WeaponSpec, target: ShotTarget): boolean {
+    const crowd = target.crowd;
+    if (crowd === undefined) return false;
+    const p = state.player;
+    const reach = spec.reach + PERSON_RADIUS;
+    const found = crowd.near(p.x - reach, p.y - reach, p.x + reach, p.y + reach, this.ids);
+    let nearest: { x: number; y: number; h: number } | undefined;
+    let closest = Infinity;
+    for (const id of found) {
+      const pose = crowd.poseAt(id, state.tick, this.pose);
+      const dx = pose.x - p.x;
+      const dy = pose.y - p.y;
+      const gap = Math.max(0, Math.hypot(dx, dy) - PERSON_RADIUS);
+      if (gap >= closest) continue;
+      if (!swingReaches(spec, p.heading, gap, Math.atan2(dy, dx))) continue;
+      closest = gap;
+      nearest = { x: pose.x, y: pose.y, h: pose.height };
+    }
+    if (nearest === undefined) return false;
+    // A fright at the place the blow landed rather than at the player, so the
+    // person struck runs and nobody behind the swing does.
+    if (crowd.startle(state.pedestrians, state.tick, nearest.x, nearest.y, PERSON_RADIUS, 'flee', this.ids) === 0) {
+      return false;
+    }
+    commitCrime(state, 'brawl');
+    this.land(state, spec, 'person', nearest.x, nearest.y, nearest.h + SWING_HEIGHT);
+    return true;
+  }
+
+  /**
+   * The world a swing met: a police car, a parked car, the traffic, a kerb.
+   * These stand in the physics world, so the arc is fanned into
+   * {@link SWING_RAYS} rays and the nearest thing any of them met is what was
+   * struck. `met` says the swing has already landed on something the record
+   * knows, in which case only a police car is worth taking further: the rest
+   * would be the ground behind a body that has already been hit.
+   */
+  private sweep(state: SimState, spec: WeaponSpec, h: number, target: ShotTarget, met: boolean): void {
+    const p = state.player;
+    const mine = target.shooter;
+    let nearest: RAPIER.RayColliderHit | null = null;
+    let angle = 0;
+    for (let i = 0; i < SWING_RAYS; i++) {
+      const turn = SWING_RAYS === 1 ? 0 : (2 * i) / (SWING_RAYS - 1) - 1;
+      const yaw = p.heading + turn * spec.arc;
+      this.from.x = p.x;
+      this.from.y = h;
+      this.from.z = p.y;
+      this.along.x = Math.cos(yaw);
+      this.along.y = 0;
+      this.along.z = Math.sin(yaw);
+      const hit = this.world.castRay(this.ray, spec.reach, true, undefined, undefined, mine);
+      if (hit === null || (nearest !== null && hit.timeOfImpact >= nearest.timeOfImpact)) continue;
+      nearest = hit;
+      angle = yaw;
+    }
+    if (nearest === null) return;
+    const handle = nearest.collider.handle;
+    // An enforcer has already been swept off the record, and so has the
+    // player's own vehicle: neither is hit twice for one swing.
+    if (target.enforcers?.unitAt(handle) !== undefined) return;
+    if (target.body !== undefined && handle === target.body.handle) return;
+    const at = nearest.timeOfImpact;
+    const x = p.x + Math.cos(angle) * at;
+    const y = p.y + Math.sin(angle) * at;
+    const unit = target.police?.unitAt(handle);
+    if (unit !== undefined) {
+      // What a blow takes off a police car is what a round of the same weapon
+      // would take off the player's own (spec section 14), and swinging at
+      // officers costs the player what shooting at them does. `scan` scales the
+      // same share a second time, which is #405 and not this.
+      shootUnit(state, unit, roundSeverity(spec));
+      this.land(state, spec, 'vehicle', x, y, h);
+      return;
+    }
+    if (met) return;
+    this.land(state, spec, target.cars?.isCar(handle) === true ? 'vehicle' : 'hard', x, y, h);
+  }
+
+  /** Write one landed blow into the record, for the burst and the knock to read. */
+  private land(state: SimState, spec: WeaponSpec, surface: HitSurface, x: number, y: number, h: number): void {
+    markHit(state.hits, { tick: state.tick, x, y, h, surface, strength: blowStrength(spec) });
   }
 
   /**

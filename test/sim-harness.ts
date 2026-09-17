@@ -35,13 +35,15 @@ export function ramp(surface: Surface, slope: number): Ground {
 export interface Session {
   state: SimState;
   physics: SimPhysics;
+  /** The ground it was built on, so a test can hand the city something mid-run. */
+  ground: Ground;
 }
 
 export function start(ground: Ground, seed = 1): Session {
   const state = createSimState(seed);
   const physics = new SimPhysics(ground, state);
   physics.spawn(state, 0, 0, 0);
-  const session = { state, physics };
+  const session = { state, physics, ground };
   drive(session, 60);
   return session;
 }

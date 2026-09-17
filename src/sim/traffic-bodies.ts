@@ -101,6 +101,20 @@ export class TrafficBodies {
     return this.parked?.count ?? 0;
   }
 
+  /**
+   * True where a collider standing in the world belongs to a car of the city:
+   * one of the traffic, one that has been pushed out of it, or a parked one.
+   * A swing reads it to tell a bonnet from a wall (`gunfire.ts`).
+   */
+  isCar(collider: number): boolean {
+    const body = this.world.getCollider(collider)?.parent();
+    if (body === undefined || body === null) return false;
+    const handle = body.handle;
+    if (this.moving.some((entry) => entry.body.handle === handle)) return true;
+    if (this.pushed.some((entry) => entry.body.handle === handle)) return true;
+    return this.parked?.holds(handle) === true;
+  }
+
   /** How many promoted vehicles have a body in the world. */
   get promotedBodies(): number {
     return this.pushed.length;

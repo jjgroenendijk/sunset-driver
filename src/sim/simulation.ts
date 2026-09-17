@@ -10,6 +10,7 @@ import { stepPickups, type PickupState } from './pickup.ts';
 import { createPedestrianState, type PedestrianState } from './pedestrians.ts';
 import { createTrafficState, type TrafficState } from './traffic.ts';
 import { createLoadout, type LoadoutState, type ProjectileState } from './weapon.ts';
+import type { MeleeHit } from './melee.ts';
 import { createMetroState, stepMetro, travelling, type MetroState } from './metro.ts';
 import { stepShops, type ShopVisit } from './shop.ts';
 import { createMarketState, stepMarket, type MarketState } from './market.ts';
@@ -57,6 +58,13 @@ export interface SimState {
    * save catches them mid-flight and a replay throws them the same way.
    */
   projectiles: ProjectileState[];
+  /**
+   * The blows a melee weapon has landed lately (spec section 11.6): what was
+   * struck, where, and how hard. They are part of the record, so a replay
+   * throws the same sparks and plays the same knock; `melee.ts` says how long
+   * one is kept and `gunfire.ts` writes them.
+   */
+  hits: MeleeHit[];
   /**
    * The weapons lying in the world to be picked up (spec section 11.6): what
    * the dead dropped and what was taken out of a police car.
@@ -190,6 +198,7 @@ export function createSimState(
     shop: null,
     loadout: createLoadout(),
     projectiles: [],
+    hits: [],
     pickups: [],
     nextPickup: 0,
     market: createMarketState(),

@@ -4,6 +4,9 @@ import { cloneSimState } from '../src/sim/simulation.ts';
 import { enginePowerScale, PANELS } from '../src/sim/damage.ts';
 import { giveWeapon, SHOT_HEAT_CONCEALED, weaponOf, type WeaponId } from '../src/sim/weapon.ts';
 import { ENFORCER_HEALTH, type EnforcerUnit } from '../src/sim/enforcer.ts';
+import { blowStrength, HIT_MEMORY } from '../src/sim/melee.ts';
+import { CRIME_HEAT } from '../src/sim/crime.ts';
+import type { PedestrianPose } from '../src/sim/pedestrians.ts';
 import { hills, ramp, type Session, start, drive } from './sim-harness.ts';
 
 /**
@@ -262,6 +265,83 @@ describe('weapons', () => {
     const standing = state.enforcers.units[0] as EnforcerUnit;
     drive(session, 600, { throttle: 1 });
     expect(state.vehicle.x).toBeGreaterThan(standing.x + 10);
+    session.physics.dispose();
+  });
+
+  /**
+   * A crowd of one, standing `gap` metres in front of the player. The real one
+   * walks loops over a road graph (`pedestrians.test.ts` is where that is
+   * checked); a swing asks it only who is near, where they are and to take
+   * fright, which is the whole of {@link CrowdSource}.
+   */
+  function bystander(session: Session, gap: number): { at: { x: number; y: number }; frights: number } {
+    const p = session.state.player;
+    const at = { x: p.x + Math.cos(p.heading) * gap, y: p.y + Math.sin(p.heading) * gap };
+    const crowd = {
+      at,
+      frights: 0,
+      near(minX: number, minY: number, maxX: number, maxY: number, out: number[]): number[] {
+        out.length = 0;
+        if (at.x >= minX && at.x < maxX && at.y >= minY && at.y < maxY) out.push(0);
+        return out;
+      },
+      poseAt(_id: number, _time: number, out: PedestrianPose): PedestrianPose {
+        out.x = at.x;
+        out.y = at.y;
+        out.height = 0;
+        return out;
+      },
+      startle(): number {
+        crowd.frights++;
+        return 1;
+      },
+    };
+    session.ground.crowd = crowd;
+    return crowd;
+  }
+
+  it('reaches somebody on the pavement with a swing, and puts them to flight', () => {
+    const ground = ramp('asphalt', 0);
+    const near = armed('baseball-bat', ground);
+    const passer = bystander(near, 1.2);
+    shoot(near, 1);
+    expect(passer.frights).toBe(1);
+    // A punch at a person on the street is a brawl (spec section 14), and the
+    // blow is on the record for the burst and the knock to read.
+    expect(near.state.heat).toBeCloseTo(CRIME_HEAT.brawl, 6);
+    expect(near.state.hits.map((hit) => hit.surface)).toContain('person');
+    near.physics.dispose();
+
+    const far = armed('baseball-bat', ramp('asphalt', 0));
+    const missed = bystander(far, 5);
+    shoot(far, 1);
+    expect(missed.frights).toBe(0);
+    expect(far.state.heat).toBe(0);
+    far.physics.dispose();
+  });
+
+  it('writes what a swing struck onto the record, and forgets it again', () => {
+    const session = armed('baseball-bat');
+    const { state } = session;
+    shoot(session, 1);
+    const landed = state.hits.filter((hit) => hit.surface === 'vehicle');
+    expect(landed.length).toBeGreaterThan(0);
+    expect(landed[0]?.strength).toBeCloseTo(blowStrength(weaponOf('baseball-bat')), 6);
+    // A blow near the car is a blow near where the player stands.
+    expect(Math.hypot((landed[0]?.x ?? 0) - state.player.x, (landed[0]?.y ?? 0) - state.player.y)).toBeLessThan(6);
+    drive(session, HIT_MEMORY + 1);
+    expect(state.hits).toHaveLength(0);
+    session.physics.dispose();
+  });
+
+  it('swings at nothing in an empty street', () => {
+    const session = armed('baseball-bat', ramp('asphalt', 0));
+    const { state } = session;
+    // Facing away from the only thing within reach, over flat ground.
+    state.player.heading += Math.PI;
+    shoot(session, 1);
+    expect(state.loadout.shots).toBeGreaterThan(0);
+    expect(state.hits).toHaveLength(0);
     session.physics.dispose();
   });
 

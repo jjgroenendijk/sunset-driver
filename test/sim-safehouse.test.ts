@@ -305,9 +305,10 @@ describe('safehouses', () => {
   it('replays a purchase and a garage exchange to identical state', () => {
     const run = (): SimState => {
       const state = createSimState(5);
-      const physics = new SimPhysics(city(), state);
+      const ground = city();
+      const physics = new SimPhysics(ground, state);
       physics.spawn(state, 0, 0, 0);
-      const session: Session = { state, physics };
+      const session: Session = { state, physics, ground };
       state.money = 100000;
       standAt(session, BROKER[0] as ShopPlace);
       press(session);

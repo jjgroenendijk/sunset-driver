@@ -389,6 +389,8 @@ export class SimPhysics {
       shooter: state.player.driving ? this.body : this.walker?.collider,
       police: this.units.police,
       enforcers: this.units.enforcers,
+      crowd: this.ground.crowd,
+      cars: this.traffic,
     };
   }
 
