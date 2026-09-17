@@ -153,9 +153,18 @@ export abstract class RoadTrace extends RoadRoute {
    * A street from one end of a boardwalk to the network, without its first
    * point, so the boardwalk itself carries the join. Empty where the network is
    * out of reach.
+   *
+   * `boardwalk` is the line the way on carries on from, ending at `from`. The
+   * road behind a beach runs along it, so a route that read nothing of the
+   * boardwalk comes back beside it and the two are one folded street. The fold
+   * would then be cut out of the boardwalk itself, a point at a time, until
+   * there was no boardwalk left to lay.
    */
-  protected reachNetwork(from: Point): Point[] {
-    const route = this.routeToNetwork(from, this.islandOf(from.x, from.y), 'street', STREET);
+  protected reachNetwork(from: Point, boardwalk: readonly Point[] = []): Point[] {
+    const island = this.islandOf(from.x, from.y);
+    const route =
+      this.routeToNetwork(from, island, 'street', STREET, undefined, false, boardwalk) ??
+      this.routeToNetwork(from, island, 'street', STREET);
     return route === undefined ? [] : route.slice(1);
   }
 
