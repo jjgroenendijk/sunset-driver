@@ -35,6 +35,7 @@
  */
 import RAPIER from '@dimforge/rapier3d-compat';
 import { TICK_RATE } from './clock.ts';
+import { stepCrowdReactions } from './crowd-reaction.ts';
 import { blastDamageAt, BLAST_LIFT, CRASH_DAMAGE, hitVehicle, tickFire } from './damage.ts';
 import { rotate, unrotate } from './frame.ts';
 import { Drivetrain } from './drivetrain.ts';
@@ -143,6 +144,8 @@ export class SimPhysics {
   private readonly axis = { x: 0, y: 0, z: 0 };
   private readonly force = { x: 0, y: 0, z: 0 };
   private readonly at = { x: 0, y: 0, z: 0 };
+  /** Reused by the crowd reactions of spec section 20.1, for the same reason. */
+  private readonly ids: number[] = [];
   /** The one ray every shot and every projectile step is cast with. */
   private readonly from = { x: 0, y: 0, z: 0 };
   private readonly along = { x: 0, y: 0, z: 0 };
@@ -285,7 +288,12 @@ export class SimPhysics {
     for (const unit of state.police.units) {
       if (unit.kind === 'helicopter') unit.height = this.ground.heightAt(unit.x, unit.y);
     }
-    if (chassis !== undefined) this.crash(state, wasX, wasY, wasZ);
+    const crash = chassis === undefined ? 0 : this.crash(state, wasX, wasY, wasZ);
+    // The crowd answers the tick the car has just had (spec section 20.1): the
+    // crash it took, or the people it is about to run over. It is read after
+    // the step, so the fright is written where the car ended the tick.
+    const crowd = this.ground.crowd;
+    if (crowd !== undefined) stepCrowdReactions(state, crowd, crash, this.ids);
     // The weapons are run after the step, so a shot leaves the muzzle from where
     // the player ended the tick rather than from where they started it. A player
     // bent over a lock cannot shoot, for the same reason they cannot walk.
@@ -401,14 +409,15 @@ export class SimPhysics {
 
   /**
    * The damage of spec section 11.3: what the vehicle hit over the step it has
-   * just taken.
+   * just taken, answered as the severity of the crash so the crowd can react
+   * to it (spec section 20.1).
    *
    * The speed it lost is what its structure absorbed, and the direction it was
    * pushed in says which panel took it. The direction is read in the vehicle's
    * own frame, so a shunt from behind dents the boot whichever way the car
    * happens to be pointing. Whoever is driving takes their share of it.
    */
-  private crash(state: SimState, wasX: number, wasY: number, wasZ: number): void {
+  private crash(state: SimState, wasX: number, wasY: number, wasZ: number): number {
     const v = state.vehicle;
     unrotate(this.point, v, v.vx - wasX, v.vy - wasY, v.vz - wasZ);
     const severity = hitVehicle(
@@ -421,6 +430,7 @@ export class SimPhysics {
       state.tick,
     );
     if (severity > 0 && state.player.driving) hurt(state.player, severity * CRASH_DAMAGE);
+    return severity;
   }
 
   /**

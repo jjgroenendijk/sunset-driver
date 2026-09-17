@@ -15,7 +15,7 @@
  * which is longer than any frame a player would keep playing through.
  */
 import { currentWeapon, shotInterval, type LoadoutState, type WeaponSpec } from './weapon.ts';
-import type { PedestrianPose, PedestrianState } from './pedestrians.ts';
+import type { PedestrianPose, PedestrianState, Reaction } from './pedestrians.ts';
 
 /**
  * What was struck, which is all a burst and a cue need to know: a person, a
@@ -98,7 +98,11 @@ export function forgetHits(hits: MeleeHit[], tick: number): void {
   if (keep > 0) hits.splice(0, keep);
 }
 
-/** What a swing needs of the crowd: who is near, where they are, and a fright. */
+/**
+ * What a swing needs of the crowd: who is near, where they are, and a fright.
+ * The reactions of spec section 20.1 read it for the same three things
+ * (`crowd-reaction.ts`).
+ */
 export interface CrowdSource {
   near(minX: number, minY: number, maxX: number, maxY: number, out: number[]): number[];
   poseAt(id: number, time: number, out: PedestrianPose): PedestrianPose;
@@ -108,7 +112,7 @@ export interface CrowdSource {
     x: number,
     y: number,
     radius: number,
-    reaction: 'flee' | 'scatter',
+    reaction: Reaction,
     ids?: number[],
   ): number;
 }

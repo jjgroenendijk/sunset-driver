@@ -10,6 +10,7 @@
  * the rays will find after them.
  */
 import RAPIER from '@dimforge/rapier3d-compat';
+import { crowdFeelsBlast, crowdHearsShot } from './crowd-reaction.ts';
 import { damageVehicle, disableEngine, ignite } from './damage.ts';
 import { unrotate } from './frame.ts';
 import type { InputFrame } from './input.ts';
@@ -129,6 +130,11 @@ export class Gunfire {
     const shot = stepWeapons(state.loadout, input, state.player, state.seed, state.tick);
     if (shot === undefined) return;
     report(state, shot.heat);
+    // A gun going off clears the pavement around the player (spec section
+    // 20.1). A swing is quiet, so only the loud weapons are heard.
+    if (shot.spec.cls !== 'melee' && target.crowd !== undefined) {
+      crowdHearsShot(state, target.crowd, state.player.x, state.player.y, this.ids);
+    }
     if (shot.projectile !== undefined) {
       state.projectiles.push(shot.projectile);
       return;
@@ -403,6 +409,9 @@ export class Gunfire {
     const spec = weaponOf(p.weapon);
     const flight = spec.projectile;
     if (flight === undefined || spec.effect === 'smoke') return;
+    // Heard well past the ring it is felt in, so the street empties around it
+    // (spec section 20.1).
+    if (target.crowd !== undefined) crowdFeelsBlast(state, target.crowd, p.x, p.y, flight.blastRadius, this.ids);
     const player = state.player;
     const reach = blastFalloff(Math.hypot(player.x - p.x, player.y - p.y, player.height - p.h), flight.blastRadius);
     if (reach > 0) hurt(player, spec.damage * reach);
