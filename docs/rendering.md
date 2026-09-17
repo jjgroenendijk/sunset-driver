@@ -102,10 +102,9 @@ and the crowd — is in `docs/render-entities.md`.
   takes about a quarter of a second each, so a tier change that rebuilt the post chain held the game
   still for half a second — and it never got cheaper, because a rebuilt node is a fresh cache key
   however often the same effects have been compiled before. `PostChain` therefore builds a graph
-  once and keeps it, one per set of effects, and a tier change swaps the pipeline's output node to a
-  chain the renderer has already compiled. `warm.ts` draws one frame through each graph behind the
-  loading screen before the session starts, so the first change of the session swaps rather than
-  builds.
+  once and keeps it, one per set of effects, and a tier change swaps the pipeline's output node to
+  a chain the renderer has already compiled. The scale the change also moves throws even that away
+  (the point below), so nothing is warmed for a tier that is not standing.
 - **The render scale is what a tier change still pays for.** Every tier carries its own
   `renderScale`, and `setRenderScale` hands it to `renderer.setPixelRatio`, which changes the
   drawing buffer size. `ClusteredLightsNode.updateProgram` builds its cluster grid from that size
@@ -121,21 +120,30 @@ and the crowd — is in `docs/render-entities.md`.
   on the material, the geometry layout it is drawn over, the object itself and the pass, and builds
   it on the frame thread the first time it meets that combination. Met while driving, that is a
   frame of about a quarter of a second per program, and they come in batches.
-- `renderer.compileAsync(scene, camera)` alone is not enough, and four things widen it. It walks the
-  camera's frustum, so **frustum culling comes off**: a low block a street behind the player is
-  otherwise compiled the frame it first comes into view. It walks only what is drawn, so **hidden
-  objects are shown and an empty instanced pool is given one instance**: the ambient traffic, the
-  parked cars, the police and the crowd each hold a pool per class that is empty until the first one
-  of that class comes near, and three hashes the mesh's own `uuid` into the program key, so an empty
-  pool is a program nobody has built. It compiles the view pass only, so **a frame is drawn through
-  each post graph**, which runs the sun's cascades and the water's mirror as well. And **every
-  quality tier's graph** is drawn, so a tier change later swaps rather than builds.
+- The warm-up draws frames through the post chain itself, never `renderer.compileAsync`. The chain
+  draws the city into a render target of its own format, and the program a material draws with
+  there is not the one `compileAsync` builds for the canvas — a set the game never draws with at
+  all. Measured in WebKit, that set cost about 15 s behind the loading screen and was thrown away
+  by the first frame through the chain; on a phone it is the difference between a city that loads
+  and one that never does.
+- One frame is drawn for each material, with the rest of the scene held hidden, so a frame costs
+  one material's programs whatever the city around it weighs. Hidden objects are shown, frustum
+  culling comes off and an empty instanced pool is given one instance for the frame: the ambient
+  traffic, the parked cars, the police and the crowd each hold a pool per class that is empty until
+  the first one of that class comes near, and three hashes the mesh's own `uuid` into the program
+  key, so an empty pool is a program nobody has built. The sun's cascades and the water's mirror
+  run over the frame the same way, and `showWater` holds the sheet in it so an inland session
+  compiles the mirror too.
+- A slice of the warm-up holds the frame for at most 40 ms and an animation frame is waited for
+  between slices, so the loading screen keeps painting its own progress — which it counts out, one
+  material at a time — and no browser is handed a block minutes long. The whole warm-up on an M1
+  laptop is about 2 s in WebKit and about 1 s in Chromium, against 20 s to 35 s and about 12 s when
+  it drew the whole city at once.
 - It therefore runs last of everything the loading screen covers, after every view is in the scene.
   A view added after it would compile on the frame it first draws.
 - An object that streams or spawns afterwards costs nothing: a chunk worker builds every batch of a
-  kind the same way, and an entity is drawn out of a pool made before the session started.
-- It costs about 0.8 s more on the loading screen on an M1 laptop, 2.5 s to 3.3 s, and takes the
-  drive's worst frame from about 2 s to about 20 ms.
+  kind the same way, and an entity is drawn out of a pool made before the session started. The
+  warm-up takes the drive's worst frame from about 2 s to about 20 ms.
 
 ## Smoothing and fading
 

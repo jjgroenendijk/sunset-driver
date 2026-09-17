@@ -133,7 +133,7 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
   // The same warm-up the game runs behind its loading screen (`warm.ts`), so
   // the frames timed here are the frames a session draws rather than a session
   // that skipped it.
-  await warmPasses(renderer, scene, post, camera.camera);
+  await warmPasses(scene, post);
 
   const frame = async (x: number, y: number, heading: number, speed: number): Promise<FrameSample> => {
     renderer.info.reset();

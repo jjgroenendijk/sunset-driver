@@ -719,7 +719,12 @@ async function boot(): Promise<void> {
   // paid once, here, where there is a screen saying so. It comes after every
   // view is in the scene, because a shader is compiled for the object that is
   // drawn with it and not for the material alone (`warm.ts`).
-  await warmPasses(renderer, world, post, camera.camera);
+  await warmPasses(world, post, (done, total) => {
+    loading.say(
+      `Compiling the shaders · ${done} of ${total}`,
+      LOADED.ground + (done / Math.max(total, 1)) * (1 - LOADED.ground),
+    );
+  });
 
   session = {
     traffic: trafficView,
