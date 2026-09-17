@@ -305,9 +305,17 @@ the player buys are in `docs/safehouses.md`, the factions, their reputation and 
 - A light and a tour only agree for ever when the tour takes whole `SIGNAL_CYCLE`s. So a tour that
   meets a light is timed from one stop line, its `sync`: tick 0 is that line's green. The drive back
   to it is stretched to arrive on red, and `phaseOf` moves the vehicle by up to half a cycle so its
-  tick 0 falls on that green. A queue is estimated from the lane's density, not from the vehicles
-  in it, and its back stops `QUEUE_CLEAR` short of the junction behind, where a tram may cross.
-  `test/signal-lap.ts` steps a lap and holds a vehicle to the lights.
+  tick 0 falls on that green. `test/signal-lap.ts` steps a lap and holds a vehicle to the lights.
+- That snap leaves a lap only `period / SIGNAL_CYCLE` ticks a vehicle may stand at, so the slot
+  placement drew for it is gone and nothing in the phase keeps two vehicles apart (issue #356). What
+  does is the vehicle's own place in the queue, drawn once and passed to `timeTour`: it waits that
+  many whole cars back from every line it meets, the anchor's included, so it also pulls away that
+  much later and stays behind for the rest of the lap. `queueBack` bounds the queue three ways — it
+  stops `QUEUE_CLEAR` short of the junction behind, where a tram may cross; its back still reaches
+  the line within half the green; and it is no longer than the road that has filled since the light
+  stopped being green, which is what keeps a vehicle from standing still on a green. The sweep holds
+  the city to `TRAFFIC_OVERLAP` pairs of vehicles a vehicle standing on the same ground; before the
+  fix the first sweep seeds read about twice that.
 - On seed 1 about three vehicles in four meet a light, they spend about a third of the time
   standing, and timing the tours takes the traffic from about 35 ms to about 180 ms to place.
 - `src/sim/traffic-bodies.ts` is the Rapier half. Inside the box of ground tiles, each vehicle is a

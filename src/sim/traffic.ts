@@ -308,8 +308,6 @@ export class AmbientTraffic {
   private place(seed: number, edge: RoadEdge, busy: Float64Array, vehicles: AmbientVehicle[]): void {
     const graph = this.roads.graph;
     const expected = (edge.length / 1000) * edge.lanes * TIERS[edge.tier].density * (busy[edge.id] as number);
-    // Vehicles to a metre of one lane: what a queue at a red light is estimated from.
-    const crowd = (e: RoadEdge): number => (TIERS[e.tier].density * (busy[e.id] as number)) / 1000;
     const rng = rngFor(seed, 0, Subsystem.Traffic, hashInts(EDGE_STREAM, edge.id));
     const count = Math.floor(expected + rng.float());
     for (let j = 0; j < count; j++) {
@@ -319,7 +317,10 @@ export class AmbientTraffic {
       const lane = rng.int(0, edge.lanes - 1);
       const paint = cls === 'bus' ? specOf(cls).paint : (PAINTS[rng.int(0, PAINTS.length - 1)] as number);
       const walk = rngFor(seed, 0, Subsystem.Traffic, hashInts(VEHICLE_STREAM, id));
-      const tour = timeTour(graph, walkTour(graph, edge.id, walk, permitOf(cls)), this.signals, crowd);
+      const route = walkTour(graph, edge.id, walk, permitOf(cls));
+      // Its own place in every queue it joins, which is what holds it off the
+      // vehicles that wait at the same lights.
+      const tour = timeTour(graph, route, this.signals, walk.float());
       const phase = phaseOf(tour, tour.edges.indexOf(edge.id), offset, walk);
       vehicles.push({ id, cls, paint, lane, phase, tour });
       for (const e of tour.edges) this.index.file(id, e);
@@ -336,7 +337,10 @@ export class AmbientTraffic {
  * The tick of its tour a vehicle stands at on tick 0: `offset` metres along
  * its home leg. A tour timed to the signals has to start on the tick of the
  * cycle it was timed from, so its vehicle is moved by at most half a cycle to
- * the nearest tick that does.
+ * the nearest tick that does. That leaves few ticks of a lap a vehicle may
+ * stand at, and the slot placement drew for it is lost. What keeps two
+ * vehicles apart afterwards is the queue place `traffic-timing.ts` times each
+ * tour from, not this.
  */
 function phaseOf(tour: Tour, home: number, offset: number, rng: Rng): number {
   let at = -1;
