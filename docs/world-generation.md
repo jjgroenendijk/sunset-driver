@@ -45,7 +45,12 @@ corridors in `docs/corridors.md`.
   says which of them a road can arrive at: the piece the main island stands on, and every piece a
   chain of the water description's crossings leads to from there. A cell of the power diagram can
   hold a rock in the sea, and it can hold several pieces of land that no crossing joins, so anything
-  that places ground content asks `reaches` first. District sites and beaches do.
+  that places ground content asks `reaches` first. District sites do.
+- `reaches` says a road *could* arrive; `servedMasses(districts)` says it *will*. `linkIslands`
+  (`roads.ts`) bridges to an island that carries a district and to the islands on the way there, and
+  to nothing else, so a piece of land a chain of crossings leads to still gets no road when no
+  district stands at the end of that chain. A resort beach asks this one, because a boardwalk, a
+  pier and two car parks on an island the network never bridges to serve nobody.
 - Ask `islandAt(islands, size, coastNoise(seed), x, y)` which island a point stands on.
   `islandIndexAt` reads the raw power cells, and the coastline is cut from those cells after a
   domain warp that moves them by up to 6 % of the map.
@@ -58,7 +63,8 @@ corridors in `docs/corridors.md`.
 - `planBeaches` (`beaches.ts`) is spec section 7.3. It runs before `traceRoads`, because a boardwalk
   is a road, so `world.beaches` is in the skeleton the tracer reads. A beach is a run of coastline
   the ground behind rises slowly from; the harbour, the river mouth and the rock in the sea that no
-  crossing reaches and the ends of the crossings are cut out first. `isResort` says which beaches
+  crossing reaches and the ends of the crossings are cut out first. A run on land no road is laid on
+  is never developed, only left as plain sand. `isResort` says which beaches
   carry a boardwalk line, a pier and car parks: the long ones, plus two more outside the core
   whatever their length, which is what gives every seed the beach the spec asks for. Those two rank
   a beach of `LONG_BEACH` first, then one that runs past a district The Boardwalk can be named for.

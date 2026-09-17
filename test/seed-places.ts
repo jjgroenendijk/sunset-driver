@@ -94,6 +94,8 @@ export function placeChecks(): void {
         const w = worlds.get(seed) as WorldDescription;
         const hf = new Heightfield(w.terrain);
         const zones = layoutZones(w.size, w.core, w.water);
+        const land = new LandMasses(hf, w.water, w.water.seaLevel + 1);
+        const roaded = land.servedMasses(w.districts);
         const sea = w.water.seaLevel;
         let complaint: string | undefined;
         const fault = (text: string): void => {
@@ -135,6 +137,13 @@ export function placeChecks(): void {
           if (isResort(beach)) {
             if (beach.boardwalk.length !== beach.shore.length) fault(`${where} has a boardwalk line of a different length`);
             if (beach.carParks.length === 0) fault(`${where} is a resort with nowhere to park`);
+            // A resort carries a boardwalk, a pier and two car parks, so it is
+            // worth building only where a road is really laid. The network
+            // bridges to an island that carries a district and to the islands
+            // on the way there, and to nothing else (issue #367).
+            const mid = beach.back[Math.floor(beach.back.length / 2)] as Point;
+            const mass = land.massAt(mid.x, mid.y);
+            if (mass < 0 || roaded[mass] !== 1) fault(`${where} is a resort on land no road is laid on`);
           } else {
             if (beach.boardwalk.length > 0) fault(`${where} is no resort but carries a boardwalk line`);
             if (beach.pier !== undefined) fault(`${where} is no resort but carries a pier`);

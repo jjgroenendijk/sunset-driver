@@ -20,7 +20,7 @@
  * both of its neighbours dry, which is the same reachability.
  */
 import type { Heightfield } from './heightfield.ts';
-import type { Island, WaterDescription } from './types.ts';
+import type { District, Island, WaterDescription } from './types.ts';
 
 /** Nodes searched around an island site for the land it stands on, in grid steps. */
 const SITE_REACH = 8;
@@ -35,6 +35,10 @@ export class LandMasses {
   private readonly label: Int32Array;
   /** 1 where the road network can arrive at the piece of land with that label. */
   private readonly reached: Uint8Array;
+  /** The pieces each crossing of the water description joins, by label. */
+  private readonly linked: number[][] = [];
+  /** The piece the main island stands on, or -1 where it stands on none. */
+  private mainMass = -1;
 
   constructor(hf: Heightfield, water: WaterDescription, minHeight: number) {
     this.hf = hf;
@@ -73,7 +77,7 @@ export class LandMasses {
    * stands on, and every piece a chain of crossings leads to from it.
    */
   private floodFromMain(water: WaterDescription, count: number): Uint8Array {
-    const linked: number[][] = [];
+    const linked = this.linked;
     for (let i = 0; i < count; i++) linked.push([]);
     for (const crossing of water.crossings) {
       const a = this.massNear(crossing.from.x, crossing.from.y);
@@ -86,6 +90,7 @@ export class LandMasses {
     let main: Island | undefined;
     for (const island of water.islands) if (island.main) main = island;
     const start = main === undefined ? -1 : this.massNear(main.x, main.y);
+    this.mainMass = start;
     if (start < 0) return reached;
     reached[start] = 1;
     const queue = [start];
@@ -106,6 +111,47 @@ export class LandMasses {
     const iy = Math.round((y - this.hf.originY) / this.hf.cellSize);
     if (ix < 0 || iy < 0 || ix >= n || iy >= n) return -1;
     return this.label[iy * n + ix] as number;
+  }
+
+  /**
+   * The pieces of land a road is really laid on, one flag each: the piece the
+   * main island stands on, every piece a district stands on, and every piece a
+   * chain of crossings runs through on the way from the one to the other.
+   *
+   * {@link reaches} says a road *could* arrive; this says it *will*.
+   * `linkIslands` (`roads.ts`) bridges to an island that carries a district and
+   * to the islands on the way there, and to nothing else, so a piece a chain of
+   * crossings leads to still gets no road when no district stands at the end of
+   * that chain. Content that needs a road to be worth placing has to ask this.
+   * The two walk the same chain, from the two ends.
+   */
+  servedMasses(districts: readonly District[]): Uint8Array {
+    const count = this.linked.length;
+    const served = new Uint8Array(count);
+    if (this.mainMass < 0) return served;
+    // Breadth-first from the main piece, keeping the crossing each piece was
+    // first reached over, so following parents leads back to the main piece.
+    const parent = new Int32Array(count).fill(-1);
+    const queue = [this.mainMass];
+    parent[this.mainMass] = this.mainMass;
+    for (let qi = 0; qi < queue.length; qi++) {
+      for (const to of this.linked[queue[qi] as number] as number[]) {
+        if (parent[to] !== -1) continue;
+        parent[to] = queue[qi] as number;
+        queue.push(to);
+      }
+    }
+    served[this.mainMass] = 1;
+    for (const d of districts) {
+      let mass = this.massNear(d.x, d.y);
+      while (mass >= 0 && served[mass] === 0) {
+        served[mass] = 1;
+        const up = parent[mass] as number;
+        if (up === -1 || up === mass) break;
+        mass = up;
+      }
+    }
+    return served;
   }
 
   /**
