@@ -582,8 +582,8 @@ class RoadTracer extends HighwayTrace {
     // The line is held while its ends reach for the network, so neither end
     // runs back along the boardwalk itself.
     this.network.reserve(-1 - i, 'street', line);
-    const head = this.besideOwnCrossing(line, this.reachNetwork(line[0] as Point));
-    const tail = this.besideOwnCrossing(line, this.reachNetwork(line[line.length - 1] as Point));
+    const head = this.besideOwnCrossing(line, this.reachNetwork(line[0] as Point, [...line].reverse()));
+    const tail = this.besideOwnCrossing(line, this.reachNetwork(line[line.length - 1] as Point, line));
     this.network.release(-1 - i);
     if (head.length === 0 && tail.length === 0) return -1;
     // A way on to the network that turns back over the boardwalk has the turn

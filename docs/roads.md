@@ -66,8 +66,11 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   rules; a reroute that fails is searched again with every grid step vetted, since the grid meets a
   road at only eight headings. Each resort's boardwalk line is reserved right after the highways and
   released once it is laid; without that an island link can take the line, and the beach gets no
-  boardwalk. While its two ends reach for the network the line is held again, so neither end runs
-  back along it.
+  boardwalk. While its two ends reach for the network the line is held again, and each way on is
+  routed with the boardwalk as the road it carries on from, so neither end runs back along it. Where
+  that finds nothing the search is run again without it: the road behind a beach runs along the
+  boardwalk, and a way on that comes back beside it leaves a fold that is cut out of the boardwalk
+  itself, a point at a time, until there is no boardwalk left to lay.
 
 ## Highways and the ring
 
