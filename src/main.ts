@@ -18,7 +18,7 @@ import { warmPasses } from './render/warm.ts';
 import { WorldScene } from './render/world-scene.ts';
 import { FixedStepClock, gameTime } from './sim/clock.ts';
 import { DEFAULT_APPEARANCE } from './sim/character.ts';
-import { ParkedCars } from './sim/parked.ts';
+import { buildPlaces } from './places.ts';
 import { AmbientPedestrians, crowdDistrictsOf } from './sim/pedestrians.ts';
 import { initPhysics, SimPhysics, type Ground } from './sim/physics.ts';
 import { EMPTY_INPUT, type InputFrame } from './sim/input.ts';
@@ -27,12 +27,9 @@ import { createSimState, stepSim, type SimState } from './sim/simulation.ts';
 import { AmbientTraffic, trafficRoadsOf } from './sim/traffic.ts';
 import { commitCrime, PoliceForce, policeDistrictsOf } from './sim/police.ts';
 import { TramLine } from './sim/tram.ts';
-import { stationAt, type MetroPlace } from './sim/metro.ts';
-import { shopPlaces, visiting } from './sim/shop.ts';
-import { dealerPlaces } from './sim/dealer.ts';
-import { safehousePlaces } from './sim/safehouse.ts';
-import { EnforcerGang } from './sim/enforcer.ts';
-import { TerritoryMap, turfLine } from './sim/territory.ts';
+import { stationAt } from './sim/metro.ts';
+import { visiting } from './sim/shop.ts';
+import { turfLine } from './sim/territory.ts';
 import { DealerMarks } from './ui/dealers.ts';
 import { EnforcerMarks } from './ui/enforcers.ts';
 import { TerritoryOverlay } from './ui/territory.ts';
@@ -497,42 +494,16 @@ async function boot(): Promise<void> {
     world.dispose();
     return;
   }
-  // The parcels are built in the chunk workers, so the police stations are
-  // known once a worker has answered, which `settle` waited for. An arrest
-  // comes back on the road nearest a station (spec section 11.7).
-  const stations = world.stations ?? [];
-  ground.stations = stations.map((at) => nearestRoadPlace(description, at.x, at.y) ?? { ...at, heading: 0 });
-  // The metro stations come from the same answer (spec section 13.3). A station
-  // is entered from the street, so its place is the road that runs along its
-  // parcel, and it is named for the district it serves.
-  const metro: MetroPlace[] = (world.metro ?? []).map((at) => ({
-    ...(nearestRoadPlace(description, at.x, at.y) ?? { x: at.x, y: at.y, heading: 0 }),
-    name: description.districts[at.district]?.name ?? 'Metro',
-  }));
-  ground.metro = metro;
-  // The shops of spec section 16.1 are dealt over the buildings by the same
-  // worker, and a shop is entered from its own shopfront rather than from the
-  // road, so their places need no lookup.
-  const shops = shopPlaces(world.shops ?? [], description.districts);
-  ground.shops = shops;
-  // The dealers of spec section 16.2 stand on the streets of their own district
-  // rather than in a doorway, so each corner is snapped to the road nearest it.
-  const dealers = dealerPlaces(state.seed, description.districts, (x, y) => nearestRoadPlace(description, x, y));
-  ground.dealers = dealers;
-  // The properties of spec section 16.3 stand on a street of their own district
-  // for the same reason, so each front door is snapped to the road nearest it.
-  const safehouses = safehousePlaces(state.seed, description.districts, (x, y) => nearestRoadPlace(description, x, y));
-  ground.safehouses = safehouses;
-  // The turf of spec section 17.2: which block is whose, seeded from the
-  // district cultures the seed handed out, and the enforcers a faction sends
-  // when the player takes one. They walk the roads the police drive.
-  const turf = new TerritoryMap(description);
-  ground.turf = turf;
-  ground.enforcers = new EnforcerGang(roads, turf);
-  // The parking bays come from the same answer. Which bay holds a car is a
-  // function of the tick, so the physics and the renderer share one plan.
-  const parked = world.bays === undefined ? undefined : new ParkedCars(state.seed, world.bays);
-  ground.parked = parked;
+  // The parcels are built in the chunk workers, so every place dealt over them
+  // is known once a worker has answered, which `settle` waited for. `places.ts`
+  // asks each system where its own places stand and fills the ground with them.
+  const { stations, metro, shops, dealers, safehouses, turf, parked } = buildPlaces(
+    state.seed,
+    description,
+    world,
+    roads,
+    ground,
+  );
 
   loading.say('Getting the first frame ready', LOADED.ground);
   // The camera is put where the session starts before anything is compiled,
