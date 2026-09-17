@@ -17,7 +17,7 @@
  */
 import { destinations, travelFade, travelRefusal, type MetroPlace } from '../sim/metro.ts';
 import type { SimState } from '../sim/simulation.ts';
-import { TRAVEL_KEYS } from './keyboard.ts';
+import { CHOICE_KEYS } from './keyboard.ts';
 
 export class TravelPanel {
   private readonly root: HTMLElement;
@@ -91,7 +91,7 @@ export class TravelPanel {
  * because an empty panel says nothing at all.
  */
 function lines(state: SimState, places: readonly MetroPlace[], at: number): string[] {
-  const to = destinations(state, at).slice(0, TRAVEL_KEYS);
+  const to = destinations(state, at).slice(0, CHOICE_KEYS);
   if (to.length === 0) return ['No other station visited yet.'];
   return to.map((id, i) => `${i + 1} · ${places[id]?.name ?? 'Metro'}`);
 }

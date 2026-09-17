@@ -66,11 +66,14 @@ export const MAX_HEALTH = 100;
  * through these and through nothing else: there is no passive regeneration and
  * there is no armour.
  */
-export type HealSource = 'pickup' | 'food' | 'rest';
+export type HealSource = 'pickup' | 'food' | 'clinic' | 'rest';
 
 export const HEAL_BY_SOURCE: Readonly<Record<HealSource, number>> = Object.freeze({
   pickup: 25,
   food: 40,
+  // A clinic treats what is wrong (spec section 16.1), so it is the one source
+  // short of a bed that puts a player back on the street whole.
+  clinic: MAX_HEALTH,
   rest: MAX_HEALTH,
 });
 

@@ -33,6 +33,14 @@ export interface InputFrame {
    * replays the trip the player picked off the panel they were shown.
    */
   travel: number;
+  /**
+   * The row of a shop counter bought this tick (spec section 16.1): a place in
+   * the list the shop panel shows, counted from 1, and 0 for no purchase. It is
+   * the same edge of the same number keys as {@link InputFrame.travel} and for
+   * the same reason; the two are never read at once, because a player inside a
+   * shop may not take the metro.
+   */
+  buy: number;
 }
 
 export const EMPTY_INPUT: Readonly<InputFrame> = Object.freeze({
@@ -49,6 +57,7 @@ export const EMPTY_INPUT: Readonly<InputFrame> = Object.freeze({
   cycle: false,
   station: 0,
   travel: 0,
+  buy: 0,
 });
 
 export function inputEquals(a: InputFrame, b: InputFrame): boolean {

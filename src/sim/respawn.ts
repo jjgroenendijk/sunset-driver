@@ -99,6 +99,9 @@ export function respawn(state: SimState, fate: Fate, place: Place): void {
   state.money -= cost;
   state.heat = 0;
   state.theft = null;
+  // Whatever they were doing is over: a lock half picked, and a shop they were
+  // standing in (spec section 16.1), which is nowhere near where they come back.
+  state.shop = null;
   state.arrested = false;
   state.respawn = { cause: fate, tick: state.tick, cost };
 }

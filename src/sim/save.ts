@@ -31,9 +31,10 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * player understands. A save of another version is refused.
  *
  * Version 2 added the metro of spec section 13.3, version 3 the police of spec
- * section 14, and version 4 the radio dial of spec section 15.
+ * section 14, version 4 the radio dial of spec section 15, and version 5 the
+ * shops of spec section 16.1 with the paint a respray leaves on a vehicle.
  */
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 export interface SaveFile {
   format: typeof SAVE_FORMAT;
