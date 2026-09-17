@@ -45,6 +45,7 @@ import type { MetroPlace } from './metro.ts';
 import type { ShopPlace } from './shop.ts';
 import type { DealerPlace } from './dealer.ts';
 import type { SafehousePlace } from './safehouse.ts';
+import type { TerritoryMap } from './territory.ts';
 import {
   besidePlayer,
   capsuleOf,
@@ -281,6 +282,9 @@ export class SimPhysics {
     // The police answer the tick the player has just driven, so they are
     // stepped once the record says where that left them (spec section 14).
     this.ground.police?.step(state);
+    // The faction enforcers of spec section 17.2 answer the same tick for the
+    // same reason: they walk at where the player has just got to.
+    this.ground.enforcers?.step(state);
     this.standPolice(state);
     // The helicopter flies over the ground rather than over the roads, so the
     // record is told how high the ground under it stands (spec section 14).
@@ -319,6 +323,11 @@ export class SimPhysics {
   /** The safehouses of the ground (spec section 16.3), which the doors and a respawn read. */
   get safehouses(): readonly SafehousePlace[] {
     return this.ground.safehouses ?? [];
+  }
+
+  /** The turf of the ground (spec section 17.2), which a takeover and the map overlay read. */
+  get turf(): TerritoryMap | undefined {
+    return this.ground.turf;
   }
 
   /**

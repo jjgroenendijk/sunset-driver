@@ -22,6 +22,7 @@
  */
 import type { District } from '../world/types.ts';
 import { genRng, Subsystem } from '../core/rng.ts';
+import { FACTIONS, factionForCulture, hostileTo } from './faction.ts';
 import type { Place } from './on-foot.ts';
 import { lookOf, type PedestrianLook } from './pedestrian-look.ts';
 import { TICKS_PER_HOUR } from './clock.ts';
@@ -132,9 +133,17 @@ export function dealerAt(dealers: readonly DealerPlace[], state: SimState): numb
  * Why a dealer will not trade, in the words the panel shows, or null when they
  * will. A dealer works a street corner: they will not lean into a car, and they
  * are gone before the police the player brought with them arrive.
+ *
+ * The third reason is the reputation of spec section 17.3: a dealer works their
+ * own district, so they answer to whoever runs it, and a player that faction
+ * has crossed off does not get served. A dealer in nobody's district serves
+ * anybody, which is what keeps the trade open to a player at war with the city.
  */
-export function dealRefusal(state: SimState): string | null {
+export function dealRefusal(state: SimState, dealer?: DealerPlace): string | null {
   if (state.player.driving) return 'Not from a vehicle.';
   if (state.heat > 0) return 'Not while the police want you.';
+  if (dealer === undefined) return null;
+  const faction = factionForCulture(dealer.district.culture);
+  if (faction >= 0 && hostileTo(state, faction)) return `Not to you. ${FACTIONS[faction]?.name ?? ''} runs this street.`;
   return null;
 }

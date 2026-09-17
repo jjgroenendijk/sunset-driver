@@ -69,6 +69,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #12070f; col
 .hud-money { font-size: 1.35rem; color: #7ad07a; }
 .hud-weapon { font-size: .95rem; }
 .hud-heat { font-size: .95rem; color: #ff8a5c; letter-spacing: .1em; }
+.hud-turf { font-size: .9rem; color: #f0b27a; }
 .hud-fate { font-size: 1.6rem; color: #ff7a8a; letter-spacing: .08em; }
 .hud-radio { max-width: 26rem; padding: .15rem .5rem; border-left: 2px solid #7ad7ff; background: rgba(10,20,28,.55); font-size: .85rem; color: #cfe9f5; }
 .hud-objective { max-width: 22rem; padding: .2rem .5rem; border-left: 2px solid #ffd166; background: rgba(24,11,20,.6); font-size: .9rem; }

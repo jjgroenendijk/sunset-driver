@@ -37,6 +37,7 @@ export type PoiType =
   | 'police'
   | 'mission-giver'
   | 'dealer'
+  | 'enforcer'
   | 'gun-shop'
   | 'clothes-shop'
   | 'food-shop'
@@ -61,7 +62,8 @@ export type IconShape =
   | 'hexagon'
   | 'cup'
   | 'roundel'
-  | 'key';
+  | 'key'
+  | 'burst';
 
 /** How one kind of place is drawn, and what the full map calls it. */
 export interface PoiStyle {
@@ -99,6 +101,9 @@ export const POI_STYLES: Readonly<Record<PoiType, PoiStyle>> = Object.freeze({
   police: { shape: 'shield', colour: '#5a7ad0', label: 'Police', maxScale: 8 },
   'mission-giver': { shape: 'flag', colour: '#ffb03a', label: 'Contact', maxScale: 8 },
   dealer: { shape: 'diamond', colour: '#b06ad0', label: 'Dealer', maxScale: 4 },
+  // The enforcers of spec section 17.2, while a wave is out. They are marked at
+  // every zoom a street is readable at, because they are what is shooting.
+  enforcer: { shape: 'burst', colour: '#ff4d4d', label: 'Enforcer', maxScale: 8 },
   'gun-shop': { shape: 'triangle', colour: '#d05a5a', label: 'Gun shop', maxScale: 4 },
   'clothes-shop': { shape: 'ring', colour: '#d0c05a', label: 'Clothes', maxScale: 4 },
   'food-shop': { shape: 'cup', colour: '#7ad0c0', label: 'Food', maxScale: 4 },

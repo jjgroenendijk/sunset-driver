@@ -17,6 +17,7 @@
 import { seedFromString } from '../core/rng.ts';
 import { sortedKeys } from '../core/sort.ts';
 import { GOODS } from './contraband.ts';
+import { FACTIONS } from './faction.ts';
 import { cloneSimState, createSimState, type SimState } from './simulation.ts';
 import { VEHICLE_CLASSES } from './vehicle.ts';
 import { WEAPON_IDS } from './weapon.ts';
@@ -34,10 +35,12 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * Version 2 added the metro of spec section 13.3, version 3 the police of spec
  * section 14, version 4 the radio dial of spec section 15, version 5 the
  * shops of spec section 16.1 with the paint a respray leaves on a vehicle,
- * version 6 the contraband stash of spec section 16.2, and version 7 the
- * safehouses of spec section 16.3 with their stashes and their garages.
+ * version 6 the contraband stash of spec section 16.2, version 7 the
+ * safehouses of spec section 16.3 with their stashes and their garages, and
+ * version 8 the factions of spec section 17 with their reputation, the blocks
+ * the player has taken and the enforcers that are out.
  */
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 export interface SaveFile {
   format: typeof SAVE_FORMAT;
@@ -127,6 +130,16 @@ function checkSave(value: unknown): SaveFile {
     for (const car of owned.garage) {
       if (!VEHICLE_CLASSES.includes(car.cls)) throw new SaveError('The save names a vehicle this game does not have.');
     }
+  }
+  // The reputation of spec section 17.3 is a row per faction, so a save one row
+  // short is a save that would read somebody else's standing.
+  if (state.factions.standing.length !== FACTIONS.length) {
+    throw new SaveError('The save carries a reputation this game does not know.');
+  }
+  // A fresh record has sent nobody, so the template has no enforcer to conform
+  // the ones out against (spec section 17.2): their weapons are checked here.
+  for (const unit of state.enforcers.units) {
+    if (!WEAPON_IDS.includes(unit.weapon)) throw new SaveError('The save names a weapon this game does not have.');
   }
   return { format: SAVE_FORMAT, version: SAVE_VERSION, seed, state };
 }

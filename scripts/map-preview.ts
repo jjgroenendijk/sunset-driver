@@ -15,6 +15,8 @@
  *   --minimap    draw the round minimap window, at the minimap's own scale and
  *                icon size, rather than the full map.
  *   --waypoint   a place to mark, as `x,y`.
+ *   --turf       wash the factions' turf over the land (spec section 17.2).
+ *   --day        the game day the turf is read on, since it spreads. Default 0.
  *   --width,--height  the size of the picture.
  *
  * The browser comes from Playwright. A cloud session already has one; on a
@@ -25,6 +27,7 @@ import { writeFileSync } from 'node:fs';
 import { chromium, type Browser } from 'playwright-core';
 import { createServer, type ViteDevServer } from 'vite';
 import { seedFromString } from '../src/core/rng.ts';
+import { TICKS_PER_DAY } from '../src/sim/clock.ts';
 import type { MapPreviewRequest, MapPreviewResult } from '../src/ui/map-preview.ts';
 import { chromiumPath } from './chromium.ts';
 import { encodePng } from './png.ts';
@@ -75,6 +78,8 @@ const request: MapPreviewRequest = {
   width: num('width', minimap ? 380 : 960),
   height: num('height', minimap ? 380 : 720),
   waypoint: waypoint(),
+  turf: options.has('turf'),
+  tick: Math.round(num('day', 0) * TICKS_PER_DAY),
 };
 
 let server: ViteDevServer | undefined;

@@ -80,7 +80,7 @@ export class TradePanel {
     show(this.purse, inside !== undefined);
     show(this.foot, inside !== undefined);
     if (inside === undefined) {
-      const refusal = dealRefusal(state);
+      const refusal = dealRefusal(state, dealer);
       show(this.said, false);
       const className = refusal === null ? 'trade-note' : 'trade-refused';
       if (this.note.className !== className) this.note.className = className;
