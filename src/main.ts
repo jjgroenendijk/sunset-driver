@@ -19,14 +19,12 @@ import { WorldScene } from './render/world-scene.ts';
 import { FixedStepClock, gameTime } from './sim/clock.ts';
 import { DEFAULT_APPEARANCE } from './sim/character.ts';
 import { buildPlaces } from './places.ts';
-import { AmbientPedestrians, crowdDistrictsOf } from './sim/pedestrians.ts';
-import { initPhysics, SimPhysics, type Ground } from './sim/physics.ts';
+import { initPhysics, SimPhysics } from './sim/physics.ts';
 import { EMPTY_INPUT, type InputFrame } from './sim/input.ts';
 import { createSave, restoreSimState, saveFromText, saveToText, type SaveFile } from './sim/save.ts';
 import { createSimState, stepSim, type SimState } from './sim/simulation.ts';
-import { AmbientTraffic, trafficRoadsOf } from './sim/traffic.ts';
-import { commitCrime, PoliceForce, policeDistrictsOf } from './sim/police.ts';
-import { TramLine } from './sim/tram.ts';
+import { buildCity } from './city.ts';
+import { commitCrime } from './sim/police.ts';
 import { stationAt } from './sim/metro.ts';
 import { visiting } from './sim/shop.ts';
 import { turfLine } from './sim/territory.ts';
@@ -68,8 +66,7 @@ import {
   weaponOf,
 } from './sim/weapon.ts';
 import { swingOf } from './sim/melee.ts';
-import { roadDecks } from './world/decks.ts';
-import { nearestRoadPlace, nearestWaterPlace, SurfaceIndex } from './world/surface.ts';
+import { nearestRoadPlace, nearestWaterPlace } from './world/surface.ts';
 import type { WorldDescription } from './world/types.ts';
 
 /** Metres ahead of the player the weapon picker drops a weapon. */
@@ -439,40 +436,17 @@ async function boot(): Promise<void> {
   const world = new WorldScene(description, state.character);
   loading.say('Laying out the streets', LOADED.plan);
 
-  // The physics reads the carved ground the renderer draws and the surface the
-  // parcel model left, so the car drives on what is on screen (spec section
-  // 11.3). The session starts on the nearest road to the core rather than
-  // wherever the origin happens to fall.
-  const surfaces = new SurfaceIndex(description);
-  // The traffic of spec section 13.1 is placed once for the world and then
-  // evaluated from the tick, so the physics and the renderer share one plan.
-  const roads = trafficRoadsOf(description);
-  const traffic = new AmbientTraffic(state.seed, roads);
-  // The crowd walks the pavements of the same roads, and is placed once the same way.
-  const crowd = new AmbientPedestrians(state.seed, roads, crowdDistrictsOf(description));
-  // The trams of spec section 13.2 keep to the traffic's own lights.
-  const tram = new TramLine(state.seed, roads, description.tram, description.districts, traffic.signals);
+  // The city the seed is played in: the traffic, the crowd, the tram, the
+  // police and the emergency services, and the ground the physics drives on
+  // (`city.ts`). The session starts on the nearest road to the core rather
+  // than wherever the origin happens to fall.
+  const { ground, roads, traffic, crowd, tram, police } = buildCity(state.seed, description, world);
   // The bells of spec section 13.2 are a function of the tick rather than part
   // of the record, so the audio is given the line itself to ask.
   audio.watch(tram);
   // The ambient beds of spec section 15 are the place itself, which is not in
   // the record either: the audio reads it off the world where the player stands.
   audio.survey(new WorldSites(description));
-  // The police drive the same roads the traffic does, and answer from the
-  // district the player stands in (spec section 14).
-  const police = new PoliceForce(roads, policeDistrictsOf(description));
-  const ground: Ground = {
-    heightAt: (x, y) => world.heightAt(x, y),
-    surfaceAt: (x, y) => surfaces.at(x, y),
-    seaLevel: description.water.seaLevel,
-    // A bridged segment carves no ground, so the deck is the only thing to
-    // drive on there and the physics is given it as a solid.
-    decks: roadDecks(description),
-    traffic,
-    crowd,
-    tram,
-    police,
-  };
   const start = nearestRoadPlace(description, state.player.x, state.player.y);
   // Rapier was fetched while the graphics were being set up, and this is the
   // first line that needs it.
