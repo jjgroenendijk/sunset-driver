@@ -22,6 +22,10 @@ file.
 screen after Start, the pause menu, the saves and the scene behind the menu. Read it instead when
 the work is one of those.
 
+`docs/shops.md` holds the shops the player walks into, and `docs/market.md` the contraband market
+of spec section 16.2: what a good is worth in a district, where the dealers stand and what a deal
+writes into the record.
+
 The two that catch a session most often:
 
 - Rapier reads a heightfield as `heights[j * (rows + 1) + i]` with `i` walking `z`. The other way
