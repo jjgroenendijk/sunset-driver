@@ -12,14 +12,19 @@ import { type WorldDescription } from '../src/world/types.ts';
 import { Vegetation } from '../src/world/vegetation.ts';
 import { sweepSeeds } from './helpers.ts';
 import { buildWorlds, type PooledWorld, type WorldParts } from './world-pool.ts';
-import { SEED_COUNT, REPEAT_COUNT, FOOTPRINT_COUNT, ISOLATED_COUNT } from './seed-limits.ts';
+import { SEED_COUNT, REPEAT_COUNT, FOOTPRINT_COUNT, ISOLATED_COUNT, SHARD_COUNT, SHARD_INDEX } from './seed-limits.ts';
 
 /**
  * The worlds the seed sweep reads, and the layers built on them. Generating a
  * world is the dearest thing this project does, so every check file shares one
  * set: `ready()` generates them once for the whole run, however many files ask.
+ *
+ * A run under `SWEEP_SHARD` reads its own share of the tier's seeds and leaves
+ * the rest to the other shards; without the variable it reads all of them. The
+ * counts in `seed-limits.ts` are shared out the same way, so the shards
+ * together read exactly what one unsharded run reads.
  */
-export const seeds = sweepSeeds(SEED_COUNT);
+export const seeds = sweepSeeds(SEED_COUNT).filter((_, i) => i % SHARD_COUNT === SHARD_INDEX);
 export const worlds = new Map<number, WorldDescription>();
 /** The second generation of the repeated seeds, for the byte-identical check. */
 export const repeats = new Map<number, WorldDescription>();

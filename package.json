@@ -15,7 +15,7 @@
     "lint": "node scripts/lint-determinism.ts",
     "lint:size": "node scripts/check-size.ts",
     "test": "vitest run",
-    "test:full": "SWEEP_SEEDS=200 vitest run",
+    "test:full": "SWEEP_SEEDS=500 vitest run",
     "verify": "npm run typecheck && npm run lint && npm run lint:size && npm run test",
     "verify:full": "npm run typecheck && npm run lint && npm run lint:size && npm run test:full"
   },

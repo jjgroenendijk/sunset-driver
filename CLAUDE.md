@@ -17,28 +17,29 @@ The commands:
 
 - `npm run typecheck` — `tsc --noEmit`.
 - `npm run lint` — the determinism lint. `npm run lint:size` — the file-size lint.
-- `npm test` — the quick tier. `npm run test:full` — the full tier of 200 seeds (`SWEEP_SEEDS=200`).
+- `npm test` — the quick tier. `npm run test:full` — the full tier of 500 seeds (`SWEEP_SEEDS=500`).
 - `npm run verify` — typecheck, both lints and the quick tier, under 20 s. Run before every commit.
-- `npm run verify:full` — the same with the full tier, about 2 min.
+- `npm run verify:full` — the same with the full tier, about 4 min.
 
-Every pull request runs `verify:full` in CI through `full-tier.yml`, over two runners: the seed
-sweep, and every other file with the checks. `ci.yml` also builds with `build.yml` and deploys main
-in a separate job. The build and both shards are the checks required to merge. A Dependabot pull
-request merges itself when they pass. Main runs no tests: it deploys the `dist` the pull request
-built when the tree is the same, and builds only when it is not. A hook runs `npm run verify`
-before `gh pr create`. `.github/actions/setup` installs Node and `node_modules` from caches.
+Every pull request runs `verify:full` in CI through `full-tier.yml`, over five runners: four shares
+of the seed sweep's 500 seeds, and every other file with the checks. `SWEEP_SHARD=2/4` runs one by
+hand. `ci.yml` also builds with `build.yml` and deploys main. The build, `full-tier / other` and
+`full-tier / seed-sweep` — one job green only when all four shares are — gate the merge. A
+Dependabot pull request merges itself when they pass. Main runs no tests: it deploys the `dist` the
+pull request built when the tree is the same, else builds. A hook runs `npm run verify` before
+`gh pr create`. `.github/actions/setup` installs Node and `node_modules` from caches.
 
 `node scripts/pr-wait.ts <pr>` waits for the checks that gate the merge and prints one verdict: a
 line per check, and on a failure the failing step's own output. It exits 0 when they all passed, so
 `&& gh pr merge` is safe. Use it instead of a poll loop of your own — a bare `sleep` before a check
 is refused, and `--watch` costs a tool call for every turn of the loop. `--all` adds the checks that
-do not gate the merge.
+do not gate the merge, which is where a failing share of the seed sweep prints what it found.
 
-`npm test` must stay under 15 s and `npm run test:full` under 2 min. Cut seeds or ticks in the quick
-tier and keep full coverage behind `SWEEP_SEEDS` — never make a test slower to make it pass. Both
-ceilings are wall clock, which is the work divided by the cores it runs on, so compare the
-CPU-seconds `time npm test` prints and never one machine's wall clock against another's.
-`docs/performance.md` has the measurements and where a sweep spends its time.
+`npm test` must stay under 15 s, and **each job of `full-tier.yml` under 2 min** — the job is the
+ceiling, not the tier, since `npm run test:full` runs all five jobs' work in one process. Cut seeds
+or ticks in the quick tier and keep coverage behind `SWEEP_SEEDS`; never make a test slower to pass.
+Both ceilings are wall clock, the work divided by the cores it runs on, so compare the CPU-seconds
+`time npm test` prints. `docs/performance.md` has the measurements and where a sweep's cost goes.
 
 ## The docs and the skills
 

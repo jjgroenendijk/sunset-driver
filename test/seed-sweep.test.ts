@@ -1,6 +1,6 @@
 import { beforeAll, describe } from 'vitest';
-import { SEED_COUNT } from './seed-limits.ts';
-import { ready } from './seed-fixture.ts';
+import { SEED_COUNT, SHARD_COUNT, SHARD_INDEX } from './seed-limits.ts';
+import { ready, seeds } from './seed-fixture.ts';
 import { terrainChecks } from './seed-terrain.ts';
 import { roadChecks } from './seed-roads.ts';
 import { overlapChecks } from './seed-overlap.ts';
@@ -26,8 +26,16 @@ import { pedestrianChecks } from './seed-pedestrians.ts';
  * limits.ts` holds the numbers they hold a world to, `seed-probes.ts` the
  * readings they take of it, and `seed-index.ts` the two indexes they ask
  * through.
+ *
+ * `SWEEP_SHARD=2/4` runs the second of four shares of the tier's seeds, which
+ * is how CI spreads the sweep over four runners. `docs/performance.md` has why.
  */
-describe(`seed sweep (${SEED_COUNT} seeds)`, () => {
+const title =
+  SHARD_COUNT === 1
+    ? `seed sweep (${SEED_COUNT} seeds)`
+    : `seed sweep (${seeds.length} of ${SEED_COUNT} seeds, shard ${SHARD_INDEX + 1}/${SHARD_COUNT})`;
+
+describe(title, () => {
   beforeAll(ready);
 
   terrainChecks();

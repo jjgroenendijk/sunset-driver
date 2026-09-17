@@ -9,17 +9,38 @@ import { type Zone } from '../src/world/types.ts';
  * files so one of them is read and changed in one place.
  */
 /**
- * Quick tier by default; CI and `npm run test:full` set SWEEP_SEEDS=200 (spec
+ * Quick tier by default; CI and `npm run test:full` set SWEEP_SEEDS=500 (spec
  * section 3). The quick tier takes the seeds that fit in its 15 s, and the
  * full tier is the coverage. Every count below reads this one, so the quick
  * tier is a sample of the same checks and never a shorter list of them.
  */
 export const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 6);
+
+/**
+ * Which share of the tier's seeds this run reads. `SWEEP_SHARD=2/4` is the
+ * second of four shards, and no variable at all is the whole tier.
+ *
+ * Generating a world is most of what the sweep costs, and the pool already
+ * spreads that over every core of one machine, so the only way further down is
+ * more machines. `full-tier.yml` gives the seed sweep four runners and hands
+ * each of them one shard. The shards take the seeds in turn — shard 1 takes
+ * seed 0, shard 2 seed 1 — so every shard gets the same spread of the space.
+ */
+const asked = (process.env.SWEEP_SHARD ?? '1/1').split('/');
+export const SHARD_COUNT = Math.max(1, Math.trunc(Number(asked[1] ?? 1)) || 1);
+export const SHARD_INDEX = Math.min(SHARD_COUNT, Math.max(1, Math.trunc(Number(asked[0])) || 1)) - 1;
+/**
+ * This shard's share of a count of seeds taken from the front of the tier.
+ * The shares add up to the count and never overlap, so the four shards
+ * together read the very seeds one unsharded run reads — the split changes
+ * which machine does the work and nothing about the coverage.
+ */
+const perShard = (count: number): number => Math.max(0, Math.ceil((count - SHARD_INDEX) / SHARD_COUNT));
 /**
  * Seeds the byte-identical check generates a second time. Generating a world is
  * the most expensive thing this file does, so the quick tier repeats only a few.
  */
-export const REPEAT_COUNT = SEED_COUNT > 20 ? 20 : 2;
+export const REPEAT_COUNT = SEED_COUNT > 20 ? perShard(20) : 2;
 /**
  * Seeds the road footprint is laid, the parcels are cut and the buildings are
  * laid for. A job that carries them costs about three times a bare world, so
@@ -27,19 +48,19 @@ export const REPEAT_COUNT = SEED_COUNT > 20 ? 20 : 2;
  * next to the world it belongs to. Every chunk check reads these layers, so
  * this count is most of what the file costs in the quick tier.
  */
-export const FOOTPRINT_COUNT = SEED_COUNT > 20 ? 16 : 2;
+export const FOOTPRINT_COUNT = SEED_COUNT > 20 ? perShard(16) : 2;
 /**
  * Seeds the dealers of spec section 16.2 are placed on. Each corner is snapped
  * by one pass over every road of the world, and a city has about forty
  * districts with four corners each, so a seed costs a tenth of a second.
  */
-export const DEALER_COUNT = SEED_COUNT > 20 ? 4 : 1;
+export const DEALER_COUNT = SEED_COUNT > 20 ? perShard(4) : 1;
 /**
  * Seeds the authored chain of spec section 18 is walked on. It costs what the
  * dealers cost, and for the same reason: the contacts and the corners its legs
  * stand on are snapped by a pass over every road.
  */
-export const CHAIN_COUNT = SEED_COUNT > 20 ? 4 : 1;
+export const CHAIN_COUNT = SEED_COUNT > 20 ? perShard(4) : 1;
 /**
  * The share of the dry land the roads may claim (spec section 6.4). A city
  * gives about a seventh of its ground to the carriageway, the verge and the
@@ -69,7 +90,7 @@ export const PAVED_CLEAR = 40;
  * every seed; what the index answers is a pure function of the place, so a
  * handful of maps is enough to catch a bucket grid that files a segment wrong.
  */
-export const BY_HAND_COUNT = SEED_COUNT > 20 ? 16 : 3;
+export const BY_HAND_COUNT = SEED_COUNT > 20 ? perShard(16) : 3;
 export const BY_HAND_SAMPLES = 12;
 /**
  * The share of the places sampled on a beach's sand that have to read as sand.
@@ -339,13 +360,13 @@ export const BEYOND_MAP: readonly [number, number] = [40, 40];
  * independently, to check a chunk in isolation. Each one builds its own layers
  * — the footprint and the parcels of a whole map — so both tiers take a few.
  */
-export const ISOLATED_COUNT = SEED_COUNT > 20 ? 2 : 1;
+export const ISOLATED_COUNT = SEED_COUNT > 20 ? perShard(2) : 1;
 /**
  * Seeds whose buildings are built into real geometry. A tower costs more to
  * generate than the chunk it stands in costs to cut, so the quick tier builds
  * one seed and the full tier spreads the check.
  */
-export const BUILDING_MESH_COUNT = SEED_COUNT > 20 ? 4 : 1;
+export const BUILDING_MESH_COUNT = SEED_COUNT > 20 ? perShard(4) : 1;
 /** Places in the block of chunks each way that are asked which parcel claims them. */
 export const CHUNK_SAMPLES = 18;
 /**
@@ -365,7 +386,7 @@ export const MIN_PLANTS = 20;
  * of a whole map which of them claims a place, so the quick tier takes a few
  * and the full tier spreads the check.
  */
-export const VEGETATION_COUNT = SEED_COUNT > 20 ? 8 : 2;
+export const VEGETATION_COUNT = SEED_COUNT > 20 ? perShard(8) : 2;
 /**
  * Metres a corner may move when a parcel is cut to a chunk. The polygon engine
  * rounds every corner onto its millimetre grid and snaps one that lands beside
@@ -401,7 +422,7 @@ export const MIN_ZONE_PARCELS = 5;
  * it costs a few tens of milliseconds a seed on top of the road beds, so the
  * full tier checks a sample rather than every seed.
  */
-export const TRAFFIC_COUNT = SEED_COUNT > 20 ? 24 : 2;
+export const TRAFFIC_COUNT = SEED_COUNT > 20 ? perShard(24) : 2;
 /** Metres of a tier a world must carry before the sweep expects traffic on it. */
 export const TRAFFIC_TIER_MIN = 1000;
 /**
