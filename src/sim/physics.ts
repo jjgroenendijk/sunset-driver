@@ -44,6 +44,7 @@ import { EMPTY_INPUT, type InputFrame } from './input.ts';
 import type { MetroPlace } from './metro.ts';
 import type { ShopPlace } from './shop.ts';
 import type { DealerPlace } from './dealer.ts';
+import type { SafehousePlace } from './safehouse.ts';
 import {
   besidePlayer,
   capsuleOf,
@@ -313,6 +314,35 @@ export class SimPhysics {
   /** The dealers of the ground (spec section 16.2), whose corners the contraband is traded at. */
   get dealers(): readonly DealerPlace[] {
     return this.ground.dealers ?? [];
+  }
+
+  /** The safehouses of the ground (spec section 16.3), which the doors and a respawn read. */
+  get safehouses(): readonly SafehousePlace[] {
+    return this.ground.safehouses ?? [];
+  }
+
+  /**
+   * Stand the vehicle the record now holds at a place, resting on the ground,
+   * and rebuild its body there. `spawn` puts down a fresh vehicle; this keeps
+   * the one the record carries, which is what a car taken out of a safehouse
+   * garage needs (spec section 16.3): its paint, its dents and the station it
+   * was left on are exactly what the garage kept.
+   */
+  settle(state: SimState, x: number, y: number, heading: number): void {
+    const was = state.vehicle;
+    const spec = specOf(was.cls);
+    const ground = this.ground.heightAt(x, y);
+    const rest = spec.hull === undefined ? ground : Math.max(ground, this.ground.seaLevel);
+    const car = createVehicleState(spec, x, y, rest + rideHeight(spec), heading);
+    // A garage keeps what was done to a car and not where it stood, so the
+    // dents, the paint, the station it was left on and its beaten lock all come
+    // out with it while the pose is fresh.
+    car.damage = was.damage;
+    car.paint = was.paint;
+    car.station = was.station;
+    car.hotwired = was.hotwired;
+    state.vehicle = car;
+    this.adopt(state);
   }
 
   /**

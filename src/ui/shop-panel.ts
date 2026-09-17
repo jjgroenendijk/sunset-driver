@@ -13,6 +13,7 @@
  * Only what changed is written, as the HUD and the metro panel do: a panel
  * standing still writes nothing.
  */
+import type { SafehousePlace } from '../sim/safehouse.ts';
 import type { SimState } from '../sim/simulation.ts';
 import { shopAt, shopOffers, shopRefusal, visiting, type ShopPlace } from '../sim/shop.ts';
 import { CHOICE_KEYS } from './keyboard.ts';
@@ -42,14 +43,14 @@ export class ShopPanel {
    * Draw the panel for the shop the player is inside, or for the door they are
    * standing at. Nothing is drawn where they are neither.
    */
-  update(state: SimState, places: readonly ShopPlace[]): void {
+  update(state: SimState, places: readonly ShopPlace[], homes: readonly SafehousePlace[] = []): void {
     const inside = visiting(state, places);
     const place = inside ?? places[shopAt(places, state)];
     if (place === undefined) {
       this.hide();
       return;
     }
-    const rows = inside === undefined ? [doorLine(state, place)] : counter(state, places);
+    const rows = inside === undefined ? [doorLine(state, place)] : counter(state, places, homes);
     const text = `${place.name}\n${rows.map((row) => row.text).join('\n')}`;
     if (text === this.shown) return;
     this.shown = text;
@@ -93,8 +94,8 @@ function doorLine(state: SimState, place: ShopPlace): Row {
  * it, and the line the last purchase left. A counter with nothing on it says so,
  * because an empty panel says nothing at all.
  */
-function counter(state: SimState, places: readonly ShopPlace[]): Row[] {
-  const offers = shopOffers(state, places).slice(0, CHOICE_KEYS);
+function counter(state: SimState, places: readonly ShopPlace[], homes: readonly SafehousePlace[]): Row[] {
+  const offers = shopOffers(state, places, homes).slice(0, CHOICE_KEYS);
   const rows: Row[] = offers.map((offer, i) => ({
     text: `${i + 1} · ${offer.label} · $${offer.price}`,
     className: state.money >= offer.price ? 'shop-row' : 'shop-dear',

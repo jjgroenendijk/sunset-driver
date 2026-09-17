@@ -33,10 +33,11 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  *
  * Version 2 added the metro of spec section 13.3, version 3 the police of spec
  * section 14, version 4 the radio dial of spec section 15, version 5 the
- * shops of spec section 16.1 with the paint a respray leaves on a vehicle, and
- * version 6 the contraband stash of spec section 16.2.
+ * shops of spec section 16.1 with the paint a respray leaves on a vehicle,
+ * version 6 the contraband stash of spec section 16.2, and version 7 the
+ * safehouses of spec section 16.3 with their stashes and their garages.
  */
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 export interface SaveFile {
   format: typeof SAVE_FORMAT;
@@ -116,6 +117,16 @@ function checkSave(value: unknown): SaveFile {
   // good, and a row that is not there is a good that cannot be sold.
   if (state.market.stash.length !== GOODS.length || state.market.paid.length !== GOODS.length) {
     throw new SaveError('The save carries a stash this game does not know.');
+  }
+  // A fresh record owns no safehouse, so the template has no element to conform
+  // the owned ones against (spec section 16.3): they are checked here instead.
+  for (const owned of state.property.owned) {
+    if (owned.stash.length !== GOODS.length || owned.paid.length !== GOODS.length) {
+      throw new SaveError('The save carries a stash this game does not know.');
+    }
+    for (const car of owned.garage) {
+      if (!VEHICLE_CLASSES.includes(car.cls)) throw new SaveError('The save names a vehicle this game does not have.');
+    }
   }
   return { format: SAVE_FORMAT, version: SAVE_VERSION, seed, state };
 }

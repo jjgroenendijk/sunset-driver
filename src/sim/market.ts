@@ -27,7 +27,11 @@ import { reachesVehicle } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
 import { specOf } from './vehicle.ts';
 
-/** Units of contraband a player may carry at once. A safehouse stash is spec section 16.3. */
+/**
+ * Units of contraband a player may carry at once. A safehouse keeps five times
+ * as many and an arrest cannot reach them (spec sections 16.3, 11.7), which is
+ * what makes the drive home worth the trip.
+ */
 export const STASH_UNITS = 80;
 
 /** The share a dealer keeps between what they sell at and what they pay. */
@@ -147,9 +151,10 @@ export function tradeRows(state: SimState, dealers: readonly DealerPlace[]): Tra
  */
 export function stepMarket(state: SimState, input: InputFrame, dealers: readonly DealerPlace[]): void {
   const p = state.player;
-  // A lock and a shop counter both hold the interact key before this does
-  // (spec sections 11.4, 16.1), and a player inside a shop is not on a corner.
-  if (state.theft !== null || state.shop !== null) {
+  // A lock, a shop counter and a front door all hold the interact key before
+  // this does (spec sections 11.4, 16.1, 16.3), and a player inside a shop or
+  // standing on their own step is not on a corner.
+  if (state.theft !== null || state.shop !== null || state.property.visit !== null) {
     state.market.deal = null;
     return;
   }

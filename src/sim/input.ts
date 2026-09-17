@@ -34,11 +34,12 @@ export interface InputFrame {
    */
   travel: number;
   /**
-   * The row of a shop counter bought this tick (spec section 16.1): a place in
-   * the list the shop panel shows, counted from 1, and 0 for no purchase. It is
-   * the same edge of the same number keys as {@link InputFrame.travel} and for
-   * the same reason; the two are never read at once, because a player inside a
-   * shop may not take the metro.
+   * The row of a shop counter bought this tick (spec section 16.1), and the row
+   * of a safehouse's own panel used this tick (spec section 16.3): a place in
+   * the list on screen, counted from 1, and 0 for no choice. It is the same
+   * edge of the same number keys as {@link InputFrame.travel} and for the same
+   * reason. No two of the three are ever read at once: a player inside a shop
+   * may not take the metro, and one standing on their own step is in no shop.
    */
   buy: number;
   /**
