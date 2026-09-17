@@ -49,8 +49,20 @@ export const PEDESTRIAN_CAP = 1024;
  */
 const STRIDE = 20;
 
+/** A person the frame is told to stand somewhere, rather than one of the crowd. */
+export interface StandingPerson {
+  pose: PedestrianPose;
+  look: PedestrianLook;
+}
+
 export class PedestrianView {
   readonly group = new Group();
+  /**
+   * People somebody else owns, drawn in this mesh with everyone: the dealers of
+   * spec section 16.2, standing on their corners. Whoever owns them writes the
+   * list, and they cost no draw of their own.
+   */
+  standing: readonly StandingPerson[] = [];
   /**
    * The share of the crowd that is out (spec section 13.4). 1 on a clear day;
    * a storm keeps the rest of it indoors. The people waiting for a tram and
@@ -143,6 +155,12 @@ export class PedestrianView {
     for (let i = 0; i < waiting && count < PEDESTRIAN_CAP; i++) {
       const passenger = this.waiting[i] as WaitingPassenger;
       this.write(count++, passenger.look, passenger.pose);
+    }
+    for (const person of this.standing) {
+      if (count >= PEDESTRIAN_CAP) break;
+      const pose = person.pose;
+      if (pose.x < minX || pose.x > maxX || pose.y < minY || pose.y > maxY) continue;
+      this.write(count++, person.look, pose);
     }
     this.geometry.instanceCount = count;
     this.mesh.visible = count > 0;

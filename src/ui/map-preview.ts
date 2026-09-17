@@ -7,9 +7,12 @@
  * chunks: a world description, `MapArt`, and one `draw` call with the same
  * options the minimap and the full map pass.
  */
+import { createSimState } from '../sim/simulation.ts';
+import { TerritoryMap } from '../sim/territory.ts';
 import { generateWorld } from '../world/world.ts';
-import { MapArt } from './map-draw.ts';
+import { MapArt, type MapDrawOptions } from './map-draw.ts';
 import { MapPois, rotationForHeading, type MapView } from './map.ts';
+import { TerritoryOverlay } from './territory.ts';
 
 /** What the driver asks for. */
 export interface MapPreviewRequest {
@@ -29,6 +32,10 @@ export interface MapPreviewRequest {
   height: number;
   /** A place to mark, or null. */
   waypoint: { x: number; y: number } | null;
+  /** True to wash the factions' turf over the land (spec section 17.2). */
+  turf: boolean;
+  /** The tick the turf is read at, since it spreads over the days. */
+  tick: number;
 }
 
 /** What comes back: the picture, and what it cost to build. */
@@ -65,6 +72,14 @@ export async function renderMapPreview(request: MapPreviewRequest): Promise<MapP
     ctx.clip();
   }
 
+  // The turf of spec section 17.2 is a function of the seed and the tick, so a
+  // fresh record at the tick asked for is the whole of what the overlay needs.
+  let overlay: MapDrawOptions['overlay'];
+  if (request.turf) {
+    const state = createSimState(request.seed, undefined, request.tick);
+    overlay = new TerritoryOverlay(new TerritoryMap(world), state).draw;
+  }
+
   const view: MapView = {
     x: request.x,
     y: request.y,
@@ -77,6 +92,7 @@ export async function renderMapPreview(request: MapPreviewRequest): Promise<MapP
     waypoint: request.waypoint,
     iconSize: request.minimap ? 11 : 16,
     labels: !request.minimap,
+    ...(overlay ? { overlay } : {}),
   });
   const drawMs = performance.now() - t2;
 

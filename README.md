@@ -10,6 +10,10 @@ npm install
 npm run dev
 ```
 
+Every car has a radio: nine stations, one for each neighbourhood culture of the city and one over
+the lot, all played rather than recorded. Between songs the stations read harm-reduction
+announcements, and a chase lays its own music over what is playing.
+
 Requires a WebGPU-capable browser. New game on the title screen takes the seed and the character;
 add `#seed=yourseed` to the URL to start it on a world.
 
@@ -26,12 +30,13 @@ how the steps are watched on a machine that does not need them.
 | Sprint | Shift |
 | Handbrake, jump | Space |
 | Horn | H |
-| Enter or leave vehicle, hotwire, interact | E |
+| Enter or leave vehicle or shop, hotwire, interact | E |
 | Fire, swing | F |
 | Aim | Q |
 | Reload | R |
 | Cycle weapon | C |
-| Metro: travel to the station on the panel | 1 to 9 |
+| Radio: next, previous station | ] and [ |
+| Metro or shop: the row on the panel | 1 to 9 |
 | Pause menu | Esc |
 | Map | M |
 | Minimap north up | N |

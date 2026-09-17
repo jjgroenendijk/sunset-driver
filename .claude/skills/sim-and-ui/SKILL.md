@@ -22,6 +22,13 @@ file.
 screen after Start, the pause menu, the saves and the scene behind the menu. Read it instead when
 the work is one of those.
 
+`docs/shops.md` holds the shops the player walks into, and `docs/market.md` the contraband market
+of spec section 16.2: what a good is worth in a district, where the dealers stand and what a deal
+writes into the record. `docs/safehouses.md` holds the properties of spec section 16.3: what a door
+costs, the stash and the garage behind it, and why a respawn reads it. `docs/missions.md` holds the
+work of spec section 18: where a contact stands, how a job is drawn from the seed, the legs one is
+judged by, and the authored chain written on top of all three.
+
 The two that catch a session most often:
 
 - Rapier reads a heightfield as `heights[j * (rows + 1) + i]` with `i` walking `z`. The other way

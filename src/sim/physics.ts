@@ -38,10 +38,15 @@ import { TICK_RATE } from './clock.ts';
 import { blastDamageAt, BLAST_LIFT, CRASH_DAMAGE, hitVehicle, tickFire } from './damage.ts';
 import { rotate, unrotate } from './frame.ts';
 import { Drivetrain } from './drivetrain.ts';
-import { GroundBodies, type Ground } from './ground-bodies.ts';
+import { GroundBodies, PHYSICS_RADIUS, PHYSICS_TILE, type Ground } from './ground-bodies.ts';
 import { Gunfire, type ShotTarget } from './gunfire.ts';
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
 import type { MetroPlace } from './metro.ts';
+import type { ShopPlace } from './shop.ts';
+import type { DealerPlace } from './dealer.ts';
+import type { SafehousePlace } from './safehouse.ts';
+import type { MissionWorld } from './job.ts';
+import type { TerritoryMap } from './territory.ts';
 import {
   besidePlayer,
   capsuleOf,
@@ -65,7 +70,9 @@ import {
 } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
 import { TrafficBodies } from './traffic-bodies.ts';
-import { createTheft, isLocked, stepTheft, THEFT_HEAT, type TheftState } from './theft.ts';
+import { PoliceBodies } from './police-bodies.ts';
+import { commitCrime, report } from './police.ts';
+import { createTheft, isLocked, stepTheft, type TheftState } from './theft.ts';
 import {
   createVehicleState,
   headingOf,
@@ -136,6 +143,8 @@ export class SimPhysics {
   private walker: Walker | undefined;
   /** The traffic near the player, or undefined on a ground with no roads to drive. */
   readonly traffic: TrafficBodies | undefined;
+  /** The police cars near the player as solids (spec section 14), so a roadblock is a wall. */
+  readonly police: PoliceBodies;
   /** Scratch vectors and forces, so a tick allocates nothing. */
   private readonly point = { x: 0, y: 0, z: 0 };
   private readonly axis = { x: 0, y: 0, z: 0 };
@@ -154,6 +163,7 @@ export class SimPhysics {
     this.shots = new Gunfire(this.world);
     this.controls = new Drivetrain(ground);
     this.traffic = ground.traffic === undefined ? undefined : new TrafficBodies(this.world, ground.traffic, ground.tram);
+    this.police = new PoliceBodies(this.world);
     // The step is the tick. Simulation code never sees a frame delta.
     this.world.timestep = 1 / TICK_RATE;
     this.adopt(state);
@@ -270,6 +280,18 @@ export class SimPhysics {
     this.world.step();
     this.read(state);
     this.traffic?.settle(state);
+    // The police answer the tick the player has just driven, so they are
+    // stepped once the record says where that left them (spec section 14).
+    this.ground.police?.step(state);
+    // The faction enforcers of spec section 17.2 answer the same tick for the
+    // same reason: they walk at where the player has just got to.
+    this.ground.enforcers?.step(state);
+    this.standPolice(state);
+    // The helicopter flies over the ground rather than over the roads, so the
+    // record is told how high the ground under it stands (spec section 14).
+    for (const unit of state.police.units) {
+      if (unit.kind === 'helicopter') unit.height = this.ground.heightAt(unit.x, unit.y);
+    }
     if (chassis !== undefined) this.crash(state, wasX, wasY, wasZ);
     // The weapons are run after the step, so a shot leaves the muzzle from where
     // the player ended the tick rather than from where they started it. A player
@@ -289,6 +311,55 @@ export class SimPhysics {
     return this.ground.metro ?? [];
   }
 
+  /** The shops of the ground (spec section 16.1), which the doors and the counters read. */
+  get shops(): readonly ShopPlace[] {
+    return this.ground.shops ?? [];
+  }
+
+  /** The dealers of the ground (spec section 16.2), whose corners the contraband is traded at. */
+  get dealers(): readonly DealerPlace[] {
+    return this.ground.dealers ?? [];
+  }
+
+  /** The safehouses of the ground (spec section 16.3), which the doors and a respawn read. */
+  get safehouses(): readonly SafehousePlace[] {
+    return this.ground.safehouses ?? [];
+  }
+
+  /** The turf of the ground (spec section 17.2), which a takeover and the map overlay read. */
+  get turf(): TerritoryMap | undefined {
+    return this.ground.turf;
+  }
+
+  /** The work of the ground (spec section 18): the contacts, and where they send the player. */
+  get missions(): MissionWorld | undefined {
+    return this.ground.missions;
+  }
+
+  /**
+   * Stand the vehicle the record now holds at a place, resting on the ground,
+   * and rebuild its body there. `spawn` puts down a fresh vehicle; this keeps
+   * the one the record carries, which is what a car taken out of a safehouse
+   * garage needs (spec section 16.3): its paint, its dents and the station it
+   * was left on are exactly what the garage kept.
+   */
+  settle(state: SimState, x: number, y: number, heading: number): void {
+    const was = state.vehicle;
+    const spec = specOf(was.cls);
+    const ground = this.ground.heightAt(x, y);
+    const rest = spec.hull === undefined ? ground : Math.max(ground, this.ground.seaLevel);
+    const car = createVehicleState(spec, x, y, rest + rideHeight(spec), heading);
+    // A garage keeps what was done to a car and not where it stood, so the
+    // dents, the paint, the station it was left on and its beaten lock all come
+    // out with it while the pose is fresh.
+    car.damage = was.damage;
+    car.paint = was.paint;
+    car.station = was.station;
+    car.hotwired = was.hotwired;
+    state.vehicle = car;
+    this.adopt(state);
+  }
+
   /**
    * Stand a player the record has just moved on the ground under them, and
    * rebuild the bodies around them. A respawn (spec section 11.7) is what calls
@@ -300,8 +371,28 @@ export class SimPhysics {
     this.adopt(state);
   }
 
+  /**
+   * Give the police units near the player a body and take it from the ones that
+   * have left, over the same box of ground the tiles cover.
+   */
+  private standPolice(state: SimState): void {
+    const p = state.player;
+    const x = p.driving ? state.vehicle.x : p.x;
+    const y = p.driving ? state.vehicle.z : p.y;
+    const cx = Math.floor(x / PHYSICS_TILE);
+    const cy = Math.floor(y / PHYSICS_TILE);
+    this.police.settle(
+      state,
+      (cx - PHYSICS_RADIUS) * PHYSICS_TILE,
+      (cy - PHYSICS_RADIUS) * PHYSICS_TILE,
+      (cx + PHYSICS_RADIUS + 1) * PHYSICS_TILE,
+      (cy + PHYSICS_RADIUS + 1) * PHYSICS_TILE,
+    );
+  }
+
   /** Release the Rapier world and everything in it. */
   dispose(): void {
+    this.police.clear();
     this.wheels?.free();
     this.walker?.controller.free();
     this.world.free();
@@ -322,6 +413,7 @@ export class SimPhysics {
       spec: this.spec,
       body: this.body,
       shooter: state.player.driving ? this.body : this.walker?.collider,
+      police: this.police,
     };
   }
 
@@ -620,12 +712,12 @@ export class SimPhysics {
       state.theft = null;
       return;
     }
-    state.heat += stepTheft(theft, state.seed, state.tick, pressed);
+    report(state, stepTheft(theft, state.seed, state.tick, pressed));
     if (!theft.open) return;
     // The lock is beaten once: the record carries it, so getting out again is
     // not a second break-in.
     state.vehicle.hotwired = true;
-    state.heat += THEFT_HEAT;
+    commitCrime(state, 'theft');
     state.theft = null;
     p.driving = true;
     this.adopt(state);

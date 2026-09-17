@@ -27,6 +27,14 @@ export const Subsystem = {
   Drops: 20,
   Parking: 21,
   Tram: 22,
+  Audio: 23,
+  Music: 24,
+  Shops: 25,
+  ShopStock: 26,
+  Safehouses: 27,
+  Factions: 28,
+  Enforcers: 29,
+  Missions: 30,
 } as const;
 export type SubsystemId = (typeof Subsystem)[keyof typeof Subsystem];
 

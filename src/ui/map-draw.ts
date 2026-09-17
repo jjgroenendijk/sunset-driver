@@ -20,6 +20,7 @@ import {
   tierPen,
   viewBounds,
   type IconShape,
+  type MapBounds,
   type MapPoi,
   type MapPois,
   type MapView,
@@ -67,9 +68,10 @@ export interface MapDrawOptions {
    * The territory overlay slot of spec section 12, for the factions of spec
    * section 17. It is called with the canvas already transformed into world
    * metres, so it draws in the world's own coordinates, over the land and under
-   * the icons.
+   * the icons. `bounds` is the world box the canvas can show, which is what an
+   * overlay over the whole map needs in order to draw only the part on screen.
    */
-  overlay?: (ctx: CanvasRenderingContext2D, view: MapView) => void;
+  overlay?: (ctx: CanvasRenderingContext2D, view: MapView, bounds: MapBounds) => void;
 }
 
 export class MapArt {
@@ -139,7 +141,7 @@ export class MapArt {
       ctx.setLineDash([]);
     }
 
-    opts.overlay?.(ctx, view);
+    opts.overlay?.(ctx, view, bounds);
 
     if (opts.waypoint && opts.player) {
       ctx.strokeStyle = WAYPOINT_LINE;
@@ -479,6 +481,27 @@ export function drawIcon(
       ctx.lineTo(-r * 0.7, -r * 0.7);
       ctx.closePath();
       ctx.fill();
+      break;
+    case 'burst':
+      // Somebody coming at the player: strokes out of one point, so it reads as
+      // a threat rather than as another place on the map.
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        ctx.moveTo(Math.cos(a) * r * 0.3, Math.sin(a) * r * 0.3);
+        ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      ctx.stroke();
+      break;
+    case 'key':
+      // A key on its side: the bow at the left, the shank and one tooth.
+      ctx.arc(-r * 0.5, 0, r * 0.45, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.05, 0);
+      ctx.lineTo(r, 0);
+      ctx.moveTo(r * 0.55, 0);
+      ctx.lineTo(r * 0.55, r * 0.5);
+      ctx.stroke();
       break;
   }
   ctx.restore();

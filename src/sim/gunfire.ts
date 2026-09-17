@@ -4,9 +4,9 @@
  *
  * `weapon.ts` holds the model and decides whether the weapon fires; this casts
  * the ray per pellet, sweeps the melee arc and carries everything in the air a
- * tick at a time. `physics.ts` owns the world and hands in the one thing that
- * can be hit today: the player's vehicle. The pedestrians and the police of
- * spec sections 13.1 and 14 are what the rays will find after them.
+ * tick at a time. `physics.ts` owns the world and hands in what can be hit: the
+ * player's vehicle, and the police cars of spec section 14. The pedestrians of
+ * spec section 13.1 are what the rays will find after them.
  */
 import RAPIER from '@dimforge/rapier3d-compat';
 import { damageVehicle, disableEngine, ignite } from './damage.ts';
@@ -15,11 +15,13 @@ import type { InputFrame } from './input.ts';
 import { hurt, SKIN, vehicleGap } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
 import type { VehicleSpec } from './vehicle.ts';
+import { blastUnits, report, shootUnit } from './police.ts';
 import {
   blastFalloff,
   bounceProjectile,
   projectileDue,
   roundSeverity,
+  VEHICLE_SHARE_PER_POINT,
   stepProjectile,
   stepWeapons,
   swingReaches,
@@ -41,6 +43,12 @@ export interface ShotTarget {
    * chest.
    */
   shooter: RAPIER.Collider | undefined;
+  /**
+   * The police cars standing in the world (spec section 14), which is how a
+   * round that went into one finds the unit it hit. A ground with no police
+   * leaves it out.
+   */
+  police?: { unitAt(handle: number): number | undefined };
 }
 
 /** The casts and the flights of one session. It owns no state but its scratch. */
@@ -67,14 +75,14 @@ export class Gunfire {
    * Nothing here decides whether the weapon fires; `stepWeapons` does, and it
    * also raises the heat a shot is worth (spec section 14).
    *
-   * Only the player's vehicle can be hit today: a ray that meets a traffic body
-   * stops there (#256). The pedestrians and the police of spec sections 13.1
-   * and 14 are what the rays will find after them.
+   * The player's vehicle and the police cars of spec section 14 can be hit: a
+   * ray that meets a traffic body stops there (#256), and the pedestrians of
+   * spec section 13.1 are what the rays will find after them.
    */
   step(state: SimState, input: InputFrame, target: ShotTarget): void {
     const shot = stepWeapons(state.loadout, input, state.player, state.seed, state.tick);
     if (shot === undefined) return;
-    state.heat += shot.heat;
+    report(state, shot.heat);
     if (shot.projectile !== undefined) {
       state.projectiles.push(shot.projectile);
       return;
@@ -101,6 +109,13 @@ export class Gunfire {
     const mine = target.shooter;
     const hit = this.world.castRay(this.ray, range, true, undefined, undefined, mine);
     if (hit === null) return;
+    // A round that went into a police car is taken off that car (spec section
+    // 14), and shooting at officers is what it costs the player.
+    const unit = target.police?.unitAt(hit.collider.handle);
+    if (unit !== undefined) {
+      shootUnit(state, unit, roundSeverity(spec) * VEHICLE_SHARE_PER_POINT);
+      return;
+    }
     if (target.body === undefined || hit.collider.handle !== target.body.handle) return;
     // The round pushes the vehicle the way it was flying, which is the direction
     // the panel rule reads, exactly as a crash pushes it away from the wall.
@@ -217,6 +232,9 @@ export class Gunfire {
     const dh = v.y - p.h;
     const dy = v.z - p.y;
     const distance = Math.hypot(dx, dh, dy);
+    // A blast is felt by every police car inside it, wherever the player's own
+    // car stands (spec section 14).
+    blastUnits(state, p.x, p.y, roundSeverity(spec) * VEHICLE_SHARE_PER_POINT, (gap) => blastFalloff(gap, flight.blastRadius));
     const share = blastFalloff(distance, flight.blastRadius);
     if (share === 0) return;
     const length = Math.max(distance, 1e-6);

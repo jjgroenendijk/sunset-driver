@@ -1,8 +1,12 @@
 import type { FreeCameraInput } from '../render/free-camera.ts';
 import type { InputFrame } from '../sim/input.ts';
 
-/** How many stations the number keys reach, which is what the panel shows. */
-export const TRAVEL_KEYS = 9;
+/**
+ * How many rows of a panel the number keys reach, which is how many a panel
+ * shows: the metro's destinations (spec section 13.3) and a shop's counter
+ * (spec section 16.1) are both read off these keys.
+ */
+export const CHOICE_KEYS = 9;
 
 /**
  * Keyboard state sampled once per simulation tick into an InputFrame.
@@ -14,8 +18,10 @@ export const TRAVEL_KEYS = 9;
  */
 export class Keyboard {
   private readonly down = new Set<string>();
-  /** The number key a destination was last read from, so holding it asks once. */
-  private travelHeld = '';
+  /** The number key a choice was last read from, so holding it asks once. */
+  private choiceHeld = '';
+  /** Whether a dial key was down last tick, so a held key turns the dial once. */
+  private stationHeld = 0;
 
   constructor(target: Window) {
     target.addEventListener('keydown', (e) => {
@@ -34,6 +40,14 @@ export class Keyboard {
   }
 
   sample(): InputFrame {
+    // One edge of the number keys, read once and handed to both panels that
+    // take them: the metro of spec section 13.3 and the shop counters of 16.1.
+    // A player inside a shop may not take the metro, so only one can act on it.
+    const chosen = this.choice();
+    // The sprint key doubles as the sell key at a dealer's corner (spec section
+    // 16.2): a number alone buys the good, and the same number with it held
+    // sells the holding. A player standing still to deal is not sprinting.
+    const selling = this.is('ShiftLeft') || this.is('ShiftRight');
     const forward = this.is('KeyW') || this.is('ArrowUp');
     const back = this.is('KeyS') || this.is('ArrowDown');
     const left = this.is('KeyA') || this.is('ArrowLeft');
@@ -43,34 +57,50 @@ export class Keyboard {
       steer: (right ? 1 : 0) - (left ? 1 : 0),
       handbrake: this.is('Space'),
       horn: this.is('KeyH'),
-      sprint: this.is('ShiftLeft') || this.is('ShiftRight'),
+      sprint: selling,
       jump: this.is('Space'),
       interact: this.is('KeyE'),
       fire: this.is('KeyF'),
       aim: this.is('KeyQ'),
       reload: this.is('KeyR'),
       cycle: this.is('KeyC'),
-      travel: this.destination(),
+      station: this.dial(),
+      travel: chosen,
+      buy: chosen,
+      trade: selling ? -chosen : chosen,
     };
   }
 
   /**
-   * The metro destination a number key asks for (spec section 13.3): a place in
-   * the list the station panel shows, counted from 1, and 0 for no choice.
-   *
-   * A held key asks once. The panel lists the stations of the record, so the
-   * same key held down at the far end of a trip would leave the player riding
-   * the line back and forth as long as their finger was on it.
+   * The turn of the radio dial (spec section 15). A held key turns it once, as
+   * the number keys of the metro panel ask once: the dial has ten positions and
+   * a level would run round them all in a fifth of a second.
    */
-  private destination(): number {
-    for (let i = 1; i <= TRAVEL_KEYS; i++) {
+  private dial(): number {
+    const turn = (this.is('BracketRight') ? 1 : 0) - (this.is('BracketLeft') ? 1 : 0);
+    if (turn === this.stationHeld) return 0;
+    this.stationHeld = turn;
+    return turn;
+  }
+
+  /**
+   * The row a number key asks for: a place in the list the panel on screen
+   * shows, counted from 1, and 0 for no choice.
+   *
+   * A held key asks once. A panel lists what the record holds, so the same key
+   * held down would leave a player riding the metro line back and forth, or
+   * buying the same row of a counter sixty times a second, as long as their
+   * finger was on it.
+   */
+  private choice(): number {
+    for (let i = 1; i <= CHOICE_KEYS; i++) {
       const code = `Digit${i}`;
       if (!this.is(code)) continue;
-      if (this.travelHeld === code) return 0;
-      this.travelHeld = code;
+      if (this.choiceHeld === code) return 0;
+      this.choiceHeld = code;
       return i;
     }
-    this.travelHeld = '';
+    this.choiceHeld = '';
     return 0;
   }
 

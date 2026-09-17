@@ -1,3 +1,4 @@
+import type { OnAirLine } from '../audio/game-audio.ts';
 import { gameTime } from '../sim/clock.ts';
 import type { SimState } from '../sim/simulation.ts';
 import { conditionOf } from '../sim/damage.ts';
@@ -32,7 +33,9 @@ export class Hud {
   private readonly weapon: HTMLElement;
   private readonly heat: HTMLElement;
   private readonly objective: HTMLElement;
+  private readonly radio: HTMLElement;
   private readonly fate: HTMLElement;
+  private readonly turf: HTMLElement;
   private shownClock = '';
   private shownStatus = '';
   private shownDraws = '';
@@ -41,7 +44,9 @@ export class Hud {
   private shownWeapon = '';
   private shownHeat = '';
   private shownObjective = '';
+  private shownRadio = '';
   private shownFate = '';
+  private shownTurf = '';
 
   constructor(parent: HTMLElement, seed: string) {
     this.root = document.createElement('div');
@@ -76,10 +81,21 @@ export class Hud {
     this.heat.className = 'hud-heat';
     this.objective = document.createElement('div');
     this.objective.className = 'hud-objective';
+    // The radio of spec section 15: the station, and the line of an ident or of
+    // a harm-reduction announcement while one is being read (spec section 19).
+    this.radio = document.createElement('div');
+    this.radio.className = 'hud-radio';
+    this.radio.hidden = true;
     this.fate = document.createElement('div');
     this.fate.className = 'hud-fate';
     this.fate.hidden = true;
-    this.panel.append(this.fate, health, this.money, this.weapon, this.heat, this.objective);
+    // Whose ground the player is standing on (spec section 17.2), and how far
+    // through taking it they are. It sits under the heat because it is the
+    // other thing on screen that says who is about to shoot.
+    this.turf = document.createElement('div');
+    this.turf.className = 'hud-turf';
+    this.turf.hidden = true;
+    this.panel.append(this.fate, health, this.money, this.weapon, this.heat, this.turf, this.radio, this.objective);
     parent.append(this.root, this.panel);
   }
 
@@ -87,9 +103,20 @@ export class Hud {
    * `drawCalls` is what the dearest chunk on screen costs (spec section 9.2),
    * `lights` is what the scene is lit by (spec section 10.5), `streaming` how
    * many chunks are still being built (spec section 9.1) and `tier` the
-   * quality tier the frame is drawn at (spec section 9.2).
+   * quality tier the frame is drawn at (spec section 9.2). `onAir` is what the
+   * radio of spec section 15 is playing, or null while nothing is. `turf` is
+   * what the factions of spec section 17.2 say about the block underfoot, and
+   * is empty on ground nobody runs.
    */
-  update(state: SimState, drawCalls: number, lights: number, streaming: number, tier: string): void {
+  update(
+    state: SimState,
+    drawCalls: number,
+    lights: number,
+    streaming: number,
+    tier: string,
+    onAir: OnAirLine | null = null,
+    turf = '',
+  ): void {
     const t = gameTime(state.tick);
     const hh = String(t.hour).padStart(2, '0');
     const mm = String(t.minute).padStart(2, '0');
@@ -162,6 +189,19 @@ export class Hud {
       this.objective.hidden = state.objective === '';
     }
 
+    if (turf !== this.shownTurf) {
+      this.shownTurf = turf;
+      this.turf.textContent = turf;
+      this.turf.hidden = turf === '';
+    }
+
+    const radio = radioLine(onAir);
+    if (radio !== this.shownRadio) {
+      this.shownRadio = radio;
+      this.radio.textContent = radio;
+      this.radio.hidden = radio === '';
+    }
+
     const fate = fateLine(state);
     if (fate !== this.shownFate) {
       this.shownFate = fate;
@@ -174,6 +214,17 @@ export class Hud {
     this.root.remove();
     this.panel.remove();
   }
+}
+
+/**
+ * The radio line of spec section 15: the station on the dial, and under it the
+ * ident or the harm-reduction announcement being read (spec section 19). A
+ * station playing a song is the station's name alone.
+ */
+export function radioLine(onAir: OnAirLine | null): string {
+  if (onAir === null) return '';
+  if (onAir.text === '') return `♪ ${onAir.name}`;
+  return onAir.from === '' ? `♪ ${onAir.text}` : `♪ ${onAir.text} — ${onAir.from}`;
 }
 
 /**

@@ -18,10 +18,12 @@ export type BuildingView = 'see-through' | 'pull-back' | 'whole';
 
 export interface Settings {
   buildingView: BuildingView;
+  /** True while the audio of spec section 15 is off. A muted game synthesises nothing at all. */
+  muted: boolean;
 }
 
 /** See-through is what GTA Chinatown Wars does, and it keeps the camera where it is. */
-export const DEFAULT_SETTINGS: Settings = { buildingView: 'see-through' };
+export const DEFAULT_SETTINGS: Settings = { buildingView: 'see-through', muted: false };
 
 /** Each choice of {@link BuildingView}, in the order a menu lists them, with what it is called there. */
 export const BUILDING_VIEWS: readonly { value: BuildingView; label: string; note: string }[] = [
@@ -36,6 +38,18 @@ export interface BuildingViewChoice {
   choose(view: BuildingView): void;
 }
 
+/** The same, for the sound of spec section 15: it is on or it is off. */
+export interface SoundChoice {
+  muted(): boolean;
+  mute(muted: boolean): void;
+}
+
+/** Each choice of the Sound page, in the order it lists them. */
+export const SOUND_CHOICES: readonly { muted: boolean; label: string; note: string }[] = [
+  { muted: false, label: 'On', note: 'Engine, sirens, gunfire and footsteps' },
+  { muted: true, label: 'Muted', note: 'Nothing is synthesised at all' },
+];
+
 /** The settings kept in a store, with the default for anything missing or not understood. */
 export function readSettings(store: KeyValueStore): Settings {
   let raw: unknown;
@@ -44,9 +58,12 @@ export function readSettings(store: KeyValueStore): Settings {
   } catch {
     raw = {};
   }
-  const view = (raw as { buildingView?: unknown } | null)?.buildingView;
-  const known = BUILDING_VIEWS.some((choice) => choice.value === view);
-  return { buildingView: known ? (view as BuildingView) : DEFAULT_SETTINGS.buildingView };
+  const held = raw as { buildingView?: unknown; muted?: unknown } | null;
+  const known = BUILDING_VIEWS.some((choice) => choice.value === held?.buildingView);
+  return {
+    buildingView: known ? (held?.buildingView as BuildingView) : DEFAULT_SETTINGS.buildingView,
+    muted: typeof held?.muted === 'boolean' ? held.muted : DEFAULT_SETTINGS.muted,
+  };
 }
 
 /** Keep the settings. A browser that refuses the write keeps them for this page only. */

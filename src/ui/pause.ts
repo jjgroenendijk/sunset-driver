@@ -9,9 +9,10 @@
  * key itself, because Escape both opens it and closes it, and `main.ts` is what
  * decides which one a press means.
  */
-import type { BuildingViewChoice } from './settings.ts';
+import type { BuildingViewChoice, SoundChoice } from './settings.ts';
 import { buildCameraPage } from './title-camera.ts';
 import { buildControlsPage } from './title-controls.ts';
+import { buildSoundPage } from './title-sound.ts';
 import { MenuPages } from './menu-pages.ts';
 import { button, card, menuList, page } from './title-parts.ts';
 
@@ -35,12 +36,20 @@ export interface PauseActions {
   quit(): void;
   /** What happens when a building is in the way (spec section 10.7). A choice takes effect at once. */
   buildingView: BuildingViewChoice;
+  /** Whether the audio of spec section 15 is muted. A choice takes effect at once. */
+  sound: SoundChoice;
 }
 
-const PAGE_NAMES = ['main', 'transfer', 'controls', 'camera'] as const;
+const PAGE_NAMES = ['main', 'transfer', 'controls', 'camera', 'sound'] as const;
 type PageName = (typeof PAGE_NAMES)[number];
 
-const PARENT: Record<PageName, PageName | null> = { main: null, transfer: 'main', controls: 'main', camera: 'main' };
+const PARENT: Record<PageName, PageName | null> = {
+  main: null,
+  transfer: 'main',
+  controls: 'main',
+  camera: 'main',
+  sound: 'main',
+};
 
 export class PauseMenu {
   private readonly root: HTMLElement;
@@ -69,6 +78,7 @@ export class PauseMenu {
       transfer: this.buildTransfer(),
       controls: buildControlsPage(() => this.pages.back()),
       camera: buildCameraPage(actions.buildingView, () => this.pages.back()),
+      sound: buildSoundPage(actions.sound, () => this.pages.back()),
     };
     this.pages = new MenuPages(this.root, pages, PARENT, 'main');
 
@@ -121,8 +131,9 @@ export class PauseMenu {
       { numeral: 'V', label: 'Import save', note: 'From text of a save', action: () => this.importPage() },
       { numeral: 'VI', label: 'Controls', note: 'The keys for the street and the map', action: () => this.pages.show('controls') },
       { numeral: 'VII', label: 'Camera', note: 'When a building is in the way', action: () => this.pages.show('camera') },
-      { numeral: 'VIII', label: 'Open game to others', note: 'Multiplayer comes in a later version', action: null },
-      { numeral: 'IX', label: 'Quit to title', note: 'Progress since the last save is lost', action: () => this.actions.quit() },
+      { numeral: 'VIII', label: 'Sound', note: 'The engine, the street and the mute', action: () => this.pages.show('sound') },
+      { numeral: 'IX', label: 'Open game to others', note: 'Multiplayer comes in a later version', action: null },
+      { numeral: 'X', label: 'Quit to title', note: 'Progress since the last save is lost', action: () => this.actions.quit() },
     ]);
 
     const city = card('I', 'The city', 'Share the seed and anyone can drive this city.');

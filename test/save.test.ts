@@ -116,6 +116,31 @@ describe('saves', () => {
     reject(edited((s) => (s.state.tick = -3)), /valid time/);
     reject(edited((s) => (s.state.vehicle.cls = 'tank')), /vehicle/);
     reject(edited((s) => (s.state.loadout.slots[0].id = 'laser-sword')), /weapon/);
+    // The factions of spec section 17: a row of standing short, and an enforcer
+    // carrying something this arsenal has never heard of.
+    reject(edited((s) => s.state.factions.standing.pop()), /reputation/);
+    reject(
+      edited((s) => {
+        s.state.enforcers.units.push({
+          id: 0,
+          faction: 0,
+          weapon: 'laser-sword',
+          x: 0,
+          y: 0,
+          height: 0,
+          heading: 0,
+          speed: 0,
+          cycle: 0,
+          edges: [],
+          distance: 0,
+          planned: 0,
+          fired: 0,
+          goalX: 0,
+          goalY: 0,
+        });
+      }),
+      /weapon/,
+    );
     expect(() => saveFromJson('{')).toThrow(/damaged/);
   });
 
