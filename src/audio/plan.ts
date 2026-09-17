@@ -28,6 +28,7 @@ import type { TramBell } from '../sim/tram.ts';
 import { specOf } from '../sim/vehicle.ts';
 import { weatherAt } from '../sim/weather.ts';
 import { currentWeapon, type WeaponSpec } from '../sim/weapon.ts';
+import { HIT_CAP, type MeleeHit } from '../sim/melee.ts';
 import {
   bedsFor,
   callsFor,
@@ -38,7 +39,7 @@ import {
   type CallRates,
   type SiteSource,
 } from './ambience.ts';
-import { CUES, type Cue } from './cue.ts';
+import { CUES, HIT_CUES, type Cue } from './cue.ts';
 import { barSeconds, dialAt, dialName, wrapDial } from './dial.ts';
 import { enginePitch, engineSound, type EngineSound } from './engine.ts';
 import { broadcastAt, type OnAir } from './programme.ts';
@@ -175,6 +176,8 @@ export class AudioPlanner {
   private stride = 0;
   /** The tick the last plan was made on, so the walk is measured over real ticks. */
   private tick = -1;
+  /** The tick the last blow was heard on, so no blow is played twice. */
+  private heard = -1;
   /** Reused by the bells, so a frame allocates nothing for the ones that did not ring. */
   private readonly ringing: TramBell[] = [];
 
@@ -189,6 +192,7 @@ export class AudioPlanner {
     this.integrity = state.vehicle.damage.integrity;
     this.stride = 0;
     this.tick = state.tick;
+    this.heard = state.tick;
   }
 
   /**
@@ -205,6 +209,7 @@ export class AudioPlanner {
     const cues: Cue[] = [];
     this.collisions(state, cues);
     this.gunfire(state, cues);
+    this.blows(state, cues);
     this.footsteps(state, ticks, cues);
     this.bells(state, was, trams, cues);
     const score = scoreOf(state);
@@ -274,6 +279,25 @@ export class AudioPlanner {
     const kind: Cue['kind'] = spec.cls === 'melee' ? 'swing' : 'gunshot';
     for (let i = 0; i < Math.min(fired, CUES_PER_FRAME); i++) {
       cues.push(cueAt(state, kind, from.x, from.y, shotStrength(spec), this.shots - fired + i));
+    }
+  }
+
+  /**
+   * Every blow a melee weapon landed since the last frame (spec section 11.6).
+   * The record carries them for a few ticks (`src/sim/melee.ts`), so a frame
+   * that stepped six ticks hears all six and a frame that stepped none hears
+   * nothing twice. What was struck picks the cue: a body, a panel or a wall.
+   */
+  private blows(state: SimState, cues: Cue[]): void {
+    const since = this.heard;
+    this.heard = state.tick;
+    for (let i = 0; i < state.hits.length; i++) {
+      const hit = state.hits[i] as MeleeHit;
+      if (hit.tick <= since || hit.tick > state.tick) continue;
+      // Two blows of one swing land on the same tick, so the place in the list
+      // is part of the stream they are jittered from: a swing through a crowd
+      // is a run of knocks rather than one knock played twice.
+      cues.push(cueAt(state, HIT_CUES[hit.surface], hit.x, hit.y, hit.strength, hit.tick * HIT_CAP + i));
     }
   }
 
