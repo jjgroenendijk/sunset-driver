@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { AmbientTraffic, SMOOTH, trafficRoadsOf, type AmbientPose, type TrafficCursor } from '../src/sim/traffic.ts';
+import { AmbientTraffic, footprintsTouch, SMOOTH, trafficRoadsOf, type AmbientPose, type Footprint, type TrafficCursor } from '../src/sim/traffic.ts';
+import { specOf } from '../src/sim/vehicle.ts';
 import type { RoadEdge } from '../src/world/graph.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import type { RoadTier, WorldDescription } from '../src/world/types.ts';
 import { TICKS_PER_HOUR } from '../src/sim/clock.ts';
 import { bedsOf, graphOf, junctionsOf, seeds, worlds } from './seed-fixture.ts';
-import { TRAFFIC_COUNT, TRAFFIC_TIER_MIN } from './seed-limits.ts';
+import { TRAFFIC_COUNT, TRAFFIC_OVERLAP, TRAFFIC_TIER_MIN } from './seed-limits.ts';
 import { signalLap } from './signal-lap.ts';
 import { checkTram, distanceTo } from './seed-tram.ts';
 
@@ -36,12 +37,15 @@ export function trafficChecks(): void {
         // At the start of the day and at noon: a tier is not empty at one moment and full at another.
         for (const tick of [0, 12 * TICKS_PER_HOUR]) {
           const carried: Partial<Record<RoadTier, number>> = {};
+          const standing: Footprint[] = [];
           for (const vehicle of traffic.vehicles) {
             traffic.cursorAt(vehicle.id, tick, cursor);
             const edge = graph.edges[traffic.edgeOf(cursor)] as RoadEdge;
             carried[edge.tier] = (carried[edge.tier] ?? 0) + 1;
-            if (vehicle.id % 7 !== 0) continue;
             traffic.pose(cursor, pose);
+            const spec = specOf(vehicle.cls);
+            standing.push({ x: pose.x, y: pose.y, heading: pose.heading, halfLength: spec.halfLength, halfWidth: spec.halfWidth });
+            if (vehicle.id % 7 !== 0) continue;
             // A vehicle takes a corner inside the junction, so it may stand a
             // few metres off its own run there; it never leaves the carriageway.
             const off = distanceTo(graph.edgePoints(edge.id), pose.x, pose.y);
@@ -51,6 +55,11 @@ export function trafficChecks(): void {
             if ((length[tier] ?? 0) < TRAFFIC_TIER_MIN) continue;
             expect(carried[tier] ?? 0, `seed ${seed}: no traffic on ${Math.round(length[tier] ?? 0)} m of ${tier} at tick ${tick}`).toBeGreaterThan(0);
           }
+          // The city's traffic is spread over its roads, not stood in piles:
+          // the timing of the tours is the only thing that keeps two vehicles
+          // apart, since neither ever reads the other.
+          const piled = overlaps(standing) / standing.length;
+          expect(piled, `seed ${seed}: ${piled.toFixed(2)} overlapping pairs a vehicle at tick ${tick}`).toBeLessThan(TRAFFIC_OVERLAP);
         }
 
         // A city with arterials has traffic lights, and the vehicles timed to
@@ -67,4 +76,35 @@ export function trafficChecks(): void {
       }
     });
   });
+}
+
+/** Metres each way of one bucket of the grid the overlapping pairs are counted over. */
+const PILE_CELL = 20;
+
+/**
+ * Pairs of footprints that stand on the same ground. Each is filed under the
+ * cell its middle is in and read against the nine cells around it, since a
+ * vehicle is far shorter than a cell.
+ */
+function overlaps(boxes: readonly Footprint[]): number {
+  const cells = new Map<string, number[]>();
+  boxes.forEach((box, id) => {
+    const key = `${Math.floor(box.x / PILE_CELL)}:${Math.floor(box.y / PILE_CELL)}`;
+    const cell = cells.get(key);
+    if (cell === undefined) cells.set(key, [id]);
+    else cell.push(id);
+  });
+  let pairs = 0;
+  boxes.forEach((box, id) => {
+    const cx = Math.floor(box.x / PILE_CELL);
+    const cy = Math.floor(box.y / PILE_CELL);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (const other of cells.get(`${cx + dx}:${cy + dy}`) ?? []) {
+          if (other > id && footprintsTouch(box, boxes[other] as Footprint, 0)) pairs++;
+        }
+      }
+    }
+  });
+  return pairs;
 }

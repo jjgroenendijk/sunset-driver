@@ -405,6 +405,15 @@ export const TRAFFIC_COUNT = SEED_COUNT > 20 ? 24 : 2;
 /** Metres of a tier a world must carry before the sweep expects traffic on it. */
 export const TRAFFIC_TIER_MIN = 1000;
 /**
+ * Pairs of ambient vehicles that may stand on the same ground at one tick, per
+ * vehicle in the city. No vehicle reads another, so some overlap is the price
+ * of spec section 5.3 and the number is a ceiling, not a target: two vehicles
+ * that meet at a junction or share a lane through a corner are expected. It
+ * catches the failure where the signal timing stands a whole platoon on one
+ * spot, which reads about twice this.
+ */
+export const TRAFFIC_OVERLAP = 0.3;
+/**
  * The share of the tram's level crossings that must take a light (spec section
  * 13.2). The rest stand where a run is too short for a stop line or a highway
  * meets the arterial on the flat, and the tram only halts and rings there.
