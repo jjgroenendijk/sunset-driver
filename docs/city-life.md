@@ -10,6 +10,7 @@ physics and the vehicles the player drives — is in `docs/sim-and-ui.md`.
 - Ambient traffic
 - The drivers
 - The buses
+- The wrecks the city tows
 - Traffic lights
 - Parked cars
 - The tram
@@ -80,6 +81,22 @@ physics and the vehicles the player drives — is in `docs/sim-and-ui.md`.
   its own stop.
 - Nothing here knows about passengers, and the dwell is the same at every stop. A bus that stood for
   as long as its passengers took would have to be stepped, and the traffic is never stepped.
+
+## The wrecks the city tows
+
+- `src/sim/tow.ts` is the one thing that ever takes a vehicle back out of the record. Everything the
+  player touches goes into `TrafficState.promoted` and stays there, so a session spent crashing
+  into traffic leaves a growing trail of burnt-out shells behind it.
+- A shell that has stood `TOW_WAIT` ticks since it went up, with the player `TOW_REACH` metres away
+  or further, is taken. Only a shell: a car abandoned in one piece is still there on the player's
+  return, which is what spec section 20.2 asks for. `TOW_REACH` is wider than `TRAFFIC_VIEW`, so a
+  wreck is never taken while it is on the screen, and wider than the physics box, so a towed record
+  never leaves a Rapier body behind it.
+- The tow truck is not on the road. Driving one to the wreck needs the routing spec section 20.3
+  brings for the police, the ambulances and the fire engines; until then this is the parked cars'
+  bargain, where the city turns over while nobody is looking at it.
+- A burnt-out parked car is promoted under `PARKED_ID` plus its bay, and the bay stays empty while
+  that record lasts, so towing it also gives the kerb back to `parked.ts`.
 
 ## Traffic lights
 
