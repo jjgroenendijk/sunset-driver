@@ -571,7 +571,12 @@ class RoadTracer extends HighwayTrace {
 
   // --------------------------------------------------------------- districts
 
-  /** An arterial from every built-up district to the nearest road, worked from the core outward. */
+  /**
+   * An arterial from every built-up district to the nearest road, worked from
+   * the core outward. Where no arterial line reaches the site — it stands in a
+   * pocket of ground that steep slopes close off — a street is laid instead,
+   * since a street climbs what an arterial may not (issue #398).
+   */
   private serveDistricts(): void {
     const core = this.world.core;
     const sites = this.world.districts
@@ -584,8 +589,14 @@ class RoadTracer extends HighwayTrace {
       const island = this.islandOf(site.x, site.y);
       // Round the beaches where it can, over them where it must: a district
       // that can only be reached across the sand is still reached.
-      const route = this.routeToNetwork({ x: site.x, y: site.y }, island, 'arterial', ARTERIAL, this.offSand);
-      if (route !== undefined) this.addCurve('arterial', route, []);
+      const at = { x: site.x, y: site.y };
+      const route = this.routeToNetwork(at, island, 'arterial', ARTERIAL, this.offSand);
+      if (route !== undefined) {
+        this.addCurve('arterial', route, []);
+        continue;
+      }
+      const lane = this.routeToNetwork(at, island, 'street', STREET, this.offSand) ?? this.routeToNetwork(at, island, 'street', STREET);
+      if (lane !== undefined) this.addCurve('street', lane, []);
     }
   }
 
