@@ -123,6 +123,12 @@ lamps and the lights a vehicle carries — in `docs/lighting.md`.
   frame is drawn at. Measured with `--tier-at` on a full-high-full round trip: the frames either
   side of each change build nothing, against about two seconds a change before. Issue #323 carries
   the measurements.
+- **The clustered path runs only while there is a light to cluster.** The addon clusters shadowless
+  point lights, and the game has none. Yet it runs a compute over every cluster each frame and puts
+  its cluster loop in every fragment: 43 ms of a 93 ms frame at a pixel ratio of 2 (issue #435).
+  `PinnedClusterLightsNode` draws as a plain `LightsNode` until a point light arrives. Its cache key
+  then carries a mark, because before the first grid the addon's key equals the plain one, and the
+  first point light would rebuild no shader.
 
 ## Warming the shaders
 

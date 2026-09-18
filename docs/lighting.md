@@ -62,7 +62,8 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
   throws a rectangle rather than a disc, and its penumbra reads the other way round from a
   spotlight's: 0 is the softest edge. Aim it across the road rather than straight down, or it has no
   orientation to project in. three.js 0.186 clusters shadowless point lights alone, so
-  `ClusteredLighting` does not cover these cones and the cap is what keeps them affordable.
+  the clustered lighting does not cover these cones and the cap is what keeps them affordable. With
+  no point light in the scene, the clustered path is not built at all (`docs/rendering.md`).
 - A light at intensity 0 still costs every fragment it reaches: the intensity is a uniform, and the
   shader runs the whole light to multiply it by 0. That was 10 ms of a frame at a pixel ratio of 2,
   by day. Taking the light out of the scene is no better. It rebuilds every shader, and three.js

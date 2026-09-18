@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { gridToBuild, type GridSize } from '../src/render/clustered-lights.ts';
+import { DirectionalLight, PointLight } from 'three';
+import { LightsNode, type NodeFrame } from 'three/webgpu';
+import { gridToBuild, PinnedClusterLightsNode, type GridSize } from '../src/render/clustered-lights.ts';
 
 /** The addon's tile size, which every size is fitted to before it is compared. */
 const TILE = 32;
@@ -33,5 +35,28 @@ describe('gridToBuild', () => {
     // A window made wider but no taller still widens the tiles, so the grid
     // follows the wider axis.
     expect(gridToBuild(PINNED, PINNED, { width: 1700, height: 900 }, TILE)).toEqual({ width: 1728, height: 928 });
+  });
+});
+
+describe('PinnedClusterLightsNode', () => {
+  it('keys the plain shader until a light it can cluster arrives, and again after it leaves', () => {
+    const sun = new DirectionalLight();
+    const node = new PinnedClusterLightsNode({ width: 1600, height: 900 });
+    const plain = new LightsNode().setLights([sun]).customCacheKey();
+
+    node.setLights([sun]);
+    expect(node.customCacheKey()).toBe(plain);
+
+    node.setLights([sun, new PointLight()]);
+    expect(node.customCacheKey()).not.toBe(plain);
+
+    node.setLights([sun]);
+    expect(node.customCacheKey()).toBe(plain);
+  });
+
+  it('runs no compute while there is nothing to cluster', () => {
+    const node = new PinnedClusterLightsNode({ width: 1600, height: 900 }).setLights([new DirectionalLight()]);
+    // A frame with no renderer: the addon's own update would throw on it.
+    expect(node.updateBefore({} as NodeFrame)).toBeUndefined();
   });
 });

@@ -26,8 +26,8 @@ const EXPOSURE = 0.62;
  * default path today; the hard cap in that file and the branch of
  * `lamp-light.ts`, which skips a cone while it is off, keep them inside the
  * budget. The rect area lights of the neon (`sign-light.ts`) go down that same
- * path and branch the same way; the headlights that come later land in the
- * cluster grid.
+ * path and branch the same way. With no point light in the scene, the
+ * clustered path is not built at all.
  */
 function configure(renderer: WebGPURenderer): void {
   renderer.toneMapping = ACESFilmicToneMapping;
