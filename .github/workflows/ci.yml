@@ -53,6 +53,36 @@ jobs:
     if: github.event_name == 'pull_request'
     uses: ./.github/workflows/full-tier.yml
 
+  # One frame through a real WebGPU device, which no other job opens: it fails
+  # when the renderer draws nothing (issue #119). It is kept out of `full-tier`
+  # because it is not part of `verify:full`, and out of the checks that gate the
+  # merge because SwiftShader draws on a shared runner's processor and a device
+  # lost there is not a rendering regression. The ruleset decides what gates,
+  # not this file.
+  #
+  # It is red on main today: the colour grade's table never reaches the GPU, so
+  # every frame is black (issue #339). That is the check doing its job.
+  render-smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+
+      # playwright-core ships no browser of its own. The key follows the
+      # lockfile, as the Node and module caches do, so a playwright bump fetches
+      # the build that release was made against.
+      - id: browser
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.browser.outputs.cache-hit != 'true'
+        run: npx playwright install chromium
+
+      - run: npm run test:render
+
   # The head must still be the commit the full tier tested. A branch that fell
   # behind main cannot merge, so Dependabot is asked to rebase it, which tests
   # it again.
