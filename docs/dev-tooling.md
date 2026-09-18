@@ -18,6 +18,7 @@ it.
 - `node scripts/audio-check.ts`
 - `npm run test:render`
 - The browser the previews need
+- The Chrome DevTools MCP server
 
 ## The free camera
 
@@ -270,3 +271,21 @@ says nothing about a frame.
 
 A machine with no browser at all runs `npx playwright install chromium` once. `CHROMIUM_PATH`
 overrides the search, and the error names every place that was looked in.
+
+## The Chrome DevTools MCP server
+
+`.mcp.json` gives Claude Code the Chrome DevTools MCP server. The agent opens the game in a browser,
+reads the console, takes screenshots, runs JavaScript in the page and records performance traces.
+Use it to find out why a frame is wrong. Use the scripts above to answer the same question again:
+they are seeded and repeatable, and a session with the server is not.
+
+Claude Code asks once before it starts a server from `.mcp.json`. `/mcp` shows whether it runs.
+
+`scripts/devtools-mcp.ts` starts it. The script takes the browser from `scripts/chromium.ts` and
+asks for a hardware adapter, so an installed Chrome is used first. Each session gets a temporary
+profile, so sessions in parallel worktrees do not share one. On Linux with no display, as in a cloud
+container, the browser runs headless and draws WebGPU through SwiftShader.
+
+The game needs a secure context for WebGPU. Open it on `localhost` from `npm run dev`:
+`about:blank` and a LAN address have no `navigator.gpu`. Usage statistics and the CrUX lookup of
+trace URLs are off. The server version is pinned in the script; raise it there.
