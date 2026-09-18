@@ -175,12 +175,16 @@ const FLICKER_RATE = 160;
 /** The phases a failing tube may be at. Whole steps, so the flicker is a stutter and not a drift. */
 const FLICKER_PHASES = 16;
 
-/** The hashes: the board, the advertisement, the trade, whether it lights, and whether it fails. */
+/**
+ * The hashes: the board, the advertisement, the trade, whether it lights,
+ * whether its tube fails, and where in its cycle a failing one is.
+ */
 const CARRY_SALT = 11;
 const AD_SALT = 12;
 const TRADE_SALT = 13;
 const NEON_SALT = 14;
 const FLICKER_SALT = 15;
+const PHASE_SALT = 16;
 
 /**
  * What each building sells, from the shops a world was dealt. A building the
@@ -254,7 +258,7 @@ function flickerOf(seed: number, neon: number): number {
   if (neon === 0) return 0;
   if (hashInts(seed, FLICKER_SALT) % 1000 >= FLICKER_RATE) return 0;
   // Never 0: that is the value a steady tube carries.
-  return ((hashInts(seed, FLICKER_SALT + 1) % FLICKER_PHASES) + 1) / FLICKER_PHASES;
+  return ((hashInts(seed, PHASE_SALT) % FLICKER_PHASES) + 1) / FLICKER_PHASES;
 }
 
 /** The board on one building, or nothing where its wall has no room for one. */
