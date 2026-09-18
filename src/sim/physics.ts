@@ -424,12 +424,15 @@ export class SimPhysics {
   private crash(state: SimState, wasX: number, wasY: number, wasZ: number): number {
     const v = state.vehicle;
     unrotate(this.point, v, v.vx - wasX, v.vy - wasY, v.vz - wasZ);
+    // `unrotate` answers the vehicle's own axes: `x` along it, `y` up and `z`
+    // across it. The panel rule reads them along, across, up, so the last two
+    // are handed over the other way round.
     const severity = hitVehicle(
       v.damage,
       this.spec,
       this.point.x,
-      this.point.y,
       this.point.z,
+      this.point.y,
       state.seed,
       state.tick,
     );
