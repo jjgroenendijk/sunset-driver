@@ -7,6 +7,7 @@
  * where a host's room is written to. Everything else here is either pure or
  * behind `link.ts`.
  */
+import type { SimState } from '../sim/simulation.ts';
 import { clearRoomFromHash, readRoomFromLocation, writeRoomToHash } from './invite.ts';
 import { PartyControl, type ControlState } from './control.ts';
 import type { PartyActions } from '../ui/party.ts';
@@ -36,8 +37,8 @@ export interface SessionParty {
  * bar. An invite link is the only thing that connects a session without a
  * press, and `join` is where it does it.
  */
-export function attachParty(seed: string, tick: () => number, hooks: PartyHooks): SessionParty {
-  const control = new PartyControl(seed, tick);
+export function attachParty(seed: string, record: () => SimState, hooks: PartyHooks): SessionParty {
+  const control = new PartyControl(seed, record);
   control.onSnap = hooks.snap;
   control.onChange = (state) => {
     history.replaceState(null, '', roomHash(location.hash, state));

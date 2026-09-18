@@ -70,6 +70,7 @@ import { SkyLighting } from './sky.ts';
 import { VehicleModel } from './vehicle.ts';
 import { HeldWeapon, WeaponArt } from './weapon.ts';
 import { PickupModels } from './pickups.ts';
+import { RemotePlayerViews } from './remote-players.ts';
 import { PosterScenery } from './posters.ts';
 import { SignScenery } from './signs.ts';
 import { ShopInterior } from './interior.ts';
@@ -85,22 +86,8 @@ import {
 import { CLEAR_WEATHER, weatherAt, type Weather } from '../sim/weather.ts';
 import { PlantScenery } from './vegetation.ts';
 import { WeatherFx } from './weather-fx.ts';
-import { fogRange, overcast } from './weather-look.ts';
+import { fogOf, overcast } from './weather-look.ts';
 import { createWaterSurface, type WaterSurface } from './water-surface.ts';
-
-/**
- * Metres at which the haze starts, and at which it is complete, for a given
- * far ring. It closes at the edge of that ring, where the ground ends: nothing
- * should be seen to end. It opens one chunk inside it, so the far ring is what
- * fades. A quality tier that pulls the ring in brings the haze with it (spec
- * section 9.2).
- */
-function fogOf(rings: ChunkRings, weather: Weather): { near: number; far: number } {
-  // Fog is the one weather that cuts the draw distance (spec section 13.4): the
-  // haze is brought in front of the last chunk rather than standing at it, so
-  // the ground still ends where it ended and nothing is seen to stop.
-  return fogRange((rings.far - 1) * CHUNK_SIZE, rings.far * CHUNK_SIZE, weather);
-}
 
 /** Milliseconds {@link WorldScene.settle} waits before giving up on the workers. */
 const SETTLE_TIMEOUT_MS = 120_000;
@@ -129,6 +116,8 @@ export class WorldScene {
   readonly scene = new Scene();
   readonly character: CharacterModel;
   readonly vehicle = new VehicleModel();
+  /** The other players of a multiplayer room (spec section 21.5). Empty in single player. */
+  readonly remotes: RemotePlayerViews;
   /** The geometry every drawn weapon shares (spec section 11.6). */
   private readonly weaponArt = new WeaponArt();
   /** The weapon in the player's hands. */
@@ -216,6 +205,8 @@ export class WorldScene {
     this.weatherFx = new WeatherFx(world.seed, this.height);
     this.scene.add(this.weatherFx.group);
 
+    this.remotes = new RemotePlayerViews(world.water.seaLevel);
+    this.scene.add(this.remotes.group);
     this.character = new CharacterModel(appearance);
     this.shadeCharacter();
     // The player starts behind the wheel, so the character is built but not
@@ -581,6 +572,8 @@ export class WorldScene {
     this.posters.dispose();
     this.signs.dispose();
     this.character.dispose();
+    this.scene.remove(this.remotes.group);
+    this.remotes.dispose();
     this.scene.remove(this.vehicle.group);
     this.vehicle.dispose();
     this.scene.remove(this.held.group, this.pickups.group);

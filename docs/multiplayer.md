@@ -10,6 +10,10 @@ in `docs/menus.md`.
 - The room code and the invite link
 - The handshake and the refusals
 - The shared clock
+- Who owns what
+- The players on the wire
+- The world the host owns
+- When the host leaves
 - Signalling, the relays and the CSP
 - Going back to single player
 - What is not here yet
@@ -22,9 +26,16 @@ in `docs/menus.md`.
 - `protocol.ts` — what crosses the wire, and what a peer is allowed to say. Everything arriving from
   another browser is read into a shape here or dropped.
 - `tick-lock.ts` — the shared clock, as arithmetic in tick space. It reads no clock of its own.
+- `move.ts` — one player on the wire: the packed frame, the reader, and the one function that
+  reads the record into a frame.
+- `replica.ts` — one remote player, drawn between the frames they sent and carried on when one is
+  late. Pure arithmetic; it holds no models.
+- `roster.ts` — everybody else: their looks, their replicas, and who is owed a frame now.
+- `divergence.ts` — the parts of a record the host owns, the deltas and the correction snapshots.
 - `party.ts` — the room as a state machine: the handshake, the peer count, the refusals and the
   fall back to single player. It holds no Trystero and no DOM; `NetLink` is the whole of its contact
-  with a socket, so `test/multiplayer.test.ts` drives it with a link that has nothing behind it.
+  with a socket. `test/multiplayer.test.ts` drives it with a link that has nothing behind it, and
+  `test/replication.test.ts` stands a whole room of them back to back.
 - `link.ts` — the Trystero half: the strategies, the relay wait, and the two actions. Loaded only
   from `control.ts`, never at the top level.
 - `control.ts` — what the session holds: offline until a press, and the one place the lazy import
@@ -32,9 +43,13 @@ in `docs/menus.md`.
 - `attach.ts` — the wiring `main.ts` calls once. The only file here that reads the page, because the
   invite link lives in the address bar.
 
-`src/net` is not one of the order-stable directories, so a `Map` may be walked here. Nothing in it
-may be imported from `src/sim`: the record is single-player state, and the room reads it rather than
-the other way round.
+`src/net` is not one of the order-stable directories, so a `Map` may be walked here. Nothing under
+`src/sim` may import from here: the record does not know it is in a room. This side reads the
+record freely, and writes exactly one thing into it — the divergence set of `divergence.ts`, at the
+top of `Party.frame`, so a message off a socket never lands in the middle of a tick.
+
+`src/render/remote-players.ts` draws the room. It imports the pose type from `roster.ts` and
+nothing else, as a type, so a single-player build still pulls in no networking.
 
 ## The room code and the invite link
 
@@ -50,7 +65,8 @@ the other way round.
 ## The handshake and the refusals
 
 - Both sides send `hello` when Trystero reports a peer. It carries the protocol, the seed, the
-  sender's tick and whether the sender is the host.
+  sender's tick, whether the sender is the host, and the look they picked, so the room can draw
+  them. A look that is not one of the creator's choices is wrapped into them rather than refused.
 - A peer on another seed or another protocol is turned away, and so is one that would be the seventh
   player. There is no message for a refusal: the other side reads our own `hello` and refuses us for
   the same reason, so both ends land on the same line without a round trip.
@@ -75,6 +91,62 @@ the other way round.
 - **A session in a room is never paused.** `main.ts` keeps stepping while the pause menu is open
   when `party.live`, because a peer that stopped would be dragged back to the host's clock the
   moment it came back. The menu still takes every key, and the frame is stepped with an empty input.
+
+## Who owns what
+
+Spec section 21.4 splits authority three ways, and every file above sits on one side of that split.
+
+- **Each player owns itself.** A peer's own vehicle and character are never written by anybody
+  else, so driving never waits on the network. What goes out is the pose and the inputs; what comes
+  back is drawn and never stepped.
+- **The host owns divergence.** The promoted cars, the startled crowd, the fires, the police, the
+  emergency units, the enforcers, the settled street crime and the session's captured blocks are the
+  host's, and every joiner's record is written from them.
+- **Everything else is derived.** The rest of the city is a function of `(seed, tick)`, which is
+  what the shared clock buys. A career is the player's own (21.3): money, missions, reputation,
+  loadout and faction standing are not on the wire and are not in the divergence set.
+
+## The players on the wire
+
+- A frame is 25 numbers in a `Float32Array`, about a quarter of what the same fields weigh as JSON.
+  Trystero takes a typed array as a payload of its own, so nothing is encoded twice.
+- **A `Float32Array` holds a whole number exactly only to 2^24**, which a session passes in 77 hours
+  of play, so the tick is split across two slots and put back together on the other side.
+- The inputs ride with the pose because the reader predicts with them: a car under throttle is still
+  accelerating when the next frame is late.
+- A replica is drawn `DELAY_TICKS` behind the local clock, so the frames either side of the moment
+  being drawn have usually arrived and the pose is the blend of them. Past the last frame it is dead
+  reckoning, for at most `REACH_TICKS`; after that the player holds still, because a pose invented
+  for a second and a half is worse than one that stands.
+- Interest management is per peer, not per room: a peer within `INTEREST_RANGE` is sent frames at
+  `NEAR_TICKS` and one further away at `FAR_TICKS`. A player across the map still arrives smoothly;
+  they arrive on fewer frames.
+
+## The world the host owns
+
+- A delta goes out every `DELTA_TICKS` and carries the parts that changed, at most
+  `PARTS_PER_DELTA` of them, taking the parts in turn. That cap is what keeps the host's broadcast
+  load off the back of how busy the city is (spec section 21.5).
+- **The round of parts is read once, before the loop.** Moving the mark inside it steps over the
+  part after each one taken, which looks like a delta that is simply never sent.
+- A correction snapshot carries the whole set every `SNAPSHOT_TICKS`, so a peer that lost a delta is
+  put right within ten seconds instead of drifting until it leaves.
+- **A session's territory is in the set, and is written to nobody's save.** Spec section 21.3 says
+  a room's captures last as long as the room. So a joiner keeps the blocks it came in with, and
+  `control.ts` puts them back as the room closes: the single-player map is as the player left it.
+- A part arriving is refused unless it is the shape that part of a record has, and it is copied
+  through JSON before it is written in. The host is trusted to describe its own world; this is what
+  keeps a malformed peer from putting something in a record that the simulation then steps.
+
+## When the host leaves
+
+- The lowest peer id takes over. Every peer sorts the same list and reaches the same answer on its
+  own, so the `host` message that follows is the confirmation and not the decision.
+- **Nothing of the divergence set has to be handed over.** Every peer has been writing the host's
+  deltas into its own record all along, so the new host already holds what it now owns. It sends a
+  correction snapshot at once and starts beating its own clock; the others walk in behind it the way
+  they walked in behind the old one.
+- A room of two whose host leaves has nobody left, so it falls back to single player as before.
 
 ## Signalling, the relays and the CSP
 
@@ -101,7 +173,11 @@ answers at all. The session keeps the tick it stands on and carries on without a
 
 ## What is not here yet
 
-Spec section 21 is larger than what `src/net` holds. The next issue brings player replication and
-host authority: promoted actors and mission entities as deltas, each player authoritative over
-itself, correction snapshots, interest management, and host migration when the host leaves. Until
-migration exists, a room whose host leaves degrades like any other room that empties.
+- **Friendly fire.** Spec section 21.5 has it on, and nothing here carries a hit yet. A shot finds
+  what it hits by a Rapier cast, so a remote player has to stand in the physics world as a body of
+  its own — `police-bodies.ts` and `enforcer-bodies.ts` are that file for the police and the
+  enforcers — before the owner of the body struck can be told to take the damage.
+- **A remote vehicle's damage.** The dents, the lost panels and the fire are not on the wire, so
+  another player's car is drawn clean however hard they have been driving it.
+- **The round trip.** A beat still carries the host's tick as it was when it was sent, so a joiner
+  sits half a round trip behind. Measuring that needs the round trip, which nothing here asks for.

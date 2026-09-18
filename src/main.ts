@@ -216,7 +216,7 @@ async function boot(): Promise<void> {
       // stop (`docs/multiplayer.md`). The menu takes the keys either way.
       const menu = session.pause.open;
       const paused = menu && !session.party.live;
-      const steps = session.party.frame(session.state.tick, paused ? 0 : clock.advance(elapsed));
+      const steps = session.party.frame(session.state, heard, paused ? 0 : clock.advance(elapsed));
       const respawned = session.state.respawn;
       const trips = session.state.metro.trips;
       for (let i = 0; i < steps; i++) {
@@ -267,6 +267,9 @@ async function boot(): Promise<void> {
       }
       session.world.pickups.update(session.state.pickups, session.state.tick, elapsed / 1000);
       session.world.setVehicle(vehicle);
+      // The other players of a multiplayer room, drawn where the room says they
+      // are between the frames they sent (spec section 21.5).
+      session.world.remotes.update(session.party.remotes(session.state.tick), elapsed / 1000, session.world.lampsNow);
       // The traffic is a function of the tick, so it is drawn at the moment the
       // frame stands at: one tick behind the record, as the player is.
       const round = flying ? { x: free.camera.x, y: free.camera.z } : p;
@@ -621,7 +624,7 @@ async function boot(): Promise<void> {
   map.overlay = overlay;
   // The multiplayer of spec section 21. Nothing connects here: the handle is
   // offline until a press, or until `join` below reads a room off the link.
-  const party = attachParty(choice.seed, () => state.tick, {
+  const party = attachParty(choice.seed, () => state, {
     snap: (tick) => {
       // The host's clock is the city's clock. The record jumps to it as it
       // jumps for a metro trip, so the camera and the audio are put where it
