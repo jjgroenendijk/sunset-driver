@@ -78,8 +78,12 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      # The installed `playwright-core` fetches the build it names. `npx
+      # playwright` would download a second package at whatever version the
+      # registry holds that day, and with it a browser the lockfile never saw.
+      # The headless shell draws no WebGPU, so it is not worth caching.
       - if: steps.browser.outputs.cache-hit != 'true'
-        run: npx playwright install chromium
+        run: node_modules/.bin/playwright-core install --no-shell chromium
 
       - run: npm run test:render
 
