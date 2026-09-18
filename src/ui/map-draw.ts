@@ -492,6 +492,29 @@ export function drawIcon(
       }
       ctx.stroke();
       break;
+    case 'bunting':
+      // Three pennants on a line: a street that has something on it.
+      ctx.moveTo(-r, -r * 0.6);
+      ctx.lineTo(r, -r * 0.6);
+      ctx.stroke();
+      for (let i = 0; i < 3; i++) {
+        const cx = -r + ((i + 0.5) / 3) * 2 * r;
+        ctx.beginPath();
+        ctx.moveTo(cx - r * 0.28, -r * 0.6);
+        ctx.lineTo(cx + r * 0.28, -r * 0.6);
+        ctx.lineTo(cx, r * 0.7);
+        ctx.closePath();
+        ctx.fill();
+      }
+      break;
+    case 'bolt':
+      // A zigzag: something happening rather than somewhere to go.
+      ctx.moveTo(r * 0.35, -r);
+      ctx.lineTo(-r * 0.25, r * 0.05);
+      ctx.lineTo(r * 0.15, r * 0.05);
+      ctx.lineTo(-r * 0.45, r);
+      ctx.stroke();
+      break;
     case 'key':
       // A key on its side: the bow at the left, the shank and one tooth.
       ctx.arc(-r * 0.5, 0, r * 0.45, 0, Math.PI * 2);

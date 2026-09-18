@@ -16,6 +16,7 @@ import type { ShopPlace } from './shop.ts';
 import type { DealerPlace } from './dealer.ts';
 import type { SafehousePlace } from './safehouse.ts';
 import type { MissionWorld } from './job.ts';
+import type { CrimeGround } from './street-crime.ts';
 import type { ParkedCars } from './parked.ts';
 import type { AmbientTraffic } from './traffic.ts';
 import type { CrowdSource } from './melee.ts';
@@ -125,6 +126,12 @@ export interface Ground {
    * out, and nobody is offering anything.
    */
   missions?: MissionWorld;
+  /**
+   * The corners the street crime of spec section 20.5 happens on, one set to a
+   * district. A test that is not about it leaves them out, and the city behaves
+   * itself.
+   */
+  crimes?: readonly CrimeGround[];
 }
 
 

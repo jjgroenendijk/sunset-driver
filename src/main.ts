@@ -8,13 +8,6 @@ import { frameBudgetFrom, QualityMonitor } from './render/quality.ts';
 import { createRenderer, probeWebGpu } from './render/renderer.ts';
 import { createTitleScene } from './render/scene.ts';
 import { RenderSmoother } from './render/smooth.ts';
-import { ParkedView } from './render/parked.ts';
-import { PedestrianView } from './render/pedestrians.ts';
-import { EmergencyView } from './render/emergency.ts';
-import { WildlifeView } from './render/wildlife.ts';
-import { PoliceView } from './render/police.ts';
-import { TrafficView } from './render/traffic.ts';
-import { TramView } from './render/tram.ts';
 import { WorldSource } from './render/world-source.ts';
 import { warmPasses } from './render/warm.ts';
 import { WorldScene } from './render/world-scene.ts';
@@ -26,12 +19,14 @@ import { EMPTY_INPUT, type InputFrame } from './sim/input.ts';
 import { createSave, restoreSimState, saveFromText, saveToText, type SaveFile } from './sim/save.ts';
 import { createSimState, stepSim, type SimState } from './sim/simulation.ts';
 import { buildCity } from './city.ts';
+import { buildViews } from './views.ts';
 import { commitCrime } from './sim/police.ts';
 import { stationAt } from './sim/metro.ts';
 import { visiting } from './sim/shop.ts';
 import { turfLine } from './sim/territory.ts';
 import { DealerMarks } from './ui/dealers.ts';
 import { EnforcerMarks } from './ui/enforcers.ts';
+import { StreetLife } from './ui/street-life.ts';
 import { MissionMarks } from './ui/missions.ts';
 import { JobPanel } from './ui/job-panel.ts';
 import { TerritoryOverlay } from './ui/territory.ts';
@@ -344,6 +339,7 @@ async function boot(): Promise<void> {
         session.quality.tier.name,
         audio.onAir,
         turfLine(session.state, session.turf),
+        session.streetLife.happening,
       );
       // The lock the player is working at (spec section 11.4). The panel reads
       // the record the simulation is playing, so the bar on screen is the bar
@@ -366,7 +362,11 @@ async function boot(): Promise<void> {
       // The work of spec section 18: the board at the contact the player is
       // standing at, and the mark on wherever the job in hand is going.
       session.jobPanel.update(session.state, session.missions);
-      session.missionMarks.update(session.state, session.enforcerMarks);
+      // The events and the street crime of spec section 20.5: the crowd an
+      // event has drawn and the people in whatever is going on nearby, standing
+      // in the same list as the enforcers, and both marked on the map.
+      session.streetLife.update(session.state, session.world, session.enforcerMarks);
+      session.missionMarks.update(session.state, session.streetLife);
       // The safehouses of spec section 16.3: what a front door costs, or what
       // the house the player is standing in does for them.
       session.homePanel.update(session.state, session.safehouses);
@@ -512,7 +512,7 @@ async function boot(): Promise<void> {
   // The parcels are built in the chunk workers, so every place dealt over them
   // is known once a worker has answered, which `settle` waited for. `places.ts`
   // asks each system where its own places stand and fills the ground with them.
-  const { stations, metro, shops, dealers, safehouses, turf, missions, parked } = buildPlaces(
+  const { stations, metro, shops, dealers, safehouses, turf, missions, parked, crimes, venues } = buildPlaces(
     state.seed,
     description,
     world,
@@ -595,6 +595,10 @@ async function boot(): Promise<void> {
   // and the dealers do not: `EnforcerMarks` writes the list both of them stand
   // in (spec section 17.2).
   const enforcerMarks = new EnforcerMarks(pois);
+  // What the city has on and what it is getting up to (spec section 20.5) are
+  // marked after the enforcers, for the same reason: they move and the rest
+  // does not, and their people stand in the same list.
+  const streetLife = new StreetLife(state.seed, venues, crimes, pois);
   // The objective is marked last of all, because it moves with the leg of the
   // job the record is carrying (spec section 18).
   const missionMarks = new MissionMarks(pois);
@@ -689,24 +693,7 @@ async function boot(): Promise<void> {
     if (event.code === FREE_CAMERA_KEY) free.toggle(camera.camera);
   });
 
-  const trafficView = new TrafficView(traffic);
-  world.scene.add(trafficView.group);
-  const policeView = new PoliceView();
-  world.scene.add(policeView.group);
-  const emergencyView = new EmergencyView();
-  world.scene.add(emergencyView.group);
-  const wildlifeView = new WildlifeView(wildlife);
-  world.scene.add(wildlifeView.group);
-  const parkedView = parked === undefined ? undefined : new ParkedView(parked);
-  if (parkedView !== undefined) world.scene.add(parkedView.group);
-  const tramView = new TramView(tram);
-  world.scene.add(tramView.group);
-  const crowdView = new PedestrianView(crowd, tram);
-  // The dealers and the faction enforcers are drawn with the crowd, and the
-  // list they stand in is written by `EnforcerMarks` for both of them (spec
-  // sections 16.2, 17.2): this hands it over once and never again.
-  crowdView.standing = enforcerMarks.standing;
-  world.scene.add(crowdView.group);
+  const views = buildViews(world, { traffic, crowd, tram, wildlife }, parked, streetLife.standing);
 
   // WebGPU compiles a pipeline the first time it draws with it, so a session
   // that starts here compiles the whole city over its first frames: the street
@@ -722,13 +709,7 @@ async function boot(): Promise<void> {
   });
 
   session = {
-    traffic: trafficView,
-    police: policeView,
-    emergency: emergencyView,
-    wildlife: wildlifeView,
-    parked: parkedView,
-    tram: tramView,
-    crowd: crowdView,
+    ...views,
     state,
     world,
     physics,
@@ -746,6 +727,7 @@ async function boot(): Promise<void> {
     dealers,
     dealerMarks,
     enforcerMarks,
+    streetLife,
     turf,
     homePanel: new HomePanel(document.body),
     safehouses,
