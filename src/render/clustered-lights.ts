@@ -23,10 +23,18 @@
  *   instead. The compute cuts every cluster's bounds from that same share of
  *   the frame (NDC), so the lookup lands on the cluster that holds the
  *   fragment at whatever resolution the frame is drawn at.
+ *
+ * The node also **runs the clustered path only while there is a light to
+ * cluster** (issue #435). The addon clusters shadowless point lights, and the
+ * game has none: its lamps are projector cones and its neon is rect area
+ * lights. Yet the addon runs its compute over every cluster each frame and puts
+ * its cluster loop in every fragment, which cost 43 ms of a 93 ms frame at a
+ * pixel ratio of 2. With no light to cluster, the node draws as a plain
+ * `LightsNode`, and its cache key says which of the two shaders it built.
  */
 import { Vector2 } from 'three';
 import ClusteredLightsNode from 'three/examples/jsm/tsl/lighting/ClusteredLightsNode.js';
-import { Lighting, type LightsNode, type WebGPURenderer } from 'three/webgpu';
+import { Lighting, LightsNode, NodeUtils, type LightingNode, type NodeBuilder, type NodeFrame, type WebGPURenderer } from 'three/webgpu';
 import type { Light } from 'three';
 import { clamp, float, Fn, int, log, positionView, screenUV, type TslNode } from './tsl.ts';
 
@@ -56,6 +64,9 @@ interface ClusteredInternals {
 
 /** The addon's own grid builder, which its types leave out but the node needs. */
 const buildAddonGrid = (ClusteredLightsNode.prototype as unknown as ClusteredInternals).create;
+
+/** The mark hashed into the key of the clustered shader. */
+const CLUSTERED = 1;
 
 /** Where `updateProgram` reads the drawing buffer into. */
 const drawn = new Vector2();
@@ -97,6 +108,33 @@ export class PinnedClusterLightsNode extends ClusteredLightsNode {
   constructor(pinned: GridSize) {
     super();
     this.pinned = pinned;
+  }
+
+  /** Whether the scene holds a light the addon clusters. */
+  private get clustering(): boolean {
+    return this.clusteredLights.length > 0;
+  }
+
+  /**
+   * Without a light to cluster the key is the plain lights node's, so a grid
+   * that nothing reads rebuilds no shader. With one, the addon's key is hashed
+   * with a mark: before its first grid the addon's key equals the plain one,
+   * and the first point light would then rebuild nothing and go undrawn.
+   */
+  override customCacheKey(): number {
+    if (!this.clustering) return LightsNode.prototype.customCacheKey.call(this);
+    return NodeUtils.hashArray([CLUSTERED, super.customCacheKey()]);
+  }
+
+  /** The cluster loop goes into the shader only when it has a light to find. */
+  override setupLights(builder: NodeBuilder, lightNodes: LightingNode[]): void {
+    if (this.clustering) super.setupLights(builder, lightNodes);
+    else LightsNode.prototype.setupLights.call(this, builder, lightNodes);
+  }
+
+  /** The compute fills the clusters each frame, so it runs only when a shader reads them. */
+  override updateBefore(frame: NodeFrame): boolean | undefined {
+    return this.clustering ? super.updateBefore(frame) : undefined;
   }
 
   /**
