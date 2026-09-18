@@ -17,9 +17,11 @@
 .pause .pause-row .title-cta { padding: .7rem 1.2rem; }
 .pause-status { min-height: 1.4em; margin: .9rem 0 0; font: italic .9rem var(--it-serif); color: var(--it-muted); }
 
-.pause-transfer .title-card { justify-self: center; width: min(38rem, 100%); }
+.pause-transfer .title-card, .pause-party .title-card { justify-self: center; width: min(38rem, 100%); }
 .pause-text { box-sizing: border-box; width: 100%; min-height: 10rem; padding: .6rem; border: 1px solid rgba(35,28,22,.35); background: #fffaf0; color: var(--it-ink); font: .72rem/1.4 ui-monospace, Menlo, Consolas, monospace; overflow-wrap: anywhere; resize: vertical; }
 .pause-text:focus { border-color: var(--it-rosso); outline: none; }
+/* The invite link is one line, and it is read rather than written in. */
+.pause-invite { min-height: 3.2rem; background: #f6efe2; }
 
 /* The binding list is longer than the room under the heading, so it scrolls inside its card. */
 .pause .title-keys { align-items: start; }

@@ -1,7 +1,7 @@
 /**
  * The pause menu of spec section 12: resume, save, load, export and import of a
  * save, the controls, the camera setting, the seed and a copy of it,
- * regenerate, quit, and the button multiplayer will hang off.
+ * regenerate, quit, and the room of spec section 21 (`party.ts`).
  *
  * It is drawn in the look of the title screen and walked the same way, through
  * `MenuPages`. It holds no session: every item calls an action `main.ts` hands
@@ -10,6 +10,7 @@
  * decides which one a press means.
  */
 import type { BuildingViewChoice, SoundChoice } from './settings.ts';
+import { buildPartyPage, type PartyActions, type PartyPage } from './party.ts';
 import { buildCameraPage } from './title-camera.ts';
 import { buildControlsPage } from './title-controls.ts';
 import { buildSoundPage } from './title-sound.ts';
@@ -38,9 +39,11 @@ export interface PauseActions {
   buildingView: BuildingViewChoice;
   /** Whether the audio of spec section 15 is muted. A choice takes effect at once. */
   sound: SoundChoice;
+  /** The room of spec section 21: where it stands, and the two presses that open and leave it. */
+  party: PartyActions;
 }
 
-const PAGE_NAMES = ['main', 'transfer', 'controls', 'camera', 'sound'] as const;
+const PAGE_NAMES = ['main', 'transfer', 'controls', 'camera', 'sound', 'party'] as const;
 type PageName = (typeof PAGE_NAMES)[number];
 
 const PARENT: Record<PageName, PageName | null> = {
@@ -49,6 +52,7 @@ const PARENT: Record<PageName, PageName | null> = {
   controls: 'main',
   camera: 'main',
   sound: 'main',
+  party: 'main',
 };
 
 export class PauseMenu {
@@ -58,6 +62,8 @@ export class PauseMenu {
   private readonly seed: string;
   private readonly loadItem: HTMLButtonElement;
   private readonly text: HTMLTextAreaElement;
+  /** The multiplayer page, redrawn whenever the room changes under it. */
+  private readonly party: PartyPage;
   /** One status line per page that has one; both say the same thing. */
   private readonly statuses: HTMLElement[] = [];
   private isOpen = false;
@@ -71,6 +77,7 @@ export class PauseMenu {
     this.root.hidden = true;
 
     this.text = document.createElement('textarea');
+    this.party = buildPartyPage(actions.party, (text, done) => void this.copy(text, done), () => this.pages.back());
     const main = this.buildMain();
     this.loadItem = main.querySelectorAll<HTMLButtonElement>('.title-menu-item')[2] as HTMLButtonElement;
     const pages: Record<PageName, HTMLElement> = {
@@ -79,6 +86,7 @@ export class PauseMenu {
       controls: buildControlsPage(() => this.pages.back()),
       camera: buildCameraPage(actions.buildingView, () => this.pages.back()),
       sound: buildSoundPage(actions.sound, () => this.pages.back()),
+      party: this.party.root,
     };
     this.pages = new MenuPages(this.root, pages, PARENT, 'main');
 
@@ -103,7 +111,13 @@ export class PauseMenu {
     this.root.hidden = false;
     this.say('');
     this.loadItem.disabled = !this.actions.canLoad();
+    this.party.update();
     this.pages.show('main');
+  }
+
+  /** The room changed under the menu, so the multiplayer page is drawn again. */
+  refresh(): void {
+    this.party.update();
   }
 
   hide(): void {
@@ -132,7 +146,7 @@ export class PauseMenu {
       { numeral: 'VI', label: 'Controls', note: 'The keys for the street and the map', action: () => this.pages.show('controls') },
       { numeral: 'VII', label: 'Camera', note: 'When a building is in the way', action: () => this.pages.show('camera') },
       { numeral: 'VIII', label: 'Sound', note: 'The engine, the street and the mute', action: () => this.pages.show('sound') },
-      { numeral: 'IX', label: 'Open game to others', note: 'Multiplayer comes in a later version', action: null },
+      { numeral: 'IX', label: 'Open game to others', note: 'Up to six players in one city', action: () => this.showParty() },
       { numeral: 'X', label: 'Quit to title', note: 'Progress since the last save is lost', action: () => this.actions.quit() },
     ]);
 
@@ -149,6 +163,12 @@ export class PauseMenu {
     city.append(seed, row, this.status());
     main.append(menu, city);
     return main;
+  }
+
+  /** The multiplayer page is drawn from the room as it stands, not as it stood when the menu opened. */
+  private showParty(): void {
+    this.party.update();
+    this.pages.show('party');
   }
 
   private buildTransfer(): HTMLElement {

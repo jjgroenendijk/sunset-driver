@@ -31,7 +31,11 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   focus, and Escape going up a page. `src/ui/pause.ts` is the pause menu of spec section 12, drawn
   with the title's classes and the few rules of `pause.css`. It listens to no key: Escape both opens
   and closes it, so `main.ts` hands it every key while it is open. While it is open the frame loop
-  takes no steps and the clock keeps its place between two ticks.
+  takes no steps and the clock keeps its place between two ticks — unless a room is open, because a
+  session in company cannot stop the city (`docs/multiplayer.md`).
+- `src/ui/party.ts` is the Open game to others page of spec section 21: the room code, the invite
+  link and who is in the city. It holds no networking and is redrawn from one state object, which
+  `main.ts` hands it through `PauseMenu.refresh` whenever the room changes under it.
 
 ## The loading screen
 

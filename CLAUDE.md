@@ -88,10 +88,10 @@ Beyond what the file names suggest:
 - `src/world` — must run headless in Node, since the sweeps import it. three.js math and generators
   are fine; the renderer, Rapier and the DOM are not. Produces a plain world description.
 - `src/render` — reads the world description, never mutates it.
-- `src/audio` — two halves. `plan.ts`, `engine.ts`, `space.ts`, `cue.ts`, `ambience.ts` and
-  `site.ts` read the record and hold no Tone.js and no DOM, so they run headless; `voices.ts`,
-  `one-shots.ts`, `beds.ts` and `mixer.ts` own the Web Audio graph. Nothing here may write to the
-  record.
+- `src/audio` — two halves, named in `docs/audio.md`: one reads the record and runs headless with
+  no Tone.js and no DOM, the other owns the Web Audio graph. Nothing here writes to the record.
+- `src/net` — the multiplayer of spec section 21. Only `invite.ts`, `control.ts` and `attach.ts`
+  are imported at the top level; the rest loads on the press, so single player connects to nothing.
 - `scripts/*.ts` — run with plain `node` (type stripping), not through Vite.
   `scripts/render-preview.html`, `scripts/map-preview.html` and `scripts/audio-check.html` are the
   exceptions a script serves rather than runs; they are not build inputs.
