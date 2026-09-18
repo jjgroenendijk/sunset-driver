@@ -176,8 +176,10 @@ export function judgeFrame(metrics: FrameMetrics): string[] {
  *
  * A page error is an uncaught exception, and it fails the check. What the page
  * writes to its console does not: three.js reports WebGPU validation there, and
- * a frame can be right while it does (issue #339). A validation error that does
- * break the frame is caught by the pixels, which is the point of measuring them.
+ * much of it costs the frame nothing. Validation that does break the frame —
+ * issue #339 blanks it on some Chromium builds — shows up in the pixels, which
+ * is why they are what the verdict is made of. The console is printed either
+ * way, because it usually names the cause.
  */
 async function check(seedText: string): Promise<boolean> {
   const { chromium } = await import('playwright-core');

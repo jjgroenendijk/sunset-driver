@@ -37,9 +37,11 @@ Run one at a time — two at once fail. `render-sheet.ts` draws every tile in on
 seeds cost about one render rather than four.
 
 `test:render` costs one such frame and answers only whether the renderer drew a world, not whether
-it looks right. It is red on `main` today, for a real reason: issue #339 blanks every frame the
-preview takes. Until that is fixed, a black picture from `render-preview.ts` is that bug and not
-your change.
+it looks right. Run it when a frame looks wrong, to tell a broken renderer from a broken change.
+
+A black picture is often issue #339 and not your change: on some Chromium builds the colour grade's
+table never reaches the GPU, and every frame comes out black. Cloud containers hit it; CI does not.
+`test:render` says so plainly — `1 colours, under 64` — where a picture only looks broken.
 
 `render-profile.ts` needs a real GPU and SwiftShader will not do. GPU timings move by several
 milliseconds between runs, so compare two builds by running each more than once.

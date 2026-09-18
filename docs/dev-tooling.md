@@ -220,10 +220,11 @@ pixels. It fails on four things:
   that is sky and nothing else has almost none — it holds thousands of colours and still means the
   world was never drawn.
 
-The thresholds are 64 colours, 90% for the flattest colour and 2% of pairs differing. Three real
-frames measured 298, 193 and 265 colours, 20%, 62% and 17% flat, and 15.5%, 12.4% and 9.3% edges,
-so the nearest threshold has more than four times the margin it needs. They are set that low on
-purpose: this check says the renderer drew a world, not that the world looks right. A picture from
+The thresholds are 64 colours, 90% for the flattest colour and 2% of pairs differing. Four real
+frames — noon, one in the small hours, another seed, and the one CI drew — measured 298, 193, 265
+and 276 colours, 20%, 62%, 17% and 16% flat, and 15.5%, 12.4%, 9.3% and 13.1% edges, so the nearest
+threshold has more than four times the margin it needs. They are set that low on purpose: this
+check says the renderer drew a world, not that the world looks right. A picture from
 `render-preview.ts` is what answers that.
 
 `test/render-check.test.ts` measures frames built by hand — blank, flat, a bare sky gradient, and
@@ -231,13 +232,25 @@ one with blocks in it — so what the check would say costs nothing to test. Onl
 browser.
 
 It takes about a minute, almost all of it the one SwiftShader frame, so it runs neither in `npm
-test` nor in `npm run verify`. On a pull request the `render-smoke` job of `ci.yml` runs it. That
-job does not gate the merge: SwiftShader draws on a shared runner's processor, and a device lost
-there is not a rendering regression. The repository ruleset is where that is changed.
+test` nor in `npm run verify`. On a pull request the `render-smoke` job of `ci.yml` runs it, in
+about 65 seconds. That job does not gate the merge: SwiftShader draws on a shared runner's
+processor, and a device lost there is not a rendering regression. The repository ruleset is where
+that is changed.
 
-It is red today, for a real reason: issue #339. The colour grade's table is a 3D texture whose
-upload WebGPU refuses, so the cube stays as it was allocated — all zeros — and the grade maps every
-colour to black. Disabling the grade alone draws the street, the buildings and the traffic.
+**It fails in some cloud sessions, and that is issue #339, not your change.** The colour grade's
+table is a 3D texture, and on some Chromium builds the upload is refused: the cube stays as it was
+allocated — all zeros — and the grade maps every colour to black. A session that hits it sees this,
+and `render-preview.ts` writes a black picture beside it:
+
+```
+  1 colours, under 64: the frame is blank or nearly so
+```
+
+Which build decides it. The Chromium a cloud container carries at `/opt/pw-browsers` shows it; the
+one `playwright-core` installs on `ubuntu-latest` does not, which is why CI is green. Before
+believing this check about your own change, read what it printed: the grade failure blanks the
+frame completely, so it fails all three measures at once and fills the console with a WebGPU
+validation error naming a 16x16x16 `RGBA16Float` texture.
 
 ## The browser the previews need
 
