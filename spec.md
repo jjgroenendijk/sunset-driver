@@ -880,20 +880,41 @@ Maximise coverage, subject to the veto that no feature exists purely to justify 
 | `WorkerPool` | Off-thread chunk generation |
 | `BufferGeometryUtils` | Geometry merging and helpers |
 
-### 22.2 To evaluate
+### 22.2 Evaluated
 
-| Addon | Question |
-|---|---|
-| `TRAANode` / `TAAUNode` | Does temporal AA with upscaling beat SMAA plus render scale on integrated graphics? |
-| `TileShadowNode` | Does tiled shadowing beat CSM for the small fixed top-down view? |
-| `Raymarching` with `curlNoise`, or `MarchingCubes` | Which gives volumetric smoke, fire and fog banks within budget? |
-| `SSRNode` | Screen-space reflections for wet roads and puddles |
-| `ImportanceSampledEnvironment` | Sky-driven reflections on wet roads and car paint, if SSR does not cover it |
-| `TessellateModifier` | Vertex-displacement dents for progressive vehicle damage, if vertex counts fit the instancing plan |
-| `CCDIKSolver` | Foot IK on slopes and kerbs for pedestrians, if the budget allows |
-| `TransitionNode` | Metro fast-travel and death/arrest transitions |
-| `CurveModifier` | Road-aligned geometry where `LoftGeometry` does not fit |
-| `SceneOptimizer` | Automatic scene-level batching |
+Every addon below was read against this game rather than in general, and none of the ten is adopted.
+Four rules decided most of them.
+
+- **A `positionNode` carries no history.** three.js builds screen-space velocity from
+  `positionLocal` against `positionPrevious`. It fills `positionPrevious` for an `InstancedMesh`, a
+  `BatchedMesh` and a real `SkinnedMesh`, and never for a material that places its own vertices. The
+  crowd is one `Mesh` standing at the origin whose material places every vertex, so it reports the
+  velocity of a body that never moved. Anything temporal reads that history.
+- **A tier change must compile nothing** (section 9.2). An addon that swaps a shadow node, or that
+  resizes a history target when the render scale moves, rebuilds shaders in the middle of a drive.
+- **No asset files** (section 1.2). An addon that wants an equirectangular HDR has nothing to read.
+- **No feature exists to justify an addon** (section 1.2). Where the game already draws the thing,
+  the addon has to be cheaper or better, not merely present.
+
+| Addon | Decision | Why |
+|---|---|---|
+| `TRAANode` / `TAAUNode` | No; SMAA plus render scale stays | Temporal AA wants a velocity buffer beside the whole scene pass, and the crowd has no velocity to give, so every pedestrian smears. Its history is sized to the drawing buffer, which a tier moves. |
+| `TileShadowNode` | No; CSM stays | It draws the scene once per tile. Two cascades already cover the fixed 160 m this camera sees, and tiles buy texel density nobody looks for. Swapping the shadow node rebuilds every material in the city. |
+| `Raymarching` with `curlNoise`, or `MarchingCubes` | No, both; the flat puffs stay | `MarchingCubes` re-meshes on the frame thread every frame, which section 9.1 took the last builder off. Raymarching pays per pixel for a plume the 58-degree camera sees as a disc, against two draws for every fire in the world. |
+| `SSRNode` | No | Off a flat road the mirror ray climbs about 1.6 m for every metre it travels forward, so on an open street it clears the rooftops and screen space holds nothing to reflect. Its fallback is an HDR environment, which section 1.2 forbids. It also wants depth, normal and metalness from the scene pass, and a history of its own. |
+| `ImportanceSampledEnvironment` | No | It samples an equirectangular HDR and builds luminance CDF tables from it. The sky is generated and changes through the day, so the tables would be rebuilt on every grade step. The want behind the row is real: a sky-driven environment is issue #431. |
+| `TessellateModifier` | No | It subdivides one geometry on the processor and hands back another. Vehicles are instanced off one body, and a dent already pushes in the boxes of the panel it lands on (section 11.3). |
+| `CCDIKSolver` | No | It solves on the processor against one `SkinnedMesh` per person. The crowd is one draw of baked instanced skinning, and this camera looks down on the feet the solver would place. |
+| `TransitionNode` | No | It mixes two beauty passes, so the frame is drawn twice. The metro fade is a sheet over the page at a strength the record carries: no pass, and it stays in a replay. |
+| `CurveModifier` | No | It works through `material.onBeforeCompile`, which `WebGPURenderer` never calls (Appendix A). `LoftGeometry` sweeps the roads. |
+| `SceneOptimizer` | No | It merges meshes into `BatchedMesh`, which on WebGPU in three.js 0.186 draws one call per instance in every pass. `batch.ts` merges into one `Mesh` for that reason. |
+
+**What was not measured.** No row was decided on a frame time: `render-profile.ts` needs a real GPU
+and none was available. Each decision rests on what the addon asks of the scene pass, of the frame
+thread or of an asset, and that is the same on every machine. Two rows would reopen on a change
+rather than on a faster machine: temporal AA, if the crowd is ever given a `positionPrevious`, and
+`SSRNode`, if the game ever carries an environment for its rays to miss into. The rest do not get
+cheaper.
 
 ---
 

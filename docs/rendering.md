@@ -188,6 +188,12 @@ lamps and the lights a vehicle carries — in `docs/lighting.md`.
 - three.js 0.186 sends `GPUTextureViewDescriptor.swizzle` as a string, and a browser that has made
   it a dictionary throws on every `createView`, so nothing is ever drawn. `renderer.ts` drops the
   field where the browser refuses it. Delete that shim once three.js sends the dictionary.
+- **A material that writes `positionNode` reports no velocity.** three.js builds screen-space
+  velocity from `positionLocal` against `positionPrevious`, and fills `positionPrevious` only for an
+  `InstancedMesh`, a `BatchedMesh` or a real `SkinnedMesh`. The crowd places its own vertices in
+  `pedestrian-material.ts`, so it hands back the velocity of a mesh standing still at the origin.
+  That is what turned down `TRAANode` and `TAAUNode` in spec section 22.2, and anything temporal
+  meets it again.
 
 ## Roads and pavement
 
