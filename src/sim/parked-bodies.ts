@@ -46,11 +46,6 @@ export class ParkedBodies {
     return count;
   }
 
-  /** True where a body standing in the world is one of these parked cars. */
-  holds(body: number): boolean {
-    return this.bays.some((entry) => entry.body?.handle === body);
-  }
-
   /** Before the world is stepped: stand a body in every bay of the box that holds a car on this tick. */
   lead(state: SimState, minX: number, minY: number, maxX: number, maxY: number): void {
     const box = this.box;
@@ -102,11 +97,29 @@ export class ParkedBodies {
       const byCar = Math.hypot(car.x - x, car.y - y) < NEAR && footprintsTouch(car, theirs, margin);
       const byWalker = walker !== undefined && Math.hypot(walker.x - x, walker.y - y) < NEAR && footprintsTouch(walker, theirs, margin);
       if (!byCar && !byWalker) continue;
-      const parked = entry.car as ParkedCar;
-      this.drop(entry);
-      entry.until = Infinity;
-      promote(entry.bay, parked, spec);
+      this.release(entry, promote);
     }
+  }
+
+  /**
+   * Take the car whose body a shot, a swing or a blast met out of its bay, and
+   * hand it to `promote`. Answers the bay, or undefined where the body is not
+   * one of these cars.
+   */
+  take(body: number, promote: (bay: number, parked: ParkedCar, spec: VehicleSpec) => void): number | undefined {
+    const entry = this.bays.find((candidate) => candidate.body?.handle === body);
+    if (entry === undefined) return undefined;
+    this.release(entry, promote);
+    return entry.bay;
+  }
+
+  /** Empty a bay for as long as the record of its car lasts, and hand the car over. */
+  private release(entry: Bay, promote: (bay: number, parked: ParkedCar, spec: VehicleSpec) => void): void {
+    const parked = entry.car as ParkedCar;
+    const spec = entry.spec as VehicleSpec;
+    this.drop(entry);
+    entry.until = Infinity;
+    promote(entry.bay, parked, spec);
   }
 
   private stand(entry: Bay, car: ParkedCar): void {

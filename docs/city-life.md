@@ -133,6 +133,8 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   record goes into `SimState.traffic.promoted`, ascending by id, and it becomes a dynamic box with
   its speed. A touch is a 2D box test and not a Rapier contact: Rapier makes no contact between
   two kinematic bodies by default, and the player's capsule is one.
+- A shot, a swing or a blast promotes a car as a touch does (`docs/sim-and-ui.md`, Weapons). A
+  promoted car takes crash damage from the speed its body lost over one tick, as the player's does.
 
 ## Parked cars
 

@@ -113,6 +113,11 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
 
 ## Hotwiring
 
+- A player on foot out of reach of their own vehicle gets into the nearest promoted one
+  (`steal.ts`). The record holds one vehicle of the player's, so a theft is a swap: the stolen one
+  becomes `state.vehicle` and the one left behind takes its place in `TrafficState.promoted`, under
+  the same id, so the tour of the stolen car stays suppressed. `TheftState.target` names the
+  promoted vehicle whose lock is being worked, and is absent for the player's own.
 - `src/sim/theft.ts` is the hotwire minigame (spec section 11.4). `needsHotwire` reads the roster's
   own `alarm` and `luxury` flags, so nothing carries a second list of what is worth stealing, and
   `VehicleState.hotwired` says a lock is beaten once and not again. An attempt can only end in the
@@ -150,8 +155,13 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
   arc `swingReaches` describes, and a thrown weapon or a launcher puts a `ProjectileState` into the
   record that `fly` carries one tick at a time, bouncing it off what it meets until its fuse burns
   through. The shooter's own body is left out of every cast, so nobody shoots their own door. A
-  round can hit the player's vehicle, a police car or an enforcer; a cast that meets a traffic body
-  stops there as if it met the ground, until #256 lands.
+  round can hit the player's vehicle, a police car, an enforcer or a car of the city.
+- A round, a swing or a projectile that meets a car of the city goes through
+  `TrafficBodies.strike`, which promotes the car (spec section 5.3) and answers its record, and the
+  damage is written into that. A blast calls `strikeNear` over its radius first, then reaches every
+  promoted vehicle as it reaches the player's own. Rapier 0.20 lets the later pellets of the same
+  tick find the dynamic body that replaced the kinematic one, with no step between them;
+  `test/sim-traffic-interaction.test.ts` holds that for a shotgun.
 - A swing reaches four things, and one blow may meet several. The enforcers of spec section 17.2 and
   the crowd of section 13.1 are swept **off the record** rather than out of the world, because an
   arc is not a cast: so a bat reaches an enforcer who has just walked into the physics box, and a

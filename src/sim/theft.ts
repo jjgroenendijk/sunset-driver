@@ -110,11 +110,20 @@ export interface TheftState {
   alarm: boolean;
   /** Heat the alarm has raised so far, so the HUD can say what it is costing. */
   noise: number;
+  /**
+   * The id of the promoted vehicle of the traffic being broken into (spec
+   * section 5.3), and absent while it is the player's own vehicle. A save from
+   * before it carries none, which is the player's own.
+   */
+  target?: number;
 }
 
-/** A fresh attempt at a vehicle's lock, starting at a tick. */
-export function createTheft(spec: VehicleSpec, tick: number): TheftState {
-  return {
+/**
+ * A fresh attempt at a vehicle's lock, starting at a tick. `target` is the id
+ * of a promoted vehicle of the traffic, left out for the player's own.
+ */
+export function createTheft(spec: VehicleSpec, tick: number, target?: number): TheftState {
+  const theft: TheftState = {
     startedTick: tick,
     pins: 0,
     sweepTick: tick,
@@ -122,6 +131,8 @@ export function createTheft(spec: VehicleSpec, tick: number): TheftState {
     alarm: spec.alarm,
     noise: 0,
   };
+  if (target !== undefined) theft.target = target;
+  return theft;
 }
 
 /**

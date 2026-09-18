@@ -5,9 +5,9 @@
  * `weapon.ts` holds the model and decides whether the weapon fires; this casts
  * the ray per pellet, sweeps the melee arc and carries everything in the air a
  * tick at a time. `physics.ts` owns the world and hands in what can be hit: the
- * player's vehicle, the police cars of spec section 14 and the faction
- * enforcers of spec section 17.2. The pedestrians of spec section 13.1 are what
- * the rays will find after them.
+ * player's vehicle, the police cars of spec section 14, the faction enforcers
+ * of spec section 17.2 and the cars of the city, which a hit promotes (spec
+ * section 5.3).
  */
 import RAPIER from '@dimforge/rapier3d-compat';
 import { crowdFeelsBlast, crowdHearsShot } from './crowd-reaction.ts';
@@ -17,7 +17,8 @@ import { unrotate } from './frame.ts';
 import type { InputFrame } from './input.ts';
 import { hurt, SKIN, vehicleGap } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
-import type { VehicleSpec } from './vehicle.ts';
+import type { PromotedVehicle } from './traffic.ts';
+import { specOf, type VehicleSpec, type VehicleState } from './vehicle.ts';
 import { ENFORCER_CAPSULE } from './enforcer-bodies.ts';
 import { blastEnforcers, hurtEnforcer } from './enforcer.ts';
 import { blastUnits, commitCrime, report, shootUnit } from './police.ts';
@@ -71,10 +72,14 @@ export interface ShotTarget {
   crowd?: CrowdSource;
   /**
    * The cars of the city standing in the world (spec section 13.1): the traffic
-   * and the parked. Neither takes damage yet (#256); this is what tells a bat
-   * that met a bonnet from one that met a wall.
+   * and the parked. A hit promotes the car it met (spec section 5.3) and
+   * answers its record, which the damage is then written into. A ground with no
+   * roads leaves it out.
    */
-  cars?: { isCar(handle: number): boolean };
+  cars?: {
+    strike(state: SimState, collider: number): PromotedVehicle | undefined;
+    strikeNear(state: SimState, x: number, h: number, y: number, radius: number): void;
+  };
 }
 
 /**
@@ -119,10 +124,8 @@ export class Gunfire {
    * Nothing here decides whether the weapon fires; `stepWeapons` does, and it
    * also raises the heat a shot is worth (spec section 14).
    *
-   * The player's vehicle, the police cars of spec section 14 and the faction
-   * enforcers of spec section 17.2 can be hit: a ray that meets a traffic body
-   * stops there (#256), and the pedestrians of spec section 13.1 are what the
-   * rays will find after them.
+   * The player's vehicle, the police cars of spec section 14, the faction
+   * enforcers of spec section 17.2 and the cars of the city can be hit.
    */
   step(state: SimState, input: InputFrame, target: ShotTarget): void {
     // A blow is remembered for a few ticks and no longer: what reads one has
@@ -181,10 +184,16 @@ export class Gunfire {
       hurtEnforcer(state, enforcer, spec.damage);
       return;
     }
-    if (target.body === undefined || hit.collider.handle !== target.body.handle) return;
     // The round pushes the vehicle the way it was flying, which is the direction
     // the panel rule reads, exactly as a crash pushes it away from the wall.
-    this.hit(state, spec, ray.dx, ray.dh, ray.dy, roundSeverity(spec), target);
+    if (target.body !== undefined && hit.collider.handle === target.body.handle) {
+      this.hit(state, spec, state.vehicle, target.spec, ray.dx, ray.dh, ray.dy, roundSeverity(spec));
+      return;
+    }
+    // A round that went into a car of the city takes it off its tour (spec
+    // section 5.3) and is taken off the car.
+    const car = target.cars?.strike(state, hit.collider.handle)?.vehicle;
+    if (car !== undefined) this.hit(state, spec, car, specOf(car.cls), ray.dx, ray.dh, ray.dy, roundSeverity(spec));
   }
 
   /**
@@ -225,7 +234,7 @@ export class Gunfire {
     const v = state.vehicle;
     const bearing = Math.atan2(v.z - p.y, v.x - p.x);
     if (swingReaches(spec, p.heading, vehicleGap(p, v, target.spec), bearing)) {
-      this.hit(state, spec, Math.cos(bearing), 0, Math.sin(bearing), roundSeverity(spec), target);
+      this.hit(state, spec, v, target.spec, Math.cos(bearing), 0, Math.sin(bearing), roundSeverity(spec));
       this.land(state, spec, 'vehicle', v.x, v.z, v.y);
       met = true;
     }
@@ -272,7 +281,7 @@ export class Gunfire {
   }
 
   /**
-   * The world a swing met: a police car, a parked car, the traffic, a kerb.
+   * The world a swing met: a police car, a car of the city, a kerb.
    * These stand in the physics world, so the arc is fanned into
    * {@link SWING_RAYS} rays and the nearest thing any of them met is what was
    * struck. `met` says the swing has already landed on something the record
@@ -318,7 +327,15 @@ export class Gunfire {
       return;
     }
     if (met) return;
-    this.land(state, spec, target.cars?.isCar(handle) === true ? 'vehicle' : 'hard', x, y, h);
+    // A car of the city is taken off its tour or out of its bay by the blow
+    // (spec section 5.3), and takes the dent.
+    const car = target.cars?.strike(state, handle)?.vehicle;
+    if (car === undefined) {
+      this.land(state, spec, 'hard', x, y, h);
+      return;
+    }
+    this.hit(state, spec, car, specOf(car.cls), Math.cos(angle), 0, Math.sin(angle), roundSeverity(spec));
+    this.land(state, spec, 'vehicle', x, y, h);
   }
 
   /** Write one landed blow into the record, for the burst and the knock to read. */
@@ -327,19 +344,27 @@ export class Gunfire {
   }
 
   /**
-   * Put one hit into the vehicle: the dent, what it costs the vehicle, and what
+   * Put one hit into a vehicle: the dent, what it costs the vehicle, and what
    * the round does beyond that. The direction comes in world axes and is read in
    * the vehicle's own frame, so the panel that takes it is the panel that was
-   * facing the shot.
+   * facing the shot. `row` is the roster row of the vehicle `v`.
    */
-  private hit(state: SimState, spec: WeaponSpec, dx: number, dh: number, dy: number, severity: number, target: ShotTarget): void {
-    const v = state.vehicle;
+  private hit(
+    state: SimState,
+    spec: WeaponSpec,
+    v: VehicleState,
+    row: VehicleSpec,
+    dx: number,
+    dh: number,
+    dy: number,
+    severity: number,
+  ): void {
     unrotate(this.point, v, dx, dh, dy);
     // `unrotate` answers the vehicle's own axes: `x` along it, `y` up and `z`
     // across it, which is the order the panel rule reads them in.
     damageVehicle(
       v.damage,
-      target.spec,
+      row,
       severity,
       this.point.x,
       this.point.z,
@@ -384,6 +409,9 @@ export class Gunfire {
         const mine = target.shooter;
         const hit = this.world.castRayAndGetNormal(this.ray, step, true, undefined, undefined, mine);
         if (hit !== null) {
+          // A thing that meets a car of the city takes it off its tour, whether
+          // it goes off there or bounces away (spec section 5.3).
+          target.cars?.strike(state, hit.collider.handle);
           // Stand it on the surface it met rather than inside it, so the next
           // step starts outside the ground and not under it.
           p.x = this.from.x + this.along.x * hit.timeOfImpact + hit.normal.x * SKIN;
@@ -433,10 +461,35 @@ export class Gunfire {
     // And by every enforcer inside it, who feel it as people rather than as
     // panels (spec section 17.2).
     blastEnforcers(state, p.x, p.y, spec.damage, (gap) => blastFalloff(gap, flight.blastRadius));
-    const share = blastFalloff(distance, flight.blastRadius);
+    this.blast(state, spec, v, specOf(v.cls), dx, dh, dy, distance, flight.blastRadius);
+    // Every car of the city inside it is taken off its tour, and then feels it
+    // as the player's own car does.
+    target.cars?.strikeNear(state, p.x, p.h, p.y, flight.blastRadius);
+    for (const record of state.traffic.promoted) {
+      const car = record.vehicle;
+      const cx = car.x - p.x;
+      const ch = car.y - p.h;
+      const cy = car.z - p.y;
+      this.blast(state, spec, car, specOf(car.cls), cx, ch, cy, Math.hypot(cx, ch, cy), flight.blastRadius);
+    }
+  }
+
+  /** What a blast does to one vehicle standing `distance` from it, along `(dx, dh, dy)`. */
+  private blast(
+    state: SimState,
+    spec: WeaponSpec,
+    v: VehicleState,
+    row: VehicleSpec,
+    dx: number,
+    dh: number,
+    dy: number,
+    distance: number,
+    radius: number,
+  ): void {
+    const share = blastFalloff(distance, radius);
     if (share === 0) return;
     const length = Math.max(distance, 1e-6);
-    this.hit(state, spec, dx / length, dh / length, dy / length, roundSeverity(spec) * share, target);
+    this.hit(state, spec, v, row, dx / length, dh / length, dy / length, roundSeverity(spec) * share);
   }
 
 }
