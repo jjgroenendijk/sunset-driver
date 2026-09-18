@@ -157,6 +157,15 @@ scene ever holds is in `docs/shops.md`.
   triangles and a decal is clipped against every one of them. It is cut from a patch of a few cells
   sampled from the same carve on the same grid, and lifted `SKID_LIFT` clear so the road does not
   hide it. The buffer is a ring: a long drive writes over its own oldest marks.
+- Only tarmac takes a mark. `update` is given the same surface the physics grips through — the
+  session's `surfaceAt`, which is the city's one `SurfaceIndex` — and a tyre sliding on dirt, sand
+  or open ground lays nothing, because none of them holds rubber. A tyre that slides off the road
+  and back on leaves two stripes rather than one arc across the verge.
+- A mark fades before it goes. Each vertex carries a `rubber` attribute, from 1 when it is laid to 0
+  as the ring comes round to it, and the material's `opacityNode` reads it, so the oldest rubber
+  thins away over the last `FADE_SHARE` of the buffer instead of going out between two frames. It is
+  worked out in `refade` on the processor, once per mark laid, over the whole buffer: that is a few
+  thousand floats a few times a second, and it keeps the fade something a test can read back.
 
 ## Plants
 

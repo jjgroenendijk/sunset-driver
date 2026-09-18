@@ -56,6 +56,7 @@ import {
   type VehicleSpec,
   type VehicleState,
 } from '../sim/vehicle.ts';
+import { SurfaceIndex, type Surface } from '../world/surface.ts';
 import { generateWorld } from '../world/world.ts';
 import { FollowCamera, PULL_MARGIN } from './camera.ts';
 import { poseFor } from './character-pose.ts';
@@ -336,8 +337,12 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   // A fire is what has been burning for a while, not what started this frame,
   // so the smoke is given a run of ticks to climb before the picture is taken.
   scene.resetDamage(tick - FX_WARMUP);
-  for (let t = tick - FX_WARMUP; t <= tick; t++) scene.damage(vehicle, record, t);
-  if (request.skid === true) drift(scene, vehicle, spec, heading);
+  // The surface of the ground, as the game reads it through the city: rubber
+  // is left on the tarmac and nowhere else (spec section 11.3).
+  const surfaces = new SurfaceIndex(world);
+  const surfaceAt = (px: number, py: number): Surface => surfaces.at(px, py);
+  for (let t = tick - FX_WARMUP; t <= tick; t++) scene.damage(vehicle, record, t, surfaceAt);
+  if (request.skid === true) drift(scene, vehicle, spec, heading, surfaceAt);
   arm(scene, request, stand, tick);
   // The traffic of spec section 13.1, where its tours put it at the tick the
   // picture is taken, as the game draws it.
@@ -522,7 +527,13 @@ function damageAt(stage: string, tick: number): DamageState {
  * frame shows what a handbrake turn leaves (spec section 11.3). The game lays
  * these as the car slides; nothing here is simulated.
  */
-function drift(scene: WorldScene, vehicle: VehicleState, spec: VehicleSpec, heading: number): void {
+function drift(
+  scene: WorldScene,
+  vehicle: VehicleState,
+  spec: VehicleSpec,
+  heading: number,
+  surfaceAt: (x: number, y: number) => Surface,
+): void {
   const sliding: VehicleState = JSON.parse(JSON.stringify(vehicle)) as VehicleState;
   for (const wheel of sliding.wheels) {
     wheel.contact = true;
@@ -543,7 +554,7 @@ function drift(scene: WorldScene, vehicle: VehicleState, spec: VehicleSpec, head
     const half = -way / 2;
     sliding.qy = Math.sin(half);
     sliding.qw = Math.cos(half);
-    scene.skid.update(sliding, spec, (px, py) => scene.heightAt(px, py));
+    scene.skid.update(sliding, spec, (px, py) => scene.heightAt(px, py), surfaceAt);
   }
 }
 

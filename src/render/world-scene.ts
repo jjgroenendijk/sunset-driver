@@ -34,6 +34,7 @@ import { chunkAt, CHUNK_SIZE } from '../world/chunks.ts';
 import type { MetroStation } from '../world/metro.ts';
 import type { Shop, ShopKind, ShopRoom } from '../world/shops.ts';
 import type { ParkingBays } from '../world/parking.ts';
+import type { Surface } from '../world/surface.ts';
 import type { Point, WorldDescription } from '../world/types.ts';
 import { Batch } from './batch.ts';
 import { BuildingScenery } from './buildings.ts';
@@ -279,13 +280,17 @@ export class WorldScene {
    * The blows a melee weapon has landed are drawn here too (spec section
    * 11.6), because they are the same thing: a burst thrown off the record at a
    * tick, coloured by what it says was struck.
+   *
+   * `surfaceAt` is the city's own answer for what the ground is made of, the
+   * one the physics gripped through, so rubber is left exactly where a tyre
+   * could have left it.
    */
-  damage(v: VehicleState, record: DrawnDamage, tick: number): void {
+  damage(v: VehicleState, record: DrawnDamage, tick: number, surfaceAt: (x: number, y: number) => Surface): void {
     // The blazes stand on the ground, and how high the ground is here is
     // something only the scene knows.
     this.fx.watch(record.fires.blazes, (x, y) => this.heightAt(x, y));
     this.fx.update(v, this.vehicle.vehicle, record.seed, tick);
-    this.skid.update(v, this.vehicle.vehicle, this.height);
+    this.skid.update(v, this.vehicle.vehicle, this.height, surfaceAt);
     this.melee.update(record.hits, record.seed, tick);
   }
 

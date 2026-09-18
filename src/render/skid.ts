@@ -15,9 +15,15 @@
  * carve the chunk was built from, aligned to the same grid, so the mark lands
  * on the ground the player can see and costs two dozen triangles to cut.
  *
+ * Only a paved road takes a mark. Dirt and sand are where a car slides most and
+ * hold no rubber, so a tyre sliding there lays nothing; the dust it throws up
+ * belongs with the weather and the particles instead.
+ *
  * Every mark goes into one buffer with one material, so the whole road's worth
  * of rubber is a single draw call. The buffer is a ring: once it is full the
- * oldest marks are written over, which is what bounds a long drive.
+ * oldest marks are written over, which is what bounds a long drive. A mark
+ * fades as the ring comes round to it, so the oldest rubber thins away rather
+ * than going out between one frame and the next.
  */
 import {
   BufferAttribute,
@@ -26,13 +32,15 @@ import {
   Euler,
   Matrix4,
   Mesh,
-  MeshBasicMaterial,
   Quaternion,
   Vector3,
 } from 'three';
+import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { DecalGeometry } from 'three/examples/jsm/geometries/DecalGeometry.js';
-import { headingOf, type VehicleSpec, type VehicleState, type WheelSpec, type WheelState } from '../sim/vehicle.ts';
+import { headingOf, isLoose, type VehicleSpec, type VehicleState, type WheelSpec, type WheelState } from '../sim/vehicle.ts';
+import type { Surface } from '../world/surface.ts';
 import { CHUNK_TERRAIN_CELL } from '../world/terrain.ts';
+import { attribute, float } from './tsl.ts';
 
 /** Vertices the buffer holds. About four hundred marks, which is a long drift. */
 export const SKID_VERTEX_CAP = 12_000;
@@ -55,6 +63,12 @@ const OVERLAP = 1.35;
 /** The rubber left on the road. */
 const RUBBER = 0x14100f;
 
+/** How dark a fresh mark is laid, before anything has aged it. */
+const RUBBER_OPACITY = 0.65;
+
+/** The share of the ring a mark spends fading, at the end of its life in the buffer. */
+const FADE_SHARE = 0.35;
+
 /** Where a tyre last left a mark, so the next one is a step further on. */
 interface LastMark {
   x: number;
@@ -67,6 +81,17 @@ export class SkidMarks {
   readonly mesh: Mesh;
   private readonly positions: Float32Array;
   private readonly normals: Float32Array;
+  /** What is left of each vertex's rubber, from 1 when it is laid to 0 as the ring reaches it. */
+  private readonly alphas: Float32Array;
+  /**
+   * Vertices the buffer had taken when each vertex was laid, which is what its
+   * age is measured from. It is never uploaded, so it counts in doubles: a
+   * float stops counting whole numbers long before a long session stops laying
+   * rubber.
+   */
+  private readonly stamps: Float64Array;
+  /** Vertices written since the buffer was cleared. It counts on past the cap; the ring does not. */
+  private written = 0;
   private readonly geometry = new BufferGeometry();
   /** Where the next mark is written, and whether the ring has come round. */
   private cursor = 0;
@@ -88,22 +113,26 @@ export class SkidMarks {
   constructor(cap = SKID_VERTEX_CAP) {
     this.positions = new Float32Array(cap * 3);
     this.normals = new Float32Array(cap * 3);
+    this.alphas = new Float32Array(cap);
+    this.stamps = new Float64Array(cap);
     this.geometry.setAttribute('position', new BufferAttribute(this.positions, 3));
     this.geometry.setAttribute('normal', new BufferAttribute(this.normals, 3));
+    this.geometry.setAttribute('rubber', new BufferAttribute(this.alphas, 1));
     this.geometry.setDrawRange(0, 0);
-    this.mesh = new Mesh(
-      this.geometry,
-      new MeshBasicMaterial({
-        color: RUBBER,
-        transparent: true,
-        opacity: 0.65,
-        depthWrite: false,
-        side: DoubleSide,
-        polygonOffset: true,
-        polygonOffsetFactor: -4,
-        polygonOffsetUnits: -4,
-      }),
-    );
+    // The fade is a per-vertex attribute rather than a material uniform,
+    // because each mark thins away on its own age: the shader reads what
+    // {@link SkidMarks.refade} worked out for the vertex it is drawing.
+    const material = new MeshBasicNodeMaterial({
+      color: RUBBER,
+      transparent: true,
+      depthWrite: false,
+      side: DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4,
+    });
+    material.opacityNode = attribute('rubber', 'float').mul(float(RUBBER_OPACITY));
+    this.mesh = new Mesh(this.geometry, material);
     this.mesh.frustumCulled = false;
     this.mesh.castShadow = false;
     this.mesh.receiveShadow = false;
@@ -113,8 +142,15 @@ export class SkidMarks {
   /**
    * Lay whatever marks this frame calls for. Call it once a frame with the
    * record the simulation has just written and the carved ground of the world.
+   * `surfaceAt` is what that ground is made of, which decides whether a sliding
+   * tyre leaves anything at all.
    */
-  update(v: VehicleState, spec: VehicleSpec, heightAt: (x: number, y: number) => number): void {
+  update(
+    v: VehicleState,
+    spec: VehicleSpec,
+    heightAt: (x: number, y: number) => number,
+    surfaceAt: (x: number, y: number) => Surface,
+  ): void {
     if (spec.wheels.length === 0) return;
     const heading = headingOf(v);
     for (let i = 0; i < spec.wheels.length; i++) {
@@ -131,6 +167,13 @@ export class SkidMarks {
       this.contact(v, spec, wheel, state);
       const x = this.at.x;
       const z = this.at.z;
+      // Dirt, sand and open ground hold no rubber (spec section 11.3). A tyre
+      // that slides off the tarmac and back on leaves two stripes rather than
+      // one, so the stripe it was laying is ended here.
+      if (isLoose(surfaceAt(x, z))) {
+        last.marked = false;
+        continue;
+      }
       const step = last.marked ? Math.hypot(x - last.x, z - last.z) : SKID_STEP;
       if (step < SKID_STEP) continue;
       last.x = x;
@@ -149,17 +192,21 @@ export class SkidMarks {
   clear(): void {
     this.positions.fill(0);
     this.normals.fill(0);
+    this.alphas.fill(0);
+    this.stamps.fill(0);
+    this.written = 0;
     this.cursor = 0;
     this.wrapped = false;
     this.laid = 0;
     this.last.length = 0;
     this.geometry.setDrawRange(0, 0);
     (this.geometry.getAttribute('position') as BufferAttribute).needsUpdate = true;
+    (this.geometry.getAttribute('rubber') as BufferAttribute).needsUpdate = true;
   }
 
   dispose(): void {
     this.geometry.dispose();
-    (this.mesh.material as MeshBasicMaterial).dispose();
+    (this.mesh.material as MeshBasicNodeMaterial).dispose();
     this.patch.geometry.dispose();
   }
 
@@ -220,6 +267,7 @@ export class SkidMarks {
       this.cursor = 0;
       this.wrapped = true;
     }
+    this.written += count;
     for (let i = 0; i < count; i++) {
       const out = (this.cursor + i) * 3;
       this.positions[out] = from.getX(i);
@@ -228,12 +276,31 @@ export class SkidMarks {
       this.normals[out] = normals.getX(i);
       this.normals[out + 1] = normals.getY(i);
       this.normals[out + 2] = normals.getZ(i);
+      this.stamps[this.cursor + i] = this.written;
     }
     this.cursor += count;
     this.geometry.setDrawRange(0, this.wrapped ? cap : this.cursor);
+    this.refade();
     (this.geometry.getAttribute('position') as BufferAttribute).needsUpdate = true;
     (this.geometry.getAttribute('normal') as BufferAttribute).needsUpdate = true;
+    (this.geometry.getAttribute('rubber') as BufferAttribute).needsUpdate = true;
     this.geometry.computeBoundingSphere();
+  }
+
+  /**
+   * Work out what is left of every mark in the buffer. A vertex is written over
+   * once the ring has taken another buffer's worth of vertices, so how much of
+   * that it has already spent is how far through its life it is. It is walked
+   * whole rather than kept up per frame: a mark is laid a few times a second at
+   * most, and the buffer is a few thousand floats.
+   */
+  private refade(): void {
+    const cap = this.alphas.length;
+    const fading = cap * FADE_SHARE;
+    for (let i = 0; i < cap; i++) {
+      const left = cap - (this.written - (this.stamps[i] as number));
+      this.alphas[i] = Math.max(0, Math.min(1, left / fading));
+    }
   }
 }
 

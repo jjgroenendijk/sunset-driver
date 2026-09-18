@@ -337,7 +337,8 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
   an engine put out.
 - `WheelState.skid` is the one definition of a sliding tyre: the body is going across its own axle
   faster than `SKID_SLIP`, whether that came from the handbrake, a corner or a spin.
-  `src/render/skid.ts` is what draws it.
+  `src/render/skid.ts` is what draws it, on tarmac alone: the flag says the tyre is sliding, and the
+  surface under it says whether that leaves anything behind.
 - The gradient needs no rule of its own. The chassis is a rigid body, so a climb has gravity to
   fight and a descent has it behind; adding a slope term on top of that would count it twice.
 
