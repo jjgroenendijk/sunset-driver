@@ -98,7 +98,10 @@ scope.addEventListener('message', (event: MessageEvent) => {
     const world = command.world;
     const layers = buildLayers(world);
     source = new ChunkSource(world, layers);
-    lookups = chunkLookups(world, layers);
+    // Dealt once and shared: the lookups letter a shop's own fascia with it
+    // (spec section 13.1), and dealing them walks every building of the map.
+    const shops = buildShops(world, layers.buildings);
+    lookups = chunkLookups(world, layers, shops);
     // The stations fall out of the parcels every worker builds, so they cost
     // nothing; the bays are laid out by the one worker that was asked to.
     const stations = layers.parcels.stations.map((station) => ({ x: station.x, y: station.y }));
@@ -106,7 +109,6 @@ scope.addEventListener('message', (event: MessageEvent) => {
     // Handed over rather than copied, like a chunk: the worker keeps no reference to them.
     const arrays =
       bays === undefined ? [] : [bays.x, bays.y, bays.height, bays.heading, bays.use, bays.street].map((a) => a.buffer);
-    const shops = buildShops(world, layers.buildings);
     scope.postMessage({ type: 'ready', stations, metro: layers.parcels.metro, shops, bays } satisfies ReadyReply, arrays);
     return;
   }

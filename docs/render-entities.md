@@ -13,6 +13,7 @@ scene ever holds is in `docs/shops.md`.
 - Vehicles and weapons
 - Plants
 - Posters and hoardings
+- Shop signage and billboards
 - Traffic, parked cars and the crowd
 
 ## Buildings
@@ -192,6 +193,32 @@ scene ever holds is in `docs/shops.md`.
 - Looking at one in `render-preview.ts` takes some aiming: the camera's heading is fixed, so only a
   board with open ground to the south of it is in view at all, and a building between the camera
   and the player is cut away unless `--buildings=whole` is passed.
+
+## Shop signage and billboards
+
+- The advertising of spec section 13.1. `sign-art.ts` draws the whole of it into one picture in
+  code: a grid with a column per design — the six trades of spec section 16.1, then three
+  advertisements — and a row per culture of spec section 8.3. A cell is the pair, so a board says
+  what is sold and whose neighbourhood it stands in at once, and every board of a city is one
+  texture and one batch.
+- Two shapes, both the 4:1 of that cell, which is what lets one atlas serve both. A **fascia** is
+  flat on the wall over a shopfront; a **billboard** stands on the front of a roof and leans back
+  by `BILLBOARD_TILT`, for the reason the harm-reduction hoardings do. A fascia slides down a low
+  wall until it fits under the roof and is dropped where the fit would put it in the doorway, which
+  is what keeps a 4 m roadhouse from wearing its sign as a hat.
+- A roof may carry a harm-reduction hoarding and a billboard at once, so they take opposite ends of
+  it: `posterSide` (`poster-mesh.ts`) is exported for that, and `sign-mesh.ts` takes its negation.
+  Neither asks the other what it did.
+- Both read the wall through `wallFaceOf` (`wall-face.ts`), which measures the shell that was
+  really built rather than the massing that was asked for, and `boardFrame` is the one place a
+  lean is turned into a frame. That file is the whole of the arithmetic both of them share.
+- A fascia names the trade really behind it wherever the shops landed on that building. The trades
+  come from `ChunkLookups.tradeOf`, which the chunk worker fills from the same `buildShops` answer
+  it sends the main thread — dealt once, because dealing them walks every building of the map. A
+  storefront the shops never landed on still carries a sign: a shop row is a row of storefronts and
+  only one of them is enterable.
+- Whether a board lights after dark is its zone's business and is carried on the board's own
+  vertices, not in a second material. `docs/lighting.md` has the neon.
 
 ## Traffic, parked cars and the crowd
 

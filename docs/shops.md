@@ -34,6 +34,9 @@ corners, and has its own page in `docs/market.md`.
 - It is built in the chunk workers beside the buildings and sent to the main thread on the same
   `ready` reply as the police and metro stations, because the main thread never builds the
   buildings. Nothing about a shop is stored in the world description.
+- That same answer is handed to `chunkLookups` as `tradeOf`, so the fascia over a shopfront names
+  the trade really behind it (spec section 13.1). Deal the shops once and pass them in: dealing
+  them walks every building of the map. `docs/render-entities.md` has the signage.
 
 ## The room
 

@@ -16,6 +16,7 @@ import { lampDrawCalls } from './lamp-mesh.ts';
 import { vegetationDrawCalls } from './plant-mesh.ts';
 import { posterDrawCalls } from './poster-mesh.ts';
 import { roadDrawCalls } from './road-mesh.ts';
+import { signDrawCalls } from './sign-mesh.ts';
 import type { ChunkDetail } from './streaming.ts';
 
 /**
@@ -30,7 +31,7 @@ export const CELL_BATCH_CAP = 11;
 /**
  * Draw calls a chunk may cost: {@link CELL_BATCH_CAP} in each of its
  * {@link CHUNK_CELLS} cells, one ground mesh, and one line of markings for each
- * of the three marked tiers, which are not cut into cells. That is 48. A count
+ * of the three marked tiers, which are not cut into cells. That is 52. A count
  * over this is a batching regression, not a cap to raise; a system that lands
  * in a chunk later raises it together with the batches it brings.
  */
@@ -38,15 +39,16 @@ export const CHUNK_DRAW_CALL_CAP = 1 + 3 + CELL_BATCH_CAP * CHUNK_CELLS;
 
 /**
  * The most draw calls one chunk costs at near detail: the ground, and the
- * roads, the buildings, the plants, the lamps and the posters with every kind
- * in every cell.
+ * roads, the buildings, the plants, the lamps, the posters and the signs with
+ * every kind in every cell.
  */
 export function chunkDrawCalls(chunk: WorldChunk): number {
   const batches =
     buildingDrawCalls(chunk) +
     vegetationDrawCalls(chunk) +
     lampDrawCalls(chunk) +
-    posterDrawCalls(chunk.buildings.length);
+    posterDrawCalls(chunk.buildings.length) +
+    signDrawCalls(chunk.buildings.length);
   return 1 + roadDrawCalls(chunk, CHUNK_CELLS) + batches * CHUNK_CELLS;
 }
 

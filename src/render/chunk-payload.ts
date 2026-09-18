@@ -28,6 +28,7 @@
 import { BufferAttribute, BufferGeometry } from 'three';
 import type { ChunkBounds, WorldChunk, WorldLayers } from '../world/chunks.ts';
 import type { RoadRibbons } from '../world/ribbon.ts';
+import { buildShops, type Shop } from '../world/shops.ts';
 import { CHUNK_TERRAIN_CELL, TERRAIN_CELL } from '../world/terrain.ts';
 import type { RoadTier, WorldDescription } from '../world/types.ts';
 import { buildChunkBuildings, buildingLookup, type BuildingLookup } from './building-mesh.ts';
@@ -39,6 +40,7 @@ import { ROOF_STRIDE, writeRoof } from './roofs.ts';
 import { buildChunkVegetation, plantLookup, type PlantLookup } from './plant-mesh.ts';
 import type { SurfaceAt } from './pavement-mesh.ts';
 import { buildChunkRoads, partsOf } from './road-mesh.ts';
+import { shopTrades, signsIn, type Sign, type TradeLookup } from './sign-mesh.ts';
 import type { ChunkDetail } from './streaming.ts';
 
 /** The tiers the far ring keeps. The minor fill is not read from that far off. */
@@ -142,6 +144,12 @@ export interface ChunkPayload {
    * one.
    */
   posters: Poster[];
+  /**
+   * The shop signage and the billboards of spec section 13.1, in the places the
+   * scene works in. Empty unless the detail is near: a fascia is lettering a few
+   * metres across and nothing past the near ring can read one.
+   */
+  signs: Sign[];
   /** Draw calls the chunk costs once it is in the scene. */
   drawCalls: number;
 }
@@ -154,16 +162,28 @@ export interface ChunkLookups {
   ribbons: RoadRibbons;
   /** The surface drawn at a place beside a road, which the pavement stands on. */
   surfaceAt: SurfaceAt;
+  /** What a building sells, so its fascia names the trade really behind it. */
+  tradeOf: TradeLookup;
 }
 
-/** The lookups a world answers with, built once and shared by every chunk of it. */
-export function chunkLookups(world: WorldDescription, layers: WorldLayers): ChunkLookups {
+/**
+ * The lookups a world answers with, built once and shared by every chunk of it.
+ * The shops are passed in where the caller has already dealt them — the chunk
+ * worker has, on the reply it answers the main thread with — because dealing
+ * them walks every building of the map.
+ */
+export function chunkLookups(
+  world: WorldDescription,
+  layers: WorldLayers,
+  shops: readonly Shop[] = buildShops(world, layers.buildings),
+): ChunkLookups {
   return {
     ground: groundLookup(world, layers),
     buildings: buildingLookup(world, layers),
     plants: plantLookup(layers),
     ribbons: layers.carve.ribbons,
     surfaceAt: (x, y, tier) => layers.carve.surfaceAt(x, y, tier),
+    tradeOf: shopTrades(shops),
   };
 }
 
@@ -204,7 +224,9 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
   const placements = buildChunkBuildings(chunk, lookups.buildings, detail);
   // Asked before the shells are packed away, because a board is hung on the
   // wall that was really built rather than on the one the massing asked for.
-  const posters = detail === 'near' ? postersIn(placements, lookups.buildings) : [];
+  const near = detail === 'near';
+  const posters = near ? postersIn(placements, lookups.buildings) : [];
+  const signs = near ? signsIn(placements, lookups.buildings, lookups.tradeOf) : [];
   const roofs = new Float32Array(placements.length * ROOF_STRIDE);
   for (const [i, placed] of placements.entries()) {
     writeRoof(roofs, i * ROOF_STRIDE, placed.hull, placed.matrix);
@@ -229,6 +251,7 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
     plants,
     lamps: far ? [] : lampsIn(chunk, lookups.ribbons),
     posters,
+    signs,
     drawCalls: 0,
   };
   payload.drawCalls = payloadDrawCalls(payload);
@@ -238,7 +261,7 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
 /**
  * Draw calls a payload costs with nothing thinned: one per cell of each batch,
  * one per tier of markings, and one for its ground. The plants, the lamps and
- * the posters are cut into cells on the frame thread, so their cells are
+ * the posters and the signs are cut into cells on the frame thread, so their cells are
  * counted here off where each one stands.
  */
 export function payloadDrawCalls(payload: ChunkPayload): number {
@@ -257,6 +280,7 @@ export function payloadDrawCalls(payload: ChunkPayload): number {
   calls += cellsHolding(grid, payload.plants.models.length, plantAt);
   calls += cellsHolding(grid, payload.lamps.length, (i) => payload.lamps[i] as Lamp);
   calls += cellsHolding(grid, payload.posters.length, (i) => payload.posters[i] as Poster);
+  calls += cellsHolding(grid, payload.signs.length, (i) => payload.signs[i] as Sign);
   return calls;
 }
 
