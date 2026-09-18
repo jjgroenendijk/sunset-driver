@@ -42,7 +42,7 @@ import { rotate, unrotate } from './frame.ts';
 import { Drivetrain } from './drivetrain.ts';
 import { GroundBodies, type Ground } from './ground-bodies.ts';
 import { Gunfire, type ShotTarget } from './gunfire.ts';
-import { buildWalker, type Walker } from './walker-body.ts';
+import { buildWalker, GRAVITY, walk, type Walker } from './walker-body.ts';
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
 import type { MetroPlace } from './metro.ts';
 import type { ShopPlace } from './shop.ts';
@@ -55,19 +55,10 @@ import {
   besidePlayer,
   exitPlace,
   EXIT_SPEED,
-  FLOAT_DEPTH,
   hurt,
-  JUMP_SPEED,
-  paceOf,
   type Place,
   reachesVehicle,
   SKIN,
-  swimPaceOf,
-  swimRise,
-  swims,
-  TERMINAL_SPEED,
-  TURN_RATE,
-  turnToward,
   vehicleGap,
 } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
@@ -90,8 +81,6 @@ import { weatherAt } from './weather.ts';
 
 export { PHYSICS_CELL, PHYSICS_RADIUS, PHYSICS_TILE, type Ground } from './ground-bodies.ts';
 
-/** Metres per second squared. Earth's, so a player falls the way a person falls. */
-const GRAVITY = 9.81;
 
 /** Load Rapier's WebAssembly. Call once before the first {@link SimPhysics}. */
 export async function initPhysics(): Promise<void> {
@@ -145,7 +134,6 @@ export class SimPhysics {
   private readonly point = { x: 0, y: 0, z: 0 };
   private readonly axis = { x: 0, y: 0, z: 0 };
   private readonly force = { x: 0, y: 0, z: 0 };
-  private readonly at = { x: 0, y: 0, z: 0 };
   /** Reused by the crowd reactions of spec section 20.1, for the same reason. */
   private readonly ids: number[] = [];
   /** The one ray every shot and every projectile step is cast with. */
@@ -253,7 +241,7 @@ export class SimPhysics {
       this.bodies.cover(state.player.x, state.player.y);
       // A player bent over a lock stands at the door (spec section 11.4): they
       // are stepped with nothing held down, so only gravity moves them.
-      this.walk(state, state.theft === null ? input : EMPTY_INPUT);
+      walk(this.walker as Walker, state, state.theft === null ? input : EMPTY_INPUT, this.ground.seaLevel);
     } else {
       this.bodies.cover(v.x, v.z);
       // Rapier keeps a force until it is told to forget it, so a tick that adds
@@ -695,66 +683,6 @@ export class SimPhysics {
     state.theft = null;
     p.driving = true;
     this.adopt(state);
-  }
-
-  /**
-   * Walk the player one tick (spec sections 11.2, 11.5).
-   *
-   * The camera never turns (spec section 10.7), so the forward axis walks up
-   * the screen and the steering axis walks across it, whatever the player
-   * faces; they then turn to face the way they are walking. Gravity is
-   * integrated here rather than by Rapier, because a kinematic body is moved
-   * and never pushed: the jump is a speed the ground takes back.
-   *
-   * Water chest deep or deeper swims instead (spec section 11.5): the sea
-   * holds the body at the surface rather than pulling it down, the pace is a
-   * swimmer's, and there is nothing to jump off.
-   */
-  private walk(state: SimState, input: InputFrame): void {
-    const walker = this.walker as Walker;
-    const p = state.player;
-    // The capsule stands the player's own height, so half of it up from the
-    // feet is the middle of the body and twice that is how tall they are.
-    const stature = walker.rise * 2;
-    const swimming = swims(p.height, this.ground.seaLevel, stature);
-
-    const jumped = input.jump && !p.held.jump;
-    p.held.jump = input.jump;
-    if (jumped && p.grounded && !swimming) p.vy = JUMP_SPEED;
-
-    let dx = input.steer;
-    let dy = -input.throttle;
-    const length = Math.hypot(dx, dy);
-    if (length > 1) {
-      dx /= length;
-      dy /= length;
-    }
-    if (length > 0) p.heading = turnToward(p.heading, Math.atan2(dy, dx), TURN_RATE / TICK_RATE);
-    if (swimming) {
-      const float = this.ground.seaLevel - FLOAT_DEPTH * stature;
-      p.vy = swimRise(float - p.height, p.vy);
-    } else {
-      p.vy = Math.max(-TERMINAL_SPEED, p.vy - GRAVITY / TICK_RATE);
-    }
-
-    const pace = (swimming ? swimPaceOf(input.sprint) : paceOf(input.sprint)) / TICK_RATE;
-    this.point.x = dx * pace;
-    this.point.y = p.vy / TICK_RATE;
-    this.point.z = dy * pace;
-    walker.controller.computeColliderMovement(walker.collider, this.point);
-    const moved = walker.controller.computedMovement(this.force);
-    p.grounded = walker.controller.computedGrounded();
-    // Standing on the ground takes the fall back, so a step off a kerb does not
-    // build up a speed the next drop starts from. The sea floor under a swimmer
-    // takes nothing back: the water owns their speed up and down.
-    if (p.grounded && p.vy < 0 && !swimming) p.vy = 0;
-    p.speed = Math.hypot(moved.x, moved.z) * TICK_RATE;
-
-    const t = walker.body.translation();
-    this.at.x = t.x + moved.x;
-    this.at.y = t.y + moved.y;
-    this.at.z = t.z + moved.z;
-    walker.body.setNextKinematicTranslation(this.at);
   }
 
   /** Take every body of the player and their vehicle out of the world, so `adopt` can build them again. */
