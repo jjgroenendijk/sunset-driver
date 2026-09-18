@@ -134,7 +134,8 @@ What the game draws, as one frame. Look at the frame before judging a rendering 
   `--hour` what time of day to light the frame at.
 - `--vehicle=<class>` is the class of the roster to stand the player in, `--on-foot` stands them
   beside it rather than in it, `--damage=<stage>` shows the vehicle dented, smoking, burning or
-  burnt out, and `--skid` lays a drift's worth of marks into the road behind it.
+  burnt out, and `--skid` lays a drift's worth of marks into the road behind it. The arc it
+  drives is laid over the real ground, so the marks stop where the tarmac does.
 - `--emergency` puts the services of spec section 20.3 in the frame: a blaze in the road ahead, a
   fire engine standing at it and an ambulance behind. They are put down rather than driven to,
   because a preview is one frame and a call takes the best part of a minute.

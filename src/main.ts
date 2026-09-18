@@ -289,7 +289,7 @@ async function boot(): Promise<void> {
       // The damage of spec section 11.3, drawn off the same record: the smoke
       // and flames over the car and the rubber its tyres leave behind. It is
       // given the drawn pose, so the smoke stands where the car is seen to be.
-      session.world.damage(vehicle, session.state, session.state.tick);
+      session.world.damage(vehicle, session.state, session.state.tick, session.surfaceAt);
       // The light of the scene is a function of the tick, so the day runs at
       // the simulation's pace whatever the frame rate (spec section 10.5). The
       // colour grade follows the same tick (spec section 10.6).
@@ -738,6 +738,7 @@ async function boot(): Promise<void> {
     state,
     world,
     physics,
+    surfaceAt: ground.surfaceAt,
     post,
     quality,
     hud: new Hud(document.body, choice.seed),

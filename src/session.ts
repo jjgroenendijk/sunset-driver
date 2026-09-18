@@ -20,6 +20,7 @@ import type { TramView } from './render/tram.ts';
 import type { WorldScene } from './render/world-scene.ts';
 import type { SimPhysics } from './sim/physics.ts';
 import type { SimState } from './sim/simulation.ts';
+import type { Surface } from './world/surface.ts';
 import type { MetroPlace } from './sim/metro.ts';
 import type { SafehousePlace } from './sim/safehouse.ts';
 import type { ShopPlace } from './sim/shop.ts';
@@ -47,6 +48,12 @@ export interface Session {
   state: SimState;
   world: WorldScene;
   physics: SimPhysics;
+  /**
+   * What the ground is made of at a place, as the city laid it out. The physics
+   * grips through this, and the skid marks of spec section 11.3 are laid on it,
+   * so both halves read one answer.
+   */
+  surfaceAt: (x: number, y: number) => Surface;
   /** The effects the world is drawn through (spec section 10.6). */
   post: PostChain;
   /** What watches the frame and steps the quality tiers (spec section 9.2). */

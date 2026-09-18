@@ -4,6 +4,7 @@ import { createDamageState, explode, ignite, PANELS, type Panel } from '../src/s
 import { createVehicleState, ROSTER, specOf, type VehicleState } from '../src/sim/vehicle.ts';
 import { DamageFx, FLAME_CAP, SMOKE_CAP } from '../src/render/damage-fx.ts';
 import { SKID_STEP, SkidMarks } from '../src/render/skid.ts';
+import type { Surface } from '../src/world/surface.ts';
 import { panelAt, vehicleBoxes } from '../src/render/vehicle-mesh.ts';
 import { VehicleModel } from '../src/render/vehicle.ts';
 
@@ -235,6 +236,7 @@ describe('the smoke and the flames', () => {
 describe('the skid marks', () => {
   const spec = ROSTER.saloon;
   const flat = (): number => 0;
+  const paved = (): Surface => 'asphalt';
 
   /** A car sliding along, every tyre skidding, at a place on the map. */
   function sliding(x: number): VehicleState {
@@ -256,7 +258,7 @@ describe('the skid marks', () => {
     for (let i = 0; i < 20; i++) {
       const v = sliding(i * 2);
       for (const wheel of v.wheels) wheel.skid = false;
-      marks.update(v, spec, flat);
+      marks.update(v, spec, flat, paved);
     }
     expect(drawn(marks)).toBe(0);
     marks.dispose();
@@ -264,7 +266,7 @@ describe('the skid marks', () => {
 
   it('lays rubber under a sliding car, on the ground it stands on', () => {
     const marks = new SkidMarks();
-    for (let i = 0; i < 20; i++) marks.update(sliding(i * SKID_STEP), spec, flat);
+    for (let i = 0; i < 20; i++) marks.update(sliding(i * SKID_STEP), spec, flat, paved);
     expect(drawn(marks)).toBeGreaterThan(0);
     const position = marks.mesh.geometry.getAttribute('position') as BufferAttribute;
     let highest = -Infinity;
@@ -280,7 +282,7 @@ describe('the skid marks', () => {
     const metres = 12;
     const run = (steps: number): number => {
       const marks = new SkidMarks();
-      for (let i = 0; i <= steps; i++) marks.update(sliding((i * metres) / steps), spec, flat);
+      for (let i = 0; i <= steps; i++) marks.update(sliding((i * metres) / steps), spec, flat, paved);
       const laid = marks.marks;
       marks.dispose();
       return laid;
@@ -297,7 +299,7 @@ describe('the skid marks', () => {
 
   it('never grows past the buffer it was given', () => {
     const marks = new SkidMarks(600);
-    for (let i = 0; i < 400; i++) marks.update(sliding(i * SKID_STEP), spec, flat);
+    for (let i = 0; i < 400; i++) marks.update(sliding(i * SKID_STEP), spec, flat, paved);
     expect(drawn(marks)).toBeLessThanOrEqual(600);
     expect(drawn(marks)).toBeGreaterThan(0);
     marks.clear();
@@ -311,12 +313,65 @@ describe('the skid marks', () => {
     for (let i = 0; i < 12; i++) {
       const v = sliding(i * SKID_STEP);
       v.y = hill(i * SKID_STEP) + spec.halfHeight;
-      marks.update(v, spec, hill);
+      marks.update(v, spec, hill, paved);
     }
     const position = marks.mesh.geometry.getAttribute('position') as BufferAttribute;
     for (let i = 0; i < drawn(marks); i++) {
       expect(Math.abs(position.getY(i) - hill(position.getX(i)))).toBeLessThan(0.3);
     }
+    marks.dispose();
+  });
+  it('leaves nothing on dirt, sand or open ground', () => {
+    for (const surface of ['dirt', 'sand', 'ground'] as const) {
+      const marks = new SkidMarks();
+      for (let i = 0; i < 20; i++) marks.update(sliding(i * SKID_STEP), spec, flat, () => surface);
+      expect(drawn(marks)).toBe(0);
+      expect(marks.marks).toBe(0);
+      marks.dispose();
+    }
+  });
+
+  it('lays a stripe again where a tyre slides back onto the tarmac', () => {
+    // Tarmac for the first ten metres, sand for the next ten, tarmac after that.
+    const surfaceAt = (x: number): Surface => (x >= 10 && x < 20 ? 'sand' : 'asphalt');
+    const marks = new SkidMarks();
+    for (let i = 0; i < 25 / SKID_STEP; i++) marks.update(sliding(i * SKID_STEP), spec, flat, surfaceAt);
+    const position = marks.mesh.geometry.getAttribute('position') as BufferAttribute;
+    let before = 0;
+    let after = 0;
+    for (let i = 0; i < drawn(marks); i++) {
+      const x = position.getX(i);
+      // A mark is cut up to three steps long, so its edge may reach a couple of
+      // metres over the edge of the sand. Nothing is laid past that, which is
+      // what says the marks stop at the tarmac rather than crossing the gap.
+      expect(x > 12.5 && x < 17.5).toBe(false);
+      if (x < 10) before++;
+      if (x >= 20) after++;
+    }
+    expect(before).toBeGreaterThan(0);
+    expect(after).toBeGreaterThan(0);
+    marks.dispose();
+  });
+
+  it('fades a mark as the ring comes round to it', () => {
+    const marks = new SkidMarks(600);
+    for (let i = 0; i < 400; i++) marks.update(sliding(i * SKID_STEP), spec, flat, paved);
+    const rubber = marks.mesh.geometry.getAttribute('rubber') as BufferAttribute;
+    let faintest = Infinity;
+    let freshest = 0;
+    for (let i = 0; i < drawn(marks); i++) {
+      const left = rubber.getX(i);
+      expect(left).toBeGreaterThanOrEqual(0);
+      expect(left).toBeLessThanOrEqual(1);
+      faintest = Math.min(faintest, left);
+      freshest = Math.max(freshest, left);
+    }
+    // The rubber the ring is about to write over is all but gone, and what was
+    // just laid is at its darkest.
+    expect(faintest).toBeLessThan(0.1);
+    expect(freshest).toBe(1);
+    marks.clear();
+    expect(rubber.getX(0)).toBe(0);
     marks.dispose();
   });
 });
