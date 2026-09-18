@@ -102,9 +102,9 @@ lamps and the lights a vehicle carries — in `docs/lighting.md`.
   still for half a second — and it never got cheaper, because a rebuilt node is a fresh cache key
   however often the same effects have been compiled before. `PostChain` therefore builds a graph
   once and keeps it, one per set of effects, and a tier change swaps the pipeline's output node to
-  a chain the renderer has already compiled. The first tier to ask for a set of effects still builds
-  it, once: measured with `--tier-at`, a change that turns bloom off builds four nodes and one
-  pipeline and holds the frame for 35 ms, and nothing after that.
+  a chain the renderer has already compiled. `warm.ts` draws one frame through the graph of every
+  tier behind the loading screen, so no tier builds one while driving. Built there instead, the
+  graph of the low tier held the frame for 1.4 s (issue #436).
 - **The render scale moves the buffer, and the cluster grid must not follow it.** Every tier carries
   its own `renderScale`, and `setRenderScale` hands it to `renderer.setPixelRatio`, which changes
   the drawing buffer size. `ClusteredLightsNode.updateProgram` builds its cluster grid from that
