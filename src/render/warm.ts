@@ -29,13 +29,17 @@
  *   a program the renderer already holds: the chunk workers build every batch
  *   of a kind the same way, and an entity is drawn out of a pool that was made
  *   before the session started.
+ * - **Every quality tier's post graph.** The four tiers come to three graphs,
+ *   and one frame is drawn through each, so a tier change swaps a graph rather
+ *   than builds one.
  *
  * The warm-up therefore runs last of everything the loading screen covers: a
  * program is compiled for the object it draws, not for the material alone, so
  * every view has to be in the scene before it starts.
  */
 import type { Object3D } from 'three';
-import type { PostChain } from './post.ts';
+import { postGraphs, type PostChain } from './post.ts';
+import { QUALITY_TIERS } from './quality.ts';
 import type { WorldScene } from './world-scene.ts';
 
 /**
@@ -77,6 +81,27 @@ export async function warmPasses(
     progress?.(done, groups.length);
     await new Promise((frame) => requestAnimationFrame(frame));
   }
+  await warmGraphs(post);
+}
+
+/**
+ * Draw one frame through the post graph of every quality tier, and put the
+ * standing tier back. A tier change swaps graphs, and a graph met first while
+ * driving is built and compiled on the frame thread: the change to the low
+ * tier held the game still for 1.4 s (issue #436). The render scale stays
+ * where it stands, because a program is keyed on the graph and not on the
+ * size the frame is drawn at.
+ */
+async function warmGraphs(post: PostChain): Promise<void> {
+  const standing = post.quality;
+  for (const graph of postGraphs(QUALITY_TIERS.map((tier) => tier.post))) {
+    post.quality = { ...graph, renderScale: standing.renderScale };
+    post.render();
+    await new Promise((frame) => requestAnimationFrame(frame));
+  }
+  post.quality = standing;
+  // A graph built here may carry SMAA, whose tables arrive a turn later.
+  await post.ready();
 }
 
 /**

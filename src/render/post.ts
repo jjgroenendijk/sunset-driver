@@ -33,10 +33,10 @@
  * three.js generates on the frame thread: a chain rebuilt on every tier change
  * held the game still for about half a second each time, and never got cheaper,
  * because a fresh node is a fresh cache key however many times the same effects
- * have been compiled before. So each combination of effects is built on the
- * first tier that asks for it and kept in {@link PostChain.chains}, and a tier
- * change swaps the pipeline's output node to one the renderer has already
- * compiled. A tier that moves only the render scale changes no node at all.
+ * have been compiled before. So each combination of effects is built once and
+ * kept in {@link PostChain.chains}, `warm.ts` builds every tier's behind the
+ * loading screen, and a tier change swaps the pipeline's output node to one
+ * the renderer has already compiled. A tier that moves only the render scale changes no node at all.
  */
 import { Data3DTexture, DataUtils, HalfFloatType, LinearFilter, NoToneMapping } from 'three';
 import { RenderPipeline, type WebGPURenderer } from 'three/webgpu';
