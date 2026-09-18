@@ -13,6 +13,11 @@
  * A failure prints the failing job's log, stripped of its timestamps, so the
  * reason arrives with the verdict rather than after two more commands.
  *
+ * `gh pr checks --required` lists only the required checks that have reported.
+ * `full-tier / seed-sweep` reports only after the four sweep shares finish, so
+ * the wait also lasts until every check the base branch's ruleset requires has
+ * reported.
+ *
  * It exits 0 when every watched check passed, so `&& gh pr merge` is safe.
  */
 import { execFileSync } from 'node:child_process';
@@ -72,6 +77,23 @@ function checks(): Check[] | undefined {
 /** The commit the checks belong to. A push during the wait invalidates them. */
 function head(): string {
   return (gh('pr', 'view', pr!, '--json', 'headRefOid', '--jq', '.headRefOid') ?? '').trim();
+}
+
+/** The check names the ruleset of the pull request's base branch requires. */
+function required(): string[] {
+  const base = (gh('pr', 'view', pr!, '--json', 'baseRefName', '--jq', '.baseRefName') ?? '').trim();
+  if (base === '') return [];
+  const out = gh(
+    'api',
+    `repos/{owner}/{repo}/rules/branches/${base}`,
+    '--jq',
+    '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context]',
+  );
+  try {
+    return out === undefined ? [] : (JSON.parse(out) as string[]);
+  } catch {
+    return [];
+  }
 }
 
 const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -142,17 +164,24 @@ if (headAtStart === '') {
   console.log(`PR ${pr}: no such pull request, or gh cannot reach the repository.`);
   process.exit(2);
 }
+const gating = required();
 let seen: Check[] = [];
+/** Required checks that have not reported yet, so `gh` does not list them. */
+let unreported: string[] = [];
 
 for (;;) {
   const now = checks();
   if (now !== undefined && now.length > 0) {
     seen = now;
-    if (!now.some((c) => c.bucket === 'pending')) break;
+    unreported = gating.filter((name) => !now.some((c) => c.name === name));
+    const failed = now.some((c) => c.bucket === 'fail' || c.bucket === 'cancel');
+    // A failure decides the verdict, so a check still to come need not be waited for.
+    if (!now.some((c) => c.bucket === 'pending') && (unreported.length === 0 || failed)) break;
   }
   if (Date.now() > deadline) {
     console.log(`PR ${pr}: still pending after ${Math.round((Date.now() - started) / 60000)}m, gave up waiting.`);
     for (const c of seen) console.log(`  ${c.bucket.padEnd(8)} ${c.name}`);
+    for (const name of unreported) console.log(`  ${'absent'.padEnd(8)} ${name}`);
     process.exit(1);
   }
   const moved = head();
