@@ -60,8 +60,9 @@ jobs:
   # lost there is not a rendering regression. The ruleset decides what gates,
   # not this file.
   #
-  # It is red on main today: the colour grade's table never reaches the GPU, so
-  # every frame is black (issue #339). That is the check doing its job.
+  # Issue #339 blanks the frame on some Chromium builds, which would fail this
+  # check for a reason that is not the change under test. The build installed
+  # here is not one of them; `docs/dev-tooling.md` says how to tell.
   render-smoke:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
