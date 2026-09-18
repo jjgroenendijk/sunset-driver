@@ -11,6 +11,7 @@ import { RenderSmoother } from './render/smooth.ts';
 import { ParkedView } from './render/parked.ts';
 import { PedestrianView } from './render/pedestrians.ts';
 import { EmergencyView } from './render/emergency.ts';
+import { WildlifeView } from './render/wildlife.ts';
 import { PoliceView } from './render/police.ts';
 import { TrafficView } from './render/traffic.ts';
 import { TramView } from './render/tram.ts';
@@ -276,6 +277,11 @@ async function boot(): Promise<void> {
       // where the last tick left them rather than between two of them.
       session.police.update(session.state, round.x, round.y);
       session.emergency.update(session.state, round.x, round.y);
+      // The animals of spec section 20.4 are a function of the tick like the
+      // traffic, so they are drawn at the moment the frame stands at. They give
+      // way to where the player is rather than to where the camera looks, so a
+      // flight over a flock leaves it alone.
+      session.wildlife.update(session.state.tick, session.state.tick - 1 + alpha, round.x, round.y, p);
       session.parked?.update(session.state, round.x, round.y);
       session.crowd.update(session.state, session.state.tick - 1 + alpha, round.x, round.y);
       // The damage of spec section 11.3, drawn off the same record: the smoke
@@ -292,6 +298,7 @@ async function boot(): Promise<void> {
       // drawn rather than who exists.
       session.traffic.share = session.world.weatherNow.crowd;
       session.crowd.share = session.world.weatherNow.crowd;
+      session.wildlife.share = session.world.weatherNow.crowd;
       // The headlamps and tail lights of everything the scene does not draw
       // itself come on with the street lamps (spec section 13.4).
       session.traffic.lamps = session.world.lampsNow;
@@ -443,7 +450,7 @@ async function boot(): Promise<void> {
   // police and the emergency services, and the ground the physics drives on
   // (`city.ts`). The session starts on the nearest road to the core rather
   // than wherever the origin happens to fall.
-  const { ground, roads, traffic, crowd, tram, police } = buildCity(state.seed, description, world);
+  const { ground, roads, traffic, crowd, tram, police, wildlife } = buildCity(state.seed, description, world);
   // The bells of spec section 13.2 are a function of the tick rather than part
   // of the record, so the audio is given the line itself to ask.
   audio.watch(tram);
@@ -688,6 +695,8 @@ async function boot(): Promise<void> {
   world.scene.add(policeView.group);
   const emergencyView = new EmergencyView();
   world.scene.add(emergencyView.group);
+  const wildlifeView = new WildlifeView(wildlife);
+  world.scene.add(wildlifeView.group);
   const parkedView = parked === undefined ? undefined : new ParkedView(parked);
   if (parkedView !== undefined) world.scene.add(parkedView.group);
   const tramView = new TramView(tram);
@@ -716,6 +725,7 @@ async function boot(): Promise<void> {
     traffic: trafficView,
     police: policeView,
     emergency: emergencyView,
+    wildlife: wildlifeView,
     parked: parkedView,
     tram: tramView,
     crowd: crowdView,

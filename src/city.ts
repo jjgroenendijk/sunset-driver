@@ -6,9 +6,9 @@
  * `main.ts` builds the pieces of a session and runs the frame. This is the
  * piece that is a city rather than a screen: the ambient traffic of spec
  * section 13.1 and the crowd that walks beside it, the tram of 13.2, the
- * police of 14 and the emergency services of 20.3. Each is placed once for a
- * world and then evaluated from the tick, so the physics and the renderer
- * share one plan.
+ * police of 14, the emergency services of 20.3 and the wildlife of 20.4. Each
+ * is placed once for a world and then evaluated from the tick, so the physics
+ * and the renderer share one plan.
  *
  * Nothing here is state of a session: the record holds all of that. A city is
  * a pure function of the seed and the world built from it, so two sessions of
@@ -20,6 +20,7 @@ import { AmbientPedestrians, crowdDistrictsOf } from './sim/pedestrians.ts';
 import { PoliceForce, policeDistrictsOf } from './sim/police.ts';
 import { AmbientTraffic, trafficRoadsOf, type TrafficRoads } from './sim/traffic.ts';
 import { TramLine } from './sim/tram.ts';
+import { AmbientWildlife } from './sim/wildlife.ts';
 import type { WorldScene } from './render/world-scene.ts';
 import { roadDecks } from './world/decks.ts';
 import { SurfaceIndex } from './world/surface.ts';
@@ -35,6 +36,8 @@ export interface City {
   crowd: AmbientPedestrians;
   tram: TramLine;
   police: PoliceForce;
+  /** The animals of spec section 20.4, placed along the same roads and the shore. */
+  wildlife: AmbientWildlife;
 }
 
 /**
@@ -60,6 +63,15 @@ export function buildCity(seed: number, description: WorldDescription, world: Wo
   const districts = policeDistrictsOf(description);
   const police = new PoliceForce(roads, districts);
   const emergency = new EmergencyServices(roads, districts);
+  // The animals of spec section 20.4 live along the same roads and on the
+  // beaches of spec section 7.3. They hold no record at all, so nothing steps
+  // them: a gull is where the seed and the tick put it.
+  const wildlife = new AmbientWildlife(seed, {
+    roads,
+    beaches: description.beaches,
+    seaLevel: description.water.seaLevel,
+    districtAt: crowdDistrictsOf(description),
+  });
   const ground: Ground = {
     heightAt: (x, y) => world.heightAt(x, y),
     surfaceAt: (x, y) => surfaces.at(x, y),
@@ -73,5 +85,5 @@ export function buildCity(seed: number, description: WorldDescription, world: Wo
     police,
     emergency,
   };
-  return { ground, roads, traffic, crowd, tram, police };
+  return { ground, roads, traffic, crowd, tram, police, wildlife };
 }

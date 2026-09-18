@@ -13,6 +13,7 @@ import type { RenderSmoother } from './render/smooth.ts';
 import type { ParkedView } from './render/parked.ts';
 import type { PedestrianView } from './render/pedestrians.ts';
 import type { EmergencyView } from './render/emergency.ts';
+import type { WildlifeView } from './render/wildlife.ts';
 import type { PoliceView } from './render/police.ts';
 import type { TrafficView } from './render/traffic.ts';
 import type { TramView } from './render/tram.ts';
@@ -93,6 +94,8 @@ export interface Session {
   police: PoliceView;
   /** The fire engines and the ambulances of spec section 20.3, drawn. */
   emergency: EmergencyView;
+  /** The animals of spec section 20.4, drawn. */
+  wildlife: WildlifeView;
   /** The parked cars of spec section 13.1, drawn; undefined where no worker laid out the bays. */
   parked: ParkedView | undefined;
   /** The trams of spec section 13.2, drawn. */
