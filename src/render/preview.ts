@@ -34,6 +34,7 @@ import { light } from '../sim/fire.ts';
 import { EmergencyView } from './emergency.ts';
 import { ParkedCars } from '../sim/parked.ts';
 import { AmbientPedestrians, crowdDistrictsOf } from '../sim/pedestrians.ts';
+import { AmbientWildlife } from '../sim/wildlife.ts';
 import { AmbientTraffic, trafficRoadsOf } from '../sim/traffic.ts';
 import { TramLine } from '../sim/tram.ts';
 import {
@@ -66,6 +67,7 @@ import { ParkedView } from './parked.ts';
 import { PedestrianView } from './pedestrians.ts';
 import { TrafficView } from './traffic.ts';
 import { TramView } from './tram.ts';
+import { WildlifeView } from './wildlife.ts';
 import { WorldScene } from './world-scene.ts';
 import { roomOf, SHOP_KINDS, type Shop } from '../world/shops.ts';
 
@@ -354,6 +356,18 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   const crowd = new PedestrianView(new AmbientPedestrians(seed, roads, crowdDistrictsOf(world)), line);
   scene.scene.add(crowd.group);
   crowd.update(record, tick, x, y);
+  // The animals of spec section 20.4, which keep their own hours: a picture
+  // taken at night has the rats out and the gulls in.
+  const wildlife = new WildlifeView(
+    new AmbientWildlife(seed, {
+      roads,
+      beaches: world.beaches,
+      seaLevel: world.water.seaLevel,
+      districtAt: crowdDistrictsOf(world),
+    }),
+  );
+  scene.scene.add(wildlife.group);
+  wildlife.update(tick, tick, x, y);
   // The parked cars, from the bays the chunk workers laid out.
   const parked = scene.bays === undefined ? undefined : new ParkedView(new ParkedCars(seed, scene.bays));
   if (parked !== undefined) scene.scene.add(parked.group);

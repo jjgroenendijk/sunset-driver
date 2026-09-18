@@ -11,7 +11,6 @@
  */
 import { activeLeg } from '../sim/mission.ts';
 import type { SimState } from '../sim/simulation.ts';
-import type { EnforcerMarks } from './enforcers.ts';
 import type { MapPoi, MapPois } from './map.ts';
 
 export class MissionMarks {
@@ -26,19 +25,19 @@ export class MissionMarks {
   }
 
   /**
-   * Move the objective's mark to the leg the record is on. `enforcers` is the
+   * Move the objective's mark to the leg the record is on. `others` is the
    * list of everything marked before it, which this is written after.
    */
-  update(state: SimState, enforcers: EnforcerMarks): void {
+  update(state: SimState, others: { marks: readonly MapPoi[] }): void {
     const leg = activeLeg(state);
     const at = leg === undefined ? '' : `${leg.x},${leg.y},${leg.label}`;
-    if (at === this.shown && enforcers.marks === this.others) return;
+    if (at === this.shown && others.marks === this.others) return;
     this.shown = at;
-    this.others = enforcers.marks;
+    this.others = others.marks;
     if (leg === undefined) {
-      this.pois.extra = enforcers.marks;
+      this.pois.extra = others.marks;
       return;
     }
-    this.pois.extra = [...enforcers.marks, { type: 'objective', x: leg.x, y: leg.y, name: leg.label }];
+    this.pois.extra = [...others.marks, { type: 'objective', x: leg.x, y: leg.y, name: leg.label }];
   }
 }

@@ -28,6 +28,7 @@ import type { MissionWorld } from './sim/job.ts';
 import type { TerritoryMap } from './sim/territory.ts';
 import type { DealerMarks } from './ui/dealers.ts';
 import type { EnforcerMarks } from './ui/enforcers.ts';
+import type { StreetLife } from './ui/street-life.ts';
 import type { HomePanel } from './ui/home-panel.ts';
 import type { JobPanel } from './ui/job-panel.ts';
 import type { MissionMarks } from './ui/missions.ts';
@@ -72,6 +73,8 @@ export interface Session {
   dealerMarks: DealerMarks;
   /** The enforcers of spec section 17.2 on the maps and in the crowd, with the dealers behind them. */
   enforcerMarks: EnforcerMarks;
+  /** The events and the street crime of spec section 20.5, as people and marks. */
+  streetLife: StreetLife;
   /** Whose block is whose (spec section 17.2), which the HUD line and the map overlay read. */
   turf: TerritoryMap;
   /** The safehouse panel of spec section 16.3, drawn at a front door. */

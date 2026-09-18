@@ -21,6 +21,7 @@ import { createFireState, type FireState } from './fire.ts';
 import { createEnforcerState, type EnforcerState } from './enforcer.ts';
 import { createFactionState, type FactionState } from './faction.ts';
 import { createMissionState, stepMissions, type MissionState } from './mission.ts';
+import { createCrimeState, stepStreetCrime, type CrimeGround, type CrimeState } from './street-crime.ts';
 import { stepTerritory, type TerritoryMap } from './territory.ts';
 import { stepRadio } from './radio.ts';
 import { stepTowing } from './tow.ts';
@@ -192,6 +193,12 @@ export interface SimState {
    * the tick (`job.ts`) and a record may not hold a second copy of one.
    */
   missions: MissionState;
+  /**
+   * The street crime of spec section 20.5: the incidents the player has broken
+   * up. What is going on where they are not is a function of the seed and the
+   * tick (`street-crime.ts`), so the record holds only what they settled.
+   */
+  crimes: CrimeState;
 }
 
 /** Dollars a new session starts with (spec section 16). */
@@ -236,6 +243,7 @@ export function createSimState(
     factions: createFactionState(),
     enforcers: createEnforcerState(),
     missions: createMissionState(),
+    crimes: createCrimeState(),
   };
 }
 
@@ -305,6 +313,9 @@ export function stepSim(state: SimState, input: InputFrame = EMPTY_INPUT, physic
   if (turf !== undefined && !travelling(state)) stepTerritory(state, turf);
   physics?.step(state, travelling(state) ? EMPTY_INPUT : input);
   stepPickups(state);
+  // The street crime of spec section 20.5 is judged where the physics left the
+  // player, so walking into a mugging on this tick breaks it up on this tick.
+  stepStreetCrime(state, physics?.crimes ?? []);
   // The wrecks of spec section 20.2 are cleared after the physics has settled
   // them, so a shell is only ever taken from where the tick left it.
   stepTowing(state);

@@ -47,9 +47,11 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * section 11.6), so a loaded save throws the same sparks the session did.
  * Version 13 added the fires of spec sections 11.3 and 20.3 — the blazes the
  * wrecks have left burning — and the emergency services that answer them: the
- * calls the city has made and the engines and ambulances out on them.
+ * calls the city has made and the engines and ambulances out on them. Version
+ * 14 added the street crime of spec section 20.5: the incidents the player has
+ * broken up, which is the one part of it that is not a function of the tick.
  */
-export const SAVE_VERSION = 13;
+export const SAVE_VERSION = 14;
 
 export interface SaveFile {
   format: typeof SAVE_FORMAT;

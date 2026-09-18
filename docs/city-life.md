@@ -1,9 +1,10 @@
 # Baseline city life
 
 The gotchas of the city that lives around the player: the ambient traffic and the lights it stops
-at, the parked cars, the tram, the crowd on the pavements and the metro under them. `spec.md`
-section 13 is the design. The rest of `src/sim` and `src/ui` — the player, the HUD, the map, the
-physics and the vehicles the player drives — is in `docs/sim-and-ui.md`.
+at, the parked cars, the tram, the crowd on the pavements, the metro under them, the animals, and
+the events and the street crime the city runs on its own. `spec.md` section 13 is the design of the
+first half and section 20 of the second. The rest of `src/sim` and `src/ui` — the player, the HUD,
+the map, the physics and the vehicles the player drives — is in `docs/sim-and-ui.md`.
 
 ## Contents
 
@@ -16,6 +17,9 @@ physics and the vehicles the player drives — is in `docs/sim-and-ui.md`.
 - The tram
 - Pedestrians
 - The metro
+- Wildlife
+- What the city puts on
+- The crime the city commits
 
 ## Ambient traffic
 
@@ -215,3 +219,60 @@ physics and the vehicles the player drives — is in `docs/sim-and-ui.md`.
   a station id. A recorded stream therefore replays the trip the player picked. `src/ui/travel.ts`
   draws that list and the black sheet over the frame; the number keys are read as an edge in
   `Keyboard`, or a held key would ride the line back and forth.
+
+## Wildlife
+
+- `src/sim/wildlife.ts` is spec section 20.4. `AmbientWildlife` places each species on anchors of
+  its own habitat — the waterline of a beach, a run of pavement, an alley, a wilderness track — and
+  each animal then works a small patch around its anchor for ever. Nothing is stepped and nothing
+  is on the record: `poseAt` evaluates one at any moment, whole tick or between two.
+- A patch is a circle with a wander laid over it, so an animal never stands more than
+  `1 + 0.3 * √2` radii from its anchor. `wildlifeReach()` is that bound over the whole table, and
+  it is what the `EdgeIndex` is built with: build the index with a smaller reach and the animals at
+  the edge of a view are simply never found.
+- `SPECIES` is the one table. A row holds the habitat, the hours the species keeps, its pace, its
+  patch, how many share an anchor, and how far it gives way. Adding an animal is a row there and a
+  row in `LOOKS` in `src/render/wildlife.ts`; nothing else branches on a species.
+- Giving way is a pure displacement off whoever is nearest, so a flock parts as the player walks
+  into it and closes again behind them with no byte written down. `lift` is what makes that a flock
+  of pigeons taking off rather than sidling.
+- `src/render/wildlife.ts` draws them as two instanced models, a bird and a beast, so seven species
+  cost two draws. There is no rig: the camera stands 36 m up, so a wing beat is the bird drawn
+  narrower and wider and a stride is the beast bobbing, both off the tick.
+
+## What the city puts on
+
+- `src/sim/city-events.ts` is the diary of spec section 20.5. A venue is picked once for a world
+  the way a dealer's corners are — a point in a district of the right character, snapped to the
+  nearest street — and whether an event runs at all is drawn from the day it would run on. A kind
+  whose ground is missing on a seed simply never runs, which is how a seed with no beach holds no
+  beach party.
+- An hour past 24 in `EVENTS` closes an event on the next day, and `eventsAt` therefore reads
+  yesterday's diary as well as today's. Read only today's and a party that runs to two in the
+  morning disappears at midnight.
+- The rush hour is the one event with no ground of its own, so it carries radius 0 and is asked
+  through `rushHourAt` rather than found through `eventAt`. It does not yet thin or thicken the
+  traffic: the tours are laid out once for a world (#424).
+- `eventPeople` is the crowd an event has drawn, as a function of the seed and the tick. A parade
+  is ranks marching along its own street, which is what closing the street looks like from above;
+  everything else stands and sways. Both kinds draw the same three numbers per person, so the
+  stream stays in step whichever branch is taken.
+
+## The crime the city commits
+
+- `src/sim/street-crime.ts` is the other half of spec section 20.5. The day is cut into
+  `SLOT_TICKS`, and each district draws at most one incident per slot from `(seed, slot)`: one roll
+  over every kind at once, so the weights hold against each other and no district ever holds two.
+  The corners are picked once for a world, exactly as the dealers' pitches are.
+- `crimesAt` reads the slot the tick falls in and the one before it, because an incident runs
+  longer than a slot. Reading one slot loses every incident a few minutes after it starts.
+- The record holds only what the player settled (`SimState.crimes`), because everything else is
+  already a function of the tick. `settledOf` is a binary search, so the list is kept in id order:
+  `addSettled` is the only thing that writes it.
+- Breaking one up is `INTERRUPT_RANGE` and nothing else. A kind that is not `breakable` — the
+  traffic stop — is the police's own business and breaks up for nobody. Robbing a deal pays and
+  raises the heat, and every raise goes through `report` in `police.ts` like all the others.
+- `src/ui/street-life.ts` is the screen half of both: the event crowd and the two people of each
+  incident, written into the same list of standing people the dealers and the enforcers stand in,
+  and the marks both put on the map. It is the last link of that chain, so `MissionMarks` is
+  written after it. Only what is within `STREET_LIFE_NEAR` is built at all.

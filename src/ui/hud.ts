@@ -36,6 +36,7 @@ export class Hud {
   private readonly radio: HTMLElement;
   private readonly fate: HTMLElement;
   private readonly turf: HTMLElement;
+  private readonly happening: HTMLElement;
   private shownClock = '';
   private shownStatus = '';
   private shownDraws = '';
@@ -47,6 +48,7 @@ export class Hud {
   private shownRadio = '';
   private shownFate = '';
   private shownTurf = '';
+  private shownHappening = '';
 
   constructor(parent: HTMLElement, seed: string) {
     this.root = document.createElement('div');
@@ -95,7 +97,11 @@ export class Hud {
     this.turf = document.createElement('div');
     this.turf.className = 'hud-turf';
     this.turf.hidden = true;
-    this.panel.append(this.fate, health, this.money, this.weapon, this.heat, this.turf, this.radio, this.objective);
+    // What the city has on where the player is standing (spec section 20.5).
+    this.happening = document.createElement('div');
+    this.happening.className = 'hud-happening';
+    this.happening.hidden = true;
+    this.panel.append(this.fate, health, this.money, this.weapon, this.heat, this.turf, this.happening, this.radio, this.objective);
     parent.append(this.root, this.panel);
   }
 
@@ -116,6 +122,7 @@ export class Hud {
     tier: string,
     onAir: OnAirLine | null = null,
     turf = '',
+    happening = '',
   ): void {
     const t = gameTime(state.tick);
     const hh = String(t.hour).padStart(2, '0');
@@ -187,6 +194,12 @@ export class Hud {
       this.shownObjective = state.objective;
       this.objective.textContent = state.objective;
       this.objective.hidden = state.objective === '';
+    }
+
+    if (happening !== this.shownHappening) {
+      this.shownHappening = happening;
+      this.happening.textContent = happening;
+      this.happening.hidden = happening === '';
     }
 
     if (turf !== this.shownTurf) {

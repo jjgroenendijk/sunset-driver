@@ -17,6 +17,7 @@ import {
   type MapView,
   type PoiType,
 } from '../src/ui/map.ts';
+import { drawIcon } from '../src/ui/map-draw.ts';
 import { heatLine, HEAT_STARS } from '../src/ui/hud.ts';
 import type { RoadCurve, RoadTier, WorldDescription } from '../src/world/types.ts';
 import { worldsFor } from './world-pool.ts';
@@ -53,6 +54,33 @@ describe('POI icon table (spec section 12)', () => {
       if (style.label === '' && complaint === '') complaint = `${type} has no label`;
     }
     expect(complaint).toBe('');
+  });
+
+  it('draws every icon the table names', () => {
+    // A shape with no arm of its own in `drawIcon` paints nothing at all, and
+    // the map loses that place without saying so.
+    const painted: string[] = [];
+    const ctx = new Proxy(
+      {},
+      {
+        get: (_target, key: string) => {
+          if (key === 'save' || key === 'restore' || key === 'translate' || key === 'beginPath') return () => undefined;
+          if (key === 'fill' || key === 'stroke') {
+            return () => {
+              painted.push(key);
+            };
+          }
+          if (key === 'lineCap' || key === 'fillStyle' || key === 'strokeStyle' || key === 'lineWidth') return '';
+          return () => undefined;
+        },
+        set: () => true,
+      },
+    ) as unknown as CanvasRenderingContext2D;
+    for (const type of types) {
+      painted.length = 0;
+      drawIcon(ctx, POI_STYLES[type].shape, POI_STYLES[type].colour, 0, 0, 12);
+      expect(painted.length, `${type} is drawn as a ${POI_STYLES[type].shape}, which paints nothing`).toBeGreaterThan(0);
+    }
   });
 
   it('always draws the player and their waypoint, however far the map is pulled back', () => {

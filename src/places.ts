@@ -24,6 +24,8 @@ import { ParkedCars } from './sim/parked.ts';
 import type { Ground } from './sim/physics.ts';
 import { safehousePlaces, type SafehousePlace } from './sim/safehouse.ts';
 import { shopPlaces, type ShopPlace } from './sim/shop.ts';
+import { crimeGrounds, type CrimeGround } from './sim/street-crime.ts';
+import { venuesOf, type Venues } from './sim/city-events.ts';
 import { TerritoryMap } from './sim/territory.ts';
 import type { TrafficRoads } from './sim/traffic.ts';
 import { nearestRoadPlace } from './world/surface.ts';
@@ -47,6 +49,10 @@ export interface WorldPlaces {
   missions: MissionWorld;
   /** The parked cars (spec section 13.1), or undefined where no worker laid out the bays. */
   parked: ParkedCars | undefined;
+  /** The corners the street crime of spec section 20.5 happens on, one set to a district. */
+  crimes: readonly CrimeGround[];
+  /** Where the city holds what it puts on (spec section 20.5). */
+  venues: Venues;
 }
 
 /**
@@ -90,9 +96,15 @@ export function buildPlaces(
     sites: jobSites(seed, description.districts, snap),
   };
   ground.missions = missions;
+  // The street crime of spec section 20.5 happens on corners of a district's
+  // own, picked the way the dealers' pitches are, and the city holds what it
+  // puts on at a venue picked the same way.
+  const crimes = crimeGrounds(seed, description.districts, snap);
+  ground.crimes = crimes;
+  const venues = venuesOf(seed, description.districts, description.beaches, snap);
   // Which bay holds a car is a function of the tick, so the physics and the
   // renderer share one plan.
   const parked = world.bays === undefined ? undefined : new ParkedCars(seed, world.bays);
   ground.parked = parked;
-  return { stations, metro, shops, dealers, safehouses, turf, missions, parked };
+  return { stations, metro, shops, dealers, safehouses, turf, missions, parked, crimes, venues };
 }
