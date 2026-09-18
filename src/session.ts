@@ -38,6 +38,7 @@ import type { Hud } from './ui/hud.ts';
 import type { MapScreen } from './ui/map-screen.ts';
 import type { Minimap } from './ui/minimap.ts';
 import type { PauseMenu } from './ui/pause.ts';
+import type { PartyControl } from './net/control.ts';
 import type { ShopPanel } from './ui/shop-panel.ts';
 import type { TravelPanel } from './ui/travel.ts';
 import type { WeaponPicker } from './ui/weapon-picker.ts';
@@ -105,8 +106,10 @@ export interface Session {
   tram: TramView;
   /** The pedestrians of spec section 13.1, drawn. */
   crowd: PedestrianView;
-  /** The pause menu of spec section 12. While it is open the simulation does not step. */
+  /** The pause menu of spec section 12. While it is open a single-player session does not step. */
   pause: PauseMenu;
+  /** The room of spec section 21, offline until a game is opened or a link names one. */
+  party: PartyControl;
 }
 
 /**

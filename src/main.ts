@@ -18,6 +18,7 @@ import { initPhysics, SimPhysics } from './sim/physics.ts';
 import { EMPTY_INPUT, type InputFrame } from './sim/input.ts';
 import { createSave, restoreSimState, saveFromText, saveToText, type SaveFile } from './sim/save.ts';
 import { createSimState, stepSim, type SimState } from './sim/simulation.ts';
+import { attachParty } from './net/attach.ts';
 import { buildCity } from './city.ts';
 import { buildViews } from './views.ts';
 import { commitCrime } from './sim/police.ts';
@@ -210,16 +211,19 @@ async function boot(): Promise<void> {
       // behind. The simulation itself keeps running either way.
       const flying = free.detached;
       // A paused session takes no steps and keeps its place between two ticks,
-      // so it resumes on the frame it stopped on. The city is still drawn.
-      const paused = session.pause.open;
-      const steps = paused ? 0 : clock.advance(elapsed);
+      // so it resumes on the frame it stopped on. The city is still drawn. A
+      // session in a room is never paused: the other players' city does not
+      // stop (`docs/multiplayer.md`). The menu takes the keys either way.
+      const menu = session.pause.open;
+      const paused = menu && !session.party.live;
+      const steps = session.party.frame(session.state.tick, paused ? 0 : clock.advance(elapsed));
       const respawned = session.state.respawn;
       const trips = session.state.metro.trips;
       for (let i = 0; i < steps; i++) {
         // The pose the step starts from is kept before it is taken, so the
         // frame is drawn between the last two ticks rather than on the last.
         session.smooth.capture(session.state);
-        heard = flying ? EMPTY_INPUT : keyboard.sample();
+        heard = flying || menu ? EMPTY_INPUT : keyboard.sample();
         stepSim(session.state, heard, session.physics);
       }
       // A respawn and a metro trip both put the player down somewhere else on
@@ -615,6 +619,20 @@ async function boot(): Promise<void> {
     touch,
   );
   map.overlay = overlay;
+  // The multiplayer of spec section 21. Nothing connects here: the handle is
+  // offline until a press, or until `join` below reads a room off the link.
+  const party = attachParty(choice.seed, () => state.tick, {
+    snap: (tick) => {
+      // The host's clock is the city's clock. The record jumps to it as it
+      // jumps for a metro trip, so the camera and the audio are put where it
+      // landed rather than sliding across the city to it.
+      state.tick = tick;
+      smooth.reset();
+      camera.snap();
+      audio.resync(state);
+    },
+    redraw: () => pause.refresh(),
+  });
   const pause = new PauseMenu(document.body, choice.seed, {
     save: () => {
       slots.write(createSave(choice.seed, state));
@@ -642,10 +660,14 @@ async function boot(): Promise<void> {
       return 'Opening the city of the save…';
     },
     sound,
+    party: party.actions,
     regenerate: () => restart(randomSeedString(), state.character, false),
     quit: () => location.reload(),
     buildingView,
   });
+  // A page opened on an invite link joins that room, now that there is a menu
+  // to report it on (`docs/multiplayer.md`).
+  party.join();
   // A load moves the player across the map and puts a different vehicle under
   // them, so the frame snaps to it rather than sliding there.
   const loadInto = (save: SaveFile): void => {
@@ -737,6 +759,7 @@ async function boot(): Promise<void> {
     smooth,
     weapons,
     pause,
+    party: party.control,
   };
   // The three buttons a phone drives a session from, over the canvas.
   if (touch) mountTouchBar(document.body, free, camera.camera, { menu: () => pause.show(), map: () => map.toggle() });
