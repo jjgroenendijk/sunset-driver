@@ -262,6 +262,18 @@ lamps and the lights a vehicle carries — in `docs/lighting.md`.
   pixel ratio of 2 the frame went from 35 to 28 ms. Cells of a ninth of a chunk drew 1.46 M
   triangles but no faster a frame, with a worse 95th percentile, so the draws cost what they saved.
   The far ring is not cut: its batches are a few thousand vertices each.
+- **A chunk must not be held twice in the page's memory.** iOS Safari kills a page that holds too
+  much, then reloads it, so the player lands on the title screen with no error (issue #448). Three
+  things held the city twice and more: 1.45 GB of array storage, measured at the size of a phone.
+  - In V8 a closure keeps the whole scope it was made in. A closure a tile keeps, such as a
+    `dispose`, must not be made in a scope that also holds the payload: `groundPart` (`ground.ts`)
+    exists for this reason.
+  - `WorldScene.add` empties `TilePart.steps` once they are queued, because a step holds the arrays
+    it copies from.
+  - A full batch lets its arrays go after a draw (`Batch.letGo`). three.js uploads an attribute in
+    the first pass that reads it, so `letGo` reads the renderer's own record and releases only an
+    attribute whose current version is on the GPU. A batch released too early is drawn from an
+    empty buffer, and WebGPU reports a vertex range larger than the bound buffer.
 
 ## Water and its mirror
 
