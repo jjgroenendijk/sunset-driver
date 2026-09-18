@@ -65,7 +65,9 @@ import type { SimState } from './simulation.ts';
 import { TrafficBodies } from './traffic-bodies.ts';
 import { UnitBodies } from './unit-bodies.ts';
 import { commitCrime, report } from './police.ts';
+import { reachablePromoted, swapInto } from './steal.ts';
 import { createTheft, isLocked, stepTheft, type TheftState } from './theft.ts';
+import { promotedOf } from './traffic.ts';
 import {
   createVehicleState,
   headingOf,
@@ -646,14 +648,31 @@ export class SimPhysics {
       p.vy = 0;
       p.grounded = false;
       p.driving = false;
-    } else {
-      if (!reachesVehicle(p, state.vehicle, this.spec)) return;
+    } else if (reachesVehicle(p, state.vehicle, this.spec)) {
       if (isLocked(state.vehicle, this.spec)) {
         state.theft = createTheft(this.spec, state.tick);
         return;
       }
       p.driving = true;
+    } else {
+      // Out of reach of their own, the player takes a car of the city they
+      // have promoted (spec section 5.3), and a locked one is worked at first.
+      const record = reachablePromoted(state, p);
+      if (record === undefined) return;
+      const spec = specOf(record.vehicle.cls);
+      if (isLocked(record.vehicle, spec)) state.theft = createTheft(spec, state.tick, record.id);
+      else this.take(state, record.id);
+      return;
     }
+    this.adopt(state);
+  }
+
+  /** Get into the promoted vehicle under `id`, leaving the player's own in its place (`steal.ts`). */
+  private take(state: SimState, id: number): void {
+    swapInto(state, id);
+    this.traffic?.forget(id);
+    commitCrime(state, 'theft');
+    state.player.driving = true;
     this.adopt(state);
   }
 
@@ -670,7 +689,8 @@ export class SimPhysics {
    */
   private hotwire(state: SimState, theft: TheftState, pressed: boolean): void {
     const p = state.player;
-    if (!reachesVehicle(p, state.vehicle, this.spec)) {
+    const v = theft.target === undefined ? state.vehicle : promotedOf(state.traffic, theft.target)?.vehicle;
+    if (v === undefined || !reachesVehicle(p, v, specOf(v.cls))) {
       state.theft = null;
       return;
     }
@@ -678,9 +698,13 @@ export class SimPhysics {
     if (!theft.open) return;
     // The lock is beaten once: the record carries it, so getting out again is
     // not a second break-in.
-    state.vehicle.hotwired = true;
-    commitCrime(state, 'theft');
+    v.hotwired = true;
     state.theft = null;
+    if (theft.target !== undefined) {
+      this.take(state, theft.target);
+      return;
+    }
+    commitCrime(state, 'theft');
     p.driving = true;
     this.adopt(state);
   }

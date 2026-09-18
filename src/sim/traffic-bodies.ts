@@ -7,12 +7,14 @@
  * has no body and is not stepped. A vehicle that comes into the box is
  * evaluated at the tick it arrives on, and from then on it is stepped.
  *
- * A vehicle the player touches — with their car, parked or driven, or with
- * themselves on foot — leaves its tour for good. It becomes a dynamic body with
+ * A vehicle the player touches — with their car, parked or driven, with
+ * themselves on foot, or with a shot, a swing or a blast — leaves its tour for
+ * good. It becomes a dynamic body with
  * its speed, and its record goes into {@link TrafficState}, which is simulation
  * state like the player's own vehicle. A promoted vehicle has nobody driving
- * it, so it is a box that slides to a stop. Out of the box it keeps the pose it
- * had, the way the player's parked car does.
+ * it, so it is a box that slides to a stop, and the speed it loses in one tick
+ * is a crash, measured as the player's own car measures one. Out of the box it
+ * keeps the pose it had, the way the player's parked car does.
  *
  * The parked cars of the streets and car parks (`parked-bodies.ts`) stand in
  * the same box as fixed bodies, and a touch promotes one the same way, from
@@ -22,8 +24,9 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { capsuleOf } from './on-foot.ts';
 import { ParkedBodies } from './parked-bodies.ts';
-import { PARKED_ID, type ParkedCars } from './parked.ts';
-import { rotate } from './frame.ts';
+import { PARKED_ID, type ParkedCar, type ParkedCars } from './parked.ts';
+import { hitVehicle } from './damage.ts';
+import { rotate, unrotate } from './frame.ts';
 import { TramBodies } from './tram-bodies.ts';
 import type { TramLine } from './tram.ts';
 import { PHYSICS_RADIUS, PHYSICS_TILE } from './ground-bodies.ts';
@@ -43,6 +46,8 @@ import { createVehicleState, headingOf, rideHeight, specOf, type VehicleSpec, ty
 
 /** Metres apart two footprints count as touching. A kinematic body stops a car a hair short of its box. */
 export const TOUCH_MARGIN = 0.1;
+
+const IDENTITY = { x: 0, y: 0, z: 0, w: 1 };
 
 /** Damping of a promoted vehicle's slide and spin: nobody is steering it, and its brakes are off. */
 const PROMOTED_DAMPING = 0.3;
@@ -102,17 +107,55 @@ export class TrafficBodies {
   }
 
   /**
-   * True where a collider standing in the world belongs to a car of the city:
-   * one of the traffic, one that has been pushed out of it, or a parked one.
-   * A swing reads it to tell a bonnet from a wall (`gunfire.ts`).
+   * The record of the car of the city a collider belongs to, promoting it
+   * first where it still drives its tour or stands in its bay (spec section
+   * 5.3). A shot, a swing and a blast all come through here, so whatever meets
+   * a car takes it off its trajectory for good. Undefined where the collider is
+   * not a car of the city: the ground, a wall, a police car.
    */
-  isCar(collider: number): boolean {
+  strike(state: SimState, collider: number): PromotedVehicle | undefined {
     const body = this.world.getCollider(collider)?.parent();
-    if (body === undefined || body === null) return false;
+    if (body === undefined || body === null) return undefined;
     const handle = body.handle;
-    if (this.moving.some((entry) => entry.body.handle === handle)) return true;
-    if (this.pushed.some((entry) => entry.body.handle === handle)) return true;
-    return this.parked?.holds(handle) === true;
+    const pushed = this.pushed.find((entry) => entry.body.handle === handle);
+    if (pushed !== undefined) return promotedOf(state.traffic, pushed.id);
+    const i = this.moving.findIndex((entry) => entry.body.handle === handle);
+    let id: number | undefined;
+    if (i >= 0) {
+      const entry = this.moving[i] as Moving;
+      this.moving.splice(i, 1);
+      this.promote(state, entry, this.traffic.pose(entry.cursor, this.pose));
+      id = entry.cursor.id;
+    } else {
+      const bay = this.parked?.take(handle, (at, car, spec) => this.handParked(state, at, car, spec));
+      if (bay !== undefined) id = PARKED_ID + bay;
+    }
+    return id === undefined ? undefined : promotedOf(state.traffic, id);
+  }
+
+  /** Promote every car of the city with a collider inside a ball, which is the reach of a blast. */
+  strikeNear(state: SimState, x: number, h: number, y: number, radius: number): void {
+    const colliders: number[] = [];
+    this.spot.x = x;
+    this.spot.y = h;
+    this.spot.z = y;
+    this.world.intersectionsWithShape(this.spot, IDENTITY, new RAPIER.Ball(radius), (collider) => {
+      colliders.push(collider.handle);
+      return true;
+    });
+    for (const collider of colliders) this.strike(state, collider);
+  }
+
+  /**
+   * Take a promoted vehicle's body out of the world, so the next tick builds it
+   * again from the record. A theft swaps the record under an id for another
+   * vehicle (`steal.ts`), and the body has to follow it.
+   */
+  forget(id: number): void {
+    const i = this.pushed.findIndex((entry) => entry.id === id);
+    if (i < 0) return;
+    this.world.removeRigidBody((this.pushed[i] as Pushed).body);
+    this.pushed.splice(i, 1);
   }
 
   /** How many promoted vehicles have a body in the world. */
@@ -178,7 +221,7 @@ export class TrafficBodies {
    * records, then promote every vehicle the player now touches.
    */
   settle(state: SimState): void {
-    for (const entry of this.pushed) this.read(entry, (promotedOf(state.traffic, entry.id) as PromotedVehicle).vehicle);
+    for (const entry of this.pushed) this.read(state, entry, promotedOf(state.traffic, entry.id) as PromotedVehicle);
     const v = state.vehicle;
     const spec = specOf(v.cls);
     setFootprint(this.car, v.x, v.z, headingOf(v), spec.halfLength, spec.halfWidth);
@@ -197,12 +240,14 @@ export class TrafficBodies {
       else kept.push(entry);
     }
     this.moving = kept;
-    this.parked?.touched(this.car, onFoot ? this.walker : undefined, TOUCH_MARGIN, (bay, car, spec) => {
-      const cars = (this.parked as ParkedBodies).cars;
-      const bays = cars.bays;
-      const at = { x: bays.x[bay] as number, y: bays.y[bay] as number, height: bays.height[bay] as number, heading: bays.heading[bay] as number, speed: 0 };
-      this.hand(state, PARKED_ID + bay, car.paint, spec, at);
-    });
+    this.parked?.touched(this.car, onFoot ? this.walker : undefined, TOUCH_MARGIN, (bay, car, spec) => this.handParked(state, bay, car, spec));
+  }
+
+  /** Hand a parked car taken out of its bay to the physics, standing still where it stood. */
+  private handParked(state: SimState, bay: number, car: ParkedCar, spec: VehicleSpec): void {
+    const bays = (this.parked as ParkedBodies).cars.bays;
+    const at = { x: bays.x[bay] as number, y: bays.y[bay] as number, height: bays.height[bay] as number, heading: bays.heading[bay] as number, speed: 0 };
+    this.hand(state, PARKED_ID + bay, car.paint, spec, at);
   }
 
   /** Take a vehicle off its tour and hand it to the physics, moving as it was. */
@@ -299,7 +344,17 @@ export class TrafficBodies {
     return body;
   }
 
-  private read(entry: Pushed, v: VehicleState): void {
+  /**
+   * Read a promoted body back into its record. The speed it lost over the step
+   * is a crash (spec section 11.3), read in its own frame so the panel facing
+   * the blow is the one that takes it, exactly as `physics.ts` measures the
+   * player's car. Nobody is in it to be hurt.
+   */
+  private read(state: SimState, entry: Pushed, record: PromotedVehicle): void {
+    const v = record.vehicle;
+    const wasX = v.vx;
+    const wasY = v.vy;
+    const wasZ = v.vz;
     const t = entry.body.translation();
     const r = entry.body.rotation();
     const linear = entry.body.linvel();
@@ -319,6 +374,9 @@ export class TrafficBodies {
     v.az = angular.z;
     rotate(this.axis, v, 1, 0, 0);
     v.speed = v.vx * this.axis.x + v.vy * this.axis.y + v.vz * this.axis.z;
+    unrotate(this.axis, v, v.vx - wasX, v.vy - wasY, v.vz - wasZ);
+    // `unrotate` answers along, up and across; the damage reads along, across and up.
+    hitVehicle(v.damage, entry.spec, this.axis.x, this.axis.z, this.axis.y, state.seed, state.tick, record.id);
   }
 }
 
