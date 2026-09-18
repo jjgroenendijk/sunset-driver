@@ -12,7 +12,7 @@
  * down or blocked leaves the room and the next one is tried. No server is
  * deployed or paid for by anyone.
  */
-import type { JsonValue, MessageAction, Room } from '@trystero-p2p/core';
+import type { DataPayload, MessageAction, Room } from '@trystero-p2p/core';
 import { APP_ID, MESSAGE_KINDS, type MessageKind } from './protocol.ts';
 import type { NetLink } from './party.ts';
 
@@ -87,10 +87,10 @@ function answered(sockets: () => Record<string, WebSocket>, timeoutMs: number): 
 
 /** The room as `party.ts` sees it: two actions, two peer events, and a way out. */
 function linkOver(room: Room, strategy: Strategy): NetLink {
-  const actions: Record<MessageKind, MessageAction<JsonValue>> = {
-    hello: room.makeAction<JsonValue>('hello'),
-    tick: room.makeAction<JsonValue>('tick'),
-  };
+  // One action per kind, made in the order `protocol.ts` lists them: Trystero
+  // namespaces an action by its name, so both ends must make the same set.
+  const actions = {} as Record<MessageKind, MessageAction<DataPayload>>;
+  for (const kind of MESSAGE_KINDS) actions[kind] = room.makeAction<DataPayload>(kind);
   const link: NetLink = {
     selfId: strategy.selfId,
     via: strategy.name,
@@ -98,7 +98,7 @@ function linkOver(room: Room, strategy: Strategy): NetLink {
       // A peer that left between the frame and the send is not an error worth
       // stopping for: the room notices it left on its own event.
       void actions[kind]
-        .send(body as unknown as JsonValue, to === undefined ? undefined : { target: to })
+        .send(body as DataPayload, to === undefined ? undefined : { target: to })
         .catch((error: unknown) => console.warn(`multiplayer: ${kind} did not reach ${to ?? 'the room'}`, error));
     },
     onPeerJoin: null,

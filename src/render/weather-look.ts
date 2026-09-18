@@ -20,8 +20,10 @@
  */
 import { Color } from 'three';
 import { clamp, lerp } from '../core/math.ts';
+import { CHUNK_SIZE } from '../world/chunks.ts';
 import type { Weather } from '../sim/weather.ts';
 import type { Daylight } from './daylight.ts';
+import type { ChunkRings } from './streaming.ts';
 
 /** The colour the haze takes under cloud, and the colour fog itself is. */
 const CLOUD_HAZE = 0x9099a0;
@@ -112,4 +114,18 @@ export function fogRange(near: number, far: number, weather: Weather): { near: n
   // which is fog, and not the 410 m that lies halfway between them, which is
   // the clear day it started from.
   return { near: near * (FOG_NEAR / near) ** thick, far: far * (FOG_FAR / far) ** thick };
+}
+
+/**
+ * Metres at which the haze starts, and at which it is complete, for a given
+ * far ring. It closes at the edge of that ring, where the ground ends: nothing
+ * should be seen to end. It opens one chunk inside it, so the far ring is what
+ * fades. A quality tier that pulls the ring in brings the haze with it (spec
+ * section 9.2).
+ */
+export function fogOf(rings: ChunkRings, weather: Weather): { near: number; far: number } {
+  // Fog is the one weather that cuts the draw distance (spec section 13.4): the
+  // haze is brought in front of the last chunk rather than standing at it, so
+  // the ground still ends where it ended and nothing is seen to stop.
+  return fogRange((rings.far - 1) * CHUNK_SIZE, rings.far * CHUNK_SIZE, weather);
 }

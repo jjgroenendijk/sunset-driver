@@ -17,10 +17,23 @@ export const APP_ID = 'sunset-driver';
  * shape, because two builds that read the same field differently would diverge
  * quietly, which is the one failure the shared clock cannot show.
  */
-export const PROTOCOL = 1;
+export const PROTOCOL = 2;
 
-/** The kinds of message this issue's scope carries. Each is one Trystero action. */
-export const MESSAGE_KINDS = ['hello', 'tick'] as const;
+/**
+ * The kinds of message. Each is one Trystero action.
+ *
+ * - `hello` — the handshake: who it is, which city, what time, and what they
+ *   look like.
+ * - `tick` — the host's beat of the shared clock.
+ * - `move` — one player's own state, as the typed array of `move.ts`. Every
+ *   peer is the authority on its own, so this is the only thing a peer says
+ *   about itself.
+ * - `world` — the host's divergence set, as the deltas and the correction
+ *   snapshots of `divergence.ts`.
+ * - `host` — a peer taking the room over, because the host left (spec section
+ *   21.4). It carries the new host's tick, which the others lock to.
+ */
+export const MESSAGE_KINDS = ['hello', 'tick', 'move', 'world', 'host'] as const;
 export type MessageKind = (typeof MESSAGE_KINDS)[number];
 
 /** The first thing either side says: who it is, which city it is in, and what time it is there. */
@@ -31,6 +44,13 @@ export interface Hello {
   tick: number;
   /** Whether the sender opened the room. Exactly one peer of a room says true. */
   host: boolean;
+  /**
+   * The look the sender picked on the title screen, so the room can draw them.
+   * It is read as whatever arrived and wrapped into the creator's choices by
+   * `move.ts`, because a look that is not one of them is a look, not a refusal.
+   * A peer that says nothing about itself is drawn as the default build.
+   */
+  look?: unknown;
 }
 
 /** Why a peer was turned away. The player is told in these words, so they are few. */
@@ -48,10 +68,14 @@ export function readHello(value: unknown): Hello | null {
   const tick = readTick(body.tick);
   if (typeof body.protocol !== 'number' || typeof body.seed !== 'string') return null;
   if (tick === null || typeof body.host !== 'boolean') return null;
-  return { protocol: body.protocol, seed: body.seed, tick, host: body.host };
+  return { protocol: body.protocol, seed: body.seed, tick, host: body.host, look: body.look };
 }
 
-/** The tick of a beat as sent, or null where what arrived is not one. */
+/**
+ * The tick of a beat as sent, or null where what arrived is not one. A peer
+ * taking the room over sends the same shape, because what it is saying is the
+ * same thing: this is the tick everybody keeps now.
+ */
 export function readBeat(value: unknown): number | null {
   if (typeof value !== 'object' || value === null) return null;
   return readTick((value as Record<string, unknown>).tick);

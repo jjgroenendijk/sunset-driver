@@ -8,8 +8,11 @@
  * room are fetched on the press, so a single-player session downloads nothing
  * of the multiplayer and connects to nothing.
  */
+import type { InputFrame } from '../sim/input.ts';
+import type { SimState } from '../sim/simulation.ts';
 import { inviteLink, randomRoomCode } from './invite.ts';
 import type { Party, PartyState } from './party.ts';
+import type { RemotePlayer } from './roster.ts';
 
 /**
  * Where the multiplayer stands, as the pause menu draws it. `connecting` is the
@@ -22,9 +25,16 @@ export interface ControlState extends Omit<PartyState, 'phase'> {
   phase: ControlPhase;
 }
 
+/** What a session with nobody else in it has to hand back, made once. */
+const ALONE: readonly RemotePlayer[] = [];
+
 export class PartyControl {
   private readonly seed: string;
-  private readonly tick: () => number;
+  /**
+   * The record: read for the tick a room opens on, for the look the handshake
+   * carries, and for the frames that go out. Never written here.
+   */
+  private readonly record: () => SimState;
   private party: Party | null = null;
   private connecting = false;
   private room = '';
@@ -36,9 +46,9 @@ export class PartyControl {
   /** The tick the record must jump to, because the host's clock says so (spec section 21.4). */
   onSnap: ((tick: number) => void) | null = null;
 
-  constructor(seed: string, tick: () => number) {
+  constructor(seed: string, record: () => SimState) {
     this.seed = seed;
-    this.tick = tick;
+    this.record = record;
   }
 
   get state(): ControlState {
@@ -74,9 +84,18 @@ export class PartyControl {
     this.party?.close();
   }
 
-  /** The frame's steps, corrected for the host's clock. Single player is the steps it was handed. */
-  frame(tick: number, steps: number): number {
-    return this.party?.frame(tick, steps) ?? steps;
+  /**
+   * The frame's steps, corrected for the host's clock, with everything the room
+   * owes sent and everything it was told written in. Single player is the steps
+   * it was handed and nothing else.
+   */
+  frame(state: SimState, input: InputFrame, steps: number): number {
+    return this.party?.frame(state, input, steps) ?? steps;
+  }
+
+  /** Everybody else in the city, as the frame draws them (spec section 21.5). */
+  remotes(tick: number): readonly RemotePlayer[] {
+    return this.party?.remotes(tick) ?? ALONE;
   }
 
   /** The link a host copies out of the pause menu, or null while there is no room. */
@@ -94,7 +113,8 @@ export class PartyControl {
     try {
       const [{ openLink }, { Party }] = await Promise.all([import('./link.ts'), import('./party.ts')]);
       const link = await openLink(room);
-      const party = new Party(link, { seed: this.seed, room, host, tick: this.tick() });
+      const now = this.record();
+      const party = new Party(link, { seed: this.seed, room, host, tick: now.tick, look: now.character });
       party.onChange = (state) => this.settle(state);
       party.onSnap = (tick) => this.onSnap?.(tick);
       this.party = party;
@@ -110,9 +130,16 @@ export class PartyControl {
     }
   }
 
-  /** A room that closed itself is let go of, so the menu can open another one. */
+  /**
+   * A room that closed itself is let go of, so the menu can open another one.
+   * The session's shared territory goes with it: spec section 21.3 keeps a room
+   * out of everybody's save, so the player's own captures are put back and the
+   * map they left single player on is the map they come back to.
+   */
   private settle(state: ControlState): void {
     if (state.phase === 'offline') {
+      const own = this.party?.ownCaptures ?? null;
+      if (own !== null) this.record().factions.captured = own;
       this.party = null;
       this.room = '';
       this.host = false;

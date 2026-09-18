@@ -13,9 +13,18 @@ import { PROTOCOL, readBeat, readHello, refuse } from '../src/net/protocol.ts';
 import { BEAT_TICKS, SNAP_TICKS, TickLock } from '../src/net/tick-lock.ts';
 import { MAX_PLAYERS, Party, type MessageBody, type NetLink } from '../src/net/party.ts';
 import type { MessageKind } from '../src/net/protocol.ts';
+import { EMPTY_INPUT } from '../src/sim/input.ts';
+import { createSimState, type SimState } from '../src/sim/simulation.ts';
 
 const SEED = 'sunset';
 const ROOM = 'K7M3QX';
+
+/** A record standing on a tick, which is what a frame of the room reads. */
+function at(tick: number): SimState {
+  const state = createSimState(1);
+  state.tick = tick;
+  return state;
+}
 
 interface Sent {
   kind: MessageKind;
@@ -164,12 +173,12 @@ describe('a room', () => {
   it('beats the authoritative tick to the room, and only while somebody is in it', () => {
     const link = new TestLink();
     const party = new Party(link, { seed: SEED, room: ROOM, host: true, tick: 0 });
-    expect(party.frame(BEAT_TICKS, 1)).toBe(1);
+    expect(party.frame(at(BEAT_TICKS), EMPTY_INPUT, 1)).toBe(1);
     expect(last(link, 'tick')).toBeUndefined();
     link.greet('a');
-    party.frame(BEAT_TICKS, 1);
+    party.frame(at(BEAT_TICKS), EMPTY_INPUT, 1);
     expect(last(link, 'tick')?.body).toEqual({ tick: BEAT_TICKS });
-    party.frame(BEAT_TICKS + 1, 1);
+    party.frame(at(BEAT_TICKS + 1), EMPTY_INPUT, 1);
     expect(link.sent.filter((message) => message.kind === 'tick')).toHaveLength(1);
   });
 
@@ -180,18 +189,18 @@ describe('a room', () => {
     party.onSnap = (tick) => snaps.push(tick);
     link.greet('host', { host: true, tick: 9_000 });
     expect(snaps).toEqual([9_000]);
-    party.frame(9_000, 1);
+    party.frame(at(9_000), EMPTY_INPUT, 1);
     link.onMessage?.('tick', { tick: 9_010 }, 'host');
-    expect(party.frame(9_000, 1)).toBe(2);
+    expect(party.frame(at(9_000), EMPTY_INPUT, 1)).toBe(2);
   });
 
   it('takes a beat from the host and from nobody else', () => {
     const link = new TestLink();
     const party = new Party(link, { seed: SEED, room: ROOM, host: false, tick: 0 });
     link.greet('host', { host: true, tick: 100 });
-    party.frame(100, 1);
+    party.frame(at(100), EMPTY_INPUT, 1);
     link.onMessage?.('tick', { tick: 160 }, 'other');
-    expect(party.frame(100, 1)).toBe(1);
+    expect(party.frame(at(100), EMPTY_INPUT, 1)).toBe(1);
   });
 
   it('refuses a peer from another city, and says so', () => {
@@ -254,9 +263,9 @@ describe('a room', () => {
     const link = new TestLink();
     const party = new Party(link, { seed: SEED, room: ROOM, host: false, tick: 0 });
     link.greet('host', { host: true, tick: 400 });
-    party.frame(400, 1);
+    party.frame(at(400), EMPTY_INPUT, 1);
     link.onMessage?.('tick', { tick: 460 }, 'host');
     party.close();
-    expect(party.frame(400, 1)).toBe(1);
+    expect(party.frame(at(400), EMPTY_INPUT, 1)).toBe(1);
   });
 });
