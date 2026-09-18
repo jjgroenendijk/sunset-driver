@@ -3,6 +3,7 @@ import { WebGPURenderer } from 'three/webgpu';
 import { clamp } from '../core/math.ts';
 import { PinnedClusterLighting } from './clustered-lights.ts';
 import { registerLampLight } from './lamp-light.ts';
+import { registerNeonLight } from './sign-light.ts';
 
 /**
  * How much light reaches the film. The sky of `sky.ts` is the Preetham model,
@@ -24,7 +25,9 @@ const EXPOSURE = 0.62;
  * point lights alone, so the projector cones of `lamps.ts` still go down the
  * default path today; the hard cap in that file and the branch of
  * `lamp-light.ts`, which skips a cone while it is off, keep them inside the
- * budget. The neon and headlights that come later land in the cluster grid.
+ * budget. The rect area lights of the neon (`sign-light.ts`) go down that same
+ * path and branch the same way; the headlights that come later land in the
+ * cluster grid.
  */
 function configure(renderer: WebGPURenderer): void {
   renderer.toneMapping = ACESFilmicToneMapping;
@@ -33,6 +36,7 @@ function configure(renderer: WebGPURenderer): void {
   // the sun's cascades are built and never drawn, and the city is flat.
   renderer.shadowMap.enabled = true;
   registerLampLight(renderer);
+  registerNeonLight(renderer);
 }
 
 /**

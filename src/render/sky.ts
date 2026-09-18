@@ -90,16 +90,19 @@ const MIE_COEFFICIENT = 0.006;
 const MIE_DIRECTIONAL_G = 0.82;
 
 /**
- * Lights the scene may hold at once (spec section 10.5). The sun, the sky fill,
- * and the street lamps of `lamps.ts`. Every light is evaluated by every
- * fragment it can reach, so this is a hard cap rather than a target: a system
- * that needs more raises it together with the lighting it brings.
+ * Lights the scene may hold at once (spec section 10.5): the sun and the sky
+ * fill here, the street lamps of `lamps.ts`, the player's headlights
+ * (`headlights.ts`) and the neon of `signs.ts`. Every light is evaluated by
+ * every fragment it can reach, so this is a hard cap rather than a target: a
+ * system that needs more raises it together with the lighting it brings, and
+ * every pool that makes it up is a fixed size so the sum can be checked.
+ * `WorldScene.lightCount` is what it is checked against.
  */
-export const SCENE_LIGHT_CAP = 10;
+export const SCENE_LIGHT_CAP = 16;
 
 /** The sky of one world: the dome, the sun and the fill, and the fog under them. */
 export class SkyLighting {
-  /** Lights this holds. The rest of {@link SCENE_LIGHT_CAP} is the street lamps'. */
+  /** Lights this holds. The rest of {@link SCENE_LIGHT_CAP} is the lamps', the headlights' and the neon's. */
   readonly lightCount = 2;
   readonly shadowCascades = SHADOW_CASCADES;
 

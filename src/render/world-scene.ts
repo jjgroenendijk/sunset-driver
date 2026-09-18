@@ -71,6 +71,7 @@ import { VehicleModel } from './vehicle.ts';
 import { HeldWeapon, WeaponArt } from './weapon.ts';
 import { PickupModels } from './pickups.ts';
 import { PosterScenery } from './posters.ts';
+import { SignScenery } from './signs.ts';
 import { ShopInterior } from './interior.ts';
 import {
   detailAt,
@@ -161,6 +162,8 @@ export class WorldScene {
   private readonly lamps = new LampScenery(this.fade);
   /** The harm-reduction posters on the walls (spec section 19). */
   private readonly posters = new PosterScenery(this.fade);
+  /** The shop signage and the billboards over it, and the neon that lights a few of them. */
+  private readonly signs = new SignScenery(this.fade, this.scene);
   private readonly lampLights: LampLights;
   /** The beams the player's vehicle throws (spec section 13.4). */
   private readonly headlights: Headlights;
@@ -416,6 +419,7 @@ export class WorldScene {
     this.fade.focus(x, y);
     this.water.follow(x, y);
     this.lampLights.aim(x, y, this.lampsInReach(), this.lit.lamps);
+    this.signs.aim(x, y, this.lit.lamps);
     this.weatherFx.update(this.weather, this.tick, x, y);
   }
 
@@ -546,12 +550,12 @@ export class WorldScene {
 
   /**
    * Lights the scene holds (spec section 10.5): the sun, the sky fill and the
-   * street lamps that are throwing light, and the player's own headlights. The
+   * street lamps and the neon that are throwing light, and the headlights. The
    * HUD shows this beside the draw calls, so a light leak is visible while
    * playing.
    */
   get lightCount(): number {
-    return this.sky.lightCount + this.lampLights.count + this.headlights.count;
+    return this.sky.lightCount + this.lampLights.count + this.headlights.count + this.signs.lightCount;
   }
 
   /** Shadow maps the sun is split into. The lamps cast none. */
@@ -575,6 +579,7 @@ export class WorldScene {
     this.vegetation.dispose();
     this.lamps.dispose();
     this.posters.dispose();
+    this.signs.dispose();
     this.character.dispose();
     this.scene.remove(this.vehicle.group);
     this.vehicle.dispose();
@@ -605,6 +610,7 @@ export class WorldScene {
     this.water.setDaylight(light);
     this.buildings.night = light.night;
     this.lamps.lamps = light.lamps;
+    this.signs.night = light.lamps;
   }
 
   /** The lamps of every chunk in reach, a chunk at a time. */
@@ -703,6 +709,11 @@ export class WorldScene {
     // the information of spec section 19 is not what a low tier drops.
     if (payload.posters.length > 0) {
       this.queueJob(tile, () => this.add(tile, this.posters.build(grid, payload.posters)));
+    }
+    // Nor are the signs: a high street with its lettering thinned away is a
+    // district the player can no longer read (spec section 13.1).
+    if (payload.signs.length > 0) {
+      this.queueJob(tile, () => this.add(tile, this.signs.build(grid, payload.signs)));
     }
     this.queueJob(tile, () => {
       tile.whole = true;

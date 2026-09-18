@@ -1,7 +1,5 @@
-import { Vector3, type BufferAttribute } from 'three';
 import { describe, expect, it } from 'vitest';
-import type { Point } from '../src/core/geom.ts';
-import { buildChunkBuildings, type BuildingLookup, type BuildingPlacement } from '../src/render/building-mesh.ts';
+import type { BuildingPlacement } from '../src/render/building-mesh.ts';
 import {
   createCanvas,
   drawText,
@@ -13,87 +11,17 @@ import {
 } from '../src/render/pixel-canvas.ts';
 import { POSTER_ART, POSTER_CELL_HEIGHT, POSTER_CELL_WIDTH, posterAtlas } from '../src/render/poster-art.ts';
 import { posterGeometry, posterParts, postersIn, type Poster } from '../src/render/poster-mesh.ts';
-import { chunkBounds, CHUNK_SIZE, type WorldChunk } from '../src/world/chunks.ts';
-import type { Building, BuildingKind } from '../src/world/buildings.ts';
-import type { District, Zone } from '../src/world/types.ts';
-
-/** The flat ground the made-up chunk below stands on. */
-const GROUND = 8;
+import type { BuildingKind } from '../src/world/buildings.ts';
+import type { District } from '../src/world/types.ts';
+import { districtOf, frontReach, GROUND, lookupOf, placedRow, sameFront, wallTop } from './building-fixture.ts';
 
 /** Pixels the margin and the band of a poster leave for a line of body text. */
 const BODY_ROOM = POSTER_CELL_WIDTH - 16;
 
-function districtOf(zone: Zone, wealth: number): District {
-  return { id: 0, name: zone, zone, x: 0, y: 0, density: 0.5, wealth, culture: 'none' };
-}
-
-/** A lot as `buildings.ts` lays one: the two front corners first, then the back two. */
-function lotOf(front: Point, width: number, depth: number, facing: number): Point[] {
-  const n = { x: -Math.cos(facing), y: -Math.sin(facing) };
-  const t = { x: n.y, y: -n.x };
-  const f0 = { x: front.x - (t.x * width) / 2, y: front.y - (t.y * width) / 2 };
-  const f1 = { x: front.x + (t.x * width) / 2, y: front.y + (t.y * width) / 2 };
-  return [f0, f1, { x: f1.x + n.x * depth, y: f1.y + n.y * depth }, { x: f0.x + n.x * depth, y: f0.y + n.y * depth }];
-}
-
-function buildingOf(id: number, kind: BuildingKind, seed: number): Building {
-  const facing = -Math.PI / 2;
-  const front = { x: id * 40, y: 0 };
-  const width = 26;
-  const depth = 24;
-  return {
-    id,
-    parcel: 0,
-    kind,
-    seed,
-    lot: lotOf(front, width, depth, facing),
-    area: width * depth,
-    width,
-    depth,
-    front,
-    facing,
-    road: 0,
-    district: 0,
-    zone: 'inner',
-    // Low, so a mid-rise is a few storeys and the test is not spent generating
-    // a hundred metres of facade.
-    skyline: 0,
-    // A lot with nothing against either side, so the shell keeps its margins.
-    shared: { left: false, right: false },
-  };
-}
-
-function chunkOf(buildings: Building[]): WorldChunk {
-  return {
-    seed: 1,
-    cx: 0,
-    cy: 0,
-    bounds: chunkBounds(0, 0),
-    terrain: { gridSize: 2, cellSize: CHUNK_SIZE, originX: 0, originY: 0, heights: new Float32Array(4).fill(GROUND) },
-    seaLevel: 0,
-    roads: [],
-    junctions: [],
-    pavement: [],
-    parcels: [],
-    buildings,
-    plants: [],
-    piers: [],
-    tram: [],
-    tramCrossings: [],
-  };
-}
-
-function lookupOf(district: District): BuildingLookup {
-  return { heightAt: () => GROUND, districtOf: () => district, chamferOf: () => 0 };
-}
-
 /** A row of buildings of one kind, each with its own seed, placed and papered. */
 function postersOn(kind: BuildingKind, district: District, count: number): { placed: BuildingPlacement[]; posters: Poster[] } {
-  const buildings: Building[] = [];
-  for (let i = 0; i < count; i++) buildings.push(buildingOf(i, kind, 1000 + i * 7919));
-  const lookup = lookupOf(district);
-  const placed = buildChunkBuildings(chunkOf(buildings), lookup);
-  return { placed, posters: postersIn(placed, lookup) };
+  const placed = placedRow(kind, district, count);
+  return { placed, posters: postersIn(placed, lookupOf(district)) };
 }
 
 /** The colour of one pixel, as `0xrrggbb`. */
@@ -244,33 +172,3 @@ describe('where a poster hangs', () => {
     }
   });
 });
-
-/** The height of the top of the built shell, in the world. */
-function wallTop(placed: BuildingPlacement): number {
-  const position = placed.shell.getAttribute('position');
-  const at = new Vector3();
-  let top = -Infinity;
-  for (let v = 0; v < position.count; v++) {
-    top = Math.max(top, at.fromBufferAttribute(position as BufferAttribute, v).applyMatrix4(placed.matrix).y);
-  }
-  return top;
-}
-
-/** How far the built shell reaches past the front edge of its lot, in metres. */
-function frontReach(placed: BuildingPlacement): number {
-  const position = placed.shell.getAttribute('position');
-  const facing = placed.building.facing;
-  const front = placed.building.front;
-  const at = new Vector3();
-  let reach = -Infinity;
-  for (let v = 0; v < position.count; v++) {
-    at.fromBufferAttribute(position as BufferAttribute, v).applyMatrix4(placed.matrix);
-    reach = Math.max(reach, (at.x - front.x) * Math.cos(facing) + (at.z - front.y) * Math.sin(facing));
-  }
-  return reach;
-}
-
-/** Whether a poster hangs on this building, by the frontage it stands on. */
-function sameFront(placed: BuildingPlacement, poster: Poster): boolean {
-  return Math.hypot(placed.building.front.x - poster.x, placed.building.front.y - poster.y) < placed.building.width;
-}

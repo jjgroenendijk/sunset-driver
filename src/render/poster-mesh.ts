@@ -25,13 +25,14 @@
  * Nothing here touches the renderer or TSL, so it runs headless and the tests
  * read it directly.
  */
-import { BufferAttribute, Matrix4, PlaneGeometry, Vector3, type BufferGeometry } from 'three';
+import { BufferAttribute, Matrix4, PlaneGeometry, type BufferGeometry } from 'three';
 import { hashInts } from '../core/hash.ts';
 import type { BuildingKind } from '../world/buildings.ts';
 import type { Zone } from '../world/types.ts';
 import type { BuildingLookup, BuildingPlacement } from './building-mesh.ts';
 import { FOUNDATION } from './building-plan.ts';
 import { POSTER_ART, POSTER_CELL_WIDTH } from './poster-art.ts';
+import { boardFrame, wallFaceOf } from './wall-face.ts';
 
 /** One board, in the places the scene works in. */
 export interface Poster {
@@ -148,35 +149,25 @@ export function postersIn(placements: readonly BuildingPlacement[], lookup: Buil
   return out;
 }
 
+/**
+ * Which end of a building's frontage its poster takes, 1 or -1. The
+ * advertising of `sign-mesh.ts` stands a billboard on the same roofs and takes
+ * the other end, so the two never fight for one place.
+ */
+export function posterSide(seed: number): number {
+  return hashInts(seed, SIDE_SALT) % 2 === 0 ? 1 : -1;
+}
+
 /** The board on one building, or nothing where its wall has no room for one. */
 function posterOn(placed: BuildingPlacement, size: 'sheet' | 'board'): Poster | undefined {
-  const shell = placed.shell;
-  if (shell.boundingBox === null) shell.computeBoundingBox();
-  const box = shell.boundingBox;
-  if (box === null) return undefined;
-  // The matrix scales the shell to fill its massing, so the built wall is the
-  // shell's own box taken through that scale. Its axes are read back as unit
-  // vectors, which leaves every offset below in plain metres.
-  const matrix = placed.matrix;
-  const along = new Vector3().setFromMatrixColumn(matrix, 0);
-  const up = new Vector3().setFromMatrixColumn(matrix, 1);
-  const out = new Vector3().setFromMatrixColumn(matrix, 2);
-  const scaleAlong = along.length();
-  const scaleUp = up.length();
-  const scaleOut = out.length();
-  if (scaleAlong === 0 || scaleUp === 0 || scaleOut === 0) return undefined;
-  along.divideScalar(scaleAlong);
-  up.divideScalar(scaleUp);
-  out.divideScalar(scaleOut);
+  // The wall that was really built, in the scene's axes: see `wall-face.ts`.
+  const wallFace = wallFaceOf(placed);
+  if (wallFace === undefined) return undefined;
+  const { along, up, out, at: middleOfWall, wall, halfWall, face } = wallFace;
 
   const board = size === 'board';
   const width = board ? BOARD_WIDTH : SHEET_WIDTH;
   const tall = width * SHEET_RATIO;
-  // The frame stands a foundation below the ground, so a height over the
-  // pavement is that much further up the wall.
-  const wall = box.max.y * scaleUp - FOUNDATION;
-  const halfWall = box.max.x * scaleAlong;
-  const face = box.max.z * scaleOut;
   if (halfWall * 2 < width + WALL_CLEARANCE * 2) return undefined;
   if (board && (wall < BOARD_MIN_WALL || wall > BOARD_MAX_WALL)) return undefined;
   if (!board && SHEET_HEIGHT + tall / 2 + WALL_CLEARANCE > wall) return undefined;
@@ -189,10 +180,10 @@ function posterOn(placed: BuildingPlacement, size: 'sheet' | 'board'): Poster | 
   const stand = board ? face - (Math.sin(tilt) * tall) / 2 : face + PROUD;
 
   const seed = placed.building.seed;
-  const side = hashInts(seed, SIDE_SALT) % 2 === 0 ? 1 : -1;
+  const side = posterSide(seed);
   const reach = Math.max(0, halfWall - width / 2 - WALL_CLEARANCE);
-  const at = new Vector3()
-    .setFromMatrixPosition(matrix)
+  const at = middleOfWall
+    .clone()
     .addScaledVector(along, side * reach)
     .addScaledVector(up, middle + FOUNDATION)
     .addScaledVector(out, stand);
@@ -214,7 +205,7 @@ function posterOn(placed: BuildingPlacement, size: 'sheet' | 'board'): Poster | 
  * carries, and the frame that hangs it on its wall.
  */
 export function posterParts(posters: readonly Poster[]): PosterPart[] {
-  return posters.map((poster) => ({ geometry: posterGeometry(poster), matrix: placeOf(poster) }));
+  return posters.map((poster) => ({ geometry: posterGeometry(poster), matrix: boardFrame(poster) }));
 }
 
 /**
@@ -241,22 +232,6 @@ export function posterGeometry(poster: Poster): BufferGeometry {
   }
   uv.needsUpdate = true;
   return geometry;
-}
-
-/**
- * Where one board hangs: its own frame, with `z` the way the print faces. The
- * lean turns the frame about the board's own width, which leaves the face
- * looking out over the street and up at the camera.
- */
-function placeOf(poster: Poster): Matrix4 {
-  const wall = new Vector3(poster.outX, 0, poster.outY);
-  const sky = new Vector3(0, 1, 0);
-  const along = new Vector3().crossVectors(sky, wall);
-  const lean = Math.sin(poster.tilt);
-  const stand = Math.cos(poster.tilt);
-  const out = wall.clone().multiplyScalar(stand).addScaledVector(sky, lean);
-  const up = sky.clone().multiplyScalar(stand).addScaledVector(wall, -lean);
-  return new Matrix4().makeBasis(along, up, out).setPosition(poster.x, poster.height, poster.y);
 }
 
 /**

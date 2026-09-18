@@ -1,15 +1,17 @@
 # Lighting
 
 The gotchas of what lights `src/render`: the sun and the sky through a game day, the shadows they
-cast, the street lamps, and the lamps and beams a vehicle carries after dark. `spec.md` sections
-10.5 and 13.4 are the design. What is drawn is in `docs/rendering.md` and
+cast, the street lamps, the neon over the shops, and the lamps and beams a vehicle carries after
+dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs/rendering.md` and
 `docs/render-entities.md`, and the weather laid over the day's own light in `docs/weather.md`.
 
 ## Contents
 
 - Daylight, shadows and the sky
 - Street lamps
+- Neon
 - Headlights and tail lights
+- The light budget
 
 ## Daylight, shadows and the sky
 
@@ -69,6 +71,29 @@ cast, the street lamps, and the lamps and beams a vehicle carries after dark. `s
   uniform, so a light that is off is a branch the fragment skips. `registerLampLight` in
   `renderer.ts` gives the renderer that node. A renderer that is not told draws the lamps unlit.
 
+## Neon
+
+- A neon sign is the one thing in the city that really is a lit rectangle, so it is the one
+  `RectAreaLight` of spec section 10.5. `NeonLights` (`signs.ts`) is a fixed pool of
+  `NEON_LIGHT_CAP` of them, handed to the neon nearest the player, exactly as the street lamps
+  are handed their cones. Every other lit sign is a glowing board and no light.
+- **A rect area light needs its BRDF tables before any material that reaches one is built.** The
+  tables are about 300 kB of numbers in `three/examples/jsm/lights/RectAreaLightTexturesLib.js`
+  and the node reads them through a static: `registerNeonLight` (`sign-light.ts`) calls
+  `RectAreaLightNode.setLTC` with them, from `renderer.ts`, beside the lamps' registration. A
+  renderer that is not told fails to build the first material a sign reaches, and the error names
+  a texture rather than a light.
+- The same node wraps the light in `If` on a `lit` uniform, for the reason the street lamps do: a
+  light at 0 is still evaluated by every fragment it can reach, and taking it out of the scene
+  rebuilds every shader. three.js 0.186 clusters shadowless point lights alone, so a rect area
+  light goes down the direct path like the cones.
+- Only a fascia is handed a light. A billboard leans back over its roof so the camera can read it
+  (spec section 10.7), which means what it lights is the sky; it glows and throws nothing.
+- The glow itself is not a light at all. `sign-material.ts` makes the board's own printed colours
+  emissive, off one uniform for the whole city, so a high street lights together at dusk. A tube
+  that has failed stutters on its own phase, written on the board's vertices by `sign-mesh.ts`,
+  because a batch has merged a chunk's boards into one mesh before the material runs.
+
 ## Headlights and tail lights
 
 - A vehicle's lamps are boxes like the rest of it, so what makes one a lamp is the colour it is
@@ -92,3 +117,13 @@ cast, the street lamps, and the lamps and beams a vehicle carries after dark. `s
 - `WorldScene.setVehicle` is the door onto the player's model. It places it, burns its lamps and
   aims the beams together, because a caller that reaches past it to `vehicle.set` gets a car with
   its lights off and nothing to say why.
+
+## The light budget
+
+- `SCENE_LIGHT_CAP` (`sky.ts`) is every light the scene may hold at once, and the pools that make
+  it up are each a fixed size so the sum can be checked: the sun and the sky fill, `LAMP_LIGHT_CAP`
+  street lamps, `HEADLIGHT_CAP` beams and `NEON_LIGHT_CAP` signs. `WorldScene.lightCount` adds them
+  and the HUD shows it, so a leak is visible while playing.
+- A count over the cap is a regression, not a number to raise. A system that brings lighting of its
+  own raises it together with the pool it brings, and adds that pool to the check in
+  `test/signs.test.ts`.

@@ -24,6 +24,7 @@ import type { EntityFade } from './fade.ts';
 import { LampLight } from './lamp-light.ts';
 import { createLampMaterials, type LampMaterials } from './lamp-material.ts';
 import { buildChunkLamps, type Lamp } from './lamp-mesh.ts';
+import { nearestOf } from './nearest.ts';
 import type { TilePart } from './streaming.ts';
 
 /**
@@ -179,26 +180,10 @@ export class LampLights {
 }
 
 /**
- * The {@link LAMP_LIGHT_CAP} lamps nearest a place, nearest first. Kept by
- * insertion into a list that is never longer than the cap, so the walk is over
- * the lamps in reach and the sort is over eight of them.
+ * The {@link LAMP_LIGHT_CAP} lamps nearest a place, nearest first. The pick
+ * itself is `nearest.ts`, which the neon of `signs.ts` shares; a lamp is
+ * measured from its head, which is where its light hangs.
  */
 export function nearest(x: number, y: number, tiles: readonly (readonly Lamp[])[]): Lamp[] {
-  const best: Lamp[] = [];
-  const spans: number[] = [];
-  for (const tile of tiles) {
-    for (const lamp of tile) {
-      const span = (lamp.headX - x) ** 2 + (lamp.headY - y) ** 2;
-      if (best.length === LAMP_LIGHT_CAP && span >= (spans[best.length - 1] as number)) continue;
-      let at = best.length;
-      while (at > 0 && (spans[at - 1] as number) > span) at--;
-      best.splice(at, 0, lamp);
-      spans.splice(at, 0, span);
-      if (best.length > LAMP_LIGHT_CAP) {
-        best.pop();
-        spans.pop();
-      }
-    }
-  }
-  return best;
+  return nearestOf(x, y, tiles, LAMP_LIGHT_CAP, (lamp, atX, atY) => (lamp.headX - atX) ** 2 + (lamp.headY - atY) ** 2);
 }
