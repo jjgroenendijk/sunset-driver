@@ -51,6 +51,53 @@ export class Batch extends Mesh<BufferGeometry, Material> {
   dispose(): void {
     this.geometry.dispose();
   }
+
+  /**
+   * Let go of the arrays the renderer has uploaded, and answer whether any are
+   * left. It is asked after each draw once the last part is in.
+   *
+   * The GPU holds an attribute from the draw that uploads it on, and nothing
+   * reads the array again: the bounds are kept apart, and nothing casts a ray
+   * at a batch. Kept, the arrays were the city a second time in the page's
+   * memory, and iOS Safari kills a page that holds too much
+   * (`docs/rendering.md`). An attribute is uploaded by the first pass that
+   * reads it, so one the shadow pass skips waits for the view to draw it.
+   *
+   * Each array is swapped for an empty one of its own type: the renderer still
+   * reads the type when it builds a pipeline for another pass, and an
+   * attribute keeps the count it was made with.
+   */
+  letGo(renderer: unknown): boolean {
+    const geometry = this.geometry;
+    let left = false;
+    for (const attribute of [...Object.values(geometry.attributes), geometry.getIndex()]) {
+      if (!(attribute instanceof BufferAttribute) || attribute.array.length === 0) continue;
+      if (!uploaded(renderer, attribute)) {
+        left = true;
+        continue;
+      }
+      const array = attribute.array as AttributeArray;
+      attribute.array = new (array.constructor as new (length: number) => AttributeArray)(0);
+    }
+    return left;
+  }
+}
+
+/** The renderer's record of the attributes it has uploaded (three.js 0.186). */
+interface UploadRecords {
+  has(attribute: BufferAttribute): boolean;
+  get(attribute: BufferAttribute): { version?: number };
+}
+
+/**
+ * True when the GPU holds this version of an attribute. three.js keeps the
+ * record privately; a renderer without it is never answered yes, so an update
+ * of three.js that moves it keeps the arrays rather than breaking the draw.
+ */
+function uploaded(renderer: unknown, attribute: BufferAttribute): boolean {
+  const records = (renderer as { _attributes?: UploadRecords | null })._attributes;
+  if (records === undefined || records === null || !records.has(attribute)) return false;
+  return records.get(attribute).version === attribute.version;
 }
 
 /** A batch, and the steps that fill it. Run the steps in order. */
@@ -220,6 +267,8 @@ function fill(
   mesh.visible = false;
 
   const steps: (() => void)[] = [];
+  // Read out here, so no step keeps the parts themselves once it has run.
+  const total = parts.length;
   let vertexAt = 0;
   let indexAt = 0;
   parts.forEach((part, i) => {
@@ -271,12 +320,20 @@ function fill(
         mesh.parts++;
         mesh.visible = true;
         release(i);
+        // The renderer uploads the last part on the next draw that takes the
+        // batch, in whichever pass that is, and the arrays can go after it.
+        if (mesh.parts === total) mesh.onAfterRender = letGoAfterDraw;
       });
     }
     vertexAt += count;
     indexAt += drawn;
   });
   return { mesh, steps };
+}
+
+/** A batch's `onAfterRender` once it is full, which stops being called when every array is gone. */
+function letGoAfterDraw(this: Batch, renderer: unknown): void {
+  if (!this.letGo(renderer)) this.onAfterRender = () => {};
 }
 
 /** A geometry's arrays, as a worker would have packed them. */

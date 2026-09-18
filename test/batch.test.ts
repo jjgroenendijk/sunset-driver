@@ -1,4 +1,4 @@
-import { BoxGeometry, Euler, Matrix3, Matrix4, MeshBasicMaterial, Quaternion, Vector3 } from 'three';
+import { BoxGeometry, type BufferAttribute, Euler, Matrix3, Matrix4, MeshBasicMaterial, Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { batchOfPacked, fillOfPacked, fillsOf, MAX_STEP_VERTICES, tilePartOf } from '../src/render/batch.ts';
 import { cellGrid } from '../src/render/cells.ts';
@@ -170,6 +170,47 @@ describe('a chunk batch', () => {
     expect(fill.mesh.parts).toBe(2);
     expect(fill.mesh.geometry.drawRange.count).toBe(12);
     fill.mesh.dispose();
+  });
+
+  it('lets go of an array only once the renderer holds its current version', () => {
+    const fill = fillOfPacked(packed([part(1), part(2)]), material);
+    const mesh = fill.mesh;
+    const geometry = mesh.geometry;
+    // The renderer's record, as three.js keeps it: the version it uploaded.
+    const record = new Map<unknown, { version: number }>();
+    const renderer = { _attributes: { has: (a: unknown) => record.has(a), get: (a: unknown) => record.get(a) } };
+    const attribute = (name: string): BufferAttribute => geometry.getAttribute(name) as BufferAttribute;
+    const draw = (): void => mesh.onAfterRender(renderer as never, null as never, null as never, geometry, material, null as never);
+
+    (fill.steps[0] as () => void)();
+    record.set(attribute('position'), { version: attribute('position').version });
+    draw();
+    // A batch still filling keeps every array: the next step writes into them.
+    expect(geometry.getAttribute('position').array.length).toBe(24);
+
+    (fill.steps[1] as () => void)();
+    const position = attribute('position');
+    const normal = attribute('normal');
+    const index = geometry.getIndex();
+    record.set(position, { version: position.version - 1 });
+    record.set(normal, { version: normal.version });
+    record.set(index, { version: index?.version ?? 0 });
+    draw();
+    // The positions on the GPU are a version behind, so they stay; the rest go.
+    expect(position.array.length).toBe(24);
+    expect(normal.array.length).toBe(0);
+    expect(normal.array).toBeInstanceOf(Float32Array);
+    expect(index?.array).toBeInstanceOf(Uint16Array);
+    expect(index?.array.length).toBe(0);
+    // The renderer draws through the count, which an attribute keeps.
+    expect(normal.count).toBe(8);
+    expect(index?.count).toBe(12);
+
+    record.set(position, { version: position.version });
+    record.set(attribute('tint'), { version: attribute('tint').version });
+    draw();
+    expect(position.array.length).toBe(0);
+    mesh.dispose();
   });
 
   it('copies a part larger than a step over several of them, and draws it once', () => {

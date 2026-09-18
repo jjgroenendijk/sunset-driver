@@ -16,8 +16,9 @@
  * Nothing here touches the renderer or TSL, so it runs headless and the tests
  * read it directly.
  */
-import { BufferAttribute, BufferGeometry, Color } from 'three';
+import { BufferAttribute, BufferGeometry, Color, Mesh, type Material } from 'three';
 import type { WorldChunk, WorldLayers } from '../world/chunks.ts';
+import type { TilePart } from './streaming.ts';
 import { districtAt, layoutZones } from '../world/districts.ts';
 import { ParcelIndex, type Parcel, type ParcelOwner } from '../world/parcels.ts';
 import type { WorldDescription, Zone } from '../world/types.ts';
@@ -123,6 +124,25 @@ export function buildGroundAttributes(chunk: WorldChunk, lookup: GroundLookup, s
   }
 
   return { gridSize: n, positions, normals, tints, covers, coverTints, indices: gridIndices(n) };
+}
+
+/**
+ * A chunk's ground as a piece of its tile, standing at its corner.
+ *
+ * It is built here rather than in a closure of `WorldScene.queueUpload`. A tile
+ * keeps its `dispose` for as long as it stands, and in V8 a closure keeps the
+ * whole scope it was made in, so one made there kept the chunk's payload: every
+ * source array the batches had already copied, about twice the city in memory.
+ * iOS Safari killed the page for it (`docs/rendering.md`).
+ */
+export function groundPart(attributes: GroundAttributes, x: number, z: number, material: Material): TilePart {
+  const geometry = groundGeometry(attributes);
+  const mesh = new Mesh(geometry, material);
+  mesh.position.set(x, 0, z);
+  // The ground takes the shadows of everything standing on it and casts none
+  // of its own: the relief the sun shades is already in the carve.
+  mesh.receiveShadow = true;
+  return { objects: [mesh], drawCalls: 1, steps: [], dispose: () => geometry.dispose() };
 }
 
 /** Wrap the attributes of a chunk's ground in a geometry the renderer can draw. */

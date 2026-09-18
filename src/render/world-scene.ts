@@ -58,7 +58,7 @@ import type { ChunkPayload } from './chunk-payload.ts';
 import { ChunkPool, type ChunkStream } from './chunk-pool.ts';
 import { daylightAt, type Daylight } from './daylight.ts';
 import { EntityFade } from './fade.ts';
-import { groundGeometry } from './ground.ts';
+import { groundPart } from './ground.ts';
 import { createGroundMaterial } from './ground-material.ts';
 import type { Lamp } from './lamp-mesh.ts';
 import { Headlights } from './headlights.ts';
@@ -661,15 +661,8 @@ export class WorldScene {
     if (standing !== undefined) tile.superseded = standing;
     this.tiles.set(key, tile);
 
-    this.queueJob(tile, () => {
-      const geometry = groundGeometry(payload.ground);
-      const mesh = new Mesh(geometry, this.material);
-      mesh.position.set(payload.bounds.minX, 0, payload.bounds.minY);
-      // The ground takes the shadows of everything standing on it and casts
-      // none of its own: the relief the sun shades is already in the carve.
-      mesh.receiveShadow = true;
-      this.add(tile, { objects: [mesh], drawCalls: 1, steps: [], dispose: () => geometry.dispose() });
-    });
+    const { ground, bounds } = payload;
+    this.queueJob(tile, () => this.add(tile, groundPart(ground, bounds.minX, bounds.minY, this.material)));
     for (const roads of payload.roads) {
       this.queueJob(tile, () => this.add(tile, this.scenery.build(roads)));
     }
@@ -762,6 +755,9 @@ export class WorldScene {
     tile.parts.push(part);
     tile.drawCalls += part.drawCalls;
     if (part.steps.length > 0) this.jobs.unshift(...part.steps.map((step) => this.guarded(tile, step)));
+    // The queue holds the steps now. A step holds the worker's arrays it copies
+    // from, so a tile that kept them would hold its whole chunk twice.
+    part.steps = [];
   }
 
   /** Drop a tile the player has driven away from. */
