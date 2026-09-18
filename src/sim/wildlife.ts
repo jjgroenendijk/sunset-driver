@@ -131,9 +131,6 @@ export function wildlifeReach(): number {
   return reach;
 }
 
-/** Metres of shore between one anchor and the next, before {@link SpeciesSpec.perKm} thins them. */
-const SHORE_STEP = 25;
-
 /** The keys of the streams the placing draws from, so no two shift each other. */
 const ANCHOR_STREAM = 1;
 const ANIMAL_STREAM = 2;
@@ -220,7 +217,7 @@ export class AmbientWildlife {
         if (!livesOn(species, edge, district.zone)) continue;
         const along = edge.length / 1000;
         const count = draw(seed, species, edge.id, along * SPECIES[species].perKm * ZONE_WILDLIFE[district.zone]);
-        this.placeRun(seed, species, count, roads.roads, edge, height, animals, edge.id);
+        this.placeRun(seed, species, count, roads.roads, edge, height, animals);
       }
     }
     for (const beach of world.beaches) this.placeBeach(seed, beach, world.seaLevel, animals);
@@ -305,14 +302,13 @@ export class AmbientWildlife {
     edge: RoadEdge,
     height: number,
     animals: Animal[],
-    file: number,
   ): void {
     const points = (roads[edge.curve] as RoadCurve).points;
     const lo = Math.min(edge.start, edge.end);
     const hi = Math.max(edge.start, edge.end);
     for (let i = 0; i < anchors; i++) {
       const at = points[Math.min(hi, lo + Math.floor(((i + 0.5) / anchors) * (hi - lo)))] as Point;
-      const rng = rngFor(seed, 0, Subsystem.Wildlife, hashInts(ANCHOR_STREAM, file, i, SPECIES_ORDER.indexOf(species)));
+      const rng = rngFor(seed, 0, Subsystem.Wildlife, hashInts(ANCHOR_STREAM, edge.id, i, SPECIES_ORDER.indexOf(species)));
       const x = at.x + rng.range(-ANCHOR_JITTER, ANCHOR_JITTER);
       const y = at.y + rng.range(-ANCHOR_JITTER, ANCHOR_JITTER);
       this.flock(seed, species, x, y, height, animals, (id) => this.index.file(id, edge.id));
@@ -323,14 +319,14 @@ export class AmbientWildlife {
   private placeBeach(seed: number, beach: Beach, seaLevel: number, animals: Animal[]): void {
     const shore = beach.shore;
     if (shore.length < 2) return;
-    const anchors = Math.max(1, Math.floor(beach.length / SHORE_STEP));
     for (const species of SPECIES_ORDER) {
       const spec = SPECIES[species];
       if (spec.habitat !== 'shore' && spec.habitat !== 'sand') continue;
       const count = draw(seed, species, beach.id, (beach.length / 1000) * spec.perKm);
       for (let i = 0; i < count; i++) {
         const rng = rngFor(seed, 0, Subsystem.Wildlife, hashInts(ANCHOR_STREAM, beach.id, i, SPECIES_ORDER.indexOf(species)));
-        const at = shore[Math.min(shore.length - 1, Math.floor(((i + 0.5) / count) * anchors * (shore.length / anchors)))] as Point;
+        // Spread evenly along the waterline, so a long beach is worked end to end.
+        const at = shore[Math.min(shore.length - 1, Math.floor(((i + 0.5) / count) * shore.length))] as Point;
         const inland = spec.habitat === 'sand' ? nearest(beach.back, at) : at;
         const x = (at.x + inland.x) / 2 + rng.range(-ANCHOR_JITTER, ANCHOR_JITTER);
         const y = (at.y + inland.y) / 2 + rng.range(-ANCHOR_JITTER, ANCHOR_JITTER);
