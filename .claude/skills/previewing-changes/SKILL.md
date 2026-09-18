@@ -17,6 +17,7 @@ times before judging a performance change.
 | --- | --- |
 | Is the road network, the terrain or the land use right? | `node scripts/world-preview.ts <seed> out.png` |
 | Do the seeds differ from each other? | `node scripts/terrain-sheet.ts 24 sheet.png` |
+| Does the renderer draw anything at all? | `npm run test:render` |
 | Does the frame the player sees look right? | `node scripts/render-preview.ts <seed> out.png` |
 | Do several seeds look right, in one image? | `node scripts/render-sheet.ts 4 sheet.png` |
 | Did that change cost frame time? | `node scripts/render-profile.ts <seed>` |
@@ -34,6 +35,11 @@ to force a particular Chrome.
 A rendered frame takes 50 to 135 seconds on a laptop, because SwiftShader draws on the processor.
 Run one at a time — two at once fail. `render-sheet.ts` draws every tile in one browser, so four
 seeds cost about one render rather than four.
+
+`test:render` costs one such frame and answers only whether the renderer drew a world, not whether
+it looks right. It is red on `main` today, for a real reason: issue #339 blanks every frame the
+preview takes. Until that is fixed, a black picture from `render-preview.ts` is that bug and not
+your change.
 
 `render-profile.ts` needs a real GPU and SwiftShader will not do. GPU timings move by several
 milliseconds between runs, so compare two builds by running each more than once.

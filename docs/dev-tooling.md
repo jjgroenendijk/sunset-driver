@@ -16,6 +16,7 @@ it.
 - `node scripts/render-sheet.ts <count> out.png [--cols=3] [--tile=480]`
 - `node scripts/render-profile.ts <seed>`
 - `node scripts/audio-check.ts`
+- `npm run test:render`
 - The browser the previews need
 
 ## The free camera
@@ -200,6 +201,43 @@ an offline audio context and prints the peak, the loudness and how much of it wa
 Run it after changing a voice or a level in `src/audio`. It fails on a case that should make a
 sound and is silent, which is what a node that was never connected looks like, and on one that
 clips. The cases live in `src/audio/offline.ts` and each drives the real planner and the real mixer.
+
+## `npm run test:render`
+
+Whether the renderer draws anything at all. It is the one check that opens a WebGPU device: `npm
+run verify` builds worlds and meshes headless, so a change that leaves the game drawing a blank
+screen passes every other check in the repository.
+
+It renders one frame of one fixed seed through the harness `render-preview.ts` uses, then reads the
+pixels. It fails on four things:
+
+- The page threw. What the page writes to its **console** does not fail it: three.js reports WebGPU
+  validation there and a frame can still be right. A validation error that does break the frame
+  shows up in the pixels instead, which is why they are measured.
+- Too few distinct colours. A blank frame holds one.
+- One colour over most of the frame. An empty scene clears to a single value.
+- Too few edges. Two pixels side by side differ only where something has an outline, so a frame
+  that is sky and nothing else has almost none — it holds thousands of colours and still means the
+  world was never drawn.
+
+The thresholds are 64 colours, 90% for the flattest colour and 2% of pairs differing. Three real
+frames measured 298, 193 and 265 colours, 20%, 62% and 17% flat, and 15.5%, 12.4% and 9.3% edges,
+so the nearest threshold has more than four times the margin it needs. They are set that low on
+purpose: this check says the renderer drew a world, not that the world looks right. A picture from
+`render-preview.ts` is what answers that.
+
+`test/render-check.test.ts` measures frames built by hand — blank, flat, a bare sky gradient, and
+one with blocks in it — so what the check would say costs nothing to test. Only the frame needs a
+browser.
+
+It takes about a minute, almost all of it the one SwiftShader frame, so it runs neither in `npm
+test` nor in `npm run verify`. On a pull request the `render-smoke` job of `ci.yml` runs it. That
+job does not gate the merge: SwiftShader draws on a shared runner's processor, and a device lost
+there is not a rendering regression. The repository ruleset is where that is changed.
+
+It is red today, for a real reason: issue #339. The colour grade's table is a 3D texture whose
+upload WebGPU refuses, so the cube stays as it was allocated — all zeros — and the grade maps every
+colour to black. Disabling the grade alone draws the street, the buildings and the traffic.
 
 ## The browser the previews need
 
