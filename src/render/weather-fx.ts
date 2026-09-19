@@ -119,6 +119,14 @@ function lattice(offset: number, at: number, box: number): number {
   return offset + box * Math.round((at - offset) / box);
 }
 
+/**
+ * The way the prevailing wind of a world blows, in radians in the map's axes.
+ * The litter leans with it here, and the smoke of `damage-fx.ts` drifts with it.
+ */
+export function windHeading(seed: number): number {
+  return rngFor(seed, 0, Subsystem.Weather, WIND_STREAM).range(0, Math.PI * 2);
+}
+
 /** The rain, the puddles and the litter of one world. */
 export class WeatherFx {
   readonly group = new Group();
@@ -141,7 +149,7 @@ export class WeatherFx {
   constructor(seed: number, height: (x: number, y: number) => number) {
     this.seed = seed;
     this.height = height;
-    const wind = rngFor(seed, 0, Subsystem.Weather, WIND_STREAM).range(0, Math.PI * 2);
+    const wind = windHeading(seed);
     this.windX = Math.cos(wind);
     this.windY = Math.sin(wind);
 

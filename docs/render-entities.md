@@ -136,14 +136,20 @@ scene ever holds is in `docs/shops.md`.
   `PickupModels.pick` walks up from the mesh it hits to the group that carries the pickup's id.
   Nothing caps how many pickups lie at once; a pickup off screen is culled and costs no draw.
 - `DamageFx` (`damage-fx.ts`) is the smoke, the flames and the blast of spec section 11.3, as two
-  batches of flat discs: one blended the ordinary way and one additively. A puff is placed and
-  coloured from its age alone and jittered from `rngFor(seed, tick, Subsystem.Damage, n)`, so a
-  replay burns the way the drive did. The pools are fixed, so a fire that burns all day costs what
-  one that burns for a second does. The blazes of spec section 20.3 — what a wreck leaves burning on
-  the ground — draw from the same two batches, so every fire in a scene costs those two draw calls
-  and no more. `watch` is how they are handed in, with the ground under them: a blaze on the record
-  is a place and not a height. A blaze throws embers as well as flame, which is how a fire on the
-  ground reads as one rather than as a car alight.
+  batches of puffs (`puffs.ts`): one blended the ordinary way and one additively. A puff is a square
+  turned to the camera of the last frame, which `onBeforeRender` records; `puff-material.ts` cuts a
+  soft, ragged shape out of it with noise. Each instance carries a `puff` attribute of fade,
+  variant, age and glow, which the batch rewrites every frame. Smoke is lit by the scene, so it goes
+  dark at night except where the `glow` of the fire under it lights it. Flame is drawn after smoke
+  (`renderOrder`), so it shows through its own plume. A puff is placed and faded from its age alone
+  and jittered from `rngFor(seed, tick, Subsystem.Damage, n)`, so a replay burns the way the drive
+  did. The pools are fixed, so a fire that burns all day costs what one that burns for a second
+  does. The blazes of spec section 20.3 — what a wreck leaves burning on the ground — draw from the
+  same two batches, so every fire in a scene costs those two draw calls and no more. `watch` is how
+  they are handed in, with the ground under them: a blaze on the record is a place and not a height.
+  A blaze throws embers and a column of smoke as well as flame, which is how a fire on the ground
+  reads as one rather than as a car alight. Smoke leans with `windHeading(seed)` of `weather-fx.ts`,
+  the wind the litter blows in.
 - `ShotFx` (`shot-fx.ts`) draws the rounds of `SimState.tracers`: a flash at the muzzle, a glow on
   the ground, a streak per pellet and the spark batch of `melee-fx.ts` where each landed. It is
   three additive batches. The glow is a disc, not a light: a point light turns the clustered path
