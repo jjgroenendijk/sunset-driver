@@ -184,14 +184,16 @@ describe('the chase (spec section 14)', () => {
     expect(state.police.lastKnown).toBeNull();
   });
 
-  it('takes a player on foot in when a car reaches them', () => {
+  it('lets the crew out of a car that reaches a player on foot, and the car itself arrests nobody', () => {
     const { state, force } = session(17, 2);
     run(state, force, 20 * TICK_RATE);
     const unit = state.police.units[0] as PoliceUnit;
     state.player.x = unit.x;
     state.player.y = unit.y;
+    unit.speed = 0;
     force.step(state);
-    expect(state.arrested).toBe(true);
+    expect(state.arrested).toBe(false);
+    expect(state.police.officers.length).toBeGreaterThan(0);
   });
 });
 
