@@ -94,7 +94,7 @@ nothing else, as a type, so a single-player build still pulls in no networking.
 - Past `SNAP_TICKS` it jumps instead. Two seconds is more than a slow frame or a lost beat explains.
 - A beat carries the host's tick as it was when it was sent, so a joiner sits half a round trip
   behind. Measuring that needs the round trip, which is not here yet.
-- **A session in a room is never paused.** `main.ts` keeps stepping while the pause menu is open
+- **A session in a room is never paused.** `frame.ts` keeps stepping while the pause menu is open
   when `party.live`, because a peer that stopped would be dragged back to the host's clock the
   moment it came back. The menu still takes every key, and the frame is stepped with an empty input.
 

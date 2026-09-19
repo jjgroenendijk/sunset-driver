@@ -5,7 +5,7 @@
  * `city.ts` builds the city — the traffic, the crowd, the tram, the wildlife —
  * as plans evaluated from the tick. This builds the one mesh each of them is
  * drawn in and adds it to the scene. It is here rather than in `main.ts` for
- * the reason the city is: it is one subject, and `main.ts` is the frame.
+ * the reason the city is: it is one subject, and `main.ts` is the boot.
  *
  * The order matters in one place only. Every view has to be in the scene
  * before the shaders are warmed (`warm.ts`), because WebGPU compiles a

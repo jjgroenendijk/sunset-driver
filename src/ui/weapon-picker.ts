@@ -55,7 +55,7 @@ const ATTACHMENT_NAMES: Readonly<Record<Attachment, string>> = Object.freeze({
   foregrip: 'Foregrip',
 });
 
-/** What a row and an attachment button do. `main.ts` hands these to the record. */
+/** What a row and an attachment button do. `pickers.ts` hands these to the record. */
 export interface WeaponPickerActions {
   /** Put the weapon in the player's hands, loaded. */
   pick(id: WeaponId): void;

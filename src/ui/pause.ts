@@ -4,9 +4,9 @@
  * regenerate, quit, and the room of spec section 21 (`party.ts`).
  *
  * It is drawn in the look of the title screen and walked the same way, through
- * `MenuPages`. It holds no session: every item calls an action `main.ts` hands
- * it, and a thrown error is shown as the menu's status line. It listens to no
- * key itself, because Escape both opens it and closes it, and `main.ts` is what
+ * `MenuPages`. It holds no session: every item calls an action `pause-actions.ts`
+ * hands it, and a thrown error is shown as the menu's status line. It listens to no
+ * key itself, because Escape both opens it and closes it, and `keys.ts` is what
  * decides which one a press means.
  */
 import type { BuildingViewChoice, SoundChoice } from './settings.ts';

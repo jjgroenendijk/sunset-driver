@@ -132,7 +132,7 @@ scene ever holds is in `docs/shops.md`.
   kind share it. A pickup (`pickups.ts`) is drawn larger than life over a pale disc: a pistol at the
   scale of a rifle is a speck from the game camera, so a short weapon is scaled up to a metre long.
   The disc writes no depth and stands 15 cm up, or the road surface swallows it. The pickup under
-  the mouse grows by `HOVER_GROW`: `main.ts` casts a ray from the pointer each frame, and
+  the mouse grows by `HOVER_GROW`: `frame.ts` casts a ray from the pointer each frame, and
   `PickupModels.pick` walks up from the mesh it hits to the group that carries the pickup's id.
   Nothing caps how many pickups lie at once; a pickup off screen is culled and costs no draw.
 - `DamageFx` (`damage-fx.ts`) is the smoke, the flames and the blast of spec section 11.3, as two

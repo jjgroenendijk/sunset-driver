@@ -108,7 +108,7 @@ in `docs/shops.md`; the respawn a safehouse is the point of is spec section 11.7
 ## The map
 
 - Every property is marked, owned or not, with the `safehouse` icon `POI_STYLES` already held, and
-  named for its district. `main.ts` writes them into `MapPois.extra` beside the shops, before
+  named for its district. `maps.ts` writes them into `MapPois.extra` beside the shops, before
   `DealerMarks` is built: that class takes the list as it stands and writes the moving dealer marks
   after it, so anything added later would be lost.
 - The marks are fixed for the life of a session, so the map does not say which door is the player's.

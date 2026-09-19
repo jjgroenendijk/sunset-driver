@@ -129,5 +129,5 @@ corners, and has its own page in `docs/market.md`.
   mark and a clinic the clinic mark, since that is what they are, and the broker has a key of its
   own. Every type of `POI_STYLES` has a shape and a colour no other type uses, and
   `test/map.test.ts` pins that, so a new trade needs a new shape rather than a second use of one.
-- `main.ts` writes them into `MapPois.extra`, which is the one slot a system that owns places
+- `maps.ts` writes them into `MapPois.extra`, which is the one slot a system that owns places
   writes; both maps read it.

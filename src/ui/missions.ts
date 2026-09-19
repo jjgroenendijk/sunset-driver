@@ -1,7 +1,7 @@
 /**
  * Where the job in hand is going, on both maps (spec sections 12, 18).
  *
- * The contacts themselves never move, so `main.ts` marks them once with the
+ * The contacts themselves never move, so `maps.ts` marks them once with the
  * rest of the places. What moves is the objective: one mark on the leg being
  * worked on, which is the last thing written to the map's list and so the last
  * link of the chain that starts at the dealers and runs through the enforcers
