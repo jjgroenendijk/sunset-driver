@@ -15,6 +15,7 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
 - The player and the HUD
 - The map
 - Physics
+- Casualties and the ragdoll
 - On foot
 - Hotwiring
 - Weapons
@@ -104,6 +105,18 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
   every tick — the traffic, the crowd, the tram, the police, the emergency services — and the
   heights and decks under them. `main.ts` calls `buildCity` and `frame.ts` runs the frame; a test
   builds the pieces it needs by hand instead, because every field but the heights is optional.
+
+## Casualties and the ragdoll
+
+- `ragdoll.ts` throws up to three fresh hits within 40 m as Rapier ragdolls; every other hit moves
+  on the closed form of `casualty-motion.ts`. A ragdoll freezes into `Casualty.ragdoll`.
+- Bones are in their own collision group (`collision-groups.ts`). The chassis, a promoted car and
+  the walker leave it out of what they meet, so a body never pushes a vehicle. Every cast and the
+  wheels pass `SHUNS_RAGDOLL`. A new cast or moving body without it meets the bones.
+- A freeze re-bases the record: the hips' ground point, no throw, and `since` put `restTicks` back,
+  so `down` counts from the freeze. Live is `ragdoll` set with `push` or `lift` above zero. A load
+  rebuilds a live one from the record, at rest.
+- A bone's origin in `Casualty.ragdoll` is its joint, not the middle of its box, as in the rig.
 
 ## On foot
 

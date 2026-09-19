@@ -10,6 +10,7 @@ import { AIM_TURN_RATE, aimYaw, facesAim } from './aim.ts';
 import { atan2, hypot } from '../core/libm.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { TICK_RATE } from './clock.ts';
+import { SHUNS_RAGDOLL } from './collision-groups.ts';
 import type { InputFrame } from './input.ts';
 import {
   capsuleOf,
@@ -62,7 +63,11 @@ export function buildWalker(world: RAPIER.World, state: SimState): Walker {
   const body = world.createRigidBody(
     RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(p.x, p.height + capsule.rise, p.y),
   );
-  const collider = world.createCollider(RAPIER.ColliderDesc.capsule(capsule.halfHeight, capsule.radius), body);
+  // The player walks through a ragdoll, as through a body lying still.
+  const collider = world.createCollider(
+    RAPIER.ColliderDesc.capsule(capsule.halfHeight, capsule.radius).setCollisionGroups(SHUNS_RAGDOLL),
+    body,
+  );
   const controller = world.createCharacterController(SKIN);
   controller.setUp({ x: 0, y: 1, z: 0 });
   controller.setSlideEnabled(true);
@@ -120,7 +125,7 @@ export function walk(walker: Walker, state: SimState, input: InputFrame, seaLeve
   step.x = dx * pace;
   step.y = p.vy / TICK_RATE;
   step.z = dy * pace;
-  walker.controller.computeColliderMovement(walker.collider, step);
+  walker.controller.computeColliderMovement(walker.collider, step, undefined, SHUNS_RAGDOLL);
   const moved = walker.controller.computedMovement(done);
   p.grounded = walker.controller.computedGrounded();
   // Standing on the ground takes the fall back, so a step off a kerb does not

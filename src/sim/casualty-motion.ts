@@ -63,9 +63,20 @@ export interface Casualty {
   /** The tick a car last went over them, or -1. */
   bumped: number;
   /**
-   * The world place and turn of each bone while the Rapier ragdoll holds
-   * them, and where it left them after: seven numbers a bone, in the order
-   * of the rig's bones. Null while the motion above says where they are.
+   * The world place and turn of each bone while the Rapier ragdoll of
+   * `ragdoll.ts` holds them, and where it left them after, until they get up.
+   * Null while the motion above says where they are.
+   *
+   * Seven numbers a bone, in the order of the rig's bones (`RAGDOLL_BONES`):
+   * `x`, the height, the map's `y`, then the turn as a quaternion `qx, qy, qz,
+   * qw`. A bone's frame is the rig's: its origin is its joint, where it stands
+   * in the bind pose, and not the middle of its box, and a turn of identity is
+   * the bind pose facing a heading of 0. So the rig's boxes go on unchanged.
+   * The body is `STRIDE_HEIGHT` tall (`pedestrian-look.ts`), whatever the
+   * person's own height.
+   *
+   * It is live, and the ragdoll still moving, while `push` or `lift` is above
+   * zero; freezing zeroes both.
    */
   ragdoll: number[] | null;
 }

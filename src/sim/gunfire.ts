@@ -27,6 +27,7 @@ import { blastUnits, report, shootUnit } from './police.ts';
 import { blowStrength, forgetHits, markHit, SWING_HEIGHT, type CrowdSource, type HitSurface } from './melee.ts';
 import type { PedestrianPose } from './pedestrians.ts';
 import { hurtPerson, type CasualtyGround } from './casualty.ts';
+import { SHUNS_RAGDOLL } from './collision-groups.ts';
 import { peopleNear, personOnRay } from './crowd-contact.ts';
 import { forgetTracers, markTracer, type TracerEnd } from './tracer.ts';
 import {
@@ -206,7 +207,7 @@ export class Gunfire {
     this.along.y = ray.dh;
     this.along.z = ray.dy;
     const mine = target.shooter;
-    const hit = this.world.castRay(this.ray, range, true, undefined, undefined, mine);
+    const hit = this.world.castRay(this.ray, range, true, undefined, SHUNS_RAGDOLL, mine);
     this.reach = hit === null ? range : hit.timeOfImpact;
     // The people on the pavement stand in no physics, so the round is measured
     // against them up to whatever solid thing it met (spec section 13.1).
@@ -360,7 +361,7 @@ export class Gunfire {
       this.along.x = cos(yaw);
       this.along.y = 0;
       this.along.z = sin(yaw);
-      const hit = this.world.castRay(this.ray, spec.reach, true, undefined, undefined, mine);
+      const hit = this.world.castRay(this.ray, spec.reach, true, undefined, SHUNS_RAGDOLL, mine);
       if (hit === null || (nearest !== null && hit.timeOfImpact >= nearest.timeOfImpact)) continue;
       nearest = hit;
       angle = yaw;
@@ -465,7 +466,7 @@ export class Gunfire {
         this.along.y = dh / step;
         this.along.z = dy / step;
         const mine = target.shooter;
-        const hit = this.world.castRayAndGetNormal(this.ray, step, true, undefined, undefined, mine);
+        const hit = this.world.castRayAndGetNormal(this.ray, step, true, undefined, SHUNS_RAGDOLL, mine);
         if (hit !== null) {
           // A thing that meets a car of the city takes it off its tour, whether
           // it goes off there or bounces away (spec section 5.3).
