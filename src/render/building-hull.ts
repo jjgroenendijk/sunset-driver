@@ -15,9 +15,10 @@
  * really fills rather than the massing that was asked for. It is built square,
  * and leaned onto the lot with the shell.
  */
-import { Box3, BufferAttribute, BufferGeometry } from 'three';
+import { Box3, BufferAttribute, BufferGeometry, ShapeUtils, Vector2 } from 'three';
 import type { Point } from '../world/types.ts';
 import { CHAMFER_WIDTH, FOUNDATION, type BuildingMassing, type Fit } from './building-plan.ts';
+import { ringOf as shapeRing, type BuildingShape } from './building-shape.ts';
 
 /** Metres the outline hull stands outside the shell it rims (spec section 10.1). */
 export const OUTLINE_WIDTH = 0.35;
@@ -46,13 +47,20 @@ const HULL_BANDS = 80;
  * so its two ends are rimmed the width of the stretch more thinly — a
  * centimetre of a line a third of a metre wide.
  */
-export function hullOf(massing: BuildingMassing, shell: BufferGeometry, box: Box3, fit: Fit): BufferGeometry {
+export function hullOf(
+  massing: BuildingMassing,
+  shell: BufferGeometry,
+  box: Box3,
+  fit: Fit,
+  shape: BuildingShape,
+): BufferGeometry {
   const reach = OUTLINE_WIDTH / fit.across;
   // The shell is centred on the lot, so the box around it is centred on the
   // origin and the ring of the footprint can be laid out there as well.
-  const around = { ...massing, width: box.max.x - box.min.x, depth: box.max.z - box.min.z };
-  const faces = facesOf(footprintRing(around));
-  const bands = profileOf(shell, box, faces, reach);
+  const around = { width: box.max.x - box.min.x, depth: box.max.z - box.min.z };
+  const ring = footprintRing(shape, around, massing.chamfer);
+  const faces = facesOf(ring);
+  const bands = profileOf(shell, box, ring, faces, reach);
   const positions: number[] = [];
   const normals: number[] = [];
 
@@ -75,15 +83,19 @@ export function hullOf(massing: BuildingMassing, shell: BufferGeometry, box: Box
     }
   }
 
-  // The caps: a fan from the first corner, so the hull is closed and its rim
-  // shows around the roof as well as around the walls.
+  // The caps, so the hull is closed and its rim shows around the roof as well
+  // as around the walls. An L and a U are not convex, so the ring is cut into
+  // triangles rather than fanned from one corner.
   const floor = bands[0] as Band;
   const roof = bands[bands.length - 1] as Band;
-  for (let i = 1; i + 1 < faces.length; i++) {
-    const up = roof.ring;
-    const down = floor.ring;
-    flat(positions, normals, up[0] as Point, up[i] as Point, up[i + 1] as Point, roof.y1, true);
-    flat(positions, normals, down[0] as Point, down[i] as Point, down[i + 1] as Point, floor.y0, false);
+  for (const [at, y, up] of [
+    [roof.ring, roof.y1, true],
+    [floor.ring, floor.y0, false],
+  ] as const) {
+    for (const face of capOf(at)) {
+      const [i, j, k] = face as [number, number, number];
+      flat(positions, normals, at[i] as Point, at[j] as Point, at[k] as Point, y, up);
+    }
   }
 
   const geometry = new BufferGeometry();
@@ -114,11 +126,21 @@ interface Band {
  * Bands that reach the same distance are run together, so a building with
  * straight sides costs one band however tall it is.
  */
-function profileOf(shell: BufferGeometry, box: Box3, faces: readonly Point[], reach: number): Band[] {
+function profileOf(
+  shell: BufferGeometry,
+  box: Box3,
+  ring: readonly Point[],
+  faces: readonly Point[],
+  reach: number,
+): Band[] {
   const height = Math.max(box.max.y - box.min.y, HULL_BAND);
   const count = Math.max(1, Math.min(HULL_BANDS, Math.ceil(height / HULL_BAND)));
   const step = height / count;
-  const out = new Float64Array(count * faces.length).fill(-Infinity);
+  const width = faces.length;
+  // How far each face reaches over each band, and how far the whole shell does.
+  const near = new Float64Array(count * width).fill(-Infinity);
+  const all = new Float64Array(count * width).fill(-Infinity);
+  const span = extentOf(ring);
   const array = (shell.getAttribute('position') as BufferAttribute).array as Float32Array;
   // The shells are not indexed, so three vertices in a row are one triangle.
   for (let t = 0; t + 8 < array.length; t += 9) {
@@ -131,24 +153,42 @@ function profileOf(shell: BufferGeometry, box: Box3, faces: readonly Point[], re
     }
     const from = Math.max(0, Math.min(count - 1, Math.floor((low - box.min.y) / step)));
     const to = Math.max(from, Math.min(count - 1, Math.floor((high - box.min.y) / step)));
-    for (let k = 0; k < faces.length; k++) {
+    for (let k = 0; k < width; k++) {
       const n = faces[k] as Point;
-      let d = -Infinity;
+      const edge = span[k] as Extent;
+      let mine = -Infinity;
+      let any = -Infinity;
       for (let v = 0; v < 3; v++) {
-        d = Math.max(d, (array[t + v * 3] as number) * n.x + (array[t + v * 3 + 2] as number) * n.y);
+        const x = array[t + v * 3] as number;
+        const z = array[t + v * 3 + 2] as number;
+        const d = x * n.x + z * n.y;
+        if (d > any) any = d;
+        // Only what stands along this face measures it. A face of an L or a U
+        // looks into the notch, and the far wing is the furthest thing in that
+        // direction: measured over the whole shell, the notch would fill in.
+        const u = (x - edge.x) * -n.y + (z - edge.y) * n.x;
+        if (u >= -edge.slack && u <= edge.length + edge.slack && d > mine) mine = d;
       }
-      for (let b = from; b <= to; b++) if (d > (out[b * faces.length + k] as number)) out[b * faces.length + k] = d;
+      for (let b = from; b <= to; b++) {
+        const at = b * width + k;
+        if (mine > (near[at] as number)) near[at] = mine;
+        if (any > (all[at] as number)) all[at] = any;
+      }
     }
   }
 
   const bands: Band[] = [];
   for (let b = 0; b < count; b++) {
     const spread: number[] = [];
-    for (let k = 0; k < faces.length; k++) {
-      const measured = out[b * faces.length + k] as number;
-      // A band no triangle reached takes the one below it, and the lowest band
-      // falls back on the box: a hull is never narrower than nothing.
-      const fallback = bands[bands.length - 1]?.reach[k] ?? 0;
+    for (let k = 0; k < width; k++) {
+      const measured = near[b * width + k] as number;
+      // A face with nothing standing along it in this band is pushed out until
+      // it binds on nothing: the whole shell is inside it, and the ring closes
+      // on its neighbours instead. That is what drops the notch of an L above
+      // the wing that cuts it. A band the shell does not reach at all takes the
+      // one below it, and the lowest band falls back on the box.
+      const empty = all[b * width + k] as number;
+      const fallback = empty === -Infinity ? (bands[bands.length - 1]?.reach[k] ?? 0) : empty;
       spread.push((measured === -Infinity ? fallback : measured) + reach);
     }
     // The hull starts below the ground, so the first band reaches down to the
@@ -160,6 +200,39 @@ function profileOf(shell: BufferGeometry, box: Box3, faces: readonly Point[], re
     else bands.push({ y0, y1, reach: spread, ring: ringOf(faces, spread) });
   }
   return bands;
+}
+
+/** Where one edge of a footprint ring starts, and how far it runs. */
+interface Extent {
+  x: number;
+  y: number;
+  length: number;
+  /**
+   * Metres past each end of the edge that still count as standing along it. A
+   * cornice overhangs the footprint it is given, and a chamfer cuts a corner
+   * back, so a wall runs a little past the edge that names it.
+   */
+  slack: number;
+}
+
+/** Metres past the end of an edge that still count as standing along it. */
+const EDGE_SLACK = 3;
+
+/** Every edge of a ring as where it starts and how far it runs. */
+function extentOf(ring: readonly Point[]): Extent[] {
+  const out: Extent[] = [];
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i] as Point;
+    const b = ring[(i + 1) % ring.length] as Point;
+    out.push({ x: a.x, y: a.y, length: Math.hypot(b.x - a.x, b.y - a.y), slack: EDGE_SLACK });
+  }
+  return out;
+}
+
+/** A ring cut into triangles, as triples of indices into it. */
+function capOf(ring: readonly Point[]): number[][] {
+  const contour = ring.map((p) => new Vector2(p.x, p.y));
+  return ShapeUtils.triangulateShape(contour, []);
 }
 
 function sameReach(a: readonly number[], b: readonly number[]): boolean {
@@ -248,25 +321,23 @@ function push(
 
 /**
  * The ground a building covers, as a ring in its own frame: `x` across the
- * frontage and `y` towards the road. It is the rectangle of the massing, with
+ * frontage and `y` towards the road. It is the outline of the shape the
+ * building is massed in, laid out on the ground the shell really covers, with
  * the corner that faces a junction cut away exactly as the generator cuts it.
  */
-function footprintRing(massing: BuildingMassing): Point[] {
-  const hw = massing.width / 2;
-  const hd = massing.depth / 2;
-  const corners: Point[] = [
-    { x: hw, y: hd },
-    { x: -hw, y: hd },
-    { x: -hw, y: -hd },
-    { x: hw, y: -hd },
-  ];
-  const cut = massing.chamfer === 0 ? 0 : Math.min(CHAMFER_WIDTH, massing.width * 0.25, hw, hd);
+function footprintRing(shape: BuildingShape, rect: { width: number; depth: number }, chamfer: number): Point[] {
+  const ring = shapeRing(shape, rect);
+  const hd = rect.depth / 2;
+  const cut = chamfer === 0 ? 0 : Math.min(CHAMFER_WIDTH, rect.width * 0.25, rect.width / 2, hd);
+  if (cut <= 0) return ring;
   const out: Point[] = [];
-  for (let i = 0; i < corners.length; i++) {
-    const corner = corners[i] as Point;
-    if (cut > 0 && Math.sign(corner.x) === massing.chamfer && corner.y > 0) {
-      const prev = corners[(i + 3) % 4] as Point;
-      const next = corners[(i + 1) % 4] as Point;
+  for (let i = 0; i < ring.length; i++) {
+    const corner = ring[i] as Point;
+    // The corner the chamfer cuts is the one at the front of the lot, on the
+    // side the junction stands.
+    if (Math.sign(corner.x) === chamfer && corner.y > hd - 1e-6) {
+      const prev = ring[(i + ring.length - 1) % ring.length] as Point;
+      const next = ring[(i + 1) % ring.length] as Point;
       out.push(towards(corner, prev, cut), towards(corner, next, cut));
     } else {
       out.push(corner);

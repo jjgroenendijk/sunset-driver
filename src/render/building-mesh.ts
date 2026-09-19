@@ -29,13 +29,19 @@
  * read it directly.
  */
 import { Box3, BufferAttribute, BufferGeometry, Color, Matrix4, Quaternion, Vector3 } from 'three';
-import { SkyscraperGenerator, pickBuildingColor } from 'three/examples/jsm/generators/city/SkyscraperGenerator.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import {
+  SkyscraperGenerator,
+  pickBuildingColor,
+  type SkyscraperGeneratorParameters,
+} from 'three/examples/jsm/generators/city/SkyscraperGenerator.js';
 import { hashInts } from '../core/hash.ts';
 import { lotMiddle, type Building, type BuildingKind } from '../world/buildings.ts';
 import type { WorldChunk, WorldLayers } from '../world/chunks.ts';
 import type { District, WorldDescription } from '../world/types.ts';
 import { buildBlockGeometry, buildDressGeometry, buildMassingGeometry, roofDeckOf, type BlockStyle } from './block-mesh.ts';
 import { hullOf } from './building-hull.ts';
+import { boxesOf, shapeOf, type BuildingShape, type ShapeBox } from './building-shape.ts';
 import {
   batchOf,
   chamferOf,
@@ -51,12 +57,14 @@ import {
   type Fit,
   type Lean,
 } from './building-plan.ts';
+import type { RoofDeck } from './roof-dress.ts';
 import type { ChunkDetail } from './streaming.ts';
 
 // The plan of a building is drawn in `building-plan.ts` and its outline in
 // `building-hull.ts`; this is the door callers already import.
 export { OUTLINE_WIDTH } from './building-hull.ts';
 export { CORNICE, massingOf, standingGround, type BuildingBatch, type BuildingMassing } from './building-plan.ts';
+export { shapeOf, type BuildingShape } from './building-shape.ts';
 
 /** A colour as the renderer wants it: three floats in the working colour space. */
 export type Rgb = readonly [number, number, number];
@@ -81,11 +89,40 @@ export interface BuildingPlacement {
   matrix: Matrix4;
 }
 
-/** The generator's bay and floor, in metres. Both are wider than a real tower's:
- * the camera looks down from 60 m, and every window it cannot see is geometry
- * the frame pays for. */
-const BAY_WIDTH = 4.2;
-const FLOOR_HEIGHT = 4;
+/**
+ * Metres a tier of a setback tower is sunk into the one below it. The tier
+ * above stands on the ledge the tier below caps itself with, and the ledge is
+ * measured off the built geometry rather than predicted; the overlap is what
+ * keeps a millimetre of daylight out of the joint if the measurement lands low.
+ */
+const TIER_OVERLAP = 0.5;
+
+/**
+ * The base and the crown a tier over the ground is built with. The generator
+ * gives every building it builds a ground floor, and a ground floor is shops:
+ * awnings and display glazing sixty metres up read as a mistake. A base this
+ * tall is two floors or more, which is what makes the generator build its grand
+ * arcade there instead, and an arcade at a setback ledge reads as the loggia a
+ * tower of spec section 10.3 carries.
+ */
+const LEDGE_TIER = { base: 0.35, crown: 0.12 };
+
+/**
+ * Metres two boxes of a shape may differ in height and still be one box at far
+ * detail. A chunk that far out is half a kilometre away, where a storey or two
+ * is less than a pixel; running the boxes together is what holds the far tier
+ * inside its vertex cap.
+ */
+const FAR_STEP = 9;
+
+/** Metres each way a terrace must measure before anything is laid out on it. */
+const MIN_TERRACE = 4;
+
+/**
+ * The generator's `baseStyle`, which its types do not carry: it is drawn from
+ * the seed by default, and a tier over the ground asks for the arcade by name.
+ */
+type TierParameters = Partial<SkyscraperGeneratorParameters> & { baseStyle?: 'arcade' | 'storefront' };
 
 /**
  * The colours each kind of block is built in. A tower takes the masonry palette
@@ -150,17 +187,21 @@ export function buildChunkBuildings(
     // building's own seed and the wealth of the district it stands in, so the
     // same building is dressed the same way in every session.
     const style: BlockStyle = { seed: building.seed, wealth: district.wealth, detail: detail === 'near' ? 'near' : 'mid' };
+    // How the building is massed inside its box: the same shape at every
+    // detail, laid out on whatever rectangle that detail builds on.
+    const shape = shapeOf(building.seed, building.kind, massing, building.shared);
     let shell: BufferGeometry;
     let dress: BufferGeometry | undefined;
     if (batch === 'facade') {
-      shell = facadeGeometry(building, massing, tint);
-      // A generated tower's roof is the top of its shell, so the deck it is
-      // dressed on is measured off the geometry the generator built.
-      dress = buildDressGeometry(roofDeckOf(shell), style, tint);
+      const built = facadeGeometry(building, massing, shape, tint);
+      shell = built.shell;
+      // A generated tower's roofs are measured off the geometry the generator
+      // built, because its crown draws in from the footprint it was given.
+      dress = dressOf(built.decks, style, tint);
     } else if (detail === 'far') {
-      shell = buildMassingGeometry(massing, tint);
+      shell = buildMassingGeometry(massing, tint, farBoxes(shape, massing));
     } else {
-      const built = buildBlockGeometry(building.kind, massing, tint, style);
+      const built = buildBlockGeometry(building.kind, massing, tint, style, boxesOf(shape, massing, massing.height, 0));
       shell = built.shell;
       dress = built.dress;
     }
@@ -170,7 +211,7 @@ export function buildChunkBuildings(
     // reach it.
     const wall = building.shared.left || building.shared.right;
     const fit = fitOf({ width: box.max.x - box.min.x, depth: box.max.z - box.min.z }, massing, wall);
-    const hull = hullOf(massing, shell, box, fit);
+    const hull = hullOf(massing, shell, box, fit, shape);
     // A lot on a bend leans its side edges, and a wall it shares follows them.
     const lean = leanOf(building, massing);
     if (lean !== undefined) {
@@ -179,6 +220,52 @@ export function buildChunkBuildings(
       if (dress !== undefined) leanGeometry(dress, lean, fit);
     }
     out.push({ building, massing, batch, shell, dress, hull, matrix: matrixOf(building, lookup, massing, fit) });
+  }
+  return out;
+}
+
+/**
+ * Everything the roof dresser lays on one building, as one geometry. A shape
+ * of several boxes has a roof on each of them — the terrace of a podium, the
+ * arm of an L — and each is dressed on its own.
+ */
+function dressOf(decks: readonly RoofDeck[], style: BlockStyle, tint: Rgb): BufferGeometry | undefined {
+  const built: BufferGeometry[] = [];
+  for (let i = 0; i < decks.length; i++) {
+    // Each roof is dressed from its own draw, so a podium terrace and the tower
+    // over it do not carry the same water tank in the same corner.
+    const dressed = buildDressGeometry(decks[i], { ...style, seed: style.seed + i * 977 }, tint);
+    if (dressed !== undefined) built.push(dressed);
+  }
+  if (built.length === 0) return undefined;
+  return built.length === 1 ? (built[0] as BufferGeometry) : (mergeGeometries(built) as BufferGeometry);
+}
+
+/**
+ * The boxes of a shape at far detail: the boxes that stand to the same height
+ * run together into the one box around them.
+ *
+ * Far detail is a skyline read from half a kilometre, and a skyline is heights
+ * and footprints. The wings of a courtyard block are one box there, which keeps
+ * the far tier inside its vertex cap; a podium and the tower over it are two,
+ * because the step between them is what the silhouette is.
+ */
+function farBoxes(shape: BuildingShape, massing: BuildingMassing): ShapeBox[] {
+  const out: ShapeBox[] = [];
+  for (const box of boxesOf(shape, massing, massing.height, 0)) {
+    const same = out.find((other) => Math.abs(other.from - box.from) < 0.01 && Math.abs(other.to - box.to) < FAR_STEP);
+    if (same === undefined) {
+      out.push({ ...box });
+      continue;
+    }
+    const x0 = Math.min(same.x - same.width / 2, box.x - box.width / 2);
+    const x1 = Math.max(same.x + same.width / 2, box.x + box.width / 2);
+    const z0 = Math.min(same.z - same.depth / 2, box.z - box.depth / 2);
+    const z1 = Math.max(same.z + same.depth / 2, box.z + box.depth / 2);
+    same.x = (x0 + x1) / 2;
+    same.z = (z0 + z1) / 2;
+    same.width = x1 - x0;
+    same.depth = z1 - z0;
   }
   return out;
 }
@@ -222,23 +309,50 @@ function tintOf(building: Building, batch: BuildingBatch): Rgb {
 }
 
 /**
- * A generated facade, tagged with the building's own colour so one material
+ * A generated facade: one `SkyscraperGenerator` call per box of the building's
+ * shape, merged, and tagged with the building's own colour so one material
  * dresses every tower in the batch.
+ *
+ * A box that stands on the ground is built from the ground, even where another
+ * box covers its first few storeys: the tower of a podium shares one wall with
+ * its podium down to the pavement, and the shopfront it is given is then buried
+ * inside the podium rather than standing over the street. A box that stands on
+ * the ledge of the box below it is built from that ledge, measured off the
+ * geometry rather than predicted, because the generator rounds a height to
+ * whole floors and a whole floor is four metres.
+ *
+ * The decks that come back are the roofs the dresser fills: each box's own
+ * crown slab, cut down to the part of it no other box stands on.
  */
-function facadeGeometry(building: Building, massing: BuildingMassing, tint: Rgb): BufferGeometry {
+function facadeGeometry(
+  building: Building,
+  massing: BuildingMassing,
+  shape: BuildingShape,
+  tint: Rgb,
+): { shell: BufferGeometry; decks: RoofDeck[] } {
   const footprint = facadeFootprint(massing);
-  const mesh = new SkyscraperGenerator({
-    seed: building.seed,
-    totalHeight: massing.height,
-    floorHeight: FLOOR_HEIGHT,
-    bayWidth: BAY_WIDTH,
-    footprint,
-    // The cut corner faces the junction, and there is only ever one to face.
-    chamferWidth: massing.chamfer === 0 ? 0 : Math.min(CHAMFER_WIDTH, footprint.width * 0.25),
-    chamferCornerX: massing.chamfer === 0 ? 0 : massing.chamfer,
-    chamferCornerZ: 1,
-  }).build();
-  const geometry = mesh.geometry;
+  const boxes = boxesOf(shape, footprint, massing.height, massing.chamfer);
+  const built: BufferGeometry[] = [];
+  const decks: RoofDeck[] = [];
+  // Only the box that reaches the top draws in at its crown: a setback inside
+  // the run of a building is a ledge with nothing standing on it.
+  let crown = 0;
+  for (const box of boxes) crown = Math.max(crown, box.to);
+  let ledge = 0;
+  for (let i = 0; i < boxes.length; i++) {
+    const box = boxes[i] as ShapeBox;
+    const stands = box.from === 0 ? 0 : Math.max(0, ledge - TIER_OVERLAP);
+    const geometry = tierGeometry(building.seed, box, stands, crown, shape);
+    translate(geometry, box.x, stands, box.z);
+    const deck = roofDeckOf(geometry);
+    ledge = deck?.top ?? stands + (box.to - stands);
+    if (box.terrace !== undefined && deck !== undefined) {
+      const clipped = clip(deck, box.terrace);
+      if (clipped !== undefined) decks.push(clipped);
+    }
+    built.push(geometry);
+  }
+  const geometry = built.length === 1 ? (built[0] as BufferGeometry) : (mergeGeometries(built) as BufferGeometry);
   const count = geometry.getAttribute('position').count;
   const tints = new Float32Array(count * 3);
   for (let v = 0; v < count; v++) {
@@ -247,7 +361,59 @@ function facadeGeometry(building: Building, massing: BuildingMassing, tint: Rgb)
     tints[v * 3 + 2] = tint[2];
   }
   geometry.setAttribute('tint', new BufferAttribute(tints, 3));
-  return geometry;
+  return { shell: geometry, decks };
+}
+
+/** One box of a shape, built about its own middle and standing on the ground. */
+function tierGeometry(seed: number, box: ShapeBox, stands: number, crown: number, shape: BuildingShape): BufferGeometry {
+  const height = Math.max(shape.floorHeight * 3, box.to - stands);
+  const parameters: TierParameters = {
+    seed,
+    totalHeight: height,
+    floorHeight: shape.floorHeight,
+    bayWidth: shape.bayWidth,
+    footprint: { width: box.width, depth: box.depth },
+    // The cut corner faces the junction, and there is only ever one to face.
+    chamferWidth: box.chamfer === 0 ? 0 : Math.min(CHAMFER_WIDTH, box.width * 0.25),
+    chamferCornerX: box.chamfer === 0 ? 0 : box.chamfer,
+    chamferCornerZ: 1,
+  };
+  if (box.to < crown) parameters.setbackDepth = 0;
+  if (stands > 0) {
+    parameters.tierFractions = LEDGE_TIER;
+    parameters.baseStyle = 'arcade';
+  }
+  return new SkyscraperGenerator(parameters).build().geometry;
+}
+
+/** Move a built geometry, and the rooms its glass looks into, in place. */
+function translate(geometry: BufferGeometry, dx: number, dy: number, dz: number): void {
+  for (const name of ['position', 'roomCenter']) {
+    const attribute = geometry.getAttribute(name) as BufferAttribute | undefined;
+    if (attribute === undefined) continue;
+    const array = attribute.array as Float32Array;
+    for (let i = 0; i < array.length; i += 3) {
+      array[i] = (array[i] as number) + dx;
+      array[i + 1] = (array[i + 1] as number) + dy;
+      array[i + 2] = (array[i + 2] as number) + dz;
+    }
+    attribute.needsUpdate = true;
+  }
+}
+
+/**
+ * A measured deck cut down to the rectangle of it no other box of the shape
+ * stands on, or undefined where nothing of it is left. The dresser lays out
+ * rectangles, so a roof a tower stands in the middle of offers the strip in
+ * front of the tower rather than the whole slab.
+ */
+function clip(deck: RoofDeck, room: { x: number; z: number; width: number; depth: number }): RoofDeck | undefined {
+  const x0 = Math.max(deck.x - deck.hw, room.x - room.width / 2);
+  const x1 = Math.min(deck.x + deck.hw, room.x + room.width / 2);
+  const z0 = Math.max(deck.z - deck.hd, room.z - room.depth / 2);
+  const z1 = Math.min(deck.z + deck.hd, room.z + room.depth / 2);
+  if (x1 - x0 < MIN_TERRACE || z1 - z0 < MIN_TERRACE) return undefined;
+  return { x: (x0 + x1) / 2, z: (z0 + z1) / 2, hw: (x1 - x0) / 2, hd: (z1 - z0) / 2, top: deck.top };
 }
 
 /**

@@ -176,7 +176,7 @@ corridors in `docs/corridors.md`.
     shared ground and every other one for daylight.
   - `Lot.shared` says which of a lot's two side edges another lot of the row lies against, and a
     lot the row dropped leaves its neighbour's edge bare. The renderer reads it to know where it
-    may reach the edge and where it has to keep a margin; see `docs/render-entities.md`.
+    may reach the edge and where it has to keep a margin; see `docs/buildings.md`.
 - `buildShops(world, buildings)` (`shops.ts`) says which shop row is a shop of spec section 16.1,
   and `roomOf` cuts the room behind its shopfront. Both are in `docs/shops.md`, with the counters
   and the interiors that read them.
