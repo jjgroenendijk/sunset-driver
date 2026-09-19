@@ -1,7 +1,7 @@
 /**
  * The pause menu of spec section 12. The main list is Resume, Multiplayer,
  * Save game, Load game, Controls, Graphics, Options and Quit to main menu. Every
- * item but Resume, Graphics and Quit opens a column beside the list, and Export, Import, Camera and Gore
+ * item but Resume and Quit opens a column beside the list, and Export, Import, Camera and Gore
  * open one beside that. Multiplayer is the room of spec section 21 (`party.ts`).
  * Save game also copies the city's seed, which is all anyone needs to drive the
  * same city. Load game holds New city, which starts again on a fresh seed.
@@ -18,6 +18,7 @@ import { buildCameraPage, buildGorePage } from './title-camera.ts';
 import { buildControlsPage } from './title-controls.ts';
 import { MenuPages } from './menu-pages.ts';
 import { backButton, button, card, columnsOf, menuList, page } from './title-parts.ts';
+import { buildGraphicsPage } from './title-graphics.ts';
 import { buildSettingsPage } from './title-settings.ts';
 
 /** The key that opens and closes the pause menu. Listed in `controls.ts`. */
@@ -44,7 +45,7 @@ export interface PauseActions {
   party: PartyActions;
 }
 
-const PAGE_NAMES = ['main', 'party', 'saves', 'export', 'loads', 'import', 'controls', 'settings', 'camera', 'gore'] as const;
+const PAGE_NAMES = ['main', 'party', 'saves', 'export', 'loads', 'import', 'controls', 'graphics', 'settings', 'camera', 'gore'] as const;
 type PageName = (typeof PAGE_NAMES)[number];
 
 const PARENT: Record<PageName, PageName | null> = {
@@ -55,6 +56,7 @@ const PARENT: Record<PageName, PageName | null> = {
   loads: 'main',
   import: 'loads',
   controls: 'main',
+  graphics: 'main',
   settings: 'main',
   camera: 'settings',
   gore: 'settings',
@@ -100,6 +102,7 @@ export class PauseMenu {
       loads,
       import: this.buildImport(),
       controls: buildControlsPage(back),
+      graphics: buildGraphicsPage(actions.settings.graphics, back),
       settings: buildSettingsPage(actions.settings, back),
       camera: buildCameraPage(actions.settings.buildingView, back),
       gore: buildGorePage(actions.settings.gore, back),
@@ -165,7 +168,7 @@ export class PauseMenu {
         { numeral: 'III', label: 'Save game', opens: 'saves' },
         { numeral: 'IV', label: 'Load game', opens: 'loads' },
         { numeral: 'V', label: 'Controls', opens: 'controls' },
-        { numeral: 'VI', label: 'Graphics' },
+        { numeral: 'VI', label: 'Graphics', opens: 'graphics' },
         { numeral: 'VII', label: 'Options', opens: 'settings' },
         { numeral: 'VIII', label: 'Quit to main menu', action: () => this.actions.quit() },
       ]),

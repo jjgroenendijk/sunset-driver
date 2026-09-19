@@ -17,7 +17,7 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
 - `src/ui/title.ts` is the title screen as a main menu of pages: the main page, New game
   (`title-setup.ts`), Controls (`title-controls.ts`), Options (`title-settings.ts`) and Camera
   under Options (`title-camera.ts`). `PARENT` says where Escape and Back go from each page. A menu
-  item with no action is drawn disabled; Load game and Graphics wait for what they open.
+  item with no action is drawn disabled; Load game waits for what it opens.
 - Menu text is a word or two. An item carries no note line, and a page has no line under its
   heading unless the player needs it to choose. The arrow keys walk the elements with `data-nav`, in
   DOM order, and skip a disabled one. The pointer moves the same focus, so only one item is lit. A
@@ -40,6 +40,11 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   levels live in `src/render/gore.ts`, because only the renderer reads them: `frame.ts` hands the
   setting to `WorldScene.gore` each frame. It never enters `SimState`, so a save and a replay are
   the same at every level.
+- `src/ui/title-graphics.ts` is the Graphics column of both menus: Auto, a preset and each knob
+  of a tier. A knob of several steps is a `cycle` item, which names its step at the end of the row;
+  a press moves it on and the side arrows move it either way. `menuList` redraws every checkbox and
+  cycle on the list after a press and when the list takes the focus, because one row moves another:
+  a preset sets every knob, and a knob turns Auto off from the tier Auto was drawing.
 - `src/ui/menu-pages.ts` is the page walk both menus share: `parent`, the arrow keys, the pointer
   focus, and Escape going up a page. A page in `columns` opens as a column beside its parent, and
   the parent stays on screen: a submenu is an accordion on its side. An item with `opens` opens its
