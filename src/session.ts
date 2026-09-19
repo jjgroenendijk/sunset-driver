@@ -12,6 +12,7 @@ import type { QualityMonitor, QualityChange } from './render/quality.ts';
 import type { RenderSmoother } from './render/smooth.ts';
 import type { ParkedView } from './render/parked.ts';
 import type { PedestrianView } from './render/pedestrians.ts';
+import type { CasualtyView } from './render/casualties.ts';
 import type { EmergencyView } from './render/emergency.ts';
 import type { WildlifeView } from './render/wildlife.ts';
 import type { PoliceView } from './render/police.ts';
@@ -116,6 +117,8 @@ export interface Session {
   tram: TramView;
   /** The pedestrians of spec section 13.1, drawn. */
   crowd: PedestrianView;
+  /** The people who have been hit, lying, limping or crawling, and the medics at them (spec section 11.6). */
+  casualties: CasualtyView;
   /** The pause menu of spec section 12. While it is open a single-player session does not step. */
   pause: PauseMenu;
   /** The room of spec section 21, offline until a game is opened or a link names one. */
