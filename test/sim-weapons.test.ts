@@ -5,7 +5,7 @@ import { enginePowerScale, PANELS } from '../src/sim/damage.ts';
 import { giveWeapon, SHOT_HEAT_CONCEALED, weaponOf, type WeaponId } from '../src/sim/weapon.ts';
 import { ENFORCER_HEALTH, type EnforcerUnit } from '../src/sim/enforcer.ts';
 import { blowStrength, HIT_MEMORY } from '../src/sim/melee.ts';
-import { CRIME_HEAT } from '../src/sim/crime.ts';
+import { CRIME_HEAT, raiseHeat } from '../src/sim/crime.ts';
 import type { PedestrianPose } from '../src/sim/pedestrians.ts';
 import { PERSON_HEALTH } from '../src/sim/casualty.ts';
 import { hills, ramp, type Session, start, drive } from './sim-harness.ts';
@@ -109,7 +109,7 @@ describe('weapons', () => {
   it('raises heat for a shot fired and none for a swing (spec section 14)', () => {
     const gun = armed('glock-17');
     shoot(gun, 1);
-    expect(gun.state.heat).toBeCloseTo(SHOT_HEAT_CONCEALED, 6);
+    expect(gun.state.heat).toBeCloseTo(raiseHeat(0, SHOT_HEAT_CONCEALED), 6);
     gun.physics.dispose();
 
     const bat = armed('baseball-bat');
@@ -313,7 +313,7 @@ describe('weapons', () => {
     expect(passer.frights).toBe(1);
     // A punch at a person on the street is a brawl (spec section 14), and the
     // blow is on the record for the burst and the knock to read.
-    expect(near.state.heat).toBeCloseTo(CRIME_HEAT.brawl, 6);
+    expect(near.state.heat).toBeCloseTo(raiseHeat(0, CRIME_HEAT.brawl), 6);
     expect(near.state.hits.map((hit) => hit.surface)).toContain('person');
     near.physics.dispose();
 
@@ -364,7 +364,7 @@ describe('weapons', () => {
     expect(shot?.health).toBeLessThan(PERSON_HEALTH);
     expect(state.tracers.some((tracer) => tracer.end === 'person')).toBe(true);
     // A round in a person is an assault on top of what the shot was worth.
-    expect(state.heat).toBeGreaterThanOrEqual(CRIME_HEAT.assault);
+    expect(state.heat).toBeGreaterThanOrEqual(raiseHeat(0, CRIME_HEAT.assault));
     session.physics.dispose();
   });
 

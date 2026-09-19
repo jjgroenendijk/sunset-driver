@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../src/sim/clock.ts';
+import { raiseHeat } from '../src/sim/crime.ts';
 import type { Place } from '../src/sim/on-foot.ts';
 import { createSimState, type SimState } from '../src/sim/simulation.ts';
 import {
@@ -179,7 +180,7 @@ describe('breaking one up', () => {
     state.player.x = robbed.x;
     state.player.y = robbed.y;
     stepStreetCrime(state, grounds);
-    expect(state.heat).toBeCloseTo(CRIMES.deal.heat, 6);
+    expect(state.heat).toBeCloseTo(raiseHeat(0, CRIMES.deal.heat), 6);
   });
 
   it('keeps the settled incidents in id order', () => {

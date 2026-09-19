@@ -310,10 +310,11 @@ const PITCH_SHARE = 0.5;
 /**
  * Heat one shot raises (spec sections 11.6, 14). A concealed weapon draws less
  * than a long gun in the open, and melee draws none at all, because the spec
- * calls it silent.
+ * calls it silent. A pistol's magazine emptied from no heat is under one star;
+ * thirty rounds of a rifle are about two.
  */
-export const SHOT_HEAT_CONCEALED = 0.15;
-export const SHOT_HEAT_OPEN = 0.4;
+export const SHOT_HEAT_CONCEALED = 0.05;
+export const SHOT_HEAT_OPEN = 0.12;
 
 /** How much of a shot's heat a suppressor leaves (spec section 11.6). */
 export const SUPPRESSED_HEAT = 0.4;
