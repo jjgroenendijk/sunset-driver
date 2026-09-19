@@ -213,6 +213,9 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
 - Every pellet writes a `Tracer` into `SimState.tracers` (`tracer.ts`): the muzzle, where it stopped
   and what it met. It is kept like a blow of `melee.ts`, for the flash, the streak and the impact
   of `src/render/shot-fx.ts`, the hit marker of `src/ui/crosshair.ts` and the camera kick.
+- Every panel over play wears the menus' ivory look, from `src/ui/panels.css`: the two pickers,
+  the counters of a shop, a safehouse, a job board and a dealer, the metro list and the hotwire
+  gauge. The pickers stand clear of the HUD's corners, and the pause menu hides them all.
 - `src/ui/weapon-picker.ts` is the debug picker for the arsenal, as `vehicle-picker.ts` is for the
   roster: `G` opens it, and a row hands over the weapon loaded with spare ammunition behind it.
   Shift and a row drops the weapon three metres ahead as a pickup instead, and the buttons under the
