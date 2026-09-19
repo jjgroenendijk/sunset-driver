@@ -399,6 +399,41 @@ Stylised, lit, hard outlines. Tone: gritty crime drama with a satirical edge.
 - `SidewalkGenerator` supplies rounded curbs and pavement slabs.
 - Selection is driven by the parcel's district, zone, wealth and size. A suburban parcel never
   receives a tower.
+- A tower or a mid-rise has a style. It is chosen from the zone, the district's wealth and
+  density, and the building's own seed. There are five:
+  - **Classical masonry**, the style `SkyscraperGenerator` builds. It can stand anywhere.
+  - **Glass curtain wall**: continuous tinted glass, blue, green, bronze or black, with a mullion
+    grid and spandrel bands. It is most common in the core and in rich districts.
+  - **Brutalist**: raw concrete, deep-set windows, heavy frames, balcony grids. It is most common in
+    poor, dense inner districts.
+  - **Art Deco stepped**: several setbacks, strong vertical piers, a stepped crown with a spire. It
+    is most common where the skyline is high.
+  - **Miami pastel**: pastel stucco, rounded corners, eyebrow sunshades, porthole windows. It is
+    most common near the coast and in the inner ring.
+- Colour follows the style, not the district. Each style has its own palette, and the seed picks
+  from it.
+- A tall building is not always a box. Its footprint may be a rectangle, an L, a U, a courtyard, an
+  octagon or a circle. A tower may stand on a podium of two to five storeys, whose roof is a deck.
+  It may step back several times or taper. The shape stays inside the massing its lot allows, so it
+  never reaches past the lot.
+- Neighbours in one row differ in height, cornice line, storey height and bay rhythm, so a row does
+  not read as one long block. They still share their walls, with no gap between them.
+- The camera looks down, so a roof is the part of a building it sees most, and every roof is
+  dressed. A flat roof has a material: gravel, tar, white membrane, planted, or solar panels. It
+  carries rooftop plant: air-conditioning units, water tanks, vents, stair and lift huts, masts. It
+  may carry one use: a helipad, a pool, a garden, a sports court, a billboard, or a terrace with
+  parasols. A rich district has more uses. Plant keeps clear of a use. A podium deck and a setback
+  ledge are roofs too.
+- Every kind that is not tall has several variants, from its seed:
+  - a house is a bungalow or two storeys, with or without a porch, a garage and a fence, under a
+    hipped, gabled or flat roof of tile, slate or metal in several colours;
+  - a shop row varies its shopfronts and its upper floors;
+  - a warehouse has a sawtooth or a gabled roof, corrugated metal walls and loading docks;
+  - a roadhouse and a parking garage vary their shape and their trim.
+- A wall is brick, stucco, siding, corrugated metal, tile or concrete, and it is weathered: grime
+  streaks under the sills, stains, faded paint. All of it is drawn in the shader, with no texture
+  file.
+- All of this dressing joins the batches a chunk already draws. It adds no draw call per building.
 - Tower height and the chance of a tower follow a smooth skyline field: high in the middle of the
   city and falling with distance from it, blended with the district's density and wealth. The
   skyline therefore tapers and has no edge at a zone ring.
@@ -424,6 +459,11 @@ ground detail across parcel polygons and terrain.
 Sky addon for the day/night cycle; CSM shadows for the sun; clustered lighting for dense night
 lighting; `ProjectorLightNode` cones for headlights and street lamps; `RectAreaLight` for signage
 and neon.
+
+At night each building is lit in its own way. The colour of its window light and the share of its
+windows that are lit differ from building to building: an office lights whole floors, a block of
+flats a few windows. Art Deco and Miami buildings carry neon strips. The crown of a tower is
+floodlit or lit in colour, and the tallest towers carry red aircraft beacons.
 
 ### 10.6 Post-processing
 
