@@ -75,17 +75,25 @@ lamps and the lights a vehicle carries — in `docs/lighting.md`.
 ## Quality tiers
 
 - `quality.ts` is the quality-tier system of spec section 9.2: `QUALITY_TIERS` is the table, dearest
-  first, and `QualityMonitor` the frame-time monitor that walks it. The monitor is pure — it takes a
-  frame length and answers a tier when it changes one — so the policy is tested headless; `frame.ts`
-  hands the tier to `WorldScene.quality` and `PostChain.quality` and logs the change. The judgement
-  is the median of a window of 30 frames, so one dear frame cannot step the city down, a tier is
-  dropped on one bad window and raised only after four good ones, and the window after a change is
-  thrown away. A window is missed when its median runs a quarter over the budget, never when it
-  merely passes it: a frame is timed from one animation frame to the next, so a 60 Hz display that
-  makes every refresh measures 16.7 ms against a 16 ms budget, and judged without that room every
-  such display walked down to the lowest tier. `?budget=6` holds a session to a frame no machine
-  makes, which is how a tier change is watched. `FRAME_BUDGET_MS` is the whole 16 ms frame, not a
-  slice of it.
+  first. `QualityMonitor` (`quality-monitor.ts`) is the frame-time monitor that walks it while the
+  Graphics setting is Auto. It is pure — it takes a frame length and answers a tier when it changes
+  one — so the policy is tested headless. `frame.ts` hands the tier to `WorldScene.quality` and
+  `PostChain.quality` and logs the change.
+- The monitor judges the median frame of a 500 ms window, so one dear frame counts for nothing. A
+  window is missed when its median runs a quarter over the budget: a 60 Hz display that makes every
+  refresh measures 16.7 ms against a 16 ms budget. A tier drops only after three missed windows in
+  a row. One missed window used to drop it, and a streaming burst after load walked the city down
+  to low. The first two seconds of a session and the second after a change are not judged.
+- **A synced display never shows headroom.** It measures 16.7 ms a frame however little of it the
+  game spent, so a rule that raises a tier only under 70 % of the budget never raises one there:
+  the city stayed on low for good. The monitor therefore tries the tier above after ten steady
+  seconds. A try that misses one window in its first two seconds drops back at once, and the next
+  try at that tier waits twice as long, up to eighty seconds. Real headroom — four windows under
+  70 % of the budget, on a fast or unsynced display — still raises a tier at once.
+- `graphics.ts` is the Graphics menu's model. With Auto off, `tierOf` builds a tier from the
+  player's knobs; it answers the preset's own tier object when the knobs match one. A knob is kept
+  as an index into its table, so `readGraphics` can check it. A custom tier can ask for bloom
+  without SMAA, a graph `warm.ts` does not build, so that one choice compiles a graph on the frame.
 - A tier moves six things at once, because stepping one at a time takes six windows to reach the
   tier one window away: the render scale and the effects (`post.ts`), the two streaming rings, how
   far the sun's shadow reaches and what it is drawn at (`sky.ts`; the cascade count is fixed,

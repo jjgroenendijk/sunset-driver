@@ -3,7 +3,9 @@ import { WorldSites } from './audio/site.ts';
 import { seedFromString, writeSeedToHash } from './core/seed.ts';
 import { BASE_DISTANCE, FollowCamera } from './render/camera.ts';
 import { PostChain } from './render/post.ts';
-import { frameBudgetFrom, QualityMonitor } from './render/quality.ts';
+import { choiceOf, nearestTier } from './render/graphics.ts';
+import { frameBudgetFrom } from './render/quality.ts';
+import { QualityMonitor } from './render/quality-monitor.ts';
 import { createRenderer, probeWebGpu } from './render/renderer.ts';
 import { createTitleScene } from './render/scene.ts';
 import { RenderSmoother } from './render/smooth.ts';
@@ -39,7 +41,7 @@ import { openingChoice } from './ui/title-open.ts';
 import { HomePanel } from './ui/home-panel.ts';
 import { ShopPanel } from './ui/shop-panel.ts';
 import { TravelPanel } from './ui/travel.ts';
-import type { Session } from './session.ts';
+import { drawAt, drawnTier, type Session } from './session.ts';
 import { nearestRoadPlace } from './world/surface.ts';
 import type { WorldDescription } from './world/types.ts';
 
@@ -54,8 +56,8 @@ const LOADED = { plan: 0.35, ground: 0.85 };
  * The quality tier a touch session starts on (spec section 9.2).
  *
  * A phone is not integrated graphics on a desk. The monitor would find this
- * level on its own inside a second, but the second it spends there is the
- * first second of the flight, and the frame it warms and compiles at full
+ * level on its own in a few seconds, but those are the first seconds of the
+ * flight, and the frame it warms and compiles at full
  * quality is the dearest one the session ever draws. Starting here spends
  * neither. The monitor is free to walk back up if the phone can hold it.
  */
@@ -121,6 +123,10 @@ async function boot(): Promise<void> {
   // wants before it will give an audio context. A muted game builds no graph.
   const audio = new GameAudio(settings.muted);
   audio.arm(window);
+  // The frame-time monitor of spec section 9.2, which picks the tier while the
+  // Graphics setting is Auto. `?budget=6` holds the game to a frame no machine
+  // makes at full quality, so the tiers can be watched stepping down.
+  const quality = new QualityMonitor(frameBudgetFrom(location.search), touch ? TOUCH_START_TIER : 0);
   // What the Settings column of both menus reads and writes. A choice holds at
   // once and is kept for every seed.
   const menuSettings: MenuSettings = {
@@ -151,6 +157,18 @@ async function boot(): Promise<void> {
       choose: (level) => {
         settings.gore = level;
         writeSettings(localStorage, settings);
+      },
+    },
+    // While Auto is on the menu shows the knobs of the tier the monitor
+    // stands at. Turning it on starts the monitor from the tier nearest the
+    // player's own knobs rather than from wherever it last stood.
+    graphics: {
+      current: () => (settings.graphics.auto ? { ...choiceOf(quality.tier), auto: true } : settings.graphics),
+      choose: (choice) => {
+        if (choice.auto && !settings.graphics.auto) quality.restart(nearestTier(choice));
+        settings.graphics = choice;
+        writeSettings(localStorage, settings);
+        if (session) drawAt(session.world, session.post, drawnTier(settings.graphics, quality));
       },
     },
   };
@@ -294,13 +312,9 @@ async function boot(): Promise<void> {
   // means the first frame is antialiased like every frame after it.
   const post = new PostChain(renderer, world.scene, camera.camera, undefined, state.seed);
   await post.ready();
-  // `?budget=6` holds the game to a frame no machine makes at full quality, so
-  // the tiers of spec section 9.2 can be watched stepping down.
-  const quality = new QualityMonitor(frameBudgetFrom(location.search), touch ? TOUCH_START_TIER : 0);
-  // The tier the monitor opens on has to be put on the two halves that draw at
+  // The tier the session opens on has to be put on the two halves that draw at
   // it, because nothing has changed a tier yet for `applyQuality` to report.
-  world.quality = quality.tier;
-  post.quality = quality.tier.post;
+  drawAt(world, post, drawnTier(settings.graphics, quality));
 
   // The debug pickers of spec sections 11.3 and 11.6 (`pickers.ts`), and the
   // maps of spec section 12 with every mark on them (`maps.ts`).

@@ -6,6 +6,7 @@
  * edit, falls back to the default rather than breaking the page.
  */
 import { DEFAULT_GORE, goreOf, type Gore } from '../render/gore.ts';
+import { DEFAULT_GRAPHICS, readGraphics, type GraphicsChoice } from '../render/graphics.ts';
 import type { KeyValueStore } from './saves.ts';
 
 const SETTINGS_KEY = 'sunset-driver.settings';
@@ -25,10 +26,18 @@ export interface Settings {
   northUp: boolean;
   /** How much blood is drawn. It changes the picture only, never the record. */
   gore: Gore;
+  /** The Graphics menu: Auto, or the knobs of a tier set by hand (spec section 9.2). */
+  graphics: GraphicsChoice;
 }
 
 /** See-through is what GTA Chinatown Wars does, and it keeps the camera where it is. */
-export const DEFAULT_SETTINGS: Settings = { buildingView: 'see-through', muted: false, northUp: false, gore: DEFAULT_GORE };
+export const DEFAULT_SETTINGS: Settings = {
+  buildingView: 'see-through',
+  muted: false,
+  northUp: false,
+  gore: DEFAULT_GORE,
+  graphics: DEFAULT_GRAPHICS,
+};
 
 /** Each choice of {@link BuildingView}, in the order a menu lists them, with what it is called there. */
 export const BUILDING_VIEWS: readonly { value: BuildingView; label: string }[] = [
@@ -51,6 +60,19 @@ export interface ToggleChoice {
   set(on: boolean): void;
 }
 
+/** A setting of several steps, named at the end of its row. A press or the side arrows move it. */
+export interface CycleChoice {
+  label(): string;
+  move(by: 1 | -1): void;
+}
+
+/**
+ * What the Graphics column reads and hands a new choice to. While Auto is on,
+ * `current` answers the knobs of the tier the monitor stands at, so the menu
+ * shows what is being drawn.
+ */
+export type GraphicsMenu = Choice<GraphicsChoice>;
+
 /** Every setting a menu offers, handed to the title screen and the pause menu alike. */
 export interface MenuSettings {
   buildingView: BuildingViewChoice;
@@ -60,6 +82,7 @@ export interface MenuSettings {
   northUp: ToggleChoice;
   /** How much blood is drawn. */
   gore: Choice<Gore>;
+  graphics: GraphicsMenu;
 }
 
 /** The settings kept in a store, with the default for anything missing or not understood. */
@@ -70,13 +93,14 @@ export function readSettings(store: KeyValueStore): Settings {
   } catch {
     raw = {};
   }
-  const held = raw as { buildingView?: unknown; muted?: unknown; northUp?: unknown; gore?: unknown } | null;
+  const held = raw as { buildingView?: unknown; muted?: unknown; northUp?: unknown; gore?: unknown; graphics?: unknown } | null;
   const known = BUILDING_VIEWS.some((choice) => choice.value === held?.buildingView);
   return {
     buildingView: known ? (held?.buildingView as BuildingView) : DEFAULT_SETTINGS.buildingView,
     muted: typeof held?.muted === 'boolean' ? held.muted : DEFAULT_SETTINGS.muted,
     northUp: typeof held?.northUp === 'boolean' ? held.northUp : DEFAULT_SETTINGS.northUp,
     gore: goreOf(held?.gore),
+    graphics: readGraphics(held?.graphics),
   };
 }
 

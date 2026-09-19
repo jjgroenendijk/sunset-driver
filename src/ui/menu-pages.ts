@@ -1,4 +1,5 @@
 import { nextIndex } from './menu-nav.ts';
+import { CYCLE_EVENT } from './title-parts.ts';
 
 /**
  * A menu made of pages: the title screen and the pause menu both walk theirs
@@ -10,7 +11,8 @@ import { nextIndex } from './menu-nav.ts';
  *
  * An item with `data-opens` opens that page, and a second press closes it
  * again. Its `aria-expanded` says whether the page is open. The right arrow
- * opens it too, and the left arrow closes the column the focus is in.
+ * opens it too, and the left arrow closes the column the focus is in. On an item
+ * with `data-cycle` the two side arrows move its setting instead.
  *
  * The up and down arrows walk the elements with `data-nav` in the column that
  * holds the focus, in DOM order, and skip a disabled one. The pointer moves the
@@ -105,6 +107,12 @@ export class MenuPages<Name extends string> {
     const active = document.activeElement as HTMLElement | null;
     // In a text box the arrows move the caret.
     if (active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement) return false;
+    const side = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+    if (side !== 0 && active?.dataset.cycle !== undefined) {
+      event.preventDefault();
+      active.dispatchEvent(new CustomEvent(CYCLE_EVENT, { detail: side }));
+      return true;
+    }
     if (event.key === 'ArrowRight' && active?.dataset.opens) {
       event.preventDefault();
       const name = active.dataset.opens as Name;

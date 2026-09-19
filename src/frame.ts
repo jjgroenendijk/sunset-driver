@@ -124,8 +124,10 @@ export class SessionFrame {
     // What the frame took is what decides the quality tier of spec section
     // 9.2. It is measured over the whole frame, drawing included, so it is
     // the frame before this one that is being judged. A frame drawn with the
-    // free camera is never a performance measurement, so it is not counted.
-    const change = flying || paused ? undefined : session.quality.sample(elapsed);
+    // free camera is never a performance measurement, so it is not counted,
+    // and nothing is while the player has set the knobs by hand.
+    const judged = !flying && !paused && this.parts.settings.graphics.auto;
+    const change = judged ? session.quality.sample(elapsed) : undefined;
     if (change !== undefined) applyQuality(session, change);
     this.drawPanels(session, p.inShop);
     this.drawAim(session, flying || menu);
@@ -354,7 +356,7 @@ export class SessionFrame {
       session.world.drawCallsPerChunk,
       session.world.lightCount,
       session.world.streaming,
-      session.quality.tier.name,
+      session.world.quality.name,
       this.parts.audio.onAir,
       turfLine(session.state, session.turf),
       session.streetLife.happening,

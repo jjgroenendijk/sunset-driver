@@ -361,7 +361,8 @@ shops, ice-cream stands, a fairground pier — laid-back by day and a party stri
 - LOD tiers for buildings, terrain and vegetation.
 - Entity caps per category, enforced by distance-based culling and recycling.
 - A quality-tier system: render scale, draw distance, shadow resolution, entity density and effect
-  toggles step down automatically when frame time is missed.
+  toggles step down automatically when frame time is missed for a sustained spell, and step up
+  again after a steady one. The Graphics menu offers this as Auto, and sets each knob by hand.
 
 ---
 

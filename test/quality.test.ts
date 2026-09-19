@@ -14,11 +14,9 @@ import {
   FRAME_BUDGET_MS,
   FULL_TIER,
   keptAt,
-  QualityMonitor,
   QUALITY_TIERS,
   shadowDistance,
   thinned,
-  type QualityChange,
 } from '../src/render/quality.ts';
 import { postGraphs } from '../src/render/post.ts';
 import { MIN_RENDER_SCALE } from '../src/render/renderer.ts';
@@ -27,19 +25,6 @@ import { REFLECTION_SCALE } from '../src/render/water-surface.ts';
 import { FAR_RADIUS, NEAR_RADIUS, type TilePart } from '../src/render/streaming.ts';
 import { PlantScenery } from '../src/render/vegetation.ts';
 import { chunkBounds, CHUNK_SIZE } from '../src/world/chunks.ts';
-
-/** Frames of one window, as the monitor counts them. */
-const WINDOW = 30;
-
-/** Feed the monitor a run of frames of one length, and keep what it answered. */
-function run(monitor: QualityMonitor, frameMs: number, frames: number): QualityChange[] {
-  const changes: QualityChange[] = [];
-  for (let i = 0; i < frames; i++) {
-    const change = monitor.sample(frameMs);
-    if (change !== undefined) changes.push(change);
-  }
-  return changes;
-}
 
 describe('the quality tiers', () => {
   it('starts at full quality and only ever gets cheaper down the table', () => {
@@ -182,110 +167,7 @@ describe('the entity caps', () => {
   });
 });
 
-describe('the frame-time monitor', () => {
-  it('throws the first window away and holds the tier while the frame is kept', () => {
-    const monitor = new QualityMonitor(FRAME_BUDGET_MS);
-    expect(monitor.tier).toBe(FULL_TIER);
-    expect(monitor.budget).toBe(FRAME_BUDGET_MS);
-    // A frame right on the budget is a frame kept, however long it goes on.
-    expect(run(monitor, FRAME_BUDGET_MS, WINDOW * 10)).toEqual([]);
-    expect(monitor.index).toBe(0);
-  });
-
-  it('keeps the tier on a 60 Hz display that makes every refresh', () => {
-    const monitor = new QualityMonitor(FRAME_BUDGET_MS);
-    // Animation frames land on the refresh, so a frame that is kept measures
-    // 16.7 ms however little of it the game spent.
-    expect(run(monitor, 1000 / 60, WINDOW * 10)).toEqual([]);
-    expect(monitor.index).toBe(0);
-    // One refresh missed in every two is a frame that is not kept.
-    for (let i = 0; i < WINDOW * 2; i++) monitor.sample(i % 2 === 0 ? 1000 / 30 : 1000 / 60);
-    expect(monitor.index).toBe(1);
-  });
-
-  it('steps down one tier a window until the frame fits or the table ends', () => {
-    const monitor = new QualityMonitor(FRAME_BUDGET_MS);
-    // The first window is the settling one; the second is what steps it down.
-    expect(run(monitor, 40, WINDOW)).toEqual([]);
-    const first = run(monitor, 40, WINDOW);
-    expect(first).toHaveLength(1);
-    expect(first[0]?.from).toBe(FULL_TIER);
-    expect(first[0]?.to).toBe(QUALITY_TIERS[1]);
-    expect(first[0]?.frameMs).toBe(40);
-    expect(monitor.index).toBe(1);
-
-    // The window after a change is thrown away too, so each further step
-    // costs two windows: one to settle and one to judge.
-    const rest = run(monitor, 40, WINDOW * 20);
-    expect(rest).toHaveLength(QUALITY_TIERS.length - 2);
-    expect(monitor.tier).toBe(QUALITY_TIERS[QUALITY_TIERS.length - 1]);
-    // Nothing below the last tier: it stops rather than reporting a change.
-    expect(run(monitor, 40, WINDOW * 10)).toEqual([]);
-  });
-
-  it('raises a tier only after four windows of real headroom', () => {
-    const monitor = new QualityMonitor(FRAME_BUDGET_MS, 2);
-    expect(monitor.index).toBe(2);
-    // A frame under the budget but inside the headroom holds the tier: it is
-    // the room the tier above would spend that has to be there.
-    expect(run(monitor, 13, WINDOW * 10)).toEqual([]);
-    expect(monitor.index).toBe(2);
-
-    // Three good windows are not enough; the fourth is.
-    expect(run(monitor, 6, WINDOW * 3)).toEqual([]);
-    const raised = run(monitor, 6, WINDOW);
-    expect(raised).toHaveLength(1);
-    expect(raised[0]?.from).toBe(QUALITY_TIERS[2]);
-    expect(raised[0]?.to).toBe(QUALITY_TIERS[1]);
-
-    // It stops at the top rather than walking off the table.
-    run(monitor, 6, WINDOW * 20);
-    expect(monitor.index).toBe(0);
-    expect(run(monitor, 6, WINDOW * 20)).toEqual([]);
-  });
-
-  it('judges nothing on the window after it is settled again', () => {
-    const monitor = new QualityMonitor(FRAME_BUDGET_MS, 2);
-    run(monitor, 6, WINDOW); // settle
-    run(monitor, 6, WINDOW * 3); // three good windows
-    // What the developer free camera draws is not a measurement, so the
-    // headroom it was flown with is thrown away rather than raising a tier.
-    monitor.settle();
-    expect(run(monitor, 6, WINDOW * 4)).toEqual([]);
-    expect(monitor.index).toBe(2);
-    expect(run(monitor, 6, WINDOW)).toHaveLength(1);
-  });
-
-  it('forgets its headroom the moment a window misses it', () => {
-    const monitor = new QualityMonitor(FRAME_BUDGET_MS, 1);
-    run(monitor, 6, WINDOW); // settle
-    run(monitor, 6, WINDOW * 3); // three good windows
-    run(monitor, 13, WINDOW); // one that is not
-    expect(run(monitor, 6, WINDOW * 3)).toEqual([]);
-    expect(monitor.index).toBe(1);
-  });
-
-  it('is not moved by one dear frame, or by a stall', () => {
-    const monitor = new QualityMonitor(FRAME_BUDGET_MS);
-    run(monitor, 8, WINDOW);
-    for (let window = 0; window < 12; window++) {
-      // A tower copied into its batch, or a chunk landing: one frame in thirty
-      // over the budget is not a machine that cannot hold the frame.
-      expect(monitor.sample(90)).toBeUndefined();
-      // A tab coming back to the front. Long enough that it is not a frame at
-      // all, so it is not counted and does not even fill the window.
-      expect(monitor.sample(4000)).toBeUndefined();
-      for (let i = 1; i < WINDOW; i++) monitor.sample(8);
-    }
-    expect(monitor.index).toBe(0);
-
-    // Half the window over the budget is a machine that cannot hold it.
-    const struggling = new QualityMonitor(FRAME_BUDGET_MS);
-    run(struggling, 8, WINDOW);
-    for (let i = 0; i < WINDOW; i++) struggling.sample(i % 2 === 0 ? 8 : 40);
-    expect(struggling.index).toBe(1);
-  });
-
+describe('the frame budget', () => {
   it('takes the budget a session was started with off the query string', () => {
     expect(frameBudgetFrom('')).toBe(FRAME_BUDGET_MS);
     expect(frameBudgetFrom('?seed=sunset')).toBe(FRAME_BUDGET_MS);

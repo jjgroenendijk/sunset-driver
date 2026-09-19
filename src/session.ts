@@ -8,7 +8,9 @@
  * `frame.ts` runs them; this says what a session is made of.
  */
 import type { PostChain } from './render/post.ts';
-import type { QualityMonitor, QualityChange } from './render/quality.ts';
+import { tierOf, type GraphicsChoice } from './render/graphics.ts';
+import type { QualityTier } from './render/quality.ts';
+import type { QualityMonitor, QualityChange } from './render/quality-monitor.ts';
 import type { RenderSmoother } from './render/smooth.ts';
 import type { ParkedView } from './render/parked.ts';
 import type { PedestrianView } from './render/pedestrians.ts';
@@ -58,7 +60,10 @@ export interface Session {
   surfaceAt: (x: number, y: number) => Surface;
   /** The effects the world is drawn through (spec section 10.6). */
   post: PostChain;
-  /** What watches the frame and steps the quality tiers (spec section 9.2). */
+  /**
+   * What watches the frame and steps the quality tiers (spec section 9.2).
+   * It is asked only while the Graphics setting is Auto.
+   */
   quality: QualityMonitor;
   hud: Hud;
   /** The corner map of spec section 12, following the player. */
@@ -125,15 +130,26 @@ export interface Session {
   party: PartyControl;
 }
 
+/** The tier the frame is drawn at: the monitor's while Auto is on, else the player's own. */
+export function drawnTier(graphics: GraphicsChoice, monitor: QualityMonitor): QualityTier {
+  return graphics.auto ? monitor.tier : tierOf(graphics);
+}
+
+/** Hand a tier to the two halves that draw at it. */
+export function drawAt(world: WorldScene, post: PostChain, tier: QualityTier): void {
+  world.quality = tier;
+  post.quality = tier.post;
+}
+
 /**
- * Hand a tier to the two halves that draw at it, and say so (spec section 9.2).
+ * Hand a tier the monitor moved to to the two halves that draw at it, and say
+ * so (spec section 9.2).
  *
  * The line in the console is how a tier change is read back after the fact:
  * the player sees a frame that holds its rate, and the log says what it cost.
  */
 export function applyQuality(session: Session, change: QualityChange): void {
-  session.world.quality = change.to;
-  session.post.quality = change.to.post;
+  drawAt(session.world, session.post, change.to);
   console.info(
     `quality: ${change.from.name} -> ${change.to.name} at ${change.frameMs.toFixed(1)} ms a frame ` +
       `(budget ${session.quality.budget} ms)`,

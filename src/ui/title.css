@@ -88,6 +88,9 @@
 /* A setting that is on or off is a checkbox at the end of its row. */
 .title-menu-item[role="switch"]::after { content: ""; align-self: center; width: 1.05rem; height: 1.05rem; border: 1px solid var(--it-ink); box-sizing: border-box; background: transparent; }
 .title-menu-item[role="switch"][aria-checked="true"]::after { content: "\2713"; display: grid; place-items: center; background: var(--it-rosso); border-color: var(--it-rosso); color: var(--it-ivory); font: 600 .8rem/1 var(--it-sans); }
+/* A setting of several steps names its step at the end of its row. */
+.title-menu-value { align-self: center; margin-left: 1rem; font: 600 .72rem/1 var(--it-sans); letter-spacing: .14em; text-transform: uppercase; color: var(--it-muted); }
+.title-menu-item:focus .title-menu-value { color: var(--it-rosso); }
 .title-menu-heading { margin: .3rem .9rem .2rem; padding-bottom: .5rem; border-bottom: 1px solid rgba(35,28,22,.15); font: 400 1.5rem/1.1 var(--it-serif); }
 
 .title-card-head { display: grid; grid-template-columns: auto 1fr; column-gap: .6rem; align-items: baseline; margin-bottom: .8rem; padding-bottom: .6rem; border-bottom: 1px solid rgba(35,28,22,.15); }
