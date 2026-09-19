@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sunset Driver — world check</title>
+    <!-- An empty icon, so the browser does not report a missing one as a page error. -->
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <!--
+      The page `scripts/world-check.ts` drives. It draws nothing and needs no
+      WebGPU device: it builds one seed's world the way the game's workers do,
+      and hands back the digest the driver compares with Node's. Vite serves it,
+      so the `.ts` imports resolve the way they do for the game.
+    -->
+    <script type="module">
+      import { generateWorld } from '/src/world/world.ts';
+      import { worldDigest } from '/src/world/digest.ts';
+      window.worldDigest = (seed) => worldDigest(generateWorld(seed));
+      window.worldCheckReady = true;
+    </script>
+  </body>
+</html>

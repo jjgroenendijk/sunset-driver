@@ -53,6 +53,33 @@ jobs:
     if: github.event_name == 'pull_request'
     uses: ./.github/workflows/full-tier.yml
 
+  # The world is a pure function of its seed, so the browser must build the city
+  # Node builds. Nothing checked that until issue #243, where `Math.cos` rounded
+  # one bit differently in the two engines and the page traced a different road
+  # network. It runs in a job of its own rather than beside `render-smoke`: it
+  # opens no graphics device, so it has none of that job's flakiness and can
+  # gate the merge. The ruleset decides what gates, not this file.
+  world-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+
+      # The same browser and the same cache key as `render-smoke`, so the two
+      # jobs share one download. Nothing here draws, so the headless shell is
+      # all this needs.
+      - id: browser
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.browser.outputs.cache-hit != 'true'
+        run: node_modules/.bin/playwright-core install --no-shell chromium
+
+      - run: npm run test:world
+
   # One frame through a real WebGPU device, which no other job opens: it fails
   # when the renderer draws nothing (issue #119). It is kept out of `full-tier`
   # because it is not part of `verify:full`, and out of the checks that gate the
