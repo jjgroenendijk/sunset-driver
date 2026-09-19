@@ -7,12 +7,12 @@
  * curves share. The tracer's network (`road-network.ts`) decides that when it
  * adds a road, and writes it into `RoadCurve.nodes`, which is all this reads.
  * Two roads that only cross on the map without sharing a node do not meet on
- * the ground either — one is
- * carried over the other — so grade separation holds by construction and an
- * overpass is never turned into a junction (spec section 6.2). Those crossings
- * are found and listed in {@link RoadGraph.crossings}, and both of the runs
- * that meet at one carry its index, so traffic and navigation can tell an
- * overpass from a turn.
+ * the ground either — one is carried over the other — so grade separation
+ * holds by construction and an overpass is never turned into a junction (spec
+ * section 6.2). Those crossings are found in `grade-crossings.ts` and listed in
+ * {@link RoadGraph.crossings}, and both of the runs that meet at one carry its
+ * index, so traffic and navigation can tell an overpass from a turn. The
+ * spatial index behind the nearest-point queries is in `graph-index.ts`.
  *
  * An edge is the run of one curve between two nodes, in one direction of
  * travel. Every road is two-way today, so edges come in pairs that point at
@@ -25,27 +25,10 @@
  * the order a heap happened to pop equal costs in.
  */
 import { compareNumbers } from '../core/sort.ts';
+import { findCrossings } from './grade-crossings.ts';
+import { boundsOf, Buckets, INDEX_CELL } from './graph-index.ts';
 import { TIERS } from './tiers.ts';
 import type { Point, RoadCurve, RoadTier } from './types.ts';
-
-/** Side of one bucket of the spatial index, in metres. */
-const INDEX_CELL = 60;
-/**
- * Metres a crossing has to stand clear of the ends of both segments. Roads that
- * meet share a point exactly, so a junction is not a crossing at all; but a road
- * that leaves another one at a shallow angle can put a crossing a fraction of a
- * millimetre from the point they share, and that is the same place, not an
- * overpass.
- */
-const END_CLEARANCE = 0.01;
-/**
- * Which road is carried over the other where two cross. A deck is on top of
- * whatever it passes and a bore is under it; between roads on the ground the
- * hierarchy decides, because a highway is not the road that stops.
- */
-const CARRY_RANK: Record<RoadTier, number> = { highway: 4, arterial: 3, street: 2, alley: 1, dirt: 0 };
-const DECK_RANK = 5;
-const BORE_RANK = -1;
 
 /** A place where roads meet, or the free end of one. */
 export interface RoadNode {
@@ -373,165 +356,6 @@ function build(roads: readonly RoadCurve[], nodes: RoadNode[], edges: RoadEdge[]
   }
 }
 
-/**
- * Every place two curves cross without sharing a point, and which road is
- * carried over the other there. A deck is always on top and a bore always
- * underneath; otherwise the wider tier goes over, and between two roads of one
- * tier the older keeps the ground. Both runs of both roads are marked, so the
- * crossing is on the graph whichever way a car is driving.
- *
- * Segments are looked up in a grid of buckets rather than compared with every
- * other segment, so this costs one walk over the network.
- */
-function findCrossings(roads: readonly RoadCurve[], edges: readonly RoadEdge[]): GradeCrossing[] {
-  const segments = new Segments(roads, edges);
-  if (segments.count === 0) return [];
-  const grid = new Buckets(segments.bounds, INDEX_CELL);
-  for (let s = 0; s < segments.count; s++) {
-    const a = segments.head(s);
-    const b = segments.tail(s);
-    grid.add(s, Math.min(a.x, b.x), Math.min(a.y, b.y), Math.max(a.x, b.x), Math.max(a.y, b.y));
-  }
-
-  // Only pairs that really cross are remembered, so the set stays small. A pair
-  // found in a second shared bucket is tested again and dropped here.
-  const found = new Set<number>();
-  const crossings: GradeCrossing[] = [];
-  for (let s = 0; s < segments.count; s++) {
-    if (segments.edgeOf(s) < 0) continue;
-    const from = segments.head(s);
-    const to = segments.tail(s);
-    grid.each(Math.min(from.x, to.x), Math.min(from.y, to.y), Math.max(from.x, to.x), Math.max(from.y, to.y), (t) => {
-      if (t <= s || segments.curveOf(t) === segments.curveOf(s) || segments.edgeOf(t) < 0) return;
-      const at = crossPoint(from, to, segments.head(t), segments.tail(t));
-      if (at === undefined) return;
-      const key = s * segments.count + t;
-      if (found.has(key)) return;
-      found.add(key);
-      const high = segments.carry(s) >= segments.carry(t) ? s : t;
-      const low = high === s ? t : s;
-      crossings.push({ over: segments.edgeOf(high), under: segments.edgeOf(low), x: at.x, y: at.y });
-    });
-  }
-
-  crossings.sort((a, b) => a.over - b.over || a.under - b.under || a.x - b.x || a.y - b.y);
-  for (let k = 0; k < crossings.length; k++) {
-    const crossing = crossings[k] as GradeCrossing;
-    markCrossing(edges, crossing.over, k);
-    markCrossing(edges, crossing.under, k);
-  }
-  return crossings;
-}
-
-/** Note a crossing on one run and on the same run the other way. */
-function markCrossing(edges: readonly RoadEdge[], edge: number, crossing: number): void {
-  const run = edges[edge] as RoadEdge;
-  run.crossings.push(crossing);
-  if (run.twin >= 0) (edges[run.twin] as RoadEdge).crossings.push(crossing);
-}
-
-/**
- * The segments of every curve as one numbered list, with the run that covers
- * each and how readily it is carried over another road.
- */
-class Segments {
-  readonly count: number;
-  readonly bounds: Bounds;
-  private readonly roads: readonly RoadCurve[];
-  private readonly curve: Int32Array;
-  private readonly index: Int32Array;
-  private readonly edge: Int32Array;
-  private readonly rank: Int32Array;
-
-  constructor(roads: readonly RoadCurve[], edges: readonly RoadEdge[]) {
-    this.roads = roads;
-    let count = 0;
-    for (const road of roads) count += Math.max(0, road.points.length - 1);
-    this.count = count;
-    this.curve = new Int32Array(count);
-    this.index = new Int32Array(count);
-    this.edge = new Int32Array(count).fill(-1);
-    this.rank = new Int32Array(count);
-    const first = new Int32Array(roads.length);
-    const head = (roads[0] as RoadCurve | undefined)?.points[0];
-    const bounds: Bounds = { minX: head?.x ?? 0, minY: head?.y ?? 0, maxX: head?.x ?? 0, maxY: head?.y ?? 0 };
-    let at = 0;
-    for (const road of roads) {
-      first[road.id] = at;
-      for (let i = 0; i + 1 < road.points.length; i++, at++) {
-        this.curve[at] = road.id;
-        this.index[at] = i;
-        this.rank[at] = road.bridges.includes(i) ? DECK_RANK : road.tunnels.includes(i) ? BORE_RANK : CARRY_RANK[road.tier];
-      }
-      for (const p of road.points) {
-        if (p.x < bounds.minX) bounds.minX = p.x;
-        if (p.y < bounds.minY) bounds.minY = p.y;
-        if (p.x > bounds.maxX) bounds.maxX = p.x;
-        if (p.y > bounds.maxY) bounds.maxY = p.y;
-      }
-    }
-    this.bounds = bounds;
-    // One of a two-way pair covers each segment; the twin stands on the same ground.
-    for (const edge of edges) {
-      if (edge.twin >= 0 && edge.twin < edge.id) continue;
-      const base = first[edge.curve] as number;
-      for (let i = Math.min(edge.start, edge.end); i < Math.max(edge.start, edge.end); i++) {
-        this.edge[base + i] = edge.id;
-      }
-    }
-  }
-
-  curveOf(s: number): number {
-    return this.curve[s] as number;
-  }
-
-  edgeOf(s: number): number {
-    return this.edge[s] as number;
-  }
-
-  carry(s: number): number {
-    // Between two runs of equal standing the older road keeps the ground.
-    return (this.rank[s] as number) * (this.roads.length + 1) + (this.curve[s] as number);
-  }
-
-  head(s: number): Point {
-    return (this.roads[this.curve[s] as number] as RoadCurve).points[this.index[s] as number] as Point;
-  }
-
-  tail(s: number): Point {
-    return (this.roads[this.curve[s] as number] as RoadCurve).points[(this.index[s] as number) + 1] as Point;
-  }
-}
-
-/**
- * Where two segments cross, or undefined when they do not cross away from their
- * own ends. Two roads that share a point meet at the end of a segment on both
- * sides, so a shared point is never a crossing, and a point within
- * {@link END_CLEARANCE} of any of the four ends is that same place too.
- */
-function crossPoint(a: Point, b: Point, c: Point, d: Point): Point | undefined {
-  const rx = b.x - a.x;
-  const ry = b.y - a.y;
-  const sx = d.x - c.x;
-  const sy = d.y - c.y;
-  const denominator = rx * sy - ry * sx;
-  if (denominator === 0) return undefined;
-  const ox = c.x - a.x;
-  const oy = c.y - a.y;
-  const t = (ox * sy - oy * sx) / denominator;
-  const u = (ox * ry - oy * rx) / denominator;
-  if (t <= 0 || t >= 1 || u <= 0 || u >= 1) return undefined;
-  const x = a.x + rx * t;
-  const y = a.y + ry * t;
-  if (nearPoint(x, y, a) || nearPoint(x, y, b) || nearPoint(x, y, c) || nearPoint(x, y, d)) return undefined;
-  return { x, y };
-}
-
-/** True when a place stands within {@link END_CLEARANCE} of a road point. */
-function nearPoint(x: number, y: number, p: Point): boolean {
-  return Math.hypot(x - p.x, y - p.y) < END_CLEARANCE;
-}
-
 /** The two edges of one run: one each way, pointing at each other. */
 function addPair(
   edges: RoadEdge[],
@@ -553,117 +377,6 @@ function addPair(
   edges.push({ id: backward, from: toNode, to: fromNode, twin: forward, start: endIndex, end: startIndex, crossings: [], ...shared });
   (nodes[fromNode] as RoadNode).edges.push(forward);
   (nodes[toNode] as RoadNode).edges.push(backward);
-}
-
-interface Bounds {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-}
-
-function boundsOf(nodes: readonly RoadNode[]): Bounds {
-  const bounds: Bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
-  for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i] as RoadNode;
-    if (i === 0) {
-      bounds.minX = bounds.maxX = node.x;
-      bounds.minY = bounds.maxY = node.y;
-      continue;
-    }
-    if (node.x < bounds.minX) bounds.minX = node.x;
-    if (node.y < bounds.minY) bounds.minY = node.y;
-    if (node.x > bounds.maxX) bounds.maxX = node.x;
-    if (node.y > bounds.maxY) bounds.maxY = node.y;
-  }
-  return bounds;
-}
-
-/**
- * A uniform grid of buckets holding ids by the ground they cover, so "what is
- * near here?" costs a handful of comparisons rather than a walk over the whole
- * network. An id sits in every bucket its bounding box touches, so a search
- * that has covered `r` rings has seen everything within `r` cells.
- */
-class Buckets {
-  private readonly cell: number;
-  private readonly originX: number;
-  private readonly originY: number;
-  private readonly nx: number;
-  private readonly ny: number;
-  private readonly buckets: number[][] = [];
-
-  constructor(bounds: Bounds, cell: number) {
-    this.cell = cell;
-    this.originX = bounds.minX - cell;
-    this.originY = bounds.minY - cell;
-    this.nx = Math.max(1, Math.ceil((bounds.maxX - this.originX) / cell) + 2);
-    this.ny = Math.max(1, Math.ceil((bounds.maxY - this.originY) / cell) + 2);
-    for (let i = 0; i < this.nx * this.ny; i++) this.buckets.push([]);
-  }
-
-  private column(v: number, origin: number, count: number): number {
-    const i = Math.floor((v - origin) / this.cell);
-    return i < 0 ? 0 : i >= count ? count - 1 : i;
-  }
-
-  add(id: number, minX: number, minY: number, maxX: number, maxY: number): void {
-    const x0 = this.column(minX, this.originX, this.nx);
-    const x1 = this.column(maxX, this.originX, this.nx);
-    const y0 = this.column(minY, this.originY, this.ny);
-    const y1 = this.column(maxY, this.originY, this.ny);
-    for (let iy = y0; iy <= y1; iy++) {
-      for (let ix = x0; ix <= x1; ix++) {
-        const bucket = this.buckets[iy * this.nx + ix] as number[];
-        // A long segment lands in the same bucket for each of its own cells.
-        if (bucket[bucket.length - 1] !== id) bucket.push(id);
-      }
-    }
-  }
-
-  /**
-   * Every id in a bucket the box touches. An id whose own box covers several of
-   * those buckets is visited once for each of them, so the caller has to be
-   * ready to see it more than once.
-   */
-  each(minX: number, minY: number, maxX: number, maxY: number, visit: (id: number) => void): void {
-    const x0 = this.column(minX, this.originX, this.nx);
-    const x1 = this.column(maxX, this.originX, this.nx);
-    const y0 = this.column(minY, this.originY, this.ny);
-    const y1 = this.column(maxY, this.originY, this.ny);
-    for (let iy = y0; iy <= y1; iy++) {
-      for (let ix = x0; ix <= x1; ix++) {
-        for (const id of this.buckets[iy * this.nx + ix] as number[]) visit(id);
-      }
-    }
-  }
-
-  /** The id nearest a place by `distanceOf`, searched ring by ring outward. */
-  nearest(x: number, y: number, distanceOf: (id: number) => number): { id: number; distance: number } | undefined {
-    const cx = this.column(x, this.originX, this.nx);
-    const cy = this.column(y, this.originY, this.ny);
-    const rings = Math.max(this.nx, this.ny);
-    let best = -1;
-    let bestD = Infinity;
-    for (let r = 0; r <= rings; r++) {
-      for (let iy = Math.max(0, cy - r); iy <= Math.min(this.ny - 1, cy + r); iy++) {
-        const edgeRow = iy === cy - r || iy === cy + r;
-        for (let ix = Math.max(0, cx - r); ix <= Math.min(this.nx - 1, cx + r); ix++) {
-          // Only the ring itself; the cells inside it were searched already.
-          if (!edgeRow && ix !== cx - r && ix !== cx + r) continue;
-          for (const id of this.buckets[iy * this.nx + ix] as number[]) {
-            const d = distanceOf(id);
-            if (d >= bestD) continue;
-            bestD = d;
-            best = id;
-          }
-        }
-      }
-      // Everything within `r` cells has been seen, so a nearer id cannot exist.
-      if (best >= 0 && bestD <= r * this.cell) break;
-    }
-    return best < 0 ? undefined : { id: best, distance: bestD };
-  }
 }
 
 /** The point of a segment nearest a place, and how far away it is. */
