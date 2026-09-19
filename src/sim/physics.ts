@@ -9,11 +9,14 @@
  * which row of the roster is being driven, so the body, the wheels and the
  * handling are all rebuilt from it too.
  *
- * This file owns the world and the bodies in it. The three halves that need no
- * such ownership are next door: `ground-bodies.ts` is the ground and the decks
- * under the player, `drivetrain.ts` is what the driver's input does to the
- * wheels, the rider and the hull, and `gunfire.ts` is what a shot, a swing and
- * a thrown thing do to the world.
+ * This file owns the world and the bodies in it. The halves that need no such
+ * ownership are next door: `ground-bodies.ts` is the ground and the decks
+ * under the player, `vehicle-bodies.ts` builds the vehicle's bodies and reads
+ * them back, `drivetrain.ts` is what the driver's input does to the wheels,
+ * the rider and the hull, and `gunfire.ts` is what a shot, a swing and a
+ * thrown thing do to the world. The places a ground carries — the stations,
+ * the shops, the dealers — are handed over by `ground-places.ts`, which
+ * `SimPhysics` extends.
  *
  * The world it stands on comes in as a {@link Ground}: the height of the ground
  * at a place, what that ground is made of, and where the sea stands. The game
@@ -38,31 +41,23 @@ import { TICK_RATE } from './clock.ts';
 import { stepCrowdReactions } from './crowd-reaction.ts';
 import { stepFires } from './fire.ts';
 import { blastDamageAt, BLAST_LIFT, CRASH_DAMAGE, hitVehicle, tickFire } from './damage.ts';
-import { rotate, unrotate } from './frame.ts';
+import { unrotate } from './frame.ts';
 import { Drivetrain } from './drivetrain.ts';
 import { GroundBodies, type Ground } from './ground-bodies.ts';
+import { GroundPlaces } from './ground-places.ts';
 import { Gunfire, type ShotTarget } from './gunfire.ts';
 import { buildWalker, GRAVITY, walk, type Walker } from './walker-body.ts';
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
-import type { MetroPlace } from './metro.ts';
-import type { ShopPlace } from './shop.ts';
-import type { DealerPlace } from './dealer.ts';
-import type { SafehousePlace } from './safehouse.ts';
-import type { MissionWorld } from './job.ts';
-import type { CrimeGround } from './street-crime.ts';
-import type { TerritoryMap } from './territory.ts';
 import {
   besidePlayer,
   exitPlace,
   EXIT_SPEED,
   hurt,
-  type Place,
   reachesVehicle,
-  SKIN,
-  vehicleGap,
 } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
 import { TrafficBodies } from './traffic-bodies.ts';
+import { buildParked, buildVehicle, readVehicle } from './vehicle-bodies.ts';
 import { UnitBodies } from './unit-bodies.ts';
 import { commitCrime, report } from './police.ts';
 import { reachablePromoted, swapInto } from './steal.ts';
@@ -75,9 +70,6 @@ import {
   specOf,
   type VehicleClass,
   type VehicleSpec,
-  type VehicleState,
-  type WheelSpec,
-  type WheelState,
 } from './vehicle.ts';
 import { weatherAt } from './weather.ts';
 
@@ -89,12 +81,6 @@ export async function initPhysics(): Promise<void> {
   await RAPIER.init();
 }
 
-/** A body and the wheels it drives on, or no wheels at all on a boat. */
-interface Built {
-  chassis: RAPIER.RigidBody;
-  wheels: RAPIER.DynamicRayCastVehicleController | undefined;
-}
-
 /**
  * The physics of a session: the ground under the player and the vehicle on it.
  *
@@ -102,9 +88,8 @@ interface Built {
  * {@link SimPhysics.dispose}. Every step writes what came out of the world
  * into the {@link SimState} it is given.
  */
-export class SimPhysics {
+export class SimPhysics extends GroundPlaces {
   private readonly world: RAPIER.World;
-  private readonly ground: Ground;
   /** The tiles of ground and the decks over them, which follow whoever is moving. */
   private readonly bodies: GroundBodies;
   /** The Rapier half of the arsenal: the casts, the swings and the flights. */
@@ -134,17 +119,12 @@ export class SimPhysics {
   readonly units: UnitBodies;
   /** Scratch vectors and forces, so a tick allocates nothing. */
   private readonly point = { x: 0, y: 0, z: 0 };
-  private readonly axis = { x: 0, y: 0, z: 0 };
   private readonly force = { x: 0, y: 0, z: 0 };
   /** Reused by the crowd reactions of spec section 20.1, for the same reason. */
   private readonly ids: number[] = [];
-  /** The one ray every shot and every projectile step is cast with. */
-  private readonly from = { x: 0, y: 0, z: 0 };
-  private readonly along = { x: 0, y: 0, z: 0 };
-  private readonly ray = new RAPIER.Ray(this.from, this.along);
 
   constructor(ground: Ground, state: SimState) {
-    this.ground = ground;
+    super(ground);
     this.spec = specOf(state.vehicle.cls);
     this.world = new RAPIER.World({ x: 0, y: -GRAVITY, z: 0 });
     this.bodies = new GroundBodies(this.world, ground);
@@ -201,11 +181,14 @@ export class SimPhysics {
     const p = state.player;
     this.bodies.cover(p.driving ? state.vehicle.x : p.x, p.driving ? state.vehicle.z : p.y);
     if (p.driving) {
-      const built = this.build(state.vehicle);
+      const built = buildVehicle(this.world, this.spec, state.vehicle);
       this.chassis = built.chassis;
       this.wheels = built.wheels;
+      this.body = built.collider;
     } else {
-      this.parked = this.buildParked(state.vehicle);
+      const parked = buildParked(this.world, this.spec, state.vehicle);
+      this.parked = parked.body;
+      this.body = parked.collider;
       this.walker = buildWalker(this.world, state);
     }
   }
@@ -299,46 +282,6 @@ export class SimPhysics {
     // and the crash just measured.
     stepFires(state);
     this.ground.emergency?.step(state, crash);
-  }
-
-  /** The police stations of the ground (spec section 11.7), which an arrest reads. */
-  get stations(): readonly Place[] {
-    return this.ground.stations ?? [];
-  }
-
-  /** The metro station entrances of the ground (spec section 13.3), which fast travel reads. */
-  get metro(): readonly MetroPlace[] {
-    return this.ground.metro ?? [];
-  }
-
-  /** The shops of the ground (spec section 16.1), which the doors and the counters read. */
-  get shops(): readonly ShopPlace[] {
-    return this.ground.shops ?? [];
-  }
-
-  /** The dealers of the ground (spec section 16.2), whose corners the contraband is traded at. */
-  get dealers(): readonly DealerPlace[] {
-    return this.ground.dealers ?? [];
-  }
-
-  /** The safehouses of the ground (spec section 16.3), which the doors and a respawn read. */
-  get safehouses(): readonly SafehousePlace[] {
-    return this.ground.safehouses ?? [];
-  }
-
-  /** The turf of the ground (spec section 17.2), which a takeover and the map overlay read. */
-  get turf(): TerritoryMap | undefined {
-    return this.ground.turf;
-  }
-
-  /** The corners the street crime of spec section 20.5 happens on, one set to a district. */
-  get crimes(): readonly CrimeGround[] {
-    return this.ground.crimes ?? [];
-  }
-
-  /** The work of the ground (spec section 18): the contacts, and where they send the player. */
-  get missions(): MissionWorld | undefined {
-    return this.ground.missions;
   }
 
   /**
@@ -485,7 +428,7 @@ export class SimPhysics {
       p.height = t.y - walker.rise;
       return;
     }
-    this.readVehicle(state);
+    readVehicle(state.vehicle, this.chassis as RAPIER.RigidBody, this.wheels, this.spec);
     this.follow(state);
   }
 
@@ -501,119 +444,6 @@ export class SimPhysics {
     p.speed = v.speed;
     p.vy = 0;
     p.grounded = true;
-  }
-
-  /** Read the vehicle's body and wheels back into its record. */
-  private readVehicle(state: SimState): void {
-    const chassis = this.chassis as RAPIER.RigidBody;
-    const v = state.vehicle;
-    const t = chassis.translation();
-    const r = chassis.rotation();
-    const linear = chassis.linvel();
-    const angular = chassis.angvel();
-    v.x = t.x;
-    v.y = t.y;
-    v.z = t.z;
-    v.qx = r.x;
-    v.qy = r.y;
-    v.qz = r.z;
-    v.qw = r.w;
-    v.vx = linear.x;
-    v.vy = linear.y;
-    v.vz = linear.z;
-    v.ax = angular.x;
-    v.ay = angular.y;
-    v.az = angular.z;
-    if (this.wheels === undefined) {
-      // A boat has no wheel to read a speed off, so the speed is what the hull
-      // is making along its own length.
-      rotate(this.point, v, 1, 0, 0);
-      v.speed = v.vx * this.point.x + v.vy * this.point.y + v.vz * this.point.z;
-    } else {
-      v.speed = this.wheels.currentVehicleSpeed();
-      // How fast the body is going across its own axle. A tyre on the ground
-      // that is being pushed sideways this hard is sliding, not rolling, and a
-      // sliding tyre leaves a mark (spec section 11.3).
-      rotate(this.axis, v, 0, 0, 1);
-      const across = v.vx * this.axis.x + v.vy * this.axis.y + v.vz * this.axis.z;
-      const sliding = Math.abs(across) > SKID_SLIP;
-      for (let i = 0; i < v.wheels.length; i++) {
-        const wheel = v.wheels[i] as WheelState;
-        wheel.rotation = this.wheels.wheelRotation(i) ?? wheel.rotation;
-        wheel.steer = this.wheels.wheelSteering(i) ?? 0;
-        wheel.suspension = this.wheels.wheelSuspensionLength(i) ?? this.spec.suspensionRest;
-        wheel.contact = this.wheels.wheelIsInContact(i);
-        wheel.skid = wheel.contact && sliding;
-      }
-    }
-  }
-
-  /** Build the chassis body, its collider and the wheels, from the state. */
-  private build(v: VehicleState): Built {
-    const spec = this.spec;
-    const chassis = this.world.createRigidBody(
-      RAPIER.RigidBodyDesc.dynamic()
-        .setTranslation(v.x, v.y, v.z)
-        .setRotation({ x: v.qx, y: v.qy, z: v.qz, w: v.qw })
-        .setLinvel(v.vx, v.vy, v.vz)
-        .setAngvel({ x: v.ax, y: v.ay, z: v.az })
-        // Air drag, and enough angular damping that the body settles rather
-        // than rocking on its springs.
-        .setLinearDamping(spec.drag)
-        .setAngularDamping(0.6),
-    );
-    this.body = this.world.createCollider(
-      RAPIER.ColliderDesc.cuboid(spec.halfLength, spec.halfHeight, spec.halfWidth)
-        .setMass(spec.mass)
-        // A hull slides over what it grounds on; a car body digs in.
-        .setFriction(spec.hull === undefined ? 0.6 : 0.2),
-      chassis,
-    );
-    if (spec.wheels.length === 0) return { chassis, wheels: undefined };
-
-    const wheels = this.world.createVehicleController(chassis);
-    // Forward is the chassis' local +x and up is +y, the frame the model and
-    // the map heading already share (`vehicle.ts`).
-    wheels.setIndexForwardAxis = 0;
-    wheels.indexUpAxis = 1;
-    for (let i = 0; i < spec.wheels.length; i++) {
-      const wheel = spec.wheels[i] as WheelSpec;
-      wheels.addWheel(
-        { x: wheel.x, y: wheel.y, z: wheel.z },
-        { x: 0, y: -1, z: 0 },
-        { x: 0, y: 0, z: 1 },
-        spec.suspensionRest,
-        spec.wheelRadius,
-      );
-      wheels.setWheelSuspensionStiffness(i, spec.suspensionStiffness);
-      wheels.setWheelSuspensionCompression(i, spec.suspensionCompression);
-      wheels.setWheelSuspensionRelaxation(i, spec.suspensionRelaxation);
-      wheels.setWheelMaxSuspensionTravel(i, spec.suspensionTravel);
-      wheels.setWheelMaxSuspensionForce(i, spec.maxSuspensionForce);
-      wheels.setWheelSteering(i, (v.wheels[i] as WheelState).steer);
-    }
-    return { chassis, wheels };
-  }
-
-  /**
-   * The parked vehicle of spec section 11.5: the record's pose as a fixed body.
-   *
-   * Nothing drives it, so nothing has to simulate it, and the player walks
-   * round it rather than through it. Entering it builds the moving body again
-   * from the same record, so the car is where it was left.
-   */
-  private buildParked(v: VehicleState): RAPIER.RigidBody {
-    const spec = this.spec;
-    const body = this.world.createRigidBody(
-      RAPIER.RigidBodyDesc.fixed()
-        .setTranslation(v.x, v.y, v.z)
-        .setRotation({ x: v.qx, y: v.qy, z: v.qz, w: v.qw }),
-    );
-    this.body = this.world.createCollider(
-      RAPIER.ColliderDesc.cuboid(spec.halfLength, spec.halfHeight, spec.halfWidth),
-      body,
-    );
-    return body;
   }
 
   /**
@@ -729,12 +559,3 @@ export class SimPhysics {
     this.walker = undefined;
   }
 }
-
-/**
- * Metres per second the vehicle has to be sliding across its own axle before a
- * tyre counts as skidding (spec section 11.3). It is one rule for every way of
- * getting there: a handbrake turn, a corner taken too fast and a spin all push
- * the vehicle sideways, and a tyre that is being pushed sideways is a tyre
- * leaving a mark. Below this the tyre is scrubbing, not sliding.
- */
-const SKID_SLIP = 2.2;

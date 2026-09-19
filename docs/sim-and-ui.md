@@ -43,8 +43,8 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
   `SimState.objective` is the leg of the job being carried and what is left of its clock, written
   by the missions of spec section 18 (`docs/missions.md`) and by nothing else. The turf line under
   the heat is whose block the player is standing on and how far
-  through taking it they are (spec section 17.2); `main.ts` reads it off `turfLine` and hands it in,
-  because the HUD knows the record and not the world.
+  through taking it they are (spec section 17.2); `frame.ts` reads it off `turfLine` and hands it
+  in, because the HUD knows the record and not the world.
 
 ## The map
 
@@ -79,16 +79,18 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
 ## Physics
 
 - `src/sim/physics.ts` is the only place Rapier is used, with `ground-bodies.ts` (the heightfield
-  tiles and the decks), `drivetrain.ts` (what the input does to the wheels, the rider and the hull)
-  and `gunfire.ts` (the casts, the swings and the flights) beside it. `await initPhysics()` loads
-  its WebAssembly once, then `new SimPhysics(ground, state)` builds a world and `stepSim(state,
-  input, physics)` steps it once per tick. The bodies are built from `state.vehicle` and never
-  stored in it, so the state stays plain data: `adopt` makes the world agree with the record again
-  after a load, and `spawn` puts the car down on the ground.
+  tiles and the decks), `vehicle-bodies.ts` (the chassis, the wheels, the parked body and the read
+  back into the record), `drivetrain.ts` (what the input does to the wheels, the rider and the hull)
+  and `gunfire.ts` (the casts, the swings and the flights) beside it. `ground-places.ts` is the
+  getters that hand the simulation the places of a `Ground`; `SimPhysics` extends it.
+  `await initPhysics()` loads its WebAssembly once, then `new SimPhysics(ground, state)` builds a
+  world and `stepSim(state, input, physics)` steps it once per tick. The bodies are built from
+  `state.vehicle` and never stored in it, so the state stays plain data: `adopt` makes the world
+  agree with the record again after a load, and `spawn` puts the car down on the ground.
 - The `Ground` it is built from is `src/city.ts`: everything placed once for a seed and then read
   every tick — the traffic, the crowd, the tram, the police, the emergency services — and the
-  heights and decks under them. `main.ts` calls `buildCity` and runs the frame; a test builds the
-  pieces it needs by hand instead, because every field but the heights is optional.
+  heights and decks under them. `main.ts` calls `buildCity` and `frame.ts` runs the frame; a test
+  builds the pieces it needs by hand instead, because every field but the heights is optional.
 
 ## On foot
 
@@ -209,7 +211,7 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
   `ParcelMap.stations`, built in the chunk workers, so `main.ts` reads them off
   `WorldScene.stations` after `settle` and hands them to the physics as `Ground.stations`. A world
   with none sends an arrest to the safehouse too. `SimState.respawn` changing is what makes
-  `main.ts` snap the camera.
+  `frame.ts` snap the camera.
 - `SimState.heat` is the attention of spec section 14: a sounding alarm, every shot fired and every
   crime raise it, and melee raises none, because the spec calls it silent. The police read it, and
   an arrest is what a chase ends in.
@@ -302,8 +304,9 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
   model already uses, since a yaw of `-heading` points local `+x` along the map heading. Rapier
   turns a steered wheel the other way round the up axis, so the steering angle is the negative of
   the input.
-- `src/sim/vehicle.ts` holds the roster of spec section 11.3 as a table of `VehicleSpec`, and
-  `SURFACE_GRIP` what a tyre finds on each surface; nothing else should carry those numbers.
+- `src/sim/roster.ts` holds the roster of spec section 11.3 as a table of `VehicleSpec`, and
+  `vehicle.ts` `SURFACE_GRIP`, what a tyre finds on each surface; nothing else should carry those
+  numbers. `vehicle.ts` re-exports the roster and stays the door callers import.
   `VehicleState.cls` names the row, so the body, the handling and the model are all rebuilt from the
   record; `specOf` reads it and `VEHICLE_CLASSES` is the order the picker shows.
   `src/ui/vehicle-picker.ts` is that picker.
