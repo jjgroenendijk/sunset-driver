@@ -9,13 +9,19 @@ import {
   EYE_HEIGHT_DRIVING,
   EYE_HEIGHT_ON_FOOT,
   FIRST_PITCH,
+  FIRST_PITCH_MIN,
   FIRST_TURN_RATE,
+  LOOK_HOLD,
+  LOOK_PER_PIXEL,
+  LOOK_RETURN,
   LOOK_HEIGHT_DRIVING,
   LOOK_HEIGHT_ON_FOOT,
   THIRD_DISTANCE_DRIVING,
   THIRD_DISTANCE_ON_FOOT,
   THIRD_DISTANCE_PER_SPEED,
+  PITCH_MAX,
   THIRD_PITCH,
+  THIRD_PITCH_MIN,
   THIRD_TURN_RATE,
   TOP_NEAR,
   TURN_RATE,
@@ -87,12 +93,14 @@ export interface CameraTarget {
  * How the camera looks this frame (spec section 10.7). `view` is top down
  * unless the player chose otherwise. `pull` stands the top-down camera back
  * over the roof under it; `turn` turns it round the player to a heading from
- * which no roof hides them. The chase views read neither.
+ * which no roof hides them. The chase views read neither. `mouse` is true
+ * while the pointer is locked to the game, so the mouse turns a chase view.
  */
 export interface CameraLook {
   view?: CameraView;
   pull?: RoofHeight;
   turn?: RoofHeight;
+  mouse?: boolean;
 }
 
 /**
@@ -123,6 +131,15 @@ export class FollowCamera {
   private turnGoal = CAMERA_HEADING;
   private pitch = CAMERA_PITCH;
   private readonly back = new Vector3();
+  /**
+   * The mouse look of the chase views: pixels moved since the last frame, the
+   * yaw and pitch it has turned the view by, and seconds since it last moved.
+   */
+  private lookX = 0;
+  private lookY = 0;
+  private lookYaw = 0;
+  private lookPitch = 0;
+  private still = LOOK_HOLD;
 
   constructor(aspect: number) {
     this.camera = new PerspectiveCamera(45, aspect, TOP_NEAR, 2000);
@@ -130,7 +147,7 @@ export class FollowCamera {
   }
 
   private applyOrientation(): void {
-    this.camera.rotation.set(-this.pitch, this.yaw, 0, 'YXZ');
+    this.camera.rotation.set(-this.pitch, this.yaw + this.lookYaw, 0, 'YXZ');
   }
 
   /** The view the camera stands in now. */
@@ -143,7 +160,16 @@ export class FollowCamera {
    * north. On foot the keys walk relative to it, so up the screen is forward.
    */
   get heading(): number {
-    return this.yaw;
+    return this.yaw + this.lookYaw;
+  }
+
+  /**
+   * Turn a chase view by a movement of the locked mouse, in pixels: right
+   * turns the view right, down tilts it down. The next update applies it.
+   */
+  look(dx: number, dy: number): void {
+    this.lookX += dx;
+    this.lookY += dy;
   }
 
   /** How far back the camera sits at rest. The title screen pulls in close. */
@@ -220,11 +246,13 @@ export class FollowCamera {
     if (view !== this.shown) {
       this.shown = view;
       this.initialised = false;
+      this.lookYaw = 0;
+      this.lookPitch = 0;
       this.camera.near = view === 'top-down' ? TOP_NEAR : CHASE_NEAR;
       this.camera.updateProjectionMatrix();
     }
     if (view === 'top-down') this.followOver(dt, target, look);
-    else this.followBehind(dt, target, view === 'first-person');
+    else this.followBehind(dt, target, view === 'first-person', look.mouse === true);
     this.shake.multiplyScalar(Math.exp(-KICK_RATE * dt));
     this.camera.position.add(this.shake);
     this.joltBy(dt, this.camera.position);
@@ -280,11 +308,36 @@ export class FollowCamera {
    * The chase views. Third person stands behind and over the player and turns
    * after them; first person stands at their eyes and turns with them. The
    * heading is the one the player faces, or the car.
+   *
+   * With `mouse`, the mouse turns the view. On foot it steers it alone, and
+   * the walking keys follow it, as `docs/camera.md` says. At the wheel it looks
+   * aside from the car, and the view goes back behind the car once the mouse
+   * is still.
    */
-  private followBehind(dt: number, target: CameraTarget, first: boolean): void {
+  private followBehind(dt: number, target: CameraTarget, first: boolean, mouse: boolean): void {
     const driving = target.driving !== false;
     const goal = yawBehind(target.heading);
-    this.pitch = first ? FIRST_PITCH : THIRD_PITCH;
+    const steered = mouse && !driving;
+    const moved = mouse && (this.lookX !== 0 || this.lookY !== 0);
+    this.still = moved ? 0 : this.still + dt;
+    const base = first ? FIRST_PITCH : THIRD_PITCH;
+    const low = (first ? FIRST_PITCH_MIN : THIRD_PITCH_MIN) - base;
+    if (mouse) {
+      this.lookYaw -= this.lookX * LOOK_PER_PIXEL;
+      this.lookPitch = Math.min(PITCH_MAX - base, Math.max(low, this.lookPitch + this.lookY * LOOK_PER_PIXEL));
+    }
+    this.lookX = 0;
+    this.lookY = 0;
+    if (steered) {
+      // On foot the look is the heading itself, so none of it is left aside.
+      this.yaw += this.lookYaw;
+      this.lookYaw = 0;
+    } else if (!mouse || this.still > LOOK_HOLD) {
+      const back = 1 - Math.exp(-LOOK_RETURN * dt);
+      this.lookYaw -= this.lookYaw * back;
+      this.lookPitch -= this.lookPitch * back;
+    }
+    this.pitch = base + this.lookPitch;
     const up = first
       ? driving ? EYE_HEIGHT_DRIVING : EYE_HEIGHT_ON_FOOT
       : driving ? LOOK_HEIGHT_DRIVING : LOOK_HEIGHT_ON_FOOT;
@@ -299,16 +352,18 @@ export class FollowCamera {
       this.yaw = goal;
       this.zoom = zoom;
       this.pull = 0;
+      this.lookYaw = 0;
+      this.lookPitch = 0;
       this.initialised = true;
     } else {
-      this.yaw = turnToward(this.yaw, goal, 1 - Math.exp(-(first ? FIRST_TURN_RATE : THIRD_TURN_RATE) * dt));
+      if (!steered) this.yaw = turnToward(this.yaw, goal, 1 - Math.exp(-(first ? FIRST_TURN_RATE : THIRD_TURN_RATE) * dt));
       this.zoom += (zoom - this.zoom) * (1 - Math.exp(-ZOOM_RATE * dt));
     }
     // The focus is the player and not a lag behind them: the view turns
     // smoothly, and a lag on top of that swings the player across the screen.
     this.focus.copy(wanted);
     const distance = first ? 0 : (driving ? THIRD_DISTANCE_DRIVING : THIRD_DISTANCE_ON_FOOT) + this.zoom;
-    backOf(this.yaw, this.pitch, this.back);
+    backOf(this.yaw + this.lookYaw, this.pitch, this.back);
     this.camera.position.copy(this.focus).addScaledVector(this.back, distance);
   }
 }

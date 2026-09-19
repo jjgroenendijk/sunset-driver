@@ -479,9 +479,7 @@ export function stepWeapons(
   }
   finishReload(loadout, tick);
 
-  const cycled = input.cycle && !loadout.held.cycle;
-  loadout.held.cycle = input.cycle;
-  if (cycled) cycleWeapon(loadout, 1);
+  if (input.cycle !== 0) cycleWeapon(loadout, input.cycle);
 
   const asked = input.reload && !loadout.held.reload;
   loadout.held.reload = input.reload;

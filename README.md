@@ -34,11 +34,13 @@ how the steps are watched on a machine that does not need them.
 | Fire, swing | Left click |
 | Aim | Right click |
 | Reload | R |
-| Cycle weapon | C |
+| Cycle weapon | Mouse wheel |
 | Radio: next, previous station | ] and [ |
 | Metro or shop: the row on the panel | 1 to 9 |
 | Pause menu | Esc |
 | Map | M |
+| Camera view: top down, third person, first person | C |
+| Look around, in third and first person | Mouse |
 | Vehicle picker | V |
 | Weapon picker | G |
 | Debug: developer info | F3 |

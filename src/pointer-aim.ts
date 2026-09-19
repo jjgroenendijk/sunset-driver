@@ -16,6 +16,14 @@ import { Plane, Raycaster, Vector2, Vector3, type Camera } from 'three';
  */
 export const AIM_PLANE_HEIGHT = 1.2;
 
+/**
+ * Metres ahead of the player the aim of a chase view under mouse look may
+ * stand: near, so it does not fall on the player's own feet, and far, so a
+ * view looking over the horizon still aims somewhere.
+ */
+export const LOOK_AIM_NEAR = 8;
+export const LOOK_AIM_FAR = 60;
+
 /** A point on the screen, in the page's CSS pixels. */
 export interface ScreenPoint {
   x: number;
@@ -31,6 +39,7 @@ export class PointerAim {
   /** Whether that pointer is a mouse: a finger on a touch screen aims nothing. */
   mouse = false;
   readonly ray = new Raycaster();
+  private readonly middle = new Vector2();
   private readonly canvas: HTMLCanvasElement;
   private readonly plane = new Plane(new Vector3(0, 1, 0), 0);
   private readonly hit = new Vector3();
@@ -54,9 +63,28 @@ export class PointerAim {
     });
   }
 
-  /** Cast the ray from the camera through the pointer. Call once a frame, after the camera moved. */
-  cast(camera: Camera): void {
-    this.ray.setFromCamera(this.at, camera);
+  /**
+   * Cast the ray from the camera through the pointer, or through the middle of
+   * the screen while the pointer is locked. Call once a frame, after the
+   * camera moved.
+   */
+  cast(camera: Camera, locked = false): void {
+    this.ray.setFromCamera(locked ? this.middle : this.at, camera);
+  }
+
+  /**
+   * The aim of a chase view under mouse look: straight ahead of the player
+   * along the camera's heading `yaw`, as far as the middle of the screen
+   * reaches the aim plane, between {@link LOOK_AIM_NEAR} and
+   * {@link LOOK_AIM_FAR}. Tilting the view down aims nearer. Read after
+   * {@link PointerAim.cast} with the lock.
+   */
+  ahead(x: number, y: number, height: number, yaw: number): { x: number; y: number } {
+    this.plane.constant = -(height + AIM_PLANE_HEIGHT);
+    const hit = this.ray.ray.intersectPlane(this.plane, this.hit);
+    const reach = hit === null ? LOOK_AIM_FAR : Math.hypot(hit.x - x, hit.z - y);
+    const d = Math.min(LOOK_AIM_FAR, Math.max(LOOK_AIM_NEAR, reach));
+    return { x: x - Math.sin(yaw) * d, y: y - Math.cos(yaw) * d };
   }
 
   /**

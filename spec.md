@@ -436,11 +436,15 @@ vehicle at speed and pulls back as speed increases. It never rolls or banks, and
 the Turn setting below. That is the camera the game is played through; the developer free camera of
 `docs/dev-tooling.md` is a tool and not a view of the game.
 
-The View page under Options, and the `T` key, pick one of three views. **Top down**, above, is the
+The View page under Options, and the `C` key, pick one of three views. **Top down**, above, is the
 default and the view the game is designed for. **Third person** stands behind and above the player
 and turns after them, on foot or in a car. **First person** stands at the player's eyes and turns
 with them. On foot, the walking keys follow the camera's heading in every view, so `W` walks up the
 screen.
+
+In the two chase views the mouse turns the view, under pointer lock. On foot the mouse steers the
+view alone, and the player walks the way it looks. At the wheel the mouse looks aside from the car,
+and the view goes back behind the car when the mouse is still. A shot goes where the view looks.
 
 The camera stands about 30 m over the street, and a tower stands up to 150 m. A building therefore
 often stands between the camera and the player, or holds the camera inside it. A setting on the

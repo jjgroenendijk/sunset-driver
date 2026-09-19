@@ -45,6 +45,22 @@ export const EYE_AHEAD_DRIVING = 0.9;
 /** How fast each chase view turns to the player's heading, in e-foldings a second. */
 export const THIRD_TURN_RATE = 3;
 export const FIRST_TURN_RATE = 14;
+/** Radians the chase views turn per pixel the mouse moves under pointer lock. */
+export const LOOK_PER_PIXEL = 0.0025;
+/**
+ * The pitch the mouse may take each chase view to, in radians below
+ * horizontal. Third person stops short of looking up from under the ground.
+ */
+export const THIRD_PITCH_MIN = (-10 * Math.PI) / 180;
+export const FIRST_PITCH_MIN = (-70 * Math.PI) / 180;
+export const PITCH_MAX = (70 * Math.PI) / 180;
+/**
+ * At the wheel the mouse looks aside, and the view goes back behind the car
+ * once the mouse has been still this many seconds, at this many e-foldings a
+ * second. On foot the mouse steers the view and it stays where it was left.
+ */
+export const LOOK_HOLD = 1.5;
+export const LOOK_RETURN = 2.5;
 /** The near plane of the top-down view, and of the chase views, which stand close to what they see. */
 export const TOP_NEAR = 1;
 export const CHASE_NEAR = 0.1;
