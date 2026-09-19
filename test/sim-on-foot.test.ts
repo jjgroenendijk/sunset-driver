@@ -47,6 +47,21 @@ describe('on foot', () => {
     session.physics.dispose();
   });
 
+  it('starts a session on foot beside a car that opens without a break-in', () => {
+    const session = start(hills());
+    session.physics.alight(session.state);
+    drive(session, 30);
+    const p = session.state.player;
+    const v = session.state.vehicle;
+    expect(p.driving).toBe(false);
+    expect(p.grounded).toBe(true);
+    expect(Math.hypot(p.x - v.x, p.y - v.z)).toBeLessThan(3);
+    press(session, 'interact');
+    expect(session.state.theft).toBeNull();
+    expect(p.driving).toBe(true);
+    session.physics.dispose();
+  });
+
   it('leaves the car where it was parked while the player walks away', () => {
     const session = onFoot(hills());
     const parked = { ...session.state.vehicle };
