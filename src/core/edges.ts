@@ -179,14 +179,21 @@ export function cutAt(edges: Edges, nodes: { x: number[]; y: number[]; index: Bu
       continue;
     }
     changed = true;
-    const order = found.map((_, k) => k).sort((p, q) => (along[p] as number) - (along[q] as number));
+    const order = found.map((_, k) => k).sort((p, q) => (along[p] as number) - (along[q] as number) || (found[p] as number) - (found[q] as number));
     let fromX = ax;
     let fromY = ay;
+    let lastT = -1;
     for (const k of order) {
       const n = found[k] as number;
       const px = nodes.x[n] as number;
       const py = nodes.y[n] as number;
       if (px === fromX && py === fromY) continue;
+      // Two nodes the same way along the edge stand either side of it: the
+      // other corners of the cell a one-unit diagonal crosses. The hop between
+      // them is the opposite diagonal, so routing through both would only swap
+      // one crossing for another, pass after pass. The first of them is enough.
+      if (along[k] === lastT) continue;
+      lastT = along[k] as number;
       pushEdge(out, fromX, fromY, px, py, set);
       fromX = px;
       fromY = py;
