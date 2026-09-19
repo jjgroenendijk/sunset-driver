@@ -51,6 +51,15 @@ const EDGE_INSET = 0.4;
 const DOUBLE_GAP = 0.5;
 
 /**
+ * The median of a highway: a strip of concrete down the centreline, with a
+ * solid yellow line along each side of it, so the two carriageways read as
+ * kept apart rather than as painted apart.
+ */
+const MEDIAN_WIDTH = 1;
+const MEDIAN_LINE = 0.7;
+const MEDIAN_RGB = 0x8f8c85;
+
+/**
  * What a vertex belongs to: the cross section of a road, a structure carrying
  * one, or the tram's reserved lane, its rails and its level crossings, which are
  * laid over the road (spec section 13.2).
@@ -95,6 +104,8 @@ export interface Marking {
   dash: number;
   gap: number;
   colour: Rgb;
+  /** Metres wide. Unset, the line is {@link PAINT_WIDTH}. */
+  width?: number;
 }
 
 /** Square metres below which a junction surface is a sliver of rounding and is not drawn. */
@@ -155,7 +166,8 @@ export function vergeRise(tier: RoadTier): number {
 
 /**
  * The lines painted on a tier (spec section 6.2). An alley and a dirt road are
- * unmarked. Everything else takes a centre line, one dashed divider between each
+ * unmarked. Everything else takes a centre line, or on a highway a concrete
+ * median between two yellow lines, then one dashed divider between each
  * pair of lanes, a solid line along each parking strip, and — where the tier
  * runs fast enough to need them — a solid edge line inside each kerb.
  */
@@ -167,6 +179,12 @@ export function markingsOf(tier: RoadTier): Marking[] {
   const out: Marking[] = [];
   if (spec.lanes === 1) {
     out.push({ across: 0, dash: DASH, gap: DASH_GAP, colour: YELLOW });
+  } else if (tier === 'highway') {
+    out.push(
+      { across: 0, dash: 0, gap: 0, colour: rgbOf(MEDIAN_RGB), width: MEDIAN_WIDTH },
+      { across: -MEDIAN_LINE, dash: 0, gap: 0, colour: YELLOW },
+      { across: MEDIAN_LINE, dash: 0, gap: 0, colour: YELLOW },
+    );
   } else {
     // Two directions kept apart by a solid double line, as a road this busy is.
     out.push(
