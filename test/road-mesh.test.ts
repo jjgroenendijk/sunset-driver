@@ -239,9 +239,16 @@ describe('road seams', () => {
     for (const cx of [0, 1]) {
       const street = streetOf(buildChunkRoads(source.chunk(cx, 0), ribbons, heightAt));
       const marks = street.markings;
-      for (let i = 0; i < marks.length; i += 6) {
-        if (Math.abs(marks[i + 2] as number) > TOLERANCE || Math.abs(marks[i + 5] as number) > TOLERANCE) continue;
-        painted.push([marks[i] as number, marks[i + 3] as number]);
+      // Two triangles per stretch of paint, three numbers per vertex.
+      for (let i = 0; i < marks.length; i += 18) {
+        const xs: number[] = [];
+        let across = 0;
+        for (let v = 0; v < 6; v++) {
+          xs.push(marks[i + v * 3] as number);
+          across += (marks[i + v * 3 + 2] as number) / 6;
+        }
+        if (Math.abs(across) > 1e-3) continue;
+        painted.push([Math.min(...xs), Math.max(...xs)]);
       }
     }
     painted.sort((a, b) => a[0] - b[0]);
@@ -259,6 +266,24 @@ describe('road seams', () => {
       const k = Math.round((from - start) / period);
       expect(from - start).toBeCloseTo(k * period, 3);
       expect(to - from).toBeCloseTo(marking.dash, 3);
+    }
+  });
+
+  it('lays the paint flat on the road, facing up', () => {
+    // A line that faced the camera stood up off the road when the camera was
+    // low, and read as a stripe laid over the picture.
+    const street = streetOf(buildChunkRoads(source.chunk(0, 0), ribbons, heightAt));
+    const marks = street.markings;
+    const normals = street.markingNormals;
+    expect(marks.length).toBeGreaterThan(0);
+    expect(normals.length).toBe(marks.length);
+    for (let i = 0; i < normals.length; i += 3) expect(normals[i + 1] as number).toBeGreaterThan(0.99);
+    for (let i = 0; i < marks.length; i += 9) {
+      const edge = (from: number, to: number): number[] => [0, 1, 2].map((k) => (marks[i + to * 3 + k] as number) - (marks[i + from * 3 + k] as number));
+      const [ux, , uz] = edge(0, 1) as [number, number, number];
+      const [vx, , vz] = edge(0, 2) as [number, number, number];
+      // The winding a front face has, seen from above.
+      expect(uz * vx - ux * vz).toBeGreaterThan(0);
     }
   });
 });
@@ -405,7 +430,7 @@ describe('a turn too sharp to mitre', () => {
 });
 
 describe('draw calls', () => {
-  it('costs a batch and a line mesh for each tier a chunk carries', () => {
+  it('costs a batch and a paint mesh for each tier a chunk carries', () => {
     // One batch of streets, one of their markings; a chunk past the roads pays
     // nothing. What a whole chunk costs is `chunk-cost.ts`, which adds the
     // ground and the buildings to this.

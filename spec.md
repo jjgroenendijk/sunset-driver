@@ -866,7 +866,7 @@ Maximise coverage, subject to the veto that no feature exists purely to justify 
 | `DecalGeometry` | Skid marks, bullet holes, blood, road stains, graffiti |
 | `ClippingGroup` | Enterable shops: roof and front wall clipped away when the player is inside |
 | `Bayer` dither | Per-instance near-camera fade without transparency sorting |
-| `Line2` | Road markings and map rendering |
+| `Line2` | Map rendering. Road markings are flat strips on the carriageway: a fat line stands up off the road when the camera is low |
 | Water addons | River, harbour, sea |
 | Sky addon | Day/night sky |
 | CSM shadows | Sun shadows, one or two cascades |

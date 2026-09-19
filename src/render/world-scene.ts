@@ -748,8 +748,8 @@ export class WorldScene {
    * Every batch of a chunk is solid geometry standing on the ground, so it
    * takes the sun's shadow, and casts one unless its piece says otherwise: the
    * outline hulls stand over the roofs they rim and would shade them
-   * (`buildings.ts`). The road markings are lines painted on the surface and
-   * do neither. `mirrored` is the same answer for the water's mirror, which
+   * (`buildings.ts`). The road markings are paint on the surface: they take
+   * the shadow and cast none, which `roads.ts` sets. `mirrored` is the same answer for the water's mirror, which
    * draws what stands tall and leaves the ground to the view (`mirror.ts`).
    */
   private add(tile: ChunkTile, part: TilePart): void {

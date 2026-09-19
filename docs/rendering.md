@@ -231,14 +231,14 @@ lamps and the lights a vehicle carries — in `docs/lighting.md`.
   `road-material.ts` steps between the bands at the tier's own widths and holds the road colours, as
   `ground.ts` holds the ground's. A dash pattern is measured from the start of the whole curve, so
   it carries on across a boundary.
-- A fat line is drawn as a box the width of the paint, turned the one way the middle of the segment
-  faces the camera. The ends of a long segment near the camera face another way, so the box misses
-  the paint it stands for: the line thins, breaks into dots and flashes as the camera moves, and a
-  double yellow line smears into one band. The points of a road curve stand as much as 176 m apart,
-  so `paintMarking` cuts every segment to `PAINT_PIECE` metres. A dash is shorter than that already
-  and is never cut, which is why the dashes looked right while the solid lines did not.
+- The paint is flat triangles lying in the plane of the carriageway, lit and shadowed as the road
+  is. It was once a `LineSegments2` fat line, which is a box turned to face the camera: from a low
+  camera it stood up off the road like a fence, showed over the roads behind a rise and read as
+  white and yellow lines across the picture. A long segment also missed the paint at its ends and
+  flashed. The strip stands `MARK_RAISE` over the road, and the material's depth offset keeps it
+  in front of the road far off without lifting it in the world.
 - `RoadScenery` (`roads.ts`) packs each tier of a chunk into one batch, and that tier's markings
-  into one `LineSegments2`. `batch.ts` is the one place geometry is packed into a batch, and a batch
+  into one flat mesh. `batch.ts` is the one place geometry is packed into a batch, and a batch
   is one merged `Mesh`, never a `BatchedMesh`: it merges the parts into the storage the worker
   allocated, each at its place in the world, releases each as it goes, and hands the copies back as
   the steps the frame budget runs. A batch is not drawn until its first part is in, because an empty

@@ -45,6 +45,7 @@ import {
   markingsOf,
   merge,
   MARK_RAISE,
+  PAINT_WIDTH,
   place,
   roadSection,
   SKIRT,
@@ -108,10 +109,19 @@ export interface TierGeometry {
   pavement: BufferGeometry[];
   /** The piers under this tier's decks, and the tram track down its roads (`corridor-mesh.ts`). */
   corridors: BufferGeometry[];
-  /** Marking segment ends, six numbers each. Empty where the tier is unmarked. */
+  /** The painted lines as flat triangles, three numbers per vertex. Empty where the tier is unmarked. */
   markings: Float32Array;
-  /** The colour of each of those ends, six numbers each. */
+  /** Which way each of those vertices faces, three numbers each. */
+  markingNormals: Float32Array;
+  /** The colour of each of those vertices, three numbers each. */
   markingTints: Float32Array;
+}
+
+/** The painted lines of a tier as they are laid, before they are packed. */
+interface PaintBuffers {
+  positions: number[];
+  normals: number[];
+  tints: number[];
 }
 
 /** Everything of one tier that goes into a batch, surfaces and structures alike. */
@@ -206,8 +216,7 @@ export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons, surface
     const raised = structureSection(tier);
     const markings = markingsOf(tier);
     const built: RunGeometry[] = [];
-    const paint: number[] = [];
-    const tints: number[] = [];
+    const paint: PaintBuffers = { positions: [], normals: [], tints: [] };
     for (const run of runs) {
       const pieces = piecesOf(run, ribbons);
       const off = (segment: number): boolean => run.bridges.includes(segment) || run.tunnels.includes(segment);
@@ -226,7 +235,7 @@ export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons, surface
       for (const piece of pieces) {
         for (const marking of markings) {
           const inLane = Math.abs(marking.across) < TRAM_LANE.halfWidth;
-          paintMarking(piece, marking, paint, tints, (i) => inLane && onTrack(piece.from + i));
+          paintMarking(piece, marking, paint, (i) => inLane && onTrack(piece.from + i));
         }
       }
     }
@@ -236,8 +245,9 @@ export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons, surface
       junctions: paved,
       pavement: kerbside,
       corridors: carried,
-      markings: new Float32Array(paint),
-      markingTints: new Float32Array(tints),
+      markings: new Float32Array(paint.positions),
+      markingNormals: new Float32Array(paint.normals),
+      markingTints: new Float32Array(paint.tints),
     });
   }
   return out;
@@ -493,34 +503,30 @@ function portal(piece: Piece, at: number, tier: RoadTier, out: number): BufferGe
 }
 
 /**
- * Metres of paint in one drawn segment (spec section 22.1).
- *
- * A fat line is drawn as a box the width of the paint, turned the one way the
- * middle of the segment faces the camera. The ends of a long segment near the
- * camera face another way entirely, so the box misses the paint it stands for:
- * the line thins, breaks into dots and flashes as the camera moves. The points
- * of a road curve stand as much as 176 m apart, and a solid line runs from one
- * to the next in a single segment, so every segment is cut to this length. A
- * dash is shorter than it already and is never cut.
- */
-const PAINT_PIECE = 4;
-
-/**
- * Lay one painted line along a piece of a run, six numbers per segment of paint.
+ * Lay one painted line along a piece of a run, as a flat strip on the road: two
+ * triangles per stretch of paint, six vertices of three numbers each. The
+ * strip lies in the plane of the carriageway under it, which is straight
+ * between two points of the curve, so it needs no more vertices than the road.
  * The dash pattern is measured from the start of the whole curve rather than of
  * the piece, so the dashes of a road that crosses a chunk boundary carry
  * straight on. A segment of the piece `bare` names is left unpainted.
  */
-function paintMarking(piece: Piece, marking: Marking, out: number[], tints: number[], bare: (segment: number) => boolean): void {
+function paintMarking(piece: Piece, marking: Marking, out: PaintBuffers, bare: (segment: number) => boolean): void {
   const period = marking.dash + marking.gap;
-  const paint = (a: Vector3, b: Vector3): void => {
-    const [r, g, blue] = marking.colour;
-    const pieces = Math.max(1, Math.ceil(a.distanceTo(b) / PAINT_PIECE));
-    for (let i = 0; i < pieces; i++) {
-      const from = i === 0 ? a : between(a, b, i / pieces);
-      const to = i === pieces - 1 ? b : between(a, b, (i + 1) / pieces);
-      out.push(from.x, from.y, from.z, to.x, to.y, to.z);
-      tints.push(r, g, blue, r, g, blue);
+  const [r, g, blue] = marking.colour;
+  const half = PAINT_WIDTH / 2;
+  const rise = SURFACE_RAISE + MARK_RAISE;
+  const normal = new Vector3();
+  const paint = (a0: Vector3, a1: Vector3, b0: Vector3, b1: Vector3): void => {
+    // Wound so the strip faces up, whichever way the road runs.
+    normal.subVectors(a1, a0).cross(new Vector3().subVectors(b0, a0)).normalize();
+    const up = normal.y >= 0;
+    if (!up) normal.negate();
+    const corners = up ? [a0, a1, b1, a0, b1, b0] : [a0, b0, b1, a0, b1, a1];
+    for (const corner of corners) {
+      out.positions.push(corner.x, corner.y, corner.z);
+      out.normals.push(normal.x, normal.y, normal.z);
+      out.tints.push(r, g, blue);
     }
   };
   for (let i = 0; i + 1 < piece.points.length; i++) {
@@ -530,10 +536,16 @@ function paintMarking(piece: Piece, marking: Marking, out: number[], tints: numb
     const from = fa.distance;
     const span = fb.distance - from;
     if (span <= 0) continue;
-    const a = place(piece.points[i] as Point, fa, marking.across, SURFACE_RAISE + MARK_RAISE);
-    const b = place(piece.points[i + 1] as Point, fb, marking.across, SURFACE_RAISE + MARK_RAISE);
+    const pa = piece.points[i] as Point;
+    const pb = piece.points[i + 1] as Point;
+    const a0 = place(pa, fa, marking.across - half, rise);
+    const a1 = place(pa, fa, marking.across + half, rise);
+    const b0 = place(pb, fb, marking.across - half, rise);
+    const b1 = place(pb, fb, marking.across + half, rise);
+    const stretch = (t0: number, t1: number): void =>
+      paint(between(a0, b0, t0), between(a1, b1, t0), between(a0, b0, t1), between(a1, b1, t1));
     if (marking.gap <= 0) {
-      paint(a, b);
+      stretch(0, 1);
       continue;
     }
     const first = Math.floor(from / period);
@@ -542,7 +554,7 @@ function paintMarking(piece: Piece, marking: Marking, out: number[], tints: numb
       const start = Math.max(k * period, from);
       const end = Math.min(k * period + marking.dash, fb.distance);
       if (end <= start) continue;
-      paint(between(a, b, (start - from) / span), between(a, b, (end - from) / span));
+      stretch((start - from) / span, (end - from) / span);
     }
   }
 }
