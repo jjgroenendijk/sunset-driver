@@ -619,7 +619,7 @@ describe('the scene as the player drives', () => {
     scene.dispose();
   });
 
-  it('lets a chunk take the sun but keeps the outline hulls from shading the roofs they rim', async () => {
+  it('lets a chunk take the sun but keeps the outline hulls and the flat roads from casting', async () => {
     const scene = new WorldScene(world, DEFAULT_APPEARANCE, new DirectStream());
     await scene.settle(0, 0);
 
@@ -635,7 +635,11 @@ describe('the scene as the player drives', () => {
     expect(outlines.length).toBeGreaterThan(0);
     expect(outlines.some((batch) => batch.castShadow)).toBe(false);
     expect(rest.length).toBeGreaterThan(0);
-    expect(rest.every((batch) => batch.castShadow)).toBe(true);
+    // Paving on the ground shades only itself, so a road cell with nothing
+    // raised in it casts none (`roads.ts`). Everything else does.
+    const road = (batch: Batch): boolean => batch.geometry.getAttribute('across') !== undefined;
+    expect(rest.some((batch) => road(batch) && !batch.castShadow)).toBe(true);
+    expect(rest.filter((batch) => !road(batch)).every((batch) => batch.castShadow)).toBe(true);
     // Both still take the shadow of what stands over them.
     expect([...outlines, ...rest].every((batch) => batch.receiveShadow)).toBe(true);
     scene.dispose();

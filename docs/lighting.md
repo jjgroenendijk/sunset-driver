@@ -46,6 +46,8 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
   camera came out sunlit and the same street further up the screen in shadow, with the line moving
   as the camera moved. `shadowReach` in `sky.ts` sizes the margin to the snapped sun and deepens
   every cascade's camera by as much. At noon it is shorter than 200 m.
+- The shadow pass skips a cell of road paved on the ground (`raisedPartsOf`, `road-mesh.ts`): it
+  could shade only itself. A deck, a portal or a pier in the cell makes it cast.
 - The daytime sky fill (`FILL_DAY`, `daylight.ts`) leaves a street in shade about a third as bright
   as one in the sun. Much less, and the city in its own shadow reads as dusk at noon.
 - `renderer.shadowMap.enabled` is false by default on `WebGPURenderer`. Without the line in

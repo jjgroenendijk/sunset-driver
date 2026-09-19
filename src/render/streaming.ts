@@ -39,9 +39,15 @@ export interface TilePart {
   /**
    * Whether the batches of this piece cast the sun's shadow. Left out, they
    * do: a piece is solid geometry standing on the ground. The outline hulls of
-   * `buildings.ts` are the one piece that says otherwise.
+   * `buildings.ts` say otherwise.
    */
   castsShadow?: boolean;
+  /**
+   * Batches of the piece that cast no shadow, whatever `castsShadow` says: the
+   * cells of road paved on the ground, which could shade nothing but themselves
+   * (`roads.ts`).
+   */
+  shadowless?: readonly Object3D[];
   /**
    * Whether the batches of this piece are drawn in the water's mirror
    * (`mirror.ts`). Left out, they are not: the mirror is a second pass over the
