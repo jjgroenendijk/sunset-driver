@@ -170,6 +170,16 @@ describe('a room', () => {
     expect(party.state.phase).toBe('playing');
   });
 
+  it('answers a hello from a peer whose join it never saw', () => {
+    const link = new TestLink();
+    const party = new Party(link, { seed: SEED, room: ROOM, host: false, tick: 0 });
+    link.onMessage?.('hello', { protocol: PROTOCOL, seed: SEED, tick: 40, host: true }, 'host');
+    expect(last(link, 'hello')?.to).toBe('host');
+    expect(party.state.players).toBe(2);
+    link.onMessage?.('hello', { protocol: PROTOCOL, seed: SEED, tick: 40, host: true }, 'host');
+    expect(link.sent.filter((message) => message.kind === 'hello')).toHaveLength(1);
+  });
+
   it('beats the authoritative tick to the room, and only while somebody is in it', () => {
     const link = new TestLink();
     const party = new Party(link, { seed: SEED, room: ROOM, host: true, tick: 0 });

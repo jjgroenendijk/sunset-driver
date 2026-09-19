@@ -59,15 +59,27 @@ function strategyOf(name: string, module: TrysteroStrategy): Strategy {
 }
 
 /**
- * Join `roomId`, through the first strategy whose relays answer. Throws where
- * none of them does, which is how `control.ts` knows to stay single player.
+ * Join `roomId`, through the first strategy whose relays answer, and hand back
+ * what `attach` built on it. Throws where none of them does, which is how
+ * `control.ts` knows to stay single player.
+ *
+ * `attach` runs before the wait on the relays, not after it. A peer already in
+ * the room can connect inside that wait, and Trystero reports a join once, to
+ * whatever handler is set at that moment: a join reported to nobody is never
+ * greeted, and the room stays half open for good.
  */
-export async function openLink(roomId: string, timeoutMs: number = RELAY_TIMEOUT_MS): Promise<NetLink> {
+export async function openLink<T>(
+  roomId: string,
+  attach: (link: NetLink) => T,
+  timeoutMs: number = RELAY_TIMEOUT_MS,
+): Promise<T> {
   for (const load of STRATEGIES) {
     const strategy = await load();
     const room = strategy.joinRoom({ appId: APP_ID }, roomId);
-    if (await answered(strategy.sockets, timeoutMs)) return linkOver(room, strategy);
-    await room.leave();
+    const link = linkOver(room, strategy);
+    const attached = attach(link);
+    if (await answered(strategy.sockets, timeoutMs)) return attached;
+    link.close();
   }
   throw new Error('No signalling relay answered.');
 }
