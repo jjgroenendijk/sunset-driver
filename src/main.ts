@@ -64,6 +64,9 @@ const LOADED = { plan: 0.35, ground: 0.85 };
  */
 const TOUCH_START_TIER = 2;
 
+/** The loading screen of the session being started, so a failure can be put on it. */
+let loadingNow: LoadingScreen | null = null;
+
 async function boot(): Promise<void> {
   const status = document.getElementById('status');
   const say = (text: string): void => {
@@ -229,6 +232,7 @@ async function boot(): Promise<void> {
   // for that build, and the world is a pure function of the seed, so the
   // preview's world is the session's world.
   const loading = new LoadingScreen(document.body, choice.seed);
+  loadingNow = loading;
   loading.say('Drawing the city plan', 0);
   const state = createSimState(seedFromString(choice.seed), choice.character, undefined, choice.money);
   let description: WorldDescription;
@@ -443,6 +447,12 @@ async function boot(): Promise<void> {
   // The city is handed over rather than cut to: the screen waits for the first
   // frame of the session to be drawn under it and then fades off it.
   await loading.reveal();
+  loadingNow = null;
 }
 
-void boot();
+// A phone has no console, so an error the steps above do not catch is put on
+// the loading screen. Left to the console, the screen stands on its last step.
+boot().catch((error: unknown) => {
+  console.error(error);
+  loadingNow?.fail(error instanceof Error ? `Something failed: ${error.message}` : 'Something failed.');
+});
