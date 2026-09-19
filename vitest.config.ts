@@ -13,9 +13,11 @@ import { defineConfig } from 'vitest/config';
  */
 const timeout = process.env.SWEEP_SEEDS ? 300_000 : 60_000;
 
+/** The check files of the seed sweep, one per subject. `seed-suite.ts` has how they share a world. */
+const SWEEP = 'test/seed-*.test.ts';
+
 export default defineConfig({
   test: {
-    include: ['test/**/*.test.ts'],
     environment: 'node',
     testTimeout: timeout,
     // The sweeps generate their worlds in a `beforeAll`, so a hook may take as
@@ -26,5 +28,44 @@ export default defineConfig({
     // modules under test are pure, so nothing carries from one file to the next,
     // and the run stops re-importing three.js once per file.
     isolate: false,
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'sweep',
+          include: [SWEEP],
+          /**
+           * One worker for every check file of the sweep. Vitest hands a
+           * project's files to one worker in a single request when it may run
+           * only one and does not isolate the files, so the files share a module
+           * registry: `seed-fixture.ts` is loaded once and generates the worlds
+           * once, however many files ask it. Give the project a second worker
+           * and the second file generates every world again.
+           *
+           * The worlds are generated in `world-pool.ts`, which uses every core
+           * the machine has, so the one worker costs the sweep nothing: the
+           * checks it then runs read the worlds on one thread either way.
+           */
+          maxWorkers: 1,
+          sequence: { groupOrder: 0 },
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'unit',
+          include: ['test/**/*.test.ts'],
+          exclude: [SWEEP],
+          /**
+           * A group of its own: vitest refuses two projects that ask for
+           * different worker counts in one group. The groups run one after the
+           * other, which costs the quick tier nothing — the pool already has
+           * every core busy while the sweep generates, so a file running beside
+           * it only takes a core away from it.
+           */
+          sequence: { groupOrder: 1 },
+        },
+      },
+    ],
   },
 });

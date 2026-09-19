@@ -12,7 +12,7 @@ import { DRY } from './helpers.ts';
  * The ground is a hillside written here rather than a generated world. The
  * simulation reads the world through a {@link Ground} and nothing more, so a
  * seed sweep of cities would measure the city; this measures the simulation.
- * `seed-sweep.test.ts` is where the real ground is checked.
+ * `seed-ground.test.ts` is where the real ground is checked.
  */
 export const SEED_COUNT = process.env.SWEEP_SEEDS ? 24 : 2;
 export const TICKS = process.env.SWEEP_SEEDS ? 900 : 400;

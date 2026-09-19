@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { expect, it } from 'vitest';
 import { pavementTriangles, type PavementVertex } from '../src/render/pavement-mesh.ts';
 import { junctionShape } from '../src/world/junction-shape.ts';
 import type { JunctionMap } from '../src/world/junctions.ts';
@@ -8,6 +8,7 @@ import type { Point, RoadTier, WorldDescription } from '../src/world/types.ts';
 import { FOOTPRINT_COUNT, PAVEMENT_SLACK, SURFACE_ABOVE, SURFACE_STRIDE } from './seed-limits.ts';
 import { chunkGroundAt, chunkKeys } from './seed-probes.ts';
 import { bedsOf, carveOf, chunkOf, junctionsOf, seeds, worlds } from './seed-fixture.ts';
+import { sweepSuite } from './seed-suite.ts';
 
 /**
  * The seed sweep of spec sections 6.2 and 6.4 on the pavement: the inset of
@@ -18,63 +19,58 @@ import { bedsOf, carveOf, chunkOf, junctionsOf, seeds, worlds } from './seed-fix
  * ground, and the fan of every junction. The pavement is asked at the middle of
  * each of its triangles and half way from there to each corner. The ground is
  * asked against the pavement at its vertices and at the middle of its
- * triangles, as `seed-surface.ts` asks it of the roads, and ground two
+ * triangles, as `seed-surface.test.ts` asks it of the roads, and ground two
  * claimants ask different heights of is left out for the same reason. One
  * piece in `SURFACE_STRIDE` is asked all of that, and every ring of every piece
  * whether it crosses itself.
- *
- * `seed-sweep.test.ts` declares this inside the one suite that generates the
- * worlds; a file of its own would generate them all again.
  */
-export function pavementChecks(): void {
-  describe('pavement', () => {
-    it('lays no pavement over a carriageway, never crosses itself and never has the ground stand through it', () => {
-      for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
-        const w = worlds.get(seed) as WorldDescription;
-        const carve = carveOf(seed);
-        const carriageway = new CarriagewayIndex(w, junctionsOf(seed), new RoadRibbons(bedsOf(seed), w.roads));
-        const surfaceAt = (x: number, y: number, tier: RoadTier): number => carve.surfaceAt(x, y, tier);
-        let complaint: string | undefined;
-        let faults = 0;
-        let pieces = 0;
-        const fault = (text: string): void => {
-          faults++;
-          complaint ??= text;
-        };
-        for (const [cx, cy] of chunkKeys()) {
-          for (const piece of chunkOf(seed, cx, cy).pavement) {
-            if (pieces++ % SURFACE_STRIDE !== 0) continue;
-            const where = `chunk ${cx}, ${cy}: ${piece.tier} pavement`;
-            for (const ring of [piece.region.outer, ...piece.region.holes]) {
-              const crossing = selfCrossing(ring);
-              if (crossing !== undefined) fault(`${where} crosses itself at ${crossing.x.toFixed(1)},${crossing.y.toFixed(1)}`);
-            }
-            const mesh = pavementTriangles(piece, surfaceAt);
-            if (mesh === undefined) continue;
-            const ground = (v: { x: number; y: number; h: number }): void => {
-              if (carve.crowdedAt(v.x, v.y)) return;
-              const above = chunkGroundAt(carve, v.x, v.y) - v.h;
-              if (above > SURFACE_ABOVE) fault(`${where} at ${v.x.toFixed(1)},${v.y.toFixed(1)} has the ground ${above.toFixed(2)} m above it`);
-            };
-            for (const v of mesh.vertices) ground(v);
-            for (const face of mesh.faces) {
-              const [a, b, c] = face.map((k) => mesh.vertices[k] as PavementVertex) as [PavementVertex, PavementVertex, PavementVertex];
-              const middle = { x: (a.x + b.x + c.x) / 3, y: (a.y + b.y + c.y) / 3, h: (a.h + b.h + c.h) / 3 };
-              ground(middle);
-              for (const p of [middle, halfway(middle, a), halfway(middle, b), halfway(middle, c)]) {
-                const road = carriageway.under(p);
-                if (road !== undefined) fault(`${where} at ${p.x.toFixed(1)},${p.y.toFixed(1)} lies over ${road}`);
-              }
+sweepSuite('pavement', () => {
+  it('lays no pavement over a carriageway, never crosses itself and never has the ground stand through it', () => {
+    for (const seed of seeds.slice(0, FOOTPRINT_COUNT)) {
+      const w = worlds.get(seed) as WorldDescription;
+      const carve = carveOf(seed);
+      const carriageway = new CarriagewayIndex(w, junctionsOf(seed), new RoadRibbons(bedsOf(seed), w.roads));
+      const surfaceAt = (x: number, y: number, tier: RoadTier): number => carve.surfaceAt(x, y, tier);
+      let complaint: string | undefined;
+      let faults = 0;
+      let pieces = 0;
+      const fault = (text: string): void => {
+        faults++;
+        complaint ??= text;
+      };
+      for (const [cx, cy] of chunkKeys()) {
+        for (const piece of chunkOf(seed, cx, cy).pavement) {
+          if (pieces++ % SURFACE_STRIDE !== 0) continue;
+          const where = `chunk ${cx}, ${cy}: ${piece.tier} pavement`;
+          for (const ring of [piece.region.outer, ...piece.region.holes]) {
+            const crossing = selfCrossing(ring);
+            if (crossing !== undefined) fault(`${where} crosses itself at ${crossing.x.toFixed(1)},${crossing.y.toFixed(1)}`);
+          }
+          const mesh = pavementTriangles(piece, surfaceAt);
+          if (mesh === undefined) continue;
+          const ground = (v: { x: number; y: number; h: number }): void => {
+            if (carve.crowdedAt(v.x, v.y)) return;
+            const above = chunkGroundAt(carve, v.x, v.y) - v.h;
+            if (above > SURFACE_ABOVE) fault(`${where} at ${v.x.toFixed(1)},${v.y.toFixed(1)} has the ground ${above.toFixed(2)} m above it`);
+          };
+          for (const v of mesh.vertices) ground(v);
+          for (const face of mesh.faces) {
+            const [a, b, c] = face.map((k) => mesh.vertices[k] as PavementVertex) as [PavementVertex, PavementVertex, PavementVertex];
+            const middle = { x: (a.x + b.x + c.x) / 3, y: (a.y + b.y + c.y) / 3, h: (a.h + b.h + c.h) / 3 };
+            ground(middle);
+            for (const p of [middle, halfway(middle, a), halfway(middle, b), halfway(middle, c)]) {
+              const road = carriageway.under(p);
+              if (road !== undefined) fault(`${where} at ${p.x.toFixed(1)},${p.y.toFixed(1)} lies over ${road}`);
             }
           }
         }
-        expect(pieces, `seed ${seed}`).toBeGreaterThan(0);
-        if (faults > 0) complaint = `${faults} faults: ${complaint}`;
-        expect(complaint, `seed ${seed}`).toBeUndefined();
       }
-    });
+      expect(pieces, `seed ${seed}`).toBeGreaterThan(0);
+      if (faults > 0) complaint = `${faults} faults: ${complaint}`;
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
   });
-}
+});
 
 function halfway(a: Point, b: Point): Point {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };

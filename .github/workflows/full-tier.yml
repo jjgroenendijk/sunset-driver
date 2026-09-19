@@ -36,7 +36,7 @@ jobs:
 
       - env:
           SWEEP_SHARD: ${{ matrix.shard }}/${{ env.SWEEP_SHARDS }}
-        run: npm run test:full -- test/seed-sweep.test.ts
+        run: npm run test:full -- --project sweep
 
   # One status for the four shares, so the ruleset keeps asking for the one
   # check name `full-tier / seed-sweep` however many runners the sweep takes.
@@ -66,4 +66,4 @@ jobs:
       - uses: ./.github/actions/setup
 
       - run: npm run typecheck && npm run lint && npm run lint:size
-      - run: npm run test:full -- --exclude test/seed-sweep.test.ts
+      - run: npm run test:full -- --project unit

@@ -9,7 +9,7 @@ import { DRY, withNodes } from './helpers.ts';
  * A made-up road network the traffic tests drive on: five roads each way, 120 m
  * apart, crossing at shared points, one of every tier. The simulation tests
  * read the world through a {@link Ground}, so a generated city would measure
- * the city; this measures the traffic. `seed-traffic.ts` checks the real ones.
+ * the city; this measures the traffic. `seed-traffic.test.ts` checks the real ones.
  */
 export const GRID_SPACING = 120;
 const LINES = [-2, -1, 0, 1, 2];

@@ -44,7 +44,7 @@ export interface Driver {
  * The spread of `cruise` is deliberately narrow. No vehicle reads another, so
  * two drivers on one stretch of road pass through each other rather than queue;
  * a wide spread would fill the city with cars sitting inside each other, which
- * `test/seed-traffic.ts` counts and caps.
+ * `test/seed-traffic.test.ts` counts and caps.
  */
 export const PERSONALITIES: readonly (Driver & { share: number })[] = [
   // Slow away from every light and slow between them: the driver everyone else is stuck behind.

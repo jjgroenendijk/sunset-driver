@@ -10,7 +10,7 @@
  * per cell, because the pieces of the road footprint overlap at every junction
  * and adding their areas up counts an apron once per road that meets there.
  *
- * `test/seed-layout.ts` holds each number to the band `test/layout-bands.ts` pins,
+ * `test/seed-layout.test.ts` holds each number to the band `test/layout-bands.ts` pins,
  * and `landuse-preview.ts` prints them beside the picture.
  */
 import { layoutZones, zoneAt } from '../src/world/districts.ts';

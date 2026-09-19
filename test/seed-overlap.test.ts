@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { expect, it } from 'vitest';
 import { MIN_MEET } from '../src/world/network-clearance.ts';
 import { selfOverlap } from '../src/world/self-overlap.ts';
 import { footprintHalfWidth } from '../src/world/tiers.ts';
 import { type Point, type RoadCurve, type WorldDescription } from '../src/world/types.ts';
 import { seeds, worlds } from './seed-fixture.ts';
 import { distanceToSegment, nodePoints, nodeVisits } from './seed-probes.ts';
+import { sweepSuite } from './seed-suite.ts';
 
 /**
  * The seed sweep of spec section 6 on the ground two roads share. Spec section 2
@@ -13,47 +14,45 @@ import { distanceToSegment, nodePoints, nodeVisits } from './seed-probes.ts';
  * with nothing joining them: along its line from a shared point, and with an
  * end standing in its carriageway. A road may not lie over itself either.
  */
-export function overlapChecks(): void {
-  describe('road overlap', () => {
-    it('meets another road only at an angle a junction can be built at', () => {
-      // A road that leaves a shared point along another road's line lies in
-      // that road's carriageway for as far as the two run together.
-      for (const seed of seeds) {
-        const w = worlds.get(seed) as WorldDescription;
-        const worst = shallowestMeeting(w.roads);
-        const complaint = worst !== undefined && worst.turn < MIN_MEET ? `${worst.text} at ${((worst.turn * 180) / Math.PI).toFixed(0)}°` : undefined;
-        expect(complaint, `seed ${seed}`).toBeUndefined();
-      }
-    });
-
-    it('lays no road over its own carriageway', () => {
-      // A curve that turns back on itself tighter than a half turn of its own
-      // width lies over itself, and a road that crosses there crosses it two or
-      // three times in a few metres (#252). The network refuses such a road
-      // when it is added, and the passes after the trace may not bend one into it.
-      for (const seed of seeds) {
-        const w = worlds.get(seed) as WorldDescription;
-        let complaint: string | undefined;
-        for (const road of w.roads) {
-          const fold = selfOverlap(road.points, road.tier);
-          if (fold === undefined) continue;
-          const p = road.points[fold.second] as Point;
-          complaint ??= `${road.tier} ${road.id} lies over itself between segments ${fold.first} and ${fold.second}, at ${p.x.toFixed(0)},${p.y.toFixed(0)}`;
-        }
-        expect(complaint, `seed ${seed}`).toBeUndefined();
-      }
-    });
-
-    it('ends no road inside the carriageway of a road it does not meet', () => {
-      // An end that is a point of no other curve met nothing, so the ground
-      // around it has to be its own: not within another road's footprint.
-      for (const seed of seeds) {
-        const w = worlds.get(seed) as WorldDescription;
-        expect(endOnCarriageway(w.roads), `seed ${seed}`).toBeUndefined();
-      }
-    });
+sweepSuite('road overlap', () => {
+  it('meets another road only at an angle a junction can be built at', () => {
+    // A road that leaves a shared point along another road's line lies in
+    // that road's carriageway for as far as the two run together.
+    for (const seed of seeds) {
+      const w = worlds.get(seed) as WorldDescription;
+      const worst = shallowestMeeting(w.roads);
+      const complaint = worst !== undefined && worst.turn < MIN_MEET ? `${worst.text} at ${((worst.turn * 180) / Math.PI).toFixed(0)}°` : undefined;
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
   });
-}
+
+  it('lays no road over its own carriageway', () => {
+    // A curve that turns back on itself tighter than a half turn of its own
+    // width lies over itself, and a road that crosses there crosses it two or
+    // three times in a few metres (#252). The network refuses such a road
+    // when it is added, and the passes after the trace may not bend one into it.
+    for (const seed of seeds) {
+      const w = worlds.get(seed) as WorldDescription;
+      let complaint: string | undefined;
+      for (const road of w.roads) {
+        const fold = selfOverlap(road.points, road.tier);
+        if (fold === undefined) continue;
+        const p = road.points[fold.second] as Point;
+        complaint ??= `${road.tier} ${road.id} lies over itself between segments ${fold.first} and ${fold.second}, at ${p.x.toFixed(0)},${p.y.toFixed(0)}`;
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
+  it('ends no road inside the carriageway of a road it does not meet', () => {
+    // An end that is a point of no other curve met nothing, so the ground
+    // around it has to be its own: not within another road's footprint.
+    for (const seed of seeds) {
+      const w = worlds.get(seed) as WorldDescription;
+      expect(endOnCarriageway(w.roads), `seed ${seed}`).toBeUndefined();
+    }
+  });
+});
 
 /** Where two curves leave a shared node closest to each other's line, and the angle between them. */
 function shallowestMeeting(roads: readonly RoadCurve[]): { turn: number; text: string } | undefined {

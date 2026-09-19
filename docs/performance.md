@@ -22,7 +22,7 @@ which is 3 min 36 s on an eight-core M1 Air; that command is the coverage, and t
 ceiling. To run one job's work by hand:
 
 ```
-SWEEP_SHARD=2/4 npm run test:full -- test/seed-sweep.test.ts
+SWEEP_SHARD=2/4 npm run test:full -- --project sweep
 ```
 
 ## Reading a measurement
@@ -98,6 +98,17 @@ writes each shard's durations into its job summary.
 
 Issue #88 tracks the wall clock the quick tier misses its 15 s by on a four-core session, and
 issue #198 what the city filling the map added to both tiers.
+
+The sweep's thirteen check files are the vitest project `sweep`, which `vitest.config.ts` holds to
+one worker. Vitest hands a project's files to one worker in a single request when it may run only
+one and does not isolate them, so the files share a module registry and `seed-fixture.ts` generates
+the worlds once for all of them. The project runs as a group of its own, before the `unit` project,
+because vitest refuses two projects that ask for different worker counts in one group. Running the
+groups one after the other costs nothing: the pool already has every core busy while the sweep
+generates, so a file running beside it only takes a core away from it. On a four-core cloud session
+on 19 September 2026 the quick tier read 44 s and 118 CPU-seconds as one suite and 44 s and 113
+CPU-seconds as thirteen files, one share of the 500 seeds 97 s and 244 against 97 s and 241, and
+`other` 31 s and 100 against 30 s and 100.
 
 Sweeps get their worlds from `worldsFor` in `test/world-pool.ts`, which generates them in worker
 threads, so no sweep calls `generateWorld` itself. `buildWorlds` takes a job per seed, and a job
