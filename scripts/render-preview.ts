@@ -45,6 +45,9 @@
  *                    and an ambulance behind (spec section 20.3).
  *   --shots          put a shotgun blast and a pistol round in the air, with
  *                    their flash, streaks and impacts (spec section 11.6).
+ *   --bodies         lay casualties in the road ahead: two dead, and one each
+ *                    falling, rising, crawling, limping and thrown (spec
+ *                    section 11.6). With --emergency, medics kneel at one.
  *   --weapon         the weapon in the player's hands, by id, for example
  *                    `ak-47` (spec section 11.6). Drawn with --on-foot.
  *   --attachments    what is fitted to it and to the pickups, for example
@@ -180,6 +183,7 @@ const request: PreviewRequest = {
   ...(options.has('skid') ? { skid: true } : {}),
   ...(options.has('emergency') ? { emergency: true } : {}),
   ...(options.has('shots') ? { shots: true } : {}),
+  ...(options.has('bodies') ? { bodies: true } : {}),
   ...(options.has('weapon') ? { weapon: options.get('weapon') as string } : {}),
   ...(options.has('attachments') ? { attachments: (options.get('attachments') as string).split('+') } : {}),
   ...(options.has('aim') ? { aim: true } : {}),

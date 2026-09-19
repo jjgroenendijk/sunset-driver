@@ -31,6 +31,7 @@ import { createSimState, type SimState } from '../sim/simulation.ts';
 import type { EmergencyKind, EmergencyUnit } from '../sim/emergency.ts';
 import { light } from '../sim/fire.ts';
 import { EmergencyView } from './emergency.ts';
+import { layBodies } from './preview-bodies.ts';
 import {
   ATTACHMENTS,
   createLoadout,
@@ -137,6 +138,12 @@ export interface PreviewRequest {
    * it. What they meet is laid by hand, since a preview casts nothing.
    */
   shots?: boolean;
+  /**
+   * Set to lay casualties of spec section 11.6 in the road ahead: two dead,
+   * and one each falling, rising, crawling, limping and thrown. With
+   * {@link PreviewRequest.emergency} the ambulance's medics kneel at one.
+   */
+  bodies?: boolean;
   /**
    * The weapon to put in the player's hands, by id (spec section 11.6). It is
    * drawn only with {@link PreviewRequest.onFoot}, as in the game.
@@ -348,6 +355,7 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   // A fire is what has been burning for a while, not what started this frame,
   // so the smoke is given a run of ticks to climb before the picture is taken.
   scene.resetDamage(tick - FX_WARMUP);
+  if (request.bodies === true) layBodies(record, kerb.x, kerb.y, heading, (px, py) => scene.heightAt(px, py), tick);
   if (request.shots === true) volley(record, stand, scene.heightAt(stand.x, stand.y), tick);
   // The surface of the ground, as the game reads it through the city: rubber
   // is left on the tarmac and nowhere else (spec section 11.3).
