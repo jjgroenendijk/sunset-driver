@@ -216,7 +216,7 @@ export const renderOutput = tsl.renderOutput as unknown as (
 /** Spread the light of everything brighter than `threshold` (spec section 10.6). */
 export const bloom = bloomNode as unknown as (
   colour: TslNode,
-  strength?: number,
+  strength?: number | TslNode,
   radius?: number,
   threshold?: number,
 ) => TslNode;
