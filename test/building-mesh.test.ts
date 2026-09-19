@@ -296,7 +296,9 @@ describe('which batch a building is built in', () => {
   it('costs one batch for each kind a chunk holds, and one for the outlines', () => {
     expect(buildingDrawCalls(chunkOf([]))).toBe(0);
     expect(buildingDrawCalls(chunkOf([buildingOf('house', 20, 22)]))).toBe(2);
-    expect(buildingDrawCalls(chunkOf([buildingOf('tower', 26, 28)]))).toBe(2);
+    // A tower's roof dressing is drawn with the blocks, so a chunk of towers
+    // alone still pays for the block batch.
+    expect(buildingDrawCalls(chunkOf([buildingOf('tower', 26, 28)]))).toBe(3);
     expect(buildingDrawCalls(chunkOf([buildingOf('tower', 26, 28), buildingOf('house', 20, 22)]))).toBe(3);
   });
 });

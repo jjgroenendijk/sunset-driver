@@ -34,6 +34,21 @@ scene ever holds is in `docs/shops.md`.
   `building-plan.ts` says how big a building is and what ground it may cover, and
   `building-hull.ts` builds the outline. The plan holds no three.js, so a massing is a handful of
   numbers a test can read.
+- `block-mesh.ts` is the door onto the kinds that are not generated: `block-shell.ts` is the kit
+  they share — the `Shell` that collects triangles, the `part` numbers the material shades by, and
+  the shapes a building of boxes is made of — and each kind has a file, `house-mesh.ts`,
+  `shop-mesh.ts`, `warehouse-mesh.ts` and `roadhouse-mesh.ts`. Every variant is drawn from
+  `BlockStyle`: the building's own seed, the wealth of its district, and whether the chunk is at
+  near or mid detail. Mid detail builds the massing and the roof shape and nothing smaller, because
+  a porch is a metre across and the camera is 200 m away.
+- `roof-dress.ts` dresses every flat roof (spec section 10.3): a deck material, the plant, and at
+  most one use, which a rich district carries more often. The dressing is a geometry of its own,
+  not part of the shell, and it joins the block batch of the cell — so a generated tower's chunk
+  pays for the block batch even when it holds no block, which `buildingDrawCalls` counts. Keeping
+  it out of the shell is what keeps a six-metre mast out of the outline hull, and so out of the box
+  `roofs.ts` writes and the camera climbs. A generated tower has no known deck, so `roofDeckOf`
+  measures one off its shell: the highest flat plane that is a slab rather than a ring, which is
+  the crown slab and not the cornice over it or the setback ledge below it.
 - The margin is not taken on a side edge the lot shares with another lot, which `Building.shared`
   says (spec section 10.3). Past that edge stands the neighbour's wall, and a margin on both sides
   of it is a slot cut through the street wall. A lot walled on one side only is then not centred on

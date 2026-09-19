@@ -24,7 +24,19 @@
 import { BackSide, Color } from 'three';
 import { createSkyscraperMaterial } from 'three/examples/jsm/generators/city/SkyscraperGenerator.js';
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
-import { BLOCK_GLASS, BLOCK_ROOF, BLOCK_TRIM } from './block-mesh.ts';
+import {
+  BLOCK_GLASS,
+  BLOCK_MEMBRANE,
+  BLOCK_METAL,
+  BLOCK_PAINT,
+  BLOCK_PLANTED,
+  BLOCK_ROOF,
+  BLOCK_SLATE,
+  BLOCK_SOLAR,
+  BLOCK_TILE,
+  BLOCK_TRIM,
+  BLOCK_WATER,
+} from './block-mesh.ts';
 import type { BuildingCutaway } from './cutaway.ts';
 import {
   attribute,
@@ -79,6 +91,23 @@ const OUTLINE = 0x150f12;
 /** Roofs and trim, which are the same felt and concrete whatever stands under them. */
 const ROOF = 0x4a4742;
 const TRIM = 0xb9b4a8;
+
+/**
+ * The surfaces a dressed roof and a varied low-rise building add (spec section
+ * 10.3). Each is one value of the `part` attribute, so they all share the one
+ * block material and no building costs a draw call for its dressing.
+ */
+const MEMBRANE = 0xd7d5cc;
+const PLANTED = 0x5c7a43;
+const SOLAR = 0x1b2440;
+const METAL = 0x9aa1a4;
+const TILE = 0xa85a3c;
+const SLATE = 0x545a62;
+const WATER = 0x2f7f9c;
+const PAINT = 0xe6e2d6;
+
+/** Metres of one rib of corrugated metal. */
+const RIB_METRES = 0.35;
 
 /** The materials a world's buildings are drawn with, and the night they share. */
 export interface BuildingMaterials {
@@ -160,11 +189,28 @@ function createBlockMaterial(night: TslNode): MeshStandardNodeMaterial {
   const share = MULLION / WINDOW_PITCH;
   const glazed = step(share, pane).mul(float(1).sub(step(float(1).sub(share), pane)));
 
+  // A rib of corrugated metal, as a triangle wave along the face in metres.
+  const rib = float(1).sub(uv().x.div(RIB_METRES).fract().sub(0.5).abs().mul(0.7));
+
   const wall = tint.mul(float(0.78).add(patch.mul(0.28)).add(grain.mul(0.16)));
   const glass = mix(rgb(TRIM).mul(0.7), rgb(GLAZING), glazed);
-  const surface = mix(wall, rgb(ROOF).mul(float(0.85).add(grain.mul(0.3))), is(part, BLOCK_ROOF));
-  const trimmed = mix(surface, rgb(TRIM).mul(float(0.86).add(grain.mul(0.22))), is(part, BLOCK_TRIM));
-  material.colorNode = mix(trimmed, glass, is(part, BLOCK_GLASS));
+  // A tile and a slate roof take the weathering patch as their own colour, so
+  // one street of houses is roofed in several shades of the same material.
+  const dressed: readonly [number, TslNode][] = [
+    [BLOCK_ROOF, rgb(ROOF).mul(float(0.85).add(grain.mul(0.3)))],
+    [BLOCK_TRIM, rgb(TRIM).mul(float(0.86).add(grain.mul(0.22)))],
+    [BLOCK_MEMBRANE, rgb(MEMBRANE).mul(float(0.9).add(grain.mul(0.16)))],
+    [BLOCK_PLANTED, rgb(PLANTED).mul(float(0.75).add(patch.mul(0.4)).add(grain.mul(0.2)))],
+    [BLOCK_SOLAR, rgb(SOLAR).mul(float(0.8).add(grain.mul(0.25)))],
+    [BLOCK_METAL, rgb(METAL).mul(rib).mul(float(0.82).add(grain.mul(0.2)))],
+    [BLOCK_TILE, rgb(TILE).mul(float(0.7).add(patch.mul(0.55)).add(grain.mul(0.18)))],
+    [BLOCK_SLATE, rgb(SLATE).mul(float(0.72).add(patch.mul(0.45)).add(grain.mul(0.18)))],
+    [BLOCK_WATER, rgb(WATER).mul(float(0.9).add(grain.mul(0.2)))],
+    [BLOCK_PAINT, rgb(PAINT).mul(float(0.92).add(grain.mul(0.12)))],
+  ];
+  let surface = wall;
+  for (const [id, colour] of dressed) surface = mix(surface, colour, is(part, id));
+  material.colorNode = mix(surface, glass, is(part, BLOCK_GLASS));
 
   // A window is lit pane by pane here, because the pane grid is exact.
   const window = vec3(
@@ -173,8 +219,13 @@ function createBlockMaterial(night: TslNode): MeshStandardNodeMaterial {
     positionWorld.x.add(positionWorld.z).div(30).floor(),
   );
   material.emissiveNode = rgb(WINDOW_GLOW).mul(WINDOW_GAIN).mul(is(part, BLOCK_GLASS)).mul(glazed).mul(lit(window)).mul(night);
-  // Render and brick are rough; glass and painted trim are not.
-  material.roughnessNode = mix(float(0.92).sub(grain.mul(0.12)), float(0.18), is(part, BLOCK_GLASS));
+  // Render, brick and felt are rough; glass, a solar panel and water are not.
+  const smooth = is(part, BLOCK_GLASS).add(is(part, BLOCK_SOLAR)).add(is(part, BLOCK_WATER));
+  material.roughnessNode = mix(
+    float(0.92).sub(grain.mul(0.12)).sub(is(part, BLOCK_METAL).mul(0.35)),
+    float(0.14),
+    smooth,
+  );
   return material;
 }
 

@@ -245,6 +245,9 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
     const matrix = new Float32Array(placed.matrix.toArray());
     if (placed.batch === 'facade') facades.push({ geometry: packFacade(takeGeometry(placed.shell)), matrix });
     else blocks.push({ geometry: takeGeometry(placed.shell), matrix });
+    // What stands on the roof is drawn with the blocks whatever the shell under
+    // it is, so a dressed tower costs no draw call of its own.
+    if (placed.dress !== undefined) blocks.push({ geometry: takeGeometry(placed.dress), matrix });
     outlines.push({ geometry: takeGeometry(placed.hull), matrix });
   }
 

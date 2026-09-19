@@ -206,7 +206,9 @@ describe('a chunk as a payload', () => {
     expect(payload.detail).toBe('near');
     expect(payload.ground.positions.length).toBeGreaterThan(0);
     expect(payload.roads.length).toBeGreaterThan(0);
-    expect(partsIn(payload.blocks) + partsIn(payload.facades)).toBe(chunk.buildings.length);
+    // Every building is one part of a batch, and a roof dressed with plant is
+    // one more part of the block batch, whatever shell stands under it.
+    expect(partsIn(payload.blocks) + partsIn(payload.facades)).toBeGreaterThanOrEqual(chunk.buildings.length);
     expect(partsIn(payload.outlines)).toBe(chunk.buildings.length);
     // The most a chunk costs is answered off the chunk alone, before any
     // geometry is built; the payload counts the cells it fills.
@@ -239,7 +241,8 @@ describe('a chunk as a payload', () => {
     const near = payloadOf(MIDDLE.cx, MIDDLE.cy, 'near');
     const mid = payloadOf(MIDDLE.cx, MIDDLE.cy, 'mid');
     expect(mid.facades).toHaveLength(0);
-    expect(partsIn(mid.blocks)).toBe(partsIn(near.facades) + partsIn(near.blocks));
+    // Mid detail dresses no roof, so every building is one block and nothing else.
+    expect(partsIn(mid.blocks)).toBe(partsIn(mid.outlines));
     expect(partsIn(mid.outlines)).toBe(partsIn(near.outlines));
     expect(mid.ground.gridSize).toBe(near.ground.gridSize);
     expect(mid.roads.map((tier) => tier.tier)).toEqual(near.roads.map((tier) => tier.tier));
@@ -258,7 +261,7 @@ describe('a chunk as a payload', () => {
     expect(far.ground.positions[(far.ground.gridSize * far.ground.gridSize - 1) * 3]).toBe(
       near.ground.positions[(near.ground.gridSize * near.ground.gridSize - 1) * 3],
     );
-    expect(partsIn(far.blocks)).toBe(partsIn(near.facades) + partsIn(near.blocks));
+    expect(partsIn(far.blocks)).toBe(partsIn(near.outlines));
     expect(far.facades).toHaveLength(0);
     // The outline stays: it is what the skyline reads by.
     expect(partsIn(far.outlines)).toBe(partsIn(far.blocks));
