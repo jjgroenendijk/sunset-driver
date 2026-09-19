@@ -18,7 +18,12 @@
  * the wait also lasts until every check the base branch's ruleset requires has
  * reported.
  *
- * It exits 0 when every watched check passed, so `&& gh pr merge` is safe.
+ * A pull request that conflicts with its base has no merge commit, so GitHub
+ * runs none of its checks and a wait for them would last until the timeout.
+ * The wait stops as soon as GitHub reports the conflict and says how to fix it.
+ *
+ * It exits 0 when every watched check passed and the branch is up to date with
+ * its base, so `&& gh pr merge` is safe.
  */
 import { execFileSync } from 'node:child_process';
 
@@ -96,6 +101,22 @@ function required(): string[] {
   }
 }
 
+/**
+ * True when GitHub says the pull request conflicts with its base. GitHub works
+ * `mergeable` out in the background, so `UNKNOWN` is read as no conflict yet.
+ */
+function conflicting(): boolean {
+  return (gh('pr', 'view', pr!, '--json', 'mergeable', '--jq', '.mergeable') ?? '').trim() === 'CONFLICTING';
+}
+
+/** Say the pull request conflicts and how to clear it, then exit 1. */
+function reportConflict(): never {
+  const base = (gh('pr', 'view', pr!, '--json', 'baseRefName', '--jq', '.baseRefName') ?? '').trim() || 'main';
+  console.log(`PR ${pr}: conflicts with ${base}, so GitHub runs none of its checks.`);
+  console.log(`Rebase it: git fetch origin ${base} && git rebase origin/${base}, then push with --force-with-lease.`);
+  process.exit(1);
+}
+
 const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** `1m12s` from two timestamps. */
@@ -170,6 +191,7 @@ let seen: Check[] = [];
 let unreported: string[] = [];
 
 for (;;) {
+  if (conflicting()) reportConflict();
   const now = checks();
   if (now !== undefined && now.length > 0) {
     seen = now;
@@ -203,6 +225,15 @@ const mergeState = (gh('pr', 'view', pr!, '--json', 'mergeStateStatus', '--jq', 
 
 if (bad.length === 0) {
   console.log(`PR ${pr}: ${seen.length} checks passed in ${elapsed}, merge state ${mergeState || 'unknown'}.`);
+  // The ruleset wants the branch up to date with its base, so green checks on
+  // a branch that is behind still do not merge. Exit 1, so `&& gh pr merge`
+  // is not tried and refused.
+  if (mergeState === 'DIRTY') reportConflict();
+  if (mergeState === 'BEHIND') {
+    const base = (gh('pr', 'view', pr!, '--json', 'baseRefName', '--jq', '.baseRefName') ?? '').trim() || 'main';
+    console.log(`PR ${pr}: behind ${base}, so it will not merge. Rebase on origin/${base}, push with --force-with-lease and wait again.`);
+    process.exit(1);
+  }
   process.exit(0);
 }
 
