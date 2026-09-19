@@ -42,4 +42,25 @@ describe('FollowCamera', () => {
     camera.update(0.016, TARGET);
     expect(camera.camera.position.x).toBeCloseTo(TARGET.x, 9);
   });
+
+  it('pulls back for speed over time rather than in one frame', () => {
+    const camera = new FollowCamera(1.7);
+    camera.update(0.016, REST);
+    const rest = camera.camera.position.y;
+    const moving = { ...REST, speed: 30, driving: true };
+    camera.update(0.016, moving);
+    const first = camera.camera.position.y - rest;
+    for (let i = 0; i < 600; i++) camera.update(0.016, moving);
+    const settled = camera.camera.position.y - rest;
+    expect(settled).toBeGreaterThan(0);
+    expect(first).toBeLessThan(settled * 0.05);
+  });
+
+  it('keeps a player on foot at the base distance, sprinting or not', () => {
+    const camera = new FollowCamera(1.7);
+    camera.update(0.016, REST);
+    const rest = camera.camera.position.y;
+    for (let i = 0; i < 600; i++) camera.update(0.016, { ...REST, speed: 5.6, driving: false });
+    expect(camera.camera.position.y).toBeCloseTo(rest, 9);
+  });
 });

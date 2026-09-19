@@ -8,6 +8,12 @@ const DISTANCE_PER_SPEED = 0.9;
 const LEAD_PER_SPEED = 0.6;
 /** How fast the focus catches the target, in e-foldings a second. */
 const FOLLOW_RATE = 4;
+/**
+ * How fast the distance catches the one the speed asks for, in e-foldings a
+ * second. Slower than the focus: a pull-back that follows the speed at once
+ * jumps the view when a car pulls away.
+ */
+const ZOOM_RATE = 1.2;
 
 /**
  * Metres the camera keeps over a roof when it pulls back over one, and metres
@@ -36,6 +42,8 @@ export class FollowCamera {
   private readonly focus = new Vector3();
   private initialised = false;
   private baseDistance = BASE_DISTANCE;
+  /** Metres the camera stands back for speed, on top of the base distance. */
+  private zoom = 0;
   /** Metres the camera stands back over roofs, on top of its distance (spec section 10.7). */
   private pull = 0;
 
@@ -71,7 +79,9 @@ export class FollowCamera {
   /**
    * Move toward the target. `dt` is render time; the camera is not simulation
    * state. `height` is the ground the target stands on, so the view rises and
-   * falls with the hill rather than cutting into it.
+   * falls with the hill rather than cutting into it. The camera pulls back for
+   * speed only in a vehicle (spec section 10.7): `driving: false` keeps a
+   * player on foot at the base distance, walking or sprinting.
    *
    * With `roofs`, the camera does not stand inside a building: it pulls back
    * along its fixed view until it is over the roof under it. It climbs fast and
@@ -79,7 +89,7 @@ export class FollowCamera {
    */
   update(
     dt: number,
-    target: { x: number; y: number; height: number; heading: number; speed: number },
+    target: { x: number; y: number; height: number; heading: number; speed: number; driving?: boolean },
     roofs?: RoofHeight,
   ): void {
     const lead = Math.abs(target.speed) * LEAD_PER_SPEED;
@@ -88,11 +98,13 @@ export class FollowCamera {
       target.height,
       target.y + Math.sin(target.heading) * lead,
     );
-    const distance = this.baseDistance + Math.abs(target.speed) * DISTANCE_PER_SPEED;
+    const zoom = target.driving === false ? 0 : Math.abs(target.speed) * DISTANCE_PER_SPEED;
     // Back off along the fixed view direction so the focus stays centred.
     const back = new Vector3(0, 0, 1).applyEuler(this.camera.rotation);
     if (!this.initialised) {
       this.focus.copy(wanted);
+      this.zoom = zoom;
+      const distance = this.baseDistance + this.zoom;
       this.pull = roofs === undefined ? 0 : pullOver(this.focus, back, distance, roofs);
       this.initialised = true;
     } else {
@@ -101,11 +113,13 @@ export class FollowCamera {
       // camera movement: the same jitter the interpolation of `smooth.ts`
       // takes out of the player would come back through the view.
       this.focus.lerp(wanted, 1 - Math.exp(-FOLLOW_RATE * dt));
+      this.zoom += (zoom - this.zoom) * (1 - Math.exp(-ZOOM_RATE * dt));
+      const distance = this.baseDistance + this.zoom;
       const pull = roofs === undefined ? 0 : pullOver(this.focus, back, distance, roofs);
       const rate = pull > this.pull ? CLIMB_RATE : SETTLE_RATE;
       this.pull += (pull - this.pull) * (1 - Math.exp(-rate * dt));
     }
-    this.camera.position.copy(this.focus).addScaledVector(back, distance + this.pull);
+    this.camera.position.copy(this.focus).addScaledVector(back, this.baseDistance + this.zoom + this.pull);
     this.applyOrientation();
   }
 }
