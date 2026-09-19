@@ -126,6 +126,15 @@ corners, and has its own page in `docs/market.md`.
 - The preview reuses the city's models: `WeaponArt`, `VehicleModel` and `CharacterModel`. The food,
   the kits, the ammunition, the house and the wrench are the primitives of `shop-props.ts`. Each
   look is scaled to fill the window, so the props have no real size.
+- `shop-frame.ts` places the camera. It turns the corners of the model's box and the rim of the
+  plinth through every angle the model will take, and stands back just far enough to hold all of
+  them. A bounding sphere would leave a figure a sixth of the window high. A weapon sways about a
+  side view rather than spinning: a full turn shows a long gun end on for half the time.
+- The panel is sized in `--u`, one unit that grows with the screen, not in `rem`. It stands at the
+  right, under the HUD's status stack, so the room stays in sight in the middle of the frame. Below
+  52rem wide it becomes a sheet across the bottom, with the card over the rows.
+- A group heading is sticky, and `scrollIntoView` does not know it covers the top of the list, so
+  `ShopPanel.scrollTo` scrolls a row clear of it by hand.
 
 ## The interior, drawn
 
@@ -139,6 +148,12 @@ corners, and has its own page in `docs/market.md`.
 - `WorldScene.seeThrough` is given whether the player is inside a shop, and cuts away the shell over
   them rather than the one the camera stands in. Without it the room the clip opened is roofed over
   again by the building's own batch, which the clip cannot reach.
+- `interior-goods.ts` stocks the room: guns laid flat on the shelves and hung on the back wall,
+  rows of food, paint tins and tyres, figures in the clothes for sale, and a shopkeeper behind the
+  counter. The display is fixed per trade and is scenery; the counter is what is for sale.
+- The goods glow as the walls do, and for the same reason. A light in the room would be the first
+  point light in the scene, and the clustered lighting would then rebuild every lit shader in the
+  city on the first step through a door.
 - The surfaces carry their own glow. A shop stands in the shadow of its own building, and the
   shadow pass does not read the cut of `cutaway.ts`, so a room lit only by the sun would be a dark
   box. The back wall carries the trade's colour, which is how a player reads what they walked into.
