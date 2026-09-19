@@ -42,6 +42,13 @@ export interface TilePart {
    * `buildings.ts` are the one piece that says otherwise.
    */
   castsShadow?: boolean;
+  /**
+   * Whether the batches of this piece are drawn in the water's mirror
+   * (`mirror.ts`). Left out, they are not: the mirror is a second pass over the
+   * scene and draws only what stands tall enough to reach the part of the sheet
+   * a grazing eye reads. The building shells and the lamp masts say otherwise.
+   */
+  mirrored?: boolean;
   /** Release the geometry. The materials belong to the world and are left alone. */
   dispose(): void;
 }

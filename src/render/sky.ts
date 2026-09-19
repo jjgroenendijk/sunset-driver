@@ -23,6 +23,7 @@ import { Color, Fog, HemisphereLight, DirectionalLight, Object3D, Vector3, type 
 import { CSMShadowNode } from 'three/examples/jsm/csm/CSMShadowNode.js';
 import { SkyMesh } from 'three/examples/jsm/objects/SkyMesh.js';
 import type { Daylight } from './daylight.ts';
+import { reflected } from './mirror.ts';
 
 /** Metres each way of the box the sky is drawn on. Inside the camera's far plane. */
 const DOME_SIZE = 1600;
@@ -128,7 +129,9 @@ export class SkyLighting {
     this.dome.rayleigh.value = RAYLEIGH;
     this.dome.mieCoefficient.value = MIE_COEFFICIENT;
     this.dome.mieDirectionalG.value = MIE_DIRECTIONAL_G;
-    scene.add(this.dome);
+    // The sky is most of what the water gives back, so the dome is one of the
+    // few things the mirror of `mirror.ts` draws.
+    scene.add(reflected(this.dome));
 
     // The shadow settings are read when the cascades are first built, so they
     // are set before the node is made rather than after.

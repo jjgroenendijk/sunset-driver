@@ -82,7 +82,10 @@ export class LampScenery {
     for (const tier of buildChunkLamps(lamps)) {
       for (const matrix of tier.matrices) parts.push({ geometry: tier.geometry, matrix });
     }
-    return tilePartOf(fillsOf(grid, parts, this.materials.lamp));
+    // A lit lens is a bright point in the water at night, and the masts are a
+    // few thousand triangles a chunk, so they are drawn in the mirror too
+    // (`mirror.ts`).
+    return tilePartOf(fillsOf(grid, parts, this.materials.lamp), { mirrored: true });
   }
 
   /** How far on the lenses are, 0 by day and 1 after dark. */

@@ -61,10 +61,19 @@ export class BuildingScenery {
    * would land on that roof. Where the shadow bias does not cover 0.35 m the
    * roof comes out black. The building inside the hull already casts the
    * shadow the hull would, to within the width of the rim.
+   *
+   * The shells are drawn in the water's mirror (`mirror.ts`): a building is
+   * what a grazing eye sees in the sea. The outlines are not. A hull is a rim
+   * 0.35 m wide around a shell the mirror draws anyway, and the mirror is
+   * rendered at a third of the size of the frame and read through moving water,
+   * which is where a rim that wide disappears. They are a third of a chunk's
+   * building batches and almost none of its triangles, so leaving them out of
+   * the second pass is draw calls saved and nothing given up.
    */
   build(batch: BuildingBatchKind, cells: readonly PackedBatch[]): TilePart {
     const fills = cells.map((cell) => fillOfPacked(cell, this.materials[batch]));
-    return tilePartOf(fills, batch !== 'outline');
+    const shell = batch !== 'outline';
+    return tilePartOf(fills, { castsShadow: shell, mirrored: shell });
   }
 
   /** Release the materials every chunk shared. */

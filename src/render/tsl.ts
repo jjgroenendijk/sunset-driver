@@ -135,11 +135,16 @@ export const texture = tsl.texture as unknown as (map: Texture) => { sample(at: 
  * `resolutionScale` is read every frame, so it can be written at any time. The
  * `target` is the object the mirror takes its plane from, and belongs in the
  * scene graph of the surface that mirrors.
+ *
+ * `getVirtualCamera` answers the camera the mirror renders with, cloned from
+ * the camera it is asked for and kept. It is called again every frame, so a
+ * caller that wants to steer that camera wraps it rather than calling it once:
+ * the game renders with more than one camera, and each gets its own clone.
  */
 export const reflector = tsl.reflector as unknown as () => {
   uvNode: TslNode;
   rgb: TslNode;
-  reflector: { resolutionScale: number };
+  reflector: { resolutionScale: number; getVirtualCamera(camera: Camera): Camera };
   target: Object3D;
 } & TslNode;
 
