@@ -222,6 +222,14 @@ export function drawIcon(
       }
       ctx.stroke();
       break;
+    case 'badge':
+      // An officer on foot: a dot in a ring, the police blue.
+      ctx.arc(0, 0, r * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.85, 0, Math.PI * 2);
+      ctx.stroke();
+      break;
     case 'bunting':
       // Three pennants on a line: a street that has something on it.
       ctx.moveTo(-r, -r * 0.6);

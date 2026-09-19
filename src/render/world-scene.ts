@@ -303,7 +303,7 @@ export class WorldScene {
    * frame, which carries the cycle along. A player behind the wheel is not
    * drawn, so nothing is animated for them.
    */
-  walkPlayer(drawn: DrawnPlayer, player: PlayerState, dt: number, swing = -1, hold?: Hold): void {
+  walkPlayer(drawn: DrawnPlayer, player: PlayerState, dt: number, swing = -1, hold?: Hold, handsUp = false): void {
     const model = this.character;
     model.group.position.set(drawn.x, drawn.height, drawn.y);
     model.group.rotation.y = -drawn.heading;
@@ -317,9 +317,10 @@ export class WorldScene {
         depth: Math.max(0, this.world.water.seaLevel - drawn.height),
         stature: model.height,
         swing,
+        handsUp,
       },
       dt,
-      hold,
+      handsUp ? undefined : hold,
     );
   }
 

@@ -14,6 +14,7 @@
 import type { City } from './city.ts';
 import { CasualtyView } from './render/casualties.ts';
 import { EmergencyView } from './render/emergency.ts';
+import { OfficerGunView } from './render/officer-guns.ts';
 import { ParkedView } from './render/parked.ts';
 import { PedestrianView } from './render/pedestrians.ts';
 import { PoliceView } from './render/police.ts';
@@ -36,6 +37,8 @@ export interface SessionViews {
   crowd: PedestrianView;
   /** The people who have been hit, and the medics at them. */
   casualties: CasualtyView;
+  /** The guns in the hands of the police on foot who have them out. */
+  guns: OfficerGunView;
 }
 
 /**
@@ -60,6 +63,7 @@ export function buildViews(
     tram: new TramView(city.tram),
     crowd: new PedestrianView(city.crowd, city.tram),
     casualties: new CasualtyView(city.crowd),
+    guns: new OfficerGunView(),
   };
   views.crowd.standing = standing;
   world.scene.add(
@@ -70,6 +74,7 @@ export function buildViews(
     views.tram.group,
     views.crowd.group,
     views.casualties.group,
+    views.guns.group,
   );
   if (views.parked !== undefined) world.scene.add(views.parked.group);
   return views;

@@ -19,9 +19,10 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
 ## The split, and why it is there
 
 - `src/audio` is two halves and one door. `plan.ts`, `engine.ts`, `space.ts`, `cue.ts`, `cry.ts`,
-  `hurt.ts`, `ambience.ts` and `site.ts` hold no Tone.js and no DOM: they read the record and
-  answer an `AudioPlan`. `voices.ts`, `one-shots.ts`, `cries.ts`, `beds.ts` and `mixer.ts` own the
-  Web Audio node graph and play that plan. `game-audio.ts` is the door `main.ts` holds.
+  `hurt.ts`, `police-ears.ts`, `ambience.ts` and `site.ts` hold no Tone.js and no DOM: they read the
+  record and answer an `AudioPlan`. `voices.ts`, `one-shots.ts`, `cries.ts`, `beds.ts` and
+  `mixer.ts` own the Web Audio node graph and play that plan. `game-audio.ts` is the door `main.ts`
+  holds.
 - The split is what lets `test/audio.test.ts` run in Node. A rule that decides whether a sound
   happens belongs in the pure half; a rule about how it sounds belongs in the other. When adding
   something, put the decision in `plan.ts` and let the mixer take it as given.

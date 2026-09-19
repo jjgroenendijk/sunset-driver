@@ -12,7 +12,8 @@
  *
  * The medics of an ambulance working a scene kneel at the body nearest to it,
  * one each side, in the same mesh. The cash on a dead body is a small green
- * bundle beside it, all of them one more instanced draw.
+ * bundle beside it, all of them one more instanced draw. A police officer who
+ * has been put down lies in the same mesh, in their uniform (`uniform.ts`).
  */
 import {
   BoxGeometry,
@@ -34,11 +35,13 @@ import { SKIN_TONES } from '../sim/character.ts';
 import { COLLECT_RANGE, type EmergencyUnit } from '../sim/emergency.ts';
 import { STRIDE_HEIGHT, type PedestrianLook } from '../sim/pedestrian-look.ts';
 import type { AmbientPedestrians } from '../sim/pedestrians.ts';
+import type { FallenOfficer, OfficerKind } from '../sim/officer.ts';
 import type { SimState } from '../sim/simulation.ts';
 import { BODY_FLOATS, CasualtyPoser, ragdollMatrices, vary } from './casualty-pose.ts';
 import { CrowdInstances } from './crowd-instances.ts';
 import { createPedestrianMaterial } from './pedestrian-material.ts';
 import { PEDESTRIAN_VIEW } from './pedestrians.ts';
+import { officerLook, UNIFORM_FLAG } from './uniform.ts';
 import { BONES } from './pedestrian-rig.ts';
 
 /** People drawn at most, the medics with them. A frame with more leaves the rest out. */
@@ -70,6 +73,8 @@ interface Seen {
   y: number;
   /** The way from the hips to the head, on the map. */
   along: number;
+  /** The uniform of a fallen police officer (spec section 14), or null for one of the crowd. */
+  officer: OfficerKind | null;
 }
 
 export class CasualtyView {
@@ -130,7 +135,7 @@ export class CasualtyView {
     let notes = 0;
     for (let i = 0; i < n && count < CASUALTY_CAP; i++) {
       const s = seen[i] as Seen;
-      const look = (this.crowd.people[s.record.id] as AmbientPedestrians['people'][number]).look;
+      const look = s.officer === null ? (this.crowd.people[s.record.id] as AmbientPedestrians['people'][number]).look : officerLook(state.seed, s.record.id, s.officer);
       const scale = look.height / STRIDE_HEIGHT;
       const ragdoll = s.record.ragdoll;
       if (ragdoll !== null) {
@@ -140,7 +145,7 @@ export class CasualtyView {
         this.place.set(s.pose.x, s.pose.height, s.pose.y);
         this.poser.write(s.record, s.pose, this.data, count * BODY_FLOATS);
       }
-      this.writeInstance(count++, look, scale);
+      this.writeInstance(count++, look, scale, s.officer === null ? 0 : UNIFORM_FLAG[s.officer]);
       if (dead(s.record) && s.record.cash > 0) this.writeCash(notes++, s);
     }
     for (const unit of state.emergency.units) {
@@ -170,11 +175,16 @@ export class CasualtyView {
   private gather(state: SimState, time: number, x: number, y: number): number {
     const seen = this.seen;
     let n = 0;
-    for (const record of state.pedestrians.casualties) {
+    const fallen = state.police.fallen;
+    const crowd = state.pedestrians.casualties;
+    for (let i = 0; i < crowd.length + fallen.length; i++) {
+      const officer = i < crowd.length ? undefined : (fallen[i - crowd.length] as FallenOfficer);
+      const record = officer?.body ?? (crowd[i] as Casualty);
       if (record.gone) continue;
-      if (seen[n] === undefined) seen[n] = { record, pose: emptyCasualtyPose(), x: 0, y: 0, along: 0 };
+      if (seen[n] === undefined) seen[n] = { record, pose: emptyCasualtyPose(), x: 0, y: 0, along: 0, officer: null };
       const s = seen[n] as Seen;
       s.record = record;
+      s.officer = officer?.kind ?? null;
       casualtyPose(record, time, s.pose);
       const ragdoll = record.ragdoll;
       if (ragdoll === null) {
@@ -193,10 +203,10 @@ export class CasualtyView {
     return n;
   }
 
-  private writeInstance(index: number, look: Pick<PedestrianLook, 'skin' | 'hair' | 'top' | 'legs'>, scale: number): void {
+  private writeInstance(index: number, look: Pick<PedestrianLook, 'skin' | 'hair' | 'top' | 'legs'>, scale: number, uniform = 0): void {
     // The heading is in the bones, so the instance is drawn unturned; row `index` alone is read.
     this.body.place.setXYZW(index, this.place.x, this.place.y, this.place.z, 0);
-    this.body.motion.setXYZW(index, index, 0, scale, 0);
+    this.body.motion.setXYZW(index, index, 0, scale, uniform);
     this.body.paint(index, look);
   }
 

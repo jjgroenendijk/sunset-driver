@@ -181,8 +181,8 @@ answers at all. The session keeps the tick it stands on and carries on without a
 
 - **Friendly fire.** Spec section 21.5 has it on, and nothing here carries a hit yet. A shot finds
   what it hits by a Rapier cast, so a remote player has to stand in the physics world as a body of
-  its own — `police-bodies.ts` and `enforcer-bodies.ts` are that file for the police and the
-  enforcers — before the owner of the body struck can be told to take the damage.
+  its own — `police-bodies.ts` and `person-bodies.ts` are that file for the police cars and the
+  people on foot — before the owner of the body struck can be told to take the damage.
 - **A remote vehicle's damage.** The dents, the lost panels and the fire are not on the wire, so
   another player's car is drawn clean however hard they have been driving it.
 - **The round trip.** A beat still carries the host's tick as it was when it was sent, so a joiner

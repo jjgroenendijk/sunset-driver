@@ -34,6 +34,8 @@ export const PEDESTRIAN_CAP = 1024;
 export interface StandingPerson {
   pose: PedestrianPose;
   look: PedestrianLook;
+  /** What uniform they wear (`uniform.ts`), or nothing for anybody but the police. */
+  uniform?: number;
 }
 
 export class PedestrianView {
@@ -121,7 +123,7 @@ export class PedestrianView {
       if (count >= PEDESTRIAN_CAP) break;
       const pose = person.pose;
       if (pose.x < minX || pose.x > maxX || pose.y < minY || pose.y > maxY) continue;
-      this.write(count++, person.look, pose);
+      this.write(count++, person.look, pose, person.uniform ?? 0);
     }
     this.body.commit(count);
     this.mesh.visible = count > 0;
@@ -139,9 +141,9 @@ export class PedestrianView {
   }
 
   /** Write one person into instance `index`. */
-  private write(index: number, look: PedestrianLook, pose: PedestrianPose): void {
+  private write(index: number, look: PedestrianLook, pose: PedestrianPose, uniform = 0): void {
     this.body.place.setXYZW(index, pose.x, pose.height, pose.y, pose.heading);
-    this.body.motion.setXYZW(index, GAITS.indexOf(pose.gait) * FRAMES, pose.cycle, look.height / STRIDE_HEIGHT, 0);
+    this.body.motion.setXYZW(index, GAITS.indexOf(pose.gait) * FRAMES, pose.cycle, look.height / STRIDE_HEIGHT, uniform);
     this.body.paint(index, look);
   }
 }

@@ -62,14 +62,18 @@ interface Swing {
   bob: number;
   /** Torso tipped forward. */
   lean: number;
+  /** Both arms held forward of hanging, whatever the cycle: out in front, to aim. */
+  raise: number;
 }
 
 export const SWINGS: Record<Gait, Swing> = {
-  stroll: { leg: 0.42, knee: 0.55, arm: 0.35, bob: 0.02, lean: 0.02 },
-  brisk: { leg: 0.52, knee: 0.65, arm: 0.5, bob: 0.025, lean: 0.05 },
-  amble: { leg: 0.28, knee: 0.35, arm: 0.14, bob: 0.012, lean: 0.1 },
-  run: { leg: 0.85, knee: 1.5, arm: 0.95, bob: 0.05, lean: 0.22 },
-  stand: { leg: 0, knee: 0, arm: 0.03, bob: 0.004, lean: 0 },
+  stroll: { leg: 0.42, knee: 0.55, arm: 0.35, bob: 0.02, lean: 0.02, raise: 0 },
+  brisk: { leg: 0.52, knee: 0.65, arm: 0.5, bob: 0.025, lean: 0.05, raise: 0 },
+  amble: { leg: 0.28, knee: 0.35, arm: 0.14, bob: 0.012, lean: 0.1, raise: 0 },
+  run: { leg: 0.85, knee: 1.5, arm: 0.95, bob: 0.05, lean: 0.22, raise: 0 },
+  stand: { leg: 0, knee: 0, arm: 0.03, bob: 0.004, lean: 0, raise: 0 },
+  // Arms straight out in front at shoulder height, the legs free to walk.
+  aim: { leg: 0.4, knee: 0.5, arm: 0, bob: 0.015, lean: 0.04, raise: Math.PI / 2 },
 };
 
 /** Keyframes of each clip; the last repeats the first so the clip loops. */
@@ -204,7 +208,7 @@ export function walkClip(gait: Gait): AnimationClip {
   // A turn about +z carries a hanging limb forward, to +x; a torso tips forward the other way.
   const leg = (offset: number) => (p: number) => swing.leg * Math.sin(p + offset);
   const knee = (offset: number) => (p: number) => -swing.knee * Math.max(0, Math.cos(p + offset));
-  const arm = (offset: number) => (p: number) => -swing.arm * Math.sin(p + offset);
+  const arm = (offset: number) => (p: number) => swing.raise - swing.arm * Math.sin(p + offset);
   const hips: number[] = [];
   for (const t of times) hips.push(0, HIP + swing.bob * Math.cos(4 * Math.PI * t), 0);
   const tracks = [

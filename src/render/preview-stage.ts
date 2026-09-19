@@ -30,6 +30,7 @@ import { generateWorld } from '../world/world.ts';
 import { FollowCamera } from './camera.ts';
 import { ParkedView } from './parked.ts';
 import { CasualtyView } from './casualties.ts';
+import { OfficerGunView } from './officer-guns.ts';
 import { PedestrianView } from './pedestrians.ts';
 import { PostChain } from './post.ts';
 import type { QualityTier } from './quality.ts';
@@ -66,6 +67,8 @@ export interface PreviewPeople {
   trams: TramView;
   crowd: PedestrianView;
   casualties: CasualtyView;
+  /** The guns in the hands of the police on foot who aim. */
+  guns: OfficerGunView;
   wildlife: WildlifeView;
   /** Undefined until the chunk workers have laid out the bays. */
   parked?: ParkedView;
@@ -130,12 +133,13 @@ export function peopleFor(): PreviewPeople {
       trams: new TramView(line),
       crowd: new PedestrianView(walkers, line),
       casualties: new CasualtyView(walkers),
+      guns: new OfficerGunView(),
       wildlife: new WildlifeView(
         new AmbientWildlife(seed, { roads, beaches: world.beaches, seaLevel: world.water.seaLevel, districtAt }),
       ),
     };
-    const { traffic, trams, crowd, casualties, wildlife } = held.people;
-    scene.scene.add(traffic.group, trams.group, crowd.group, casualties.group, wildlife.group);
+    const { traffic, trams, crowd, casualties, guns, wildlife } = held.people;
+    scene.scene.add(traffic.group, trams.group, crowd.group, casualties.group, guns.group, wildlife.group);
   }
   if (held.people.parked === undefined && scene.bays !== undefined) {
     held.people.parked = new ParkedView(new ParkedCars(seed, scene.bays));
@@ -186,7 +190,7 @@ function dropHeld(): void {
   dropView(held);
   const people = held.people;
   if (people !== undefined) {
-    for (const view of [people.traffic, people.trams, people.crowd, people.casualties, people.wildlife, people.parked]) {
+    for (const view of [people.traffic, people.trams, people.crowd, people.casualties, people.guns, people.wildlife, people.parked]) {
       if (view === undefined) continue;
       held.scene.scene.remove(view.group);
       view.dispose();

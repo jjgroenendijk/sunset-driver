@@ -32,6 +32,7 @@ import type { EmergencyKind, EmergencyUnit } from '../sim/emergency.ts';
 import { light } from '../sim/fire.ts';
 import { EmergencyView } from './emergency.ts';
 import { layBodies } from './preview-bodies.ts';
+import { layPolice } from './preview-police.ts';
 import {
   ATTACHMENTS,
   createLoadout,
@@ -157,6 +158,12 @@ export interface PreviewRequest {
    * {@link PreviewRequest.emergency} the ambulance's medics kneel at one.
    */
   bodies?: boolean;
+  /**
+   * Set to lay the police on foot of spec section 14 in the road ahead: a
+   * patrol pair and a SWAT officer aiming at the player, an officer walking a
+   * beat, and one who has been put down.
+   */
+  police?: boolean;
   /**
    * The weapon to put in the player's hands, by id (spec section 11.6). It is
    * drawn only with {@link PreviewRequest.onFoot}, as in the game.
@@ -373,6 +380,7 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   // so the smoke is given a run of ticks to climb before the picture is taken.
   scene.resetDamage(tick - FX_WARMUP);
   if (request.bodies === true) layBodies(record, kerb.x, kerb.y, heading, (px, py) => scene.heightAt(px, py), tick);
+  const officers = request.police === true ? layPolice(record, kerb.x, kerb.y, heading, (px, py) => scene.heightAt(px, py), tick) : [];
   if (request.shots === true) volley(record, stand, scene.heightAt(stand.x, stand.y), tick);
   // The surface of the ground, as the game reads it through the city: rubber
   // is left on the tarmac and nowhere else (spec section 11.3).
@@ -383,12 +391,14 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   arm(scene, request, stand, tick);
   // What moves through the city, where its tours put it at the tick the
   // picture is taken, as the game draws it.
-  const { traffic, trams, crowd, casualties, wildlife, parked } = peopleFor();
+  const { traffic, trams, crowd, casualties, guns, wildlife, parked } = peopleFor();
+  crowd.standing = officers;
   traffic.lamps = scene.lampsNow;
   traffic.update(record, tick, x, y);
   trams.update(tick, x, y);
   crowd.update(record, tick, x, y);
   casualties.update(record, tick, x, y);
+  guns.update(record);
   wildlife.update(tick, tick, x, y);
   parked?.refresh();
   parked?.update(record, x, y);

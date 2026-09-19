@@ -24,7 +24,7 @@
   :root { --hud-top: 14px; --hud-right: 14px; --hud-bottom: 14px; --hud-left: 14px; --hud-map: 150px; --hud-ring: 5px; }
 }
 
-.hud-left, .hud-right, .hud-top, .hud-ring, .hud-speed, .hud-fate { position: fixed; pointer-events: none; color: var(--hud-text); font-family: var(--it-sans); font-variant-numeric: tabular-nums; text-shadow: var(--hud-shadow); }
+.hud-left, .hud-right, .hud-top, .hud-ring, .hud-speed, .hud-fate, .hud-arrest { position: fixed; pointer-events: none; color: var(--hud-text); font-family: var(--it-sans); font-variant-numeric: tabular-nums; text-shadow: var(--hud-shadow); }
 @keyframes hud-in { from { opacity: 0; transform: translateY(-4px); } }
 @keyframes hud-blink { 50% { opacity: .25; } }
 @keyframes hud-pulse { 50% { opacity: .55; } }
@@ -86,3 +86,9 @@ body.dev-info .hud-dev { display: grid; }
 .hud-fate { inset: 0; display: grid; place-content: center; justify-items: center; gap: .6rem; background: radial-gradient(ellipse at center, rgba(0, 0, 0, .5), rgba(0, 0, 0, 0) 65%); }
 .hud-fate-title { font: 400 clamp(3rem, 9vw, 6rem)/1 var(--it-serif); letter-spacing: .14em; text-transform: uppercase; color: var(--hud-danger); animation: hud-slam .5s cubic-bezier(.2, .8, .2, 1); }
 .hud-fate-cost { font-size: .8rem; letter-spacing: .3em; text-transform: uppercase; }
+
+/* Being taken in: a line and the cuffs closing, under the middle of the screen. */
+.hud-arrest { bottom: 22%; left: 50%; transform: translateX(-50%); display: grid; justify-items: center; gap: .35rem; }
+.hud-arrest-text { font-size: .85rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; }
+.hud-arrest-bar { width: 12rem; height: 5px; border-radius: 3px; background: rgba(243, 235, 219, .18); overflow: hidden; box-shadow: 0 1px 3px rgba(0, 0, 0, .6); }
+.hud-arrest-fill { height: 100%; background: #5a8dff; }

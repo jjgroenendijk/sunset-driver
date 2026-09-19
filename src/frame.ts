@@ -202,7 +202,10 @@ export class SessionFrame {
     const drawnTick = session.state.tick - 1 + alpha;
     const swing = swingOf(session.state.loadout, drawnTick);
     const hold = holdOf(session.state.loadout, drawnTick);
-    session.world.walkPlayer(p, session.state.player, elapsed / 1000, swing, hold);
+    // A player giving up or being cuffed has their hands up and holds nothing (spec section 14).
+    const police = session.state.police;
+    const handsUp = police.surrendered || police.cuffs !== null;
+    session.world.walkPlayer(p, session.state.player, elapsed / 1000, swing, hold, handsUp);
     // The weapon in the hands and the weapons on the ground (spec section
     // 11.6), with what is fitted. The one in hand is drawn in the fist that
     // holds it, or follows the arm swinging it.
@@ -391,6 +394,7 @@ export class SessionFrame {
     session.parked?.update(session.state, round.x, round.y);
     session.crowd.update(session.state, moment, round.x, round.y);
     session.casualties.update(session.state, moment, round.x, round.y);
+    session.guns.update(session.state);
   }
 
   /** The HUD and every panel and mark that reads the record. */
@@ -430,7 +434,9 @@ export class SessionFrame {
     // event has drawn and the people in whatever is going on nearby, standing
     // in the same list as the enforcers, and both marked on the map.
     session.streetLife.update(session.state, session.world, session.enforcerMarks);
-    session.missionMarks.update(session.state, session.streetLife);
+    // The police on foot of spec section 14, after all of those in the same list.
+    session.officerMarks.update(session.state, session.streetLife);
+    session.missionMarks.update(session.state, session.officerMarks);
     // The safehouses of spec section 16.3: what a front door costs, or what
     // the house the player is standing in does for them.
     session.homePanel.update(session.state, session.safehouses);

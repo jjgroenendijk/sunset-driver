@@ -329,7 +329,7 @@ async function boot(): Promise<void> {
   // The debug pickers of spec sections 11.3 and 11.6 (`pickers.ts`), and the
   // maps of spec section 12 with every mark on them (`maps.ts`).
   const { picker, weapons } = buildPickers(state, description, world, () => physics, smooth);
-  const { minimap, map, navigator, dealerMarks, enforcerMarks, streetLife, missionMarks } = buildMaps(
+  const { minimap, map, navigator, dealerMarks, enforcerMarks, streetLife, officerMarks, missionMarks } = buildMaps(
     state,
     description,
     places,
@@ -374,7 +374,7 @@ async function boot(): Promise<void> {
   // The presses that open a menu, a map or a picker (`keys.ts`).
   listenForKeys(window, { state, pause, map, minimap, picker, weapons, free, camera, look, view: menuSettings.view });
 
-  const views = buildViews(world, { traffic, crowd, tram, wildlife }, parked, streetLife.standing);
+  const views = buildViews(world, { traffic, crowd, tram, wildlife }, parked, officerMarks.standing);
 
   // WebGPU compiles a pipeline the first time it draws with it, so a session
   // that starts here compiles the whole city over its first frames: the street
@@ -417,6 +417,7 @@ async function boot(): Promise<void> {
     dealerMarks,
     enforcerMarks,
     streetLife,
+    officerMarks,
     turf,
     homePanel: new HomePanel(document.body),
     safehouses,

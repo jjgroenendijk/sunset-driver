@@ -52,6 +52,9 @@
  *   --bodies         lay casualties in the road ahead: two dead, and one each
  *                    falling, rising, crawling, limping and thrown (spec
  *                    section 11.6). With --emergency, medics kneel at one.
+ *   --police         lay police on foot in the road ahead: a patrol pair and
+ *                    a SWAT officer aiming, one on a beat and one fallen
+ *                    (spec section 14).
  *   --weapon         the weapon in the player's hands, by id, for example
  *                    `ak-47` (spec section 11.6). Drawn with --on-foot.
  *   --attachments    what is fitted to it and to the pickups, for example
@@ -190,6 +193,7 @@ const request: PreviewRequest = {
   ...(options.has('emergency') ? { emergency: true } : {}),
   ...(options.has('shots') ? { shots: true } : {}),
   ...(options.has('bodies') ? { bodies: true } : {}),
+  ...(options.has('police') ? { police: true } : {}),
   ...(options.has('weapon') ? { weapon: options.get('weapon') as string } : {}),
   ...(options.has('attachments') ? { attachments: (options.get('attachments') as string).split('+') } : {}),
   ...(options.has('aim') ? { aim: true } : {}),

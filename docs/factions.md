@@ -99,12 +99,12 @@ block is whose, and who comes when a block is taken. The contraband the standing
 - They are drawn in the crowd's own mesh, so a wave costs no draw call. `src/ui/enforcers.ts` writes
   the list of people the mesh reads for both them and the dealers, because the mesh reads one list
   and the enforcers move every tick while the dealers move every few hours.
-- **They are the only people on foot with a collider.** `EnforcerBodies` (`enforcer-bodies.ts`)
-  stands each one inside the physics box in a kinematic capsule, the shape `capsuleOf` gives the
-  average build, and answers `unitAt(handle)` the way `PoliceBodies` does. `gunfire.ts` calls
-  `hurtEnforcer` with the weapon's own `damage`, because a person is measured on the player's health
-  scale and not in the share of a panel a round takes. The crowd of spec section 13.1 still carries
-  nothing: a collider per pedestrian on screen is a larger question.
+- **They and the police officers on foot are the only people with a collider.** A `PersonBodies`
+  (`person-bodies.ts`) stands each one inside the physics box in a kinematic capsule, the shape
+  `capsuleOf` gives the average build, and answers `unitAt(handle)` the way `PoliceBodies` does.
+  `gunfire.ts` calls `hurtEnforcer` with the weapon's own `damage`, because a person is measured on
+  the player's health scale and not in the share of a panel a round takes. The crowd of spec section
+  13.1 still carries nothing: a collider per pedestrian on screen is a larger question.
 - **The capsule is a sensor**, which in Rapier is a shape a ray finds and nothing pushes. A solid
   one is an immovable post: a car driven at an enforcer stops dead against them, which a test holds.
   Knocking somebody down is spec section 13.1's question, not this one.

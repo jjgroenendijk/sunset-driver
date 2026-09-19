@@ -16,7 +16,7 @@ import { HAIR_COLOURS, SKIN_TONES } from './character.ts';
  * The walk cycles a pedestrian moves with. The renderer bakes one clip for
  * each, in this order, so the index of a gait is its row of clips.
  */
-export const GAITS = ['stroll', 'brisk', 'amble', 'run', 'stand'] as const;
+export const GAITS = ['stroll', 'brisk', 'amble', 'run', 'stand', 'aim'] as const;
 export type Gait = (typeof GAITS)[number];
 
 /** The slowest and fastest pace of each gait, in metres per second. */
@@ -26,6 +26,8 @@ export const GAIT_SPEED: Record<Gait, readonly [number, number]> = {
   amble: [0.8, 1.05],
   run: [3.6, 4.4],
   stand: [0, 0],
+  // A police officer's gun out in both hands, walking or standing (spec section 14).
+  aim: [0, 1.5],
 };
 
 /**
@@ -38,6 +40,7 @@ export const GAIT_STRIDE: Record<Gait, number> = {
   amble: 1.05,
   run: 2.6,
   stand: 1,
+  aim: 1.5,
 };
 
 /** The height a stride is measured for. */
