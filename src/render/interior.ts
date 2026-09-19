@@ -18,10 +18,13 @@
  * cannot reach them.
  *
  * The trade is read off the back wall: each one has its own colour, so a player
- * looking down at a room knows what they walked into.
+ * looking down at a room knows what they walked into. The goods of the trade
+ * stand on the shelves and the counter, with a shopkeeper behind it
+ * (`interior-goods.ts`).
  */
 import { BoxGeometry, Color, Mesh, MeshStandardMaterial, Plane, Vector3, type BufferGeometry, type Material } from 'three';
 import { ClippingGroup } from 'three/webgpu';
+import { InteriorGoods } from './interior-goods.ts';
 import { SHOP_ROOM_HEIGHT, SHOP_WALL, type ShopKind, type ShopRoom } from '../world/shops.ts';
 
 /** Metres of the floor slab and the ceiling slab. */
@@ -62,6 +65,7 @@ export class ShopInterior {
   readonly group = new ClippingGroup();
   private readonly geometries: BufferGeometry[] = [];
   private readonly materials: Material[] = [];
+  private goods: InteriorGoods | undefined;
   /** The room on screen, so a frame that has not changed builds nothing. */
   private shown = '';
 
@@ -142,6 +146,18 @@ export class ShopInterior {
         fittings,
       );
     }
+    this.goods = new InteriorGoods(kind, {
+      halfWidth: room.halfWidth,
+      halfDepth: room.halfDepth,
+      counter: { z: -room.halfDepth * 0.35, half: room.halfWidth * COUNTER_SHARE, top: COUNTER_HEIGHT },
+      shelf: {
+        x: room.halfWidth - SHELF_DEPTH / 2,
+        z: -room.halfDepth * 0.2,
+        half: room.halfDepth * SHELF_SHARE,
+        top: SHELF_HEIGHT,
+      },
+    });
+    this.group.add(this.goods.group);
   }
 
   private paint(colour: number, glow: number): MeshStandardMaterial {
@@ -172,6 +188,8 @@ export class ShopInterior {
   }
 
   private clear(): void {
+    this.goods?.dispose();
+    this.goods = undefined;
     this.group.clear();
     for (const geometry of this.geometries) geometry.dispose();
     for (const material of this.materials) material.dispose();
