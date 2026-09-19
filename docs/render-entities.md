@@ -16,6 +16,7 @@ scene ever holds is in `docs/shops.md`.
 - Shop signage and billboards
 - Traffic, parked cars and the crowd
 - Blood
+- The casualties
 
 ## Buildings
 
@@ -291,3 +292,27 @@ scene ever holds is in `docs/shops.md`.
   `WorldScene.gore` hands the level to all three. The sim never reads it.
 - The marks lie `BLOOD_LIFT` over the ground, a hair under the skid marks, and the material is
   pulled toward the camera with a polygon offset, as the skid marks are.
+
+## The casualties
+
+- `src/render/casualties.ts` draws the people who have been hit, the medics at them and the cash on
+  the dead. The people are one instance each of the crowd's body and material, so they cost one
+  draw however many there are; the cash is one more. `crowd-instances.ts` holds the instanced body
+  both views share.
+- The bones come from a `DataTexture` written every frame, one row per person, not from the baked
+  walks. The shader reads row `motion.x` and the row after, and blends them by the fraction of
+  `motion.y * FRAMES`. So each instance has `motion.y = 0` and `motion.x` its own row, and the
+  texture has one spare row at the end for the last instance's second read. It needs
+  `generateMipmaps = false` like any float texture here.
+- `casualty-pose.ts` poses the rig for each phase of `casualty-motion.ts`. The whole body's turn is
+  in the hips bone, so the instance is drawn with a heading of zero. A lying body puts its limbs
+  out in the plane of the ground, since a limb swung forward on a body lying face down goes into
+  the road. After the pose, `settle` finds the lowest corner of the body's boxes and lifts the
+  body so no corner is under the ground. A lying body is also lowered onto it. Tune a pose by angle
+  and the test still holds; do not tune the lift by hand.
+- A body the Rapier ragdoll holds is drawn from the ragdoll's bone transforms instead. Its matrices
+  are written about the hips and divided by the person's size, because the shader scales them
+  back up by `motion.z` before it places them.
+- The medics kneel only at a body lying or crawling, never at one still in the air or going over.
+- `node scripts/render-preview.ts 7 out.png --bodies --emergency --on-foot --heading=180
+  --distance=26` lays one of each phase and a working ambulance in the frame.
