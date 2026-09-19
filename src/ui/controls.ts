@@ -24,6 +24,7 @@ export const CONTROLS: readonly ControlBinding[] = [
   { action: 'Cycle weapon', keys: 'C' },
   { action: 'Radio', keys: '] and [' },
   { action: 'Pick a row', keys: '1 to 9' },
+  { action: 'Shop: choose, buy', keys: '↑ ↓ Enter or click' },
   { action: 'Sell all', keys: 'Shift and 1 to 9' },
   { action: 'Pause', keys: 'Esc' },
   { action: 'Map', keys: 'M' },

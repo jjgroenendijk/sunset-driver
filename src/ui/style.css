@@ -2,6 +2,7 @@
 @import url('./pause.css');
 @import url('./hud.css');
 @import url('./panels.css');
+@import url('./shop.css');
 @import url('./touch.css');
 html, body { margin: 0; height: 100%; overflow: hidden; background: #17110d; color: #f3ebdb; font: 16px/1.5 system-ui, sans-serif; }
 /* Safari's toolbars grow and shrink as the page is scrolled, and `100%` is the
