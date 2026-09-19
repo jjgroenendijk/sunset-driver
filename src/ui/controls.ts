@@ -27,6 +27,7 @@ export const CONTROLS: readonly ControlBinding[] = [
   { action: 'Dealer: sell the lot on that row', keys: 'Shift and 1 to 9' },
   { action: 'Pause menu', keys: 'Esc' },
   { action: 'Map', keys: 'M' },
+  { action: 'Map: zoom, centre on me, legend', keys: '+ − Space L' },
   { action: 'Minimap north up', keys: 'N' },
   { action: 'Vehicle picker', keys: 'V' },
   { action: 'Weapon picker', keys: 'G' },

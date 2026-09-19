@@ -4,48 +4,71 @@
  * corner map and the full map cannot drift apart.
  *
  * `MapArt` is built once for a session and holds everything that does not
- * change: the land and sea as a bitmap the size of the terrain grid, the beach
- * sand, the tram loop and the road index of `map.ts`. Drawing a frame is then a
- * clipped blit and a few hundred stroked segments, whatever the world's size.
+ * change: the land and sea as a bitmap the size of the terrain grid
+ * (`map-ground.ts`), the beach sand, the tram loop and the road index of
+ * `map.ts`. Drawing a frame is then a clipped blit and a few hundred stroked
+ * segments, whatever the world's size.
  *
  * The roads are strokes rather than pixels of that bitmap, so the map is sharp
  * at every zoom: a minimap at half a metre to the pixel and a whole-world view
- * at sixteen read off the same lines.
+ * at sixteen read off the same lines. A road is drawn as a dark casing with its
+ * colour inside, the way a printed road map draws one, so it reads against any
+ * ground. The icons are drawn by `map-icons.ts`.
  */
 import type { Point, RoadTier, WorldDescription } from '../world/types.ts';
+import { renderGround, DEEP_SEA } from './map-ground.ts';
+import { drawMark, drawPlayer } from './map-icons.ts';
+import type { MapRoute } from './map-route.ts';
 import {
   POI_STYLES,
   RoadSegmentIndex,
   SEGMENT_STRIDE,
   tierPen,
   viewBounds,
-  type IconShape,
   type MapBounds,
-  type MapPoi,
   type MapPois,
   type MapView,
 } from './map.ts';
 
-/** What each tier is drawn in. Widest first, and the order they are stroked in. */
+export { drawIcon } from './map-icons.ts';
+
+/**
+ * What each tier is drawn in. Widest first. The casings are stroked in this
+ * order and the colours in the reverse, so a highway runs over the street that
+ * joins it, the way it does on a road map.
+ */
 const TIER_COLOURS: readonly (readonly [RoadTier, string])[] = Object.freeze([
-  ['highway', '#3a2230'] as const,
-  ['arterial', '#5a3444'] as const,
-  ['street', '#6d4256'] as const,
-  ['alley', '#573546'] as const,
-  ['dirt', '#5e4a3a'] as const,
+  ['highway', '#f2a452'] as const,
+  ['arterial', '#e6c48c'] as const,
+  ['street', '#b5a0aa'] as const,
+  ['alley', '#8b7883'] as const,
+  ['dirt', '#9a7b58'] as const,
 ]);
 
+/** The dark edge along every road. */
+const CASING = '#1c0f18';
+
+/** Pixels of casing on each side of a road. */
+const CASING_PX = 1;
+
+/** A road narrower than this many pixels is drawn without a casing: it would be all edge. */
+const CASED_PEN = 1.6;
+
 /** The colours of everything that is not a road. */
-const SEA = '#123048';
-const SAND = '#9a8258';
+const SAND = '#b39a66';
 const TRAM = '#e05ad0';
-const WAYPOINT_LINE = '#ff8a5c';
+// The route is the one cool colour on a warm map, so it is never read as a road.
+const ROUTE = '#48dcff';
+const ROUTE_CASING = '#06222e';
 
 /** A place is named beside its icon only at this many metres to the pixel or closer. */
-const LABEL_SCALE = 2;
+const LABEL_SCALE = 2.5;
 
-/** Metres of depth over which the sea darkens from the shore to its deepest. */
-const DEPTH_RANGE = 20;
+/** The tram line is drawn only at this many metres to the pixel or closer. */
+const TRAM_SCALE = 6;
+
+/** Pixels between two names, so one never runs into the next. */
+const LABEL_GAP = 4;
 
 /** What one map frame is asked to draw over the land. */
 export interface MapDrawOptions {
@@ -54,8 +77,13 @@ export interface MapDrawOptions {
    * player yet: the seed preview of the title screen draws the map alone.
    */
   player: { x: number; y: number; heading: number } | null;
-  /** The place the player has marked, or null. A line is run to it from the player. */
+  /** The place the player has marked, or null. */
   waypoint: { x: number; y: number } | null;
+  /**
+   * The roads from the player to the waypoint (`map-route.ts`). Without one, a
+   * waypoint is joined to the player by a dashed straight line.
+   */
+  route?: MapRoute | null;
   /** Pixels across an icon. A minimap draws them smaller than the full map. */
   iconSize: number;
   /**
@@ -64,6 +92,10 @@ export interface MapDrawOptions {
    * names do not run into one another (see {@link LABEL_SCALE}).
    */
   labels: boolean;
+  /** False to leave the tram line off, as the legend of the full map can. */
+  tram?: boolean;
+  /** True to draw a scale bar in the bottom left corner. */
+  scaleBar?: boolean;
   /**
    * The territory overlay slot of spec section 12, for the factions of spec
    * section 17. It is called with the canvas already transformed into world
@@ -74,18 +106,36 @@ export interface MapDrawOptions {
   overlay?: (ctx: CanvasRenderingContext2D, view: MapView, bounds: MapBounds) => void;
 }
 
+/** A box on screen a name takes up, so the next name can stay out of it. */
+interface Taken {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
 export class MapArt {
   readonly world: WorldDescription;
   readonly pois: MapPois;
   private readonly segments: RoadSegmentIndex;
   /** The land and the sea, one pixel to a terrain cell. Drawn scaled at any zoom. */
   private readonly ground: HTMLCanvasElement;
+  /** The districts in the order their names are placed: the city before the country. */
+  private readonly namingOrder: readonly number[];
 
   constructor(world: WorldDescription, pois: MapPois) {
     this.world = world;
     this.pois = pois;
     this.segments = new RoadSegmentIndex(world.roads, world.size);
     this.ground = renderGround(world);
+    const rank = { core: 0, inner: 1, industrial: 2, suburban: 3, outskirts: 4, wilderness: 5 } as const;
+    this.namingOrder = world.districts
+      .map((d, i) => i)
+      .sort((a, b) => {
+        const da = world.districts[a]!;
+        const db = world.districts[b]!;
+        return rank[da.zone] - rank[db.zone] || a - b;
+      });
   }
 
   /**
@@ -103,17 +153,20 @@ export class MapArt {
     const world = this.world;
     const half = world.size / 2;
     const bounds = viewBounds(view, width, height);
+    const px = view.metresPerPixel;
 
     ctx.save();
     // From here to the matching restore the canvas is in world metres, so
     // everything below is written in the same coordinates the world uses.
     ctx.translate(width / 2, height / 2);
     ctx.rotate(view.rotation);
-    ctx.scale(1 / view.metresPerPixel, 1 / view.metresPerPixel);
+    ctx.scale(1 / px, 1 / px);
     ctx.translate(-view.x, -view.y);
 
-    ctx.fillStyle = SEA;
+    ctx.fillStyle = DEEP_SEA;
     ctx.fillRect(bounds.minX, bounds.minY, bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(this.ground, -half, -half, world.size, world.size);
 
     // The sand of spec section 7.3. It is the one parcel type worth a colour of
@@ -130,103 +183,226 @@ export class MapArt {
 
     this.strokeRoads(ctx, view, bounds);
 
-    // The tram of spec section 13.2, drawn over the arterials it runs down.
-    if (world.tram.route.length > 1) {
+    // The tram of spec section 13.2, a thin dashed line down the arterials it
+    // runs along. Pulled back past a district it is only clutter.
+    if (opts.tram !== false && px <= TRAM_SCALE && world.tram.route.length > 1) {
       ctx.strokeStyle = TRAM;
-      ctx.lineWidth = Math.max(1.5, 3) * view.metresPerPixel;
-      ctx.setLineDash([8 * view.metresPerPixel, 6 * view.metresPerPixel]);
+      ctx.globalAlpha = 0.85;
+      ctx.lineWidth = 2 * px;
+      ctx.setLineDash([6 * px, 5 * px]);
       ctx.beginPath();
       polyline(ctx, world.tram.route);
       ctx.stroke();
       ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
     }
 
     opts.overlay?.(ctx, view, bounds);
 
-    if (opts.waypoint && opts.player) {
-      ctx.strokeStyle = WAYPOINT_LINE;
-      ctx.lineWidth = 1.5 * view.metresPerPixel;
-      ctx.setLineDash([10 * view.metresPerPixel, 8 * view.metresPerPixel]);
-      ctx.beginPath();
-      ctx.moveTo(opts.player.x, opts.player.y);
-      ctx.lineTo(opts.waypoint.x, opts.waypoint.y);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
+    if (opts.waypoint && opts.player) drawRoute(ctx, px, opts.player, opts.waypoint, opts.route ?? null);
 
     ctx.restore();
 
     // The icons are drawn in screen pixels, so they stay the same size however
     // far the map is pulled back and never turn with a rotating map.
-    if (opts.labels) this.drawDistrictNames(ctx, view, width, height, bounds);
-    const marks = this.pois.visible(bounds, view.metresPerPixel);
-    // A name under every icon is unreadable on a map pulled back far enough to
-    // hold a district: the names run into one another and into the district's
-    // own. Past that the shape and the colour carry the icon on their own.
-    const named = opts.labels && view.metresPerPixel <= LABEL_SCALE;
+    const taken: Taken[] = [];
+    const marks = this.pois.visible(bounds, px);
     if (opts.waypoint) marks.push({ type: 'waypoint', x: opts.waypoint.x, y: opts.waypoint.y });
+    const placed: { x: number; y: number; name: string }[] = [];
     for (const poi of marks) {
       const p = projectInto(view, width, height, poi.x, poi.y);
       const style = POI_STYLES[poi.type];
-      drawIcon(ctx, style.shape, style.colour, p.x, p.y, opts.iconSize);
-      if (named) label(ctx, poi.name ?? style.label, p.x, p.y + opts.iconSize);
+      drawMark(ctx, style.shape, style.colour, p.x, p.y, opts.iconSize);
+      const r = opts.iconSize * 0.72;
+      taken.push({ x0: p.x - r, y0: p.y - r, x1: p.x + r, y1: p.y + r });
+      placed.push({ x: p.x, y: p.y, name: poi.name ?? style.label });
     }
     if (opts.player) {
       const me = projectInto(view, width, height, opts.player.x, opts.player.y);
       drawPlayer(ctx, me.x, me.y, opts.player.heading + view.rotation, opts.iconSize * 1.15);
+      const r = opts.iconSize * 1.15;
+      taken.push({ x0: me.x - r, y0: me.y - r, x1: me.x + r, y1: me.y + r });
     }
+    if (opts.labels) {
+      // Names are placed after every icon, so a name never covers an icon, and
+      // each only where it runs into no name placed before it. The districts go
+      // first, the city before the country, since they are what a player reads
+      // a map by.
+      this.drawDistrictNames(ctx, view, width, height, bounds, taken);
+      // A name under every icon is unreadable on a map pulled back far enough to
+      // hold a district. Past that the shape and the colour carry the icon.
+      if (px <= LABEL_SCALE) {
+        for (const at of placed) label(ctx, at.name, at.x, at.y + opts.iconSize * 0.75, taken);
+      }
+    }
+    if (opts.scaleBar) drawScaleBar(ctx, px, height);
   }
 
-  /** Every tier the zoom shows, widest first, so a street lies over the highway it joins. */
-  private strokeRoads(ctx: CanvasRenderingContext2D, view: MapView, bounds: ReturnType<typeof viewBounds>): void {
-    const roads = this.world.roads;
+  /**
+   * Every tier the zoom shows. The casings first, widest first, then the
+   * colours narrowest first, so a highway lies over the street it meets and
+   * every road is outlined where it runs alone.
+   */
+  private strokeRoads(ctx: CanvasRenderingContext2D, view: MapView, bounds: MapBounds): void {
     const keys = this.segments.segmentsIn(bounds);
+    const px = view.metresPerPixel;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    for (const [tier, colour] of TIER_COLOURS) {
-      const pen = tierPen(tier, view.metresPerPixel);
+    for (const [tier] of TIER_COLOURS) {
+      const pen = tierPen(tier, px);
+      if (pen < CASED_PEN) continue;
+      ctx.strokeStyle = CASING;
+      ctx.lineWidth = (pen + CASING_PX * 2) * px;
+      this.strokeTier(ctx, tier, keys);
+    }
+    for (let i = TIER_COLOURS.length - 1; i >= 0; i--) {
+      const [tier, colour] = TIER_COLOURS[i]!;
+      const pen = tierPen(tier, px);
       if (pen === 0) continue;
       ctx.strokeStyle = colour;
-      ctx.lineWidth = pen * view.metresPerPixel;
-      ctx.beginPath();
-      let drew = false;
-      for (const key of keys) {
-        const road = roads[Math.floor(key / SEGMENT_STRIDE)];
-        if (road === undefined || road.tier !== tier) continue;
-        const i = key % SEGMENT_STRIDE;
-        const a = road.points[i];
-        const b = road.points[i + 1];
-        if (a === undefined || b === undefined) continue;
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
-        drew = true;
-      }
-      if (drew) ctx.stroke();
+      // A road drawn as a hairline is dimmed, so a pulled-back map is a web of
+      // faint streets under bright highways rather than a smear of one colour.
+      ctx.globalAlpha = pen < CASED_PEN ? 0.55 : 1;
+      ctx.lineWidth = pen * px;
+      this.strokeTier(ctx, tier, keys);
     }
+    ctx.globalAlpha = 1;
   }
 
-  /** District names, at the site of each cell. Only the full map writes them. */
+  private strokeTier(ctx: CanvasRenderingContext2D, tier: RoadTier, keys: Int32Array): void {
+    const roads = this.world.roads;
+    ctx.beginPath();
+    let drew = false;
+    for (const key of keys) {
+      const road = roads[Math.floor(key / SEGMENT_STRIDE)];
+      if (road === undefined || road.tier !== tier) continue;
+      const i = key % SEGMENT_STRIDE;
+      const a = road.points[i];
+      const b = road.points[i + 1];
+      if (a === undefined || b === undefined) continue;
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      drew = true;
+    }
+    if (drew) ctx.stroke();
+  }
+
+  /** District names, at the site of each cell, each where no name is yet. */
   private drawDistrictNames(
     ctx: CanvasRenderingContext2D,
     view: MapView,
     width: number,
     height: number,
-    bounds: ReturnType<typeof viewBounds>,
+    bounds: MapBounds,
+    taken: Taken[],
   ): void {
     ctx.save();
-    ctx.font = '600 11px system-ui, sans-serif';
+    ctx.font = '700 12px system-ui, sans-serif';
+    ctx.letterSpacing = '1.5px';
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(246,214,193,.75)';
-    ctx.shadowColor = '#000';
-    ctx.shadowBlur = 3;
-    for (const district of this.world.districts) {
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(18,7,15,.85)';
+    ctx.fillStyle = 'rgba(250,224,204,.92)';
+    for (const index of this.namingOrder) {
+      const district = this.world.districts[index]!;
       if (district.x < bounds.minX || district.x > bounds.maxX) continue;
       if (district.y < bounds.minY || district.y > bounds.maxY) continue;
       const p = projectInto(view, width, height, district.x, district.y);
-      ctx.fillText(district.name.toUpperCase(), p.x, p.y);
+      const text = district.name.toUpperCase();
+      const w = ctx.measureText(text).width;
+      const box = { x0: p.x - w / 2, y0: p.y - 8, x1: p.x + w / 2, y1: p.y + 8 };
+      if (overlaps(box, taken)) continue;
+      taken.push(box);
+      ctx.strokeText(text, p.x, p.y);
+      ctx.fillText(text, p.x, p.y);
     }
     ctx.restore();
   }
+}
+
+/**
+ * The way to the waypoint: along the roads where there is a route, bright and
+ * outlined, with the walk to the road and from it dashed; a dashed straight
+ * line where there is no route.
+ */
+function drawRoute(
+  ctx: CanvasRenderingContext2D,
+  px: number,
+  player: Point,
+  waypoint: Point,
+  route: MapRoute | null,
+): void {
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  const dashed = (points: readonly Point[]): void => {
+    if (points.length < 2) return;
+    ctx.strokeStyle = ROUTE;
+    ctx.lineWidth = 2 * px;
+    ctx.setLineDash([5 * px, 5 * px]);
+    ctx.beginPath();
+    polyline(ctx, points);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  };
+  if (route === null) {
+    dashed([player, waypoint]);
+    return;
+  }
+  dashed(route.lead);
+  dashed(route.tail);
+  if (route.road.length < 2) return;
+  ctx.beginPath();
+  polyline(ctx, route.road);
+  ctx.strokeStyle = ROUTE_CASING;
+  ctx.lineWidth = 7 * px;
+  ctx.stroke();
+  ctx.strokeStyle = ROUTE;
+  ctx.lineWidth = 4 * px;
+  ctx.stroke();
+}
+
+/** A bar a round number of metres long, with its length written over it. */
+function drawScaleBar(ctx: CanvasRenderingContext2D, px: number, height: number): void {
+  const want = 120 * px;
+  const magnitude = 10 ** Math.floor(Math.log10(want));
+  const metres = [5, 2, 1].map((k) => k * magnitude).find((m) => m <= want) ?? magnitude;
+  const w = metres / px;
+  const x = 16;
+  const y = height - 18;
+  ctx.save();
+  ctx.lineCap = 'butt';
+  ctx.strokeStyle = 'rgba(18,7,15,.85)';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + w, y);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(250,224,204,.9)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x, y - 4);
+  ctx.lineTo(x, y);
+  ctx.lineTo(x + w, y);
+  ctx.lineTo(x + w, y - 4);
+  ctx.stroke();
+  ctx.font = '600 11px system-ui, sans-serif';
+  ctx.textBaseline = 'bottom';
+  ctx.lineWidth = 3;
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(18,7,15,.85)';
+  ctx.fillStyle = 'rgba(250,224,204,.95)';
+  const text = distanceText(metres);
+  ctx.strokeText(text, x + 4, y - 5);
+  ctx.fillText(text, x + 4, y - 5);
+  ctx.restore();
+}
+
+/** Metres as a player reads them: `350 m`, `1.2 km`. */
+export function distanceText(metres: number): string {
+  if (metres < 1000) return `${Math.round(metres / 10) * 10 || Math.round(metres)} m`;
+  return `${(metres / 1000).toFixed(metres < 10_000 ? 1 : 0)} km`;
 }
 
 /** `project` from `map.ts`, inlined here so a frame of icons allocates nothing. */
@@ -255,291 +431,32 @@ function polyline(ctx: CanvasRenderingContext2D, points: readonly Point[]): void
   for (let i = 1; i < points.length; i++) ctx.lineTo(points[i]!.x, points[i]!.y);
 }
 
-/**
- * The land and the sea, one pixel to a cell of the terrain grid. A world is a
- * few hundred cells a side, so this is under a megabyte and is drawn scaled up;
- * the coastline is the one thing on the map a soft edge suits.
- */
-function renderGround(world: WorldDescription): HTMLCanvasElement {
-  const hf = world.terrain;
-  const n = hf.gridSize;
-  const canvas = document.createElement('canvas');
-  canvas.width = n;
-  canvas.height = n;
-  const ctx = canvas.getContext('2d')!;
-  const image = ctx.createImageData(n, n);
-  const data = image.data;
-  const sea = world.water.seaLevel;
-  for (let iy = 0; iy < n; iy++) {
-    for (let ix = 0; ix < n; ix++) {
-      const h = hf.heights[iy * n + ix]!;
-      const o = (iy * n + ix) * 4;
-      if (h < sea) {
-        // Deep water is darker, so a channel reads as a channel and the
-        // shallows a boat can be launched into read as shallows.
-        const t = Math.min(1, (sea - h) / DEPTH_RANGE);
-        data[o] = mixByte(SHALLOWS_RGB[0], SEA_RGB[0], t);
-        data[o + 1] = mixByte(SHALLOWS_RGB[1], SEA_RGB[1], t);
-        data[o + 2] = mixByte(SHALLOWS_RGB[2], SEA_RGB[2], t);
-      } else {
-        // Land pales as it rises, so a ridge reads against the flats below it.
-        const t = Math.min(1, (h - sea) / 120);
-        data[o] = 54 + t * 66;
-        data[o + 1] = 47 + t * 57;
-        data[o + 2] = 56 + t * 54;
-      }
-      data[o + 3] = 255;
-    }
+function overlaps(box: Taken, taken: readonly Taken[]): boolean {
+  for (const t of taken) {
+    if (box.x0 - LABEL_GAP < t.x1 && box.x1 + LABEL_GAP > t.x0 && box.y0 < t.y1 && box.y1 > t.y0) return true;
   }
-  ctx.putImageData(image, 0, 0);
-  return canvas;
+  return false;
 }
 
-const SEA_RGB: readonly [number, number, number] = [0x12, 0x30, 0x48];
-const SHALLOWS_RGB: readonly [number, number, number] = [0x1b, 0x4a, 0x66];
-
-function mixByte(a: number, b: number, t: number): number {
-  return Math.round(a + (b - a) * t);
-}
-
-/** The player, as an arrow pointing the way they face. Drawn last, over everything. */
-function drawPlayer(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number, size: number): void {
+/** A name under an icon, where it runs into nothing already placed. */
+function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, taken: Taken[]): void {
   ctx.save();
-  ctx.translate(x, y);
-  // A heading of 0 points along world `+x`, which the canvas draws to the right,
-  // so the arrow is modelled pointing right and turned by the heading.
-  ctx.rotate(angle);
-  ctx.beginPath();
-  ctx.moveTo(size, 0);
-  ctx.lineTo(-size * 0.7, size * 0.7);
-  ctx.lineTo(-size * 0.35, 0);
-  ctx.lineTo(-size * 0.7, -size * 0.7);
-  ctx.closePath();
-  ctx.fillStyle = POI_STYLES.player.colour;
-  ctx.strokeStyle = '#210d18';
-  ctx.lineWidth = 1.5;
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
-}
-
-/**
- * One icon, in screen pixels. The shape is what tells two kinds of place apart
- * on a minimap the size of a postage stamp; the colour is what tells them apart
- * at a glance. Every shape is drawn inside a box `2 * r` across, so no icon
- * crowds its neighbour more than another.
- */
-export function drawIcon(
-  ctx: CanvasRenderingContext2D,
-  shape: IconShape,
-  colour: string,
-  x: number,
-  y: number,
-  size: number,
-): void {
-  const r = size / 2;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.fillStyle = colour;
-  ctx.strokeStyle = colour;
-  ctx.lineWidth = Math.max(1.2, r * 0.35);
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  switch (shape) {
-    case 'disc':
-      ctx.arc(0, 0, r, 0, Math.PI * 2);
-      ctx.fill();
-      break;
-    case 'ring':
-      ctx.arc(0, 0, r * 0.8, 0, Math.PI * 2);
-      ctx.stroke();
-      break;
-    case 'square':
-      ctx.rect(-r, -r, r * 2, r * 2);
-      ctx.fill();
-      break;
-    case 'diamond':
-      ctx.moveTo(0, -r);
-      ctx.lineTo(r, 0);
-      ctx.lineTo(0, r);
-      ctx.lineTo(-r, 0);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    case 'triangle':
-      ctx.moveTo(0, -r);
-      ctx.lineTo(r, r * 0.8);
-      ctx.lineTo(-r, r * 0.8);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    case 'hexagon':
-      for (let i = 0; i < 6; i++) {
-        const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
-        const px = Math.cos(a) * r;
-        const py = Math.sin(a) * r;
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.closePath();
-      ctx.fill();
-      break;
-    case 'star':
-      for (let i = 0; i < 10; i++) {
-        const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
-        const rad = i % 2 === 0 ? r : r * 0.45;
-        const px = Math.cos(a) * rad;
-        const py = Math.sin(a) * rad;
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.closePath();
-      ctx.fill();
-      break;
-    case 'pin':
-      // A teardrop with its point on the place it marks.
-      ctx.arc(0, -r * 0.35, r * 0.7, Math.PI * 0.85, Math.PI * 0.15);
-      ctx.lineTo(0, r);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    case 'house':
-      ctx.moveTo(0, -r);
-      ctx.lineTo(r, 0);
-      ctx.lineTo(r * 0.6, 0);
-      ctx.lineTo(r * 0.6, r);
-      ctx.lineTo(-r * 0.6, r);
-      ctx.lineTo(-r * 0.6, 0);
-      ctx.lineTo(-r, 0);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    case 'shield':
-      ctx.moveTo(0, -r);
-      ctx.lineTo(r * 0.85, -r * 0.5);
-      ctx.lineTo(r * 0.85, r * 0.25);
-      ctx.lineTo(0, r);
-      ctx.lineTo(-r * 0.85, r * 0.25);
-      ctx.lineTo(-r * 0.85, -r * 0.5);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    case 'cross':
-      ctx.rect(-r * 0.32, -r, r * 0.64, r * 2);
-      ctx.rect(-r, -r * 0.32, r * 2, r * 0.64);
-      ctx.fill();
-      break;
-    case 'flag':
-      ctx.moveTo(-r * 0.5, r);
-      ctx.lineTo(-r * 0.5, -r);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(-r * 0.5, -r);
-      ctx.lineTo(r, -r * 0.55);
-      ctx.lineTo(-r * 0.5, -r * 0.1);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    case 'chevron':
-      ctx.moveTo(-r, r * 0.4);
-      ctx.lineTo(0, -r * 0.6);
-      ctx.lineTo(r, r * 0.4);
-      ctx.stroke();
-      break;
-    case 'bars':
-      // A pier: the deck, as planks.
-      for (let i = -1; i <= 1; i++) {
-        ctx.moveTo(-r, (i * r) / 1.5);
-        ctx.lineTo(r, (i * r) / 1.5);
-      }
-      ctx.stroke();
-      break;
-    case 'cup':
-      ctx.moveTo(-r * 0.7, -r * 0.6);
-      ctx.lineTo(r * 0.5, -r * 0.6);
-      ctx.lineTo(r * 0.2, r);
-      ctx.lineTo(-r * 0.4, r);
-      ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(r * 0.6, -r * 0.05, r * 0.4, -Math.PI / 2, Math.PI / 2);
-      ctx.stroke();
-      break;
-    case 'roundel':
-      // The underground's own mark: a ring with a bar across it.
-      ctx.arc(0, 0, r * 0.7, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(-r, 0);
-      ctx.lineTo(r, 0);
-      ctx.stroke();
-      break;
-    case 'arrow':
-      ctx.moveTo(r, 0);
-      ctx.lineTo(-r * 0.7, r * 0.7);
-      ctx.lineTo(-r * 0.35, 0);
-      ctx.lineTo(-r * 0.7, -r * 0.7);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    case 'burst':
-      // Somebody coming at the player: strokes out of one point, so it reads as
-      // a threat rather than as another place on the map.
-      for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * Math.PI * 2;
-        ctx.moveTo(Math.cos(a) * r * 0.3, Math.sin(a) * r * 0.3);
-        ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
-      }
-      ctx.stroke();
-      break;
-    case 'bunting':
-      // Three pennants on a line: a street that has something on it.
-      ctx.moveTo(-r, -r * 0.6);
-      ctx.lineTo(r, -r * 0.6);
-      ctx.stroke();
-      for (let i = 0; i < 3; i++) {
-        const cx = -r + ((i + 0.5) / 3) * 2 * r;
-        ctx.beginPath();
-        ctx.moveTo(cx - r * 0.28, -r * 0.6);
-        ctx.lineTo(cx + r * 0.28, -r * 0.6);
-        ctx.lineTo(cx, r * 0.7);
-        ctx.closePath();
-        ctx.fill();
-      }
-      break;
-    case 'bolt':
-      // A zigzag: something happening rather than somewhere to go.
-      ctx.moveTo(r * 0.35, -r);
-      ctx.lineTo(-r * 0.25, r * 0.05);
-      ctx.lineTo(r * 0.15, r * 0.05);
-      ctx.lineTo(-r * 0.45, r);
-      ctx.stroke();
-      break;
-    case 'key':
-      // A key on its side: the bow at the left, the shank and one tooth.
-      ctx.arc(-r * 0.5, 0, r * 0.45, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(-r * 0.05, 0);
-      ctx.lineTo(r, 0);
-      ctx.moveTo(r * 0.55, 0);
-      ctx.lineTo(r * 0.55, r * 0.5);
-      ctx.stroke();
-      break;
+  ctx.font = '600 11px system-ui, sans-serif';
+  const w = ctx.measureText(text).width;
+  const box = { x0: x - w / 2, y0: y + 1, x1: x + w / 2, y1: y + 15 };
+  if (overlaps(box, taken)) {
+    ctx.restore();
+    return;
   }
-  ctx.restore();
-}
-
-/** A name under an icon. */
-function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number): void {
-  ctx.save();
-  ctx.font = '11px system-ui, sans-serif';
+  taken.push(box);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.fillStyle = 'rgba(246,214,193,.9)';
-  ctx.shadowColor = '#000';
-  ctx.shadowBlur = 3;
-  ctx.fillText(text, x, y + 3);
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(18,7,15,.85)';
+  ctx.fillStyle = 'rgba(250,224,204,.95)';
+  ctx.strokeText(text, x, y + 2);
+  ctx.fillText(text, x, y + 2);
   ctx.restore();
 }
 

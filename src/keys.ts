@@ -11,7 +11,7 @@ import type { FollowCamera } from './render/camera.ts';
 import { commitCrime } from './sim/police.ts';
 import type { SimState } from './sim/simulation.ts';
 import { FREE_CAMERA_KEY, type FreeCameraControls } from './ui/free-camera.ts';
-import { MAP_KEY, type MapScreen } from './ui/map-screen.ts';
+import { MAP_CENTRE_KEY, MAP_KEY, MAP_LEGEND_KEY, type MapScreen } from './ui/map-screen.ts';
 import { MINIMAP_NORTH_KEY, type Minimap } from './ui/minimap.ts';
 import { PAUSE_KEY, type PauseMenu } from './ui/pause.ts';
 import { PICKER_KEY, type VehiclePicker } from './ui/vehicle-picker.ts';
@@ -74,6 +74,8 @@ export function listenForKeys(target: Window, keys: KeyTargets): void {
     if (event.code === 'Escape' && map.open) map.toggle();
     if (map.open && (event.code === 'Equal' || event.code === 'NumpadAdd')) map.zoom(-1);
     if (map.open && (event.code === 'Minus' || event.code === 'NumpadSubtract')) map.zoom(1);
+    if (map.open && event.code === MAP_CENTRE_KEY) map.centre();
+    if (map.open && event.code === MAP_LEGEND_KEY) map.toggleLegend();
     // The developer free camera. It takes over from where the game camera
     // stands, and pointer lock needs this key press to ask for it.
     if (event.code === FREE_CAMERA_KEY) free.toggle(camera.camera);

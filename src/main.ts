@@ -287,7 +287,7 @@ async function boot(): Promise<void> {
   // The debug pickers of spec sections 11.3 and 11.6 (`pickers.ts`), and the
   // maps of spec section 12 with every mark on them (`maps.ts`).
   const { picker, weapons } = buildPickers(state, description, world, () => physics, smooth);
-  const { minimap, map, dealerMarks, enforcerMarks, streetLife, missionMarks } = buildMaps(
+  const { minimap, map, navigator, dealerMarks, enforcerMarks, streetLife, missionMarks } = buildMaps(
     state,
     description,
     places,
@@ -359,6 +359,7 @@ async function boot(): Promise<void> {
     hud: new Hud(document.body, choice.seed),
     minimap,
     map,
+    navigator,
     hotwire: new HotwireBar(document.body),
     travel: new TravelPanel(document.body),
     metro,

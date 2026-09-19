@@ -19,6 +19,7 @@ import { stepSim } from './sim/simulation.ts';
 import { turfLine } from './sim/territory.ts';
 import type { FreeCameraControls } from './ui/free-camera.ts';
 import type { Keyboard } from './ui/keyboard.ts';
+import { ARRIVED } from './ui/map-route.ts';
 import type { Settings } from './ui/settings.ts';
 import { applyQuality, type Session } from './session.ts';
 
@@ -127,8 +128,14 @@ export class SessionFrame {
     const at = flying
       ? { x: free.camera.x, y: free.camera.z, heading: free.camera.heading }
       : { x: p.x, y: p.y, heading: p.heading };
-    session.minimap.update(at, session.state.waypoint);
-    session.map.update(at, session.state.waypoint);
+    // The waypoint is a place to get to, so it is taken away once the player
+    // is there. The route to it follows the roads (`map-route.ts`).
+    const mark = session.state.waypoint;
+    if (mark && !flying && Math.hypot(mark.x - p.x, mark.y - p.y) < ARRIVED) session.state.waypoint = null;
+    const nav = session.navigator;
+    nav.update(p, session.state.waypoint);
+    session.minimap.update(at, session.state.waypoint, nav.route, nav.version);
+    session.map.update(at, session.state.waypoint, nav.route, nav.version);
     // The mix of spec section 15 stands where the frame is drawn from, which
     // is the player or the free camera. A paused session holds no note.
     if (paused) audio.hush();

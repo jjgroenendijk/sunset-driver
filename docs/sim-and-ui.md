@@ -63,12 +63,23 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
 - `MapDrawOptions.overlay` is the slot the territory of spec section 17.2 draws through
   (`docs/factions.md`). It is handed the canvas in world metres and the world box the view can show,
   so an overlay over the whole map draws only the part on screen.
-- `src/ui/map-draw.ts` is the one place that says what a map looks like. `Minimap` (`minimap.ts`)
+- `src/ui/map-draw.ts` is the one place that says what a map looks like, with the ground bitmap in
+  `map-ground.ts` and the icon shapes in `map-icons.ts`. `Minimap` (`minimap.ts`)
   and `MapScreen` (`map-screen.ts`) both draw through one `MapArt`, so the corner map and the full
   map cannot disagree about a road or a mark. The land and the sea are a bitmap one pixel to a
   terrain cell, drawn scaled; the roads are strokes off `RoadSegmentIndex`, so the map is sharp at
   half a metre to the pixel and at sixteen. Both widgets redraw only when something on them has
   moved, so a session standing still pays for neither.
+- The full map zooms smoothly. A wheel event moves a target scale by a factor (`wheelScale`), and
+  each frame eases toward it (`easeScale`), holding the world point under the pointer still. One
+  event never jumps a whole `ZOOM_STEPS` step: a trackpad sends dozens a second.
+- The waypoint route follows the roads: `map-route.ts` runs `RoadGraph.shortestPath` between the
+  edges nearest the player and the mark, and dashes the walk on and off the road. `Navigator` cuts
+  the driven part off the front and finds a new route only when the player strays 28 m from it.
+  The graph is built on the first waypoint. A waypoint is cleared once the player is within 18 m.
+- The legend (`map-legend.ts`) lists only the kinds of place the city has. A click hides a kind on
+  both maps through `MapPois.hidden`; the choice is kept in `localStorage`. The player, waypoint
+  and objective are never hidden.
 - `MapScreen` is given a `touch` flag, and a touch browser is drawn a row of zoom and close keys
   over the picture: it has no wheel to zoom with and no `M` to close with. `docs/menus.md` holds
   the rest of what a phone changes.

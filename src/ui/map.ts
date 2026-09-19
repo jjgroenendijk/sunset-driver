@@ -133,6 +133,25 @@ export const SHOP_POIS: Readonly<Record<ShopKind, PoiType>> = Object.freeze({
   broker: 'broker',
 });
 
+/** The kinds of place the legend may not switch off. */
+export const ALWAYS_SHOWN: readonly PoiType[] = Object.freeze(['player', 'waypoint', 'objective']);
+
+/**
+ * The kinds of place a list holds, in the order of the icon table, with how
+ * many there are of each. The legend of the full map lists these, so it names
+ * only what this city actually has.
+ */
+export function poiCounts(lists: readonly (readonly MapPoi[])[]): { type: PoiType; count: number }[] {
+  const counts = new Map<PoiType, number>();
+  for (const list of lists) for (const poi of list) counts.set(poi.type, (counts.get(poi.type) ?? 0) + 1);
+  const out: { type: PoiType; count: number }[] = [];
+  for (const type of Object.keys(POI_STYLES) as PoiType[]) {
+    const count = counts.get(type);
+    if (count !== undefined) out.push({ type, count });
+  }
+  return out;
+}
+
 /** One marked place on the map. */
 export interface MapPoi {
   type: PoiType;
@@ -230,6 +249,64 @@ export function viewBounds(view: MapView, width: number, height: number): MapBou
  * 1000-pixel canvas.
  */
 export const ZOOM_STEPS: readonly number[] = Object.freeze([0.5, 1, 2, 4, 8, 16]);
+
+/** The closest and the furthest the full map zooms, in metres to the pixel. */
+export const MIN_SCALE = ZOOM_STEPS[0] as number;
+export const MAX_SCALE = ZOOM_STEPS[ZOOM_STEPS.length - 1] as number;
+
+/**
+ * Wheel pixels per doubling of the scale. A mouse notch is about 100 pixels, so
+ * one notch zooms by a sixth. A trackpad sends many small deltas, and they add
+ * up to the same zoom for the same travel of the fingers.
+ */
+const WHEEL_PER_DOUBLING = 380;
+
+/** A pinch on a trackpad arrives as a wheel event with `ctrlKey`, in much smaller deltas. */
+const PINCH_PER_DOUBLING = 70;
+
+/** Most wheel pixels one event may carry, so a fast flick is not a jump. */
+const WHEEL_CAP = 120;
+
+/** `deltaMode` units, in pixels: a line, and a page. */
+const LINE_PIXELS = 16;
+const PAGE_PIXELS = 800;
+
+/**
+ * The scale one wheel event asks for, clamped to the ends of the zoom range.
+ * A positive `deltaY` pulls the map back. The change is a factor of the scale,
+ * so the zoom feels the same at every distance.
+ */
+export function wheelScale(
+  metresPerPixel: number,
+  deltaY: number,
+  deltaMode: number,
+  pinch: boolean,
+): number {
+  const pixels = deltaY * (deltaMode === 1 ? LINE_PIXELS : deltaMode === 2 ? PAGE_PIXELS : 1);
+  const capped = Math.max(-WHEEL_CAP, Math.min(WHEEL_CAP, pixels));
+  const factor = 2 ** (capped / (pinch ? PINCH_PER_DOUBLING : WHEEL_PER_DOUBLING));
+  return clampScale(metresPerPixel * factor);
+}
+
+/** A scale held inside the zoom range. */
+export function clampScale(metresPerPixel: number): number {
+  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, metresPerPixel));
+}
+
+/**
+ * One frame of the eased zoom: the scale moves toward `target` by the share of
+ * the gap that `seconds` closes. The easing is in the logarithm of the scale,
+ * so a zoom from 1 to 2 takes as long as one from 8 to 16. Close enough to the
+ * target, it lands on it, so the map stops redrawing.
+ */
+export function easeScale(current: number, target: number, seconds: number): number {
+  const k = 1 - Math.exp(-Math.max(0, seconds) / ZOOM_EASE);
+  const next = Math.exp(Math.log(current) + (Math.log(target) - Math.log(current)) * k);
+  return Math.abs(Math.log(next / target)) < 0.002 ? target : next;
+}
+
+/** Seconds the eased zoom takes to close two thirds of the gap. */
+const ZOOM_EASE = 0.09;
 
 /** The step `steps` along from `metresPerPixel`, clamped to the ends of the table. */
 export function zoomBy(metresPerPixel: number, steps: number): number {
@@ -407,6 +484,12 @@ export class MapPois {
   readonly fixed: readonly MapPoi[];
   /** Places a later system adds. Replace the array to change what is marked. */
   extra: readonly MapPoi[] = [];
+  /**
+   * The kinds of place the player has switched off in the legend of the full
+   * map. Both maps leave them out. The player, the waypoint and the objective
+   * are never hidden: they are what a map is opened for.
+   */
+  readonly hidden = new Set<PoiType>();
 
   constructor(world: WorldDescription) {
     this.fixed = collectPois(world);
@@ -422,6 +505,7 @@ export class MapPois {
     for (const list of [this.fixed, this.extra]) {
       for (const poi of list) {
         if (metresPerPixel > POI_STYLES[poi.type].maxScale) continue;
+        if (this.hidden.has(poi.type)) continue;
         if (poi.x < bounds.minX || poi.x > bounds.maxX) continue;
         if (poi.y < bounds.minY || poi.y > bounds.maxY) continue;
         out.push(poi);

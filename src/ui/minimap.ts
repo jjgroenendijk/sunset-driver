@@ -18,7 +18,8 @@
  * costs nothing, and driving costs one blit and the few hundred road segments
  * the window holds.
  */
-import { MapArt, type MapDrawOptions } from './map-draw.ts';
+import { distanceText, MapArt, type MapDrawOptions } from './map-draw.ts';
+import type { MapRoute } from './map-route.ts';
 import { rotationForHeading, unproject, type MapPois, type MapView } from './map.ts';
 
 /** The key that switches between a rotating map and a fixed-north one. Listed in `controls.ts`. */
@@ -56,6 +57,9 @@ export class Minimap {
   private drawnY = Infinity;
   private drawnAngle = Infinity;
   private drawnWaypoint = '';
+  private drawnRoute = -1;
+  /** How far the waypoint is, under the window. */
+  private readonly distance: HTMLElement;
 
   /** The territory overlay slot of spec section 12; see `MapDrawOptions.overlay`. */
   overlay: MapDrawOptions['overlay'];
@@ -69,6 +73,10 @@ export class Minimap {
     this.ctx = this.canvas.getContext('2d')!;
     this.root.append(this.canvas);
     parent.append(this.root);
+    this.distance = document.createElement('div');
+    this.distance.className = 'minimap-distance';
+    this.distance.hidden = true;
+    parent.append(this.distance);
     this.resize(this.root.clientWidth);
     // The style sheet sets the size, and `body.touch` or a turned phone can
     // change it after the window was built.
@@ -107,14 +115,20 @@ export class Minimap {
    * Draw the window around the player, if anything on it has moved. Called once
    * a frame; it returns without touching the canvas when nothing has changed.
    */
-  update(player: { x: number; y: number; heading: number }, waypoint: { x: number; y: number } | null): void {
+  update(
+    player: { x: number; y: number; heading: number },
+    waypoint: { x: number; y: number } | null,
+    route: MapRoute | null = null,
+    routeVersion = 0,
+  ): void {
     const angle = this.rotating ? rotationForHeading(player.heading) : 0;
     const mark = waypoint ? `${waypoint.x.toFixed(1)},${waypoint.y.toFixed(1)}` : '';
     if (
       Math.abs(player.x - this.drawnX) < MOVE_STEP &&
       Math.abs(player.y - this.drawnY) < MOVE_STEP &&
       Math.abs(angle - this.drawnAngle) < TURN_STEP &&
-      mark === this.drawnWaypoint
+      mark === this.drawnWaypoint &&
+      routeVersion === this.drawnRoute
     ) {
       return;
     }
@@ -122,6 +136,12 @@ export class Minimap {
     this.drawnY = player.y;
     this.drawnAngle = angle;
     this.drawnWaypoint = mark;
+    this.drawnRoute = routeVersion;
+    this.distance.hidden = waypoint === null;
+    if (waypoint) {
+      const metres = route ? route.length : Math.hypot(waypoint.x - player.x, waypoint.y - player.y);
+      this.distance.textContent = distanceText(metres);
+    }
 
     const size = this.size;
     const view: MapView = { x: player.x, y: player.y, metresPerPixel: SCALE, rotation: angle };
@@ -137,6 +157,7 @@ export class Minimap {
     this.art.draw(ctx, view, size, size, {
       player,
       waypoint,
+      route,
       iconSize: ICON,
       labels: false,
       overlay: this.overlay,
@@ -169,6 +190,7 @@ export class Minimap {
 
   destroy(): void {
     this.root.remove();
+    this.distance.remove();
   }
 }
 

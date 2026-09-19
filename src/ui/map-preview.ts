@@ -10,7 +10,9 @@
 import { createSimState } from '../sim/simulation.ts';
 import { TerritoryMap } from '../sim/territory.ts';
 import { generateWorld } from '../world/world.ts';
+import { buildRoadGraph } from '../world/graph.ts';
 import { MapArt, type MapDrawOptions } from './map-draw.ts';
+import { findRoute } from './map-route.ts';
 import { MapPois, rotationForHeading, type MapView } from './map.ts';
 import { TerritoryOverlay } from './territory.ts';
 
@@ -86,12 +88,18 @@ export async function renderMapPreview(request: MapPreviewRequest): Promise<MapP
     metresPerPixel: request.scale,
     rotation: request.rotate ? rotationForHeading(request.heading) : 0,
   };
+  // The route the game draws to a waypoint, found the way the game finds it.
+  const route = request.waypoint
+    ? findRoute(buildRoadGraph(world.roads), { x: request.x, y: request.y }, request.waypoint)
+    : null;
   const t2 = performance.now();
   art.draw(ctx, view, request.width, request.height, {
     player: { x: request.x, y: request.y, heading: request.heading },
     waypoint: request.waypoint,
-    iconSize: request.minimap ? 11 : 16,
+    route,
+    iconSize: request.minimap ? 11 : 18,
     labels: !request.minimap,
+    scaleBar: !request.minimap,
     ...(overlay ? { overlay } : {}),
   });
   const drawMs = performance.now() - t2;
