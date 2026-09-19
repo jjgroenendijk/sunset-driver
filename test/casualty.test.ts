@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { casualtyPose, emptyCasualtyPose, restDistance, restTicks } from '../src/sim/casualty-motion.ts';
+import { casualtyPose, emptyCasualtyPose, restDistance, restTicks, upright } from '../src/sim/casualty-motion.ts';
 import {
   BODY_CAP,
   collectBodies,
@@ -116,6 +116,19 @@ describe('casualties (spec section 13.1)', () => {
     expect(record.cash).toBe(0);
     expect(collectBodies(state, where.x, where.y, 5)).toBe(1);
     expect(record.gone).toBe(true);
+  });
+
+  it('keeps somebody lying on the ground down when they are hit again', () => {
+    const state = fresh();
+    const { id, at } = someone(state);
+    const first = hurtPerson(state, crowd, id, at, { ...SHOT, damage: 40 }) as NonNullable<ReturnType<typeof hurtPerson>>;
+    state.tick += restTicks(first) + 5;
+    const lying = casualtyPose(first, state.tick, emptyCasualtyPose());
+    expect(lying.phase).toBe('lie');
+    const again = hurtPerson(state, crowd, id, lying, { cause: 'car', damage: 10, dir: 0, push: 0.5, lift: 0 });
+    const r = again as NonNullable<typeof again>;
+    // Not stood up to fall again, so a car going over them is not a new strike.
+    for (let t = state.tick; t < state.tick + 60; t++) expect(upright(casualtyPose(r, t, emptyCasualtyPose()))).toBe(false);
   });
 
   it(`keeps no more than ${BODY_CAP} bodies`, () => {

@@ -31,7 +31,9 @@ import type { SimState } from './simulation.ts';
 import {
   casualtyPose,
   emptyCasualtyPose,
+  FALL_TICKS,
   PERSON_HEALTH,
+  upright,
   type Casualty,
   type CasualtyCause,
 } from './casualty-motion.ts';
@@ -129,6 +131,10 @@ export function hurtPerson(
   const was = casualtyOf(peds, id);
   if (was?.gone === true) return undefined;
   const already = was !== undefined && dead(was);
+  // Somebody already on the ground stays there: the new motion starts with
+  // the fall behind it rather than standing them up to fall again. Without
+  // this a car going over a body strikes it as a standing person every tick.
+  const lying = was !== undefined && lyingAt(was, state.tick);
   const health = Math.max(0, (was?.health ?? PERSON_HEALTH) - Math.max(0, blow.damage));
   const rng = rngFor(state.seed, state.tick, Subsystem.Casualties, hashInts(HIT_STREAM, id));
   const heavy = blow.damage >= KNOCKDOWN || blow.lift > 0 || blow.cause === 'car' || blow.cause === 'blast';
@@ -142,7 +148,7 @@ export function hurtPerson(
   const reach = ground === undefined ? REACH_MAX : ground.reach(pose.x, h + 0.9, pose.y, blow.dir, REACH_MAX);
   const record: Casualty = {
     id,
-    since: state.tick,
+    since: lying ? state.tick - FALL_TICKS : state.tick,
     first: was?.first ?? state.tick,
     cause: blow.cause,
     health,
@@ -235,6 +241,12 @@ export function collectBodies(state: SimState, x: number, y: number, radius: num
     count++;
   }
   return count;
+}
+
+/** True where a casualty is on the ground at a tick: fallen, lying or crawling. */
+function lyingAt(record: Casualty, tick: number): boolean {
+  const pose = casualtyPose(record, tick, emptyCasualtyPose());
+  return pose.phase !== 'air' && !upright(pose);
 }
 
 /** Take the oldest bodies away while more than {@link BODY_CAP} lie. */
