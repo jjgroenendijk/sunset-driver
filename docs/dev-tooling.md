@@ -188,7 +188,8 @@ had already paid for behind its loading screen. Its switches take one part of th
 `--no-water`, `--no-shadows`, `--no-lamps`, `--no-post` — so two runs say what that part costs, and
 `--dpr=2` is what a Retina display draws. `--tier-at=150:high,300:full` changes quality during the
 drive, at the drive frames named, the way the game's own monitor changes it — which is how a tier
-change is timed, by what the frames around it compiled.
+change is timed, by what the frames around it compiled. `--memory` adds what the GPU and the page
+hold, settled and at the most over the drive; `docs/performance.md` has the numbers it gave.
 
 GPU times move by several milliseconds between runs, so compare two builds by running them in turn,
 more than once each.

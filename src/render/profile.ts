@@ -19,6 +19,7 @@ import { generateWorld } from '../world/world.ts';
 import { FollowCamera } from './camera.ts';
 import { tickAtHour } from './daylight.ts';
 import { PostChain } from './post.ts';
+import { geometryBytes, gpuMemory, gpuPeak, installGpuLedger, type GpuMemory } from './memory.ts';
 import { FULL_TIER, QUALITY_TIERS } from './quality.ts';
 import { createRenderer } from './renderer.ts';
 import { warmPasses } from './warm.ts';
@@ -57,6 +58,8 @@ export interface ProfileRequest {
   tierAt?: string[];
   /** Wait for `window.startDrive()` before the drive, so a profiler can be started on it alone. */
   gate?: boolean;
+  /** Count what the GPU and the scene's geometry hold (`memory.ts`). */
+  memory?: boolean;
 }
 
 /** One frame, timed. */
@@ -84,10 +87,21 @@ export interface BatchKind {
   vertices: number;
 }
 
+/** What the frame held, standing still and at the most over the drive. */
+export interface MemorySample {
+  /** What the GPU holds once the still frames are drawn. */
+  settled: GpuMemory;
+  /** The most the GPU held over the drive. */
+  drivePeak: number;
+  /** Bytes of typed arrays the scene's geometry holds in the page, settled. */
+  geometry: number;
+}
+
 export interface ProfileResult {
   still: FrameSample[];
   drive: FrameSample[];
   kinds: Record<string, BatchKind>;
+  memory?: MemorySample;
 }
 
 /** The renderer's caches, which say when a frame compiled or built something. */
@@ -108,6 +122,7 @@ interface SceneOwners {
 
 export async function runProfile(request: ProfileRequest): Promise<ProfileResult> {
   const tier = QUALITY_TIERS.find((entry) => entry.name === request.quality) ?? FULL_TIER;
+  if (request.memory === true) installGpuLedger();
   const canvas = document.createElement('canvas');
   document.body.append(canvas);
   const renderer = await createRenderer(canvas);
@@ -174,6 +189,8 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
   const still: FrameSample[] = [];
   for (let i = 0; i < request.still; i++) still.push(await frame(start.x, start.y, start.heading, 0));
 
+  let memory: MemorySample | undefined;
+  if (request.memory === true) memory = { settled: gpuMemory(), drivePeak: 0, geometry: geometryBytes(scene.scene) };
   if (request.gate === true) {
     const gate = window as unknown as { driveReady: boolean; startDrive: () => void };
     await new Promise<void>((resolve) => {
@@ -194,6 +211,7 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
       return [Number(at), to] as const;
     }),
   );
+  gpuPeak();
   for (let i = 0; i < request.drive; i++) {
     const to = changes.get(i);
     if (to !== undefined) {
@@ -204,11 +222,13 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
     drive.push(await frame(start.x + dx * s, start.y + dy * s, start.heading, request.speed));
   }
 
+  if (memory !== undefined) memory.drivePeak = gpuPeak();
+
   post.dispose();
   scene.dispose();
   renderer.dispose();
   canvas.remove();
-  return { still, drive, kinds };
+  return { still, drive, kinds, ...(memory === undefined ? {} : { memory }) };
 }
 
 /**
