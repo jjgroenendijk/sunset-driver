@@ -67,6 +67,12 @@ nothing else, as a type, so a single-player build still pulls in no networking.
 - Both sides send `hello` when Trystero reports a peer. It carries the protocol, the seed, the
   sender's tick, whether the sender is the host, and the look they picked, so the room can draw
   them. A look that is not one of the creator's choices is wrapped into them rather than refused.
+- **Trystero reports a join once, to the handler set at that moment.** `openLink` builds the
+  `Party` on the link before it waits on the relays, because a peer already in the room can connect
+  inside that wait. A join reported to nobody is never greeted, and the room stays half open: the
+  host never counts the joiner, so it sends no beat, no world and no frames.
+- A `hello` from a peer not yet greeted is answered with our own. So one missed join event still
+  ends in a full handshake on both sides.
 - A peer on another seed or another protocol is turned away, and so is one that would be the seventh
   player. There is no message for a refusal: the other side reads our own `hello` and refuses us for
   the same reason, so both ends land on the same line without a round trip.

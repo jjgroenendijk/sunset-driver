@@ -112,12 +112,18 @@ export class PartyControl {
     this.changed();
     try {
       const [{ openLink }, { Party }] = await Promise.all([import('./link.ts'), import('./party.ts')]);
-      const link = await openLink(room);
       const now = this.record();
-      const party = new Party(link, { seed: this.seed, room, host, tick: now.tick, look: now.character });
-      party.onChange = (state) => this.settle(state);
-      party.onSnap = (tick) => this.onSnap?.(tick);
-      this.party = party;
+      // The party is built on the link before the relays answer, so a peer
+      // that connects during the wait is greeted rather than missed.
+      const party = await openLink(room, (link) => {
+        const opened = new Party(link, { seed: this.seed, room, host, tick: now.tick, look: now.character });
+        opened.onChange = (state) => this.settle(state);
+        opened.onSnap = (tick) => this.onSnap?.(tick);
+        return opened;
+      });
+      // A room that closed itself inside the wait, refused by its host, is
+      // already settled: holding it would leave the menu on a dead room.
+      if (party.state.phase !== 'offline') this.party = party;
     } catch (error) {
       // Every way of reaching the other browsers failed, and the game is
       // already running: it stays where it is, on its own (spec section 21.2,

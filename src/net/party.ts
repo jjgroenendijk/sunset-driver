@@ -107,6 +107,11 @@ export class Party {
   private readonly lock = new TickLock();
   /** The peers that got through the handshake, and whether each is the host. */
   private readonly peers = new Map<string, boolean>();
+  /**
+   * The peers this one has said hello to. A hello from anybody not in it is
+   * answered, so a join event this side never saw still ends in a handshake.
+   */
+  private readonly greeted = new Set<string>();
   /** Everybody else, as they are drawn and as they are sent to. */
   private readonly roster = new Roster();
   /** The host's side of the divergence set, or null on a peer that is not the host. */
@@ -205,6 +210,7 @@ export class Party {
     this.note = message;
     this.lock.release();
     this.peers.clear();
+    this.greeted.clear();
     this.roster.clear();
     this.incoming.length = 0;
     this.world = null;
@@ -256,6 +262,7 @@ export class Party {
       host: this.isHost,
       look: this.look,
     };
+    this.greeted.add(id);
     this.link.send('hello', hello, id);
   }
 
@@ -281,6 +288,9 @@ export class Party {
     if (!this.peers.has(from) && this.peers.size + 2 > MAX_PLAYERS) {
       return this.turnAway(from, hello, `The room is full at ${MAX_PLAYERS} players.`);
     }
+    // The peer greeted us, but a join this side missed means we never greeted
+    // it: without an answer the peer would wait for us for good.
+    if (!this.greeted.has(from)) this.greet(from);
     this.peers.set(from, hello.host);
     this.roster.admit(from, hello.look, this.now);
     this.joined = true;
@@ -355,6 +365,7 @@ export class Party {
 
   private left(id: string): void {
     const wasHost = this.peers.get(id) === true;
+    this.greeted.delete(id);
     this.peers.delete(id);
     this.roster.forget(id);
     if (wasHost && this.peers.size > 0) return this.migrate();
