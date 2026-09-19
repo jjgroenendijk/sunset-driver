@@ -128,6 +128,8 @@ interface Chain {
   effects: TslNode[];
   /** The SMAA node, where this graph has one. */
   antialias: TslNode | undefined;
+  /** Whether a frame has been drawn through this graph, which is what sets its effects up. */
+  drawn: boolean;
 }
 
 /** Everything on, at the display's own resolution. */
@@ -148,6 +150,8 @@ export class PostChain {
   private readonly graded = new Float32Array(LUT_LENGTH);
   /** Every graph built so far, by the effects it draws, so a tier change reuses one. */
   private readonly chains = new Map<string, Chain>();
+  /** The graph the pipeline draws through. */
+  private current: Chain | undefined;
   private settings: PostQuality;
   /** Which rebuild of the grade the table holds. */
   private step = -1;
@@ -266,6 +270,7 @@ export class PostChain {
   /** Draw the frame. This replaces `renderer.render`, which draws no effects. */
   render(): void {
     this.pipeline.render();
+    if (this.current !== undefined) this.current.drawn = true;
   }
 
   dispose(): void {
@@ -290,6 +295,7 @@ export class PostChain {
       chain = this.build();
       this.chains.set(key, chain);
     }
+    this.current = chain;
     this.pipeline.outputNode = chain.output;
     this.pipeline.needsUpdate = true;
     // Only the graph drawn needs its targets. Each graph holds its own at the
@@ -297,8 +303,13 @@ export class PostChain {
     // others are shrunk to a pixel, which frees their textures. An effect sizes
     // its targets to the frame before it draws, so a graph taken up again gets
     // them back without a compile.
+    //
+    // A graph never drawn is skipped: its targets are still a pixel, and bloom
+    // makes its blur materials on its first draw, so sizing it before throws.
+    // A phone meets this, because it starts on a lower tier than the graph the
+    // chain is built with.
     for (const [other, kept] of this.chains) {
-      if (other === key) continue;
+      if (other === key || !kept.drawn) continue;
       for (const effect of kept.effects) effect.setSize(1, 1);
     }
   }
@@ -326,7 +337,7 @@ export class PostChain {
 
     // The tone mapping above is the frame's; this is the encode the display
     // asks for, and nothing else.
-    return { output: renderOutput(colour, NoToneMapping), effects, antialias };
+    return { output: renderOutput(colour, NoToneMapping), effects, antialias, drawn: false };
   }
 
   /**
