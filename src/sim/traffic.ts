@@ -35,7 +35,7 @@ import { TICK_RATE } from './clock.ts';
 import { drawDriver, type Driver } from './driver.ts';
 import { createHolds, type Holds } from './hold.ts';
 import { EdgeIndex } from './edge-index.ts';
-import { RouteSampler, type RoutePoint } from './route-sample.ts';
+import { heightOff, RouteSampler, type BedTilt, type RoutePoint } from './route-sample.ts';
 import { SIGNAL_CYCLE, TrafficSignals } from './signals.ts';
 import { legAt, timeTour, walkTour, type Permit, type Tour } from './traffic-tour.ts';
 import { specOf, type VehicleClass, type VehicleState } from './vehicle.ts';
@@ -104,6 +104,8 @@ export interface TrafficRoads {
   busyAt?(x: number, y: number): number;
   /** The height the road drives at, `t` along a segment of a curve that stands at `(x, y)`. */
   heightAt(curve: number, segment: number, t: number, x: number, y: number): number;
+  /** How the road surface tilts there, inside a junction's mouth. Level across everywhere when left out. */
+  tiltAt?: BedTilt;
   /** The junctions, which is where the traffic lights stand. No lights when left out. */
   junctions?: JunctionMap;
   /**
@@ -213,8 +215,8 @@ export class AmbientTraffic {
     this.roads = roads;
     const graph = roads.graph;
     this.index = new EdgeIndex(roads.roads, graph, REACH, TRAFFIC_CELL);
-    this.sampler = new RouteSampler(roads.roads, graph, roads.heightAt);
-    this.point = { x: 0, y: 0, height: 0, rightX: 0, rightY: 0, edge: graph.edges[0] as RoadEdge };
+    this.sampler = new RouteSampler(roads.roads, graph, roads.heightAt, roads.tiltAt);
+    this.point = { x: 0, y: 0, height: 0, tiltX: 0, tiltY: 0, rightX: 0, rightY: 0, edge: graph.edges[0] as RoadEdge };
     this.tramLane = tramLaneOf(graph, roads.tram?.edges ?? []);
 
     const junctions = roads.junctions;
@@ -333,7 +335,7 @@ export class AmbientTraffic {
     // The right hand of the direction of travel, which is where the lane is.
     out.x = at.x + at.rightX * offset;
     out.y = at.y + at.rightY * offset;
-    out.height = at.height;
+    out.height = heightOff(at, offset);
   }
 
   /** Put the vehicles of one directed run of road down, and walk each its tour. */
@@ -504,6 +506,7 @@ export function trafficRoadsOf(
       return ZONE_TRAFFIC[district.zone] * (0.6 + 0.4 * district.density);
     },
     heightAt: (curve, segment, t) => bed.heightAt(curve, segment, t),
+    tiltAt: (curve, segment, t) => bed.profileAt(curve, segment, t),
     junctions,
     tram: world.tram,
   };

@@ -13,7 +13,7 @@
  * way the chunks are. Pure: the same world gives the same decks.
  */
 import { hypot } from '../core/libm.ts';
-import { RoadBeds } from './bed.ts';
+import { RoadBeds, surfaceHeight } from './bed.ts';
 import { buildRoadGraph } from './graph.ts';
 import { buildJunctions } from './junctions.ts';
 import { footprintHalfWidth } from './tiers.ts';
@@ -27,6 +27,13 @@ export interface DeckPoint {
   x: number;
   y: number;
   height: number;
+  /**
+   * Metres the surface rises per metre along `across`, as `RoadFrame.bank` in
+   * `ribbon.ts`. Zero away from a junction; inside a mouth the deck tilts as
+   * the junction's plane does, so a place `off` metres across stands at
+   * `height + bank * off`.
+   */
+  bank: number;
   /** Unit vector across the road, which the width is measured along. */
   acrossX: number;
   acrossY: number;
@@ -88,14 +95,11 @@ function spanOf(road: RoadCurve, stretch: { from: number; to: number }, beds: Ro
     const dx = (before?.x ?? 0) + (after?.x ?? 0);
     const dy = (before?.y ?? 0) + (after?.y ?? 0);
     const length = hypot(dx, dy) || 1;
-    points.push({
-      x: p.x,
-      y: p.y,
-      height: beds.pointHeight(road.id, i),
-      // Across the road is along it turned a quarter.
-      acrossX: -dy / length,
-      acrossY: dx / length,
-    });
+    // Across the road is along it turned a quarter.
+    const acrossX = -dy / length;
+    const acrossY = dx / length;
+    const profile = beds.pointProfile(road.id, i);
+    points.push({ x: p.x, y: p.y, height: profile.h, bank: surfaceHeight(0, profile.gx, profile.gy, acrossX, acrossY), acrossX, acrossY });
     minX = Math.min(minX, p.x);
     minY = Math.min(minY, p.y);
     maxX = Math.max(maxX, p.x);

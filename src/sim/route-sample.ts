@@ -3,16 +3,24 @@
  *
  * The traffic (`traffic.ts`) and the tram (`tram.ts`) both drive a loop of
  * edges and ask where on it a distance falls. This answers on the centreline:
- * the point, the road height under it and the right hand of the direction of
- * travel. The caller moves the point out into its own lane or track.
+ * the point, the road height under it, how the surface tilts there and the
+ * right hand of the direction of travel. The caller moves the point out into
+ * its own lane or track, and reads the height there with {@link heightOff}.
  */
 import { hypot } from '../core/libm.ts';
 import type { RoadEdge, RoadGraph } from '../world/graph.ts';
+import { surfaceHeight } from '../world/bed.ts';
 import type { Point, RoadCurve } from '../world/types.ts';
 import { legAt } from './traffic-timing.ts';
 
 /** The height of a road, `t` along a segment of a curve that stands at `(x, y)`. */
 export type BedHeight = (curve: number, segment: number, t: number, x: number, y: number) => number;
+
+/**
+ * How a road's surface tilts `t` along a segment of a curve: rise per metre
+ * along x and along y of the map, as a bed knot carries it in `bed.ts`.
+ */
+export type BedTilt = (curve: number, segment: number, t: number) => { gx: number; gy: number };
 
 /** A loop of edges and the metres round it each one starts at. */
 export interface RouteLegs {
@@ -27,6 +35,9 @@ export interface RoutePoint {
   x: number;
   y: number;
   height: number;
+  /** Rise per metre along x and along y of the map. Zero away from a junction's mouth. */
+  tiltX: number;
+  tiltY: number;
   rightX: number;
   rightY: number;
   /** The edge the point lies on. */
@@ -37,13 +48,16 @@ export class RouteSampler {
   private readonly roads: readonly RoadCurve[];
   private readonly graph: RoadGraph;
   private readonly heightAt: BedHeight;
+  private readonly tiltAt: BedTilt | undefined;
   /** Cumulative metres at each point of each edge, in its direction of travel. */
   private readonly runs: (Float64Array | undefined)[] = [];
 
-  constructor(roads: readonly RoadCurve[], graph: RoadGraph, heightAt: BedHeight) {
+  /** A road with no `tiltAt` is level across everywhere. */
+  constructor(roads: readonly RoadCurve[], graph: RoadGraph, heightAt: BedHeight, tiltAt?: BedTilt) {
     this.roads = roads;
     this.graph = graph;
     this.heightAt = heightAt;
+    this.tiltAt = tiltAt;
   }
 
   /** The point a distance round a route. A distance past either end wraps round the loop. */
@@ -67,7 +81,12 @@ export class RouteSampler {
     out.rightX = -(b.y - a.y) / length;
     out.rightY = (b.x - a.x) / length;
     out.edge = edge;
-    out.height = step > 0 ? this.heightAt(edge.curve, edge.start + k, f, out.x, out.y) : this.heightAt(edge.curve, edge.start - k - 1, 1 - f, out.x, out.y);
+    const segment = step > 0 ? edge.start + k : edge.start - k - 1;
+    const t = step > 0 ? f : 1 - f;
+    out.height = this.heightAt(edge.curve, segment, t, out.x, out.y);
+    const tilt = this.tiltAt?.(edge.curve, segment, t);
+    out.tiltX = tilt?.gx ?? 0;
+    out.tiltY = tilt?.gy ?? 0;
     return out;
   }
 
@@ -85,4 +104,9 @@ export class RouteSampler {
     this.runs[edge.id] = run;
     return run;
   }
+}
+
+/** The height of the road surface `offset` metres to the right of a point on its centreline. */
+export function heightOff(at: RoutePoint, offset: number): number {
+  return surfaceHeight(at.height, at.tiltX, at.tiltY, at.rightX * offset, at.rightY * offset);
 }
