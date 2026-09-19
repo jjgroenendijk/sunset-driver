@@ -28,7 +28,7 @@ import {
   RGBAFormat,
 } from 'three';
 import { GAITS, STRIDE_HEIGHT } from '../sim/pedestrian-look.ts';
-import { startledOf, startledPose, type AmbientPedestrians, type PedestrianPose } from '../sim/pedestrians.ts';
+import { casualtyOf, startledOf, startledPose, type AmbientPedestrians, type PedestrianPose } from '../sim/pedestrians.ts';
 import type { SimState } from '../sim/simulation.ts';
 import type { TramLine, WaitingPassenger } from '../sim/tram.ts';
 import type { PedestrianLook } from '../sim/pedestrian-look.ts';
@@ -135,11 +135,14 @@ export class PedestrianView {
     const maxX = x + PEDESTRIAN_VIEW;
     const maxY = y + PEDESTRIAN_VIEW;
     const startled = state.pedestrians.startled;
+    const hurt = state.pedestrians.casualties;
     let count = 0;
     for (const id of crowd.near(minX, minY, maxX, maxY, this.ids)) {
       if (count >= PEDESTRIAN_CAP) break;
       if (!crowd.edgeMeets(crowd.edgeAt(id, time), minX, minY, maxX, maxY)) continue;
       if (startled.length > 0 && startledOf(state.pedestrians, id) !== undefined) continue;
+      // Somebody who has been hit is drawn by `casualties.ts`, lying or limping.
+      if (hurt.length > 0 && casualtyOf(state.pedestrians, id) !== undefined) continue;
       if (!outInThis(id, this.share)) continue;
       const pose = crowd.poseAt(id, time, this.pose);
       if (pose.x < minX || pose.x > maxX || pose.y < minY || pose.y > maxY) continue;

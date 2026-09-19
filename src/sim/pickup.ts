@@ -7,8 +7,8 @@
  * player takes one by walking over it. `src/render/pickups.ts` draws them.
  *
  * A wrecked police unit leaves what its car held through {@link dropPoliceCar}
- * (`police.ts`). Nothing kills a pedestrian yet, so {@link dropCarried} is the
- * call the crowd of spec section 13.1 will make when it lands.
+ * (`police.ts`). A person of the crowd carries no weapon: what the dead of
+ * spec section 13.1 leave is a little cash on the body (`casualty.ts`).
  */
 import { rngFor, Subsystem } from '../core/rng.ts';
 import { cos, hypot, sin } from '../core/libm.ts';

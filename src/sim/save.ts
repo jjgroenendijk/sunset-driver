@@ -50,8 +50,10 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * calls the city has made and the engines and ambulances out on them. Version
  * 14 added the street crime of spec section 20.5: the incidents the player has
  * broken up, which is the one part of it that is not a function of the tick.
+ * Version 15 added the people of the crowd who have been hurt and killed (spec
+ * section 13.1): their health, the throw each is in, and the bodies still lying.
  */
-export const SAVE_VERSION = 14;
+export const SAVE_VERSION = 15;
 
 export interface SaveFile {
   format: typeof SAVE_FORMAT;

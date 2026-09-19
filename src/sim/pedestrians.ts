@@ -32,6 +32,7 @@ import { EdgeIndex } from './edge-index.ts';
 import { lookOf, strideOf, type Gait, type PedestrianLook } from './pedestrian-look.ts';
 import { Pavements, pavementOffset, type WalkPoint, type WalkRoute } from './pedestrian-route.ts';
 import { backOf, walkOut } from './traffic-tour.ts';
+import type { Casualty } from './casualty-motion.ts';
 import type { TrafficRoads } from './traffic.ts';
 
 /** Metres each way of one bucket of the index that says which people can be near a place. */
@@ -145,10 +146,47 @@ export interface StartledPedestrian {
 export interface PedestrianState {
   /** Ascending by id. */
   startled: StartledPedestrian[];
+  /**
+   * The people something has hit (`casualty.ts`), ascending by id. Nobody is
+   * in both lists: a hit takes a person out of the startled.
+   */
+  casualties: Casualty[];
 }
 
 export function createPedestrianState(): PedestrianState {
-  return { startled: [] };
+  return { startled: [], casualties: [] };
+}
+
+/** The record of a person who has been hit, or undefined for somebody nothing has hit. */
+export function casualtyOf(state: PedestrianState, id: number): Casualty | undefined {
+  const list = state.casualties;
+  let lo = 0;
+  let hi = list.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const at = (list[mid] as Casualty).id;
+    if (at === id) return list[mid];
+    if (at < id) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return undefined;
+}
+
+/**
+ * Where a person of the crowd stands at a moment, from their loop or from
+ * their fright, or undefined for somebody who has been hit: a casualty is
+ * posed by `casualty-motion.ts`, and lying down is not a walk.
+ */
+export function crowdPoseOf(
+  crowd: { poseAt(id: number, time: number, out: PedestrianPose): PedestrianPose },
+  state: PedestrianState,
+  id: number,
+  time: number,
+  out: PedestrianPose,
+): PedestrianPose | undefined {
+  if (state.casualties.length > 0 && casualtyOf(state, id) !== undefined) return undefined;
+  const startled = state.startled.length > 0 ? startledOf(state, id) : undefined;
+  return startled === undefined ? crowd.poseAt(id, time, out) : startledPose(startled, time, out);
 }
 
 /** The record of a startled person, or undefined while they still walk their loop. */
@@ -259,6 +297,7 @@ export class AmbientPedestrians {
     let count = 0;
     for (const id of this.near(x - radius, y - radius, x + radius, y + radius, ids)) {
       if (startledOf(state, id) !== undefined) continue;
+      if (state.casualties.length > 0 && casualtyOf(state, id) !== undefined) continue;
       this.poseAt(id, tick, pose);
       const dx = pose.x - x;
       const dy = pose.y - y;
