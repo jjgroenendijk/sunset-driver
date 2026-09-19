@@ -258,6 +258,12 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
   and reaching it is what counts as arriving.
 - A fire engine that has arrived calls `douseFires` every tick it stands there, so a fire that
   reaches the next car along while it is working is put out too.
+- A unit pulls away at `PULL_AWAY` and brakes at `BRAKE`, so it slows into a scene rather than
+  stopping dead at it. `clearAhead` is the road before it clear of the player: a player standing or
+  parked in its lane stops it `STAND_OFF` short, and it drives on once they move. It is a solid in
+  the physics (`emergency-bodies.ts`), so what it cannot see — the traffic — it still hits.
+- `onCall` is whether a unit has its lights and siren on: on the way in and at the scene, and not
+  on the way home. The renderer and the audio both read it.
 
 ## The ground the physics reads
 

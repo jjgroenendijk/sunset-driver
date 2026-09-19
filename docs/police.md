@@ -68,7 +68,9 @@ that raise the heat are in `docs/sim-and-ui.md`.
 - `PoliceBodies` (`police-bodies.ts`) gives the units inside the physics box a kinematic body, the
   way the trams have one, so a roadblock is a wall. It also answers `unitAt(handle)`, which is how a
   round that went into a police car finds the unit it hit; `gunfire.ts` calls `shootUnit` with the
-  share of the car the round took. The helicopter carries no body at all.
+  share of the car the round took. The helicopter carries no body at all. The class under it is
+  `CarBodies`, fed by a getter of its cars and the box each one stands as; `EmergencyBodies`
+  (`emergency-bodies.ts`) is the same class for the fire engines and the ambulances.
 - `PersonBodies` (`person-bodies.ts`) is the same file for people, in an upright capsule rather
   than a box. `UnitBodies` (`unit-bodies.ts`) holds one for the faction enforcers of spec section
   17.2 and one for the officers on foot, each fed by a getter of its list, and the police cars. It
