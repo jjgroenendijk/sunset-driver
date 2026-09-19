@@ -62,6 +62,8 @@ function unit(id: number, x: number, y: number, kind: PoliceKind = 'patrol'): Po
     goalX: x,
     goalY: y,
     crew: 2,
+    fired: -1_000_000,
+    incident: -1,
   };
 }
 

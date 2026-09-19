@@ -66,12 +66,23 @@ const FEEL_HEIGHT = 0.9;
 /** Ticks a beat is walked before its route is planned again. */
 const REPLAN = 3 * TICK_RATE;
 
-/** True where nothing solid stands on the line between two places at eye height. */
-export function inSight(ground: CasualtyGround | undefined, from: Officer, x: number, y: number, distance: number): boolean {
+/**
+ * True where nothing solid stands on the line between two places, `eye`
+ * metres over the ground `from` stands on: an officer's eyes, or a police
+ * car's over its own roof.
+ */
+export function inSight(
+  ground: CasualtyGround | undefined,
+  from: { x: number; y: number; height: number },
+  x: number,
+  y: number,
+  distance: number,
+  eye = EYE_HEIGHT,
+): boolean {
   if (ground === undefined || distance < 1) return true;
   const dir = atan2(y - from.y, x - from.x);
   // The ray stops a little short: the player's own body is solid to it.
-  return ground.reach(from.x, from.height + EYE_HEIGHT, from.y, dir, distance) >= distance - 1;
+  return ground.reach(from.x, from.height + eye, from.y, dir, distance) >= distance - 1;
 }
 
 export class Squad {

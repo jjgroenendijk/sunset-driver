@@ -13,8 +13,11 @@
  * player's own rounds share, so the flash, the streak and the crack of it are
  * drawn and played by the code that draws and plays the player's. A round
  * that hits a driver goes into the car rather than into them.
+ *
+ * The crew still in a car that has stopped fires the same guns out of the
+ * window, slower and worse, over the roof of the car.
  */
-import { rngFor, Subsystem } from '../core/rng.ts';
+import { rngFor, Subsystem, type Rng } from '../core/rng.ts';
 import { atan2, cos, hypot, sin } from '../core/libm.ts';
 import type { CasualtyGround } from './casualty.ts';
 import { heatStars } from './crime.ts';
@@ -22,7 +25,8 @@ import { damageVehicle } from './damage.ts';
 import { hurt } from './on-foot.ts';
 import { bark, mayFire, OFFICER_MUZZLE, officerWeapon, type Officer } from './officer.ts';
 import type { SimState } from './simulation.ts';
-import type { Quarry } from './squad.ts';
+import { CAR_EYE, type PoliceUnit } from './police.ts';
+import { inSight, type Quarry } from './squad.ts';
 import { markTracer, type TracerEnd } from './tracer.ts';
 import { headingOf, specOf } from './vehicle.ts';
 import { roundSeverity, weaponOf, type WeaponId } from './weapon.ts';
@@ -63,6 +67,10 @@ const MISS_WIDE: readonly [number, number] = [0.05, 0.16];
 const CHEST = 1.2;
 const DOOR = 0.8;
 
+/** How much slower and how much worse a crew fires out of a car's window than on foot. */
+const WINDOW_CADENCE = 1.5;
+const WINDOW_AIM = 0.7;
+
 /** Ticks since their last shot after which an officer opening fire says so. */
 const OPEN_FIRE = 5 * 60;
 
@@ -77,8 +85,7 @@ export function officerRange(weapon: WeaponId): number {
  */
 export function officerFire(state: SimState, officer: Officer, quarry: Quarry, sees: boolean, ground: CasualtyGround | undefined): void {
   officer.aiming = false;
-  const police = state.police;
-  if (!sees || !mayFire(state) || police.cuffs !== null || police.surrendered || state.player.health <= 0) return;
+  if (!sees || !mayShoot(state)) return;
   if (officer.task !== 'pursue' && officer.task !== 'cover') return;
   const weapon = officerWeapon(officer.kind, heatStars(state.heat));
   const drill = DRILLS[weapon] ?? FALLBACK;
@@ -92,19 +99,78 @@ export function officerFire(state: SimState, officer: Officer, quarry: Quarry, s
   if (state.tick - officer.fired > OPEN_FIRE) bark(state, 'fire', officer.x, officer.y);
   officer.fired = state.tick;
   const rng = rngFor(state.seed, state.tick, Subsystem.Officers, officer.id);
-  const moving = quarry.speed > MOVING ? MOVING_AIM : 1;
-  const chance = drill.accuracy * (1 - (RANGE_FALLOFF * distance) / drill.range) * moving;
-  const driving = state.player.driving;
-  const aimH = driving ? state.vehicle.y - specOf(state.vehicle.cls).halfHeight + DOOR : state.player.height + CHEST;
   const x = officer.x + cos(officer.heading) * 0.45;
   const y = officer.y + sin(officer.heading) * 0.45;
-  const h = officer.height + OFFICER_MUZZLE;
+  const muzzle = { id: officer.id, standX: officer.x, standY: officer.y, x, y, h: officer.height + OFFICER_MUZZLE, heading: officer.heading };
+  shoot(state, muzzle, weapon, drill, quarry, distance, 1, rng, ground);
+}
+
+/**
+ * One tick of the crew still in a police car: out of the window of a car that
+ * has stopped, at a player the car can see, with the gun an officer of its
+ * crew would draw on foot. They fire slower and worse than they would standing
+ * in the street. A car that is moving, the helicopter and a car whose crew is
+ * out do not fire.
+ */
+export function unitFire(state: SimState, unit: PoliceUnit, quarry: Quarry, ground: CasualtyGround | undefined): void {
+  if (unit.kind === 'helicopter' || unit.crew <= 0 || unit.speed > 0.5 || !mayShoot(state)) return;
+  const stars = heatStars(state.heat);
+  const weapon = officerWeapon(unit.kind === 'swat' ? 'swat' : 'patrol', stars);
+  const drill = DRILLS[weapon] ?? FALLBACK;
+  const distance = hypot(quarry.x - unit.x, quarry.y - unit.y);
+  if (distance > drill.range || state.tick - unit.fired < drill.cadence * WINDOW_CADENCE) return;
+  if (!inSight(ground, unit, quarry.x, quarry.y, distance, CAR_EYE)) return;
+  if (state.tick - unit.fired > OPEN_FIRE) bark(state, 'fire', unit.x, unit.y);
+  unit.fired = state.tick;
+  const rng = rngFor(state.seed, state.tick, Subsystem.UnitFire, unit.id);
+  const muzzle = { id: unit.id, standX: unit.x, standY: unit.y, x: unit.x, y: unit.y, h: unit.height + CAR_EYE, heading: atan2(quarry.y - unit.y, quarry.x - unit.x) };
+  shoot(state, muzzle, weapon, drill, quarry, distance, WINDOW_AIM, rng, ground);
+}
+
+/** True while the police may shoot at all: at the heat for it, at a player not in their hands. */
+function mayShoot(state: SimState): boolean {
+  const police = state.police;
+  return mayFire(state) && police.cuffs === null && !police.surrendered && state.player.health > 0;
+}
+
+/** Where a shot leaves the gun: the shooter's id, where they stand, the muzzle and the way it points. */
+interface Muzzle {
+  id: number;
+  standX: number;
+  standY: number;
+  x: number;
+  y: number;
+  h: number;
+  heading: number;
+}
+
+/**
+ * Fire one shot of a drill at the player from a muzzle: the rounds it throws
+ * as tracers, and what those that land do. `aim` is a share of the drill's
+ * accuracy the shooter keeps. The draws come from the shooter's own stream.
+ */
+function shoot(
+  state: SimState,
+  muzzle: Muzzle,
+  weapon: WeaponId,
+  drill: Drill,
+  quarry: Quarry,
+  distance: number,
+  aim: number,
+  rng: Rng,
+  ground: CasualtyGround | undefined,
+): void {
+  const moving = quarry.speed > MOVING ? MOVING_AIM : 1;
+  const chance = drill.accuracy * (1 - (RANGE_FALLOFF * distance) / drill.range) * moving * aim;
+  const driving = state.player.driving;
+  const aimH = driving ? state.vehicle.y - specOf(state.vehicle.cls).halfHeight + DOOR : state.player.height + CHEST;
+  const { x, y, h } = muzzle;
   let landed = 0;
   for (let round = 0; round < drill.rounds; round++) {
     const hit = rng.float() < chance;
     const wide = hit ? 0 : rng.range(MISS_WIDE[0], MISS_WIDE[1]) * (rng.float() < 0.5 ? -1 : 1);
     if (hit) landed += 1;
-    const dir = officer.heading + wide;
+    const dir = muzzle.heading + wide;
     const reach = hit ? distance : drill.range;
     const blocked = hit || ground === undefined ? reach : ground.reach(x, h, y, dir, reach);
     const end: TracerEnd = hit ? (driving ? 'vehicle' : 'person') : blocked < reach ? 'hard' : 'none';
@@ -122,10 +188,10 @@ export function officerFire(state: SimState, officer: Officer, quarry: Quarry, s
   // panel rule reads, as the player's own rounds go into a panel.
   const v = state.vehicle;
   const turn = headingOf(v);
-  const dx = v.x - officer.x;
-  const dy = v.z - officer.y;
+  const dx = v.x - muzzle.standX;
+  const dy = v.z - muzzle.standY;
   const along = dx * cos(turn) + dy * sin(turn);
   const across = -dx * sin(turn) + dy * cos(turn);
   const scale = 1 / Math.max(1e-6, hypot(along, across));
-  damageVehicle(v.damage, specOf(v.cls), roundSeverity(spec) * landed, along * scale, across * scale, 0.3, state.seed, state.tick, officer.id);
+  damageVehicle(v.damage, specOf(v.cls), roundSeverity(spec) * landed, along * scale, across * scale, 0.3, state.seed, state.tick, muzzle.id);
 }

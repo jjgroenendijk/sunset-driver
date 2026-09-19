@@ -418,13 +418,14 @@ export function squealOf(state: SimState): number {
 
 /**
  * The sirens worth carrying: the nearest {@link SIREN_VOICES} units that are
- * driving, which is every unit but the helicopter. Each wails on its own phase,
+ * driving, which is every unit but the helicopter and a car driving off once
+ * its call is over. Each wails on its own phase,
  * keyed on the unit's id, so a pair of cars beat against each other.
  */
 export function sirensOf(state: SimState, listener: Listener): SirenPlan[] {
   const heard: { unit: PoliceUnit; at: Heard }[] = [];
   for (const unit of state.police.units) {
-    if (unit.kind === 'helicopter') continue;
+    if (unit.kind === 'helicopter' || unit.task === 'leave') continue;
     const at = hear(listener, unit.x, unit.y);
     if (at.gain > 0) heard.push({ unit, at });
   }

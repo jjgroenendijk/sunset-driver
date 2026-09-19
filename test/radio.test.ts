@@ -45,7 +45,7 @@ function input(over: Partial<InputFrame> = {}): InputFrame {
 }
 
 function unit(id: number, x: number, y: number, kind: PoliceKind = 'patrol'): PoliceUnit {
-  return { id, kind, task: 'chase', x, y, heading: 0, height: 0, speed: 10, health: 100, edges: [], distance: 0, planned: 0, goalX: x, goalY: y, crew: 2 };
+  return { id, kind, task: 'chase', x, y, heading: 0, height: 0, speed: 10, health: 100, edges: [], distance: 0, planned: 0, goalX: x, goalY: y, crew: 2, fired: -1_000_000, incident: -1 };
 }
 
 describe('the dial', () => {
