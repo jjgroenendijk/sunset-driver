@@ -27,6 +27,8 @@ export interface DrawnPlayer {
   height: number;
   heading: number;
   speed: number;
+  /** Whether the player is in a vehicle, which the follow camera pulls back for. */
+  driving: boolean;
 }
 
 /** Blend two numbers. */
@@ -75,7 +77,7 @@ interface VehiclePose {
 export class RenderSmoother {
   private readonly player: PlayerPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
   private readonly vehicle: VehiclePose = { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1, wheels: [] };
-  private readonly drawnPlayer: DrawnPlayer = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
+  private readonly drawnPlayer: DrawnPlayer = { x: 0, y: 0, height: 0, heading: 0, speed: 0, driving: false };
   private scratch: VehicleState | undefined;
   /** Whether a pose has been captured, so the first frame draws the record itself. */
   private held = false;
@@ -128,6 +130,7 @@ export class RenderSmoother {
       out.height = p.height;
       out.heading = p.heading;
       out.speed = p.speed;
+      out.driving = p.driving;
       return out;
     }
     const was = this.player;
@@ -136,6 +139,7 @@ export class RenderSmoother {
     out.height = lerp(was.height, p.height, alpha);
     out.heading = lerpAngle(was.heading, p.heading, alpha);
     out.speed = lerp(was.speed, p.speed, alpha);
+    out.driving = p.driving;
     return out;
   }
 
