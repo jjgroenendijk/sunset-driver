@@ -2,11 +2,11 @@ import { normaliseAppearance, type CharacterAppearance } from '../sim/character.
 import type { WorldSource } from '../render/world-source.ts';
 import type { WorldDescription } from '../world/types.ts';
 import { MenuPages } from './menu-pages.ts';
-import type { BuildingViewChoice, SoundChoice } from './settings.ts';
+import type { MenuSettings } from './settings.ts';
 import { buildCameraPage } from './title-camera.ts';
-import { buildSoundPage } from './title-sound.ts';
 import { buildControlsPage } from './title-controls.ts';
-import { button, menuList, type MenuItem, page } from './title-parts.ts';
+import { columnsOf, menuList, type MenuItem, page } from './title-parts.ts';
+import { buildSettingsPage } from './title-settings.ts';
 import { NewGamePage } from './title-setup.ts';
 
 /** What the player settled on before the session starts. */
@@ -31,9 +31,9 @@ export interface TitleChoice {
 }
 
 /** The numerals the main page counts its items with, however many it has. */
-const NUMERALS = ['I', 'II', 'III', 'IV'];
+const NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI'];
 
-const PAGE_NAMES = ['main', 'setup', 'settings', 'controls', 'camera', 'sound'] as const;
+const PAGE_NAMES = ['main', 'setup', 'settings', 'controls', 'camera'] as const;
 type PageName = (typeof PAGE_NAMES)[number];
 
 /** The page Escape and Back go to from each page. */
@@ -41,19 +41,21 @@ const PARENT: Record<PageName, PageName | null> = {
   main: null,
   setup: 'main',
   settings: 'main',
-  controls: 'settings',
+  controls: 'main',
   camera: 'settings',
-  sound: 'settings',
 };
+
+/** The pages that open as a column beside their parent. New game takes the whole screen. */
+const COLUMNS: ReadonlySet<PageName> = new Set(['settings', 'controls', 'camera']);
 
 /**
  * The title screen of spec section 12, laid out as a game's main menu. The
- * main page offers New game, Load game and Settings, and Settings offers
- * Controls, Camera (`title-camera.ts`) and Sound (`title-sound.ts`). Load game
- * stays disabled
- * until it lists the saves the pause menu writes (#273). New game is the seed
- * entry, the map of the seed and character creation (`title-setup.ts`), and
- * Controls is the binding list (`title-controls.ts`).
+ * main page offers New game, Load game, Controls, Graphics and Options, as the
+ * pause menu does. Controls and Options open as a column beside it
+ * (`title-settings.ts`), and Camera as a column beside Options. Load game and
+ * Graphics stay disabled until there is something behind them; Load game waits
+ * for a list of the saves the pause menu writes (#273). New game is the seed entry, the map of the seed and character creation
+ * (`title-setup.ts`), and Controls is the binding list (`title-controls.ts`).
  *
  * The arrow keys walk the items of the page on screen, Enter picks one and
  * Escape goes back up one page. The pointer moves the same focus, so the
@@ -79,9 +81,8 @@ export class TitleScreen {
     initial: TitleChoice,
     worlds: WorldSource,
     onPreview: (appearance: CharacterAppearance) => void,
-    buildingView: BuildingViewChoice,
+    settings: MenuSettings,
     touch: boolean,
-    sound: SoundChoice,
     room: string | null = null,
   ) {
     this.touch = touch;
@@ -101,12 +102,11 @@ export class TitleScreen {
     const pages: Record<PageName, HTMLElement> = {
       main: this.buildMain(),
       setup: this.setup.root,
-      settings: this.buildSettings(),
+      settings: buildSettingsPage(settings, () => this.back()),
       controls: buildControlsPage(() => this.back(), touch),
-      camera: buildCameraPage(buildingView, () => this.back()),
-      sound: buildSoundPage(sound, () => this.back()),
+      camera: buildCameraPage(settings.buildingView, () => this.back()),
     };
-    this.pages = new MenuPages(this.root, pages, PARENT, 'main');
+    this.pages = new MenuPages(this.root, pages, PARENT, 'main', COLUMNS);
 
     const brand = document.createElement('header');
     brand.className = 'title-brand';
@@ -121,7 +121,7 @@ export class TitleScreen {
       '<span><kbd>↑</kbd><kbd>↓</kbd> Choose</span><span><kbd>Enter</kbd> Confirm</span>' +
       '<span><kbd>Esc</kbd> Back</span>';
 
-    this.root.append(brand, ...PAGE_NAMES.map((name) => pages[name]), hint);
+    this.root.append(brand, columnsOf(PAGE_NAMES.map((name) => pages[name])), hint);
     window.addEventListener('keydown', this.onKey);
     parent.append(this.root);
 
@@ -147,8 +147,7 @@ export class TitleScreen {
       ? [
           {
             numeral: 'I',
-            label: 'Explore the city',
-            note: 'Fly over the world with two thumbs',
+            label: 'Explore',
             action: () => this.finish(true),
           },
         ]
@@ -156,54 +155,20 @@ export class TitleScreen {
     const numeral = (at: number): string => NUMERALS[at + explore.length] ?? '';
     const first: MenuItem =
       this.room === null
-        ? { numeral: numeral(0), label: 'New game', note: 'Choose a city and a driver', action: () => this.show('setup') }
-        : { numeral: numeral(0), label: 'Join game', note: `Room ${this.room} · choose a driver`, action: () => this.show('setup') };
+        ? { numeral: numeral(0), label: 'New game', action: () => this.show('setup') }
+        : { numeral: numeral(0), label: 'Join game', action: () => this.show('setup') };
     if (this.room !== null) main.append(inviteBanner(this.room, this.seed));
     main.append(
       menuList([
         ...explore,
         first,
-        { numeral: numeral(1), label: 'Load game', note: 'Saves come in a later version', action: null },
-        {
-          numeral: numeral(2),
-          label: 'Settings',
-          note: 'Controls, camera, graphics and sound',
-          action: () => this.show('settings'),
-        },
+        { numeral: numeral(1), label: 'Load game' },
+        { numeral: numeral(2), label: 'Controls', opens: 'controls' },
+        { numeral: numeral(3), label: 'Graphics' },
+        { numeral: numeral(4), label: 'Options', opens: 'settings' },
       ]),
     );
     return main;
-  }
-
-  private buildSettings(): HTMLElement {
-    const settings = page('title-page title-settings');
-    const menu = menuList(
-      [
-        {
-          numeral: 'I',
-          label: 'Controls',
-          note: 'The keys for the street and the map',
-          action: () => this.show('controls'),
-        },
-        {
-          numeral: 'II',
-          label: 'Camera',
-          note: 'When a building is in the way',
-          action: () => this.show('camera'),
-        },
-        { numeral: 'III', label: 'Graphics', note: 'Comes in a later version', action: null },
-        {
-          numeral: 'IV',
-          label: 'Sound',
-          note: 'The engine, the street and the mute',
-          action: () => this.show('sound'),
-        },
-      ],
-      'Settings',
-    );
-    menu.append(button('title-back', 'Back', () => this.back()));
-    settings.append(menu);
-    return settings;
   }
 
   private show(name: PageName): void {
@@ -244,9 +209,7 @@ function inviteBanner(room: string, seed: string): HTMLElement {
   const heading = document.createElement('h2');
   heading.textContent = `Join room ${room}`;
   const city = document.createElement('p');
-  city.textContent = `Another player opened this game. You drive in their city, seed ${seed}, with them.`;
-  const alone = document.createElement('p');
-  alone.textContent = 'To play on your own, open the game without the link.';
-  banner.append(eyebrow, heading, city, alone);
+  city.textContent = `Seed ${seed}`;
+  banner.append(eyebrow, heading, city);
   return banner;
 }

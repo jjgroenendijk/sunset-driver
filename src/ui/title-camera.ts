@@ -1,12 +1,12 @@
 import { BUILDING_VIEWS, type BuildingViewChoice } from './settings.ts';
-import { button, menuList, page } from './title-parts.ts';
+import { backButton, menuList, page } from './title-parts.ts';
 
 const NUMERALS = ['I', 'II', 'III', 'IV'];
 
 /**
- * The Camera page of the title screen and of the pause menu: what happens when
+ * The Camera column of the title screen and of the pause menu: what happens when
  * a building stands between the camera and the player (spec section 10.7).
- * The chosen item carries `aria-pressed` and takes the focus when the page
+ * The chosen item carries `aria-pressed` and takes the focus when the column
  * opens. A pick takes effect at once.
  */
 export function buildCameraPage(setting: BuildingViewChoice, back: () => void): HTMLElement {
@@ -15,13 +15,12 @@ export function buildCameraPage(setting: BuildingViewChoice, back: () => void): 
     BUILDING_VIEWS.map((choice, i) => ({
       numeral: NUMERALS[i] as string,
       label: choice.label,
-      note: choice.note,
       action: () => {
         setting.choose(choice.value);
         mark();
       },
     })),
-    'When a building is in the way',
+    'Buildings',
   );
   const items = [...menu.querySelectorAll<HTMLButtonElement>('.title-menu-item')];
   const mark = (): void => {
@@ -34,8 +33,7 @@ export function buildCameraPage(setting: BuildingViewChoice, back: () => void): 
     });
   };
   mark();
-  const done = button('title-back', 'Back', back);
-  menu.append(done);
+  menu.append(backButton(back));
   root.append(menu);
   return root;
 }

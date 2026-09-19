@@ -144,8 +144,8 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
 - Muted means **no graph at all**, not a gain of zero: the mixer is disposed of and rebuilt on the
   next unmuted frame. Spec section 15 asks that nothing be synthesised when muted, and a silent
   oscillator is still an oscillator.
-- The setting lives in `ui/settings.ts` beside the camera one, and `ui/title-sound.ts` is the page
-  the title screen and the pause menu both show.
+- The setting lives in `ui/settings.ts` beside the camera one. It is the Sound checkbox of the
+  Options column (`ui/title-settings.ts`), which the title screen and the pause menu both show.
 
 ## Traps
 

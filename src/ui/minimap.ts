@@ -3,8 +3,8 @@
  * following the player.
  *
  * It is drawn through `MapArt`, so it shows the same roads, sand, tram line and
- * icons the full map shows. `N` switches between rotating, where the player's
- * facing is up, and fixed-north, which the spec leaves to the player's choice.
+ * icons the full map shows. It turns so the player's facing is up, or keeps
+ * north up, which the spec leaves to the player's choice: a checkbox in Settings.
  *
  * A rotating map works the way a driving game's corner map does: the arrow
  * stays in the middle pointing up, the world turns under it, and a letter N on
@@ -21,9 +21,6 @@
 import { distanceText, MapArt, type MapDrawOptions } from './map-draw.ts';
 import type { MapRoute } from './map-route.ts';
 import { rotationForHeading, unproject, type MapPois, type MapView } from './map.ts';
-
-/** The key that switches between a rotating map and a fixed-north one. Listed in `controls.ts`. */
-export const MINIMAP_NORTH_KEY = 'KeyN';
 
 /** Pixels across the minimap until the page has laid it out. */
 const SIZE = 190;
@@ -99,16 +96,16 @@ export class Minimap {
     return this.art.pois;
   }
 
-  /** Switch between a rotating map and a fixed-north one (spec section 12). */
-  toggleNorth(): boolean {
-    this.rotating = !this.rotating;
-    this.drawnX = Infinity;
-    return this.rotating;
-  }
-
-  /** True while the map turns with the player. */
+  /** True while the map keeps north up rather than turning with the player. */
   get northUp(): boolean {
     return !this.rotating;
+  }
+
+  /** Keep north up, or turn with the player (spec section 12). The frame hands it the setting. */
+  set northUp(north: boolean) {
+    if (north !== this.rotating) return;
+    this.rotating = !north;
+    this.drawnX = Infinity;
   }
 
   /**

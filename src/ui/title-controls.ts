@@ -1,6 +1,6 @@
 import { CONTROLS, TOUCH_CONTROLS } from './controls.ts';
 import { keyParts } from './menu-nav.ts';
-import { button, card, page } from './title-parts.ts';
+import { backButton, card, page } from './title-parts.ts';
 
 /**
  * The Controls page of the title screen: every binding of `controls.ts`, drawn
@@ -10,8 +10,8 @@ import { button, card, page } from './title-parts.ts';
 export function buildControlsPage(back: () => void, touch = false): HTMLElement {
   const root = page('title-page title-keys');
   const sheet = touch
-    ? card('I', 'Touch controls', 'Explore the city flies the camera over the world.')
-    : card('I', 'Controls', 'The same list is in the README.');
+    ? card('I', 'Touch')
+    : card('I', 'Controls');
 
   const list = document.createElement('dl');
   list.className = 'title-key-list';
@@ -28,9 +28,7 @@ export function buildControlsPage(back: () => void, touch = false): HTMLElement 
   }
   sheet.append(list);
 
-  const done = button('title-back', 'Back', back);
-  done.dataset.autofocus = '';
-  sheet.append(done);
+  sheet.append(backButton(back));
   root.append(sheet);
   return root;
 }

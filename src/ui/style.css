@@ -49,7 +49,6 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .map-legend.folded .map-legend-head { border-bottom: 0; }
 .map-legend.folded .map-legend-fold { transform: rotate(180deg); }
 .map-legend.folded > :not(.map-legend-head) { display: none; }
-.map-canvas:active { cursor: grabbing; }
 .map-hint { padding: .5rem; text-align: center; font-size: .7rem; letter-spacing: .16em; text-transform: uppercase; color: rgba(243,235,219,.6); }
 .crosshair, .crosshair-lock { position: fixed; left: 0; top: 0; z-index: 2; width: 0; height: 0; pointer-events: none; }
 .crosshair { --gap: 8px; --tick: #f6e7d8; }

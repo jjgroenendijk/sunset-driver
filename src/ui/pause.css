@@ -1,32 +1,31 @@
 /* The pause menu (`pause.ts`). It is drawn with the title screen's classes, so
-   only what differs is here: a darker veil over the running city, a menu of
-   eight items set smaller, and the seed card and the save text. */
+   only what differs is here: a darker veil over the running city, the columns
+   set from the middle, and the seed card and the save text. */
 .pause { z-index: 10; background: rgba(23,17,13,.78); }
 .pause .title-brand h1 { font-size: clamp(2rem, 4vw, 3rem); }
-.pause .title-menu-item { padding: .55rem .9rem; }
-.pause .title-menu-label { font-size: 1.35rem; }
-/* A pause menu is there at once: the pages do not rise in as the title's do. */
-.pause .title-page:not([hidden]) > * { animation: none; }
+.pause .menu-columns { padding-left: max(0px, calc(50% - 26rem)); }
+/* The HUD and the panels over play would show through the veil beside the menu, so they go while it is open. */
+body:has(.pause:not([hidden])) :is(.hud-left, .hud-right, .hud-top, .hud-ring, .hud-speed, .hud-fate, .minimap, .picker, .shop, .home, .job, .trade, .travel, .hotwire, .touch-bar, .free-camera-hint) { visibility: hidden; }
+/* A pause menu is there at once: the main page does not rise in as the title's does. */
+.pause .title-page:not([hidden]):not([data-column]) > * { animation: none; }
 /* Escape on the main page resumes, so the hint for it stays. */
 .pause[data-page="main"] .title-hint span:last-child { display: inline-flex; }
 
-.pause-main { grid-template-columns: minmax(0, 23rem) minmax(0, 22rem); justify-content: center; align-items: start; column-gap: 2rem; row-gap: 1.25rem; }
 .pause-seed { margin: 0; font: 400 1.6rem/1.2 var(--it-serif); letter-spacing: .03em; overflow-wrap: anywhere; }
 .pause-row { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1rem; }
 .pause .pause-row .title-back { margin-top: 0; padding: .7rem 1.2rem; }
 .pause .pause-row .title-cta { padding: .7rem 1.2rem; }
 .pause-status { min-height: 1.4em; margin: .9rem 0 0; font: italic .9rem var(--it-serif); color: var(--it-muted); }
 
-.pause-transfer .title-card, .pause-party .title-card { justify-self: center; width: min(38rem, 100%); }
+.pause-transfer .title-card, .pause-party .title-card, .pause-city .title-card { width: min(26rem, 100%); padding: 1.3rem 1.4rem; }
+.pause-city .title-card { width: min(20rem, 100%); }
+.pause .pause-status:empty { display: none; }
+.pause-party { gap: .75rem; }
+.pause .title-menu .pause-status { margin: .4rem .9rem 0; }
 .pause-text { box-sizing: border-box; width: 100%; min-height: 10rem; padding: .6rem; border: 1px solid rgba(35,28,22,.35); background: #fffaf0; color: var(--it-ink); font: .72rem/1.4 ui-monospace, Menlo, Consolas, monospace; overflow-wrap: anywhere; resize: vertical; }
 .pause-text:focus { border-color: var(--it-rosso); outline: none; }
 /* The invite link is one line, and it is read rather than written in. */
 .pause-invite { min-height: 3.2rem; background: #f6efe2; }
 
 /* The binding list is longer than the room under the heading, so it scrolls inside its card. */
-.pause .title-keys { align-items: start; }
-.pause .title-keys .title-card { justify-self: center; max-height: calc(100vh - 17rem); }
-
-@media (max-width: 720px) {
-  .pause-main { grid-template-columns: 1fr; }
-}
+.pause .title-keys .title-card { max-height: calc(100vh - 12rem); }

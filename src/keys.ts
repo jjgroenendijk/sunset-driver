@@ -13,7 +13,7 @@ import type { SimState } from './sim/simulation.ts';
 import { FREE_CAMERA_KEY, type FreeCameraControls } from './ui/free-camera.ts';
 import { DEV_INFO_KEY } from './ui/hud.ts';
 import { MAP_CENTRE_KEY, MAP_KEY, MAP_LEGEND_KEY, type MapScreen } from './ui/map-screen.ts';
-import { MINIMAP_NORTH_KEY, type Minimap } from './ui/minimap.ts';
+import type { Minimap } from './ui/minimap.ts';
 import { PAUSE_KEY, type PauseMenu } from './ui/pause.ts';
 import { PICKER_KEY, type VehiclePicker } from './ui/vehicle-picker.ts';
 import { WEAPON_PICKER_KEY, type WeaponPicker } from './ui/weapon-picker.ts';
@@ -71,7 +71,6 @@ export function listenForKeys(target: Window, keys: KeyTargets): void {
     if (event.code === ARREST_KEY) state.arrested = true;
     if (event.code === CRIME_KEY) commitCrime(state, 'assault');
     if (event.code === MAP_KEY) map.toggle();
-    if (event.code === MINIMAP_NORTH_KEY) minimap.toggleNorth();
     if (event.code === 'Escape' && map.open) map.toggle();
     if (map.open && (event.code === 'Equal' || event.code === 'NumpadAdd')) map.zoom(-1);
     if (map.open && (event.code === 'Minus' || event.code === 'NumpadSubtract')) map.zoom(1);

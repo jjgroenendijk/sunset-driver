@@ -31,15 +31,14 @@ how the steps are watched on a machine that does not need them.
 | Handbrake, jump | Space |
 | Horn | H |
 | Enter or leave vehicle or shop, hotwire, interact | E |
-| Fire, swing | F |
-| Aim | Q |
+| Fire, swing | Left click or F |
+| Aim | Right click or Q |
 | Reload | R |
 | Cycle weapon | C |
 | Radio: next, previous station | ] and [ |
 | Metro or shop: the row on the panel | 1 to 9 |
 | Pause menu | Esc |
 | Map | M |
-| Minimap north up | N |
 | Vehicle picker | V |
 | Weapon picker | G |
 | Debug: developer info | F3 |
@@ -49,7 +48,7 @@ how the steps are watched on a machine that does not need them.
 ## On a phone
 
 A phone reaches none of those keys, so it is offered the city instead of the game. The title screen
-opens on **Explore the city**, which starts the seed in the box straight into the free camera, two
+opens on **Explore**, which starts the seed in the box straight into the free camera, two
 hundred metres over the streets. The left thumb flies it, a drag anywhere turns the view, a pinch
 sets the speed, and the keys down the right edge rise, fall and go six times as fast. Menu, Map and
 Land sit in the top corner.

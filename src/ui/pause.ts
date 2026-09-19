@@ -1,7 +1,10 @@
 /**
- * The pause menu of spec section 12: resume, save, load, export and import of a
- * save, the controls, the camera setting, the seed and a copy of it,
- * regenerate, quit, and the room of spec section 21 (`party.ts`).
+ * The pause menu of spec section 12. The main list is Resume, Multiplayer,
+ * Save game, Load game, Controls, Graphics, Options and Quit to main menu. Every
+ * item but Resume, Graphics and Quit opens a column beside the list, and Export, Import and Camera
+ * open one beside that. Multiplayer is the room of spec section 21 (`party.ts`)
+ * and the city's seed; Load game also holds New city, which starts again on a
+ * fresh seed.
  *
  * It is drawn in the look of the title screen and walked the same way, through
  * `MenuPages`. It holds no session: every item calls an action `pause-actions.ts`
@@ -9,13 +12,13 @@
  * key itself, because Escape both opens it and closes it, and `keys.ts` is what
  * decides which one a press means.
  */
-import type { BuildingViewChoice, SoundChoice } from './settings.ts';
+import type { MenuSettings } from './settings.ts';
 import { buildPartyPage, type PartyActions, type PartyPage } from './party.ts';
 import { buildCameraPage } from './title-camera.ts';
 import { buildControlsPage } from './title-controls.ts';
-import { buildSoundPage } from './title-sound.ts';
 import { MenuPages } from './menu-pages.ts';
-import { button, card, menuList, page } from './title-parts.ts';
+import { backButton, button, card, columnsOf, menuList, page } from './title-parts.ts';
+import { buildSettingsPage } from './title-settings.ts';
 
 /** The key that opens and closes the pause menu. Listed in `controls.ts`. */
 export const PAUSE_KEY = 'Escape';
@@ -35,25 +38,29 @@ export interface PauseActions {
   regenerate(): void;
   /** Leave the session for the title screen. */
   quit(): void;
-  /** What happens when a building is in the way (spec section 10.7). A choice takes effect at once. */
-  buildingView: BuildingViewChoice;
-  /** Whether the audio of spec section 15 is muted. A choice takes effect at once. */
-  sound: SoundChoice;
+  /** The settings the Settings column offers. A choice takes effect at once. */
+  settings: MenuSettings;
   /** The room of spec section 21: where it stands, and the two presses that open and leave it. */
   party: PartyActions;
 }
 
-const PAGE_NAMES = ['main', 'transfer', 'controls', 'camera', 'sound', 'party'] as const;
+const PAGE_NAMES = ['main', 'party', 'saves', 'export', 'loads', 'import', 'controls', 'settings', 'camera'] as const;
 type PageName = (typeof PAGE_NAMES)[number];
 
 const PARENT: Record<PageName, PageName | null> = {
   main: null,
-  transfer: 'main',
-  controls: 'main',
-  camera: 'main',
-  sound: 'main',
   party: 'main',
+  saves: 'main',
+  export: 'saves',
+  loads: 'main',
+  import: 'loads',
+  controls: 'main',
+  settings: 'main',
+  camera: 'settings',
 };
+
+/** Every page but the main one opens as a column beside its parent. */
+const COLUMNS: ReadonlySet<PageName> = new Set(PAGE_NAMES.filter((name) => name !== 'main'));
 
 export class PauseMenu {
   private readonly root: HTMLElement;
@@ -61,7 +68,9 @@ export class PauseMenu {
   private readonly actions: PauseActions;
   private readonly seed: string;
   private readonly loadItem: HTMLButtonElement;
-  private readonly text: HTMLTextAreaElement;
+  /** The save as text, to copy out, and the box a save is pasted into. */
+  private readonly exported: HTMLTextAreaElement;
+  private readonly imported: HTMLTextAreaElement;
   /** The multiplayer page, redrawn whenever the room changes under it. */
   private readonly party: PartyPage;
   /** One status line per page that has one; both say the same thing. */
@@ -76,29 +85,40 @@ export class PauseMenu {
     this.root.setAttribute('aria-label', 'Pause menu');
     this.root.hidden = true;
 
-    this.text = document.createElement('textarea');
+    this.exported = saveText(true);
+    this.imported = saveText(false);
     this.party = buildPartyPage(actions.party, (text, done) => void this.copy(text, done), () => this.pages.back());
-    const main = this.buildMain();
-    this.loadItem = main.querySelectorAll<HTMLButtonElement>('.title-menu-item')[2] as HTMLButtonElement;
+    this.party.root.append(this.buildCity());
+    const loads = this.buildLoads();
+    this.loadItem = loads.querySelector<HTMLButtonElement>('.title-menu-item') as HTMLButtonElement;
+    const back = (): void => void this.pages.back();
     const pages: Record<PageName, HTMLElement> = {
-      main,
-      transfer: this.buildTransfer(),
-      controls: buildControlsPage(() => this.pages.back()),
-      camera: buildCameraPage(actions.buildingView, () => this.pages.back()),
-      sound: buildSoundPage(actions.sound, () => this.pages.back()),
+      main: this.buildMain(),
       party: this.party.root,
+      saves: this.buildSaves(),
+      export: this.buildExport(),
+      loads,
+      import: this.buildImport(),
+      controls: buildControlsPage(back),
+      settings: buildSettingsPage(actions.settings, back),
+      camera: buildCameraPage(actions.settings.buildingView, back),
     };
-    this.pages = new MenuPages(this.root, pages, PARENT, 'main');
+    this.pages = new MenuPages(this.root, pages, PARENT, 'main', COLUMNS);
+    // The export is written as its column opens, so it is the session as it stands.
+    this.pages.onOpen = (name) => {
+      if (name === 'export') this.exportSave();
+      if (name === 'import') this.importPage();
+    };
 
     const brand = document.createElement('header');
     brand.className = 'title-brand';
-    brand.innerHTML = '<span class="title-eyebrow">The city waits</span><h1><em>Paused</em></h1>';
+    brand.innerHTML = '<h1><em>Paused</em></h1>';
     const hint = document.createElement('footer');
     hint.className = 'title-hint';
     hint.innerHTML =
       '<span><kbd>↑</kbd><kbd>↓</kbd> Choose</span><span><kbd>Enter</kbd> Confirm</span>' +
       '<span><kbd>Esc</kbd> Back</span>';
-    this.root.append(brand, ...PAGE_NAMES.map((name) => pages[name]), hint);
+    this.root.append(brand, columnsOf(PAGE_NAMES.map((name) => pages[name])), hint);
     parent.append(this.root);
   }
 
@@ -137,57 +157,84 @@ export class PauseMenu {
 
   private buildMain(): HTMLElement {
     const main = page('title-page pause-main');
-    const menu = menuList([
-      { numeral: 'I', label: 'Resume', note: 'Back to the street', action: () => this.hide() },
-      { numeral: 'II', label: 'Save game', note: 'One save per seed, in this browser', action: () => this.run(() => this.actions.save()) },
-      { numeral: 'III', label: 'Load game', note: 'The last save of this seed', action: () => this.run(() => this.resumeWith(this.actions.load())) },
-      { numeral: 'IV', label: 'Export save', note: 'As text for the clipboard', action: () => this.exportSave() },
-      { numeral: 'V', label: 'Import save', note: 'From text of a save', action: () => this.importPage() },
-      { numeral: 'VI', label: 'Controls', note: 'The keys for the street and the map', action: () => this.pages.show('controls') },
-      { numeral: 'VII', label: 'Camera', note: 'When a building is in the way', action: () => this.pages.show('camera') },
-      { numeral: 'VIII', label: 'Sound', note: 'The engine, the street and the mute', action: () => this.pages.show('sound') },
-      { numeral: 'IX', label: 'Open game to others', note: 'Up to six players in one city', action: () => this.showParty() },
-      { numeral: 'X', label: 'Quit to title', note: 'Progress since the last save is lost', action: () => this.actions.quit() },
-    ]);
+    main.append(
+      menuList([
+        { numeral: 'I', label: 'Resume', action: () => this.hide() },
+        { numeral: 'II', label: 'Multiplayer', opens: 'party' },
+        { numeral: 'III', label: 'Save game', opens: 'saves' },
+        { numeral: 'IV', label: 'Load game', opens: 'loads' },
+        { numeral: 'V', label: 'Controls', opens: 'controls' },
+        { numeral: 'VI', label: 'Graphics' },
+        { numeral: 'VII', label: 'Options', opens: 'settings' },
+        { numeral: 'VIII', label: 'Quit to main menu', action: () => this.actions.quit() },
+      ]),
+    );
+    return main;
+  }
 
-    const city = card('I', 'The city', 'Share the seed and anyone can drive this city.');
+  private buildSaves(): HTMLElement {
+    const root = page('title-page pause-saves');
+    const menu = menuList(
+      [
+        { numeral: 'I', label: 'Save', action: () => this.run(() => this.actions.save()) },
+        { numeral: 'II', label: 'Export', opens: 'export' },
+      ],
+      'Save game',
+    );
+    menu.append(this.status(), backButton(() => this.pages.back()));
+    root.append(menu);
+    return root;
+  }
+
+  private buildLoads(): HTMLElement {
+    const root = page('title-page pause-loads');
+    const menu = menuList(
+      [
+        { numeral: 'I', label: 'Load', action: () => this.run(() => this.resumeWith(this.actions.load())) },
+        { numeral: 'II', label: 'Import', opens: 'import' },
+        { numeral: 'III', label: 'New city', action: () => this.actions.regenerate() },
+      ],
+      'Load game',
+    );
+    menu.append(this.status(), backButton(() => this.pages.back()));
+    root.append(menu);
+    return root;
+  }
+
+  /** The seed of the city, and a copy of it: anyone with the seed can drive the same city. */
+  private buildCity(): HTMLElement {
+    const city = card('II', 'Seed');
     const seed = document.createElement('p');
     seed.className = 'pause-seed';
     seed.textContent = this.seed;
     const row = document.createElement('div');
     row.className = 'pause-row';
-    row.append(
-      button('title-back', 'Copy seed', () => void this.copy(this.seed, 'The seed is on the clipboard.')),
-      button('title-back', 'Regenerate', () => this.actions.regenerate()),
-    );
-    city.append(seed, row, this.status());
-    main.append(menu, city);
-    return main;
+    row.append(button('title-back', 'Copy seed', () => void this.copy(this.seed, 'Copied.')));
+    city.append(seed, row);
+    return city;
   }
 
-  /** The multiplayer page is drawn from the room as it stands, not as it stood when the menu opened. */
-  private showParty(): void {
-    this.party.update();
-    this.pages.show('party');
-  }
-
-  private buildTransfer(): HTMLElement {
+  private buildExport(): HTMLElement {
     const root = page('title-page pause-transfer');
-    const sheet = card('II', 'Save as text', 'Copy the text to move a save to another machine, or paste a save to load it.');
-    this.text.className = 'pause-text';
-    this.text.spellcheck = false;
-    this.text.dataset.nav = '';
-    this.text.setAttribute('aria-label', 'Save text');
+    const sheet = card('II', 'Export');
     const row = document.createElement('div');
     row.className = 'pause-row';
-    const load = button('title-cta', 'Load this save', () => this.run(() => this.resumeWith(this.actions.importText(this.text.value))));
+    row.append(button('title-back', 'Copy', () => void this.copy(this.exported.value, 'Copied.')));
+    sheet.append(this.exported, row, this.status(), backButton(() => this.pages.back()));
+    root.append(sheet);
+    return root;
+  }
+
+  private buildImport(): HTMLElement {
+    const root = page('title-page pause-transfer');
+    const sheet = card('II', 'Import');
+    const row = document.createElement('div');
+    row.className = 'pause-row';
     row.append(
-      button('title-back', 'Copy', () => void this.copy(this.text.value, 'The save is on the clipboard.')),
       button('title-back', 'Paste', () => void this.paste()),
-      load,
-      button('title-back', 'Back', () => this.pages.back()),
+      button('title-cta', 'Load', () => this.run(() => this.resumeWith(this.actions.importText(this.imported.value)))),
     );
-    sheet.append(this.text, row, this.status());
+    sheet.append(this.imported, row, this.status(), backButton(() => this.pages.back()));
     root.append(sheet);
     return root;
   }
@@ -220,17 +267,15 @@ export class PauseMenu {
     return message;
   }
 
+  /** The export column opens on the session as it stands, already on the clipboard. */
   private exportSave(): void {
-    this.text.value = this.actions.exportText();
-    this.pages.show('transfer');
-    void this.copy(this.text.value, 'The save is on the clipboard, and in the box below.');
+    this.exported.value = this.actions.exportText();
+    void this.copy(this.exported.value, 'Copied.');
   }
 
   private importPage(): void {
-    this.text.value = '';
-    this.pages.show('transfer');
-    this.say('Paste a save into the box, then load it.');
-    this.text.focus();
+    this.imported.value = '';
+    this.say('');
   }
 
   /** Put text on the clipboard. The browser may refuse, so the text stays where it can be copied by hand. */
@@ -239,16 +284,27 @@ export class PauseMenu {
       await navigator.clipboard.writeText(text);
       this.say(done);
     } catch {
-      this.say('The browser would not give the clipboard. Select the text and copy it.');
+      this.say('Clipboard blocked. Copy by hand.');
     }
   }
 
   private async paste(): Promise<void> {
     try {
-      this.text.value = await navigator.clipboard.readText();
-      this.say('Pasted. Load the save to play it.');
+      this.imported.value = await navigator.clipboard.readText();
+      this.say('Pasted.');
     } catch {
-      this.say('The browser would not give the clipboard. Paste into the box with the keyboard.');
+      this.say('Clipboard blocked. Paste by hand.');
     }
   }
+}
+
+/** The box a save is read out of or pasted into. */
+function saveText(readOnly: boolean): HTMLTextAreaElement {
+  const text = document.createElement('textarea');
+  text.className = 'pause-text';
+  text.spellcheck = false;
+  text.readOnly = readOnly;
+  if (!readOnly) text.dataset.nav = '';
+  text.setAttribute('aria-label', 'Save text');
+  return text;
 }

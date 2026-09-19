@@ -15,10 +15,11 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
 ## The title screen, the settings and the menu walk
 
 - `src/ui/title.ts` is the title screen as a main menu of pages: the main page, New game
-  (`title-setup.ts`), Settings, and Controls, Camera and Sound under Settings
-  (`title-controls.ts`, `title-camera.ts`, `title-sound.ts`). `PARENT` says
-  where Escape and Back go from each page. A menu item with no action is drawn disabled; Load game
-  and Graphics wait for what they open. The arrow keys walk the elements with `data-nav`, in
+  (`title-setup.ts`), Controls (`title-controls.ts`), Options (`title-settings.ts`) and Camera
+  under Options (`title-camera.ts`). `PARENT` says where Escape and Back go from each page. A menu
+  item with no action is drawn disabled; Load game and Graphics wait for what they open.
+- Menu text is a word or two. An item carries no note line, and a page has no line under its
+  heading unless the player needs it to choose. The arrow keys walk the elements with `data-nav`, in
   DOM order, and skip a disabled one. The pointer moves the same focus, so only one item is lit. A
   character row takes the focus itself and changes on left and right; its two buttons carry no
   `data-nav`. The look lives in `title.css`, which `style.css` imports.
@@ -27,17 +28,27 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   with the room and the seed, and New game becomes **Join game**. The setup page drops the city
   card, because the seed is the host's: a joiner picks only a driver.
 - `src/ui/settings.ts` holds the settings that belong to the browser rather than to a save, in
-  `localStorage` under one key. A value it does not know falls back to the default. The Camera page
-  (`title-camera.ts`) and the Sound page (`title-sound.ts`) are shared by the title screen and the
-  pause menu, and a choice takes effect on the next frame. Muting throws the whole audio graph away
-  rather than turning it down — `docs/audio.md` says why.
+  `localStorage` under one key. A value it does not know falls back to the default. The Options
+  column and the Camera column are shared by the title screen and the pause menu, through one
+  `MenuSettings` object that `main.ts` builds, and a choice takes effect on the next frame. A
+  setting that is on or off, such as Sound or the minimap's north, is a checkbox: a `MenuItem` with
+  a `toggle`. It is not a key in `controls.ts`: a key is for what the player does while playing.
+  Muting throws the whole audio graph away rather than turning it down — `docs/audio.md` says why.
 - `src/ui/menu-pages.ts` is the page walk both menus share: `parent`, the arrow keys, the pointer
-  focus, and Escape going up a page. `src/ui/pause.ts` is the pause menu of spec section 12, drawn
-  with the title's classes and the few rules of `pause.css`. It listens to no key: Escape both opens
-  and closes it, so `keys.ts` hands it every key while it is open. While it is open the frame loop
-  takes no steps and the clock keeps its place between two ticks — unless a room is open, because a
-  session in company cannot stop the city (`docs/multiplayer.md`).
-- `src/ui/party.ts` is the Open game to others page of spec section 21: the room code, the invite
+  focus, and Escape going up a page. A page in `columns` opens as a column beside its parent, and
+  the parent stays on screen: a submenu is an accordion on its side. An item with `opens` opens its
+  column, and a second press closes it. Right opens it too, and Left closes the column the focus
+  is in. The columns stand in one row, `.menu-columns`, all hung from one top line, so opening one
+  never moves the list it came from. A column's Back button shows only on a narrow screen, where
+  one column is shown at a time. `src/ui/pause.ts` is the pause menu of spec section 12, drawn
+  with the title's classes and the few rules of `pause.css`. Its main list is Resume, Multiplayer,
+  Save game, Load game, Controls, Graphics, Options and Quit to main menu. The HUD, the minimap and
+  the panels over play are hidden while it is open, so no text shows through beside it. It listens
+  to no key: Escape both opens and closes it, so `keys.ts` hands it every key while it is open.
+  While it is open the frame loop takes no steps and the clock keeps its place between two ticks —
+  unless a room is open, because a session in company cannot stop the city
+  (`docs/multiplayer.md`).
+- `src/ui/party.ts` is the Multiplayer column of spec section 21: the room code, the invite
   link and who is in the city. It holds no networking and is redrawn from one state object, which
   `main.ts` hands it through `PauseMenu.refresh` whenever the room changes under it.
 
@@ -65,7 +76,7 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
 - A load writes the save into the live record in place, because every closure of the session holds
   that record, and then builds a new `SimPhysics` from it. Never `adopt` a loaded record into the
   old physics: the traffic bodies keep their cursors and their promoted bodies from before the load.
-- A save of another seed needs another world, so an import of one, and Regenerate, load the page
+- A save of another seed needs another world, so an import of one, and New city, load the page
   again. The note in `sessionStorage` from `setPendingStart` tells the next boot to skip the title
   and start that seed, from its save or afresh.
 
@@ -97,7 +108,7 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   and is played with the keys; an iPad claims to be a desktop in every other way and is caught by
   the fingers. `main.ts` asks once, before the title screen, and passes the answer down.
 - A phone reaches none of the keys of `controls.ts`, so it is offered the city rather than the game:
-  the main menu gains **Explore the city** at the top, which starts the seed the New game page holds
+  the main menu gains **Explore** at the top, which starts the seed the New game page holds
   and detaches the free camera before the first frame. `FreeCamera.survey` lifts it `SURVEY_HEIGHT`
   over the ground it was let go at and tips the view down, so the screen the loading screen fades
   off is already the flight.

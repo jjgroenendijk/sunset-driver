@@ -29,7 +29,7 @@ import { TradePanel } from './ui/trade-panel.ts';
 import { HotwireBar } from './ui/hotwire.ts';
 import { Hud } from './ui/hud.ts';
 import { SaveSlots } from './ui/saves.ts';
-import { readSettings, writeSettings, type BuildingViewChoice, type SoundChoice } from './ui/settings.ts';
+import { readSettings, writeSettings, type MenuSettings } from './ui/settings.ts';
 import { FreeCameraControls } from './ui/free-camera.ts';
 import { isTouchDevice, readTouchProbe } from './ui/touch.ts';
 import { markTouchUi, mountTouchBar } from './ui/touch-bar.ts';
@@ -115,25 +115,36 @@ async function boot(): Promise<void> {
 
   // The settings hold for every seed, so they are read before the title screen.
   const settings = readSettings(localStorage);
-  const buildingView: BuildingViewChoice = {
-    current: () => settings.buildingView,
-    choose: (view) => {
-      settings.buildingView = view;
-      writeSettings(localStorage, settings);
-    },
-  };
 
   // The audio of spec section 15. It is armed here rather than with the
   // session, so the click or the key that starts one is the gesture the browser
   // wants before it will give an audio context. A muted game builds no graph.
   const audio = new GameAudio(settings.muted);
   audio.arm(window);
-  const sound: SoundChoice = {
-    muted: () => settings.muted,
-    mute: (muted) => {
-      settings.muted = muted;
-      audio.muted = muted;
-      writeSettings(localStorage, settings);
+  // What the Settings column of both menus reads and writes. A choice holds at
+  // once and is kept for every seed.
+  const menuSettings: MenuSettings = {
+    buildingView: {
+      current: () => settings.buildingView,
+      choose: (view) => {
+        settings.buildingView = view;
+        writeSettings(localStorage, settings);
+      },
+    },
+    sound: {
+      on: () => !settings.muted,
+      set: (on) => {
+        settings.muted = !on;
+        audio.muted = !on;
+        writeSettings(localStorage, settings);
+      },
+    },
+    northUp: {
+      on: () => settings.northUp,
+      set: (on) => {
+        settings.northUp = on;
+        writeSettings(localStorage, settings);
+      },
     },
   };
 
@@ -166,9 +177,8 @@ async function boot(): Promise<void> {
   const choice = await openingChoice({
     worlds,
     onPreview: (appearance) => preview.character.set(appearance),
-    buildingView,
+    settings: menuSettings,
     touch,
-    sound,
   });
 
   history.replaceState(null, '', writeSeedToHash(location.hash, choice.seed));
@@ -324,8 +334,7 @@ async function boot(): Promise<void> {
     state,
     slots,
     loadInto,
-    sound,
-    buildingView,
+    settings: menuSettings,
     party: party.actions,
   });
   // A page opened on an invite link joins that room, now that there is a menu
