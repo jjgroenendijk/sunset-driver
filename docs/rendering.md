@@ -352,7 +352,9 @@ lamps and the lights a vehicle carries — in `docs/lighting.md`.
   a list of tiers asks for, and the four tiers come to three. Setting `quality` hands the render
   scale to the renderer and swaps the output node, and builds only where no tier has asked for that
   set of effects yet. Hence `ready()` waits for the SMAA tables of every graph built, not only the
-  one standing.
+  one standing. Each graph owns full-size targets, so the graphs not drawn are shrunk to a pixel,
+  which frees their textures. An effect sizes its targets to the frame before it draws, so a tier
+  change still compiles nothing.
 - `gradeAt(light)` (`grade.ts`) is the colour grade, as a table of colours the frame is looked up
   in. It is pure, so the tests run it headless, and it is rebuilt `GRADE_STEPS` times a game day
   rather than every frame. The grade works on display values and the frame is light, so

@@ -92,8 +92,8 @@ export interface PostQuality {
 
 /**
  * One graph of the chain, built once and kept for every tier that draws it.
- * The effects are held because each owns render targets, which are released
- * with the chain and not before.
+ * The effects are held because each owns render targets. The targets of a
+ * graph not drawn are shrunk to a pixel; they are released with the chain.
  */
 interface Chain {
   /** What the pipeline draws the frame through. */
@@ -247,6 +247,15 @@ export class PostChain {
     }
     this.pipeline.outputNode = chain.output;
     this.pipeline.needsUpdate = true;
+    // Only the graph drawn needs its targets. Each graph holds its own at the
+    // frame's size — nine half-float targets are 99 MB at 1600x900 — so the
+    // others are shrunk to a pixel, which frees their textures. An effect sizes
+    // its targets to the frame before it draws, so a graph taken up again gets
+    // them back without a compile.
+    for (const [other, kept] of this.chains) {
+      if (other === key) continue;
+      for (const effect of kept.effects) effect.setSize(1, 1);
+    }
   }
 
   /** Build one graph of the effects the settings stand at. */
