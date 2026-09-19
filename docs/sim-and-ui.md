@@ -52,8 +52,12 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
   steps, the icon table and the culling are tested headless. The map keeps the world's own axes:
   world `(x, y)` is drawn at pixel `(x, y)`, so north is up and the map reads the way
   `scripts/world-preview.ts` draws the same world. `rotationForHeading` is what turns a rotating map
-  so the player faces up. `POI_STYLES` is the one icon table: every type has a shape no other type
-  uses and a colour no other type uses, and `test/map.test.ts` pins both. `MapPois.extra` is the
+  so the player faces up; while the free camera flies, the minimap is handed `FreeCamera.heading`
+  instead, so up is where the view looks. A rotating minimap marks north with an N on its rim. The
+  minimap sizes its canvas from the box `style.css` and `touch.css` give it: a phone's is smaller,
+  and a canvas of a fixed size put the arrow off the middle.
+- `POI_STYLES` is the one icon table: every type has a shape no other type uses and a colour no
+  other type uses, and `test/map.test.ts` pins both. `MapPois.extra` is the
   slot a system that owns places writes — the shops of spec section 16.1, the safehouses of 16.3,
   the factions of 17, the missions of 18 — and nothing reads a second list.
 - `MapDrawOptions.overlay` is the slot the territory of spec section 17.2 draws through

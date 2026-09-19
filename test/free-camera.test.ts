@@ -77,6 +77,17 @@ describe('free camera', () => {
     expect(across.z).toBeCloseTo(0, 6);
   });
 
+  it('reports the map heading it flies toward, whatever the pitch', () => {
+    for (const yaw of [0, 0.7, Math.PI / 2, 2.5, -1.9]) {
+      const free = new FreeCamera();
+      free.yaw = yaw;
+      free.pitch = -0.9;
+      fly(free, { forward: 1 });
+      const along = Math.atan2(free.z, free.x);
+      expect(Math.cos(free.heading - along), `yaw ${yaw}`).toBeCloseTo(1, 9);
+    }
+  });
+
   it('pitches the forward key and leaves up and down level', () => {
     const free = new FreeCamera();
     free.pitch = -MAX_PITCH;
