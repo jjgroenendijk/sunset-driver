@@ -34,11 +34,9 @@
 /* The heading of a group stays at the top of the list while its rows scroll under it. */
 .shop-group { position: sticky; top: 0; z-index: 1; margin: calc(.55 * var(--u)) 0 calc(.15 * var(--u)); padding: calc(.15 * var(--u)) 0; background: var(--it-ivory); font-size: calc(.62 * var(--u)); font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--it-rosso); }
 .shop-group:first-child { margin-top: 0; }
-.shop-row { display: grid; grid-template-columns: calc(1.4 * var(--u)) minmax(0, 1fr) auto; align-items: center; gap: calc(.5 * var(--u)); padding: calc(.32 * var(--u)) calc(.5 * var(--u)); border-left: 2px solid transparent; border-bottom: 1px solid rgba(35,28,22,.08); cursor: pointer; font-size: calc(.9 * var(--u)); transition: background-color .15s, border-color .15s, padding-left .15s; }
+.shop-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: calc(.5 * var(--u)); padding: calc(.32 * var(--u)) calc(.5 * var(--u)); border-left: 2px solid transparent; border-bottom: 1px solid rgba(35,28,22,.08); cursor: pointer; font-size: calc(.9 * var(--u)); transition: background-color .15s, border-color .15s, padding-left .15s; }
 .shop-row:hover { background: rgba(163,34,27,.05); }
 .shop-row.shop-current { border-left-color: var(--it-rosso); background: rgba(163,34,27,.1); color: var(--it-rosso); padding-left: calc(.7 * var(--u)); }
-.shop-key { display: inline-grid; place-items: center; width: calc(1.25 * var(--u)); height: calc(1.25 * var(--u)); border: 1px solid rgba(35,28,22,.35); border-bottom-width: 2px; border-radius: .2em; font: 600 calc(.66 * var(--u))/1 var(--it-sans); color: var(--it-muted); }
-.shop-key:empty { visibility: hidden; }
 .shop-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .shop-price { color: #8a6420; font-variant-numeric: tabular-nums; font-weight: 600; }
 .shop-dear .shop-label, .shop-dear .shop-price { color: var(--it-muted); opacity: .6; }

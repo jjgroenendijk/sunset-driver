@@ -27,7 +27,6 @@ import type { SafehousePlace } from '../sim/safehouse.ts';
 import type { SimState } from '../sim/simulation.ts';
 import { shopAt, shopOffers, shopRefusal, visiting, type ShopPlace } from '../sim/shop.ts';
 import type { ShopOffer } from '../sim/shop-stock.ts';
-import { CHOICE_KEYS } from './keyboard.ts';
 
 /** The key that opens a shop door, as `controls.ts` lists it. */
 const ENTER_KEY = 'E';
@@ -114,7 +113,7 @@ export class ShopPanel {
     this.said.hidden = true;
     this.foot = element('div', 'shop-foot');
     const hint = element('span', 'shop-hint');
-    hint.textContent = `↑ ↓ choose · Enter or click buys · 1–${CHOICE_KEYS} buy`;
+    hint.textContent = '↑ ↓ choose · Enter or click buys';
     const leave = document.createElement('button');
     leave.type = 'button';
     leave.className = 'shop-leave';
@@ -253,13 +252,11 @@ export class ShopPanel {
 
   private row(offer: ShopOffer, i: number): HTMLElement {
     const row = element('div', 'shop-row');
-    const keyCap = element('span', 'shop-key');
-    keyCap.textContent = i < CHOICE_KEYS ? `${i + 1}` : '';
     const label = element('span', 'shop-label');
     label.textContent = offer.label.replace(' · back room', '');
     const price = element('span', 'shop-price');
     price.textContent = priceText(offer.price);
-    row.append(keyCap, label, price);
+    row.append(label, price);
     row.addEventListener('pointerenter', (e) => {
       if (e.pointerType === 'mouse') this.select(i, false);
     });
