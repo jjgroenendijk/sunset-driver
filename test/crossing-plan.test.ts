@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { buildRoadGraph } from '../src/world/graph.ts';
 import { planHighway } from '../src/world/highway-plan.ts';
+import { HEADROOM_SLACK } from '../src/world/crossing-plan.ts';
 import { CLEARANCE } from '../src/world/overpass.ts';
 import { RoadNetwork, type NetworkGround, type RoadDraft } from '../src/world/road-network.ts';
+import { TIERS } from '../src/world/tiers.ts';
 import type { Point, RoadCurve, RoadTier } from '../src/world/types.ts';
 
 /**
@@ -97,6 +99,24 @@ describe('a road that crosses a road already laid', () => {
     expect(roads.nearest(10, 2, 15, 0, 'street')).toBeUndefined();
   });
 
+  it('climbs over the surface of the road below, not over the ground under its own points (issue #290)', () => {
+    // The laid road has a point each side of a narrow valley, so its bed runs
+    // straight over the valley 6 m above the ground in it. The new road drives
+    // along the valley floor, and a lift of the clearance over the ground under
+    // its own points would leave the two beds half a metre apart.
+    const valley: NetworkGround = { canRun: noShortSpans.canRun, heightAt: (x) => Math.min(0, (Math.abs(x - 10) - 10) * 0.6) };
+    const roads = network(valley);
+    roads.add(alongX(-100, 100));
+    const carried = roads.add(alongY(10, steps(-295, 305))) as RoadCurve;
+    expect(liftNear(carried, { x: 10, y: 0 })).toBeCloseTo(CLEARANCE + 6, 6);
+    // The ramps are longer for it, and no steeper than the tier allows.
+    const lift = carried.lift as number[];
+    for (let i = 0; i + 1 < carried.points.length; i++) {
+      const run = Math.abs((carried.points[i + 1] as Point).y - (carried.points[i] as Point).y);
+      expect(Math.abs((lift[i + 1] as number) - (lift[i] as number)) / run).toBeLessThanOrEqual(TIERS.street.maxGrade + 1e-9);
+    }
+  });
+
   it('is shortened back from a crossing it can neither meet nor be carried over', () => {
     const roads = network(noShortSpans);
     roads.add(alongX(-100, 100));
@@ -127,6 +147,23 @@ describe('a road that crosses a road already laid', () => {
     const deck = alongY(10, [-50, 50]);
     deck.bridges = [0];
     expect(roads.add(deck)).toBeUndefined();
+  });
+
+  it('spends the headroom slack on a deck already standing, and no more', () => {
+    // A deck reads the ground under its own two heads, so its bed stands a
+    // little off what the ground at the crossing says. Centimetres of that are
+    // headroom no vehicle can tell apart; half a metre of it is a deck a lorry
+    // would meet (issue #290).
+    const shelf = (height: number): NetworkGround => ({ canRun: () => true, heightAt: (_x, y) => (Math.abs(y) >= 40 ? height : 0) });
+    for (const [height, apart] of [
+      [CLEARANCE, true],
+      [CLEARANCE - HEADROOM_SLACK / 2, true],
+      [CLEARANCE - HEADROOM_SLACK * 2, false],
+    ] as const) {
+      const roads = network(shelf(height));
+      roads.add(alongX(-100, 100));
+      expect(roads.deckApart({ x: 10, y: -50 }, { x: 10, y: 50 }, 'arterial'), `a deck ${height} m up`).toBe(apart);
+    }
   });
 
   it('is refused where no piece of it reaches the network', () => {

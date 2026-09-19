@@ -202,15 +202,22 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   reads the other road of the pair off its planned line and not off the network: the draft is not
   laid yet, and a laid road's given points are written only once the whole plan holds. Without
   that, a junction planned here bends the road out from under a meeting one point along, and the
-  two are left at 29° (issue #372). Otherwise a crossing is apart where one
-  road stands a `CLEARANCE` lift over the other on the ground, a highway slot or the top of a raise,
-  or where a deck or a bore puts the two beds that far apart. The foot of a ramp is snapped to the
-  ground within half a millimetre: the distances along a line are single precision, so without it a
-  point at the foot takes a lift of a micrometre, and a road a micrometre up is not on the ground by
-  any rule that reads the lift. Otherwise the new road is raised over the other (`overpass.ts` is
-  the lift profile): the reach may hold no junction, no deck or bore of
-  its own and no place it passes under a road, and the road has to land again. A highway is never
-  raised and never raised over. A crossing none of these decide shortens the road back to the
+  two are left at 29° (issue #372). Otherwise a crossing is apart where the surface of one road
+  stands a `CLEARANCE` over the surface of the other: a highway slot, the top of an earlier raise,
+  a deck or a bore. Each surface is the ground under that road's own points, straight between
+  them, and its lift — never the lift alone. The two roads have different points, so a lift of the
+  clearance over the ground under one of them left the beds as little as 1.5 m apart (issue #290).
+  A crossing under a deck already standing keeps `HEADROOM_SLACK`, a quarter of a metre: the two
+  roads read the ground at different places, and refusing those centimetres costs the road below,
+  and with it the odd island link. A raise spends none of it, since it picks its own height. The
+  foot of a ramp is snapped to the ground within half a millimetre: the distances along a line are
+  single precision, so without it a point at the foot takes a lift of a micrometre, and a road a
+  micrometre up is not on the ground by any rule that reads the lift. Otherwise the new road is
+  raised over the other (`overpass.ts` is the lift profile): it climbs a `CLEARANCE` over the
+  surface of the road below, which is more than the clearance where its own ground lies lower, and
+  the ramps grow with it. The reach may hold no junction, no deck or bore of its own and no place
+  it passes under a road, and the road has to land again. A highway is never raised and never
+  raised over. A crossing none of these decide shortens the road back to the
   longest piece that still meets the network, cut where it may end; with no such piece the road is
   refused. Nothing is written to a laid road until the whole plan holds. A raised point takes no
   junction later, and the ramp of a raise is crossed nowhere.
