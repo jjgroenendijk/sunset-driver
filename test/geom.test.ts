@@ -16,6 +16,8 @@ import {
   type Point,
   type Region,
 } from '../src/core/geom.ts';
+import { crossings, edgeBox, type Edges, noEdges, pushEdge, settle } from '../src/core/edges.ts';
+import { collect } from '../src/core/planar.ts';
 import { stableJson } from './helpers.ts';
 
 /** A rectangle wound anticlockwise, with its lower left corner at (x, y). */
@@ -229,6 +231,42 @@ describe('difference', () => {
     // The two ten-metre strips cover 1900 m² of the land, counting their crossing once.
     expect(areaOf(parcels)).toBeCloseTo(10000 - 1900, 6);
     expect(disjoint(parcels, 0, 100, 2)).toBe(true);
+  });
+});
+
+describe('settling the edges', () => {
+  /** How many places two of the edges still cross away from their ends. */
+  function crossingsLeft(edges: Edges): number {
+    let count = 0;
+    crossings(edges, edgeBox(edges), () => count++);
+    return count;
+  }
+
+  it('cuts two one-unit diagonals that cross in the middle of a cell', () => {
+    // Each diagonal passes as near the other two corners of the cell as the
+    // snap reaches. Routing one through both corners gave the opposite
+    // diagonal, so every pass swapped one crossing for another.
+    const edges = noEdges();
+    pushEdge(edges, 0, 0, 1, 1, 0);
+    pushEdge(edges, 1, 0, 0, 1, 1);
+    expect(crossingsLeft(settle(edges))).toBe(0);
+  });
+
+  it('leaves no crossing where a street and an alley kerb meet a pavement claim', () => {
+    // Seed 2246342428 at junction 1495, cut down to the three rings that still
+    // made the crossing. The pavement came out over the junction.
+    const ring = (points: number[][]): Point[] => points.map(([x, y]) => ({ x: x as number, y: y as number }));
+    const edges = noEdges();
+    collect([regionOf(ring([[478.6774080120396, -65.96097627256287], [315.38678047756866, -44.710397007525486], [301.5417311456, -42.742547910527904]]))], 0, edges);
+    collect(
+      [
+        regionOf(ring([[313.81632946872713, 39.90349964052439], [312.2294691378916, -44.261636427231345], [316.22944601128944, -44.27520803231767]])),
+        regionOf(ring([[312.24852953875023, -38.64392415324521], [312.19941243247075, -53.12027370560471], [316.1993894088476, -53.13384531034895]])),
+      ],
+      1,
+      edges,
+    );
+    expect(crossingsLeft(settle(edges))).toBe(0);
   });
 });
 
