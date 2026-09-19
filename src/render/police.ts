@@ -124,8 +124,10 @@ export class PoliceView {
       this.trim.setMatrixAt(cars, this.matrix);
       this.rim.setMatrixAt(cars, this.matrix);
       this.paint.setColorAt(cars, this.colour.set(specOf('emergency').paint));
+      // A car driving off once its call is over has its siren off, and its bar dark.
+      const calling = unit.task !== 'leave';
       for (const phase of [0, 1] as const) {
-        const lit = flashLit(state.tick, unit.id, phase);
+        const lit = calling && flashLit(state.tick, unit.id, phase);
         this.phases[phase].set(cars, this.matrix, lit);
         if (lit) this.glow.add(unit.x, unit.height, unit.y, this.phases[phase].colour);
       }
