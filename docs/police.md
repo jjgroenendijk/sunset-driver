@@ -3,13 +3,15 @@
 The gotchas of spec sections 11.7 and 14: how a run ends in a death or an arrest, what the heat is
 worth, and how the police answer it. The code is `src/sim/crime.ts`, `src/sim/police.ts` and
 `src/sim/respawn.ts`, and for the officers on foot `officer.ts`, `squad.ts`, `duty.ts`,
-`officer-fire.ts` and `arrest.ts`. The weapons that raise the heat are in `docs/sim-and-ui.md`.
+`officer-fire.ts` and `arrest.ts`, and for the patrol between chases `patrol.ts`. The weapons
+that raise the heat are in `docs/sim-and-ui.md`.
 
 ## Contents
 
 - Death, arrest and heat
 - Heat and the police
 - The police on foot
+- Sight, fire from a car and the patrol
 
 ## Death, arrest and heat
 
@@ -109,3 +111,22 @@ worth, and how the police answer it. The code is `src/sim/crime.ts`, `src/sim/po
   drawn in the `aim` gait, and `render/officer-guns.ts` puts the gun in the hands. The fallen are
   drawn by `render/casualties.ts` from `police.fallen`. `--police` on the render preview lays one of
   each.
+
+## Sight, fire from a car and the patrol
+
+- **A car sees nothing through a building.** `PoliceForce.look` asks `inSight` (`squad.ts`), the
+  ray the officers on foot see by, from `CAR_EYE` over the road. That is over the car's own roof,
+  so the ray does not start inside the car's own body and stop at once. The helicopter is not
+  asked: it looks down over the roofs. Without a ground, as in a test, every street is open.
+- **A crew still in a stopped car fires out of the window.** `unitFire` (`officer-fire.ts`) fires
+  the gun an officer of that crew would draw, through the same `shoot` as an officer on foot, but
+  slower and worse. It keys its own stream, `Subsystem.UnitFire`, and runs after `Squad.step`, so a
+  crew that got out this tick does not also fire from the seats. `PoliceUnit.fired` is its clock.
+- **The patrol runs only at no heat.** `patrol` (`patrol.ts`) reads the diary of spec section 20.5
+  once a second and sends a car to an incident within `ANSWER_NEAR` of the player: behind the
+  driver of a traffic stop, to the corner of anything else. The car has the task `answer` and the
+  incident's id in `incident`. At any heat, `PoliceForce.step` gives it a chase task like every
+  other unit, so a chase never pays for the patrol. `standDown` leaves an `answer` car alone. A car
+  whose incident is over turns to `leave`, drives off with no siren, and is taken off the map once
+  it is `STAND_DOWN_RANGE` away. The corners come from `Ground.crimes`, which `physics.ts` passes
+  to `step`; without them nothing is answered.

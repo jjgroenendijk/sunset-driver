@@ -30,7 +30,10 @@ import { CRIME_HEAT, decayHeat, heatStars, raiseHeat, type Crime } from './crime
 import type { CasualtyGround } from './casualty.ts';
 import { bark, CREW, type Bark, type Cuffs, type FallenOfficer, type Officer } from './officer.ts';
 import { dropPoliceCar } from './pickup.ts';
-import { Squad, type Quarry } from './squad.ts';
+import { inSight, Squad, type Quarry } from './squad.ts';
+import { unitFire } from './officer-fire.ts';
+import { patrol } from './patrol.ts';
+import type { CrimeGround } from './street-crime.ts';
 import { UnitRoads, type DrivePose } from './unit-route.ts';
 import type { SimState } from './simulation.ts';
 import type { TrafficRoads } from './traffic.ts';
@@ -48,7 +51,11 @@ export type PoliceTask =
   /** Driving at a junction further ahead, and standing across it once there. */
   | 'block'
   /** Nobody has seen the player for a while: casting about the last sighting. */
-  | 'search';
+  | 'search'
+  /** No chase is on: driving to an incident of the city's own street crime (`patrol.ts`). */
+  | 'answer'
+  /** No chase is on and nothing to answer: driving off to be taken off the map. */
+  | 'leave';
 
 /** One police unit, as the record carries it. */
 export interface PoliceUnit {
@@ -79,6 +86,10 @@ export interface PoliceUnit {
    * crew is out on foot stands where it stopped until they are back in it.
    */
   crew: number;
+  /** The tick the crew last fired out of the car (`officer-fire.ts`). */
+  fired: number;
+  /** The street crime it was sent to while no chase is on, or -1 (`patrol.ts`). */
+  incident: number;
 }
 
 /** What the police know and who is out (spec section 14). */
@@ -120,6 +131,12 @@ export const UNIT_ARMOUR = 1.4;
 /** Metres a car sees the player over, and the much longer sight of the helicopter. */
 export const SIGHT_RANGE = 70;
 export const HELICOPTER_SIGHT = 220;
+
+/**
+ * Metres over the road a car looks and fires from: over its own roof, so the
+ * ray starts clear of the car's own body.
+ */
+export const CAR_EYE = 1.7;
 
 /** Metres over the ground the helicopter flies. */
 export const HELICOPTER_HEIGHT = 45;
@@ -336,6 +353,8 @@ export class PoliceForce {
   /** The officers on foot: out of the cars, and on the beat. */
   private readonly squad: Squad;
   private readonly pose: DrivePose = { x: 0, y: 0, height: 0, heading: 0 };
+  /** How `patrol.ts` brings a car out onto the road nearest a place. */
+  private readonly raiser = (id: number, x: number, y: number): PoliceUnit | undefined => this.raise(id, 'patrol', x, y);
   /** The units that were out last tick, so the routes of the ones that have gone are forgotten. */
   private out: number[] = [];
 
@@ -349,14 +368,16 @@ export class PoliceForce {
    * One tick of the whole system: what the police can see, what the heat does
    * about it, who comes out, and where every unit gets to. Called from the
    * physics, after the world has been stepped, so the units answer the tick the
-   * player has just driven. `ground` is the walls and the ground the officers
-   * on foot see and walk by; without it the street is open, as in a test.
+   * player has just driven. `ground` is the walls and the ground the units see
+   * by and the officers on foot walk by; without it the street is open, as in
+   * a test. `crimes` is where the city's own street crime happens, which a
+   * patrol answers while no chase is on; without it nothing is answered.
    */
-  step(state: SimState, ground?: CasualtyGround): void {
+  step(state: SimState, ground?: CasualtyGround, crimes: readonly CrimeGround[] = []): void {
     const police = state.police;
     const quarry = quarryOf(state);
     const lost = state.tick - police.seenTick >= SEARCH_DELAY;
-    this.look(state, quarry);
+    this.look(state, quarry, ground);
     this.squad.look(state, quarry, ground);
     // The radio says when the player is picked up again and when they are lost.
     if (state.heat > 0 && lost && police.seenTick === state.tick) bark(state, 'spotted', quarry.x, quarry.y);
@@ -365,17 +386,28 @@ export class PoliceForce {
     }
     state.heat = decayHeat(state.heat, state.tick, police.seenTick);
     this.dispatch(state, quarry);
+    // The world is policed only while the player is not: a chase costs this nothing.
+    if (state.heat <= 0) patrol(state, quarry, crimes, this.raiser);
     const searching = state.tick - police.seenTick >= SEARCH_DELAY;
     for (let i = 0; i < police.units.length; i++) {
       const unit = police.units[i] as PoliceUnit;
+      // A car on its own business keeps it until a chase calls it in.
+      const own = unit.task === 'answer' || unit.task === 'leave';
+      if (own && state.heat <= 0) {
+        if (unit.kind !== 'helicopter') this.drive(state, unit);
+        continue;
+      }
+      unit.incident = -1;
       unit.task = this.taskOf(i, searching);
       this.aim(state, unit, quarry);
       if (unit.kind === 'helicopter') this.fly(unit);
       else this.drive(state, unit);
     }
     // The crews answer where the cars have got to: out of a car that has
-    // pulled up, and back into one whose chase has driven off.
+    // pulled up, and back into one whose chase has driven off. A crew still in
+    // a car that has stopped fires out of it.
     this.squad.step(state, quarry, ground);
+    for (const unit of police.units) unitFire(state, unit, quarry, ground);
     this.standDown(state, quarry);
     this.sweep(state);
   }
@@ -394,12 +426,15 @@ export class PoliceForce {
 
   /**
    * What every unit can see. A sighting writes the place down and stamps the
-   * tick, which is the only thing that holds the heat up.
+   * tick, which is the only thing that holds the heat up. A car sees nothing
+   * through a building; the helicopter looks down over the roofs.
    */
-  private look(state: SimState, quarry: Quarry): void {
+  private look(state: SimState, quarry: Quarry, ground: CasualtyGround | undefined): void {
     for (const unit of state.police.units) {
       const range = unit.kind === 'helicopter' ? HELICOPTER_SIGHT : SIGHT_RANGE;
-      if (hypot(unit.x - quarry.x, unit.y - quarry.y) > range) continue;
+      const distance = hypot(unit.x - quarry.x, unit.y - quarry.y);
+      if (distance > range) continue;
+      if (unit.kind !== 'helicopter' && !inSight(ground, unit, quarry.x, quarry.y, distance, CAR_EYE)) continue;
       state.police.lastKnown = { x: quarry.x, y: quarry.y };
       state.police.seenTick = state.tick;
       return;
@@ -462,6 +497,8 @@ export class PoliceForce {
       goalX: x,
       goalY: y,
       crew: CREW[kind],
+      fired: -1_000_000,
+      incident: -1,
     };
     if (kind === 'helicopter') return unit;
     const edge = this.roads.edgeNear(x, y);
@@ -594,8 +631,9 @@ export class PoliceForce {
     const units = state.police.units;
     for (let i = units.length - 1; i >= 0; i--) {
       const unit = units[i] as PoliceUnit;
-      // A car is not driven off without its crew, who are walking back to it.
-      if (crewOut(state, unit)) continue;
+      // A car is not driven off without its crew, who are walking back to it,
+      // nor off a call it is answering.
+      if (crewOut(state, unit) || unit.task === 'answer') continue;
       if (hypot(unit.x - quarry.x, unit.y - quarry.y) < STAND_DOWN_RANGE) continue;
       units.splice(i, 1);
     }

@@ -277,7 +277,7 @@ export class SimPhysics extends GroundPlaces {
     this.traffic?.settle(state);
     // The police answer the tick the player has just driven, so they are
     // stepped once the record says where that left them (spec section 14).
-    this.ground.police?.step(state, this.casualtyGround);
+    this.ground.police?.step(state, this.casualtyGround, this.ground.crimes);
     // The faction enforcers of spec section 17.2 answer the same tick for the
     // same reason: they walk at where the player has just got to.
     this.ground.enforcers?.step(state);
