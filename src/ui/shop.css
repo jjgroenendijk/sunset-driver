@@ -3,25 +3,41 @@
    It wears the look of the other panels (`panels.css`): ivory card stock, a serif
    heading, red for the current row and for a refusal, gold for a price. Unlike
    them it takes the mouse, since a row is bought with a click. */
-/* A column rather than a grid: the rows a hidden part would leave are not kept for it. */
-.shop { z-index: 3; left: 50%; bottom: 4%; transform: translateX(-50%); display: flex; flex-direction: column; width: min(48rem, 94vw); max-height: min(34rem, 64vh); gap: .5rem; animation: shop-in .25s ease-out; }
-.shop.shop-at-door { width: auto; min-width: min(20rem, 80vw); max-height: none; bottom: 21%; }
-@keyframes shop-in { from { opacity: 0; transform: translate(-50%, .6rem); } to { opacity: 1; transform: translate(-50%, 0); } }
 
-.shop-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding-bottom: .35rem; border-bottom: 1px solid rgba(35,28,22,.15); }
-.shop-title { font: 400 1.45rem/1.1 var(--it-serif); }
-.shop-purse { font: 600 .95rem var(--it-sans); color: #2f7a3a; font-variant-numeric: tabular-nums; }
-.shop-door { font-size: .95rem; }
+/* Every size in the counter is a multiple of `--u`, which grows with the screen:
+   13 px on a small laptop, 20 px on a large monitor. A size in `rem` would stay
+   one size, a small box in the middle of a large screen. */
+.shop { --u: clamp(13px, calc(.45vw + .55vh + 3px), 20px); font-size: var(--u); }
+
+/* The counter stands at the right, under the status stack of the HUD (`hud.css`),
+   so the room the player walked into stays in sight in the middle of the frame.
+   A column rather than a grid: the rows a hidden part would leave are not kept for it. */
+.shop { z-index: 3; top: calc(var(--hud-top) + 7.5rem); right: var(--hud-right); display: flex; flex-direction: column; width: min(calc(46 * var(--u)), calc(50vw - var(--hud-right) - 1rem)); max-height: calc(100% - var(--hud-top) - 7.5rem - var(--hud-bottom)); gap: calc(.5 * var(--u)); padding: calc(.9 * var(--u)) calc(1.1 * var(--u)); animation: shop-in .25s ease-out; }
+@keyframes shop-in { from { opacity: 0; transform: translateX(calc(.8 * var(--u))); } to { opacity: 1; transform: none; } }
+/* A short screen has no room under the HUD. The counter covers the money there,
+   and shows it in its own heading. */
+@media (max-height: 44rem) {
+  .shop { top: var(--hud-top); max-height: calc(100% - var(--hud-top) - var(--hud-bottom)); }
+}
+/* At the door the panel is one line, low in the middle, clear of the player. */
+.shop.shop-at-door { top: auto; right: auto; left: 50%; bottom: 21%; width: auto; min-width: min(calc(20 * var(--u)), 80vw); max-height: none; transform: translateX(-50%); animation: shop-door-in .25s ease-out; }
+@keyframes shop-door-in { from { opacity: 0; transform: translate(-50%, .6rem); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+.shop-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--u); padding-bottom: calc(.35 * var(--u)); border-bottom: 1px solid rgba(35,28,22,.15); }
+.shop-title { font: 400 calc(1.45 * var(--u))/1.1 var(--it-serif); }
+.shop-purse { font: 600 calc(.95 * var(--u)) var(--it-sans); color: #2f7a3a; font-variant-numeric: tabular-nums; }
+.shop-door { font-size: calc(.95 * var(--u)); }
 .shop-refused { color: var(--it-rosso); }
 
-.shop-body { flex: 1 1 auto; display: grid; grid-template-columns: minmax(0, 1fr) 16.5rem; gap: .9rem; min-height: 0; }
-.shop-list { display: grid; align-content: start; min-height: 0; overflow-y: auto; padding-right: .3rem; scrollbar-width: thin; scrollbar-color: rgba(193,154,83,.7) transparent; }
-.shop-group { margin: .55rem 0 .15rem; font-size: .62rem; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--it-rosso); }
+.shop-body { flex: 1 1 auto; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: calc(.9 * var(--u)); min-height: 0; }
+.shop-list { display: grid; align-content: start; min-height: 0; overflow-y: auto; padding-right: calc(.3 * var(--u)); scrollbar-width: thin; scrollbar-color: rgba(193,154,83,.7) transparent; }
+/* The heading of a group stays at the top of the list while its rows scroll under it. */
+.shop-group { position: sticky; top: 0; z-index: 1; margin: calc(.55 * var(--u)) 0 calc(.15 * var(--u)); padding: calc(.15 * var(--u)) 0; background: var(--it-ivory); font-size: calc(.62 * var(--u)); font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--it-rosso); }
 .shop-group:first-child { margin-top: 0; }
-.shop-row { display: grid; grid-template-columns: 1.4rem minmax(0, 1fr) auto; align-items: center; gap: .5rem; padding: .32rem .5rem; border-left: 2px solid transparent; border-bottom: 1px solid rgba(35,28,22,.08); cursor: pointer; font-size: .9rem; transition: background-color .15s, border-color .15s, padding-left .15s; }
+.shop-row { display: grid; grid-template-columns: calc(1.4 * var(--u)) minmax(0, 1fr) auto; align-items: center; gap: calc(.5 * var(--u)); padding: calc(.32 * var(--u)) calc(.5 * var(--u)); border-left: 2px solid transparent; border-bottom: 1px solid rgba(35,28,22,.08); cursor: pointer; font-size: calc(.9 * var(--u)); transition: background-color .15s, border-color .15s, padding-left .15s; }
 .shop-row:hover { background: rgba(163,34,27,.05); }
-.shop-row.shop-current { border-left-color: var(--it-rosso); background: rgba(163,34,27,.1); color: var(--it-rosso); padding-left: .7rem; }
-.shop-key { display: inline-grid; place-items: center; width: 1.25rem; height: 1.25rem; border: 1px solid rgba(35,28,22,.35); border-bottom-width: 2px; border-radius: .2rem; font: 600 .66rem/1 var(--it-sans); color: var(--it-muted); }
+.shop-row.shop-current { border-left-color: var(--it-rosso); background: rgba(163,34,27,.1); color: var(--it-rosso); padding-left: calc(.7 * var(--u)); }
+.shop-key { display: inline-grid; place-items: center; width: calc(1.25 * var(--u)); height: calc(1.25 * var(--u)); border: 1px solid rgba(35,28,22,.35); border-bottom-width: 2px; border-radius: .2em; font: 600 calc(.66 * var(--u))/1 var(--it-sans); color: var(--it-muted); }
 .shop-key:empty { visibility: hidden; }
 .shop-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .shop-price { color: #8a6420; font-variant-numeric: tabular-nums; font-weight: 600; }
@@ -29,43 +45,46 @@
 .shop-dear .shop-price { text-decoration: line-through; }
 .shop-empty { color: var(--it-muted); font-style: italic; }
 
-.shop-card { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: .35rem; min-height: 0; }
-.shop-card-info { display: grid; align-content: start; gap: .2rem; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(193,154,83,.7) transparent; }
+/* The card keeps the window and the button in sight; the words between them scroll. */
+.shop-card { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: calc(.35 * var(--u)); min-height: 0; }
+.shop-card-info { display: grid; align-content: start; gap: calc(.2 * var(--u)); min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(193,154,83,.7) transparent; }
 .shop-card.shop-card-back .shop-window { box-shadow: inset 0 0 0 2px var(--it-rosso), 0 6px 16px rgba(0,0,0,.3); }
-.shop-window { position: relative; height: clamp(6.5rem, 24vh, 12rem); flex-shrink: 0; overflow: hidden; background: #4a3c33; box-shadow: inset 0 0 0 1px rgba(193,154,83,.6), 0 6px 16px rgba(0,0,0,.3); }
+/* Four by three where there is the height for it, and shorter on a short screen. */
+.shop-window { position: relative; width: 100%; aspect-ratio: 4 / 3; max-height: 30vh; overflow: hidden; background: #2e231d; box-shadow: inset 0 0 0 1px rgba(193,154,83,.6), 0 6px 16px rgba(0,0,0,.3); }
 .shop-preview { display: block; width: 100%; height: 100%; }
 /* A soft light falling from above, over the preview, as a shop window's lamp. */
 .shop-window::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 70% 55% at 50% 0%, rgba(255,230,190,.14), rgba(0,0,0,0) 70%), linear-gradient(to top, rgba(0,0,0,.25), rgba(0,0,0,0) 30%); }
-.shop-card-name { margin-top: .2rem; font: 400 1.2rem/1.15 var(--it-serif); }
-.shop-card-price { font: 600 1.05rem var(--it-sans); color: #8a6420; font-variant-numeric: tabular-nums; }
-.shop-card-blurb { font-size: .78rem; font-style: italic; color: var(--it-muted); }
-.shop-facts { display: grid; gap: .18rem; margin-top: .15rem; }
-.shop-fact { display: grid; grid-template-columns: 4.6rem minmax(0, 1fr) auto; align-items: center; gap: .45rem; font-size: .72rem; font-variant-numeric: tabular-nums; }
-.shop-fact-label { color: var(--it-muted); letter-spacing: .06em; text-transform: uppercase; font-size: .6rem; font-weight: 600; }
+.shop-card-name { margin-top: calc(.2 * var(--u)); font: 400 calc(1.2 * var(--u))/1.15 var(--it-serif); }
+.shop-card-price { font: 600 calc(1.05 * var(--u)) var(--it-sans); color: #8a6420; font-variant-numeric: tabular-nums; }
+.shop-card-blurb { font-size: calc(.78 * var(--u)); font-style: italic; color: var(--it-muted); }
+.shop-facts { display: grid; gap: calc(.18 * var(--u)); margin-top: calc(.15 * var(--u)); }
+.shop-fact { display: grid; grid-template-columns: calc(4.6 * var(--u)) minmax(0, 1fr) auto; align-items: center; gap: calc(.45 * var(--u)); font-size: calc(.72 * var(--u)); font-variant-numeric: tabular-nums; }
+.shop-fact-label { color: var(--it-muted); letter-spacing: .06em; text-transform: uppercase; font-size: calc(.6 * var(--u)); font-weight: 600; }
 .shop-fact-value { text-align: right; }
-.shop-gauge { height: .3rem; background: rgba(35,28,22,.12); overflow: hidden; }
+.shop-gauge { height: calc(.3 * var(--u)); background: rgba(35,28,22,.12); overflow: hidden; }
 .shop-gauge-none { visibility: hidden; }
 .shop-gauge-fill { display: block; height: 100%; background: linear-gradient(90deg, var(--it-gold), var(--it-rosso)); transition: width .3s ease; }
-.shop-buy { padding: .5rem .8rem; border: 0; background: var(--it-rosso); color: var(--it-ivory); font: 600 .8rem var(--it-sans); letter-spacing: .12em; text-transform: uppercase; cursor: pointer; transition: background-color .15s, transform .1s; }
+.shop-buy { padding: calc(.5 * var(--u)) calc(.8 * var(--u)); border: 0; background: var(--it-rosso); color: var(--it-ivory); font: 600 calc(.8 * var(--u)) var(--it-sans); letter-spacing: .12em; text-transform: uppercase; cursor: pointer; transition: background-color .15s, transform .1s; }
 .shop-buy:hover { background: var(--it-rosso-dark); }
 .shop-buy:active { transform: translateY(1px); }
-.shop-buy.shop-buy-dear { background: rgba(35,28,22,.25); color: var(--it-ink); }
+.shop-buy.shop-buy-dear { background: rgba(35,28,22,.25); color: var(--it-ink); cursor: default; }
 
-.shop-said { padding: .35rem .6rem; border-left: 2px solid #2f7a3a; background: rgba(47,122,58,.08); color: #2f7a3a; font-size: .85rem; }
+.shop-said { padding: calc(.35 * var(--u)) calc(.6 * var(--u)); border-left: 2px solid #2f7a3a; background: rgba(47,122,58,.08); color: #2f7a3a; font-size: calc(.85 * var(--u)); }
 .shop-said.shop-said-short { border-left-color: var(--it-rosso); background: rgba(163,34,27,.08); color: var(--it-rosso); }
 .shop-said-flash { animation: shop-said .6s ease-out; }
-@keyframes shop-said { from { opacity: 0; transform: translateY(.3rem); } to { opacity: 1; transform: none; } }
+@keyframes shop-said { from { opacity: 0; transform: translateY(.3em); } to { opacity: 1; transform: none; } }
 
-.shop-foot { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-top: .3rem; border-top: 1px solid rgba(35,28,22,.12); font-size: .72rem; color: var(--it-muted); }
-.shop-leave { padding: .25rem .6rem; border: 1px solid rgba(35,28,22,.35); background: transparent; color: var(--it-ink); font: 600 .72rem var(--it-sans); letter-spacing: .08em; cursor: pointer; }
+.shop-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--u); padding-top: calc(.3 * var(--u)); border-top: 1px solid rgba(35,28,22,.12); font-size: calc(.72 * var(--u)); color: var(--it-muted); }
+.shop-leave { padding: calc(.25 * var(--u)) calc(.6 * var(--u)); border: 1px solid rgba(35,28,22,.35); background: transparent; color: var(--it-ink); font: 600 calc(.72 * var(--u)) var(--it-sans); letter-spacing: .08em; cursor: pointer; }
 .shop-leave:hover { border-color: var(--it-rosso); color: var(--it-rosso); }
 
-/* A narrow screen stacks the card over the rows, with a shorter window. */
-@media (max-width: 40rem) {
-  .shop { max-height: 72vh; }
+/* A narrow screen has no side to spare: the counter is a sheet across the
+   bottom, with the card stacked over the rows and a smaller window. */
+@media (max-width: 52rem) {
+  .shop { top: auto; right: auto; left: 50%; bottom: 4%; width: 94vw; max-height: 64vh; transform: translateX(-50%); animation: shop-door-in .25s ease-out; }
   .shop-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
-  .shop-card { order: -1; grid-template-columns: 7.5rem minmax(0, 1fr); grid-template-rows: auto auto; column-gap: .7rem; }
-  .shop-window { grid-row: span 2; height: 7.5rem; }
+  .shop-card { order: -1; grid-template-columns: calc(9 * var(--u)) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; column-gap: calc(.7 * var(--u)); max-height: calc(9 * var(--u)); }
+  .shop-window { grid-row: span 2; aspect-ratio: auto; height: 100%; max-height: none; }
   .shop-facts, .shop-hint { display: none; }
   .shop-foot { justify-content: flex-end; }
 }

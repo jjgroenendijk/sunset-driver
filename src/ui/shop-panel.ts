@@ -278,8 +278,24 @@ export class ShopPanel {
     if (count === 0) return;
     this.cursor = ((index % count) + count) % count;
     this.mark();
-    if (scroll) this.rows[this.cursor]?.scrollIntoView({ block: 'nearest' });
     if (this.state !== undefined) this.drawCard(this.state);
+    // After the card: a card of another length can change the height of the
+    // list, and a row scrolled into view before that is left cut off.
+    if (scroll) this.scrollTo(this.cursor);
+  }
+
+  /**
+   * Bring a row into view below the sticky heading of its group, which
+   * `scrollIntoView` does not know covers the top of the list.
+   */
+  private scrollTo(index: number): void {
+    const row = this.rows[index];
+    if (row === undefined) return;
+    const list = this.list.getBoundingClientRect();
+    const box = row.getBoundingClientRect();
+    const heading = this.list.querySelector<HTMLElement>('.shop-group')?.offsetHeight ?? 0;
+    if (box.top < list.top + heading) this.list.scrollTop -= list.top + heading - box.top;
+    else if (box.bottom > list.bottom) this.list.scrollTop += box.bottom - list.bottom;
   }
 
   private mark(): void {
