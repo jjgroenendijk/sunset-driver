@@ -460,6 +460,9 @@ export interface Shot {
  * everything else, so a finger held on a pump gun fires once. A trigger pulled
  * on an empty magazine starts the reload instead of firing, because a player
  * who is out is a player who wants to reload.
+ *
+ * `yaw` is the direction the shot goes in, which is the way the player faces
+ * unless the pointer says otherwise (`aim.ts`).
  */
 export function stepWeapons(
   loadout: LoadoutState,
@@ -467,6 +470,7 @@ export function stepWeapons(
   player: PlayerState,
   seed: number,
   tick: number,
+  yaw: number = player.heading,
 ): Shot | undefined {
   loadout.aiming = input.aim;
   if (loadout.firedTick < 0 || tick - loadout.firedTick >= RECOIL_SETTLE) {
@@ -486,7 +490,7 @@ export function stepWeapons(
   const pulled = input.fire && (spec.automatic || !loadout.held.fire);
   loadout.held.fire = input.fire;
   if (!pulled) return undefined;
-  return fire(loadout, spec, player, seed, tick);
+  return fire(loadout, spec, player, seed, tick, yaw);
 }
 
 /** Spend a round and answer what it threw, or undefined where the weapon would not fire. */
@@ -496,6 +500,7 @@ function fire(
   player: PlayerState,
   seed: number,
   tick: number,
+  aim: number,
 ): Shot | undefined {
   if (reloading(loadout)) return undefined;
   // Only a pistol or an SMG is any use from a seat (spec section 11.6).
@@ -518,13 +523,13 @@ function fire(
   const rng = rngFor(seed, tick, Subsystem.Weapons, index);
   const cone = spreadOf(spec, loadout.aiming, loadout.recoil);
   loadout.recoil = Math.min(MAX_RECOIL, loadout.recoil + spec.recoil);
-  const muzzleX = player.x + cos(player.heading) * MUZZLE_REACH;
-  const muzzleY = player.y + sin(player.heading) * MUZZLE_REACH;
+  const muzzleX = player.x + cos(aim) * MUZZLE_REACH;
+  const muzzleY = player.y + sin(aim) * MUZZLE_REACH;
   const muzzleH = player.height + MUZZLE_HEIGHT;
 
   const flight = spec.projectile;
   if (flight !== undefined) {
-    const yaw = player.heading + rng.range(-cone, cone);
+    const yaw = aim + rng.range(-cone, cone);
     const pitch = flight.pitch + rng.range(-cone, cone) * PITCH_SHARE;
     const flat = cos(pitch) * flight.speed;
     const projectile: ProjectileState = {
@@ -542,7 +547,7 @@ function fire(
 
   const rays: ShotRay[] = [];
   for (let i = 0; i < spec.pellets; i++) {
-    const yaw = player.heading + rng.range(-cone, cone);
+    const yaw = aim + rng.range(-cone, cone);
     const pitch = rng.range(-cone, cone) * PITCH_SHARE;
     const flat = cos(pitch);
     rays.push({

@@ -105,3 +105,16 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .map-legend.folded > :not(.map-legend-head) { display: none; }
 .map-canvas:active { cursor: grabbing; }
 .map-hint { padding: .5rem; text-align: center; font-size: .8rem; opacity: .65; }
+.crosshair, .crosshair-lock { position: fixed; left: 0; top: 0; z-index: 2; width: 0; height: 0; pointer-events: none; }
+.crosshair { --gap: 8px; --tick: #f6e7d8; }
+.crosshair-aiming { --tick: #ffd27a; }
+.crosshair-hit { --tick: #ff5a4a; }
+.crosshair-tick { position: absolute; background: var(--tick); box-shadow: 0 0 2px #000; }
+.crosshair-n, .crosshair-s { left: -1px; width: 2px; height: 8px; }
+.crosshair-e, .crosshair-w { top: -1px; width: 8px; height: 2px; }
+.crosshair-n { bottom: var(--gap); }
+.crosshair-s { top: var(--gap); }
+.crosshair-e { left: var(--gap); }
+.crosshair-w { right: var(--gap); }
+.crosshair-dot { position: absolute; left: -1px; top: -1px; width: 2px; height: 2px; background: var(--tick); }
+.crosshair-lock { margin: -14px 0 0 -14px; width: 28px; height: 28px; border: 2px solid #ff5a4a; border-radius: 50%; box-shadow: 0 0 3px #000; }

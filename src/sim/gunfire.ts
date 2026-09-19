@@ -15,6 +15,7 @@ import { crowdFeelsBlast, crowdHearsShot } from './crowd-reaction.ts';
 import { callAmbulance } from './emergency.ts';
 import { damageVehicle, disableEngine, ignite } from './damage.ts';
 import { unrotate } from './frame.ts';
+import { aimYaw } from './aim.ts';
 import type { InputFrame } from './input.ts';
 import { hurt, SKIN, vehicleGap } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
@@ -25,6 +26,7 @@ import { blastEnforcers, hurtEnforcer } from './enforcer.ts';
 import { blastUnits, commitCrime, report, shootUnit } from './police.ts';
 import { blowStrength, forgetHits, markHit, SWING_HEIGHT, type CrowdSource, type HitSurface } from './melee.ts';
 import type { PedestrianPose } from './pedestrians.ts';
+import { forgetTracers, markTracer, type TracerEnd } from './tracer.ts';
 import {
   blastFalloff,
   bounceProjectile,
@@ -109,6 +111,8 @@ export class Gunfire {
   private readonly ray: RAPIER.Ray;
   /** Reused by the swing that looks for the crowd, so a punch allocates nothing. */
   private readonly ids: number[] = [];
+  /** Metres the last {@link Gunfire.scan} carried before it stopped. */
+  private reach = 0;
   private readonly pose: PedestrianPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0, cycle: 0, gait: 'stand' };
 
   constructor(world: RAPIER.World) {
@@ -132,8 +136,13 @@ export class Gunfire {
     // A blow is remembered for a few ticks and no longer: what reads one has
     // had every frame of those ticks to see it (`melee.ts`).
     forgetHits(state.hits, state.tick);
-    const shot = stepWeapons(state.loadout, input, state.player, state.seed, state.tick);
+    forgetTracers(state.tracers, state.tick);
+    const yaw = aimYaw(state, input);
+    const shot = stepWeapons(state.loadout, input, state.player, state.seed, state.tick, yaw);
     if (shot === undefined) return;
+    // A player on foot turns square to the aim as the shot goes, so a swing
+    // sweeps toward the pointer and the body is drawn facing the shot.
+    if (yaw !== undefined && !state.player.driving) state.player.heading = yaw;
     report(state, shot.heat);
     // A gun going off clears the pavement around the player (spec section
     // 20.1). A swing is quiet, so only the loud weapons are heard.
@@ -152,15 +161,31 @@ export class Gunfire {
       this.swing(state, shot.spec, target);
       return;
     }
-    for (const ray of shot.rays) this.scan(state, shot.spec, ray, shot.range, target);
+    for (let i = 0; i < shot.rays.length; i++) {
+      const ray = shot.rays[i] as ShotRay;
+      const end = this.scan(state, shot.spec, ray, shot.range, target);
+      const reach = this.reach;
+      markTracer(state.tracers, {
+        tick: state.tick,
+        pellet: i,
+        x: ray.x,
+        y: ray.y,
+        h: ray.h,
+        ex: ray.x + ray.dx * reach,
+        ey: ray.y + ray.dy * reach,
+        eh: ray.h + ray.dh * reach,
+        end,
+      });
+    }
   }
 
   /**
    * One pellet, cast against the world. The shooter's own body is left out of
    * the cast: a driver firing from a seat would otherwise shoot their own door,
-   * and a player on foot their own chest.
+   * and a player on foot their own chest. It answers what the round met and
+   * leaves how far it carried in {@link Gunfire.reach}.
    */
-  private scan(state: SimState, spec: WeaponSpec, ray: ShotRay, range: number, target: ShotTarget): void {
+  private scan(state: SimState, spec: WeaponSpec, ray: ShotRay, range: number, target: ShotTarget): TracerEnd {
     this.from.x = ray.x;
     this.from.y = ray.h;
     this.from.z = ray.y;
@@ -169,13 +194,14 @@ export class Gunfire {
     this.along.z = ray.dy;
     const mine = target.shooter;
     const hit = this.world.castRay(this.ray, range, true, undefined, undefined, mine);
-    if (hit === null) return;
+    this.reach = hit === null ? range : hit.timeOfImpact;
+    if (hit === null) return 'none';
     // A round that went into a police car is taken off that car (spec section
     // 14), and shooting at officers is what it costs the player.
     const unit = target.police?.unitAt(hit.collider.handle);
     if (unit !== undefined) {
       shootUnit(state, unit, roundSeverity(spec) * VEHICLE_SHARE_PER_POINT);
-      return;
+      return 'vehicle';
     }
     // A round that went into an enforcer is taken off them, on the health scale
     // people are measured in rather than the share a panel takes (spec section
@@ -183,18 +209,20 @@ export class Gunfire {
     const enforcer = target.enforcers?.unitAt(hit.collider.handle);
     if (enforcer !== undefined) {
       hurtEnforcer(state, enforcer, spec.damage);
-      return;
+      return 'person';
     }
     // The round pushes the vehicle the way it was flying, which is the direction
     // the panel rule reads, exactly as a crash pushes it away from the wall.
     if (target.body !== undefined && hit.collider.handle === target.body.handle) {
       this.hit(state, spec, state.vehicle, target.spec, ray.dx, ray.dh, ray.dy, roundSeverity(spec));
-      return;
+      return 'vehicle';
     }
     // A round that went into a car of the city takes it off its tour (spec
     // section 5.3) and is taken off the car.
     const car = target.cars?.strike(state, hit.collider.handle)?.vehicle;
-    if (car !== undefined) this.hit(state, spec, car, specOf(car.cls), ray.dx, ray.dh, ray.dy, roundSeverity(spec));
+    if (car === undefined) return 'hard';
+    this.hit(state, spec, car, specOf(car.cls), ray.dx, ray.dh, ray.dy, roundSeverity(spec));
+    return 'vehicle';
   }
 
   /**

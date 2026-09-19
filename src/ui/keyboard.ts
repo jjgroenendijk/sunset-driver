@@ -8,8 +8,17 @@ import type { InputFrame } from '../sim/input.ts';
  */
 export const CHOICE_KEYS = 9;
 
+/** The codes the mouse buttons are kept under beside the keys. */
+const FIRE_BUTTON = 'Mouse0';
+const AIM_BUTTON = 'Mouse2';
+
+/** The code a mouse button is kept under, which no key shares. */
+function mouseCode(button: number): string {
+  return `Mouse${button}`;
+}
+
 /**
- * Keyboard state sampled once per simulation tick into an InputFrame.
+ * Keyboard and mouse state sampled once per simulation tick into an InputFrame.
  * `controls.ts` is the one list of the bindings; this must stay in step with it.
  *
  * `freeCamera` is the one exception: those keys drive the developer camera of
@@ -22,6 +31,8 @@ export class Keyboard {
   private choiceHeld = '';
   /** Whether a dial key was down last tick, so a held key turns the dial once. */
   private stationHeld = 0;
+  /** The map point under the mouse, which the frame writes; undefined while it is off the map. */
+  private point: { x: number; y: number } | undefined = undefined;
 
   constructor(target: Window) {
     target.addEventListener('keydown', (e) => {
@@ -33,6 +44,36 @@ export class Keyboard {
     });
     target.addEventListener('keyup', (e) => this.down.delete(e.code));
     target.addEventListener('blur', () => this.down.clear());
+    // A button let go anywhere is let go, even off the canvas it went down on.
+    target.addEventListener('pointerup', (e) => this.down.delete(mouseCode(e.button)));
+  }
+
+  /**
+   * Take the mouse buttons pressed on the game's canvas: the left one fires and
+   * the right one aims (spec section 11.5). Only a mouse counts. A finger on a
+   * touch screen is the touch pad of `touch.ts`, and a tap must not fire.
+   */
+  listenMouse(canvas: HTMLCanvasElement): void {
+    canvas.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'mouse' || (e.button !== 0 && e.button !== 2)) return;
+      this.down.add(mouseCode(e.button));
+    });
+    // The right button aims, so the page's own menu must not open over the game.
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+
+  /**
+   * Where the mouse points on the map, in map metres, or undefined where it is
+   * not over the map. The frame writes it once a frame from the camera, which
+   * this class does not know.
+   */
+  pointAt(x: number, y: number): void {
+    this.point = { x, y };
+  }
+
+  /** The mouse has left the map. */
+  unpoint(): void {
+    this.point = undefined;
   }
 
   private is(code: string): boolean {
@@ -60,8 +101,11 @@ export class Keyboard {
       sprint: selling,
       jump: this.is('Space'),
       interact: this.is('KeyE'),
-      fire: this.is('KeyF'),
-      aim: this.is('KeyQ'),
+      fire: this.is('KeyF') || this.is(FIRE_BUTTON),
+      aim: this.is('KeyQ') || this.is(AIM_BUTTON),
+      pointing: this.point !== undefined,
+      pointX: this.point?.x ?? 0,
+      pointY: this.point?.y ?? 0,
       reload: this.is('KeyR'),
       cycle: this.is('KeyC'),
       station: this.dial(),

@@ -6,6 +6,7 @@
  * owned by `physics.ts`: `ground-bodies.ts`, `unit-bodies.ts` and
  * `parked-bodies.ts` are the same idea for the things there are many of.
  */
+import { AIM_TURN_RATE, aimYaw, facesAim } from './aim.ts';
 import { atan2, hypot } from '../core/libm.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { TICK_RATE } from './clock.ts';
@@ -103,7 +104,11 @@ export function walk(walker: Walker, state: SimState, input: InputFrame, seaLeve
     dx /= length;
     dy /= length;
   }
-  if (length > 0) p.heading = turnToward(p.heading, atan2(dy, dx), TURN_RATE / TICK_RATE);
+  // A player aiming, or one who has just fired, faces the aim and may walk
+  // any way under it (spec section 11.5). Otherwise they face the way they walk.
+  const aim = facesAim(state, input) ? aimYaw(state, input) : undefined;
+  if (aim !== undefined) p.heading = turnToward(p.heading, aim, AIM_TURN_RATE / TICK_RATE);
+  else if (length > 0) p.heading = turnToward(p.heading, atan2(dy, dx), TURN_RATE / TICK_RATE);
   if (swimming) {
     const float = seaLevel - FLOAT_DEPTH * stature;
     p.vy = swimRise(float - p.height, p.vy);

@@ -28,6 +28,9 @@ const SETTLE_RATE = 1.5;
 /** The most metres the camera pulls back over roofs, and the most steps it takes to find them. */
 const MAX_PULL = 400;
 const PULL_STEPS = 12;
+/** How fast a shot's kick settles, in e-foldings a second, and the most metres kicks add up to. */
+const KICK_RATE = 18;
+const MAX_KICK = 0.6;
 
 /** The top of the tallest roof over a ground point, or undefined over open ground. */
 export type RoofHeight = (x: number, z: number) => number | undefined;
@@ -46,6 +49,8 @@ export class FollowCamera {
   private zoom = 0;
   /** Metres the camera stands back over roofs, on top of its distance (spec section 10.7). */
   private pull = 0;
+  /** Metres the last shots pushed the view, across the map, settling back to nothing. */
+  private readonly shake = new Vector3();
 
   constructor(aspect: number) {
     this.camera = new PerspectiveCamera(45, aspect, 1, 2000);
@@ -69,6 +74,19 @@ export class FollowCamera {
    */
   snap(): void {
     this.initialised = false;
+  }
+
+  /**
+   * Push the view back from a shot (spec section 11.5): `metres` against the
+   * map direction `(x, y)` the round went. The push settles within a few
+   * frames. It is render state, like the rest of the camera.
+   */
+  kick(x: number, y: number, metres: number): void {
+    const length = Math.hypot(x, y);
+    if (length === 0) return;
+    this.shake.x -= (x / length) * metres;
+    this.shake.z -= (y / length) * metres;
+    if (this.shake.length() > MAX_KICK) this.shake.setLength(MAX_KICK);
   }
 
   resize(aspect: number): void {
@@ -119,7 +137,9 @@ export class FollowCamera {
       const rate = pull > this.pull ? CLIMB_RATE : SETTLE_RATE;
       this.pull += (pull - this.pull) * (1 - Math.exp(-rate * dt));
     }
+    this.shake.multiplyScalar(Math.exp(-KICK_RATE * dt));
     this.camera.position.copy(this.focus).addScaledVector(back, this.baseDistance + this.zoom + this.pull);
+    this.camera.position.add(this.shake);
     this.applyOrientation();
   }
 }
