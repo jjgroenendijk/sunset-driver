@@ -40,6 +40,8 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
   measured in shadow texels — the near cascade of `SHADOW_DISTANCE` covers about 80 m at
   `SHADOW_MAP_SIZE`, so a texel is about 8 cm — and a bias under a texel lets a grazed surface
   stripe itself.
+- The daytime sky fill (`FILL_DAY`, `daylight.ts`) leaves a street in shade about a third as bright
+  as one in the sun. Much less, and the city in its own shadow reads as dusk at noon.
 - `renderer.shadowMap.enabled` is false by default on `WebGPURenderer`. Without the line in
   `renderer.ts` the cascades are built every frame and never drawn, and the city is flat with
   nothing to say why.

@@ -49,7 +49,7 @@ const SUN_LOW = 0xff7a35;
 const SUN_HIGH = 0xfff1d8;
 
 /** The sun's strength at its highest, in the renderer's units. */
-const SUN_INTENSITY = 3.6;
+const SUN_INTENSITY = 3.2;
 
 /** Sky light: the colour from above and the bounce from below, by day and by night. */
 const SKY_FILL_DAY = 0xbcd7f4;
@@ -57,8 +57,13 @@ const GROUND_FILL_DAY = 0x6b5e48;
 const SKY_FILL_NIGHT = 0x2a3350;
 const GROUND_FILL_NIGHT = 0x181420;
 
-/** How strong that fill is by day and at midnight. */
-const FILL_DAY = 0.85;
+/**
+ * How strong that fill is by day and at midnight. A clear sky is a light as
+ * big as the whole dome, so by day a street in shadow is about a third as
+ * bright as one in the sun, not a quarter of that: weaker, and the city in its
+ * own shadow reads as dusk at noon.
+ */
+const FILL_DAY = 2.0;
 const FILL_NIGHT = 1.2;
 
 /** The haze the far chunks fade into: by day, at dusk and at night. */
