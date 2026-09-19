@@ -1,0 +1,56 @@
+/* The panels drawn over play: the vehicle and weapon pickers (`vehicle-picker.ts`,
+   `weapon-picker.ts`), the counters of a shop, a safehouse, a job board and a
+   dealer, the metro's list and the hotwire gauge. They wear the menus' look
+   (`title.css`): ivory card stock, a serif heading, red for the current row and
+   for a refusal, gold for a price. */
+.picker, .shop, .home, .job, .trade, .travel, .hotwire {
+  position: fixed; display: grid; gap: .3rem; padding: .9rem 1.1rem; color: var(--it-ink); font-family: var(--it-sans);
+  background: linear-gradient(160deg, var(--it-ivory), var(--it-paper)); box-shadow: 0 20px 50px rgba(0,0,0,.45);
+  /* The fine gold rule inside the edge. An outline, so a picker that scrolls keeps it still. */
+  outline: 1px solid rgba(193,154,83,.6); outline-offset: -.35rem;
+}
+
+/* The pickers stand at the sides, one on each, so both can be open together. Each
+   keeps clear of the HUD's corners (`hud.css`): the status stack and the
+   speedometer on the right, the objective and the minimap on the left. */
+.picker { z-index: 3; top: calc(var(--hud-top) + 10.5rem); right: var(--hud-right); width: 17rem; max-height: calc(100% - var(--hud-top) - var(--hud-bottom) - 19.5rem); overflow-y: auto; gap: 0; }
+.picker-left { right: auto; left: var(--hud-left); top: calc(var(--hud-top) + 6rem); max-height: calc(100% - var(--hud-top) - var(--hud-bottom) - var(--hud-map) - 9.5rem); }
+.picker h2 { margin: 0 0 .3rem; padding-bottom: .4rem; border-bottom: 1px solid rgba(35,28,22,.15); font: 400 1.5rem/1.1 var(--it-serif); }
+.picker button { display: grid; gap: .05rem; padding: .35rem .6rem; border: 0; border-left: 2px solid transparent; border-bottom: 1px solid rgba(35,28,22,.1); background: transparent; color: inherit; font: inherit; font-size: .85rem; text-align: left; cursor: pointer; transition: background-color .2s; }
+.picker button:hover { background: rgba(163,34,27,.06); }
+.picker button:disabled { opacity: .35; cursor: default; }
+.picker button:disabled:hover { background: transparent; }
+.picker .picker-current { border-left-color: var(--it-rosso); background: rgba(163,34,27,.08); color: var(--it-rosso); }
+.picker-name { font: 400 1.1rem/1.15 var(--it-serif); }
+.picker-stats { font-size: .68rem; color: var(--it-muted); font-variant-numeric: tabular-nums; }
+.picker-group { margin: .7rem 0 .15rem; font-size: .62rem; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--it-rosso); }
+
+/* The counters stand at the bottom middle, over the street, and take no clicks: a key picks a row. */
+.shop, .home, .job, .trade, .travel { left: 50%; transform: translateX(-50%); pointer-events: none; }
+.shop, .home { bottom: 21%; min-width: min(22rem, 80%); }
+.job { bottom: 21%; min-width: min(24rem, 84%); }
+.trade { bottom: 34%; min-width: min(38rem, 92%); }
+.travel { bottom: 8%; min-width: min(20rem, 80%); }
+.shop-title, .home-title, .job-title, .trade-title, .travel-title { padding-bottom: .35rem; border-bottom: 1px solid rgba(35,28,22,.15); font: 400 1.3rem/1.1 var(--it-serif); }
+.shop-list, .home-list, .job-list, .trade-list, .travel-list { display: grid; gap: .15rem; font-size: .92rem; font-variant-numeric: tabular-nums; }
+.shop-dear, .home-here, .trade-sell, .trade-history, .trade-foot, .job-brief { color: var(--it-muted); }
+.home-price, .job-terms, .trade-held { color: #8a6420; }
+.shop-said, .home-said, .job-said, .trade-said, .trade-glut { color: #2f7a3a; }
+.shop-refused, .job-refused, .trade-refused, .trade-spike, .travel-refused { color: var(--it-rosso); }
+.job-brief { font-style: italic; }
+.trade-purse { font-size: .85rem; color: var(--it-muted); font-variant-numeric: tabular-nums; }
+.trade-row { display: grid; grid-template-columns: 14rem 8rem 7rem 5rem auto; align-items: baseline; gap: .4rem; }
+.trade-buy, .trade-sell, .trade-held { text-align: right; }
+.trade-history { letter-spacing: -.05em; }
+.trade-foot { font-size: .8rem; }
+
+/* The hotwire gauge: the pins set so far, and the bar the marker sweeps. */
+.hotwire { left: 50%; bottom: 8%; transform: translateX(-50%); width: min(26rem, 80%); justify-items: center; gap: .45rem; pointer-events: none; }
+.hotwire-label { font-size: .75rem; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; font-variant-numeric: tabular-nums; }
+.hotwire-alarm .hotwire-label { color: var(--it-rosso); }
+.hotwire-pins { display: flex; gap: .4rem; }
+.hotwire-pin { width: .5rem; height: .5rem; border: 1px solid var(--it-ink); transform: rotate(45deg); }
+.hotwire-pin-set { background: var(--it-rosso); border-color: var(--it-rosso); }
+.hotwire-bar { position: relative; width: 100%; height: .75rem; border: 1px solid rgba(35,28,22,.5); background: #ddd0b8; overflow: hidden; }
+.hotwire-window { position: absolute; top: 0; bottom: 0; background: rgba(163,34,27,.35); }
+.hotwire-marker { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--it-ink); }
