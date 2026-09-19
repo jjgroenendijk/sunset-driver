@@ -6,6 +6,7 @@ import {
   type BufferGeometry,
   type Material,
   type Object3D,
+  type Vector3,
 } from 'three';
 import {
   type CharacterAppearance,
@@ -20,6 +21,10 @@ import {
   type CharacterPose,
   type Stance,
 } from './character-pose.ts';
+import { holdOver, type Hold, type HoldRig } from './character-hold.ts';
+
+/** How quickly a raised or lowered aim settles, per second. About a fifth of a second. */
+export const AIM_EASE = 14;
 
 /**
  * The player model, built from boxes at the proportions the chosen body type
@@ -49,6 +54,14 @@ export class CharacterModel {
   /** How far through the current cycle the body is, in radians. */
   private phase = 0;
   private stance: Stance = 'stand';
+  /** The sizes the arms are pointed at a gun with. */
+  private rig: HoldRig = { shoulderX: 0, shoulderY: 0, reach: 0 };
+  /** The middle of the right fist, where a gun is held. */
+  private fist = new Group();
+  /** How far the aim is raised, eased toward what the record says. */
+  private aimed = 0;
+  /** The grip the arms were last posed in, `none` while they hang free. */
+  private held: Hold['grip'] = 'none';
 
   constructor(appearance: CharacterAppearance) {
     this.appearance = normaliseAppearance(appearance);
@@ -74,13 +87,30 @@ export class CharacterModel {
    * cycle is carried by the speed rather than by the clock, so the feet keep
    * pace with the ground at any frame rate.
    */
-  animate(motion: CharacterMotion, dt: number): void {
+  animate(motion: CharacterMotion, dt: number, hold?: Hold): void {
     const stance = stanceOf(motion);
     // A change of stance starts the new cycle where the old one stopped, which
     // is what keeps a walk that becomes a run from snapping to another step.
     this.stance = stance;
     this.phase = advancePhase(this.phase, stance, motion.speed, dt);
-    this.pose(poseFor(stance, this.phase, motion));
+    const pose = poseFor(stance, this.phase, motion);
+    // A swimmer's arms are busy with the stroke, so a gun is not held in them.
+    const grip = stance === 'swim' || hold === undefined ? 'none' : hold.grip;
+    const want = grip !== 'none' && hold !== undefined ? Math.min(1, Math.max(0, hold.aim)) : 0;
+    this.aimed += (want - this.aimed) * Math.min(1, AIM_EASE * Math.max(0, dt));
+    this.pose(pose, { grip, aim: this.aimed, kick: hold?.kick ?? 0 });
+  }
+
+  /**
+   * Where the right fist is, in the model's own frame, which is where a gun is
+   * drawn: undefined while the arms hold nothing. Read after
+   * {@link CharacterModel.animate}.
+   */
+  grip(out: Vector3): Vector3 | undefined {
+    if (this.held === 'none') return undefined;
+    this.group.updateMatrixWorld(true);
+    this.fist.getWorldPosition(out);
+    return this.group.worldToLocal(out);
   }
 
   /** Where the model is in its cycle, which is what a test reads. */
@@ -88,8 +118,10 @@ export class CharacterModel {
     return { stance: this.stance, phase: this.phase };
   }
 
-  /** Write one pose into the rig. */
-  pose(pose: CharacterPose): void {
+  /** Write one pose into the rig, with the arms holding a gun where `hold` says one is held. */
+  pose(stance: CharacterPose, hold?: Hold): void {
+    this.held = hold?.grip ?? 'none';
+    const pose = hold === undefined ? stance : holdOver(stance, hold, this.rig);
     this.body.rotation.z = pose.pitch;
     this.body.position.y = pose.lift;
     // The model faces local +x, so a lunge steps along it.
@@ -128,6 +160,7 @@ export class CharacterModel {
     this.materials = [];
     this.legs = [];
     this.arms = [];
+    this.fist = new Group();
   }
 
   /**
@@ -204,8 +237,14 @@ export class CharacterModel {
       this.box(shoulder, armWidth, armLength, depth * 0.7, outfit.top, 0, -armLength / 2, 0);
       // Hands read as the skin tone from above, at the end of each arm.
       this.box(shoulder, armWidth, handLength, depth * 0.7, skin.colour, 0, -armLength - handLength / 2, 0);
+      if (side === 1) this.fist = this.joint(shoulder, 0, -armLength - handLength / 2, 0);
       this.arms.push(shoulder);
     }
+    this.rig = {
+      shoulderX: body.shoulder / 2 + armWidth / 2,
+      shoulderY: torsoHeight * 0.95,
+      reach: armLength + handLength / 2,
+    };
 
     const headWidth = h * 0.13;
     this.box(this.torso, headWidth, headHeight, headWidth * 1.05, skin.colour, 0, torsoHeight + headHeight / 2, 0);

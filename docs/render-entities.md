@@ -106,6 +106,14 @@ scene ever holds is in `docs/shops.md`.
 - `HeldWeapon` hangs the weapon off a **hand** group that takes the same `swingAngle`, so the weapon
   sweeps the arc the arm does rather than hanging level through it. Bare fists have no geometry, so
   the arm is the whole of that animation.
+- A gun is held in the arms (`character-hold.ts`). `holdOver` lays a hold over the stance, as
+  `swingOver` lays a swing: a pistol in one hand at the hip and in both when aimed, a long gun in
+  both hands with the torso turned side on. An arm is one straight piece, so `pointArm` points it
+  at where the fist should be. `CharacterModel.grip` answers where the right fist really is, and
+  `HeldWeapon` draws the gun there, level, with the muzzle kicked up after a shot. A swimmer holds
+  nothing, and the gun falls back to the fixed place it is carried at.
+- The model eases the aim over about a fifth of a second (`AIM_EASE`), so a raised gun comes up
+  rather than snapping. `holdOf` reads the grip, the aim and the kick off the record.
 - `MeleeFx` (`melee-fx.ts`) throws the burst each blow leaves: one additive batch of discs, drawn
   from `SimState.hits` and coloured by what was struck. It reads the record the way `DamageFx`
   does — every hit newer than the tick it last drew — and `WorldScene.damage` steps both.

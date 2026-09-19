@@ -7,7 +7,9 @@
  * subject — the order a frame reads the record in — and `main.ts` is the boot.
  * The title screen's frame is not here: it draws the preview scene alone.
  */
+import { Vector3 } from 'three';
 import type { GameAudio } from './audio/game-audio.ts';
+import { holdOf } from './render/character-hold.ts';
 import { PULL_MARGIN, TURN_MARGIN, type FollowCamera, type RoofHeight } from './render/camera.ts';
 import type { FixedStepClock } from './sim/clock.ts';
 import { EMPTY_INPUT, type InputFrame } from './sim/input.ts';
@@ -55,6 +57,8 @@ export class SessionFrame {
   private readonly aim: PointerAim;
   /** Where the mouse aims, drawn over the city (spec section 11.5). */
   private readonly crosshair: Crosshair;
+  /** Where the player's right fist is, which the gun in it is drawn at. */
+  private readonly fist = new Vector3();
   /** The tick of the newest round the camera was kicked for, so each shot kicks once. */
   private kicked = -1;
   /** The tick of the newest hit on a person the camera was jolted for, so each one jolts once. */
@@ -185,11 +189,17 @@ export class SessionFrame {
     // and across the water (spec section 11.5), and the character is shown
     // only while they are out of the car.
     // A swing is drawn between two ticks like the rest of the frame (11.6).
-    const swing = swingOf(session.state.loadout, session.state.tick - 1 + alpha);
-    session.world.walkPlayer(p, session.state.player, elapsed / 1000, swing);
+    // A gun is held in the arms, raised as the player aims and kicked by a shot.
+    const drawnTick = session.state.tick - 1 + alpha;
+    const swing = swingOf(session.state.loadout, drawnTick);
+    const hold = holdOf(session.state.loadout, drawnTick);
+    session.world.walkPlayer(p, session.state.player, elapsed / 1000, swing, hold);
     // The weapon in the hands and the weapons on the ground (spec section
-    // 11.6), with what is fitted. The one in hand follows the arm swinging it.
-    session.world.held.set(session.state.loadout, session.state.player, p, session.world.character.height, swing);
+    // 11.6), with what is fitted. The one in hand is drawn in the fist that
+    // holds it, or follows the arm swinging it.
+    const world = session.world;
+    const grip = world.character.grip(this.fist);
+    world.held.set(session.state.loadout, session.state.player, p, world.character.height, swing, grip, hold.kick);
     // The pickup under the mouse grows, so what lies there can be read before
     // walking to it. Nothing is picked while the camera is detached.
     if (!flying && this.aim.over && session.state.pickups.length > 0) {

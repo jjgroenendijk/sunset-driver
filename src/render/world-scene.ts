@@ -36,6 +36,7 @@ import type { Point, WorldDescription } from '../world/types.ts';
 import { BuildingScenery } from './buildings.ts';
 import { BuildingCutaway, CAMERA_ROOF_MARGIN } from './cutaway.ts';
 import { CharacterModel } from './character.ts';
+import type { Hold } from './character-hold.ts';
 import { ChunkPool, type ChunkStream } from './chunk-pool.ts';
 import { ChunkTiles } from './chunk-tiles.ts';
 import { BloodView } from './blood.ts';
@@ -302,7 +303,7 @@ export class WorldScene {
    * frame, which carries the cycle along. A player behind the wheel is not
    * drawn, so nothing is animated for them.
    */
-  walkPlayer(drawn: DrawnPlayer, player: PlayerState, dt: number, swing = -1): void {
+  walkPlayer(drawn: DrawnPlayer, player: PlayerState, dt: number, swing = -1, hold?: Hold): void {
     const model = this.character;
     model.group.position.set(drawn.x, drawn.height, drawn.y);
     model.group.rotation.y = -drawn.heading;
@@ -318,6 +319,7 @@ export class WorldScene {
         swing,
       },
       dt,
+      hold,
     );
   }
 
