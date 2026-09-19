@@ -349,7 +349,7 @@ const EMERGENCY: VehicleSpec = {
   maxSuspensionForce: 28_000,
   alarm: true,
   paint: 0xe8e8ec,
-  trim: 0x16325c,
+  trim: 0x151b28,
 };
 
 /** A speedboat: no wheels, a hull and a rudder that only bites under way. */

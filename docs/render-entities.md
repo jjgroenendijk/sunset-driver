@@ -164,13 +164,25 @@ scene ever holds is in `docs/shops.md`.
   the ground, a streak per pellet and the spark batch of `melee-fx.ts` where each landed. It is
   three additive batches. The glow is a disc, not a light: a point light turns the clustered path
   on for every fragment in the city (`docs/lighting.md`). `render-preview.ts --shots` shows it.
-- `EmergencyView` (`emergency.ts`) draws the fire engines and the ambulances of spec section 20.3
-  the way `police.ts` draws the police: instanced bodies off a row of the roster, an outline, and a
-  light bar whose colour flips on a beat of the tick. Neither service has a row of its own, so an
-  engine is a truck repainted red and an ambulance a van repainted white. They are stepped once a
-  tick like the police, so nothing here is evaluated between two ticks.
-  `node scripts/render-preview.ts <seed> out.png --emergency` is how a still frame of them is
-  taken.
+- `EmergencyView` (`emergency.ts`) draws the fire engines and the ambulances of spec section 20.3.
+  Neither service is a row of the roster, so each has a shape of its own in `emergency-mesh.ts`,
+  sized off `UNIT_BODY` of `sim/emergency.ts`: the box the player's car hits is the box drawn. Each
+  is built on what reads from 60 m up. An engine has a white cab roof and a ladder along its roof,
+  since nothing else in the city has rungs. An ambulance has a red cross on its roof. Keep the
+  ladder short of the light bar on the cab, or it hides the bar from above.
+- A unit's colours are on its vertices, so a kind is one body mesh, one outline and one mesh per
+  phase of its beacons, and no instance paint. They are stepped once a tick like the police, so
+  nothing here is evaluated between two ticks. `node scripts/render-preview.ts 7 out.png
+  --emergency --junction=60` frames both on an open street.
+- `beacons.ts` is the flashing of every light bar, the police's included. A bar is two phases, each
+  one instanced mesh, and `flashLit` gives the double flash: two bursts on one side, then two on
+  the other, on an offset per unit. A unit on a call flashes; one driving home has its lenses dark.
+  `BeaconGlow` is the light a bar throws on the road: an additive soft disc, not a light, faint by
+  day and strong after dark. It lies `GLOW_LIFT` over the road, because a flat disc sinks under a
+  road on a slope and shows a hard edge there.
+- `HoseSpray` (`hose.ts`) is the water an engine at work plays over its scene, from the monitor
+  nearer the scene: on the bumper, or on the turntable at the tail. A drop is placed from the tick
+  alone, and every engine's drops are one draw call.
 - `SkidMarks` (`skid.ts`) is the rubber a sliding tyre leaves (spec section 11.3): a `DecalGeometry`
   per `SKID_STEP` metres of ground, all of them in one buffer with one material, so a whole drive of
   marks is one draw call. The decal is not cut from the chunk — a chunk's ground is twenty thousand
@@ -326,5 +338,5 @@ scene ever holds is in `docs/shops.md`.
   are written about the hips and divided by the person's size, because the shader scales them
   back up by `motion.z` before it places them.
 - The medics kneel only at a body lying or crawling, never at one still in the air or going over.
-- `node scripts/render-preview.ts 7 out.png --bodies --emergency --on-foot --heading=180
-  --distance=26` lays one of each phase and a working ambulance in the frame.
+- `node scripts/render-preview.ts 7 out.png --bodies --emergency --junction=60 --distance=26` lays
+  one of each phase and a working ambulance in the frame.

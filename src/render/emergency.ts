@@ -1,75 +1,74 @@
 /**
  * The fire engines and the ambulances, drawn (spec sections 9.2, 20.3).
  *
- * `src/render/police.ts` draws the police the same way, and this is its
- * sibling: the painted boxes of a row of the roster, the parts with colours of
- * their own, the outline of spec section 10.1, and a light bar on the roof
- * whose instance colour flips on a beat of the tick.
+ * Each kind has a shape of its own (`emergency-mesh.ts`): an engine is a long
+ * red body with a ladder along the roof, and an ambulance a white box with a
+ * red cross on it. A kind is three instanced meshes — the body with its colours
+ * on the vertices, the outline of spec section 10.1, and one per phase of its
+ * beacons (`beacons.ts`) — so every unit of a kind in view costs those draws
+ * and no more.
  *
- * Neither service has a row of its own, so each borrows the nearest one and is
- * repainted: an engine is a truck in red, an ambulance a van in white. Both
- * carry a bar wide enough to read from above, since the camera of spec section
- * 10.7 sees the roof and nothing else.
+ * A unit on a call flashes its beacons and throws their light on the road
+ * round it; one driving home after the job has them dark. An engine at work
+ * plays water over the scene (`hose.ts`).
  *
  * The units are drawn where the record put them. They are stepped every tick
  * like the police, so nothing is evaluated between two ticks here.
  */
 import {
   BackSide,
-  BoxGeometry,
   Color,
+  CylinderGeometry,
   Group,
   Matrix4,
   MeshBasicMaterial,
-  MeshStandardMaterial,
   Quaternion,
   Vector3,
+  type BufferGeometry,
   type InstancedMesh,
   type Material,
 } from 'three';
-import type { EmergencyKind, EmergencyUnit } from '../sim/emergency.ts';
+import { onCall, UNIT_BODY, type EmergencyKind, type EmergencyUnit } from '../sim/emergency.ts';
 import type { SimState } from '../sim/simulation.ts';
-import { rideHeight, specOf, type VehicleClass } from '../sim/vehicle.ts';
-import { instanced, trafficParts, TRAFFIC_VIEW } from './traffic.ts';
-import { OUTLINE } from './vehicle.ts';
+import { BeaconGlow, BeaconPhase, beaconMaterial, flashLit } from './beacons.ts';
+import { unitShape, type UnitShape } from './emergency-mesh.ts';
+import { HoseSpray } from './hose.ts';
+import { boxOf, coloured, instanced, merged, TRAFFIC_VIEW } from './traffic.ts';
+import { OUTLINE, VEHICLE_OUTLINE_WIDTH } from './vehicle.ts';
 import { createVehicleTrim, type VehicleTrim } from './vehicle-glow.ts';
-import { tinted } from './tint.ts';
+import { TYRE } from './vehicle-mesh.ts';
 
-/** Units of each mesh drawn at most, which is more than the service ever has out. */
+/** Units of each kind drawn at most, which is more than the service ever has out. */
 const UNIT_CAP = 8;
 
-/** The row of the roster each service borrows, and the paint it is given. */
-const BORROWED: Record<EmergencyKind, { cls: VehicleClass; paint: number }> = {
-  engine: { cls: 'truck', paint: 0xb3251d },
-  ambulance: { cls: 'van', paint: 0xf1f3f4 },
-};
-
-/** The two colours of a light bar, and the ticks it holds each one for. */
-const LIGHT_RED = 0xd8302a;
-const LIGHT_BLUE = 0x2f6ad8;
-
-/**
- * How hard the bar burns, as a multiple of its colour. At 1 it stayed under
- * the bloom threshold of `post.ts` once exposed, and a siren did not glow.
- */
-const BAR_GLOW = 4;
-const FLASH_TICKS = 10;
-
-/** The bar across the roof: its size, and how far over the roof it sits. */
-const BAR = { length: 0.3, height: 0.14, width: 1.4 };
-
-/** One service's three body meshes and the bar over them. */
+/** One kind's meshes, and what is needed to stand a unit in them. */
 interface KindMeshes {
   kind: EmergencyKind;
-  paint: InstancedMesh;
-  trim: InstancedMesh;
+  shape: UnitShape;
+  body: InstancedMesh;
   rim: InstancedMesh;
-  bar: InstancedMesh;
-  colour: Color;
-  /** Metres from the ground to the middle of the body, and from there to the bar. */
+  phases: [BeaconPhase, BeaconPhase];
+  /** Metres from the road to the middle of the body. */
   ride: number;
-  roof: number;
   drawn: number;
+}
+
+/** The body of a unit, with its wheels, as one geometry with its colours on the vertices. */
+export function unitBody(shape: UnitShape): BufferGeometry {
+  const parts = shape.boxes.map((part) => coloured(boxOf(part, 0), part.colour));
+  for (const wheel of shape.wheels) {
+    const tyre = new CylinderGeometry(wheel.radius, wheel.radius, wheel.width, 12);
+    tyre.rotateX(Math.PI / 2);
+    tyre.translate(wheel.x, wheel.y, wheel.z);
+    parts.push(coloured(tyre.toNonIndexed(), TYRE));
+    tyre.dispose();
+  }
+  return merged(parts);
+}
+
+/** The masses of a unit grown by the outline's width, which is the outline drawn behind it. */
+function unitRim(shape: UnitShape): BufferGeometry {
+  return merged(shape.boxes.filter((part) => part.outlined).map((part) => boxOf(part, VEHICLE_OUTLINE_WIDTH)));
 }
 
 export class EmergencyView {
@@ -77,42 +76,44 @@ export class EmergencyView {
   private readonly kinds: KindMeshes[] = [];
   private readonly materials: Material[];
   private readonly trimMaterial: VehicleTrim;
+  private readonly glow = new BeaconGlow(UNIT_CAP * 2);
+  private readonly hose = new HoseSpray(UNIT_CAP);
   private readonly matrix = new Matrix4();
   private readonly at = new Vector3();
+  private readonly nozzle = new Vector3();
   private readonly turn = new Quaternion();
   private readonly up = new Vector3(0, 1, 0);
   private readonly one = new Vector3(1, 1, 1);
-  private readonly tint = new Color();
 
   constructor() {
-    const paint = new MeshStandardMaterial({ roughness: 0.4, metalness: 0.2 });
     this.trimMaterial = createVehicleTrim();
-    const lamp = new MeshBasicMaterial({ toneMapped: false });
+    const lamp = beaconMaterial();
     const outline = new MeshBasicMaterial({ color: new Color(OUTLINE), side: BackSide, fog: true });
-    this.materials = [paint, lamp, outline];
+    this.materials = [lamp, outline];
     for (const kind of ['engine', 'ambulance'] as const) {
-      const borrowed = BORROWED[kind];
-      const spec = specOf(borrowed.cls);
-      const parts = trafficParts(spec);
+      const shape = unitShape(kind);
       const meshes: KindMeshes = {
         kind,
-        paint: tinted(instanced(parts.paint, paint, true, UNIT_CAP)),
-        trim: instanced(parts.trim, this.trimMaterial.material, false, UNIT_CAP),
-        rim: instanced(parts.rim, outline, false, UNIT_CAP),
-        bar: tinted(instanced(new BoxGeometry(BAR.length, BAR.height, BAR.width), lamp, false, UNIT_CAP)),
-        colour: new Color(borrowed.paint),
-        ride: rideHeight(spec),
-        roof: spec.halfHeight * 2 + BAR.height / 2,
+        shape,
+        body: instanced(unitBody(shape), this.trimMaterial.material, true, UNIT_CAP),
+        rim: instanced(unitRim(shape), outline, false, UNIT_CAP),
+        phases: [new BeaconPhase(shape.beacons, 0, lamp, UNIT_CAP), new BeaconPhase(shape.beacons, 1, lamp, UNIT_CAP)],
+        ride: UNIT_BODY[kind].ride,
         drawn: 0,
       };
       this.kinds.push(meshes);
-      this.group.add(meshes.paint, meshes.trim, meshes.rim, meshes.bar);
+      this.group.add(meshes.body, meshes.rim, meshes.phases[0].mesh, meshes.phases[1].mesh);
     }
+    this.group.add(this.glow.mesh, this.hose.mesh);
   }
 
-  /** How far on the headlamps and tail lights are, 0 by day and 1 after dark. */
+  /**
+   * How far on the headlamps and tail lights are, 0 by day and 1 after dark.
+   * It also says how hard the beacons' light shows on the road.
+   */
   set lamps(amount: number) {
     this.trimMaterial.lamps.value = amount;
+    this.glow.night = amount;
   }
 
   get lamps(): number {
@@ -129,54 +130,81 @@ export class EmergencyView {
   /** Draw the units round a place as the record left them on the last tick. */
   update(state: SimState, x: number, y: number): void {
     for (const kind of this.kinds) kind.drawn = 0;
+    this.glow.begin();
+    this.hose.begin();
     for (const unit of state.emergency.units as readonly EmergencyUnit[]) {
       if (Math.abs(unit.x - x) > TRAFFIC_VIEW || Math.abs(unit.y - y) > TRAFFIC_VIEW) continue;
       const meshes = this.kinds.find((held) => held.kind === unit.kind);
       if (meshes === undefined || meshes.drawn >= UNIT_CAP) continue;
-      const at = meshes.drawn;
-      this.turn.setFromAxisAngle(this.up, -unit.heading);
-      this.at.set(unit.x, unit.height + meshes.ride, unit.y);
-      this.matrix.compose(this.at, this.turn, this.one);
-      meshes.paint.setMatrixAt(at, this.matrix);
-      meshes.trim.setMatrixAt(at, this.matrix);
-      meshes.rim.setMatrixAt(at, this.matrix);
-      meshes.paint.setColorAt(at, meshes.colour);
-      this.at.set(unit.x, unit.height + meshes.ride + meshes.roof, unit.y);
-      this.matrix.compose(this.at, this.turn, this.one);
-      meshes.bar.setMatrixAt(at, this.matrix);
-      // Every other unit is on the other beat, so a pair of them flashes
-      // against each other rather than in step.
-      const beat = Math.floor(state.tick / FLASH_TICKS) + unit.id;
-      meshes.bar.setColorAt(at, this.tint.set(beat % 2 === 0 ? LIGHT_RED : LIGHT_BLUE).multiplyScalar(BAR_GLOW));
-      meshes.drawn = at + 1;
+      this.stand(state.tick, unit, meshes);
     }
-    this.fill();
+    for (const kind of this.kinds) this.fill(kind);
+    this.glow.commit();
+    this.hose.commit();
   }
 
   dispose(): void {
     for (const kind of this.kinds) {
-      for (const mesh of [kind.paint, kind.trim, kind.rim, kind.bar]) {
+      for (const mesh of this.meshesOf(kind)) {
         mesh.geometry.dispose();
         mesh.dispose();
       }
     }
     for (const material of this.materials) material.dispose();
     this.trimMaterial.dispose();
+    this.glow.dispose();
+    this.hose.dispose();
     this.group.clear();
   }
 
-  /** Show what was written this frame and hide the meshes that took nothing. */
-  private fill(): void {
-    for (const kind of this.kinds) {
-      const count = kind.drawn;
-      for (const mesh of [kind.paint, kind.trim, kind.rim, kind.bar]) {
-        mesh.count = count;
-        mesh.visible = count > 0;
-        if (count > 0) mesh.instanceMatrix.needsUpdate = true;
-      }
-      if (count === 0) continue;
-      if (kind.paint.instanceColor !== null) kind.paint.instanceColor.needsUpdate = true;
-      if (kind.bar.instanceColor !== null) kind.bar.instanceColor.needsUpdate = true;
+  /** Stand one unit: its body, its beacons, their light on the road and the engine's water. */
+  private stand(tick: number, unit: EmergencyUnit, meshes: KindMeshes): void {
+    const at = meshes.drawn;
+    this.turn.setFromAxisAngle(this.up, -unit.heading);
+    this.at.set(unit.x, unit.height + meshes.ride, unit.y);
+    this.matrix.compose(this.at, this.turn, this.one);
+    meshes.body.setMatrixAt(at, this.matrix);
+    meshes.rim.setMatrixAt(at, this.matrix);
+    const calling = onCall(unit);
+    let lit = -1;
+    for (const phase of [0, 1] as const) {
+      const on = calling && flashLit(tick, unit.id, phase);
+      meshes.phases[phase].set(at, this.matrix, on);
+      if (on) lit = phase;
     }
+    if (lit >= 0) this.glow.add(unit.x, unit.height, unit.y, (meshes.phases[lit] as BeaconPhase).colour);
+    if (unit.task === 'work') this.spray(tick, unit, meshes.shape);
+    meshes.drawn = at + 1;
+  }
+
+  /**
+   * Play water from the monitor nearer the scene: the one on the bumper for a
+   * scene ahead, the one on the turntable for a scene behind.
+   */
+  private spray(tick: number, unit: EmergencyUnit, shape: UnitShape): void {
+    let best = Infinity;
+    for (const nozzle of shape.nozzles) {
+      this.at.set(nozzle.x, nozzle.y, nozzle.z).applyMatrix4(this.matrix);
+      const far = Math.hypot(this.at.x - unit.goalX, this.at.z - unit.goalY);
+      if (far >= best) continue;
+      best = far;
+      this.nozzle.copy(this.at);
+    }
+    if (best < Infinity) this.hose.add(unit.id, tick, this.nozzle, unit.goalX, unit.goalY, unit.height);
+  }
+
+  private meshesOf(kind: KindMeshes): InstancedMesh[] {
+    return [kind.body, kind.rim, kind.phases[0].mesh, kind.phases[1].mesh];
+  }
+
+  /** Show what was written this frame and hide the meshes that took nothing. */
+  private fill(kind: KindMeshes): void {
+    const count = kind.drawn;
+    for (const mesh of [kind.body, kind.rim]) {
+      mesh.count = count;
+      mesh.visible = count > 0;
+      if (count > 0) mesh.instanceMatrix.needsUpdate = true;
+    }
+    for (const phase of kind.phases) phase.commit(count);
   }
 }

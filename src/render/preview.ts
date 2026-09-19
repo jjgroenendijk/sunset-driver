@@ -267,12 +267,16 @@ const PICKUP_ROW = 8;
 /** Ticks of smoke and flame let into the air before the picture is taken. */
 const FX_WARMUP = 240;
 
-/** Metres of drift `--skid` lays, and the radius it curves through. */
-/** Metres ahead of the player the preview's blaze burns, and how far back each unit stands. */
+/**
+ * Metres ahead of the player the preview's blaze burns, and where each unit
+ * stands: the engine past the blaze and facing it, the ambulance behind the
+ * player, so the one frame the game camera takes holds both.
+ */
 const FIRE_AHEAD = 11;
-const ENGINE_BACK = 9;
-const AMBULANCE_BACK = 18;
+const ENGINE_AHEAD = FIRE_AHEAD + 8;
+const AMBULANCE_AHEAD = -11;
 
+/** Metres of drift `--skid` lays, and the radius it curves through. */
 const DRIFT_LENGTH = 24;
 const DRIFT_RADIUS = 18;
 
@@ -520,7 +524,7 @@ function arm(scene: WorldScene, request: PreviewRequest, stand: { x: number; y: 
 
 /**
  * The scene of spec section 20.3: a blaze in the road ahead of the player, a
- * fire engine standing at it and an ambulance behind. It answers the view, so
+ * fire engine standing at it and an ambulance behind the player. It answers the view, so
  * the caller can keep it alive while the frame is drawn.
  */
 function callOut(record: SimState, scene: WorldScene, x: number, y: number, heading: number): EmergencyView {
@@ -530,7 +534,7 @@ function callOut(record: SimState, scene: WorldScene, x: number, y: number, head
   });
   const fire = ahead(FIRE_AHEAD);
   light(record, fire.x, fire.y);
-  const stand = (id: number, kind: EmergencyKind, metres: number): EmergencyUnit => {
+  const stand = (id: number, kind: EmergencyKind, metres: number, facing: number): EmergencyUnit => {
     const at = ahead(metres);
     return {
       id,
@@ -539,7 +543,7 @@ function callOut(record: SimState, scene: WorldScene, x: number, y: number, head
       call: 0,
       x: at.x,
       y: at.y,
-      heading: heading + Math.PI,
+      heading: facing,
       height: scene.heightAt(at.x, at.y),
       speed: 0,
       edges: [],
@@ -553,7 +557,7 @@ function callOut(record: SimState, scene: WorldScene, x: number, y: number, head
       until: -1,
     };
   };
-  record.emergency.units.push(stand(0, 'engine', FIRE_AHEAD + ENGINE_BACK), stand(1, 'ambulance', FIRE_AHEAD + AMBULANCE_BACK));
+  record.emergency.units.push(stand(0, 'engine', ENGINE_AHEAD, heading + Math.PI), stand(1, 'ambulance', AMBULANCE_AHEAD, heading));
   const view = new EmergencyView();
   view.lamps = scene.lampsNow;
   scene.scene.add(view.group);

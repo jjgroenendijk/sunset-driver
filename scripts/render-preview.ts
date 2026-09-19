@@ -49,7 +49,7 @@
  *   --skid           lay a drift's worth of skid marks into the road behind
  *                    the vehicle (spec section 11.3).
  *   --emergency      put a blaze in the road ahead, with a fire engine at it
- *                    and an ambulance behind (spec section 20.3).
+ *                    and an ambulance behind the player (spec section 20.3).
  *   --shots          put a shotgun blast and a pistol round in the air, with
  *                    their flash, streaks and impacts (spec section 11.6).
  *   --bodies         lay casualties in the road ahead: two dead, and one each

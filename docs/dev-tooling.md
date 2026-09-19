@@ -154,8 +154,9 @@ angle, the vehicle or the pose changes, and 1 to 3 seconds when the player stand
   burnt out, and `--skid` lays a drift's worth of marks into the road behind it. The arc it
   drives is laid over the real ground, so the marks stop where the tarmac does.
 - `--emergency` puts the services of spec section 20.3 in the frame: a blaze in the road ahead, a
-  fire engine standing at it and an ambulance behind. They are put down rather than driven to,
-  because a preview is one frame and a call takes the best part of a minute.
+  fire engine past it hosing it, and an ambulance behind the player. They are put down rather than
+  driven to, because a preview is one frame and a call takes the best part of a minute.
+  `--junction=60` on seed 7 frames both on an open street.
 - `--shots` puts a shotgun blast and a pistol round in the air, a tick or two old, with their flash,
   streaks and impacts (spec section 11.6). What they hit is laid by hand; a preview casts nothing.
 - `--bodies` lays casualties of spec section 11.6 in the road ahead: two dead, one with cash beside

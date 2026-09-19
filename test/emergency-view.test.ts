@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { DamageFx } from '../src/render/damage-fx.ts';
 import { EmergencyView } from '../src/render/emergency.ts';
 import { TRAFFIC_VIEW } from '../src/render/traffic.ts';
-import type { EmergencyUnit } from '../src/sim/emergency.ts';
+import { UNIT_BODY, type EmergencyUnit } from '../src/sim/emergency.ts';
 import { light } from '../src/sim/fire.ts';
 import { createSimState } from '../src/sim/simulation.ts';
 import { specOf } from '../src/sim/vehicle.ts';
+import { BEACON_DARK, BEACON_GLOW, FLASH_CYCLE, flashLit } from '../src/render/beacons.ts';
+import { AMBULANCE_RED, unitShape } from '../src/render/emergency-mesh.ts';
 
 /** A unit of the service standing where a test wants it. */
 function unit(id: number, kind: EmergencyUnit['kind'], x: number, y: number): EmergencyUnit {
@@ -33,6 +35,14 @@ function unit(id: number, kind: EmergencyUnit['kind'], x: number, y: number): Em
 }
 
 describe('the emergency services, drawn (spec section 20.3)', () => {
+  /** The meshes of the view by what they are: per kind body, rim and two beacon phases, then the glow and the water. */
+  function parts(view: EmergencyView): InstancedMesh[] {
+    return view.group.children as InstancedMesh[];
+  }
+  const ENGINE_PHASES = [2, 3];
+  const GLOW = 8;
+  const WATER = 9;
+
   it('draws the units in view and leaves out the ones over the horizon', () => {
     const view = new EmergencyView();
     const state = createSimState(4);
@@ -47,39 +57,127 @@ describe('the emergency services, drawn (spec section 20.3)', () => {
     state.emergency.units.length = 0;
     view.update(state, 0, 0);
     expect(view.drawn).toBe(0);
-    for (const mesh of view.group.children) expect((mesh as InstancedMesh).visible).toBe(false);
+    for (const mesh of parts(view)) expect(mesh.visible).toBe(false);
     view.dispose();
   });
 
-  it('flashes the bars of two units against each other', () => {
+  it('flashes one half of a bar while the other is dark, and two units out of step', () => {
+    // Over a whole cycle each phase is lit some of the time, and never both at once.
+    let first = 0;
+    let second = 0;
+    for (let tick = 0; tick < FLASH_CYCLE; tick++) {
+      const a = flashLit(tick, 0, 0);
+      const b = flashLit(tick, 0, 1);
+      expect(a && b).toBe(false);
+      if (a) first++;
+      if (b) second++;
+    }
+    expect(first).toBeGreaterThan(0);
+    expect(second).toBe(first);
     const view = new EmergencyView();
     const state = createSimState(4);
     state.emergency.units.push(unit(0, 'engine', 0, 0), unit(1, 'engine', 8, 0));
+    // A tick where the first unit's left half burns and the second's does not.
+    state.tick = 1;
     view.update(state, 0, 0);
-    // The meshes of a service go in as paint, trim, rim and then the bar.
-    const bar = view.group.children[3] as InstancedMesh;
-    expect(bar.count).toBe(2);
-    const colours = bar.instanceColor;
-    expect(colours).not.toBeNull();
-    const first = [colours?.getX(0), colours?.getY(0), colours?.getZ(0)];
-    const second = [colours?.getX(1), colours?.getY(1), colours?.getZ(1)];
-    expect(second).not.toEqual(first);
+    const left = parts(view)[ENGINE_PHASES[0] as number] as InstancedMesh;
+    expect(left.count).toBe(2);
+    expect(left.instanceColor?.getX(0)).toBe(BEACON_GLOW);
+    expect(left.instanceColor?.getX(1)).toBeCloseTo(BEACON_DARK, 5);
+    // The light it throws lies on the road under it.
+    expect(parts(view)[GLOW]?.count).toBe(1);
     view.dispose();
   });
 
-  it('sits an engine on the ground under it, at the ride height of the row it borrows', () => {
+  it('keeps the lights dark on a unit driving home from a job', () => {
+    const view = new EmergencyView();
+    const state = createSimState(4);
+    const home = unit(0, 'engine', 0, 0);
+    home.task = 'leave';
+    state.emergency.units.push(home);
+    for (let tick = 0; tick < FLASH_CYCLE; tick++) {
+      state.tick = tick;
+      view.update(state, 0, 0);
+      for (const at of ENGINE_PHASES) expect(parts(view)[at]?.instanceColor?.getX(0)).toBeCloseTo(BEACON_DARK, 5);
+      expect(parts(view)[GLOW]?.visible).toBe(false);
+    }
+    view.dispose();
+  });
+
+  it('plays water from an engine at work, and from nothing else', () => {
+    const view = new EmergencyView();
+    const state = createSimState(4);
+    const engine = unit(0, 'engine', 0, 0);
+    const ambulance = unit(1, 'ambulance', 30, 0);
+    ambulance.task = 'work';
+    state.emergency.units.push(engine, ambulance);
+    view.update(state, 0, 0);
+    expect(parts(view)[WATER]?.visible).toBe(false);
+    engine.task = 'work';
+    engine.goalX = 8;
+    engine.goalY = 3;
+    view.update(state, 0, 0);
+    const water = parts(view)[WATER] as InstancedMesh;
+    expect(water.count).toBeGreaterThan(0);
+    // Every drop is between the engine and a little past the scene, and none under the road.
+    for (let i = 0; i < water.count; i++) {
+      const x = water.instanceMatrix.array[i * 16 + 12] as number;
+      const y = water.instanceMatrix.array[i * 16 + 13] as number;
+      expect(x).toBeGreaterThan(0);
+      expect(x).toBeLessThan(11);
+      expect(y).toBeGreaterThan(-0.5);
+    }
+    view.dispose();
+  });
+
+  it('sits a unit on the ground under it, at the ride height of its own body', () => {
     const view = new EmergencyView();
     const state = createSimState(4);
     const standing = unit(0, 'engine', 0, 0);
     standing.height = 12;
     state.emergency.units.push(standing);
     view.update(state, 0, 0);
-    const paint = view.group.children[0] as InstancedMesh;
+    const body = parts(view)[0] as InstancedMesh;
     // The matrix of an instance holds its position in its last column.
-    const y = paint.instanceMatrix.array[13] as number;
-    expect(y).toBeGreaterThan(12);
-    expect(y).toBeLessThan(12 + specOf('truck').halfHeight * 2);
+    expect(body.instanceMatrix.array[13] as number).toBeCloseTo(12 + UNIT_BODY.engine.ride, 6);
+    // The wheels reach the road and the body is no bigger than the box the player hits.
+    body.geometry.computeBoundingBox();
+    const bounds = body.geometry.boundingBox;
+    expect(bounds?.min.y).toBeCloseTo(-UNIT_BODY.engine.ride, 2);
+    expect(bounds?.max.x ?? 0).toBeLessThan(UNIT_BODY.engine.halfLength + 0.5);
+    expect(bounds?.max.z ?? 0).toBeLessThan(UNIT_BODY.engine.halfWidth + 0.2);
     view.dispose();
+  });
+});
+
+describe('the shapes of the services (spec section 20.3)', () => {
+  it('gives an engine a ladder and an ambulance a cross, each on its roof', () => {
+    const engine = unitShape('engine');
+    const ambulance = unitShape('ambulance');
+    // The rungs: a row of short boxes across the roof, over the body.
+    const rungs = engine.boxes.filter((part) => part.length < 0.1 && part.width > 0.8 && part.y > UNIT_BODY.engine.halfHeight);
+    expect(rungs.length).toBeGreaterThan(12);
+    // The cross: two red bars on the roof, one along it and one across it.
+    const cross = ambulance.boxes.filter((part) => part.colour === AMBULANCE_RED && part.y > UNIT_BODY.ambulance.halfHeight);
+    expect(cross).toHaveLength(2);
+    // Each has beacons in both phases, and only the engine carries a hose.
+    for (const shape of [engine, ambulance]) {
+      expect(shape.beacons.some((beacon) => beacon.phase === 0)).toBe(true);
+      expect(shape.beacons.some((beacon) => beacon.phase === 1)).toBe(true);
+    }
+    expect(engine.nozzles.length).toBeGreaterThan(0);
+    expect(ambulance.nozzles).toHaveLength(0);
+  });
+
+  it('keeps every box of a unit inside the box the player hits, give or take a mirror', () => {
+    for (const kind of ['engine', 'ambulance'] as const) {
+      const body = UNIT_BODY[kind];
+      for (const part of unitShape(kind).boxes) {
+        expect(Math.abs(part.x) + part.length / 2, kind).toBeLessThan(body.halfLength + 0.45);
+        expect(Math.abs(part.z) + part.width / 2, kind).toBeLessThan(body.halfWidth + 0.3);
+        expect(part.y + part.height / 2, kind).toBeLessThan(body.halfHeight + 0.7);
+      }
+    }
   });
 });
 
