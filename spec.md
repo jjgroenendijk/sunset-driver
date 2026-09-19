@@ -224,6 +224,12 @@ permitted traffic.
 Bridges carry roads over water. Overpasses carry roads over roads; an overpass is not a junction,
 and junction generation must respect grade separation.
 
+A grade separation is a severance: the two roads pass and neither can ever turn onto the other. It
+is worth the ground it takes only where both roads carry the traffic for it, so a highway's
+right-of-way is ground a minor road may not cross. A street, alley or dirt road stops short of a
+highway and takes a cul-de-sac, or bends to run beside it; only a highway or an arterial crosses
+one.
+
 ### 6.3 Corridors
 
 Elevated highways and the tram line are corridors and take part in the same footprint subtraction as

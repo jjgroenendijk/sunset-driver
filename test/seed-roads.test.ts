@@ -6,7 +6,7 @@ import { CLEARANCE as OVERPASS_CLEARANCE } from '../src/world/overpass.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
 import { coastNoise, islandAt } from '../src/world/terrain.ts';
-import { TIERS } from '../src/world/tiers.ts';
+import { mayCross, TIERS } from '../src/world/tiers.ts';
 import { type District, type Point, type RoadCurve, type RoadTier, type WorldDescription, type Zone } from '../src/world/types.ts';
 import { PointGrid } from './seed-index.ts';
 import {
@@ -19,12 +19,25 @@ import {
   wetFraction,
   spansCrossing,
   median,
+  polylineLength,
   liftAtCrossing,
   placeOn,
   standAt,
 } from './seed-probes.ts';
 import { seeds, worlds, graphOf } from './seed-fixture.ts';
 import { sweepSuite } from './seed-suite.ts';
+
+/**
+ * The most grade separations a world may carry per kilometre of highway, and
+ * the least highway a world must hold to be counted. Over 500 seeds the rate
+ * is 0.7 per kilometre and the worst world runs at 1.6; a world with only a
+ * few kilometres of highway swings widest, which is what the floor is for.
+ * The bound is a guard against the tangle of issue #269 — one grade
+ * separation per 81 m of highway, over 12 per kilometre — coming back, not a
+ * target.
+ */
+const HIGHWAY_SEPARATIONS_PER_KM = 3;
+const HIGHWAY_KM_FLOOR = 2;
 
 /**
  * The seed sweep of spec section 3, on the road network of spec section 6: one
@@ -272,6 +285,38 @@ sweepSuite('roads', () => {
         if (liftAtCrossing(below, crossing) > 0) fault(`${where}, and climbs into the deck`);
       }
       expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
+  it('keeps every minor road off a highway, and grade separation scarce (issue #269)', () => {
+    // A grade separation is a severance: a place two roads pass and can never
+    // turn onto each other. `mayCross` says which pairs are worth one. A
+    // street, an alley or a dirt road is not: it stops short of the highway
+    // and takes a cul-de-sac, so only a highway or an arterial crosses one.
+    //
+    // The bound is per kilometre of highway, since a highway is what the
+    // crossings are counted against. A world laid before the policy carried
+    // one grade separation per 81 m of highway — over 12 per kilometre.
+    for (const seed of seeds) {
+      const w = worlds.get(seed) as WorldDescription;
+      const graph = graphOf(seed);
+      let complaint: string | undefined;
+      let highwayKm = 0;
+      for (const road of w.roads) {
+        if (road.tier !== 'highway') continue;
+        highwayKm += polylineLength(road.points) / 1000;
+      }
+      let separations = 0;
+      for (const crossing of graph.crossings) {
+        const pair = [crossing.over, crossing.under].map((e) => w.roads[(graph.edges[e] as RoadEdge).curve] as RoadCurve);
+        const [over, under] = pair as [RoadCurve, RoadCurve];
+        if (!mayCross(over.tier, under.tier)) {
+          complaint ??= `${over.tier} ${over.id} crosses ${under.tier} ${under.id} at ${crossing.x.toFixed(0)},${crossing.y.toFixed(0)}`;
+        }
+        if (over.tier === 'highway' || under.tier === 'highway') separations++;
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+      if (highwayKm >= HIGHWAY_KM_FLOOR) expect(separations / highwayKm, `seed ${seed}`).toBeLessThan(HIGHWAY_SEPARATIONS_PER_KM);
     }
   });
 

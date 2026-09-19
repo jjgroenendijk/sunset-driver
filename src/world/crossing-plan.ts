@@ -29,7 +29,7 @@ import { alongSegment, PlannedLine, toSegment } from './crossing-line.ts';
 import { junctionAt, type CrossingNetwork } from './crossing-rules.ts';
 import { MIN_MEET } from './network-clearance.ts';
 import { curveDistances } from './ribbon.ts';
-import { footprintHalfWidth, mayJoin, TIERS } from './tiers.ts';
+import { footprintHalfWidth, mayCross, mayJoin, TIERS } from './tiers.ts';
 import type { Point, RoadCurve, RoadTier } from './types.ts';
 
 /** Metres a junction may be moved onto a point a road already has. Two junctions this close would stand inside each other. */
@@ -138,6 +138,14 @@ function planJunctions(network: CrossingNetwork, draft: DraftLine): Plan {
   };
   for (const crossing of crossingsOf(network, draft)) {
     const other = network.curves[crossing.curve] as RoadCurve;
+    // The crossing policy comes first: a pair the tiers may not cross is no
+    // crossing at all, on the ground, on a deck or in a bore (issue #269).
+    // Only a junction is exempt, and `mayCross` refuses no pair `mayJoin`
+    // allows, so a junction is never lost to it.
+    if (!mayCross(draft.tier, other.tier)) {
+      plan.failures.push({ segment: crossing.segment, x: crossing.x, y: crossing.y, tier: other.tier });
+      continue;
+    }
     const ground = onGround(draft, crossing.segment) && onGround(other, crossing.other);
     const join = mayJoin(draft.tier, other.tier, false) && mayJoin(other.tier, draft.tier, false);
     if (ground && join && !meetsNear(network, draft, plan, other, crossing)) {

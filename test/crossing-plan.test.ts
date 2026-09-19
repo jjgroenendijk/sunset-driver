@@ -136,7 +136,7 @@ describe('a road that crosses a road already laid', () => {
     expect(roads.curves).toHaveLength(1);
   });
 
-  it('passes under a highway at a slot, and is shortened where the highway is on the ground', () => {
+  it('passes an arterial under a highway at a slot, and shortens it where the highway is on the ground', () => {
     const points: Point[] = [];
     for (let x = 0; x <= 1500; x += 30) points.push({ x, y: 0 });
     const plan = planHighway(points, [], [], [0, points.length - 1], [], () => true);
@@ -144,13 +144,29 @@ describe('a road that crosses a road already laid', () => {
     roads.add({ tier: 'highway', points, bridges: plan.bridges, tunnels: [], interchanges: [0, points.length - 1], slots: plan.slots, lift: plan.lift });
     roads.add(alongX(-300, 1800, 200));
     const at = ((plan.slots[plan.slots.length >> 1] as number) + 0.5) * 30;
-    const under = roads.add(alongY(at, steps(-95, 205))) as RoadCurve;
+    const under = roads.add(alongY(at, steps(-95, 205), 'arterial')) as RoadCurve;
     // It meets the road at y = 200, and nothing else.
     expect(under.points).toHaveLength(17);
     expect(buildRoadGraph(roads.curves).crossings).toHaveLength(1);
     // At x = 45 the highway stands on the ground by its interchange.
-    const cut = roads.add(alongY(45, steps(-95, 205))) as RoadCurve;
+    const cut = roads.add(alongY(45, steps(-95, 205), 'arterial')) as RoadCurve;
     expect(Math.min(...cut.points.map((p) => p.y))).toBeGreaterThan(0);
     expect(buildRoadGraph(roads.curves).crossings).toHaveLength(1);
+  });
+
+  it('shortens a street back from a highway, slot or no slot', () => {
+    const points: Point[] = [];
+    for (let x = 0; x <= 1500; x += 30) points.push({ x, y: 0 });
+    const plan = planHighway(points, [], [], [0, points.length - 1], [], () => true);
+    const roads = network();
+    roads.add({ tier: 'highway', points, bridges: plan.bridges, tunnels: [], interchanges: [0, points.length - 1], slots: plan.slots, lift: plan.lift });
+    roads.add(alongX(-300, 1800, 200));
+    // A street may not cross a highway's right-of-way anywhere, so it is cut
+    // back to the piece on the far side that still reaches the network, and
+    // the graph gains no crossing (issue #269).
+    const at = ((plan.slots[plan.slots.length >> 1] as number) + 0.5) * 30;
+    const street = roads.add(alongY(at, steps(-95, 205))) as RoadCurve;
+    expect(Math.min(...street.points.map((p) => p.y))).toBeGreaterThan(0);
+    expect(buildRoadGraph(roads.curves).crossings).toHaveLength(0);
   });
 });

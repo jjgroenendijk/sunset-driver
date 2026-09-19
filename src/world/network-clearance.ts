@@ -14,7 +14,9 @@
  * - May a road meet another at a shared point? Only where it leaves every road
  *   already there at {@link MIN_MEET} or more.
  * - May a step cross a highway? Only under one of its slots, where the deck
- *   `highway-plan.ts` planned is level over the segment and both beside it.
+ *   `highway-plan.ts` planned is level over the segment and both beside it,
+ *   and only by a tier {@link mayCross} lets across one: a street, an alley
+ *   or a dirt road never crosses a highway at all.
  *
  * Two roads therefore touch only where they share a node or cross, both at an
  * angle a junction or an overpass can be built at.
@@ -22,7 +24,7 @@
 import { atan2, hypot } from '../core/libm.ts';
 import { clamp, directionDelta } from '../core/math.ts';
 import { CLEARANCE } from './overpass.ts';
-import { footprintHalfWidth } from './tiers.ts';
+import { footprintHalfWidth, mayCross } from './tiers.ts';
 import type { Point, RoadCurve, RoadTier } from './types.ts';
 
 /** Where a straight run crosses a segment of a laid curve. */
@@ -81,6 +83,8 @@ export class NetworkClearance {
   private readonly terminal: boolean[] = [];
   /** Whether another road may cross each segment: not a highway away from its slots, nor the ramp of a raise. */
   private readonly crossable: boolean[] = [];
+  /** The tier of the road each segment belongs to, which {@link mayCross} is asked of. */
+  private readonly tierOf: RoadTier[] = [];
   /** Segments of a reservation given up, or of a segment cut in two, which nothing keeps off any more. */
   private readonly released: boolean[] = [];
   /** The last query each segment was visited by, so a segment filed twice is seen once. */
@@ -183,6 +187,7 @@ export class NetworkClearance {
       this.ends.push(a.x, a.y, b.x, b.y);
       this.halfWidth.push(half);
       this.curve.push(id);
+      this.tierOf.push(tier);
       this.released.push(false);
       this.crossable.push(open(i));
       this.terminal.push(i === 0, i + 1 === last);
@@ -271,8 +276,9 @@ export class NetworkClearance {
         if (junction !== undefined && hypot(x - junction.x, y - junction.y) < width + half) ok = false;
       }
       if (!ok) return;
-      // A highway is crossed at one of its slots or not at all (spec section 6.2).
-      if (this.crossable[s] !== true) {
+      // A highway is crossed at one of its slots or not at all (spec section
+      // 6.2), and only by a tier the crossing policy lets across it.
+      if (this.crossable[s] !== true || !mayCross(tier, this.tierOf[s] as RoadTier)) {
         ok = false;
         return;
       }
@@ -287,14 +293,15 @@ export class NetworkClearance {
 
   /**
    * True where a straight run from `a` to `b` crosses no highway away from its
-   * slots. It asks nothing else: the deck of an island link spans a strait and
-   * is carried over what stands at the shore, but a highway still keeps the
-   * rule of spec section 6.2.
+   * slots, and none the crossing policy keeps this tier off. It asks nothing
+   * else: the deck of an island link spans a strait and is carried over what
+   * stands at the shore, but a highway still keeps the rule of spec section
+   * 6.2.
    */
   crossesAtSlots(a: Point, b: Point, tier: RoadTier): boolean {
     let ok = true;
     this.visit(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.max(a.x, b.x), Math.max(a.y, b.y), footprintHalfWidth(tier), (s) => {
-      if (!ok || this.crossable[s] === true) return;
+      if (!ok || (this.crossable[s] === true && mayCross(tier, this.tierOf[s] as RoadTier))) return;
       if (closest(a.x, a.y, b.x, b.y, this.ends, s) > 0) return;
       const e = this.ends;
       const k = s * 4;
