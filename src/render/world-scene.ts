@@ -66,7 +66,7 @@ import { PlantScenery } from './vegetation.ts';
 import { VehicleModel } from './vehicle.ts';
 import { HeldWeapon, WeaponArt } from './weapon.ts';
 import { WeatherFx } from './weather-fx.ts';
-import { fogOf, overcast } from './weather-look.ts';
+import { fogOf, overcast, overcastOf } from './weather-look.ts';
 import { createWaterSurface, type WaterSurface } from './water-surface.ts';
 
 /** What the damage of a frame is drawn from, beyond the vehicle itself. */
@@ -592,6 +592,7 @@ export class WorldScene {
     const light = overcast(this.light, this.weather);
     this.lit = light;
     this.sky.set(light);
+    this.sky.clouds = overcastOf(this.weather);
     const fog = fogOf(this.tier.rings, this.weather);
     this.sky.setFog(fog.near, fog.far);
     this.water.setDaylight(light);

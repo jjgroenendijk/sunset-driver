@@ -24,6 +24,7 @@ import { CSMShadowNode } from 'three/examples/jsm/csm/CSMShadowNode.js';
 import { SkyMesh } from 'three/examples/jsm/objects/SkyMesh.js';
 import type { Daylight } from './daylight.ts';
 import { reflected } from './mirror.ts';
+import { cameraPosition, clamp, luminance, mix, positionWorld, uniform, vec3, vec4, type TslNode } from './tsl.ts';
 
 /** Metres each way of the box the sky is drawn on. Inside the camera's far plane. */
 const DOME_SIZE = 1600;
@@ -122,10 +123,46 @@ export const SUN_SHADOW_STEP = (0.25 * Math.PI) / 180;
  * them. A coastal city: clear enough to see the far headland, hazy enough that
  * the low sun burns orange.
  */
-const TURBIDITY = 3.4;
-const RAYLEIGH = 2.1;
+const TURBIDITY = 2.4;
+const RAYLEIGH = 1.8;
 const MIE_COEFFICIENT = 0.006;
 const MIE_DIRECTIONAL_G = 0.82;
+
+/**
+ * What the dome's light is multiplied by. The Preetham sky answers in real sky
+ * brightness, and against the exposure of `renderer.ts`, which is set for the
+ * street, a clear sky tone mapped to a flat white-blue. At this share the
+ * zenith keeps its blue, the horizon is pale and only the sun burns out.
+ */
+const SKY_GAIN = 0.5;
+
+/** How fine the clouds are: the addon's 0.0002 draws a few banks the size of the sky. */
+const CLOUD_SCALE = 0.0006;
+/**
+ * The share of the sky under cloud in clear weather, and under a full
+ * overcast, and how dense a cloud is in each. The clouds are the addon's own,
+ * so they are lit by the same sun and the same sky as the dome.
+ */
+const CLOUD_COVER_CLEAR = 0.45;
+const CLOUD_COVER_OVERCAST = 1;
+const CLOUD_DENSITY_CLEAR = 0.4;
+const CLOUD_DENSITY_OVERCAST = 1;
+/** The overcast, as `overcastOf` reads it, at which the sky is wholly cloud: steady rain. */
+const OVERCAST_FULL = 0.4;
+/** How much of {@link SKY_GAIN} the dome keeps under a full overcast, so rain clouds are grey. */
+const SKY_GAIN_OVERCAST = 0.55;
+/** How much of its colour the sky loses under a full overcast. */
+const SKY_GREY_OVERCAST = 0.7;
+
+/**
+ * The night sky, in linear light before the exposure: at the horizon and
+ * overhead. The Preetham model has no night, and once the sun was down the dome
+ * went black and the grade turned it brown. This is added to the dome as the
+ * night comes on, so the sky after dusk is a deep blue, lighter at the horizon,
+ * where the city's light would lift it.
+ */
+const NIGHT_HORIZON = [0.018, 0.024, 0.05] as const;
+const NIGHT_ZENITH = [0.002, 0.004, 0.014] as const;
 
 /**
  * Lights the scene may hold at once (spec section 10.5): the sun and the sky
@@ -145,6 +182,12 @@ export class SkyLighting {
   readonly shadowCascades = SHADOW_CASCADES;
 
   private readonly dome = new SkyMesh();
+  /** What the dome's light is multiplied by: {@link SKY_GAIN}, less under cloud. */
+  private readonly gain = uniform(SKY_GAIN);
+  /** How much of its colour the dome has lost to cloud, 0 to {@link SKY_GREY_OVERCAST}. */
+  private readonly grey = uniform(0);
+  /** How far into the night it is, which is how much of the night sky is added. */
+  private readonly night = uniform(0);
   private readonly sun = new DirectionalLight(0xffffff, 1);
   private readonly fill = new HemisphereLight(0xffffff, 0x000000, 1);
   private readonly cascades: CSMShadowNode;
@@ -166,6 +209,15 @@ export class SkyLighting {
     this.dome.rayleigh.value = RAYLEIGH;
     this.dome.mieCoefficient.value = MIE_COEFFICIENT;
     this.dome.mieDirectionalG.value = MIE_DIRECTIONAL_G;
+    const shade: TslNode = this.dome.material.colorNode;
+    if (shade !== null) {
+      const up = clamp(positionWorld.sub(cameraPosition).normalize().y, 0, 1);
+      const night = mix(vec3(...NIGHT_HORIZON), vec3(...NIGHT_ZENITH), up.sqrt());
+      const day = mix(shade.rgb, vec3(luminance(shade.rgb)), this.grey).mul(this.gain);
+      this.dome.material.colorNode = vec4(day.add(night.mul(this.night)), 1);
+    }
+    this.dome.cloudScale.value = CLOUD_SCALE;
+    this.clouds = 0;
     // The sky is most of what the water gives back, so the dome is one of the
     // few things the mirror of `mirror.ts` draws.
     scene.add(reflected(this.dome));
@@ -200,6 +252,7 @@ export class SkyLighting {
   /** Light the scene as one moment of the day (spec section 10.5). */
   set(light: Daylight): void {
     this.dome.sunPosition.value.copy(light.sun);
+    this.night.value = light.night;
     // The sun keeps casting at night, at no strength. Turning the shadow off
     // and on again would rebuild every material's shader at dusk and at dawn.
     // Only the direction is read, so the position is the snapped sun carried
@@ -216,6 +269,19 @@ export class SkyLighting {
     this.fill.intensity = light.fillIntensity;
     this.fog.color.copy(light.haze);
     this.background.copy(light.haze);
+  }
+
+  /**
+   * Cover the sky in cloud, from 0 in clear weather to 1 under the thickest
+   * overcast (`overcastOf`, `weather-look.ts`). The light is dimmed under cloud
+   * already; this is what the player sees when looking up.
+   */
+  set clouds(overcast: number) {
+    const thick = Math.min(overcast / OVERCAST_FULL, 1);
+    this.dome.cloudCoverage.value = CLOUD_COVER_CLEAR + (CLOUD_COVER_OVERCAST - CLOUD_COVER_CLEAR) * thick;
+    this.dome.cloudDensity.value = CLOUD_DENSITY_CLEAR + (CLOUD_DENSITY_OVERCAST - CLOUD_DENSITY_CLEAR) * thick;
+    this.gain.value = SKY_GAIN * (1 - (1 - SKY_GAIN_OVERCAST) * thick);
+    this.grey.value = SKY_GREY_OVERCAST * thick;
   }
 
   /**
