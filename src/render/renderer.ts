@@ -1,6 +1,7 @@
 import { ACESFilmicToneMapping } from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { clamp } from '../core/math.ts';
+import { uploadBatchesWith } from './batch.ts';
 import { PinnedClusterLighting } from './clustered-lights.ts';
 import { registerLampLight } from './lamp-light.ts';
 import { registerNeonLight } from './sign-light.ts';
@@ -131,6 +132,8 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<WebGPUR
   const renderer = new WebGPURenderer({ canvas, antialias: false, forceWebGL: false });
   configure(renderer);
   await renderer.init();
+  // The upload record exists from `init` on.
+  uploadBatchesWith(renderer);
   const base = Math.min(window.devicePixelRatio, 2);
   basePixelRatio.set(renderer, base);
   setRenderScale(renderer, 1);
@@ -153,6 +156,7 @@ export async function createOffscreenRenderer(width: number, height: number): Pr
   const renderer = new WebGPURenderer({ antialias: false, forceWebGL: false });
   configure(renderer);
   await renderer.init();
+  uploadBatchesWith(renderer);
   basePixelRatio.set(renderer, 1);
   setRenderScale(renderer, 1);
   renderer.setSize(width, height, false);

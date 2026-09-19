@@ -1,6 +1,13 @@
 import { BoxGeometry, type BufferAttribute, Euler, Matrix3, Matrix4, MeshBasicMaterial, Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { batchOfPacked, fillOfPacked, fillsOf, MAX_STEP_VERTICES, tilePartOf } from '../src/render/batch.ts';
+import {
+  batchOfPacked,
+  fillOfPacked,
+  fillsOf,
+  MAX_STEP_VERTICES,
+  tilePartOf,
+  uploadBatchesWith,
+} from '../src/render/batch.ts';
 import { cellGrid } from '../src/render/cells.ts';
 import { packedVertexCount, type PackedBatch, type PackedGeometry, type PackedPart } from '../src/render/chunk-payload.ts';
 
@@ -211,6 +218,46 @@ describe('a chunk batch', () => {
     draw();
     expect(position.array.length).toBe(0);
     mesh.dispose();
+  });
+
+  it('uploads a batch as its steps fill it, and lets go of it after the last step, drawn or not', () => {
+    // The renderer's record, as three.js keeps it, and the calls a step makes.
+    const record = new Map<unknown, { version: number }>();
+    const uploads: unknown[] = [];
+    const freed: unknown[] = [];
+    const renderer = {
+      _attributes: {
+        has: (a: unknown) => record.has(a),
+        get: (a: unknown) => record.get(a),
+        update: (a: BufferAttribute) => {
+          uploads.push(a);
+          record.set(a, { version: a.version });
+        },
+        delete: (a: unknown) => freed.push(a),
+      },
+    };
+    uploadBatchesWith(renderer);
+    try {
+      const fill = fillOfPacked(packed([part(1), part(2)]), material);
+      const geometry = fill.mesh.geometry;
+      (fill.steps[0] as () => void)();
+      // Each attribute and the index are uploaded by the step that wrote them.
+      expect(uploads).toHaveLength(4);
+      expect(geometry.getAttribute('position').array.length).toBe(24);
+
+      (fill.steps[1] as () => void)();
+      // Never drawn, and every array is gone: the GPU holds the batch.
+      expect(geometry.getAttribute('position').array.length).toBe(0);
+      expect(geometry.getAttribute('normal').array.length).toBe(0);
+      expect(geometry.getIndex()?.array.length).toBe(0);
+      expect(geometry.getAttribute('position').count).toBe(8);
+
+      // The renderer frees what a draw uploaded; the batch frees what it did.
+      fill.mesh.dispose();
+      expect(freed).toHaveLength(4);
+    } finally {
+      uploadBatchesWith(undefined);
+    }
   });
 
   it('copies a part larger than a step over several of them, and draws it once', () => {

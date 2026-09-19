@@ -274,10 +274,14 @@ lamps and the lights a vehicle carries — in `docs/lighting.md`.
     exists for this reason.
   - `WorldScene.add` empties `TilePart.steps` once they are queued, because a step holds the arrays
     it copies from.
-  - A full batch lets its arrays go after a draw (`Batch.letGo`). three.js uploads an attribute in
-    the first pass that reads it, so `letGo` reads the renderer's own record and releases only an
-    attribute whose current version is on the GPU. A batch released too early is drawn from an
-    empty buffer, and WebGPU reports a vertex range larger than the bound buffer.
+  - A full batch lets its arrays go (`Batch.letGo`). `letGo` reads the renderer's own record and
+    releases only an attribute whose current version is on the GPU. A batch released too early is
+    drawn from an empty buffer, and WebGPU reports a vertex range larger than the bound buffer.
+  - Each step uploads the ranges it wrote (`uploadBatchesWith`, called by `renderer.ts`), so a
+    batch lets go after its last step. Waiting for the first draw kept the arrays of every batch
+    the camera had not looked at yet, which was 267 MB on the core of seed `sunset`. A batch the
+    steps uploaded frees its own buffers on `dispose`, because three.js frees only the buffers of
+    a geometry it drew. `docs/performance.md` has the numbers.
 
 ## Water and its mirror
 

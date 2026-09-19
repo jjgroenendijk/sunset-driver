@@ -46,38 +46,45 @@ export interface BatchPart {
 export class Batch extends Mesh<BufferGeometry, Material> {
   /** Parts copied in so far. */
   parts = 0;
+  /** The renderer's record of uploads, where the steps upload the batch themselves. */
+  uploads: UploadRecords | undefined;
 
-  /** Release the geometry. The material belongs to the world and is left alone. */
+  /**
+   * Release the geometry. The material belongs to the world and is left alone.
+   * The renderer frees the buffers of a geometry it drew when the geometry is
+   * disposed, but not those the steps uploaded, so a batch never drawn frees
+   * its own.
+   */
   dispose(): void {
     this.geometry.dispose();
+    const records = this.uploads;
+    if (records === undefined) return;
+    for (const attribute of attributesOf(this.geometry)) records.delete(attribute);
   }
 
   /**
    * Let go of the arrays the renderer has uploaded, and answer whether any are
-   * left. It is asked after each draw once the last part is in.
+   * left.
    *
-   * The GPU holds an attribute from the draw that uploads it on, and nothing
-   * reads the array again: the bounds are kept apart, and nothing casts a ray
-   * at a batch. Kept, the arrays were the city a second time in the page's
-   * memory, and iOS Safari kills a page that holds too much
-   * (`docs/rendering.md`). An attribute is uploaded by the first pass that
-   * reads it, so one the shadow pass skips waits for the view to draw it.
+   * The GPU holds an attribute from its upload on, and nothing reads the array
+   * again: the bounds are kept apart, and nothing casts a ray at a batch. Kept,
+   * the arrays were the city a second time in the page's memory, and iOS
+   * Safari kills a page that holds too much (`docs/rendering.md`).
    *
    * Each array is swapped for an empty one of its own type: the renderer still
    * reads the type when it builds a pipeline for another pass, and an
    * attribute keeps the count it was made with.
    */
   letGo(renderer: unknown): boolean {
-    const geometry = this.geometry;
     let left = false;
-    for (const attribute of [...Object.values(geometry.attributes), geometry.getIndex()]) {
-      if (!(attribute instanceof BufferAttribute) || attribute.array.length === 0) continue;
+    for (const attribute of attributesOf(this.geometry)) {
+      if (attribute.array.length === 0) continue;
       if (!uploaded(renderer, attribute)) {
         left = true;
         continue;
       }
-      const array = attribute.array as AttributeArray;
-      attribute.array = new (array.constructor as new (length: number) => AttributeArray)(0);
+      const array = attribute.array;
+      attribute.array = new (array.constructor as new (length: number) => BufferAttribute['array'])(0);
     }
     return left;
   }
@@ -87,6 +94,19 @@ export class Batch extends Mesh<BufferGeometry, Material> {
 interface UploadRecords {
   has(attribute: BufferAttribute): boolean;
   get(attribute: BufferAttribute): { version?: number };
+  /** Upload an attribute, or the ranges of it written since the last upload. */
+  update(attribute: BufferAttribute, type: number): void;
+  /** Free the buffer an attribute was uploaded to. */
+  delete(attribute: BufferAttribute): unknown;
+}
+
+/** three.js's `AttributeType`, which `three/webgpu` does not export. */
+const VERTEX = 1;
+const INDEX = 2;
+
+/** The upload record of a renderer, or undefined if three.js has moved it. */
+function recordsOf(renderer: unknown): UploadRecords | undefined {
+  return (renderer as { _attributes?: UploadRecords | null } | undefined)?._attributes ?? undefined;
 }
 
 /**
@@ -95,9 +115,35 @@ interface UploadRecords {
  * of three.js that moves it keeps the arrays rather than breaking the draw.
  */
 function uploaded(renderer: unknown, attribute: BufferAttribute): boolean {
-  const records = (renderer as { _attributes?: UploadRecords | null })._attributes;
-  if (records === undefined || records === null || !records.has(attribute)) return false;
+  const records = recordsOf(renderer);
+  if (records === undefined || !records.has(attribute)) return false;
   return records.get(attribute).version === attribute.version;
+}
+
+/** Every attribute of a geometry and its index. */
+function attributesOf(geometry: BufferGeometry): BufferAttribute[] {
+  const all: BufferAttribute[] = [];
+  for (const attribute of [...Object.values(geometry.attributes), geometry.getIndex()]) {
+    if (attribute instanceof BufferAttribute) all.push(attribute);
+  }
+  return all;
+}
+
+/** The renderer the batches made from now on upload into as they fill. */
+let uploader: unknown;
+
+/**
+ * Upload each batch made from now on as its steps fill it, into this renderer,
+ * and let go of its arrays after its last step (spec section 9.1).
+ *
+ * A batch that waits for its first draw to be uploaded keeps its arrays until
+ * then, and a batch the camera has not looked at yet is most of the city: half
+ * the batches of a settled scene had never been drawn. The first step of a
+ * batch creates its buffers, and each step after it uploads only the ranges it
+ * wrote, so the upload is spent a step at a time with the copy.
+ */
+export function uploadBatchesWith(renderer: unknown): void {
+  uploader = renderer;
 }
 
 /** A batch, and the steps that fill it. Run the steps in order. */
@@ -262,7 +308,7 @@ function fill(
 ): BatchFill {
   const geometry = new BufferGeometry();
   for (const attribute of storage.attributes) {
-    geometry.setAttribute(attribute.name, new BufferAttribute(attribute.array, attribute.itemSize, attribute.normalized));
+    geometry.setAttribute(attribute.name, new BufferAttribute(attribute.array as BufferAttribute['array'], attribute.itemSize, attribute.normalized));
   }
   if (storage.index !== undefined) geometry.setIndex(new BufferAttribute(storage.index, 1));
   geometry.setDrawRange(0, 0);
@@ -272,6 +318,9 @@ function fill(
   geometry.boundingSphere = sphere;
 
   const mesh = new Batch(geometry, material);
+  const renderer = uploader;
+  const records = recordsOf(renderer);
+  mesh.uploads = records;
   // A batch with nothing in it is not drawn: it would be a draw of nothing in
   // every pass until its first part lands, and the renderer would compile a
   // shader for a geometry with no attributes at all.
@@ -313,6 +362,7 @@ function fill(
           }
           into.addUpdateRange(start, (to - from) * size);
           into.needsUpdate = true;
+          records?.update(into, VERTEX);
         }
         const position = geometry.getAttribute('position') as BufferAttribute | undefined;
         if (position !== undefined) expand(bounds, position.array as AttributeArray, base + from, to - from);
@@ -325,15 +375,18 @@ function fill(
           for (let k = 0; k < drawn; k++) out[indexBase + k] = base + (own === undefined ? k : (own[k] as number));
           index.addUpdateRange(indexBase, drawn);
           index.needsUpdate = true;
+          records?.update(index, INDEX);
         }
         geometry.setDrawRange(0, indexBase + drawn);
         bounds.getBoundingSphere(sphere);
         mesh.parts++;
         mesh.visible = true;
         release(i);
-        // The renderer uploads the last part on the next draw that takes the
-        // batch, in whichever pass that is, and the arrays can go after it.
-        if (mesh.parts === total) mesh.onAfterRender = letGoAfterDraw;
+        if (mesh.parts < total) return;
+        // A batch the steps uploaded is on the GPU now. One that was not is
+        // uploaded by the next draw that takes it, in whichever pass that is,
+        // and the arrays can go after it.
+        if (records === undefined || mesh.letGo(renderer)) mesh.onAfterRender = letGoAfterDraw;
       });
     }
     vertexAt += count;
