@@ -355,8 +355,10 @@ lamps and the lights a vehicle carries — in `docs/lighting.md`.
 - `PostChain` (`post.ts`) is the post chain of spec section 10.6, and it draws the frame:
   `post.render()` replaces `renderer.render`. The order is the design. The scene is drawn in real
   light and multiplied by the exposure; bloom reads that, so `BLOOM_THRESHOLD` is a number about the
-  frame the player sees. Tone mapping brings it to 0..1, the grade follows, and SMAA comes last
-  because it wants linear colour. The chain therefore tone maps and encodes the frame itself, and
+  frame the player sees. The bloom leaves the sky out, all but `SKY_BLOOM_SHARE` of it, and finds
+  it by depth: the dome writes none. Read whole, a clear day sky glared white over every tower.
+  Tone mapping brings it to 0..1, the grade follows, and SMAA comes last because it wants linear
+  colour. The chain therefore tone maps and encodes the frame itself, and
   `outputColorTransform` is off so the pipeline does not do both again. `PostQuality` is the part of
   a quality tier this file owns: `setRenderScale` (`renderer.ts`) and a switch for each effect.
 - The graphs are built once and kept, by the effects they draw: `postGraphs` names the distinct ones
