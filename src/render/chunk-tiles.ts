@@ -26,6 +26,7 @@ import type { ChunkStream } from './chunk-pool.ts';
 import { groundPart } from './ground.ts';
 import type { Lamp } from './lamp-mesh.ts';
 import type { LampLights, LampScenery } from './lamps.ts';
+import type { MetroScenery } from './metro.ts';
 import { reflected } from './mirror.ts';
 import type { Poster } from './poster-mesh.ts';
 import type { PosterScenery } from './posters.ts';
@@ -42,6 +43,8 @@ export interface TileSceneries {
   buildings: BuildingScenery;
   vegetation: PlantScenery;
   lamps: LampScenery;
+  /** The stairs down to a metro station (spec section 13.3). */
+  metro: MetroScenery;
   posters: PosterScenery;
   signs: SignScenery;
   /** The light pool, told when the lamps in reach change. */
@@ -236,6 +239,11 @@ export class ChunkTiles {
         this.add(tile, kit.posters.build(grid, payload.posters));
         tile.posters = payload.posters;
       });
+    }
+    // Nor are the entrances of the metro: a city holds a dozen or so, and one
+    // dropped is a station the player cannot find (spec section 13.3).
+    if (payload.metro.length > 0) {
+      this.queueJob(tile, () => this.add(tile, kit.metro.build(payload.bounds, payload.metro)));
     }
     // Nor are the signs: a high street with its lettering thinned away is a
     // district the player can no longer read (spec section 13.1).

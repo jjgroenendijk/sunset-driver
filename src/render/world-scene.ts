@@ -50,6 +50,7 @@ import type { ChunkContents } from './frame-contents.ts';
 import { LampLights, LampScenery } from './lamps.ts';
 import type { Gore } from './gore.ts';
 import { MeleeFx } from './melee-fx.ts';
+import { MetroScenery } from './metro.ts';
 import { ShotFx } from './shot-fx.ts';
 import { reflectLights } from './mirror.ts';
 import { PickupModels } from './pickups.ts';
@@ -128,6 +129,8 @@ export class WorldScene {
   private readonly fade = new EntityFade(entityDistance(FULL_TIER));
   private readonly vegetation = new PlantScenery(this.fade);
   private readonly lamps = new LampScenery(this.fade);
+  /** The stairs down to a metro station (spec section 13.3). */
+  private readonly metroStairs = new MetroScenery(this.fade);
   /** The harm-reduction posters on the walls (spec section 19). */
   private readonly posters = new PosterScenery(this.fade);
   /** The shop signage and the billboards over it, and the neon that lights a few of them. */
@@ -180,6 +183,7 @@ export class WorldScene {
       buildings: this.buildings,
       vegetation: this.vegetation,
       lamps: this.lamps,
+      metro: this.metroStairs,
       posters: this.posters,
       signs: this.signs,
       lampLights: this.lampLights,
@@ -567,6 +571,7 @@ export class WorldScene {
     this.buildings.dispose();
     this.vegetation.dispose();
     this.lamps.dispose();
+    this.metroStairs.dispose();
     this.posters.dispose();
     this.signs.dispose();
     this.character.dispose();
@@ -605,6 +610,7 @@ export class WorldScene {
     this.water.setDaylight(light);
     this.buildings.night = light.night;
     this.lamps.lamps = light.lamps;
+    this.metroStairs.lamps = light.lamps;
     this.signs.night = light.lamps;
   }
 }

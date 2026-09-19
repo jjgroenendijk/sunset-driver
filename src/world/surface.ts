@@ -18,7 +18,7 @@ import { pointInRing } from '../core/geom.ts';
 import { atan2, hypot } from '../core/libm.ts';
 import { Heightfield } from './heightfield.ts';
 import { footprintHalfWidth } from './tiers.ts';
-import type { Point, RoadCurve, WorldDescription } from './types.ts';
+import type { Point, RoadCurve, RoadTier, WorldDescription } from './types.ts';
 
 /**
  * The ground a tyre is on. `ground` is everything the roads and the beaches
@@ -162,6 +162,11 @@ export interface RoadPlace {
   heading: number;
 }
 
+/** The same place, with the tier of the road it stands on. */
+export interface RoadSpot extends RoadPlace {
+  tier: RoadTier;
+}
+
 /**
  * The nearest place a car can stand on a road, or undefined where the world has
  * none. This is where a session starts and where a respawn will put a car
@@ -173,10 +178,28 @@ export interface RoadPlace {
  * hill. One pass over the curves at the start of a session.
  */
 export function nearestRoadPlace(world: WorldDescription, x: number, y: number): RoadPlace | undefined {
-  let best: RoadPlace | undefined;
+  return nearestRoadSpot(world, x, y);
+}
+
+/**
+ * The same answer with the tier of the road it found. Whoever stands something
+ * beside the road rather than on it needs the tier, because how far the
+ * carriageway, the verge and the pavement reach is a fact about the tier
+ * ({@link footprintHalfWidth}). The metro entrances of spec section 13.3 stand
+ * that way, and they take `accept` to ask for a road with a pavement to stand
+ * on: a tier that has none claims no ground beside its carriageway.
+ */
+export function nearestRoadSpot(
+  world: WorldDescription,
+  x: number,
+  y: number,
+  accept?: (tier: RoadTier) => boolean,
+): RoadSpot | undefined {
+  let best: RoadSpot | undefined;
   let bestDistance = Infinity;
   for (const road of world.roads) {
     if (road.tier === 'highway') continue;
+    if (accept !== undefined && !accept(road.tier)) continue;
     for (let i = 0; i + 1 < road.points.length; i++) {
       if (road.bridges.includes(i) || road.tunnels.includes(i)) continue;
       const a = road.points[i] as Point;
@@ -191,7 +214,7 @@ export function nearestRoadPlace(world: WorldDescription, x: number, y: number):
       const distance = hypot(px - x, py - y);
       if (distance >= bestDistance) continue;
       bestDistance = distance;
-      best = { x: px, y: py, heading: atan2(vy, vx) };
+      best = { x: px, y: py, heading: atan2(vy, vx), tier: road.tier };
     }
   }
   return best;

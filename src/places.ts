@@ -28,6 +28,7 @@ import { crimeGrounds, type CrimeGround } from './sim/street-crime.ts';
 import { venuesOf, type Venues } from './sim/city-events.ts';
 import { TerritoryMap } from './sim/territory.ts';
 import type { TrafficRoads } from './sim/traffic.ts';
+import { metroEntrances } from './world/metro.ts';
 import { nearestRoadPlace } from './world/surface.ts';
 import type { Point, WorldDescription } from './world/types.ts';
 
@@ -71,10 +72,14 @@ export function buildPlaces(
   const stations = world.stations ?? [];
   // An arrest comes back on the road nearest a station (spec section 11.7).
   ground.stations = stations.map((at) => snap(at.x, at.y) ?? { ...at, heading: 0 });
-  // A metro station is entered from the street, so its place is the road that
-  // runs along its parcel, and it is named for the district it serves.
-  const metro: MetroPlace[] = (world.metro ?? []).map((at) => ({
-    ...(snap(at.x, at.y) ?? { x: at.x, y: at.y, heading: 0 }),
+  // A metro station is entered from the street, so its place is the pavement
+  // the stairs stand on (spec section 13.3), and it is named for the district
+  // it serves. The renderer builds the stairs from the same answer, so the
+  // reach the panel opens at is measured from the stairs the player walked to.
+  const metro: MetroPlace[] = metroEntrances(description, world.metro ?? []).map((at) => ({
+    x: at.x,
+    y: at.y,
+    heading: at.heading,
     name: description.districts[at.district]?.name ?? 'Metro',
   }));
   ground.metro = metro;

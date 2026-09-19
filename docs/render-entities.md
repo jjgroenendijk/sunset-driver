@@ -14,6 +14,7 @@ scene ever holds is in `docs/shops.md`.
 - Plants
 - Posters and hoardings
 - Shop signage and billboards
+- Metro entrances
 - Traffic, parked cars and the crowd
 - Blood
 - The casualties
@@ -281,6 +282,26 @@ scene ever holds is in `docs/shops.md`.
   only one of them is enterable.
 - Whether a board lights after dark is its zone's business and is carried on the board's own
   vertices, not in a second material. `docs/lighting.md` has the neon.
+
+## Metro entrances
+
+- The stairs down to a station of spec section 13.3. `metro-mesh.ts` builds one stairwell of
+  fourteen boxes — a dark well between two parapets, six treads walking down into it, a handrail
+  along each parapet and a lit sign on a mast — and `metro.ts` batches a chunk's entrances into one
+  mesh for the whole chunk rather than one per cell: a city holds about a dozen stations, and
+  cutting a single small object into quarters buys no culling and costs a draw call. `chunk-cost.ts`
+  counts that one batch in every chunk, because a chunk does not know the parcels and cannot say
+  whether a station stands in it.
+- **Nothing under the ground is drawn.** The ground is a surface, not a solid, so a step cut below
+  it is behind it from a camera looking down and never seen; a well really sunk into the pavement
+  shows the pavement at the bottom of it. So the whole entrance stands over the pavement and the
+  descent is shallow — each tread lower and darker than the one before it, on a floor almost black
+  — which from the height the game is played at reads as a stair going under the street.
+- The stairs stand on the kerb, which is `surfaceAt` plus `vergeRise(tier)`, the way a street lamp
+  does. Left on the road bed the treads are buried and only the parapets show, which looks exactly
+  like a stairwell that failed to build.
+- Where an entrance stands is `src/world/metro.ts` and not this directory, because the simulation
+  stands the player at the same place: `docs/city-life.md` has that half.
 
 ## Traffic, parked cars and the crowd
 
