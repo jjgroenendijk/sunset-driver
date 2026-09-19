@@ -12,7 +12,7 @@ import {
   stockOf,
   weaponPrice,
 } from '../src/sim/shop-stock.ts';
-import { ARSENAL, WEAPON_IDS, weaponOf, type WeaponId } from '../src/sim/weapon.ts';
+import { AMMO_CAP, ARSENAL, fitsOf, WEAPON_IDS, weaponOf, type WeaponId } from '../src/sim/weapon.ts';
 import { MAX_LICENCE, MIN_LICENCE, type Shop, type ShopKind } from '../src/world/shops.ts';
 
 /** One shop of a trade, with the licence a test wants it to hold. */
@@ -100,8 +100,40 @@ describe('shop stock', () => {
     const rows = offersOf(state, place('weapons', 2));
     expect(rows.some((row) => row.label.includes('9×19'))).toBe(true);
     expect(rows.some((row) => row.label.includes('MP5'))).toBe(true);
-    // Every row of a counter fits the number keys of the panel.
-    expect(rows.length).toBeLessThanOrEqual(9);
+    // Every attachment the weapon takes is on the counter, each shown fitted.
+    const fitted = rows.filter((row) => row.group === 'Attachments');
+    expect(fitted.length).toBe(fitsOf(weaponOf('mp5')).length);
+    for (const row of fitted) {
+      expect(row.look.kind).toBe('weapon');
+      if (row.look.kind === 'weapon') expect(row.look.attachments.length).toBe(1);
+    }
+  });
+
+  it('sells one box of each calibre the player carries, and none for a full pool', () => {
+    const state = createSimState(2);
+    state.loadout.slots = [
+      { id: 'glock-17', loaded: 17, attachments: [] },
+      { id: 'mp5', loaded: 30, attachments: [] },
+      { id: 'ak-47', loaded: 30, attachments: [] },
+    ];
+    state.loadout.current = 0;
+    state.loadout.ammo['7.62×39'] = AMMO_CAP['7.62×39'];
+    const ammo = offersOf(state, place('weapons', 2)).filter((row) => row.group === 'Ammunition');
+    expect(ammo.map((row) => row.label)).toEqual(['17 × 9×19']);
+  });
+
+  it('gives every row of every counter a heading, a look and a line to read', () => {
+    const state = createSimState(4);
+    state.player.health = 10;
+    for (const kind of ['weapons', 'workshop', 'convenience', 'clothing', 'clinic'] as const) {
+      const rows = offersOf(state, place(kind, 3));
+      expect(rows.length, kind).toBeGreaterThan(3);
+      for (const row of rows) {
+        expect(row.group, row.label).not.toBe('');
+        expect(row.blurb, row.label).not.toBe('');
+        expect(row.look, row.label).toBeDefined();
+      }
+    }
   });
 });
 

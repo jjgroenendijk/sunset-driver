@@ -223,7 +223,10 @@ describe('shops', () => {
     expect(session.state.player.health).toBeLessThan(MAX_HEALTH);
     press(session);
     enter(session, 'clinic');
-    buy(session, 1);
+    // The lighter care is listed first; full treatment is the row that heals all.
+    const treatment = shopOffers(session.state, PLACES).findIndex((offer) => offer.label === 'Treatment');
+    expect(treatment).toBeGreaterThan(0);
+    buy(session, treatment + 1);
     expect(session.state.player.health).toBe(MAX_HEALTH);
     // There is nothing left to sell a player who needs none of it, but the
     // exchange of spec section 19 gives out the same things whatever their
