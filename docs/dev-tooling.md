@@ -141,6 +141,8 @@ What the game draws, as one frame. Look at the frame before judging a rendering 
 - `--emergency` puts the services of spec section 20.3 in the frame: a blaze in the road ahead, a
   fire engine standing at it and an ambulance behind. They are put down rather than driven to,
   because a preview is one frame and a call takes the best part of a minute.
+- `--shots` puts a shotgun blast and a pistol round in the air, a tick or two old, with their flash,
+  streaks and impacts (spec section 11.6). What they hit is laid by hand; a preview casts nothing.
 - `--stance=<name>` holds the player in one stance for the picture — `stand`, `walk`, `air` or
   `swim` — which is the one way to look at the movement of spec sections 11.2 and 11.5 in a still
   frame. The frame is taken a quarter of the way through the cycle, where the swing is widest.

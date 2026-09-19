@@ -70,8 +70,15 @@ export class MeleeFx {
   private readonly colour = new Color();
   /** The tick the last blow was drawn on, so no blow is thrown twice. */
   private seen = -1;
+  /** The stream of the seed the bursts are jittered from. */
+  private readonly stream: number;
 
-  constructor(cap = SPARK_CAP) {
+  /**
+   * `stream` keeps a second user of this burst — the rounds of `shot-fx.ts` —
+   * off the stream the blows are jittered from.
+   */
+  constructor(cap = SPARK_CAP, stream = SPARK_STREAM) {
+    this.stream = stream;
     const geometry = new CircleGeometry(0.5, 8);
     // The camera looks down, so a disc laid flat is a disc facing it.
     geometry.rotateX(-Math.PI / 2);
@@ -128,7 +135,7 @@ export class MeleeFx {
   private burst(hit: MeleeHit, seed: number, index: number): void {
     const count = Math.max(2, Math.round(SPARKS_PER_HIT * hit.strength));
     for (let i = 0; i < count; i++) {
-      const rng = rngFor(seed, hit.tick, Subsystem.Damage, SPARK_STREAM + index * SPARKS_PER_HIT + i);
+      const rng = rngFor(seed, hit.tick, Subsystem.Damage, this.stream + index * SPARKS_PER_HIT + i);
       const heading = rng.range(0, Math.PI * 2);
       const speed = rng.range(0.35, 1) * SPARK_SPEED * (0.5 + 0.5 * hit.strength);
       if (this.live.length >= this.mesh.instanceMatrix.count) this.live.shift();

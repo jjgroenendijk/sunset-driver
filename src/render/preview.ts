@@ -42,11 +42,14 @@ import {
   createLoadout,
   fitAttachment,
   giveWeapon,
+  MUZZLE_HEIGHT,
+  MUZZLE_REACH,
   normaliseAttachments,
   WEAPON_IDS,
   weaponOf,
   type Attachment,
 } from '../sim/weapon.ts';
+import type { TracerEnd } from '../sim/tracer.ts';
 import {
   createVehicleState,
   DEFAULT_CLASS,
@@ -141,6 +144,12 @@ export interface PreviewRequest {
    * preview is one frame and a call takes the best part of a minute.
    */
   emergency?: boolean;
+  /**
+   * Set to show the rounds of spec section 11.6 in the air: a shotgun blast
+   * the way the player faces, a tick old, and a pistol round two ticks before
+   * it. What they meet is laid by hand, since a preview casts nothing.
+   */
+  shots?: boolean;
   /**
    * The weapon to put in the player's hands, by id (spec section 11.6). It is
    * drawn only with {@link PreviewRequest.onFoot}, as in the game.
@@ -337,6 +346,7 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   // A fire is what has been burning for a while, not what started this frame,
   // so the smoke is given a run of ticks to climb before the picture is taken.
   scene.resetDamage(tick - FX_WARMUP);
+  if (request.shots === true) volley(record, stand, scene.heightAt(stand.x, stand.y), tick);
   // The surface of the ground, as the game reads it through the city: rubber
   // is left on the tarmac and nowhere else (spec section 11.3).
   const surfaces = new SurfaceIndex(world);
@@ -586,4 +596,25 @@ function base64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + BASE64_BLOCK));
   }
   return btoa(binary);
+}
+
+/** Metres the rounds of `--shots` carry before they stop, and the spread of the blast. */
+const VOLLEY_REACH = 14;
+const VOLLEY_SPREAD = 0.09;
+
+/** Lay the rounds `--shots` shows into the record, as `gunfire.ts` would have. */
+function volley(record: SimState, stand: { x: number; y: number; heading: number }, ground: number, tick: number): void {
+  const h = ground + MUZZLE_HEIGHT;
+  const round = (at: number, pellet: number, yaw: number, reach: number, end: TracerEnd): void => {
+    const x = stand.x + Math.cos(stand.heading) * MUZZLE_REACH;
+    const y = stand.y + Math.sin(stand.heading) * MUZZLE_REACH;
+    const ex = x + Math.cos(yaw) * reach;
+    const ey = y + Math.sin(yaw) * reach;
+    record.tracers.push({ tick: at, pellet, x, y, h, ex, ey, eh: h - 0.3, end });
+  };
+  round(tick - 2, 0, stand.heading + 0.5, VOLLEY_REACH * 0.7, 'vehicle');
+  for (let i = 0; i < 8; i++) {
+    const yaw = stand.heading + ((i - 3.5) / 3.5) * VOLLEY_SPREAD;
+    round(tick - 1, i, yaw, VOLLEY_REACH * (0.8 + 0.05 * (i % 4)), i % 3 === 0 ? 'none' : 'hard');
+  }
 }
