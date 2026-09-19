@@ -59,6 +59,11 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
 - `renderer.shadowMap.enabled` is false by default on `WebGPURenderer`. Without the line in
   `renderer.ts` the cascades are built every frame and never drawn, and the city is flat with
   nothing to say why.
+- The dome is the addon's Preetham sky with three things laid over it in `sky.ts`. `SKY_GAIN`
+  dims it, or a clear sky tone maps to a flat white-blue. The addon's clouds follow the weather
+  through `SkyLighting.clouds`: a few in clear weather, a full grey cover from steady rain on. The
+  Preetham model has no night, so `NIGHT_HORIZON` and `NIGHT_ZENITH` are added as the night comes
+  on; without them the sky after dusk was black, and the grade turned it brown.
 - The Preetham sky answers in real sky brightness, so the frame is tone mapped and `EXPOSURE` in
   `renderer.ts` is the one number every light in the game is set against. Change a light's strength
   only against a rendered frame.

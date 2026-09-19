@@ -105,6 +105,9 @@ export const renderGroup: TslNode = tsl.renderGroup;
  */
 export const If = tsl.If as unknown as (condition: TslNode, body: () => void) => TslNode;
 
+/** The brightness of a linear colour, as the eye weighs its three channels. */
+export const luminance = tsl.luminance as unknown as (colour: TslNode) => TslNode;
+
 /** The texture coordinates of the geometry. The game measures them in metres. */
 export const uv = tsl.uv as unknown as () => TslNode;
 
