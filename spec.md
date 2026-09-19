@@ -558,8 +558,8 @@ DOM-based, overlaid on the canvas.
   Rotating or fixed-north, player's choice: a checkbox under Options.
 - Full map: pan and zoom, territory overlay, waypoint setting.
 - Trading panel: district prices, inventory, price history.
-- Pause menu: resume, multiplayer (with the seed display and copy), save game (with export), load
-  game (with import and regenerate), controls, graphics, options, quit to main menu. Each item that
+- Pause menu: resume, multiplayer, save game (with export and a copy of the seed), load game
+  (with import and regenerate), controls, graphics, options, quit to main menu. Each item that
   holds more opens a column beside the list, and its text is a word or two.
 
 ---

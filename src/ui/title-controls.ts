@@ -9,9 +9,7 @@ import { backButton, card, page } from './title-parts.ts';
  */
 export function buildControlsPage(back: () => void, touch = false): HTMLElement {
   const root = page('title-page title-keys');
-  const sheet = touch
-    ? card('I', 'Touch')
-    : card('I', 'Controls');
+  const sheet = card('', touch ? 'Touch' : 'Controls');
 
   const list = document.createElement('dl');
   list.className = 'title-key-list';

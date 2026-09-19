@@ -19,12 +19,19 @@ export interface KeyPart {
 }
 
 /** Words that join keys rather than name one. */
-const JOINERS = new Set(['or', 'and', 'then']);
+const JOINERS = new Set(['or', 'and', 'then', 'to']);
 
-/** Split a binding such as `W A S D or arrows` into its caps and joining words. */
+/**
+ * Split a binding such as `W A S D or arrows` into its caps and joining words.
+ * A mouse button is one cap: `Left click` is not two keys.
+ */
 export function keyParts(keys: string): KeyPart[] {
-  return keys
-    .split(/\s+/)
-    .filter((word) => word.length > 0)
-    .map((word) => ({ text: word, cap: !JOINERS.has(word) }));
+  const parts: KeyPart[] = [];
+  for (const word of keys.split(/\s+/)) {
+    if (word.length === 0) continue;
+    const last = parts[parts.length - 1];
+    if (word === 'click' && last?.cap) last.text += ' click';
+    else parts.push({ text: word, cap: !JOINERS.has(word) });
+  }
+  return parts;
 }

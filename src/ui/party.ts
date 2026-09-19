@@ -34,10 +34,10 @@ const NO_ROOM = 'No room';
 
 export function buildPartyPage(actions: PartyActions, copyText: CopyText, back: () => void): PartyPage {
   const root = page('title-page pause-party');
-  const sheet = card('II', 'Multiplayer', 'Up to 6 players');
+  const sheet = card('', 'Multiplayer');
 
   const code = document.createElement('p');
-  code.className = 'pause-seed';
+  code.className = 'pause-room';
   const link = document.createElement('textarea');
   link.className = 'pause-text pause-invite';
   link.spellcheck = false;
