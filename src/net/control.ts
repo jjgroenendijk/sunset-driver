@@ -39,7 +39,7 @@ export class PartyControl {
   private connecting = false;
   private room = '';
   private host = false;
-  private note = 'Open the game and anyone with the link can drive this city with you.';
+  private note = '';
 
   /** Called whenever the line the player reads changes. */
   onChange: ((state: ControlState) => void) | null = null;

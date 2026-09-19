@@ -1,4 +1,5 @@
-/** The pieces every page of the title screen is built from. */
+/** The pieces every page of the title screen and the pause menu is built from. */
+import type { ToggleChoice } from './settings.ts';
 
 /** A page of the title screen, hidden until it is shown. */
 export function page(className: string): HTMLElement {
@@ -8,8 +9,8 @@ export function page(className: string): HTMLElement {
   return el;
 }
 
-/** A card with a roman numeral, a heading and a line under it, in the manner of a printed programme. */
-export function card(numeral: string, heading: string, note: string): HTMLElement {
+/** A card with a roman numeral, a heading and a line under it where there is one, in the manner of a printed programme. */
+export function card(numeral: string, heading: string, note = ''): HTMLElement {
   const el = document.createElement('section');
   el.className = 'title-card';
   const head = document.createElement('header');
@@ -19,9 +20,12 @@ export function card(numeral: string, heading: string, note: string): HTMLElemen
   number.textContent = numeral;
   const h2 = document.createElement('h2');
   h2.textContent = heading;
-  const p = document.createElement('p');
-  p.textContent = note;
-  head.append(number, h2, p);
+  head.append(number, h2);
+  if (note) {
+    const p = document.createElement('p');
+    p.textContent = note;
+    head.append(p);
+  }
   el.append(head);
   return el;
 }
@@ -37,15 +41,22 @@ export function button(className: string, text: string, onClick: () => void): HT
   return el;
 }
 
-/** One item of a menu list. An item with no action is drawn and skipped: what it opens does not exist yet. */
+/**
+ * One item of a menu list. An item that `opens` a page is handed to `MenuPages`,
+ * which opens that page as a column beside the list and closes it on a second
+ * press. An item with a `toggle` is a checkbox. An item with none of the three
+ * is drawn and skipped: what it opens does not exist yet.
+ */
 export interface MenuItem {
   numeral: string;
   label: string;
-  note: string;
-  action: (() => void) | null;
+  note?: string;
+  action?: (() => void) | null;
+  opens?: string;
+  toggle?: ToggleChoice;
 }
 
-/** A menu card: a roman numeral, a label and a note per item, and a heading where there is one. */
+/** A menu card: a roman numeral and a label per item, a note where there is one, and a heading where there is one. */
 export function menuList(items: readonly MenuItem[], heading?: string): HTMLElement {
   const nav = document.createElement('nav');
   nav.className = 'title-menu';
@@ -66,13 +77,45 @@ export function menuList(items: readonly MenuItem[], heading?: string): HTMLElem
     const label = document.createElement('span');
     label.className = 'title-menu-label';
     label.textContent = entry.label;
-    const note = document.createElement('span');
-    note.className = 'title-menu-note';
-    note.textContent = entry.note;
-    item.append(numeral, label, note);
-    if (entry.action) item.addEventListener('click', entry.action);
+    item.append(numeral, label);
+    if (entry.note) {
+      const note = document.createElement('span');
+      note.className = 'title-menu-note';
+      note.textContent = entry.note;
+      item.append(note);
+    }
+    if (entry.toggle) {
+      const toggle = entry.toggle;
+      item.setAttribute('role', 'switch');
+      const mark = (): void => item.setAttribute('aria-checked', String(toggle.on()));
+      mark();
+      item.addEventListener('click', () => {
+        toggle.set(!toggle.on());
+        mark();
+      });
+    } else if (entry.opens) {
+      item.dataset.opens = entry.opens;
+      item.setAttribute('aria-expanded', 'false');
+    } else if (entry.action) item.addEventListener('click', entry.action);
     else item.disabled = true;
     nav.append(item);
   }
   return nav;
+}
+
+/**
+ * The Back button of a column. A wide screen hides it, because the column's
+ * opener closes it and Escape does too; a narrow screen shows one column at a
+ * time and needs it.
+ */
+export function backButton(back: () => void): HTMLButtonElement {
+  return button('title-back menu-back', 'Back', back);
+}
+
+/** The row the pages of a menu stand in, so a column opens beside the page it came from. */
+export function columnsOf(pages: readonly HTMLElement[]): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'menu-columns';
+  row.append(...pages);
+  return row;
 }

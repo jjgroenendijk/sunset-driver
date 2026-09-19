@@ -1,5 +1,5 @@
 /**
- * The Open game to others page of the pause menu (spec section 21.2): the room
+ * The Multiplayer column of the pause menu (spec section 21.2): the room
  * code, the invite link, and the line saying who is in the city.
  *
  * It holds no networking. Every item calls an action `main.ts` hands it, and
@@ -7,7 +7,7 @@
  * what `src/net/control.ts` last reported.
  */
 import type { ControlState } from '../net/control.ts';
-import { button, card, page } from './title-parts.ts';
+import { backButton, button, card, page } from './title-parts.ts';
 
 export interface PartyActions {
   /** Where the room stands, read afresh on every redraw. */
@@ -30,15 +30,11 @@ export interface PartyPage {
 }
 
 /** What the player reads where there is no room yet. */
-const NO_ROOM = 'No room yet';
+const NO_ROOM = 'No room';
 
 export function buildPartyPage(actions: PartyActions, copyText: CopyText, back: () => void): PartyPage {
   const root = page('title-page pause-party');
-  const sheet = card(
-    'IX',
-    'Open game to others',
-    'Up to six players in one city, over a link between the browsers. Nobody runs a server, and no save is shared.',
-  );
+  const sheet = card('II', 'Multiplayer', 'Up to 6 players');
 
   const code = document.createElement('p');
   code.className = 'pause-seed';
@@ -46,22 +42,21 @@ export function buildPartyPage(actions: PartyActions, copyText: CopyText, back: 
   link.className = 'pause-text pause-invite';
   link.spellcheck = false;
   link.readOnly = true;
-  link.dataset.nav = '';
   link.setAttribute('aria-label', 'Invite link');
 
   const status = document.createElement('p');
   status.className = 'pause-status';
   status.setAttribute('aria-live', 'polite');
 
-  const open = button('title-cta', 'Open game to others', () => actions.open());
-  const copy = button('title-back', 'Copy invite link', () => {
+  const open = button('title-cta', 'Open', () => actions.open());
+  const copy = button('title-back', 'Copy link', () => {
     const invite = actions.invite();
-    if (invite !== null) copyText(invite, 'The invite link is on the clipboard.');
+    if (invite !== null) copyText(invite, 'Copied.');
   });
-  const leave = button('title-back', 'Leave game', () => actions.leave());
+  const leave = button('title-back', 'Leave', () => actions.leave());
   const row = document.createElement('div');
   row.className = 'pause-row';
-  row.append(open, copy, leave, button('title-back', 'Back', back));
+  row.append(open, copy, leave);
 
   const update = (): void => {
     const state = actions.state();
@@ -69,13 +64,14 @@ export function buildPartyPage(actions: PartyActions, copyText: CopyText, back: 
     const invite = actions.invite();
     code.textContent = live ? `Room ${state.room}` : NO_ROOM;
     link.value = live && invite !== null ? invite : '';
+    link.hidden = link.value === '';
     status.textContent = playersLine(state);
     open.disabled = state.phase !== 'offline';
     copy.disabled = !live || invite === null;
     leave.disabled = !live;
   };
 
-  sheet.append(code, link, row, status);
+  sheet.append(code, link, row, status, backButton(back));
   root.append(sheet);
   return { root, update };
 }

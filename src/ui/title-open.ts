@@ -12,16 +12,15 @@ import { readRoomFromLocation } from '../net/invite.ts';
 import type { WorldSource } from '../render/world-source.ts';
 import { DEFAULT_APPEARANCE, type CharacterAppearance } from '../sim/character.ts';
 import { takePendingStart } from './saves.ts';
-import type { BuildingViewChoice, SoundChoice } from './settings.ts';
+import type { MenuSettings } from './settings.ts';
 import { TitleScreen, type TitleChoice } from './title.ts';
 
 export interface TitleNeeds {
   worlds: WorldSource;
   /** The character turning in the scene behind the menu. */
   onPreview: (appearance: CharacterAppearance) => void;
-  buildingView: BuildingViewChoice;
+  settings: MenuSettings;
   touch: boolean;
-  sound: SoundChoice;
 }
 
 /** What the session starts on, and whether it loads the seed's save once the world stands. */
@@ -44,9 +43,8 @@ export async function openingChoice(needs: TitleNeeds): Promise<OpeningChoice> {
     { seed: opening, character: DEFAULT_APPEARANCE, world: null, explore: false },
     needs.worlds,
     needs.onPreview,
-    needs.buildingView,
+    needs.settings,
     needs.touch,
-    needs.sound,
     readRoomFromLocation(location.hash),
   );
   const choice = await title.wait();

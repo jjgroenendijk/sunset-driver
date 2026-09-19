@@ -14,7 +14,7 @@ import { createSave, saveFromText, saveToText, type SaveFile } from './sim/save.
 import type { SimState } from './sim/simulation.ts';
 import { PauseMenu } from './ui/pause.ts';
 import { setPendingStart, type SaveSlots } from './ui/saves.ts';
-import type { BuildingViewChoice, SoundChoice } from './ui/settings.ts';
+import type { MenuSettings } from './ui/settings.ts';
 
 /** What the menu is built over. */
 export interface PauseSession {
@@ -23,8 +23,7 @@ export interface PauseSession {
   slots: SaveSlots;
   /** Load a save of this seed into the live session, and put the frame where it lands. */
   loadInto: (save: SaveFile) => void;
-  sound: SoundChoice;
-  buildingView: BuildingViewChoice;
+  settings: MenuSettings;
   party: PartyActions;
 }
 
@@ -35,12 +34,12 @@ export function buildPauseMenu(session: PauseSession): PauseMenu {
     save: () => {
       slots.write(createSave(seed, state));
       const time = gameTime(state.tick);
-      return `Saved on day ${time.day + 1} at ${clockText(time.hour, time.minute)}.`;
+      return `Saved · day ${time.day + 1}, ${clockText(time.hour, time.minute)}`;
     },
     canLoad: () => slots.has(seed),
     load: () => {
       const save = slots.read(seed);
-      if (!save) throw new Error('This seed has no save yet.');
+      if (!save) throw new Error('No save yet.');
       loadInto(save);
       return 'Loaded.';
     },
@@ -55,13 +54,12 @@ export function buildPauseMenu(session: PauseSession): PauseMenu {
       // The save is kept as that seed's save, and the page loads it.
       slots.write(save);
       restart(save.seed, save.state.character, true);
-      return 'Opening the city of the save…';
+      return 'Opening…';
     },
-    sound: session.sound,
+    settings: session.settings,
     party: session.party,
     regenerate: () => restart(randomSeedString(), state.character, false),
     quit: () => location.reload(),
-    buildingView: session.buildingView,
   });
 }
 

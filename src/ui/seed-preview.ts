@@ -58,13 +58,13 @@ export class SeedPreview {
     this.ask.type = 'button';
     this.ask.className = 'title-preview-ask';
     this.ask.dataset.nav = '';
-    this.ask.textContent = 'Show the map';
+    this.ask.textContent = 'Show map';
     this.ask.addEventListener('click', onAsk);
     frame.append(this.canvas, this.ask);
 
     this.status = document.createElement('p');
     this.status.className = 'title-preview-status';
-    this.status.textContent = 'The map takes a moment to build.';
+    this.status.textContent = '';
 
     this.root.append(frame, this.status);
     parent.append(this.root);
@@ -98,7 +98,7 @@ export class SeedPreview {
       // build that replaced it is the one that draws.
       if (asked !== this.asked) return;
       this.root.classList.remove('title-preview-busy');
-      this.status.textContent = 'The map could not be built.';
+      this.status.textContent = 'Map failed.';
       console.warn('the seed preview could not build its world', error);
       return;
     }

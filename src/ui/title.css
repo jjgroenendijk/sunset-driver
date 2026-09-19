@@ -27,7 +27,7 @@
 .loading-failed .loading-step { color: #d8746a; }
 .loading-failed .loading-fill { background: #d8746a; }
 
-.title { position: fixed; inset: 0; display: grid; grid-template-rows: auto 1fr auto; gap: 1rem; padding: clamp(1rem, 3vw, 2.5rem) clamp(1rem, 4vw, 4rem); overflow-y: auto; color: var(--it-ivory); font-family: var(--it-sans); background: radial-gradient(ellipse 42% 55% at 50% 52%, rgba(23,17,13,0) 0%, rgba(23,17,13,.55) 60%, rgba(23,17,13,.92) 100%); }
+.title { position: fixed; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 1rem; padding: clamp(1rem, 3vw, 2.5rem) clamp(1rem, 4vw, 4rem); overflow-y: auto; color: var(--it-ivory); font-family: var(--it-sans); background: radial-gradient(ellipse 42% 55% at 50% 52%, rgba(23,17,13,0) 0%, rgba(23,17,13,.55) 60%, rgba(23,17,13,.92) 100%); }
 .title::before { content: ""; position: fixed; inset: .75rem; border: 1px solid rgba(193,154,83,.35); pointer-events: none; }
 :where(.title) button { font: inherit; color: inherit; cursor: pointer; }
 :where(.title) :focus { outline: none; }
@@ -41,8 +41,18 @@
 .title-brand h1 em { font-style: italic; letter-spacing: .01em; color: var(--it-gold); }
 .title-rule { position: relative; width: min(18rem, 60%); height: 1px; margin-top: .4rem; background: linear-gradient(90deg, transparent, var(--it-gold) 20%, var(--it-gold) 80%, transparent); }
 .title-rule::after { content: ""; position: absolute; left: 50%; top: 50%; width: .45rem; height: .45rem; background: var(--it-rosso); transform: translate(-50%, -50%) rotate(45deg); box-shadow: 0 0 0 3px var(--it-night); }
-.title:not([data-page="main"]) .title-brand h1 { font-size: clamp(2rem, 4vw, 3rem); }
+.title[data-page="setup"] .title-brand h1 { font-size: clamp(2rem, 4vw, 3rem); }
 
+/* The pages stand in one row, so a submenu opens as a column beside the page it came from (`menu-pages.ts`). */
+/* Every column hangs from the same top line, so opening one never moves the list it came from. */
+.menu-columns { display: flex; align-items: flex-start; gap: 1.25rem; min-height: 0; padding-top: clamp(0rem, 5vh, 3rem); }
+.menu-columns > .title-page { display: flex; flex-direction: column; flex: 0 1 auto; max-height: 100%; }
+.menu-columns > .title-page > * { min-height: 0; overflow-y: auto; }
+.menu-columns > .title-page[data-column]:not([hidden]) > * { animation: it-slide .3s cubic-bezier(.2,.7,.2,1) both; }
+.menu-columns > .title-page[data-behind] > * { animation: none; }
+.menu-columns > .title-setup { display: grid; flex: 1 1 auto; align-self: stretch; }
+.title[data-page="setup"] .menu-columns { padding-top: 0; }
+.menu-columns > .title-setup > * { overflow-y: visible; }
 .title-page { display: grid; align-items: center; min-height: 0; }
 .title-page:not([hidden]) > * { animation: it-rise .5s cubic-bezier(.2,.7,.2,1) both; }
 .title-page:not([hidden]) > :nth-child(2) { animation-delay: .06s; }
@@ -55,10 +65,10 @@
 .title-invite { justify-self: start; display: grid; gap: .35rem; width: min(23rem, 100%); margin-bottom: 1rem; padding: 1.1rem 1.3rem; color: var(--it-ink); background: linear-gradient(160deg, var(--it-ivory), var(--it-paper)); border-left: 4px solid var(--it-rosso); box-shadow: 0 30px 70px rgba(0,0,0,.5); }
 .title-invite h2 { margin: 0; font: 400 1.6rem/1.1 var(--it-serif); }
 .title-invite p { margin: 0; font-size: .8rem; color: var(--it-muted); }
-.title-menu { justify-self: start; display: grid; width: min(23rem, 100%); padding: 1.1rem 1.1rem; }
-.title-menu-item { position: relative; display: grid; grid-template-columns: 2.4rem 1fr; align-items: baseline; row-gap: .1rem; padding: 1rem .9rem; border: 0; border-bottom: 1px solid rgba(35,28,22,.12); background: transparent; text-align: left; transition: background-color .25s, padding-left .25s; }
+.title-menu { justify-self: start; display: grid; width: max-content; min-width: 15rem; max-width: 100%; padding: 1.1rem 1.1rem; }
+.title-menu-item { position: relative; display: grid; grid-template-columns: 2.4rem 1fr auto; align-items: baseline; column-gap: .6rem; row-gap: .1rem; padding: .6rem .9rem; border: 0; border-bottom: 1px solid rgba(35,28,22,.12); background: transparent; text-align: left; transition: background-color .25s, padding-left .25s; }
 .title-menu-item:last-child { border-bottom: 0; }
-.title-menu-label { font: 400 1.9rem/1.1 var(--it-serif); transition: color .25s; }
+.title-menu-label { font: 400 1.5rem/1.1 var(--it-serif); transition: color .25s; }
 .title-menu-note { grid-column: 2; font-size: .68rem; letter-spacing: .16em; text-transform: uppercase; color: var(--it-muted); }
 .title-menu-item:focus { padding-left: 1.3rem; background: rgba(163,34,27,.06); }
 .title-menu-item:focus .title-menu-label { color: var(--it-rosso); }
@@ -66,10 +76,18 @@
 .title-menu-item:disabled { cursor: default; opacity: .45; }
 /* The choice that holds on a page of choices, such as the Camera page. */
 .title-menu-item[aria-pressed="true"] .title-menu-label::after { content: " \2713"; color: var(--it-rosso); }
-.title-menu-heading { margin: .5rem .9rem .25rem; padding-bottom: .6rem; border-bottom: 1px solid rgba(35,28,22,.15); font: 400 1.75rem/1.1 var(--it-serif); }
+/* An item that opens a column carries a chevron, which turns while its column is open. */
+.title-menu-item[aria-expanded]::after { content: "\203A"; align-self: center; font: 400 1.6rem/1 var(--it-serif); color: var(--it-muted); transition: transform .25s, color .25s; }
+.title-menu-item[aria-expanded="true"] { background: rgba(163,34,27,.06); }
+.title-menu-item[aria-expanded="true"]::after { color: var(--it-rosso); transform: translateX(.25rem); }
+.title-menu-item[aria-expanded="true"] .title-menu-label { color: var(--it-rosso); }
+/* A setting that is on or off is a checkbox at the end of its row. */
+.title-menu-item[role="switch"]::after { content: ""; align-self: center; width: 1.05rem; height: 1.05rem; border: 1px solid var(--it-ink); background: transparent; }
+.title-menu-item[role="switch"][aria-checked="true"]::after { content: "\2713"; display: grid; place-items: center; background: var(--it-rosso); border-color: var(--it-rosso); color: var(--it-ivory); font: 600 .8rem/1 var(--it-sans); }
+.title-menu-heading { margin: .3rem .9rem .2rem; padding-bottom: .5rem; border-bottom: 1px solid rgba(35,28,22,.15); font: 400 1.5rem/1.1 var(--it-serif); }
 
-.title-card-head { display: grid; grid-template-columns: auto 1fr; column-gap: .6rem; align-items: baseline; margin-bottom: 1.1rem; padding-bottom: .8rem; border-bottom: 1px solid rgba(35,28,22,.15); }
-.title-card-head h2 { margin: 0; font: 400 1.75rem/1.1 var(--it-serif); }
+.title-card-head { display: grid; grid-template-columns: auto 1fr; column-gap: .6rem; align-items: baseline; margin-bottom: .8rem; padding-bottom: .6rem; border-bottom: 1px solid rgba(35,28,22,.15); }
+.title-card-head h2 { margin: 0; font: 400 1.5rem/1.1 var(--it-serif); }
 .title-card-head p { grid-column: 1 / -1; margin: .3rem 0 0; font-size: .75rem; color: var(--it-muted); }
 .title-field-label { font-size: .66rem; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--it-muted); }
 
@@ -84,7 +102,7 @@
 .title-icon:hover, .title-icon:focus { background: var(--it-ink); color: var(--it-ivory); transform: rotate(90deg); }
 
 .title-preview { display: grid; gap: .5rem; }
-.title-preview-frame { position: relative; aspect-ratio: 1; border: 1px solid rgba(35,28,22,.4); background: #cfd9d6 repeating-linear-gradient(45deg, rgba(35,28,22,.04) 0 6px, transparent 6px 12px); }
+.title-preview-frame { position: relative; justify-self: center; width: min(100%, 42vh); aspect-ratio: 1; border: 1px solid rgba(35,28,22,.4); background: #cfd9d6 repeating-linear-gradient(45deg, rgba(35,28,22,.04) 0 6px, transparent 6px 12px); }
 .title-preview-map { display: block; width: 100%; height: 100%; }
 .title-preview-ask { position: absolute; inset: 0; margin: auto; width: max-content; height: max-content; padding: .6rem 1.1rem; border: 1px solid var(--it-ink); background: var(--it-ivory); font-size: .7rem; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; transition: background-color .2s, color .2s; }
 .title-preview-ask:hover, .title-preview-ask:focus { background: var(--it-ink); color: var(--it-ivory); }
@@ -104,10 +122,13 @@
 .title-cta:hover, .title-cta:focus { background: var(--it-rosso-dark); border-color: var(--it-gold); letter-spacing: .32em; }
 .title-back { border: 1px solid rgba(243,235,219,.55); background: rgba(23,17,13,.4); color: var(--it-ivory); }
 .title-back:hover, .title-back:focus { background: var(--it-ivory); color: var(--it-ink); }
+.title-cta:disabled, .title-back:disabled { opacity: .35; cursor: default; pointer-events: none; box-shadow: none; }
+/* A column is closed by its opener or by Escape, so its Back button shows only where one column fits. */
+.menu-columns .menu-back { display: none; }
 .title-card .title-back, .title-menu .title-back { justify-self: start; margin-top: 1.25rem; border-color: var(--it-ink); background: transparent; color: var(--it-ink); }
 .title-card .title-back:hover, .title-card .title-back:focus, .title-menu .title-back:hover, .title-menu .title-back:focus { background: var(--it-ink); color: var(--it-ivory); }
 
-.title-keys .title-card { justify-self: start; display: grid; width: min(34rem, 100%); max-height: 100%; overflow-y: auto; }
+.title-keys .title-card { justify-self: start; display: grid; width: min(24rem, 100%); max-height: 100%; overflow-y: auto; }
 .title-key-list { display: grid; grid-template-columns: 1fr auto; margin: 0; }
 .title-key-list dt, .title-key-list dd { padding: .45rem 0; border-bottom: 1px solid rgba(35,28,22,.1); }
 .title-key-list dt { font-size: .85rem; }
@@ -125,6 +146,8 @@
   .title-setup > .title-card:nth-child(2) { grid-column: 2; }
 }
 @media (max-width: 720px) {
+  .menu-columns > .title-page[data-behind] { display: none; }
+  .menu-columns .menu-back { display: inline-block; }
   .title-setup { grid-template-columns: 1fr; }
   .title-setup > .title-card:nth-child(2) { grid-column: 1; }
   .title-menu { justify-self: stretch; }
@@ -134,4 +157,5 @@
 }
 
 @keyframes it-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes it-slide { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
 @keyframes it-breathe { 50% { opacity: .55; } }

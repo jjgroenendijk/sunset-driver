@@ -555,11 +555,12 @@ DOM-based, overlaid on the canvas.
 - HUD: health, money, current weapon and ammo, heat level, current objective.
 - Minimap with distinct, recognisable icons per POI type: each shop type, safehouses, metro
   stations, mission givers, faction territory, the clinic, police, objectives and the player.
-  Rotating or fixed-north, player's choice.
+  Rotating or fixed-north, player's choice: a checkbox under Options.
 - Full map: pan and zoom, territory overlay, waypoint setting.
 - Trading panel: district prices, inventory, price history.
-- Pause menu: resume, controls, save, load, export/import save, open game to others, seed display
-  and copy, regenerate, quit.
+- Pause menu: resume, multiplayer (with the seed display and copy), save game (with export), load
+  game (with import and regenerate), controls, graphics, options, quit to main menu. Each item that
+  holds more opens a column beside the list, and its text is a word or two.
 
 ---
 
@@ -792,12 +793,12 @@ Construction sites, roadworks and urban decay were considered and excluded.
 - Peer-to-peer over WebRTC via Trystero.
 - Signalling through Trystero's Nostr strategy, falling back to MQTT if no relay answers within a
   timeout. No server is deployed or paid for by anyone.
-- Started from the pause menu with Open game to others.
+- Started from the pause menu under Multiplayer.
 - 4–6 players.
 
 ### 21.2 Flow
 
-1. The host clicks Open game to others. A room code is generated and a copyable invite link
+1. The host clicks Open under Multiplayer. A room code is generated and a copyable invite link
    containing both seed and room is shown.
 2. Joiners open the link, which loads the seed and joins the room.
 3. Seed mismatch is refused at handshake. Two players are never in different cities.

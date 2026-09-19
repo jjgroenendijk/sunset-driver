@@ -52,18 +52,18 @@ export class NewGamePage {
     // another one would be refused at the handshake. So a joiner is shown no
     // city card at all, only the driver.
     const joining = actions.joining === true;
-    const city = card('I', 'The city', 'Every seed builds a different city.');
+    const city = card('I', 'City');
     this.seedInput = document.createElement('input');
     city.append(this.buildSeedRow(seed));
     this.preview = new SeedPreview(city, worlds, () => void this.buildPreview());
 
-    const driver = card(joining ? 'I' : 'II', 'The driver', 'Use ◀ ▶ or the arrow keys to change a detail.');
+    const driver = card(joining ? 'I' : 'II', 'Driver');
     for (const choice of CHARACTER_CHOICES) driver.append(this.buildChoiceRow(choice.key, choice.label));
-    driver.append(button('title-link', 'Random look', () => this.apply(randomLook())));
+    driver.append(button('title-link', 'Random', () => this.apply(randomLook())));
 
     const foot = document.createElement('div');
     foot.className = 'title-setup-foot';
-    const start = button('title-cta', joining ? 'Join game' : 'Start driving', actions.start);
+    const start = button('title-cta', joining ? 'Join' : 'Play', actions.start);
     start.dataset.autofocus = '';
     foot.append(button('title-back', 'Back', actions.back), start);
 
@@ -100,8 +100,8 @@ export class NewGamePage {
     this.seedInput.autocomplete = 'off';
     this.seedInput.dataset.nav = '';
     // Enter builds the map rather than starting the game: a seed typed in is a
-    // seed the player wants to look at before they commit to it. Start driving
-    // is what starts the session.
+    // seed the player wants to look at before they commit to it. Play is what
+    // starts the session.
     this.seedInput.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter') return;
       event.preventDefault();

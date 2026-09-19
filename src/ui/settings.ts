@@ -20,16 +20,18 @@ export interface Settings {
   buildingView: BuildingView;
   /** True while the audio of spec section 15 is off. A muted game synthesises nothing at all. */
   muted: boolean;
+  /** True where the minimap keeps north up rather than turning with the player (spec section 12). */
+  northUp: boolean;
 }
 
 /** See-through is what GTA Chinatown Wars does, and it keeps the camera where it is. */
-export const DEFAULT_SETTINGS: Settings = { buildingView: 'see-through', muted: false };
+export const DEFAULT_SETTINGS: Settings = { buildingView: 'see-through', muted: false, northUp: false };
 
 /** Each choice of {@link BuildingView}, in the order a menu lists them, with what it is called there. */
-export const BUILDING_VIEWS: readonly { value: BuildingView; label: string; note: string }[] = [
-  { value: 'see-through', label: 'See-through', note: 'A building in the way turns to a ghost' },
-  { value: 'pull-back', label: 'Pull back', note: 'The camera moves over the roofs first' },
-  { value: 'whole', label: 'Off', note: 'Every building is drawn whole' },
+export const BUILDING_VIEWS: readonly { value: BuildingView; label: string }[] = [
+  { value: 'see-through', label: 'See-through' },
+  { value: 'pull-back', label: 'Pull back' },
+  { value: 'whole', label: 'Off' },
 ];
 
 /** What a menu page reads a setting from and hands a new choice to. */
@@ -38,17 +40,20 @@ export interface BuildingViewChoice {
   choose(view: BuildingView): void;
 }
 
-/** The same, for the sound of spec section 15: it is on or it is off. */
-export interface SoundChoice {
-  muted(): boolean;
-  mute(muted: boolean): void;
+/** A setting that is on or off, drawn as a checkbox in the Settings column. */
+export interface ToggleChoice {
+  on(): boolean;
+  set(on: boolean): void;
 }
 
-/** Each choice of the Sound page, in the order it lists them. */
-export const SOUND_CHOICES: readonly { muted: boolean; label: string; note: string }[] = [
-  { muted: false, label: 'On', note: 'Engine, sirens, gunfire and footsteps' },
-  { muted: true, label: 'Muted', note: 'Nothing is synthesised at all' },
-];
+/** Every setting a menu offers, handed to the title screen and the pause menu alike. */
+export interface MenuSettings {
+  buildingView: BuildingViewChoice;
+  /** On while the audio of spec section 15 plays. */
+  sound: ToggleChoice;
+  /** On while the minimap keeps north up. */
+  northUp: ToggleChoice;
+}
 
 /** The settings kept in a store, with the default for anything missing or not understood. */
 export function readSettings(store: KeyValueStore): Settings {
@@ -58,11 +63,12 @@ export function readSettings(store: KeyValueStore): Settings {
   } catch {
     raw = {};
   }
-  const held = raw as { buildingView?: unknown; muted?: unknown } | null;
+  const held = raw as { buildingView?: unknown; muted?: unknown; northUp?: unknown } | null;
   const known = BUILDING_VIEWS.some((choice) => choice.value === held?.buildingView);
   return {
     buildingView: known ? (held?.buildingView as BuildingView) : DEFAULT_SETTINGS.buildingView,
     muted: typeof held?.muted === 'boolean' ? held.muted : DEFAULT_SETTINGS.muted,
+    northUp: typeof held?.northUp === 'boolean' ? held.northUp : DEFAULT_SETTINGS.northUp,
   };
 }
 
