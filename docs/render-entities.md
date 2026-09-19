@@ -15,6 +15,7 @@ scene ever holds is in `docs/shops.md`.
 - Posters and hoardings
 - Shop signage and billboards
 - Traffic, parked cars and the crowd
+- Blood
 
 ## Buildings
 
@@ -270,3 +271,23 @@ scene ever holds is in `docs/shops.md`.
 - `AnimationClipCreator` makes no clip that swings a limb, so `walkClip` builds its keyframe tracks
   itself. A test reads the baked texture on the processor with `bakedPoint`: the legs swing against
   each other, and each arm against its leg.
+
+## Blood
+
+- `BloodView` (`blood.ts`) draws the blood on the ground: a pool under a body lying still, a smear
+  where a car threw somebody, and spatter round a hit on a person. It is one batch of flat squares,
+  one draw call and at most `BLOOD_CAP` marks. `blood-material.ts` cuts an irregular blot or a
+  streak out of each square with noise, since spec section 1.2 allows no texture file.
+- Where each mark lies is `blood-layout.ts`, a pure function of the casualties and the tick, which
+  the tests read. A pool starts spreading at the tick the body came to rest (`restTicks`), and a
+  smear runs from where a thrown body came down (`throwOf`) to where it stopped (`restDistance`).
+  Both come off the record every frame, so a loaded save shows them.
+- Two things are kept in the view, because the record drops them. A hit lives on the record for
+  only `HIT_MEMORY` ticks, so the view keeps the last few hits for the spatter. A body taken away,
+  or a casualty the record lets go of, loses its marks at once, so the view fades the last marks
+  it drew for them over `FADE_TICKS`.
+- The gore level of `gore.ts` sizes every mark and the red bursts of `melee-fx.ts` and
+  `shot-fx.ts`. Off lays no mark and turns the burst off a person into grey dust.
+  `WorldScene.gore` hands the level to all three. The sim never reads it.
+- The marks lie `BLOOD_LIFT` over the ground, a hair under the skid marks, and the material is
+  pulled toward the camera with a polygon offset, as the skid marks are.

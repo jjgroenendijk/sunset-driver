@@ -146,6 +146,13 @@ async function boot(): Promise<void> {
         writeSettings(localStorage, settings);
       },
     },
+    gore: {
+      current: () => settings.gore,
+      choose: (level) => {
+        settings.gore = level;
+        writeSettings(localStorage, settings);
+      },
+    },
   };
 
   // Where the world of a seed is built (spec section 9.1). It is a worker, so

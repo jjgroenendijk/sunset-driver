@@ -1,7 +1,7 @@
 /**
  * The pause menu of spec section 12. The main list is Resume, Multiplayer,
  * Save game, Load game, Controls, Graphics, Options and Quit to main menu. Every
- * item but Resume, Graphics and Quit opens a column beside the list, and Export, Import and Camera
+ * item but Resume, Graphics and Quit opens a column beside the list, and Export, Import, Camera and Gore
  * open one beside that. Multiplayer is the room of spec section 21 (`party.ts`).
  * Save game also copies the city's seed, which is all anyone needs to drive the
  * same city. Load game holds New city, which starts again on a fresh seed.
@@ -14,7 +14,7 @@
  */
 import type { MenuSettings } from './settings.ts';
 import { buildPartyPage, type PartyActions, type PartyPage } from './party.ts';
-import { buildCameraPage } from './title-camera.ts';
+import { buildCameraPage, buildGorePage } from './title-camera.ts';
 import { buildControlsPage } from './title-controls.ts';
 import { MenuPages } from './menu-pages.ts';
 import { backButton, button, card, columnsOf, menuList, page } from './title-parts.ts';
@@ -44,7 +44,7 @@ export interface PauseActions {
   party: PartyActions;
 }
 
-const PAGE_NAMES = ['main', 'party', 'saves', 'export', 'loads', 'import', 'controls', 'settings', 'camera'] as const;
+const PAGE_NAMES = ['main', 'party', 'saves', 'export', 'loads', 'import', 'controls', 'settings', 'camera', 'gore'] as const;
 type PageName = (typeof PAGE_NAMES)[number];
 
 const PARENT: Record<PageName, PageName | null> = {
@@ -57,6 +57,7 @@ const PARENT: Record<PageName, PageName | null> = {
   controls: 'main',
   settings: 'main',
   camera: 'settings',
+  gore: 'settings',
 };
 
 /** Every page but the main one opens as a column beside its parent. */
@@ -101,6 +102,7 @@ export class PauseMenu {
       controls: buildControlsPage(back),
       settings: buildSettingsPage(actions.settings, back),
       camera: buildCameraPage(actions.settings.buildingView, back),
+      gore: buildGorePage(actions.settings.gore, back),
     };
     this.pages = new MenuPages(this.root, pages, PARENT, 'main', COLUMNS);
     // The export is written as its column opens, so it is the session as it stands.

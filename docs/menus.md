@@ -35,6 +35,11 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   a `toggle`. One choice of several, such as Camera, is a round mark on each row. A setting is
   not a key in `controls.ts`: a key is for what the player does while playing.
   Muting throws the whole audio graph away rather than turning it down — `docs/audio.md` says why.
+- Gore is one choice of four, Off, Subtle, Moderate and Heavy, with Moderate the default. It opens
+  a column beside Options, as Camera does; `title-camera.ts` builds both from one choice page. The
+  levels live in `src/render/gore.ts`, because only the renderer reads them: `frame.ts` hands the
+  setting to `WorldScene.gore` each frame. It never enters `SimState`, so a save and a replay are
+  the same at every level.
 - `src/ui/menu-pages.ts` is the page walk both menus share: `parent`, the arrow keys, the pointer
   focus, and Escape going up a page. A page in `columns` opens as a column beside its parent, and
   the parent stays on screen: a submenu is an accordion on its side. An item with `opens` opens its

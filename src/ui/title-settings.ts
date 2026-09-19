@@ -2,8 +2,8 @@ import type { MenuSettings } from './settings.ts';
 import { backButton, menuList, page } from './title-parts.ts';
 
 /**
- * The Options column of the title screen and of the pause menu. Camera opens a
- * column of its own beside it; Sound and the minimap's north are checkboxes,
+ * The Options column of the title screen and of the pause menu. Camera and Gore
+ * each open a column of their own beside it; Sound and the minimap's north are checkboxes,
  * and a press takes effect at once.
  */
 export function buildSettingsPage(settings: MenuSettings, back: () => void): HTMLElement {
@@ -13,6 +13,7 @@ export function buildSettingsPage(settings: MenuSettings, back: () => void): HTM
       { numeral: 'I', label: 'Camera', opens: 'camera' },
       { numeral: 'II', label: 'Sound', toggle: settings.sound },
       { numeral: 'III', label: 'North-up map', toggle: settings.northUp },
+      { numeral: 'IV', label: 'Gore', opens: 'gore' },
     ],
     'Options',
   );

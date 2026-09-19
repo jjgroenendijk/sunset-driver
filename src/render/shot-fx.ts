@@ -7,7 +7,8 @@
  * flash, the glow and the streak are read off the record and the tick alone,
  * so there is nothing to carry from one frame to the next. The burst is the
  * spark batch of `melee-fx.ts`, fed a hit for every round that met something:
- * blood off a person, sparks off a panel, dust off a wall or the road.
+ * blood off a person, sparks off a panel, dust off a wall or the road. The
+ * blood follows the gore level the way a blow's does.
  *
  * It is three draw calls whatever is going on, all blended additively: one
  * batch of discs for the flashes and the glows, one of streaks, one of sparks.
@@ -32,6 +33,7 @@ import {
 import type { MeleeHit } from '../sim/melee.ts';
 import type { Tracer } from '../sim/tracer.ts';
 import { MUZZLE_HEIGHT } from '../sim/weapon.ts';
+import type { Gore } from './gore.ts';
 import { MeleeFx } from './melee-fx.ts';
 import { tinted } from './tint.ts';
 
@@ -140,6 +142,15 @@ export class ShotFx {
     this.impacts.update(this.landed, seed, tick);
     commit(this.discs, discs);
     commit(this.streaks, streaks);
+  }
+
+  /** How much blood a round throws off a person (`gore.ts`). */
+  get gore(): Gore {
+    return this.impacts.gore;
+  }
+
+  set gore(level: Gore) {
+    this.impacts.gore = level;
   }
 
   /** Forget everything in flight: a new session, a loaded save or a respawn. */
