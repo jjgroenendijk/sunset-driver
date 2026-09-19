@@ -14,16 +14,20 @@ import { EnforcerMarks } from './ui/enforcers.ts';
 import { MapArt } from './ui/map-draw.ts';
 import { MapPois, SHOP_POIS } from './ui/map.ts';
 import { MapScreen } from './ui/map-screen.ts';
+import { Navigator } from './ui/map-route.ts';
 import { Minimap } from './ui/minimap.ts';
 import { MissionMarks } from './ui/missions.ts';
 import { StreetLife } from './ui/street-life.ts';
 import { TerritoryOverlay } from './ui/territory.ts';
+import { buildRoadGraph, type RoadGraph } from './world/graph.ts';
 import type { WorldDescription } from './world/types.ts';
 
 /** The two maps, and the marks that move on them. */
 export interface SessionMaps {
   minimap: Minimap;
   map: MapScreen;
+  /** The road route from the player to the waypoint, drawn on both maps. */
+  navigator: Navigator;
   dealerMarks: DealerMarks;
   enforcerMarks: EnforcerMarks;
   streetLife: StreetLife;
@@ -75,5 +79,9 @@ export function buildMaps(
     touch,
   );
   map.overlay = overlay;
-  return { minimap, map, dealerMarks, enforcerMarks, streetLife, missionMarks };
+  // The road graph the route is found on. It is built on the first waypoint,
+  // since a session that never marks one has no use for it.
+  let graph: RoadGraph | undefined;
+  const navigator = new Navigator(() => (graph ??= buildRoadGraph(description.roads)));
+  return { minimap, map, navigator, dealerMarks, enforcerMarks, streetLife, missionMarks };
 }

@@ -38,6 +38,7 @@ body.touch .title, body.touch .pause { padding: calc(1rem + env(safe-area-inset-
    of developer text, and running under the buttons is what it would do. */
 body.touch .hud { top: calc(12px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); max-width: 52vw; font-size: .8rem; }
 body.touch .hud-panel { left: calc(12px + env(safe-area-inset-left)); bottom: calc(12px + env(safe-area-inset-bottom)); }
+body.touch .minimap-distance { right: calc(12px + env(safe-area-inset-right)); bottom: calc(138px + env(safe-area-inset-bottom)); width: 120px; }
 body.touch .minimap { right: calc(12px + env(safe-area-inset-right)); bottom: calc(12px + env(safe-area-inset-bottom)); width: 120px; height: 120px; }
 /* The developer pickers are key-only, and a phone reaches neither key. */
 body.touch .picker { display: none; }
@@ -56,3 +57,7 @@ body.touch.flying .minimap { bottom: calc(9.5rem + env(safe-area-inset-bottom));
    a line of text, and a row of keys under that would push the map up. */
 body.touch .map-hint { padding-bottom: calc(.5rem + env(safe-area-inset-bottom)); }
 .map-keys { position: absolute; z-index: 1; right: calc(12px + env(safe-area-inset-right)); bottom: calc(2.5rem + env(safe-area-inset-bottom)); display: flex; gap: .5rem; }
+
+/* On a phone the legend stands clear of the notch and of the zoom keys. */
+body.touch .map-legend { top: calc(8px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right)); width: min(220px, 60vw); bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+body.touch.flying .minimap-distance { display: none; }

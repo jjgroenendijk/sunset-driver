@@ -38,6 +38,7 @@ import type { HotwireBar } from './ui/hotwire.ts';
 import type { Hud } from './ui/hud.ts';
 import type { MapScreen } from './ui/map-screen.ts';
 import type { Minimap } from './ui/minimap.ts';
+import type { Navigator } from './ui/map-route.ts';
 import type { PauseMenu } from './ui/pause.ts';
 import type { PartyControl } from './net/control.ts';
 import type { ShopPanel } from './ui/shop-panel.ts';
@@ -63,6 +64,8 @@ export interface Session {
   minimap: Minimap;
   /** The full map of spec section 12: pan, zoom and waypoint. */
   map: MapScreen;
+  /** The road route from the player to the waypoint, drawn on both maps. */
+  navigator: Navigator;
   /** The hotwire minigame of spec section 11.4, drawn while a lock is being worked at. */
   hotwire: HotwireBar;
   /** The metro station panel and the fade of a trip (spec section 13.3). */
