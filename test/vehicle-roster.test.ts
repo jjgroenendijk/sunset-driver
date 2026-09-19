@@ -237,6 +237,15 @@ describe('driving the roster', () => {
     expect(complaint).toBe('');
   });
 
+  it('backs up at a useful pace, and slower than it drives forward', () => {
+    // Two seconds of full reverse: enough to back out of a three-point turn
+    // without crawling, and still well short of what first gear gives.
+    const back = drive('saloon', flat('asphalt'), 120, { throttle: -1 });
+    const ahead = drive('saloon', flat('asphalt'), 120, { throttle: 1 });
+    expect(back.speed).toBeLessThan(-5);
+    expect(-back.speed).toBeLessThan(ahead.speed);
+  });
+
   it('keeps more of its cornering on sand on knobbly tyres', () => {
     // Each class against itself, so what is compared is the tyres and not the
     // weight: how much of its tarmac circle it still turns on sand.

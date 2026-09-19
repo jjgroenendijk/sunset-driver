@@ -144,7 +144,10 @@ export interface VehicleSpec {
   enginePower: number;
   /** Metres per second the engine can reach on the flat. */
   topSpeed: number;
-  /** Reverse is geared shorter: a fraction of the power and of the top speed. */
+  /**
+   * Reverse is geared shorter: a fraction of the top speed. It pulls with most
+   * of the engine, so a car backs out of a three-point turn at a useful pace.
+   */
   reverse: number;
   /** Newtons of braking the brake pedal and the handbrake apply at one wheel. */
   brakeForce: number;

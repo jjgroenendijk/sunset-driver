@@ -33,6 +33,12 @@ const GRAVITY = 9.81;
 const PARKING_SPEED = 1.5;
 
 /**
+ * The share of the engine reverse pulls with. Reverse is a short gear, so it
+ * pulls nearly as hard as first; the top speed is what it gives up.
+ */
+const REVERSE_PULL = 0.6;
+
+/**
  * Points the buoyancy of a hull is taken at: one at each quarter of it, so a
  * boat pitches and rolls with the forces on it rather than bobbing as a point.
  */
@@ -80,7 +86,9 @@ export class Drivetrain {
     const wanted = -input.steer * limit;
 
     // Throttle forward, and brake rather than change gear while still rolling
-    // the other way. Reverse is geared short, so it is slow and it pulls hard.
+    // the other way. Reverse is geared short: it pulls with most of the
+    // engine, so a car backs out of a three-point turn briskly, and it tops
+    // out early.
     // A damaged engine gives less of its power, and a burnt-out one gives none
     // at all (spec section 11.3).
     const power = spec.enginePower * enginePowerScale(v.damage);
@@ -93,7 +101,7 @@ export class Drivetrain {
       if (speed > 0.5) pedal = -input.throttle;
       else {
         const top = spec.topSpeed * spec.reverse;
-        engine = input.throttle * power * spec.reverse * Math.max(0, 1 + speed / top);
+        engine = input.throttle * power * REVERSE_PULL * Math.max(0, 1 + speed / top);
       }
     }
 
