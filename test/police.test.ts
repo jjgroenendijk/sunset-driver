@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TICK_RATE } from '../src/sim/clock.ts';
-import { COOL_DELAY, CRIME_HEAT, decayHeat, HEAT_CAP, heatForCrime } from '../src/sim/crime.ts';
+import { COOL_DELAY, CRIME_HEAT, decayHeat, effortFor, HEAT_CAP, heatForCrime, heatStars, raiseHeat } from '../src/sim/crime.ts';
 import {
   commitCrime,
   HELICOPTER_STARS,
@@ -14,6 +14,7 @@ import {
   type DistrictAt,
   type PoliceUnit,
 } from '../src/sim/police.ts';
+import { respawn } from '../src/sim/respawn.ts';
 import { cloneSimState, createSimState, type SimState } from '../src/sim/simulation.ts';
 import { stableJson } from './helpers.ts';
 import { gridTrafficRoads } from './traffic-grid.ts';
@@ -38,7 +39,7 @@ function session(seed: number, heat: number, districts: DistrictAt = downtown): 
   state.player.y = 0;
   // The heat is reported rather than written, because a crime is also what
   // tells the police where to start looking.
-  report(state, heat);
+  report(state, effortFor(heat));
   return { state, force: new PoliceForce(roads, districts) };
 }
 
@@ -66,6 +67,28 @@ describe('heat (spec section 14)', () => {
     let heat = 0;
     for (let i = 0; i < 20; i++) heat = heatForCrime(heat, 'officerKilling');
     expect(heat).toBe(HEAT_CAP);
+  });
+
+  it('makes each star cost more than the one before it', () => {
+    let last = 0;
+    for (let star = 1; star <= HEAT_CAP; star++) {
+      const cost = effortFor(star) - effortFor(star - 1);
+      expect(cost).toBeGreaterThan(last);
+      expect(raiseHeat(star - 1, cost)).toBeCloseTo(star, 9);
+      last = cost;
+    }
+    expect(effortFor(HEAT_CAP)).toBeGreaterThan(10 * effortFor(1));
+  });
+
+  it('adds up the same however a raise is split', () => {
+    let heat = 0;
+    for (let i = 0; i < 40; i++) heat = raiseHeat(heat, 0.1);
+    expect(heat).toBeCloseTo(raiseHeat(0, 4), 9);
+    expect(raiseHeat(2, 0)).toBe(2);
+  });
+
+  it('keeps a car that kills somebody by accident under one star', () => {
+    expect(heatForCrime(heatForCrime(0, 'reckless'), 'killing')).toBeLessThan(1);
   });
 
   it('holds every point of the heat while a unit can see the player', () => {
@@ -173,6 +196,20 @@ describe('the chase (spec section 14)', () => {
 });
 
 describe('destroying the pursuers (spec section 14)', () => {
+  it('calls the whole force off at an arrest, so a small crime after it stays small', () => {
+    const { state, force } = session(19, 6);
+    run(state, force, 60 * TICK_RATE);
+    expect(state.police.units.length).toBeGreaterThan(4);
+    respawn(state, 'arrest', { x: 5, y: 5, heading: 0 });
+    expect(state.police.units).toEqual([]);
+    expect(state.police.lastKnown).toBeNull();
+    commitCrime(state, 'reckless');
+    commitCrime(state, 'killing');
+    run(state, force, 30 * TICK_RATE);
+    expect(heatStars(state.heat)).toBe(0);
+    expect(state.police.units).toEqual([]);
+  });
+
   it('takes a wrecked unit off the map and charges the player hard for it', () => {
     const { state, force } = session(18, 2);
     run(state, force, 20 * TICK_RATE);
@@ -180,7 +217,8 @@ describe('destroying the pursuers (spec section 14)', () => {
     const before = state.heat;
     shootUnit(state, unit.id, UNIT_ARMOUR);
     expect(state.police.units.some((u: PoliceUnit) => u.id === unit.id)).toBe(false);
-    expect(state.heat).toBeGreaterThan(before + CRIME_HEAT.officerKilling);
+    expect(state.heat).toBeCloseTo(raiseHeat(before, CRIME_HEAT.officerAssault * UNIT_ARMOUR + CRIME_HEAT.officerKilling), 9);
+    expect(state.heat).toBeGreaterThan(before + 1);
   });
 
   it('leaves what the wrecked car held on the ground for the player to take', () => {
@@ -228,6 +266,6 @@ describe('determinism (spec section 2.2)', () => {
   it('commits a crime as the debug key does, and the heat is all the record keeps of it', () => {
     const state = createSimState(23);
     commitCrime(state, 'assault');
-    expect(state.heat).toBe(CRIME_HEAT.assault);
+    expect(state.heat).toBe(raiseHeat(0, CRIME_HEAT.assault));
   });
 });

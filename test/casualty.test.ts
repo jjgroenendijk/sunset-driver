@@ -10,7 +10,7 @@ import {
 } from '../src/sim/casualty.ts';
 import { carDamage, KILL_SPEED, SHOVE_SPEED, strikeCrowd } from '../src/sim/car-strike.ts';
 import { personOnRay } from '../src/sim/crowd-contact.ts';
-import { CRIME_HEAT } from '../src/sim/crime.ts';
+import { CRIME_HEAT, raiseHeat } from '../src/sim/crime.ts';
 import { AmbientPedestrians, crowdPoseOf, type PedestrianPose } from '../src/sim/pedestrians.ts';
 import { createSimState, type SimState } from '../src/sim/simulation.ts';
 import { specOf, DEFAULT_CLASS } from '../src/sim/vehicle.ts';
@@ -53,7 +53,7 @@ describe('casualties (spec section 13.1)', () => {
     expect(record?.down).toBeGreaterThan(0);
     // Out of the crowd: nobody draws them walking their loop.
     expect(crowdPoseOf(crowd, state.pedestrians, id, TICK, pose())).toBeUndefined();
-    expect(state.heat).toBeCloseTo(CRIME_HEAT.assault, 6);
+    expect(state.heat).toBeCloseTo(raiseHeat(0, CRIME_HEAT.assault), 6);
     const r = record as NonNullable<typeof record>;
     const phases = new Set<string>();
     const out = emptyCasualtyPose();
@@ -71,7 +71,7 @@ describe('casualties (spec section 13.1)', () => {
     expect(record?.health).toBe(0);
     expect(record?.down).toBe(-1);
     expect(record?.cash).toBeGreaterThan(0);
-    expect(state.heat).toBeCloseTo(CRIME_HEAT.assault + CRIME_HEAT.killing, 6);
+    expect(state.heat).toBeCloseTo(raiseHeat(0, CRIME_HEAT.assault + CRIME_HEAT.killing), 6);
     // Somebody calls it in.
     expect(state.emergency.calls.some((call) => call.kind === 'ambulance')).toBe(true);
     const r = record as NonNullable<typeof record>;
@@ -173,7 +173,7 @@ describe('the car against the crowd (spec section 13.1)', () => {
     expect(record?.health).toBeGreaterThan(0);
     expect(record?.lift).toBeGreaterThan(0);
     expect(strike.loss).toBeGreaterThan(0);
-    expect(state.heat).toBeGreaterThanOrEqual(CRIME_HEAT.reckless);
+    expect(state.heat).toBeGreaterThanOrEqual(raiseHeat(0, CRIME_HEAT.reckless));
   });
 
   it('kills at a very high speed, and throws the body over the bonnet', () => {

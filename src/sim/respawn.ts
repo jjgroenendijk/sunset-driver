@@ -23,6 +23,7 @@
  */
 import { hypot } from '../core/libm.ts';
 import { MAX_HEALTH, type Place } from './on-foot.ts';
+import { standDownAll } from './police.ts';
 import { activeHome, type SafehousePlace } from './safehouse.ts';
 import type { SimState } from './simulation.ts';
 import { createLoadout } from './weapon.ts';
@@ -119,6 +120,10 @@ export function respawn(state: SimState, fate: Fate, place: Place): void {
   const cost = Math.min(Math.max(0, state.money), fate === 'death' ? HOSPITAL_FEE : ARREST_BRIBE);
   state.money -= cost;
   state.heat = 0;
+  // The chase is over with the heat: the units that ran it go home, so the
+  // next small crime brings out what it is worth and not the force a
+  // six-star chase left standing round the station.
+  standDownAll(state);
   state.theft = null;
   // Whatever they were doing is over: a lock half picked, a shop they were
   // standing in, a deal open on a corner (spec sections 16.1, 16.2) and a front

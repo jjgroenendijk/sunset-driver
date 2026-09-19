@@ -10,7 +10,7 @@ import {
   type TheftState,
   wouldHit,
 } from '../src/sim/theft.ts';
-import { CRIME_HEAT } from '../src/sim/crime.ts';
+import { CRIME_HEAT, raiseHeat } from '../src/sim/crime.ts';
 import { stableJson } from './helpers.ts';
 import { hills, type Session, start, drive } from './sim-harness.ts';
 
@@ -154,7 +154,7 @@ describe('theft', () => {
     // heard for exactly the ticks the working took. What a second of it is
     // worth is pinned headless in `theft.test.ts`.
     expect(session.state.heat).toBeGreaterThan(CRIME_HEAT.theft);
-    expect(session.state.heat).toBeCloseTo(CRIME_HEAT.theft + (ticks / TICK_RATE) * ALARM_HEAT_PER_SECOND, 6);
+    expect(session.state.heat).toBeCloseTo(raiseHeat(0, CRIME_HEAT.theft + (ticks / TICK_RATE) * ALARM_HEAT_PER_SECOND), 6);
     session.physics.dispose();
   });
 

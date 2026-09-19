@@ -190,6 +190,18 @@ export function createPoliceState(): PoliceState {
 }
 
 /**
+ * Call every unit off at once and forget where the player was, as an arrest or
+ * a death does. `nextUnit` carries on, because it keys the stream of each unit.
+ */
+export function standDownAll(state: SimState): void {
+  const fresh = createPoliceState();
+  state.police.units = [];
+  state.police.lastKnown = fresh.lastKnown;
+  state.police.seenTick = fresh.seenTick;
+  state.police.dispatchTick = state.tick;
+}
+
+/**
  * Seconds before a unit is dispatched where the player stands. A wealthy
  * district downtown answers at once; the wilderness takes the best part of a
  * minute (spec section 14).

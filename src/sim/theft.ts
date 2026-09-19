@@ -68,7 +68,7 @@ export const MISS_PENALTY = 24;
 export const HOTWIRE_CAP = 480;
 
 /** Heat a sounding alarm is worth per second, on top of the theft itself. */
-export const ALARM_HEAT_PER_SECOND = 0.5;
+export const ALARM_HEAT_PER_SECOND = 0.15;
 
 /** The most ticks a lock can ask of a player who never misses. */
 export function hotwireFloor(): number {
