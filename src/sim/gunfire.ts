@@ -23,9 +23,11 @@ import type { PromotedVehicle } from './traffic.ts';
 import { specOf, type VehicleSpec, type VehicleState } from './vehicle.ts';
 import { ENFORCER_CAPSULE } from './enforcer-bodies.ts';
 import { blastEnforcers, hurtEnforcer } from './enforcer.ts';
-import { blastUnits, commitCrime, report, shootUnit } from './police.ts';
+import { blastUnits, report, shootUnit } from './police.ts';
 import { blowStrength, forgetHits, markHit, SWING_HEIGHT, type CrowdSource, type HitSurface } from './melee.ts';
 import type { PedestrianPose } from './pedestrians.ts';
+import { hurtPerson, type CasualtyGround } from './casualty.ts';
+import { peopleNear, personOnRay } from './crowd-contact.ts';
 import { forgetTracers, markTracer, type TracerEnd } from './tracer.ts';
 import {
   blastFalloff,
@@ -74,6 +76,12 @@ export interface ShotTarget {
    */
   crowd?: CrowdSource;
   /**
+   * How far a person a hit pushes can be carried before a wall stops them, and
+   * how high the ground is where they land (`casualty.ts`). A ground with no
+   * physics leaves it out.
+   */
+  ground?: CasualtyGround;
+  /**
    * The cars of the city standing in the world (spec section 13.1): the traffic
    * and the parked. A hit promotes the car it met (spec section 5.3) and
    * answers its record, which the damage is then written into. A ground with no
@@ -99,6 +107,11 @@ export const SWING_RAYS: number = 3;
  */
 export const PERSON_RADIUS = 0.3;
 
+
+/** Metres per second a round or a blow knocks a person back at, from the damage it does. */
+export function shotPush(damage: number): number {
+  return Math.min(3.5, 0.8 + damage * 0.03);
+}
 
 /** The casts and the flights of one session. It owns no state but its scratch. */
 export class Gunfire {
@@ -195,6 +208,9 @@ export class Gunfire {
     const mine = target.shooter;
     const hit = this.world.castRay(this.ray, range, true, undefined, undefined, mine);
     this.reach = hit === null ? range : hit.timeOfImpact;
+    // The people on the pavement stand in no physics, so the round is measured
+    // against them up to whatever solid thing it met (spec section 13.1).
+    if (this.shootPerson(state, spec, ray, target)) return 'person';
     if (hit === null) return 'none';
     // A round that went into a police car is taken off that car (spec section
     // 14), and shooting at officers is what it costs the player.
@@ -223,6 +239,23 @@ export class Gunfire {
     if (car === undefined) return 'hard';
     this.hit(state, spec, car, specOf(car.cls), ray.dx, ray.dh, ray.dy, roundSeverity(spec));
     return 'vehicle';
+  }
+
+  /**
+   * The person of the crowd a round meets before {@link Gunfire.reach}, if
+   * anybody, and the round taken off them. It stops in them: a round that has
+   * gone through somebody is not followed any further.
+   */
+  private shootPerson(state: SimState, spec: WeaponSpec, ray: ShotRay, target: ShotTarget): boolean {
+    const crowd = target.crowd;
+    if (crowd === undefined) return false;
+    const peds = state.pedestrians;
+    const met = personOnRay(crowd, peds, state.tick, ray.x, ray.h, ray.y, ray.dx, ray.dh, ray.dy, this.reach, this.ids);
+    if (met === undefined) return false;
+    this.reach = met.t;
+    const blow = { cause: 'shot' as const, damage: spec.damage, dir: atan2(ray.dy, ray.dx), push: shotPush(spec.damage), lift: 0 };
+    hurtPerson(state, crowd, met.id, met, blow, target.ground);
+    return true;
   }
 
   /**
@@ -285,27 +318,23 @@ export class Gunfire {
     if (crowd === undefined) return false;
     const p = state.player;
     const reach = spec.reach + PERSON_RADIUS;
-    const found = crowd.near(p.x - reach, p.y - reach, p.x + reach, p.y + reach, this.ids);
-    let nearest: { x: number; y: number; h: number } | undefined;
+    let nearest: { id: number; x: number; y: number; height: number; heading: number } | undefined;
     let closest = Infinity;
-    for (const id of found) {
-      const pose = crowd.poseAt(id, state.tick, this.pose);
+    peopleNear(crowd, state.pedestrians, state.tick, p.x, p.y, reach, (id, pose) => {
       const dx = pose.x - p.x;
       const dy = pose.y - p.y;
       const gap = Math.max(0, hypot(dx, dy) - PERSON_RADIUS);
-      if (gap >= closest) continue;
-      if (!swingReaches(spec, p.heading, gap, atan2(dy, dx))) continue;
+      if (gap >= closest) return;
+      if (!swingReaches(spec, p.heading, gap, atan2(dy, dx))) return;
       closest = gap;
-      nearest = { x: pose.x, y: pose.y, h: pose.height };
-    }
-    if (nearest === undefined) return false;
-    // A fright at the place the blow landed rather than at the player, so the
-    // person struck runs and nobody behind the swing does.
-    if (crowd.startle(state.pedestrians, state.tick, nearest.x, nearest.y, PERSON_RADIUS, 'flee', this.ids) === 0) {
-      return false;
-    }
-    commitCrime(state, 'brawl');
-    this.land(state, spec, 'person', nearest.x, nearest.y, nearest.h + SWING_HEIGHT);
+      nearest = { id, x: pose.x, y: pose.y, height: pose.height, heading: pose.heading };
+    }, this.ids);
+    const struck = nearest as { id: number; x: number; y: number; height: number; heading: number } | undefined;
+    if (struck === undefined) return false;
+    const dir = atan2(struck.y - p.y, struck.x - p.x);
+    const blow = { cause: 'blow' as const, damage: spec.damage, dir, push: shotPush(spec.damage), lift: 0 };
+    if (hurtPerson(state, crowd, struck.id, struck, blow, target.ground) === undefined) return false;
+    this.land(state, spec, 'person', struck.x, struck.y, struck.height + SWING_HEIGHT);
     return true;
   }
 
@@ -473,7 +502,10 @@ export class Gunfire {
     if (flight === undefined || spec.effect === 'smoke') return;
     // Heard well past the ring it is felt in, so the street empties around it
     // (spec section 20.1).
-    if (target.crowd !== undefined) crowdFeelsBlast(state, target.crowd, p.x, p.y, flight.blastRadius, this.ids);
+    if (target.crowd !== undefined) {
+      crowdFeelsBlast(state, target.crowd, p.x, p.y, flight.blastRadius, this.ids);
+      this.blastPeople(state, spec, p, flight.blastRadius, target);
+    }
     // A blast is called in as well as heard (spec section 20.3).
     callAmbulance(state, p.x, p.y);
     const player = state.player;
@@ -500,6 +532,27 @@ export class Gunfire {
       const ch = car.y - p.h;
       const cy = car.z - p.y;
       this.blast(state, spec, car, specOf(car.cls), cx, ch, cy, hypot(cx, ch, cy), flight.blastRadius);
+    }
+  }
+
+  /**
+   * What a blast does to the people round it (spec section 13.1): each is hurt
+   * by the share of it they feel, and thrown away from it, off their feet
+   * where they were near.
+   */
+  private blastPeople(state: SimState, spec: WeaponSpec, p: ProjectileState, radius: number, target: ShotTarget): void {
+    const crowd = target.crowd;
+    if (crowd === undefined) return;
+    const hit: { id: number; x: number; y: number; height: number; heading: number; share: number }[] = [];
+    peopleNear(crowd, state.pedestrians, state.tick, p.x, p.y, radius, (id, pose) => {
+      const share = blastFalloff(hypot(pose.x - p.x, pose.y - p.y, pose.height + 1 - p.h), radius);
+      if (share > 0) hit.push({ id, x: pose.x, y: pose.y, height: pose.height, heading: pose.heading, share });
+    }, this.ids);
+    for (const person of hit) {
+      const dir = atan2(person.y - p.y, person.x - p.x);
+      const lift = person.share > 0.3 ? 5 * person.share : 0;
+      const blow = { cause: 'blast' as const, damage: spec.damage * person.share, dir, push: 1 + 7 * person.share, lift };
+      hurtPerson(state, crowd, person.id, person, blow, target.ground);
     }
   }
 

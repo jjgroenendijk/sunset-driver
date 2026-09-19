@@ -36,10 +36,12 @@
  * body. Ambient traffic is kinematic and evaluated from `(seed, tick)` until
  * the player touches it (spec section 5.3); `traffic-bodies.ts` is that half.
  */
-import { hypot } from '../core/libm.ts';
+import { cos as cosOf, hypot, sin as sinOf } from '../core/libm.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { TICK_RATE } from './clock.ts';
 import { stepCrowdReactions } from './crowd-reaction.ts';
+import { stepCasualties, type CasualtyGround } from './casualty.ts';
+import { strikeCrowd, type CarStrike } from './car-strike.ts';
 import { stepFires } from './fire.ts';
 import { blastDamageAt, BLAST_LIFT, CRASH_DAMAGE, hitVehicle, tickFire } from './damage.ts';
 import { unrotate } from './frame.ts';
@@ -123,6 +125,13 @@ export class SimPhysics extends GroundPlaces {
   private readonly force = { x: 0, y: 0, z: 0 };
   /** Reused by the crowd reactions of spec section 20.1, for the same reason. */
   private readonly ids: number[] = [];
+  /** The ray a hit person's throw is measured along, to the first wall. */
+  private readonly throwRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 });
+  /** What a hit on a person reads of the world: the walls that stop a body, and the ground it lands on. */
+  private readonly casualtyGround: CasualtyGround = {
+    reach: (x, h, y, dir, max) => this.reachAlong(x, h, y, dir, max),
+    heightAt: (x, y) => this.ground.heightAt(x, y),
+  };
 
   constructor(ground: Ground, state: SimState) {
     super(ground);
@@ -269,7 +278,13 @@ export class SimPhysics extends GroundPlaces {
     // crash it took, or the people it is about to run over. It is read after
     // the step, so the fright is written where the car ended the tick.
     const crowd = this.ground.crowd;
-    if (crowd !== undefined) stepCrowdReactions(state, crowd, crash, this.ids);
+    if (crowd !== undefined) {
+      // The car strikes the people it is on top of (spec section 13.1), and
+      // feels them: it slows, and bumps over a body in the road.
+      if (chassis !== undefined) this.feel(state, chassis, strikeCrowd(state, crowd, this.spec, this.casualtyGround, this.ids));
+      stepCrowdReactions(state, crowd, crash, this.ids);
+      stepCasualties(state, crowd, this.ids);
+    }
     // The weapons are run after the step, so a shot leaves the muzzle from where
     // the player ended the tick rather than from where they started it. A player
     // bent over a lock cannot shoot, for the same reason they cannot walk.
@@ -346,6 +361,7 @@ export class SimPhysics extends GroundPlaces {
       police: this.units.police,
       enforcers: this.units.enforcers,
       crowd: this.ground.crowd,
+      ground: this.casualtyGround,
       cars: this.traffic,
     };
   }
@@ -409,6 +425,43 @@ export class SimPhysics extends GroundPlaces {
     v.vx = linear.x;
     v.vy = linear.y;
     v.vz = linear.z;
+  }
+
+  /**
+   * Put what the people it struck took from the car into its body: the speed
+   * it gave them, taken off along its travel, and the bump of a body under it.
+   * The record is read again, as after a blast, so the next tick does not read
+   * the loss as a crash.
+   */
+  private feel(state: SimState, chassis: RAPIER.RigidBody, strike: CarStrike): void {
+    if (strike.loss === 0 && strike.bump === 0) return;
+    const v = state.vehicle;
+    const speed = hypot(v.vx, v.vz);
+    const mass = chassis.mass();
+    // Never more than half of what the car carries: a person does not stop a car.
+    const loss = speed > 0 ? Math.min(strike.loss, mass * speed * 0.5) : 0;
+    this.force.x = speed > 0 ? (-v.vx / speed) * loss : 0;
+    this.force.y = strike.bump;
+    this.force.z = speed > 0 ? (-v.vz / speed) * loss : 0;
+    chassis.applyImpulse(this.force, true);
+    const linear = chassis.linvel();
+    v.vx = linear.x;
+    v.vy = linear.y;
+    v.vz = linear.z;
+  }
+
+  /**
+   * Metres a body pushed from a place along a heading gets before something
+   * solid stops it, measured at the height of its middle. The player's own
+   * bodies and every sensor are left out, and the body stops a little short of
+   * the wall rather than inside it.
+   */
+  private reachAlong(x: number, h: number, y: number, dir: number, max: number): number {
+    const ray = this.throwRay;
+    ray.origin = { x, y: h, z: y };
+    ray.dir = { x: cosOf(dir), y: 0, z: sinOf(dir) };
+    const hit = this.world.castRay(ray, max, true, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, undefined, this.body);
+    return hit === null ? max : Math.max(0, hit.timeOfImpact - 0.3);
   }
 
   /**

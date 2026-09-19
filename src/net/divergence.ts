@@ -79,7 +79,7 @@ function partOf(state: SimState, key: DivergenceKey): unknown {
  */
 const SHAPES: Record<DivergenceKey, (value: unknown) => boolean> = {
   traffic: (v) => list(v, 'promoted'),
-  pedestrians: (v) => list(v, 'startled'),
+  pedestrians: (v) => list(v, 'startled') && list(v, 'casualties'),
   fires: (v) => list(v, 'blazes') && count(v, 'nextBlaze'),
   emergency: (v) =>
     list(v, 'units') && list(v, 'calls') && count(v, 'nextUnit') && count(v, 'nextCall') && count(v, 'dispatchTick'),

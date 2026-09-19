@@ -23,6 +23,7 @@
 import { rngFor, Subsystem } from '../core/rng.ts';
 import { cos, hypot, sin } from '../core/libm.ts';
 import { TICK_RATE } from './clock.ts';
+import { collectBodies } from './casualty.ts';
 import { douseFires, firesOf } from './fire.ts';
 import { responseTicks, type DistrictAt } from './police.ts';
 import type { SimState } from './simulation.ts';
@@ -116,6 +117,12 @@ export const CALL_RANGE = 25;
 
 /** Metres from the scene a unit comes in at, which is well beyond what the camera shows. */
 const SPAWN_RANGE = 320;
+
+/**
+ * Metres from where an ambulance pulls up that it takes the people who are
+ * down from: the whole scene a call folds together.
+ */
+export const COLLECT_RANGE = CALL_RANGE;
 
 /** Metres a hose reaches from where the engine stands. */
 export const HOSE_RANGE = 12;
@@ -324,8 +331,13 @@ export class EmergencyServices {
     this.run(unit);
   }
 
-  /** Let a unit go: the call it answered is finished with, and it drives back out. */
+  /**
+   * Let a unit go: the call it answered is finished with, and it drives back
+   * out. An ambulance takes the people who are down at the scene with it (spec
+   * section 13.1).
+   */
   private dismiss(state: SimState, unit: EmergencyUnit): void {
+    if (unit.kind === 'ambulance') collectBodies(state, unit.x, unit.y, COLLECT_RANGE);
     for (let i = state.emergency.calls.length - 1; i >= 0; i--) {
       if ((state.emergency.calls[i] as EmergencyCall).id === unit.call) state.emergency.calls.splice(i, 1);
     }

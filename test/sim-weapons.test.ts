@@ -7,6 +7,7 @@ import { ENFORCER_HEALTH, type EnforcerUnit } from '../src/sim/enforcer.ts';
 import { blowStrength, HIT_MEMORY } from '../src/sim/melee.ts';
 import { CRIME_HEAT } from '../src/sim/crime.ts';
 import type { PedestrianPose } from '../src/sim/pedestrians.ts';
+import { PERSON_HEALTH } from '../src/sim/casualty.ts';
 import { hills, ramp, type Session, start, drive } from './sim-harness.ts';
 
 /**
@@ -300,11 +301,15 @@ describe('weapons', () => {
     return crowd;
   }
 
-  it('reaches somebody on the pavement with a swing, and puts them to flight', () => {
+  it('reaches somebody on the pavement with a swing, and hurts them', () => {
     const ground = ramp('asphalt', 0);
     const near = armed('baseball-bat', ground);
     const passer = bystander(near, 1.2);
     shoot(near, 1);
+    // The person struck is a casualty now, with the blow taken off them, and
+    // the people round them run (`casualty.ts`).
+    const struck = near.state.pedestrians.casualties[0];
+    expect(struck?.health).toBe(PERSON_HEALTH - weaponOf('baseball-bat').damage);
     expect(passer.frights).toBe(1);
     // A punch at a person on the street is a brawl (spec section 14), and the
     // blow is on the record for the burst and the knock to read.
@@ -316,6 +321,7 @@ describe('weapons', () => {
     const missed = bystander(far, 5);
     shoot(far, 1);
     expect(missed.frights).toBe(0);
+    expect(far.state.pedestrians.casualties).toHaveLength(0);
     expect(far.state.heat).toBe(0);
     far.physics.dispose();
   });
@@ -342,6 +348,23 @@ describe('weapons', () => {
     shoot(session, 1);
     expect(state.loadout.shots).toBeGreaterThan(0);
     expect(state.hits).toHaveLength(0);
+    session.physics.dispose();
+  });
+
+  it('shoots somebody on the pavement: the round stops in them and they go down', () => {
+    const session = armed('glock-17', ramp('asphalt', 0));
+    const { state } = session;
+    // Face away from the car, at a person standing in the open.
+    state.player.heading += Math.PI;
+    bystander(session, 8);
+    shoot(session, 1);
+    const shot = state.pedestrians.casualties[0];
+    expect(shot).toBeDefined();
+    expect(shot?.cause).toBe('shot');
+    expect(shot?.health).toBeLessThan(PERSON_HEALTH);
+    expect(state.tracers.some((tracer) => tracer.end === 'person')).toBe(true);
+    // A round in a person is an assault on top of what the shot was worth.
+    expect(state.heat).toBeGreaterThanOrEqual(CRIME_HEAT.assault);
     session.physics.dispose();
   });
 
