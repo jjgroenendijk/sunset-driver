@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { daylightAt, tickAtHour } from '../src/render/daylight.ts';
+import { daylightAt, SUNRISE_HOUR, SUNSET_HOUR, tickAtHour } from '../src/render/daylight.ts';
 import {
   gradeAt,
   gradeColour,
@@ -94,7 +94,7 @@ describe('a colour grade', () => {
 
 describe('the grade of the day', () => {
   it('warms the light at sunrise and at sunset', () => {
-    for (const hour of [6, 18]) {
+    for (const hour of [SUNRISE_HOUR, SUNSET_HOUR]) {
       const { gain } = at(hour);
       expect(gain[0]).toBeGreaterThan(gain[2]);
     }
@@ -108,7 +108,7 @@ describe('the grade of the day', () => {
 
   it('takes the colour down at night and up at dusk, against noon', () => {
     expect(at(0).saturation).toBeLessThan(at(12).saturation);
-    expect(at(18).saturation).toBeGreaterThan(at(12).saturation);
+    expect(at(SUNSET_HOUR).saturation).toBeGreaterThan(at(12).saturation);
   });
 
   it('grades the same tick of every day alike', () => {

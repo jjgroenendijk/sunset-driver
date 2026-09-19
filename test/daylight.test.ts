@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { daylightAt, dayFraction, NOON_ALTITUDE, sunDirection, tickAtHour } from '../src/render/daylight.ts';
+import {
+  daylightAt,
+  dayFraction,
+  NOON_ALTITUDE,
+  SOLAR_NOON_HOUR,
+  SUNRISE_HOUR,
+  SUNSET_HOUR,
+  sunDirection,
+  sunFraction,
+  tickAtHour,
+} from '../src/render/daylight.ts';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../src/sim/clock.ts';
 
 /** How close two floats have to be to count as the same light. */
@@ -42,26 +52,46 @@ describe('the sun', () => {
   });
 
   it('rises in the east, stands highest at noon and sets in the west', () => {
-    const dawn = sunDirection(tickAtHour(6));
+    const dawn = sunDirection(tickAtHour(SUNRISE_HOUR));
     expect(dawn.y).toBeCloseTo(0, CLOSE);
     expect(dawn.x).toBeCloseTo(1, CLOSE);
 
-    const noon = sunDirection(tickAtHour(12));
+    const noon = sunDirection(tickAtHour(SOLAR_NOON_HOUR));
     expect(noon.y).toBeCloseTo(NOON_ALTITUDE, CLOSE);
     expect(noon.x).toBeCloseTo(0, CLOSE);
 
-    const dusk = sunDirection(tickAtHour(18));
+    const dusk = sunDirection(tickAtHour(SUNSET_HOUR));
     expect(dusk.y).toBeCloseTo(0, CLOSE);
     expect(dusk.x).toBeCloseTo(-1, CLOSE);
 
-    expect(sunDirection(0).y).toBeCloseTo(-NOON_ALTITUDE, CLOSE);
+    expect(sunDirection(tickAtHour(SOLAR_NOON_HOUR - 12)).y).toBeCloseTo(-NOON_ALTITUDE, CLOSE);
+  });
+
+  it('is still up well into the evening', () => {
+    // A sun that set at 18:00 left 18:18 dark, with no sun at all.
+    const evening = at(18.3);
+    expect(evening.altitude).toBeGreaterThan(0.3);
+    expect(evening.night).toBe(0);
+    expect(evening.sunIntensity).toBeGreaterThan(3);
+  });
+
+  it('moves the sun through its own day without a jump', () => {
+    let previous = sunFraction(0);
+    for (let step = 1; step <= 24 * 60; step++) {
+      const next = sunFraction(step / (24 * 60));
+      const moved = (next - previous + 1) % 1;
+      expect(moved).toBeGreaterThan(0);
+      expect(moved).toBeLessThan(1 / 24 / 30);
+      previous = next;
+    }
   });
 
   it('climbs to noon and falls from it', () => {
-    for (let hour = 0; hour < 12; hour++) {
+    const low = SOLAR_NOON_HOUR - 12;
+    for (let hour = low; hour < SOLAR_NOON_HOUR; hour++) {
       expect(at(hour + 1).altitude).toBeGreaterThan(at(hour).altitude);
     }
-    for (let hour = 12; hour < 24; hour++) {
+    for (let hour = SOLAR_NOON_HOUR; hour < 24; hour++) {
       expect(at(hour + 1).altitude).toBeLessThan(at(hour).altitude);
     }
   });
@@ -77,7 +107,7 @@ describe('the sun', () => {
   it('leaves a street in shade at noon about a third as bright as one in the sun', () => {
     // Level ground: the sun by how high it stands, the sky fill from straight
     // above. Much less, and the city in its own shadow reads as dusk at noon.
-    const noon = at(12);
+    const noon = at(SOLAR_NOON_HOUR);
     const luma = (c: { r: number; g: number; b: number }) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
     const shade = luma(noon.fillSky) * noon.fillIntensity;
     const sun = luma(noon.sunColour) * noon.sunIntensity * noon.altitude + shade;
@@ -86,8 +116,8 @@ describe('the sun', () => {
   });
 
   it('burns orange on the horizon and white overhead', () => {
-    const low = at(6).sunColour;
-    const high = at(12).sunColour;
+    const low = at(SUNRISE_HOUR).sunColour;
+    const high = at(SOLAR_NOON_HOUR).sunColour;
     expect(low.r - low.b).toBeGreaterThan(high.r - high.b);
   });
 });
@@ -109,7 +139,7 @@ describe('night', () => {
 
   it('fills the shadows more weakly than the day does', () => {
     // The fill is a hemisphere light, so its strength is read against its
-    // colour: the night sky is a tenth of the day's before either is scaled.
+    // colour: the night sky is a fifth of the day's before either is scaled.
     const day = at(12);
     const night = at(0);
     expect(night.fillSky.r).toBeLessThan(day.fillSky.r * 0.2);
@@ -118,7 +148,7 @@ describe('night', () => {
 
   it('turns the haze from day blue through a warm dusk to near black', () => {
     const day = at(12).haze;
-    const dusk = at(18).haze;
+    const dusk = at(SUNSET_HOUR).haze;
     const night = at(0).haze;
     expect(dusk.r - dusk.b).toBeGreaterThan(day.r - day.b);
     expect(night.r + night.g + night.b).toBeLessThan(day.r + day.g + day.b);
@@ -134,10 +164,10 @@ describe('the street lamps', () => {
   it('come on before the light has gone, and go off after it is back', () => {
     // Dusk is lit from both ends: the lamps are already burning while the sun
     // is still above the horizon.
-    expect(at(18).lamps).toBeGreaterThan(0);
-    expect(at(18).altitude).toBeGreaterThanOrEqual(0);
-    expect(at(6).lamps).toBeGreaterThan(0);
-    expect(at(19.5).lamps).toBe(1);
+    expect(at(SUNSET_HOUR).lamps).toBeGreaterThan(0);
+    expect(at(SUNSET_HOUR).altitude).toBeGreaterThanOrEqual(0);
+    expect(at(SUNRISE_HOUR).lamps).toBeGreaterThan(0);
+    expect(at(22).lamps).toBe(1);
     expect(at(7).lamps).toBe(0);
   });
 });
