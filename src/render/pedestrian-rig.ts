@@ -85,7 +85,7 @@ const HIP_ACROSS = 0.1;
 const SHOULDER_ACROSS = 0.26;
 
 /** Where each bone stands in the bind pose, in the model's frame, and its parent. */
-const JOINTS: Record<BoneName, { parent: BoneName | null; at: [number, number, number] }> = {
+export const JOINTS: Record<BoneName, { parent: BoneName | null; at: [number, number, number] }> = {
   hips: { parent: null, at: [0, HIP, 0] },
   torso: { parent: 'hips', at: [0, HIP, 0] },
   head: { parent: 'torso', at: [0, SHOULDER, 0] },

@@ -344,6 +344,7 @@ export class SessionFrame {
     session.wildlife.update(session.state.tick, moment, round.x, round.y, player);
     session.parked?.update(session.state, round.x, round.y);
     session.crowd.update(session.state, moment, round.x, round.y);
+    session.casualties.update(session.state, moment, round.x, round.y);
   }
 
   /** The HUD and every panel and mark that reads the record. */

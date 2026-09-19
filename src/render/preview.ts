@@ -358,11 +358,12 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   arm(scene, request, stand, tick);
   // What moves through the city, where its tours put it at the tick the
   // picture is taken, as the game draws it.
-  const { traffic, trams, crowd, wildlife, parked } = peopleFor();
+  const { traffic, trams, crowd, casualties, wildlife, parked } = peopleFor();
   traffic.lamps = scene.lampsNow;
   traffic.update(record, tick, x, y);
   trams.update(tick, x, y);
   crowd.update(record, tick, x, y);
+  casualties.update(record, tick, x, y);
   wildlife.update(tick, tick, x, y);
   parked?.refresh();
   parked?.update(record, x, y);

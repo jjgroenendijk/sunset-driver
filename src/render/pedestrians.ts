@@ -13,41 +13,22 @@
  * record in `SimState.pedestrians` instead. The people waiting at the tram
  * stops (spec section 13.2) are drawn in the same mesh, standing.
  */
-import {
-  Color,
-  DataTexture,
-  DynamicDrawUsage,
-  FloatType,
-  Group,
-  BufferAttribute,
-  InstancedBufferGeometry,
-  InstancedInterleavedBuffer,
-  InterleavedBufferAttribute,
-  Mesh,
-  NearestFilter,
-  RGBAFormat,
-} from 'three';
+import { DataTexture, FloatType, Group, Mesh, NearestFilter, RGBAFormat } from 'three';
 import { GAITS, STRIDE_HEIGHT } from '../sim/pedestrian-look.ts';
 import { casualtyOf, startledOf, startledPose, type AmbientPedestrians, type PedestrianPose } from '../sim/pedestrians.ts';
 import type { SimState } from '../sim/simulation.ts';
 import type { TramLine, WaitingPassenger } from '../sim/tram.ts';
 import type { PedestrianLook } from '../sim/pedestrian-look.ts';
 import { outInThis } from '../sim/weather.ts';
+import { CrowdInstances } from './crowd-instances.ts';
 import { createPedestrianMaterial } from './pedestrian-material.ts';
-import { bakeWalks, BONES, FRAMES, pedestrianBody } from './pedestrian-rig.ts';
+import { bakeWalks, BONES, FRAMES } from './pedestrian-rig.ts';
 
 /** Metres each way of the point the frame is drawn round that people are drawn in. */
 export const PEDESTRIAN_VIEW = 110;
 
 /** People drawn at most. A frame with more leaves the rest out. */
 export const PEDESTRIAN_CAP = 1024;
-
-/**
- * Floats one person takes in the instance buffer: place, motion and four
- * colours. They share one buffer because a WebGPU pipeline may read only
- * eight, and a buffer per attribute would take ten.
- */
-const STRIDE = 20;
 
 /** A person the frame is told to stand somewhere, rather than one of the crowd. */
 export interface StandingPerson {
@@ -73,15 +54,10 @@ export class PedestrianView {
   private readonly tram: TramLine | undefined;
   private readonly waiting: WaitingPassenger[] = [];
   private readonly mesh: Mesh;
-  private readonly geometry: InstancedBufferGeometry;
+  private readonly body = new CrowdInstances(PEDESTRIAN_CAP);
   private readonly bones: DataTexture;
-  private readonly instances: InstancedInterleavedBuffer;
-  private readonly place: InterleavedBufferAttribute;
-  private readonly motion: InterleavedBufferAttribute;
-  private readonly colours: InterleavedBufferAttribute[];
   private readonly ids: number[] = [];
   private readonly pose: PedestrianPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0, cycle: 0, gait: 'stand' };
-  private readonly colour = new Color();
 
   constructor(crowd: AmbientPedestrians, tram?: TramLine) {
     this.crowd = crowd;
@@ -92,25 +68,7 @@ export class PedestrianView {
     this.bones.generateMipmaps = false;
     this.bones.needsUpdate = true;
 
-    const body = pedestrianBody();
-    this.geometry = new InstancedBufferGeometry();
-    this.geometry.setAttribute('position', body.getAttribute('position'));
-    this.geometry.setAttribute('normal', body.getAttribute('normal'));
-    // The bone and the colour part of each vertex, as one attribute for the same reason.
-    const bone = body.getAttribute('bone');
-    const part = body.getAttribute('part');
-    const rig = new Float32Array(bone.count * 2);
-    for (let i = 0; i < bone.count; i++) rig.set([bone.getX(i), part.getX(i)], i * 2);
-    this.geometry.setAttribute('rig', new BufferAttribute(rig, 2));
-    body.dispose();
-    this.instances = new InstancedInterleavedBuffer(new Float32Array(PEDESTRIAN_CAP * STRIDE), STRIDE);
-    this.instances.setUsage(DynamicDrawUsage);
-    this.place = this.instanceAttribute('pedPlace', 4, 0);
-    this.motion = this.instanceAttribute('pedMotion', 4, 4);
-    this.colours = ['pedSkin', 'pedHair', 'pedTop', 'pedLegs'].map((name, i) => this.instanceAttribute(name, 3, 8 + 3 * i));
-    this.geometry.instanceCount = 0;
-
-    this.mesh = new Mesh(this.geometry, createPedestrianMaterial(this.bones));
+    this.mesh = new Mesh(this.body.geometry, createPedestrianMaterial(this.bones));
     // The instances are spread over the view; the body's own bounds say nothing about them.
     this.mesh.frustumCulled = false;
     this.mesh.castShadow = true;
@@ -121,7 +79,7 @@ export class PedestrianView {
 
   /** How many people the last frame drew. */
   get drawn(): number {
-    return this.geometry.instanceCount;
+    return this.body.geometry.instanceCount;
   }
 
   /**
@@ -165,16 +123,12 @@ export class PedestrianView {
       if (pose.x < minX || pose.x > maxX || pose.y < minY || pose.y > maxY) continue;
       this.write(count++, person.look, pose);
     }
-    this.geometry.instanceCount = count;
+    this.body.commit(count);
     this.mesh.visible = count > 0;
-    if (count === 0) return;
-    this.instances.clearUpdateRanges();
-    this.instances.addUpdateRange(0, count * STRIDE);
-    this.instances.needsUpdate = true;
   }
 
   dispose(): void {
-    this.geometry.dispose();
+    this.body.geometry.dispose();
     (this.mesh.material as { dispose(): void }).dispose();
     this.bones.dispose();
     this.group.clear();
@@ -186,23 +140,8 @@ export class PedestrianView {
 
   /** Write one person into instance `index`. */
   private write(index: number, look: PedestrianLook, pose: PedestrianPose): void {
-    this.place.setXYZW(index, pose.x, pose.height, pose.y, pose.heading);
-    this.motion.setXYZW(index, GAITS.indexOf(pose.gait) * FRAMES, pose.cycle, look.height / STRIDE_HEIGHT, 0);
-    const [skin, hair, top, legs] = this.colours as [InterleavedBufferAttribute, InterleavedBufferAttribute, InterleavedBufferAttribute, InterleavedBufferAttribute];
-    this.setColour(skin, index, look.skin);
-    this.setColour(hair, index, look.hair);
-    this.setColour(top, index, look.top);
-    this.setColour(legs, index, look.legs);
-  }
-
-  private setColour(attribute: InterleavedBufferAttribute, index: number, hex: number): void {
-    this.colour.set(hex);
-    attribute.setXYZ(index, this.colour.r, this.colour.g, this.colour.b);
-  }
-
-  private instanceAttribute(name: string, size: number, offset: number): InterleavedBufferAttribute {
-    const attribute = new InterleavedBufferAttribute(this.instances, size, offset);
-    this.geometry.setAttribute(name, attribute);
-    return attribute;
+    this.body.place.setXYZW(index, pose.x, pose.height, pose.y, pose.heading);
+    this.body.motion.setXYZW(index, GAITS.indexOf(pose.gait) * FRAMES, pose.cycle, look.height / STRIDE_HEIGHT, 0);
+    this.body.paint(index, look);
   }
 }

@@ -12,6 +12,7 @@
  * pipeline for the object it draws with rather than for the material alone.
  */
 import type { City } from './city.ts';
+import { CasualtyView } from './render/casualties.ts';
 import { EmergencyView } from './render/emergency.ts';
 import { ParkedView } from './render/parked.ts';
 import { PedestrianView } from './render/pedestrians.ts';
@@ -33,6 +34,8 @@ export interface SessionViews {
   parked: ParkedView | undefined;
   tram: TramView;
   crowd: PedestrianView;
+  /** The people who have been hit, and the medics at them. */
+  casualties: CasualtyView;
 }
 
 /**
@@ -56,6 +59,7 @@ export function buildViews(
     parked: parked === undefined ? undefined : new ParkedView(parked),
     tram: new TramView(city.tram),
     crowd: new PedestrianView(city.crowd, city.tram),
+    casualties: new CasualtyView(city.crowd),
   };
   views.crowd.standing = standing;
   world.scene.add(
@@ -65,6 +69,7 @@ export function buildViews(
     views.wildlife.group,
     views.tram.group,
     views.crowd.group,
+    views.casualties.group,
   );
   if (views.parked !== undefined) world.scene.add(views.parked.group);
   return views;
