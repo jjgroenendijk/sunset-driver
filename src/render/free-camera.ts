@@ -105,6 +105,15 @@ export class FreeCamera {
     this.pitch = SURVEY_PITCH;
   }
 
+  /**
+   * The way the camera looks across the ground, as a map heading: forward is
+   * `(cos h, sin h)` in map `(x, y)`, which is scene `(x, z)`. The minimap
+   * turns by this while the camera flies, so its arrow shows the view.
+   */
+  get heading(): number {
+    return Math.atan2(-Math.cos(this.yaw), -Math.sin(this.yaw));
+  }
+
   /** Turn by a mouse movement in pixels, as pointer lock reports it. */
   look(dx: number, dy: number): void {
     this.yaw -= dx * LOOK_PER_PIXEL;

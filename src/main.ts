@@ -381,9 +381,10 @@ async function boot(): Promise<void> {
       // The maps of spec section 12. Both follow the player from the record,
       // and both redraw only when something on them has moved, so a session
       // standing still pays for neither. The minimap follows the free camera
-      // while it is detached, because that is what the player is looking at.
+      // while it is detached, because that is what the player is looking at,
+      // and it turns with the camera's view rather than the player's facing.
       const at = flying
-        ? { x: free.camera.x, y: free.camera.z, heading: p.heading }
+        ? { x: free.camera.x, y: free.camera.z, heading: free.camera.heading }
         : { x: p.x, y: p.y, heading: p.heading };
       session.minimap.update(at, session.state.waypoint);
       session.map.update(at, session.state.waypoint);
