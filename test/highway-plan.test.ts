@@ -55,7 +55,7 @@ describe('the plan of a highway', () => {
 });
 
 describe('the clearance of a highway', () => {
-  it('lets a later road cross it under a slot and nowhere else', () => {
+  it('lets an arterial cross it under a slot and nowhere else, and no minor road anywhere', () => {
     const points = line(1500);
     const plan = planHighway(points, [], [], [0, points.length - 1], [], city);
     const network = new RoadNetwork(4000, () => 0);
@@ -64,7 +64,9 @@ describe('the clearance of a highway', () => {
 
     const slot = (plan.slots[plan.slots.length >> 1] as number) + 0.5;
     const at = slot * 30;
-    expect(network.stepOk({ x: at, y: -40 }, { x: at, y: 40 }, 'street')).toBe(true);
-    expect(network.stepOk({ x: 115, y: -40 }, { x: 115, y: 40 }, 'street')).toBe(false);
+    expect(network.stepOk({ x: at, y: -40 }, { x: at, y: 40 }, 'arterial')).toBe(true);
+    expect(network.stepOk({ x: 115, y: -40 }, { x: 115, y: 40 }, 'arterial')).toBe(false);
+    // A street may not cross a highway at all, slot or no slot (issue #269).
+    expect(network.stepOk({ x: at, y: -40 }, { x: at, y: 40 }, 'street')).toBe(false);
   });
 });

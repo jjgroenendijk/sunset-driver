@@ -158,10 +158,18 @@ The ground the roads are laid on is in `docs/world-generation.md`.
 
 ## Interchanges and crossings
 
-- A highway takes a junction only at an interchange (spec section 6.2). `interchangesOf` places them
-  along the curve, `RoadCurve.interchanges` lists the point indices, and `mayJoin` (`tiers.ts`) is
-  the rule: a highway or an arterial ramp joins one there, and a street, alley or dirt road never
-  joins a highway anywhere.
+- Two tiers meet under two rules, both in `tiers.ts`. `mayJoin` says where they may exchange
+  traffic: a highway takes a junction only at an interchange, so a highway or an arterial ramp joins
+  one there and a street, alley or dirt road never joins a highway anywhere. `interchangesOf` places
+  the interchanges along the curve and `RoadCurve.interchanges` lists the point indices.
+- `mayCross` says where they may meet at all. A grade separation is a severance — a place two roads
+  pass and can never turn onto each other — so it is only worth the ground it takes where both roads
+  carry the traffic for it. A highway's right-of-way is ground a minor road may not cross: only a
+  highway or an arterial crosses one, on the ground, on a deck or in a bore. `NetworkClearance`
+  refuses such a step while the road is traced, so the trace turns, and where no turn is left it
+  stops and `trimTo` cuts a cul-de-sac. `crossing-plan.ts` asks the same rule before anything else,
+  which catches the road that is not on the ground there. Together they took the six sweep seeds
+  from 708 grade separations to 84 (issue #269).
 - Each highway's structure is planned when it is laid (`highway-plan.ts`, called from `addCurve`).
   Between two interchanges it leaves the ground, clear of `INTERCHANGE_CLEAR` each side. In the
   built-up zones it runs on a deck from one to the next; in the country it rises on one

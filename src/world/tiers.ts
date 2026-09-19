@@ -171,3 +171,25 @@ export function mayJoin(joiner: RoadTier, met: RoadTier, interchange: boolean): 
   if (met !== 'highway') return true;
   return interchange && (joiner === 'highway' || joiner === 'arterial');
 }
+
+/**
+ * True when a road of one tier may cross another where the two meet, whether
+ * as a junction, on a deck or under one.
+ *
+ * `mayJoin` above says where two roads may exchange traffic; this says where
+ * they may meet at all. A crossing the two tiers may not join is a severance —
+ * a place two roads pass and can never turn onto each other — so it is only
+ * worth the ground it takes where both roads carry enough traffic to need it.
+ *
+ * A highway's right-of-way is ground a minor road may not cross: a street, an
+ * alley or a dirt road stops short of it and takes a cul-de-sac, or bends to
+ * run beside it. Only a highway or an arterial crosses one, and an arterial
+ * crosses it to reach an interchange. Every other pair may cross: two
+ * arterials, or an arterial and a street, take a junction where the tiers
+ * allow, which is nearly everywhere (issue #269).
+ */
+export function mayCross(crosser: RoadTier, crossed: RoadTier): boolean {
+  if (crosser !== 'highway' && crossed !== 'highway') return true;
+  const minor = crosser === 'highway' ? crossed : crosser;
+  return minor === 'highway' || minor === 'arterial';
+}
