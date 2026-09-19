@@ -17,6 +17,7 @@
     "test": "vitest run",
     "test:full": "SWEEP_SEEDS=500 vitest run",
     "test:render": "node scripts/render-check.ts",
+    "test:world": "node scripts/world-check.ts",
     "verify": "npm run typecheck && npm run lint && npm run lint:size && npm run test",
     "verify:full": "npm run typecheck && npm run lint && npm run lint:size && npm run test:full"
   },

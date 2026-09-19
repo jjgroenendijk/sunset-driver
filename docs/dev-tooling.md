@@ -17,6 +17,7 @@ it.
 - `node scripts/render-profile.ts <seed>`
 - `node scripts/audio-check.ts`
 - `npm run test:render`
+- `npm run test:world`
 - The browser the previews need
 - The Chrome DevTools MCP server
 
@@ -254,6 +255,40 @@ one `playwright-core` installs on `ubuntu-latest` does not, which is why CI is g
 believing this check about your own change, read what it printed: the grade failure blanks the
 frame completely, so it fails all three measures at once and fills the console with a WebGPU
 validation error naming a 16x16x16 `RGBA16Float` texture.
+
+## `npm run test:world`
+
+Whether the browser builds the city Node builds. The world is a pure function of its seed, so the
+two must agree; every other check in the repository runs on one side only, so for a long time
+nothing noticed that they did not. Issue #243 is what that looked like: `Math.cos` rounded one bit
+differently in the two engines, the road tracer took a different step, and the render preview drew
+grass where Node had buildings and laid car park bays a kilometre from where Node laid them. No
+test failed and the page reported no error.
+
+It builds each seed twice — once here, once in a page Vite serves — and compares `worldDigest`
+(`src/world/digest.ts`), which is one line per layer in the order generation builds them. The first
+line that differs names the stage that went its own way; every line under it follows from that one.
+Two fixed seeds by default, or name your own: `node scripts/world-check.ts 42 hello`.
+
+Nothing here draws, so it opens no graphics device and has none of `test:render`'s flakiness. Two
+seeds take about 12 seconds, almost all of it generation. On a pull request the `world-check` job of
+`ci.yml` runs it.
+
+A seed can agree by luck, so a failure is always real and a pass on one seed proves less than a pass
+on several. Reach for more seeds when judging a change to `src/core/libm.ts` or to anything the road
+tracer reads.
+
+**Which browser ran it is part of the answer.** Engines differ from each other as well as from Node:
+Chromium 141 parts company with Node on `sin` and `cos` alone, while Chrome for Testing 153 does so
+on a dozen functions. A cloud session's browser cache usually holds an older build than the lockfile
+names, and the resolver takes what it finds, so a green run here can still be red in CI. The check
+prints the build it used. To answer for CI's browser, install the one the lockfile names and point
+the check at it:
+
+```
+node_modules/.bin/playwright-core install --no-shell chromium
+CHROMIUM_PATH=~/.cache/ms-playwright/chromium-<build>/chrome-linux64/chrome npm run test:world
+```
 
 ## The browser the previews need
 
