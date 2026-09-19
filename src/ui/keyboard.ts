@@ -12,10 +12,11 @@ export const CHOICE_KEYS = 9;
 const FIRE_BUTTON = 'Mouse0';
 const AIM_BUTTON = 'Mouse2';
 
-/** The code a mouse button is kept under, which no key shares. */
-function mouseCode(button: number): string {
-  return `Mouse${button}`;
-}
+/** Each mouse button kept, and its bit in a pointer event's `buttons`. */
+const MOUSE_BITS: readonly (readonly [string, number])[] = [
+  [FIRE_BUTTON, 1],
+  [AIM_BUTTON, 2],
+];
 
 /**
  * The walking axes turned by a view's yaw. Up the screen is `-z` turned by
@@ -76,18 +77,37 @@ export class Keyboard {
     target.addEventListener('keyup', (e) => this.down.delete(e.code));
     target.addEventListener('blur', () => this.down.clear());
     // A button let go anywhere is let go, even off the canvas it went down on.
-    target.addEventListener('pointerup', (e) => this.down.delete(mouseCode(e.button)));
+    target.addEventListener('pointerup', (e) => this.buttons(e, false));
+    target.addEventListener('pointermove', (e) => {
+      if (e.button !== -1) this.buttons(e, false);
+    });
+  }
+
+  /**
+   * Bring the mouse buttons in step with a pointer event's `buttons`. A press
+   * with another button already down fires no `pointerdown`: the browser sends
+   * a `pointermove` whose `button` is the one that changed. So both events come
+   * here, and the bits say what is down. `press` is false off the canvas, where
+   * a button may be let go but not pressed.
+   */
+  private buttons(e: PointerEvent, press: boolean): void {
+    if (e.pointerType !== 'mouse') return;
+    for (const [code, bit] of MOUSE_BITS) {
+      if ((e.buttons & bit) === 0) this.down.delete(code);
+      else if (press) this.down.add(code);
+    }
   }
 
   /**
    * Take the mouse buttons pressed on the game's canvas: the left one fires and
-   * the right one aims (spec section 11.5). Only a mouse counts. A finger on a
+   * the right one aims (spec section 11.5), and no key does either. Only a mouse counts. A finger on a
    * touch screen is the touch pad of `touch.ts`, and a tap must not fire.
    */
   listenMouse(canvas: HTMLCanvasElement): void {
-    canvas.addEventListener('pointerdown', (e) => {
-      if (e.pointerType !== 'mouse' || (e.button !== 0 && e.button !== 2)) return;
-      this.down.add(mouseCode(e.button));
+    canvas.addEventListener('pointerdown', (e) => this.buttons(e, true));
+    // A second button pressed while one is held arrives as a move.
+    canvas.addEventListener('pointermove', (e) => {
+      if (e.button !== -1) this.buttons(e, true);
     });
     // The right button aims, so the page's own menu must not open over the game.
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -169,8 +189,8 @@ export class Keyboard {
       sprint: selling,
       jump: this.is('Space'),
       interact: this.is('KeyE') || tapped,
-      fire: this.is('KeyF') || this.is(FIRE_BUTTON),
-      aim: this.is('KeyQ') || this.is(AIM_BUTTON),
+      fire: this.is(FIRE_BUTTON),
+      aim: this.is(AIM_BUTTON),
       pointing: this.point !== undefined,
       pointX: this.point?.x ?? 0,
       pointY: this.point?.y ?? 0,

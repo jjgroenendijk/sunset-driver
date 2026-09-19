@@ -31,8 +31,8 @@ how the steps are watched on a machine that does not need them.
 | Handbrake, jump | Space |
 | Horn | H |
 | Enter or leave vehicle or shop, hotwire, interact | E |
-| Fire, swing | Left click or F |
-| Aim | Right click or Q |
+| Fire, swing | Left click |
+| Aim | Right click |
 | Reload | R |
 | Cycle weapon | C |
 | Radio: next, previous station | ] and [ |
