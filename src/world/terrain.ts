@@ -1,3 +1,4 @@
+import { hypot } from '../core/libm.ts';
 import { TerrainGenerator } from 'three/examples/jsm/generators/TerrainGenerator.js';
 import { lerp, smoothstep } from '../core/math.ts';
 import { Noise2D } from '../core/noise.ts';
@@ -173,7 +174,7 @@ export function coastOffset(layout: TerrainLayout, noise: CoastNoise, x: number,
     const other = cells.mass[j] as number;
     // Two cells of one island are one land, and two cells of sea are one water.
     if (other === mass) continue;
-    const d = Math.hypot((cells.x[j] as number) - kx, (cells.y[j] as number) - ky);
+    const d = hypot((cells.x[j] as number) - kx, (cells.y[j] as number) - ky);
     if (d === 0) continue;
     const pj = (wx - (cells.x[j] as number)) ** 2 + (wy - (cells.y[j] as number)) ** 2 - (cells.w2[j] as number);
     const toBisector = (pj - pk) / (2 * d);
@@ -298,7 +299,7 @@ export function generateTerrain(seed: number, layout: TerrainLayout): Heightfiel
       let ramp: number;
       let rise: number;
       if (spine === undefined) {
-        const d = Math.hypot(x - layout.core.x, y - layout.core.y);
+        const d = hypot(x - layout.core.x, y - layout.core.y);
         ramp = smoothstep(relief.rampFrom * size, relief.rampTo * size, d);
         rise = smoothstep(relief.baseFrom * size, relief.baseTo * size, d);
       } else {

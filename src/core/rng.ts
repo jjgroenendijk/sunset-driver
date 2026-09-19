@@ -1,4 +1,5 @@
 import { hashInts, hashString } from './hash.ts';
+import { cos, log } from './libm.ts';
 
 /**
  * Subsystem ids used as the third key of every random stream. Adding a new
@@ -98,7 +99,7 @@ export class Rng {
   gaussian(): number {
     const u = 1 - this.float();
     const v = this.float();
-    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+    return Math.sqrt(-2 * log(u)) * cos(2 * Math.PI * v);
   }
 
   /** Fisher–Yates shuffle in place, returns the same array. */

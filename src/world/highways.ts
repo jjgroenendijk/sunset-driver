@@ -22,6 +22,7 @@
  */
 import { directionDelta, dist } from '../core/math.ts';
 import { genRng, Subsystem } from '../core/rng.ts';
+import { atan2, cos, sin } from '../core/libm.ts';
 import { ZONE_RADII } from './districts.ts';
 import {
   alignTo,
@@ -202,7 +203,7 @@ export abstract class HighwayTrace extends RoadTrace {
   /** The line a radial follows out of the ring: whichever of the field's two directions runs nearer the way out. */
   private radialLine(at: Point): { points: Point[]; minor: boolean } {
     const core = this.world.core;
-    const out = Math.atan2(at.y - core.y, at.x - core.x);
+    const out = atan2(at.y - core.y, at.x - core.x);
     const major = this.field.majorAt(at.x, at.y);
     const minor = directionDelta(major, out) > Math.PI / 4;
     const heading = alignTo(minor ? major + Math.PI / 2 : major, out);
@@ -284,7 +285,7 @@ export abstract class HighwayTrace extends RoadTrace {
 
 /** Where the ray from the ring's middle at `angle` meets the ring. */
 function onRing(ring: Ring, angle: number): Point {
-  const at = (r: number): Point => ({ x: ring.x + Math.cos(angle) * r, y: ring.y + Math.sin(angle) * r });
+  const at = (r: number): Point => ({ x: ring.x + cos(angle) * r, y: ring.y + sin(angle) * r });
   let lo = 0;
   let hi = ring.radius * 2;
   for (let i = 0; i < 30; i++) {

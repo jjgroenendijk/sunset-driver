@@ -17,6 +17,7 @@
  * where the next leg's pavement starts. A line inside a straight junction has
  * no length, and nothing is walked there.
  */
+import { hypot } from '../core/libm.ts';
 import type { RoadEdge, RoadGraph } from '../world/graph.ts';
 import { TIERS } from '../world/tiers.ts';
 import type { Point, RoadCurve } from '../world/types.ts';
@@ -130,10 +131,10 @@ export class Pavements {
       route.length += (route.to[i] as number) - (route.from[i] as number);
       route.toCorner[i] = route.length;
       const end = this.pavementPoint(edges[i] as number, route.to[i] as number, side, this.a);
-      route.length += Math.hypot((route.cornerX[i] as number) - end.x, (route.cornerY[i] as number) - end.y);
+      route.length += hypot((route.cornerX[i] as number) - end.x, (route.cornerY[i] as number) - end.y);
       route.fromCorner[i] = route.length;
       const begin = this.pavementPoint(edges[next] as number, route.from[next] as number, side, this.b);
-      route.length += Math.hypot(begin.x - (route.cornerX[i] as number), begin.y - (route.cornerY[i] as number));
+      route.length += hypot(begin.x - (route.cornerX[i] as number), begin.y - (route.cornerY[i] as number));
     }
     return route;
   }
@@ -226,7 +227,7 @@ export class Pavements {
       const cx = ax + a.dx * t;
       const cy = ay + a.dy * t;
       // `a` is the end of the first edge, which is the node the two turn at.
-      if (Math.hypot(cx - a.x, cy - a.y) <= reach) {
+      if (hypot(cx - a.x, cy - a.y) <= reach) {
         route.cornerX[i] = cx;
         route.cornerY[i] = cy;
         leave[i] = edgeA.length + t;
@@ -268,7 +269,7 @@ export class Pavements {
     const points = (this.roads[edge.curve] as RoadCurve).points;
     const p = points[edge.start + k * step] as Point;
     const q = points[edge.start + (k + 1) * step] as Point;
-    const length = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+    const length = hypot(q.x - p.x, q.y - p.y) || 1;
     out.dx = (q.x - p.x) / length;
     out.dy = (q.y - p.y) / length;
     out.x = p.x + (q.x - p.x) * f;
@@ -288,7 +289,7 @@ export class Pavements {
     for (let k = 1; k < run.length; k++) {
       const a = points[edge.start + (k - 1) * step] as Point;
       const b = points[edge.start + k * step] as Point;
-      run[k] = (run[k - 1] as number) + Math.hypot(b.x - a.x, b.y - a.y);
+      run[k] = (run[k - 1] as number) + hypot(b.x - a.x, b.y - a.y);
     }
     this.runs[edge.id] = run;
     return run;

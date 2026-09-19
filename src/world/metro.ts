@@ -22,6 +22,7 @@
  * parcels, offered in the same order, give the same stations.
  */
 import type { Point } from '../core/geom.ts';
+import { hypot } from '../core/libm.ts';
 import { sortedEntries } from '../core/sort.ts';
 import type { ParcelOwner } from './parcels.ts';
 import type { District, WorldDescription } from './types.ts';
@@ -74,7 +75,7 @@ export class MetroPlan {
     if (owner !== 'plaza' && owner !== 'building') return;
     const plan = this.plans.get(district.id) ?? { district: district.id, plaza: undefined, buildings: [] };
     this.plans.set(district.id, plan);
-    const candidate = { parcel, x: at.x, y: at.y, away: Math.hypot(at.x - district.x, at.y - district.y) };
+    const candidate = { parcel, x: at.x, y: at.y, away: hypot(at.x - district.x, at.y - district.y) };
     if (owner === 'plaza') {
       if (plan.plaza === undefined || candidate.away < plan.plaza.away) plan.plaza = candidate;
       return;
@@ -117,7 +118,7 @@ export function metroDistricts(world: WorldDescription): number[] {
       continue;
     }
     if (district.zone !== 'suburban') continue;
-    const away = Math.hypot(district.x - world.core.x, district.y - world.core.y);
+    const away = hypot(district.x - world.core.x, district.y - world.core.y);
     if (away <= edgeAway) continue;
     edgeAway = away;
     edge = district;

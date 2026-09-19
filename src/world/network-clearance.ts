@@ -19,6 +19,7 @@
  * Two roads therefore touch only where they share a node or cross, both at an
  * angle a junction or an overpass can be built at.
  */
+import { atan2, hypot } from '../core/libm.ts';
 import { clamp, directionDelta } from '../core/math.ts';
 import { CLEARANCE } from './overpass.ts';
 import { footprintHalfWidth } from './tiers.ts';
@@ -223,7 +224,7 @@ export class NetworkClearance {
    */
   stepOk(a: Point, b: Point, tier: RoadTier, trail: Trail = { crossed: [] }, meet?: Point): boolean {
     const half = footprintHalfWidth(tier);
-    const heading = Math.atan2(b.y - a.y, b.x - a.x);
+    const heading = atan2(b.y - a.y, b.x - a.x);
     const crossed = trail.crossed;
     const before = crossed.length;
     let ok = true;
@@ -253,7 +254,7 @@ export class NetworkClearance {
       // Near only a corner of the segment, the step does not run beside its
       // line; the segment on the other side of the corner answers for that.
       if (distance > 0 && (t <= 0 || t >= 1)) return;
-      const along = Math.atan2((e[k + 3] as number) - (e[k + 1] as number), (e[k + 2] as number) - (e[k] as number));
+      const along = atan2((e[k + 3] as number) - (e[k + 1] as number), (e[k + 2] as number) - (e[k] as number));
       if (directionDelta(heading, along) < TRACE_MEET) {
         ok = false;
         return;
@@ -264,10 +265,10 @@ export class NetworkClearance {
       const width = this.halfWidth[s] as number;
       // A step that starts on a road, or ends on one, touches it there: that is
       // the junction, not a crossing.
-      if (Math.hypot(x - a.x, y - a.y) <= SAME_PLACE || Math.hypot(x - b.x, y - b.y) <= SAME_PLACE) return;
+      if (hypot(x - a.x, y - a.y) <= SAME_PLACE || hypot(x - b.x, y - b.y) <= SAME_PLACE) return;
       // Nor may it cross a road beside the junction it started from or ends on.
       for (const junction of [trail.start, meet]) {
-        if (junction !== undefined && Math.hypot(x - junction.x, y - junction.y) < width + half) ok = false;
+        if (junction !== undefined && hypot(x - junction.x, y - junction.y) < width + half) ok = false;
       }
       if (!ok) return;
       // A highway is crossed at one of its slots or not at all (spec section 6.2).
@@ -276,7 +277,7 @@ export class NetworkClearance {
         return;
       }
       for (let c = 0; c < crossed.length; c += 4) {
-        if (Math.hypot((crossed[c] as number) - x, (crossed[c + 1] as number) - y) < width + (crossed[c + 3] as number)) ok = false;
+        if (hypot((crossed[c] as number) - x, (crossed[c + 1] as number) - y) < width + (crossed[c + 3] as number)) ok = false;
       }
       crossed.push(x, y, this.curve[s] as number, width);
     });
@@ -300,7 +301,7 @@ export class NetworkClearance {
       const x = (e[k] as number) + ((e[k + 2] as number) - (e[k] as number)) * closestT;
       const y = (e[k + 1] as number) + ((e[k + 3] as number) - (e[k + 1] as number)) * closestT;
       // A run that starts or ends on the highway joins it there.
-      if (Math.hypot(x - a.x, y - a.y) > SAME_PLACE && Math.hypot(x - b.x, y - b.y) > SAME_PLACE) ok = false;
+      if (hypot(x - a.x, y - a.y) > SAME_PLACE && hypot(x - b.x, y - b.y) > SAME_PLACE) ok = false;
     });
     return ok;
   }
@@ -312,14 +313,14 @@ export class NetworkClearance {
    * every other road.
    */
   meets(at: Point, from: Point, tier: RoadTier, trail: Trail = { crossed: [] }): boolean {
-    const ray = Math.atan2(from.y - at.y, from.x - at.x);
+    const ray = atan2(from.y - at.y, from.x - at.x);
     let ok = true;
     this.visit(at.x, at.y, at.x, at.y, 0, (s) => {
       const e = this.ends;
       const k = s * 4;
       for (const [near, far] of [[k, k + 2], [k + 2, k]] as const) {
         if (!touches(e, near, at)) continue;
-        const other = Math.atan2((e[far + 1] as number) - at.y, (e[far] as number) - at.x);
+        const other = atan2((e[far + 1] as number) - at.y, (e[far] as number) - at.x);
         let turn = Math.abs(ray - other) % (2 * Math.PI);
         if (turn > Math.PI) turn = 2 * Math.PI - turn;
         if (turn < TRACE_MEET) ok = false;
@@ -330,7 +331,7 @@ export class NetworkClearance {
     const half = footprintHalfWidth(tier);
     const crossed = trail.crossed;
     for (let c = 0; c < crossed.length; c += 4) {
-      if (Math.hypot((crossed[c] as number) - at.x, (crossed[c + 1] as number) - at.y) < half + (crossed[c + 3] as number)) return false;
+      if (hypot((crossed[c] as number) - at.x, (crossed[c + 1] as number) - at.y) < half + (crossed[c + 3] as number)) return false;
     }
     return ok && this.stepOk(from, at, tier, { crossed: [...crossed], start: trail.start }, at);
   }
@@ -377,7 +378,7 @@ export function crossPoint(a: Point, b: Point, c: Point, d: Point): Point | unde
   const u = (ox * ry - oy * rx) / denominator;
   if (t <= 0 || t >= 1 || u <= 0 || u >= 1) return undefined;
   const at = { x: a.x + rx * t, y: a.y + ry * t };
-  for (const end of [a, b, c, d]) if (Math.hypot(at.x - end.x, at.y - end.y) < SAME_PLACE) return undefined;
+  for (const end of [a, b, c, d]) if (hypot(at.x - end.x, at.y - end.y) < SAME_PLACE) return undefined;
   return at;
 }
 
@@ -409,7 +410,7 @@ function toSegment(px: number, py: number, ax: number, ay: number, bx: number, b
   const ry = by - ay;
   const span = rx * rx + ry * ry;
   const u = span === 0 ? 0 : clamp(((px - ax) * rx + (py - ay) * ry) / span, 0, 1);
-  return Math.hypot(ax + rx * u - px, ay + ry * u - py);
+  return hypot(ax + rx * u - px, ay + ry * u - py);
 }
 
 /**
@@ -442,13 +443,13 @@ function closest(ax: number, ay: number, bx: number, by: number, ends: readonly 
   let bestT = 0;
   const along = sx * sx + sy * sy;
   const ta = along === 0 ? 0 : clamp(((ax - cx) * sx + (ay - cy) * sy) / along, 0, 1);
-  const da = Math.hypot(ax - cx - sx * ta, ay - cy - sy * ta);
+  const da = hypot(ax - cx - sx * ta, ay - cy - sy * ta);
   if (da < best) {
     best = da;
     bestT = ta;
   }
   const tb = along === 0 ? 0 : clamp(((bx - cx) * sx + (by - cy) * sy) / along, 0, 1);
-  const db = Math.hypot(bx - cx - sx * tb, by - cy - sy * tb);
+  const db = hypot(bx - cx - sx * tb, by - cy - sy * tb);
   if (db < best) {
     best = db;
     bestT = tb;

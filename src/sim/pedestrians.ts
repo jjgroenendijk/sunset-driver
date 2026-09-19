@@ -22,6 +22,7 @@
  */
 import { hashInts } from '../core/hash.ts';
 import { rngFor, Subsystem, type Rng } from '../core/rng.ts';
+import { atan2, cos, hypot, sin } from '../core/libm.ts';
 import type { RoadEdge, RoadGraph } from '../world/graph.ts';
 import { TIERS } from '../world/tiers.ts';
 import { districtAt, layoutZones } from '../world/districts.ts';
@@ -262,10 +263,10 @@ export class AmbientPedestrians {
       const dx = pose.x - x;
       const dy = pose.y - y;
       if (dx * dx + dy * dy > radius * radius) continue;
-      let heading = dx === 0 && dy === 0 ? pose.heading + Math.PI : Math.atan2(dy, dx);
+      let heading = dx === 0 && dy === 0 ? pose.heading + Math.PI : atan2(dy, dx);
       if (reaction === 'scatter') {
         // A quarter turn off the line from the threat, and a little more or less.
-        const across = dx * Math.sin(pose.heading) - dy * Math.cos(pose.heading) >= 0 ? -1 : 1;
+        const across = dx * sin(pose.heading) - dy * cos(pose.heading) >= 0 ? -1 : 1;
         const rng = rngFor(this.seed, tick, Subsystem.Pedestrians, hashInts(REACTION_STREAM, id));
         heading = pose.heading + across * (Math.PI / 2 + rng.range(-0.4, 0.4));
       } else if (REACTIONS[reaction].toward) {
@@ -287,7 +288,7 @@ export class AmbientPedestrians {
     out.x = (this.behind.x + this.ahead.x) / 2;
     out.y = (this.behind.y + this.ahead.y) / 2;
     out.height = (this.behind.height + this.ahead.height) / 2;
-    out.heading = Math.atan2(this.ahead.y - this.behind.y, this.ahead.x - this.behind.x);
+    out.heading = atan2(this.ahead.y - this.behind.y, this.ahead.x - this.behind.x);
     out.speed = pace * TICK_RATE;
     const cycles = (at / person.period) * person.strides;
     out.cycle = cycles - Math.floor(cycles);
@@ -329,8 +330,8 @@ export function startledPose(record: StartledPedestrian, time: number, out: Pede
   const elapsed = Math.min(Math.max(0, time - record.since), reaction.ticks);
   const moving = time - record.since < reaction.ticks;
   const distance = (elapsed / TICK_RATE) * reaction.speed;
-  out.x = record.x + Math.cos(record.heading) * distance;
-  out.y = record.y + Math.sin(record.heading) * distance;
+  out.x = record.x + cos(record.heading) * distance;
+  out.y = record.y + sin(record.heading) * distance;
   out.height = record.height;
   out.heading = record.heading;
   out.speed = moving ? reaction.speed : 0;
@@ -349,7 +350,7 @@ export function releaseFar(state: PedestrianState, time: number, x: number, y: n
   const pose: PedestrianPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0, cycle: 0, gait: 'stand' };
   state.startled = state.startled.filter((record) => {
     startledPose(record, time, pose);
-    return Math.hypot(pose.x - x, pose.y - y) <= distance;
+    return hypot(pose.x - x, pose.y - y) <= distance;
   });
 }
 

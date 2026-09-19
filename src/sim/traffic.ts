@@ -22,6 +22,7 @@
  */
 import { hashInts } from '../core/hash.ts';
 import { rngFor, Subsystem, type Rng } from '../core/rng.ts';
+import { atan2, cos, sin } from '../core/libm.ts';
 import { RoadBeds } from '../world/bed.ts';
 import { layoutZones, districtAt } from '../world/districts.ts';
 import { buildRoadGraph, type RoadEdge, type RoadGraph } from '../world/graph.ts';
@@ -294,7 +295,7 @@ export class AmbientTraffic {
     out.x = (this.behind.x + this.ahead.x) / 2;
     out.y = (this.behind.y + this.ahead.y) / 2;
     out.height = (this.behind.height + this.ahead.height) / 2;
-    out.heading = Math.atan2(this.ahead.y - this.behind.y, this.ahead.x - this.behind.x);
+    out.heading = atan2(this.ahead.y - this.behind.y, this.ahead.x - this.behind.x);
     out.speed = (metres / ticks) * TICK_RATE;
     return out;
   }
@@ -430,10 +431,10 @@ export interface Footprint {
  * for two rectangles.
  */
 export function footprintsTouch(a: Footprint, b: Footprint, margin: number): boolean {
-  const ca = Math.cos(a.heading);
-  const sa = Math.sin(a.heading);
-  const cb = Math.cos(b.heading);
-  const sb = Math.sin(b.heading);
+  const ca = cos(a.heading);
+  const sa = sin(a.heading);
+  const cb = cos(b.heading);
+  const sb = sin(b.heading);
   // Each box's length and then its width: the axis a quarter turn on is (-sin, cos).
   return (
     overlapsAlong(a, b, ca, sa, margin) &&
@@ -450,8 +451,8 @@ function overlapsAlong(a: Footprint, b: Footprint, ax: number, ay: number, margi
 }
 
 function extent(box: Footprint, ax: number, ay: number): number {
-  const fx = Math.cos(box.heading);
-  const fy = Math.sin(box.heading);
+  const fx = cos(box.heading);
+  const fy = sin(box.heading);
   return box.halfLength * Math.abs(fx * ax + fy * ay) + box.halfWidth * Math.abs(-fy * ax + fx * ay);
 }
 

@@ -28,6 +28,7 @@
  * stream buys the same thing off the same counter.
  */
 import { wrapAngle } from '../core/math.ts';
+import { cos, hypot, sin } from '../core/libm.ts';
 import { roomOf, type Shop, type ShopKind, type ShopRoom } from '../world/shops.ts';
 import type { InputFrame } from './input.ts';
 import { reachesVehicle, type Place } from './on-foot.ts';
@@ -113,7 +114,7 @@ export function shopAt(places: readonly ShopPlace[], state: SimState): number {
   let near = DOOR_REACH;
   for (let i = 0; i < places.length; i++) {
     const place = places[i] as ShopPlace;
-    const away = Math.hypot(place.x - state.player.x, place.y - state.player.y);
+    const away = hypot(place.x - state.player.x, place.y - state.player.y);
     if (away > near) continue;
     near = away;
     at = i;
@@ -155,8 +156,8 @@ export function shopOffers(
 export function inRoom(room: ShopRoom, x: number, y: number): boolean {
   const dx = x - room.x;
   const dy = y - room.y;
-  const along = dx * Math.cos(room.facing) + dy * Math.sin(room.facing);
-  const across = -dx * Math.sin(room.facing) + dy * Math.cos(room.facing);
+  const along = dx * cos(room.facing) + dy * sin(room.facing);
+  const across = -dx * sin(room.facing) + dy * cos(room.facing);
   return Math.abs(along) <= room.halfDepth + ROOM_MARGIN && Math.abs(across) <= room.halfWidth + ROOM_MARGIN;
 }
 
@@ -228,8 +229,8 @@ export function stepShops(
 function leave(state: SimState, place: ShopPlace): void {
   const p = state.player;
   state.shop = null;
-  p.x = place.x + Math.cos(place.heading) * DOOR_STEP;
-  p.y = place.y + Math.sin(place.heading) * DOOR_STEP;
+  p.x = place.x + cos(place.heading) * DOOR_STEP;
+  p.y = place.y + sin(place.heading) * DOOR_STEP;
   p.heading = place.heading;
   p.speed = 0;
   p.vy = 0;

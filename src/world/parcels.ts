@@ -51,6 +51,7 @@
  */
 import { areaOf, difference, pointInRegion, regionArea, regionOf, split, union, type Point, type Region } from '../core/geom.ts';
 import { genRng, Subsystem } from '../core/rng.ts';
+import { cos, hypot, sin } from '../core/libm.ts';
 import { districtAt, layoutZones, zoneAt, type ZoneLayout } from './districts.ts';
 import type { RoadFootprint } from './footprint.ts';
 import type { RoadGraph } from './graph.ts';
@@ -368,10 +369,10 @@ export function buildParcels(
  */
 function offerStation(stations: PoliceStation[], district: District, parcel: number, at: Point): void {
   const held = stations.find((station) => station.district === district.id);
-  const distance = Math.hypot(at.x - district.x, at.y - district.y);
+  const distance = hypot(at.x - district.x, at.y - district.y);
   if (held === undefined) {
     stations.push({ parcel, district: district.id, x: at.x, y: at.y });
-  } else if (distance < Math.hypot(held.x - district.x, held.y - district.y)) {
+  } else if (distance < hypot(held.x - district.x, held.y - district.y)) {
     held.parcel = parcel;
     held.x = at.x;
     held.y = at.y;
@@ -501,8 +502,8 @@ function cutLine(region: Region, at: Point, field: TensorField): number {
 
 /** How far a ring reaches in one direction, in metres. */
 function extentAlong(ring: readonly Point[], angle: number): number {
-  const dx = Math.cos(angle);
-  const dy = Math.sin(angle);
+  const dx = cos(angle);
+  const dy = sin(angle);
   let low = Infinity;
   let high = -Infinity;
   for (const p of ring) {
@@ -522,8 +523,8 @@ function extentAlong(ring: readonly Point[], angle: number): number {
  */
 function cutInTwo(region: Region, at: Point, angle: number): Region[] {
   const reach = radiusAround(region.outer, at) + 1;
-  const dx = Math.cos(angle) * reach;
-  const dy = Math.sin(angle) * reach;
+  const dx = cos(angle) * reach;
+  const dy = sin(angle) * reach;
   const corners: Point[] = [
     { x: at.x - dx, y: at.y - dy },
     { x: at.x + dx, y: at.y + dy },
@@ -579,6 +580,6 @@ function centroid(region: Region): Point {
 /** How far the farthest corner of a ring stands from a point. */
 function radiusAround(ring: readonly Point[], at: Point): number {
   let far = 0;
-  for (const p of ring) far = Math.max(far, Math.hypot(p.x - at.x, p.y - at.y));
+  for (const p of ring) far = Math.max(far, hypot(p.x - at.x, p.y - at.y));
   return far;
 }

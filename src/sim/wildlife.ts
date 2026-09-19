@@ -23,6 +23,7 @@
  */
 import { hashInts } from '../core/hash.ts';
 import { rngFor, Subsystem } from '../core/rng.ts';
+import { atan2, cos, hypot, sin } from '../core/libm.ts';
 import type { RoadEdge } from '../world/graph.ts';
 import { TIERS } from '../world/tiers.ts';
 import type { Beach, Point, RoadCurve, Zone } from '../world/types.ts';
@@ -264,8 +265,8 @@ export class AmbientWildlife {
     out.species = animal.species;
     out.x = (behindX + aheadX) / 2;
     out.y = (behindY + aheadY) / 2;
-    out.heading = Math.atan2(aheadY - behindY, aheadX - behindX);
-    out.speed = (Math.hypot(aheadX - behindX, aheadY - behindY) * TICK_RATE) / (2 * HALF_STEP);
+    out.heading = atan2(aheadY - behindY, aheadX - behindX);
+    out.speed = (hypot(aheadX - behindX, aheadY - behindY) * TICK_RATE) / (2 * HALF_STEP);
     const cycles = (time / TICK_RATE) * spec.beat;
     out.cycle = cycles - Math.floor(cycles);
     out.startled = 0;
@@ -281,12 +282,12 @@ export class AmbientWildlife {
 
   private atX(animal: Animal, time: number): number {
     const theta = this.theta(animal, time);
-    return animal.x + animal.radius * (Math.cos(theta) + 0.3 * Math.cos(2 * theta + animal.wander));
+    return animal.x + animal.radius * (cos(theta) + 0.3 * cos(2 * theta + animal.wander));
   }
 
   private atY(animal: Animal, time: number): number {
     const theta = this.theta(animal, time);
-    return animal.y + animal.radius * (Math.sin(theta) - 0.3 * Math.sin(3 * theta + animal.wander));
+    return animal.y + animal.radius * (sin(theta) - 0.3 * sin(3 * theta + animal.wander));
   }
 
   private theta(animal: Animal, time: number): number {
@@ -389,12 +390,12 @@ function giveWay(pose: WildlifePose, animal: Animal, spec: SpeciesSpec, watch: P
   if (spec.shy <= 0) return;
   const dx = pose.x - watch.x;
   const dy = pose.y - watch.y;
-  const distance = Math.hypot(dx, dy);
+  const distance = hypot(dx, dy);
   if (distance >= spec.shy) return;
   const alarm = 1 - distance / spec.shy;
-  const away = distance < 1e-3 ? animal.wander : Math.atan2(dy, dx);
-  pose.x += Math.cos(away) * alarm * spec.shy;
-  pose.y += Math.sin(away) * alarm * spec.shy;
+  const away = distance < 1e-3 ? animal.wander : atan2(dy, dx);
+  pose.x += cos(away) * alarm * spec.shy;
+  pose.y += sin(away) * alarm * spec.shy;
   pose.height += alarm * spec.lift;
   pose.heading = away;
   pose.speed += alarm * spec.speed * 2;

@@ -6,6 +6,7 @@
  * the point, the road height under it and the right hand of the direction of
  * travel. The caller moves the point out into its own lane or track.
  */
+import { hypot } from '../core/libm.ts';
 import type { RoadEdge, RoadGraph } from '../world/graph.ts';
 import type { Point, RoadCurve } from '../world/types.ts';
 import { legAt } from './traffic-timing.ts';
@@ -60,7 +61,7 @@ export class RouteSampler {
     const points = (this.roads[edge.curve] as RoadCurve).points;
     const a = points[edge.start + k * step] as Point;
     const b = points[edge.start + (k + 1) * step] as Point;
-    const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const length = hypot(b.x - a.x, b.y - a.y) || 1;
     out.x = a.x + (b.x - a.x) * f;
     out.y = a.y + (b.y - a.y) * f;
     out.rightX = -(b.y - a.y) / length;
@@ -79,7 +80,7 @@ export class RouteSampler {
     for (let k = 1; k < run.length; k++) {
       const a = points[edge.start + (k - 1) * step] as Point;
       const b = points[edge.start + k * step] as Point;
-      run[k] = (run[k - 1] as number) + Math.hypot(b.x - a.x, b.y - a.y);
+      run[k] = (run[k - 1] as number) + hypot(b.x - a.x, b.y - a.y);
     }
     this.runs[edge.id] = run;
     return run;

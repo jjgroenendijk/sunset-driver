@@ -19,6 +19,7 @@
  *
  * Pure: it reads the record and writes the record, and takes no wall-clock.
  */
+import { hypot } from '../core/libm.ts';
 import { spread } from '../core/math.ts';
 import { genRng, Subsystem } from '../core/rng.ts';
 import { OUTFITS } from './character.ts';
@@ -158,7 +159,7 @@ export function offersOf(state: SimState, place: ShopPlace, homes: readonly Safe
  */
 function brokerOffers(state: SimState, place: ShopPlace, homes: readonly SafehousePlace[]): ShopOffer[] {
   const forSale = homes.filter((home) => ownedAt(state, home.id) === undefined);
-  const away = (home: SafehousePlace): number => Math.hypot(home.x - place.x, home.y - place.y);
+  const away = (home: SafehousePlace): number => hypot(home.x - place.x, home.y - place.y);
   // The ids break a tie, so two doors at the same distance are always listed in
   // the same order and the row a key buys is the row the record replays.
   const sorted = [...forSale].sort((a, b) => away(a) - away(b) || a.id - b.id);

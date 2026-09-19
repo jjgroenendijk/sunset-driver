@@ -24,6 +24,7 @@
 import { clamp, direction } from './math.ts';
 import { type Point, type Region, ringArea } from './ring.ts';
 import { assemble, classify, combine, planarise } from './planar.ts';
+import { cos, hypot, sin } from './libm.ts';
 
 export type { Point, Region } from './ring.ts';
 export {
@@ -61,7 +62,7 @@ export function offsetSides(points: readonly Point[], halfWidth: number): { left
     // normal of the one ahead, because there is no corner to bisect.
     let mx = -(d0.y + d1.y);
     let my = d0.x + d1.x;
-    const len = Math.hypot(mx, my);
+    const len = hypot(mx, my);
     if (len < EPSILON) {
       mx = -d1.y;
       my = d1.x;
@@ -93,11 +94,11 @@ export function strip(points: readonly Point[], halfWidth: number): Point[] {
  * between them still clear it.
  */
 export function disc(x: number, y: number, radius: number, sides: number): Point[] {
-  const reach = radius / Math.cos(Math.PI / sides);
+  const reach = radius / cos(Math.PI / sides);
   const ring: Point[] = [];
   for (let i = 0; i < sides; i++) {
     const angle = (2 * Math.PI * i) / sides;
-    ring.push({ x: x + reach * Math.cos(angle), y: y + reach * Math.sin(angle) });
+    ring.push({ x: x + reach * cos(angle), y: y + reach * sin(angle) });
   }
   return ring;
 }

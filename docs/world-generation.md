@@ -58,6 +58,19 @@ corridors in `docs/corridors.md`.
 - Ask `islandAt(islands, size, coastNoise(seed), x, y)` which island a point stands on.
   `islandIndexAt` reads the raw power cells, and the coastline is cut from those cells after a
   domain warp that moves them by up to 6 % of the map.
+- **Take the approximated `Math` functions from `src/core/libm.ts`, never from `Math`.** ECMAScript
+  calls `sin`, `cos`, `tan`, `atan2`, `log`, `exp`, `pow`, `hypot` and the rest
+  implementation-approximated: an engine may round each of them as it likes, and engines do. Node 26
+  differs from Chromium 141 on `sin` and `cos`, and from Chrome for Testing 153 on a dozen of them.
+  One last-place bit is enough for the road tracer to take a different step, and the city a chunk
+  worker builds in the browser then stops being the city Node builds — issue #243, where the preview
+  drew grass over Node's buildings and laid car park bays a kilometre away. `libm.ts` is arithmetic
+  and `Math.sqrt` only, so it answers the same everywhere. `Math.abs`, `min`, `max`, `floor`,
+  `ceil`, `round`, `trunc`, `sign`, `sqrt` and `imul` are exactly specified and stay as they are.
+  The determinism lint refuses the approximated set in `src/core`, `src/sim` and `src/world`, and
+  `npm run test:world` builds a seed on both sides and fails when the two worlds differ.
+- **A function `libm.ts` does not hold yet is not a reason to reach for `Math`.** Add it there, with
+  the accuracy row in `test/libm.test.ts` that says how far from `Math` it may sit.
 
 ## Beaches and boardwalks
 

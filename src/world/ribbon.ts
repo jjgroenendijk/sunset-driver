@@ -19,6 +19,7 @@
  * own. A chunk boundary cuts a segment at a point both sides compute the same
  * way, so both sides get the same frame and the surfaces meet exactly.
  */
+import { hypot } from '../core/libm.ts';
 import { clamp } from '../core/math.ts';
 import { RoadBeds, type Knot } from './bed.ts';
 import type { JunctionMap } from './junctions.ts';
@@ -79,7 +80,7 @@ export function curveDistances(points: readonly Point[]): Float32Array {
   for (let i = 0; i + 1 < points.length; i++) {
     const a = points[i] as Point;
     const b = points[i + 1] as Point;
-    out[i + 1] = (out[i] as number) + Math.hypot(b.x - a.x, b.y - a.y);
+    out[i + 1] = (out[i] as number) + hypot(b.x - a.x, b.y - a.y);
   }
   return out;
 }
@@ -141,7 +142,7 @@ class CurveRibbon {
       const b = points[i + 1] as Point;
       const dx = b.x - a.x;
       const dy = b.y - a.y;
-      const span = Math.hypot(dx, dy);
+      const span = hypot(dx, dy);
       this.spans[i] = span;
       // Across the road is to the left of travel. A curve that stands still
       // says nothing about direction, so it borrows the segment before it.
@@ -178,7 +179,7 @@ class CurveRibbon {
       }
       const ax = (this.segX[before] as number) + (this.segX[after] as number);
       const ay = (this.segY[before] as number) + (this.segY[after] as number);
-      const length = Math.hypot(ax, ay);
+      const length = hypot(ax, ay);
       this.mitres[i] = 1;
       this.pointX[i] = this.segX[before] as number;
       this.pointY[i] = this.segY[before] as number;

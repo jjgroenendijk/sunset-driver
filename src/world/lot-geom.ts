@@ -8,6 +8,7 @@
  * segment questions a lot asks about ground that is already cut.
  */
 import { pointInRegion, type Point, type Region } from '../core/geom.ts';
+import { hypot } from '../core/libm.ts';
 
 /** Metres of the grid the lot corners are rounded onto, as `src/core/geom.ts` rounds its own. */
 export const MM = 1e-3;
@@ -29,7 +30,7 @@ export function sampleRing(ring: readonly Point[], by: number): Point[] {
   for (let i = 0; i < ring.length; i++) {
     const a = ring[i] as Point;
     const b = ring[(i + 1) % ring.length] as Point;
-    const span = Math.hypot(b.x - a.x, b.y - a.y);
+    const span = hypot(b.x - a.x, b.y - a.y);
     let at = 0;
     while (since + (span - at) >= by) {
       at += by - since;
@@ -48,7 +49,7 @@ export function lengthOf(points: readonly Point[]): number {
   for (let i = 0; i + 1 < points.length; i++) {
     const a = points[i] as Point;
     const b = points[i + 1] as Point;
-    total += Math.hypot(b.x - a.x, b.y - a.y);
+    total += hypot(b.x - a.x, b.y - a.y);
   }
   return total;
 }
@@ -59,7 +60,7 @@ export function pointAlong(points: readonly Point[], distance: number): Point {
   for (let i = 0; i + 1 < points.length; i++) {
     const a = points[i] as Point;
     const b = points[i + 1] as Point;
-    const span = Math.hypot(b.x - a.x, b.y - a.y);
+    const span = hypot(b.x - a.x, b.y - a.y);
     if (left <= span || i + 2 === points.length) {
       const t = span > 0 ? Math.min(1, left / span) : 0;
       return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
@@ -101,7 +102,7 @@ export function rayToBoundary(region: Region, from: Point, way: Point): RayHit {
       const u = (dx * way.y - dy * way.x) / cross;
       if (u < 0 || u > 1) continue;
       room = t;
-      across = Math.abs(cross) / Math.hypot(ex, ey);
+      across = Math.abs(cross) / hypot(ex, ey);
     }
   }
   return { room, across };
@@ -184,7 +185,7 @@ function separates(ring: readonly Point[], other: readonly Point[], daylight: nu
   for (let i = 0; i < ring.length; i++) {
     const a = ring[i] as Point;
     const b = ring[(i + 1) % ring.length] as Point;
-    const span = Math.hypot(b.x - a.x, b.y - a.y);
+    const span = hypot(b.x - a.x, b.y - a.y);
     if (span === 0) continue;
     let apart = true;
     for (const p of other) {

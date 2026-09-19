@@ -24,6 +24,7 @@
  * Pure: it reads the world description and the record, and takes no
  * wall-clock and no unseeded randomness.
  */
+import { hypot } from '../core/libm.ts';
 import { genRng, Subsystem } from '../core/rng.ts';
 import { districtAt, layoutZones, zoneAt, type ZoneLayout } from '../world/districts.ts';
 import type { District, WorldDescription } from '../world/types.ts';
@@ -189,7 +190,7 @@ export class TerritoryMap {
       const sites = this.homes[f] as { x: number; y: number }[];
       if (sites.length === 0) continue;
       let near = Infinity;
-      for (const site of sites) near = Math.min(near, Math.hypot(site.x - middle.x, site.y - middle.y));
+      for (const site of sites) near = Math.min(near, hypot(site.x - middle.x, site.y - middle.y));
       const score = near / (reach * raggedness(this.seed, bx, by, f));
       if (score >= bestScore) continue;
       bestScore = score;

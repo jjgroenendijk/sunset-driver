@@ -22,6 +22,7 @@
  */
 import { hashInts } from '../core/hash.ts';
 import { rngFor, Subsystem } from '../core/rng.ts';
+import { atan2, cos } from '../core/libm.ts';
 import type { RoadGraph, RoadEdge } from '../world/graph.ts';
 import type { JunctionMap } from '../world/junctions.ts';
 import { TIERS } from '../world/tiers.ts';
@@ -50,7 +51,7 @@ export const STOP_BACK = 3.5;
 const MIN_APPROACH = 4;
 
 /** Cosine of the widest angle a road may make with the axis and still be on it. */
-const ON_AXIS = Math.cos(Math.PI / 4);
+const ON_AXIS = cos(Math.PI / 4);
 
 /** The tiers a road across an arterial has to be for the junction to take a light. */
 const SIGNALLED_CROSS: readonly RoadTier[] = ['arterial', 'street'];
@@ -135,7 +136,7 @@ export class TrafficSignals {
           x: mouth.at.x,
           y: mouth.at.y,
           height: heightAt(mouth.curve, mouth.segment, t, mouth.at.x, mouth.at.y),
-          heading: Math.atan2(-mouth.dy, -mouth.dx),
+          heading: atan2(-mouth.dy, -mouth.dx),
           kerb: TIERS[mouth.tier].width / 2,
         });
       }

@@ -11,6 +11,7 @@
  * section 10.7): the forward key walks up the screen whatever the player faces.
  * Heading is the way they face, and it follows the way they walk.
  */
+import { cos, hypot, sin } from '../core/libm.ts';
 import { type CharacterAppearance, resolveAppearance } from './character.ts';
 import { TICK_RATE } from './clock.ts';
 import { headingOf, type VehicleSpec, type VehicleState } from './vehicle.ts';
@@ -231,11 +232,11 @@ export function vehicleGap(player: PlayerState, v: VehicleState, spec: VehicleSp
   const heading = headingOf(v);
   const dx = player.x - v.x;
   const dy = player.y - v.z;
-  const along = dx * Math.cos(heading) + dy * Math.sin(heading);
-  const across = -dx * Math.sin(heading) + dy * Math.cos(heading);
+  const along = dx * cos(heading) + dy * sin(heading);
+  const across = -dx * sin(heading) + dy * cos(heading);
   const overLength = Math.max(0, Math.abs(along) - spec.halfLength);
   const overWidth = Math.max(0, Math.abs(across) - spec.halfWidth);
-  return Math.hypot(overLength, overWidth);
+  return hypot(overLength, overWidth);
 }
 
 /** True when the player stands close enough to a vehicle to open its door. */
@@ -251,7 +252,7 @@ export function reachesVehicle(player: PlayerState, v: VehicleState, spec: Vehic
 export function exitPlace(v: VehicleState, spec: VehicleSpec): Place {
   const heading = headingOf(v);
   const offset = spec.halfWidth + EXIT_CLEARANCE;
-  return { x: v.x + Math.sin(heading) * offset, y: v.z - Math.cos(heading) * offset, heading };
+  return { x: v.x + sin(heading) * offset, y: v.z - cos(heading) * offset, heading };
 }
 
 /**
@@ -262,8 +263,8 @@ export function exitPlace(v: VehicleState, spec: VehicleSpec): Place {
 export function besidePlayer(player: PlayerState, spec: VehicleSpec): Place {
   const offset = spec.halfWidth + EXIT_CLEARANCE;
   return {
-    x: player.x - Math.sin(player.heading) * offset,
-    y: player.y + Math.cos(player.heading) * offset,
+    x: player.x - sin(player.heading) * offset,
+    y: player.y + cos(player.heading) * offset,
     heading: player.heading,
   };
 }

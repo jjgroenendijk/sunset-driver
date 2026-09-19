@@ -21,6 +21,7 @@
  * spec section 16.
  */
 import { rngFor, Subsystem } from '../core/rng.ts';
+import { cos, sin } from '../core/libm.ts';
 import { TICK_RATE } from './clock.ts';
 import type { InputFrame } from './input.ts';
 import type { PlayerState } from './on-foot.ts';
@@ -517,23 +518,23 @@ function fire(
   const rng = rngFor(seed, tick, Subsystem.Weapons, index);
   const cone = spreadOf(spec, loadout.aiming, loadout.recoil);
   loadout.recoil = Math.min(MAX_RECOIL, loadout.recoil + spec.recoil);
-  const muzzleX = player.x + Math.cos(player.heading) * MUZZLE_REACH;
-  const muzzleY = player.y + Math.sin(player.heading) * MUZZLE_REACH;
+  const muzzleX = player.x + cos(player.heading) * MUZZLE_REACH;
+  const muzzleY = player.y + sin(player.heading) * MUZZLE_REACH;
   const muzzleH = player.height + MUZZLE_HEIGHT;
 
   const flight = spec.projectile;
   if (flight !== undefined) {
     const yaw = player.heading + rng.range(-cone, cone);
     const pitch = flight.pitch + rng.range(-cone, cone) * PITCH_SHARE;
-    const flat = Math.cos(pitch) * flight.speed;
+    const flat = cos(pitch) * flight.speed;
     const projectile: ProjectileState = {
       weapon: spec.id,
       x: muzzleX,
       y: muzzleY,
       h: muzzleH,
-      vx: Math.cos(yaw) * flat,
-      vy: Math.sin(yaw) * flat,
-      vh: Math.sin(pitch) * flight.speed,
+      vx: cos(yaw) * flat,
+      vy: sin(yaw) * flat,
+      vh: sin(pitch) * flight.speed,
       thrownTick: tick,
     };
     return { spec, rays: [], projectile, heat, alert, range };
@@ -543,14 +544,14 @@ function fire(
   for (let i = 0; i < spec.pellets; i++) {
     const yaw = player.heading + rng.range(-cone, cone);
     const pitch = rng.range(-cone, cone) * PITCH_SHARE;
-    const flat = Math.cos(pitch);
+    const flat = cos(pitch);
     rays.push({
       x: muzzleX,
       y: muzzleY,
       h: muzzleH,
-      dx: Math.cos(yaw) * flat,
-      dy: Math.sin(yaw) * flat,
-      dh: Math.sin(pitch),
+      dx: cos(yaw) * flat,
+      dy: sin(yaw) * flat,
+      dh: sin(pitch),
     });
   }
   return { spec, rays, projectile: undefined, heat, alert, range };

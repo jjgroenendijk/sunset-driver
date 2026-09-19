@@ -24,6 +24,7 @@
  * over travel time, and it breaks ties by node id, so a route never depends on
  * the order a heap happened to pop equal costs in.
  */
+import { hypot } from '../core/libm.ts';
 import { compareNumbers } from '../core/sort.ts';
 import { findCrossings } from './grade-crossings.ts';
 import { boundsOf, Buckets, INDEX_CELL } from './graph-index.ts';
@@ -200,7 +201,7 @@ export class RoadGraph {
   nearestNode(x: number, y: number): number | undefined {
     const hit = this.nodeIndex.nearest(x, y, (id) => {
       const node = this.nodes[id] as RoadNode;
-      return Math.hypot(node.x - x, node.y - y);
+      return hypot(node.x - x, node.y - y);
     });
     return hit?.id;
   }
@@ -337,7 +338,7 @@ function build(roads: readonly RoadCurve[], nodes: RoadNode[], edges: RoadEdge[]
     for (let i = 1; i <= last; i++) {
       const a = points[i - 1] as Point;
       const b = points[i] as Point;
-      length += Math.hypot(b.x - a.x, b.y - a.y);
+      length += hypot(b.x - a.x, b.y - a.y);
       if (deck[i - 1] === 1) bridge = true;
       if (bore[i - 1] === 1) tunnel = true;
       if (i !== last && (road.nodes[i] ?? -1) < 0) continue;
@@ -388,7 +389,7 @@ function closestOnSegment(px: number, py: number, a: Point, b: Point): { x: numb
   t = t < 0 ? 0 : t > 1 ? 1 : t;
   const x = a.x + vx * t;
   const y = a.y + vy * t;
-  return { x, y, d: Math.hypot(px - x, py - y) };
+  return { x, y, d: hypot(px - x, py - y) };
 }
 
 /**

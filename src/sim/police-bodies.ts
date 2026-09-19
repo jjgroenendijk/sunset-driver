@@ -13,6 +13,7 @@
  * {@link PoliceBodies.unitAt} is how a shot finds out which unit it hit, so
  * `gunfire.ts` can take health off the car the round went into.
  */
+import { cos, sin } from '../core/libm.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { HELICOPTER_HEIGHT, type PoliceUnit } from './police.ts';
 import type { SimState } from './simulation.ts';
@@ -96,9 +97,9 @@ export class PoliceBodies {
     this.spot.z = unit.y;
     // A yaw of minus the heading points local +x along the map heading.
     this.turn.x = 0;
-    this.turn.y = Math.sin(-unit.heading / 2);
+    this.turn.y = sin(-unit.heading / 2);
     this.turn.z = 0;
-    this.turn.w = Math.cos(-unit.heading / 2);
+    this.turn.w = cos(-unit.heading / 2);
   }
 }
 

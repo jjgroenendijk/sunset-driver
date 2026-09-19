@@ -23,6 +23,7 @@
  * Nothing is written until the whole plan holds: {@link settleCrossings}
  * returns the road to add, and the points each road already laid takes.
  */
+import { hypot, sin } from '../core/libm.ts';
 import { CLEARANCE, PLATEAU_MARGIN, raiseAt, raised, type Raise } from './overpass.ts';
 import { alongSegment, PlannedLine, toSegment } from './crossing-line.ts';
 import { junctionAt, type CrossingNetwork } from './crossing-rules.ts';
@@ -189,10 +190,10 @@ export function onGround(line: DraftLine, segment: number): boolean {
 function meetsNear(network: CrossingNetwork, draft: DraftLine, plan: Plan, other: RoadCurve, crossing: Crossing): boolean {
   const reach = footprintHalfWidth(draft.tier) + footprintHalfWidth(other.tier);
   for (const junction of plan.junctions) {
-    if (junction.curve === other.id && Math.hypot(junction.x - crossing.x, junction.y - crossing.y) < reach) return true;
+    if (junction.curve === other.id && hypot(junction.x - crossing.x, junction.y - crossing.y) < reach) return true;
   }
   for (const p of draft.points) {
-    if (Math.hypot(p.x - crossing.x, p.y - crossing.y) >= reach) continue;
+    if (hypot(p.x - crossing.x, p.y - crossing.y) >= reach) continue;
     if (network.curvesAt(p).includes(other.id)) return true;
   }
   return false;
@@ -252,14 +253,14 @@ function raiseFor(network: CrossingNetwork, draft: DraftLine, road: DraftLine, p
   const other = network.curves[crossing.curve] as RoadCurve;
   const c = other.points[crossing.other] as Point;
   const d = other.points[crossing.other + 1] as Point;
-  const sine = Math.abs((b.x - a.x) * (d.y - c.y) - (b.y - a.y) * (d.x - c.x)) / (Math.hypot(b.x - a.x, b.y - a.y) * Math.hypot(d.x - c.x, d.y - c.y));
-  const plateau = footprintHalfWidth(other.tier) / Math.max(sine, Math.sin(MIN_MEET)) + PLATEAU_MARGIN;
+  const sine = Math.abs((b.x - a.x) * (d.y - c.y) - (b.y - a.y) * (d.x - c.x)) / (hypot(b.x - a.x, b.y - a.y) * hypot(d.x - c.x, d.y - c.y));
+  const plateau = footprintHalfWidth(other.tier) / Math.max(sine, sin(MIN_MEET)) + PLATEAU_MARGIN;
   const raise = raiseAt(distances, along, plateau, CLEARANCE / TIERS[draft.tier].maxGrade);
   if (raise === undefined) return undefined;
   const inside = (d: number): boolean => d > raise.from && d < raise.to;
   for (let k = 0; k < road.points.length; k++) {
     const p = road.points[k] as Point;
-    const meets = network.curvesAt(p).length > 0 || plan.junctions.some((j) => Math.hypot(j.x - p.x, j.y - p.y) <= 1e-6);
+    const meets = network.curvesAt(p).length > 0 || plan.junctions.some((j) => hypot(j.x - p.x, j.y - p.y) <= 1e-6);
     if (meets && inside(distances[k] as number)) return undefined;
   }
   for (const segment of [...road.bridges, ...road.tunnels]) {
@@ -276,7 +277,7 @@ function raiseFor(network: CrossingNetwork, draft: DraftLine, road: DraftLine, p
  */
 function alongRoad(draft: DraftLine, road: DraftLine, distances: Float32Array, segment: number, p: Point): number {
   const a = draft.points[segment] as Point;
-  return (distances[road.points.indexOf(a)] as number) + Math.hypot(p.x - a.x, p.y - a.y);
+  return (distances[road.points.indexOf(a)] as number) + hypot(p.x - a.x, p.y - a.y);
 }
 
 /**
@@ -326,7 +327,7 @@ function shorten(network: CrossingNetwork, draft: DraftLine, plan: Plan): DraftL
     const p = draft.points[i] as Point;
     if (network.curvesAt(p).length > 0) return true;
     if (!network.clearAt(p.x, p.y, draft.tier)) return false;
-    return failure === undefined || Math.hypot(p.x - failure.x, p.y - failure.y) >= footprintHalfWidth(draft.tier) + footprintHalfWidth(failure.tier);
+    return failure === undefined || hypot(p.x - failure.x, p.y - failure.y) >= footprintHalfWidth(draft.tier) + footprintHalfWidth(failure.tier);
   };
   let best: DraftLine | undefined;
   let bestLength = 2 * footprintHalfWidth(draft.tier);

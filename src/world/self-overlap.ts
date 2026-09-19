@@ -14,6 +14,7 @@
  * The network refuses a road that overlaps itself (`road-network.ts`), the
  * trace stops before a step that would, and the seed sweep checks every road.
  */
+import { hypot } from '../core/libm.ts';
 import { TIERS } from './tiers.ts';
 import type { Point, RoadTier } from './types.ts';
 
@@ -55,7 +56,7 @@ export function stepOverlaps(points: readonly Point[], next: Point, tier: RoadTi
   if (n === 0) return false;
   const reach = TIERS[tier].width;
   const c = points[n - 1] as Point;
-  const lj = Math.hypot(next.x - c.x, next.y - c.y);
+  const lj = hypot(next.x - c.x, next.y - c.y);
   // Walked back from the step, so the metres between the two segments add up
   // as they go and nothing is allocated: a trace asks this at every step.
   let apart = 0;
@@ -66,7 +67,7 @@ export function stepOverlaps(points: readonly Point[], next: Point, tier: RoadTi
   for (let i = m + n - skip - 2; i >= 0; i--) {
     const a = at(i);
     const b = at(i + 1);
-    const li = Math.hypot(b.x - a.x, b.y - a.y);
+    const li = hypot(b.x - a.x, b.y - a.y);
     apart += li;
     if (overlaps(a, b, c, next, li, lj, apart, reach)) return true;
   }
@@ -96,7 +97,7 @@ function distancesAlong(points: readonly Point[]): number[] {
   for (let i = 0; i + 1 < points.length; i++) {
     const a = points[i] as Point;
     const b = points[i + 1] as Point;
-    along.push((along[i] as number) + Math.hypot(b.x - a.x, b.y - a.y));
+    along.push((along[i] as number) + hypot(b.x - a.x, b.y - a.y));
   }
   return along;
 }

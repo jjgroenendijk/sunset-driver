@@ -15,6 +15,7 @@
  * Pure: the same graph, the same places and the same distance give the same
  * point. Nothing here reads a clock or a random stream.
  */
+import { atan2, hypot } from '../core/libm.ts';
 import type { RoadEdge, RoadGraph } from '../world/graph.ts';
 import { RouteSampler, type RouteLegs, type RoutePoint } from './route-sample.ts';
 import { laneOffset, type TrafficRoads } from './traffic.ts';
@@ -139,7 +140,7 @@ export class UnitRoads {
     const front = this.sampler.sample(legs, this.clamp(legs, here + SMOOTH), this.point);
     const fx = front.x + front.rightX * laneOffset(front.edge, KERB_LANE);
     const fy = front.y + front.rightY * laneOffset(front.edge, KERB_LANE);
-    out.heading = fx === bx && fy === by ? 0 : Math.atan2(fy - by, fx - bx);
+    out.heading = fx === bx && fy === by ? 0 : atan2(fy - by, fx - bx);
     return out;
   }
 
@@ -158,7 +159,7 @@ export class UnitRoads {
     let gap = Infinity;
     for (let along = 0; along <= legs.length; along += NEAR_STEP) {
       const at = this.sampler.sample(legs, this.clamp(legs, along), this.point);
-      const here = Math.hypot(at.x - x, at.y - y);
+      const here = hypot(at.x - x, at.y - y);
       if (here >= gap) continue;
       gap = here;
       best = along;

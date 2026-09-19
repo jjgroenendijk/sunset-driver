@@ -6,6 +6,7 @@
  * decided later sees the places an earlier one took on the same segment, and a
  * plan that is given up leaves every road as it was.
  */
+import { atan2, hypot } from '../core/libm.ts';
 import { MIN_MEET, SAME_PLACE } from './network-clearance.ts';
 import type { Point, RoadTier } from './types.ts';
 
@@ -60,7 +61,7 @@ export class PlannedLine {
     let best: Place | undefined;
     let bestD = reach;
     for (const place of this.sequence()) {
-      const d = Math.hypot(place.x - to.x, place.y - to.y);
+      const d = hypot(place.x - to.x, place.y - to.y);
       if (d > bestD) continue;
       bestD = d;
       best = place;
@@ -70,7 +71,7 @@ export class PlannedLine {
 
   /** The place the line already has at a point, to the rounding. */
   placeAt(p: Point): Place | undefined {
-    return this.sequence().find((q) => Math.hypot(q.x - p.x, q.y - p.y) <= SAME_PLACE);
+    return this.sequence().find((q) => hypot(q.x - p.x, q.y - p.y) <= SAME_PLACE);
   }
 
   /** The polyline with a point at `p` put between `before` and `after`, and the index `before` stands at. */
@@ -92,7 +93,7 @@ export function alongSegment(a: Point, b: Point, p: Point): number {
 /** Metres from a point to a segment. */
 export function toSegment(p: Point, a: Point, b: Point): number {
   const t = alongSegment(a, b, p);
-  return Math.hypot(p.x - a.x - (b.x - a.x) * t, p.y - a.y - (b.y - a.y) * t);
+  return hypot(p.x - a.x - (b.x - a.x) * t, p.y - a.y - (b.y - a.y) * t);
 }
 
 /**
@@ -102,8 +103,8 @@ export function toSegment(p: Point, a: Point, b: Point): number {
 export function shallow(at: Point, first: readonly Point[], second: readonly Point[]): boolean {
   for (const p of first) {
     for (const q of second) {
-      if (Math.hypot(p.x - at.x, p.y - at.y) <= SAME_PLACE || Math.hypot(q.x - at.x, q.y - at.y) <= SAME_PLACE) continue;
-      let turn = Math.abs(Math.atan2(p.y - at.y, p.x - at.x) - Math.atan2(q.y - at.y, q.x - at.x)) % (2 * Math.PI);
+      if (hypot(p.x - at.x, p.y - at.y) <= SAME_PLACE || hypot(q.x - at.x, q.y - at.y) <= SAME_PLACE) continue;
+      let turn = Math.abs(atan2(p.y - at.y, p.x - at.x) - atan2(q.y - at.y, q.x - at.x)) % (2 * Math.PI);
       if (turn > Math.PI) turn = 2 * Math.PI - turn;
       if (turn < MIN_MEET) return true;
     }

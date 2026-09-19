@@ -11,6 +11,7 @@
  * call the crowd of spec section 13.1 will make when it lands.
  */
 import { rngFor, Subsystem } from '../core/rng.ts';
+import { cos, hypot, sin } from '../core/libm.ts';
 import { TICK_RATE } from './clock.ts';
 import type { SimState } from './simulation.ts';
 import {
@@ -110,8 +111,8 @@ export function dropCarried(state: SimState, loadout: LoadoutState, x: number, y
     }
     const angle = (2 * Math.PI * i) / slots.length;
     const reach = slots.length > 1 ? DROP_SPREAD : 0;
-    const px = x + Math.cos(angle) * reach;
-    const py = y + Math.sin(angle) * reach;
+    const px = x + cos(angle) * reach;
+    const py = y + sin(angle) * reach;
     dropped.push(dropWeapon(state, slot.id, slot.loaded, rounds, slot.attachments, px, py, h));
   }
   return dropped;
@@ -146,7 +147,7 @@ export function stepPickups(state: SimState): void {
       continue;
     }
     if (player.driving) continue;
-    if (Math.hypot(pickup.x - player.x, pickup.y - player.y) > PICKUP_REACH) continue;
+    if (hypot(pickup.x - player.x, pickup.y - player.y) > PICKUP_REACH) continue;
     if (Math.abs(pickup.h - player.height) > PICKUP_HEIGHT) continue;
     if (takeWeapon(state.loadout, pickup.weapon, pickup.loaded, pickup.rounds, pickup.attachments)) {
       list.splice(i, 1);

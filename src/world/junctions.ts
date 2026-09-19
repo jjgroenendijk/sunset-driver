@@ -20,6 +20,7 @@
  * in the world description. Pure: the same roads give the same junctions.
  */
 import { compareNumbers } from '../core/sort.ts';
+import { atan2, cos, hypot, sin, tan } from '../core/libm.ts';
 import type { RoadGraph, RoadNode } from './graph.ts';
 import { curveDistances } from './ribbon.ts';
 import { footprintHalfWidth, TIERS } from './tiers.ts';
@@ -42,7 +43,7 @@ const FILLET_STEPS = 4;
  * take no junction: their sections hand over in line, as they do at every point
  * inside a curve.
  */
-const STRAIGHT = Math.cos((10 * Math.PI) / 180);
+const STRAIGHT = cos((10 * Math.PI) / 180);
 
 /** Sine of the angle below which two kerb lines are parallel and have no crossing to find. */
 const PARALLEL = 1e-6;
@@ -200,7 +201,7 @@ function junctionAt(node: RoadNode, roads: readonly RoadCurve[], graph: RoadGrap
       dy: heading.y,
       kerb: spec.width / 2,
       outer: footprintHalfWidth(road.tier),
-      angle: Math.atan2(heading.y, heading.x),
+      angle: atan2(heading.y, heading.x),
       cut: 0,
       straight: straightReach(road.points, edge.start, direction, heading),
     });
@@ -296,7 +297,7 @@ function cornerOf(node: RoadNode, a: Mouth, b: Mouth, limit: number): Corner {
   if (turn <= 0) turn += 2 * Math.PI;
   const convex = turn < Math.PI - 1e-6;
 
-  const reach = (at: Point): number => Math.hypot(at.x - node.x, at.y - node.y);
+  const reach = (at: Point): number => hypot(at.x - node.x, at.y - node.y);
   if (
     kerb === undefined ||
     outer === undefined ||
@@ -328,11 +329,11 @@ function cornerOf(node: RoadNode, a: Mouth, b: Mouth, limit: number): Corner {
     // along each as the radius and the angle between them ask.
     const half = turn / 2;
     let radius = Math.min(FILLET_RADIUS, a.kerb, b.kerb);
-    let tangent = radius / Math.tan(half);
+    let tangent = radius / tan(half);
     const room = limit - Math.max(kerb.s, kerb.u);
     if (tangent > room) {
       tangent = Math.max(0, room);
-      radius = tangent * Math.tan(half);
+      radius = tangent * tan(half);
     }
     if (radius > 1e-3) {
       kerbLine = fillet(kerb.at, a, b, radius, tangent, half);
@@ -369,18 +370,18 @@ function fillet(at: Point, a: Mouth, b: Mouth, radius: number, tangent: number, 
   // as the radius and the half angle put it.
   let bx = a.dx + b.dx;
   let by = a.dy + b.dy;
-  const length = Math.hypot(bx, by);
+  const length = hypot(bx, by);
   bx /= length;
   by /= length;
-  const centre: Point = { x: at.x + (bx * radius) / Math.sin(half), y: at.y + (by * radius) / Math.sin(half) };
-  const start = Math.atan2(from.y - centre.y, from.x - centre.x);
-  let sweep = Math.atan2(to.y - centre.y, to.x - centre.x) - start;
+  const centre: Point = { x: at.x + (bx * radius) / sin(half), y: at.y + (by * radius) / sin(half) };
+  const start = atan2(from.y - centre.y, from.x - centre.x);
+  let sweep = atan2(to.y - centre.y, to.x - centre.x) - start;
   if (sweep > Math.PI) sweep -= 2 * Math.PI;
   if (sweep < -Math.PI) sweep += 2 * Math.PI;
   const out: Point[] = [from];
   for (let k = 1; k < FILLET_STEPS; k++) {
     const angle = start + (sweep * k) / FILLET_STEPS;
-    out.push({ x: centre.x + Math.cos(angle) * radius, y: centre.y + Math.sin(angle) * radius });
+    out.push({ x: centre.x + cos(angle) * radius, y: centre.y + sin(angle) * radius });
   }
   out.push(to);
   return out;
@@ -411,9 +412,9 @@ function straightReach(points: readonly Point[], from: number, direction: 1 | -1
       // long segment that leaves the line at its far end still counts.
       const strayLast = Math.abs(heading.x * (last.y - origin.y) - heading.y * (last.x - origin.x));
       const share = (STRAY - strayLast) / Math.max(1e-9, stray - strayLast);
-      return distance + Math.hypot(p.x - last.x, p.y - last.y) * Math.max(0, Math.min(1, share));
+      return distance + hypot(p.x - last.x, p.y - last.y) * Math.max(0, Math.min(1, share));
     }
-    distance += Math.hypot(p.x - last.x, p.y - last.y);
+    distance += hypot(p.x - last.x, p.y - last.y);
     last = p;
     if (distance >= MAX_CUT) break;
   }
@@ -427,7 +428,7 @@ function headingOf(points: readonly Point[], from: number, direction: 1 | -1): P
     const p = points[i] as Point;
     const dx = p.x - origin.x;
     const dy = p.y - origin.y;
-    const length = Math.hypot(dx, dy);
+    const length = hypot(dx, dy);
     if (length > HEADING_REACH) return { x: dx / length, y: dy / length };
   }
   return undefined;
@@ -443,7 +444,7 @@ export function alongCurve(points: readonly Point[], from: number, direction: 1 
   while (i + direction >= 0 && i + direction < points.length) {
     const a = points[i] as Point;
     const b = points[i + direction] as Point;
-    const span = Math.hypot(b.x - a.x, b.y - a.y);
+    const span = hypot(b.x - a.x, b.y - a.y);
     const segment = direction === 1 ? i : i - 1;
     if (left <= span) {
       const t = span === 0 ? 0 : left / span;

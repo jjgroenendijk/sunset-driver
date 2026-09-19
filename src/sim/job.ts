@@ -19,6 +19,7 @@
  * and no unseeded randomness.
  */
 import { rngFor, Subsystem } from '../core/rng.ts';
+import { cos, hypot, sin } from '../core/libm.ts';
 import { TICKS_PER_HOUR } from './clock.ts';
 import { FACTIONS, factionIndex, type Faction } from './faction.ts';
 import type { GiverPlace } from './giver.ts';
@@ -168,9 +169,9 @@ export function jobSites(
     for (let i = 0; i < SITES_PER_DISTRICT; i++) {
       const angle = turn + (i / SITES_PER_DISTRICT) * Math.PI * 2;
       const away = rng.range(SITE_NEAR, SITE_FAR);
-      const place = snap(district.x + Math.cos(angle) * away, district.y + Math.sin(angle) * away);
+      const place = snap(district.x + cos(angle) * away, district.y + sin(angle) * away);
       if (place === undefined) continue;
-      if (Math.hypot(place.x - district.x, place.y - district.y) > SITE_LIMIT) continue;
+      if (hypot(place.x - district.x, place.y - district.y) > SITE_LIMIT) continue;
       sites.push({ district, x: place.x, y: place.y, heading: place.heading });
     }
   }
@@ -301,7 +302,7 @@ export function rivalOf(faction: number, draw: number): number {
 
 /** The corner nearest a place, counting from the `skip`-th nearest, so two jobs do not share one. */
 export function nearestSite(sites: readonly JobSite[], x: number, y: number, skip: number): JobSite {
-  const order = sites.map((site, i) => ({ i, away: Math.hypot(site.x - x, site.y - y) }));
+  const order = sites.map((site, i) => ({ i, away: hypot(site.x - x, site.y - y) }));
   order.sort((a, b) => a.away - b.away || a.i - b.i);
   return sites[(order[Math.min(skip, order.length - 1)] as { i: number }).i] as JobSite;
 }
@@ -317,7 +318,7 @@ export function furtherSite(sites: readonly JobSite[], from: JobSite, draw: numb
   let bestAway = -1;
   for (let i = 0; i < sites.length; i++) {
     const site = sites[(draw + i) % sites.length] as JobSite;
-    const away = Math.hypot(site.x - from.x, site.y - from.y);
+    const away = hypot(site.x - from.x, site.y - from.y);
     if (away >= MIN_RUN) return site;
     if (away <= bestAway) continue;
     bestAway = away;
@@ -352,7 +353,7 @@ export function runOf(job: MissionJob, from: Place): number {
   let run = 0;
   let at: { x: number; y: number } = from;
   for (const leg of job.legs) {
-    run += Math.hypot(leg.x - at.x, leg.y - at.y);
+    run += hypot(leg.x - at.x, leg.y - at.y);
     at = leg;
   }
   return run;

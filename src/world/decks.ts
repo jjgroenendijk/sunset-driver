@@ -12,6 +12,7 @@
  * The strip is built once for a world and asked about a window at a time, the
  * way the chunks are. Pure: the same world gives the same decks.
  */
+import { hypot } from '../core/libm.ts';
 import { RoadBeds } from './bed.ts';
 import { buildRoadGraph } from './graph.ts';
 import { buildJunctions } from './junctions.ts';
@@ -86,7 +87,7 @@ function spanOf(road: RoadCurve, stretch: { from: number; to: number }, beds: Ro
     const after = i <= stretch.to ? direction(road, i) : undefined;
     const dx = (before?.x ?? 0) + (after?.x ?? 0);
     const dy = (before?.y ?? 0) + (after?.y ?? 0);
-    const length = Math.hypot(dx, dy) || 1;
+    const length = hypot(dx, dy) || 1;
     points.push({
       x: p.x,
       y: p.y,
@@ -117,6 +118,6 @@ function spanOf(road: RoadCurve, stretch: { from: number; to: number }, beds: Ro
 function direction(road: RoadCurve, segment: number): Point {
   const a = road.points[segment] as Point;
   const b = road.points[segment + 1] as Point;
-  const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+  const length = hypot(b.x - a.x, b.y - a.y) || 1;
   return { x: (b.x - a.x) / length, y: (b.y - a.y) / length };
 }

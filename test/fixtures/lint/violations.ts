@@ -22,3 +22,11 @@ export function forInKeys(o: Record<string, number>): number {
 export function random(): number {
   return Math.random();
 }
+
+export function approximated(a: number): number {
+  return Math.sin(a) + Math.hypot(a, 2) + Math.pow(a, 3);
+}
+
+export function exactlySpecified(a: number): number {
+  return Math.abs(a) + Math.floor(a) + Math.sqrt(a) + Math.max(a, 1) + Math.round(a);
+}

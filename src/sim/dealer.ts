@@ -20,6 +20,7 @@
  *
  * Pure: it reads the world's districts and answers with plain numbers.
  */
+import { cos, hypot, sin } from '../core/libm.ts';
 import type { District } from '../world/types.ts';
 import { genRng, Subsystem } from '../core/rng.ts';
 import { FACTIONS, factionForCulture, hostileTo } from './faction.ts';
@@ -85,9 +86,9 @@ export function dealerPlaces(
     for (let i = 0; i < PITCHES; i++) {
       const angle = turn + (i / PITCHES) * Math.PI * 2;
       const away = rng.range(PITCH_NEAR, PITCH_FAR);
-      const place = snap(district.x + Math.cos(angle) * away, district.y + Math.sin(angle) * away);
+      const place = snap(district.x + cos(angle) * away, district.y + sin(angle) * away);
       if (place === undefined) continue;
-      if (Math.hypot(place.x - district.x, place.y - district.y) > PITCH_LIMIT) continue;
+      if (hypot(place.x - district.x, place.y - district.y) > PITCH_LIMIT) continue;
       pitches.push(place);
     }
     if (pitches.length === 0) continue;
@@ -121,7 +122,7 @@ export function dealerAt(dealers: readonly DealerPlace[], state: SimState): numb
   let near = DEALER_REACH;
   for (let i = 0; i < dealers.length; i++) {
     const pitch = pitchOf(dealers[i] as DealerPlace, state.tick);
-    const away = Math.hypot(pitch.x - state.player.x, pitch.y - state.player.y);
+    const away = hypot(pitch.x - state.player.x, pitch.y - state.player.y);
     if (away > near) continue;
     near = away;
     at = i;

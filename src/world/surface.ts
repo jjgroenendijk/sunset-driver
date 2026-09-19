@@ -15,6 +15,7 @@
  * grid the way `carve.ts` files them, which is what keeps that affordable.
  */
 import { pointInRing } from '../core/geom.ts';
+import { atan2, hypot } from '../core/libm.ts';
 import { Heightfield } from './heightfield.ts';
 import { footprintHalfWidth } from './tiers.ts';
 import type { Point, RoadCurve, WorldDescription } from './types.ts';
@@ -113,7 +114,7 @@ export class SurfaceIndex {
     const t = Math.max(0, Math.min(1, (dx * vx + dy * vy) * (this.inv[i] as number)));
     const ox = dx - vx * t;
     const oy = dy - vy * t;
-    return Math.hypot(ox, oy);
+    return hypot(ox, oy);
   }
 
   /** File every segment of one road in each bucket the box around it touches. */
@@ -187,10 +188,10 @@ export function nearestRoadPlace(world: WorldDescription, x: number, y: number):
       const t = Math.max(0, Math.min(1, ((x - a.x) * vx + (y - a.y) * vy) / length2));
       const px = a.x + vx * t;
       const py = a.y + vy * t;
-      const distance = Math.hypot(px - x, py - y);
+      const distance = hypot(px - x, py - y);
       if (distance >= bestDistance) continue;
       bestDistance = distance;
-      best = { x: px, y: py, heading: Math.atan2(vy, vx) };
+      best = { x: px, y: py, heading: atan2(vy, vx) };
     }
   }
   return best;
@@ -223,7 +224,7 @@ export function nearestWaterPlace(world: WorldDescription, x: number, y: number)
     const py = field.originY + iy * field.cellSize;
     for (let ix = 0; ix < field.gridSize; ix++) {
       const px = field.originX + ix * field.cellSize;
-      const distance = Math.hypot(px - x, py - y);
+      const distance = hypot(px - x, py - y);
       if (distance >= bestDistance) continue;
       if (sea - field.at(ix, iy) < BOAT_DEPTH) continue;
       const east = sea - field.sample(px + BOAT_CLEARANCE, py);
@@ -233,7 +234,7 @@ export function nearestWaterPlace(world: WorldDescription, x: number, y: number)
       if (Math.min(east, west, north, south) < BOAT_DEPTH) continue;
       bestDistance = distance;
       // Head for the deepest water within reach, which is away from the shore.
-      best = { x: px, y: py, heading: Math.atan2(north - south, east - west) };
+      best = { x: px, y: py, heading: atan2(north - south, east - west) };
     }
   }
   return best;

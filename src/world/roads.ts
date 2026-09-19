@@ -71,6 +71,7 @@
  *   out or turn away before they fold.
  */
 import { clamp, dist, directionDelta, lerp, wrapAngle } from '../core/math.ts';
+import { atan2, cos, sin } from '../core/libm.ts';
 import { alleyPlan, alleySeeds, type AlleyGround } from './alleys.ts';
 import { ZONE_LOTS } from './buildings.ts';
 import { districtAt, layoutZones, zoneAt } from './districts.ts';
@@ -491,7 +492,7 @@ function seedAlong(
     const b = points[i + 1] as Point;
     const seg = dist(a.x, a.y, b.x, b.y);
     if (seg === 0) continue;
-    const along = Math.atan2(b.y - a.y, b.x - a.x);
+    const along = atan2(b.y - a.y, b.x - a.x);
     // Which family this stretch of the curve belongs to: with the field's major
     // direction, or across it.
     const runsAcross = directionDelta(field.majorAt(b.x, b.y), along) > Math.PI / 4;
@@ -502,8 +503,8 @@ function seedAlong(
     if (run < step || structure) continue;
     run -= step;
     const side = spacingAt(b.x, b.y, runsAcross);
-    const nx = -Math.sin(along) * side;
-    const ny = Math.cos(along) * side;
+    const nx = -sin(along) * side;
+    const ny = cos(along) * side;
     for (const hand of [1, -1]) {
       out.push({ x: b.x + nx * hand, y: b.y + ny * hand, along, parent: curve.id, depth, onParent: false });
     }

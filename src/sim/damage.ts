@@ -26,6 +26,7 @@
  * {@link extinguish} takes a fire the fire engine of spec section 20.3 has
  * reached back to `smoking`. Nothing takes a vehicle out of `burnt`.
  */
+import { hypot } from '../core/libm.ts';
 import { rngFor, Subsystem } from '../core/rng.ts';
 import type { VehicleSpec } from './vehicle.ts';
 
@@ -192,7 +193,7 @@ export function hitVehicle(
   tick: number,
   id = 0,
 ): number {
-  return damageVehicle(damage, spec, severityOf(spec, Math.hypot(along, across, up)), along, across, up, seed, tick, id);
+  return damageVehicle(damage, spec, severityOf(spec, hypot(along, across, up)), along, across, up, seed, tick, id);
 }
 
 /**
@@ -346,7 +347,7 @@ export function spreadFire(vehicles: readonly Burnable[], seed: number, tick: nu
     for (const source of vehicles) {
       if (source.id === target.id || source.damage.stage !== 'burning') continue;
       if (tick - source.damage.litTick < SPREAD_DELAY) continue;
-      if (Math.hypot(source.x - target.x, source.y - target.y) > SPREAD_RADIUS) continue;
+      if (hypot(source.x - target.x, source.y - target.y) > SPREAD_RADIUS) continue;
       reached = true;
       break;
     }

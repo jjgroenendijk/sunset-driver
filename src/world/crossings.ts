@@ -3,6 +3,7 @@
  * crossing between each pair of neighbouring islands, at the narrowest place
  * of the water between them.
  */
+import { atan2, cos, hypot, sin } from '../core/libm.ts';
 import { industryAngle } from './districts.ts';
 import type { Heightfield } from './heightfield.ts';
 import { DRY_MARGIN } from './road-ground.ts';
@@ -42,7 +43,7 @@ const CORE_PULL = 0.25;
 
 /** How a chord ranks against another between the same two islands: less is better. */
 function worth(found: Found): number {
-  return found.span + CORE_PULL * Math.hypot((found.from.x + found.to.x) / 2, (found.from.y + found.to.y) / 2);
+  return found.span + CORE_PULL * hypot((found.from.x + found.to.x) / 2, (found.from.y + found.to.y) / 2);
 }
 
 /**
@@ -150,7 +151,7 @@ export function findCrossings(hf: Heightfield, layout: TerrainLayout, noise: Coa
       const b = islands[j] as Island;
       const pairs: { from: Site; to: Site; d: number }[] = [];
       for (const from of a.cells ?? [a]) {
-        for (const to of b.cells ?? [b]) pairs.push({ from, to, d: Math.hypot(to.x - from.x, to.y - from.y) });
+        for (const to of b.cells ?? [b]) pairs.push({ from, to, d: hypot(to.x - from.x, to.y - from.y) });
       }
       // A pair whose line crosses outside the map searches the sea margin, where no shore stands.
       const half = layout.size / 2 - layout.seaMargin;
@@ -198,7 +199,7 @@ function searchLine(
   const b = islands[j] as Island;
   const dx = end.x - start.x;
   const dy = end.y - start.y;
-  const len = Math.hypot(dx, dy);
+  const len = hypot(dx, dy);
   const ux = dx / len;
   const uy = dy / len;
   // Sample ownership and wetness along the line; the strait is the wet run around the ownership flip.
@@ -240,7 +241,7 @@ function searchLine(
     hf.sample(chord.from.x, chord.from.y) >= SEA_LEVEL && hf.sample(chord.to.x, chord.to.y) >= SEA_LEVEL;
   const found = (chord: { from: Point; to: Point }): Found | undefined => {
     if (!landed(chord)) return undefined;
-    const span = Math.hypot(chord.to.x - chord.from.x, chord.to.y - chord.from.y);
+    const span = hypot(chord.to.x - chord.from.x, chord.to.y - chord.from.y);
     const short = span < layout.size * GRADED_SPAN;
     return { from: chord.from, to: chord.to, span, straddles: reaches(chord), graded: short && (graded.near(chord.from) || graded.near(chord.to)) };
   };
@@ -276,16 +277,16 @@ function narrowestChord(
   reaches: (chord: { from: Point; to: Point }) => boolean,
 ): { from: Point; to: Point } {
   const step = hf.cellSize / 2;
-  const base = Math.atan2(uy, ux);
+  const base = atan2(uy, ux);
   let best: { from: Point; to: Point; span: number; straddles: boolean } | undefined;
   for (let k = -6; k <= 6; k++) {
     const a = base + (k * Math.PI) / 16;
-    const dx = Math.cos(a);
-    const dy = Math.sin(a);
+    const dx = cos(a);
+    const dy = sin(a);
     const back = shoreAlong(hf, mx, my, -dx, -dy, step);
     const fore = shoreAlong(hf, mx, my, dx, dy, step);
     if (!back || !fore) continue;
-    const span = Math.hypot(fore.x - back.x, fore.y - back.y);
+    const span = hypot(fore.x - back.x, fore.y - back.y);
     const straddling = reaches({ from: back, to: fore });
     if (best === undefined || (straddling === best.straddles ? span < best.span : straddling)) {
       best = { from: back, to: fore, span, straddles: straddling };

@@ -6,6 +6,7 @@
  * owned by `physics.ts`: `ground-bodies.ts`, `unit-bodies.ts` and
  * `parked-bodies.ts` are the same idea for the things there are many of.
  */
+import { atan2, hypot } from '../core/libm.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { TICK_RATE } from './clock.ts';
 import type { InputFrame } from './input.ts';
@@ -97,12 +98,12 @@ export function walk(walker: Walker, state: SimState, input: InputFrame, seaLeve
 
   let dx = input.steer;
   let dy = -input.throttle;
-  const length = Math.hypot(dx, dy);
+  const length = hypot(dx, dy);
   if (length > 1) {
     dx /= length;
     dy /= length;
   }
-  if (length > 0) p.heading = turnToward(p.heading, Math.atan2(dy, dx), TURN_RATE / TICK_RATE);
+  if (length > 0) p.heading = turnToward(p.heading, atan2(dy, dx), TURN_RATE / TICK_RATE);
   if (swimming) {
     const float = seaLevel - FLOAT_DEPTH * stature;
     p.vy = swimRise(float - p.height, p.vy);
@@ -121,7 +122,7 @@ export function walk(walker: Walker, state: SimState, input: InputFrame, seaLeve
   // build up a speed the next drop starts from. The sea floor under a swimmer
   // takes nothing back: the water owns their speed up and down.
   if (p.grounded && p.vy < 0 && !swimming) p.vy = 0;
-  p.speed = Math.hypot(moved.x, moved.z) * TICK_RATE;
+  p.speed = hypot(moved.x, moved.z) * TICK_RATE;
 
   const t = walker.body.translation();
   at.x = t.x + moved.x;

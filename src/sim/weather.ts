@@ -22,6 +22,7 @@
  * light, haze and grade, and `src/render/weather-fx.ts` into rain and litter.
  */
 import { hashInts } from '../core/hash.ts';
+import { exp } from '../core/libm.ts';
 import { rngFor, Subsystem, type Rng } from '../core/rng.ts';
 import { clamp, lerp } from '../core/math.ts';
 import { TICKS_PER_HOUR } from './clock.ts';
@@ -136,7 +137,7 @@ export function wetnessAt(seed: number, tick: number): number {
   let total = 0;
   for (let i = 0; i < WET_SAMPLES; i++) {
     const age = i * step;
-    const weight = Math.exp(-age / DRY_TICKS);
+    const weight = exp(-age / DRY_TICKS);
     wet += spellAt(seed, Math.max(0, tick - age)).rain * weight;
     total += weight;
   }

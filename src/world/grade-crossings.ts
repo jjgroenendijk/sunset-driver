@@ -4,6 +4,7 @@
  * on top, and the runs that meet there. `graph.ts` calls this once when it
  * builds the graph and re-exports what callers need.
  */
+import { hypot } from '../core/libm.ts';
 import type { GradeCrossing, RoadEdge } from './graph.ts';
 import { Buckets, INDEX_CELL, type Bounds } from './graph-index.ts';
 import type { Point, RoadCurve, RoadTier } from './types.ts';
@@ -181,5 +182,5 @@ function crossPoint(a: Point, b: Point, c: Point, d: Point): Point | undefined {
 
 /** True when a place stands within {@link END_CLEARANCE} of a road point. */
 function nearPoint(x: number, y: number, p: Point): boolean {
-  return Math.hypot(x - p.x, y - p.y) < END_CLEARANCE;
+  return hypot(x - p.x, y - p.y) < END_CLEARANCE;
 }

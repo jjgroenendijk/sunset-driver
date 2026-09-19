@@ -23,6 +23,7 @@
  *
  * Pure: it reads the record and writes the record, and takes no wall-clock.
  */
+import { hypot } from '../core/libm.ts';
 import { chainFinished, chainLost, chainOffers, createChainState, type ChainState } from './chain.ts';
 import { TICK_RATE } from './clock.ts';
 import { shiftStanding } from './faction.ts';
@@ -176,7 +177,7 @@ function board(state: SimState, input: InputFrame, world: MissionWorld): void {
       state.missions.visit = null;
       return;
     }
-    if (p.driving || Math.hypot(giver.x - p.x, giver.y - p.y) > GIVER_REACH + BOARD_MARGIN) {
+    if (p.driving || hypot(giver.x - p.x, giver.y - p.y) > GIVER_REACH + BOARD_MARGIN) {
       state.missions.visit = null;
       return;
     }
@@ -251,7 +252,7 @@ function carry(state: SimState): void {
 function done(state: SimState, job: MissionJob, leg: JobLeg): boolean {
   const p = state.player;
   const at = p.driving ? { x: state.vehicle.x, y: state.vehicle.z } : { x: p.x, y: p.y };
-  const away = Math.hypot(leg.x - at.x, leg.y - at.y);
+  const away = hypot(leg.x - at.x, leg.y - at.y);
   switch (leg.kind) {
     case 'go':
       return away <= LEG_REACH;

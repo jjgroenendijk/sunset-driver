@@ -20,6 +20,7 @@
  * Pure in the record and the tick: the same save stepped again lights the same
  * cars in the same order.
  */
+import { hypot } from '../core/libm.ts';
 import { rngFor, Subsystem } from '../core/rng.ts';
 import { TICK_RATE } from './clock.ts';
 import {
@@ -105,7 +106,7 @@ export function stepFires(state: SimState): void {
   for (const promoted of state.traffic.promoted as readonly PromotedVehicle[]) {
     const car = promoted.vehicle;
     if (!tickFire(car.damage, state.tick)) continue;
-    hurt(p, blastDamageAt(Math.hypot(atX - car.x, atY - car.z)));
+    hurt(p, blastDamageAt(hypot(atX - car.x, atY - car.z)));
     light(state, car.x, car.z);
   }
   const v = state.vehicle;
@@ -140,13 +141,13 @@ export function light(state: SimState, x: number, y: number): Blaze {
 export function douseFires(state: SimState, x: number, y: number, reach: number): number {
   let out = 0;
   for (const burnable of burnablesOf(state)) {
-    if (Math.hypot(burnable.x - x, burnable.y - y) > reach) continue;
+    if (hypot(burnable.x - x, burnable.y - y) > reach) continue;
     if (extinguish(burnable.damage)) out += 1;
   }
   const blazes = state.fires.blazes;
   for (let i = blazes.length - 1; i >= 0; i--) {
     const blaze = blazes[i] as Blaze;
-    if (Math.hypot(blaze.x - x, blaze.y - y) > reach) continue;
+    if (hypot(blaze.x - x, blaze.y - y) > reach) continue;
     blazes.splice(i, 1);
     out += 1;
   }
@@ -185,7 +186,7 @@ function spreadFromBlazes(state: SimState, burnables: readonly Burnable[]): void
     if (!isFlammable(target.damage)) continue;
     let reached = false;
     for (const blaze of state.fires.blazes) {
-      if (Math.hypot(blaze.x - target.x, blaze.y - target.y) > SPREAD_RADIUS) continue;
+      if (hypot(blaze.x - target.x, blaze.y - target.y) > SPREAD_RADIUS) continue;
       reached = true;
       break;
     }
