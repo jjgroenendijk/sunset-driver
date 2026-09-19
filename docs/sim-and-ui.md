@@ -125,10 +125,9 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
   body, and on foot builds the player's kinematic capsule and leaves the vehicle as a fixed body, so
   a parked car is walked round rather than simulated. `adopt` builds whichever the record asks for,
   and `player.driving` is what it reads.
-- The player walks in the map's own axes, because the camera never turns: the forward axis walks
-  toward `-y`, which is up the screen, and the steering axis across it. They then turn to face the
-  way they walk. Gravity is integrated in `walk` rather than by Rapier, since a kinematic body is
-  moved and never pushed.
+- The player walks in the map's own axes, turned by the camera's heading (`docs/camera.md`): at
+  heading 0, forward walks toward `-y`, up the screen. They turn to face the way they walk. Gravity
+  is integrated in `walk` rather than by Rapier, since a kinematic body is moved and never pushed.
 - The input frame carries a key as a level, not a press, so `player.held` keeps last tick's interact
   and jump: a door that opened on the level would open sixty times a second. Health regenerates only
   through `heal(player, source)`; nothing heals on its own (spec section 11.5).

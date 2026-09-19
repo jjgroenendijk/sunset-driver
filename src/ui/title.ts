@@ -3,7 +3,7 @@ import type { WorldSource } from '../render/world-source.ts';
 import type { WorldDescription } from '../world/types.ts';
 import { MenuPages } from './menu-pages.ts';
 import type { MenuSettings } from './settings.ts';
-import { buildCameraPage, buildGorePage } from './title-camera.ts';
+import { buildCameraPage, buildGorePage, buildViewPage } from './title-camera.ts';
 import { buildControlsPage } from './title-controls.ts';
 import { columnsOf, menuList, type MenuItem, page } from './title-parts.ts';
 import { buildGraphicsPage } from './title-graphics.ts';
@@ -34,7 +34,7 @@ export interface TitleChoice {
 /** The numerals the main page counts its items with, however many it has. */
 const NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI'];
 
-const PAGE_NAMES = ['main', 'setup', 'settings', 'controls', 'graphics', 'camera', 'gore'] as const;
+const PAGE_NAMES = ['main', 'setup', 'settings', 'controls', 'graphics', 'view', 'camera', 'gore'] as const;
 type PageName = (typeof PAGE_NAMES)[number];
 
 /** The page Escape and Back go to from each page. */
@@ -44,12 +44,13 @@ const PARENT: Record<PageName, PageName | null> = {
   settings: 'main',
   controls: 'main',
   graphics: 'main',
+  view: 'settings',
   camera: 'settings',
   gore: 'settings',
 };
 
 /** The pages that open as a column beside their parent. New game takes the whole screen. */
-const COLUMNS: ReadonlySet<PageName> = new Set(['settings', 'controls', 'graphics', 'camera', 'gore']);
+const COLUMNS: ReadonlySet<PageName> = new Set(['settings', 'controls', 'graphics', 'view', 'camera', 'gore']);
 
 /**
  * The title screen of spec section 12, laid out as a game's main menu. The
@@ -108,6 +109,7 @@ export class TitleScreen {
       settings: buildSettingsPage(settings, () => this.back()),
       controls: buildControlsPage(() => this.back(), touch),
       graphics: buildGraphicsPage(settings.graphics, () => this.back()),
+      view: buildViewPage(settings.view, () => this.back()),
       camera: buildCameraPage(settings.buildingView, () => this.back()),
       gore: buildGorePage(settings.gore, () => this.back()),
     };

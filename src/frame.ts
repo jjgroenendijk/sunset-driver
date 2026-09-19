@@ -8,7 +8,7 @@
  * The title screen's frame is not here: it draws the preview scene alone.
  */
 import type { GameAudio } from './audio/game-audio.ts';
-import { PULL_MARGIN, type FollowCamera, type RoofHeight } from './render/camera.ts';
+import { PULL_MARGIN, TURN_MARGIN, type FollowCamera, type RoofHeight } from './render/camera.ts';
 import type { FixedStepClock } from './sim/clock.ts';
 import { EMPTY_INPUT, type InputFrame } from './sim/input.ts';
 import { stationAt } from './sim/metro.ts';
@@ -74,6 +74,8 @@ export class SessionFrame {
 
   /** The roof over a ground point, which the camera pulls back over when the player asks it to. */
   private readonly roofTop: RoofHeight = (x, z) => this.session?.world.roofOver(x, z, PULL_MARGIN)?.top;
+  /** The roof over a ground point, which the camera turns to see past when the player asks it to. */
+  private readonly sightTop: RoofHeight = (x, z) => this.session?.world.roofOver(x, z, TURN_MARGIN)?.top;
 
   /** Step the session by the time the last frame took, and draw it. */
   draw(session: Session, elapsed: number): void {
@@ -237,9 +239,21 @@ export class SessionFrame {
       session.world.update(p.x, p.y);
       // A building between the camera and the player (spec section 10.7):
       // it is cut to a ghost, and with Pull back the camera first moves over
-      // the roofs. Off does neither.
+      // the roofs, or with Turn swings round the player to see past them. Off
+      // does none of it. The chase views stand too close to need either move.
       this.kick(session);
-      camera.update(elapsed / 1000, p, settings.buildingView === 'pull-back' ? this.roofTop : undefined);
+      const view = camera.view;
+      camera.update(elapsed / 1000, p, {
+        view: settings.view,
+        pull: settings.buildingView === 'pull-back' ? this.roofTop : undefined,
+        turn: settings.buildingView === 'turn' ? this.sightTop : undefined,
+      });
+      // A chase view has a near plane of its own, and the sun's cascades are
+      // cut to the camera's frustum, so they are refitted.
+      if (camera.view !== view) session.world.resize();
+      // On foot the keys walk relative to the view, so up the screen is
+      // forward whichever way the camera faces. A car steers as it did.
+      keyboard.turn = session.state.player.driving ? 0 : camera.heading;
       session.world.cutaway.enabled = settings.buildingView !== 'whole';
       session.world.seeThrough(camera.camera.position, p.x, p.height, p.y, inShop !== undefined);
     }

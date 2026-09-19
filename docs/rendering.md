@@ -378,8 +378,8 @@ lamps and the lights a vehicle carries — in `docs/lighting.md`.
 - TSL's chained `mix` takes the receiver as the factor: `a.mix(b, t)` compiles to `mix(b, t, a)`. It
   reads like a blend and is not one. Use the free `mix(a, b, t)` from `tsl.ts`. `smoothstep` chains
   the same way.
-- The camera of spec section 10.7 looks down and never sees the sky, so the dome is drawn after the
-  ground and the buildings and the depth buffer throws most of it away. It is still worth its draw:
+- The top-down camera (`docs/camera.md`) never sees the sky, so the dome is drawn after the ground
+  and the buildings and the depth buffer throws most of it away. It is still worth its draw:
   the water mirror looks up, so the sky is what the sea reflects.
 
 ## The preview page and the ground

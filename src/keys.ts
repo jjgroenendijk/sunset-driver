@@ -8,12 +8,14 @@
  * boot. `ui/controls.ts` lists them for the player.
  */
 import type { FollowCamera } from './render/camera.ts';
+import { nextView, type CameraView } from './render/camera-view.ts';
 import { commitCrime } from './sim/police.ts';
 import type { SimState } from './sim/simulation.ts';
 import { FREE_CAMERA_KEY, type FreeCameraControls } from './ui/free-camera.ts';
 import { DEV_INFO_KEY } from './ui/hud.ts';
 import { MAP_CENTRE_KEY, MAP_KEY, MAP_LEGEND_KEY, type MapScreen } from './ui/map-screen.ts';
 import type { Minimap } from './ui/minimap.ts';
+import type { Choice } from './ui/settings.ts';
 import { PAUSE_KEY, type PauseMenu } from './ui/pause.ts';
 import { PICKER_KEY, type VehiclePicker } from './ui/vehicle-picker.ts';
 import { WEAPON_PICKER_KEY, type WeaponPicker } from './ui/weapon-picker.ts';
@@ -29,6 +31,9 @@ const ARREST_KEY = 'KeyB';
  */
 const CRIME_KEY = 'KeyL';
 
+/** The key that steps the camera through its views (spec section 10.7). */
+export const VIEW_KEY = 'KeyT';
+
 /** What the keys open, toggle and write. */
 export interface KeyTargets {
   state: SimState;
@@ -39,11 +44,13 @@ export interface KeyTargets {
   weapons: WeaponPicker;
   free: FreeCameraControls;
   camera: FollowCamera;
+  /** The view setting, which the view key steps and the menus also write. */
+  view: Choice<CameraView>;
 }
 
 /** Listen on the window for the keys and the minimap clicks of a session. */
 export function listenForKeys(target: Window, keys: KeyTargets): void {
-  const { state, pause, map, minimap, picker, weapons, free, camera } = keys;
+  const { state, pause, map, minimap, picker, weapons, free, camera, view } = keys;
   // A click on the minimap sets a waypoint too, so a player driving does not
   // have to stop and open the full map to mark where they are going.
   target.addEventListener('pointerdown', (event) => {
@@ -71,6 +78,7 @@ export function listenForKeys(target: Window, keys: KeyTargets): void {
     if (event.code === ARREST_KEY) state.arrested = true;
     if (event.code === CRIME_KEY) commitCrime(state, 'assault');
     if (event.code === MAP_KEY) map.toggle();
+    if (event.code === VIEW_KEY && !map.open) view.choose(nextView(view.current()));
     if (event.code === 'Escape' && map.open) map.toggle();
     if (map.open && (event.code === 'Equal' || event.code === 'NumpadAdd')) map.zoom(-1);
     if (map.open && (event.code === 'Minus' || event.code === 'NumpadSubtract')) map.zoom(1);

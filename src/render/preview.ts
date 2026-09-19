@@ -55,7 +55,8 @@ import {
   type VehicleState,
 } from '../sim/vehicle.ts';
 import { SurfaceIndex, type Surface } from '../world/surface.ts';
-import { PULL_MARGIN } from './camera.ts';
+import { PULL_MARGIN, TURN_MARGIN } from './camera.ts';
+import { CAMERA_VIEWS } from './camera-view.ts';
 import { poseFor } from './character-pose.ts';
 import { tickAtHour } from './daylight.ts';
 import { FULL_TIER, QUALITY_TIERS } from './quality.ts';
@@ -86,10 +87,15 @@ export interface PreviewRequest {
   quality?: string;
   /**
    * What a building between the camera and the player does (spec section
-   * 10.7): `see-through`, `pull-back` or `whole`. Left out, it is see-through,
-   * as the game starts.
+   * 10.7): `see-through`, `pull-back`, `turn` or `whole`. Left out, it is
+   * see-through, as the game starts.
    */
   buildings?: string;
+  /**
+   * The view to draw from (spec section 10.7): `top-down`, `third-person` or
+   * `first-person`. Left out, it is top down, as the game starts.
+   */
+  view?: string;
   /**
    * The class of vehicle to stand the player in, by name (spec section 11.3).
    * Left out, or named something the roster does not hold, it is the class a
@@ -381,8 +387,15 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   // The first update snaps the camera onto its target rather than easing in,
   // so one call is a settled frame and no render time has to be simulated.
   const view = request.buildings ?? 'see-through';
-  const roofs = view === 'pull-back' ? (px: number, pz: number) => scene.roofOver(px, pz, PULL_MARGIN)?.top : undefined;
-  camera.update(0, { x, y, height: ground, heading, speed }, roofs);
+  const pull = view === 'pull-back' ? (px: number, pz: number) => scene.roofOver(px, pz, PULL_MARGIN)?.top : undefined;
+  const turn = view === 'turn' ? (px: number, pz: number) => scene.roofOver(px, pz, TURN_MARGIN)?.top : undefined;
+  const look = CAMERA_VIEWS.find((choice) => choice.value === request.view)?.value ?? 'top-down';
+  // Top down looks at the vehicle, as it always has; a chase view follows
+  // whoever the player is, in the car or beside it.
+  const eye = look === 'top-down' ? { x, y, heading } : stand;
+  const driving = request.onFoot !== true && shop === undefined;
+  const on = { x: eye.x, y: eye.y, height: scene.heightAt(eye.x, eye.y), heading: eye.heading, speed, driving };
+  camera.update(0, on, { view: look, pull, turn });
   scene.cutaway.enabled = view !== 'whole';
   scene.seeThrough(camera.camera.position, stand.x, scene.heightAt(stand.x, stand.y), stand.y, shop !== undefined);
 

@@ -49,7 +49,7 @@ describe('the camera over roofs', () => {
 
   it('stands where it always does over open ground', () => {
     const open = new FollowCamera(1.7);
-    open.update(0, REST, () => undefined);
+    open.update(0, REST, { pull: () => undefined });
     const plain = new FollowCamera(1.7);
     plain.update(0, REST);
     expect(open.camera.position.distanceTo(plain.camera.position)).toBeCloseTo(0, 9);
@@ -59,7 +59,7 @@ describe('the camera over roofs', () => {
     const tower = roofOf(0, 25, 40, 30, 120);
     const roofs = (x: number, z: number): number | undefined => roofOver([tower], x, z)?.top;
     const camera = new FollowCamera(1.7);
-    camera.update(0, REST, roofs);
+    camera.update(0, REST, { pull: roofs });
     const at = camera.camera.position;
     expect(at.y).toBeGreaterThan(120);
     // Only the distance changed: the camera still looks at the player.
