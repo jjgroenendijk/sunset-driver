@@ -77,8 +77,8 @@ function deckAcross(): DeckSpan[] {
       tier: 'street',
       halfWidth,
       points: [
-        { x: -CHASM, y: 0, height: 0, acrossX: 0, acrossY: 1 },
-        { x: CHASM, y: 0, height: 0, acrossX: 0, acrossY: 1 },
+        { x: -CHASM, y: 0, height: 0, bank: 0, acrossX: 0, acrossY: 1 },
+        { x: CHASM, y: 0, height: 0, bank: 0, acrossX: 0, acrossY: 1 },
       ],
       minX: -CHASM - halfWidth,
       minY: -halfWidth,

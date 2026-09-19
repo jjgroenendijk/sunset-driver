@@ -17,7 +17,7 @@
  */
 import { atan2, hypot } from '../core/libm.ts';
 import type { RoadEdge, RoadGraph } from '../world/graph.ts';
-import { RouteSampler, type RouteLegs, type RoutePoint } from './route-sample.ts';
+import { heightOff, RouteSampler, type RouteLegs, type RoutePoint } from './route-sample.ts';
 import { laneOffset, type TrafficRoads } from './traffic.ts';
 
 /** Where a unit is on the ground: the lane point, the road height and the way it faces. */
@@ -47,11 +47,11 @@ export class UnitRoads {
   private readonly sampler: RouteSampler;
   /** The legs of the route last asked about, keyed by the unit that drives it. */
   private readonly legs = new Map<number, { edges: readonly number[]; legs: RouteLegs }>();
-  private readonly point: RoutePoint = { x: 0, y: 0, height: 0, rightX: 0, rightY: 0, edge: undefined as unknown as RoadEdge };
+  private readonly point: RoutePoint = { x: 0, y: 0, height: 0, tiltX: 0, tiltY: 0, rightX: 0, rightY: 0, edge: undefined as unknown as RoadEdge };
 
   constructor(roads: TrafficRoads) {
     this.graph = roads.graph;
-    this.sampler = new RouteSampler(roads.roads, roads.graph, roads.heightAt);
+    this.sampler = new RouteSampler(roads.roads, roads.graph, roads.heightAt, roads.tiltAt);
   }
 
   /** The edge nearest a place, or -1 where the world has no roads at all. */
@@ -131,7 +131,7 @@ export class UnitRoads {
     const offset = laneOffset(at.edge, KERB_LANE);
     out.x = at.x + at.rightX * offset;
     out.y = at.y + at.rightY * offset;
-    out.height = at.height;
+    out.height = heightOff(at, offset);
     // The heading is read from a point behind to a point ahead, so a car rounds
     // a corner rather than snapping round at the node.
     const back = this.sampler.sample(legs, this.clamp(legs, here - SMOOTH), this.point);

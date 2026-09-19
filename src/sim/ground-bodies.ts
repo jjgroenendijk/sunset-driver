@@ -241,11 +241,14 @@ export class GroundBodies {
       const p = span.points[i] as DeckSpan['points'][number];
       const ox = p.acrossX * span.halfWidth;
       const oy = p.acrossY * span.halfWidth;
+      // The deck tilts across as the drawn road does inside a junction's mouth.
+      const low = p.height - p.bank * span.halfWidth;
+      const high = p.height + p.bank * span.halfWidth;
       const corners = [
-        [p.x - ox, p.height + PARAPET_HEIGHT, p.y - oy],
-        [p.x - ox, p.height, p.y - oy],
-        [p.x + ox, p.height, p.y + oy],
-        [p.x + ox, p.height + PARAPET_HEIGHT, p.y + oy],
+        [p.x - ox, low + PARAPET_HEIGHT, p.y - oy],
+        [p.x - ox, low, p.y - oy],
+        [p.x + ox, high, p.y + oy],
+        [p.x + ox, high + PARAPET_HEIGHT, p.y + oy],
       ];
       for (let c = 0; c < 4; c++) {
         const corner = corners[c] as number[];

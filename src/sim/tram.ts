@@ -24,7 +24,7 @@ import { TICK_RATE } from './clock.ts';
 import { lookOf, type PedestrianLook } from './pedestrian-look.ts';
 import { PAVEMENT_RISE, pavementOffset } from './pedestrian-route.ts';
 import type { PedestrianPose } from './pedestrians.ts';
-import { RouteSampler, type RoutePoint } from './route-sample.ts';
+import { heightOff, RouteSampler, type RoutePoint } from './route-sample.ts';
 import { SIGNAL_CYCLE, type TrafficSignals } from './signals.ts';
 import type { AmbientPose, TrafficRoads } from './traffic.ts';
 import { legAt, type Tour } from './traffic-timing.ts';
@@ -105,8 +105,8 @@ export class TramLine {
   /** `signals` are the lights the traffic keeps to, which the tram keeps to as well. */
   constructor(seed: number, roads: TrafficRoads, tram: TramDescription, districts: readonly Pick<District, 'id' | 'zone'>[], signals?: TrafficSignals) {
     const graph = roads.graph;
-    this.sampler = new RouteSampler(roads.roads, graph, roads.heightAt);
-    const blank = (): RoutePoint => ({ x: 0, y: 0, height: 0, rightX: 0, rightY: 0, edge: graph.edges[0] as RoadEdge });
+    this.sampler = new RouteSampler(roads.roads, graph, roads.heightAt, roads.tiltAt);
+    const blank = (): RoutePoint => ({ x: 0, y: 0, height: 0, tiltX: 0, tiltY: 0, rightX: 0, rightY: 0, edge: graph.edges[0] as RoadEdge });
     this.point = blank();
     this.behind = blank();
     this.ahead = blank();
@@ -221,6 +221,7 @@ export class TramLine {
   /** The point of the track a distance round the loop. */
   private track(distance: number, out: RoutePoint): RoutePoint {
     const at = this.sampler.sample(this.tour as Tour, distance, out);
+    at.height = heightOff(at, TRAM_TRACK);
     at.x += at.rightX * TRAM_TRACK;
     at.y += at.rightY * TRAM_TRACK;
     return at;
