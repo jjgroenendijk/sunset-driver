@@ -442,7 +442,7 @@ async function boot(): Promise<void> {
   // preview's world is the session's world.
   const loading = new LoadingScreen(document.body, choice.seed);
   loading.say('Drawing the city plan', 0);
-  const state = createSimState(seedFromString(choice.seed), choice.character);
+  const state = createSimState(seedFromString(choice.seed), choice.character, undefined, choice.money);
   let description: WorldDescription;
   try {
     description = choice.world ?? (await worlds.get(state.seed));

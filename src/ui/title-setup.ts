@@ -1,4 +1,4 @@
-import { randomSeedString, seedFromString } from '../core/seed.ts';
+import { randomSeedString, readSeedCode, seedFromString } from '../core/seed.ts';
 import {
   CHARACTER_CHOICES,
   type CharacterChoiceKey,
@@ -17,6 +17,8 @@ export interface SetupChoice {
   seed: string;
   character: CharacterAppearance;
   world: WorldDescription | null;
+  /** The starting money the money code set, or undefined for the usual amount. */
+  money?: number;
 }
 
 /**
@@ -32,6 +34,8 @@ export class NewGamePage {
   private readonly valueLabels: HTMLElement[] = [];
   private readonly onPreview: (appearance: CharacterAppearance) => void;
   private character: CharacterAppearance;
+  /** Set once the money code is typed, and kept for the rest of the page. */
+  private money: number | undefined;
 
   constructor(
     seed: string,
@@ -71,6 +75,7 @@ export class NewGamePage {
       seed,
       character: this.character,
       world: world && world.seed === seedFromString(seed) ? world : null,
+      money: this.money,
     };
   }
 
@@ -169,9 +174,18 @@ export class NewGamePage {
     }
   }
 
-  /** The seed in the box, or a fresh one where the box was left empty. */
+  /**
+   * The seed in the box, or a fresh one where the box was left empty. The
+   * money code is swapped in the box for the random seed it stands for.
+   */
   private seed(): string {
     const typed = this.seedInput.value.trim();
+    const code = readSeedCode(typed);
+    if (code.money !== undefined) {
+      this.money = code.money;
+      this.seedInput.value = code.seed;
+      return code.seed;
+    }
     if (typed.length > 0) return typed;
     const fresh = randomSeedString();
     this.seedInput.value = fresh;

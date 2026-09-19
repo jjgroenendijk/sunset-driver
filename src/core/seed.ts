@@ -23,4 +23,19 @@ export function randomSeedString(): string {
   return ((bytes[0] ?? 0) >>> 0).toString(36);
 }
 
+/** The word that, typed as a seed, starts the session rich instead of naming a city. */
+export const MONEY_CODE = 'money';
+/** What the money code starts the player with: a billion. */
+export const MONEY_CODE_FUNDS = 1_000_000_000;
+
+/**
+ * Read what the player typed into the seed box. The money code is not a seed:
+ * it stands for a fresh random seed, and it sets the starting money. Anything
+ * else is the seed itself, with no change to the money.
+ */
+export function readSeedCode(typed: string, fresh: () => string = randomSeedString): { seed: string; money?: number } {
+  if (typed.trim().toLowerCase() === MONEY_CODE) return { seed: fresh(), money: MONEY_CODE_FUNDS };
+  return { seed: typed };
+}
+
 export { seedFromString };

@@ -26,6 +26,8 @@ export interface TitleChoice {
    * keys the game is driven with.
    */
   explore: boolean;
+  /** The starting money the money code set on the seed box, if it was typed. */
+  money?: number;
 }
 
 /** The numerals the main page counts its items with, however many it has. */
