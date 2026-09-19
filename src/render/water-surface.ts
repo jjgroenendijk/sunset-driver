@@ -20,6 +20,11 @@
  * the frame and the mirror with it, and a frame inland pays nothing for the sea
  * it cannot see.
  *
+ * Where water is on screen the pass is still the frame's dearest, so it draws
+ * less of the scene than the view does: the mirror's camera is pointed at the
+ * layer of `mirror.ts`, which carries the sky, the buildings, the lamps and the
+ * lights, and not the ground the shore lies flat against.
+ *
  * The colour under the mirror is lit here rather than by the addon, which adds
  * its own colour to the mirror unlit. The mirror shows the sky dome of
  * `sky.ts`, which answers in real sky brightness. An unlit colour is lost under
@@ -43,6 +48,7 @@ import {
 import { WaterMesh } from 'three/examples/jsm/objects/WaterMesh.js';
 import type { WorldDescription } from '../world/types.ts';
 import type { Daylight } from './daylight.ts';
+import { pointAtMirror } from './mirror.ts';
 import { SHADOW_DISTANCE } from './sky.ts';
 import {
   attribute,
@@ -280,6 +286,10 @@ function drawWater(mesh: WaterMesh, waves: DataTexture): { resolutionScale: numb
   mesh.material.receivedShadowPositionNode = positionWorld.add(distortion);
   mirror.uvNode = mirror.uvNode.add(distortion);
   mirror.reflector.resolutionScale = REFLECTION_SCALE;
+  // The mirror draws the layer of `mirror.ts` and nothing else, which is what
+  // holds the second pass to the sky and to what stands tall enough to be seen
+  // in the water.
+  pointAtMirror(mirror.reflector);
   // The mirror takes its plane from the mesh's own facing, through the place of
   // this target in the world.
   mesh.add(mirror.target);

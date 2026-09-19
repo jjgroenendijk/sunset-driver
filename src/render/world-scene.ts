@@ -42,6 +42,7 @@ import { BuildingCutaway, CAMERA_ROOF_MARGIN } from './cutaway.ts';
 import { cellGrid } from './cells.ts';
 import { CharacterModel } from './character.ts';
 import { MeleeFx } from './melee-fx.ts';
+import { reflected, reflectLights } from './mirror.ts';
 import type { MeleeHit } from '../sim/melee.ts';
 
 /** What the damage of a frame is drawn from, beyond the vehicle itself. */
@@ -92,6 +93,7 @@ import { createWaterSurface, type WaterSurface } from './water-surface.ts';
 
 /** Milliseconds {@link WorldScene.settle} waits before giving up on the workers. */
 const SETTLE_TIMEOUT_MS = 120_000;
+
 
 /** One chunk, as the scene holds it. */
 interface ChunkTile {
@@ -221,6 +223,9 @@ export class WorldScene {
     this.scene.add(this.fx.group);
     this.scene.add(this.melee.group);
     this.scene.add(this.skid.mesh);
+    // Every light stands by now and no pool ever grows, so this is where the
+    // water's mirror is handed the whole of the lighting (`mirror.ts`).
+    reflectLights(this.scene);
 
     // A session starts at 08:00, so the first frame is already lit.
     this.light = daylightAt(START_TICK);
@@ -744,7 +749,8 @@ export class WorldScene {
    * takes the sun's shadow, and casts one unless its piece says otherwise: the
    * outline hulls stand over the roofs they rim and would shade them
    * (`buildings.ts`). The road markings are lines painted on the surface and
-   * do neither.
+   * do neither. `mirrored` is the same answer for the water's mirror, which
+   * draws what stands tall and leaves the ground to the view (`mirror.ts`).
    */
   private add(tile: ChunkTile, part: TilePart): void {
     const casts = part.castsShadow ?? true;
@@ -753,6 +759,7 @@ export class WorldScene {
         object.castShadow = casts;
         object.receiveShadow = true;
       }
+      if (part.mirrored === true) reflected(object);
       this.scene.add(object);
     }
     tile.parts.push(part);
