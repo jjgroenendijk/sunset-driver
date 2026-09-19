@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { aimPoint, aimYaw, SNAP_RADIUS, SNAP_RADIUS_AIMED } from '../src/sim/aim.ts';
+import { aimPoint, aimYaw, SNAP_RADIUS, SNAP_RADIUS_AIMED, STICK_RADIUS } from '../src/sim/aim.ts';
 import { EMPTY_INPUT, type InputFrame } from '../src/sim/input.ts';
 import { initPhysics } from '../src/sim/physics.ts';
 import { createSimState, type SimState } from '../src/sim/simulation.ts';
@@ -45,6 +45,22 @@ describe('mouse aim', () => {
     // Aiming reaches further, which is what holding the right button buys.
     expect(far).toBeLessThan(SNAP_RADIUS_AIMED);
     expect(aimPoint(state, pointing(20, -far, { aim: true }))?.snapped).toBe(true);
+  });
+
+  it('sticks softly while aiming: part of the way further out, and not at all past the stick radius', () => {
+    const state = createSimState(1);
+    enforcerAt(state, 20, 0);
+    const near = aimPoint(state, pointing(20, -(SNAP_RADIUS_AIMED + 1), { aim: true }));
+    const far = aimPoint(state, pointing(20, -(STICK_RADIUS - 1), { aim: true }));
+    // Pulled toward the target, not onto it, and less the further out it is.
+    expect(near?.snapped).toBe(false);
+    expect(far?.snapped).toBe(false);
+    const share = (point: typeof near, from: number): number => 1 - Math.abs(point?.y ?? 0) / from;
+    expect(share(near, SNAP_RADIUS_AIMED + 1)).toBeGreaterThan(share(far, STICK_RADIUS - 1));
+    expect(share(far, STICK_RADIUS - 1)).toBeGreaterThan(0);
+    expect(aimPoint(state, pointing(20, -(STICK_RADIUS + 0.1), { aim: true }))?.y).toBe(-(STICK_RADIUS + 0.1));
+    // From the hip there is no soft pull.
+    expect(aimPoint(state, pointing(20, -(SNAP_RADIUS_AIMED + 1)))?.y).toBe(-(SNAP_RADIUS_AIMED + 1));
   });
 
   it('never pulls the aim onto somebody already down', () => {
