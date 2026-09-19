@@ -256,8 +256,10 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
   a street would stop at the corner and hose nothing. `planBeside` drives the run of road the scene
   stands on, and `nearestAlong` says where along it to pull up. A unit's `stop` is that distance,
   and reaching it is what counts as arriving.
-- A fire engine that has arrived calls `douseFires` every tick it stands there, so a fire that
-  reaches the next car along while it is working is put out too.
+- A fire engine that has arrived calls `douseFires` every tick its crew have water on, so a fire
+  that reaches the next car along while it is working is put out too. `hosing` says when: after
+  `DEPLOY_TICKS`, while the crew run the hose out, and until `STOW_TICKS` before it leaves. The
+  renderer places the crew off the same numbers, so no fire goes out before the water reaches it.
 - A unit pulls away at `PULL_AWAY` and brakes at `BRAKE`, so it slows into a scene rather than
   stopping dead at it. `clearAhead` is the road before it clear of the player: a player standing or
   parked in its lane stops it `STAND_OFF` short, and it drives on once they move. It is a solid in

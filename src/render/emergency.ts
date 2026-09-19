@@ -9,8 +9,10 @@
  * and no more.
  *
  * A unit on a call flashes its beacons and throws their light on the road
- * round it; one driving home after the job has them dark. An engine at work
- * plays water over the scene (`hose.ts`).
+ * round it; one driving home after the job has them dark. The crew of an
+ * engine at work run hoses from it and play water over the scene from the
+ * nozzles in their hands (`fire-crew.ts`, `hose.ts`); their bodies are the
+ * crowd's (`ui/fire-crews.ts`).
  *
  * The units are drawn where the record put them. They are stepped every tick
  * like the police, so nothing is evaluated between two ticks here.
@@ -32,7 +34,8 @@ import { onCall, UNIT_BODY, type EmergencyKind, type EmergencyUnit } from '../si
 import type { SimState } from '../sim/simulation.ts';
 import { BeaconGlow, BeaconPhase, beaconMaterial, flashLit } from './beacons.ts';
 import { unitShape, type UnitShape } from './emergency-mesh.ts';
-import { HoseSpray } from './hose.ts';
+import { CREW, emptyFirefighter, fireCrew, type Firefighter } from './fire-crew.ts';
+import { HoseLines, HoseSpray } from './hose.ts';
 import { boxOf, coloured, instanced, merged, TRAFFIC_VIEW } from './traffic.ts';
 import { OUTLINE, VEHICLE_OUTLINE_WIDTH } from './vehicle.ts';
 import { createVehicleTrim, type VehicleTrim } from './vehicle-glow.ts';
@@ -40,6 +43,9 @@ import { TYRE } from './vehicle-mesh.ts';
 
 /** Units of each kind drawn at most, which is more than the service ever has out. */
 const UNIT_CAP = 8;
+
+/** Stretches in one firefighter's hose, with room to spare. */
+const HOSE_STRETCHES = 16;
 
 /** One kind's meshes, and what is needed to stand a unit in them. */
 interface KindMeshes {
@@ -77,7 +83,9 @@ export class EmergencyView {
   private readonly materials: Material[];
   private readonly trimMaterial: VehicleTrim;
   private readonly glow = new BeaconGlow(UNIT_CAP * 2);
-  private readonly hose = new HoseSpray(UNIT_CAP);
+  private readonly hose = new HoseSpray(UNIT_CAP * CREW);
+  private readonly lines = new HoseLines(UNIT_CAP * CREW * HOSE_STRETCHES);
+  private readonly crew: Firefighter[] = [emptyFirefighter(), emptyFirefighter()];
   private readonly matrix = new Matrix4();
   private readonly at = new Vector3();
   private readonly nozzle = new Vector3();
@@ -104,7 +112,7 @@ export class EmergencyView {
       this.kinds.push(meshes);
       this.group.add(meshes.body, meshes.rim, meshes.phases[0].mesh, meshes.phases[1].mesh);
     }
-    this.group.add(this.glow.mesh, this.hose.mesh);
+    this.group.add(this.glow.mesh, this.hose.mesh, this.lines.mesh);
   }
 
   /**
@@ -132,6 +140,7 @@ export class EmergencyView {
     for (const kind of this.kinds) kind.drawn = 0;
     this.glow.begin();
     this.hose.begin();
+    this.lines.begin();
     for (const unit of state.emergency.units as readonly EmergencyUnit[]) {
       if (Math.abs(unit.x - x) > TRAFFIC_VIEW || Math.abs(unit.y - y) > TRAFFIC_VIEW) continue;
       const meshes = this.kinds.find((held) => held.kind === unit.kind);
@@ -141,6 +150,7 @@ export class EmergencyView {
     for (const kind of this.kinds) this.fill(kind);
     this.glow.commit();
     this.hose.commit();
+    this.lines.commit();
   }
 
   dispose(): void {
@@ -154,10 +164,11 @@ export class EmergencyView {
     this.trimMaterial.dispose();
     this.glow.dispose();
     this.hose.dispose();
+    this.lines.dispose();
     this.group.clear();
   }
 
-  /** Stand one unit: its body, its beacons, their light on the road and the engine's water. */
+  /** Stand one unit: its body, its beacons, their light on the road, and an engine's hoses. */
   private stand(tick: number, unit: EmergencyUnit, meshes: KindMeshes): void {
     const at = meshes.drawn;
     this.turn.setFromAxisAngle(this.up, -unit.heading);
@@ -173,24 +184,20 @@ export class EmergencyView {
       if (on) lit = phase;
     }
     if (lit >= 0) this.glow.add(unit.x, unit.height, unit.y, (meshes.phases[lit] as BeaconPhase).colour);
-    if (unit.task === 'work') this.spray(tick, unit, meshes.shape);
+    this.spray(tick, unit);
     meshes.drawn = at + 1;
   }
 
-  /**
-   * Play water from the monitor nearer the scene: the one on the bumper for a
-   * scene ahead, the one on the turntable for a scene behind.
-   */
-  private spray(tick: number, unit: EmergencyUnit, shape: UnitShape): void {
-    let best = Infinity;
-    for (const nozzle of shape.nozzles) {
-      this.at.set(nozzle.x, nozzle.y, nozzle.z).applyMatrix4(this.matrix);
-      const far = Math.hypot(this.at.x - unit.goalX, this.at.z - unit.goalY);
-      if (far >= best) continue;
-      best = far;
-      this.nozzle.copy(this.at);
+  /** Lay the hose of each of an engine's crew, and play water from the nozzles with it on. */
+  private spray(tick: number, unit: EmergencyUnit): void {
+    const out = fireCrew(unit, tick, this.crew);
+    for (let member = 0; member < out; member++) {
+      const f = this.crew[member] as Firefighter;
+      this.lines.add(f.hose);
+      if (!f.spraying) continue;
+      this.nozzle.set(f.nozzleX, f.nozzleHeight, f.nozzleY);
+      this.hose.add(unit.id * CREW + member, tick, this.nozzle, unit.goalX, unit.goalY, unit.height);
     }
-    if (best < Infinity) this.hose.add(unit.id, tick, this.nozzle, unit.goalX, unit.goalY, unit.height);
   }
 
   private meshesOf(kind: KindMeshes): InstancedMesh[] {
