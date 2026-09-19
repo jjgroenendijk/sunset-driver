@@ -37,6 +37,7 @@ import { rngFor, Subsystem } from '../core/rng.ts';
 import { TICK_RATE } from '../sim/clock.ts';
 import type { Weather } from '../sim/weather.ts';
 import { KERB_RISE, SURFACE_RAISE } from './road-section.ts';
+import { tinted } from './tint.ts';
 
 /** Streaks of rain drawn at the hardest downpour. */
 export const RAIN_CAP = 700;
@@ -160,7 +161,7 @@ export class WeatherFx {
     // Lit rather than flat, so a scrap of paper is dark at night instead of
     // glowing its own colour across an unlit street.
     const scrap = new PlaneGeometry(LITTER_WIDTH, LITTER_HEIGHT);
-    this.litter = batch(scrap, new MeshStandardNodeMaterial({ roughness: 0.9, side: DoubleSide }), LITTER_CAP);
+    this.litter = tinted(batch(scrap, new MeshStandardNodeMaterial({ roughness: 0.9, side: DoubleSide }), LITTER_CAP));
 
     // A puddle is the one piece the light touches. The scene carries no
     // environment map, so a metal disc reflects nothing and comes out black on

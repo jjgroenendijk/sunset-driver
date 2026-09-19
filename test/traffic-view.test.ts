@@ -1,3 +1,4 @@
+import { MeshStandardMaterial, type InstancedMesh } from 'three';
 import { describe, expect, it } from 'vitest';
 import { TrafficView, trafficParts } from '../src/render/traffic.ts';
 import { createSimState } from '../src/sim/simulation.ts';
@@ -14,6 +15,15 @@ describe('the traffic, drawn (spec section 13.1)', () => {
       expect(parts.trim.getAttribute('color').count, cls).toBe(parts.trim.getAttribute('position').count);
       expect(parts.rim.getAttribute('position').count, cls).toBeGreaterThan(0);
     }
+  });
+
+  it('holds the paint of every class before its first vehicle, so the warm-up compiles it', () => {
+    // The warm-up draws each empty pool once; a program built without instance colours draws white.
+    const view = new TrafficView(gridTraffic(sweepSeeds(1)[0] as number));
+    const pools = view.group.children as InstancedMesh[];
+    const painted = pools.filter((mesh) => mesh.material instanceof MeshStandardMaterial && !mesh.material.vertexColors);
+    expect(painted.length).toBe(AMBIENT_CLASSES.length);
+    for (const mesh of painted) expect(mesh.instanceColor?.count).toBe(mesh.instanceMatrix.count);
   });
 
   it('draws one instance per vehicle in view, and a promoted vehicle from its record', () => {

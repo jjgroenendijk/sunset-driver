@@ -19,6 +19,7 @@ import { AdditiveBlending, CircleGeometry, Color, Group, InstancedMesh, MeshBasi
 import { rngFor, Subsystem } from '../core/rng.ts';
 import { TICK_RATE } from '../sim/clock.ts';
 import type { HitSurface, MeleeHit } from '../sim/melee.ts';
+import { tinted } from './tint.ts';
 
 /** Sparks the batch holds. The oldest is dropped when a new one has nowhere to go. */
 export const SPARK_CAP = 64;
@@ -80,7 +81,7 @@ export class MeleeFx {
       blending: AdditiveBlending,
       fog: false,
     });
-    this.mesh = new InstancedMesh(geometry, material, cap);
+    this.mesh = tinted(new InstancedMesh(geometry, material, cap));
     this.mesh.frustumCulled = false;
     this.mesh.castShadow = false;
     this.mesh.receiveShadow = false;

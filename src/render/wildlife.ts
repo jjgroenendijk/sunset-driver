@@ -21,6 +21,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { outInThis } from '../sim/weather.ts';
 import { activeAt, AmbientWildlife, type Species, type WildlifePose } from '../sim/wildlife.ts';
 import type { Point } from '../world/types.ts';
+import { tinted } from './tint.ts';
 
 /** Metres each way of the point the frame is drawn round that animals are drawn in. */
 export const WILDLIFE_VIEW = 120;
@@ -160,7 +161,7 @@ export class WildlifeView {
 /** One instanced model: no frustum culling, since the instances are spread over the view. */
 function instanced(geometry: ReturnType<typeof birdBody>, cap: number): InstancedMesh {
   const material = new MeshStandardMaterial({ roughness: 0.75, metalness: 0 });
-  const mesh = new InstancedMesh(geometry, material, cap);
+  const mesh = tinted(new InstancedMesh(geometry, material, cap));
   mesh.frustumCulled = false;
   mesh.castShadow = true;
   mesh.receiveShadow = false;
