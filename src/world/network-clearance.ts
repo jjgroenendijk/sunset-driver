@@ -268,6 +268,15 @@ export class NetworkClearance {
       const x = (e[k] as number) + ((e[k + 2] as number) - (e[k] as number)) * t;
       const y = (e[k + 1] as number) + ((e[k + 3] as number) - (e[k + 1] as number)) * t;
       const width = this.halfWidth[s] as number;
+      // A step that touches the line of a road the policy keeps this tier off
+      // is refused, whether it crosses there or ends there. A place two roads
+      // share is a junction, and `RoadNetwork.add` gives one to any point that
+      // lands within `SAME_PLACE` of a road point without asking `mayJoin`, so
+      // a street walking onto a highway vertex would junction with it.
+      if (!mayCross(tier, this.tierOf[s] as RoadTier)) {
+        ok = false;
+        return;
+      }
       // A step that starts on a road, or ends on one, touches it there: that is
       // the junction, not a crossing.
       if (hypot(x - a.x, y - a.y) <= SAME_PLACE || hypot(x - b.x, y - b.y) <= SAME_PLACE) return;
@@ -276,9 +285,8 @@ export class NetworkClearance {
         if (junction !== undefined && hypot(x - junction.x, y - junction.y) < width + half) ok = false;
       }
       if (!ok) return;
-      // A highway is crossed at one of its slots or not at all (spec section
-      // 6.2), and only by a tier the crossing policy lets across it.
-      if (this.crossable[s] !== true || !mayCross(tier, this.tierOf[s] as RoadTier)) {
+      // A highway is crossed at one of its slots or not at all (spec section 6.2).
+      if (this.crossable[s] !== true) {
         ok = false;
         return;
       }
