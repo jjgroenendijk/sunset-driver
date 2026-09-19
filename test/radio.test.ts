@@ -32,9 +32,11 @@ const CULTURES: readonly Culture[] = [
   'beach',
 ];
 
+/** A player at the wheel with the radio tuned to the first station. A new car's radio is Off. */
 function session(): SimState {
   const state = createSimState(4321);
   state.player.driving = true;
+  state.vehicle.station = 0;
   return state;
 }
 
@@ -70,18 +72,26 @@ describe('the dial', () => {
     expect(wrapDial(-DIAL_POSITIONS - 1)).toBe(DIAL_POSITIONS - 1);
   });
 
+  it('starts on Off, so a car is silent until the dial is turned', () => {
+    const state = createSimState(4321);
+    expect(tunedTo(state.vehicle.station)).toBeNull();
+    stepRadio(state, input({ station: 1 }));
+    expect(tunedTo(state.vehicle.station)).toBe(STATIONS[0]);
+  });
+
   it('is turned only from behind a wheel, and one station per press', () => {
     const state = session();
+    const off = state.vehicle.station;
     stepRadio(state, input({ station: 1 }));
-    expect(state.vehicle.station).toBe(1);
+    expect(state.vehicle.station).toBe(off + 1);
     stepRadio(state, input({ station: -1 }));
-    expect(state.vehicle.station).toBe(0);
+    expect(state.vehicle.station).toBe(off);
     // Nothing on the frames between two presses.
     stepRadio(state, input());
-    expect(state.vehicle.station).toBe(0);
+    expect(state.vehicle.station).toBe(off);
     state.player.driving = false;
     stepRadio(state, input({ station: 1 }));
-    expect(state.vehicle.station).toBe(0);
+    expect(state.vehicle.station).toBe(off);
   });
 
   it('is carried by a save, so a car is found on the station it was left on', () => {
