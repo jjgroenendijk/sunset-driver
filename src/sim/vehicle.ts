@@ -338,7 +338,8 @@ export interface VehicleState {
    * 15). It is per vehicle, so a car keeps the station it was left on and a
    * stolen one comes with whatever its owner was listening to. Unbounded on
    * purpose: `src/audio/dial.ts` wraps it, because the number of stations is
-   * no business of the simulation's.
+   * no business of the simulation's. A vehicle starts one step back from the
+   * first station, which is Off: the radio plays once the player tunes it.
    */
   station: number;
   /**
@@ -354,6 +355,9 @@ export interface VehicleState {
    */
   paint: number;
 }
+
+/** Where a new vehicle's dial stands: one step back from the first station, which is Off. */
+export const RADIO_OFF = -1;
 
 /** A vehicle at rest at a place, with its wheels hanging at their rest length. */
 export function createVehicleState(spec: VehicleSpec, x = 0, z = 0, y = 0, heading = 0): VehicleState {
@@ -384,7 +388,7 @@ export function createVehicleState(spec: VehicleSpec, x = 0, z = 0, y = 0, headi
     speed: 0,
     afloat: false,
     damage: createDamageState(),
-    station: 0,
+    station: RADIO_OFF,
     hotwired: false,
     paint: spec.paint,
   };
