@@ -135,7 +135,10 @@ export function applyWorld(state: SimState, update: WorldUpdate): void {
     const copy = plain(part);
     if (copy === null) continue;
     if (key === 'captured') state.factions.captured = copy as number[];
-    else Object.assign(state, { [key]: copy });
+    else if (key === 'traffic' || key === 'pedestrians') {
+      // Who gives way to whom is each peer's own, round its own player.
+      Object.assign(state, { [key]: { ...(copy as object), held: state[key].held } });
+    } else Object.assign(state, { [key]: copy });
   }
 }
 

@@ -9,6 +9,7 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 ## Contents
 
 - Ambient traffic
+- Giving way
 - The drivers
 - The buses
 - The wrecks the city tows
@@ -28,14 +29,44 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   places the vehicles once for a world: per directed edge, the tier's `TierSpec.density` thinned by
   `ZONE_TRAFFIC` and the district's density, in a lane on the right of the carriageway that
   `laneOffset` divides as `road-section.ts` paints it. Each vehicle drives the closed tour
-  `traffic-tour.ts` walks for it, at `CRUISE` of the speed limit of each edge. Vehicles meet at
-  junctions and can overlap in a lane, because no vehicle reads another.
+  `traffic-tour.ts` walks for it, at `CRUISE` of the speed limit of each edge. No tour reads
+  another, so two tours can put two vehicles on the same ground. Near the player, giving way
+  (below) keeps them apart.
 - A tour is steps, not legs: `traffic-timing.ts` lays each one down as a drive over part of a leg or
   a wait in one place, in a whole number of ticks. That is why `cursorAt` (evaluated) and `advance`
   (stepped) agree exactly rather than to a rounding, and why `test/traffic.test.ts` and
   `test/sim-traffic.test.ts` can compare them with `toEqual`. A pose is read `SMOOTH` metres behind
   and ahead of the vehicle and stands between the two readings, which is how a vehicle rounds a
   corner. `poseAt` takes a fractional tick, which is what the renderer draws between two ticks.
+
+## Giving way
+
+- `src/sim/give-way.ts` keeps the cars and the people within `GIVE_WAY_REACH` of the player
+  off each other and off the player, their car and the wrecks. Spec section 13.1 and issue #361
+  ask for it. It holds a car or a person back on their loop: `hold.ts` keeps each one's lag, in
+  `state.traffic.held` and `state.pedestrians.held`. Everyone else keeps a lag of 0.
+- **Read a car or a person through `heldTime`, never at the bare tick.** The physics
+  (`traffic-bodies.ts`), `walkingPose`, `crowdPoseOf` and both renderers do. A reader that forgets
+  it draws a car on top of the one it is waiting behind.
+- A car stops for what is in the lane ahead of it and slows for what is further ahead. It also
+  stops when its next step meets a car coming in from the side. When cars stop for each other in a
+  ring, the car with the lowest id goes. Two cars that already touch may only move apart.
+- A car with a lag can meet a light its tour was timed to pass on green, so it stops at the line
+  when the light is not green. It makes up the lag during its tour's next wait. It does not move
+  while it does, so this is never seen.
+- A car that comes into the box on top of another is moved back along its tour until it stands
+  clear. The box is wider than the view, so nobody sees the jump. On the first tick of a session
+  every car counts as new. That is why `createHolds` starts at tick -1.
+- A person holds before stepping into a car, or into the road just ahead of a moving one. If a car
+  stands for a person on their loop, the person walks back the way they came. A person off their
+  loop is moved aside with `stepAside` after `NUDGE`. The player, their car and a wreck get
+  `PATIENCE`, and then the car drives into them. That is how the traffic still promotes.
+- A moving car that meets a person all the same hits them, with a `Blow` marked `city`: it is no
+  crime of the player's. With the rules above, this happens only to someone running.
+- The step costs about 2 ms a tick in the core of seed 1. Most of it is reading poses. The
+  candidates are looked up again only when the player moves to another `NEAR_SNAP` of the map.
+- Each peer of a multiplayer room gives way round its own player, so `applyWorld` keeps the local
+  holds when it writes the host's traffic and crowd.
 
 ## The drivers
 

@@ -107,7 +107,9 @@ Spec section 21.4 splits authority three ways, and every file above sits on one 
   back is drawn and never stepped.
 - **The host owns divergence.** The promoted cars, the startled crowd, the fires, the police, the
   emergency units, the enforcers, the settled street crime and the session's captured blocks are the
-  host's, and every joiner's record is written from them.
+  host's, and every joiner's record is written from them. The holds of giving way (`give-way.ts`)
+  ride in the same parts but stay each peer's own, since each peer holds the traffic round its
+  player.
 - **Everything else is derived.** The rest of the city is a function of `(seed, tick)`, which is
   what the shared clock buys. A career is the player's own (21.3): money, missions, reputation,
   loadout and faction standing are not on the wire and are not in the divergence set.

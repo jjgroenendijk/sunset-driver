@@ -51,6 +51,8 @@ export interface Blow {
   push: number;
   /** Metres per second up: above zero only for a fast car. */
   lift: number;
+  /** True for a hit the city dealt, a car of the traffic: no crime of the player's. */
+  city?: boolean;
 }
 
 /**
@@ -177,10 +179,10 @@ export function hurtPerson(
   if (health <= 0 && !already) record.cash = rng.int(CASH[0], CASH[1]);
   setCasualty(peds, record);
   if (already) return record;
-  if (was === undefined) commitCrime(state, CRIMES[blow.cause]);
+  if (was === undefined && blow.city !== true) commitCrime(state, CRIMES[blow.cause]);
   const ids: number[] = [];
   if (health <= 0) {
-    commitCrime(state, 'killing');
+    if (blow.city !== true) commitCrime(state, 'killing');
     crowd.startle(peds, state.tick, pose.x, pose.y, DEATH_FLEE, 'flee', ids);
     capBodies(state);
   } else {

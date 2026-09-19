@@ -62,6 +62,7 @@ import {
 } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
 import { TrafficBodies } from './traffic-bodies.ts';
+import { GiveWay } from './give-way.ts';
 import { buildParked, buildVehicle, readVehicle } from './vehicle-bodies.ts';
 import { UnitBodies } from './unit-bodies.ts';
 import { commitCrime, report } from './police.ts';
@@ -117,6 +118,8 @@ export class SimPhysics extends GroundPlaces {
   private walker: Walker | undefined;
   /** The traffic near the player, or undefined on a ground with no roads to drive. */
   readonly traffic: TrafficBodies | undefined;
+  /** The traffic and the crowd keeping out of each other near the player (`give-way.ts`). */
+  private readonly giveWay: GiveWay | undefined;
   /**
    * The police cars and the faction enforcers near the player as bodies (spec
    * sections 14, 17.2), so a roadblock is a wall and a wave can be shot at.
@@ -145,6 +148,7 @@ export class SimPhysics extends GroundPlaces {
     this.shots = new Gunfire(this.world);
     this.controls = new Drivetrain(ground);
     this.traffic = ground.traffic === undefined ? undefined : new TrafficBodies(this.world, ground.traffic, ground.tram);
+    this.giveWay = ground.traffic === undefined ? undefined : new GiveWay(ground.traffic, ground.crowd);
     this.units = new UnitBodies(this.world);
     this.ragdolls = new Ragdolls(this.world, ground);
     // The step is the tick. Simulation code never sees a frame delta.
@@ -261,6 +265,10 @@ export class SimPhysics extends GroundPlaces {
         this.wheels.updateVehicle(this.world.timestep, undefined, SHUNS_RAGDOLL);
       }
     }
+    // The traffic and the crowd give way to each other and to the player
+    // before the traffic is aimed at the next tick.
+    if (state.player.driving) this.giveWay?.step(state, v.x, v.z, this.casualtyGround);
+    else this.giveWay?.step(state, state.player.x, state.player.y, this.casualtyGround);
     // The traffic is aimed at the next tick once the player's own move is known.
     if (state.player.driving) this.traffic?.lead(state, v.x, v.z, this.ground.parked);
     else this.traffic?.lead(state, state.player.x, state.player.y, this.ground.parked);
