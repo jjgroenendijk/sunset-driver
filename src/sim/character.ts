@@ -78,6 +78,13 @@ export const OUTFITS: readonly Outfit[] = [
   { id: 'workwear', label: 'Workwear', top: 0xd8a544, bottom: 0x4a4336, shoe: 0x3a2a1c },
   { id: 'suit', label: 'Suit', top: 0x23202b, bottom: 0x23202b, shoe: 0x151217 },
   { id: 'beachwear', label: 'Beachwear', top: 0x2fbfa5, bottom: 0xf2ede6, shoe: 0xd8a544 },
+  { id: 'leather', label: 'Leather jacket', top: 0x2a2320, bottom: 0x2e3a56, shoe: 0x1b1418 },
+  { id: 'hoodie', label: 'Hoodie', top: 0x6b6f78, bottom: 0x23252b, shoe: 0xf2ede6 },
+  { id: 'hawaiian', label: 'Hawaiian shirt', top: 0xe8a23a, bottom: 0xd9ceb5, shoe: 0x8a5a3a },
+  { id: 'camo', label: 'Camo', top: 0x5b6b3a, bottom: 0x4a5530, shoe: 0x3a2a1c },
+  { id: 'scrubs', label: 'Scrubs', top: 0x5fb3b3, bottom: 0x5fb3b3, shoe: 0xf2ede6 },
+  { id: 'varsity', label: 'Varsity jacket', top: 0x8c1f28, bottom: 0x2b2f42, shoe: 0xf2ede6 },
+  { id: 'linen', label: 'Linen suit', top: 0xefe6d2, bottom: 0xcbb994, shoe: 0x8a5a3a },
 ];
 
 /** The player's look, as saved. Each field indexes the table of the same name. */

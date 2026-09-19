@@ -275,7 +275,12 @@ export function besidePlayer(player: PlayerState, spec: VehicleSpec): Place {
  * player on its own.
  */
 export function heal(player: PlayerState, source: HealSource): void {
-  player.health = Math.min(MAX_HEALTH, player.health + HEAL_BY_SOURCE[source]);
+  healBy(player, HEAL_BY_SOURCE[source]);
+}
+
+/** Give the player some health back, up to the most they may have. A shop's food and care are this. */
+export function healBy(player: PlayerState, amount: number): void {
+  player.health = Math.min(MAX_HEALTH, player.health + Math.max(0, amount));
 }
 
 /** Take health off the player. Death and arrest at zero are spec section 11.7. */
