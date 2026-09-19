@@ -33,6 +33,7 @@ import { rideHeight, specOf, type VehicleClass } from '../sim/vehicle.ts';
 import { instanced, trafficParts, TRAFFIC_VIEW } from './traffic.ts';
 import { OUTLINE } from './vehicle.ts';
 import { createVehicleTrim, type VehicleTrim } from './vehicle-glow.ts';
+import { tinted } from './tint.ts';
 
 /** Units of each mesh drawn at most, which is more than the service ever has out. */
 const UNIT_CAP = 8;
@@ -89,10 +90,10 @@ export class EmergencyView {
       const parts = trafficParts(spec);
       const meshes: KindMeshes = {
         kind,
-        paint: instanced(parts.paint, paint, true, UNIT_CAP),
+        paint: tinted(instanced(parts.paint, paint, true, UNIT_CAP)),
         trim: instanced(parts.trim, this.trimMaterial.material, false, UNIT_CAP),
         rim: instanced(parts.rim, outline, false, UNIT_CAP),
-        bar: instanced(new BoxGeometry(BAR.length, BAR.height, BAR.width), lamp, false, UNIT_CAP),
+        bar: tinted(instanced(new BoxGeometry(BAR.length, BAR.height, BAR.width), lamp, false, UNIT_CAP)),
         colour: new Color(borrowed.paint),
         ride: rideHeight(spec),
         roof: spec.halfHeight * 2 + BAR.height / 2,

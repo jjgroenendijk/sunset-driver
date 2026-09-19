@@ -14,6 +14,7 @@
 import { BoxGeometry, Color, Group, InstancedMesh, Matrix4, MeshBasicMaterial, MeshStandardMaterial, Quaternion, Vector3, type BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Light, SignalApproach, SignalJunction, TrafficSignals } from '../sim/signals.ts';
+import { tinted } from './tint.ts';
 
 /** Metres each way of the point the frame is drawn round that signal heads are drawn in. */
 export const SIGNAL_VIEW = 180;
@@ -73,7 +74,7 @@ export class SignalView {
     this.frames = new InstancedMesh(signalFrame(), this.frameMaterial, HEAD_CAP);
     this.frames.castShadow = true;
     this.frames.receiveShadow = true;
-    this.lenses = new InstancedMesh(new BoxGeometry(0.34, 0.32, 0.4), this.lensMaterial, HEAD_CAP * LENSES.length);
+    this.lenses = tinted(new InstancedMesh(new BoxGeometry(0.34, 0.32, 0.4), this.lensMaterial, HEAD_CAP * LENSES.length));
     for (const mesh of [this.frames, this.lenses]) {
       // The instances are spread over hundreds of metres; the geometry's own bounds say nothing about them.
       mesh.frustumCulled = false;

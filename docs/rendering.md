@@ -150,6 +150,10 @@ lamps and the lights a vehicle carries — in `docs/lighting.md`.
   key, so an empty pool is a program nobody has built. The sun's cascades and the water's mirror
   run over the frame the same way, and `showWater` holds the sheet in it so an inland session
   compiles the mirror too.
+- The program key does not say whether the mesh has instance colours. `setColorAt` makes that
+  buffer on its first call, so a pool the warm-up drew before it is drawn white for the whole
+  session. Every pool that colours its instances is made through `tinted` (`tint.ts`), which gives
+  it the buffer at once (issue #457).
 - A slice of the warm-up holds the frame for at most 40 ms and an animation frame is waited for
   between slices, so the loading screen keeps painting its own progress — which it counts out, one
   material at a time — and no browser is handed a block minutes long. The whole warm-up on an M1

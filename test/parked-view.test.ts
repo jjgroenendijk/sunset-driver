@@ -10,6 +10,16 @@ import { baysOf, share } from './parked-bays.ts';
 const at = (hour: number): number => 3 * 24 * TICKS_PER_HOUR + hour * TICKS_PER_HOUR;
 
 describe('the parked cars, drawn (spec section 13.1)', () => {
+  it('holds the paint of every class before its first car, so the warm-up compiles it', () => {
+    // The warm-up draws each empty pool once; a program built without instance colours draws white.
+    const view = new ParkedView(new ParkedCars(9, baysOf('home', 40)));
+    const pools = view.group.children as InstancedMesh[];
+    for (let i = 0; i < pools.length; i += 3) {
+      const paint = pools[i] as InstancedMesh;
+      expect(paint.instanceColor?.count).toBe(paint.instanceMatrix.count);
+    }
+  });
+
   it('draws one instance per car in view, and writes nothing again until something changes', () => {
     const cars = new ParkedCars(9, baysOf('home', 400));
     const view = new ParkedView(cars);

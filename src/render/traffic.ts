@@ -38,6 +38,7 @@ import { SignalView } from './signals.ts';
 import { OUTLINE, VEHICLE_OUTLINE_WIDTH } from './vehicle.ts';
 import { createVehicleTrim, glowOf, type VehicleTrim } from './vehicle-glow.ts';
 import { TYRE, vehicleBoxes, type VehicleBox } from './vehicle-mesh.ts';
+import { tinted } from './tint.ts';
 
 /** Metres each way of the point the frame is drawn round that traffic is drawn in. */
 export const TRAFFIC_VIEW = 180;
@@ -121,7 +122,7 @@ export class TrafficView {
       const meshes: ClassMeshes = {
         cls,
         spec,
-        paint: instanced(parts.paint, paint, true, CLASS_CAP),
+        paint: tinted(instanced(parts.paint, paint, true, CLASS_CAP)),
         trim: instanced(parts.trim, trim, false, CLASS_CAP),
         rim: instanced(parts.rim, outline, false, CLASS_CAP),
       };

@@ -40,6 +40,7 @@ import { isSmoking, type DamageState } from '../sim/damage.ts';
 import type { Blaze } from '../sim/fire.ts';
 import { TICK_RATE } from '../sim/clock.ts';
 import type { VehicleSpec, VehicleState } from '../sim/vehicle.ts';
+import { tinted } from './tint.ts';
 
 /** Puffs each batch holds. The oldest is taken when a new one has nowhere to go. */
 export const SMOKE_CAP = 48;
@@ -119,7 +120,7 @@ class Puffs {
       blending: additive ? AdditiveBlending : NormalBlending,
       fog: !additive,
     });
-    this.mesh = new InstancedMesh(geometry, material, cap);
+    this.mesh = tinted(new InstancedMesh(geometry, material, cap));
     this.mesh.frustumCulled = false;
     this.mesh.castShadow = false;
     this.mesh.receiveShadow = false;

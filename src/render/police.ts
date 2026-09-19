@@ -21,6 +21,7 @@ import { boxOf, coloured, instanced, merged, trafficParts, TRAFFIC_VIEW } from '
 import { OUTLINE, VEHICLE_OUTLINE_WIDTH } from './vehicle.ts';
 import { createVehicleTrim, type VehicleTrim } from './vehicle-glow.ts';
 import { GLASS, METAL, TYRE } from './vehicle-mesh.ts';
+import { tinted } from './tint.ts';
 
 /** Units of each mesh drawn at most, which is more than the force ever has out. */
 const UNIT_CAP = 16;
@@ -66,10 +67,10 @@ export class PoliceView {
     const lamp = new MeshBasicMaterial({ toneMapped: false });
     const outline = new MeshBasicMaterial({ color: new Color(OUTLINE), side: BackSide, fog: true });
     this.materials = [paint, lamp, outline];
-    this.paint = instanced(parts.paint, paint, true, UNIT_CAP);
+    this.paint = tinted(instanced(parts.paint, paint, true, UNIT_CAP));
     this.trim = instanced(parts.trim, trim, false, UNIT_CAP);
     this.rim = instanced(parts.rim, outline, false, UNIT_CAP);
-    this.bar = instanced(new BoxGeometry(BAR.length, BAR.height, BAR.width), lamp, false, UNIT_CAP);
+    this.bar = tinted(instanced(new BoxGeometry(BAR.length, BAR.height, BAR.width), lamp, false, UNIT_CAP));
     this.heli = instanced(heliBody(), trim, true, UNIT_CAP);
     this.rotor = instanced(rotorBlades(), trim, false, UNIT_CAP);
     this.group.add(this.paint, this.trim, this.rim, this.bar, this.heli, this.rotor);

@@ -15,6 +15,7 @@ import type { SimState } from '../sim/simulation.ts';
 import { rideHeight, specOf, type VehicleClass } from '../sim/vehicle.ts';
 import { instanced, trafficParts } from './traffic.ts';
 import { OUTLINE } from './vehicle.ts';
+import { tinted } from './tint.ts';
 
 /** Metres each way of the point the frame is drawn round that parked cars are drawn in. */
 export const PARKED_VIEW = 170;
@@ -66,7 +67,7 @@ export class ParkedView {
       const spec = specOf(cls);
       const parts = trafficParts(spec);
       const meshes = [
-        instanced(parts.paint, paint, true, PARKED_CAP),
+        tinted(instanced(parts.paint, paint, true, PARKED_CAP)),
         instanced(parts.trim, trim, false, PARKED_CAP),
         instanced(parts.rim, outline, false, PARKED_CAP),
       ];
