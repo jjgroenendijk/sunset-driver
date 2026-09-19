@@ -83,6 +83,11 @@ export class ParkedView {
     return count;
   }
 
+  /** Forget what was last written, so the next update writes whatever the place and tick. */
+  refresh(): void {
+    this.lastTick = -Infinity;
+  }
+
   /** Draw the parked cars round a place at a tick. Called once a frame; writes only when something changed. */
   update(state: SimState, x: number, y: number): void {
     const tick = state.tick;

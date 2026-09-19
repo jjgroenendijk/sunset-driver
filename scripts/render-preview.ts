@@ -5,6 +5,11 @@
  * a real WebGPU device, so it serves the project with Vite, opens the page in a
  * headless Chromium, and asks `src/render/preview.ts` for one frame.
  *
+ * The first run starts the preview server of `preview-server.ts` and leaves it
+ * running; each run after that asks it for the frame. The server keeps the
+ * scene of the last seed, so a second picture of the same seed builds only the
+ * chunks round a new place. A source file saved in between is picked up.
+ *
  * Usage: node scripts/render-preview.ts [seed] [out.png] [--option=value]
  *   --x, --y         where the player stands, in metres. Default the spawn.
  *   --junction       stand at the N-th junction out from the core instead, and
@@ -55,7 +60,11 @@
  *   --tram           stand beside the first tram at the hour of the picture
  *                    (spec section 13.2), and --stop=N at the N-th tram stop.
  *                    Either one overrides --x, --y and --junction.
- *   --software       draw on SwiftShader, as CI does.
+ *   --fast           wait for the near ring of chunks only. About half the
+ *                    chunk time; the far edge of the view may be missing.
+ *   --software       draw on SwiftShader, as CI does, in a browser of its own.
+ *   --no-server      draw in a browser of its own, and stop it afterwards.
+ *   --stop-server    stop the preview server of this checkout, and draw nothing.
  *
  * The browser comes from `chromium.ts`, and draws on the graphics card where
  * there is one (`preview-host.ts`).
@@ -65,8 +74,9 @@ import { seedFromString } from '../src/core/rng.ts';
 import { BASE_DISTANCE } from '../src/render/camera.ts';
 import type { PreviewRequest } from '../src/render/preview.ts';
 import type { Junction } from '../src/world/junctions.ts';
+import { askServer, ensureServer, stopServer } from './preview-client.ts';
+import type { HostFrame } from './preview-host.ts';
 import { encodePng } from './png.ts';
-import { PreviewHost } from './preview-host.ts';
 
 const args = process.argv.slice(2);
 const positional = args.filter((a) => !a.startsWith('--'));
@@ -118,6 +128,11 @@ function mixOf(junction: Junction): string {
 }
 
 const seed = seedFromString(seedText);
+if (options.has('stop-server')) {
+  console.log((await stopServer()) ? 'preview server stopped' : 'no preview server was running');
+  process.exit(0);
+}
+
 const junction = options.has('junction') ? await junctionAt(seed, num('junction', 0), options.get('tiers')) : undefined;
 if (junction !== undefined) {
   const mouths = junction.mouths.map((mouth) => `${mouth.tier} cut ${mouth.cut.toFixed(1)} m`).join(', ');
@@ -171,17 +186,23 @@ const request: PreviewRequest = {
   ...(options.has('pickups') ? { pickups: true } : {}),
   ...(options.has('hover') ? { hover: num('hover', 0) } : {}),
   ...(options.has('shop') ? { shop: (options.get('shop') as string) || 'any' } : {}),
+  ...(options.has('fast') ? { fast: true } : {}),
 };
 
-const host = await PreviewHost.open({ software: options.has('software') });
-const adapter = host.adapter;
-let frame;
-try {
-  frame = await host.render(request);
-} finally {
-  await host.close();
+/** The frame, from the preview server, or from a browser of its own when asked for one. */
+async function draw(): Promise<HostFrame & { adapter: string }> {
+  const software = options.has('software');
+  if (!software && !options.has('no-server')) return askServer(await ensureServer(), request);
+  const { PreviewHost } = await import('./preview-host.ts');
+  const host = await PreviewHost.open({ software });
+  try {
+    return { ...(await host.render(request)), adapter: host.adapter };
+  } finally {
+    await host.close();
+  }
 }
-const { result, failures } = frame;
+
+const { result, failures, adapter } = await draw();
 const errors = [...failures.thrown, ...failures.logged];
 if (errors.length > 0) console.error(`page errors:\n  ${errors.join('\n  ')}`);
 
@@ -190,7 +211,7 @@ writeFileSync(out, encodePng(result.width, result.height, rgb));
 console.log(
   `${out}: ${result.width}x${result.height}, seed ${seedText} at ${result.x.toFixed(0)},${result.y.toFixed(0)}` +
     ` at ${request.hour.toFixed(1)}h on ${adapter}` +
-    ` — world ${result.worldMs.toFixed(0)} ms, chunks ${result.chunkMs.toFixed(0)} ms,` +
+    ` — world ${result.kept ? 'kept' : `${result.worldMs.toFixed(0)} ms`}, chunks ${result.chunkMs.toFixed(0)} ms,` +
     ` frame ${result.frameMs.toFixed(0)} ms, dearest chunk ${result.peakDrawCalls} draw calls,` +
     ` ${result.lights} lights, ${result.shadows} shadow cascades, ${result.quality} quality,` +
     ` ${result.traffic} vehicles of traffic, ${result.parked} parked cars, ${result.pedestrians} pedestrians`,

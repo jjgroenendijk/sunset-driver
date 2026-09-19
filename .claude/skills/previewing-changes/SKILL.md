@@ -32,12 +32,16 @@ nothing.
 `scripts/chromium.ts` finds the browser on its own, so `CHROMIUM_PATH` needs no setting; set it only
 to force a particular Chrome.
 
-A rendered frame takes 50 to 135 seconds on a laptop, because SwiftShader draws on the processor.
-Run one at a time — two at once fail. `render-sheet.ts` draws every tile in one browser, so four
-seeds cost about one render rather than four.
+A rendered frame draws on the graphics card, through a preview server the first run starts. The
+first frame of a seed takes about 10 seconds. The next frame of the same seed takes a quarter of a
+second, or 1 to 3 seconds at a new place, so ask for many frames rather than one careful one. A
+source file saved in between is picked up. The line each run prints names the adapter: where it
+says `swiftshader`, as in a cloud container, a frame takes minutes. `render-sheet.ts` draws every
+tile in one browser.
 
-`test:render` costs one such frame and answers only whether the renderer drew a world, not whether
-it looks right. Run it when a frame looks wrong, to tell a broken renderer from a broken change.
+`test:render` draws on SwiftShader, as CI does, and takes about 90 seconds. It answers only
+whether the renderer drew a world, not whether it looks right. Run it when a frame looks wrong, to
+tell a broken renderer from a broken change.
 
 A black picture is often issue #339 and not your change: on some Chromium builds the colour grade's
 table never reaches the GPU, and every frame comes out black. Cloud containers hit it; CI does not.
