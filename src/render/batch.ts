@@ -146,6 +146,17 @@ export function uploadBatchesWith(renderer: unknown): void {
   uploader = renderer;
 }
 
+/**
+ * Stop uploading into a renderer that is being disposed. Left in place, the
+ * next batch uploads into the dead renderer's record, lets go of its arrays,
+ * and the renderer that draws it next uploads buffers of no bytes: every chunk
+ * built between the two renderers draws nothing, with a WebGPU validation
+ * error for each.
+ */
+export function stopUploadingWith(renderer: unknown): void {
+  if (uploader === renderer) uploader = undefined;
+}
+
 /** A batch, and the steps that fill it. Run the steps in order. */
 export interface BatchFill {
   mesh: Batch;

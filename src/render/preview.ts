@@ -66,7 +66,7 @@ import { poseFor } from './character-pose.ts';
 import { tickAtHour } from './daylight.ts';
 import { PostChain } from './post.ts';
 import { FULL_TIER, QUALITY_TIERS } from './quality.ts';
-import { createOffscreenRenderer } from './renderer.ts';
+import { createOffscreenRenderer, disposeRenderer } from './renderer.ts';
 import { ParkedView } from './parked.ts';
 import { PedestrianView } from './pedestrians.ts';
 import { TrafficView } from './traffic.ts';
@@ -431,7 +431,7 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   parked?.dispose();
   services?.dispose();
   scene.dispose();
-  renderer.dispose();
+  disposeRenderer(renderer);
 
   return { width, height, x, y, rgb, worldMs, chunkMs, frameMs, peakDrawCalls, lights, shadows, quality: tier.name, traffic: drawn, parked: standing, pedestrians: walking };
 }
