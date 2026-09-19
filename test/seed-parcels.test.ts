@@ -11,8 +11,10 @@ import {
 } from '../src/world/buildings.ts';
 import { layoutZones, skylineAt } from '../src/world/districts.ts';
 import { type RoadEdge } from '../src/world/graph.ts';
+import { Heightfield } from '../src/world/heightfield.ts';
 import { metroDistricts } from '../src/world/metro.ts';
 import { ownerMaxArea, type Parcel } from '../src/world/parcels.ts';
+import { deckRuns, overWater } from '../src/world/piers.ts';
 import { footprintHalfWidth } from '../src/world/tiers.ts';
 import { type Point, type WorldDescription, type Zone } from '../src/world/types.ts';
 import { landPoints, pointInRing, ringArea, ringsOverlap, sharedArea } from './helpers.ts';
@@ -123,6 +125,23 @@ sweepSuite('parcels', () => {
           const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
           const owners = index.at(mid);
           if (owners.length > 0) fault(`parcel ${owners[0] as number} stands on ${road.tier} ${road.id}`);
+        }
+      }
+      // Spec section 6.3: the ground under a deck over land is the deck's own
+      // elevated corridor, or the footprint where another corridor cut that
+      // claim short. A parcel there would stand a building under the deck.
+      const hf = new Heightfield(w.terrain);
+      const wet = (a: Point, b: Point): boolean => overWater(hf, w.water.seaLevel, a, b);
+      for (const road of w.roads) {
+        for (const run of deckRuns(road, wet, false)) {
+          for (let i = run.from; i <= run.to; i++) {
+            const a = road.points[i] as Point;
+            const b = road.points[i + 1] as Point;
+            for (const id of index.at({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })) {
+              const owner = (parcels[id] as Parcel).owner;
+              if (owner !== 'under-structure') fault(`${owner} parcel ${id} stands under ${road.tier} ${road.id}`);
+            }
+          }
         }
       }
       for (const corridor of w.corridors) {

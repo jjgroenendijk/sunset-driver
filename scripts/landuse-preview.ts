@@ -38,7 +38,7 @@ const width = Math.max(64, Number(flag('width') ?? 900));
 
 const world = generateWorld(seedFromString(seedText));
 const graph = buildRoadGraph(world.roads);
-const footprint = buildFootprint(world.roads, world.corridors, graph);
+const footprint = buildFootprint(world, graph);
 const tensor = buildTensorField(world);
 const parcels = buildParcels(world, footprint, graph, tensor);
 const buildings = buildBuildings(world, parcels, graph);

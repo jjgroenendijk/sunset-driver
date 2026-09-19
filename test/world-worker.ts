@@ -25,7 +25,7 @@ port.on('message', (job: { index: number; seed: number; parts: boolean }) => {
     // The road graph carries methods, so it cannot cross a thread boundary. The
     // caller builds its own, which is cheap next to the layers built here.
     const graph = buildRoadGraph(world.roads);
-    const footprint = buildFootprint(world.roads, world.corridors, graph);
+    const footprint = buildFootprint(world, graph);
     const parcels = buildParcels(world, footprint, graph, buildTensorField(world));
     parts = { footprint, parcels, buildings: buildBuildings(world, parcels, graph) };
   }

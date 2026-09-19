@@ -226,11 +226,13 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   network to the edges `allow` accepts, which is how the tram is routed over the arterials alone.
   `tiers.ts` holds the width, verge, pavement, lanes, speed limit, permitted traffic and maximum
   grade of each tier; nothing else should carry those numbers.
-- `buildFootprint(roads, corridors, graph)` (`footprint.ts`) is the ground the roads claim (spec
+- `buildFootprint(world, graph)` (`footprint.ts`) is the ground the roads claim (spec
   section 6.4). It is built on demand like the graph, not stored in the world description. Each
   curve is offset by `footprintHalfWidth(tier)`, an apron is laid where three roads or more meet,
-  and the tram's lane joins them. Only the runs a road stands on are claimed: the ground under a
-  deck is an under-structure parcel, or is not land at all. The holes of the union are
+  and the tram's lane joins them. Mostly only the runs a road stands on are claimed: the ground
+  under a deck is an under-structure parcel, or is not land at all. The one exception is the ground
+  under a deck no elevated corridor claims, where the claim was cut at another corridor: the road
+  takes it, so nothing is built under the deck (`docs/corridors.md`). The holes of the union are
   the city blocks, and subtracting it from the land gives the parcels.
 - `src/core/geom.ts` is the door onto the polygon arithmetic: `ring.ts` holds the shapes, `edges.ts`
   the edge soup and its spatial index, and `planar.ts` the graph the operations are read off. It is
