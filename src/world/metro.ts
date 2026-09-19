@@ -20,12 +20,19 @@
  * The rule is offered one parcel at a time, because `buildParcels` is the one
  * pass that knows both the owner and the centre of a parcel. Pure: the same
  * parcels, offered in the same order, give the same stations.
+ *
+ * {@link metroEntrances} is the other half: the parcel says which district is
+ * served, and the entrance says where on the street the stairs stand. Both the
+ * simulation and the renderer read that one answer, so the stairs a player
+ * walks to are the station the panel opens for.
  */
 import type { Point } from '../core/geom.ts';
-import { hypot } from '../core/libm.ts';
+import { atan2, cos, hypot, sin } from '../core/libm.ts';
 import { sortedEntries } from '../core/sort.ts';
 import type { ParcelOwner } from './parcels.ts';
-import type { District, WorldDescription } from './types.ts';
+import { nearestRoadSpot } from './surface.ts';
+import { TIERS } from './tiers.ts';
+import type { District, RoadTier, WorldDescription } from './types.ts';
 
 /** A parcel that carries a metro station entrance (spec section 13.3). */
 export interface MetroStation {
@@ -125,4 +132,70 @@ export function metroDistricts(world: WorldDescription): number[] {
   }
   if (edge !== undefined) out.push(edge.id);
   return out.sort((a, b) => a - b);
+}
+
+/**
+ * Where a station's stairs stand, and which way they open (spec section 13.3).
+ *
+ * A station's parcel is entered from the road that runs along it, so the
+ * entrance is found from the parcel's centre and then stood out on the
+ * pavement, clear of the carriageway. The renderer builds the stairs here and
+ * the simulation puts the player here, because a player who walks up to the
+ * stairs has to be the player the metro answers: the reach of `src/sim/metro.ts`
+ * is measured from this place, and on an arterial the centreline is 10 m away
+ * from it.
+ */
+export interface MetroEntrance {
+  /** The station it belongs to, as {@link MetroPlan.stations} numbers them. */
+  station: number;
+  district: number;
+  /** Where the stairs stand, on the pavement beside the road. */
+  x: number;
+  y: number;
+  /** Radians, from the stairs toward the road: the way a player coming up them faces. */
+  heading: number;
+  /** The tier of that road, which the ground under the stairs is asked of. */
+  tier: RoadTier;
+}
+
+/**
+ * The entrances of a world's stations, in station order.
+ *
+ * The road they are found from is one with a pavement, which is an arterial or
+ * a street: a tier without one claims no ground beside its carriageway, so an
+ * alley behind the parcel has nowhere to put a stair. A station with no such
+ * road anywhere is left out, which a generated world has none of, since the
+ * line calls only at districts a street runs through.
+ *
+ * Pure, and the same answer on the main thread and in a chunk worker, so the
+ * stairs are drawn where the fast travel is taken.
+ */
+export function metroEntrances(world: WorldDescription, stations: readonly MetroStation[]): MetroEntrance[] {
+  const out: MetroEntrance[] = [];
+  for (const [station, at] of stations.entries()) {
+    const spot = nearestRoadSpot(world, at.x, at.y, paved);
+    if (spot === undefined) continue;
+    const spec = TIERS[spot.tier];
+    // The middle of the pavement, which is where a metro entrance belongs.
+    const away = spec.width / 2 + spec.verge + spec.pavement / 2;
+    // Across the road, toward the parcel the station holds: the stairs go on
+    // the pavement the parcel is entered from, not the one opposite it.
+    const acrossX = -sin(spot.heading);
+    const acrossY = cos(spot.heading);
+    const side = acrossX * (at.x - spot.x) + acrossY * (at.y - spot.y) < 0 ? -1 : 1;
+    out.push({
+      station,
+      district: at.district,
+      x: spot.x + acrossX * side * away,
+      y: spot.y + acrossY * side * away,
+      heading: atan2(-acrossY * side, -acrossX * side),
+      tier: spot.tier,
+    });
+  }
+  return out;
+}
+
+/** True of a tier that carries a pavement to stand a stair on. */
+function paved(tier: RoadTier): boolean {
+  return TIERS[tier].pavement > 0;
 }

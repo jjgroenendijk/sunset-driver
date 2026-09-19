@@ -280,9 +280,14 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 
 - `src/sim/metro.ts` is the fast travel of spec section 13.3, and nothing of the line itself is
   simulated: what the player meets is a station entrance on the street. `src/world/metro.ts` picks
-  the parcels, out of the same pass that picks the police stations, and `main.ts` turns each one
-  into the road place beside it. A player on foot within `ENTRANCE_REACH` of one has visited it, so
-  a station is earned by walking to it and never by driving past.
+  the parcels, out of the same pass that picks the police stations, and `metroEntrances` in the same
+  file stands each one on the middle of the pavement beside it. A player on foot within
+  `ENTRANCE_REACH` of one has visited it, so a station is earned by walking to it and never by
+  driving past.
+- That one answer is where the stairs are drawn as well (`src/render/metro-mesh.ts`), because the
+  reach is measured from it: a station snapped to the road centreline instead puts an arterial's
+  stairs 10 m outside the reach of the panel they belong to. The road it is found from is one with a
+  pavement, since a tier without one claims no ground beside its carriageway to stand a stair on.
 - A trip is `TRAVEL_TICKS` of fade, teleport and arrival, and those ticks are stepped like any
   others: the clock never skips, which is what makes the trip safe in the shared session of spec
   section 19. `stepMetro` runs before the physics, and while a trip is in the record the physics is

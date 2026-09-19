@@ -1,5 +1,7 @@
 import { expect, it } from 'vitest';
 import { pointInRegion, pointInRegions, regionArea } from '../src/core/geom.ts';
+import { hypot } from '../src/core/libm.ts';
+import { ENTRANCE_REACH } from '../src/sim/metro.ts';
 import {
   FRONT_REACH,
   lotMiddle,
@@ -12,10 +14,11 @@ import {
 import { layoutZones, skylineAt } from '../src/world/districts.ts';
 import { type RoadEdge } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
-import { metroDistricts } from '../src/world/metro.ts';
+import { metroDistricts, metroEntrances } from '../src/world/metro.ts';
 import { ownerMaxArea, type Parcel } from '../src/world/parcels.ts';
 import { deckRuns, overWater } from '../src/world/piers.ts';
-import { footprintHalfWidth } from '../src/world/tiers.ts';
+import { nearestRoadSpot } from '../src/world/surface.ts';
+import { footprintHalfWidth, TIERS } from '../src/world/tiers.ts';
 import { type Point, type WorldDescription, type Zone } from '../src/world/types.ts';
 import { landPoints, pointInRing, ringArea, ringsOverlap, sharedArea } from './helpers.ts';
 import {
@@ -371,6 +374,23 @@ sweepSuite('parcels', () => {
         if (stations.some((police) => police.parcel === station.parcel)) fault(`station ${i} shares a parcel with a police station`);
         // Every parcel has a road along it, which is the street entrance.
         if ((parcel?.roads.length ?? 0) === 0) fault(`station ${i} has no street entrance`);
+      }
+
+      // The stairs stand on the pavement of a road that has one: off the
+      // carriageway, and inside the ground that road claims, where no building
+      // stands (spec section 6.4). The panel opens within `ENTRANCE_REACH` of
+      // them, so two entrances never stand within reach of each other either.
+      const entrances = metroEntrances(w, metro);
+      if (entrances.length !== metro.length) fault(`has ${entrances.length} entrances for ${metro.length} stations`);
+      for (const [i, at] of entrances.entries()) {
+        const station = metro[at.station] as (typeof metro)[number];
+        const spot = nearestRoadSpot(w, station.x, station.y, (tier) => TIERS[tier].pavement > 0);
+        const away = hypot(at.x - (spot?.x ?? 0), at.y - (spot?.y ?? 0));
+        if (away < TIERS[at.tier].width / 2) fault(`entrance ${i} stands on the carriageway`);
+        if (away > footprintHalfWidth(at.tier)) fault(`entrance ${i} stands off the ground its road claims`);
+        for (const other of entrances.slice(i + 1)) {
+          if (hypot(at.x - other.x, at.y - other.y) <= ENTRANCE_REACH) fault(`entrance ${i} stands on another`);
+        }
       }
       expect(complaint, `seed ${seed}`).toBeUndefined();
     }

@@ -29,18 +29,30 @@ import type { ChunkDetail } from './streaming.ts';
 export const CELL_BATCH_CAP = 11;
 
 /**
- * Draw calls a chunk may cost: {@link CELL_BATCH_CAP} in each of its
- * {@link CHUNK_CELLS} cells, one ground mesh, and one line of markings for each
- * of the three marked tiers, which are not cut into cells. That is 52. A count
- * over this is a batching regression, not a cap to raise; a system that lands
- * in a chunk later raises it together with the batches it brings.
+ * Batches a chunk spends on the metro entrances of spec section 13.3: one for
+ * the whole chunk, since there is no point cutting a dozen objects in a city
+ * into cells (`metro.ts`).
  */
-export const CHUNK_DRAW_CALL_CAP = 1 + 3 + CELL_BATCH_CAP * CHUNK_CELLS;
+const METRO_BATCHES = 1;
+
+/**
+ * Draw calls a chunk may cost: {@link CELL_BATCH_CAP} in each of its
+ * {@link CHUNK_CELLS} cells, one ground mesh, one line of markings for each of
+ * the three marked tiers and one batch of metro entrances, none of which are
+ * cut into cells. That is 53. A count over this is a batching regression, not a
+ * cap to raise; a system that lands in a chunk later raises it together with
+ * the batches it brings.
+ */
+export const CHUNK_DRAW_CALL_CAP = 1 + 3 + METRO_BATCHES + CELL_BATCH_CAP * CHUNK_CELLS;
 
 /**
  * The most draw calls one chunk costs at near detail: the ground, and the
  * roads, the buildings, the plants, the lamps, the posters and the signs with
  * every kind in every cell.
+ *
+ * The metro entrances of spec section 13.3 are one batch for the whole chunk
+ * and are counted in every chunk, because a chunk does not know the parcels and
+ * cannot say whether a station stands in it. A city has a dozen or so.
  */
 export function chunkDrawCalls(chunk: WorldChunk): number {
   const batches =
@@ -49,7 +61,7 @@ export function chunkDrawCalls(chunk: WorldChunk): number {
     lampDrawCalls(chunk) +
     posterDrawCalls(chunk.buildings.length) +
     signDrawCalls(chunk.buildings.length);
-  return 1 + roadDrawCalls(chunk, CHUNK_CELLS) + batches * CHUNK_CELLS;
+  return 1 + METRO_BATCHES + roadDrawCalls(chunk, CHUNK_CELLS) + batches * CHUNK_CELLS;
 }
 
 /**

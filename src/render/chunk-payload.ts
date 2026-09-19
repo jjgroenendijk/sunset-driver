@@ -27,6 +27,7 @@
  */
 import { BufferAttribute, BufferGeometry } from 'three';
 import type { ChunkBounds, WorldChunk, WorldLayers } from '../world/chunks.ts';
+import { metroEntrances, type MetroEntrance } from '../world/metro.ts';
 import type { RoadRibbons } from '../world/ribbon.ts';
 import { buildShops, type Shop } from '../world/shops.ts';
 import { CHUNK_TERRAIN_CELL, TERRAIN_CELL } from '../world/terrain.ts';
@@ -36,6 +37,7 @@ import { byCell, cellGrid, cellOfPart, cellsHolding, type CellGrid } from './cel
 import { packFacade } from './facade-pack.ts';
 import { buildGroundAttributes, groundLookup, type GroundAttributes, type GroundLookup } from './ground.ts';
 import { lampsIn, type Lamp } from './lamp-mesh.ts';
+import { stairsIn, type MetroStair } from './metro-mesh.ts';
 import { postersIn, type Poster } from './poster-mesh.ts';
 import { ROOF_STRIDE, writeRoof } from './roofs.ts';
 import { buildChunkVegetation, plantLookup, type PlantLookup } from './plant-mesh.ts';
@@ -157,6 +159,12 @@ export interface ChunkPayload {
    * metres across and nothing past the near ring can read one.
    */
   signs: Sign[];
+  /**
+   * The metro entrances standing in the chunk (spec section 13.3), in the
+   * places the scene works in. A city holds a dozen or so, so most chunks hold
+   * none. Empty at far detail: a stairwell is four metres of pavement.
+   */
+  metro: MetroStair[];
   /** Draw calls the chunk costs once it is in the scene. */
   drawCalls: number;
 }
@@ -171,6 +179,8 @@ export interface ChunkLookups {
   surfaceAt: SurfaceAt;
   /** What a building sells, so its fascia names the trade really behind it. */
   tradeOf: TradeLookup;
+  /** Where the stairs down to each metro station stand (spec section 13.3). */
+  metro: readonly MetroEntrance[];
 }
 
 /**
@@ -191,6 +201,9 @@ export function chunkLookups(
     ribbons: layers.carve.ribbons,
     surfaceAt: (x, y, tier) => layers.carve.surfaceAt(x, y, tier),
     tradeOf: shopTrades(shops),
+    // A dozen or so stations to a city, found once: every chunk asks which of
+    // them stand in it.
+    metro: metroEntrances(world, layers.parcels.metro),
   };
 }
 
@@ -268,6 +281,7 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
     lamps: far ? [] : lampsIn(chunk, lookups.ribbons),
     posters,
     signs,
+    metro: far ? [] : stairsIn(chunk, lookups.metro, lookups.surfaceAt),
     drawCalls: 0,
   };
   payload.drawCalls = payloadDrawCalls(payload);
@@ -297,6 +311,8 @@ export function payloadDrawCalls(payload: ChunkPayload): number {
   calls += cellsHolding(grid, payload.lamps.length, (i) => payload.lamps[i] as Lamp);
   calls += cellsHolding(grid, payload.posters.length, (i) => payload.posters[i] as Poster);
   calls += cellsHolding(grid, payload.signs.length, (i) => payload.signs[i] as Sign);
+  // The entrances of a chunk are one batch for the whole chunk (`metro.ts`).
+  if (payload.metro.length > 0) calls++;
   return calls;
 }
 
