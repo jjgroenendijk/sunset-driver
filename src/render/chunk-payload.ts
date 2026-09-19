@@ -40,7 +40,7 @@ import { postersIn, type Poster } from './poster-mesh.ts';
 import { ROOF_STRIDE, writeRoof } from './roofs.ts';
 import { buildChunkVegetation, plantLookup, type PlantLookup } from './plant-mesh.ts';
 import type { SurfaceAt } from './pavement-mesh.ts';
-import { buildChunkRoads, partsOf } from './road-mesh.ts';
+import { buildChunkRoads, partsOf, raisedPartsOf } from './road-mesh.ts';
 import { shopTrades, signsIn, type Sign, type TradeLookup } from './sign-mesh.ts';
 import type { ChunkDetail } from './streaming.ts';
 
@@ -76,6 +76,8 @@ export interface PackedPart {
   geometry: PackedGeometry;
   /** Its frame in the world, sixteen numbers. */
   matrix?: Float32Array;
+  /** Whether it stands off the ground. Only the road parts say. */
+  raised?: boolean;
 }
 
 /**
@@ -91,6 +93,8 @@ export interface PackedBatch {
   parts: PackedPart[];
   /** Every attribute of the parts, at the length of all of them together. Empty when there are no parts. */
   storage: PackedGeometry;
+  /** Whether any of the parts stands off the ground. Only the road batches say. */
+  raised?: boolean;
 }
 
 /** One tier of road inside a chunk: everything batched, and everything painted. */
@@ -213,9 +217,13 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
       }
     : chunk;
   for (const tier of buildChunkRoads(traced, lookups.ribbons, lookups.surfaceAt)) {
+    const raised = new Set(raisedPartsOf(tier));
     roads.push({
       tier: tier.tier,
-      surface: packCells(grid, partsOf(tier).map((geometry) => ({ geometry: takeGeometry(geometry) }))),
+      surface: packCells(
+        grid,
+        partsOf(tier).map((geometry) => ({ geometry: takeGeometry(geometry), raised: raised.has(geometry) })),
+      ),
       markings: far ? new Float32Array(0) : tier.markings,
       markingNormals: far ? new Float32Array(0) : tier.markingNormals,
       markingTints: far ? new Float32Array(0) : tier.markingTints,
@@ -382,7 +390,8 @@ function packCells(grid: CellGrid, parts: PackedPart[]): PackedBatch[] {
  */
 function packBatch(parts: PackedPart[]): PackedBatch {
   const first = parts[0]?.geometry;
-  if (first === undefined) return { parts, storage: { attributes: [] } };
+  const raised = parts.some((part) => part.raised === true);
+  if (first === undefined) return { parts, storage: { attributes: [] }, raised };
   let vertices = 0;
   let indices = 0;
   for (const part of parts) {
@@ -399,7 +408,7 @@ function packBatch(parts: PackedPart[]): PackedBatch {
   };
   // The width `BatchedMesh` picks for an index it allocates itself.
   if (first.index !== undefined) storage.index = vertices > 65535 ? new Uint32Array(indices) : new Uint16Array(indices);
-  return { parts, storage };
+  return { parts, storage, raised };
 }
 
 /** Vertices a packed geometry holds, read off its positions. */

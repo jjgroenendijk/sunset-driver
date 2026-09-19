@@ -124,6 +124,18 @@ interface PaintBuffers {
   tints: number[];
 }
 
+/**
+ * The parts of one tier that stand off the ground and so cast a shadow worth
+ * drawing: every part of a run that has a deck or a portal, and the piers. The
+ * rest is paving laid on the ground, which could shade nothing but itself.
+ */
+export function raisedPartsOf(tier: TierGeometry): BufferGeometry[] {
+  const out: BufferGeometry[] = [];
+  for (const run of tier.runs) if (run.structures.length > 0) out.push(...run.surfaces, ...run.joints, ...run.structures);
+  out.push(...tier.corridors);
+  return out;
+}
+
 /** Everything of one tier that goes into a batch, surfaces and structures alike. */
 export function partsOf(tier: TierGeometry): BufferGeometry[] {
   const out: BufferGeometry[] = [];

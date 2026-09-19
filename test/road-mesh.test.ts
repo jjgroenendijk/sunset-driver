@@ -4,6 +4,7 @@ import {
   buildChunkRoads,
   markingsOf,
   partsOf,
+  raisedPartsOf,
   roadDrawCalls,
   roadSection,
   structureSection,
@@ -321,6 +322,16 @@ describe('bridges and tunnels', () => {
     const bed = spannedRibbons.frameAt(0, 1, -100, 0).height;
     const under = vertices(street).filter((p) => Math.abs(p.x + 100) < TOLERANCE && p.y < bed - 1);
     expect(under.length).toBeGreaterThan(0);
+  });
+
+  it('casts a shadow from every part that stands off the ground, and not from the paving', () => {
+    const bridged = streetOf(buildChunkRoads(spannedSource.chunk(-1, 0), spannedRibbons, spannedHeightAt));
+    const raised = raisedPartsOf(bridged);
+    for (const structure of structuresOf(bridged)) expect(raised).toContain(structure);
+    // The grid of the first world stands on the ground end to end.
+    const flat = streetOf(buildChunkRoads(source.chunk(0, 0), ribbons, heightAt));
+    expect(partsOf(flat).length).toBeGreaterThan(0);
+    expect(raisedPartsOf(flat)).toHaveLength(flat.corridors.length);
   });
 
   it('frames a bore at both of its mouths and nowhere else', () => {

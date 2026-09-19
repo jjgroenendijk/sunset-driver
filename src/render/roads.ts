@@ -38,11 +38,16 @@ export class RoadScenery {
     const objects: Object3D[] = [];
     const geometries: BufferGeometry[] = [];
     const steps: (() => void)[] = [];
+    const shadowless: Object3D[] = [];
     const surface = this.surfaces[tier.tier] as MeshStandardNodeMaterial;
     for (const cell of tier.surface) {
       const fill = fillOfPacked(cell, surface);
       objects.push(fill.mesh);
       steps.push(...fill.steps);
+      // A cell of paving on the ground could shade only itself, and the
+      // shadow pass would draw it for nothing. A deck, a portal or a pier in
+      // the cell makes it cast.
+      if (cell.raised !== true) shadowless.push(fill.mesh);
     }
     if (tier.markings.length > 0) {
       const geometry = new BufferGeometry();
@@ -60,6 +65,7 @@ export class RoadScenery {
       objects,
       drawCalls: objects.length,
       steps,
+      shadowless,
       dispose(): void {
         for (const object of objects) if (object instanceof Batch) object.dispose();
         for (const geometry of geometries) geometry.dispose();
