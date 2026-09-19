@@ -19,6 +19,9 @@
  * Everything is plain data stepped from `(seed, tick)` and the record, and the
  * units are stepped in id order, so a replayed session sends the same engines
  * down the same streets.
+ *
+ * A unit is a solid (`emergency-bodies.ts`): it pulls away and brakes, and it
+ * stops short of the player rather than driving through them.
  */
 import { rngFor, Subsystem } from '../core/rng.ts';
 import { cos, hypot, sin } from '../core/libm.ts';
@@ -29,6 +32,7 @@ import { responseTicks, type DistrictAt } from './police.ts';
 import type { SimState } from './simulation.ts';
 import type { TrafficRoads } from './traffic.ts';
 import { UnitRoads, type DrivePose } from './unit-route.ts';
+import { specOf } from './vehicle.ts';
 
 /** What a unit is: the engine that answers a fire, or the ambulance that answers a casualty. */
 export type EmergencyKind = 'engine' | 'ambulance';
@@ -100,6 +104,26 @@ export interface EmergencyState {
   dispatchTick: number;
 }
 
+/**
+ * The box each kind stands as, in metres: half its length, width and height,
+ * and how far the middle of the box rides over the road. Neither service has a
+ * row of the roster, since nobody drives one, so this is the one place that
+ * says how big they are: the body the player hits (`emergency-bodies.ts`) and
+ * the model drawn (`emergency-mesh.ts`) are both built from it.
+ */
+export const UNIT_BODY: Record<EmergencyKind, { halfLength: number; halfWidth: number; halfHeight: number; ride: number }> = {
+  engine: { halfLength: 4.4, halfWidth: 1.25, halfHeight: 1.45, ride: 1.9 },
+  ambulance: { halfLength: 3, halfWidth: 1.1, halfHeight: 1.3, ride: 1.65 },
+};
+
+/**
+ * Whether a unit has its lights and siren on: on the way to a scene and at it,
+ * and off once it is done and driving away.
+ */
+export function onCall(unit: EmergencyUnit): boolean {
+  return unit.task !== 'leave';
+}
+
 /** Metres per second each kind drives at. An engine is heavy; an ambulance is not. */
 export const UNIT_SPEED: Record<EmergencyKind, number> = {
   engine: 22,
@@ -126,6 +150,47 @@ export const COLLECT_RANGE = CALL_RANGE;
 
 /** Metres a hose reaches from where the engine stands. */
 export const HOSE_RANGE = 12;
+
+/** Metres per second a second a unit gains pulling away, and loses braking. */
+const PULL_AWAY = 3;
+const BRAKE = 5;
+
+/** Metres per second a unit creeps the last of the way to a scene at. */
+const CRAWL = 2;
+
+/**
+ * Metres to either side of a unit's line the player is in its way over, and
+ * the metres it stops short of them. A lane is about three and a half metres
+ * wide, so this is the lane the unit drives in and not the one beside it.
+ */
+const IN_LANE = 2;
+const STAND_OFF = 3;
+
+/** Metres of the road ahead of a unit it looks for the player over. */
+const LOOK_AHEAD = 40;
+
+/** The fastest a unit may go and still stop within `metres`. */
+export function stoppingSpeed(metres: number): number {
+  return Math.sqrt(2 * BRAKE * Math.max(0, metres));
+}
+
+/**
+ * Metres of clear road ahead of a unit before it would touch the player, or
+ * {@link LOOK_AHEAD} where the player is not in its lane. The player in a
+ * vehicle takes the length of it; on foot they take a stride.
+ */
+export function clearAhead(state: SimState, unit: EmergencyUnit): number {
+  const p = state.player;
+  const x = p.driving ? state.vehicle.x : p.x;
+  const y = p.driving ? state.vehicle.z : p.y;
+  const dx = x - unit.x;
+  const dy = y - unit.y;
+  const along = dx * cos(unit.heading) + dy * sin(unit.heading);
+  const beside = -dx * sin(unit.heading) + dy * cos(unit.heading);
+  if (along <= 0 || Math.abs(beside) > IN_LANE + UNIT_BODY[unit.kind].halfWidth) return LOOK_AHEAD;
+  const them = p.driving ? specOf(state.vehicle.cls).halfLength : 0.5;
+  return Math.min(LOOK_AHEAD, Math.max(0, along - UNIT_BODY[unit.kind].halfLength - them - STAND_OFF));
+}
 
 /** Metres from the scene a unit counts as having arrived at it. */
 const ARRIVE_RANGE = 10;
@@ -328,7 +393,7 @@ export class EmergencyServices {
     // player carries on out of it, rather than standing in the street or
     // vanishing where somebody is watching.
     if (unit.task === 'leave' && arrived) this.onward(state, unit);
-    this.run(unit);
+    this.run(state, unit);
   }
 
   /**
@@ -368,10 +433,19 @@ export class EmergencyServices {
     unit.planned = -REPLAN;
   }
 
-  /** Run a unit along its route, planning it again where it is due or has run out of road. */
-  private run(unit: EmergencyUnit): void {
+  /**
+   * Run a unit along its route, planning it again where it is due or has run
+   * out of road. It pulls away and brakes the way a heavy vehicle does rather
+   * than jumping to speed, and it stops short of the player where they stand in
+   * its lane rather than driving through them.
+   */
+  private run(state: SimState, unit: EmergencyUnit): void {
     const limit = this.roads.limitAt(unit.id, unit.edges, unit.distance);
-    const speed = Math.min(UNIT_SPEED[unit.kind], limit * URGENCY);
+    let speed = Math.min(UNIT_SPEED[unit.kind], limit * URGENCY, unit.speed + PULL_AWAY / TICK_RATE);
+    // A unit on its way in slows for the scene rather than stopping dead at it.
+    // It keeps a crawl, or the last metre would take for ever.
+    if (unit.task === 'respond') speed = Math.min(speed, Math.max(CRAWL, stoppingSpeed(unit.stop - unit.distance)));
+    speed = Math.min(speed, stoppingSpeed(clearAhead(state, unit)));
     const was = unit.distance;
     unit.distance = Math.min(unit.distance + speed / TICK_RATE, unit.stop);
     this.roads.pose(unit.id, unit.edges, unit.distance, this.pose);

@@ -6,7 +6,11 @@ import {
   CALL_SEVERITY,
   callAmbulance,
   EmergencyServices,
+  clearAhead,
   HOSE_RANGE,
+  onCall,
+  stoppingSpeed,
+  UNIT_BODY,
   UNITS_OUT,
   WORK_TICKS,
   type EmergencyUnit,
@@ -219,6 +223,85 @@ describe('the emergency services (spec section 20.3)', () => {
     state.player.y = -200;
     run(state, service, 40 * TICK_RATE);
     expect(outOf(state, 'engine')).toHaveLength(1);
+  });
+});
+
+describe('a unit on the road (spec section 20.3)', () => {
+  /** A unit of a kind standing at the origin and facing along +x. */
+  function standing(kind: EmergencyUnit['kind']): EmergencyUnit {
+    return {
+      id: 0, kind, task: 'respond', call: 0, x: 0, y: 0, heading: 0, height: 0, speed: 0, edges: [],
+      distance: 0, stop: 0, planned: 0, goalX: 0, goalY: 0, homeX: 0, homeY: 0, until: -1,
+    };
+  }
+
+  /** Set a car alight away from the player and step until an engine is out to it. */
+  function sendEngine(state: SimState, service: EmergencyServices): EmergencyUnit | undefined {
+    const car = promote(state, 0, 45, 60);
+    ignite(car.vehicle.damage, state.tick);
+    for (let i = 0; i < 20 * TICK_RATE && outOf(state, 'engine').length === 0; i++) run(state, service, 1);
+    return outOf(state, 'engine')[0];
+  }
+
+  it('sees the player in its lane ahead, and not beside it or behind it', () => {
+    const { state } = session();
+    const unit = standing('engine');
+    state.player.x = 20;
+    state.player.y = 0.5;
+    const clear = clearAhead(state, unit);
+    expect(clear).toBeGreaterThan(0);
+    expect(clear).toBeLessThan(20 - UNIT_BODY.engine.halfLength);
+    // In the next lane over, or behind, the player is not in its way.
+    state.player.y = 6;
+    expect(clearAhead(state, unit)).toBe(clearAhead(state, { ...unit, heading: Math.PI }));
+    state.player.x = -20;
+    state.player.y = 0;
+    expect(clearAhead(state, unit)).toBeGreaterThan(30);
+  });
+
+  it('stops short of a player standing in its way, and drives on once they step aside', () => {
+    const { state, service } = session();
+    const unit = sendEngine(state, service);
+    expect(unit).toBeDefined();
+    if (unit === undefined) return;
+    // Let it get going, then stand in front of it.
+    run(state, service, 3 * TICK_RATE);
+    const ahead = 14;
+    state.player.x = unit.x + Math.cos(unit.heading) * ahead;
+    state.player.y = unit.y + Math.sin(unit.heading) * ahead;
+    const was = { x: state.player.x, y: state.player.y };
+    for (let i = 0; i < 4 * TICK_RATE; i++) {
+      // Keep the player on the unit's line, so a turn in the road does not let it past.
+      state.player.x = was.x;
+      state.player.y = was.y;
+      run(state, service, 1);
+      expect(Math.hypot(unit.x - was.x, unit.y - was.y)).toBeGreaterThan(UNIT_BODY.engine.halfLength);
+    }
+    state.player.x = -300;
+    state.player.y = -300;
+    const held = { x: unit.x, y: unit.y };
+    run(state, service, 3 * TICK_RATE);
+    expect(Math.hypot(unit.x - held.x, unit.y - held.y)).toBeGreaterThan(5);
+  });
+
+  it('pulls away rather than jumping to speed, and brakes within the road it has', () => {
+    const { state, service } = session();
+    const unit = sendEngine(state, service);
+    let last = 0;
+    for (let i = 0; i < TICK_RATE; i++) {
+      run(state, service, 1);
+      expect((unit?.speed ?? 0) - last).toBeLessThan(0.1);
+      last = unit?.speed ?? 0;
+    }
+    expect(stoppingSpeed(0)).toBe(0);
+    expect(stoppingSpeed(10)).toBe(10);
+  });
+
+  it('has its lights and siren on to a call and at it, and off on the way home', () => {
+    const unit = standing('ambulance');
+    expect(onCall(unit)).toBe(true);
+    expect(onCall({ ...unit, task: 'work' })).toBe(true);
+    expect(onCall({ ...unit, task: 'leave' })).toBe(false);
   });
 });
 
