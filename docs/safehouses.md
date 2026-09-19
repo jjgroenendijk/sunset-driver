@@ -3,7 +3,7 @@
 The gotchas of spec section 16.3: the properties a player buys, what each one holds, and why the
 garage works the way it does. The property broker that sells them is a shop like any other and is
 in `docs/shops.md`; the respawn a safehouse is the point of is spec section 11.7, in
-`docs/sim-and-ui.md`. The record all three write is `src/sim/simulation.ts`.
+`docs/police.md`. The record all three write is `src/sim/simulation.ts`.
 
 ## Contents
 

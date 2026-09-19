@@ -13,10 +13,10 @@ The determinism rules apply: `rngFor` rather than `Math.random()`, and the sorte
 
 ## The gotchas
 
-`docs/sim-and-ui.md` holds them, under thirteen headings — the player and the HUD, the map,
-physics, casualties and the ragdoll, on foot, hotwiring, weapons, death and heat, the police, the
-emergency services, the ground, vehicles and damage. It opens
-with a contents list. Read the section the work touches, not the file.
+`docs/sim-and-ui.md` holds them, under eleven headings — the player and the HUD, the map,
+physics, casualties and the ragdoll, on foot, hotwiring, weapons, the emergency services, the
+ground, vehicles and damage. It opens with a contents list. Read the section the work touches, not
+the file. `docs/police.md` holds death, arrest, the heat and the police.
 
 `docs/city-life.md` holds the city that lives around the player, the six subjects of spec section
 13: the ambient traffic, the traffic lights, the parked cars, the tram, the pedestrians and the
