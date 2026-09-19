@@ -40,6 +40,12 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
   measured in shadow texels — the near cascade of `SHADOW_DISTANCE` covers about 80 m at
   `SHADOW_MAP_SIZE`, so a texel is about 8 cm — and a bias under a texel lets a grazed surface
   stripe itself.
+- `CSMShadowNode` draws into a cascade only what stands within `lightMargin` of the view it covers,
+  back along the light, and the addon's fixed 200 m is short of a 150 m tower once the sun is under
+  50 degrees. The near cascade covers the least and loses the tower first, so the street under the
+  camera came out sunlit and the same street further up the screen in shadow, with the line moving
+  as the camera moved. `shadowReach` in `sky.ts` sizes the margin to the snapped sun and deepens
+  every cascade's camera by as much. At noon it is shorter than 200 m.
 - The daytime sky fill (`FILL_DAY`, `daylight.ts`) leaves a street in shade about a third as bright
   as one in the sun. Much less, and the city in its own shadow reads as dusk at noon.
 - `renderer.shadowMap.enabled` is false by default on `WebGPURenderer`. Without the line in
