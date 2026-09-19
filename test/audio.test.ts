@@ -4,6 +4,7 @@ import {
   AudioPlanner,
   CUES_PER_FRAME,
   duckOf,
+  EMERGENCY_SIREN,
   IMPACT_MIN,
   SIREN_VOICES,
   silentPlan,
@@ -18,6 +19,7 @@ import type { Cue } from '../src/audio/cue.ts';
 import { TICK_RATE, TICKS_PER_HOUR } from '../src/sim/clock.ts';
 import { CLEAR_WEATHER, weatherAt, type Weather } from '../src/sim/weather.ts';
 import { EMPTY_INPUT, type InputFrame } from '../src/sim/input.ts';
+import type { EmergencyUnit } from '../src/sim/emergency.ts';
 import type { PoliceKind, PoliceUnit } from '../src/sim/police.ts';
 import type { TramBell } from '../src/sim/tram.ts';
 import { createSimState, type SimState } from '../src/sim/simulation.ts';
@@ -302,6 +304,22 @@ describe('audio: the plan', () => {
     // A unit past the reach is not worth a voice.
     state.police.units = [unit(6, FAR + 1, 0)];
     expect(sirensOf(state, { x: 0, y: 0 })).toHaveLength(0);
+  });
+
+  it('carries the sirens of the fire engines and ambulances on a call, each in a sound of its own', () => {
+    const state = session();
+    const service = (id: number, kind: EmergencyUnit['kind'], x: number, task: EmergencyUnit['task']): EmergencyUnit => ({
+      id, kind, task, call: 0, x, y: 0, heading: 0, height: 0, speed: 0, edges: [], distance: 0, stop: 0,
+      planned: 0, goalX: 0, goalY: 0, homeX: 0, homeY: 0, until: -1,
+    });
+    state.police.units = [unit(0, 20, 0)];
+    state.emergency.units = [service(0, 'engine', 10, 'respond'), service(1, 'ambulance', 5, 'work'), service(2, 'engine', 2, 'leave')];
+    const sirens = sirensOf(state, { x: 0, y: 0 });
+    // The engine on its way home has its siren off; the rest are heard, nearest first.
+    expect(sirens.map((siren) => siren.sound)).toEqual(['yelp', 'wail', 'two-tone']);
+    // A police car and an ambulance that share an id are two voices, not one.
+    expect(sirens.map((siren) => siren.id)).toEqual([EMERGENCY_SIREN + 1, EMERGENCY_SIREN, 0]);
+    expect(sirens[1]?.pitch).toBeLessThan(sirens[2]?.pitch ?? 0);
   });
 
   it('wails each unit on its own phase', () => {
