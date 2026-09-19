@@ -17,6 +17,7 @@ import { DRY_MARGIN, groundRule, spanProfile, type Profile } from './road-ground
 import { ANCHOR_REACH, ARTERIAL } from './road-params.ts';
 import type { Trail } from './network-clearance.ts';
 import { RoadNetwork, type RoadDraft } from './road-network.ts';
+import { RiverWater } from './river-decks.ts';
 import { selfOverlap, stepOverlaps, untangle } from './self-overlap.ts';
 import { coastNoise, islandAt, type CoastNoise } from './terrain.ts';
 import type { TensorField } from './tensor.ts';
@@ -60,6 +61,8 @@ export abstract class RoadRoute {
   protected readonly sand: BeachGround;
   /** The zone rings of spec section 8.2. */
   protected readonly zones: ZoneLayout;
+  /** The rivers as water an arterial may bridge on a short deck. */
+  protected readonly rivers: RiverWater;
   /** Scratch for the reroute search, kept between routes so it is allocated once. */
   protected readonly came: Int32Array;
   protected readonly queue: Int32Array;
@@ -96,6 +99,7 @@ export abstract class RoadRoute {
     // drops, so the beach would not be a parcel at all.
     this.sand = new BeachGround(world.beaches.filter(isResort), world.size, this.hf.cellSize);
     this.zones = layoutZones(world.size, world.core, world.water);
+    this.rivers = new RiverWater(world.water.rivers, this.hf, this.seaLevel);
     this.came = new Int32Array(n * n);
     this.queue = new Int32Array(n * n);
   }
@@ -348,7 +352,8 @@ export abstract class RoadRoute {
   /**
    * Mark the segments that do not lie on the ground. A hill standing more than
    * {@link CUT} above the line the road drives is bored through; a dip falling
-   * more than {@link FILL} below it is carried on a deck. The decks already in
+   * more than {@link FILL} below it is carried on a deck, and so is a span a
+   * trace laid across a river (`river-decks.ts`). The decks already in
    * `bridges` span water and are left alone; the new ones are added to it, and
    * it is left ascending. The bores are returned.
    */
@@ -359,6 +364,10 @@ export abstract class RoadRoute {
       const a = points[i] as Point;
       const b = points[i + 1] as Point;
       const profile = this.probe(a.x, a.y, b.x, b.y);
+      if (!profile.dry && this.rivers.spans(a, b)) {
+        bridges.push(i);
+        continue;
+      }
       if (profile.above <= CUT && profile.below <= FILL) continue;
       // Whichever the ground overruns by more decides which structure it takes.
       if (profile.above - CUT >= profile.below - FILL) tunnels.push(i);

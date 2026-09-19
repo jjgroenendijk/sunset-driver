@@ -153,7 +153,9 @@ const RING_CLEAR = 0.2;
 /**
  * True when a river stays inland from its source down to near its mouth. A
  * river whose upper course touches the water cuts the land it runs across in
- * two, and no road crosses a river.
+ * two. An arterial crosses a river only where it meets one nearly head on
+ * (`river-decks.ts`), so the thin strip between such a river and the shore
+ * may still get no arterial.
  */
 function staysInland(coast: CoastAt, river: RiverDescription, size: number, clear: number): boolean {
   const last = Math.floor(river.path.length * (1 - MOUTH_SHARE));

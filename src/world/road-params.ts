@@ -65,10 +65,12 @@ export interface TierParams {
   maxLength: number;
   /** Steepest grade a step may climb; the tier table owns the number. */
   maxGrade: number;
+  /** True for a tier that crosses a river on a short deck where it meets one (`river-decks.ts`). */
+  bridgesRivers?: boolean;
 }
 
 export const HIGHWAY: TierParams = { step: 30, maxTurn: 0.09, fieldWeight: 1, mergeRadius: 110, maxLength: 1.3, maxGrade: TIERS.highway.maxGrade };
-export const ARTERIAL: TierParams = { step: 22, maxTurn: 0.17, fieldWeight: 0.75, mergeRadius: 80, maxLength: 0.8, maxGrade: TIERS.arterial.maxGrade };
+export const ARTERIAL: TierParams = { step: 22, maxTurn: 0.17, fieldWeight: 0.75, mergeRadius: 80, maxLength: 0.8, maxGrade: TIERS.arterial.maxGrade, bridgesRivers: true };
 export const STREET: TierParams = { step: 14, maxTurn: 0.22, fieldWeight: 0.8, mergeRadius: 26, maxLength: 0.35, maxGrade: TIERS.street.maxGrade };
 export const ALLEY: TierParams = { step: 10, maxTurn: 0.3, fieldWeight: 0.8, mergeRadius: 18, maxLength: 0.06, maxGrade: TIERS.alley.maxGrade };
 export const DIRT: TierParams = { step: 26, maxTurn: 0.2, fieldWeight: 0.9, mergeRadius: 55, maxLength: 0.5, maxGrade: TIERS.dirt.maxGrade };

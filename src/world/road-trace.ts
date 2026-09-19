@@ -18,6 +18,7 @@ import { atan2, cos, hypot, sin } from '../core/libm.ts';
 import { ARTERIAL, STREET, type TierParams } from './road-params.ts';
 import type { Trail } from './network-clearance.ts';
 import type { NetworkHit } from './road-network.ts';
+import { RIVER_DECK } from './river-decks.ts';
 import { RoadRoute } from './road-route.ts';
 import { stepOverlaps } from './self-overlap.ts';
 import type { Point, RoadTier } from './types.ts';
@@ -30,6 +31,8 @@ export * from './road-params.ts';
 /** Steps of the fan a step searches when water blocks the way, and the hardest turn water may force. */
 const AVOID_STEPS = 6;
 const AVOID_TURNS = 3;
+/** Turns off the wanted heading a trace tries a river deck at before it turns along the bank. */
+const RIVER_TURNS = 1;
 /** Steps without getting closer to the target before a guided trace gives up. */
 const STALL_STEPS = 12;
 /**
@@ -487,6 +490,12 @@ export abstract class RoadTrace extends RoadRoute {
           if (Math.abs(wrapAngle(h - heading)) > limit) continue;
           const qx = x + cos(h) * reach;
           const qy = y + sin(h) * reach;
+          // A river met nearly head on is crossed rather than followed, by a
+          // tier that bridges rivers, so its two banks are one network (issue #276).
+          if (span === 1 && k <= RIVER_TURNS && params.bridgesRivers === true && !this.probe(x, y, qx, qy).dry) {
+            const deck = this.riverDeck(x, y, h, params);
+            if (deck !== undefined) return deck;
+          }
           // The climb between the two ends costs two samples and turns most
           // candidates away; only what survives it is worth walking over.
           if (Math.abs(this.hf.sample(qx, qy) - here) / reach > params.maxGrade) {
@@ -501,8 +510,28 @@ export abstract class RoadTrace extends RoadRoute {
       }
       // Spanning further is for ground the road may not climb. Where water was
       // what stopped it, the road stops too: a deck belongs at a strait
-      // crossing of the water description, not wherever a trace ran out.
+      // crossing of the water description or across a river met nearly
+      // head on, not wherever a trace ran out.
       if (!steep) return undefined;
+    }
+    return undefined;
+  }
+
+  /**
+   * A deck straight across a river, from a point along a heading: the shortest
+   * reach whose far end stands dry past the water, where the span is one
+   * `river-decks.ts` accepts and no steeper end to end than the tier climbs.
+   */
+  private riverDeck(x: number, y: number, h: number, params: TierParams): Step | undefined {
+    const here = this.hf.sample(x, y);
+    for (let reach = params.step; reach <= RIVER_DECK; reach += params.step / 2) {
+      const qx = x + cos(h) * reach;
+      const qy = y + sin(h) * reach;
+      if (Math.abs(qx) > this.half || Math.abs(qy) > this.half) return undefined;
+      if (!this.isDry(qx, qy)) continue;
+      if (Math.abs(this.hf.sample(qx, qy) - here) / reach > params.maxGrade) return undefined;
+      if (this.probe(x, y, qx, qy).above > MAX_COVER) return undefined;
+      return this.rivers.spans({ x, y }, { x: qx, y: qy }) ? { heading: h, reach } : undefined;
     }
     return undefined;
   }

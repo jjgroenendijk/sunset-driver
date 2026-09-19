@@ -168,8 +168,8 @@ export interface RoadCurve {
   nodes: number[];
   /**
    * Indices of the segments carried on a deck: segment `i` runs from
-   * `points[i]` to `points[i + 1]`. Ascending. A deck spans a strait crossing
-   * or a dip the road may not follow down.
+   * `points[i]` to `points[i + 1]`. Ascending. A deck spans a strait crossing,
+   * a river or a dip the road may not follow down.
    */
   bridges: number[];
   /**
