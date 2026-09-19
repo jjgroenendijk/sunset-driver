@@ -29,6 +29,7 @@ export const CONTROLS: readonly ControlBinding[] = [
   { action: 'Pause', keys: 'Esc' },
   { action: 'Map', keys: 'M' },
   { action: 'Map zoom, centre, legend', keys: '+ − Space L' },
+  { action: 'Camera view', keys: 'T' },
   { action: 'Vehicles', keys: 'V' },
   { action: 'Weapons', keys: 'G' },
   { action: 'Debug info', keys: 'F3' },

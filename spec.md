@@ -431,14 +431,20 @@ Visual richness comes from geometry, lighting and materials rather than screen-s
 
 ### 10.7 Camera
 
-Fixed tilted top-down. Pitch is locked and heading is fixed. The camera only translates: it leads
-the vehicle at speed and pulls back as speed increases. It never rolls, banks or rotates. That is
-the camera the game is played through; the developer free camera of `docs/dev-tooling.md` is a tool
-and not a view of the game.
+Fixed tilted top-down. Pitch is locked and heading faces north. The camera translates: it leads the
+vehicle at speed and pulls back as speed increases. It never rolls or banks, and it turns only for
+the Turn setting below. That is the camera the game is played through; the developer free camera of
+`docs/dev-tooling.md` is a tool and not a view of the game.
+
+The View page under Options, and the `T` key, pick one of three views. **Top down**, above, is the
+default and the view the game is designed for. **Third person** stands behind and above the player
+and turns after them, on foot or in a car. **First person** stands at the player's eyes and turns
+with them. On foot, the walking keys follow the camera's heading in every view, so `W` walks up the
+screen.
 
 The camera stands about 30 m over the street, and a tower stands up to 150 m. A building therefore
 often stands between the camera and the player, or holds the camera inside it. A setting on the
-Camera page of the title screen and of the pause menu says what happens then:
+Buildings page of the title screen and of the pause menu says what happens then:
 
 - **See-through**, the default, as in GTA Chinatown Wars. A building nearer the camera than the
   player, inside a cone around the player, keeps a dithered scatter of its pixels, and its outline
@@ -446,6 +452,9 @@ Camera page of the title screen and of the pause menu says what happens then:
 - **Pull back.** The camera moves back along its fixed view until it stands over the roof under it.
   It climbs fast and comes down slowly. Pitch and heading do not change. A building that still
   hides the player is cut as with See-through.
+- **Turn.** The camera turns smoothly round the player, pitch held, to the nearest heading from
+  which no roof hides them. It keeps a heading while that heading sees, and turns back to north
+  once north sees again. A building that no heading clears is cut as with See-through.
 - **Off.** Every building is drawn whole.
 
 ---

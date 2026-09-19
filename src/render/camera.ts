@@ -1,7 +1,33 @@
 import { PerspectiveCamera, Vector3 } from 'three';
 import { hashInts } from '../core/hash.ts';
+import {
+  backOf,
+  CHASE_NEAR,
+  clearYaw,
+  EYE_AHEAD_DRIVING,
+  EYE_AHEAD_ON_FOOT,
+  EYE_HEIGHT_DRIVING,
+  EYE_HEIGHT_ON_FOOT,
+  FIRST_PITCH,
+  FIRST_TURN_RATE,
+  LOOK_HEIGHT_DRIVING,
+  LOOK_HEIGHT_ON_FOOT,
+  THIRD_DISTANCE_DRIVING,
+  THIRD_DISTANCE_ON_FOOT,
+  THIRD_DISTANCE_PER_SPEED,
+  THIRD_PITCH,
+  THIRD_TURN_RATE,
+  TOP_NEAR,
+  TURN_RATE,
+  turnToward,
+  yawBehind,
+  type CameraView,
+  type RoofHeight,
+} from './camera-view.ts';
 
-/** Locked pitch in radians below horizontal; the camera never rolls or yaws. */
+export type { CameraView, RoofHeight } from './camera-view.ts';
+
+/** Locked pitch in radians below horizontal of the top-down view; it never rolls. */
 export const CAMERA_PITCH = (58 * Math.PI) / 180;
 export const CAMERA_HEADING = 0;
 export const BASE_DISTANCE = 36;
@@ -23,6 +49,12 @@ const ZOOM_RATE = 1.2;
  */
 const ROOF_CLEARANCE = 10;
 export const PULL_MARGIN = 6;
+/**
+ * Metres every footprint is grown by when the turn asks which roofs stand
+ * between the camera and the player. A little, so a sight line that grazes a
+ * wall counts as blocked.
+ */
+export const TURN_MARGIN = 1;
 /** How fast the camera climbs over a roof, and how fast it comes down again, in e-foldings a second. */
 const CLIMB_RATE = 6;
 const SETTLE_RATE = 1.5;
@@ -41,13 +73,33 @@ const JOLT_METRES = 0.3;
 const JOLT_RATE_X = 23;
 const JOLT_RATE_Z = 17;
 
-/** The top of the tallest roof over a ground point, or undefined over open ground. */
-export type RoofHeight = (x: number, z: number) => number | undefined;
+/** Where the camera follows: the player as the frame draws them. */
+export interface CameraTarget {
+  x: number;
+  y: number;
+  height: number;
+  heading: number;
+  speed: number;
+  driving?: boolean;
+}
 
 /**
- * Fixed tilted top-down camera. Pitch and heading are constants; only the
- * position moves. It leads the target in its direction of travel and pulls
- * back as speed rises.
+ * How the camera looks this frame (spec section 10.7). `view` is top down
+ * unless the player chose otherwise. `pull` stands the top-down camera back
+ * over the roof under it; `turn` turns it round the player to a heading from
+ * which no roof hides them. The chase views read neither.
+ */
+export interface CameraLook {
+  view?: CameraView;
+  pull?: RoofHeight;
+  turn?: RoofHeight;
+}
+
+/**
+ * The game camera. Top down, it is tilted at a fixed pitch and only moves: it
+ * leads the target in its direction of travel and pulls back as speed rises.
+ * Its heading is north unless the Turn setting swings it past a building. The
+ * chase views of `camera-view.ts` stand behind the player or at their eyes.
  */
 export class FollowCamera {
   readonly camera: PerspectiveCamera;
@@ -65,14 +117,33 @@ export class FollowCamera {
   private joltSize = 0;
   private joltPhaseX = 0;
   private joltPhaseZ = 0;
+  /** The view the camera took last frame, the heading it looks along, and the heading the turn is after. */
+  private shown: CameraView = 'top-down';
+  private yaw = CAMERA_HEADING;
+  private turnGoal = CAMERA_HEADING;
+  private pitch = CAMERA_PITCH;
+  private readonly back = new Vector3();
 
   constructor(aspect: number) {
-    this.camera = new PerspectiveCamera(45, aspect, 1, 2000);
+    this.camera = new PerspectiveCamera(45, aspect, TOP_NEAR, 2000);
     this.applyOrientation();
   }
 
   private applyOrientation(): void {
-    this.camera.rotation.set(-CAMERA_PITCH, CAMERA_HEADING, 0, 'YXZ');
+    this.camera.rotation.set(-this.pitch, this.yaw, 0, 'YXZ');
+  }
+
+  /** The view the camera stands in now. */
+  get view(): CameraView {
+    return this.shown;
+  }
+
+  /**
+   * The heading the camera looks along, as a yaw about the up axis: 0 looks
+   * north. On foot the keys walk relative to it, so up the screen is forward.
+   */
+  get heading(): number {
+    return this.yaw;
   }
 
   /** How far back the camera sits at rest. The title screen pulls in close. */
@@ -137,19 +208,37 @@ export class FollowCamera {
   /**
    * Move toward the target. `dt` is render time; the camera is not simulation
    * state. `height` is the ground the target stands on, so the view rises and
-   * falls with the hill rather than cutting into it. The camera pulls back for
-   * speed only in a vehicle (spec section 10.7): `driving: false` keeps a
-   * player on foot at the base distance, walking or sprinting.
+   * falls with the hill rather than cutting into it. The top-down camera pulls
+   * back for speed only in a vehicle (spec section 10.7): `driving: false`
+   * keeps a player on foot at the base distance, walking or sprinting.
    *
-   * With `roofs`, the camera does not stand inside a building: it pulls back
-   * along its fixed view until it is over the roof under it. It climbs fast and
-   * comes down slowly, so a row of roofs does not make it bob.
+   * A change of view snaps the camera to the new one rather than sliding
+   * through the city between them.
    */
-  update(
-    dt: number,
-    target: { x: number; y: number; height: number; heading: number; speed: number; driving?: boolean },
-    roofs?: RoofHeight,
-  ): void {
+  update(dt: number, target: CameraTarget, look: CameraLook = {}): void {
+    const view = look.view ?? 'top-down';
+    if (view !== this.shown) {
+      this.shown = view;
+      this.initialised = false;
+      this.camera.near = view === 'top-down' ? TOP_NEAR : CHASE_NEAR;
+      this.camera.updateProjectionMatrix();
+    }
+    if (view === 'top-down') this.followOver(dt, target, look);
+    else this.followBehind(dt, target, view === 'first-person');
+    this.shake.multiplyScalar(Math.exp(-KICK_RATE * dt));
+    this.camera.position.add(this.shake);
+    this.joltBy(dt, this.camera.position);
+    this.applyOrientation();
+  }
+
+  /**
+   * The top-down view. With `pull`, the camera does not stand inside a
+   * building: it pulls back along its view until it is over the roof under it.
+   * It climbs fast and comes down slowly, so a row of roofs does not make it
+   * bob. With `turn`, it turns round the player, pitch held, to a heading from
+   * which they are seen.
+   */
+  private followOver(dt: number, target: CameraTarget, look: CameraLook): void {
     const lead = Math.abs(target.speed) * LEAD_PER_SPEED;
     const wanted = new Vector3(
       target.x + Math.cos(target.heading) * lead,
@@ -157,13 +246,17 @@ export class FollowCamera {
       target.y + Math.sin(target.heading) * lead,
     );
     const zoom = target.driving === false ? 0 : Math.abs(target.speed) * DISTANCE_PER_SPEED;
-    // Back off along the fixed view direction so the focus stays centred.
-    const back = new Vector3(0, 0, 1).applyEuler(this.camera.rotation);
+    this.pitch = CAMERA_PITCH;
+    const scratch = new Vector3();
+    const goal = (distance: number): number =>
+      look.turn === undefined ? CAMERA_HEADING : clearYaw(target, this.turnGoal, this.pitch, distance, look.turn, scratch);
     if (!this.initialised) {
       this.focus.copy(wanted);
       this.zoom = zoom;
-      const distance = this.baseDistance + this.zoom;
-      this.pull = roofs === undefined ? 0 : pullOver(this.focus, back, distance, roofs);
+      this.turnGoal = goal(this.baseDistance + this.zoom);
+      this.yaw = this.turnGoal;
+      const back = backOf(this.yaw, this.pitch, this.back);
+      this.pull = look.pull === undefined ? 0 : pullOver(this.focus, back, this.baseDistance + this.zoom, look.pull);
       this.initialised = true;
     } else {
       // Exponential smoothing, not a linear factor on `dt`. A frame's length
@@ -173,15 +266,50 @@ export class FollowCamera {
       this.focus.lerp(wanted, 1 - Math.exp(-FOLLOW_RATE * dt));
       this.zoom += (zoom - this.zoom) * (1 - Math.exp(-ZOOM_RATE * dt));
       const distance = this.baseDistance + this.zoom;
-      const pull = roofs === undefined ? 0 : pullOver(this.focus, back, distance, roofs);
+      this.turnGoal = goal(distance + this.pull);
+      this.yaw = turnToward(this.yaw, this.turnGoal, 1 - Math.exp(-TURN_RATE * dt));
+      const back = backOf(this.yaw, this.pitch, this.back);
+      const pull = look.pull === undefined ? 0 : pullOver(this.focus, back, distance, look.pull);
       const rate = pull > this.pull ? CLIMB_RATE : SETTLE_RATE;
       this.pull += (pull - this.pull) * (1 - Math.exp(-rate * dt));
     }
-    this.shake.multiplyScalar(Math.exp(-KICK_RATE * dt));
-    this.camera.position.copy(this.focus).addScaledVector(back, this.baseDistance + this.zoom + this.pull);
-    this.camera.position.add(this.shake);
-    this.joltBy(dt, this.camera.position);
-    this.applyOrientation();
+    this.camera.position.copy(this.focus).addScaledVector(this.back, this.baseDistance + this.zoom + this.pull);
+  }
+
+  /**
+   * The chase views. Third person stands behind and over the player and turns
+   * after them; first person stands at their eyes and turns with them. The
+   * heading is the one the player faces, or the car.
+   */
+  private followBehind(dt: number, target: CameraTarget, first: boolean): void {
+    const driving = target.driving !== false;
+    const goal = yawBehind(target.heading);
+    this.pitch = first ? FIRST_PITCH : THIRD_PITCH;
+    const up = first
+      ? driving ? EYE_HEIGHT_DRIVING : EYE_HEIGHT_ON_FOOT
+      : driving ? LOOK_HEIGHT_DRIVING : LOOK_HEIGHT_ON_FOOT;
+    const ahead = first ? (driving ? EYE_AHEAD_DRIVING : EYE_AHEAD_ON_FOOT) : 0;
+    const wanted = new Vector3(
+      target.x + Math.cos(target.heading) * ahead,
+      target.height + up,
+      target.y + Math.sin(target.heading) * ahead,
+    );
+    const zoom = first ? 0 : Math.abs(target.speed) * THIRD_DISTANCE_PER_SPEED;
+    if (!this.initialised) {
+      this.yaw = goal;
+      this.zoom = zoom;
+      this.pull = 0;
+      this.initialised = true;
+    } else {
+      this.yaw = turnToward(this.yaw, goal, 1 - Math.exp(-(first ? FIRST_TURN_RATE : THIRD_TURN_RATE) * dt));
+      this.zoom += (zoom - this.zoom) * (1 - Math.exp(-ZOOM_RATE * dt));
+    }
+    // The focus is the player and not a lag behind them: the view turns
+    // smoothly, and a lag on top of that swings the player across the screen.
+    this.focus.copy(wanted);
+    const distance = first ? 0 : (driving ? THIRD_DISTANCE_DRIVING : THIRD_DISTANCE_ON_FOOT) + this.zoom;
+    backOf(this.yaw, this.pitch, this.back);
+    this.camera.position.copy(this.focus).addScaledVector(this.back, distance);
   }
 }
 

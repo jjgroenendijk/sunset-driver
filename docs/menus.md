@@ -15,9 +15,9 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
 ## The title screen, the settings and the menu walk
 
 - `src/ui/title.ts` is the title screen as a main menu of pages: the main page, New game
-  (`title-setup.ts`), Controls (`title-controls.ts`), Options (`title-settings.ts`) and Camera
-  under Options (`title-camera.ts`). `PARENT` says where Escape and Back go from each page. A menu
-  item with no action is drawn disabled; Load game waits for what it opens.
+  (`title-setup.ts`), Controls (`title-controls.ts`), Options (`title-settings.ts`), and
+  View and Buildings under Options (`title-camera.ts`). `PARENT` says where Escape and Back go
+  from each page. A menu item with no action is drawn disabled; Load game waits for what it opens.
 - Menu text is a word or two. An item carries no note line, and a page has no line under its
   heading unless the player needs it to choose. The arrow keys walk the elements with `data-nav`, in
   DOM order, and skip a disabled one. The pointer moves the same focus, so only one item is lit. A
@@ -29,17 +29,18 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   card, because the seed is the host's: a joiner picks only a driver.
 - `src/ui/settings.ts` holds the settings that belong to the browser rather than to a save, in
   `localStorage` under one key. A value it does not know falls back to the default. The Options
-  column and the Camera column are shared by the title screen and the pause menu, through one
+  column and the columns it opens are shared by the title screen and the pause menu, through one
   `MenuSettings` object that `main.ts` builds, and a choice takes effect on the next frame. A
   setting that is on or off, such as Sound or the minimap's north, is a checkbox: a `MenuItem` with
-  a `toggle`. One choice of several, such as Camera, is a round mark on each row. A setting is
-  not a key in `controls.ts`: a key is for what the player does while playing.
+  a `toggle`. One choice of several, such as View, is a round mark on each row. A setting is
+  not a key in `controls.ts`: a key is for what the player does while playing. The one exception is
+  View, which `T` also steps through (`keys.ts`), since a player changes it while driving.
   Muting throws the whole audio graph away rather than turning it down — `docs/audio.md` says why.
 - Gore is one choice of four, Off, Subtle, Moderate and Heavy, with Moderate the default. It opens
-  a column beside Options, as Camera does; `title-camera.ts` builds both from one choice page. The
-  levels live in `src/render/gore.ts`, because only the renderer reads them: `frame.ts` hands the
-  setting to `WorldScene.gore` each frame. It never enters `SimState`, so a save and a replay are
-  the same at every level.
+  a column beside Options, as View and Buildings do; `title-camera.ts` builds all three from one
+  choice page. The levels live in `src/render/gore.ts`, because only the renderer reads them:
+  `frame.ts` hands the setting to `WorldScene.gore` each frame. It never enters `SimState`, so a
+  save and a replay are the same at every level.
 - `src/ui/title-graphics.ts` is the Graphics column of both menus: Auto, a preset and each knob
   of a tier. A knob of several steps is a `cycle` item, which names its step at the end of the row;
   a press moves it on and the side arrows move it either way. `menuList` redraws every checkbox and

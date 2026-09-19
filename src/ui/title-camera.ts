@@ -1,3 +1,4 @@
+import { CAMERA_VIEWS, type CameraView } from '../render/camera-view.ts';
 import { GORE_LEVELS, type Gore } from '../render/gore.ts';
 import { BUILDING_VIEWS, type BuildingViewChoice, type Choice } from './settings.ts';
 import { backButton, menuList, page } from './title-parts.ts';
@@ -44,9 +45,14 @@ function buildChoicePage<T>(
   return root;
 }
 
-/** The Camera column: what happens when a building stands between the camera and the player (spec section 10.7). */
+/** The Buildings column: what happens when a building stands between the camera and the player (spec section 10.7). */
 export function buildCameraPage(setting: BuildingViewChoice, back: () => void): HTMLElement {
-  return buildChoicePage('title-camera', 'Camera', BUILDING_VIEWS, setting, back);
+  return buildChoicePage('title-camera', 'Buildings', BUILDING_VIEWS, setting, back);
+}
+
+/** The View column: top down, the view the game is played in, or one of the two chase views (spec section 10.7). */
+export function buildViewPage(setting: Choice<CameraView>, back: () => void): HTMLElement {
+  return buildChoicePage('title-view', 'View', CAMERA_VIEWS, setting, back);
 }
 
 /** The Gore column: how much blood is drawn. It changes the picture only, never the record. */

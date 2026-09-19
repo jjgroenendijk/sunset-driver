@@ -18,6 +18,19 @@ function mouseCode(button: number): string {
 }
 
 /**
+ * The walking axes turned by a view's yaw. Up the screen is `-z` turned by
+ * `yaw`, and the walk of `walker-body.ts` reads the steering axis as `+x` and
+ * the forward axis as `-z`, so the pair is turned into those map axes. A yaw
+ * of 0 hands the keys through as they are.
+ */
+export function turned(throttle: number, steer: number, yaw: number): { throttle: number; steer: number } {
+  if (yaw === 0) return { throttle, steer };
+  const c = Math.cos(yaw);
+  const s = Math.sin(yaw);
+  return { throttle: steer * s + throttle * c, steer: steer * c - throttle * s };
+}
+
+/**
  * Keyboard and mouse state sampled once per simulation tick into an InputFrame.
  * `controls.ts` is the one list of the bindings; this must stay in step with it.
  *
@@ -41,6 +54,12 @@ export class Keyboard {
   menu = false;
   /** Which of the counter's keys were down last frame, so a held key moves the cursor once. */
   private menuHeld = { up: false, down: false, enter: false };
+  /**
+   * The heading of the view, as a yaw: 0 while the camera looks north. The
+   * walking keys are turned by it, so `W` walks up the screen whichever way
+   * the camera faces. The frame writes it, and 0 while the player drives.
+   */
+  turn = 0;
   /** A row picked off a panel with the mouse or `Enter`, handed to the next sample. */
   private picked = 0;
   /** A press of the interact key made on a panel, handed to the next sample. */
@@ -141,9 +160,10 @@ export class Keyboard {
     const back = this.is('KeyS') || (!this.menu && this.is('ArrowDown'));
     const left = this.is('KeyA') || this.is('ArrowLeft');
     const right = this.is('KeyD') || this.is('ArrowRight');
+    const { throttle, steer } = turned((forward ? 1 : 0) - (back ? 1 : 0), (right ? 1 : 0) - (left ? 1 : 0), this.turn);
     return {
-      throttle: (forward ? 1 : 0) - (back ? 1 : 0),
-      steer: (right ? 1 : 0) - (left ? 1 : 0),
+      throttle,
+      steer,
       handbrake: this.is('Space'),
       horn: this.is('KeyH'),
       sprint: selling,

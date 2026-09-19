@@ -137,6 +137,13 @@ async function boot(): Promise<void> {
         writeSettings(localStorage, settings);
       },
     },
+    view: {
+      current: () => settings.view,
+      choose: (view) => {
+        settings.view = view;
+        writeSettings(localStorage, settings);
+      },
+    },
     sound: {
       on: () => !settings.muted,
       set: (on) => {
@@ -306,7 +313,7 @@ async function boot(): Promise<void> {
   // because what is compiled is what the camera can see.
   const smooth = new RenderSmoother();
   camera.setBaseDistance(BASE_DISTANCE);
-  camera.update(0, smooth.playerAt(state, 1));
+  camera.update(0, smooth.playerAt(state, 1), { view: settings.view });
   // The chain is built on the world's scene and the camera that follows the
   // player, so it is made here rather than beside the renderer. Waiting for it
   // means the first frame is antialiased like every frame after it.
@@ -362,7 +369,7 @@ async function boot(): Promise<void> {
   // to report it on (`docs/multiplayer.md`).
   party.join();
   // The presses that open a menu, a map or a picker (`keys.ts`).
-  listenForKeys(window, { state, pause, map, minimap, picker, weapons, free, camera });
+  listenForKeys(window, { state, pause, map, minimap, picker, weapons, free, camera, view: menuSettings.view });
 
   const views = buildViews(world, { traffic, crowd, tram, wildlife }, parked, streetLife.standing);
 
