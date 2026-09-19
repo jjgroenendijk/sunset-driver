@@ -2,48 +2,66 @@
  * The scene the game is played in (spec sections 9.1, 10.1, 10.5).
  *
  * A world is generated once and streamed as chunks around the player. The
- * chunks are built in workers (`chunk-pool.ts`) and arrive as plain arrays;
- * this file puts them into the scene, and that upload is the only part of the
- * work the frame is charged for. It is spread over frames against the
- * streaming slice of spec section 2.4: the scene takes what has arrived, adds
- * as much of it as the budget allows, and leaves the rest for the next frame.
- * So a chunk turns up a frame or two late rather than costing the frame it
- * arrives in, which is the trade spec section 9.1 asks for.
+ * chunks are built in workers (`chunk-pool.ts`), and `chunk-tiles.ts` puts
+ * them into the scene a slice of each frame at a time.
  *
  * Two rings stand around the player (`streaming.ts`). The near ring is the
  * city in full. The far ring is the same ground at a simpler detail, so the
- * skyline holds where the near ring ends. A chunk that crosses between them is
- * built again at its new detail and swapped when it lands, so nothing ever
- * disappears while its replacement is being built.
+ * skyline holds where the near ring ends.
  *
  * What the hour decides — the sky, the sun, the haze, the lit windows and the
  * street lamps — comes from `daylight.ts` through `WorldScene.time`.
  *
  * The scene reads the world description and never mutates it.
  */
-import { Mesh, Object3D, Scene, type Vector3 } from 'three';
+import { Scene, type Vector3 } from 'three';
 import type { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { CharacterAppearance } from '../sim/character.ts';
+import type { Blaze } from '../sim/fire.ts';
+import type { MeleeHit } from '../sim/melee.ts';
 import type { PlayerState } from '../sim/on-foot.ts';
-import type { VehicleState } from '../sim/vehicle.ts';
 import { START_TICK } from '../sim/simulation.ts';
+import type { VehicleState } from '../sim/vehicle.ts';
+import { CLEAR_WEATHER, weatherAt, type Weather } from '../sim/weather.ts';
 import { buildCarve, type RoadCarve } from '../world/carve.ts';
 import { buildRoadGraph } from '../world/graph.ts';
 import { buildJunctions } from '../world/junctions.ts';
-import { chunkAt, CHUNK_SIZE } from '../world/chunks.ts';
 import type { MetroStation } from '../world/metro.ts';
 import type { Shop, ShopKind, ShopRoom } from '../world/shops.ts';
 import type { ParkingBays } from '../world/parking.ts';
 import type { Surface } from '../world/surface.ts';
 import type { Point, WorldDescription } from '../world/types.ts';
-import { Batch } from './batch.ts';
 import { BuildingScenery } from './buildings.ts';
 import { BuildingCutaway, CAMERA_ROOF_MARGIN } from './cutaway.ts';
-import { cellGrid } from './cells.ts';
 import { CharacterModel } from './character.ts';
+import { ChunkPool, type ChunkStream } from './chunk-pool.ts';
+import { ChunkTiles } from './chunk-tiles.ts';
+import { DamageFx } from './damage-fx.ts';
+import { daylightAt, type Daylight } from './daylight.ts';
+import { EntityFade } from './fade.ts';
+import { createGroundMaterial } from './ground-material.ts';
+import { Headlights } from './headlights.ts';
+import { ShopInterior } from './interior.ts';
+import { LampLights, LampScenery } from './lamps.ts';
 import { MeleeFx } from './melee-fx.ts';
-import { reflected, reflectLights } from './mirror.ts';
-import type { MeleeHit } from '../sim/melee.ts';
+import { reflectLights } from './mirror.ts';
+import { PickupModels } from './pickups.ts';
+import { PosterScenery } from './posters.ts';
+import { entityDistance, FULL_TIER, shadowDistance, type QualityTier } from './quality.ts';
+import { RemotePlayerViews } from './remote-players.ts';
+import { RoadScenery } from './roads.ts';
+import { roofOver, type RoofBox } from './roofs.ts';
+import { SignScenery } from './signs.ts';
+import { SkidMarks } from './skid.ts';
+import { SkyLighting } from './sky.ts';
+import type { DrawnPlayer } from './smooth.ts';
+import { STREAM_BUDGET_MS } from './streaming.ts';
+import { PlantScenery } from './vegetation.ts';
+import { VehicleModel } from './vehicle.ts';
+import { HeldWeapon, WeaponArt } from './weapon.ts';
+import { WeatherFx } from './weather-fx.ts';
+import { fogOf, overcast } from './weather-look.ts';
+import { createWaterSurface, type WaterSurface } from './water-surface.ts';
 
 /** What the damage of a frame is drawn from, beyond the vehicle itself. */
 export interface DrawnDamage {
@@ -52,67 +70,9 @@ export interface DrawnDamage {
   /** What the wrecks have left burning on the ground (spec section 20.3). */
   fires: { blazes: readonly Blaze[] };
 }
-import type { DrawnPlayer } from './smooth.ts';
-import { DamageFx } from './damage-fx.ts';
-import type { Blaze } from '../sim/fire.ts';
-import type { ChunkPayload } from './chunk-payload.ts';
-import { ChunkPool, type ChunkStream } from './chunk-pool.ts';
-import { daylightAt, type Daylight } from './daylight.ts';
-import { EntityFade } from './fade.ts';
-import { groundPart } from './ground.ts';
-import { createGroundMaterial } from './ground-material.ts';
-import type { Lamp } from './lamp-mesh.ts';
-import { Headlights } from './headlights.ts';
-import { LampLights, LampScenery } from './lamps.ts';
-import { entityBudget, entityDistance, FULL_TIER, shadowDistance, thinned, type QualityTier } from './quality.ts';
-import { RoadScenery } from './roads.ts';
-import { roofOver, type RoofBox } from './roofs.ts';
-import { SkidMarks } from './skid.ts';
-import { SkyLighting } from './sky.ts';
-import { VehicleModel } from './vehicle.ts';
-import { HeldWeapon, WeaponArt } from './weapon.ts';
-import { PickupModels } from './pickups.ts';
-import { RemotePlayerViews } from './remote-players.ts';
-import { PosterScenery } from './posters.ts';
-import { SignScenery } from './signs.ts';
-import { ShopInterior } from './interior.ts';
-import {
-  detailAt,
-  spendBudget,
-  STREAM_BUDGET_MS,
-  wantedChunks,
-  type ChunkDetail,
-  type ChunkRings,
-  type TilePart,
-} from './streaming.ts';
-import { CLEAR_WEATHER, weatherAt, type Weather } from '../sim/weather.ts';
-import { PlantScenery } from './vegetation.ts';
-import { WeatherFx } from './weather-fx.ts';
-import { fogOf, overcast } from './weather-look.ts';
-import { createWaterSurface, type WaterSurface } from './water-surface.ts';
 
 /** Milliseconds {@link WorldScene.settle} waits before giving up on the workers. */
 const SETTLE_TIMEOUT_MS = 120_000;
-
-
-/** One chunk, as the scene holds it. */
-interface ChunkTile {
-  cx: number;
-  cy: number;
-  detail: ChunkDetail;
-  parts: TilePart[];
-  /** Where every lamp of the chunk stands, so the light pool can be aimed at them. */
-  lamps: Lamp[];
-  /** The box of every building of the chunk, as `roofs.ts` packs them. */
-  roofs: Float32Array;
-  drawCalls: number;
-  /** False while the upload queue still holds pieces of it. */
-  whole: boolean;
-  /** True once it has been dropped, so any job left for it does nothing. */
-  dead: boolean;
-  /** The tile it replaces, drawn until the first piece of this one lands. */
-  superseded?: ChunkTile;
-}
 
 /** The world, drawn. */
 export class WorldScene {
@@ -139,7 +99,8 @@ export class WorldScene {
   private readonly stream: ChunkStream;
   private readonly heights: RoadCarve;
   private readonly material: MeshStandardNodeMaterial;
-  private readonly tiles = new Map<string, ChunkTile>();
+  /** The streamed chunks, and the queue that uploads them (`chunk-tiles.ts`). */
+  private readonly tiles: ChunkTiles;
   private readonly scenery = new RoadScenery();
   /** What cuts away a building that hides the player (spec section 10.7). */
   readonly cutaway = new BuildingCutaway();
@@ -172,10 +133,6 @@ export class WorldScene {
   private readonly weatherFx: WeatherFx;
   /** The quality tier the scene is drawn at (spec section 9.2). */
   private tier: QualityTier = FULL_TIER;
-  /** The upload the frames to come are charged for, oldest chunk first. */
-  private readonly jobs: (() => void)[] = [];
-  /** Draw calls the dearest near chunk built so far costs. */
-  private peakDrawCalls = 0;
   /** The carved ground, as the skid marks read it: bound once, not made every frame. */
   private readonly height = (x: number, y: number): number => this.heights.heightAt(x, y);
 
@@ -202,6 +159,17 @@ export class WorldScene {
     this.sky = new SkyLighting(this.scene, fog.near, fog.far);
     this.lampLights = new LampLights(this.scene);
     this.headlights = new Headlights(this.scene);
+    const kit = {
+      ground: this.material,
+      roads: this.scenery,
+      buildings: this.buildings,
+      vegetation: this.vegetation,
+      lamps: this.lamps,
+      posters: this.posters,
+      signs: this.signs,
+      lampLights: this.lampLights,
+    };
+    this.tiles = new ChunkTiles(this.scene, kit, () => this.tier);
 
     // The rain falls on the carved ground, so it is built after the carve and
     // handed the same height the player stands on.
@@ -351,16 +319,7 @@ export class WorldScene {
    * `budgetMs` allows. Called once a frame.
    */
   update(x: number, y: number, budgetMs = STREAM_BUDGET_MS, now: () => number = performance.now.bind(performance)): void {
-    const here = chunkAt(x, y);
-    const rings = this.tier.rings;
-    for (const tile of [...this.tiles.values()]) {
-      if (detailAt(tile.cx, tile.cy, here.cx, here.cy, rings) === undefined) this.drop(tile);
-    }
-    for (let payload = this.stream.take(); payload !== undefined; payload = this.stream.take()) {
-      this.queueUpload(payload);
-    }
-    this.stream.want(wantedChunks(here.cx, here.cy, rings).filter((want) => this.missing(want.cx, want.cy, want.detail)));
-    spendBudget(this.jobs, budgetMs, now);
+    this.tiles.follow(this.stream, x, y, budgetMs, now);
     this.look(x, y);
   }
 
@@ -419,7 +378,7 @@ export class WorldScene {
     // as the streaming does, and not from the camera behind them.
     this.fade.focus(x, y);
     this.water.follow(x, y);
-    this.lampLights.aim(x, y, this.lampsInReach(), this.lit.lamps);
+    this.lampLights.aim(x, y, this.tiles.lampsInReach(), this.lit.lamps);
     this.signs.aim(x, y, this.lit.lamps);
     this.weatherFx.update(this.weather, this.tick, x, y);
   }
@@ -430,15 +389,7 @@ export class WorldScene {
    * to find the building it is in. `margin` grows every footprint.
    */
   roofOver(x: number, z: number, margin = 0): RoofBox | undefined {
-    const here = chunkAt(x, z);
-    const near: Float32Array[] = [];
-    for (let cy = here.cy - 1; cy <= here.cy + 1; cy++) {
-      for (let cx = here.cx - 1; cx <= here.cx + 1; cx++) {
-        const tile = this.tiles.get(keyOf(cx, cy));
-        if (tile !== undefined) near.push(tile.roofs);
-      }
-    }
-    return roofOver(near, x, z, margin);
+    return roofOver(this.tiles.roofsNear(x, z), x, z, margin);
   }
 
   /**
@@ -494,7 +445,7 @@ export class WorldScene {
     let total = 0;
     for (;;) {
       this.update(x, y, Infinity);
-      const outstanding = this.outstanding(x, y, radius);
+      const outstanding = this.tiles.outstanding(x, y, radius);
       total = Math.max(total, outstanding);
       onProgress?.(total - outstanding, total);
       if (outstanding === 0) return;
@@ -512,7 +463,7 @@ export class WorldScene {
    * playing rather than only in the test that enforces the cap.
    */
   get drawCallsPerChunk(): number {
-    return this.peakDrawCalls;
+    return this.tiles.drawCallsPerChunk;
   }
 
   /**
@@ -541,7 +492,7 @@ export class WorldScene {
 
   /** Chunks asked for and not yet drawn, which the HUD shows as the city fills in. */
   get streaming(): number {
-    return this.stream.pending + this.jobs.length;
+    return this.stream.pending + this.tiles.queued;
   }
 
   /** How far into the night it is, 0 by day and 1 at midnight, at the tick last set. */
@@ -566,8 +517,7 @@ export class WorldScene {
 
   /** Release every chunk, the workers that built them and the materials they share. */
   dispose(): void {
-    this.jobs.length = 0;
-    for (const tile of [...this.tiles.values()]) this.drop(tile);
+    this.tiles.dispose();
     this.stream.dispose();
     this.scene.remove(this.water.object);
     this.water.dispose();
@@ -615,186 +565,4 @@ export class WorldScene {
     this.lamps.lamps = light.lamps;
     this.signs.night = light.lamps;
   }
-
-  /** The lamps of every chunk in reach, a chunk at a time. */
-  private lampsInReach(): Lamp[][] {
-    const out: Lamp[][] = [];
-    for (const tile of [...this.tiles.values()]) if (tile.lamps.length > 0) out.push(tile.lamps);
-    return out;
-  }
-
-  /** Chunks within `radius` of the player that are not yet whole. */
-  private outstanding(x: number, y: number, radius: number): number {
-    const here = chunkAt(x, y);
-    let waiting = 0;
-    for (const want of wantedChunks(here.cx, here.cy, this.tier.rings)) {
-      if (Math.max(Math.abs(want.cx - here.cx), Math.abs(want.cy - here.cy)) > radius) continue;
-      const tile = this.tiles.get(keyOf(want.cx, want.cy));
-      if (tile === undefined || tile.detail !== want.detail || !tile.whole) waiting++;
-    }
-    return waiting;
-  }
-
-  /** True when the scene holds neither that chunk at that detail nor a build of it. */
-  private missing(cx: number, cy: number, detail: ChunkDetail): boolean {
-    const tile = this.tiles.get(keyOf(cx, cy));
-    return tile === undefined || tile.detail !== detail;
-  }
-
-  /**
-   * Cut a payload into the jobs that put it into the scene, one batch at a
-   * time: the ground, then each tier of road, then each batch of buildings,
-   * then the plants, the lamps and the posters. Each spreads again into a step per
-   * part of its batch as it runs, so a chunk of the core is dozens of small
-   * jobs and a chunk of open country is one.
-   */
-  private queueUpload(payload: ChunkPayload): void {
-    const key = keyOf(payload.cx, payload.cy);
-    const grid = cellGrid(payload.bounds, payload.detail);
-    const tile: ChunkTile = {
-      cx: payload.cx,
-      cy: payload.cy,
-      detail: payload.detail,
-      parts: [],
-      lamps: [],
-      roofs: payload.roofs,
-      drawCalls: 0,
-      whole: false,
-      dead: false,
-    };
-    const standing = this.tiles.get(key);
-    if (standing !== undefined) tile.superseded = standing;
-    this.tiles.set(key, tile);
-
-    const { ground, bounds } = payload;
-    this.queueJob(tile, () => this.add(tile, groundPart(ground, bounds.minX, bounds.minY, this.material)));
-    for (const roads of payload.roads) {
-      this.queueJob(tile, () => this.add(tile, this.scenery.build(roads)));
-    }
-    if (payload.outlines.length > 0) {
-      this.queueJob(tile, () => this.add(tile, this.buildings.build('outline', payload.outlines)));
-    }
-    if (payload.facades.length > 0) {
-      this.queueJob(tile, () => this.add(tile, this.buildings.build('facade', payload.facades)));
-    }
-    if (payload.blocks.length > 0) {
-      this.queueJob(tile, () => this.add(tile, this.buildings.build('block', payload.blocks)));
-    }
-    // A chunk places only what its category's cap and the tier's density allow
-    // (spec section 9.2). The thinning is done here rather than in the worker
-    // because the tier can change between a chunk being asked for and it
-    // arriving, and it is a walk over a list against a whole chunk built.
-    if (payload.plants.models.length > 0) {
-      this.queueJob(tile, () => {
-        const limit = entityBudget(this.tier, 'plants', payload.plants.models.length);
-        this.add(tile, this.vegetation.build(grid, payload.plants, limit));
-      });
-    }
-    if (payload.lamps.length > 0) {
-      this.queueJob(tile, () => {
-        const lamps = thinned(payload.lamps, entityBudget(this.tier, 'lamps', payload.lamps.length));
-        this.add(tile, this.lamps.build(grid, lamps));
-        // The pool is aimed at the lamps nearest the player, and a chunk that
-        // has just landed may hold some of them. It aims at the masts drawn,
-        // so a thinned lamp throws no light either.
-        tile.lamps = [...lamps];
-        this.lampLights.invalidate();
-      });
-    }
-    // The posters are not thinned by the tier: a chunk carries a handful, and
-    // the information of spec section 19 is not what a low tier drops.
-    if (payload.posters.length > 0) {
-      this.queueJob(tile, () => this.add(tile, this.posters.build(grid, payload.posters)));
-    }
-    // Nor are the signs: a high street with its lettering thinned away is a
-    // district the player can no longer read (spec section 13.1).
-    if (payload.signs.length > 0) {
-      this.queueJob(tile, () => this.add(tile, this.signs.build(grid, payload.signs)));
-    }
-    this.queueJob(tile, () => {
-      tile.whole = true;
-      if (tile.detail !== 'far') this.peakDrawCalls = Math.max(this.peakDrawCalls, tile.drawCalls);
-    });
-  }
-
-  /** Queue one piece of a tile, and skip it if the tile is dropped before it runs. */
-  private queueJob(tile: ChunkTile, job: () => void): void {
-    this.jobs.push(this.guarded(tile, job));
-  }
-
-  /** A job that does nothing once its tile has been dropped. */
-  private guarded(tile: ChunkTile, job: () => void): () => void {
-    return () => {
-      if (tile.dead) return;
-      this.retire(tile);
-      job();
-    };
-  }
-
-  /** Take away the tile this one replaces, once there is something to replace it with. */
-  private retire(tile: ChunkTile): void {
-    if (tile.superseded === undefined) return;
-    const old = tile.superseded;
-    tile.superseded = undefined;
-    this.remove(old);
-  }
-
-  /**
-   * Add one piece of a tile to the scene, and put what is left of filling its
-   * batches at the front of the queue. The steps go in front so a chunk is
-   * finished before the next one is started: a batch half filled is a building
-   * still missing, and the frame after should be the one that finishes it.
-   *
-   * Every batch of a chunk is solid geometry standing on the ground, so it
-   * takes the sun's shadow, and casts one unless its piece says otherwise: the
-   * outline hulls stand over the roofs they rim and would shade them
-   * (`buildings.ts`), and paving and paint on the ground shade only themselves
-   * (`roads.ts`). `mirrored` is the same answer for the water's mirror, which
-   * draws what stands tall and leaves the ground to the view (`mirror.ts`).
-   */
-  private add(tile: ChunkTile, part: TilePart): void {
-    const casts = part.castsShadow ?? true;
-    for (const object of part.objects) {
-      if (object instanceof Batch) {
-        object.castShadow = casts && part.shadowless?.includes(object) !== true;
-        object.receiveShadow = true;
-      }
-      if (part.mirrored === true) reflected(object);
-      this.scene.add(object);
-    }
-    tile.parts.push(part);
-    tile.drawCalls += part.drawCalls;
-    if (part.steps.length > 0) this.jobs.unshift(...part.steps.map((step) => this.guarded(tile, step)));
-    // The queue holds the steps now. A step holds the worker's arrays it copies
-    // from, so a tile that kept them would hold its whole chunk twice.
-    part.steps = [];
-  }
-
-  /** Drop a tile the player has driven away from. */
-  private drop(tile: ChunkTile): void {
-    this.tiles.delete(keyOf(tile.cx, tile.cy));
-    this.remove(tile);
-  }
-
-  /** Take a tile out of the scene and release its geometry, whole or not. */
-  private remove(tile: ChunkTile): void {
-    tile.dead = true;
-    if (tile.superseded !== undefined) {
-      this.remove(tile.superseded);
-      tile.superseded = undefined;
-    }
-    for (const part of tile.parts) {
-      for (const object of part.objects) this.scene.remove(object);
-      part.dispose();
-    }
-    tile.parts.length = 0;
-    if (tile.lamps.length > 0) {
-      tile.lamps = [];
-      this.lampLights.invalidate();
-    }
-  }
-}
-
-function keyOf(cx: number, cy: number): string {
-  return `${cx},${cy}`;
 }

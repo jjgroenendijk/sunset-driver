@@ -129,7 +129,7 @@ export function buildGroundAttributes(chunk: WorldChunk, lookup: GroundLookup, s
 /**
  * A chunk's ground as a piece of its tile, standing at its corner.
  *
- * It is built here rather than in a closure of `WorldScene.queueUpload`. A tile
+ * It is built here rather than in a closure of `ChunkTiles.queueUpload`. A tile
  * keeps its `dispose` for as long as it stands, and in V8 a closure keeps the
  * whole scope it was made in, so one made there kept the chunk's payload: every
  * source array the batches had already copied, about twice the city in memory.
