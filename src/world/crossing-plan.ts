@@ -5,9 +5,9 @@
  *
  * 1. Both are on the ground there and the tiers may join: the crossing is a
  *    junction. Both roads take a point there, and the network makes it a node.
- * 2. One of them already stands a {@link CLEARANCE} over the other there — the
- *    slot of a highway, the level top of an earlier raise — or a structure puts
- *    the two that far apart: the crossing is left as it is.
+ * 2. The surface of one of them already stands a {@link CLEARANCE} over the
+ *    surface of the other there — the slot of a highway, the level top of an
+ *    earlier raise, a deck or a bore: the crossing is left as it is.
  * 3. The new road can be carried over the other one: its whole reach, deck and
  *    ramps, is laid into it now, so no later road can junction inside it.
  * 4. None of these: the road is shortened back from the crossing, or refused.
@@ -38,8 +38,17 @@ export const CROSSING_SNAP = 4;
 /** Times a road is shortened and planned again before it is refused. */
 const ROUNDS = 4;
 
-/** Metres short of the clearance a lift still counts as the full clearance. */
-const SLACK = 1e-6;
+/**
+ * Metres of headroom a crossing may be short of the clearance and still count
+ * as apart. A raise is planned to the full clearance, so this is only ever
+ * spent on a deck already standing — a highway's slot, an earlier raise, a
+ * bridge: the two roads read the ground under their own points, so their
+ * surfaces stand a few centimetres off what the ground at the crossing says.
+ * Refusing those centimetres costs the road below, and with it the odd island
+ * link, for headroom nothing on the roster can tell apart: the tallest vehicle
+ * of spec section 11.3 stands 3 m.
+ */
+export const HEADROOM_SLACK = 0.25;
 
 /** A road as it is proposed to the network. */
 export interface DraftLine {
@@ -210,18 +219,19 @@ function meetsNear(network: CrossingNetwork, draft: DraftLine, plan: Plan, other
 /**
  * How far the draft stands over the other road at a crossing, where one of
  * them is already carried over the other; negative where the draft is below.
- * Undefined where the two are not apart. A lift of the clearance over a road on
- * the ground is apart by construction; a deck or a bore is apart where the beds
- * of the two stand a clearance apart.
+ * Undefined where the two are not apart.
+ *
+ * Both are measured on the surface each road drives, never on the lift of one
+ * of them: the two roads have different points, so a lift of the clearance over
+ * the ground under this road leaves the two beds anywhere from that down to a
+ * metre and a half apart (issue #290). Two roads on the ground are never apart,
+ * whatever their beds say: the carve levels the ground to each of them, and one
+ * bench cannot stand under the other.
  */
 function separation(network: CrossingNetwork, draft: DraftLine, crossing: Crossing, other: RoadCurve): number | undefined {
-  const mine = liftOn(draft, crossing.segment, crossing);
-  const theirs = liftOn(other, crossing.other, crossing);
-  if (theirs >= CLEARANCE - SLACK && onGround(draft, crossing.segment)) return -theirs;
-  if (mine >= CLEARANCE - SLACK && onGround(other, crossing.other)) return mine;
   if (onGround(draft, crossing.segment) && onGround(other, crossing.other)) return undefined;
   const apart = bedOn(network, draft, crossing.segment, crossing) - bedOn(network, other, crossing.other, crossing);
-  return Math.abs(apart) >= CLEARANCE ? apart : undefined;
+  return Math.abs(apart) >= CLEARANCE - HEADROOM_SLACK ? apart : undefined;
 }
 
 /** The lift of a segment of a line at a place on it. */
@@ -263,7 +273,13 @@ function raiseFor(network: CrossingNetwork, draft: DraftLine, road: DraftLine, p
   const d = other.points[crossing.other + 1] as Point;
   const sine = Math.abs((b.x - a.x) * (d.y - c.y) - (b.y - a.y) * (d.x - c.x)) / (hypot(b.x - a.x, b.y - a.y) * hypot(d.x - c.x, d.y - c.y));
   const plateau = footprintHalfWidth(other.tier) / Math.max(sine, sin(MIN_MEET)) + PLATEAU_MARGIN;
-  const raise = raiseAt(distances, along, plateau, CLEARANCE / TIERS[draft.tier].maxGrade);
+  // The deck has to clear the surface of the road below, not the ground under
+  // the draft's own points: where that ground stands lower, the draft climbs
+  // the difference as well (issue #290). It never climbs less than the
+  // clearance, so a deck is a deck however deep the road below sits.
+  const under = bedOn(network, other, crossing.other, crossing);
+  const height = Math.max(CLEARANCE, CLEARANCE + under - deckGround(network, road.points, distances, along, plateau));
+  const raise = raiseAt(distances, along, plateau, height / TIERS[draft.tier].maxGrade, height);
   if (raise === undefined) return undefined;
   const inside = (d: number): boolean => d > raise.from && d < raise.to;
   for (let k = 0; k < road.points.length; k++) {
@@ -276,6 +292,43 @@ function raiseFor(network: CrossingNetwork, draft: DraftLine, road: DraftLine, p
   }
   for (const place of plan.under) if (inside(alongRoad(draft, road, distances, place.segment, place))) return undefined;
   return raise;
+}
+
+/**
+ * The ground the deck of a raise stands on where it crosses the other road.
+ * The raise puts a point at each end of its level deck, so the deck there
+ * drives the line between the two points the raise leaves either side of the
+ * crossing, and not the line over the whole segment the crossing fell in.
+ */
+function deckGround(network: CrossingNetwork, points: readonly Point[], distances: Float32Array, along: number, plateau: number): number {
+  let before = -Infinity;
+  let after = Infinity;
+  for (let k = 0; k < points.length; k++) {
+    const d = distances[k] as number;
+    if (d <= along && d > before) before = d;
+    if (d >= along && d < after) after = d;
+  }
+  const low = Math.max(before, along - plateau);
+  const high = Math.min(after, along + plateau);
+  const from = pointAlong(points, distances, low);
+  const to = pointAlong(points, distances, high);
+  const ground = network.heightAt(from.x, from.y);
+  if (high <= low) return ground;
+  return ground + (network.heightAt(to.x, to.y) - ground) * ((along - low) / (high - low));
+}
+
+/** The point `along` metres along a line, which is a point of it or inside one segment. */
+function pointAlong(points: readonly Point[], distances: Float32Array, along: number): Point {
+  for (let k = 0; k + 1 < points.length; k++) {
+    const from = distances[k] as number;
+    const to = distances[k + 1] as number;
+    if (along > to || to <= from) continue;
+    const a = points[k] as Point;
+    const b = points[k + 1] as Point;
+    const t = Math.max(0, (along - from) / (to - from));
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+  }
+  return points[points.length - 1] as Point;
 }
 
 /**

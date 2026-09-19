@@ -408,24 +408,3 @@ export function liftAtCrossing(road: RoadCurve, at: Point): number {
   const to = lift[place.segment + 1] ?? 0;
   return from + (to - from) * place.t;
 }
-
-/**
- * How a road stands where another crosses it: its lift there, whether that
- * segment lies on the ground (no deck, no bore, no lift), and the height of the
- * line it drives — the ground under its two points, straight between them, and
- * the lift.
- */
-export function standAt(hf: Heightfield, road: RoadCurve, at: Point): { lift: number; ground: boolean; bed: number } | undefined {
-  const place = placeOn(road, at);
-  if (place === undefined) return undefined;
-  const i = place.segment;
-  const a = road.points[i] as Point;
-  const b = road.points[i + 1] as Point;
-  const from = road.lift?.[i] ?? 0;
-  const to = road.lift?.[i + 1] ?? 0;
-  const lift = from + (to - from) * place.t;
-  const ground = !road.bridges.includes(i) && !road.tunnels.includes(i) && from === 0 && to === 0;
-  const low = hf.sample(a.x, a.y);
-  const bed = low + (hf.sample(b.x, b.y) - low) * place.t + lift;
-  return { lift, ground, bed };
-}

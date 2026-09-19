@@ -2,6 +2,8 @@ import { expect, it } from 'vitest';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { MINOR_BY_ZONE } from '../src/world/fill.ts';
 import { type GradeCrossing, type RoadEdge, type RoadNode } from '../src/world/graph.ts';
+import { HEADROOM_SLACK } from '../src/world/crossing-plan.ts';
+import { RoadBeds } from '../src/world/bed.ts';
 import { CLEARANCE as OVERPASS_CLEARANCE } from '../src/world/overpass.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
@@ -23,7 +25,6 @@ import {
   polylineLength,
   liftAtCrossing,
   placeOn,
-  standAt,
 } from './seed-probes.ts';
 import { seeds, worlds, graphOf } from './seed-fixture.ts';
 import { sweepSuite } from './seed-suite.ts';
@@ -186,29 +187,41 @@ sweepSuite('roads', () => {
   it('leaves no crossing flat: two roads that cross meet, or one stands a clearance over the other', () => {
     // Spec section 6.2: a crossing is decided when its second road is added,
     // never afterwards. The two roads take a junction there, which is a node
-    // and no crossing at all, or one is carried over the other: a lift of the
-    // clearance over a road on the ground, or a deck or a bore whose bed
-    // stands a clearance off the other road's. Where none of those holds the
-    // road is shortened or refused, so no refusal leaves a crossing flat.
+    // and no crossing at all, or one is carried over the other. The headroom
+    // is measured on the surface each road drives, `RoadBeds` of `bed.ts`, and
+    // never on the lift of one of them: the two roads have different points,
+    // so a lift of the clearance over the ground under one of them left the
+    // two surfaces as little as 1.5 m apart (issue #290). Where neither road
+    // clears the other the road is shortened or refused, so no refusal leaves
+    // a crossing flat.
+    //
+    // Which road the graph calls the one above says nothing about the height:
+    // between two decks it goes by the segment they were laid in. So this asks
+    // that the two stand apart, not which way round. A crossing under a deck
+    // already standing keeps the `HEADROOM_SLACK` the plan allows it.
+    //
+    // The surfaces here are the beds, without the junction planes: the beds are
+    // what the plan decides a crossing on, since the junctions are built from
+    // the finished graph. A plane laid later lifts the road below a deck by up
+    // to 2 m, which is issue #533.
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       const graph = graphOf(seed);
-      const hf = new Heightfield(w.terrain);
-      const rivers = new RiverWater(w.water.rivers, hf, w.water.seaLevel);
+      const beds = new RoadBeds(w.terrain, w.roads);
       let complaint: string | undefined;
       for (const crossing of graph.crossings) {
         const over = w.roads[(graph.edges[crossing.over] as RoadEdge).curve] as RoadCurve;
         const under = w.roads[(graph.edges[crossing.under] as RoadEdge).curve] as RoadCurve;
-        const one = standAt(hf, over, crossing);
-        const other = standAt(hf, under, crossing);
+        const one = placeOn(over, crossing);
+        const other = placeOn(under, crossing);
         if (one === undefined || other === undefined) {
           complaint ??= `crossing at ${crossing.x.toFixed(0)},${crossing.y.toFixed(0)} stands on neither road`;
           continue;
         }
-        const lifted = (one.lift >= OVERPASS_CLEARANCE - 1e-6 && other.ground) || (other.lift >= OVERPASS_CLEARANCE - 1e-6 && one.ground);
-        const structure = !(one.ground && other.ground) && Math.abs(one.bed - other.bed) >= OVERPASS_CLEARANCE;
-        if (lifted || structure) continue;
-        complaint ??= `${over.tier} ${over.id} crosses ${under.tier} ${under.id} flat at ${crossing.x.toFixed(0)},${crossing.y.toFixed(0)}`;
+        const apart = Math.abs(beds.heightAt(over.id, one.segment, one.t) - beds.heightAt(under.id, other.segment, other.t));
+        if (apart >= OVERPASS_CLEARANCE - HEADROOM_SLACK) continue;
+        const where = `at ${crossing.x.toFixed(0)},${crossing.y.toFixed(0)}`;
+        complaint ??= `${over.tier} ${over.id} crosses ${under.tier} ${under.id} ${where} with ${apart.toFixed(2)} m of headroom`;
       }
       expect(complaint, `seed ${seed}`).toBeUndefined();
     }

@@ -11,11 +11,11 @@ function line(fromX: number, toX: number, step = 20): RaisedLine {
   return { points, bridges: [], tunnels: [], interchanges: [] };
 }
 
-/** The line with one raise over the place `x`, a plateau `plateau` metres each side, at a street's grade. */
-function raisedOver(road: RaisedLine, x: number, plateau = 17): RaisedLine {
+/** The line with one raise of `height` over the place `x`, a plateau `plateau` metres each side, at a street's grade. */
+function raisedOver(road: RaisedLine, x: number, plateau = 17, height = CLEARANCE): RaisedLine {
   const distances = curveDistances(road.points);
   const start = (road.points[0] as Point).x;
-  const raise = raiseAt(distances, x - start, plateau, CLEARANCE / TIERS.street.maxGrade);
+  const raise = raiseAt(distances, x - start, plateau, height / TIERS.street.maxGrade, height);
   if (raise === undefined) throw new Error('no raise');
   return raised(road, [raise]);
 }
@@ -44,6 +44,19 @@ describe('the lift profile of an overpass', () => {
     }
   });
 
+  it('stands at the height it is asked for, however far that is over the clearance', () => {
+    // The height comes from `crossing-plan.ts`, which measures the surface of
+    // the road below: a road in a dip asks for more than the clearance (issue
+    // #290). The ramps grow with it and stay inside the tier's grade.
+    const carried = raisedOver(line(-600, 600), 10, 17, CLEARANCE + 6);
+    expect(liftNear(carried, 10)).toBeCloseTo(CLEARANCE + 6, 6);
+    const lift = carried.lift as number[];
+    for (let i = 0; i + 1 < carried.points.length; i++) {
+      const run = (carried.points[i + 1] as Point).x - (carried.points[i] as Point).x;
+      expect(Math.abs((lift[i + 1] as number) - (lift[i] as number)) / run).toBeLessThanOrEqual(TIERS.street.maxGrade + 1e-9);
+    }
+  });
+
   it('keeps its line: the points it gains stand on it, and the ramps end on points it had', () => {
     const carried = raisedOver(line(-300, 300), 10);
     expect(carried.points.length).toBeGreaterThan(31);
@@ -68,14 +81,14 @@ describe('the lift profile of an overpass', () => {
 
   it('asks for no raise where the line runs out before it is down again', () => {
     const road = line(-40, 40);
-    expect(raiseAt(curveDistances(road.points), 50, 17, CLEARANCE / TIERS.street.maxGrade)).toBeUndefined();
+    expect(raiseAt(curveDistances(road.points), 50, 17, CLEARANCE / TIERS.street.maxGrade, CLEARANCE)).toBeUndefined();
   });
 
   it('gives two raises close together one deck rather than a dip between them', () => {
     const road = line(-300, 300);
     const distances = curveDistances(road.points);
     const ramp = CLEARANCE / TIERS.street.maxGrade;
-    const raises = [290, 310].map((at) => raiseAt(distances, at, 17, ramp)).filter((r) => r !== undefined);
+    const raises = [290, 310].map((at) => raiseAt(distances, at, 17, ramp, CLEARANCE)).filter((r) => r !== undefined);
     const carried = raised(road, raises);
     carried.points.forEach((p, i) => {
       if (p.x >= -10 && p.x <= 10) expect(carried.lift?.[i]).toBeCloseTo(CLEARANCE, 6);

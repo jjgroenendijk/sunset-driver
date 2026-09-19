@@ -2,14 +2,18 @@
  * The lift profile of an overpass (spec section 6.2): how a road is carried
  * over another one instead of meeting it.
  *
- * The road climbs to {@link CLEARANCE} above the road it crosses, holds that
- * over the crossing, and ramps back onto the ground each side no harder than its
- * tier's `maxGrade`. A raised stretch is a deck: it is added to the curve's
- * `bridges`, so the carve leaves the ground under it alone, `road-mesh.ts`
- * lofts the deck it already lofts over water, and the physics stands on it
- * (`decks.ts`). The height itself lives in `RoadCurve.lift`, which is the one
- * thing a curve says about its own height; everything else reads the ground
- * under it.
+ * The road climbs high enough to stand {@link CLEARANCE} over the surface of
+ * the road it crosses, holds that over the crossing, and ramps back onto the
+ * ground each side no harder than its tier's `maxGrade`. How high that is comes
+ * from `crossing-plan.ts`, which measures both surfaces: the two roads have
+ * different points, so a lift measured off the ground under this one says
+ * nothing about the headroom over the other (issue #290).
+ *
+ * A raised stretch is a deck: it is added to the curve's `bridges`, so the
+ * carve leaves the ground under it alone, `road-mesh.ts` lofts the deck it
+ * already lofts over water, and the physics stands on it (`decks.ts`). The
+ * height itself lives in `RoadCurve.lift`, which is the one thing a curve says
+ * about its own height; everything else reads the ground under it.
  *
  * Whether a crossing is raised at all is decided when the road is added to the
  * network (`crossing-plan.ts`). This file only says what a raise reaches and
@@ -21,8 +25,8 @@ import type { Point } from './types.ts';
 
 /**
  * Metres of headroom over the road that passes underneath: the deck of the road
- * above stands this far over the bed of the road below, which is enough for the
- * tallest of the roster (spec section 11.3) to drive under it.
+ * above stands this far over the drivable surface of the road below, which is
+ * enough for the tallest of the roster (spec section 11.3) to drive under it.
  */
 export const CLEARANCE = 6.5;
 
@@ -37,8 +41,9 @@ const SAME_PLACE = 0.5;
 
 /**
  * Where a road is carried over another one, as distances along the road that
- * climbs: the level deck runs from `low` to `high`, and the ramps come down
- * from there to the ground at `from` and at `to`.
+ * climbs: the level deck stands `height` over the ground and runs from `low` to
+ * `high`, and the ramps come down from there to the ground at `from` and at
+ * `to`.
  *
  * Both ends stand on a point the line already has. A ramp that ended between
  * two points would cut the segment there in two, and half a segment can climb
@@ -51,6 +56,7 @@ export interface Raise {
   low: number;
   high: number;
   to: number;
+  height: number;
 }
 
 /** A line with the structures a raise moves with its points. */
@@ -65,10 +71,11 @@ export interface RaisedLine {
 
 /**
  * What it takes to carry a line over a road at `along` metres along it: a level
- * deck `plateau` metres each side, and ramps of `ramp` metres out to the points
- * beyond. Undefined where the line runs out before it is down again.
+ * deck `height` metres up and `plateau` metres each side, and ramps of `ramp`
+ * metres out to the points beyond. Undefined where the line runs out before it
+ * is down again.
  */
-export function raiseAt(distances: Float32Array, along: number, plateau: number, ramp: number): Raise | undefined {
+export function raiseAt(distances: Float32Array, along: number, plateau: number, ramp: number, height: number): Raise | undefined {
   const low = along - plateau;
   const high = along + plateau;
   let from: number | undefined;
@@ -79,7 +86,7 @@ export function raiseAt(distances: Float32Array, along: number, plateau: number,
     to = distances[i] as number;
     break;
   }
-  return from === undefined || to === undefined ? undefined : { from, low, high, to };
+  return from === undefined || to === undefined ? undefined : { from, low, high, to, height };
 }
 
 /**
@@ -122,11 +129,11 @@ function liftAt(raises: readonly Raise[], along: number): number {
   const knot = SAME_PLACE / 1000;
   for (const raise of raises) {
     if (along <= raise.from + knot || along >= raise.to - knot) continue;
-    if (along >= raise.low - knot && along <= raise.high + knot) lift = Math.max(lift, CLEARANCE);
+    if (along >= raise.low - knot && along <= raise.high + knot) lift = Math.max(lift, raise.height);
     else if (along < raise.low) {
-      lift = Math.max(lift, (CLEARANCE * (along - raise.from)) / (raise.low - raise.from));
+      lift = Math.max(lift, (raise.height * (along - raise.from)) / (raise.low - raise.from));
     } else {
-      lift = Math.max(lift, (CLEARANCE * (raise.to - along)) / (raise.to - raise.high));
+      lift = Math.max(lift, (raise.height * (raise.to - along)) / (raise.to - raise.high));
     }
   }
   return lift;
