@@ -55,9 +55,16 @@ export class BuildingScenery {
    * listed in; which of the batches the renderer draws first does not matter,
    * since a hull stands behind the building that covers it and the depth test
    * is what leaves the rim.
+   *
+   * The outlines cast no shadow. A hull's top cap stands `OUTLINE_WIDTH`
+   * (0.35 m, `building-hull.ts`) over the roof it rims, so a shadow it cast
+   * would land on that roof. Where the shadow bias does not cover 0.35 m the
+   * roof comes out black. The building inside the hull already casts the
+   * shadow the hull would, to within the width of the rim.
    */
   build(batch: BuildingBatchKind, cells: readonly PackedBatch[]): TilePart {
-    return tilePartOf(cells.map((cell) => fillOfPacked(cell, this.materials[batch])));
+    const fills = cells.map((cell) => fillOfPacked(cell, this.materials[batch]));
+    return tilePartOf(fills, batch !== 'outline');
   }
 
   /** Release the materials every chunk shared. */

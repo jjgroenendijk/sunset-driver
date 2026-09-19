@@ -36,6 +36,12 @@ export interface TilePart {
   drawCalls: number;
   /** What is left to copy into their batches, one step of the fill each. */
   steps: (() => void)[];
+  /**
+   * Whether the batches of this piece cast the sun's shadow. Left out, they
+   * do: a piece is solid geometry standing on the ground. The outline hulls of
+   * `buildings.ts` are the one piece that says otherwise.
+   */
+  castsShadow?: boolean;
   /** Release the geometry. The materials belong to the world and are left alone. */
   dispose(): void;
 }

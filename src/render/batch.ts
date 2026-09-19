@@ -195,13 +195,18 @@ function filled(fill: BatchFill): Batch {
 /**
  * The fills of one kind of a chunk as one piece of the chunk: a mesh and a
  * draw per cell, and the steps of every cell in the order the fills came.
+ *
+ * `castsShadow` is the piece's answer to the shadow pass, which `WorldScene`
+ * reads when it puts the piece into the scene. A kind that stands over the
+ * kind beside it passes false rather than shading it.
  */
-export function tilePartOf(fills: readonly BatchFill[]): TilePart {
+export function tilePartOf(fills: readonly BatchFill[], castsShadow = true): TilePart {
   const meshes = fills.map((fill) => fill.mesh);
   return {
     objects: meshes,
     drawCalls: meshes.length,
     steps: fills.flatMap((fill) => fill.steps),
+    castsShadow,
     dispose(): void {
       for (const mesh of meshes) mesh.dispose();
     },
