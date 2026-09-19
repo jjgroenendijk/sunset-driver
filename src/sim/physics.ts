@@ -36,6 +36,7 @@
  * body. Ambient traffic is kinematic and evaluated from `(seed, tick)` until
  * the player touches it (spec section 5.3); `traffic-bodies.ts` is that half.
  */
+import { hypot } from '../core/libm.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { TICK_RATE } from './clock.ts';
 import { stepCrowdReactions } from './crowd-reaction.ts';
@@ -394,7 +395,7 @@ export class SimPhysics extends GroundPlaces {
     const v = state.vehicle;
     if (!tickFire(v.damage, state.tick)) return;
     const p = state.player;
-    hurt(p, blastDamageAt(p.driving ? 0 : Math.hypot(p.x - v.x, p.y - v.z)));
+    hurt(p, blastDamageAt(p.driving ? 0 : hypot(p.x - v.x, p.y - v.z)));
     const chassis = this.chassis;
     if (chassis === undefined) return;
     this.force.x = 0;

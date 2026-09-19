@@ -19,6 +19,7 @@
  * numbers.
  */
 import { genRng, Subsystem } from '../core/rng.ts';
+import { cos, hypot, sin } from '../core/libm.ts';
 import type { District } from '../world/types.ts';
 import { FACTIONS, homeDistricts, hostileTo, type Faction } from './faction.ts';
 import type { Place } from './on-foot.ts';
@@ -84,9 +85,9 @@ export function giverPlaces(
     for (let i = 0; i < STAND_TRIES; i++) {
       const angle = turn + (i / STAND_TRIES) * Math.PI * 2;
       const away = rng.range(STAND_NEAR, STAND_FAR);
-      const place = snap(district.x + Math.cos(angle) * away, district.y + Math.sin(angle) * away);
+      const place = snap(district.x + cos(angle) * away, district.y + sin(angle) * away);
       if (place === undefined) continue;
-      if (Math.hypot(place.x - district.x, place.y - district.y) > STAND_LIMIT) continue;
+      if (hypot(place.x - district.x, place.y - district.y) > STAND_LIMIT) continue;
       return place;
     }
     return undefined;
@@ -103,7 +104,7 @@ export function giverAt(givers: readonly GiverPlace[], state: SimState): number 
   let near = GIVER_REACH;
   for (let i = 0; i < givers.length; i++) {
     const giver = givers[i] as GiverPlace;
-    const away = Math.hypot(giver.x - state.player.x, giver.y - state.player.y);
+    const away = hypot(giver.x - state.player.x, giver.y - state.player.y);
     if (away > near) continue;
     near = away;
     at = i;

@@ -9,6 +9,7 @@
  * of spec section 17.2 and the cars of the city, which a hit promotes (spec
  * section 5.3).
  */
+import { atan2, cos, hypot, sin } from '../core/libm.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { crowdFeelsBlast, crowdHearsShot } from './crowd-reaction.ts';
 import { callAmbulance } from './emergency.ts';
@@ -224,17 +225,17 @@ export class Gunfire {
       const dy = unit.y - p.y;
       // The reach is measured to their body rather than to the line down their
       // middle, exactly as the vehicle's is measured to its panels.
-      const gap = Math.max(0, Math.hypot(dx, dy) - ENFORCER_CAPSULE.radius);
-      if (!swingReaches(spec, p.heading, gap, Math.atan2(dy, dx))) continue;
+      const gap = Math.max(0, hypot(dx, dy) - ENFORCER_CAPSULE.radius);
+      if (!swingReaches(spec, p.heading, gap, atan2(dy, dx))) continue;
       hurtEnforcer(state, unit.id, spec.damage);
       this.land(state, spec, 'person', unit.x, unit.y, unit.height + SWING_HEIGHT);
       met = true;
     }
     if (this.strike(state, spec, target)) met = true;
     const v = state.vehicle;
-    const bearing = Math.atan2(v.z - p.y, v.x - p.x);
+    const bearing = atan2(v.z - p.y, v.x - p.x);
     if (swingReaches(spec, p.heading, vehicleGap(p, v, target.spec), bearing)) {
-      this.hit(state, spec, v, target.spec, Math.cos(bearing), 0, Math.sin(bearing), roundSeverity(spec));
+      this.hit(state, spec, v, target.spec, cos(bearing), 0, sin(bearing), roundSeverity(spec));
       this.land(state, spec, 'vehicle', v.x, v.z, v.y);
       met = true;
     }
@@ -263,9 +264,9 @@ export class Gunfire {
       const pose = crowd.poseAt(id, state.tick, this.pose);
       const dx = pose.x - p.x;
       const dy = pose.y - p.y;
-      const gap = Math.max(0, Math.hypot(dx, dy) - PERSON_RADIUS);
+      const gap = Math.max(0, hypot(dx, dy) - PERSON_RADIUS);
       if (gap >= closest) continue;
-      if (!swingReaches(spec, p.heading, gap, Math.atan2(dy, dx))) continue;
+      if (!swingReaches(spec, p.heading, gap, atan2(dy, dx))) continue;
       closest = gap;
       nearest = { x: pose.x, y: pose.y, h: pose.height };
     }
@@ -299,9 +300,9 @@ export class Gunfire {
       this.from.x = p.x;
       this.from.y = h;
       this.from.z = p.y;
-      this.along.x = Math.cos(yaw);
+      this.along.x = cos(yaw);
       this.along.y = 0;
-      this.along.z = Math.sin(yaw);
+      this.along.z = sin(yaw);
       const hit = this.world.castRay(this.ray, spec.reach, true, undefined, undefined, mine);
       if (hit === null || (nearest !== null && hit.timeOfImpact >= nearest.timeOfImpact)) continue;
       nearest = hit;
@@ -314,8 +315,8 @@ export class Gunfire {
     if (target.enforcers?.unitAt(handle) !== undefined) return;
     if (target.body !== undefined && handle === target.body.handle) return;
     const at = nearest.timeOfImpact;
-    const x = p.x + Math.cos(angle) * at;
-    const y = p.y + Math.sin(angle) * at;
+    const x = p.x + cos(angle) * at;
+    const y = p.y + sin(angle) * at;
     const unit = target.police?.unitAt(handle);
     if (unit !== undefined) {
       // What a blow takes off a police car is what a round of the same weapon
@@ -334,7 +335,7 @@ export class Gunfire {
       this.land(state, spec, 'hard', x, y, h);
       return;
     }
-    this.hit(state, spec, car, specOf(car.cls), Math.cos(angle), 0, Math.sin(angle), roundSeverity(spec));
+    this.hit(state, spec, car, specOf(car.cls), cos(angle), 0, sin(angle), roundSeverity(spec));
     this.land(state, spec, 'vehicle', x, y, h);
   }
 
@@ -401,7 +402,7 @@ export class Gunfire {
       const dx = p.x - this.from.x;
       const dh = p.h - this.from.y;
       const dy = p.y - this.from.z;
-      const step = Math.hypot(dx, dh, dy);
+      const step = hypot(dx, dh, dy);
       if (step > 0) {
         this.along.x = dx / step;
         this.along.y = dh / step;
@@ -448,13 +449,13 @@ export class Gunfire {
     // A blast is called in as well as heard (spec section 20.3).
     callAmbulance(state, p.x, p.y);
     const player = state.player;
-    const reach = blastFalloff(Math.hypot(player.x - p.x, player.y - p.y, player.height - p.h), flight.blastRadius);
+    const reach = blastFalloff(hypot(player.x - p.x, player.y - p.y, player.height - p.h), flight.blastRadius);
     if (reach > 0) hurt(player, spec.damage * reach);
     const v = state.vehicle;
     const dx = v.x - p.x;
     const dh = v.y - p.h;
     const dy = v.z - p.y;
-    const distance = Math.hypot(dx, dh, dy);
+    const distance = hypot(dx, dh, dy);
     // A blast is felt by every police car inside it, wherever the player's own
     // car stands (spec section 14).
     blastUnits(state, p.x, p.y, roundSeverity(spec) * VEHICLE_SHARE_PER_POINT, (gap) => blastFalloff(gap, flight.blastRadius));
@@ -470,7 +471,7 @@ export class Gunfire {
       const cx = car.x - p.x;
       const ch = car.y - p.h;
       const cy = car.z - p.y;
-      this.blast(state, spec, car, specOf(car.cls), cx, ch, cy, Math.hypot(cx, ch, cy), flight.blastRadius);
+      this.blast(state, spec, car, specOf(car.cls), cx, ch, cy, hypot(cx, ch, cy), flight.blastRadius);
     }
   }
 

@@ -7,6 +7,7 @@
  * same pair of inputs pays for the cutting once. Coordinates are whole grid
  * units throughout, as in `edges.ts`.
  */
+import { atan2 } from './libm.ts';
 import {
   Buckets,
   type Box,
@@ -215,7 +216,7 @@ export function sortLeaving(graph: Graph): void {
 export function angleOf(graph: Graph, half: number): number {
   const u = halfFrom(graph, half);
   const v = halfTo(graph, half);
-  return Math.atan2((graph.y[v] as number) - (graph.y[u] as number), (graph.x[v] as number) - (graph.x[u] as number));
+  return atan2((graph.y[v] as number) - (graph.y[u] as number), (graph.x[v] as number) - (graph.x[u] as number));
 }
 
 /**

@@ -21,6 +21,7 @@
  * A player who owns no safehouse comes back at `SimState.origin`, which is
  * where the session started. There is nowhere else to put them.
  */
+import { hypot } from '../core/libm.ts';
 import { MAX_HEALTH, type Place } from './on-foot.ts';
 import { activeHome, type SafehousePlace } from './safehouse.ts';
 import type { SimState } from './simulation.ts';
@@ -59,7 +60,7 @@ export function nearestStation(stations: readonly Place[], x: number, y: number)
   let best: Place | undefined;
   let bestDistance = Infinity;
   for (const station of stations) {
-    const distance = Math.hypot(station.x - x, station.y - y);
+    const distance = hypot(station.x - x, station.y - y);
     if (distance >= bestDistance) continue;
     bestDistance = distance;
     best = station;

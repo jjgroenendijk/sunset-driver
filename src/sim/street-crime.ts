@@ -22,6 +22,7 @@
  * because everything else is already a function of the tick.
  */
 import { genRng, rngFor, Subsystem } from '../core/rng.ts';
+import { cos, hypot, sin } from '../core/libm.ts';
 import type { District } from '../world/types.ts';
 import type { Zone } from '../world/types.ts';
 import { TICKS_PER_HOUR } from './clock.ts';
@@ -198,7 +199,7 @@ export function crimeGrounds(
     for (let i = 0; i < CORNERS; i++) {
       const angle = turn + (i / CORNERS) * 2 * Math.PI;
       const away = rng.range(CORNER_NEAR, CORNER_FAR);
-      const place = snap(district.x + Math.cos(angle) * away, district.y + Math.sin(angle) * away);
+      const place = snap(district.x + cos(angle) * away, district.y + sin(angle) * away);
       if (place !== undefined) corners.push(place);
     }
     if (corners.length === 0) continue;
@@ -294,7 +295,7 @@ export function stepStreetCrime(state: SimState, grounds: readonly CrimeGround[]
   for (const crime of crimesAt(state.seed, state.tick, grounds, state.crimes)) {
     const spec = CRIMES[crime.kind];
     if (!spec.breakable) continue;
-    if (Math.hypot(crime.x - at.x, crime.y - at.y) > INTERRUPT_RANGE) continue;
+    if (hypot(crime.x - at.x, crime.y - at.y) > INTERRUPT_RANGE) continue;
     addSettled(state.crimes, { id: crime.id, kind: crime.kind, tick: state.tick, paid: spec.pays });
     state.money += spec.pays;
     if (spec.heat > 0) report(state, spec.heat);

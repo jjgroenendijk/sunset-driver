@@ -14,6 +14,7 @@
  * extends. Every road goes in through {@link RoadRoute.addCurve}.
  */
 import { clamp, dist, wrapAngle } from '../core/math.ts';
+import { atan2, cos, hypot, sin } from '../core/libm.ts';
 import { ARTERIAL, STREET, type TierParams } from './road-params.ts';
 import type { Trail } from './network-clearance.ts';
 import type { NetworkHit } from './road-network.ts';
@@ -283,15 +284,15 @@ export abstract class RoadTrace extends RoadRoute {
     let closest = opt.target === undefined ? 0 : dist(px, py, opt.target.x, opt.target.y);
     let stalled = 0;
     const ring = opt.around;
-    let bearing = ring === undefined ? 0 : Math.atan2(py - ring.y, px - ring.x);
+    let bearing = ring === undefined ? 0 : atan2(py - ring.y, px - ring.x);
     let swept = 0;
 
     while (length < maxLength) {
       const wanted = this.desiredHeading(px, py, heading, opt);
       let next = this.stepHeading(px, py, heading, wanted, params);
       if (next === undefined) break;
-      let qx = px + Math.cos(next.heading) * next.reach;
-      let qy = py + Math.sin(next.heading) * next.reach;
+      let qx = px + cos(next.heading) * next.reach;
+      let qy = py + sin(next.heading) * next.reach;
       if (Math.abs(qx) > this.half || Math.abs(qy) > this.half) break;
       if (opt.within !== undefined && !opt.within(qx, qy)) break;
 
@@ -317,8 +318,8 @@ export abstract class RoadTrace extends RoadRoute {
       if (!this.network.stepOk(here, { x: qx, y: qy }, opt.joiner, trail)) {
         next = this.turnClear(here, heading, next, opt, trail);
         if (next === undefined) break;
-        qx = px + Math.cos(next.heading) * next.reach;
-        qy = py + Math.sin(next.heading) * next.reach;
+        qx = px + cos(next.heading) * next.reach;
+        qy = py + sin(next.heading) * next.reach;
       }
       // A road never comes back onto its own carriageway: it ends where the
       // next step would, as it ends where the field curls it back.
@@ -331,7 +332,7 @@ export abstract class RoadTrace extends RoadRoute {
       px = qx;
       py = qy;
       if (ring !== undefined) {
-        const now = Math.atan2(py - ring.y, px - ring.x);
+        const now = atan2(py - ring.y, px - ring.x);
         swept += Math.abs(wrapAngle(now - bearing));
         bearing = now;
         if (swept >= ring.sweep) break;
@@ -391,7 +392,7 @@ export abstract class RoadTrace extends RoadRoute {
   ): NetworkHit | undefined {
     for (const hit of candidates.slice(0, MERGE_TRIES)) {
       if (this.network.refuses(hit.x, hit.y, joiner)) continue;
-      if (Math.abs(wrapAngle(Math.atan2(hit.y - from.y, hit.x - from.x) - heading)) > MAX_MERGE_TURN) continue;
+      if (Math.abs(wrapAngle(atan2(hit.y - from.y, hit.x - from.x) - heading)) > MAX_MERGE_TURN) continue;
       if (!this.network.meets(hit, from, joiner, trail)) continue;
       if (this.canRun(from.x, from.y, hit.x, hit.y, params.maxGrade) && !turnsBack(hit)) return hit;
     }
@@ -412,7 +413,7 @@ export abstract class RoadTrace extends RoadRoute {
       for (const sign of [1, -1]) {
         const h = step.heading + sign * k * params.maxTurn;
         if (Math.abs(wrapAngle(h - heading)) > limit) continue;
-        const to = { x: from.x + Math.cos(h) * step.reach, y: from.y + Math.sin(h) * step.reach };
+        const to = { x: from.x + cos(h) * step.reach, y: from.y + sin(h) * step.reach };
         if (Math.abs(to.x) > this.half || Math.abs(to.y) > this.half) continue;
         if (opt.within !== undefined && !opt.within(to.x, to.y)) continue;
         if (Math.abs(this.hf.sample(to.x, to.y) - here) / step.reach > params.maxGrade) continue;
@@ -432,7 +433,7 @@ export abstract class RoadTrace extends RoadRoute {
 
   protected startHeading(start: Point, opt: TraceOptions): number {
     const line = this.fieldLine(start, opt.minor);
-    return opt.target === undefined ? line : alignTo(line, Math.atan2(opt.target.y - start.y, opt.target.x - start.x));
+    return opt.target === undefined ? line : alignTo(line, atan2(opt.target.y - start.y, opt.target.x - start.x));
   }
 
   /**
@@ -455,7 +456,7 @@ export abstract class RoadTrace extends RoadRoute {
     } else if (target === undefined) {
       wanted = alignTo(line, heading);
     } else {
-      const bearing = Math.atan2(target.y - y, target.x - x);
+      const bearing = atan2(target.y - y, target.x - x);
       wanted = bearing + opt.params.fieldWeight * wrapAngle(alignTo(line, bearing) - bearing);
     }
     return heading + clamp(wrapAngle(wanted - heading), -opt.params.maxTurn, opt.params.maxTurn);
@@ -484,8 +485,8 @@ export abstract class RoadTrace extends RoadRoute {
         for (const sign of k === 0 ? [1] : [1, -1]) {
           const h = wanted + sign * k * params.maxTurn;
           if (Math.abs(wrapAngle(h - heading)) > limit) continue;
-          const qx = x + Math.cos(h) * reach;
-          const qy = y + Math.sin(h) * reach;
+          const qx = x + cos(h) * reach;
+          const qy = y + sin(h) * reach;
           // The climb between the two ends costs two samples and turns most
           // candidates away; only what survives it is worth walking over.
           if (Math.abs(this.hf.sample(qx, qy) - here) / reach > params.maxGrade) {
@@ -516,9 +517,9 @@ export abstract class RoadTrace extends RoadRoute {
 export function ringOffset(ring: Ring, x: number, y: number): { out: number; off: number } {
   const dx = x - ring.x;
   const dy = y - ring.y;
-  if (ring.square === undefined) return { out: Math.atan2(dy, dx), off: Math.hypot(dx, dy) - ring.radius };
-  const c = Math.cos(ring.square);
-  const s = Math.sin(ring.square);
+  if (ring.square === undefined) return { out: atan2(dy, dx), off: hypot(dx, dy) - ring.radius };
+  const c = cos(ring.square);
+  const s = sin(ring.square);
   const u = dx * c + dy * s;
   const v = dy * c - dx * s;
   const corner = ring.radius * SQUARE_CORNER;
@@ -528,7 +529,7 @@ export function ringOffset(ring: Ring, x: number, y: number): { out: number; off
   let nv: number;
   let off: number;
   if (qu > 0 && qv > 0) {
-    off = Math.hypot(qu, qv) - corner;
+    off = hypot(qu, qv) - corner;
     nu = qu;
     nv = qv;
   } else {
@@ -538,7 +539,7 @@ export function ringOffset(ring: Ring, x: number, y: number): { out: number; off
   }
   nu *= Math.sign(u) || 1;
   nv *= Math.sign(v) || 1;
-  return { out: ring.square + Math.atan2(nv, nu), off };
+  return { out: ring.square + atan2(nv, nu), off };
 }
 
 /** The one of `line` and `line + π` that points the same way as `reference`. */

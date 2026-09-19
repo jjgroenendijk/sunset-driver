@@ -8,6 +8,7 @@
  */
 import { clamp, dist } from '../core/math.ts';
 import { compareNumbers } from '../core/sort.ts';
+import { atan2, cos, sin } from '../core/libm.ts';
 import { BeachGround, isResort } from './beaches.ts';
 import { layoutZones, zoneAt, type ZoneLayout } from './districts.ts';
 import { Heightfield } from './heightfield.ts';
@@ -303,16 +304,16 @@ export abstract class RoadRoute {
    * trying to reach the network from it.
    */
   protected dryAnchors(shore: Point, across: Point): Point[] {
-    const away = Math.atan2(shore.y - across.y, shore.x - across.x);
+    const away = atan2(shore.y - across.y, shore.x - across.x);
     const out: Point[] = [];
     for (let s = 0; s <= ANCHOR_REACH; s += 5) {
-      const p = { x: shore.x + Math.cos(away) * s, y: shore.y + Math.sin(away) * s };
+      const p = { x: shore.x + cos(away) * s, y: shore.y + sin(away) * s };
       if (this.acceptAnchor(p)) out.push(p);
     }
     for (let s = 10; s <= ANCHOR_REACH; s += 10) {
       for (let k = 1; k < 24; k++) {
         const a = away + (k * Math.PI) / 12;
-        const p = { x: shore.x + Math.cos(a) * s, y: shore.y + Math.sin(a) * s };
+        const p = { x: shore.x + cos(a) * s, y: shore.y + sin(a) * s };
         if (this.acceptAnchor(p)) out.push(p);
       }
     }

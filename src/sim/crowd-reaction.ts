@@ -16,6 +16,7 @@
  * calls {@link stepCrowdReactions} once a tick with the crash the player's car
  * has just taken. Everything else the step reads off the record itself.
  */
+import { hypot } from '../core/libm.ts';
 import type { CrowdSource } from './melee.ts';
 import { releaseFar } from './pedestrians.ts';
 import type { SimState } from './simulation.ts';
@@ -95,7 +96,7 @@ export function stepCrowdReactions(state: SimState, crowd: CrowdSource, crash: n
   if (crash >= CRASH_SEVERITY) {
     crowd.startle(state.pedestrians, state.tick, v.x, v.z, CRASH_FLEE, 'flee', ids);
     crowd.startle(state.pedestrians, state.tick, v.x, v.z, CRASH_WATCH, 'gather', ids);
-  } else if (state.player.driving && Math.hypot(v.vx, v.vz) >= CAR_SPEED) {
+  } else if (state.player.driving && hypot(v.vx, v.vz) >= CAR_SPEED) {
     crowd.startle(state.pedestrians, state.tick, v.x, v.z, CAR_REACH, 'scatter', ids);
   }
   const p = state.player;

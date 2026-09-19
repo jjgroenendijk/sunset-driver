@@ -20,6 +20,7 @@
  */
 import { spread } from '../core/math.ts';
 import { genRng, Subsystem } from '../core/rng.ts';
+import { cos, sin } from '../core/libm.ts';
 import type { Building, BuildingMap } from './buildings.ts';
 import type { District, WorldDescription } from './types.ts';
 
@@ -120,8 +121,8 @@ export function roomOf(shop: Shop): ShopRoom {
   // the shopfront: its middle is that far back from the door.
   const back = SHOP_WALL + halfDepth;
   return {
-    x: shop.x - Math.cos(shop.facing) * back,
-    y: shop.y - Math.sin(shop.facing) * back,
+    x: shop.x - cos(shop.facing) * back,
+    y: shop.y - sin(shop.facing) * back,
     halfWidth,
     halfDepth,
     facing: shop.facing,

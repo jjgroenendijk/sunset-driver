@@ -20,6 +20,7 @@
  * same spec section is `street-crime.ts`.
  */
 import { genRng, rngFor, Subsystem } from '../core/rng.ts';
+import { cos, hypot, sin } from '../core/libm.ts';
 import type { Beach, District, Point } from '../world/types.ts';
 import { TICKS_PER_DAY, TICKS_PER_HOUR, TICK_RATE } from './clock.ts';
 import type { Place } from './on-foot.ts';
@@ -138,7 +139,7 @@ export function venuesOf(
     const rng = genRng(seed, Subsystem.Events, EVENT_ORDER.indexOf(kind));
     const angle = rng.range(0, 2 * Math.PI);
     const away = rng.range(0, spec.radius);
-    const place = snap(at.x + Math.cos(angle) * away, at.y + Math.sin(angle) * away);
+    const place = snap(at.x + cos(angle) * away, at.y + sin(angle) * away);
     if (place !== undefined) venues[kind] = place;
   }
   return venues;
@@ -214,7 +215,7 @@ export function eventAt(live: readonly LiveEvent[], x: number, y: number): LiveE
   let best: LiveEvent | undefined;
   for (const event of live) {
     if (event.radius <= 0) continue;
-    if (Math.hypot(event.x - x, event.y - y) > event.radius) continue;
+    if (hypot(event.x - x, event.y - y) > event.radius) continue;
     if (best === undefined || event.radius < best.radius) best = event;
   }
   return best;
@@ -268,8 +269,8 @@ export function eventPeople(event: LiveEvent, seed: number, tick: number, out: E
       const across = ((i % ABREAST) - (ABREAST - 1) / 2) * 1.6;
       const down = at - along / 2;
       out.push({
-        x: event.x + Math.cos(event.heading) * down - Math.sin(event.heading) * across,
-        y: event.y + Math.sin(event.heading) * down + Math.cos(event.heading) * across,
+        x: event.x + cos(event.heading) * down - sin(event.heading) * across,
+        y: event.y + sin(event.heading) * down + cos(event.heading) * across,
         heading: event.heading,
         speed: MARCH_SPEED,
         cycle: fraction(marched / MARCH_STRIDE + i * 0.17),
@@ -277,9 +278,9 @@ export function eventPeople(event: LiveEvent, seed: number, tick: number, out: E
       continue;
     }
     out.push({
-      x: event.x + Math.cos(turn) * away,
-      y: event.y + Math.sin(turn) * away,
-      heading: turn + Math.PI + 0.3 * Math.sin(seconds * 0.4 + sway),
+      x: event.x + cos(turn) * away,
+      y: event.y + sin(turn) * away,
+      heading: turn + Math.PI + 0.3 * sin(seconds * 0.4 + sway),
       speed: 0,
       cycle: 0,
     });

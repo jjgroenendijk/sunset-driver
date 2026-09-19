@@ -6,6 +6,7 @@
  * whether the roads enclose it.
  */
 import type { Point, Region } from '../core/geom.ts';
+import { hypot } from '../core/libm.ts';
 import { compareNumbers } from '../core/sort.ts';
 import type { RoadEdge, RoadGraph } from './graph.ts';
 import { footprintHalfWidth } from './tiers.ts';
@@ -138,7 +139,7 @@ export class RoadReach {
       for (let i = 0; i < ring.length; i++) {
         const a = ring[i] as Point;
         const b = ring[(i + 1) % ring.length] as Point;
-        const span = Math.hypot(b.x - a.x, b.y - a.y);
+        const span = hypot(b.x - a.x, b.y - a.y);
         let at = 0;
         while (since + (span - at) >= EDGE_STEP) {
           at += EDGE_STEP - since;

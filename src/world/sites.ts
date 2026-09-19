@@ -10,6 +10,7 @@
  * a cell of the main island.
  */
 import type { Rng } from '../core/rng.ts';
+import { atan2, cos, hypot, sin } from '../core/libm.ts';
 import type { SiteProfile, TerrainArchetype } from './archetype.ts';
 import type { Island, Point, Site } from './types.ts';
 
@@ -49,8 +50,8 @@ class Frame {
   private readonly size: number;
 
   constructor(angle: number, size: number) {
-    this.cos = Math.cos(angle);
-    this.sin = Math.sin(angle);
+    this.cos = cos(angle);
+    this.sin = sin(angle);
     this.size = size;
   }
 
@@ -65,7 +66,7 @@ class Frame {
   /** The direction, in world terms, of a step `along` and `across`. */
   angleOf(along: number, across: number): number {
     const p = this.at(along, across);
-    return Math.atan2(p.y, p.x);
+    return atan2(p.y, p.x);
   }
 
   site(along: number, across: number, radius: number): Site {
@@ -98,8 +99,8 @@ function scatter(sites: SiteProfile, rng: Rng, size: number): SiteLayout {
     for (let attempt = 0; attempt < 200; attempt++) {
       const x = rng.range(-sites.spread, sites.spread) * size;
       const y = rng.range(-sites.spread, sites.spread) * size;
-      let ok = Math.hypot(x, y) >= minSpacing;
-      for (const other of islands) if (Math.hypot(other.x - x, other.y - y) < minSpacing) ok = false;
+      let ok = hypot(x, y) >= minSpacing;
+      for (const other of islands) if (hypot(other.x - x, other.y - y) < minSpacing) ok = false;
       if (!ok) continue;
       islands.push({ id: i, x, y, radius: size * span(rng, sites.outerRadius), main: false });
       break;
@@ -151,10 +152,10 @@ function ringAround(frame: Frame, main: number, reach: number, gap: number, gapH
   const steps = 8;
   for (let k = 0; k < steps; k++) {
     const angle = (k / steps) * Math.PI * 2 + rng.range(-0.15, 0.15);
-    const off = Math.atan2(Math.sin(angle - gap), Math.cos(angle - gap));
+    const off = atan2(sin(angle - gap), cos(angle - gap));
     if (Math.abs(off) < gapHalf) continue;
     const r = reach + rng.range(-0.03, 0.03);
-    cells.push(frame.site(Math.cos(angle) * r, Math.sin(angle) * r, main * 0.8));
+    cells.push(frame.site(cos(angle) * r, sin(angle) * r, main * 0.8));
   }
   return cells;
 }
@@ -168,7 +169,7 @@ function ringAround(frame: Frame, main: number, reach: number, gap: number, gapH
  * from the island's site. `open` lists the directions of the sea sites.
  */
 function islet(id: number, at: Point, weight: number, reach: number, open: readonly number[]): { island: Island; seas: Site[] } {
-  const seas: Site[] = open.map((a) => ({ x: at.x + Math.cos(a) * reach, y: at.y + Math.sin(a) * reach, radius: weight }));
+  const seas: Site[] = open.map((a) => ({ x: at.x + cos(a) * reach, y: at.y + sin(a) * reach, radius: weight }));
   const site: Site = { x: at.x, y: at.y, radius: weight + reach * 0.3 };
   return { island: island(id, [site], false, reach / 2), seas };
 }
@@ -237,7 +238,7 @@ function strait(sites: SiteProfile, rng: Rng, size: number): SiteLayout {
       far.push(frame.site(2 * offset + rng.range(-0.02, 0.02), (across[k] as number) + rng.range(-0.04, 0.04), main));
     }
     // The site nearest the middle of the map stands for the island.
-    far.sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y));
+    far.sort((a, b) => hypot(a.x, a.y) - hypot(b.x, b.y));
     islands.push(island(i + 1, far, false, span(rng, sites.outerRadius) * size));
     from = to;
   }
@@ -264,7 +265,7 @@ function delta(sites: SiteProfile, rng: Rng, size: number): SiteLayout {
       const along = rng.range(head + 0.08, 0.4);
       const wide = 0.06 + 0.7 * (along - head);
       const p = frame.at(along, rng.range(-wide, wide));
-      if (placed.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < sites.minSpacing * size)) continue;
+      if (placed.some((q) => hypot(q.x - p.x, q.y - p.y) < sites.minSpacing * size)) continue;
       placed.push(p);
       // An islet is small to the zones, whatever its weight, so the suburb it may carry stays clear of the core.
       const site: Site = { x: p.x, y: p.y, radius: span(rng, sites.outerRadius) * size };
@@ -337,23 +338,23 @@ function lagoon(sites: SiteProfile, rng: Rng, size: number): SiteLayout {
   const steps = 8;
   for (let k = 1; k < steps; k++) {
     const angle = Math.PI + (k / steps) * Math.PI * 2 + rng.range(-0.12, 0.12);
-    const off = Math.atan2(Math.sin(angle - inlet), Math.cos(angle - inlet));
+    const off = atan2(sin(angle - inlet), cos(angle - inlet));
     const r = reach + rng.range(-0.02, 0.02);
-    const site = local(Math.cos(angle) * r, Math.sin(angle) * r, main);
+    const site = local(cos(angle) * r, sin(angle) * r, main);
     if (Math.abs(off) >= 0.45) cells.push(site);
   }
   const outer = reach + rng.range(0.56, 0.62);
   for (let k = 0; k < 14; k++) {
     const angle = (k / 14) * Math.PI * 2;
-    seas.push(local(Math.cos(angle) * outer, Math.sin(angle) * outer, main));
+    seas.push(local(cos(angle) * outer, sin(angle) * outer, main));
   }
   const islands = [island(0, cells, true)];
   const count = rng.int(sites.outerCount.min, sites.outerCount.max);
   for (let i = 1; i <= count; i++) {
     // In the inlet, between the two horns of the ring: water towards the lagoon and towards the sea.
     const r = reach * rng.range(0.95, 1.05);
-    const at = local(Math.cos(inlet) * r, Math.sin(inlet) * r, 0);
-    const out = frame.angleOf(Math.cos(inlet), Math.sin(inlet));
+    const at = local(cos(inlet) * r, sin(inlet) * r, 0);
+    const out = frame.angleOf(cos(inlet), sin(inlet));
     const made = islet(i, at, main * size, span(rng, sites.outerRadius) * size, [...arc(out, 0.5, 3), ...arc(out + Math.PI, 0.5, 3)]);
     islands.push(made.island);
     seas.push(...made.seas);

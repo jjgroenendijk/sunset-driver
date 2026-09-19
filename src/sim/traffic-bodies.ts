@@ -21,6 +21,7 @@
  * standing still. The trams (`tram-bodies.ts`) stand in it as kinematic bodies
  * that no touch takes off their loop.
  */
+import { cos, sin } from '../core/libm.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { capsuleOf } from './on-foot.ts';
 import { ParkedBodies } from './parked-bodies.ts';
@@ -260,8 +261,8 @@ export class TrafficBodies {
   /** Put a vehicle's record into the state and give it a dynamic body, moving as its pose says. */
   private hand(state: SimState, id: number, paint: number, spec: VehicleSpec, pose: AmbientPose): void {
     const vehicle = createVehicleState(spec, pose.x, pose.y, pose.height + rideHeight(spec), pose.heading);
-    vehicle.vx = Math.cos(pose.heading) * pose.speed;
-    vehicle.vz = Math.sin(pose.heading) * pose.speed;
+    vehicle.vx = cos(pose.heading) * pose.speed;
+    vehicle.vz = sin(pose.heading) * pose.speed;
     vehicle.speed = pose.speed;
     addPromoted(state.traffic, { id, paint, vehicle });
     this.addPushed({ id, spec, body: this.buildPushed(vehicle, spec) });
@@ -314,9 +315,9 @@ export class TrafficBodies {
     this.spot.z = pose.y;
     // A yaw of minus the heading points local +x along the map heading.
     this.turn.x = 0;
-    this.turn.y = Math.sin(-pose.heading / 2);
+    this.turn.y = sin(-pose.heading / 2);
     this.turn.z = 0;
-    this.turn.w = Math.cos(-pose.heading / 2);
+    this.turn.w = cos(-pose.heading / 2);
   }
 
   /**

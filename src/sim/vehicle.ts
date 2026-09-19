@@ -17,6 +17,7 @@
  * A vehicle's class is carried in its state, so the record says what is being
  * driven and the body, the model and the handling are all rebuilt from it.
  */
+import { atan2, cos, sin } from '../core/libm.ts';
 import type { Surface } from '../world/surface.ts';
 import { createDamageState, type DamageState } from './damage.ts';
 import { ROAD_TYRES } from './roster.ts';
@@ -367,9 +368,9 @@ export function createVehicleState(spec: VehicleSpec, x = 0, z = 0, y = 0, headi
     y,
     z,
     qx: 0,
-    qy: Math.sin(half),
+    qy: sin(half),
     qz: 0,
-    qw: Math.cos(half),
+    qw: cos(half),
     vx: 0,
     vy: 0,
     vz: 0,
@@ -391,5 +392,5 @@ export function headingOf(v: VehicleState): number {
   // The forward axis is local +x, so this is that axis turned by the rotation.
   const fx = 1 - 2 * (v.qy * v.qy + v.qz * v.qz);
   const fz = 2 * (v.qx * v.qz - v.qy * v.qw);
-  return Math.atan2(fz, fx);
+  return atan2(fz, fx);
 }

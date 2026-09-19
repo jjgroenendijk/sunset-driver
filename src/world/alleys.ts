@@ -28,6 +28,7 @@
  */
 import { dist } from '../core/math.ts';
 import { compareNumbers } from '../core/sort.ts';
+import { atan2, cos, sin } from '../core/libm.ts';
 import type { FillSeed, PlanAt } from './fill.ts';
 import type { RoadNetwork } from './road-network.ts';
 import { ALLEY, DEAD_END_SPACINGS } from './road-trace.ts';
@@ -102,10 +103,10 @@ export function alleySeeds(streets: readonly RoadCurve[], network: Pick<RoadNetw
       if (run < step || structure) continue;
       run -= step;
       if (!ground.within(b.x, b.y)) continue;
-      const along = Math.atan2(b.y - a.y, b.x - a.x);
+      const along = atan2(b.y - a.y, b.x - a.x);
       for (const hand of [1, -1]) {
-        const nx = -Math.sin(along) * hand;
-        const ny = Math.cos(along) * hand;
+        const nx = -sin(along) * hand;
+        const ny = cos(along) * hand;
         const depth = blockDepth(network, b, nx, ny, step * PROBE_REACH, curve.id);
         if (depth === undefined) continue;
         const strip = depth / 2 - footprintHalfWidth('alley');

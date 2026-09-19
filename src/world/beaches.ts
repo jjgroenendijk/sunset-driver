@@ -20,6 +20,7 @@
 import { pointInRing, ringArea, type Point } from '../core/geom.ts';
 import { wrapAngle } from '../core/math.ts';
 import { sortedMembers } from '../core/sort.ts';
+import { atan2, cos, hypot, sin } from '../core/libm.ts';
 import { districtAt, zoneAt, type ZoneLayout } from './districts.ts';
 import { Heightfield } from './heightfield.ts';
 import { landRings } from './land.ts';
@@ -209,7 +210,7 @@ function carriesBoardwalk(run: readonly ShoreSample[]): boolean {
       stretch = [p];
       continue;
     }
-    if (last !== undefined) length += Math.hypot(p.x - last.x, p.y - last.y);
+    if (last !== undefined) length += hypot(p.x - last.x, p.y - last.y);
     stretch.push(p);
   }
   return Math.max(best, length) >= MIN_BOARDWALK;
@@ -363,7 +364,7 @@ function walkShore(ring: readonly Point[], terrain: Heightfield, water: WaterDes
   const heading = walk.map((_, i) => {
     const before = walk[(i + n - NORMAL_SPAN) % n] as Point;
     const after = walk[(i + NORMAL_SPAN) % n] as Point;
-    return Math.atan2(after.y - before.y, after.x - before.x);
+    return atan2(after.y - before.y, after.x - before.x);
   });
   return walk.map((p, i) => {
     const line = heading[i] as number;
@@ -373,7 +374,7 @@ function walkShore(ring: readonly Point[], terrain: Heightfield, water: WaterDes
     const turn = wrapAngle((heading[(i + 1) % n] as number) - (heading[(i + n - 1) % n] as number));
     const curvature = turn / (2 * SHORE_STEP);
     const cap = curvature > 0 ? FOLD_CLEARANCE / curvature : Infinity;
-    return sampleShore(p.x, p.y, -Math.sin(line), Math.cos(line), cap, terrain, water, half);
+    return sampleShore(p.x, p.y, -sin(line), cos(line), cap, terrain, water, half);
   });
 }
 
@@ -386,7 +387,7 @@ function stepAlong(ring: readonly Point[]): Point[] {
   for (let i = 0; i < n; i++) {
     const a = ring[i] as Point;
     const b = ring[(i + 1) % n] as Point;
-    const span = Math.hypot(b.x - a.x, b.y - a.y);
+    const span = hypot(b.x - a.x, b.y - a.y);
     let at = 0;
     while (since + (span - at) >= SHORE_STEP) {
       at += SHORE_STEP - since;
@@ -416,7 +417,7 @@ function sampleShore(
   // stand on the map, so the test is made at the depth they reach.
   const room = MAX_SAND + BOARDWALK_SET_BACK + CAR_PARK_SET_BACK + CAR_PARK_DEEP;
   if (Math.abs(x) > half - room || Math.abs(y) > half - room) return none;
-  if (Math.hypot(x - water.harbour.x, y - water.harbour.y) < water.harbour.radius + HARBOUR_MARGIN) return none;
+  if (hypot(x - water.harbour.x, y - water.harbour.y) < water.harbour.radius + HARBOUR_MARGIN) return none;
   if (nearRiver(x, y, water)) return none;
   if (nearCrossing(x, y, water)) return none;
   const sea = water.seaLevel;
@@ -447,7 +448,7 @@ function nearRiver(x: number, y: number, water: WaterDescription): boolean {
 /** True within {@link CROSSING_MARGIN} of either end of a crossing. */
 function nearCrossing(x: number, y: number, water: WaterDescription): boolean {
   for (const c of water.crossings) {
-    if (Math.hypot(x - c.from.x, y - c.from.y) < CROSSING_MARGIN || Math.hypot(x - c.to.x, y - c.to.y) < CROSSING_MARGIN) return true;
+    if (hypot(x - c.from.x, y - c.from.y) < CROSSING_MARGIN || hypot(x - c.to.x, y - c.to.y) < CROSSING_MARGIN) return true;
   }
   return false;
 }
@@ -514,7 +515,7 @@ function shoreLength(run: readonly ShoreSample[]): number {
   for (let i = 0; i + 1 < run.length; i++) {
     const a = run[i] as ShoreSample;
     const b = run[i + 1] as ShoreSample;
-    total += Math.hypot(b.x - a.x, b.y - a.y);
+    total += hypot(b.x - a.x, b.y - a.y);
   }
   return total;
 }
@@ -569,7 +570,7 @@ function strip(near: readonly WorldPoint[], far: readonly WorldPoint[]): WorldPo
 function rectangle(from: WorldPoint, to: WorldPoint, halfWidth: number): WorldPoint[] {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
-  const m = Math.hypot(dx, dy) || 1;
+  const m = hypot(dx, dy) || 1;
   const px = (-dy / m) * halfWidth;
   const py = (dx / m) * halfWidth;
   return [

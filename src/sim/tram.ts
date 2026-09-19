@@ -15,6 +15,7 @@
  * the audio of spec section 15 is to ring {@link TramLine.bells}.
  */
 import { hashInts } from '../core/hash.ts';
+import { atan2 } from '../core/libm.ts';
 import { rngFor, Subsystem } from '../core/rng.ts';
 import type { RoadEdge } from '../world/graph.ts';
 import { TRAM_LANE } from '../world/tiers.ts';
@@ -154,7 +155,7 @@ export class TramLine {
     out.x = (behind.x + ahead.x) / 2;
     out.y = (behind.y + ahead.y) / 2;
     out.height = (behind.height + ahead.height) / 2;
-    out.heading = Math.atan2(ahead.y - behind.y, ahead.x - behind.x);
+    out.heading = atan2(ahead.y - behind.y, ahead.x - behind.x);
     const at = this.loopTick(tram, time);
     const step = legAt(tour.stepStart, at);
     out.speed = (((tour.stepTo[step] as number) - (tour.stepFrom[step] as number)) / (tour.stepTicks[step] as number)) * TICK_RATE;
@@ -237,7 +238,7 @@ export class TramLine {
       const offset = pavementOffset(at.edge);
       const x = at.x + at.rightX * offset;
       const y = at.y + at.rightY * offset;
-      places.set([x, y, at.height + PAVEMENT_RISE, Math.atan2(-at.rightY, -at.rightX)], i * 4);
+      places.set([x, y, at.height + PAVEMENT_RISE, atan2(-at.rightY, -at.rightX)], i * 4);
       looks.push(lookOf(zone, rngFor(seed, 0, Subsystem.Tram, hashInts(call.stop, i))));
       queue.minX = Math.min(queue.minX, x);
       queue.minY = Math.min(queue.minY, y);

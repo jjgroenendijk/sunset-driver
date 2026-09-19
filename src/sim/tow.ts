@@ -26,6 +26,7 @@
  * the bay back to `parked.ts`. That is the right outcome: the wreck went with
  * the truck and the kerb is free again.
  */
+import { hypot } from '../core/libm.ts';
 import { TICKS_PER_HOUR } from './clock.ts';
 import type { SimState } from './simulation.ts';
 import type { PromotedVehicle } from './traffic.ts';
@@ -67,5 +68,5 @@ export function towable(record: PromotedVehicle, tick: number, x: number, y: num
   const damage = v.damage;
   if (damage.stage !== 'burnt' || damage.blownTick < 0) return false;
   if (tick - damage.blownTick < TOW_WAIT) return false;
-  return Math.hypot(v.x - x, v.z - y) >= TOW_REACH;
+  return hypot(v.x - x, v.z - y) >= TOW_REACH;
 }

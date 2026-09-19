@@ -23,6 +23,7 @@
  * destination is taken from the input frame as a number, so a replay of a
  * recorded stream takes the same trip.
  */
+import { hypot } from '../core/libm.ts';
 import type { InputFrame } from './input.ts';
 import type { Place } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
@@ -79,7 +80,7 @@ export function createMetroState(): MetroState {
 export function stationAt(places: readonly MetroPlace[], state: SimState): number {
   for (let i = 0; i < places.length; i++) {
     const place = places[i] as MetroPlace;
-    if (Math.hypot(place.x - state.player.x, place.y - state.player.y) <= ENTRANCE_REACH) return i;
+    if (hypot(place.x - state.player.x, place.y - state.player.y) <= ENTRANCE_REACH) return i;
   }
   return -1;
 }

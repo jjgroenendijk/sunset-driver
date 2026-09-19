@@ -16,6 +16,7 @@
  * to it, the ribbons loft the road onto it and the junction rings stand on it,
  * so the ground and the road agree by construction. Pure: the same terrain, roads and junctions give the same beds.
  */
+import { hypot } from '../core/libm.ts';
 import { lerp } from '../core/math.ts';
 import { Heightfield } from './heightfield.ts';
 import type { JunctionMap, JunctionMouth } from './junctions.ts';
@@ -311,23 +312,23 @@ function planeOf(hf: Heightfield, node: Point, level: number, mouths: readonly J
   // The eigenvectors of the symmetric 2 x 2 matrix: the axis the mouths span
   // most, and the one across it.
   const half = (axx + ayy) / 2;
-  const spread = Math.hypot((axx - ayy) / 2, axy);
+  const spread = hypot((axx - ayy) / 2, axy);
   const major = half + spread;
   const minor = half - spread;
   let ex = axy;
   let ey = major - axx;
-  if (Math.hypot(ex, ey) < 1e-12) {
+  if (hypot(ex, ey) < 1e-12) {
     ex = axx >= ayy ? 1 : 0;
     ey = axx >= ayy ? 0 : 1;
   }
-  const length = Math.hypot(ex, ey);
+  const length = hypot(ex, ey);
   ex /= length;
   ey /= length;
   const alongMajor = major < MIN_SPAN ? 0 : (bx * ex + by * ey) / major;
   const alongMinor = minor < MIN_SPAN ? 0 : (bx * -ey + by * ex) / minor;
   let gx = ex * alongMajor - ey * alongMinor;
   let gy = ey * alongMajor + ex * alongMinor;
-  const tilt = Math.hypot(gx, gy);
+  const tilt = hypot(gx, gy);
   if (tilt > steepest && tilt > 0) {
     gx *= steepest / tilt;
     gy *= steepest / tilt;

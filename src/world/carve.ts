@@ -33,6 +33,7 @@
  * reference to any other, which is what lets a chunk carve its own heights
  * (spec section 9.1).
  */
+import { hypot } from '../core/libm.ts';
 import { clamp, lerp, smoothstep } from '../core/math.ts';
 import { planeHeight, RoadBeds, surfaceHeight, type JunctionPlane, type Knot } from './bed.ts';
 import { Heightfield } from './heightfield.ts';
@@ -308,7 +309,7 @@ export class RoadCarve {
       const vy = this.vy[i] as number;
       const along = (dx * vx + dy * vy) * (this.inv[i] as number);
       const t = clamp(along, 0, 1);
-      const distance = Math.hypot(dx - vx * t, dy - vy * t);
+      const distance = hypot(dx - vx * t, dy - vy * t);
       if (distance > (this.half[i] as number)) continue;
       const mine = this.tier[i] === tier;
       if ((own && !mine) || (own === mine && distance >= nearest)) continue;

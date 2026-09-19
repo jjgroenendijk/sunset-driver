@@ -7,6 +7,7 @@
  * turned over and nothing for the rest. `traffic-bodies.ts` owns this and
  * promotes a car the player touches, the way it promotes the traffic.
  */
+import { cos, hypot, sin } from '../core/libm.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import type { ParkedCar, ParkedCars } from './parked.ts';
 import type { SimState } from './simulation.ts';
@@ -94,8 +95,8 @@ export class ParkedBodies {
       theirs.heading = bays.heading[entry.bay] as number;
       theirs.halfLength = spec.halfLength;
       theirs.halfWidth = spec.halfWidth;
-      const byCar = Math.hypot(car.x - x, car.y - y) < NEAR && footprintsTouch(car, theirs, margin);
-      const byWalker = walker !== undefined && Math.hypot(walker.x - x, walker.y - y) < NEAR && footprintsTouch(walker, theirs, margin);
+      const byCar = hypot(car.x - x, car.y - y) < NEAR && footprintsTouch(car, theirs, margin);
+      const byWalker = walker !== undefined && hypot(walker.x - x, walker.y - y) < NEAR && footprintsTouch(walker, theirs, margin);
       if (!byCar && !byWalker) continue;
       this.release(entry, promote);
     }
@@ -130,7 +131,7 @@ export class ParkedBodies {
     const body = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.fixed()
         .setTranslation(bays.x[entry.bay] as number, (bays.height[entry.bay] as number) + rideHeight(spec), bays.y[entry.bay] as number)
-        .setRotation({ x: 0, y: Math.sin(-heading / 2), z: 0, w: Math.cos(-heading / 2) }),
+        .setRotation({ x: 0, y: sin(-heading / 2), z: 0, w: cos(-heading / 2) }),
     );
     this.world.createCollider(RAPIER.ColliderDesc.cuboid(spec.halfLength, spec.halfHeight, spec.halfWidth), body);
     entry.car = car;

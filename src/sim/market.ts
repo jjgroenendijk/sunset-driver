@@ -18,6 +18,7 @@
  *
  * Pure: it reads the record and writes the record, and takes no wall-clock.
  */
+import { hypot } from '../core/libm.ts';
 import { clamp } from '../core/math.ts';
 import { GOODS } from './contraband.ts';
 import { priceAt, standingPrice, GLUT, SPIKE } from './contraband.ts';
@@ -190,7 +191,7 @@ export function stepMarket(state: SimState, input: InputFrame, dealers: readonly
       return;
     }
     const pitch = pitchOf(dealer, state.tick);
-    const away = Math.hypot(pitch.x - p.x, pitch.y - p.y);
+    const away = hypot(pitch.x - p.x, pitch.y - p.y);
     if (away > DEALER_REACH + DEAL_MARGIN || dealRefusal(state, dealer) !== null) {
       state.market.deal = null;
       return;

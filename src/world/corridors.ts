@@ -31,6 +31,7 @@
  * gives the same corridors.
  */
 import { offsetSides, pointInRing } from '../core/geom.ts';
+import { acos, atan2 } from '../core/libm.ts';
 import { clamp, direction, dist } from '../core/math.ts';
 import { compareNumbers } from '../core/sort.ts';
 import { ClaimIndex } from './corridor-claims.ts';
@@ -289,7 +290,7 @@ class CorridorBuilder {
         y: node.y,
         district: d.id,
         away: dist(d.x, d.y, node.x, node.y),
-        bearing: Math.atan2(d.y - core.y, d.x - core.x),
+        bearing: atan2(d.y - core.y, d.x - core.x),
       });
     }
     return served;
@@ -538,7 +539,7 @@ function unfold(line: Centreline): Centreline[] {
 function bend(points: readonly Point[], at: number): number {
   const back = direction(points[at - 1] as Point, points[at] as Point);
   const ahead = direction(points[at] as Point, points[at + 1] as Point);
-  return Math.acos(clamp(back.x * ahead.x + back.y * ahead.y, -1, 1));
+  return acos(clamp(back.x * ahead.x + back.y * ahead.y, -1, 1));
 }
 
 /** A centreline with both ends pulled back by the given distance, curve by curve. */

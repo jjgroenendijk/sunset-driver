@@ -13,6 +13,7 @@
  * - where any two roads would leave the place, or the places beside it, at less
  *   than `MIN_MEET`, since each would lie in the other's carriageway.
  */
+import { hypot } from '../core/libm.ts';
 import { alongSegment, PlannedLine, shallow, toSegment, type Place } from './crossing-line.ts';
 import type { DraftLine, PointEdit } from './crossing-plan.ts';
 import { crossPoint, type SegmentCrossing } from './network-clearance.ts';
@@ -86,7 +87,7 @@ export function junctionAt(
   const second = draftLine.nearest(here, snap);
   let snapped: Point | undefined = first ?? second;
   if (first !== undefined && second !== undefined) {
-    snapped = Math.hypot(second.x - here.x, second.y - here.y) < Math.hypot(first.x - here.x, first.y - here.y) ? second : first;
+    snapped = hypot(second.x - here.x, second.y - here.y) < hypot(first.x - here.x, first.y - here.y) ? second : first;
   }
   for (const spot of snapped === undefined ? [here] : [{ x: snapped.x, y: snapped.y }, here]) {
     if (!network.joinableAt(spot, draft.tier) || !network.joinableAt(spot, other.tier)) continue;
@@ -184,7 +185,7 @@ function bends(network: CrossingNetwork, spot: Point, around: readonly Point[], 
 function buried(network: CrossingNetwork, tier: RoadTier, spot: Point, around: readonly Point[], curve: number): boolean {
   const half = footprintHalfWidth(tier);
   let reach = half;
-  for (const p of around) reach = Math.max(reach, Math.hypot(p.x - spot.x, p.y - spot.y) + half);
+  for (const p of around) reach = Math.max(reach, hypot(p.x - spot.x, p.y - spot.y) + half);
   for (const end of network.freeEnds(spot.x, spot.y, reach)) {
     if (end.curve === curve) continue;
     let near = Infinity;

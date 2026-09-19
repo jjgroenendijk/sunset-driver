@@ -1,5 +1,6 @@
 import { dist2, lerp, smoothstep } from '../core/math.ts';
 import { genRng, Subsystem, type Rng } from '../core/rng.ts';
+import { atan2, cos, hypot, sin } from '../core/libm.ts';
 import type { Culture, District, Island, Point, WaterDescription, Zone } from './types.ts';
 import type { Heightfield } from './heightfield.ts';
 import { LandMasses } from './landmass.ts';
@@ -75,7 +76,7 @@ export function layoutZones(size: number, core: Point, water: WaterDescription):
  * tried.
  */
 export function industryAngle(hf: Heightfield, size: number, core: Point, harbour: Point): number {
-  const toward = Math.atan2(harbour.y - core.y, harbour.x - core.x);
+  const toward = atan2(harbour.y - core.y, harbour.x - core.x);
   let best = toward;
   let bestDry = -1;
   for (let k = 0; k <= INDUSTRIAL_TURNS * 2; k++) {
@@ -98,8 +99,8 @@ function wedgeDry(hf: Heightfield, size: number, core: Point, angle: number): nu
     const r = size * lerp(INDUSTRIAL_INNER, INDUSTRIAL_OUTER, (i + 0.5) / steps);
     for (let j = 0; j < steps; j++) {
       const a = angle + INDUSTRIAL_HALF_ANGLE * ((2 * j + 1) / steps - 1);
-      const x = core.x + Math.cos(a) * r;
-      const y = core.y + Math.sin(a) * r;
+      const x = core.x + cos(a) * r;
+      const y = core.y + sin(a) * r;
       if (Math.abs(x) < size / 2 && Math.abs(y) < size / 2 && hf.sample(x, y) >= DRY && hf.slope(x, y) < INDUSTRIAL_SLOPE) dry++;
     }
   }
@@ -110,13 +111,13 @@ function wedgeDry(hf: Heightfield, size: number, core: Point, angle: number): nu
 export function zoneAt(layout: ZoneLayout, x: number, y: number): Zone {
   const dx = x - layout.core.x;
   const dy = y - layout.core.y;
-  const r = Math.hypot(dx, dy);
+  const r = hypot(dx, dy);
   const s = layout.size;
   const isl = layout.suburbIsland;
-  if (isl && Math.hypot(x - isl.x, y - isl.y) < isl.radius * 1.2) return 'suburban';
+  if (isl && hypot(x - isl.x, y - isl.y) < isl.radius * 1.2) return 'suburban';
   if (r >= layout.industrialInner && r <= layout.industrialOuter) {
-    let a = Math.atan2(dy, dx) - layout.industrialAngle;
-    a = Math.atan2(Math.sin(a), Math.cos(a));
+    let a = atan2(dy, dx) - layout.industrialAngle;
+    a = atan2(sin(a), cos(a));
     if (Math.abs(a) <= layout.industrialHalfAngle) return 'industrial';
   }
   if (r < ZONE_RADII.core * s) return 'core';
@@ -136,7 +137,7 @@ export function zoneAt(layout: ZoneLayout, x: number, y: number): Zone {
  * so neither end shows a crease.
  */
 export function skylineAt(layout: ZoneLayout, x: number, y: number): number {
-  const r = Math.hypot(x - layout.core.x, y - layout.core.y);
+  const r = hypot(x - layout.core.x, y - layout.core.y);
   return 1 - smoothstep(0, ZONE_RADII.inner * layout.size, r);
 }
 
@@ -190,8 +191,8 @@ function sampleSiteInZone(rng: Rng, layout: ZoneLayout, zone: Zone, hf: Heightfi
   for (let attempt = 0; attempt < 200; attempt++) {
     const r = Math.sqrt(rng.range(r0 * r0, r1 * r1)) * s;
     const a = rng.range(-Math.PI, Math.PI);
-    const x = layout.core.x + Math.cos(a) * r;
-    const y = layout.core.y + Math.sin(a) * r;
+    const x = layout.core.x + cos(a) * r;
+    const y = layout.core.y + sin(a) * r;
     if (Math.abs(x) > s / 2 || Math.abs(y) > s / 2) continue;
     if (zoneAt(layout, x, y) !== zone) continue;
     if (hf.sample(x, y) < DRY) continue;
@@ -310,8 +311,8 @@ export function generateDistricts(seed: number, layout: ZoneLayout, hf: Heightfi
 }
 
 function angularDistance(layout: ZoneLayout, d: District, angle: number): number {
-  const a = Math.atan2(d.y - layout.core.y, d.x - layout.core.x) - angle;
-  return Math.abs(Math.atan2(Math.sin(a), Math.cos(a)));
+  const a = atan2(d.y - layout.core.y, d.x - layout.core.x) - angle;
+  return Math.abs(atan2(sin(a), cos(a)));
 }
 
 /** District lookup: nearest site within the point's zone, else nearest overall. */

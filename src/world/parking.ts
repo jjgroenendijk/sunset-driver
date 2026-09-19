@@ -14,6 +14,7 @@
  * worker can hand them to the main thread whole.
  */
 import { ringArea, type Point, type Region } from '../core/geom.ts';
+import { atan2, cos, hypot, sin } from '../core/libm.ts';
 import { layoutZones, zoneAt } from './districts.ts';
 import type { RoadCarve } from './carve.ts';
 import type { JunctionMap } from './junctions.ts';
@@ -76,7 +77,7 @@ export function baySize(bays: ParkingBays, bay: number): { halfLength: number; h
 export function bayRing(bays: ParkingBays, bay: number): Point[] {
   const size = baySize(bays, bay);
   const heading = bays.heading[bay] as number;
-  return rectangle(bays.x[bay] as number, bays.y[bay] as number, Math.cos(heading), Math.sin(heading), size.halfLength, size.halfWidth);
+  return rectangle(bays.x[bay] as number, bays.y[bay] as number, cos(heading), sin(heading), size.halfLength, size.halfWidth);
 }
 
 /** A bay before it is packed: where it stands, the way it faces and what it is for. */
@@ -119,7 +120,7 @@ export function layBays(
   // can leave the ground under its ramp to one. No bay stands under a road.
   const none = new Float64Array(0);
   for (const bay of lots) {
-    const ring = rectangle(bay.x, bay.y, Math.cos(bay.heading), Math.sin(bay.heading), LOT_BAY_LENGTH / 2, LOT_BAY_WIDTH / 2);
+    const ring = rectangle(bay.x, bay.y, cos(bay.heading), sin(bay.heading), LOT_BAY_LENGTH / 2, LOT_BAY_WIDTH / 2);
     if (grid.clear(ring, -1, none, 0)) out.push(bay);
   }
   const bays: ParkingBays = {
@@ -169,7 +170,7 @@ function streetBays(road: RoadCurve, junctions: JunctionMap, grid: SegmentGrid, 
   for (let i = 1; i < points.length; i++) {
     const a = points[i - 1] as Point;
     const b = points[i] as Point;
-    along[i] = (along[i - 1] as number) + Math.hypot(b.x - a.x, b.y - a.y);
+    along[i] = (along[i - 1] as number) + hypot(b.x - a.x, b.y - a.y);
   }
   const total = along[points.length - 1] as number;
   // The stretches no bay may reach: the ends, the junctions, the decks and the bores.
@@ -199,10 +200,10 @@ function streetBays(road: RoadCurve, junctions: JunctionMap, grid: SegmentGrid, 
         const ahead = pointAt(points, along, s + STREET_BAY_LENGTH / 2);
         const centre = pointAt(points, along, s);
         if (bendOver(points, along, s - STREET_BAY_LENGTH / 2, s + STREET_BAY_LENGTH / 2) > MAX_BEND) continue;
-        const length = Math.hypot(ahead.x - back.x, ahead.y - back.y);
+        const length = hypot(ahead.x - back.x, ahead.y - back.y);
         const tx = (ahead.x - back.x) / length;
         const ty = (ahead.y - back.y) / length;
-        const heading = Math.atan2(ty, tx);
+        const heading = atan2(ty, tx);
         // The right hand of the curve's direction first, where its traffic drives
         // that way, then the left, where a car faces the other way.
         for (const side of [1, -1] as const) {
@@ -237,7 +238,7 @@ function lotBays(region: Region, use: BayUse, out: Bay[]): void {
   for (let i = 0; i < ring.length; i++) {
     const a = ring[i] as Point;
     const b = ring[(i + 1) % ring.length] as Point;
-    const span = Math.hypot(b.x - a.x, b.y - a.y);
+    const span = hypot(b.x - a.x, b.y - a.y);
     if (span <= longest) continue;
     longest = span;
     ux = (b.x - a.x) / span;
@@ -260,7 +261,7 @@ function lotBays(region: Region, use: BayUse, out: Bay[]): void {
   }
   // A pair of rows faces one aisle between them, and the next pair backs onto it.
   const pair = 2 * LOT_BAY_LENGTH + AISLE;
-  const heading = Math.atan2(vy, vx);
+  const heading = atan2(vy, vx);
   for (let v0 = minV + STREET_REACH; v0 + pair <= maxV - STREET_REACH; v0 += pair) {
     for (const [v, facing] of [
       [v0 + LOT_BAY_LENGTH / 2, heading],
@@ -312,8 +313,8 @@ function bendOver(points: readonly Point[], along: Float64Array, from: number, t
     const a = points[k - 1] as Point;
     const b = points[k] as Point;
     const c = points[k + 1] as Point;
-    const delta = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(b.y - a.y, b.x - a.x);
-    turn += Math.abs(Math.atan2(Math.sin(delta), Math.cos(delta)));
+    const delta = atan2(c.y - b.y, c.x - b.x) - atan2(b.y - a.y, b.x - a.x);
+    turn += Math.abs(atan2(sin(delta), cos(delta)));
   }
   return turn;
 }
@@ -387,7 +388,7 @@ export function laneHalfWidth(tier: RoadTier): number {
 
 /** The ground a road claims along one segment, as a rectangle; nothing for a segment of no length. */
 export function segmentQuad(a: Point, b: Point, halfWidth: number): Point[] | undefined {
-  const length = Math.hypot(b.x - a.x, b.y - a.y);
+  const length = hypot(b.x - a.x, b.y - a.y);
   if (length === 0) return undefined;
   const dx = (b.x - a.x) / length;
   const dy = (b.y - a.y) / length;

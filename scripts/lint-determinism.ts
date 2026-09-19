@@ -1,9 +1,13 @@
 /**
  * Determinism lint. Fails the build when generation or simulation code:
  *   - calls Math.random() anywhere under src/;
+ *   - calls a Math function ECMAScript leaves to the engine (sin, cos, pow,
+ *     log, hypot and the rest of the approximated set);
  *   - iterates a Set or Map (for-of, spread, Array.from, forEach, .keys/.values/.entries);
  *   - iterates object keys (for-in, Object.keys/values/entries);
  * inside the directories that must be order-stable (src/core, src/world, src/sim).
+ * Math.random is forbidden everywhere under src/; the rest apply to those
+ * directories only.
  *
  * Uses the TypeScript type checker so `for (const x of foo)` is judged by the
  * real type of `foo`, not by its name.
@@ -24,6 +28,19 @@ export interface Finding {
 }
 
 const UNORDERED = new Set(['Set', 'Map', 'ReadonlySet', 'ReadonlyMap', 'WeakSet', 'WeakMap', 'SetIterator', 'MapIterator']);
+
+/**
+ * The functions of `Math` the ECMAScript specification calls
+ * implementation-approximated: every engine may round them its own way, and
+ * engines do. `src/core/libm.ts` holds the ones the game uses; a call here to
+ * one it does not yet hold is the prompt to add it there rather than to reach
+ * for `Math`. Everything left out of this set — abs, min, max, floor, ceil,
+ * round, trunc, sign, sqrt, imul — is exactly specified and safe.
+ */
+const APPROXIMATED = new Set([
+  'acos', 'acosh', 'asin', 'asinh', 'atan', 'atan2', 'atanh', 'cbrt', 'cos', 'cosh', 'exp', 'expm1',
+  'fround', 'hypot', 'log', 'log10', 'log1p', 'log2', 'pow', 'sin', 'sinh', 'tan', 'tanh',
+]);
 
 /**
  * Lint `fileNames` and return every violation found in them.
@@ -122,6 +139,18 @@ export function lintDeterminism(
     }
 
     if (orderStable) {
+      // An approximated Math function rounds differently in Node and in the
+      // browser, which is enough to build a different city (issue #243).
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        ts.isIdentifier(node.expression.expression) &&
+        node.expression.expression.text === 'Math' &&
+        APPROXIMATED.has(node.expression.name.text)
+      ) {
+        const name = node.expression.name.text;
+        report(node, `Math.${name}() is rounded differently by each engine; use src/core/libm.ts`);
+      }
       if (ts.isForOfStatement(node)) checkIterationSource(node.expression);
       if (ts.isForInStatement(node)) report(node, 'for-in iterates object keys in insertion order; sort the keys first');
       if (ts.isSpreadElement(node)) checkIterationSource(node.expression);

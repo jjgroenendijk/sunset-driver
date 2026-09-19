@@ -40,6 +40,12 @@ describe('determinism lint', () => {
     expect(lint('no-symbol-types.ts')).toEqual([]);
   });
 
+  it('leaves the exactly specified Math functions alone', () => {
+    // abs, floor, sqrt, max and round are exact by the standard, so banning
+    // them would cost every call site for nothing.
+    expect(lint('violations.ts').filter((f) => f.line >= 30)).toEqual([]);
+  });
+
   it('reports every kind of violation', () => {
     // A spread of map.keys() breaks two rules at once, so line 9 appears twice.
     expect(lint('violations.ts')).toEqual([
@@ -49,6 +55,9 @@ describe('determinism lint', () => {
       { file: 'violations.ts', line: 13, message: expect.stringContaining('Object.keys/values/entries') },
       { file: 'violations.ts', line: 18, message: expect.stringContaining('for-in') },
       { file: 'violations.ts', line: 23, message: expect.stringContaining('Math.random()') },
+      { file: 'violations.ts', line: 27, message: expect.stringContaining('Math.sin()') },
+      { file: 'violations.ts', line: 27, message: expect.stringContaining('Math.hypot()') },
+      { file: 'violations.ts', line: 27, message: expect.stringContaining('Math.pow()') },
     ]);
   });
 });

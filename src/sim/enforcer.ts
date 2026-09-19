@@ -28,6 +28,7 @@
  * same corners.
  */
 import { rngFor, Subsystem } from '../core/rng.ts';
+import { atan2, cos, hypot, sin } from '../core/libm.ts';
 import { TICK_RATE } from './clock.ts';
 import { FACTIONS, type Faction } from './faction.ts';
 import { hurt, MAX_HEALTH } from './on-foot.ts';
@@ -176,7 +177,7 @@ export class EnforcerGang {
     if (wave === null) return false;
     const at = blockAt(wave.block);
     const middle = blockMiddle(at.bx, at.by);
-    return Math.hypot(state.player.x - middle.x, state.player.y - middle.y) > GIVE_UP_RANGE;
+    return hypot(state.player.x - middle.x, state.player.y - middle.y) > GIVE_UP_RANGE;
   }
 
   /**
@@ -199,8 +200,8 @@ export class EnforcerGang {
     const id = enforcers.nextUnit;
     const rng = rngFor(state.seed, state.tick, Subsystem.Enforcers, id);
     const bearing = rng.float() * Math.PI * 2;
-    const x = state.player.x + Math.cos(bearing) * SPAWN_RANGE;
-    const y = state.player.y + Math.sin(bearing) * SPAWN_RANGE;
+    const x = state.player.x + cos(bearing) * SPAWN_RANGE;
+    const y = state.player.y + sin(bearing) * SPAWN_RANGE;
     const unit = this.raise(id, wave.faction, x, y, rng.float());
     if (unit === undefined) return;
     enforcers.nextUnit = id + 1;
@@ -254,7 +255,7 @@ export class EnforcerGang {
   private walk(state: SimState, unit: EnforcerUnit): void {
     const due = state.tick - unit.planned >= REPLAN;
     if (due || unit.distance >= this.roads.length(unit.edges)) this.replan(state, unit);
-    const gap = Math.hypot(unit.x - unit.goalX, unit.y - unit.goalY);
+    const gap = hypot(unit.x - unit.goalX, unit.y - unit.goalY);
     const speed = gap < HOLD_RANGE ? 0 : ENFORCER_SPEED;
     unit.distance = Math.min(unit.distance + speed / TICK_RATE, this.roads.length(unit.edges));
     this.roads.pose(unit.id, unit.edges, unit.distance, this.pose);
@@ -291,10 +292,10 @@ export class EnforcerGang {
   private shoot(state: SimState, unit: EnforcerUnit): void {
     const p = state.player;
     if (p.driving || p.health <= 0) return;
-    if (Math.hypot(unit.x - p.x, unit.y - p.y) > ENFORCER_RANGE) return;
+    if (hypot(unit.x - p.x, unit.y - p.y) > ENFORCER_RANGE) return;
     if (state.tick - unit.fired < fireGap(unit.weapon)) return;
     unit.fired = state.tick;
-    unit.heading = Math.atan2(p.y - unit.y, p.x - unit.x);
+    unit.heading = atan2(p.y - unit.y, p.x - unit.x);
     hurt(p, weaponOf(unit.weapon).damage * HIT_SHARE);
   }
 
@@ -317,7 +318,7 @@ export class EnforcerGang {
     const p = state.player;
     for (let i = units.length - 1; i >= 0; i--) {
       const unit = units[i] as EnforcerUnit;
-      if (Math.hypot(unit.x - p.x, unit.y - p.y) < STAND_DOWN_RANGE) continue;
+      if (hypot(unit.x - p.x, unit.y - p.y) < STAND_DOWN_RANGE) continue;
       units.splice(i, 1);
     }
   }
@@ -364,7 +365,7 @@ export function hurtEnforcer(state: SimState, id: number, amount: number): boole
  */
 export function blastEnforcers(state: SimState, x: number, y: number, damage: number, falloff: (distance: number) => number): void {
   for (const unit of [...state.enforcers.units]) {
-    const share = falloff(Math.hypot(unit.x - x, unit.y - y));
+    const share = falloff(hypot(unit.x - x, unit.y - y));
     if (share <= 0) continue;
     hurtEnforcer(state, unit.id, damage * share);
   }

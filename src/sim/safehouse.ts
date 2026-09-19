@@ -30,6 +30,7 @@
  * Pure: it reads the record and writes the record, and takes no wall-clock.
  */
 import { genRng, Subsystem } from '../core/rng.ts';
+import { cos, hypot, sin } from '../core/libm.ts';
 import type { District } from '../world/types.ts';
 import { GOODS } from './contraband.ts';
 import type { InputFrame } from './input.ts';
@@ -158,9 +159,9 @@ export function safehousePlaces(
     for (let i = 0; i < DOOR_TRIES; i++) {
       const angle = turn + (i / DOOR_TRIES) * Math.PI * 2;
       const away = rng.range(DOOR_NEAR, DOOR_FAR);
-      const place = snap(district.x + Math.cos(angle) * away, district.y + Math.sin(angle) * away);
+      const place = snap(district.x + cos(angle) * away, district.y + sin(angle) * away);
       if (place === undefined) continue;
-      if (Math.hypot(place.x - district.x, place.y - district.y) > DOOR_LIMIT) continue;
+      if (hypot(place.x - district.x, place.y - district.y) > DOOR_LIMIT) continue;
       places.push({
         id: places.length,
         district,
@@ -183,7 +184,7 @@ export function safehouseAt(places: readonly SafehousePlace[], state: SimState):
   let near = SAFEHOUSE_REACH;
   for (let i = 0; i < places.length; i++) {
     const place = places[i] as SafehousePlace;
-    const away = Math.hypot(place.x - state.player.x, place.y - state.player.y);
+    const away = hypot(place.x - state.player.x, place.y - state.player.y);
     if (away > near) continue;
     near = away;
     at = i;
@@ -327,8 +328,8 @@ function fetchCar(state: SimState, place: SafehousePlace, slot: number): string 
 /** Where a car taken out of the garage is stood: out of the door, facing the street. */
 function carPlace(place: SafehousePlace): Place {
   return {
-    x: place.x + Math.cos(place.heading) * CAR_STEP,
-    y: place.y + Math.sin(place.heading) * CAR_STEP,
+    x: place.x + cos(place.heading) * CAR_STEP,
+    y: place.y + sin(place.heading) * CAR_STEP,
     heading: place.heading,
   };
 }
@@ -364,7 +365,7 @@ export function stepHome(state: SimState, input: InputFrame, places: readonly Sa
       state.property.visit = null;
       return null;
     }
-    if (p.driving || Math.hypot(place.x - p.x, place.y - p.y) > SAFEHOUSE_REACH + DOOR_MARGIN) {
+    if (p.driving || hypot(place.x - p.x, place.y - p.y) > SAFEHOUSE_REACH + DOOR_MARGIN) {
       state.property.visit = null;
       return null;
     }

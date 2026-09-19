@@ -6,6 +6,7 @@
 import { clamp, lerp, smoothstep } from '../core/math.ts';
 import { Noise2D } from '../core/noise.ts';
 import type { Rng } from '../core/rng.ts';
+import { atan2, cos, hypot, sin } from '../core/libm.ts';
 import type { TerrainArchetype } from './archetype.ts';
 import type { Heightfield } from './heightfield.ts';
 import type { SiteLayout } from './sites.ts';
@@ -36,7 +37,7 @@ export function planWater(
   const profile = archetype.rivers;
   const count = profile.count.min === profile.count.max ? profile.count.min : rng.int(profile.count.min, profile.count.max);
   const waterfront = (): Harbour => {
-    const toward = Math.atan2(sites.waterfront.y, sites.waterfront.x);
+    const toward = atan2(sites.waterfront.y, sites.waterfront.x);
     const at = shoreToward(coast, { x: 0, y: 0 }, toward, size);
     // The basin is dug nine metres down and blends back into the ground over
     // {@link HARBOUR_REACH}. Where the core faces water closer than the basin is
@@ -46,15 +47,15 @@ export function planWater(
     // the core, blend and all. It still faces the shore the core faces, which is
     // what the archetype asks for, and one seed in 500 is far enough in to move.
     const want = radius + HARBOUR_REACH;
-    if (Math.hypot(at.x, at.y) >= want) return { x: at.x, y: at.y, radius };
-    return { x: Math.cos(toward) * want, y: Math.sin(toward) * want, radius };
+    if (hypot(at.x, at.y) >= want) return { x: at.x, y: at.y, radius };
+    return { x: cos(toward) * want, y: sin(toward) * want, radius };
   };
   // A harbour on the waterfront is placed first, and the rivers keep clear of the water it carves.
   const placed = archetype.harbour === 'waterfront' ? waterfront() : undefined;
   const wet: CoastAt =
     placed === undefined
       ? coast
-      : (x, y) => Math.max(coast(x, y), placed.radius + HARBOUR_REACH - Math.hypot(x - placed.x, y - placed.y));
+      : (x, y) => Math.max(coast(x, y), placed.radius + HARBOUR_REACH - hypot(x - placed.x, y - placed.y));
   const clear = placed === undefined ? CORE_CLEAR : RING_CLEAR;
   const rivers: RiverDescription[] = [];
   if (count > 0) {
@@ -71,8 +72,8 @@ export function planWater(
 
 /** Walking out from a point in a direction, the last dry place before the water. */
 function shoreToward(coast: CoastAt, from: Point, angle: number, size: number): Point {
-  const dx = Math.cos(angle);
-  const dy = Math.sin(angle);
+  const dx = cos(angle);
+  const dy = sin(angle);
   let reach = 0;
   for (let s = 0; s < size; s += WALK) {
     if (coast(from.x + dx * s, from.y + dy * s) > 0) break;
@@ -89,13 +90,13 @@ const FAR_SOURCE = [0.85, 0.6] as const;
 function sourceAlong(coast: CoastAt, angle: number, size: number, within: readonly [number, number] = NEAR_SOURCE): Point {
   let sourceReach = 0;
   for (let s = 0; s < size; s += WALK) {
-    if (coast(Math.cos(angle) * s, Math.sin(angle) * s) > -80) break;
+    if (coast(cos(angle) * s, sin(angle) * s) > -80) break;
     sourceReach = s;
   }
   const [top, bottom] = within;
-  let source: Point = { x: Math.cos(angle) * sourceReach * bottom, y: Math.sin(angle) * sourceReach * bottom };
+  let source: Point = { x: cos(angle) * sourceReach * bottom, y: sin(angle) * sourceReach * bottom };
   for (let f = top; f >= bottom; f -= 0.05) {
-    const candidate = { x: Math.cos(angle) * sourceReach * f, y: Math.sin(angle) * sourceReach * f };
+    const candidate = { x: cos(angle) * sourceReach * f, y: sin(angle) * sourceReach * f };
     if (coast(candidate.x, candidate.y) < -200) {
       source = candidate;
       break;
@@ -115,13 +116,13 @@ function sourceToMouth(seed: number, rng: Rng, size: number, coast: CoastAt, cle
   for (let k = 0; k < 16; k++) {
     const a = mouthAngle + (k / 16) * Math.PI * 2;
     const shore = shoreToward(coast, { x: 0, y: 0 }, a, size);
-    const reach = Math.hypot(shore.x, shore.y);
+    const reach = hypot(shore.x, shore.y);
     if (reach > bestReach) {
       bestReach = reach;
       mouth = shore;
     }
   }
-  const mouthDir = Math.atan2(mouth.y, mouth.x);
+  const mouthDir = atan2(mouth.y, mouth.x);
   const sign = rng.chance(0.5) ? 1 : -1;
   const turn = rng.range(0.6, 1.3);
   if (clear === RING_CLEAR) {
@@ -161,7 +162,7 @@ function staysInland(coast: CoastAt, river: RiverDescription, size: number, clea
     const bank = river.halfWidths[i] as number;
     if (i < last && coast(p.x, p.y) > -(bank + INLAND)) return false;
     // The core stands on dry, gentle ground, so no river runs through it.
-    if (Math.hypot(p.x, p.y) < size * clear + bank) return false;
+    if (hypot(p.x, p.y) < size * clear + bank) return false;
   }
   return true;
 }
@@ -194,9 +195,9 @@ function inlandRiver(
 
 /** From inland to the head of the delta, a little to one side of the core. The islets' channels carry it on. */
 function deltaTrunk(seed: number, sites: SiteLayout, rng: Rng, size: number, coast: CoastAt, clear: number): RiverDescription[] {
-  const seaward = Math.atan2(sites.waterfront.y, sites.waterfront.x);
+  const seaward = atan2(sites.waterfront.y, sites.waterfront.x);
   const mouth = shoreToward(coast, { x: 0, y: 0 }, seaward + (rng.chance(0.5) ? 1 : -1) * rng.range(0.3, 0.6), size);
-  const mouthDir = Math.atan2(mouth.y, mouth.x);
+  const mouthDir = atan2(mouth.y, mouth.x);
   const sign = rng.chance(0.5) ? 1 : -1;
   const turn = rng.range(0.6, 1.1);
   return inlandRiver(coast, size, clear, [sign, -sign], [turn, 0.9, 0.6], (s, t) =>
@@ -226,21 +227,21 @@ function spineRivers(
 ): RiverDescription[] {
   const spine = sites.spine;
   if (spine === undefined) return [];
-  const along = Math.atan2(spine.to.y - spine.from.y, spine.to.x - spine.from.x);
+  const along = atan2(spine.to.y - spine.from.y, spine.to.x - spine.from.x);
   // The direction from the spine to the sea: across the spine, on the side the waterfront lies.
   let seaward = along + Math.PI / 2;
   const mid = { x: (spine.from.x + spine.to.x) / 2, y: (spine.from.y + spine.to.y) / 2 };
-  if (Math.cos(seaward) * (sites.waterfront.x - mid.x) + Math.sin(seaward) * (sites.waterfront.y - mid.y) < 0) seaward += Math.PI;
+  if (cos(seaward) * (sites.waterfront.x - mid.x) + sin(seaward) * (sites.waterfront.y - mid.y) < 0) seaward += Math.PI;
   const places = rng.shuffle([...SPINE_PLACES]);
   const out: RiverDescription[] = [];
   for (let k = 0; k < places.length && out.length < count; k++) {
     const b = ((places[k] as number) + rng.range(-0.03, 0.03)) * size;
-    const foot = { x: mid.x + Math.cos(along) * b, y: mid.y + Math.sin(along) * b };
+    const foot = { x: mid.x + cos(along) * b, y: mid.y + sin(along) * b };
     const start = size * rng.range(0.06, 0.1);
-    const source = { x: foot.x + Math.cos(seaward) * start, y: foot.y + Math.sin(seaward) * start };
+    const source = { x: foot.x + cos(seaward) * start, y: foot.y + sin(seaward) * start };
     if (coast(source.x, source.y) > -SPINE_SOURCE) continue;
     const mouth = shoreToward(coast, source, seaward, size);
-    if (Math.hypot(mouth.x - source.x, mouth.y - source.y) < size * 0.1) continue;
+    if (hypot(mouth.x - source.x, mouth.y - source.y) < size * 0.1) continue;
     const river = traceRiver(seed, k, source, mouth, size, 0.6);
     if (staysInland(coast, river, size, clear)) out.push(river);
   }
@@ -255,13 +256,13 @@ function traceRiver(seed: number, k: number, source: Point, mouth: Point, size: 
   const halfWidths: number[] = [];
   const dx = mouth.x - source.x;
   const dy = mouth.y - source.y;
-  const len = Math.hypot(dx, dy);
+  const len = hypot(dx, dy);
   const nx = -dy / len;
   const ny = dx / len;
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     // Meander fades to zero at both ends so the source and mouth stay put.
-    const envelope = Math.sin(t * Math.PI);
+    const envelope = sin(t * Math.PI);
     const meander = noise.fbm(t * 3.2 + 3.1, 0.7 + k * 5.3, 2, 2, 0.35) * size * 0.05 * envelope;
     path.push({ x: source.x + dx * t + nx * meander, y: source.y + dy * t + ny * meander });
     halfWidths.push(lerp(size * 0.003, size * 0.009, smoothstep(0, 1, t)) * width);
@@ -313,7 +314,7 @@ export function carveHarbour(hf: Heightfield, harbour: Harbour): void {
   const iy1 = clamp(Math.ceil((harbour.y + reach - hf.originY) / hf.cellSize), 0, hf.gridSize - 1);
   for (let iy = iy0; iy <= iy1; iy++) {
     for (let ix = ix0; ix <= ix1; ix++) {
-      const d = Math.hypot(hf.worldX(ix) - harbour.x, hf.worldY(iy) - harbour.y);
+      const d = hypot(hf.worldX(ix) - harbour.x, hf.worldY(iy) - harbour.y);
       if (d > reach) continue;
       const h = hf.at(ix, iy);
       const target = d < harbour.radius ? depth : lerp(depth, h, smoothstep(harbour.radius, reach, d));
@@ -328,5 +329,5 @@ export function segmentDistance(px: number, py: number, a: Point, b: Point): num
   const l2 = vx * vx + vy * vy;
   let t = l2 > 0 ? ((px - a.x) * vx + (py - a.y) * vy) / l2 : 0;
   t = clamp(t, 0, 1);
-  return Math.hypot(px - (a.x + vx * t), py - (a.y + vy * t));
+  return hypot(px - (a.x + vx * t), py - (a.y + vy * t));
 }

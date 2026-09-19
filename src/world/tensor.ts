@@ -27,6 +27,7 @@
 import { clamp, lerp, smoothstep, wrapDirection } from '../core/math.ts';
 import { Noise2D } from '../core/noise.ts';
 import { genRng, Subsystem } from '../core/rng.ts';
+import { asin, atan2, cos, hypot, sin } from '../core/libm.ts';
 import { ZONE_RADII } from './districts.ts';
 import { Heightfield } from './heightfield.ts';
 import { segmentDistance } from './terrain.ts';
@@ -217,8 +218,8 @@ export class TensorField {
     // range and few in the middle: a city half planned reads as neither.
     const u = rng.float();
     this.plannedness = u * u * (3 - 2 * u);
-    this.cityC2 = Math.cos(2 * this.cityAngle);
-    this.cityS2 = Math.sin(2 * this.cityAngle);
+    this.cityC2 = cos(2 * this.cityAngle);
+    this.cityS2 = sin(2 * this.cityAngle);
     this.planHold = size * PLAN_HOLD;
     this.planFade = size * PLAN_FADE;
     const grids: DistrictGrid[] = [];
@@ -238,8 +239,8 @@ export class TensorField {
         radius: size * spec.radius,
         // A dense district holds its grid harder than a sparse one of the same zone.
         hold: spec.hold * (0.6 + 0.4 * d.density),
-        c2: Math.cos(2 * angle),
-        s2: Math.sin(2 * angle),
+        c2: cos(2 * angle),
+        s2: sin(2 * angle),
       });
     }
     this.grids = grids;
@@ -251,8 +252,8 @@ export class TensorField {
     const a = acc[0] as number;
     const b = acc[1] as number;
     const total = acc[2] as number;
-    const mag = Math.hypot(a, b);
-    const major = mag > 0 ? wrapDirection(0.5 * Math.atan2(b, a)) : 0;
+    const mag = hypot(a, b);
+    const major = mag > 0 ? wrapDirection(0.5 * atan2(b, a)) : 0;
     return { major, minor: wrapDirection(major + HALF_PI), strength: total > 0 ? clamp(mag / total, 0, 1) : 0 };
   }
 
@@ -262,7 +263,7 @@ export class TensorField {
    * far the ground here is a grid rather than a streamline field.
    */
   planHolds(x: number, y: number): number {
-    const d = Math.hypot(x - this.core.x, y - this.core.y);
+    const d = hypot(x - this.core.x, y - this.core.y);
     return 1 - smoothstep(this.planHold, this.planFade, d);
   }
 
@@ -271,7 +272,7 @@ export class TensorField {
     const acc = this.accumulate(x, y);
     const a = acc[0] as number;
     const b = acc[1] as number;
-    return a === 0 && b === 0 ? 0 : wrapDirection(0.5 * Math.atan2(b, a));
+    return a === 0 && b === 0 ? 0 : wrapDirection(0.5 * atan2(b, a));
   }
 
   /**
@@ -393,8 +394,8 @@ export class TensorField {
 
     // A slow wander, so that even a flat inland grid bends a little.
     const t = 2 * Math.PI * this.wander.fbm(x / WANDER_SCALE + 5.5, y / WANDER_SCALE + 2.25, 3);
-    a += wWander * Math.cos(t);
-    b += wWander * Math.sin(t);
+    a += wWander * cos(t);
+    b += wWander * sin(t);
     total += wWander;
 
     const acc = this.acc;

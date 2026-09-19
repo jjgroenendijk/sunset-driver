@@ -21,6 +21,7 @@
  * down the same streets.
  */
 import { rngFor, Subsystem } from '../core/rng.ts';
+import { cos, hypot, sin } from '../core/libm.ts';
 import { TICK_RATE } from './clock.ts';
 import { douseFires, firesOf } from './fire.ts';
 import { responseTicks, type DistrictAt } from './police.ts';
@@ -168,7 +169,7 @@ function raiseCall(state: SimState, kind: EmergencyKind, x: number, y: number): 
   const calls = state.emergency.calls;
   for (const call of calls) {
     if (call.kind !== kind) continue;
-    if (Math.hypot(call.x - x, call.y - y) <= CALL_RANGE) return;
+    if (hypot(call.x - x, call.y - y) <= CALL_RANGE) return;
   }
   const id = state.emergency.nextCall;
   state.emergency.nextCall = id + 1;
@@ -232,7 +233,7 @@ export class EmergencyServices {
     const id = service.nextUnit;
     const rng = rngFor(state.seed, state.tick, Subsystem.Emergency, id);
     const bearing = rng.float() * Math.PI * 2;
-    const unit = this.raise(id, call, call.x + Math.cos(bearing) * SPAWN_RANGE, call.y + Math.sin(bearing) * SPAWN_RANGE);
+    const unit = this.raise(id, call, call.x + cos(bearing) * SPAWN_RANGE, call.y + sin(bearing) * SPAWN_RANGE);
     if (unit === undefined) {
       // No road to come in on: a fire out in the wilderness is one nobody can
       // answer. It is tried again on the dispatch cadence rather than every
@@ -303,7 +304,7 @@ export class EmergencyServices {
     // A unit has arrived when it has driven as near the scene as its route
     // goes, or when it is within reach of it: the nodes a route is planned
     // between are a block apart, so the two are rarely the same place.
-    const arrived = unit.distance >= unit.stop || Math.hypot(unit.x - unit.goalX, unit.y - unit.goalY) <= ARRIVE_RANGE;
+    const arrived = unit.distance >= unit.stop || hypot(unit.x - unit.goalX, unit.y - unit.goalY) <= ARRIVE_RANGE;
     if (unit.task === 'respond' && arrived) {
       unit.task = 'work';
       unit.until = state.tick + WORK_TICKS[unit.kind];
@@ -345,9 +346,9 @@ export class EmergencyServices {
     const p = state.player;
     const x = p.driving ? state.vehicle.x : p.x;
     const y = p.driving ? state.vehicle.z : p.y;
-    const away = Math.hypot(unit.x - x, unit.y - y);
-    const dirX = away > 0 ? (unit.x - x) / away : Math.cos(unit.heading);
-    const dirY = away > 0 ? (unit.y - y) / away : Math.sin(unit.heading);
+    const away = hypot(unit.x - x, unit.y - y);
+    const dirX = away > 0 ? (unit.x - x) / away : cos(unit.heading);
+    const dirY = away > 0 ? (unit.y - y) / away : sin(unit.heading);
     unit.goalX = unit.x + dirX * SPAWN_RANGE;
     unit.goalY = unit.y + dirY * SPAWN_RANGE;
     unit.homeX = unit.goalX;
@@ -401,7 +402,7 @@ export class EmergencyServices {
     for (let i = calls.length - 1; i >= 0; i--) {
       const call = calls[i] as EmergencyCall;
       if (call.unit >= 0) continue;
-      const alight = fires.some((fire) => Math.hypot(fire.x - call.x, fire.y - call.y) <= CALL_RANGE);
+      const alight = fires.some((fire) => hypot(fire.x - call.x, fire.y - call.y) <= CALL_RANGE);
       if (call.kind === 'engine' && alight) continue;
       if (call.kind !== 'engine' && state.tick - call.tick < CALL_STALE) continue;
       calls.splice(i, 1);
@@ -417,7 +418,7 @@ export class EmergencyServices {
     for (let i = units.length - 1; i >= 0; i--) {
       const unit = units[i] as EmergencyUnit;
       if (unit.task !== 'leave') continue;
-      if (Math.hypot(unit.x - x, unit.y - y) < RETIRE_RANGE) continue;
+      if (hypot(unit.x - x, unit.y - y) < RETIRE_RANGE) continue;
       units.splice(i, 1);
     }
   }

@@ -32,6 +32,7 @@
  * is laid at the depth that fits, or it is not laid at all.
  */
 import { ringArea, type Point, type Region } from '../core/geom.ts';
+import { atan2, hypot } from '../core/libm.ts';
 import type { RoadEdge, RoadGraph } from './graph.ts';
 import {
   MM,
@@ -269,7 +270,7 @@ function rowOf(run: Frontage, spec: LotSpec, start: number, pitch: number, count
     // attached zone's lots meet exactly at the boundary between them.
     const a = pointAlong(run.points, start + i * pitch + spec.gap / 2);
     const b = pointAlong(run.points, start + (i + 1) * pitch - spec.gap / 2);
-    const span = Math.hypot(b.x - a.x, b.y - a.y);
+    const span = hypot(b.x - a.x, b.y - a.y);
     from.push(a);
     to.push(b);
     // Across the frontage, into the parcel: the outer ring is wound
@@ -283,7 +284,7 @@ function rowOf(run: Frontage, spec: LotSpec, start: number, pitch: number, count
     const other = into[Math.max(0, i - 1)] as Point;
     const dx = own.x + other.x;
     const dy = own.y + other.y;
-    const span = Math.hypot(dx, dy);
+    const span = hypot(dx, dy);
     // Only an attached lot meets its neighbour at all, and a lot at the end of
     // a run has no neighbour there to share an edge with.
     const lean = spec.attached && i > 0 && i < count && span > 0 ? (dx * own.x + dy * own.y) / span : 0;
@@ -316,7 +317,7 @@ function lotAt(
   const spec = row.spec;
   const a = row.from[i] as Point;
   const b = row.to[i] as Point;
-  const frontage = Math.hypot(b.x - a.x, b.y - a.y);
+  const frontage = hypot(b.x - a.x, b.y - a.y);
   if (frontage < spec.minWidth) return undefined;
   const left = row.side[i] as Point;
   const right = row.side[i + 1] as Point;
@@ -369,7 +370,7 @@ function lotAt(
 function facingOf(corners: readonly Point[]): number {
   const f0 = corners[0] as Point;
   const f1 = corners[1] as Point;
-  return Math.atan2(-(f1.x - f0.x), f1.y - f0.y);
+  return atan2(-(f1.x - f0.x), f1.y - f0.y);
 }
 
 /**
@@ -385,7 +386,7 @@ function facingOf(corners: readonly Point[]): number {
 function widthOf(corners: readonly Point[]): number {
   const f0 = corners[0] as Point;
   const f1 = corners[1] as Point;
-  const span = Math.hypot(f1.x - f0.x, f1.y - f0.y);
+  const span = hypot(f1.x - f0.x, f1.y - f0.y);
   if (span === 0) return 0;
   const tx = (f1.x - f0.x) / span;
   const ty = (f1.y - f0.y) / span;
@@ -483,7 +484,7 @@ function probeClashes(run: Frontage, probe: Probe, at: number, width: number): b
   if (probe.placed.length === 0) return false;
   const a = pointAlong(run.points, at);
   const b = pointAlong(run.points, at + width);
-  const span = Math.hypot(b.x - a.x, b.y - a.y);
+  const span = hypot(b.x - a.x, b.y - a.y);
   if (span === 0) return false;
   const spec = probe.spec;
   const into = { x: -(b.y - a.y) / span, y: (b.x - a.x) / span };

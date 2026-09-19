@@ -25,6 +25,7 @@
  *
  * Pure: it reads the world and the record, and takes no wall-clock.
  */
+import { hypot } from '../core/libm.ts';
 import { rngFor, Subsystem } from '../core/rng.ts';
 import { factionIndex, type FactionId } from './faction.ts';
 import type { GiverPlace } from './giver.ts';
@@ -341,7 +342,7 @@ function furthestFrom(givers: readonly GiverPlace[], from: GiverPlace | undefine
   let best = from;
   let bestAway = -1;
   for (const giver of givers) {
-    const away = Math.hypot(giver.x - from.x, giver.y - from.y);
+    const away = hypot(giver.x - from.x, giver.y - from.y);
     if (away <= bestAway) continue;
     bestAway = away;
     best = giver;

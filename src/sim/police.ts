@@ -22,6 +22,7 @@
  * run is chased by the same cars over the same streets.
  */
 import { rngFor, Subsystem } from '../core/rng.ts';
+import { atan2, cos, hypot, sin } from '../core/libm.ts';
 import { districtAt, layoutZones } from '../world/districts.ts';
 import type { District, WorldDescription } from '../world/types.ts';
 import { TICK_RATE } from './clock.ts';
@@ -237,7 +238,7 @@ export function shootUnit(state: SimState, id: number, share: number): void {
 export function blastUnits(state: SimState, x: number, y: number, severity: number, falloff: (distance: number) => number): void {
   for (const unit of [...state.police.units]) {
     if (unit.kind === 'helicopter') continue;
-    const share = falloff(Math.hypot(unit.x - x, unit.y - y));
+    const share = falloff(hypot(unit.x - x, unit.y - y));
     if (share <= 0) continue;
     shootUnit(state, unit.id, severity * share);
   }
@@ -332,7 +333,7 @@ export class PoliceForce {
   private look(state: SimState, quarry: Quarry): void {
     for (const unit of state.police.units) {
       const range = unit.kind === 'helicopter' ? HELICOPTER_SIGHT : SIGHT_RANGE;
-      if (Math.hypot(unit.x - quarry.x, unit.y - quarry.y) > range) continue;
+      if (hypot(unit.x - quarry.x, unit.y - quarry.y) > range) continue;
       state.police.lastKnown = { x: quarry.x, y: quarry.y };
       state.police.seenTick = state.tick;
       return;
@@ -362,8 +363,8 @@ export class PoliceForce {
     // last seen and not where they now are: a car sent out after the player has
     // broken away must not arrive on top of them.
     const known = police.lastKnown ?? { x: quarry.x, y: quarry.y };
-    const x = known.x + Math.cos(bearing) * SPAWN_RANGE;
-    const y = known.y + Math.sin(bearing) * SPAWN_RANGE;
+    const x = known.x + cos(bearing) * SPAWN_RANGE;
+    const y = known.y + sin(bearing) * SPAWN_RANGE;
     const unit = this.raise(id, kind, x, y);
     if (unit === undefined) return;
     police.nextUnit = id + 1;
@@ -443,16 +444,16 @@ export class PoliceForce {
       const rng = rngFor(state.seed, round, Subsystem.Police, unit.id);
       const bearing = rng.float() * Math.PI * 2;
       const reach = rng.range(0.3, 1) * SEARCH_RADIUS;
-      unit.goalX = known.x + Math.cos(bearing) * reach;
-      unit.goalY = known.y + Math.sin(bearing) * reach;
+      unit.goalX = known.x + cos(bearing) * reach;
+      unit.goalY = known.y + sin(bearing) * reach;
       return;
     }
     const lead = unit.task === 'cutoff' ? CUTOFF_LEAD : unit.task === 'block' ? BLOCK_LEAD : 0;
     // A player standing still is not going anywhere, so the lead is dropped
     // rather than aimed at the way they happen to be pointing.
     const reach = quarry.speed > 2 ? lead : 0;
-    unit.goalX = known.x + Math.cos(quarry.heading) * reach;
-    unit.goalY = known.y + Math.sin(quarry.heading) * reach;
+    unit.goalX = known.x + cos(quarry.heading) * reach;
+    unit.goalY = known.y + sin(quarry.heading) * reach;
   }
 
   /** One tick of a car: route it if it is due, run it along the road, and put it where that is. */
@@ -462,7 +463,7 @@ export class PoliceForce {
     const arrived = unit.distance >= length;
     if (due || arrived) this.replan(state, unit);
     const held =
-      Math.hypot(unit.x - unit.goalX, unit.y - unit.goalY) < HOLD_RANGE ||
+      hypot(unit.x - unit.goalX, unit.y - unit.goalY) < HOLD_RANGE ||
       (unit.task === 'block' && unit.distance >= this.roads.length(unit.edges));
     const limit = this.roads.limitAt(unit.id, unit.edges, unit.distance);
     const speed = held ? 0 : Math.min(UNIT_SPEED[unit.kind], limit * URGENCY);
@@ -496,7 +497,7 @@ export class PoliceForce {
   private fly(unit: PoliceUnit): void {
     const dx = unit.goalX - unit.x;
     const dy = unit.goalY - unit.y;
-    const gap = Math.hypot(dx, dy);
+    const gap = hypot(dx, dy);
     const step = UNIT_SPEED.helicopter / TICK_RATE;
     if (gap <= step) {
       unit.x = unit.goalX;
@@ -506,7 +507,7 @@ export class PoliceForce {
     }
     unit.x += (dx / gap) * step;
     unit.y += (dy / gap) * step;
-    unit.heading = Math.atan2(dy, dx);
+    unit.heading = atan2(dy, dx);
     unit.speed = UNIT_SPEED.helicopter;
   }
 
@@ -519,7 +520,7 @@ export class PoliceForce {
     if (state.heat <= 0 || state.player.driving || quarry.speed > ARREST_SPEED) return;
     for (const unit of state.police.units) {
       if (unit.kind === 'helicopter') continue;
-      if (Math.hypot(unit.x - quarry.x, unit.y - quarry.y) > ARREST_RANGE) continue;
+      if (hypot(unit.x - quarry.x, unit.y - quarry.y) > ARREST_RANGE) continue;
       state.arrested = true;
       return;
     }
@@ -535,7 +536,7 @@ export class PoliceForce {
     const units = state.police.units;
     for (let i = units.length - 1; i >= 0; i--) {
       const unit = units[i] as PoliceUnit;
-      if (Math.hypot(unit.x - quarry.x, unit.y - quarry.y) < STAND_DOWN_RANGE) continue;
+      if (hypot(unit.x - quarry.x, unit.y - quarry.y) < STAND_DOWN_RANGE) continue;
       units.splice(i, 1);
     }
     if (units.length === 0) state.police.lastKnown = null;

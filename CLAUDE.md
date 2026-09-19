@@ -76,6 +76,8 @@ The whole game is a pure function of its seed, so the tooling enforces:
 - In `src/core`, `src/sim` and `src/world`: no iteration over `Set`, `Map`, iterators from them,
   `for-in` or `Object.keys/values/entries`. Use `sortedEntries`, `sortedMembers`, `sortedKeys` from
   `src/core/sort.ts`.
+- No approximated `Math` function in the same three: engines round them their own way, so `sin`,
+  `cos`, `tan`, `atan2`, `log`, `exp`, `hypot` and the rest come from `src/core/libm.ts`.
 - Simulation time is the integer `tick` (60 Hz); one game day is 86 400 ticks (24 real minutes).
   Nothing in `src/sim` may read wall-clock or frame delta.
 
@@ -92,13 +94,11 @@ Beyond what the file names suggest:
   no Tone.js and no DOM, the other owns the Web Audio graph. Nothing here writes to the record.
 - `src/net` — the multiplayer of spec section 21. Only `invite.ts`, `control.ts` and `attach.ts`
   are imported at the top level; the rest loads on the press, so single player connects to nothing.
-- `scripts/*.ts` — run with plain `node` (type stripping), not through Vite.
-  `scripts/render-preview.html`, `scripts/map-preview.html` and `scripts/audio-check.html` are the
-  exceptions a script serves rather than runs; they are not build inputs.
+- `scripts/*.ts` — run with plain `node` (type stripping), not through Vite. The `.html` files
+  beside them are the exceptions a script serves rather than runs; they are not build inputs.
 - `scripts/hooks/` — Claude Code hooks wired from `.claude/settings.json`; fast, idempotent, exit 2
   to report a problem. Anything repeated across sessions belongs in a hook or a `scripts/` entry
   rather than in prose here.
-
 
 ## Traps
 

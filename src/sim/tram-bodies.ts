@@ -8,6 +8,7 @@
  * of the tick, so a car that comes into the box is simply put where the tick
  * says it is.
  */
+import { cos, sin } from '../core/libm.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import type { AmbientPose } from './traffic.ts';
 import { CAR_HALF_HEIGHT, CAR_HALF_WIDTH, CAR_LENGTH, TRAM_CARS, type TramLine } from './tram.ts';
@@ -70,8 +71,8 @@ export class TramBodies {
     this.spot.z = pose.y;
     // A yaw of minus the heading points local +x along the map heading.
     this.turn.x = 0;
-    this.turn.y = Math.sin(-pose.heading / 2);
+    this.turn.y = sin(-pose.heading / 2);
     this.turn.z = 0;
-    this.turn.w = Math.cos(-pose.heading / 2);
+    this.turn.w = cos(-pose.heading / 2);
   }
 }

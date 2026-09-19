@@ -18,6 +18,7 @@
  * chunk requests without writing anything back.
  */
 import { regionArea, regionOf, split, type Point, type Region } from '../core/geom.ts';
+import { hypot } from '../core/libm.ts';
 import { buildBuildings, lotMiddle, type Building, type BuildingMap } from './buildings.ts';
 import { buildCarve, type RoadCarve } from './carve.ts';
 import { apronOf, buildFootprint, type RoadFootprint } from './footprint.ts';
@@ -516,7 +517,7 @@ function runLength(points: readonly Point[]): number {
   for (let i = 0; i + 1 < points.length; i++) {
     const a = points[i] as Point;
     const b = points[i + 1] as Point;
-    total += Math.hypot(b.x - a.x, b.y - a.y);
+    total += hypot(b.x - a.x, b.y - a.y);
   }
   return total;
 }

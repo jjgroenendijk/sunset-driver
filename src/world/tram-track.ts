@@ -10,6 +10,7 @@
  * Built on demand from the world description and its graph, like the
  * footprint. Pure: the same world gives the same track.
  */
+import { hypot } from '../core/libm.ts';
 import type { RoadEdge, RoadGraph } from './graph.ts';
 import type { Point, RoadCurve, RoadTier, WorldDescription } from './types.ts';
 
@@ -54,7 +55,7 @@ export function tramTrack(world: WorldDescription, graph: RoadGraph): TramTrack 
     const after = leaving[1] as Point;
     const dx = after.x - before.x;
     const dy = after.y - before.y;
-    const length = Math.hypot(dx, dy);
+    const length = hypot(dx, dy);
     if (length === 0) continue;
     const tier = (runs[k] as RoadEdge).tier;
     crossings.push({ x: crossing.x, y: crossing.y, alongX: dx / length, alongY: dy / length, tier });
