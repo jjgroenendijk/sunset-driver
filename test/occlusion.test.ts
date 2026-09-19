@@ -97,7 +97,7 @@ describe('the building view setting', () => {
 
   it('keeps a choice, and falls back on a value it does not know', () => {
     const store = memoryStore();
-    writeSettings(store, { buildingView: 'pull-back', muted: true, northUp: true });
+    writeSettings(store, { buildingView: 'pull-back', muted: true, northUp: true, gore: 'moderate' });
     expect(readSettings(store).buildingView).toBe('pull-back');
     expect(readSettings(store).muted).toBe(true);
     expect(readSettings(store).northUp).toBe(true);

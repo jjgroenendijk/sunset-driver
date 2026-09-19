@@ -3,7 +3,9 @@
  *
  * `src/sim/melee.ts` carries the blows the record landed and this draws them:
  * a handful of sparks thrown out of the place the weapon met, coloured by what
- * it met. Blood off a body, sparks off a body panel, dust off a kerb.
+ * it met. Blood off a body, sparks off a body panel, dust off a kerb. How
+ * much blood a body throws is the player's gore level (`gore.ts`): Off throws
+ * grey dust instead, Subtle fewer and smaller drops, Heavy more and bigger.
  *
  * It is one draw call whatever is going on, blended additively, and a spark is
  * a disc laid flat because the camera of spec section 10.7 looks straight down
@@ -19,6 +21,7 @@ import { AdditiveBlending, CircleGeometry, Color, Group, InstancedMesh, MeshBasi
 import { rngFor, Subsystem } from '../core/rng.ts';
 import { TICK_RATE } from '../sim/clock.ts';
 import type { HitSurface, MeleeHit } from '../sim/melee.ts';
+import { DEFAULT_GORE, GORE, type Gore } from './gore.ts';
 import { tinted } from './tint.ts';
 
 /** Sparks the batch holds. The oldest is dropped when a new one has nowhere to go. */
@@ -72,6 +75,8 @@ export class MeleeFx {
   private seen = -1;
   /** The stream of the seed the bursts are jittered from. */
   private readonly stream: number;
+  /** How much blood a hit on a person throws. A burst already in the air keeps its look. */
+  gore: Gore = DEFAULT_GORE;
 
   /**
    * `stream` keeps a second user of this burst — the rounds of `shot-fx.ts` —
@@ -133,7 +138,15 @@ export class MeleeFx {
 
   /** The sparks one blow throws out, up and away from the weapon that landed it. */
   private burst(hit: MeleeHit, seed: number, index: number): void {
-    const count = Math.max(2, Math.round(SPARKS_PER_HIT * hit.strength));
+    const person = hit.surface === 'person';
+    const scale = GORE[this.gore];
+    // The jitter streams of two blows sit SPARKS_PER_HIT apart, so no burst
+    // throws more than that, however heavy the gore.
+    const share = person ? scale.sparks : 1;
+    const count = Math.min(SPARKS_PER_HIT, Math.max(2, Math.round(SPARKS_PER_HIT * hit.strength * share)));
+    const grow = person ? scale.sparkSize : 1;
+    // With the gore off, a body throws the dust a kerb does.
+    const surface: HitSurface = person && !scale.blood ? 'hard' : hit.surface;
     for (let i = 0; i < count; i++) {
       const rng = rngFor(seed, hit.tick, Subsystem.Damage, this.stream + index * SPARKS_PER_HIT + i);
       const heading = rng.range(0, Math.PI * 2);
@@ -147,8 +160,8 @@ export class MeleeFx {
         dx: Math.cos(heading) * speed,
         dy: rng.range(0.5, 3),
         dz: Math.sin(heading) * speed,
-        size: SPARK_SIZE * rng.range(0.6, 1.3) * (0.6 + 0.4 * hit.strength),
-        surface: hit.surface,
+        size: SPARK_SIZE * rng.range(0.6, 1.3) * (0.6 + 0.4 * hit.strength) * grow,
+        surface,
       });
     }
   }

@@ -3,7 +3,7 @@ import type { WorldSource } from '../render/world-source.ts';
 import type { WorldDescription } from '../world/types.ts';
 import { MenuPages } from './menu-pages.ts';
 import type { MenuSettings } from './settings.ts';
-import { buildCameraPage } from './title-camera.ts';
+import { buildCameraPage, buildGorePage } from './title-camera.ts';
 import { buildControlsPage } from './title-controls.ts';
 import { columnsOf, menuList, type MenuItem, page } from './title-parts.ts';
 import { buildSettingsPage } from './title-settings.ts';
@@ -33,7 +33,7 @@ export interface TitleChoice {
 /** The numerals the main page counts its items with, however many it has. */
 const NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI'];
 
-const PAGE_NAMES = ['main', 'setup', 'settings', 'controls', 'camera'] as const;
+const PAGE_NAMES = ['main', 'setup', 'settings', 'controls', 'camera', 'gore'] as const;
 type PageName = (typeof PAGE_NAMES)[number];
 
 /** The page Escape and Back go to from each page. */
@@ -43,16 +43,17 @@ const PARENT: Record<PageName, PageName | null> = {
   settings: 'main',
   controls: 'main',
   camera: 'settings',
+  gore: 'settings',
 };
 
 /** The pages that open as a column beside their parent. New game takes the whole screen. */
-const COLUMNS: ReadonlySet<PageName> = new Set(['settings', 'controls', 'camera']);
+const COLUMNS: ReadonlySet<PageName> = new Set(['settings', 'controls', 'camera', 'gore']);
 
 /**
  * The title screen of spec section 12, laid out as a game's main menu. The
  * main page offers New game, Load game, Controls, Graphics and Options, as the
  * pause menu does. Controls and Options open as a column beside it
- * (`title-settings.ts`), and Camera as a column beside Options. Load game and
+ * (`title-settings.ts`), and Camera and Gore as columns beside Options. Load game and
  * Graphics stay disabled until there is something behind them; Load game waits
  * for a list of the saves the pause menu writes (#273). New game is the seed entry, the map of the seed and character creation
  * (`title-setup.ts`), and Controls is the binding list (`title-controls.ts`).
@@ -105,6 +106,7 @@ export class TitleScreen {
       settings: buildSettingsPage(settings, () => this.back()),
       controls: buildControlsPage(() => this.back(), touch),
       camera: buildCameraPage(settings.buildingView, () => this.back()),
+      gore: buildGorePage(settings.gore, () => this.back()),
     };
     this.pages = new MenuPages(this.root, pages, PARENT, 'main', COLUMNS);
 

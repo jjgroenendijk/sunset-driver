@@ -142,6 +142,7 @@ export class SessionFrame {
     const nav = session.navigator;
     nav.update(p, session.state.waypoint);
     session.minimap.northUp = this.parts.settings.northUp;
+    session.world.gore = this.parts.settings.gore;
     session.minimap.update(at, session.state.waypoint, nav.route, nav.version);
     session.map.update(at, session.state.waypoint, nav.route, nav.version);
     // The mix of spec section 15 stands where the frame is drawn from, which

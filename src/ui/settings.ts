@@ -5,6 +5,7 @@
  * What is read back is checked, so a value an older build wrote, or a hand
  * edit, falls back to the default rather than breaking the page.
  */
+import { DEFAULT_GORE, goreOf, type Gore } from '../render/gore.ts';
 import type { KeyValueStore } from './saves.ts';
 
 const SETTINGS_KEY = 'sunset-driver.settings';
@@ -22,10 +23,12 @@ export interface Settings {
   muted: boolean;
   /** True where the minimap keeps north up rather than turning with the player (spec section 12). */
   northUp: boolean;
+  /** How much blood is drawn. It changes the picture only, never the record. */
+  gore: Gore;
 }
 
 /** See-through is what GTA Chinatown Wars does, and it keeps the camera where it is. */
-export const DEFAULT_SETTINGS: Settings = { buildingView: 'see-through', muted: false, northUp: false };
+export const DEFAULT_SETTINGS: Settings = { buildingView: 'see-through', muted: false, northUp: false, gore: DEFAULT_GORE };
 
 /** Each choice of {@link BuildingView}, in the order a menu lists them, with what it is called there. */
 export const BUILDING_VIEWS: readonly { value: BuildingView; label: string }[] = [
@@ -34,11 +37,13 @@ export const BUILDING_VIEWS: readonly { value: BuildingView; label: string }[] =
   { value: 'whole', label: 'Off' },
 ];
 
-/** What a menu page reads a setting from and hands a new choice to. */
-export interface BuildingViewChoice {
-  current(): BuildingView;
-  choose(view: BuildingView): void;
+/** What a menu page reads a setting of several choices from and hands a new choice to. */
+export interface Choice<T> {
+  current(): T;
+  choose(value: T): void;
 }
+
+export type BuildingViewChoice = Choice<BuildingView>;
 
 /** A setting that is on or off, drawn as a checkbox in the Settings column. */
 export interface ToggleChoice {
@@ -53,6 +58,8 @@ export interface MenuSettings {
   sound: ToggleChoice;
   /** On while the minimap keeps north up. */
   northUp: ToggleChoice;
+  /** How much blood is drawn. */
+  gore: Choice<Gore>;
 }
 
 /** The settings kept in a store, with the default for anything missing or not understood. */
@@ -63,12 +70,13 @@ export function readSettings(store: KeyValueStore): Settings {
   } catch {
     raw = {};
   }
-  const held = raw as { buildingView?: unknown; muted?: unknown; northUp?: unknown } | null;
+  const held = raw as { buildingView?: unknown; muted?: unknown; northUp?: unknown; gore?: unknown } | null;
   const known = BUILDING_VIEWS.some((choice) => choice.value === held?.buildingView);
   return {
     buildingView: known ? (held?.buildingView as BuildingView) : DEFAULT_SETTINGS.buildingView,
     muted: typeof held?.muted === 'boolean' ? held.muted : DEFAULT_SETTINGS.muted,
     northUp: typeof held?.northUp === 'boolean' ? held.northUp : DEFAULT_SETTINGS.northUp,
+    gore: goreOf(held?.gore),
   };
 }
 
