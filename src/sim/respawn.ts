@@ -34,6 +34,9 @@ export const HOSPITAL_FEE = 200;
 /** Dollars an arrest costs in bribes. */
 export const ARREST_BRIBE = 400;
 
+/** Dollars an arrest costs a player who gave themselves up (spec section 14): less, which is why they did. */
+export const SURRENDER_BRIBE = 150;
+
 /** How a run ended. */
 export type Fate = 'death' | 'arrest';
 
@@ -117,7 +120,8 @@ export function respawn(state: SimState, fate: Fate, place: Place): void {
       state.market.paid[good] = 0;
     }
   }
-  const cost = Math.min(Math.max(0, state.money), fate === 'death' ? HOSPITAL_FEE : ARREST_BRIBE);
+  const bribe = state.police.surrendered ? SURRENDER_BRIBE : ARREST_BRIBE;
+  const cost = Math.min(Math.max(0, state.money), fate === 'death' ? HOSPITAL_FEE : bribe);
   state.money -= cost;
   state.heat = 0;
   // The chase is over with the heat: the units that ran it go home, so the

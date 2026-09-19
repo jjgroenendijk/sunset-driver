@@ -30,7 +30,7 @@ import { CRIME_HEAT, decayHeat, heatStars, raiseHeat, type Crime } from './crime
 import type { CasualtyGround } from './casualty.ts';
 import { bark, CREW, type Bark, type Cuffs, type FallenOfficer, type Officer } from './officer.ts';
 import { dropPoliceCar } from './pickup.ts';
-import { Squad } from './squad.ts';
+import { Squad, type Quarry } from './squad.ts';
 import { UnitRoads, type DrivePose } from './unit-route.ts';
 import type { SimState } from './simulation.ts';
 import type { TrafficRoads } from './traffic.ts';
@@ -184,14 +184,6 @@ export const ZONE_RESPONSE: Record<District['zone'], number> = {
   outskirts: 2.4,
   wilderness: 4,
 };
-
-/** A place on the map with a way of facing: what the police are chasing. */
-interface Quarry {
-  x: number;
-  y: number;
-  heading: number;
-  speed: number;
-}
 
 /** What the district a place stands in says about how fast the police answer. */
 export type Response = Pick<District, 'zone' | 'wealth'>;

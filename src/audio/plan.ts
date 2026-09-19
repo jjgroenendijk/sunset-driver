@@ -45,6 +45,7 @@ import type { Cry } from './cry.ts';
 import { barSeconds, dialAt, dialName, wrapDial } from './dial.ts';
 import { enginePitch, engineSound, type EngineSound } from './engine.ts';
 import { CRIES_PER_FRAME, HurtEars } from './hurt.ts';
+import { hearPolice } from './police-ears.ts';
 import { broadcastAt, type OnAir } from './programme.ts';
 import { scoreOf, type Score } from './score.ts';
 import { hear, type Heard, type Listener } from './space.ts';
@@ -222,6 +223,7 @@ export class AudioPlanner {
     const cries: Cry[] = [];
     this.collisions(state, cues);
     this.gunfire(state, cues);
+    hearPolice(state, was, cues, cries);
     this.blows(state, cues);
     this.hurt.hear(state, was, listener, cues, cries);
     this.footsteps(state, ticks, cues);

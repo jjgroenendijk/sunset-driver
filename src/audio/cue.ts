@@ -1,6 +1,6 @@
 /**
  * The one-shot sounds of spec section 15 — collisions, gunfire, explosions,
- * footsteps and the swing of a melee weapon — and the recipe each one is
+ * footsteps, the swing of a melee weapon and the police radio — and the recipe each one is
  * synthesised from.
  *
  * Spec section 1.2 forbids audio files, so every one of these is a shape rather
@@ -29,7 +29,8 @@ export type CueKind =
   | 'footstep'
   | 'bell'
   | 'bird'
-  | 'gull';
+  | 'gull'
+  | 'squelch';
 
 /** What one cue is made of: a falling tone, a band of noise, and the envelope over both. */
 export interface CueVoice {
@@ -92,6 +93,9 @@ export const CUES: Readonly<Record<CueKind, CueVoice>> = Object.freeze({
   bird: { tone: 2400, toneEnd: 1850, noise: 0.12, cutoff: 5200, cutoffEnd: 2600, attack: 0.012, decay: 0.13, gain: 0.3, ducks: false },
   // A gull: lower, harsher and longer, and mostly the cry rather than the note.
   gull: { tone: 1250, toneEnd: 820, noise: 0.45, cutoff: 3800, cutoffEnd: 1100, attack: 0.03, decay: 0.42, gain: 0.34, ducks: false },
+  // The police radio keyed before a call (spec section 14): a short hiss of
+  // static over a thin beep, cut off rather than let go.
+  squelch: { tone: 1350, toneEnd: 1300, noise: 0.8, cutoff: 5200, cutoffEnd: 2800, attack: 0.002, decay: 0.12, gain: 0.32, ducks: false },
 });
 
 /**

@@ -57,8 +57,9 @@ function pullOf(off: number, inner: number, outer: number): number {
  * The point the player aims at, or undefined where there is no pointer.
  *
  * The pointer is pulled onto the nearest target inside the snap radius: an
- * enforcer, a police unit or a car that has left its tour. While aiming it is
- * also pulled part of the way toward one inside {@link STICK_RADIUS}. The
+ * enforcer, a police unit, an officer on foot or a car that has left its tour.
+ * While aiming it is also pulled part of the way toward one inside
+ * {@link STICK_RADIUS}. The
  * crowd is not a target — it walks loops outside the record — and nor is the
  * player's own vehicle.
  */
@@ -84,6 +85,7 @@ export function aimPoint(state: SimState, input: InputFrame): AimPoint | undefin
   };
   for (const unit of state.enforcers.units) if (unit.health > 0) consider(unit.x, unit.y);
   for (const unit of state.police.units) if (unit.health > 0) consider(unit.x, unit.y);
+  for (const officer of state.police.officers) consider(officer.x, officer.y);
   for (const car of state.traffic.promoted) consider(car.vehicle.x, car.vehicle.z);
   if (pull === 0) return { x: px, y: py, snapped: false };
   return { x: px + (x - px) * pull, y: py + (y - py) * pull, snapped: pull === 1 };

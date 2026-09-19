@@ -64,6 +64,7 @@ export class Crosshair {
     if (tick < this.seen) this.seen = tick - 1;
     for (let i = 0; i < tracers.length; i++) {
       const t = tracers[i] as Tracer;
+      if (t.by !== 'player') continue;
       if (t.tick > this.seen && t.tick <= tick && struck(t.end)) this.hitUntil = now + HIT_SHOW_MS;
     }
     this.seen = tick;

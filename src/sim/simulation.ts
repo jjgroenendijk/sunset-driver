@@ -1,3 +1,4 @@
+import { stepArrest } from './arrest.ts';
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
 import { gameTime, TICKS_PER_HOUR } from './clock.ts';
 import { type CharacterAppearance, DEFAULT_APPEARANCE, normaliseAppearance } from './character.ts';
@@ -320,7 +321,10 @@ export function stepSim(state: SimState, input: InputFrame = EMPTY_INPUT, physic
   // so they are stepped with the police, after the world has moved.
   const turf = physics?.turf;
   if (turf !== undefined && !travelling(state)) stepTerritory(state, turf);
-  physics?.step(state, travelling(state) ? EMPTY_INPUT : input);
+  // The cuffs of spec section 11.7 are judged before the physics: a player an
+  // officer has hold of, or one with their hands up, is stepped holding nothing.
+  const held = stepArrest(state, input);
+  physics?.step(state, travelling(state) || held ? EMPTY_INPUT : input);
   stepPickups(state);
   // The street crime of spec section 20.5 is judged where the physics left the
   // player, so walking into a mugging on this tick breaks it up on this tick.

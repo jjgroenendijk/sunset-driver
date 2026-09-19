@@ -120,6 +120,8 @@ export function startCuffs(state: SimState): void {
  */
 export function stepArrest(state: SimState, input: InputFrame): boolean {
   const police = state.police;
+  // Hands up at no heat is nothing: nobody is coming to take them.
+  if (state.heat <= 0 && police.cuffs === null) police.surrendered = false;
   if (input.surrender && maySurrender(state)) {
     police.surrendered = true;
     bark(state, 'freeze', state.player.x, state.player.y);

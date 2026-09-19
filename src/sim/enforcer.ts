@@ -13,7 +13,7 @@
  * no draw call of their own (`src/ui/enforcers.ts`), exactly as the dealers of
  * spec section 16.2 do.
  *
- * They can be shot back at: `enforcer-bodies.ts` stands each of them in a
+ * They can be shot back at: `person-bodies.ts` stands each of them in a
  * Rapier capsule, {@link hurtEnforcer} takes the round off them, and a wave
  * whose last enforcer falls is over. So the player's answer is the fight the
  * spec describes, or the two it already had: hold the ground and take it, or

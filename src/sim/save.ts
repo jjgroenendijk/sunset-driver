@@ -52,8 +52,11 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * broken up, which is the one part of it that is not a function of the tick.
  * Version 15 added the people of the crowd who have been hurt and killed (spec
  * section 13.1): their health, the throw each is in, and the bodies still lying.
+ * Version 16 added the police on foot of spec section 14: the officers out of
+ * their cars and on the beat, the crew left in each car, the cuffs, a surrender,
+ * the officers who have fallen and what the squad said lately.
  */
-export const SAVE_VERSION = 15;
+export const SAVE_VERSION = 16;
 
 export interface SaveFile {
   format: typeof SAVE_FORMAT;
