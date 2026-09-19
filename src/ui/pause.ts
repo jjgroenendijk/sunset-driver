@@ -2,9 +2,9 @@
  * The pause menu of spec section 12. The main list is Resume, Multiplayer,
  * Save game, Load game, Controls, Graphics, Options and Quit to main menu. Every
  * item but Resume, Graphics and Quit opens a column beside the list, and Export, Import and Camera
- * open one beside that. Multiplayer is the room of spec section 21 (`party.ts`)
- * and the city's seed; Load game also holds New city, which starts again on a
- * fresh seed.
+ * open one beside that. Multiplayer is the room of spec section 21 (`party.ts`).
+ * Save game also copies the city's seed, which is all anyone needs to drive the
+ * same city. Load game holds New city, which starts again on a fresh seed.
  *
  * It is drawn in the look of the title screen and walked the same way, through
  * `MenuPages`. It holds no session: every item calls an action `pause-actions.ts`
@@ -88,7 +88,6 @@ export class PauseMenu {
     this.exported = saveText(true);
     this.imported = saveText(false);
     this.party = buildPartyPage(actions.party, (text, done) => void this.copy(text, done), () => this.pages.back());
-    this.party.root.append(this.buildCity());
     const loads = this.buildLoads();
     this.loadItem = loads.querySelector<HTMLButtonElement>('.title-menu-item') as HTMLButtonElement;
     const back = (): void => void this.pages.back();
@@ -178,6 +177,7 @@ export class PauseMenu {
       [
         { numeral: 'I', label: 'Save', action: () => this.run(() => this.actions.save()) },
         { numeral: 'II', label: 'Export', opens: 'export' },
+        { numeral: 'III', label: 'Copy seed', action: () => void this.copy(this.seed, `Copied · ${this.seed}`) },
       ],
       'Save game',
     );
@@ -201,22 +201,9 @@ export class PauseMenu {
     return root;
   }
 
-  /** The seed of the city, and a copy of it: anyone with the seed can drive the same city. */
-  private buildCity(): HTMLElement {
-    const city = card('II', 'Seed');
-    const seed = document.createElement('p');
-    seed.className = 'pause-seed';
-    seed.textContent = this.seed;
-    const row = document.createElement('div');
-    row.className = 'pause-row';
-    row.append(button('title-back', 'Copy seed', () => void this.copy(this.seed, 'Copied.')));
-    city.append(seed, row);
-    return city;
-  }
-
   private buildExport(): HTMLElement {
     const root = page('title-page pause-transfer');
-    const sheet = card('II', 'Export');
+    const sheet = card('', 'Export');
     const row = document.createElement('div');
     row.className = 'pause-row';
     row.append(button('title-back', 'Copy', () => void this.copy(this.exported.value, 'Copied.')));
@@ -227,7 +214,7 @@ export class PauseMenu {
 
   private buildImport(): HTMLElement {
     const root = page('title-page pause-transfer');
-    const sheet = card('II', 'Import');
+    const sheet = card('', 'Import');
     const row = document.createElement('div');
     row.className = 'pause-row';
     row.append(

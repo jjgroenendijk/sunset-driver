@@ -32,7 +32,8 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   column and the Camera column are shared by the title screen and the pause menu, through one
   `MenuSettings` object that `main.ts` builds, and a choice takes effect on the next frame. A
   setting that is on or off, such as Sound or the minimap's north, is a checkbox: a `MenuItem` with
-  a `toggle`. It is not a key in `controls.ts`: a key is for what the player does while playing.
+  a `toggle`. One choice of several, such as Camera, is a round mark on each row. A setting is
+  not a key in `controls.ts`: a key is for what the player does while playing.
   Muting throws the whole audio graph away rather than turning it down — `docs/audio.md` says why.
 - `src/ui/menu-pages.ts` is the page walk both menus share: `parent`, the arrow keys, the pointer
   focus, and Escape going up a page. A page in `columns` opens as a column beside its parent, and

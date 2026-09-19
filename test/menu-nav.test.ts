@@ -30,4 +30,12 @@ describe('keyParts', () => {
     ]);
     expect(keyParts('Shift')).toEqual([{ text: 'Shift', cap: true }]);
   });
+
+  it('draws a mouse button as one cap', () => {
+    expect(keyParts('Left click or F')).toEqual([
+      { text: 'Left click', cap: true },
+      { text: 'or', cap: false },
+      { text: 'F', cap: true },
+    ]);
+  });
 });

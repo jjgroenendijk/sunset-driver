@@ -1,6 +1,6 @@
 /* The pause menu (`pause.ts`). It is drawn with the title screen's classes, so
    only what differs is here: a darker veil over the running city, the columns
-   set from the middle, and the seed card and the save text. */
+   set from the middle, and the save text. */
 .pause { z-index: 10; background: rgba(23,17,13,.78); }
 .pause .title-brand h1 { font-size: clamp(2rem, 4vw, 3rem); }
 .pause .menu-columns { padding-left: max(0px, calc(50% - 26rem)); }
@@ -11,16 +11,18 @@ body:has(.pause:not([hidden])) :is(.hud-left, .hud-right, .hud-top, .hud-ring, .
 /* Escape on the main page resumes, so the hint for it stays. */
 .pause[data-page="main"] .title-hint span:last-child { display: inline-flex; }
 
-.pause-seed { margin: 0; font: 400 1.6rem/1.2 var(--it-serif); letter-spacing: .03em; overflow-wrap: anywhere; }
+/* The room's code, set large enough to read out to a friend. */
+.pause-room { margin: 0; font: 400 1.6rem/1.2 var(--it-serif); letter-spacing: .03em; overflow-wrap: anywhere; }
 .pause-row { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1rem; }
 .pause .pause-row .title-back { margin-top: 0; padding: .7rem 1.2rem; }
 .pause .pause-row .title-cta { padding: .7rem 1.2rem; }
 .pause-status { min-height: 1.4em; margin: .9rem 0 0; font: italic .9rem var(--it-serif); color: var(--it-muted); }
 
-.pause-transfer .title-card, .pause-party .title-card, .pause-city .title-card { width: min(26rem, 100%); padding: 1.3rem 1.4rem; }
-.pause-city .title-card { width: min(20rem, 100%); }
+/* A fixed width with the padding inside it: a share of the column would be read from a column that shrinks to fit. */
+.pause-transfer .title-card, .pause-party .title-card { box-sizing: border-box; width: 26rem; max-width: 100%; padding: 1.3rem 1.4rem; }
 .pause .pause-status:empty { display: none; }
-.pause-party { gap: .75rem; }
+/* Every status line says the same thing, so only the column in front shows it. */
+.pause [data-behind] .pause-status { display: none; }
 .pause .title-menu .pause-status { margin: .4rem .9rem 0; }
 .pause-text { box-sizing: border-box; width: 100%; min-height: 10rem; padding: .6rem; border: 1px solid rgba(35,28,22,.35); background: #fffaf0; color: var(--it-ink); font: .72rem/1.4 ui-monospace, Menlo, Consolas, monospace; overflow-wrap: anywhere; resize: vertical; }
 .pause-text:focus { border-color: var(--it-rosso); outline: none; }

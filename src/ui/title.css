@@ -59,7 +59,10 @@
 .title-page:not([hidden]) > :nth-child(3) { animation-delay: .12s; }
 
 .title-card, .title-menu { position: relative; padding: 1.75rem 1.9rem; color: var(--it-ink); background: linear-gradient(160deg, var(--it-ivory), var(--it-paper)); box-shadow: 0 30px 70px rgba(0,0,0,.5), 0 2px 0 rgba(255,255,255,.4) inset; }
-.title-card::before, .title-menu::before { content: ""; position: absolute; inset: .45rem; border: 1px solid rgba(193,154,83,.6); pointer-events: none; }
+/* A card that scrolls keeps a thin scrollbar in the ink of the card. */
+.title-card, .title-menu { scrollbar-width: thin; scrollbar-color: rgba(35,28,22,.35) transparent; }
+/* The fine gold rule inside the edge. An outline, so a card that scrolls keeps it still. */
+.title-card, .title-menu { outline: 1px solid rgba(193,154,83,.6); outline-offset: -.45rem; }
 .title-numeral { font: italic 400 1.05rem var(--it-serif); color: var(--it-rosso); }
 
 .title-invite { justify-self: start; display: grid; gap: .35rem; width: min(23rem, 100%); margin-bottom: 1rem; padding: 1.1rem 1.3rem; color: var(--it-ink); background: linear-gradient(160deg, var(--it-ivory), var(--it-paper)); border-left: 4px solid var(--it-rosso); box-shadow: 0 30px 70px rgba(0,0,0,.5); }
@@ -74,15 +77,16 @@
 .title-menu-item:focus .title-menu-label { color: var(--it-rosso); }
 .title-menu-item:focus-visible { outline: none; }
 .title-menu-item:disabled { cursor: default; opacity: .45; }
-/* The choice that holds on a page of choices, such as the Camera page. */
-.title-menu-item[aria-pressed="true"] .title-menu-label::after { content: " \2713"; color: var(--it-rosso); }
+/* One choice of several, such as the Camera page, is a round mark at the end of its row. */
+.title-menu-item[aria-pressed]::after { content: ""; align-self: center; width: 1.05rem; height: 1.05rem; border: 1px solid var(--it-ink); border-radius: 50%; box-sizing: border-box; }
+.title-menu-item[aria-pressed="true"]::after { border-color: var(--it-rosso); background: radial-gradient(circle, var(--it-rosso) 45%, transparent 50%); }
 /* An item that opens a column carries a chevron, which turns while its column is open. */
 .title-menu-item[aria-expanded]::after { content: "\203A"; align-self: center; font: 400 1.6rem/1 var(--it-serif); color: var(--it-muted); transition: transform .25s, color .25s; }
 .title-menu-item[aria-expanded="true"] { background: rgba(163,34,27,.06); }
 .title-menu-item[aria-expanded="true"]::after { color: var(--it-rosso); transform: translateX(.25rem); }
 .title-menu-item[aria-expanded="true"] .title-menu-label { color: var(--it-rosso); }
 /* A setting that is on or off is a checkbox at the end of its row. */
-.title-menu-item[role="switch"]::after { content: ""; align-self: center; width: 1.05rem; height: 1.05rem; border: 1px solid var(--it-ink); background: transparent; }
+.title-menu-item[role="switch"]::after { content: ""; align-self: center; width: 1.05rem; height: 1.05rem; border: 1px solid var(--it-ink); box-sizing: border-box; background: transparent; }
 .title-menu-item[role="switch"][aria-checked="true"]::after { content: "\2713"; display: grid; place-items: center; background: var(--it-rosso); border-color: var(--it-rosso); color: var(--it-ivory); font: 600 .8rem/1 var(--it-sans); }
 .title-menu-heading { margin: .3rem .9rem .2rem; padding-bottom: .5rem; border-bottom: 1px solid rgba(35,28,22,.15); font: 400 1.5rem/1.1 var(--it-serif); }
 
@@ -91,7 +95,7 @@
 .title-card-head p { grid-column: 1 / -1; margin: .3rem 0 0; font-size: .75rem; color: var(--it-muted); }
 .title-field-label { font-size: .66rem; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--it-muted); }
 
-.title-setup { grid-template-columns: minmax(0, 22rem) 1fr minmax(0, 22rem); grid-template-rows: 1fr auto; align-items: center; column-gap: 2rem; row-gap: 1.25rem; }
+.title-setup { grid-template-columns: minmax(0, 22rem) 1fr minmax(0, 22rem); grid-template-rows: 1fr auto; align-items: start; column-gap: 2rem; row-gap: 1.25rem; }
 .title-setup > .title-card:nth-child(2) { grid-column: 3; }
 .title-setup-foot { grid-column: 1 / -1; display: flex; justify-content: center; gap: 1rem; }
 

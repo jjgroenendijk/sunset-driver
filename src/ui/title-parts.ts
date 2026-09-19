@@ -9,7 +9,11 @@ export function page(className: string): HTMLElement {
   return el;
 }
 
-/** A card with a roman numeral, a heading and a line under it where there is one, in the manner of a printed programme. */
+/**
+ * A card with a heading, in the manner of a printed programme: a roman numeral
+ * before it and a line under it where there is one. A column's card has no numeral,
+ * as a column's menu has none.
+ */
 export function card(numeral: string, heading: string, note = ''): HTMLElement {
   const el = document.createElement('section');
   el.className = 'title-card';
@@ -20,7 +24,8 @@ export function card(numeral: string, heading: string, note = ''): HTMLElement {
   number.textContent = numeral;
   const h2 = document.createElement('h2');
   h2.textContent = heading;
-  head.append(number, h2);
+  if (numeral) head.append(number);
+  head.append(h2);
   if (note) {
     const p = document.createElement('p');
     p.textContent = note;

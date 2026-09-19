@@ -20,7 +20,7 @@ export function buildCameraPage(setting: BuildingViewChoice, back: () => void): 
         mark();
       },
     })),
-    'Buildings',
+    'Camera',
   );
   const items = [...menu.querySelectorAll<HTMLButtonElement>('.title-menu-item')];
   const mark = (): void => {
