@@ -57,6 +57,8 @@ export class SessionFrame {
   private readonly crosshair: Crosshair;
   /** The tick of the newest round the camera was kicked for, so each shot kicks once. */
   private kicked = -1;
+  /** The tick of the newest hit on a person the camera was jolted for, so each one jolts once. */
+  private jolted = -1;
   /** The session being drawn, which the roof lookup reads. */
   private session: Session | null = null;
   /** Whether the camera was detached last frame, so a release is noticed once. */
@@ -270,6 +272,24 @@ export class SessionFrame {
       newest = Math.max(newest, t.tick);
     }
     this.kicked = newest;
+    this.jolt(session);
+  }
+
+  /**
+   * Jolt the camera when the player's car hits a person or goes over a body.
+   * A blow on foot is the same kind of hit on the record, so it is only read
+   * while the player drives. It is the same at every gore level.
+   */
+  private jolt(session: Session): void {
+    const state = session.state;
+    if (state.tick < this.jolted) this.jolted = -1;
+    let newest = this.jolted;
+    for (const hit of state.hits) {
+      if (hit.surface !== 'person' || hit.tick <= this.jolted) continue;
+      if (state.player.driving) this.parts.camera.jolt(hit.strength, hit.tick);
+      newest = Math.max(newest, hit.tick);
+    }
+    this.jolted = newest;
   }
 
   /**
