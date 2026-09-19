@@ -1,4 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { PATIENCE } from '../src/sim/give-way.ts';
+import { heldTime } from '../src/sim/hold.ts';
 import { EMPTY_INPUT, type InputFrame } from '../src/sim/input.ts';
 import { initPhysics, SimPhysics } from '../src/sim/physics.ts';
 import { createSimState, stepSim, type SimState } from '../src/sim/simulation.ts';
@@ -47,7 +49,7 @@ describe(`traffic in the simulation (${SEED_COUNT} seeds)`, () => {
         if (startedWith < 0) startedWith = seen.size;
         if (i % 50 !== 49) continue;
         for (const cursor of bodies.cursors) {
-          expect(cursor, `seed ${seed}, tick ${state.tick}`).toEqual(traffic.cursorAt(cursor.id, state.tick));
+          expect(cursor, `seed ${seed}, tick ${state.tick}`).toEqual(traffic.cursorAt(cursor.id, heldTime(state.traffic.held, cursor.id, state.tick)));
         }
       }
       // Vehicles came into range during the run, so what was checked is the
@@ -81,8 +83,8 @@ describe(`traffic in the simulation (${SEED_COUNT} seeds)`, () => {
     let tick = 0;
     for (; tick < 3600 && state.traffic.promoted.length === 0; tick++) stepSim(state, EMPTY_INPUT, physics);
     expect(state.traffic.promoted.length, 'nothing ran into the car').toBeGreaterThan(0);
-    // It was driven into the car, not standing on it when the car was put down.
-    expect(tick).toBeGreaterThan(10);
+    // The traffic stood behind the car first (`give-way.ts`), and drove into it only out of patience.
+    expect(tick).toBeGreaterThan(PATIENCE);
     const promoted = state.traffic.promoted[0] as SimState['traffic']['promoted'][number];
     expect(Math.hypot(promoted.vehicle.x - state.vehicle.x, promoted.vehicle.z - state.vehicle.z)).toBeLessThan(10);
     // Off its tour: no longer stepped as a kinematic body, and given a body of its own.
@@ -112,7 +114,7 @@ describe(`traffic in the simulation (${SEED_COUNT} seeds)`, () => {
     let tick = 0;
     for (; tick < 3600 && state.traffic.promoted.length === 0; tick++) stepSim(state, EMPTY_INPUT, physics);
     expect(state.traffic.promoted.length, 'nothing ran into the player').toBeGreaterThan(0);
-    expect(tick).toBeGreaterThan(10);
+    expect(tick).toBeGreaterThan(PATIENCE);
     const promoted = state.traffic.promoted[0] as SimState['traffic']['promoted'][number];
     expect(Math.hypot(promoted.vehicle.x - state.player.x, promoted.vehicle.z - state.player.y)).toBeLessThan(10);
     physics.dispose();

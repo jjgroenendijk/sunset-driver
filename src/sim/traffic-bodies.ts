@@ -2,8 +2,9 @@
  * The traffic near the player, as Rapier bodies (spec sections 2.4, 5.3).
  *
  * Inside the box of ground the physics holds, each ambient vehicle is a
- * kinematic body moved along its tour one tick at a time. The player's car
- * hits it as a solid and cannot push it off its line. Outside the box a vehicle
+ * kinematic body moved along its tour one tick at a time, held back as far
+ * as it has given way (`give-way.ts`). The player's car hits it as a solid
+ * and cannot push it off its line. Outside the box a vehicle
  * has no body and is not stepped. A vehicle that comes into the box is
  * evaluated at the tick it arrives on, and from then on it is stepped.
  *
@@ -28,6 +29,7 @@ import { SHUNS_RAGDOLL } from './collision-groups.ts';
 import { ParkedBodies } from './parked-bodies.ts';
 import { PARKED_ID, type ParkedCar, type ParkedCars } from './parked.ts';
 import { hitVehicle } from './damage.ts';
+import { heldStep, heldTime } from './hold.ts';
 import { rotate, unrotate } from './frame.ts';
 import { TramBodies } from './tram-bodies.ts';
 import type { TramLine } from './tram.ts';
@@ -181,6 +183,7 @@ export class TrafficBodies {
     const inside = (pose: AmbientPose): boolean => pose.x >= minX && pose.x < maxX && pose.y >= minY && pose.y < maxY;
 
     const traffic = this.traffic;
+    const held = state.traffic.held;
     const ids = traffic.near(minX, minY, maxX, maxY, this.ids);
     const kept: Moving[] = [];
     let k = 0;
@@ -192,13 +195,13 @@ export class TrafficBodies {
         continue;
       }
       if (entry === undefined) {
-        // Evaluated on demand at the tick it arrives on, then stepped.
-        const cursor = traffic.cursorAt(id, state.tick);
+        // Evaluated on demand at the tick it arrives on, held back as far as it has given way.
+        const cursor = traffic.cursorAt(id, heldTime(held, id, state.tick));
         if (!traffic.edgeMeets(traffic.edgeOf(cursor), minX, minY, maxX, maxY)) continue;
         if (!inside(traffic.pose(cursor, this.pose))) continue;
         entry = this.enter(cursor, this.pose);
       }
-      traffic.advance(entry.cursor);
+      traffic.cursorAt(id, heldTime(held, id, state.tick + 1), entry.cursor);
       traffic.pose(entry.cursor, this.pose);
       if (!inside(this.pose)) {
         this.drop(entry);
@@ -255,6 +258,8 @@ export class TrafficBodies {
   /** Take a vehicle off its tour and hand it to the physics, moving as it was. */
   private promote(state: SimState, entry: Moving, pose: AmbientPose): void {
     this.world.removeRigidBody(entry.body);
+    // A car standing for something ahead of it is standing, whatever its tour's pace there.
+    if (heldStep(state.traffic.held, entry.cursor.id) > 0) pose.speed = 0;
     const paint = (this.traffic.vehicles[entry.cursor.id] as AmbientVehicle).paint;
     this.hand(state, entry.cursor.id, paint, entry.spec, pose);
   }

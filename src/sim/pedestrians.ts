@@ -33,6 +33,7 @@ import { lookOf, strideOf, type Gait, type PedestrianLook } from './pedestrian-l
 import { Pavements, pavementOffset, type WalkPoint, type WalkRoute } from './pedestrian-route.ts';
 import { backOf, walkOut } from './traffic-tour.ts';
 import type { Casualty } from './casualty-motion.ts';
+import { createHolds, heldStep, heldTime, type Holds } from './hold.ts';
 import type { TrafficRoads } from './traffic.ts';
 
 /** Metres each way of one bucket of the index that says which people can be near a place. */
@@ -151,10 +152,12 @@ export interface PedestrianState {
    * in both lists: a hit takes a person out of the startled.
    */
   casualties: Casualty[];
+  /** The people near the player who have waited for a car and fallen behind their loops (`give-way.ts`). */
+  held: Holds;
 }
 
 export function createPedestrianState(): PedestrianState {
-  return { startled: [], casualties: [] };
+  return { startled: [], casualties: [], held: createHolds() };
 }
 
 /** The record of a person who has been hit, or undefined for somebody nothing has hit. */
@@ -186,7 +189,28 @@ export function crowdPoseOf(
 ): PedestrianPose | undefined {
   if (state.casualties.length > 0 && casualtyOf(state, id) !== undefined) return undefined;
   const startled = state.startled.length > 0 ? startledOf(state, id) : undefined;
-  return startled === undefined ? crowd.poseAt(id, time, out) : startledPose(startled, time, out);
+  if (startled !== undefined) return startledPose(startled, time, out);
+  return walkingPose(crowd, state, id, time, out);
+}
+
+/** Where a person stands on their loop at a moment, held back as far as they have waited for the traffic. */
+export function walkingPose(
+  crowd: { poseAt(id: number, time: number, out: PedestrianPose): PedestrianPose },
+  state: PedestrianState,
+  id: number,
+  time: number,
+  out: PedestrianPose,
+): PedestrianPose {
+  crowd.poseAt(id, heldTime(state.held, id, time), out);
+  const step = heldStep(state.held, id);
+  if (step === 1) {
+    out.speed = 0;
+    out.gait = 'stand';
+  } else if (step === 2) {
+    // Walking back the way they came, they face it.
+    out.heading += Math.PI;
+  }
+  return out;
 }
 
 /** The record of a startled person, or undefined while they still walk their loop. */
@@ -298,7 +322,7 @@ export class AmbientPedestrians {
     for (const id of this.near(x - radius, y - radius, x + radius, y + radius, ids)) {
       if (startledOf(state, id) !== undefined) continue;
       if (state.casualties.length > 0 && casualtyOf(state, id) !== undefined) continue;
-      this.poseAt(id, tick, pose);
+      walkingPose(this, state, id, tick, pose);
       const dx = pose.x - x;
       const dy = pose.y - y;
       if (dx * dx + dy * dy > radius * radius) continue;
@@ -394,6 +418,19 @@ export function releaseFar(state: PedestrianState, time: number, x: number, y: n
 }
 
 /** Add a startled person, keeping the list in id order. */
+/**
+ * Move a person out of the way of a car that stands for them: a few quick
+ * steps along `heading`, from where they stand. Unlike a fright this also
+ * moves someone already off their loop, who would otherwise stand in the road
+ * until the player leaves.
+ */
+export function stepAside(state: PedestrianState, tick: number, id: number, pose: Pick<PedestrianPose, 'x' | 'y' | 'height'>, heading: number): void {
+  if (state.casualties.length > 0 && casualtyOf(state, id) !== undefined) return;
+  const i = state.startled.findIndex((record) => record.id === id);
+  if (i >= 0) state.startled.splice(i, 1);
+  addStartled(state, { id, reaction: 'scatter', since: tick, x: pose.x, y: pose.y, height: pose.height, heading });
+}
+
 function addStartled(state: PedestrianState, record: StartledPedestrian): void {
   let i = state.startled.length;
   while (i > 0 && (state.startled[i - 1] as StartledPedestrian).id > record.id) i--;

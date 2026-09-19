@@ -9,8 +9,10 @@
  * road it is on, and stops where a traffic light (`signals.ts`) is red. Each
  * carries a driver from `driver.ts` (spec section 20.2), and its tour is timed
  * the way that driver drives: their speed, their gap in a queue, the moment
- * they take over a green, and whether they run an amber. No vehicle reads
- * another one, so the city's traffic never has to be stepped as a whole.
+ * they take over a green, and whether they run an amber. No tour reads
+ * another one, so the city's traffic never has to be stepped as a whole. Near
+ * the player, `give-way.ts` holds a vehicle back on its tour so it keeps off
+ * the others, and every reader there asks for the tick through `heldTime`.
  *
  * Where a vehicle is can be asked two ways, and they agree exactly:
  * {@link AmbientTraffic.cursorAt} evaluates it at any tick on demand, and
@@ -31,6 +33,7 @@ import { TIERS, TRAM_LANE } from '../world/tiers.ts';
 import type { Point, RoadCurve, RoadTier, TramDescription, WorldDescription, Zone } from '../world/types.ts';
 import { TICK_RATE } from './clock.ts';
 import { drawDriver, type Driver } from './driver.ts';
+import { createHolds, type Holds } from './hold.ts';
 import { EdgeIndex } from './edge-index.ts';
 import { RouteSampler, type RoutePoint } from './route-sample.ts';
 import { SIGNAL_CYCLE, TrafficSignals } from './signals.ts';
@@ -155,10 +158,12 @@ export interface PromotedVehicle {
 export interface TrafficState {
   /** Ascending by id. */
   promoted: PromotedVehicle[];
+  /** The vehicles near the player that giving way has held behind their tours (`give-way.ts`). */
+  held: Holds;
 }
 
 export function createTrafficState(): TrafficState {
-  return { promoted: [] };
+  return { promoted: [], held: createHolds() };
 }
 
 /** The record of a promoted vehicle, or undefined while it still drives its tour. */
@@ -267,6 +272,27 @@ export class AmbientTraffic {
   edgeOf(cursor: TrafficCursor): number {
     const tour = (this.vehicles[cursor.id] as AmbientVehicle).tour;
     return tour.edges[tour.stepLeg[cursor.step] as number] as number;
+  }
+
+  /** Metres along its edge a cursor stands at. */
+  metresOf(cursor: TrafficCursor): number {
+    const tour = (this.vehicles[cursor.id] as AmbientVehicle).tour;
+    const from = tour.stepFrom[cursor.step] as number;
+    const to = tour.stepTo[cursor.step] as number;
+    return from + (cursor.into / (tour.stepTicks[cursor.step] as number)) * (to - from);
+  }
+
+  /** True when a cursor's step is a wait: at a light, in a queue or at a stop. */
+  isWait(cursor: TrafficCursor): boolean {
+    const tour = (this.vehicles[cursor.id] as AmbientVehicle).tour;
+    return tour.stepFrom[cursor.step] === tour.stepTo[cursor.step];
+  }
+
+  /** Ticks a cursor stands still for from here, or 0 where its step is a drive. */
+  waitLeft(cursor: TrafficCursor): number {
+    if (!this.isWait(cursor)) return 0;
+    const tour = (this.vehicles[cursor.id] as AmbientVehicle).tour;
+    return (tour.stepTicks[cursor.step] as number) - 1 - cursor.into;
   }
 
   /** True when an edge, grown by the reach of its lanes, overlaps a box. */
