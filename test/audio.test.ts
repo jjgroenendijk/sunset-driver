@@ -61,6 +61,7 @@ function unit(id: number, x: number, y: number, kind: PoliceKind = 'patrol'): Po
     planned: 0,
     goalX: x,
     goalY: y,
+    crew: 2,
   };
 }
 

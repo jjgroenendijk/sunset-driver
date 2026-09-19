@@ -108,7 +108,7 @@ describe('tracers', () => {
   });
 
   it('forgets a tracer once it is old', () => {
-    const tracers = [{ tick: 10, pellet: 0, x: 0, y: 0, h: 0, ex: 1, ey: 0, eh: 0, end: 'none' as const }];
+    const tracers = [{ tick: 10, pellet: 0, x: 0, y: 0, h: 0, ex: 1, ey: 0, eh: 0, end: 'none' as const, by: 'player' as const }];
     forgetTracers(tracers, 10 + TRACER_MEMORY - 1);
     expect(tracers.length).toBe(1);
     forgetTracers(tracers, 10 + TRACER_MEMORY);

@@ -189,6 +189,7 @@ export class Gunfire {
         ey: ray.y + ray.dy * reach,
         eh: ray.h + ray.dh * reach,
         end,
+        by: 'player',
       });
     }
   }

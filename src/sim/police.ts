@@ -27,7 +27,10 @@ import { districtAt, layoutZones } from '../world/districts.ts';
 import type { District, WorldDescription } from '../world/types.ts';
 import { TICK_RATE } from './clock.ts';
 import { CRIME_HEAT, decayHeat, heatStars, raiseHeat, type Crime } from './crime.ts';
+import type { CasualtyGround } from './casualty.ts';
+import { bark, CREW, type Bark, type Cuffs, type FallenOfficer, type Officer } from './officer.ts';
 import { dropPoliceCar } from './pickup.ts';
+import { Squad } from './squad.ts';
 import { UnitRoads, type DrivePose } from './unit-route.ts';
 import type { SimState } from './simulation.ts';
 import type { TrafficRoads } from './traffic.ts';
@@ -71,6 +74,11 @@ export interface PoliceUnit {
   /** Where it is driving to. */
   goalX: number;
   goalY: number;
+  /**
+   * Officers still in the car, of the {@link CREW} it came with. A car whose
+   * crew is out on foot stands where it stopped until they are back in it.
+   */
+  crew: number;
 }
 
 /** What the police know and who is out (spec section 14). */
@@ -84,6 +92,22 @@ export interface PoliceState {
   seenTick: number;
   /** The earliest tick the next unit may come out on, which is the response time. */
   dispatchTick: number;
+  /** The officers on foot: the crews out of their cars, and the ones walking a beat. */
+  officers: Officer[];
+  /** The id the next officer is given. It keys the officer's own stream, so it never goes back. */
+  nextOfficer: number;
+  /** The earliest tick the next pair of officers may start a beat on. */
+  beatTick: number;
+  /** The player being cuffed, or null while nobody has hold of them (spec section 11.7). */
+  cuffs: Cuffs | null;
+  /** The tick up to which nobody may put the cuffs on again, after a player broke free. */
+  freeTick: number;
+  /** True once the player gave themselves up: the arrest that follows costs less. */
+  surrendered: boolean;
+  /** The officers who have been put down, lying where they fell. */
+  fallen: FallenOfficer[];
+  /** What the officers said lately, for the audio (spec section 15). */
+  barks: Bark[];
 }
 
 /**
@@ -143,11 +167,7 @@ const HOLD_RANGE = 8;
 const SEARCH_RADIUS = 120;
 
 /** Ticks with nobody in sight before the units give up the chase and search. */
-const SEARCH_DELAY = 5 * TICK_RATE;
-
-/** Metres a unit takes a player on foot in from, and the speed they have to be under. */
-const ARREST_RANGE = 6;
-const ARREST_SPEED = 4;
+export const SEARCH_DELAY = 5 * TICK_RATE;
 
 /** Metres a unit stands off the player before it is taken off the map once the heat is out. */
 const STAND_DOWN_RANGE = 150;
@@ -186,16 +206,35 @@ export function policeDistrictsOf(world: WorldDescription): DistrictAt {
 }
 
 export function createPoliceState(): PoliceState {
-  return { units: [], nextUnit: 0, lastKnown: null, seenTick: -1_000_000, dispatchTick: 0 };
+  return {
+    units: [],
+    nextUnit: 0,
+    lastKnown: null,
+    seenTick: -1_000_000,
+    dispatchTick: 0,
+    officers: [],
+    nextOfficer: 0,
+    beatTick: 0,
+    cuffs: null,
+    freeTick: 0,
+    surrendered: false,
+    fallen: [],
+    barks: [],
+  };
 }
 
 /**
  * Call every unit off at once and forget where the player was, as an arrest or
- * a death does. `nextUnit` carries on, because it keys the stream of each unit.
+ * a death does. `nextUnit` and `nextOfficer` carry on, because they key the
+ * stream of each unit and each officer. The bodies of the fallen stay where
+ * they are: the run is over, not the street.
  */
 export function standDownAll(state: SimState): void {
   const fresh = createPoliceState();
   state.police.units = [];
+  state.police.officers = [];
+  state.police.cuffs = null;
+  state.police.surrendered = false;
   state.police.lastKnown = fresh.lastKnown;
   state.police.seenTick = fresh.seenTick;
   state.police.dispatchTick = state.tick;
@@ -292,6 +331,8 @@ export function quarryOf(state: SimState): Quarry {
 export class PoliceForce {
   private readonly roads: UnitRoads;
   private readonly districtAt: DistrictAt;
+  /** The officers on foot: out of the cars, and on the beat. */
+  private readonly squad: Squad;
   private readonly pose: DrivePose = { x: 0, y: 0, height: 0, heading: 0 };
   /** The units that were out last tick, so the routes of the ones that have gone are forgotten. */
   private out: number[] = [];
@@ -299,18 +340,27 @@ export class PoliceForce {
   constructor(roads: TrafficRoads, districtAt: DistrictAt) {
     this.roads = new UnitRoads(roads);
     this.districtAt = districtAt;
+    this.squad = new Squad(roads, districtAt);
   }
 
   /**
    * One tick of the whole system: what the police can see, what the heat does
    * about it, who comes out, and where every unit gets to. Called from the
    * physics, after the world has been stepped, so the units answer the tick the
-   * player has just driven.
+   * player has just driven. `ground` is the walls and the ground the officers
+   * on foot see and walk by; without it the street is open, as in a test.
    */
-  step(state: SimState): void {
+  step(state: SimState, ground?: CasualtyGround): void {
     const police = state.police;
     const quarry = quarryOf(state);
+    const lost = state.tick - police.seenTick >= SEARCH_DELAY;
     this.look(state, quarry);
+    this.squad.look(state, quarry, ground);
+    // The radio says when the player is picked up again and when they are lost.
+    if (state.heat > 0 && lost && police.seenTick === state.tick) bark(state, 'spotted', quarry.x, quarry.y);
+    if (state.heat > 0 && state.tick - police.seenTick === SEARCH_DELAY && police.lastKnown !== null) {
+      bark(state, 'lost', police.lastKnown.x, police.lastKnown.y);
+    }
     state.heat = decayHeat(state.heat, state.tick, police.seenTick);
     this.dispatch(state, quarry);
     const searching = state.tick - police.seenTick >= SEARCH_DELAY;
@@ -321,7 +371,9 @@ export class PoliceForce {
       if (unit.kind === 'helicopter') this.fly(unit);
       else this.drive(state, unit);
     }
-    this.arrest(state, quarry);
+    // The crews answer where the cars have got to: out of a car that has
+    // pulled up, and back into one whose chase has driven off.
+    this.squad.step(state, quarry, ground);
     this.standDown(state, quarry);
     this.sweep(state);
   }
@@ -405,6 +457,7 @@ export class PoliceForce {
       planned: -REPLAN,
       goalX: x,
       goalY: y,
+      crew: CREW[kind],
     };
     if (kind === 'helicopter') return unit;
     const edge = this.roads.edgeNear(x, y);
@@ -474,7 +527,9 @@ export class PoliceForce {
     const length = this.roads.length(unit.edges);
     const arrived = unit.distance >= length;
     if (due || arrived) this.replan(state, unit);
+    // A car whose crew is out stands where they left it.
     const held =
+      unit.crew < CREW[unit.kind] ||
       hypot(unit.x - unit.goalX, unit.y - unit.goalY) < HOLD_RANGE ||
       (unit.task === 'block' && unit.distance >= this.roads.length(unit.edges));
     const limit = this.roads.limitAt(unit.id, unit.edges, unit.distance);
@@ -524,21 +579,6 @@ export class PoliceForce {
   }
 
   /**
-   * A player on foot who lets a car get to them is taken in (spec section
-   * 11.7). The respawn of the same tick is what carries it out; a player in a
-   * car is not taken, because they are still driving away.
-   */
-  private arrest(state: SimState, quarry: Quarry): void {
-    if (state.heat <= 0 || state.player.driving || quarry.speed > ARREST_SPEED) return;
-    for (const unit of state.police.units) {
-      if (unit.kind === 'helicopter') continue;
-      if (hypot(unit.x - quarry.x, unit.y - quarry.y) > ARREST_RANGE) continue;
-      state.arrested = true;
-      return;
-    }
-  }
-
-  /**
    * The call is off once the heat is out: a unit far enough away to go without
    * being seen to vanish is taken off the map, and the near ones drive on until
    * they are.
@@ -548,6 +588,8 @@ export class PoliceForce {
     const units = state.police.units;
     for (let i = units.length - 1; i >= 0; i--) {
       const unit = units[i] as PoliceUnit;
+      // A car is not driven off without its crew, who are walking back to it.
+      if (unit.crew < CREW[unit.kind]) continue;
       if (hypot(unit.x - quarry.x, unit.y - quarry.y) < STAND_DOWN_RANGE) continue;
       units.splice(i, 1);
     }

@@ -176,7 +176,7 @@ describe('audio: bodies struck and falling', () => {
   it('slaps once where a round went into somebody, and nowhere a round missed', () => {
     const state = session();
     const planner = started(state);
-    const round = { pellet: 0, x: 0, y: 0, h: 1, ex: 5, ey: 0, eh: 1 };
+    const round = { pellet: 0, x: 0, y: 0, h: 1, ex: 5, ey: 0, eh: 1, by: 'player' as const };
     const plan = step(planner, state, (s) => {
       s.tracers.push({ ...round, tick: s.tick, end: 'person' }, { ...round, tick: s.tick, end: 'hard' });
     });

@@ -29,6 +29,11 @@ export interface Tracer {
   ey: number;
   eh: number;
   end: TracerEnd;
+  /**
+   * Who fired it: the player, or an officer (`officer-fire.ts`). The camera
+   * kicks and the crosshair marks a hit only for the player's own.
+   */
+  by: 'player' | 'police';
 }
 
 /** Ticks a tracer is remembered for, as long as a blow of `melee.ts` is. */
