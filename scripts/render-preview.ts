@@ -25,6 +25,9 @@
  *                    see-through, pull-back, turn or whole. Default see-through.
  *   --view           the view to draw from (spec section 10.7): top-down,
  *                    third-person or first-person. Default top-down.
+ *   --look-at        x,y,height: a place to frame instead of the player, in
+ *                    metres, the height over the ground there. The camera keeps
+ *                    its pitch, heading and distance; the player stays put.
  *   --look-up        degrees to tilt a chase view up from where it looks, to see
  *                    the sky. Ignored top down.
  *   --quality        the quality tier to draw at (spec section 9.2): full,
@@ -170,6 +173,17 @@ async function tramPlace(): Promise<{ x: number; y: number } | undefined> {
 }
 const tram = await tramPlace();
 
+/** The place `--look-at=x,y,height` names, the height 0 when it is left off. */
+function lookAtOf(raw: string | undefined): PreviewRequest['lookAt'] {
+  if (raw === undefined) return undefined;
+  const [x, y, height = 0] = raw.split(',').map(Number);
+  if (x === undefined || y === undefined || ![x, y, height].every(Number.isFinite)) {
+    throw new Error(`--look-at wants x,y or x,y,height in metres, not ${raw}`);
+  }
+  return { x, y, height };
+}
+const lookAt = lookAtOf(options.get('look-at'));
+
 const request: PreviewRequest = {
   seed,
   x: tram?.x ?? num('x', junction?.x ?? 0),
@@ -184,6 +198,7 @@ const request: PreviewRequest = {
   ...(options.has('buildings') ? { buildings: options.get('buildings') as string } : {}),
   ...(options.has('view') ? { view: options.get('view') as string } : {}),
   ...(options.has('look-up') ? { lookUp: num('look-up', 0) } : {}),
+  ...(lookAt === undefined ? {} : { lookAt }),
   ...(options.has('vehicle') ? { vehicle: options.get('vehicle') as string } : {}),
   ...(options.has('on-foot') ? { onFoot: true } : {}),
   ...(options.has('stance') ? { stance: options.get('stance') as string } : {}),
@@ -228,5 +243,6 @@ console.log(
     ` — world ${result.kept ? 'kept' : `${result.worldMs.toFixed(0)} ms`}, chunks ${result.chunkMs.toFixed(0)} ms,` +
     ` frame ${result.frameMs.toFixed(0)} ms, dearest chunk ${result.peakDrawCalls} draw calls,` +
     ` ${result.lights} lights, ${result.shadows} shadow cascades, ${result.quality} quality,` +
-    ` ${result.traffic} vehicles of traffic, ${result.parked} parked cars, ${result.pedestrians} pedestrians`,
+    ` ${result.traffic} vehicles of traffic, ${result.parked} parked cars, ${result.pedestrians} pedestrians;` +
+    ` in view ${result.holds.buildings} buildings, ${result.holds.lamps} lamps, ${result.holds.posters} posters`,
 );
