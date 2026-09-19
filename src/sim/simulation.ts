@@ -211,6 +211,7 @@ export function createSimState(
   seed: number,
   character: CharacterAppearance = DEFAULT_APPEARANCE,
   startTick = START_TICK,
+  money = START_MONEY,
 ): SimState {
   return {
     seed,
@@ -227,7 +228,7 @@ export function createSimState(
     nextPickup: 0,
     market: createMarketState(),
     heat: 0,
-    money: START_MONEY,
+    money,
     objective: '',
     waypoint: null,
     property: createPropertyState(),

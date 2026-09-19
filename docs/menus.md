@@ -79,6 +79,9 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   `MapDrawOptions.player` is null there: the preview is the map alone, with no arrow on it. The
   world it built travels back in `TitleChoice.world`, and `main.ts` reuses it rather than
   generating the same seed twice.
+- The seed box reads one code, `money` in any case (`readSeedCode` in `src/core/seed.ts`). It is
+  not a seed: the box swaps it for a random seed, and the session starts with a billion rather than
+  `START_MONEY`. The amount travels in `TitleChoice.money` to `createSimState`.
 - `src/ui/controls.ts` is the one list of key bindings. It is shown on the title screen and copied
   into the README; `Keyboard.sample` must stay in step with the rows that are part of the input
   frame, and `main.ts` listens for the rows after them itself.
