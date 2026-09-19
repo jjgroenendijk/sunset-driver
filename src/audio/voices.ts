@@ -87,8 +87,9 @@ export class EngineVoice {
 }
 
 /**
- * One police siren: a square and a saw a hair apart, swapped between two notes
- * on the wail the plan hands it (spec section 14).
+ * One siren: a square and a saw a hair apart. A police car's swaps between two
+ * notes on the wail the plan hands it (spec section 14); a fire engine's and an
+ * ambulance's sweep between them instead (spec section 20.3).
  */
 export class SirenVoice {
   private readonly square = new Oscillator({ type: 'square', frequency: SIREN_LOW });
@@ -113,7 +114,9 @@ export class SirenVoice {
   }
 
   set(siren: SirenPlan, level: number): void {
-    const hz = siren.wail < 0.5 ? SIREN_HIGH : SIREN_LOW;
+    // Two notes swapped at the half, or one note swept up and back down.
+    const sweep = 1 - Math.abs(2 * siren.wail - 1);
+    const hz = siren.pitch * (siren.sound === 'two-tone' ? (siren.wail < 0.5 ? SIREN_HIGH : SIREN_LOW) : SIREN_LOW + (SIREN_HIGH - SIREN_LOW) * sweep);
     this.square.frequency.rampTo(hz, SIREN_SWAP);
     this.saw.frequency.rampTo(hz, SIREN_SWAP);
     this.out.gain.rampTo(siren.gain * level, RAMP);

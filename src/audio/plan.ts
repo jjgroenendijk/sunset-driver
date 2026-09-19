@@ -23,6 +23,7 @@ import { hashInts } from '../core/hash.ts';
 import { rngFor, Subsystem } from '../core/rng.ts';
 import { gameTime, TICK_RATE } from '../sim/clock.ts';
 import type { InputFrame } from '../sim/input.ts';
+import { onCall, type EmergencyKind, type EmergencyUnit } from '../sim/emergency.ts';
 import type { PoliceUnit } from '../sim/police.ts';
 import type { SimState } from '../sim/simulation.ts';
 import type { TramBell } from '../sim/tram.ts';
@@ -93,6 +94,26 @@ const CALL_STREAM: Readonly<Record<'bird' | 'gull', number>> = Object.freeze({ b
 /** The key of the stream a car's crunch is drawn from, so it is not the thump's note. */
 const CRUNCH_STREAM = 0x0d05;
 
+/**
+ * How a siren sounds. A police car swaps between two notes; a fire engine's
+ * wail sweeps slowly up and down, low; an ambulance's yelp sweeps fast. Each
+ * service is known by ear before it is seen.
+ */
+export type SirenSound = 'two-tone' | 'wail' | 'yelp';
+
+/** The sound, the ticks of one cycle and the pitch, as a multiple of the police car's, of each service's siren. */
+export const SIREN_OF: Readonly<Record<'police' | EmergencyKind, { sound: SirenSound; ticks: number; pitch: number }>> = Object.freeze({
+  police: { sound: 'two-tone', ticks: WAIL_TICKS, pitch: 1 },
+  engine: { sound: 'wail', ticks: 240, pitch: 0.72 },
+  ambulance: { sound: 'yelp', ticks: 22, pitch: 1.05 },
+});
+
+/**
+ * Added to the id of a fire engine or an ambulance to key its siren, so a
+ * voice following police car 3 is never handed ambulance 3.
+ */
+export const EMERGENCY_SIREN = 1 << 20;
+
 /** One siren in the mix. */
 export interface SirenPlan {
   /** The unit it belongs to, so a voice follows one car rather than swapping between them. */
@@ -101,6 +122,9 @@ export interface SirenPlan {
   pan: number;
   /** Where the wail stands, 0 to 1 and round again. */
   wail: number;
+  sound: SirenSound;
+  /** The pitch, as a multiple of the police car's. */
+  pitch: number;
 }
 
 /**
@@ -418,24 +442,29 @@ export function squealOf(state: SimState): number {
 
 /**
  * The sirens worth carrying: the nearest {@link SIREN_VOICES} units that are
- * driving, which is every unit but the helicopter and a car driving off once
- * its call is over. Each wails on its own phase,
- * keyed on the unit's id, so a pair of cars beat against each other.
+ * driving with the siren on. That is every police unit but the helicopter and a
+ * car driving off once its call is over, and every fire engine and ambulance on
+ * a call (spec section 20.3). Each wails on its own phase, keyed on the unit's
+ * id, so a pair of cars beat against each other.
  */
 export function sirensOf(state: SimState, listener: Listener): SirenPlan[] {
-  const heard: { unit: PoliceUnit; at: Heard }[] = [];
-  for (const unit of state.police.units) {
+  const heard: { id: number; of: keyof typeof SIREN_OF; at: Heard }[] = [];
+  for (const unit of state.police.units as readonly PoliceUnit[]) {
     if (unit.kind === 'helicopter' || unit.task === 'leave') continue;
     const at = hear(listener, unit.x, unit.y);
-    if (at.gain > 0) heard.push({ unit, at });
+    if (at.gain > 0) heard.push({ id: unit.id, of: 'police', at });
   }
-  heard.sort((a, b) => a.at.distance - b.at.distance || a.unit.id - b.unit.id);
-  return heard.slice(0, SIREN_VOICES).map(({ unit, at }) => ({
-    id: unit.id,
-    gain: at.gain,
-    pan: at.pan,
-    wail: ((((state.tick + unit.id * 37) % WAIL_TICKS) + WAIL_TICKS) % WAIL_TICKS) / WAIL_TICKS,
-  }));
+  for (const unit of state.emergency.units as readonly EmergencyUnit[]) {
+    if (!onCall(unit)) continue;
+    const at = hear(listener, unit.x, unit.y);
+    if (at.gain > 0) heard.push({ id: EMERGENCY_SIREN + unit.id, of: unit.kind, at });
+  }
+  heard.sort((a, b) => a.at.distance - b.at.distance || a.id - b.id);
+  return heard.slice(0, SIREN_VOICES).map(({ id, of, at }) => {
+    const siren = SIREN_OF[of];
+    const cycle = (((state.tick + id * 37) % siren.ticks) + siren.ticks) % siren.ticks;
+    return { id, gain: at.gain, pan: at.pan, wail: cycle / siren.ticks, sound: siren.sound, pitch: siren.pitch };
+  });
 }
 
 /**

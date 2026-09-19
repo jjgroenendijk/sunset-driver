@@ -161,7 +161,11 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
   climbs back over `DUCK_RECOVER`, so a run of shots holds one hole open instead of reopening it.
 - Siren voices follow **units**, not places in the list. A voice keeps the unit it was given while
   that unit is still one of the nearest, so a second car joining a chase does not make the first
-  one's siren change pitch.
+  one's siren change pitch. A fire engine's or an ambulance's siren is keyed `EMERGENCY_SIREN` past
+  its id, so it never takes over the voice of a police car with the same id.
+- Each service sounds its own (`SIREN_OF`): a police car swaps between two notes, an engine wails
+  slowly and low, and an ambulance yelps fast. The engine and the ambulance are only heard while
+  `onCall` — not on the way home.
 - Every parameter is ramped over `RAMP`, never set. A jump between two frames' values is a click.
 
 ## The gesture and the mute
