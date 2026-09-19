@@ -22,6 +22,7 @@
  */
 import { Gain, getDestination, Limiter, now } from 'tone';
 import { AmbientBeds } from './beds.ts';
+import { CryBank } from './cries.ts';
 import type { AudioPlan } from './plan.ts';
 import { SIREN_VOICES } from './plan.ts';
 import { ShotBank } from './one-shots.ts';
@@ -39,6 +40,7 @@ export const LEVELS = Object.freeze({
   squeal: 0.35,
   horn: 0.5,
   cue: 0.9,
+  cry: 0.8,
   radio: 0.7,
   score: 0.5,
   bed: 0.5,
@@ -63,6 +65,8 @@ export class Mixer {
   private readonly squeal: SquealVoice;
   private readonly horn: HornVoice;
   private readonly shots: ShotBank;
+  /** The human cries of `cry.ts`, on the effects bus beside the one-shots. */
+  private readonly cries: CryBank;
   /** The radio of spec section 15 and the score over it, both on the music bus. */
   private readonly radio: RadioVoice;
   private readonly score: ScoreVoice;
@@ -82,6 +86,7 @@ export class Mixer {
     this.squeal = new SquealVoice(this.effects);
     this.horn = new HornVoice(this.effects);
     this.shots = new ShotBank(this.effects);
+    this.cries = new CryBank(this.effects);
     // Both ride the music bus, so a gunshot ducks the station and the score
     // with it, and the radio of spec section 15 needs no bus of its own.
     this.radio = new RadioVoice(this.music);
@@ -111,6 +116,7 @@ export class Mixer {
     this.setSirens(plan);
     this.beds.set(plan.beds, LEVELS.bed);
     this.shots.play(plan.cues, listener, LEVELS.cue);
+    this.cries.play(plan.cries, listener, LEVELS.cry);
     this.radio.set(plan.radio, LEVELS.radio, at);
     this.score.set(plan.score, LEVELS.score);
     // The duck falls away on its own and is pushed back down by anything this
@@ -131,9 +137,9 @@ export class Mixer {
     this.beds.silence();
   }
 
-  /** Cues dropped for want of a voice, which says whether the cap is biting. */
+  /** Cues and cries dropped for want of a voice, which says whether the cap is biting. */
   get dropped(): number {
-    return this.shots.dropped;
+    return this.shots.dropped + this.cries.dropped;
   }
 
   dispose(): void {
@@ -142,6 +148,7 @@ export class Mixer {
     this.squeal.dispose();
     this.horn.dispose();
     this.shots.dispose();
+    this.cries.dispose();
     this.radio.dispose();
     this.score.dispose();
     this.beds.dispose();

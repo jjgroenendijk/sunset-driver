@@ -8,6 +8,7 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
 - The split, and why it is there
 - The engine has a gearbox the physics does not
 - Cues, and what a frame is allowed to fire
+- The hurt: cries, thumps and falling bodies
 - The radio, and how a bar gets played
 - The score over the radio
 - The ambient beds, and where a place comes from
@@ -17,10 +18,10 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
 
 ## The split, and why it is there
 
-- `src/audio` is two halves and one door. `plan.ts`, `engine.ts`, `space.ts`, `cue.ts`,
-  `ambience.ts` and `site.ts` hold no Tone.js and no DOM: they read the record and answer an
-  `AudioPlan`. `voices.ts`, `one-shots.ts`, `beds.ts` and `mixer.ts` own the Web Audio node graph
-  and play that plan. `game-audio.ts` is the door `main.ts` holds.
+- `src/audio` is two halves and one door. `plan.ts`, `engine.ts`, `space.ts`, `cue.ts`, `cry.ts`,
+  `hurt.ts`, `ambience.ts` and `site.ts` hold no Tone.js and no DOM: they read the record and
+  answer an `AudioPlan`. `voices.ts`, `one-shots.ts`, `cries.ts`, `beds.ts` and `mixer.ts` own the
+  Web Audio node graph and play that plan. `game-audio.ts` is the door `main.ts` holds.
 - The split is what lets `test/audio.test.ts` run in Node. A rule that decides whether a sound
   happens belongs in the pure half; a rule about how it sounds belongs in the other. When adding
   something, put the decision in `plan.ts` and let the mixer take it as given.
@@ -65,6 +66,32 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
   that finds no free voice is **dropped, never stolen**: stealing would restart an oscillator that
   is still scheduled to stop, and Tone.js refuses a start before a pending stop.
 - The cap is the CPU budget of spec section 15. `Mixer.dropped` counts what it cost.
+
+## The hurt: cries, thumps and falling bodies
+
+- `hurt.ts` reads the people of spec section 13.1 who are hurt, and `test/audio-hurt.test.ts`
+  holds its rules. Every sound is read off a tick in the record, the way a blow is: a hit is the
+  casualty's `since`, a round is its tracer's tick, a landing is `landingOf(record).tick`. So a
+  frame hears the ticks it stepped over, and nothing twice.
+- A record is replaced on every hit, so a new `since` is a new hit. The dying make a short `death`
+  cry that is cut off, a person knocked down `scream`s, and a stagger is a short cry of `pain`.
+  A body hit again makes a new record too, so `HurtEars` keeps the ids that were already dead.
+- A thrown body lands on the first tick `casualtyPose` no longer calls it `air`. A body knocked
+  over from standing lands at the end of its `fall`, at `FALL_STRENGTH`. A stagger never lands.
+- A car strike writes a `person` hit like a fist does. Nobody swings from behind a wheel, so a
+  `person` hit while the player drives is the car's: a `thump` and a `crunch`, not a `thud`.
+- A round whose tracer ends in `person` is a `flesh` slap where it went in.
+- `PANIC_MIN` people fleeing on one tick within `PANIC_REACH` make `PANIC_VOICES` quieter,
+  duller `panic` cries, a moment apart. Which of them cry and when is drawn from the tick and the
+  ids. The wounded on the ground `moan` at `MOAN_RATE`, drawn per tick as a bird's call is.
+- Cries are not cues. They go into `AudioPlan.cries`, capped at `CRIES_PER_FRAME`, and `cries.ts`
+  holds `CRY_VOICES` of them. A cry that finds no free voice is dropped, as a cue is.
+- A cry is a formant voice (`cry.ts`): a sawtooth through three band-pass filters at the formants
+  of 'a' or 'o', with pink noise for breath and a low-pass that dulls it with the distance. The
+  pitch is a curve of the plan's making — contour, vibrato and wobble — laid on the oscillator with
+  `setValueCurveAtTime`. An LFO connected to a Tone.js frequency would replace the value, not add.
+- A person's voice is `voiceOf(seed, id)`: low or high, and its own pitch, vibrato and length. A
+  scream strains that to two or three times the speaking pitch, as a real one does.
 
 ## The radio, and how a bar gets played
 

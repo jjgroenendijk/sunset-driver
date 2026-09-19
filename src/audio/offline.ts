@@ -12,6 +12,7 @@
  * page it opens. Nothing in the game imports this.
  */
 import { Offline } from 'tone';
+import type { Casualty } from '../sim/casualty-motion.ts';
 import { TICKS_PER_HOUR } from '../sim/clock.ts';
 import { EMPTY_INPUT, type InputFrame } from '../sim/input.ts';
 import type { PoliceKind, PoliceUnit } from '../sim/police.ts';
@@ -137,6 +138,53 @@ const RINGING: BellSource = {
   },
 };
 
+/** A person hit on `since` a few metres from the player, knocked down and wounded. */
+function hurt(id: number, since: number, over: Partial<Casualty> = {}): Casualty {
+  return {
+    id,
+    since,
+    first: since,
+    cause: 'shot',
+    health: 50,
+    x: 6,
+    y: 2,
+    height: 0,
+    rest: 0,
+    heading: 0,
+    dir: 0,
+    push: 1,
+    lift: 0,
+    reach: 30,
+    down: 240,
+    side: 1,
+    cash: 0,
+    gone: false,
+    bumped: -1,
+    ragdoll: null,
+    ...over,
+  };
+}
+
+/** A case where one person is hit between the two frames, and what the hit left of them. */
+function hitCase(name: string, over: Partial<Casualty>, frames = 2): AudioCase {
+  return {
+    name,
+    state: afoot,
+    frames,
+    move: (state) => {
+      if (state.pedestrians.casualties.length === 0) state.pedestrians.casualties.push(hurt(3, state.tick, over));
+    },
+  };
+}
+
+/** A session on foot beside somebody already hit, `record.since` ticks counted from now. */
+function lying(record: Casualty): SimState {
+  const state = afoot();
+  state.tick = 1000;
+  state.pedestrians.casualties.push({ ...record, since: state.tick + record.since, first: state.tick + record.since });
+  return state;
+}
+
 const CASES: readonly AudioCase[] = [
   { name: 'nothing', state: afoot },
   { name: 'engine idling', state: () => ({ ...driving(), vehicle: { ...driving().vehicle, speed: 0 } }) },
@@ -212,6 +260,40 @@ const CASES: readonly AudioCase[] = [
     frames: 20,
   },
   { name: 'tram bell', state: afoot, trams: RINGING, frames: 2 },
+  // The people of spec section 13.1 being hurt. Each cry is a voice of its
+  // own, keyed on the person's id, so these are the cries of person 3.
+  hitCase('scream', {}),
+  hitCase('cry of pain', { down: 0 }),
+  hitCase('death cry', { health: 0, down: -1 }),
+  // A wounded person lies for a while and moans now and then, so the case
+  // walks long enough for one to come round.
+  { name: 'moan', state: () => lying(hurt(3, -200, { down: -1 })), frames: 900 },
+  {
+    name: 'a crowd in panic',
+    state: afoot,
+    move: (state) => {
+      state.pedestrians.startled = [11, 12, 13, 14, 15].map((id) => ({
+        id, reaction: 'flee' as const, since: state.tick, x: id - 2, y: id - 12, height: 0, heading: 0,
+      }));
+    },
+  },
+  {
+    name: 'car strikes somebody',
+    state: driving,
+    move: (state) => {
+      state.hits.push({ tick: state.tick, x: 3, y: 0, h: 1, surface: 'person', strength: 0.9 });
+    },
+  },
+  {
+    name: 'round into flesh',
+    state: afoot,
+    move: (state) => {
+      state.tracers.push({ tick: state.tick, pellet: 0, x: 0, y: 0, h: 1, ex: 4, ey: 0, eh: 1, end: 'person' });
+    },
+  },
+  // Thrown by a fast car before the case starts, so what is heard is the body
+  // coming down and not the cry at the hit.
+  { name: 'body lands', state: () => lying(hurt(3, -10, { cause: 'car', lift: 4, push: 12, health: 0, down: -1 })), frames: 60 },
   { name: 'radio: a song', state: () => listening(0) },
   { name: 'radio: the beach', state: () => listening(1) },
   { name: 'radio: between songs', state: () => listening(0, SONG_BARS - 1) },
