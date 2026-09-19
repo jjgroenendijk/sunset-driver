@@ -1,6 +1,6 @@
-import { Matrix4, MeshBasicMaterial, Vector3 } from 'three';
+import { BackSide, Matrix4, MeshBasicMaterial, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { batchOfPacked } from '../src/render/batch.ts';
+import { Batch, batchOfPacked } from '../src/render/batch.ts';
 import { cellAt, cellGrid } from '../src/render/cells.ts';
 import { CHUNK_DRAW_CALL_CAP, chunkDrawCalls } from '../src/render/chunk-cost.ts';
 import {
@@ -616,6 +616,28 @@ describe('the scene as the player drives', () => {
     scene.quality = FULL_TIER;
     await scene.settle(0, 0);
     expect(scene.scene.children.length).toBe(atFull);
+    scene.dispose();
+  });
+
+  it('lets a chunk take the sun but keeps the outline hulls from shading the roofs they rim', async () => {
+    const scene = new WorldScene(world, DEFAULT_APPEARANCE, new DirectStream());
+    await scene.settle(0, 0);
+
+    // The outlines are the only batch drawn back faces only (`buildings.ts`).
+    // Their top cap stands 0.35 m over the roof it rims, so a shadow one cast
+    // landed on that roof and blacked it out.
+    const outlines: Batch[] = [];
+    const rest: Batch[] = [];
+    scene.scene.traverse((object) => {
+      if (object instanceof Batch) (object.material.side === BackSide ? outlines : rest).push(object);
+    });
+
+    expect(outlines.length).toBeGreaterThan(0);
+    expect(outlines.some((batch) => batch.castShadow)).toBe(false);
+    expect(rest.length).toBeGreaterThan(0);
+    expect(rest.every((batch) => batch.castShadow)).toBe(true);
+    // Both still take the shadow of what stands over them.
+    expect([...outlines, ...rest].every((batch) => batch.receiveShadow)).toBe(true);
     scene.dispose();
   });
 

@@ -741,13 +741,16 @@ export class WorldScene {
    * still missing, and the frame after should be the one that finishes it.
    *
    * Every batch of a chunk is solid geometry standing on the ground, so it
-   * casts and takes the sun's shadow; the road markings are lines painted on
-   * the surface and do neither.
+   * takes the sun's shadow, and casts one unless its piece says otherwise: the
+   * outline hulls stand over the roofs they rim and would shade them
+   * (`buildings.ts`). The road markings are lines painted on the surface and
+   * do neither.
    */
   private add(tile: ChunkTile, part: TilePart): void {
+    const casts = part.castsShadow ?? true;
     for (const object of part.objects) {
       if (object instanceof Batch) {
-        object.castShadow = true;
+        object.castShadow = casts;
         object.receiveShadow = true;
       }
       this.scene.add(object);
