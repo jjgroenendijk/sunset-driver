@@ -160,7 +160,9 @@ export function hurtPerson(
     cash: was?.cash ?? 0,
     gone: false,
     bumped: was?.bumped ?? -1,
-    ragdoll: null,
+    // The bones as the ragdoll last left them, so a body hit again is thrown
+    // from where it lies (`ragdoll.ts`), which drops them if it builds none.
+    ragdoll: was?.ragdoll ?? null,
   };
   if (ground !== undefined) {
     const end = casualtyPose(record, state.tick + 3600, emptyCasualtyPose());

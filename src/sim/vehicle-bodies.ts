@@ -9,6 +9,7 @@
  * straight back gives the same numbers.
  */
 import RAPIER from '@dimforge/rapier3d-compat';
+import { SHUNS_RAGDOLL } from './collision-groups.ts';
 import { rotate } from './frame.ts';
 import type { VehicleSpec, VehicleState, WheelSpec, WheelState } from './vehicle.ts';
 
@@ -55,7 +56,9 @@ export function buildVehicle(world: RAPIER.World, spec: VehicleSpec, v: VehicleS
     RAPIER.ColliderDesc.cuboid(spec.halfLength, spec.halfHeight, spec.halfWidth)
       .setMass(spec.mass)
       // A hull slides over what it grounds on; a car body digs in.
-      .setFriction(spec.hull === undefined ? 0.6 : 0.2),
+      .setFriction(spec.hull === undefined ? 0.6 : 0.2)
+      // `car-strike.ts` is what the car feels of a person, so a ragdoll never touches it.
+      .setCollisionGroups(SHUNS_RAGDOLL),
     chassis,
   );
   if (spec.wheels.length === 0) return { chassis, wheels: undefined, collider };

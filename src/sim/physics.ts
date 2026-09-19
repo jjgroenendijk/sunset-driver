@@ -48,6 +48,8 @@ import { unrotate } from './frame.ts';
 import { Drivetrain } from './drivetrain.ts';
 import { GroundBodies, type Ground } from './ground-bodies.ts';
 import { GroundPlaces } from './ground-places.ts';
+import { Ragdolls } from './ragdoll.ts';
+import { SHUNS_RAGDOLL } from './collision-groups.ts';
 import { Gunfire, type ShotTarget } from './gunfire.ts';
 import { buildWalker, GRAVITY, walk, type Walker } from './walker-body.ts';
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
@@ -120,6 +122,8 @@ export class SimPhysics extends GroundPlaces {
    * sections 14, 17.2), so a roadblock is a wall and a wave can be shot at.
    */
   readonly units: UnitBodies;
+  /** The Rapier ragdolls of the freshest casualties near the player (`ragdoll.ts`). */
+  readonly ragdolls: Ragdolls;
   /** Scratch vectors and forces, so a tick allocates nothing. */
   private readonly point = { x: 0, y: 0, z: 0 };
   private readonly force = { x: 0, y: 0, z: 0 };
@@ -142,6 +146,7 @@ export class SimPhysics extends GroundPlaces {
     this.controls = new Drivetrain(ground);
     this.traffic = ground.traffic === undefined ? undefined : new TrafficBodies(this.world, ground.traffic, ground.tram);
     this.units = new UnitBodies(this.world);
+    this.ragdolls = new Ragdolls(this.world, ground);
     // The step is the tick. Simulation code never sees a frame delta.
     this.world.timestep = 1 / TICK_RATE;
     this.adopt(state);
@@ -252,7 +257,8 @@ export class SimPhysics extends GroundPlaces {
         // else, so a replay drives on the same water the session did.
         this.controls.drive(this.wheels, v, input, this.spec, weatherAt(state.seed, state.tick).wetness);
         this.controls.hold(chassis, v, this.spec);
-        this.wheels.updateVehicle(this.world.timestep);
+        // The wheels roll over a ragdoll rather than standing on it: `car-strike.ts` is the bump.
+        this.wheels.updateVehicle(this.world.timestep, undefined, SHUNS_RAGDOLL);
       }
     }
     // The traffic is aimed at the next tick once the player's own move is known.
@@ -298,6 +304,9 @@ export class SimPhysics extends GroundPlaces {
     // and the crash just measured.
     stepFires(state);
     this.ground.emergency?.step(state, crash);
+    // Last, once every round, blow, blast and car of the tick has landed: the
+    // ragdolls read what the step did to them, and the hits of this tick get theirs.
+    this.ragdolls.step(state);
   }
 
   /**
@@ -338,6 +347,7 @@ export class SimPhysics extends GroundPlaces {
   /** Release the Rapier world and everything in it. */
   dispose(): void {
     this.units.clear();
+    this.ragdolls.clear();
     this.wheels?.free();
     this.walker?.controller.free();
     this.world.free();
@@ -460,7 +470,7 @@ export class SimPhysics extends GroundPlaces {
     const ray = this.throwRay;
     ray.origin = { x, y: h, z: y };
     ray.dir = { x: cosOf(dir), y: 0, z: sinOf(dir) };
-    const hit = this.world.castRay(ray, max, true, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, undefined, this.body);
+    const hit = this.world.castRay(ray, max, true, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, SHUNS_RAGDOLL, this.body);
     return hit === null ? max : Math.max(0, hit.timeOfImpact - 0.3);
   }
 

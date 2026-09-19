@@ -24,6 +24,7 @@
 import { cos, sin } from '../core/libm.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { capsuleOf } from './on-foot.ts';
+import { SHUNS_RAGDOLL } from './collision-groups.ts';
 import { ParkedBodies } from './parked-bodies.ts';
 import { PARKED_ID, type ParkedCar, type ParkedCars } from './parked.ts';
 import { hitVehicle } from './damage.ts';
@@ -143,7 +144,7 @@ export class TrafficBodies {
     this.world.intersectionsWithShape(this.spot, IDENTITY, new RAPIER.Ball(radius), (collider) => {
       colliders.push(collider.handle);
       return true;
-    });
+    }, undefined, SHUNS_RAGDOLL);
     for (const collider of colliders) this.strike(state, collider);
   }
 
@@ -339,7 +340,9 @@ export class TrafficBodies {
       RAPIER.ColliderDesc.cuboid(spec.halfLength, (ride + spec.halfHeight) / 2, spec.halfWidth)
         .setTranslation(0, (spec.halfHeight - ride) / 2, 0)
         .setMass(spec.mass)
-        .setFriction(PROMOTED_FRICTION),
+        .setFriction(PROMOTED_FRICTION)
+        // A body thrown into a promoted car does not push it.
+        .setCollisionGroups(SHUNS_RAGDOLL),
       body,
     );
     return body;
