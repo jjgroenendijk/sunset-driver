@@ -13,6 +13,7 @@ it.
 - `node scripts/terrain-sheet.ts [count] out.png [--cols=6] [--tile=160]`
 - `node scripts/landuse-preview.ts <seed> out.png`
 - `node scripts/render-preview.ts <seed> out.png`
+- The preview server
 - `node scripts/render-sheet.ts <count> out.png [--cols=3] [--tile=480]`
 - `node scripts/render-profile.ts <seed>`
 - `node scripts/audio-check.ts`
@@ -127,7 +128,9 @@ numbers read off it; the sweep reads the same two files.
 
 What the game draws, as one frame. Look at the frame before judging a rendering change.
 
-It draws on the graphics card, in about 12 seconds.
+It draws on the graphics card, through the preview server below. The first run of a seed takes
+about 10 seconds. The next run of the same seed takes a quarter of a second when only the hour, the
+angle, the vehicle or the pose changes, and 1 to 3 seconds when the player stands somewhere new.
 
 - `--quality` draws it at a quality tier of spec section 9.2 — `full`, `high`, `medium` or `low` —
   which is the one way to see what a tier does.
@@ -165,10 +168,34 @@ It draws on the graphics card, in about 12 seconds.
   `--y`: the line the run prints says where it ended up. A room is about 7 m across, so
   `--distance=22` is the frame that holds it.
 - `--width` and `--height` are the size of the picture.
-- `--software` draws on SwiftShader, as CI does: minutes, not seconds.
+- `--fast` waits for the near ring of chunks only. It saves about a second of a new seed's 3 to 4
+  seconds of chunks, and the far edge of the view may be missing, so two runs may differ there.
+- `--software` draws on SwiftShader in a browser of its own, as CI does: minutes, not seconds.
+  `--no-server` draws in a browser of its own on the graphics card. `--stop-server` stops the
+  server and draws nothing.
 
 It prints the lights and shadow cascades the frame cost beside the draw calls, and how many
 vehicles of the traffic, parked cars and pedestrians it drew.
+
+## The preview server
+
+`scripts/preview-server.ts` keeps Vite, the browser and the page open between runs of
+`render-preview.ts`. The first run starts it, and nobody needs to start it by hand. It stops after
+twenty idle minutes. Its output goes to `sunset-preview-<hash>.log` in the temporary directory.
+
+- The page keeps the renderer, and for the last seed and tier the world, the chunks, the traffic,
+  the crowd, the camera and the post chain (`src/render/preview-stage.ts`). A frame costs 20 ms once
+  its shaders are compiled. A view made again compiles them again, which cost 700 ms of every frame.
+- A kept scene takes the same picture a new one does, byte for byte. Anything a request changes
+  that the next one may not set again is reset in `clearStage` (`preview.ts`). A new kind of
+  request that leaves state behind breaks this. Check it: draw a frame, draw the new request, draw
+  the first frame again, and `cmp` the two copies with a frame drawn with `--no-server`.
+- Before each frame it compares the files the page loaded with the time the page loaded, and
+  reloads the page when one is newer. Vite's own watcher is not enough: on macOS its event can come
+  a second after the save, and the run started straight after an edit drew the old code.
+- One server runs for each checkout, found through a file in the temporary directory named for
+  the checkout's path, so two worktrees never draw each other's code. Runs at the same time are
+  drawn one after the other.
 
 ## `node scripts/render-sheet.ts <count> out.png [--cols=3] [--tile=480]`
 

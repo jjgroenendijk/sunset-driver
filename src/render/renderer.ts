@@ -164,6 +164,15 @@ export async function createOffscreenRenderer(width: number, height: number): Pr
   return renderer;
 }
 
+/**
+ * Size an offscreen renderer for a picture of another size, as
+ * {@link createOffscreenRenderer} sized it for the first.
+ */
+export function resizeOffscreenRenderer(renderer: WebGPURenderer, width: number, height: number): void {
+  renderer.setSize(width, height, false);
+  pinClusterGrid(renderer, width, height, 1);
+}
+
 /** Dispose a renderer, and make sure no batch built after it uploads into it. */
 export function disposeRenderer(renderer: WebGPURenderer): void {
   stopUploadingWith(renderer);

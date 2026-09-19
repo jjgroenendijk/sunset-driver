@@ -179,6 +179,15 @@ export class PostChain {
   }
 
   /**
+   * Forget the grade, so the next {@link PostChain.time} writes the table for
+   * its own tick. A chain grades a step by the first tick it is shown, so one
+   * kept across two pictures of the same step would grade the second as the first.
+   */
+  regrade(): void {
+    this.step = -1;
+  }
+
+  /**
    * What the frame is drawn at (spec section 9.2). Setting it hands the render
    * scale to the renderer, and draws through the graph the effects ask for,
    * which is built the first time a tier asks for it and reused after that.

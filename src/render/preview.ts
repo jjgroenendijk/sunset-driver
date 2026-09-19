@@ -15,7 +15,6 @@
  *   unpadded below; a picture read without that step comes back sheared, which
  *   looks exactly like a broken mesh.
  */
-import { RenderTarget, SRGBColorSpace, UnsignedByteType } from 'three';
 import { DEFAULT_APPEARANCE } from '../sim/character.ts';
 import {
   createDamageState,
@@ -32,11 +31,6 @@ import { createSimState, type SimState } from '../sim/simulation.ts';
 import type { EmergencyKind, EmergencyUnit } from '../sim/emergency.ts';
 import { light } from '../sim/fire.ts';
 import { EmergencyView } from './emergency.ts';
-import { ParkedCars } from '../sim/parked.ts';
-import { AmbientPedestrians, crowdDistrictsOf } from '../sim/pedestrians.ts';
-import { AmbientWildlife } from '../sim/wildlife.ts';
-import { AmbientTraffic, trafficRoadsOf } from '../sim/traffic.ts';
-import { TramLine } from '../sim/tram.ts';
 import {
   ATTACHMENTS,
   createLoadout,
@@ -60,19 +54,12 @@ import {
   type VehicleState,
 } from '../sim/vehicle.ts';
 import { SurfaceIndex, type Surface } from '../world/surface.ts';
-import { generateWorld } from '../world/world.ts';
-import { FollowCamera, PULL_MARGIN } from './camera.ts';
+import { PULL_MARGIN } from './camera.ts';
 import { poseFor } from './character-pose.ts';
 import { tickAtHour } from './daylight.ts';
-import { PostChain } from './post.ts';
 import { FULL_TIER, QUALITY_TIERS } from './quality.ts';
-import { createOffscreenRenderer, disposeRenderer } from './renderer.ts';
-import { ParkedView } from './parked.ts';
-import { PedestrianView } from './pedestrians.ts';
-import { TrafficView } from './traffic.ts';
-import { TramView } from './tram.ts';
-import { WildlifeView } from './wildlife.ts';
-import { WorldScene } from './world-scene.ts';
+import { forgetStage, peopleFor, stageFor, viewFor } from './preview-stage.ts';
+import type { WorldScene } from './world-scene.ts';
 import { roomOf, SHOP_KINDS, type Shop } from '../world/shops.ts';
 
 /** Where to stand, how far back to look from, and how big a picture to take. */
@@ -173,6 +160,13 @@ export interface PreviewRequest {
    * left at the kerb, and it overrides {@link PreviewRequest.onFoot}.
    */
   shop?: string;
+  /**
+   * Set to wait only for the chunks of the near ring before drawing, rather
+   * than for both rings. The frame is ready in about half the time, and a
+   * chunk of the far ring that has not landed yet is missing from it, so the
+   * same request twice may not take the same picture.
+   */
+  fast?: boolean;
 }
 
 /** A quarter through a cycle, where a leg is furthest forward and the other furthest back. */
@@ -253,8 +247,10 @@ export interface PreviewResult {
   y: number;
   /** The rows, top row first, three bytes a pixel, base64 encoded. */
   rgb: string;
-  /** Milliseconds spent generating the world. */
+  /** Milliseconds spent generating the world, 0 when the world was kept from the last request. */
   worldMs: number;
+  /** True when the scene and its chunks were kept from the last request, of the same seed and tier. */
+  kept: boolean;
   /** Milliseconds spent building the chunks around the player. */
   chunkMs: number;
   /** Milliseconds spent drawing and reading back the frame. */
@@ -282,6 +278,16 @@ const BYTES_PER_PIXEL = 4;
 const ROW_ALIGNMENT = 256;
 
 export async function renderPreview(request: PreviewRequest): Promise<PreviewResult> {
+  try {
+    return await draw(request);
+  } catch (error) {
+    // A request that failed half way may have left anything in the scene.
+    forgetStage();
+    throw error;
+  }
+}
+
+async function draw(request: PreviewRequest): Promise<PreviewResult> {
   const { seed, distance, heading, speed, width, height, hour } = request;
   // `--shop` moves the frame to the room of a shop, which is only known once a
   // worker has answered, so where the player stands is settled below.
@@ -289,21 +295,17 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   let y = request.y;
   const tier = QUALITY_TIERS.find((entry) => entry.name === request.quality) ?? FULL_TIER;
 
-  const t0 = performance.now();
-  const world = generateWorld(seed);
-  const worldMs = performance.now() - t0;
+  const { renderer, world, scene, worldMs, kept } = await stageFor(seed, tier, width, height);
+  if (kept) clearStage(scene);
 
   const t1 = performance.now();
   const tick = tickAtHour(hour);
-  const scene = new WorldScene(world, DEFAULT_APPEARANCE);
-  // The tier is set before anything is built, so the chunks the picture holds
-  // are the ones that tier asks for and are thinned as it asks.
-  scene.quality = tier;
   scene.time = tick;
   // The chunks are built in the workers the game uses, so the picture is the
   // frame the game draws. Every chunk of both rings is waited for, so the same
-  // request twice takes the same picture.
-  await scene.settle(x, y);
+  // request twice takes the same picture; `fast` waits for the near ring only.
+  const radius = request.fast === true ? tier.rings.near : tier.rings.far;
+  await scene.settle(x, y, radius);
   // The shops of spec section 16.1 come back with the first chunk, so the
   // nearest one of the trade asked for is picked here and the ground round it
   // built in turn. The room is then the frame's own middle.
@@ -312,7 +314,7 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
     const room = roomOf(shop);
     x = room.x;
     y = room.y;
-    await scene.settle(x, y);
+    await scene.settle(x, y, radius);
     scene.shopInside({ kind: shop.kind, room });
   }
   // Where the player stands decides which lamps burn and where the sky dome is.
@@ -354,41 +356,18 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   for (let t = tick - FX_WARMUP; t <= tick; t++) scene.damage(vehicle, record, t, surfaceAt);
   if (request.skid === true) drift(scene, vehicle, spec, heading, surfaceAt);
   arm(scene, request, stand, tick);
-  // The traffic of spec section 13.1, where its tours put it at the tick the
+  // What moves through the city, where its tours put it at the tick the
   // picture is taken, as the game draws it.
-  const roads = trafficRoadsOf(world);
-  const ambient = new AmbientTraffic(seed, roads);
-  const traffic = new TrafficView(ambient);
+  const { traffic, trams, crowd, wildlife, parked } = peopleFor();
   traffic.lamps = scene.lampsNow;
-  scene.scene.add(traffic.group);
   traffic.update(record, tick, x, y);
-  // The trams of spec section 13.2, on the traffic's own lights.
-  const line = new TramLine(seed, roads, world.tram, world.districts, ambient.signals);
-  const trams = new TramView(line);
-  scene.scene.add(trams.group);
   trams.update(tick, x, y);
-  // The crowd on the pavements, on the same roads, and the people at the tram stops.
-  const crowd = new PedestrianView(new AmbientPedestrians(seed, roads, crowdDistrictsOf(world)), line);
-  scene.scene.add(crowd.group);
   crowd.update(record, tick, x, y);
-  // The animals of spec section 20.4, which keep their own hours: a picture
-  // taken at night has the rats out and the gulls in.
-  const wildlife = new WildlifeView(
-    new AmbientWildlife(seed, {
-      roads,
-      beaches: world.beaches,
-      seaLevel: world.water.seaLevel,
-      districtAt: crowdDistrictsOf(world),
-    }),
-  );
-  scene.scene.add(wildlife.group);
   wildlife.update(tick, tick, x, y);
-  // The parked cars, from the bays the chunk workers laid out.
-  const parked = scene.bays === undefined ? undefined : new ParkedView(new ParkedCars(seed, scene.bays));
-  if (parked !== undefined) scene.scene.add(parked.group);
+  parked?.refresh();
   parked?.update(record, x, y);
 
-  const camera = new FollowCamera(width / height);
+  const { camera, post, target } = viewFor(width, height);
   camera.setBaseDistance(distance);
   // The first update snaps the camera onto its target rather than easing in,
   // so one call is a settled frame and no render time has to be simulated.
@@ -399,15 +378,7 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   scene.seeThrough(camera.camera.position, stand.x, scene.heightAt(stand.x, stand.y), stand.y, shop !== undefined);
 
   const t2 = performance.now();
-  const renderer = await createOffscreenRenderer(width, height);
-  const target = new RenderTarget(width, height, { type: UnsignedByteType, colorSpace: SRGBColorSpace });
-  // Not `setRenderTarget`: a target set as the output of the frame is what the
-  // tone mapping and the colour space conversion are written into.
-  renderer.setOutputRenderTarget(target);
-  // The effects of spec section 10.6 are part of what the game draws, so the
-  // picture is taken through them. The chain tone maps and encodes the frame
-  // itself, which is what the output target is written with.
-  const post = new PostChain(renderer, scene.scene, camera.camera, tier.post, scene.world.seed);
+  post.regrade();
   post.time = tick;
   // SMAA's tables are decoded from data URLs, so a frame drawn before they
   // land is a different picture. The same request twice takes the same one.
@@ -420,20 +391,26 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
   const lights = scene.lightCount;
   const shadows = scene.shadowCascades;
   const rgb = toRgb(padded as Uint8Array, width, height);
-  post.dispose();
-  target.dispose();
   const drawn = traffic.drawn;
   const standing = parked?.drawn ?? 0;
   const walking = crowd.drawn;
-  traffic.dispose();
-  trams.dispose();
-  crowd.dispose();
-  parked?.dispose();
+  // The scene is kept for the next request, so what this one put in it alone is taken out again.
+  if (services !== undefined) scene.scene.remove(services.group);
   services?.dispose();
-  scene.dispose();
-  disposeRenderer(renderer);
 
-  return { width, height, x, y, rgb, worldMs, chunkMs, frameMs, peakDrawCalls, lights, shadows, quality: tier.name, traffic: drawn, parked: standing, pedestrians: walking };
+  return { width, height, x, y, rgb, worldMs, kept, chunkMs, frameMs, peakDrawCalls, lights, shadows, quality: tier.name, traffic: drawn, parked: standing, pedestrians: walking };
+}
+
+/**
+ * Undo what an earlier request left in a kept scene and the next one might not
+ * set again: a pose, laid pickups, a shop's room. Everything else a request
+ * touches it sets every time.
+ */
+function clearStage(scene: WorldScene): void {
+  scene.dress(DEFAULT_APPEARANCE);
+  scene.pickups.hovered = undefined;
+  scene.pickups.update([], 0);
+  scene.shopInside(undefined);
 }
 
 /**
