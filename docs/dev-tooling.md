@@ -114,7 +114,7 @@ Under the picture it prints those shares as numbers, for every zone of the whole
 for the part it drew: the ground the roads claim, the ground the parcels claim, the ground the lots
 cover, the ground a junction apron or a corridor takes on top of the carriageways, the buildings per
 hectare and the middle parcel size. `test/layout-bands.ts` pins each of them to a band per zone and
-`test/seed-layout.ts` fails when a seed falls outside it, so a layout change is judged by the
+`test/seed-layout.test.ts` fails when a seed falls outside it, so a layout change is judged by the
 picture and the numbers together.
 
 The shares are sampled off a grid, one reading per cell, and never added up from polygon areas: the

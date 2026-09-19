@@ -137,9 +137,9 @@ Nothing else writes `SimState.missions`, and nothing else writes `SimState.objec
   stream's, where a job that cannot be built is simply not offered.
 - No chapter asks for a vehicle class the roster does not park in the street. `plates` asks for a
   van, which every city has.
-- `test/sim-chain.test.ts` walks both sides end to end on three worlds, and `seed-places.ts` builds
-  every chapter against real cities in the sweep. A chapter that cannot be built on a seed fails the
-  sweep rather than stranding a player.
+- `test/sim-chain.test.ts` walks both sides end to end on three worlds, and
+  `seed-places.test.ts` builds every chapter against real cities in the sweep. A chapter that
+  cannot be built on a seed fails the sweep rather than stranding a player.
 
 ## A territory job is permission to take the block
 

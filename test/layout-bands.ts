@@ -9,7 +9,7 @@ export interface LayoutBand {
   max: number;
 }
 
-/** What `test/seed-layout.ts` holds one zone of one seed to. */
+/** What `test/seed-layout.test.ts` holds one zone of one seed to. */
 export interface ZoneBands {
   /** Share of the zone's dry land the road footprint covers. */
   roadShare: LayoutBand;

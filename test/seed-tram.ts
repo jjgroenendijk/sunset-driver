@@ -13,7 +13,7 @@ const SAMPLE_TICKS = [0, 7919, 43_200, 86_399];
 /**
  * The seed sweep of spec section 3, on the tram of spec section 13.2: the loop
  * of a real city keeps to its lights, calls at every stop and stands on its
- * arterials. `seed-traffic.ts` calls it with the traffic it has already placed.
+ * arterials. `seed-traffic.test.ts` calls it with the traffic it has already placed.
  */
 export function checkTram(seed: number, world: WorldDescription, roads: TrafficRoads, traffic: AmbientTraffic): void {
   const line = new TramLine(seed, roads, world.tram, world.districts, traffic.signals);

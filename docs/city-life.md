@@ -54,7 +54,7 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   stands, capped at the room the approach has. Counting it at the driver's own gap instead makes
   every place land at about the same metre and the personality stops showing.
 - The spread of `cruise` is narrow on purpose. Two vehicles on one stretch pass through each other
-  rather than queue, and `test/seed-traffic.ts` caps the pairs that stand on the same ground at
+  rather than queue, and `test/seed-traffic.test.ts` caps the pairs that stand on the same ground at
   `TRAFFIC_OVERLAP`. The roster as it stands reads about 0.21 pairs a vehicle on the worst of the
   first 24 sweep seeds, against 0.24 before there were drivers and a cap of 0.3: the varied speeds
   and gaps spread the city out rather than pile it up.

@@ -28,7 +28,7 @@ import { drive, hills, start, type Session } from './sim-harness.ts';
  *
  * The ground is the hillside of `sim-harness.ts` and the world is written here,
  * as `sim-missions.test.ts` writes one: a sweep of generated cities would
- * measure the cities. `seed-places.ts` is where the chain meets real ones.
+ * measure the cities. `seed-places.test.ts` is where the chain meets real ones.
  */
 
 /** The seeds the chain is walked on. Each lays its contacts and corners out differently. */
