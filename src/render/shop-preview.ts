@@ -11,7 +11,9 @@
  * What it draws comes from `ShopLook` (`src/sim/shop-goods.ts`), which names a
  * weapon, a vehicle and its paint, an outfit or a prop. The models are the
  * ones the city draws — `weapon.ts`, `vehicle.ts`, `character.ts` — and the
- * props of `shop-props.ts`. Whatever it is, it is framed to fill the window.
+ * props of `shop-props.ts`. Whatever it is, it is framed to fill the window:
+ * `shop-frame.ts` finds where the camera stands, and why a weapon sways rather
+ * than spins.
  */
 import {
   Box3,
@@ -24,11 +26,11 @@ import {
   MeshStandardMaterial,
   PerspectiveCamera,
   Scene,
-  Sphere,
   Vector3,
   type Object3D,
 } from 'three';
 import { CanvasTarget, type WebGPURenderer } from 'three/webgpu';
+import { aimAt, SPIN, SWAY, type Bounds, type Motion } from './shop-frame.ts';
 import { DEFAULT_APPEARANCE, type CharacterAppearance } from '../sim/character.ts';
 import { specOf } from '../sim/roster.ts';
 import type { ShopLook } from '../sim/shop-goods.ts';
@@ -39,14 +41,24 @@ import { VehicleModel } from './vehicle.ts';
 import { WeaponArt } from './weapon.ts';
 
 /** Radians a second the plinth turns: one turn in about twelve seconds. */
-const SPIN = 0.52;
+const TURN = 0.52;
 
-/** The camera's field of view, and how far above the plinth it looks down from. */
-const FOV = 28;
-const TILT = 0.3;
+/** Radians a second through the sway of a weapon: there and back in about ten seconds. */
+const SWAY_RATE = 0.6;
+
+/** The camera's field of view, and how far it looks down on the plinth. */
+const FOV = 26;
+const TILT = 0.32;
 
 /** How much room the model leaves round itself in the window. */
-const MARGIN = 1.04;
+const MARGIN = 1.06;
+
+/** The plinth: its height, and the least radius it keeps under a narrow model. */
+const PLINTH_HEIGHT = 0.06;
+const PLINTH_LEAST = 0.3;
+
+/** How far a weapon's muzzle is tipped up, as one on a shop's wall is: laid flat it shows only its top. */
+const WEAPON_TIP = 0.2;
 
 /** The colour behind the thing on show: a warm grey a black gun still stands out on. */
 const BACKDROP = 0x4a3c33;
@@ -55,6 +67,8 @@ const BACKDROP = 0x4a3c33;
 interface Shown {
   object: Object3D;
   dispose: () => void;
+  /** Whether it spins or sways (`shop-frame.ts`). */
+  motion: Motion;
 }
 
 export class ShopPreview {
@@ -70,10 +84,13 @@ export class ShopPreview {
   private readonly weapons = new WeaponArt();
   private shown: Shown | undefined;
   private key = '';
-  /** The size of what is on show, which {@link ShopPreview.aim} keeps in sight. */
-  private fit = { radius: 1, half: 0.5 };
+  /** The box of what is on show, in the plinth's frame, which {@link ShopPreview.aim} keeps in sight. */
+  private bounds: Bounds = { min: [-0.5, 0, -0.5], max: [0.5, 1, 0.5] };
   private width = 0;
   private height = 0;
+  private ratio = 0;
+  /** Set once a draw has thrown, so a broken preview says so once rather than every frame. */
+  private failed = false;
 
   constructor(renderer: WebGPURenderer) {
     this.renderer = renderer;
@@ -87,8 +104,11 @@ export class ShopPreview {
     const rim = new DirectionalLight(0xffb070, 3.2);
     rim.position.set(-3, 2, -3);
     this.scene.add(key, rim);
+    // A unit disc, scaled to each model's footprint, its top at the origin.
+    const disc = new CylinderGeometry(0.96, 1, PLINTH_HEIGHT, 48);
+    disc.translate(0, -PLINTH_HEIGHT / 2, 0);
     this.plinth = new Mesh(
-      new CylinderGeometry(0.92, 0.98, 0.1, 48),
+      disc,
       new MeshStandardMaterial({ color: 0xc19a53, roughness: 0.35, metalness: 0.6 }),
     );
     this.turntable.add(this.plinth);
@@ -117,24 +137,34 @@ export class ShopPreview {
    * The preview is render state, so the clock it turns by is the page's.
    */
   draw(seconds: number): void {
-    if (this.shown === undefined) return;
+    if (this.shown === undefined || this.failed) return;
     const width = this.canvas.clientWidth;
     const height = this.canvas.clientHeight;
     if (width === 0 || height === 0) return;
-    if (width !== this.width || height !== this.height) {
+    // The ratio is read every frame: a window dragged to another screen changes it.
+    const ratio = Math.min(window.devicePixelRatio, 2);
+    if (width !== this.width || height !== this.height || ratio !== this.ratio) {
       this.width = width;
       this.height = height;
-      this.target.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      this.ratio = ratio;
+      this.target.setPixelRatio(ratio);
       this.target.setSize(width, height, false);
       this.camera.aspect = width / height;
       this.camera.updateProjectionMatrix();
       this.aim();
     }
-    this.turntable.rotation.y = seconds * SPIN;
+    const { rest, swing } = this.shown.motion;
+    this.turntable.rotation.y =
+      swing >= Math.PI ? rest + seconds * TURN : rest + swing * Math.sin(seconds * SWAY_RATE);
     const before = this.renderer.getCanvasTarget();
     this.renderer.setCanvasTarget(this.target);
     try {
       void this.renderer.render(this.scene, this.camera);
+    } catch (error) {
+      // The preview is a picture of the row, not the row: the counter still
+      // works without it, so it is let go rather than thrown every frame.
+      this.failed = true;
+      console.error('shop preview: the draw failed, and the window stays empty', error);
     } finally {
       this.renderer.setCanvasTarget(before);
     }
@@ -162,13 +192,11 @@ export class ShopPreview {
         const geometry = this.weapons.geometry(look.id, look.attachments);
         if (geometry === undefined) return undefined;
         // The geometry belongs to the art, which keeps it for the next time.
-        // A weapon stands on the plinth with its muzzle tipped up, as one on a
-        // shop's wall does: laid flat it would show only its top.
         const mesh = new Mesh(geometry, this.weapons.material);
-        mesh.rotation.set(0, 0, 0.3);
+        mesh.rotation.set(0, 0, WEAPON_TIP);
         const held = new Group();
         held.add(mesh);
-        return { object: held, dispose: () => {} };
+        return { object: held, dispose: () => {}, motion: SWAY };
       }
       case 'vehicle': {
         const model = new VehicleModel(look.cls);
@@ -176,56 +204,55 @@ export class ShopPreview {
         state.paint = look.paint;
         model.set(state);
         model.group.position.set(0, 0, 0);
-        return { object: model.group, dispose: () => model.dispose() };
+        return { object: model.group, dispose: () => model.dispose(), motion: SPIN };
       }
       case 'outfit': {
         const model = new CharacterModel({ ...appearance, outfit: look.outfit });
-        return { object: model.group, dispose: () => model.dispose() };
+        return { object: model.group, dispose: () => model.dispose(), motion: SPIN };
       }
       case 'prop': {
         const prop = buildProp(look.prop, look.colour);
-        return { object: prop.group, dispose: () => prop.dispose() };
+        return { object: prop.group, dispose: () => prop.dispose(), motion: SPIN };
       }
     }
   }
 
   /**
-   * Scale and centre a model to stand on the plinth and fill the window, and
-   * put the camera where it sees all of it whichever way it has turned.
+   * Scale a model so its longest side is one unit, stand it on the plinth
+   * over the axis it turns about, and size the plinth to its footprint.
    */
   private frame(object: Object3D): void {
     object.position.set(0, 0, 0);
     object.scale.setScalar(1);
     object.updateMatrixWorld(true);
     const box = new Box3().setFromObject(object);
-    const sphere = box.getBoundingSphere(new Sphere());
-    const scale = sphere.radius > 0 ? 1 / sphere.radius : 1;
+    const size = box.getSize(new Vector3());
+    const longest = Math.max(size.x, size.y, size.z);
+    const scale = longest > 0 ? 1 / longest : 1;
     object.scale.setScalar(scale);
-    // Centred over the axis the plinth turns about, feet on its top.
-    const top = 0.06;
     const centre = box.getCenter(new Vector3());
-    object.position.set(-centre.x * scale, top - box.min.y * scale, -centre.z * scale);
-    // What the camera has to keep in sight whichever way the model turns: the
-    // circle its corners sweep, and its height.
-    const across = Math.hypot(box.max.x - box.min.x, box.max.z - box.min.z) / 2;
-    const tall = box.max.y - box.min.y;
-    this.fit = { radius: Math.max(across * scale, 0.95), half: (tall * scale + top) / 2 };
+    object.position.set(-centre.x * scale, -box.min.y * scale, -centre.z * scale);
+    const half = [(size.x * scale) / 2, (size.z * scale) / 2] as const;
+    this.bounds = { min: [-half[0], 0, -half[1]], max: [half[0], size.y * scale, half[1]] };
+    // A long gun rests on a small stand under its middle; anything else
+    // stands on a disc a little wider than itself.
+    const footprint = Math.hypot(half[0], half[1]);
+    const radius = this.shown?.motion === SWAY ? PLINTH_LEAST : Math.max(footprint * 1.05, PLINTH_LEAST);
+    this.plinth.scale.set(radius, 1, radius);
     this.aim();
   }
 
-  /**
-   * Put the camera back from the plinth far enough to see the whole of the
-   * model at the window's shape: a wide window is filled by a long weapon, a
-   * tall one by a figure standing.
-   */
+  /** Stand the camera where it holds the model and its plinth at every angle they turn through. */
   private aim(): void {
-    const { radius, half } = this.fit;
-    const vertical = Math.tan(((FOV / 2) * Math.PI) / 180);
-    const horizontal = vertical * this.camera.aspect;
-    // The height seen from above is its own plus the depth of the circle behind it.
-    const seen = half * Math.cos(TILT) + radius * Math.sin(TILT);
-    const distance = MARGIN * Math.max(seen / vertical, radius / horizontal) + radius * 0.3;
-    this.camera.position.set(0, half + distance * Math.sin(TILT), distance * Math.cos(TILT));
-    this.camera.lookAt(0, half, 0);
+    if (this.shown === undefined) return;
+    const radius = this.plinth.scale.x;
+    const { target, distance } = aimAt(
+      this.bounds,
+      { radius, top: 0, bottom: -PLINTH_HEIGHT },
+      this.shown.motion,
+      { fov: FOV, aspect: this.camera.aspect, tilt: TILT, margin: MARGIN },
+    );
+    this.camera.position.set(0, target + distance * Math.sin(TILT), distance * Math.cos(TILT));
+    this.camera.lookAt(0, target, 0);
   }
 }
