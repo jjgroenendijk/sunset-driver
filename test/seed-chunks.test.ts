@@ -323,14 +323,18 @@ sweepSuite('chunks', () => {
         for (const one of placements) {
           if (detail === 'near') built++;
           const where = `${one.building.kind} ${one.building.id} at ${detail} detail`;
-          const position = one.shell.getAttribute('position');
+          // The shell and whatever is dressed onto its roof both stand on the lot.
           const at = new Vector3();
-          for (let v = 0; v < position.count; v++) {
-            at.fromBufferAttribute(position as BufferAttribute, v).applyMatrix4(one.matrix);
-            if (!Number.isFinite(at.x + at.y + at.z)) fault(`${where} places a vertex nowhere`);
-            else if (!pointInRing({ x: at.x, y: at.z }, standingGround(one.building)))
-              fault(`${where} stands off its lot`);
-            if (complaint !== undefined) break;
+          const position = one.shell.getAttribute('position');
+          for (const geometry of one.dress === undefined ? [one.shell] : [one.shell, one.dress]) {
+            const position = geometry.getAttribute('position');
+            for (let v = 0; v < position.count; v++) {
+              at.fromBufferAttribute(position as BufferAttribute, v).applyMatrix4(one.matrix);
+              if (!Number.isFinite(at.x + at.y + at.z)) fault(`${where} places a vertex nowhere`);
+              else if (!pointInRing({ x: at.x, y: at.z }, standingGround(one.building)))
+                fault(`${where} stands off its lot`);
+              if (complaint !== undefined) break;
+            }
           }
           // A block fills its massing, so at mid detail every wall a lot shares
           // stands on that edge from its front to its back, however the edge

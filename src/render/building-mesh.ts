@@ -34,7 +34,7 @@ import { hashInts } from '../core/hash.ts';
 import { lotMiddle, type Building, type BuildingKind } from '../world/buildings.ts';
 import type { WorldChunk, WorldLayers } from '../world/chunks.ts';
 import type { District, WorldDescription } from '../world/types.ts';
-import { buildBlockGeometry, buildMassingGeometry } from './block-mesh.ts';
+import { buildBlockGeometry, buildDressGeometry, buildMassingGeometry, roofDeckOf, type BlockStyle } from './block-mesh.ts';
 import { hullOf } from './building-hull.ts';
 import {
   batchOf,
@@ -68,6 +68,13 @@ export interface BuildingPlacement {
   batch: BuildingBatch;
   /** The shell, in the building's own frame. */
   shell: BufferGeometry;
+  /**
+   * What stands on the roof, in the same frame, or undefined where the roof
+   * carries nothing. It joins the block batch and is deliberately not part of
+   * the shell: the outline hull is drawn around the shell, and the camera reads
+   * the hull, so a mast here is never something the camera climbs.
+   */
+  dress: BufferGeometry | undefined;
   /** The inverted hull that outlines it, in the same frame. */
   hull: BufferGeometry;
   /** The building's frame in the world. */
@@ -132,19 +139,32 @@ export function buildChunkBuildings(
 ): BuildingPlacement[] {
   const out: BuildingPlacement[] = [];
   for (const building of chunk.buildings) {
-    const massing = massingOf(building, lookup.districtOf(building), lookup.chamferOf(building));
+    const district = lookup.districtOf(building);
+    const massing = massingOf(building, district, lookup.chamferOf(building));
     const generated = batchOf(building.kind, massing);
     const batch = detail === 'near' ? generated : 'block';
     // A tower keeps the colour of its facade at every detail, so the skyline
     // does not change colour where the detail steps down.
     const tint = tintOf(building, generated);
-    const shell =
-      batch === 'facade'
-        ? facadeGeometry(building, massing, tint)
-        : detail === 'far'
-          ? buildMassingGeometry(massing, tint)
-          : buildBlockGeometry(building.kind, massing, tint);
-    const box = centreOnLot(shell);
+    // Every variant and every piece of rooftop plant is drawn from the
+    // building's own seed and the wealth of the district it stands in, so the
+    // same building is dressed the same way in every session.
+    const style: BlockStyle = { seed: building.seed, wealth: district.wealth, detail: detail === 'near' ? 'near' : 'mid' };
+    let shell: BufferGeometry;
+    let dress: BufferGeometry | undefined;
+    if (batch === 'facade') {
+      shell = facadeGeometry(building, massing, tint);
+      // A generated tower's roof is the top of its shell, so the deck it is
+      // dressed on is measured off the geometry the generator built.
+      dress = buildDressGeometry(roofDeckOf(shell), style, tint);
+    } else if (detail === 'far') {
+      shell = buildMassingGeometry(massing, tint);
+    } else {
+      const built = buildBlockGeometry(building.kind, massing, tint, style);
+      shell = built.shell;
+      dress = built.dress;
+    }
+    const box = centreOnLot(shell, dress);
     // A block fills its massing; a generated facade comes back narrower than
     // one, so where the lot has a wall against it the shell is stretched to
     // reach it.
@@ -156,17 +176,19 @@ export function buildChunkBuildings(
     if (lean !== undefined) {
       leanGeometry(shell, lean, fit);
       leanGeometry(hull, lean, fit);
+      if (dress !== undefined) leanGeometry(dress, lean, fit);
     }
-    out.push({ building, massing, batch, shell, hull, matrix: matrixOf(building, lookup, massing, fit) });
+    out.push({ building, massing, batch, shell, dress, hull, matrix: matrixOf(building, lookup, massing, fit) });
   }
   return out;
 }
 
-/** Vertices a chunk's buildings cost: every shell and every hull. */
+/** Vertices a chunk's buildings cost: every shell, every roof and every hull. */
 export function buildingVertices(placements: readonly BuildingPlacement[]): number {
   let count = 0;
   for (const placed of placements) {
     count += placed.shell.getAttribute('position').count + placed.hull.getAttribute('position').count;
+    count += placed.dress?.getAttribute('position').count ?? 0;
   }
   return count;
 }
@@ -184,7 +206,9 @@ export function buildingDrawCalls(chunk: WorldChunk): number {
     else blocks++;
   }
   if (facades + blocks === 0) return 0;
-  return (facades > 0 ? 1 : 0) + (blocks > 0 ? 1 : 0) + 1;
+  // A generated tower's roof dressing joins the block batch, so a chunk of
+  // towers alone still draws one.
+  return (facades > 0 ? 1 : 0) + 1 + 1;
 }
 
 /** The colour a building is dressed in, from its own seed. */
@@ -227,26 +251,29 @@ function facadeGeometry(building: Building, massing: BuildingMassing, tint: Rgb)
 }
 
 /**
- * Stand a shell in the middle of its lot. A generated facade is not centred on
+ * Stand a shell, and whatever is dressed onto it, in the middle of its lot. A generated facade is not centred on
  * the footprint it was given — a chamfer takes one corner off and a cornice
  * overhangs the rest — so the box it really fills is what is centred, and the
  * whole of it then has the same room around it.
  */
-function centreOnLot(shell: BufferGeometry): Box3 {
+function centreOnLot(shell: BufferGeometry, dress: BufferGeometry | undefined): Box3 {
   shell.computeBoundingBox();
   const box = shell.boundingBox ?? new Box3();
   const dx = -(box.max.x + box.min.x) / 2;
   const dz = -(box.max.z + box.min.z) / 2;
   // The move is written straight into the positions, and the box is moved with
   // them: a shell of a hundred thousand vertices is not walked three times to
-  // save a dozen lines.
-  const position = shell.getAttribute('position') as BufferAttribute;
-  const array = position.array as Float32Array;
-  for (let i = 0; i < array.length; i += 3) {
-    array[i] = (array[i] as number) + dx;
-    array[i + 2] = (array[i + 2] as number) + dz;
+  // save a dozen lines. The dressing stands on the shell, so it moves with it
+  // and is not measured itself.
+  for (const geometry of dress === undefined ? [shell] : [shell, dress]) {
+    const position = geometry.getAttribute('position') as BufferAttribute;
+    const array = position.array as Float32Array;
+    for (let i = 0; i < array.length; i += 3) {
+      array[i] = (array[i] as number) + dx;
+      array[i + 2] = (array[i + 2] as number) + dz;
+    }
+    position.needsUpdate = true;
   }
-  position.needsUpdate = true;
   box.min.x += dx;
   box.max.x += dx;
   box.min.z += dz;
