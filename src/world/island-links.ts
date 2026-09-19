@@ -17,6 +17,13 @@ import type { Island, Point } from './types.ts';
 const HEAD_TRIES = 12;
 /** Heads on open ground an island link looks for a way on to the network from, on one shore. */
 const LINK_TRIES = 4;
+/**
+ * Metres from the shore a near head on the network may stand as a last resort,
+ * where no head closer in reaches a road (issue #276). A highway along the
+ * shore can wall in the ground a head stands on, with its interchange just out
+ * of {@link ANCHOR_REACH} and higher than an arterial may climb to.
+ */
+const LAST_REACH = ANCHOR_REACH * 1.5;
 
 export abstract class IslandLinkTrace extends HighwayTrace {
 
@@ -135,15 +142,16 @@ export abstract class IslandLinkTrace extends HighwayTrace {
     if (crossing === undefined) return false;
     const nearShore = flip ? crossing.to : crossing.from;
     const farShore = flip ? crossing.from : crossing.to;
-    const { open, joined } = this.bridgeHeads(nearShore, farShore);
+    const { open, joined, further } = this.bridgeHeads(nearShore, farShore);
     // The best pair on open ground first. Where its approach turns back under
     // the deck, the heads on the network come next, since they need no
-    // approach at all, and then the rest of the open ground.
-    const pairs = [...open.slice(0, 1), ...joined, ...open.slice(1)];
+    // approach at all, then the rest of the open ground, and last the heads on
+    // the network further from the shore.
+    const pairs = [...open.slice(0, 1), ...joined, ...open.slice(1), ...further];
     const tries = patient ? HEAD_TRIES : LINK_TRIES;
     let routed = 0;
     for (const [near, far] of pairs) {
-      const onNetwork = joined.some((pair) => pair[0] === near);
+      const onNetwork = joined.some((pair) => pair[0] === near) || further.some((pair) => pair[0] === near);
       let approach: Point[] | undefined = [near];
       if (!onNetwork) {
         if (routed++ >= tries) break;
@@ -223,9 +231,10 @@ export abstract class IslandLinkTrace extends HighwayTrace {
    * `open` stands on open ground. In `joined` the near head stands on a point
    * of the network an arterial may join, nearest first. That is the highway
    * that runs along the shore and took the ground a head would stand on: the
-   * bridge joins it at its interchange instead of crossing it.
+   * bridge joins it at its interchange instead of crossing it. `further` is
+   * the same out to {@link LAST_REACH}, past the points `joined` holds.
    */
-  private bridgeHeads(nearShore: Point, farShore: Point): { open: [Point, Point][]; joined: [Point, Point][] } {
+  private bridgeHeads(nearShore: Point, farShore: Point): { open: [Point, Point][]; joined: [Point, Point][]; further: [Point, Point][] } {
     const fars = this.dryAnchors(farShore, nearShore);
     const open: [Point, Point][] = [];
     for (const near of this.dryAnchors(nearShore, farShore).slice(0, HEAD_TRIES)) {
@@ -233,13 +242,16 @@ export abstract class IslandLinkTrace extends HighwayTrace {
       if (far !== undefined) open.push([near, far]);
     }
     const joined: [Point, Point][] = [];
-    for (const hit of this.network.within(nearShore.x, nearShore.y, ANCHOR_REACH, -1, 'arterial')) {
+    const further: [Point, Point][] = [];
+    for (const hit of this.network.within(nearShore.x, nearShore.y, LAST_REACH, -1, 'arterial')) {
       const near = { x: hit.x, y: hit.y };
       if (this.network.refuses(near.x, near.y, 'arterial')) continue;
       const far = fars.find((p) => this.network.meets(near, p, 'arterial') && this.network.deckApart(near, p, 'arterial'));
-      if (far !== undefined) joined.push([near, far]);
+      if (far === undefined) continue;
+      if (dist(near.x, near.y, nearShore.x, nearShore.y) <= ANCHOR_REACH) joined.push([near, far]);
+      else further.push([near, far]);
     }
-    return { open, joined };
+    return { open, joined, further };
   }
 
   /** The far side of a bridge, carried on to the nearest district of the island it reached. */
