@@ -4,6 +4,7 @@ import { drawDriver, driverNamed, PERSONALITIES, STEADY, type Personality } from
 import { SIGNAL_CYCLE, type SignalApproach, type TrafficSignals } from '../src/sim/signals.ts';
 import { timeTour, type Tour } from '../src/sim/traffic-timing.ts';
 import { walkTour } from '../src/sim/traffic-tour.ts';
+import type { RoadEdge, RoadGraph } from '../src/world/graph.ts';
 import { AmbientTraffic } from '../src/sim/traffic.ts';
 import { sweepSeeds } from './helpers.ts';
 import { signalLap } from './signal-lap.ts';
@@ -101,8 +102,8 @@ describe('the driver behind the wheel (spec section 20.2)', () => {
     // and the same place, so the gap is the only thing that moved.
     const walk = rngFor(5, 0, Subsystem.Traffic, 23);
     const route = walkTour(roads.graph, signals.approaches[0]?.edge ?? 0, walk, () => true);
-    const near = queuedBack(timeTour(roads.graph, route, signals, { place: 1, driver: driverNamed('tailgater') }), signals);
-    const far = queuedBack(timeTour(roads.graph, route, signals, { place: 1, driver: driverNamed('careful') }), signals);
+    const near = queuedBack(timeTour(roads.graph, route, signals, { place: 1, driver: driverNamed('tailgater') }), signals, roads.graph);
+    const far = queuedBack(timeTour(roads.graph, route, signals, { place: 1, driver: driverNamed('careful') }), signals, roads.graph);
     expect(near).toBeGreaterThan(0);
     expect(near).toBeLessThan(far);
   });
@@ -132,11 +133,15 @@ describe('the driver behind the wheel (spec section 20.2)', () => {
 /**
  * Metres back from the stop line a tour's vehicle waits at the anchor it is
  * timed from. The anchor is the leg the tour closes on, and that closing wait
- * is its last step, so where it stands is where that step sits on the leg.
+ * is its last step, so where it stands is where that step sits: on the leg,
+ * or on the leg before it where the queue has run back that far.
  */
-function queuedBack(tour: Tour, signals: TrafficSignals): number {
+function queuedBack(tour: Tour, signals: TrafficSignals, graph: RoadGraph): number {
   const last = tour.stepTicks.length - 1;
+  const at = tour.stepFrom[last] as number;
   const edge = tour.edges[tour.stepLeg[last] as number] as number;
-  const approach = signals.approachOf(edge) as SignalApproach;
-  return approach.stop - (tour.stepFrom[last] as number);
+  const approach = signals.approachOf(edge);
+  if (approach !== undefined) return approach.stop - at;
+  const anchor = signals.approachOf(tour.edges[tour.edges.length - 1] as number) as SignalApproach;
+  return anchor.stop + (graph.edges[edge] as RoadEdge).length - at;
 }
