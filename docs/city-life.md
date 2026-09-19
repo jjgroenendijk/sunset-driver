@@ -16,6 +16,7 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 - Parked cars
 - The tram
 - Pedestrians
+- Casualties
 - The metro
 - Wildlife
 - What the city puts on
@@ -215,6 +216,29 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 - A reaction moves a person off the place, except `gather`, whose `toward` walks them to it and
   stands them facing it. Add one to `REACTIONS` rather than to the callers, so what it costs a
   reader is one row of a table.
+
+## Casualties
+
+- `src/sim/casualty.ts` holds the rules for hurting a person, and `casualty-motion.ts` holds the
+  record and where it puts them. A person has no health until the first hit writes them into
+  `SimState.pedestrians.casualties`. A hit takes them out of `startled`, so nobody is in both
+  lists. `startle` skips a casualty, and `crowdPoseOf` answers undefined for one: every caller
+  that walks the crowd has to pose a casualty through `casualtyPose` instead.
+- The motion is a closed form of the record and the tick, like a fright's. A new hit replaces the
+  record and starts a new motion from wherever the old one had got to. The record's `reach` is how
+  far the physics said the push could go before a wall. The motion never passes it, and a
+  wounded person with less than `WALL_ROOM` to go moves off along the wall instead.
+- Nobody on foot stands in the physics world, so `crowd-contact.ts` finds them by geometry: an
+  upright cylinder for someone standing, three balls for a body. `gunfire.ts` measures a round
+  against the crowd only up to what the Rapier cast met, so a person behind a wall is safe.
+- `car-strike.ts` runs after the step. What it answers is put into the chassis by `physics.ts`,
+  and the velocity is read back into the record at once. Without that, the next tick reads the
+  speed a person took off the car as a crash.
+- A body taken away is marked `gone` and not removed. Removing it would put the person back on
+  their loop at once, where the player could see them walk off. The record is dropped only past
+  `RELEASE_FAR`, as a fright is.
+- `hurtPerson` is the one place a hit on a person costs the player: the crime, the fright, the
+  ambulance and the cash. Every cause — a round, a blow, a blast, a car — goes through it.
 
 ## The metro
 
