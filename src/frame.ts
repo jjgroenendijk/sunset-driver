@@ -309,7 +309,8 @@ export class SessionFrame {
     let newest = this.kicked;
     for (let i = 0; i < tracers.length; i++) {
       const t = tracers[i] as Tracer;
-      if (t.pellet !== 0 || t.tick <= this.kicked) continue;
+      // Only the player's own rounds kick the camera: an officer's shot is not in their hands.
+      if (t.by !== 'player' || t.pellet !== 0 || t.tick <= this.kicked) continue;
       this.parts.camera.kick(t.ex - t.x, t.ey - t.y, Math.min(MAX_KICK, BASE_KICK + spec.recoil * KICK_PER_RECOIL));
       newest = Math.max(newest, t.tick);
     }

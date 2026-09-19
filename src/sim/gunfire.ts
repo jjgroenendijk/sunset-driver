@@ -21,8 +21,9 @@ import { hurt, SKIN, vehicleGap } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
 import type { PromotedVehicle } from './traffic.ts';
 import { specOf, type VehicleSpec, type VehicleState } from './vehicle.ts';
-import { ENFORCER_CAPSULE } from './enforcer-bodies.ts';
 import { blastEnforcers, hurtEnforcer } from './enforcer.ts';
+import { blastOfficers, hurtOfficer } from './officer.ts';
+import { PERSON_CAPSULE } from './person-bodies.ts';
 import { blastUnits, report, shootUnit } from './police.ts';
 import { blowStrength, forgetHits, markHit, SWING_HEIGHT, type CrowdSource, type HitSurface } from './melee.ts';
 import type { PedestrianPose } from './pedestrians.ts';
@@ -69,6 +70,11 @@ export interface ShotTarget {
    * factions leaves it out.
    */
   enforcers?: { unitAt(handle: number): number | undefined };
+  /**
+   * The police officers on foot standing in the world (spec section 14), for
+   * the same reason. A ground with no police leaves it out.
+   */
+  officers?: { unitAt(handle: number): number | undefined };
   /**
    * The crowd of spec section 13.1, so a swing can reach the people on the
    * pavement. They walk loops rather than stand in the physics world, so they
@@ -229,6 +235,13 @@ export class Gunfire {
       hurtEnforcer(state, enforcer, spec.damage);
       return 'person';
     }
+    // A round that went into an officer on foot is taken off them the same way,
+    // and they fall the way it was flying.
+    const officer = target.officers?.unitAt(hit.collider.handle);
+    if (officer !== undefined) {
+      hurtOfficer(state, officer, spec.damage, atan2(ray.dy, ray.dx), target.ground);
+      return 'person';
+    }
     // The round pushes the vehicle the way it was flying, which is the direction
     // the panel rule reads, exactly as a crash pushes it away from the wall.
     if (target.body !== undefined && hit.collider.handle === target.body.handle) {
@@ -288,10 +301,21 @@ export class Gunfire {
       const dy = unit.y - p.y;
       // The reach is measured to their body rather than to the line down their
       // middle, exactly as the vehicle's is measured to its panels.
-      const gap = Math.max(0, hypot(dx, dy) - ENFORCER_CAPSULE.radius);
+      const gap = Math.max(0, hypot(dx, dy) - PERSON_CAPSULE.radius);
       if (!swingReaches(spec, p.heading, gap, atan2(dy, dx))) continue;
       hurtEnforcer(state, unit.id, spec.damage);
       this.land(state, spec, 'person', unit.x, unit.y, unit.height + SWING_HEIGHT);
+      met = true;
+    }
+    // The officers on foot are swept the same way, and fall away from the blow.
+    for (const officer of [...state.police.officers]) {
+      const dx = officer.x - p.x;
+      const dy = officer.y - p.y;
+      const gap = Math.max(0, hypot(dx, dy) - PERSON_CAPSULE.radius);
+      const bearing = atan2(dy, dx);
+      if (!swingReaches(spec, p.heading, gap, bearing)) continue;
+      hurtOfficer(state, officer.id, spec.damage, bearing, target.ground);
+      this.land(state, spec, 'person', officer.x, officer.y, officer.height + SWING_HEIGHT);
       met = true;
     }
     if (this.strike(state, spec, target)) met = true;
@@ -369,9 +393,10 @@ export class Gunfire {
     }
     if (nearest === null) return;
     const handle = nearest.collider.handle;
-    // An enforcer has already been swept off the record, and so has the
-    // player's own vehicle: neither is hit twice for one swing.
+    // An enforcer and an officer have already been swept off the record, and
+    // so has the player's own vehicle: none is hit twice for one swing.
     if (target.enforcers?.unitAt(handle) !== undefined) return;
+    if (target.officers?.unitAt(handle) !== undefined) return;
     if (target.body !== undefined && handle === target.body.handle) return;
     const at = nearest.timeOfImpact;
     const x = p.x + cos(angle) * at;
@@ -524,6 +549,7 @@ export class Gunfire {
     // And by every enforcer inside it, who feel it as people rather than as
     // panels (spec section 17.2).
     blastEnforcers(state, p.x, p.y, spec.damage, (gap) => blastFalloff(gap, flight.blastRadius));
+    blastOfficers(state, p.x, p.y, spec.damage, (gap) => blastFalloff(gap, flight.blastRadius));
     this.blast(state, spec, v, specOf(v.cls), dx, dh, dy, distance, flight.blastRadius);
     // Every car of the city inside it is taken off its tour, and then feels it
     // as the player's own car does.

@@ -1,6 +1,7 @@
 /**
  * The human cries of spec section 15: the scream of somebody hit, the short
- * cry of the dying, the moan of the wounded and the panic of a crowd.
+ * cry of the dying, the moan of the wounded, the panic of a crowd, and the
+ * shouts and radio calls of the police (spec section 14).
  *
  * Spec section 1.2 forbids audio files, so a cry is a voice built from parts,
  * the way speech synthesis builds one. A buzzing source at the pitch of the
@@ -18,7 +19,7 @@ import { rngFor, Subsystem } from '../core/rng.ts';
 import { FAR } from './space.ts';
 
 /** The cries a person makes. Nothing else should name them. */
-export type CryKind = 'scream' | 'pain' | 'death' | 'moan' | 'panic';
+export type CryKind = 'scream' | 'pain' | 'death' | 'moan' | 'panic' | 'shout' | 'radio';
 
 /** The vowels a cry is shaped from. */
 export type Vowel = 'a' | 'o';
@@ -83,6 +84,11 @@ export const CRIES: Readonly<Record<CryKind, CryShape>> = Object.freeze({
   moan: { length: 0.85, attack: 0.14, release: 0.4, cut: false, start: 1.15, peak: 1.32, end: 0.92, peakAt: 0.3, from: 'o', to: 'o', gain: 0.45, breath: 1.6, clear: 0.8 },
   // A person of a fleeing crowd: high and short, and heard from further off.
   panic: { length: 0.7, attack: 0.04, release: 0.25, cut: false, start: 2.1, peak: 2.6, end: 2.2, peakAt: 0.3, from: 'a', to: 'a', gain: 0.9, breath: 0.9, clear: 0.6 },
+  // An officer's shout in the street, "freeze!": close to speech, pushed up
+  // and falling hard at the end, with little breath in it.
+  shout: { length: 0.5, attack: 0.02, release: 0.12, cut: false, start: 1.35, peak: 1.6, end: 1.05, peakAt: 0.25, from: 'a', to: 'o', gain: 0.85, breath: 0.4, clear: 1 },
+  // A call over the police radio: level speech through a narrow, dull band.
+  radio: { length: 0.75, attack: 0.01, release: 0.03, cut: true, start: 1.05, peak: 1.18, end: 0.95, peakAt: 0.4, from: 'o', to: 'a', gain: 0.5, breath: 0.3, clear: 0.3 },
 });
 
 /** One person's voice, which every cry they make is played in. */

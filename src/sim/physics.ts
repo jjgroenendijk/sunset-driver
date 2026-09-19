@@ -269,7 +269,7 @@ export class SimPhysics extends GroundPlaces {
     this.traffic?.settle(state);
     // The police answer the tick the player has just driven, so they are
     // stepped once the record says where that left them (spec section 14).
-    this.ground.police?.step(state);
+    this.ground.police?.step(state, this.casualtyGround);
     // The faction enforcers of spec section 17.2 answer the same tick for the
     // same reason: they walk at where the player has just got to.
     this.ground.enforcers?.step(state);
@@ -370,6 +370,7 @@ export class SimPhysics extends GroundPlaces {
       shooter: state.player.driving ? this.body : this.walker?.collider,
       police: this.units.police,
       enforcers: this.units.enforcers,
+      officers: this.units.officers,
       crowd: this.ground.crowd,
       ground: this.casualtyGround,
       cars: this.traffic,
@@ -533,9 +534,12 @@ export class SimPhysics extends GroundPlaces {
       this.hotwire(state, state.theft, pressed);
       return;
     }
-    if (!pressed) return;
+    // An officer who has hold of a driver pulls them out of the seat, whatever
+    // they are pressing (spec section 11.7).
+    const dragged = p.driving && state.police.cuffs !== null;
+    if (!pressed && !dragged) return;
     if (p.driving) {
-      if (Math.abs(state.vehicle.speed) > EXIT_SPEED) return;
+      if (Math.abs(state.vehicle.speed) > EXIT_SPEED && !dragged) return;
       const place = exitPlace(state.vehicle, this.spec);
       p.x = place.x;
       p.y = place.y;
