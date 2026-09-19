@@ -38,6 +38,7 @@ export type PoiType =
   | 'mission-giver'
   | 'dealer'
   | 'enforcer'
+  | 'officer'
   | 'event'
   | 'incident'
   | 'gun-shop'
@@ -66,6 +67,7 @@ export type IconShape =
   | 'roundel'
   | 'key'
   | 'burst'
+  | 'badge'
   | 'bunting'
   | 'bolt';
 
@@ -108,6 +110,8 @@ export const POI_STYLES: Readonly<Record<PoiType, PoiStyle>> = Object.freeze({
   // The enforcers of spec section 17.2, while a wave is out. They are marked at
   // every zoom a street is readable at, because they are what is shooting.
   enforcer: { shape: 'burst', colour: '#ff4d4d', label: 'Enforcer', maxScale: 8 },
+  // The police on foot of spec section 14, for the same reason.
+  officer: { shape: 'badge', colour: '#4d8dff', label: 'Officer', maxScale: 8 },
   // What the city is putting on (spec section 20.5), and what it is getting up
   // to. Both are marked while they are on and gone the moment they are over.
   event: { shape: 'bunting', colour: '#ffe07a', label: 'Happening', maxScale: 8 },

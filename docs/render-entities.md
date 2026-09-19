@@ -280,6 +280,10 @@ scene ever holds is in `docs/shops.md`.
 - `AnimationClipCreator` makes no clip that swings a limb, so `walkClip` builds its keyframe tracks
   itself. A test reads the baked texture on the processor with `bakedPoint`: the legs swing against
   each other, and each arm against its leg.
+- A gait is a row of the baked texture, so a new one goes at the **end** of `GAITS`. `raise` in
+  `SWINGS` holds both arms at a fixed angle over the swing: the `aim` gait of the police on foot has
+  them straight out in front. The fourth value of `pedMotion` is free for a flag, and
+  `render/uniform.ts` uses it for the police uniform (`docs/police.md`).
 
 ## Blood
 

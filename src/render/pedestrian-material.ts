@@ -11,7 +11,9 @@
  * origin, so its own matrix does nothing.
  *
  * The four colours of a person are instance attributes too, and a vertex's
- * `part` picks one. Only this file, the other `*-material.ts` files and
+ * `part` picks one. The fourth value of `pedMotion` is 1 on a patrol officer
+ * (`uniform.ts`), whose shoulders are painted hi-vis: the faces of the top
+ * that look up. Only this file, the other `*-material.ts` files and
  * `tsl.ts` know about shader nodes.
  */
 import type { DataTexture } from 'three';
@@ -37,6 +39,9 @@ import {
 
 /** The colour of every shoe: the camera sees little of it, and dark reads as a foot. */
 const SHOE = vec3(0.03, 0.03, 0.035);
+
+/** The hi-vis yellow on a patrol officer's shoulders. */
+const HI_VIS = vec3(0.78, 0.9, 0.12);
 
 /** The material every person of the crowd is drawn with, reading bones from the baked walks. */
 export function createPedestrianMaterial(bones: DataTexture): MeshStandardNodeMaterial {
@@ -80,6 +85,10 @@ export function createPedestrianMaterial(bones: DataTexture): MeshStandardNodeMa
   colour = mix(colour, attribute('pedTop', 'vec3'), step(PART_TOP - 0.5, part));
   colour = mix(colour, attribute('pedLegs', 'vec3'), step(PART_LEGS - 0.5, part));
   colour = mix(colour, SHOE, step(PART_SHOES - 0.5, part));
+  // A patrol officer's shoulders: the top, facing up, on a body flagged 1.
+  const top = step(PART_TOP - 0.5, part).mul(step(part, PART_TOP + 0.5));
+  const patrol = step(0.5, motion.w).mul(step(motion.w, 1.5));
+  colour = mix(colour, HI_VIS, top.mul(patrol).mul(step(0.5, normalGeometry.y)));
   material.colorNode = colour;
   material.roughnessNode = float(0.8);
   return material;

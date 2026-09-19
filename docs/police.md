@@ -2,19 +2,21 @@
 
 The gotchas of spec sections 11.7 and 14: how a run ends in a death or an arrest, what the heat is
 worth, and how the police answer it. The code is `src/sim/crime.ts`, `src/sim/police.ts` and
-`src/sim/respawn.ts`. The weapons that raise the heat are in `docs/sim-and-ui.md`.
+`src/sim/respawn.ts`, and for the officers on foot `officer.ts`, `squad.ts`, `duty.ts`,
+`officer-fire.ts` and `arrest.ts`. The weapons that raise the heat are in `docs/sim-and-ui.md`.
 
 ## Contents
 
 - Death, arrest and heat
 - Heat and the police
+- The police on foot
 
 ## Death, arrest and heat
 
 - `src/sim/respawn.ts` is death and arrest (spec section 11.7). A death is `player.health` at 0 and
   an arrest is `SimState.arrested`; `stepSim` turns either into a respawn at the end of the tick, so
-  whatever wrote them — a crash, a blast, the debug keys `K` and `B`, the police later — replays the
-  same. The player comes back on foot with fists only; the car stays where the run ended.
+  whatever wrote them — a crash, a blast, the debug keys `K` and `B`, the cuffs closing — replays
+  the same. The player comes back on foot with fists only; the car stays where the run ended.
   `loadout.shots` survives, because it keys the stream of every shot. An arrest also takes the
   contraband in the player's hands, and neither fate can reach a safehouse stash
   (`docs/safehouses.md`). A death sends the player to their active safehouse and an arrest to the
@@ -26,7 +28,9 @@ worth, and how the police answer it. The code is `src/sim/crime.ts`, `src/sim/po
   `frame.ts` snap the camera.
 - `SimState.heat` is the attention of spec section 14: a sounding alarm, every shot fired and every
   crime raise it, and melee raises none, because the spec calls it silent. The police read it, and
-  an arrest is what a chase ends in.
+  an arrest is what a chase ends in. Only an officer on foot arrests; a car no longer does. A
+  surrender (`X` at one or two stars) costs `SURRENDER_BRIBE` rather than `ARREST_BRIBE`, and
+  `respawn` reads `police.surrendered` before `standDownAll` clears it.
 
 ## Heat and the police
 
@@ -63,12 +67,45 @@ worth, and how the police answer it. The code is `src/sim/crime.ts`, `src/sim/po
   way the trams have one, so a roadblock is a wall. It also answers `unitAt(handle)`, which is how a
   round that went into a police car finds the unit it hit; `gunfire.ts` calls `shootUnit` with the
   share of the car the round took. The helicopter carries no body at all.
-- `EnforcerBodies` (`enforcer-bodies.ts`) is the same file for the faction enforcers of spec section
-  17.2, in an upright capsule rather than a box; `docs/factions.md` has it. `UnitBodies`
-  (`unit-bodies.ts`) holds both and is what `physics.ts` settles once a tick, because both are given
-  a body over the same box of ground.
+- `PersonBodies` (`person-bodies.ts`) is the same file for people, in an upright capsule rather
+  than a box. `UnitBodies` (`unit-bodies.ts`) holds one for the faction enforcers of spec section
+  17.2 and one for the officers on foot, each fed by a getter of its list, and the police cars. It
+  is what `physics.ts` settles once a tick, because all three are given a body over the same box.
 - The two exits of the spec are one rule reached two ways. Both hiding and wrecking the pursuers end
   the sighting, and the heat cools from there. Wrecking one costs `officerKilling`, which is the
   hard escalation the spec asks for, so the second exit is the longer one.
 - `src/render/police.ts` draws the units off the record. They are stepped once a tick like the
   player, so nothing is evaluated between two ticks there, unlike the traffic and the trams.
+
+## The police on foot
+
+- **A crew gets out of a car that has stopped.** `bailOut` (`duty.ts`) lets the crew out of a car
+  standing within `BAIL_RANGE` of the player, or of a roadblock within `BLOCK_BAIL_RANGE`. A car is
+  held while any of its crew is out (`crewOut` in `police.ts`), and a car whose whole crew was put
+  down stands where it stopped for good: it no longer counts toward the force, so another is sent.
+  The crew walk back and `board` once the player drives off past `RECALL_RANGE`.
+- **The cuffs are judged before the physics.** `stepSim` calls `stepArrest` first; while it answers
+  true the physics steps with `EMPTY_INPUT`, so a held player moves nothing. `startCuffs` runs at
+  the end of `Squad.step`, after the officers have moved, so the one who has just run up takes hold
+  on the tick they arrive. A driver is taken only in a car under `DRAG_SPEED`, and `transfer` in
+  `physics.ts` then pulls them out of the seat, whatever `EXIT_SPEED` says.
+- **A key held when the cuffs go on is not a press.** `Cuffs.held` starts true, so the struggle
+  counts from the first fresh press of jump. A test that mashes from the first tick is one short.
+- **An officer's path is a straight line round walls.** `Squad.wayRound` feels ahead with
+  `CasualtyGround.reach` and turns further off the line, always to its own side, until it is clear.
+  The same ray answers whether an officer sees the player. It is enough for a city of blocks; an
+  officer can still be stuck in a concave courtyard. Without a ground, as in a test, the street is
+  open.
+- **The police shoot through the player's own record.** `officerFire` writes tracers with `by:
+  'police'`. Only `by === 'player'` tracers kick the camera (`frame.ts`) and mark the crosshair;
+  `audio/police-ears.ts` plays a gunshot for each police tracer with `pellet === 0`. The shooting
+  starts at `FIRE_STARS` (two), and nobody fires at a player being cuffed or who has given up.
+- **Barks are records, not sounds.** `bark()` keeps one of a kind a second at most in
+  `police.barks`, and the audio reads the new ones each frame: a shout in the street, or a squelch
+  and a radio call for `spotted` and `lost`.
+- **The views.** `ui/officers.ts` pushes the officers into the crowd's list of standing people after
+  the street life, and `render/uniform.ts` is their look. The fourth value of `pedMotion` is the
+  uniform flag, and 1 paints a patrol officer's shoulders hi-vis. An officer with their gun out is
+  drawn in the `aim` gait, and `render/officer-guns.ts` puts the gun in the hands. The fallen are
+  drawn by `render/casualties.ts` from `police.fallen`. `--police` on the render preview lays one of
+  each.

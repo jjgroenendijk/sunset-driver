@@ -307,6 +307,16 @@ export function hurtUnit(state: SimState, id: number, amount: number): boolean {
   return false;
 }
 
+/** True for a car whose crew was all put down: it stands where they left it, and drives no more. */
+function abandoned(state: SimState, unit: PoliceUnit): boolean {
+  return unit.kind !== 'helicopter' && unit.crew === 0 && !crewOut(state, unit);
+}
+
+/** True while any of a car's crew is out of it on foot. */
+function crewOut(state: SimState, unit: PoliceUnit): boolean {
+  return state.police.officers.some((officer: Officer) => officer.unit === unit.id);
+}
+
 /** Where the player is as the police see them: their car when they are driving, themselves when not. */
 export function quarryOf(state: SimState): Quarry {
   const p = state.player;
@@ -406,7 +416,9 @@ export class PoliceForce {
     const police = state.police;
     const stars = heatStars(state.heat);
     const wanted = UNITS_BY_STAR[Math.min(stars, UNITS_BY_STAR.length - 1)] as number;
-    if (police.units.length >= wanted) {
+    // A car left with no crew is not part of the force: another is sent.
+    const manned = police.units.filter((unit: PoliceUnit) => !abandoned(state, unit)).length;
+    if (manned >= wanted) {
       police.dispatchTick = Math.max(police.dispatchTick, state.tick);
       return;
     }
@@ -519,9 +531,11 @@ export class PoliceForce {
     const length = this.roads.length(unit.edges);
     const arrived = unit.distance >= length;
     if (due || arrived) this.replan(state, unit);
-    // A car whose crew is out stands where they left it.
+    // A car whose crew is out stands where they left it, and so does one
+    // whose crew was all put down: nobody is left to drive it.
     const held =
-      unit.crew < CREW[unit.kind] ||
+      crewOut(state, unit) ||
+      abandoned(state, unit) ||
       hypot(unit.x - unit.goalX, unit.y - unit.goalY) < HOLD_RANGE ||
       (unit.task === 'block' && unit.distance >= this.roads.length(unit.edges));
     const limit = this.roads.limitAt(unit.id, unit.edges, unit.distance);
@@ -581,7 +595,7 @@ export class PoliceForce {
     for (let i = units.length - 1; i >= 0; i--) {
       const unit = units[i] as PoliceUnit;
       // A car is not driven off without its crew, who are walking back to it.
-      if (unit.crew < CREW[unit.kind]) continue;
+      if (crewOut(state, unit)) continue;
       if (hypot(unit.x - quarry.x, unit.y - quarry.y) < STAND_DOWN_RANGE) continue;
       units.splice(i, 1);
     }

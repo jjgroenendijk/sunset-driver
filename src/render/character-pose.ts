@@ -37,6 +37,8 @@ export interface CharacterMotion {
    * `src/sim/melee.ts` reads it off the record.
    */
   swing?: number;
+  /** True while the player has their hands up: given up, or being cuffed (spec section 14). */
+  handsUp?: boolean;
 }
 
 export type Stance = 'stand' | 'walk' | 'air' | 'swim';
@@ -296,8 +298,21 @@ export function swingOver(pose: CharacterPose, progress: number): CharacterPose 
 
 /** The pose of a stance at a point of its cycle, with any swing laid over it. */
 export function poseFor(stance: Stance, phase: number, motion: CharacterMotion): CharacterPose {
+  if (motion.handsUp === true && stance !== 'swim') return handsUp(standPose(phase));
   if (stance === 'swim') return swingOver(swimPose(phase, motion), motion.swing ?? -1);
   if (stance === 'air') return swingOver(airPose(motion.vy), motion.swing ?? -1);
   if (stance === 'walk') return swingOver(walkPose(phase, motion.speed), motion.swing ?? -1);
   return swingOver(standPose(phase), motion.swing ?? -1);
+}
+
+/** Radians both arms stand from hanging with the hands up: a little short of straight up. */
+export const HANDS_UP = Math.PI - 0.25;
+
+/** Both arms up over the head, and nothing else moving, which is what giving up looks like. */
+function handsUp(pose: CharacterPose): CharacterPose {
+  pose.armL = HANDS_UP;
+  pose.armR = HANDS_UP;
+  pose.yawL = 0;
+  pose.yawR = 0;
+  return pose;
 }

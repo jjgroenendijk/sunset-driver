@@ -6,6 +6,7 @@ import { MAX_HEALTH } from '../sim/on-foot.ts';
 import { specOf } from '../sim/vehicle.ts';
 import { currentSlot, currentWeapon, poolOf, reloading } from '../sim/weapon.ts';
 import { weatherAt } from '../sim/weather.ts';
+import { arrestLine } from './arrest-line.ts';
 
 /**
  * The key that shows and hides the developer block. Listed in `controls.ts`.
@@ -59,7 +60,8 @@ function box(parent: HTMLElement, className: string): HTMLElement {
  * - bottom left, the health ring round the minimap (`minimap.ts`);
  * - bottom right, the speedometer, while the player drives;
  * - top left, the objective and what the ground underfoot is;
- * - top centre, the radio station; the middle, Wasted or Busted.
+ * - top centre, the radio station; the middle, Wasted or Busted;
+ * - under the middle, the cuffs closing, or the key to give up (spec section 14).
  *
  * The developer block — seed, weather numbers, draw calls, quality tier — is
  * hidden until {@link DEV_INFO_KEY} is pressed.
@@ -83,6 +85,9 @@ export class Hud {
   private readonly turf: Field;
   private readonly happening: Field;
   private readonly radio: Field;
+  private readonly arrest: HTMLElement;
+  private readonly arrestText: Field;
+  private readonly arrestFill: HTMLElement;
   private readonly fate: HTMLElement;
   private readonly fateTitle: Field;
   private readonly fateCost: Field;
@@ -92,6 +97,7 @@ export class Hud {
   private shownHealth = -1;
   private shownStars = '';
   private shownIntegrity = -1;
+  private shownCuffs = -2;
 
   constructor(parent: HTMLElement, seed: string) {
     const part = (className: string): HTMLElement => {
@@ -149,6 +155,13 @@ export class Hud {
     // The radio of spec section 15: the station, and the line of an ident or of
     // a harm-reduction announcement while one is being read (spec section 19).
     this.radio = new Field(part('hud-top'), 'hud-radio');
+
+    // Being taken in (spec sections 11.7, 14): the cuffs closing and how to
+    // break free, under the middle of the screen, where the eye already is.
+    this.arrest = part('hud-arrest');
+    this.arrest.hidden = true;
+    this.arrestText = new Field(this.arrest, 'hud-arrest-text', false);
+    this.arrestFill = box(box(this.arrest, 'hud-arrest-bar'), 'hud-arrest-fill');
 
     // How the last run ended (spec section 11.7), in the middle of the screen.
     this.fate = part('hud-fate');
@@ -227,6 +240,16 @@ export class Hud {
     this.turf.set(turf);
     this.happening.set(happening);
     this.radio.set(radioLine(onAir));
+
+    const arrest = arrestLine(state);
+    if (this.arrest.hidden !== (arrest.text === '')) this.arrest.hidden = arrest.text === '';
+    this.arrestText.set(arrest.text);
+    const cuffs = Math.round(arrest.progress * 100);
+    if (cuffs !== this.shownCuffs) {
+      this.shownCuffs = cuffs;
+      this.arrestFill.parentElement?.toggleAttribute('hidden', cuffs < 0);
+      this.arrestFill.style.width = `${Math.max(0, cuffs)}%`;
+    }
 
     const fate = fateLine(state);
     if (this.fate.hidden !== (fate === '')) this.fate.hidden = fate === '';

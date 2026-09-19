@@ -15,6 +15,7 @@ import type { RenderSmoother } from './render/smooth.ts';
 import type { ParkedView } from './render/parked.ts';
 import type { PedestrianView } from './render/pedestrians.ts';
 import type { CasualtyView } from './render/casualties.ts';
+import type { OfficerGunView } from './render/officer-guns.ts';
 import type { EmergencyView } from './render/emergency.ts';
 import type { WildlifeView } from './render/wildlife.ts';
 import type { PoliceView } from './render/police.ts';
@@ -32,6 +33,7 @@ import type { MissionWorld } from './sim/job.ts';
 import type { TerritoryMap } from './sim/territory.ts';
 import type { DealerMarks } from './ui/dealers.ts';
 import type { EnforcerMarks } from './ui/enforcers.ts';
+import type { OfficerMarks } from './ui/officers.ts';
 import type { StreetLife } from './ui/street-life.ts';
 import type { HomePanel } from './ui/home-panel.ts';
 import type { JobPanel } from './ui/job-panel.ts';
@@ -92,6 +94,8 @@ export interface Session {
   enforcerMarks: EnforcerMarks;
   /** The events and the street crime of spec section 20.5, as people and marks. */
   streetLife: StreetLife;
+  /** The police on foot of spec section 14, as people in uniform and marks, after everybody above. */
+  officerMarks: OfficerMarks;
   /** Whose block is whose (spec section 17.2), which the HUD line and the map overlay read. */
   turf: TerritoryMap;
   /** The safehouse panel of spec section 16.3, drawn at a front door. */
@@ -124,6 +128,8 @@ export interface Session {
   crowd: PedestrianView;
   /** The people who have been hit, lying, limping or crawling, and the medics at them (spec section 11.6). */
   casualties: CasualtyView;
+  /** The guns in the hands of the police on foot who have them out (spec section 14). */
+  guns: OfficerGunView;
   /** The pause menu of spec section 12. While it is open a single-player session does not step. */
   pause: PauseMenu;
   /** The room of spec section 21, offline until a game is opened or a link names one. */
