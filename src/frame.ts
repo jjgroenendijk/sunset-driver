@@ -7,7 +7,6 @@
  * subject — the order a frame reads the record in — and `main.ts` is the boot.
  * The title screen's frame is not here: it draws the preview scene alone.
  */
-import { Raycaster, Vector2 } from 'three';
 import type { GameAudio } from './audio/game-audio.ts';
 import { PULL_MARGIN, type FollowCamera, type RoofHeight } from './render/camera.ts';
 import type { FixedStepClock } from './sim/clock.ts';
@@ -17,6 +16,11 @@ import { swingOf } from './sim/melee.ts';
 import { visiting } from './sim/shop.ts';
 import { stepSim } from './sim/simulation.ts';
 import { turfLine } from './sim/territory.ts';
+import { AIM_PLANE_HEIGHT, PointerAim } from './pointer-aim.ts';
+import { Crosshair } from './ui/crosshair.ts';
+import { aimPoint } from './sim/aim.ts';
+import { currentWeapon, spreadOf } from './sim/weapon.ts';
+import type { Tracer } from './sim/tracer.ts';
 import type { FreeCameraControls } from './ui/free-camera.ts';
 import type { Keyboard } from './ui/keyboard.ts';
 import { ARRIVED } from './ui/map-route.ts';
@@ -33,6 +37,11 @@ export interface FrameParts {
   settings: Settings;
 }
 
+/** Metres a shot pushes the camera back, before and for the weapon's recoil, and the most. */
+const BASE_KICK = 0.08;
+const KICK_PER_RECOIL = 6;
+const MAX_KICK = 0.5;
+
 /** Where a frame is drawn from: the player, or the free camera while it is detached. */
 interface Viewpoint {
   x: number;
@@ -42,9 +51,12 @@ interface Viewpoint {
 /** The frame loop of a session, and the little it carries from one frame to the next. */
 export class SessionFrame {
   private readonly parts: FrameParts;
-  /** Where the mouse is over the canvas, in the camera's -1 to 1 frame, which is what picks the pickup under it. */
-  private readonly pointer = { at: new Vector2(), over: false };
-  private readonly ray = new Raycaster();
+  /** The mouse over the canvas: what it aims at, and the pickup under it. */
+  private readonly aim: PointerAim;
+  /** Where the mouse aims, drawn over the city (spec section 11.5). */
+  private readonly crosshair: Crosshair;
+  /** The tick of the newest round the camera was kicked for, so each shot kicks once. */
+  private kicked = -1;
   /** The session being drawn, which the roof lookup reads. */
   private session: Session | null = null;
   /** Whether the camera was detached last frame, so a release is noticed once. */
@@ -54,17 +66,8 @@ export class SessionFrame {
 
   constructor(canvas: HTMLCanvasElement, parts: FrameParts) {
     this.parts = parts;
-    canvas.addEventListener('pointermove', (event) => {
-      const rect = canvas.getBoundingClientRect();
-      this.pointer.at.set(
-        ((event.clientX - rect.left) / rect.width) * 2 - 1,
-        -((event.clientY - rect.top) / rect.height) * 2 + 1,
-      );
-      this.pointer.over = true;
-    });
-    canvas.addEventListener('pointerleave', () => {
-      this.pointer.over = false;
-    });
+    this.aim = new PointerAim(canvas);
+    this.crosshair = new Crosshair(document.body);
   }
 
   /** The roof over a ground point, which the camera pulls back over when the player asks it to. */
@@ -84,6 +87,7 @@ export class SessionFrame {
     // stop (`docs/multiplayer.md`). The menu takes the keys either way.
     const menu = session.pause.open;
     const paused = menu && !session.party.live;
+    this.pointMouse(session, flying || menu);
     const steps = session.party.frame(session.state, this.heard, paused ? 0 : clock.advance(elapsed));
     const respawned = session.state.respawn;
     const trips = session.state.metro.trips;
@@ -120,6 +124,7 @@ export class SessionFrame {
     const change = flying || paused ? undefined : session.quality.sample(elapsed);
     if (change !== undefined) applyQuality(session, change);
     this.drawPanels(session, p.inShop);
+    this.drawAim(session, flying || menu);
     // The maps of spec section 12. Both follow the player from the record,
     // and both redraw only when something on them has moved, so a session
     // standing still pays for neither. The minimap follows the free camera
@@ -175,9 +180,8 @@ export class SessionFrame {
     session.world.held.set(session.state.loadout, session.state.player, p, session.world.character.height, swing);
     // The pickup under the mouse grows, so what lies there can be read before
     // walking to it. Nothing is picked while the camera is detached.
-    if (!flying && this.pointer.over && session.state.pickups.length > 0) {
-      this.ray.setFromCamera(this.pointer.at, camera.camera);
-      session.world.pickups.pick(this.ray);
+    if (!flying && this.aim.over && session.state.pickups.length > 0) {
+      session.world.pickups.pick(this.aim.ray);
     } else {
       session.world.pickups.hovered = undefined;
     }
@@ -224,11 +228,78 @@ export class SessionFrame {
       // A building between the camera and the player (spec section 10.7):
       // it is cut to a ghost, and with Pull back the camera first moves over
       // the roofs. Off does neither.
+      this.kick(session);
       camera.update(elapsed / 1000, p, settings.buildingView === 'pull-back' ? this.roofTop : undefined);
       session.world.cutaway.enabled = settings.buildingView !== 'whole';
       session.world.seeThrough(camera.camera.position, p.x, p.height, p.y, inShop !== undefined);
     }
     return { x: p.x, y: p.y, heading: p.heading, round, inShop };
+  }
+
+  /**
+   * Lay the mouse on the map and hand the point to the keys, which sample it
+   * into every tick this frame steps (spec section 11.5). The ray is cast from
+   * where the camera stood last frame, which is where the player saw the
+   * pointer. A detached camera or an open menu aims nothing.
+   */
+  private pointMouse(session: Session, away: boolean): void {
+    const { camera, keyboard } = this.parts;
+    this.aim.cast(camera.camera);
+    const at = away ? undefined : this.aim.ground(session.state.player.height);
+    if (at === undefined) keyboard.unpoint();
+    else keyboard.pointAt(at.x, at.y);
+  }
+
+  /** Push the camera back from every shot fired since the last frame. */
+  private kick(session: Session): void {
+    const tracers = session.state.tracers;
+    const spec = currentWeapon(session.state.loadout);
+    // A loaded save or a new session starts the count again.
+    if (session.state.tick < this.kicked) this.kicked = -1;
+    let newest = this.kicked;
+    for (let i = 0; i < tracers.length; i++) {
+      const t = tracers[i] as Tracer;
+      if (t.pellet !== 0 || t.tick <= this.kicked) continue;
+      this.parts.camera.kick(t.ex - t.x, t.ey - t.y, Math.min(MAX_KICK, BASE_KICK + spec.recoil * KICK_PER_RECOIL));
+      newest = Math.max(newest, t.tick);
+    }
+    this.kicked = newest;
+  }
+
+  /**
+   * The crosshair (spec section 11.5): at the mouse while a gun is in hand,
+   * opened as wide as the next round may stray at that distance, with a ring
+   * on the target the aim was pulled onto.
+   */
+  private drawAim(session: Session, away: boolean): void {
+    const state = session.state;
+    const spec = currentWeapon(state.loadout);
+    const shown = !away && this.aim.over && this.aim.mouse && spec.cls !== 'melee';
+    this.aim.hideCursor(shown);
+    if (!shown) {
+      this.crosshair.hide();
+      return;
+    }
+    const camera = this.parts.camera.camera;
+    const h = state.player.height + AIM_PLANE_HEIGHT;
+    const point = aimPoint(state, this.heard);
+    let gap = 0;
+    let lock: { x: number; y: number } | undefined;
+    if (point !== undefined) {
+      // The spread is an angle either side of the aim, so at the aim point it
+      // is that angle times the distance, across the line of fire.
+      const dx = point.x - state.player.x;
+      const dy = point.y - state.player.y;
+      const distance = Math.hypot(dx, dy);
+      const across = Math.tan(spreadOf(spec, state.loadout.aiming, state.loadout.recoil)) * distance;
+      const middle = this.aim.screenOf(camera, point.x, h, point.y);
+      const side = distance > 0
+        ? this.aim.screenOf(camera, point.x - (dy / distance) * across, h, point.y + (dx / distance) * across)
+        : middle;
+      gap = Math.hypot(side.x - middle.x, side.y - middle.y);
+      if (point.snapped) lock = middle;
+    }
+    this.crosshair.update({ at: this.aim.client, gap, lock, aiming: state.loadout.aiming }, state.tracers, state.tick, performance.now());
   }
 
   /** The traffic, the tram, the units, the animals, the parked cars and the crowd, at the frame's moment. */

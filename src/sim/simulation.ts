@@ -11,6 +11,7 @@ import { createPedestrianState, type PedestrianState } from './pedestrians.ts';
 import { createTrafficState, type TrafficState } from './traffic.ts';
 import { createLoadout, type LoadoutState, type ProjectileState } from './weapon.ts';
 import type { MeleeHit } from './melee.ts';
+import type { Tracer } from './tracer.ts';
 import { createMetroState, stepMetro, travelling, type MetroState } from './metro.ts';
 import { stepShops, type ShopVisit } from './shop.ts';
 import { createMarketState, stepMarket, type MarketState } from './market.ts';
@@ -69,6 +70,12 @@ export interface SimState {
    * one is kept and `gunfire.ts` writes them.
    */
   hits: MeleeHit[];
+  /**
+   * The paths the rounds of the last few ticks took (spec section 11.6), so
+   * the frame can draw the flash, the streak and the impact. `tracer.ts` says
+   * how long one is kept and `gunfire.ts` writes them.
+   */
+  tracers: Tracer[];
   /**
    * The weapons lying in the world to be picked up (spec section 11.6): what
    * the dead dropped and what was taken out of a police car.
@@ -224,6 +231,7 @@ export function createSimState(
     loadout: createLoadout(),
     projectiles: [],
     hits: [],
+    tracers: [],
     pickups: [],
     nextPickup: 0,
     market: createMarketState(),

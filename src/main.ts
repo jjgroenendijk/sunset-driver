@@ -95,6 +95,7 @@ async function boot(): Promise<void> {
   const camera = new FollowCamera(window.innerWidth / window.innerHeight);
   const clock = new FixedStepClock();
   const keyboard = new Keyboard(window);
+  keyboard.listenMouse(canvas);
   // A phone has no keys and no pointer lock, so it is given the buttons of
   // `touch-bar.ts` and the fly pad of `touch-fly.ts` instead (`docs/menus.md`).
   const touch = isTouchDevice(readTouchProbe(window));

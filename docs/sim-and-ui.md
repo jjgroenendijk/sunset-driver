@@ -204,6 +204,15 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
   and the fire roll; `hitVehicle` is the same rule with the severity read off the speed a crash
   lost, and `disableEngine` is what the Barrett M82 does. A direction reaches those as the vehicle's
   own `(along, across, up)`, which is `unrotate`'s `x`, `z`, `y` in that order.
+- A shot goes toward the mouse (spec section 11.5). `InputFrame` carries the map point under the
+  pointer, so a replay aims where the player aimed, and `aim.ts` pulls it onto the nearest enforcer,
+  police unit or promoted car within `SNAP_RADIUS` (wider while aiming). The pull reads the record,
+  so it is the same on every machine. Without a pointer a shot goes the way the player faces. A
+  player on foot faces the aim while aiming and for `FACE_TICKS` after a shot, and walks any way
+  under it. Left click fires and right click aims; `F` and `Q` still do.
+- Every pellet writes a `Tracer` into `SimState.tracers` (`tracer.ts`): the muzzle, where it stopped
+  and what it met. It is kept like a blow of `melee.ts`, for the flash, the streak and the impact
+  of `src/render/shot-fx.ts`, the hit marker of `src/ui/crosshair.ts` and the camera kick.
 - `src/ui/weapon-picker.ts` is the debug picker for the arsenal, as `vehicle-picker.ts` is for the
   roster: `G` opens it, and a row hands over the weapon loaded with spare ammunition behind it.
   Shift and a row drops the weapon three metres ahead as a pickup instead, and the buttons under the

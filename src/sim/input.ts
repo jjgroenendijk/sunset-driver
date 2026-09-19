@@ -15,6 +15,15 @@ export interface InputFrame {
   fire: boolean;
   /** Held while aiming rather than firing from the hip (spec section 11.5). */
   aim: boolean;
+  /**
+   * Whether the pointer stands on the map, and the point it stands on in map
+   * metres (spec section 11.5). A shot goes toward it, and `aim.ts` pulls it
+   * onto a target near it. Without a pointer a shot goes the way the player
+   * faces.
+   */
+  pointing: boolean;
+  pointX: number;
+  pointY: number;
   /** Reload the weapon in hand (spec section 11.6). */
   reload: boolean;
   /** Take the next weapon carried (spec section 11.6). */
@@ -64,6 +73,9 @@ export const EMPTY_INPUT: Readonly<InputFrame> = Object.freeze({
   interact: false,
   fire: false,
   aim: false,
+  pointing: false,
+  pointX: 0,
+  pointY: 0,
   reload: false,
   cycle: false,
   station: 0,
@@ -83,6 +95,9 @@ export function inputEquals(a: InputFrame, b: InputFrame): boolean {
     a.interact === b.interact &&
     a.fire === b.fire &&
     a.aim === b.aim &&
+    a.pointing === b.pointing &&
+    a.pointX === b.pointX &&
+    a.pointY === b.pointY &&
     a.reload === b.reload &&
     a.cycle === b.cycle &&
     a.station === b.station &&
