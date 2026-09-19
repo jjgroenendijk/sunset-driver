@@ -30,7 +30,7 @@ const ORANGE = vec3(1, 0.42, 0.06);
 const CORE = vec3(1, 0.86, 0.55);
 
 /** How bright the core of a flame is, over 1 so the bloom picks it up. */
-const FLAME_GAIN = 2.2;
+const FLAME_GAIN = 3;
 
 interface Puff {
   fade: TslNode;

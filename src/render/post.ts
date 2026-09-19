@@ -56,6 +56,7 @@ import { setRenderScale } from './renderer.ts';
 import {
   bloom,
   lut3D,
+  uniform,
   pass,
   renderOutput,
   smaa,
@@ -72,8 +73,14 @@ import {
  * on the exposed frame, so 1 is a surface that would burn out on its own: a
  * little under it catches the lit windows and the lamp lenses and leaves the
  * daylit street alone.
+ *
+ * The strength follows the night, from {@link BLOOM_STRENGTH} by day to
+ * {@link BLOOM_NIGHT_STRENGTH} after dark. By day a sunlit white roof is over
+ * the threshold, and a strong bloom there is glare. After dark only the lights
+ * are over it, and they should glow.
  */
 const BLOOM_STRENGTH = 0.45;
+const BLOOM_NIGHT_STRENGTH = 0.85;
 const BLOOM_RADIUS = 0.6;
 const BLOOM_THRESHOLD = 0.8;
 
@@ -124,6 +131,8 @@ export class PostChain {
   private step = -1;
   /** The world's seed, which with the tick is what the weather is read from. */
   private readonly seed: number;
+  /** How strong the bloom is, shared by every graph and moved with the night. */
+  private readonly glow = uniform(BLOOM_STRENGTH);
 
   constructor(
     renderer: WebGPURenderer,
@@ -172,7 +181,9 @@ export class PostChain {
     const step = gradeStep(tick);
     if (step === this.step) return;
     this.step = step;
-    writeLut(gradeAt(daylightAt(tick), weatherAt(this.seed, tick)), this.graded);
+    const light = daylightAt(tick);
+    this.glow.value = BLOOM_STRENGTH + (BLOOM_NIGHT_STRENGTH - BLOOM_STRENGTH) * light.night;
+    writeLut(gradeAt(light, weatherAt(this.seed, tick)), this.graded);
     const texels = this.lut.image.data as Uint16Array;
     for (let i = 0; i < LUT_LENGTH; i++) texels[i] = DataUtils.toHalfFloat(this.graded[i] ?? 0);
     this.lut.needsUpdate = true;
@@ -274,7 +285,7 @@ export class PostChain {
 
     let colour = this.colour;
     if (this.settings.bloom) {
-      const glow = bloom(colour, BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
+      const glow = bloom(colour, this.glow, BLOOM_RADIUS, BLOOM_THRESHOLD);
       effects.push(glow);
       colour = vec4(colour.rgb.add(glow.rgb), 1);
     }

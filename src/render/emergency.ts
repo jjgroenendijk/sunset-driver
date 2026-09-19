@@ -47,6 +47,12 @@ const BORROWED: Record<EmergencyKind, { cls: VehicleClass; paint: number }> = {
 /** The two colours of a light bar, and the ticks it holds each one for. */
 const LIGHT_RED = 0xd8302a;
 const LIGHT_BLUE = 0x2f6ad8;
+
+/**
+ * How hard the bar burns, as a multiple of its colour. At 1 it stayed under
+ * the bloom threshold of `post.ts` once exposed, and a siren did not glow.
+ */
+const BAR_GLOW = 4;
 const FLASH_TICKS = 10;
 
 /** The bar across the roof: its size, and how far over the roof it sits. */
@@ -141,7 +147,7 @@ export class EmergencyView {
       // Every other unit is on the other beat, so a pair of them flashes
       // against each other rather than in step.
       const beat = Math.floor(state.tick / FLASH_TICKS) + unit.id;
-      meshes.bar.setColorAt(at, this.tint.set(beat % 2 === 0 ? LIGHT_RED : LIGHT_BLUE));
+      meshes.bar.setColorAt(at, this.tint.set(beat % 2 === 0 ? LIGHT_RED : LIGHT_BLUE).multiplyScalar(BAR_GLOW));
       meshes.drawn = at + 1;
     }
     this.fill();

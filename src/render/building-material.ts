@@ -63,6 +63,13 @@ const MULLION = 0.28;
 const LIT_SHARE = 0.45;
 const WINDOW_GLOW = 0xffd9a2;
 
+/**
+ * How hard a lit window burns, as a multiple of {@link WINDOW_GLOW}. At 1 it
+ * stayed under the bloom threshold of `post.ts` once exposed, and a lit tower
+ * read as painted yellow rather than lit.
+ */
+const WINDOW_GAIN = 2.5;
+
 /** Glass by day: dark, and darker still where it faces away from the sky. */
 const GLAZING = 0x2a3338;
 
@@ -129,7 +136,7 @@ function createFacadeMaterial(night: TslNode): MeshStandardNodeMaterial {
     positionWorld.y.div(STOREY).floor(),
     positionWorld.z.div(40).floor(),
   );
-  material.emissiveNode = rgb(WINDOW_GLOW).mul(glass).mul(lit(storey)).mul(night);
+  material.emissiveNode = rgb(WINDOW_GLOW).mul(WINDOW_GAIN).mul(glass).mul(lit(storey)).mul(night);
   return material;
 }
 
@@ -165,7 +172,7 @@ function createBlockMaterial(night: TslNode): MeshStandardNodeMaterial {
     positionWorld.y.div(STOREY).floor(),
     positionWorld.x.add(positionWorld.z).div(30).floor(),
   );
-  material.emissiveNode = rgb(WINDOW_GLOW).mul(is(part, BLOCK_GLASS)).mul(glazed).mul(lit(window)).mul(night);
+  material.emissiveNode = rgb(WINDOW_GLOW).mul(WINDOW_GAIN).mul(is(part, BLOCK_GLASS)).mul(glazed).mul(lit(window)).mul(night);
   // Render and brick are rough; glass and painted trim are not.
   material.roughnessNode = mix(float(0.92).sub(grain.mul(0.12)), float(0.18), is(part, BLOCK_GLASS));
   return material;
