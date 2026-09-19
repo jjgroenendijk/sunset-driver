@@ -2,9 +2,9 @@
 
 The gotchas of `src/render`: what three.js 0.186 and WebGPU refuse, what is packed into a batch and
 why, and how a chunk, a quality tier and the frame budget fit together. `spec.md` sections 9 and 10
-are the design. What the renderer draws on top of the ground — buildings, vehicles, weapons, plants
-and the crowd — is in `docs/render-entities.md`, and what lights it — the sun, the sky, the street
-lamps and the lights a vehicle carries — in `docs/lighting.md`.
+are the design. What the renderer draws on top of the ground — vehicles, weapons, plants and the
+crowd — is in `docs/render-entities.md`, the buildings in `docs/buildings.md`, and what lights it —
+the sun, the sky, the street lamps and the lights a vehicle carries — in `docs/lighting.md`.
 
 ## Contents
 

@@ -65,6 +65,20 @@ export const MIN_WALLS = 2.5;
 export const PARAPET_RISE = 0.7;
 export const PARAPET_WIDTH = 0.3;
 
+/**
+ * Where a box of a building stands in its own frame. A building massed in
+ * several boxes — the L, the U, the courtyard and the podium of
+ * `building-shape.ts` — stands each of them at its own place; everything else
+ * stands in the middle of its lot, which is the origin.
+ */
+export interface At {
+  x: number;
+  z: number;
+}
+
+/** The middle of the lot, where a building of one box stands. */
+const MIDDLE: At = { x: 0, z: 0 };
+
 /** Which walls a band of glazing is laid on. */
 export type Side = 'front' | 'back' | 'left' | 'right';
 export const ALL_SIDES: readonly Side[] = ['front', 'back', 'left', 'right'];
@@ -108,8 +122,10 @@ export function shrink(massing: BuildingMassing, over: number): BuildingMassing 
 }
 
 /** The walls themselves, as one box standing on the ground. */
-export function box(shell: Shell, walls: BuildingMassing, from: number, to: number, part: number): void {
-  shell.box(-walls.width / 2, walls.width / 2, from, to, -walls.depth / 2, walls.depth / 2, part);
+export function box(shell: Shell, walls: BuildingMassing, from: number, to: number, part: number, at: At = MIDDLE): void {
+  const hw = walls.width / 2;
+  const hd = walls.depth / 2;
+  shell.box(at.x - hw, at.x + hw, from, to, at.z - hd, at.z + hd, part);
 }
 
 /** A band of glazing at every storey between two heights. */
@@ -119,13 +135,14 @@ export function windowBands(
   from: number,
   to: number,
   sides: readonly Side[],
+  at: At = MIDDLE,
 ): void {
   const storeys = Math.max(1, Math.round((to - from) / STOREY));
   const pitch = (to - from) / storeys;
   if (pitch <= SILL + HEAD) return;
   for (let i = 0; i < storeys; i++) {
     const floor = from + i * pitch;
-    band(shell, walls, floor + SILL, floor + pitch - HEAD, sides);
+    band(shell, walls, floor + SILL, floor + pitch - HEAD, sides, at);
   }
 }
 
@@ -134,7 +151,14 @@ export function windowBands(
  * in metres along the wall, so the material cuts the band into windows of the
  * same width whatever the building is.
  */
-export function band(shell: Shell, walls: BuildingMassing, from: number, to: number, sides: readonly Side[]): void {
+export function band(
+  shell: Shell,
+  walls: BuildingMassing,
+  from: number,
+  to: number,
+  sides: readonly Side[],
+  at: At = MIDDLE,
+): void {
   if (to - from < 0.3) return;
   const hw = walls.width / 2 + PROUD;
   const hd = walls.depth / 2 + PROUD;
@@ -151,7 +175,11 @@ export function band(shell: Shell, walls: BuildingMassing, from: number, to: num
   };
   for (const side of sides) {
     const [a, b] = ends[side];
-    shell.quad([a[0], from, a[2]], [b[0], from, b[2]], [b[0], to, b[2]], [a[0], to, a[2]], BLOCK_GLASS);
+    const ax = a[0] + at.x;
+    const az = a[2] + at.z;
+    const bx = b[0] + at.x;
+    const bz = b[2] + at.z;
+    shell.quad([ax, from, az], [bx, from, bz], [bx, to, bz], [ax, to, az], BLOCK_GLASS);
   }
 }
 
@@ -200,15 +228,17 @@ export function hipped(shell: Shell, walls: BuildingMassing, eaves: number, rise
 }
 
 /** A flat roof with a parapet around it, as a shop row and a warehouse carry. */
-export function flatRoof(shell: Shell, walls: BuildingMassing, top: number, deck = BLOCK_ROOF): void {
-  const hw = walls.width / 2;
-  const hd = walls.depth / 2;
-  shell.box(-hw, hw, top, top + 0.12, -hd, hd, deck);
+export function flatRoof(shell: Shell, walls: BuildingMassing, top: number, deck = BLOCK_ROOF, at: At = MIDDLE): void {
+  const x0 = at.x - walls.width / 2;
+  const x1 = at.x + walls.width / 2;
+  const z0 = at.z - walls.depth / 2;
+  const z1 = at.z + walls.depth / 2;
+  shell.box(x0, x1, top, top + 0.12, z0, z1, deck);
   const rim = top + PARAPET_RISE;
-  shell.box(-hw, hw, top, rim, hd - PARAPET_WIDTH, hd, BLOCK_TRIM);
-  shell.box(-hw, hw, top, rim, -hd, -hd + PARAPET_WIDTH, BLOCK_TRIM);
-  shell.box(-hw, -hw + PARAPET_WIDTH, top, rim, -hd, hd, BLOCK_TRIM);
-  shell.box(hw - PARAPET_WIDTH, hw, top, rim, -hd, hd, BLOCK_TRIM);
+  shell.box(x0, x1, top, rim, z1 - PARAPET_WIDTH, z1, BLOCK_TRIM);
+  shell.box(x0, x1, top, rim, z0, z0 + PARAPET_WIDTH, BLOCK_TRIM);
+  shell.box(x0, x0 + PARAPET_WIDTH, top, rim, z0, z1, BLOCK_TRIM);
+  shell.box(x1 - PARAPET_WIDTH, x1, top, rim, z0, z1, BLOCK_TRIM);
 }
 
 /** A slab reaching out over the front of a building: an awning, or a roof. */

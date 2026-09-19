@@ -32,6 +32,7 @@ import {
   ALL_SIDES,
   BLOCK_ROOF,
   BLOCK_WALL,
+  MIN_WALLS,
   PROUD,
   Shell,
   box,
@@ -40,6 +41,7 @@ import {
   windowBands,
   type BlockStyle,
 } from './block-shell.ts';
+import type { ShapeBox } from './building-shape.ts';
 import { house } from './house-mesh.ts';
 import { parkingGarage, roadhouse } from './roadhouse-mesh.ts';
 import { deckPartOf, dressRoof, type RoofDeck } from './roof-dress.ts';
@@ -82,6 +84,7 @@ export function buildBlockGeometry(
   massing: BuildingMassing,
   tint: Rgb,
   style: BlockStyle,
+  boxes: readonly ShapeBox[],
 ): BlockGeometry {
   const shell = new Shell();
   let deck: RoofDeck | undefined;
@@ -100,7 +103,7 @@ export function buildBlockGeometry(
       break;
     case 'tower':
     case 'mid-rise':
-      deck = tall(shell, massing, style);
+      deck = tall(shell, massing, style, boxes);
       break;
     default:
       deck = house(shell, massing, style);
@@ -130,18 +133,23 @@ export function buildDressGeometry(
  * far detail of spec section 9.2. The camera reads a chunk that far out as a
  * skyline, and a skyline is heights and footprints, not window bands.
  */
-export function buildMassingGeometry(massing: BuildingMassing, tint: Rgb): BufferGeometry {
+export function buildMassingGeometry(massing: BuildingMassing, tint: Rgb, boxes: readonly ShapeBox[]): BufferGeometry {
   const shell = new Shell();
-  const hw = massing.width / 2;
-  const hd = massing.depth / 2;
-  const top = massing.height;
-  // The four walls and the roof of a box; the floor stands on the ground and is
-  // never seen.
-  shell.quad([-hw, 0, hd], [hw, 0, hd], [hw, top, hd], [-hw, top, hd], BLOCK_WALL);
-  shell.quad([hw, 0, -hd], [-hw, 0, -hd], [-hw, top, -hd], [hw, top, -hd], BLOCK_WALL);
-  shell.quad([hw, 0, hd], [hw, 0, -hd], [hw, top, -hd], [hw, top, hd], BLOCK_WALL);
-  shell.quad([-hw, 0, -hd], [-hw, 0, hd], [-hw, top, hd], [-hw, top, -hd], BLOCK_WALL);
-  shell.quad([-hw, top, hd], [hw, top, hd], [hw, top, -hd], [-hw, top, -hd], BLOCK_ROOF);
+  for (const one of boxes) {
+    const x0 = one.x - one.width / 2;
+    const x1 = one.x + one.width / 2;
+    const z0 = one.z - one.depth / 2;
+    const z1 = one.z + one.depth / 2;
+    const top = one.to;
+    // The four walls and the roof of a box; the floor stands on the ground and
+    // is never seen. A box that stands on another one keeps its own floor for
+    // the same reason: the box below it covers it.
+    shell.quad([x0, one.from, z1], [x1, one.from, z1], [x1, top, z1], [x0, top, z1], BLOCK_WALL);
+    shell.quad([x1, one.from, z0], [x0, one.from, z0], [x0, top, z0], [x1, top, z0], BLOCK_WALL);
+    shell.quad([x1, one.from, z1], [x1, one.from, z0], [x1, top, z0], [x1, top, z1], BLOCK_WALL);
+    shell.quad([x0, one.from, z0], [x0, one.from, z1], [x0, top, z1], [x0, top, z0], BLOCK_WALL);
+    shell.quad([x0, top, z1], [x1, top, z1], [x1, top, z0], [x0, top, z0], BLOCK_ROOF);
+  }
   return shell.geometry(tint);
 }
 
@@ -150,11 +158,33 @@ export function buildMassingGeometry(massing: BuildingMassing, tint: Rgb): Buffe
  * walls, a band of window at every storey, and a dressed flat roof behind a
  * parapet.
  */
-function tall(shell: Shell, massing: BuildingMassing, style: BlockStyle): RoofDeck {
-  const walls = shrink(massing, PROUD);
-  const top = massing.height;
-  box(shell, walls, 0, top, BLOCK_WALL);
-  windowBands(shell, walls, 0, top, ALL_SIDES);
-  flatRoof(shell, walls, top, deckPartOf(style));
-  return { x: 0, z: 0, hw: walls.width / 2, hd: walls.depth / 2, top: top + 0.12 };
+function tall(shell: Shell, massing: BuildingMassing, style: BlockStyle, boxes: readonly ShapeBox[]): RoofDeck {
+  const part = deckPartOf(style);
+  let deck: RoofDeck | undefined;
+  for (const one of boxes) {
+    // Each box of the shape is its own walls, its own bands of glazing and its
+    // own flat roof, so the block reads as the silhouette the generated facade
+    // of the same building cuts.
+    const walls = {
+      ...massing,
+      width: Math.max(MIN_WALLS, one.width - 2 * PROUD),
+      depth: Math.max(MIN_WALLS, one.depth - 2 * PROUD),
+    };
+    const at = { x: one.x, z: one.z };
+    box(shell, walls, one.from, one.to, BLOCK_WALL, at);
+    windowBands(shell, walls, one.from, one.to, ALL_SIDES, at);
+    // A parapet is a ring a third of a metre wide. The camera is 200 m out at
+    // mid detail and the roof is a deck there, not a rim around one.
+    if (style.detail === 'near') flatRoof(shell, walls, one.to, part, at);
+    else shell.quad(
+      [at.x - walls.width / 2, one.to, at.z + walls.depth / 2],
+      [at.x + walls.width / 2, one.to, at.z + walls.depth / 2],
+      [at.x + walls.width / 2, one.to, at.z - walls.depth / 2],
+      [at.x - walls.width / 2, one.to, at.z - walls.depth / 2],
+      part,
+    );
+    if (one.terrace === undefined || (deck !== undefined && deck.top >= one.to + 0.12)) continue;
+    deck = { x: one.terrace.x, z: one.terrace.z, hw: one.terrace.width / 2, hd: one.terrace.depth / 2, top: one.to + 0.12 };
+  }
+  return deck ?? { x: 0, z: 0, hw: massing.width / 2, hd: massing.depth / 2, top: massing.height + 0.12 };
 }

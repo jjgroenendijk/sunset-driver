@@ -10,17 +10,18 @@ design; read the section the issue names before the code.
 
 ## The gotchas
 
-Three docs hold what costs a session:
+Four docs hold what costs a session:
 
 - `docs/rendering.md` — how a frame is put together: streaming, batches and cells, quality tiers,
   smoothing and fading, water, post and the colour grade.
-- `docs/render-entities.md` — what stands in the world: buildings, vehicles, weapons, plants,
+- `docs/buildings.md` — how a building is massed, generated, placed and outlined.
+- `docs/render-entities.md` — what stands in the world: vehicles, weapons, plants,
   traffic, parked cars and the crowd.
 - `docs/lighting.md` — what lights it: daylight and shadows, the street lamps, and the lamps and
   beams a vehicle carries after dark.
 
 Each opens with a contents list. Read the section the work touches, not the file: `grep -n '^## '`
-the doc, then read that range. Both are long, and reading either in full is usually waste.
+the doc, then read that range. They are long, and reading one in full is usually waste.
 
 ## Look at the frame
 

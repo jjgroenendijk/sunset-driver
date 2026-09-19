@@ -52,9 +52,13 @@ describe('a dressed flat roof', () => {
         if (placed.dress === undefined) continue;
         const shell = boxOf(placed.shell);
         const dress = boxOf(placed.dress);
-        // Whatever stands on the roof stands on it: above the walls, and
-        // inside the footprint the shell already fills.
-        expect(dress.min.y, kind).toBeGreaterThan(shell.min.y + (shell.max.y - shell.min.y) * 0.8);
+        // Whatever stands on the roof stands on it: clear of the street, under
+        // the top of the shell, and inside the footprint the shell already
+        // fills. The height is not a share of the building's own, because a
+        // tower massed on a podium carries a terrace two or three storeys up as
+        // well as a roof a hundred metres over it (spec section 10.3).
+        expect(dress.min.y, kind).toBeGreaterThan(shell.min.y + 6);
+        expect(dress.min.y, kind).toBeLessThan(shell.max.y);
         expect(dress.min.x).toBeGreaterThanOrEqual(shell.min.x);
         expect(dress.max.x).toBeLessThanOrEqual(shell.max.x);
         expect(dress.min.z).toBeGreaterThanOrEqual(shell.min.z);
