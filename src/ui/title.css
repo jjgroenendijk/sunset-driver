@@ -52,6 +52,9 @@
 .title-card::before, .title-menu::before { content: ""; position: absolute; inset: .45rem; border: 1px solid rgba(193,154,83,.6); pointer-events: none; }
 .title-numeral { font: italic 400 1.05rem var(--it-serif); color: var(--it-rosso); }
 
+.title-invite { justify-self: start; display: grid; gap: .35rem; width: min(23rem, 100%); margin-bottom: 1rem; padding: 1.1rem 1.3rem; color: var(--it-ink); background: linear-gradient(160deg, var(--it-ivory), var(--it-paper)); border-left: 4px solid var(--it-rosso); box-shadow: 0 30px 70px rgba(0,0,0,.5); }
+.title-invite h2 { margin: 0; font: 400 1.6rem/1.1 var(--it-serif); }
+.title-invite p { margin: 0; font-size: .8rem; color: var(--it-muted); }
 .title-menu { justify-self: start; display: grid; width: min(23rem, 100%); padding: 1.1rem 1.1rem; }
 .title-menu-item { position: relative; display: grid; grid-template-columns: 2.4rem 1fr; align-items: baseline; row-gap: .1rem; padding: 1rem .9rem; border: 0; border-bottom: 1px solid rgba(35,28,22,.12); background: transparent; text-align: left; transition: background-color .25s, padding-left .25s; }
 .title-menu-item:last-child { border-bottom: 0; }

@@ -22,6 +22,10 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   DOM order, and skip a disabled one. The pointer moves the same focus, so only one item is lit. A
   character row takes the focus itself and changes on left and right; its two buttons carry no
   `data-nav`. The look lives in `title.css`, which `style.css` imports.
+- `src/ui/title-open.ts` decides what a page opens on: a pending start from a save, or the title
+  screen. A page opened on an invite link shows who invited it first. The main page gets a banner
+  with the room and the seed, and New game becomes **Join game**. The setup page drops the city
+  card, because the seed is the host's: a joiner picks only a driver.
 - `src/ui/settings.ts` holds the settings that belong to the browser rather than to a save, in
   `localStorage` under one key. A value it does not know falls back to the default. The Camera page
   (`title-camera.ts`) and the Sound page (`title-sound.ts`) are shared by the title screen and the
