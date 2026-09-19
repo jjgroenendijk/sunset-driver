@@ -175,6 +175,8 @@ const DIRECTIONS = new Set(['normal']);
  * turned by it — so this is about 0.4 ms there and about 1.5 ms on the runners
  * that are four times slower. Cutting a part costs nothing: a chunk of the core
  * spends the same 60 ms on its facades whether they go in whole or in 2048s.
+ * Those numbers are from before facades were packed (`facade-pack.ts`), when a
+ * vertex was three times the bytes and a quad six vertices rather than four.
  */
 export const MAX_STEP_VERTICES = 2048;
 
@@ -357,7 +359,7 @@ function fill(
           const source = part.attributes.find((attribute) => attribute.name === name);
           if (source !== undefined) {
             if (part.matrix !== undefined && size === 3 && PLACES.has(name)) place(source.array, out, start, from, to, part.matrix);
-            else if (turn !== undefined && size === 3 && DIRECTIONS.has(name)) direct(source.array, out, start, from, to, turn);
+            else if (turn !== undefined && size >= 3 && DIRECTIONS.has(name)) direct(source.array, out, start, from, to, turn, size);
             else out.set(source.array.subarray(from * size, to * size), start);
           }
           into.addUpdateRange(start, (to - from) * size);
@@ -433,20 +435,35 @@ function place(from: AttributeArray, out: AttributeArray, start: number, first: 
   }
 }
 
-/** Copy the directions `first` up to `last` into `out`, turned by a normal matrix and kept unit length. */
-function direct(from: AttributeArray, out: AttributeArray, start: number, first: number, last: number, turn: Matrix3): void {
+/**
+ * Copy the directions `first` up to `last` into `out`, turned by a normal
+ * matrix and kept unit length. A direction may be packed four to a vertex in
+ * signed bytes (`facade-pack.ts`): it is turned the same way, since its length
+ * is thrown away, and written back at the bytes' scale with its padding kept.
+ */
+function direct(
+  from: AttributeArray,
+  out: AttributeArray,
+  start: number,
+  first: number,
+  last: number,
+  turn: Matrix3,
+  size: number,
+): void {
   const e = turn.elements;
-  for (let v = first, at = start; v < last; v++, at += 3) {
-    const x = from[v * 3] as number;
-    const y = from[v * 3 + 1] as number;
-    const z = from[v * 3 + 2] as number;
+  const scale = out instanceof Int8Array ? 127 : 1;
+  for (let v = first, at = start; v < last; v++, at += size) {
+    const x = from[v * size] as number;
+    const y = from[v * size + 1] as number;
+    const z = from[v * size + 2] as number;
     const nx = (e[0] as number) * x + (e[3] as number) * y + (e[6] as number) * z;
     const ny = (e[1] as number) * x + (e[4] as number) * y + (e[7] as number) * z;
     const nz = (e[2] as number) * x + (e[5] as number) * y + (e[8] as number) * z;
-    const length = Math.hypot(nx, ny, nz) || 1;
-    out[at] = nx / length;
-    out[at + 1] = ny / length;
-    out[at + 2] = nz / length;
+    const length = (Math.hypot(nx, ny, nz) || 1) / scale;
+    out[at] = scale === 1 ? nx / length : Math.round(nx / length);
+    out[at + 1] = scale === 1 ? ny / length : Math.round(ny / length);
+    out[at + 2] = scale === 1 ? nz / length : Math.round(nz / length);
+    for (let k = 3; k < size; k++) out[at + k] = from[v * size + k] as number;
   }
 }
 

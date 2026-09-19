@@ -33,6 +33,7 @@ import { CHUNK_TERRAIN_CELL, TERRAIN_CELL } from '../world/terrain.ts';
 import type { RoadTier, WorldDescription } from '../world/types.ts';
 import { buildChunkBuildings, buildingLookup, type BuildingLookup } from './building-mesh.ts';
 import { byCell, cellGrid, cellOfPart, cellsHolding, type CellGrid } from './cells.ts';
+import { packFacade } from './facade-pack.ts';
 import { buildGroundAttributes, groundLookup, type GroundAttributes, type GroundLookup } from './ground.ts';
 import { lampsIn, type Lamp } from './lamp-mesh.ts';
 import { postersIn, type Poster } from './poster-mesh.ts';
@@ -54,7 +55,7 @@ const FAR_TIERS: readonly RoadTier[] = ['highway', 'arterial'];
 const FAR_GROUND_STEP = TERRAIN_CELL / CHUNK_TERRAIN_CELL;
 
 /** A typed array a packed geometry holds its numbers in. */
-type GeometryArray = Float32Array | Uint32Array | Uint16Array | Uint8Array;
+export type GeometryArray = Float32Array | Float16Array | Uint32Array | Uint16Array | Uint8Array | Int8Array;
 
 /** One attribute of a packed geometry. */
 export interface PackedAttribute {
@@ -234,7 +235,8 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
   for (const [i, placed] of placements.entries()) {
     writeRoof(roofs, i * ROOF_STRIDE, placed.hull, placed.matrix);
     const matrix = new Float32Array(placed.matrix.toArray());
-    (placed.batch === 'facade' ? facades : blocks).push({ geometry: takeGeometry(placed.shell), matrix });
+    if (placed.batch === 'facade') facades.push({ geometry: packFacade(takeGeometry(placed.shell)), matrix });
+    else blocks.push({ geometry: takeGeometry(placed.shell), matrix });
     outlines.push({ geometry: takeGeometry(placed.hull), matrix });
   }
 
@@ -337,7 +339,7 @@ export function payloadTransfers(payload: ChunkPayload): ArrayBuffer[] {
 export function unpackGeometry(packed: PackedGeometry): BufferGeometry {
   const geometry = new BufferGeometry();
   for (const attribute of packed.attributes) {
-    geometry.setAttribute(attribute.name, new BufferAttribute(attribute.array, attribute.itemSize, attribute.normalized));
+    geometry.setAttribute(attribute.name, new BufferAttribute(attribute.array as BufferAttribute['array'], attribute.itemSize, attribute.normalized));
   }
   if (packed.index !== undefined) geometry.setIndex(new BufferAttribute(packed.index, 1));
   return geometry;
