@@ -3,9 +3,10 @@
  *
  * A police car is the patrol row of the roster, drawn the way the traffic is:
  * the painted boxes, the parts with colours of their own, and the outline of
- * spec section 10.1. On top of each one sits a light bar, one instance of a
- * fourth mesh, whose instance colour flips between red and blue on a beat of
- * the tick: that is what a player sees in the mirror before they see the car.
+ * spec section 10.1. The two halves of the light bar on its roof flash
+ * against each other (`beacons.ts`), red then blue, and throw their light on
+ * the road round the car: that is what a player sees in the mirror before they
+ * see the car.
  *
  * The helicopter is drawn over the roofs, {@link HELICOPTER_HEIGHT} above the
  * ground the record says is under it, with a rotor that turns with the tick.
@@ -13,32 +14,22 @@
  * The units are drawn where the record put them. They are stepped every tick
  * like the player, so nothing is evaluated between two ticks here.
  */
-import { BackSide, BoxGeometry, Color, Group, Matrix4, MeshBasicMaterial, MeshStandardMaterial, Quaternion, Vector3, type InstancedMesh, type Material } from 'three';
+import { BackSide, Color, Group, Matrix4, MeshBasicMaterial, MeshStandardMaterial, Quaternion, Vector3, type InstancedMesh, type Material } from 'three';
 import { HELICOPTER_HEIGHT, type PoliceUnit } from '../sim/police.ts';
 import type { SimState } from '../sim/simulation.ts';
 import { rideHeight, specOf } from '../sim/vehicle.ts';
 import { boxOf, coloured, instanced, merged, trafficParts, TRAFFIC_VIEW } from './traffic.ts';
 import { OUTLINE, VEHICLE_OUTLINE_WIDTH } from './vehicle.ts';
 import { createVehicleTrim, type VehicleTrim } from './vehicle-glow.ts';
-import { GLASS, METAL, TYRE } from './vehicle-mesh.ts';
+import { GLASS, METAL, patrolBeacons, TYRE } from './vehicle-mesh.ts';
+import { BeaconGlow, BeaconPhase, beaconMaterial, flashLit } from './beacons.ts';
 import { tinted } from './tint.ts';
 
 /** Units of each mesh drawn at most, which is more than the force ever has out. */
 const UNIT_CAP = 16;
 
-/** The two colours of a light bar, and the ticks it holds each one for. */
-const LIGHT_RED = 0xd8302a;
-const LIGHT_BLUE = 0x2f6ad8;
-
-/**
- * How hard the bar burns, as a multiple of its colour. At 1 it stayed under
- * the bloom threshold of `post.ts` once exposed, and a siren did not glow.
- */
-const BAR_GLOW = 4;
-const FLASH_TICKS = 12;
-
-/** The bar across the roof: its size, and how far over the roof it sits. */
-const BAR = { length: 0.3, height: 0.12, width: 1.1 };
+/** Metres a lit half of the bar is grown by over the unlit one `vehicle-mesh.ts` draws, so the two never z-fight. */
+const LENS_GROW = 0.012;
 
 /** The body of the helicopter, its tail and the rotor over it, in metres. */
 const HELI = { length: 5.5, height: 1.6, width: 1.6, tail: 4.2, rotor: 7 };
@@ -48,7 +39,8 @@ export class PoliceView {
   private readonly paint: InstancedMesh;
   private readonly trim: InstancedMesh;
   private readonly rim: InstancedMesh;
-  private readonly bar: InstancedMesh;
+  private readonly phases: [BeaconPhase, BeaconPhase];
+  private readonly glow: BeaconGlow;
   private readonly heli: InstancedMesh;
   private readonly rotor: InstancedMesh;
   private readonly materials: Material[];
@@ -60,35 +52,39 @@ export class PoliceView {
   private readonly one = new Vector3(1, 1, 1);
   private readonly colour = new Color();
   private readonly ride: number;
-  private readonly roof: number;
 
   constructor() {
     const spec = specOf('emergency');
     this.ride = rideHeight(spec);
-    this.roof = spec.halfHeight * 2 + BAR.height / 2;
     const parts = trafficParts(spec);
     const paint = new MeshStandardMaterial({ roughness: 0.4, metalness: 0.2 });
     this.trimMaterial = createVehicleTrim();
     const trim = this.trimMaterial.material;
-    const lamp = new MeshBasicMaterial({ toneMapped: false });
+    const lamp = beaconMaterial();
     const outline = new MeshBasicMaterial({ color: new Color(OUTLINE), side: BackSide, fog: true });
     this.materials = [paint, lamp, outline];
     this.paint = tinted(instanced(parts.paint, paint, true, UNIT_CAP));
     this.trim = instanced(parts.trim, trim, false, UNIT_CAP);
     this.rim = instanced(parts.rim, outline, false, UNIT_CAP);
-    this.bar = tinted(instanced(new BoxGeometry(BAR.length, BAR.height, BAR.width), lamp, false, UNIT_CAP));
+    const lenses = patrolBeacons(spec).map((beacon) => ({
+      ...beacon,
+      box: { ...beacon.box, length: beacon.box.length + LENS_GROW, height: beacon.box.height + LENS_GROW, width: beacon.box.width + LENS_GROW },
+    }));
+    this.phases = [new BeaconPhase(lenses, 0, lamp, UNIT_CAP), new BeaconPhase(lenses, 1, lamp, UNIT_CAP)];
+    this.glow = new BeaconGlow(UNIT_CAP);
     this.heli = instanced(heliBody(), trim, true, UNIT_CAP);
     this.rotor = instanced(rotorBlades(), trim, false, UNIT_CAP);
-    this.group.add(this.paint, this.trim, this.rim, this.bar, this.heli, this.rotor);
+    this.group.add(this.paint, this.trim, this.rim, this.phases[0].mesh, this.phases[1].mesh, this.heli, this.rotor, this.glow.mesh);
   }
 
   /**
    * How far on the headlamps and tail lights of the patrol cars are, 0 by day
-   * and 1 after dark. The light bar is not on this switch: it flashes whenever
-   * a unit is out, day or night.
+   * and 1 after dark. The light bar flashes whenever a unit is out, day or
+   * night; this only says how strongly its light shows on the road.
    */
   set lamps(amount: number) {
     this.trimMaterial.lamps.value = amount;
+    this.glow.night = amount;
   }
 
   get lamps(): number {
@@ -104,6 +100,7 @@ export class PoliceView {
   update(state: SimState, x: number, y: number): void {
     let cars = 0;
     let flying = 0;
+    this.glow.begin();
     for (const unit of state.police.units) {
       if (Math.abs(unit.x - x) > TRAFFIC_VIEW || Math.abs(unit.y - y) > TRAFFIC_VIEW) continue;
       this.turn.setFromAxisAngle(this.up, -unit.heading);
@@ -127,23 +124,22 @@ export class PoliceView {
       this.trim.setMatrixAt(cars, this.matrix);
       this.rim.setMatrixAt(cars, this.matrix);
       this.paint.setColorAt(cars, this.colour.set(specOf('emergency').paint));
-      this.at.set(unit.x, unit.height + this.ride + this.roof, unit.y);
-      this.matrix.compose(this.at, this.turn, this.one);
-      this.bar.setMatrixAt(cars, this.matrix);
-      // Every other unit is on the other beat, so a pair of cars flashes
-      // against each other rather than in step.
-      const beat = Math.floor(state.tick / FLASH_TICKS) + unit.id;
-      this.bar.setColorAt(cars, this.colour.set(beat % 2 === 0 ? LIGHT_RED : LIGHT_BLUE).multiplyScalar(BAR_GLOW));
+      for (const phase of [0, 1] as const) {
+        const lit = flashLit(state.tick, unit.id, phase);
+        this.phases[phase].set(cars, this.matrix, lit);
+        if (lit) this.glow.add(unit.x, unit.height, unit.y, this.phases[phase].colour);
+      }
       cars++;
     }
     this.fill(cars, flying);
   }
 
   dispose(): void {
-    for (const mesh of [this.paint, this.trim, this.rim, this.bar, this.heli, this.rotor]) {
+    for (const mesh of [this.paint, this.trim, this.rim, this.phases[0].mesh, this.phases[1].mesh, this.heli, this.rotor]) {
       mesh.geometry.dispose();
       mesh.dispose();
     }
+    this.glow.dispose();
     for (const material of this.materials) material.dispose();
     this.trimMaterial.dispose();
     this.group.clear();
@@ -151,7 +147,9 @@ export class PoliceView {
 
   /** Show what was written this frame and hide the meshes that took nothing. */
   private fill(cars: number, flying: number): void {
-    for (const mesh of [this.paint, this.trim, this.rim, this.bar]) {
+    for (const phase of this.phases) phase.commit(cars);
+    this.glow.commit();
+    for (const mesh of [this.paint, this.trim, this.rim]) {
       mesh.count = cars;
       mesh.visible = cars > 0;
       if (cars > 0) mesh.instanceMatrix.needsUpdate = true;
@@ -162,7 +160,6 @@ export class PoliceView {
       if (flying > 0) mesh.instanceMatrix.needsUpdate = true;
     }
     if (cars > 0 && this.paint.instanceColor !== null) this.paint.instanceColor.needsUpdate = true;
-    if (cars > 0 && this.bar.instanceColor !== null) this.bar.instanceColor.needsUpdate = true;
   }
 }
 

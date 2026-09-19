@@ -1,5 +1,6 @@
-import { Color, type InstancedMesh } from 'three';
+import type { InstancedMesh } from 'three';
 import { describe, expect, it } from 'vitest';
+import { BEACON_DARK, BEACON_GLOW, FLASH_CYCLE, flashLit } from '../src/render/beacons.ts';
 import { PoliceView } from '../src/render/police.ts';
 import { HELICOPTER_HEIGHT, type PoliceUnit } from '../src/sim/police.ts';
 import { createSimState, type SimState } from '../src/sim/simulation.ts';
@@ -37,18 +38,24 @@ describe('the police, drawn (spec sections 9.2, 14)', () => {
     view.dispose();
   });
 
-  it('flashes the light bars, and two cars on the same beat flash against each other', () => {
+  it('flashes the two halves of each bar in turn, and two cars out of step', () => {
     const view = new PoliceView();
     const state = session();
+    // Car 0's red half is lit on tick 1 and car 1's is not: each car has its own offset.
+    state.tick = 1;
+    expect(flashLit(1, 0, 0)).toBe(true);
+    expect(flashLit(1, 1, 0)).toBe(false);
     view.update(state, 0, 0);
-    const bar = view.group.children[3] as InstancedMesh;
-    const colourOf = (index: number): string => new Color().fromArray(Array.from(bar.instanceColor?.array ?? []), index * 3).getHexString();
-    const first = colourOf(0);
-    expect(colourOf(1)).not.toBe(first);
-    // Half a beat later the bar has changed colour.
-    state.tick += 12;
+    const red = view.group.children[3] as InstancedMesh;
+    const blue = view.group.children[4] as InstancedMesh;
+    expect(red.instanceColor?.getX(0)).toBe(BEACON_GLOW);
+    expect(red.instanceColor?.getX(1)).toBeCloseTo(BEACON_DARK, 5);
+    expect(blue.instanceColor?.getX(0)).toBeCloseTo(BEACON_DARK, 5);
+    // Half a cycle on, the blue half of car 0 has its turn.
+    state.tick = 1 + FLASH_CYCLE / 2;
     view.update(state, 0, 0);
-    expect(colourOf(0)).not.toBe(first);
+    expect(red.instanceColor?.getX(0)).toBeCloseTo(BEACON_DARK, 5);
+    expect(blue.instanceColor?.getX(0)).toBe(BEACON_GLOW);
     view.dispose();
   });
 });

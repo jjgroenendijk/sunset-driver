@@ -186,19 +186,55 @@ function lamps(spec: VehicleSpec, y: number): VehicleBox[] {
   return out;
 }
 
-/** A patrol car: a saloon with a light bar on the roof and a stripe down each side. */
+/** The dark base of a light bar, a push bar and the like. */
+const BAR_BASE = 0x1b1d22;
+
+/** A lamp that flashes, and which of the two phases of the flash it burns in (`beacons.ts`). */
+export interface Beacon {
+  box: Omit<VehicleBox, 'panel'>;
+  phase: 0 | 1;
+}
+
+/**
+ * The two halves of a patrol car's light bar: red on the left, blue on the
+ * right. `vehicleBoxes` draws them unlit, and `police.ts` flashes them.
+ */
+export function patrolBeacons(spec: VehicleSpec): Beacon[] {
+  const width = spec.halfWidth * 2;
+  const x = -spec.halfLength * 0.1;
+  const half = (colour: number, z: number, phase: 0 | 1): Beacon => ({
+    box: { length: 0.26, height: 0.13, width: width * 0.36, x, y: spec.halfHeight + 0.13, z, colour, outlined: false },
+    phase,
+  });
+  return [half(BEACON_RED, -width * 0.2, 0), half(BEACON_BLUE, width * 0.2, 1)];
+}
+
+/**
+ * A patrol car: a saloon in black and white — a dark body, bonnet and boot
+ * with a white cabin and white doors — a light bar across the roof and a push
+ * bar on the nose. From above that is a white box between two black ends with a
+ * red and blue bar across it, which no other car in the city is.
+ */
 function patrolCar(spec: VehicleSpec): VehicleBox[] {
   const boxes = car(spec, { cabin: 0.42, cabinAt: -0.04, waist: 0.55 });
   const width = spec.halfWidth * 2;
   const length = spec.halfLength * 2;
-  const roof = spec.halfHeight;
-  // The bar is what reads from above, so each half of it is its own colour.
-  for (const side of [1, -1]) {
-    const colour = side > 0 ? BEACON_BLUE : BEACON_RED;
-    boxes.push(box(length * 0.1, 0.12, width * 0.3, colour, -length * 0.04, roof + 0.06, side * width * 0.2, false));
+  // The body is a car's first box, and the bonnet and the boot are the painted
+  // boxes out at either end; the doors and the cabin keep the paint.
+  for (const part of boxes) {
+    if (part.colour !== spec.paint) continue;
+    if (part === boxes[0] || Math.abs(part.x) > spec.halfLength * 0.4) part.colour = spec.trim;
   }
-  // A stripe along the doors, in the trim the row picked.
-  boxes.push(box(length * 0.5, spec.halfHeight * 0.3, width * 0.92, spec.trim, 0, -spec.halfHeight * 0.1, 0, false));
+  // The bar: a dark base across the roof, and the two halves over it.
+  boxes.push(box(0.3, 0.06, width * 0.8, BAR_BASE, -spec.halfLength * 0.1, spec.halfHeight + 0.04, 0, false));
+  for (const beacon of patrolBeacons(spec)) {
+    const b = beacon.box;
+    boxes.push(box(b.length, b.height, b.width, b.colour, b.x, b.y, b.z, false));
+  }
+  // The push bar on the nose, which is the one part of it wider than a saloon's front.
+  boxes.push(box(0.12, spec.halfHeight * 0.6, width * 0.7, BAR_BASE, spec.halfLength + 0.08, -spec.halfHeight * 0.5, 0, false));
+  // A spotlight on the driver's pillar.
+  boxes.push(box(0.16, 0.1, 0.1, METAL, length * 0.12, spec.halfHeight * 0.3, width * 0.43, false));
   return boxes;
 }
 
