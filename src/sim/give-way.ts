@@ -9,7 +9,8 @@
  * their loop (`hold.ts`):
  *
  * - A car stops for what stands in the lane ahead of it: another car, a
- *   person, the player, the player's car or a wreck. It slows to half its
+ *   person, the player, the player's car, a wreck, or a police car, fire
+ *   engine or ambulance. It slows to half its
  *   pace when the thing is further ahead. Two cars that each stop for the
  *   other would stand forever, so the one with the lower id goes.
  * - A car that is behind its tour may meet a light its tour was timed to pass
@@ -30,6 +31,7 @@ import { rngFor, Subsystem } from '../core/rng.ts';
 import { carDamage, KILL_SPEED, LIFT_MAX, LIFT_SHARE, LIFT_SPEED, SHOVE_SPEED, THROW_SHARE } from './car-strike.ts';
 import { hurtPerson, PERSON_HEALTH, type CasualtyGround } from './casualty.ts';
 import { TICK_RATE } from './clock.ts';
+import { UNIT_BODY } from './emergency.ts';
 import { heldTime, holdOf, type Hold } from './hold.ts';
 import type { CrowdSource } from './melee.ts';
 import { casualtyOf, crowdPoseOf, startledOf, stepAside, type PedestrianPose } from './pedestrians.ts';
@@ -403,7 +405,11 @@ export class GiveWay {
     return false;
   }
 
-  /** The player, the car they drive or left, and the wrecks of the traffic. */
+  /**
+   * The player, the car they drive or left, the wrecks of the traffic, and
+   * the police cars, fire engines and ambulances (spec sections 14, 20.3): a
+   * car queues behind an engine at a fire rather than driving through it.
+   */
   private gatherOthers(state: SimState): void {
     this.others = [];
     const v = state.vehicle;
@@ -415,6 +421,16 @@ export class GiveWay {
       if (!this.inBox(w.x, w.z)) continue;
       const s = specOf(w.cls);
       this.others.push({ x: w.x, y: w.z, heading: headingOf(w), halfLength: s.halfLength, halfWidth: s.halfWidth });
+    }
+    const patrol = specOf('emergency');
+    for (const unit of state.police.units) {
+      if (unit.kind === 'helicopter' || !this.inBox(unit.x, unit.y)) continue;
+      this.others.push({ x: unit.x, y: unit.y, heading: unit.heading, halfLength: patrol.halfLength, halfWidth: patrol.halfWidth });
+    }
+    for (const unit of state.emergency.units) {
+      if (!this.inBox(unit.x, unit.y)) continue;
+      const body = UNIT_BODY[unit.kind];
+      this.others.push({ x: unit.x, y: unit.y, heading: unit.heading, halfLength: body.halfLength, halfWidth: body.halfWidth });
     }
   }
 
@@ -460,6 +476,9 @@ export class GiveWay {
     }
     for (const other of this.others) {
       if (!close(this.reach, other, 0) || !footprintsTouch(this.reach, other, 0)) continue;
+      // Something longer than the car that has come up on it from behind
+      // reaches past its nose, and is not in its way: it drives on.
+      if ((other.x - box.x) * fx + (other.y - box.y) * fy <= 0) continue;
       car.facing = true;
       if (!patient) continue;
       if (footprintsTouch(this.probe, other, 0)) this.block(car, OTHER);

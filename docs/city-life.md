@@ -51,6 +51,11 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 - A car stops for what is in the lane ahead of it and slows for what is further ahead. It also
   stops when its next step meets a car coming in from the side. When cars stop for each other in a
   ring, the car with the lowest id goes. Two cars that already touch may only move apart.
+- Besides the player, their car and the wrecks, a car stops for the police cars, the fire engines
+  and the ambulances, so the traffic queues behind an engine at a fire. It ignores any of these
+  whose middle is behind its own. An engine is longer than a car, so one that comes up on a car
+  from behind reaches past its nose. Without that rule the car would stand in the engine for
+  `PATIENCE`.
 - A car with a lag can meet a light its tour was timed to pass on green, so it stops at the line
   when the light is not green. It makes up the lag during its tour's next wait. It does not move
   while it does, so this is never seen.
