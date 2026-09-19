@@ -156,6 +156,24 @@ export class RoadCarve {
    */
   private readonly before: number[] = [];
   private readonly after: number[] = [];
+  /**
+   * The line that divides a stretch from the one before it on the same curve,
+   * as the normal of a half plane through the knot they share, pointing the way
+   * this stretch lies. A place on the far side of it belongs to the other
+   * stretch and this one carves nothing there.
+   *
+   * The normal is the sum of the two unit directions, so the line is the mitre
+   * between them: past the shared knot both stretches are the same distance
+   * away, and the line hands each place to the stretch it overshoots the least.
+   * The ground the two cover together is the same either way, so only which of
+   * them carves it changes. Zero where no stretch of the curve carries on
+   * there, and a place past such an end is carved by the grade the stretch
+   * carries out past it.
+   */
+  private readonly nx0: number[] = [];
+  private readonly ny0: number[] = [];
+  private readonly nx1: number[] = [];
+  private readonly ny1: number[] = [];
   /** The segments filed in each bucket of the index, by index into the arrays above. */
   private readonly buckets: number[][] = [];
   /**
@@ -212,6 +230,14 @@ export class RoadCarve {
       const standing = new Uint8Array(segments).fill(1);
       for (const i of road.bridges) if (i >= 0 && i < segments) standing[i] = 0;
       for (const i of road.tunnels) if (i >= 0 && i < segments) standing[i] = 0;
+      // The stretch filed before this one on the same curve, where it ended and
+      // which way it ran, so two stretches that meet at a knot are capped
+      // against each other and the ground between them is carved once.
+      let lastAt = -1;
+      let lastSegment = -1;
+      let lastEnd = 0;
+      let lastUx = 0;
+      let lastUy = 0;
       for (let i = 0; i < segments; i++) {
         if (standing[i] === 0) continue;
         const a = road.points[i] as Point;
@@ -250,6 +276,29 @@ export class RoadCarve {
           this.tier.push(road.tier);
           this.before.push(k === 0 && standing[i - 1] !== 1 ? -Infinity : 0);
           this.after.push(k === knots.length - 2 && standing[i + 1] !== 1 ? Infinity : 1);
+          this.nx0.push(0);
+          this.ny0.push(0);
+          this.nx1.push(0);
+          this.ny1.push(0);
+          const length = hypot(dx, dy);
+          const ux = dx / length;
+          const uy = dy / length;
+          // The stretch before this one ends where this one starts: in the same
+          // segment at the same knot, or at the point two segments share.
+          const meets =
+            lastAt >= 0 &&
+            ((lastSegment === i && lastEnd === from.t) || (lastSegment === i - 1 && lastEnd === 1 && from.t === 0));
+          if (meets) {
+            this.nx0[at] = lastUx + ux;
+            this.ny0[at] = lastUy + uy;
+            this.nx1[lastAt] = -(lastUx + ux);
+            this.ny1[lastAt] = -(lastUy + uy);
+          }
+          lastAt = at;
+          lastSegment = i;
+          lastEnd = to.t;
+          lastUx = ux;
+          lastUy = uy;
           this.file(at, Math.min(ax, ax + dx), Math.min(ay, ay + dy), Math.max(ax, ax + dx), Math.max(ay, ay + dy), reach);
         }
       }
@@ -307,6 +356,7 @@ export class RoadCarve {
       const dy = y - (this.ay[i] as number);
       const vx = this.vx[i] as number;
       const vy = this.vy[i] as number;
+      if (this.capped(i, dx, dy, vx, vy)) continue;
       const along = (dx * vx + dy * vy) * (this.inv[i] as number);
       const t = clamp(along, 0, 1);
       const distance = hypot(dx - vx * t, dy - vy * t);
@@ -350,6 +400,22 @@ export class RoadCarve {
   crowdedAt(x: number, y: number): boolean {
     this.claim(x, y);
     return this.crowded;
+  }
+
+  /**
+   * True where the stretch of the same curve that carries on past a knot is
+   * the one that carves a place, and this stretch only asks for a height
+   * there.
+   *
+   * Two stretches that meet at a knot each reach a bench past it, and the
+   * ground beyond is the same distance from both. Without the line between
+   * them the stretch past the knot carves the ground over its neighbour at the
+   * height of the knot they share, which on a slope is a step below the bed
+   * the neighbour drives on (issue #298).
+   */
+  private capped(i: number, dx: number, dy: number, vx: number, vy: number): boolean {
+    if (dx * (this.nx0[i] as number) + dy * (this.ny0[i] as number) < 0) return true;
+    return (dx - vx) * (this.nx1[i] as number) + (dy - vy) * (this.ny1[i] as number) < 0;
   }
 
   /**
@@ -455,7 +521,8 @@ export class RoadCarve {
       const dy = y - (this.ay[i] as number);
       const vx = this.vx[i] as number;
       const vy = this.vy[i] as number;
-      const t = clamp((dx * vx + dy * vy) * (this.inv[i] as number), 0, 1);
+      const along = (dx * vx + dy * vy) * (this.inv[i] as number);
+      const t = clamp(along, 0, 1);
       const offX = dx - vx * t;
       const offY = dy - vy * t;
       const distance = Math.sqrt(offX * offX + offY * offY);
@@ -463,8 +530,11 @@ export class RoadCarve {
       const half = this.half[i] as number;
       const weight = distance <= half ? 1 : 1 - smoothstep(half, reach, distance);
       // The bench stands on the road's surface carried out past its edge, so
-      // a bench inside a mouth tilts as the junction's plane does.
-      const grade = clamp((dx * vx + dy * vy) * (this.inv[i] as number), this.before[i] as number, this.after[i] as number);
+      // a bench inside a mouth tilts as the junction's plane does. A stretch
+      // the line at a knot has handed the place to carries its own grade on
+      // instead, which is the height its surface would be drawn at there.
+      const capped = this.capped(i, dx, dy, vx, vy);
+      const grade = capped ? along : clamp(along, this.before[i] as number, this.after[i] as number);
       const bed = surfaceHeight(
         (this.h0[i] as number) + (this.rise[i] as number) * grade,
         (this.gx0[i] as number) + (this.dgx[i] as number) * t,
@@ -472,6 +542,16 @@ export class RoadCarve {
         dx - vx * grade,
         dy - vy * grade,
       );
+      // A capped stretch carves nothing, but the grid around the knot still
+      // holds its bed as well as its neighbour's, so it is a claimant for
+      // `crowdedAt` where the two ask for different heights.
+      if (capped) {
+        if (distance <= half) {
+          asked = Math.min(asked, bed);
+          askedHigh = Math.max(askedHigh, bed);
+        }
+        continue;
+      }
       // The bench is the ground the road draws its surface on, plus the margin
       // the grid needs around it, so that is the ground the road claims.
       offer(distance <= half ? (this.claimed[i] as number) : 0, weight, distance, bed, this.curve[i] as number);

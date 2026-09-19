@@ -6,7 +6,7 @@ import { RoadRibbons } from '../src/world/ribbon.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import type { Point, RoadTier, WorldDescription } from '../src/world/types.ts';
 import { FOOTPRINT_COUNT, PAVEMENT_SLACK, SURFACE_ABOVE, SURFACE_STRIDE } from './seed-limits.ts';
-import { chunkGroundAt, chunkKeys } from './seed-probes.ts';
+import { chunkCrowdedAt, chunkGroundAt, chunkKeys } from './seed-probes.ts';
 import { bedsOf, carveOf, chunkOf, junctionsOf, seeds, worlds } from './seed-fixture.ts';
 import { sweepSuite } from './seed-suite.ts';
 
@@ -49,7 +49,7 @@ sweepSuite('pavement', () => {
           const mesh = pavementTriangles(piece, surfaceAt);
           if (mesh === undefined) continue;
           const ground = (v: { x: number; y: number; h: number }): void => {
-            if (carve.crowdedAt(v.x, v.y)) return;
+            if (chunkCrowdedAt(carve, v.x, v.y)) return;
             const above = chunkGroundAt(carve, v.x, v.y) - v.h;
             if (above > SURFACE_ABOVE) fault(`${where} at ${v.x.toFixed(1)},${v.y.toFixed(1)} has the ground ${above.toFixed(2)} m above it`);
           };

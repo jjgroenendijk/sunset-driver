@@ -5,7 +5,7 @@ import type { JunctionMap, RoadGap } from '../src/world/junctions.ts';
 import { RoadRibbons, type RoadFrame } from '../src/world/ribbon.ts';
 import type { Point, WorldDescription } from '../src/world/types.ts';
 import { FOOTPRINT_COUNT, SURFACE_ABOVE, SURFACE_STRIDE } from './seed-limits.ts';
-import { chunkGroundAt } from './seed-probes.ts';
+import { chunkCrowdedAt, chunkGroundAt } from './seed-probes.ts';
 import { bedsOf, carveOf, junctionsOf, seeds, worlds } from './seed-fixture.ts';
 import { sweepSuite } from './seed-suite.ts';
 
@@ -20,7 +20,8 @@ import { sweepSuite } from './seed-suite.ts';
  *
  * Ground two claimants ask different heights of is left out, as the carve check
  * of `seed-ground.test.ts` leaves it out: one grid holds one height there, and the
- * road network put the two roads in one place.
+ * road network put the two roads in one place. The ground is read off the four
+ * samples around a place, so one crowded sample is enough to leave it out.
  */
 sweepSuite('road surface', () => {
   it('never has the ground stand through a road or a junction', () => {
@@ -34,7 +35,7 @@ sweepSuite('road surface', () => {
       let asked = 0;
       /** Ask one place: the surface drawn there, against the ground under it. */
       const ask = (x: number, y: number, surface: number, where: string): void => {
-        if (carve.crowdedAt(x, y)) return;
+        if (chunkCrowdedAt(carve, x, y)) return;
         asked++;
         const above = chunkGroundAt(carve, x, y) - surface;
         if (above <= SURFACE_ABOVE) return;

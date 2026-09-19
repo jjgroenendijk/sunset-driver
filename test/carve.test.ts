@@ -301,3 +301,52 @@ describe('the ground past the end of a steep road', () => {
     }
   });
 });
+
+describe('the ground under a road running downhill', () => {
+  // A highway down a slope, with a point every 20 m as the tracer lays them.
+  // Each stretch of the curve reaches a bench past its own ends, so the ground
+  // beside a knot is within reach of the stretch each side of it (issue #298).
+  const points: [number, number][] = [];
+  for (let y = -200; y <= 240; y += 20) points.push([200, y]);
+  const roads = [curve(0, points, 'highway')];
+  const world = hillWorld(roads, (x, y) => 200 - 0.2 * Math.abs(x - 100) - 0.15 * y);
+  const carve = buildCarve(world.terrain, world.roads);
+
+  it('follows the bed along the road rather than stepping down at every knot', () => {
+    for (const y of [0, 8, 16, 20, 28]) {
+      const bed = 200 - 0.2 * Math.abs(200 - 100) - 0.15 * y;
+      expect(carve.heightAt(200, y)).toBeCloseTo(bed, 6);
+      expect(carve.surfaceAt(200, y, 'highway')).toBeCloseTo(bed, 6);
+    }
+  });
+
+  it('counts the two stretches that meet at a knot as one claimant', () => {
+    // They ask for different heights past the knot they share, so without the
+    // line between them the road is crowded by itself along its whole length.
+    for (const y of [0, 8, 16, 20, 28]) expect(carve.crowdedAt(200, y)).toBe(false);
+  });
+});
+
+describe('the ground around a bend', () => {
+  // A street that turns 37 degrees at (100, 0) on a hillside falling both ways.
+  // The outer side of the corner is past the end of both stretches, and the
+  // inner side is within the bench of both.
+  const roads = [curve(0, [[-100, -60], [0, 0], [100, 0], [180, 60], [260, 120]], 'street')];
+  const world = hillWorld(roads, (x, y) => 120 - 0.15 * x - 0.1 * y);
+  const carve = buildCarve(world.terrain, world.roads);
+
+  it('carves the bench each side of the corner to the surface the road draws', () => {
+    for (const [x, y] of [[100, 0], [104, -4], [108, -6], [96, 4], [110, 2]] as const) {
+      expect(carve.heightAt(x, y)).toBeCloseTo(carve.surfaceAt(x, y, 'street'), 6);
+    }
+  });
+
+  it('still reports the corner crowded, where the two sections cross', () => {
+    // The turn is too sharp for the loft to mitre it, so the sections each
+    // side of the corner are drawn at the height of the knot and the bench of
+    // the stretch before it stands above them. One grid cell cannot hold both,
+    // which is what the sweeps leave out.
+    expect(carve.crowdedAt(96, 4)).toBe(true);
+    expect(carve.crowdedAt(112, -8)).toBe(false);
+  });
+});
