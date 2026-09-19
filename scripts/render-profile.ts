@@ -25,6 +25,11 @@
  *                    change is timed: the frames around it say what it cost.
  *   --long           list every frame over 33 ms, with what it compiled.
  *   --cpuprofile     profile the drive and list where its time went.
+ *   --memory         report what the page and the GPU hold: settled after the
+ *                    still frames, and at the most over the drive. The GPU is
+ *                    counted by wrapping `createBuffer`, `createTexture` and
+ *                    `destroy` (`src/render/memory.ts`); the page's heap and its
+ *                    typed arrays come from DevTools, after a collection.
  *
  * GPU timings move by several milliseconds from one run to the next. Compare two
  * builds by running them in turn, more than once each.
@@ -76,8 +81,17 @@ const request: ProfileRequest = {
   noLamps: options.has('no-lamps'),
   noCast: options.get('no-cast')?.split(',') ?? [],
   tierAt: options.get('tier-at')?.split(','),
-  gate: options.has('cpuprofile'),
+  gate: options.has('cpuprofile') || options.has('memory'),
+  memory: options.has('memory'),
 };
+
+/** The page's heap, and the typed arrays outside it, in bytes. */
+interface HeapUsage {
+  usedSize: number;
+  backingStorageSize?: number;
+}
+
+const mb = (bytes: number): string => `${(bytes / 2 ** 20).toFixed(0)} MB`;
 
 /** A percentile of one field of the samples. */
 function pct(samples: readonly FrameSample[], field: keyof FrameSample, p: number): number {
@@ -158,16 +172,40 @@ try {
     request,
   );
   let result: ProfileResult;
+  let heap: { settled: HeapUsage; peak: HeapUsage } | undefined;
   if (request.gate === true) {
     await page.waitForFunction('window.driveReady === true', undefined, { timeout: 600_000 });
     const cdp = await page.context().newCDPSession(page);
-    await cdp.send('Profiler.enable');
-    await cdp.send('Profiler.setSamplingInterval', { interval: 200 });
-    await cdp.send('Profiler.start');
+    let watching = false;
+    let watch: Promise<void> = Promise.resolve();
+    if (request.memory === true) {
+      await cdp.send('HeapProfiler.collectGarbage');
+      const settled = (await cdp.send('Runtime.getHeapUsage')) as HeapUsage;
+      const peak = { ...settled };
+      heap = { settled, peak };
+      watching = true;
+      watch = (async () => {
+        while (watching) {
+          const now = (await cdp.send('Runtime.getHeapUsage')) as HeapUsage;
+          peak.usedSize = Math.max(peak.usedSize, now.usedSize);
+          peak.backingStorageSize = Math.max(peak.backingStorageSize ?? 0, now.backingStorageSize ?? 0);
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      })();
+    }
+    if (options.has('cpuprofile')) {
+      await cdp.send('Profiler.enable');
+      await cdp.send('Profiler.setSamplingInterval', { interval: 200 });
+      await cdp.send('Profiler.start');
+    }
     await page.evaluate('window.startDrive()');
     result = await pending;
-    const { profile } = await cdp.send('Profiler.stop');
-    summarise(profile as unknown as Parameters<typeof summarise>[0]);
+    watching = false;
+    await watch;
+    if (options.has('cpuprofile')) {
+      const { profile } = await cdp.send('Profiler.stop');
+      summarise(profile as unknown as Parameters<typeof summarise>[0]);
+    }
   } else {
     result = await pending;
   }
@@ -177,6 +215,20 @@ try {
   }
   report('still', result.still);
   report('drive', result.drive);
+  const memory = result.memory;
+  if (memory !== undefined && heap !== undefined) {
+    const gpu = memory.settled;
+    console.log(
+      `memory settled: gpu ${mb(gpu.total)} (vertex ${mb(gpu.vertex)}, index ${mb(gpu.index)}, ` +
+        `textures ${mb(gpu.textures)}, other buffers ${mb(gpu.otherBuffers)}) | ` +
+        `js heap ${mb(heap.settled.usedSize)}, typed arrays ${mb(heap.settled.backingStorageSize ?? 0)}, ` +
+        `of them scene geometry ${mb(memory.geometry)}`,
+    );
+    console.log(
+      `memory drive peak: gpu ${mb(memory.drivePeak)} | js heap ${mb(heap.peak.usedSize)}, ` +
+        `typed arrays ${mb(heap.peak.backingStorageSize ?? 0)}`,
+    );
+  }
 } finally {
   await browser.close();
   await server?.close();
