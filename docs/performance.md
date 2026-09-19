@@ -1,7 +1,8 @@
 # Test cost
 
-How the test tiers are measured and where their cost goes. `CLAUDE.md` holds the commands and the
-ceilings. No test measures wall clock: a timing assertion on a shared machine fails at random.
+How the test tiers are measured and where their cost goes, and what a frame of the game holds in
+memory. `CLAUDE.md` holds the commands and the ceilings. No test measures wall clock: a timing
+assertion on a shared machine fails at random.
 
 ## Contents
 
@@ -10,6 +11,7 @@ ceilings. No test measures wall clock: a timing assertion on a shared machine fa
 - Where the full tier's cost goes
 - The shards
 - What a check costs per seed
+- What a frame holds in memory
 
 ## What the ceilings are
 
@@ -132,3 +134,41 @@ comparison the check makes:
   for it.
 - A key built with a template string allocates. `pointKey` answers a number, and a flag per cell of
   a grid is a `Uint8Array`, not a `Set` of `"column,row"`.
+
+## What a frame holds in memory
+
+`node scripts/render-profile.ts sunset --still=60 --drive=900 --memory` counts it: seed `sunset`,
+full quality, 1600×900 at a pixel ratio of 1, on an Apple M1 laptop. The GPU is counted by wrapping
+`createBuffer`, `createTexture` and `destroy`. The page's heap and its typed arrays come from
+DevTools after a collection, and scene geometry is the part of those arrays the scene's meshes hold.
+Issue #453 measured it before and after four changes:
+
+| Where | Before | After |
+| --- | --- | --- |
+| GPU, settled | 450 MB: 295 vertex, 2 index, 152 textures | 401 MB: 247 vertex, 34 index, 119 textures |
+| GPU, highest over the drive | 622 MB | 442 MB |
+| Typed arrays in the page, settled | 316 MB, of them 290 scene geometry | 49 MB, of them 23 scene geometry |
+| Typed arrays, highest over the drive | 740 MB | 228 MB |
+| JS heap without the typed arrays | 46 MB | 44 MB |
+
+- **A batch uploads as it fills** (`uploadBatchesWith`, `batch.ts`). A batch that waited for its
+  first draw kept its arrays until then, and most batches of a settled scene had not been drawn.
+  This alone moved 267 MB from the page to the GPU and saved nothing in total. It matters because
+  the page's own memory is what iOS Safari kills a page for, and the GPU's is not in it.
+- **Facades are packed** (`facade-pack.ts`). A vertex is 44 bytes instead of 144, and drawn through
+  an index, so a shared corner is stored once. The dearest core chunk's facades went from 1.29 M
+  vertices and 83.5 MB to 0.72 M and 32.8 MB. Packing costs the worker about 80 ms a core chunk.
+- **Only the post graph drawn holds its targets** (`post.ts`). The rest are shrunk to a pixel.
+- The drive's peak is the ring swap, when a chunk's old and new detail stand together. The first
+  two changes shrank it with everything else.
+
+Frame times did not get worse. Two default runs of `render-profile.ts` each, main and the branch in
+turn, read:
+
+| | Still, p50 | Drive, p50 | Drive, p95 | Drive frames over 33 ms | Largest update |
+| --- | --- | --- | --- | --- | --- |
+| Main | 19.6, 20.0 ms | 25.6, 26.9 ms | 38.2, 38.9 ms | 130, 137 | 2.4 ms |
+| Branch | 18.1, 18.3 ms | 21.4, 22.0 ms | 34.3, 34.8 ms | 49, 85 | 3.0 ms |
+
+The largest update grew by 0.6 ms, because the first step of a batch now creates its GPU buffers,
+which the first draw of it used to do.
