@@ -42,28 +42,33 @@ export class NewGamePage {
     character: CharacterAppearance,
     worlds: WorldSource,
     onPreview: (appearance: CharacterAppearance) => void,
-    actions: { back(): void; start(): void },
+    actions: { back(): void; start(): void; joining?: boolean },
   ) {
     this.character = character;
     this.onPreview = onPreview;
     this.root = page('title-page title-setup');
 
+    // A joiner drives in the host's city: the seed comes with the link, and
+    // another one would be refused at the handshake. So a joiner is shown no
+    // city card at all, only the driver.
+    const joining = actions.joining === true;
     const city = card('I', 'The city', 'Every seed builds a different city.');
     this.seedInput = document.createElement('input');
     city.append(this.buildSeedRow(seed));
     this.preview = new SeedPreview(city, worlds, () => void this.buildPreview());
 
-    const driver = card('II', 'The driver', 'Use ◀ ▶ or the arrow keys to change a detail.');
+    const driver = card(joining ? 'I' : 'II', 'The driver', 'Use ◀ ▶ or the arrow keys to change a detail.');
     for (const choice of CHARACTER_CHOICES) driver.append(this.buildChoiceRow(choice.key, choice.label));
     driver.append(button('title-link', 'Random look', () => this.apply(randomLook())));
 
     const foot = document.createElement('div');
     foot.className = 'title-setup-foot';
-    const start = button('title-cta', 'Start driving', actions.start);
+    const start = button('title-cta', joining ? 'Join game' : 'Start driving', actions.start);
     start.dataset.autofocus = '';
     foot.append(button('title-back', 'Back', actions.back), start);
 
-    this.root.append(city, driver, foot);
+    if (joining) this.root.append(driver, foot);
+    else this.root.append(city, driver, foot);
     this.refresh();
   }
 

@@ -1,7 +1,7 @@
 import { Raycaster, Vector2 } from 'three';
 import { GameAudio } from './audio/game-audio.ts';
 import { WorldSites } from './audio/site.ts';
-import { randomSeedString, readSeedFromLocation, seedFromString, writeSeedToHash } from './core/seed.ts';
+import { randomSeedString, seedFromString, writeSeedToHash } from './core/seed.ts';
 import { BASE_DISTANCE, FollowCamera, PULL_MARGIN, type RoofHeight } from './render/camera.ts';
 import { PostChain } from './render/post.ts';
 import { frameBudgetFrom, QualityMonitor } from './render/quality.ts';
@@ -39,14 +39,14 @@ import { MapPois, SHOP_POIS } from './ui/map.ts';
 import { MAP_KEY, MapScreen } from './ui/map-screen.ts';
 import { Minimap, MINIMAP_NORTH_KEY } from './ui/minimap.ts';
 import { PAUSE_KEY, PauseMenu } from './ui/pause.ts';
-import { SaveSlots, setPendingStart, takePendingStart } from './ui/saves.ts';
+import { SaveSlots, setPendingStart } from './ui/saves.ts';
 import { readSettings, writeSettings, type BuildingViewChoice, type SoundChoice } from './ui/settings.ts';
 import { FREE_CAMERA_KEY, FreeCameraControls } from './ui/free-camera.ts';
 import { isTouchDevice, readTouchProbe } from './ui/touch.ts';
 import { markTouchUi, mountTouchBar } from './ui/touch-bar.ts';
 import { Keyboard } from './ui/keyboard.ts';
 import { LoadingScreen } from './ui/loading.ts';
-import { TitleScreen, type TitleChoice } from './ui/title.ts';
+import { openingChoice } from './ui/title-open.ts';
 import { HomePanel } from './ui/home-panel.ts';
 import { ShopPanel } from './ui/shop-panel.ts';
 import { TravelPanel } from './ui/travel.ts';
@@ -403,30 +403,15 @@ async function boot(): Promise<void> {
   };
   requestAnimationFrame(frame);
 
-  // A page loaded by an import of another seed's save, or by Regenerate, goes
-  // straight into its seed rather than through the title screen.
-  const pending = takePendingStart(sessionStorage);
-  let choice: TitleChoice;
-  if (pending) {
-    choice = { seed: pending.seed, character: pending.character, world: null, explore: false };
-  } else {
-    const opening = readSeedFromLocation(location.hash);
-    // The seed the menu opens on is built while the player is still choosing a
-    // look, so Start usually finds it finished. A player who changes the seed
-    // pays for the build then, as they did before.
-    worlds.warm(seedFromString(opening));
-    const title = new TitleScreen(
-      document.body,
-      { seed: opening, character: DEFAULT_APPEARANCE, world: null, explore: false },
-      worlds,
-      (appearance) => preview.character.set(appearance),
-      buildingView,
-      touch,
-      sound,
-    );
-    choice = await title.wait();
-    title.destroy();
-  }
+  // The seed and the look, from the title screen or from the save that
+  // reloaded the page (`ui/title-open.ts`).
+  const choice = await openingChoice({
+    worlds,
+    onPreview: (appearance) => preview.character.set(appearance),
+    buildingView,
+    touch,
+    sound,
+  });
 
   history.replaceState(null, '', writeSeedToHash(location.hash, choice.seed));
 
@@ -492,7 +477,7 @@ async function boot(): Promise<void> {
     physics = new SimPhysics(ground, state);
     if (session) session.physics = physics;
   };
-  if (pending?.load) {
+  if (choice.load) {
     try {
       const save = slots.read(choice.seed);
       if (save) loadSave(save);

@@ -69,6 +69,9 @@ export class TitleScreen {
   private readonly setup: NewGamePage;
   private readonly pages: MenuPages<PageName>;
   private readonly touch: boolean;
+  /** The room of the invite link the page was opened on, or null on a plain page. */
+  private readonly room: string | null;
+  private readonly seed: string;
   private resolve: ((choice: TitleChoice) => void) | null = null;
 
   constructor(
@@ -79,8 +82,11 @@ export class TitleScreen {
     buildingView: BuildingViewChoice,
     touch: boolean,
     sound: SoundChoice,
+    room: string | null = null,
   ) {
     this.touch = touch;
+    this.room = room;
+    this.seed = initial.seed;
     const character = normaliseAppearance(initial.character);
 
     this.root = document.createElement('section');
@@ -90,6 +96,7 @@ export class TitleScreen {
     this.setup = new NewGamePage(initial.seed, character, worlds, onPreview, {
       back: () => this.back(),
       start: () => this.finish(),
+      joining: room !== null,
     });
     const pages: Record<PageName, HTMLElement> = {
       main: this.buildMain(),
@@ -147,10 +154,15 @@ export class TitleScreen {
         ]
       : [];
     const numeral = (at: number): string => NUMERALS[at + explore.length] ?? '';
+    const first: MenuItem =
+      this.room === null
+        ? { numeral: numeral(0), label: 'New game', note: 'Choose a city and a driver', action: () => this.show('setup') }
+        : { numeral: numeral(0), label: 'Join game', note: `Room ${this.room} · choose a driver`, action: () => this.show('setup') };
+    if (this.room !== null) main.append(inviteBanner(this.room, this.seed));
     main.append(
       menuList([
         ...explore,
-        { numeral: numeral(0), label: 'New game', note: 'Choose a city and a driver', action: () => this.show('setup') },
+        first,
         { numeral: numeral(1), label: 'Load game', note: 'Saves come in a later version', action: null },
         {
           numeral: numeral(2),
@@ -216,4 +228,25 @@ export class TitleScreen {
     this.resolve = null;
     resolve?.({ ...this.setup.choice(), explore });
   }
+}
+
+/**
+ * What a page opened on an invite link says first: this is somebody else's
+ * game, in their city, and pressing on joins it (spec section 21.2, point 2).
+ */
+function inviteBanner(room: string, seed: string): HTMLElement {
+  const banner = document.createElement('section');
+  banner.className = 'title-invite';
+  banner.setAttribute('role', 'status');
+  const eyebrow = document.createElement('span');
+  eyebrow.className = 'title-eyebrow';
+  eyebrow.textContent = 'You were invited';
+  const heading = document.createElement('h2');
+  heading.textContent = `Join room ${room}`;
+  const city = document.createElement('p');
+  city.textContent = `Another player opened this game. You drive in their city, seed ${seed}, with them.`;
+  const alone = document.createElement('p');
+  alone.textContent = 'To play on your own, open the game without the link.';
+  banner.append(eyebrow, heading, city, alone);
+  return banner;
 }
