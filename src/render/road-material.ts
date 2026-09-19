@@ -47,11 +47,17 @@ interface TierPalette {
   pavement: number;
   /** How rough the carriageway is: asphalt is smoother than gravel. */
   roughness: number;
+  /**
+   * Metres of the verge, out from the kerb, drawn in the verge colour. The rest
+   * of the verge takes the pavement colour. Unset, the whole verge does.
+   */
+  shoulder?: number;
 }
 
 const PALETTE: Record<RoadTier, TierPalette> = {
-  // Fresh asphalt on the fast roads, with a grass verge outside the hard edge.
-  highway: { carriageway: 0x37383c, verge: 0x55632f, pavement: 0x55632f, roughness: 0.82 },
+  // Fresh asphalt on the fast roads. The verge is a paved hard shoulder of
+  // older, paler asphalt, with a strip of gravel at its back.
+  highway: { carriageway: 0x37383c, verge: 0x4b4b4c, pavement: 0x7a7468, roughness: 0.82, shoulder: 3 },
   // Worn asphalt between granite kerbs and concrete pavements.
   arterial: { carriageway: 0x3e3f43, verge: 0x84827d, pavement: 0x9c988f, roughness: 0.86 },
   street: { carriageway: 0x44454a, verge: 0x84827d, pavement: 0x97938b, roughness: 0.88 },
@@ -72,9 +78,9 @@ export function createRoadMaterial(tier: RoadTier): MeshStandardNodeMaterial {
   const across = attribute('across', 'float').abs();
 
   // Hard boundaries at the tier's own widths: the kerb line, then the back of
-  // the verge. A band the tier does not have is zero wide and never shows.
+  // the verge, or of the shoulder where the tier has one. A band the tier does not have is zero wide and never shows.
   const beyondKerb = step(spec.width / 2, across);
-  const beyondVerge = step(spec.width / 2 + spec.verge, across);
+  const beyondVerge = step(spec.width / 2 + (palette.shoulder ?? spec.verge), across);
 
   const surface = mix(rgb(palette.carriageway), rgb(palette.verge), beyondKerb);
   const paved = mix(surface, rgb(palette.pavement), beyondVerge);

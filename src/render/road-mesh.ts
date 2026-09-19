@@ -526,7 +526,7 @@ function portal(piece: Piece, at: number, tier: RoadTier, out: number): BufferGe
 function paintMarking(piece: Piece, marking: Marking, out: PaintBuffers, bare: (segment: number) => boolean): void {
   const period = marking.dash + marking.gap;
   const [r, g, blue] = marking.colour;
-  const half = PAINT_WIDTH / 2;
+  const half = (marking.width ?? PAINT_WIDTH) / 2;
   const rise = SURFACE_RAISE + MARK_RAISE;
   const normal = new Vector3();
   const paint = (a0: Vector3, a1: Vector3, b0: Vector3, b1: Vector3): void => {
