@@ -76,6 +76,24 @@ export function chunkGroundAt(carve: RoadCarve, x: number, y: number): number {
   return (h00 * (1 - tx) + h10 * tx) * (1 - ty) + (h01 * (1 - tx) + h11 * tx) * ty;
 }
 
+/**
+ * True where any of the four samples {@link chunkGroundAt} reads is ground two
+ * claimants ask different heights of. The ground at a place is the line between
+ * those samples, so one crowded corner is enough to lift the whole cell off the
+ * bed the road drives on: the reading is not the road's own ground either.
+ */
+export function chunkCrowdedAt(carve: RoadCarve, x: number, y: number): boolean {
+  const cell = CHUNK_TERRAIN_CELL;
+  const x0 = Math.floor(x / cell) * cell;
+  const y0 = Math.floor(y / cell) * cell;
+  return (
+    carve.crowdedAt(x0, y0) ||
+    carve.crowdedAt(x0 + cell, y0) ||
+    carve.crowdedAt(x0, y0 + cell) ||
+    carve.crowdedAt(x0 + cell, y0 + cell)
+  );
+}
+
 /** How far a place stands from a line. */
 export function distanceToLine(p: Point, line: readonly Point[]): number {
   let best = Infinity;

@@ -236,13 +236,20 @@ corridors in `docs/corridors.md`.
   draws its surface on — belongs to it before ground it merely reaches, and where two roads claim
   one place the ground takes the lower of the beds they ask for, so the other road stands over the
   ground rather than buried under it, and two junctions claiming one place take the lower plane;
-  `crowdedAt(x, y)` is how the sweeps ask whether a place is one of those. A place inside a
-  junction's outline is the junction's whatever else reaches it, but the scan carries on past it all
-  the same, because a street crossing under a junction of a wider road is one of those crowded
-  places and only asking every claimant sees it. A segment on a deck or in a bore carves nothing at
-  all. `surfaceAt(x, y, tier)` is the surface drawn at a place rather than the ground: a junction's
-  plane, or the bed of the nearest road of the tier. The pavement stands on it, because on the
-  ground it would sink to the lowest bed that claims the place.
+  `crowdedAt(x, y)` is how the sweeps ask whether a place is one of those. Two stretches of one
+  curve that meet at a knot do not carve each other's ground: past the knot both are the same
+  distance away, so the mitre between their directions hands each place to the one that overshoots
+  it least. Without that line the stretch beyond a knot takes the ground over its neighbour at the
+  height of the knot, which on a slope steps the bench below the bed the road drives on. The
+  stretch the line hands the place away still asks for a height — its own grade carried on past
+  its end — so a corner too sharp for the loft to mitre, where the two sections really do cross,
+  is crowded as before. A place inside a junction's outline is the junction's whatever else
+  reaches it, but the scan carries on past it all the same, because a street crossing under a
+  junction of a wider road is one of those crowded places and only asking every claimant sees it.
+  A segment on a deck or in a bore carves nothing at all. `surfaceAt(x, y, tier)` is the surface
+  drawn at a place rather than the ground: a junction's plane, or the bed of the nearest road of
+  the tier. The pavement stands on it, because on the ground it would sink to the lowest bed that
+  claims the place.
 - A chunk samples the carve every `CHUNK_TERRAIN_CELL` (2.5 m), four samples to a cell of the
   skeleton's `TERRAIN_CELL` grid, because the camera looks down at an 11 m street and the hillside
   between two 10 m samples cuts up through it. The far ring reads every fourth sample and lands back
