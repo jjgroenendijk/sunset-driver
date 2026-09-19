@@ -269,6 +269,8 @@ async function boot(): Promise<void> {
   }
   let physics = new SimPhysics(ground, state);
   physics.spawn(state, start?.x ?? state.player.x, start?.y ?? state.player.y, start?.heading ?? 0);
+  // The session starts on foot beside the car rather than behind its wheel.
+  physics.alight(state);
   // Where a player who owns no safehouse comes back to (spec sections 11.7,
   // 16.3): the place the session started at.
   state.origin = { x: state.player.x, y: state.player.y, heading: state.player.heading };

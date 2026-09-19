@@ -540,15 +540,7 @@ export class SimPhysics extends GroundPlaces {
     if (!pressed && !dragged) return;
     if (p.driving) {
       if (Math.abs(state.vehicle.speed) > EXIT_SPEED && !dragged) return;
-      const place = exitPlace(state.vehicle, this.spec);
-      p.x = place.x;
-      p.y = place.y;
-      p.height = Math.max(this.ground.heightAt(place.x, place.y), state.vehicle.y - this.spec.halfHeight);
-      p.heading = place.heading;
-      p.speed = 0;
-      p.vy = 0;
-      p.grounded = false;
-      p.driving = false;
+      this.stepOut(state);
     } else if (reachesVehicle(p, state.vehicle, this.spec)) {
       if (isLocked(state.vehicle, this.spec)) {
         state.theft = createTheft(this.spec, state.tick);
@@ -566,6 +558,30 @@ export class SimPhysics extends GroundPlaces {
       return;
     }
     this.adopt(state);
+  }
+
+  /**
+   * Step the player out of their vehicle and stand them at its door, on foot.
+   * The exit key does this, and so does the start of a session: the player
+   * starts beside their car, not in it.
+   */
+  alight(state: SimState): void {
+    this.stepOut(state);
+    this.adopt(state);
+  }
+
+  /** Stand the driver at the door of their vehicle, on foot. The bodies are left to `adopt`. */
+  private stepOut(state: SimState): void {
+    const p = state.player;
+    const place = exitPlace(state.vehicle, this.spec);
+    p.x = place.x;
+    p.y = place.y;
+    p.height = Math.max(this.ground.heightAt(place.x, place.y), state.vehicle.y - this.spec.halfHeight);
+    p.heading = place.heading;
+    p.speed = 0;
+    p.vy = 0;
+    p.grounded = false;
+    p.driving = false;
   }
 
   /** Get into the promoted vehicle under `id`, leaving the player's own in its place (`steal.ts`). */
