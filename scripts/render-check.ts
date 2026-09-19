@@ -25,28 +25,11 @@
  * The browser comes from Playwright, as the render previews' does.
  */
 import { resolve } from 'node:path';
-import type { PreviewRequest, PreviewResult } from '../src/render/preview.ts';
+import type { PreviewRequest } from '../src/render/preview.ts';
 
 // Vite, Playwright and the renderer's own modules are loaded inside `check`
 // rather than here, so `test/render-check.test.ts` can measure frames of its
 // own without any of them. They are most of what this file costs to import.
-
-/**
- * What this Chromium needs before it offers a WebGPU adapter, as
- * `render-preview.ts` needs them. SwiftShader draws on the processor, so a
- * runner with no graphics card still renders.
- */
-const CHROMIUM_FLAGS = [
-  '--enable-unsafe-webgpu',
-  '--enable-unsafe-swiftshader',
-  '--enable-features=Vulkan',
-  '--use-vulkan=swiftshader',
-  '--use-angle=swiftshader',
-  '--disable-vulkan-surface',
-];
-
-/** How long one frame may take. SwiftShader draws a whole world slowly. */
-const TIMEOUT_MS = 600_000;
 
 /**
  * The frame the check takes, but for the seed and the camera distance, which
@@ -182,38 +165,16 @@ export function judgeFrame(metrics: FrameMetrics): string[] {
  * way, because it usually names the cause.
  */
 async function check(seedText: string): Promise<boolean> {
-  const { chromium } = await import('playwright-core');
-  const { createServer } = await import('vite');
   const { seedFromString } = await import('../src/core/rng.ts');
   const { BASE_DISTANCE } = await import('../src/render/camera.ts');
-  const { chromiumPath } = await import('./chromium.ts');
+  const { PreviewHost } = await import('./preview-host.ts');
 
-  let server: Awaited<ReturnType<typeof createServer>> | undefined;
-  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+  // SwiftShader on every machine, because that is what CI draws on, and the
+  // thresholds below were measured on its frames.
+  const host = await PreviewHost.open({ software: true });
   try {
-    server = await createServer({ server: { port: 0 }, logLevel: 'warn' });
-    await server.listen();
-    const url = server.resolvedUrls?.local[0];
-    if (url === undefined) throw new Error('Vite started without a local address.');
-
-    browser = await chromium.launch({ executablePath: chromiumPath(), args: CHROMIUM_FLAGS });
-    const page = await browser.newPage({ viewport: { width: FRAME.width, height: FRAME.height } });
-    const thrown: string[] = [];
-    const logged: string[] = [];
-    page.on('pageerror', (error) => thrown.push(error.message));
-    page.on('console', (message) => {
-      if (message.type() === 'error') logged.push(message.text());
-    });
-
-    await page.goto(new URL('scripts/render-preview.html', url).href, { timeout: TIMEOUT_MS });
-    await page.waitForFunction('window.previewReady === true', undefined, { timeout: TIMEOUT_MS });
-
     const request: PreviewRequest = { seed: seedFromString(seedText), distance: BASE_DISTANCE, ...FRAME };
-    const result = await page.evaluate<PreviewResult, PreviewRequest>(
-      // @ts-expect-error the page attaches `renderPreview`; the driver has no DOM types.
-      (req) => window.renderPreview(req),
-      request,
-    );
+    const { result, failures } = await host.render(request);
 
     const metrics = measureFrame(new Uint8Array(Buffer.from(result.rgb, 'base64')), result.width, result.height);
     const wrong = judgeFrame(metrics);
@@ -224,13 +185,14 @@ async function check(seedText: string): Promise<boolean> {
         ` — frame ${result.frameMs.toFixed(0)} ms`,
     );
     for (const line of wrong) console.error(`  ${line}`);
-    if (logged.length > 0) console.error(`page console errors (${logged.length}), first:\n  ${logged[0]}`);
-    if (thrown.length > 0) console.error(`the page threw:\n  ${thrown.join('\n  ')}`);
+    if (failures.logged.length > 0) {
+      console.error(`page console errors (${failures.logged.length}), first:\n  ${failures.logged[0]}`);
+    }
+    if (failures.thrown.length > 0) console.error(`the page threw:\n  ${failures.thrown.join('\n  ')}`);
 
-    return wrong.length === 0 && thrown.length === 0;
+    return wrong.length === 0 && failures.thrown.length === 0;
   } finally {
-    await browser?.close();
-    await server?.close();
+    await host.close();
   }
 }
 
