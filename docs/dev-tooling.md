@@ -127,6 +127,8 @@ numbers read off it; the sweep reads the same two files.
 
 What the game draws, as one frame. Look at the frame before judging a rendering change.
 
+It draws on the graphics card, in about 12 seconds.
+
 - `--quality` draws it at a quality tier of spec section 9.2 — `full`, `high`, `medium` or `low` —
   which is the one way to see what a tier does.
 - `--x` and `--y` say where the player stands; `--junction=N` stands them at the N-th junction out
@@ -163,6 +165,7 @@ What the game draws, as one frame. Look at the frame before judging a rendering 
   `--y`: the line the run prints says where it ended up. A room is about 7 m across, so
   `--distance=22` is the frame that holds it.
 - `--width` and `--height` are the size of the picture.
+- `--software` draws on SwiftShader, as CI does: minutes, not seconds.
 
 It prints the lights and shadow cascades the frame cost beside the draw calls, and how many
 vehicles of the traffic, parked cars and pedestrians it drew.
@@ -177,8 +180,8 @@ The seeds are the seeds of the sweep, in order, so a tile is a world the tests r
 names them instead, for looking at the ones a failure named. `--hour`, `--x`, `--y`, `--distance`
 and `--quality` mean what they mean for `render-preview.ts`.
 
-One browser draws every tile, which is most of the saving: starting it costs more than a frame.
-Four tiles take about 45 seconds together, against about 50 seconds each on their own.
+One browser draws every tile, on the graphics card, and each seed builds its own scene. Four tiles
+take about 22 seconds. `--software` draws them on SwiftShader, as CI does.
 
 ## `node scripts/render-profile.ts <seed>`
 
@@ -294,8 +297,13 @@ CHROMIUM_PATH=~/.cache/ms-playwright/chromium-<build>/chrome-linux64/chrome npm 
 
 ## The browser the previews need
 
-Both previews serve the project with Vite and drive a headless Chromium from `playwright-core`,
-because the renderer needs a real WebGPU device and Node has none.
+The previews serve the project with Vite and drive a headless Chromium from `playwright-core`,
+because the renderer needs a real WebGPU device and Node has none. `scripts/preview-host.ts` is
+the one place that opens that browser. It asks for the graphics card first, and takes SwiftShader
+only when the browser offers no adapter there, as in a cloud container or on a CI runner. The run
+prints the adapter it drew on. SwiftShader draws the same frame on the processor: one frame of seed
+`sunset` took 370 seconds on a laptop, against 4 seconds on its graphics card. `test:render` draws
+on SwiftShader on every machine, because CI does and its thresholds were measured there.
 
 `scripts/chromium.ts` finds that browser, and no session should have to set a path by hand.
 `playwright-core` ships no browser: it names the build it was released against, and the machine

@@ -55,43 +55,18 @@
  *   --tram           stand beside the first tram at the hour of the picture
  *                    (spec section 13.2), and --stop=N at the N-th tram stop.
  *                    Either one overrides --x, --y and --junction.
+ *   --software       draw on SwiftShader, as CI does.
  *
- * The browser comes from Playwright. A cloud session already has one; on a
- * fresh machine run `npx playwright install chromium` first, or point
- * CHROMIUM_PATH at a Chromium binary.
+ * The browser comes from `chromium.ts`, and draws on the graphics card where
+ * there is one (`preview-host.ts`).
  */
 import { writeFileSync } from 'node:fs';
-import { chromium, type Browser } from 'playwright-core';
-import { createServer, type ViteDevServer } from 'vite';
 import { seedFromString } from '../src/core/rng.ts';
 import { BASE_DISTANCE } from '../src/render/camera.ts';
-import { buildRoadGraph } from '../src/world/graph.ts';
-import { buildJunctions, type Junction } from '../src/world/junctions.ts';
-import { generateWorld } from '../src/world/world.ts';
-import { tickAtHour } from '../src/render/daylight.ts';
-import { AmbientTraffic, trafficRoadsOf, type AmbientPose } from '../src/sim/traffic.ts';
-import { TramLine } from '../src/sim/tram.ts';
-import type { PreviewRequest, PreviewResult } from '../src/render/preview.ts';
-import { chromiumPath } from './chromium.ts';
+import type { PreviewRequest } from '../src/render/preview.ts';
+import type { Junction } from '../src/world/junctions.ts';
 import { encodePng } from './png.ts';
-
-/**
- * What this Chromium needs before it offers a WebGPU adapter. Without them
- * `navigator.gpu.requestAdapter()` returns nothing and the game shows its
- * "no adapter" message. SwiftShader draws on the processor, so it is slow but
- * it does not need a graphics card.
- */
-const CHROMIUM_FLAGS = [
-  '--enable-unsafe-webgpu',
-  '--enable-unsafe-swiftshader',
-  '--enable-features=Vulkan',
-  '--use-vulkan=swiftshader',
-  '--use-angle=swiftshader',
-  '--disable-vulkan-surface',
-];
-
-/** How long one frame may take. SwiftShader draws a whole world slowly. */
-const TIMEOUT_MS = 600_000;
+import { PreviewHost } from './preview-host.ts';
 
 const args = process.argv.slice(2);
 const positional = args.filter((a) => !a.startsWith('--'));
@@ -121,7 +96,10 @@ function num(name: string, fallback: number): number {
  * first, and `--tiers` counts only the junctions where exactly that mix of
  * tiers meets.
  */
-function junctionAt(seed: number, index: number, tiers: string | undefined): Junction {
+async function junctionAt(seed: number, index: number, tiers: string | undefined): Promise<Junction> {
+  const { generateWorld } = await import('../src/world/world.ts');
+  const { buildRoadGraph } = await import('../src/world/graph.ts');
+  const { buildJunctions } = await import('../src/world/junctions.ts');
   const world = generateWorld(seed);
   const junctions = buildJunctions(world.roads, buildRoadGraph(world.roads)).junctions.filter(
     (junction) => tiers === undefined || mixOf(junction) === tiers,
@@ -140,15 +118,19 @@ function mixOf(junction: Junction): string {
 }
 
 const seed = seedFromString(seedText);
-const junction = options.has('junction') ? junctionAt(seed, num('junction', 0), options.get('tiers')) : undefined;
+const junction = options.has('junction') ? await junctionAt(seed, num('junction', 0), options.get('tiers')) : undefined;
 if (junction !== undefined) {
   const mouths = junction.mouths.map((mouth) => `${mouth.tier} cut ${mouth.cut.toFixed(1)} m`).join(', ');
   console.log(`junction ${options.get('junction')} at ${junction.x.toFixed(1)},${junction.y.toFixed(1)}: ${mouths}`);
 }
 
 /** Where `--tram` or `--stop` stands the player: beside the first tram at the hour, or at a stop. */
-function tramPlace(): { x: number; y: number } | undefined {
+async function tramPlace(): Promise<{ x: number; y: number } | undefined> {
   if (!options.has('tram') && !options.has('stop')) return undefined;
+  const { generateWorld } = await import('../src/world/world.ts');
+  const { tickAtHour } = await import('../src/render/daylight.ts');
+  const { AmbientTraffic, trafficRoadsOf } = await import('../src/sim/traffic.ts');
+  const { TramLine } = await import('../src/sim/tram.ts');
   const world = generateWorld(seed);
   if (options.has('stop')) {
     const stop = world.tram.stops[num('stop', 0)];
@@ -158,10 +140,10 @@ function tramPlace(): { x: number; y: number } | undefined {
   const roads = trafficRoadsOf(world);
   const line = new TramLine(seed, roads, world.tram, world.districts, new AmbientTraffic(seed, roads).signals);
   if (line.trams === 0) throw new Error('no tram runs on this seed');
-  const pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
+  const pose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
   return line.carPose(0, 1, tickAtHour(num('hour', 12)), pose);
 }
-const tram = tramPlace();
+const tram = await tramPlace();
 
 const request: PreviewRequest = {
   seed,
@@ -191,45 +173,25 @@ const request: PreviewRequest = {
   ...(options.has('shop') ? { shop: (options.get('shop') as string) || 'any' } : {}),
 };
 
-let server: ViteDevServer | undefined;
-let browser: Browser | undefined;
+const host = await PreviewHost.open({ software: options.has('software') });
+const adapter = host.adapter;
+let frame;
 try {
-  server = await createServer({ server: { port: 0 }, logLevel: 'warn' });
-  await server.listen();
-  const url = server.resolvedUrls?.local[0];
-  if (url === undefined) throw new Error('Vite started without a local address.');
-
-  browser = await chromium.launch({ executablePath: chromiumPath(), args: CHROMIUM_FLAGS });
-  const page = await browser.newPage({ viewport: { width: request.width, height: request.height } });
-  // A page error is the usual failure, and it is silent otherwise: the frame
-  // never resolves and the run stops at the timeout with nothing to read.
-  const failures: string[] = [];
-  page.on('pageerror', (error) => failures.push(error.message));
-  page.on('console', (message) => {
-    if (message.type() === 'error') failures.push(message.text());
-  });
-
-  await page.goto(new URL('scripts/render-preview.html', url).href, { timeout: TIMEOUT_MS });
-  await page.waitForFunction('window.previewReady === true', undefined, { timeout: TIMEOUT_MS });
-
-  const result = await page.evaluate<PreviewResult, PreviewRequest>(
-    // @ts-expect-error the page attaches `renderPreview`; the driver has no DOM types.
-    (req) => window.renderPreview(req),
-    request,
-  );
-  if (failures.length > 0) console.error(`page errors:\n  ${failures.join('\n  ')}`);
-
-  const rgb = new Uint8Array(Buffer.from(result.rgb, 'base64'));
-  writeFileSync(out, encodePng(result.width, result.height, rgb));
-  console.log(
-    `${out}: ${result.width}x${result.height}, seed ${seedText} at ${result.x.toFixed(0)},${result.y.toFixed(0)}` +
-      ` at ${request.hour.toFixed(1)}h` +
-      ` — world ${result.worldMs.toFixed(0)} ms, chunks ${result.chunkMs.toFixed(0)} ms,` +
-      ` frame ${result.frameMs.toFixed(0)} ms, dearest chunk ${result.peakDrawCalls} draw calls,` +
-      ` ${result.lights} lights, ${result.shadows} shadow cascades, ${result.quality} quality,` +
-      ` ${result.traffic} vehicles of traffic, ${result.parked} parked cars, ${result.pedestrians} pedestrians`,
-  );
+  frame = await host.render(request);
 } finally {
-  await browser?.close();
-  await server?.close();
+  await host.close();
 }
+const { result, failures } = frame;
+const errors = [...failures.thrown, ...failures.logged];
+if (errors.length > 0) console.error(`page errors:\n  ${errors.join('\n  ')}`);
+
+const rgb = new Uint8Array(Buffer.from(result.rgb, 'base64'));
+writeFileSync(out, encodePng(result.width, result.height, rgb));
+console.log(
+  `${out}: ${result.width}x${result.height}, seed ${seedText} at ${result.x.toFixed(0)},${result.y.toFixed(0)}` +
+    ` at ${request.hour.toFixed(1)}h on ${adapter}` +
+    ` — world ${result.worldMs.toFixed(0)} ms, chunks ${result.chunkMs.toFixed(0)} ms,` +
+    ` frame ${result.frameMs.toFixed(0)} ms, dearest chunk ${result.peakDrawCalls} draw calls,` +
+    ` ${result.lights} lights, ${result.shadows} shadow cascades, ${result.quality} quality,` +
+    ` ${result.traffic} vehicles of traffic, ${result.parked} parked cars, ${result.pedestrians} pedestrians`,
+);
