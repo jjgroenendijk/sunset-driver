@@ -574,6 +574,10 @@ The city must feel inhabited, not populated.
 - Animated pedestrians with visibly moving arms and legs, varied gaits, appearance varied by
   district. Skinned meshes with generated walk cycles, instanced so crowds stay within the draw-call
   budget.
+- Pedestrians can be shot, struck and run over. A person has health: a light hit wounds them and a
+  heavy one kills them. A fast car throws a person over its bonnet, and they land and slide. The
+  wounded get up and limp, run or crawl away. A body lies until an ambulance takes it, and the dead
+  drop a little cash. The freshest bodies near the player fall as a physics ragdoll.
 - Parked cars lining streets and filling car parks.
 - Working traffic lights that traffic and pedestrians obey.
 - Pigeons that scatter when driven at.
