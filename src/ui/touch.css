@@ -34,16 +34,14 @@ body.touch .title-choice { grid-template-columns: 6rem 2.9rem 1fr 2.9rem; }
 /* Safari zooms the page in on a field set under 16 px and never zooms back out. */
 body.touch .title-seed, body.touch .pause-text { font-size: 16px; }
 body.touch .title, body.touch .pause { padding: calc(1rem + env(safe-area-inset-top)) calc(1rem + env(safe-area-inset-right)) calc(1rem + env(safe-area-inset-bottom)) calc(1rem + env(safe-area-inset-left)); }
-/* The status block is held short of the bar in the same corner: it is a line
-   of developer text, and running under the buttons is what it would do. */
-body.touch .hud { top: calc(12px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); max-width: 52vw; font-size: .8rem; }
-body.touch .hud-panel { left: calc(12px + env(safe-area-inset-left)); bottom: calc(12px + env(safe-area-inset-bottom)); }
-body.touch .minimap-distance { right: calc(12px + env(safe-area-inset-right)); bottom: calc(138px + env(safe-area-inset-bottom)); width: 120px; }
-body.touch .minimap { right: calc(12px + env(safe-area-inset-right)); bottom: calc(12px + env(safe-area-inset-bottom)); width: 120px; height: 120px; }
+/* The HUD's corners come in from the notch and the home bar, and the top
+   right stack drops below the bar of keys in that corner. */
+body.touch { --hud-top: calc(12px + env(safe-area-inset-top)); --hud-right: calc(12px + env(safe-area-inset-right)); --hud-bottom: calc(12px + env(safe-area-inset-bottom)); --hud-left: calc(12px + env(safe-area-inset-left)); --hud-map: 120px; --hud-ring: 4px; }
+body.touch .hud-right { top: calc(var(--hud-top) + 3.6rem); }
 /* The developer pickers are key-only, and a phone reaches neither key. */
 body.touch .picker { display: none; }
 /* Nothing of the street's own HUD means anything from the air. */
-body.touch.flying .hud-panel, body.touch.flying .hotwire, body.touch.flying .travel { display: none; }
+body.touch.flying :is(.hud-left, .hud-right, .hud-ring, .hud-speed), body.touch.flying .hotwire, body.touch.flying .travel { display: none; }
 /* The stick would stand on the corner map, so the map goes up out of its way. */
 body.touch.flying .minimap { bottom: calc(9.5rem + env(safe-area-inset-bottom)); }
 

@@ -11,6 +11,7 @@ import type { FollowCamera } from './render/camera.ts';
 import { commitCrime } from './sim/police.ts';
 import type { SimState } from './sim/simulation.ts';
 import { FREE_CAMERA_KEY, type FreeCameraControls } from './ui/free-camera.ts';
+import { DEV_INFO_KEY } from './ui/hud.ts';
 import { MAP_CENTRE_KEY, MAP_KEY, MAP_LEGEND_KEY, type MapScreen } from './ui/map-screen.ts';
 import { MINIMAP_NORTH_KEY, type Minimap } from './ui/minimap.ts';
 import { PAUSE_KEY, type PauseMenu } from './ui/pause.ts';
@@ -79,5 +80,10 @@ export function listenForKeys(target: Window, keys: KeyTargets): void {
     // The developer free camera. It takes over from where the game camera
     // stands, and pointer lock needs this key press to ask for it.
     if (event.code === FREE_CAMERA_KEY) free.toggle(camera.camera);
+    // The developer block of the HUD. F3 is the browser's find-next too.
+    if (event.code === DEV_INFO_KEY) {
+      event.preventDefault();
+      target.document.body.classList.toggle('dev-info');
+    }
   });
 }

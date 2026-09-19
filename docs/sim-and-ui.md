@@ -32,19 +32,21 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
   `resolveAppearance` hands the renderer the entries. `src/render/character.ts` builds the model
   from them as boxes; the parts a top-down camera sees carry the chosen colours. What moves those
   boxes — the walk, the jump and the stroke — is in `docs/render-entities.md`.
-- `src/ui/hud.ts` is the HUD of spec section 12: the status block at the top left is what a
-  developer reads — seed, clock, draw calls, quality tier and what is being driven — and the panel
-  at the bottom left is the game's own HUD: health, money, weapon and ammunition, heat and the
-  current objective. Every field is written only when its text changes, because a DOM write lays the
-  whole overlay out again and doing that sixty times a second for numbers that stand still is a
-  frame the city could have spent on itself. The radio line under it is what `src/audio` says is on
-  air (spec section 15), so it is there only while something is playing. `SimState.money` is moved
-  by the shops of spec section 16.1 and the contraband market of 16.2 (`docs/market.md`).
+- `src/ui/hud.ts` is the HUD of spec section 12, laid out as open-world games lay theirs out:
+  clock, money, weapon and wanted stars at the top right; the minimap in a ring of health at the
+  bottom left; the speedometer at the bottom right while driving; the objective at the top left;
+  the radio at the top centre. `hud.css` places them from `--hud-*` variables, which `touch.css`
+  moves in from the notch. The ring is a separate element from `minimap.ts`, so both read the same
+  variables to line up. The developer block — seed, weather numbers, draw calls, quality tier — is
+  hidden until F3 sets `dev-info` on the body. Every field is written only when its text changes,
+  because a DOM write lays the whole overlay out again. The radio line is what `src/audio` says is
+  on air (spec section 15), so it is there only while something is playing. `SimState.money` is
+  moved by the shops of spec section 16.1 and the contraband market of 16.2 (`docs/market.md`).
   `SimState.objective` is the leg of the job being carried and what is left of its clock, written
   by the missions of spec section 18 (`docs/missions.md`) and by nothing else. The turf line under
-  the heat is whose block the player is standing on and how far
-  through taking it they are (spec section 17.2); `frame.ts` reads it off `turfLine` and hands it
-  in, because the HUD knows the record and not the world.
+  the objective is whose block the player is standing on and how far through taking it they are
+  (spec section 17.2). `frame.ts` reads it off `turfLine` and hands it in, because the HUD knows
+  the record and not the world.
 
 ## The map
 
