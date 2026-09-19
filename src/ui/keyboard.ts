@@ -19,6 +19,15 @@ const MOUSE_BITS: readonly (readonly [string, number])[] = [
 ];
 
 /**
+ * Pixels of wheel travel one weapon step takes. A mouse notch is about 100,
+ * and a trackpad sends a swipe as many small events, so they are added up.
+ */
+const WHEEL_STEP = 100;
+/** Pixels a wheel event in lines or in pages counts as. */
+const WHEEL_LINE = 33;
+const WHEEL_PAGE = 800;
+
+/**
  * The walking axes turned by a view's yaw. Up the screen is `-z` turned by
  * `yaw`, and the walk of `walker-body.ts` reads the steering axis as `+x` and
  * the forward axis as `-z`, so the pair is turned into those map axes. A yaw
@@ -65,6 +74,9 @@ export class Keyboard {
   private picked = 0;
   /** A press of the interact key made on a panel, handed to the next sample. */
   private tapped = false;
+  /** Wheel travel not yet taken as a weapon step, and the steps waiting for the next sample. */
+  private wheel = 0;
+  private steps = 0;
 
   constructor(target: Window) {
     target.addEventListener('keydown', (e) => {
@@ -111,6 +123,29 @@ export class Keyboard {
     });
     // The right button aims, so the page's own menu must not open over the game.
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    // The wheel steps through the weapons carried: down for the next, up for
+    // the one before (spec section 11.6).
+    canvas.addEventListener(
+      'wheel',
+      (e) => {
+        e.preventDefault();
+        const scale = e.deltaMode === 1 ? WHEEL_LINE : e.deltaMode === 2 ? WHEEL_PAGE : 1;
+        this.wheel += e.deltaY * scale;
+        while (Math.abs(this.wheel) >= WHEEL_STEP) {
+          const step = Math.sign(this.wheel);
+          this.wheel -= step * WHEEL_STEP;
+          // One step waits at a time, so a fast spin does not queue a run of them.
+          this.steps = step;
+        }
+      },
+      { passive: false },
+    );
+  }
+
+  /** Drop the wheel travel not yet taken, while nothing samples the keys. */
+  forgetWheel(): void {
+    this.wheel = 0;
+    this.steps = 0;
   }
 
   /**
@@ -171,6 +206,8 @@ export class Keyboard {
     this.picked = 0;
     const tapped = this.tapped;
     this.tapped = false;
+    const cycle = this.steps;
+    this.steps = 0;
     // The sprint key doubles as the sell key at a dealer's corner (spec section
     // 16.2): a number alone buys the good, and the same number with it held
     // sells the holding. A player standing still to deal is not sprinting.
@@ -195,7 +232,7 @@ export class Keyboard {
       pointX: this.point?.x ?? 0,
       pointY: this.point?.y ?? 0,
       reload: this.is('KeyR'),
-      cycle: this.is('KeyC'),
+      cycle,
       station: this.dial(),
       travel: chosen,
       buy: picked > 0 ? picked : chosen,

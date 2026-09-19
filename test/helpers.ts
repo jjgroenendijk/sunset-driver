@@ -56,10 +56,12 @@ export function inputStream(seed: number, ticks: number): InputFrame[] {
         fire: ((x >>> 6) & 3) === 0,
         aim: ((x >>> 14) & 3) === 0,
         reload: ((x >>> 18) & 15) === 0,
-        cycle: ((x >>> 22) & 15) === 0,
+        cycle: ((x >>> 22) & 15) === 0 ? 1 : 0,
       };
     }
     frames.push(frame);
+    // The weapon step is an edge: a held frame takes it on its first tick only.
+    if (frame.cycle !== 0) frame = { ...frame, cycle: 0 };
     held--;
   }
   return frames;

@@ -33,6 +33,7 @@ import { Hud } from './ui/hud.ts';
 import { SaveSlots } from './ui/saves.ts';
 import { readSettings, writeSettings, type MenuSettings } from './ui/settings.ts';
 import { FreeCameraControls } from './ui/free-camera.ts';
+import { MouseLook } from './ui/mouse-look.ts';
 import { isTouchDevice, readTouchProbe } from './ui/touch.ts';
 import { markTouchUi, mountTouchBar } from './ui/touch-bar.ts';
 import { Keyboard } from './ui/keyboard.ts';
@@ -105,6 +106,8 @@ async function boot(): Promise<void> {
   // The developer free camera of `docs/dev-tooling.md`. It writes into the same
   // camera the game is played through, so nothing else in the frame changes.
   const free = new FreeCameraControls(canvas, touch);
+  // The mouse look of the chase views, under pointer lock (`ui/mouse-look.ts`).
+  const look = new MouseLook(canvas, camera, touch);
 
   window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight, false);
@@ -188,7 +191,7 @@ async function boot(): Promise<void> {
   let session: Session | null = null;
   // What a frame of a session does (`frame.ts`). Until there is one the title
   // screen's preview is drawn instead.
-  const loop = new SessionFrame(canvas, { camera, clock, keyboard, free, audio, settings });
+  const loop = new SessionFrame(canvas, { camera, clock, keyboard, free, look, audio, settings });
   let last = performance.now();
 
   const frame = (now: number): void => {
@@ -369,7 +372,7 @@ async function boot(): Promise<void> {
   // to report it on (`docs/multiplayer.md`).
   party.join();
   // The presses that open a menu, a map or a picker (`keys.ts`).
-  listenForKeys(window, { state, pause, map, minimap, picker, weapons, free, camera, view: menuSettings.view });
+  listenForKeys(window, { state, pause, map, minimap, picker, weapons, free, camera, look, view: menuSettings.view });
 
   const views = buildViews(world, { traffic, crowd, tram, wildlife }, parked, streetLife.standing);
 

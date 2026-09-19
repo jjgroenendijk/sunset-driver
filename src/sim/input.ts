@@ -26,8 +26,12 @@ export interface InputFrame {
   pointY: number;
   /** Reload the weapon in hand (spec section 11.6). */
   reload: boolean;
-  /** Take the next weapon carried (spec section 11.6). */
-  cycle: boolean;
+  /**
+   * The step through the weapons carried this tick (spec section 11.6): 1 for
+   * the next, -1 for the one before, 0 for none. It is an edge, like
+   * {@link InputFrame.station}: one notch of the wheel is one weapon.
+   */
+  cycle: number;
   /**
    * The turn of the radio dial this tick (spec section 15): 1 for the next
    * station, -1 for the one before, 0 for no turn. It is an edge rather than a
@@ -77,7 +81,7 @@ export const EMPTY_INPUT: Readonly<InputFrame> = Object.freeze({
   pointX: 0,
   pointY: 0,
   reload: false,
-  cycle: false,
+  cycle: 0,
   station: 0,
   travel: 0,
   buy: 0,

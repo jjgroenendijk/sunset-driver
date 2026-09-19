@@ -9,6 +9,7 @@ in `docs/dev-tooling.md`.
 - The views
 - Buildings in the way
 - Walking in a turned view
+- Mouse look
 
 ## The views
 
@@ -44,3 +45,18 @@ in `docs/dev-tooling.md`.
   turned axes and needs no camera.
 - In a chase view the camera turns after the player, and the player turns to face the way they
   walk. Holding `A` therefore walks a circle. That is how the view steers on foot.
+
+## Mouse look
+
+- `ui/mouse-look.ts` holds the pointer lock of the chase views and hands each movement to
+  `FollowCamera.look`. The lock is asked for on the `C` press into a chase view, and on a click on
+  the canvas. The browser grants it only to a gesture. That click is taken in the capture phase, so
+  it does not also fire.
+- `frame.ts` tells it each frame whether it is wanted. A menu, the map and a shop counter want the
+  pointer, so the lock is let go under them. A touch screen has no lock and never asks.
+- On foot the mouse steers the yaw alone: the camera stops turning after the player. At the wheel it
+  adds a look aside, which goes back behind the car after `LOOK_HOLD` seconds of a still mouse.
+- The free camera locks the same canvas. While it is detached the movement is its own.
+- A locked pointer does not move, so the aim is laid ahead of the player along the camera's heading
+  (`PointerAim.ahead`), as far as the middle of the screen meets the aim plane. The crosshair is
+  drawn on that point.

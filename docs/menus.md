@@ -34,7 +34,7 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   setting that is on or off, such as Sound or the minimap's north, is a checkbox: a `MenuItem` with
   a `toggle`. One choice of several, such as View, is a round mark on each row. A setting is
   not a key in `controls.ts`: a key is for what the player does while playing. The one exception is
-  View, which `T` also steps through (`keys.ts`), since a player changes it while driving.
+  View, which `C` also steps through (`keys.ts`), since a player changes it while driving.
   Muting throws the whole audio graph away rather than turning it down — `docs/audio.md` says why.
 - Gore is one choice of four, Off, Subtle, Moderate and Heavy, with Moderate the default. It opens
   a column beside Options, as View and Buildings do; `title-camera.ts` builds all three from one

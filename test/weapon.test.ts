@@ -338,7 +338,7 @@ describe('firing', () => {
     giveWeapon(loadout, 'ak-47');
     expect(pull(loadout, player, 0x51a, 500)).toBeDefined();
     expect(beginReload(loadout, 501)).toBe(true);
-    stepWeapons(loadout, pressing({ cycle: true }), player, 0x51a, 502);
+    stepWeapons(loadout, pressing({ cycle: 1 }), player, 0x51a, 502);
     expect(reloading(loadout)).toBe(false);
     expect(currentWeapon(loadout).id).not.toBe('ak-47');
   });

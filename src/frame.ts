@@ -25,6 +25,7 @@ import { currentWeapon, spreadOf } from './sim/weapon.ts';
 import type { Tracer } from './sim/tracer.ts';
 import type { FreeCameraControls } from './ui/free-camera.ts';
 import type { Keyboard } from './ui/keyboard.ts';
+import type { MouseLook } from './ui/mouse-look.ts';
 import { ARRIVED } from './ui/map-route.ts';
 import type { Settings } from './ui/settings.ts';
 import { applyQuality, type Session } from './session.ts';
@@ -35,6 +36,7 @@ export interface FrameParts {
   clock: FixedStepClock;
   keyboard: Keyboard;
   free: FreeCameraControls;
+  look: MouseLook;
   audio: GameAudio;
   settings: Settings;
 }
@@ -95,7 +97,14 @@ export class SessionFrame {
     // stop (`docs/multiplayer.md`). The menu takes the keys either way.
     const menu = session.pause.open;
     const paused = menu && !session.party.live;
+    // A chase view turns with the mouse under pointer lock, unless a menu, the
+    // map or a shop counter wants the pointer (`ui/mouse-look.ts`).
+    const chase = this.parts.settings.view !== 'top-down';
+    this.parts.look.update(chase && !menu && !session.map.open && session.state.shop === null, flying);
     this.pointMouse(session, flying || menu);
+    // Nothing samples the keys while the camera flies or a menu is open, so
+    // the wheel turned then must not step the weapon afterwards.
+    if (flying || menu) keyboard.forgetWheel();
     // The arrow keys walk a shop's counter while the player stands at one.
     keyboard.menu = session.state.shop !== null;
     const steps = session.party.frame(session.state, this.heard, paused ? 0 : clock.advance(elapsed));
@@ -257,6 +266,7 @@ export class SessionFrame {
         view: settings.view,
         pull: settings.buildingView === 'pull-back' ? this.roofTop : undefined,
         turn: settings.buildingView === 'turn' ? this.sightTop : undefined,
+        mouse: this.parts.look.active,
       });
       // A chase view has a near plane of its own, and the sun's cascades are
       // cut to the camera's frustum, so they are refitted.
@@ -277,9 +287,15 @@ export class SessionFrame {
    * pointer. A detached camera or an open menu aims nothing.
    */
   private pointMouse(session: Session, away: boolean): void {
-    const { camera, keyboard } = this.parts;
-    this.aim.cast(camera.camera);
-    const at = away ? undefined : this.aim.ground(session.state.player.height);
+    const { camera, keyboard, look } = this.parts;
+    const me = session.state.player;
+    // Under mouse look the pointer is locked, and the aim is ahead of the view.
+    this.aim.cast(camera.camera, look.active);
+    const at = away
+      ? undefined
+      : look.active
+        ? this.aim.ahead(me.x, me.y, me.height, camera.heading)
+        : this.aim.ground(me.height);
     if (at === undefined) keyboard.unpoint();
     else keyboard.pointAt(at.x, at.y);
   }
@@ -326,7 +342,8 @@ export class SessionFrame {
   private drawAim(session: Session, away: boolean): void {
     const state = session.state;
     const spec = currentWeapon(state.loadout);
-    const shown = !away && this.aim.over && this.aim.mouse && spec.cls !== 'melee';
+    const locked = this.parts.look.active;
+    const shown = !away && ((this.aim.over && this.aim.mouse) || locked) && spec.cls !== 'melee';
     this.aim.hideCursor(shown);
     if (!shown) {
       this.crosshair.hide();
@@ -351,7 +368,9 @@ export class SessionFrame {
       gap = Math.hypot(side.x - middle.x, side.y - middle.y);
       if (point.snapped) lock = middle;
     }
-    this.crosshair.update({ at: this.aim.client, gap, lock, aiming: state.loadout.aiming }, state.tracers, state.tick, performance.now());
+    // Under mouse look the crosshair stands on the aim, since the pointer does not move.
+    const at = locked && point !== undefined ? this.aim.screenOf(camera, point.x, h, point.y) : this.aim.client;
+    this.crosshair.update({ at, gap, lock, aiming: state.loadout.aiming }, state.tracers, state.tick, performance.now());
   }
 
   /** The traffic, the tram, the units, the animals, the parked cars and the crowd, at the frame's moment. */

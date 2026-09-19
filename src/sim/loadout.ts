@@ -55,7 +55,7 @@ export interface LoadoutState {
   /** Shots fired this session. It keys the random stream of each one. */
   shots: number;
   /** The keys that were down last tick, so a press acts once rather than every tick. */
-  held: { fire: boolean; reload: boolean; cycle: boolean };
+  held: { fire: boolean; reload: boolean };
 }
 
 /** An empty pool of every calibre. */
@@ -76,7 +76,7 @@ export function createLoadout(): LoadoutState {
     recoil: 0,
     aiming: false,
     shots: 0,
-    held: { fire: false, reload: false, cycle: false },
+    held: { fire: false, reload: false },
   };
 }
 
