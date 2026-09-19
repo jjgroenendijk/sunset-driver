@@ -24,11 +24,15 @@ they are laid in `src/world`, and how `src/render` draws them.
   districts never share a stop: the second of them goes without. Where the districts crowd round one
   or two junctions that leaves fewer stops than a loop needs, and the seed gets no tram at all, so
   the districts are asked a second time, each taking the nearest junction still free (issue #373).
-- The ground under a deck is not footprint. `buildFootprint` takes only the tram's lane, and
+- The ground a corridor claims is not footprint. `buildFootprint` takes the tram's lane, and
   `buildParcels` splits the land the roads leave by the elevated corridors first. What falls inside
   one is an `under-structure` parcel, kept whole. A road that passes under the deck is footprint,
   and it cuts the strip into a parcel each side of it. A parcel no road reaches is dropped, as
   everywhere.
+- The ground under a deck the claim gave up is footprint, because it belongs to nobody else. A cut
+  gives up the whole segment, however little of it the other corridor wants, and the rest of that
+  segment is still under the deck. `buildFootprint` claims it (`footprint.ts`, `deckShadows`), so
+  no parcel stands under a deck and nothing is built there (issue #288).
 
 ## Piers
 

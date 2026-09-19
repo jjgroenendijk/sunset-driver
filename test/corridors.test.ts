@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { pointInRegions } from '../src/core/geom.ts';
+import { buildFootprint } from '../src/world/footprint.ts';
+import { buildRoadGraph } from '../src/world/graph.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import type { Corridor, Point, RoadCurve } from '../src/world/types.ts';
-import { build, curve, dip, FLAT, ringDistricts, ringRoads, viaduct, world } from './corridor-fixture.ts';
+import { build, curve, deckOverRing, dip, FLAT, ringDistricts, ringRoads, viaduct, world, worldOf } from './corridor-fixture.ts';
 import { pointInRing, ringArea, ringsOverlap } from './helpers.ts';
 
 
@@ -87,22 +90,7 @@ describe('claiming ground', () => {
   it('cuts the strip under a deck around the tram lane rather than sharing the ground', () => {
     // A highway carried over the south side of the ring on a deck. The tram
     // claims its lane first, so the strip under the deck stops either side of it.
-    const roads = [
-      ...ringRoads(),
-      curve(
-        5,
-        'highway',
-        [
-          [150, -450],
-          [150, -375],
-          [150, -300],
-          [150, -225],
-          [150, -150],
-        ],
-        [0, 1, 2, 3],
-      ),
-    ];
-    const { corridors } = build(world(FLAT, ringDistricts()), roads);
+    const { corridors } = build(world(FLAT, ringDistricts()), deckOverRing());
     const elevated = corridors.filter((c) => c.kind === 'elevated');
     expect(elevated.length, 'the deck owns the ground either side of the lane').toBe(2);
 
@@ -112,6 +100,24 @@ describe('claiming ground', () => {
         const b = corridors[j] as Corridor;
         expect(ringsOverlap(a.polygon, b.polygon), `corridor ${i} overlaps corridor ${j}`).toBe(false);
       }
+    }
+  });
+
+  it('leaves the ground a cut gave up to the footprint, so no parcel stands under a deck', () => {
+    // The same deck over the same lane. Two of its four segments lose their
+    // claim, and the ground under them belongs to the road instead: were it
+    // nobody's, `buildParcels` would hand it to a parcel (issue #288).
+    const w = worldOf(world(FLAT, ringDistricts()), deckOverRing());
+    const footprint = buildFootprint(w, buildRoadGraph(w.roads));
+    const deck = w.roads[5] as RoadCurve;
+    const elevated = w.corridors.filter((corridor) => corridor.kind === 'elevated');
+    expect(elevated.length).toBe(2);
+    for (const i of deck.bridges) {
+      const a = deck.points[i] as Point;
+      const b = deck.points[i + 1] as Point;
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const owned = elevated.some((corridor) => pointInRing(mid, corridor.polygon)) || pointInRegions(mid, footprint.regions);
+      expect(owned, `the ground under segment ${i} at ${mid.x}, ${mid.y} is nobody's`).toBe(true);
     }
   });
 });

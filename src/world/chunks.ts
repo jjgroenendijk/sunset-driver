@@ -189,7 +189,7 @@ export interface WorldLayers {
 export function buildLayers(world: WorldDescription): WorldLayers {
   const graph = buildRoadGraph(world.roads);
   const junctions = buildJunctions(world.roads, graph);
-  const footprint = buildFootprint(world.roads, world.corridors, graph);
+  const footprint = buildFootprint(world, graph);
   const field = buildTensorField(world);
   const parcels = buildParcels(world, footprint, graph, field);
   const buildings = buildBuildings(world, parcels, graph);

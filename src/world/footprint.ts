@@ -8,24 +8,30 @@
  * lane (spec section 6.3) claims its strip here too, because it is taken out of
  * the land the same way a carriageway is.
  *
- * A road only claims ground it stands on. A segment carried on a deck or bored
- * through a hill claims nothing: the ground under a deck over land is the
- * under-structure parcel `parcels.ts` cuts from the deck's elevated corridor,
- * the ground under a deck over water is not land at all, and the hill over a
- * bore is untouched. So the footprint is laid along the runs of each curve that
- * are on the ground, and stops at every abutment and portal.
+ * A road claims the ground it stands on. A segment bored through a hill claims
+ * nothing, since the hill over a bore is untouched, so the strips are laid
+ * along the runs of each curve that are on the ground and stop at every
+ * abutment and portal.
+ *
+ * The ground under a deck over land belongs to that deck's elevated corridor,
+ * and the ground under a deck over water is not land at all. What the corridor
+ * gave up is the road's: `corridors.ts` cuts a claim at ground another corridor
+ * already holds, and the strip it gave up is under the deck all the same, so
+ * the road claims it and nothing is built there (issue #288).
  *
  * The pieces are unioned, so the result does not overlap itself and the blocks
  * between the roads come back as its holes. Subtracting it from the land is
  * step 3 of the parcel model, and what is left are the parcels.
  *
- * Built on demand from the curves like the road graph, not stored in the world
- * description. Pure: the same roads and corridors give the same footprint.
+ * Built on demand from the world like the road graph, not stored in the world
+ * description. Pure: the same world and graph give the same footprint.
  */
-import { areaOf, disc, regionOf, strip, union, type Region } from '../core/geom.ts';
+import { areaOf, difference, disc, regionOf, strip, union, type Region } from '../core/geom.ts';
 import type { RoadGraph, RoadNode } from './graph.ts';
+import { Heightfield } from './heightfield.ts';
+import { deckHalfWidth, deckRuns, overWater } from './piers.ts';
 import { footprintHalfWidth } from './tiers.ts';
-import type { Corridor, Point, RoadCurve, RoadTier } from './types.ts';
+import type { Point, RoadCurve, RoadTier, WorldDescription } from './types.ts';
 
 /** Corners of the apron laid over a junction. Enough that its flats read as a curve. */
 const APRON_CORNERS = 8;
@@ -45,6 +51,8 @@ export interface FootprintParts {
    * not here: the ground under a deck is a parcel, not footprint.
    */
   corridors: Region[];
+  /** The ground under the decks that no elevated corridor claims. */
+  decks: Region[];
 }
 
 /** The ground the roads and their corridors claim. */
@@ -59,24 +67,16 @@ export interface RoadFootprint {
  * Build the footprint of a road network. The graph says where roads meet, which
  * is where the junction aprons go.
  */
-export function buildFootprint(
-  roads: readonly RoadCurve[],
-  corridors: readonly Corridor[],
-  graph: RoadGraph,
-): RoadFootprint {
-  const parts = footprintParts(roads, corridors, graph);
-  const regions = union([...parts.strips, ...parts.aprons, ...parts.corridors]);
+export function buildFootprint(world: WorldDescription, graph: RoadGraph): RoadFootprint {
+  const parts = footprintParts(world, graph);
+  const regions = union([...parts.strips, ...parts.aprons, ...parts.corridors, ...parts.decks]);
   return { regions, area: areaOf(regions) };
 }
 
 /** The pieces the footprint is unioned from, before the union. */
-export function footprintParts(
-  roads: readonly RoadCurve[],
-  corridors: readonly Corridor[],
-  graph: RoadGraph,
-): FootprintParts {
+export function footprintParts(world: WorldDescription, graph: RoadGraph): FootprintParts {
   const strips: Region[] = [];
-  for (const road of roads) {
+  for (const road of world.roads) {
     const halfWidth = footprintHalfWidth(road.tier);
     for (const run of groundRuns(road)) strips.push(regionOf(strip(run, halfWidth)));
   }
@@ -85,8 +85,41 @@ export function footprintParts(
     const ring = apronOf(graph, node);
     if (ring !== undefined) aprons.push(regionOf(ring.ring));
   }
-  const lanes = corridors.filter((corridor) => corridor.kind === 'tram');
-  return { strips, aprons, corridors: lanes.map((corridor) => regionOf(corridor.polygon)) };
+  const lanes = world.corridors.filter((corridor) => corridor.kind === 'tram');
+  return {
+    strips,
+    aprons,
+    corridors: lanes.map((corridor) => regionOf(corridor.polygon)),
+    decks: deckShadows(world),
+  };
+}
+
+/**
+ * The ground under the decks that no elevated corridor claims. A corridor is
+ * claimed segment by segment and cut where another corridor already holds the
+ * ground (`corridors.ts`), and a cut gives up the whole segment, however little
+ * of it the other corridor wants. The ground the cut leaves is still under a
+ * deck, so the road claims it: were it left over, `buildParcels` would hand it
+ * to a parcel and a building would stand under the deck (issue #288).
+ *
+ * Only a deck over land leaves anything: a deck over water covers no ground,
+ * which is the same rule `corridors.ts` claims by.
+ */
+function deckShadows(world: WorldDescription): Region[] {
+  const hf = new Heightfield(world.terrain);
+  const sea = world.water.seaLevel;
+  const shadows: Region[] = [];
+  for (const road of world.roads) {
+    const halfWidth = deckHalfWidth(road);
+    for (const run of deckRuns(road, (a, b) => overWater(hf, sea, a, b), false)) {
+      shadows.push(regionOf(strip(road.points.slice(run.from, run.to + 2), halfWidth)));
+    }
+  }
+  if (shadows.length === 0) return [];
+  const claimed = world.corridors.filter((corridor) => corridor.kind === 'elevated');
+  const under = union(shadows);
+  if (claimed.length === 0) return under;
+  return difference(under, union(claimed.map((corridor) => regionOf(corridor.polygon))));
 }
 
 /**

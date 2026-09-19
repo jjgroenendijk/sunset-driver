@@ -31,6 +31,8 @@ export const USE_LOT = 3;
 export const COVER_STRIP = 1;
 export const COVER_APRON = 2;
 export const COVER_CORRIDOR = 4;
+/** The ground under a deck the road claims, because no elevated corridor holds it. */
+export const COVER_DECK = 8;
 
 /** The parcel owners a cell's tint indexes, in this order. */
 export const OWNERS: readonly ParcelOwner[] = [
@@ -179,7 +181,7 @@ export interface LandUseLayers {
 
 /** The footprint pieces, the parcels and the lots of a world, ready to raster. */
 export function landUseLayers(world: WorldDescription, graph: RoadGraph, parcels: ParcelMap, buildings: BuildingMap): LandUseLayers {
-  return { parts: footprintParts(world.roads, world.corridors, graph), parcels, buildings };
+  return { parts: footprintParts(world, graph), parcels, buildings };
 }
 
 /**
@@ -207,6 +209,10 @@ export function rasteriseLandUse(world: WorldDescription, layers: LandUseLayers,
   for (const corridor of parts.corridors) {
     grid.paint(corridor, USE_ROAD, 0);
     grid.mark(corridor, COVER_CORRIDOR);
+  }
+  for (const deck of parts.decks) {
+    grid.paint(deck, USE_ROAD, 0);
+    grid.mark(deck, COVER_DECK);
   }
   for (const parcel of parcels.parcels) grid.paint(parcel.region, USE_PARCEL, Math.max(0, OWNERS.indexOf(parcel.owner)));
   for (const building of buildings.buildings) {

@@ -119,7 +119,7 @@ for (let iy = STROKE_STRIDE; iy < n - STROKE_STRIDE; iy += STROKE_STRIDE) {
 // The ground the roads claim (spec section 6.4), filled in tarmac. The blocks
 // between the roads are the holes in it, and become the parcels.
 const t2 = performance.now();
-const footprint = buildFootprint(world.roads, world.corridors, graph);
+const footprint = buildFootprint(world, graph);
 const footprintMs = performance.now() - t2;
 const FOOTPRINT_COL: [number, number, number] = [64, 62, 70];
 const fill = (region: Region, col: [number, number, number]): void => {

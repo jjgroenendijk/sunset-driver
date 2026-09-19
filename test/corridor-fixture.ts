@@ -114,6 +114,29 @@ export function ringDistricts(): District[] {
   ];
 }
 
+/**
+ * The ring, with a highway carried over its south side on a deck. The tram
+ * claims its lane down the middle of that arterial first, so the deck's claim
+ * is cut where the two meet.
+ */
+export function deckOverRing(): RoadCurve[] {
+  return [
+    ...ringRoads(),
+    curve(
+      5,
+      'highway',
+      [
+        [150, -450],
+        [150, -375],
+        [150, -300],
+        [150, -225],
+        [150, -150],
+      ],
+      [0, 1, 2, 3],
+    ),
+  ];
+}
+
 /** A whole world description over a skeleton, with its roads and the corridors laid along them. */
 export function worldOf(skeleton: WorldSkeleton, roads: RoadCurve[]): WorldDescription {
   const { corridors, tram } = build(skeleton, roads);
