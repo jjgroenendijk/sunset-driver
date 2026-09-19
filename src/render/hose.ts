@@ -1,20 +1,23 @@
 /**
- * The water a fire engine plays over a scene (spec section 20.3).
+ * The hoses of a fire engine's crew and the water they play over a scene
+ * (spec section 20.3).
  *
- * `sim/emergency.ts` puts out whatever is within `HOSE_RANGE` of an engine at
- * work; this is how a player sees it happen. Water leaves a monitor on the
- * engine and falls on the scene in an arc, as a stream of drops. A drop
- * is placed from the tick alone — how far along the arc it is, and how far it
- * has spread from the line — so the stream is the same on every machine and in
- * a still frame.
+ * `sim/emergency.ts` puts out whatever is within `HOSE_RANGE` of an engine
+ * while its crew have water on; this is how a player sees it happen. A hose
+ * runs from the coupling on the engine's flank, along the road, to the nozzle
+ * a firefighter holds (`fire-crew.ts`). Water leaves that nozzle and falls on
+ * the scene in an arc, as a stream of drops. A drop is placed from the tick
+ * alone — how far along the arc it is, and how far it has spread from the line
+ * — so the stream is the same on every machine and in a still frame.
  *
- * The drops of every engine in view are one instanced mesh, so a scene with
- * two engines at it costs one draw call, as one engine does.
+ * The drops of every stream in view are one instanced mesh, and every length
+ * of hose another, so a scene with two engines at it costs two draw calls, as
+ * one engine does.
  */
 import { BoxGeometry, Color, InstancedMesh, Matrix4, MeshStandardMaterial, Quaternion, Vector3 } from 'three';
 import { HOSE_RANGE } from '../sim/emergency.ts';
 
-/** Drops in one engine's stream. */
+/** Drops in one nozzle's stream. */
 const DROPS = 72;
 
 /** Ticks a drop takes from the monitor to the ground. */
@@ -24,15 +27,15 @@ const FLIGHT_TICKS = 45;
 const ARC_SHARE = 0.22;
 const ARC_LEAST = 1.5;
 
-/** Metres a drop spreads from the line by the time it lands. */
-const SPREAD = 2.2;
+/** Metres a drop spreads from the line by the time it lands. A nozzle in two hands is a tight jet. */
+const SPREAD = 1.2;
 
 /** Metres across a drop leaving the monitor and landing. */
 const DROP_START = 0.07;
 const DROP_END = 0.3;
 
-/** Metres short of the engine a stream never falls: it plays over the scene, not over its own roof. */
-const NEAREST = 4;
+/** Metres short of the nozzle a stream never falls: it plays over the scene, not over the firefighter's boots. */
+const NEAREST = 2;
 
 /** A number from 0 to 1 for a drop and an axis, the same on every machine. */
 function scatter(drop: number, axis: number): number {
@@ -48,8 +51,8 @@ export class HoseSpray {
   private readonly turn = new Quaternion();
   private readonly size = new Vector3();
 
-  /** A spray for up to `engines` engines at work at once. */
-  constructor(engines: number) {
+  /** A spray for up to `nozzles` nozzles with water on at once. */
+  constructor(nozzles: number) {
     const material = new MeshStandardMaterial({
       color: new Color(0xd6ecff),
       roughness: 0.15,
@@ -58,7 +61,7 @@ export class HoseSpray {
       opacity: 0.6,
       depthWrite: false,
     });
-    this.mesh = new InstancedMesh(new BoxGeometry(1, 1, 1), material, engines * DROPS);
+    this.mesh = new InstancedMesh(new BoxGeometry(1, 1, 1), material, nozzles * DROPS);
     this.mesh.frustumCulled = false;
     this.mesh.castShadow = false;
     this.mesh.count = 0;
@@ -71,16 +74,16 @@ export class HoseSpray {
   }
 
   /**
-   * One engine's stream from a monitor at `from` to the ground at a place,
-   * which is brought inside the hose's reach. `engine` keys the stream so two
-   * engines side by side do not spray in step.
+   * One nozzle's stream from `from` to the ground at a place, which is brought
+   * inside the hose's reach. `nozzle` keys the stream so two side by side do
+   * not spray in step.
    */
-  add(engine: number, tick: number, from: Vector3, toX: number, toY: number, ground: number): void {
+  add(nozzle: number, tick: number, from: Vector3, toX: number, toY: number, ground: number): void {
     if (this.count + DROPS > this.mesh.instanceMatrix.count) return;
     let dx = toX - from.x;
     let dy = toY - from.z;
     let reach = Math.hypot(dx, dy);
-    // A scene right under the engine is hosed from the side, and one past the
+    // A scene right at the nozzle is hosed a stride ahead, and one past the
     // reach is hosed as far as the water goes.
     if (reach < NEAREST) {
       dx = reach > 0.01 ? (dx / reach) * NEAREST : NEAREST;
@@ -98,7 +101,7 @@ export class HoseSpray {
     const acrossX = -dy / reach;
     const acrossY = dx / reach;
     for (let i = 0; i < DROPS; i++) {
-      const t = ((tick + engine * 17) / FLIGHT_TICKS + i / DROPS) % 1;
+      const t = ((tick + nozzle * 17) / FLIGHT_TICKS + i / DROPS) % 1;
       const wide = (scatter(i, 0) - 0.5) * SPREAD * t;
       const up = (scatter(i, 1) - 0.5) * SPREAD * 0.5 * t;
       this.at.set(
@@ -110,6 +113,77 @@ export class HoseSpray {
       this.size.set(s, s, s);
       this.matrix.compose(this.at, this.turn, this.size);
       this.mesh.setMatrixAt(this.count++, this.matrix);
+    }
+  }
+
+  /** Show what was added this frame. */
+  commit(): void {
+    if (this.count === 0 && this.mesh.count === 0) return;
+    this.mesh.count = this.count;
+    this.mesh.visible = this.count > 0;
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  dispose(): void {
+    this.mesh.geometry.dispose();
+    (this.mesh.material as MeshStandardMaterial).dispose();
+    this.mesh.dispose();
+  }
+}
+
+/** Metres across a hose. */
+const HOSE_THICK = 0.13;
+
+/** The colour of a hose: the pale canvas of a lay-flat line, which reads on dark tarmac. */
+const HOSE_COLOUR = 0xd8c9a0;
+
+/** The axis a stretch of hose is built along before it is turned. */
+const X_AXIS = new Vector3(1, 0, 0);
+
+/**
+ * The hoses in view, each a chain of points (`fire-crew.ts`) drawn as a run of
+ * thin boxes, one per stretch between two points. Every stretch is one
+ * instance of one mesh.
+ */
+export class HoseLines {
+  readonly mesh: InstancedMesh;
+  private count = 0;
+  private readonly matrix = new Matrix4();
+  private readonly from = new Vector3();
+  private readonly to = new Vector3();
+  private readonly mid = new Vector3();
+  private readonly turn = new Quaternion();
+  private readonly size = new Vector3();
+
+  /** Lines for up to `stretches` stretches of hose at once. */
+  constructor(stretches: number) {
+    const material = new MeshStandardMaterial({ color: new Color(HOSE_COLOUR), roughness: 0.85, metalness: 0 });
+    this.mesh = new InstancedMesh(new BoxGeometry(1, 1, 1), material, stretches);
+    this.mesh.frustumCulled = false;
+    this.mesh.castShadow = true;
+    this.mesh.count = 0;
+    this.mesh.visible = false;
+  }
+
+  /** Start a frame with no hose on the road. */
+  begin(): void {
+    this.count = 0;
+  }
+
+  /** One hose, as points of x, height and the map's y. */
+  add(points: readonly number[]): void {
+    for (let i = 3; i + 2 < points.length; i += 3) {
+      if (this.count >= this.mesh.instanceMatrix.count) return;
+      this.from.set(points[i - 3] as number, points[i - 2] as number, points[i - 1] as number);
+      this.to.set(points[i] as number, points[i + 1] as number, points[i + 2] as number);
+      this.mid.subVectors(this.to, this.from);
+      const length = this.mid.length();
+      if (length < 1e-3) continue;
+      this.turn.setFromUnitVectors(X_AXIS, this.mid.divideScalar(length));
+      this.mid.addVectors(this.from, this.to).multiplyScalar(0.5);
+      // A little longer than the stretch, so two stretches at an angle meet without a gap.
+      this.size.set(length + HOSE_THICK, HOSE_THICK, HOSE_THICK);
+      this.mesh.setMatrixAt(this.count++, this.matrix.compose(this.mid, this.turn, this.size));
     }
   }
 

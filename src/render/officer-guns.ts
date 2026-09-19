@@ -24,8 +24,8 @@ const GUNS: readonly WeaponId[] = ['glock-17', 'remington-870', 'm4a1'];
 const GUN_CAP = 24;
 
 /** Where the hands meet, on a body {@link STRIDE_HEIGHT} tall: out in front, at the shoulders. */
-const REACH = 0.52;
-const HANDS = 0.8 * STRIDE_HEIGHT - 0.05;
+export const REACH = 0.52;
+export const HANDS = 0.8 * STRIDE_HEIGHT - 0.05;
 
 const UP = new Vector3(0, 1, 0);
 

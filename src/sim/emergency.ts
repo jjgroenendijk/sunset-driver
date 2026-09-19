@@ -7,9 +7,9 @@
  * blast went off. A call waits the district's own response time — the same one
  * the police of spec section 14 answer in — and is then given to a unit, which
  * comes in on a road away from the scene and is routed to it over the road
- * graph by `unit-route.ts`. A fire engine that reaches the scene puts out
- * everything the hose reaches (`fire.ts`), keeps hosing while it stands there,
- * and drives off again.
+ * graph by `unit-route.ts`. The crew of a fire engine that reaches the scene
+ * run a hose out from it, put out everything the hose reaches (`fire.ts`),
+ * keep hosing while it stands there, and drive off again.
  *
  * The police are not here. They come out on the heat of `crime.ts`, which is
  * about the player, and these two come out on what has happened, which is not:
@@ -151,6 +151,16 @@ export const COLLECT_RANGE = CALL_RANGE;
 /** Metres a hose reaches from where the engine stands. */
 export const HOSE_RANGE = 12;
 
+/**
+ * Ticks the crew of an engine take to climb down and run the hose out to the
+ * scene. No water reaches it before then: the water comes from the nozzle in
+ * a firefighter's hands, not from the engine (`render/fire-crew.ts`).
+ */
+export const DEPLOY_TICKS = 4 * TICK_RATE;
+
+/** Ticks at the end of the work the water is off and the crew carry the hose back. */
+export const STOW_TICKS = 3 * TICK_RATE;
+
 /** Metres per second a second a unit gains pulling away, and loses braking. */
 const PULL_AWAY = 3;
 const BRAKE = 5;
@@ -200,6 +210,25 @@ export const WORK_TICKS: Record<EmergencyKind, number> = {
   engine: 18 * TICK_RATE,
   ambulance: 12 * TICK_RATE,
 };
+
+/**
+ * Ticks an engine has stood at its scene, or -1 where it is not working one.
+ * The crew of `render/fire-crew.ts` are placed from this alone.
+ */
+export function workedTicks(unit: EmergencyUnit, tick: number): number {
+  if (unit.task !== 'work' || unit.until < 0) return -1;
+  return tick - (unit.until - WORK_TICKS[unit.kind]);
+}
+
+/**
+ * Whether an engine's crew have water on the scene this tick: once the hose
+ * is run out, and until they turn it off to carry it back.
+ */
+export function hosing(unit: EmergencyUnit, tick: number): boolean {
+  if (unit.kind !== 'engine') return false;
+  const worked = workedTicks(unit, tick);
+  return worked >= DEPLOY_TICKS && tick < unit.until - STOW_TICKS;
+}
 
 /** The most units of both services out at once. */
 export const UNITS_OUT = 3;
@@ -382,9 +411,9 @@ export class EmergencyServices {
       unit.until = state.tick + WORK_TICKS[unit.kind];
     }
     if (unit.task === 'work') {
-      // The hose goes on playing over the scene while the engine stands there,
-      // so a fire that reaches the next car along is put out too.
-      if (unit.kind === 'engine') douseFires(state, unit.x, unit.y, HOSE_RANGE);
+      // The hose goes on playing over the scene while the crew hold it, so a
+      // fire that reaches the next car along is put out too.
+      if (hosing(unit, state.tick)) douseFires(state, unit.x, unit.y, HOSE_RANGE);
       if (state.tick >= unit.until) this.dismiss(state, unit);
       unit.speed = 0;
       return;

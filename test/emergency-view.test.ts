@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { DamageFx } from '../src/render/damage-fx.ts';
 import { EmergencyView } from '../src/render/emergency.ts';
 import { TRAFFIC_VIEW } from '../src/render/traffic.ts';
-import { UNIT_BODY, type EmergencyUnit } from '../src/sim/emergency.ts';
+import { DEPLOY_TICKS, UNIT_BODY, WORK_TICKS, type EmergencyUnit } from '../src/sim/emergency.ts';
+import { emptyFirefighter, fireCrew } from '../src/render/fire-crew.ts';
 import { light } from '../src/sim/fire.ts';
 import { createSimState } from '../src/sim/simulation.ts';
 import { specOf } from '../src/sim/vehicle.ts';
@@ -42,6 +43,7 @@ describe('the emergency services, drawn (spec section 20.3)', () => {
   const ENGINE_PHASES = [2, 3];
   const GLOW = 8;
   const WATER = 9;
+  const HOSES = 10;
 
   it('draws the units in view and leaves out the ones over the horizon', () => {
     const view = new EmergencyView();
@@ -104,27 +106,40 @@ describe('the emergency services, drawn (spec section 20.3)', () => {
     view.dispose();
   });
 
-  it('plays water from an engine at work, and from nothing else', () => {
+  it('plays water from the nozzles of the crew of an engine, and from nothing else', () => {
     const view = new EmergencyView();
     const state = createSimState(4);
     const engine = unit(0, 'engine', 0, 0);
     const ambulance = unit(1, 'ambulance', 30, 0);
     ambulance.task = 'work';
+    ambulance.until = WORK_TICKS.ambulance;
     state.emergency.units.push(engine, ambulance);
     view.update(state, 0, 0);
     expect(parts(view)[WATER]?.visible).toBe(false);
+    expect(parts(view)[HOSES]?.visible).toBe(false);
+    // An engine that pulled up a moment ago: the crew are out, but the water is not on yet.
     engine.task = 'work';
     engine.goalX = 8;
     engine.goalY = 3;
+    state.tick = 1000;
+    engine.until = state.tick + WORK_TICKS.engine - 10;
+    view.update(state, 0, 0);
+    expect(parts(view)[HOSES]?.count).toBeGreaterThan(0);
+    expect(parts(view)[WATER]?.visible).toBe(false);
+    // Once the hose is run out, water leaves each nozzle.
+    engine.until = state.tick + WORK_TICKS.engine - DEPLOY_TICKS;
     view.update(state, 0, 0);
     const water = parts(view)[WATER] as InstancedMesh;
     expect(water.count).toBeGreaterThan(0);
-    // Every drop is between the engine and a little past the scene, and none under the road.
+    const crew = [emptyFirefighter(), emptyFirefighter()];
+    fireCrew(engine, state.tick, crew);
+    const nearest = Math.min(...crew.map((f) => Math.hypot(f.nozzleX - 8, f.nozzleY - 3)));
+    // Every drop is between the nozzles and a little past the scene, none over the engine, and none under the road.
     for (let i = 0; i < water.count; i++) {
       const x = water.instanceMatrix.array[i * 16 + 12] as number;
       const y = water.instanceMatrix.array[i * 16 + 13] as number;
-      expect(x).toBeGreaterThan(0);
-      expect(x).toBeLessThan(11);
+      const z = water.instanceMatrix.array[i * 16 + 14] as number;
+      expect(Math.hypot(x - 8, z - 3)).toBeLessThan(nearest + 2);
       expect(y).toBeGreaterThan(-0.5);
     }
     view.dispose();
@@ -165,8 +180,8 @@ describe('the shapes of the services (spec section 20.3)', () => {
       expect(shape.beacons.some((beacon) => beacon.phase === 0)).toBe(true);
       expect(shape.beacons.some((beacon) => beacon.phase === 1)).toBe(true);
     }
-    expect(engine.nozzles.length).toBeGreaterThan(0);
-    expect(ambulance.nozzles).toHaveLength(0);
+    expect(engine.couplings).toHaveLength(2);
+    expect(ambulance.couplings).toHaveLength(0);
   });
 
   it('keeps every box of a unit inside the box the player hits, give or take a mirror', () => {

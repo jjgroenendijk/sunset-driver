@@ -436,6 +436,8 @@ export class SessionFrame {
     session.streetLife.update(session.state, session.world, session.enforcerMarks);
     // The police on foot of spec section 14, after all of those in the same list.
     session.officerMarks.update(session.state, session.streetLife);
+    // The crews of the fire engines at work (spec section 20.3), which end the list.
+    session.fireCrews.update(session.state, session.officerMarks);
     session.missionMarks.update(session.state, session.officerMarks);
     // The safehouses of spec section 16.3: what a front door costs, or what
     // the house the player is standing in does for them.

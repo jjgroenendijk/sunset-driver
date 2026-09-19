@@ -11,6 +11,7 @@ import type { WorldPlaces } from './places.ts';
 import type { SimState } from './sim/simulation.ts';
 import { DealerMarks } from './ui/dealers.ts';
 import { EnforcerMarks } from './ui/enforcers.ts';
+import { FireCrews } from './ui/fire-crews.ts';
 import { OfficerMarks } from './ui/officers.ts';
 import { MapArt } from './ui/map-draw.ts';
 import { MapPois, SHOP_POIS } from './ui/map.ts';
@@ -33,6 +34,7 @@ export interface SessionMaps {
   enforcerMarks: EnforcerMarks;
   streetLife: StreetLife;
   officerMarks: OfficerMarks;
+  fireCrews: FireCrews;
   missionMarks: MissionMarks;
 }
 
@@ -68,6 +70,9 @@ export function buildMaps(
   // The police on foot of spec section 14 after those: they move every tick,
   // and the crowd mesh draws the list they end.
   const officerMarks = new OfficerMarks(pois);
+  // The crews of the fire engines at work after those, holding their hoses:
+  // they end the list the crowd mesh draws, and have no mark of their own.
+  const fireCrews = new FireCrews();
   // The objective is marked last of all, because it moves with the leg of the
   // job the record is carrying (spec section 18).
   const missionMarks = new MissionMarks(pois);
@@ -88,5 +93,5 @@ export function buildMaps(
   // since a session that never marks one has no use for it.
   let graph: RoadGraph | undefined;
   const navigator = new Navigator(() => (graph ??= buildRoadGraph(description.roads)));
-  return { minimap, map, navigator, dealerMarks, enforcerMarks, streetLife, officerMarks, missionMarks };
+  return { minimap, map, navigator, dealerMarks, enforcerMarks, streetLife, officerMarks, fireCrews, missionMarks };
 }

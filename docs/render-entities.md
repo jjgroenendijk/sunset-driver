@@ -180,9 +180,15 @@ scene ever holds is in `docs/shops.md`.
   `BeaconGlow` is the light a bar throws on the road: an additive soft disc, not a light, faint by
   day and strong after dark. It lies `GLOW_LIFT` over the road, because a flat disc sinks under a
   road on a slope and shows a hard edge there.
-- `HoseSpray` (`hose.ts`) is the water an engine at work plays over its scene, from the monitor
-  nearer the scene: on the bumper, or on the turntable at the tail. A drop is placed from the tick
-  alone, and every engine's drops are one draw call.
+- The water comes from the crew, never from the engine. `fire-crew.ts` places two firefighters
+  from the unit and the tick alone: out of the cab, along the flank that faces the scene, to a
+  place a throw short of it, and back at the end. `HoseLines` (`hose.ts`) draws each hose from the
+  coupling on that flank, along the road, to the nozzle in their hands; `HoseSpray` plays the
+  water from that nozzle. Each is one draw call for every engine in view. The bodies are the
+  crowd's: `ui/fire-crews.ts` ends the list the crowd mesh draws, after the police on foot.
+- The crew work from the flank nearer the scene, so a camera on the other side sees only the
+  engine. The preview's blaze burns off the line towards the camera (`FIRE_ASIDE`) for that
+  reason.
 - `SkidMarks` (`skid.ts`) is the rubber a sliding tyre leaves (spec section 11.3): a `DecalGeometry`
   per `SKID_STEP` metres of ground, all of them in one buffer with one material, so a whole drive of
   marks is one draw call. The decal is not cut from the chunk — a chunk's ground is twenty thousand

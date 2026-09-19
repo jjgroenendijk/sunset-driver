@@ -17,6 +17,7 @@
  * headless.
  */
 import { UNIT_BODY, type EmergencyKind } from '../sim/emergency.ts';
+import { OUTLET_ALONG, OUTLET_UP } from './fire-crew.ts';
 import { GLASS, LAMP, METAL, TAIL, type Beacon, type VehicleBox } from './vehicle-mesh.ts';
 
 export type { Beacon };
@@ -59,10 +60,11 @@ export interface UnitShape {
   beacons: Beacon[];
   wheels: UnitWheel[];
   /**
-   * Where water can leave the engine, in its own frame, and none on an
-   * ambulance, which carries no hose.
+   * Where a hose is coupled to the engine, in its own frame, and none on an
+   * ambulance, which carries no hose. The water leaves the nozzle at the other
+   * end, in a firefighter's hands (`fire-crew.ts`).
    */
-  nozzles: { x: number; y: number; z: number }[];
+  couplings: { x: number; y: number; z: number }[];
 }
 
 function box(length: number, height: number, width: number, colour: number, x: number, y: number, z: number, outlined = false): UnitBox {
@@ -119,14 +121,18 @@ function engine(): UnitShape {
     box(bodyLength - 0.3, 0.08, width * 0.92, DECK, bodyX, bodyTop + 0.04, 0),
     // A reflective band the length of the engine, low down each side.
     box(hl * 2 - 0.1, 0.16, width + 0.04, REFLECTOR, -0.05, -hh + 0.28, 0),
-    // The monitor on the bumper, which plays water over a scene ahead.
-    box(0.4, 0.3, 0.3, METAL, hl + 0.15, -hh + 0.45, 0),
     // The rear step, in chrome.
     box(0.3, 0.14, width * 0.9, METAL, -hl - 0.1, -hh + 0.1, 0),
   ];
   // Three lockers down each flank, shut behind grey roller doors.
   for (const x of [cabBack - 1.05, cabBack - 3.05, cabBack - 5.05]) {
     boxes.push(box(1.75, 1.7, width + 0.04, LOCKER, x, -hh + 1.45, 0));
+  }
+  // The pump panel between the lockers on each flank, with the coupling a hose is run from.
+  const couplingY = OUTLET_UP - UNIT_BODY.engine.ride;
+  const couplings = [1, -1].map((side) => ({ x: OUTLET_ALONG, y: couplingY, z: side * (hw + 0.08) }));
+  for (const coupling of couplings) {
+    boxes.push(box(0.3, 0.3, 0.16, METAL, coupling.x, coupling.y, coupling.z));
   }
   // The ladder: a turntable at the tail, two rails and a rung every 40 cm.
   const ladderY = bodyTop + 0.5;
@@ -159,10 +165,7 @@ function engine(): UnitShape {
     boxes,
     beacons,
     wheels: axles('engine', [hl - 1.4, -hl + 2.8, -hl + 1.65], 0.52, 0.42),
-    nozzles: [
-      { x: hl + 0.3, y: -hh + 0.55, z: 0 },
-      { x: -hl + 1.1, y: bodyTop + 0.7, z: 0 },
-    ],
+    couplings,
   };
 }
 
@@ -218,5 +221,5 @@ function ambulance(): UnitShape {
     beacon(0.18, 0.2, 0.26, FLASH_RED, -hl + 0.08, hh - 0.12, hw * 0.84, 1),
     beacon(0.18, 0.2, 0.26, FLASH_RED, -hl + 0.08, hh - 0.12, -hw * 0.84, 0),
   ];
-  return { boxes, beacons, wheels: axles('ambulance', [hl - 0.75, -hl + 1.05], 0.4, 0.3), nozzles: [] };
+  return { boxes, beacons, wheels: axles('ambulance', [hl - 0.75, -hl + 1.05], 0.4, 0.3), couplings: [] };
 }

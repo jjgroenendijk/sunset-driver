@@ -33,6 +33,7 @@ import type { MissionWorld } from './sim/job.ts';
 import type { TerritoryMap } from './sim/territory.ts';
 import type { DealerMarks } from './ui/dealers.ts';
 import type { EnforcerMarks } from './ui/enforcers.ts';
+import type { FireCrews } from './ui/fire-crews.ts';
 import type { OfficerMarks } from './ui/officers.ts';
 import type { StreetLife } from './ui/street-life.ts';
 import type { HomePanel } from './ui/home-panel.ts';
@@ -96,6 +97,8 @@ export interface Session {
   streetLife: StreetLife;
   /** The police on foot of spec section 14, as people in uniform and marks, after everybody above. */
   officerMarks: OfficerMarks;
+  /** The crews of the fire engines at work (spec section 20.3), after the police in the same list. */
+  fireCrews: FireCrews;
   /** Whose block is whose (spec section 17.2), which the HUD line and the map overlay read. */
   turf: TerritoryMap;
   /** The safehouse panel of spec section 16.3, drawn at a front door. */

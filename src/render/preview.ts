@@ -28,9 +28,11 @@ import {
 import { createPlayerState, exitPlace, JUMP_SPEED, SPRINT_SPEED, SWIM_DEPTH } from '../sim/on-foot.ts';
 import type { PickupState } from '../sim/pickup.ts';
 import { createSimState, type SimState } from '../sim/simulation.ts';
-import type { EmergencyKind, EmergencyUnit } from '../sim/emergency.ts';
+import { TICK_RATE } from '../sim/clock.ts';
+import { DEPLOY_TICKS, WORK_TICKS, type EmergencyKind, type EmergencyUnit } from '../sim/emergency.ts';
 import { light } from '../sim/fire.ts';
 import { EmergencyView } from './emergency.ts';
+import { FireCrews } from '../ui/fire-crews.ts';
 import { layBodies } from './preview-bodies.ts';
 import { layPolice } from './preview-police.ts';
 import {
@@ -274,6 +276,13 @@ const FX_WARMUP = 240;
  */
 const FIRE_AHEAD = 11;
 const ENGINE_AHEAD = FIRE_AHEAD + 8;
+
+/**
+ * Metres the blaze burns off the line, towards the camera. The crew work from
+ * the flank of the engine nearer the scene, so this puts them on the side the
+ * camera sees rather than behind the engine.
+ */
+const FIRE_ASIDE = 3;
 const AMBULANCE_AHEAD = -11;
 
 /** Metres of drift `--skid` lays, and the radius it curves through. */
@@ -405,7 +414,10 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   // What moves through the city, where its tours put it at the tick the
   // picture is taken, as the game draws it.
   const { traffic, trams, crowd, casualties, guns, wildlife, parked } = peopleFor();
-  crowd.standing = officers;
+  // The crew of the engine at work stand in the same list as the police.
+  const crews = new FireCrews();
+  crews.update(record, { standing: officers });
+  crowd.standing = crews.standing;
   traffic.lamps = scene.lampsNow;
   traffic.update(record, tick, x, y);
   trams.update(tick, x, y);
@@ -532,7 +544,10 @@ function callOut(record: SimState, scene: WorldScene, x: number, y: number, head
     x: x + Math.cos(heading) * metres,
     y: y + Math.sin(heading) * metres,
   });
-  const fire = ahead(FIRE_AHEAD);
+  // The camera stands at greater y, so the side of the line with +y is the one it sees.
+  const aside = Math.cos(heading) >= 0 ? 1 : -1;
+  const line = ahead(FIRE_AHEAD);
+  const fire = { x: line.x - Math.sin(heading) * aside * FIRE_ASIDE, y: line.y + Math.cos(heading) * aside * FIRE_ASIDE };
   light(record, fire.x, fire.y);
   const stand = (id: number, kind: EmergencyKind, metres: number, facing: number): EmergencyUnit => {
     const at = ahead(metres);
@@ -554,7 +569,8 @@ function callOut(record: SimState, scene: WorldScene, x: number, y: number, head
       goalY: fire.y,
       homeX: at.x,
       homeY: at.y,
-      until: -1,
+      // A second into the water, with the hose run out and the crew at their places.
+      until: record.tick + WORK_TICKS[kind] - DEPLOY_TICKS - TICK_RATE,
     };
   };
   record.emergency.units.push(stand(0, 'engine', ENGINE_AHEAD, heading + Math.PI), stand(1, 'ambulance', AMBULANCE_AHEAD, heading));
