@@ -58,6 +58,8 @@ import { SurfaceIndex, type Surface } from '../world/surface.ts';
 import { PULL_MARGIN, TURN_MARGIN } from './camera.ts';
 import { CAMERA_VIEWS } from './camera-view.ts';
 import { poseFor } from './character-pose.ts';
+import { Vector3 } from 'three';
+import { gripOf } from './character-hold.ts';
 import { tickAtHour } from './daylight.ts';
 import { FULL_TIER, QUALITY_TIERS } from './quality.ts';
 import { forgetStage, peopleFor, stageFor, viewFor } from './preview-stage.ts';
@@ -193,10 +195,13 @@ const POSE_PHASE = Math.PI / 2;
 function hold(scene: WorldScene, request: PreviewRequest): void {
   const asked = request.stance;
   const swing = request.swing ?? -1;
-  if (asked === undefined && swing < 0) return;
+  const weapon = WEAPON_IDS.find((id) => id === request.weapon);
+  if (asked === undefined && swing < 0 && weapon === undefined) return;
   const stance = (['stand', 'walk', 'air', 'swim'] as const).find((name) => name === (asked ?? 'stand'));
   if (stance === undefined) throw new Error(`no stance named ${String(asked)}`);
   const stature = scene.character.height;
+  // A gun is held in the arms as the game holds it, at the hip or aimed.
+  const grip = weapon === undefined || swing >= 0 || stance === 'swim' ? 'none' : gripOf(weaponOf(weapon).cls);
   scene.character.pose(
     poseFor(stance, POSE_PHASE, {
       speed: stance === 'walk' ? SPRINT_SPEED : 0,
@@ -208,6 +213,7 @@ function hold(scene: WorldScene, request: PreviewRequest): void {
       stature,
       swing,
     }),
+    { grip, aim: request.aim === true ? 1 : 0, kick: 0 },
   );
 }
 
@@ -452,7 +458,8 @@ function arm(scene: WorldScene, request: PreviewRequest, stand: { x: number; y: 
   const player = createPlayerState();
   player.driving = request.onFoot !== true;
   const ground = scene.heightAt(stand.x, stand.y);
-  scene.held.set(loadout, player, { ...stand, height: ground }, scene.character.height, request.swing ?? -1);
+  const grip = scene.character.grip(new Vector3());
+  scene.held.set(loadout, player, { ...stand, height: ground }, scene.character.height, request.swing ?? -1, grip);
   if (request.pickups !== true) return;
   const laid: PickupState[] = WEAPON_IDS.filter((id) => id !== 'fists').map((weapon, i) => {
     const x = stand.x + ((i % PICKUP_ROW) - (PICKUP_ROW - 1) / 2) * PICKUP_GRID;

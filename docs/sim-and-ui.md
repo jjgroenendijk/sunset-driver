@@ -220,7 +220,11 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
   police unit or promoted car within `SNAP_RADIUS` (wider while aiming). The pull reads the record,
   so it is the same on every machine. Without a pointer a shot goes the way the player faces. A
   player on foot faces the aim while aiming and for `FACE_TICKS` after a shot, and walks any way
-  under it. Left click fires and right click aims; `F` and `Q` still do.
+  under it. Left click fires and right click aims, and no key does either.
+- While aiming, `aimPoint` also pulls the aim part of the way toward a target out to `STICK_RADIUS`,
+  less the further out it is. So the aim sticks softly and follows a target that moves.
+- A button pressed while another is held fires no `pointerdown`, only a `pointermove` with the new
+  `buttons`. `Keyboard` reads the bits of `buttons` on both, so aiming and firing work together.
 - Every pellet writes a `Tracer` into `SimState.tracers` (`tracer.ts`): the muzzle, where it stopped
   and what it met. It is kept like a blow of `melee.ts`, for the flash, the streak and the impact
   of `src/render/shot-fx.ts`, the hit marker of `src/ui/crosshair.ts` and the camera kick.

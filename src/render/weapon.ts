@@ -15,6 +15,7 @@ import {
   Group,
   Mesh,
   MeshStandardMaterial,
+  type Vector3,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { PlayerState } from '../sim/on-foot.ts';
@@ -91,6 +92,9 @@ export const SWING_PITCH = 0.7;
 export const HIP_HEIGHT = 0.55;
 export const AIM_HEIGHT = 0.74;
 
+/** Radians the muzzle is thrown up by a shot at its strongest. */
+export const KICK_TILT = 0.35;
+
 /**
  * The weapon in the player's hands. It is posed like the character: the group
  * takes the player's place and heading, and the mesh inside it stands where
@@ -122,6 +126,11 @@ export class HeldWeapon {
   /**
    * Show what the record says is in the hands, where the drawn player stands.
    * `height` is the character's height, so a tall body holds it higher.
+   *
+   * `grip` is where the model's right fist is, in its own frame, while its arms
+   * hold a gun (`character-hold.ts`). The gun is drawn in that fist, level and
+   * along the heading, and `kick` throws its muzzle up after a shot. Without a
+   * grip — a swing, or a swimmer — it is carried at a fixed place instead.
    */
   set(
     loadout: LoadoutState,
@@ -129,6 +138,8 @@ export class HeldWeapon {
     pose: { x: number; y: number; height: number; heading: number },
     height: number,
     swing = -1,
+    grip?: Vector3,
+    kick = 0,
   ): void {
     const slot = currentSlot(loadout);
     const geometry = player.driving ? undefined : this.art.geometry(slot.id, slot.attachments ?? []);
@@ -139,6 +150,13 @@ export class HeldWeapon {
     // A yaw of -heading turns local +x, where the muzzle points, along the heading.
     this.group.rotation.y = -pose.heading;
     const swinging = swing >= 0;
+    if (grip !== undefined && !swinging) {
+      this.hand.rotation.set(0, 0, 0);
+      this.mesh.position.copy(grip);
+      this.mesh.rotation.z = kick * KICK_TILT;
+      return;
+    }
+    this.mesh.rotation.z = 0;
     // The hand follows the arm of `character-pose.ts`, so the weapon is where
     // the hand that holds it is, all the way through the blow.
     this.hand.rotation.y = swinging ? swingAngle(swing) : 0;
