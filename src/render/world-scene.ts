@@ -46,6 +46,7 @@ import { EntityFade } from './fade.ts';
 import { createGroundMaterial } from './ground-material.ts';
 import { Headlights } from './headlights.ts';
 import { ShopInterior } from './interior.ts';
+import type { ChunkContents } from './frame-contents.ts';
 import { LampLights, LampScenery } from './lamps.ts';
 import type { Gore } from './gore.ts';
 import { MeleeFx } from './melee-fx.ts';
@@ -520,6 +521,11 @@ export class WorldScene {
   /** The parking bays of the world (spec section 13.1), or undefined until a chunk worker has laid them out. */
   get bays(): ParkingBays | undefined {
     return this.stream.bays;
+  }
+
+  /** What every chunk in the scene holds, for counting what a frame shows. */
+  get contents(): ChunkContents[] {
+    return this.tiles.contents();
   }
 
   /** Chunks asked for and not yet drawn, which the HUD shows as the city fills in. */

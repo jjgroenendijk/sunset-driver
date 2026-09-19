@@ -137,6 +137,14 @@ angle, the vehicle or the pose changes, and 1 to 3 seconds when the player stand
 - `--x` and `--y` say where the player stands; `--junction=N` stands them at the N-th junction out
   from the core instead and prints what meets there, and `--tiers=arterial+street` narrows that
   count to junctions of that mix.
+- The camera always stands south of what it frames, at greater `y`, and looks north. A wall that
+  faces any other way is seen edge-on or not at all.
+- `--look-at=x,y,height` frames that place instead of the player: the camera keeps its pitch,
+  heading and distance, and moves so the place is where the player would be. `height` is metres
+  over the ground there and may be left off. The player stays at `--x`, `--y`, and a building
+  between the camera and the place is ghosted, as one in front of the player is.
+- A building between the camera and the player is ghosted. `--buildings=whole` draws it whole,
+  which is how the building the player stands at is looked at without `--look-at`.
 - `--look-up=<degrees>` tilts a `third-person` or `first-person` view up by that much. The game
   camera never looks at the sky; this is how the sky, its clouds and its bloom are judged.
 - `--distance` is how far back the camera sits, `--heading` and `--speed` which way it leads, and
@@ -184,7 +192,9 @@ angle, the vehicle or the pose changes, and 1 to 3 seconds when the player stand
   server and draws nothing.
 
 It prints the lights and shadow cascades the frame cost beside the draw calls, and how many
-vehicles of the traffic, parked cars and pedestrians it drew.
+vehicles of the traffic, parked cars and pedestrians it drew. It also counts the buildings, street
+lamps and posters inside the view (`src/render/frame-contents.ts`). A thing missing from a picture
+looks the same as a thing never built; a count of zero tells the two apart.
 
 ## The preview server
 

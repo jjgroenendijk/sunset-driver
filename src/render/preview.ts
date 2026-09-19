@@ -59,9 +59,10 @@ import { SurfaceIndex, type Surface } from '../world/surface.ts';
 import { PULL_MARGIN, TURN_MARGIN } from './camera.ts';
 import { CAMERA_VIEWS } from './camera-view.ts';
 import { poseFor } from './character-pose.ts';
-import { Vector3 } from 'three';
+import { Vector3, type Camera } from 'three';
 import { gripOf } from './character-hold.ts';
 import { tickAtHour } from './daylight.ts';
+import { frameContents, type FrameContents } from './frame-contents.ts';
 import { FULL_TIER, QUALITY_TIERS } from './quality.ts';
 import { forgetStage, peopleFor, stageFor, viewFor } from './preview-stage.ts';
 import type { WorldScene } from './world-scene.ts';
@@ -104,6 +105,12 @@ export interface PreviewRequest {
    * frame. The game camera never looks up this far; a preview of the sky has to.
    */
   lookUp?: number;
+  /**
+   * A place to frame instead of the player: a point on the map, and metres over
+   * the ground there. The camera keeps its pitch, heading and distance and moves
+   * so the place is where the player would be; the player stays where they stand.
+   */
+  lookAt?: { x: number; y: number; height: number };
   /**
    * The class of vehicle to stand the player in, by name (spec section 11.3).
    * Left out, or named something the roster does not hold, it is the class a
@@ -300,6 +307,8 @@ export interface PreviewResult {
   parked: number;
   /** People of the crowd drawn round the player (spec section 13.1). */
   pedestrians: number;
+  /** Buildings, street lamps and posters inside the view (`frame-contents.ts`). */
+  holds: FrameContents;
 }
 
 /** Bytes a pixel of the render target below. */
@@ -417,12 +426,17 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   const driving = request.onFoot !== true && shop === undefined;
   const on = { x: eye.x, y: eye.y, height: scene.heightAt(eye.x, eye.y), heading: eye.heading, speed, driving };
   camera.update(0, on, { view: look, pull, turn });
+  const at = request.lookAt;
+  const aim = at === undefined ? undefined : { ...at, height: scene.heightAt(at.x, at.y) + at.height };
+  if (aim !== undefined) aimAt(camera.camera, on, aim);
   if (look !== 'top-down' && request.lookUp !== undefined) {
     camera.camera.rotation.x += (request.lookUp * Math.PI) / 180;
     camera.camera.updateMatrixWorld();
   }
   scene.cutaway.enabled = view !== 'whole';
-  scene.seeThrough(camera.camera.position, stand.x, scene.heightAt(stand.x, stand.y), stand.y, shop !== undefined);
+  // A building in the way of the place looked at is ghosted, as one in the way of the player is.
+  const seen = aim ?? { ...stand, height: scene.heightAt(stand.x, stand.y) };
+  scene.seeThrough(camera.camera.position, seen.x, seen.height, seen.y, shop !== undefined);
 
   const t2 = performance.now();
   post.regrade();
@@ -441,11 +455,24 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   const drawn = traffic.drawn;
   const standing = parked?.drawn ?? 0;
   const walking = crowd.drawn;
+  const holds = frameContents(camera.camera, scene.contents);
   // The scene is kept for the next request, so what this one put in it alone is taken out again.
   if (services !== undefined) scene.scene.remove(services.group);
   services?.dispose();
 
-  return { width, height, x, y, rgb, worldMs, kept, chunkMs, frameMs, peakDrawCalls, lights, shadows, quality: tier.name, traffic: drawn, parked: standing, pedestrians: walking };
+  return { width, height, x, y, rgb, worldMs, kept, chunkMs, frameMs, peakDrawCalls, lights, shadows, quality: tier.name, traffic: drawn, parked: standing, pedestrians: walking, holds };
+}
+
+/**
+ * Move the camera by how far a place lies from the player, so the place is
+ * framed as the player would be standing there: the same pitch, heading and
+ * distance, and the place where the player would be in the picture.
+ */
+function aimAt(camera: Camera, from: { x: number; y: number; height: number }, to: { x: number; y: number; height: number }): void {
+  camera.position.x += to.x - from.x;
+  camera.position.y += to.height - from.height;
+  camera.position.z += to.y - from.y;
+  camera.updateMatrixWorld();
 }
 
 /**

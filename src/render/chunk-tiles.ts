@@ -27,6 +27,7 @@ import { groundPart } from './ground.ts';
 import type { Lamp } from './lamp-mesh.ts';
 import type { LampLights, LampScenery } from './lamps.ts';
 import { reflected } from './mirror.ts';
+import type { Poster } from './poster-mesh.ts';
 import type { PosterScenery } from './posters.ts';
 import { entityBudget, thinned, type QualityTier } from './quality.ts';
 import type { RoadScenery } from './roads.ts';
@@ -57,6 +58,8 @@ interface ChunkTile {
   lamps: Lamp[];
   /** The box of every building of the chunk, as `roofs.ts` packs them. */
   roofs: Float32Array;
+  /** Where every poster of the chunk hangs, once they are in the scene. */
+  posters: Poster[];
   drawCalls: number;
   /** False while the upload queue still holds pieces of it. */
   whole: boolean;
@@ -132,6 +135,14 @@ export class ChunkTiles {
     return out;
   }
 
+  /**
+   * What every chunk in the scene holds: its building boxes, and the lamps and
+   * posters drawn. A preview counts from these what its frame shows.
+   */
+  contents(): { roofs: Float32Array; lamps: readonly Lamp[]; posters: readonly Poster[] }[] {
+    return [...this.tiles.values()].map((tile) => ({ roofs: tile.roofs, lamps: tile.lamps, posters: tile.posters }));
+  }
+
   /** Chunks within `radius` of the player that are not yet whole. */
   outstanding(x: number, y: number, radius: number): number {
     const here = chunkAt(x, y);
@@ -174,6 +185,7 @@ export class ChunkTiles {
       parts: [],
       lamps: [],
       roofs: payload.roofs,
+      posters: [],
       drawCalls: 0,
       whole: false,
       dead: false,
@@ -220,7 +232,10 @@ export class ChunkTiles {
     // The posters are not thinned by the tier: a chunk carries a handful, and
     // the information of spec section 19 is not what a low tier drops.
     if (payload.posters.length > 0) {
-      this.queueJob(tile, () => this.add(tile, kit.posters.build(grid, payload.posters)));
+      this.queueJob(tile, () => {
+        this.add(tile, kit.posters.build(grid, payload.posters));
+        tile.posters = payload.posters;
+      });
     }
     // Nor are the signs: a high street with its lettering thinned away is a
     // district the player can no longer read (spec section 13.1).
@@ -304,6 +319,7 @@ export class ChunkTiles {
       part.dispose();
     }
     tile.parts.length = 0;
+    tile.posters = [];
     if (tile.lamps.length > 0) {
       tile.lamps = [];
       this.kit.lampLights.invalidate();
