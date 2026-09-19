@@ -5,11 +5,14 @@
  * is a function of the tick alone: the same tick always gives the same light,
  * on every machine and in every session. Nothing here reads the wall clock.
  *
- * The sun runs a tilted circle: due east on the horizon at 06:00, highest at
- * noon, due west at 18:00, and under the map at midnight. Everything else the
- * scene needs — how bright the sun burns, what colour it burns, how much sky
- * light fills the shadows, what colour the haze is, whether the windows are lit
- * and whether the street lamps are on — is read off how high it stands.
+ * The day is a summer one: the sun is due east on the horizon at 05:30, highest
+ * at 13:00, due west at 20:30, and lowest at 01:00. It runs a tilted circle, at
+ * an even pace through the day and a faster one through the night. The clock
+ * the player reads is not changed, only where the sun stands at each hour of
+ * it. Everything else the scene needs — how bright the sun burns, what colour
+ * it burns, how much sky light fills the shadows, what colour the haze is,
+ * whether the windows are lit and whether the street lamps are on — is read off
+ * how high it stands.
  *
  * The numbers are the scene's, not the sky model's: `sky.ts` turns them into a
  * dome, a directional light and fog. Pure three.js maths, so the tests run this
@@ -26,6 +29,17 @@ import { TICKS_PER_DAY } from '../sim/clock.ts';
  * always has relief to read.
  */
 const DECLINATION = 0.38;
+
+/**
+ * The clock hours of sunrise and sunset. The sun of a 24-hour circle would set
+ * at 18:00, and the evening the game is named for would be dark by 18:20. A
+ * summer day keeps the street lit into the evening and still gives it a night.
+ */
+export const SUNRISE_HOUR = 5.5;
+export const SUNSET_HOUR = 20.5;
+
+/** The clock hour the sun stands highest: halfway between sunrise and sunset. */
+export const SOLAR_NOON_HOUR = (SUNRISE_HOUR + SUNSET_HOUR) / 2;
 
 /** How high the sun stands at noon, as the sine of its angle above the horizon. */
 export const NOON_ALTITUDE = Math.cos(DECLINATION);
@@ -54,17 +68,19 @@ const SUN_INTENSITY = 3.2;
 /** Sky light: the colour from above and the bounce from below, by day and by night. */
 const SKY_FILL_DAY = 0xbcd7f4;
 const GROUND_FILL_DAY = 0x6b5e48;
-const SKY_FILL_NIGHT = 0x2a3350;
-const GROUND_FILL_NIGHT = 0x181420;
+const SKY_FILL_NIGHT = 0x58668a;
+const GROUND_FILL_NIGHT = 0x3a3440;
 
 /**
  * How strong that fill is by day and at midnight. A clear sky is a light as
  * big as the whole dome, so by day a street in shadow is about a third as
  * bright as one in the sun, not a quarter of that: weaker, and the city in its
- * own shadow reads as dusk at noon.
+ * own shadow reads as dusk at noon. The night fill is moonlight: strong enough
+ * that a street with no lamp still shows its kerbs, its cars and its people.
+ * Weaker, and a night frame away from the lamps was black.
  */
 const FILL_DAY = 2.0;
-const FILL_NIGHT = 1.2;
+const FILL_NIGHT = 3.0;
 
 /** The haze the far chunks fade into: by day, at dusk and at night. */
 const HAZE_DAY = 0x9ab0c0;
@@ -98,13 +114,14 @@ export interface Daylight {
 }
 
 /**
- * Where the sun stands at a tick, as a unit vector. 06:00 is due east, noon is
- * near overhead, 18:00 is due west. The map's y is the scene's z, so the tilt
- * leans the circle toward +z.
+ * Where the sun stands at a tick, as a unit vector. It is due east at
+ * {@link SUNRISE_HOUR}, near overhead at {@link SOLAR_NOON_HOUR} and due west
+ * at {@link SUNSET_HOUR}. The map's y is the scene's z, so the tilt leans the
+ * circle toward +z.
  */
 export function sunDirection(tick: number): Vector3 {
-  // Midnight is 0 of the day, so the quarter turn puts sunrise at the start.
-  const angle = (dayFraction(tick) - 0.25) * Math.PI * 2;
+  // A quarter turn after the sun's midnight is sunrise.
+  const angle = (sunFraction(dayFraction(tick)) - 0.25) * Math.PI * 2;
   const up = Math.sin(angle);
   return new Vector3(Math.cos(angle), up * Math.cos(DECLINATION), up * Math.sin(DECLINATION));
 }
@@ -139,6 +156,23 @@ export function daylightAt(tick: number): Daylight {
 export function dayFraction(tick: number): number {
   const inDay = tick - Math.floor(tick / TICKS_PER_DAY) * TICKS_PER_DAY;
   return inDay / TICKS_PER_DAY;
+}
+
+/**
+ * Where the sun is in its own day, 0 at its midnight and 0.5 at its noon, for a
+ * clock's fraction of the day. Sunrise is 0.25 and sunset 0.75, and the clock
+ * is stretched to them in a straight line on each side.
+ */
+export function sunFraction(clock: number): number {
+  const hour = clock * 24;
+  const rise = SUNRISE_HOUR;
+  const set = SUNSET_HOUR;
+  // The night runs from sunset over midnight to the next sunrise.
+  const sun =
+    hour >= rise && hour <= set
+      ? 6 + ((hour - rise) / (set - rise)) * 12
+      : 18 + (((hour < rise ? hour + 24 : hour) - set) / (24 - (set - rise))) * 12;
+  return (sun / 24) % 1;
 }
 
 /** The tick that stands at a given hour of the first day, so a preview can ask for one. */

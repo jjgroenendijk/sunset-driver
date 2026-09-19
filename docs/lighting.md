@@ -21,6 +21,12 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
   `SkyLighting` (`sky.ts`) turns it into the `SkyMesh` dome, one directional light with
   `SHADOW_CASCADES` cascades and the fog; `WorldScene.time = tick` is the only way in, and one game
   day is 24 real minutes.
+- The day is a summer one: sunrise at `SUNRISE_HOUR` (05:30), sunset at `SUNSET_HOUR` (20:30).
+  `sunFraction` stretches the clock onto the sun's circle; the clock the player reads is not
+  changed. A sun on the plain 24-hour circle set at 18:00, and the frame was dark by 18:20.
+- The night fill (`FILL_NIGHT`, `SKY_FILL_NIGHT`) is moonlight, and `NIGHT_GRADE` keeps its
+  contrast low. Together they keep a street away from the lamps readable at midnight. With a
+  weaker fill or a steeper grade, a night frame was black.
 - A shadow map is drawn again for every camera a frame renders with, and the water's mirror is a
   second camera. The cascades are fitted to the player's camera whichever camera asks, so the second
   draw is the same map twice: `sun.shadow.autoUpdate` is off and `SkyLighting.drawShadowOnce`,

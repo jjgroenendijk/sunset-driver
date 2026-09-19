@@ -100,7 +100,7 @@ const DUSK_GRADE: ColourGrade = {
  * with a street that is still trying to be brown.
  */
 const NIGHT_GRADE: ColourGrade = {
-  contrast: 1.12,
+  contrast: 1.04,
   saturation: 0.95,
   lift: [0, 0.004, 0.016],
   gain: [0.94, 0.97, 1.08],
