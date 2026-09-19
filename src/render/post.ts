@@ -55,11 +55,15 @@ import {
 import { setRenderScale } from './renderer.ts';
 import {
   bloom,
+  float,
   lut3D,
-  uniform,
+  luminance,
+  max,
+  mix,
   pass,
   renderOutput,
   smaa,
+  step,
   texture3D,
   toneMapping,
   toneMappingExposure,
@@ -74,15 +78,31 @@ import {
  * little under it catches the lit windows and the lamp lenses and leaves the
  * daylit street alone.
  *
- * The strength follows the night, from {@link BLOOM_STRENGTH} by day to
- * {@link BLOOM_NIGHT_STRENGTH} after dark. By day a sunlit white roof is over
- * the threshold, and a strong bloom there is glare. After dark only the lights
- * are over it, and they should glow.
+ * The bloom reads only the light over the threshold, not the whole of a pixel
+ * that passes it. The addon passes the whole pixel, so a facade of windows just
+ * over the line spread as much light as a lamp lens far over it, and after dark
+ * a tower seen from the street washed the frame beige. The radius is small for
+ * the same reason: a glow stays around the light that throws it.
  */
 const BLOOM_STRENGTH = 0.45;
-const BLOOM_NIGHT_STRENGTH = 0.85;
-const BLOOM_RADIUS = 0.6;
+const BLOOM_RADIUS = 0.2;
 const BLOOM_THRESHOLD = 0.8;
+
+/**
+ * The share of the sky's light the bloom reads. The Preetham dome answers in
+ * real sky brightness, and most of a clear sky by day is over
+ * {@link BLOOM_THRESHOLD} once exposed: read whole, it spread a white glare
+ * over every tower that stood against it. At this share only the sun's disc is
+ * still over the threshold, so the sun glows and the sky does not.
+ */
+const SKY_BLOOM_SHARE = 0.1;
+
+/**
+ * The linear depth, 0 at the near plane and 1 at the far one, past which a
+ * pixel is sky. The dome writes no depth, so the sky keeps the cleared far
+ * depth, and nothing the city draws stands anywhere near the 2 km far plane.
+ */
+const SKY_DEPTH = 0.999;
 
 /** What the frame may be drawn at, and what the tier system may step it to. */
 export interface PostQuality {
@@ -120,6 +140,8 @@ export class PostChain {
   /** The scene drawn into a texture. Built once: it is what every effect reads. */
   private readonly scenePass: TslNode;
   private readonly colour: TslNode;
+  /** What the bloom reads: the light over {@link BLOOM_THRESHOLD}, the sky turned down to {@link SKY_BLOOM_SHARE}. */
+  private readonly glare: TslNode;
   /** The colour grade, as a cube of colours the frame is looked up in. */
   private readonly lut: Data3DTexture;
   /** The cube in linear light, before it is packed into the texture's half floats. */
@@ -131,8 +153,6 @@ export class PostChain {
   private step = -1;
   /** The world's seed, which with the tick is what the weather is read from. */
   private readonly seed: number;
-  /** How strong the bloom is, shared by every graph and moved with the night. */
-  private readonly glow = uniform(BLOOM_STRENGTH);
 
   constructor(
     renderer: WebGPURenderer,
@@ -152,6 +172,12 @@ export class PostChain {
 
     this.scenePass = pass(scene, camera);
     this.colour = vec4(this.scenePass.getTextureNode().rgb.mul(toneMappingExposure), 1);
+    const sky = step(SKY_DEPTH, this.scenePass.getLinearDepthNode());
+    const light = this.colour.rgb.mul(mix(float(1), float(SKY_BLOOM_SHARE), sky));
+    // The excess is taken off the brightness rather than off each channel, so
+    // a warm window glows warm rather than orange.
+    const bright = max(luminance(light), 1e-4);
+    this.glare = vec4(light.mul(max(bright.sub(BLOOM_THRESHOLD), 0).div(bright)), 1);
 
     this.lut = new Data3DTexture(new Uint16Array(LUT_LENGTH), LUT_SIZE, LUT_SIZE, LUT_SIZE);
     this.lut.type = HalfFloatType;
@@ -182,7 +208,6 @@ export class PostChain {
     if (step === this.step) return;
     this.step = step;
     const light = daylightAt(tick);
-    this.glow.value = BLOOM_STRENGTH + (BLOOM_NIGHT_STRENGTH - BLOOM_STRENGTH) * light.night;
     writeLut(gradeAt(light, weatherAt(this.seed, tick)), this.graded);
     const texels = this.lut.image.data as Uint16Array;
     for (let i = 0; i < LUT_LENGTH; i++) texels[i] = DataUtils.toHalfFloat(this.graded[i] ?? 0);
@@ -285,7 +310,7 @@ export class PostChain {
 
     let colour = this.colour;
     if (this.settings.bloom) {
-      const glow = bloom(colour, this.glow, BLOOM_RADIUS, BLOOM_THRESHOLD);
+      const glow = bloom(this.glare, BLOOM_STRENGTH, BLOOM_RADIUS, 0);
       effects.push(glow);
       colour = vec4(colour.rgb.add(glow.rgb), 1);
     }

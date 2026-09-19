@@ -137,11 +137,11 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
 
 ## The light budget
 
-- The bloom strength of `post.ts` is one uniform shared by every graph, and it follows the night:
-  weak by day, when a sunlit white roof is over `BLOOM_THRESHOLD`, strong after dark, when only the
-  lights are. A light source glows only if it clears the threshold after the exposure of
-  0.62. A window, a siren or a flame at colour 1 stays under it, so each burns at a gain of its own
-  (`WINDOW_GAIN`, `BAR_GLOW`, `FLAME_GAIN`).
+- A light source glows only if it clears `BLOOM_THRESHOLD` (`post.ts`) after the exposure of 0.62.
+  A window, a siren or a flame at colour 1 stays under it, so each burns at a gain of its own
+  (`WINDOW_GAIN`, `BAR_GLOW`, `FLAME_GAIN`). The bloom reads only the light over the threshold.
+  The addon's own pass reads the whole pixel, and a tower of lit windows seen from the street
+  washed the night frame beige.
 - `SCENE_LIGHT_CAP` (`sky.ts`) is every light the scene may hold at once, and the pools that make
   it up are each a fixed size so the sum can be checked: the sun and the sky fill, `LAMP_LIGHT_CAP`
   street lamps, `HEADLIGHT_CAP` beams and `NEON_LIGHT_CAP` signs. `WorldScene.lightCount` adds them
