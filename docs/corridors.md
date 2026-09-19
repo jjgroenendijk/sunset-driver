@@ -68,7 +68,7 @@ they are laid in `src/world`, and how `src/render` draws them.
 - The lane and the rails are swept in the frames of the road under them (`piecesOf`), so they lie
   on the road on the ground, through a junction and over a deck alike. The lane stands over the
   paint, and `buildChunkRoads` lays no marking inside the lane on a segment the track runs down:
-  a `LineSegments2` line shows through a surface a few millimetres over it.
+  paint and lane stand millimetres apart and would fight over the same pixels.
 - The far ring keeps the piers of its own tiers and draws no track.
 - The game camera is pitched at 58°, so a pier under a wide deck shows only near the top of the
   frame. Stand the player about 30 m from a deck on its +y side, with `--distance=55`, to look at

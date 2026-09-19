@@ -37,6 +37,9 @@ export const SKIRT = 0.8;
 /** Metres the paint stands above the carriageway, so a marking is never buried in it. */
 export const MARK_RAISE = 0.012;
 
+/** Metres a painted line is wide. */
+export const PAINT_WIDTH = 0.16;
+
 /** Metres of paint and of gap in a dashed line. */
 const DASH = 3;
 const DASH_GAP = 4.5;

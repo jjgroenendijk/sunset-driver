@@ -125,6 +125,7 @@ const EMPTY_ROADS = {
   tier: 'street' as const,
   surface: [],
   markings: new Float32Array(0),
+  markingNormals: new Float32Array(0),
   markingTints: new Float32Array(0),
 };
 

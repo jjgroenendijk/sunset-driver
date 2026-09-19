@@ -3,7 +3,7 @@
  *
  * Everything a chunk draws for one tier goes into one batch per cell
  * (`batch.ts`) — every run of road, every bridge deck and every tunnel portal —
- * and everything painted on that tier goes into one `LineSegments2`. So a chunk
+ * and everything painted on that tier goes into one flat mesh. So a chunk
  * costs a draw call per cell and one for the paint for each tier that runs
  * through it, and nothing for a tier that does not, which is what keeps the
  * visible city inside the budget of spec section 9.2.
@@ -12,10 +12,8 @@
  * every chunk of that world shares them, so dropping a chunk frees its geometry
  * and nothing else.
  */
-import { Object3D, type BufferGeometry } from 'three';
-import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
-import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js';
-import type { Line2NodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
+import { BufferAttribute, BufferGeometry, Mesh, Object3D } from 'three';
+import type { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { RoadTier } from '../world/types.ts';
 import { Batch, fillOfPacked } from './batch.ts';
 import type { PackedRoads } from './chunk-payload.ts';
@@ -29,7 +27,7 @@ import type { TilePart } from './streaming.ts';
  */
 export class RoadScenery {
   private readonly surfaces: Partial<Record<RoadTier, MeshStandardNodeMaterial>> = {};
-  private readonly paint: Line2NodeMaterial = createMarkingMaterial();
+  private readonly paint: MeshStandardNodeMaterial = createMarkingMaterial();
 
   constructor() {
     for (const tier of TIER_ORDER) this.surfaces[tier] = createRoadMaterial(tier);
@@ -47,11 +45,16 @@ export class RoadScenery {
       steps.push(...fill.steps);
     }
     if (tier.markings.length > 0) {
-      const geometry = new LineSegmentsGeometry();
-      geometry.setPositions(tier.markings);
-      geometry.setColors(tier.markingTints);
+      const geometry = new BufferGeometry();
+      geometry.setAttribute('position', new BufferAttribute(tier.markings, 3));
+      geometry.setAttribute('normal', new BufferAttribute(tier.markingNormals, 3));
+      geometry.setAttribute('color', new BufferAttribute(tier.markingTints, 3));
       geometries.push(geometry);
-      objects.push(new LineSegments2(geometry, this.paint));
+      // Paint lies flat on the road: it takes the shadow falling on the road
+      // and casts none of its own.
+      const paint = new Mesh(geometry, this.paint);
+      paint.receiveShadow = true;
+      objects.push(paint);
     }
     return {
       objects,

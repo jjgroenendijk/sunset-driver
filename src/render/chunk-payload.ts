@@ -97,9 +97,11 @@ export interface PackedRoads {
   tier: RoadTier;
   /** Surfaces, decks and portals, all of which go into one batch per cell. */
   surface: PackedBatch[];
-  /** Marking segment ends, six numbers each. Empty at far detail. */
+  /** The painted lines as flat triangles, three numbers per vertex. Empty at far detail. */
   markings: Float32Array;
-  /** The colour of each of those ends, six numbers each. */
+  /** Which way each of those vertices faces, three numbers each. */
+  markingNormals: Float32Array;
+  /** The colour of each of those vertices, three numbers each. */
   markingTints: Float32Array;
 }
 
@@ -214,6 +216,7 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
       tier: tier.tier,
       surface: packCells(grid, partsOf(tier).map((geometry) => ({ geometry: takeGeometry(geometry) }))),
       markings: far ? new Float32Array(0) : tier.markings,
+      markingNormals: far ? new Float32Array(0) : tier.markingNormals,
       markingTints: far ? new Float32Array(0) : tier.markingTints,
     });
   }
@@ -318,6 +321,7 @@ export function payloadTransfers(payload: ChunkPayload): ArrayBuffer[] {
   for (const tier of payload.roads) {
     tier.surface.forEach(takeBatch);
     take(tier.markings);
+    take(tier.markingNormals);
     take(tier.markingTints);
   }
   payload.outlines.forEach(takeBatch);

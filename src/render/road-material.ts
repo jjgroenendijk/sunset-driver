@@ -15,7 +15,7 @@
  * Only this file, `ground-material.ts` and `tsl.ts` know about shader nodes.
  */
 import { Color } from 'three';
-import { Line2NodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { TIERS } from '../world/tiers.ts';
 import type { RoadTier } from '../world/types.ts';
 import { attribute, float, fractalNoise, mix, positionWorld, step, vec3, type TslNode } from './tsl.ts';
@@ -34,9 +34,6 @@ const CONCRETE = 0x8f8c85;
 const TRAM_LANE_RGB = 0x6e3b32;
 const RAIL_RGB = 0xa9aaae;
 const CROSSING_RGB = 0xb3ab98;
-
-/** Metres a painted line is wide, and how bright the paint is. */
-const PAINT_WIDTH = 0.16;
 
 /**
  * What each tier is surfaced with: the carriageway, the verge or kerb beside it,
@@ -100,17 +97,27 @@ export function createRoadMaterial(tier: RoadTier): MeshStandardNodeMaterial {
 }
 
 /**
- * The material the lane markings are drawn with (spec section 22.1, `Line2`).
- * One material per tier, and the colour of each line comes off the geometry, so
- * the yellow of a centre line and the white of a lane divider share a draw call.
+ * The material the lane markings are drawn with (spec section 22.1).
+ *
+ * The paint is a flat strip lying on the carriageway (`road-mesh.ts`), lit as
+ * the road under it is, so a line in the shadow of a building is as dark as the
+ * asphalt beside it. The colour of each line comes off the geometry, so the
+ * yellow of a centre line and the white of a lane divider share a draw call.
+ *
+ * The strip stands only millimetres over the road. A depth offset pulls it
+ * towards the camera, so it wins against the road at any distance rather than
+ * breaking up into the asphalt far off. The offset is a nudge in depth, not a
+ * lift in the world, so the paint never shows through anything standing in
+ * front of the road.
  */
-export function createMarkingMaterial(): Line2NodeMaterial {
-  return new Line2NodeMaterial({
-    // The paint is on the road, so it is as wide as the road says, not as wide
-    // as the screen says.
-    worldUnits: true,
-    linewidth: PAINT_WIDTH,
+export function createMarkingMaterial(): MeshStandardNodeMaterial {
+  return new MeshStandardNodeMaterial({
     vertexColors: true,
+    // Road paint is smoother than the asphalt it is laid on.
+    roughness: 0.7,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -4,
   });
 }
 
