@@ -260,6 +260,27 @@ describe('a chunk batch', () => {
     }
   });
 
+  it('turns a normal packed in signed bytes by the frame of its part', () => {
+    // A quarter turn about the vertical takes +x to -z.
+    const turn = new Matrix4().makeRotationY(Math.PI / 2);
+    const geometry: PackedGeometry = {
+      attributes: [
+        { name: 'position', array: new Float32Array([1, 0, 0]), itemSize: 3, normalized: false },
+        { name: 'normal', array: new Int8Array([127, 0, 0, 9]), itemSize: 4, normalized: true },
+      ],
+    };
+    const storage: PackedGeometry = {
+      attributes: [
+        { name: 'position', array: new Float32Array(3), itemSize: 3, normalized: false },
+        { name: 'normal', array: new Int8Array(4), itemSize: 4, normalized: true },
+      ],
+    };
+    const mesh = batchOfPacked({ parts: [{ geometry, matrix: new Float32Array(turn.toArray()) }], storage }, material);
+    expect([...(mesh.geometry.getAttribute('normal').array as Int8Array)]).toEqual([0, 0, -127, 9]);
+    expect(mesh.geometry.getAttribute('position').getZ(0)).toBeCloseTo(-1);
+    mesh.dispose();
+  });
+
   it('copies a part larger than a step over several of them, and draws it once', () => {
     // A tower of a chunk of the core is about sixteen steps of this size. What
     // a frame overruns its streaming slice by is one step, so the overrun is
