@@ -21,7 +21,7 @@ import { tickAtHour } from './daylight.ts';
 import { PostChain } from './post.ts';
 import { geometryBytes, gpuMemory, gpuPeak, installGpuLedger, type GpuMemory } from './memory.ts';
 import { FULL_TIER, QUALITY_TIERS } from './quality.ts';
-import { createRenderer } from './renderer.ts';
+import { createRenderer, disposeRenderer } from './renderer.ts';
 import { warmPasses } from './warm.ts';
 import { WorldScene } from './world-scene.ts';
 
@@ -226,7 +226,7 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
 
   post.dispose();
   scene.dispose();
-  renderer.dispose();
+  disposeRenderer(renderer);
   canvas.remove();
   return { still, drive, kinds, ...(memory === undefined ? {} : { memory }) };
 }

@@ -1,7 +1,7 @@
 import { ACESFilmicToneMapping } from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { clamp } from '../core/math.ts';
-import { uploadBatchesWith } from './batch.ts';
+import { stopUploadingWith, uploadBatchesWith } from './batch.ts';
 import { PinnedClusterLighting } from './clustered-lights.ts';
 import { registerLampLight } from './lamp-light.ts';
 import { registerNeonLight } from './sign-light.ts';
@@ -162,4 +162,10 @@ export async function createOffscreenRenderer(width: number, height: number): Pr
   renderer.setSize(width, height, false);
   pinClusterGrid(renderer, width, height, 1);
   return renderer;
+}
+
+/** Dispose a renderer, and make sure no batch built after it uploads into it. */
+export function disposeRenderer(renderer: WebGPURenderer): void {
+  stopUploadingWith(renderer);
+  renderer.dispose();
 }

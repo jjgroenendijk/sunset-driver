@@ -5,6 +5,7 @@ import {
   fillOfPacked,
   fillsOf,
   MAX_STEP_VERTICES,
+  stopUploadingWith,
   tilePartOf,
   uploadBatchesWith,
 } from '../src/render/batch.ts';
@@ -255,6 +256,31 @@ describe('a chunk batch', () => {
       // The renderer frees what a draw uploaded; the batch frees what it did.
       fill.mesh.dispose();
       expect(freed).toHaveLength(4);
+    } finally {
+      uploadBatchesWith(undefined);
+    }
+  });
+
+  it('keeps its arrays once the renderer it uploaded into is disposed', () => {
+    // A renderer disposed but left as the uploader took the arrays of every
+    // batch built after it, and the next renderer drew buffers of no bytes.
+    const record = new Map<unknown, { version: number }>();
+    const renderer = {
+      _attributes: {
+        has: (a: unknown) => record.has(a),
+        get: (a: unknown) => record.get(a),
+        update: (a: BufferAttribute) => record.set(a, { version: a.version }),
+        delete: () => {},
+      },
+    };
+    uploadBatchesWith(renderer);
+    try {
+      stopUploadingWith({});
+      stopUploadingWith(renderer);
+      const fill = fillOfPacked(packed([part(1)]), material);
+      for (const step of fill.steps) step();
+      expect(record.size).toBe(0);
+      expect(fill.mesh.geometry.getAttribute('position').array.length).toBe(12);
     } finally {
       uploadBatchesWith(undefined);
     }

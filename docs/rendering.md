@@ -282,6 +282,9 @@ lamps and the lights a vehicle carries — in `docs/lighting.md`.
     the camera had not looked at yet, which was 267 MB on the core of seed `sunset`. A batch the
     steps uploaded frees its own buffers on `dispose`, because three.js frees only the buffers of
     a geometry it drew. `docs/performance.md` has the numbers.
+  - A renderer is disposed through `disposeRenderer` (`renderer.ts`). A bare `dispose` leaves it
+    as the uploader: the next batches upload into its dead record and let go of their arrays, and
+    the next renderer draws buffers of 0 bytes, with a WebGPU error for each.
 - A generated facade is packed in the worker (`facade-pack.ts`): 44 bytes a vertex instead of 144,
   drawn through an index. Its normal is four signed bytes, so `batch.ts` turns it by the part's
   frame and writes it back as bytes. Half floats are a `Float16Array`: three.js 0.186 turns a
