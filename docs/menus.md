@@ -34,7 +34,7 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
 - `src/ui/menu-pages.ts` is the page walk both menus share: `parent`, the arrow keys, the pointer
   focus, and Escape going up a page. `src/ui/pause.ts` is the pause menu of spec section 12, drawn
   with the title's classes and the few rules of `pause.css`. It listens to no key: Escape both opens
-  and closes it, so `main.ts` hands it every key while it is open. While it is open the frame loop
+  and closes it, so `keys.ts` hands it every key while it is open. While it is open the frame loop
   takes no steps and the clock keeps its place between two ticks — unless a room is open, because a
   session in company cannot stop the city (`docs/multiplayer.md`).
 - `src/ui/party.ts` is the Open game to others page of spec section 21: the room code, the invite
@@ -62,7 +62,7 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   can read. It is read against a fresh record: a missing field or a
   wrong type is refused, and an unknown field is dropped. Raise `SAVE_VERSION` when a field changes
   meaning. `src/ui/saves.ts` keeps one save per seed in `localStorage`.
-- A load writes the save into the live record in place, because every closure in `main.ts` holds
+- A load writes the save into the live record in place, because every closure of the session holds
   that record, and then builds a new `SimPhysics` from it. Never `adopt` a loaded record into the
   old physics: the traffic bodies keep their cursors and their promoted bodies from before the load.
 - A save of another seed needs another world, so an import of one, and Regenerate, load the page
@@ -88,7 +88,7 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   `START_MONEY`. The amount travels in `TitleChoice.money` to `createSimState`.
 - `src/ui/controls.ts` is the one list of key bindings. It is shown on the title screen and copied
   into the README; `Keyboard.sample` must stay in step with the rows that are part of the input
-  frame, and `main.ts` listens for the rows after them itself.
+  frame, and `keys.ts` listens for the rows after them.
 
 ## On a phone
 

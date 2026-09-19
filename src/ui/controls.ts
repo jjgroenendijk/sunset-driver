@@ -10,7 +10,7 @@ export interface ControlBinding {
  *
  * The rows down to `Cycle weapon` are the per-tick input frame `Keyboard`
  * samples. The rows after them open and close something on screen rather than
- * driving the simulation, so `main.ts` listens for them itself.
+ * driving the simulation, so `keys.ts` listens for them.
  */
 export const CONTROLS: readonly ControlBinding[] = [
   { action: 'Move, drive', keys: 'W A S D or arrows' },

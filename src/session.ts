@@ -2,10 +2,10 @@
  * A session in progress: the record, the world it is played in, and everything
  * on top of both.
  *
- * It is the one bag `main.ts` hands to the frame, and it is here rather than
+ * It is the one bag `main.ts` hands to `frame.ts`, and it is here rather than
  * there because it names every half of the game at once — the record, the
  * scene, the physics, each panel and each view. `main.ts` builds the pieces and
- * runs the frame; this says what a session is made of.
+ * `frame.ts` runs them; this says what a session is made of.
  */
 import type { PostChain } from './render/post.ts';
 import type { QualityMonitor, QualityChange } from './render/quality.ts';

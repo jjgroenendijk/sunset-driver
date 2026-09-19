@@ -24,7 +24,7 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
 - The split is what lets `test/audio.test.ts` run in Node. A rule that decides whether a sound
   happens belongs in the pure half; a rule about how it sounds belongs in the other. When adding
   something, put the decision in `plan.ts` and let the mixer take it as given.
-- `main.ts` calls `audio.update(state, input, listener)` once a frame with the **drawn** player
+- `frame.ts` calls `audio.update(state, input, listener)` once a frame with the **drawn** player
   position, not the last tick's, so the mix stands where the picture does. A paused session gets
   `hush()` instead.
 
@@ -47,7 +47,7 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
   simulation raises none. A collision is the vehicle's integrity falling by `IMPACT_MIN`, a shot is
   `loadout.shots` rising, an explosion is `damage.blownTick` changing. That means a record which
   jumps looks exactly like a crash and a volley: call `AudioPlanner.resync` after a load, a respawn
-  or a metro trip. `main.ts` already does, and forgetting it is the loudest bug in this directory.
+  or a metro trip. `frame.ts` already does, and forgetting it is the loudest bug in this directory.
 - Footfalls are paced by the ground covered, not by the clock, so a sprint quickens on its own and
   standing still takes no step.
 - A blow of a melee weapon is the one cue read off a list rather than off a difference: `state.hits`

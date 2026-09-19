@@ -5,7 +5,7 @@
  * system says where its own places stand on them. This is the one call that
  * asks them all, in the order they depend on each other, and fills the
  * {@link Ground} the physics reads. It is here rather than in `main.ts` because
- * it is one subject — the places of a city — and `main.ts` is the frame.
+ * it is one subject — the places of a city — and `main.ts` is the boot.
  *
  * Two kinds of place come out of it. The parcels the chunk workers laid out
  * carry the police stations, the metro entrances, the shops and the parking

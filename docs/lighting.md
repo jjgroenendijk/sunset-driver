@@ -114,7 +114,7 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
 - The traffic and the police draw every vehicle's glass, lamps and tyres as one instanced mesh with
   the colour on the vertices, so a lamp cannot be a material of its own. `coloured` (`traffic.ts`)
   writes a `glow` attribute beside the colour, and `createVehicleTrim` multiplies the two by one
-  uniform for the emissive. `main.ts` sets that uniform from `WorldScene.lampsNow`, which is the
+  uniform for the emissive. `frame.ts` sets that uniform from `WorldScene.lampsNow`, which is the
   number the street lamps run off, so the traffic lights up with the street it is on. A vehicle
   drawn through a view that never sets it drives the night with its lamps off.
 - The player's own model is not instanced, so `VehicleModel.lamps` sets `emissiveIntensity` on the

@@ -76,7 +76,7 @@ lamps and the lights a vehicle carries — in `docs/lighting.md`.
 
 - `quality.ts` is the quality-tier system of spec section 9.2: `QUALITY_TIERS` is the table, dearest
   first, and `QualityMonitor` the frame-time monitor that walks it. The monitor is pure — it takes a
-  frame length and answers a tier when it changes one — so the policy is tested headless; `main.ts`
+  frame length and answers a tier when it changes one — so the policy is tested headless; `frame.ts`
   hands the tier to `WorldScene.quality` and `PostChain.quality` and logs the change. The judgement
   is the median of a window of 30 frames, so one dear frame cannot step the city down, a tier is
   dropped on one bad window and raised only after four good ones, and the window after a change is
@@ -169,7 +169,7 @@ lamps and the lights a vehicle carries — in `docs/lighting.md`.
 
 - `RenderSmoother` (`smooth.ts`) is what makes the motion smooth. The simulation is a fixed 60 Hz
   and a display refreshes at its own rate, so a frame takes 0, 1 or 2 steps: drawn on the last tick,
-  the player moves on some frames and not on others while the camera slides on every one. `main.ts`
+  the player moves on some frames and not on others while the camera slides on every one. `frame.ts`
   captures the pose before each step and draws the blend of the last two ticks at
   `FixedStepClock.alpha`. The frame is therefore one tick behind the record, which is 16.7 ms and
   the price of a frame that holds still. Nothing is written back, so a replay is unchanged. The
@@ -272,8 +272,8 @@ lamps and the lights a vehicle carries — in `docs/lighting.md`.
   - In V8 a closure keeps the whole scope it was made in. A closure a tile keeps, such as a
     `dispose`, must not be made in a scope that also holds the payload: `groundPart` (`ground.ts`)
     exists for this reason.
-  - `WorldScene.add` empties `TilePart.steps` once they are queued, because a step holds the arrays
-    it copies from.
+  - `ChunkTiles.add` (`chunk-tiles.ts`) empties `TilePart.steps` once they are queued, because a
+    step holds the arrays it copies from.
   - A full batch lets its arrays go (`Batch.letGo`). `letGo` reads the renderer's own record and
     releases only an attribute whose current version is on the GPU. A batch released too early is
     drawn from an empty buffer, and WebGPU reports a vertex range larger than the bound buffer.

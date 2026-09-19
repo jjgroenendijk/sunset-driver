@@ -3,7 +3,7 @@
  * description and then read every tick, and the {@link Ground} the physics
  * reads them all through.
  *
- * `main.ts` builds the pieces of a session and runs the frame. This is the
+ * `main.ts` builds the pieces of a session and `frame.ts` runs them. This is the
  * piece that is a city rather than a screen: the ambient traffic of spec
  * section 13.1 and the crowd that walks beside it, the tram of 13.2, the
  * police of 14, the emergency services of 20.3 and the wildlife of 20.4. Each
