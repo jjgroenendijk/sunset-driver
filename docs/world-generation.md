@@ -51,10 +51,10 @@ corridors in `docs/corridors.md`.
   hold a rock in the sea, and it can hold several pieces of land that no crossing joins, so anything
   that places ground content asks `reaches` first. District sites do.
 - `reaches` says a road *could* arrive; `servedMasses(districts)` says it *will*. `linkIslands`
-  (`roads.ts`) bridges to an island that carries a district and to the islands on the way there, and
-  to nothing else, so a piece of land a chain of crossings leads to still gets no road when no
-  district stands at the end of that chain. A resort beach asks this one, because a boardwalk, a
-  pier and two car parks on an island the network never bridges to serve nobody.
+  (`island-links.ts`) bridges to an island that carries a district and to the islands on the way
+  there, and to nothing else, so a piece of land a chain of crossings leads to still gets no road
+  when no district stands at the end of that chain. A resort beach asks this one, because a
+  boardwalk, a pier and two car parks on an island the network never bridges to serve nobody.
 - Ask `islandAt(islands, size, coastNoise(seed), x, y)` which island a point stands on.
   `islandIndexAt` reads the raw power cells, and the coastline is cut from those cells after a
   domain warp that moves them by up to 6 % of the map.

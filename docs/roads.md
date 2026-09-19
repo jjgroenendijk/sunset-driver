@@ -32,9 +32,11 @@ The ground the roads are laid on is in `docs/world-generation.md`.
 
 - `roads.ts` is the plan of the road network and `road-trace.ts` the trace it runs on: the step
   along the field, the ground that refuses it, the reroute and the structures. `RoadTracer` extends
-  `RoadTrace`, which extends `RoadRoute` (`road-route.ts`): the state every trace runs on, the
-  ground rules and the reroute over the terrain grid. `road-params.ts` holds the numbers each tier
-  traces by, and `road-ground.ts` the rule a span asks the ground. The network laid so far is one
+  `IslandLinkTrace` (`island-links.ts`, the bridges out to the islands), which extends
+  `HighwayTrace` (`highways.ts`), which extends `RoadTrace`, which extends `RoadRoute`
+  (`road-route.ts`): the state every trace runs on, the ground rules and the reroute over the
+  terrain grid. `road-params.ts` holds the numbers each tier traces by, and `road-ground.ts` the
+  rule a span asks the ground. The network laid so far is one
   planar graph, `RoadNetwork` (`road-network.ts`), and every road goes into it through `add`. A
   point that stands on a point of the network joins its node, or splits that edge into a new one,
   and both ends of a road are nodes. The result is `RoadCurve.nodes`, which `graph.ts` and the
@@ -202,10 +204,11 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   on demand from the curves' `nodes`, which the tracer stored. Two curves meet only where they carry
   the same node, so two roads that only cross on the map stay grade separated. `graph.crossings`
   lists those crossings and says which road is carried over the other; both runs of both roads carry
-  the index. `shortestPath(from, to, allow?)` narrows the network to the edges `allow` accepts,
-  which is how the tram is routed over the arterials alone. `tiers.ts` holds the width, verge,
-  pavement, lanes, speed limit, permitted traffic and maximum grade of each tier; nothing else
-  should carry those numbers.
+  the index. `grade-crossings.ts` finds them, and `graph-index.ts` is the grid of buckets behind
+  them and behind `nearestNode` and `nearestEdge`. `shortestPath(from, to, allow?)` narrows the
+  network to the edges `allow` accepts, which is how the tram is routed over the arterials alone.
+  `tiers.ts` holds the width, verge, pavement, lanes, speed limit, permitted traffic and maximum
+  grade of each tier; nothing else should carry those numbers.
 - `buildFootprint(roads, corridors, graph)` (`footprint.ts`) is the ground the roads claim (spec
   section 6.4). It is built on demand like the graph, not stored in the world description. Each
   curve is offset by `footprintHalfWidth(tier)`, an apron is laid where three roads or more meet,
