@@ -144,6 +144,10 @@ scene ever holds is in `docs/shops.md`.
   and no more. `watch` is how they are handed in, with the ground under them: a blaze on the record
   is a place and not a height. A blaze throws embers as well as flame, which is how a fire on the
   ground reads as one rather than as a car alight.
+- `ShotFx` (`shot-fx.ts`) draws the rounds of `SimState.tracers`: a flash at the muzzle, a glow on
+  the ground, a streak per pellet and the spark batch of `melee-fx.ts` where each landed. It is
+  three additive batches. The glow is a disc, not a light: a point light turns the clustered path
+  on for every fragment in the city (`docs/lighting.md`). `render-preview.ts --shots` shows it.
 - `EmergencyView` (`emergency.ts`) draws the fire engines and the ambulances of spec section 20.3
   the way `police.ts` draws the police: instanced bodies off a row of the roster, an outline, and a
   light bar whose colour flips on a beat of the tick. Neither service has a row of its own, so an

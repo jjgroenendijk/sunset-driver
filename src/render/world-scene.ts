@@ -19,6 +19,7 @@ import type { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { CharacterAppearance } from '../sim/character.ts';
 import type { Blaze } from '../sim/fire.ts';
 import type { MeleeHit } from '../sim/melee.ts';
+import type { Tracer } from '../sim/tracer.ts';
 import type { PlayerState } from '../sim/on-foot.ts';
 import { START_TICK } from '../sim/simulation.ts';
 import type { VehicleState } from '../sim/vehicle.ts';
@@ -44,6 +45,7 @@ import { Headlights } from './headlights.ts';
 import { ShopInterior } from './interior.ts';
 import { LampLights, LampScenery } from './lamps.ts';
 import { MeleeFx } from './melee-fx.ts';
+import { ShotFx } from './shot-fx.ts';
 import { reflectLights } from './mirror.ts';
 import { PickupModels } from './pickups.ts';
 import { PosterScenery } from './posters.ts';
@@ -67,6 +69,8 @@ import { createWaterSurface, type WaterSurface } from './water-surface.ts';
 export interface DrawnDamage {
   seed: number;
   hits: readonly MeleeHit[];
+  /** The paths of the rounds fired lately. */
+  tracers: readonly Tracer[];
   /** What the wrecks have left burning on the ground (spec section 20.3). */
   fires: { blazes: readonly Blaze[] };
 }
@@ -93,6 +97,8 @@ export class WorldScene {
   readonly fx = new DamageFx();
   /** The bursts a melee weapon throws off what it lands on (spec section 11.6). */
   readonly melee = new MeleeFx();
+  /** The flash, the streak and the burst of every round fired (spec section 11.6). */
+  readonly shots = new ShotFx();
   /** The rubber it leaves on the road (spec section 11.3). */
   readonly skid = new SkidMarks();
   readonly world: WorldDescription;
@@ -190,6 +196,7 @@ export class WorldScene {
     this.scene.add(this.interior.group);
     this.scene.add(this.fx.group);
     this.scene.add(this.melee.group);
+    this.scene.add(this.shots.group);
     this.scene.add(this.skid.mesh);
     // Every light stands by now and no pool ever grows, so this is where the
     // water's mirror is handed the whole of the lighting (`mirror.ts`).
@@ -252,7 +259,7 @@ export class WorldScene {
    *
    * The blows a melee weapon has landed are drawn here too (spec section
    * 11.6), because they are the same thing: a burst thrown off the record at a
-   * tick, coloured by what it says was struck.
+   * tick, coloured by what it says was struck. So are the rounds fired.
    *
    * `surfaceAt` is the city's own answer for what the ground is made of, the
    * one the physics gripped through, so rubber is left exactly where a tyre
@@ -265,6 +272,7 @@ export class WorldScene {
     this.fx.update(v, this.vehicle.vehicle, record.seed, tick);
     this.skid.update(v, this.vehicle.vehicle, this.height, surfaceAt);
     this.melee.update(record.hits, record.seed, tick);
+    this.shots.update(record.tracers, record.seed, tick);
   }
 
   /**
@@ -310,6 +318,7 @@ export class WorldScene {
   resetDamage(tick: number): void {
     this.fx.reset(tick);
     this.melee.reset(tick);
+    this.shots.reset(tick);
     this.skid.clear();
   }
 
@@ -540,9 +549,10 @@ export class WorldScene {
     this.held.dispose();
     this.pickups.dispose();
     this.weaponArt.dispose();
-    this.scene.remove(this.fx.group, this.melee.group);
+    this.scene.remove(this.fx.group, this.melee.group, this.shots.group);
     this.fx.dispose();
     this.melee.dispose();
+    this.shots.dispose();
     this.scene.remove(this.skid.mesh);
     this.skid.dispose();
     this.scene.remove(this.weatherFx.group);
