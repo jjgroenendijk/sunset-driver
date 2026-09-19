@@ -1,4 +1,5 @@
 import { PerspectiveCamera, Vector3 } from 'three';
+import { hashInts } from '../core/hash.ts';
 
 /** Locked pitch in radians below horizontal; the camera never rolls or yaws. */
 export const CAMERA_PITCH = (58 * Math.PI) / 180;
@@ -31,6 +32,14 @@ const PULL_STEPS = 12;
 /** How fast a shot's kick settles, in e-foldings a second, and the most metres kicks add up to. */
 const KICK_RATE = 18;
 const MAX_KICK = 0.6;
+/**
+ * The jolt of the player's car hitting a person: seconds it lasts, metres it
+ * moves the view at the hardest hit, and the two rates it shakes at, per second.
+ */
+export const JOLT_SECONDS = 0.25;
+const JOLT_METRES = 0.3;
+const JOLT_RATE_X = 23;
+const JOLT_RATE_Z = 17;
 
 /** The top of the tallest roof over a ground point, or undefined over open ground. */
 export type RoofHeight = (x: number, z: number) => number | undefined;
@@ -51,6 +60,11 @@ export class FollowCamera {
   private pull = 0;
   /** Metres the last shots pushed the view, across the map, settling back to nothing. */
   private readonly shake = new Vector3();
+  /** Seconds since the last jolt, how hard it was, and the two phases its tick gave it. */
+  private joltAge = JOLT_SECONDS;
+  private joltSize = 0;
+  private joltPhaseX = 0;
+  private joltPhaseZ = 0;
 
   constructor(aspect: number) {
     this.camera = new PerspectiveCamera(45, aspect, 1, 2000);
@@ -87,6 +101,32 @@ export class FollowCamera {
     this.shake.x -= (x / length) * metres;
     this.shake.z -= (y / length) * metres;
     if (this.shake.length() > MAX_KICK) this.shake.setLength(MAX_KICK);
+  }
+
+  /**
+   * Shake the view for a moment: the player's car has hit a person, or gone
+   * over a body. `strength` is the hit's, 0 to 1. The shake is drawn from the
+   * tick of the hit, so the same hit shakes the same way. A harder jolt takes
+   * over from a softer one still running; a softer one leaves it be.
+   */
+  jolt(strength: number, tick: number): void {
+    const size = JOLT_METRES * Math.min(1, Math.max(0, strength));
+    const left = this.joltAge < JOLT_SECONDS ? this.joltSize * (1 - this.joltAge / JOLT_SECONDS) : 0;
+    if (size <= left) return;
+    this.joltAge = 0;
+    this.joltSize = size;
+    this.joltPhaseX = (hashInts(tick, 1) / 0x100000000) * Math.PI * 2;
+    this.joltPhaseZ = (hashInts(tick, 2) / 0x100000000) * Math.PI * 2;
+  }
+
+  /** Where the jolt has the view now, in metres across the map, added to `out`. */
+  private joltBy(dt: number, out: Vector3): void {
+    if (this.joltAge >= JOLT_SECONDS) return;
+    this.joltAge += dt;
+    const left = Math.max(0, 1 - this.joltAge / JOLT_SECONDS);
+    const t = this.joltAge * Math.PI * 2;
+    out.x += this.joltSize * left * Math.sin(JOLT_RATE_X * t + this.joltPhaseX);
+    out.z += this.joltSize * left * Math.sin(JOLT_RATE_Z * t + this.joltPhaseZ);
   }
 
   resize(aspect: number): void {
@@ -140,6 +180,7 @@ export class FollowCamera {
     this.shake.multiplyScalar(Math.exp(-KICK_RATE * dt));
     this.camera.position.copy(this.focus).addScaledVector(back, this.baseDistance + this.zoom + this.pull);
     this.camera.position.add(this.shake);
+    this.joltBy(dt, this.camera.position);
     this.applyOrientation();
   }
 }

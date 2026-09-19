@@ -63,4 +63,25 @@ describe('FollowCamera', () => {
     for (let i = 0; i < 600; i++) camera.update(0.016, { ...REST, speed: 5.6, driving: false });
     expect(camera.camera.position.y).toBeCloseTo(rest, 9);
   });
+
+  it('shakes for a moment when the car hits a person, the same way for the same hit', () => {
+    const shaken = (tick: number): number[] => {
+      const camera = new FollowCamera(1.7);
+      camera.update(0.016, REST);
+      const rest = camera.camera.position.clone();
+      camera.jolt(1, tick);
+      const offsets: number[] = [];
+      for (let i = 0; i < 30; i++) {
+        camera.update(0.016, REST);
+        offsets.push(camera.camera.position.distanceTo(rest));
+      }
+      return offsets;
+    };
+    const offsets = shaken(1234);
+    expect(Math.max(...offsets.slice(0, 10))).toBeGreaterThan(0.01);
+    expect(Math.max(...offsets)).toBeLessThan(0.5);
+    // A quarter of a second later it is still again.
+    expect(offsets[29]).toBeCloseTo(0, 9);
+    expect(shaken(1234)).toEqual(offsets);
+  });
 });
