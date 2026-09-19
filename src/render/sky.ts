@@ -66,6 +66,43 @@ const SHADOW_BIAS = -0.0006;
 const SHADOW_NORMAL_BIAS = 0.16;
 
 /**
+ * Metres the tallest caster stands over the street it shades: a tower of
+ * `building-plan.ts` at its full 150 m, with its crown.
+ */
+const SHADOW_CASTER_HEIGHT = 160;
+
+/**
+ * The lowest sun, as the sine of its altitude, the reach of {@link shadowReach}
+ * is sized for. Below it the reach stops growing: the sun is weak there and
+ * every shadow on the street is long, so a caster further off than this
+ * allows changes little, and the shadow pass would draw half the city for it.
+ */
+const SHADOW_LOWEST_SUN = 0.2;
+
+/**
+ * Metres of depth, along the light, each cascade keeps behind the nearest
+ * point of the view it covers. It is what the addon's defaults leave: a camera
+ * 500 m deep, 200 m of it spent on the reach.
+ */
+const SHADOW_SLICE_DEPTH = 300;
+
+/**
+ * Metres a cascade looks back toward the sun for what casts on the view it
+ * covers, at a sun of this altitude (the sine of its angle above the horizon).
+ *
+ * A cascade draws only what stands within this of its own view, along the
+ * light. The addon's fixed 200 m is short of the top of a tall tower once the
+ * sun drops under 50 degrees, and the near cascade, which covers the least,
+ * loses the tower first. The street under the camera then came out sunlit and
+ * the same street further up the screen in shadow, and the line between them
+ * moved as the camera did. At noon this is shorter than the addon's reach, so
+ * the shadow pass draws less then, not more.
+ */
+export function shadowReach(altitude: number): number {
+  return SHADOW_CASTER_HEIGHT / Math.max(altitude, SHADOW_LOWEST_SUN);
+}
+
+/**
  * Radians the sun may turn before the shadow follows it.
  *
  * `CSMShadowNode` holds a shadow still by snapping each cascade's centre to
@@ -170,6 +207,7 @@ export class SkyLighting {
     if (this.shadowSun.lengthSq() === 0 || this.shadowSun.angleTo(light.sun) >= SUN_SHADOW_STEP) {
       this.shadowSun.copy(light.sun);
       this.sun.position.copy(this.shadowSun).multiplyScalar(DOME_SIZE);
+      this.reachToward(this.shadowSun.y);
     }
     this.sun.color.copy(light.sunColour);
     this.sun.intensity = light.sunIntensity;
@@ -178,6 +216,29 @@ export class SkyLighting {
     this.fill.intensity = light.fillIntensity;
     this.fog.color.copy(light.haze);
     this.background.copy(light.haze);
+  }
+
+  /**
+   * Size how far back toward the sun each cascade looks for what casts on the
+   * view (see {@link shadowReach}). The shadow camera is deepened by as much,
+   * or the view the cascade covers would fall off its far end.
+   */
+  private reachToward(altitude: number): void {
+    const reach = shadowReach(altitude);
+    this.cascades.lightMargin = reach;
+    // Each cascade cloned the sun's shadow camera when it was built, so the
+    // depth is written onto the clones as well.
+    const shadows = [this.sun.shadow];
+    for (const cascade of this.cascades.lights) if (cascade.shadow !== undefined) shadows.push(cascade.shadow);
+    for (const shadow of shadows) {
+      shadow.camera.far = reach + SHADOW_SLICE_DEPTH;
+      shadow.camera.updateProjectionMatrix();
+    }
+  }
+
+  /** Metres the cascades now look back toward the sun. */
+  get shadowReach(): number {
+    return this.cascades.lightMargin;
   }
 
   /**

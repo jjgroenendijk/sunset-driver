@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import { Scene } from 'three';
 import { daylightAt } from '../src/render/daylight.ts';
-import { SkyLighting, SUN_SHADOW_STEP } from '../src/render/sky.ts';
+import { shadowReach, SkyLighting, SUN_SHADOW_STEP } from '../src/render/sky.ts';
 import { TICKS_PER_DAY } from '../src/sim/clock.ts';
 
 describe('SkyLighting', () => {
@@ -45,6 +45,19 @@ describe('SkyLighting', () => {
       worst = Math.max(worst, sky.shadowSunDirection.angleTo(light.sun));
     }
     expect(worst).toBeLessThan(SUN_SHADOW_STEP + 1e-6);
+    sky.dispose();
+  });
+
+  it('reaches back toward the sun far enough for the tallest tower', () => {
+    // A 150 m tower at 08:21, when the sun stands about 32 degrees high: its
+    // top is 280 m back along the light, past the addon's fixed 200 m.
+    const morning = daylightAt(Math.round(TICKS_PER_DAY * (8.35 / 24)));
+    expect(shadowReach(morning.altitude)).toBeGreaterThan(150 / morning.altitude);
+    // At noon the reach is shorter than the addon's, so the pass draws less.
+    expect(shadowReach(daylightAt(TICKS_PER_DAY / 2).altitude)).toBeLessThan(200);
+    const sky = new SkyLighting(new Scene(), 10, 100);
+    sky.set(morning);
+    expect(sky.shadowReach).toBe(shadowReach(sky.shadowSunDirection.y));
     sky.dispose();
   });
 });
