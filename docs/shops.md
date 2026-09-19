@@ -13,6 +13,7 @@ corners, and has its own page in `docs/market.md`.
 - The room
 - The door
 - The counter and the prices
+- The panel and its preview
 - The interior, drawn
 - The map
 
@@ -90,8 +91,9 @@ corners, and has its own page in `docs/market.md`.
   picked from what its licence covers; the pick is a pure function of the seed and the shop id, so
   the panel a player buys off is the panel the record replays.
 - The row bought is `InputFrame.buy`, the same edge of the same number keys as `InputFrame.travel`.
-  The two are never read at once, because `travelRefusal` refuses a trip from inside a shop. Every
-  counter therefore has to fit `CHOICE_KEYS` rows.
+  The two are never read at once, because `travelRefusal` refuses a trip from inside a shop. The
+  number keys reach the first `CHOICE_KEYS` rows. A longer counter is fine: a click or `Enter`
+  hands any row to `Keyboard.choose`, and the next input frame carries it as `buy`.
 - What the last purchase said is in the record, on the visit, because `src/ui/shop-panel.ts` draws
   the record and nothing else. A purchase is money out of `state.money` and then the offer's own
   `take`; nothing else in the project may move the money for a trade.
@@ -100,12 +102,30 @@ corners, and has its own page in `docs/market.md`.
   clothes takes `CLOTHES_HEAT` off instead. The workshop works on the vehicle of the record, which
   is the one the player arrived in and left at the door — the record carries one vehicle, and that
   is it.
-- The property broker sells the safehouses of spec section 16.3. Its counter is every property of
-  the city that is still for sale, nearest this office first. A counter shows `CHOICE_KEYS` rows,
-  so one office sells the doors round it and a player who wants one across the city walks into the
+- The property broker sells the safehouses of spec section 16.3. Its counter is the
+  `BROKER_ROWS` properties still for sale nearest this office, so one office sells the doors
+  round it and a player who wants one across the city walks into the
   broker there. `docs/safehouses.md` is what a property then does. This is the one counter whose
   rows come from outside the record: `offersOf` takes the city's properties as an argument, because
   a price and a door both belong to the world.
+
+## The panel and its preview
+
+- Each `ShopOffer` carries what the panel shows beside its price: a `group` heading, a `look` for
+  the preview, a `blurb` and a list of `facts`. The tables behind them — the foods, the care, the
+  paints and the weapon gauges — are `src/sim/shop-goods.ts`. They are plain data, so the
+  simulation stays free of the renderer.
+- The cursor belongs to `src/ui/shop-panel.ts`, not to the record. Hover, the arrow keys and a tap
+  move it. Buying always goes through `InputFrame.buy`, so a click replays like a number key.
+- While a counter is open, `Keyboard.menu` gives the up and down arrows to the cursor. `W` and `S`
+  still walk, so a player can still walk out of the room.
+- `ShopPreview` (`src/render/shop-preview.ts`) draws the look with the game's own renderer,
+  through a `CanvasTarget` on the panel's canvas. It swaps the target in for one draw and back,
+  after the post chain. A second `WebGPURenderer` would be a second GPU device and would compile
+  every shader twice.
+- The preview reuses the city's models: `WeaponArt`, `VehicleModel` and `CharacterModel`. The food,
+  the kits, the ammunition, the house and the wrench are the primitives of `shop-props.ts`. Each
+  look is scaled to fill the window, so the props have no real size.
 
 ## The interior, drawn
 

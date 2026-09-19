@@ -373,7 +373,13 @@ async function boot(): Promise<void> {
     hotwire: new HotwireBar(document.body),
     travel: new TravelPanel(document.body),
     metro,
-    shopPanel: new ShopPanel(document.body),
+    // The counter takes clicks and draws its preview with the game's renderer;
+    // a row bought with the mouse reaches the record through the keyboard's
+    // next frame of input, as a number key would.
+    shopPanel: new ShopPanel(document.body, renderer, {
+      choose: (row) => keyboard.choose(row),
+      leave: () => keyboard.tapInteract(),
+    }),
     shops,
     tradePanel: new TradePanel(document.body),
     dealers,

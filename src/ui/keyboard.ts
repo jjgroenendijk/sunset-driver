@@ -33,6 +33,18 @@ export class Keyboard {
   private stationHeld = 0;
   /** The map point under the mouse, which the frame writes; undefined while it is off the map. */
   private point: { x: number; y: number } | undefined = undefined;
+  /**
+   * True while a shop counter is open. The arrow keys then walk its rows and
+   * `Enter` buys one, so they leave the player where they stand; `W A S D`
+   * still walk. The frame writes it.
+   */
+  menu = false;
+  /** Which of the counter's keys were down last frame, so a held key moves the cursor once. */
+  private menuHeld = { up: false, down: false, enter: false };
+  /** A row picked off a panel with the mouse or `Enter`, handed to the next sample. */
+  private picked = 0;
+  /** A press of the interact key made on a panel, handed to the next sample. */
+  private tapped = false;
 
   constructor(target: Window) {
     target.addEventListener('keydown', (e) => {
@@ -80,17 +92,53 @@ export class Keyboard {
     return this.down.has(code);
   }
 
+  /**
+   * Buy a row of the counter on screen, counted from 1, as its number key
+   * would. A click and `Enter` both come here, so a row past the ninth, which
+   * no number key reaches, is bought the same way.
+   */
+  choose(row: number): void {
+    this.picked = row;
+  }
+
+  /** Press the interact key once, as the leave button of a panel does. */
+  tapInteract(): void {
+    this.tapped = true;
+  }
+
+  /**
+   * The counter's own keys, read once a frame: the step the cursor takes, and
+   * whether `Enter` was pressed. Each key counts once however long it is held.
+   */
+  menuKeys(): { step: number; enter: boolean } {
+    const up = this.is('ArrowUp');
+    const down = this.is('ArrowDown');
+    const enter = this.is('Enter') || this.is('NumpadEnter');
+    const held = this.menuHeld;
+    const step = (down && !held.down ? 1 : 0) - (up && !held.up ? 1 : 0);
+    const pressed = enter && !held.enter;
+    this.menuHeld = { up, down, enter };
+    return { step, enter: pressed };
+  }
+
   sample(): InputFrame {
     // One edge of the number keys, read once and handed to both panels that
     // take them: the metro of spec section 13.3 and the shop counters of 16.1.
     // A player inside a shop may not take the metro, so only one can act on it.
     const chosen = this.choice();
+    // A row picked off the panel is a buy, and only a buy: the metro's list
+    // takes no clicks.
+    const picked = this.picked;
+    this.picked = 0;
+    const tapped = this.tapped;
+    this.tapped = false;
     // The sprint key doubles as the sell key at a dealer's corner (spec section
     // 16.2): a number alone buys the good, and the same number with it held
     // sells the holding. A player standing still to deal is not sprinting.
     const selling = this.is('ShiftLeft') || this.is('ShiftRight');
-    const forward = this.is('KeyW') || this.is('ArrowUp');
-    const back = this.is('KeyS') || this.is('ArrowDown');
+    // Up and down are the counter's while it is open.
+    const forward = this.is('KeyW') || (!this.menu && this.is('ArrowUp'));
+    const back = this.is('KeyS') || (!this.menu && this.is('ArrowDown'));
     const left = this.is('KeyA') || this.is('ArrowLeft');
     const right = this.is('KeyD') || this.is('ArrowRight');
     return {
@@ -100,7 +148,7 @@ export class Keyboard {
       horn: this.is('KeyH'),
       sprint: selling,
       jump: this.is('Space'),
-      interact: this.is('KeyE'),
+      interact: this.is('KeyE') || tapped,
       fire: this.is('KeyF') || this.is(FIRE_BUTTON),
       aim: this.is('KeyQ') || this.is(AIM_BUTTON),
       pointing: this.point !== undefined,
@@ -110,7 +158,7 @@ export class Keyboard {
       cycle: this.is('KeyC'),
       station: this.dial(),
       travel: chosen,
-      buy: chosen,
+      buy: picked > 0 ? picked : chosen,
       trade: selling ? -chosen : chosen,
     };
   }

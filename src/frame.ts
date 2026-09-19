@@ -88,6 +88,8 @@ export class SessionFrame {
     const menu = session.pause.open;
     const paused = menu && !session.party.live;
     this.pointMouse(session, flying || menu);
+    // The arrow keys walk a shop's counter while the player stands at one.
+    keyboard.menu = session.state.shop !== null;
     const steps = session.party.frame(session.state, this.heard, paused ? 0 : clock.advance(elapsed));
     const respawned = session.state.respawn;
     const trips = session.state.metro.trips;
@@ -149,6 +151,8 @@ export class SessionFrame {
     // Not `renderer.render`: the post chain draws the scene itself and the
     // effects of spec section 10.6 over it.
     session.post.render();
+    // The turning preview of a shop's counter, on its own canvas.
+    session.shopPanel.drawPreview(performance.now() / 1000);
   }
 
   /**
@@ -342,7 +346,7 @@ export class SessionFrame {
     session.travel.update(session.state, session.metro, stationAt(session.metro, session.state), session.state.tick);
     // The shop of spec section 16.1: the counter on screen, and the room the
     // player is standing in, which is the only interior the scene ever holds.
-    session.shopPanel.update(session.state, session.shops, session.safehouses);
+    session.shopPanel.update(session.state, session.shops, session.safehouses, this.parts.keyboard.menuKeys());
     session.world.shopInside(inShop);
     // The contraband market of spec section 16.2: where the dealers are
     // standing this spell, and the prices of the one the player is with.

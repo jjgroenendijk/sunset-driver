@@ -1,0 +1,71 @@
+/* The shop counter of `shop-panel.ts`: the rows on the left, the card of the row
+   under the cursor on the right, with its turning preview in a dark shop window.
+   It wears the look of the other panels (`panels.css`): ivory card stock, a serif
+   heading, red for the current row and for a refusal, gold for a price. Unlike
+   them it takes the mouse, since a row is bought with a click. */
+/* A column rather than a grid: the rows a hidden part would leave are not kept for it. */
+.shop { z-index: 3; left: 50%; bottom: 4%; transform: translateX(-50%); display: flex; flex-direction: column; width: min(48rem, 94vw); max-height: min(34rem, 64vh); gap: .5rem; animation: shop-in .25s ease-out; }
+.shop.shop-at-door { width: auto; min-width: min(20rem, 80vw); max-height: none; bottom: 21%; }
+@keyframes shop-in { from { opacity: 0; transform: translate(-50%, .6rem); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+.shop-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding-bottom: .35rem; border-bottom: 1px solid rgba(35,28,22,.15); }
+.shop-title { font: 400 1.45rem/1.1 var(--it-serif); }
+.shop-purse { font: 600 .95rem var(--it-sans); color: #2f7a3a; font-variant-numeric: tabular-nums; }
+.shop-door { font-size: .95rem; }
+.shop-refused { color: var(--it-rosso); }
+
+.shop-body { flex: 1 1 auto; display: grid; grid-template-columns: minmax(0, 1fr) 16.5rem; gap: .9rem; min-height: 0; }
+.shop-list { display: grid; align-content: start; min-height: 0; overflow-y: auto; padding-right: .3rem; scrollbar-width: thin; scrollbar-color: rgba(193,154,83,.7) transparent; }
+.shop-group { margin: .55rem 0 .15rem; font-size: .62rem; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--it-rosso); }
+.shop-group:first-child { margin-top: 0; }
+.shop-row { display: grid; grid-template-columns: 1.4rem minmax(0, 1fr) auto; align-items: center; gap: .5rem; padding: .32rem .5rem; border-left: 2px solid transparent; border-bottom: 1px solid rgba(35,28,22,.08); cursor: pointer; font-size: .9rem; transition: background-color .15s, border-color .15s, padding-left .15s; }
+.shop-row:hover { background: rgba(163,34,27,.05); }
+.shop-row.shop-current { border-left-color: var(--it-rosso); background: rgba(163,34,27,.1); color: var(--it-rosso); padding-left: .7rem; }
+.shop-key { display: inline-grid; place-items: center; width: 1.25rem; height: 1.25rem; border: 1px solid rgba(35,28,22,.35); border-bottom-width: 2px; border-radius: .2rem; font: 600 .66rem/1 var(--it-sans); color: var(--it-muted); }
+.shop-key:empty { visibility: hidden; }
+.shop-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.shop-price { color: #8a6420; font-variant-numeric: tabular-nums; font-weight: 600; }
+.shop-dear .shop-label, .shop-dear .shop-price { color: var(--it-muted); opacity: .6; }
+.shop-dear .shop-price { text-decoration: line-through; }
+.shop-empty { color: var(--it-muted); font-style: italic; }
+
+.shop-card { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: .35rem; min-height: 0; }
+.shop-card-info { display: grid; align-content: start; gap: .2rem; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(193,154,83,.7) transparent; }
+.shop-card.shop-card-back .shop-window { box-shadow: inset 0 0 0 2px var(--it-rosso), 0 6px 16px rgba(0,0,0,.3); }
+.shop-window { position: relative; height: clamp(6.5rem, 24vh, 12rem); flex-shrink: 0; overflow: hidden; background: #4a3c33; box-shadow: inset 0 0 0 1px rgba(193,154,83,.6), 0 6px 16px rgba(0,0,0,.3); }
+.shop-preview { display: block; width: 100%; height: 100%; }
+/* A soft light falling from above, over the preview, as a shop window's lamp. */
+.shop-window::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 70% 55% at 50% 0%, rgba(255,230,190,.14), rgba(0,0,0,0) 70%), linear-gradient(to top, rgba(0,0,0,.25), rgba(0,0,0,0) 30%); }
+.shop-card-name { margin-top: .2rem; font: 400 1.2rem/1.15 var(--it-serif); }
+.shop-card-price { font: 600 1.05rem var(--it-sans); color: #8a6420; font-variant-numeric: tabular-nums; }
+.shop-card-blurb { font-size: .78rem; font-style: italic; color: var(--it-muted); }
+.shop-facts { display: grid; gap: .18rem; margin-top: .15rem; }
+.shop-fact { display: grid; grid-template-columns: 4.6rem minmax(0, 1fr) auto; align-items: center; gap: .45rem; font-size: .72rem; font-variant-numeric: tabular-nums; }
+.shop-fact-label { color: var(--it-muted); letter-spacing: .06em; text-transform: uppercase; font-size: .6rem; font-weight: 600; }
+.shop-fact-value { text-align: right; }
+.shop-gauge { height: .3rem; background: rgba(35,28,22,.12); overflow: hidden; }
+.shop-gauge-none { visibility: hidden; }
+.shop-gauge-fill { display: block; height: 100%; background: linear-gradient(90deg, var(--it-gold), var(--it-rosso)); transition: width .3s ease; }
+.shop-buy { padding: .5rem .8rem; border: 0; background: var(--it-rosso); color: var(--it-ivory); font: 600 .8rem var(--it-sans); letter-spacing: .12em; text-transform: uppercase; cursor: pointer; transition: background-color .15s, transform .1s; }
+.shop-buy:hover { background: var(--it-rosso-dark); }
+.shop-buy:active { transform: translateY(1px); }
+.shop-buy.shop-buy-dear { background: rgba(35,28,22,.25); color: var(--it-ink); }
+
+.shop-said { padding: .35rem .6rem; border-left: 2px solid #2f7a3a; background: rgba(47,122,58,.08); color: #2f7a3a; font-size: .85rem; }
+.shop-said.shop-said-short { border-left-color: var(--it-rosso); background: rgba(163,34,27,.08); color: var(--it-rosso); }
+.shop-said-flash { animation: shop-said .6s ease-out; }
+@keyframes shop-said { from { opacity: 0; transform: translateY(.3rem); } to { opacity: 1; transform: none; } }
+
+.shop-foot { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-top: .3rem; border-top: 1px solid rgba(35,28,22,.12); font-size: .72rem; color: var(--it-muted); }
+.shop-leave { padding: .25rem .6rem; border: 1px solid rgba(35,28,22,.35); background: transparent; color: var(--it-ink); font: 600 .72rem var(--it-sans); letter-spacing: .08em; cursor: pointer; }
+.shop-leave:hover { border-color: var(--it-rosso); color: var(--it-rosso); }
+
+/* A narrow screen stacks the card over the rows, with a shorter window. */
+@media (max-width: 40rem) {
+  .shop { max-height: 72vh; }
+  .shop-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  .shop-card { order: -1; grid-template-columns: 7.5rem minmax(0, 1fr); grid-template-rows: auto auto; column-gap: .7rem; }
+  .shop-window { grid-row: span 2; height: 7.5rem; }
+  .shop-facts, .shop-hint { display: none; }
+  .shop-foot { justify-content: flex-end; }
+}

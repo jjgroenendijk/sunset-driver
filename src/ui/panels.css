@@ -1,6 +1,6 @@
 /* The panels drawn over play: the vehicle and weapon pickers (`vehicle-picker.ts`,
    `weapon-picker.ts`), the counters of a shop, a safehouse, a job board and a
-   dealer, the metro's list and the hotwire gauge. They wear the menus' look
+   dealer, the metro's list and the hotwire gauge. The shop's own layout is `shop.css`. They wear the menus' look
    (`title.css`): ivory card stock, a serif heading, red for the current row and
    for a refusal, gold for a price. */
 .picker, .shop, .home, .job, .trade, .travel, .hotwire {
@@ -26,17 +26,17 @@
 .picker-group { margin: .7rem 0 .15rem; font-size: .62rem; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--it-rosso); }
 
 /* The counters stand at the bottom middle, over the street, and take no clicks: a key picks a row. */
-.shop, .home, .job, .trade, .travel { left: 50%; transform: translateX(-50%); pointer-events: none; }
-.shop, .home { bottom: 21%; min-width: min(22rem, 80%); }
+.home, .job, .trade, .travel { left: 50%; transform: translateX(-50%); pointer-events: none; }
+.home { bottom: 21%; min-width: min(22rem, 80%); }
 .job { bottom: 21%; min-width: min(24rem, 84%); }
 .trade { bottom: 34%; min-width: min(38rem, 92%); }
 .travel { bottom: 8%; min-width: min(20rem, 80%); }
-.shop-title, .home-title, .job-title, .trade-title, .travel-title { padding-bottom: .35rem; border-bottom: 1px solid rgba(35,28,22,.15); font: 400 1.3rem/1.1 var(--it-serif); }
-.shop-list, .home-list, .job-list, .trade-list, .travel-list { display: grid; gap: .15rem; font-size: .92rem; font-variant-numeric: tabular-nums; }
-.shop-dear, .home-here, .trade-sell, .trade-history, .trade-foot, .job-brief { color: var(--it-muted); }
+.home-title, .job-title, .trade-title, .travel-title { padding-bottom: .35rem; border-bottom: 1px solid rgba(35,28,22,.15); font: 400 1.3rem/1.1 var(--it-serif); }
+.home-list, .job-list, .trade-list, .travel-list { display: grid; gap: .15rem; font-size: .92rem; font-variant-numeric: tabular-nums; }
+.home-here, .trade-sell, .trade-history, .trade-foot, .job-brief { color: var(--it-muted); }
 .home-price, .job-terms, .trade-held { color: #8a6420; }
-.shop-said, .home-said, .job-said, .trade-said, .trade-glut { color: #2f7a3a; }
-.shop-refused, .job-refused, .trade-refused, .trade-spike, .travel-refused { color: var(--it-rosso); }
+.home-said, .job-said, .trade-said, .trade-glut { color: #2f7a3a; }
+.job-refused, .trade-refused, .trade-spike, .travel-refused { color: var(--it-rosso); }
 .job-brief { font-style: italic; }
 .trade-purse { font-size: .85rem; color: var(--it-muted); font-variant-numeric: tabular-nums; }
 .trade-row { display: grid; grid-template-columns: 14rem 8rem 7rem 5rem auto; align-items: baseline; gap: .4rem; }
