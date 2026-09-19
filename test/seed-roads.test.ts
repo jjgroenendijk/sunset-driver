@@ -5,6 +5,7 @@ import { type GradeCrossing, type RoadEdge, type RoadNode } from '../src/world/g
 import { CLEARANCE as OVERPASS_CLEARANCE } from '../src/world/overpass.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
+import { RiverWater } from '../src/world/river-decks.ts';
 import { coastNoise, islandAt } from '../src/world/terrain.ts';
 import { mayCross, TIERS } from '../src/world/tiers.ts';
 import { type District, type Point, type RoadCurve, type RoadTier, type WorldDescription, type Zone } from '../src/world/types.ts';
@@ -193,6 +194,7 @@ sweepSuite('roads', () => {
       const w = worlds.get(seed) as WorldDescription;
       const graph = graphOf(seed);
       const hf = new Heightfield(w.terrain);
+      const rivers = new RiverWater(w.water.rivers, hf, w.water.seaLevel);
       let complaint: string | undefined;
       for (const crossing of graph.crossings) {
         const over = w.roads[(graph.edges[crossing.over] as RoadEdge).curve] as RoadCurve;
@@ -465,12 +467,13 @@ sweepSuite('roads', () => {
     }
   });
 
-  it('keeps roads out of the water except on a bridge over a strait crossing', () => {
+  it('keeps roads out of the water except on a bridge over a strait crossing or a river', () => {
     // As in the grade test below: one assertion a seed, so a hundred thousand
     // segments do not each pay for one.
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       const hf = new Heightfield(w.terrain);
+      const rivers = new RiverWater(w.water.rivers, hf, w.water.seaLevel);
       let complaint: string | undefined;
       const fault = (text: string): void => {
         complaint ??= text;
@@ -482,12 +485,12 @@ sweepSuite('roads', () => {
           const where = `${road.tier} ${road.id} segment ${i}`;
           if (road.bridges.includes(i)) {
             // A deck lands on dry ground at both ends. One over water spans a
-            // strait crossing; one over land carries the road over a dip, and
-            // the grade test below is what vets that one.
+            // strait crossing or a river; one over land carries the road over
+            // a dip, and the grade test below is what vets that one.
             if (hf.sample(a.x, a.y) < w.water.seaLevel) fault(`${where} starts in the water`);
             if (hf.sample(b.x, b.y) < w.water.seaLevel) fault(`${where} ends in the water`);
             if (wetFraction(hf, a, b, w.water.seaLevel) > 0) {
-              const spans = w.water.crossings.some((c) => spansCrossing(a, b, c.from, c.to));
+              const spans = w.water.crossings.some((c) => spansCrossing(a, b, c.from, c.to)) || rivers.spans(a, b);
               if (!spans) fault(`${where} is a bridge at no crossing`);
             }
             continue;
@@ -514,6 +517,7 @@ sweepSuite('roads', () => {
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       const hf = new Heightfield(w.terrain);
+      const rivers = new RiverWater(w.water.rivers, hf, w.water.seaLevel);
       let complaint: string | undefined;
       const fault = (text: string): void => {
         complaint ??= text;

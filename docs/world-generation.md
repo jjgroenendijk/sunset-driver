@@ -29,10 +29,12 @@ corridors in `docs/corridors.md`.
 - An island can be several cells (`Island.cells`), and the layout's `seas` are cells of open water.
   No channel runs between two cells of one island, so a landmass need not be convex. The layout
   draws from stream 1 in the order sites, channel, rivers; the archipelago kept its old order.
-- A river that runs close to a shore above its mouth cuts the land in two, and no road crosses a
-  river, so `rivers.ts` drops it. A harbour at the river mouth needs its river and keeps the first
-  try. A harbour on the waterfront already cuts the highway ring, so its rivers keep `RING_CLEAR`
-  off the core: a river across the ring as well leaves no arc long enough to lay. The waterfront
+- A river that runs close to a shore above its mouth cuts the land in two, so `rivers.ts` drops
+  it. An arterial crosses a river only where it meets one nearly head on, and the thin strip
+  between such a river and the shore may get no arterial. A harbour at the river mouth needs its
+  river and keeps the first try. A harbour on the waterfront already cuts the highway ring, so its
+  rivers keep `RING_CLEAR` off the core: a river across the ring as well leaves no arc long enough
+  to lay. The waterfront
   harbour is dug on the shore the core faces, and on a lagoon that shore can stand 200 m from the
   core, closer than the basin is wide. So the basin is pushed out into the water until
   it clears the core, blend and all; without that the core stands on the rim of a bowl nine metres

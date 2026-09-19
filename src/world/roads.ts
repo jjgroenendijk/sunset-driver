@@ -55,7 +55,8 @@
  *   connected component. A trace that reaches neither is dropped rather than
  *   left dangling.
  * - No segment passes over water unless it is a bridge, and a bridge only ever
- *   spans one of the water description's strait crossings.
+ *   spans one of the water description's strait crossings or a river
+ *   (`river-decks.ts`).
  * - No segment laid on the ground exceeds its tier's maximum grade.
  * - No road shares a node with a highway away from one of its interchanges,
  *   and no street, alley or dirt road shares one with a highway at all. No

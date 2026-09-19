@@ -96,7 +96,9 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   between them and the link is laid on the ground instead, with `markStructures` finding what it
   really needs (issue #371). Both bridge heads are vetted by `stepOk`, so a link never crosses a
   highway away from a slot. `bridgeHeads` tries several anchors on each shore, then points of the
-  network near the shore, because a shore highway often takes the first anchor.
+  network near the shore, because a shore highway often takes the first anchor. Last come points of
+  the network out to `LAST_REACH`: a shore highway can wall in the ground the heads stand on, and
+  its interchange then stands just out of reach and higher than an arterial climbs (issue #276).
 - `linkIsland` runs over the two shores twice. The first round gives a shore up as soon as its best
   pair of heads reaches no road, since the other shore is usually the one that can. Where neither
   shore has a way on at its best pair, the second round routes every head of both. An island that
@@ -115,9 +117,16 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   then arterials, then the minor fill of streets, alleys and dirt roads. Three invariants hold by
   construction, and the sweep checks them: every curve shares a point with another curve, so the
   network is one component; no segment stands over water unless its index is in the curve's
-  `bridges` and it spans a crossing of the water description; and no segment on the ground climbs
-  harder than `TIERS[tier].maxGrade`. A curve that reaches neither the network nor its target is
-  dropped, never left dangling.
+  `bridges` and it spans a crossing of the water description or a river; and no segment on the
+  ground climbs harder than `TIERS[tier].maxGrade`. A curve that reaches neither the network nor
+  its target is dropped, never left dangling.
+- An arterial crosses a river on a short deck (`river-decks.ts`, issue #276). A river is carved
+  below sea level from source to mouth, so without one its two banks join only round the source.
+  Where the step ahead is wet within one turn of the wanted heading, the trace tries a deck before
+  it turns along the bank: the shortest reach to dry ground, up to `RIVER_DECK`, with all its water
+  in one river well above the mouth and crossing it at 60° or more. `markStructures` marks the span
+  as a bridge, since it is the one wet segment a trace lays. `RiverWater.spans` is the same rule the
+  sweep checks. Streets and highways do not bridge rivers (`TierParams.bridgesRivers`).
 - A step too steep for its tier is refused, so the trace turns along the contour. Where no turn is
   left, the road holds its line and spans several steps at once, and the ground it may not climb is
   bored through or carried over. `bridges` and `tunnels` hold the indices of the segments that stand
