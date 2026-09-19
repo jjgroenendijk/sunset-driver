@@ -434,6 +434,15 @@ export const TRAFFIC_TIER_MIN = 1000;
  * spot, which reads about twice this.
  */
 export const TRAFFIC_OVERLAP = 0.3;
+
+/**
+ * Pairs of standing vehicles on the same ground, a vehicle, on a sampled
+ * tick. A queue too long for its road stacks its back cars on one spot, which
+ * is the one overlap the timing still makes. The first 24 sweep seeds read at
+ * most about 0.09, against 0.11 before a queue could run back onto the road
+ * behind it (issue #357); a whole platoon stood on one spot reads about 0.4.
+ */
+export const TRAFFIC_STACKED = 0.12;
 /**
  * The share of the tram's level crossings that must take a light (spec section
  * 13.2). The rest stand where a run is too short for a stop line or a highway

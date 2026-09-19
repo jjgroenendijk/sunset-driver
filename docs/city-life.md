@@ -118,12 +118,22 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   placement drew for it is gone and nothing in the phase keeps two vehicles apart (issue #356). What
   does is the vehicle's own place in the queue, drawn once and passed to `timeTour`: it waits that
   many whole cars back from every line it meets, the anchor's included, so it also pulls away that
-  much later and stays behind for the rest of the lap. `queueBack` bounds the queue three ways — it
-  stops `QUEUE_CLEAR` short of the junction behind, where a tram may cross; its back still reaches
-  the line within half the green; and it is no longer than the road that has filled since the light
-  stopped being green, which is what keeps a vehicle from standing still on a green. The sweep holds
-  the city to `TRAFFIC_OVERLAP` pairs of vehicles a vehicle standing on the same ground; before the
-  fix the first sweep seeds read about twice that.
+  much later and stays behind for the rest of the lap. `queueBack` bounds the queue two ways: its
+  back still reaches the line within half the green, and it stops `QUEUE_CLEAR` short of a node
+  that `TrafficSignals.keepsClear` — a junction with lights, or a level crossing of the tram. It
+  does not depend on when the vehicle arrives: a halt reached while the light is still green is
+  met by slowing the drive to it instead. The sweep caps overlapping pairs at `TRAFFIC_OVERLAP`
+  and stopped ones at `TRAFFIC_STACKED`.
+- A queue that does not fit its road runs back onto the leg before, through any node that does not
+  keep clear (issue #357). Without that, every place on a short approach maps to the same car, and
+  a whole red's worth of vehicles stands on one spot. `test/signal-lap.ts` holds a vehicle
+  standing there to the light of the next leg. A bus never spills back, so its halt never lands
+  on its own call. What still stacks is a short block between two junctions with lights: the
+  queue may not run into the junction behind, and holding the overflow at the light before is
+  issue #488.
+- A leg with a light is driven in two at the stop line even when the light is green, so the drive
+  over the line starts on the tick the colour was read at. One drive over the whole leg rounds the
+  crossing a tick early, and on the first tick of a green that tick is still red.
 - On seed 1 about three vehicles in four meet a light, they spend about a third of the time
   standing, and timing the tours takes the traffic from about 35 ms to about 180 ms to place.
 - `src/sim/traffic-bodies.ts` is the Rapier half. Inside the box of ground tiles, each vehicle is a

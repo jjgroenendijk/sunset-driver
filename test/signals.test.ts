@@ -79,6 +79,29 @@ describe('traffic lights (spec section 13.1)', () => {
     }
   });
 
+  it('runs a queue that does not fit its road back onto the road before, held by the same light', () => {
+    let seen = 0;
+    for (const seed of SEEDS) {
+      const traffic = gridTraffic(seed);
+      const signals = signalsOf(traffic);
+      // A wait on a road with no light of its own, before a road that has one:
+      // the back of a queue for that light (issue #357).
+      const spilt = traffic.vehicles.filter((v) => {
+        const t = v.tour;
+        for (let step = 0; step < t.stepTicks.length; step++) {
+          if (t.stepFrom[step] !== t.stepTo[step] || t.stepCall[step] === 1) continue;
+          const leg = t.stepLeg[step] as number;
+          const next = t.edges[(leg + 1) % t.edges.length] as number;
+          if (signals.approachOf(t.edges[leg] as number) === undefined && signals.approachOf(next) !== undefined) return true;
+        }
+        return false;
+      });
+      for (const vehicle of spilt) expect(signalLap(traffic, vehicle).faults, `seed ${seed}`).toEqual([]);
+      seen += spilt.length;
+    }
+    expect(seen).toBeGreaterThan(0);
+  });
+
   it('is the same lights and the same waits for the same seed', () => {
     const seed = SEEDS[0] as number;
     const a = gridTraffic(seed);

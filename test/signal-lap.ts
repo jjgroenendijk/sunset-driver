@@ -1,6 +1,8 @@
 import { SIGNAL_CYCLE, type SignalApproach } from '../src/sim/signals.ts';
 import type { AmbientTraffic, AmbientVehicle, TrafficCursor } from '../src/sim/traffic.ts';
 import type { Tour } from '../src/sim/traffic-tour.ts';
+import { QUEUE_CLEAR } from '../src/sim/traffic-timing.ts';
+import type { RoadEdge } from '../src/world/graph.ts';
 
 /** What one lap of a vehicle did at the traffic lights. */
 export interface SignalLap {
@@ -21,13 +23,15 @@ export interface SignalLap {
  * (spec section 20.2): it stands still from one tick to the next only at a
  * light that is not green or in the moment its driver takes over a green that
  * has just started, and it drives over a stop line only from a tick that is
- * green, or amber where its driver takes ambers. Nobody crosses on red.
+ * green, or amber where its driver takes ambers. Nobody crosses on red, and
+ * nobody waits within {@link QUEUE_CLEAR} of a node that keeps clear.
  */
 export function signalLap(traffic: AmbientTraffic, vehicle: AmbientVehicle): SignalLap {
   const signals = traffic.signals;
   const lap: SignalLap = { stops: 0, crossings: 0, ambers: 0, calling: 0, faults: [] };
   if (signals === undefined) return lap;
   const driver = vehicle.driver;
+  const graph = traffic.roads.graph;
   const cursor = traffic.cursorAt(vehicle.id, 0);
   let last = placeOf(vehicle.tour, cursor);
   for (let tick = 1; tick <= vehicle.tour.period; tick++) {
@@ -39,6 +43,8 @@ export function signalLap(traffic: AmbientTraffic, vehicle: AmbientVehicle): Sig
     const now = placeOf(vehicle.tour, cursor);
     const approach = signals.approachOf(now.edge);
     if (now.edge === last.edge && now.along === last.along) {
+      // A queue that runs back onto the leg before a light is held by that light.
+      const holding = approach ?? signals.approachOf(vehicle.tour.edges[(now.leg + 1) % vehicle.tour.edges.length] as number);
       // A bus at a stop on its route is held by its passengers, not by a light.
       if (vehicle.tour.stepCall[cursor.step] === 1 || vehicle.tour.stepCall[left] === 1) {
         lap.calling++;
@@ -48,10 +54,15 @@ export function signalLap(traffic: AmbientTraffic, vehicle: AmbientVehicle): Sig
       lap.stops++;
       // A driver who is still standing more than their own reaction after the
       // green started is one the timing forgot to send on.
-      const into = approach === undefined ? 0 : mod(tick - 1 - signals.greenStart(approach), SIGNAL_CYCLE);
-      const pulling = approach !== undefined && into < driver.react;
-      if (approach === undefined || (signals.light(approach, tick - 1) === 'green' && !pulling)) {
+      const into = holding === undefined ? 0 : mod(tick - 1 - signals.greenStart(holding), SIGNAL_CYCLE);
+      const pulling = holding !== undefined && into < driver.react;
+      if (holding === undefined || (signals.light(holding, tick - 1) === 'green' && !pulling)) {
         lap.faults.push(`vehicle ${vehicle.id} stands still at tick ${tick} with no red light`);
+      }
+      // Nor does it wait in a junction with lights or a level crossing behind it.
+      const edge = graph.edges[now.edge] as RoadEdge;
+      if (signals.keepsClear(edge.from) && now.along < Math.min(QUEUE_CLEAR, approach?.stop ?? edge.length) - 1e-9) {
+        lap.faults.push(`vehicle ${vehicle.id} waits ${now.along.toFixed(1)} m into its road at tick ${tick}, in the junction behind it`);
       }
     } else if (approach !== undefined && now.edge === last.edge && last.along <= approach.stop && now.along > approach.stop) {
       lap.crossings++;
@@ -69,10 +80,11 @@ function mod(value: number, by: number): number {
   return ((value % by) + by) % by;
 }
 
-/** The edge a cursor stands on, and the metres along it. */
-function placeOf(tour: Tour, cursor: TrafficCursor): { edge: number; along: number } {
+/** The leg and the edge a cursor stands on, and the metres along it. */
+function placeOf(tour: Tour, cursor: TrafficCursor): { leg: number; edge: number; along: number } {
   const from = tour.stepFrom[cursor.step] as number;
   const to = tour.stepTo[cursor.step] as number;
   const along = from + (cursor.into / (tour.stepTicks[cursor.step] as number)) * (to - from);
-  return { edge: tour.edges[tour.stepLeg[cursor.step] as number] as number, along };
+  const leg = tour.stepLeg[cursor.step] as number;
+  return { leg, edge: tour.edges[leg] as number, along };
 }

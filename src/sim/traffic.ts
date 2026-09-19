@@ -194,7 +194,7 @@ export class AmbientTraffic {
   readonly vehicles: readonly AmbientVehicle[];
   /** The traffic lights the vehicles stop at; undefined when the roads came without junctions. */
   readonly signals: TrafficSignals | undefined;
-  private readonly roads: TrafficRoads;
+  readonly roads: TrafficRoads;
   private readonly sampler: RouteSampler;
   private readonly point: RoutePoint;
   /** 1 on each run the tram drives either way, whose middle is its reserved lane. */

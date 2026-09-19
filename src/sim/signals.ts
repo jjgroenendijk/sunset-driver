@@ -100,6 +100,8 @@ export class TrafficSignals {
   readonly approaches: readonly SignalApproach[];
   /** The approach each edge is, or -1 where the edge arrives at no signal. */
   private readonly byEdge: Int32Array;
+  /** 1 on each node a queue must keep out of: a junction with lights, or a level crossing of the tram. */
+  private readonly clear: Uint8Array;
 
   /** `crossings` are the nodes of the tram's level crossings, which take a light whatever joins them. */
   constructor(seed: number, roads: readonly RoadCurve[], graph: RoadGraph, map: JunctionMap, heightAt: RoadHeight, crossings: readonly number[] = []) {
@@ -155,6 +157,17 @@ export class TrafficSignals {
     }
     this.junctions = junctions;
     this.approaches = approaches;
+    this.clear = level;
+    for (const junction of junctions) this.clear[junction.node] = 1;
+  }
+
+  /**
+   * True at a node a queue must not stand in: a junction with lights, whose
+   * cross traffic has its own green, or a level crossing, where a tram may be
+   * crossing. A queue for the light ahead may run back through any other node.
+   */
+  keepsClear(node: number): boolean {
+    return this.clear[node] === 1;
   }
 
   /** The approach an edge is, or undefined where it arrives at no signal. */

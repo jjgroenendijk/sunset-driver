@@ -6,7 +6,7 @@ import { TIERS } from '../src/world/tiers.ts';
 import type { RoadTier, WorldDescription } from '../src/world/types.ts';
 import { TICKS_PER_HOUR } from '../src/sim/clock.ts';
 import { bedsOf, graphOf, junctionsOf, seeds, worlds } from './seed-fixture.ts';
-import { TRAFFIC_COUNT, TRAFFIC_OVERLAP, TRAFFIC_TIER_MIN } from './seed-limits.ts';
+import { TRAFFIC_COUNT, TRAFFIC_OVERLAP, TRAFFIC_STACKED, TRAFFIC_TIER_MIN } from './seed-limits.ts';
 import { signalLap } from './signal-lap.ts';
 import { checkTram, distanceTo } from './seed-tram.ts';
 import { sweepSuite } from './seed-suite.ts';
@@ -35,13 +35,16 @@ sweepSuite('traffic', () => {
       for (const tick of [0, 12 * TICKS_PER_HOUR]) {
         const carried: Partial<Record<RoadTier, number>> = {};
         const standing: Footprint[] = [];
+        const stopped: Footprint[] = [];
         for (const vehicle of traffic.vehicles) {
           traffic.cursorAt(vehicle.id, tick, cursor);
           const edge = graph.edges[traffic.edgeOf(cursor)] as RoadEdge;
           carried[edge.tier] = (carried[edge.tier] ?? 0) + 1;
           traffic.pose(cursor, pose);
           const spec = specOf(vehicle.cls);
-          standing.push({ x: pose.x, y: pose.y, heading: pose.heading, halfLength: spec.halfLength, halfWidth: spec.halfWidth });
+          const box = { x: pose.x, y: pose.y, heading: pose.heading, halfLength: spec.halfLength, halfWidth: spec.halfWidth };
+          standing.push(box);
+          if (pose.speed === 0) stopped.push(box);
           if (vehicle.id % 7 !== 0) continue;
           // A vehicle takes a corner inside the junction, so it may stand a
           // few metres off its own run there; it never leaves the carriageway.
@@ -57,6 +60,9 @@ sweepSuite('traffic', () => {
         // apart, since neither ever reads the other.
         const piled = overlaps(standing) / standing.length;
         expect(piled, `seed ${seed}: ${piled.toFixed(2)} overlapping pairs a vehicle at tick ${tick}`).toBeLessThan(TRAFFIC_OVERLAP);
+        // Nor do the vehicles waiting at a light stand on one another.
+        const stacked = overlaps(stopped) / standing.length;
+        expect(stacked, `seed ${seed}: ${stacked.toFixed(3)} stopped pairs a vehicle at tick ${tick}`).toBeLessThan(TRAFFIC_STACKED);
       }
 
       // A city with arterials has traffic lights, and the vehicles timed to

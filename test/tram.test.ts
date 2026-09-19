@@ -119,11 +119,14 @@ describe('the tram (spec section 13.2)', () => {
     for (const vehicle of traffic.vehicles) {
       const t = vehicle.tour;
       for (let step = 0; step < t.stepTicks.length; step++) {
-        if (t.stepFrom[step] !== t.stepTo[step]) continue;
-        const approach = signals.approachOf(t.edges[t.stepLeg[step] as number] as number);
-        if (approach === undefined) continue;
-        expect(t.stepFrom[step], `vehicle ${vehicle.id}`).toBeGreaterThanOrEqual(Math.min(QUEUE_CLEAR, approach.stop) - 1e-9);
+        if (t.stepFrom[step] !== t.stepTo[step] || t.stepCall[step] === 1) continue;
         waits++;
+        // A queue may run back through a node that keeps nothing clear, onto
+        // the leg before; it stops short of every node that does.
+        const edge = graph.edges[t.edges[t.stepLeg[step] as number] as number] as RoadEdge;
+        if (!signals.keepsClear(edge.from)) continue;
+        const reach = signals.approachOf(edge.id)?.stop ?? edge.length;
+        expect(t.stepFrom[step], `vehicle ${vehicle.id}`).toBeGreaterThanOrEqual(Math.min(QUEUE_CLEAR, reach) - 1e-9);
       }
     }
     expect(waits).toBeGreaterThan(0);
