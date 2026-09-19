@@ -131,6 +131,8 @@ describe('melee', () => {
 
   it('plays a cue for each blow, by what was struck', () => {
     const state = createSimState(3);
+    // A swing is thrown on foot: a person struck while driving is the car's.
+    state.player.driving = false;
     const planner = new AudioPlanner();
     planner.resync(state);
     state.tick += 1;

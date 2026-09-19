@@ -10,6 +10,7 @@
  * that turns one into sound.
  */
 
+import { rngFor, Subsystem } from '../core/rng.ts';
 import type { HitSurface } from '../sim/melee.ts';
 
 /** The one-shots the game fires. Nothing else should name them. */
@@ -21,6 +22,10 @@ export type CueKind =
   | 'thud'
   | 'clang'
   | 'knock'
+  | 'thump'
+  | 'crunch'
+  | 'flesh'
+  | 'landing'
   | 'footstep'
   | 'bell'
   | 'bird'
@@ -65,6 +70,18 @@ export const CUES: Readonly<Record<CueKind, CueVoice>> = Object.freeze({
   clang: { tone: 620, toneEnd: 290, noise: 0.5, cutoff: 6000, cutoffEnd: 900, attack: 0.001, decay: 0.5, gain: 0.7, ducks: false },
   // And on the hard world of kerbs, posts and walls: a short dry knock.
   knock: { tone: 300, toneEnd: 110, noise: 0.7, cutoff: 2600, cutoffEnd: 300, attack: 0.001, decay: 0.18, gain: 0.6, ducks: false },
+  // A car striking somebody (spec section 13.1): a heavy, low blow with the
+  // weight of a whole body in it, well under a fist's thud.
+  thump: { tone: 120, toneEnd: 42, noise: 0.7, cutoff: 750, cutoffEnd: 110, attack: 0.002, decay: 0.32, gain: 0.95, ducks: true },
+  // What the same strike does to the front of the car: bumper plastic and a
+  // panel giving way. A short, buzzy crack that is over before the thump is.
+  crunch: { tone: 540, toneEnd: 170, noise: 1, cutoff: 5200, cutoffEnd: 700, attack: 0.001, decay: 0.14, gain: 0.5, ducks: false },
+  // A round going into somebody: a wet, dull slap. Mostly noise, through a
+  // low-pass that shuts almost at once, over a low knock with no ring in it.
+  flesh: { tone: 110, toneEnd: 48, noise: 1, cutoff: 2600, cutoffEnd: 160, attack: 0.001, decay: 0.09, gain: 0.8, ducks: false },
+  // A body meeting the ground after a throw or a fall: dull and low, a sack
+  // dropped rather than a blow struck.
+  landing: { tone: 95, toneEnd: 38, noise: 0.9, cutoff: 620, cutoffEnd: 90, attack: 0.004, decay: 0.28, gain: 1, ducks: false },
   // A heel on pavement: quiet, dry and over at once.
   footstep: { tone: 150, toneEnd: 60, noise: 0.7, cutoff: 3000, cutoffEnd: 300, attack: 0.001, decay: 0.09, gain: 0.22, ducks: false },
   // A tram's bell (spec section 13.2): struck metal, so the note barely falls
@@ -101,4 +118,13 @@ export interface Cue {
    * stream is folded in so two of the same cue never land on the same note.
    */
   pitch: number;
+}
+
+/**
+ * A cue at a place, with the jitter of the seed's own stream folded into its
+ * pitch. `id` picks the stream, so two cues of one tick land on two notes.
+ */
+export function cueAt(seed: number, tick: number, kind: CueKind, x: number, y: number, strength: number, id: number): Cue {
+  const rng = rngFor(seed, tick, Subsystem.Audio, id);
+  return { kind, x, y, strength, pitch: rng.range(0.92, 1.08) };
 }

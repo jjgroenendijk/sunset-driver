@@ -19,6 +19,7 @@
  * it, which is both wrong and the most expensive thing the mixer could be asked
  * to do.
  */
+import { hashInts } from '../core/hash.ts';
 import { rngFor, Subsystem } from '../core/rng.ts';
 import { gameTime, TICK_RATE } from '../sim/clock.ts';
 import type { InputFrame } from '../sim/input.ts';
@@ -39,9 +40,11 @@ import {
   type CallRates,
   type SiteSource,
 } from './ambience.ts';
-import { CUES, HIT_CUES, type Cue } from './cue.ts';
+import { CUES, cueAt as cueOf, HIT_CUES, type Cue } from './cue.ts';
+import type { Cry } from './cry.ts';
 import { barSeconds, dialAt, dialName, wrapDial } from './dial.ts';
 import { enginePitch, engineSound, type EngineSound } from './engine.ts';
+import { CRIES_PER_FRAME, HurtEars } from './hurt.ts';
 import { broadcastAt, type OnAir } from './programme.ts';
 import { scoreOf, type Score } from './score.ts';
 import { hear, type Heard, type Listener } from './space.ts';
@@ -85,6 +88,9 @@ export const DUCK_DEPTH = 0.65;
  * tick.
  */
 const CALL_STREAM: Readonly<Record<'bird' | 'gull', number>> = Object.freeze({ bird: -1, gull: -2 });
+
+/** The key of the stream a car's crunch is drawn from, so it is not the thump's note. */
+const CRUNCH_STREAM = 0x0d05;
 
 /** One siren in the mix. */
 export interface SirenPlan {
@@ -133,6 +139,8 @@ export interface AudioPlan {
   sirens: SirenPlan[];
   /** The one-shots to fire this frame. */
   cues: Cue[];
+  /** The human cries to start this frame: the hurt, the dying and a fleeing crowd. */
+  cries: Cry[];
   /** How far the music bus is pulled down, 0 to 1. */
   duck: number;
   /** The radio of spec section 15. */
@@ -156,6 +164,7 @@ export function silentPlan(): AudioPlan {
     horn: 0,
     sirens: [],
     cues: [],
+    cries: [],
     duck: 0,
     radio: silentRadio(),
     score: { mood: 'calm', intensity: 0, radio: 1 },
@@ -180,6 +189,8 @@ export class AudioPlanner {
   private heard = -1;
   /** Reused by the bells, so a frame allocates nothing for the ones that did not ring. */
   private readonly ringing: TramBell[] = [];
+  /** The cries and the thuds of the people hit (`hurt.ts`). */
+  private readonly hurt = new HurtEars();
 
   /**
    * Take up the record as it stands without making a sound of it. A load, a
@@ -193,6 +204,7 @@ export class AudioPlanner {
     this.stride = 0;
     this.tick = state.tick;
     this.heard = state.tick;
+    this.hurt.resync(state);
   }
 
   /**
@@ -207,9 +219,11 @@ export class AudioPlanner {
     const was = state.tick - ticks;
     this.tick = state.tick;
     const cues: Cue[] = [];
+    const cries: Cry[] = [];
     this.collisions(state, cues);
     this.gunfire(state, cues);
     this.blows(state, cues);
+    this.hurt.hear(state, was, listener, cues, cries);
     this.footsteps(state, ticks, cues);
     this.bells(state, was, trams, cues);
     const score = scoreOf(state);
@@ -232,6 +246,7 @@ export class AudioPlanner {
       horn: input.horn && state.player.driving ? 1 : 0,
       sirens: sirensOf(state, listener),
       cues: cues.slice(0, CUES_PER_FRAME),
+      cries: cries.slice(0, CRIES_PER_FRAME),
       duck: duckOf(cues),
       radio: radioOf(state, score),
       score,
@@ -297,7 +312,16 @@ export class AudioPlanner {
       // Two blows of one swing land on the same tick, so the place in the list
       // is part of the stream they are jittered from: a swing through a crowd
       // is a run of knocks rather than one knock played twice.
-      cues.push(cueAt(state, HIT_CUES[hit.surface], hit.x, hit.y, hit.strength, hit.tick * HIT_CAP + i));
+      const id = hit.tick * HIT_CAP + i;
+      if (hit.surface === 'person' && state.player.driving) {
+        // Nobody swings from behind a wheel, so a person struck while the
+        // player drives was struck by the car (`sim/car-strike.ts`): the thump
+        // of a body, and the crunch of the bumper that took it.
+        cues.push(cueAt(state, 'thump', hit.x, hit.y, hit.strength, id));
+        cues.push(cueAt(state, 'crunch', hit.x, hit.y, hit.strength * 0.8, hashInts(CRUNCH_STREAM, id)));
+        continue;
+      }
+      cues.push(cueAt(state, HIT_CUES[hit.surface], hit.x, hit.y, hit.strength, id));
     }
   }
 
@@ -363,10 +387,9 @@ export class AudioPlanner {
   }
 }
 
-/** A cue with the jitter of the seed's own stream folded into its pitch. */
+/** A cue of this tick, with the jitter of the seed's own stream folded into its pitch. */
 function cueAt(state: SimState, kind: Cue['kind'], x: number, y: number, strength: number, id: number): Cue {
-  const rng = rngFor(state.seed, state.tick, Subsystem.Audio, id);
-  return { kind, x, y, strength, pitch: rng.range(0.92, 1.08) };
+  return cueOf(state.seed, state.tick, kind, x, y, strength, id);
 }
 
 /**
