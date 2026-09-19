@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { hurtPerson, PERSON_HEALTH } from '../src/sim/casualty.ts';
+import { UNIT_BODY, type EmergencyUnit } from '../src/sim/emergency.ts';
 import { GiveWay } from '../src/sim/give-way.ts';
 import { heldTime } from '../src/sim/hold.ts';
 import { AmbientPedestrians, crowdPoseOf, type PedestrianPose } from '../src/sim/pedestrians.ts';
@@ -107,6 +108,41 @@ describe('giving way', () => {
     }
     // Somebody stood behind it for most of the run.
     expect(longest).toBeGreaterThan(300);
+  });
+
+  it('queues the traffic behind a fire engine working a scene in its lane, and not under it', () => {
+    // The engine stands in the outer eastbound lane of the arterial, between two junctions.
+    const lane = laneOffset({ tier: 'arterial', lanes: TIERS.arterial.lanes }, 1);
+    const body = UNIT_BODY.engine;
+    const standing: Footprint = { x: 60, y: lane, heading: 0, halfLength: body.halfLength, halfWidth: body.halfWidth };
+    /** Ticks a car of the traffic stands on the engine's ground over a run, with the engine there or not. */
+    const run = (there: boolean): number => {
+      const state = session();
+      // The player stands in the middle of a block, where no car stops for them.
+      state.player.x = 60;
+      state.player.y = 60;
+      const way = new GiveWay(traffic, crowd);
+      // The engine pulls up once its ground is clear, as it would: it does not land on a car.
+      let placed = false;
+      let touched = 0;
+      for (let i = 0; i < 900; i++) {
+        way.step(state, 60, 0);
+        state.tick++;
+        const on = cars(state, true).some((box) => footprintsTouch(box, standing, 0));
+        if (!placed && !on && i > 60 && there) {
+          placed = true;
+          state.emergency.units.push({
+            id: 0, kind: 'engine', task: 'work', call: 0, x: 60, y: lane, heading: 0, height: 0, speed: 0, edges: [],
+            distance: 0, stop: 0, planned: 0, goalX: 60, goalY: lane, homeX: 60, homeY: lane, until: -1,
+          });
+        }
+        if (i > 60 && on) touched++;
+      }
+      return touched;
+    };
+    // Without it the traffic drives over that ground; with it, nobody does.
+    expect(run(false)).toBeGreaterThan(0);
+    expect(run(true)).toBe(0);
   });
 
   it('is a function of the record: a replay holds the same cars and people back', () => {
