@@ -25,6 +25,8 @@
  *                    see-through, pull-back, turn or whole. Default see-through.
  *   --view           the view to draw from (spec section 10.7): top-down,
  *                    third-person or first-person. Default top-down.
+ *   --look-up        degrees to tilt a chase view up from where it looks, to see
+ *                    the sky. Ignored top down.
  *   --quality        the quality tier to draw at (spec section 9.2): full,
  *                    high, medium or low. Default full.
  *   --vehicle        the class of vehicle to stand the player in (spec section
@@ -178,6 +180,7 @@ const request: PreviewRequest = {
   ...(options.has('quality') ? { quality: options.get('quality') as string } : {}),
   ...(options.has('buildings') ? { buildings: options.get('buildings') as string } : {}),
   ...(options.has('view') ? { view: options.get('view') as string } : {}),
+  ...(options.has('look-up') ? { lookUp: num('look-up', 0) } : {}),
   ...(options.has('vehicle') ? { vehicle: options.get('vehicle') as string } : {}),
   ...(options.has('on-foot') ? { onFoot: true } : {}),
   ...(options.has('stance') ? { stance: options.get('stance') as string } : {}),

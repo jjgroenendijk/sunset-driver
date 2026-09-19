@@ -137,6 +137,8 @@ angle, the vehicle or the pose changes, and 1 to 3 seconds when the player stand
 - `--x` and `--y` say where the player stands; `--junction=N` stands them at the N-th junction out
   from the core instead and prints what meets there, and `--tiers=arterial+street` narrows that
   count to junctions of that mix.
+- `--look-up=<degrees>` tilts a `third-person` or `first-person` view up by that much. The game
+  camera never looks at the sky; this is how the sky, its clouds and its bloom are judged.
 - `--distance` is how far back the camera sits, `--heading` and `--speed` which way it leads, and
   `--hour` what time of day to light the frame at.
 - `--vehicle=<class>` is the class of the roster to stand the player in, `--on-foot` stands them

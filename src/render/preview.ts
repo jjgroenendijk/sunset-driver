@@ -99,6 +99,11 @@ export interface PreviewRequest {
    */
   view?: string;
   /**
+   * Degrees to tilt a chase view up from where it looks, so the sky is in the
+   * frame. The game camera never looks up this far; a preview of the sky has to.
+   */
+  lookUp?: number;
+  /**
    * The class of vehicle to stand the player in, by name (spec section 11.3).
    * Left out, or named something the roster does not hold, it is the class a
    * session starts in.
@@ -402,6 +407,10 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   const driving = request.onFoot !== true && shop === undefined;
   const on = { x: eye.x, y: eye.y, height: scene.heightAt(eye.x, eye.y), heading: eye.heading, speed, driving };
   camera.update(0, on, { view: look, pull, turn });
+  if (look !== 'top-down' && request.lookUp !== undefined) {
+    camera.camera.rotation.x += (request.lookUp * Math.PI) / 180;
+    camera.camera.updateMatrixWorld();
+  }
   scene.cutaway.enabled = view !== 'whole';
   scene.seeThrough(camera.camera.position, stand.x, scene.heightAt(stand.x, stand.y), stand.y, shop !== undefined);
 
