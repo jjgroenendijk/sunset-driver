@@ -1,0 +1,88 @@
+/* The HUD (`hud.ts`) and the minimap window it rings (`minimap.ts`).
+   Each corner holds one subject, where open-world games hold it: the status
+   stack at the top right, the map and the health at the bottom left, the
+   speedometer at the bottom right, the objective at the top left. The colours
+   are the title screen's: ivory text, a gold accent, red for danger.
+   `touch.css` moves the corners in from the notch and the home bar. */
+:root {
+  --hud-top: 24px;
+  --hud-right: 24px;
+  --hud-bottom: 24px;
+  --hud-left: 24px;
+  --hud-map: 196px;
+  --hud-ring: 6px;
+  --hud-gap: 3px;
+  --hud-text: #f3ebdb;
+  --hud-gold: #d9b46a;
+  --hud-money: #a6e3a1;
+  --hud-health: #6fd08c;
+  --hud-danger: #e5484d;
+  --hud-veil: rgba(12, 9, 7, .62);
+  --hud-shadow: 0 1px 2px rgba(0, 0, 0, .85), 0 0 14px rgba(0, 0, 0, .35);
+}
+@media (max-width: 760px), (max-height: 520px) {
+  :root { --hud-top: 14px; --hud-right: 14px; --hud-bottom: 14px; --hud-left: 14px; --hud-map: 150px; --hud-ring: 5px; }
+}
+
+.hud-left, .hud-right, .hud-top, .hud-ring, .hud-speed, .hud-fate { position: fixed; pointer-events: none; color: var(--hud-text); font-family: var(--it-sans); font-variant-numeric: tabular-nums; text-shadow: var(--hud-shadow); }
+@keyframes hud-in { from { opacity: 0; transform: translateY(-4px); } }
+@keyframes hud-blink { 50% { opacity: .25; } }
+@keyframes hud-pulse { 50% { opacity: .55; } }
+@keyframes hud-slam { from { opacity: 0; transform: scale(1.25); letter-spacing: .4em; } }
+
+/* Top left: the developer block, hidden until F3, over the objective. */
+.hud-left { top: var(--hud-top); left: var(--hud-left); display: grid; gap: .45rem; justify-items: start; max-width: min(24rem, 42vw); }
+.hud-dev { display: none; gap: .05rem; padding: .4rem .6rem; border-radius: 4px; background: rgba(0, 0, 0, .6); font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-shadow: none; }
+body.dev-info .hud-dev { display: grid; }
+.hud-dev-seed { color: var(--hud-gold); }
+.hud-objective { padding: .5rem .8rem .55rem; border-left: 3px solid var(--hud-gold); background: linear-gradient(to right, var(--hud-veil), rgba(12, 9, 7, .15)); font-size: .95rem; line-height: 1.35; animation: hud-in .35s ease-out; }
+.hud-objective::before { content: 'Objective'; display: block; margin-bottom: .15rem; font-size: .62rem; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: var(--hud-gold); }
+.hud-turf, .hud-happening { display: flex; align-items: center; gap: .45rem; font-size: .8rem; letter-spacing: .03em; animation: hud-in .35s ease-out; }
+.hud-turf::before, .hud-happening::before { content: ''; width: .45rem; height: .45rem; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; }
+.hud-turf { color: #ffc08a; }
+.hud-happening { color: #ffe07a; }
+
+/* Top right: the clock, the money, the weapon and the wanted stars. */
+.hud-right { top: var(--hud-top); right: var(--hud-right); display: grid; gap: .3rem; justify-items: end; text-align: right; }
+.hud-time { display: flex; align-items: baseline; gap: .55rem; }
+.hud-clock { font-size: 1.05rem; font-weight: 600; letter-spacing: .04em; }
+.hud-day { font-size: .66rem; letter-spacing: .2em; text-transform: uppercase; opacity: .75; }
+.hud-money { font-size: 2rem; font-weight: 700; line-height: 1.05; letter-spacing: .01em; color: var(--hud-money); }
+.hud-weapon { display: flex; align-items: baseline; gap: .7rem; margin-top: .1rem; padding: .3rem .7rem .3rem 1.4rem; border-right: 3px solid var(--hud-gold); background: linear-gradient(to left, var(--hud-veil), rgba(12, 9, 7, 0)); }
+.hud-weapon-name { font-size: .7rem; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; opacity: .85; }
+.hud-ammo { font-size: 1.15rem; font-weight: 600; }
+.hud-stars { display: flex; gap: .1rem; margin-top: .1rem; font-size: 1.45rem; line-height: 1; animation: hud-in .25s ease-out; }
+.hud-star::before { content: '\2605'; }
+.hud-star-empty { color: rgba(243, 235, 219, .2); text-shadow: none; }
+.hud-star-full { color: #fff; text-shadow: 0 0 8px rgba(255, 255, 255, .45), var(--hud-shadow); }
+.hud-star-part { color: #fff; animation: hud-blink .7s steps(2, jump-none) infinite; }
+
+/* Top centre: the radio station. */
+.hud-top { top: var(--hud-top); left: 50%; transform: translateX(-50%); }
+.hud-radio { max-width: min(32rem, 52vw); overflow: hidden; padding: .3rem .95rem; border-radius: 999px; background: var(--hud-veil); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); font-size: .8rem; letter-spacing: .04em; color: #cfe9f5; white-space: nowrap; text-overflow: ellipsis; text-shadow: none; animation: hud-in .4s ease-out; }
+
+/* Bottom left: the minimap in a ring of health. The ring is a conic gradient
+   filled to `--hp`, masked to a band round the map. */
+.minimap { position: fixed; left: calc(var(--hud-left) + var(--hud-ring) + var(--hud-gap)); bottom: calc(var(--hud-bottom) + var(--hud-ring) + var(--hud-gap)); width: var(--hud-map); height: var(--hud-map); border-radius: 50%; overflow: hidden; background: #123048; box-shadow: 0 0 0 1px rgba(0, 0, 0, .55), 0 4px 18px rgba(0, 0, 0, .55); }
+.minimap canvas { display: block; }
+.hud-ring { --hp: 100%; --hud-fill: var(--hud-health); left: var(--hud-left); bottom: var(--hud-bottom); width: calc(var(--hud-map) + 2 * (var(--hud-ring) + var(--hud-gap))); height: calc(var(--hud-map) + 2 * (var(--hud-ring) + var(--hud-gap))); border-radius: 50%; background: conic-gradient(var(--hud-fill) var(--hp), rgba(12, 9, 7, .55) 0); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--hud-ring) - .5px), #000 calc(100% - var(--hud-ring))); mask: radial-gradient(farthest-side, transparent calc(100% - var(--hud-ring) - .5px), #000 calc(100% - var(--hud-ring))); transition: --hp .15s linear; }
+.hud-ring-low { --hud-fill: var(--hud-danger); animation: hud-pulse 1s ease-in-out infinite; }
+/* The distance to the waypoint, over the ring. */
+.minimap-distance { position: fixed; left: var(--hud-left); bottom: calc(var(--hud-bottom) + var(--hud-map) + 2 * (var(--hud-ring) + var(--hud-gap)) + 6px); width: calc(var(--hud-map) + 2 * (var(--hud-ring) + var(--hud-gap))); text-align: center; font: 600 .8rem var(--it-sans); letter-spacing: .06em; color: #b8f0ff; font-variant-numeric: tabular-nums; text-shadow: var(--hud-shadow); pointer-events: none; }
+@property --hp { syntax: '<percentage>'; inherits: false; initial-value: 100%; }
+
+/* Bottom right: the speedometer and what is left of the vehicle. */
+.hud-speed { right: var(--hud-right); bottom: var(--hud-bottom); display: grid; gap: .25rem; justify-items: end; min-width: 9rem; animation: hud-in .3s ease-out; }
+.hud-speed-dial { display: flex; align-items: baseline; gap: .35rem; }
+.hud-kmh { font-size: 3.2rem; font-weight: 700; line-height: 1; letter-spacing: -.02em; }
+.hud-kmh-unit { font-size: .7rem; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; opacity: .7; }
+.hud-vehicle { font-size: .7rem; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: var(--hud-gold); }
+.hud-condition { width: 9rem; height: 4px; border-radius: 2px; background: rgba(243, 235, 219, .18); overflow: hidden; box-shadow: 0 1px 3px rgba(0, 0, 0, .6); }
+.hud-condition-fill { height: 100%; background: var(--hud-text); transition: width .2s linear; }
+.hud-condition-low { background: var(--hud-danger); }
+.hud-condition-text { font-size: .72rem; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: #ff8a5c; }
+
+/* The middle: Wasted or Busted, and what it cost. */
+.hud-fate { inset: 0; display: grid; place-content: center; justify-items: center; gap: .6rem; background: radial-gradient(ellipse at center, rgba(0, 0, 0, .5), rgba(0, 0, 0, 0) 65%); }
+.hud-fate-title { font: 400 clamp(3rem, 9vw, 6rem)/1 var(--it-serif); letter-spacing: .14em; text-transform: uppercase; color: var(--hud-danger); animation: hud-slam .5s cubic-bezier(.2, .8, .2, 1); }
+.hud-fate-cost { font-size: .8rem; letter-spacing: .3em; text-transform: uppercase; }
