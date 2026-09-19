@@ -55,7 +55,7 @@ export class Batch extends Mesh<BufferGeometry, Material> {
    * disposed, but not those the steps uploaded, so a batch never drawn frees
    * its own.
    */
-  dispose(): void {
+  override dispose(): void {
     this.geometry.dispose();
     const records = this.uploads;
     if (records === undefined) return;
