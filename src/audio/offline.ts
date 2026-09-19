@@ -59,7 +59,7 @@ interface AudioCase {
 }
 
 function unit(id: number, kind: PoliceKind, x: number, y: number): PoliceUnit {
-  return { id, kind, task: 'chase', x, y, heading: 0, height: 0, speed: 20, health: 100, edges: [], distance: 0, planned: 0, goalX: x, goalY: y };
+  return { id, kind, task: 'chase', x, y, heading: 0, height: 0, speed: 20, health: 100, edges: [], distance: 0, planned: 0, goalX: x, goalY: y, crew: 2 };
 }
 
 /**
@@ -288,7 +288,7 @@ const CASES: readonly AudioCase[] = [
     name: 'round into flesh',
     state: afoot,
     move: (state) => {
-      state.tracers.push({ tick: state.tick, pellet: 0, x: 0, y: 0, h: 1, ex: 4, ey: 0, eh: 1, end: 'person' });
+      state.tracers.push({ tick: state.tick, pellet: 0, x: 0, y: 0, h: 1, ex: 4, ey: 0, eh: 1, end: 'person', by: 'player' });
     },
   },
   // Thrown by a fast car before the case starts, so what is heard is the body

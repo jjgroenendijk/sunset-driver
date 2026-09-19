@@ -625,7 +625,7 @@ function volley(record: SimState, stand: { x: number; y: number; heading: number
     const y = stand.y + Math.sin(stand.heading) * MUZZLE_REACH;
     const ex = x + Math.cos(yaw) * reach;
     const ey = y + Math.sin(yaw) * reach;
-    record.tracers.push({ tick: at, pellet, x, y, h, ex, ey, eh: h - 0.3, end });
+    record.tracers.push({ tick: at, pellet, x, y, h, ex, ey, eh: h - 0.3, end, by: 'player' });
   };
   round(tick - 2, 0, stand.heading + 0.5, VOLLEY_REACH * 0.7, 'vehicle');
   for (let i = 0; i < 8; i++) {

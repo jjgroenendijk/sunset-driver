@@ -1,0 +1,131 @@
+/**
+ * The police shooting (spec section 14): who fires, with what, how often, and
+ * what a round of theirs does.
+ *
+ * Below {@link FIRE_STARS} the police are there to take the player in and
+ * nobody fires. From there it escalates with the heat: the patrol draw a
+ * pistol, then a shotgun at the third star, and a SWAT team carries rifles. An
+ * officer fires only at a player they can see, inside their gun's reach, and
+ * not at one who is being cuffed or who has given themselves up.
+ *
+ * A round is a draw of the officer's own stream. It is worse at range and
+ * worse at a moving target, and it is written into the record as a tracer the
+ * player's own rounds share, so the flash, the streak and the crack of it are
+ * drawn and played by the code that draws and plays the player's. A round
+ * that hits a driver goes into the car rather than into them.
+ */
+import { rngFor, Subsystem } from '../core/rng.ts';
+import { atan2, cos, hypot, sin } from '../core/libm.ts';
+import type { CasualtyGround } from './casualty.ts';
+import { heatStars } from './crime.ts';
+import { damageVehicle } from './damage.ts';
+import { hurt } from './on-foot.ts';
+import { bark, mayFire, OFFICER_MUZZLE, officerWeapon, type Officer } from './officer.ts';
+import type { SimState } from './simulation.ts';
+import type { Quarry } from './squad.ts';
+import { markTracer, type TracerEnd } from './tracer.ts';
+import { headingOf, specOf } from './vehicle.ts';
+import { roundSeverity, weaponOf, type WeaponId } from './weapon.ts';
+
+/** How one of the police guns is fired by an officer, rather than by the player. */
+interface Drill {
+  /** Metres they fire over. */
+  range: number;
+  /** Ticks between two shots. Slower than the gun can go: they fire aimed shots, not bursts. */
+  cadence: number;
+  /** The chance a round lands at point-blank range on a player standing still. */
+  accuracy: number;
+  /** Rounds a shot throws: the pellets of a shotgun blast that are drawn. */
+  rounds: number;
+  /** Share of a round's damage the player takes, so a firefight lasts long enough to answer. */
+  share: number;
+}
+
+const DRILLS: Partial<Record<WeaponId, Drill>> = {
+  'glock-17': { range: 26, cadence: 42, accuracy: 0.6, rounds: 1, share: 0.45 },
+  'remington-870': { range: 16, cadence: 75, accuracy: 0.75, rounds: 4, share: 0.4 },
+  m4a1: { range: 42, cadence: 16, accuracy: 0.5, rounds: 1, share: 0.32 },
+};
+
+const FALLBACK: Drill = { range: 20, cadence: 45, accuracy: 0.5, rounds: 1, share: 0.4 };
+
+/** How much worse a round is at the edge of the range than at point blank. */
+const RANGE_FALLOFF = 0.55;
+
+/** Metres per second over which the player is a moving target, and what that leaves of the aim. */
+const MOVING = 3;
+const MOVING_AIM = 0.6;
+
+/** Radians a miss goes wide by, at the least and at the most. */
+const MISS_WIDE: readonly [number, number] = [0.05, 0.16];
+
+/** Metres over the ground a round is aimed at on a player on foot, and on a car. */
+const CHEST = 1.2;
+const DOOR = 0.8;
+
+/** Ticks since their last shot after which an officer opening fire says so. */
+const OPEN_FIRE = 5 * 60;
+
+/** Metres the police fire a gun over. */
+export function officerRange(weapon: WeaponId): number {
+  return (DRILLS[weapon] ?? FALLBACK).range;
+}
+
+/**
+ * One tick of an officer's gun: draw it and point it at a player they can see
+ * inside its range, and fire when it is due.
+ */
+export function officerFire(state: SimState, officer: Officer, quarry: Quarry, sees: boolean, ground: CasualtyGround | undefined): void {
+  officer.aiming = false;
+  const police = state.police;
+  if (!sees || !mayFire(state) || police.cuffs !== null || police.surrendered || state.player.health <= 0) return;
+  if (officer.task !== 'pursue' && officer.task !== 'cover') return;
+  const weapon = officerWeapon(officer.kind, heatStars(state.heat));
+  const drill = DRILLS[weapon] ?? FALLBACK;
+  const distance = hypot(quarry.x - officer.x, quarry.y - officer.y);
+  if (distance > drill.range) return;
+  // An officer running in to cuff does not stop to shoot; one standing does.
+  if (officer.speed > 0.5 && officer.kind === 'patrol' && heatStars(state.heat) < 3) return;
+  officer.aiming = true;
+  officer.heading = atan2(quarry.y - officer.y, quarry.x - officer.x);
+  if (state.tick - officer.fired < drill.cadence) return;
+  if (state.tick - officer.fired > OPEN_FIRE) bark(state, 'fire', officer.x, officer.y);
+  officer.fired = state.tick;
+  const rng = rngFor(state.seed, state.tick, Subsystem.Officers, officer.id);
+  const moving = quarry.speed > MOVING ? MOVING_AIM : 1;
+  const chance = drill.accuracy * (1 - (RANGE_FALLOFF * distance) / drill.range) * moving;
+  const driving = state.player.driving;
+  const aimH = driving ? state.vehicle.y - specOf(state.vehicle.cls).halfHeight + DOOR : state.player.height + CHEST;
+  const x = officer.x + cos(officer.heading) * 0.45;
+  const y = officer.y + sin(officer.heading) * 0.45;
+  const h = officer.height + OFFICER_MUZZLE;
+  let landed = 0;
+  for (let round = 0; round < drill.rounds; round++) {
+    const hit = rng.float() < chance;
+    const wide = hit ? 0 : rng.range(MISS_WIDE[0], MISS_WIDE[1]) * (rng.float() < 0.5 ? -1 : 1);
+    if (hit) landed += 1;
+    const dir = officer.heading + wide;
+    const reach = hit ? distance : drill.range;
+    const blocked = hit || ground === undefined ? reach : ground.reach(x, h, y, dir, reach);
+    const end: TracerEnd = hit ? (driving ? 'vehicle' : 'person') : blocked < reach ? 'hard' : 'none';
+    const along = hit ? distance : blocked;
+    const drop = hit ? aimH - h : (aimH - h) * (along / Math.max(1, distance));
+    markTracer(state.tracers, { tick: state.tick, pellet: round, x, y, h, ex: x + cos(dir) * along, ey: y + sin(dir) * along, eh: h + drop, end, by: 'police' });
+  }
+  if (landed === 0) return;
+  const spec = weaponOf(weapon);
+  if (!driving) {
+    hurt(state.player, spec.damage * drill.share * landed);
+    return;
+  }
+  // Into the car the way the round was flying, which is the direction the
+  // panel rule reads, as the player's own rounds go into a panel.
+  const v = state.vehicle;
+  const turn = headingOf(v);
+  const dx = v.x - officer.x;
+  const dy = v.z - officer.y;
+  const along = dx * cos(turn) + dy * sin(turn);
+  const across = -dx * sin(turn) + dy * cos(turn);
+  const scale = 1 / Math.max(1e-6, hypot(along, across));
+  damageVehicle(v.damage, specOf(v.cls), roundSeverity(spec) * landed, along * scale, across * scale, 0.3, state.seed, state.tick, officer.id);
+}

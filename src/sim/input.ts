@@ -65,6 +65,12 @@ export interface InputFrame {
    * metro panel nor a shop counter is.
    */
   trade: number;
+  /**
+   * Held to give up to the police (spec section 14): the player's hands go up,
+   * and at one or two stars the next officer to reach them takes them in for
+   * less than an arrest costs (`arrest.ts`).
+   */
+  surrender: boolean;
 }
 
 export const EMPTY_INPUT: Readonly<InputFrame> = Object.freeze({
@@ -86,6 +92,7 @@ export const EMPTY_INPUT: Readonly<InputFrame> = Object.freeze({
   travel: 0,
   buy: 0,
   trade: 0,
+  surrender: false,
 });
 
 export function inputEquals(a: InputFrame, b: InputFrame): boolean {
@@ -105,6 +112,7 @@ export function inputEquals(a: InputFrame, b: InputFrame): boolean {
     a.reload === b.reload &&
     a.cycle === b.cycle &&
     a.station === b.station &&
-    a.travel === b.travel
+    a.travel === b.travel &&
+    a.surrender === b.surrender
   );
 }
