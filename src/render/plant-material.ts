@@ -16,7 +16,7 @@
  */
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { PLANT_LEAF } from './plant-mesh.ts';
-import { attribute, float, fractalNoise, mix, positionWorld, step, vec3, type TslNode } from './tsl.ts';
+import { attribute, clamp, float, fractalNoise, mix, positionWorld, step, vec3, type TslNode } from './tsl.ts';
 
 /** Metres of one period of the mottling of a canopy, and of the patches over it. */
 const LEAF_METRES = 0.9;
@@ -25,6 +25,27 @@ const STAND_METRES = 40;
 /** How far the mottling and the patches move a leaf colour. */
 const LEAF_SPREAD = 0.3;
 const STAND_SPREAD = 0.22;
+
+/**
+ * Metres of one period of the drift that carries a whole district: a wood is
+ * one green here and a drier one a kilometre away.
+ */
+const REGION_METRES = 640;
+
+/** Metres from the middle of the map at which the ground is as dry as it gets. */
+const DRY_REACH = 2400;
+
+/** What a dry canopy is worth in red, green and blue: dusty olive. */
+const DRY_TINT: readonly [number, number, number] = [1.12, 1.03, 0.78];
+
+/** How much of the dry tint the drift and the distance can each reach. */
+const REGION_DRY = 0.34;
+const DISTANCE_DRY = 0.3;
+
+/** Metres up at which a canopy is as cold as it gets, and how blue that is. */
+const HILL_HEIGHT = 140;
+const HILL_TINT: readonly [number, number, number] = [0.86, 1, 1.08];
+const HILL_COLD = 0.45;
 
 /** Metres of one period of the grain of bark, which runs up a trunk rather than round it. */
 const BARK_METRES = 0.35;
@@ -41,11 +62,20 @@ export function createPlantMaterial(): MeshStandardNodeMaterial {
   const close = positionWorld.div(LEAF_METRES);
   const mottle = noise01(vec3(close.x, close.y, close.z), 3);
   const stand = noise01(vec3(positionWorld.x.div(STAND_METRES), positionWorld.z.div(STAND_METRES), 0), 2);
-  const foliage = tint.mul(
+  const lit = tint.mul(
     float(1 - LEAF_SPREAD / 2 - STAND_SPREAD / 2)
       .add(mottle.mul(LEAF_SPREAD))
       .add(stand.mul(STAND_SPREAD)),
   );
+
+  // The region drifts the whole canopy: dusty olive out in the dry country,
+  // cold blue-green up on the hills, deeper green in between. It is taken in
+  // world places, so one wood is one colour and the next is another.
+  const region = noise01(vec3(positionWorld.x.div(REGION_METRES), positionWorld.z.div(REGION_METRES), 0), 2);
+  const away = clamp(positionWorld.xz.length().div(DRY_REACH), 0, 1);
+  const dry = region.mul(REGION_DRY).add(away.mul(DISTANCE_DRY));
+  const cold = clamp(positionWorld.y.div(HILL_HEIGHT), 0, 1).mul(HILL_COLD);
+  const foliage = mix(mix(lit, lit.mul(vec3(...DRY_TINT)), dry), lit.mul(vec3(...HILL_TINT)), cold);
 
   // Bark: a grain that runs up the trunk, so the rings of a tube read as wood.
   const grain = noise01(
