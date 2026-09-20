@@ -63,6 +63,13 @@ meshes reach the screen in `docs/rendering.md`, and what lights them in `docs/li
   measures. Look at that number rather than trusting it — the sweep does. A tower and a mid-rise
   take their height from `Building.skyline` first, then from the district, then from their seed;
   see `massingOf` in `building-plan.ts`.
+- A building stands on the **highest** ground under its lot, not the lowest, and carries a footing
+  down to the lowest: `standOf` reads nine places — the four corners, the middle of each side and
+  the middle — and `footingGeometry` builds the boxes of the shape that stand on the ground down
+  the rest of the fall. The shell is already sunk `FOUNDATION` into the ground, so a fall smaller
+  than that asks for no footing at all. Stood on the lowest corner instead, half the buildings of a
+  seed were a metre or more into the hill and a tenth of them deeper than a storey. The footing
+  joins the block batch, as the roof dressing does, and the hull is outlined down over it.
 - `building-mesh.ts` is the door onto four files: it generates and places the shell,
   `building-plan.ts` says how big a building is and what ground it may cover, `building-shape.ts`
   what stands inside that box, and `building-hull.ts` builds the outline. The plan and the shape

@@ -267,17 +267,34 @@ describe('a building on its lot', () => {
     }
   });
 
-  it('stands on the lowest corner of its lot, and no higher', () => {
+  it('stands on the highest corner of its lot, and carries a footing to the lowest', () => {
     // Ground that falls away to the east, so the four corners differ.
     const slope = (x: number): number => 30 - x * 0.1;
     const building = buildingOf('warehouse', 30, 30, { front: { x: 100, y: 0 } });
     const one = placed([building], lookupOf((x) => slope(x)))[0] as BuildingPlacement;
     let lowest = Infinity;
-    for (const corner of building.lot) lowest = Math.min(lowest, slope(corner.x));
+    let highest = -Infinity;
+    for (const corner of building.lot) {
+      lowest = Math.min(lowest, slope(corner.x));
+      highest = Math.max(highest, slope(corner.x));
+    }
     const base = new Vector3().setFromMatrixPosition(one.matrix).y;
-    expect(base).toBeLessThanOrEqual(lowest);
-    // Sunk, but only far enough to bury the foot of the wall.
-    expect(base).toBeGreaterThan(lowest - 1);
+    // On the highest corner, sunk only far enough to bury the foot of the wall,
+    // so no ground the building covers stands over its ground floor.
+    expect(base).toBeLessThanOrEqual(highest);
+    expect(base).toBeGreaterThan(highest - 1);
+    // And the footing reaches the lowest corner, so no wall floats over the fall.
+    const footing = one.footing as BufferGeometry;
+    let foot = Infinity;
+    eachWorldVertex(footing, one, (p) => {
+      foot = Math.min(foot, p.y);
+    });
+    expect(foot).toBeLessThanOrEqual(lowest);
+    expect(foot).toBeGreaterThan(lowest - 1);
+  });
+
+  it('builds no footing on level ground', () => {
+    expect((placed([buildingOf('house', 18, 20)])[0] as BuildingPlacement).footing).toBeUndefined();
   });
 });
 

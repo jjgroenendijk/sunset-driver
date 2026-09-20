@@ -22,6 +22,7 @@
 import type { Point } from '../core/geom.ts';
 import { genRng, Rng, Subsystem } from '../core/rng.ts';
 import { layoutZones, skylineAt } from './districts.ts';
+import { Heightfield } from './heightfield.ts';
 import type { RoadGraph } from './graph.ts';
 import { lotsOf, type Shared } from './lots.ts';
 import type { ParcelMap } from './parcels.ts';
@@ -156,6 +157,24 @@ export const MIN_LOT_AREA: Record<BuildingKind, number> = {
 };
 
 /**
+ * Metres the ground may fall across a lot before nothing is built on it.
+ *
+ * A lot is not carved level: the roads get a bench (`carve.ts`) and the ground
+ * between them is the hillside the world was given. A building stands on the
+ * highest corner of its lot and carries a footing down to the lowest
+ * (`building-mesh.ts`), so the fall across the lot is the height of the
+ * foundation wall the street sees. This is where that wall stops being a
+ * foundation and starts being a cliff with a house on top of it.
+ *
+ * It is the cut a road bench takes (`CARVE_CUT` in `carve.ts`), so a lot is built on
+ * exactly the ground a road would be laid across. The fall is read off the
+ * terrain the world was given, not off the carve: the carve is built on this
+ * same terrain and only flattens the ground near a road, so a lot this steep
+ * naturally is a lot no road bench beside it saves.
+ */
+export const MAX_LOT_FALL = 6;
+
+/**
  * How much of its zone's tower share a lot keeps where the skyline has fallen
  * to 0. The share rises in a straight line with the skyline: it is the zone's
  * own share where the skyline stands at one half, and 1.8 times it at 1.
@@ -170,12 +189,14 @@ const TOWER_EDGE = 0.2;
 export function buildBuildings(world: WorldDescription, parcels: ParcelMap, graph: RoadGraph): BuildingMap {
   const buildings: Building[] = [];
   const zones = layoutZones(world.size, world.core, world.water);
+  const terrain = new Heightfield(world.terrain);
   let area = 0;
   for (const parcel of parcels.parcels) {
     if (parcel.owner !== 'building') continue;
     const district = world.districts[parcel.district] as District;
     const rng = genRng(world.seed, Subsystem.Buildings, parcel.id);
     for (const lot of lotsOf(parcel, graph)) {
+      if (fallAcross(terrain, lot.corners) > MAX_LOT_FALL) continue;
       const middle = lotMiddle(lot.corners);
       const skyline = skylineAt(zones, middle.x, middle.y);
       const kind = kindFor(parcel.zone, district, skyline, lot.area, rng);
@@ -201,6 +222,22 @@ export function buildBuildings(world: WorldDescription, parcels: ParcelMap, grap
     }
   }
   return { buildings, area };
+}
+
+/**
+ * Metres between the lowest and the highest ground a lot stands on. The corners
+ * are what is asked, because they are the ground the building covers and the
+ * two the renderer measures its own footing between.
+ */
+function fallAcross(terrain: Heightfield, corners: readonly Point[]): number {
+  let low = Infinity;
+  let high = -Infinity;
+  for (const corner of corners) {
+    const height = terrain.sample(corner.x, corner.y);
+    low = Math.min(low, height);
+    high = Math.max(high, height);
+  }
+  return high - low;
 }
 
 /**

@@ -261,6 +261,8 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
     // What stands on the roof is drawn with the blocks whatever the shell under
     // it is, so a dressed tower costs no draw call of its own.
     if (placed.dress !== undefined) blocks.push({ geometry: takeGeometry(placed.dress), matrix });
+    // The footing under a building on a slope is drawn with the blocks as well.
+    if (placed.footing !== undefined) blocks.push({ geometry: takeGeometry(placed.footing), matrix });
     outlines.push({ geometry: takeGeometry(placed.hull), matrix });
   }
 

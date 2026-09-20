@@ -35,11 +35,13 @@ import {
   pickBuildingColor,
   type SkyscraperGeneratorParameters,
 } from 'three/examples/jsm/generators/city/SkyscraperGenerator.js';
+import type { Point } from '../core/geom.ts';
 import { hashInts } from '../core/hash.ts';
 import { lotMiddle, type Building, type BuildingKind } from '../world/buildings.ts';
 import type { WorldChunk, WorldLayers } from '../world/chunks.ts';
 import type { District, WorldDescription } from '../world/types.ts';
 import { buildBlockGeometry, buildDressGeometry, buildMassingGeometry, roofDeckOf, type BlockStyle } from './block-mesh.ts';
+import { BLOCK_WALL, Shell } from './block-shell.ts';
 import { hullOf } from './building-hull.ts';
 import { boxesOf, shapeOf, type BuildingShape, type ShapeBox } from './building-shape.ts';
 import {
@@ -83,6 +85,11 @@ export interface BuildingPlacement {
    * the hull, so a mast here is never something the camera climbs.
    */
   dress: BufferGeometry | undefined;
+  /**
+   * The footing under the shell, in the same frame, or undefined on ground
+   * level enough to need none. It joins the block batch like the dressing.
+   */
+  footing: BufferGeometry | undefined;
   /** The inverted hull that outlines it, in the same frame. */
   hull: BufferGeometry;
   /** The building's frame in the world. */
@@ -106,6 +113,21 @@ const TIER_OVERLAP = 0.5;
  * tower of spec section 10.3 carries.
  */
 const LEDGE_TIER = { base: 0.35, crown: 0.12 };
+
+/**
+ * Metres of footing a building may carry, at most.
+ *
+ * A lot the ground falls more than `MAX_LOT_FALL` across carries no building at
+ * all (`buildings.ts`), and the carve may take the ground under one it does
+ * carry a further `CARVE_CUT` down (`carve.ts`). The two together are the
+ * deepest footing a lot that was built on can ask for, so the cap is never what
+ * a slope meets: it is there to keep a footing off the ground a later change
+ * leaves steeper than either rule expects.
+ */
+const MAX_FOOTING = 12;
+
+/** Metres of the shell a footing reaches up into, so no daylight shows at the joint. */
+const FOOTING_LAP = 0.05;
 
 /**
  * Metres two boxes of a shape may differ in height and still be one box at far
@@ -211,15 +233,28 @@ export function buildChunkBuildings(
     // reach it.
     const wall = building.shared.left || building.shared.right;
     const fit = fitOf({ width: box.max.x - box.min.x, depth: box.max.z - box.min.z }, massing, wall);
-    const hull = hullOf(massing, shell, box, fit, shape);
+    // The ground under the lot, and the footing the fall across it needs.
+    const stand = standOf(building, lookup);
+    const footing = footingGeometry(shape, box, fit, stand.footing, tint);
+    const hull = hullOf(massing, shell, box, fit, shape, stand.footing / fit.across);
     // A lot on a bend leans its side edges, and a wall it shares follows them.
     const lean = leanOf(building, massing);
     if (lean !== undefined) {
       leanGeometry(shell, lean, fit);
       leanGeometry(hull, lean, fit);
       if (dress !== undefined) leanGeometry(dress, lean, fit);
+      if (footing !== undefined) leanGeometry(footing, lean, fit);
     }
-    out.push({ building, massing, batch, shell, dress, hull, matrix: matrixOf(building, lookup, massing, fit) });
+    out.push({
+      building,
+      massing,
+      batch,
+      shell,
+      dress,
+      footing,
+      hull,
+      matrix: matrixOf(building, stand.top, massing, fit),
+    });
   }
   return out;
 }
@@ -270,12 +305,13 @@ function farBoxes(shape: BuildingShape, massing: BuildingMassing): ShapeBox[] {
   return out;
 }
 
-/** Vertices a chunk's buildings cost: every shell, every roof and every hull. */
+/** Vertices a chunk's buildings cost: every shell, every roof, every footing and every hull. */
 export function buildingVertices(placements: readonly BuildingPlacement[]): number {
   let count = 0;
   for (const placed of placements) {
     count += placed.shell.getAttribute('position').count + placed.hull.getAttribute('position').count;
     count += placed.dress?.getAttribute('position').count ?? 0;
+    count += placed.footing?.getAttribute('position').count ?? 0;
   }
   return count;
 }
@@ -491,19 +527,101 @@ function leanGeometry(geometry: BufferGeometry, lean: Lean, fit: Fit): void {
 }
 
 /**
+ * The ground under a lot: the height the shell stands at, and the footing it
+ * needs under that.
+ *
+ * A lot is not carved level — the roads get a bench and the ground between them
+ * is the hillside — so the ground under one building falls by two metres at the
+ * median and by seven at the ninetieth. A shell stood on the lowest corner is
+ * buried by that fall at the highest one, which is a house sunk into the ground.
+ *
+ * So it stands on the **highest** corner instead and carries a footing down to
+ * the lowest: no wall is buried and none floats, and what shows on a slope is
+ * the foundation wall a house on a hillside really stands on. The fall is
+ * measured at the lot's four corners, which is the ground the shell covers.
+ *
+ * {@link MAX_FOOTING} caps it. A lot steeper than that is not built on at all
+ * (`buildings.ts`), and the cap is what keeps a footing off any the carve still
+ * leaves steep: a wall the height of the building under a house reads worse than
+ * a foot of it buried.
+ */
+function standOf(building: Building, lookup: BuildingLookup): { top: number; footing: number } {
+  let low = Infinity;
+  let high = -Infinity;
+  for (const at of probesOf(building.lot)) {
+    const height = lookup.heightAt(at.x, at.y);
+    low = Math.min(low, height);
+    high = Math.max(high, height);
+  }
+  // The shell already stands {@link FOUNDATION} into the ground, so that much
+  // of the fall needs no footing: what is asked for is the rest of it.
+  return { top: high, footing: Math.min(Math.max(high - low - FOUNDATION, 0), MAX_FOOTING) };
+}
+
+/**
+ * The places the ground under a lot is read at: its four corners, the middle of
+ * each side, and the middle of the lot.
+ *
+ * The corners alone miss a lot the ground humps or dips across — a ditch along
+ * one side leaves a wall over daylight, a rise in the middle buries the ground
+ * floor — and nine reads over a lot 20 m across is a probe every few metres.
+ * Reading the whole footprint would cost more: the carve answers one place in a
+ * few microseconds, and a chunk holds dozens of buildings.
+ */
+function probesOf(lot: readonly Point[]): Point[] {
+  const out: Point[] = [...lot];
+  const middle = lotMiddle(lot);
+  out.push(middle);
+  for (let i = 0; i < lot.length; i++) {
+    const a = lot[i] as Point;
+    const b = lot[(i + 1) % lot.length] as Point;
+    out.push({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+  }
+  return out;
+}
+
+/**
+ * The footing itself: the boxes of the shape that stand on the ground, carried
+ * down from the shell to the lowest corner of the lot.
+ *
+ * It is laid out on the rectangle the built shell measures, so it stands under
+ * the walls rather than under the massing they were asked for, and it overlaps
+ * the shell by {@link FOOTING_LAP} so no daylight shows in the joint. The
+ * chamfer is not cut out of it: a footing is below the pavement, and the corner
+ * it would cut stands inside the lot either way.
+ */
+function footingGeometry(
+  shape: BuildingShape,
+  box: Box3,
+  fit: Fit,
+  footing: number,
+  tint: Rgb,
+): BufferGeometry | undefined {
+  if (footing <= 0) return undefined;
+  const around = { width: box.max.x - box.min.x, depth: box.max.z - box.min.z };
+  // The placement scales the frame by the fit, so the metres of the fall are
+  // taken back into the frame the shell is built in.
+  const drop = footing / fit.across;
+  const shell = new Shell();
+  for (const one of boxesOf(shape, around, 1, 0)) {
+    if (one.from > 0) continue;
+    const lap = Math.min(FOOTING_LAP, one.to);
+    shell.box(one.x - one.width / 2, one.x + one.width / 2, -drop, lap, one.z - one.depth / 2, one.z + one.depth / 2, BLOCK_WALL);
+  }
+  return shell.count === 0 ? undefined : shell.geometry(tint);
+}
+
+/**
  * Where a building stands, as the matrix from its own frame to the world.
  *
  * The frame is turned so `z` looks at the road the lot fronts, which is the way
- * `Building.facing` points. It stands on the lowest of the lot's four corners,
- * sunk by {@link FOUNDATION}: on a slope a wall is then buried at one end rather
- * than standing clear of the ground at the other. Where the lot takes its margin
- * on one side only, the frame moves along the frontage by
+ * `Building.facing` points. It stands on the ground {@link standOf} measured,
+ * sunk by {@link FOUNDATION} so no daylight shows under a wall. Where the lot
+ * takes its margin on one side only, the frame moves along the frontage by
  * {@link BuildingMassing.offset}, and a wall it shares stretches it along the
  * frontage.
  */
-function matrixOf(building: Building, lookup: BuildingLookup, massing: BuildingMassing, fit: Fit): Matrix4 {
-  let ground = Infinity;
-  for (const corner of building.lot) ground = Math.min(ground, lookup.heightAt(corner.x, corner.y));
+function matrixOf(building: Building, ground: number, massing: BuildingMassing, fit: Fit): Matrix4 {
   const middle = lotMiddle(building.lot);
   // A turn about the world's up axis takes the local frame's z to the heading
   // the lot faces; the quarter turn is the step from a heading on the map to an
