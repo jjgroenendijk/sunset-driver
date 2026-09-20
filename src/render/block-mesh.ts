@@ -27,6 +27,7 @@
  */
 import type { BufferGeometry } from 'three';
 import type { BuildingKind } from '../world/buildings.ts';
+import type { FinishCode } from './building-finish.ts';
 import type { BuildingMassing, Rgb } from './building-mesh.ts';
 import {
   ALL_SIDES,
@@ -52,7 +53,9 @@ import { warehouse } from './warehouse-mesh.ts';
 // The parts a vertex may belong to are the material's business as much as the
 // geometry's, so this is the door onto them as well.
 export {
+  BLOCK_BEACON,
   BLOCK_CONCRETE,
+  BLOCK_CROWN,
   BLOCK_CURTAIN,
   BLOCK_GLASS,
   BLOCK_MEMBRANE,
@@ -90,6 +93,7 @@ export function buildBlockGeometry(
   kind: BuildingKind,
   massing: BuildingMassing,
   tint: Rgb,
+  finish: FinishCode,
   style: BlockStyle,
   boxes: readonly ShapeBox[],
 ): BlockGeometry {
@@ -116,7 +120,7 @@ export function buildBlockGeometry(
       deck = house(shell, massing, style);
       break;
   }
-  return { shell: shell.geometry(tint), dress: buildDressGeometry(deck, style, tint) };
+  return { shell: shell.geometry(tint, finish), dress: buildDressGeometry(deck, style, tint, finish) };
 }
 
 /**
@@ -128,11 +132,12 @@ export function buildDressGeometry(
   deck: RoofDeck | undefined,
   style: BlockStyle,
   tint: Rgb,
+  finish: FinishCode,
 ): BufferGeometry | undefined {
   if (deck === undefined) return undefined;
   const shell = new Shell();
   dressRoof(shell, deck, style);
-  return shell.count === 0 ? undefined : shell.geometry(tint);
+  return shell.count === 0 ? undefined : shell.geometry(tint, finish);
 }
 
 /**
@@ -140,7 +145,12 @@ export function buildDressGeometry(
  * far detail of spec section 9.2. The camera reads a chunk that far out as a
  * skyline, and a skyline is heights and footprints, not window bands.
  */
-export function buildMassingGeometry(massing: BuildingMassing, tint: Rgb, boxes: readonly ShapeBox[]): BufferGeometry {
+export function buildMassingGeometry(
+  massing: BuildingMassing,
+  tint: Rgb,
+  finish: FinishCode,
+  boxes: readonly ShapeBox[],
+): BufferGeometry {
   const shell = new Shell();
   for (const one of boxes) {
     const x0 = one.x - one.width / 2;
@@ -157,7 +167,7 @@ export function buildMassingGeometry(massing: BuildingMassing, tint: Rgb, boxes:
     shell.quad([x0, one.from, z0], [x0, one.from, z1], [x0, top, z1], [x0, top, z0], BLOCK_WALL);
     shell.quad([x0, top, z1], [x1, top, z1], [x1, top, z0], [x0, top, z0], BLOCK_ROOF);
   }
-  return shell.geometry(tint);
+  return shell.geometry(tint, finish);
 }
 
 /**
@@ -202,5 +212,21 @@ function tall(shell: Shell, massing: BuildingMassing, style: BlockStyle, boxes: 
     if (one.terrace === undefined || (deck !== undefined && deck.top >= one.to + 0.12)) continue;
     deck = { x: one.terrace.x, z: one.terrace.z, hw: one.terrace.width / 2, hd: one.terrace.depth / 2, top: one.to + 0.12 };
   }
-  return deck ?? { x: 0, z: 0, hw: massing.width / 2, hd: massing.depth / 2, top: massing.height + 0.12 };
+  if (deck !== undefined) return deck;
+  // No box of the shape offered a terrace, so the deck is the roof of the box
+  // that reaches the top. The massing is the whole building and a stack of
+  // setbacks is narrower than that up there; a deck measured off the massing
+  // would hang its plant, its crown and its beacon over the street.
+  let highest = boxes[0] as ShapeBox | undefined;
+  for (const one of boxes) if (highest === undefined || one.to > highest.to) highest = one;
+  if (highest === undefined) {
+    return { x: 0, z: 0, hw: massing.width / 2, hd: massing.depth / 2, top: massing.height + 0.12 };
+  }
+  return {
+    x: highest.x,
+    z: highest.z,
+    hw: Math.max(MIN_WALLS, highest.width - 2 * PROUD) / 2,
+    hd: Math.max(MIN_WALLS, highest.depth - 2 * PROUD) / 2,
+    top: highest.to + 0.12,
+  };
 }

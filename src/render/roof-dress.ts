@@ -18,6 +18,8 @@
  */
 import type { BufferAttribute, BufferGeometry } from 'three';
 import {
+  BLOCK_BEACON,
+  BLOCK_CROWN,
   BLOCK_METAL,
   BLOCK_PAINT,
   BLOCK_PLANTED,
@@ -64,6 +66,30 @@ const PLANT_CAP = 8;
 const HELIPAD_HEIGHT = 40;
 
 /**
+ * Metres a roof stands before it carries a red aircraft beacon (spec section
+ * 10.5), and the lamp itself: a small box on a short post, on the corner of the
+ * deck nearest the road.
+ */
+const BEACON_HEIGHT = 110;
+const BEACON = { half: 0.4, post: 0.6 };
+
+/**
+ * Metres a roof stands before it is crowned with a floodlit band (spec section
+ * 10.5), and the band itself: how tall it stands over the deck and how thick it
+ * is. It is laid on the deck rather than by the style, so every tall building
+ * carries one and a generated masonry tower — the commonest tower there is —
+ * carries it too.
+ *
+ * It stands inside the rim of the deck and never outside it: a terrace deck is
+ * measured off the box of the shape and stands a few centimetres proud of the
+ * walls under it, so the band is inset from the rim as well. The camera looks
+ * down, so the rim of a roof is what it reads a crown by; a band proud of the
+ * wall would reach past the lot the shell was fitted to.
+ */
+const CROWN_HEIGHT = 60;
+const CROWN = { rise: 0.95, thick: 0.45, inset: 0.15 };
+
+/**
  * What makes a flat face a deck: the least square metres it covers, and the
  * share of the box it spreads over that it must fill. A cornice and a parapet
  * are rings a third of a metre wide, and a ring fills almost none of its box.
@@ -107,12 +133,53 @@ export function deckPartOf(style: BlockStyle): number {
  * at every detail.
  */
 export function dressRoof(shell: Shell, deck: RoofDeck, style: BlockStyle): void {
+  // The crown and the beacon are laid before the detail is read. They are a few
+  // boxes, and they are what a skyline at night is read by, so a tall building
+  // keeps them at the mid detail where every other piece of plant is dropped.
+  crown(shell, deck);
+  beacon(shell, deck);
   if (style.detail !== 'near') return;
   const room = { ...deck, hw: deck.hw - MARGIN, hd: deck.hd - MARGIN };
   if (room.hw < 1 || room.hd < 1) return;
   const taken = useOf(shell, room, style);
   if (pick(DECKS, style.seed, SALT_DECK) === BLOCK_SOLAR) solar(shell, room, taken);
   plant(shell, room, taken, style);
+}
+
+/**
+ * The floodlit band around the rim of a tall roof. By day it is the concrete of
+ * a cornice; after dark the material lights it white or in colour.
+ */
+function crown(shell: Shell, deck: RoofDeck): void {
+  if (deck.top < CROWN_HEIGHT) return;
+  const hw = deck.hw - CROWN.inset;
+  const hd = deck.hd - CROWN.inset;
+  if (hw <= CROWN.thick || hd <= CROWN.thick) return;
+  const x0 = deck.x - hw;
+  const x1 = deck.x + hw;
+  const z0 = deck.z - hd;
+  const z1 = deck.z + hd;
+  const rim = deck.top + CROWN.rise;
+  const thick = CROWN.thick;
+  shell.box(x0, x1, deck.top, rim, z1 - thick, z1, BLOCK_CROWN);
+  shell.box(x0, x1, deck.top, rim, z0, z0 + thick, BLOCK_CROWN);
+  shell.box(x0, x0 + thick, deck.top, rim, z0, z1, BLOCK_CROWN);
+  shell.box(x1 - thick, x1, deck.top, rim, z0, z1, BLOCK_CROWN);
+}
+
+/**
+ * The red aircraft beacon of a tall roof. It blinks in the material, off the
+ * `night` and the phase the scene hands it; here it is only a lamp on a post.
+ */
+function beacon(shell: Shell, deck: RoofDeck): void {
+  if (deck.top < BEACON_HEIGHT) return;
+  // On the corner of the deck, where the parapet meets, so it stands clear of
+  // whatever use or plant the roof carries in the middle of it.
+  const x = deck.x + Math.max(0, deck.hw - BEACON.half * 2);
+  const z = deck.z + Math.max(0, deck.hd - BEACON.half * 2);
+  const top = deck.top + BEACON.post;
+  shell.box(x - 0.08, x + 0.08, deck.top, top, z - 0.08, z + 0.08, BLOCK_METAL);
+  shell.box(x - BEACON.half, x + BEACON.half, top, top + BEACON.half * 2, z - BEACON.half, z + BEACON.half, BLOCK_BEACON);
 }
 
 /** A rectangle of deck something stands on, in the building's own frame. */

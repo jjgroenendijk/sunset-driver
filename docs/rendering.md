@@ -293,7 +293,7 @@ post chain and the colour grade in `docs/post.md`.
   - A renderer is disposed through `disposeRenderer` (`renderer.ts`). A bare `dispose` leaves it
     as the uploader: the next batches upload into its dead record and let go of their arrays, and
     the next renderer draws buffers of 0 bytes, with a WebGPU error for each.
-- A generated facade is packed in the worker (`facade-pack.ts`): 44 bytes a vertex instead of 144,
+- A generated facade is packed in the worker (`facade-pack.ts`): 48 bytes a vertex instead of 144,
   drawn through an index. Its normal is four signed bytes, so `batch.ts` turns it by the part's
   frame and writes it back as bytes. Half floats are a `Float16Array`: three.js 0.186 turns a
   `Float16BufferAttribute` into 32-bit integers on upload.

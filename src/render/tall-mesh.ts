@@ -36,6 +36,7 @@ import type { BuildingMassing } from './building-mesh.ts';
 import type { StyledLook } from './building-style.ts';
 import {
   BLOCK_CONCRETE,
+  BLOCK_CROWN,
   BLOCK_CURTAIN,
   BLOCK_NEON,
   BLOCK_PORTHOLE,
@@ -191,7 +192,8 @@ function brutalist(
 /**
  * An Art Deco tier: a pier at every bay running the whole height of the tier,
  * windows set back between them, a neon strip under the parapet and, on the
- * tier that reaches the top, a stepped crown with a spire.
+ * tier that reaches the top, a stepped crown with a spire. The steps and the
+ * spire are the crown the night lights (spec section 10.5).
  *
  * The piers run the full height rather than floor by floor, so the vertical
  * emphasis of the style costs the same whether the tier is four storeys or
@@ -220,7 +222,7 @@ function deco(
       to + step.to,
       at.z - hd * step.share,
       at.z + hd * step.share,
-      BLOCK_STONE,
+      BLOCK_CROWN,
     );
   }
   spire(shell, at, to + (CROWN[1] as { to: number }).to);
@@ -278,7 +280,7 @@ function spire(shell: Shell, at: At, base: number): void {
   for (let i = 0; i < corners.length; i++) {
     const a = corners[i] as readonly [number, number];
     const b = corners[(i + 1) % corners.length] as readonly [number, number];
-    shell.triangle([a[0], base, a[1]], [b[0], base, b[1]], [at.x, top, at.z], BLOCK_TRIM);
+    shell.triangle([a[0], base, a[1]], [b[0], base, b[1]], [at.x, top, at.z], BLOCK_CROWN);
   }
 }
 

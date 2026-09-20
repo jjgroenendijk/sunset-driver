@@ -53,6 +53,23 @@ const DAY_ALTITUDE = 0.3;
 const DARK_ALTITUDE = -0.3;
 
 /**
+ * The clock hours the small hours run between: the night is fully deep at
+ * {@link LATE_FROM} and has let go by {@link LATE_TO}. It is a clock rather
+ * than a sun height, because what it drives is people rather than light: an
+ * office empties at midnight whatever the sun is doing.
+ */
+const LATE_FROM = 22;
+const LATE_TO = 4.5;
+/** Hours after {@link LATE_TO} that the small hours take to let go. */
+const LATE_BAND = 2;
+
+/**
+ * Ticks of one blink of the red aircraft beacons on the tallest towers (spec
+ * section 10.5). It is measured in ticks, so every session blinks together.
+ */
+export const BEACON_CYCLE = 90;
+
+/**
  * The sun's altitude at which the street lamps are fully on. They come on
  * before the light has gone, as a real city's do, so dusk is lit from both ends.
  */
@@ -111,6 +128,11 @@ export interface Daylight {
   dusk: number;
   /** How far on the street lamps are, 0 by day and 1 after dark. */
   lamps: number;
+  /**
+   * How deep into the night it is: 0 by day and at dusk, 1 in the small hours.
+   * An office empties and a home turns in as it rises; a shop stays lit.
+   */
+  late: number;
 }
 
 /**
@@ -149,7 +171,22 @@ export function daylightAt(tick: number): Daylight {
     night,
     dusk,
     lamps,
+    late: lateness(dayFraction(tick) * 24),
   };
+}
+
+/**
+ * How deep into the night a clock hour is, 0 to 1. It rises from
+ * {@link LATE_FROM} to midnight, holds through the small hours, and lets go
+ * over {@link LATE_BAND} hours after {@link LATE_TO}.
+ */
+function lateness(hour: number): number {
+  return Math.max(smoothstep(LATE_FROM, 24, hour), 1 - smoothstep(LATE_TO, LATE_TO + LATE_BAND, hour));
+}
+
+/** Where the beacons of the tallest towers are in their blink, 0 to 1 a cycle. */
+export function beaconPhase(tick: number): number {
+  return (tick - Math.floor(tick / BEACON_CYCLE) * BEACON_CYCLE) / BEACON_CYCLE;
 }
 
 /** Where in the day a tick falls: 0 at midnight, 0.5 at noon. */

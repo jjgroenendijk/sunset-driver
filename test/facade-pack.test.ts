@@ -2,6 +2,7 @@ import type { BufferAttribute } from 'three';
 import { SkyscraperGenerator } from 'three/examples/jsm/generators/city/SkyscraperGenerator.js';
 import { describe, expect, it } from 'vitest';
 import type { PackedAttribute, PackedGeometry } from '../src/render/chunk-payload.ts';
+import { FINISH_STEP, finishCode, finishOf } from '../src/render/building-finish.ts';
 import { packFacade } from '../src/render/facade-pack.ts';
 
 /** A small generated tower, as the worker takes it: its arrays and no index. */
@@ -15,7 +16,15 @@ function tower(): PackedGeometry {
   }).build().geometry;
   const count = geometry.getAttribute('position').count;
   const tints = new Float32Array(count * 3).fill(0.4);
-  const attributes: PackedAttribute[] = [{ name: 'tint', array: tints, itemSize: 3, normalized: false }];
+  // The finish of one building is the same three numbers on every vertex of it
+  // (`building-finish.ts`), as its colour is.
+  const code = finishCode(finishOf('tower', 'masonry', 11, 0.7));
+  const finishes = new Float32Array(count * 3);
+  for (let v = 0; v < count; v++) finishes.set(code, v * 3);
+  const attributes: PackedAttribute[] = [
+    { name: 'tint', array: tints, itemSize: 3, normalized: false },
+    { name: 'finish', array: finishes, itemSize: 3, normalized: false },
+  ];
   for (const name of ['position', 'normal', 'uv', 'partId', 'roomCenter', 'roomSize']) {
     const attribute = geometry.getAttribute(name) as BufferAttribute;
     attributes.push({ name, array: attribute.array as Float32Array, itemSize: attribute.itemSize, normalized: false });
@@ -33,10 +42,10 @@ describe('packFacade', () => {
   const index = after.index as Uint16Array | Uint32Array;
   const kept = find(after, 'position').array.length / 3;
 
-  it('stores a vertex in 44 bytes and a shared vertex once', () => {
+  it('stores a vertex in 48 bytes and a shared vertex once', () => {
     let bytes = 0;
     for (const attribute of after.attributes) bytes += attribute.array.byteLength;
-    expect(bytes / kept).toBe(44);
+    expect(bytes / kept).toBe(48);
     // A quad is two triangles over four corners, not six.
     expect(kept).toBeLessThan(count * 0.75);
     expect(index.length).toBe(count);
@@ -50,6 +59,7 @@ describe('packFacade', () => {
       // A byte holds a direction to a 254th and a colour to a 510th.
       ['normal', 1 / 254],
       ['tint', 1 / 510],
+      ['finish', 1 / 510],
       // A half float is exact to a part in 2048 of its size.
       ['uv', 20 / 2048],
       ['roomSize', 11 / 2048],
@@ -69,5 +79,18 @@ describe('packFacade', () => {
       }
     }
     expect(complaint).toBeUndefined();
+  });
+
+  it('carries the wall and the window light through a byte unchanged', () => {
+    // The first channel of a finish is a whole number stepped by `FINISH_STEP`,
+    // so a byte holds it exactly and the material reads back the material and
+    // the light the building was given, not a neighbouring pair.
+    const packed = find(after, 'finish');
+    const code = finishCode(finishOf('tower', 'masonry', 11, 0.7));
+    expect(packed.normalized).toBe(true);
+    for (let v = 0; v < kept; v++) {
+      const byte = packed.array[v * packed.itemSize] as number;
+      expect(Math.round((byte / 255) * (255 / FINISH_STEP))).toBe(Math.round((code[0] * 255) / FINISH_STEP));
+    }
   });
 });
