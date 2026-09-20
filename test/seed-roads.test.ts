@@ -3,7 +3,6 @@ import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { MINOR_BY_ZONE } from '../src/world/fill.ts';
 import { type GradeCrossing, type RoadEdge, type RoadNode } from '../src/world/graph.ts';
 import { HEADROOM_SLACK } from '../src/world/crossing-plan.ts';
-import { RoadBeds } from '../src/world/bed.ts';
 import { CLEARANCE as OVERPASS_CLEARANCE } from '../src/world/overpass.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
@@ -26,7 +25,7 @@ import {
   liftAtCrossing,
   placeOn,
 } from './seed-probes.ts';
-import { seeds, worlds, graphOf } from './seed-fixture.ts';
+import { seeds, worlds, bedsOf, graphOf } from './seed-fixture.ts';
 import { sweepSuite } from './seed-suite.ts';
 
 /**
@@ -200,14 +199,15 @@ sweepSuite('roads', () => {
     // that the two stand apart, not which way round. A crossing under a deck
     // already standing keeps the `HEADROOM_SLACK` the plan allows it.
     //
-    // The surfaces here are the beds, without the junction planes: the beds are
-    // what the plan decides a crossing on, since the junctions are built from
-    // the finished graph. A plane laid later lifts the road below a deck by up
-    // to 2 m, which is issue #533.
+    // The surfaces are the finished ones, junction planes and all, which is
+    // what a lorry meets. A junction is one plane and carries every road that
+    // meets it out to its cut, so a crossing inside that reach drives off its
+    // own bed; the plan measures that reach where it decides the crossing and
+    // keeps a junction laid later out of it (`plane-lift.ts`, issue #533).
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       const graph = graphOf(seed);
-      const beds = new RoadBeds(w.terrain, w.roads);
+      const beds = bedsOf(seed);
       let complaint: string | undefined;
       for (const crossing of graph.crossings) {
         const over = w.roads[(graph.edges[crossing.over] as RoadEdge).curve] as RoadCurve;

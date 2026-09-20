@@ -156,6 +156,8 @@ export function buildJunctions(roads: readonly RoadCurve[], graph: RoadGraph): J
 interface Mouth {
   curve: number;
   tier: RoadTier;
+  /** The points of the curve the mouth is on, which its cut is placed along. */
+  points: readonly Point[];
   point: number;
   direction: 1 | -1;
   dx: number;
@@ -179,8 +181,33 @@ interface Corner {
   second: number;
 }
 
+/**
+ * A road leaving a node, before the junction is fitted: the curve, the point of
+ * it that stands on the node, and which way the road runs from there. The
+ * crossing plan builds these from the network it is adding to, where there is
+ * no graph to read them off yet (`plane-lift.ts`).
+ */
+export interface MouthSeed {
+  curve: number;
+  tier: RoadTier;
+  points: readonly Point[];
+  /** Index of the point standing on the node. */
+  point: number;
+  direction: 1 | -1;
+}
+
+/**
+ * The mouths a node would have, cut back and anticlockwise. Empty where the
+ * roads make no junction: fewer than two of them, or two that carry straight on
+ * into each other.
+ */
+export function junctionMouths(node: Point, seeds: readonly MouthSeed[]): JunctionMouth[] {
+  const fitted = fitMouths(node, seeds);
+  return fitted === undefined ? [] : fitted.mouths.map(cutOf);
+}
+
 function junctionAt(node: RoadNode, roads: readonly RoadCurve[], graph: RoadGraph): Junction | undefined {
-  const mouths: Mouth[] = [];
+  const seeds: MouthSeed[] = [];
   for (const id of node.edges) {
     const edge = graph.edges[id];
     if (edge === undefined) continue;
@@ -189,21 +216,64 @@ function junctionAt(node: RoadNode, roads: readonly RoadCurve[], graph: RoadGrap
     // A mouth on a deck or in a bore meets nothing on the ground.
     const first = direction === 1 ? edge.start : edge.start - 1;
     if (road.bridges.includes(first) || road.tunnels.includes(first)) continue;
-    const heading = headingOf(road.points, edge.start, direction);
+    seeds.push({ curve: road.id, tier: road.tier, points: road.points, point: edge.start, direction });
+  }
+  const fitted = fitMouths(node, seeds);
+  if (fitted === undefined) return undefined;
+  const { mouths, corners } = fitted;
+
+  let tier: RoadTier = (mouths[0] as Mouth).tier;
+  for (const mouth of mouths) if (widthRank(mouth.tier) > widthRank(tier)) tier = mouth.tier;
+
+  const outline: Point[] = [];
+  for (let i = 0; i < mouths.length; i++) {
+    const mouth = mouths[i] as Mouth;
+    const cut = Math.min(mouth.cut, MAX_CUT);
+    const x = node.x + mouth.dx * cut;
+    const y = node.y + mouth.dy * cut;
+    outline.push({ x: x + mouth.dy * mouth.outer, y: y - mouth.dx * mouth.outer });
+    outline.push({ x: x - mouth.dy * mouth.outer, y: y + mouth.dx * mouth.outer });
+    outline.push(...(corners[i] as Corner).outer);
+  }
+
+  return {
+    node: node.id,
+    x: node.x,
+    y: node.y,
+    tier,
+    mouths: mouths.map(cutOf),
+    corners: corners.map((corner, i) => {
+      const a = mouths[i] as Mouth;
+      const b = mouths[(i + 1) % mouths.length] as Mouth;
+      return { kerb: corner.kerb, outer: corner.outer, tier: widthRank(a.tier) >= widthRank(b.tier) ? a.tier : b.tier };
+    }),
+    outline,
+  };
+}
+
+/**
+ * Where each road leaves a node and how far back it is cut, with the corners
+ * between them. Nothing where the roads make no junction.
+ */
+function fitMouths(node: Point, seeds: readonly MouthSeed[]): { mouths: Mouth[]; corners: Corner[] } | undefined {
+  const mouths: Mouth[] = [];
+  for (const seed of seeds) {
+    const heading = headingOf(seed.points, seed.point, seed.direction);
     if (heading === undefined) continue;
-    const spec = TIERS[road.tier];
+    const spec = TIERS[seed.tier];
     mouths.push({
-      curve: road.id,
-      tier: road.tier,
-      point: edge.start,
-      direction,
+      curve: seed.curve,
+      tier: seed.tier,
+      points: seed.points,
+      point: seed.point,
+      direction: seed.direction,
       dx: heading.x,
       dy: heading.y,
       kerb: spec.width / 2,
-      outer: footprintHalfWidth(road.tier),
+      outer: footprintHalfWidth(seed.tier),
       angle: atan2(heading.y, heading.x),
       cut: 0,
-      straight: straightReach(road.points, edge.start, direction, heading),
+      straight: straightReach(seed.points, seed.point, seed.direction, heading),
     });
   }
   if (mouths.length < 2) return undefined;
@@ -232,48 +302,23 @@ function junctionAt(node: RoadNode, roads: readonly RoadCurve[], graph: RoadGrap
       if (other !== mouth) mouth.cut = Math.max(mouth.cut, Math.min(mouth.straight, kerbReach(mouth, other)));
     }
   }
+  return { mouths, corners };
+}
 
-  let tier: RoadTier = (mouths[0] as Mouth).tier;
-  for (const mouth of mouths) if (widthRank(mouth.tier) > widthRank(tier)) tier = mouth.tier;
-
-  const outline: Point[] = [];
-  for (let i = 0; i < mouths.length; i++) {
-    const mouth = mouths[i] as Mouth;
-    const cut = Math.min(mouth.cut, MAX_CUT);
-    const x = node.x + mouth.dx * cut;
-    const y = node.y + mouth.dy * cut;
-    outline.push({ x: x + mouth.dy * mouth.outer, y: y - mouth.dx * mouth.outer });
-    outline.push({ x: x - mouth.dy * mouth.outer, y: y + mouth.dx * mouth.outer });
-    outline.push(...(corners[i] as Corner).outer);
-  }
-
+/** A fitted mouth with its cut placed on its curve. */
+function cutOf(mouth: Mouth): JunctionMouth {
+  const cut = Math.min(mouth.cut, MAX_CUT);
+  const place = alongCurve(mouth.points, mouth.point, mouth.direction, cut);
   return {
-    node: node.id,
-    x: node.x,
-    y: node.y,
-    tier,
-    mouths: mouths.map((mouth) => {
-      const road = roads[mouth.curve] as RoadCurve;
-      const cut = Math.min(mouth.cut, MAX_CUT);
-      const place = alongCurve(road.points, mouth.point, mouth.direction, cut);
-      return {
-        curve: mouth.curve,
-        tier: mouth.tier,
-        point: mouth.point,
-        direction: mouth.direction,
-        dx: mouth.dx,
-        dy: mouth.dy,
-        cut,
-        at: place.at,
-        segment: place.segment,
-      };
-    }),
-    corners: corners.map((corner, i) => {
-      const a = mouths[i] as Mouth;
-      const b = mouths[(i + 1) % mouths.length] as Mouth;
-      return { kerb: corner.kerb, outer: corner.outer, tier: widthRank(a.tier) >= widthRank(b.tier) ? a.tier : b.tier };
-    }),
-    outline,
+    curve: mouth.curve,
+    tier: mouth.tier,
+    point: mouth.point,
+    direction: mouth.direction,
+    dx: mouth.dx,
+    dy: mouth.dy,
+    cut,
+    at: place.at,
+    segment: place.segment,
   };
 }
 
@@ -289,7 +334,7 @@ function widthRank(tier: RoadTier): number {
  * how far along either mouth the corner may stand: the shorter of the two
  * straight runs, and never more than {@link MAX_CUT}.
  */
-function cornerOf(node: RoadNode, a: Mouth, b: Mouth, limit: number): Corner {
+function cornerOf(node: Point, a: Mouth, b: Mouth, limit: number): Corner {
   // Across a mouth, to its left.
   const alx = -a.dy;
   const aly = a.dx;

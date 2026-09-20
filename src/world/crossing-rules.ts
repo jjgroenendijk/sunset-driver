@@ -17,6 +17,7 @@ import { hypot } from '../core/libm.ts';
 import { alongSegment, PlannedLine, shallow, toSegment, type Place } from './crossing-line.ts';
 import type { DraftLine, PointEdit } from './crossing-plan.ts';
 import { crossPoint, type SegmentCrossing } from './network-clearance.ts';
+import type { PlaneNetwork } from './plane-lift.ts';
 import { bendOverlaps } from './self-overlap.ts';
 import { footprintHalfWidth } from './tiers.ts';
 import type { Point, RoadCurve, RoadTier } from './types.ts';
@@ -25,8 +26,7 @@ import type { Point, RoadCurve, RoadTier } from './types.ts';
 const ON_LINE = 1e-6;
 
 /** What a crossing is planned against: the roads laid so far and the ground under them. */
-export interface CrossingNetwork {
-  readonly curves: readonly RoadCurve[];
+export interface CrossingNetwork extends PlaneNetwork {
   /** Every segment of a laid road the straight run crosses. */
   crossingsAlong(a: Point, b: Point): SegmentCrossing[];
   /** The roads with a point at a place, ascending; empty where none has. */
@@ -39,8 +39,6 @@ export interface CrossingNetwork {
   freeEnds(x: number, y: number, reach: number): { curve: number; at: Point }[];
   /** True where a road of this tier may run straight from `a` to `b` on the ground. */
   canRun(a: Point, b: Point, tier: RoadTier): boolean;
-  /** The natural ground at a place. */
-  heightAt(x: number, y: number): number;
   /** True where a road of this tier may end: its footprint stands on no other road's. */
   clearAt(x: number, y: number, tier: RoadTier): boolean;
 }

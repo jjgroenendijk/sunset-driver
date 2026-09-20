@@ -24,7 +24,7 @@ import { curveDistances } from './ribbon.ts';
 import type { HeightfieldData, Point, RoadCurve } from './types.ts';
 
 /** How far past its cut, in cuts, a road takes to get back onto its own line. */
-const BLEND_CUTS = 1;
+export const BLEND_CUTS = 1;
 
 /** Metres a mouth has to be cut back for its grade to say anything about the plane. */
 const MIN_FIT_CUT = 0.5;
@@ -36,6 +36,9 @@ const MIN_FIT_CUT = 0.5;
  * answer with the difference of their grades divided by almost nothing.
  */
 const MIN_SPAN = 0.5;
+
+/** The natural ground under a place: the terrain, with no road on it. */
+export type Ground = (x: number, y: number) => number;
 
 /**
  * A knot of a bed profile: how far along its segment it stands, the bed height
@@ -144,6 +147,7 @@ export class RoadBeds {
 
   constructor(terrain: HeightfieldData, roads: readonly RoadCurve[], junctions?: JunctionMap) {
     const hf = new Heightfield(terrain);
+    const ground: Ground = (x, y) => hf.sample(x, y);
     const distances: (Float32Array | undefined)[] = [];
     const fixed: (Uint8Array | undefined)[] = [];
     /** Each curve's own line, before any junction moved it: what a blend returns to. */
@@ -164,9 +168,9 @@ export class RoadBeds {
     if (junctions === undefined) return;
     for (const junction of junctions.junctions) {
       const node = { x: junction.x, y: junction.y };
-      const level = hf.sample(node.x, node.y);
-      const plane = planeOf(hf, node, level, junction.mouths);
-      const fitted = { x: node.x, y: node.y, level, gx: plane.x, gy: plane.y };
+      const fitted = junctionPlane(ground, node, junction.mouths);
+      const level = fitted.level;
+      const plane = { x: fitted.gx, y: fitted.gy };
       this.planes.push(fitted);
       this.byNode[junction.node] = fitted;
       for (const mouth of junction.mouths) {
@@ -283,6 +287,18 @@ export class RoadBeds {
 }
 
 /**
+ * The plane a junction is levelled to: the ground at its node, and the tilt
+ * that fits its mouths. The crossing plan fits the plane of a node it has not
+ * built a junction for yet through the same door (`plane-lift.ts`), so a
+ * crossing is decided on the line the road will really drive.
+ */
+export function junctionPlane(ground: Ground, node: Point, mouths: readonly JunctionMouth[]): JunctionPlane {
+  const level = ground(node.x, node.y);
+  const tilt = planeOf(ground, node, level, mouths);
+  return { x: node.x, y: node.y, level, gx: tilt.x, gy: tilt.y };
+}
+
+/**
  * The tilt of the plane a junction is levelled to: the gradient that fits the
  * grade every mouth leaves the node at, in the least-squares sense. A flat
  * road across a climbing one gives a plane that tilts along the climbing road
@@ -292,7 +308,7 @@ export class RoadBeds {
  * mouths barely span is left level rather than solved for, and the plane is
  * never tilted more steeply than the steepest road leaving the node.
  */
-function planeOf(hf: Heightfield, node: Point, level: number, mouths: readonly JunctionMouth[]): Point {
+function planeOf(ground: Ground, node: Point, level: number, mouths: readonly JunctionMouth[]): Point {
   let axx = 0;
   let axy = 0;
   let ayy = 0;
@@ -301,7 +317,7 @@ function planeOf(hf: Heightfield, node: Point, level: number, mouths: readonly J
   let steepest = 0;
   for (const mouth of mouths) {
     if (mouth.cut < MIN_FIT_CUT) continue;
-    const grade = (hf.sample(mouth.at.x, mouth.at.y) - level) / mouth.cut;
+    const grade = (ground(mouth.at.x, mouth.at.y) - level) / mouth.cut;
     steepest = Math.max(steepest, Math.abs(grade));
     axx += mouth.dx * mouth.dx;
     axy += mouth.dx * mouth.dy;
