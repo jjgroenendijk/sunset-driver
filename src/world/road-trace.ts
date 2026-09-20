@@ -113,10 +113,11 @@ export interface TraceResult {
   /** Radians the trace swept round its ring; 0 for a trace with none. */
   swept: number;
   /**
-   * Metres along the trace to the last place it crossed a highway, or -1 where
-   * it crossed none. A road that crosses a highway reaches the network there:
-   * the crossing stands at an interchange, and `ramps.ts` lays the ramps that
-   * turn onto it when the road is added.
+   * Metres along the trace to the last place it crossed a highway over one of
+   * its interchanges, or -1 where it crossed none. The road reaches the network
+   * there: `ramps.ts` lays the ramps that turn onto it when the road is added.
+   * A crossing under a slot is not one, since the road passes beneath the deck
+   * and turns onto nothing.
    */
   highwayAt: number;
 }
@@ -341,10 +342,12 @@ export abstract class RoadTrace extends RoadRoute {
       points.push({ x: qx, y: qy });
       clear.push(this.network.clearAt(qx, qy, opt.joiner));
       length += next.reach;
-      // A reservation is no curve, so its entry says nothing about a highway.
-      for (; read < trail.crossed.length; read += 4) {
-        const crossed = this.network.curves[trail.crossed[read + 2] as number] as RoadCurve | undefined;
-        if (crossed?.tier === 'highway') highwayAt = length;
+      // Only a crossing over an interchange reaches the network: under a slot
+      // the road passes beneath the deck and turns onto nothing. The step is
+      // asked only where it crossed something at all, which is rare.
+      if (read < trail.crossed.length) {
+        read = trail.crossed.length;
+        if (this.network.crossesInterchange({ x: px, y: py }, { x: qx, y: qy })) highwayAt = length;
       }
       heading = next.heading;
       px = qx;

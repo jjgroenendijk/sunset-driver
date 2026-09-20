@@ -187,6 +187,26 @@ export class NetworkClearance {
   }
 
   /**
+   * True where the straight run from `a` to `b` crosses a highway over one of
+   * its interchanges: ground the highway holds, where the road above takes the
+   * ramps of a diamond and the two exchange traffic (`ramps.ts`). A crossing
+   * under a slot is not one: the road passes under the deck and turns onto
+   * nothing.
+   */
+  crossesInterchange(a: Point, b: Point): boolean {
+    let found = false;
+    this.visit(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.max(a.x, b.x), Math.max(a.y, b.y), 0, (s) => {
+      if (found || this.tierOf[s] !== 'highway' || this.beneath[s] === true || this.crossable[s] !== true) return;
+      const e = this.ends;
+      const k = s * 4;
+      const c = { x: e[k] as number, y: e[k + 1] as number };
+      const d = { x: e[k + 2] as number, y: e[k + 3] as number };
+      if (crossPoint(a, b, c, d) !== undefined) found = true;
+    });
+    return found;
+  }
+
+  /**
    * Hold a line for a road of this tier that is not laid yet, so the roads laid
    * before it keep off its ground as if it were. `id` is negative, so it is
    * never the id of a curve. {@link release} gives the ground back.

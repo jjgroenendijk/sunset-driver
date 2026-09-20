@@ -321,16 +321,16 @@ class RoadTracer extends IslandLinkTrace {
     const forward = this.trace({ x: seed.x, y: seed.y }, { ...opt, heading: line });
     // The two halves are one road, so the second may not turn back over the first.
     const backward = this.trace({ x: seed.x, y: seed.y }, { ...opt, heading: line + Math.PI, before: [...forward.points].reverse() });
-    // A road that starts beside the network has to find its way back to it,
-    // either by ending on a road or by crossing a highway: the crossing stands
-    // at an interchange, and the ramps laid there join the two (`ramps.ts`).
-    if (!seed.onParent && !reaches(forward) && !reaches(backward)) return undefined;
     // A side that met no other road is a dead end, kept only as far as a
     // cul-de-sac runs — or as far as the overpass over a highway it crossed
     // needs to climb and come down again, since cutting that short would cut
     // the road off from the network.
     const ahead = forward.merged ? forward.points : trimTo(forward.points, forward.clear, keepFor(forward, plan.deadEnd));
     const behind = backward.merged ? backward.points : trimTo(backward.points, backward.clear, keepFor(backward, plan.deadEnd));
+    // A road that starts beside the network has to find its way back to it,
+    // either by ending on a road or by crossing a highway: the crossing stands
+    // at an interchange, and the ramps laid there join the two (`ramps.ts`).
+    if (!seed.onParent && !reaches(forward, ahead) && !reaches(backward, behind)) return undefined;
     behind.reverse();
     const points = [...behind.slice(0, -1), ...ahead];
     if (polylineLength(points) < plan.clearance) return undefined;
@@ -495,12 +495,14 @@ function keptLength(line: readonly Point[], road: readonly Point[]): number {
  * another road's carriageway is taken back to where the road stood clear.
  */
 /**
- * True where a traced side reached the network: it ended on a road, or it
- * crossed a highway, which stands at an interchange and takes the ramps of a
- * diamond when the road is added.
+ * True where a traced side reached the network: it ended on a road, or `kept`
+ * — what is left of it after the trim — still carries the crossing over an
+ * interchange and the run past it the overpass needs to come down again. A
+ * crossing the trim cut off reaches nothing, so the side counts for nothing.
  */
-function reaches(side: TraceResult): boolean {
-  return side.merged || side.highwayAt >= 0;
+function reaches(side: TraceResult, kept: readonly Point[]): boolean {
+  if (side.merged) return true;
+  return side.highwayAt >= 0 && polylineLength(kept) >= side.highwayAt + OVERPASS_REACH;
 }
 
 /**
