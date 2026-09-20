@@ -73,6 +73,11 @@ they are laid in `src/world`, and how `src/render` draws them.
   on the road on the ground, through a junction and over a deck alike. The lane stands over the
   paint, and `buildChunkRoads` lays no marking inside the lane on a segment the track runs down:
   paint and lane stand millimetres apart and would fight over the same pixels.
+- Because the corridors share the tier batch, they cannot take a depth offset of their own the way
+  the paint does: a batch carries one material. The lift is the whole defence, and a lift of g
+  metres wins against the surface under it to about `sqrt(g * 1.7e6)` metres from the chase camera,
+  three times that from the top-down one. So `LANE_RAISE` is 6 cm, which reaches past the near ring,
+  and the rails stand on the lane rather than over it, tall enough to clear a crossing panel.
 - The far ring keeps the piers of its own tiers and draws no track.
 - The game camera is pitched at 58°, so a pier under a wide deck shows only near the top of the
   frame. Stand the player about 30 m from a deck on its +y side, with `--distance=55`, to look at

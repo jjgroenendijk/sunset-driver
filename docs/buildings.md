@@ -152,6 +152,10 @@ meshes reach the screen in `docs/rendering.md`, and what lights them in `docs/li
   `BlockStyle`: the building's own seed, the wealth of its district, and whether the chunk is at
   near or mid detail. Mid detail builds the massing and the roof shape and nothing smaller, because
   a porch is a metre across and the camera is 200 m away.
+- `flatRoof` (`block-shell.ts`) stops its deck slab half a parapet in from each edge, so the slab's
+  outward faces are buried inside the parapets. A slab built over the whole footprint puts deck
+  colour and trim colour on one plane down the lower 12 cm of every parapet, on every flat-roofed
+  building of a seed, and which of the two wins a pixel moves with the camera.
 - `roof-dress.ts` dresses every flat roof (spec section 10.3): a deck material, the plant, and at
   most one use, which a rich district carries more often. The dressing is a geometry of its own,
   not part of the shell, and it joins the block batch of the cell — so a generated tower's chunk

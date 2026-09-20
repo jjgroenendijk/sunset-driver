@@ -30,6 +30,15 @@ import { SHOP_ROOM_HEIGHT, SHOP_WALL, type ShopKind, type ShopRoom } from '../wo
 /** Metres of the floor slab and the ceiling slab. */
 const SLAB = 0.12;
 
+/**
+ * Metres the floor stands over the carved ground the room is set on. The room
+ * is placed at the same height the ground mesh is built from, so a floor laid
+ * at exactly 0 is a floor the ground shows through wherever the two
+ * tessellations round a pixel differently. The metro well is lifted the same
+ * way (`metro-mesh.ts`).
+ */
+const FLOOR_RISE = 0.04;
+
 /** The counter: how high it stands, how deep it is, and how much of the width it runs across. */
 const COUNTER_HEIGHT = 0.95;
 const COUNTER_DEPTH = 0.6;
@@ -115,7 +124,7 @@ export class ShopInterior {
     const wall = this.paint(WALL_COLOUR, GLOW);
     // The floor and the ceiling cover the walls as well as the room, so no
     // corner shows daylight.
-    this.add(2 * width, SLAB, 2 * depth, 0, -SLAB / 2, 0, this.paint(FLOOR_COLOUR, GLOW));
+    this.add(2 * width, SLAB, 2 * depth, 0, FLOOR_RISE - SLAB / 2, 0, this.paint(FLOOR_COLOUR, GLOW));
     this.add(2 * width, SLAB, 2 * depth, 0, high + SLAB / 2, 0, wall);
     // The back wall carries the trade's colour; the front one is what the clip
     // takes away, and is built all the same.
