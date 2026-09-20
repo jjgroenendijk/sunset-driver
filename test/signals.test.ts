@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { SIGNAL_AMBER, SIGNAL_CLEAR, SIGNAL_CYCLE, SIGNAL_GREEN, type SignalApproach, type TrafficSignals } from '../src/sim/signals.ts';
+import { SIGNAL_AMBER, SIGNAL_CLEAR, SIGNAL_CYCLE, SIGNAL_GREEN, type SignalApproach, TrafficSignals } from '../src/sim/signals.ts';
+import type { RoadEdge } from '../src/world/graph.ts';
 import { AmbientTraffic } from '../src/sim/traffic.ts';
 import { sweepSeeds } from './helpers.ts';
 import { signalLap } from './signal-lap.ts';
@@ -25,6 +26,30 @@ describe('traffic lights (spec section 13.1)', () => {
       expect(axes).toContain(0);
       expect(axes).toContain(1);
     }
+  });
+
+  it('lights the level crossing where the tram crosses a highway, so the traffic is held (issue #302)', () => {
+    const seed = SEEDS[0] as number;
+    const roads = gridTrafficRoads();
+    const map = roads.junctions as NonNullable<typeof roads.junctions>;
+    // The arterial row and the highway column of the grid meet here.
+    const node = roads.graph.nodes.find((n) => n.x === 0 && n.y === 0);
+    if (node === undefined) throw new Error('no node where the arterial meets the highway');
+    const without = new TrafficSignals(seed, roads.roads, roads.graph, map, roads.heightAt);
+    expect(without.junctions.some((j) => j.node === node.id)).toBe(false);
+
+    const with_ = new TrafficSignals(seed, roads.roads, roads.graph, map, roads.heightAt, [node.id]);
+    const junction = with_.junctions.find((j) => j.node === node.id);
+    if (junction === undefined) throw new Error('the level crossing takes no light');
+    const approaches = junction.approaches.map((a) => with_.approaches[a] as SignalApproach);
+    // The highway arrives across the arterial the tram runs down, so it is held
+    // on the arterial's green and the tram crosses on a road nobody else is on.
+    const across = approaches.filter((a) => (roads.graph.edges[a.edge] as RoadEdge).tier === 'highway');
+    expect(across.length).toBeGreaterThan(0);
+    const along = approaches.find((a) => a.axis === 0) as SignalApproach;
+    const tick = with_.greenStart(along);
+    expect(with_.light(along, tick)).toBe('green');
+    for (const a of across) expect(with_.light(a, tick)).toBe('red');
   });
 
   it('runs green, amber and red on each axis in turn, and never shows two axes green', () => {
