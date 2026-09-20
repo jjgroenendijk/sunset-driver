@@ -6,6 +6,7 @@ import { buildCarve } from '../src/world/carve.ts';
 import { buildLayers, ChunkSource } from '../src/world/chunks.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
+import { junctionShape } from '../src/world/junction-shape.ts';
 import { buildJunctions, FILLET_RADIUS, MAX_CUT, type Junction } from '../src/world/junctions.ts';
 import { RoadRibbons } from '../src/world/ribbon.ts';
 import { footprintHalfWidth, TIERS } from '../src/world/tiers.ts';
@@ -302,5 +303,76 @@ describe('junction geometry', () => {
         }
       }
     }
+  });
+});
+
+describe('junction carriageway', () => {
+  /** The turn of the first street off the arterial, past a right angle. */
+  const TURN = (120 * Math.PI) / 180;
+  // Mouths that turn more than a right angle apart, and a pair that leave at a
+  // shallow angle, with two widths between them: an arterial along x, a street
+  // leaving at 120 degrees and another leaving at 160. Every road is straight,
+  // so each mouth is cut on the segment it leaves the node on (issue #299).
+  const turns = [
+    curve(0, [[-200, 0], [0, 0], [200, 0]], 'arterial'),
+    curve(1, [[0, 0], [100 * Math.cos(TURN), 100 * Math.sin(TURN)]]),
+    curve(2, [[0, 0], [-93.97, 34.2]]),
+  ];
+  const turning = hillWorld(turns);
+  const map = buildJunctions(turning.roads, buildRoadGraph(turning.roads));
+  const ribbons = new RoadRibbons(turning.terrain, turning.roads, map);
+
+  /** Metres a sample is held inside the carriageway it is drawn from. */
+  const INSET = 1e-4;
+
+  /** True inside any triangle of the fan from the node, whichever way it winds. */
+  function inFan(ring: readonly Point[], node: Point, p: Point): boolean {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const a = ring[j] as Point;
+      const b = ring[i] as Point;
+      const area = (a.x - node.x) * (b.y - node.y) - (a.y - node.y) * (b.x - node.x);
+      if (area === 0) continue;
+      const d1 = (a.x - node.x) * (p.y - node.y) - (a.y - node.y) * (p.x - node.x);
+      const d2 = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+      const d3 = (node.x - b.x) * (p.y - b.y) - (node.y - b.y) * (p.x - b.x);
+      if (area > 0 ? d1 >= 0 && d2 >= 0 && d3 >= 0 : d1 <= 0 && d2 <= 0 && d3 <= 0) return true;
+    }
+    return false;
+  }
+
+  it('cuts a mouth back past the kerbs its neighbours start on', () => {
+    const junction = map.junctions.find((j) => Math.hypot(j.x, j.y) < TOLERANCE) as Junction;
+    expect(junction.mouths).toHaveLength(4);
+    const east = junction.mouths.find((m) => m.curve === 0 && m.direction === 1) as Junction['mouths'][number];
+    // Past a right angle the street starts its right kerb further along the
+    // arterial than the two kerb lines meet, so that reach is what cuts the
+    // arterial back, and the corner between them no longer does.
+    expect(east.cut).toBeCloseTo((TIERS.street.width / 2) * Math.sin(TURN), 6);
+    expect(east.cut).toBeLessThanOrEqual(MAX_CUT);
+  });
+
+  it('covers the whole of every mouth carriageway between the node and its cut', () => {
+    // A grid over each mouth's carriageway, held a hair inside it so that a
+    // sample on the very edge of the fan is not decided by rounding.
+    const bare: string[] = [];
+    for (const junction of map.junctions) {
+      const ring = junctionShape(junction, ribbons).carriageway;
+      const node: Point = { x: junction.x, y: junction.y };
+      for (const mouth of junction.mouths) {
+        const kerb = TIERS[mouth.tier].width / 2 - INSET;
+        for (let a = 0; a <= 16; a++) {
+          for (let c = -16; c <= 16; c++) {
+            const along = INSET + ((mouth.cut - 2 * INSET) * a) / 16;
+            const across = (kerb * c) / 16;
+            const p: Point = {
+              x: node.x + mouth.dx * along - mouth.dy * across,
+              y: node.y + mouth.dy * along + mouth.dx * across,
+            };
+            if (!inFan(ring, node, p)) bare.push(`node ${junction.node} curve ${mouth.curve} at ${p.x},${p.y}`);
+          }
+        }
+      }
+    }
+    expect(bare).toEqual([]);
   });
 });
