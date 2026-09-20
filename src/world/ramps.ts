@@ -87,8 +87,12 @@ export interface RampPlan {
 export interface DiamondPlan {
   /** The highway the ramps meet. */
   highway: number;
-  /** Index into that highway's {@link RoadCurve.interchanges}. */
-  interchange: number;
+  /**
+   * Where its interchange stands. A place and not an index: a junction planned
+   * for another crossing of the same road puts a point into the highway before
+   * the diamond is laid, and every index past it moves.
+   */
+  interchange: Point;
   /** The four ramps, in the order they are laid. */
   ramps: RampPlan[];
 }
@@ -104,7 +108,7 @@ export interface DiamondPlan {
 export function planDiamond(
   network: CrossingNetwork,
   highway: RoadCurve,
-  interchange: number,
+  interchange: Point,
   segment: number,
   at: Point,
   road: readonly Point[],

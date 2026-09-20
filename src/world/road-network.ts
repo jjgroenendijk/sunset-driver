@@ -169,21 +169,6 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
    * vetted against the network while the road was still a draft (`ramps.ts`),
    * and the ends move by no more than the snap that makes a node.
    */
-  private layDiamond(plan: DiamondPlan, road: RoadCurve): void {
-    const interchange = (this.curves[plan.highway] as RoadCurve).interchanges[plan.interchange] as Interchange;
-    for (const ramp of plan.ramps) {
-      const points = ramp.points.slice();
-      points[0] = this.rampEnd(ramp.from, road);
-      points[points.length - 1] = this.rampEnd(ramp.to, road);
-      const laid = this.layCurve({ tier: RAMP_TIER, points, bridges: [], tunnels: [], interchanges: [], oneWay: true });
-      interchange.ramps.push(laid.id);
-      const head = ramp.from.curve >= 0 ? ramp.from : ramp.to;
-      if (!interchange.heads.includes(head.index)) interchange.heads.push(head.index);
-    }
-    interchange.ramps.sort(compareNumbers);
-    interchange.heads.sort(compareNumbers);
-  }
-
   /**
    * Note a point of a highway as an interchange of its own. A crossing that
    * could carry no diamond is joined on the flat instead (`crossing-plan.ts`),
@@ -197,10 +182,33 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
     road.interchanges.sort((m, n) => m.at - n.at);
   }
 
-  /** Where a ramp stands on the network now: the road being added is not in `curves` yet. */
-  private rampEnd(end: RampEnd, road: RoadCurve): Point {
-    const points = end.curve < 0 ? road.points : (this.curves[end.curve] as RoadCurve).points;
-    const p = points[end.index] as Point;
+  private layDiamond(plan: DiamondPlan, road: RoadCurve): void {
+    const highway = this.curves[plan.highway] as RoadCurve;
+    const interchange = highway.interchanges.find((x) => dist((highway.points[x.at] as Point).x, (highway.points[x.at] as Point).y, plan.interchange.x, plan.interchange.y) <= SAME_PLACE);
+    if (interchange === undefined) return;
+    for (const ramp of plan.ramps) {
+      const points = ramp.points.slice();
+      points[points.length - 1] = this.rampEnd(ramp.to, road, points[points.length - 1] as Point);
+      points[0] = this.rampEnd(ramp.from, road, points[0] as Point);
+      const laid = this.layCurve({ tier: RAMP_TIER, points, bridges: [], tunnels: [], interchanges: [], oneWay: true });
+      interchange.ramps.push(laid.id);
+      const head = ramp.from.curve >= 0 ? points[0] : points[points.length - 1];
+      const at = highway.points.findIndex((p) => dist(p.x, p.y, (head as Point).x, (head as Point).y) <= SAME_PLACE);
+      if (at >= 0 && !interchange.heads.includes(at)) interchange.heads.push(at);
+    }
+    interchange.ramps.sort(compareNumbers);
+    interchange.heads.sort(compareNumbers);
+  }
+
+  /**
+   * Where a ramp ends now. A point of the road being added moves by the snap
+   * that joins it to a node, which is less than `SAME_PLACE`, so the planned
+   * place still finds it; a point of a laid curve has not moved at all, and
+   * its index may have, so the place is what is kept and not the index.
+   */
+  private rampEnd(end: RampEnd, road: RoadCurve, planned: Point): Point {
+    if (end.curve >= 0) return planned;
+    const p = road.points[end.index] as Point;
     return { x: p.x, y: p.y };
   }
 

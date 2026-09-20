@@ -34,7 +34,7 @@ import { interchangeAt, planDiamond, type DiamondPlan, type RampPlan } from './r
 import { MIN_MEET } from './network-clearance.ts';
 import { curveDistances } from './ribbon.ts';
 import { footprintHalfWidth, mayCross, mayJoin, TIERS } from './tiers.ts';
-import type { Point, RoadCurve, RoadTier } from './types.ts';
+import type { Interchange, Point, RoadCurve, RoadTier } from './types.ts';
 
 /** Metres a junction may be moved onto a point a road already has. Two junctions this close would stand inside each other. */
 export const CROSSING_SNAP = 4;
@@ -156,7 +156,7 @@ export function settleCrossings(network: CrossingNetwork, proposed: DraftLine, w
     }
     const carried = raised(road, raises);
     const before = flat.size;
-    const diamonds = planDiamonds(network, carried, overHighway, flat);
+    const diamonds = planDiamonds(network, carried, overHighway, flat, plan.failures);
     if (flat.size > before) continue;
     if (plan.failures.length === 0) return { road: carried, edits: plan.edits, diamonds };
     if (whole) return undefined;
@@ -178,6 +178,7 @@ function planDiamonds(
   carried: DraftLine,
   overHighway: readonly { crossing: Crossing; raise: Raise }[],
   flat: Set<number>,
+  failures: Failure[],
 ): DiamondPlan[] {
   if (overHighway.length === 0) return [];
   const distances = curveDistances(carried.points);
@@ -186,9 +187,15 @@ function planDiamonds(
   for (const { crossing, raise } of overHighway) {
     const highway = network.curves[crossing.curve] as RoadCurve;
     const foot: [number, number] = [pointNear(distances, raise.from), pointNear(distances, raise.to)];
-    const diamond = planDiamond(network, highway, crossing.interchange as number, crossing.other, crossing, carried.points, foot, planned);
-    if (diamond === undefined) flat.add(flatKey(crossing));
-    else {
+    const at = highway.points[(highway.interchanges[crossing.interchange as number] as Interchange).at] as Point;
+    const diamond = planDiamond(network, highway, at, crossing.other, crossing, carried.points, foot, planned);
+    if (diamond === undefined) {
+      // The junction on the flat has been tried already and the place refused
+      // it too, so nothing can be built here and the road gives way.
+      const key = flatKey(crossing);
+      if (flat.has(key)) failures.push({ segment: crossing.segment, x: crossing.x, y: crossing.y, tier: highway.tier });
+      else flat.add(key);
+    } else {
       out.push(diamond);
       planned.push(...diamond.ramps);
     }

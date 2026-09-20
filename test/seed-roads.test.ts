@@ -277,6 +277,7 @@ sweepSuite('roads', () => {
     // an interchange exchanges it only through ramps. So an interchange carries
     // four ramps or none, each one way, each in the graph, and the only points
     // of a highway a ramp stands on are the heads its interchange lists.
+    let built = 0;
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       const graph = graphOf(seed);
@@ -291,6 +292,7 @@ sweepSuite('roads', () => {
         edgesOf.set(edge.curve, own);
       }
       const laid = ramps(w);
+      built += laid.size / DIAMOND_RAMPS;
       for (const road of w.roads) {
         if (road.oneWay === true && !laid.has(road.id)) fault(`${road.tier} ${road.id} runs one way and is no ramp`);
       }
@@ -326,6 +328,10 @@ sweepSuite('roads', () => {
       }
       expect(complaint, `seed ${seed}`).toBeUndefined();
     }
+    // A rule nothing meets is a rule nobody notices breaking. The trace has to
+    // reach an interchange and cross it for the ramps to be laid at all, so the
+    // sweep says how many diamonds it found.
+    expect(built, 'diamonds built over the seeds').toBeGreaterThan(seeds.length / 2);
   });
 
   it('crosses a highway only under a slot or over an interchange', () => {
