@@ -1,6 +1,7 @@
 import { Vector3, type BufferAttribute } from 'three';
 import { describe, expect, it } from 'vitest';
 import {
+  BARE_SPECIES,
   buildChunkVegetation,
   buildPlantModels,
   modelIndex,
@@ -106,20 +107,48 @@ describe('plant models', () => {
     }
   });
 
-  it('dresses every vertex as bark or as leaf, and nothing else', () => {
-    for (const geometry of models) {
-      const part = geometry.getAttribute('part').array as Float32Array;
-      const tint = geometry.getAttribute('tint');
-      const normal = geometry.getAttribute('normal');
-      expect(tint.count).toBe(geometry.getAttribute('position').count);
-      expect(normal.count).toBe(geometry.getAttribute('position').count);
-      let leaves = 0;
-      for (const value of part) {
-        expect(value === PLANT_BARK || value === PLANT_LEAF).toBe(true);
-        if (value === PLANT_LEAF) leaves++;
+  it('turns the faces of a canopy outwards', () => {
+    // The material draws front faces alone, so a shell wound the wrong way
+    // round is lit on the inside: the crown comes out flat and dark, and the
+    // trunk shows through it. These three species carry one shell standing on
+    // the plant's own axis, so every leaf face of them has to look away from it.
+    for (const species of ['conifer', 'columnar', 'hedge'] as const) {
+      for (let variant = 0; variant < SPECIES_MODELS; variant++) {
+        const geometry = models[modelIndex(species, variant)] as (typeof models)[number];
+        const position = geometry.getAttribute('position').array as Float32Array;
+        const normal = geometry.getAttribute('normal').array as Float32Array;
+        const part = geometry.getAttribute('part').array as Float32Array;
+        for (let t = 0; t * 9 < position.length; t++) {
+          const v = t * 9;
+          if (part[t * 3] !== PLANT_LEAF) continue;
+          const midX = ((position[v] as number) + (position[v + 3] as number) + (position[v + 6] as number)) / 3;
+          const midZ = ((position[v + 2] as number) + (position[v + 5] as number) + (position[v + 8] as number)) / 3;
+          const out = midX * (normal[v] as number) + midZ * (normal[v + 2] as number);
+          expect(out, `${species} ${variant} face ${t} looks inwards`).toBeGreaterThanOrEqual(0);
+        }
       }
-      // Every plant carries foliage: a bare skeleton is a dead tree.
-      expect(leaves).toBeGreaterThan(0);
+    }
+  });
+
+  it('dresses every vertex as bark or as leaf, and nothing else', () => {
+    for (const species of PLANT_SPECIES) {
+      for (let variant = 0; variant < SPECIES_MODELS; variant++) {
+        const geometry = models[modelIndex(species, variant)] as (typeof models)[number];
+        const part = geometry.getAttribute('part').array as Float32Array;
+        const tint = geometry.getAttribute('tint');
+        const normal = geometry.getAttribute('normal');
+        expect(tint.count).toBe(geometry.getAttribute('position').count);
+        expect(normal.count).toBe(geometry.getAttribute('position').count);
+        let leaves = 0;
+        for (const value of part) {
+          expect(value === PLANT_BARK || value === PLANT_LEAF).toBe(true);
+          if (value === PLANT_LEAF) leaves++;
+        }
+        // Every plant carries foliage, but for the one species that is a bare
+        // skeleton on purpose.
+        if (species === BARE_SPECIES) expect(leaves, `${species} ${variant}`).toBe(0);
+        else expect(leaves, `${species} ${variant}`).toBeGreaterThan(0);
+      }
     }
   });
 });

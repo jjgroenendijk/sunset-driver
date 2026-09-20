@@ -32,8 +32,24 @@ import type { Building, BuildingMap } from './buildings.ts';
 import type { Parcel, ParcelMap, ParcelOwner } from './parcels.ts';
 import type { Zone } from './types.ts';
 
-/** What a plant is (spec section 10.4). The renderer builds a model for each. */
-export type PlantSpecies = 'broadleaf' | 'conifer' | 'palm' | 'shrub' | 'grass';
+/**
+ * What a plant is (spec section 10.4). The renderer builds a model for each.
+ *
+ * Ten of them, because a wood of one tree repeated reads as wallpaper. The
+ * first five are the plants every world has; `columnar`, `blossom`, `dead`,
+ * `agave` and `hedge` are the ones that break a stand of them up.
+ */
+export type PlantSpecies =
+  | 'broadleaf'
+  | 'conifer'
+  | 'palm'
+  | 'shrub'
+  | 'grass'
+  | 'columnar'
+  | 'blossom'
+  | 'dead'
+  | 'agave'
+  | 'hedge';
 
 /** One plant, standing on the ground of one parcel. */
 export interface Plant {
@@ -48,27 +64,84 @@ export interface Plant {
   seed: number;
   /** Where it stands. The ground under it comes from the carve, as a building's does. */
   at: Point;
-  /** Metres of canopy around that point. The whole disc stands on the parcel. */
+  /**
+   * Metres of canopy around that point. The whole disc stands on the parcel.
+   *
+   * It is the species' own {@link PLANT_RADIUS} grown by this plant's share of
+   * {@link GROWTH}, so a stand of one species holds saplings, ordinary trees
+   * and the odd large specimen. The renderer scales its model to fill exactly
+   * this much ground, which is what carries the rule through to the frame.
+   */
   radius: number;
 }
 
-/** Metres each way of one cell of the scatter grid: the pitch of a forest. */
-export const PLANT_CELL = 7;
+/**
+ * Metres each way of one cell of the scatter grid: the pitch of a forest.
+ *
+ * It is what caps the widest canopy a plant may grow, so a large specimen tree
+ * needs room here. The planting chances below are raised to match: a wider cell
+ * is fewer cells over the same ground, and a wood has to stay a wood.
+ */
+export const PLANT_CELL = 9;
 
 /** Metres a plant stands from the middle of its cell, at most. */
 export const PLANT_JITTER = 1;
 
 /**
- * Metres of canopy each species claims. A plant owns this much ground and no
- * more, whatever the renderer builds inside it.
+ * Metres of canopy a plant of each species claims when it grows to its ordinary
+ * size. One plant claims this much scaled by its own {@link GROWTH}, and the
+ * renderer builds its model at exactly this radius, so the scale the frame
+ * applies is `plant.radius / PLANT_RADIUS[species]`.
  */
 export const PLANT_RADIUS: Record<PlantSpecies, number> = {
-  broadleaf: 2.5,
-  conifer: 2.1,
-  palm: 2.3,
-  shrub: 1.2,
-  grass: 1.5,
+  broadleaf: 2.2,
+  conifer: 1.9,
+  palm: 2.1,
+  shrub: 1.1,
+  grass: 1.4,
+  columnar: 1.1,
+  blossom: 1.6,
+  dead: 1.7,
+  agave: 1,
+  hedge: 1.3,
 };
+
+/**
+ * How small and how large a plant of each species grows, as a share of its
+ * {@link PLANT_RADIUS}. Whatever it draws, it never claims more than
+ * {@link MAX_PLANT_RADIUS}, which the sweep checks: the largest broadleaf is
+ * clipped by it.
+ *
+ * The undergrowth is held close to its own size: a tuft of grass four metres
+ * across is not a tuft of grass. A tree is given the whole range, because the
+ * sapling and the specimen beside each other are what stops a wood reading as
+ * one model stamped over and over.
+ */
+export const GROWTH: Record<PlantSpecies, readonly [small: number, large: number]> = {
+  broadleaf: [0.55, 1.6],
+  conifer: [0.55, 1.6],
+  palm: [0.7, 1.35],
+  shrub: [0.6, 1.3],
+  grass: [0.7, 1.25],
+  columnar: [0.7, 1.5],
+  blossom: [0.6, 1.4],
+  dead: [0.6, 1.5],
+  agave: [0.7, 1.3],
+  hedge: [0.8, 1.2],
+};
+
+/**
+ * Where an ordinary plant stops and a large one starts, as a share of the range
+ * between the two ends of {@link GROWTH}.
+ */
+const PLAIN_GROWTH = 0.45;
+
+/**
+ * How often a plant grows past {@link PLAIN_GROWTH} into the large end of its
+ * range. Roughly one in twelve, so a park has a few trees that stand over it
+ * and a wood has a canopy rather than a ceiling.
+ */
+const LANDMARK_CHANCE = 0.08;
 
 /**
  * The widest canopy any species has. Two plants of neighbouring cells stand at
@@ -100,37 +173,72 @@ interface PlantMix {
 
 /** Woodland: what a park in the city plants, and what fills a wild hillside. */
 const BROADLEAF_WOOD: PlantMix['species'] = [
-  { kind: 'broadleaf', weight: 0.55 },
-  { kind: 'conifer', weight: 0.2 },
-  { kind: 'shrub', weight: 0.25 },
+  { kind: 'broadleaf', weight: 0.4 },
+  { kind: 'conifer', weight: 0.13 },
+  { kind: 'blossom', weight: 0.1 },
+  { kind: 'columnar', weight: 0.06 },
+  { kind: 'dead', weight: 0.03 },
+  { kind: 'shrub', weight: 0.18 },
+  { kind: 'grass', weight: 0.1 },
 ];
 
 /** The same wood higher up and further out, where the conifers take over. */
 const CONIFER_WOOD: PlantMix['species'] = [
-  { kind: 'conifer', weight: 0.55 },
-  { kind: 'broadleaf', weight: 0.2 },
-  { kind: 'shrub', weight: 0.25 },
+  { kind: 'conifer', weight: 0.45 },
+  { kind: 'broadleaf', weight: 0.16 },
+  { kind: 'columnar', weight: 0.05 },
+  { kind: 'dead', weight: 0.08 },
+  { kind: 'shrub', weight: 0.16 },
+  { kind: 'grass', weight: 0.1 },
+];
+
+/**
+ * The wood of the dry ground between the city and the hills: fewer trees of
+ * each kind, more open grass, and the rosettes that only grow out here.
+ */
+const DRY_WOOD: PlantMix['species'] = [
+  { kind: 'conifer', weight: 0.28 },
+  { kind: 'broadleaf', weight: 0.16 },
+  { kind: 'agave', weight: 0.14 },
+  { kind: 'dead', weight: 0.08 },
+  { kind: 'shrub', weight: 0.2 },
+  { kind: 'grass', weight: 0.14 },
 ];
 
 /** Scrub: what open ground carries where no one planted anything. */
 const SCRUB: PlantMix['species'] = [
-  { kind: 'shrub', weight: 0.6 },
-  { kind: 'grass', weight: 0.25 },
-  { kind: 'broadleaf', weight: 0.15 },
+  { kind: 'shrub', weight: 0.42 },
+  { kind: 'grass', weight: 0.24 },
+  { kind: 'broadleaf', weight: 0.12 },
+  { kind: 'agave', weight: 0.1 },
+  { kind: 'dead', weight: 0.06 },
+  { kind: 'hedge', weight: 0.06 },
 ];
 
-/** A row of street trees, which is one species and no undergrowth. */
-const STREET_TREES: PlantMix['species'] = [{ kind: 'broadleaf', weight: 1 }];
+/**
+ * A row of street trees. It carries no undergrowth, because the ground under it
+ * is pavement and forecourt, but it is not one species either: an avenue of the
+ * same tree every seven metres is what the old scatter looked like.
+ */
+const STREET_TREES: PlantMix['species'] = [
+  { kind: 'broadleaf', weight: 0.5 },
+  { kind: 'columnar', weight: 0.2 },
+  { kind: 'blossom', weight: 0.22 },
+  { kind: 'hedge', weight: 0.08 },
+];
 
 /** The back of a beach: dune grass, and the palms of spec section 7.3. */
 const DUNE: PlantMix['species'] = [
-  { kind: 'grass', weight: 0.72 },
+  { kind: 'grass', weight: 0.6 },
   { kind: 'palm', weight: 0.28 },
+  { kind: 'agave', weight: 0.12 },
 ];
 
-/** True where the conifers take over from the broadleaves. */
+/** Which wood a zone grows: broadleaf in the city, conifer on the hills, dry between. */
 function wooded(zone: Zone): PlantMix['species'] {
-  return zone === 'wilderness' || zone === 'outskirts' ? CONIFER_WOOD : BROADLEAF_WOOD;
+  if (zone === 'wilderness') return CONIFER_WOOD;
+  if (zone === 'outskirts') return DRY_WOOD;
+  return BROADLEAF_WOOD;
 }
 
 /**
@@ -141,9 +249,9 @@ function wooded(zone: Zone): PlantMix['species'] {
 export function mixFor(owner: ParcelOwner, zone: Zone): PlantMix | undefined {
   switch (owner) {
     case 'park':
-      return { chance: 0.62, street: false, species: wooded(zone) };
+      return { chance: 0.9, street: false, species: wooded(zone) };
     case 'beach':
-      return { chance: 0.4, street: false, species: DUNE };
+      return { chance: 0.58, street: false, species: DUNE };
     case 'ground':
       // Open ground: the forest of the wilderness thins to scrub as the city
       // takes over, because the ground between the buildings is kept.
@@ -156,12 +264,12 @@ export function mixFor(owner: ParcelOwner, zone: Zone): PlantMix | undefined {
       // A street of houses is planted in its gardens; a block of towers only
       // along the pavement, where there is no garden to plant.
       return zone === 'core' || zone === 'inner' || zone === 'industrial'
-        ? { chance: 0.45, street: true, species: STREET_TREES }
-        : { chance: 0.4, street: false, species: wooded(zone) };
+        ? { chance: 0.64, street: true, species: STREET_TREES }
+        : { chance: 0.58, street: false, species: wooded(zone) };
     case 'plaza':
-      return { chance: 0.35, street: true, species: STREET_TREES };
+      return { chance: 0.5, street: true, species: STREET_TREES };
     case 'car-park':
-      return { chance: 0.22, street: true, species: STREET_TREES };
+      return { chance: 0.32, street: true, species: STREET_TREES };
     // The ground under a deck is the corridor's, and a water parcel is water.
     default:
       return undefined;
@@ -170,12 +278,12 @@ export function mixFor(owner: ParcelOwner, zone: Zone): PlantMix | undefined {
 
 /** How often open ground carries a plant, by the zone it stands in. */
 const GROUND_CHANCE: Record<Zone, number> = {
-  core: 0.12,
-  inner: 0.14,
-  industrial: 0.1,
-  suburban: 0.24,
-  outskirts: 0.34,
-  wilderness: 0.5,
+  core: 0.18,
+  inner: 0.21,
+  industrial: 0.15,
+  suburban: 0.35,
+  outskirts: 0.5,
+  wilderness: 0.74,
 };
 
 /**
@@ -197,7 +305,7 @@ export interface PlantGround {
  * carries nothing whatever it stands on, so the ground under it is never looked
  * up. The sweep checks that no mix passes it.
  */
-export const MAX_PLANT_CHANCE = 0.62;
+export const MAX_PLANT_CHANCE = 0.9;
 
 /**
  * The plants of a world, answered a piece of ground at a time.
@@ -280,7 +388,7 @@ export class Vegetation {
     const mix = mixFor(here.owner, here.zone);
     if (mix === undefined || roll >= mix.chance) return undefined;
     const species = speciesOf(mix, rng);
-    const radius = PLANT_RADIUS[species];
+    const radius = radiusOf(species, rng);
     const parcel = this.parcels.get(here.parcel);
     if (parcel === undefined) return undefined;
     // The whole canopy stands on the parcel, so no part of it reaches over the
@@ -336,6 +444,18 @@ function pieceAt(x: number, y: number, ground: readonly PlantGround[], boxes: re
 /** The lot of a building as a ring, which is what a canopy is kept off. */
 function lotOf(building: Building): Point[] {
   return building.lot.map((corner) => ({ x: corner.x, y: corner.y }));
+}
+
+/**
+ * How much canopy one plant claims: its species' radius grown by its own share
+ * of {@link GROWTH}, and never past {@link MAX_PLANT_RADIUS}, which is what
+ * keeps two neighbouring canopies apart.
+ */
+function radiusOf(species: PlantSpecies, rng: Rng): number {
+  const [small, large] = GROWTH[species];
+  const plain = small + (large - small) * PLAIN_GROWTH;
+  const growth = rng.float() < LANDMARK_CHANCE ? rng.range(plain, large) : rng.range(small, plain);
+  return Math.min(MAX_PLANT_RADIUS, PLANT_RADIUS[species] * growth);
 }
 
 /** Which species a mix plants this time. */

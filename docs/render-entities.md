@@ -157,15 +157,31 @@ after dark is in `docs/lighting.md`, and the one interior the scene ever holds i
 
 ## Plants
 
-- `buildPlantModels()` (`plant-mesh.ts`) grows a few models per species once for a world, and
-  `PlantScenery` (`vegetation.ts`) packs a chunk's plants into one batch, so a wood costs one draw
-  call however many trees stand in it. The trunk and branches of a tree are `TreeGenerator`, which
-  grows branches only, so the crown is clumps laid over it; a palm, a shrub and a tuft of dune grass
-  are built from end to end there. `ForestGenerator` is not used: it places its own trees by
-  altitude and slope, which would stand them on the roads and the lots the parcel model keeps them
-  off. A model stands inside the canopy its species claims and a placement never scales one up,
-  which is what carries the parcel model's rule through to the frame; `test/plant-mesh.test.ts` pins
-  both.
+- `buildPlantModels()` (`plant-mesh.ts`) grows `SPECIES_MODELS` models of each of the ten species
+  once for a world, and `PlantScenery` (`vegetation.ts`) packs a chunk's plants into one batch, so a
+  wood costs one draw call however many trees stand in it. The trunk and branches of a tree are
+  `TreeGenerator`, which grows branches only, so the crown is laid over it; a palm, a rosette, a
+  hedge and a tuft of dune grass are built from end to end there. `ForestGenerator` is not used: it
+  places its own trees by altitude and slope, which would stand them on the roads and the lots the
+  parcel model keeps them off.
+- A crown is one faceted shell — `PlantShell.canopy` (`plant-shell.ts`) — and not a heap of balls.
+  A heap of balls reads as a bunch of grapes from every angle the game's camera takes, and costs
+  three times the triangles. `waist` bends the profile between a ball and an egg standing on its
+  point, `tip` says how blunt the two ends are, and `lumps` eats each face in towards the middle.
+  Nothing is ever pushed out, so the shell reaches `radius` and no further.
+- **A shell of revolution wound like a tube's ring faces inwards.** The material draws front faces
+  alone, so such a shell is lit on the inside: the crown comes out flat and dark and the trunk
+  shows through it, which reads as a lighting bug rather than as a winding one. `canopy` and `cone`
+  wind the other way round from `tube`; `test/plant-mesh.test.ts` pins it.
+- A model is built at the canopy its species claims at its ordinary size, and a placement scales it
+  by `plant.radius / PLANT_RADIUS[species]` — the share of that size this plant grew to. So a model
+  never reaches out of the ground `vegetation.ts` cleared for it, which is what carries the parcel
+  model's rule through to the frame; `test/plant-mesh.test.ts` pins both.
+- The last model of each species is its accent, taken by `ACCENT_CHANCE` of the plants rather than
+  by a quarter of them: an autumn canopy where the species turns, another ordinary tone where it
+  does not. `plant-material.ts` drifts the whole canopy on top of that — dusty olive out in the dry
+  country, cold blue-green up on the hills — from world places, so one wood is one colour and the
+  next is another.
 
 ## Posters and hoardings
 

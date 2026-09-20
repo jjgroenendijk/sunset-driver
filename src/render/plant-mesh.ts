@@ -1,9 +1,10 @@
 /**
  * The plants of one chunk, as geometry (spec sections 9.2, 10.4).
  *
- * `vegetation.ts` says where a plant stands and what species it is. This says
- * what it looks like: a handful of models per species, built once for a world,
- * and one placement per plant.
+ * `vegetation.ts` says where a plant stands, what species it is and how much
+ * canopy it claims. This says what it looks like: a handful of models per
+ * species, built once for a world, and one placement per plant. The shapes the
+ * models are built out of live in `plant-shell.ts`, which this re-exports.
  *
  * A species has {@link SPECIES_MODELS} models and no more. Every plant of a
  * chunk is drawn from them, so a forest costs the geometry of a few trees
@@ -11,16 +12,19 @@
  * the way it is turned and how big it grew. That is what keeps a chunk of
  * wilderness inside the draw calls of spec section 9.2.
  *
- * The trunk and branches of a tree are `TreeGenerator` (spec section 10.4),
- * which grows a seeded skeleton and bakes it into one geometry. It produces no
- * foliage, so the crown is clumps laid over it here; a palm, a shrub and a tuft
- * of dune grass are built here from end to end, because a generated skeleton is
- * not what any of them is.
+ * A crown is one faceted shell rather than a heap of balls (`plant-shell.ts`
+ * says why). The trunk and branches under it are `TreeGenerator` (spec section
+ * 10.4), which grows a seeded skeleton and bakes it into one geometry. It
+ * produces no foliage, so the crown is laid over it here; a palm, a rosette, a
+ * hedge and a tuft of dune grass are built here from end to end, because a
+ * generated skeleton is not what any of them is.
  *
  * A plant never stands on a road or on a building, by construction (spec
  * section 1.1): `vegetation.ts` keeps the whole of its canopy inside one parcel
- * and off the lots on it, and a model is built inside that canopy. Nothing here
- * moves a plant, so nothing here can put one where it may not stand.
+ * and off the lots on it, a model is built inside the canopy its species claims
+ * at its ordinary size, and {@link buildChunkVegetation} scales that model by
+ * exactly the share of it this plant grew to. Nothing here moves a plant, so
+ * nothing here can put one where it may not stand.
  *
  * A plant's own frame has it standing at the origin, `y` up. The matrix of a
  * placement is what puts that frame in the world.
@@ -28,64 +32,94 @@
  * Nothing here touches the renderer or TSL, so it runs headless and the tests
  * read it directly.
  */
-import {
-  BufferAttribute,
-  BufferGeometry,
-  Color,
-  IcosahedronGeometry,
-  Matrix4,
-  MeshBasicMaterial,
-  Quaternion,
-  Vector3,
-} from 'three';
+import { BufferGeometry, Color, Matrix4, MeshBasicMaterial, Quaternion, Vector3 } from 'three';
 import { TreeGenerator } from 'three/examples/jsm/generators/TreeGenerator.js';
 import { hashInts } from '../core/hash.ts';
 import { Rng } from '../core/rng.ts';
 import type { WorldChunk, WorldLayers } from '../world/chunks.ts';
 import { PLANT_RADIUS, type Plant, type PlantSpecies } from '../world/vegetation.ts';
 import type { Rgb } from './building-mesh.ts';
+import { PlantShell, PLANT_BARK, PLANT_LEAF } from './plant-shell.ts';
 
-/** What a vertex of a plant belongs to. The material shades the two apart. */
-export const PLANT_BARK = 0;
-export const PLANT_LEAF = 1;
+export { PLANT_BARK, PLANT_LEAF } from './plant-shell.ts';
+export type { Canopy, Local } from './plant-shell.ts';
 
 /** The species, in the order their models are built and indexed. */
-export const PLANT_SPECIES: readonly PlantSpecies[] = ['broadleaf', 'conifer', 'palm', 'shrub', 'grass'];
+export const PLANT_SPECIES: readonly PlantSpecies[] = [
+  'broadleaf',
+  'conifer',
+  'palm',
+  'shrub',
+  'grass',
+  'columnar',
+  'blossom',
+  'dead',
+  'agave',
+  'hedge',
+];
+
+/** The one species that carries no foliage at all, because it is not alive. */
+export const BARE_SPECIES: PlantSpecies = 'dead';
 
 /**
  * Models one species is built in. A chunk draws every plant of a species from
  * these, so this is the geometry a species costs however many of it stand
  * there.
  */
-export const SPECIES_MODELS = 3;
+export const SPECIES_MODELS = 4;
+
+/**
+ * The last model of every species is its accent: an autumn canopy where the
+ * species turns, and another ordinary tone where it does not. This is how often
+ * a plant takes it, so a street of green carries the odd rust tree rather than
+ * a quarter of them.
+ */
+export const ACCENT_CHANCE = 0.14;
 
 /** Metres a plant is sunk, so no daylight shows under it on a slope. */
 const ROOTING = 0.15;
 
 /** How tall each species stands, as a share of its own canopy radius. */
 const SPECIES_RISE: Record<PlantSpecies, number> = {
-  broadleaf: 3.1,
+  broadleaf: 2.7,
   conifer: 4.4,
   palm: 3.8,
-  shrub: 1.1,
-  grass: 0.5,
+  shrub: 1.5,
+  grass: 0.95,
+  columnar: 6.5,
+  blossom: 1.9,
+  dead: 4,
+  agave: 1.8,
+  hedge: 1,
 };
 
-/** How much bigger or smaller than its model a plant grows, and how much taller. */
-const MIN_SPREAD = 0.78;
+/** How much taller than its spread a plant grows, on top of the size it grew to. */
 const MIN_RISE = 0.85;
 const MAX_RISE = 1.25;
 
-/** The bark of a trunk, and of the stem of a shrub. */
-const BARK: readonly number[] = [0x6b5844, 0x5d4c3b, 0x776450];
+/** The bark of a trunk, and of the stem of a shrub. One per model. */
+const BARK: readonly number[] = [0x6b5844, 0x5d4c3b, 0x776450, 0x50443a];
 
-/** The leaf colours of each species, one per model. */
+/** The bark of a dead tree, which is weathered grey rather than brown. */
+const DEAD_BARK: readonly number[] = [0x8b8175, 0x7a7167, 0x968c7e, 0x6e675e];
+
+/**
+ * The leaf colours of each species, one per model, muted towards the palette
+ * the buildings and the roads are painted in — the greens used to be the
+ * loudest thing on the screen. The last of each four is the accent of
+ * {@link ACCENT_CHANCE}.
+ */
 const LEAF: Record<PlantSpecies, readonly number[]> = {
-  broadleaf: [0x4f7a34, 0x628a3c, 0x43682c],
-  conifer: [0x35573a, 0x2c4a32, 0x3d6140],
-  palm: [0x5c8a42, 0x6d9a4a, 0x4f7a3a],
-  shrub: [0x54702f, 0x63803a, 0x475f2a],
-  grass: [0x8d9a52, 0x9aa65e, 0x7d8a48],
+  broadleaf: [0x556b41, 0x60764a, 0x49603c, 0x9a7338],
+  conifer: [0x44634a, 0x3b5641, 0x4f6f53, 0x3a5a58],
+  palm: [0x5b7a4a, 0x668253, 0x4f6e42, 0x74895c],
+  shrub: [0x55673c, 0x5f7145, 0x4a5b36, 0x8a6a3a],
+  grass: [0x717c46, 0x7c864f, 0x67723e, 0x8d8b52],
+  columnar: [0x4d6640, 0x587049, 0x445c3b, 0x8f7a3c],
+  blossom: [0x9c5c7a, 0xab6b88, 0x8d5270, 0xbf98a6],
+  dead: [0x8b8175, 0x7a7167, 0x968c7e, 0x6e675e],
+  agave: [0x6f8a63, 0x7d9670, 0x5f7a57, 0x88976a],
+  hedge: [0x4f6339, 0x5a6d42, 0x455833, 0x63744a],
 };
 
 /** One plant, ready for a batch. */
@@ -127,23 +161,26 @@ export function buildPlantModels(): BufferGeometry[] {
 
 /**
  * The plants of one chunk, in the order the chunk lists them. A placement names
- * a model rather than carrying geometry, so the batch holds one copy of each
- * model however many plants stand on it.
+ * a model rather than carrying geometry, so a chunk of forest crosses the
+ * worker boundary as a matrix per tree.
+ *
+ * The spread is the share of its species' ordinary canopy this plant grew to.
+ * A model reaches exactly that species' radius and no further, so the scaled
+ * model reaches exactly `plant.radius` — which is the ground `vegetation.ts`
+ * has already kept clear of the road and of the buildings.
  */
 export function buildChunkVegetation(chunk: WorldChunk, lookup: PlantLookup): PlantPlacement[] {
   const out: PlantPlacement[] = [];
   for (const plant of chunk.plants) {
     const rng = new Rng(plant.seed);
-    const variant = rng.int(0, SPECIES_MODELS - 1);
+    const variant = rng.float() < ACCENT_CHANCE ? SPECIES_MODELS - 1 : rng.int(0, SPECIES_MODELS - 2);
     const turn = rng.range(0, Math.PI * 2);
-    const spread = rng.range(MIN_SPREAD, 1);
+    const spread = plant.radius / PLANT_RADIUS[plant.species];
     const rise = spread * rng.range(MIN_RISE, MAX_RISE);
     const ground = lookup.heightAt(plant.at.x, plant.at.y) - ROOTING;
     const matrix = new Matrix4().compose(
       new Vector3(plant.at.x, ground, plant.at.y),
       new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), turn),
-      // The spread is never over 1, so a canopy stays inside the ground the
-      // plant claims and cannot reach over the road beside it.
       new Vector3(spread, rise, spread),
     );
     out.push({ plant, model: modelIndex(plant.species, variant), matrix });
@@ -162,22 +199,40 @@ function modelOf(species: PlantSpecies, variant: number): BufferGeometry {
   const shell = new PlantShell();
   const radius = PLANT_RADIUS[species];
   const height = radius * SPECIES_RISE[species];
-  const bark = rgbOf(BARK[variant % BARK.length] as number);
+  const bark = rgbOf((species === BARE_SPECIES ? DEAD_BARK : BARK)[variant % BARK.length] as number);
   const leaf = rgbOf(LEAF[species][variant % LEAF[species].length] as number);
   switch (species) {
     case 'broadleaf':
-      shell.add(branches(rng, radius, height, 0.13, 34), PLANT_BARK, bark);
-      crown(shell, rng, radius, height, leaf);
+      shell.add(branches(rng, radius * 0.13, height * 0.5, height, 34), PLANT_BARK, bark);
+      crown(shell, rng, radius, height, leaf, { seat: 0.26, waist: 0.6, tip: 0.17 });
+      break;
+    case 'blossom':
+      // A cherry is broad and flat over a short bole, not a tall mass: it is
+      // the one tree in the city that is meant to be looked at.
+      shell.add(branches(rng, radius * 0.11, height * 0.42, height, 46), PLANT_BARK, bark);
+      crown(shell, rng, radius, height, leaf, { seat: 0.34, waist: 0.88, tip: 0.3 });
+      break;
+    case 'columnar':
+      column(shell, rng, radius, height, bark, leaf);
       break;
     case 'conifer':
-      shell.add(branches(rng, radius, height, 0.1, 34), PLANT_BARK, bark);
+      shell.add(branches(rng, radius * 0.1, height * 0.62, height, 34), PLANT_BARK, bark);
       spire(shell, rng, radius, height, leaf);
+      break;
+    case 'dead':
+      shell.add(branches(rng, radius * 0.14, height * 0.7, height, 46), PLANT_BARK, bark);
       break;
     case 'palm':
       palm(shell, rng, radius, height, bark, leaf);
       break;
     case 'shrub':
       bush(shell, rng, radius, height, bark, leaf);
+      break;
+    case 'agave':
+      rosette(shell, rng, radius, height, leaf);
+      break;
+    case 'hedge':
+      shell.canopy(rng, { base: 0, top: height, radius, sides: 4, rings: 2, lumps: 0.08, waist: 0.96, tip: 0.44 }, leaf);
       break;
     default:
       tuft(shell, rng, radius, height, leaf);
@@ -191,7 +246,7 @@ function modelOf(species: PlantSpecies, variant: number): BufferGeometry {
  * coarse on purpose: the camera looks down from 60 m, so what carries a tree is
  * its crown, and every ring of a twig under it is geometry the frame pays for.
  */
-function branches(rng: Rng, radius: number, height: number, thickness: number, angle: number): BufferGeometry {
+function branches(rng: Rng, thickness: number, bole: number, height: number, angle: number): BufferGeometry {
   // The generator dresses its mesh in a material of its own unless it is given
   // one. The models are dressed by the batch they are packed into, so it is
   // handed the cheapest material there is and the mesh is thrown away.
@@ -204,8 +259,8 @@ function branches(rng: Rng, radius: number, height: number, thickness: number, a
     // The branches stay under the crown laid over them: a limb that reached
     // past the leaves would read as a dead tree from above.
     .setLengthRatio(0.32)
-    .setTrunkLength(height * 0.62)
-    .setTrunkRadius(radius * thickness)
+    .setTrunkLength(bole)
+    .setTrunkRadius(thickness)
     .setRadialSegments(4)
     .setSectionLength(height / 4)
     .setTrunkClear(0.4)
@@ -216,39 +271,68 @@ function branches(rng: Rng, radius: number, height: number, thickness: number, a
   return geometry;
 }
 
-/** The crown of a broadleaf: clumps of leaf laid over the top of the skeleton. */
-function crown(shell: PlantShell, rng: Rng, radius: number, height: number, leaf: Rgb): void {
-  const count = rng.int(6, 8);
-  // The crown seats low on the trunk: a tall bare bole under a small crown
-  // reads as a stick from a camera that looks down on it.
-  const seat = height * 0.36;
-  for (let i = 0; i < count; i++) {
-    // The clumps ride an ellipsoid around the crown, spread by the golden angle
-    // so no two of them sit on top of each other.
-    const around = i * 2.399963 + rng.range(-0.4, 0.4);
-    const up = i / Math.max(1, count - 1);
-    const reach = radius * (0.26 + 0.16 * Math.sin(Math.PI * up));
-    const size = radius * rng.range(0.44, 0.56);
-    shell.blob(
-      Math.cos(around) * reach,
-      seat + (height - seat - size) * up + rng.range(-0.08, 0.08) * radius,
-      Math.sin(around) * reach,
-      size,
-      0.78,
+/**
+ * The crown of a broadleaf: one faceted mass over the skeleton, with a lobe or
+ * two off its flank so the silhouette is not a single dome. Every piece stays
+ * inside the radius, lobe and offset together.
+ */
+function crown(
+  shell: PlantShell,
+  rng: Rng,
+  radius: number,
+  height: number,
+  leaf: Rgb,
+  shape: { seat: number; waist: number; tip: number },
+): void {
+  const base = height * shape.seat;
+  shell.canopy(
+    rng,
+    { base, top: height, radius, sides: 7, rings: 3, lumps: 0.22, waist: shape.waist, tip: shape.tip },
+    leaf,
+  );
+  const lobes = rng.int(1, 2);
+  for (let i = 0; i < lobes; i++) {
+    const around = rng.range(0, Math.PI * 2);
+    const lobe = radius * rng.range(0.3, 0.42);
+    const off = (radius - lobe) * rng.range(0.6, 1);
+    shell.canopy(
+      rng,
+      {
+        x: Math.cos(around) * off,
+        z: Math.sin(around) * off,
+        base: base + (height - base) * rng.range(0.15, 0.4),
+        top: base + (height - base) * rng.range(0.7, 0.95),
+        radius: lobe,
+        sides: 5,
+        rings: 2,
+        lumps: 0.2,
+        waist: 0.8,
+        tip: 0.22,
+      },
       leaf,
     );
   }
 }
 
+/** A poplar or a cypress: a bare stem inside one tall narrow mass. */
+function column(shell: PlantShell, rng: Rng, radius: number, height: number, bark: Rgb, leaf: Rgb): void {
+  shell.tube(0, 0, 0, 0, height * 0.55, 0, radius * 0.16, radius * 0.1, 5, PLANT_BARK, bark);
+  shell.canopy(
+    rng,
+    { base: height * rng.range(0.1, 0.2), top: height, radius, sides: 6, rings: 4, lumps: 0.2, waist: 0.88, tip: 0.1 },
+    leaf,
+  );
+}
+
 /** The crown of a conifer: cones stacked up the trunk, narrowing to the top. */
 function spire(shell: PlantShell, rng: Rng, radius: number, height: number, leaf: Rgb): void {
-  const tiers = rng.int(3, 4);
-  const seat = height * 0.28;
+  const tiers = rng.int(4, 5);
+  const seat = height * 0.24;
   for (let i = 0; i < tiers; i++) {
     const t = i / tiers;
     const base = seat + (height - seat) * t;
-    const top = base + (height - seat) / tiers + height * 0.12;
-    shell.cone(base, Math.min(height, top), radius * (0.95 - 0.22 * t), 6, leaf);
+    const top = base + (height - seat) / tiers + height * 0.14;
+    shell.cone(base, Math.min(height, top), radius * (0.98 - 0.26 * t) * rng.range(0.9, 1), 6, leaf);
   }
 }
 
@@ -273,43 +357,108 @@ function palm(shell: PlantShell, rng: Rng, radius: number, height: number, bark:
     lastY = y;
     lastZ = z;
   }
-  const fronds = rng.int(6, 8);
+  // A small mass where the fronds meet, so the crown is not bald from above.
+  shell.canopy(
+    rng,
+    { x: lastX, z: lastZ, base: lastY - radius * 0.1, top: lastY + radius * 0.3, radius: radius * 0.24, sides: 5, rings: 2 },
+    leaf,
+  );
+  const fronds = rng.int(8, 11);
+  const reach = radius - Math.hypot(lastX, lastZ);
   for (let i = 0; i < fronds; i++) {
     const around = (i / fronds) * Math.PI * 2 + rng.range(-0.2, 0.2);
-    shell.frond(lastX, lastY, lastZ, around, radius * rng.range(0.68, 0.8), height * 0.2, radius * 0.26, leaf);
-  }
-}
-
-/** A shrub: a low stem under two or three clumps of leaf. */
-function bush(shell: PlantShell, rng: Rng, radius: number, height: number, bark: Rgb, leaf: Rgb): void {
-  shell.tube(0, 0, 0, 0, height * 0.4, 0, radius * 0.14, radius * 0.1, 4, PLANT_BARK, bark);
-  const count = rng.int(2, 3);
-  for (let i = 0; i < count; i++) {
-    const around = (i / count) * Math.PI * 2 + rng.range(-0.3, 0.3);
-    const reach = radius * rng.range(0.1, 0.3);
-    shell.blob(
-      Math.cos(around) * reach,
-      height * rng.range(0.5, 0.8),
-      Math.sin(around) * reach,
-      radius * rng.range(0.5, 0.68),
-      0.72,
+    // The last two hang dead against the trunk, which is what a palm does.
+    const dying = i >= fronds - 2;
+    shell.frond(
+      lastX,
+      lastY,
+      lastZ,
+      around,
+      reach * rng.range(dying ? 0.3 : 0.78, dying ? 0.45 : 0.98),
+      height * (dying ? -0.06 : 0.2),
+      radius * 0.24,
       leaf,
     );
   }
 }
 
-/** A tuft of dune grass: crossed blades, which is what a patch of it reads as. */
-function tuft(shell: PlantShell, rng: Rng, radius: number, height: number, leaf: Rgb): void {
-  const blades = rng.int(5, 7);
-  for (let i = 0; i < blades; i++) {
+/** A shrub: a low stem under a few faceted clumps, with sprigs out of the top. */
+function bush(shell: PlantShell, rng: Rng, radius: number, height: number, bark: Rgb, leaf: Rgb): void {
+  shell.tube(0, 0, 0, 0, height * 0.35, 0, radius * 0.14, radius * 0.1, 4, PLANT_BARK, bark);
+  const clumps = rng.int(3, 4);
+  for (let i = 0; i < clumps; i++) {
+    const around = (i / clumps) * Math.PI * 2 + rng.range(-0.3, 0.3);
+    // The clumps differ in size and in how high they sit, so the shrub reads as
+    // a few masses rather than as one green boulder.
+    const lobe = radius * rng.range(0.38, 0.56);
+    const off = (radius - lobe) * rng.range(0.7, 1);
+    const top = height * rng.range(0.6, 1);
+    shell.canopy(
+      rng,
+      {
+        x: Math.cos(around) * off,
+        z: Math.sin(around) * off,
+        // Never under the ground it stands on, however low the clump sits.
+        base: Math.max(height * 0.06, top - height * rng.range(0.45, 0.7)),
+        top,
+        radius: lobe,
+        sides: 5,
+        rings: 2,
+        lumps: 0.34,
+        waist: 0.7,
+        tip: 0.2,
+      },
+      leaf,
+    );
+  }
+  // Sprigs standing out of the mass, which is what says foliage rather than stone.
+  const sprigs = rng.int(4, 6);
+  for (let i = 0; i < sprigs; i++) {
     const around = rng.range(0, Math.PI * 2);
-    const reach = radius * rng.range(0, 0.7);
+    const reach = radius * rng.range(0, 0.5);
     shell.blade(
       Math.cos(around) * reach,
       Math.sin(around) * reach,
       rng.range(0, Math.PI),
-      height * rng.range(0.7, 1.3),
-      radius * rng.range(0.16, 0.26),
+      height * rng.range(0.9, 1.25),
+      radius * rng.range(0.08, 0.14),
+      leaf,
+    );
+  }
+}
+
+/** An agave: a rosette of stiff leaves leaning out of the ground. */
+function rosette(shell: PlantShell, rng: Rng, radius: number, height: number, leaf: Rgb): void {
+  const leaves = rng.int(7, 9);
+  shell.canopy(rng, { base: 0, top: height * 0.22, radius: radius * 0.3, sides: 5, rings: 2, waist: 0.9 }, leaf);
+  for (let i = 0; i < leaves; i++) {
+    const around = (i / leaves) * Math.PI * 2 + rng.range(-0.15, 0.15);
+    const out = rng.range(0.55, 1);
+    shell.spear(around, radius * out, height * rng.range(0.6, 1) * (1.1 - out), radius * 0.12, leaf);
+  }
+}
+
+/**
+ * A tuft of dune grass: a low mass with blades standing out of it. The blades
+ * alone were flat triangles standing on edge, which catch the sky rather than
+ * the sun and read as scraps of paper.
+ */
+function tuft(shell: PlantShell, rng: Rng, radius: number, height: number, leaf: Rgb): void {
+  shell.canopy(
+    rng,
+    { base: 0, top: height * rng.range(0.3, 0.42), radius: radius * 0.78, sides: 5, rings: 2, lumps: 0.3, waist: 0.9, tip: 0.3 },
+    leaf,
+  );
+  const blades = rng.int(6, 9);
+  for (let i = 0; i < blades; i++) {
+    const around = rng.range(0, Math.PI * 2);
+    const reach = radius * rng.range(0, 0.62);
+    shell.blade(
+      Math.cos(around) * reach,
+      Math.sin(around) * reach,
+      rng.range(0, Math.PI),
+      height * rng.range(0.7, 1.5),
+      radius * rng.range(0.08, 0.16),
       leaf,
     );
   }
@@ -319,184 +468,4 @@ function tuft(shell: PlantShell, rng: Rng, radius: number, height: number, leaf:
 function rgbOf(hex: number): Rgb {
   const colour = new Color(hex);
   return [colour.r, colour.g, colour.b];
-}
-
-/**
- * The triangles of one plant model, with what each of them belongs to and the
- * colour it is dressed in. Non-indexed, as the building shells are, so a batch
- * can hold either.
- */
-class PlantShell {
-  private readonly positions: number[] = [];
-  private readonly normals: number[] = [];
-  private readonly parts: number[] = [];
-  private readonly tints: number[] = [];
-
-  /** Take in the triangles of a geometry built elsewhere, and release it. */
-  add(geometry: BufferGeometry, part: number, tint: Rgb): void {
-    const position = geometry.getAttribute('position').array as ArrayLike<number>;
-    const normal = geometry.getAttribute('normal').array as ArrayLike<number>;
-    for (let i = 0; i + 2 < position.length; i += 3) {
-      this.positions.push(position[i] as number, position[i + 1] as number, position[i + 2] as number);
-      this.normals.push(normal[i] as number, normal[i + 1] as number, normal[i + 2] as number);
-      this.parts.push(part);
-      this.tints.push(tint[0], tint[1], tint[2]);
-    }
-    geometry.dispose();
-  }
-
-  /** A clump of leaf: a squashed icosahedron, which reads as a mass from above. */
-  blob(x: number, y: number, z: number, radius: number, squash: number, tint: Rgb): void {
-    const ball = new IcosahedronGeometry(radius, 0);
-    const position = ball.getAttribute('position').array as ArrayLike<number>;
-    const normal = ball.getAttribute('normal').array as ArrayLike<number>;
-    for (let i = 0; i + 2 < position.length; i += 3) {
-      const up = (position[i + 1] as number) * squash + y;
-      this.positions.push((position[i] as number) + x, up, (position[i + 2] as number) + z);
-      this.normals.push(normal[i] as number, normal[i + 1] as number, normal[i + 2] as number);
-      this.parts.push(PLANT_LEAF);
-      this.tints.push(tint[0], tint[1], tint[2]);
-    }
-    ball.dispose();
-  }
-
-  /** A cone standing on its own base, open underneath: one tier of a conifer. */
-  cone(baseY: number, topY: number, radius: number, sides: number, tint: Rgb): void {
-    for (let i = 0; i < sides; i++) {
-      const a = (i / sides) * Math.PI * 2;
-      const b = ((i + 1) / sides) * Math.PI * 2;
-      this.triangle(
-        [Math.cos(a) * radius, baseY, Math.sin(a) * radius],
-        [Math.cos(b) * radius, baseY, Math.sin(b) * radius],
-        [0, topY, 0],
-        PLANT_LEAF,
-        tint,
-      );
-    }
-  }
-
-  /** A tapered tube between two points, open at both ends: a trunk or a stem. */
-  tube(
-    x0: number,
-    y0: number,
-    z0: number,
-    x1: number,
-    y1: number,
-    z1: number,
-    r0: number,
-    r1: number,
-    sides: number,
-    part: number,
-    tint: Rgb,
-  ): void {
-    const axis = new Vector3(x1 - x0, y1 - y0, z1 - z0);
-    const across = perpendicular(axis);
-    const along = new Vector3().crossVectors(axis.clone().normalize(), across);
-    for (let i = 0; i < sides; i++) {
-      const a = (i / sides) * Math.PI * 2;
-      const b = ((i + 1) / sides) * Math.PI * 2;
-      const ringA = ringPoint(across, along, a);
-      const ringB = ringPoint(across, along, b);
-      const p0: Local = [x0 + ringA.x * r0, y0 + ringA.y * r0, z0 + ringA.z * r0];
-      const p1: Local = [x0 + ringB.x * r0, y0 + ringB.y * r0, z0 + ringB.z * r0];
-      const p2: Local = [x1 + ringB.x * r1, y1 + ringB.y * r1, z1 + ringB.z * r1];
-      const p3: Local = [x1 + ringA.x * r1, y1 + ringA.y * r1, z1 + ringA.z * r1];
-      this.triangle(p0, p1, p2, part, tint);
-      this.triangle(p0, p2, p3, part, tint);
-    }
-  }
-
-  /**
-   * One frond of a palm: a tapered strip drooping away from the crown, drawn
-   * from both sides so it reads from under the tree as well as from over it.
-   */
-  frond(x: number, y: number, z: number, around: number, reach: number, rise: number, width: number, tint: Rgb): void {
-    const dx = Math.cos(around);
-    const dz = Math.sin(around);
-    const steps = 3;
-    for (let i = 0; i < steps; i++) {
-      const t0 = i / steps;
-      const t1 = (i + 1) / steps;
-      const w0 = width * (1 - t0) * (t0 < 0.2 ? t0 / 0.2 : 1);
-      const w1 = width * (1 - t1) * (t1 < 0.2 ? t1 / 0.2 : 1);
-      // The frond rises out of the crown and then falls away under its own weight.
-      const y0 = y + rise * (t0 - t0 * t0 * 2.2);
-      const y1 = y + rise * (t1 - t1 * t1 * 2.2);
-      const a: Local = [x + dx * reach * t0 - dz * w0, y0, z + dz * reach * t0 + dx * w0];
-      const b: Local = [x + dx * reach * t0 + dz * w0, y0, z + dz * reach * t0 - dx * w0];
-      const c: Local = [x + dx * reach * t1 + dz * w1, y1, z + dz * reach * t1 - dx * w1];
-      const d: Local = [x + dx * reach * t1 - dz * w1, y1, z + dz * reach * t1 + dx * w1];
-      this.triangle(a, b, c, PLANT_LEAF, tint);
-      this.triangle(a, c, d, PLANT_LEAF, tint);
-      this.triangle(a, c, b, PLANT_LEAF, tint);
-      this.triangle(a, d, c, PLANT_LEAF, tint);
-    }
-  }
-
-  /** One blade of grass: an upright fan, drawn from both sides. */
-  blade(x: number, z: number, around: number, rise: number, width: number, tint: Rgb): void {
-    const dx = Math.cos(around) * width;
-    const dz = Math.sin(around) * width;
-    const tipX = x + dx * 0.6;
-    const tipZ = z + dz * 0.6;
-    const a: Local = [x - dx, 0, z - dz];
-    const b: Local = [x + dx, 0, z + dz];
-    const c: Local = [tipX, rise, tipZ];
-    this.triangle(a, b, c, PLANT_LEAF, tint);
-    this.triangle(a, c, b, PLANT_LEAF, tint);
-  }
-
-  /** One triangle, with the normal of the face it belongs to. */
-  triangle(a: Local, b: Local, c: Local, part: number, tint: Rgb): void {
-    const n = normalOf(a, b, c);
-    for (const p of [a, b, c]) {
-      this.positions.push(p[0], p[1], p[2]);
-      this.normals.push(n[0], n[1], n[2]);
-      this.parts.push(part);
-      this.tints.push(tint[0], tint[1], tint[2]);
-    }
-  }
-
-  /** The triangles as a geometry. */
-  geometry(): BufferGeometry {
-    const geometry = new BufferGeometry();
-    geometry.setAttribute('position', new BufferAttribute(new Float32Array(this.positions), 3));
-    geometry.setAttribute('normal', new BufferAttribute(new Float32Array(this.normals), 3));
-    geometry.setAttribute('part', new BufferAttribute(new Float32Array(this.parts), 1));
-    geometry.setAttribute('tint', new BufferAttribute(new Float32Array(this.tints), 3));
-    return geometry;
-  }
-}
-
-/** A point in a plant's own frame. */
-type Local = [number, number, number];
-
-/** The unit normal of a triangle, which is the way the face it belongs to looks. */
-function normalOf(a: Local, b: Local, c: Local): Local {
-  const ux = b[0] - a[0];
-  const uy = b[1] - a[1];
-  const uz = b[2] - a[2];
-  const vx = c[0] - a[0];
-  const vy = c[1] - a[1];
-  const vz = c[2] - a[2];
-  const nx = uy * vz - uz * vy;
-  const ny = uz * vx - ux * vz;
-  const nz = ux * vy - uy * vx;
-  const span = Math.hypot(nx, ny, nz) || 1;
-  return [nx / span, ny / span, nz / span];
-}
-
-/** A unit vector across an axis, whichever way the axis points. */
-function perpendicular(axis: Vector3): Vector3 {
-  const up = Math.abs(axis.y) > Math.abs(axis.x) ? new Vector3(1, 0, 0) : new Vector3(0, 1, 0);
-  return new Vector3().crossVectors(axis, up).normalize();
-}
-
-/** A point on the unit ring of a tube, in the plane the two vectors span. */
-function ringPoint(across: Vector3, along: Vector3, angle: number): Vector3 {
-  return new Vector3(
-    across.x * Math.cos(angle) + along.x * Math.sin(angle),
-    across.y * Math.cos(angle) + along.y * Math.sin(angle),
-    across.z * Math.cos(angle) + along.z * Math.sin(angle),
-  );
 }
