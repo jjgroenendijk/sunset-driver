@@ -24,6 +24,11 @@ after dark is in `docs/lighting.md`, and the one interior the scene ever holds i
 - `character.ts` builds the player of spec section 11.1 from boxes, and hangs them off a rig of
   groups: a hip and a knee each side, a shoulder each side, the torso over the hips, and the body
   itself. The rig stands in its bind pose, so a model nobody animates is a person standing up.
+- The hair cap carries the crown alone: the head box stops half a cap short of the top, so its top
+  face is buried in the hair rather than standing on the same plane as the hair's own. The cap is
+  wider than the head by the hair's volume each way, so nothing of the head that band gave up was
+  ever drawn. The camera looks down, so the crown is the face of a person it sees most of, and two
+  surfaces fighting over it shimmer as the camera moves (issue #579).
 - `character-pose.ts` says what angle every joint takes, and holds no three.js, so the whole of the
   movement is read and tested without a renderer. There are four stances and the record picks
   between them: `stand` breathes, `walk` swings the legs and the arms against each other, `air`
