@@ -9,9 +9,11 @@
  *
  * - `position` and `roomCenter` stay 32-bit floats, because they are places in
  *   the world.
- * - `normal` is four signed bytes and `tint` four unsigned ones, read back as
- *   floats in -1..1 and 0..1. WebGPU reads a vertex in steps of four bytes, so
- *   the fourth byte is padding.
+ * - `normal` is four signed bytes, and `tint` and `finish` four unsigned ones,
+ *   read back as floats in -1..1 and 0..1. WebGPU reads a vertex in steps of
+ *   four bytes, so the fourth byte is padding. A finish is a whole number
+ *   stepped by `FINISH_STEP` (`building-finish.ts`) for that reason: a step
+ *   that wide is a code a byte carries exactly.
  * - `uv` and `roomSize` are half floats. The facade's `uv` stays within ±20 and
  *   the room within 11 m, where a half float still resolves a sixtieth of a
  *   unit. It is a `Float16Array` and never a `Float16BufferAttribute`: three.js
@@ -48,7 +50,7 @@ function packAttribute(attribute: PackedAttribute): PackedAttribute {
     }
     return { name, array: out, itemSize: 4, normalized: true };
   }
-  if (name === 'tint' && itemSize === 3) {
+  if ((name === 'tint' || name === 'finish') && itemSize === 3) {
     // A clamped array rounds and clamps as it is written.
     const out = new Uint8ClampedArray((array.length / 3) * 4);
     for (let v = 0, at = 0; v < array.length; v += 3, at += 4) {

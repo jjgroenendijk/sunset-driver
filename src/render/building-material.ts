@@ -12,8 +12,12 @@
  *
  * Both lit materials carry the emissive window mask: the glass of a building is
  * picked out, some of it is lit, and the whole of it is multiplied by one
- * `night` uniform. The uniform is 0 by daylight and nothing glows; the day and
- * night cycle of spec section 10.5 is issue #21 and owns it from there.
+ * `night` uniform. The uniform is 0 by daylight and nothing glows.
+ *
+ * What each building is made of and how it burns after dark is its own
+ * (`building-finish.ts`), carried on its vertices as its colour is. The walls
+ * are drawn by `wall-material.ts` and the night by `night-material.ts`; this
+ * file is what hands each of them the numbers off the geometry.
  *
  * The build ships no image files, so the grain of render, brick and metal is
  * fractal noise in the shader, as the ground's and the roads' are.
@@ -25,7 +29,9 @@ import { BackSide, Color } from 'three';
 import { createSkyscraperMaterial } from 'three/examples/jsm/generators/city/SkyscraperGenerator.js';
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import {
+  BLOCK_BEACON,
   BLOCK_CONCRETE,
+  BLOCK_CROWN,
   BLOCK_CURTAIN,
   BLOCK_GLASS,
   BLOCK_MEMBRANE,
@@ -41,9 +47,22 @@ import {
   BLOCK_STUCCO,
   BLOCK_TILE,
   BLOCK_TRIM,
+  BLOCK_WALL,
   BLOCK_WATER,
 } from './block-mesh.ts';
+import { FINISH_STEP, GLOW_KINDS } from './building-finish.ts';
 import type { BuildingCutaway } from './cutaway.ts';
+import {
+  NEON_GAIN,
+  WINDOW_GAIN,
+  beaconLight,
+  crownLight,
+  glowColour,
+  litWindows,
+  neonColour,
+  placeDraw,
+} from './night-material.ts';
+import { wallGloss, wallSurface, weathered } from './wall-material.ts';
 import {
   attribute,
   float,
@@ -77,17 +96,6 @@ const STOREY = 3.2;
 const WINDOW_PITCH = 2.2;
 const MULLION = 0.28;
 
-/** How much of the windows are lit after dark, and how warm that light is. */
-const LIT_SHARE = 0.45;
-const WINDOW_GLOW = 0xffd9a2;
-
-/**
- * How hard a lit window burns, as a multiple of {@link WINDOW_GLOW}. At 1 it
- * stayed under the bloom threshold of `post.ts` once exposed, and a lit tower
- * read as painted yellow rather than lit.
- */
-const WINDOW_GAIN = 2.5;
-
 /** Glass by day: dark, and darker still where it faces away from the sky. */
 const GLAZING = 0x2a3338;
 
@@ -112,7 +120,7 @@ const SLATE = 0x545a62;
 const WATER = 0x2f7f9c;
 const PAINT = 0xe6e2d6;
 
-/** Metres of one rib of corrugated metal. */
+/** Metres of one rib of the corrugated metal a roller door and a metal roof are. */
 const RIB_METRES = 0.35;
 
 /**
@@ -127,9 +135,6 @@ const MULLION_SHARE = 0.1;
 const SPANDREL_SHARE = 0.34;
 /** The mullion of a curtain wall, and how much darker a pane is than its tint. */
 const MULLION_COLOUR = 0x8f9499;
-
-/** Metres of one board of the shuttering a Brutalist wall is cast against. */
-const BOARD_METRES = 0.45;
 
 /**
  * The punched window each styled wall carries, drawn in the shader: how far
@@ -149,9 +154,12 @@ const PUNCHED = {
 /** How wide across its panel a Miami porthole is drawn, and how far up its storey. */
 const PORTHOLE = { across: 0.42, up: 0.55, radius: 0.26 };
 
-/** The neon of a Deco or a Miami edge after dark, and how hard it burns. */
-const NEON_COLOURS = [0xff3d8b, 0x36e6ff, 0xffc93d];
-const NEON_GAIN = 3.2;
+/** Metres of one board of the shuttering a Brutalist wall is cast against. */
+const BOARD_METRES = 0.45;
+
+/** The concrete a crown and a beacon post are cast in by daylight. */
+const CROWN = 0xc3bdb1;
+const LAMP_OFF = 0x5c2420;
 
 /** The materials a world's buildings are drawn with, and the night they share. */
 export interface BuildingMaterials {
@@ -163,6 +171,13 @@ export interface BuildingMaterials {
   outline: MeshBasicNodeMaterial;
   /** How far into the night it is, 0 by day and 1 at midnight. */
   night: { value: number };
+  /**
+   * How deep into the night it is, 0 at dusk and 1 in the small hours. It is
+   * what empties an office and leaves a shop lit (spec section 10.5).
+   */
+  late: { value: number };
+  /** Where the aircraft beacons are in their blink, 0 to 1 once a cycle. */
+  beacon: { value: number };
   dispose(): void;
 }
 
@@ -172,8 +187,10 @@ export interface BuildingMaterials {
  */
 export function createBuildingMaterials(cutaway: BuildingCutaway): BuildingMaterials {
   const night = uniform(0);
-  const facade = createFacadeMaterial(night);
-  const block = createBlockMaterial(night);
+  const late = uniform(0);
+  const beacon = uniform(0);
+  const facade = createFacadeMaterial(night, late);
+  const block = createBlockMaterial(night, late, beacon);
   const outline = new MeshBasicNodeMaterial({ color: new Color(OUTLINE), side: BackSide, fog: true });
   cutaway.dressShell(facade);
   cutaway.dressShell(block);
@@ -183,6 +200,8 @@ export function createBuildingMaterials(cutaway: BuildingCutaway): BuildingMater
     block,
     outline,
     night,
+    late,
+    beacon,
     dispose(): void {
       facade.dispose();
       block.dispose();
@@ -197,7 +216,7 @@ export function createBuildingMaterials(cutaway: BuildingCutaway): BuildingMater
  * which is what lets one material dress a whole city: `building-mesh.ts` writes
  * the palette pick of every tower into its vertices.
  */
-function createFacadeMaterial(night: TslNode): MeshStandardNodeMaterial {
+function createFacadeMaterial(night: TslNode, late: TslNode): MeshStandardNodeMaterial {
   const material = createSkyscraperMaterial(attribute('tint', 'vec3')) as MeshStandardNodeMaterial;
   const partId = attribute('partId', 'float');
   const glass = is(partId, FACADE_GLASS).add(is(partId, FACADE_SHOPGLASS));
@@ -209,8 +228,23 @@ function createFacadeMaterial(night: TslNode): MeshStandardNodeMaterial {
     positionWorld.y.div(STOREY).floor(),
     positionWorld.z.div(40).floor(),
   );
-  material.emissiveNode = rgb(WINDOW_GLOW).mul(WINDOW_GAIN).mul(glass).mul(lit(storey)).mul(night);
+  const finish = finishOf();
+  const glow = glowColour(finish.glow).mul(WINDOW_GAIN);
+  material.emissiveNode = glow.mul(glass).mul(litWindows(storey, finish.glow, finish.lit, late)).mul(night);
   return material;
+}
+
+/**
+ * What the building this fragment belongs to is finished in, read off its
+ * vertices (`building-finish.ts`). The wall material and the colour of the
+ * window light are one whole number stepped by `FINISH_STEP`, because the
+ * attribute is packed into bytes, so both are taken back out of it here.
+ */
+function finishOf(): { wall: TslNode; glow: TslNode; lit: TslNode; age: TslNode } {
+  const finish = attribute('finish', 'vec3');
+  const code = finish.x.mul(255 / FINISH_STEP).add(0.5).floor();
+  const wall = code.div(GLOW_KINDS).floor();
+  return { wall, glow: code.sub(wall.mul(GLOW_KINDS)), lit: finish.y, age: finish.z };
 }
 
 /**
@@ -227,10 +261,11 @@ function createFacadeMaterial(night: TslNode): MeshStandardNodeMaterial {
  * a frame several milliseconds. The grid is the same one each part draws its
  * windows on: only how wide a column of them stands changes.
  */
-function createBlockMaterial(night: TslNode): MeshStandardNodeMaterial {
+function createBlockMaterial(night: TslNode, late: TslNode, beacon: TslNode): MeshStandardNodeMaterial {
   const material = new MeshStandardNodeMaterial({ metalness: 0 });
   const part = attribute('part', 'float');
   const tint = attribute('tint', 'vec3');
+  const finish = finishOf();
   const grain = noise01(GRAIN_METRES, 3);
   const patch = noise01(PATCH_METRES, 2);
 
@@ -254,10 +289,15 @@ function createBlockMaterial(night: TslNode): MeshStandardNodeMaterial {
   const seeThrough = vision();
   const eye = round();
   const punchedAt = { concrete: hole('concrete'), stone: hole('stone'), stucco: hole('stucco') };
-  const neonColour = neon();
+  // The one draw a place makes: the colour of a neon strip, the colour of a
+  // floodlit crown and the phase a beacon blinks on all come off it.
+  const draw = placeDraw();
+  const neon = neonColour(draw);
   const pastel = tint.mul(float(0.9).add(patch.mul(0.14)).add(grain.mul(0.06)));
 
-  const wall = tint.mul(float(0.78).add(patch.mul(0.28)).add(grain.mul(0.16)));
+  // The wall itself: brick, stucco, siding, corrugated metal, tile or concrete
+  // as the building carries it, weathered by as much as its own age says.
+  const wall = weathered(wallSurface(tint, finish.wall, grain, patch), finish.age, grain);
   const glass = mix(rgb(TRIM).mul(0.7), rgb(GLAZING), glazed);
   // A tile and a slate roof take the weathering patch as their own colour, so
   // one street of houses is roofed in several shades of the same material.
@@ -280,7 +320,9 @@ function createBlockMaterial(night: TslNode): MeshStandardNodeMaterial {
     [BLOCK_STONE, punched(tint.mul(float(0.84).add(patch.mul(0.2)).add(grain.mul(0.12))), punchedAt.stone)],
     [BLOCK_STUCCO, punched(pastel, punchedAt.stucco)],
     [BLOCK_PORTHOLE, mix(pastel, rgb(GLAZING), eye)],
-    [BLOCK_NEON, neonColour.mul(0.7)],
+    [BLOCK_NEON, neon.mul(0.7)],
+    [BLOCK_CROWN, rgb(CROWN).mul(float(0.85).add(grain.mul(0.2)))],
+    [BLOCK_BEACON, rgb(LAMP_OFF)],
   ];
   let surface = wall;
   for (const [id, colour] of dressed) surface = mix(surface, colour, is(part, id));
@@ -308,14 +350,27 @@ function createBlockMaterial(night: TslNode): MeshStandardNodeMaterial {
     .add(stoneAt.mul(punchedAt.stone))
     .add(stuccoAt.mul(punchedAt.stucco))
     .add(portholeAt.mul(eye));
-  // Neon burns whatever else is lit: it is the one part that is a lamp.
-  const strip = neonColour.mul(NEON_GAIN).mul(is(part, BLOCK_NEON));
-  material.emissiveNode = rgb(WINDOW_GLOW).mul(WINDOW_GAIN).mul(window).mul(lit(cell)).add(strip).mul(night);
+  // The three parts that are lamps rather than lit surfaces: the neon of a
+  // Deco or a Miami edge, the floodlit crown of a tower, and the red aircraft
+  // beacon on the tallest roofs, which blinks on its own phase.
+  const lamps = neon
+    .mul(NEON_GAIN)
+    .mul(is(part, BLOCK_NEON))
+    .add(crownLight(neon, draw).mul(is(part, BLOCK_CROWN)))
+    .add(beaconLight(beacon, draw).mul(is(part, BLOCK_BEACON)));
+  const glow = glowColour(finish.glow).mul(WINDOW_GAIN);
+  const lit = litWindows(cell, finish.glow, finish.lit, late);
+  material.emissiveNode = glow.mul(window).mul(lit).add(lamps).mul(night);
   // Render, brick and felt are rough; glass, a solar panel and water are not.
   const mirror = curtainAt.mul(seeThrough);
   const smooth = glassAt.add(is(part, BLOCK_SOLAR)).add(is(part, BLOCK_WATER)).add(mirror);
+  const wallAt = is(part, BLOCK_WALL);
   material.roughnessNode = mix(
-    float(0.92).sub(grain.mul(0.12)).sub(is(part, BLOCK_METAL).mul(0.35)).sub(stuccoAt.mul(0.25)),
+    float(0.92)
+      .sub(grain.mul(0.12))
+      .sub(is(part, BLOCK_METAL).mul(0.35))
+      .sub(stuccoAt.mul(0.25))
+      .sub(wallGloss(finish.wall).mul(wallAt)),
     float(0.1),
     smooth,
   );
@@ -372,18 +427,6 @@ function round(): TslNode {
   return float(1).sub(smoothstep(PORTHOLE.radius - 0.04, PORTHOLE.radius, across.mul(across).add(up.mul(up)).sqrt()));
 }
 
-/**
- * The colour of a neon strip. A building cannot pass its own seed to a shader,
- * so the colour is drawn from the ground the strip stands over: one building's
- * strips are all one colour, and its neighbour's are another.
- */
-function neon(): TslNode {
-  const cell = vec3(positionWorld.x.div(34).floor(), 0, positionWorld.z.div(34).floor());
-  const draw = fractalNoise(cell.mul(0.43), 1).mul(0.5).add(0.5);
-  const first = mix(rgb(NEON_COLOURS[0] as number), rgb(NEON_COLOURS[1] as number), step(0.34, draw));
-  return mix(first, rgb(NEON_COLOURS[2] as number), step(0.67, draw));
-}
-
 /** The board marks of the shuttering a Brutalist wall was cast against. */
 function board(grain: TslNode): TslNode {
   return positionWorld.y.div(BOARD_METRES).fract().sub(0.5).abs().mul(0.14).add(grain.mul(0.1));
@@ -397,11 +440,6 @@ function gap(at: TslNode, share: number): TslNode {
 /** 1 where a part attribute carries exactly `id`, 0 everywhere else. */
 function is(part: TslNode, id: number): TslNode {
   return step(id - 0.5, part).mul(float(1).sub(step(id + 0.5, part)));
-}
-
-/** Which cells of a grid have their light on: a little under half of them. */
-function lit(cell: TslNode): TslNode {
-  return smoothstep(LIT_SHARE - 0.08, LIT_SHARE + 0.08, fractalNoise(cell.mul(0.37), 1).mul(0.5).add(0.5));
 }
 
 /** A colour constant in the working colour space, as a shader node. */

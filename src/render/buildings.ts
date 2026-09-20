@@ -43,7 +43,28 @@ export class BuildingScenery {
   }
 
   set night(amount: number) {
-    this.materials.night.value = amount < 0 ? 0 : amount > 1 ? 1 : amount;
+    this.materials.night.value = held(amount);
+  }
+
+  /**
+   * How deep into the night it is, 0 at dusk and 1 in the small hours. An
+   * office empties as it rises and a shop stays lit (spec section 10.5).
+   */
+  get late(): number {
+    return this.materials.late.value;
+  }
+
+  set late(amount: number) {
+    this.materials.late.value = held(amount);
+  }
+
+  /** Where the aircraft beacons of the tallest towers are in their blink, 0 to 1. */
+  get beacon(): number {
+    return this.materials.beacon.value;
+  }
+
+  set beacon(phase: number) {
+    this.materials.beacon.value = held(phase);
   }
 
   /**
@@ -80,4 +101,9 @@ export class BuildingScenery {
   dispose(): void {
     this.materials.dispose();
   }
+}
+
+/** A share held inside 0..1, whatever the caller hands over. */
+function held(amount: number): number {
+  return amount < 0 ? 0 : amount > 1 ? 1 : amount;
 }

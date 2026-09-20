@@ -14,6 +14,7 @@
  */
 import { BufferAttribute, BufferGeometry } from 'three';
 import { hashInts } from '../core/hash.ts';
+import { PLAIN_FINISH, type FinishCode } from './building-finish.ts';
 import type { BuildingMassing, Rgb } from './building-mesh.ts';
 import type { StyledLook } from './building-style.ts';
 
@@ -69,6 +70,17 @@ export const BLOCK_NEON = 16;
  * carry its windows at every detail without a band of glazing a storey.
  */
 export const BLOCK_STONE = 17;
+/**
+ * The crown of a tall building: the band under its topmost parapet, and the
+ * steps and the spire of a Deco one. The night floodlights it (spec section
+ * 10.5), which is the one thing that tells it from the wall below it.
+ */
+export const BLOCK_CROWN = 18;
+/**
+ * The red aircraft beacon on the tallest roofs (spec section 10.5). It is its
+ * own part so the night can blink it on its own phase.
+ */
+export const BLOCK_BEACON = 19;
 
 /** Metres of one storey, which is what the window bands are spaced by. */
 export const STOREY = 3.2;
@@ -363,21 +375,30 @@ export class Shell {
     }
   }
 
-  /** The triangles as a geometry, every vertex carrying the building's colour. */
-  geometry(tint: Rgb): BufferGeometry {
+  /**
+   * The triangles as a geometry, every vertex carrying the building's colour
+   * and its finish (`building-finish.ts`): the material reads both off the
+   * vertex, which is what lets one material dress a whole batch.
+   */
+  geometry(tint: Rgb, finish: FinishCode = PLAIN_FINISH): BufferGeometry {
     const geometry = new BufferGeometry();
     const count = this.parts.length;
     const tints = new Float32Array(count * 3);
+    const finishes = new Float32Array(count * 3);
     for (let v = 0; v < count; v++) {
       tints[v * 3] = tint[0];
       tints[v * 3 + 1] = tint[1];
       tints[v * 3 + 2] = tint[2];
+      finishes[v * 3] = finish[0];
+      finishes[v * 3 + 1] = finish[1];
+      finishes[v * 3 + 2] = finish[2];
     }
     geometry.setAttribute('position', new BufferAttribute(new Float32Array(this.positions), 3));
     geometry.setAttribute('normal', new BufferAttribute(new Float32Array(this.normals), 3));
     geometry.setAttribute('uv', new BufferAttribute(new Float32Array(this.uvs), 2));
     geometry.setAttribute('part', new BufferAttribute(new Float32Array(this.parts), 1));
     geometry.setAttribute('tint', new BufferAttribute(tints, 3));
+    geometry.setAttribute('finish', new BufferAttribute(finishes, 3));
     return geometry;
   }
 }

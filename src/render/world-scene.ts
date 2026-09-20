@@ -41,7 +41,7 @@ import { ChunkPool, type ChunkStream } from './chunk-pool.ts';
 import { ChunkTiles } from './chunk-tiles.ts';
 import { BloodView } from './blood.ts';
 import { DamageFx } from './damage-fx.ts';
-import { daylightAt, type Daylight } from './daylight.ts';
+import { beaconPhase, daylightAt, type Daylight } from './daylight.ts';
 import { EntityFade } from './fade.ts';
 import { createGroundMaterial } from './ground-material.ts';
 import { Headlights } from './headlights.ts';
@@ -627,6 +627,8 @@ export class WorldScene {
     this.sky.setFog(fog.near, fog.far);
     this.water.setDaylight(light);
     this.buildings.night = light.night;
+    this.buildings.late = light.late;
+    this.buildings.beacon = beaconPhase(this.tick);
     this.lamps.lamps = light.lamps;
     this.metroStairs.lamps = light.lamps;
     this.signs.night = light.lamps;

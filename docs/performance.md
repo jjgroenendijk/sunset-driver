@@ -155,7 +155,7 @@ Issue #453 measured it before and after four changes:
   first draw kept its arrays until then, and most batches of a settled scene had not been drawn.
   This alone moved 267 MB from the page to the GPU and saved nothing in total. It matters because
   the page's own memory is what iOS Safari kills a page for, and the GPU's is not in it.
-- **Facades are packed** (`facade-pack.ts`). A vertex is 44 bytes instead of 144, and drawn through
+- **Facades are packed** (`facade-pack.ts`). A vertex is 48 bytes instead of 144, and drawn through
   an index, so a shared corner is stored once. The dearest core chunk's facades went from 1.29 M
   vertices and 83.5 MB to 0.72 M and 32.8 MB. Packing costs the worker about 80 ms a core chunk.
 - **Only the post graph drawn holds its targets** (`post.ts`). The rest are shrunk to a pixel.

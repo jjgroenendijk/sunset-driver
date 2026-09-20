@@ -44,6 +44,7 @@ import { buildBlockGeometry, buildDressGeometry, buildMassingGeometry, roofDeckO
 import { BLOCK_WALL, Shell } from './block-shell.ts';
 import { hullOf } from './building-hull.ts';
 import { boxesOf, shapeOf, type BuildingShape, type ShapeBox } from './building-shape.ts';
+import { finishCode, finishOf, type FinishCode } from './building-finish.ts';
 import { planFor, styleColour, styleOf, type BuildingStyle } from './building-style.ts';
 import {
   batchOf,
@@ -215,6 +216,10 @@ export function buildChunkBuildings(
     // A tower keeps its colour at every detail, so the skyline does not change
     // colour where the detail steps down.
     const tint = tintOf(building, look, generated);
+    // What its walls are made of, how weathered they are and how it lights up
+    // after dark (spec sections 10.3, 10.5). Every vertex carries it, so one
+    // material dresses a whole batch of differently finished buildings.
+    const finish = finishCode(finishOf(building.kind, look, building.seed, district.wealth));
     // Every variant and every piece of rooftop plant is drawn from the
     // building's own seed and the wealth of the district it stands in, so the
     // same building is dressed the same way in every session.
@@ -231,15 +236,15 @@ export function buildChunkBuildings(
     let shell: BufferGeometry;
     let dress: BufferGeometry | undefined;
     if (batch === 'facade') {
-      const built = facadeGeometry(building, massing, shape, tint);
+      const built = facadeGeometry(building, massing, shape, tint, finish);
       shell = built.shell;
       // A generated tower's roofs are measured off the geometry the generator
       // built, because its crown draws in from the footprint it was given.
-      dress = dressOf(built.decks, style, tint);
+      dress = dressOf(built.decks, style, tint, finish);
     } else if (detail === 'far') {
-      shell = buildMassingGeometry(massing, tint, farBoxes(shape, massing));
+      shell = buildMassingGeometry(massing, tint, finish, farBoxes(shape, massing));
     } else {
-      const built = buildBlockGeometry(building.kind, massing, tint, style, boxesOf(shape, massing, massing.height, 0));
+      const built = buildBlockGeometry(building.kind, massing, tint, finish, style, boxesOf(shape, massing, massing.height, 0));
       shell = built.shell;
       dress = built.dress;
     }
@@ -249,7 +254,7 @@ export function buildChunkBuildings(
     // reach it.
     const wall = building.shared.left || building.shared.right;
     const fit = fitOf({ width: box.max.x - box.min.x, depth: box.max.z - box.min.z }, massing, wall);
-    const footing = footingGeometry(shape, box, fit, stand.footing, tint);
+    const footing = footingGeometry(shape, box, fit, stand.footing, tint, finish);
     // A lot on a bend leans its side edges, and a wall it shares follows them.
     // The hull is leaned with the shell, so it is built knowing the lean: that
     // is what keeps its rim one width wide on a lot that is not square.
@@ -280,12 +285,17 @@ export function buildChunkBuildings(
  * of several boxes has a roof on each of them — the terrace of a podium, the
  * arm of an L — and each is dressed on its own.
  */
-function dressOf(decks: readonly RoofDeck[], style: BlockStyle, tint: Rgb): BufferGeometry | undefined {
+function dressOf(
+  decks: readonly RoofDeck[],
+  style: BlockStyle,
+  tint: Rgb,
+  finish: FinishCode,
+): BufferGeometry | undefined {
   const built: BufferGeometry[] = [];
   for (let i = 0; i < decks.length; i++) {
     // Each roof is dressed from its own draw, so a podium terrace and the tower
     // over it do not carry the same water tank in the same corner.
-    const dressed = buildDressGeometry(decks[i], { ...style, seed: style.seed + i * 977 }, tint);
+    const dressed = buildDressGeometry(decks[i], { ...style, seed: style.seed + i * 977 }, tint, finish);
     if (dressed !== undefined) built.push(dressed);
   }
   if (built.length === 0) return undefined;
@@ -388,6 +398,7 @@ function facadeGeometry(
   massing: BuildingMassing,
   shape: BuildingShape,
   tint: Rgb,
+  finish: FinishCode,
 ): { shell: BufferGeometry; decks: RoofDeck[] } {
   const footprint = facadeFootprint(massing);
   const boxes = boxesOf(shape, footprint, massing.height, massing.chamfer);
@@ -414,12 +425,17 @@ function facadeGeometry(
   const geometry = built.length === 1 ? (built[0] as BufferGeometry) : (mergeGeometries(built) as BufferGeometry);
   const count = geometry.getAttribute('position').count;
   const tints = new Float32Array(count * 3);
+  const finishes = new Float32Array(count * 3);
   for (let v = 0; v < count; v++) {
     tints[v * 3] = tint[0];
     tints[v * 3 + 1] = tint[1];
     tints[v * 3 + 2] = tint[2];
+    finishes[v * 3] = finish[0];
+    finishes[v * 3 + 1] = finish[1];
+    finishes[v * 3 + 2] = finish[2];
   }
   geometry.setAttribute('tint', new BufferAttribute(tints, 3));
+  geometry.setAttribute('finish', new BufferAttribute(finishes, 3));
   return { shell: geometry, decks };
 }
 
@@ -619,6 +635,7 @@ function footingGeometry(
   fit: Fit,
   footing: number,
   tint: Rgb,
+  finish: FinishCode,
 ): BufferGeometry | undefined {
   if (footing <= 0) return undefined;
   const around = { width: box.max.x - box.min.x, depth: box.max.z - box.min.z };
@@ -631,7 +648,7 @@ function footingGeometry(
     const lap = Math.min(FOOTING_LAP, one.to);
     shell.box(one.x - one.width / 2, one.x + one.width / 2, -drop, lap, one.z - one.depth / 2, one.z + one.depth / 2, BLOCK_WALL);
   }
-  return shell.count === 0 ? undefined : shell.geometry(tint);
+  return shell.count === 0 ? undefined : shell.geometry(tint, finish);
 }
 
 /**

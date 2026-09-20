@@ -122,6 +122,12 @@ function footingsIn(cx: number, cy: number, detail: ChunkDetail): number {
   return placed.filter((one) => one.footing !== undefined).length;
 }
 
+/** Buildings of a chunk that carry rooftop dressing at a detail. */
+function dressedIn(cx: number, cy: number, detail: ChunkDetail): number {
+  const placed = buildChunkBuildings(source.chunk(cx, cy), lookups.buildings, detail);
+  return placed.filter((one) => one.dress !== undefined).length;
+}
+
 describe('the rings around the player', () => {
   it('asks for the near ring in full and the far ring behind it', () => {
     const wants = wantedChunks(3, -2);
@@ -248,9 +254,16 @@ describe('a chunk as a payload', () => {
     const near = payloadOf(MIDDLE.cx, MIDDLE.cy, 'near');
     const mid = payloadOf(MIDDLE.cx, MIDDLE.cy, 'mid');
     expect(mid.facades).toHaveLength(0);
-    // Mid detail dresses no roof, so a building is one block and, where the
-    // ground falls across its lot, the footing under it (`building-mesh.ts`).
-    expect(partsIn(mid.blocks)).toBe(partsIn(mid.outlines) + footingsIn(MIDDLE.cx, MIDDLE.cy, 'mid'));
+    // Mid detail dresses no roof but the aircraft beacon of the tallest towers
+    // (`roof-dress.ts`), so a building is one block, the beacon where it stands
+    // high enough, and the footing where the ground falls across its lot
+    // (`building-mesh.ts`).
+    const dressed = dressedIn(MIDDLE.cx, MIDDLE.cy, 'mid');
+    expect(dressed).toBeGreaterThan(0);
+    expect(dressed).toBeLessThan(partsIn(mid.outlines));
+    expect(partsIn(mid.blocks)).toBe(
+      partsIn(mid.outlines) + dressed + footingsIn(MIDDLE.cx, MIDDLE.cy, 'mid'),
+    );
     expect(partsIn(mid.outlines)).toBe(partsIn(near.outlines));
     expect(mid.ground.gridSize).toBe(near.ground.gridSize);
     expect(mid.roads.map((tier) => tier.tier)).toEqual(near.roads.map((tier) => tier.tier));
