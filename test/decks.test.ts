@@ -3,6 +3,7 @@ import { EMPTY_INPUT } from '../src/sim/input.ts';
 import { initPhysics, SimPhysics, type Ground } from '../src/sim/physics.ts';
 import { createSimState, stepSim } from '../src/sim/simulation.ts';
 import { PARAPET_HEIGHT, roadDecks, type DeckSpan } from '../src/world/decks.ts';
+import type { PierPost } from '../src/world/pier-posts.ts';
 import { footprintHalfWidth } from '../src/world/tiers.ts';
 import type { RoadCurve, WorldDescription } from '../src/world/types.ts';
 import { DRY } from './helpers.ts';
@@ -152,5 +153,43 @@ describe('a car driving onto a bridge', () => {
     for (let i = 0; i < 60; i++) stepSim(state, EMPTY_INPUT, physics);
     for (let i = 0; i < 300; i++) stepSim(state, { ...EMPTY_INPUT, throttle: 0.4 }, physics);
     expect(state.vehicle.y).toBeGreaterThan(-1);
+  });
+});
+
+/** One pier standing on flat ground, across the road a car drives east along. */
+const PIER: PierPost = { x: 20, y: 0, half: 1, angle: 0, base: -0.6, top: 5 };
+
+/** Flat ground with the piers of a deck standing on it, and no deck overhead to meet. */
+function underDeck(piers: readonly PierPost[]): Ground {
+  return { heightAt: () => 0, surfaceAt: () => 'asphalt', seaLevel: DRY, piers };
+}
+
+describe('a car driven into a pier', () => {
+  beforeAll(async () => {
+    await initPhysics();
+  });
+
+  /** Drive east from well before the pier and answer how far east the car ever got. */
+  function into(ground: Ground): number {
+    const state = createSimState(1);
+    const physics = new SimPhysics(ground, state);
+    physics.spawn(state, -50, 0, 0);
+    let furthest = -Infinity;
+    for (let i = 0; i < 60; i++) stepSim(state, EMPTY_INPUT, physics);
+    for (let i = 0; i < 400; i++) {
+      stepSim(state, { ...EMPTY_INPUT, throttle: 1 }, physics);
+      furthest = Math.max(furthest, state.vehicle.x);
+    }
+    return furthest;
+  }
+
+  it('stops at it', () => {
+    // The nose of the car reaches the pier before its middle does, so it is
+    // stopped a car's half-length short of the foot.
+    expect(into(underDeck([PIER]))).toBeLessThan(PIER.x - PIER.half);
+  });
+
+  it('drives through the place where no pier is given, which is what the fault was', () => {
+    expect(into(underDeck([]))).toBeGreaterThan(PIER.x + PIER.half);
   });
 });

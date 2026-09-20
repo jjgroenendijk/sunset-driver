@@ -289,6 +289,10 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
   `PARAPET_HEIGHT` high each side. A bridged segment carves nothing, so nothing else says where a
   bridge is. The physics stands on it and the renderer draws its parapet at the same height, so what
   holds the car is what the player sees.
+- `pierPosts(world)` (`pier-posts.ts`) is every pier under those decks as a box, and
+  `Ground.piers` hands them over. Each is one Rapier cuboid, laid and dropped over the same box of
+  ground as the decks. A pier foot never stands on a road, so this is not what traffic meets; it is
+  what a driver who left the road under a deck meets.
 - Ground is a Rapier heightfield collider per 50 m tile, laid on a grid anchored on the origin, two
   tiles each way of the car. The decks of `Ground.decks` are laid over the same box, one trimesh per
   span, and a whole span is laid or dropped at once so a bridge never ends under a car halfway

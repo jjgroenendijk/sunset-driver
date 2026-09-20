@@ -21,6 +21,7 @@
 import { BufferGeometry, Vector3 } from 'three';
 import { LoftGeometry } from 'three/examples/jsm/geometries/LoftGeometry.js';
 import type { ChunkPier, WorldChunk } from '../world/chunks.ts';
+import { PIER_HALF } from '../world/piers.ts';
 import type { RoadFrame, RoadRibbons } from '../world/ribbon.ts';
 import { piecesOf, type Piece } from '../world/road-pieces.ts';
 import { TRAM_LANE } from '../world/tiers.ts';
@@ -44,8 +45,6 @@ import {
   type SectionPoint,
 } from './road-section.ts';
 
-/** Metres each side of a pier's centre, across the deck and along it. A highway stands on wider piers. */
-const PIER_HALF: Record<RoadTier, number> = { highway: 1, arterial: 0.8, street: 0.6, alley: 0.5, dirt: 0.5 };
 /** Metres a pier is sunk into the ground under it, so no gap shows where the ground slopes. */
 const PIER_FOOTING = 0.6;
 /** Metres a pier reaches up into its deck, so no gap shows under the soffit. */

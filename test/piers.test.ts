@@ -14,7 +14,8 @@ import {
 import { buildLayers, chunkAt, ChunkSource } from '../src/world/chunks.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
-import { deckPiers } from '../src/world/piers.ts';
+import { deckPiers, PIER_HALF } from '../src/world/piers.ts';
+import { pierPosts } from '../src/world/pier-posts.ts';
 import { RoadRibbons } from '../src/world/ribbon.ts';
 import { footprintHalfWidth, TIERS } from '../src/world/tiers.ts';
 import { tramTrack } from '../src/world/tram-track.ts';
@@ -71,6 +72,31 @@ describe('piers', () => {
     expect((box.min.x + box.max.x) / 2).toBeCloseTo(pier.x, 3);
     expect((box.min.z + box.max.z) / 2).toBeCloseTo(pier.y, 3);
     expect(geometry?.getAttribute('kind').getX(0)).toBe(SURFACE_STRUCTURE);
+  });
+
+  it('gives the physics a post wherever it draws a column, of the same width and reach', () => {
+    const w = worldOf(world(dip(-5), []), [viaduct([1, 2])]);
+    const ribbons = new RoadRibbons(w.terrain, w.roads);
+    const hf = new Heightfield(w.terrain);
+    const posts = pierPosts(w);
+    let drawn = 0;
+    for (const pier of deckPiers(w)) {
+      const ground = hf.sample(pier.x, pier.y);
+      if (pierGeometry({ ...pier, tier: 'highway', ground }, ribbons) === undefined) {
+        expect(posts.some((post) => post.x === pier.x && post.y === pier.y)).toBe(false);
+        continue;
+      }
+      drawn++;
+      const post = posts.find((p) => p.x === pier.x && p.y === pier.y);
+      expect(post, `${pier.x},${pier.y}`).toBeDefined();
+      expect(post?.half).toBe(PIER_HALF.highway);
+      // The post reaches from under the ground up into the soffit the column does.
+      const frame = ribbons.frameAt(pier.curve, pier.segment, pier.x, pier.y);
+      expect(post?.top).toBeCloseTo(frame.height + frame.bank * pier.across - SKIRT - DECK_DEPTH, 6);
+      expect(post?.base).toBeLessThan(ground);
+    }
+    expect(posts.length).toBe(drawn);
+    expect(drawn).toBeGreaterThan(0);
   });
 
   it('draws no column under a deck that stands on the ground', () => {

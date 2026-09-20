@@ -20,7 +20,7 @@
 import { clamp, direction, dist } from '../core/math.ts';
 import { Heightfield } from './heightfield.ts';
 import { footprintHalfWidth, TIERS } from './tiers.ts';
-import type { Point, RoadCurve, WorldDescription } from './types.ts';
+import type { Point, RoadCurve, RoadTier, WorldDescription } from './types.ts';
 
 /** Metres between the pier bays under a deck. */
 const PIER_SPACING = 25;
@@ -48,6 +48,13 @@ export interface DeckPier {
    */
   across: number;
 }
+
+/**
+ * Metres each side of a pier's centre, across the deck and along it. A highway
+ * stands on wider piers. `corridor-mesh.ts` draws the column this wide and
+ * `pier-posts.ts` gives the physics the same one, so a pier is where it looks.
+ */
+export const PIER_HALF: Record<RoadTier, number> = { highway: 1, arterial: 0.8, street: 0.6, alley: 0.5, dirt: 0.5 };
 
 /** Metres each side of the centreline the strip under a curve's deck reaches. */
 export function deckHalfWidth(road: RoadCurve): number {
