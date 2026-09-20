@@ -1,6 +1,7 @@
 /**
  * The ground the physics stands on, as Rapier colliders: a heightfield per tile
- * of a grid around the player, and the decks of the bridges over it.
+ * of a grid around the player, the decks of the bridges over it, and the piers
+ * those decks stand on.
  *
  * The grid is anchored on the origin, so a tile is the same tile whenever it is
  * built and two tiles agree along the edge they share. Only the box around the
@@ -8,7 +9,9 @@
  * section 9.1); `physics.ts` moves the box as the player moves.
  */
 import RAPIER from '@dimforge/rapier3d-compat';
+import { cos, sin } from '../core/libm.ts';
 import { PARAPET_HEIGHT, type DeckSpan } from '../world/decks.ts';
+import type { PierPost } from '../world/pier-posts.ts';
 import type { Surface } from '../world/surface.ts';
 import type { MetroPlace } from './metro.ts';
 import type { Place } from './on-foot.ts';
@@ -56,6 +59,12 @@ export interface Ground {
    * test that only needs a hillside, leaves them out.
    */
   decks?: readonly DeckSpan[];
+  /**
+   * The piers those decks stand on (spec section 6.3), which the heightfield
+   * knows nothing about either: a pier carves no ground. A world with no
+   * bridges, and a test that only needs a hillside, leaves them out.
+   */
+  piers?: readonly PierPost[];
   /**
    * The places the police stations are entered from (spec section 11.7), where
    * an arrest puts the player back. A test that needs none leaves them out.
@@ -148,13 +157,23 @@ interface DeckPiece {
   collider: RAPIER.Collider;
 }
 
-/** The tiles and decks standing in one Rapier world. */
+/** One pier standing in the world, and the post it was built from. */
+interface PierPiece {
+  post: PierPost;
+  collider: RAPIER.Collider;
+}
+
+/** The tiles, decks and piers standing in one Rapier world. */
 export class GroundBodies {
   private readonly world: RAPIER.World;
   private readonly ground: Ground;
   private readonly tiles: GroundTile[] = [];
   /** The decks standing in the world, over the same box of ground the tiles cover. */
   private readonly decks: DeckPiece[] = [];
+  /** The piers standing in the world, over the same box of ground again. */
+  private readonly piers: PierPiece[] = [];
+  /** The tile the box was last laid around, so a step that stays in it lays nothing again. */
+  private laidAt: { cx: number; cy: number } | undefined;
 
   constructor(world: RAPIER.World, ground: Ground) {
     this.world = world;
@@ -170,16 +189,24 @@ export class GroundBodies {
   clear(): void {
     this.tiles.length = 0;
     this.decks.length = 0;
+    this.piers.length = 0;
+    this.laidAt = undefined;
   }
 
   /**
    * Make sure every tile within {@link PHYSICS_RADIUS} of a place carries a
    * collider, and drop the ones the player has left behind. The grid is
    * anchored on the origin, so a tile is the same tile whenever it is built.
+   *
+   * What stands is decided by the tile the place falls in and nothing else, so
+   * a step that leaves the player in the same tile has nothing to do. The
+   * physics calls this every step, and a world holds a few hundred piers.
    */
   cover(x: number, z: number): void {
     const cx = Math.floor(x / PHYSICS_TILE);
     const cy = Math.floor(z / PHYSICS_TILE);
+    if (this.laidAt?.cx === cx && this.laidAt.cy === cy) return;
+    this.laidAt = { cx, cy };
     for (let i = this.tiles.length - 1; i >= 0; i--) {
       const tile = this.tiles[i] as GroundTile;
       if (Math.max(Math.abs(tile.cx - cx), Math.abs(tile.cy - cy)) <= PHYSICS_RADIUS) continue;
@@ -195,6 +222,17 @@ export class GroundBodies {
       }
     }
     this.coverDecks(cx, cy);
+    this.coverPiers(cx, cy);
+  }
+
+  /** The box of ground the decks and the piers are laid over: the one the tiles cover. */
+  private box(cx: number, cy: number): { minX: number; minY: number; maxX: number; maxY: number } {
+    return {
+      minX: (cx - PHYSICS_RADIUS) * PHYSICS_TILE,
+      minY: (cy - PHYSICS_RADIUS) * PHYSICS_TILE,
+      maxX: (cx + PHYSICS_RADIUS + 1) * PHYSICS_TILE,
+      maxY: (cy + PHYSICS_RADIUS + 1) * PHYSICS_TILE,
+    };
   }
 
   /**
@@ -205,10 +243,7 @@ export class GroundBodies {
   private coverDecks(cx: number, cy: number): void {
     const spans = this.ground.decks;
     if (spans === undefined || spans.length === 0) return;
-    const minX = (cx - PHYSICS_RADIUS) * PHYSICS_TILE;
-    const minY = (cy - PHYSICS_RADIUS) * PHYSICS_TILE;
-    const maxX = (cx + PHYSICS_RADIUS + 1) * PHYSICS_TILE;
-    const maxY = (cy + PHYSICS_RADIUS + 1) * PHYSICS_TILE;
+    const { minX, minY, maxX, maxY } = this.box(cx, cy);
     const near = (span: DeckSpan): boolean =>
       span.minX <= maxX && span.maxX >= minX && span.minY <= maxY && span.maxY >= minY;
     for (let i = this.decks.length - 1; i >= 0; i--) {
@@ -224,6 +259,54 @@ export class GroundBodies {
       if (this.decks.some((deck) => deck.span === span)) continue;
       this.decks.push({ span, collider: this.layDeck(span) });
     }
+  }
+
+  /**
+   * The piers over the same box of ground, each dropped as soon as the player
+   * has left it behind. A pier is a box a few metres across, so it is laid and
+   * dropped one at a time rather than a whole bridge's worth at once.
+   */
+  private coverPiers(cx: number, cy: number): void {
+    const posts = this.ground.piers;
+    if (posts === undefined || posts.length === 0) return;
+    const { minX, minY, maxX, maxY } = this.box(cx, cy);
+    // A post is turned about its middle, so its reach is the diagonal of its own box.
+    const near = (post: PierPost): boolean => {
+      const reach = post.half * Math.SQRT2;
+      return post.x - reach <= maxX && post.x + reach >= minX && post.y - reach <= maxY && post.y + reach >= minY;
+    };
+    for (let i = this.piers.length - 1; i >= 0; i--) {
+      const pier = this.piers[i] as PierPiece;
+      if (near(pier.post)) continue;
+      this.world.removeCollider(pier.collider, false);
+      this.piers.splice(i, 1);
+    }
+    // In the order the world lists them, so the colliders go into the world in
+    // the same order however the player reached the place.
+    for (const post of posts) {
+      if (!near(post)) continue;
+      if (this.piers.some((pier) => pier.post === post)) continue;
+      this.piers.push({ post, collider: this.layPier(post) });
+    }
+  }
+
+  /**
+   * One pier as a Rapier cuboid: the column `corridor-mesh.ts` draws, from the
+   * ground under the foot up into the underside of its deck, turned the way the
+   * deck runs. A solid box, not a trimesh: a car is stopped by a pier, never
+   * driven over it.
+   *
+   * The world's `y` is Rapier's `z`, as it is for the ground tiles, so the turn
+   * is about Rapier's `y`.
+   */
+  private layPier(post: PierPost): RAPIER.Collider {
+    const half = (post.top - post.base) / 2;
+    return this.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(post.half, half, post.half)
+        .setTranslation(post.x, post.base + half, post.y)
+        .setRotation({ x: 0, y: sin(post.angle / 2), z: 0, w: cos(post.angle / 2) })
+        .setFriction(1),
+    );
   }
 
   /**

@@ -45,6 +45,12 @@ they are laid in `src/world`, and how `src/render` draws them.
   in the middle of the street that passes under a deck is one the traffic drives into.
 - A pier carries the segment it stands under and how far `across` that segment it stands, measured
   as a road frame measures across. The renderer needs both to find the underside of the deck.
+- `pierPosts(world)` (`pier-posts.ts`) is the same pier as a box the physics can meet: the ground
+  under the foot, the soffit over it, and the turn of the deck. `ground-bodies.ts` lays one cuboid
+  per post around the player, so a car that leaves the road under a deck is stopped by a pier
+  instead of driving through it (issue #304). `PIER_HALF` (`piers.ts`) is how wide a pier is, read
+  by the drawing and the physics alike. A post is left out where a column is left undrawn, which is
+  a deck too low over the ground to stand one.
 
 ## The tram track
 
