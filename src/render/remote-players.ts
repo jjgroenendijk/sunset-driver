@@ -19,6 +19,7 @@ import type { RemotePlayer } from '../net/roster.ts';
 import type { CharacterAppearance } from '../sim/character.ts';
 import { createVehicleState, specOf, type VehicleState } from '../sim/vehicle.ts';
 import { CharacterModel } from './character.ts';
+import { seatRider } from './rider.ts';
 import { VehicleModel } from './vehicle.ts';
 
 /** One player of the room, as this file holds them. */
@@ -69,8 +70,14 @@ export class RemotePlayerViews {
       roll(drawn, dt);
       seat.vehicle.set(drawn);
       seat.vehicle.lamps = lamps;
+      // A peer on a motorcycle is drawn on top of it, as the local player is
+      // (`rider.ts`), and off the same vehicle pose the bike itself took.
+      if (pose.driving && seatRider(seat.character, drawn, specOf(drawn.cls))) {
+        seat.character.group.visible = true;
+        continue;
+      }
       seat.character.group.position.set(pose.x, pose.height, pose.y);
-      seat.character.group.rotation.y = -pose.heading;
+      seat.character.group.rotation.set(0, -pose.heading, 0);
       seat.character.group.visible = !pose.driving;
       if (pose.driving) continue;
       seat.character.animate(

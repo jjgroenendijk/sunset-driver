@@ -73,6 +73,23 @@ export class CharacterModel {
     return resolveAppearance(this.appearance).body.height;
   }
 
+  /**
+   * Metres from the soles to the hips, which is where the rig hangs from and
+   * what a body has to be lifted by to be seated on anything (`rider.ts`).
+   */
+  get hipsAt(): number {
+    return this.hipHeight;
+  }
+
+  /**
+   * The sizes an arm of this model is pointed by, so anything that puts a hand
+   * on a fixed place — a gun (`character-hold.ts`), a set of handlebars
+   * (`rider.ts`) — reaches it whatever body the player chose.
+   */
+  get reach(): HoldRig {
+    return this.rig;
+  }
+
   /** Rebuild for a new look. Cheap enough to call on every click of the creator. */
   set(appearance: CharacterAppearance): void {
     const next = normaliseAppearance(appearance);
@@ -137,6 +154,13 @@ export class CharacterModel {
     right.hip.rotation.z = pose.thighR;
     left.knee.rotation.z = pose.kneeL;
     right.knee.rotation.z = pose.kneeR;
+    // A turn about +x carries a hanging leg toward -z, which is the side the
+    // first of the pair stands on; the other takes the same angle negated, so
+    // a positive spread carries each leg out to its own side. Three.js turns
+    // about x before z, so the leg swings forward and is then rolled out,
+    // which is a rider astride rather than a walker falling over.
+    left.hip.rotation.x = pose.spreadL;
+    right.hip.rotation.x = -pose.spreadR;
     const [armL, armR] = this.arms as [Group, Group];
     armL.rotation.z = pose.armL;
     armR.rotation.z = pose.armR;

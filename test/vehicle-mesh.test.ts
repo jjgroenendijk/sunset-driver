@@ -2,7 +2,15 @@ import { BackSide, Box3, Mesh, type Material, type MeshStandardMaterial } from '
 import { describe, expect, it } from 'vitest';
 import { createVehicleState, ROSTER, specOf, VEHICLE_CLASSES, type VehicleClass } from '../src/sim/vehicle.ts';
 import { VehicleModel, VEHICLE_OUTLINE_WIDTH } from '../src/render/vehicle.ts';
-import { vehicleBoxes } from '../src/render/vehicle-mesh.ts';
+import {
+  LAMP,
+  SEAT,
+  saddleOf,
+  TAIL,
+  vehicleBoxes,
+  type Saddle,
+  type VehicleBox,
+} from '../src/render/vehicle-mesh.ts';
 
 /**
  * The models of spec sections 10.1 and 11.3: one silhouette per class, and the
@@ -135,6 +143,48 @@ describe('the vehicle models', () => {
     const mount = spec.wheels[0] as (typeof spec.wheels)[number];
     expect((drawn[0] as { position: { y: number } }).position.y).toBeCloseTo(mount.y - wheel.suspension, 6);
     model.dispose();
+  });
+});
+
+describe('the motorcycle', () => {
+  const spec = ROSTER.motorcycle;
+
+  it('builds the bike round the rider it carries', () => {
+    const saddle = saddleOf(spec) as Saddle;
+    const boxes = vehicleBoxes(spec);
+    // The seat is drawn with its top at the saddle, so the rider of
+    // `rider.ts` sits on the seat and not through it.
+    const seat = boxes.filter((part) => part.colour === SEAT && part.z === 0);
+    expect(seat.length).toBe(1);
+    const top = (seat[0] as VehicleBox).y + (seat[0] as VehicleBox).height / 2;
+    expect(top).toBeCloseTo(saddle.y, 6);
+    // A grip at each end of the bars, and a peg for each boot.
+    const at = (x: number, y: number): VehicleBox[] =>
+      boxes.filter((part) => Math.abs(part.x - x) < 1e-6 && Math.abs(part.y - y) < 1e-6 && part.z !== 0);
+    expect(at(saddle.gripX, saddle.gripY).length).toBeGreaterThanOrEqual(2);
+    expect(at(saddle.pegX, saddle.pegY).length).toBe(2);
+  });
+
+  it('reads as a bike from above: a lamp at the nose, a tail light behind, bars across', () => {
+    const boxes = vehicleBoxes(spec);
+    const lamp = boxes.find((part) => part.colour === LAMP) as VehicleBox;
+    const tail = boxes.find((part) => part.colour === TAIL) as VehicleBox;
+    expect(lamp.x).toBeGreaterThan(spec.halfLength * 0.5);
+    expect(tail.x).toBeLessThan(-spec.halfLength * 0.5);
+    // The bars are the one part of a bike wider than the bike, which is what
+    // tells a bike from a box at the far end of a street.
+    const widest = Math.max(...boxes.map((part) => Math.abs(part.z) + part.width / 2));
+    expect(widest).toBeGreaterThan(spec.halfWidth * 1.3);
+  });
+
+  it('has no roof to lose, and ends that can go', () => {
+    const panels = new Set(vehicleBoxes(spec).map((part) => part.panel));
+    // A blow from above finds nothing on a bike to tear off; the nose and the
+    // tail are what a bike loses, and the middle of it always stays.
+    expect(panels.has('roof')).toBe(false);
+    expect(panels.has('front')).toBe(true);
+    expect(panels.has('rear')).toBe(true);
+    expect(panels.has(undefined)).toBe(true);
   });
 });
 

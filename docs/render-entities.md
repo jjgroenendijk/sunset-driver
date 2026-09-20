@@ -54,6 +54,13 @@ after dark is in `docs/lighting.md`, and the one interior the scene ever holds i
 - `MeleeFx` (`melee-fx.ts`) throws the burst each blow leaves: one additive batch of discs, drawn
   from `SimState.hits` and coloured by what was struck. It reads the record the way `DamageFx`
   does — every hit newer than the tick it last drew — and `WorldScene.damage` steps both.
+- A player on a motorcycle is drawn **on** it (`rider.ts`), because there is no roof to hide them
+  under. `seatRider` stands the same model on the saddle `vehicle-mesh.ts` gives for the class, a
+  hip height below it, and hands it the whole of the vehicle's turn, so the rider leans into a
+  corner with the bike. Legs are fixed angles — a leg is two pieces and any build lands near enough
+  the pegs — but the arms are pointed at the grips through `pointArm`, so a tall player and a short
+  one both hold the bars. `test/rider.test.ts` measures the hands, the boots and the hips against
+  the places the mesh drew them.
 - `WorldScene.walkPlayer` is the one door: it stands the model where the frame says and animates it.
   Nothing else writes the player's pose, and a player behind the wheel is not animated at all. The
   model is a handful of meshes rather than a crowd, so it is plain three.js groups and not the baked
@@ -68,6 +75,12 @@ after dark is in `docs/lighting.md`, and the one interior the scene ever holds i
   included, and only the panel's own boxes can be torn off — a vehicle with no middle is not a
   vehicle. The vertices are moved rather than the geometry rebuilt, and only when the record's
   damage changes.
+- A motorcycle is the one class built round its rider: `saddleOf` is the seat, the grips and the
+  pegs, and the mesh draws all three from it, so moving the seat moves the body sat on it. It is
+  also the one class with `inline` set, and `panelAt` reads that as having no roof — the tank, the
+  seat and the bars belong to the end of the bike they stand at, since a bike is damaged at the
+  ends. Keep its paint bright: the frame, seat and tyres are all but black, so the paint is the
+  only part of a bike a camera 60 m up can pick out.
 - `weapon-mesh.ts` is the one place that says what shape each weapon is, and each attachment on it,
   as boxes in the weapon's own frame with the muzzle along `+x`. It holds no three.js.
   `test/weapon-mesh.test.ts` draws every weapon from above on a 5 mm grid and fails when two share a

@@ -61,6 +61,12 @@ export interface CharacterPose {
   thighR: number;
   kneeL: number;
   kneeR: number;
+  /**
+   * Radians each leg is carried out to its own side, about the way the body
+   * faces. A walker keeps both at 0; it is what lets a rider sit astride.
+   */
+  spreadL: number;
+  spreadR: number;
   armL: number;
   armR: number;
   /**
@@ -140,7 +146,7 @@ export function advancePhase(phase: number, stance: Stance, speed: number, dt: n
 }
 
 /** A body standing straight, which every stance is written over. */
-function rest(): CharacterPose {
+export function restPose(): CharacterPose {
   return {
     pitch: 0,
     twist: 0,
@@ -152,6 +158,8 @@ function rest(): CharacterPose {
     thighR: 0,
     kneeL: 0,
     kneeR: 0,
+    spreadL: 0,
+    spreadR: 0,
     armL: 0,
     armR: 0,
     yawL: 0,
@@ -171,7 +179,7 @@ function walkPose(phase: number, speed: number): CharacterPose {
   const leg = mix(SWING.leg, t);
   const bend = mix(SWING.knee, t);
   const arm = mix(SWING.arm, t);
-  const pose = rest();
+  const pose = restPose();
   pose.thighL = leg * Math.sin(phase);
   pose.thighR = leg * Math.sin(phase + Math.PI);
   pose.kneeL = -bend * Math.max(0, Math.cos(phase));
@@ -185,7 +193,7 @@ function walkPose(phase: number, speed: number): CharacterPose {
 
 /** The breath of a player standing still: the arms sway and the chest rises. */
 function standPose(phase: number): CharacterPose {
-  const pose = rest();
+  const pose = restPose();
   pose.armL = 0.05 * Math.sin(phase);
   pose.armR = -0.05 * Math.sin(phase);
   pose.bob = 0.006 * Math.sin(phase);
@@ -200,7 +208,7 @@ function standPose(phase: number): CharacterPose {
 function airPose(vy: number): CharacterPose {
   const rise = Math.min(1, Math.max(-1, vy / JUMP_SPEED));
   const tuck = 0.5 + 0.5 * rise;
-  const pose = rest();
+  const pose = restPose();
   pose.thighL = 0.25 + 0.55 * tuck;
   pose.kneeL = -(0.35 + 0.85 * tuck);
   pose.thighR = -0.15 - 0.3 * tuck;
@@ -219,7 +227,7 @@ function airPose(vy: number): CharacterPose {
  * its feet below it.
  */
 function swimPose(phase: number, motion: CharacterMotion): CharacterPose {
-  const pose = rest();
+  const pose = restPose();
   pose.pitch = -SWIM_PITCH;
   pose.lift = Math.max(0, motion.depth - SWIM_DRAFT * motion.stature);
   pose.armL = Math.PI - phase;

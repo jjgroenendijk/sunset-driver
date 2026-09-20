@@ -540,6 +540,8 @@ Driving is the primary mechanic.
 - Rapier `DynamicRayCastVehicleController`. Handbrake drifts leave skid-mark decals; weight
   transfer, grip loss on wet and dirt surfaces. Terrain gradient affects acceleration, braking and
   grip.
+- A vehicle ridden astride carries its rider: the player's own character is drawn on the motorcycle
+  they are riding, in the look they chose, and leans with it.
 - Visible progressive damage: deformation, lost panels, smoke, fire, explosion.
 - Cars can be set on fire, and fire spreads.
 

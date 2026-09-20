@@ -205,7 +205,7 @@ export class SessionFrame {
     // A player giving up or being cuffed has their hands up and holds nothing (spec section 14).
     const police = session.state.police;
     const handsUp = police.surrendered || police.cuffs !== null;
-    session.world.walkPlayer(p, session.state.player, elapsed / 1000, swing, hold, handsUp);
+    session.world.walkPlayer(p, session.state.player, elapsed / 1000, swing, hold, handsUp, vehicle);
     // The weapon in the hands and the weapons on the ground (spec section
     // 11.6), with what is fitted. The one in hand is drawn in the fist that
     // holds it, or follows the arm swinging it.
