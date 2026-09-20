@@ -135,12 +135,16 @@ after dark is in `docs/lighting.md`, and the one interior the scene ever holds i
   `BeaconGlow` is the light a bar throws on the road: an additive soft disc, not a light, faint by
   day and strong after dark. It lies `GLOW_LIFT` over the road, because a flat disc sinks under a
   road on a slope and shows a hard edge there.
-- The water comes from the crew, never from the engine. `fire-crew.ts` places two firefighters
-  from the unit and the tick alone: out of the cab, along the flank that faces the scene, to a
-  place a throw short of it, and back at the end. `HoseLines` (`hose.ts`) draws each hose from the
-  coupling on that flank, along the road, to the nozzle in their hands; `HoseSpray` plays the
-  water from that nozzle. Each is one draw call for every engine in view. The bodies are the
-  crowd's: `ui/fire-crews.ts` ends the list the crowd mesh draws, after the police on foot.
+- A unit's doors are drawn apart from its body, one instanced mesh per door, because each turns on
+  its own hinge: the instance matrix is the unit's own times a turn about the hinge, by the record's
+  `doors` times the door's `swing`. The geometry is built about the hinge for that reason, and a
+  dark box behind each door is the doorway an open one shows.
+- The water comes from the crew, never from the engine. Where the crew stand is the record's
+  (`sim/emergency-crew.ts`); `render/emergency-crew.ts` adds only what they wear and the line of
+  the hose. `HoseLines` (`hose.ts`) draws each hose from the coupling on the flank that faces the
+  scene, along the road, to the nozzle in their hands; `HoseSpray` plays the water from that
+  nozzle. Each is one draw call for every engine in view. The bodies are the crowd's:
+  `ui/emergency-crews.ts` ends the list the crowd mesh draws, after the police on foot.
 - The crew work from the flank nearer the scene, so a camera on the other side sees only the
   engine. The preview's blaze burns off the line towards the camera (`FIRE_ASIDE`) for that
   reason.
@@ -350,6 +354,10 @@ after dark is in `docs/lighting.md`, and the one interior the scene ever holds i
 - A body the Rapier ragdoll holds is drawn from the ragdoll's bone transforms instead. Its matrices
   are written about the hips and divided by the person's size, because the shader scales them
   back up by `motion.z` before it places them.
-- The medics kneel only at a body lying or crawling, never at one still in the air or going over.
+- A medic of an ambulance is drawn here only while the record has them knelt at a body; the walk
+  out of the back and back again is the crowd's mesh (`ui/emergency-crews.ts`). Drawing them in
+  both would stand a knelt medic up as well.
+- A fallen member of an emergency crew lies here too, in the gear of their role (spec section
+  20.3), as a fallen officer lies in their uniform.
 - `node scripts/render-preview.ts 7 out.png --bodies --emergency --junction=60 --distance=26` lays
   one of each phase and a working ambulance in the frame.

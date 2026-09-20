@@ -30,12 +30,15 @@ export class UnitBodies {
   readonly officers: PersonBodies;
   /** The fire engines and ambulances near the player as solids (spec section 20.3), so one at a scene is not driven through. */
   readonly emergency: EmergencyBodies;
+  /** Their crews on the street as capsules (spec section 20.3), so they can be shot like anybody else. */
+  readonly crew: PersonBodies;
 
   constructor(world: RAPIER.World) {
     this.police = new PoliceBodies(world);
     this.enforcers = new PersonBodies(world, (state) => state.enforcers.units);
     this.officers = new PersonBodies(world, (state) => state.police.officers);
     this.emergency = new EmergencyBodies(world);
+    this.crew = new PersonBodies(world, (state) => state.emergency.crew);
   }
 
   /**
@@ -57,6 +60,7 @@ export class UnitBodies {
     this.enforcers.settle(state, minX, minY, maxX, maxY);
     this.officers.settle(state, minX, minY, maxX, maxY);
     this.emergency.settle(state, minX, minY, maxX, maxY);
+    this.crew.settle(state, minX, minY, maxX, maxY);
   }
 
   /** Take every body out of the world. */
@@ -65,5 +69,6 @@ export class UnitBodies {
     this.enforcers.clear();
     this.officers.clear();
     this.emergency.clear();
+    this.crew.clear();
   }
 }

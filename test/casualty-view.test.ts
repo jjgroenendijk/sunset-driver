@@ -1,11 +1,12 @@
 import type { InstancedBufferGeometry, InterleavedBufferAttribute, Mesh } from 'three';
 import { Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { CASUALTY_CAP, CasualtyView, MEDIC_SIDE } from '../src/render/casualties.ts';
+import { CASUALTY_CAP, CasualtyView } from '../src/render/casualties.ts';
 import { BODY_FLOATS, CasualtyPoser, ragdollMatrices } from '../src/render/casualty-pose.ts';
 import { BONES, JOINTS, pedestrianBody } from '../src/render/pedestrian-rig.ts';
 import { emptyCasualtyPose, type Casualty, type CasualtyPose } from '../src/sim/casualty-motion.ts';
 import type { EmergencyUnit } from '../src/sim/emergency.ts';
+import { dropCrew, MEDIC_SIDE, placeCrew } from '../src/sim/emergency-crew.ts';
 import { AmbientPedestrians } from '../src/sim/pedestrians.ts';
 import { createSimState } from '../src/sim/simulation.ts';
 import { gridTrafficRoads } from './traffic-grid.ts';
@@ -145,8 +146,11 @@ describe('the casualties, drawn (spec sections 11.6, 20.3)', () => {
       homeX: 0,
       homeY: 0,
       until: 99_999,
+      doors: 1,
+      deployed: false,
     };
     state.emergency.units.push(unit);
+    placeCrew(state, unit);
     view.update(state, state.tick, 0, 0);
     expect(view.drawn).toBe(4);
     const geometry = (view.group.children[0] as Mesh).geometry as InstancedBufferGeometry;
@@ -159,8 +163,8 @@ describe('the casualties, drawn (spec sections 11.6, 20.3)', () => {
     }
     expect(place.getZ(2) - 5).toBeCloseTo(-(place.getZ(3) - 5), 3);
 
-    // A unit driving away has no medics out.
-    unit.task = 'leave';
+    // A unit whose crew are aboard again has no medics out.
+    dropCrew(state, unit.id);
     view.update(state, state.tick, 0, 0);
     expect(view.drawn).toBe(2);
     expect(view.drawn).toBeLessThanOrEqual(CASUALTY_CAP);

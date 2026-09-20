@@ -379,6 +379,7 @@ export class SimPhysics extends GroundPlaces {
       police: this.units.police,
       enforcers: this.units.enforcers,
       officers: this.units.officers,
+      crew: this.units.crew,
       crowd: this.ground.crowd,
       ground: this.casualtyGround,
       cars: this.traffic,

@@ -1,10 +1,11 @@
-import type { InstancedMesh } from 'three';
+import { Matrix4, Vector3, type InstancedMesh } from 'three';
 import { describe, expect, it } from 'vitest';
 import { DamageFx } from '../src/render/damage-fx.ts';
 import { EmergencyView } from '../src/render/emergency.ts';
 import { TRAFFIC_VIEW } from '../src/render/traffic.ts';
-import { DEPLOY_TICKS, UNIT_BODY, WORK_TICKS, type EmergencyUnit } from '../src/sim/emergency.ts';
-import { emptyFirefighter, fireCrew } from '../src/render/fire-crew.ts';
+import { UNIT_BODY, WORK_TICKS, type EmergencyUnit } from '../src/sim/emergency.ts';
+import { crewOf, placeCrew, type CrewMember } from '../src/sim/emergency-crew.ts';
+import { emptyHose, hoseOf } from '../src/render/emergency-crew.ts';
 import { light } from '../src/sim/fire.ts';
 import { createSimState } from '../src/sim/simulation.ts';
 import { specOf } from '../src/sim/vehicle.ts';
@@ -32,18 +33,24 @@ function unit(id: number, kind: EmergencyUnit['kind'], x: number, y: number): Em
     homeX: x,
     homeY: y,
     until: -1,
+    doors: 0,
+    deployed: false,
   };
 }
 
 describe('the emergency services, drawn (spec section 20.3)', () => {
-  /** The meshes of the view by what they are: per kind body, rim and two beacon phases, then the glow and the water. */
+  /**
+   * The meshes of the view by what they are: per kind a body, a rim, two
+   * beacon phases and a door each side, then the glow, the water and the hoses.
+   */
   function parts(view: EmergencyView): InstancedMesh[] {
     return view.group.children as InstancedMesh[];
   }
   const ENGINE_PHASES = [2, 3];
-  const GLOW = 8;
-  const WATER = 9;
-  const HOSES = 10;
+  const ENGINE_DOORS = [4, 5];
+  const GLOW = 12;
+  const WATER = 13;
+  const HOSES = 14;
 
   it('draws the units in view and leaves out the ones over the horizon', () => {
     const view = new EmergencyView();
@@ -117,23 +124,29 @@ describe('the emergency services, drawn (spec section 20.3)', () => {
     view.update(state, 0, 0);
     expect(parts(view)[WATER]?.visible).toBe(false);
     expect(parts(view)[HOSES]?.visible).toBe(false);
-    // An engine that pulled up a moment ago: the crew are out, but the water is not on yet.
+    // An engine that has just pulled up: nobody is down from the cab yet, so
+    // there is no hose on the road and no water on the fire.
     engine.task = 'work';
     engine.goalX = 8;
     engine.goalY = 3;
     state.tick = 1000;
-    engine.until = state.tick + WORK_TICKS.engine - 10;
+    engine.until = state.tick + WORK_TICKS.engine;
+    view.update(state, 0, 0);
+    expect(parts(view)[HOSES]?.visible).toBe(false);
+    expect(parts(view)[WATER]?.visible).toBe(false);
+    // With the crew at their places the hose is run out and water leaves each nozzle.
+    placeCrew(state, engine);
     view.update(state, 0, 0);
     expect(parts(view)[HOSES]?.count).toBeGreaterThan(0);
-    expect(parts(view)[WATER]?.visible).toBe(false);
-    // Once the hose is run out, water leaves each nozzle.
-    engine.until = state.tick + WORK_TICKS.engine - DEPLOY_TICKS;
-    view.update(state, 0, 0);
     const water = parts(view)[WATER] as InstancedMesh;
     expect(water.count).toBeGreaterThan(0);
-    const crew = [emptyFirefighter(), emptyFirefighter()];
-    fireCrew(engine, state.tick, crew);
-    const nearest = Math.min(...crew.map((f) => Math.hypot(f.nozzleX - 8, f.nozzleY - 3)));
+    const hose = emptyHose();
+    const nearest = Math.min(
+      ...crewOf(state, engine.id).map((member: CrewMember) => {
+        const laid = hoseOf(state, engine, member, hose);
+        return Math.hypot(laid.nozzleX - 8, laid.nozzleY - 3);
+      }),
+    );
     // Every drop is between the nozzles and a little past the scene, none over the engine, and none under the road.
     for (let i = 0; i < water.count; i++) {
       const x = water.instanceMatrix.array[i * 16 + 12] as number;
@@ -141,6 +154,43 @@ describe('the emergency services, drawn (spec section 20.3)', () => {
       const z = water.instanceMatrix.array[i * 16 + 14] as number;
       expect(Math.hypot(x - 8, z - 3)).toBeLessThan(nearest + 2);
       expect(y).toBeGreaterThan(-0.5);
+    }
+    view.dispose();
+  });
+
+  it('swings the doors of a unit out as far as the record has them open', () => {
+    const view = new EmergencyView();
+    const state = createSimState(4);
+    const engine = unit(0, 'engine', 0, 0);
+    state.emergency.units.push(engine);
+    const shape = unitShape('engine');
+    expect(shape.doors).toHaveLength(2);
+    // Where the middle of each door panel stands in the world, drawn as it is
+    // about its hinge and turned by the instance's own matrix.
+    const panels = (): Vector3[] =>
+      shape.doors.map((door, i) => {
+        const mesh = parts(view)[(ENGINE_DOORS[i] as number)] as InstancedMesh;
+        const matrix = new Matrix4();
+        mesh.getMatrixAt(0, matrix);
+        const at = new Vector3(door.box.x - door.hinge.x, door.box.y - door.hinge.y, door.box.z - door.hinge.z);
+        return at.applyMatrix4(matrix);
+      });
+    view.update(state, 0, 0);
+    const shut = panels();
+    // Shut, each door lies along its own flank, one either side of the engine.
+    for (const at of shut) expect(Math.abs(at.z)).toBeLessThan(UNIT_BODY.engine.halfWidth + 0.2);
+    expect(Math.sign(shut[0]?.z ?? 0)).toBe(-Math.sign(shut[1]?.z ?? 0));
+    engine.doors = 1;
+    view.update(state, 0, 0);
+    // Open, each stands well out past the flank it hangs on, on its own side.
+    const open = panels();
+    for (let i = 0; i < open.length; i++) {
+      const was = shut[i] as Vector3;
+      const now = open[i] as Vector3;
+      expect(Math.abs(now.z)).toBeGreaterThan(Math.abs(was.z) + 0.5);
+      expect(Math.sign(now.z)).toBe(Math.sign(was.z));
+      // And swung round its hinge, which is at the front edge: it moves forward.
+      expect(now.x).toBeGreaterThan(was.x);
     }
     view.dispose();
   });

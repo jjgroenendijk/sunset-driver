@@ -17,7 +17,7 @@
  * headless.
  */
 import { UNIT_BODY, type EmergencyKind } from '../sim/emergency.ts';
-import { OUTLET_ALONG, OUTLET_UP } from './fire-crew.ts';
+import { doorAlong, OUTLET_ALONG, OUTLET_UP } from '../sim/emergency-crew.ts';
 import { GLASS, LAMP, METAL, TAIL, type Beacon, type VehicleBox } from './vehicle-mesh.ts';
 
 export type { Beacon };
@@ -42,6 +42,17 @@ export const FLASH_RED = 0xff2a22;
 export const FLASH_BLUE = 0x2a64ff;
 export const FLASH_WHITE = 0xfff4e0;
 
+/** How big a cab door of an engine is, how high it rides, and how far it opens. */
+const CAB_DOOR = 1.3;
+const CAB_DOOR_HIGH = 1.45;
+const CAB_DOOR_UP = 1.55;
+const CAB_SWING = 1.25;
+
+/** The same for the doors across the tail of an ambulance, which open wider. */
+const REAR_DOOR_HIGH = 1.55;
+const REAR_DOOR_UP = 1.0;
+const REAR_SWING = 2.0;
+
 /** A box as `emergency.ts` draws it: no panel, since a unit takes no damage. */
 export type UnitBox = Omit<VehicleBox, 'panel'>;
 
@@ -54,15 +65,30 @@ export interface UnitWheel {
   width: number;
 }
 
+/**
+ * A door the crew climb down through: the panel where it sits shut, the hinge
+ * it turns on in the unit's own frame, and the angle it stands open at. The
+ * view draws it turned by that angle times how far the record has it open, so
+ * a door swings rather than appearing open.
+ */
+export interface UnitDoor {
+  box: UnitBox;
+  hinge: { x: number; y: number; z: number };
+  /** Radians, signed: which way round the hinge the panel swings. */
+  swing: number;
+}
+
 /** Everything one unit is drawn as. */
 export interface UnitShape {
   boxes: UnitBox[];
   beacons: Beacon[];
   wheels: UnitWheel[];
+  /** The doors that open, each drawn apart from the body so it can turn. */
+  doors: UnitDoor[];
   /**
    * Where a hose is coupled to the engine, in its own frame, and none on an
    * ambulance, which carries no hose. The water leaves the nozzle at the other
-   * end, in a firefighter's hands (`fire-crew.ts`).
+   * end, in a firefighter's hands (`emergency-crew.ts`).
    */
   couplings: { x: number; y: number; z: number }[];
 }
@@ -161,10 +187,24 @@ function engine(): UnitShape {
     beacon(0.22, 0.22, 0.3, FLASH_RED, -hl + 0.1, bodyTop - 0.05, hw * 0.82, 1),
     beacon(0.22, 0.22, 0.3, FLASH_RED, -hl + 0.1, bodyTop - 0.05, -hw * 0.82, 0),
   ];
+  // A cab door on each flank, hinged at its front edge and swinging forward.
+  // The doorway behind it is dark, so an open door reads as a way in.
+  const doorAt = doorAlong('engine');
+  const doors: UnitDoor[] = [];
+  for (const side of [1, -1]) {
+    const z = side * (hw + 0.03);
+    boxes.push(box(CAB_DOOR, CAB_DOOR_HIGH, 0.06, GRILLE, doorAt, -hh + CAB_DOOR_UP, side * hw));
+    doors.push({
+      box: box(CAB_DOOR, CAB_DOOR_HIGH, 0.08, ENGINE_RED, doorAt, -hh + CAB_DOOR_UP, z),
+      hinge: { x: doorAt + CAB_DOOR / 2, y: -hh + CAB_DOOR_UP, z },
+      swing: side * CAB_SWING,
+    });
+  }
   return {
     boxes,
     beacons,
     wheels: axles('engine', [hl - 1.4, -hl + 2.8, -hl + 1.65], 0.52, 0.42),
+    doors,
     couplings,
   };
 }
@@ -221,5 +261,14 @@ function ambulance(): UnitShape {
     beacon(0.18, 0.2, 0.26, FLASH_RED, -hl + 0.08, hh - 0.12, hw * 0.84, 1),
     beacon(0.18, 0.2, 0.26, FLASH_RED, -hl + 0.08, hh - 0.12, -hw * 0.84, 0),
   ];
-  return { boxes, beacons, wheels: axles('ambulance', [hl - 0.75, -hl + 1.05], 0.4, 0.3), couplings: [] };
+  // The two doors across the tail, each hinged at its outer edge and swinging
+  // back, with the dark of the bay behind them.
+  const leaf = hw - 0.04;
+  boxes.push(box(0.06, REAR_DOOR_HIGH, width * 0.92, DECK, -hl + 0.05, -hh + REAR_DOOR_UP, 0));
+  const doors: UnitDoor[] = [1, -1].map((side) => ({
+    box: box(0.07, REAR_DOOR_HIGH, leaf, AMBULANCE_WHITE, -hl - 0.02, -hh + REAR_DOOR_UP, (side * leaf) / 2),
+    hinge: { x: -hl - 0.02, y: -hh + REAR_DOOR_UP, z: side * leaf },
+    swing: side * REAR_SWING,
+  }));
+  return { boxes, beacons, wheels: axles('ambulance', [hl - 0.75, -hl + 1.05], 0.4, 0.3), doors, couplings: [] };
 }

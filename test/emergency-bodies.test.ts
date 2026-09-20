@@ -20,7 +20,7 @@ describe('the emergency services as bodies (spec section 20.3)', () => {
   function standing(x: number): EmergencyUnit {
     return {
       id: 0, kind: 'ambulance', task: 'work', call: 0, x, y: 0, heading: Math.PI / 2, height: 0, speed: 0,
-      edges: [], distance: 0, stop: 0, planned: 0, goalX: x, goalY: 0, homeX: x, homeY: 0, until: -1,
+      edges: [], distance: 0, stop: 0, planned: 0, goalX: x, goalY: 0, homeX: x, homeY: 0, until: -1, doors: 0, deployed: false,
     };
   }
 

@@ -6,8 +6,8 @@
  * the ray per pellet, sweeps the melee arc and carries everything in the air a
  * tick at a time. `physics.ts` owns the world and hands in what can be hit: the
  * player's vehicle, the police cars of spec section 14, the faction enforcers
- * of spec section 17.2 and the cars of the city, which a hit promotes (spec
- * section 5.3).
+ * of spec section 17.2, the emergency crews of spec section 20.3 and the cars
+ * of the city, which a hit promotes (spec section 5.3).
  */
 import { atan2, cos, hypot, sin } from '../core/libm.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
@@ -23,6 +23,7 @@ import type { PromotedVehicle } from './traffic.ts';
 import { specOf, type VehicleSpec, type VehicleState } from './vehicle.ts';
 import { blastEnforcers, hurtEnforcer } from './enforcer.ts';
 import { blastOfficers, hurtOfficer } from './officer.ts';
+import { blastCrew, hurtCrew } from './emergency-crew.ts';
 import { PERSON_CAPSULE } from './person-bodies.ts';
 import { blastUnits, report, shootUnit } from './police.ts';
 import { blowStrength, forgetHits, markHit, SWING_HEIGHT, type CrowdSource, type HitSurface } from './melee.ts';
@@ -75,6 +76,12 @@ export interface ShotTarget {
    * the same reason. A ground with no police leaves it out.
    */
   officers?: { unitAt(handle: number): number | undefined };
+  /**
+   * The crews of the emergency units on the street (spec section 20.3), so a
+   * round finds the firefighter or the medic it went into. A ground with no
+   * services leaves it out.
+   */
+  crew?: { unitAt(handle: number): number | undefined };
   /**
    * The crowd of spec section 13.1, so a swing can reach the people on the
    * pavement. They walk loops rather than stand in the physics world, so they
@@ -150,7 +157,8 @@ export class Gunfire {
    * also raises the heat a shot is worth (spec section 14).
    *
    * The player's vehicle, the police cars of spec section 14, the faction
-   * enforcers of spec section 17.2 and the cars of the city can be hit.
+   * enforcers of spec section 17.2, the emergency crews of spec section 20.3
+   * and the cars of the city can be hit.
    */
   step(state: SimState, input: InputFrame, target: ShotTarget): void {
     // A blow is remembered for a few ticks and no longer: what reads one has
@@ -242,6 +250,13 @@ export class Gunfire {
       hurtOfficer(state, officer, spec.damage, atan2(ray.dy, ray.dx), target.ground);
       return 'person';
     }
+    // A round that went into a firefighter or a medic is taken off them the
+    // same way: they are people of the city, not part of their unit.
+    const crew = target.crew?.unitAt(hit.collider.handle);
+    if (crew !== undefined) {
+      hurtCrew(state, crew, spec.damage, atan2(ray.dy, ray.dx), target.ground);
+      return 'person';
+    }
     // The round pushes the vehicle the way it was flying, which is the direction
     // the panel rule reads, exactly as a crash pushes it away from the wall.
     if (target.body !== undefined && hit.collider.handle === target.body.handle) {
@@ -316,6 +331,17 @@ export class Gunfire {
       if (!swingReaches(spec, p.heading, gap, bearing)) continue;
       hurtOfficer(state, officer.id, spec.damage, bearing, target.ground);
       this.land(state, spec, 'person', officer.x, officer.y, officer.height + SWING_HEIGHT);
+      met = true;
+    }
+    // The crews of the emergency units are swept off the record too.
+    for (const member of [...state.emergency.crew]) {
+      const dx = member.x - p.x;
+      const dy = member.y - p.y;
+      const gap = Math.max(0, hypot(dx, dy) - PERSON_CAPSULE.radius);
+      const bearing = atan2(dy, dx);
+      if (!swingReaches(spec, p.heading, gap, bearing)) continue;
+      hurtCrew(state, member.id, spec.damage, bearing, target.ground);
+      this.land(state, spec, 'person', member.x, member.y, member.height + SWING_HEIGHT);
       met = true;
     }
     if (this.strike(state, spec, target)) met = true;
@@ -397,6 +423,7 @@ export class Gunfire {
     // so has the player's own vehicle: none is hit twice for one swing.
     if (target.enforcers?.unitAt(handle) !== undefined) return;
     if (target.officers?.unitAt(handle) !== undefined) return;
+    if (target.crew?.unitAt(handle) !== undefined) return;
     if (target.body !== undefined && handle === target.body.handle) return;
     const at = nearest.timeOfImpact;
     const x = p.x + cos(angle) * at;
@@ -550,6 +577,8 @@ export class Gunfire {
     // panels (spec section 17.2).
     blastEnforcers(state, p.x, p.y, spec.damage, (gap) => blastFalloff(gap, flight.blastRadius));
     blastOfficers(state, p.x, p.y, spec.damage, (gap) => blastFalloff(gap, flight.blastRadius));
+    // And by the crews of the emergency units standing in it (spec section 20.3).
+    blastCrew(state, p.x, p.y, spec.damage, (gap) => blastFalloff(gap, flight.blastRadius));
     this.blast(state, spec, v, specOf(v.cls), dx, dh, dy, distance, flight.blastRadius);
     // Every car of the city inside it is taken off its tour, and then feels it
     // as the player's own car does.

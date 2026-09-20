@@ -29,10 +29,10 @@ import { createPlayerState, exitPlace, JUMP_SPEED, SPRINT_SPEED, SWIM_DEPTH } fr
 import type { PickupState } from '../sim/pickup.ts';
 import { createSimState, type SimState } from '../sim/simulation.ts';
 import { TICK_RATE } from '../sim/clock.ts';
-import { DEPLOY_TICKS, WORK_TICKS, type EmergencyKind, type EmergencyUnit } from '../sim/emergency.ts';
 import { light } from '../sim/fire.ts';
-import { EmergencyView } from './emergency.ts';
-import { FireCrews } from '../ui/fire-crews.ts';
+import type { EmergencyView } from './emergency.ts';
+import { callOut, standCrews } from './preview-services.ts';
+import { EmergencyCrews } from '../ui/emergency-crews.ts';
 import { layBodies } from './preview-bodies.ts';
 import { layPolice } from './preview-police.ts';
 import { nearestContact, previewContacts, standContacts } from './preview-contacts.ts';
@@ -321,22 +321,6 @@ const PICKUP_ROW = 8;
 /** Ticks of smoke and flame let into the air before the picture is taken. */
 const FX_WARMUP = 240;
 
-/**
- * Metres ahead of the player the preview's blaze burns, and where each unit
- * stands: the engine past the blaze and facing it, the ambulance behind the
- * player, so the one frame the game camera takes holds both.
- */
-const FIRE_AHEAD = 11;
-const ENGINE_AHEAD = FIRE_AHEAD + 8;
-
-/**
- * Metres the blaze burns off the line, towards the camera. The crew work from
- * the flank of the engine nearer the scene, so this puts them on the side the
- * camera sees rather than behind the engine.
- */
-const FIRE_ASIDE = 3;
-const AMBULANCE_AHEAD = -11;
-
 /** Metres of drift `--skid` lays, and the radius it curves through. */
 const DRIFT_LENGTH = 24;
 const DRIFT_RADIUS = 18;
@@ -477,12 +461,15 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
     scene.character.group.visible = true;
   }
   const record = createSimState(seed, undefined, tick);
-  const services = request.emergency === true ? callOut(record, scene, kerb.x, kerb.y, heading) : undefined;
+  if (request.emergency === true) callOut(record, scene, kerb.x, kerb.y, heading);
   // A fire is what has been burning for a while, not what started this frame,
   // so the smoke is given a run of ticks to climb before the picture is taken.
   scene.resetDamage(tick - FX_WARMUP);
   if (request.bodies === true) layBodies(record, kerb.x, kerb.y, heading, (px, py) => scene.heightAt(px, py), tick);
   const officers = request.police === true ? layPolice(record, kerb.x, kerb.y, heading, (px, py) => scene.heightAt(px, py), tick) : [];
+  // The crews stand at their places once the bodies are down, since a medic's
+  // place is beside one of them.
+  const services = request.emergency === true ? standCrews(record, scene, x, y) : undefined;
   if (request.shots === true) volley(record, stand, scene.heightAt(stand.x, stand.y), tick);
   // The surface of the ground, as the game reads it through the city: rubber
   // is left on the tarmac and nowhere else (spec section 11.3).
@@ -505,7 +492,7 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   // as they do in a session, and their markers turn over them.
   const bodies = request.contacts === true ? standContacts(seed, givers, scene, record) : undefined;
   // The crew of the engine at work stand in the same list as the police.
-  const crews = new FireCrews();
+  const crews = new EmergencyCrews();
   crews.update(record, { standing: [...(bodies?.standing ?? []), ...officers] });
   crowd.standing = crews.standing;
   markers.marks = bodies?.markers ?? [];
@@ -637,53 +624,6 @@ function arm(scene: WorldScene, request: PreviewRequest, stand: { x: number; y: 
   scene.pickups.hovered = laid[request.hover ?? -1]?.id;
   // A second of frames at once is long enough for the hover to grow all the way.
   scene.pickups.update(laid, tick, 1);
-}
-
-/**
- * The scene of spec section 20.3: a blaze in the road ahead of the player, a
- * fire engine standing at it and an ambulance behind the player. It answers the view, so
- * the caller can keep it alive while the frame is drawn.
- */
-function callOut(record: SimState, scene: WorldScene, x: number, y: number, heading: number): EmergencyView {
-  const ahead = (metres: number): { x: number; y: number } => ({
-    x: x + Math.cos(heading) * metres,
-    y: y + Math.sin(heading) * metres,
-  });
-  // The camera stands at greater y, so the side of the line with +y is the one it sees.
-  const aside = Math.cos(heading) >= 0 ? 1 : -1;
-  const line = ahead(FIRE_AHEAD);
-  const fire = { x: line.x - Math.sin(heading) * aside * FIRE_ASIDE, y: line.y + Math.cos(heading) * aside * FIRE_ASIDE };
-  light(record, fire.x, fire.y);
-  const stand = (id: number, kind: EmergencyKind, metres: number, facing: number): EmergencyUnit => {
-    const at = ahead(metres);
-    return {
-      id,
-      kind,
-      task: 'work',
-      call: 0,
-      x: at.x,
-      y: at.y,
-      heading: facing,
-      height: scene.heightAt(at.x, at.y),
-      speed: 0,
-      edges: [],
-      distance: 0,
-      stop: 0,
-      planned: 0,
-      goalX: fire.x,
-      goalY: fire.y,
-      homeX: at.x,
-      homeY: at.y,
-      // A second into the water, with the hose run out and the crew at their places.
-      until: record.tick + WORK_TICKS[kind] - DEPLOY_TICKS - TICK_RATE,
-    };
-  };
-  record.emergency.units.push(stand(0, 'engine', ENGINE_AHEAD, heading + Math.PI), stand(1, 'ambulance', AMBULANCE_AHEAD, heading));
-  const view = new EmergencyView();
-  view.lamps = scene.lampsNow;
-  scene.scene.add(view.group);
-  view.update(record, x, y);
-  return view;
 }
 
 /**

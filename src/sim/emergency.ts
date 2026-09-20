@@ -7,9 +7,11 @@
  * blast went off. A call waits the district's own response time — the same one
  * the police of spec section 14 answer in — and is then given to a unit, which
  * comes in on a road away from the scene and is routed to it over the road
- * graph by `unit-route.ts`. The crew of a fire engine that reaches the scene
- * run a hose out from it, put out everything the hose reaches (`fire.ts`),
- * keep hosing while it stands there, and drive off again.
+ * graph by `unit-route.ts`. A unit that reaches the scene opens its doors and
+ * puts its crew on the street (`emergency-crew.ts`): the firefighters of an
+ * engine run a hose out and put out everything it reaches (`fire.ts`), the
+ * medics of an ambulance walk to whoever is down. The unit drives off once
+ * they are all aboard again.
  *
  * The police are not here. They come out on the heat of `crime.ts`, which is
  * about the player, and these two come out on what has happened, which is not:
@@ -27,6 +29,15 @@ import { rngFor, Subsystem } from '../core/rng.ts';
 import { cos, hypot, sin } from '../core/libm.ts';
 import { TICK_RATE } from './clock.ts';
 import { collectBodies } from './casualty.ts';
+import {
+  crewAboard,
+  dropCrew,
+  forgetFallenCrew,
+  hosing,
+  stepUnitCrew,
+  type CrewMember,
+  type FallenCrew,
+} from './emergency-crew.ts';
 import { douseFires, firesOf } from './fire.ts';
 import { responseTicks, type DistrictAt } from './police.ts';
 import type { SimState } from './simulation.ts';
@@ -90,16 +101,26 @@ export interface EmergencyUnit {
   homeY: number;
   /** The tick it stops working the scene, or -1 while it has not reached one. */
   until: number;
+  /** How far its doors stand open, 0 shut and 1 wide: the crew climb down through them. */
+  doors: number;
+  /** True once its crew have been put on the street, so they are put out once. */
+  deployed: boolean;
 }
 
 /** What the services are answering and who is out (spec section 20.3). */
 export interface EmergencyState {
   units: EmergencyUnit[];
   calls: EmergencyCall[];
+  /** The firefighters and medics out of their units and on the street. */
+  crew: CrewMember[];
+  /** The crew who have been put down, and the bodies they left. */
+  fallen: FallenCrew[];
   /** The id the next unit is given, so no two units of a session share one. */
   nextUnit: number;
   /** The id the next call is given. */
   nextCall: number;
+  /** The id the next member of a crew is given. */
+  nextCrew: number;
   /** The earliest tick the next unit may come out on. */
   dispatchTick: number;
 }
@@ -151,16 +172,6 @@ export const COLLECT_RANGE = CALL_RANGE;
 /** Metres a hose reaches from where the engine stands. */
 export const HOSE_RANGE = 12;
 
-/**
- * Ticks the crew of an engine take to climb down and run the hose out to the
- * scene. No water reaches it before then: the water comes from the nozzle in
- * a firefighter's hands, not from the engine (`render/fire-crew.ts`).
- */
-export const DEPLOY_TICKS = 4 * TICK_RATE;
-
-/** Ticks at the end of the work the water is off and the crew carry the hose back. */
-export const STOW_TICKS = 3 * TICK_RATE;
-
 /** Metres per second a second a unit gains pulling away, and loses braking. */
 const PULL_AWAY = 3;
 const BRAKE = 5;
@@ -205,30 +216,11 @@ export function clearAhead(state: SimState, unit: EmergencyUnit): number {
 /** Metres from the scene a unit counts as having arrived at it. */
 const ARRIVE_RANGE = 10;
 
-/** Ticks each kind works a scene before it leaves. */
+/** Ticks each kind works a scene before its crew are called back to it. */
 export const WORK_TICKS: Record<EmergencyKind, number> = {
   engine: 18 * TICK_RATE,
   ambulance: 12 * TICK_RATE,
 };
-
-/**
- * Ticks an engine has stood at its scene, or -1 where it is not working one.
- * The crew of `render/fire-crew.ts` are placed from this alone.
- */
-export function workedTicks(unit: EmergencyUnit, tick: number): number {
-  if (unit.task !== 'work' || unit.until < 0) return -1;
-  return tick - (unit.until - WORK_TICKS[unit.kind]);
-}
-
-/**
- * Whether an engine's crew have water on the scene this tick: once the hose
- * is run out, and until they turn it off to carry it back.
- */
-export function hosing(unit: EmergencyUnit, tick: number): boolean {
-  if (unit.kind !== 'engine') return false;
-  const worked = workedTicks(unit, tick);
-  return worked >= DEPLOY_TICKS && tick < unit.until - STOW_TICKS;
-}
 
 /** The most units of both services out at once. */
 export const UNITS_OUT = 3;
@@ -253,7 +245,7 @@ const RETIRE_RANGE = 240;
 export const CALL_SEVERITY = 0.5;
 
 export function createEmergencyState(): EmergencyState {
-  return { units: [], calls: [], nextUnit: 0, nextCall: 0, dispatchTick: 0 };
+  return { units: [], calls: [], crew: [], fallen: [], nextUnit: 0, nextCall: 0, nextCrew: 0, dispatchTick: 0 };
 }
 
 /**
@@ -310,6 +302,7 @@ export class EmergencyServices {
     this.dispatch(state);
     for (const unit of state.emergency.units) this.drive(state, unit);
     this.close(state, fires);
+    forgetFallenCrew(state);
     this.retire(state);
     this.sweep(state);
   }
@@ -384,6 +377,8 @@ export class EmergencyServices {
       homeX: x,
       homeY: y,
       until: -1,
+      doors: 0,
+      deployed: false,
     };
     this.roads.pose(id, unit.edges, 0, this.pose);
     unit.x = this.pose.x;
@@ -411,10 +406,13 @@ export class EmergencyServices {
       unit.until = state.tick + WORK_TICKS[unit.kind];
     }
     if (unit.task === 'work') {
+      // The doors, the crew that climb down through them and the walk back:
+      // the unit stands until the last of them is aboard (`emergency-crew.ts`).
+      stepUnitCrew(state, unit);
       // The hose goes on playing over the scene while the crew hold it, so a
       // fire that reaches the next car along is put out too.
-      if (hosing(unit, state.tick)) douseFires(state, unit.x, unit.y, HOSE_RANGE);
-      if (state.tick >= unit.until) this.dismiss(state, unit);
+      if (hosing(state, unit)) douseFires(state, unit.x, unit.y, HOSE_RANGE);
+      if (crewAboard(state, unit)) this.dismiss(state, unit);
       unit.speed = 0;
       return;
     }
@@ -534,6 +532,8 @@ export class EmergencyServices {
       const unit = units[i] as EmergencyUnit;
       if (unit.task !== 'leave') continue;
       if (hypot(unit.x - x, unit.y - y) < RETIRE_RANGE) continue;
+      // A crew that somehow outlived their unit goes with it; none should.
+      dropCrew(state, unit.id);
       units.splice(i, 1);
     }
   }

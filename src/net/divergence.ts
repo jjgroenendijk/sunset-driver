@@ -82,7 +82,14 @@ const SHAPES: Record<DivergenceKey, (value: unknown) => boolean> = {
   pedestrians: (v) => list(v, 'startled') && list(v, 'casualties'),
   fires: (v) => list(v, 'blazes') && count(v, 'nextBlaze'),
   emergency: (v) =>
-    list(v, 'units') && list(v, 'calls') && count(v, 'nextUnit') && count(v, 'nextCall') && count(v, 'dispatchTick'),
+    list(v, 'units') &&
+    list(v, 'calls') &&
+    list(v, 'crew') &&
+    list(v, 'fallen') &&
+    count(v, 'nextUnit') &&
+    count(v, 'nextCall') &&
+    count(v, 'nextCrew') &&
+    count(v, 'dispatchTick'),
   police: (v) => list(v, 'units') && count(v, 'nextUnit') && count(v, 'seenTick') && count(v, 'dispatchTick'),
   enforcers: (v) => list(v, 'units') && count(v, 'nextUnit') && count(v, 'sentTick'),
   crimes: (v) => list(v, 'settled'),

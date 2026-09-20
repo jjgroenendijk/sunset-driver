@@ -335,7 +335,7 @@ async function boot(): Promise<void> {
   // The debug pickers of spec sections 11.3 and 11.6 (`pickers.ts`), and the
   // maps of spec section 12 with every mark on them (`maps.ts`).
   const { picker, weapons } = buildPickers(state, description, world, () => physics, smooth);
-  const { minimap, map, navigator, giverBodies, dealerMarks, enforcerMarks, streetLife, officerMarks, fireCrews, missionMarks } =
+  const { minimap, map, navigator, giverBodies, dealerMarks, enforcerMarks, streetLife, officerMarks, emergencyCrews, missionMarks } =
     buildMaps(state, description, places, touch, world);
   // The multiplayer of spec section 21. Nothing connects here: the handle is
   // offline until a press, or until `join` below reads a room off the link.
@@ -376,7 +376,7 @@ async function boot(): Promise<void> {
   // The presses that open a menu, a map or a picker (`keys.ts`).
   listenForKeys(window, { state, pause, map, minimap, picker, weapons, free, camera, look, view: menuSettings.view });
 
-  const views = buildViews(world, { traffic, crowd, tram, wildlife }, parked, fireCrews.standing, giverBodies.markers);
+  const views = buildViews(world, { traffic, crowd, tram, wildlife }, parked, emergencyCrews.standing, giverBodies.markers);
 
   // WebGPU compiles a pipeline the first time it draws with it, so a session
   // that starts here compiles the whole city over its first frames: the street
@@ -421,7 +421,7 @@ async function boot(): Promise<void> {
     enforcerMarks,
     streetLife,
     officerMarks,
-    fireCrews,
+    emergencyCrews,
     turf,
     homePanel: new HomePanel(document.body),
     safehouses,

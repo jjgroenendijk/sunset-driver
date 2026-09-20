@@ -356,6 +356,6 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   and the marks both put on the map. It is the last link of that chain, so `MissionMarks` is
   written after it. Only what is within `STREET_LIFE_NEAR` is built at all.
 - The list of people runs from `ui/givers.ts` through the dealers, the enforcers, this, the police
-  on foot and the fire crews, and what the last of them holds is what the crowd mesh draws. A link
-  with nobody of its own still copies what it was handed: it may skip its own work on a quiet
+  on foot and the emergency crews, and what the last of them holds is what the crowd mesh draws.
+  A link with nobody of its own still copies what it was handed: it may skip its own work on a quiet
   frame, never the copy, or everybody before it leaves the street.
