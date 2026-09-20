@@ -8,6 +8,7 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
 ## Contents
 
 - Daylight, shadows and the sky
+- The buildings after dark
 - Street lamps
 - Neon
 - Headlights and tail lights
@@ -69,6 +70,29 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
   only against a rendered frame.
 - `WorldScene.time = tick` sets the weather of spec section 13.4 as well as the light, and `apply`
   lays one over the other. `docs/weather.md` is the whole of that.
+
+## The buildings after dark
+
+- Each building lights in its own way (spec section 10.5). `building-finish.ts` gives it the colour
+  of its window light — warm, neutral, cool or fluorescent — and the share of its windows that are
+  lit, both off its kind and its seed, and writes them on its vertices; `night-material.ts` draws
+  them. An office is the fluorescent one, and it is the one that lights **whole floors**: its
+  columns are run together before the field is read.
+- `daylightAt(tick).late` is how deep into the night it is, 0 at dusk and 1 in the small hours. It
+  is read off the clock rather than the sun, because what it drives is people: an office empties at
+  midnight, a home turns in, and a shop stays lit. `LATE_DIM` (`night-material.ts`) is how much
+  each kind of light loses.
+- A roof over `CROWN_HEIGHT` carries a floodlit band around its rim and one over `BEACON_HEIGHT` a
+  red aircraft beacon (`roof-dress.ts`). Both are laid **before** the detail is read, so the mid
+  ring keeps them where every other piece of rooftop plant is dropped: a skyline at night is what
+  they are for. Both stand inside the rim of the deck, never proud of it — a terrace deck is
+  measured off the box of the shape and already stands a few centimetres outside the walls, so a
+  band proud of that reaches past the lot and `test/seed-chunks.test.ts` fails.
+- The beacons blink off the tick alone: `beaconPhase(tick)` is one `BEACON_CYCLE`, and each tower
+  offsets it by the draw of the ground it stands on, so a skyline blinks out of step. Nothing here
+  reads a frame time, so two machines blink together.
+- None of it is a light. A lit window, a neon strip, a floodlit crown and a beacon are all emissive
+  surfaces read by the bloom, for the reason the light budget below gives.
 
 ## Street lamps
 

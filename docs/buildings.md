@@ -9,6 +9,7 @@ meshes reach the screen in `docs/rendering.md`, and what lights them in `docs/li
 
 - The shape a building is massed in
 - The style a tall building is dressed in
+- The finish a building carries
 - Building geometry
 
 ## The shape a building is massed in
@@ -91,6 +92,35 @@ meshes reach the screen in `docs/rendering.md`, and what lights them in `docs/li
 - The neon strips of a Deco and a Miami tower are their own `part`. A shader cannot read a
   building's seed, so their colour is drawn from the ground the strip stands over: one building's
   strips are one colour and its neighbour's another.
+
+## The finish a building carries
+
+- `finishOf(kind, style, seed, wealth)` (`building-finish.ts`) says what a building is made of and
+  how it burns after dark: the wall material, the colour of its window light, the share of its
+  windows that are lit and how weathered it is. The kind picks the wall — a warehouse is corrugated
+  metal, a parking garage is concrete, a house is siding or stucco — and a style overrules the kind,
+  so a Miami tower is stucco whatever its kind would have given it.
+- It rides on the geometry as the colour does: three numbers on **every vertex** of the building,
+  written by `Shell.geometry` and by `facadeGeometry`, so one material dresses a batch of
+  differently finished buildings. Nothing about it can be drawn from the world position instead: a
+  tower 30 m across straddles any grid a shader could draw from, and would light its two halves
+  differently.
+- The first of the three numbers is the wall and the window light as one whole number stepped by
+  `FINISH_STEP`. The attribute is packed into bytes — four a vertex, by `facade-pack.ts` on a
+  facade and by `Shell.geometry` on a block — and a step that wide is what survives a byte.
+  `test/building-finish.test.ts` pins the round trip.
+- Only a `BLOCK_WALL` fragment is drawn in one of the six wall materials (`wall-material.ts`). A
+  styled tower carries its own walls — a curtain wall, board-marked concrete, cut stone, pastel
+  stucco — and a generated masonry facade is shaded by the generator's own material.
+- The wall materials and the weathering are drawn **behind a branch** on the part, and the night
+  behind a branch on the `night` uniform. Both are coherent: every fragment of a face carries the
+  same part, and the night is one number for the whole frame. Blended in with a `mix` instead, they
+  cost about 1.3 ms of an 18 ms frame in the core; behind the branch a day frame is about 0.8 ms
+  cheaper than before the finish existed.
+- **`If` needs a `Fn` around it.** A branch written straight into a `colorNode` or an
+  `emissiveNode` throws `Cannot read properties of null (reading 'If')` when the material is built:
+  outside a shader function there is no node stack to add the branch to. Wrap the body in
+  `Fn(() => { … })()` and return the `toVar` it assigned.
 
 ## Building geometry
 
