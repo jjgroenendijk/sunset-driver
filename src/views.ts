@@ -13,6 +13,7 @@
  */
 import type { City } from './city.ts';
 import { CasualtyView } from './render/casualties.ts';
+import { ContactMarkers, type ContactMark } from './render/markers.ts';
 import { EmergencyView } from './render/emergency.ts';
 import { OfficerGunView } from './render/officer-guns.ts';
 import { ParkedView } from './render/parked.ts';
@@ -39,6 +40,8 @@ export interface SessionViews {
   casualties: CasualtyView;
   /** The guns in the hands of the police on foot who have them out. */
   guns: OfficerGunView;
+  /** The marker over each mission contact in view (spec section 18). */
+  markers: ContactMarkers;
 }
 
 /**
@@ -46,13 +49,15 @@ export interface SessionViews {
  * list of people somebody else owns who are drawn in the crowd's own mesh —
  * the dealers, the enforcers and whoever an event or an incident has put on
  * the street (spec sections 16.2, 17.2, 20.5). It is handed over once and
- * never again: the list is written in place every tick.
+ * never again: the list is written in place every tick. `contacts` is the
+ * markers over the mission contacts, handed over the same way.
  */
 export function buildViews(
   world: WorldScene,
   city: Pick<City, 'traffic' | 'crowd' | 'tram' | 'wildlife'>,
   parked: ParkedCars | undefined,
   standing: readonly StandingPerson[],
+  contacts: readonly ContactMark[],
 ): SessionViews {
   const views: SessionViews = {
     traffic: new TrafficView(city.traffic),
@@ -64,8 +69,10 @@ export function buildViews(
     crowd: new PedestrianView(city.crowd, city.tram),
     casualties: new CasualtyView(city.crowd),
     guns: new OfficerGunView(),
+    markers: new ContactMarkers(contacts.length),
   };
   views.crowd.standing = standing;
+  views.markers.marks = contacts;
   world.scene.add(
     views.traffic.group,
     views.police.group,
@@ -75,6 +82,7 @@ export function buildViews(
     views.crowd.group,
     views.casualties.group,
     views.guns.group,
+    views.markers.mesh,
   );
   if (views.parked !== undefined) world.scene.add(views.parked.group);
   return views;

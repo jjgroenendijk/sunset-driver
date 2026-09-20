@@ -12,6 +12,7 @@ import type { SimState } from './sim/simulation.ts';
 import { DealerMarks } from './ui/dealers.ts';
 import { EnforcerMarks } from './ui/enforcers.ts';
 import { FireCrews } from './ui/fire-crews.ts';
+import { GiverBodies } from './ui/givers.ts';
 import { OfficerMarks } from './ui/officers.ts';
 import { MapArt } from './ui/map-draw.ts';
 import { MapPois, SHOP_POIS } from './ui/map.ts';
@@ -30,6 +31,8 @@ export interface SessionMaps {
   map: MapScreen;
   /** The road route from the player to the waypoint, drawn on both maps. */
   navigator: Navigator;
+  /** The contacts of spec section 18 on the street, who begin the crowd's list. */
+  giverBodies: GiverBodies;
   dealerMarks: DealerMarks;
   enforcerMarks: EnforcerMarks;
   streetLife: StreetLife;
@@ -38,12 +41,17 @@ export interface SessionMaps {
   missionMarks: MissionMarks;
 }
 
-/** Build both maps of a session over its places. A pick on the full map sets the waypoint. */
+/**
+ * Build both maps of a session over its places. A pick on the full map sets the
+ * waypoint. `ground` answers how high a street is, because the people these
+ * stand on it stand on the road rather than at sea level.
+ */
 export function buildMaps(
   state: SimState,
   description: WorldDescription,
   places: WorldPlaces,
   touch: boolean,
+  ground: { heightAt(x: number, y: number): number },
 ): SessionMaps {
   const { stations, metro, shops, safehouses, missions, dealers, venues, crimes, turf } = places;
   const pois = new MapPois(description);
@@ -56,9 +64,13 @@ export function buildMaps(
     // move, so they are marked once with the rest.
     ...missions.givers.map((at) => ({ type: 'mission-giver' as const, x: at.x, y: at.y, name: at.name })),
   ];
+  // The contacts never move, so their bodies are stood once and begin the list
+  // of people the crowd's mesh draws for somebody else (spec section 18).
+  const giverBodies = new GiverBodies(state.seed, missions.givers, ground);
   // The dealers are marked after the rest, because they are the only marks that
-  // move: `DealerMarks` keeps the list above and writes its own after it.
-  const dealerMarks = new DealerMarks(state.seed, dealers, pois);
+  // move: `DealerMarks` keeps the list above and writes its own after it, and
+  // stands the contacts in front of its own people.
+  const dealerMarks = new DealerMarks(state.seed, dealers, pois, giverBodies.standing);
   // The enforcers are marked after the dealers, because they move every tick
   // and the dealers do not: `EnforcerMarks` writes the list both of them stand
   // in (spec section 17.2).
@@ -93,5 +105,5 @@ export function buildMaps(
   // since a session that never marks one has no use for it.
   let graph: RoadGraph | undefined;
   const navigator = new Navigator(() => (graph ??= buildRoadGraph(description.roads)));
-  return { minimap, map, navigator, dealerMarks, enforcerMarks, streetLife, officerMarks, fireCrews, missionMarks };
+  return { minimap, map, navigator, giverBodies, dealerMarks, enforcerMarks, streetLife, officerMarks, fireCrews, missionMarks };
 }

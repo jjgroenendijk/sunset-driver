@@ -10,6 +10,10 @@
  *
  * The body is one of the crowd: the mesh that draws the city's pedestrians
  * draws these too, so a dealer costs no draw call of its own.
+ *
+ * The contacts of spec section 18 stand in front of them in the same list
+ * (`givers.ts`). They never move, so they are handed over once rather than on
+ * every turn of the spell.
  */
 import { dealerLook, pitchOf, PITCH_TICKS, type DealerPlace } from '../sim/dealer.ts';
 import type { PedestrianLook } from '../sim/pedestrian-look.ts';
@@ -30,11 +34,14 @@ export class DealerMarks {
   private readonly pois: MapPois;
   /** The marks of everything else, which the dealers' are written after. */
   private readonly others: readonly MapPoi[];
+  /** The people who were standing on the street before the dealers: the contacts. */
+  private readonly before: readonly StandingPerson[];
   private spell = -1;
 
   /** `pois.extra` is taken as it stands: whatever is already marked stays marked. */
-  constructor(seed: number, dealers: readonly DealerPlace[], pois: MapPois) {
+  constructor(seed: number, dealers: readonly DealerPlace[], pois: MapPois, before: readonly StandingPerson[] = []) {
     this.dealers = dealers;
+    this.before = before;
     this.looks = dealers.map((dealer) => dealerLook(seed, dealer));
     this.pois = pois;
     this.others = pois.extra;
@@ -50,6 +57,7 @@ export class DealerMarks {
     if (spell === this.spell) return;
     this.spell = spell;
     this.standing.length = 0;
+    for (const person of this.before) this.standing.push(person);
     const marks: MapPoi[] = [];
     for (let i = 0; i < this.dealers.length; i++) {
       const dealer = this.dealers[i] as DealerPlace;
