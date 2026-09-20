@@ -75,7 +75,11 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   itself, a point at a time, until there is no boardwalk left to lay. The ground cuts the line into
   runs a street may drive, and `runnableRuns` hands them over longest first: the longest run may
   reach no road at either end while a shorter one on the same sand does, and a short boardwalk is
-  worth more than none (issue #381).
+  worth more than none (issue #381). Where no run can be laid as one road with its way on, the way
+  on goes in as a street of its own and the boardwalk starts where it ends. The fold is then the
+  junction between two roads, and the boardwalk keeps its whole length (issue #315). One way on is
+  laid this way per beach: it is in the network as soon as it is added, and a second would have to
+  keep off it.
 
 ## Highways and the ring
 
