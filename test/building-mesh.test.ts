@@ -141,6 +141,31 @@ function reachOf(geometry: BufferGeometry, placement: BuildingPlacement, pick: (
   return out;
 }
 
+/**
+ * How wide the rim of an outline comes out, wall by wall: for each way a wall
+ * of the hull faces, how far the hull stands past the shell that way. The shell
+ * of a block is a box, so the furthest it reaches is the wall itself.
+ */
+function rimsOf(placement: BuildingPlacement): [number, string][] {
+  const normal = placement.hull.getAttribute('normal') as BufferAttribute;
+  const ways = new Map<string, Vector3>();
+  const at = new Vector3();
+  for (let v = 0; v < normal.count; v++) {
+    at.fromBufferAttribute(normal, v).transformDirection(placement.matrix);
+    // The walls alone: the caps are covered by the reach along `y`.
+    if (Math.abs(at.y) > 0.1) continue;
+    at.y = 0;
+    at.normalize();
+    ways.set(`${at.x.toFixed(2)},${at.z.toFixed(2)}`, at.clone());
+  }
+  const out: [number, string][] = [];
+  for (const [name, way] of ways) {
+    const pick = (p: Vector3): number => p.dot(way);
+    out.push([reachOf(placement.hull, placement, pick) - reachOf(placement.shell, placement, pick), name]);
+  }
+  return out;
+}
+
 /** A geometry as one number, so two of them are compared without walking both. */
 function signature(geometry: BufferGeometry): string {
   const array = (geometry.getAttribute('position') as BufferAttribute).array as Float32Array;
@@ -369,6 +394,44 @@ describe('the outline hull', () => {
         const grew = reachOf(one.hull, one, pick) - reachOf(one.shell, one, pick);
         expect(grew, kind).toBeGreaterThan(OUTLINE_WIDTH * 0.9);
         expect(grew, kind).toBeLessThan(OUTLINE_WIDTH * 1.5);
+      }
+    }
+  });
+
+  it('keeps the rim one width wide on a lot that is not square', () => {
+    // A lot on a bend leans, and the shell and the hull are sheared and
+    // stretched onto its side edges. A rim pushed out by the same amount in
+    // the building's own units then comes out metres wide where the stretch is
+    // widest and a centimetre where it is narrowest.
+    const front = { x: 0, y: 0 };
+    const wedge = [
+      { x: -6, y: 0 },
+      { x: 6, y: 0 },
+      { x: 18, y: 24 },
+      { x: -18, y: 24 },
+    ];
+    for (const kind of ['house', 'warehouse', 'shop-row'] as const) {
+      const building = buildingOf(kind, 12, 24, { front, lot: wedge, shared: { left: true, right: true } });
+      const one = placed([building], lookupOf(undefined, 0, QUIET))[0] as BuildingPlacement;
+      for (const [rim, wall] of rimsOf(one)) {
+        expect(rim, `${kind} wall ${wall}`).toBeGreaterThan(OUTLINE_WIDTH * 0.8);
+        expect(rim, `${kind} wall ${wall}`).toBeLessThan(OUTLINE_WIDTH * 1.3);
+      }
+    }
+  });
+
+  it('never spikes a corner out past the building, whatever the shape', () => {
+    // Two faces of a footprint that cross behind the shell cross a long way
+    // outside it: the corner a chamfer cuts is the one that used to fly out
+    // tens of metres over the street above a setback.
+    for (let seed = 0; seed < 16; seed++) {
+      const building = buildingOf('mid-rise', 27, 27, { seed });
+      for (const chamfer of [-1, 1]) {
+        const chunk = chunkOf([building]);
+        const one = buildChunkBuildings(chunk, lookupOf(undefined, chamfer, CORE), 'mid')[0] as BuildingPlacement;
+        // A setback pulls the hull in over the tier below it, so only the
+        // outside of the rim is pinned here.
+        for (const [rim, wall] of rimsOf(one)) expect(rim, `seed ${seed} wall ${wall}`).toBeLessThan(OUTLINE_WIDTH * 1.3);
       }
     }
   });

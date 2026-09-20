@@ -177,6 +177,14 @@ meshes reach the screen in `docs/rendering.md`, and what lights them in `docs/li
   cuts it. And the caps are triangulated rather than fanned from one corner. A courtyard is given
   its outer rectangle: an outline is the silhouette a building cuts against the ground, and the
   hole in the middle of a block is not one.
+- The rim comes out `OUTLINE_WIDTH` wide on every building, whatever its lot. The hull is stretched
+  by `fitOf` and sheared by `leanOf` along with the shell, so pushing every face out by the same
+  amount in the building's own units rimmed the ends of a stretched building metres wide where its
+  front kept a third of a metre. `pushOf` pushes each face by what that transform takes back, read
+  at both ends of the face, since the lean is half as strong at one end of a wedge lot as at the
+  other. And a corner is held inside how far the shell itself reaches that way: two faces that
+  cross behind the shell cross a long way outside it, which used to fly the corner a chamfer cuts
+  tens of metres over the street. `test/building-mesh.test.ts` pins both.
 - `building-material.ts` holds the three materials and the one `night` uniform they share: the glass
   of every building is picked out, some of it is lit, and the whole of it is multiplied by that
   uniform. It is 0 by daylight, and `WorldScene.time` sets it off the day and night cycle.
