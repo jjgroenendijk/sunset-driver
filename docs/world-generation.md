@@ -152,6 +152,10 @@ corridors in `docs/corridors.md`.
   and `MIN_LOT_AREA` what each kind needs, so a lot too small for the kind it rolled takes the next
   smaller kind the zone allows. `lots.ts` cuts the ground it stands on and `lot-geom.ts` is the
   arithmetic of that cut.
+  A lot the ground falls more than `MAX_LOT_FALL` across carries nothing: the lots are not carved
+  level, so that fall is the height of the foundation wall the building would stand on, and six
+  metres of it is a cliff with a house on top. The fall is read off the terrain the world was
+  given, because the carve is built on that same terrain and only levels the ground near a road.
   `skylineAt` (`districts.ts`) is a smooth field that falls from 1 at the core to 0 at the outer
   edge of the inner ring. Each building carries it as `Building.skyline`. It gathers the towers
   towards the middle, and the renderer reads it for height, so the skyline has no edge at a ring.

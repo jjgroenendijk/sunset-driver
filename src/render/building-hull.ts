@@ -46,6 +46,11 @@ const HULL_BANDS = 80;
  * reach a wall it shares is outlined by the scale it keeps across the frontage,
  * so its two ends are rimmed the width of the stretch more thinly — a
  * centimetre of a line a third of a metre wide.
+ *
+ * The `footing` is how far the building carries its foundation wall below the
+ * ground it stands on, in the frame the shell is built in. The outline reaches
+ * down over it, so a building on a slope is outlined to the ground it meets
+ * rather than to the ground its highest corner stands at.
  */
 export function hullOf(
   massing: BuildingMassing,
@@ -53,6 +58,7 @@ export function hullOf(
   box: Box3,
   fit: Fit,
   shape: BuildingShape,
+  footing: number,
 ): BufferGeometry {
   const reach = OUTLINE_WIDTH / fit.across;
   // The shell is centred on the lot, so the box around it is centred on the
@@ -60,7 +66,7 @@ export function hullOf(
   const around = { width: box.max.x - box.min.x, depth: box.max.z - box.min.z };
   const ring = footprintRing(shape, around, massing.chamfer);
   const faces = facesOf(ring);
-  const bands = profileOf(shell, box, ring, faces, reach);
+  const bands = profileOf(shell, box, ring, faces, reach, footing);
   const positions: number[] = [];
   const normals: number[] = [];
 
@@ -132,6 +138,7 @@ function profileOf(
   ring: readonly Point[],
   faces: readonly Point[],
   reach: number,
+  footing: number,
 ): Band[] {
   const height = Math.max(box.max.y - box.min.y, HULL_BAND);
   const count = Math.max(1, Math.min(HULL_BANDS, Math.ceil(height / HULL_BAND)));
@@ -193,7 +200,7 @@ function profileOf(
     }
     // The hull starts below the ground, so the first band reaches down to the
     // footing, and the last one stands over the roof by the width of the outline.
-    const y0 = b === 0 ? -FOUNDATION : box.min.y + b * step;
+    const y0 = b === 0 ? -(FOUNDATION + footing) : box.min.y + b * step;
     const y1 = b === count - 1 ? box.max.y + reach : box.min.y + (b + 1) * step;
     const last = bands[bands.length - 1];
     if (last !== undefined && sameReach(last.reach, spread)) last.y1 = y1;

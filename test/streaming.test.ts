@@ -1,6 +1,7 @@
 import { BackSide, Matrix4, MeshBasicMaterial, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { Batch, batchOfPacked } from '../src/render/batch.ts';
+import { buildChunkBuildings } from '../src/render/building-mesh.ts';
 import { cellAt, cellGrid } from '../src/render/cells.ts';
 import { CHUNK_DRAW_CALL_CAP, chunkDrawCalls } from '../src/render/chunk-cost.ts';
 import {
@@ -113,6 +114,12 @@ function payloadOf(cx: number, cy: number, detail: ChunkDetail): ChunkPayload {
     payloads.set(key, payload);
   }
   return structuredClone(payload);
+}
+
+/** How many of a chunk's buildings carry a footing at a detail. */
+function footingsIn(cx: number, cy: number, detail: ChunkDetail): number {
+  const placed = buildChunkBuildings(source.chunk(cx, cy), lookups.buildings, detail);
+  return placed.filter((one) => one.footing !== undefined).length;
 }
 
 describe('the rings around the player', () => {
@@ -241,8 +248,9 @@ describe('a chunk as a payload', () => {
     const near = payloadOf(MIDDLE.cx, MIDDLE.cy, 'near');
     const mid = payloadOf(MIDDLE.cx, MIDDLE.cy, 'mid');
     expect(mid.facades).toHaveLength(0);
-    // Mid detail dresses no roof, so every building is one block and nothing else.
-    expect(partsIn(mid.blocks)).toBe(partsIn(mid.outlines));
+    // Mid detail dresses no roof, so a building is one block and, where the
+    // ground falls across its lot, the footing under it (`building-mesh.ts`).
+    expect(partsIn(mid.blocks)).toBe(partsIn(mid.outlines) + footingsIn(MIDDLE.cx, MIDDLE.cy, 'mid'));
     expect(partsIn(mid.outlines)).toBe(partsIn(near.outlines));
     expect(mid.ground.gridSize).toBe(near.ground.gridSize);
     expect(mid.roads.map((tier) => tier.tier)).toEqual(near.roads.map((tier) => tier.tier));
@@ -261,10 +269,10 @@ describe('a chunk as a payload', () => {
     expect(far.ground.positions[(far.ground.gridSize * far.ground.gridSize - 1) * 3]).toBe(
       near.ground.positions[(near.ground.gridSize * near.ground.gridSize - 1) * 3],
     );
-    expect(partsIn(far.blocks)).toBe(partsIn(near.outlines));
+    expect(partsIn(far.blocks)).toBe(partsIn(near.outlines) + footingsIn(MIDDLE.cx, MIDDLE.cy, 'far'));
     expect(far.facades).toHaveLength(0);
     // The outline stays: it is what the skyline reads by.
-    expect(partsIn(far.outlines)).toBe(partsIn(far.blocks));
+    expect(partsIn(far.outlines)).toBe(partsIn(near.outlines));
     expect(far.plants.models).toHaveLength(0);
     expect(near.plants.models.length).toBeGreaterThan(0);
     expect(far.lamps).toHaveLength(0);

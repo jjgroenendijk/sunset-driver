@@ -5,6 +5,7 @@ import { ENTRANCE_REACH } from '../src/sim/metro.ts';
 import {
   FRONT_REACH,
   lotMiddle,
+  MAX_LOT_FALL,
   MIN_LOT_AREA,
   ZONE_BUILDINGS,
   ZONE_LOTS,
@@ -190,6 +191,7 @@ sweepSuite('parcels', () => {
       const graph = graphOf(seed);
       const { parcels } = parcelsOf(seed);
       const { buildings } = buildingsOf(seed);
+      const terrain = new Heightfield(w.terrain);
       let complaint: string | undefined;
       const fault = (text: string): void => {
         complaint ??= text;
@@ -227,6 +229,18 @@ sweepSuite('parcels', () => {
         }
         if (building.area + 1e-6 < MIN_LOT_AREA[building.kind]) {
           fault(`${where} is a ${building.kind} on ${building.area.toFixed(0)} m²`);
+        }
+        // The ground under the lot is level enough to build on: the fall across
+        // it is the foundation wall the renderer stands the building on.
+        let low = Infinity;
+        let high = -Infinity;
+        for (const corner of building.lot) {
+          const height = terrain.sample(corner.x, corner.y);
+          low = Math.min(low, height);
+          high = Math.max(high, height);
+        }
+        if (high - low > MAX_LOT_FALL + 1e-6) {
+          fault(`${where} stands on ground that falls ${(high - low).toFixed(1)} m across its lot`);
         }
         // The lot never leaves the parcel.
         for (const corner of building.lot) {
