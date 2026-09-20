@@ -274,13 +274,23 @@ export function hipped(shell: Shell, walls: BuildingMassing, eaves: number, rise
   shell.triangle([-hw, eaves, -hd], [-hw, eaves, hd], [-end, ridge, 0], part);
 }
 
-/** A flat roof with a parapet around it, as a shop row and a warehouse carry. */
+/**
+ * A flat roof with a parapet around it, as a shop row and a warehouse carry.
+ *
+ * The deck slab stops short of the four edges, so its outward faces are buried
+ * inside the parapets rather than standing on the same planes as theirs. A slab
+ * built over the whole footprint puts deck colour and trim colour on one plane
+ * down the lower 12 cm of every parapet, and which of the two wins a pixel moves
+ * with the camera.
+ */
 export function flatRoof(shell: Shell, walls: BuildingMassing, top: number, deck = BLOCK_ROOF, at: At = MIDDLE): void {
   const x0 = at.x - walls.width / 2;
   const x1 = at.x + walls.width / 2;
   const z0 = at.z - walls.depth / 2;
   const z1 = at.z + walls.depth / 2;
-  shell.box(x0, x1, top, top + 0.12, z0, z1, deck);
+  // Half a parapet in from each edge, and less on a roof too narrow for that.
+  const inset = Math.min(PARAPET_WIDTH / 2, walls.width / 4, walls.depth / 4);
+  shell.box(x0 + inset, x1 - inset, top, top + 0.12, z0 + inset, z1 - inset, deck);
   const rim = top + PARAPET_RISE;
   shell.box(x0, x1, top, rim, z1 - PARAPET_WIDTH, z1, BLOCK_TRIM);
   shell.box(x0, x1, top, rim, z0, z0 + PARAPET_WIDTH, BLOCK_TRIM);

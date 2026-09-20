@@ -55,10 +55,18 @@ const MIN_PIER = 0.5;
 /**
  * Metres the lane stands above the carriageway. It is over the paint, so the
  * centre line of the road it runs down does not show between the rails.
+ *
+ * The lane, the panel and the rails go into the tier batch with the carriageway
+ * they are laid on (`docs/corridors.md`), so they cannot take a depth offset of
+ * their own the way the paint does: a batch carries one material. The lift is
+ * what keeps them in front of it, and a lift of g metres wins to about
+ * √(g × 1.7e6) metres from the chase camera. Six centimetres reaches about
+ * 320 m, which is the far side of the near ring, and reads as the kerbed step a
+ * reserved lane has.
  */
-const LANE_RAISE = 2 * MARK_RAISE;
-/** Metres a crossing panel stands above the lane, and a rail above the panel. */
-const CROSSING_RAISE = 0.01;
+const LANE_RAISE = 5 * MARK_RAISE;
+/** Metres a crossing panel stands above the lane, and how far a rail head stands over the lane. */
+const CROSSING_RAISE = 0.03;
 const RAIL_RISE = 0.05;
 /** Metres each side of a rail's centre. A real rail head is 7 cm across; this one reads from the camera. */
 const RAIL_HALF = 0.06;
@@ -127,7 +135,10 @@ function trackOf(piece: Piece): BufferGeometry[] {
   for (let v = 0; v < count; v++) across[v] = (lane[v % lane.length] as SectionPoint).across;
   const parts: BufferGeometry[] = [tag(surface, across, SURFACE_TRAM_LANE)];
 
-  const base = SURFACE_RAISE + LANE_RAISE + CROSSING_RAISE;
+  // The rails stand on the lane rather than over it, so none of their length
+  // floats. They reach RAIL_RISE up, which clears a crossing panel by the 2 cm
+  // of rail head a crossing shows.
+  const base = SURFACE_RAISE + LANE_RAISE;
   for (const track of [-1, 1]) {
     for (const rail of [-1, 1]) {
       const centre = (track * TRAM_LANE.trackSpacing) / 2 + (rail * TRAM_LANE.gauge) / 2;
@@ -149,7 +160,7 @@ function crossingPanel(crossing: TramCrossing, surfaceAt: SurfaceAt): BufferGeom
     [CROSSING_REACH, half],
     [-CROSSING_REACH, half],
   ];
-  const rise = SURFACE_RAISE + LANE_RAISE + CROSSING_RAISE / 2;
+  const rise = SURFACE_RAISE + LANE_RAISE + CROSSING_RAISE;
   const ring = corners.map(([along, across]) => {
     const x = crossing.x + crossing.alongX * along - crossing.alongY * across;
     const y = crossing.y + crossing.alongY * along + crossing.alongX * across;

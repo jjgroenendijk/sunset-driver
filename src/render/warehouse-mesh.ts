@@ -36,6 +36,14 @@ const DOCK_REACH = 1.6;
 /** Metres of bay painted on the ground in front of a dock. */
 const DOCK_BAY = 1.3;
 
+/**
+ * Metres the bay paint stands over the ground. It goes into the building's own
+ * batch, which carries no depth offset, so the paint wins over the ground mesh
+ * by the lift alone: two centimetres lost the fight beyond about 180 m from the
+ * chase camera. Four is the lift the metro well and a shop floor take.
+ */
+const DOCK_PAINT_RISE = 0.04;
+
 /** Metres of frontage one sawtooth bay covers, and the fewest and most bays. */
 const TOOTH = 7;
 const TEETH_MIN = 2;
@@ -102,6 +110,6 @@ function docks(shell: Shell, walls: BuildingMassing, seed: number): void {
   for (let i = 0; i < bays; i++) {
     const at = -span / 2 + (i + 0.5) * pitch;
     shell.box(at - 1.5, at + 1.5, DOCK_RISE, DOCK_RISE + 3.2, hd - 0.02, hd + 0.08, BLOCK_METAL);
-    shell.panel(at - 1.6, at + 1.6, 0.02, hd + DOCK_REACH, hd + DOCK_REACH + DOCK_BAY, BLOCK_PAINT);
+    shell.panel(at - 1.6, at + 1.6, DOCK_PAINT_RISE, hd + DOCK_REACH, hd + DOCK_REACH + DOCK_BAY, BLOCK_PAINT);
   }
 }
