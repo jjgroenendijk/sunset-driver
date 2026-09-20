@@ -271,11 +271,18 @@ export class CharacterModel {
     };
 
     const headWidth = h * 0.13;
-    this.box(this.torso, headWidth, headHeight, headWidth * 1.05, skin.colour, 0, torsoHeight + headHeight / 2, 0);
-
     // The hair sits on the crown and, when it is long enough, falls behind.
     const capHeight = headHeight * 0.34 + hair.volume;
     const crown = h - legTop;
+    // The head stops half a cap short of the crown, so its top face is buried
+    // inside the hair rather than standing on the same plane as the hair's own.
+    // The cap is wider than the head by the hair's volume each way, so the band
+    // the head gives up was inside the cap and never drawn: the silhouette does
+    // not change. The camera looks down, so the crown is the face of a person
+    // it sees most of, and two surfaces fighting over it shimmer as it moves.
+    const skullHeight = headHeight - capHeight / 2;
+    this.box(this.torso, headWidth, skullHeight, headWidth * 1.05, skin.colour, 0, torsoHeight + skullHeight / 2, 0);
+
     this.box(
       this.torso,
       headWidth + hair.volume * 2,
