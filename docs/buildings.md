@@ -8,6 +8,7 @@ meshes reach the screen in `docs/rendering.md`, and what lights them in `docs/li
 ## Contents
 
 - The shape a building is massed in
+- The style a tall building is dressed in
 - Building geometry
 
 ## The shape a building is massed in
@@ -50,6 +51,46 @@ meshes reach the screen in `docs/rendering.md`, and what lights them in `docs/li
   every floor of every tower of the core, and a generated facade is the dearest thing a chunk
   builds. Widening them is what paid for the extra boxes — the quick tier costs a fifth less CPU
   than it did, and the dearest chunk of five seeds costs fewer vertices at near detail than before.
+
+## The style a tall building is dressed in
+
+- `styleOf(building, district, ground, height)` (`building-style.ts`) picks one of the five styles
+  of spec section 10.3: classical masonry, a glass curtain wall, a Brutalist slab, an Art Deco stack
+  or a Miami pastel block. Each carries a weight drawn from the zone, the district's wealth and
+  density and the skyline over the lot, and the building's seed draws from the weights. No style is
+  banned anywhere: one glass tower in a poor district is a landlord.
+- **Only masonry is generated.** The other four are built from the box kit of `block-shell.ts` by
+  `tall-mesh.ts`, so a styled tower joins the **block** batch its cell already draws and costs no
+  draw call — `batchOf` says a lot has room for a generated facade, and `buildChunkBuildings` then
+  gives that facade only to masonry. `buildingDrawCalls` still counts a facade batch for every such
+  lot, because it answers off the chunk alone and cannot know the district.
+- Colour follows the style, not the district. `styleColour` holds a palette for each style;
+  `tintOf` gives masonry the generator's `pickBuildingColor` as before.
+- Masonry weighs four times any one other style. That is not taste: it is what holds the building
+  LOD of spec section 9.2 together. A styled tower costs a fifth of a generated facade at near
+  detail, so a core of styled towers alone would make near detail so cheap that mid detail could no
+  longer cost a tenth of it, and `test/seed-chunks.test.ts` would fail on the ratio rather than on
+  the cap. Change the weight and measure that test.
+- **Nothing a style lays on a wall reaches out of the box the shape gave it.** The walls are drawn
+  in by whatever the relief stands proud — `REACH` in `tall-mesh.ts` — so the relief lands on the
+  edge of the massing. A shell that reached past it would be scaled back by `fitOf`, and scaling
+  one building for a 0.2 m eyebrow would move every wall of it off the edge it shares.
+- A styled wall carries its windows in its **material** and not in its geometry: the panes of a
+  curtain wall, the punched windows of concrete, stone and stucco, and the portholes on the cut
+  corners of a Miami block are all drawn from the metres a face carries in its `uv`. That is what
+  lets mid detail be the massing and the parapet alone and still read as a building at 200 m, and
+  it is what keeps mid detail under a tenth of near.
+- Every part of that material is lit off **one** noise field and one grid. A field is by far the
+  dearest thing the block material evaluates, and styled towers are drawn with it over most of the
+  screen. One field for each part cost 56 ms a frame when this was first written, where the
+  whole frame costs 18 ms now. Only the width of a column of windows changes from part to part.
+- Art Deco asks `shapeOf` for the `setbacks` plan by name, through `planFor`, and falls back to a
+  box where the lot has no room for a stack. Its crown and spire stand over the parapet of the top
+  tier, so a Deco tower reaches higher than its massing says — the outline hull follows the shell,
+  so the camera knows.
+- The neon strips of a Deco and a Miami tower are their own `part`. A shader cannot read a
+  building's seed, so their colour is drawn from the ground the strip stands over: one building's
+  strips are one colour and its neighbour's another.
 
 ## Building geometry
 

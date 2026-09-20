@@ -15,6 +15,7 @@
 import { BufferAttribute, BufferGeometry } from 'three';
 import { hashInts } from '../core/hash.ts';
 import type { BuildingMassing, Rgb } from './building-mesh.ts';
+import type { StyledLook } from './building-style.ts';
 
 /**
  * What a vertex belongs to. The material shades each of them differently, and
@@ -41,6 +42,33 @@ export const BLOCK_SLATE = 9;
 export const BLOCK_WATER = 10;
 /** Paint on a deck: the markings of a helipad, a court or a loading bay. */
 export const BLOCK_PAINT = 11;
+/**
+ * A glass curtain wall (spec section 10.3). The wall itself is the glass, and
+ * the mullion grid and the spandrel band of each floor are drawn in the shader
+ * off the metres the face carries in its `uv`, so a whole tower is six quads a
+ * box rather than a window at a time.
+ */
+export const BLOCK_CURTAIN = 12;
+/** Raw board-marked concrete: the wall of a Brutalist tower. */
+export const BLOCK_CONCRETE = 13;
+/** Pastel stucco: the wall of a Miami tower. */
+export const BLOCK_STUCCO = 14;
+/**
+ * A stucco panel with one round window a storey: the cut corner of a Miami
+ * tower, where the porthole of spec section 10.3 is drawn in the shader.
+ */
+export const BLOCK_PORTHOLE = 15;
+/**
+ * A neon strip along an edge of a Deco or a Miami tower. It is its own part so
+ * the night of spec section 10.5 can light it on its own.
+ */
+export const BLOCK_NEON = 16;
+/**
+ * The cut stone of an Art Deco tower. It is the wall of `BLOCK_WALL` with the
+ * punched windows of the style drawn on it, which is what lets a Deco tier
+ * carry its windows at every detail without a band of glazing a storey.
+ */
+export const BLOCK_STONE = 17;
 
 /** Metres of one storey, which is what the window bands are spaced by. */
 export const STOREY = 3.2;
@@ -95,6 +123,13 @@ export interface BlockStyle {
   seed: number;
   wealth: number;
   detail: 'near' | 'mid';
+  /**
+   * How a tower or a mid-rise block is dressed (spec section 10.3), where it is
+   * one of the four styles `tall-mesh.ts` builds, and the bay rhythm its shape
+   * drew for itself. Undefined on every other kind, and on the classical
+   * masonry that `SkyscraperGenerator` builds.
+   */
+  tall?: { look: StyledLook; bay: number };
 }
 
 /** A number in 0..1 drawn from a seed and a salt, the same one every time. */

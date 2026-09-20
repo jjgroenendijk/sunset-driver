@@ -145,10 +145,11 @@ export function shapeOf(
   kind: BuildingKind,
   massing: { width: number; depth: number; height: number },
   shared: Shared = { left: false, right: false },
+  want?: BuildingPlan,
 ): BuildingShape {
   const floorHeight = FLOOR_HEIGHT * (1 + FLOOR_SPREAD * unit(seed, 31));
   const bayWidth = BAY_WIDTH * (1 + BAY_SPREAD * unit(seed, 32));
-  const plan = planOf(seed, kind, massing, shared);
+  const plan = planOf(seed, kind, massing, shared, want);
   return { plan, parts: partsOf(plan, seed, massing, floorHeight, shared), floorHeight, bayWidth };
 }
 
@@ -166,25 +167,35 @@ export interface Shared {
  * stand on that edge from the front of the lot to the back of it, so an L needs
  * a side edge with no neighbour against it to cut into. A lot walled on both
  * sides is built as a box instead.
+ *
+ * A style of spec section 10.3 may ask for a plan by name — an Art Deco tower
+ * is a stack of setbacks, whatever its seed drew — and it is given it wherever
+ * the lot has room, and a box where it has not.
  */
 function planOf(
   seed: number,
   kind: BuildingKind,
   massing: { width: number; depth: number; height: number },
   shared: Shared,
+  want?: BuildingPlan,
 ): BuildingPlan {
   const table = PLANS[kind];
   if (table === undefined) return 'box';
+  if (want !== undefined) return fits(want, massing) ? want : 'box';
   let draw = unit(seed, 30);
   for (const entry of table) {
     draw -= entry.share;
     if (draw > 0) continue;
-    const room = PLAN_ROOM[entry.plan];
-    const fits = massing.width >= room.width && massing.depth >= room.depth && massing.height >= room.height;
     if (entry.plan === 'ell' && shared.left && shared.right) return 'box';
-    return fits ? entry.plan : 'box';
+    return fits(entry.plan, massing) ? entry.plan : 'box';
   }
   return 'box';
+}
+
+/** Whether a lot leaves a plan the room {@link PLAN_ROOM} asks of it. */
+function fits(plan: BuildingPlan, massing: { width: number; depth: number; height: number }): boolean {
+  const room = PLAN_ROOM[plan];
+  return massing.width >= room.width && massing.depth >= room.depth && massing.height >= room.height;
 }
 
 /** A rectangle of the footprint, with its own roof offered to the dresser. */
