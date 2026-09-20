@@ -12,8 +12,10 @@
  * hours and the enforcers every tick, so the merge is here, on the side that
  * has to rewrite anyway, and the dealers' own list is left alone.
  *
- * A session with no wave out writes nothing at all, which is almost every frame
- * of almost every session.
+ * A session with no wave out writes no marks at all, which is almost every
+ * frame of almost every session. The people are copied even then, because the
+ * list is the one the crowd mesh draws and the dealers and the contacts are
+ * already standing in it.
  */
 import { genRng, Subsystem } from '../core/rng.ts';
 import type { EnforcerUnit } from '../sim/enforcer.ts';
@@ -56,14 +58,14 @@ export class EnforcerMarks {
    */
   update(state: SimState, ground: { heightAt(x: number, y: number): number }, dealers: DealerMarks): void {
     const units = state.enforcers.units;
+    this.standing.length = 0;
+    for (const person of dealers.standing) this.standing.push(person);
     if (units.length === 0 && this.drawn === 0) {
       // Nobody is out, but the dealers may have moved on to the next corner,
       // and this is the list the objective's own mark is written after.
       this.marks = dealers.marks;
       return;
     }
-    this.standing.length = 0;
-    for (const person of dealers.standing) this.standing.push(person);
     const marks: MapPoi[] = [];
     for (const unit of units) {
       marks.push({ type: 'enforcer', x: unit.x, y: unit.y, name: nameOf(unit) });
