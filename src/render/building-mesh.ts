@@ -250,9 +250,11 @@ export function buildChunkBuildings(
     const wall = building.shared.left || building.shared.right;
     const fit = fitOf({ width: box.max.x - box.min.x, depth: box.max.z - box.min.z }, massing, wall);
     const footing = footingGeometry(shape, box, fit, stand.footing, tint);
-    const hull = hullOf(massing, shell, box, fit, shape, stand.footing / fit.across);
     // A lot on a bend leans its side edges, and a wall it shares follows them.
+    // The hull is leaned with the shell, so it is built knowing the lean: that
+    // is what keeps its rim one width wide on a lot that is not square.
     const lean = leanOf(building, massing);
+    const hull = hullOf(massing, shell, box, fit, shape, lean, stand.footing / fit.across);
     if (lean !== undefined) {
       leanGeometry(shell, lean, fit);
       leanGeometry(hull, lean, fit);

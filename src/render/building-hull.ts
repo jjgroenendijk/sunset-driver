@@ -17,7 +17,7 @@
  */
 import { Box3, BufferAttribute, BufferGeometry, ShapeUtils, Vector2 } from 'three';
 import type { Point } from '../world/types.ts';
-import { CHAMFER_WIDTH, FOUNDATION, type BuildingMassing, type Fit } from './building-plan.ts';
+import { CHAMFER_WIDTH, FOUNDATION, type BuildingMassing, type Fit, type Lean } from './building-plan.ts';
 import { ringOf as shapeRing, type BuildingShape } from './building-shape.ts';
 
 /** Metres the outline hull stands outside the shell it rims (spec section 10.1). */
@@ -40,12 +40,10 @@ const HULL_BANDS = 80;
  *
  * The hull is built around the box the shell really fills, because a crown
  * stands over the height that was asked for and a cornice outside the footprint
- * that was given. It is drawn with the shell's own matrix, so it is widened by
- * the amount the shell is taken in by and comes out {@link OUTLINE_WIDTH} wide
- * on every building whatever its fit. A shell stretched along the frontage to
- * reach a wall it shares is outlined by the scale it keeps across the frontage,
- * so its two ends are rimmed the width of the stretch more thinly — a
- * centimetre of a line a third of a metre wide.
+ * that was given. It is stretched, sheared and scaled with the shell, so each
+ * of its faces is pushed out by the width that transform takes back and every
+ * one of them comes out {@link OUTLINE_WIDTH} wide in the world — see
+ * {@link pushOf}.
  *
  * The `footing` is how far the building carries its foundation wall below the
  * ground it stands on, in the frame the shell is built in. The outline reaches
@@ -58,15 +56,18 @@ export function hullOf(
   box: Box3,
   fit: Fit,
   shape: BuildingShape,
+  lean: Lean | undefined,
   footing: number,
 ): BufferGeometry {
-  const reach = OUTLINE_WIDTH / fit.across;
   // The shell is centred on the lot, so the box around it is centred on the
   // origin and the ring of the footprint can be laid out there as well.
   const around = { width: box.max.x - box.min.x, depth: box.max.z - box.min.z };
   const ring = footprintRing(shape, around, massing.chamfer);
   const faces = facesOf(ring);
-  const bands = profileOf(shell, box, ring, faces, reach, footing);
+  const push = pushOf(ring, faces, fit, lean);
+  // Height is scaled by the fit across the frontage alone, and the lean leaves
+  // it alone, so the roof stands over the shell by the one width.
+  const bands = profileOf(shell, box, ring, faces, push, OUTLINE_WIDTH / fit.across, footing);
   const positions: number[] = [];
   const normals: number[] = [];
 
@@ -114,15 +115,63 @@ export function hullOf(
 interface Band {
   y0: number;
   y1: number;
-  /** How far out each face of the footprint stands, in the order `facesOf` gives. */
+  /** How far out the shell reaches along each face, in the order `facesOf` gives. */
   reach: number[];
   /** Those faces as a ring of corners. */
   ring: Point[];
 }
 
+/** How far a face is pushed out at each of its two ends, in the shell's units. */
+type Push = readonly [number, number];
+
+/**
+ * How far each face of the footprint is pushed out, in the shell's own units,
+ * so that all of them come out {@link OUTLINE_WIDTH} wide in the world.
+ *
+ * The hull is drawn with the shell's own matrix and leaned with it, so what it
+ * is pushed out by here is not what the camera sees. The frontage is scaled by
+ * `fit.along` and by the lean, the depth and the height by `fit.across` alone.
+ * Pushing every face out by the same amount then rims the ends of a stretched
+ * building metres wide where its front keeps a third of a metre.
+ *
+ * So each face is pushed by what the transform takes back. The lean changes
+ * from one end of a wall to the other, which on a lot that leans hard is a
+ * factor of two, so each face is measured at both of its ends and the wall
+ * between them runs from the one to the other.
+ */
+function pushOf(ring: readonly Point[], faces: readonly Point[], fit: Fit, lean: Lean | undefined): Push[] {
+  const out: Push[] = [];
+  for (let i = 0; i < faces.length; i++) {
+    const n = faces[i] as Point;
+    const a = ring[i] as Point;
+    const b = ring[(i + 1) % ring.length] as Point;
+    out.push([pushAt(n, a, fit, lean), pushAt(n, b, fit, lean)]);
+  }
+  return out;
+}
+
+/**
+ * The push that comes out {@link OUTLINE_WIDTH} wide in the world at one place
+ * on a face. For a face with unit normal `n`, a push of `d` comes out
+ * `d / |J⁻ᵀ n|` wide, where `J` is the map from these units to the world: `x`
+ * scaled by `along`, `z` and `y` by `across`, and `x` sheared along `z` by the
+ * lean. `J` is read where the face stands, because the lean is not the same
+ * over the whole building.
+ */
+function pushAt(n: Point, at: Point, fit: Fit, lean: Lean | undefined): number {
+  const depth = at.y * fit.across;
+  // The frontage's own scale there, and how far `x` moves there for each metre
+  // of depth. Both are `leanGeometry` read at the one place.
+  const along = fit.along * (lean === undefined ? 1 : lean.scale + lean.scaleSlope * depth);
+  const shear = lean === undefined ? 0 : fit.across * (fit.along * lean.scaleSlope * at.x + lean.shiftSlope);
+  return OUTLINE_WIDTH * Math.hypot(n.x / along, (n.y - (shear * n.x) / along) / fit.across);
+}
+
 /**
  * The profile of a shell, band of height by band of height: how far out each
- * face of its footprint reaches over that height, plus the width of the outline.
+ * face of its footprint reaches over that height. The width of the outline is
+ * added to that where the ring is laid out, because a face is pushed out by a
+ * different amount at each of its two ends.
  *
  * A face is measured from the triangles of the shell rather than from its
  * vertices, and a triangle reaches into every band its own height spans: a wall
@@ -137,7 +186,8 @@ function profileOf(
   box: Box3,
   ring: readonly Point[],
   faces: readonly Point[],
-  reach: number,
+  push: readonly Push[],
+  top: number,
   footing: number,
 ): Band[] {
   const height = Math.max(box.max.y - box.min.y, HULL_BAND);
@@ -185,8 +235,15 @@ function profileOf(
   }
 
   const bands: Band[] = [];
+  // How far out a corner of the band may stand, face by face: the furthest the
+  // shell itself reaches that way, and the width of the outline. It is what
+  // holds a corner in when one face is measured well inside its neighbours —
+  // the far corner of a building falls inside the slack of a chamfer's edge,
+  // and two faces that cross behind the shell cross a long way outside it.
+  let bound: number[] = [];
   for (let b = 0; b < count; b++) {
     const spread: number[] = [];
+    const limit: number[] = [];
     for (let k = 0; k < width; k++) {
       const measured = near[b * width + k] as number;
       // A face with nothing standing along it in this band is pushed out until
@@ -196,15 +253,20 @@ function profileOf(
       // one below it, and the lowest band falls back on the box.
       const empty = all[b * width + k] as number;
       const fallback = empty === -Infinity ? (bands[bands.length - 1]?.reach[k] ?? 0) : empty;
-      spread.push((measured === -Infinity ? fallback : measured) + reach);
+      const ends = push[k] as Push;
+      spread.push(measured === -Infinity ? fallback : measured);
+      // A band the shell does not reach at all holds nothing in: it has
+      // nothing to measure a limit from, and the band below it is not its own.
+      limit.push(empty === -Infinity ? (bound[k] ?? Infinity) : empty + Math.max(ends[0], ends[1]));
     }
+    bound = limit;
     // The hull starts below the ground, so the first band reaches down to the
     // footing, and the last one stands over the roof by the width of the outline.
     const y0 = b === 0 ? -(FOUNDATION + footing) : box.min.y + b * step;
-    const y1 = b === count - 1 ? box.max.y + reach : box.min.y + (b + 1) * step;
+    const y1 = b === count - 1 ? box.max.y + top : box.min.y + (b + 1) * step;
     const last = bands[bands.length - 1];
     if (last !== undefined && sameReach(last.reach, spread)) last.y1 = y1;
-    else bands.push({ y0, y1, reach: spread, ring: ringOf(faces, spread) });
+    else bands.push({ y0, y1, reach: spread, ring: ringOf(faces, spread, push, limit) });
   }
   return bands;
 }
@@ -265,20 +327,59 @@ function facesOf(ring: readonly Point[]): Point[] {
  * The ring bounded by a set of faces, each pushed out to its own distance. A
  * corner is where two neighbouring faces cross, so pushing one face out moves
  * the two corners of it and nothing else.
+ *
+ * Two faces that cross at a narrow angle cross a long way out, and a face
+ * measured inside its neighbours turns a corner of the outline into a spike
+ * metres long. So every corner is held inside `limit`: how far the shell itself
+ * reaches that way, and the width of the outline. Nothing of the hull then
+ * stands further outside the building than the rim is wide.
  */
-function ringOf(faces: readonly Point[], reach: readonly number[]): Point[] {
+function ringOf(faces: readonly Point[], reach: readonly number[], push: readonly Push[], limit: readonly number[]): Point[] {
   const out: Point[] = [];
   for (let i = 0; i < faces.length; i++) {
-    const before = faces[(i + faces.length - 1) % faces.length] as Point;
+    const back = (i + faces.length - 1) % faces.length;
+    const before = faces[back] as Point;
     const here = faces[i] as Point;
-    const d0 = reach[(i + faces.length - 1) % faces.length] as number;
-    const d1 = reach[i] as number;
+    // The face behind ends at this corner, and the face here starts at it, so
+    // each is pushed out by what it is pushed out by at this end of itself.
+    const d0 = (reach[back] as number) + ((push[back] as Push)[1] as number);
+    const d1 = (reach[i] as number) + ((push[i] as Push)[0] as number);
     const det = before.x * here.y - before.y * here.x;
     // Two faces that look the same way never cross. A footprint has no such
     // pair, but a shell measured to nothing could, so the corner falls back to
     // the face itself rather than to infinity.
-    if (Math.abs(det) < 1e-9) out.push({ x: here.x * d1, y: here.y * d1 });
-    else out.push({ x: (d0 * here.y - d1 * before.y) / det, y: (before.x * d1 - here.x * d0) / det });
+    const at =
+      Math.abs(det) < 1e-9
+        ? { x: here.x * d1, y: here.y * d1 }
+        : { x: (d0 * here.y - d1 * before.y) / det, y: (before.x * d1 - here.x * d0) / det };
+    out.push(held(at, faces, limit));
+  }
+  return out;
+}
+
+/**
+ * A corner pulled back inside every face's limit. It is moved square to the
+ * face it stands furthest outside, which is the shortest way back onto that
+ * face. Moving it back for one face may put it outside another, so the move is
+ * made again until nothing stands outside, and at most once per face.
+ */
+function held(at: Point, faces: readonly Point[], limit: readonly number[]): Point {
+  const out = { x: at.x, y: at.y };
+  for (let pass = 0; pass < faces.length; pass++) {
+    let worst = -Infinity;
+    let which = -1;
+    for (let k = 0; k < faces.length; k++) {
+      const n = faces[k] as Point;
+      const over = out.x * n.x + out.y * n.y - (limit[k] as number);
+      if (over > worst) {
+        worst = over;
+        which = k;
+      }
+    }
+    if (worst <= 0 || which < 0) break;
+    const n = faces[which] as Point;
+    out.x -= n.x * worst;
+    out.y -= n.y * worst;
   }
   return out;
 }
