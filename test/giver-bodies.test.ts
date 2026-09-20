@@ -90,7 +90,7 @@ describe('the contacts standing on their corners', () => {
     expect(other).not.toEqual(one);
   });
 
-  it('hangs a marker over every contact’s head', () => {
+  it('stands a beam on every contact’s corner, with the marker over their head', () => {
     const bodies = new GiverBodies(SEED, givers, hill);
     expect(bodies.markers.length).toBe(givers.length);
     for (let i = 0; i < givers.length; i++) {
@@ -98,11 +98,13 @@ describe('the contacts standing on their corners', () => {
       const person = bodies.standing[i]!;
       expect(marker.x).toBe(person.pose.x);
       expect(marker.y).toBe(person.pose.y);
+      // The beam stands on the road they stand on and the marker over their head.
+      expect(marker.ground).toBe(person.pose.height);
       expect(marker.top).toBeCloseTo(person.pose.height + person.look.height, 6);
     }
   });
 
-  it('turns the markers on for a player who may take work and off for one who may not', () => {
+  it('lights the markers for a player who may take work and dulls them for one who may not', () => {
     const bodies = new GiverBodies(SEED, givers, hill);
     const state = createSimState(SEED);
     state.player.driving = false;

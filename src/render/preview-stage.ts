@@ -146,7 +146,7 @@ export function peopleFor(): PreviewPeople {
       ),
     };
     const { traffic, trams, crowd, casualties, guns, markers, wildlife } = held.people;
-    scene.scene.add(traffic.group, trams.group, crowd.group, casualties.group, guns.group, markers.mesh, wildlife.group);
+    scene.scene.add(traffic.group, trams.group, crowd.group, casualties.group, guns.group, markers.group, wildlife.group);
   }
   if (held.people.parked === undefined && scene.bays !== undefined) {
     held.people.parked = new ParkedView(new ParkedCars(seed, scene.bays));
@@ -202,7 +202,7 @@ function dropHeld(): void {
       held.scene.scene.remove(view.group);
       view.dispose();
     }
-    held.scene.scene.remove(people.markers.mesh);
+    held.scene.scene.remove(people.markers.group);
     people.markers.dispose();
   }
   held.scene.dispose();

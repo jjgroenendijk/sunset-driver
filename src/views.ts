@@ -82,7 +82,7 @@ export function buildViews(
     views.crowd.group,
     views.casualties.group,
     views.guns.group,
-    views.markers.mesh,
+    views.markers.group,
   );
   if (views.parked !== undefined) world.scene.add(views.parked.group);
   return views;

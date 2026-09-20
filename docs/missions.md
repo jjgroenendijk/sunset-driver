@@ -46,11 +46,12 @@ Nothing else writes `SimState.missions`, and nothing else writes `SimState.objec
 - `src/ui/givers.ts` stands them on the street: one person per contact, dressed for the district
   they work, drawn in the crowd's own mesh so they cost no draw call. They never move, so the
   bodies are written once at the start of a session and the list is copied from there.
-- A marker turns over each of their heads (`src/render/markers.ts`), in the amber the map marks
-  them with, so the flag on the map and the person on the street are plainly the same. It is amber
-  while `giverRefusal` answers nothing and dull grey while it answers something, which is how a
-  player reads across the street that nobody is hiring: driving, wanted, crossed off, or carrying a
-  job already.
+- A beam of light stands on their corner with a diamond turning over their head
+  (`src/render/markers.ts`), both in the amber the map marks them with, so the flag on the map and
+  the person on the street are plainly the same and the corner reads from the far end of it. Both
+  are amber while `giverRefusal` answers nothing and dull grey while it answers something, which is
+  how a player reads across the street that nobody is hiring: driving, wanted, crossed off, or
+  carrying a job already.
 
 ## The board is a function, not a list
 
