@@ -15,9 +15,10 @@
  * spatial index behind the nearest-point queries is in `graph-index.ts`.
  *
  * An edge is the run of one curve between two nodes, in one direction of
- * travel. Every road is two-way today, so edges come in pairs that point at
- * each other through `twin`. Width, lanes, speed limit and permitted traffic
- * come from the tier table in `tiers.ts`.
+ * travel. Nearly every road is two-way, so edges come in pairs that point at
+ * each other through `twin`; the ramps of an interchange are one way, and an
+ * edge of one carries `twin: -1`. Width, lanes, speed limit and permitted
+ * traffic come from the tier table in `tiers.ts`.
  *
  * Building and querying are pure: the same curves give the same graph, and the
  * same query gives the same answer. {@link RoadGraph.shortestPath} is Dijkstra
@@ -357,7 +358,11 @@ function build(roads: readonly RoadCurve[], nodes: RoadNode[], edges: RoadEdge[]
   }
 }
 
-/** The two edges of one run: one each way, pointing at each other. */
+/**
+ * The edges of one run: one each way, pointing at each other, or a single edge
+ * along a one-way curve. A ramp of an interchange is the one-way curve there
+ * is, and it is driven from its first point to its last.
+ */
 function addPair(
   edges: RoadEdge[],
   nodes: RoadNode[],
@@ -374,9 +379,11 @@ function addPair(
   const forward = edges.length;
   const backward = forward + 1;
   const shared = { curve: road.id, tier: road.tier, lanes: spec.lanes, speedLimit: spec.speedLimit, length, bridge, tunnel };
-  edges.push({ id: forward, from: fromNode, to: toNode, twin: backward, start: startIndex, end: endIndex, crossings: [], ...shared });
-  edges.push({ id: backward, from: toNode, to: fromNode, twin: forward, start: endIndex, end: startIndex, crossings: [], ...shared });
+  const twin = road.oneWay === true ? -1 : backward;
+  edges.push({ id: forward, from: fromNode, to: toNode, twin, start: startIndex, end: endIndex, crossings: [], ...shared });
   (nodes[fromNode] as RoadNode).edges.push(forward);
+  if (twin < 0) return;
+  edges.push({ id: backward, from: toNode, to: fromNode, twin: forward, start: endIndex, end: startIndex, crossings: [], ...shared });
   (nodes[toNode] as RoadNode).edges.push(backward);
 }
 

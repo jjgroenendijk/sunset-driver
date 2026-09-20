@@ -151,6 +151,31 @@ export interface Beach {
 export type RoadTier = 'highway' | 'arterial' | 'street' | 'alley' | 'dirt';
 
 /**
+ * A diamond interchange (spec section 6.2): where a highway exchanges traffic
+ * with the arterial carried over it, and the four one-way ramps that do the
+ * exchanging.
+ *
+ * The highway holds its line and stays on the ground here; the arterial is
+ * raised over it, so the two share no point. Every turn between them is a ramp:
+ * one off and one on for each direction of the highway, laid in the four
+ * quadrants of the crossing (`ramps.ts`). An interchange with no ramps is a
+ * place a highway may still be joined by another highway, which is what the
+ * list meant before the ramps existed.
+ */
+export interface Interchange {
+  /** Index into {@link RoadCurve.points} of the point the interchange stands at. */
+  at: number;
+  /** The ramp curves, ascending. Empty where no arterial crossed here. */
+  ramps: number[];
+  /**
+   * Indices of the points of this highway the ramps meet it at, ascending. A
+   * road other than a ramp may not be joined there: the merge is shallower
+   * than a junction can be built at.
+   */
+  heads: number[];
+}
+
+/**
  * One road as a curve. Carriageway, kerbs, rails and decks are lofted along it;
  * the road graph of spec section 6.5 is built from it.
  */
@@ -179,13 +204,18 @@ export interface RoadCurve {
    */
   tunnels: number[];
   /**
-   * Indices of the points another road may join this one at. Ascending. Only a
+   * The interchanges along this road, in the order their points come. Only a
    * highway has them: spec section 6.2 gives a highway junctions at
-   * interchanges and nowhere else, and only a highway or an arterial ramp may
-   * use one. The list is empty on every other tier, which takes a junction
-   * anywhere along it.
+   * interchanges and nowhere else. The list is empty on every other tier,
+   * which takes a junction anywhere along it.
    */
-  interchanges: number[];
+  interchanges: Interchange[];
+  /**
+   * True where the curve carries traffic one way only, from its first point to
+   * its last: the ramp of an interchange. The road graph gives such a curve one
+   * edge per run instead of a pair, and that edge's `twin` is -1.
+   */
+  oneWay?: boolean;
   /**
    * Indices of the segments a lower road may cross under. Ascending. Only a
    * highway has them: they are the level decks `highway-plan.ts` planned when

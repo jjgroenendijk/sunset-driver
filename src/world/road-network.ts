@@ -19,18 +19,22 @@
  * - Every place the road crosses a laid one is decided now: a junction both
  *   take a point at, a crossing already a clearance apart, a raise of the new
  *   road, or a road shortened back from the crossing (`crossing-plan.ts`).
+ * - A road carried over a highway at one of its interchanges takes the four
+ *   ramps of a diamond with it, laid here in the same call (`ramps.ts`).
  *
  * The points of the network are filed in buckets, so "is there a road here?"
  * costs a handful of comparisons. The segments and the rules of the ground they
  * claim are {@link NetworkClearance}, which this extends.
  */
 import { clamp, dist, lerp } from '../core/math.ts';
-import { deckApart, settleCrossings } from './crossing-plan.ts';
+import { compareNumbers } from '../core/sort.ts';
+import { deckApart, settleCrossings, type DraftLine } from './crossing-plan.ts';
 import type { CrossingNetwork } from './crossing-rules.ts';
 import { NetworkClearance, SAME_PLACE } from './network-clearance.ts';
+import { RAMP_TIER, type DiamondPlan, type RampEnd } from './ramps.ts';
 import { selfOverlap } from './self-overlap.ts';
 import { mayJoin } from './tiers.ts';
-import type { Point, RoadCurve, RoadTier } from './types.ts';
+import type { Interchange, Point, RoadCurve, RoadTier } from './types.ts';
 
 /** Side of one bucket of the points, in metres. Small enough that a bucket holds few streets. */
 const CELL = 60;
@@ -43,8 +47,12 @@ export interface NetworkHit {
   index: number;
 }
 
-/** A road as it is proposed: everything the network does not decide. */
-export type RoadDraft = Omit<RoadCurve, 'id' | 'nodes'>;
+/**
+ * A road as it is proposed: everything the network does not decide. Its
+ * interchanges are point indices; the network turns each into the structure the
+ * curve carries once the road is laid.
+ */
+export type RoadDraft = DraftLine;
 
 /** The ground a network decides its crossings on. */
 export interface NetworkGround {
@@ -96,7 +104,8 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
    * Add a road to the graph. It is joined to the nodes it stands on, splits the
    * edges whose points it stands on, and has each of its crossings decided. The
    * curve that comes back can be shorter than the road proposed, or raised in
-   * places. Undefined where the network refuses the road: fewer than two
+   * places, and a road carried over a highway brings the ramps of a diamond
+   * with it. Undefined where the network refuses the road: fewer than two
    * points, a road that lies over itself, or a crossing no piece of it can be
    * kept clear of. A road asked for `whole` is refused rather than shortened.
    */
@@ -107,7 +116,13 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
     // From the last point back, so an index still to be used never moves.
     const edits = [...settled.edits].sort((m, n) => m.curve - n.curve || n.segment - m.segment || n.at - m.at);
     for (const edit of edits) this.insertPoint(edit.curve, edit.segment, edit);
-    const draft = settled.road;
+    const curve = this.layCurve(settled.road);
+    for (const diamond of settled.diamonds) this.layDiamond(diamond, curve);
+    return curve;
+  }
+
+  /** Put a settled road into the graph: its nodes, its segments and the ground its points stand on. */
+  private layCurve(draft: DraftLine): RoadCurve {
     const id = this.curves.length;
     const points = draft.points.slice();
     const nodes = new Array<number>(points.length).fill(-1);
@@ -126,7 +141,8 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
       nodes[k] = this.nodes.length;
       this.nodes.push({ x: p.x, y: p.y, on: [] });
     }
-    const curve: RoadCurve = { ...draft, id, points, nodes };
+    const interchanges = draft.interchanges.map((at) => ({ at, ramps: [], heads: [] }));
+    const curve: RoadCurve = { ...draft, id, points, nodes, interchanges };
     for (let k = 0; k < points.length; k++) {
       const node = nodes[k] as number;
       if (node >= 0) (this.nodes[node] as NetworkNode).on.push({ curve: id, index: k });
@@ -141,6 +157,35 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
     }
     this.islands.push(islands);
     return curve;
+  }
+
+  /**
+   * Lay the four ramps of a diamond and file them on the highway's
+   * interchange. Each ramp stands on a point the highway or the new road
+   * already has, so the ends join those nodes; the curve between them was
+   * vetted against the network while the road was still a draft (`ramps.ts`),
+   * and the ends move by no more than the snap that makes a node.
+   */
+  private layDiamond(plan: DiamondPlan, road: RoadCurve): void {
+    const interchange = (this.curves[plan.highway] as RoadCurve).interchanges[plan.interchange] as Interchange;
+    for (const ramp of plan.ramps) {
+      const points = ramp.points.slice();
+      points[0] = this.rampEnd(ramp.from, road);
+      points[points.length - 1] = this.rampEnd(ramp.to, road);
+      const laid = this.layCurve({ tier: RAMP_TIER, points, bridges: [], tunnels: [], interchanges: [], oneWay: true });
+      interchange.ramps.push(laid.id);
+      const head = ramp.from.curve >= 0 ? ramp.from : ramp.to;
+      if (!interchange.heads.includes(head.index)) interchange.heads.push(head.index);
+    }
+    interchange.ramps.sort(compareNumbers);
+    interchange.heads.sort(compareNumbers);
+  }
+
+  /** Where a ramp stands on the network now: the road being added is not in `curves` yet. */
+  private rampEnd(end: RampEnd, road: RoadCurve): Point {
+    const points = end.curve < 0 ? road.points : (this.curves[end.curve] as RoadCurve).points;
+    const p = points[end.index] as Point;
+    return { x: p.x, y: p.y };
   }
 
   /**
@@ -272,7 +317,8 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
     road.bridges = shift(road.bridges);
     road.tunnels = shift(road.tunnels);
     if (road.slots !== undefined) road.slots = shift(road.slots);
-    road.interchanges = road.interchanges.map((i) => (i >= at ? i + 1 : i));
+    const move = (i: number): number => (i >= at ? i + 1 : i);
+    road.interchanges = road.interchanges.map((x) => ({ at: move(x.at), ramps: x.ramps, heads: x.heads.map(move) }));
     if (road.lift !== undefined) road.lift.splice(at, 0, lerp(road.lift[segment] as number, road.lift[at] as number, t));
     (this.islands[id] as number[]).splice(at, 0, this.islandOf(p.x, p.y));
     (this.pointBuckets[this.pointColumn(p.y) * this.rows + this.pointColumn(p.x)] as number[]).push(id, at);
@@ -349,7 +395,7 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
     const road = this.curves[curve] as RoadCurve;
     // A raised point stands off the ground, and a junction is on it.
     if ((road.lift?.[index] ?? 0) > 0) return false;
-    return mayJoin(joiner, road.tier, road.interchanges.includes(index));
+    return mayJoin(joiner, road.tier, road.interchanges.some((x) => x.at === index));
   }
 
   /** Every point filed in a bucket within `radius` of a place, in the order they were laid bucket by bucket. */

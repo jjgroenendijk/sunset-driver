@@ -37,8 +37,10 @@
  * reaches it. Interchanges are placed along it, and only a highway or an
  * arterial ramp may join it, only there (spec section 6.2). A street, an alley
  * or a dirt road never meets one at all. A road laid later crosses a highway
- * only at one of its slots, under its deck, and every other crossing is refused
- * while the road is traced.
+ * only at one of its slots, under its deck, or over one of its interchanges,
+ * where it is carried over the highway and the four ramps of a diamond
+ * (`ramps.ts`) carry the turns; every other crossing is refused while the road
+ * is traced.
  *
  * This file is the plan: which road is laid where, and in what order. How a
  * road is actually traced — the step along the field, the ground that refuses
@@ -58,9 +60,11 @@
  *   spans one of the water description's strait crossings or a river
  *   (`river-decks.ts`).
  * - No segment laid on the ground exceeds its tier's maximum grade.
- * - No road shares a node with a highway away from one of its interchanges,
- *   and no street, alley or dirt road shares one with a highway at all. No
- *   road crosses a highway away from one of its slots.
+ * - No road shares a node with a highway away from one of its interchanges or
+ *   the heads of their ramps, and no street, alley or dirt road shares one with
+ *   a highway at all. No arterial runs through such a node: it ends there, or
+ *   it is carried over the highway on a diamond. No road crosses a highway away
+ *   from one of its slots or one of its interchanges.
  * - No road runs along another road's carriageway or ends inside it. Two roads
  *   touch only where they share a node or cross, at an angle a junction or an
  *   overpass can be built at (`network-clearance.ts`).
@@ -107,16 +111,6 @@ import type { Beach, Point, RoadCurve, RoadTier, WorldSkeleton, Zone } from './t
 // ground rules and the boardwalk length come out through here, as they did
 // while the two halves were one file.
 export { groundRule, MIN_BOARDWALK, spanProfile, type Profile } from './road-trace.ts';
-
-/** What {@link seedAlong} lays besides the two roads parallel to the curve. */
-interface SeedOptions {
-  /**
-   * The tier being seeded may junction with a highway. Only the arterial fill
-   * sets it, and even then a seed stands on a highway only at one of its
-   * interchanges (spec section 6.2).
-   */
-  ramps?: boolean;
-}
 
 /**
  * One runnable run of a boardwalk line, as the trace left it: the id of the
@@ -206,7 +200,7 @@ class RoadTracer extends IslandLinkTrace {
       within,
     });
     const seeds: FillSeed[] = [];
-    for (const curve of this.curves) seedAlong(curve, this.field, spacingAt, 0, seeds, { ramps: true });
+    for (const curve of this.curves) seedAlong(curve, this.field, spacingAt, 0, seeds);
     this.grow(seeds, plan, FILL_GENERATIONS, FILL_LIMIT);
   }
 
@@ -527,7 +521,6 @@ function seedAlong(
   spacingAt: SpacingAt,
   depth: number,
   out: FillSeed[],
-  opts: SeedOptions = {},
 ): void {
   const points = curve.points;
   let run: number | undefined;
@@ -553,9 +546,10 @@ function seedAlong(
       out.push({ x: b.x + nx * hand, y: b.y + ny * hand, along, parent: curve.id, depth, onParent: false });
     }
     // A seed on the curve itself grows a road out of a junction with it. A
-    // highway takes one only at an interchange, and only from an arterial ramp
-    // (spec section 6.2), so the minor fill seeds nothing on one.
-    const junctionable = curve.tier !== 'highway' || (opts.ramps === true && curve.interchanges.includes(i + 1));
-    if (junctionable) out.push({ x: b.x, y: b.y, along: along + Math.PI / 2, parent: curve.id, depth, onParent: true });
+    // highway is never joined that way: an arterial crosses it at an
+    // interchange and turns onto it through the ramps there (spec section 6.2).
+    if (curve.tier !== 'highway') {
+      out.push({ x: b.x, y: b.y, along: along + Math.PI / 2, parent: curve.id, depth, onParent: true });
+    }
   }
 }

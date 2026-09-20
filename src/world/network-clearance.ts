@@ -14,16 +14,20 @@
  * - May a road meet another at a shared point? Only where it leaves every road
  *   already there at {@link MIN_MEET} or more.
  * - May a step cross a highway? Only under one of its slots, where the deck
- *   `highway-plan.ts` planned is level over the segment and both beside it,
- *   and only by a tier {@link mayCross} lets across one: a street, an alley
- *   or a dirt road never crosses a highway at all.
+ *   `highway-plan.ts` planned is level over the segment and both beside it, or
+ *   over one of its interchanges, where the highway holds the ground and the
+ *   crossing road is carried over it on the deck of a diamond. Either way only
+ *   by a tier {@link mayCross} lets across one: a street, an alley or a dirt
+ *   road never crosses a highway at all.
  *
  * Two roads therefore touch only where they share a node or cross, both at an
  * angle a junction or an overpass can be built at.
  */
 import { atan2, hypot } from '../core/libm.ts';
 import { clamp, directionDelta } from '../core/math.ts';
+import { INTERCHANGE_CLEAR } from './highway-plan.ts';
 import { CLEARANCE } from './overpass.ts';
+import { curveDistances } from './ribbon.ts';
 import { footprintHalfWidth, mayCross } from './tiers.ts';
 import type { Point, RoadCurve, RoadTier } from './types.ts';
 
@@ -109,8 +113,23 @@ export class NetworkClearance {
     // along the highway with it; it has to stay under the level deck. Any
     // other road is crossed on the ground or under the level top of a raise,
     // never on a ramp.
+    const along = curve.tier === 'highway' ? curveDistances(curve.points) : undefined;
+    // A highway is also crossed at an interchange, where it holds the ground
+    // for `INTERCHANGE_CLEAR` each side: the road that crosses is carried over
+    // it there, and the two exchange traffic through the ramps of a diamond
+    // (`ramps.ts`).
+    const atInterchange = (i: number): boolean => {
+      if (along === undefined || (lift[i] ?? 0) > 0 || (lift[i + 1] ?? 0) > 0) return false;
+      return curve.interchanges.some(
+        (x) =>
+          Math.abs((along[i] as number) - (along[x.at] as number)) <= INTERCHANGE_CLEAR &&
+          Math.abs((along[i + 1] as number) - (along[x.at] as number)) <= INTERCHANGE_CLEAR,
+      );
+    };
     const open = (i: number): boolean => {
-      if (curve.tier === 'highway') return slots.includes(i - 1) && slots.includes(i) && slots.includes(i + 1);
+      if (curve.tier === 'highway') {
+        return (slots.includes(i - 1) && slots.includes(i) && slots.includes(i + 1)) || atInterchange(i);
+      }
       const low = Math.min(lift[i] ?? 0, lift[i + 1] ?? 0);
       const high = Math.max(lift[i] ?? 0, lift[i + 1] ?? 0);
       return high === 0 || low >= CLEARANCE;

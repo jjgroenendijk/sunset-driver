@@ -173,8 +173,26 @@ The ground the roads are laid on is in `docs/world-generation.md`.
 
 - Two tiers meet under two rules, both in `tiers.ts`. `mayJoin` says where they may exchange
   traffic: a highway takes a junction only at an interchange, so a highway or an arterial ramp joins
-  one there and a street, alley or dirt road never joins a highway anywhere. `interchangesOf` places
-  the interchanges along the curve and `RoadCurve.interchanges` lists the point indices.
+  one there and a street, alley or dirt road never joins a highway anywhere. `interchangesOf`
+  (`highways.ts`) places the interchanges along the curve, and each is an `Interchange` in
+  `RoadCurve.interchanges`: the point it stands at, the ramps it carries, and the points of the
+  highway those ramps meet it at.
+- An interchange where an arterial crosses is a diamond (`ramps.ts`). The highway holds the ground
+  there, `crossing-plan.ts` carries the arterial over it, and four one-way ramp curves — one off and
+  one on for each direction of the highway, one to a quadrant — are laid through `RoadNetwork.add`
+  in the same breath. All four are planned before any is laid: a crossing that cannot carry four is
+  a failure, so the arterial is shortened back from the highway rather than left severed from it.
+  Each ramp is a `RoadCurve` of arterial tier with `oneWay`, so `graph.ts` gives its runs one edge
+  each with `twin: -1` and a route drives them the one way. A ramp leaves the highway along the
+  highway, which is shallower than `MIN_MEET`: that is what a gore is, so the angle rule of
+  `crossing-rules.ts` never sees it — the ramp is built, not traced, and both its ends stand on a
+  point the other road already has. An arterial that *ends* on a highway still meets it at grade,
+  with no ramps at all (issue #552).
+- An arterial does not merge onto a highway: `mergeAt` (`road-trace.ts`) passes over a highway
+  point, so a trace that reaches one crosses it at an interchange and takes the diamond, or turns
+  away. Without that the trace stopped at the first interchange it came near — the merge radius of
+  an arterial is 80 m and a highway holds the ground for `INTERCHANGE_CLEAR` = 80 m each side of an
+  interchange — and every interchange was an at-grade crossroads instead of a diamond.
 - `mayCross` says where they may meet at all. A grade separation is a severance — a place two roads
   pass and can never turn onto each other — so it is only worth the ground it takes where both roads
   carry the traffic for it. A highway's right-of-way is ground a minor road may not cross: only a

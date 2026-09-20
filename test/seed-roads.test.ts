@@ -3,6 +3,8 @@ import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { MINOR_BY_ZONE } from '../src/world/fill.ts';
 import { type GradeCrossing, type RoadEdge, type RoadNode } from '../src/world/graph.ts';
 import { HEADROOM_SLACK } from '../src/world/crossing-plan.ts';
+import { INTERCHANGE_CLEAR } from '../src/world/highway-plan.ts';
+import { DIAMOND_RAMPS } from '../src/world/ramps.ts';
 import { RoadBeds } from '../src/world/bed.ts';
 import { CLEARANCE as OVERPASS_CLEARANCE } from '../src/world/overpass.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
@@ -10,7 +12,7 @@ import { LandMasses } from '../src/world/landmass.ts';
 import { RiverWater } from '../src/world/river-decks.ts';
 import { coastNoise, islandAt } from '../src/world/terrain.ts';
 import { mayCross, TIERS } from '../src/world/tiers.ts';
-import { type District, type Point, type RoadCurve, type RoadTier, type WorldDescription, type Zone } from '../src/world/types.ts';
+import { type District, type Interchange, type Point, type RoadCurve, type RoadTier, type WorldDescription, type Zone } from '../src/world/types.ts';
 import { PointGrid } from './seed-index.ts';
 import {
   WET_SAMPLE,
@@ -247,18 +249,29 @@ sweepSuite('roads', () => {
         }
         if (road.interchanges.length === 0) fault(`highway ${road.id} has no interchange`);
         for (let k = 1; k < road.interchanges.length; k++) {
-          if ((road.interchanges[k] as number) <= (road.interchanges[k - 1] as number)) fault(`highway ${road.id} lists its interchanges out of order`);
+          if ((road.interchanges[k] as Interchange).at <= (road.interchanges[k - 1] as Interchange).at) {
+            fault(`highway ${road.id} lists its interchanges out of order`);
+          }
         }
-        for (const at of road.interchanges) {
+        for (const { at } of road.interchanges) {
           if (at < 0 || at >= road.points.length) fault(`highway ${road.id} puts an interchange past its end at ${at}`);
         }
+        const points = road.interchanges.map((x) => x.at);
+        const heads = road.interchanges.flatMap((x) => x.heads);
         for (let i = 0; i < road.points.length; i++) {
           const here = met.get(road.nodes[i] ?? -1) ?? [];
           for (const other of here) {
             if (other.road.id === road.id) continue;
             const where = `highway ${road.id} meets ${other.road.tier} ${other.road.id} at point ${i}`;
             if (other.road.tier !== 'highway' && other.road.tier !== 'arterial') fault(where);
-            else if (!road.interchanges.includes(i)) fault(`${where}, away from any interchange`);
+            else if (!points.includes(i) && !heads.includes(i)) fault(`${where}, away from any interchange`);
+            // No at-grade crossroads stands on a highway: an arterial that
+            // crosses one is carried over it and turns onto it through the
+            // ramps of the diamond there, so the only arterial that shares a
+            // point with a highway is one that ends on it.
+            else if (other.road.tier === 'arterial' && other.at > 0 && other.at < other.road.points.length - 1) {
+              fault(`${where}, which the arterial runs through`);
+            }
           }
         }
       }
@@ -266,11 +279,69 @@ sweepSuite('roads', () => {
     }
   });
 
-  it('crosses a highway only under the level deck of one of its slots', () => {
+  it('builds every interchange that carries traffic as a diamond of four one-way ramps', () => {
+    // Spec section 6.2: a highway exchanges traffic only at an interchange, and
+    // an interchange exchanges it only through ramps. So an interchange carries
+    // four ramps or none, each one way, each in the graph, and the only points
+    // of a highway a ramp stands on are the heads its interchange lists.
+    for (const seed of seeds) {
+      const w = worlds.get(seed) as WorldDescription;
+      const graph = graphOf(seed);
+      let complaint: string | undefined;
+      const fault = (text: string): void => {
+        complaint ??= text;
+      };
+      const edgesOf = new Map<number, RoadEdge[]>();
+      for (const edge of graph.edges) {
+        const own = edgesOf.get(edge.curve) ?? [];
+        own.push(edge);
+        edgesOf.set(edge.curve, own);
+      }
+      const laid = ramps(w);
+      for (const road of w.roads) {
+        if (road.oneWay === true && !laid.has(road.id)) fault(`${road.tier} ${road.id} runs one way and is no ramp`);
+      }
+      for (const road of w.roads) {
+        if (road.tier !== 'highway') continue;
+        for (const x of road.interchanges) {
+          const where = `interchange ${x.at} of highway ${road.id}`;
+          if (x.ramps.length === 0) {
+            if (x.heads.length > 0) fault(`${where} lists heads with no ramps`);
+            continue;
+          }
+          if (x.ramps.length !== DIAMOND_RAMPS) fault(`${where} carries ${x.ramps.length} ramps`);
+          if (x.heads.length !== 2) fault(`${where} carries ${x.heads.length} heads`);
+          for (const head of x.heads) {
+            if ((road.lift?.[head] ?? 0) > 0) fault(`${where} puts head ${head} off the ground`);
+          }
+          for (const id of x.ramps) {
+            const ramp = w.roads[id] as RoadCurve;
+            if (ramp.oneWay !== true) fault(`ramp ${id} of ${where} runs both ways`);
+            if (ramp.bridges.length > 0 || ramp.tunnels.length > 0) fault(`ramp ${id} of ${where} leaves the ground`);
+            const own = edgesOf.get(id) ?? [];
+            if (own.length === 0) fault(`ramp ${id} of ${where} is in no edge of the graph`);
+            for (const edge of own) {
+              if (edge.twin !== -1) fault(`ramp ${id} of ${where} has a twin edge`);
+            }
+            // One end stands on the highway at a head, the other on the
+            // arterial carried over it.
+            const ends = [0, ramp.points.length - 1].map((i) => ramp.nodes[i] ?? -1);
+            const onHighway = ends.filter((node) => x.heads.some((head) => (road.nodes[head] ?? -2) === node));
+            if (onHighway.length !== 1) fault(`ramp ${id} of ${where} meets the highway at ${onHighway.length} ends`);
+          }
+        }
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+  });
+
+  it('crosses a highway only under a slot or over an interchange', () => {
     // Spec section 6.2: a highway is planned with its decks when it is laid,
-    // and a road laid later passes under a slot or joins the highway at an
-    // interchange. Every other crossing is refused while the road is traced,
-    // so none is left for `overpass.ts` to raise between two junctions.
+    // and a road laid later passes under a slot or crosses over one of its
+    // interchanges, where the highway holds the ground and the ramps of a
+    // diamond carry the turns. Every other crossing is refused while the road
+    // is traced, so none is left for `overpass.ts` to raise between two
+    // junctions.
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       const graph = graphOf(seed);
@@ -292,7 +363,7 @@ sweepSuite('roads', () => {
         const where = `${(pair[0] as RoadCurve).tier} ${(pair[0] as RoadCurve).id} crosses ${(pair[1] as RoadCurve).tier} ${(pair[1] as RoadCurve).id} at ${crossing.x.toFixed(0)},${crossing.y.toFixed(0)}`;
         const above = pair.find((road) => (road.slots ?? []).includes(placeOn(road, crossing)?.segment ?? -1));
         if (above === undefined) {
-          fault(`${where}, at no slot`);
+          if (!overInterchange(pair, crossing)) fault(`${where}, at no slot and no interchange`);
           continue;
         }
         // The road underneath stays on the ground, or it would climb into the deck.
@@ -631,4 +702,28 @@ function climbableFrom(hf: Heightfield, w: WorldDescription, tier: RoadTier): Ui
     }
   }
   return reached;
+}
+
+/**
+ * True where a crossing is the overpass of a diamond interchange: the highway
+ * of the pair holds the ground at an interchange that carries its four ramps,
+ * and the other road is carried a clearance over it.
+ */
+function overInterchange(pair: readonly RoadCurve[], crossing: GradeCrossing): boolean {
+  const highway = pair.find((road) => road.tier === 'highway');
+  const over = pair.find((road) => road !== highway);
+  if (highway === undefined || over === undefined) return false;
+  if (liftAtCrossing(highway, crossing) > 0) return false;
+  if (liftAtCrossing(over, crossing) < OVERPASS_CLEARANCE - HEADROOM_SLACK) return false;
+  return highway.interchanges.some((x) => {
+    const at = highway.points[x.at] as Point;
+    return x.ramps.length === DIAMOND_RAMPS && Math.hypot(at.x - crossing.x, at.y - crossing.y) <= INTERCHANGE_CLEAR;
+  });
+}
+
+/** Every curve of a world that is the ramp of an interchange. */
+function ramps(w: WorldDescription): Set<number> {
+  const out = new Set<number>();
+  for (const road of w.roads) for (const x of road.interchanges) for (const id of x.ramps) out.add(id);
+  return out;
 }

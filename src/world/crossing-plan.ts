@@ -9,7 +9,9 @@
  *    surface of the other there — the slot of a highway, the level top of an
  *    earlier raise, a deck or a bore: the crossing is left as it is.
  * 3. The new road can be carried over the other one: its whole reach, deck and
- *    ramps, is laid into it now, so no later road can junction inside it.
+ *    ramps, is laid into it now, so no later road can junction inside it. Over
+ *    a highway that is only allowed at one of its interchanges, and only with
+ *    the four ramps of a diamond (`ramps.ts`) planned in the same breath.
  * 4. None of these: the road is shortened back from the crossing, or refused.
  *
  * A junction goes where `connect.ts` used to put it: on the nearest point
@@ -27,6 +29,8 @@ import { hypot, sin } from '../core/libm.ts';
 import { CLEARANCE, PLATEAU_MARGIN, raiseAt, raised, type Raise } from './overpass.ts';
 import { alongSegment, PlannedLine, toSegment } from './crossing-line.ts';
 import { junctionAt, type CrossingNetwork } from './crossing-rules.ts';
+import { INTERCHANGE_CLEAR } from './highway-plan.ts';
+import { interchangeAt, planDiamond, type DiamondPlan } from './ramps.ts';
 import { MIN_MEET } from './network-clearance.ts';
 import { curveDistances } from './ribbon.ts';
 import { footprintHalfWidth, mayCross, mayJoin, TIERS } from './tiers.ts';
@@ -59,6 +63,18 @@ export interface DraftLine {
   interchanges: number[];
   slots?: number[];
   lift?: number[];
+  oneWay?: boolean;
+}
+
+/**
+ * The part of a line that says what stands on the ground under each segment. A
+ * draft and a laid curve both answer it.
+ */
+export interface StructuredLine {
+  points: readonly Point[];
+  bridges: readonly number[];
+  tunnels: readonly number[];
+  lift?: readonly number[];
 }
 
 /** A point a road already laid takes: where, and in which of its segments. */
@@ -78,6 +94,8 @@ interface Crossing {
   other: number;
   x: number;
   y: number;
+  /** Index into the crossed highway's interchanges, where the crossing stands at one. */
+  interchange?: number;
 }
 
 /** A crossing the plan could not decide, and the road it crosses. */
@@ -99,29 +117,80 @@ interface Plan {
   failures: Failure[];
 }
 
+/** The road to add, with every crossing decided, and what the roads already laid take for it. */
+export interface Settled {
+  road: DraftLine;
+  edits: PointEdit[];
+  /** The interchanges the road makes where it is carried over a highway. */
+  diamonds: DiamondPlan[];
+}
+
 /**
  * The road to add, with every crossing decided, and the points the roads
  * already laid take for it. Undefined where the road is refused. A road asked
  * for `whole` is refused rather than shortened.
  */
-export function settleCrossings(network: CrossingNetwork, proposed: DraftLine, whole = false): { road: DraftLine; edits: PointEdit[] } | undefined {
+export function settleCrossings(network: CrossingNetwork, proposed: DraftLine, whole = false): Settled | undefined {
   let draft = proposed;
   for (let round = 0; round < ROUNDS; round++) {
     const plan = planJunctions(network, draft);
     const road = lineOf(draft, plan.draft);
     const raises: Raise[] = [];
+    const overHighway: { crossing: Crossing; raise: Raise }[] = [];
     for (const crossing of plan.candidates) {
       const raise = raiseFor(network, draft, road, plan, crossing);
       if (raise === undefined) plan.failures.push({ segment: crossing.segment, x: crossing.x, y: crossing.y, tier: (network.curves[crossing.curve] as RoadCurve).tier });
-      else raises.push(raise);
+      else {
+        raises.push(raise);
+        if (crossing.interchange !== undefined) overHighway.push({ crossing, raise });
+      }
     }
-    if (plan.failures.length === 0) return { road: raised(road, raises), edits: plan.edits };
+    const carried = raised(road, raises);
+    const diamonds = planDiamonds(network, carried, overHighway, plan.failures);
+    if (plan.failures.length === 0) return { road: carried, edits: plan.edits, diamonds };
     if (whole) return undefined;
     const shorter = shorten(network, draft, plan);
     if (shorter === undefined) return undefined;
     draft = shorter;
   }
   return undefined;
+}
+
+/**
+ * The diamonds of every place the road is carried over a highway. A crossing
+ * that cannot carry four ramps is a failure, so the road is shortened back from
+ * it: an interchange is four ramps or it is no interchange at all.
+ */
+function planDiamonds(
+  network: CrossingNetwork,
+  carried: DraftLine,
+  overHighway: readonly { crossing: Crossing; raise: Raise }[],
+  failures: Failure[],
+): DiamondPlan[] {
+  if (overHighway.length === 0) return [];
+  const distances = curveDistances(carried.points);
+  const out: DiamondPlan[] = [];
+  for (const { crossing, raise } of overHighway) {
+    const highway = network.curves[crossing.curve] as RoadCurve;
+    const foot: [number, number] = [pointNear(distances, raise.from), pointNear(distances, raise.to)];
+    const diamond = planDiamond(network, highway, crossing.interchange as number, crossing.other, crossing, carried.points, foot);
+    if (diamond === undefined) failures.push({ segment: crossing.segment, x: crossing.x, y: crossing.y, tier: highway.tier });
+    else out.push(diamond);
+  }
+  return out;
+}
+
+/** The index of the point of a line nearest a distance along it. */
+function pointNear(distances: Float32Array, along: number): number {
+  let best = 0;
+  let gap = Infinity;
+  for (let i = 0; i < distances.length; i++) {
+    const d = Math.abs((distances[i] as number) - along);
+    if (d >= gap) continue;
+    gap = d;
+    best = i;
+  }
+  return best;
 }
 
 /**
@@ -174,11 +243,28 @@ function planJunctions(network: CrossingNetwork, draft: DraftLine): Plan {
       if (apart < 0) plan.under.push({ segment: crossing.segment, x: crossing.x, y: crossing.y });
       continue;
     }
-    // A highway holds its line, and is crossed at a slot or nowhere.
+    // A highway holds its line, and is crossed at a slot, at one of its
+    // interchanges, or nowhere. At an interchange the road is carried over it
+    // and the two exchange traffic through the ramps of a diamond.
+    const spot = ground && draft.tier !== 'highway' && other.tier === 'highway' ? interchangeOf(other, crossing) : undefined;
     if (ground && draft.tier !== 'highway' && other.tier !== 'highway') plan.candidates.push(crossing);
+    else if (spot !== undefined) plan.candidates.push({ ...crossing, interchange: spot });
     else plan.failures.push({ segment: crossing.segment, x: crossing.x, y: crossing.y, tier: other.tier });
   }
   return plan;
+}
+
+/**
+ * The interchange of a highway a crossing stands at, or undefined where it
+ * stands between two. A highway keeps to the ground for `INTERCHANGE_CLEAR`
+ * each side of an interchange (`highway-plan.ts`), which is the ground a
+ * diamond is built on.
+ */
+function interchangeOf(highway: RoadCurve, crossing: Crossing): number | undefined {
+  const along = curveDistances(highway.points);
+  const start = highway.points[crossing.other] as Point;
+  const crossed = (along[crossing.other] as number) + hypot(crossing.x - start.x, crossing.y - start.y);
+  return interchangeAt(highway, along, crossed, INTERCHANGE_CLEAR);
 }
 
 /** Every place the draft crosses a laid road, in order along the draft. */
@@ -195,7 +281,7 @@ function crossingsOf(network: CrossingNetwork, draft: DraftLine): Crossing[] {
 }
 
 /** True where a segment of a line lies on the ground: no deck, no bore, no lift at either end. */
-export function onGround(line: DraftLine, segment: number): boolean {
+export function onGround(line: StructuredLine, segment: number): boolean {
   if (line.bridges.includes(segment) || line.tunnels.includes(segment)) return false;
   return (line.lift?.[segment] ?? 0) === 0 && (line.lift?.[segment + 1] ?? 0) === 0;
 }
@@ -235,7 +321,7 @@ function separation(network: CrossingNetwork, draft: DraftLine, crossing: Crossi
 }
 
 /** The lift of a segment of a line at a place on it. */
-function liftOn(line: DraftLine, segment: number, at: Point): number {
+function liftOn(line: StructuredLine, segment: number, at: Point): number {
   const a = line.points[segment] as Point;
   const b = line.points[segment + 1] as Point;
   const t = alongSegment(a, b, at);
@@ -243,7 +329,7 @@ function liftOn(line: DraftLine, segment: number, at: Point): number {
 }
 
 /** The height of the line a segment drives at a place on it: the ground under its ends, straight between them, and its lift. */
-function bedOn(network: CrossingNetwork, line: DraftLine, segment: number, at: Point): number {
+function bedOn(network: CrossingNetwork, line: StructuredLine, segment: number, at: Point): number {
   const a = line.points[segment] as Point;
   const b = line.points[segment + 1] as Point;
   const t = alongSegment(a, b, at);

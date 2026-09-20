@@ -27,7 +27,7 @@ const GROUND: AlleyGround = {
 /** The index the seeds are measured against: every street already laid. */
 function indexOf(streets: readonly RoadCurve[]): RoadNetwork {
   const index = new RoadNetwork(2000, () => 0, 25);
-  for (const curve of streets) index.add(curve);
+  for (const curve of streets) index.add({ ...curve, interchanges: [] });
   return index;
 }
 

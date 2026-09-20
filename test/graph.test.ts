@@ -16,7 +16,15 @@ function curve(
   tunnels: number[] = [],
   interchanges: number[] = [],
 ): RoadCurve {
-  return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges, tunnels, interchanges, nodes: [] };
+  return {
+    id,
+    tier,
+    points: coords.map(([x, y]) => ({ x, y })),
+    bridges,
+    tunnels,
+    interchanges: interchanges.map((at) => ({ at, ramps: [], heads: [] })),
+    nodes: [],
+  };
 }
 
 /** Two streets crossing at the origin, sharing the point they meet at. */

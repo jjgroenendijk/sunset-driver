@@ -252,7 +252,7 @@ export abstract class HighwayTrace extends RoadTrace {
    */
   private freeInterchanges(curve: RoadCurve): number[] {
     const last = curve.points.length - 1;
-    return curve.interchanges.filter((i) => i !== 0 && i !== last && !this.network.sharedAt(curve.id, i));
+    return curve.interchanges.map((x) => x.at).filter((i) => i !== 0 && i !== last && !this.network.sharedAt(curve.id, i));
   }
 
   /** Where a branch highway leaves its trunk: the free interchange nearest each of the given fractions of its length. */

@@ -54,8 +54,23 @@ sweepSuite('road overlap', () => {
   });
 });
 
+/**
+ * The nodes a ramp of an interchange meets its highway at. A ramp leaves the
+ * highway along the highway — that is what a gore is — so the angle a junction
+ * needs is not the angle a merge is built at, and these nodes are left out of
+ * the rule below (`ramps.ts`).
+ */
+function gores(roads: readonly RoadCurve[]): Set<number> {
+  const out = new Set<number>();
+  for (const road of roads) {
+    for (const x of road.interchanges) for (const head of x.heads) out.add(road.nodes[head] ?? -1);
+  }
+  return out;
+}
+
 /** Where two curves leave a shared node closest to each other's line, and the angle between them. */
 function shallowestMeeting(roads: readonly RoadCurve[]): { turn: number; text: string } | undefined {
+  const merges = gores(roads);
   const rays = new Map<number, { curve: RoadCurve; to: Point }[]>();
   for (const [node, on] of nodePoints(roads)) {
     const here: { curve: RoadCurve; to: Point }[] = [];
@@ -70,6 +85,7 @@ function shallowestMeeting(roads: readonly RoadCurve[]): { turn: number; text: s
   for (const road of roads) {
     for (let i = 0; i < road.points.length; i++) {
       const p = road.points[i] as Point;
+      if (merges.has(road.nodes[i] ?? -1)) continue;
       const here = rays.get(road.nodes[i] ?? -1) ?? [];
       for (const u of here) {
         if (u.curve.id !== road.id) continue;

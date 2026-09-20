@@ -214,8 +214,13 @@ class CorridorBuilder {
     return direct.edges;
   }
 
+  /**
+   * True where the tram may run down an edge: an arterial, but never a ramp of
+   * an interchange. A ramp is laid at the arterial's tier and runs one way, and
+   * a loop that goes out along one has no way back down it.
+   */
   private carriesTram(edge: RoadEdge): boolean {
-    return TIERS[edge.tier].traffic.trams;
+    return TIERS[edge.tier].traffic.trams && (this.roads[edge.curve] as RoadCurve).oneWay !== true;
   }
 
   /** Mark a run and the same run the other way as taken, so the next leg looks elsewhere. */
