@@ -8,6 +8,11 @@
  * The paint is the instance's colour, which is how two saloons in one mesh
  * come in two colours.
  *
+ * A class ridden astride carries a fourth: the figure of `bike-rider.ts`, so
+ * every bike driving its tour has somebody on it. Only the bikes on their
+ * tours are written into it, since a bike the player has touched is one nobody
+ * is driving any more.
+ *
  * The traffic is evaluated where the frame stands in time, between two ticks,
  * the way `smooth.ts` draws the player. A vehicle the player has touched is
  * drawn from its record instead, since it no longer drives its tour. The
@@ -35,6 +40,7 @@ import type { SimState } from '../sim/simulation.ts';
 import { AMBIENT_CLASSES, promotedOf, type AmbientPose, type AmbientTraffic } from '../sim/traffic.ts';
 import { rideHeight, specOf, type VehicleClass, type VehicleSpec } from '../sim/vehicle.ts';
 import { outInThis } from '../sim/weather.ts';
+import { riderStruts, type RiderStrut } from './bike-rider.ts';
 import { SignalView } from './signals.ts';
 import { OUTLINE, VEHICLE_OUTLINE_WIDTH } from './vehicle.ts';
 import { createVehicleTrim, glowOf, type VehicleTrim } from './vehicle-glow.ts';
@@ -47,13 +53,20 @@ export const TRAFFIC_VIEW = 180;
 /** Vehicles of one class drawn at most. A frame with more leaves the rest out. */
 export const CLASS_CAP = 256;
 
-/** The three meshes one class is drawn with. */
+/** The meshes one class is drawn with: three, and a fourth on a class ridden astride. */
 interface ClassMeshes {
   cls: VehicleClass;
   spec: VehicleSpec;
   paint: InstancedMesh;
   trim: InstancedMesh;
   rim: InstancedMesh;
+  /**
+   * The rider of `bike-rider.ts`, on a class that is sat astride and undefined
+   * on every other. It is a mesh of its own rather than part of the trim
+   * because only some of the bikes drawn carry one: a bike the player has
+   * touched has nobody on it, and a parked one has nobody on it either.
+   */
+  rider: InstancedMesh | undefined;
 }
 
 /** The geometry of one class, split by how each part is coloured. */
@@ -120,15 +133,18 @@ export class TrafficView {
     for (const cls of AMBIENT_CLASSES) {
       const spec = specOf(cls);
       const parts = trafficParts(spec);
+      const struts = riderStruts(spec);
       const meshes: ClassMeshes = {
         cls,
         spec,
         paint: tinted(instanced(parts.paint, paint, true, CLASS_CAP)),
         trim: instanced(parts.trim, trim, false, CLASS_CAP),
         rim: instanced(parts.rim, outline, false, CLASS_CAP),
+        rider: struts.length === 0 ? undefined : instanced(merged(struts.map(strutOf)), trim, true, CLASS_CAP),
       };
       this.classes.push(meshes);
       this.group.add(meshes.paint, meshes.trim, meshes.rim);
+      if (meshes.rider !== undefined) this.group.add(meshes.rider);
     }
     this.signals = traffic.signals === undefined ? undefined : new SignalView(traffic.signals);
     if (this.signals !== undefined) this.group.add(this.signals.group);
@@ -159,7 +175,10 @@ export class TrafficView {
    * between two ticks. Called once a frame.
    */
   update(state: SimState, time: number, x: number, y: number): void {
-    for (const meshes of this.classes) meshes.paint.count = 0;
+    for (const meshes of this.classes) {
+      meshes.paint.count = 0;
+      if (meshes.rider !== undefined) meshes.rider.count = 0;
+    }
     const traffic = this.traffic;
     const minX = x - TRAFFIC_VIEW;
     const minY = y - TRAFFIC_VIEW;
@@ -174,7 +193,7 @@ export class TrafficView {
       const meshes = this.meshesOf(vehicle.cls);
       this.at.set(pose.x, pose.height + rideHeight(meshes.spec), pose.y);
       this.turn.setFromAxisAngle(this.up, -pose.heading);
-      this.add(meshes, vehicle.paint);
+      this.add(meshes, vehicle.paint, true);
     }
     for (const record of state.traffic.promoted) {
       const v = record.vehicle;
@@ -182,7 +201,9 @@ export class TrafficView {
       const meshes = this.meshesOf(v.cls);
       this.at.set(v.x, v.y, v.z);
       this.turn.set(v.qx, v.qy, v.qz, v.qw);
-      this.add(meshes, record.paint);
+      // Nobody drives a promoted vehicle, so a bike the player has touched
+      // rolls on with an empty saddle.
+      this.add(meshes, record.paint, false);
     }
     for (const meshes of this.classes) {
       const count = meshes.paint.count;
@@ -194,13 +215,18 @@ export class TrafficView {
         mesh.instanceMatrix.needsUpdate = true;
       }
       if (count > 0 && meshes.paint.instanceColor !== null) meshes.paint.instanceColor.needsUpdate = true;
+      const rider = meshes.rider;
+      if (rider === undefined) continue;
+      rider.visible = rider.count > 0;
+      if (rider.count > 0) rider.instanceMatrix.needsUpdate = true;
     }
     this.signals?.update(time, x, y);
   }
 
   dispose(): void {
     for (const meshes of this.classes) {
-      for (const mesh of [meshes.paint, meshes.trim, meshes.rim]) {
+      for (const mesh of [meshes.paint, meshes.trim, meshes.rim, meshes.rider]) {
+        if (mesh === undefined) continue;
         mesh.geometry.dispose();
         mesh.dispose();
       }
@@ -215,8 +241,12 @@ export class TrafficView {
     return this.classes.find((meshes) => meshes.cls === cls) as ClassMeshes;
   }
 
-  /** Write one vehicle, standing at `at` and turned by `turn`, into its class's meshes. */
-  private add(meshes: ClassMeshes, paint: number): void {
+  /**
+   * Write one vehicle, standing at `at` and turned by `turn`, into its class's
+   * meshes. `ridden` says whether anybody is on it, which only a class with a
+   * saddle can answer yes to.
+   */
+  private add(meshes: ClassMeshes, paint: number, ridden: boolean): void {
     const index = meshes.paint.count;
     if (index >= CLASS_CAP) return;
     this.matrix.compose(this.at, this.turn, this.one);
@@ -225,6 +255,10 @@ export class TrafficView {
     meshes.rim.setMatrixAt(index, this.matrix);
     meshes.paint.setColorAt(index, this.colour.set(paint));
     meshes.paint.count = index + 1;
+    const rider = meshes.rider;
+    if (!ridden || rider === undefined) return;
+    rider.setMatrixAt(rider.count, this.matrix);
+    rider.count += 1;
   }
 }
 
@@ -244,6 +278,23 @@ export function boxOf(part: Omit<VehicleBox, 'panel' | 'outlined'>, reach: numbe
   const geometry = new BoxGeometry(part.length + 2 * reach, part.height + 2 * reach, part.width + 2 * reach).toNonIndexed();
   geometry.translate(part.x, part.y, part.z);
   return geometry;
+}
+
+/**
+ * One strut of a rider (`bike-rider.ts`) as a geometry standing in the
+ * vehicle's frame: a box as long as the strut, pitched up to it and then
+ * turned across to it, with its colour on its vertices.
+ */
+export function strutOf(strut: RiderStrut): BufferGeometry {
+  const dx = strut.to[0] - strut.from[0];
+  const dy = strut.to[1] - strut.from[1];
+  const dz = strut.to[2] - strut.from[2];
+  const flat = Math.hypot(dx, dz);
+  const geometry = new BoxGeometry(Math.hypot(flat, dy), strut.thickness, strut.width).toNonIndexed();
+  geometry.rotateZ(Math.atan2(dy, flat));
+  geometry.rotateY(Math.atan2(-dz, dx));
+  geometry.translate((strut.from[0] + strut.to[0]) / 2, (strut.from[1] + strut.to[1]) / 2, (strut.from[2] + strut.to[2]) / 2);
+  return coloured(geometry, strut.colour);
 }
 
 /**
