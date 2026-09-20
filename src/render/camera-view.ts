@@ -117,11 +117,13 @@ export function sees(x: number, height: number, z: number, back: Vector3, reach:
 
 /**
  * The yaw the top-down camera should turn to so it sees the player past the
- * buildings. North, yaw 0, is the view the game is played in, so it is taken
- * whenever it is clear. Otherwise the yaw held now is kept while it is clear,
- * so the camera does not swing between two headings that both see, and the
- * nearest clear heading either way round is taken when it is not. With no
- * clear heading the camera stays, and the cut of `cutaway.ts` does the rest.
+ * buildings. The yaw held now is kept while it is clear, so the camera turns
+ * only when a roof comes between: it does not swing between two headings that
+ * both see, and it does not swing back to north once north sees again. A turn
+ * back is a second movement the player did not ask for, and the view they are
+ * playing in is the one they have. When the held yaw is blocked, the nearest
+ * clear heading either way round is taken. With no clear heading the camera
+ * stays, and the cut of `cutaway.ts` does the rest.
  */
 export function clearYaw(
   player: { x: number; height: number; y: number },
@@ -133,7 +135,6 @@ export function clearYaw(
 ): number {
   const clear = (yaw: number): boolean =>
     sees(player.x, player.height, player.y, backOf(yaw, pitch, scratch), reach, roofs);
-  if (clear(0)) return 0;
   if (clear(held)) return held;
   for (let i = 1; i <= TURN_TRIES; i++) {
     if (clear(held + i * TURN_STEP)) return held + i * TURN_STEP;

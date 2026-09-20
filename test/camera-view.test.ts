@@ -46,6 +46,12 @@ describe('the turn past a building', () => {
     expect(clearYaw(REST, first, 1, 36, roofs, new Vector3())).toBe(first);
   });
 
+  it('stays where the turn left it once north is clear again', () => {
+    const turned = clearYaw(REST, 0, 1, 36, tower(-10, 10, 5, 40), new Vector3());
+    expect(turned).not.toBe(0);
+    expect(clearYaw(REST, turned, 1, 36, () => undefined, new Vector3())).toBe(turned);
+  });
+
   it('turns the camera smoothly, never in one frame', () => {
     const camera = new FollowCamera(1.7);
     camera.update(0.016, REST);

@@ -31,6 +31,10 @@ in `docs/dev-tooling.md`.
   under Pull back and Turn, for what the move does not clear.
 - The turn tests the sight line to the player every metre against the roof boxes of `roofs.ts`. A
   coarser step lets a building corner fall between two points.
+- The turn is one way. `clearYaw` keeps the heading it is given while that heading sees, so the
+  camera turns only when a roof comes between, and stays where the last turn left it. It does not
+  go back to north once north is clear: that second turn moves the view when nothing asked it to.
+  Switching the setting away from Turn puts the heading back to north.
 - A player inside a footprint, or deep in an alley between towers, has no clear heading at all.
   The camera then keeps its heading and the cut does the work. A preview at such a spot shows no
   turn, which is correct: pick a place on a street beside one tall building to see it.
