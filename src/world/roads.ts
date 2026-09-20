@@ -101,8 +101,10 @@ import {
   STREET,
   type TierParams,
   type TraceOptions,
+  type TraceResult,
 } from './road-trace.ts';
 import type { TensorField } from './tensor.ts';
+import { OVERPASS_REACH } from './ramps.ts';
 import { footprintHalfWidth, TIERS } from './tiers.ts';
 import type { Beach, Point, RoadCurve, RoadTier, WorldSkeleton, Zone } from './types.ts';
 
@@ -110,16 +112,6 @@ import type { Beach, Point, RoadCurve, RoadTier, WorldSkeleton, Zone } from './t
 // ground rules and the boardwalk length come out through here, as they did
 // while the two halves were one file.
 export { groundRule, MIN_BOARDWALK, spanProfile, type Profile } from './road-trace.ts';
-
-/** What {@link seedAlong} lays besides the two roads parallel to the curve. */
-interface SeedOptions {
-  /**
-   * The tier being seeded may junction with a highway. Only the arterial fill
-   * sets it, and even then a seed stands on a highway only at one of its
-   * interchanges (spec section 6.2).
-   */
-  ramps?: boolean;
-}
 
 /**
  * One runnable run of a boardwalk line, as the trace left it: the id of the
@@ -209,7 +201,7 @@ class RoadTracer extends IslandLinkTrace {
       within,
     });
     const seeds: FillSeed[] = [];
-    for (const curve of this.curves) seedAlong(curve, this.field, spacingAt, 0, seeds, { ramps: true });
+    for (const curve of this.curves) seedAlong(curve, this.field, spacingAt, 0, seeds);
     this.grow(seeds, plan, FILL_GENERATIONS, FILL_LIMIT);
   }
 
@@ -329,11 +321,16 @@ class RoadTracer extends IslandLinkTrace {
     const forward = this.trace({ x: seed.x, y: seed.y }, { ...opt, heading: line });
     // The two halves are one road, so the second may not turn back over the first.
     const backward = this.trace({ x: seed.x, y: seed.y }, { ...opt, heading: line + Math.PI, before: [...forward.points].reverse() });
-    // A road that starts beside the network has to find its way back to it.
-    if (!seed.onParent && !forward.merged && !backward.merged) return undefined;
-    // A side that met no other road is a dead end, kept only as far as a cul-de-sac runs.
-    const ahead = forward.merged ? forward.points : trimTo(forward.points, forward.clear, plan.deadEnd);
-    const behind = backward.merged ? backward.points : trimTo(backward.points, backward.clear, plan.deadEnd);
+    // A road that starts beside the network has to find its way back to it,
+    // either by ending on a road or by crossing a highway: the crossing stands
+    // at an interchange, and the ramps laid there join the two (`ramps.ts`).
+    if (!seed.onParent && !reaches(forward) && !reaches(backward)) return undefined;
+    // A side that met no other road is a dead end, kept only as far as a
+    // cul-de-sac runs — or as far as the overpass over a highway it crossed
+    // needs to climb and come down again, since cutting that short would cut
+    // the road off from the network.
+    const ahead = forward.merged ? forward.points : trimTo(forward.points, forward.clear, keepFor(forward, plan.deadEnd));
+    const behind = backward.merged ? backward.points : trimTo(backward.points, backward.clear, keepFor(backward, plan.deadEnd));
     behind.reverse();
     const points = [...behind.slice(0, -1), ...ahead];
     if (polylineLength(points) < plan.clearance) return undefined;
@@ -497,6 +494,23 @@ function keptLength(line: readonly Point[], road: readonly Point[]): number {
  * covers, ending on a point `clear` says a road may end on. A cut that lands on
  * another road's carriageway is taken back to where the road stood clear.
  */
+/**
+ * True where a traced side reached the network: it ended on a road, or it
+ * crossed a highway, which stands at an interchange and takes the ramps of a
+ * diamond when the road is added.
+ */
+function reaches(side: TraceResult): boolean {
+  return side.merged || side.highwayAt >= 0;
+}
+
+/**
+ * Metres of a dead-end side to keep: the cul-de-sac the plan allows, or enough
+ * to carry the overpass over the highway it crossed and land again.
+ */
+function keepFor(side: TraceResult, deadEnd: number): number {
+  return side.highwayAt < 0 ? deadEnd : Math.max(deadEnd, side.highwayAt + OVERPASS_REACH);
+}
+
 function trimTo(points: readonly Point[], clear: readonly boolean[], metres: number): Point[] {
   let end = 0;
   let run = 0;
@@ -530,7 +544,6 @@ function seedAlong(
   spacingAt: SpacingAt,
   depth: number,
   out: FillSeed[],
-  opts: SeedOptions = {},
 ): void {
   const points = curve.points;
   let run: number | undefined;
@@ -556,9 +569,10 @@ function seedAlong(
       out.push({ x: b.x + nx * hand, y: b.y + ny * hand, along, parent: curve.id, depth, onParent: false });
     }
     // A seed on the curve itself grows a road out of a junction with it. A
-    // highway takes one only at an interchange, and only from an arterial ramp
-    // (spec section 6.2), so the minor fill seeds nothing on one.
-    const junctionable = curve.tier !== 'highway' || (opts.ramps === true && curve.interchanges.some((x) => x.at === i + 1));
-    if (junctionable) out.push({ x: b.x, y: b.y, along: along + Math.PI / 2, parent: curve.id, depth, onParent: true });
+    // highway is never joined that way: an arterial crosses it at an
+    // interchange and turns onto it through the ramps there (spec section 6.2).
+    if (curve.tier !== 'highway') {
+      out.push({ x: b.x, y: b.y, along: along + Math.PI / 2, parent: curve.id, depth, onParent: true });
+    }
   }
 }

@@ -21,7 +21,7 @@ import type { NetworkHit } from './road-network.ts';
 import { RIVER_DECK } from './river-decks.ts';
 import { RoadRoute } from './road-route.ts';
 import { stepOverlaps } from './self-overlap.ts';
-import type { Point, RoadTier } from './types.ts';
+import type { Point, RoadCurve, RoadTier } from './types.ts';
 
 // The numbers a trace runs on and the rule it asks the ground are next door;
 // callers read them through here, as they did while the three were one file.
@@ -98,7 +98,7 @@ interface Step {
   reach: number;
 }
 
-interface TraceResult {
+export interface TraceResult {
   points: Point[];
   /** Ended on an existing road. */
   merged: boolean;
@@ -112,6 +112,13 @@ interface TraceResult {
   clear: boolean[];
   /** Radians the trace swept round its ring; 0 for a trace with none. */
   swept: number;
+  /**
+   * Metres along the trace to the last place it crossed a highway, or -1 where
+   * it crossed none. A road that crosses a highway reaches the network there:
+   * the crossing stands at an interchange, and `ramps.ts` lays the ramps that
+   * turn onto it when the road is added.
+   */
+  highwayAt: number;
 }
 
 /** A trace over the ground and the network {@link RoadRoute} holds. */
@@ -278,6 +285,9 @@ export abstract class RoadTrace extends RoadRoute {
     const points: Point[] = [{ x: start.x, y: start.y }];
     const clear: boolean[] = [true];
     const trail: Trail = { crossed: [], start };
+    let highwayAt = -1;
+    /** How much of `trail.crossed` has been read for a highway. */
+    let read = 0;
     let px = start.x;
     let py = start.y;
     let heading = opt.heading ?? this.startHeading(start, opt);
@@ -331,6 +341,11 @@ export abstract class RoadTrace extends RoadRoute {
       points.push({ x: qx, y: qy });
       clear.push(this.network.clearAt(qx, qy, opt.joiner));
       length += next.reach;
+      // A reservation is no curve, so its entry says nothing about a highway.
+      for (; read < trail.crossed.length; read += 4) {
+        const crossed = this.network.curves[trail.crossed[read + 2] as number] as RoadCurve | undefined;
+        if (crossed?.tier === 'highway') highwayAt = length;
+      }
       heading = next.heading;
       px = qx;
       py = qy;
@@ -369,7 +384,7 @@ export abstract class RoadTrace extends RoadRoute {
         clear.pop();
       }
     }
-    return { points, merged, arrived, clear, swept };
+    return { points, merged, arrived, clear, swept, highwayAt };
   }
 
   /**
@@ -383,6 +398,14 @@ export abstract class RoadTrace extends RoadRoute {
    * has just stepped across, nor over the road's own carriageway (`turnsBack`).
    * The nearest point can fail where the one beside it does not, so a few are
    * tried.
+   *
+   * Only a highway merges onto a highway. An arterial that reaches one crosses
+   * it at an interchange and turns onto it through the ramps of the diamond
+   * there (`ramps.ts`), so it carries on rather than stopping. Its merge radius
+   * is 80 m and a highway holds the ground for the same distance each side of
+   * an interchange, so without this every arterial that came near one stopped
+   * on it and the interchange was an at-grade crossroads. The crossing is what
+   * reaches the network instead, which {@link TraceResult.highwayAt} reports.
    */
   protected mergeAt(
     candidates: readonly NetworkHit[],
@@ -394,6 +417,7 @@ export abstract class RoadTrace extends RoadRoute {
     turnsBack: (p: Point) => boolean = () => false,
   ): NetworkHit | undefined {
     for (const hit of candidates.slice(0, MERGE_TRIES)) {
+      if (joiner !== 'highway' && (this.network.curves[hit.curve] as RoadCurve).tier === 'highway') continue;
       if (this.network.refuses(hit.x, hit.y, joiner)) continue;
       if (Math.abs(wrapAngle(atan2(hit.y - from.y, hit.x - from.x) - heading)) > MAX_MERGE_TURN) continue;
       if (!this.network.meets(hit, from, joiner, trail)) continue;

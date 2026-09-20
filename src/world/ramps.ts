@@ -24,14 +24,14 @@
  *
  * Pure: the same roads and ground give the same ramps.
  */
-import { hypot } from '../core/libm.ts';
+import { hypot, sin } from '../core/libm.ts';
 import { toSegment } from './crossing-line.ts';
 import type { CrossingNetwork } from './crossing-rules.ts';
-import { crossPoint } from './network-clearance.ts';
-import { PLATEAU_MARGIN } from './overpass.ts';
+import { crossPoint, MIN_MEET } from './network-clearance.ts';
+import { CLEARANCE, PLATEAU_MARGIN } from './overpass.ts';
 import { curveDistances } from './ribbon.ts';
 import { selfOverlap } from './self-overlap.ts';
-import { footprintHalfWidth } from './tiers.ts';
+import { footprintHalfWidth, TIERS } from './tiers.ts';
 import type { Interchange, Point, RoadCurve } from './types.ts';
 
 /** The tier a ramp is laid as: it carries arterial traffic and climbs at the arterial's grade. */
@@ -52,6 +52,16 @@ const WIDEST = footprintHalfWidth('highway');
 
 /** Most metres along the highway a ramp may reach for its point of it. */
 const RAMP_REACH = 200;
+
+/**
+ * Metres of road an overpass over a highway takes: the deck each side of the
+ * widest carriageway at the shallowest angle a crossing is built at, and the
+ * ramps down to the ground at the arterial's own grade. A road that crosses a
+ * highway is kept at least this long past the crossing, or it cannot be carried
+ * over and the interchange is lost (`roads.ts`).
+ */
+export const OVERPASS_REACH =
+  footprintHalfWidth('highway') / sin(MIN_MEET) + PLATEAU_MARGIN + CLEARANCE / TIERS[RAMP_TIER].maxGrade;
 
 /** Metres between the points of a ramp curve. */
 const RAMP_STEP = 14;

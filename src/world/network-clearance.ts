@@ -85,8 +85,10 @@ export class NetworkClearance {
   private readonly curve: number[] = [];
   /** Whether each end of a segment is an end of its curve, two flags to a segment. */
   private readonly terminal: boolean[] = [];
-  /** Whether another road may cross each segment: not a highway away from its slots, nor the ramp of a raise. */
+  /** Whether another road may cross each segment: not a highway away from its slots and its interchanges, nor the ramp of a raise. */
   private readonly crossable: boolean[] = [];
+  /** Whether a road on a deck may cross each segment: a highway only under one of its slots. */
+  private readonly beneath: boolean[] = [];
   /** The tier of the road each segment belongs to, which {@link mayCross} is asked of. */
   private readonly tierOf: RoadTier[] = [];
   /** Segments of a reservation given up, or of a segment cut in two, which nothing keeps off any more. */
@@ -126,16 +128,18 @@ export class NetworkClearance {
           Math.abs((along[i + 1] as number) - (along[x.at] as number)) <= INTERCHANGE_CLEAR,
       );
     };
-    const open = (i: number): boolean => {
-      if (curve.tier === 'highway') {
-        return (slots.includes(i - 1) && slots.includes(i) && slots.includes(i + 1)) || atInterchange(i);
-      }
+    // A road on a deck passes under a highway at one of its slots and nowhere
+    // else. An interchange is ground the crossing road is carried over, which
+    // a road already on a deck cannot be.
+    const under = (i: number): boolean => {
+      if (curve.tier === 'highway') return slots.includes(i - 1) && slots.includes(i) && slots.includes(i + 1);
       const low = Math.min(lift[i] ?? 0, lift[i + 1] ?? 0);
       const high = Math.max(lift[i] ?? 0, lift[i + 1] ?? 0);
       return high === 0 || low >= CLEARANCE;
     };
+    const open = (i: number): boolean => under(i) || (curve.tier === 'highway' && atInterchange(i));
     const first = this.halfWidth.length;
-    this.lay(curve.id, curve.tier, curve.points, open);
+    this.lay(curve.id, curve.tier, curve.points, open, under);
     const own: number[] = [];
     for (let s = first; s < this.halfWidth.length; s++) own.push(s);
     this.segmentsOf[curve.id] = own;
@@ -152,7 +156,7 @@ export class NetworkClearance {
     this.released[s] = true;
     const first = this.halfWidth.length;
     const points = curve.points.slice(segment, segment + 3);
-    this.lay(curve.id, curve.tier, points, () => this.crossable[s] === true);
+    this.lay(curve.id, curve.tier, points, () => this.crossable[s] === true, () => this.beneath[s] === true);
     const last = curve.points.length - 1;
     this.terminal[first * 2] = segment === 0;
     this.terminal[first * 2 + 1] = false;
@@ -195,7 +199,13 @@ export class NetworkClearance {
     for (let s = 0; s < this.curve.length; s++) if (this.curve[s] === id) this.released[s] = true;
   }
 
-  private lay(id: number, tier: RoadTier, points: readonly Point[], open: (segment: number) => boolean = () => true): void {
+  private lay(
+    id: number,
+    tier: RoadTier,
+    points: readonly Point[],
+    open: (segment: number) => boolean = () => true,
+    under: (segment: number) => boolean = open,
+  ): void {
     const half = footprintHalfWidth(tier);
     this.widest = Math.max(this.widest, half);
     const last = points.length - 1;
@@ -209,6 +219,7 @@ export class NetworkClearance {
       this.tierOf.push(tier);
       this.released.push(false);
       this.crossable.push(open(i));
+      this.beneath.push(under(i));
       this.terminal.push(i === 0, i + 1 === last);
       this.stamp.push(0);
       const x0 = this.column(Math.min(a.x, b.x));
@@ -328,7 +339,7 @@ export class NetworkClearance {
   crossesAtSlots(a: Point, b: Point, tier: RoadTier): boolean {
     let ok = true;
     this.visit(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.max(a.x, b.x), Math.max(a.y, b.y), footprintHalfWidth(tier), (s) => {
-      if (!ok || (this.crossable[s] === true && mayCross(tier, this.tierOf[s] as RoadTier))) return;
+      if (!ok || (this.beneath[s] === true && mayCross(tier, this.tierOf[s] as RoadTier))) return;
       if (closest(a.x, a.y, b.x, b.y, this.ends, s) > 0) return;
       const e = this.ends;
       const k = s * 4;

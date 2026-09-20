@@ -84,6 +84,11 @@ export interface PointEdit {
   at: number;
   x: number;
   y: number;
+  /**
+   * The point is a new interchange of the highway it is put into: the crossing
+   * could carry no diamond, so the two roads meet on the flat there instead.
+   */
+  interchange?: boolean;
 }
 
 /** Where the new road crosses a laid one. */
@@ -132,8 +137,12 @@ export interface Settled {
  */
 export function settleCrossings(network: CrossingNetwork, proposed: DraftLine, whole = false): Settled | undefined {
   let draft = proposed;
+  // The crossings of a highway that turned out to carry no diamond. They are
+  // planned again as a junction on the flat, which is what an interchange was
+  // before the ramps: the road keeps its way onto the highway either way.
+  const flat = new Set<number>();
   for (let round = 0; round < ROUNDS; round++) {
-    const plan = planJunctions(network, draft);
+    const plan = planJunctions(network, draft, flat);
     const road = lineOf(draft, plan.draft);
     const raises: Raise[] = [];
     const overHighway: { crossing: Crossing; raise: Raise }[] = [];
@@ -146,7 +155,9 @@ export function settleCrossings(network: CrossingNetwork, proposed: DraftLine, w
       }
     }
     const carried = raised(road, raises);
-    const diamonds = planDiamonds(network, carried, overHighway, plan.failures);
+    const before = flat.size;
+    const diamonds = planDiamonds(network, carried, overHighway, flat);
+    if (flat.size > before) continue;
     if (plan.failures.length === 0) return { road: carried, edits: plan.edits, diamonds };
     if (whole) return undefined;
     const shorter = shorten(network, draft, plan);
@@ -157,15 +168,16 @@ export function settleCrossings(network: CrossingNetwork, proposed: DraftLine, w
 }
 
 /**
- * The diamonds of every place the road is carried over a highway. A crossing
- * that cannot carry four ramps is a failure, so the road is shortened back from
- * it: an interchange is four ramps or it is no interchange at all.
+ * The diamonds of every place the road is carried over a highway. An
+ * interchange carries four ramps or none, so a crossing that cannot carry four
+ * is put in `flat` and planned again as a junction on the ground: a road is
+ * never cut off from a highway it reached because the quadrants were awkward.
  */
 function planDiamonds(
   network: CrossingNetwork,
   carried: DraftLine,
   overHighway: readonly { crossing: Crossing; raise: Raise }[],
-  failures: Failure[],
+  flat: Set<number>,
 ): DiamondPlan[] {
   if (overHighway.length === 0) return [];
   const distances = curveDistances(carried.points);
@@ -175,13 +187,18 @@ function planDiamonds(
     const highway = network.curves[crossing.curve] as RoadCurve;
     const foot: [number, number] = [pointNear(distances, raise.from), pointNear(distances, raise.to)];
     const diamond = planDiamond(network, highway, crossing.interchange as number, crossing.other, crossing, carried.points, foot, planned);
-    if (diamond === undefined) failures.push({ segment: crossing.segment, x: crossing.x, y: crossing.y, tier: highway.tier });
+    if (diamond === undefined) flat.add(flatKey(crossing));
     else {
       out.push(diamond);
       planned.push(...diamond.ramps);
     }
   }
   return out;
+}
+
+/** How a crossing of a highway is named in the set of the ones that carry no diamond. */
+function flatKey(crossing: { curve: number; other: number }): number {
+  return crossing.curve * 0x10000 + crossing.other;
 }
 
 /** The index of the point of a line nearest a distance along it. */
@@ -208,7 +225,7 @@ export function deckApart(network: CrossingNetwork, a: Point, b: Point, tier: Ro
 }
 
 /** Decide the junctions of a road, and sort the rest of its crossings into what they are. */
-function planJunctions(network: CrossingNetwork, draft: DraftLine): Plan {
+function planJunctions(network: CrossingNetwork, draft: DraftLine, flat: ReadonlySet<number>): Plan {
   const plan: Plan = { draft: new PlannedLine(draft.points, draft.tier), edits: [], junctions: [], under: [], candidates: [], failures: [] };
   const lines = new Map<number, PlannedLine>();
   const lineFor = (curve: RoadCurve): PlannedLine => {
@@ -229,13 +246,17 @@ function planJunctions(network: CrossingNetwork, draft: DraftLine): Plan {
       continue;
     }
     const ground = onGround(draft, crossing.segment) && onGround(other, crossing.other);
-    const join = mayJoin(draft.tier, other.tier, false) && mayJoin(other.tier, draft.tier, false);
+    // A highway is joined where the crossing turned out to carry no diamond,
+    // and nowhere else: the junction is that interchange, without its ramps.
+    const meeting = flat.has(flatKey(crossing));
+    const join = mayJoin(draft.tier, other.tier, meeting) && mayJoin(other.tier, draft.tier, meeting);
     if (ground && join && !meetsNear(network, draft, plan, other, crossing)) {
       const junction = junctionAt(network, plan.draft, lineFor(other), draft, other, crossing, CROSSING_SNAP);
       if (junction !== undefined) {
         if (junction.draft !== undefined) plan.draft.given.push(junction.draft);
         if (junction.edit !== undefined) {
           lineFor(other).given.push({ x: junction.edit.x, y: junction.edit.y, segment: junction.edit.segment, at: junction.edit.at, index: -1 });
+          if (other.tier === 'highway') junction.edit.interchange = true;
           plan.edits.push(junction.edit);
         }
         plan.junctions.push({ x: junction.x, y: junction.y, curve: other.id, segment: crossing.segment });

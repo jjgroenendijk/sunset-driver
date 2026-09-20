@@ -115,7 +115,10 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
     if (settled === undefined) return undefined;
     // From the last point back, so an index still to be used never moves.
     const edits = [...settled.edits].sort((m, n) => m.curve - n.curve || n.segment - m.segment || n.at - m.at);
-    for (const edit of edits) this.insertPoint(edit.curve, edit.segment, edit);
+    for (const edit of edits) {
+      this.insertPoint(edit.curve, edit.segment, edit);
+      if (edit.interchange === true) this.markInterchange(edit.curve, edit.segment + 1);
+    }
     const curve = this.layCurve(settled.road);
     for (const diamond of settled.diamonds) this.layDiamond(diamond, curve);
     return curve;
@@ -179,6 +182,19 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
     }
     interchange.ramps.sort(compareNumbers);
     interchange.heads.sort(compareNumbers);
+  }
+
+  /**
+   * Note a point of a highway as an interchange of its own. A crossing that
+   * could carry no diamond is joined on the flat instead (`crossing-plan.ts`),
+   * and a highway is joined only at an interchange, so the place the two roads
+   * met is one.
+   */
+  private markInterchange(id: number, index: number): void {
+    const road = this.curves[id] as RoadCurve;
+    if (road.interchanges.some((x) => x.at === index)) return;
+    road.interchanges.push({ at: index, ramps: [], heads: [] });
+    road.interchanges.sort((m, n) => m.at - n.at);
   }
 
   /** Where a ramp stands on the network now: the road being added is not in `curves` yet. */
