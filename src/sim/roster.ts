@@ -266,7 +266,10 @@ const MOTORCYCLE: VehicleSpec = {
   maxSuspensionForce: 8000,
   balance: 1500,
   inline: true,
-  paint: 0x1f1f24,
+  // A bike is the smallest thing on the road and its frame, seat and tyres are
+  // all but black, so the paint is the one part of it the camera 60 m up can
+  // pick out. It is the violet no other row carries.
+  paint: 0x7a3f9c,
 };
 
 /** A four-wheel drive off-roader: tall, soft and happy off the tarmac. */

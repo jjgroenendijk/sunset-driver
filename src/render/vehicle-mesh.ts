@@ -22,6 +22,8 @@ export const LAMP = 0xffe7b0;
 export const TAIL = 0x6e1210;
 export const METAL = 0x9aa0a6;
 export const TYRE = 0x161616;
+/** The black of a seat, which is leather on every bike in the city. */
+export const SEAT = 0x1a1a1e;
 /** The blue and red of a patrol car's light bar. */
 export const BEACON_BLUE = 0x2f6fe0;
 export const BEACON_RED = 0xd32c2c;
@@ -71,7 +73,10 @@ export function vehicleBoxes(spec: VehicleSpec): VehicleBox[] {
  * flanks, so a lamp at a corner goes with the nose it lights the way from.
  */
 export function panelAt(spec: VehicleSpec, part: VehicleBox): Panel | undefined {
-  if (part.y > spec.halfHeight * 0.2) return 'roof';
+  // A vehicle ridden astride has no roof. What stands over its waist is the
+  // tank, the seat and the bars, and each of those belongs to the end of the
+  // bike it is at: a bike is damaged at the ends, which is where it hits.
+  if (!spec.inline && part.y > spec.halfHeight * 0.2) return 'roof';
   if (part.x > spec.halfLength * 0.4) return 'front';
   if (part.x < -spec.halfLength * 0.4) return 'rear';
   if (Math.abs(part.z) > spec.halfWidth * 0.45) return part.z > 0 ? 'left' : 'right';
@@ -298,21 +303,98 @@ function bus(spec: VehicleSpec): VehicleBox[] {
   return [...boxes, ...lamps(spec, -spec.halfHeight + height * 0.12)];
 }
 
-/** A motorcycle: a tank, a seat, a fairing and the bars across the front. */
+/**
+ * Where a rider meets a vehicle they sit astride, in the vehicle's own frame.
+ * These are the three places the pose in `rider.ts` is built on, so a bike
+ * moved here moves the rider on it with no second table to keep in step.
+ */
+export interface Saddle {
+  /** The middle of the seat, and the top of it: where the hips rest. */
+  x: number;
+  y: number;
+  /** Where the hands close on the bars, and how far out each grip stands. */
+  gripX: number;
+  gripY: number;
+  gripZ: number;
+  /** Where the boots stand on the pegs. */
+  pegX: number;
+  pegY: number;
+}
+
+/** The saddle of a class ridden astride, and undefined on everything else. */
+export function saddleOf(spec: VehicleSpec): Saddle | undefined {
+  return spec.inline ? saddle(spec) : undefined;
+}
+
+/** The saddle of a bike, read whether or not the class is ridden. */
+function saddle(spec: VehicleSpec): Saddle {
+  // A rider's arms are half a metre long, so the bars stand where a seated
+  // body can hold them: any further forward and the hands come off them.
+  return {
+    x: -spec.halfLength * 0.22,
+    y: spec.halfHeight * 0.67,
+    gripX: spec.halfLength * 0.4,
+    gripY: spec.halfHeight * 1.67,
+    gripZ: spec.halfWidth * 0.88,
+    pegX: -spec.halfLength * 0.17,
+    pegY: -spec.halfHeight * 1.23,
+  };
+}
+
+/**
+ * A motorcycle, built round the rider sat on it (`rider.ts`).
+ *
+ * A bike is not a small car, so it is not drawn as one box with lamps on it.
+ * What says motorcycle from 60 m up is the line of it — a wheel at each end,
+ * the tank and the seat strung between them, the bars a T across the front —
+ * and what says it from close to are the parts no car has: fork legs, a
+ * swingarm, an exhaust down one side, a mirror out past each grip.
+ *
+ * The places the rider touches come from {@link saddleOf}, so the seat, the
+ * grips and the pegs are drawn exactly where the pose puts the body on them.
+ */
 function motorcycle(spec: VehicleSpec): VehicleBox[] {
   const length = spec.halfLength * 2;
   const width = spec.halfWidth * 2;
   const height = spec.halfHeight * 2;
-  return [
-    // The spine of it, low and narrow: what reads from above is its length.
-    box(length * 0.8, height * 0.5, width * 0.5, spec.trim, 0, -spec.halfHeight + height * 0.25, 0),
-    box(length * 0.3, height * 0.45, width * 0.78, spec.paint, length * 0.1, height * 0.1, 0),
-    box(length * 0.24, height * 0.3, width * 0.6, spec.trim, -length * 0.22, height * 0.08, 0),
-    // The bars, the one part of a bike that is wider than the bike.
-    box(0.07, 0.07, width * 1.5, METAL, length * 0.3, height * 0.3, 0, false),
-    box(0.08, 0.12, width * 0.45, LAMP, spec.halfLength - 0.05, height * 0.16, 0, false),
-    box(0.07, 0.1, width * 0.4, TAIL, -spec.halfLength + 0.05, height * 0.14, 0, false),
+  const seat = saddle(spec);
+  const boxes = [
+    // The frame, and the engine hung under it: the mass in the middle, which
+    // everything else is bolted to and which a bike never loses.
+    box(length * 0.52, height * 0.27, width * 0.44, spec.trim, -length * 0.01, -height * 0.27, 0),
+    box(length * 0.24, height * 0.57, width * 0.44, METAL, length * 0.02, -height * 0.5, 0),
+    // The tank in two, a wide lower half under a narrower top, so it rounds
+    // off rather than standing there as a brick. It carries the bike's paint.
+    box(length * 0.24, height * 0.33, width * 0.54, spec.paint, length * 0.2, height * 0.1, 0),
+    box(length * 0.2, height * 0.2, width * 0.41, spec.paint, length * 0.19, height * 0.33, 0, false),
+    // The seat, with its top at the saddle, and the tail rising behind it.
+    box(length * 0.29, height * 0.17, width * 0.47, SEAT, seat.x, seat.y - height * 0.085, 0),
+    box(length * 0.17, height * 0.37, width * 0.38, spec.paint, -length * 0.35, height * 0.27, 0),
+    // The front: a mudguard over the wheel, and the lamp housing over that.
+    box(length * 0.24, height * 0.13, width * 0.32, spec.paint, length * 0.38, height * 0.23, 0, false),
+    box(length * 0.07, height * 0.5, width * 0.44, BAR_BASE, length * 0.41, height * 0.5, 0),
+    box(0.06, height * 0.37, width * 0.32, LAMP, spec.halfLength - 0.09, height * 0.5, 0, false),
+    // The back: a mudguard, the tail light on it, and the exhaust down the
+    // right side with its silencer at the end of it.
+    box(length * 0.24, height * 0.13, width * 0.35, spec.paint, -length * 0.38, height * 0.17, 0, false),
+    box(0.08, height * 0.17, width * 0.32, TAIL, -spec.halfLength + 0.05, height * 0.3, 0, false),
+    box(length * 0.38, height * 0.17, width * 0.15, METAL, -length * 0.17, -height * 0.5, -width * 0.32, false),
+    box(length * 0.2, height * 0.23, width * 0.21, METAL, -length * 0.31, -height * 0.43, -width * 0.32, false),
+    // The bars, on a stem up from the forks: the one part of a bike wider than
+    // the bike, and the T it reads as from straight above.
+    box(length * 0.18, height * 0.13, width * 0.15, BAR_BASE, length * 0.32, seat.gripY - height * 0.07, 0, false),
+    box(0.07, 0.07, seat.gripZ * 2 + 0.14, METAL, seat.gripX, seat.gripY, 0, false),
   ];
+  for (const side of [1, -1]) {
+    // A fork leg and a swingarm each side, a peg for each boot, a grip at each
+    // end of the bars and a mirror on a stalk out past it.
+    boxes.push(box(length * 0.05, height * 1.1, width * 0.13, METAL, length * 0.36, height * 0.12, side * width * 0.19, false));
+    boxes.push(box(length * 0.24, height * 0.15, width * 0.15, METAL, -length * 0.24, -height * 0.37, side * width * 0.18, false));
+    boxes.push(box(length * 0.08, 0.04, width * 0.18, METAL, seat.pegX, seat.pegY, side * width * 0.34, false));
+    boxes.push(box(0.09, 0.09, 0.14, SEAT, seat.gripX, seat.gripY, side * seat.gripZ, false));
+    boxes.push(box(0.04, height * 0.17, width * 0.2, METAL, seat.gripX, seat.gripY + height * 0.15, side * (seat.gripZ + 0.08), false));
+  }
+  return boxes;
 }
 
 /** An off-roader: a tall body, glass all round and a rack on the roof. */

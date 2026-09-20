@@ -61,6 +61,7 @@ import { SurfaceIndex, type Surface } from '../world/surface.ts';
 import { PULL_MARGIN, TURN_MARGIN } from './camera.ts';
 import { CAMERA_VIEWS } from './camera-view.ts';
 import { poseFor } from './character-pose.ts';
+import { seatRider } from './rider.ts';
 import { Vector3, type Camera } from 'three';
 import { gripOf } from './character-hold.ts';
 import { tickAtHour } from './daylight.ts';
@@ -392,10 +393,15 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   if (request.damage !== undefined) vehicle.damage = damageAt(request.damage, tick);
   const stand = request.onFoot === true && shop === undefined ? exitPlace(vehicle, spec) : { x, y, heading };
   scene.character.group.position.set(stand.x, scene.heightAt(stand.x, stand.y), stand.y);
-  scene.character.group.rotation.y = -stand.heading;
+  scene.character.group.rotation.set(0, -stand.heading, 0);
   scene.character.group.visible = request.onFoot === true || shop !== undefined;
   hold(scene, request);
   scene.setVehicle(vehicle);
+  // A class ridden astride carries the player on it, as the game draws them
+  // (`rider.ts`), so `--vehicle=motorcycle` shows the rider and the bike.
+  if (!scene.character.group.visible && seatRider(scene.character, vehicle, spec)) {
+    scene.character.group.visible = true;
+  }
   const record = createSimState(seed, undefined, tick);
   const services = request.emergency === true ? callOut(record, scene, kerb.x, kerb.y, heading) : undefined;
   // A fire is what has been burning for a while, not what started this frame,

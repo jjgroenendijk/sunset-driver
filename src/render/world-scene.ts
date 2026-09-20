@@ -23,7 +23,7 @@ import type { MeleeHit } from '../sim/melee.ts';
 import type { Tracer } from '../sim/tracer.ts';
 import type { PlayerState } from '../sim/on-foot.ts';
 import { START_TICK } from '../sim/simulation.ts';
-import type { VehicleState } from '../sim/vehicle.ts';
+import { specOf, type VehicleState } from '../sim/vehicle.ts';
 import { CLEAR_WEATHER, weatherAt, type Weather } from '../sim/weather.ts';
 import { buildCarve, type RoadCarve } from '../world/carve.ts';
 import { buildRoadGraph } from '../world/graph.ts';
@@ -62,6 +62,7 @@ import { roofOver, type RoofBox } from './roofs.ts';
 import { SignScenery } from './signs.ts';
 import { SkidMarks } from './skid.ts';
 import { SkyLighting } from './sky.ts';
+import { seatRider } from './rider.ts';
 import type { DrawnPlayer } from './smooth.ts';
 import { STREAM_BUDGET_MS } from './streaming.ts';
 import { PlantScenery } from './vegetation.ts';
@@ -306,12 +307,29 @@ export class WorldScene {
    * `player` the record itself, which says whether the feet are on the ground
    * and how fast the body is going up; `dt` is the seconds since the last
    * frame, which carries the cycle along. A player behind the wheel is not
-   * drawn, so nothing is animated for them.
+   * drawn, so nothing is animated for them; one on a motorcycle is drawn
+   * astride it, from the record of the vehicle they are on.
    */
-  walkPlayer(drawn: DrawnPlayer, player: PlayerState, dt: number, swing = -1, hold?: Hold, handsUp = false): void {
+  walkPlayer(
+    drawn: DrawnPlayer,
+    player: PlayerState,
+    dt: number,
+    swing = -1,
+    hold?: Hold,
+    handsUp = false,
+    vehicle?: VehicleState,
+  ): void {
     const model = this.character;
+    // A player on a motorcycle is on top of it rather than inside it, so the
+    // model is seated on the saddle instead of hidden (`rider.ts`).
+    if (player.driving && vehicle !== undefined && seatRider(model, vehicle, specOf(vehicle.cls))) {
+      model.group.visible = true;
+      return;
+    }
     model.group.position.set(drawn.x, drawn.height, drawn.y);
-    model.group.rotation.y = -drawn.heading;
+    // Set the whole turn, not the yaw alone: a rider just off a bike carries
+    // its roll and its pitch until something writes over them.
+    model.group.rotation.set(0, -drawn.heading, 0);
     model.group.visible = !player.driving;
     if (player.driving) return;
     model.animate(
