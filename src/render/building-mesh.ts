@@ -44,6 +44,7 @@ import { buildBlockGeometry, buildDressGeometry, buildMassingGeometry, roofDeckO
 import { BLOCK_WALL, Shell } from './block-shell.ts';
 import { hullOf } from './building-hull.ts';
 import { boxesOf, shapeOf, type BuildingShape, type ShapeBox } from './building-shape.ts';
+import { planFor, styleColour, styleOf, type BuildingStyle } from './building-style.ts';
 import {
   batchOf,
   chamferOf,
@@ -67,6 +68,7 @@ import type { ChunkDetail } from './streaming.ts';
 export { OUTLINE_WIDTH } from './building-hull.ts';
 export { CORNICE, massingOf, standingGround, type BuildingBatch, type BuildingMassing } from './building-plan.ts';
 export { shapeOf, type BuildingShape } from './building-shape.ts';
+export { styleOf, type BuildingStyle } from './building-style.ts';
 
 /** A colour as the renderer wants it: three floats in the working colour space. */
 export type Rgb = readonly [number, number, number];
@@ -200,18 +202,32 @@ export function buildChunkBuildings(
   for (const building of chunk.buildings) {
     const district = lookup.districtOf(building);
     const massing = massingOf(building, district, lookup.chamferOf(building));
-    const generated = batchOf(building.kind, massing);
+    // The ground under the lot, the height the shell stands at and the footing
+    // the fall across it needs. The style reads it too: a lot near sea level is
+    // the coast the Miami style of spec section 10.3 stands on.
+    const stand = standOf(building, lookup);
+    // Which of the five styles the building is dressed in. Only classical
+    // masonry is generated; the other four are built from boxes, so they join
+    // the block batch and cost no draw call of their own.
+    const look = styleOf(building, district, stand.top, massing.height);
+    const generated = look === 'masonry' ? batchOf(building.kind, massing) : 'block';
     const batch = detail === 'near' ? generated : 'block';
-    // A tower keeps the colour of its facade at every detail, so the skyline
-    // does not change colour where the detail steps down.
-    const tint = tintOf(building, generated);
+    // A tower keeps its colour at every detail, so the skyline does not change
+    // colour where the detail steps down.
+    const tint = tintOf(building, look, generated);
     // Every variant and every piece of rooftop plant is drawn from the
     // building's own seed and the wealth of the district it stands in, so the
     // same building is dressed the same way in every session.
-    const style: BlockStyle = { seed: building.seed, wealth: district.wealth, detail: detail === 'near' ? 'near' : 'mid' };
+    const style: BlockStyle = {
+      seed: building.seed,
+      wealth: district.wealth,
+      detail: detail === 'near' ? 'near' : 'mid',
+    };
     // How the building is massed inside its box: the same shape at every
-    // detail, laid out on whatever rectangle that detail builds on.
-    const shape = shapeOf(building.seed, building.kind, massing, building.shared);
+    // detail, laid out on whatever rectangle that detail builds on. An Art Deco
+    // tower asks for the stack of setbacks its style is.
+    const shape = shapeOf(building.seed, building.kind, massing, building.shared, planFor(look));
+    if (look !== 'masonry') style.tall = { look, bay: shape.bayWidth };
     let shell: BufferGeometry;
     let dress: BufferGeometry | undefined;
     if (batch === 'facade') {
@@ -233,8 +249,6 @@ export function buildChunkBuildings(
     // reach it.
     const wall = building.shared.left || building.shared.right;
     const fit = fitOf({ width: box.max.x - box.min.x, depth: box.max.z - box.min.z }, massing, wall);
-    // The ground under the lot, and the footing the fall across it needs.
-    const stand = standOf(building, lookup);
     const footing = footingGeometry(shape, box, fit, stand.footing, tint);
     const hull = hullOf(massing, shell, box, fit, shape, stand.footing / fit.across);
     // A lot on a bend leans its side edges, and a wall it shares follows them.
@@ -334,12 +348,19 @@ export function buildingDrawCalls(chunk: WorldChunk): number {
   return (facades > 0 ? 1 : 0) + 1 + 1;
 }
 
-/** The colour a building is dressed in, from its own seed. */
-function tintOf(building: Building, batch: BuildingBatch): Rgb {
+/**
+ * The colour a building is dressed in, from its style and its own seed (spec
+ * section 10.3). Each of the four styled looks carries its own palette, so a
+ * glass tower is glass-coloured wherever it stands; classical masonry keeps the
+ * generator's palette, which its own material is written against.
+ */
+function tintOf(building: Building, look: BuildingStyle, batch: BuildingBatch): Rgb {
   const hex =
-    batch === 'facade'
-      ? pickBuildingColor(building.seed)
-      : (BLOCK_PALETTE[building.kind][hashInts(building.seed, 2) % BLOCK_PALETTE[building.kind].length] as number);
+    look !== 'masonry'
+      ? styleColour(look, building.seed)
+      : batch === 'facade'
+        ? pickBuildingColor(building.seed)
+        : (BLOCK_PALETTE[building.kind][hashInts(building.seed, 2) % BLOCK_PALETTE[building.kind].length] as number);
   const colour = new Color(hex);
   return [colour.r, colour.g, colour.b];
 }

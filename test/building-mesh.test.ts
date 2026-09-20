@@ -300,11 +300,14 @@ describe('a building on its lot', () => {
 
 describe('which batch a building is built in', () => {
   it('generates a facade for a tower with the room for one, and a block for the rest', () => {
-    expect((placed([buildingOf('tower', 26, 28)])[0] as BuildingPlacement).batch).toBe('facade');
-    expect((placed([buildingOf('mid-rise', 24, 24)])[0] as BuildingPlacement).batch).toBe('facade');
+    // Only classical masonry is generated. Seed 1 draws it in this district and
+    // seed 2 draws the glass curtain wall, which is built from boxes.
+    expect((placed([buildingOf('tower', 26, 28, { seed: 1 })])[0] as BuildingPlacement).batch).toBe('facade');
+    expect((placed([buildingOf('mid-rise', 24, 24, { seed: 1 })])[0] as BuildingPlacement).batch).toBe('facade');
+    expect((placed([buildingOf('tower', 26, 28, { seed: 2 })])[0] as BuildingPlacement).batch).toBe('block');
     // A lot this narrow leaves the generator no room for its bays once the
     // cornices have been allowed for, so the tower is built as a block.
-    expect((placed([buildingOf('tower', 12, 26)])[0] as BuildingPlacement).batch).toBe('block');
+    expect((placed([buildingOf('tower', 12, 26, { seed: 1 })])[0] as BuildingPlacement).batch).toBe('block');
     for (const kind of ['parking-garage', 'shop-row', 'house', 'warehouse', 'roadhouse'] as const) {
       expect((placed([buildingOf(kind, 26, 28)])[0] as BuildingPlacement).batch).toBe('block');
     }

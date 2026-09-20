@@ -46,19 +46,26 @@ import { house } from './house-mesh.ts';
 import { parkingGarage, roadhouse } from './roadhouse-mesh.ts';
 import { deckPartOf, dressRoof, type RoofDeck } from './roof-dress.ts';
 import { shopRow } from './shop-mesh.ts';
+import { styledBox } from './tall-mesh.ts';
 import { warehouse } from './warehouse-mesh.ts';
 
 // The parts a vertex may belong to are the material's business as much as the
 // geometry's, so this is the door onto them as well.
 export {
+  BLOCK_CONCRETE,
+  BLOCK_CURTAIN,
   BLOCK_GLASS,
   BLOCK_MEMBRANE,
   BLOCK_METAL,
+  BLOCK_NEON,
   BLOCK_PAINT,
   BLOCK_PLANTED,
+  BLOCK_PORTHOLE,
   BLOCK_ROOF,
   BLOCK_SLATE,
   BLOCK_SOLAR,
+  BLOCK_STONE,
+  BLOCK_STUCCO,
   BLOCK_TILE,
   BLOCK_TRIM,
   BLOCK_WALL,
@@ -154,12 +161,16 @@ export function buildMassingGeometry(massing: BuildingMassing, tint: Rgb, boxes:
 }
 
 /**
- * A tower or a mid-rise block on a lot too narrow for a generated facade: plain
- * walls, a band of window at every storey, and a dressed flat roof behind a
- * parapet.
+ * A tower or a mid-rise block, built from boxes: either a styled one of spec
+ * section 10.3 — glass, Brutalist, Art Deco or Miami, which `tall-mesh.ts`
+ * builds — or classical masonry on a lot too narrow for a generated facade,
+ * which is plain walls and a band of window at every storey. Every box is
+ * capped with its own dressed flat roof behind a parapet.
  */
 function tall(shell: Shell, massing: BuildingMassing, style: BlockStyle, boxes: readonly ShapeBox[]): RoofDeck {
   const part = deckPartOf(style);
+  let crown = 0;
+  for (const one of boxes) crown = Math.max(crown, one.to);
   let deck: RoofDeck | undefined;
   for (const one of boxes) {
     // Each box of the shape is its own walls, its own bands of glazing and its
@@ -171,8 +182,13 @@ function tall(shell: Shell, massing: BuildingMassing, style: BlockStyle, boxes: 
       depth: Math.max(MIN_WALLS, one.depth - 2 * PROUD),
     };
     const at = { x: one.x, z: one.z };
-    box(shell, walls, one.from, one.to, BLOCK_WALL, at);
-    windowBands(shell, walls, one.from, one.to, ALL_SIDES, at);
+    if (style.tall !== undefined) {
+      const outer = { ...massing, width: one.width, depth: one.depth };
+      styledBox(shell, style.tall.look, outer, one.from, one.to, at, style.detail, style.tall.bay, one.to >= crown);
+    } else {
+      box(shell, walls, one.from, one.to, BLOCK_WALL, at);
+      windowBands(shell, walls, one.from, one.to, ALL_SIDES, at);
+    }
     // A parapet is a ring a third of a metre wide. The camera is 200 m out at
     // mid detail and the roof is a deck there, not a rim around one.
     if (style.detail === 'near') flatRoof(shell, walls, one.to, part, at);
