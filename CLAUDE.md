@@ -112,8 +112,8 @@ The ones that cost a session with nothing to say why. The subsystem docs hold th
   `smoothstep` chains the same way.
 - Tone.js refuses to start an oscillator before a stop it has already scheduled, so a one-shot voice
   is reused only after its own tail, never stolen. An exponential ramp may not touch zero either.
-- A `Data3DTexture` needs `generateMipmaps = false` on WebGPU: three.js 0.186 builds mipmaps of it
-  through 2D views, which the browser refuses, and each frame fills the console with errors.
+- A `Data3DTexture` on WebGPU needs `generateMipmaps = false` and an upload of its own: three.js
+  0.186 reaches it through 2D views both ways, which Dawn refuses. See `docs/post.md`.
 - `renderer.shadowMap.enabled` is false by default on `WebGPURenderer`, so without the line in
   `renderer.ts` the cascades are built every frame and never drawn.
 - Rapier reads a heightfield as `heights[j * (rows + 1) + i]` with `i` walking `z`; the other way
