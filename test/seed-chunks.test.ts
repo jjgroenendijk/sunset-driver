@@ -17,7 +17,7 @@ import { MITRE_SHIFT, RoadRibbons } from '../src/world/ribbon.ts';
 import { footprintHalfWidth, TIERS } from '../src/world/tiers.ts';
 import { tramTrack } from '../src/world/tram-track.ts';
 import { type Point, type RoadCurve, type WorldDescription } from '../src/world/types.ts';
-import { mixFor, MAX_PLANT_RADIUS, PLANT_RADIUS, Vegetation, type Plant } from '../src/world/vegetation.ts';
+import { GROWTH, mixFor, MAX_PLANT_RADIUS, PLANT_RADIUS, Vegetation, type Plant } from '../src/world/vegetation.ts';
 import { pointInRing, ringArea, sideReach, stableJson } from './helpers.ts';
 import { type WorldParts } from './world-pool.ts';
 import {
@@ -389,7 +389,11 @@ sweepSuite('chunks', () => {
           if (plant.at.x < bounds.minX || plant.at.x >= bounds.maxX || plant.at.y < bounds.minY || plant.at.y >= bounds.maxY) {
             fault(`${where} stands outside the chunk that carries it`);
           }
-          if (plant.radius !== PLANT_RADIUS[plant.species]) fault(`${where} claims ${plant.radius} m of canopy`);
+          const [small, large] = GROWTH[plant.species];
+          const base = PLANT_RADIUS[plant.species];
+          if (plant.radius < base * small - 1e-6 || plant.radius > base * large + 1e-6) {
+            fault(`${where} claims ${plant.radius} m of canopy`);
+          }
           if (plant.radius > MAX_PLANT_RADIUS) fault(`${where} claims more canopy than a cell has room for`);
           const parcel = parcels[plant.parcel];
           if (parcel === undefined) {

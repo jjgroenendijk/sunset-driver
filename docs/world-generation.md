@@ -301,8 +301,14 @@ corridors in `docs/corridors.md`.
   than `MAX_PLANT_RADIUS`, which is half of what that leaves. A plant is kept only where its whole
   canopy stands inside the parcel and clear of every lot on it, so nothing reaches over a road or a
   building. `mixFor(owner, zone)` says what a parcel plants: a wood in a park, scrub on open ground,
-  dune grass and palms on a beach, and a row along the pavement where the ground behind the frontage
-  is built on.
+  a drier wood with rosettes in it out in the outskirts, dune grass and palms on a beach, and a row
+  along the pavement where the ground behind the frontage is built on.
+- How big one plant grows is `PLANT_RADIUS[species]` times its own draw from `GROWTH`, and
+  `LANDMARK_CHANCE` of them draw from the large end of that range. So a park holds saplings,
+  ordinary trees and the odd specimen that stands over it. `PLANT_CELL` is what caps the largest of
+  them, and the planting chances are set against that cell: widening the cell is fewer cells over
+  the same ground, so raise every chance in `mixFor` and `GROUND_CHANCE` to match or a wood thins
+  out.
 
 ## Chunks and the sweeps
 

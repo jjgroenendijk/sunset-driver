@@ -4,6 +4,7 @@ import type { Building, BuildingMap } from '../src/world/buildings.ts';
 import type { Parcel, ParcelMap, ParcelOwner } from '../src/world/parcels.ts';
 import type { Zone } from '../src/world/types.ts';
 import {
+  GROWTH,
   MAX_PLANT_CHANCE,
   MAX_PLANT_RADIUS,
   mixFor,
@@ -135,7 +136,9 @@ describe('vegetation', () => {
     const plants = plantsOn(parcels);
     expect(plants.length).toBeGreaterThan(100);
     for (const plant of plants) {
-      expect(plant.radius).toBe(PLANT_RADIUS[plant.species]);
+      const [small, large] = GROWTH[plant.species];
+      expect(plant.radius).toBeGreaterThanOrEqual(PLANT_RADIUS[plant.species] * small);
+      expect(plant.radius).toBeLessThanOrEqual(PLANT_RADIUS[plant.species] * large);
       expect(plant.radius).toBeLessThanOrEqual(MAX_PLANT_RADIUS);
       const room = edgeDistance(plant.at, square(0, 0, SIDE));
       expect(room, `${plant.species} at ${plant.at.x}, ${plant.at.y}`).toBeGreaterThanOrEqual(plant.radius);
