@@ -90,13 +90,15 @@ export class StreetLife {
     this.live = live;
     const inside = eventAt(live, at.x, at.y);
     this.happening = inside === undefined ? '' : inside.name;
+    this.standing.length = 0;
+    for (const person of before.standing) this.standing.push(person);
     if (live.length === 0 && crimes.length === 0 && this.drawn === 0) {
       // Nothing is on and nothing is going on, which is most of a session.
+      // Whoever was already on the street is carried through all the same:
+      // this is the list the crowd mesh draws.
       this.marks = before.marks;
       return;
     }
-    this.standing.length = 0;
-    for (const person of before.standing) this.standing.push(person);
     const marks: MapPoi[] = [];
     for (const event of live) {
       if (event.radius <= 0) continue;
