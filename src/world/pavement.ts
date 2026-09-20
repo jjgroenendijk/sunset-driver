@@ -22,7 +22,7 @@
  * neighbours cut the same edges on the line they share, so they meet exactly.
  * Pure: the same pieces give the same pavement.
  */
-import { difference, offsetSides, regionOf, ringArea, split, strip, type Point, type Region } from '../core/geom.ts';
+import { difference, offsetSides, regionOf, ringArea, split, strip, union, type Point, type Region } from '../core/geom.ts';
 import type { ChunkBounds, ChunkRoad } from './chunks.ts';
 import { junctionShape } from './junction-shape.ts';
 import type { Junction } from './junctions.ts';
@@ -172,9 +172,9 @@ function carriagewayOf(window: PavementWindow, ribbons: RoadRibbons): Region[] {
       close();
     }
     // A junction's fan still leaves some of a road's own carriageway between
-    // its cut and the node, where the ring is not the outline of what the
-    // mouths cover (issue #542), and that is no place for a pavement. So every
-    // stretch of segments a junction takes is added whole.
+    // its cut and the node, where the road bends inside its cut (issue #542),
+    // and that is no place for a pavement. So every stretch of segments a
+    // junction takes is added whole.
     if (run.gaps.length === 0) continue;
     let taken: Point[] = [];
     for (let k = 0; k + 1 < run.points.length; k++) {
@@ -195,18 +195,21 @@ function carriagewayOf(window: PavementWindow, ribbons: RoadRibbons): Region[] {
   }
   for (const junction of window.junctions) {
     const ring: Point[] = junctionShape(junction, ribbons).carriageway.map((v) => ({ x: v.x, y: v.y }));
-    // The carriageway is fanned from the node, and where the node cannot see
-    // the whole ring the fan reaches past it. A place covered only by triangles
-    // that turn the way the ring does is inside the ring, so the fan is the ring
-    // and the triangles that turn the other way.
-    add(ring);
+    // A junction is what its fan draws, which is every triangle from the node
+    // to an edge of the ring, whichever way each turns. The ring's own outline
+    // says less than that: it is not the outline of the ground the mouths
+    // cover, and where it crosses itself it is not an outline at all. The
+    // triangles are joined here rather than handed over one by one, because
+    // `difference` leaves a subtrahend standing where two of them overlap
+    // (issue #493).
     const node: Point = { x: junction.x, y: junction.y };
-    const way = Math.sign(ringArea(ring));
+    const fan: Region[] = [];
     for (let i = 0; i < ring.length; i++) {
       const triangle = [node, ring[i] as Point, ring[(i + 1) % ring.length] as Point];
-      // A ring with no area of its own says nothing, and every triangle counts.
-      if (way === 0 || Math.sign(ringArea(triangle)) === -way) add(triangle);
+      if (Math.abs(ringArea(triangle)) < MIN_PIECE_AREA) continue;
+      fan.push(regionOf(triangle));
     }
+    for (const piece of union(fan)) out.push(piece);
   }
   return out;
 }

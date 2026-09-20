@@ -216,15 +216,22 @@ corridors in `docs/corridors.md`.
   from the one surface: a mouth's banked section, and the plane everywhere else. `junction-mesh.ts`
   draws it and the carve levels the ground under it. The carve levels the `outline` and the fan
   (`JunctionCover`), not the outline alone. A mouth is drawn on its curve but the outline is cut on
-  a straight line, and a fan from the node reaches past a ring that is not convex.
+  a straight line, and a fan from the node reaches past a ring that is not convex. A mouth also
+  takes in the kerbs it starts on at the node, where the mouth beside it is cut too short to hold
+  them: the lofts draw none of the ground between a node and a cut, so what the fan misses there is
+  bare. Such a vertex stands nearer the node than the two beside it, so it adds a triangle that
+  turns against the ring rather than widening the ring, and the ring may cross itself. Read the
+  ring as the fan it is drawn as, never as an outline.
 - `ChunkSource` cuts the pavement and the verges of each chunk (`pavement.ts`, spec section 6.4) as
   the inset of each block: the ground the roads claim, without the corridors, less the carriageway
   as the lofts and the fans draw it. One pass takes the carriageway and the ground outside the chunk
   away, and each tier then takes what it claims, the widest first. So no pavement lies on a
   carriageway, no ring of it crosses itself, and a corner with no room has none. The carriageway
   holds every segment a junction takes, because a fan still leaves some of a road's own carriageway
-  out where the ring is not the outline of what the mouths cover (issue #542); that ground is left
-  bare. Each claimed stretch ends on the
+  out where the road bends inside its cut (issue #542); that ground is left bare. A junction is
+  taken away as the union of its fan's triangles and not as its ring, since the ring is not an
+  outline of them, and joining them first is what keeps `difference` from leaving one standing
+  (issue #493). Each claimed stretch ends on the
   loft's frame, or a sliver of verge lies on the deck it runs onto.
 - `buildCarve(terrain, roads, junctions)` (`carve.ts`) is the terrain the roads leave (spec section
   7.1). It is built on demand like the graph, the footprint and the parcels: `world.terrain` stays

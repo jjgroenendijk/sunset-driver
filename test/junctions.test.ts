@@ -322,7 +322,7 @@ describe('junction carriageway', () => {
   const map = buildJunctions(turning.roads, buildRoadGraph(turning.roads));
   const ribbons = new RoadRibbons(turning.terrain, turning.roads, map);
 
-  /** Metres a sample is held inside the carriageway it is drawn from. */
+  /** Metres a sample is held inside the carriageway it is drawn from, so rounding does not decide it. */
   const INSET = 1e-4;
 
   /** True inside any triangle of the fan from the node, whichever way it winds. */
@@ -351,26 +351,61 @@ describe('junction carriageway', () => {
     expect(east.cut).toBeLessThanOrEqual(MAX_CUT);
   });
 
+  /**
+   * A street along x that bends a few metres out, and an arterial through the
+   * node at 120 degrees to it. The street may not be cut past its straight run,
+   * so it cannot be cut far enough to hold the kerb the arterial starts on, and
+   * the ring has to take that kerb in itself.
+   */
+  const bent = [
+    curve(0, [[0, 0], [3, 0], [60, 40]]),
+    curve(1, [[60, -103.92], [0, 0], [-60, 103.92]], 'arterial'),
+  ];
+  const bending = hillWorld(bent);
+  const bentMap = buildJunctions(bending.roads, buildRoadGraph(bending.roads));
+  const bentRibbons = new RoadRibbons(bending.terrain, bending.roads, bentMap);
+
+  /** The places of a mouth's carriageway the fan has to hold, a hair inside it. */
+  function samples(node: Point, mouth: Junction['mouths'][number]): Point[] {
+    const kerb = TIERS[mouth.tier].width / 2 - INSET;
+    const out: Point[] = [];
+    for (let a = 0; a <= 16; a++) {
+      for (let c = -16; c <= 16; c++) {
+        const along = INSET + ((mouth.cut - 2 * INSET) * a) / 16;
+        const across = (kerb * c) / 16;
+        out.push({
+          x: node.x + mouth.dx * along - mouth.dy * across,
+          y: node.y + mouth.dy * along + mouth.dx * across,
+        });
+      }
+    }
+    return out;
+  }
+
+  it('takes in a kerb the mouth beside it is cut too short to hold', () => {
+    const junction = bentMap.junctions.find((j) => Math.hypot(j.x, j.y) < TOLERANCE) as Junction;
+    const street = junction.mouths.find((m) => m.curve === 0) as Junction['mouths'][number];
+    // The arterial starts its kerb this far along the street, and the street's
+    // own bend stops it being cut anywhere near that.
+    expect(street.cut).toBeLessThan((TIERS.arterial.width / 2) * Math.sin(TURN));
+    const ring = junctionShape(junction, bentRibbons).carriageway;
+    const node: Point = { x: junction.x, y: junction.y };
+    const bare: string[] = [];
+    // The street's own carriageway bends inside its cut, which is issue #542;
+    // the arterial's is straight and the fan has to hold all of it.
+    for (const mouth of junction.mouths.filter((m) => m.curve === 1)) {
+      for (const p of samples(node, mouth)) if (!inFan(ring, node, p)) bare.push(`curve ${mouth.curve} at ${p.x},${p.y}`);
+    }
+    expect(bare).toEqual([]);
+  });
+
   it('covers the whole of every mouth carriageway between the node and its cut', () => {
-    // A grid over each mouth's carriageway, held a hair inside it so that a
-    // sample on the very edge of the fan is not decided by rounding.
     const bare: string[] = [];
     for (const junction of map.junctions) {
       const ring = junctionShape(junction, ribbons).carriageway;
       const node: Point = { x: junction.x, y: junction.y };
       for (const mouth of junction.mouths) {
-        const kerb = TIERS[mouth.tier].width / 2 - INSET;
-        for (let a = 0; a <= 16; a++) {
-          for (let c = -16; c <= 16; c++) {
-            const along = INSET + ((mouth.cut - 2 * INSET) * a) / 16;
-            const across = (kerb * c) / 16;
-            const p: Point = {
-              x: node.x + mouth.dx * along - mouth.dy * across,
-              y: node.y + mouth.dy * along + mouth.dx * across,
-            };
-            if (!inFan(ring, node, p)) bare.push(`node ${junction.node} curve ${mouth.curve} at ${p.x},${p.y}`);
-          }
-        }
+        for (const p of samples(node, mouth)) if (!inFan(ring, node, p)) bare.push(`node ${junction.node} curve ${mouth.curve} at ${p.x},${p.y}`);
       }
     }
     expect(bare).toEqual([]);
