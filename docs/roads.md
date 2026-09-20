@@ -188,11 +188,12 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   `crossing-rules.ts` never sees it — the ramp is built, not traced, and both its ends stand on a
   point the other road already has. An arterial that *ends* on a highway still meets it at grade,
   with no ramps at all (issue #552).
-- An arterial does not merge onto a highway: `mergeAt` (`road-trace.ts`) passes over a highway
-  point, so a trace that reaches one crosses it at an interchange and takes the diamond, or turns
-  away. Without that the trace stopped at the first interchange it came near — the merge radius of
-  an arterial is 80 m and a highway holds the ground for `INTERCHANGE_CLEAR` = 80 m each side of an
-  interchange — and every interchange was an at-grade crossroads instead of a diamond.
+- Few interchanges are diamonds yet, about one to a world. An arterial that comes within its merge
+  radius of 80 m of a highway merges onto it instead, and a highway holds the ground for
+  `INTERCHANGE_CLEAR` = 80 m each side of an interchange, so the trace stops on the interchange
+  rather than crossing it. Drawing the trace to the interchange is issue #522; refusing the merge
+  without it costs the fill the arterials that used to end on a highway, and with them whole
+  islands' road networks.
 - `mayCross` says where they may meet at all. A grade separation is a severance — a place two roads
   pass and can never turn onto each other — so it is only worth the ground it takes where both roads
   carry the traffic for it. A highway's right-of-way is ground a minor road may not cross: only a

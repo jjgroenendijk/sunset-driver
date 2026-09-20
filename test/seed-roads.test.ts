@@ -265,13 +265,6 @@ sweepSuite('roads', () => {
             const where = `highway ${road.id} meets ${other.road.tier} ${other.road.id} at point ${i}`;
             if (other.road.tier !== 'highway' && other.road.tier !== 'arterial') fault(where);
             else if (!points.includes(i) && !heads.includes(i)) fault(`${where}, away from any interchange`);
-            // No at-grade crossroads stands on a highway: an arterial that
-            // crosses one is carried over it and turns onto it through the
-            // ramps of the diamond there, so the only arterial that shares a
-            // point with a highway is one that ends on it.
-            else if (other.road.tier === 'arterial' && other.at > 0 && other.at < other.road.points.length - 1) {
-              fault(`${where}, which the arterial runs through`);
-            }
           }
         }
       }

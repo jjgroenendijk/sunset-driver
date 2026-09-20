@@ -30,7 +30,7 @@ import { CLEARANCE, PLATEAU_MARGIN, raiseAt, raised, type Raise } from './overpa
 import { alongSegment, PlannedLine, toSegment } from './crossing-line.ts';
 import { junctionAt, type CrossingNetwork } from './crossing-rules.ts';
 import { INTERCHANGE_CLEAR } from './highway-plan.ts';
-import { interchangeAt, planDiamond, type DiamondPlan } from './ramps.ts';
+import { interchangeAt, planDiamond, type DiamondPlan, type RampPlan } from './ramps.ts';
 import { MIN_MEET } from './network-clearance.ts';
 import { curveDistances } from './ribbon.ts';
 import { footprintHalfWidth, mayCross, mayJoin, TIERS } from './tiers.ts';
@@ -170,12 +170,16 @@ function planDiamonds(
   if (overHighway.length === 0) return [];
   const distances = curveDistances(carried.points);
   const out: DiamondPlan[] = [];
+  const planned: RampPlan[] = [];
   for (const { crossing, raise } of overHighway) {
     const highway = network.curves[crossing.curve] as RoadCurve;
     const foot: [number, number] = [pointNear(distances, raise.from), pointNear(distances, raise.to)];
-    const diamond = planDiamond(network, highway, crossing.interchange as number, crossing.other, crossing, carried.points, foot);
+    const diamond = planDiamond(network, highway, crossing.interchange as number, crossing.other, crossing, carried.points, foot, planned);
     if (diamond === undefined) failures.push({ segment: crossing.segment, x: crossing.x, y: crossing.y, tier: highway.tier });
-    else out.push(diamond);
+    else {
+      out.push(diamond);
+      planned.push(...diamond.ramps);
+    }
   }
   return out;
 }
@@ -238,7 +242,11 @@ function planJunctions(network: CrossingNetwork, draft: DraftLine): Plan {
         continue;
       }
     }
-    const apart = separation(network, draft, crossing, other);
+    // A highway is passed under at one of its slots and nowhere else, however
+    // high the road above happens to stand: a deck of its own over a highway
+    // between two slots is a severance the interchange was meant to replace.
+    const slotted = other.tier !== 'highway' || (other.slots ?? []).includes(crossing.other);
+    const apart = slotted ? separation(network, draft, crossing, other) : undefined;
     if (apart !== undefined) {
       if (apart < 0) plan.under.push({ segment: crossing.segment, x: crossing.x, y: crossing.y });
       continue;

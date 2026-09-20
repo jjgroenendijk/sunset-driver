@@ -25,7 +25,9 @@
  * Pure: the same roads and ground give the same ramps.
  */
 import { hypot } from '../core/libm.ts';
+import { toSegment } from './crossing-line.ts';
 import type { CrossingNetwork } from './crossing-rules.ts';
+import { crossPoint } from './network-clearance.ts';
 import { PLATEAU_MARGIN } from './overpass.ts';
 import { curveDistances } from './ribbon.ts';
 import { selfOverlap } from './self-overlap.ts';
@@ -44,6 +46,9 @@ export const DIAMOND_RAMPS = 4;
  * past them, so a gore never stands under the deck.
  */
 const RAMP_GAP = footprintHalfWidth('highway') + footprintHalfWidth(RAMP_TIER) + PLATEAU_MARGIN;
+
+/** The widest footprint any tier claims, which is how far a free end reaches. */
+const WIDEST = footprintHalfWidth('highway');
 
 /** Most metres along the highway a ramp may reach for its point of it. */
 const RAMP_REACH = 200;
@@ -94,6 +99,7 @@ export function planDiamond(
   at: Point,
   road: readonly Point[],
   foot: readonly [number, number],
+  planned: readonly RampPlan[] = [],
 ): DiamondPlan | undefined {
   const along = curveDistances(highway.points);
   const start = highway.points[segment] as Point;
@@ -109,11 +115,23 @@ export function planDiamond(
   // a shorter one.
   for (const before of befores) {
     for (const after of afters) {
-      const ramps = quadrants(network, highway, road, foot, before, after);
+      // The four quadrants only exist where the two points of the highway lie
+      // either side of the arterial and the two feet either side of the
+      // highway. A crossing too shallow for that would put two ramps in one
+      // quadrant, leaving the arterial along its own line.
+      if (!opposed(road[foot[0]] as Point, road[foot[1]] as Point, highway.points[before] as Point, highway.points[after] as Point)) continue;
+      if (!opposed(highway.points[before] as Point, highway.points[after] as Point, road[foot[0]] as Point, road[foot[1]] as Point)) continue;
+      const ramps = quadrants(network, highway, road, foot, before, after, planned);
       if (ramps !== undefined) return { highway: highway.id, interchange, ramps };
     }
   }
   return undefined;
+}
+
+/** True where `p` and `q` stand on opposite sides of the line from `a` to `b`. */
+function opposed(a: Point, b: Point, p: Point, q: Point): boolean {
+  const side = (r: Point): number => (b.x - a.x) * (r.y - a.y) - (b.y - a.y) * (r.x - a.x);
+  return side(p) * side(q) < 0;
 }
 
 /** The four ramps of one choice of highway points, or undefined where any of them is refused. */
@@ -124,6 +142,7 @@ function quadrants(
   foot: readonly [number, number],
   before: number,
   after: number,
+  planned: readonly RampPlan[],
 ): RampPlan[] | undefined {
   const feet: [RampEnd, RampEnd] = [
     { curve: -1, index: foot[0] as number },
@@ -144,7 +163,11 @@ function quadrants(
   ];
   const ramps: RampPlan[] = [];
   for (const [from, to] of pairs) {
-    const ramp = planRamp(network, highway, road, from, to);
+    // The arterial is still a draft and the ramps beside this one are not laid
+    // either, so the network cannot answer for them: each is kept off the road
+    // it serves and off every ramp planned before it by hand.
+    const clear = [road, ...planned.map((r) => r.points), ...ramps.map((r) => r.points)];
+    const ramp = planRamp(network, highway, road, from, to, clear);
     if (ramp === undefined) return undefined;
     ramps.push(ramp);
   }
@@ -187,6 +210,7 @@ function planRamp(
   road: readonly Point[],
   from: RampEnd,
   to: RampEnd,
+  clear: readonly (readonly Point[])[],
 ): RampPlan | undefined {
   const onHighway = from.curve >= 0 ? from : to;
   const onRoad = from.curve >= 0 ? to : from;
@@ -211,7 +235,7 @@ function planRamp(
     toe,
   );
   const points = from.curve >= 0 ? curve : curve.reverse();
-  if (!runnable(network, points)) return undefined;
+  if (!runnable(network, points, clear)) return undefined;
   return { points, from, to };
 }
 
@@ -297,16 +321,30 @@ function onTangent(end: Point, control: Point, sample: Point): Point {
 
 /**
  * True where a ramp may be laid as it stands: no part of it over ground the
- * tier refuses or steeper than the tier climbs, no road crossed between its
- * two ends, and no stretch of it over its own carriageway.
+ * tier refuses or steeper than the tier climbs, no road crossed between its two
+ * ends, no free end of a laid road buried under it, and no stretch of it over
+ * its own carriageway. `clear` holds the lines the network cannot answer for
+ * yet — the road the interchange is built for, and the ramps beside this one.
  */
-function runnable(network: CrossingNetwork, points: readonly Point[]): boolean {
+function runnable(network: CrossingNetwork, points: readonly Point[], clear: readonly (readonly Point[])[]): boolean {
   if (selfOverlap(points, RAMP_TIER) !== undefined) return false;
+  const half = footprintHalfWidth(RAMP_TIER);
   for (let i = 0; i + 1 < points.length; i++) {
     const a = points[i] as Point;
     const b = points[i + 1] as Point;
     if (!network.canRun(a, b, RAMP_TIER)) return false;
     if (network.crossingsAlong(a, b).length > 0) return false;
+    for (const line of clear) {
+      for (let k = 0; k + 1 < line.length; k++) {
+        if (crossPoint(a, b, line[k] as Point, line[k + 1] as Point) !== undefined) return false;
+      }
+    }
+    // A free end stands on whatever passes within reach of it, so a ramp laid
+    // over one would bury a road it never meets.
+    for (const end of network.freeEnds((a.x + b.x) / 2, (a.y + b.y) / 2, half + WIDEST + hypot(b.x - a.x, b.y - a.y) / 2)) {
+      const other = network.curves[end.curve] as RoadCurve;
+      if (toSegment(end.at, a, b) < half + footprintHalfWidth(other.tier)) return false;
+    }
   }
   return true;
 }

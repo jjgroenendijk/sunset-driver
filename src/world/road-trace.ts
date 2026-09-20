@@ -21,7 +21,7 @@ import type { NetworkHit } from './road-network.ts';
 import { RIVER_DECK } from './river-decks.ts';
 import { RoadRoute } from './road-route.ts';
 import { stepOverlaps } from './self-overlap.ts';
-import type { Point, RoadCurve, RoadTier } from './types.ts';
+import type { Point, RoadTier } from './types.ts';
 
 // The numbers a trace runs on and the rule it asks the ground are next door;
 // callers read them through here, as they did while the three were one file.
@@ -383,13 +383,6 @@ export abstract class RoadTrace extends RoadRoute {
    * has just stepped across, nor over the road's own carriageway (`turnsBack`).
    * The nearest point can fail where the one beside it does not, so a few are
    * tried.
-   *
-   * Only a highway merges onto a highway. An arterial that reaches one crosses
-   * it at an interchange and turns onto it through the ramps of the diamond
-   * there (`ramps.ts`), so it carries on rather than stopping. The merge radius
-   * of an arterial is 80 m and a highway holds the ground for the same distance
-   * each side of an interchange, so without this every arterial that came near
-   * one stopped on it and the interchange was an at-grade crossroads.
    */
   protected mergeAt(
     candidates: readonly NetworkHit[],
@@ -401,7 +394,6 @@ export abstract class RoadTrace extends RoadRoute {
     turnsBack: (p: Point) => boolean = () => false,
   ): NetworkHit | undefined {
     for (const hit of candidates.slice(0, MERGE_TRIES)) {
-      if (joiner !== 'highway' && (this.network.curves[hit.curve] as RoadCurve).tier === 'highway') continue;
       if (this.network.refuses(hit.x, hit.y, joiner)) continue;
       if (Math.abs(wrapAngle(atan2(hit.y - from.y, hit.x - from.x) - heading)) > MAX_MERGE_TURN) continue;
       if (!this.network.meets(hit, from, joiner, trail)) continue;
