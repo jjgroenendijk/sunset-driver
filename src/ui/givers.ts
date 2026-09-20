@@ -7,10 +7,10 @@
  * begin the chain that writes that list: a contact never moves, so their body
  * is written once here and copied by every link after it.
  *
- * The marker is the one thing that is rewritten every frame, and only its
- * colour: `render/markers.ts` draws it amber while the contact will talk and
- * dull while they will not, which is `giverRefusal` read from across the
- * street. Their mark on the map is written once with the rest of the places
+ * The marker over them is the one thing that is rewritten every frame, and
+ * only its colour: `render/markers.ts` stands a beam of light on the corner
+ * with a diamond over the head, amber while the contact will talk and dull
+ * while they will not, which is `giverRefusal` read from across the street. Their mark on the map is written once with the rest of the places
  * (`maps.ts`), because they stand where the seed left them all session.
  */
 import { genRng, Subsystem } from '../core/rng.ts';
@@ -45,7 +45,7 @@ export class GiverBodies {
         // waiting to be talked to faces.
         pose: { x: giver.x, y: giver.y, height, heading: giver.heading, speed: 0, cycle: 0, gait: 'stand' },
       });
-      markers.push({ x: giver.x, y: giver.y, top: height + look.height, open: false });
+      markers.push({ x: giver.x, y: giver.y, ground: height, top: height + look.height, open: false });
     }
     this.standing = standing;
     this.markers = markers;
