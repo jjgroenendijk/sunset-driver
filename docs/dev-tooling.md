@@ -156,15 +156,17 @@ angle, the vehicle or the pose changes, and 1 to 3 seconds when the player stand
   burnt out, and `--skid` lays a drift's worth of marks into the road behind it. The arc it
   drives is laid over the real ground, so the marks stop where the tarmac does.
 - `--emergency` puts the services of spec section 20.3 in the frame: a blaze in the road ahead, a
-  fire engine past it hosing it, and an ambulance behind the player. They are put down rather than
-  driven to, because a preview is one frame and a call takes the best part of a minute.
+  fire engine past it hosing it, and an ambulance behind the player, each with its crew out of the
+  doors (`preview-services.ts`). They are put down rather than driven to, because a preview is one
+  frame and a call takes the best part of a minute, and `placeCrew` stands the crews where a tick
+  of work would have.
   `--junction=60` on seed 7 frames both on an open street.
 - `--shots` puts a shotgun blast and a pistol round in the air, a tick or two old, with their flash,
   streaks and impacts (spec section 11.6). What they hit is laid by hand; a preview casts nothing.
 - `--bodies` lays casualties of spec section 11.6 in the road ahead: two dead, one with cash beside
-  it, and one each falling, rising, crawling, limping and thrown. With `--emergency` the medics of
-  the ambulance kneel at the body nearest to it. `--heading=180 --distance=26` frames them at the
-  spawn of seed 7.
+  it, and one each falling, rising, crawling, limping and thrown. With `--emergency` the medics
+  of the ambulance walk to the body nearest it and kneel there. `--heading=180 --distance=26`
+  frames them at the spawn of seed 7.
 - `--police` lays the police on foot of spec section 14 in the road ahead: a patrol pair and a SWAT
   officer aiming at the player with guns in their hands, an officer walking a beat, and one lying
   where they fell. The same framing as `--bodies` shows them.

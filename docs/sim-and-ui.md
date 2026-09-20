@@ -256,10 +256,21 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
   a street would stop at the corner and hose nothing. `planBeside` drives the run of road the scene
   stands on, and `nearestAlong` says where along it to pull up. A unit's `stop` is that distance,
   and reaching it is what counts as arriving.
-- A fire engine that has arrived calls `douseFires` every tick its crew have water on, so a fire
-  that reaches the next car along while it is working is put out too. `hosing` says when: after
-  `DEPLOY_TICKS`, while the crew run the hose out, and until `STOW_TICKS` before it leaves. The
-  renderer places the crew off the same numbers, so no fire goes out before the water reaches it.
+- `src/sim/emergency-crew.ts` is the crew of a unit standing at a scene, on the record like any
+  other person. The unit's doors swing open over `DOOR_TICKS`; once they stand open the crew climb
+  down and walk to their places — a throw short of the fire for a firefighter, beside the body for
+  a medic — work until the unit's `until`, walk back to their door and board. `crewAboard` is what
+  lets the unit leave, so it never drives off with somebody still in the street.
+- A fire engine calls `douseFires` every tick its crew have water on. `hosing` is a firefighter at
+  their place and nothing else, so no fire goes out before somebody is standing there to play the
+  water on it.
+- A medic walks to the body nearest the ambulance within `COLLECT_RANGE`, of those lying or
+  crawling, and kneels at it. With nobody down they wait behind the tail rather than walking to a
+  scene with nothing to do at it.
+- The crew stand in the physics as capsules (`unit-bodies.ts`), so `hurtCrew` takes a round or a
+  blast off one of them as `hurtOfficer` does an officer: the hit is an assault and the kill a
+  killing, the body is left in `emergency.fallen`, and the rest of the crew abandon the scene and
+  board.
 - A unit pulls away at `PULL_AWAY` and brakes at `BRAKE`, so it slows into a scene rather than
   stopping dead at it. `clearAhead` is the road before it clear of the player: a player standing or
   parked in its lane stops it `STAND_OFF` short, and it drives on once they move. It is a solid in

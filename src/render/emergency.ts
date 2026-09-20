@@ -9,10 +9,12 @@
  * and no more.
  *
  * A unit on a call flashes its beacons and throws their light on the road
- * round it; one driving home after the job has them dark. The crew of an
+ * round it; one driving home after the job has them dark. Its doors are drawn
+ * apart from the body, one instanced mesh each, so they swing open on the
+ * record's own `doors` while the crew climb down through them. The crew of an
  * engine at work run hoses from it and play water over the scene from the
- * nozzles in their hands (`fire-crew.ts`, `hose.ts`); their bodies are the
- * crowd's (`ui/fire-crews.ts`).
+ * nozzles in their hands (`emergency-crew.ts`, `hose.ts`); their bodies are
+ * the crowd's (`ui/emergency-crews.ts`).
  *
  * The units are drawn where the record put them. They are stepped every tick
  * like the police, so nothing is evaluated between two ticks here.
@@ -33,8 +35,9 @@ import {
 import { onCall, UNIT_BODY, type EmergencyKind, type EmergencyUnit } from '../sim/emergency.ts';
 import type { SimState } from '../sim/simulation.ts';
 import { BeaconGlow, BeaconPhase, beaconMaterial, flashLit } from './beacons.ts';
-import { unitShape, type UnitShape } from './emergency-mesh.ts';
-import { CREW, emptyFirefighter, fireCrew, type Firefighter } from './fire-crew.ts';
+import { unitShape, type UnitDoor, type UnitShape } from './emergency-mesh.ts';
+import { crewOf, CREW_SIZE, type CrewMember } from '../sim/emergency-crew.ts';
+import { emptyHose, hoseOf, type Hose } from './emergency-crew.ts';
 import { HoseLines, HoseSpray } from './hose.ts';
 import { boxOf, coloured, instanced, merged, TRAFFIC_VIEW } from './traffic.ts';
 import { OUTLINE, VEHICLE_OUTLINE_WIDTH } from './vehicle.ts';
@@ -54,6 +57,8 @@ interface KindMeshes {
   body: InstancedMesh;
   rim: InstancedMesh;
   phases: [BeaconPhase, BeaconPhase];
+  /** One mesh per door of the shape, since each door turns on its own hinge. */
+  doors: InstancedMesh[];
   /** Metres from the road to the middle of the body. */
   ride: number;
   drawn: number;
@@ -72,6 +77,12 @@ export function unitBody(shape: UnitShape): BufferGeometry {
   return merged(parts);
 }
 
+/** One door of a unit, built about its hinge so the instance matrix can turn it. */
+function doorPanel(door: UnitDoor): BufferGeometry {
+  const panel = { ...door.box, x: door.box.x - door.hinge.x, y: door.box.y - door.hinge.y, z: door.box.z - door.hinge.z };
+  return coloured(boxOf(panel, 0), panel.colour);
+}
+
 /** The masses of a unit grown by the outline's width, which is the outline drawn behind it. */
 function unitRim(shape: UnitShape): BufferGeometry {
   return merged(shape.boxes.filter((part) => part.outlined).map((part) => boxOf(part, VEHICLE_OUTLINE_WIDTH)));
@@ -83,9 +94,11 @@ export class EmergencyView {
   private readonly materials: Material[];
   private readonly trimMaterial: VehicleTrim;
   private readonly glow = new BeaconGlow(UNIT_CAP * 2);
-  private readonly hose = new HoseSpray(UNIT_CAP * CREW);
-  private readonly lines = new HoseLines(UNIT_CAP * CREW * HOSE_STRETCHES);
-  private readonly crew: Firefighter[] = [emptyFirefighter(), emptyFirefighter()];
+  private readonly hose = new HoseSpray(UNIT_CAP * CREW_SIZE.engine);
+  private readonly lines = new HoseLines(UNIT_CAP * CREW_SIZE.engine * HOSE_STRETCHES);
+  private readonly water: Hose = emptyHose();
+  private readonly hinge = new Matrix4();
+  private readonly swing = new Matrix4();
   private readonly matrix = new Matrix4();
   private readonly at = new Vector3();
   private readonly nozzle = new Vector3();
@@ -106,11 +119,12 @@ export class EmergencyView {
         body: instanced(unitBody(shape), this.trimMaterial.material, true, UNIT_CAP),
         rim: instanced(unitRim(shape), outline, false, UNIT_CAP),
         phases: [new BeaconPhase(shape.beacons, 0, lamp, UNIT_CAP), new BeaconPhase(shape.beacons, 1, lamp, UNIT_CAP)],
+        doors: shape.doors.map((door) => instanced(doorPanel(door), this.trimMaterial.material, true, UNIT_CAP)),
         ride: UNIT_BODY[kind].ride,
         drawn: 0,
       };
       this.kinds.push(meshes);
-      this.group.add(meshes.body, meshes.rim, meshes.phases[0].mesh, meshes.phases[1].mesh);
+      this.group.add(meshes.body, meshes.rim, meshes.phases[0].mesh, meshes.phases[1].mesh, ...meshes.doors);
     }
     this.group.add(this.glow.mesh, this.hose.mesh, this.lines.mesh);
   }
@@ -145,7 +159,7 @@ export class EmergencyView {
       if (Math.abs(unit.x - x) > TRAFFIC_VIEW || Math.abs(unit.y - y) > TRAFFIC_VIEW) continue;
       const meshes = this.kinds.find((held) => held.kind === unit.kind);
       if (meshes === undefined || meshes.drawn >= UNIT_CAP) continue;
-      this.stand(state.tick, unit, meshes);
+      this.stand(state, unit, meshes);
     }
     for (const kind of this.kinds) this.fill(kind);
     this.glow.commit();
@@ -168,8 +182,9 @@ export class EmergencyView {
     this.group.clear();
   }
 
-  /** Stand one unit: its body, its beacons, their light on the road, and an engine's hoses. */
-  private stand(tick: number, unit: EmergencyUnit, meshes: KindMeshes): void {
+  /** Stand one unit: its body, its doors, its beacons, their light, and an engine's hoses. */
+  private stand(state: SimState, unit: EmergencyUnit, meshes: KindMeshes): void {
+    const tick = state.tick;
     const at = meshes.drawn;
     this.turn.setFromAxisAngle(this.up, -unit.heading);
     this.at.set(unit.x, unit.height + meshes.ride, unit.y);
@@ -184,30 +199,46 @@ export class EmergencyView {
       if (on) lit = phase;
     }
     if (lit >= 0) this.glow.add(unit.x, unit.height, unit.y, (meshes.phases[lit] as BeaconPhase).colour);
-    this.spray(tick, unit);
+    this.hang(at, unit, meshes);
+    this.spray(state, unit);
     meshes.drawn = at + 1;
   }
 
+  /**
+   * Turn each of a unit's doors on its hinge, as far as the record has them
+   * open. The unit's own matrix is already in `this.matrix`.
+   */
+  private hang(at: number, unit: EmergencyUnit, meshes: KindMeshes): void {
+    for (let i = 0; i < meshes.doors.length; i++) {
+      const door = meshes.shape.doors[i] as UnitDoor;
+      this.at.set(door.hinge.x, door.hinge.y, door.hinge.z);
+      this.turn.setFromAxisAngle(this.up, door.swing * unit.doors);
+      this.hinge.compose(this.at, this.turn, this.one);
+      this.swing.multiplyMatrices(this.matrix, this.hinge);
+      (meshes.doors[i] as InstancedMesh).setMatrixAt(at, this.swing);
+    }
+  }
+
   /** Lay the hose of each of an engine's crew, and play water from the nozzles with it on. */
-  private spray(tick: number, unit: EmergencyUnit): void {
-    const out = fireCrew(unit, tick, this.crew);
-    for (let member = 0; member < out; member++) {
-      const f = this.crew[member] as Firefighter;
-      this.lines.add(f.hose);
-      if (!f.spraying) continue;
-      this.nozzle.set(f.nozzleX, f.nozzleHeight, f.nozzleY);
-      this.hose.add(unit.id * CREW + member, tick, this.nozzle, unit.goalX, unit.goalY, unit.height);
+  private spray(state: SimState, unit: EmergencyUnit): void {
+    if (unit.kind !== 'engine') return;
+    for (const member of crewOf(state, unit.id) as CrewMember[]) {
+      const water = hoseOf(state, unit, member, this.water);
+      this.lines.add(water.points);
+      if (!water.spraying) continue;
+      this.nozzle.set(water.nozzleX, water.nozzleHeight, water.nozzleY);
+      this.hose.add(member.id, state.tick, this.nozzle, unit.goalX, unit.goalY, unit.height);
     }
   }
 
   private meshesOf(kind: KindMeshes): InstancedMesh[] {
-    return [kind.body, kind.rim, kind.phases[0].mesh, kind.phases[1].mesh];
+    return [kind.body, kind.rim, kind.phases[0].mesh, kind.phases[1].mesh, ...kind.doors];
   }
 
   /** Show what was written this frame and hide the meshes that took nothing. */
   private fill(kind: KindMeshes): void {
     const count = kind.drawn;
-    for (const mesh of [kind.body, kind.rim]) {
+    for (const mesh of [kind.body, kind.rim, ...kind.doors]) {
       mesh.count = count;
       mesh.visible = count > 0;
       if (count > 0) mesh.instanceMatrix.needsUpdate = true;

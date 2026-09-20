@@ -15,6 +15,7 @@ import {
   WORK_TICKS,
   type EmergencyUnit,
 } from '../src/sim/emergency.ts';
+import { CREW_SIZE } from '../src/sim/emergency-crew.ts';
 import { douseFires, firesOf, light, stepFires } from '../src/sim/fire.ts';
 import type { DistrictAt } from '../src/sim/police.ts';
 import { cloneSimState, createSimState, type SimState } from '../src/sim/simulation.ts';
@@ -194,6 +195,31 @@ describe('the emergency services (spec section 20.3)', () => {
     expect(state.emergency.calls).toHaveLength(0);
   });
 
+  it('puts a crew out of the doors at the scene and waits for them before it leaves', () => {
+    const { state, service } = session();
+    const car = promote(state, 0, 60, 0);
+    ignite(car.vehicle.damage, state.tick);
+    // Step until the engine has reached the scene and its doors stand open.
+    for (let i = 0; i < 120 * TICK_RATE && state.emergency.crew.length === 0; i++) run(state, service, 1);
+    const engine = outOf(state, 'engine')[0];
+    expect(engine?.task).toBe('work');
+    expect(engine?.doors).toBe(1);
+    const crew = state.emergency.crew;
+    expect(crew).toHaveLength(CREW_SIZE.engine);
+    for (const member of crew) {
+      expect(member.role).toBe('firefighter');
+      // Out of the cab and no further than the hose reaches.
+      expect(Math.hypot(member.x - (engine?.x ?? 0), member.y - (engine?.y ?? 0))).toBeLessThan(HOSE_RANGE);
+    }
+    // The unit stands at the scene while anybody is still out of it, and
+    // drives off once the doors are shut behind them.
+    run(state, service, WORK_TICKS.engine);
+    expect(outOf(state, 'engine')[0]?.task).toBe('work');
+    run(state, service, 15 * TICK_RATE);
+    expect(state.emergency.crew).toHaveLength(0);
+    expect(outOf(state, 'engine')[0]?.task).toBe('leave');
+  });
+
   it('answers a replayed session with the same units on the same ticks', () => {
     const first = session(11);
     const second = session(11);
@@ -231,7 +257,7 @@ describe('a unit on the road (spec section 20.3)', () => {
   function standing(kind: EmergencyUnit['kind']): EmergencyUnit {
     return {
       id: 0, kind, task: 'respond', call: 0, x: 0, y: 0, heading: 0, height: 0, speed: 0, edges: [],
-      distance: 0, stop: 0, planned: 0, goalX: 0, goalY: 0, homeX: 0, homeY: 0, until: -1,
+      distance: 0, stop: 0, planned: 0, goalX: 0, goalY: 0, homeX: 0, homeY: 0, until: -1, doors: 0, deployed: false,
     };
   }
 

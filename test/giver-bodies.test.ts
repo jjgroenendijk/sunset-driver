@@ -7,7 +7,7 @@ import { crimeGrounds } from '../src/sim/street-crime.ts';
 import { venuesOf } from '../src/sim/city-events.ts';
 import { DealerMarks } from '../src/ui/dealers.ts';
 import { EnforcerMarks } from '../src/ui/enforcers.ts';
-import { FireCrews } from '../src/ui/fire-crews.ts';
+import { EmergencyCrews } from '../src/ui/emergency-crews.ts';
 import { GiverBodies } from '../src/ui/givers.ts';
 import { MapPois } from '../src/ui/map.ts';
 import { OfficerMarks } from '../src/ui/officers.ts';
@@ -56,7 +56,7 @@ function crowdOf(bodies: GiverBodies) {
   const enforcers = new EnforcerMarks(map);
   const life = new StreetLife(SEED, venuesOf(SEED, districts, [], snap), crimeGrounds(SEED, districts, snap), map);
   const officers = new OfficerMarks(map);
-  const crews = new FireCrews();
+  const crews = new EmergencyCrews();
   dealers.update(state.tick, hill);
   enforcers.update(state, hill, dealers);
   life.update(state, hill, enforcers);

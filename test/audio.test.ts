@@ -310,7 +310,7 @@ describe('audio: the plan', () => {
     const state = session();
     const service = (id: number, kind: EmergencyUnit['kind'], x: number, task: EmergencyUnit['task']): EmergencyUnit => ({
       id, kind, task, call: 0, x, y: 0, heading: 0, height: 0, speed: 0, edges: [], distance: 0, stop: 0,
-      planned: 0, goalX: 0, goalY: 0, homeX: 0, homeY: 0, until: -1,
+      planned: 0, goalX: 0, goalY: 0, homeX: 0, homeY: 0, until: -1, doors: 0, deployed: false,
     });
     state.police.units = [unit(0, 20, 0)];
     state.emergency.units = [service(0, 'engine', 10, 'respond'), service(1, 'ambulance', 5, 'work'), service(2, 'engine', 2, 'leave')];

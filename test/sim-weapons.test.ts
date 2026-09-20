@@ -4,6 +4,7 @@ import { cloneSimState } from '../src/sim/simulation.ts';
 import { enginePowerScale, PANELS } from '../src/sim/damage.ts';
 import { giveWeapon, SHOT_HEAT_CONCEALED, weaponOf, type WeaponId } from '../src/sim/weapon.ts';
 import { ENFORCER_HEALTH, type EnforcerUnit } from '../src/sim/enforcer.ts';
+import { CREW_HEALTH, type CrewMember } from '../src/sim/emergency-crew.ts';
 import { blowStrength, HIT_MEMORY } from '../src/sim/melee.ts';
 import { CRIME_HEAT, raiseHeat } from '../src/sim/crime.ts';
 import type { PedestrianPose } from '../src/sim/pedestrians.ts';
@@ -365,6 +366,63 @@ describe('weapons', () => {
     expect(state.tracers.some((tracer) => tracer.end === 'person')).toBe(true);
     // A round in a person is an assault on top of what the shot was worth.
     expect(state.heat).toBeGreaterThanOrEqual(raiseHeat(0, CRIME_HEAT.assault));
+    session.physics.dispose();
+  });
+
+  /**
+   * A medic of an ambulance standing `gap` metres in front of the player, put
+   * on the record straight: this is about the capsule and the round, not about
+   * the unit that drove them there.
+   */
+  function medic(session: Session, gap: number): CrewMember {
+    const { state } = session;
+    const p = state.player;
+    p.heading = Math.atan2(p.y - state.vehicle.z, p.x - state.vehicle.x);
+    const member: CrewMember = {
+      id: 7,
+      unit: 0,
+      role: 'medic',
+      member: 0,
+      task: 'work',
+      x: p.x + Math.cos(p.heading) * gap,
+      y: p.y + Math.sin(p.heading) * gap,
+      height: 0,
+      heading: p.heading + Math.PI,
+      speed: 0,
+      cycle: 0,
+      gait: 'stand',
+      health: CREW_HEALTH,
+      kneeling: false,
+      goalX: p.x,
+      goalY: p.y,
+      start: 0,
+      doorX: p.x,
+      doorY: p.y,
+    };
+    state.emergency.crew.push(member);
+    // One tick to stand them in the world before anything is fired at them.
+    drive(session, 1);
+    return member;
+  }
+
+  it('takes health off a member of an emergency crew the round goes into (spec section 20.3)', () => {
+    const session = armed('ak-47', ramp('asphalt', 0));
+    const member = medic(session, 6);
+    shoot(session, 2);
+    expect(member.health).toBeLessThan(CREW_HEALTH);
+    expect(member.health).toBeGreaterThan(0);
+    expect(session.state.emergency.crew).toHaveLength(1);
+    session.physics.dispose();
+  });
+
+  it('puts one of them down with enough rounds, and leaves the body where they fell', () => {
+    const session = armed('ak-47', ramp('asphalt', 0));
+    const { state } = session;
+    const member = medic(session, 6);
+    shoot(session, 30);
+    expect(state.emergency.crew).toHaveLength(0);
+    expect(state.emergency.fallen).toHaveLength(1);
+    expect(state.emergency.fallen[0]?.body.x).toBeCloseTo(member.x, 1);
     session.physics.dispose();
   });
 

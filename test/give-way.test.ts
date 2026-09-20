@@ -133,7 +133,7 @@ describe('giving way', () => {
           placed = true;
           state.emergency.units.push({
             id: 0, kind: 'engine', task: 'work', call: 0, x: 60, y: lane, heading: 0, height: 0, speed: 0, edges: [],
-            distance: 0, stop: 0, planned: 0, goalX: 60, goalY: lane, homeX: 60, homeY: lane, until: -1,
+            distance: 0, stop: 0, planned: 0, goalX: 60, goalY: lane, homeX: 60, homeY: lane, until: -1, doors: 0, deployed: false,
           });
         }
         if (i > 60 && on) touched++;

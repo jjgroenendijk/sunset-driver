@@ -57,9 +57,11 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * the officers who have fallen and what the squad said lately. Version 17
  * added the cars and the people held back by giving way to each other.
  * Version 18 gave each police car the tick its crew last fired out of it and
- * the street crime it is answering.
+ * the street crime it is answering. Version 19 added the crews of the
+ * emergency units of spec section 20.3: the firefighters and medics out of
+ * their doors, what is left of each of them, and the ones who have fallen.
  */
-export const SAVE_VERSION = 18;
+export const SAVE_VERSION = 19;
 
 export interface SaveFile {
   format: typeof SAVE_FORMAT;
