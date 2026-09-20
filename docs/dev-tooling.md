@@ -188,6 +188,15 @@ angle, the vehicle or the pose changes, and 1 to 3 seconds when the player stand
   the one way to look at an interior (spec section 16.1), and it moves the frame off `--x` and
   `--y`: the line the run prints says where it ended up. A room is about 7 m across, so
   `--distance=22` is the frame that holds it.
+- `--gallery=<subject>` lays the models of one subject in rows ahead of the player and frames them:
+  `vehicles` for the roster of spec section 11.3, `people` for the looks of the creator of 11.1,
+  `props` for the goods the counters of 16.1 sell. It is how a mesh is judged against its
+  neighbours rather than one picture at a time; `--pickups` is the same picture of the arsenal.
+  The traffic, the parked cars and the crowd are hidden for the frame, so the shelf is all there is
+  to read, and the gallery is moved onto the nearest ground clear of buildings — up to 96 m — so
+  the line the run prints says where it ended up. The camera stands back far enough to hold the
+  grid unless `--distance` says otherwise. A second line names what was laid, in the order it
+  lies: the near row first, left to right.
 - `--width` and `--height` are the size of the picture.
 - `--fast` waits for the near ring of chunks only. It saves about a second of a new seed's 3 to 4
   seconds of chunks, and the far edge of the view may be missing, so two runs may differ there.

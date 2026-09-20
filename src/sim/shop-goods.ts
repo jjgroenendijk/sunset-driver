@@ -33,6 +33,32 @@ export type PropId =
   | 'house'
   | 'wrench';
 
+/**
+ * Every prop there is, in no order that matters. A gallery of the models
+ * (`src/render/preview-gallery.ts`) reads it, and its test holds the two lists
+ * to each other, so a prop added here is a prop the gallery shows.
+ */
+export const PROP_IDS: readonly PropId[] = [
+  'ammo',
+  'coffee',
+  'soda',
+  'donut',
+  'energy',
+  'hotdog',
+  'sandwich',
+  'pizza',
+  'noodles',
+  'burger',
+  'bandage',
+  'medkit',
+  'treatment',
+  'naloxone',
+  'strips',
+  'works',
+  'house',
+  'wrench',
+];
+
 /** What the preview of a row draws. */
 export type ShopLook =
   | { kind: 'weapon'; id: WeaponId; attachments: readonly Attachment[] }

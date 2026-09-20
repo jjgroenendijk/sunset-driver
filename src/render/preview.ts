@@ -59,7 +59,7 @@ import {
   type VehicleState,
 } from '../sim/vehicle.ts';
 import { SurfaceIndex, type Surface } from '../world/surface.ts';
-import { PULL_MARGIN, TURN_MARGIN } from './camera.ts';
+import { BASE_DISTANCE, PULL_MARGIN, TURN_MARGIN } from './camera.ts';
 import { CAMERA_VIEWS } from './camera-view.ts';
 import { poseFor } from './character-pose.ts';
 import { seatRider } from './rider.ts';
@@ -68,6 +68,7 @@ import { gripOf } from './character-hold.ts';
 import { tickAtHour } from './daylight.ts';
 import { frameContents, type FrameContents } from './frame-contents.ts';
 import { FULL_TIER, QUALITY_TIERS } from './quality.ts';
+import { clearPlaceFor, GALLERY_SUBJECTS, layGallery, type Gallery, type GallerySubject } from './preview-gallery.ts';
 import { forgetStage, peopleFor, stageFor, viewFor } from './preview-stage.ts';
 import type { WorldScene } from './world-scene.ts';
 import { roomOf, SHOP_KINDS, type Shop } from '../world/shops.ts';
@@ -77,8 +78,11 @@ export interface PreviewRequest {
   seed: number;
   x: number;
   y: number;
-  /** Camera distance at rest, in metres. `BASE_DISTANCE` is what the game uses. */
-  distance: number;
+  /**
+   * Camera distance at rest, in metres. Left out, it is the game's own
+   * `BASE_DISTANCE`, or what it takes to hold a gallery when one is laid.
+   */
+  distance?: number;
   /** Which way the player faces, in radians. The camera leads this direction. */
   heading: number;
   /** How fast the player moves, in metres per second. It pulls the camera back. */
@@ -205,6 +209,14 @@ export interface PreviewRequest {
    */
   shop?: string;
   /**
+   * The subject of a gallery to lay in rows ahead of the player: `vehicles`,
+   * `people` or `props` (`preview-gallery.ts`). The camera is pointed at the
+   * middle of the grid and stood back far enough to hold it, unless
+   * {@link PreviewRequest.lookAt} or {@link PreviewRequest.distance} says
+   * otherwise.
+   */
+  gallery?: string;
+  /**
    * Set to wait only for the chunks of the near ring before drawing, rather
    * than for both rings. The frame is ready in about half the time, and a
    * chunk of the far ring that has not landed yet is missing from it, so the
@@ -252,6 +264,7 @@ const CONTACT_BACK = 7;
 /** Metres out of a shop door `--shop` leaves the vehicle. */
 const KERB = 4;
 
+
 /**
  * The shop `--shop` asks for: the nearest one of that trade to where the player
  * was going to stand, or the nearest of any trade for `any`. Nothing is asked
@@ -271,6 +284,27 @@ function shopFor(shops: readonly Shop[] | undefined, wanted: string | undefined,
     found = shop;
   }
   return found;
+}
+
+/**
+ * How much of the camera's distance a gallery's own reach asks for, and the
+ * least it ever stands back. The camera looks down at 58 degrees, so a grid
+ * needs more room than its width; a row of props needs less room than the
+ * game's own distance, which is why the game's distance is not the floor.
+ */
+const GALLERY_FIT = 2.8;
+const GALLERY_NEAREST = 10;
+
+/** The subject a gallery lays, by name. */
+function subjectOf(name: string): GallerySubject {
+  const subject = GALLERY_SUBJECTS.find((entry) => entry === name);
+  if (subject === undefined) throw new Error(`no gallery of ${name}; the galleries are ${GALLERY_SUBJECTS.join(', ')}`);
+  return subject;
+}
+
+/** How far back the camera stands to hold a gallery, or the game's own distance when there is none. */
+function fitDistance(gallery: Gallery | undefined): number {
+  return gallery === undefined ? BASE_DISTANCE : Math.max(GALLERY_NEAREST, gallery.reach * GALLERY_FIT);
 }
 
 /** Metres between two pickups `--pickups` lays, and how many lie in a row. */
@@ -333,6 +367,8 @@ export interface PreviewResult {
   pedestrians: number;
   /** Buildings, street lamps and posters inside the view (`frame-contents.ts`). */
   holds: FrameContents;
+  /** What a gallery laid, in the order it lies: the near row first, left to right. */
+  gallery?: string[];
 }
 
 /** Bytes a pixel of the render target below. */
@@ -352,7 +388,7 @@ export async function renderPreview(request: PreviewRequest): Promise<PreviewRes
 }
 
 async function draw(request: PreviewRequest): Promise<PreviewResult> {
-  const { seed, distance, heading, speed, width, height, hour } = request;
+  const { seed, heading, speed, width, height, hour } = request;
   // `--shop` moves the frame to the room of a shop, which is only known once a
   // worker has answered, so where the player stands is settled below.
   let x = request.x;
@@ -390,6 +426,17 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
     y = room.y;
     await scene.settle(x, y, radius);
     scene.shopInside({ kind: shop.kind, room });
+  }
+  // A gallery is moved onto the nearest ground clear of buildings, and the
+  // player with it, because a model behind a wall is not in the picture.
+  if (request.gallery !== undefined && shop === undefined) {
+    const roofed = (px: number, py: number): boolean => scene.roofOver(px, py) !== undefined;
+    const clear = clearPlaceFor(subjectOf(request.gallery), { x, y, heading }, roofed);
+    if (clear.x !== x || clear.y !== y) {
+      x = clear.x;
+      y = clear.y;
+      await scene.settle(x, y, radius);
+    }
   }
   // Where the player stands decides which lamps burn and where the sky dome is.
   scene.look(x, y);
@@ -437,6 +484,13 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   for (let t = tick - FX_WARMUP; t <= tick; t++) scene.damage(vehicle, record, t, surfaceAt);
   if (request.skid === true) drift(scene, vehicle, spec, heading, surfaceAt);
   arm(scene, request, stand, tick);
+  // The gallery of `preview-gallery.ts` stands in the scene for this one
+  // request, as the emergency view does, and is taken out again below.
+  const gallery =
+    request.gallery === undefined
+      ? undefined
+      : layGallery(subjectOf(request.gallery), { x, y, heading }, (px, py) => scene.heightAt(px, py), DEFAULT_APPEARANCE);
+  if (gallery !== undefined) scene.scene.add(gallery.group);
   // What moves through the city, where its tours put it at the tick the
   // picture is taken, as the game draws it.
   const { traffic, trams, crowd, casualties, guns, markers, wildlife, parked } = peopleFor();
@@ -458,9 +512,14 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   wildlife.update(tick, tick, x, y);
   parked?.refresh();
   parked?.update(record, x, y);
+  // A gallery is a shelf of models, and a street of traffic standing among
+  // them is what makes it unreadable, so the city's own moving parts are
+  // hidden for the one frame and shown again below.
+  const ambient = [traffic.group, trams.group, crowd.group, casualties.group, wildlife.group, parked?.group];
+  if (gallery !== undefined) for (const group of ambient) if (group !== undefined) group.visible = false;
 
   const { camera, post, target } = viewFor(width, height);
-  camera.setBaseDistance(distance);
+  camera.setBaseDistance(request.distance ?? fitDistance(gallery));
   // The first update snaps the camera onto its target rather than easing in,
   // so one call is a settled frame and no render time has to be simulated.
   const view = request.buildings ?? 'see-through';
@@ -473,7 +532,9 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   const driving = request.onFoot !== true && shop === undefined;
   const on = { x: eye.x, y: eye.y, height: scene.heightAt(eye.x, eye.y), heading: eye.heading, speed, driving };
   camera.update(0, on, { view: look, pull, turn });
-  const at = request.lookAt;
+  // A gallery is what the picture is of, so the camera looks at the middle of
+  // its grid unless the request named a place of its own.
+  const at = request.lookAt ?? (gallery === undefined ? undefined : { x: gallery.x, y: gallery.y, height: 0 });
   const aim = at === undefined ? undefined : { ...at, height: scene.heightAt(at.x, at.y) + at.height };
   if (aim !== undefined) aimAt(camera.camera, on, aim);
   if (look !== 'top-down' && request.lookUp !== undefined) {
@@ -499,15 +560,21 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   const lights = scene.lightCount;
   const shadows = scene.shadowCascades;
   const rgb = toRgb(padded as Uint8Array, width, height);
-  const drawn = traffic.drawn;
-  const standing = parked?.drawn ?? 0;
-  const walking = crowd.drawn;
+  const drawn = gallery === undefined ? traffic.drawn : 0;
+  const standing = gallery === undefined ? (parked?.drawn ?? 0) : 0;
+  const walking = gallery === undefined ? crowd.drawn : 0;
   const holds = frameContents(camera.camera, scene.contents);
   // The scene is kept for the next request, so what this one put in it alone is taken out again.
   if (services !== undefined) scene.scene.remove(services.group);
   services?.dispose();
+  if (gallery !== undefined) {
+    scene.scene.remove(gallery.group);
+    gallery.dispose();
+    for (const group of ambient) if (group !== undefined) group.visible = true;
+  }
 
-  return { width, height, x, y, rgb, worldMs, kept, chunkMs, frameMs, peakDrawCalls, lights, shadows, quality: tier.name, traffic: drawn, parked: standing, pedestrians: walking, holds };
+  const laid = gallery === undefined ? {} : { gallery: gallery.labels };
+  return { width, height, x, y, rgb, worldMs, kept, chunkMs, frameMs, peakDrawCalls, lights, shadows, quality: tier.name, traffic: drawn, parked: standing, pedestrians: walking, holds, ...laid };
 }
 
 /**
