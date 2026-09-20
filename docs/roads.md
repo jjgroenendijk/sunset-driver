@@ -190,6 +190,18 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   highway that passes under an earlier one stays on the ground there. `NetworkClearance` refuses
   every step of a later road that crosses a highway away from a slot, so every highway crossing is
   at a slot or an interchange by construction.
+- A deck over water is raised clear of the sea (`water-lift.ts`, called from `addCurve`, issue
+  #304). Both abutments of a strait crossing stand at the shore, so without a lift the deck is a
+  straight line about a metre over the water and its underside is under it. The deck is carried up
+  until `WATER_CLEARANCE` of air stands under it and ramps back down each side at the tier's
+  `maxGrade`, as the same `Raise` of `overpass.ts` carries a road over another one. The foot of a
+  ramp carries no lift, so it lands on the first point that may not be raised: the end of the
+  line, the far end of a bore, an interchange, a point the network already has a junction on, or a
+  place the line passes under a highway. A junction is one plane at the height of the ground
+  (`bed.ts`) and no junction is built on a deck (`junctions.ts`), so a ramp laid over one would
+  leave the road meeting it there in mid-air. A deck with a junction or a bore at its abutment has
+  nowhere to ramp and keeps the height its shores give it, which is about a quarter of the decks
+  over water.
 - Those step rules hold for a road on the ground. A deck or a bore is not on the ground, so the
   crossing plan asks it for a clearance and nothing else, and it may cross a highway anywhere. An
   island link is checked twice for that reason: `bridgeHeads` checks the span the bridge is planned

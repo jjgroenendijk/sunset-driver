@@ -18,6 +18,9 @@ import { ANCHOR_REACH, ARTERIAL } from './road-params.ts';
 import type { Trail } from './network-clearance.ts';
 import { RoadNetwork, type RoadDraft } from './road-network.ts';
 import { RiverWater } from './river-decks.ts';
+import { overWater } from './piers.ts';
+import { raised } from './overpass.ts';
+import { waterRaises } from './water-lift.ts';
 import { selfOverlap, stepOverlaps, untangle } from './self-overlap.ts';
 import { coastNoise, islandAt, type CoastNoise } from './terrain.ts';
 import type { TensorField } from './tensor.ts';
@@ -423,17 +426,51 @@ export abstract class RoadRoute {
     if (points.length < 2) return undefined;
     const tunnels = this.markStructures(points, bridges);
     const draft: RoadDraft = { tier, points, bridges, tunnels, interchanges };
+    // Where the line passes under a highway it stays on the ground: the highway
+    // is on its deck there, and a road is never raised over one.
+    const under = crossingsWith(points, this.curves.filter((c) => c.tier === 'highway'));
     if (tier === 'highway') {
       draft.interchanges = this.withBridgeHeads(points, bridges, tunnels, interchanges);
-      // A highway passes under one laid before it on the ground, since the one
-      // before it is on its deck there.
-      const under = crossingsWith(points, this.curves.filter((c) => c.tier === 'highway'));
       const plan = planHighway(points, bridges, tunnels, draft.interchanges, under, this.builtUp);
       draft.bridges = plan.bridges;
       draft.slots = plan.slots;
       if (plan.lift !== undefined) draft.lift = plan.lift;
     }
-    return this.network.add(draft, whole);
+    return this.network.add(this.overWater(draft, under), whole);
+  }
+
+  /**
+   * The draft with its decks over water raised clear of the sea
+   * (`water-lift.ts`). Every raise is laid in on its own, so one the crossing
+   * plan would then refuse does not cost the road the others. The knots of a
+   * raise are the two ends of a deck the line already has, so no raise moves a
+   * point and the distances the next one was measured at still hold.
+   */
+  private overWater(draft: RoadDraft, under: readonly number[]): RoadDraft {
+    const ground = (x: number, y: number): number => this.hf.sample(x, y);
+    const wet = (a: Point, b: Point): boolean => overWater(this.hf, this.seaLevel, a, b);
+    let out = draft;
+    const onNetwork = (p: Point): boolean => this.network.nodeAt(p).length > 0;
+    for (const raise of waterRaises(draft, ground, this.seaLevel, wet, under, onNetwork)) {
+      const lifted = raised(out, [raise]);
+      if (this.decksAtSlots(lifted)) out = lifted;
+    }
+    return out;
+  }
+
+  /**
+   * True where every raised deck of a line crosses a highway only at one of its
+   * slots. A ramp turns ground into deck, and a deck is held to the rule the
+   * trace held the ground to (`island-links.ts`).
+   */
+  private decksAtSlots(line: RoadDraft): boolean {
+    for (const at of line.bridges) {
+      if ((line.lift?.[at] ?? 0) <= 0 && (line.lift?.[at + 1] ?? 0) <= 0) continue;
+      const a = line.points[at] as Point;
+      const b = line.points[at + 1] as Point;
+      if (!this.network.crossesAtSlots(a, b, line.tier)) return false;
+    }
+    return true;
   }
 }
 

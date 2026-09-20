@@ -3,6 +3,9 @@ import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { MINOR_BY_ZONE } from '../src/world/fill.ts';
 import { type GradeCrossing, type RoadEdge, type RoadNode } from '../src/world/graph.ts';
 import { HEADROOM_SLACK } from '../src/world/crossing-plan.ts';
+import { DECK_SOFFIT } from '../src/world/decks.ts';
+import { deckRuns, overWater } from '../src/world/piers.ts';
+import { WATER_CLEARANCE } from '../src/world/water-lift.ts';
 import { CLEARANCE as OVERPASS_CLEARANCE } from '../src/world/overpass.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
@@ -39,6 +42,16 @@ import { sweepSuite } from './seed-suite.ts';
  */
 const HIGHWAY_SEPARATIONS_PER_KM = 3;
 const HIGHWAY_KM_FLOOR = 2;
+
+/**
+ * The least share of the decks over water that stand the full
+ * {@link WATER_CLEARANCE} clear of the sea. The rest are the decks with a
+ * junction, a bore or the end of their line at an abutment, which leaves the
+ * ramp nowhere to come down and no lift to take (`water-lift.ts`). Over 500
+ * seeds three quarters take the full lift; the floor is a guard against the
+ * lift being lost, not a target.
+ */
+const WATER_DECKS_LIFTED = 0.65;
 
 /**
  * The seed sweep of spec section 3, on the road network of spec section 6: one
@@ -519,6 +532,50 @@ sweepSuite('roads', () => {
       }
       expect(complaint, `seed ${seed}`).toBeUndefined();
     }
+  });
+
+  it('stands the underside of a deck over water clear of the sea', () => {
+    // Spec sections 6.1 and 7.2. Both abutments of a strait crossing stand at
+    // the shore, so without a lift the deck is a straight line about a metre
+    // over the water and its underside is under it: a boat could not pass and
+    // the piers below could not be seen (issue #304). `water-lift.ts` carries
+    // the deck up and ramps it back down each side. A deck the line cannot
+    // ramp keeps the height its shores give it, so the share that clears is
+    // what this holds, along with every deck that had the room.
+    let wet = 0;
+    let lifted = 0;
+    for (const seed of seeds) {
+      const w = worlds.get(seed) as WorldDescription;
+      const hf = new Heightfield(w.terrain);
+      const beds = bedsOf(seed);
+      const sea = w.water.seaLevel;
+      let complaint: string | undefined;
+      for (const road of w.roads) {
+        const last = road.points.length - 1;
+        for (const run of deckRuns(road, (a, b) => overWater(hf, sea, a, b), true)) {
+          let surface = Infinity;
+          for (let i = run.from; i <= run.to + 1; i++) surface = Math.min(surface, beds.pointHeight(road.id, i));
+          const clearance = surface - DECK_SOFFIT - sea;
+          wet++;
+          if (clearance >= WATER_CLEARANCE - 1e-6) lifted++;
+          // The abutments a ramp may not be laid from: the end of the line, a
+          // bore, or a junction. A deck held by neither had the room, so it
+          // stands clear of the water.
+          const pinned =
+            run.from === 0 ||
+            run.to + 1 === last ||
+            road.tunnels.includes(run.from - 1) ||
+            road.tunnels.includes(run.to + 1) ||
+            [run.from, run.to + 1].some((i) => (road.nodes[i] ?? -1) >= 0 || road.interchanges.includes(i));
+          if (!pinned && clearance <= 0) {
+            complaint ??= `${road.tier} ${road.id} spans water with its underside ${(-clearance).toFixed(2)} m under it`;
+          }
+        }
+      }
+      expect(complaint, `seed ${seed}`).toBeUndefined();
+    }
+    expect(wet, 'no seed of the sweep crosses water on a deck').toBeGreaterThan(0);
+    expect(lifted / wet).toBeGreaterThanOrEqual(WATER_DECKS_LIFTED);
   });
 
   it('never lays a road over ground its tier may not climb', () => {
