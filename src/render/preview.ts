@@ -264,6 +264,12 @@ const CONTACT_BACK = 7;
 /** Metres out of a shop door `--shop` leaves the vehicle. */
 const KERB = 4;
 
+/**
+ * How far back the camera stands in a shop, when the request did not say. A
+ * room is about 7 m across and the game's own distance is 36, which frames the
+ * street the shop stands on rather than the room.
+ */
+const SHOP_DISTANCE = 22;
 
 /**
  * The shop `--shop` asks for: the nearest one of that trade to where the player
@@ -302,9 +308,10 @@ function subjectOf(name: string): GallerySubject {
   return subject;
 }
 
-/** How far back the camera stands to hold a gallery, or the game's own distance when there is none. */
-function fitDistance(gallery: Gallery | undefined): number {
-  return gallery === undefined ? BASE_DISTANCE : Math.max(GALLERY_NEAREST, gallery.reach * GALLERY_FIT);
+/** How far back the camera stands when the request did not say: to hold a gallery, a room, or the game's own. */
+function fitDistance(gallery: Gallery | undefined, inShop: boolean): number {
+  if (gallery !== undefined) return Math.max(GALLERY_NEAREST, gallery.reach * GALLERY_FIT);
+  return inShop ? SHOP_DISTANCE : BASE_DISTANCE;
 }
 
 /** Metres between two pickups `--pickups` lays, and how many lie in a row. */
@@ -519,7 +526,7 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   if (gallery !== undefined) for (const group of ambient) if (group !== undefined) group.visible = false;
 
   const { camera, post, target } = viewFor(width, height);
-  camera.setBaseDistance(request.distance ?? fitDistance(gallery));
+  camera.setBaseDistance(request.distance ?? fitDistance(gallery, shop !== undefined));
   // The first update snaps the camera onto its target rather than easing in,
   // so one call is a settled frame and no render time has to be simulated.
   const view = request.buildings ?? 'see-through';

@@ -186,8 +186,8 @@ angle, the vehicle or the pose changes, and 1 to 3 seconds when the player stand
 - `--shop=<trade>` stands the player inside the nearest shop of that trade — `weapons`, `workshop`,
   `convenience`, `clothing`, `clinic`, `broker`, or `any` — with the vehicle left at the kerb. It is
   the one way to look at an interior (spec section 16.1), and it moves the frame off `--x` and
-  `--y`: the line the run prints says where it ended up. A room is about 7 m across, so
-  `--distance=22` is the frame that holds it.
+  `--y`: the line the run prints says where it ended up. A room is about 7 m across, so the camera
+  comes in to 22 m of its own accord, which is the frame that holds one. `--distance` overrides it.
 - `--gallery=<subject>` lays the models of one subject in rows ahead of the player and frames them:
   `vehicles` for the roster of spec section 11.3, `people` for the looks of the creator of 11.1,
   `props` for the goods the counters of 16.1 sell. It is how a mesh is judged against its
