@@ -166,6 +166,41 @@ describe('a road that crosses a road already laid', () => {
     }
   });
 
+  it('clears the surface a junction plane leaves the road below, not its bed (issue #533)', () => {
+    // The ground is a ridge along x. The road below runs over it, so its bed
+    // falls away each side of the top, and the road up the ridge meets it
+    // there. The junction is one plane, and the two mouths along the ridge
+    // disagree about the grade, so the plane is level: the road below stands
+    // above its own bed out to its cut and over the blend past it. The deck
+    // has to clear that, not the bed.
+    const ridge: NetworkGround = { canRun: noShortSpans.canRun, heightAt: (x) => -Math.abs(x - 60) * 0.1 };
+    const roads = network(ridge);
+    const below = roads.add(alongX(-200, 200)) as RoadCurve;
+    roads.add(alongY(60, steps(0, 100)));
+    expect(below.points).toContainEqual({ x: 60, y: 0 });
+    const carried = roads.add(alongY(50, steps(-295, 305))) as RoadCurve;
+    expect(liftNear(carried, { x: 50, y: 0 })).toBeGreaterThan(CLEARANCE);
+    expect(buildRoadGraph(roads.curves).crossings).toHaveLength(1);
+  });
+
+  it('refuses a road that would join a node and take a crossing its headroom (issue #533)', () => {
+    // The same ridge, and the deck laid before the road up it. A point standing
+    // on a point of the network joins its node whatever the crossing plan says,
+    // so the road that would raise the ground under the deck is refused. Only
+    // the ones that would: on level ground a plane lifts nothing, and a
+    // junction beside a crossing is no trouble at all.
+    const ridge: NetworkGround = { canRun: noShortSpans.canRun, heightAt: (x) => -Math.abs(x - 60) * 0.1 };
+    const roads = network(ridge);
+    roads.add(alongX(-300, 300));
+    roads.add(alongY(50, steps(-295, 305)));
+    expect(buildRoadGraph(roads.curves).crossings).toHaveLength(1);
+    expect(roads.add(alongY(60, steps(0, 100)))).toBeUndefined();
+    // Out of the plane's reach the same road takes its junction.
+    expect(roads.add(alongY(200, steps(0, 100)))).toBeDefined();
+    const far = buildRoadGraph(roads.curves);
+    expect(far.degree(far.nearestNode(200, 0) as number)).toBe(3);
+  });
+
   it('is refused where no piece of it reaches the network', () => {
     const roads = network(noShortSpans);
     roads.add(alongX(-100, 100));

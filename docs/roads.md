@@ -225,6 +225,27 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   longest piece that still meets the network, cut where it may end; with no such piece the road is
   refused. Nothing is written to a laid road until the whole plan holds. A raised point takes no
   junction later, and the ramp of a raise is crossed nowhere.
+- A surface is not the bed alone. A junction is one plane, and `bed.ts` lays every road that meets
+  it on that plane out to its cut, then blends it back onto its own line over as far again. A road
+  under a deck inside that reach drives off its bed — by up to 2.15 m where the plane is steep and
+  the cut long (issue #533). So the plan reads `plane-lift.ts` instead. It answers with the span
+  the junctions within `PLANE_REACH` of a place leave the road in, which is the bed itself where
+  none reaches it, and a crossing is apart only where the whole span is. Each junction is fitted
+  there the way `bed.ts` will fit it, from the mouths `junctions.ts` gives a node, so the plan
+  reads the line the road will really drive.
+- A junction laid later is the one thing that can still move that line, so the plan asks what each
+  new node does to the crossings within `PLANE_REACH` of it. A junction a road would take that
+  close to a crossing on the road it meets is declined, and the road is carried over that crossing
+  or shortened back from it instead. A road whose own junctions would move one of its own crossings
+  is shortened back from it. A road that would join a node that close is refused outright where the
+  junction there, fitted afresh with the mouth it brings, takes the crossing its headroom: a point
+  standing on a point of the network joins its node whatever the crossing plan decided
+  (`road-network.ts`), so nothing else can stop it. Only the joins that really move a crossing are
+  refused, and only the crossings a plane really moves are shortened back from: a rule that turned
+  away every junction near a crossing cost the outskirts their block sizes and an island its
+  arterial. Over the first 20 sweep seeds what is left costs 2 roads of 11,393 and 39 nodes of
+  27,611, and adds 18 grade separations to 248, since a junction declined leaves its two roads to
+  pass rather than meet.
 
 ## The graph, the footprint and the polygon arithmetic
 

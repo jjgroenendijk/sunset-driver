@@ -281,6 +281,17 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
 
   // ------------------------------------------------------ what a plan asks
 
+  /**
+   * Every curve point standing on the node a place is; the point it stands on
+   * alone where that point is no node, and none where no road has a point
+   * there. This is the node as `graph.ts` will read it, which is how a plan
+   * knows the junction a place will carry (`plane-lift.ts`).
+   */
+  nodeAt(p: Point): { curve: number; index: number }[] {
+    const hit = this.pointAt(p.x, p.y);
+    return hit === undefined ? [] : this.pointsOn(hit);
+  }
+
   /** The points the roads other than `except` run on to from a place. */
   neighboursAt(p: Point, except: number): Point[] {
     const hit = this.pointAt(p.x, p.y);

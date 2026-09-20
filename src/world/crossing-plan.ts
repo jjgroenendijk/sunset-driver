@@ -25,9 +25,12 @@
  */
 import { hypot, sin } from '../core/libm.ts';
 import { CLEARANCE, PLATEAU_MARGIN, raiseAt, raised, type Raise } from './overpass.ts';
+import type { Ground } from './bed.ts';
 import { alongSegment, PlannedLine, toSegment } from './crossing-line.ts';
 import { junctionAt, type CrossingNetwork } from './crossing-rules.ts';
 import { MIN_MEET } from './network-clearance.ts';
+import { PLANE_REACH, seedsOn, spanOf, surfaceSpan, type PlaneLine, type PlaneNode } from './plane-lift.ts';
+import type { MouthSeed } from './junctions.ts';
 import { curveDistances } from './ribbon.ts';
 import { footprintHalfWidth, mayCross, mayJoin, TIERS } from './tiers.ts';
 import type { Point, RoadCurve, RoadTier } from './types.ts';
@@ -37,6 +40,10 @@ export const CROSSING_SNAP = 4;
 
 /** Times a road is shortened and planned again before it is refused. */
 const ROUNDS = 4;
+
+/** Metres apart two places are the same node, and millimetres off a line a place stands on it. */
+const SAME_NODE = 1e-6;
+const ON_CURVE = 1e-3;
 
 /**
  * Metres of headroom a crossing may be short of the clearance and still count
@@ -88,13 +95,22 @@ interface Failure {
   tier: RoadTier;
 }
 
+/** A place the new road passes under or over a laid one, and the crossing it stands on. */
+interface Apart extends Failure {
+  curve: number;
+  /** The segment of the laid road the place stands on. */
+  other: number;
+}
+
 interface Plan {
   draft: PlannedLine;
   edits: PointEdit[];
   /** The places the new road meets a laid one, and which. */
   junctions: { x: number; y: number; curve: number; segment: number }[];
   /** The places the new road passes under a laid one, and the segment of the draft each is on. */
-  under: { segment: number; x: number; y: number }[];
+  under: Apart[];
+  /** The places it passes over one on a deck or a bore of its own. */
+  over: Apart[];
   candidates: Crossing[];
   failures: Failure[];
 }
@@ -110,12 +126,24 @@ export function settleCrossings(network: CrossingNetwork, proposed: DraftLine, w
     const plan = planJunctions(network, draft);
     const road = lineOf(draft, plan.draft);
     const raises: Raise[] = [];
+    const apart: Apart[] = [...plan.under, ...plan.over];
     for (const crossing of plan.candidates) {
       const raise = raiseFor(network, draft, road, plan, crossing);
-      if (raise === undefined) plan.failures.push({ segment: crossing.segment, x: crossing.x, y: crossing.y, tier: (network.curves[crossing.curve] as RoadCurve).tier });
-      else raises.push(raise);
+      const tier = (network.curves[crossing.curve] as RoadCurve).tier;
+      const place = { segment: crossing.segment, x: crossing.x, y: crossing.y, tier, curve: crossing.curve, other: crossing.other };
+      if (raise === undefined) plan.failures.push(place);
+      else {
+        raises.push(raise);
+        apart.push(place);
+      }
     }
-    if (plan.failures.length === 0) return { road: raised(road, raises), edits: plan.edits };
+    if (plan.failures.length === 0) {
+      const lifted = raised(road, raises);
+      for (const place of planedApart(network, lifted, plan, apart)) plan.failures.push(place);
+      if (plan.failures.length === 0) {
+        return joinsPlanedCrossing(network, lifted, plan) ? undefined : { road: lifted, edits: plan.edits };
+      }
+    }
     if (whole) return undefined;
     const shorter = shorten(network, draft, plan);
     if (shorter === undefined) return undefined;
@@ -136,7 +164,7 @@ export function deckApart(network: CrossingNetwork, a: Point, b: Point, tier: Ro
 
 /** Decide the junctions of a road, and sort the rest of its crossings into what they are. */
 function planJunctions(network: CrossingNetwork, draft: DraftLine): Plan {
-  const plan: Plan = { draft: new PlannedLine(draft.points, draft.tier), edits: [], junctions: [], under: [], candidates: [], failures: [] };
+  const plan: Plan = { draft: new PlannedLine(draft.points, draft.tier), edits: [], junctions: [], under: [], over: [], candidates: [], failures: [] };
   const lines = new Map<number, PlannedLine>();
   const lineFor = (curve: RoadCurve): PlannedLine => {
     const known = lines.get(curve.id);
@@ -159,7 +187,7 @@ function planJunctions(network: CrossingNetwork, draft: DraftLine): Plan {
     const join = mayJoin(draft.tier, other.tier, false) && mayJoin(other.tier, draft.tier, false);
     if (ground && join && !meetsNear(network, draft, plan, other, crossing)) {
       const junction = junctionAt(network, plan.draft, lineFor(other), draft, other, crossing, CROSSING_SNAP);
-      if (junction !== undefined) {
+      if (junction !== undefined && !planeOverCrossing(network, other, crossing.other, junction)) {
         if (junction.draft !== undefined) plan.draft.given.push(junction.draft);
         if (junction.edit !== undefined) {
           lineFor(other).given.push({ x: junction.edit.x, y: junction.edit.y, segment: junction.edit.segment, at: junction.edit.at, index: -1 });
@@ -171,7 +199,9 @@ function planJunctions(network: CrossingNetwork, draft: DraftLine): Plan {
     }
     const apart = separation(network, draft, crossing, other);
     if (apart !== undefined) {
-      if (apart < 0) plan.under.push({ segment: crossing.segment, x: crossing.x, y: crossing.y });
+      const place = { segment: crossing.segment, x: crossing.x, y: crossing.y, tier: other.tier, curve: crossing.curve, other: crossing.other };
+      if (apart < 0) plan.under.push(place);
+      else plan.over.push(place);
       continue;
     }
     // A highway holds its line, and is crossed at a slot or nowhere.
@@ -180,6 +210,177 @@ function planJunctions(network: CrossingNetwork, draft: DraftLine): Plan {
   }
   return plan;
 }
+
+/**
+ * The places the finished road passes under or over a laid one where the two no
+ * longer stand a clearance apart, once the junctions the plan gives the road
+ * have laid its own line on their planes (issue #533). `separation` decided
+ * each of these on the bed the road drives with no junction on it; this asks
+ * the same question of the line it will really drive. A road is shortened back
+ * from such a crossing, as it is from one it cannot be carried over.
+ *
+ * The junctions a laid road takes near a crossing already in the world are
+ * refused instead ({@link planeOverCrossing}): there the crossing is the one
+ * that was there first.
+ */
+function planedApart(network: CrossingNetwork, road: DraftLine, plan: Plan, apart: readonly Apart[]): Failure[] {
+  if (apart.length === 0) return [];
+  const nodes = planNodes(network, road, plan);
+  if (nodes.length === 0) return [];
+  const ground: Ground = (x, y) => network.heightAt(x, y);
+  const line: PlaneLine = { id: network.curves.length, points: road.points, lift: road.lift };
+  const out: Failure[] = [];
+  for (const place of apart) {
+    const segment = segmentAt(road.points, place, ON_CURVE);
+    if (segment === undefined) continue;
+    const here = spanOf(ground, line, nodes, segment, place);
+    const there = surfaceSpan(network, place.curve, place.other, place);
+    const gap = Math.max(here.low - there.high, there.low - here.high);
+    if (gap < CLEARANCE - HEADROOM_SLACK) out.push({ segment: place.segment, x: place.x, y: place.y, tier: place.tier });
+  }
+  return out;
+}
+
+/**
+ * The nodes the finished road will stand on, each with every road that leaves
+ * it: the points it shares with a laid road, and the points a laid road takes
+ * for it. These are the junctions `junctions.ts` will build there, which is
+ * what says where the road's own line is laid on a plane.
+ */
+function planNodes(network: CrossingNetwork, road: DraftLine, plan: Plan): PlaneNode[] {
+  const nodes: PlaneNode[] = [];
+  for (let k = 0; k < road.points.length; k++) {
+    const seeds = nodeSeeds(network, road, plan, k);
+    if (seeds !== undefined) nodes.push({ point: k, seeds });
+  }
+  return nodes;
+}
+
+/**
+ * The mouths the node at a point of the road will be fitted from: the road
+ * itself, the roads that already have a point there, and the ones taking a
+ * point there for it. Undefined where the point stands on no node at all.
+ */
+function nodeSeeds(network: CrossingNetwork, road: DraftLine, plan: Plan, k: number): MouthSeed[] | undefined {
+  const p = road.points[k] as Point;
+  const on = network.nodeAt(p);
+  const edits = plan.edits.filter((edit) => hypot(edit.x - p.x, edit.y - p.y) <= SAME_NODE);
+  if (on.length === 0 && edits.length === 0) return undefined;
+  const seeds = seedsOn(network.curves.length, road.tier, road.points, k, road.bridges, road.tunnels);
+  for (const at of on) {
+    const laid = network.curves[at.curve] as RoadCurve;
+    seeds.push(...seedsOn(laid.id, laid.tier, laid.points, at.index, laid.bridges, laid.tunnels));
+  }
+  for (const edit of edits) {
+    // The laid road has no point there yet: it takes one when the plan holds,
+    // and its mouths leave the node along the two halves of its segment.
+    const laid = network.curves[edit.curve] as RoadCurve;
+    const points = [...laid.points];
+    points.splice(edit.segment + 1, 0, { x: edit.x, y: edit.y });
+    seeds.push(...seedsOn(laid.id, laid.tier, points, edit.segment + 1, [], []));
+  }
+  return seeds;
+}
+
+/** The segment of a line a place stands nearest, or undefined where it stands off all of them. */
+function segmentAt(points: readonly Point[], at: Point, within: number): number | undefined {
+  let best: number | undefined;
+  let bestOff = within;
+  for (let i = 0; i + 1 < points.length; i++) {
+    const off = toSegment(at, points[i] as Point, points[i + 1] as Point);
+    if (off >= bestOff) continue;
+    bestOff = off;
+    best = i;
+  }
+  return best;
+}
+
+/**
+ * True where a junction at a place would take the headroom of a crossing near
+ * it: its plane would reach a place where a road that meets there passes under
+ * or over another (issue #533). Every road at the place is asked, since each of
+ * them gains a mouth and so a plane it did not have.
+ *
+ * A crossing was decided on the surfaces of its two roads as they stood then
+ * (`separation`), and a junction laid later is the one thing that can still
+ * move them. So it is refused here, and the crossing stands as it was planned.
+ */
+function planeOverCrossing(network: CrossingNetwork, other: RoadCurve, segment: number, at: Point): boolean {
+  if (crossingNear(network, other, segment, at)) return true;
+  for (const id of network.curvesAt(at)) {
+    if (id === other.id) continue;
+    const road = network.curves[id] as RoadCurve;
+    const place = segmentAt(road.points, at, CROSSING_SNAP);
+    if (place !== undefined && crossingNear(network, road, place, at)) return true;
+  }
+  return false;
+}
+
+/**
+ * True where a laid road passes under or over another road within a plane's
+ * reach along it of a place on its segment `segment`. The reach is measured
+ * along the curve, as a plane reaches, with the snap a junction may be moved by
+ * allowed for.
+ */
+function crossingNear(network: CrossingNetwork, road: RoadCurve, segment: number, at: Point): boolean {
+  const distances = curveDistances(road.points);
+  const a = road.points[segment] as Point;
+  const b = road.points[segment + 1] as Point;
+  const place = (distances[segment] as number) + alongSegment(a, b, at) * ((distances[segment + 1] as number) - (distances[segment] as number));
+  return crossingsWithin(network, road, distances, place).length > 0;
+}
+
+/**
+ * True where the road joins a node so near a crossing that the junction there,
+ * fitted afresh with the mouth the road brings, would take its headroom. A
+ * point of a road standing on a point of the network joins its node whatever
+ * the crossings were planned as (`road-network.ts`), so no junction can be
+ * declined here: the road itself is refused.
+ *
+ * The crossings are the ones the roads at that node already carry, and each is
+ * measured again with the node as it will stand. Most junctions beside a
+ * crossing leave it the headroom it had, and refusing them all costs the
+ * outskirts their blocks and the odd island its arterial.
+ */
+function joinsPlanedCrossing(network: CrossingNetwork, road: DraftLine, plan: Plan): boolean {
+  for (let k = 0; k < road.points.length; k++) {
+    const p = road.points[k] as Point;
+    const on = network.nodeAt(p);
+    if (on.length === 0) continue;
+    const seeds = nodeSeeds(network, road, plan, k);
+    if (seeds === undefined) continue;
+    const edits = [{ at: p, seeds }];
+    for (const at of on) {
+      const laid = network.curves[at.curve] as RoadCurve;
+      const distances = curveDistances(laid.points);
+      for (const crossing of crossingsWithin(network, laid, distances, distances[at.index] as number)) {
+        const here = surfaceSpan(network, laid.id, crossing.segment, crossing, edits);
+        const there = surfaceSpan(network, crossing.curve, crossing.other, crossing, edits);
+        if (Math.max(here.low - there.high, there.low - here.high) < CLEARANCE - HEADROOM_SLACK) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** Every place a laid road passes under or over another road within a plane's reach of a place on it. */
+function crossingsWithin(network: CrossingNetwork, road: RoadCurve, distances: Float32Array, place: number): Crossing[] {
+  const out: Crossing[] = [];
+  const reach = PLANE_REACH + CROSSING_SNAP;
+  for (let i = 0; i + 1 < road.points.length; i++) {
+    if ((distances[i + 1] as number) < place - reach || (distances[i] as number) > place + reach) continue;
+    const from = road.points[i] as Point;
+    const to = road.points[i + 1] as Point;
+    for (const hit of network.crossingsAlong(from, to)) {
+      if (hit.curve === road.id) continue;
+      const crossed = network.curves[hit.curve] as RoadCurve;
+      if (onGround(road, i) && onGround(crossed, hit.segment)) continue;
+      out.push({ segment: i, at: alongSegment(from, to, hit), curve: hit.curve, other: hit.segment, x: hit.x, y: hit.y });
+    }
+  }
+  return out;
+}
+
 
 /** Every place the draft crosses a laid road, in order along the draft. */
 function crossingsOf(network: CrossingNetwork, draft: DraftLine): Crossing[] {
@@ -224,14 +425,25 @@ function meetsNear(network: CrossingNetwork, draft: DraftLine, plan: Plan, other
  * Both are measured on the surface each road drives, never on the lift of one
  * of them: the two roads have different points, so a lift of the clearance over
  * the ground under this road leaves the two beds anywhere from that down to a
- * metre and a half apart (issue #290). Two roads on the ground are never apart,
- * whatever their beds say: the carve levels the ground to each of them, and one
- * bench cannot stand under the other.
+ * metre and a half apart (issue #290). The laid road's surface is the one the
+ * junctions near it leave, which is anywhere in a span where a plane reaches
+ * the place (`plane-lift.ts`), and the crossing is apart only where the whole
+ * span is. The draft carries no junction plane yet: it takes its own when it is
+ * laid, and {@link planedApart} asks the question again of the line it will
+ * really drive.
+ * Two roads on the ground are never apart, whatever their beds say: the carve
+ * levels the ground to each of them, and one bench cannot stand under the
+ * other.
  */
 function separation(network: CrossingNetwork, draft: DraftLine, crossing: Crossing, other: RoadCurve): number | undefined {
   if (onGround(draft, crossing.segment) && onGround(other, crossing.other)) return undefined;
-  const apart = bedOn(network, draft, crossing.segment, crossing) - bedOn(network, other, crossing.other, crossing);
-  return Math.abs(apart) >= CLEARANCE - HEADROOM_SLACK ? apart : undefined;
+  const here = bedOn(network, draft, crossing.segment, crossing);
+  const there = surfaceSpan(network, other.id, crossing.other, crossing);
+  const over = here - there.high;
+  const under = there.low - here;
+  if (over >= CLEARANCE - HEADROOM_SLACK) return over;
+  if (under >= CLEARANCE - HEADROOM_SLACK) return -under;
+  return undefined;
 }
 
 /** The lift of a segment of a line at a place on it. */
@@ -275,9 +487,11 @@ function raiseFor(network: CrossingNetwork, draft: DraftLine, road: DraftLine, p
   const plateau = footprintHalfWidth(other.tier) / Math.max(sine, sin(MIN_MEET)) + PLATEAU_MARGIN;
   // The deck has to clear the surface of the road below, not the ground under
   // the draft's own points: where that ground stands lower, the draft climbs
-  // the difference as well (issue #290). It never climbs less than the
-  // clearance, so a deck is a deck however deep the road below sits.
-  const under = bedOn(network, other, crossing.other, crossing);
+  // the difference as well (issue #290). That surface is the highest the
+  // junctions near the crossing leave the road (issue #533). It never climbs
+  // less than the clearance, so a deck is a deck however deep the road below
+  // sits.
+  const under = surfaceSpan(network, other.id, crossing.other, crossing).high;
   const height = Math.max(CLEARANCE, CLEARANCE + under - deckGround(network, road.points, distances, along, plateau));
   const raise = raiseAt(distances, along, plateau, height / TIERS[draft.tier].maxGrade, height);
   if (raise === undefined) return undefined;
