@@ -166,6 +166,9 @@ angle, the vehicle or the pose changes, and 1 to 3 seconds when the player stand
 - `--police` lays the police on foot of spec section 14 in the road ahead: a patrol pair and a SWAT
   officer aiming at the player with guns in their hands, an officer walking a beat, and one lying
   where they fell. The same framing as `--bodies` shows them.
+- `--contacts` stands the mission contacts of spec section 18 on their own corners, each under the
+  marker that says whether they will talk, and takes the picture at the contact nearest the place
+  asked for. They are the contacts of that seed, not a lay-on: `--on-foot --distance=16` frames one.
 - `--stance=<name>` holds the player in one stance for the picture — `stand`, `walk`, `air` or
   `swim` — which is the one way to look at the movement of spec sections 11.2 and 11.5 in a still
   frame. The frame is taken a quarter of the way through the cycle, where the swing is widest.

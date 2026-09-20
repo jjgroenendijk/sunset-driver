@@ -30,6 +30,7 @@ import { generateWorld } from '../world/world.ts';
 import { FollowCamera } from './camera.ts';
 import { ParkedView } from './parked.ts';
 import { CasualtyView } from './casualties.ts';
+import { ContactMarkers } from './markers.ts';
 import { OfficerGunView } from './officer-guns.ts';
 import { PedestrianView } from './pedestrians.ts';
 import { PostChain } from './post.ts';
@@ -39,6 +40,9 @@ import { TrafficView } from './traffic.ts';
 import { TramView } from './tram.ts';
 import { WildlifeView } from './wildlife.ts';
 import { WorldScene } from './world-scene.ts';
+
+/** Mission contacts a preview draws markers over at once, which is every one a world has. */
+const CONTACT_CAP = 128;
 
 /** The scene of one seed at one tier, and what is drawn through it. */
 export interface PreviewStage {
@@ -69,6 +73,8 @@ export interface PreviewPeople {
   casualties: CasualtyView;
   /** The guns in the hands of the police on foot who aim. */
   guns: OfficerGunView;
+  /** The markers over the mission contacts `--contacts` stands (spec section 18). */
+  markers: ContactMarkers;
   wildlife: WildlifeView;
   /** Undefined until the chunk workers have laid out the bays. */
   parked?: ParkedView;
@@ -134,12 +140,13 @@ export function peopleFor(): PreviewPeople {
       crowd: new PedestrianView(walkers, line),
       casualties: new CasualtyView(walkers),
       guns: new OfficerGunView(),
+      markers: new ContactMarkers(CONTACT_CAP),
       wildlife: new WildlifeView(
         new AmbientWildlife(seed, { roads, beaches: world.beaches, seaLevel: world.water.seaLevel, districtAt }),
       ),
     };
-    const { traffic, trams, crowd, casualties, guns, wildlife } = held.people;
-    scene.scene.add(traffic.group, trams.group, crowd.group, casualties.group, guns.group, wildlife.group);
+    const { traffic, trams, crowd, casualties, guns, markers, wildlife } = held.people;
+    scene.scene.add(traffic.group, trams.group, crowd.group, casualties.group, guns.group, markers.mesh, wildlife.group);
   }
   if (held.people.parked === undefined && scene.bays !== undefined) {
     held.people.parked = new ParkedView(new ParkedCars(seed, scene.bays));
@@ -195,6 +202,8 @@ function dropHeld(): void {
       held.scene.scene.remove(view.group);
       view.dispose();
     }
+    held.scene.scene.remove(people.markers.mesh);
+    people.markers.dispose();
   }
   held.scene.dispose();
   held = undefined;

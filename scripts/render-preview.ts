@@ -58,6 +58,9 @@
  *   --police         lay police on foot in the road ahead: a patrol pair and
  *                    a SWAT officer aiming, one on a beat and one fallen
  *                    (spec section 14).
+ *   --contacts       stand the mission contacts of spec section 18 on their
+ *                    corners, each under their marker, and take the picture at
+ *                    the one nearest the place asked for.
  *   --weapon         the weapon in the player's hands, by id, for example
  *                    `ak-47` (spec section 11.6). Drawn with --on-foot.
  *   --attachments    what is fitted to it and to the pickups, for example
@@ -209,6 +212,7 @@ const request: PreviewRequest = {
   ...(options.has('shots') ? { shots: true } : {}),
   ...(options.has('bodies') ? { bodies: true } : {}),
   ...(options.has('police') ? { police: true } : {}),
+  ...(options.has('contacts') ? { contacts: true } : {}),
   ...(options.has('weapon') ? { weapon: options.get('weapon') as string } : {}),
   ...(options.has('attachments') ? { attachments: (options.get('attachments') as string).split('+') } : {}),
   ...(options.has('aim') ? { aim: true } : {}),

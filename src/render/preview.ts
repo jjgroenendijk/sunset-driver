@@ -35,6 +35,7 @@ import { EmergencyView } from './emergency.ts';
 import { FireCrews } from '../ui/fire-crews.ts';
 import { layBodies } from './preview-bodies.ts';
 import { layPolice } from './preview-police.ts';
+import { nearestContact, previewContacts, standContacts } from './preview-contacts.ts';
 import {
   ATTACHMENTS,
   createLoadout,
@@ -175,6 +176,12 @@ export interface PreviewRequest {
    */
   police?: boolean;
   /**
+   * Set to stand the mission contacts of spec section 18 on their own corners,
+   * with the marker over each head, and to take the picture at the one nearest
+   * the place asked for. It overrides where the player stands, as `--shop` does.
+   */
+  contacts?: boolean;
+  /**
    * The weapon to put in the player's hands, by id (spec section 11.6). It is
    * drawn only with {@link PreviewRequest.onFoot}, as in the game.
    */
@@ -238,6 +245,9 @@ function hold(scene: WorldScene, request: PreviewRequest): void {
     { grip, aim: request.aim === true ? 1 : 0, kick: 0 },
   );
 }
+
+/** Metres short of a contact `--contacts` stands the player, so the contact is in the frame. */
+const CONTACT_BACK = 7;
 
 /** Metres out of a shop door `--shop` leaves the vehicle. */
 const KERB = 4;
@@ -359,6 +369,16 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   // frame the game draws. Every chunk of both rings is waited for, so the same
   // request twice takes the same picture; `fast` waits for the near ring only.
   const radius = request.fast === true ? tier.rings.near : tier.rings.far;
+  // `--contacts` takes the picture at the contact nearest the place asked for,
+  // which is known from the world alone and so is settled before the chunks.
+  const givers = request.contacts === true ? previewContacts(seed, world) : [];
+  const atContact = request.contacts === true ? nearestContact(givers, x, y) : undefined;
+  if (atContact !== undefined) {
+    // Behind them rather than on them: a player standing on the corner stands
+    // in their body, and the vehicle they arrived in covers it.
+    x = atContact.x - Math.cos(atContact.heading) * CONTACT_BACK;
+    y = atContact.y - Math.sin(atContact.heading) * CONTACT_BACK;
+  }
   await scene.settle(x, y, radius);
   // The shops of spec section 16.1 come back with the first chunk, so the
   // nearest one of the trade asked for is picked here and the ground round it
@@ -419,11 +439,16 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   arm(scene, request, stand, tick);
   // What moves through the city, where its tours put it at the tick the
   // picture is taken, as the game draws it.
-  const { traffic, trams, crowd, casualties, guns, wildlife, parked } = peopleFor();
+  const { traffic, trams, crowd, casualties, guns, markers, wildlife, parked } = peopleFor();
+  // The contacts of spec section 18 stand at the head of the crowd's own list,
+  // as they do in a session, and their markers turn over them.
+  const bodies = request.contacts === true ? standContacts(seed, givers, scene, record) : undefined;
   // The crew of the engine at work stand in the same list as the police.
   const crews = new FireCrews();
-  crews.update(record, { standing: officers });
+  crews.update(record, { standing: [...(bodies?.standing ?? []), ...officers] });
   crowd.standing = crews.standing;
+  markers.marks = bodies?.markers ?? [];
+  markers.update(tick, x, y);
   traffic.lamps = scene.lampsNow;
   traffic.update(record, tick, x, y);
   trams.update(tick, x, y);
