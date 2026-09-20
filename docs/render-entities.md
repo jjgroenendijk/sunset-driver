@@ -281,6 +281,11 @@ after dark is in `docs/lighting.md`, and the one interior the scene ever holds i
   Over eight, the pipeline fails and nothing is drawn, with only a console error to say so. The
   crowd packs its bone and colour part into one `rig` attribute and its six instance attributes into
   one `InstancedInterleavedBuffer`, and it uploads only the `STRIDE` floats of each person written.
+- `src/render/markers.ts` draws the marker over each mission contact of spec section 18: one
+  instance of one mesh for the whole city's contacts. Who stands where is `src/ui/givers.ts`; this
+  only turns and bobs them off the frame's own moment, so two machines at the same tick draw the
+  same frame. The colour is per instance — amber while the contact will talk, dull while they will
+  not — so the pool passes through `tinted`, or the warm-up compiles a program that never reads it.
 - `AnimationClipCreator` makes no clip that swings a limb, so `walkClip` builds its keyframe tracks
   itself. A test reads the baked texture on the processor with `bakedPoint`: the legs swing against
   each other, and each arm against its leg.

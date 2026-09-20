@@ -393,6 +393,9 @@ export class SessionFrame {
     session.wildlife.update(session.state.tick, moment, round.x, round.y, player);
     session.parked?.update(session.state, round.x, round.y);
     session.crowd.update(session.state, moment, round.x, round.y);
+    // The marker over each contact in view (spec section 18), which turns and
+    // bobs with the frame's moment rather than with the wall clock.
+    session.markers.update(moment, round.x, round.y);
     session.casualties.update(session.state, moment, round.x, round.y);
     session.guns.update(session.state);
   }
@@ -428,8 +431,10 @@ export class SessionFrame {
     // tick, and the dealers standing behind them in the same list.
     session.enforcerMarks.update(session.state, session.world, session.dealerMarks);
     // The work of spec section 18: the board at the contact the player is
-    // standing at, and the mark on wherever the job in hand is going.
+    // standing at, whether each contact's marker says they will talk, and the
+    // mark on wherever the job in hand is going.
     session.jobPanel.update(session.state, session.missions);
+    session.giverBodies.update(session.state);
     // The events and the street crime of spec section 20.5: the crowd an
     // event has drawn and the people in whatever is going on nearby, standing
     // in the same list as the enforcers, and both marked on the map.

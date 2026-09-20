@@ -43,8 +43,14 @@ Nothing else writes `SimState.missions`, and nothing else writes `SimState.objec
 - They do not move. A dealer walks their pitches through the day (`docs/market.md`); a contact
   stands where the seed put them for the whole session, which is what makes the work something to
   come back to.
-- There is no body on the street yet. A contact is a mark on the map and a panel at a corner, as a
-  safehouse is a door and a record. Issue #350 is that gap.
+- `src/ui/givers.ts` stands them on the street: one person per contact, dressed for the district
+  they work, drawn in the crowd's own mesh so they cost no draw call. They never move, so the
+  bodies are written once at the start of a session and the list is copied from there.
+- A marker turns over each of their heads (`src/render/markers.ts`), in the amber the map marks
+  them with, so the flag on the map and the person on the street are plainly the same. It is amber
+  while `giverRefusal` answers nothing and dull grey while it answers something, which is how a
+  player reads across the street that nobody is hiring: driving, wanted, crossed off, or carrying a
+  job already.
 
 ## The board is a function, not a list
 
@@ -164,3 +170,6 @@ Nothing else writes `SimState.missions`, and nothing else writes `SimState.objec
   from the dealers through the enforcers: each of them writes `MapPois.extra` and hands the list it
   wrote to the next. That is why `EnforcerMarks.marks` is kept up to date even on the frames when
   no enforcer is out.
+- The contacts' bodies begin the other list that chain carries — the people the crowd mesh draws —
+  so every link copies what it was handed even on the frames it has nobody of its own to add. A
+  link that returns early without copying empties the street of the dealers and the contacts both.

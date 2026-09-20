@@ -15,6 +15,7 @@ import type { RenderSmoother } from './render/smooth.ts';
 import type { ParkedView } from './render/parked.ts';
 import type { PedestrianView } from './render/pedestrians.ts';
 import type { CasualtyView } from './render/casualties.ts';
+import type { ContactMarkers } from './render/markers.ts';
 import type { OfficerGunView } from './render/officer-guns.ts';
 import type { EmergencyView } from './render/emergency.ts';
 import type { WildlifeView } from './render/wildlife.ts';
@@ -32,6 +33,7 @@ import type { DealerPlace } from './sim/dealer.ts';
 import type { MissionWorld } from './sim/job.ts';
 import type { TerritoryMap } from './sim/territory.ts';
 import type { DealerMarks } from './ui/dealers.ts';
+import type { GiverBodies } from './ui/givers.ts';
 import type { EnforcerMarks } from './ui/enforcers.ts';
 import type { FireCrews } from './ui/fire-crews.ts';
 import type { OfficerMarks } from './ui/officers.ts';
@@ -91,6 +93,8 @@ export interface Session {
   dealers: readonly DealerPlace[];
   /** Their marks on the maps and their bodies in the crowd, moved when they move. */
   dealerMarks: DealerMarks;
+  /** The contacts of spec section 18 standing on their corners, who begin that same list. */
+  giverBodies: GiverBodies;
   /** The enforcers of spec section 17.2 on the maps and in the crowd, with the dealers behind them. */
   enforcerMarks: EnforcerMarks;
   /** The events and the street crime of spec section 20.5, as people and marks. */
@@ -133,6 +137,8 @@ export interface Session {
   casualties: CasualtyView;
   /** The guns in the hands of the police on foot who have them out (spec section 14). */
   guns: OfficerGunView;
+  /** The marker over each mission contact in view (spec section 18). */
+  markers: ContactMarkers;
   /** The pause menu of spec section 12. While it is open a single-player session does not step. */
   pause: PauseMenu;
   /** The room of spec section 21, offline until a game is opened or a link names one. */
