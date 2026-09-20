@@ -171,10 +171,10 @@ function carriagewayOf(window: PavementWindow, ribbons: RoadRibbons): Region[] {
       }
       close();
     }
-    // Where two mouths meet at a shallow angle, the junction's fan leaves some
-    // of a road's own carriageway between its cut and the node, and that is no
-    // place for a pavement. So every stretch of segments a junction takes is
-    // added whole.
+    // A junction's fan still leaves some of a road's own carriageway between
+    // its cut and the node, where the ring is not the outline of what the
+    // mouths cover (issue #542), and that is no place for a pavement. So every
+    // stretch of segments a junction takes is added whole.
     if (run.gaps.length === 0) continue;
     let taken: Point[] = [];
     for (let k = 0; k + 1 < run.points.length; k++) {

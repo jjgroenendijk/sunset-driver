@@ -189,7 +189,13 @@ corridors in `docs/corridors.md`.
   other. Each road is a mouth, cut back along its curve to where its kerbs leave its neighbours'
   kerbs plus the fillet that rounds the corner; `MAX_CUT` caps it, and a mouth that bends inside its
   cut is cut where it leaves the straight line, because the corners are found on straight kerb
-  lines. Two mouths at a shallow angle get a short cut and overlap beyond it. `gaps` lists per curve
+  lines. Two mouths at a shallow angle get a short cut and overlap beyond it, and their corner is
+  closed straight from one kerb to the other rather than at a point between the two: a point
+  between the kerbs stands inside both carriageways, and the fan then draws neither (issue #299). A
+  mouth is also cut back to the kerbs its neighbours start on, where those stand inside its own
+  carriageway. Two mouths that turn more than a right angle apart start their kerbs further along
+  each other than their kerb lines meet, so the corners alone leave that ground to no one.
+  `gaps` lists per curve
   the stretches the junctions take, as curve distances with the exact cut points, so a chunk that
   holds a road but not its junction cuts the road where the junction expects. A chunk carries the
   junctions whose node stands in it and every run carries its curve's gaps.
@@ -216,8 +222,9 @@ corridors in `docs/corridors.md`.
   as the lofts and the fans draw it. One pass takes the carriageway and the ground outside the chunk
   away, and each tier then takes what it claims, the widest first. So no pavement lies on a
   carriageway, no ring of it crosses itself, and a corner with no room has none. The carriageway
-  holds every segment a junction takes, because the fan of two mouths at a shallow angle leaves
-  some of a road's own carriageway out; that ground is left bare. Each claimed stretch ends on the
+  holds every segment a junction takes, because a fan still leaves some of a road's own carriageway
+  out where the ring is not the outline of what the mouths cover (issue #542); that ground is left
+  bare. Each claimed stretch ends on the
   loft's frame, or a sliver of verge lies on the deck it runs onto.
 - `buildCarve(terrain, roads, junctions)` (`carve.ts`) is the terrain the roads leave (spec section
   7.1). It is built on demand like the graph, the footprint and the parcels: `world.terrain` stays

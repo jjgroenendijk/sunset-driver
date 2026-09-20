@@ -223,6 +223,15 @@ function junctionAt(node: RoadNode, roads: readonly RoadCurve[], graph: RoadGrap
     a.cut = Math.max(a.cut, corner.first);
     b.cut = Math.max(b.cut, corner.second);
   }
+  // The corners alone do not cut a mouth back far enough to hold the kerbs its
+  // neighbours start on, so each mouth reaches for all of them once they are
+  // all placed. A mouth that bends is cut where it leaves its straight line,
+  // whatever this asks.
+  for (const mouth of mouths) {
+    for (const other of mouths) {
+      if (other !== mouth) mouth.cut = Math.max(mouth.cut, Math.min(mouth.straight, kerbReach(mouth, other)));
+    }
+  }
 
   let tier: RoadTier = (mouths[0] as Mouth).tier;
   for (const mouth of mouths) if (widthRank(mouth.tier) > widthRank(tier)) tier = mouth.tier;
@@ -313,9 +322,12 @@ function cornerOf(node: RoadNode, a: Mouth, b: Mouth, limit: number): Corner {
     const short = kerb === undefined ? 0 : Math.min(limit, Math.max(a.outer, b.outer));
     const s = kerb === undefined ? 0 : Math.max(0, Math.min(short, kerb.s, outer?.s ?? 0));
     const u = kerb === undefined ? 0 : Math.max(0, Math.min(short, kerb.u, outer?.u ?? 0));
+    // Straight across from one kerb to the other, and not their middle: a
+    // middle point stands inside both carriageways, and the junction's fan
+    // then leaves the ground between it and the kerbs bare (issue #299).
     return {
-      kerb: [midpoint(step(kerbA, a, s), step(kerbB, b, u))],
-      outer: [midpoint(step(outerA, a, s), step(outerB, b, u))],
+      kerb: [step(kerbA, a, s), step(kerbB, b, u)],
+      outer: [step(outerA, a, s), step(outerB, b, u)],
       first: s,
       second: u,
     };
@@ -391,8 +403,24 @@ function step(p: Point, mouth: Mouth, s: number): Point {
   return { x: p.x + mouth.dx * s, y: p.y + mouth.dy * s };
 }
 
-function midpoint(a: Point, b: Point): Point {
-  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+/**
+ * Metres along mouth `a` that the junction has to cover for the kerbs another
+ * mouth `b` starts on to stand inside `a`'s own carriageway. The carriageway is
+ * drawn as a fan from the node out to each mouth's cut, so ground beyond a
+ * mouth's cut is drawn by no mouth at all. Where two mouths turn more than a
+ * right angle apart, `b` starts its kerb further along `a` than the two kerb
+ * lines meet, and without this that corner of `b` is left bare (issue #299).
+ */
+function kerbReach(a: Mouth, b: Mouth): number {
+  let reach = 0;
+  for (const side of [1, -1]) {
+    // Where b's kerb stands at the node, in a's own along and across.
+    const x = side * b.dy * b.kerb;
+    const y = -side * b.dx * b.kerb;
+    const along = x * a.dx + y * a.dy;
+    if (along > reach && Math.abs(y * a.dx - x * a.dy) <= a.kerb) reach = along;
+  }
+  return reach;
 }
 
 /**
