@@ -118,6 +118,17 @@ interface SeedOptions {
   ramps?: boolean;
 }
 
+/**
+ * One runnable run of a boardwalk line, as the trace left it: the id of the
+ * road laid on it or -1, and the ways on to the network its two ends found,
+ * each with the end of the run it arrives at.
+ */
+interface BoardwalkRun {
+  id: number;
+  line: readonly Point[];
+  ways: [Point[], Point][];
+}
+
 /** The roads of a world, and the boardwalk each beach was given. */
 export interface TracedRoads {
   roads: RoadCurve[];
@@ -374,25 +385,34 @@ class RoadTracer extends IslandLinkTrace {
    */
   private traceBoardwalk(beach: Beach, i: number): number {
     this.network.release(-1 - i);
+    const spurs: BoardwalkRun[] = [];
     for (const line of this.runnableRuns(beach.boardwalk, STREET.maxGrade)) {
       if (polylineLength(line) < MIN_BOARDWALK) continue;
-      const laid = this.layBoardwalk(beach, i, line);
-      if (laid >= 0) return laid;
+      const run = this.layBoardwalk(beach, i, line);
+      if (run.id >= 0) return run.id;
+      if (run.ways.length > 0) spurs.push(run);
     }
-    return -1;
+    // No run could be laid as one road with its way on. The fold that refused
+    // them is in the way on and not in the boardwalk, so it is laid as a road
+    // of its own instead (issue #315).
+    return this.spurBoardwalk(spurs);
   }
 
   /**
-   * Lay one runnable run of a boardwalk line as a street, and give back its id
-   * or -1. The run is held while its ends reach for the network, so neither end
-   * runs back along the boardwalk itself.
+   * Lay one runnable run of a boardwalk line as a street. The run is held while
+   * its ends reach for the network, so neither end runs back along the
+   * boardwalk itself. The ways on it found come back with it, for the second
+   * chance {@link spurBoardwalk} gives a run that was not laid.
    */
-  private layBoardwalk(beach: Beach, i: number, line: readonly Point[]): number {
+  private layBoardwalk(beach: Beach, i: number, line: readonly Point[]): BoardwalkRun {
     this.network.reserve(-1 - i, 'street', line);
     const head = this.besideOwnCrossing(line, this.reachNetwork(line[0] as Point, [...line].reverse()));
     const tail = this.besideOwnCrossing(line, this.reachNetwork(line[line.length - 1] as Point, line));
     this.network.release(-1 - i);
-    if (head.length === 0 && tail.length === 0) return -1;
+    const ways: [Point[], Point][] = [];
+    if (head.length > 0) ways.push([head, line[0] as Point]);
+    if (tail.length > 0) ways.push([tail, line[line.length - 1] as Point]);
+    if (ways.length === 0) return { id: -1, line, ways };
     // A way on to the network that turns back over the boardwalk has the turn
     // cut out of it. Where that cannot be done it is dropped, as long as the
     // other end still reaches the network.
@@ -401,7 +421,30 @@ class RoadTracer extends IslandLinkTrace {
       const points = this.untangled([...[...from].reverse(), ...line, ...to], 'street', STREET.maxGrade);
       // A cut that takes the boardwalk itself below its length leaves no boardwalk.
       if (points === undefined || keptLength(beach.boardwalk, points) < MIN_BOARDWALK) continue;
-      return this.addCurve('street', points, [])?.id ?? -1;
+      const laid = this.addCurve('street', points, []);
+      if (laid !== undefined) return { id: laid.id, line, ways };
+    }
+    return { id: -1, line, ways };
+  }
+
+  /**
+   * A boardwalk laid as two roads rather than one, for the runs whose way on to
+   * the network folds back over them. The way on goes in as a street of its own
+   * and the boardwalk starts where it ends, so the fold that one road would
+   * have had cut out of it — taking the boardwalk with it — is the junction
+   * between two roads instead. The id of the boardwalk, or -1.
+   *
+   * One way on is laid at most, however many runs are offered: it is in the
+   * network as soon as it is added, and a second would have to keep off it.
+   */
+  private spurBoardwalk(runs: readonly BoardwalkRun[]): number {
+    for (const run of runs) {
+      for (const [way, end] of run.ways) {
+        const spur = this.untangled([...[...way].reverse(), end], 'street', STREET.maxGrade);
+        if (spur === undefined) continue;
+        if (this.addCurve('street', spur, []) === undefined) continue;
+        return this.addCurve('street', [...run.line], [])?.id ?? -1;
+      }
     }
     return -1;
   }
