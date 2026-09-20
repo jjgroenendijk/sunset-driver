@@ -18,6 +18,7 @@ import { Heightfield } from '../src/world/heightfield.ts';
 import { isResort } from '../src/world/beaches.ts';
 import { buildBuildings, type BuildingKind } from '../src/world/buildings.ts';
 import { buildParcels, type ParcelOwner } from '../src/world/parcels.ts';
+import { buildShops, SHOP_KINDS, type ShopKind } from '../src/world/shops.ts';
 import { buildTensorField } from '../src/world/tensor.ts';
 import { generateWorld } from '../src/world/world.ts';
 import type { Point, RoadTier, Zone } from '../src/world/types.ts';
@@ -303,6 +304,20 @@ if (shown.includes('arterial')) {
   for (const s of world.tram.stops) mark(s.x, s.y, [255, 60, 160], 2);
 }
 
+// The shops of spec section 16.1, one dot per trade on the shopfront the
+// building gives it. They are what a district's high street is for, and where
+// `render-preview.ts --shop` takes its picture.
+const SHOP_COL: Record<ShopKind, [number, number, number]> = {
+  weapons: [255, 70, 70],
+  workshop: [255, 150, 40],
+  convenience: [90, 220, 90],
+  clothing: [230, 90, 220],
+  clinic: [90, 200, 255],
+  broker: [250, 240, 90],
+};
+const shops = everyTier ? buildShops(world, buildings) : [];
+for (const shop of shops) mark(shop.x, shop.y, SHOP_COL[shop.kind], 2);
+
 writeFileSync(out, encodePng(n, n, rgb));
 const perTier = TIER_ORDER.map((t) => `${t} ${world.roads.filter((r) => r.tier === t).length}`).join(', ');
 console.log(
@@ -350,6 +365,10 @@ console.log(
     (['tower', 'mid-rise', 'parking-garage', 'shop-row', 'house', 'warehouse', 'roadhouse'] as BuildingKind[])
       .map((k) => `${k} ${kinds[k] ?? 0}`)
       .join(', '),
+);
+console.log(
+  `  shops: ${shops.length} over ${new Set(shops.map((shop) => shop.district)).size} districts — ` +
+    SHOP_KINDS.map((kind) => `${kind} ${shops.filter((shop) => shop.kind === kind).length}`).join(', '),
 );
 const resorts = world.beaches.filter(isResort);
 console.log(

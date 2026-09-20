@@ -72,8 +72,10 @@ roads tan — with bridge decks orange, bores through the ground cyan, the slots
 yellow and their interchanges lime. It strokes the field's major direction, dark where the field is
 decided and pale where influences cancel. Corridors are outlined too: the ground under a deck in
 amber with its pillars as dark dots, the tram's lane and route in magenta, its stops pink and its
-level crossings white. Beaches show their waterline in pale blue and their dune line in sand, with a
-resort's boardwalk line and car parks in violet and its pier in brown. The footprint of the roads is
+level crossings white, and each shop of spec section 16.1 a dot on its own front: weapons red,
+workshop orange, convenience green, clothing pink, clinic pale blue, broker yellow. Beaches show
+their waterline in pale blue and their dune line in sand, with a resort's boardwalk line and car
+parks in violet and its pier in brown. The footprint of the roads is
 filled in dark grey under all of it, each parcel in the colour of its owner, and each building's lot
 in the colour of what stands on it: towers white, mid-rise pale blue, shop rows orange, houses red,
 warehouses grey, roadhouses violet.
