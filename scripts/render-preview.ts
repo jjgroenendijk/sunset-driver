@@ -70,6 +70,11 @@
  *                    player, to compare the silhouettes.
  *   --hover          the index of the laid pickup to draw grown, as the one
  *                    under the mouse.
+ *   --gallery        lay the models of one subject in rows ahead of the player
+ *                    and frame them: `vehicles` for the roster of spec section
+ *                    11.3, `people` for the looks of 11.1, `props` for the
+ *                    goods the counters of 16.1 sell. `--pickups` is the same
+ *                    picture of the arsenal.
  *   --shop           stand inside the nearest shop of a trade (spec section
  *                    16.1): weapons, workshop, convenience, clothing, clinic,
  *                    broker, or `any`. The vehicle waits at the kerb.
@@ -191,7 +196,9 @@ const request: PreviewRequest = {
   seed,
   x: tram?.x ?? num('x', junction?.x ?? 0),
   y: tram?.y ?? num('y', junction?.y ?? 0),
-  distance: num('distance', BASE_DISTANCE),
+  // Left out, the preview picks it: the game's own distance, or what it takes
+  // to hold a gallery.
+  ...(options.has('distance') ? { distance: num('distance', BASE_DISTANCE) } : {}),
   heading: (num('heading', 0) * Math.PI) / 180,
   speed: num('speed', 0),
   width: num('width', 960),
@@ -219,6 +226,7 @@ const request: PreviewRequest = {
   ...(options.has('pickups') ? { pickups: true } : {}),
   ...(options.has('hover') ? { hover: num('hover', 0) } : {}),
   ...(options.has('shop') ? { shop: (options.get('shop') as string) || 'any' } : {}),
+  ...(options.has('gallery') ? { gallery: options.get('gallery') as string } : {}),
   ...(options.has('fast') ? { fast: true } : {}),
 };
 
@@ -250,3 +258,6 @@ console.log(
     ` ${result.traffic} vehicles of traffic, ${result.parked} parked cars, ${result.pedestrians} pedestrians;` +
     ` in view ${result.holds.buildings} buildings, ${result.holds.lamps} lamps, ${result.holds.posters} posters`,
 );
+// The gallery is read left to right, near row first, so the picture can be
+// named part by part without counting the rows back.
+if (result.gallery !== undefined) console.log(`gallery: ${result.gallery.join(', ')}`);

@@ -20,6 +20,7 @@ times before judging a performance change.
 | Does the renderer draw anything at all? | `npm run test:render` |
 | Does the frame the player sees look right? | `node scripts/render-preview.ts <seed> out.png` |
 | Do several seeds look right, in one image? | `node scripts/render-sheet.ts 4 sheet.png` |
+| Do the vehicles, the people or the shop goods look right? | `node scripts/render-preview.ts <seed> out.png --gallery=vehicles` |
 | Did that change cost frame time? | `node scripts/render-profile.ts <seed>` |
 | Is the map or the minimap right? | `node scripts/map-preview.ts <seed> out.png` |
 | Whose turf is whose, and how it spreads? | `node scripts/map-preview.ts <seed> out.png --turf --day=8` |
