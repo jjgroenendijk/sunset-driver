@@ -14,13 +14,22 @@
  * middle of the street that passes under the deck is a pier the traffic drives
  * into.
  *
+ * A pier is a solid: `corridor-mesh.ts` draws the column and `ground-bodies.ts`
+ * stands a collider in it, both from {@link PIER_HALF} and the two numbers
+ * beside it, so the column a car hits is the column it can see.
+ *
  * Built on demand from the world description, like the footprint and the
  * parcels. Pure: the same world gives the same piers, in the same order.
  */
+import { atan2 } from '../core/libm.ts';
 import { clamp, direction, dist } from '../core/math.ts';
+import { DECK_SOFFIT } from './decks.ts';
+import { buildRoadGraph } from './graph.ts';
 import { Heightfield } from './heightfield.ts';
+import { buildJunctions } from './junctions.ts';
+import { RoadRibbons } from './ribbon.ts';
 import { footprintHalfWidth, TIERS } from './tiers.ts';
-import type { Point, RoadCurve, WorldDescription } from './types.ts';
+import type { Point, RoadCurve, RoadTier, WorldDescription } from './types.ts';
 
 /** Metres between the pier bays under a deck. */
 const PIER_SPACING = 25;
@@ -34,6 +43,18 @@ const DECK_VERGE = 2;
 const WET_SAMPLE = 4;
 /** Side of one bucket of the ground index, in metres. */
 const INDEX_CELL = 48;
+
+/** Metres each side of a pier's centre, across the deck and along it. A highway stands on wider piers. */
+export const PIER_HALF: Record<RoadTier, number> = { highway: 1, arterial: 0.8, street: 0.6, alley: 0.5, dirt: 0.5 };
+/** Metres a pier is sunk into the ground under it, so no gap shows where the ground slopes. */
+export const PIER_FOOTING = 0.6;
+/** Metres a pier reaches up into its deck, so no gap shows under the soffit. */
+export const PIER_OVERLAP = 0.1;
+/**
+ * The shortest pier worth standing, in metres. A deck lower than this over the
+ * ground is on its ramp, and neither the mesh nor the collider is built there.
+ */
+export const MIN_PIER = 0.5;
 
 /** One pier: where its foot stands, and the segment of the deck it carries. */
 export interface DeckPier {
@@ -88,8 +109,17 @@ export function overWater(hf: Heightfield, sea: number, a: Point, b: Point): boo
   return false;
 }
 
-/** Runs of neighbouring deck segments of one curve, split by whether they stand over water. */
-export function deckRuns(road: RoadCurve, wet: (a: Point, b: Point) => boolean, want: boolean): { from: number; to: number }[] {
+/**
+ * Runs of neighbouring deck segments of one line, split by whether they stand
+ * over water. A line the network has not taken yet has no id and no nodes, so
+ * this asks for the points and the decks alone: `water-lift.ts` reads the runs
+ * of a draft.
+ */
+export function deckRuns(
+  road: { points: readonly Point[]; bridges: readonly number[] },
+  wet: (a: Point, b: Point) => boolean,
+  want: boolean,
+): { from: number; to: number }[] {
   const runs: { from: number; to: number }[] = [];
   let open: { from: number; to: number } | undefined;
   for (const at of road.bridges) {
@@ -163,6 +193,44 @@ function nearestDeck(road: RoadCurve, p: Point): number {
     best = i;
   }
   return best;
+}
+
+/** One pier as a solid: a square column, square to the deck it carries. */
+export interface PierColumn {
+  x: number;
+  y: number;
+  /** Metres each side of the centre, across the deck and along it. */
+  half: number;
+  /** The height of the underside of the deck over the column, in metres. */
+  soffit: number;
+  /** The angle the column is turned by about the vertical, so its sides face along and across the deck. */
+  angle: number;
+}
+
+/**
+ * Every pier of a world as a column, in the order {@link deckPiers} lists them.
+ * The top is the underside of the deck the pier carries; how far down the
+ * column reaches is the ground under the foot, which the caller holds
+ * (`ground-bodies.ts` reads the carved height the wheels drive on).
+ */
+export function pierColumns(world: WorldDescription): PierColumn[] {
+  const roads = world.roads;
+  const ribbons = new RoadRibbons(world.terrain, roads, buildJunctions(roads, buildRoadGraph(roads)));
+  const out: PierColumn[] = [];
+  for (const pier of deckPiers(world)) {
+    const road = roads[pier.curve] as RoadCurve;
+    const frame = ribbons.frameAt(pier.curve, pier.segment, pier.x, pier.y);
+    out.push({
+      x: pier.x,
+      y: pier.y,
+      half: PIER_HALF[road.tier],
+      soffit: frame.height + frame.bank * pier.across - DECK_SOFFIT,
+      // Across the road is along it turned a quarter, so the angle of the
+      // column about the vertical is the angle of the across vector.
+      angle: atan2(frame.acrossY, frame.acrossX),
+    });
+  }
+  return out;
 }
 
 /** The point a given distance along a polyline, and the way the line runs there. */

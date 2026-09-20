@@ -23,6 +23,7 @@ import { TramLine } from './sim/tram.ts';
 import { AmbientWildlife } from './sim/wildlife.ts';
 import type { WorldScene } from './render/world-scene.ts';
 import { roadDecks } from './world/decks.ts';
+import { pierColumns } from './world/piers.ts';
 import { SurfaceIndex } from './world/surface.ts';
 import type { WorldDescription } from './world/types.ts';
 
@@ -77,8 +78,10 @@ export function buildCity(seed: number, description: WorldDescription, world: Wo
     surfaceAt: (x, y) => surfaces.at(x, y),
     seaLevel: description.water.seaLevel,
     // A bridged segment carves no ground, so the deck is the only thing to
-    // drive on there and the physics is given it as a solid.
+    // drive on there and the physics is given it as a solid, and so are the
+    // piers that carry it (spec section 6.3).
     decks: roadDecks(description),
+    piers: pierColumns(description),
     traffic,
     crowd,
     tram,

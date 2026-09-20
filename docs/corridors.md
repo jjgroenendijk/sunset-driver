@@ -45,6 +45,12 @@ they are laid in `src/world`, and how `src/render` draws them.
   in the middle of the street that passes under a deck is one the traffic drives into.
 - A pier carries the segment it stands under and how far `across` that segment it stands, measured
   as a road frame measures across. The renderer needs both to find the underside of the deck.
+- `PIER_HALF`, `PIER_FOOTING`, `PIER_OVERLAP` and `MIN_PIER` (`piers.ts`) are the one table of a
+  pier's solid. `corridor-mesh.ts` draws the column from them and `pierColumns(world)` gives the
+  same column to the physics, which stands a cuboid in it (`docs/sim-and-ui.md`), so the pier a car
+  hits is the pier it can see (issue #304). `DECK_SOFFIT` (`decks.ts`) is how far under the road
+  surface the underside of a deck stands; `road-section.ts` splits it into the `SKIRT` and the
+  `DECK_DEPTH` it draws.
 
 ## The tram track
 
@@ -82,5 +88,7 @@ they are laid in `src/world`, and how `src/render` draws them.
 - The game camera is pitched at 58°, so a pier under a wide deck shows only near the top of the
   frame. Stand the player about 30 m from a deck on its +y side, with `--distance=55`, to look at
   one: the camera looks towards -y.
-- A strait deck stands about 1 m over the sea, so its underside is under the water and the piers
-  below it cannot be seen (#304). The elevated highways stand high enough to show theirs.
+- A deck over water is lifted until `WATER_CLEARANCE` of air stands under it (`water-lift.ts`,
+  `docs/roads.md`), so the piers below one show as the elevated highways' always did. A deck with a
+  junction or a bore at its abutment has nowhere to ramp and still stands low, and the columns
+  under it are short or drawn not at all.

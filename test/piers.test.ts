@@ -14,7 +14,7 @@ import {
 import { buildLayers, chunkAt, ChunkSource } from '../src/world/chunks.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
-import { deckPiers } from '../src/world/piers.ts';
+import { deckPiers, pierColumns, PIER_HALF } from '../src/world/piers.ts';
 import { RoadRibbons } from '../src/world/ribbon.ts';
 import { footprintHalfWidth, TIERS } from '../src/world/tiers.ts';
 import { tramTrack } from '../src/world/tram-track.ts';
@@ -71,6 +71,28 @@ describe('piers', () => {
     expect((box.min.x + box.max.x) / 2).toBeCloseTo(pier.x, 3);
     expect((box.min.z + box.max.z) / 2).toBeCloseTo(pier.y, 3);
     expect(geometry?.getAttribute('kind').getX(0)).toBe(SURFACE_STRUCTURE);
+  });
+
+  it('gives the physics the same column the picture draws', () => {
+    // One table of numbers, read by `corridor-mesh.ts` and by
+    // `ground-bodies.ts`, so the column a car hits is the column it can see.
+    const w = worldOf(world(dip(-5), []), [viaduct([1, 2])]);
+    const ribbons = new RoadRibbons(w.terrain, w.roads);
+    const piers = deckPiers(w);
+    const columns = pierColumns(w);
+    expect(columns).toHaveLength(piers.length);
+    for (let i = 0; i < piers.length; i++) {
+      const pier = piers[i] as (typeof piers)[number];
+      const column = columns[i] as (typeof columns)[number];
+      const frame = ribbons.frameAt(pier.curve, pier.segment, pier.x, pier.y);
+      expect(column.x).toBeCloseTo(pier.x, 6);
+      expect(column.y).toBeCloseTo(pier.y, 6);
+      expect(column.half).toBe(PIER_HALF.highway);
+      expect(column.soffit).toBeCloseTo(frame.height + frame.bank * pier.across - SKIRT - DECK_DEPTH, 6);
+      // The column is square to the road, so its own x runs across the deck.
+      expect(Math.cos(column.angle)).toBeCloseTo(frame.acrossX, 6);
+      expect(Math.sin(column.angle)).toBeCloseTo(frame.acrossY, 6);
+    }
   });
 
   it('draws no column under a deck that stands on the ground', () => {

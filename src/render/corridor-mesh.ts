@@ -22,6 +22,7 @@ import { BufferGeometry, Vector3 } from 'three';
 import { LoftGeometry } from 'three/examples/jsm/geometries/LoftGeometry.js';
 import type { ChunkPier, WorldChunk } from '../world/chunks.ts';
 import type { RoadFrame, RoadRibbons } from '../world/ribbon.ts';
+import { MIN_PIER, PIER_FOOTING, PIER_HALF, PIER_OVERLAP } from '../world/piers.ts';
 import { piecesOf, type Piece } from '../world/road-pieces.ts';
 import { TRAM_LANE } from '../world/tiers.ts';
 import type { TramCrossing } from '../world/tram-track.ts';
@@ -44,14 +45,6 @@ import {
   type SectionPoint,
 } from './road-section.ts';
 
-/** Metres each side of a pier's centre, across the deck and along it. A highway stands on wider piers. */
-const PIER_HALF: Record<RoadTier, number> = { highway: 1, arterial: 0.8, street: 0.6, alley: 0.5, dirt: 0.5 };
-/** Metres a pier is sunk into the ground under it, so no gap shows where the ground slopes. */
-const PIER_FOOTING = 0.6;
-/** Metres a pier reaches up into its deck, so no gap shows under the soffit. */
-const PIER_OVERLAP = 0.1;
-/** The shortest pier worth drawing, in metres. A deck lower than this is on its ramp. */
-const MIN_PIER = 0.5;
 /**
  * Metres the lane stands above the carriageway. It is over the paint, so the
  * centre line of the road it runs down does not show between the rails.

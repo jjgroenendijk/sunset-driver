@@ -13,6 +13,7 @@
  */
 import { BufferAttribute, BufferGeometry, Color, ShapeUtils, Vector2, Vector3 } from 'three';
 import { LoftGeometry } from 'three/examples/jsm/geometries/LoftGeometry.js';
+import { DECK_SOFFIT } from '../world/decks.ts';
 import type { RoadFrame } from '../world/ribbon.ts';
 import { footprintHalfWidth, TIERS } from '../world/tiers.ts';
 import type { Point, RoadTier } from '../world/types.ts';
@@ -70,8 +71,13 @@ export const SURFACE_TRAM_LANE = 2;
 export const SURFACE_RAIL = 3;
 export const SURFACE_CROSSING = 4;
 
-/** Metres of structure under a bridge deck, down from the skirt of its surface. */
-export const DECK_DEPTH = 1.1;
+/**
+ * Metres of structure under a bridge deck, down from the skirt of its surface.
+ * The skirt and the beam together are `DECK_SOFFIT`, which is the one number
+ * the world measures a clearance under a deck by; this is the part drawn as a
+ * beam.
+ */
+export const DECK_DEPTH = DECK_SOFFIT - SKIRT;
 
 /** One point of a cross section: how far across the road it stands, and how high. */
 export interface SectionPoint {

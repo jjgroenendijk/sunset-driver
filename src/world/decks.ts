@@ -22,6 +22,15 @@ import type { Point, RoadCurve, RoadTier, WorldDescription } from './types.ts';
 /** Metres a parapet stands above the deck. The car is kept on the bridge by it, as a driver is. */
 export const PARAPET_HEIGHT = 0.9;
 
+/**
+ * Metres of structure under the surface a deck carries: the skirt the road's
+ * edge is buried in and the beam under it, which `road-mesh.ts` sweeps and a
+ * pier stands up into. The underside of a deck is this far below the line the
+ * road drives, so it is what any clearance under a deck is measured from.
+ * `road-section.ts` splits it into the two parts it draws.
+ */
+export const DECK_SOFFIT = 1.9;
+
 /** One point of a deck: where it stands on the map, and how high the road drives there. */
 export interface DeckPoint {
   x: number;

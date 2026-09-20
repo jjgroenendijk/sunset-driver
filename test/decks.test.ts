@@ -3,6 +3,7 @@ import { EMPTY_INPUT } from '../src/sim/input.ts';
 import { initPhysics, SimPhysics, type Ground } from '../src/sim/physics.ts';
 import { createSimState, stepSim } from '../src/sim/simulation.ts';
 import { PARAPET_HEIGHT, roadDecks, type DeckSpan } from '../src/world/decks.ts';
+import { PIER_HALF, type PierColumn } from '../src/world/piers.ts';
 import { footprintHalfWidth } from '../src/world/tiers.ts';
 import type { RoadCurve, WorldDescription } from '../src/world/types.ts';
 import { DRY } from './helpers.ts';
@@ -152,5 +153,56 @@ describe('a car driving onto a bridge', () => {
     for (let i = 0; i < 60; i++) stepSim(state, EMPTY_INPUT, physics);
     for (let i = 0; i < 300; i++) stepSim(state, { ...EMPTY_INPUT, throttle: 0.4 }, physics);
     expect(state.vehicle.y).toBeGreaterThan(-1);
+  });
+});
+
+
+describe('a car driven into a pier', () => {
+  beforeAll(async () => {
+    await initPhysics();
+  });
+
+  /** One pier of a highway deck, standing on level ground in the middle of the map. */
+  function column(): PierColumn {
+    return { x: 0, y: 0, half: PIER_HALF.highway, soffit: 6, angle: 0 };
+  }
+
+  /** Level ground under an elevated deck, with the piers the caller gives it. */
+  function under(piers: readonly PierColumn[] | undefined): Ground {
+    return {
+      heightAt: () => 0,
+      surfaceAt: () => 'asphalt',
+      seaLevel: DRY,
+      ...(piers === undefined ? {} : { piers }),
+    };
+  }
+
+  /** Drive east at the pier from forty metres short of it, and answer where the car ended. */
+  function ram(ground: Ground): number {
+    const state = createSimState(1);
+    const physics = new SimPhysics(ground, state);
+    physics.spawn(state, -40, 0, 0);
+    for (let i = 0; i < 60; i++) stepSim(state, EMPTY_INPUT, physics);
+    for (let i = 0; i < 400; i++) stepSim(state, { ...EMPTY_INPUT, throttle: 1 }, physics);
+    return state.player.x;
+  }
+
+  it('stops the car at the column rather than letting it through', () => {
+    // The car is a few metres long, so its middle stops short of the foot by
+    // more than the half-width of the column alone.
+    const stopped = ram(under([column()]));
+    expect(stopped).toBeLessThan(-PIER_HALF.highway);
+    // It drove the forty metres up to the column, rather than never moving.
+    expect(stopped).toBeGreaterThan(-12);
+  });
+
+  it('drives straight through where the piers are left out, which is what the fault was', () => {
+    expect(ram(under(undefined))).toBeGreaterThan(20);
+  });
+
+  it('stands no column under a deck that sits on the ground, as the picture draws none', () => {
+    // The soffit is under the foot of a ramp: too low for a column, and the
+    // renderer draws none there either.
+    expect(ram(under([{ ...column(), soffit: 0.2 }]))).toBeGreaterThan(20);
   });
 });
