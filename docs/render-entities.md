@@ -266,6 +266,13 @@ after dark is in `docs/lighting.md`, and the one interior the scene ever holds i
   it, so one mesh draws a saloon in every paint. A class with nothing in view is hidden, so it costs
   no draw. The traffic is evaluated at `tick - 1 + alpha`, the moment `smooth.ts` draws the player
   at, and a promoted vehicle is drawn from its record.
+- A bike is ridden, so `src/render/bike-rider.ts` puts a figure of boxes on it: a fourth instanced
+  mesh for the one ambient class with a saddle, written only for the bikes still driving their
+  tours. A promoted bike has nobody driving it and a parked one nobody on it, so neither takes an
+  instance. The figure cannot be the `CharacterModel` the player rides with (`rider.ts`), since the
+  whole class is one geometry, but it sits on the same `saddleOf` seat, grips and pegs and takes
+  the same `RIDE.lean`, so both riders move when the bike does. A strut is a box run between two
+  points, and `strutOf` in `traffic.ts` pitches and turns it into place.
 - `src/render/signals.ts` draws the traffic lights, and `TrafficView` owns it, so the game and the
   render preview draw them with no wiring of their own. Every head in view is one instance of the
   frame and three of the lens mesh, so the lights cost two draws. The lens colour is set each frame

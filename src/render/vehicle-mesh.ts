@@ -316,9 +316,10 @@ export interface Saddle {
   gripX: number;
   gripY: number;
   gripZ: number;
-  /** Where the boots stand on the pegs. */
+  /** Where the boots stand on the pegs, and how far out each peg stands. */
   pegX: number;
   pegY: number;
+  pegZ: number;
 }
 
 /** The saddle of a class ridden astride, and undefined on everything else. */
@@ -338,6 +339,7 @@ function saddle(spec: VehicleSpec): Saddle {
     gripZ: spec.halfWidth * 0.88,
     pegX: -spec.halfLength * 0.17,
     pegY: -spec.halfHeight * 1.23,
+    pegZ: spec.halfWidth * 0.68,
   };
 }
 
@@ -390,7 +392,7 @@ function motorcycle(spec: VehicleSpec): VehicleBox[] {
     // end of the bars and a mirror on a stalk out past it.
     boxes.push(box(length * 0.05, height * 1.1, width * 0.13, METAL, length * 0.36, height * 0.12, side * width * 0.19, false));
     boxes.push(box(length * 0.24, height * 0.15, width * 0.15, METAL, -length * 0.24, -height * 0.37, side * width * 0.18, false));
-    boxes.push(box(length * 0.08, 0.04, width * 0.18, METAL, seat.pegX, seat.pegY, side * width * 0.34, false));
+    boxes.push(box(length * 0.08, 0.04, width * 0.18, METAL, seat.pegX, seat.pegY, side * seat.pegZ, false));
     boxes.push(box(0.09, 0.09, 0.14, SEAT, seat.gripX, seat.gripY, side * seat.gripZ, false));
     boxes.push(box(0.04, height * 0.17, width * 0.2, METAL, seat.gripX, seat.gripY + height * 0.15, side * (seat.gripZ + 0.08), false));
   }
