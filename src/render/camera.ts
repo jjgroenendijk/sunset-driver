@@ -106,8 +106,9 @@ export interface CameraLook {
 /**
  * The game camera. Top down, it is tilted at a fixed pitch and only moves: it
  * leads the target in its direction of travel and pulls back as speed rises.
- * Its heading is north unless the Turn setting swings it past a building. The
- * chase views of `camera-view.ts` stand behind the player or at their eyes.
+ * Its heading is north until the Turn setting swings it past a building, and
+ * stays where that turn left it rather than swinging back. The chase views of
+ * `camera-view.ts` stand behind the player or at their eyes.
  */
 export class FollowCamera {
   readonly camera: PerspectiveCamera;

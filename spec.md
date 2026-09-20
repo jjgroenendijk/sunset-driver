@@ -503,8 +503,9 @@ Buildings page of the title screen and of the pause menu says what happens then:
   It climbs fast and comes down slowly. Pitch and heading do not change. A building that still
   hides the player is cut as with See-through.
 - **Turn.** The camera turns smoothly round the player, pitch held, to the nearest heading from
-  which no roof hides them. It keeps a heading while that heading sees, and turns back to north
-  once north sees again. A building that no heading clears is cut as with See-through.
+  which no roof hides them. It keeps that heading while the heading sees, and never turns back to
+  north on its own: a turn back is a movement the player did not ask for. A building that no
+  heading clears is cut as with See-through.
 - **Off.** Every building is drawn whole.
 
 ---
