@@ -12,13 +12,15 @@
  *
  * A light is a function of the tick alone. Nothing here is stepped or stored,
  * so a replay, a save and a vehicle evaluated far in the future all read the
- * same colour. A highway takes no signal: it meets other roads only at
- * interchanges.
+ * same colour. A highway takes no signal of its own: it meets other roads only
+ * at interchanges.
  *
  * A level crossing of the tram (spec section 13.2) always takes a signal, even
- * where only an alley joins the arterial. The tram crosses on the green of the
- * road it runs down, so the light is what holds the crossing traffic while it
- * passes.
+ * where only an alley joins the arterial, and even where an arterial meets a
+ * highway at an interchange. The tram crosses on the green of the road it runs
+ * down, so the light is what holds the crossing traffic while it passes. A
+ * crossing without one is a crossing nobody obeys: the tram halts and rings,
+ * and the traffic across it drives on (issue #302).
  */
 import { hashInts } from '../core/hash.ts';
 import { rngFor, Subsystem } from '../core/rng.ts';
@@ -112,7 +114,10 @@ export class TrafficSignals {
     this.byEdge = new Int32Array(graph.edges.length).fill(-1);
     for (const junction of map.junctions) {
       if (junction.mouths.length < 3) continue;
-      if (junction.mouths.some((mouth) => mouth.tier === 'highway')) continue;
+      // A highway takes no signal of its own, but a level crossing takes one
+      // wherever it stands: without it nothing holds the traffic while the tram
+      // passes, so the crossing is not one traffic obeys (spec section 6.3).
+      if (level[junction.node] !== 1 && junction.mouths.some((mouth) => mouth.tier === 'highway')) continue;
       const main = junction.mouths.find((mouth) => mouth.tier === 'arterial');
       if (main === undefined) continue;
       const found: SignalApproach[] = [];

@@ -146,7 +146,9 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   axis and the one across it, and a light is a function of the tick and the junction's seeded
   offset alone. `crossingOpen` is the phase the pedestrians of spec section 13.1 will wait for.
   `TrafficRoads.junctions` is what turns the lights on; a test that leaves it out gets none. A
-  level crossing of the tram takes a light whatever joins it, an alley included.
+  level crossing of the tram takes a light whatever joins it, an alley included, and a highway at
+  its interchange too: without one nothing holds the traffic while the tram crosses, so the tram
+  halted and rang at a crossing nobody obeyed (issue #302).
 - A light and a tour only agree for ever when the tour takes whole `SIGNAL_CYCLE`s. So a tour that
   meets a light is timed from one stop line, its `sync`: tick 0 is that line's green. The drive back
   to it is stretched to arrive on red, and `phaseOf` moves the vehicle by up to half a cycle so its
