@@ -80,8 +80,17 @@ export class RiverWater {
    * than {@link RIVER_DECK}, all its water one river above the mouth, and
    * crossing that river at 60° or more.
    */
-  spans(a: Point, b: Point): boolean {
+  spans(one: Point, two: Point): boolean {
     if (this.reaches.length === 0) return false;
+    // A span is the same span whichever end it is read from, and the answer
+    // has to be too: the two halves of a fill road are traced outward from its
+    // seed and one of them is then reversed, so a deck vetted here is asked
+    // about again with its ends the other way round. The middle sample and the
+    // reach it stands in both move with the direction, so the ends are put in
+    // one order before any of that is read.
+    const ordered = one.x < two.x || (one.x === two.x && one.y <= two.y);
+    const a = ordered ? one : two;
+    const b = ordered ? two : one;
     const run = dist(a.x, a.y, b.x, b.y);
     if (run > RIVER_DECK || run <= 0) return false;
     const wet = (x: number, y: number): boolean => this.hf.sample(x, y) < this.seaLevel + DRY_MARGIN;

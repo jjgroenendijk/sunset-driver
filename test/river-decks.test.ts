@@ -56,6 +56,21 @@ describe('river decks', () => {
     expect(water.spans({ x: 440, y: 0 }, { x: 560, y: 0 })).toBe(false);
   });
 
+  it('gives a span the same answer whichever end it is read from', () => {
+    // The two halves of a fill road are traced outward from its seed and one
+    // of them is then reversed, so a deck vetted here is asked about again
+    // with its ends the other way round. A span that answered one way and then
+    // the other left an arterial decked over open water (issue #519).
+    const ends: [Point, Point][] = [
+      [{ x: -60, y: 0 }, { x: 60, y: 0 }],
+      [{ x: -50, y: -30 }, { x: 50, y: 20 }],
+      [{ x: -63, y: -37 }, { x: 57, y: 23 }],
+      [{ x: -60, y: -100 }, { x: 60, y: 100 }],
+      [{ x: 440, y: 0 }, { x: 560, y: 0 }],
+    ];
+    for (const [a, b] of ends) expect(water.spans(a, b), `${a.x},${a.y} to ${b.x},${b.y}`).toBe(water.spans(b, a));
+  });
+
   it('bridges nothing on a map with no river', () => {
     const dry = new RiverWater([], Heightfield.create(3, 10), 0);
     expect(dry.spans({ x: -60, y: 0 }, { x: 60, y: 0 })).toBe(false);
