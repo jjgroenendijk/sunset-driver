@@ -64,6 +64,8 @@ import {
 } from './night-material.ts';
 import { wallGloss, wallSurface, weathered } from './wall-material.ts';
 import {
+  Fn,
+  If,
   attribute,
   float,
   fractalNoise,
@@ -229,8 +231,16 @@ function createFacadeMaterial(night: TslNode, late: TslNode): MeshStandardNodeMa
     positionWorld.z.div(40).floor(),
   );
   const finish = finishOf();
-  const glow = glowColour(finish.glow).mul(WINDOW_GAIN);
-  material.emissiveNode = glow.mul(glass).mul(litWindows(storey, finish.glow, finish.lit, late)).mul(night);
+  // As in the block material: nothing glows by day, so the night is drawn
+  // behind a branch on the uniform and a day frame draws none of it.
+  material.emissiveNode = Fn(() => {
+    const emissive = vec3(0).toVar();
+    If(night.greaterThan(0), () => {
+      const glow = glowColour(finish.glow).mul(WINDOW_GAIN);
+      emissive.assign(glow.mul(glass).mul(litWindows(storey, finish.glow, finish.lit, late)).mul(night));
+    });
+    return emissive;
+  })();
   return material;
 }
 
@@ -295,9 +305,6 @@ function createBlockMaterial(night: TslNode, late: TslNode, beacon: TslNode): Me
   const neon = neonColour(draw);
   const pastel = tint.mul(float(0.9).add(patch.mul(0.14)).add(grain.mul(0.06)));
 
-  // The wall itself: brick, stucco, siding, corrugated metal, tile or concrete
-  // as the building carries it, weathered by as much as its own age says.
-  const wall = weathered(wallSurface(tint, finish.wall, grain, patch), finish.age, grain);
   const glass = mix(rgb(TRIM).mul(0.7), rgb(GLAZING), glazed);
   // A tile and a slate roof take the weathering patch as their own colour, so
   // one street of houses is roofed in several shades of the same material.
@@ -324,9 +331,24 @@ function createBlockMaterial(night: TslNode, late: TslNode, beacon: TslNode): Me
     [BLOCK_CROWN, rgb(CROWN).mul(float(0.85).add(grain.mul(0.2)))],
     [BLOCK_BEACON, rgb(LAMP_OFF)],
   ];
-  let surface = wall;
-  for (const [id, colour] of dressed) surface = mix(surface, colour, is(part, id));
-  material.colorNode = mix(surface, glass, glassAt);
+  // The wall the building is really made of — brick, stucco, siding,
+  // corrugated metal, tile or concrete, weathered by as much as its own age
+  // says — is drawn only where the fragment is a wall. Every part of a building
+  // carries the same `part` value over the whole of a face, so the branch is
+  // taken by every fragment of a triangle together and the six materials cost
+  // nothing on a roof. Blended in with a `mix` instead, they were 1 ms of a
+  // frame in the core (`docs/performance.md`).
+  const plain = tint.mul(float(0.78).add(patch.mul(0.28)).add(grain.mul(0.16)));
+  let dressing = plain;
+  for (const [id, colour] of dressed) dressing = mix(dressing, colour, is(part, id));
+  material.colorNode = Fn(() => {
+    const surface = vec3(0).toVar();
+    surface.assign(mix(dressing, glass, glassAt));
+    If(is(part, BLOCK_WALL).greaterThan(0.5), () => {
+      surface.assign(weathered(wallSurface(tint, finish.wall, grain, patch), finish.age, grain));
+    });
+    return surface;
+  })();
 
   // How wide one column of windows stands on whichever part this is, and which
   // cell of that column the fragment is in. A floor read off the world height
@@ -350,17 +372,26 @@ function createBlockMaterial(night: TslNode, late: TslNode, beacon: TslNode): Me
     .add(stoneAt.mul(punchedAt.stone))
     .add(stuccoAt.mul(punchedAt.stucco))
     .add(portholeAt.mul(eye));
-  // The three parts that are lamps rather than lit surfaces: the neon of a
-  // Deco or a Miami edge, the floodlit crown of a tower, and the red aircraft
-  // beacon on the tallest roofs, which blinks on its own phase.
-  const lamps = neon
-    .mul(NEON_GAIN)
-    .mul(is(part, BLOCK_NEON))
-    .add(crownLight(neon, draw).mul(is(part, BLOCK_CROWN)))
-    .add(beaconLight(beacon, draw).mul(is(part, BLOCK_BEACON)));
-  const glow = glowColour(finish.glow).mul(WINDOW_GAIN);
-  const lit = litWindows(cell, finish.glow, finish.lit, late);
-  material.emissiveNode = glow.mul(window).mul(lit).add(lamps).mul(night);
+  // Nothing glows by day, and the night is one uniform, so the whole of it is
+  // drawn behind a branch every fragment of the frame takes together: a day
+  // frame skips the noise field the lit windows are drawn from as well as the
+  // lamps. The three parts that are lamps rather than lit surfaces are the neon
+  // of a Deco or a Miami edge, the floodlit crown of a tower, and the red
+  // aircraft beacon on the tallest roofs, which blinks on its own phase.
+  material.emissiveNode = Fn(() => {
+    const emissive = vec3(0).toVar();
+    If(night.greaterThan(0), () => {
+        const lamps = neon
+        .mul(NEON_GAIN)
+        .mul(is(part, BLOCK_NEON))
+        .add(crownLight(neon, draw).mul(is(part, BLOCK_CROWN)))
+        .add(beaconLight(beacon, draw).mul(is(part, BLOCK_BEACON)));
+      const glow = glowColour(finish.glow).mul(WINDOW_GAIN);
+      const lit = litWindows(cell, finish.glow, finish.lit, late);
+      emissive.assign(glow.mul(window).mul(lit).add(lamps).mul(night));
+    });
+    return emissive;
+  })();
   // Render, brick and felt are rough; glass, a solar panel and water are not.
   const mirror = curtainAt.mul(seeThrough);
   const smooth = glassAt.add(is(part, BLOCK_SOLAR)).add(is(part, BLOCK_WATER)).add(mirror);
