@@ -44,6 +44,7 @@ import type { Camera, Scene } from 'three';
 import { START_TICK } from '../sim/simulation.ts';
 import { weatherAt } from '../sim/weather.ts';
 import { daylightAt } from './daylight.ts';
+import { uploadLut } from './lut-upload.ts';
 import {
   gradeAt,
   gradeStep,
@@ -155,6 +156,12 @@ export class PostChain {
   private settings: PostQuality;
   /** Which rebuild of the grade the table holds. */
   private step = -1;
+  /**
+   * Whether the cube reaches the GPU. False takes the grade out of the graph
+   * drawn, because a grade that cannot be uploaded reads a cube of zeros and
+   * turns every pixel black.
+   */
+  private gradable = true;
   /** The world's seed, which with the tick is what the weather is read from. */
   private readonly seed: number;
 
@@ -194,6 +201,11 @@ export class PostChain {
     // three.js 0.186 asks for them anyway, and every frame then fills the
     // console with errors. Nothing reads them: the cube is sampled at one size.
     this.lut.generateMipmaps = false;
+    // The renderer allocates the texture and transfers nothing into it;
+    // `lut-upload.ts` writes the cube itself, in one copy rather than the
+    // sixteen slices three.js would write and some Dawn builds refuse.
+    this.lut.source.dataReady = false;
+    this.lut.needsUpdate = true;
 
     // A session starts at 08:00, as the scene does, so the first frame is graded.
     this.time = START_TICK;
@@ -215,7 +227,13 @@ export class PostChain {
     writeLut(gradeAt(light, weatherAt(this.seed, tick)), this.graded);
     const texels = this.lut.image.data as Uint16Array;
     for (let i = 0; i < LUT_LENGTH; i++) texels[i] = DataUtils.toHalfFloat(this.graded[i] ?? 0);
-    this.lut.needsUpdate = true;
+    if (!this.gradable) return;
+    if (uploadLut(this.renderer, this.lut)) return;
+    // Drawn through a cube that never arrived, the frame is black. Say so once
+    // and draw the rest of the chain without the grade.
+    this.gradable = false;
+    console.warn('PostChain: the colour grade could not be uploaded; the frame is drawn ungraded.');
+    this.select();
   }
 
   /**
@@ -237,13 +255,13 @@ export class PostChain {
   }
 
   set quality(quality: PostQuality) {
-    const standing = this.settings;
+    const standing = graphKey(this.effective());
     this.settings = { ...quality };
     setRenderScale(this.renderer, quality.renderScale);
     // The render scale is handed to the renderer and nothing else. A tier that
     // moves only that keeps the graph it is drawn through, which is what makes
     // the cheapest tier change cost no compile at all.
-    if (graphKey(standing) === graphKey(quality)) return;
+    if (standing === graphKey(this.effective())) return;
     this.select();
   }
 
@@ -289,7 +307,7 @@ export class PostChain {
    * so the renderer answers out of its own caches and compiles nothing.
    */
   private select(): void {
-    const key = graphKey(this.settings);
+    const key = graphKey(this.effective());
     let chain = this.chains.get(key);
     if (chain === undefined) {
       chain = this.build();
@@ -314,21 +332,30 @@ export class PostChain {
     }
   }
 
+  /**
+   * The effects actually drawn: what the settings ask for, less the grade where
+   * the cube never reached the GPU.
+   */
+  private effective(): PostQuality {
+    return { ...this.settings, grade: this.settings.grade && this.gradable };
+  }
+
   /** Build one graph of the effects the settings stand at. */
   private build(): Chain {
+    const settings = this.effective();
     const effects: TslNode[] = [];
     let antialias: TslNode | undefined;
 
     let colour = this.colour;
-    if (this.settings.bloom) {
+    if (settings.bloom) {
       const glow = bloom(this.glare, BLOOM_STRENGTH, BLOOM_RADIUS, 0);
       effects.push(glow);
       colour = vec4(colour.rgb.add(glow.rgb), 1);
     }
     // The exposure is already in the frame, so the mapping is asked for none.
     colour = toneMapping(this.renderer.toneMapping, 1, colour);
-    if (this.settings.grade) colour = this.lookUp(colour);
-    if (this.settings.smaa) {
+    if (settings.grade) colour = this.lookUp(colour);
+    if (settings.smaa) {
       const edges = smaa(colour);
       effects.push(edges);
       antialias = edges;

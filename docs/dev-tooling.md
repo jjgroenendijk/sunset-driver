@@ -293,20 +293,13 @@ about 65 seconds. That job does not gate the merge: SwiftShader draws on a share
 processor, and a device lost there is not a rendering regression. The repository ruleset is where
 that is changed.
 
-**It fails in some cloud sessions, and that is issue #339, not your change.** The colour grade's
-table is a 3D texture, and on some Chromium builds the upload is refused: the cube stays as it was
-allocated — all zeros — and the grade maps every colour to black. A session that hits it sees this,
-and `render-preview.ts` writes a black picture beside it:
-
-```
-  1 colours, under 64: the frame is blank or nearly so
-```
-
-Which build decides it. The Chromium a cloud container carries at `/opt/pw-browsers` shows it; the
-one `playwright-core` installs on `ubuntu-latest` does not, which is why CI is green. Before
-believing this check about your own change, read what it printed: the grade failure blanks the
-frame completely, so it fails all three measures at once and fills the console with a WebGPU
-validation error naming a 16x16x16 `RGBA16Float` texture.
+A black frame used to be the tool's own fault. The colour grade's table is a 3D texture, and
+three.js uploaded it a slice at a time, which some Chromium builds refuse: the cube kept the zeros
+it was allocated with and the grade mapped every colour to black, so the check failed all three
+measures at once. `lut-upload.ts` writes the whole cube in one copy now (`docs/post.md`), and a
+grade that still cannot be uploaded is dropped with a warning rather than drawn. A frame that comes
+back blank is therefore worth believing. Read the console the run collected before blaming the
+browser.
 
 ## `npm run test:world`
 

@@ -43,9 +43,10 @@ tile in one browser.
 whether the renderer drew a world, not whether it looks right. Run it when a frame looks wrong, to
 tell a broken renderer from a broken change.
 
-A black picture is often issue #339 and not your change: on some Chromium builds the colour grade's
-table never reaches the GPU, and every frame comes out black. Cloud containers hit it; CI does not.
-`test:render` says so plainly — `1 colours, under 64` — where a picture only looks broken.
+A black picture used to mean issue #339 rather than your change: the colour grade's table never
+reached the GPU on some Chromium builds. That is fixed, and a grade that cannot be uploaded is now
+dropped with a warning instead of blackening the frame, so believe a black picture and read the
+console the run collected.
 
 `render-profile.ts` needs a real GPU and SwiftShader will not do. GPU timings move by several
 milliseconds between runs, so compare two builds by running each more than once.

@@ -3,8 +3,9 @@
 The gotchas of `src/render`: what three.js 0.186 and WebGPU refuse, what is packed into a batch and
 why, and how a chunk, a quality tier and the frame budget fit together. `spec.md` sections 9 and 10
 are the design. What the renderer draws on top of the ground — vehicles, weapons, plants and the
-crowd — is in `docs/render-entities.md`, the buildings in `docs/buildings.md`, and what lights it —
-the sun, the sky, the street lamps and the lights a vehicle carries — in `docs/lighting.md`.
+crowd — is in `docs/render-entities.md`, the buildings in `docs/buildings.md`, what lights it —
+the sun, the sky, the street lamps and the lights a vehicle carries — in `docs/lighting.md`, and the
+post chain and the colour grade in `docs/post.md`.
 
 ## Contents
 
@@ -16,7 +17,6 @@ the sun, the sky, the street lamps and the lights a vehicle carries — in `docs
 - Roads and pavement
 - Batches and cells
 - Water and its mirror
-- Post and the colour grade
 - The preview page and the ground
 
 ## Streaming the city
@@ -349,37 +349,6 @@ the sun, the sky, the street lamps and the lights a vehicle carries — in `docs
   the fill that light the ground, and adds a dark blue that keeps the sea visible at night. The
   addon's diffuse term is `sunColour` squared with no tint, so a sun colour scaled by its intensity
   turns the sea white.
-
-## Post and the colour grade
-
-- `PostChain` (`post.ts`) is the post chain of spec section 10.6, and it draws the frame:
-  `post.render()` replaces `renderer.render`. The order is the design. The scene is drawn in real
-  light and multiplied by the exposure; bloom reads that, so `BLOOM_THRESHOLD` is a number about the
-  frame the player sees. The bloom leaves the sky out, all but `SKY_BLOOM_SHARE` of it, and finds
-  it by depth: the dome writes none. Read whole, a clear day sky glared white over every tower.
-  Tone mapping brings it to 0..1, the grade follows, and SMAA comes last because it wants linear
-  colour. The chain therefore tone maps and encodes the frame itself, and
-  `outputColorTransform` is off so the pipeline does not do both again. `PostQuality` is the part of
-  a quality tier this file owns: `setRenderScale` (`renderer.ts`) and a switch for each effect.
-- The graphs are built once and kept, by the effects they draw: `postGraphs` names the distinct ones
-  a list of tiers asks for, and the four tiers come to three. Setting `quality` hands the render
-  scale to the renderer and swaps the output node, and builds only where no tier has asked for that
-  set of effects yet. Hence `ready()` waits for the SMAA tables of every graph built, not only the
-  one standing. Each graph owns full-size targets, so the graphs not drawn are shrunk to a pixel,
-  which frees their textures. An effect sizes its targets to the frame before it draws, so a tier
-  change still compiles nothing.
-- `gradeAt(light)` (`grade.ts`) is the colour grade, as a table of colours the frame is looked up
-  in. It is pure, so the tests run it headless, and it is rebuilt `GRADE_STEPS` times a game day
-  rather than every frame. The grade works on display values and the frame is light, so
-  `PostChain.lookUp` encodes a colour before the lookup and decodes it after: a lift big enough to
-  warm a dusk shadow turns a whole night frame orange if it is added to light instead.
-- The table is a `Data3DTexture` read by `Lut3DNode`, so the sampler interpolates all three axes
-  and the grade costs one texture fetch. `generateMipmaps` must stay off: three.js 0.186 builds
-  mipmaps of a 3D texture through 2D views, WebGPU refuses every one of them, and the console fills
-  with validation errors. Nothing reads those levels, so turning them off is the whole fix.
-- TSL's chained `mix` takes the receiver as the factor: `a.mix(b, t)` compiles to `mix(b, t, a)`. It
-  reads like a blend and is not one. Use the free `mix(a, b, t)` from `tsl.ts`. `smoothstep` chains
-  the same way.
 - The top-down camera (`docs/camera.md`) never sees the sky, so the dome is drawn after the ground
   and the buildings and the depth buffer throws most of it away. It is still worth its draw:
   the water mirror looks up, so the sky is what the sea reflects.
