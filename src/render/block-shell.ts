@@ -384,21 +384,25 @@ export class Shell {
     const geometry = new BufferGeometry();
     const count = this.parts.length;
     const tints = new Float32Array(count * 3);
-    const finishes = new Float32Array(count * 3);
+    // The finish is four bytes a vertex, as `facade-pack.ts` packs a facade's:
+    // it is three numbers in 0..1, and WebGPU reads a vertex in steps of four
+    // bytes, so the fourth byte is padding. A block's geometry is not packed
+    // otherwise, and twelve bytes a vertex here was a measurable frame cost.
+    const finishes = new Uint8ClampedArray(count * 4);
     for (let v = 0; v < count; v++) {
       tints[v * 3] = tint[0];
       tints[v * 3 + 1] = tint[1];
       tints[v * 3 + 2] = tint[2];
-      finishes[v * 3] = finish[0];
-      finishes[v * 3 + 1] = finish[1];
-      finishes[v * 3 + 2] = finish[2];
+      finishes[v * 4] = finish[0] * 255;
+      finishes[v * 4 + 1] = finish[1] * 255;
+      finishes[v * 4 + 2] = finish[2] * 255;
     }
     geometry.setAttribute('position', new BufferAttribute(new Float32Array(this.positions), 3));
     geometry.setAttribute('normal', new BufferAttribute(new Float32Array(this.normals), 3));
     geometry.setAttribute('uv', new BufferAttribute(new Float32Array(this.uvs), 2));
     geometry.setAttribute('part', new BufferAttribute(new Float32Array(this.parts), 1));
     geometry.setAttribute('tint', new BufferAttribute(tints, 3));
-    geometry.setAttribute('finish', new BufferAttribute(finishes, 3));
+    geometry.setAttribute('finish', new BufferAttribute(new Uint8Array(finishes.buffer), 4, true));
     return geometry;
   }
 }
