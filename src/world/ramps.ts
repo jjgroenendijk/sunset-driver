@@ -24,7 +24,7 @@
  *
  * Pure: the same roads and ground give the same ramps.
  */
-import { hypot, sin } from '../core/libm.ts';
+import { cos, hypot, sin } from '../core/libm.ts';
 import { toSegment } from './crossing-line.ts';
 import type { CrossingNetwork } from './crossing-rules.ts';
 import { crossPoint, MIN_MEET } from './network-clearance.ts';
@@ -68,6 +68,15 @@ const RAMP_STEP = 14;
 
 /** Least metres of either tangent a ramp is built on. Shorter than this the curve doubles back. */
 const MIN_TANGENT = 12;
+
+/**
+ * Radians a ramp leaves the highway off the line of the highway. Two ramps
+ * meet the highway at each head, one on and one off, and a ramp that left
+ * exactly along the line would put its first point where the other put its
+ * last: one place, and the network would make it a node the two roads share at
+ * no angle at all. Well under {@link MIN_MEET}, so the merge is still a gore.
+ */
+const GORE = (10 * Math.PI) / 180;
 
 /** Where a ramp stands on the network: a point of a laid curve, or of the road being added. */
 export interface RampEnd {
@@ -129,12 +138,12 @@ export function planDiamond(
   // a shorter one.
   for (const before of befores) {
     for (const after of afters) {
-      // The four quadrants only exist where the two points of the highway lie
-      // either side of the arterial and the two feet either side of the
-      // highway. A crossing too shallow for that would put two ramps in one
-      // quadrant, leaving the arterial along its own line.
-      if (!opposed(road[foot[0]] as Point, road[foot[1]] as Point, highway.points[before] as Point, highway.points[after] as Point)) continue;
-      if (!opposed(highway.points[before] as Point, highway.points[after] as Point, road[foot[0]] as Point, road[foot[1]] as Point)) continue;
+      // The four quadrants only exist where each foot of the arterial sees the
+      // two points of the highway on opposite sides of it, measured the way the
+      // ramp is built. A crossing too shallow for that, or an arterial that
+      // bends between its feet, would put two ramps in one quadrant and leave
+      // the arterial along its own line.
+      if (!quartered(highway, road, foot, before, after)) continue;
       const ramps = quadrants(network, highway, road, foot, before, after, planned);
       if (ramps !== undefined) return { highway: highway.id, interchange, ramps };
     }
@@ -142,10 +151,27 @@ export function planDiamond(
   return undefined;
 }
 
-/** True where `p` and `q` stand on opposite sides of the line from `a` to `b`. */
-function opposed(a: Point, b: Point, p: Point, q: Point): boolean {
-  const side = (r: Point): number => (b.x - a.x) * (r.y - a.y) - (b.y - a.y) * (r.x - a.x);
-  return side(p) * side(q) < 0;
+/**
+ * True where the two points of the highway stand on opposite sides of the
+ * arterial at each of its feet, and the two feet on opposite sides of the
+ * highway at each of its points. The sides are read with {@link across} and
+ * {@link towards}, the same way a ramp is built, so the quadrants a ramp is
+ * laid in are the quadrants this counted.
+ */
+function quartered(highway: RoadCurve, road: readonly Point[], foot: readonly [number, number], before: number, after: number): boolean {
+  const heads = [highway.points[before] as Point, highway.points[after] as Point];
+  for (const i of foot) {
+    const one = across(road, i, heads[0] as Point);
+    const two = across(road, i, heads[1] as Point);
+    if (one === undefined || two === undefined || one.x * two.x + one.y * two.y > 0) return false;
+  }
+  const feet = [road[foot[0]] as Point, road[foot[1]] as Point];
+  for (const i of [before, after]) {
+    const one = across(highway.points, i, feet[0] as Point);
+    const two = across(highway.points, i, feet[1] as Point);
+    if (one === undefined || two === undefined || one.x * two.x + one.y * two.y > 0) return false;
+  }
+  return true;
 }
 
 /** The four ramps of one choice of highway points, or undefined where any of them is refused. */
@@ -242,11 +268,17 @@ function planRamp(
   const reach = ((toe.x - head.x) * lane.x + (toe.y - head.y) * lane.y) / 2;
   const off = ((head.x - toe.x) * side.x + (head.y - toe.y) * side.y) / 2;
   if (reach < MIN_TANGENT || off < MIN_TANGENT) return undefined;
+  // Each of the two ramps at a head peels off to the side its quadrant is on,
+  // so the two leave the highway on either side of it rather than along it.
+  const hand = across(highway.points, onHighway.index, toe);
+  if (hand === undefined) return undefined;
+  const gore = { x: lane.x * cos(GORE) + hand.x * sin(GORE), y: lane.y * cos(GORE) + hand.y * sin(GORE) };
   const curve = bezier(
     head,
     { x: head.x + lane.x * reach, y: head.y + lane.y * reach },
     { x: toe.x + side.x * off, y: toe.y + side.y * off },
     toe,
+    gore,
   );
   const points = from.curve >= 0 ? curve : curve.reverse();
   if (!runnable(network, points, clear)) return undefined;
@@ -297,14 +329,14 @@ function normalise(x: number, y: number): Point | undefined {
  * A cubic curve through its four control points, sampled every
  * {@link RAMP_STEP} metres or so.
  *
- * The step either side of an end is set on the curve's tangent there. A
- * polyline sampled off a curve leaves its end a few degrees off the tangent,
- * and where the curve turns hard those few degrees are tens: the angle a ramp
- * leaves the arterial at is the angle its junction is built at, and the angle
- * it leaves the highway at is the gore. Both are read off that one step, so
- * the step is put where the tangent says and not where the sample fell.
+ * The step either side of an end is set on a direction and not left where the
+ * sample fell. A polyline sampled off a curve leaves its end a few degrees off
+ * the tangent, and where the curve turns hard those few degrees are tens: the
+ * angle a ramp leaves the arterial at is the angle its junction is built at.
+ * At the highway end the step is set on `leaves`, the gore, which is the
+ * highway turned a little towards the quadrant the ramp runs in.
  */
-function bezier(p0: Point, p1: Point, p2: Point, p3: Point): Point[] {
+function bezier(p0: Point, p1: Point, p2: Point, p3: Point, leaves: Point): Point[] {
   const hull = hypot(p1.x - p0.x, p1.y - p0.y) + hypot(p2.x - p1.x, p2.y - p1.y) + hypot(p3.x - p2.x, p3.y - p2.y);
   const steps = Math.max(4, Math.ceil(hull / RAMP_STEP));
   const out: Point[] = [];
@@ -320,7 +352,7 @@ function bezier(p0: Point, p1: Point, p2: Point, p3: Point): Point[] {
       y: a * p0.y + b * p1.y + c * p2.y + d * p3.y,
     });
   }
-  out[1] = onTangent(p0, p1, out[1] as Point);
+  out[1] = along(p0, leaves, hypot((out[1] as Point).x - p0.x, (out[1] as Point).y - p0.y));
   out[steps - 1] = onTangent(p3, p2, out[steps - 1] as Point);
   return out;
 }
@@ -329,7 +361,11 @@ function bezier(p0: Point, p1: Point, p2: Point, p3: Point): Point[] {
 function onTangent(end: Point, control: Point, sample: Point): Point {
   const unit = normalise(control.x - end.x, control.y - end.y);
   if (unit === undefined) return sample;
-  const reach = hypot(sample.x - end.x, sample.y - end.y);
+  return along(end, unit, hypot(sample.x - end.x, sample.y - end.y));
+}
+
+/** The point `reach` metres from `end` in the direction `unit`. */
+function along(end: Point, unit: Point, reach: number): Point {
   return { x: end.x + unit.x * reach, y: end.y + unit.y * reach };
 }
 
