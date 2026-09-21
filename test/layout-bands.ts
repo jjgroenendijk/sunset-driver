@@ -101,10 +101,16 @@ export const LAYOUT_BANDS: Record<Zone, ZoneBands> = {
   // 4 to 19 %, 3 to 9 %, 0.5 to 1.8, 11660 to 48745 m². Issue #192 raised the
   // two floors the buildings own and left the ceilings: out here a row back to
   // back is rare, so it is worth a few buildings a seed.
+  //
+  // Issue #399 took the buildings a hectare down from 0.35 to 0.3. It re-rolled
+  // every district site, and seed 4081019190 — the emptiest outskirts of the
+  // 500 — went from 0.456 to 0.338. The outskirts of eight other seeds moved
+  // both ways around the same middle, so what the re-roll changed is which seed
+  // is the emptiest and not how much is built out there.
   outskirts: {
     roadShare: { min: 0.015, max: 0.3 },
     buildingShare: { min: 0.015, max: 0.16 },
-    buildingsPerHectare: { min: 0.35, max: 3 },
+    buildingsPerHectare: { min: 0.3, max: 3 },
     medianParcelArea: { min: 2000, max: 80000 },
   },
   // The margin the rings leave: the corners of the map and the outer islands.

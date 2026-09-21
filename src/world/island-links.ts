@@ -120,15 +120,35 @@ export abstract class IslandLinkTrace extends HighwayTrace {
    * to have a road (spec section 6.2), so the cheap round is an ordering and
    * never the end of the search. In the second round a head no arterial reaches
    * is given a street instead ({@link streetApproach}).
+   *
+   * Where both shores are spent, the boardwalk lines reserved before the links
+   * give their ground back for one more try. A reserved line runs along the
+   * shore, which is where a bridge head stands, and it can shut off every way
+   * on to the network. A boardwalk is laid in the runs the ground leaves it
+   * (`traceBoardwalk`), so one with a road across it is still a boardwalk;
+   * an island with no road at all is not a place the game can be played.
    */
   private linkIsland(island: number, crossingIndex: number): void {
     const crossing = this.world.water.crossings[crossingIndex];
     if (crossing === undefined) return;
+    if (this.tryShores(island, crossingIndex)) return;
+    const beaches = this.world.beaches;
+    if (beaches.length === 0) return;
+    beaches.forEach((_, i) => this.network.release(-1 - i));
+    this.tryShores(island, crossingIndex);
+    // Whatever came of it, the lines are held again: the arterial fill and the
+    // minor fill after it keep off a boardwalk's ground as before.
+    beaches.forEach((beach, i) => this.network.reserve(-1 - i, 'street', beach.boardwalk));
+  }
+
+  /** Both shores of a crossing, the cheap round first. True where the link was laid. */
+  private tryShores(island: number, crossingIndex: number): boolean {
     for (const patient of [false, true]) {
       for (const flip of [false, true]) {
-        if (this.linkOverShore(island, crossingIndex, flip, patient)) return;
+        if (this.linkOverShore(island, crossingIndex, flip, patient)) return true;
       }
     }
+    return false;
   }
 
   /**

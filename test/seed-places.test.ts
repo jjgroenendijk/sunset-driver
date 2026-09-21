@@ -381,9 +381,17 @@ sweepSuite('places', () => {
         // And a road of the tier that serves it can climb to the site. A site
         // on a knoll or a ledge that steep ground closes off is a district
         // nobody can drive to (issue #399).
-        const tier = SERVED_BY[d.zone];
-        expect(climbs[tier].at(d.x, d.y), `seed ${seed}: no ${tier} climbs to ${d.name}`).toBe(true);
-        if (d.name !== 'Gull Island') expect(zoneAt(zones, d.x, d.y)).toBe(d.zone);
+        //
+        // Gull Island is the exception, as it is for the zone below: the island
+        // district stands on its island whatever the ground there, and the flood
+        // only crosses the water where it has climbed to the bridge head on the
+        // near shore. The road that serves it is the island link, which
+        // `seed-roads.test.ts` holds every inhabited island to.
+        if (d.name !== 'Gull Island') {
+          const tier = SERVED_BY[d.zone];
+          expect(climbs[tier].at(d.x, d.y), `seed ${seed}: no ${tier} climbs to ${d.name}`).toBe(true);
+          expect(zoneAt(zones, d.x, d.y)).toBe(d.zone);
+        }
         expect(d.density).toBeGreaterThanOrEqual(0);
         expect(d.density).toBeLessThanOrEqual(1);
         expect(d.wealth).toBeGreaterThanOrEqual(0);
