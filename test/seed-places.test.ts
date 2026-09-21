@@ -18,7 +18,8 @@ import { giverPlaces } from '../src/sim/giver.ts';
 import { jobSites, type MissionWorld } from '../src/sim/job.ts';
 import type { Place } from '../src/sim/on-foot.ts';
 import { createSimState } from '../src/sim/simulation.ts';
-import { layoutZones, zoneAt } from '../src/world/districts.ts';
+import { layoutZones, SERVED_BY, zoneAt } from '../src/world/districts.ts';
+import { GradedLand } from '../src/world/graded-land.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
 import { type Parcel } from '../src/world/parcels.ts';
@@ -356,6 +357,13 @@ sweepSuite('places', () => {
       const hf = new Heightfield(w.terrain);
       const zones = layoutZones(w.size, w.core, w.water);
       const land = new LandMasses(hf, w.water, w.water.seaLevel + 1);
+      // The land each serving tier can climb to, over the ground and the
+      // crossings (issue #399). Two tiers serve the zones, so two floods answer
+      // every district of the seed.
+      const climbs = {
+        street: new GradedLand(hf, w.core, TIERS.street.maxGrade, w.water.crossings),
+        dirt: new GradedLand(hf, w.core, TIERS.dirt.maxGrade, w.water.crossings),
+      };
       const names = new Set(w.districts.map((d) => d.name));
       for (const r of required) expect(names.has(r), `${r} in seed ${seed}`).toBe(true);
       expect(names.size, `duplicate district name in seed ${seed}`).toBe(w.districts.length);
@@ -370,6 +378,11 @@ sweepSuite('places', () => {
         // a crossing leads there and the roads can arrive. A rock in the sea
         // would take a district that could never be reached or built.
         expect(land.reaches(d.x, d.y), `seed ${seed}: ${d.name} stands on land no island site is on`).toBe(true);
+        // And a road of the tier that serves it can climb to the site. A site
+        // on a knoll or a ledge that steep ground closes off is a district
+        // nobody can drive to (issue #399).
+        const tier = SERVED_BY[d.zone];
+        expect(climbs[tier].at(d.x, d.y), `seed ${seed}: no ${tier} climbs to ${d.name}`).toBe(true);
         if (d.name !== 'Gull Island') expect(zoneAt(zones, d.x, d.y)).toBe(d.zone);
         expect(d.density).toBeGreaterThanOrEqual(0);
         expect(d.density).toBeLessThanOrEqual(1);

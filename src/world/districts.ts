@@ -1,10 +1,12 @@
 import { dist2, lerp, smoothstep } from '../core/math.ts';
 import { genRng, Subsystem, type Rng } from '../core/rng.ts';
 import { atan2, cos, hypot, sin } from '../core/libm.ts';
-import type { Culture, District, Island, Point, WaterDescription, Zone } from './types.ts';
+import type { Culture, District, Island, Point, RoadTier, WaterDescription, Zone } from './types.ts';
+import { GradedLand } from './graded-land.ts';
 import type { Heightfield } from './heightfield.ts';
 import { LandMasses } from './landmass.ts';
 import { SEA_LEVEL } from './terrain.ts';
+import { TIERS } from './tiers.ts';
 
 /** Metres above the sea a district site needs; the waterline itself is not buildable. */
 const DRY = SEA_LEVEL + 1;
@@ -172,12 +174,33 @@ const SITE_SPECS: SiteSpec[] = [
   { zone: 'wilderness', count: 6, density: [0, 0.05], wealth: [0.05, 0.4] },
 ];
 
+/** The tiers that lay the road a district is reached by. */
+export type ServingTier = Extract<RoadTier, 'street' | 'dirt'>;
+
+/**
+ * The tier that lays the road a district of a zone is reached by. `serveDistricts`
+ * (`roads.ts`) runs an arterial to every district outside the wilderness and
+ * falls back to a street where no arterial line reaches the site, so a street
+ * is the steepest climb that serves one. The wilderness gets no road of its
+ * own: the fill lays dirt roads there, and a dirt road climbs hardest of all.
+ */
+export const SERVED_BY: Record<Zone, ServingTier> = {
+  core: 'street',
+  inner: 'street',
+  industrial: 'street',
+  suburban: 'street',
+  outskirts: 'street',
+  wilderness: 'dirt',
+};
+
 /**
  * A site for one district: dry land of the zone, on ground a road can reach.
  * Land that carries no island of the water description is a rock in the sea
- * that no crossing leads to, so a district there could never be built.
+ * that no crossing leads to, so a district there could never be built, and
+ * ground the serving tier cannot climb to is a knoll or a ledge behind a cliff
+ * where no road of that tier runs (issue #399).
  */
-function sampleSiteInZone(rng: Rng, layout: ZoneLayout, zone: Zone, hf: Heightfield, land: LandMasses): Point {
+function sampleSiteInZone(rng: Rng, layout: ZoneLayout, zone: Zone, hf: Heightfield, land: LandMasses, graded: GradedLand): Point {
   const s = layout.size;
   const rMax: Record<Zone, [number, number]> = {
     core: [0, ZONE_RADII.core],
@@ -197,24 +220,40 @@ function sampleSiteInZone(rng: Rng, layout: ZoneLayout, zone: Zone, hf: Heightfi
     if (zoneAt(layout, x, y) !== zone) continue;
     if (hf.sample(x, y) < DRY) continue;
     if (!land.reaches(x, y)) continue;
+    if (!graded.at(x, y)) continue;
     return { x, y };
   }
-  // Deterministic fallback: the first dry cell of the zone in grid order.
+  // Deterministic fallback: the first cell of the zone in grid order the tier
+  // can climb to, and where the zone holds none, the first one a road can
+  // reach at all. A zone closed off to its tier is still given its districts.
+  let loose: Point | undefined;
   for (let iy = 0; iy < hf.gridSize; iy += 2) {
     for (let ix = 0; ix < hf.gridSize; ix += 2) {
       const x = hf.worldX(ix);
       const y = hf.worldY(iy);
       if (zoneAt(layout, x, y) !== zone || hf.at(ix, iy) < DRY) continue;
-      if (land.reaches(x, y)) return { x, y };
+      if (!land.reaches(x, y)) continue;
+      if (graded.at(x, y)) return { x, y };
+      loose ??= { x, y };
     }
   }
-  return { x: layout.core.x, y: layout.core.y };
+  return loose ?? { x: layout.core.x, y: layout.core.y };
 }
 
 /** Place district sites and hand out names, cultures and stats. */
 export function generateDistricts(seed: number, layout: ZoneLayout, hf: Heightfield, water: WaterDescription): District[] {
   const rng = genRng(seed, Subsystem.Districts, 1);
   const land = new LandMasses(hf, water, DRY);
+  // One flood per tier that serves a zone, built the first time a zone asks
+  // for it. It hops the crossings of the water description, so an island the
+  // roads bridge to is climbed from its bridge head and not from the core.
+  const climbs: Partial<Record<ServingTier, GradedLand>> = {};
+  const climbsTo = (zone: Zone): GradedLand => {
+    const tier = SERVED_BY[zone];
+    const built = climbs[tier] ?? new GradedLand(hf, layout.core, TIERS[tier].maxGrade, water.crossings);
+    climbs[tier] = built;
+    return built;
+  };
   const districts: District[] = [];
   const pools: Partial<Record<Zone, string[]>> = {};
   let id = 0;
@@ -244,7 +283,7 @@ export function generateDistricts(seed: number, layout: ZoneLayout, hf: Heightfi
 
   for (const spec of SITE_SPECS) {
     for (let i = 0; i < spec.count; i++) {
-      const p = sampleSiteInZone(rng, layout, spec.zone, hf, land);
+      const p = sampleSiteInZone(rng, layout, spec.zone, hf, land, climbsTo(spec.zone));
       pushDistrict(spec.zone, p, nameFor(spec.zone), 'none', spec);
     }
   }
@@ -282,7 +321,7 @@ export function generateDistricts(seed: number, layout: ZoneLayout, hf: Heightfi
   // Island district, always its own place: the developed outer island.
   const suburbIsland = layout.suburbIsland;
   if (suburbIsland) {
-    const p = sampleSiteInZone(rng, { ...layout, core: { x: suburbIsland.x, y: suburbIsland.y } }, 'core', hf, land);
+    const p = sampleSiteInZone(rng, { ...layout, core: { x: suburbIsland.x, y: suburbIsland.y } }, 'core', hf, land, climbsTo('suburban'));
     districts.push({
       id: id++,
       name: 'Gull Island',

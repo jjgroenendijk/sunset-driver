@@ -43,6 +43,12 @@ corridors in `docs/corridors.md`.
   chord that lands on ground an arterial can climb to from the core ranks above one that lands in a
   pocket closed off by steep slopes, up to `GRADED_SPAN`. No arterial reaches a bridge head in such
   a pocket, so the roads never build that bridge.
+- `new GradedLand(hf, core, maxGrade, crossings)` (`graded-land.ts`) is that climb: a flood from the
+  core over dry grid nodes, stepping only where the rise over one cell stays inside the tier's
+  grade, and hopping a crossing once its near head is climbed to. It is what both the crossing
+  search and the district sites ask. It walks the four straight steps, so it cannot express a road
+  that climbs a slope by traversing it, and says no to ground such a road would reach. Use it to
+  refuse the closed-off pocket, never to prove a place is served.
 - `water.industry` is the direction of the industrial wedge. It points at the harbour, and turns
   along the shore until the wedge is mostly dry, gentle land. A wedge in the sea puts the industrial
   districts on the core, since `sampleSiteInZone` falls back there.
@@ -52,6 +58,11 @@ corridors in `docs/corridors.md`.
   chain of the water description's crossings leads to from there. A cell of the power diagram can
   hold a rock in the sea, and it can hold several pieces of land that no crossing joins, so anything
   that places ground content asks `reaches` first. District sites do.
+- A site must also stand on ground the tier that serves it can climb to (`SERVED_BY`, issue #399):
+  an arterial or a street to every district outside the wilderness, and the dirt fill in it.
+  `reaches` alone leaves a site on a knoll or a ledge behind a cliff, part of the mainland and
+  closed off on every side, where the district is built and nobody can drive. Where a zone holds no
+  such ground at all, the fallback takes what `reaches` allows rather than dropping the district.
 - `reaches` says a road *could* arrive; `servedMasses(districts)` says it *will*. `linkIslands`
   (`island-links.ts`) bridges to an island that carries a district and to the islands on the way
   there, and to nothing else, so a piece of land a chain of crossings leads to still gets no road
