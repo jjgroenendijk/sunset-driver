@@ -211,21 +211,51 @@ function sampleSiteInZone(rng: Rng, layout: ZoneLayout, zone: Zone, hf: Heightfi
     wilderness: [ZONE_RADII.outskirts, 0.7],
   };
   const [r0, r1] = rMax[zone];
-  for (let attempt = 0; attempt < 200; attempt++) {
-    const r = Math.sqrt(rng.range(r0 * r0, r1 * r1)) * s;
-    const a = rng.range(-Math.PI, Math.PI);
-    const x = layout.core.x + cos(a) * r;
-    const y = layout.core.y + sin(a) * r;
-    if (Math.abs(x) > s / 2 || Math.abs(y) > s / 2) continue;
-    if (zoneAt(layout, x, y) !== zone) continue;
-    if (hf.sample(x, y) < DRY) continue;
-    if (!land.reaches(x, y)) continue;
-    if (!graded.at(x, y)) continue;
-    return { x, y };
-  }
-  // Deterministic fallback: the first cell of the zone in grid order the tier
-  // can climb to, and where the zone holds none, the first one a road can
-  // reach at all. A zone closed off to its tier is still given its districts.
+  /** A point of the zone on dry land a road can arrive at, with or without the climb. */
+  const draw = (climbed: boolean): Point | undefined => {
+    for (let attempt = 0; attempt < 200; attempt++) {
+      const r = Math.sqrt(rng.range(r0 * r0, r1 * r1)) * s;
+      const a = rng.range(-Math.PI, Math.PI);
+      const x = layout.core.x + cos(a) * r;
+      const y = layout.core.y + sin(a) * r;
+      if (Math.abs(x) > s / 2 || Math.abs(y) > s / 2) continue;
+      if (zoneAt(layout, x, y) !== zone) continue;
+      if (hf.sample(x, y) < DRY) continue;
+      if (!land.reaches(x, y)) continue;
+      if (climbed && !graded.at(x, y)) continue;
+      return { x, y };
+    }
+    return undefined;
+  };
+  const site = draw(true);
+  if (site !== undefined) return site;
+  const fallback = zoneFallback(layout, zone, hf, land, graded);
+  if (fallback.climbed !== undefined) return fallback.climbed;
+  // The zone holds no ground of its own the tier can climb to: a ring the water
+  // left in pieces, or one a mountain closed off. Its districts are drawn again
+  // without the climb, so they stand apart as they did before the climb was
+  // asked for. All six of them on the one cell the scan found would be worse
+  // than any of them on a knoll.
+  return draw(false) ?? fallback.loose ?? { x: layout.core.x, y: layout.core.y };
+}
+
+/**
+ * What a zone has to offer a site the sampled points all missed: the first cell
+ * in grid order the tier can climb to, and the first one a road can reach at
+ * all. Both are deterministic, and `climbed` is the one a site takes.
+ *
+ * A zone closed off to its tier — a shelf of an outer island, a ring the water
+ * left in pieces — still gets its districts, on `loose`. The sweep asks this
+ * what the zone held, because a site off the climbed ground is only allowed
+ * where the zone offered none.
+ */
+export function zoneFallback(
+  layout: ZoneLayout,
+  zone: Zone,
+  hf: Heightfield,
+  land: LandMasses,
+  graded: GradedLand,
+): { climbed: Point | undefined; loose: Point | undefined } {
   let loose: Point | undefined;
   for (let iy = 0; iy < hf.gridSize; iy += 2) {
     for (let ix = 0; ix < hf.gridSize; ix += 2) {
@@ -233,11 +263,11 @@ function sampleSiteInZone(rng: Rng, layout: ZoneLayout, zone: Zone, hf: Heightfi
       const y = hf.worldY(iy);
       if (zoneAt(layout, x, y) !== zone || hf.at(ix, iy) < DRY) continue;
       if (!land.reaches(x, y)) continue;
-      if (graded.at(x, y)) return { x, y };
+      if (graded.at(x, y)) return { climbed: { x, y }, loose };
       loose ??= { x, y };
     }
   }
-  return loose ?? { x: layout.core.x, y: layout.core.y };
+  return { climbed: undefined, loose };
 }
 
 /** Place district sites and hand out names, cultures and stats. */

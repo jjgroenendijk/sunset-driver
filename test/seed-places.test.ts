@@ -18,7 +18,7 @@ import { giverPlaces } from '../src/sim/giver.ts';
 import { jobSites, type MissionWorld } from '../src/sim/job.ts';
 import type { Place } from '../src/sim/on-foot.ts';
 import { createSimState } from '../src/sim/simulation.ts';
-import { layoutZones, SERVED_BY, zoneAt } from '../src/world/districts.ts';
+import { layoutZones, SERVED_BY, zoneAt, zoneFallback } from '../src/world/districts.ts';
 import { GradedLand } from '../src/world/graded-land.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
@@ -389,7 +389,12 @@ sweepSuite('places', () => {
         // `seed-roads.test.ts` holds every inhabited island to.
         if (d.name !== 'Gull Island') {
           const tier = SERVED_BY[d.zone];
-          expect(climbs[tier].at(d.x, d.y), `seed ${seed}: no ${tier} climbs to ${d.name}`).toBe(true);
+          if (!climbs[tier].at(d.x, d.y)) {
+            // The one site allowed off that ground is the one whose zone held
+            // none of it, which is what the sampler falls back on.
+            const held = zoneFallback(zones, d.zone, hf, land, climbs[tier]).climbed;
+            expect(held, `seed ${seed}: no ${tier} climbs to ${d.name}, though its ${d.zone} has ground one can`).toBeUndefined();
+          }
           expect(zoneAt(zones, d.x, d.y)).toBe(d.zone);
         }
         expect(d.density).toBeGreaterThanOrEqual(0);
