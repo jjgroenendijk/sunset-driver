@@ -26,11 +26,16 @@ const WET_SAMPLE = 4;
  * What the ground does under a straight span: whether it stays dry, how hard the
  * span climbs, and how far the ground leaves the line the road drives. One walk
  * answers all three, because every caller wants at least two of them.
+ *
+ * `liftA` and `liftB` are how far over the ground the road stands at the two
+ * ends (`RoadCurve.lift`). The line the ground is measured against is the one
+ * the road really drives, so a raised span is asked the same question a span on
+ * the ground is: how far the ground falls away under it.
  */
-export function spanProfile(hf: Heightfield, seaLevel: number, ax: number, ay: number, bx: number, by: number): Profile {
+export function spanProfile(hf: Heightfield, seaLevel: number, ax: number, ay: number, bx: number, by: number, liftA = 0, liftB = 0): Profile {
   const run = dist(ax, ay, bx, by);
-  const start = hf.sample(ax, ay);
-  const end = hf.sample(bx, by);
+  const start = hf.sample(ax, ay) + liftA;
+  const end = hf.sample(bx, by) + liftB;
   const steps = Math.max(1, Math.ceil(run / WET_SAMPLE));
   const dryAt = (x: number, y: number): boolean => hf.sample(x, y) >= seaLevel + DRY_MARGIN;
   let dry = dryAt(ax, ay) && dryAt(bx, by);
