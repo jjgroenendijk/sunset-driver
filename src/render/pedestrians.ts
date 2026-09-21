@@ -11,14 +11,15 @@
  * The crowd is evaluated where the frame stands in time, between two ticks,
  * as the traffic is. A person who has left their loop is drawn from their
  * record in `SimState.pedestrians` instead. The people waiting at the tram
- * stops (spec section 13.2) are drawn in the same mesh, standing.
+ * stops (spec section 13.2) and at the bus stops (20.2) are drawn in the same
+ * mesh, standing.
  */
 import { DataTexture, FloatType, Group, Mesh, NearestFilter, RGBAFormat } from 'three';
 import { GAITS, STRIDE_HEIGHT } from '../sim/pedestrian-look.ts';
 import { heldTime } from '../sim/hold.ts';
 import { casualtyOf, startledOf, startledPose, walkingPose, type AmbientPedestrians, type PedestrianPose } from '../sim/pedestrians.ts';
 import type { SimState } from '../sim/simulation.ts';
-import type { TramLine, WaitingPassenger } from '../sim/tram.ts';
+import type { WaitingCrowd, WaitingPassenger } from '../sim/stop-queue.ts';
 import type { PedestrianLook } from '../sim/pedestrian-look.ts';
 import { outInThis } from '../sim/weather.ts';
 import { CrowdInstances } from './crowd-instances.ts';
@@ -49,12 +50,13 @@ export class PedestrianView {
   standing: readonly StandingPerson[] = [];
   /**
    * The share of the crowd that is out (spec section 13.4). 1 on a clear day;
-   * a storm keeps the rest of it indoors. The people waiting for a tram and
+   * a storm keeps the rest of it indoors. The people waiting at a stop and
    * anyone the player has startled are drawn whatever the sky is doing.
    */
   share = 1;
   private readonly crowd: AmbientPedestrians;
-  private readonly tram: TramLine | undefined;
+  /** The stops whose queues are drawn with the crowd: the tram's and the buses'. */
+  private readonly queues: readonly WaitingCrowd[];
   private readonly waiting: WaitingPassenger[] = [];
   private readonly mesh: Mesh;
   private readonly body = new CrowdInstances(PEDESTRIAN_CAP);
@@ -62,9 +64,9 @@ export class PedestrianView {
   private readonly ids: number[] = [];
   private readonly pose: PedestrianPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0, cycle: 0, gait: 'stand' };
 
-  constructor(crowd: AmbientPedestrians, tram?: TramLine) {
+  constructor(crowd: AmbientPedestrians, ...queues: (WaitingCrowd | undefined)[]) {
     this.crowd = crowd;
-    this.tram = tram;
+    this.queues = queues.filter((queue): queue is WaitingCrowd => queue !== undefined);
     this.bones = new DataTexture(bakeWalks(), BONES.length * 4, GAITS.length * FRAMES, RGBAFormat, FloatType);
     this.bones.minFilter = NearestFilter;
     this.bones.magFilter = NearestFilter;
@@ -115,10 +117,12 @@ export class PedestrianView {
       if (pose.x < minX || pose.x > maxX || pose.y < minY || pose.y > maxY) continue;
       this.write(count++, this.lookOf(record.id), pose);
     }
-    const waiting = this.tram?.passengers(minX, minY, maxX, maxY, time, this.waiting) ?? 0;
-    for (let i = 0; i < waiting && count < PEDESTRIAN_CAP; i++) {
-      const passenger = this.waiting[i] as WaitingPassenger;
-      this.write(count++, passenger.look, passenger.pose);
+    for (const queue of this.queues) {
+      const waiting = queue.passengers(minX, minY, maxX, maxY, time, this.waiting);
+      for (let i = 0; i < waiting && count < PEDESTRIAN_CAP; i++) {
+        const passenger = this.waiting[i] as WaitingPassenger;
+        this.write(count++, passenger.look, passenger.pose);
+      }
     }
     for (const person of this.standing) {
       if (count >= PEDESTRIAN_CAP) break;
