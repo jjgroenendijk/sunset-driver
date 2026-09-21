@@ -14,6 +14,7 @@
  * a pure function of the seed and the world built from it, so two sessions of
  * one seed are driven through the same streets.
  */
+import { BusStops } from './sim/bus-stops.ts';
 import type { Ground } from './sim/ground-bodies.ts';
 import { EmergencyServices } from './sim/emergency.ts';
 import { AmbientPedestrians, crowdDistrictsOf } from './sim/pedestrians.ts';
@@ -34,6 +35,8 @@ export interface City {
   /** The road network as the traffic, the police and the services all read it. */
   roads: TrafficRoads;
   traffic: AmbientTraffic;
+  /** The kerbs the buses of spec section 20.2 call at, and the people waiting there. */
+  busStops: BusStops;
   crowd: AmbientPedestrians;
   tram: TramLine;
   police: PoliceForce;
@@ -54,7 +57,12 @@ export function buildCity(seed: number, description: WorldDescription, world: Wo
   const roads = trafficRoadsOf(description);
   const traffic = new AmbientTraffic(seed, roads);
   // The crowd walks the pavements of the same roads, and is placed once the same way.
-  const crowd = new AmbientPedestrians(seed, roads, crowdDistrictsOf(description));
+  const districtAt = crowdDistrictsOf(description);
+  const crowd = new AmbientPedestrians(seed, roads, districtAt);
+  // The kerbs those buses call at (spec section 20.2), gathered from the tours
+  // once they are timed: a stop is where a bus stands, not a thing the world
+  // description carries.
+  const busStops = new BusStops(seed, traffic, districtAt);
   // The trams of spec section 13.2 keep to the traffic's own lights.
   const tram = new TramLine(seed, roads, description.tram, description.districts, traffic.signals);
   // The police drive the same roads the traffic does, and answer from the
@@ -71,7 +79,7 @@ export function buildCity(seed: number, description: WorldDescription, world: Wo
     roads,
     beaches: description.beaches,
     seaLevel: description.water.seaLevel,
-    districtAt: crowdDistrictsOf(description),
+    districtAt,
   });
   const ground: Ground = {
     heightAt: (x, y) => world.heightAt(x, y),
@@ -88,5 +96,5 @@ export function buildCity(seed: number, description: WorldDescription, world: Wo
     police,
     emergency,
   };
-  return { ground, roads, traffic, crowd, tram, police, wildlife };
+  return { ground, roads, traffic, busStops, crowd, tram, police, wildlife };
 }

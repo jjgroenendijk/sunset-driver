@@ -37,7 +37,7 @@
  */
 import type { RoadEdge, RoadGraph } from '../world/graph.ts';
 import { TICK_RATE } from './clock.ts';
-import { BUS_DWELL, busCalls, NO_CALL } from './bus.ts';
+import { busCalls, NO_CALL, type BusDemand, type BusRoute } from './bus.ts';
 import { STEADY, type Driver } from './driver.ts';
 import { SIGNAL_AMBER, SIGNAL_CYCLE, SIGNAL_GREEN, type SignalApproach, type TrafficSignals } from './signals.ts';
 
@@ -167,17 +167,16 @@ export function timeTour(graph: RoadGraph, route: readonly number[], signals?: T
     for (let k = 0; k < count; k++) {
       const approach = signals.approachOf(route[k] as number);
       if (approach === undefined) continue;
-      const laid = anchoredAt(graph, route, k, approach, signals, place, driver, plan.calls ?? false);
+      const laid = anchoredAt(graph, route, k, approach, signals, place, driver, plan.calls === true ? (plan.demand ?? EVEN) : undefined);
       if (best === undefined || laid.slow < best.slow) best = laid;
     }
   }
   if (best !== undefined) return finish(graph, best.route, best.steps, best.sync);
   const steps = new Steps();
-  const calls = plan.calls === true ? busCalls(graph, route, signals) : undefined;
+  const calls = plan.calls === true ? busCalls(graph, route, signals, plan.demand) : undefined;
   for (let i = 0; i < count; i++) {
     const edge = graph.edges[route[i] as number] as RoadEdge;
-    const call = calls === undefined ? NO_CALL : (calls[i] as number);
-    driveLeg(steps, i, edge, 0, edge.length, call, driver);
+    driveLeg(steps, i, edge, 0, edge.length, callOf(calls, i), driver);
   }
   return finish(graph, route, steps, -1);
 }
@@ -194,6 +193,28 @@ export interface TourPlan {
   driver?: Driver;
   /** True for a vehicle that calls at the stops of its route: a bus (`bus.ts`). */
   calls?: boolean;
+  /**
+   * How many people the stops of the route gather, which is how long the bus
+   * stands at each of them (`bus.ts`). Every stop the same when left out.
+   */
+  demand?: BusDemand;
+}
+
+/** The demand a plan that names none takes. */
+const EVEN: BusDemand = { riders: () => 3 };
+
+/** A call on one leg: where it stands and for how long, or no call at all. */
+interface Call {
+  at: number;
+  dwell: number;
+}
+
+const NOTHING: Call = { at: NO_CALL, dwell: 0 };
+
+/** The call on one leg of a route that has been walked for its stops. */
+function callOf(calls: BusRoute | undefined, leg: number): Call {
+  if (calls === undefined) return NOTHING;
+  return { at: calls.at[leg] as number, dwell: calls.dwell[leg] as number };
 }
 
 /**
@@ -201,20 +222,22 @@ export interface TourPlan {
  * calls there. `call` is metres along the leg, or {@link NO_CALL}; a call
  * beyond the stretch is one this stretch does not reach.
  */
-function driveLeg(steps: Steps, leg: number, edge: RoadEdge, from: number, to: number, call: number, driver: Driver): void {
-  if (call <= from || call >= to) {
+function driveLeg(steps: Steps, leg: number, edge: RoadEdge, from: number, to: number, call: Call, driver: Driver): void {
+  const at = call.at;
+  if (at <= from || at >= to) {
     steps.add(leg, from, to, share(edge, to - from, driver));
     return;
   }
-  steps.add(leg, from, call, share(edge, call - from, driver));
-  steps.add(leg, call, call, BUS_DWELL, true);
-  steps.add(leg, call, to, share(edge, to - call, driver));
+  steps.add(leg, from, at, share(edge, at - from, driver));
+  steps.add(leg, at, at, call.dwell, true);
+  steps.add(leg, at, to, share(edge, to - at, driver));
 }
 
 /** Ticks {@link driveLeg} will take over a stretch, before it lays anything down. */
-function legTicks(edge: RoadEdge, from: number, to: number, call: number, driver: Driver): number {
-  if (call <= from || call >= to) return share(edge, to - from, driver);
-  return share(edge, call - from, driver) + BUS_DWELL + share(edge, to - call, driver);
+function legTicks(edge: RoadEdge, from: number, to: number, call: Call, driver: Driver): number {
+  const at = call.at;
+  if (at <= from || at >= to) return share(edge, to - from, driver);
+  return share(edge, at - from, driver) + call.dwell + share(edge, to - at, driver);
 }
 
 /** A route timed from one anchor, before it is packed into a {@link Tour}. */
@@ -235,7 +258,7 @@ function anchoredAt(
   signals: TrafficSignals,
   place: number,
   driver: Driver,
-  calling: boolean,
+  demand: BusDemand | undefined,
 ): Anchored {
   const count = route.length;
   const turned: number[] = [];
@@ -245,11 +268,11 @@ function anchoredAt(
   const last = graph.edges[turned[count - 1] as number] as RoadEdge;
   // The stops of the turned route, so a bus calls at the same kerbs whichever
   // of its lights the lap ends up anchored at.
-  const calls = calling ? busCalls(graph, turned, signals) : undefined;
-  const callOn = (leg: number): number => (calls === undefined ? NO_CALL : (calls[leg] as number));
+  const calls = demand === undefined ? undefined : busCalls(graph, turned, signals, demand);
+  const callOn = (leg: number): Call => callOf(calls, leg);
   // The leg a queue for the light at the end of leg `i` may run back onto.
   const spill = (i: number): RoadEdge | undefined => {
-    if (i < 1 || callOn(i) !== NO_CALL || callOn(i - 1) !== NO_CALL) return undefined;
+    if (i < 1 || callOn(i).at !== NO_CALL || callOn(i - 1).at !== NO_CALL) return undefined;
     return behind(graph, signals, turned[i - 1] as number, turned[i] as number);
   };
   // Tick 0 is the anchor's green. The driver takes their own moment over it and
@@ -319,7 +342,7 @@ function anchoredAt(
     }
     const on = leg === i ? edge : (prev as RoadEdge);
     const drive = steps.ticks.length;
-    driveLeg(steps, leg, on, 0, halt, leg === i ? call : NO_CALL, driver);
+    driveLeg(steps, leg, on, 0, halt, leg === i ? call : NOTHING, driver);
     // A halt well back in the queue is reached before the line would have
     // been, maybe while the light is still green. The drive to it is slowed
     // instead, so the vehicle comes to rest on the tick after its green ends

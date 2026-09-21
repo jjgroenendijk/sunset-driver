@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { rngFor, Subsystem } from '../src/core/rng.ts';
-import { BUS_DWELL, busCalls, NO_CALL, STOP_IN, STOP_ROOM, STOP_SPACING } from '../src/sim/bus.ts';
+import { boardTicks, busCalls, busDwell, DOOR_TICKS, NO_CALL, ridersAt, STOP_CAP, STOP_IN, STOP_ROOM, STOP_SPACING } from '../src/sim/bus.ts';
 import type { SignalApproach, TrafficSignals } from '../src/sim/signals.ts';
 import { QUEUE_CLEAR, timeTour } from '../src/sim/traffic-timing.ts';
 import { walkTour } from '../src/sim/traffic-tour.ts';
 import { AmbientTraffic, permitOf, type AmbientVehicle } from '../src/sim/traffic.ts';
 import type { RoadEdge } from '../src/world/graph.ts';
+import { TIERS } from '../src/world/tiers.ts';
 import { sweepSeeds } from './helpers.ts';
 import { signalLap } from './signal-lap.ts';
 import { gridTraffic, gridTrafficRoads } from './traffic-grid.ts';
@@ -22,6 +23,14 @@ function busesOf(traffic: AmbientTraffic): AmbientVehicle[] {
   return traffic.vehicles.filter((vehicle) => vehicle.cls === 'bus');
 }
 
+/** True where a route has a leg a stop could stand beside: one with a pavement. */
+function hasKerb(traffic: AmbientTraffic, vehicle: AmbientVehicle): boolean {
+  for (const id of vehicle.tour.edges) {
+    if (TIERS[(traffic.roads.graph.edges[id] as RoadEdge).tier].pavement > 0) return true;
+  }
+  return false;
+}
+
 /** The steps of a tour that are a call at a stop. */
 function callSteps(vehicle: AmbientVehicle): number[] {
   const steps: number[] = [];
@@ -35,7 +44,7 @@ describe('a bus calling at its stops (spec section 20.2)', () => {
     // light never coming back past it. That holds only while this is true.
     expect(STOP_IN).toBeLessThan(QUEUE_CLEAR);
     expect(STOP_ROOM).toBeGreaterThan(0);
-    expect(BUS_DWELL).toBeGreaterThan(0);
+    expect(busDwell(1)).toBeGreaterThan(0);
   });
 
   it('calls at the first leg that can hold a stop, and then every spacing round the route', () => {
@@ -47,8 +56,9 @@ describe('a bus calling at its stops (spec section 20.2)', () => {
     let along = 0;
     for (let i = 0; i < route.length; i++) {
       const edge = roads.graph.edges[route[i] as number] as RoadEdge;
-      if (calls[i] !== NO_CALL) {
-        expect(calls[i], `leg ${i}`).toBe(STOP_IN);
+      if (calls.at[i] !== NO_CALL) {
+        expect(calls.at[i], `leg ${i}`).toBe(STOP_IN);
+        expect(TIERS[edge.tier].pavement, `leg ${i}`).toBeGreaterThan(0);
         expect(edge.length, `leg ${i}`).toBeGreaterThanOrEqual(STOP_IN + STOP_ROOM);
         at.push(along + STOP_IN);
       }
@@ -66,13 +76,29 @@ describe('a bus calling at its stops (spec section 20.2)', () => {
     const signals = signalsOf(traffic);
     for (const vehicle of busesOf(traffic)) {
       const calls = busCalls(roads.graph, Array.from(vehicle.tour.edges), signals);
-      for (let i = 0; i < calls.length; i++) {
-        if (calls[i] === NO_CALL) continue;
+      for (let i = 0; i < calls.at.length; i++) {
+        if (calls.at[i] === NO_CALL) continue;
         const edge = roads.graph.edges[vehicle.tour.edges[i] as number] as RoadEdge;
         expect(edge.length).toBeGreaterThanOrEqual(STOP_IN + STOP_ROOM);
         const approach = signals.approachOf(edge.id);
         if (approach !== undefined) expect((approach as SignalApproach).stop).toBeGreaterThan(STOP_IN);
       }
+    }
+  });
+
+  it('stands at a kerb for as long as the people that stop gathers take to board', () => {
+    // The dwell is the stop's, not the line's: the doors, and one person's
+    // boarding for each of the riders `bus.ts` drew for the road.
+    expect(busDwell(1)).toBe(DOOR_TICKS + boardTicks(1));
+    expect(busDwell(STOP_CAP)).toBeGreaterThan(busDwell(1));
+    const roads = gridTrafficRoads();
+    const edge = roads.graph.edges[0] as RoadEdge;
+    for (const seed of SEEDS) {
+      const riders = ridersAt(seed, edge, 1);
+      expect(riders).toBeGreaterThanOrEqual(1);
+      expect(riders).toBeLessThanOrEqual(STOP_CAP);
+      // A road nobody uses still gathers somebody, and never more than a busy one.
+      expect(ridersAt(seed, edge, 0)).toBe(1);
     }
   });
 
@@ -86,11 +112,22 @@ describe('a bus calling at its stops (spec section 20.2)', () => {
           expect(calls, `${vehicle.cls} ${vehicle.id} calls at a stop`).toEqual([]);
           continue;
         }
+        // A bus whose whole route is highway has nowhere to put a stop, since
+        // a highway carries no pavement. Every other one calls.
+        if (!hasKerb(traffic, vehicle)) {
+          expect(calls, `bus ${vehicle.id} calls where there is no pavement`).toEqual([]);
+          continue;
+        }
         expect(calls.length, `bus ${vehicle.id} drives its whole route without calling`).toBeGreaterThan(0);
         for (const step of calls) {
-          // A call is a halt: the same metre of the same leg, for the dwell.
+          // A call is a halt: the same metre of the same leg, for the dwell
+          // the people that stop gathers take to board.
           expect(vehicle.tour.stepFrom[step]).toBe(vehicle.tour.stepTo[step]);
-          expect(vehicle.tour.stepTicks[step], `bus ${vehicle.id}`).toBe(BUS_DWELL);
+          const edge = traffic.roads.graph.edges[vehicle.tour.edges[vehicle.tour.stepLeg[step] as number] as number] as RoadEdge;
+          const riders = traffic.demand.riders(edge);
+          expect(riders).toBeGreaterThanOrEqual(1);
+          expect(riders).toBeLessThanOrEqual(STOP_CAP);
+          expect(vehicle.tour.stepTicks[step], `bus ${vehicle.id}`).toBe(busDwell(riders));
         }
         buses++;
       }
@@ -102,14 +139,21 @@ describe('a bus calling at its stops (spec section 20.2)', () => {
     const roads = gridTrafficRoads();
     const walk = rngFor(13, 0, Subsystem.Traffic, 9);
     const route = walkTour(roads.graph, 0, walk, permitOf('bus'));
-    const stops = busCalls(roads.graph, route).filter((call) => call !== NO_CALL).length;
+    const calls = busCalls(roads.graph, route);
+    let stops = 0;
+    let dwelt = 0;
+    for (let i = 0; i < calls.at.length; i++) {
+      if (calls.at[i] === NO_CALL) continue;
+      stops++;
+      dwelt += calls.dwell[i] as number;
+    }
     const straight = timeTour(roads.graph, route, undefined);
     const calling = timeTour(roads.graph, route, undefined, { calls: true });
     expect(stops).toBeGreaterThan(0);
     // Splitting a leg in two rounds each half up, so the drive costs a tick or
     // two more per call on top of the dwells themselves.
-    expect(calling.period - straight.period).toBeGreaterThanOrEqual(stops * BUS_DWELL);
-    expect(calling.period - straight.period).toBeLessThan(stops * (BUS_DWELL + 4));
+    expect(calling.period - straight.period).toBeGreaterThanOrEqual(dwelt);
+    expect(calling.period - straight.period).toBeLessThan(dwelt + stops * 4);
     expect(calling.length).toBe(straight.length);
   });
 

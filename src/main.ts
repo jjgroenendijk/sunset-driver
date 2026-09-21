@@ -250,7 +250,7 @@ async function boot(): Promise<void> {
   // police and the emergency services, and the ground the physics drives on
   // (`city.ts`). The session starts on the nearest road to the core rather
   // than wherever the origin happens to fall.
-  const { ground, roads, traffic, crowd, tram, police, wildlife } = buildCity(state.seed, description, world);
+  const { ground, roads, traffic, busStops, crowd, tram, police, wildlife } = buildCity(state.seed, description, world);
   // The bells of spec section 13.2 are a function of the tick rather than part
   // of the record, so the audio is given the line itself to ask.
   audio.watch(tram);
@@ -376,7 +376,7 @@ async function boot(): Promise<void> {
   // The presses that open a menu, a map or a picker (`keys.ts`).
   listenForKeys(window, { state, pause, map, minimap, picker, weapons, free, camera, look, view: menuSettings.view });
 
-  const views = buildViews(world, { traffic, crowd, tram, wildlife }, parked, emergencyCrews.standing, giverBodies.markers);
+  const views = buildViews(world, { traffic, busStops, crowd, tram, wildlife }, parked, emergencyCrews.standing, giverBodies.markers);
 
   // WebGPU compiles a pipeline the first time it draws with it, so a session
   // that starts here compiles the whole city over its first frames: the street

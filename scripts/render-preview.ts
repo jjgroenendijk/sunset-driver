@@ -81,6 +81,9 @@
  *   --tram           stand beside the first tram at the hour of the picture
  *                    (spec section 13.2), and --stop=N at the N-th tram stop.
  *                    Either one overrides --x, --y and --junction.
+ *   --bus-stop       stand at the N-th kerb the buses call at (spec section
+ *                    20.2), where the post and the queue are. Overrides --x,
+ *                    --y and --junction.
  *   --fast           wait for the near ring of chunks only. About half the
  *                    chunk time; the far edge of the view may be missing.
  *   --software       draw on SwiftShader, as CI does, in a browser of its own.
@@ -160,6 +163,22 @@ if (junction !== undefined) {
   console.log(`junction ${options.get('junction')} at ${junction.x.toFixed(1)},${junction.y.toFixed(1)}: ${mouths}`);
 }
 
+/** Where `--bus-stop=N` stands the player: on the pavement at the N-th bus stop. */
+async function busStopPlace(): Promise<{ x: number; y: number } | undefined> {
+  if (!options.has('bus-stop')) return undefined;
+  const { generateWorld } = await import('../src/world/world.ts');
+  const { BusStops } = await import('../src/sim/bus-stops.ts');
+  const { AmbientTraffic, trafficRoadsOf } = await import('../src/sim/traffic.ts');
+  const world = generateWorld(seed);
+  const roads = trafficRoadsOf(world);
+  const stops = new BusStops(seed, new AmbientTraffic(seed, roads));
+  const want = num('bus-stop', 0);
+  if (want >= stops.count) throw new Error(`only ${stops.count} bus stops on this seed`);
+  const stop = stops.stopAt(want);
+  console.log(`bus stop ${want} of ${stops.count} at ${stop.x.toFixed(1)},${stop.y.toFixed(1)}, ${stop.riders} waiting at most`);
+  return stop;
+}
+
 /** Where `--tram` or `--stop` stands the player: beside the first tram at the hour, or at a stop. */
 async function tramPlace(): Promise<{ x: number; y: number } | undefined> {
   if (!options.has('tram') && !options.has('stop')) return undefined;
@@ -179,7 +198,7 @@ async function tramPlace(): Promise<{ x: number; y: number } | undefined> {
   const pose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
   return line.carPose(0, 1, tickAtHour(num('hour', 12)), pose);
 }
-const tram = await tramPlace();
+const tram = (await busStopPlace()) ?? (await tramPlace());
 
 /** The place `--look-at=x,y,height` names, the height 0 when it is left off. */
 function lookAtOf(raw: string | undefined): PreviewRequest['lookAt'] {
