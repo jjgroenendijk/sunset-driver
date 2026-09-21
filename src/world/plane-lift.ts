@@ -225,7 +225,7 @@ export function seedsAt(network: PlaneNetwork, at: Point): MouthSeed[] {
   const seeds: MouthSeed[] = [];
   for (const point of on) {
     const road = network.curves[point.curve] as RoadCurve;
-    seeds.push(...seedsOn(road.id, road.tier, road.points, point.index, road.bridges, road.tunnels));
+    seeds.push(...seedsOn(road.id, road.tier, road.points, point.index, road.bridges, road.tunnels, road.lift));
   }
   return seeds;
 }
@@ -242,13 +242,14 @@ export function seedsOn(
   index: number,
   bridges: readonly number[],
   tunnels: readonly number[],
+  lift?: readonly number[],
 ): MouthSeed[] {
   const seeds: MouthSeed[] = [];
   for (const direction of [1, -1] as const) {
     if (points[index + direction] === undefined) continue;
     const first = direction === 1 ? index : index - 1;
     if (bridges.includes(first) || tunnels.includes(first)) continue;
-    seeds.push({ curve, tier, points, point: index, direction });
+    seeds.push({ curve, tier, points, lift, point: index, direction });
   }
   return seeds;
 }
