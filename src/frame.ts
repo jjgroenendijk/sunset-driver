@@ -392,6 +392,9 @@ export class SessionFrame {
     // flight over a flock leaves it alone.
     session.wildlife.update(session.state.tick, moment, round.x, round.y, player);
     session.parked?.update(session.state, round.x, round.y);
+    // A stop does not move, so its posts are written where the frame stands
+    // rather than at the moment it stands at.
+    session.busStops.update(round.x, round.y);
     session.crowd.update(session.state, moment, round.x, round.y);
     // The marker over each contact in view (spec section 18), which turns and
     // bobs with the frame's moment rather than with the wall clock.

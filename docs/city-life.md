@@ -12,6 +12,7 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 - Giving way
 - The drivers
 - The buses
+- The bus stops
 - The wrecks the city tows
 - Traffic lights
 - Parked cars
@@ -109,8 +110,11 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   `QUEUE_CLEAR`, the least road a signalled approach keeps clear behind its queue: a stop further in
   could fall inside the queue for the lights, and the halt for the light would land on the same
   metre as the halt at the kerb. `test/bus.test.ts` holds the two constants to that.
+- A stop also needs a pavement, which a highway has none of, so a bus drives a motorway leg
+  through without calling. On the grid of `traffic-grid.ts` about half the buses walk a route of
+  nothing but highway and so never call at all.
 - `traffic-timing.ts` lays a call down with `driveLeg`, which splits the drive over a leg in two
-  around a halt of `BUS_DWELL`. `legTicks` is the same arithmetic before anything is laid down,
+  around a halt of `busDwell`. `legTicks` is the same arithmetic before anything is laid down,
   which is how the tick a bus reaches a stop line already carries the dwell it spent at the kerb;
   reading the light without it would read the wrong colour.
 - `Tour.stepCall` is 1 on each of those halts. Without it nothing downstream can tell a bus at a
@@ -120,8 +124,37 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 - `Steps.stretch` never grows a wait, for the same reason. The stretch that brings a lap round to
   its anchor may only slow drives; growing a dwell would stand the bus at the kerb for longer than
   its own stop.
-- Nothing here knows about passengers, and the dwell is the same at every stop. A bus that stood for
-  as long as its passengers took would have to be stepped, and the traffic is never stepped.
+- The dwell is the stop's, not the line's: `BusDemand.riders` draws how many people a kerb gathers
+  from how busy `traffic.ts` reads that road, and `busDwell` is the doors plus the time that many
+  take to board. `AmbientTraffic.demand` holds the one copy of it, because the timing and the
+  drawing must agree on the number or a bus pulls away from a queue it never took.
+- Which bus calls at which kerb is not the dwell's to decide, and it cannot be: the tours are timed
+  one at a time and none reads another, so at timing time no bus knows what else serves its stops.
+  A bus therefore stands its stop's full dwell even where the bus in front has just emptied the
+  kerb.
+
+## The bus stops
+
+- `src/sim/bus-stops.ts` gathers the stops of a world once the tours are timed. A call always
+  stands `STOP_IN` metres into its leg, so the stops are the directed edges the buses call on, and
+  two buses on one line share one record. A stop is not in the world description and cannot be:
+  where a bus calls is a function of the route it walked.
+- Nothing is stepped. Each call is kept as `arrive` and `depart` in the ticks of the world —
+  `stepStart - phase` over the tour's period, the way `cursorAt` reads a vehicle — so the ticks
+  since the kerb was last free is the smallest of those residues, over every bus that calls there.
+  That is what fills the queue, exactly as the ticks since the last tram left fill a tram stop's.
+- `src/sim/stop-queue.ts` is the half the tram and the buses share: `layQueue` stands people along
+  the pavement to the right of the direction of travel, `waitingAt` says how many of the places are
+  filled on a tick, and `writeQueue` writes them into a caller's list without allocating. Both stops
+  keep their own caps and rates; only the arithmetic is shared.
+- `src/render/bus-stops.ts` draws the post and, at a stop of `SHELTER_RIDERS` or more, the shelter.
+  It is not chunk furniture for the same reason the record is not in the world: the chunk worker
+  has the world and not the traffic. `BusStopView` stands them round the player as `TramView` does,
+  two draws for every stop in view. The people are drawn with the crowd (`PedestrianView`).
+- A stop is drawn in its own frame with `+x` at the road and the origin on the middle of the
+  pavement, so nothing may reach further than half the narrowest pavement a bus route runs along.
+  `test/bus-stops.test.ts` holds every box to that. A flag sits on top of the mast rather than
+  across it: a face the mast runs through reads as two white bars.
 
 ## The wrecks the city tows
 

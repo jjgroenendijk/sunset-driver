@@ -187,6 +187,8 @@ angle, the vehicle or the pose changes, and 1 to 3 seconds when the player stand
   as the pickup under the mouse is.
 - `--tram` stands the player beside the first tram at the hour of the picture, and `--stop=N` at
   the N-th tram stop, where its queue waits.
+- `--bus-stop=N` stands the player at the N-th kerb the buses call at (spec section 20.2), by the
+  post and the queue. It prints how many stops the seed has and how many people that one gathers.
 - `--shop=<trade>` stands the player inside the nearest shop of that trade — `weapons`, `workshop`,
   `convenience`, `clothing`, `clinic`, `broker`, or `any` — with the vehicle left at the kerb. It is
   the one way to look at an interior (spec section 16.1), and it moves the frame off `--x` and

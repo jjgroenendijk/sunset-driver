@@ -13,6 +13,7 @@
  */
 import type { City } from './city.ts';
 import { CasualtyView } from './render/casualties.ts';
+import { BusStopView } from './render/bus-stops.ts';
 import { ContactMarkers, type ContactMark } from './render/markers.ts';
 import { EmergencyView } from './render/emergency.ts';
 import { OfficerGunView } from './render/officer-guns.ts';
@@ -35,6 +36,8 @@ export interface SessionViews {
   /** Undefined where no chunk worker laid out the parking bays. */
   parked: ParkedView | undefined;
   tram: TramView;
+  /** The posts and the shelters of the bus stops of spec section 20.2. */
+  busStops: BusStopView;
   crowd: PedestrianView;
   /** The people who have been hit, and the medics at them. */
   casualties: CasualtyView;
@@ -54,7 +57,7 @@ export interface SessionViews {
  */
 export function buildViews(
   world: WorldScene,
-  city: Pick<City, 'traffic' | 'crowd' | 'tram' | 'wildlife'>,
+  city: Pick<City, 'traffic' | 'busStops' | 'crowd' | 'tram' | 'wildlife'>,
   parked: ParkedCars | undefined,
   standing: readonly StandingPerson[],
   contacts: readonly ContactMark[],
@@ -66,7 +69,8 @@ export function buildViews(
     wildlife: new WildlifeView(city.wildlife),
     parked: parked === undefined ? undefined : new ParkedView(parked),
     tram: new TramView(city.tram),
-    crowd: new PedestrianView(city.crowd, city.tram),
+    busStops: new BusStopView(city.busStops),
+    crowd: new PedestrianView(city.crowd, city.tram, city.busStops),
     casualties: new CasualtyView(city.crowd),
     guns: new OfficerGunView(),
     markers: new ContactMarkers(contacts.length),
@@ -79,6 +83,7 @@ export function buildViews(
     views.emergency.group,
     views.wildlife.group,
     views.tram.group,
+    views.busStops.group,
     views.crowd.group,
     views.casualties.group,
     views.guns.group,
