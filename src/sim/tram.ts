@@ -22,15 +22,15 @@ import { TRAM_LANE } from '../world/tiers.ts';
 import type { District, TramDescription } from '../world/types.ts';
 import { TICK_RATE } from './clock.ts';
 import { lookOf, type PedestrianLook } from './pedestrian-look.ts';
-import { PAVEMENT_RISE, pavementOffset } from './pedestrian-route.ts';
-import type { PedestrianPose } from './pedestrians.ts';
-import { heightOff, RouteSampler, type RoutePoint } from './route-sample.ts';
+import { heightOff, RouteSampler, type RouteLegs, type RoutePoint } from './route-sample.ts';
+import { layQueue, queueMisses, waitingAt, writeQueue, type StopQueue, type WaitingPassenger } from './stop-queue.ts';
 import { SIGNAL_CYCLE, type TrafficSignals } from './signals.ts';
 import type { AmbientPose, TrafficRoads } from './traffic.ts';
 import { legAt, type Tour } from './traffic-timing.ts';
 import { timeTram, type TramCall } from './tram-timing.ts';
 
 export { DWELL, TRAM_CLEAR, type TramCall } from './tram-timing.ts';
+export type { WaitingPassenger } from './stop-queue.ts';
 
 /** Cars one tram is made of. */
 export const TRAM_CARS = 3;
@@ -69,21 +69,10 @@ export interface TramBell {
   y: number;
 }
 
-/** A person waiting at a stop. */
-export interface WaitingPassenger {
-  pose: PedestrianPose;
-  look: PedestrianLook;
-}
-
-/** Where the people of one stop stand: `x`, `y`, `height` and `heading` for each place in the queue. */
-interface StopQueue {
+/** One stop of the loop and the line of people waiting at it. */
+interface TramStop {
   call: TramCall;
-  places: Float64Array;
-  looks: PedestrianLook[];
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
+  queue: StopQueue;
 }
 
 export class TramLine {
@@ -97,7 +86,7 @@ export class TramLine {
   /** Ticks each tram is ahead of the first, all whole signal cycles. */
   private readonly phases: Int32Array;
   private readonly sampler: RouteSampler;
-  private readonly queues: StopQueue[] = [];
+  private readonly stops: TramStop[] = [];
   private readonly point: RoutePoint;
   private readonly behind: RoutePoint;
   private readonly ahead: RoutePoint;
@@ -127,7 +116,7 @@ export class TramLine {
     this.trams = Math.max(1, Math.min(MAX_TRAMS, Math.round(tram.length / TRAM_SPACING), Math.floor(period / SIGNAL_CYCLE)));
     this.phases = new Int32Array(this.trams);
     for (let k = 0; k < this.trams; k++) this.phases[k] = Math.round((k * period) / this.trams / SIGNAL_CYCLE) * SIGNAL_CYCLE;
-    for (const call of this.calls) this.queues.push(this.queueOf(seed, call, districts, tram));
+    for (const call of this.calls) this.stops.push(this.stopOf(seed, call, districts, tram));
   }
 
   /** The tick of the loop a tram stands at on a tick, which may fall between two. */
@@ -191,29 +180,15 @@ export class TramLine {
       const into = mod(at - call.arrive, tour.period);
       if (into < dwell) boarding = into;
     }
-    if (boarding < 0) return gathered(since);
-    return Math.ceil(gathered(since - boarding) * Math.max(0, 1 - boarding / BOARD_TICKS));
+    return waitingAt(since, boarding, BOARD_TICKS, STOP_CAP, ARRIVAL_TICKS);
   }
 
   /** The people waiting at the stops inside a box on a tick. */
   passengers(minX: number, minY: number, maxX: number, maxY: number, tick: number, out: WaitingPassenger[]): number {
     let count = 0;
-    for (const queue of this.queues) {
-      if (queue.maxX < minX || queue.minX > maxX || queue.maxY < minY || queue.minY > maxY) continue;
-      const people = this.waiting(queue.call.stop, Math.floor(tick));
-      for (let i = 0; i < people; i++) {
-        const entry = out[count] ?? { pose: { x: 0, y: 0, height: 0, heading: 0, speed: 0, cycle: 0, gait: 'stand' }, look: queue.looks[i] as PedestrianLook };
-        const p = entry.pose;
-        p.x = queue.places[i * 4] as number;
-        p.y = queue.places[i * 4 + 1] as number;
-        p.height = queue.places[i * 4 + 2] as number;
-        p.heading = queue.places[i * 4 + 3] as number;
-        p.speed = 0;
-        p.cycle = 0;
-        p.gait = 'stand';
-        entry.look = queue.looks[i] as PedestrianLook;
-        out[count++] = entry;
-      }
+    for (const stop of this.stops) {
+      if (queueMisses(stop.queue, minX, minY, maxX, maxY)) continue;
+      count = writeQueue(stop.queue, this.waiting(stop.call.stop, Math.floor(tick)), out, count);
     }
     return count;
   }
@@ -227,32 +202,15 @@ export class TramLine {
     return at;
   }
 
-  /** The places of a stop's queue: a line along the pavement to the right of where the tram calls, facing the road. */
-  private queueOf(seed: number, call: TramCall, districts: readonly Pick<District, 'id' | 'zone'>[], tram: TramDescription): StopQueue {
-    const stop = tram.stops[call.stop] as TramDescription['stops'][number];
-    const zone = districts.find((d) => d.id === stop.district)?.zone ?? 'inner';
-    const places = new Float64Array(STOP_CAP * 4);
+  /** One stop and its queue: a line along the pavement back from where the tram calls, facing the road. */
+  private stopOf(seed: number, call: TramCall, districts: readonly Pick<District, 'id' | 'zone'>[], tram: TramDescription): TramStop {
+    const place = tram.stops[call.stop] as TramDescription['stops'][number];
+    const zone = districts.find((d) => d.id === place.district)?.zone ?? 'inner';
     const looks: PedestrianLook[] = [];
-    const queue: StopQueue = { call, places, looks, minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
-    for (let i = 0; i < STOP_CAP; i++) {
-      const at = this.sampler.sample(this.tour as Tour, call.front - CAR_LENGTH / 2 - i * QUEUE_STEP, this.point);
-      const offset = pavementOffset(at.edge);
-      const x = at.x + at.rightX * offset;
-      const y = at.y + at.rightY * offset;
-      places.set([x, y, at.height + PAVEMENT_RISE, atan2(-at.rightY, -at.rightX)], i * 4);
-      looks.push(lookOf(zone, rngFor(seed, 0, Subsystem.Tram, hashInts(call.stop, i))));
-      queue.minX = Math.min(queue.minX, x);
-      queue.minY = Math.min(queue.minY, y);
-      queue.maxX = Math.max(queue.maxX, x);
-      queue.maxY = Math.max(queue.maxY, y);
-    }
-    return queue;
+    for (let i = 0; i < STOP_CAP; i++) looks.push(lookOf(zone, rngFor(seed, 0, Subsystem.Tram, hashInts(call.stop, i))));
+    const queue = layQueue(this.sampler, this.tour as RouteLegs, call.front - CAR_LENGTH / 2, QUEUE_STEP, looks, this.point);
+    return { call, queue };
   }
-}
-
-/** People who have come to a stop in the ticks since the last tram left it. */
-function gathered(ticks: number): number {
-  return Math.min(STOP_CAP, Math.floor(Math.max(0, ticks) / ARRIVAL_TICKS));
 }
 
 function mod(value: number, by: number): number {
