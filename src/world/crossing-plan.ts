@@ -404,10 +404,16 @@ function crossingsOf(network: CrossingNetwork, draft: DraftLine): Crossing[] {
   return out.sort((m, n) => m.segment - n.segment || m.at - n.at || m.curve - n.curve || m.other - n.other);
 }
 
-/** True where a segment of a line lies on the ground: no deck, no bore, no lift at either end. */
+/**
+ * True where a segment of a line lies on the ground: no deck and no bore.
+ *
+ * A segment that carries lift and is neither is on fill, which is ground: the
+ * carve makes the embankment up to the road and a junction can be cut into it
+ * (`road-route.ts`). Every raise a highway or an overpass takes is a deck by
+ * construction, so only the approach to a bridge over water reads this way.
+ */
 export function onGround(line: DraftLine, segment: number): boolean {
-  if (line.bridges.includes(segment) || line.tunnels.includes(segment)) return false;
-  return (line.lift?.[segment] ?? 0) === 0 && (line.lift?.[segment + 1] ?? 0) === 0;
+  return !line.bridges.includes(segment) && !line.tunnels.includes(segment);
 }
 
 /**

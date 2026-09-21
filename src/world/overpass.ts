@@ -118,6 +118,35 @@ export function raised<T extends RaisedLine>(road: T, raises: readonly Raise[]):
   return { ...cut, bridges, lift };
 }
 
+/**
+ * True where a line is carried on fill at a point: it stands over the ground
+ * there, and neither side of it is a deck or a bore.
+ *
+ * A raise laid in here is a deck every metre of its length, which is what the
+ * level top of an overpass is. The approach to a bridge over water is not:
+ * `road-route.ts` gives back to the ground every segment of it the carve can
+ * make up, and what is left carrying lift is an embankment. A road on an
+ * embankment is on the ground, so it is crossed and joined like any other.
+ */
+export function onFill(line: RaisedLine, segment: number): boolean {
+  if (segment < 0 || segment + 1 >= line.points.length) return false;
+  if ((line.lift?.[segment] ?? 0) <= 0 && (line.lift?.[segment + 1] ?? 0) <= 0) return false;
+  return !line.bridges.includes(segment) && !line.tunnels.includes(segment);
+}
+
+/**
+ * True where a raised line is met on fill at a point: the embankment reaches
+ * the point from one side or the other, so the ground there stands at the
+ * height the road drives and a junction can be built on it.
+ *
+ * The abutment of a bridge reads this way — fill behind it, deck in front —
+ * and that is what lets a street meet the road at the end of a bridge. A point
+ * inside a deck does not: there is no ground under it to stand a junction on.
+ */
+export function pointOnFill(line: RaisedLine, index: number): boolean {
+  return onFill(line, index - 1) || onFill(line, index);
+}
+
 /** How far over the ground the road stands at a distance along it: the highest profile there. */
 function liftAt(raises: readonly Raise[], along: number): number {
   let lift = 0;
