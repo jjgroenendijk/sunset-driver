@@ -24,6 +24,7 @@
  * returns the road to add, and the points each road already laid takes.
  */
 import { hypot, sin } from '../core/libm.ts';
+import { lerp } from '../core/math.ts';
 import { CLEARANCE, PLATEAU_MARGIN, raiseAt, raised, type Raise } from './overpass.ts';
 import type { Ground } from './bed.ts';
 import { alongSegment, PlannedLine, toSegment } from './crossing-line.ts';
@@ -266,18 +267,26 @@ function nodeSeeds(network: CrossingNetwork, road: DraftLine, plan: Plan, k: num
   const on = network.nodeAt(p);
   const edits = plan.edits.filter((edit) => hypot(edit.x - p.x, edit.y - p.y) <= SAME_NODE);
   if (on.length === 0 && edits.length === 0) return undefined;
-  const seeds = seedsOn(network.curves.length, road.tier, road.points, k, road.bridges, road.tunnels);
+  const seeds = seedsOn(network.curves.length, road.tier, road.points, k, road.bridges, road.tunnels, road.lift);
   for (const at of on) {
     const laid = network.curves[at.curve] as RoadCurve;
-    seeds.push(...seedsOn(laid.id, laid.tier, laid.points, at.index, laid.bridges, laid.tunnels));
+    seeds.push(...seedsOn(laid.id, laid.tier, laid.points, at.index, laid.bridges, laid.tunnels, laid.lift));
   }
   for (const edit of edits) {
     // The laid road has no point there yet: it takes one when the plan holds,
-    // and its mouths leave the node along the two halves of its segment.
+    // and its mouths leave the node along the two halves of its segment. The
+    // lift takes the new point the way `road-network.ts` gives it one.
     const laid = network.curves[edit.curve] as RoadCurve;
     const points = [...laid.points];
     points.splice(edit.segment + 1, 0, { x: edit.x, y: edit.y });
-    seeds.push(...seedsOn(laid.id, laid.tier, points, edit.segment + 1, [], []));
+    let lift = laid.lift;
+    if (lift !== undefined) {
+      const at = edit.segment + 1;
+      const t = alongSegment(laid.points[edit.segment] as Point, laid.points[at] as Point, { x: edit.x, y: edit.y });
+      lift = [...lift];
+      lift.splice(at, 0, lerp(lift[edit.segment] as number, lift[at] as number, t));
+    }
+    seeds.push(...seedsOn(laid.id, laid.tier, points, edit.segment + 1, [], [], lift));
   }
   return seeds;
 }

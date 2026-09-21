@@ -287,13 +287,23 @@ export class RoadBeds {
 }
 
 /**
- * The plane a junction is levelled to: the ground at its node, and the tilt
- * that fits its mouths. The crossing plan fits the plane of a node it has not
- * built a junction for yet through the same door (`plane-lift.ts`), so a
- * crossing is decided on the line the road will really drive.
+ * The plane a junction is levelled to: the height its roads drive at the node,
+ * and the tilt that fits its mouths. The crossing plan fits the plane of a node
+ * it has not built a junction for yet through the same door (`plane-lift.ts`),
+ * so a crossing is decided on the line the road will really drive.
+ *
+ * The node stands at the ground under it plus the most any road meeting it is
+ * carried over that ground (`JunctionMouth.lift`). A road on fill drives over
+ * the ground it stands on — the approach to a bridge climbs on an embankment
+ * the carve makes up (`road-route.ts`) — and a plane levelled to the ground
+ * would dig that approach back down to it and leave a trough at the junction.
+ * Every other road at the node climbs to meet it, which is what a street
+ * joining an embankment does.
  */
 export function junctionPlane(ground: Ground, node: Point, mouths: readonly JunctionMouth[]): JunctionPlane {
-  const level = ground(node.x, node.y);
+  let lift = 0;
+  for (const mouth of mouths) lift = Math.max(lift, mouth.lift);
+  const level = ground(node.x, node.y) + lift;
   const tilt = planeOf(ground, node, level, mouths);
   return { x: node.x, y: node.y, level, gx: tilt.x, gy: tilt.y };
 }
@@ -317,7 +327,9 @@ function planeOf(ground: Ground, node: Point, level: number, mouths: readonly Ju
   let steepest = 0;
   for (const mouth of mouths) {
     if (mouth.cut < MIN_FIT_CUT) continue;
-    const grade = (ground(mouth.at.x, mouth.at.y) - level) / mouth.cut;
+    // The grade of the line the road really drives, which is its own lift over
+    // the ground at the cut, against the level of the node.
+    const grade = (ground(mouth.at.x, mouth.at.y) + mouth.liftAtCut - level) / mouth.cut;
     steepest = Math.max(steepest, Math.abs(grade));
     axx += mouth.dx * mouth.dx;
     axy += mouth.dx * mouth.dy;

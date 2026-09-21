@@ -21,6 +21,7 @@
  */
 import { compareNumbers } from '../core/sort.ts';
 import { atan2, cos, hypot, sin, tan } from '../core/libm.ts';
+import { alongSegment } from './crossing-line.ts';
 import type { RoadGraph, RoadNode } from './graph.ts';
 import { curveDistances } from './ribbon.ts';
 import { footprintHalfWidth, TIERS } from './tiers.ts';
@@ -75,6 +76,14 @@ export interface JunctionMouth {
   /** Where that cut stands on the curve, and the segment it stands on. */
   at: Point;
   segment: number;
+  /**
+   * Metres the road stands over the ground at the node, and at the cut
+   * (`RoadCurve.lift`). Both are zero for a road on the ground; a road on an
+   * embankment drives that far over it, and the plane the junction is levelled
+   * to has to meet it there rather than in the ground below (`bed.ts`).
+   */
+  lift: number;
+  liftAtCut: number;
 }
 
 /**
@@ -158,6 +167,8 @@ interface Mouth {
   tier: RoadTier;
   /** The points of the curve the mouth is on, which its cut is placed along. */
   points: readonly Point[];
+  /** The lift of the curve at each of those points, where it carries any. */
+  lift: readonly number[] | undefined;
   point: number;
   direction: 1 | -1;
   dx: number;
@@ -191,6 +202,8 @@ export interface MouthSeed {
   curve: number;
   tier: RoadTier;
   points: readonly Point[];
+  /** The curve's lift at each of its points, where it carries any (`overpass.ts`). */
+  lift?: readonly number[];
   /** Index of the point standing on the node. */
   point: number;
   direction: 1 | -1;
@@ -216,7 +229,7 @@ function junctionAt(node: RoadNode, roads: readonly RoadCurve[], graph: RoadGrap
     // A mouth on a deck or in a bore meets nothing on the ground.
     const first = direction === 1 ? edge.start : edge.start - 1;
     if (road.bridges.includes(first) || road.tunnels.includes(first)) continue;
-    seeds.push({ curve: road.id, tier: road.tier, points: road.points, point: edge.start, direction });
+    seeds.push({ curve: road.id, tier: road.tier, points: road.points, lift: road.lift, point: edge.start, direction });
   }
   const fitted = fitMouths(node, seeds);
   if (fitted === undefined) return undefined;
@@ -265,6 +278,7 @@ function fitMouths(node: Point, seeds: readonly MouthSeed[]): { mouths: Mouth[];
       curve: seed.curve,
       tier: seed.tier,
       points: seed.points,
+      lift: seed.lift,
       point: seed.point,
       direction: seed.direction,
       dx: heading.x,
@@ -319,7 +333,18 @@ function cutOf(mouth: Mouth): JunctionMouth {
     cut,
     at: place.at,
     segment: place.segment,
+    lift: mouth.lift?.[mouth.point] ?? 0,
+    liftAtCut: liftAt(mouth.lift, mouth.points, place.segment, place.at),
   };
+}
+
+/** The lift a curve carries at a place on one of its segments: straight between the two ends. */
+function liftAt(lift: readonly number[] | undefined, points: readonly Point[], segment: number, at: Point): number {
+  if (lift === undefined) return 0;
+  const b = points[segment + 1] as Point | undefined;
+  if (b === undefined) return lift[segment] ?? 0;
+  const t = alongSegment(points[segment] as Point, b, at);
+  return (lift[segment] ?? 0) * (1 - t) + (lift[segment + 1] ?? 0) * t;
 }
 
 /** Tiers by the ground they claim, so the widest road at a node is found without comparing widths twice. */
