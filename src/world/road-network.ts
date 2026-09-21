@@ -28,6 +28,7 @@ import { clamp, dist, lerp } from '../core/math.ts';
 import { deckApart, settleCrossings } from './crossing-plan.ts';
 import type { CrossingNetwork } from './crossing-rules.ts';
 import { NetworkClearance, SAME_PLACE } from './network-clearance.ts';
+import { pointOnFill } from './overpass.ts';
 import { selfOverlap } from './self-overlap.ts';
 import { mayJoin } from './tiers.ts';
 import type { Point, RoadCurve, RoadTier } from './types.ts';
@@ -358,8 +359,12 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
   private joinable(curve: number, index: number, joiner: RoadTier | undefined): boolean {
     if (joiner === undefined) return true;
     const road = this.curves[curve] as RoadCurve;
-    // A raised point stands off the ground, and a junction is on it.
-    if ((road.lift?.[index] ?? 0) > 0) return false;
+    // A point on a deck stands off the ground, and a junction is on it. A point
+    // the embankment reaches does not: the carve makes the ground up to the
+    // road there, and `bed.ts` levels the junction's plane to the height the
+    // road drives, so a junction there is a junction on the ground. That is
+    // what lets a street meet the road at the end of a bridge (issue #593).
+    if ((road.lift?.[index] ?? 0) > 0 && !pointOnFill(road, index)) return false;
     return mayJoin(joiner, road.tier, road.interchanges.includes(index));
   }
 

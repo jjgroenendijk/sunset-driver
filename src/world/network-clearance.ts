@@ -23,7 +23,7 @@
  */
 import { atan2, hypot } from '../core/libm.ts';
 import { clamp, directionDelta } from '../core/math.ts';
-import { CLEARANCE } from './overpass.ts';
+import { CLEARANCE, onFill } from './overpass.ts';
 import { footprintHalfWidth, mayCross } from './tiers.ts';
 import type { Point, RoadCurve, RoadTier } from './types.ts';
 
@@ -113,6 +113,11 @@ export class NetworkClearance {
       if (curve.tier === 'highway') return slots.includes(i - 1) && slots.includes(i) && slots.includes(i + 1);
       const low = Math.min(lift[i] ?? 0, lift[i + 1] ?? 0);
       const high = Math.max(lift[i] ?? 0, lift[i + 1] ?? 0);
+      // A segment that carries lift and is no deck is carried on fill, which
+      // the carve makes up: the road is on the ground there and is crossed
+      // like any other, which is what keeps the streets around a bridge
+      // approach (issue #593).
+      if (onFill(curve, i)) return true;
       return high === 0 || low >= CLEARANCE;
     };
     const first = this.halfWidth.length;
