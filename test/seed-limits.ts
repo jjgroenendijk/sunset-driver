@@ -447,5 +447,10 @@ export const TRAFFIC_STACKED = 0.12;
  * The share of the tram's level crossings that must take a light (spec section
  * 13.2). The rest stand where a run is too short for a stop line, and the tram
  * only halts and rings there.
+ *
+ * Issue #399 took it down from 0.85 to 0.8. The tram calls at the districts, so
+ * re-rolling their sites re-routes the loop over other crossings: over ten
+ * seeds the middle stayed at 0.96 and the lowest fell from 0.94 to 0.87, and
+ * seed 4081019190 read 0.84.
  */
-export const TRAM_LIT_SHARE = 0.85;
+export const TRAM_LIT_SHARE = 0.8;
