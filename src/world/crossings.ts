@@ -5,8 +5,8 @@
  */
 import { atan2, cos, hypot, sin } from '../core/libm.ts';
 import { industryAngle } from './districts.ts';
+import { GradedLand } from './graded-land.ts';
 import type { Heightfield } from './heightfield.ts';
-import { DRY_MARGIN } from './road-ground.ts';
 import { coastNoise, islandAt, islandIndexAt, SEA_LEVEL, type CoastNoise, type TerrainLayout } from './terrain.ts';
 import { TIERS } from './tiers.ts';
 import type { Crossing, Island, Point, Site, WaterDescription } from './types.ts';
@@ -72,68 +72,6 @@ function beats(a: Found, b: Found, value: (f: Found) => number): boolean {
  */
 const GRADED_SPAN = 0.115;
 
-/** Grid steps around a bridge head searched for the graded ground it stands on. */
-const HEAD_REACH = 3;
-
-/**
- * The land an arterial can climb to from the core: every grid node joined to
- * the core by straight steps over dry ground no steeper than the arterial's
- * grade. A bridge whose head lands outside it lands in a pocket of ground
- * that steep slopes close off, where no arterial runs, and the roads never
- * build it.
- */
-class GradedLand {
-  private readonly hf: Heightfield;
-  private readonly reached: Uint8Array;
-
-  constructor(hf: Heightfield, core: Point) {
-    this.hf = hf;
-    const n = hf.gridSize;
-    const rise = TIERS.arterial.maxGrade * hf.cellSize;
-    const dry = SEA_LEVEL + DRY_MARGIN;
-    const reached = new Uint8Array(n * n);
-    const queue = new Int32Array(n * n);
-    const cx = Math.round((core.x - hf.originX) / hf.cellSize);
-    const cy = Math.round((core.y - hf.originY) / hf.cellSize);
-    let tail = 0;
-    if (cx >= 0 && cy >= 0 && cx < n && cy < n) {
-      reached[cy * n + cx] = 1;
-      queue[tail++] = cy * n + cx;
-    }
-    for (let head = 0; head < tail; head++) {
-      const at = queue[head] as number;
-      const ix = at % n;
-      const iy = (at - ix) / n;
-      const h = hf.heights[at] as number;
-      for (let k = 0; k < 4; k++) {
-        const jx = ix + (k === 0 ? 1 : k === 1 ? -1 : 0);
-        const jy = iy + (k === 2 ? 1 : k === 3 ? -1 : 0);
-        if (jx < 0 || jy < 0 || jx >= n || jy >= n) continue;
-        const to = jy * n + jx;
-        const g = hf.heights[to] as number;
-        if (reached[to] === 1 || g < dry || Math.abs(g - h) > rise) continue;
-        reached[to] = 1;
-        queue[tail++] = to;
-      }
-    }
-    this.reached = reached;
-  }
-
-  /** True when a graded node stands within a few grid steps of a point. */
-  near(p: Point): boolean {
-    const hf = this.hf;
-    const n = hf.gridSize;
-    const cx = Math.round((p.x - hf.originX) / hf.cellSize);
-    const cy = Math.round((p.y - hf.originY) / hf.cellSize);
-    for (let iy = Math.max(0, cy - HEAD_REACH); iy <= Math.min(n - 1, cy + HEAD_REACH); iy++) {
-      for (let ix = Math.max(0, cx - HEAD_REACH); ix <= Math.min(n - 1, cx + HEAD_REACH); ix++) {
-        if (this.reached[iy * n + ix] === 1) return true;
-      }
-    }
-    return false;
-  }
-}
-
 /**
  * Shore-to-shore crossings between neighbouring islands. The search runs along
  * the line between a cell of one island and a cell of the other, from the
@@ -144,7 +82,11 @@ class GradedLand {
 export function findCrossings(hf: Heightfield, layout: TerrainLayout, noise: CoastNoise): Crossing[] {
   const out: Crossing[] = [];
   const islands = layout.islands;
-  const graded = new GradedLand(hf, layout.core);
+  // The land an arterial can climb to from the core (`graded-land.ts`). A
+  // bridge whose head lands outside it stands in a pocket of ground that steep
+  // slopes close off, where no arterial runs, and the roads never build it. The
+  // flood hops no crossing, because the crossings are what this search finds.
+  const graded = new GradedLand(hf, layout.core, TIERS.arterial.maxGrade);
   for (let i = 0; i < islands.length; i++) {
     for (let j = i + 1; j < islands.length; j++) {
       const a = islands[i] as Island;
