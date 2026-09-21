@@ -18,6 +18,9 @@ import { ANCHOR_REACH, ARTERIAL } from './road-params.ts';
 import type { Trail } from './network-clearance.ts';
 import { RoadNetwork, type RoadDraft } from './road-network.ts';
 import { RiverWater } from './river-decks.ts';
+import { overWater } from './piers.ts';
+import { raised } from './overpass.ts';
+import { waterRaises } from './water-lift.ts';
 import { selfOverlap, stepOverlaps, untangle } from './self-overlap.ts';
 import { coastNoise, islandAt, type CoastNoise } from './terrain.ts';
 import type { TensorField } from './tensor.ts';
@@ -423,17 +426,95 @@ export abstract class RoadRoute {
     if (points.length < 2) return undefined;
     const tunnels = this.markStructures(points, bridges);
     const draft: RoadDraft = { tier, points, bridges, tunnels, interchanges };
+    let under: readonly number[] | undefined;
     if (tier === 'highway') {
       draft.interchanges = this.withBridgeHeads(points, bridges, tunnels, interchanges);
       // A highway passes under one laid before it on the ground, since the one
       // before it is on its deck there.
-      const under = crossingsWith(points, this.curves.filter((c) => c.tier === 'highway'));
+      under = crossingsWith(points, this.curves.filter((c) => c.tier === 'highway'));
       const plan = planHighway(points, bridges, tunnels, draft.interchanges, under, this.builtUp);
       draft.bridges = plan.bridges;
       draft.slots = plan.slots;
       if (plan.lift !== undefined) draft.lift = plan.lift;
     }
-    return this.network.add(draft, whole);
+    return this.network.add(this.liftOverWater(draft, under), whole);
+  }
+
+  /**
+   * The draft with its decks over water raised clear of the sea
+   * (`water-lift.ts`). Every raise is laid in on its own, so one the crossing
+   * plan would then refuse does not cost the road the others. The knots of a
+   * raise are the two ends of a deck the line already has, so no raise moves a
+   * point and the distances the next one was measured at still hold.
+   *
+   * A road with no deck at all has nothing over water, which is most of them,
+   * so the crossings with the highways are only looked for once a deck says
+   * they might be needed. Where the line passes under a highway it stays on
+   * the ground: the highway is on its deck there, and a road is never raised
+   * over one.
+   */
+  private liftOverWater(draft: RoadDraft, highways: readonly number[] | undefined): RoadDraft {
+    if (draft.bridges.length === 0) return draft;
+    const ground = (x: number, y: number): number => this.hf.sample(x, y);
+    const wet = (a: Point, b: Point): boolean => overWater(this.hf, this.seaLevel, a, b);
+    const onNetwork = (p: Point): boolean => this.network.nodeAt(p).length > 0;
+    const under = highways ?? crossingsWith(draft.points, this.curves.filter((c) => c.tier === 'highway'));
+    let out = draft;
+    for (const raise of waterRaises(draft, ground, this.seaLevel, wet, under, onNetwork)) {
+      const lifted = this.onFill(raised(out, [raise]));
+      if (this.decksAtSlots(lifted)) out = lifted;
+    }
+    return out;
+  }
+
+  /**
+   * The line with the ramps of a raise given back to the ground they stand on.
+   *
+   * `raised` lists every segment it lifts as a deck, which is what the level
+   * top of an overpass is. A bridge approach is not: it climbs from the ground
+   * to the abutment, and a road standing no more than {@link FILL} over the
+   * ground is carried on fill the carve makes up, exactly as
+   * {@link RoadRoute.markStructures} reads it. That matters far past the
+   * drawing. A road on fill is on the ground, so a street laid later crosses it
+   * and meets it at a junction; a road on a deck is not, so the street is
+   * refused and the block it would have cut is lost (issue #593).
+   *
+   * Only a segment the raise itself lifted is reconsidered, and one over water
+   * or over a dip deeper than the fill stays the deck it was: the ground under
+   * a raised line falls further below it than it did before, never less, so
+   * this can only ever give back a deck the raise added.
+   */
+  private onFill(line: RoadDraft): RoadDraft {
+    const bridges = line.bridges.filter((at) => this.standsOff(line, at));
+    return bridges.length === line.bridges.length ? line : { ...line, bridges };
+  }
+
+  /** True where a segment of a raised line has to be a deck: over water, over a river, or over a dip the fill cannot make up. */
+  private standsOff(line: RoadDraft, at: number): boolean {
+    const liftA = line.lift?.[at] ?? 0;
+    const liftB = line.lift?.[at + 1] ?? 0;
+    if (liftA <= 0 && liftB <= 0) return true;
+    const a = line.points[at] as Point;
+    const b = line.points[at + 1] as Point;
+    const profile = spanProfile(this.hf, this.seaLevel, a.x, a.y, b.x, b.y, liftA, liftB);
+    if (!profile.dry) return true;
+    if (this.rivers.spans(a, b)) return true;
+    return profile.below > FILL;
+  }
+
+  /**
+   * True where every raised deck of a line crosses a highway only at one of its
+   * slots. A ramp turns ground into deck, and a deck is held to the rule the
+   * trace held the ground to (`island-links.ts`).
+   */
+  private decksAtSlots(line: RoadDraft): boolean {
+    for (const at of line.bridges) {
+      if ((line.lift?.[at] ?? 0) <= 0 && (line.lift?.[at + 1] ?? 0) <= 0) continue;
+      const a = line.points[at] as Point;
+      const b = line.points[at + 1] as Point;
+      if (!this.network.crossesAtSlots(a, b, line.tier)) return false;
+    }
+    return true;
   }
 }
 

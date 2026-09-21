@@ -190,6 +190,34 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   highway that passes under an earlier one stays on the ground there. `NetworkClearance` refuses
   every step of a later road that crosses a highway away from a slot, so every highway crossing is
   at a slot or an interchange by construction.
+- A deck over water is raised clear of the sea (`water-lift.ts`, called from `addCurve`, issue
+  #304). Both abutments of a strait crossing stand at the shore, so without a lift the deck is a
+  straight line about a metre over the water and its underside, `DECK_SOFFIT` below the surface it
+  is driven on, is under it. The deck is carried up until `WATER_CLEARANCE` of air stands under it
+  and ramps back down each side at the tier's `maxGrade`, as the same `Raise` of `overpass.ts`
+  carries a road over another one. The foot of a ramp carries no lift, so it lands on the first
+  point that may not be raised: the end of the line, the far end of a bore, an interchange, a point
+  the network already has a junction on, or a place the line passes under a highway. The end of a
+  line is a node it shares with the roads it joins, and raising it would make them climb to it. A
+  deck with nowhere to ramp keeps the height its shores give it, which over the 500 sweep seeds is
+  about a third of the decks over water.
+- **A ramp is an embankment, not a viaduct, and an embankment is ground.** `raised` lists every
+  segment it lifts as a deck, which is what the level top of an overpass is; `onFill` in
+  `road-route.ts` gives back to the ground every segment of a water raise the carve can make up —
+  the same `FILL` rule `markStructures` reads a span by. That distinction decides the city around a
+  bridge, not just what is drawn. The three rules that keep a road off a structure — `onGround` in
+  `crossing-plan.ts`, `open` in `network-clearance.ts` and `joinable` in `road-network.ts` — ask
+  `overpass.ts` whether the segment is a deck, never whether it carries lift, so a later street
+  crosses an approach and meets it at a junction. Without that the streets that wanted to are
+  refused and the blocks they would have cut are lost: four sweep checks fail, and the suburb
+  around one bridge drops from 99 building parcels to 58 (issue #593).
+- A junction stands at the height its roads drive, not at the ground under it: `junctionPlane`
+  (`bed.ts`) levels the plane to the ground plus the most any mouth is carried over it, and fits
+  the tilt to each mouth's own lift at its cut. A plane levelled to the ground would dig a trough
+  into an approach where a street meets it. `JunctionMouth.lift` and `liftAtCut` carry that in, and
+  `MouthSeed.lift` carries it to the plane the crossing plan fits before the junction exists
+  (`plane-lift.ts`); the two have to agree or a crossing is decided on a surface the road never
+  drives.
 - Those step rules hold for a road on the ground. A deck or a bore is not on the ground, so the
   crossing plan asks it for a clearance and nothing else, and it may cross a highway anywhere. An
   island link is checked twice for that reason: `bridgeHeads` checks the span the bridge is planned

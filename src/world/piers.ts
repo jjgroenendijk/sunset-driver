@@ -95,8 +95,14 @@ export function overWater(hf: Heightfield, sea: number, a: Point, b: Point): boo
   return false;
 }
 
+/** A line a run of deck is read off: its points and the segments it carries on a deck. */
+export interface DeckedLine {
+  readonly points: readonly Point[];
+  readonly bridges: readonly number[];
+}
+
 /** Runs of neighbouring deck segments of one curve, split by whether they stand over water. */
-export function deckRuns(road: RoadCurve, wet: (a: Point, b: Point) => boolean, want: boolean): { from: number; to: number }[] {
+export function deckRuns(road: DeckedLine, wet: (a: Point, b: Point) => boolean, want: boolean): { from: number; to: number }[] {
   const runs: { from: number; to: number }[] = [];
   let open: { from: number; to: number } | undefined;
   for (const at of road.bridges) {
