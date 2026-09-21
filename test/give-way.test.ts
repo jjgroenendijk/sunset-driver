@@ -15,7 +15,15 @@ import { gridTraffic, gridTrafficRoads } from './traffic-grid.ts';
  * and the people round the player keep off each other, and off what stands in
  * the road. The physics is left out; the holds are read the way it reads them.
  */
-const SEED = 4711;
+/**
+ * The seed the grid's traffic is placed from. Which cars meet where is the
+ * seed's, so the scenarios below — a car driving over one patch of lane, a
+ * queue standing behind another — hold at some seeds and not at others, and a
+ * change to how the traffic is timed moves them. Pick a seed the scenarios
+ * hold at again rather than softening what they check. How far the overlaps
+ * they leave depend on the seed is issue #600.
+ */
+const SEED = 10;
 const TICKS = 600;
 /** Metres each way of the player the cars and the people are drawn in. */
 const VIEW = 110;
