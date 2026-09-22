@@ -93,14 +93,13 @@
  * The browser comes from `chromium.ts`, and draws on the graphics card where
  * there is one (`preview-host.ts`).
  */
-import { writeFileSync } from 'node:fs';
 import { seedFromString } from '../src/core/rng.ts';
 import { BASE_DISTANCE } from '../src/render/camera.ts';
 import type { PreviewRequest } from '../src/render/preview.ts';
 import type { Junction } from '../src/world/junctions.ts';
 import { askServer, ensureServer, stopServer } from './preview-client.ts';
 import type { HostFrame } from './preview-host.ts';
-import { encodePng } from './png.ts';
+import { defaultOut, writePng } from './png.ts';
 
 const args = process.argv.slice(2);
 const positional = args.filter((a) => !a.startsWith('--'));
@@ -114,7 +113,7 @@ const options = new Map<string, string>(
 );
 
 const seedText = positional[0] ?? 'sunset';
-const out = positional[1] ?? `render-${seedText}.png`;
+const out = positional[1] ?? defaultOut(`render-${seedText}.png`);
 
 function num(name: string, fallback: number): number {
   const raw = options.get(name);
@@ -267,7 +266,7 @@ const errors = [...failures.thrown, ...failures.logged];
 if (errors.length > 0) console.error(`page errors:\n  ${errors.join('\n  ')}`);
 
 const rgb = new Uint8Array(Buffer.from(result.rgb, 'base64'));
-writeFileSync(out, encodePng(result.width, result.height, rgb));
+writePng(out, result.width, result.height, rgb);
 console.log(
   `${out}: ${result.width}x${result.height}, seed ${seedText} at ${result.x.toFixed(0)},${result.y.toFixed(0)}` +
     ` at ${request.hour.toFixed(1)}h on ${adapter}` +

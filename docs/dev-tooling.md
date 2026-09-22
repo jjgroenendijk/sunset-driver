@@ -6,6 +6,9 @@ None of it is part of the game. A tool may read the world, the scene and the rec
 them may change the simulation: `src/sim` knows about none of this, and a save carries no trace of
 it.
 
+A tool that draws a picture takes the output path as its second argument. Named none, it writes
+under `previews/`, which git ignores, so a run leaves nothing in the tree to commit by accident.
+
 ## Contents
 
 - The free camera

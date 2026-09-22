@@ -8,7 +8,6 @@
  *
  * Usage: node scripts/landuse-preview.ts [seed] [out.png] [--half=350] [--x=0] [--y=0] [--width=900]
  */
-import { writeFileSync } from 'node:fs';
 import { seedFromString } from '../src/core/rng.ts';
 import { buildBuildings, type BuildingKind } from '../src/world/buildings.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
@@ -26,13 +25,13 @@ import {
   rasteriseLandUse,
 } from './land-use.ts';
 import { formatLayout, measureLayout } from './layout-metrics.ts';
-import { encodePng } from './png.ts';
+import { defaultOut, writePng } from './png.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => args.find((a) => a.startsWith(`--${name}=`))?.split('=')[1];
 const positional = args.filter((a) => !a.startsWith('--'));
 const seedText = positional[0] ?? 'sunset';
-const out = positional[1] ?? `landuse-${seedText}.png`;
+const out = positional[1] ?? defaultOut(`landuse-${seedText}.png`);
 const half = Number(flag('half') ?? 350);
 const width = Math.max(64, Number(flag('width') ?? 900));
 
@@ -93,7 +92,7 @@ for (let iy = 0; iy < n; iy++) {
     rgb[o + 2] = col[2];
   }
 }
-writeFileSync(out, encodePng(n, n, rgb));
+writePng(out, n, n, rgb);
 
 console.log(
   `seed ${seedText} at ${centreX.toFixed(0)}, ${centreY.toFixed(0)}: ${(half * 2).toFixed(0)} m across, ` +

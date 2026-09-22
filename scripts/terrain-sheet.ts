@@ -11,14 +11,13 @@
  * fraction. `--archetype` builds every seed on that one archetype instead of the
  * one the seed draws, which is how the numbers of one archetype are tuned.
  */
-import { writeFileSync } from 'node:fs';
 import { archetypeNamed, ARCHETYPES, type ArchetypeName } from '../src/world/archetype.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { worldSizeFor } from '../src/world/size.ts';
 import { generateTerrain, layoutTerrain, SEA_LEVEL, TERRAIN_CELL } from '../src/world/terrain.ts';
 import { sweepSeeds } from '../test/helpers.ts';
 import { landFraction } from './layout-metrics.ts';
-import { encodePng } from './png.ts';
+import { defaultOut, writePng } from './png.ts';
 
 const args = process.argv.slice(2);
 const positional = args.filter((a) => !a.startsWith('--'));
@@ -27,7 +26,7 @@ const flag = (name: string, fallback: number): number => {
   return text === undefined ? fallback : Number(text);
 };
 const count = Number(positional[0] ?? 24);
-const out = positional[1] ?? 'terrain-sheet.png';
+const out = positional[1] ?? defaultOut('terrain-sheet.png');
 const cols = flag('cols', 6);
 const tile = flag('tile', 160);
 const forced = args.find((a) => a.startsWith('--archetype='))?.slice('--archetype='.length);
@@ -61,7 +60,7 @@ for (let k = 0; k < seeds.length; k++) {
       `${layout.islands.length} islands, ${(fraction * 100).toFixed(0)} % land`,
   );
 }
-writeFileSync(out, encodePng(width, height, rgb));
+writePng(out, width, height, rgb);
 console.log(`${count} seeds in ${((performance.now() - t0) / 1000).toFixed(1)} s → ${out}`);
 for (const line of lines) console.log(line);
 
