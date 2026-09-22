@@ -171,13 +171,16 @@ and what lights them in `docs/lighting.md`.
   says (spec section 10.3). Past that edge stands the neighbour's wall, and a margin on both sides
   of it is a slot cut through the street wall. A lot walled on one side only is then not centred on
   itself, which is `BuildingMassing.offset`.
-- A generated facade comes back narrower than the massing it was asked for, because its cornices
-  overhang by less than the whole `CORNICE` they are allowed, so a wall would still stop about a
-  metre short of an edge it shares. `fitOf` stretches it along the frontage by what it measures
-  short, up to `MAX_STRETCH`. Widening the footprint instead would add a bay to every tower of the
-  core: measured on the dearest of four seeds, the whole cornice back costs 8.7 % more vertices in
-  that chunk and the stretch costs nothing. `standingGround(building)` is the ground a shell may
-  cover — the lot, and a centimetre of float error past each shared edge — and it is what both
+- A generated facade is built on a footprint `CORNICE` in from its massing, so its walls stand 2 m
+  short of an edge the lot shares. `fitOf` stretches it along the frontage, up to `MAX_STRETCH`,
+  and shifts it, until its walls stand on each shared edge. The walls are the sides of the boxes on
+  the ground, which `facadeGeometry` returns. Do not fit the widest place instead: a ledge a few
+  metres long reaches 1.4 m past the walls, and a wall fitted by it stops that far short. What
+  reaches past the walls hangs over the shared edge, by at most `OVERHANG`. A crown wider than that
+  keeps to `OVERHANG` and its walls stop short. Widening the footprint instead would add a bay to
+  every tower of the core: measured on the dearest of four seeds, the whole cornice back costs 8.7 %
+  more vertices in that chunk and the stretch costs nothing. `standingGround(building)` is the
+  ground a shell may cover — the lot, and `OVERHANG` past each shared edge — and it is what both
   sweeps ask. A shared edge never faces a road, so none of this puts a wall on the carriageway.
 - A lot on a bend is a trapezoid or a parallelogram, and a box inside it cannot reach both of its
   side edges. So a lot that shares a side edge has its shell and hull leaned (`leanOf` in

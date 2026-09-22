@@ -1,7 +1,7 @@
 import { Vector3, type BufferAttribute, type BufferGeometry } from 'three';
 import { describe, expect, it } from 'vitest';
 import { pointInRing, type Point } from '../src/core/geom.ts';
-import { sideReach, withNodes } from './helpers.ts';
+import { sideReach, withNodes, type SideReach } from './helpers.ts';
 import { hashInts } from '../src/core/hash.ts';
 import {
   buildChunkBuildings,
@@ -133,6 +133,36 @@ function eachWorldVertex(
   }
 }
 
+/**
+ * How far the walls of a shell reach towards one side edge of its lot, as
+ * {@link sideReach} measures it. A block is its walls, so its furthest place is
+ * its wall. A generated facade has cornices, a plinth and a crown that
+ * overhang its walls, but its walls carry most of the places near the edge: its
+ * wall is the distance from the edge the most places share, to the centimetre.
+ */
+function wallReach(one: BuildingPlacement, side: 'left' | 'right'): SideReach {
+  const each = (visit: (p: Point) => void): void =>
+    eachWorldVertex(one.shell, one, (vertex) => visit({ x: vertex.x, y: vertex.z }));
+  if (one.batch === 'block') return sideReach(one.building.lot, side, each);
+  const counts = { most: new Map<number, number>(), front: new Map<number, number>(), back: new Map<number, number>() };
+  each((p) => {
+    const reach = sideReach(one.building.lot, side, (visit) => visit(p));
+    if (Math.abs(reach.most) > 2) return;
+    for (const third of ['most', 'front', 'back'] as const) {
+      if (reach[third] === -Infinity) continue;
+      const key = Math.round(reach[third] * 100);
+      counts[third].set(key, (counts[third].get(key) ?? 0) + 1);
+    }
+  });
+  const mode = (count: Map<number, number>): number => {
+    let best = -Infinity;
+    let most = 0;
+    for (const [key, n] of count) if (n > most || (n === most && key > best)) [best, most] = [key, n];
+    return best / 100;
+  };
+  return { most: mode(counts.most), front: mode(counts.front), back: mode(counts.back) };
+}
+
 /** How far out a geometry reaches along one axis, in the world. */
 function reachOf(geometry: BufferGeometry, placement: BuildingPlacement, pick: (p: Vector3) => number): number {
   let out = -Infinity;
@@ -214,10 +244,10 @@ describe('a building on its lot', () => {
       };
       const walls = span(one);
       const next = span(other);
-      // Both walls stand on the boundary, so there is no slot between them and
-      // neither reaches over its neighbour.
-      expect(walls.high, `${kind} west of the wall`).toBeCloseTo(boundary, 2);
-      expect(next.low, `${kind} east of the wall`).toBeCloseTo(boundary, 2);
+      // Both walls stand on the boundary, so there is no slot between them. A
+      // cornice may hang over it, which the ground each may cover allows.
+      expect(wallReach(one, 'right').most, `${kind} west of the wall`).toBeCloseTo(0, 2);
+      expect(wallReach(other, 'left').most, `${kind} east of the wall`).toBeCloseTo(0, 2);
       // The far side of each lot has nothing against it and keeps its margin.
       expect(walls.low, `${kind} west end`).toBeGreaterThan(-boundary + 0.3);
       expect(next.high, `${kind} east end`).toBeLessThan(3 * boundary - 0.3);
@@ -263,17 +293,12 @@ describe('a building on its lot', () => {
       ] as const) {
         const one = both[i] as BuildingPlacement;
         const where = `${kind} ${side} of the bend`;
-        const reach = sideReach(one.building.lot, side, (visit) =>
-          eachWorldVertex(one.shell, one, (vertex) => visit({ x: vertex.x, y: vertex.z })),
-        );
-        // It stands on the edge and never over it.
+        const reach = wallReach(one, side);
+        // Its walls stand on the edge at both ends. A block fills its massing;
+        // a generated facade is stretched until its walls do.
         expect(reach.most, where).toBeCloseTo(0, 2);
-        // A block fills its massing, so its wall reaches the edge at both ends.
-        // A generated facade is measured at its widest, which is not both ends.
-        if (one.batch === 'block') {
-          expect(reach.front, `${where}, front`).toBeCloseTo(0, 2);
-          expect(reach.back, `${where}, back`).toBeCloseTo(0, 2);
-        }
+        expect(reach.front, `${where}, front`).toBeCloseTo(0, 2);
+        expect(reach.back, `${where}, back`).toBeCloseTo(0, 2);
         let outside = 0;
         eachWorldVertex(one.shell, one, (vertex) => {
           if (!pointInRing({ x: vertex.x, y: vertex.z }, standingGround(one.building))) outside++;

@@ -80,22 +80,28 @@ export const CORNICE = 2;
 
 /**
  * Metres of float error the sweeps allow a shell past an edge it shares, which
- * it is placed exactly on.
+ * its walls are placed exactly on.
  */
 const WALL_SLACK = 0.01;
 
-/**
- * The most a shell is stretched along the frontage to fill a wall it shares.
- * A generated facade comes back narrower than the massing it was asked for, by
- * however much less than {@link CORNICE} its cornices really overhang; the
- * stretch is what takes that up. A tenth is wider than any facade measures
- * short, and a bay a tenth wider than its neighbour's is not something the
- * camera sees from 60 m up.
- */
-const MAX_STRETCH = 1.25;
-
 /** Metres of facade the generator needs each way. A lot narrower than this takes a block. */
 const MIN_FACADE = 8;
+
+/**
+ * The most a shell is stretched along the frontage to put its walls on a wall
+ * it shares. A generated facade is built on a footprint {@link CORNICE} in from
+ * the massing on each side, so its walls stand that far short of a shared edge
+ * and the stretch takes it up. The narrowest facade needs the most, and this
+ * is what it needs.
+ */
+const MAX_STRETCH = (MIN_FACADE + 2 * CORNICE) / MIN_FACADE;
+
+/**
+ * Metres a shell may reach past an edge it shares: what a facade hangs out past
+ * its walls, stretched. Past that edge stands the neighbour's wall, so the
+ * cornices hang over it, and a shared edge never faces a road.
+ */
+const OVERHANG = CORNICE * MAX_STRETCH;
 
 /** Metres each way the massing is never allowed below, however small the lot. */
 const MIN_MASSING = 4;
@@ -181,13 +187,13 @@ export function plan(building: Building): { width: number; depth: number; offset
 }
 
 /**
- * The ground a building's shell may cover: its lot, and {@link WALL_SLACK} past
+ * The ground a building's shell may cover: its lot, and {@link OVERHANG} past
  * every side edge it shares.
  *
- * A shell reaches a shared edge exactly, because the wall past it is the
- * neighbour's and a margin there would be a slot in the street wall. Landing on
- * a line is not something floating point does to the millimetre, so the sweeps
- * allow a centimetre there and the lot itself everywhere else. A shared edge
+ * The walls of a shell reach a shared edge exactly, because the wall past it is
+ * the neighbour's and a margin there would be a slot in the street wall. What a
+ * generated facade carries out past its walls — its cornices, a ledge, a bay —
+ * then hangs over that edge, as a cornice hangs over a street. A shared edge
  * never faces a road — the lot at the end of a run shares nothing — so this
  * cannot put a wall on the carriageway.
  */
@@ -199,8 +205,8 @@ export function standingGround(building: Building): Point[] {
   // Along the front edge, from the first corner towards the second: the way out
   // of the lot across the side edge at the second corner.
   const t = { x: (f1.x - f0.x) / span, y: (f1.y - f0.y) / span };
-  const left = building.shared.left ? WALL_SLACK : 0;
-  const right = building.shared.right ? WALL_SLACK : 0;
+  const left = building.shared.left ? OVERHANG + WALL_SLACK : 0;
+  const right = building.shared.right ? OVERHANG + WALL_SLACK : 0;
   const out = (corner: Point, reach: number): Point => ({ x: corner.x + t.x * reach, y: corner.y + t.y * reach });
   return [out(f0, -left), out(f1, right), out(lot[2] as Point, right), out(lot[3] as Point, -left)];
 }
@@ -235,6 +241,12 @@ export interface Fit {
   along: number;
   /** The scale across it and upwards. It stays uniform, so nothing stands squat. */
   across: number;
+  /**
+   * Metres the scaled shell is moved along the frontage, so a wall it shares
+   * lands on the edge even where the shell overhangs its two sides unevenly.
+   * {@link leanOf} carries it.
+   */
+  shift: number;
 }
 
 /**
@@ -247,18 +259,73 @@ export interface Fit {
  * than on a wide one, so the shell is measured rather than trusted. Nothing is
  * ever made larger that way: a shell that fits is left alone.
  *
- * A wall with a neighbour against it is the one thing that is made larger. Such
- * a shell has to reach the edge of the lot, where a facade built on a footprint
- * a whole {@link CORNICE} narrower than the massing lands a metre short of it,
- * and a wall a metre short at both ends is a slot cut through the street wall.
- * So it is stretched along the frontage by what it measures short, up to
- * {@link MAX_STRETCH}. Stretching costs no geometry, where a wider footprint
- * would be another bay on every tower of the core.
+ * A wall with a neighbour against it is the one thing that is made larger. Its
+ * walls have to reach the edge of the lot, and a facade built on a footprint a
+ * whole {@link CORNICE} narrower than the massing stands that far short of it:
+ * a slot cut through the street wall. So the shell is stretched along the
+ * frontage until its `walls` stand on each shared edge, and a side with nothing
+ * against it keeps everything inside the massing. The widest feature is not
+ * what is fitted: it is often a ledge a few metres long, and a wall fitted by
+ * it stops more than a metre short. What reaches past the walls overhangs the
+ * shared edge instead, by as much as {@link OVERHANG}, which
+ * {@link standingGround} allows. Stretching costs no
+ * geometry, where a wider footprint would be another bay on every tower of the
+ * core.
+ *
+ * `covers` and `walls` are measured in the shell's own frame, with `covers`
+ * centred on its origin; `walls` defaults to `covers`, which a block fills.
  */
-export function fitOf(covers: { width: number; depth: number }, massing: BuildingMassing, shared: boolean): Fit {
-  const room = covers.width > 0 ? massing.width / covers.width : 1;
-  const across = Math.min(1, room, covers.depth > 0 ? massing.depth / covers.depth : 1);
-  return { along: shared ? Math.max(across, Math.min(MAX_STRETCH, room)) : across, across };
+export function fitOf(
+  covers: { min: number; max: number; depth: number },
+  massing: BuildingMassing,
+  shared: { left: boolean; right: boolean },
+  walls: { min: number; max: number } = covers,
+): Fit {
+  const width = covers.max - covers.min;
+  const depth = covers.depth > 0 ? massing.depth / covers.depth : 1;
+  if (!shared.left && !shared.right) {
+    const across = Math.min(1, width > 0 ? massing.width / width : 1, depth);
+    return { along: across, across, shift: 0 };
+  }
+  // The stretch and the shift answer the width, so only the depth takes the
+  // shell in: a wall taken in across its depth stops short of the front and the
+  // back of the edge it shares.
+  const across = Math.min(1, depth);
+  const half = massing.width / 2;
+  // The first corner of the lot, and so its left edge, is at +x. Each side is
+  // a place on the shell and where it lands: the walls on a shared edge, and
+  // everything on a side that has to stay clear of the ground beside it.
+  let high: Pin = { at: shared.left ? walls.max : covers.max, to: half };
+  let low: Pin = { at: shared.right ? walls.min : covers.min, to: -half };
+  let fit = pinned(high, low, across, shared);
+  // A crown wider than the walls under it would hang further over the
+  // neighbour than any cornice does, so there the widest place is what lands,
+  // on the most a cornice may reach, and the walls stop short.
+  for (let pass = 0; pass < 2; pass++) {
+    if (shared.left && fit.along * covers.max + fit.shift > half + OVERHANG) high = { at: covers.max, to: half + OVERHANG };
+    if (shared.right && fit.along * covers.min + fit.shift < -half - OVERHANG) low = { at: covers.min, to: -half - OVERHANG };
+    fit = pinned(high, low, across, shared);
+  }
+  return fit;
+}
+
+/** A place on a shell along the frontage, and the place in the massing it lands on. */
+interface Pin {
+  at: number;
+  to: number;
+}
+
+/**
+ * The fit that lands both pins, stretched no more than {@link MAX_STRETCH}.
+ * Where the stretch runs out, the side that shares its edge is the one that
+ * keeps it, and a shell that shares both is centred.
+ */
+function pinned(high: Pin, low: Pin, across: number, shared: { left: boolean; right: boolean }): Fit {
+  const along = Math.min(MAX_STRETCH, high.at > low.at ? (high.to - low.to) / (high.at - low.at) : 1);
+  let shift = (high.to + low.to) / 2 - (along * (high.at + low.at)) / 2;
+  if (shared.left && !shared.right) shift = high.to - along * high.at;
+  if (shared.right && !shared.left) shift = low.to - along * low.at;
+  return { along, across, shift };
 }
 
 /**
@@ -291,8 +358,11 @@ export interface Lean {
  * massing covers `offset ± width / 2` along `x`. A side edge that keeps its
  * margin keeps it square to the edge, so a leaning edge takes more of it
  * along `x`.
+ *
+ * The lean also carries {@link Fit.shift}: a place at `x` is leaned as though
+ * it stood at `x + shift`.
  */
-export function leanOf(building: Building, massing: BuildingMassing): Lean | undefined {
+export function leanOf(building: Building, massing: BuildingMassing, shift = 0): Lean | undefined {
   if (!building.shared.left && !building.shared.right) return undefined;
   const margin = KIND_MARGIN[building.kind];
   let middleX = 0;
@@ -321,12 +391,14 @@ export function leanOf(building: Building, massing: BuildingMassing): Lean | und
   const lot = building.lot;
   const left = edge(lot[0] as Point, lot[3] as Point, building.shared.left ? 0 : margin, 1);
   const right = edge(lot[1] as Point, lot[2] as Point, building.shared.right ? 0 : margin, -1);
+  const scale = (left.at - right.at) / massing.width;
+  const scaleSlope = (left.slope - right.slope) / massing.width;
   return {
-    scale: (left.at - right.at) / massing.width,
-    scaleSlope: (left.slope - right.slope) / massing.width,
+    scale,
+    scaleSlope,
     // The frame is already moved by the offset, so the shift is what is left.
-    shift: (left.at + right.at) / 2 - massing.offset,
-    shiftSlope: (left.slope + right.slope) / 2,
+    shift: (left.at + right.at) / 2 - massing.offset + scale * shift,
+    shiftSlope: (left.slope + right.slope) / 2 + scaleSlope * shift,
   };
 }
 
