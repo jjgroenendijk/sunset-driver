@@ -18,6 +18,7 @@ import {
   type PoiType,
 } from '../src/ui/map.ts';
 import { drawIcon } from '../src/ui/map-draw.ts';
+import { GLYPHS, type GlyphName } from '../src/ui/map-glyphs.ts';
 import { heatLine, HEAT_STARS } from '../src/ui/hud.ts';
 import type { RoadCurve, RoadTier, WorldDescription } from '../src/world/types.ts';
 import { worldsFor } from './world-pool.ts';
@@ -33,19 +34,19 @@ describe('POI icon table (spec section 12)', () => {
   const types = Object.keys(POI_STYLES) as PoiType[];
 
   it('gives every type an icon of its own', () => {
-    // The spec asks for distinct, recognisable icons per POI type. A shape no
-    // other type uses is what makes a minimap readable at icon size, and a
+    // The spec asks for distinct, recognisable icons per POI type. A picture
+    // no other type uses is what makes a minimap readable at icon size, and a
     // colour no other type uses is what makes it readable at a glance.
     const shapes = new Map<string, PoiType>();
     const colours = new Map<string, PoiType>();
     let complaint = '';
     for (const type of types) {
       const style = POI_STYLES[type];
-      const shapeOwner = shapes.get(style.shape);
+      const shapeOwner = shapes.get(style.glyph);
       if (shapeOwner !== undefined && complaint === '') {
-        complaint = `${type} and ${shapeOwner} are both drawn as a ${style.shape}`;
+        complaint = `${type} and ${shapeOwner} are both drawn as a ${style.glyph}`;
       }
-      shapes.set(style.shape, type);
+      shapes.set(style.glyph, type);
       const colourOwner = colours.get(style.colour);
       if (colourOwner !== undefined && complaint === '') {
         complaint = `${type} and ${colourOwner} are both ${style.colour}`;
@@ -57,8 +58,8 @@ describe('POI icon table (spec section 12)', () => {
   });
 
   it('draws every icon the table names', () => {
-    // A shape with no arm of its own in `drawIcon` paints nothing at all, and
-    // the map loses that place without saying so.
+    // A glyph that traces nothing paints nothing at all, and the map loses
+    // that place without saying so.
     const painted: string[] = [];
     const ctx = new Proxy(
       {},
@@ -78,9 +79,17 @@ describe('POI icon table (spec section 12)', () => {
     ) as unknown as CanvasRenderingContext2D;
     for (const type of types) {
       painted.length = 0;
-      drawIcon(ctx, POI_STYLES[type].shape, POI_STYLES[type].colour, 0, 0, 12);
-      expect(painted.length, `${type} is drawn as a ${POI_STYLES[type].shape}, which paints nothing`).toBeGreaterThan(0);
+      drawIcon(ctx, POI_STYLES[type].glyph, POI_STYLES[type].colour, 0, 0, 12);
+      expect(painted.length, `${type} is drawn as a ${POI_STYLES[type].glyph}, which paints nothing`).toBeGreaterThan(0);
     }
+  });
+
+  it('keeps no drawing the map never uses', () => {
+    // A glyph nobody marks a place with is a drawing that is never looked at,
+    // and the next session to read the table cannot tell it from a live one.
+    const used = new Set<GlyphName>(types.map((type) => POI_STYLES[type].glyph));
+    const spare = (Object.keys(GLYPHS) as GlyphName[]).filter((name) => !used.has(name));
+    expect(spare).toEqual([]);
   });
 
   it('always draws the player and their waypoint, however far the map is pulled back', () => {

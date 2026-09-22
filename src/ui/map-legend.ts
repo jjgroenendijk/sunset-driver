@@ -109,7 +109,7 @@ export class MapLegend {
         this.row(style.label, count, () => this.pois.hidden.has(type), (off) => {
           if (off) this.pois.hidden.add(type);
           else this.pois.hidden.delete(type);
-        }, (ctx) => drawIcon(ctx, style.shape, style.colour, 10, 10, 13), type),
+        }, (ctx) => drawIcon(ctx, style.glyph, style.colour, 10, 10, 13), type),
       );
     }
     for (const { layer, label, colour } of LAYERS) {

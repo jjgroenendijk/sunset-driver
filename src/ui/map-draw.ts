@@ -212,7 +212,7 @@ export class MapArt {
     for (const poi of marks) {
       const p = projectInto(view, width, height, poi.x, poi.y);
       const style = POI_STYLES[poi.type];
-      drawMark(ctx, style.shape, style.colour, p.x, p.y, opts.iconSize);
+      drawMark(ctx, style, p.x, p.y, opts.iconSize);
       const r = opts.iconSize * 0.72;
       taken.push({ x0: p.x - r, y0: p.y - r, x1: p.x + r, y1: p.y + r });
       placed.push({ x: p.x, y: p.y, name: poi.name ?? style.label });

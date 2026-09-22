@@ -12,6 +12,7 @@
  * `-y`, which is up the screen, so a fixed-north map already has their usual
  * heading pointing up.
  */
+import type { GlyphName } from './map-glyphs.ts';
 import type { ShopKind } from '../world/shops.ts';
 import type { Point, RoadCurve, RoadTier, WorldDescription } from '../world/types.ts';
 
@@ -46,36 +47,18 @@ export type PoiType =
   | 'food-shop'
   | 'broker';
 
-/** The shapes an icon is drawn as. No two POI types share one (see `POI_STYLES`). */
-export type IconShape =
-  | 'arrow'
-  | 'pin'
-  | 'star'
-  | 'disc'
-  | 'square'
-  | 'diamond'
-  | 'triangle'
-  | 'chevron'
-  | 'house'
-  | 'cross'
-  | 'shield'
-  | 'flag'
-  | 'ring'
-  | 'bars'
-  | 'hexagon'
-  | 'cup'
-  | 'roundel'
-  | 'key'
-  | 'burst'
-  | 'badge'
-  | 'bunting'
-  | 'bolt';
-
 /** How one kind of place is drawn, and what the full map calls it. */
 export interface PoiStyle {
-  shape: IconShape;
+  /** The picture in the icon, from `GLYPHS` in `map-glyphs.ts`. */
+  glyph: GlyphName;
   colour: string;
   label: string;
+  /**
+   * True to draw the place as a pin with its point on it rather than as a
+   * disc. Reserved for what the player is heading for: their waypoint and
+   * their objective.
+   */
+  pin?: boolean;
   /**
    * Below this many metres to the pixel the icon is drawn, and above it the
    * place is too small to matter. A landmark carries `Infinity`, so it is on
@@ -86,40 +69,42 @@ export interface PoiStyle {
 }
 
 /**
- * The icon table. Each type has its own shape, so the map is readable without
- * colour, and its own colour, so it is readable at the size a minimap draws.
- * `test/map.test.ts` pins that no two types share either.
+ * The icon table. Each type is drawn as a picture of what it is, so a gun shop
+ * is a pistol and a clothes shop a shirt, and each has a colour of its own, so
+ * two places are told apart at the size a minimap draws. `test/map.test.ts`
+ * pins that no two types share either.
  */
 export const POI_STYLES: Readonly<Record<PoiType, PoiStyle>> = Object.freeze({
-  player: { shape: 'arrow', colour: '#ffffff', label: 'You', maxScale: Infinity },
-  waypoint: { shape: 'pin', colour: '#ff8a5c', label: 'Waypoint', maxScale: Infinity },
-  objective: { shape: 'star', colour: '#ffd166', label: 'Objective', maxScale: Infinity },
-  'tram-stop': { shape: 'disc', colour: '#e05ad0', label: 'Tram stop', maxScale: 6 },
+  player: { glyph: 'arrow', colour: '#ffffff', label: 'You', maxScale: Infinity },
+  waypoint: { glyph: 'pin', colour: '#ff8a5c', label: 'Waypoint', maxScale: Infinity, pin: true },
+  objective: { glyph: 'star', colour: '#ffd166', label: 'Objective', maxScale: Infinity, pin: true },
+  'tram-stop': { glyph: 'tram', colour: '#e05ad0', label: 'Tram stop', maxScale: 6 },
   // A station is a landmark: a player who has visited one travels to it from
   // across the map (spec section 13.3), so it is on the map at every zoom.
-  'metro-station': { shape: 'roundel', colour: '#5ad08a', label: 'Metro', maxScale: Infinity },
-  pier: { shape: 'bars', colour: '#c08a5a', label: 'Pier', maxScale: 8 },
-  'car-park': { shape: 'square', colour: '#9a8ad0', label: 'Car park', maxScale: 4 },
-  harbour: { shape: 'hexagon', colour: '#5ab0d0', label: 'Harbour', maxScale: Infinity },
-  safehouse: { shape: 'house', colour: '#7ad07a', label: 'Safehouse', maxScale: Infinity },
-  garage: { shape: 'chevron', colour: '#8ac0a0', label: 'Garage', maxScale: 6 },
-  clinic: { shape: 'cross', colour: '#ff7a8a', label: 'Clinic', maxScale: 8 },
-  police: { shape: 'shield', colour: '#5a7ad0', label: 'Police', maxScale: 8 },
-  'mission-giver': { shape: 'flag', colour: '#ffb03a', label: 'Contact', maxScale: 8 },
-  dealer: { shape: 'diamond', colour: '#b06ad0', label: 'Dealer', maxScale: 4 },
+  'metro-station': { glyph: 'roundel', colour: '#5ad08a', label: 'Metro', maxScale: Infinity },
+  pier: { glyph: 'pier', colour: '#c08a5a', label: 'Pier', maxScale: 8 },
+  'car-park': { glyph: 'parkingP', colour: '#9a8ad0', label: 'Car park', maxScale: 4 },
+  harbour: { glyph: 'anchor', colour: '#5ab0d0', label: 'Harbour', maxScale: Infinity },
+  safehouse: { glyph: 'house', colour: '#7ad07a', label: 'Safehouse', maxScale: Infinity },
+  garage: { glyph: 'wrench', colour: '#8ac0a0', label: 'Garage', maxScale: 6 },
+  clinic: { glyph: 'cross', colour: '#ff7a8a', label: 'Clinic', maxScale: 8 },
+  police: { glyph: 'shieldStar', colour: '#5a7ad0', label: 'Police', maxScale: 8 },
+  'mission-giver': { glyph: 'speech', colour: '#ffb03a', label: 'Contact', maxScale: 8 },
+  dealer: { glyph: 'pouch', colour: '#b06ad0', label: 'Dealer', maxScale: 4 },
   // The enforcers of spec section 17.2, while a wave is out. They are marked at
   // every zoom a street is readable at, because they are what is shooting.
-  enforcer: { shape: 'burst', colour: '#ff4d4d', label: 'Enforcer', maxScale: 8 },
-  // The police on foot of spec section 14, for the same reason.
-  officer: { shape: 'badge', colour: '#4d8dff', label: 'Officer', maxScale: 8 },
+  enforcer: { glyph: 'burst', colour: '#ff4d4d', label: 'Enforcer', maxScale: 8 },
+  // The police on foot of spec section 14, for the same reason. A station is
+  // the shield and one officer the badge, so the two read apart at a glance.
+  officer: { glyph: 'badge', colour: '#4d8dff', label: 'Officer', maxScale: 8 },
   // What the city is putting on (spec section 20.5), and what it is getting up
   // to. Both are marked while they are on and gone the moment they are over.
-  event: { shape: 'bunting', colour: '#ffe07a', label: 'Happening', maxScale: 8 },
-  incident: { shape: 'bolt', colour: '#ff9a3a', label: 'Incident', maxScale: 6 },
-  'gun-shop': { shape: 'triangle', colour: '#d05a5a', label: 'Gun shop', maxScale: 4 },
-  'clothes-shop': { shape: 'ring', colour: '#d0c05a', label: 'Clothes', maxScale: 4 },
-  'food-shop': { shape: 'cup', colour: '#7ad0c0', label: 'Food', maxScale: 4 },
-  broker: { shape: 'key', colour: '#c0a0e0', label: 'Property broker', maxScale: 6 },
+  event: { glyph: 'bunting', colour: '#ffe07a', label: 'Happening', maxScale: 8 },
+  incident: { glyph: 'bolt', colour: '#ff9a3a', label: 'Incident', maxScale: 6 },
+  'gun-shop': { glyph: 'pistol', colour: '#d05a5a', label: 'Gun shop', maxScale: 4 },
+  'clothes-shop': { glyph: 'shirt', colour: '#d0c05a', label: 'Clothes', maxScale: 4 },
+  'food-shop': { glyph: 'basket', colour: '#7ad0c0', label: 'Food', maxScale: 4 },
+  broker: { glyph: 'key', colour: '#c0a0e0', label: 'Property broker', maxScale: 6 },
 });
 
 /**
