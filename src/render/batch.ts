@@ -69,7 +69,7 @@ export class Batch extends Mesh<BufferGeometry, Material> {
    * The GPU holds an attribute from its upload on, and nothing reads the array
    * again: the bounds are kept apart, and nothing casts a ray at a batch. Kept,
    * the arrays were the city a second time in the page's memory, and iOS
-   * Safari kills a page that holds too much (`docs/rendering.md`).
+   * Safari kills a page that holds too much (`docs/streaming.md`).
    *
    * Each array is swapped for an empty one of its own type: the renderer still
    * reads the type when it builds a pipeline for another pass, and an

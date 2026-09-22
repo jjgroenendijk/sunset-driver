@@ -3,9 +3,9 @@
 The gotchas of the meshes `src/render` builds for the things standing in the world: the player,
 vehicles, weapons, plants, traffic and the crowd. `spec.md` sections 10, 11 and 13 are the design.
 The buildings have a doc of their own, `docs/buildings.md`. How these meshes reach the screen —
-batches, cells, quality tiers and the frame budget — is in `docs/rendering.md`, what lights them
-after dark is in `docs/lighting.md`, and the one interior the scene ever holds is in
-`docs/shops.md`.
+the batches, the cells and the frame budget — is in `docs/streaming.md`, what a quality tier moves
+in `docs/rendering.md`, what lights them after dark in `docs/lighting.md`, and the one interior the
+scene ever holds in `docs/shops.md`.
 
 ## Contents
 
