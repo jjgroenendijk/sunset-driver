@@ -90,13 +90,15 @@ const GROUND_FILL_NIGHT = 0x3a3440;
 
 /**
  * How strong that fill is by day and at midnight. A clear sky is a light as
- * big as the whole dome, so by day a street in shadow is about a third as
- * bright as one in the sun, not a quarter of that: weaker, and the city in its
- * own shadow reads as dusk at noon. The night fill is moonlight: strong enough
- * that a street with no lamp still shows its kerbs, its cars and its people.
- * Weaker, and a night frame away from the lamps was black.
+ * big as the whole dome, so by day a street in shadow is about half as bright
+ * as one in the sun. The frame is tone mapped, and the curve's toe pulls a
+ * shadow down further than its share of the light says: at a third of the sun
+ * the street under a tower still came out as dusk at noon, which is what this
+ * number was raised for. The night fill is moonlight: strong enough that a
+ * street with no lamp still shows its kerbs, its cars and its people. Weaker,
+ * and a night frame away from the lamps was black.
  */
-const FILL_DAY = 2.0;
+const FILL_DAY = 3.6;
 const FILL_NIGHT = 3.0;
 
 /** The haze the far chunks fade into: by day, at dusk and at night. */

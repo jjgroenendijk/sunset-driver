@@ -55,8 +55,10 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
   every cascade's camera by as much. At noon it is shorter than 200 m.
 - The shadow pass skips a cell of road paved on the ground (`raisedPartsOf`, `road-mesh.ts`): it
   could shade only itself. A deck, a portal or a pier in the cell makes it cast.
-- The daytime sky fill (`FILL_DAY`, `daylight.ts`) leaves a street in shade about a third as bright
-  as one in the sun. Much less, and the city in its own shadow reads as dusk at noon.
+- The daytime sky fill (`FILL_DAY`, `daylight.ts`) leaves a street in shade about half as bright as
+  one in the sun. That is more light than the sky really gives, because the frame is tone mapped:
+  the curve's toe pulls a dark pixel down further than its share of the light says. At a third of
+  the sun the street under a tower still read as dusk at noon.
 - `renderer.shadowMap.enabled` is false by default on `WebGPURenderer`. Without the line in
   `renderer.ts` the cascades are built every frame and never drawn, and the city is flat with
   nothing to say why.
