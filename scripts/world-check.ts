@@ -47,7 +47,7 @@ try {
   // Which browser ran this is part of the result, not a detail. A machine
   // holding an older build than the lockfile names answers for that build, and
   // engines differ from each other as well as from Node: a pass here says the
-  // two agree in *this* browser. `docs/dev-tooling.md` says how to point it at
+  // two agree in *this* browser. `docs/browser-checks.md` says how to point it at
   // another one.
   console.log(`browser ${browser.version()} (${executable})`);
   const page = await browser.newPage();

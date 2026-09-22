@@ -125,7 +125,7 @@ export function measureFrame(rgb: Uint8Array, width: number, height: number): Fr
  *
  * They are set well under what a real frame measures, so a change to the
  * lighting, the camera or the seed cannot bring one down to the line. The
- * numbers a real frame gives are in `docs/dev-tooling.md`.
+ * numbers a real frame gives are in `docs/browser-checks.md`.
  */
 const LIMITS = {
   /** Distinct colours. A blank frame holds one. */

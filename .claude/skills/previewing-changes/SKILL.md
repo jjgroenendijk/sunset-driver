@@ -41,7 +41,8 @@ the police, a shop interior, a tram, the sky, a crash and its services. Which fl
 subject is in [references/subjects.md](references/subjects.md). Read it before guessing a flag.
 
 `docs/dev-tooling.md` is the full list of every tool and every flag, including the free camera and
-the Chrome DevTools MCP server. Read it when the recipe you need is in neither file.
+the Chrome DevTools MCP server. Read it when the recipe you need is in neither file, and
+`docs/browser-checks.md` for what `test:render` and `test:world` measure.
 
 ## What to expect
 
