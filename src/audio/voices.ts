@@ -1,6 +1,6 @@
 /**
  * The voices that hold a note rather than being struck: the engine, a siren,
- * the tyres and the horn (spec section 15).
+ * the tyres, the horn and a tram on its rails (spec section 15).
  *
  * Each one is a handful of Tone.js oscillators wired once and then only ever
  * ramped, because a Web Audio node graph is cheap to hold and dear to rebuild.
@@ -14,7 +14,7 @@
  * `plan.ts` decides what these should be doing; nothing here reads the record.
  */
 import { Filter, Gain, Noise, Oscillator, Panner } from 'tone';
-import type { AudioPlan, SirenPlan } from './plan.ts';
+import type { AudioPlan, SirenPlan, TramNoisePlan } from './plan.ts';
 
 /** Seconds every parameter takes to reach the value the plan asked for. */
 export const RAMP = 0.04;
@@ -31,6 +31,19 @@ export const SIREN_SWAP = 0.05;
 /** The two notes of a horn, in hertz: a minor third, as a road car's is. */
 export const HORN_LOW = 400;
 export const HORN_HIGH = 480;
+
+/**
+ * A tram's wheels on the rail: where the rumble sits, in hertz, and how far it
+ * rises as the tram runs faster. It is low and broad, which is what a steel
+ * wheel on steel rail is, and nothing like a tyre.
+ */
+export const RUMBLE_HZ = 105;
+export const RUMBLE_RISE = 90;
+export const RUMBLE_Q = 0.8;
+
+/** Where a flange biting the rail on a curve sings, in hertz, and how narrow that band is. */
+export const FLANGE_HZ = 2400;
+export const FLANGE_Q = 12;
 
 /** Where a sliding tyre sings, in hertz, and how narrow that band is. */
 export const SQUEAL_HZ = 1900;
@@ -196,5 +209,53 @@ export class HornVoice {
 
   dispose(): void {
     for (const node of [this.low, this.high, this.highGain, this.filter, this.out]) node.dispose();
+  }
+}
+
+/**
+ * A tram running on its rails: a low band for the rumble of its wheels, and a
+ * narrow high one for the flanges biting on a curve. Both are noise through a
+ * filter, because that is what steel on steel is; neither is a note.
+ *
+ * It is panned, unlike the tyres, because the tram is out on the street and the
+ * player is not in it.
+ */
+export class TramVoice {
+  private readonly noise = new Noise({ type: 'brown' });
+  private readonly rumble = new Filter({ type: 'bandpass', frequency: RUMBLE_HZ, Q: RUMBLE_Q });
+  private readonly rumbleGain = new Gain(0);
+  private readonly hiss = new Noise({ type: 'white' });
+  private readonly flange = new Filter({ type: 'bandpass', frequency: FLANGE_HZ, Q: FLANGE_Q });
+  private readonly flangeGain = new Gain(0);
+  private readonly out = new Gain(0);
+  private readonly panner = new Panner(0);
+
+  constructor(bus: Gain) {
+    this.noise.chain(this.rumble, this.rumbleGain, this.out);
+    this.hiss.chain(this.flange, this.flangeGain, this.out);
+    this.out.chain(this.panner);
+    this.panner.connect(bus);
+  }
+
+  start(): void {
+    this.noise.start();
+    this.hiss.start();
+  }
+
+  /** A tram running faster rumbles louder and higher, and bites harder on a bend. */
+  set(tram: TramNoisePlan, level: number): void {
+    this.rumble.frequency.rampTo(RUMBLE_HZ + RUMBLE_RISE * tram.rumble, RAMP);
+    this.rumbleGain.gain.rampTo(tram.rumble, RAMP);
+    this.flangeGain.gain.rampTo(tram.squeal * 0.5, RAMP);
+    this.out.gain.rampTo(tram.gain * level, RAMP);
+    this.panner.pan.rampTo(tram.pan, RAMP);
+  }
+
+  silence(): void {
+    this.out.gain.rampTo(0, RAMP);
+  }
+
+  dispose(): void {
+    for (const node of [this.noise, this.rumble, this.rumbleGain, this.hiss, this.flange, this.flangeGain, this.out, this.panner]) node.dispose();
   }
 }

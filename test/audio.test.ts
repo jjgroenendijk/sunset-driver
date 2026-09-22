@@ -361,6 +361,46 @@ describe('audio: the plan', () => {
     expect(planner.plan(state, input(), state.player, line).cues).toEqual([]);
   });
 
+  it('rumbles under the nearest tram, and squeals where it is bending at speed', () => {
+    const noise = { x: 0, y: 0, speed: 0, bend: 0 };
+    const at = (speed: number, bend: number, away: number) => ({
+      bells: (_tick: number, out: TramBell[] = []) => {
+        out.length = 0;
+        return out;
+      },
+      nearestNoise: (_x: number, _y: number, _time: number, out: typeof noise) => {
+        out.x = away;
+        out.y = 0;
+        out.speed = speed;
+        out.bend = bend;
+        return out;
+      },
+    });
+    const state = session();
+    const planner = new AudioPlanner();
+    const running = planner.plan(state, input(), state.player, at(10, 0.9, 8)).tram;
+    expect(running).not.toBeNull();
+    expect((running as NonNullable<typeof running>).rumble).toBeGreaterThan(0.5);
+    expect((running as NonNullable<typeof running>).squeal).toBeGreaterThan(0.3);
+    // A tram at a stand makes no noise, however near it is standing.
+    state.tick += 1;
+    expect(planner.plan(state, input(), state.player, at(0, 1, 2)).tram).toBeNull();
+    // Nor does one on straight rail squeal, however fast it is running.
+    state.tick += 1;
+    const straight = planner.plan(state, input(), state.player, at(12, 0, 8)).tram;
+    expect((straight as NonNullable<typeof straight>).squeal).toBe(0);
+    // A tram right across the city is not worth a voice.
+    state.tick += 1;
+    expect(planner.plan(state, input(), state.player, at(12, 1, 4000)).tram).toBeNull();
+  });
+
+  it('asks a line with no running noise for none, and hears nothing', () => {
+    const state = session();
+    const planner = new AudioPlanner();
+    const quiet = { bells: (_tick: number, out: TramBell[] = []) => ((out.length = 0), out) };
+    expect(planner.plan(state, input(), state.player, quiet).tram).toBeNull();
+  });
+
   it('rings no bell where the session has no tram line', () => {
     const state = session();
     const planner = new AudioPlanner();

@@ -198,6 +198,40 @@ function mod(value: number, by: number): number {
   return ((value % by) + by) % by;
 }
 
+describe('the noise a tram makes (spec sections 13.2, 15)', () => {
+  const line = ring(1).line;
+  const noise = { x: 0, y: 0, speed: 0, bend: 0 };
+
+  it('gives the nearest tram and how fast it is running', () => {
+    const tour = line.tour;
+    if (tour === undefined) throw new Error('no tram on the ring');
+    let fastest = 0;
+    let nearest = Infinity;
+    for (let time = 0; time < tour.period; time += Math.floor(tour.period / 41)) {
+      const at = line.nearestNoise(0, 0, time, noise);
+      expect(at).toBeDefined();
+      const heard = at as NonNullable<typeof at>;
+      expect(heard.speed).toBeGreaterThanOrEqual(0);
+      expect(heard.bend).toBeGreaterThanOrEqual(0);
+      expect(heard.bend).toBeLessThanOrEqual(1);
+      fastest = Math.max(fastest, heard.speed);
+      nearest = Math.min(nearest, Math.hypot(heard.x, heard.y));
+    }
+    expect(fastest).toBeGreaterThan(1);
+    // The ring runs round the origin, so a tram comes near it. Its corners are
+    // square rather than curved, so nothing on it is ever bent: that is the
+    // seed sweep's to check, on a city whose corners are real (`seed-tram.ts`).
+    expect(nearest).toBeLessThan(RING);
+  });
+
+  it('answers nothing for a world with no tram', () => {
+    const r = ring(1);
+    const signals = r.traffic.signals as TrafficSignals;
+    const empty = new TramLine(1, r.roads, { route: [], edges: [], corridors: [], stops: [], crossings: [], length: 0 }, r.districts, signals);
+    expect(empty.nearestNoise(0, 0, 0, noise)).toBeUndefined();
+  });
+});
+
 describe('the lettering of the tram (spec section 13.2)', () => {
   const r = ring(1);
   const line = r.line;

@@ -28,7 +28,7 @@ import { SIREN_VOICES } from './plan.ts';
 import { ShotBank } from './one-shots.ts';
 import { RadioVoice, ScoreVoice } from './radio.ts';
 import type { Listener } from './space.ts';
-import { EngineVoice, HornVoice, RAMP, SirenVoice, SquealVoice } from './voices.ts';
+import { EngineVoice, HornVoice, RAMP, SirenVoice, SquealVoice, TramVoice } from './voices.ts';
 
 /** Where the master sits before the limiter. Headroom for the cues to peak into. */
 export const MASTER_GAIN = 0.55;
@@ -38,6 +38,7 @@ export const LEVELS = Object.freeze({
   engine: 0.8,
   siren: 0.5,
   squeal: 0.35,
+  tram: 1.6,
   horn: 0.5,
   cue: 0.9,
   cry: 0.8,
@@ -64,6 +65,8 @@ export class Mixer {
   private readonly sirens: SirenVoice[];
   private readonly squeal: SquealVoice;
   private readonly horn: HornVoice;
+  /** The nearest tram on its rails (spec section 13.2). */
+  private readonly tram: TramVoice;
   private readonly shots: ShotBank;
   /** The human cries of `cry.ts`, on the effects bus beside the one-shots. */
   private readonly cries: CryBank;
@@ -85,6 +88,7 @@ export class Mixer {
     this.sirens = Array.from({ length: SIREN_VOICES }, () => new SirenVoice(this.effects));
     this.squeal = new SquealVoice(this.effects);
     this.horn = new HornVoice(this.effects);
+    this.tram = new TramVoice(this.effects);
     this.shots = new ShotBank(this.effects);
     this.cries = new CryBank(this.effects);
     // Both ride the music bus, so a gunshot ducks the station and the score
@@ -99,6 +103,7 @@ export class Mixer {
     for (const siren of this.sirens) siren.start();
     this.squeal.start();
     this.horn.start();
+    this.tram.start();
     this.score.start();
     this.beds.start();
     this.at = now();
@@ -113,6 +118,8 @@ export class Mixer {
     else this.engine.set(plan.engine, LEVELS.engine);
     this.squeal.set(plan.squeal, LEVELS.squeal);
     this.horn.set(plan.horn, LEVELS.horn);
+    if (plan.tram === null) this.tram.silence();
+    else this.tram.set(plan.tram, LEVELS.tram);
     this.setSirens(plan);
     this.beds.set(plan.beds, LEVELS.bed);
     this.shots.play(plan.cues, listener, LEVELS.cue);
@@ -132,6 +139,7 @@ export class Mixer {
     for (const siren of this.sirens) siren.silence();
     this.squeal.silence();
     this.horn.silence();
+    this.tram.silence();
     this.radio.silence();
     this.score.silence();
     this.beds.silence();
@@ -147,6 +155,7 @@ export class Mixer {
     for (const siren of this.sirens) siren.dispose();
     this.squeal.dispose();
     this.horn.dispose();
+    this.tram.dispose();
     this.shots.dispose();
     this.cries.dispose();
     this.radio.dispose();

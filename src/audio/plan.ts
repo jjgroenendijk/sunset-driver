@@ -26,7 +26,7 @@ import type { InputFrame } from '../sim/input.ts';
 import { onCall, type EmergencyKind, type EmergencyUnit } from '../sim/emergency.ts';
 import type { PoliceUnit } from '../sim/police.ts';
 import type { SimState } from '../sim/simulation.ts';
-import type { TramBell } from '../sim/tram.ts';
+import type { TramBell, TramNoise } from '../sim/tram.ts';
 import { specOf } from '../sim/vehicle.ts';
 import { weatherAt } from '../sim/weather.ts';
 import { currentWeapon, type WeaponSpec } from '../sim/weapon.ts';
@@ -73,7 +73,18 @@ export const IMPACT_MIN = 0.004;
  */
 export interface BellSource {
   bells(tick: number, out?: TramBell[]): TramBell[];
+  /** The nearest tram and the noise it is running with, where the source has one. */
+  nearestNoise?(x: number, y: number, time: number, out: TramNoise): TramNoise | undefined;
 }
+
+/** How loud a tram running at {@link RUMBLE_SPEED} is, against the other voices. */
+export const RUMBLE_STRENGTH = 0.9;
+
+/** Metres a second at which a tram's wheels rumble their loudest. */
+export const RUMBLE_SPEED = 12;
+
+/** Metres a second under which a tram is too slow for its flanges to squeal on a curve. */
+export const FLANGE_SPEED = 2.5;
 
 /** How loud a tram's bell is, against the other one-shots. */
 export const BELL_STRENGTH = 0.8;
@@ -113,6 +124,20 @@ export const SIREN_OF: Readonly<Record<'police' | EmergencyKind, { sound: SirenS
  * voice following police car 3 is never handed ambulance 3.
  */
 export const EMERGENCY_SIREN = 1 << 20;
+
+/**
+ * The nearest tram's running noise this frame (spec sections 13.2, 15): the
+ * rumble of its wheels on the rail, and the squeal of its flanges on a curve.
+ * Null where no tram is near enough to be worth a voice.
+ */
+export interface TramNoisePlan {
+  gain: number;
+  pan: number;
+  /** How hard the wheels rumble, 0 to 1. */
+  rumble: number;
+  /** How hard the flanges bite, 0 to 1. */
+  squeal: number;
+}
 
 /** One siren in the mix. */
 export interface SirenPlan {
@@ -162,6 +187,8 @@ export interface AudioPlan {
   horn: number;
   /** The sirens worth carrying, nearest first. */
   sirens: SirenPlan[];
+  /** The nearest tram's rumble and flange squeal, or null where none is near. */
+  tram: TramNoisePlan | null;
   /** The one-shots to fire this frame. */
   cues: Cue[];
   /** The human cries to start this frame: the hurt, the dying and a fleeing crowd. */
@@ -188,6 +215,7 @@ export function silentPlan(): AudioPlan {
     squeal: 0,
     horn: 0,
     sirens: [],
+    tram: null,
     cues: [],
     cries: [],
     duck: 0,
@@ -214,6 +242,8 @@ export class AudioPlanner {
   private heard = -1;
   /** Reused by the bells, so a frame allocates nothing for the ones that did not ring. */
   private readonly ringing: TramBell[] = [];
+  /** Reused by the running noise, for the same reason. */
+  private readonly running: TramNoise = { x: 0, y: 0, speed: 0, bend: 0 };
   /** The cries and the thuds of the people hit (`hurt.ts`). */
   private readonly hurt = new HurtEars();
 
@@ -271,6 +301,7 @@ export class AudioPlanner {
       squeal: squealOf(state),
       horn: input.horn && state.player.driving ? 1 : 0,
       sirens: sirensOf(state, listener),
+      tram: tramNoiseOf(listener, trams, state.tick, this.running),
       cues: cues.slice(0, CUES_PER_FRAME),
       cries: cries.slice(0, CRIES_PER_FRAME),
       duck: duckOf(cues),
@@ -497,6 +528,22 @@ export function radioOf(state: SimState, score: Score): RadioPlan {
 function broadcastOfNextBar(seed: number, dial: number, bar: number): { song: number; bar: number; kind: OnAir } {
   const after = broadcastAt(seed, wrapDial(dial), bar + 1);
   return { song: after.song, bar: after.bar, kind: after.kind };
+}
+
+/**
+ * What the nearest tram sounds like from where the player stands. A tram at a
+ * stand makes no noise at all: the rumble is its wheels turning, and the squeal
+ * is the flanges of a tram going fast enough round a bend to bite.
+ */
+export function tramNoiseOf(listener: Listener, trams: BellSource | undefined, tick: number, out: TramNoise): TramNoisePlan | null {
+  const at = trams?.nearestNoise?.(listener.x, listener.y, tick, out);
+  if (at === undefined) return null;
+  const heard = hear(listener, at.x, at.y);
+  if (heard.gain <= 0) return null;
+  const rumble = Math.min(1, at.speed / RUMBLE_SPEED);
+  if (rumble <= 0) return null;
+  const biting = at.speed < FLANGE_SPEED ? 0 : Math.min(1, (at.speed - FLANGE_SPEED) / RUMBLE_SPEED);
+  return { gain: heard.gain * RUMBLE_STRENGTH, pan: heard.pan, rumble, squeal: at.bend * biting };
 }
 
 /** How far this frame's cues pull the music bus down. The table says which of them do. */

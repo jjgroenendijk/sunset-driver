@@ -17,7 +17,7 @@ import { TICKS_PER_HOUR } from '../sim/clock.ts';
 import { EMPTY_INPUT, type InputFrame } from '../sim/input.ts';
 import type { PoliceKind, PoliceUnit } from '../sim/police.ts';
 import { createSimState, type SimState } from '../sim/simulation.ts';
-import type { TramBell } from '../sim/tram.ts';
+import type { TramBell, TramNoise } from '../sim/tram.ts';
 import { weatherAt, type Weather } from '../sim/weather.ts';
 import { giveWeapon } from '../sim/weapon.ts';
 import type { Site, SiteSource } from './ambience.ts';
@@ -134,6 +134,21 @@ const RINGING: BellSource = {
   bells: (_tick: number, out: TramBell[] = []) => {
     out.length = 0;
     out.push({ tram: 0, x: 4, y: 0 });
+    return out;
+  },
+};
+
+/** A line whose tram runs past at speed on a bend, which is the rumble and the flange squeal together. */
+const RUNNING: BellSource = {
+  bells: (_tick: number, out: TramBell[] = []) => {
+    out.length = 0;
+    return out;
+  },
+  nearestNoise: (_x: number, _y: number, _time: number, out: TramNoise) => {
+    out.x = 8;
+    out.y = 0;
+    out.speed = 11;
+    out.bend = 0.8;
     return out;
   },
 };
@@ -260,6 +275,7 @@ const CASES: readonly AudioCase[] = [
     frames: 20,
   },
   { name: 'tram bell', state: afoot, trams: RINGING, frames: 2 },
+  { name: 'tram on the rails', state: afoot, trams: RUNNING, frames: 4 },
   // The people of spec section 13.1 being hurt. Each cry is a voice of its
   // own, keyed on the person's id, so these are the cries of person 3.
   hitCase('scream', {}),
