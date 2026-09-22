@@ -24,6 +24,7 @@ import type { PoliceView } from './render/police.ts';
 import type { TrafficView } from './render/traffic.ts';
 import type { TramView } from './render/tram.ts';
 import type { TramStopView } from './render/tram-stops.ts';
+import type { TramSignView } from './render/tram-signs.ts';
 import type { WorldScene } from './render/world-scene.ts';
 import type { SimPhysics } from './sim/physics.ts';
 import type { SimState } from './sim/simulation.ts';
@@ -135,6 +136,7 @@ export interface Session {
   tram: TramView;
   /** The island platforms and shelters of their stops. */
   tramStops: TramStopView;
+  tramSigns: TramSignView;
   /** The bus stops of spec section 20.2, drawn. */
   busStops: BusStopView;
   /** The pedestrians of spec section 13.1, drawn. */

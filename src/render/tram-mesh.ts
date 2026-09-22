@@ -50,6 +50,22 @@ const UNDERFRAME = 0x2b2f36;
  */
 const BOARD = LAMP;
 
+/**
+ * Where the destination board of a design sits on the leading end of a car, and
+ * how big its face is. The lettering is drawn as a quad just proud of it
+ * (`tram-signs.ts`), so both read the one place.
+ */
+export interface BoardPlace {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export function boardPlace(design: TramDesign): BoardPlace {
+  return design === 'heritage' ? { x: 4.98, y: 2.5, width: 1.1, height: 0.2 } : { x: 5.03, y: 2.62, width: 1.4, height: 0.26 };
+}
+
 /** Metres of clearance under the body, between the rails and the floor. */
 const FLOOR = 0.35;
 

@@ -20,7 +20,7 @@ import { Group, Matrix4, Quaternion, Vector3, type BufferGeometry, type Instance
 import { CAR_HALF_WIDTH, TRAM_LENGTH, type TramLine } from '../sim/tram.ts';
 import { TRAM_LANE } from '../world/tiers.ts';
 import { boxOf, coloured, instanced, merged, TRAFFIC_VIEW } from './traffic.ts';
-import { GLASS, LAMP, METAL } from './vehicle-mesh.ts';
+import { GLASS, METAL } from './vehicle-mesh.ts';
 import { createVehicleTrim, type VehicleTrim } from './vehicle-glow.ts';
 
 /** Metres each way of the point the frame is drawn round that stops are drawn in. */
@@ -32,6 +32,8 @@ const KERB = 0xb6b1a6;
 const TACTILE = 0xc9a63c;
 /** The paint of the mast and the flag it carries. */
 const POST_PAINT = 0x2f4f6f;
+/** The case the timetable panel is set in, behind its lettering. */
+const PANEL_CASE = 0x1b1f24;
 const SIGN_FACE = 0xf2efe6;
 
 /**
@@ -76,6 +78,13 @@ export function platformBoxes(): StopBox[] {
   ];
 }
 
+/**
+ * The face of the timetable panel on the shelter's back glass, in the stop's
+ * own frame: where its middle is and how big it is. The lettering is drawn as
+ * two quads just proud of it (`tram-signs.ts`), so both read the one place.
+ */
+export const TIMETABLE = { x: 1.5, y: RISE + 1.55, z: MIDDLE - WIDTH / 2 + 0.23, width: 1.1, height: 0.62 };
+
 /** The shelter in the middle of the platform: a roof, glass behind and at both ends, and a bench. */
 export function shelterBoxes(): StopBox[] {
   const glass = SHELTER_TALL - 0.5;
@@ -89,8 +98,9 @@ export function shelterBoxes(): StopBox[] {
     box(0.1, SHELTER_TALL, 0.1, end, RISE + SHELTER_TALL / 2, MIDDLE + WIDTH / 2 - 0.2, METAL),
     box(0.1, SHELTER_TALL, 0.1, -end, RISE + SHELTER_TALL / 2, MIDDLE + WIDTH / 2 - 0.2, METAL),
     box(SHELTER_LONG - 1.2, 0.08, 0.45, 0, RISE + 0.46, back + 0.32, METAL),
-    // The timetable hangs on the glass behind the bench and is lit after dark.
-    box(1.1, 0.62, 0.05, 1.5, RISE + 1.55, back + 0.07, LAMP),
+    // The timetable hangs on the glass behind the bench. Its case is dark: what
+    // lights after dark is the lettering on it (`tram-signs.ts`).
+    box(TIMETABLE.width, TIMETABLE.height, 0.05, TIMETABLE.x, TIMETABLE.y, back + 0.07, PANEL_CASE),
   ];
 }
 
@@ -125,8 +135,9 @@ export class TramStopView {
   constructor(line: TramLine) {
     this.line = line;
     const parts = tramStopParts();
-    // The timetable panel is painted in LAMP, so the shared glow attribute
-    // lights it after dark the way it lights the trams' own boards.
+    // A stop carries no lamp of its own: the lettering on its panel is what
+    // burns after dark (`tram-signs.ts`). The trim material is still what the
+    // parts are drawn with, so a stop and a tram share one shader.
     this.trim = createVehicleTrim();
     const cap = Math.max(1, line.stopPlaces().length);
     this.meshes = [parts.platform, parts.shelter, parts.flag].map((geometry) => instanced(geometry, this.trim.material, true, cap));

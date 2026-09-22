@@ -40,6 +40,7 @@ import type { QualityTier } from './quality.ts';
 import { createOffscreenRenderer, resizeOffscreenRenderer } from './renderer.ts';
 import { TrafficView } from './traffic.ts';
 import { TramView } from './tram.ts';
+import { TramSignView } from './tram-signs.ts';
 import { TramStopView } from './tram-stops.ts';
 import { WildlifeView } from './wildlife.ts';
 import { WorldScene } from './world-scene.ts';
@@ -73,6 +74,7 @@ export interface PreviewPeople {
   traffic: TrafficView;
   trams: TramView;
   tramStops: TramStopView;
+  tramSigns: TramSignView;
   /** The posts and the shelters at the kerbs the buses call at (spec section 20.2). */
   busStops: BusStopView;
   crowd: PedestrianView;
@@ -145,6 +147,7 @@ export function peopleFor(): PreviewPeople {
       traffic: new TrafficView(ambient),
       trams: new TramView(line),
       tramStops: new TramStopView(line),
+      tramSigns: new TramSignView(line),
       busStops: new BusStopView(stops),
       crowd: new PedestrianView(walkers, line, stops),
       casualties: new CasualtyView(walkers),
@@ -154,8 +157,8 @@ export function peopleFor(): PreviewPeople {
         new AmbientWildlife(seed, { roads, beaches: world.beaches, seaLevel: world.water.seaLevel, districtAt }),
       ),
     };
-    const { traffic, trams, tramStops, busStops, crowd, casualties, guns, markers, wildlife } = held.people;
-    scene.scene.add(traffic.group, trams.group, tramStops.group, busStops.group, crowd.group, casualties.group, guns.group, markers.group, wildlife.group);
+    const { traffic, trams, tramStops, tramSigns, busStops, crowd, casualties, guns, markers, wildlife } = held.people;
+    scene.scene.add(traffic.group, trams.group, tramStops.group, tramSigns.group, busStops.group, crowd.group, casualties.group, guns.group, markers.group, wildlife.group);
   }
   if (held.people.parked === undefined && scene.bays !== undefined) {
     held.people.parked = new ParkedView(new ParkedCars(seed, scene.bays));
@@ -206,7 +209,7 @@ function dropHeld(): void {
   dropView(held);
   const people = held.people;
   if (people !== undefined) {
-    for (const view of [people.traffic, people.trams, people.tramStops, people.busStops, people.crowd, people.casualties, people.guns, people.wildlife, people.parked]) {
+    for (const view of [people.traffic, people.trams, people.tramStops, people.tramSigns, people.busStops, people.crowd, people.casualties, people.guns, people.wildlife, people.parked]) {
       if (view === undefined) continue;
       held.scene.scene.remove(view.group);
       view.dispose();

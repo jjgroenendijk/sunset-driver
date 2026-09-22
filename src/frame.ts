@@ -248,6 +248,7 @@ export class SessionFrame {
     session.traffic.lamps = session.world.lampsNow;
     session.tram.lamps = session.world.lampsNow;
     session.tramStops.lamps = session.world.lampsNow;
+    session.tramSigns.lamps = session.world.lampsNow;
     session.police.lamps = session.world.lampsNow;
     session.emergency.lamps = session.world.lampsNow;
     if (flying) {
@@ -385,6 +386,7 @@ export class SessionFrame {
     session.traffic.update(session.state, moment, round.x, round.y);
     session.tram.update(moment, round.x, round.y);
     session.tramStops.update(round.x, round.y);
+    session.tramSigns.update(moment, round.x, round.y);
     // The units are stepped once a tick like the player, so they are drawn
     // where the last tick left them rather than between two of them.
     session.police.update(session.state, round.x, round.y);
