@@ -12,13 +12,19 @@
  * from the record alone and with no Tone.js anywhere in it, and `mixer.ts`
  * plays it. That is what lets the rules be tested headless.
  */
-import { start } from 'tone';
+import { getContext, start } from 'tone';
 import type { InputFrame } from '../sim/input.ts';
 import type { SimState } from '../sim/simulation.ts';
 import type { SiteSource } from './ambience.ts';
 import { Mixer } from './mixer.ts';
 import { AudioPlanner, type BellSource } from './plan.ts';
 import type { Listener } from './space.ts';
+
+/**
+ * Milliseconds a hushed mix is left running before its context is suspended.
+ * The notes ramp down in a fraction of that, so nothing is cut off.
+ */
+const REST_AFTER_MS = 500;
 
 /** The events that count as the first user gesture. */
 const GESTURES = ['pointerdown', 'keydown'] as const;
@@ -45,6 +51,14 @@ export class GameAudio {
   private air: OnAirLine | null = null;
   /** The world the ambient beds are read from, or null before a session has one. */
   private sites: SiteSource | null = null;
+  /** When the mix was first hushed, in page milliseconds, or null while it plays. */
+  private hushedAt: number | null = null;
+  /** True once a hush has lasted {@link REST_AFTER_MS}, until the next frame that plays. */
+  private resting = false;
+  /** True while the page is hidden. */
+  private hidden = false;
+  /** Whether the context was last asked to suspend, so each change is asked for once. */
+  private suspended = false;
 
   constructor(muted = false) {
     this.silent = muted;
@@ -59,6 +73,7 @@ export class GameAudio {
   arm(target: Window): void {
     this.target = target;
     for (const event of GESTURES) target.addEventListener(event, this.onGesture);
+    target.document.addEventListener('visibilitychange', this.onVisibility);
   }
 
   /**
@@ -114,6 +129,9 @@ export class GameAudio {
       this.air = null;
       return;
     }
+    this.hushedAt = null;
+    this.resting = false;
+    this.wake();
     if (this.mixer === null) {
       this.mixer = new Mixer();
       this.mixer.start();
@@ -125,10 +143,20 @@ export class GameAudio {
     this.air = radio.station === null ? null : { name: radio.name, text: radio.text, from: radio.from };
   }
 
-  /** Take every held note off. A paused session and a detached camera both do this. */
+  /**
+   * Take every held note off. A paused session does this. Once the notes have
+   * died away the context is suspended, so an oscillator that is heard by
+   * nobody costs no CPU; the next frame that plays wakes it again.
+   */
   hush(): void {
     this.mixer?.hush();
     this.air = null;
+    if (this.mixer === null) return;
+    const at = performance.now();
+    this.hushedAt ??= at;
+    if (at - this.hushedAt < REST_AFTER_MS) return;
+    this.resting = true;
+    this.wake();
   }
 
   /**
@@ -144,9 +172,31 @@ export class GameAudio {
     this.close();
     if (this.target !== null) {
       for (const event of GESTURES) this.target.removeEventListener(event, this.onGesture);
+      this.target.document.removeEventListener('visibilitychange', this.onVisibility);
       this.target = null;
     }
   }
+
+  /**
+   * Suspend the context while it is resting or the page is hidden, and resume
+   * it otherwise. A hidden page draws no frames, so without this the notes
+   * held when it was hidden would play on behind another tab.
+   */
+  private wake(): void {
+    const suspend = this.running && (this.resting || this.hidden);
+    if (suspend === this.suspended || !this.running) return;
+    this.suspended = suspend;
+    const context = getContext().rawContext;
+    // Only a realtime context can be suspended without a time to do it at.
+    if (!('close' in context)) return;
+    const done = suspend ? context.suspend() : context.resume();
+    done.catch((error: unknown) => console.warn('The browser would not change the audio state.', error));
+  }
+
+  private readonly onVisibility = (): void => {
+    this.hidden = this.target?.document.visibilityState === 'hidden';
+    this.wake();
+  };
 
   private close(): void {
     this.mixer?.dispose();
