@@ -95,24 +95,48 @@ export const EMPTY_INPUT: Readonly<InputFrame> = Object.freeze({
   surrender: false,
 });
 
+/**
+ * Every field of {@link InputFrame}, in the order the interface declares them.
+ * {@link inputEquals} walks this list rather than naming the fields itself, and
+ * the checks below fail to compile when the list and the interface disagree, so
+ * a field added to the frame cannot be left out of the comparison again.
+ */
+export const INPUT_FIELDS = [
+  'throttle',
+  'steer',
+  'handbrake',
+  'horn',
+  'sprint',
+  'jump',
+  'interact',
+  'fire',
+  'aim',
+  'pointing',
+  'pointX',
+  'pointY',
+  'reload',
+  'cycle',
+  'station',
+  'travel',
+  'buy',
+  'trade',
+  'surrender',
+] as const satisfies readonly (keyof InputFrame)[];
+
+/** `never` unless a field of `InputFrame` is missing from {@link INPUT_FIELDS}. */
+type UnlistedField = Exclude<keyof InputFrame, (typeof INPUT_FIELDS)[number]>;
+
+/**
+ * The compile error when a field is missing: `UnlistedField` is then the name
+ * of that field, which does not satisfy the `never` this alias demands.
+ */
+type EveryFieldListed<T extends never> = T;
+export type _EveryInputFieldListed = EveryFieldListed<UnlistedField>;
+
+/** Whether two frames hold the same input, field for field. */
 export function inputEquals(a: InputFrame, b: InputFrame): boolean {
-  return (
-    a.throttle === b.throttle &&
-    a.steer === b.steer &&
-    a.handbrake === b.handbrake &&
-    a.horn === b.horn &&
-    a.sprint === b.sprint &&
-    a.jump === b.jump &&
-    a.interact === b.interact &&
-    a.fire === b.fire &&
-    a.aim === b.aim &&
-    a.pointing === b.pointing &&
-    a.pointX === b.pointX &&
-    a.pointY === b.pointY &&
-    a.reload === b.reload &&
-    a.cycle === b.cycle &&
-    a.station === b.station &&
-    a.travel === b.travel &&
-    a.surrender === b.surrender
-  );
+  for (const field of INPUT_FIELDS) {
+    if (a[field] !== b[field]) return false;
+  }
+  return true;
 }
