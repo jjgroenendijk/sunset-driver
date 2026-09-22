@@ -21,12 +21,11 @@
  * world the tests read. `--seeds` names them instead, for looking at the ones a
  * failure named.
  */
-import { writeFileSync } from 'node:fs';
 import { seedFromString } from '../src/core/rng.ts';
 import { BASE_DISTANCE } from '../src/render/camera.ts';
 import type { PreviewRequest } from '../src/render/preview.ts';
 import { sweepSeeds } from '../test/helpers.ts';
-import { encodePng } from './png.ts';
+import { defaultOut, writePng } from './png.ts';
 import { PreviewHost } from './preview-host.ts';
 
 /** Pixels of gutter between tiles. */
@@ -47,7 +46,7 @@ const num = (name: string, fallback: number): number => {
 const named = option('seeds');
 const count = Number(positional[0] ?? 6);
 const seeds = named === undefined ? sweepSeeds(count) : named.split(',').map((s) => seedFromString(s.trim()));
-const out = positional[1] ?? 'render-sheet.png';
+const out = positional[1] ?? defaultOut('render-sheet.png');
 const cols = Math.max(1, num('cols', 3));
 const tileWidth = Math.max(64, num('tile', 480));
 // The game draws 16:9, and a tile that does not is a tile of a different frame.
@@ -119,7 +118,7 @@ try {
   await host.close();
 }
 
-writeFileSync(out, encodePng(width, height, sheet));
+writePng(out, width, height, sheet);
 console.log(
   `${out}: ${width}x${height}, ${seeds.length} seeds in ${cols} columns,` +
     ` ${((performance.now() - started) / 1000).toFixed(1)} s on ${host.adapter}`,

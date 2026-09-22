@@ -6,7 +6,6 @@
  * the streets around them. The footprint, the parcels and the buildings are
  * left out then, because they are cut from every tier at once.
  */
-import { writeFileSync } from 'node:fs';
 import type { Region } from '../src/core/geom.ts';
 import { seedFromString } from '../src/core/rng.ts';
 import { buildCarve, carvedTerrain } from '../src/world/carve.ts';
@@ -22,12 +21,12 @@ import { buildShops, SHOP_KINDS, type ShopKind } from '../src/world/shops.ts';
 import { buildTensorField } from '../src/world/tensor.ts';
 import { generateWorld } from '../src/world/world.ts';
 import type { Point, RoadTier, Zone } from '../src/world/types.ts';
-import { encodePng } from './png.ts';
+import { defaultOut, writePng } from './png.ts';
 
 const args = process.argv.slice(2);
 const positional = args.filter((a) => !a.startsWith('--'));
 const seedText = positional[0] ?? 'sunset';
-const out = positional[1] ?? `preview-${seedText}.png`;
+const out = positional[1] ?? defaultOut(`preview-${seedText}.png`);
 const ALL_TIERS: RoadTier[] = ['highway', 'arterial', 'street', 'alley', 'dirt'];
 const tiersFlag = args.find((a) => a.startsWith('--tiers='))?.slice('--tiers='.length);
 const shown = tiersFlag === undefined ? ALL_TIERS : (tiersFlag.split('+') as RoadTier[]);
@@ -318,7 +317,7 @@ const SHOP_COL: Record<ShopKind, [number, number, number]> = {
 const shops = everyTier ? buildShops(world, buildings) : [];
 for (const shop of shops) mark(shop.x, shop.y, SHOP_COL[shop.kind], 2);
 
-writeFileSync(out, encodePng(n, n, rgb));
+writePng(out, n, n, rgb);
 const perTier = TIER_ORDER.map((t) => `${t} ${world.roads.filter((r) => r.tier === t).length}`).join(', ');
 console.log(
   `seed ${seedText} size ${world.size} m, ${n}x${n}, ${world.archetype}, ${world.water.islands.length} islands, ${world.water.crossings.length} crossings, ` +

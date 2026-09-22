@@ -23,14 +23,13 @@
  * fresh machine run `npx playwright install chromium` first, or point
  * CHROMIUM_PATH at a Chromium binary.
  */
-import { writeFileSync } from 'node:fs';
 import { chromium, type Browser } from 'playwright-core';
 import { createServer, type ViteDevServer } from 'vite';
 import { seedFromString } from '../src/core/rng.ts';
 import { TICKS_PER_DAY } from '../src/sim/clock.ts';
 import type { MapPreviewRequest, MapPreviewResult } from '../src/ui/map-preview.ts';
 import { chromiumPath } from './chromium.ts';
-import { encodePng } from './png.ts';
+import { defaultOut, writePng } from './png.ts';
 
 /** How long the world and the picture may take together. */
 const TIMEOUT_MS = 600_000;
@@ -47,7 +46,7 @@ const options = new Map<string, string>(
 );
 
 const seedText = positional[0] ?? 'sunset';
-const out = positional[1] ?? `map-${seedText}.png`;
+const out = positional[1] ?? defaultOut(`map-${seedText}.png`);
 
 function num(name: string, fallback: number): number {
   const raw = options.get(name);
@@ -111,7 +110,7 @@ try {
   if (failures.length > 0) console.error(`page errors:\n  ${failures.join('\n  ')}`);
 
   const rgb = new Uint8Array(Buffer.from(result.rgb, 'base64'));
-  writeFileSync(out, encodePng(result.width, result.height, rgb));
+  writePng(out, result.width, result.height, rgb);
   console.log(
     `${out}: ${result.width}x${result.height}, seed ${seedText} at ${request.x},${request.y}` +
       ` at ${request.scale} m/px${request.rotate ? ', rotating' : ', north up'}` +

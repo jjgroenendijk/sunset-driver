@@ -1,4 +1,24 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { deflateSync } from 'node:zlib';
+
+/** Where a preview writes when the caller named no output path. */
+const DEFAULT_DIR = 'previews';
+
+/**
+ * The default output path for a preview, under a directory git ignores. A run
+ * with no output named — `--help` alone is one — then leaves nothing behind in
+ * the tree for the next `git add -A` to pick up.
+ */
+export function defaultOut(name: string): string {
+  return `${DEFAULT_DIR}/${name}`;
+}
+
+/** Write a picture, making the directory it goes in first. */
+export function writePng(out: string, width: number, height: number, rgb: Uint8Array): void {
+  mkdirSync(dirname(out), { recursive: true });
+  writeFileSync(out, encodePng(width, height, rgb));
+}
 
 /** Minimal PNG encoder for debug previews (RGB, 8-bit). */
 export function encodePng(width: number, height: number, rgb: Uint8Array): Buffer {
