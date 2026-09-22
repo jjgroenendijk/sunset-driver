@@ -58,20 +58,29 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
   instead, so up is where the view looks. A rotating minimap marks north with an N on its rim. The
   minimap sizes its canvas from the box `style.css` and `touch.css` give it: a phone's is smaller,
   and a canvas of a fixed size put the arrow off the middle.
-- `POI_STYLES` is the one icon table: every type has a shape no other type uses and a colour no
-  other type uses, and `test/map.test.ts` pins both. `MapPois.extra` is the
-  slot a system that owns places writes — the shops of spec section 16.1, the safehouses of 16.3,
-  the factions of 17, the missions of 18 — and nothing reads a second list.
+- `POI_STYLES` is the one icon table: every type is drawn as a picture of what it is — a pistol for
+  the gun shop, a shirt for the clothes shop — with a drawing no other type uses and a colour no
+  other type uses, and `test/map.test.ts` pins both, and that no drawing is left unused.
+  `MapPois.extra` is the slot a system that owns places writes — the shops of spec section 16.1,
+  the safehouses of 16.3, the factions of 17, the missions of 18 — and nothing reads a second list.
 - `MapDrawOptions.overlay` is the slot the territory of spec section 17.2 draws through
   (`docs/factions.md`). It is handed the canvas in world metres and the world box the view can show,
   so an overlay over the whole map draws only the part on screen.
 - `src/ui/map-draw.ts` is the one place that says what a map looks like, with the ground bitmap in
-  `map-ground.ts` and the icon shapes in `map-icons.ts`. `Minimap` (`minimap.ts`)
-  and `MapScreen` (`map-screen.ts`) both draw through one `MapArt`, so the corner map and the full
-  map cannot disagree about a road or a mark. The land and the sea are a bitmap one pixel to a
-  terrain cell, drawn scaled; the roads are strokes off `RoadSegmentIndex`, so the map is sharp at
-  half a metre to the pixel and at sixteen. Both widgets redraw only when something on them has
-  moved, so a session standing still pays for neither.
+  `map-ground.ts` and the icons in `map-icons.ts`. `Minimap` (`minimap.ts`) and `MapScreen`
+  (`map-screen.ts`) both draw through one `MapArt`, so the corner map and the full map cannot
+  disagree about a road or a mark. The land and the sea are a bitmap one pixel to a terrain cell,
+  drawn scaled; the roads are strokes off `RoadSegmentIndex`, so the map is sharp at half a metre to
+  the pixel and at sixteen. Both widgets redraw only when something on them has moved, so a session
+  standing still pays for neither.
+- A place is drawn as a disc in its own colour with its picture knocked out of it in dark. Knocking
+  the picture out rather than filling it is what keeps it readable at the 11 pixels the minimap
+  draws an icon at. The waypoint and the objective are pins with their point on the place instead,
+  because they are what the player is heading for. The pictures are the silhouettes of
+  `map-glyphs.ts`: every solid part is wound clockwise and every hole anticlockwise, so two parts
+  that overlap join under the default `nonzero` fill rather than cancelling — an `evenodd` fill is
+  how an anchor loses its shank where the stock crosses it. `node scripts/icon-sheet.ts` draws them
+  all at the sizes they are read at; look at it after changing one.
 - The full map zooms smoothly. A wheel event moves a target scale by a factor (`wheelScale`), and
   each frame eases toward it (`easeScale`), holding the world point under the pointer still. One
   event never jumps a whole `ZOOM_STEPS` step: a trackpad sends dozens a second.

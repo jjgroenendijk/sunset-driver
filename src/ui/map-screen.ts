@@ -415,7 +415,7 @@ export class MapScreen {
         ctx.beginPath();
         ctx.arc(p.x, p.y, ICON * 0.95, 0, Math.PI * 2);
         ctx.stroke();
-        drawIcon(ctx, style.shape, style.colour, p.x, p.y, ICON * 0.7);
+        drawIcon(ctx, style.glyph, style.colour, p.x, p.y, ICON * 0.7);
       }
     }
     ctx.restore();
