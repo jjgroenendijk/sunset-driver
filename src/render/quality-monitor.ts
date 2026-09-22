@@ -88,6 +88,8 @@ const CHANGE_WINDOWS = 2;
 
 export class QualityMonitor {
   private readonly budgetMs: number;
+  /** The interval of the frame cap, which no frame comes in under. 0 while there is none. */
+  private capMs = 0;
   private readonly frames: number[] = [];
   private spent = 0;
   private at: number;
@@ -116,9 +118,23 @@ export class QualityMonitor {
     return this.at;
   }
 
-  /** The frame the tiers are held to, in milliseconds. */
+  /**
+   * The frame the tiers are held to, in milliseconds. A frame cap slower than
+   * the budget raises it to the cap's interval: at 30 fps every frame takes
+   * 33 ms, and that is the cap, not a machine that cannot hold the frame.
+   */
   get budget(): number {
-    return this.budgetMs;
+    return Math.max(this.budgetMs, this.capMs);
+  }
+
+  /**
+   * Take the interval of the frame cap (`pace.ts`), 0 for none. A new cap
+   * changes what a frame measures, so the window being filled is thrown away.
+   */
+  cap(intervalMs: number): void {
+    if (intervalMs === this.capMs) return;
+    this.capMs = intervalMs;
+    this.settle();
   }
 
   /** Count one frame, and answer the change it caused if it caused one. */
@@ -166,7 +182,7 @@ export class QualityMonitor {
   }
 
   private judge(middle: number): QualityChange | undefined {
-    if (middle > this.budgetMs * MISS) {
+    if (middle > this.budget * MISS) {
       this.good = 0;
       this.steady = 0;
       if (this.trying > 0) {
@@ -180,7 +196,7 @@ export class QualityMonitor {
     }
     this.bad = 0;
     if (this.trying > 0 && --this.trying === 0) this.wait[this.at] = STEADY_WINDOWS;
-    this.good = middle <= this.budgetMs * HEADROOM ? this.good + 1 : 0;
+    this.good = middle <= this.budget * HEADROOM ? this.good + 1 : 0;
     this.steady++;
     const above = this.at - 1;
     if (above < 0) return undefined;

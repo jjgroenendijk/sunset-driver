@@ -8,6 +8,7 @@
 import { DEFAULT_GORE, goreOf, type Gore } from '../render/gore.ts';
 import { CAMERA_VIEWS, type CameraView } from '../render/camera-view.ts';
 import { DEFAULT_GRAPHICS, readGraphics, type GraphicsChoice } from '../render/graphics.ts';
+import { DEFAULT_FRAME_CAP, frameCapOf } from '../pace.ts';
 import type { KeyValueStore } from './saves.ts';
 
 const SETTINGS_KEY = 'sunset-driver.settings';
@@ -32,6 +33,8 @@ export interface Settings {
   gore: Gore;
   /** The Graphics menu: Auto, or the knobs of a tier set by hand (spec section 9.2). */
   graphics: GraphicsChoice;
+  /** The most frames drawn a second, 0 for as many as the display refreshes (`pace.ts`). */
+  frameCap: number;
 }
 
 /** See-through is what GTA Chinatown Wars does, and it keeps the camera where it is. */
@@ -42,6 +45,7 @@ export const DEFAULT_SETTINGS: Settings = {
   northUp: false,
   gore: DEFAULT_GORE,
   graphics: DEFAULT_GRAPHICS,
+  frameCap: DEFAULT_FRAME_CAP,
 };
 
 /** Each choice of {@link BuildingView}, in the order a menu lists them, with what it is called there. */
@@ -90,6 +94,8 @@ export interface MenuSettings {
   /** How much blood is drawn. */
   gore: Choice<Gore>;
   graphics: GraphicsMenu;
+  /** The most frames drawn a second. */
+  frameRate: CycleChoice;
 }
 
 /** The settings kept in a store, with the default for anything missing or not understood. */
@@ -100,7 +106,15 @@ export function readSettings(store: KeyValueStore): Settings {
   } catch {
     raw = {};
   }
-  const held = raw as { buildingView?: unknown; view?: unknown; muted?: unknown; northUp?: unknown; gore?: unknown; graphics?: unknown } | null;
+  const held = raw as {
+    buildingView?: unknown;
+    view?: unknown;
+    muted?: unknown;
+    northUp?: unknown;
+    gore?: unknown;
+    graphics?: unknown;
+    frameCap?: unknown;
+  } | null;
   const known = BUILDING_VIEWS.some((choice) => choice.value === held?.buildingView);
   const seen = CAMERA_VIEWS.some((choice) => choice.value === held?.view);
   return {
@@ -110,6 +124,7 @@ export function readSettings(store: KeyValueStore): Settings {
     northUp: typeof held?.northUp === 'boolean' ? held.northUp : DEFAULT_SETTINGS.northUp,
     gore: goreOf(held?.gore),
     graphics: readGraphics(held?.graphics),
+    frameCap: frameCapOf(held?.frameCap),
   };
 }
 

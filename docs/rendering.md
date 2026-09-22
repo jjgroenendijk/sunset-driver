@@ -36,6 +36,10 @@ post chain and the colour grade in `docs/post.md`.
   seconds. A try that misses one window in its first two seconds drops back at once, and the next
   try at that tier waits twice as long, up to eighty seconds. Real headroom — four windows under
   70 % of the budget, on a fast or unsynced display — still raises a tier at once.
+- **A frame cap raises the budget.** `main.ts` draws a frame only when `pace.ts` says it is due:
+  the player's cap of 60 or 30 fps, 10 fps behind the pause menu and 30 fps behind the title screen.
+  At 30 fps every frame measures 33 ms, so `QualityMonitor.cap` judges against the cap's interval
+  when it is longer than the budget. Otherwise the monitor would walk a 30 fps player down to low.
 - `graphics.ts` is the Graphics menu's model. With Auto off, `tierOf` builds a tier from the
   player's knobs; it answers the preset's own tier object when the knobs match one. A knob is kept
   as an index into its table, so `readGraphics` can check it. A custom tier can ask for bloom
