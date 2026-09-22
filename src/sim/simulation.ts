@@ -6,6 +6,7 @@ import { createPlayerState, type Place, type PlayerState } from './on-foot.ts';
 import type { SimPhysics } from './physics.ts';
 import { fateOf, respawn, respawnPlace, type RespawnRecord } from './respawn.ts';
 import type { TheftState } from './theft.ts';
+import type { BoardingState } from './boarding.ts';
 import { createVehicleState, DEFAULT_CLASS, specOf, type VehicleState } from './vehicle.ts';
 import { stepPickups, type PickupState } from './pickup.ts';
 import { createPedestrianState, type PedestrianState } from './pedestrians.ts';
@@ -52,6 +53,11 @@ export interface SimState {
    * else, so a theft replays exactly as it was played.
    */
   theft: TheftState | null;
+  /**
+   * The player getting into their vehicle or out of it (`boarding.ts`), or
+   * null while they are doing neither. A save made mid-move loads mid-move.
+   */
+  boarding: BoardingState | null;
   /**
    * What the player is carrying and the state of the weapon in their hands
    * (spec section 11.6): the magazines, the pools behind them, the reload and
@@ -228,6 +234,7 @@ export function createSimState(
     vehicle: createVehicleState(specOf(DEFAULT_CLASS)),
     player: createPlayerState(),
     theft: null,
+    boarding: null,
     shop: null,
     loadout: createLoadout(),
     projectiles: [],

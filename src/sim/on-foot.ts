@@ -12,6 +12,7 @@
  * Heading is the way they face, and it follows the way they walk.
  */
 import { cos, hypot, sin } from '../core/libm.ts';
+import { doorAlong } from './boarding.ts';
 import { type CharacterAppearance, resolveAppearance } from './character.ts';
 import { TICK_RATE } from './clock.ts';
 import { headingOf, type VehicleSpec, type VehicleState } from './vehicle.ts';
@@ -247,12 +248,18 @@ export function reachesVehicle(player: PlayerState, v: VehicleState, spec: Vehic
 /**
  * Where the player stands when they step out: beside the driver's door, clear
  * of the body, facing the way the vehicle faces. The vehicle's own frame has
- * the axle along local `+z`, so the driver's side is `-z`.
+ * the axle along local `+z`, so the driver's side is `-z`. The door is at the
+ * middle of a car and at the cab of a van, a truck or a bus (`doorAlong`).
  */
 export function exitPlace(v: VehicleState, spec: VehicleSpec): Place {
   const heading = headingOf(v);
   const offset = spec.halfWidth + EXIT_CLEARANCE;
-  return { x: v.x + sin(heading) * offset, y: v.z - cos(heading) * offset, heading };
+  const along = doorAlong(spec);
+  return {
+    x: v.x + sin(heading) * offset + cos(heading) * along,
+    y: v.z - cos(heading) * offset + sin(heading) * along,
+    heading,
+  };
 }
 
 /**

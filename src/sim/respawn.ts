@@ -129,6 +129,7 @@ export function respawn(state: SimState, fate: Fate, place: Place): void {
   // six-star chase left standing round the station.
   standDownAll(state);
   state.theft = null;
+  state.boarding = null;
   // Whatever they were doing is over: a lock half picked, a shop they were
   // standing in, a deal open on a corner (spec sections 16.1, 16.2) and a front
   // door they had open (spec section 16.3). None of them is anywhere near where

@@ -8,7 +8,7 @@ import { CLOTHES_HEAT, RESPRAY_PAINTS } from '../src/sim/shop-stock.ts';
 import { specOf } from '../src/sim/vehicle.ts';
 import { currentWeapon } from '../src/sim/weapon.ts';
 import type { Shop, ShopKind } from '../src/world/shops.ts';
-import { drive, hills, start, type Session } from './sim-harness.ts';
+import { drive, finishBoarding, hills, start, type Session } from './sim-harness.ts';
 
 /** One shop of each trade, a hundred metres apart along the hillside, clear of the spawn. */
 const KINDS: readonly ShopKind[] = ['weapons', 'workshop', 'convenience', 'clothing', 'clinic', 'broker'];
@@ -49,10 +49,14 @@ function atDoor(session: Session, kind: ShopKind): ShopPlace {
   return place;
 }
 
-/** One press of the interact key: a tick with it down, off an edge the last tick left clear. */
+/**
+ * One press of the interact key: a tick with it down, off an edge the last tick
+ * left clear. A car door it opens is let shut again.
+ */
 function press(session: Session, input: Partial<InputFrame> = {}): void {
   drive(session, 1, { ...input, interact: false });
   drive(session, 1, { ...input, interact: true });
+  finishBoarding(session);
 }
 
 /** Walk into a shop and answer with the place walked into. */

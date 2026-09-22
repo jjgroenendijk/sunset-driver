@@ -53,6 +53,14 @@ export function drive(session: Session, ticks: number, input: Partial<InputFrame
   for (let i = 0; i < ticks; i++) stepSim(session.state, frame, session.physics);
 }
 
+/**
+ * Let a move into the vehicle or out of it run to its end (`boarding.ts`): the
+ * door takes about a second, and the player is held until it is shut.
+ */
+export function finishBoarding(session: Session): void {
+  for (let i = 0; i < 600 && session.state.boarding !== null; i++) drive(session, 1);
+}
+
 /** Run a recorded stream from a fresh session and answer with the state it ended in. */
 export function replay(seed: number, inputs: readonly InputFrame[]): SimState {
   const state = createSimState(seed);
@@ -76,6 +84,7 @@ export function walkReplay(seed: number, inputs: readonly InputFrame[]): { state
   physics.spawn(state, 0, 0, 0);
   for (let i = 0; i < 60; i++) stepSim(state, EMPTY_INPUT, physics);
   stepSim(state, { ...EMPTY_INPUT, interact: true }, physics);
+  for (let i = 0; i < 600 && state.boarding !== null; i++) stepSim(state, EMPTY_INPUT, physics);
   let walked = 0;
   let x = state.player.x;
   let y = state.player.y;

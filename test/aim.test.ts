@@ -7,7 +7,7 @@ import { forgetTracers, TRACER_MEMORY } from '../src/sim/tracer.ts';
 import { createLoadout, giveWeapon, stepWeapons } from '../src/sim/weapon.ts';
 import { ENFORCER_HEALTH, type EnforcerUnit } from '../src/sim/enforcer.ts';
 import { createPlayerState } from '../src/sim/on-foot.ts';
-import { drive, hills, start } from './sim-harness.ts';
+import { drive, finishBoarding, hills, start } from './sim-harness.ts';
 
 /** The mouse at a point of the map, and whatever else the test is pressing. */
 function pointing(x: number, y: number, keys: Partial<InputFrame> = {}): InputFrame {
@@ -92,6 +92,7 @@ describe('tracers', () => {
   it('writes one tracer per pellet, from the muzzle toward the pointer', () => {
     const session = start(hills());
     drive(session, 1, { interact: true });
+    finishBoarding(session);
     drive(session, 30);
     const { state } = session;
     giveWeapon(state.loadout, 'remington-870');

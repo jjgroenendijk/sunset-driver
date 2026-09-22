@@ -10,7 +10,7 @@ import {
   swims,
 } from '../src/sim/on-foot.ts';
 import { initPhysics, type Ground } from '../src/sim/physics.ts';
-import { hills, ramp, type Session, start, drive, accelerateTo } from './sim-harness.ts';
+import { hills, ramp, type Session, start, drive, accelerateTo, finishBoarding } from './sim-harness.ts';
 
 /**
  * The player out of the car: the character controller of spec section 11.2 and
@@ -22,10 +22,14 @@ describe('on foot', () => {
     await initPhysics();
   });
 
-  /** Press and release a key, so the rising edge the controller reads happens once. */
+  /**
+   * Press and release a key, so the rising edge the controller reads happens
+   * once, and let any door it opened be shut again.
+   */
   function press(session: Session, key: 'interact' | 'jump'): void {
     drive(session, 1, { [key]: true });
     drive(session, 1);
+    finishBoarding(session);
   }
 
   /** Start a session, step out of the car and let the player settle on their feet. */
@@ -175,6 +179,7 @@ describe('swimming', () => {
   function wadeIn(ticks: number): Session {
     const session = start(beach());
     drive(session, 1, { interact: true });
+    finishBoarding(session);
     drive(session, 30);
     drive(session, ticks, { steer: 1 });
     return session;

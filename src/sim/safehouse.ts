@@ -320,8 +320,10 @@ function fetchCar(state: SimState, place: SafehousePlace, slot: number): string 
   owned.garage[slot] = JSON.parse(JSON.stringify(was)) as VehicleState;
   state.vehicle = car;
   // An attempt at the lock of the car this one replaces means nothing, as it
-  // means nothing to the debug picker (spec section 11.4).
+  // means nothing to the debug picker (spec section 11.4), and nor does a door
+  // of it half open.
   state.theft = null;
+  state.boarding = null;
   return `The ${specOf(car.cls).name} is outside. The ${specOf(was.cls).name} is put away.`;
 }
 
@@ -346,8 +348,9 @@ function carPlace(place: SafehousePlace): Place {
 export function stepHome(state: SimState, input: InputFrame, places: readonly SafehousePlace[]): Place | null {
   const p = state.player;
   // A lock and a shop counter both hold the interact key first (spec sections
-  // 11.4, 16.1), and a player inside a shop is not on their own step.
-  if (state.theft !== null || state.shop !== null) {
+  // 11.4, 16.1), and a player inside a shop is not on their own step. Nor is
+  // one halfway into their car.
+  if (state.theft !== null || state.shop !== null || state.boarding !== null) {
     state.property.visit = null;
     return null;
   }

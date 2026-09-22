@@ -178,8 +178,8 @@ export function stepShops(
   const p = state.player;
   // A player bent over a lock is not going shopping, and the interact key is
   // the lock's while an attempt runs (spec section 11.4): nothing else may read
-  // that edge.
-  if (state.theft !== null) return false;
+  // that edge. A player halfway through a car door is not going shopping either.
+  if (state.theft !== null || state.boarding !== null) return false;
   const pressed = input.interact && !p.held.interact;
   const visit = state.shop;
   if (visit !== null) {
