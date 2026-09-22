@@ -66,8 +66,27 @@ export const STOP_CAP = 8;
 export const ARRIVAL_TICKS = 60 * TICK_RATE;
 /** Ticks the people at a stop take to board once the tram stands there. */
 export const BOARD_TICKS = 12 * TICK_RATE;
-/** Metres between two people waiting in a line along the kerb. */
+/** Metres between two people waiting in a line along the platform. */
 const QUEUE_STEP = 2.2;
+/**
+ * Metres right of the centreline the people at a stop stand: the middle of the
+ * island platform, which the traffic gives up (`laneOffset` in `traffic.ts`)
+ * and `render/tram-stops.ts` draws.
+ */
+export const PLATFORM_STAND = TRAM_TRACK + 1.45 + TRAM_LANE.platform / 2;
+
+/**
+ * Where a stop's island platform stands: the middle of it, on the track, with
+ * the heading the tram arrives on. The platform itself is drawn across from
+ * there (`render/tram-stops.ts`).
+ */
+export interface TramStopPlace {
+  stop: number;
+  x: number;
+  y: number;
+  height: number;
+  heading: number;
+}
 
 /** A tram whose bell rings on a tick, and where its front is. */
 export interface TramBell {
@@ -98,6 +117,8 @@ export class TramLine {
   private readonly stops: TramStop[] = [];
   /** The fleet each tram belongs to, decided by the stop its lap starts from. */
   private readonly fleet: TramDesign[] = [];
+  /** Where each stop's platform stands, laid down once with the queues. */
+  private readonly places: TramStopPlace[] = [];
   private readonly point: RoutePoint;
   private readonly behind: RoutePoint;
   private readonly ahead: RoutePoint;
@@ -128,6 +149,11 @@ export class TramLine {
     this.phases = new Int32Array(this.trams);
     for (let k = 0; k < this.trams; k++) this.phases[k] = Math.round((k * period) / this.trams / SIGNAL_CYCLE) * SIGNAL_CYCLE;
     for (const call of this.calls) this.stops.push(this.stopOf(seed, call, districts, tram));
+    for (const call of this.calls) {
+      // The platform is as long as a tram and ends where the tram's front does.
+      const at = this.track(call.front - TRAM_LENGTH / 2, this.point);
+      this.places.push({ stop: call.stop, x: at.x, y: at.y, height: at.height, heading: atan2(at.rightX, -at.rightY) });
+    }
     for (let k = 0; k < this.trams; k++) this.fleet.push(this.fleetOf(k));
   }
 
@@ -220,6 +246,11 @@ export class TramLine {
     return count;
   }
 
+  /** Where each stop's platform stands, in the order the tram calls. */
+  stopPlaces(): readonly TramStopPlace[] {
+    return this.places;
+  }
+
   /** The point of the track a distance round the loop. */
   private track(distance: number, out: RoutePoint): RoutePoint {
     const at = this.sampler.sample(this.tour as Tour, distance, out);
@@ -235,7 +266,7 @@ export class TramLine {
     const zone = districts.find((d) => d.id === place.district)?.zone ?? 'inner';
     const looks: PedestrianLook[] = [];
     for (let i = 0; i < STOP_CAP; i++) looks.push(lookOf(zone, rngFor(seed, 0, Subsystem.Tram, hashInts(call.stop, i))));
-    const queue = layQueue(this.sampler, this.tour as RouteLegs, call.front - CAR_LENGTH / 2, QUEUE_STEP, looks, this.point);
+    const queue = layQueue(this.sampler, this.tour as RouteLegs, call.front - CAR_LENGTH / 2, QUEUE_STEP, looks, this.point, PLATFORM_STAND);
     return { call, queue, zone };
   }
 }

@@ -22,6 +22,7 @@ import { PedestrianView } from './render/pedestrians.ts';
 import { PoliceView } from './render/police.ts';
 import { TrafficView } from './render/traffic.ts';
 import { TramView } from './render/tram.ts';
+import { TramStopView } from './render/tram-stops.ts';
 import { WildlifeView } from './render/wildlife.ts';
 import type { WorldScene } from './render/world-scene.ts';
 import type { ParkedCars } from './sim/parked.ts';
@@ -36,6 +37,8 @@ export interface SessionViews {
   /** Undefined where no chunk worker laid out the parking bays. */
   parked: ParkedView | undefined;
   tram: TramView;
+  /** The island platforms, shelters and flags of the tram stops of spec section 13.2. */
+  tramStops: TramStopView;
   /** The posts and the shelters of the bus stops of spec section 20.2. */
   busStops: BusStopView;
   crowd: PedestrianView;
@@ -69,6 +72,7 @@ export function buildViews(
     wildlife: new WildlifeView(city.wildlife),
     parked: parked === undefined ? undefined : new ParkedView(parked),
     tram: new TramView(city.tram),
+    tramStops: new TramStopView(city.tram),
     busStops: new BusStopView(city.busStops),
     crowd: new PedestrianView(city.crowd, city.tram, city.busStops),
     casualties: new CasualtyView(city.crowd),
@@ -83,6 +87,7 @@ export function buildViews(
     views.emergency.group,
     views.wildlife.group,
     views.tram.group,
+    views.tramStops.group,
     views.busStops.group,
     views.crowd.group,
     views.casualties.group,

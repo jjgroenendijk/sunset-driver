@@ -187,14 +187,16 @@ async function tramPlace(): Promise<{ x: number; y: number } | undefined> {
   const { AmbientTraffic, trafficRoadsOf } = await import('../src/sim/traffic.ts');
   const { TramLine } = await import('../src/sim/tram.ts');
   const world = generateWorld(seed);
-  if (options.has('stop')) {
-    const stop = world.tram.stops[num('stop', 0)];
-    if (stop === undefined) throw new Error(`only ${world.tram.stops.length} tram stops`);
-    return stop;
-  }
   const roads = trafficRoadsOf(world);
   const line = new TramLine(seed, roads, world.tram, world.districts, new AmbientTraffic(seed, roads).signals);
   if (line.trams === 0) throw new Error('no tram runs on this seed');
+  if (options.has('stop')) {
+    // The island platform, which is where the tram calls, not the junction the
+    // stop was planned at.
+    const place = line.stopPlaces()[num('stop', 0)];
+    if (place === undefined) throw new Error(`only ${line.stopPlaces().length} tram stops`);
+    return place;
+  }
   const which = num('tram', 0);
   if (which >= line.trams) throw new Error(`only ${line.trams} trams run on this seed`);
   const pose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };

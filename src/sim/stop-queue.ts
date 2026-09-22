@@ -7,9 +7,10 @@
  * queue are laid down once for a world, and how many of them are filled on a
  * tick is read from the ticks since the last vehicle pulled away.
  *
- * A place is on the pavement to the right of the direction of travel, facing
- * the road. The heights are the road's own plus {@link PAVEMENT_RISE}, which
- * is where `pedestrian-route.ts` walks the crowd.
+ * A place is to the right of the direction of travel, facing the road: on the
+ * pavement by default, or wherever the caller says. The heights are the road's
+ * own plus {@link PAVEMENT_RISE}, which is where `pedestrian-route.ts` walks
+ * the crowd.
  */
 import { atan2 } from '../core/libm.ts';
 import type { PedestrianLook } from './pedestrian-look.ts';
@@ -43,13 +44,25 @@ export interface StopQueue {
  * Stand one person per look along the pavement, the first `head` metres round
  * `route` and each next one `step` metres further back. `point` is scratch the
  * caller owns, so laying a queue allocates nothing but the queue.
+ *
+ * `across` is metres right of the centreline to stand them at, for a stop whose
+ * people wait somewhere other than the pavement: the tram's island platform
+ * (`render/tram-stops.ts`) rather than the kerb the buses call at.
  */
-export function layQueue(sampler: RouteSampler, route: RouteLegs, head: number, step: number, looks: readonly PedestrianLook[], point: RoutePoint): StopQueue {
+export function layQueue(
+  sampler: RouteSampler,
+  route: RouteLegs,
+  head: number,
+  step: number,
+  looks: readonly PedestrianLook[],
+  point: RoutePoint,
+  across?: number,
+): StopQueue {
   const places = new Float64Array(looks.length * 4);
   const queue: StopQueue = { places, looks, minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
   for (let i = 0; i < looks.length; i++) {
     const at = sampler.sample(route, head - i * step, point);
-    const offset = pavementOffset(at.edge);
+    const offset = across ?? pavementOffset(at.edge);
     const x = at.x + at.rightX * offset;
     const y = at.y + at.rightY * offset;
     places.set([x, y, at.height + PAVEMENT_RISE, atan2(-at.rightY, -at.rightX)], i * 4);

@@ -247,6 +247,7 @@ export class SessionFrame {
     // itself come on with the street lamps (spec section 13.4).
     session.traffic.lamps = session.world.lampsNow;
     session.tram.lamps = session.world.lampsNow;
+    session.tramStops.lamps = session.world.lampsNow;
     session.police.lamps = session.world.lampsNow;
     session.emergency.lamps = session.world.lampsNow;
     if (flying) {
@@ -383,6 +384,7 @@ export class SessionFrame {
     const moment = session.state.tick - 1 + alpha;
     session.traffic.update(session.state, moment, round.x, round.y);
     session.tram.update(moment, round.x, round.y);
+    session.tramStops.update(round.x, round.y);
     // The units are stepped once a tick like the player, so they are drawn
     // where the last tick left them rather than between two of them.
     session.police.update(session.state, round.x, round.y);
