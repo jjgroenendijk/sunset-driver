@@ -19,6 +19,7 @@ The two checks that open a browser — `npm run test:render` and `npm run test:w
 - `node scripts/terrain-sheet.ts [count] out.png [--cols=6] [--tile=160]`
 - `node scripts/landuse-preview.ts <seed> out.png`
 - `node scripts/map-preview.ts [seed] [out.png]`
+- `node scripts/icon-sheet.ts [out.png] [--sizes=11,18,30]`
 - `node scripts/render-preview.ts <seed> out.png`
 - The preview server
 - `node scripts/render-sheet.ts <count> out.png [--cols=3] [--tile=480]`
@@ -156,6 +157,16 @@ description, the map art, and one `draw` call with the options the game passes. 
 
 The line it prints says where it drew, at what scale, and how long the world, the art and the draw
 took, with how many places are marked.
+
+## `node scripts/icon-sheet.ts [out.png] [--sizes=11,18,30]`
+
+Every icon of the map, on one sheet, with the name of the place and of its drawing beside it. It is
+how an icon is judged at the size it is read at: 11 pixels is the minimap, 18 the full map, and 30
+is there to see what the drawing is meant to be.
+
+It draws through `map-icons.ts` and `POI_STYLES`, so the sheet cannot disagree with the game. Look
+at it before and after any change to a glyph in `src/ui/map-glyphs.ts`: a picture that reads at 30
+pixels may be a blob at 11, and the sheet is where that shows.
 
 ## `node scripts/render-preview.ts <seed> out.png`
 
