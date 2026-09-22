@@ -7,6 +7,8 @@ import { buildCameraPage, buildGorePage, buildViewPage } from './title-camera.ts
 import { buildControlsPage } from './title-controls.ts';
 import { columnsOf, menuList, type MenuItem, page } from './title-parts.ts';
 import { buildGraphicsPage } from './title-graphics.ts';
+import { buildLoadPage } from './title-load.ts';
+import type { SaveSummary } from './saves.ts';
 import { buildSettingsPage } from './title-settings.ts';
 import { NewGamePage } from './title-setup.ts';
 
@@ -29,18 +31,21 @@ export interface TitleChoice {
   explore: boolean;
   /** The starting money the money code set on the seed box, if it was typed. */
   money?: number;
+  /** True where the player picked a save on the Load game page: the session loads it once the world stands. */
+  load?: boolean;
 }
 
 /** The numerals the main page counts its items with, however many it has. */
 const NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI'];
 
-const PAGE_NAMES = ['main', 'setup', 'settings', 'controls', 'graphics', 'view', 'camera', 'gore'] as const;
+const PAGE_NAMES = ['main', 'setup', 'load', 'settings', 'controls', 'graphics', 'view', 'camera', 'gore'] as const;
 type PageName = (typeof PAGE_NAMES)[number];
 
 /** The page Escape and Back go to from each page. */
 const PARENT: Record<PageName, PageName | null> = {
   main: null,
   setup: 'main',
+  load: 'main',
   settings: 'main',
   controls: 'main',
   graphics: 'main',
@@ -50,16 +55,17 @@ const PARENT: Record<PageName, PageName | null> = {
 };
 
 /** The pages that open as a column beside their parent. New game takes the whole screen. */
-const COLUMNS: ReadonlySet<PageName> = new Set(['settings', 'controls', 'graphics', 'view', 'camera', 'gore']);
+const COLUMNS: ReadonlySet<PageName> = new Set(['load', 'settings', 'controls', 'graphics', 'view', 'camera', 'gore']);
 
 /**
  * The title screen of spec section 12, laid out as a game's main menu. The
  * main page offers New game, Load game, Controls, Graphics and Options, as the
  * pause menu does. Controls, Graphics (`title-graphics.ts`) and Options open as
  * a column beside it (`title-settings.ts`), and Camera and Gore as columns
- * beside Options. Load game stays disabled until there is something behind it;
- * it waits for a list of the saves the pause menu writes (#273). New game is the seed entry, the map of the seed and character creation
- * (`title-setup.ts`), and Controls is the binding list (`title-controls.ts`).
+ * beside Options. Load game opens a column of the saves this browser holds
+ * (`title-load.ts`), and is disabled where there are none. New game is the seed
+ * entry, the map of the seed and character creation (`title-setup.ts`), and
+ * Controls is the binding list (`title-controls.ts`).
  *
  * The arrow keys walk the items of the page on screen, Enter picks one and
  * Escape goes back up one page. The pointer moves the same focus, so the
@@ -78,6 +84,7 @@ export class TitleScreen {
   /** The room of the invite link the page was opened on, or null on a plain page. */
   private readonly room: string | null;
   private readonly seed: string;
+  private readonly saves: readonly SaveSummary[];
   private resolve: ((choice: TitleChoice) => void) | null = null;
 
   constructor(
@@ -88,9 +95,11 @@ export class TitleScreen {
     settings: MenuSettings,
     touch: boolean,
     room: string | null = null,
+    saves: readonly SaveSummary[] = [],
   ) {
     this.touch = touch;
     this.room = room;
+    this.saves = saves;
     this.seed = initial.seed;
     const character = normaliseAppearance(initial.character);
 
@@ -106,6 +115,7 @@ export class TitleScreen {
     const pages: Record<PageName, HTMLElement> = {
       main: this.buildMain(),
       setup: this.setup.root,
+      load: buildLoadPage(saves, (save) => this.continue(save), () => this.back()),
       settings: buildSettingsPage(settings, () => this.back()),
       controls: buildControlsPage(() => this.back(), touch),
       graphics: buildGraphicsPage(settings.graphics, () => this.back()),
@@ -169,13 +179,22 @@ export class TitleScreen {
       menuList([
         ...explore,
         first,
-        { numeral: numeral(1), label: 'Load game' },
+        { numeral: numeral(1), label: 'Load game', opens: this.loadable() ? 'load' : undefined },
         { numeral: numeral(2), label: 'Controls', opens: 'controls' },
         { numeral: numeral(3), label: 'Graphics', opens: 'graphics' },
         { numeral: numeral(4), label: 'Options', opens: 'settings' },
       ]),
     );
     return main;
+  }
+
+  /**
+   * Whether Load game has anything behind it. A page opened on an invite link
+   * has not: the seed is the host's, and a save of this browser is another
+   * city.
+   */
+  private loadable(): boolean {
+    return this.room === null && this.saves.length > 0;
   }
 
   private show(name: PageName): void {
@@ -199,6 +218,18 @@ export class TitleScreen {
     const resolve = this.resolve;
     this.resolve = null;
     resolve?.({ ...this.setup.choice(), explore });
+  }
+
+  /**
+   * Start the seed of a save, from that save: the world of that seed is built
+   * as any other is, and `main.ts` puts the save into the record once it
+   * stands. The driver is the one the save holds, not the one the New game
+   * page was left on.
+   */
+  private continue(save: SaveSummary): void {
+    const resolve = this.resolve;
+    this.resolve = null;
+    resolve?.({ seed: save.seed, character: save.character, world: null, explore: false, load: true });
   }
 }
 
