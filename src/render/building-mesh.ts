@@ -56,6 +56,7 @@ import {
   leanOf,
   massingOf,
   plan,
+  spreadOf,
   type BuildingBatch,
   type BuildingMassing,
   type Fit,
@@ -255,7 +256,11 @@ export function buildChunkBuildings(
     // it, so where the lot has a wall against it the shell is stretched until
     // they reach it. The walls move with the shell.
     const moved = walls === undefined ? undefined : { min: walls.min + dx, max: walls.max + dx };
-    const fit = fitOf({ min: box.min.x, max: box.max.x, depth: box.max.z - box.min.z }, massing, building.shared, moved);
+    // The lean widens what hangs over a shared edge, so the fit is told by how
+    // much. Its scale does not depend on the fit; only its shift does.
+    const covers = { min: box.min.x, max: box.max.x, depth: box.max.z - box.min.z };
+    const spread = spreadOf(leanOf(building, massing), massing);
+    const fit = fitOf(covers, massing, building.shared, moved, spread);
     const footing = footingGeometry(shape, box, fit, stand.footing, tint, finish);
     // A lot on a bend leans its side edges, and a wall it shares follows them.
     // The hull is leaned with the shell, so it is built knowing the lean: that

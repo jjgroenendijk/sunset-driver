@@ -274,12 +274,15 @@ export interface Fit {
  *
  * `covers` and `walls` are measured in the shell's own frame, with `covers`
  * centred on its origin; `walls` defaults to `covers`, which a block fills.
+ * `spread` is the most a metre of the massing becomes along the frontage once
+ * it is leaned onto its lot, which {@link spreadOf} says.
  */
 export function fitOf(
   covers: { min: number; max: number; depth: number },
   massing: BuildingMassing,
   shared: { left: boolean; right: boolean },
   walls: { min: number; max: number } = covers,
+  spread = 1,
 ): Fit {
   const width = covers.max - covers.min;
   const depth = covers.depth > 0 ? massing.depth / covers.depth : 1;
@@ -301,12 +304,24 @@ export function fitOf(
   // A crown wider than the walls under it would hang further over the
   // neighbour than any cornice does, so there the widest place is what lands,
   // on the most a cornice may reach, and the walls stop short.
+  const over = OVERHANG / spread;
   for (let pass = 0; pass < 2; pass++) {
-    if (shared.left && fit.along * covers.max + fit.shift > half + OVERHANG) high = { at: covers.max, to: half + OVERHANG };
-    if (shared.right && fit.along * covers.min + fit.shift < -half - OVERHANG) low = { at: covers.min, to: -half - OVERHANG };
+    if (shared.left && fit.along * covers.max + fit.shift > half + over) high = { at: covers.max, to: half + over };
+    if (shared.right && fit.along * covers.min + fit.shift < -half - over) low = { at: covers.min, to: -half - over };
     fit = pinned(high, low, across, shared);
   }
   return fit;
+}
+
+/**
+ * The most a metre of the massing becomes along the frontage once the lean
+ * stands it on its lot: the scale of the lean at the wider end of its depth.
+ * A lot that does not lean keeps its metres.
+ */
+export function spreadOf(lean: Lean | undefined, massing: BuildingMassing): number {
+  if (lean === undefined) return 1;
+  const end = Math.abs(lean.scaleSlope) * (massing.depth / 2);
+  return Math.max(1, lean.scale + end);
 }
 
 /** A place on a shell along the frontage, and the place in the massing it lands on. */
