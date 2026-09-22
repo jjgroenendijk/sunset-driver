@@ -25,6 +25,7 @@ import {
   type DamageStage,
   type DamageState,
 } from '../sim/damage.ts';
+import { createBoarding, startBoarding } from '../sim/boarding.ts';
 import { createPlayerState, exitPlace, JUMP_SPEED, SPRINT_SPEED, SWIM_DEPTH } from '../sim/on-foot.ts';
 import type { PickupState } from '../sim/pickup.ts';
 import { createSimState, type SimState } from '../sim/simulation.ts';
@@ -62,6 +63,7 @@ import { SurfaceIndex, type Surface } from '../world/surface.ts';
 import { BASE_DISTANCE, PULL_MARGIN, TURN_MARGIN } from './camera.ts';
 import { CAMERA_VIEWS } from './camera-view.ts';
 import { poseFor } from './character-pose.ts';
+import { placeBoarder } from './boarder.ts';
 import { seatRider } from './rider.ts';
 import { Vector3, type Camera } from 'three';
 import { gripOf } from './character-hold.ts';
@@ -137,6 +139,12 @@ export interface PreviewRequest {
    * taken a quarter of the way through, where the swing is widest.
    */
   stance?: string;
+  /**
+   * A moment of the player getting in or out (`boarding.ts`): `in:0.4` or
+   * `out:0.7`, with `:1` after it to go through the far side. A move in starts
+   * from two metres off the door and a little behind it.
+   */
+  board?: string;
   /**
    * How far through a swing of a melee weapon to hold the player, 0 to 1 (spec
    * section 11.6). Left out, nothing is being swung. The blow is thrown and
@@ -460,6 +468,7 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   if (!scene.character.group.visible && seatRider(scene.character, vehicle, spec)) {
     scene.character.group.visible = true;
   }
+  if (request.board !== undefined) boardAt(scene, vehicle, spec, request.board);
   const record = createSimState(seed, undefined, tick);
   if (request.emergency === true) callOut(record, scene, kerb.x, kerb.y, heading);
   // A fire is what has been burning for a while, not what started this frame,
@@ -740,4 +749,25 @@ function volley(record: SimState, stand: { x: number; y: number; heading: number
     const yaw = stand.heading + ((i - 3.5) / 3.5) * VOLLEY_SPREAD;
     round(tick - 1, i, yaw, VOLLEY_REACH * (0.8 + 0.05 * (i % 4)), i % 3 === 0 ? 'none' : 'hard');
   }
+}
+
+/** Stand the player at a moment of getting into `vehicle` or out of it, as `--board` asks. */
+function boardAt(scene: WorldScene, vehicle: VehicleState, spec: VehicleSpec, asked: string): void {
+  const [way, share, far] = asked.split(':');
+  const side = far === '1' ? 1 : -1;
+  const out = exitPlace(vehicle, spec);
+  // Two metres further out than the door, and a metre behind it.
+  const dx = out.x - vehicle.x;
+  const dy = out.y - vehicle.z;
+  const feet = {
+    x: vehicle.x - dx * side * 2.2 - Math.cos(out.heading),
+    y: vehicle.z - dy * side * 2.2 - Math.sin(out.heading),
+    height: scene.heightAt(out.x, out.y),
+    heading: out.heading,
+  };
+  const player = { ...createPlayerState(), x: feet.x, y: feet.y, heading: feet.heading };
+  const state = way === 'out' ? createBoarding('out', 0, -1) : startBoarding(player, vehicle, spec, 0);
+  const frame = placeBoarder(scene.character, vehicle, spec, state, Number(share ?? 0.5), feet);
+  scene.vehicle.openDoor(state.side, frame.door);
+  scene.character.group.visible = true;
 }
