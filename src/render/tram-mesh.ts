@@ -25,7 +25,7 @@
  */
 import { BoxGeometry, type BufferGeometry } from 'three';
 import { CAR_GAP, CAR_HALF_HEIGHT, CAR_HALF_WIDTH, CAR_LENGTH } from '../sim/tram.ts';
-import { GLASS, LAMP, METAL, TYRE } from './vehicle-mesh.ts';
+import { GLASS, LAMP, METAL, SPARK, TYRE } from './vehicle-mesh.ts';
 
 /** The two fleets the city runs. */
 export type TramDesign = 'modern' | 'heritage';
@@ -81,6 +81,24 @@ export function tramDoors(design: TramDesign, module: TramModule): number[] {
  */
 export function doorLeafBoxes(): TramBox[] {
   return [box(DOOR_LONG - 0.06, DOOR_TALL, 0.09, 0, FLOOR + DOOR_TALL / 2, DOOR, false, -(CAR_HALF_WIDTH + 0.04))];
+}
+
+/**
+ * The arc where the collector meets the contact wire, drawn at the origin and
+ * moved onto the collector by {@link sparkPlace}. It is a spark, not a lamp, so
+ * it only shows on the frames the view flashes it on (`tram.ts`).
+ */
+export function sparkBoxes(): TramBox[] {
+  return [box(0.3, 0.14, 0.34, 0, 0, SPARK)];
+}
+
+/**
+ * Where the collector of a design meets the wire, in the car's frame, and which
+ * car carries it: the middle module of a modern tram, and the first car of a
+ * heritage set, whose cars each have a pole of their own.
+ */
+export function sparkPlace(design: TramDesign): { car: number; x: number; y: number } {
+  return design === 'heritage' ? { car: 0, x: 2.2, y: PANTOGRAPH_TOP + 0.06 } : { car: 1, x: -0.5, y: PANTOGRAPH_TOP + 0.06 };
 }
 
 /** One box of a car, in the car's own frame: forward along `+x`, up `+y` from the rail. */

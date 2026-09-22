@@ -25,7 +25,19 @@ import type { AmbientPose } from '../sim/traffic.ts';
 import { TRAM_CARS, type TramDesign, type TramLine } from '../sim/tram.ts';
 import { createVehicleTrim, type VehicleTrim } from './vehicle-glow.ts';
 import { instanced, merged, TRAFFIC_VIEW } from './traffic.ts';
-import { doorLeafBoxes, DOOR_LONG, tramBoxes, tramBoxGeometry, tramCarPlan, tramDoors, type TramBox, type TramModule } from './tram-mesh.ts';
+import {
+  doorLeafBoxes,
+  DOOR_LONG,
+  sparkBoxes,
+  sparkPlace,
+  tramBoxes,
+  tramBoxGeometry,
+  tramCarPlan,
+  tramDoors,
+  type TramBox,
+  type TramModule,
+} from './tram-mesh.ts';
+import { hashInts } from '../core/hash.ts';
 import { OUTLINE, VEHICLE_OUTLINE_WIDTH } from './vehicle.ts';
 import { coloured } from './traffic.ts';
 
@@ -55,6 +67,21 @@ function doorParts(): BufferGeometry {
   return merged(doorLeafBoxes().map((part) => coloured(tramBoxGeometry(part, 0), part.colour)));
 }
 
+/** The geometry of the arc at a collector. */
+function sparkParts(): BufferGeometry {
+  return merged(sparkBoxes().map((part) => coloured(tramBoxGeometry(part, 0), part.colour)));
+}
+
+/**
+ * Frames of one flash of the arc, and one flash in this many. A collector
+ * sparks where the wire is worn or a joint passes under it, which is often
+ * enough to see from a street and rare enough not to strobe.
+ */
+const SPARK_FRAMES = 9;
+const SPARK_ONE_IN = 11;
+/** Metres per second below which a tram is too slow to strike an arc. */
+const SPARK_SPEED = 2;
+
 /** One module's two meshes and how many instances of it the frame has written. */
 interface ModuleMeshes {
   design: TramDesign;
@@ -72,6 +99,9 @@ export class TramView {
   private readonly doors: InstancedMesh;
   private doorCount = 0;
   private readonly slide = new Matrix4();
+  /** The arc at the collector of each tram, on the frames it strikes one. */
+  private readonly sparks: InstancedMesh;
+  private sparkCount = 0;
   private readonly trim: VehicleTrim;
   private readonly outline: MeshBasicMaterial;
   private readonly pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
@@ -99,7 +129,8 @@ export class TramView {
       this.group.add(meshes.body, meshes.rim);
     }
     this.doors = instanced(doorParts(), this.trim.material, true, Math.max(1, cap * 2));
-    this.group.add(this.doors);
+    this.sparks = instanced(sparkParts(), this.trim.material, false, Math.max(1, line.trams));
+    this.group.add(this.doors, this.sparks);
   }
 
   /** How many cars the last frame drew. */
@@ -123,6 +154,7 @@ export class TramView {
   update(time: number, x: number, y: number): void {
     for (const meshes of this.meshes) meshes.count = 0;
     this.doorCount = 0;
+    this.sparkCount = 0;
     for (let tram = 0; tram < this.line.trams; tram++) {
       const design = this.line.design(tram);
       const open = this.line.doorsAt(tram, time);
@@ -139,6 +171,7 @@ export class TramView {
         meshes.rim.setMatrixAt(meshes.count, this.matrix);
         meshes.count++;
         this.writeDoors(design, plan.module, open);
+        this.writeSpark(design, tram, car, time, pose.speed);
       }
     }
     for (const meshes of this.meshes) {
@@ -148,9 +181,27 @@ export class TramView {
         if (meshes.count > 0) mesh.instanceMatrix.needsUpdate = true;
       }
     }
-    this.doors.count = this.doorCount;
-    this.doors.visible = this.doorCount > 0;
-    if (this.doorCount > 0) this.doors.instanceMatrix.needsUpdate = true;
+    for (const mesh of [this.doors, this.sparks]) {
+      const count = mesh === this.doors ? this.doorCount : this.sparkCount;
+      mesh.count = count;
+      mesh.visible = count > 0;
+      if (count > 0) mesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  /**
+   * The arc at a tram's collector, if this is the car that carries it, the
+   * lamps are on and it is moving. Which frames it strikes on is a hash of the
+   * tram and the moment, so every viewer of one tram sees the same sparks.
+   */
+  private writeSpark(design: TramDesign, tram: number, car: number, time: number, speed: number): void {
+    const place = sparkPlace(design);
+    if (car !== place.car || speed < SPARK_SPEED || this.lamps < 0.5) return;
+    if (this.sparkCount >= this.sparks.instanceMatrix.count) return;
+    if (hashInts(tram, Math.floor(time / SPARK_FRAMES)) % SPARK_ONE_IN !== 0) return;
+    this.slide.makeTranslation(place.x, place.y, 0);
+    this.slide.premultiply(this.matrix);
+    this.sparks.setMatrixAt(this.sparkCount++, this.slide);
   }
 
   /**
@@ -168,8 +219,10 @@ export class TramView {
   }
 
   dispose(): void {
-    this.doors.geometry.dispose();
-    this.doors.dispose();
+    for (const mesh of [this.doors, this.sparks]) {
+      mesh.geometry.dispose();
+      mesh.dispose();
+    }
     for (const meshes of this.meshes) {
       for (const mesh of [meshes.body, meshes.rim]) {
         mesh.geometry.dispose();

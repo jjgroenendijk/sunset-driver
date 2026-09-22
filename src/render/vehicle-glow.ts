@@ -21,7 +21,7 @@
  * for the street lamps.
  */
 import { MeshStandardNodeMaterial } from 'three/webgpu';
-import { LAMP, TAIL } from './vehicle-mesh.ts';
+import { LAMP, SPARK, TAIL } from './vehicle-mesh.ts';
 import { attribute, uniform } from './tsl.ts';
 
 /**
@@ -31,11 +31,14 @@ import { attribute, uniform } from './tsl.ts';
  */
 export const HEAD_GLOW = 6;
 export const TAIL_GLOW = 9;
+/** How hard the arc at a tram's pantograph burns. It is a spark, so it burns harder than a lamp. */
+export const SPARK_GLOW = 14;
 
 /** How hard the vertices of a box painted `colour` burn, and 0 on everything else. */
 export function glowOf(colour: number): number {
   if (colour === LAMP) return HEAD_GLOW;
   if (colour === TAIL) return TAIL_GLOW;
+  if (colour === SPARK) return SPARK_GLOW;
   return 0;
 }
 

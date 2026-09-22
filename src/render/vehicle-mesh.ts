@@ -24,6 +24,8 @@ export const METAL = 0x9aa0a6;
 export const TYRE = 0x161616;
 /** The black of a seat, which is leather on every bike in the city. */
 export const SEAT = 0x1a1a1e;
+/** The blue-white of the arc at a tram's pantograph (`tram.ts`). */
+export const SPARK = 0xbcd6ff;
 /** The blue and red of a patrol car's light bar. */
 export const BEACON_BLUE = 0x2f6fe0;
 export const BEACON_RED = 0xd32c2c;
