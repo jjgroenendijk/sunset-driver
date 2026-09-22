@@ -39,8 +39,8 @@ Do not implement these, and do not propose them again.
 
 - Vite + npm + TypeScript, multi-file project. `npm install && npm run dev` works from a clean
   clone.
-- three.js at latest stable (0.185.1 today), rendering through `WebGPURenderer` from `three/webgpu`.
-  WebGPU only, no WebGL fallback.
+- three.js 0.186, rendering through `WebGPURenderer` from `three/webgpu`. WebGPU only, no WebGL
+  fallback.
 - Rapier (`@dimforge/rapier3d-compat`) for physics, with `DynamicRayCastVehicleController` for
   vehicles.
 - Tone.js for all audio and music, synthesised at runtime.
