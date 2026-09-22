@@ -26,6 +26,7 @@
  * its base, so `&& gh pr merge` is safe.
  */
 import { execFileSync } from 'node:child_process';
+import { requireGh } from './gh.ts';
 
 interface Check {
   name: string;
@@ -49,6 +50,11 @@ const flag = (name: string, fallback: number): number => {
 const everyCheck = args.includes('--all');
 const intervalMs = flag('interval', 20) * 1000;
 const deadline = Date.now() + flag('timeout', 1200) * 1000;
+
+requireGh(
+  'Until gh is back, read the checks through the GitHub MCP server. Ask once, and ask again\n' +
+    'after other work: a poll loop of your own costs a tool call for every turn.',
+);
 
 /** Run `gh` and return its output, or undefined when it failed. */
 function gh(...argv: string[]): string | undefined {
