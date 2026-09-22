@@ -14,6 +14,7 @@
  * which is forward, `height` along `+y` and `width` along `+z`, the axle.
  */
 import type { Panel } from '../sim/damage.ts';
+import { doorAlong } from '../sim/boarding.ts';
 import type { VehicleSpec } from '../sim/vehicle.ts';
 
 /** Glass, lamps and the bare metal of a cage: the colours no row picks. */
@@ -53,6 +54,11 @@ export interface VehicleBox {
    * because a vehicle with no middle is not a vehicle.
    */
   panel: Panel | undefined;
+  /**
+   * True on a front door, which swings open about its front edge while the
+   * player gets in or out (`boarding.ts`). Nothing else on a vehicle moves.
+   */
+  hinged?: boolean;
 }
 
 /**
@@ -140,13 +146,68 @@ function box(
  * A door skin down each side of a body, half sunk into it so nothing z-fights.
  * It is what a shunt from the side pushes in and what a hard one tears off:
  * without it a flank is one face of the shell, and a shell never goes.
+ *
+ * A `hinged` skin is two doors, front and rear, and the front one opens: it is
+ * the door the player gets in and out through. A van's skin is its sliding
+ * door, which does not swing, so it stays one piece.
  */
-function doors(spec: VehicleSpec, length: number, height: number, y: number, at: number): VehicleBox[] {
+function doors(spec: VehicleSpec, length: number, height: number, y: number, at: number, hinged = false): VehicleBox[] {
   const out: VehicleBox[] = [];
   for (const side of [1, -1]) {
-    out.push(box(length, height, 0.06, spec.paint, 0, y, side * spec.halfWidth * at, false));
+    const z = side * spec.halfWidth * at;
+    if (!hinged) {
+      out.push(box(length, height, 0.06, spec.paint, 0, y, z, false));
+      continue;
+    }
+    out.push({ ...box(length / 2, height, 0.06, spec.paint, length / 4, y, z, false), hinged: true });
+    out.push(box(length / 2, height, 0.06, spec.paint, -length / 4, y, z, false));
   }
   return out;
+}
+
+/**
+ * The front door on one side of a vehicle, in its own frame: the edge it
+ * swings about, its length, how far out from the middle it stands, and its
+ * middle and height. Undefined on a class with no door that swings.
+ */
+export interface Door {
+  hingeX: number;
+  length: number;
+  z: number;
+  y: number;
+  height: number;
+}
+
+/** The front door on the side `side` stands on, -1 the driver's and +1 the other. */
+export function doorOf(spec: VehicleSpec, side: number): Door | undefined {
+  const part = vehicleBoxes(spec).find((b) => b.hinged === true && Math.sign(b.z) === Math.sign(side));
+  if (part === undefined) return undefined;
+  return { hingeX: part.x + part.length / 2, length: part.length, z: part.z, y: part.y, height: part.height };
+}
+
+/**
+ * Where the driver's hips rest, in the vehicle's own frame. A class ridden
+ * astride has its saddle instead (`saddleOf`). The seat is under the roof, so
+ * it only has to be near enough for the body to be seen going to it.
+ */
+export function seatOf(spec: VehicleSpec): { x: number; y: number; z: number } {
+  const length = spec.halfLength * 2;
+  const y = -spec.halfHeight + Math.min(0.5, spec.halfHeight);
+  const z = -spec.halfWidth * 0.42;
+  const door = doorOf(spec, -1);
+  if (door !== undefined) return { x: door.hingeX - door.length * 0.7, y, z };
+  switch (spec.cls) {
+    case 'van':
+    case 'truck':
+    case 'bus':
+      return { x: doorAlong(spec) + 0.1, y, z };
+    case 'buggy':
+      return { x: -length * 0.06 + 0.3, y, z: -spec.halfWidth * 0.36 };
+    case 'boat':
+      return { x: doorAlong(spec), y, z: -spec.halfWidth * 0.3 };
+    default:
+      return { x: 0, y, z };
+  }
 }
 
 /**
@@ -172,7 +233,7 @@ function car(spec: VehicleSpec, shape: CarShape): VehicleBox[] {
     box(length * 0.06, cabinHeight * 0.82, width * 0.82, GLASS, cabinX + cabinLength / 2, cabinY, 0, false),
     box(length * 0.05, cabinHeight * 0.82, width * 0.82, GLASS, cabinX - cabinLength / 2, cabinY, 0, false),
     box(cabinLength * 0.7, cabinHeight * 0.5, width * 0.83, GLASS, cabinX, cabinY + cabinHeight * 0.08, 0, false),
-    ...doors(spec, length * 0.46, bodyHeight * 0.6, bodyY, 0.9),
+    ...doors(spec, length * 0.46, bodyHeight * 0.6, bodyY, 0.9, true),
     // A bonnet at the nose and a boot at the tail, sitting on the body: they
     // are the panels a shunt at either end pushes in, and a hard enough one
     // takes them off and leaves the shell.
@@ -418,7 +479,7 @@ function offroad(spec: VehicleSpec): VehicleBox[] {
     box(length * 0.42, 0.08, width * 0.74, spec.trim, -length * 0.1, spec.halfHeight + 0.05, 0, false),
     // A spare wheel on the back door.
     box(0.14, spec.wheelRadius * 1.6, spec.wheelRadius * 1.6, TYRE, -spec.halfLength - 0.07, bodyY + bodyHeight * 0.3, 0, false),
-    ...doors(spec, length * 0.44, bodyHeight * 0.56, bodyY, 0.92),
+    ...doors(spec, length * 0.44, bodyHeight * 0.56, bodyY, 0.92, true),
     ...lamps(spec, bodyY + bodyHeight * 0.24),
   ];
 }

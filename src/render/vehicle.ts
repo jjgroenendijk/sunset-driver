@@ -105,6 +105,8 @@ export class VehicleModel {
   readonly group = new Group();
   private spec: VehicleSpec;
   private readonly wheels: DrawnWheel[] = [];
+  /** The front door on each side that swings, hung from its front edge, by the side it is on. */
+  private readonly hinges: { side: number; object: Group }[] = [];
   private readonly boxes: DrawnBox[] = [];
   private readonly geometries: BufferGeometry[] = [];
   private readonly materials: Material[] = [];
@@ -167,6 +169,18 @@ export class VehicleModel {
     }
   }
 
+  /**
+   * Swing the front door on `side` — -1 the driver's, +1 the other — open by
+   * `angle` radians, and shut the one across from it. The player getting in or
+   * out is the one thing that opens a door (`boarding.ts`); 0 shuts both.
+   */
+  openDoor(side: number, angle: number): void {
+    for (const hinge of this.hinges) {
+      // A turn about up carries the rear edge of the door out to its own side.
+      hinge.object.rotation.y = hinge.side === Math.sign(side) ? hinge.side * angle : 0;
+    }
+  }
+
   dispose(): void {
     this.clear();
   }
@@ -179,6 +193,7 @@ export class VehicleModel {
     this.geometries.length = 0;
     this.materials.length = 0;
     this.wheels.length = 0;
+    this.hinges.length = 0;
     this.boxes.length = 0;
     this.shown = '';
   }
@@ -194,6 +209,7 @@ export class VehicleModel {
       // The outline is the same box grown by the width of the line and drawn
       // back faces only, so it rims the mass instead of hiding it.
       const rim = part.outlined ? this.add(grown(part, VEHICLE_OUTLINE_WIDTH), outline) : undefined;
+      if (part.hinged === true) this.hang(part, mesh, rim);
       this.boxes.push({
         part,
         mesh,
@@ -273,6 +289,23 @@ export class VehicleModel {
     this.geometries.push(geometry);
     this.group.add(mesh);
     return mesh;
+  }
+
+  /**
+   * Hang a door from a group at its front edge, so turning the group swings
+   * the door. The door's own vertices are untouched, so a dent lands on it
+   * the same open or shut.
+   */
+  private hang(part: VehicleBox, mesh: Mesh, rim: Mesh | undefined): void {
+    const hinge = new Group();
+    hinge.name = 'door';
+    hinge.position.set(part.x + part.length / 2, part.y, part.z);
+    for (const piece of rim === undefined ? [mesh] : [mesh, rim]) {
+      hinge.add(piece);
+      piece.position.set(-part.length / 2, 0, 0);
+    }
+    this.group.add(hinge);
+    this.hinges.push({ side: Math.sign(part.z), object: hinge });
   }
 
   /** A tyre and a hub per wheel of the row, sharing one geometry and one material. */

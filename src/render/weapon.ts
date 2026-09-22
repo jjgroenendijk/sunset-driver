@@ -170,6 +170,11 @@ export class HeldWeapon {
     );
   }
 
+  /** Put the weapon away for a frame: the hands are on a car door (`boarding.ts`). */
+  stow(): void {
+    this.mesh.visible = false;
+  }
+
   /** True while a weapon is drawn in the hands. */
   get shown(): boolean {
     return this.mesh.visible;
