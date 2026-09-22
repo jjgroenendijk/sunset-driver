@@ -139,7 +139,8 @@ describe('the vehicle models', () => {
     const wheel = state.wheels[0] as (typeof state.wheels)[number];
     wheel.suspension = spec.suspensionRest + 0.1;
     model.set(state);
-    const drawn = model.group.children.filter((child) => child.children.length > 0);
+    // The wheels are the groups with something in them that are not a door on its hinge.
+    const drawn = model.group.children.filter((child) => child.children.length > 0 && child.name !== 'door');
     const mount = spec.wheels[0] as (typeof spec.wheels)[number];
     expect((drawn[0] as { position: { y: number } }).position.y).toBeCloseTo(mount.y - wheel.suspension, 6);
     model.dispose();

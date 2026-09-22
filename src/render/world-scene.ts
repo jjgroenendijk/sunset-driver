@@ -21,6 +21,7 @@ import type { Blaze } from '../sim/fire.ts';
 import type { Casualty } from '../sim/casualty.ts';
 import type { MeleeHit } from '../sim/melee.ts';
 import type { Tracer } from '../sim/tracer.ts';
+import type { BoardingState } from '../sim/boarding.ts';
 import type { PlayerState } from '../sim/on-foot.ts';
 import { START_TICK } from '../sim/simulation.ts';
 import { specOf, type VehicleState } from '../sim/vehicle.ts';
@@ -62,6 +63,7 @@ import { roofOver, type RoofBox } from './roofs.ts';
 import { SignScenery } from './signs.ts';
 import { SkidMarks } from './skid.ts';
 import { SkyLighting } from './sky.ts';
+import { placeBoarder } from './boarder.ts';
 import { seatRider } from './rider.ts';
 import type { DrawnPlayer } from './smooth.ts';
 import { STREAM_BUDGET_MS } from './streaming.ts';
@@ -318,8 +320,18 @@ export class WorldScene {
     hold?: Hold,
     handsUp = false,
     vehicle?: VehicleState,
+    boarding?: { state: BoardingState; progress: number },
   ): void {
     const model = this.character;
+    this.vehicle.openDoor(0, 0);
+    // A player getting in or out is drawn doing it, in the vehicle's frame,
+    // and the door they go through swings with them (`boarder.ts`).
+    if (boarding !== undefined && vehicle !== undefined) {
+      const frame = placeBoarder(model, vehicle, specOf(vehicle.cls), boarding.state, boarding.progress, drawn);
+      this.vehicle.openDoor(boarding.state.side, frame.door);
+      model.group.visible = true;
+      return;
+    }
     // A player on a motorcycle is on top of it rather than inside it, so the
     // model is seated on the saddle instead of hidden (`rider.ts`).
     if (player.driving && vehicle !== undefined && seatRider(model, vehicle, specOf(vehicle.cls))) {

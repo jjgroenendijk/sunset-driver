@@ -13,9 +13,11 @@ import { holdOf } from './render/character-hold.ts';
 import { PULL_MARGIN, TURN_MARGIN, type FollowCamera, type RoofHeight } from './render/camera.ts';
 import type { FixedStepClock } from './sim/clock.ts';
 import { EMPTY_INPUT, type InputFrame } from './sim/input.ts';
+import { boardingProgress } from './sim/boarding.ts';
 import { stationAt } from './sim/metro.ts';
 import { swingOf } from './sim/melee.ts';
 import { visiting } from './sim/shop.ts';
+import { specOf } from './sim/vehicle.ts';
 import { stepSim } from './sim/simulation.ts';
 import { turfLine } from './sim/territory.ts';
 import { AIM_PLANE_HEIGHT, PointerAim } from './pointer-aim.ts';
@@ -221,13 +223,20 @@ export class SessionFrame {
     // A player giving up or being cuffed has their hands up and holds nothing (spec section 14).
     const police = session.state.police;
     const handsUp = police.surrendered || police.cuffs !== null;
-    session.world.walkPlayer(p, session.state.player, elapsed / 1000, swing, hold, handsUp, vehicle);
+    // Getting into the car or out of it is drawn between two ticks as well (`boarding.ts`).
+    const boarding = session.state.boarding;
+    const board =
+      boarding === null
+        ? undefined
+        : { state: boarding, progress: boardingProgress(boarding, specOf(vehicle.cls), drawnTick) };
+    session.world.walkPlayer(p, session.state.player, elapsed / 1000, swing, hold, handsUp, vehicle, board);
     // The weapon in the hands and the weapons on the ground (spec section
     // 11.6), with what is fitted. The one in hand is drawn in the fist that
     // holds it, or follows the arm swinging it.
     const world = session.world;
     const grip = world.character.grip(this.fist);
     world.held.set(session.state.loadout, session.state.player, p, world.character.height, swing, grip, hold.kick);
+    if (board !== undefined) world.held.stow();
     // The pickup under the mouse grows, so what lies there can be read before
     // walking to it. Nothing is picked while the camera is detached.
     if (!flying && this.aim.over && session.state.pickups.length > 0) {
