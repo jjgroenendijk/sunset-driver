@@ -11,7 +11,7 @@ import { readSeedFromLocation, seedFromString } from '../core/seed.ts';
 import { readRoomFromLocation } from '../net/invite.ts';
 import type { WorldSource } from '../render/world-source.ts';
 import { DEFAULT_APPEARANCE, type CharacterAppearance } from '../sim/character.ts';
-import { takePendingStart } from './saves.ts';
+import { SaveSlots, takePendingStart, type SaveSummary } from './saves.ts';
 import type { MenuSettings } from './settings.ts';
 import { TitleScreen, type TitleChoice } from './title.ts';
 
@@ -46,8 +46,24 @@ export async function openingChoice(needs: TitleNeeds): Promise<OpeningChoice> {
     needs.settings,
     needs.touch,
     readRoomFromLocation(location.hash),
+    browserSaves(),
   );
   const choice = await title.wait();
   title.destroy();
-  return { ...choice, load: false };
+  return { ...choice, load: choice.load === true };
+}
+
+/**
+ * The saves of this browser, for the Load game page. A browser that refuses
+ * local storage — a private window, a blocked third-party frame — throws on
+ * the first read, and the menu is drawn without the page rather than not at
+ * all.
+ */
+function browserSaves(): readonly SaveSummary[] {
+  try {
+    return new SaveSlots(localStorage).list();
+  } catch (error) {
+    console.warn('The saves of this browser could not be read.', error);
+    return [];
+  }
 }

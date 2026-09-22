@@ -15,9 +15,14 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
 ## The title screen, the settings and the menu walk
 
 - `src/ui/title.ts` is the title screen as a main menu of pages: the main page, New game
-  (`title-setup.ts`), Controls (`title-controls.ts`), Options (`title-settings.ts`), and
-  View and Buildings under Options (`title-camera.ts`). `PARENT` says where Escape and Back go
-  from each page. A menu item with no action is drawn disabled; Load game waits for what it opens.
+  (`title-setup.ts`), Load game (`title-load.ts`), Controls (`title-controls.ts`), Options
+  (`title-settings.ts`), and View and Buildings under Options (`title-camera.ts`). `PARENT` says
+  where Escape and Back go from each page. A menu item with no action is drawn disabled.
+- Load game opens a column of the saves this browser holds, newest first: the seed as the label,
+  and the day, the time of day and the money as its note. Picking one resolves the title with the
+  save's seed and driver and `load: true`, and `main.ts` puts the save into the record once that
+  seed's world stands — the same path a pending start takes, without a page load. The item is
+  disabled where there is no save, and on an invite link, where the seed is the host's.
 - Menu text is a word or two. An item carries no note line, and a page has no line under its
   heading unless the player needs it to choose. The arrow keys walk the elements with `data-nav`, in
   DOM order, and skip a disabled one. The pointer moves the same focus, so only one item is lit. A
@@ -85,6 +90,11 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   can read. It is read against a fresh record: a missing field or a
   wrong type is refused, and an unknown field is dropped. Raise `SAVE_VERSION` when a field changes
   meaning. `src/ui/saves.ts` keeps one save per seed in `localStorage`.
+- `SaveSlots.write` also keeps the wall-clock time it was written under a key of its own, because
+  the record is the simulation and the simulation never reads that clock. `SaveSlots.list` walks
+  the store's keys and answers with a line per save for the title screen. It reads each save in
+  full, so a save this version cannot play is left off the list rather than offered and then
+  refused.
 - A load writes the save into the live record in place, because every closure of the session holds
   that record, and then builds a new `SimPhysics` from it. Never `adopt` a loaded record into the
   old physics: the traffic bodies keep their cursors and their promoted bodies from before the load.
