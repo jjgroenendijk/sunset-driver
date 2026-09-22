@@ -63,6 +63,26 @@ const TOP = 2 * CAR_HALF_HEIGHT;
  */
 const PANTOGRAPH_TOP = 5.52;
 
+/** Metres of one doorway, and how tall its leaf is. */
+export const DOOR_LONG = 1.3;
+const DOOR_TALL = 2.3;
+
+/** Where the doorways of a module stand along it, in the car's own frame. */
+export function tramDoors(design: TramDesign, module: TramModule): number[] {
+  if (design === 'heritage') return [-2.2, 2.2];
+  return module === 'end' ? [-3.0, 1.2] : [-1.8, 1.8];
+}
+
+/**
+ * The leaf that slides over one doorway, drawn at the origin of the car's frame
+ * and moved to its doorway by the view. It stands on the right of travel, which
+ * is the side the island platform is on, and is the only door that opens: the
+ * other flank of the car faces the oncoming track.
+ */
+export function doorLeafBoxes(): TramBox[] {
+  return [box(DOOR_LONG - 0.06, DOOR_TALL, 0.09, 0, FLOOR + DOOR_TALL / 2, DOOR, false, -(CAR_HALF_WIDTH + 0.04))];
+}
+
 /** One box of a car, in the car's own frame: forward along `+x`, up `+y` from the rail. */
 export interface TramBox {
   length: number;

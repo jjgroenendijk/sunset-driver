@@ -55,17 +55,28 @@ export const TRAM_TRACK = TRAM_LANE.trackSpacing / 2;
 /** Metres from the middle of a car to each of its bogies, where the car is read on the track. */
 export const BOGIE = 3.5;
 
-/** Metres of loop per tram: the headway, so a long loop runs more of them. */
-export const TRAM_SPACING = 3000;
+/**
+ * Metres of loop per tram: the headway, so a long loop runs more of them. A
+ * 15 km loop runs ten trams, which is one every 1.5 km and a tram every three
+ * or four minutes at a stop — a city service, and often enough that a player
+ * driving down an arterial meets one.
+ */
+export const TRAM_SPACING = 1500;
 /** Trams one loop runs at most. */
-export const MAX_TRAMS = 8;
+export const MAX_TRAMS = 16;
 
 /** People one stop holds at most. */
 export const STOP_CAP = 8;
-/** Ticks between one person arriving at a stop and the next. */
-export const ARRIVAL_TICKS = 60 * TICK_RATE;
+/**
+ * Ticks between one person arriving at a stop and the next. At the headway
+ * {@link TRAM_SPACING} gives, a stop fills to about half its cap between two
+ * trams, so a platform is never empty and never always full.
+ */
+export const ARRIVAL_TICKS = 25 * TICK_RATE;
 /** Ticks the people at a stop take to board once the tram stands there. */
 export const BOARD_TICKS = 12 * TICK_RATE;
+/** Ticks a tram's doors take to slide open, and to shut again before it pulls away. */
+export const DOOR_TICKS = Math.round(1.5 * TICK_RATE);
 /** Metres between two people waiting in a line along the platform. */
 const QUEUE_STEP = 2.2;
 /**
@@ -204,6 +215,23 @@ export class TramLine {
     return out;
   }
 
+  /**
+   * How far the doors of a tram stand open at a moment: 0 shut, 1 wide. They
+   * slide open when it comes to a stand and shut again before it pulls away.
+   */
+  doorsAt(tram: number, time: number): number {
+    const tour = this.tour;
+    if (tour === undefined) return 0;
+    const at = this.loopTick(tram, time);
+    for (const call of this.calls) {
+      const dwell = call.depart - call.arrive;
+      const into = mod(at - call.arrive, tour.period);
+      if (into >= dwell) continue;
+      return Math.max(0, Math.min(1, into / DOOR_TICKS, (dwell - into) / DOOR_TICKS));
+    }
+    return 0;
+  }
+
   /** Every tram whose bell rings on a whole tick: the ones pulling away from a halt on it. */
   bells(tick: number, out: TramBell[] = []): TramBell[] {
     out.length = 0;
@@ -236,14 +264,35 @@ export class TramLine {
     return waitingAt(since, boarding, BOARD_TICKS, STOP_CAP, ARRIVAL_TICKS);
   }
 
-  /** The people waiting at the stops inside a box on a tick. */
+  /**
+   * The people waiting at the stops inside a box on a tick. While a tram stands
+   * at a stop the queue moves up towards its doors as it loses people off the
+   * head, rather than simply shrinking where it stands.
+   */
   passengers(minX: number, minY: number, maxX: number, maxY: number, tick: number, out: WaitingPassenger[]): number {
     let count = 0;
     for (const stop of this.stops) {
       if (queueMisses(stop.queue, minX, minY, maxX, maxY)) continue;
-      count = writeQueue(stop.queue, this.waiting(stop.call.stop, Math.floor(tick)), out, count);
+      const at = Math.floor(tick);
+      count = writeQueue(stop.queue, this.waiting(stop.call.stop, at), out, count, this.boarding(stop.call, tick));
     }
     return count;
+  }
+
+  /**
+   * How far the queue at a stop has moved up towards the doors, 0 to 1. It is
+   * how far into the boarding a tram standing there is, and 0 where none is.
+   */
+  private boarding(call: TramCall, time: number): number {
+    const tour = this.tour;
+    if (tour === undefined) return 0;
+    const dwell = call.depart - call.arrive;
+    let moved = 0;
+    for (let k = 0; k < this.trams; k++) {
+      const into = mod(this.loopTick(k, time) - call.arrive, tour.period);
+      if (into < dwell) moved = Math.max(moved, Math.min(1, into / BOARD_TICKS));
+    }
+    return moved;
   }
 
   /** Where each stop's platform stands, in the order the tram calls. */
