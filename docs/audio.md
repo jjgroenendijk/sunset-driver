@@ -191,6 +191,10 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
   oscillator is still an oscillator.
 - The setting lives in `ui/settings.ts` beside the camera one. It is the Sound checkbox of the
   Options column (`ui/title-settings.ts`), which the title screen and the pause menu both show.
+- A paused session hushes the mix, and after half a second of hush `GameAudio` suspends the
+  context: a silent oscillator still costs the audio thread its CPU. A hidden page suspends it too,
+  because a hidden page draws no frames and would play the held notes on. The first frame that
+  plays resumes it. Resuming needs no new gesture once the page has had one.
 
 ## Traps
 
