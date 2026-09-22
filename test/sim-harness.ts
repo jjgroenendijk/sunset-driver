@@ -85,6 +85,9 @@ export function walkReplay(seed: number, inputs: readonly InputFrame[]): { state
   for (let i = 0; i < 60; i++) stepSim(state, EMPTY_INPUT, physics);
   stepSim(state, { ...EMPTY_INPUT, interact: true }, physics);
   for (let i = 0; i < 600 && state.boarding !== null; i++) stepSim(state, EMPTY_INPUT, physics);
+  // Walk a second away from the door, so a stream that presses interact at once
+  // is out of reach rather than straight back into the seat.
+  for (let i = 0; i < 60; i++) stepSim(state, { ...EMPTY_INPUT, throttle: 1 }, physics);
   let walked = 0;
   let x = state.player.x;
   let y = state.player.y;
