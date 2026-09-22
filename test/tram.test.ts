@@ -136,11 +136,17 @@ describe('the tram (spec section 13.2)', () => {
     const call = line.calls[1];
     if (call === undefined) throw new Error('no call at stop 1');
     const tickOf = (loop: number): number => loop - line.loopTick(0, 0);
-    // Just after a tram leaves nobody is left; a lap later the stop is as full as it gets.
+    // Just after a tram leaves nobody is left; by the next one the stop is as
+    // full as the headway lets it get.
+    const headway = tour.period / line.trams;
     expect(line.waiting(1, tickOf(call.depart))).toBe(0);
     expect(line.waiting(1, tickOf(call.depart + 3 * ARRIVAL_TICKS + 1))).toBe(3);
+    // The trams are spread over whole signal cycles, so the gap before one
+    // arrives is the headway give or take a cycle: the queue it finds is what
+    // that gap gathered, never more than the cap.
     const full = line.waiting(1, tickOf(call.arrive));
-    expect(full).toBe(Math.min(STOP_CAP, Math.floor((tour.period - (call.depart - call.arrive)) / ARRIVAL_TICKS)));
+    expect(full).toBeGreaterThan(0);
+    expect(full).toBeLessThanOrEqual(Math.min(STOP_CAP, Math.ceil(headway / ARRIVAL_TICKS)));
     expect(line.waiting(1, tickOf(call.arrive + BOARD_TICKS / 2))).toBeLessThan(full);
     expect(line.waiting(1, tickOf(call.arrive + BOARD_TICKS))).toBe(0);
     const out: Parameters<TramLine['passengers']>[5] = [];

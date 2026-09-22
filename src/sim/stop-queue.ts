@@ -80,26 +80,43 @@ export function queueMisses(queue: StopQueue, minX: number, minY: number, maxX: 
 }
 
 /**
- * Write the first `people` of a queue into `out` from `count` on, standing
- * still, and give back how many `out` now holds. Entries already in `out` are
- * written over rather than replaced, so a frame allocates nothing.
+ * Write the first `people` of a queue into `out` from `count` on, and give back
+ * how many `out` now holds. Entries already in `out` are written over rather
+ * than replaced, so a frame allocates nothing.
+ *
+ * `moved` is how far each of them has walked towards the place in front of
+ * them, 0 where the queue stands still and 1 where everyone has taken a whole
+ * step. It is what makes a queue move up as a tram boards it rather than simply
+ * losing people off its head.
  */
-export function writeQueue(queue: StopQueue, people: number, out: WaitingPassenger[], count: number): number {
+export function writeQueue(queue: StopQueue, people: number, out: WaitingPassenger[], count: number, moved = 0): number {
   let at = count;
   for (let i = 0; i < people; i++) {
     const entry = out[at] ?? { pose: { x: 0, y: 0, height: 0, heading: 0, speed: 0, cycle: 0, gait: 'stand' }, look: queue.looks[i] as PedestrianLook };
     const p = entry.pose;
-    p.x = queue.places[i * 4] as number;
-    p.y = queue.places[i * 4 + 1] as number;
-    p.height = queue.places[i * 4 + 2] as number;
+    p.x = towards(queue, i, 0, moved);
+    p.y = towards(queue, i, 1, moved);
+    p.height = towards(queue, i, 2, moved);
     p.heading = queue.places[i * 4 + 3] as number;
     p.speed = 0;
     p.cycle = 0;
-    p.gait = 'stand';
+    p.gait = moved > 0 ? 'amble' : 'stand';
     entry.look = queue.looks[i] as PedestrianLook;
     out[at++] = entry;
   }
   return at;
+}
+
+/**
+ * One field of the place person `i` stands at, `moved` of the way towards the
+ * place in front of them. The person at the head has nobody in front, so they
+ * walk on by the same step again, which is towards the door.
+ */
+function towards(queue: StopQueue, i: number, field: number, moved: number): number {
+  const here = queue.places[i * 4 + field] as number;
+  if (moved <= 0) return here;
+  const ahead = i > 0 ? (queue.places[(i - 1) * 4 + field] as number) : 2 * here - (queue.places[4 + field] as number);
+  return here + (ahead - here) * moved;
 }
 
 /**

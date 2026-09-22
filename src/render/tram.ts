@@ -25,7 +25,7 @@ import type { AmbientPose } from '../sim/traffic.ts';
 import { TRAM_CARS, type TramDesign, type TramLine } from '../sim/tram.ts';
 import { createVehicleTrim, type VehicleTrim } from './vehicle-glow.ts';
 import { instanced, merged, TRAFFIC_VIEW } from './traffic.ts';
-import { tramBoxes, tramBoxGeometry, tramCarPlan, type TramBox, type TramModule } from './tram-mesh.ts';
+import { doorLeafBoxes, DOOR_LONG, tramBoxes, tramBoxGeometry, tramCarPlan, tramDoors, type TramBox, type TramModule } from './tram-mesh.ts';
 import { OUTLINE, VEHICLE_OUTLINE_WIDTH } from './vehicle.ts';
 import { coloured } from './traffic.ts';
 
@@ -50,6 +50,11 @@ export function tramParts(design: TramDesign = 'modern', module: TramModule = 'e
   return { body: merged(body), rim: merged(rim) };
 }
 
+/** The geometry of one door leaf, which every module of both fleets shares. */
+function doorParts(): BufferGeometry {
+  return merged(doorLeafBoxes().map((part) => coloured(tramBoxGeometry(part, 0), part.colour)));
+}
+
 /** One module's two meshes and how many instances of it the frame has written. */
 interface ModuleMeshes {
   design: TramDesign;
@@ -63,6 +68,10 @@ export class TramView {
   readonly group = new Group();
   private readonly line: TramLine;
   private readonly meshes: ModuleMeshes[] = [];
+  /** The door leaves of every car in view, which slide back while a tram stands at a stop. */
+  private readonly doors: InstancedMesh;
+  private doorCount = 0;
+  private readonly slide = new Matrix4();
   private readonly trim: VehicleTrim;
   private readonly outline: MeshBasicMaterial;
   private readonly pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
@@ -89,6 +98,8 @@ export class TramView {
       this.meshes.push(meshes);
       this.group.add(meshes.body, meshes.rim);
     }
+    this.doors = instanced(doorParts(), this.trim.material, true, Math.max(1, cap * 2));
+    this.group.add(this.doors);
   }
 
   /** How many cars the last frame drew. */
@@ -111,8 +122,10 @@ export class TramView {
   /** Draw the trams round a place as they stand at a moment, which may fall between two ticks. */
   update(time: number, x: number, y: number): void {
     for (const meshes of this.meshes) meshes.count = 0;
+    this.doorCount = 0;
     for (let tram = 0; tram < this.line.trams; tram++) {
       const design = this.line.design(tram);
+      const open = this.line.doorsAt(tram, time);
       for (let car = 0; car < TRAM_CARS; car++) {
         const pose = this.line.carPose(tram, car, time, this.pose);
         if (Math.abs(pose.x - x) > TRAFFIC_VIEW || Math.abs(pose.y - y) > TRAFFIC_VIEW) continue;
@@ -125,6 +138,7 @@ export class TramView {
         meshes.body.setMatrixAt(meshes.count, this.matrix);
         meshes.rim.setMatrixAt(meshes.count, this.matrix);
         meshes.count++;
+        this.writeDoors(design, plan.module, open);
       }
     }
     for (const meshes of this.meshes) {
@@ -134,9 +148,28 @@ export class TramView {
         if (meshes.count > 0) mesh.instanceMatrix.needsUpdate = true;
       }
     }
+    this.doors.count = this.doorCount;
+    this.doors.visible = this.doorCount > 0;
+    if (this.doorCount > 0) this.doors.instanceMatrix.needsUpdate = true;
+  }
+
+  /**
+   * The leaves of one car, standing in the car's frame the last matrix put
+   * down. A leaf slides back along the car by its own length, so a door wide
+   * open leaves the whole doorway clear.
+   */
+  private writeDoors(design: TramDesign, module: TramModule, open: number): void {
+    for (const at of tramDoors(design, module)) {
+      if (this.doorCount >= this.doors.instanceMatrix.count) return;
+      this.slide.makeTranslation(at - open * DOOR_LONG, 0, 0);
+      this.slide.premultiply(this.matrix);
+      this.doors.setMatrixAt(this.doorCount++, this.slide);
+    }
   }
 
   dispose(): void {
+    this.doors.geometry.dispose();
+    this.doors.dispose();
     for (const meshes of this.meshes) {
       for (const mesh of [meshes.body, meshes.rim]) {
         mesh.geometry.dispose();
