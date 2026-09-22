@@ -139,9 +139,9 @@ The ones that cost a session with nothing to say why. The subsystem docs hold th
 - Conventional Commits, one atomic change per commit, feature branches from `main`, one PR per issue
   referencing that issue.
 - Never deploy with wrangler locally; `scripts/hooks/guard-bash.sh` blocks it.
-- Cloud sessions run `bash scripts/setup-cloud.sh` as the environment setup script. Its result is
-  cached in a snapshot keyed on the text typed into the environment dialog, not on the script —
-  after changing it, re-save the setup script field at claude.ai/code to force a rebuild.
+- Cloud sessions run `bash scripts/setup-cloud.sh`: the `.nvmrc` Node, the dependencies, and the
+  `gh` the image lacks, logged in with the token the environment holds. Its result is cached in a
+  snapshot keyed on the setup script field's text, not on the script — re-save it at claude.ai/code.
 
 ## Writing
 

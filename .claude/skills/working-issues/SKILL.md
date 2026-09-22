@@ -11,6 +11,10 @@ sessions that opened a pull request, 17 claimed the issue first and 2 released i
 
 `spec.md` is the source of truth. The issue points into it; read that section before the code.
 
+Every step below runs through the `gh` CLI. A cloud session installs it in
+`scripts/setup-cloud.sh`. If `gh` is missing anyway, do the same steps through the GitHub MCP
+server — the duplicate search of step 5 included, since no script runs it for you then.
+
 ## 1. Read it and claim it
 
 ```

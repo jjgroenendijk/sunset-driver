@@ -19,6 +19,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { requireGh } from './gh.ts';
 
 interface Issue {
   number: number;
@@ -36,6 +37,11 @@ if (title === undefined || title.trim() === '') {
 const option = (name: string): string | undefined =>
   args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const force = args.includes('--force');
+
+requireGh(
+  'Until gh is back, file the issue through the GitHub MCP server. Search open and closed\n' +
+    'issues for the same problem first: that search is what this script is for.',
+);
 
 function gh(argv: string[], input?: string): string {
   return execFileSync('gh', argv, {
