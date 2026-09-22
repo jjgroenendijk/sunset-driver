@@ -10,7 +10,7 @@
  *
  * A cell costs a draw in every pass it is seen in, so the size of a cell is a
  * trade. A quarter of a chunk is where the frame came out best (see
- * `docs/rendering.md`). The far ring is not cut: its batches are a few thousand
+ * `docs/streaming.md`). The far ring is not cut: its batches are a few thousand
  * vertices, and a draw costs more than culling them saves.
  *
  * Nothing here touches three.js, so a worker and a test read it alike.

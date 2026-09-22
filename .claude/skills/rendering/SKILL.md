@@ -10,10 +10,12 @@ design; read the section the issue names before the code.
 
 ## The gotchas
 
-Five docs hold what costs a session:
+Six docs hold what costs a session:
 
-- `docs/rendering.md` — how a frame is put together: streaming, batches and cells, quality tiers,
-  smoothing and fading, and water.
+- `docs/streaming.md` — how a chunk reaches the screen: the workers, the frame budget, the batches
+  and the cells.
+- `docs/rendering.md` — how a frame is put together: quality tiers, warming the shaders, smoothing
+  and fading, the roads, and water.
 - `docs/post.md` — the post chain, the colour grade and getting its cube to the GPU.
 - `docs/buildings.md` — how a building is massed, generated, placed and outlined.
 - `docs/render-entities.md` — what stands in the world: vehicles, weapons, plants,

@@ -3,7 +3,8 @@
 The gotchas of the meshes `src/render` builds for the buildings of the city: how a building is
 massed, how its shell is generated, how it is stood on its lot and how it is outlined. `spec.md`
 section 10.3 is the design. What else stands in the world is in `docs/render-entities.md`, how the
-meshes reach the screen in `docs/rendering.md`, and what lights them in `docs/lighting.md`.
+meshes reach the screen in `docs/streaming.md`, what a quality tier moves in `docs/rendering.md`,
+and what lights them in `docs/lighting.md`.
 
 ## Contents
 

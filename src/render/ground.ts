@@ -133,7 +133,7 @@ export function buildGroundAttributes(chunk: WorldChunk, lookup: GroundLookup, s
  * keeps its `dispose` for as long as it stands, and in V8 a closure keeps the
  * whole scope it was made in, so one made there kept the chunk's payload: every
  * source array the batches had already copied, about twice the city in memory.
- * iOS Safari killed the page for it (`docs/rendering.md`).
+ * iOS Safari killed the page for it (`docs/streaming.md`).
  */
 export function groundPart(attributes: GroundAttributes, x: number, z: number, material: Material): TilePart {
   const geometry = groundGeometry(attributes);
