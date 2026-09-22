@@ -235,9 +235,11 @@ export function buildChunkBuildings(
     if (look !== 'masonry') style.tall = { look, bay: shape.bayWidth };
     let shell: BufferGeometry;
     let dress: BufferGeometry | undefined;
+    let walls: { min: number; max: number } | undefined;
     if (batch === 'facade') {
       const built = facadeGeometry(building, massing, shape, tint, finish);
       shell = built.shell;
+      walls = built.walls;
       // A generated tower's roofs are measured off the geometry the generator
       // built, because its crown draws in from the footprint it was given.
       dress = dressOf(built.decks, style, tint, finish);
@@ -248,17 +250,17 @@ export function buildChunkBuildings(
       shell = built.shell;
       dress = built.dress;
     }
-    const box = centreOnLot(shell, dress);
-    // A block fills its massing; a generated facade comes back narrower than
-    // one, so where the lot has a wall against it the shell is stretched to
-    // reach it.
-    const wall = building.shared.left || building.shared.right;
-    const fit = fitOf({ width: box.max.x - box.min.x, depth: box.max.z - box.min.z }, massing, wall);
+    const { box, dx } = centreOnLot(shell, dress);
+    // A block fills its massing; the walls of a generated facade stand short of
+    // it, so where the lot has a wall against it the shell is stretched until
+    // they reach it. The walls move with the shell.
+    const moved = walls === undefined ? undefined : { min: walls.min + dx, max: walls.max + dx };
+    const fit = fitOf({ min: box.min.x, max: box.max.x, depth: box.max.z - box.min.z }, massing, building.shared, moved);
     const footing = footingGeometry(shape, box, fit, stand.footing, tint, finish);
     // A lot on a bend leans its side edges, and a wall it shares follows them.
     // The hull is leaned with the shell, so it is built knowing the lean: that
     // is what keeps its rim one width wide on a lot that is not square.
-    const lean = leanOf(building, massing);
+    const lean = leanOf(building, massing, fit.shift);
     const hull = hullOf(massing, shell, box, fit, shape, lean, stand.footing / fit.across);
     if (lean !== undefined) {
       leanGeometry(shell, lean, fit);
@@ -399,9 +401,17 @@ function facadeGeometry(
   shape: BuildingShape,
   tint: Rgb,
   finish: FinishCode,
-): { shell: BufferGeometry; decks: RoofDeck[] } {
+): { shell: BufferGeometry; decks: RoofDeck[]; walls: { min: number; max: number } } {
   const footprint = facadeFootprint(massing);
   const boxes = boxesOf(shape, footprint, massing.height, massing.chamfer);
+  // The generator puts the walls of a box on the footprint it is given, and
+  // what overhangs them past it. The boxes on the ground are the street wall.
+  const walls = { min: Infinity, max: -Infinity };
+  for (const box of boxes) {
+    if (box.from > 0) continue;
+    walls.min = Math.min(walls.min, box.x - box.width / 2);
+    walls.max = Math.max(walls.max, box.x + box.width / 2);
+  }
   const built: BufferGeometry[] = [];
   const decks: RoofDeck[] = [];
   // Only the box that reaches the top draws in at its crown: a setback inside
@@ -436,7 +446,7 @@ function facadeGeometry(
   }
   geometry.setAttribute('tint', new BufferAttribute(tints, 3));
   geometry.setAttribute('finish', new BufferAttribute(finishes, 3));
-  return { shell: geometry, decks };
+  return { shell: geometry, decks, walls };
 }
 
 /** One box of a shape, built about its own middle and standing on the ground. */
@@ -495,9 +505,10 @@ function clip(deck: RoofDeck, room: { x: number; z: number; width: number; depth
  * Stand a shell, and whatever is dressed onto it, in the middle of its lot. A generated facade is not centred on
  * the footprint it was given — a chamfer takes one corner off and a cornice
  * overhangs the rest — so the box it really fills is what is centred, and the
- * whole of it then has the same room around it.
+ * whole of it then has the same room around it. It answers with that box, and
+ * with how far the shell moved along `x`.
  */
-function centreOnLot(shell: BufferGeometry, dress: BufferGeometry | undefined): Box3 {
+function centreOnLot(shell: BufferGeometry, dress: BufferGeometry | undefined): { box: Box3; dx: number } {
   shell.computeBoundingBox();
   const box = shell.boundingBox ?? new Box3();
   const dx = -(box.max.x + box.min.x) / 2;
@@ -519,7 +530,7 @@ function centreOnLot(shell: BufferGeometry, dress: BufferGeometry | undefined): 
   box.max.x += dx;
   box.min.z += dz;
   box.max.z += dz;
-  return box;
+  return { box, dx };
 }
 
 /**
