@@ -498,6 +498,7 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   markers.marks = bodies?.markers ?? [];
   markers.update(tick, x, y);
   traffic.lamps = scene.lampsNow;
+  trams.lamps = scene.lampsNow;
   traffic.update(record, tick, x, y);
   trams.update(tick, x, y);
   busStops.update(x, y);

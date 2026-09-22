@@ -246,6 +246,7 @@ export class SessionFrame {
     // The headlamps and tail lights of everything the scene does not draw
     // itself come on with the street lamps (spec section 13.4).
     session.traffic.lamps = session.world.lampsNow;
+    session.tram.lamps = session.world.lampsNow;
     session.police.lamps = session.world.lampsNow;
     session.emergency.lamps = session.world.lampsNow;
     if (flying) {

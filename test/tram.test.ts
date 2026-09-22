@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { tramBoxes } from '../src/render/tram.ts';
+import { tramBoxes, tramCarPlan, type TramDesign, type TramModule } from '../src/render/tram-mesh.ts';
 import { SIGNAL_CYCLE, TrafficSignals } from '../src/sim/signals.ts';
 import { laneOffset, type AmbientPose } from '../src/sim/traffic.ts';
 import { QUEUE_CLEAR } from '../src/sim/traffic-timing.ts';
@@ -161,13 +161,28 @@ describe('the tram (spec section 13.2)', () => {
     expect(empty.waiting(0, 10)).toBe(0);
   });
 
-  it('draws a car inside the box the physics gives it', () => {
-    for (const box of tramBoxes()) {
-      if (!box.outlined) continue;
-      expect(box.length / 2).toBeLessThanOrEqual(CAR_LENGTH / 2);
-      expect(box.width / 2).toBeLessThanOrEqual(CAR_HALF_WIDTH);
-      expect(box.y + box.height / 2).toBeLessThanOrEqual(2 * CAR_HALF_HEIGHT);
+  it('draws every module of both fleets inside the box the physics gives a car', () => {
+    for (const design of ['modern', 'heritage'] as TramDesign[]) {
+      for (const module of ['end', 'middle'] as TramModule[]) {
+        for (const box of tramBoxes(design, module)) {
+          if (!box.outlined) continue;
+          expect(Math.abs(box.x) + box.length / 2).toBeLessThanOrEqual(CAR_LENGTH / 2);
+          expect(Math.abs(box.z) + box.width / 2).toBeLessThanOrEqual(CAR_HALF_WIDTH);
+          expect(box.y + box.height / 2).toBeLessThanOrEqual(2 * CAR_HALF_HEIGHT);
+        }
+      }
     }
+  });
+
+  it('turns the rear module of a modern tram about, and leaves a heritage car either way round', () => {
+    expect(tramCarPlan('modern', 0, 3)).toEqual({ module: 'end', reversed: false });
+    expect(tramCarPlan('modern', 1, 3)).toEqual({ module: 'middle', reversed: false });
+    expect(tramCarPlan('modern', 2, 3)).toEqual({ module: 'end', reversed: true });
+    for (const car of [0, 1, 2]) expect(tramCarPlan('heritage', car, 3)).toEqual({ module: 'middle', reversed: false });
+  });
+
+  it('runs both fleets off the zone of the stop each tram starts from', () => {
+    for (let tram = 0; tram < line.trams; tram++) expect(['modern', 'heritage']).toContain(line.design(tram));
   });
 });
 
