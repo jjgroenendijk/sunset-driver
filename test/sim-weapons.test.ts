@@ -9,7 +9,7 @@ import { blowStrength, HIT_MEMORY } from '../src/sim/melee.ts';
 import { CRIME_HEAT, raiseHeat } from '../src/sim/crime.ts';
 import type { PedestrianPose } from '../src/sim/pedestrians.ts';
 import { PERSON_HEALTH } from '../src/sim/casualty.ts';
-import { hills, ramp, type Session, start, drive } from './sim-harness.ts';
+import { hills, ramp, type Session, start, drive, finishBoarding } from './sim-harness.ts';
 
 /**
  * The arsenal of spec section 11.6 fired in a session: what `weapon.test.ts`
@@ -29,6 +29,7 @@ describe('weapons', () => {
   function armed(id: WeaponId, ground: Ground = hills()): Session {
     const session = start(ground);
     drive(session, 1, { interact: true });
+    finishBoarding(session);
     drive(session, 30);
     const { state } = session;
     giveWeapon(state.loadout, id);
@@ -39,6 +40,16 @@ describe('weapons', () => {
   /** Hold the trigger for `ticks` ticks, with the aim held as it is. */
   function shoot(session: Session, ticks: number): void {
     drive(session, ticks, { fire: true });
+    drive(session, 1);
+  }
+
+  /**
+   * The same with the aim raised. A person 6 m off is about as wide as the
+   * cone of a rifle fired from the hip, so whether a hip-fired round meets
+   * them is down to the tick it is fired on; an aimed one always does.
+   */
+  function shootAimed(session: Session, ticks: number): void {
+    drive(session, ticks, { fire: true, aim: true });
     drive(session, 1);
   }
 
@@ -212,7 +223,7 @@ describe('weapons', () => {
   it('takes health off an enforcer the round goes into (spec section 17.2)', () => {
     const session = armed('ak-47', ramp('asphalt', 0));
     const unit = plant(session, 6);
-    shoot(session, 2);
+    shootAimed(session, 2);
     expect(unit.health).toBeLessThan(ENFORCER_HEALTH);
     expect(unit.health).toBeGreaterThan(0);
     expect(session.state.enforcers.units).toHaveLength(1);
@@ -223,7 +234,7 @@ describe('weapons', () => {
     const session = armed('ak-47', ramp('asphalt', 0));
     const { state } = session;
     plant(session, 6);
-    shoot(session, 30);
+    shootAimed(session, 30);
     expect(state.enforcers.units).toHaveLength(0);
     expect(state.pickups.some((pickup) => pickup.weapon === 'glock-17')).toBe(true);
     session.physics.dispose();
@@ -408,7 +419,7 @@ describe('weapons', () => {
   it('takes health off a member of an emergency crew the round goes into (spec section 20.3)', () => {
     const session = armed('ak-47', ramp('asphalt', 0));
     const member = medic(session, 6);
-    shoot(session, 2);
+    shootAimed(session, 2);
     expect(member.health).toBeLessThan(CREW_HEALTH);
     expect(member.health).toBeGreaterThan(0);
     expect(session.state.emergency.crew).toHaveLength(1);
@@ -419,7 +430,7 @@ describe('weapons', () => {
     const session = armed('ak-47', ramp('asphalt', 0));
     const { state } = session;
     const member = medic(session, 6);
-    shoot(session, 30);
+    shootAimed(session, 30);
     expect(state.emergency.crew).toHaveLength(0);
     expect(state.emergency.fallen).toHaveLength(1);
     expect(state.emergency.fallen[0]?.body.x).toBeCloseTo(member.x, 1);

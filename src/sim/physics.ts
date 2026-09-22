@@ -68,6 +68,7 @@ import { UnitBodies } from './unit-bodies.ts';
 import { commitCrime, report } from './police.ts';
 import { reachablePromoted, swapInto } from './steal.ts';
 import { createTheft, isLocked, stepTheft, type TheftState } from './theft.ts';
+import { boardingDone, createBoarding, startBoarding, type BoardingState } from './boarding.ts';
 import { promotedOf } from './traffic.ts';
 import {
   createVehicleState,
@@ -180,8 +181,9 @@ export class SimPhysics extends GroundPlaces {
     // left at the kerb beside a player on foot is not (spec section 11.4).
     state.vehicle.hotwired = state.player.driving;
     // An attempt at the lock of the vehicle this one replaces means nothing:
-    // the new one carries its own lock.
+    // the new one carries its own lock. A door half open goes with the vehicle.
     state.theft = null;
+    state.boarding = null;
     this.adopt(state);
     // The record of a player in the vehicle says where the vehicle is, so a
     // vehicle put down somewhere else takes the player with it.
@@ -245,7 +247,7 @@ export class SimPhysics extends GroundPlaces {
       this.bodies.cover(state.player.x, state.player.y);
       // A player bent over a lock stands at the door (spec section 11.4): they
       // are stepped with nothing held down, so only gravity moves them.
-      walk(this.walker as Walker, state, state.theft === null ? input : EMPTY_INPUT, this.ground.seaLevel);
+      walk(this.walker as Walker, state, busy(state) ? EMPTY_INPUT : input, this.ground.seaLevel);
     } else {
       this.bodies.cover(v.x, v.z);
       // Rapier keeps a force until it is told to forget it, so a tick that adds
@@ -254,12 +256,14 @@ export class SimPhysics extends GroundPlaces {
       chassis.resetForces(false);
       chassis.resetTorques(false);
       if (this.wheels === undefined) {
-        this.controls.sail(chassis, v, input, this.spec);
+        this.controls.sail(chassis, v, state.boarding === null ? input : EMPTY_INPUT, this.spec);
       } else {
         // How wet the road is is the weather of the tick (spec section 13.4),
         // which is a pure function of the seed and the tick like everything
         // else, so a replay drives on the same water the session did.
-        this.controls.drive(this.wheels, v, input, this.spec, weatherAt(state.seed, state.tick).wetness);
+        // A driver on the way out of the seat holds the vehicle on its brakes.
+        const held = state.boarding === null ? input : BRAKED;
+        this.controls.drive(this.wheels, v, held, this.spec, weatherAt(state.seed, state.tick).wetness);
         this.controls.hold(chassis, v, this.spec);
         // The wheels roll over a ragdoll rather than standing on it: `car-strike.ts` is the bump.
         this.wheels.updateVehicle(this.world.timestep, undefined, SHUNS_RAGDOLL);
@@ -302,7 +306,7 @@ export class SimPhysics extends GroundPlaces {
     // The weapons are run after the step, so a shot leaves the muzzle from where
     // the player ended the tick rather than from where they started it. A player
     // bent over a lock cannot shoot, for the same reason they cannot walk.
-    this.shots.step(state, state.theft === null ? input : EMPTY_INPUT, this.target(state));
+    this.shots.step(state, busy(state) ? EMPTY_INPUT : input, this.target(state));
     this.shots.fly(state, this.target(state));
     this.burn(state);
     // The fires of every vehicle but the player's own, the spread between them
@@ -544,18 +548,27 @@ export class SimPhysics extends GroundPlaces {
       return;
     }
     // An officer who has hold of a driver pulls them out of the seat, whatever
-    // they are pressing (spec section 11.7).
+    // they are pressing (spec section 11.7), and does not wait for the door.
     const dragged = p.driving && state.police.cuffs !== null;
-    if (!pressed && !dragged) return;
+    if (dragged) {
+      state.boarding = null;
+      this.alight(state);
+      return;
+    }
+    if (state.boarding !== null) {
+      this.board(state, state.boarding);
+      return;
+    }
+    if (!pressed) return;
     if (p.driving) {
-      if (Math.abs(state.vehicle.speed) > EXIT_SPEED && !dragged) return;
-      this.stepOut(state);
+      if (Math.abs(state.vehicle.speed) > EXIT_SPEED) return;
+      state.boarding = createBoarding('out', state.tick, -1);
     } else if (reachesVehicle(p, state.vehicle, this.spec)) {
       if (isLocked(state.vehicle, this.spec)) {
         state.theft = createTheft(this.spec, state.tick);
         return;
       }
-      p.driving = true;
+      this.climbIn(state);
     } else {
       // Out of reach of their own, the player takes a car of the city they
       // have promoted (spec section 5.3), and a locked one is worked at first.
@@ -564,8 +577,33 @@ export class SimPhysics extends GroundPlaces {
       const spec = specOf(record.vehicle.cls);
       if (isLocked(record.vehicle, spec)) state.theft = createTheft(spec, state.tick, record.id);
       else this.take(state, record.id);
+    }
+  }
+
+  /** Start the move into the player's own vehicle, through the side they stand on (`boarding.ts`). */
+  private climbIn(state: SimState): void {
+    state.boarding = startBoarding(state.player, state.vehicle, this.spec, state.tick);
+  }
+
+  /**
+   * One tick of a move into the seat or out of it. It ends in the seat or on
+   * the pavement once its time is up. A move in is dropped when the vehicle is
+   * no longer within reach — a blast that throws the car across the street
+   * takes the door with it — and when the player is being arrested.
+   */
+  private board(state: SimState, boarding: BoardingState): void {
+    const p = state.player;
+    if (boarding.way === 'in' && (!reachesVehicle(p, state.vehicle, this.spec) || state.police.cuffs !== null)) {
+      state.boarding = null;
       return;
     }
+    if (!boardingDone(boarding, this.spec, state.tick)) return;
+    state.boarding = null;
+    if (boarding.way === 'out') {
+      this.alight(state);
+      return;
+    }
+    p.driving = true;
     this.adopt(state);
   }
 
@@ -593,13 +631,18 @@ export class SimPhysics extends GroundPlaces {
     p.driving = false;
   }
 
-  /** Get into the promoted vehicle under `id`, leaving the player's own in its place (`steal.ts`). */
+  /**
+   * Take the promoted vehicle under `id`, leaving the player's own in its place
+   * (`steal.ts`), and start the move into it. The swap is made as the hand
+   * reaches the door rather than once the player sits down, so the car being
+   * climbed into is the player's own model, with a door that opens.
+   */
   private take(state: SimState, id: number): void {
     swapInto(state, id);
     this.traffic?.forget(id);
     commitCrime(state, 'theft');
-    state.player.driving = true;
     this.adopt(state);
+    this.climbIn(state);
   }
 
   /**
@@ -631,8 +674,7 @@ export class SimPhysics extends GroundPlaces {
       return;
     }
     commitCrime(state, 'theft');
-    p.driving = true;
-    this.adopt(state);
+    this.climbIn(state);
   }
 
   /** Take every body of the player and their vehicle out of the world, so `adopt` can build them again. */
@@ -652,3 +694,11 @@ export class SimPhysics extends GroundPlaces {
     this.walker = undefined;
   }
 }
+
+/** True while the player is busy with a lock or a door, and so is moved with nothing pressed. */
+function busy(state: SimState): boolean {
+  return state.theft !== null || state.boarding !== null;
+}
+
+/** What a driver on the way out of the seat presses: nothing but the handbrake. */
+const BRAKED: Readonly<InputFrame> = Object.freeze({ ...EMPTY_INPUT, handbrake: true });

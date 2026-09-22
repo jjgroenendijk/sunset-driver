@@ -12,7 +12,7 @@ import {
 } from '../src/sim/theft.ts';
 import { CRIME_HEAT, raiseHeat } from '../src/sim/crime.ts';
 import { stableJson } from './helpers.ts';
-import { hills, type Session, start, drive } from './sim-harness.ts';
+import { hills, type Session, start, drive, finishBoarding } from './sim-harness.ts';
 
 /**
  * The theft of spec section 11.4, played in the Rapier loop rather than on its
@@ -25,9 +25,11 @@ describe('theft', () => {
     await initPhysics();
   });
 
+  /** Press and release a key, and let any door it opened be shut again. */
   function press(session: Session, key: 'interact' | 'jump'): void {
     drive(session, 1, { [key]: true });
     drive(session, 1);
+    finishBoarding(session);
   }
 
   /**
@@ -112,6 +114,9 @@ describe('theft', () => {
     press(session, 'interact');
     const ticks = pickLock(session, true);
     expect(ticks).toBeLessThanOrEqual(hotwireFloor());
+    // The lock is open, and the player climbs in through the door it held shut.
+    expect(session.state.boarding?.way).toBe('in');
+    finishBoarding(session);
     expect(session.state.player.driving).toBe(true);
     expect(session.state.vehicle.hotwired).toBe(true);
     const from = session.state.vehicle.x;
@@ -124,6 +129,7 @@ describe('theft', () => {
     const session = besideLocked(hills());
     press(session, 'interact');
     expect(pickLock(session, false)).toBe(HOTWIRE_CAP);
+    finishBoarding(session);
     expect(session.state.player.driving).toBe(true);
     session.physics.dispose();
   });
@@ -132,6 +138,7 @@ describe('theft', () => {
     const session = besideLocked(hills());
     press(session, 'interact');
     pickLock(session, true);
+    finishBoarding(session);
     drive(session, 30);
     press(session, 'interact');
     drive(session, 30);

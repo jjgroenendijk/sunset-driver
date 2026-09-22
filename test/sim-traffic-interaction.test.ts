@@ -158,8 +158,11 @@ describe('shots and theft reach the traffic', () => {
     step(state, physics, {}, 30);
     const heat = state.heat;
     step(state, physics, { interact: true });
-    expect(state.player.driving).toBe(true);
+    // The swap is made as the door is reached; the seat is taken once it is shut.
     expect(state.vehicle.cls).toBe('saloon');
+    expect(state.boarding?.way).toBe('in');
+    for (let i = 0; i < 600 && state.boarding !== null; i++) step(state, physics);
+    expect(state.player.driving).toBe(true);
     expect(state.vehicle.paint).toBe(0x123456);
     // The car the player left is a car of the city now, under the same id.
     expect(promotedOf(state.traffic, 3)?.vehicle).toBe(own);
@@ -183,6 +186,7 @@ describe('shots and theft reach the traffic', () => {
     // Nobody presses: the cap opens the lock.
     step(state, physics, {}, HOTWIRE_CAP + 1);
     expect(state.theft).toBeNull();
+    for (let i = 0; i < 600 && state.boarding !== null; i++) step(state, physics);
     expect(state.player.driving).toBe(true);
     expect(state.vehicle.cls).toBe('sports');
     expect(state.vehicle.hotwired).toBe(true);
