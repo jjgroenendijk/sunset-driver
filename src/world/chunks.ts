@@ -29,7 +29,7 @@ import { PAVEMENT_WINDOW, pavementIn, type ChunkPavement, type PavementApron } f
 import { deckPiers, type DeckPier } from './piers.ts';
 import { buildTensorField } from './tensor.ts';
 import { CHUNK_TERRAIN_CELL, TERRAIN_CELL } from './terrain.ts';
-import { tramTrack, type TramCrossing, type TramTrack } from './tram-track.ts';
+import { PAVED_REACH, tramTrack, type TramCrossing, type TramTrack } from './tram-track.ts';
 import type { HeightfieldData, RoadCurve, RoadTier, WorldDescription, Zone } from './types.ts';
 import { Vegetation, type Plant } from './vegetation.ts';
 import { generateWorld } from './world.ts';
@@ -162,6 +162,12 @@ export interface WorldChunk {
   tram: ChunkRoad[];
   /** The level crossings whose node stands in the chunk. */
   tramCrossings: TramCrossing[];
+  /**
+   * Where the track is paved rather than grassed, within reach of the chunk. A
+   * place outside the chunk is kept when its reach comes inside it, so both
+   * chunks either side of a junction pave the same ground.
+   */
+  tramPaved: Point[];
 }
 
 /**
@@ -285,6 +291,13 @@ export class ChunkSource {
       piers: this.piersIn(bounds),
       tram: this.tramIn(bounds),
       tramCrossings: this.layers.tram.crossings.filter((crossing) => inside(crossing, bounds)),
+      tramPaved: this.layers.tram.paved.filter(
+        (place) =>
+          place.x >= bounds.minX - PAVED_REACH &&
+          place.x < bounds.maxX + PAVED_REACH &&
+          place.y >= bounds.minY - PAVED_REACH &&
+          place.y < bounds.maxY + PAVED_REACH,
+      ),
     };
   }
 

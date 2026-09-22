@@ -62,14 +62,23 @@ const MEDIAN_RGB = 0x8f8c85;
 
 /**
  * What a vertex belongs to: the cross section of a road, a structure carrying
- * one, or the tram's reserved lane, its rails and its level crossings, which are
- * laid over the road (spec section 13.2).
+ * one, or a part of the tram's reserved lane, which is laid over the road (spec
+ * section 13.2).
+ *
+ * The lane is stone setts where a car turns across it or a passenger walks over
+ * it, and grass on the open run between two of those. A rail stands in either,
+ * with the dark groove of a street rail down its head. A level crossing is a
+ * pale panel over the junction, outlined in white so a driver reads where the
+ * tram will come from.
  */
 export const SURFACE_ROAD = 0;
 export const SURFACE_STRUCTURE = 1;
-export const SURFACE_TRAM_LANE = 2;
+export const SURFACE_SETTS = 2;
 export const SURFACE_RAIL = 3;
 export const SURFACE_CROSSING = 4;
+export const SURFACE_TRACK_GRASS = 5;
+export const SURFACE_GROOVE = 6;
+export const SURFACE_CROSSING_MARK = 7;
 
 /**
  * Metres of structure under a bridge deck, down from the skirt of its surface.
