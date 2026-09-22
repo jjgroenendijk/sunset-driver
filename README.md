@@ -24,28 +24,39 @@ how the steps are watched on a machine that does not need them.
 
 ## Controls
 
+<!-- controls: generated from src/ui/controls.ts by scripts/readme-controls.ts -->
+
 | Action | Keys |
 |---|---|
 | Move, drive | W A S D or arrows |
 | Sprint | Shift |
 | Handbrake, jump | Space |
 | Horn | H |
-| Enter or leave vehicle or shop, hotwire, interact | E |
+| Enter, use, hotwire | E |
 | Fire, swing | Left click |
 | Aim | Right click |
 | Reload | R |
 | Cycle weapon | Mouse wheel |
-| Radio: next, previous station | ] and [ |
-| Metro or shop: the row on the panel | 1 to 9 |
-| Pause menu | Esc |
+| Give up (1–2 stars) | X |
+| Radio | ] and [ |
+| Pick a row | 1 to 9 |
+| Shop: choose, buy | ↑ ↓ Enter or click |
+| Sell all | Shift and 1 to 9 |
+| Pause | Esc |
 | Map | M |
-| Camera view: top down, third person, first person | C |
-| Look around, in third and first person | Mouse |
-| Vehicle picker | V |
-| Weapon picker | G |
-| Debug: developer info | F3 |
-| Debug: die | K |
-| Debug: arrest | B |
+| Map zoom, centre, legend | + − Space L |
+| Camera view | C |
+| Look around (chase views) | Mouse |
+| Vehicles | V |
+| Weapons | G |
+| Debug info | F3 |
+| Debug die | K |
+| Debug arrest | B |
+
+<!-- end controls -->
+
+The title screen shows the same list, drawn as key caps. To change a binding, change
+`src/ui/controls.ts` and run `node scripts/readme-controls.ts`.
 
 ## On a phone
 
