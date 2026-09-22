@@ -13,7 +13,7 @@ import { POI_STYLES, type PoiType } from './map.ts';
 /** What the driver asks for. */
 export interface IconSheetRequest {
   width: number;
-  /** The icon sizes to draw each place at. The map uses 18 and the minimap 11. */
+  /** The icon sizes to draw each place at. The map uses 18 and the minimap 20. */
   sizes: readonly number[];
 }
 
