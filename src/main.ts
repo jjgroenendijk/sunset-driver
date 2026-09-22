@@ -21,7 +21,8 @@ import { createSimState } from './sim/simulation.ts';
 import { attachParty } from './net/attach.ts';
 import { buildCity } from './city.ts';
 import { buildViews } from './views.ts';
-import { SessionFrame } from './frame.ts';
+import { isPaused, SessionFrame } from './frame.ts';
+import { frameCapLabel, FramePacer, intervalOf, nextFrameCap, PAUSED_FPS, TITLE_FPS } from './pace.ts';
 import { listenForKeys } from './keys.ts';
 import { buildMaps } from './maps.ts';
 import { buildPauseMenu } from './pause-actions.ts';
@@ -184,6 +185,13 @@ async function boot(): Promise<void> {
         if (session) drawAt(session.world, session.post, drawnTier(settings.graphics, quality));
       },
     },
+    frameRate: {
+      label: () => frameCapLabel(settings.frameCap),
+      move: (by) => {
+        settings.frameCap = nextFrameCap(settings.frameCap, by);
+        writeSettings(localStorage, settings);
+      },
+    },
   };
 
   // Where the world of a seed is built (spec section 9.1). It is a worker, so
@@ -196,8 +204,16 @@ async function boot(): Promise<void> {
   // screen's preview is drawn instead.
   const loop = new SessionFrame(canvas, { camera, clock, keyboard, free, look, audio, settings });
   let last = performance.now();
+  // Which of the browser's frames are drawn (`pace.ts`). A frame not drawn is
+  // skipped whole, so its time is carried into the next one that is.
+  const pacer = new FramePacer();
 
   const frame = (now: number): void => {
+    requestAnimationFrame(frame);
+    const cap = intervalOf(settings.frameCap);
+    quality.cap(cap);
+    const idle = session ? (isPaused(session) ? intervalOf(PAUSED_FPS) : 0) : intervalOf(TITLE_FPS);
+    if (!pacer.ready(now, Math.max(cap, idle))) return;
     const elapsed = now - last;
     last = now;
     if (session) {
@@ -206,7 +222,6 @@ async function boot(): Promise<void> {
       preview.update(elapsed / 1000);
       void renderer.render(preview.scene, preview.camera);
     }
-    requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
 

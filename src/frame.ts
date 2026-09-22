@@ -52,6 +52,15 @@ interface Viewpoint {
   y: number;
 }
 
+/**
+ * Whether a session is paused: the menu is open and nobody else is playing.
+ * A session in a room is never paused, because the other players' city does
+ * not stop (`docs/multiplayer.md`).
+ */
+export function isPaused(session: Session): boolean {
+  return session.pause.open && !session.party.live;
+}
+
 /** The frame loop of a session, and the little it carries from one frame to the next. */
 export class SessionFrame {
   private readonly parts: FrameParts;
@@ -69,6 +78,8 @@ export class SessionFrame {
   private session: Session | null = null;
   /** Whether the camera was detached last frame, so a release is noticed once. */
   private flew = false;
+  /** Whether the last frame was paused, so the first one after it steps nothing. */
+  private stopped = false;
   /** The last frame of input the simulation was stepped with, which the mix reads. */
   private heard: InputFrame = EMPTY_INPUT;
 
@@ -96,7 +107,7 @@ export class SessionFrame {
     // session in a room is never paused: the other players' city does not
     // stop (`docs/multiplayer.md`). The menu takes the keys either way.
     const menu = session.pause.open;
-    const paused = menu && !session.party.live;
+    const paused = isPaused(session);
     // A chase view turns with the mouse under pointer lock, unless a menu, the
     // map or a shop counter wants the pointer (`ui/mouse-look.ts`).
     const chase = this.parts.settings.view !== 'top-down';
@@ -107,7 +118,12 @@ export class SessionFrame {
     if (flying || menu) keyboard.forgetWheel();
     // The arrow keys walk a shop's counter while the player stands at one.
     keyboard.menu = session.state.shop !== null;
-    const steps = session.party.frame(session.state, this.heard, paused ? 0 : clock.advance(elapsed));
+    // A paused frame is drawn at `PAUSED_FPS` (`pace.ts`), so the frame after
+    // the menu closes comes up to a tenth of a second later. That time was
+    // spent in the menu, and the first frame back takes no step for it.
+    const resumed = this.stopped && !paused;
+    this.stopped = paused;
+    const steps = session.party.frame(session.state, this.heard, paused || resumed ? 0 : clock.advance(elapsed));
     const respawned = session.state.respawn;
     const trips = session.state.metro.trips;
     for (let i = 0; i < steps; i++) {

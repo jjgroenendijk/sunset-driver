@@ -369,6 +369,9 @@ shops, ice-cream stands, a fairground pier — laid-back by day and a party stri
 - A quality-tier system: render scale, draw distance, shadow resolution, entity density and effect
   toggles step down automatically when frame time is missed for a sustained spell, and step up
   again after a steady one. The Graphics menu offers this as Auto, and sets each knob by hand.
+- A frame is drawn no faster than the simulation steps: 60 fps by default, 30 or uncapped as the
+  player chooses. A paused session and the title screen draw slower still, and a paused or hidden
+  game suspends its audio. Work that shows the player nothing new is not done.
 
 ---
 
