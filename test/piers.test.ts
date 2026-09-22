@@ -9,10 +9,12 @@ import {
   SURFACE_RAIL,
   SURFACE_RAISE,
   SURFACE_STRUCTURE,
+  SURFACE_CATENARY,
   SURFACE_CROSSING_MARK,
   SURFACE_GROOVE,
   SURFACE_SETTS,
   SURFACE_TRACK_GRASS,
+  SURFACE_WIRE,
 } from '../src/render/road-section.ts';
 import { buildLayers, chunkAt, ChunkSource } from '../src/world/chunks.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
@@ -164,8 +166,11 @@ describe('the corridors of a chunk', () => {
       }
     }
     // The lane is setts by a junction and grass on the open run between two,
-    // and this chunk holds a crossing, so it is all setts.
-    expect([...kinds].sort()).toEqual([SURFACE_SETTS, SURFACE_RAIL, SURFACE_GROOVE, SURFACE_CROSSING, SURFACE_CROSSING_MARK].sort());
+    // and this chunk holds a crossing, so it is all setts. The masts and the
+    // contact wire over the track go into the same batch.
+    expect([...kinds].sort()).toEqual(
+      [SURFACE_SETTS, SURFACE_RAIL, SURFACE_GROOVE, SURFACE_CROSSING, SURFACE_CROSSING_MARK, SURFACE_CATENARY, SURFACE_WIRE].sort(),
+    );
     // The corridors add parts to a tier the chunk already draws, and no draw call.
     const drawn = TIER_ORDER.filter((tier) => chunk.roads.some((run) => run.tier === tier) || chunk.pavement.some((p) => p.tier === tier));
     expect(tiers.map((tier) => tier.tier)).toEqual(drawn);

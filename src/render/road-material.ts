@@ -38,6 +38,9 @@ const RAIL_RGB = 0xa9aaae;
 const GROOVE_RGB = 0x2a2724;
 const CROSSING_RGB = 0xb3ab98;
 const CROSSING_MARK_RGB = 0xd7d4cb;
+/** The overhead line: galvanised masts, and a copper contact wire gone dark. */
+const CATENARY_RGB = 0x71747a;
+const WIRE_RGB = 0x3b3631;
 
 /** Metres of one sett, along the track and across it. */
 const SETT_LONG = 0.34;
@@ -110,6 +113,8 @@ export function createRoadMaterial(tier: RoadTier): MeshStandardNodeMaterial {
   colour = mix(colour, grass, at(5));
   colour = mix(colour, rgb(GROOVE_RGB), at(6));
   colour = mix(colour, rgb(CROSSING_MARK_RGB), at(7));
+  colour = mix(colour, rgb(CATENARY_RGB).mul(float(0.88).add(grain.mul(0.2))), at(8));
+  colour = mix(colour, rgb(WIRE_RGB), at(9));
   material.colorNode = colour;
   // Asphalt is smoother than the ground beside it, and the fine grain varies it.
   material.roughnessNode = mix(float(palette.roughness), float(palette.roughness - 0.16), grain);
