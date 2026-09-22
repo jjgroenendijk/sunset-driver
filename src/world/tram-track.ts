@@ -30,7 +30,19 @@ export interface TramTrack {
   /** One mask per curve id, 1 at each segment the track runs down; undefined for a curve it never uses. */
   segments: (Uint8Array | undefined)[];
   crossings: TramCrossing[];
+  /**
+   * The places the track is paved rather than grassed: every junction the loop
+   * passes, every level crossing and every stop. A car turns across the track
+   * at a junction and a passenger walks over it at a stop, so the ground there
+   * is stone; the open run between two of them is green (`corridor-mesh.ts`).
+   */
+  paved: Point[];
 }
+
+/** Metres each side of a paved place the track is still paved. */
+export const PAVED_REACH = 10;
+/** The shortest green stretch worth laying. A shorter one is paved instead of leaving a sliver. */
+export const MIN_GREEN = 24;
 
 /** The track of a world's tram loop. Empty where the world runs no tram. */
 export function tramTrack(world: WorldDescription, graph: RoadGraph): TramTrack {
@@ -60,5 +72,13 @@ export function tramTrack(world: WorldDescription, graph: RoadGraph): TramTrack 
     const tier = (runs[k] as RoadEdge).tier;
     crossings.push({ x: crossing.x, y: crossing.y, alongX: dx / length, alongY: dy / length, tier });
   }
-  return { segments, crossings };
+  const paved: Point[] = [];
+  for (const edge of runs) {
+    for (const node of [graph.nodes[edge.from], graph.nodes[edge.to]]) {
+      if (node !== undefined) paved.push({ x: node.x, y: node.y });
+    }
+  }
+  for (const crossing of world.tram.crossings) paved.push({ x: crossing.x, y: crossing.y });
+  for (const stop of world.tram.stops) paved.push({ x: stop.x, y: stop.y });
+  return { segments, crossings, paved };
 }

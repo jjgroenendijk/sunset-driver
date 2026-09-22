@@ -18,7 +18,7 @@ import { Color } from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { TIERS } from '../world/tiers.ts';
 import type { RoadTier } from '../world/types.ts';
-import { attribute, float, fractalNoise, mix, positionWorld, step, vec3, type TslNode } from './tsl.ts';
+import { attribute, float, floor, fract, fractalNoise, max, mix, positionWorld, step, vec3, type TslNode } from './tsl.ts';
 
 /** Metres of one period of the fine grain of a surface, and of the patches over it. */
 const GRAIN_METRES = 1.6;
@@ -27,13 +27,23 @@ const PATCH_METRES = 26;
 /** Concrete: every deck, parapet, pier and portal, whatever tier carries it. */
 const CONCRETE = 0x8f8c85;
 /**
- * The tram's reserved lane is paved in red, so a driver reads it as a lane of
- * its own; its rails are steel, and a level crossing is a pale concrete panel
- * the rails run across.
+ * The tram's lane: granite setts where it is paved, cut grass where it is open,
+ * steel rails with a dark groove down each head, and a pale concrete panel at a
+ * level crossing, outlined in white paint.
  */
-const TRAM_LANE_RGB = 0x6e3b32;
+const SETTS_RGB = 0x6f6a63;
+const SETTS_JOINT_RGB = 0x4a453f;
+const TRACK_GRASS_RGB = 0x53703a;
 const RAIL_RGB = 0xa9aaae;
+const GROOVE_RGB = 0x2a2724;
 const CROSSING_RGB = 0xb3ab98;
+const CROSSING_MARK_RGB = 0xd7d4cb;
+
+/** Metres of one sett, along the track and across it. */
+const SETT_LONG = 0.34;
+const SETT_ACROSS = 0.22;
+/** Metres of mortar between two setts. */
+const SETT_JOINT = 0.045;
 
 /**
  * What each tier is surfaced with: the carriageway, the verge or kerb beside it,
@@ -90,12 +100,16 @@ export function createRoadMaterial(tier: RoadTier): MeshStandardNodeMaterial {
   // The kinds are whole numbers, so a step half-way between two picks one out.
   const kind = attribute('kind', 'float');
   const at = (k: number): TslNode => step(k - 0.5, kind).sub(step(k + 0.5, kind));
-  const lane = rgb(TRAM_LANE_RGB).mul(float(0.8).add(patch.mul(0.2)).add(grain.mul(0.2)));
+  const setts = mix(rgb(SETTS_RGB).mul(float(0.82).add(patch.mul(0.24)).add(grain.mul(0.2))), rgb(SETTS_JOINT_RGB), settJoints());
+  const grass = rgb(TRACK_GRASS_RGB).mul(float(0.74).add(patch.mul(0.3)).add(grain.mul(0.26)));
   const crossing = rgb(CROSSING_RGB).mul(float(0.86).add(grain.mul(0.22)));
   let colour = mix(road, structure, at(1));
-  colour = mix(colour, lane, at(2));
-  colour = mix(colour, rgb(RAIL_RGB), at(3));
+  colour = mix(colour, setts, at(2));
+  colour = mix(colour, rgb(RAIL_RGB).mul(float(0.9).add(grain.mul(0.2))), at(3));
   colour = mix(colour, crossing, at(4));
+  colour = mix(colour, grass, at(5));
+  colour = mix(colour, rgb(GROOVE_RGB), at(6));
+  colour = mix(colour, rgb(CROSSING_MARK_RGB), at(7));
   material.colorNode = colour;
   // Asphalt is smoother than the ground beside it, and the fine grain varies it.
   material.roughnessNode = mix(float(palette.roughness), float(palette.roughness - 0.16), grain);
@@ -125,6 +139,21 @@ export function createMarkingMaterial(): MeshStandardNodeMaterial {
     polygonOffsetFactor: -1,
     polygonOffsetUnits: -4,
   });
+}
+
+/**
+ * How dark a place stands in the courses of setts, 1 in the mortar and 0 on the
+ * face of a stone. The courses run on the world grid rather than along the
+ * track, which a top-down camera cannot tell apart from a laid course, and
+ * every other course is offset half a stone so the joints never line up.
+ */
+function settJoints(): TslNode {
+  const course = positionWorld.z.div(SETT_ACROSS);
+  const shift = floor(course).mul(0.5);
+  const along = fract(positionWorld.x.div(SETT_LONG).add(shift));
+  const across = fract(course);
+  const edge = (at: TslNode, width: number): TslNode => step(at, float(width)).add(step(float(1 - width), at));
+  return max(edge(along, SETT_JOINT / SETT_LONG), edge(across, SETT_JOINT / SETT_ACROSS)).mul(0.85);
 }
 
 /** A colour constant in the working colour space, as a shader node. */

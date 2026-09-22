@@ -227,6 +227,7 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
         piers: chunk.piers.filter((pier) => FAR_TIERS.includes(pier.tier)),
         tram: [],
         tramCrossings: [],
+        tramPaved: [],
       }
     : chunk;
   for (const tier of buildChunkRoads(traced, lookups.ribbons, lookups.surfaceAt)) {

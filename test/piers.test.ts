@@ -9,7 +9,10 @@ import {
   SURFACE_RAIL,
   SURFACE_RAISE,
   SURFACE_STRUCTURE,
-  SURFACE_TRAM_LANE,
+  SURFACE_CROSSING_MARK,
+  SURFACE_GROOVE,
+  SURFACE_SETTS,
+  SURFACE_TRACK_GRASS,
 } from '../src/render/road-section.ts';
 import { buildLayers, chunkAt, ChunkSource } from '../src/world/chunks.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
@@ -160,11 +163,31 @@ describe('the corridors of a chunk', () => {
         for (let v = 0; v < kind.count; v++) kinds.add(kind.getX(v));
       }
     }
-    expect([...kinds].sort()).toEqual([SURFACE_TRAM_LANE, SURFACE_RAIL, SURFACE_CROSSING].sort());
+    // The lane is setts by a junction and grass on the open run between two,
+    // and this chunk holds a crossing, so it is all setts.
+    expect([...kinds].sort()).toEqual([SURFACE_SETTS, SURFACE_RAIL, SURFACE_GROOVE, SURFACE_CROSSING, SURFACE_CROSSING_MARK].sort());
     // The corridors add parts to a tier the chunk already draws, and no draw call.
     const drawn = TIER_ORDER.filter((tier) => chunk.roads.some((run) => run.tier === tier) || chunk.pavement.some((p) => p.tier === tier));
     expect(tiers.map((tier) => tier.tier)).toEqual(drawn);
     expect(roadDrawCalls(chunk)).toBe(roadDrawCalls({ ...chunk, tram: [], tramCrossings: [], piers: [] }));
+  });
+
+  it('lays the open run between two junctions to grass', () => {
+    const kinds = new Set<number>();
+    for (let cx = -4; cx <= 4; cx++) {
+      for (let cy = -4; cy <= 4; cy++) {
+        const chunk = source.chunk(cx, cy);
+        if (chunk.tram.length === 0) continue;
+        for (const tier of buildChunkRoads(chunk, layers.carve.ribbons, surfaceAt)) {
+          for (const part of tier.corridors) {
+            const kind = part.getAttribute('kind');
+            for (let v = 0; v < kind.count; v++) kinds.add(kind.getX(v));
+          }
+        }
+      }
+    }
+    expect(kinds.has(SURFACE_TRACK_GRASS)).toBe(true);
+    expect(kinds.has(SURFACE_SETTS)).toBe(true);
   });
 
   it('paints no line inside the lane where the track runs, and keeps the lines outside it', () => {
@@ -189,7 +212,7 @@ describe('the corridors of a chunk', () => {
       const position = part.getAttribute('position');
       const kind = part.getAttribute('kind');
       for (let v = 0; v < position.count; v++) {
-        if (kind.getX(v) !== SURFACE_TRAM_LANE) continue;
+        if (kind.getX(v) !== SURFACE_SETTS && kind.getX(v) !== SURFACE_TRACK_GRASS) continue;
         const x = position.getX(v);
         const y = position.getZ(v);
         expect(position.getY(v)).toBeGreaterThan(surfaceAt(x, y, 'arterial') + SURFACE_RAISE);
