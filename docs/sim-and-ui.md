@@ -134,6 +134,8 @@ parked cars, the tram, the crowd and the metro of spec section 13 — is in `doc
   body, and on foot builds the player's kinematic capsule and leaves the vehicle as a fixed body, so
   a parked car is walked round rather than simulated. `adopt` builds whichever the record asks for,
   and `player.driving` is what it reads.
+- Getting in and out takes time: `state.boarding` holds the player while a door is worked, and
+  `player.driving` changes only when the move ends. `docs/boarding.md` has the record and the body.
 - The player walks in the map's own axes, turned by the camera's heading (`docs/camera.md`): at
   heading 0, forward walks toward `-y`, up the screen. They turn to face the way they walk. Gravity
   is integrated in `walk` rather than by Rapier, since a kinematic body is moved and never pushed.

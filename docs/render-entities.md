@@ -67,9 +67,9 @@ scene ever holds in `docs/shops.md`.
   one both hold the bars. `test/rider.test.ts` measures the hands, the boots and the hips against
   the places the mesh drew them.
 - `WorldScene.walkPlayer` is the one door: it stands the model where the frame says and animates it.
-  Nothing else writes the player's pose, and a player behind the wheel is not animated at all. The
-  model is a handful of meshes rather than a crowd, so it is plain three.js groups and not the baked
-  bone texture `pedestrian-rig.ts` needs.
+  Nothing else writes the player's pose. The move into a seat and out of it is in
+  `docs/boarding.md`. The model is a handful of meshes rather than a crowd, so it is plain three.js
+  groups and not the baked bone texture `pedestrian-rig.ts` needs.
 
 ## Vehicles and weapons
 
