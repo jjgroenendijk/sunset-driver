@@ -20,6 +20,7 @@
  */
 import { BufferGeometry, Vector3 } from 'three';
 import { hypot } from '../core/libm.ts';
+import { catenaryOf } from './catenary-mesh.ts';
 import { LoftGeometry } from 'three/examples/jsm/geometries/LoftGeometry.js';
 import type { ChunkPier, WorldChunk } from '../world/chunks.ts';
 import { PIER_HALF } from '../world/piers.ts';
@@ -105,7 +106,7 @@ export function buildChunkCorridors(chunk: WorldChunk, ribbons: RoadRibbons, sur
     if (geometry !== undefined) out.push({ tier: pier.tier, geometry });
   }
   for (const run of chunk.tram) {
-    const parts = piecesOf(run, ribbons).flatMap((piece) => trackOf(piece, chunk.tramPaved));
+    const parts = piecesOf(run, ribbons).flatMap((piece) => [...trackOf(piece, chunk.tramPaved), ...catenaryOf(piece)]);
     if (parts.length > 0) out.push({ tier: run.tier, geometry: merge(parts) });
   }
   for (const crossing of chunk.tramCrossings) {

@@ -79,6 +79,9 @@ export const SURFACE_CROSSING = 4;
 export const SURFACE_TRACK_GRASS = 5;
 export const SURFACE_GROOVE = 6;
 export const SURFACE_CROSSING_MARK = 7;
+/** The masts of the overhead line and the contact wire they carry (`catenary-mesh.ts`). */
+export const SURFACE_CATENARY = 8;
+export const SURFACE_WIRE = 9;
 
 /**
  * Metres of structure under a bridge deck, down from the skirt of its surface.
