@@ -145,6 +145,13 @@ export const TRAM_LANE = {
   halfWidth: 3.2,
   trackSpacing: 3.2,
   gauge: 1.435,
+  /**
+   * Metres of island platform beside the lane at a stop (spec section 13.2).
+   * A passenger boards from it rather than from the pavement across a traffic
+   * lane, so the traffic gives up this much more of the road on a run that
+   * carries a stop (`laneOffset` in `sim/traffic.ts`).
+   */
+  platform: 1.8,
 } as const;
 
 /**

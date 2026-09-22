@@ -30,7 +30,7 @@ import { layoutZones, districtAt } from '../world/districts.ts';
 import { buildRoadGraph, type RoadEdge, type RoadGraph } from '../world/graph.ts';
 import { buildJunctions, type JunctionMap } from '../world/junctions.ts';
 import { TIERS, TRAM_LANE } from '../world/tiers.ts';
-import type { Point, RoadCurve, RoadTier, TramDescription, WorldDescription, Zone } from '../world/types.ts';
+import type { Point, RoadCurve, RoadTier, TramDescription, TramStop, WorldDescription, Zone } from '../world/types.ts';
 import { busDemandOf, type BusDemand } from './bus.ts';
 import { TICK_RATE } from './clock.ts';
 import { drawDriver, type Driver } from './driver.ts';
@@ -114,7 +114,7 @@ export interface TrafficRoads {
    * traffic keeps out of, and the level crossings, each of which takes a light.
    * No tram when left out.
    */
-  tram?: Pick<TramDescription, 'edges' | 'crossings'>;
+  tram?: Pick<TramDescription, 'edges' | 'crossings' | 'stops'>;
 }
 
 /** One vehicle of the traffic: what it is, who is driving it and the loop it drives. */
@@ -212,7 +212,7 @@ export class AmbientTraffic {
   readonly demand: BusDemand;
   private readonly sampler: RouteSampler;
   private readonly point: RoutePoint;
-  /** 1 on each run the tram drives either way, whose middle is its reserved lane. */
+  /** 1 on each run the tram drives either way, and {@link PLATFORM_LANE} where it also calls. */
   private readonly tramLane: Uint8Array;
   /** Which vehicles can be near a place: each is filed under the edges of its tour. */
   private readonly index: EdgeIndex;
@@ -225,7 +225,7 @@ export class AmbientTraffic {
     this.index = new EdgeIndex(roads.roads, graph, REACH, TRAFFIC_CELL);
     this.sampler = new RouteSampler(roads.roads, graph, roads.heightAt, roads.tiltAt);
     this.point = { x: 0, y: 0, height: 0, tiltX: 0, tiltY: 0, rightX: 0, rightY: 0, edge: graph.edges[0] as RoadEdge };
-    this.tramLane = tramLaneOf(graph, roads.tram?.edges ?? []);
+    this.tramLane = tramLaneOf(graph, roads.tram?.edges ?? [], roads.tram?.stops ?? []);
 
     const junctions = roads.junctions;
     const crossings = (roads.tram?.crossings ?? []).map((crossing) => crossing.node);
@@ -340,7 +340,8 @@ export class AmbientTraffic {
   /** The point in a vehicle's lane a distance round its tour, and the road height there. */
   private sample(vehicle: AmbientVehicle, distance: number, out: Sample): void {
     const at = this.sampler.sample(vehicle.tour, distance, this.point);
-    const offset = laneOffset(at.edge, vehicle.lane, this.tramLane[at.edge.id] === 1);
+    const reserved = this.tramLane[at.edge.id] as number;
+    const offset = laneOffset(at.edge, vehicle.lane, reserved > 0, reserved === PLATFORM_LANE);
     // The right hand of the direction of travel, which is where the lane is.
     out.x = at.x + at.rightX * offset;
     out.y = at.y + at.rightY * offset;
@@ -415,22 +416,38 @@ function mod(value: number, by: number): number {
  * strip at the kerb, as the markings of `road-section.ts` divide it. An alley
  * and a dirt road have one lane both ways share, and a vehicle keeps to its
  * right half of it. On a run the tram drives, the lanes also give up the
- * middle of the road, which is the tram's reserved lane (spec section 6.3).
+ * middle of the road, which is the tram's reserved lane (spec section 6.3),
+ * and on one that carries a stop they give up the island platform beside it
+ * too, so no car drives over the ground a passenger stands on.
  */
-export function laneOffset(edge: Pick<RoadEdge, 'tier' | 'lanes'>, lane: number, tram = false): number {
+export function laneOffset(edge: Pick<RoadEdge, 'tier' | 'lanes'>, lane: number, tram = false, platform = false): number {
   const spec = TIERS[edge.tier];
-  const inner = tram ? TRAM_LANE.halfWidth : 0;
+  const inner = tram ? TRAM_LANE.halfWidth + (platform ? TRAM_LANE.platform : 0) : 0;
   const width = (spec.width / 2 - spec.parking - inner) / edge.lanes;
   return inner + (Math.min(lane, edge.lanes - 1) + 0.5) * width;
 }
 
-/** One flag per edge: 1 on the runs a tram drives, and on the same runs the other way. */
-function tramLaneOf(graph: RoadGraph, edges: readonly number[]): Uint8Array {
+/** The flag of a run that carries a tram stop, whose island platform the traffic keeps off. */
+const PLATFORM_LANE = 2;
+
+/**
+ * One flag per edge: 1 on the runs a tram drives, and on the same runs the
+ * other way; {@link PLATFORM_LANE} on the runs it calls at, which give up the
+ * platform as well. A tram halts at the end of the run before the one it leaves
+ * on, so both of those carry the stop.
+ */
+function tramLaneOf(graph: RoadGraph, edges: readonly number[], stops: readonly TramStop[]): Uint8Array {
   const flags = new Uint8Array(graph.edges.length);
-  for (const id of edges) {
-    const edge = graph.edges[id] as RoadEdge;
-    flags[edge.id] = 1;
-    if (edge.twin >= 0) flags[edge.twin] = 1;
+  const mark = (id: number | undefined, flag: number): void => {
+    const edge = id === undefined ? undefined : graph.edges[id];
+    if (edge === undefined) return;
+    flags[edge.id] = Math.max(flags[edge.id] as number, flag);
+    if (edge.twin >= 0) flags[edge.twin] = Math.max(flags[edge.twin] as number, flag);
+  };
+  for (const id of edges) mark(id, 1);
+  for (const stop of stops) {
+    mark(edges[stop.leaves], PLATFORM_LANE);
+    mark(edges[(stop.leaves + edges.length - 1) % edges.length], PLATFORM_LANE);
   }
   return flags;
 }
