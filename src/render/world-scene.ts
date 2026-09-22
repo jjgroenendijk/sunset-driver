@@ -419,6 +419,17 @@ export class WorldScene {
   }
 
   /**
+   * Draw the sun's shadow maps on the next frame. {@link WorldScene.look} asks
+   * for them once a frame, and the warm-up behind the loading screen draws its
+   * frames without it: every frame after the first would be drawn with the maps
+   * the first one left, and the shadow pass of a material would never be
+   * compiled at all. The one caller is that warm-up.
+   */
+  drawShadow(): void {
+    this.sky.drawShadowOnce();
+  }
+
+  /**
    * Point what is lit at the player without building anything: the dome is
    * carried rather than laid around the map, and the light pool is handed to
    * the lamps the player has come nearest to. The water sheet is shown or
