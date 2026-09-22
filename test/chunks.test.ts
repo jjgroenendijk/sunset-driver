@@ -324,12 +324,49 @@ describe('chunk buildings', () => {
   });
 });
 
+/**
+ * What a chunk holds, field by field. Comparing two chunks as one JSON string
+ * says only that they differ: the strings are hundreds of kilobytes long, and
+ * the diff of two of them lines up wherever it can, so the place it points at
+ * need not be the place that differs. Issue #333 was read off such a diff and
+ * sent a session looking at the terrain. A field at a time names the field and
+ * prints a diff short enough to read.
+ */
+const CHUNK_FIELDS = [
+  'bounds',
+  'terrain',
+  'roads',
+  'junctions',
+  'parcels',
+  'pavement',
+  'buildings',
+  'plants',
+  'piers',
+  'tram',
+  'tramCrossings',
+] as const satisfies readonly (keyof WorldChunk)[];
+
+/** Two cuts of the same chunk hold the same thing, and the message names what does not. */
+function expectSameChunk(alone: WorldChunk, loaded: WorldChunk): void {
+  const where = `chunk (${alone.cx}, ${alone.cy})`;
+  for (const field of CHUNK_FIELDS) {
+    expect(stableJson(loaded[field]), `${where} differs in ${field}`).toBe(stableJson(alone[field]));
+  }
+  // The fields above are every field worth a diff of its own; this catches one
+  // added later and left off the list.
+  expect(stableJson(loaded), `${where} differs`).toBe(stableJson(alone));
+}
+
 describe('chunk isolation', () => {
   it('cuts the same chunk whether or not its neighbours were cut first', () => {
-    const alone = new ChunkSource(world, buildLayers(world)).chunk(1, -1);
     const loaded = new ChunkSource(world, layers);
     for (let cx = -1; cx <= 2; cx++) for (let cy = -2; cy <= 1; cy++) loaded.chunk(cx, cy);
-    expect(stableJson(alone)).toBe(stableJson(loaded.chunk(1, -1)));
+    // Three chunks rather than one: a corner of the block cut above, its
+    // middle, and the first chunk cut, which a cache that answered with a stale
+    // entry would hand back.
+    for (const [cx, cy] of [[1, -1], [0, 0], [-1, -2]] as const) {
+      expectSameChunk(new ChunkSource(world, buildLayers(world)).chunk(cx, cy), loaded.chunk(cx, cy));
+    }
   });
 
   it('gives an empty chunk past the edge of the map', () => {
