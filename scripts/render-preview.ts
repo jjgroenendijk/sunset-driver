@@ -44,6 +44,9 @@
  *   --stance         the stance to hold the player in for the picture (spec
  *                    sections 11.2, 11.5): stand, walk, air or swim. Drawn with
  *                    --on-foot.
+ *   --board          a moment of the player getting into the vehicle or out
+ *                    of it: `in:0.4` or `out:0.7`, the way and how far
+ *                    through, 0 to 1. `in:0.4:1` goes in by the far side.
  *   --damage         the damage state to show the vehicle in (spec section
  *                    11.3): dented, smoking, burning or burnt.
  *   --skid           lay a drift's worth of skid marks into the road behind
@@ -254,6 +257,7 @@ const request: PreviewRequest = {
   ...(options.has('vehicle') ? { vehicle: options.get('vehicle') as string } : {}),
   ...(options.has('on-foot') ? { onFoot: true } : {}),
   ...(options.has('stance') ? { stance: options.get('stance') as string } : {}),
+  ...(options.has('board') ? { board: options.get('board') as string } : {}),
   ...(options.has('swing') ? { swing: num('swing', 0.4) } : {}),
   ...(options.has('damage') ? { damage: options.get('damage') as string } : {}),
   ...(options.has('skid') ? { skid: true } : {}),
