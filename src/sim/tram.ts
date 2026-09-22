@@ -116,6 +116,23 @@ export interface TramStopPlace {
   heading: number;
 }
 
+/**
+ * The noise the nearest tram is making: where it is, how fast it is running and
+ * how hard its flanges are biting the rail. `audio/plan.ts` turns this into the
+ * rumble and the squeal of spec section 15.
+ */
+export interface TramNoise {
+  x: number;
+  y: number;
+  /** Metres a second. */
+  speed: number;
+  /** How sharply the track bends under it, 0 straight and 1 as tight as a corner gets. */
+  bend: number;
+}
+
+/** Radians between the ends of a tram at which its flanges are squealing their hardest. */
+const HARD_BEND = 0.6;
+
 /** A tram whose bell rings on a tick, and where its front is. */
 export interface TramBell {
   tram: number;
@@ -152,6 +169,8 @@ export class TramLine {
   private readonly point: RoutePoint;
   private readonly behind: RoutePoint;
   private readonly ahead: RoutePoint;
+  /** Scratch the noise walk reads poses into, so a frame allocates nothing. */
+  private readonly noiseAt: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
 
   /** `signals` are the lights the traffic keeps to, which the tram keeps to as well. */
   constructor(seed: number, roads: TrafficRoads, tram: TramDescription, districts: readonly Pick<District, 'id' | 'zone' | 'name'>[], signals?: TrafficSignals) {
@@ -360,6 +379,34 @@ export class TramLine {
       soonest = Math.min(soonest, into < dwell ? 0 : tour.period - into);
     }
     return Math.min(COUNTDOWN_CAP, Math.round(soonest / COUNTDOWN_MINUTE));
+  }
+
+  /**
+   * The nearest tram to a place, and the noise it is making. A tram is heard as
+   * one thing however many cars it has, so this answers for the middle of it.
+   * Nothing is given back when no tram runs.
+   */
+  nearestNoise(x: number, y: number, time: number, out: TramNoise): TramNoise | undefined {
+    if (this.trams === 0) return undefined;
+    let nearest = Infinity;
+    let found = false;
+    for (let k = 0; k < this.trams; k++) {
+      const middle = this.carPose(k, (TRAM_CARS - 1) / 2, time, this.noiseAt);
+      const away = (middle.x - x) * (middle.x - x) + (middle.y - y) * (middle.y - y);
+      if (away >= nearest) continue;
+      nearest = away;
+      found = true;
+      out.x = middle.x;
+      out.y = middle.y;
+      out.speed = Math.abs(middle.speed);
+      // How far the tram is bent: the angle between its two end cars. A tram on
+      // straight rail is square, and one round a corner is folded.
+      const front = this.carPose(k, 0, time, this.noiseAt).heading;
+      const back = this.carPose(k, TRAM_CARS - 1, time, this.noiseAt).heading;
+      const bend = Math.abs(mod(front - back + Math.PI, 2 * Math.PI) - Math.PI);
+      out.bend = Math.min(1, bend / HARD_BEND);
+    }
+    return found ? out : undefined;
   }
 
   /** Where each stop's platform stands, in the order the tram calls. */

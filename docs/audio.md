@@ -12,6 +12,7 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
 - The radio, and how a bar gets played
 - The score over the radio
 - The ambient beds, and where a place comes from
+- The tram on its rails
 - The buses and the duck
 - The gesture and the mute
 - Traps
@@ -149,6 +150,18 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
   step is never heard.
 - A session whose audio was never given a world has no place, and so no beds at all. That is what
   `GameAudio.survey` is for, and forgetting it in `main.ts` is a silent city with working gunfire.
+
+## The tram on its rails
+
+- A tram is heard as one thing, not three cars: `TramLine.nearestNoise` answers for the middle of
+  the nearest tram, and `tramNoiseOf` in `plan.ts` turns that into one `TramVoice`. The rumble is
+  the speed of the wheels, and the squeal is how far the tram is folded — the angle between its two
+  end cars — times how fast it is going. A tram standing at a stop makes nothing.
+- The bell is a one-shot and the running noise is a held voice, so the two are unrelated: a line
+  with no `nearestNoise` still rings. `BellSource` makes the method optional for that reason.
+- Both are a function of the tick and not of the record, so a frame that stepped several ticks reads
+  them for the tick it draws, not for each one it stepped. Only the bell needs every tick, because
+  only the bell can be missed.
 
 ## The buses and the duck
 

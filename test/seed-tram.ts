@@ -24,6 +24,19 @@ export function checkTram(seed: number, world: WorldDescription, roads: TrafficR
   expect(line.trams, `seed ${seed}`).toBeGreaterThan(0);
   expect(tour.period % SIGNAL_CYCLE, `seed ${seed}`).toBe(0);
 
+  // The running noise of spec section 15: over a lap some tram is bent round a
+  // corner, and none is ever bent past the 1 the flange squeal is capped at.
+  const noise = { x: 0, y: 0, speed: 0, bend: 0 };
+  let bent = 0;
+  for (let step = 0; step < 60; step++) {
+    const at = line.nearestNoise(0, 0, Math.floor((step * tour.period) / 60), noise);
+    if (at === undefined) throw new Error(`seed ${seed}: no tram to hear`);
+    expect(at.bend, `seed ${seed}`).toBeGreaterThanOrEqual(0);
+    expect(at.bend, `seed ${seed}`).toBeLessThanOrEqual(1);
+    bent = Math.max(bent, at.bend);
+  }
+  expect(bent, `seed ${seed}: no tram ever bends`).toBeGreaterThan(0);
+
   expect(line.calls.map((call) => call.stop), `seed ${seed}`).toEqual(world.tram.stops.map((stop) => stop.id));
   for (const call of line.calls) expect(call.depart - call.arrive, `seed ${seed}: stop ${call.stop}`).toBeGreaterThanOrEqual(DWELL);
 
