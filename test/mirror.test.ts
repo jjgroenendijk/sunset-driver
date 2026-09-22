@@ -95,6 +95,25 @@ describe('the sky of a mirrored scene', () => {
   });
 });
 
+describe('the sun of a mirrored scene', () => {
+  it('holds its shadow camera to both layers, so the mirror cannot halve the map', () => {
+    const scene = new Scene();
+    const sky = new SkyLighting(scene, 10, 100);
+    const sun = scene.children.find((child) => (child as DirectionalLight).isDirectionalLight === true);
+    const shadow = (sun as DirectionalLight).shadow;
+
+    // three.js hands a shadow camera that names layer 0 alone the layers of
+    // whichever camera asks for the map, and the map is drawn for the first
+    // pass of a frame that asks. A frame the mirror opens would then light the
+    // whole view from a map the mirror's own layer cast, and the shadow pass of
+    // each mask is a program of its own. Both layers named here pin the mask.
+    expect(shadow.camera.layers.mask & 0xfffffffe).not.toBe(0);
+    expect(shadow.camera.layers.isEnabled(0)).toBe(true);
+    expect(shadow.camera.layers.isEnabled(MIRROR_LAYER)).toBe(true);
+    sky.dispose();
+  });
+});
+
 describe('the lights of a mirrored scene', () => {
   it('carries every light into the mirror and leaves the geometry to say for itself', () => {
     const scene = new Scene();
