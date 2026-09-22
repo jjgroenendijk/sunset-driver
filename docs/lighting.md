@@ -35,6 +35,13 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
   nothing, so a night frame draws no shadow at all. `SHADOW_DISTANCE` is view depth, and it is what
   the camera can see rather than what the haze reaches: past it a cascade draws every building again
   for ground nobody looks at.
+- A shadow camera that names layer 0 alone is given the layers of whichever camera asks for the map
+  (`ShadowNode.updateShadow`), and the mirror's camera names the mirror layer alone. Since the map
+  is drawn for the first pass of a frame that asks, a frame the water opened lit the whole view from
+  a map only the buildings and the lamps had cast into: no tree, no vehicle and no sign threw a
+  shadow while the sea was in view, and the shadow pass of each mask is a program of its own, so the
+  warm-up met one of the two. `SkyLighting` therefore names both layers on `sun.shadow.camera`,
+  which pins the mask. It costs no frame time: the map is still drawn once a frame.
 - `CSMShadowNode` holds a shadow edge still by snapping each cascade's centre to a texel grid, and
   it builds that grid in the light's own frame. So the snap only holds while the light stands still,
   and a game day of 24 real minutes turns the sun a quarter of a degree a second. `SkyLighting.set`

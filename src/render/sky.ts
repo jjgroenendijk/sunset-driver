@@ -23,7 +23,7 @@ import { Color, Fog, HemisphereLight, DirectionalLight, Object3D, Vector3, type 
 import { CSMShadowNode } from 'three/examples/jsm/csm/CSMShadowNode.js';
 import { SkyMesh } from 'three/examples/jsm/objects/SkyMesh.js';
 import type { Daylight } from './daylight.ts';
-import { reflected } from './mirror.ts';
+import { MIRROR_LAYER, reflected } from './mirror.ts';
 import { cameraPosition, clamp, luminance, mix, positionWorld, uniform, vec3, vec4, type TslNode } from './tsl.ts';
 
 /** Metres each way of the box the sky is drawn on. Inside the camera's far plane. */
@@ -233,6 +233,15 @@ export class SkyLighting {
     // mirror is a second camera: the same map, fitted to the same view, drawn
     // twice. `drawShadowOnce` asks for it once a frame instead.
     this.sun.shadow.autoUpdate = false;
+    // A shadow camera that draws layer 0 alone is given the layers of whichever
+    // camera asks for the map, and the mirror's camera draws the mirror layer
+    // alone. The map is drawn once a frame, by whichever pass asks first, so a
+    // frame the water opens would light the whole view from a map that holds
+    // the buildings and the lamps and nothing else: no tree, no vehicle and no
+    // sign would cast. The shadow pass of each mask is a program of its own as
+    // well, and a warm-up frame meets one of the two. Naming both layers here
+    // pins the mask, so the map holds every caster whichever pass asks for it.
+    this.sun.shadow.camera.layers.enable(MIRROR_LAYER);
     this.cascades = new CSMShadowNode(this.sun, {
       cascades: SHADOW_CASCADES,
       maxFar: SHADOW_DISTANCE,
