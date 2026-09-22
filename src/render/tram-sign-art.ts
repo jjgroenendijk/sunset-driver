@@ -103,12 +103,28 @@ function panel(canvas: PixelCanvas, cell: number, text: string): void {
 }
 
 /**
+ * What a blind writes instead of a word too long for it. A real one abbreviates
+ * rather than letting a name run off the end, and so does this.
+ */
+const SHORT: readonly (readonly [string, string])[] = [
+  ['DISTRICT', 'DIST'],
+  ['BOARDWALK', 'B/WALK'],
+  ['INTERNATIONAL', 'INTL'],
+];
+
+function shorten(text: string): string {
+  let out = text;
+  for (const [long, short] of SHORT) out = out.replace(long, short);
+  return out;
+}
+
+/**
  * Write one line centred in a cell, as large as it fits. A name too long for
  * the cell even at the smallest size loses its tail rather than running over
  * the edge into the next cell.
  */
 function write(canvas: PixelCanvas, text: string, left: number, room: number, top: number, ink: number): void {
-  let line = text.toUpperCase();
+  let line = shorten(text.toUpperCase());
   let scale = 2;
   while (scale > 1 && textWidth(line, scale) > room) scale--;
   while (line.length > 1 && textWidth(line, scale) > room) line = line.slice(0, -1);
