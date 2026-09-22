@@ -32,6 +32,13 @@ import { timeTram, type TramCall } from './tram-timing.ts';
 export { DWELL, TRAM_CLEAR, type TramCall } from './tram-timing.ts';
 export type { WaitingPassenger } from './stop-queue.ts';
 
+/**
+ * The two fleets the city runs (`render/tram-mesh.ts`). A tram whose lap starts
+ * at a core stop is one of the old cars the core kept; every other tram is one
+ * of the articulated ones the inner districts took.
+ */
+export type TramDesign = 'modern' | 'heritage';
+
 /** Cars one tram is made of. */
 export const TRAM_CARS = 3;
 /** Metres of one car, end to end. */
@@ -73,6 +80,8 @@ export interface TramBell {
 interface TramStop {
   call: TramCall;
   queue: StopQueue;
+  /** The zone of the district the stop stands in, which decides the fleet that starts there. */
+  zone: District['zone'];
 }
 
 export class TramLine {
@@ -87,6 +96,8 @@ export class TramLine {
   private readonly phases: Int32Array;
   private readonly sampler: RouteSampler;
   private readonly stops: TramStop[] = [];
+  /** The fleet each tram belongs to, decided by the stop its lap starts from. */
+  private readonly fleet: TramDesign[] = [];
   private readonly point: RoutePoint;
   private readonly behind: RoutePoint;
   private readonly ahead: RoutePoint;
@@ -117,6 +128,22 @@ export class TramLine {
     this.phases = new Int32Array(this.trams);
     for (let k = 0; k < this.trams; k++) this.phases[k] = Math.round((k * period) / this.trams / SIGNAL_CYCLE) * SIGNAL_CYCLE;
     for (const call of this.calls) this.stops.push(this.stopOf(seed, call, districts, tram));
+    for (let k = 0; k < this.trams; k++) this.fleet.push(this.fleetOf(k));
+  }
+
+  /** Which fleet a tram belongs to. */
+  design(tram: number): TramDesign {
+    return this.fleet[tram] ?? 'modern';
+  }
+
+  /** The fleet of the tram that starts its lap at a stop: the core's cars are the old ones. */
+  private fleetOf(tram: number): TramDesign {
+    const at = this.loopTick(tram, 0);
+    let last = this.stops[this.stops.length - 1];
+    for (const stop of this.stops) {
+      if (stop.call.arrive <= at) last = stop;
+    }
+    return last?.zone === 'core' ? 'heritage' : 'modern';
   }
 
   /** The tick of the loop a tram stands at on a tick, which may fall between two. */
@@ -209,7 +236,7 @@ export class TramLine {
     const looks: PedestrianLook[] = [];
     for (let i = 0; i < STOP_CAP; i++) looks.push(lookOf(zone, rngFor(seed, 0, Subsystem.Tram, hashInts(call.stop, i))));
     const queue = layQueue(this.sampler, this.tour as RouteLegs, call.front - CAR_LENGTH / 2, QUEUE_STEP, looks, this.point);
-    return { call, queue };
+    return { call, queue, zone };
   }
 }
 

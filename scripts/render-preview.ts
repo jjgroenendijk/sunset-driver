@@ -78,8 +78,9 @@
  *   --shop           stand inside the nearest shop of a trade (spec section
  *                    16.1): weapons, workshop, convenience, clothing, clinic,
  *                    broker, or `any`. The vehicle waits at the kerb.
- *   --tram           stand beside the first tram at the hour of the picture
- *                    (spec section 13.2), and --stop=N at the N-th tram stop.
+ *   --tram[=N]       stand beside the N-th tram at the hour of the picture,
+ *                    the first by default (spec section 13.2). --stop=N stands
+ *                    at the N-th tram stop. The line prints the fleet it drew.
  *                    Either one overrides --x, --y and --junction.
  *   --bus-stop       stand at the N-th kerb the buses call at (spec section
  *                    20.2), where the post and the queue are. Overrides --x,
@@ -194,8 +195,11 @@ async function tramPlace(): Promise<{ x: number; y: number } | undefined> {
   const roads = trafficRoadsOf(world);
   const line = new TramLine(seed, roads, world.tram, world.districts, new AmbientTraffic(seed, roads).signals);
   if (line.trams === 0) throw new Error('no tram runs on this seed');
+  const which = num('tram', 0);
+  if (which >= line.trams) throw new Error(`only ${line.trams} trams run on this seed`);
   const pose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
-  return line.carPose(0, 1, tickAtHour(num('hour', 12)), pose);
+  process.stderr.write(`tram ${which} of ${line.trams} is ${line.design(which)}\n`);
+  return line.carPose(which, 1, tickAtHour(num('hour', 12)), pose);
 }
 const tram = (await busStopPlace()) ?? (await tramPlace());
 
