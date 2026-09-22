@@ -20,8 +20,11 @@
  * - **One material at a time, not the city at once.** The scene's objects are
  *   grouped by material, and one frame is drawn for each group with the rest
  *   held hidden. A frame costs what one material costs to compile, and an
- *   animation frame is waited for between slices of groups, so the loading
- *   screen keeps drawing its own progress however dear a material proves.
+ *   animation frame is waited for after each, so the loading screen keeps
+ *   drawing its own progress however dear a material proves. The wait is also
+ *   what gives each group a frame of its own: three.js draws a shadow map once
+ *   per animation frame however many times the scene is rendered, so two groups
+ *   drawn in one frame warm one shadow pass between them.
  * - **Every object of the material, drawn or not.** Hidden objects are shown
  *   and frustum culling comes off for the group's frame, and an empty
  *   instanced pool — most of what a session meets while driving — is given one
@@ -41,13 +44,6 @@ import type { Object3D } from 'three';
 import { postGraphs, type PostChain } from './post.ts';
 import { QUALITY_TIERS } from './quality.ts';
 import type { WorldScene } from './world-scene.ts';
-
-/**
- * How much compiling one slice of the warm-up may hold the frame for. A slice
- * draws whole material groups until it is spent, and an animation frame is
- * waited for after each, so the loading screen repaints between slices.
- */
-const SLICE_MS = 40;
 
 /** One material and every object the scene draws with it. */
 interface MaterialGroup {
@@ -73,11 +69,12 @@ export async function warmPasses(
   world.showWater();
   let done = 0;
   while (done < groups.length) {
-    const slice = performance.now();
-    while (done < groups.length && performance.now() - slice < SLICE_MS) {
-      drawGroup(groups[done] as MaterialGroup, post);
-      done++;
-    }
+    // The sun's shadow maps are drawn for the first pass of a frame that asks
+    // for them and reused by the rest, and `WorldScene.look` is what asks. The
+    // warm-up draws its frames without it.
+    world.drawShadow();
+    drawGroup(groups[done] as MaterialGroup, post);
+    done++;
     progress?.(done, groups.length);
     await new Promise((frame) => requestAnimationFrame(frame));
   }

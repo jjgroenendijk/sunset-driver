@@ -108,11 +108,18 @@ post chain and the colour grade in `docs/post.md`.
   buffer on its first call, so a pool the warm-up drew before it is drawn white for the whole
   session. Every pool that colours its instances is made through `tinted` (`tint.ts`), which gives
   it the buffer at once (issue #457).
-- A slice of the warm-up holds the frame for at most 40 ms and an animation frame is waited for
-  between slices, so the loading screen keeps painting its own progress — which it counts out, one
-  material at a time — and no browser is handed a block minutes long. The whole warm-up on an M1
-  laptop is about 2 s in WebKit and about 1 s in Chromium, against 20 s to 35 s and about 12 s when
-  it drew the whole city at once.
+- One material group is drawn per animation frame, and the frame is waited for between them, so the
+  loading screen keeps painting its own progress — which it counts out, one material at a time —
+  and no browser is handed a block minutes long. The whole warm-up on an M1 laptop is about 2 s in
+  WebKit and about 1 s in Chromium, against 20 s to 35 s and about 12 s when it drew the whole city
+  at once.
+- A frame of its own per group is also what warms the shadow pass. three.js draws a shadow map for
+  the first pass of an animation frame that asks for it and hands that map to every later pass, so
+  groups drawn inside one frame share one shadow pass between them, and every shadow program the
+  shared pass did not meet is built while the player drives: on seed `sunset` one poster batch cost
+  106 ms at one spot of the drive (issue #364). `WorldScene.drawShadow` is the ask the warm-up
+  makes, as `look` makes it in the session. Measured through `render-profile.ts`, a frame per group
+  took the warm-up from about 2.5 s to about 3.2 s and the drive's builds to none.
 - It therefore runs last of everything the loading screen covers, after every view is in the scene.
   A view added after it would compile on the frame it first draws.
 - An object that streams or spawns afterwards costs nothing: a chunk worker builds every batch of a
