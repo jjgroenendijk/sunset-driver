@@ -2,7 +2,7 @@
  * Draw every map icon on one sheet, at the size the full map draws it and at
  * the size the minimap does.
  *
- * Usage: node scripts/icon-sheet.ts [out.png] [--sizes=11,18,30]
+ * Usage: node scripts/icon-sheet.ts [out.png] [--sizes=18,20,30]
  *
  * The browser comes from Playwright, as it does for `map-preview.ts`.
  */
@@ -14,7 +14,7 @@ import { defaultOut, writePng } from './png.ts';
 
 const TIMEOUT_MS = 120_000;
 const args = process.argv.slice(2);
-const sizes = (args.find((a) => a.startsWith('--sizes='))?.slice(8) ?? '11,18,30').split(',').map(Number);
+const sizes = (args.find((a) => a.startsWith('--sizes='))?.slice(8) ?? '18,20,30').split(',').map(Number);
 if (sizes.some((s) => !Number.isFinite(s) || s <= 0)) throw new Error('--sizes wants a list of pixel sizes.');
 const out = args.find((a) => !a.startsWith('--')) ?? defaultOut('map-icons.png');
 const request: IconSheetRequest = { width: 700, sizes };

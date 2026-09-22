@@ -19,6 +19,7 @@
  * the window holds.
  */
 import { distanceText, MapArt, type MapDrawOptions } from './map-draw.ts';
+import { MINIMAP_ICON } from './map-icons.ts';
 import type { MapRoute } from './map-route.ts';
 import { rotationForHeading, unproject, type MapPois, type MapView } from './map.ts';
 
@@ -27,9 +28,6 @@ const SIZE = 190;
 
 /** Metres to the pixel. A car at 120 km/h crosses the window in about six seconds. */
 const SCALE = 1.1;
-
-/** Pixels across an icon on the minimap. Small, so the shapes carry it. */
-const ICON = 11;
 
 /** The map is redrawn once the player has moved this far, in metres. */
 const MOVE_STEP = 0.5;
@@ -155,7 +153,7 @@ export class Minimap {
       player,
       waypoint,
       route,
-      iconSize: ICON,
+      iconSize: MINIMAP_ICON,
       labels: false,
       overlay: this.overlay,
     });

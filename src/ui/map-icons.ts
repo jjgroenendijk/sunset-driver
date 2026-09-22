@@ -6,7 +6,7 @@
  *
  * A place is a disc in its own colour with its picture knocked out of it in
  * dark. Knocking the picture out rather than filling it is what keeps the
- * picture readable at the 17 pixels the minimap draws an icon at: the eye is
+ * picture readable at the 20 pixels the minimap draws an icon at: the eye is
  * given a solid colour the size of the whole icon, not a thin figure on it.
  *
  * The waypoint and the objective are pins instead — a teardrop with its point
@@ -18,6 +18,13 @@ import { POI_STYLES, type PoiStyle } from './map.ts';
 
 /** The dark the picture is knocked out in, and the rim around a pin. */
 const DARK = '#1a0c16';
+
+/**
+ * Pixels across an icon on the minimap. At 11 the pictures blurred into dots.
+ * It is larger than the full map's 18: the minimap is read at a glance, while
+ * driving, and holds only a few icons at a time.
+ */
+export const MINIMAP_ICON = 20;
 
 /** How much of an icon's width the picture takes. */
 const GLYPH_SHARE = 0.68;

@@ -12,6 +12,7 @@ import { TerritoryMap } from '../sim/territory.ts';
 import { generateWorld } from '../world/world.ts';
 import { buildRoadGraph } from '../world/graph.ts';
 import { MapArt, type MapDrawOptions } from './map-draw.ts';
+import { MINIMAP_ICON } from './map-icons.ts';
 import { findRoute } from './map-route.ts';
 import { MapPois, rotationForHeading, type MapView } from './map.ts';
 import { TerritoryOverlay } from './territory.ts';
@@ -97,7 +98,7 @@ export async function renderMapPreview(request: MapPreviewRequest): Promise<MapP
     player: { x: request.x, y: request.y, heading: request.heading },
     waypoint: request.waypoint,
     route,
-    iconSize: request.minimap ? 11 : 18,
+    iconSize: request.minimap ? MINIMAP_ICON : 18,
     labels: !request.minimap,
     scaleBar: !request.minimap,
     ...(overlay ? { overlay } : {}),
