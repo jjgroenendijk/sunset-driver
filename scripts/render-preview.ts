@@ -78,6 +78,10 @@
  *   --shop           stand inside the nearest shop of a trade (spec section
  *                    16.1): weapons, workshop, convenience, clothing, clinic,
  *                    broker, or `any`. The vehicle waits at the kerb.
+ *   --face[=M]       with --tram, stand M metres ahead of its nose facing back
+ *                    down the track, so a chase camera looks the destination
+ *                    board in the face; with --stop, stand at the shelter's
+ *                    timetable panel facing out. Default 5. Use with --view.
  *   --tram[=N]       stand beside the N-th tram at the hour of the picture,
  *                    the first by default (spec section 13.2). --stop=N stands
  *                    at the N-th tram stop. The line prints the fleet it drew.
@@ -180,7 +184,7 @@ async function busStopPlace(): Promise<{ x: number; y: number } | undefined> {
 }
 
 /** Where `--tram` or `--stop` stands the player: beside the first tram at the hour, or at a stop. */
-async function tramPlace(): Promise<{ x: number; y: number } | undefined> {
+async function tramPlace(): Promise<{ x: number; y: number; heading?: number } | undefined> {
   if (!options.has('tram') && !options.has('stop')) return undefined;
   const { generateWorld } = await import('../src/world/world.ts');
   const { tickAtHour } = await import('../src/render/daylight.ts');
@@ -195,15 +199,29 @@ async function tramPlace(): Promise<{ x: number; y: number } | undefined> {
     // stop was planned at.
     const place = line.stopPlaces()[num('stop', 0)];
     if (place === undefined) throw new Error(`only ${line.stopPlaces().length} tram stops`);
-    return place;
+    if (!options.has('face')) return place;
+    // Stand at the timetable panel on the shelter facing out across the track,
+    // so a chase camera reads the panel rather than the shelter's roof.
+    const along = { x: Math.cos(place.heading), y: Math.sin(place.heading) };
+    const across = { x: -Math.sin(place.heading), y: Math.cos(place.heading) };
+    return {
+      x: place.x + along.x * 1.5 + across.x * -3.02,
+      y: place.y + along.y * 1.5 + across.y * -3.02,
+      heading: place.heading - Math.PI / 2,
+    };
   }
   const which = num('tram', 0);
   if (which >= line.trams) throw new Error(`only ${line.trams} trams run on this seed`);
   const pose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
   process.stderr.write(`tram ${which} of ${line.trams} is ${line.design(which)}\n`);
-  return line.carPose(which, 1, tickAtHour(num('hour', 12)), pose);
+  const at = line.carPose(which, options.has('face') ? 0 : 1, tickAtHour(num('hour', 12)), pose);
+  if (!options.has('face')) return { x: at.x, y: at.y };
+  // Stand at the nose facing back down the track: a chase camera sits behind
+  // the player, which is ahead of the tram, and so looks the board in the face.
+  const ahead = options.get('face') === 'true' ? 5 : num('face', 5);
+  return { x: at.x + Math.cos(at.heading) * ahead, y: at.y + Math.sin(at.heading) * ahead, heading: at.heading + Math.PI };
 }
-const tram = (await busStopPlace()) ?? (await tramPlace());
+const tram: { x: number; y: number; heading?: number } | undefined = (await busStopPlace()) ?? (await tramPlace());
 
 /** The place `--look-at=x,y,height` names, the height 0 when it is left off. */
 function lookAtOf(raw: string | undefined): PreviewRequest['lookAt'] {
@@ -223,7 +241,7 @@ const request: PreviewRequest = {
   // Left out, the preview picks it: the game's own distance, or what it takes
   // to hold a gallery.
   ...(options.has('distance') ? { distance: num('distance', BASE_DISTANCE) } : {}),
-  heading: (num('heading', 0) * Math.PI) / 180,
+  heading: options.has('heading') || tram?.heading === undefined ? (num('heading', 0) * Math.PI) / 180 : tram.heading,
   speed: num('speed', 0),
   width: num('width', 960),
   height: num('height', 540),

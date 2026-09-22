@@ -39,6 +39,23 @@ export type { WaitingPassenger } from './stop-queue.ts';
  */
 export type TramDesign = 'modern' | 'heritage';
 
+/**
+ * The route number each fleet runs under, painted on the destination boards
+ * and on the stop panels. The old cars keep the core's line 1 and the new ones
+ * work line 2, which is the pair of liveries read as a pair of routes.
+ */
+export const ROUTE_OF: Record<TramDesign, number> = { heritage: 1, modern: 2 };
+
+/**
+ * Ticks of one minute of a countdown. The trams run in real time as the traffic
+ * does, so the wait a panel counts down is the player's own minute and not the
+ * game clock's, which runs sixty times faster.
+ */
+const COUNTDOWN_MINUTE = TICK_RATE * 60;
+
+/** The most minutes a countdown panel shows. A longer wait than this reads as "or more". */
+export const COUNTDOWN_CAP = 15;
+
 /** Cars one tram is made of. */
 export const TRAM_CARS = 3;
 /** Metres of one car, end to end. */
@@ -112,6 +129,8 @@ interface TramStop {
   queue: StopQueue;
   /** The zone of the district the stop stands in, which decides the fleet that starts there. */
   zone: District['zone'];
+  /** What the stop is called, which is the name of the district it stands in. */
+  name: string;
 }
 
 export class TramLine {
@@ -135,7 +154,7 @@ export class TramLine {
   private readonly ahead: RoutePoint;
 
   /** `signals` are the lights the traffic keeps to, which the tram keeps to as well. */
-  constructor(seed: number, roads: TrafficRoads, tram: TramDescription, districts: readonly Pick<District, 'id' | 'zone'>[], signals?: TrafficSignals) {
+  constructor(seed: number, roads: TrafficRoads, tram: TramDescription, districts: readonly Pick<District, 'id' | 'zone' | 'name'>[], signals?: TrafficSignals) {
     const graph = roads.graph;
     this.sampler = new RouteSampler(roads.roads, graph, roads.heightAt, roads.tiltAt);
     const blank = (): RoutePoint => ({ x: 0, y: 0, height: 0, tiltX: 0, tiltY: 0, rightX: 0, rightY: 0, edge: graph.edges[0] as RoadEdge });
@@ -295,6 +314,54 @@ export class TramLine {
     return moved;
   }
 
+  /** What the stop at a call is called. */
+  stopName(stop: number): string {
+    return this.stops[stop]?.name ?? '';
+  }
+
+  /**
+   * The call a tram is running towards at a moment: the next one it arrives at,
+   * or the one it stands at while it stands there. It is what its destination
+   * board shows.
+   */
+  nextCall(tram: number, time: number): number {
+    const tour = this.tour;
+    if (tour === undefined) return 0;
+    const at = this.loopTick(tram, time);
+    let best = 0;
+    let soonest = Infinity;
+    for (let i = 0; i < this.calls.length; i++) {
+      const call = this.calls[i] as TramCall;
+      const dwell = call.depart - call.arrive;
+      const into = mod(at - call.arrive, tour.period);
+      // A tram standing at a stop still shows it; one between stops shows the next.
+      const away = into < dwell ? 0 : tour.period - into;
+      if (away < soonest) {
+        soonest = away;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Minutes until the next tram calls at a stop, capped at
+   * {@link COUNTDOWN_CAP}. A tram standing there now reads 0, which the panel
+   * shows as the tram being due.
+   */
+  minutesTo(stop: number, time: number): number {
+    const tour = this.tour;
+    const call = this.calls[stop];
+    if (tour === undefined || call === undefined) return COUNTDOWN_CAP;
+    let soonest = Infinity;
+    for (let k = 0; k < this.trams; k++) {
+      const dwell = call.depart - call.arrive;
+      const into = mod(this.loopTick(k, time) - call.arrive, tour.period);
+      soonest = Math.min(soonest, into < dwell ? 0 : tour.period - into);
+    }
+    return Math.min(COUNTDOWN_CAP, Math.round(soonest / COUNTDOWN_MINUTE));
+  }
+
   /** Where each stop's platform stands, in the order the tram calls. */
   stopPlaces(): readonly TramStopPlace[] {
     return this.places;
@@ -310,13 +377,14 @@ export class TramLine {
   }
 
   /** One stop and its queue: a line along the pavement back from where the tram calls, facing the road. */
-  private stopOf(seed: number, call: TramCall, districts: readonly Pick<District, 'id' | 'zone'>[], tram: TramDescription): TramStop {
+  private stopOf(seed: number, call: TramCall, districts: readonly Pick<District, 'id' | 'zone' | 'name'>[], tram: TramDescription): TramStop {
     const place = tram.stops[call.stop] as TramDescription['stops'][number];
-    const zone = districts.find((d) => d.id === place.district)?.zone ?? 'inner';
+    const district = districts.find((d) => d.id === place.district);
+    const zone = district?.zone ?? 'inner';
     const looks: PedestrianLook[] = [];
     for (let i = 0; i < STOP_CAP; i++) looks.push(lookOf(zone, rngFor(seed, 0, Subsystem.Tram, hashInts(call.stop, i))));
     const queue = layQueue(this.sampler, this.tour as RouteLegs, call.front - CAR_LENGTH / 2, QUEUE_STEP, looks, this.point, PLATFORM_STAND);
-    return { call, queue, zone };
+    return { call, queue, zone, name: district?.name ?? 'Terminus' };
   }
 }
 

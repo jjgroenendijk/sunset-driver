@@ -6,6 +6,8 @@ import { QUEUE_CLEAR } from '../src/sim/traffic-timing.ts';
 import { ARRIVAL_TICKS, BOARD_TICKS, CAR_GAP, CAR_HALF_HEIGHT, CAR_HALF_WIDTH, CAR_LENGTH, DWELL, STOP_CAP, TRAM_CARS, TRAM_CLEAR, TRAM_TRACK, TramLine } from '../src/sim/tram.ts';
 import type { RoadEdge } from '../src/world/graph.ts';
 import { TIERS, TRAM_LANE } from '../src/world/tiers.ts';
+import { COUNTDOWN_CAP } from '../src/sim/tram.ts';
+import { CELL_HEIGHT, CELL_WIDTH, countdownCell, destinationCell, stopNameCell, tramSignAtlas } from '../src/render/tram-sign-art.ts';
 import { RING, ring } from './tram-ring.ts';
 
 describe('the tram (spec section 13.2)', () => {
@@ -195,3 +197,52 @@ describe('the tram (spec section 13.2)', () => {
 function mod(value: number, by: number): number {
   return ((value % by) + by) % by;
 }
+
+describe('the lettering of the tram (spec section 13.2)', () => {
+  const r = ring(1);
+  const line = r.line;
+  const names = line.calls.map((_, stop) => line.stopName(stop));
+
+  it('names every stop it calls at', () => {
+    expect(names.length).toBeGreaterThan(0);
+    for (const name of names) expect(name.length).toBeGreaterThan(0);
+  });
+
+  it('gives every line of text a cell of its own', () => {
+    const atlas = tramSignAtlas(names);
+    expect(atlas.width).toBe(CELL_WIDTH);
+    expect(atlas.height).toBe(CELL_HEIGHT * atlas.cells);
+    expect(atlas.data.length).toBe(atlas.width * atlas.height * 4);
+    const taken = new Set<number>();
+    for (let stop = 0; stop < names.length; stop++) {
+      for (const design of ['heritage', 'modern'] as const) taken.add(destinationCell(stop, design));
+      taken.add(stopNameCell(names.length, stop));
+    }
+    for (let minutes = 0; minutes <= COUNTDOWN_CAP; minutes++) taken.add(countdownCell(names.length, minutes));
+    // Every cell is used, and no two lines of text share one.
+    expect(taken.size).toBe(atlas.cells);
+    for (const cell of taken) expect(cell).toBeLessThan(atlas.cells);
+  });
+
+  it('caps a countdown rather than running off the end of the atlas', () => {
+    expect(countdownCell(names.length, 1000)).toBe(countdownCell(names.length, COUNTDOWN_CAP));
+    expect(countdownCell(names.length, -5)).toBe(countdownCell(names.length, 0));
+  });
+
+  it('shows a tram the stop it is running towards, and reads 0 while it stands there', () => {
+    const tour = line.tour;
+    if (tour === undefined) throw new Error('no tram on the ring');
+    for (const call of line.calls) {
+      const stop = line.calls.indexOf(call);
+      // At the tick it arrives, some tram is at the stop, so the countdown is 0.
+      expect(line.minutesTo(stop, call.arrive)).toBe(0);
+    }
+    // A board always names a call of this loop, and one it is within the cap of.
+    for (let time = 0; time < tour.period; time += Math.floor(tour.period / 17)) {
+      const call = line.nextCall(0, time);
+      expect(call).toBeGreaterThanOrEqual(0);
+      expect(call).toBeLessThan(line.calls.length);
+      expect(line.minutesTo(call, time)).toBeLessThanOrEqual(COUNTDOWN_CAP);
+    }
+  });
+});

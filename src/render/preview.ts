@@ -487,7 +487,7 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   if (gallery !== undefined) scene.scene.add(gallery.group);
   // What moves through the city, where its tours put it at the tick the
   // picture is taken, as the game draws it.
-  const { traffic, trams, tramStops, busStops, crowd, casualties, guns, markers, wildlife, parked } = peopleFor();
+  const { traffic, trams, tramStops, tramSigns, busStops, crowd, casualties, guns, markers, wildlife, parked } = peopleFor();
   // The contacts of spec section 18 stand at the head of the crowd's own list,
   // as they do in a session, and their markers turn over them.
   const bodies = request.contacts === true ? standContacts(seed, givers, scene, record) : undefined;
@@ -500,9 +500,11 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   traffic.lamps = scene.lampsNow;
   trams.lamps = scene.lampsNow;
   tramStops.lamps = scene.lampsNow;
+  tramSigns.lamps = scene.lampsNow;
   traffic.update(record, tick, x, y);
   trams.update(tick, x, y);
   tramStops.update(x, y);
+  tramSigns.update(tick, x, y);
   busStops.update(x, y);
   crowd.update(record, tick, x, y);
   casualties.update(record, tick, x, y);
@@ -513,7 +515,7 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   // A gallery is a shelf of models, and a street of traffic standing among
   // them is what makes it unreadable, so the city's own moving parts are
   // hidden for the one frame and shown again below.
-  const ambient = [traffic.group, trams.group, tramStops.group, busStops.group, crowd.group, casualties.group, wildlife.group, parked?.group];
+  const ambient = [traffic.group, trams.group, tramStops.group, tramSigns.group, busStops.group, crowd.group, casualties.group, wildlife.group, parked?.group];
   if (gallery !== undefined) for (const group of ambient) if (group !== undefined) group.visible = false;
 
   const { camera, post, target } = viewFor(width, height);
