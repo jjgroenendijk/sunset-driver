@@ -104,15 +104,17 @@ describe('the sun', () => {
     expect(at(12).sunIntensity).toBeGreaterThan(at(7).sunIntensity);
   });
 
-  it('leaves a street in shade at noon about a third as bright as one in the sun', () => {
+  it('leaves a street in shade at noon about half as bright as one in the sun', () => {
     // Level ground: the sun by how high it stands, the sky fill from straight
-    // above. Much less, and the city in its own shadow reads as dusk at noon.
+    // above. The tone curve's toe darkens a shadow further than this share
+    // says, so much less and the city in its own shadow reads as dusk at noon.
+    // Much more and the sun casts no shadow worth seeing.
     const noon = at(SOLAR_NOON_HOUR);
     const luma = (c: { r: number; g: number; b: number }) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
     const shade = luma(noon.fillSky) * noon.fillIntensity;
     const sun = luma(noon.sunColour) * noon.sunIntensity * noon.altitude + shade;
-    expect(shade / sun).toBeGreaterThan(0.25);
-    expect(shade / sun).toBeLessThan(0.5);
+    expect(shade / sun).toBeGreaterThan(0.4);
+    expect(shade / sun).toBeLessThan(0.6);
   });
 
   it('burns orange on the horizon and white overhead', () => {
