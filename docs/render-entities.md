@@ -295,8 +295,9 @@ scene ever holds in `docs/shops.md`.
   the lighting sees the bind pose.
 - A WebGPU pipeline reads at most eight vertex buffers, and a `BufferAttribute` is a buffer each.
   Over eight, the pipeline fails and nothing is drawn, with only a console error to say so. The
-  crowd packs its bone and colour part into one `rig` attribute and its six instance attributes into
-  one `InstancedInterleavedBuffer`, and it uploads only the `STRIDE` floats of each person written.
+  crowd packs its bone and colour part into one `rig` attribute and its eight instance attributes
+  into one `InstancedInterleavedBuffer`, and it uploads only the `CROWD_STRIDE` floats of each
+  person written. The rig, the props and the blends are in `docs/crowd.md`.
 - `src/render/bus-stops.ts` stands a post at each kerb the buses of spec section 20.2 call at, and
   a shelter at the busy ones: two instanced meshes, so every stop in view costs two draws. A stop
   never moves, so `BusStopView.update` takes no moment, only the place the frame is drawn round.
