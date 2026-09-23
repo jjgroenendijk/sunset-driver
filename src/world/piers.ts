@@ -123,6 +123,81 @@ function wetRuns(road: RoadCurve, hf: Heightfield, sea: number): { from: number;
 }
 
 /**
+ * One sample along a deck: where it stands, whether the ground under it is dry,
+ * and whether it is a corner of the curve rather than a sample inside a segment.
+ */
+interface DeckSample {
+  readonly p: Point;
+  readonly vertex: boolean;
+  readonly dry: boolean;
+}
+
+/**
+ * The parts of a curve's decks that stand over dry land, cut at the waterline.
+ *
+ * {@link overWater} calls a segment wet when any sample along it is under the
+ * sea, so the segment that leaves the shore counts as wet whole, though most of
+ * it stands on land. That land is under a deck all the same, and belongs to
+ * nobody unless the segment is cut here (issue #531).
+ *
+ * The cut falls on the samples {@link overWater} itself reads, so a segment dry
+ * the whole way comes back whole and a segment wet the whole way comes back not
+ * at all — which is what the elevated corridors already claim and give up.
+ */
+export function dryDeckLines(road: DeckedLine, hf: Heightfield, sea: number): Point[][] {
+  const lines: Point[][] = [];
+  // A wet segment no longer breaks the run, because the cut is finer than a
+  // segment; the run is every stretch of neighbouring deck segments there is.
+  for (const run of deckRuns(road, () => false, false)) {
+    const samples = deckSamples(road.points, run.from, run.to, hf, sea);
+    let start = -1;
+    for (let i = 0; i + 1 < samples.length; i++) {
+      const dry = (samples[i] as DeckSample).dry && (samples[i + 1] as DeckSample).dry;
+      if (dry && start === -1) start = i;
+      if (!dry && start !== -1) {
+        lines.push(lineOf(samples, start, i));
+        start = -1;
+      }
+    }
+    if (start !== -1) lines.push(lineOf(samples, start, samples.length - 1));
+  }
+  return lines.filter((line) => polylineLength(line) > 0);
+}
+
+/** The samples along one run of deck segments: every {@link WET_SAMPLE} metres, and every corner. */
+function deckSamples(points: readonly Point[], from: number, to: number, hf: Heightfield, sea: number): DeckSample[] {
+  const samples: DeckSample[] = [];
+  const add = (p: Point, vertex: boolean): void => {
+    samples.push({ p, vertex, dry: hf.sample(p.x, p.y) >= sea });
+  };
+  add(points[from] as Point, true);
+  for (let i = from; i <= to; i++) {
+    const a = points[i] as Point;
+    const b = points[i + 1] as Point;
+    const steps = Math.max(1, Math.ceil(dist(a.x, a.y, b.x, b.y) / WET_SAMPLE));
+    for (let s = 1; s <= steps; s++) {
+      const t = s / steps;
+      add({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }, s === steps);
+    }
+  }
+  return samples;
+}
+
+/**
+ * The line from sample `from` to sample `to`, keeping the corners between them.
+ * The samples inside a segment are on the line its two corners draw, so leaving
+ * them out moves nothing and the strip laid on the line has fewer sides.
+ */
+function lineOf(samples: readonly DeckSample[], from: number, to: number): Point[] {
+  const line: Point[] = [(samples[from] as DeckSample).p];
+  for (let i = from + 1; i < to; i++) {
+    if ((samples[i] as DeckSample).vertex) line.push((samples[i] as DeckSample).p);
+  }
+  line.push((samples[to] as DeckSample).p);
+  return line;
+}
+
+/**
  * The feet of the piers under a deck: a pair across the centreline at every
  * bay. A foot `stands` refuses is drawn in towards the centreline until it is
  * accepted, and dropped where even the centreline is not.

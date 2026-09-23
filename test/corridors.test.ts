@@ -4,7 +4,7 @@ import { buildFootprint } from '../src/world/footprint.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import type { Corridor, Point, RoadCurve } from '../src/world/types.ts';
-import { build, curve, deckOverRing, dip, FLAT, ringDistricts, ringRoads, viaduct, world, worldOf } from './corridor-fixture.ts';
+import { build, curve, deckOverRing, dip, FLAT, ringDistricts, ringRoads, shore, viaduct, world, worldOf } from './corridor-fixture.ts';
 import { pointInRing, ringArea, ringsOverlap } from './helpers.ts';
 
 
@@ -119,5 +119,25 @@ describe('claiming ground', () => {
       const owned = elevated.some((corridor) => pointInRing(mid, corridor.polygon)) || pointInRegions(mid, footprint.regions);
       expect(owned, `the ground under segment ${i} at ${mid.x}, ${mid.y} is nobody's`).toBe(true);
     }
+  });
+
+  it('claims the dry half of the deck segment that leaves the shore, and none of the wet half', () => {
+    // The shoreline falls at x = -50, halfway along the deck segment that runs
+    // from x = -100 to x = 0. `overWater` calls that segment wet whole, so no
+    // corridor claims it, and the 50 m of dry land under it belonged to nobody
+    // until the footprint cut the deck at the waterline (issue #531).
+    const w = worldOf(world(shore(-5, -50), []), [viaduct([0, 1, 2, 3])]);
+    const footprint = buildFootprint(w, buildRoadGraph(w.roads));
+    const elevated = w.corridors.filter((corridor) => corridor.kind === 'elevated');
+    const held = (p: Point): boolean =>
+      elevated.some((corridor) => pointInRing(p, corridor.polygon)) || pointInRegions(p, footprint.regions);
+
+    // The segment before the shore stands on land, so its corridor holds it.
+    expect(held({ x: -150, y: 0 }), 'the ground under the dry segment is nobody\'s').toBe(true);
+    // The dry half of the segment that crosses the shoreline.
+    expect(held({ x: -75, y: 0 }), 'the dry ground under the shore segment is nobody\'s').toBe(true);
+    // The wet half of it, and the open water past it, are not ground at all.
+    expect(held({ x: -25, y: 0 }), 'the sea under the shore segment is claimed').toBe(false);
+    expect(held({ x: 50, y: 0 }), 'the sea under the deck is claimed').toBe(false);
   });
 });

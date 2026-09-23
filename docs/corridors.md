@@ -32,7 +32,11 @@ they are laid in `src/world`, and how `src/render` draws them.
 - The ground under a deck the claim gave up is footprint, because it belongs to nobody else. A cut
   gives up the whole segment, however little of it the other corridor wants, and the rest of that
   segment is still under the deck. `buildFootprint` claims it (`footprint.ts`, `deckShadows`), so
-  no parcel stands under a deck and nothing is built there (issue #288).
+  no parcel stands under a deck and nothing is built there (issue #288). A segment that touches
+  water is given up the same way, and the segment that leaves the shore stands on land for most
+  of its length. `deckShadows` therefore cuts each deck at the waterline (`dryDeckLines`,
+  `piers.ts`) rather than at the segment: it claims every dry metre under a deck and no wet one,
+  so `footprint.area` still counts only ground (issue #531).
 
 ## Piers
 

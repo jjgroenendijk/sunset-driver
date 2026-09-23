@@ -74,6 +74,15 @@ export function dip(depth: number): (x: number, y: number) => number {
   return (x) => (x > -100 && x < 100 ? depth : 20);
 }
 
+/**
+ * A shoreline at `at`, with the sea east of it. The deck segments of
+ * {@link viaduct} are 100 m long, so a shoreline inside one of them gives a
+ * segment that stands over land at one end and over water at the other.
+ */
+export function shore(depth: number, at: number): (x: number, y: number) => number {
+  return (x) => (x > at ? depth : 20);
+}
+
 /** A ring of arterials round the core, with a street meeting the south side halfway. */
 export function ringRoads(): RoadCurve[] {
   return [
