@@ -398,6 +398,28 @@ export const GLYPHS = Object.freeze({
     box(ctx, r, 0.78, -0.14, 0.2, 0.44);
   },
 
+  /** An airfield: a plane seen from above, nose up. */
+  plane: (ctx, r) => {
+    box(ctx, r, -0.14, -0.98, 0.28, 1.9); // the fuselage
+    poly(ctx, r, [
+      [-0.98, 0.08],
+      [0, -0.4],
+      [0.98, 0.08],
+      [0.98, 0.3],
+      [0, 0.06],
+      [-0.98, 0.3],
+    ]); // the wings
+    box(ctx, r, -0.44, 0.62, 0.88, 0.2); // the tailplane
+  },
+
+  /** A helipad: the letter H in its circle. */
+  helipad: (ctx, r) => {
+    band(ctx, r, 0, 0, 0.98, 0.8, 0, Math.PI * 2);
+    box(ctx, r, -0.46, -0.5, 0.22, 1);
+    box(ctx, r, 0.24, -0.5, 0.22, 1);
+    box(ctx, r, -0.3, -0.1, 0.6, 0.2);
+  },
+
 } satisfies Readonly<Record<string, GlyphPath>>);
 
 /** The name of one glyph in {@link GLYPHS}. */

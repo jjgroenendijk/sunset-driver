@@ -14,7 +14,7 @@
  */
 import type { GlyphName } from './map-glyphs.ts';
 import type { ShopKind } from '../world/shops.ts';
-import type { Point, RoadCurve, RoadTier, WorldDescription } from '../world/types.ts';
+import type { AirfieldKind, Point, RoadCurve, RoadTier, WorldDescription } from '../world/types.ts';
 
 /**
  * Every kind of place the map marks (spec section 12). The world description
@@ -32,6 +32,8 @@ export type PoiType =
   | 'pier'
   | 'car-park'
   | 'harbour'
+  | 'airfield'
+  | 'helipad'
   | 'safehouse'
   | 'garage'
   | 'clinic'
@@ -85,6 +87,10 @@ export const POI_STYLES: Readonly<Record<PoiType, PoiStyle>> = Object.freeze({
   pier: { glyph: 'pier', colour: '#c08a5a', label: 'Pier', maxScale: 8 },
   'car-park': { glyph: 'parkingP', colour: '#9a8ad0', label: 'Car park', maxScale: 4 },
   harbour: { glyph: 'anchor', colour: '#5ab0d0', label: 'Harbour', maxScale: Infinity },
+  // Where an aircraft waits (spec section 8.4). A map has a handful, and each
+  // is a place to steal a way off the ground from, so they show at every zoom.
+  airfield: { glyph: 'plane', colour: '#d0d0e8', label: 'Airfield', maxScale: Infinity },
+  helipad: { glyph: 'helipad', colour: '#e0a0b0', label: 'Helipad', maxScale: 8 },
   safehouse: { glyph: 'house', colour: '#7ad07a', label: 'Safehouse', maxScale: Infinity },
   garage: { glyph: 'wrench', colour: '#8ac0a0', label: 'Garage', maxScale: 6 },
   clinic: { glyph: 'cross', colour: '#ff7a8a', label: 'Clinic', maxScale: 8 },
@@ -442,6 +448,9 @@ export function collectPois(world: WorldDescription): MapPoi[] {
     const district = named(stop.district);
     out.push({ type: 'tram-stop', x: stop.x, y: stop.y, ...(district ? { name: `Tram · ${district}` } : {}) });
   }
+  for (const field of world.airfields) {
+    out.push({ type: field.kind === 'heliport' ? 'helipad' : 'airfield', x: field.x, y: field.y, name: AIRFIELD_NAMES[field.kind] });
+  }
   for (const beach of world.beaches) {
     if (beach.pier) out.push({ type: 'pier', x: beach.pier.head.x, y: beach.pier.head.y });
     for (const park of beach.carParks) {
@@ -451,6 +460,14 @@ export function collectPois(world: WorldDescription): MapPoi[] {
   }
   return out;
 }
+
+/** What the map calls each kind of airfield. */
+const AIRFIELD_NAMES: Readonly<Record<AirfieldKind, string>> = Object.freeze({
+  airport: 'Airport',
+  airstrip: 'Airstrip',
+  heliport: 'Helipad',
+  dock: 'Seaplane dock',
+});
 
 /** The middle of a ring, as the average of its corners. Good enough to hang an icon on. */
 function centroid(ring: readonly { x: number; y: number }[]): Pixel {
