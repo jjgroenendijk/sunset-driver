@@ -21,7 +21,7 @@ getting into a vehicle and out of it.
 
 `docs/city-life.md` holds the city that lives around the player, the six subjects of spec section
 13: the ambient traffic, the traffic lights, the parked cars, the tram, the pedestrians and the
-metro. Read it instead when the work is one of those.
+metro. Read it instead when the work is one of those. The tram has `docs/tram.md` of its own.
 
 `docs/menus.md` holds the screens around play: the title screen and its menu walk, the loading
 screen after Start, the pause menu, the saves and the scene behind the menu. Read it instead when
