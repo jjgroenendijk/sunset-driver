@@ -307,48 +307,52 @@ function createBlockMaterial(night: TslNode, late: TslNode, beacon: TslNode): Me
   const neon = neonColour(draw);
   const pastel = tint.mul(float(0.9).add(patch.mul(0.14)).add(grain.mul(0.06)));
 
-  const glass = mix(rgb(TRIM).mul(0.7), rgb(GLAZING), glazed);
-  // A tile and a slate roof take the weathering patch as their own colour, so
-  // one street of houses is roofed in several shades of the same material.
-  const dressed: readonly [number, TslNode][] = [
-    [BLOCK_ROOF, rgb(ROOF).mul(float(0.85).add(grain.mul(0.3)))],
-    [BLOCK_TRIM, rgb(TRIM).mul(float(0.86).add(grain.mul(0.22)))],
-    [BLOCK_MEMBRANE, rgb(MEMBRANE).mul(float(0.9).add(grain.mul(0.16)))],
-    [BLOCK_PLANTED, rgb(PLANTED).mul(float(0.75).add(patch.mul(0.4)).add(grain.mul(0.2)))],
-    [BLOCK_SOLAR, rgb(SOLAR).mul(float(0.8).add(grain.mul(0.25)))],
-    [BLOCK_METAL, rgb(METAL).mul(rib).mul(float(0.82).add(grain.mul(0.2)))],
-    [BLOCK_TILE, rgb(TILE).mul(float(0.7).add(patch.mul(0.55)).add(grain.mul(0.18)))],
-    [BLOCK_SLATE, rgb(SLATE).mul(float(0.72).add(patch.mul(0.45)).add(grain.mul(0.18)))],
-    [BLOCK_WATER, rgb(WATER).mul(float(0.9).add(grain.mul(0.2)))],
-    [BLOCK_PAINT, rgb(PAINT).mul(float(0.92).add(grain.mul(0.12)))],
+  const dressed: readonly [number, () => TslNode][] = [
+    // The wall the building is really made of — brick, stucco, siding,
+    // corrugated metal, tile or concrete — weathered by as much as its own age
+    // says. The wall and the roof come first because they cover the most.
+    [BLOCK_WALL, () => weathered(wallSurface(tint, finish.wall, grain, patch), finish.age, grain)],
+    [BLOCK_ROOF, () => rgb(ROOF).mul(float(0.85).add(grain.mul(0.3)))],
+    [BLOCK_GLASS, () => mix(rgb(TRIM).mul(0.7), rgb(GLAZING), glazed)],
+    [BLOCK_TRIM, () => rgb(TRIM).mul(float(0.86).add(grain.mul(0.22)))],
+    [BLOCK_MEMBRANE, () => rgb(MEMBRANE).mul(float(0.9).add(grain.mul(0.16)))],
+    [BLOCK_PLANTED, () => rgb(PLANTED).mul(float(0.75).add(patch.mul(0.4)).add(grain.mul(0.2)))],
+    [BLOCK_SOLAR, () => rgb(SOLAR).mul(float(0.8).add(grain.mul(0.25)))],
+    [BLOCK_METAL, () => rgb(METAL).mul(rib).mul(float(0.82).add(grain.mul(0.2)))],
+    // A tile and a slate roof take the weathering patch as their own colour, so
+    // one street of houses is roofed in several shades of the same material.
+    [BLOCK_TILE, () => rgb(TILE).mul(float(0.7).add(patch.mul(0.55)).add(grain.mul(0.18)))],
+    [BLOCK_SLATE, () => rgb(SLATE).mul(float(0.72).add(patch.mul(0.45)).add(grain.mul(0.18)))],
+    [BLOCK_WATER, () => rgb(WATER).mul(float(0.9).add(grain.mul(0.2)))],
+    [BLOCK_PAINT, () => rgb(PAINT).mul(float(0.92).add(grain.mul(0.12)))],
     // The four styles of spec section 10.3. Each takes the building's own tint,
     // because colour follows the style: the tint of a glass tower is the tint
     // of its glass, and a Miami block's is its stucco.
-    [BLOCK_CURTAIN, curtain(tint, seeThrough)],
-    [BLOCK_CONCRETE, punched(tint.mul(float(0.72).add(board(grain)).add(patch.mul(0.18))), punchedAt.concrete)],
-    [BLOCK_STONE, punched(tint.mul(float(0.84).add(patch.mul(0.2)).add(grain.mul(0.12))), punchedAt.stone)],
-    [BLOCK_STUCCO, punched(pastel, punchedAt.stucco)],
-    [BLOCK_PORTHOLE, mix(pastel, rgb(GLAZING), eye)],
-    [BLOCK_NEON, neon.mul(0.7)],
-    [BLOCK_CROWN, rgb(CROWN).mul(float(0.85).add(grain.mul(0.2)))],
-    [BLOCK_BEACON, rgb(LAMP_OFF)],
+    [BLOCK_CURTAIN, () => curtain(tint, seeThrough)],
+    [BLOCK_CONCRETE, () => punched(tint.mul(float(0.72).add(board(grain)).add(patch.mul(0.18))), punchedAt.concrete)],
+    [BLOCK_STONE, () => punched(tint.mul(float(0.84).add(patch.mul(0.2)).add(grain.mul(0.12))), punchedAt.stone)],
+    [BLOCK_STUCCO, () => punched(pastel, punchedAt.stucco)],
+    [BLOCK_PORTHOLE, () => mix(pastel, rgb(GLAZING), eye)],
+    [BLOCK_NEON, () => neon.mul(0.7)],
+    [BLOCK_CROWN, () => rgb(CROWN).mul(float(0.85).add(grain.mul(0.2)))],
+    [BLOCK_BEACON, () => rgb(LAMP_OFF)],
   ];
-  // The wall the building is really made of — brick, stucco, siding,
-  // corrugated metal, tile or concrete, weathered by as much as its own age
-  // says — is drawn only where the fragment is a wall. Every part of a building
-  // carries the same `part` value over the whole of a face, so the branch is
-  // taken by every fragment of a triangle together and the six materials cost
-  // nothing on a roof. Blended in with a `mix` instead, they were 1 ms of a
-  // frame in the core (`docs/performance.md`).
-  const plain = tint.mul(float(0.78).add(patch.mul(0.28)).add(grain.mul(0.16)));
-  let dressing = plain;
-  for (const [id, colour] of dressed) dressing = mix(dressing, colour, is(part, id));
+  // Each part is drawn in a branch of its own rather than blended in with a
+  // `mix`, which drew every part's colour on every fragment. Every part of a
+  // building carries the same `part` value over the whole of a face, so the
+  // branch is taken by every fragment of a triangle together, and a roof pays
+  // for the roof alone. The plain tint the surface starts from reads both noise
+  // fields outside any branch, so every branch and the roughness share them.
+  const whole = part.add(0.5).floor();
   material.colorNode = Fn(() => {
-    const surface = vec3(0).toVar();
-    surface.assign(mix(dressing, glass, glassAt));
-    If(is(part, BLOCK_WALL).greaterThan(0.5), () => {
-      surface.assign(weathered(wallSurface(tint, finish.wall, grain, patch), finish.age, grain));
-    });
+    const surface = tint.mul(float(0.78).add(patch.mul(0.28)).add(grain.mul(0.16))).toVar();
+    let chain: TslNode = undefined;
+    for (const [id, colour] of dressed) {
+      const body = (): void => {
+        surface.assign(colour());
+      };
+      chain = chain === undefined ? If(whole.equal(id), body) : chain.ElseIf(whole.equal(id), body);
+    }
     return surface;
   })();
 
