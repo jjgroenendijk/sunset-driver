@@ -37,7 +37,7 @@ import { heldTime, holdOf, type Hold } from './hold.ts';
 import type { CrowdSource } from './melee.ts';
 import { casualtyOf, crowdPoseOf, startledOf, stepAside, type PedestrianPose } from './pedestrians.ts';
 import type { SimState } from './simulation.ts';
-import { footprintsTouch, promotedOf, type AmbientPose, type AmbientTraffic, type Footprint, type TrafficCursor } from './traffic.ts';
+import { footprintsTouch, promotedOf, turnedTouch, type AmbientPose, type AmbientTraffic, type Footprint, type TrafficCursor } from './traffic.ts';
 import { headingOf, specOf } from './vehicle.ts';
 
 /** Metres each way of the player that cars give way in. Wider than the traffic's view. */
@@ -138,6 +138,9 @@ interface Car {
   nextSpeed: number;
 }
 
+/** What a car stops for that is not a car of the traffic, with the cosine and sine of its heading. */
+type Other = Footprint & { cos: number; sin: number };
+
 /** One person of the crowd in the box, for one tick. */
 interface Person {
   id: number;
@@ -171,7 +174,7 @@ export class GiveWay {
   private waiting: (Car | undefined)[] = [];
   private people: Person[] = [];
   /** The player, their car and the wrecks: what a car stops for that is not a car of the traffic. */
-  private others: Footprint[] = [];
+  private others: Other[] = [];
   private readonly carGrid = new Grid();
   /** The cars in the order they were placed, while the ones that have just come in are cleared. */
   private readonly filed = new Grid();
@@ -397,24 +400,26 @@ export class GiveWay {
     this.others = [];
     const v = state.vehicle;
     const spec = specOf(v.cls);
-    this.others.push({ x: v.x, y: v.z, heading: headingOf(v), halfLength: spec.halfLength, halfWidth: spec.halfWidth });
-    if (!state.player.driving) this.others.push({ x: state.player.x, y: state.player.y, heading: 0, halfLength: 0.4, halfWidth: 0.4 });
+    this.other(v.x, v.z, headingOf(v), spec);
+    if (!state.player.driving) this.other(state.player.x, state.player.y, 0, { halfLength: 0.4, halfWidth: 0.4 });
     for (const record of state.traffic.promoted) {
       const w = record.vehicle;
       if (!this.inBox(w.x, w.z)) continue;
-      const s = specOf(w.cls);
-      this.others.push({ x: w.x, y: w.z, heading: headingOf(w), halfLength: s.halfLength, halfWidth: s.halfWidth });
+      this.other(w.x, w.z, headingOf(w), specOf(w.cls));
     }
     const patrol = specOf('emergency');
     for (const unit of state.police.units) {
       if (unit.kind === 'helicopter' || !this.inBox(unit.x, unit.y)) continue;
-      this.others.push({ x: unit.x, y: unit.y, heading: unit.heading, halfLength: patrol.halfLength, halfWidth: patrol.halfWidth });
+      this.other(unit.x, unit.y, unit.heading, patrol);
     }
     for (const unit of state.emergency.units) {
       if (!this.inBox(unit.x, unit.y)) continue;
-      const body = UNIT_BODY[unit.kind];
-      this.others.push({ x: unit.x, y: unit.y, heading: unit.heading, halfLength: body.halfLength, halfWidth: body.halfWidth });
+      this.other(unit.x, unit.y, unit.heading, UNIT_BODY[unit.kind]);
     }
+  }
+
+  private other(x: number, y: number, heading: number, body: { halfLength: number; halfWidth: number }): void {
+    this.others.push({ x, y, heading, halfLength: body.halfLength, halfWidth: body.halfWidth, cos: cos(heading), sin: sin(heading) });
   }
 
   /** Where a car's tour puts it on the next tick if nothing holds it. */
@@ -446,10 +451,15 @@ export class GiveWay {
       if (j === i) continue;
       const other = this.cars[j] as Car;
       if (!close(car.next, other.box, SIDE_ROOM)) continue;
-      const into = footprintsTouch(car.next, other.box, SIDE_ROOM) || footprintsTouch(car.next, other.next, SIDE_ROOM);
+      const nc = car.nextCos;
+      const ns = car.nextSin;
+      const into =
+        turnedTouch(car.next, nc, ns, other.box, other.cos, other.sin, SIDE_ROOM) ||
+        turnedTouch(car.next, nc, ns, other.next, other.nextCos, other.nextSin, SIDE_ROOM);
       if (!into) continue;
       // Two cars already touching may only move apart.
-      if (!footprintsTouch(box, other.box, SIDE_ROOM) || apart(car.next, other.box) <= apart(box, other.box)) this.block(car, j);
+      const touching = turnedTouch(box, fx, fy, other.box, other.cos, other.sin, SIDE_ROOM);
+      if (!touching || apart(car.next, other.box) <= apart(box, other.box)) this.block(car, j);
     }
     for (const j of this.around(this.carGrid, this.reach, 8, this.spare)) {
       if (j === i) continue;
@@ -457,17 +467,17 @@ export class GiveWay {
       const other = ahead.box;
       if (!close(this.reach, other, 0)) continue;
       if (ahead.cos * fx + ahead.sin * fy < HEAD_ON) continue;
-      if (footprintsTouch(this.probe, other, 0)) this.block(car, j);
-      else if (footprintsTouch(this.reach, other, 0)) car.slow = true;
+      if (turnedTouch(this.probe, fx, fy, other, ahead.cos, ahead.sin, 0)) this.block(car, j);
+      else if (turnedTouch(this.reach, fx, fy, other, ahead.cos, ahead.sin, 0)) car.slow = true;
     }
     for (const other of this.others) {
-      if (!close(this.reach, other, 0) || !footprintsTouch(this.reach, other, 0)) continue;
+      if (!close(this.reach, other, 0) || !turnedTouch(this.reach, fx, fy, other, other.cos, other.sin, 0)) continue;
       // Something longer than the car that has come up on it from behind
       // reaches past its nose, and is not in its way: it drives on.
       if ((other.x - box.x) * fx + (other.y - box.y) * fy <= 0) continue;
       car.facing = true;
       if (!patient) continue;
-      if (footprintsTouch(this.probe, other, 0)) this.block(car, OTHER);
+      if (turnedTouch(this.probe, fx, fy, other, other.cos, other.sin, 0)) this.block(car, OTHER);
       else car.slow = true;
     }
     for (const k of this.around(this.personGrid, this.reach, 1, this.spare)) {
@@ -668,10 +678,8 @@ export class GiveWay {
     }
     if (person.waited >= PATIENCE) return undefined;
     for (const other of this.others) {
-      const fx = cos(other.heading);
-      const fy = sin(other.heading);
-      if (!meets(other, fx, fy, 0, person.nextX, person.nextY)) continue;
-      if (!meets(other, fx, fy, 0, person.x, person.y) || !away(other, person)) return null;
+      if (!meets(other, other.cos, other.sin, 0, person.nextX, person.nextY)) continue;
+      if (!meets(other, other.cos, other.sin, 0, person.x, person.y) || !away(other, person)) return null;
     }
     return undefined;
   }

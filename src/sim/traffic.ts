@@ -502,10 +502,14 @@ export interface Footprint {
  * for two rectangles.
  */
 export function footprintsTouch(a: Footprint, b: Footprint, margin: number): boolean {
-  const ca = cos(a.heading);
-  const sa = sin(a.heading);
-  const cb = cos(b.heading);
-  const sb = sin(b.heading);
+  return turnedTouch(a, cos(a.heading), sin(a.heading), b, cos(b.heading), sin(b.heading), margin);
+}
+
+/**
+ * {@link footprintsTouch} for two footprints whose headings have cosines and
+ * sines `ca, sa` and `cb, sb` already worked out.
+ */
+export function turnedTouch(a: Footprint, ca: number, sa: number, b: Footprint, cb: number, sb: number, margin: number): boolean {
   // Each box's length and then its width: the axis a quarter turn on is (-sin, cos).
   return (
     overlapsAlong(a, b, ca, sa, cb, sb, ca, sa, margin) &&
