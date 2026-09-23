@@ -241,12 +241,19 @@ describe('a chunk batch', () => {
     try {
       const fill = fillOfPacked(packed([part(1), part(2)]), material);
       const geometry = fill.mesh.geometry;
-      (fill.steps[0] as () => void)();
-      // Each attribute and the index are uploaded by the step that wrote them.
-      expect(uploads).toHaveLength(4);
+      // A step of its own creates each buffer, the three attributes and the
+      // index, so no frame pays for every buffer of a batch at once.
+      expect(fill.steps).toHaveLength(6);
+      for (let i = 0; i < 4; i++) {
+        (fill.steps[i] as () => void)();
+        expect(uploads).toHaveLength(i + 1);
+      }
+      (fill.steps[4] as () => void)();
+      // Each attribute and the index are uploaded again by the step that wrote them.
+      expect(uploads).toHaveLength(8);
       expect(geometry.getAttribute('position').array.length).toBe(24);
 
-      (fill.steps[1] as () => void)();
+      (fill.steps[5] as () => void)();
       // Never drawn, and every array is gone: the GPU holds the batch.
       expect(geometry.getAttribute('position').array.length).toBe(0);
       expect(geometry.getAttribute('normal').array.length).toBe(0);
