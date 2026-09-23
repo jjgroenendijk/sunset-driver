@@ -107,10 +107,20 @@ export const LAYOUT_BANDS: Record<Zone, ZoneBands> = {
   // 500 — went from 0.456 to 0.338. The outskirts of eight other seeds moved
   // both ways around the same middle, so what the re-roll changed is which seed
   // is the emptiest and not how much is built out there.
+  //
+  // Issue #643 took both building floors to zero. They were read off the
+  // FOOTPRINT_COUNT seeds this check reads and not off the 500 the tier
+  // generates, and the wider set never held them. Over all 500, seeds
+  // 3548214139 and 878462945 build nothing at all in an outskirts of 119 and
+  // 132 ha, and 1198602974 reads 0.0041 and 0.0049. All three read the same on
+  // `main`, so the floors were false before anything moved: they sat above the
+  // sixteen seeds that were read and below nothing else. An outskirts nobody
+  // built in is a fair seed, as an empty wilderness is, and the ceilings still
+  // catch a ring built up like a suburb.
   outskirts: {
     roadShare: { min: 0.015, max: 0.3 },
-    buildingShare: { min: 0.015, max: 0.16 },
-    buildingsPerHectare: { min: 0.3, max: 3 },
+    buildingShare: { min: 0, max: 0.16 },
+    buildingsPerHectare: { min: 0, max: 3 },
     medianParcelArea: { min: 2000, max: 80000 },
   },
   // The margin the rings leave: the corners of the map and the outer islands.
