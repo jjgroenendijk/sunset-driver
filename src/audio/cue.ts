@@ -61,7 +61,7 @@ export const CUES: Readonly<Record<CueKind, CueVoice>> = Object.freeze({
   // A long, dark roll. The tone barely moves; the noise is what carries it.
   explosion: { tone: 110, toneEnd: 32, noise: 1, cutoff: 2600, cutoffEnd: 90, attack: 0.004, decay: 1.5, gain: 1, ducks: true },
   // The crack of a round leaving the barrel, all attack and no body.
-  gunshot: { tone: 420, toneEnd: 120, noise: 1, cutoff: 7200, cutoffEnd: 700, attack: 0.001, decay: 0.16, gain: 0.8, ducks: true },
+  gunshot: { tone: 420, toneEnd: 120, noise: 1, cutoff: 7200, cutoffEnd: 700, attack: 0.001, decay: 0.16, gain: 1, ducks: true },
   // Air moved by a bat or a blade: noise alone, opening and closing.
   swing: { tone: 0, toneEnd: 0, noise: 1, cutoff: 1800, cutoffEnd: 260, attack: 0.03, decay: 0.16, gain: 0.35, ducks: false },
   // A blow landing on somebody (spec section 11.6): low, soft and dead, with
