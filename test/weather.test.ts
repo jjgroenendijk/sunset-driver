@@ -12,6 +12,7 @@ import {
   type WeatherKind,
 } from '../src/sim/weather.ts';
 import { gripOf, WET_GRIP } from '../src/sim/vehicle.ts';
+import { START_TICK } from '../src/sim/simulation.ts';
 import { daylightAt, tickAtHour } from '../src/render/daylight.ts';
 import { gradeAt } from '../src/render/grade.ts';
 import { fogRange, overcast, overcastOf } from '../src/render/weather-look.ts';
@@ -80,6 +81,24 @@ describe('the weather', () => {
         last = now;
       }
     }
+  });
+
+  it('starts a session in the middle of a spell, not on a change', () => {
+    // On a change the weather is half of each spell, and it rains if either
+    // spell rains. Half an hour earlier is the same spell and out of its turn.
+    for (let seed = 1; seed <= 50; seed++) {
+      const start = weatherAt(seed, START_TICK);
+      const before = weatherAt(seed, START_TICK - TICKS_PER_HOUR / 2);
+      for (const field of ['rain', 'fog', 'wind', 'crowd'] as const) expect(start[field]).toBe(before[field]);
+    }
+  });
+
+  it('rains at the start of about one session in five', () => {
+    let wet = 0;
+    const seeds = 2000;
+    for (let seed = 1; seed <= seeds; seed++) if (weatherAt(seed, START_TICK).rain > 0.05) wet++;
+    expect(wet / seeds).toBeGreaterThan(0.16);
+    expect(wet / seeds).toBeLessThan(0.28);
   });
 
   it('brings all four kinds up over a week', () => {
