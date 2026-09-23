@@ -67,7 +67,7 @@ export function hullOf(
   const push = pushOf(ring, faces, fit, lean);
   // Height is scaled by the fit across the frontage alone, and the lean leaves
   // it alone, so the roof stands over the shell by the one width.
-  const bands = profileOf(shell, box, ring, faces, push, OUTLINE_WIDTH / fit.across, footing);
+  const bands = profileOf(shell, box, ring, faces, push, fit, lean, OUTLINE_WIDTH / fit.across, footing);
   const positions: number[] = [];
   const normals: number[] = [];
 
@@ -174,9 +174,11 @@ function pushAt(n: Point, at: Point, fit: Fit, lean: Lean | undefined): number {
  * different amount at each of its two ends.
  *
  * A face is measured from the triangles of the shell rather than from its
- * vertices, and a triangle reaches into every band its own height spans: a wall
- * of one quad from the ground to the roof has no vertex in between, and a band
- * that only asked its vertices would come out empty.
+ * vertices: a wall of one quad from the ground to the roof has no vertex in
+ * between, and a band that only asked its vertices would come out empty. Each
+ * triangle is cut to the heights of the band it measures. Measured whole, the
+ * slanted face under a cornice widened every band down to the foot of that
+ * face by the whole overhang, and a tier came out rimmed a metre wide.
  *
  * Bands that reach the same distance are run together, so a building with
  * straight sides costs one band however tall it is.
@@ -187,49 +189,64 @@ function profileOf(
   ring: readonly Point[],
   faces: readonly Point[],
   push: readonly Push[],
+  fit: Fit,
+  lean: Lean | undefined,
   top: number,
   footing: number,
 ): Band[] {
-  const height = Math.max(box.max.y - box.min.y, HULL_BAND);
-  const count = Math.max(1, Math.min(HULL_BANDS, Math.ceil(height / HULL_BAND)));
-  const step = height / count;
+  const array = (shell.getAttribute('position') as BufferAttribute).array as Float32Array;
+  const edges = bandEdgesOf(array, box);
+  const count = edges.length - 1;
   const width = faces.length;
   // How far each face reaches over each band, and how far the whole shell does.
   const near = new Float64Array(count * width).fill(-Infinity);
   const all = new Float64Array(count * width).fill(-Infinity);
   const span = extentOf(ring);
-  const array = (shell.getAttribute('position') as BufferAttribute).array as Float32Array;
+  // The corners of one triangle cut to one band, as x and z pairs, and what
+  // `measure` makes of them: for the whole triangle face by face, and for one
+  // face in one band.
+  const part: number[] = [];
+  const reach = new Float64Array(width * 3);
+  const band = new Float64Array(3);
+  const keep = (at: number, mine: number, any: number): void => {
+    if (mine > (near[at] as number)) near[at] = mine;
+    if (any > (all[at] as number)) all[at] = any;
+  };
+  // The tall triangles whose reach changes up their height, left for later.
+  const later: number[] = [];
   // The shells are not indexed, so three vertices in a row are one triangle.
   for (let t = 0; t + 8 < array.length; t += 9) {
-    let low = Infinity;
-    let high = -Infinity;
-    for (let v = 0; v < 3; v++) {
-      const y = array[t + v * 3 + 1] as number;
-      low = Math.min(low, y);
-      high = Math.max(high, y);
-    }
-    const from = Math.max(0, Math.min(count - 1, Math.floor((low - box.min.y) / step)));
-    const to = Math.max(from, Math.min(count - 1, Math.floor((high - box.min.y) / step)));
+    const [from, to] = bandsOf(array, t, edges);
+    // How far the whole triangle reaches along each face, and by how much
+    // that changes over it. Most triangles are small and stand inside one
+    // band, and a tall one whose reach hardly changes up its height, such as
+    // the face of a pier, reaches as far in every band it spans.
+    let varies = false;
     for (let k = 0; k < width; k++) {
-      const n = faces[k] as Point;
-      const edge = span[k] as Extent;
-      let mine = -Infinity;
-      let any = -Infinity;
-      for (let v = 0; v < 3; v++) {
-        const x = array[t + v * 3] as number;
-        const z = array[t + v * 3 + 2] as number;
-        const d = x * n.x + z * n.y;
-        if (d > any) any = d;
-        // Only what stands along this face measures it. A face of an L or a U
-        // looks into the notch, and the far wing is the furthest thing in that
-        // direction: measured over the whole shell, the notch would fill in.
-        const u = (x - edge.x) * -n.y + (z - edge.y) * n.x;
-        if (u >= -edge.slack && u <= edge.length + edge.slack && d > mine) mine = d;
-      }
-      for (let b = from; b <= to; b++) {
+      measure(array, t, 3, 3, faces[k] as Point, span[k] as Extent, reach, k);
+      const steady = from === to || (reach[k * 3 + 2] as number) <= REACH_SLACK;
+      varies ||= !steady;
+      for (let b = from; b <= to && steady; b++) keep(b * width + k, reach[k * 3] as number, reach[k * 3 + 1] as number);
+    }
+    if (varies) later.push(t);
+  }
+  // The others are cut band by band, and only where they could still reach
+  // further than what is already there. Most are walls seen from the side,
+  // which the walls round the corner already reach past.
+  for (const t of later) {
+    const [from, to] = bandsOf(array, t, edges);
+    for (let k = 0; k < width; k++) measure(array, t, 3, 3, faces[k] as Point, span[k] as Extent, reach, k);
+    for (let b = from; b <= to; b++) {
+      let cut = false;
+      for (let k = 0; k < width; k++) {
+        if ((reach[k * 3 + 2] as number) <= REACH_SLACK) continue;
         const at = b * width + k;
-        if (mine > (near[at] as number)) near[at] = mine;
-        if (any > (all[at] as number)) all[at] = any;
+        const most = reach[k * 3 + 1] as number;
+        if (most <= (near[at] as number) && most <= (all[at] as number)) continue;
+        if (!cut) clip(array, t, edges[b] as number, edges[b + 1] as number, part);
+        cut = true;
+        measure(part, 0, 2, part.length / 2, faces[k] as Point, span[k] as Extent, band, 0);
+        keep(at, band[0] as number, band[1] as number);
       }
     }
   }
@@ -262,13 +279,175 @@ function profileOf(
     bound = limit;
     // The hull starts below the ground, so the first band reaches down to the
     // footing, and the last one stands over the roof by the width of the outline.
-    const y0 = b === 0 ? -(FOUNDATION + footing) : box.min.y + b * step;
-    const y1 = b === count - 1 ? box.max.y + top : box.min.y + (b + 1) * step;
+    const y0 = b === 0 ? -(FOUNDATION + footing) : (edges[b] as number);
+    const y1 = b === count - 1 ? box.max.y + top : (edges[b + 1] as number);
     const last = bands[bands.length - 1];
     if (last !== undefined && sameReach(last.reach, spread)) last.y1 = y1;
-    else bands.push({ y0, y1, reach: spread, ring: ringOf(faces, spread, push, limit) });
+    else {
+      // The push is read where the faces of this band end, not where the
+      // footprint's do: a band drawn in over a gable ends its faces part of
+      // the way back along a leaning lot, where the lean is not the same.
+      const own = pushOf(ringOf(faces, spread, push, limit), faces, fit, lean);
+      bands.push({ y0, y1, reach: spread, ring: ringOf(faces, spread, own, limit) });
+    }
   }
   return bands;
+}
+
+/**
+ * The first and the last band a triangle of `array` stands in. A level
+ * triangle belongs to the band it roofs, which is the one below it: a roof on
+ * the edge of a band is not the floor of the band above.
+ */
+function bandsOf(array: Float32Array, t: number, edges: readonly number[]): [number, number] {
+  const y0 = array[t + 1] as number;
+  const y1 = array[t + 4] as number;
+  const y2 = array[t + 7] as number;
+  const low = Math.min(y0, y1, y2);
+  const high = Math.max(y0, y1, y2);
+  if (high - low < 2 * LEVEL_SLACK) {
+    const band = bandAt(edges, high - LEVEL_SLACK);
+    return [band, band];
+  }
+  const from = bandAt(edges, low + LEVEL_SLACK);
+  return [from, Math.max(from, bandAt(edges, high - LEVEL_SLACK))];
+}
+
+/**
+ * Metres a triangle's reach along a face may change over it before it is cut
+ * band by band. Left whole, it reaches that much too far in some band.
+ */
+const REACH_SLACK = 0.1;
+
+/**
+ * How far `count` corners reach along the face `n`: only those that stand
+ * along its edge, all of them, and how much the reach of all of them changes.
+ * The corners are read from `points` at `first` and every `stride` after it,
+ * x first and z last. The three are written into `out` from `at * 3`.
+ */
+function measure(
+  points: ArrayLike<number>,
+  first: number,
+  stride: number,
+  count: number,
+  n: Point,
+  edge: Extent,
+  out: Float64Array,
+  at: number,
+): void {
+  let mine = -Infinity;
+  let any = -Infinity;
+  let least = Infinity;
+  for (let c = 0; c < count; c++) {
+    const x = points[first + c * stride] as number;
+    const z = points[first + c * stride + stride - 1] as number;
+    const d = x * n.x + z * n.y;
+    if (d > any) any = d;
+    if (d < least) least = d;
+    // Only what stands along this face measures it. A face of an L or a U
+    // looks into the notch, and the far wing is the furthest thing in that
+    // direction: measured over the whole shell, the notch would fill in.
+    const u = (x - edge.x) * -n.y + (z - edge.y) * n.x;
+    if (u >= -edge.slack && u <= edge.length + edge.slack && d > mine) mine = d;
+  }
+  out[at * 3] = mine;
+  out[at * 3 + 1] = any;
+  out[at * 3 + 2] = any - least;
+}
+
+/** Metres of height within which a triangle is level, and a place is on a level. */
+const LEVEL_SLACK = 0.01;
+
+/**
+ * The heights the bands of a hull are cut at, from the foot of the shell to its
+ * top. They are about {@link HULL_BAND} apart, and each is moved onto the
+ * largest roof within half a band of it. A band reaches as far as the widest
+ * thing in it, so an edge between two roofs stood the hull of a whole tier up
+ * to a band over its roof: a wall a metre and a half high round the edge of a
+ * setback, which the camera sees from the side as a thick black band.
+ */
+function bandEdgesOf(array: Float32Array, box: Box3): number[] {
+  const height = Math.max(box.max.y - box.min.y, HULL_BAND);
+  const count = Math.max(1, Math.min(HULL_BANDS, Math.ceil(height / HULL_BAND)));
+  const step = height / count;
+  // Every level triangle as its height and its area on the ground.
+  const levels: [number, number][] = [];
+  for (let t = 0; t + 8 < array.length; t += 9) {
+    const y0 = array[t + 1] as number;
+    const y1 = array[t + 4] as number;
+    const y2 = array[t + 7] as number;
+    if (Math.max(y0, y1, y2) - Math.min(y0, y1, y2) >= 2 * LEVEL_SLACK) continue;
+    const ax = (array[t + 3] as number) - (array[t] as number);
+    const az = (array[t + 5] as number) - (array[t + 2] as number);
+    const bx = (array[t + 6] as number) - (array[t] as number);
+    const bz = (array[t + 8] as number) - (array[t + 2] as number);
+    levels.push([y0, Math.abs(ax * bz - az * bx) / 2]);
+  }
+  levels.sort((a, b) => a[0] - b[0]);
+  // Level triangles at one height are one roof.
+  const roofs: [number, number][] = [];
+  for (const [y, area] of levels) {
+    const last = roofs[roofs.length - 1];
+    if (last !== undefined && y - last[0] < LEVEL_SLACK) last[1] += area;
+    else roofs.push([y, area]);
+  }
+  const edges = [box.min.y];
+  for (let i = 1; i < count; i++) {
+    const grid = box.min.y + i * step;
+    const floor = Math.max(grid - step / 2, (edges[i - 1] as number) + step / 4);
+    const ceiling = Math.min(grid + step / 2, box.max.y - step / 4);
+    let best = grid;
+    let most = 0;
+    for (const [y, area] of roofs) {
+      if (y > floor && y <= ceiling && area > most) {
+        best = y;
+        most = area;
+      }
+    }
+    edges.push(best);
+  }
+  edges.push(box.max.y);
+  return edges;
+}
+
+/** The band of `edges` a height stands in, held inside the bands there are. */
+function bandAt(edges: readonly number[], y: number): number {
+  let low = 0;
+  let high = edges.length - 2;
+  while (low < high) {
+    const mid = (low + high + 1) >> 1;
+    if ((edges[mid] as number) <= y) low = mid;
+    else high = mid - 1;
+  }
+  return low;
+}
+
+/**
+ * The corners of one triangle of `array` cut to the heights `low` to `high`,
+ * written into `out` as x and z pairs. They are what is left of the triangle
+ * between the two heights, in no order, which is all a furthest reach needs.
+ */
+function clip(array: Float32Array, t: number, low: number, high: number, out: number[]): void {
+  out.length = 0;
+  for (let v = 0; v < 3; v++) {
+    const p = t + v * 3;
+    const q = t + ((v + 1) % 3) * 3;
+    const py = array[p + 1] as number;
+    if (py >= low && py <= high) out.push(array[p] as number, array[p + 2] as number);
+    crossing(array, p, q, low, out);
+    crossing(array, p, q, high, out);
+  }
+}
+
+/** Where the edge from vertex `p` to vertex `q` crosses height `y`, if it does. */
+function crossing(array: Float32Array, p: number, q: number, y: number, out: number[]): void {
+  const py = array[p + 1] as number;
+  const qy = array[q + 1] as number;
+  if ((py - y) * (qy - y) >= 0) return;
+  const s = (y - py) / (qy - py);
+  const px = array[p] as number;
+  const pz = array[p + 2] as number;
+  out.push(px + ((array[q] as number) - px) * s, pz + ((array[q + 2] as number) - pz) * s);
 }
 
 /** Where one edge of a footprint ring starts, and how far it runs. */
