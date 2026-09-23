@@ -32,7 +32,7 @@ import { EdgeIndex } from './edge-index.ts';
 import { lookOf, strideOf, type Gait, type PedestrianLook } from './pedestrian-look.ts';
 import { Pavements, pavementOffset, type WalkPoint, type WalkRoute } from './pedestrian-route.ts';
 import { PoseMemo } from './pose-memo.ts';
-import { backOf, walkOut } from './traffic-tour.ts';
+import { backOf, legNear, walkOut } from './traffic-tour.ts';
 import type { Casualty } from './casualty-motion.ts';
 import { createHolds, heldStep, heldTime, type Holds } from './hold.ts';
 import type { TrafficRoads } from './traffic.ts';
@@ -237,6 +237,8 @@ export class AmbientPedestrians {
   private readonly behind: WalkPoint = { x: 0, y: 0, height: 0 };
   private readonly ahead: WalkPoint = { x: 0, y: 0, height: 0 };
   private readonly memo: PoseMemo;
+  /** The leg of their loop each person was last found on, where the next search starts. */
+  private readonly legs: Int32Array;
 
   constructor(seed: number, roads: TrafficRoads, districtAt?: DistrictAt) {
     this.seed = seed;
@@ -253,6 +255,7 @@ export class AmbientPedestrians {
     }
     this.people = people;
     this.memo = new PoseMemo(people.length);
+    this.legs = new Int32Array(people.length);
   }
 
   /** Where a person is on their loop at a tick, evaluated without stepping them there. */
@@ -292,14 +295,9 @@ export class AmbientPedestrians {
     const person = this.people[id] as AmbientPedestrian;
     const route = person.route;
     const distance = (mod(time + person.phase, person.period) * route.length) / person.period;
-    let lo = 0;
-    let hi = route.start.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if ((route.start[mid] as number) <= distance) lo = mid;
-      else hi = mid - 1;
-    }
-    return route.edges[lo] as number;
+    const leg = legNear(route.start, distance, this.legs[id] as number);
+    this.legs[id] = leg;
+    return route.edges[leg] as number;
   }
 
   /** True when an edge, grown by the reach of its pavements and corners, overlaps a box. */

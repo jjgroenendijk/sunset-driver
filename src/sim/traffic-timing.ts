@@ -518,6 +518,20 @@ export function legAt(starts: Int32Array | Float64Array, value: number): number 
   return lo;
 }
 
+/**
+ * The same index as {@link legAt}, trying `hint` and the index after it
+ * first. A loop read one tick after another moves on by at most one index,
+ * so the last answer given for it is nearly always the right hint.
+ */
+export function legNear(starts: Int32Array | Float64Array, value: number, hint: number): number {
+  const n = starts.length;
+  if (hint >= 0 && hint < n && (starts[hint] as number) <= value) {
+    if (hint + 1 >= n || (starts[hint + 1] as number) > value) return hint;
+    if (hint + 2 >= n || (starts[hint + 2] as number) > value) return hint + 1;
+  }
+  return legAt(starts, value);
+}
+
 function mod(value: number, by: number): number {
   return ((value % by) + by) % by;
 }

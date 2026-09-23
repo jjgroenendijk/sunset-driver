@@ -39,7 +39,7 @@ import { EdgeIndex } from './edge-index.ts';
 import { PoseMemo } from './pose-memo.ts';
 import { heightOff, RouteSampler, type BedTilt, type RoutePoint } from './route-sample.ts';
 import { SIGNAL_CYCLE, TrafficSignals } from './signals.ts';
-import { legAt, timeTour, walkTour, type Permit, type Tour } from './traffic-tour.ts';
+import { legAt, legNear, timeTour, walkTour, type Permit, type Tour } from './traffic-tour.ts';
 import { tramGuardOf, type TramGuard } from './tram-guard.ts';
 import { specOf, type VehicleClass, type VehicleState } from './vehicle.ts';
 
@@ -223,6 +223,8 @@ export class AmbientTraffic {
   private readonly behind: Sample = { x: 0, y: 0, height: 0 };
   private readonly ahead: Sample = { x: 0, y: 0, height: 0 };
   private readonly memo: PoseMemo;
+  /** The step of its tour each vehicle was last found at, where the next search starts. */
+  private readonly steps: Int32Array;
 
   constructor(seed: number, roads: TrafficRoads) {
     this.roads = roads;
@@ -246,6 +248,7 @@ export class AmbientTraffic {
     for (const edge of graph.edges) this.place(seed, edge, busy, vehicles);
     this.vehicles = vehicles;
     this.memo = new PoseMemo(vehicles.length);
+    this.steps = new Int32Array(vehicles.length);
   }
 
   /** Where a vehicle is on its tour at a tick, evaluated without stepping it there. */
@@ -254,7 +257,8 @@ export class AmbientTraffic {
     const tour = vehicle.tour;
     const at = (((tick + vehicle.phase) % tour.period) + tour.period) % tour.period;
     out.id = id;
-    out.step = legAt(tour.stepStart, at);
+    out.step = legNear(tour.stepStart, at, this.steps[id] as number);
+    this.steps[id] = out.step;
     out.into = at - (tour.stepStart[out.step] as number);
     return out;
   }
