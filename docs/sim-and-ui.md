@@ -10,6 +10,7 @@ reputation and their turf in `docs/factions.md`, and the work their contacts han
 `docs/missions.md`. Death, arrest, the heat and the police of spec sections 11.7 and 14 are in
 `docs/police.md`. The city that lives around the player — the ambient traffic, the lights, the
 parked cars, the tram, the crowd and the metro of spec section 13 — is in `docs/city-life.md`.
+The aircraft, how they fly and what the police do about them are in `docs/aircraft.md`.
 
 ## Contents
 

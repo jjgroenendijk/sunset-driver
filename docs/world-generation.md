@@ -3,7 +3,7 @@
 The gotchas of `src/world`: what a generator refuses, what is built on demand, and what is already
 in the world description. `spec.md` sections 6, 7, 9 and 10 are the design; this is what a session
 gets wrong without it. The road network has a page of its own in `docs/roads.md`, and the
-corridors in `docs/corridors.md`.
+corridors in `docs/corridors.md`. The airfields of section 8.4 are in `docs/aircraft.md`.
 
 ## Contents
 

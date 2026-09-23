@@ -5,7 +5,8 @@ vehicles, weapons, plants, traffic and the crowd. `spec.md` sections 10, 11 and 
 The buildings have a doc of their own, `docs/buildings.md`. How these meshes reach the screen —
 the batches, the cells and the frame budget — is in `docs/streaming.md`, what a quality tier moves
 in `docs/rendering.md`, what lights them after dark in `docs/lighting.md`, and the one interior the
-scene ever holds in `docs/shops.md`.
+scene ever holds in `docs/shops.md`. The aircraft and the airfields are drawn as
+`docs/aircraft.md` says.
 
 ## Contents
 

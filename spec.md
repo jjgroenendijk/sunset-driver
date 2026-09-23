@@ -340,6 +340,21 @@ signage, shopfronts, food carts, music and building colour. They are the home tu
 [factions](#17-factions-and-territory). The beach and boardwalk form their own neighbourhood — surf
 shops, ice-cream stands, a fairground pier — laid-back by day and a party strip by night.
 
+### 8.4 Airfields
+
+Every map has one airport, and most have smaller fields as well. Each is a levelled rectangle of
+ground. The roads and the buildings keep off it, and one road reaches its gate up a paved ramp.
+
+- **The airport**: a paved runway with markings, a taxiway, the apron, the terminal and a control
+  tower, two hangars and two helipads. A fenced military compound stands at one end of the apron.
+- **Airstrips**: up to two in the countryside. Each is a dirt runway with a windsock and a shed.
+- **Heliports**: a police heliport in the inner city and a medical one in the suburbs, each a pad on
+  the ground.
+- **The seaplane dock**: a walkway from a shore the roads reach out to deep water.
+
+Every aircraft of the roster ([11.3](#113-driving)) waits on some airfield, always in the same
+place. The seaplane waits only on a map with a dock. The map and the minimap mark every airfield.
+
 ---
 
 ## 9. Streaming and performance
@@ -527,6 +542,7 @@ is what other players see in multiplayer.
 | Context | Actions |
 |---|---|
 | Driving | Accelerate, brake/reverse, steer, handbrake, horn |
+| Flying | Throttle and steer as when driving; climb and descend |
 | On foot | Move, sprint, jump, enter/exit vehicle, interact |
 | Combat | Aim, fire, reload, cycle weapon, melee, take cover |
 | Radio | Next/previous station, mute |
@@ -549,6 +565,16 @@ Driving is the primary mechanic.
 - Visible progressive damage: deformation, lost panels, smoke, fire, explosion.
 - Cars can be set on fire, and fire spreads.
 
+**Aircraft.** Four helicopters (a light two-seater, the police helicopter, a heavy transport and an
+attack helicopter) and five planes (a light prop plane, a seaplane, a stunt biplane, a business jet
+and a fighter). Flight is arcade:
+
+- Throttle and steering work as they do in a car. The jump key climbs and the sprint key descends.
+- A helicopter hovers and lifts straight off. A plane needs its take-off speed and stalls gently
+  into a sink when it loses it. The seaplane takes off from and lands on the water.
+- Nothing flies higher than a fixed ceiling. The top-down camera pulls back as the aircraft climbs.
+- A crash damages an aircraft as it damages a car.
+
 ### 11.4 Vehicle theft
 
 - Ordinary cars are instant: get in and go.
@@ -556,6 +582,8 @@ Driving is the primary mechanic.
 - The minigame never pauses the world. Police close in, traffic passes, pedestrians react while you
   work.
 - Its length is capped so it is always winnable under pressure.
+- Every aircraft is alarmed. The fighter and the attack helicopter stand inside the military
+  compound, and taking one is a serious crime ([14](#14-heat-and-police)).
 
 ### 11.5 On foot
 
@@ -681,6 +709,11 @@ skip, so it is safe in multiplayer.
   your last known position rather than knowing where you are.
 - Response time varies by district wealth and zone: slow in the wilderness, immediate downtown.
 - Police also police the world: pulling over NPC drivers and responding to street crime.
+- The airport's airside is restricted. A player on the runway, a taxiway or the apron raises heat up
+  to two stars; in the military compound, up to three. A pilot in a civil aircraft may use the
+  airside.
+- Stealing a military aircraft raises heat straight to four stars. At that heat the police
+  helicopter fires its mounted gun. It also comes up at two stars when the player is flying.
 
 ---
 
@@ -733,6 +766,8 @@ District-to-district trading is the economic spine, in the Chinatown Wars tradit
 - Purchasable properties across the map, priced by district.
 - Each provides saving, a stash, a garage and a respawn point. The active safehouse is where you
   respawn after death or arrest.
+- A hangar at the airport is one of the properties. Its door is on the landside, and its garage
+  holds one aircraft, which is brought out onto the apron. It comes with a light helicopter.
 
 ### 16.4 Saving
 
