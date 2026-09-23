@@ -43,7 +43,7 @@ export function generateWorld(seed: number): WorldDescription {
   // neighbourhood of a beach that was left as plain sand. Nothing in the trace
   // or the corridors reads a district's name or its culture; the simulation
   // does, and it reads the finished world.
-  const districts = withBeachCulture(nameBoardwalk(sites, developed, zones), developed, zones);
+  const districts = withBeachCulture(nameBoardwalk(sites, developed, zones), developed);
   // The graph is built here rather than stored: the corridors are the last
   // thing generation asks of it, and everything else builds it on demand.
   const { corridors, tram } = buildCorridors(skeleton, roads, buildRoadGraph(roads));

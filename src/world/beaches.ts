@@ -249,20 +249,19 @@ function promotions(runs: readonly ShoreSample[][], servable: readonly boolean[]
 
 /**
  * The districts a resort beach runs through, with the beach culture of spec
- * section 8.3. The longest resort outside the core makes its districts a beach
- * neighbourhood whatever they were before, so every seed with a beach has one;
- * the other resorts only claim districts that have no culture yet, which leaves
- * a named neighbourhood and the faction that lives in it alone.
+ * section 8.3. Only a district with no culture yet takes it. A named
+ * neighbourhood keeps its own, because its faction's home turf is seeded from
+ * it (`factionForCulture`, spec section 17.2); issue #348. The Boardwalk always
+ * takes it, since {@link nameBoardwalk} names only a district with no culture,
+ * so every seed with a resort outside the core has a beach neighbourhood.
  */
-export function withBeachCulture(districts: readonly District[], beaches: readonly Beach[], zones: ZoneLayout): District[] {
-  const spare = new Set<number>();
+export function withBeachCulture(districts: readonly District[], beaches: readonly Beach[]): District[] {
+  const claim = new Set<number>();
   for (const beach of beaches) {
-    if (isResort(beach)) for (const id of beach.districts) spare.add(id);
+    if (isResort(beach)) for (const id of beach.districts) claim.add(id);
   }
-  const best = resortsOutsideCore(beaches, zones)[0];
-  const claim = new Set<number>(best?.districts ?? []);
   return districts.map((d) => {
-    if (claim.has(d.id) || (spare.has(d.id) && d.culture === 'none')) return { ...d, culture: 'beach' as const };
+    if (d.culture === 'none' && (claim.has(d.id) || d.name === BOARDWALK_NAME)) return { ...d, culture: 'beach' as const };
     return d;
   });
 }
