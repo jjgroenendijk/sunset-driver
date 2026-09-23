@@ -9,7 +9,8 @@
  *
  * It fails when a case that should make a sound is silent, or when one clips,
  * which is what a voice that was never connected, an envelope that never opened
- * and a mix that is too hot all look like from here.
+ * and a mix that is too hot all look like from here. It also fails when a siren
+ * or a gunshot peaks under the idling engine.
  *
  * Usage: node scripts/audio-check.ts
  *
@@ -33,6 +34,14 @@ const SILENT_CASE = 'nothing';
 
 /** Under this peak a case counts as silent, and over 1 it clips. */
 const AUDIBLE = 0.01;
+
+/**
+ * Cases that must peak over the player's own idling engine. A police car 20 m
+ * off and a rifle in the player's hands are what a chase is heard by, and the
+ * engine is held under the rest of the mix (spec section 15).
+ */
+const OVER_THE_ENGINE = ['one siren', 'gunshot'];
+const ENGINE = 'engine idling';
 
 let server: ViteDevServer | undefined;
 let browser: Browser | undefined;
@@ -66,6 +75,13 @@ try {
       `${wanted ? ' ok ' : 'FAIL'}  ${level.name.padEnd(18)} peak ${level.peak.toFixed(3)}` +
         `  rms ${level.rms.toFixed(4)}  silent ${(level.quiet * 100).toFixed(0)}%`,
     );
+  }
+  const engine = levels.find((level) => level.name === ENGINE)?.peak ?? 0;
+  for (const name of OVER_THE_ENGINE) {
+    const peak = levels.find((level) => level.name === name)?.peak ?? 0;
+    if (peak >= engine) continue;
+    failed = true;
+    console.log(`FAIL  ${name} peaks at ${peak.toFixed(3)}, under the ${ENGINE} at ${engine.toFixed(3)}`);
   }
   if (failures.length > 0) {
     failed = true;
