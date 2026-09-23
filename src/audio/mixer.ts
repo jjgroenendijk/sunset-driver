@@ -31,16 +31,16 @@ import type { Listener } from './space.ts';
 import { EngineVoice, HornVoice, RAMP, SirenVoice, SquealVoice, TramVoice } from './voices.ts';
 
 /** Where the master sits before the limiter. Headroom for the cues to peak into. */
-export const MASTER_GAIN = 0.55;
+export const MASTER_GAIN = 0.42;
 
 /** What each family of voices is worth against the others. */
 export const LEVELS = Object.freeze({
-  engine: 0.8,
-  siren: 0.5,
+  engine: 0.42,
+  siren: 3,
   squeal: 0.35,
   tram: 1.6,
   horn: 0.5,
-  cue: 0.9,
+  cue: 1.2,
   cry: 0.8,
   radio: 0.7,
   score: 0.5,

@@ -168,6 +168,10 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
 - Four buses meet at the master: `music` — the radio and the score — `effects`, the player's engine
   on its own, and the ambient beds. A limiter sits on the master, so nothing a stacked explosion
   does can clip the output.
+- The player's own engine is held under what a chase is heard by: one siren 20 m off and a gunshot
+  in the player's hands both peak over the idling engine, and `scripts/audio-check.ts` fails when
+  they do not. The sirens sit well over 1 in `LEVELS`, because a square through a band-pass comes
+  out far under its gain.
 - The beds are on their own bus because they must not duck: a city does not stop humming because
   somebody fired a gun in it.
 - `music` is what ducks. A cue whose row in `CUES` says `ducks` pulls it down by `DUCK_DEPTH` and it
