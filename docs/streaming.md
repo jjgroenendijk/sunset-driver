@@ -30,6 +30,10 @@ details in `docs/buildings.md`, and the frame and memory measurements in `docs/p
   (`PackedBatch.storage`), and `fillOfPacked` merges the batch into them. A batch left to allocate
   its own does it inside its first part: tens of megabytes in one frame, and the piece a collection
   lands in.
+- A job after the first starts only when the longest job so far this frame would still end inside
+  the budget. The first upload of a buffer copies the whole array, so each buffer of a batch is
+  created in a step of its own. What still overruns the slice on a drive is a garbage collection
+  that lands in a job, at 3–4 ms on an M1 (issue #639).
 - Nothing is built on the frame thread any more, so
   `WorldScene.settle(x, y, radius, timeoutMs, onProgress)` is how the game and the preview wait for
   the ground under the player. `onProgress` is told how many of the wanted chunks are in the scene,
