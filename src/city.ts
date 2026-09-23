@@ -22,11 +22,15 @@ import { PoliceForce, policeDistrictsOf } from './sim/police.ts';
 import { AmbientTraffic, trafficRoadsOf, type TrafficRoads } from './sim/traffic.ts';
 import { TramLine } from './sim/tram.ts';
 import { AmbientWildlife } from './sim/wildlife.ts';
-import type { WorldScene } from './render/world-scene.ts';
 import { roadDecks } from './world/decks.ts';
 import { pierPosts } from './world/pier-posts.ts';
 import { SurfaceIndex } from './world/surface.ts';
 import type { WorldDescription } from './world/types.ts';
+
+/** The carved ground a city stands on: a `WorldScene`, or the carve it reads. */
+export interface HeightSource {
+  heightAt(x: number, y: number): number;
+}
 
 /** The city of one session, and the ground the physics drives on. */
 export interface City {
@@ -48,9 +52,10 @@ export interface City {
  * Build the city of a seed. `world` is the scene the renderer has already made
  * of the same description: the physics drives on the carved ground it draws,
  * so the height under a wheel and the height under a pixel are one number
- * (spec section 11.3).
+ * (spec section 11.3). Only the height is read, so `scripts/sim-profile.ts`
+ * builds a city in Node from the carve alone.
  */
-export function buildCity(seed: number, description: WorldDescription, world: WorldScene): City {
+export function buildCity(seed: number, description: WorldDescription, world: HeightSource): City {
   // The surface the parcel model left, which is what says whether a wheel is
   // on tarmac, sand or grass.
   const surfaces = new SurfaceIndex(description);
