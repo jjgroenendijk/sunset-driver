@@ -36,6 +36,7 @@ import { TICK_RATE } from './clock.ts';
 import { drawDriver, type Driver } from './driver.ts';
 import { createHolds, type Holds } from './hold.ts';
 import { EdgeIndex } from './edge-index.ts';
+import { PoseMemo } from './pose-memo.ts';
 import { heightOff, RouteSampler, type BedTilt, type RoutePoint } from './route-sample.ts';
 import { SIGNAL_CYCLE, TrafficSignals } from './signals.ts';
 import { legAt, timeTour, walkTour, type Permit, type Tour } from './traffic-tour.ts';
@@ -221,6 +222,7 @@ export class AmbientTraffic {
   private readonly index: EdgeIndex;
   private readonly behind: Sample = { x: 0, y: 0, height: 0 };
   private readonly ahead: Sample = { x: 0, y: 0, height: 0 };
+  private readonly memo: PoseMemo;
 
   constructor(seed: number, roads: TrafficRoads) {
     this.roads = roads;
@@ -243,6 +245,7 @@ export class AmbientTraffic {
     const vehicles: AmbientVehicle[] = [];
     for (const edge of graph.edges) this.place(seed, edge, busy, vehicles);
     this.vehicles = vehicles;
+    this.memo = new PoseMemo(vehicles.length);
   }
 
   /** Where a vehicle is on its tour at a tick, evaluated without stepping it there. */
@@ -330,13 +333,19 @@ export class AmbientTraffic {
     const ticks = tour.stepTicks[step] as number;
     const from = tour.stepFrom[step] as number;
     const metres = (tour.stepTo[step] as number) - from;
-    const along = (tour.startDistance[leg] as number) + from + (into / ticks) * metres;
-    this.sample(vehicle, along - SMOOTH, this.behind);
-    this.sample(vehicle, along + SMOOTH, this.ahead);
-    out.x = (this.behind.x + this.ahead.x) / 2;
-    out.y = (this.behind.y + this.ahead.y) / 2;
-    out.height = (this.behind.height + this.ahead.height) / 2;
-    out.heading = atan2(this.ahead.y - this.behind.y, this.ahead.x - this.behind.x);
+    // A whole tick is asked for many times over; the renderer's moments between ticks are not.
+    const whole = Number.isInteger(into);
+    const at = (tour.stepStart[step] as number) + into;
+    if (!whole || !this.memo.read(id, at, out)) {
+      const along = (tour.startDistance[leg] as number) + from + (into / ticks) * metres;
+      this.sample(vehicle, along - SMOOTH, this.behind);
+      this.sample(vehicle, along + SMOOTH, this.ahead);
+      out.x = (this.behind.x + this.ahead.x) / 2;
+      out.y = (this.behind.y + this.ahead.y) / 2;
+      out.height = (this.behind.height + this.ahead.height) / 2;
+      out.heading = atan2(this.ahead.y - this.behind.y, this.ahead.x - this.behind.x);
+      if (whole) this.memo.write(id, at, out);
+    }
     out.speed = (metres / ticks) * TICK_RATE;
     return out;
   }

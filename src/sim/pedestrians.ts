@@ -31,6 +31,7 @@ import { TICK_RATE } from './clock.ts';
 import { EdgeIndex } from './edge-index.ts';
 import { lookOf, strideOf, type Gait, type PedestrianLook } from './pedestrian-look.ts';
 import { Pavements, pavementOffset, type WalkPoint, type WalkRoute } from './pedestrian-route.ts';
+import { PoseMemo } from './pose-memo.ts';
 import { backOf, walkOut } from './traffic-tour.ts';
 import type { Casualty } from './casualty-motion.ts';
 import { createHolds, heldStep, heldTime, type Holds } from './hold.ts';
@@ -235,6 +236,7 @@ export class AmbientPedestrians {
   private readonly index: EdgeIndex;
   private readonly behind: WalkPoint = { x: 0, y: 0, height: 0 };
   private readonly ahead: WalkPoint = { x: 0, y: 0, height: 0 };
+  private readonly memo: PoseMemo;
 
   constructor(seed: number, roads: TrafficRoads, districtAt?: DistrictAt) {
     this.seed = seed;
@@ -250,6 +252,7 @@ export class AmbientPedestrians {
       this.place(edge, district, roads, people);
     }
     this.people = people;
+    this.memo = new PoseMemo(people.length);
   }
 
   /** Where a person is on their loop at a tick, evaluated without stepping them there. */
@@ -345,13 +348,18 @@ export class AmbientPedestrians {
     const person = this.people[id] as AmbientPedestrian;
     const route = person.route;
     const pace = route.length / person.period;
-    const distance = at * pace;
-    this.pavements.sample(route, person.side, distance - HALF_STEP, this.behind);
-    this.pavements.sample(route, person.side, distance + HALF_STEP, this.ahead);
-    out.x = (this.behind.x + this.ahead.x) / 2;
-    out.y = (this.behind.y + this.ahead.y) / 2;
-    out.height = (this.behind.height + this.ahead.height) / 2;
-    out.heading = atan2(this.ahead.y - this.behind.y, this.ahead.x - this.behind.x);
+    // A whole tick is asked for many times over; the renderer's moments between ticks are not.
+    const whole = Number.isInteger(at);
+    if (!whole || !this.memo.read(id, at, out)) {
+      const distance = at * pace;
+      this.pavements.sample(route, person.side, distance - HALF_STEP, this.behind);
+      this.pavements.sample(route, person.side, distance + HALF_STEP, this.ahead);
+      out.x = (this.behind.x + this.ahead.x) / 2;
+      out.y = (this.behind.y + this.ahead.y) / 2;
+      out.height = (this.behind.height + this.ahead.height) / 2;
+      out.heading = atan2(this.ahead.y - this.behind.y, this.ahead.x - this.behind.x);
+      if (whole) this.memo.write(id, at, out);
+    }
     out.speed = pace * TICK_RATE;
     const cycles = (at / person.period) * person.strides;
     out.cycle = cycles - Math.floor(cycles);
