@@ -340,6 +340,16 @@ function fill(
   mesh.visible = false;
 
   const steps: (() => void)[] = [];
+  // The first upload of an attribute creates its buffer and copies the whole
+  // array in, zeros and all: a millisecond or two for a batch of 100 000
+  // vertices, which fell on whichever step came first, on top of its own copy.
+  // A step of its own for each buffer spreads that over frames (issue #639).
+  if (records !== undefined) {
+    for (const attribute of attributesOf(geometry)) {
+      const type = attribute === geometry.getIndex() ? INDEX : VERTEX;
+      steps.push(() => records.update(attribute, type));
+    }
+  }
   // Read out here, so no step keeps the parts themselves once it has run.
   const total = parts.length;
   let vertexAt = 0;
