@@ -66,6 +66,8 @@ export interface ProfileRequest {
   passes?: boolean;
   /** `clear`, `rain`, `fog`, `storm`, or `seed` for the seed's own. Left out, clear. */
   weather?: string;
+  /** Return the WGSL of every program the frames built, to read what a shader does. */
+  shaders?: boolean;
 }
 
 /** One frame, timed. */
@@ -112,11 +114,23 @@ export interface ProfileResult {
   drive: FrameSample[];
   kinds: Record<string, BatchKind>;
   memory?: MemorySample;
+  /** The WGSL of every program the renderer built, when asked for. */
+  shaders?: BuiltShaders;
+}
+
+/** The WGSL of every stage the renderer compiled, as three.js generated it. */
+export interface BuiltShaders {
+  vertex: string[];
+  fragment: string[];
 }
 
 /** The renderer's caches, which say when a frame compiled or built something. */
 interface RendererCaches {
-  _pipelines: { caches: Map<string, unknown> };
+  _pipelines: {
+    caches: Map<string, unknown>;
+    /** Each stage the renderer compiled, keyed by its WGSL. */
+    programs: { vertex: Map<string, unknown>; fragment: Map<string, unknown> };
+  };
   _nodes: { nodeBuilderCache: Map<string, unknown> };
 }
 
@@ -248,11 +262,26 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
 
   if (memory !== undefined) memory.drivePeak = gpuPeak();
 
+  // Read before the dispose below, which empties the renderer's caches.
+  const shaders = request.shaders === true ? builtShaders(caches) : undefined;
   post.dispose();
   scene.dispose();
   disposeRenderer(renderer);
   canvas.remove();
-  return { timed: timer?.available ?? false, still, drive, kinds, ...(memory === undefined ? {} : { memory }) };
+  return {
+    timed: timer?.available ?? false,
+    still,
+    drive,
+    kinds,
+    ...(memory === undefined ? {} : { memory }),
+    ...(shaders === undefined ? {} : { shaders }),
+  };
+}
+
+/** Every stage the renderer compiled, each once. Compute programs are left out. */
+function builtShaders(caches: RendererCaches): BuiltShaders {
+  const { vertex, fragment } = caches._pipelines.programs;
+  return { vertex: [...vertex.keys()], fragment: [...fragment.keys()] };
 }
 
 /**

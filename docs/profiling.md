@@ -23,6 +23,7 @@ performance change: the answer is a number from one of these tools, not a readin
 | What does one part of the frame cost? | `render-profile.ts` with and without `--no-shadows` etc. |
 | What does a tick of the simulation cost, and in which part? | `sim-profile.ts <seed>` |
 | Did my change make it faster or slower? | `--json` on each build, then `profile-compare.ts` |
+| What does a material's shader really compute? | `render-profile.ts <seed> --shaders=<dir>` |
 
 The frame of a session is the simulation step and then the draw. `render-profile.ts` times the draw
 alone and runs no simulation. `sim-profile.ts` times the step alone. The two add up to the frame.
@@ -65,6 +66,11 @@ it, take a part away with a `--no-*` switch and compare the runs.
 Chrome rounds a timestamp to a tenth of a millisecond unless its WebGPU developer features are on,
 so the profiler turns them on with `--passes`. An adapter without the `timestamp-query` feature
 says so and prints no passes.
+
+`--shaders=<dir>` writes the WGSL of every stage the frames compiled, as `<n>.vert.wgsl` and
+`<n>.frag.wgsl`. A material is found by a constant of its own: `grep -l 0.1272727` finds the block
+material by its window pitch. Read the fragment stage for what runs outside a branch, since every
+fragment pays for that.
 
 ## Where the CPU time goes: `--cpuprofile`
 

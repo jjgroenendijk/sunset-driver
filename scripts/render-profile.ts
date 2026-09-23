@@ -32,6 +32,9 @@
  *                    (src/sim, three.js, the collector), by file and by
  *                    function. --cpuprofile=drive.cpuprofile also writes the
  *                    profile, for the Performance panel of Chrome DevTools.
+ *   --shaders=<dir>  write the WGSL of every stage the frames compiled, as
+ *                    `<n>.vert.wgsl` and `<n>.frag.wgsl`, to read what a
+ *                    material's shader really does.
  *   --json=<file>    write every sample of the run, for `profile-compare.ts`.
  *   --memory         report what the page and the GPU hold: settled after the
  *                    still frames, and at the most over the drive. The GPU is
@@ -45,6 +48,8 @@
  * Point CHROMIUM_PATH at a Chrome or Chromium that offers a hardware WebGPU
  * adapter, such as an installed Google Chrome.
  */
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { chromium } from 'playwright-core';
 import { createServer, type ViteDevServer } from 'vite';
 import { seedFromString } from '../src/core/rng.ts';
@@ -95,6 +100,7 @@ const request: ProfileRequest = {
   gate: options.has('cpuprofile') || options.has('memory'),
   memory: options.has('memory'),
   passes: options.has('passes'),
+  shaders: options.has('shaders'),
 };
 
 /** The page's heap, and the typed arrays outside it, in bytes. */
@@ -241,6 +247,14 @@ try {
   if (result.timed) {
     reportPasses('still', result.still);
     reportPasses('drive', result.drive);
+  }
+  const shaderDir = options.get('shaders');
+  if (shaderDir !== undefined && result.shaders !== undefined) {
+    mkdirSync(shaderDir, { recursive: true });
+    const { vertex, fragment } = result.shaders;
+    vertex.forEach((code, i) => writeFileSync(join(shaderDir, `${i}.vert.wgsl`), code));
+    fragment.forEach((code, i) => writeFileSync(join(shaderDir, `${i}.frag.wgsl`), code));
+    console.log(`${vertex.length} vertex and ${fragment.length} fragment stages written to ${shaderDir}`);
   }
   const json = options.get('json');
   if (json !== undefined) {
