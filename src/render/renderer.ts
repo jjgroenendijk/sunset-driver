@@ -58,11 +58,40 @@ function pinClusterGrid(renderer: WebGPURenderer, width: number, height: number,
 export const MIN_RENDER_SCALE = 0.5;
 
 /**
+ * The most pixels the full tier draws on a high-density screen (issue #639).
+ *
+ * The GPU cost of a frame is per pixel. An M1 at 1600×900 and a pixel ratio of
+ * 1 already spends most of the frame on the GPU, and at a Retina ratio of 2 the
+ * frame took 50 ms. The tiers then fell all the way to the low one, which gives
+ * up the plants, the lamps and the bloom as well as the pixels. So a screen
+ * denser than one pixel per CSS pixel is drawn at a ratio that keeps the frame
+ * near this many pixels, and never under one pixel per CSS pixel. A screen of
+ * one pixel per CSS pixel is drawn at its own size, whatever it is.
+ */
+export const PIXEL_BUDGET = 1920 * 1080;
+
+/** The densest a frame is drawn: past 2 the eye no longer tells the difference. */
+const MAX_PIXEL_RATIO = 2;
+
+/**
+ * The pixel ratio a page of `width` × `height` CSS pixels is drawn at by the
+ * full tier, before any render scale.
+ */
+export function basePixelRatioFor(devicePixelRatio: number, width: number, height: number): number {
+  const device = Math.min(devicePixelRatio, MAX_PIXEL_RATIO);
+  if (device <= 1 || width <= 0 || height <= 0) return device;
+  return clamp(Math.sqrt(PIXEL_BUDGET / (width * height)), 1, device);
+}
+
+/**
  * The pixel ratio each renderer was made at, before the render scale. A
  * renderer is told its ratio rather than asked for it, because asking would
  * compound: every step down would scale the step before it.
  */
 const basePixelRatio = new WeakMap<WebGPURenderer, number>();
+
+/** The render scale each renderer was last given, so a resize can apply it again. */
+const renderScale = new WeakMap<WebGPURenderer, number>();
 
 /**
  * Draw the frame at a fraction of the display's pixels (spec section 9.2).
@@ -72,7 +101,18 @@ const basePixelRatio = new WeakMap<WebGPURenderer, number>();
  */
 export function setRenderScale(renderer: WebGPURenderer, scale: number): void {
   const base = basePixelRatio.get(renderer) ?? 1;
+  renderScale.set(renderer, scale);
   renderer.setPixelRatio(base * clamp(scale, MIN_RENDER_SCALE, 1));
+}
+
+/**
+ * Size the page's renderer for a window of a new size. The base pixel ratio
+ * follows the size, since {@link PIXEL_BUDGET} is a number of pixels.
+ */
+export function resizeRenderer(renderer: WebGPURenderer, width: number, height: number): void {
+  basePixelRatio.set(renderer, basePixelRatioFor(window.devicePixelRatio, width, height));
+  setRenderScale(renderer, renderScale.get(renderer) ?? 1);
+  renderer.setSize(width, height, false);
 }
 
 export type WebGpuProbe = { ok: true } | { ok: false; reason: string };
@@ -139,7 +179,7 @@ export async function createRenderer(canvas: HTMLCanvasElement, trackTimestamp =
   await renderer.init();
   // The upload record exists from `init` on.
   uploadBatchesWith(renderer);
-  const base = Math.min(window.devicePixelRatio, 2);
+  const base = basePixelRatioFor(window.devicePixelRatio, window.innerWidth, window.innerHeight);
   basePixelRatio.set(renderer, base);
   setRenderScale(renderer, 1);
   renderer.setSize(window.innerWidth, window.innerHeight, false);

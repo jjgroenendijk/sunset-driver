@@ -6,7 +6,7 @@ import { PostChain } from './render/post.ts';
 import { choiceOf, nearestTier } from './render/graphics.ts';
 import { frameBudgetFrom } from './render/quality.ts';
 import { QualityMonitor } from './render/quality-monitor.ts';
-import { createRenderer, probeWebGpu } from './render/renderer.ts';
+import { createRenderer, probeWebGpu, resizeRenderer } from './render/renderer.ts';
 import { createTitleScene } from './render/scene.ts';
 import { RenderSmoother } from './render/smooth.ts';
 import { WorldSource } from './render/world-source.ts';
@@ -114,7 +114,7 @@ async function boot(): Promise<void> {
   const look = new MouseLook(canvas, camera, touch);
 
   window.addEventListener('resize', () => {
-    renderer.setSize(window.innerWidth, window.innerHeight, false);
+    resizeRenderer(renderer, window.innerWidth, window.innerHeight);
     camera.resize(window.innerWidth / window.innerHeight);
     preview.resize(window.innerWidth / window.innerHeight);
     // The sun's shadow cascades are cut to the camera's frustum (spec section
