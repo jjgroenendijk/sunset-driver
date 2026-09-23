@@ -28,6 +28,9 @@ times before judging a performance change.
 | Do several seeds look right, in one image? | `node scripts/render-sheet.ts 4 sheet.png` |
 | Do the vehicles, the people or the shop goods look right? | `node scripts/render-preview.ts <seed> out.png --gallery=vehicles` |
 | Did that change cost frame time? | `node scripts/render-profile.ts <seed>` |
+| Which GPU pass, or which code, costs the frame? | `node scripts/render-profile.ts <seed> --passes --cpuprofile` |
+| What does a simulation tick cost, and where? | `node scripts/sim-profile.ts <seed>` |
+| Is the new build faster, or is it noise? | `--json=<file>` on each build, then `node scripts/profile-compare.ts` |
 | Is the map or the minimap right? | `node scripts/map-preview.ts <seed> out.png` |
 | Do the map icons read at the size they are drawn? | `node scripts/icon-sheet.ts out.png` |
 | Whose turf is whose, and how it spreads? | `node scripts/map-preview.ts <seed> out.png --turf --day=8` |
@@ -70,5 +73,6 @@ reached the GPU on some Chromium builds. That is fixed, and a grade that cannot 
 dropped with a warning instead of blackening the frame, so believe a black picture and read the
 console the run collected.
 
-`render-profile.ts` needs a real GPU and SwiftShader will not do. GPU timings move by several
-milliseconds between runs, so compare two builds by running each more than once.
+`render-profile.ts` needs a real GPU and SwiftShader will not do; `sim-profile.ts` runs in Node
+anywhere. GPU timings move by a millisecond or more between runs, so run each build twice or more
+and let `profile-compare.ts` weigh them. `docs/profiling.md` says how each number is measured.

@@ -23,7 +23,7 @@ The two checks that open a browser — `npm run test:render` and `npm run test:w
 - `node scripts/render-preview.ts <seed> out.png`
 - The preview server
 - `node scripts/render-sheet.ts <count> out.png [--cols=3] [--tile=480]`
-- `node scripts/render-profile.ts <seed>`
+- `node scripts/render-profile.ts <seed>` and the other profilers
 - `node scripts/audio-check.ts`
 - The browser the previews need
 - The Chrome DevTools MCP server
@@ -290,22 +290,11 @@ and `--quality` mean what they mean for `render-preview.ts`.
 One browser draws every tile, on the graphics card, and each seed builds its own scene. Four tiles
 take about 22 seconds. `--software` draws them on SwiftShader, as CI does.
 
-## `node scripts/render-profile.ts <seed>`
+## `node scripts/render-profile.ts <seed>` and the other profilers
 
-What the frame costs. Measure the frame before judging a performance change.
-
-It draws a few hundred frames, standing still and then driving, and prints the frame times, the
-draws, and what each long frame compiled or built. It runs the warm-up of `src/render/warm.ts`
-first, as a session does, so a long frame here is a long frame in the game and not one the game
-had already paid for behind its loading screen. Its switches take one part of the frame away —
-`--no-water`, `--no-shadows`, `--no-lamps`, `--no-post` — so two runs say what that part costs, and
-`--dpr=2` is what a Retina display draws. `--tier-at=150:high,300:full` changes quality during the
-drive, at the drive frames named, the way the game's own monitor changes it — which is how a tier
-change is timed, by what the frames around it compiled. `--memory` adds what the GPU and the page
-hold, settled and at the most over the drive; `docs/performance.md` has the numbers it gave.
-
-GPU times move by several milliseconds between runs, so compare two builds by running them in turn,
-more than once each.
+What the frame costs, with the GPU time of each pass and the CPU time by area of the code. It and
+`sim-profile.ts`, which times the simulation step in Node, have a doc of their own:
+`docs/profiling.md`. It also says how two builds are compared.
 
 ## `node scripts/audio-check.ts`
 
