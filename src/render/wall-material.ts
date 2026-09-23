@@ -108,15 +108,6 @@ export function wallSurface(tint: TslNode, wall: TslNode, grain: TslNode, patch:
 }
 
 /**
- * How rough each material is, as a number taken off the roughness of a plain
- * wall. Metal and tile are the two that catch a highlight; brick and concrete
- * are as rough as the render they replace.
- */
-export function wallGloss(wall: TslNode): TslNode {
-  return at(wall, WALL_METAL).mul(0.35).add(at(wall, WALL_TILE).mul(0.3)).add(at(wall, WALL_STUCCO).mul(0.12));
-}
-
-/**
  * A wall as the weather leaves it: grime streaking down from every sill, stains
  * where the ground splashes it, and paint faded by the sun high up. `age` is
  * the building's own weathering off its vertices, 0 for a wall that is kept and
