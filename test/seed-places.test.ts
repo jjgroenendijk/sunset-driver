@@ -11,6 +11,7 @@ import {
   SHORE_STEP,
 } from '../src/world/beaches.ts';
 import { MIN_BOARDWALK } from '../src/world/roads.ts';
+import { kerbsidePlace, onCarriageway } from '../src/world/kerbside.ts';
 import { nearestRoadPlace } from '../src/world/surface.ts';
 import { CHAPTERS, chainSides, chapterJob } from '../src/sim/chain.ts';
 import { dealerPlaces, PITCH_LIMIT } from '../src/sim/dealer.ts';
@@ -277,13 +278,14 @@ sweepSuite('places', () => {
     }
   });
 
-  it('stands a dealer on the streets of every district that has streets', () => {
+  it('stands a dealer beside the streets of every district that has streets', () => {
     // Spec section 16.2: one dealer to a district, on its own corners. A
     // district with no street near its middle keeps none, which over the
-    // seeds is the wilderness and nothing else.
+    // seeds is the wilderness and nothing else. A corner is on the pavement,
+    // never in the traffic.
     for (const seed of seeds.slice(0, DEALER_COUNT)) {
       const w = worlds.get(seed) as WorldDescription;
-      const dealers = dealerPlaces(seed, w.districts, (x, y) => nearestRoadPlace(w, x, y));
+      const dealers = dealerPlaces(seed, w.districts, (x, y) => kerbsidePlace(w, x, y));
       let complaint: string | undefined;
       const fault = (text: string): void => {
         complaint ??= text;
@@ -298,6 +300,7 @@ sweepSuite('places', () => {
           const away = Math.hypot(pitch.x - dealer.district.x, pitch.y - dealer.district.y);
           if (away > PITCH_LIMIT) fault(`${dealer.name} works a corner ${away.toFixed(0)} m out of their district`);
           if (Math.abs(pitch.x) > w.size / 2 || Math.abs(pitch.y) > w.size / 2) fault(`${dealer.name} works a corner off the map`);
+          if (onCarriageway(w, pitch.x, pitch.y)) fault(`${dealer.name} stands in the road at ${pitch.x.toFixed(0)}, ${pitch.y.toFixed(0)}`);
         }
       }
       expect(complaint, `seed ${seed}`).toBeUndefined();

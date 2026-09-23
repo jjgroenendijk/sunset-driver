@@ -29,6 +29,7 @@ import { venuesOf, type Venues } from './sim/city-events.ts';
 import { TerritoryMap } from './sim/territory.ts';
 import type { TrafficRoads } from './sim/traffic.ts';
 import { metroEntrances } from './world/metro.ts';
+import { kerbsidePlace } from './world/kerbside.ts';
 import { nearestRoadPlace } from './world/surface.ts';
 import type { Point, WorldDescription } from './world/types.ts';
 
@@ -87,7 +88,8 @@ export function buildPlaces(
   // these need no lookup.
   const shops = shopPlaces(world.shops ?? [], description.districts);
   ground.shops = shops;
-  const dealers = dealerPlaces(seed, description.districts, snap);
+  // A dealer stands on the pavement and watches the road, not in the traffic.
+  const dealers = dealerPlaces(seed, description.districts, (x, y) => kerbsidePlace(description, x, y));
   ground.dealers = dealers;
   const safehouses = safehousePlaces(seed, description.districts, snap);
   ground.safehouses = safehouses;

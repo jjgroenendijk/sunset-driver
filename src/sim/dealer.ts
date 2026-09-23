@@ -9,10 +9,11 @@
  * it, the panel name it and a replay find them in the same place (spec section
  * 5.3).
  *
- * A corner is picked round the district's site and then snapped to the nearest
- * road, because a dealer stands on a street and not in the middle of a block.
- * The snapping is handed in rather than read here, so the simulation tests can
- * put a dealer on a hillside with no roads on it at all.
+ * A corner is picked round the district's site and then snapped to the
+ * pavement of the nearest road, because a dealer stands at the side of a street
+ * and not in the middle of a block or of the traffic. The snapping is handed in
+ * rather than read here, so the simulation tests can put a dealer on a hillside
+ * with no roads on it at all.
  *
  * A district with no street near its middle keeps no corner and gets no dealer.
  * Over the seeds measured that is the wilderness and nothing else, which is the
@@ -68,8 +69,9 @@ export interface DealerPlace {
 
 /**
  * The dealers of a world: one per district that has a street to stand on.
- * `snap` puts a point on the nearest road and answers nothing where there is no
- * road near it; `src/world/surface.ts` is what the game hands in.
+ * `snap` puts a point on the pavement of the nearest road, facing the road, and
+ * answers nothing where there is no road near it; `kerbsidePlace`
+ * (`src/world/kerbside.ts`) is what the game hands in.
  */
 export function dealerPlaces(
   seed: number,
