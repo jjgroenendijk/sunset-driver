@@ -74,6 +74,7 @@
 import { clamp, dist, directionDelta, lerp, wrapAngle } from '../core/math.ts';
 import { atan2, cos, sin } from '../core/libm.ts';
 import { gateChoices } from './airfields.ts';
+import { toSegment } from './crossing-line.ts';
 import { alleyPlan, alleySeeds, type AlleyGround } from './alleys.ts';
 import { ZONE_LOTS } from './buildings.ts';
 import { districtAt, layoutZones, zoneAt } from './districts.ts';
@@ -111,6 +112,8 @@ export { groundRule, MIN_BOARDWALK, spanProfile, type Profile } from './road-tra
 
 /** Metres from an airfield's gate within which a road already laid serves it. */
 const GATE_REACH = 40;
+/** Metres round a gate searched for the points of a road that may run past it. */
+const GATE_SEARCH = 200;
 
 /** What {@link seedAlong} lays besides the two roads parallel to the curve. */
 interface SeedOptions {
@@ -173,17 +176,19 @@ class RoadTracer extends IslandLinkTrace {
     // carrying districts that no road reaches.
     this.linkIslands(true);
     this.serveDistricts();
-    // The airport and the helipads next, while the arterials still leave room:
-    // the fill would otherwise take the ground in front of a gate.
+    // The airport next, while the arterials still leave room: the fill would
+    // otherwise take the ground in front of its gate.
     const fields = this.world.airfields;
-    const served = fields.map((field) => (field.kind === 'airport' || field.kind === 'heliport' ? this.serveField(field) : { road: -1, gate: field.gate }));
+    const served = fields.map((field) => (field.kind === 'airport' ? this.serveField(field) : { road: -1, gate: field.gate }));
     // Before the minor fill, so the fill grows around the boardwalk instead of
     // laying its own streets over the same ground.
     const boardwalks = this.world.beaches.map((beach, i) => this.traceBoardwalk(beach, i));
     this.fillMinor();
     // An airstrip stands out where the dirt roads are, which the fill has just
-    // laid, so its track is the short one to the nearest of them. A field no
-    // road reached before the fill may find a street of it at its gate now.
+    // laid, so its track is the short one to the nearest of them. A heliport
+    // stands among the streets, so a street serves it: an arterial laid there
+    // before the fill cut the blocks round it apart. An airport no road reached
+    // before the fill may find a street of it at its gate now.
     fields.forEach((field, i) => {
       if (field.kind !== 'dock' && (served[i] as { road: number }).road < 0) served[i] = this.serveField(field);
     });
@@ -396,7 +401,7 @@ class RoadTracer extends IslandLinkTrace {
   /** The road that serves an airfield and the gate it was laid from, trying each side in turn. */
   private serveField(field: Airfield): { road: number; gate: Point } {
     for (const gate of gateChoices(field, (x, y) => this.hf.sample(x, y))) {
-      const road = this.serveGate(gate, field.kind === 'airstrip');
+      const road = this.serveGate(gate, field.kind);
       if (road >= 0) return { road, gate };
     }
     return { road: -1, gate: field.gate };
@@ -404,28 +409,54 @@ class RoadTracer extends IslandLinkTrace {
 
   /**
    * The road that serves an airfield (spec section 8.4): from its gate to the
-   * nearest road, an arterial where one can be laid and a street where not. An
-   * airstrip out in the wilderness is served by a dirt road, as the ground
-   * round it is. Its id, or -1 where no route reaches the gate.
+   * nearest road. An airport takes an arterial where one can be laid and a
+   * street where not, a heliport a street, and an airstrip out in the
+   * wilderness a dirt road, as the ground round it is. Its id, or -1 where no
+   * route reaches the gate.
    */
-  private serveGate(gate: Point, rural: boolean): number {
+  private serveGate(gate: Point, kind: Airfield['kind']): number {
     if (!this.isDry(gate.x, gate.y)) return -1;
     // A road laid earlier may already run past the gate, and then it is the
     // road that serves it: a second one would start on its carriageway.
-    const passing = this.network.nearest(gate.x, gate.y, GATE_REACH);
-    if (passing !== undefined) return passing.curve;
+    const passing = this.roadAtGate(gate);
+    if (passing >= 0) return passing;
     const island = this.islandOf(gate.x, gate.y);
-    const tiers: [RoadTier, TierParams][] = rural ? [['dirt', DIRT], ['street', STREET]] : [['arterial', ARTERIAL], ['street', STREET]];
+    const tiers: [RoadTier, TierParams][] =
+      kind === 'airstrip' ? [['dirt', DIRT], ['street', STREET]] : kind === 'heliport' ? [['street', STREET]] : [['arterial', ARTERIAL], ['street', STREET]];
     for (const [tier, params] of tiers) {
       const route = this.routeToNetwork(gate, island, tier, params, this.offSand);
       if (route === undefined) continue;
       // The network may keep only part of a route, so the road that serves
       // the gate is whichever one now reaches it.
       if (this.addCurve(tier, route, []) === undefined) continue;
-      const reached = this.network.nearest(gate.x, gate.y, GATE_REACH);
-      if (reached !== undefined) return reached.curve;
+      const reached = this.roadAtGate(gate);
+      if (reached >= 0) return reached;
     }
     return -1;
+  }
+
+  /**
+   * The road whose centreline runs within {@link GATE_REACH} of a gate, or -1.
+   * It measures to the segments, not to the points: a long straight road has
+   * its points far apart and may run right past the gate between two of them.
+   */
+  private roadAtGate(gate: Point): number {
+    let best = -1;
+    let bestDistance = GATE_REACH;
+    for (const hit of this.network.within(gate.x, gate.y, GATE_SEARCH)) {
+      const points = (this.network.curves[hit.curve] as RoadCurve).points;
+      for (const i of [hit.index - 1, hit.index]) {
+        const a = points[i];
+        const b = points[i + 1];
+        if (a === undefined || b === undefined) continue;
+        const d = toSegment(gate, a, b);
+        if (d <= bestDistance) {
+          bestDistance = d;
+          best = hit.curve;
+        }
+      }
+    }
+    return best;
   }
 
   // --------------------------------------------------------------- boardwalks
