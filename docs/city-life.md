@@ -16,7 +16,7 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 - The wrecks the city tows
 - Traffic lights
 - Parked cars
-- The tram
+- The tram (in `docs/tram.md`)
 - Pedestrians
 - Casualties
 - The metro
@@ -235,27 +235,8 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 
 ## The tram
 
-- `src/sim/tram.ts` is the tram of spec section 13.2, a function of the tick like the traffic.
-  `tram-timing.ts` lays the loop down as the steps of a traffic tour: it halts short of every stop,
-  light and level crossing, stands `DWELL` at a stop, and goes on at a light only with `TRAM_CLEAR`
-  of its green left. So a level crossing is obeyed through the lights: the tram never crosses on the
-  green of the road across it. The loop takes whole `SIGNAL_CYCLE`s, and each further tram runs it
-  whole cycles behind, for the reason a traffic tour does.
-- A tram is 32 m long, and many arterial runs are shorter than that and a junction. A tram waiting
-  at such a light leaves its tail across the junction behind. `hold` waits at the light before
-  instead, for a start that meets the short lights ahead on green. One wait seldom fits more than
-  two of them, so on seed 1 about a third of the tram's waits are still on a short run.
-- The loop is read from `TramDescription.edges`, which are graph ids: the graph is rebuilt from the
-  roads on demand and the same roads give the same ids. A car is read at its two bogies on the
-  track, `TRAM_TRACK` right of the centreline. On a run the tram drives, `laneOffset` moves the
-  traffic lanes out of the middle `TRAM_HALF`, so no car drives through a tram.
-- `tram-bodies.ts` stands each car in the physics box as a kinematic box, under `TrafficBodies`, so
-  a ground without traffic has no tram. A touch does not take a tram off its loop. The people at a
-  stop are a count of the ticks since the last tram left, and fall to none while one boards them;
-  `PedestrianView` draws them standing. `TramLine.bells` is the hook the tram bells of spec section
-  15 will ring: a tram pulling away from a halt on that tick.
-- The pedestrians do not wait at a level crossing yet, as they wait at no light (#286). Once they
-  keep to `crossingOpen`, they keep to the tram too, since it only crosses on their red.
+- The tram of spec section 13.2 has a doc of its own, `docs/tram.md`: the loop and its lights, the
+  short runs and the track.
 
 ## Pedestrians
 
