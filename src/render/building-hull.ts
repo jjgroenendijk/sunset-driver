@@ -296,8 +296,11 @@ function profileOf(
 
 /**
  * The first and the last band a triangle of `array` stands in. A level
- * triangle belongs to the band it roofs, which is the one below it: a roof on
- * the edge of a band is not the floor of the band above.
+ * triangle belongs to the band on the side it faces: a roof on the edge of a
+ * band is not the floor of the band above, and the soffit of an overhang is
+ * not the ceiling of the band below. Band edges are moved onto levels, where a
+ * roof and the soffit over it often meet, and the soffit of a wider storey held
+ * the band under it out to that storey.
  */
 function bandsOf(array: Float32Array, t: number, edges: readonly number[]): [number, number] {
   const y0 = array[t + 1] as number;
@@ -306,11 +309,23 @@ function bandsOf(array: Float32Array, t: number, edges: readonly number[]): [num
   const low = Math.min(y0, y1, y2);
   const high = Math.max(y0, y1, y2);
   if (high - low < 2 * LEVEL_SLACK) {
-    const band = bandAt(edges, high - LEVEL_SLACK);
+    const band = facing(array, t) > 0 ? bandAt(edges, low + LEVEL_SLACK) : bandAt(edges, high - LEVEL_SLACK);
     return [band, band];
   }
   const from = bandAt(edges, low + LEVEL_SLACK);
   return [from, Math.max(from, bandAt(edges, high - LEVEL_SLACK))];
+}
+
+/**
+ * Twice the area of the triangle of `array` at `t` on the ground, positive
+ * when it faces down. The shells wind their faces to look out.
+ */
+function facing(array: Float32Array, t: number): number {
+  const ax = (array[t + 3] as number) - (array[t] as number);
+  const az = (array[t + 5] as number) - (array[t + 2] as number);
+  const bx = (array[t + 6] as number) - (array[t] as number);
+  const bz = (array[t + 8] as number) - (array[t + 2] as number);
+  return ax * bz - az * bx;
 }
 
 /**
@@ -377,11 +392,7 @@ function bandEdgesOf(array: Float32Array, box: Box3): number[] {
     const y1 = array[t + 4] as number;
     const y2 = array[t + 7] as number;
     if (Math.max(y0, y1, y2) - Math.min(y0, y1, y2) >= 2 * LEVEL_SLACK) continue;
-    const ax = (array[t + 3] as number) - (array[t] as number);
-    const az = (array[t + 5] as number) - (array[t + 2] as number);
-    const bx = (array[t + 6] as number) - (array[t] as number);
-    const bz = (array[t + 8] as number) - (array[t + 2] as number);
-    levels.push([y0, Math.abs(ax * bz - az * bx) / 2]);
+    levels.push([y0, Math.abs(facing(array, t)) / 2]);
   }
   levels.sort((a, b) => a[0] - b[0]);
   // Level triangles at one height are one roof.
