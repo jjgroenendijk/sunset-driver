@@ -27,8 +27,17 @@ stand, how an aircraft flies, what the police do about it, and the hangar of sec
   put the airport's gate 41 m below the level, and no road could climb to it.
 - A site whose gate stands more than `RAMP_GRADE` of the ramp's run off the level is refused
   outright. Seed 587507343 chose a gate 47 m below the level, and no road reached it.
-- `findAirport` shortens the runway before it takes worse zones, and takes the core only last. An
-  airport in the core broke the block sizes and, on one delta seed, dried up the river.
+- `findAirport` tries every runway length in the outskirts and the wilderness first. An airport in
+  the suburbs bent the arterials round it to the shore, and one seed's suburbs lost their streets.
+  Then it shortens the runway before it takes worse zones, and takes the core only last. An airport
+  in the core broke the block sizes and, on one delta seed, dried up the river.
+- The airport's first asks keep to the land the core stands on. An island airport hangs on the one
+  link to its island, and on one seed that link failed.
+- `coreClear` keeps the rectangle and its margin off the core's disc. The next-to-last asks keep
+  only `CORE_CLEAR` from the middle of the core. An airport beside the middle once tilted it to a
+  slope of 0.31, and the terrain sweep holds that slope under 0.15.
+- The heliports keep out of the inner ring. A pad there, and the road to it, cut the small blocks
+  round it apart.
   `airportAt` must be given the runway the site was judged for, not the one first asked for.
 - `LandMasses` is built at the road's `DRY_MARGIN`, not at `SITE_DRY`. On a low delta the mainland
   is one piece only at the lower height, and no site was found at all.
@@ -43,9 +52,12 @@ stand, how an aircraft flies, what the police do about it, and the hangar of sec
   keep only part of a route, and one seed's road began 185 m from its gate.
 - `roadAtGate` measures to the segments, not to the points. A straight arterial has its points far
   apart, and a street laid to a gate it ran past ended on its carriageway.
-- Only the airport is served before the minor fill, with an arterial. The airstrips and the
-  heliports are served after it: a dirt road for a strip, a street for a heliport. An arterial laid
-  to an inner-city heliport before the fill cut the blocks round it apart.
+- Only the airport is served before the minor fill, with an arterial, and after the boardwalks. An
+  airport road laid first joined an arterial where a boardwalk's way on had to cross it, and the
+  network cut the boardwalk back to nothing.
+- The airstrips and the heliports are served after the fill: a dirt road for a strip, a street for
+  a heliport. An arterial laid to an inner-city heliport before the fill cut the blocks round it
+  apart.
 - Any change here moves the district sites and the whole road network of most seeds, so run
   `npm run test:full`, not only the airfield sweep. The first run of this work found fifteen seeds
   broken in the road, terrain and traffic sweeps.

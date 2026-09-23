@@ -345,11 +345,13 @@ shops, ice-cream stands, a fairground pier — laid-back by day and a party stri
 Every map has one airport, and most have smaller fields as well. Each is a levelled rectangle of
 ground. The roads and the buildings keep off it, and one road reaches its gate up a paved ramp.
 
-- **The airport**: a paved runway with markings, a taxiway, the apron, the terminal and a control
+- **The airport**: in the outskirts or the wilderness, with a shorter runway where it must. It takes
+  the edge of the city, then the inner ring, then the edge of the core, only on a map with no other
+  ground left. It has a paved runway with markings, a taxiway, the apron, the terminal and a control
   tower, two hangars and two helipads. A fenced military compound stands at one end of the apron.
 - **Airstrips**: up to two in the countryside. Each is a dirt runway with a windsock and a shed.
-- **Heliports**: a police heliport in the inner city and a medical one in the suburbs, each a pad on
-  the ground.
+- **Heliports**: a police heliport by the industrial yards and a medical one in the suburbs, each a
+  pad on the ground. Neither stands in the dense grid of the inner city.
 - **The seaplane dock**: a walkway from a shore the roads reach out to deep water.
 
 Every aircraft of the roster ([11.3](#113-driving)) waits on some airfield, always in the same
