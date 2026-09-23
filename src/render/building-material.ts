@@ -20,7 +20,9 @@
  * file is what hands each of them the numbers off the geometry.
  *
  * The build ships no image files, so the grain of render, brick and metal is
- * fractal noise in the shader, as the ground's and the roads' are.
+ * noise in the shader. It is the cheap value noise of `noise-material.ts`,
+ * not the Perlin noise of the ground and the roads, because the blocks cover
+ * much of the screen (issue #639).
  *
  * Only this file, the other `*-material.ts` files and `tsl.ts` know about shader
  * nodes.
@@ -62,13 +64,13 @@ import {
   neonColour,
   placeDraw,
 } from './night-material.ts';
+import { valueNoise01 } from './noise-material.ts';
 import { wallGloss, wallSurface, weathered } from './wall-material.ts';
 import {
   Fn,
   If,
   attribute,
   float,
-  fractalNoise,
   mix,
   positionWorld,
   smoothstep,
@@ -480,11 +482,11 @@ function rgb(hex: number): TslNode {
 }
 
 /**
- * Fractal noise over the world, in 0..1. The place is the world one, so the
+ * Fractal value noise over the world, in 0..1. The place is the world one, so the
  * grain does not move with the mesh it is drawn on and two walls of one street
  * are not weathered identically.
  */
 function noise01(metres: number, octaves: number): TslNode {
   const place = vec3(positionWorld.x.div(metres), positionWorld.y.div(metres), positionWorld.z.div(metres));
-  return fractalNoise(place, octaves).mul(0.5).add(0.5);
+  return valueNoise01(place, octaves);
 }
