@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { airfieldAt, LEVEL_BLEND } from '../src/world/airfields.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { MINOR_BY_ZONE } from '../src/world/fill.ts';
 import { type GradeCrossing, type RoadEdge, type RoadNode } from '../src/world/graph.ts';
@@ -362,7 +363,8 @@ sweepSuite('roads', () => {
     // {@link CATCHMENT} of a district of that zone, that a road of the zone's
     // minor tier can climb to from the core. The rings of spec section 8.2
     // are concentric circles over the whole map, and the fill is seeded from
-    // the district sites, so the two are not the same ground.
+    // the district sites, so the two are not the same ground. An airfield is
+    // ground the fill was told to keep off.
     //
     // The ceilings are the spacing the fill asks for, with room for the
     // ground that refuses a road: a mesh of streets `across` apart leaves a
@@ -409,6 +411,8 @@ sweepSuite('roads', () => {
           (samples[zone] ??= []).push(half);
           const reach = climbable[MINOR_BY_ZONE[zone].tier] as Uint8Array;
           if (reach[iy * hf.gridSize + ix] !== 1) continue;
+          // An airfield and its blend are ground the roads keep off (spec section 8.4).
+          if (airfieldAt(w.airfields, x, y, LEVEL_BLEND) !== undefined) continue;
           if (!nearADistrict(w, zone, x, y, (d) => onClimbable(hf, reach, d.x, d.y))) continue;
           (filled[zone] ??= []).push(half);
         }
