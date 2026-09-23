@@ -41,6 +41,8 @@ export interface ShopActions {
 export interface ShopNav {
   step: number;
   enter: boolean;
+  /** The sell key held with `Enter`, which the dealer's counter reads as a sale. */
+  sell?: boolean;
 }
 
 const NO_NAV: ShopNav = { step: 0, enter: false };

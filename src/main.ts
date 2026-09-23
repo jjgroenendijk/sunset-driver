@@ -429,7 +429,11 @@ async function boot(): Promise<void> {
       leave: () => keyboard.tapInteract(),
     }),
     shops,
-    tradePanel: new TradePanel(document.body),
+    // The dealer's counter works the same way, with a buy and a sell button.
+    tradePanel: new TradePanel(document.body, renderer, {
+      trade: (good) => keyboard.trade(good),
+      leave: () => keyboard.tapInteract(),
+    }),
     dealers,
     giverBodies,
     dealerMarks,

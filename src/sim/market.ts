@@ -4,11 +4,12 @@
  * `contraband.ts` says what a good is worth in a district and `dealer.ts` where
  * the dealers are standing; this is the player doing business with one. A deal
  * is opened on the interact key from the pavement beside a pitch, the way a
- * shop door is opened, and the number keys then buy and sell off the panel.
+ * shop door is opened, and the panel's buttons, `Enter` or the number keys
+ * then buy and sell.
  *
- * A trade is all or nothing on purpose. A number key buys as many units as the
- * money and the room allow, and the same key with the sprint key held sells the
- * whole holding. Two keys are the whole loop of the trade — buy the cheap good
+ * A trade is all or nothing on purpose. A buy takes as many units as the money
+ * and the room allow, and a sale is the whole holding: the sell button, or
+ * `Enter` or a number key with the sprint key held. Two keys are the whole loop of the trade — buy the cheap good
  * here, drive across town, sell it there — and a player never counts units into
  * a keyboard.
  *
@@ -81,6 +82,10 @@ export interface TradeRow {
   held: number;
   /** Units they could buy here now, which the money and the room both hold down. */
   room: number;
+  /** Dollars paid for the units held, over all of them. */
+  paid: number;
+  /** What the good costs in this district on an ordinary day, which `mood` is measured against. */
+  standing: number;
   /** 'spike' where the street is paying over the odds, 'glut' where it is not, else ''. */
   mood: string;
 }
@@ -153,6 +158,8 @@ export function tradeRows(state: SimState, dealers: readonly DealerPlace[]): Tra
       sell: sellPrice(state, dealer, good),
       held: state.market.stash[good] ?? 0,
       room: Math.max(0, Math.min(room, Math.floor(state.money / buy))),
+      paid: state.market.paid[good] ?? 0,
+      standing,
       mood: buy >= standing * SPIKE ? 'spike' : buy <= standing * GLUT ? 'glut' : '',
     });
   }

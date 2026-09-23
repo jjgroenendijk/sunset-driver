@@ -40,8 +40,8 @@ how the steps are watched on a machine that does not need them.
 | Give up (1–2 stars) | X |
 | Radio | ] and [ |
 | Pick a row | 1 to 9 |
-| Shop: choose, buy | ↑ ↓ Enter or click |
-| Sell all | Shift and 1 to 9 |
+| Shop, dealer: choose, buy | ↑ ↓ Enter or click |
+| Dealer: sell all | Shift and Enter, or Shift and 1 to 9 |
 | Pause | Esc |
 | Map | M |
 | Map zoom, centre, legend | + − Space L |
