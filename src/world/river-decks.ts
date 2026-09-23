@@ -78,10 +78,14 @@ export class RiverWater {
   /**
    * True where a straight span is a river deck: dry at both ends, no longer
    * than {@link RIVER_DECK}, all its water one river above the mouth, and
-   * crossing that river at 60° or more.
+   * crossing that river at 60° or more. The same either way round: the ends
+   * are put in one order first, since the middle reach the angle is measured
+   * on depends on which end the samples start from, and a road traced one way
+   * is stored the other (issue #674).
    */
-  spans(a: Point, b: Point): boolean {
+  spans(from: Point, to: Point): boolean {
     if (this.reaches.length === 0) return false;
+    const [a, b] = from.x < to.x || (from.x === to.x && from.y <= to.y) ? [from, to] : [to, from];
     const run = dist(a.x, a.y, b.x, b.y);
     if (run > RIVER_DECK || run <= 0) return false;
     const wet = (x: number, y: number): boolean => this.hf.sample(x, y) < this.seaLevel + DRY_MARGIN;
