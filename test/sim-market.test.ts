@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { goodIndex } from '../src/sim/contraband.ts';
+import { goodIndex, GOODS } from '../src/sim/contraband.ts';
 import { dealRefusal, pitchOf, type DealerPlace } from '../src/sim/dealer.ts';
 import type { InputFrame } from '../src/sim/input.ts';
 import { carrying, STASH_UNITS, tradeRows } from '../src/sim/market.ts';
@@ -115,7 +115,7 @@ describe('the contraband market', () => {
     session.state.money = 5000;
     deal(session, 0);
     const rows = tradeRows(session.state, DEALERS);
-    expect(rows).toHaveLength(6);
+    expect(rows).toHaveLength(GOODS.length);
     const row = rows[POWDER];
     expect(row?.room).toBeGreaterThan(0);
     trade(session, POWDER + 1);

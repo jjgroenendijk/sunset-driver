@@ -60,8 +60,10 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * the street crime it is answering. Version 19 added the crews of the
  * emergency units of spec section 20.3: the firefighters and medics out of
  * their doors, what is left of each of them, and the ones who have fallen.
+ * Version 20 widened the contraband of spec section 16.2 from six goods to
+ * twelve, so every stash holds a row per good of the longer list.
  */
-export const SAVE_VERSION = 19;
+export const SAVE_VERSION = 20;
 
 export interface SaveFile {
   format: typeof SAVE_FORMAT;

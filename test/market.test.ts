@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TICKS_PER_HOUR } from '../src/sim/clock.ts';
-import { GLUT, GOODS, goodIndex, priceAt, priceRun, SPIKE, standingPrice, tasteOf } from '../src/sim/contraband.ts';
+import { GLUT, GOOD_GROUPS, GOOD_IDS, GOODS, goodIndex, priceAt, priceRun, SPIKE, standingPrice, tasteOf } from '../src/sim/contraband.ts';
 import { dealerLook, dealerPlaces, pitchOf, PITCH_TICKS, type DealerPlace } from '../src/sim/dealer.ts';
 import type { Place } from '../src/sim/on-foot.ts';
 import type { Culture, District, Zone } from '../src/world/types.ts';
@@ -90,11 +90,18 @@ describe('contraband prices', () => {
     expect(priceRun(9, 60, d, POWDER, 12, TICKS_PER_HOUR)[0]).toBe(priceAt(9, 0, d, POWDER));
   });
 
-  it('names and prices every good the trade carries', () => {
-    expect(GOODS).toHaveLength(6);
+  it('names and prices every good the trade carries, a group at a time', () => {
+    expect(GOODS).toHaveLength(GOOD_IDS.length);
+    expect(GOODS.map((good) => good.id)).toEqual([...GOOD_IDS]);
+    // The panel draws the goods under their headings in the list's order, so a
+    // group is one run of the list, the runs come in the order of the headings,
+    // and inside a run the goods go cheapest first.
+    const order = GOODS.map((good) => GOOD_GROUPS.indexOf(good.group));
     for (let i = 1; i < GOODS.length; i++) {
-      expect((GOODS[i]?.base ?? 0) > (GOODS[i - 1]?.base ?? 0)).toBe(true);
+      expect(order[i] ?? 0).toBeGreaterThanOrEqual(order[i - 1] ?? 0);
+      if (order[i] === order[i - 1]) expect(GOODS[i]?.base ?? 0).toBeGreaterThan(GOODS[i - 1]?.base ?? 0);
     }
+    for (const good of GOODS) expect(good.blurb.length).toBeGreaterThan(0);
     expect(goodIndex('cigarettes')).toBe(0);
   });
 });
