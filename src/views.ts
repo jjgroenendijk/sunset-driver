@@ -14,6 +14,7 @@
 import type { City } from './city.ts';
 import { CasualtyView } from './render/casualties.ts';
 import { BusStopView } from './render/bus-stops.ts';
+import { CornerPropView } from './render/corners.ts';
 import { ContactMarkers, type ContactMark } from './render/markers.ts';
 import { EmergencyView } from './render/emergency.ts';
 import { OfficerGunView } from './render/officer-guns.ts';
@@ -43,6 +44,8 @@ export interface SessionViews {
   tramSigns: TramSignView;
   /** The posts and the shelters of the bus stops of spec section 20.2. */
   busStops: BusStopView;
+  /** The amps, carts, stalls and dogs of the occupied corners of spec section 20.1. */
+  corners: CornerPropView;
   crowd: PedestrianView;
   /** The people who have been hit, and the medics at them. */
   casualties: CasualtyView;
@@ -62,7 +65,7 @@ export interface SessionViews {
  */
 export function buildViews(
   world: WorldScene,
-  city: Pick<City, 'traffic' | 'busStops' | 'crowd' | 'tram' | 'wildlife'>,
+  city: Pick<City, 'traffic' | 'busStops' | 'corners' | 'crowd' | 'tram' | 'wildlife'>,
   parked: ParkedCars | undefined,
   standing: readonly StandingPerson[],
   contacts: readonly ContactMark[],
@@ -77,7 +80,8 @@ export function buildViews(
     tramStops: new TramStopView(city.tram),
     tramSigns: new TramSignView(city.tram),
     busStops: new BusStopView(city.busStops),
-    crowd: new PedestrianView(city.crowd, city.tram, city.busStops),
+    corners: new CornerPropView(city.corners),
+    crowd: new PedestrianView(city.crowd, city.tram, city.busStops, city.corners),
     casualties: new CasualtyView(city.crowd),
     guns: new OfficerGunView(),
     markers: new ContactMarkers(contacts.length),
@@ -93,6 +97,7 @@ export function buildViews(
     views.tramStops.group,
     views.tramSigns.group,
     views.busStops.group,
+    views.corners.group,
     views.crowd.group,
     views.casualties.group,
     views.guns.group,

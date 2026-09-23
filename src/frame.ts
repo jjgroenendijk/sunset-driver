@@ -428,6 +428,7 @@ export class SessionFrame {
     // A stop does not move, so its posts are written where the frame stands
     // rather than at the moment it stands at.
     session.busStops.update(round.x, round.y);
+    session.corners.update(session.state.tick, round.x, round.y);
     session.crowd.update(session.state, moment, round.x, round.y);
     // The marker over each contact in view (spec section 18), which turns and
     // bobs with the frame's moment rather than with the wall clock.

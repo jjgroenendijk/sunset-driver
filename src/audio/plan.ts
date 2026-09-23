@@ -46,6 +46,7 @@ import type { Cry } from './cry.ts';
 import { barSeconds, dialAt, dialName, wrapDial } from './dial.ts';
 import { enginePitch, engineSound, type EngineSound } from './engine.ts';
 import { CRIES_PER_FRAME, HurtEars } from './hurt.ts';
+import { plucks, type BuskerSource } from './busking.ts';
 import { hearPolice } from './police-ears.ts';
 import { broadcastAt, type OnAir } from './programme.ts';
 import { scoreOf, type Score } from './score.ts';
@@ -268,7 +269,7 @@ export class AudioPlanner {
    * session has one: its bells are a function of the tick rather than part of
    * the record, so they are read here for every tick the frame stepped.
    */
-  plan(state: SimState, input: InputFrame, listener: Listener, trams?: BellSource, around?: SiteSource): AudioPlan {
+  plan(state: SimState, input: InputFrame, listener: Listener, trams?: BellSource, around?: SiteSource, corners?: BuskerSource): AudioPlan {
     if (this.tick < 0) this.resync(state);
     const ticks = Math.max(0, Math.min(state.tick - this.tick, TICK_RATE));
     const was = state.tick - ticks;
@@ -296,6 +297,8 @@ export class AudioPlanner {
       // Last of the cues, so a frame at the cap drops a bird and not a gunshot.
       this.calls(state, was, listener, callsFor(site, weather, hour), cues);
     }
+    // The buskers last of all: a note of a tune is the first thing a full frame can lose.
+    if (corners !== undefined) plucks(state.seed, was, state.tick, listener.x, listener.y, corners, cues);
     return {
       engine: this.engine(state, input, listener),
       squeal: squealOf(state),

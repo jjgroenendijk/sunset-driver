@@ -30,7 +30,8 @@ export type CueKind =
   | 'bell'
   | 'bird'
   | 'gull'
-  | 'squelch';
+  | 'squelch'
+  | 'pluck';
 
 /** What one cue is made of: a falling tone, a band of noise, and the envelope over both. */
 export interface CueVoice {
@@ -96,6 +97,9 @@ export const CUES: Readonly<Record<CueKind, CueVoice>> = Object.freeze({
   // The police radio keyed before a call (spec section 14): a short hiss of
   // static over a thin beep, cut off rather than let go.
   squelch: { tone: 1350, toneEnd: 1300, noise: 0.8, cutoff: 5200, cutoffEnd: 2800, attack: 0.002, decay: 0.12, gain: 0.32, ducks: false },
+  // A busker's guitar string (spec section 20.1): a note that holds its pitch
+  // and dies away, with a little noise for the pick.
+  pluck: { tone: 330, toneEnd: 328, noise: 0.08, cutoff: 3200, cutoffEnd: 700, attack: 0.002, decay: 0.6, gain: 0.3, ducks: false },
 });
 
 /**
