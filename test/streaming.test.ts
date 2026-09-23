@@ -200,6 +200,27 @@ describe('the frame budget', () => {
     expect(spendBudget(queue, 2, now)).toBe(0);
   });
 
+  it('starts no job the longest one so far says would overrun', () => {
+    let clock = 0;
+    const ran: number[] = [];
+    // Jobs of 1.2 ms against a budget of two: a second would end at 2.4.
+    const queue = [0, 1, 2].map((i) => () => {
+      ran.push(i);
+      clock += 1.2;
+    });
+    expect(spendBudget(queue, 2, () => clock)).toBe(1);
+    expect(ran).toEqual([0]);
+  });
+
+  it('packs small jobs up to the budget', () => {
+    let clock = 0;
+    const queue = Array.from({ length: 10 }, () => () => {
+      clock += 0.3;
+    });
+    expect(spendBudget(queue, 2, () => clock)).toBe(6);
+    expect(clock).toBeLessThanOrEqual(2);
+  });
+
   it('always runs one job, so a job dearer than the budget still lands', () => {
     let clock = 0;
     const queue = [
