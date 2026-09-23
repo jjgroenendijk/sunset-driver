@@ -47,6 +47,7 @@ import type { JobPanel } from './ui/job-panel.ts';
 import type { MissionMarks } from './ui/missions.ts';
 import type { TradePanel } from './ui/trade-panel.ts';
 import type { HotwireBar } from './ui/hotwire.ts';
+import type { InteractPrompt } from './ui/interact-prompt.ts';
 import type { Hud } from './ui/hud.ts';
 import type { MapScreen } from './ui/map-screen.ts';
 import type { Minimap } from './ui/minimap.ts';
@@ -83,6 +84,8 @@ export interface Session {
   navigator: Navigator;
   /** The hotwire minigame of spec section 11.4, drawn while a lock is being worked at. */
   hotwire: HotwireBar;
+  /** What the interact key would do to a vehicle now: get in, hotwire, get out. */
+  interact: InteractPrompt;
   /** The metro station panel and the fade of a trip (spec section 13.3). */
   travel: TravelPanel;
   /** The station entrances the panel names, in the order the record numbers them. */
