@@ -1,6 +1,7 @@
 import { Box3, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_APPEARANCE, OUTFITS } from '../src/sim/character.ts';
+import { GOOD_IDS } from '../src/sim/goods.ts';
 import { PROP_IDS } from '../src/sim/shop-goods.ts';
 import { VEHICLE_CLASSES } from '../src/sim/vehicle.ts';
 import {
@@ -25,6 +26,7 @@ const counts: Record<GallerySubject, number> = {
   vehicles: VEHICLE_CLASSES.length,
   people: OUTFITS.length,
   props: GALLERY_PROPS.length,
+  goods: GOOD_IDS.length,
 };
 
 describe('the gallery of a preview', () => {
