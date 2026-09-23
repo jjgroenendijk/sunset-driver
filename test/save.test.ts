@@ -1,5 +1,7 @@
+import { createHash } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { seedFromString } from '../src/core/rng.ts';
+import { sortedKeys } from '../src/core/sort.ts';
 import type { InputFrame } from '../src/sim/input.ts';
 import { initPhysics, SimPhysics } from '../src/sim/physics.ts';
 import { dropWeapon } from '../src/sim/pickup.ts';
@@ -7,13 +9,14 @@ import {
   createSave,
   restoreSimState,
   SAVE_FORMAT,
+  SAVE_VERSION,
   saveFromJson,
   saveFromText,
   SaveError,
   saveToText,
   type SaveFile,
 } from '../src/sim/save.ts';
-import { createSimState, stepSim, type SimState } from '../src/sim/simulation.ts';
+import { cloneSimState, createSimState, stepSim, type SimState } from '../src/sim/simulation.ts';
 import { fitAttachment, giveWeapon } from '../src/sim/weapon.ts';
 import { inputStream, stableJson } from './helpers.ts';
 import { hills, TICKS } from './sim-harness.ts';
@@ -34,6 +37,35 @@ function played(seedText: string): { state: SimState; physics: SimPhysics; input
   const inputs = inputStream(state.seed, TICKS * 2);
   for (const frame of inputs.slice(0, TICKS)) stepSim(state, frame, physics);
   return { state, physics, inputs: inputs.slice(TICKS) };
+}
+
+/**
+ * The version the record's shape was last pinned at, and a hash of that shape.
+ * Raise both together: see the test that reads them.
+ */
+const PINNED = { version: 20, shape: '16683fe9371d3236' };
+
+/**
+ * One line per field a save is checked for, the way `conform` in `save.ts`
+ * checks it: the path and the type, and an array by its first element.
+ */
+function shapeOf(value: unknown, path: string, out: string[]): string[] {
+  if (value === null) out.push(`${path}: null`);
+  else if (Array.isArray(value)) {
+    out.push(`${path}: array`);
+    if (value.length > 0) shapeOf(value[0], `${path}[]`, out);
+  } else if (typeof value === 'object') {
+    out.push(`${path}: object`);
+    const record = value as Record<string, unknown>;
+    for (const key of sortedKeys(record)) shapeOf(record[key], `${path}.${key}`, out);
+  } else out.push(`${path}: ${typeof value}`);
+  return out;
+}
+
+/** A short hash of the shape of a fresh record, the template every save is read against. */
+function recordShape(): string {
+  const lines = shapeOf(cloneSimState(createSimState(seedFromString('sunset'))), 'state', []);
+  return createHash('sha256').update(lines.join('\n')).digest('hex').slice(0, 16);
 }
 
 /** Load a save into a session built afresh, the way the game loads one, and play a stream on it. */
@@ -142,6 +174,23 @@ describe('saves', () => {
       /weapon/,
     );
     expect(() => saveFromJson('{')).toThrow(/damaged/);
+  });
+
+  // A save is read against a fresh record, so a save from before a field was
+  // added is refused. The version is what tells the player why (issue #285).
+  it('raises the version whenever the shape of the record changes', () => {
+    expect(
+      { version: SAVE_VERSION, shape: recordShape() },
+      'The shape of SimState changed, so an older save no longer loads. Raise SAVE_VERSION in ' +
+        'src/sim/save.ts, say there what the version added, and pin the new version and shape in PINNED.',
+    ).toEqual(PINNED);
+  });
+
+  it('refuses a save from before a field was added by its version, not as damaged', () => {
+    const copy = JSON.parse(JSON.stringify(createSave('sunset', createSimState(seedFromString('sunset')))));
+    delete copy.state.pedestrians;
+    copy.version = SAVE_VERSION - 1;
+    expect(() => saveFromJson(JSON.stringify(copy))).toThrow(`from version ${SAVE_VERSION - 1}`);
   });
 
   it('drops a field the record does not know', () => {
