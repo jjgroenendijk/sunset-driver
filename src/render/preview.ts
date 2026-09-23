@@ -73,6 +73,7 @@ import { FULL_TIER, QUALITY_TIERS } from './quality.ts';
 import { clearPlaceFor, GALLERY_SUBJECTS, layGallery, type Gallery, type GallerySubject } from './preview-gallery.ts';
 import { forgetStage, peopleFor, stageFor, viewFor } from './preview-stage.ts';
 import type { WorldScene } from './world-scene.ts';
+import { namedWeather } from '../sim/weather.ts';
 import { roomOf, SHOP_KINDS, type Shop } from '../world/shops.ts';
 
 /** Where to stand, how far back to look from, and how big a picture to take. */
@@ -231,6 +232,8 @@ export interface PreviewRequest {
    * same request twice may not take the same picture.
    */
   fast?: boolean;
+  /** `clear`, `rain`, `fog`, `storm`, or `seed` for the seed's own. Left out, clear. */
+  weather?: string;
 }
 
 /** A quarter through a cycle, where a leg is furthest forward and the other furthest back. */
@@ -399,6 +402,8 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
 
   const t1 = performance.now();
   const tick = tickAtHour(hour);
+  const weather = namedWeather(request.weather);
+  scene.fixedWeather = weather;
   scene.time = tick;
   // The chunks are built in the workers the game uses, so the picture is the
   // frame the game draws. Every chunk of both rings is waited for, so the same
@@ -556,6 +561,7 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   scene.seeThrough(camera.camera.position, seen.x, seen.height, seen.y, shop !== undefined);
 
   const t2 = performance.now();
+  post.fixedWeather = weather;
   post.regrade();
   post.time = tick;
   // SMAA's tables are decoded from data URLs, so a frame drawn before they

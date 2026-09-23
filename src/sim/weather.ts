@@ -217,12 +217,28 @@ export function outInThis(id: number, share: number): boolean {
   return hashInts(CROWD_STREAM, id) / 0x1_0000_0000 < share;
 }
 
+/**
+ * One kind of weather at its full strength, with the road as wet as that rain
+ * leaves it. This is the weather a preview names rather than the seed's.
+ */
+export function weatherOfKind(kind: WeatherKind): Weather {
+  const profile = PROFILES[kind];
+  return { kind, rain: profile.rain, wetness: profile.rain, fog: profile.fog, wind: profile.wind, crowd: profile.crowd };
+}
+
+/**
+ * The weather a preview asks for by name: one of the four kinds, or `seed` for
+ * the seed's own weather, which comes back as undefined. Left out, it is clear,
+ * so a picture judges the geometry and the light rather than the spell the
+ * seed happens to be in.
+ */
+export function namedWeather(name: string | undefined): Weather | undefined {
+  if (name === undefined) return CLEAR_WEATHER;
+  if (name === 'seed') return undefined;
+  const kind = ODDS.find(([k]) => k === name)?.[0];
+  if (kind === undefined) throw new Error(`weather wants clear, rain, fog, storm or seed, not ${name}`);
+  return weatherOfKind(kind);
+}
+
 /** The weather of a clear day, for a scene built before a tick is known. */
-export const CLEAR_WEATHER: Weather = {
-  kind: 'clear',
-  rain: 0,
-  wetness: 0,
-  fog: PROFILES.clear.fog,
-  wind: PROFILES.clear.wind,
-  crowd: 1,
-};
+export const CLEAR_WEATHER: Weather = weatherOfKind('clear');

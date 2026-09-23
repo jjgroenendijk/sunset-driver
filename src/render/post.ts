@@ -42,7 +42,7 @@ import { Data3DTexture, DataUtils, HalfFloatType, LinearFilter, NoToneMapping } 
 import { RenderPipeline, type WebGPURenderer } from 'three/webgpu';
 import type { Camera, Scene } from 'three';
 import { START_TICK } from '../sim/simulation.ts';
-import { weatherAt } from '../sim/weather.ts';
+import { weatherAt, type Weather } from '../sim/weather.ts';
 import { daylightAt } from './daylight.ts';
 import { uploadLut } from './lut-upload.ts';
 import {
@@ -164,6 +164,11 @@ export class PostChain {
   private gradable = true;
   /** The world's seed, which with the tick is what the weather is read from. */
   private readonly seed: number;
+  /**
+   * A weather to grade by instead of the seed's, as `WorldScene.fixedWeather`.
+   * Call {@link PostChain.regrade} after setting it, or the table stays as it was.
+   */
+  fixedWeather: Weather | undefined = undefined;
 
   constructor(
     renderer: WebGPURenderer,
@@ -224,7 +229,7 @@ export class PostChain {
     if (step === this.step) return;
     this.step = step;
     const light = daylightAt(tick);
-    writeLut(gradeAt(light, weatherAt(this.seed, tick)), this.graded);
+    writeLut(gradeAt(light, this.fixedWeather ?? weatherAt(this.seed, tick)), this.graded);
     const texels = this.lut.image.data as Uint16Array;
     for (let i = 0; i < LUT_LENGTH; i++) texels[i] = DataUtils.toHalfFloat(this.graded[i] ?? 0);
     if (!this.gradable) return;
