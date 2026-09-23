@@ -14,9 +14,10 @@
  *
  * The scene reads the world description and never mutates it.
  */
-import { Scene, type Vector3 } from 'three';
+import { Scene, type Material, type Mesh, type Vector3 } from 'three';
 import type { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { CharacterAppearance } from '../sim/character.ts';
+import { airfieldMesh } from './airfield-mesh.ts';
 import type { Blaze } from '../sim/fire.ts';
 import type { Casualty } from '../sim/casualty.ts';
 import type { MeleeHit } from '../sim/melee.ts';
@@ -134,6 +135,7 @@ export class WorldScene {
   private readonly lamps = new LampScenery(this.fade);
   /** The stairs down to a metro station (spec section 13.3). */
   private readonly metroStairs = new MetroScenery(this.fade);
+  private readonly airfields: Mesh;
   /** The harm-reduction posters on the walls (spec section 19). */
   private readonly posters = new PosterScenery(this.fade);
   /** The shop signage and the billboards over it, and the neon that lights a few of them. */
@@ -177,6 +179,9 @@ export class WorldScene {
     // chunk: its reflection is a second pass over the scene, and one is enough.
     this.water = createWaterSurface(world);
     this.scene.add(this.water.object);
+    // The airfields of spec section 8.4 are a handful of boxes, built once.
+    this.airfields = airfieldMesh(world.airfields, this.height);
+    this.scene.add(this.airfields);
 
     // The sky, the sun and the shadows it casts. The ground stops at the last
     // chunk of the far ring, and the haze is what stands there until the draw
@@ -611,6 +616,9 @@ export class WorldScene {
     this.stream.dispose();
     this.scene.remove(this.water.object);
     this.water.dispose();
+    this.scene.remove(this.airfields);
+    this.airfields.geometry.dispose();
+    (this.airfields.material as Material).dispose();
     this.sky.dispose();
     this.lampLights.dispose();
     this.headlights.dispose();
