@@ -166,16 +166,25 @@ function detailOfRing(ring: number, rings: ChunkRings): ChunkDetail | undefined 
  * budget would otherwise never run at all and the queue would stand still. The
  * work is therefore cut into jobs small enough that overrunning by one of them
  * costs a frame rather than a stall.
+ *
+ * A job after the first starts only when the longest one run so far would still
+ * end inside the budget. Checking only the time spent let a job start at 1.9 ms
+ * and end at 3.5, and the streaming frames of a drive peaked at 3–5 ms against
+ * the 2 of spec section 2.4 (issue #639).
  */
 export function spendBudget(queue: (() => void)[], budgetMs: number, now: () => number): number {
   if (queue.length === 0) return 0;
   const started = now();
   let ran = 0;
+  let longest = 0;
   while (queue.length > 0) {
+    const before = now();
     const job = queue.shift() as () => void;
     job();
     ran++;
-    if (now() - started >= budgetMs) break;
+    const after = now();
+    longest = Math.max(longest, after - before);
+    if (after - started + longest > budgetMs) break;
   }
   return ran;
 }
