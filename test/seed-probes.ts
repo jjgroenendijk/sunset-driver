@@ -222,13 +222,20 @@ export function gradeOf(hf: Heightfield, a: Point, b: Point): number {
 }
 
 /**
+ * Metres between the samples of {@link profileUnder}: finer than the 4 m the
+ * tracer reads a segment at. At 5 m one 14 m segment was read at two points,
+ * and missed the narrow hump the tracer had bored the street through.
+ */
+const PROFILE_SAMPLE = 2;
+
+/**
  * How far the ground leaves the line a road segment drives: metres above it at
  * its highest, and metres below it at its lowest.
  */
 export function profileUnder(hf: Heightfield, a: Point, b: Point): { above: number; below: number } {
   const start = hf.sample(a.x, a.y);
   const end = hf.sample(b.x, b.y);
-  const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / WET_SAMPLE));
+  const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / PROFILE_SAMPLE));
   let above = 0;
   let below = 0;
   for (let i = 1; i < steps; i++) {
