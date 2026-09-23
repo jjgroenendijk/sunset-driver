@@ -82,6 +82,8 @@ export class TrafficBodies {
   /** Ascending by id. */
   private pushed: Pushed[] = [];
   private readonly ids: number[] = [];
+  /** The tile the ids above were looked up round: the box is a function of it alone. */
+  private idsKey = '';
   private readonly pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
   private readonly spot = { x: 0, y: 0, z: 0 };
   private readonly turn = { x: 0, y: 0, z: 0, w: 1 };
@@ -184,7 +186,12 @@ export class TrafficBodies {
 
     const traffic = this.traffic;
     const held = state.traffic.held;
-    const ids = traffic.near(minX, minY, maxX, maxY, this.ids);
+    const key = `${cx},${cz}`;
+    if (key !== this.idsKey) {
+      this.idsKey = key;
+      traffic.near(minX, minY, maxX, maxY, this.ids);
+    }
+    const ids = this.ids;
     const kept: Moving[] = [];
     let k = 0;
     for (const id of ids) {
