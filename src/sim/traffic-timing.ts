@@ -40,6 +40,7 @@ import { TICK_RATE } from './clock.ts';
 import { busCalls, NO_CALL, type BusDemand, type BusRoute } from './bus.ts';
 import { STEADY, type Driver } from './driver.ts';
 import { SIGNAL_AMBER, SIGNAL_CYCLE, SIGNAL_GREEN, type SignalApproach, type TrafficSignals } from './signals.ts';
+import type { TramGuard } from './tram-guard.ts';
 
 /** Fraction of the speed limit ambient traffic drives at. */
 export const CRUISE = 0.9;
@@ -156,9 +157,12 @@ export function driveTicks(edge: RoadEdge, cruise: number = CRUISE): number {
  * leg is one step; otherwise the route is timed from the anchor that stretches
  * it least, and comes back turned so that its first leg follows that anchor.
  *
- * A {@link TourPlan} says who drives it and how.
+ * A {@link TourPlan} says who drives it and how. A `guard` holds the turns a
+ * tram crosses while it is in the junction (`tram-guard.ts`), and an anchor
+ * whose green would send the vehicle into a tram is taken only where every
+ * anchor would.
  */
-export function timeTour(graph: RoadGraph, route: readonly number[], signals?: TrafficSignals, plan: TourPlan = {}): Tour {
+export function timeTour(graph: RoadGraph, route: readonly number[], signals?: TrafficSignals, plan: TourPlan = {}, guard?: TramGuard): Tour {
   const place = plan.place ?? 0;
   const driver = plan.driver ?? STEADY;
   const count = route.length;
@@ -167,8 +171,8 @@ export function timeTour(graph: RoadGraph, route: readonly number[], signals?: T
     for (let k = 0; k < count; k++) {
       const approach = signals.approachOf(route[k] as number);
       if (approach === undefined) continue;
-      const laid = anchoredAt(graph, route, k, approach, signals, place, driver, plan.calls === true ? (plan.demand ?? EVEN) : undefined);
-      if (best === undefined || laid.slow < best.slow) best = laid;
+      const laid = anchoredAt(graph, route, k, approach, signals, place, driver, plan.calls === true ? (plan.demand ?? EVEN) : undefined, guard);
+      if (best === undefined || laid.blocked < best.blocked || (laid.blocked === best.blocked && laid.slow < best.slow)) best = laid;
     }
   }
   if (best !== undefined) return finish(graph, best.route, best.steps, best.sync);
@@ -247,6 +251,8 @@ interface Anchored {
   sync: number;
   /** The share of its last drive the stretch to the anchor slows. */
   slow: number;
+  /** 1 where the vehicle pulls away from the anchor into a tram, else 0. */
+  blocked: number;
 }
 
 /** The route timed from the stop line of leg `k`, as `driver` would drive it. */
@@ -259,6 +265,7 @@ function anchoredAt(
   place: number,
   driver: Driver,
   demand: BusDemand | undefined,
+  guard: TramGuard | undefined,
 ): Anchored {
   const count = route.length;
   const turned: number[] = [];
@@ -285,6 +292,9 @@ function anchoredAt(
   const stand = home === count - 1 ? anchor.stop - back : (before as RoadEdge).length - (back - anchor.stop);
   const standing = graph.edges[turned[home] as number] as RoadEdge;
   steps.add(home, stand, stand, driver.react);
+  // The tick the vehicle crosses the anchor's line, which a tram may be crossing too.
+  const reach = home === count - 1 ? share(last, anchor.stop - stand, driver) : share(standing, standing.length - stand, driver) + share(last, anchor.stop, driver);
+  const blocked = guard?.blocks(anchor.edge, turned[0] as number, sync + driver.react + reach) === true ? 1 : 0;
   // Where the stretch to the anchor starts. It moves to after every light on
   // the way, since slowing a drive before a light would change the colour the
   // vehicle finds there; only the run from the last light to the anchor is free.
@@ -316,10 +326,28 @@ function anchoredAt(
     // A light that is green when the vehicle reaches it is driven through, and
     // so is an amber by a driver who takes ambers. The line is crossed on the
     // tick the drive to it ends, which is the tick the colour was read at, so
-    // an amber taken here is an amber the vehicle is really still on.
+    // an amber taken here is an amber the vehicle is really still on. A turn a
+    // tram is crossing is held as a red is, unless no green ever lets it
+    // through clear of the tram, which is a tram standing in the junction.
     const colour = signals.light(approach, sync + arrive);
-    const held = colour === 'red' || (colour === 'amber' && !driver.runsAmber);
-    if (!held) {
+    const next = turned[i + 1] as number;
+    const red = colour === 'red' || (colour === 'amber' && !driver.runsAmber);
+    const guarded = guard !== undefined && guard.guards(edge.id);
+    const tram = guarded && !red && guard.blocks(edge.id, next, sync + arrive);
+    // Where a held vehicle waits: its own place back in the queue, on this leg
+    // or back on the leg before, and the ticks from pulling away there to
+    // crossing the line.
+    const prev = red || tram ? spill(i) : undefined;
+    const queued = red || tram ? queueBack(edge, prev, approach, place, driver) : 0;
+    const spilt = prev !== undefined && queued > approach.stop;
+    const on = spilt ? prev : edge;
+    const halt = spilt ? prev.length - (queued - approach.stop) : approach.stop - queued;
+    let clear: number | undefined;
+    if (guarded && (red || tram)) {
+      const toLine = driver.react + (spilt ? share(on, on.length - halt, driver) + share(edge, approach.stop, driver) : share(edge, approach.stop - halt, driver));
+      clear = release(signals, guard, approach, next, sync, arrive, toLine, driver);
+    }
+    if (!red && (!tram || clear === undefined)) {
       // Driven in two at the line, so the drive over it starts on the tick
       // the colour was read at. One drive over the whole leg would cross the
       // line a tick early, which on the first tick of a green is still red.
@@ -329,26 +357,20 @@ function anchoredAt(
       legFirst = first;
       continue;
     }
-    const prev = spill(i);
-    const queued = queueBack(edge, prev, approach, place, driver);
-    // Where the vehicle waits: back on the leg before, which is laid again up
-    // to the halt, or on this one.
-    let leg = i;
-    let halt = approach.stop - queued;
-    if (prev !== undefined && queued > approach.stop) {
-      steps.truncate(legFirst);
-      leg = i - 1;
-      halt = prev.length - (queued - approach.stop);
-    }
-    const on = leg === i ? edge : (prev as RoadEdge);
+    // A queue back on the leg before lays that leg again up to the halt.
+    if (spilt) steps.truncate(legFirst);
+    const leg = spilt ? i - 1 : i;
     const drive = steps.ticks.length;
     driveLeg(steps, leg, on, 0, halt, leg === i ? call : NOTHING, driver);
     // A halt well back in the queue is reached before the line would have
     // been, maybe while the light is still green. The drive to it is slowed
     // instead, so the vehicle comes to rest on the tick after its green ends
-    // at the earliest and never stands still on a green.
-    steps.stretch(drive, arrive + wait - (SIGNAL_CYCLE - SIGNAL_GREEN[approach.axis]) + 1 - steps.tick);
-    steps.add(leg, halt, halt, arrive + wait - steps.tick + driver.react);
+    // at the earliest and never stands still on a green. One held on a green
+    // by a tram comes to rest no earlier than it would have reached the line.
+    const rest = colour === 'green' ? arrive : arrive + wait - (SIGNAL_CYCLE - SIGNAL_GREEN[approach.axis]) + 1;
+    steps.stretch(drive, rest - steps.tick);
+    const go = clear ?? arrive + wait;
+    steps.add(leg, halt, halt, go - steps.tick + driver.react);
     steps.add(leg, halt, on.length, share(on, on.length - halt, driver));
     if (leg < i) steps.add(i, 0, edge.length, share(edge, edge.length, driver));
     free = steps.ticks.length;
@@ -365,7 +387,47 @@ function anchoredAt(
   const slow = extra / (steps.ticksFrom(free) + extra);
   steps.stretch(free, extra);
   steps.add(home, stand, stand, SIGNAL_CYCLE - (steps.tick % SIGNAL_CYCLE));
-  return { route: turned, steps, sync, slow };
+  return { route: turned, steps, sync, slow, blocked };
+}
+
+/**
+ * The tick of the lap a vehicle held at a light pulls away on, where a tram
+ * may cross its turn: the first tick from `arrive` that is green and brings it
+ * to the line `toLine` ticks later with no tram in the junction and on a
+ * colour it may cross on. Undefined where no such tick comes within two
+ * cycles, which is a turn the windows leave no room for.
+ */
+function release(
+  signals: TrafficSignals,
+  guard: TramGuard,
+  approach: SignalApproach,
+  next: number,
+  sync: number,
+  arrive: number,
+  toLine: number,
+  driver: Driver,
+): number | undefined {
+  const green = arrive + mod(signals.greenStart(approach) - sync - arrive, SIGNAL_CYCLE);
+  const windows = guard.windows(approach.edge, next);
+  if (windows.length === 0) return green;
+  const clears = (at: number): boolean => {
+    if (signals.light(approach, sync + at) !== 'green') return false;
+    const line = sync + at + toLine;
+    const colour = signals.light(approach, line);
+    if (colour === 'red' || (colour === 'amber' && !driver.runsAmber)) return false;
+    return !guard.blocks(approach.edge, next, line);
+  };
+  // Pulling away on the green, or on the tick that brings the vehicle to the
+  // line as a window closes, over two cycles.
+  const candidates = [arrive, green, green + SIGNAL_CYCLE];
+  for (let w = 0; w < windows.length; w += 2) {
+    const end = (windows[w] as number) + (windows[w + 1] as number);
+    const first = arrive + mod(end - toLine - sync - arrive, SIGNAL_CYCLE);
+    candidates.push(first, first + SIGNAL_CYCLE);
+  }
+  candidates.sort((a, b) => a - b);
+  for (const at of candidates) if (clears(at)) return at;
+  return undefined;
 }
 
 /**

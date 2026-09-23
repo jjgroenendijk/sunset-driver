@@ -1,4 +1,4 @@
-import { SIGNAL_CYCLE, type SignalApproach } from '../src/sim/signals.ts';
+import { SIGNAL_CYCLE, SIGNAL_GREEN, type SignalApproach } from '../src/sim/signals.ts';
 import type { AmbientTraffic, AmbientVehicle, TrafficCursor } from '../src/sim/traffic.ts';
 import type { Tour } from '../src/sim/traffic-tour.ts';
 import { QUEUE_CLEAR } from '../src/sim/traffic-timing.ts';
@@ -25,6 +25,11 @@ export interface SignalLap {
  * has just started, and it drives over a stop line only from a tick that is
  * green, or amber where its driver takes ambers. Nobody crosses on red, and
  * nobody waits within {@link QUEUE_CLEAR} of a node that keeps clear.
+ *
+ * A turn a tram crosses is held on a green as well (`tram-guard.ts`): a
+ * vehicle may stand while the tram is in the junction, and while it would
+ * reach the line in the tram's path however soon it pulled away, which is
+ * within half the green for the last car of its queue.
  */
 export function signalLap(traffic: AmbientTraffic, vehicle: AmbientVehicle): SignalLap {
   const signals = traffic.signals;
@@ -56,7 +61,8 @@ export function signalLap(traffic: AmbientTraffic, vehicle: AmbientVehicle): Sig
       // green started is one the timing forgot to send on.
       const into = holding === undefined ? 0 : mod(tick - 1 - signals.greenStart(holding), SIGNAL_CYCLE);
       const pulling = holding !== undefined && into < driver.react;
-      if (holding === undefined || (signals.light(holding, tick - 1) === 'green' && !pulling)) {
+      const tram = holding !== undefined && tramHolds(traffic, vehicle, holding, now.leg, tick - 1);
+      if (holding === undefined || (signals.light(holding, tick - 1) === 'green' && !pulling && !tram)) {
         lap.faults.push(`vehicle ${vehicle.id} stands still at tick ${tick} with no red light`);
       }
       // Nor does it wait in a junction with lights or a level crossing behind it.
@@ -74,6 +80,17 @@ export function signalLap(traffic: AmbientTraffic, vehicle: AmbientVehicle): Sig
     last = now;
   }
   return lap;
+}
+
+/** True while a tram crossing its turn at `holding` holds a vehicle standing on leg `leg`. */
+function tramHolds(traffic: AmbientTraffic, vehicle: AmbientVehicle, holding: SignalApproach, leg: number, tick: number): boolean {
+  const guard = traffic.guard;
+  if (guard === undefined) return false;
+  const edges = vehicle.tour.edges;
+  const at = edges[leg] === holding.edge ? leg : leg + 1;
+  const next = edges[(at + 1) % edges.length] as number;
+  const react = vehicle.driver.react;
+  return guard.blocks(holding.edge, next, tick - react, react + SIGNAL_GREEN[holding.axis] / 2 + 2);
 }
 
 function mod(value: number, by: number): number {
