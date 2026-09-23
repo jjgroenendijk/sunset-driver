@@ -20,6 +20,7 @@ a slip at the edit.
 - `docs/roads.md` — the tensor field, tracing, highways, the tiers and the fill, interchanges and
   crossings, the graph and the footprint.
 - `docs/corridors.md` — the corridors, the piers under the decks and the tram track.
+- `docs/aircraft.md` — the airfields: where they stand, the road to the gate, the ground they claim.
 
 Each opens with a contents list. Read the section the work touches, not the file.
 

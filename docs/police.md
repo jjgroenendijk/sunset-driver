@@ -4,7 +4,8 @@ The gotchas of spec sections 11.7 and 14: how a run ends in a death or an arrest
 worth, and how the police answer it. The code is `src/sim/crime.ts`, `src/sim/police.ts` and
 `src/sim/respawn.ts`, and for the officers on foot `officer.ts`, `squad.ts`, `duty.ts`,
 `officer-fire.ts` and `arrest.ts`, and for the patrol between chases `patrol.ts`. The weapons
-that raise the heat are in `docs/sim-and-ui.md`.
+that raise the heat are in `docs/sim-and-ui.md`. The airport's airside, the theft of a military
+aircraft and the helicopter's gun are in `docs/aircraft.md`.
 
 ## Contents
 
