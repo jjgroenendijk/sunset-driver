@@ -65,7 +65,7 @@ export class DealerMarks {
       marks.push({ type: 'dealer', x: pitch.x, y: pitch.y, name: dealer.name });
       this.standing.push({
         look: this.looks[i] as PedestrianLook,
-        // Facing out of the road they stand beside, which is the way a person
+        // Facing the road they stand beside, which is the way a person
         // watching the street faces.
         pose: { x: pitch.x, y: pitch.y, height: ground.heightAt(pitch.x, pitch.y), heading: pitch.heading, speed: 0, cycle: 0, gait: 'stand' },
       });
