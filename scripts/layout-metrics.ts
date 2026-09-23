@@ -13,6 +13,8 @@
  * `test/seed-layout.test.ts` holds each number to the band `test/layout-bands.ts` pins,
  * and `landuse-preview.ts` prints them beside the picture.
  */
+import { airfieldAt } from '../src/world/airfield-frame.ts';
+import { AIRFIELD_KEEP } from '../src/world/airfields.ts';
 import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import type { HeightfieldData, WorldDescription, Zone } from '../src/world/types.ts';
 import {
@@ -103,6 +105,8 @@ export function metricsOf(world: WorldDescription, layers: LandUseLayers, grid: 
     for (let ix = 0; ix < grid.side; ix++) {
       const i = iy * grid.side + ix;
       if (grid.land[i] === 0) continue;
+      // An airfield is no district's land, as water is not: nothing is built on it.
+      if (airfieldAt(world.airfields, grid.worldX(ix), y, AIRFIELD_KEEP) !== undefined) continue;
       const zone = zoneAt(zones, grid.worldX(ix), y);
       bump(land, zone);
       const use = grid.use[i] as number;
