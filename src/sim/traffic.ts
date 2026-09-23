@@ -504,22 +504,24 @@ export function footprintsTouch(a: Footprint, b: Footprint, margin: number): boo
   const sb = sin(b.heading);
   // Each box's length and then its width: the axis a quarter turn on is (-sin, cos).
   return (
-    overlapsAlong(a, b, ca, sa, margin) &&
-    overlapsAlong(a, b, -sa, ca, margin) &&
-    overlapsAlong(a, b, cb, sb, margin) &&
-    overlapsAlong(a, b, -sb, cb, margin)
+    overlapsAlong(a, b, ca, sa, cb, sb, ca, sa, margin) &&
+    overlapsAlong(a, b, ca, sa, cb, sb, -sa, ca, margin) &&
+    overlapsAlong(a, b, ca, sa, cb, sb, cb, sb, margin) &&
+    overlapsAlong(a, b, ca, sa, cb, sb, -sb, cb, margin)
   );
 }
 
-/** True when the two boxes overlap along one axis, grown by the margin. */
-function overlapsAlong(a: Footprint, b: Footprint, ax: number, ay: number, margin: number): boolean {
-  const reach = extent(a, ax, ay) + extent(b, ax, ay) + margin;
+/**
+ * True when the two boxes overlap along one axis, grown by the margin.
+ * `ca, sa` and `cb, sb` are the cosine and sine of their headings.
+ */
+function overlapsAlong(a: Footprint, b: Footprint, ca: number, sa: number, cb: number, sb: number, ax: number, ay: number, margin: number): boolean {
+  const reach = extent(a, ca, sa, ax, ay) + extent(b, cb, sb, ax, ay) + margin;
   return Math.abs((b.x - a.x) * ax + (b.y - a.y) * ay) <= reach;
 }
 
-function extent(box: Footprint, ax: number, ay: number): number {
-  const fx = cos(box.heading);
-  const fy = sin(box.heading);
+/** Half the length of a box heading along `(fx, fy)` along an axis. */
+function extent(box: Footprint, fx: number, fy: number, ax: number, ay: number): number {
   return box.halfLength * Math.abs(fx * ax + fy * ay) + box.halfWidth * Math.abs(-fy * ax + fx * ay);
 }
 
