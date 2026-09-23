@@ -20,8 +20,8 @@ the lights themselves are in `docs/city-life.md`.
   of its green left. So a level crossing is obeyed through the lights: the tram never crosses on the
   green of the road across it. The loop takes whole `SIGNAL_CYCLE`s, and each further tram runs it
   whole cycles behind, for the reason a traffic tour does.
-- The pedestrians do not wait at a level crossing yet, as they wait at no light (#286). Once they
-  keep to `crossingOpen`, they keep to the tram too, since it only crosses on their red.
+- The pedestrians wait at the lights (`docs/crowd.md`), so they keep to the tram too: it only
+  crosses on their red.
 
 ## Short runs
 

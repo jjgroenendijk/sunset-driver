@@ -17,7 +17,7 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 - Traffic lights
 - Parked cars
 - The tram (in `docs/tram.md`)
-- Pedestrians
+- Pedestrians (in `docs/crowd.md`)
 - Casualties
 - The metro
 - Wildlife
@@ -240,34 +240,9 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 
 ## Pedestrians
 
-- `src/sim/pedestrians.ts` is the crowd of spec sections 5.3 and 13.1. `AmbientPedestrians` places
-  people per directed edge of a tier with a pavement, from `TierSpec.walkers` thinned by
-  `ZONE_PEDESTRIANS`. A person walks one pavement round a loop, at a pace of their gait. The loop
-  starts on the edge they were placed on: `walkOut` walks as the traffic does but only
-  `WALK_REACH`, and a loop that closes some way off is walked out to and back from. Without that a
-  person spawns up to a loop away from their district, and wears its clothes in the wrong zone.
-- A loop takes a whole number of ticks and a whole number of strides, so `cursorAt` and `advance`
-  agree exactly and the walk cycle comes round without a jump. `pedestrian-route.ts` cuts two
-  pavement lines where they cross, which is how a turn one way keeps to the kerb and a turn the
-  other way crosses both roads. A pose within `NODE_REACH` of a node checks `onCarriageway` too:
-  a pavement that runs straight over a junction crosses the side road, and stands lower there.
-- The candidates `near` answers are every loop through the box, and on seed 1 that is about 1300
-  people round the core for 160 in view. `edgeAt` and `edgeMeets` skip the far ones before a pose
-  is read. Reading the rest costs about 0.6 ms a frame on an M-series core.
-- `startle` takes everyone in a radius off their loops into `SimState.pedestrians.startled`, and
-  `startledPose` moves them off and stands them still. `releaseFar` gives them back to their loops
-  where the player cannot see the jump. A person is startled once: a second fright over the same
-  people does nothing, which is why the crash writes its fleeing ring before its watching one.
-- `src/sim/crowd-reaction.ts` is what calls those: the reactions of spec section 20.1. It holds the
-  reach of each — a gunshot, a blast, a car, a crash — and nothing else. `gunfire.ts` calls
-  `crowdHearsShot` on the tick a loud weapon goes off and `crowdFeelsBlast` when a projectile
-  bursts; `physics.ts` calls `stepCrowdReactions` once a tick with the severity its `crash` answers,
-  which scatters the people the player's car is about to reach, rings a crash, and releases whoever
-  the player has driven away from. The release runs every tick: without it the startled list only
-  ever grows, and the whole city ends up standing still.
-- A reaction moves a person off the place, except `gather`, whose `toward` walks them to it and
-  stands them facing it. Add one to `REACTIONS` rather than to the callers, so what it costs a
-  reader is one row of a table.
+- The crowd has a doc of its own, `docs/crowd.md`: how it is placed, the walk plan, the lights,
+  the reactions, making way for the player, the people off the buses, the occupied corners, and
+  how it is drawn.
 
 ## Casualties
 
