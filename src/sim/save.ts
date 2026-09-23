@@ -30,7 +30,9 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * {@link SimState} changes meaning, and when one is added that an older save
  * cannot have: the record is read against a fresh one, so a save without the
  * new field is refused either way, and the version is what says so in words a
- * player understands. A save of another version is refused.
+ * player understands. A save of another version is refused. `test/save.test.ts`
+ * pins the version to a hash of the record's shape, so a new field that does
+ * not raise it fails there.
  *
  * Version 2 added the metro of spec section 13.3, version 3 the police of spec
  * section 14, version 4 the radio dial of spec section 15, version 5 the
