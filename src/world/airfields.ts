@@ -20,6 +20,7 @@ import { zoneAt, type ZoneLayout } from './districts.ts';
 import type { Heightfield } from './heightfield.ts';
 import { GradedLand } from './graded-land.ts';
 import { LandMasses } from './landmass.ts';
+import { DRY_MARGIN } from './road-ground.ts';
 import { TIERS } from './tiers.ts';
 import type { AircraftClass, AircraftStand, Airfield, AirfieldKind, AirfieldPart, Point, WaterDescription, Zone } from './types.ts';
 
@@ -47,6 +48,8 @@ const HEADINGS = 8;
  * ground between is the airfield's own ramp, which no road needs to climb.
  */
 export const GATE_OUT = LEVEL_BLEND + 8;
+/** The steepest rise over run the ramp up to the gate may take. */
+const RAMP_GRADE = 0.25;
 /** Half the width of that ramp. */
 export const RAMP_HALF = 9;
 /** Metres the roads and the parcels keep from an airfield's rectangle. */
@@ -126,13 +129,15 @@ export function planAirfields(hf: Heightfield, water: WaterDescription, zones: Z
     seaLevel: water.seaLevel,
     size: zones.size,
     zones,
-    land: new LandMasses(hf, water, water.seaLevel + SITE_DRY),
+    // The land a road can walk on, not the higher ground a site must stand on:
+    // on a low delta the mainland is one piece only at the road's own margin.
+    land: new LandMasses(hf, water, water.seaLevel + DRY_MARGIN),
     graded: new GradedLand(hf, zones.core, TIERS.street.maxGrade, water.crossings),
   };
   const fields: Airfield[] = [];
   const runway = clamp(Math.round((zones.size * 0.2) / 50) * 50, RUNWAY_MIN, RUNWAY_MAX);
   const airport = findAirport(ground, runway, fields);
-  fields.push(airportAt(fields.length, airport, runway));
+  fields.push(airportAt(fields.length, airport, airport.runway));
   const strips = zones.size >= SECOND_STRIP ? 2 : 1;
   for (let i = 0; i < strips; i++) {
     const site = findSite(ground, stripAsk(), fields);
@@ -177,23 +182,29 @@ export function gateChoices(field: Airfield, heightAt?: (x: number, y: number) =
 
 /**
  * The airport's site. Every seed has one (spec section 8.4), so the search
- * gives ground away rather than giving up: first the zones it wants and the
- * runway it wants, then any zone but the core, then a shorter runway.
+ * gives ground away rather than giving up: a shorter runway in the zones it
+ * wants and in the inner ring, then a narrower margin, and the core only last.
+ * An airport in the core takes the middle out of the city.
  */
-function findAirport(ground: SiteGround, runway: number, taken: readonly Airfield[]): Candidate {
-  const asks: SiteAsk[] = [];
-  for (const length of [runway, RUNWAY_MIN, RUNWAY_MIN * 0.75]) {
-    const base = { halfU: length / 2 + OVERRUN, halfV: AIRPORT_HALF_V, margin: LEVEL_BLEND, step: 100, headings: HEADINGS, gateU: 0 };
-    asks.push({ ...base, zones: AIRPORT_ZONES });
-    asks.push({ ...base, zones: { ...AIRPORT_ZONES, inner: 12 } });
-    asks.push({ ...base, margin: LEVEL_BLEND / 2, step: 60, zones: { ...AIRPORT_ZONES, inner: 12, core: 30 } });
-  }
-  for (const ask of asks) {
-    const site = findSite(ground, ask, taken);
-    if (site !== undefined) return site;
+function findAirport(ground: SiteGround, runway: number, taken: readonly Airfield[]): Candidate & { runway: number } {
+  const lengths = [runway, RUNWAY_MIN, RUNWAY_MIN * 0.75, RUNWAY_MIN * 0.6];
+  const ask = (length: number, zones: ZonePenalty, margin = LEVEL_BLEND, step = 100): SiteAsk => ({ halfU: length / 2 + OVERRUN, halfV: AIRPORT_HALF_V, margin, step, headings: HEADINGS, gateU: 0, zones });
+  // The core is the last resort: an airport there takes the city's middle out.
+  // Every shorter runway anywhere else comes first.
+  const asks: SiteAsk[] = [
+    ...lengths.flatMap((length) => [ask(length, AIRPORT_ZONES), ask(length, { ...AIRPORT_ZONES, inner: 12 })]),
+    ...lengths.map((length) => ask(length, { ...AIRPORT_ZONES, inner: 12 }, LEVEL_BLEND / 2, 60)),
+    ...lengths.map((length) => ask(length, { ...AIRPORT_ZONES, inner: 12, core: 30 }, LEVEL_BLEND / 2, 60)),
+  ];
+  for (const each of asks) {
+    const site = findSite(ground, each, taken);
+    if (site !== undefined) {
+      // The runway the site was judged for, which may be shorter than the one asked for.
+      return { ...site, runway: 2 * (each.halfU - OVERRUN) };
+    }
   }
   // No dry rectangle anywhere: take the driest one near the core, and level it.
-  return { x: ground.zones.core.x, y: ground.zones.core.y, heading: 0, score: 0, level: ground.seaLevel + SITE_DRY };
+  return { x: ground.zones.core.x, y: ground.zones.core.y, heading: 0, score: 0, level: ground.seaLevel + SITE_DRY, runway: RUNWAY_MIN * 0.6 };
 }
 
 function stripAsk(): SiteAsk {
@@ -304,6 +315,8 @@ function judge(ground: SiteGround, ask: SiteAsk, x: number, y: number, heading: 
   // and a car has to drive it: a steep one costs twice what a bank does.
   const gate = hf.sample(x + ask.gateU * c - (ask.halfV + GATE_OUT) * s, y + ask.gateU * s + (ask.halfV + GATE_OUT) * c);
   const ramp = Math.abs(gate - level) - GATE_OUT * BANK_GRADE;
+  // A ramp no road can climb is a gate no road reaches.
+  if (Math.abs(gate - level) > GATE_OUT * RAMP_GRADE) return undefined;
   return { fall: hi - lo + Math.max(0, bank) + 2 * Math.max(0, ramp), level };
 }
 
