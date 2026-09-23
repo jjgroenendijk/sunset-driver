@@ -70,9 +70,33 @@ export function buildPlaces(
   ground: Ground,
 ): WorldPlaces {
   const snap = (x: number, y: number) => nearestRoadPlace(description, x, y);
-  const stations = world.stations ?? [];
+  const places = findPlaces(seed, description, world);
   // An arrest comes back on the road nearest a station (spec section 11.7).
-  ground.stations = stations.map((at) => snap(at.x, at.y) ?? { ...at, heading: 0 });
+  ground.stations = places.stations.map((at) => snap(at.x, at.y) ?? { ...at, heading: 0 });
+  ground.metro = places.metro;
+  ground.shops = places.shops;
+  ground.dealers = places.dealers;
+  ground.safehouses = places.safehouses;
+  ground.turf = places.turf;
+  // The enforcers a faction sends walk the roads the police drive.
+  ground.enforcers = new EnforcerGang(roads, places.turf);
+  ground.missions = places.missions;
+  ground.crimes = places.crimes;
+  ground.parked = places.parked;
+  return places;
+}
+
+/**
+ * The places alone, with nothing handed to the ground. `scripts/map-preview.ts`
+ * marks them on a map with no session behind it, so they must not need one.
+ */
+export function findPlaces(
+  seed: number,
+  description: WorldDescription,
+  world: Pick<WorldScene, 'stations' | 'metro' | 'shops' | 'bays'>,
+): WorldPlaces {
+  const snap = (x: number, y: number) => nearestRoadPlace(description, x, y);
+  const stations = world.stations ?? [];
   // A metro station is entered from the street, so its place is the pavement
   // the stairs stand on (spec section 13.3), and it is named for the district
   // it serves. The renderer builds the stairs from the same answer, so the
@@ -83,35 +107,25 @@ export function buildPlaces(
     heading: at.heading,
     name: description.districts[at.district]?.name ?? 'Metro',
   }));
-  ground.metro = metro;
   // A shop is entered from its own shopfront rather than from the road, so
   // these need no lookup.
   const shops = shopPlaces(world.shops ?? [], description.districts);
-  ground.shops = shops;
   // A dealer stands on the pavement and watches the road, not in the traffic.
   const dealers = dealerPlaces(seed, description.districts, (x, y) => kerbsidePlace(description, x, y));
-  ground.dealers = dealers;
   const safehouses = safehousePlaces(seed, description.districts, snap);
-  ground.safehouses = safehouses;
-  // The turf is seeded from the district cultures the seed handed out, and the
-  // enforcers a faction sends walk the roads the police drive.
+  // The turf is seeded from the district cultures the seed handed out.
   const turf = new TerritoryMap(description);
-  ground.turf = turf;
-  ground.enforcers = new EnforcerGang(roads, turf);
   const missions: MissionWorld = {
     givers: giverPlaces(seed, description.districts, snap),
     sites: jobSites(seed, description.districts, snap),
   };
-  ground.missions = missions;
   // The street crime of spec section 20.5 happens on corners of a district's
   // own, picked the way the dealers' pitches are, and the city holds what it
   // puts on at a venue picked the same way.
   const crimes = crimeGrounds(seed, description.districts, snap);
-  ground.crimes = crimes;
   const venues = venuesOf(seed, description.districts, description.beaches, snap);
   // Which bay holds a car is a function of the tick, so the physics and the
   // renderer share one plan.
   const parked = world.bays === undefined ? undefined : new ParkedCars(seed, world.bays);
-  ground.parked = parked;
   return { stations, metro, shops, dealers, safehouses, turf, missions, parked, crimes, venues };
 }
