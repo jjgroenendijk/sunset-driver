@@ -14,6 +14,7 @@ import type { QualityMonitor, QualityChange } from './render/quality-monitor.ts'
 import type { RenderSmoother } from './render/smooth.ts';
 import type { ParkedView } from './render/parked.ts';
 import type { BusStopView } from './render/bus-stops.ts';
+import type { CornerPropView } from './render/corners.ts';
 import type { PedestrianView } from './render/pedestrians.ts';
 import type { CasualtyView } from './render/casualties.ts';
 import type { ContactMarkers } from './render/markers.ts';
@@ -139,6 +140,8 @@ export interface Session {
   tramSigns: TramSignView;
   /** The bus stops of spec section 20.2, drawn. */
   busStops: BusStopView;
+  /** The amps, carts, stalls and dogs of the occupied corners of spec section 20.1. */
+  corners: CornerPropView;
   /** The pedestrians of spec section 13.1, drawn. */
   crowd: PedestrianView;
   /** The people who have been hit, lying, limping or crawling, and the medics at them (spec section 11.6). */

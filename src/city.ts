@@ -15,6 +15,7 @@
  * one seed are driven through the same streets.
  */
 import { BusStops } from './sim/bus-stops.ts';
+import { StreetCorners } from './sim/corners.ts';
 import type { Ground } from './sim/ground-bodies.ts';
 import { EmergencyServices } from './sim/emergency.ts';
 import { AmbientPedestrians, crowdDistrictsOf } from './sim/pedestrians.ts';
@@ -42,6 +43,8 @@ export interface City {
   /** The kerbs the buses of spec section 20.2 call at, and the people waiting there. */
   busStops: BusStops;
   crowd: AmbientPedestrians;
+  /** The occupied corners of spec section 20.1: buskers, carts, stalls and the people round them. */
+  corners: StreetCorners;
   tram: TramLine;
   police: PoliceForce;
   /** The animals of spec section 20.4, placed along the same roads and the shore. */
@@ -69,6 +72,8 @@ export function buildCity(seed: number, description: WorldDescription, world: He
   // once they are timed: a stop is where a bus stands, not a thing the world
   // description carries.
   const busStops = new BusStops(seed, traffic, districtAt);
+  // The corners somebody stands on for hours are laid out along the same pavements.
+  const corners = new StreetCorners(seed, roads, districtAt);
   // The trams of spec section 13.2 keep to the traffic's own lights.
   const tram = new TramLine(seed, roads, description.tram, description.districts, traffic.signals);
   // The police drive the same roads the traffic does, and answer from the
@@ -102,5 +107,5 @@ export function buildCity(seed: number, description: WorldDescription, world: He
     police,
     emergency,
   };
-  return { ground, roads, traffic, busStops, crowd, tram, police, wildlife };
+  return { ground, roads, traffic, busStops, crowd, corners, tram, police, wildlife };
 }

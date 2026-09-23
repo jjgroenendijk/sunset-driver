@@ -21,6 +21,7 @@ import { RenderTarget, SRGBColorSpace, UnsignedByteType } from 'three';
 import type { WebGPURenderer } from 'three/webgpu';
 import { DEFAULT_APPEARANCE } from '../sim/character.ts';
 import { BusStops } from '../sim/bus-stops.ts';
+import { StreetCorners } from '../sim/corners.ts';
 import { ParkedCars } from '../sim/parked.ts';
 import { AmbientPedestrians, crowdDistrictsOf } from '../sim/pedestrians.ts';
 import { AmbientTraffic, trafficRoadsOf } from '../sim/traffic.ts';
@@ -34,6 +35,7 @@ import { CasualtyView } from './casualties.ts';
 import { ContactMarkers } from './markers.ts';
 import { OfficerGunView } from './officer-guns.ts';
 import { BusStopView } from './bus-stops.ts';
+import { CornerPropView } from './corners.ts';
 import { PedestrianView } from './pedestrians.ts';
 import { PostChain } from './post.ts';
 import type { QualityTier } from './quality.ts';
@@ -77,6 +79,8 @@ export interface PreviewPeople {
   tramSigns: TramSignView;
   /** The posts and the shelters at the kerbs the buses call at (spec section 20.2). */
   busStops: BusStopView;
+  /** The amps, carts, stalls and dogs of the occupied corners (spec section 20.1). */
+  corners: CornerPropView;
   crowd: PedestrianView;
   casualties: CasualtyView;
   /** The guns in the hands of the police on foot who aim. */
@@ -143,13 +147,15 @@ export function peopleFor(): PreviewPeople {
     const districtAt = crowdDistrictsOf(world);
     const walkers = new AmbientPedestrians(seed, roads, districtAt, ambient.signals);
     const stops = new BusStops(seed, ambient, districtAt);
+    const spots = new StreetCorners(seed, roads, districtAt);
     held.people = {
       traffic: new TrafficView(ambient),
       trams: new TramView(line),
       tramStops: new TramStopView(line),
       tramSigns: new TramSignView(line),
       busStops: new BusStopView(stops),
-      crowd: new PedestrianView(walkers, line, stops),
+      corners: new CornerPropView(spots),
+      crowd: new PedestrianView(walkers, line, stops, spots),
       casualties: new CasualtyView(walkers),
       guns: new OfficerGunView(),
       markers: new ContactMarkers(CONTACT_CAP),
@@ -157,8 +163,8 @@ export function peopleFor(): PreviewPeople {
         new AmbientWildlife(seed, { roads, beaches: world.beaches, seaLevel: world.water.seaLevel, districtAt }),
       ),
     };
-    const { traffic, trams, tramStops, tramSigns, busStops, crowd, casualties, guns, markers, wildlife } = held.people;
-    scene.scene.add(traffic.group, trams.group, tramStops.group, tramSigns.group, busStops.group, crowd.group, casualties.group, guns.group, markers.group, wildlife.group);
+    const { traffic, trams, tramStops, tramSigns, busStops, corners, crowd, casualties, guns, markers, wildlife } = held.people;
+    scene.scene.add(traffic.group, trams.group, tramStops.group, tramSigns.group, busStops.group, corners.group, crowd.group, casualties.group, guns.group, markers.group, wildlife.group);
   }
   if (held.people.parked === undefined && scene.bays !== undefined) {
     held.people.parked = new ParkedView(new ParkedCars(seed, scene.bays));
@@ -209,7 +215,7 @@ function dropHeld(): void {
   dropView(held);
   const people = held.people;
   if (people !== undefined) {
-    for (const view of [people.traffic, people.trams, people.tramStops, people.tramSigns, people.busStops, people.crowd, people.casualties, people.guns, people.wildlife, people.parked]) {
+    for (const view of [people.traffic, people.trams, people.tramStops, people.tramSigns, people.busStops, people.corners, people.crowd, people.casualties, people.guns, people.wildlife, people.parked]) {
       if (view === undefined) continue;
       held.scene.scene.remove(view.group);
       view.dispose();
