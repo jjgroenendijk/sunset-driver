@@ -32,6 +32,7 @@ import { carDamage, KILL_SPEED, LIFT_MAX, LIFT_SHARE, LIFT_SPEED, SHOVE_SPEED, T
 import { hurtPerson, PERSON_HEALTH, type CasualtyGround } from './casualty.ts';
 import { TICK_RATE } from './clock.ts';
 import { UNIT_BODY } from './emergency.ts';
+import { Grid, NearCache } from './give-way-grid.ts';
 import { heldTime, holdOf, type Hold } from './hold.ts';
 import type { CrowdSource } from './melee.ts';
 import { casualtyOf, crowdPoseOf, startledOf, stepAside, type PedestrianPose } from './pedestrians.ts';
@@ -112,33 +113,6 @@ export type Crowd = CrowdSource & {
   edgeMeets?(edge: number, minX: number, minY: number, maxX: number, maxY: number): boolean;
 };
 
-/** Metres the box of candidates is grown by, and snapped to, so it is looked up again only now and then. */
-const NEAR_SNAP = 40;
-
-type Near = (minX: number, minY: number, maxX: number, maxY: number, out: number[]) => number[];
-
-/**
- * Whose loop passes near a box, asked of an index only when the box has moved
- * to another snap of the map. The answer is a function of the snap alone, so
- * it is the same in a replay.
- */
-class NearCache {
-  private key = '';
-  private readonly ids: number[] = [];
-
-  of(x: number, y: number, reach: number, near: Near): readonly number[] {
-    const sx = Math.floor(x / NEAR_SNAP);
-    const sy = Math.floor(y / NEAR_SNAP);
-    const key = `${sx},${sy},${reach}`;
-    if (key !== this.key) {
-      this.key = key;
-      const r = reach + NEAR_SNAP;
-      near(sx * NEAR_SNAP - r, sy * NEAR_SNAP - r, (sx + 1) * NEAR_SNAP + r, (sy + 1) * NEAR_SNAP + r, this.ids);
-    }
-    return this.ids;
-  }
-}
-
 /** One car of the traffic in the box, for one tick. */
 interface Car {
   id: number;
@@ -192,15 +166,15 @@ export class GiveWay {
   private people: Person[] = [];
   /** The player, their car and the wrecks: what a car stops for that is not a car of the traffic. */
   private others: Footprint[] = [];
-  private carGrid: number[][] = [];
+  private readonly carGrid = new Grid();
   /** The cars in the order they were placed, while the ones that have just come in are cleared. */
-  private filed: number[][] = [];
+  private readonly filed = new Grid();
   /** The cars where they will stand on the next tick, filed by where they stand now. */
-  private nextGrid: number[][] = [];
+  private readonly nextGrid = new Grid();
   private readonly near: number[] = [];
   /** Metres the next step of a car or a person reaches at most, which is what the next grid is read round. */
   private nextReach = 0;
-  private personGrid: number[][] = [];
+  private readonly personGrid = new Grid();
   private minX = 0;
   private minY = 0;
   private cols = 0;
@@ -234,13 +208,10 @@ export class GiveWay {
     this.minY = y - GIVE_WAY_REACH;
     this.cols = Math.ceil((2 * GIVE_WAY_REACH) / CELL) + 1;
     const cells = this.cols * this.cols;
-    for (const grid of [this.carGrid, this.personGrid, this.filed, this.nextGrid]) {
-      for (let i = 0; i < cells; i++) {
-        const cell = grid[i];
-        if (cell === undefined) grid[i] = [];
-        else cell.length = 0;
-      }
-    }
+    this.carGrid.reset(cells);
+    this.personGrid.reset(cells);
+    this.filed.reset(cells);
+    this.nextGrid.reset(cells);
   }
 
   private inBox(x: number, y: number): boolean {
@@ -255,7 +226,7 @@ export class GiveWay {
   }
 
   /** Every entry of a grid filed within `pad` of a footprint's reach, once each. */
-  private around(grid: number[][], box: Footprint, pad: number, out: number[]): number[] {
+  private around(grid: Grid, box: Footprint, pad: number, out: number[]): number[] {
     out.length = 0;
     const r = box.halfLength + box.halfWidth + pad;
     const cx0 = Math.max(0, Math.floor((box.x - r - this.minX) / CELL));
@@ -264,14 +235,14 @@ export class GiveWay {
     const cy1 = Math.min(this.cols - 1, Math.floor((box.y + r - this.minY) / CELL));
     for (let cy = cy0; cy <= cy1; cy++) {
       for (let cx = cx0; cx <= cx1; cx++) {
-        for (const entry of grid[cy * this.cols + cx] as number[]) out.push(entry);
+        for (const entry of grid.cells[cy * this.cols + cx] as number[]) out.push(entry);
       }
     }
     return out;
   }
 
   /** Every entry of a grid filed within the next reach of a point. */
-  private aroundPoint(grid: number[][], x: number, y: number, out: number[]): number[] {
+  private aroundPoint(grid: Grid, x: number, y: number, out: number[]): number[] {
     out.length = 0;
     const r = this.nextReach;
     const cx0 = Math.max(0, Math.floor((x - r - this.minX) / CELL));
@@ -280,7 +251,7 @@ export class GiveWay {
     const cy1 = Math.min(this.cols - 1, Math.floor((y + r - this.minY) / CELL));
     for (let cy = cy0; cy <= cy1; cy++) {
       for (let cx = cx0; cx <= cx1; cx++) {
-        for (const entry of grid[cy * this.cols + cx] as number[]) out.push(entry);
+        for (const entry of grid.cells[cy * this.cols + cx] as number[]) out.push(entry);
       }
     }
     return out;
@@ -318,7 +289,7 @@ export class GiveWay {
         nextY: this.walk.y,
         held: false,
       });
-      (this.personGrid[this.cellOf(this.walk.x, this.walk.y)] as number[]).push(index);
+      this.personGrid.add(this.cellOf(this.walk.x, this.walk.y), index);
     }
   }
 
@@ -372,13 +343,13 @@ export class GiveWay {
     this.cars.sort((a, b) => a.id - b.id);
     for (let i = 0; i < this.cars.length; i++) {
       const car = this.cars[i] as Car;
-      (this.carGrid[this.cellOf(car.box.x, car.box.y)] as number[]).push(i);
+      this.carGrid.add(this.cellOf(car.box.x, car.box.y), i);
     }
   }
 
   private file(car: Car): void {
     this.cars.push(car);
-    (this.filed[this.cellOf(car.box.x, car.box.y)] as number[]).push(this.cars.length - 1);
+    this.filed.add(this.cellOf(car.box.x, car.box.y), this.cars.length - 1);
   }
 
   /** Move a car that has come into the box back along its tour until it stands on no other car. */
@@ -592,7 +563,7 @@ export class GiveWay {
     this.nextReach = 0;
     for (let i = 0; i < this.cars.length; i++) {
       const car = this.cars[i] as Car;
-      (this.nextGrid[this.cellOf(car.next.x, car.next.y)] as number[]).push(i);
+      this.nextGrid.add(this.cellOf(car.next.x, car.next.y), i);
       const reach = car.next.halfLength + car.next.halfWidth + PERSON_ROOM + car.nextSpeed * CROSS_TIME;
       this.nextReach = Math.max(this.nextReach, reach);
     }
