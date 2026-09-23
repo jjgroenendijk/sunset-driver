@@ -236,7 +236,7 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 ## The tram
 
 - The tram of spec section 13.2 has a doc of its own, `docs/tram.md`: the loop and its lights, the
-  short runs and the track.
+  short runs, the track, and the turns the traffic holds while a tram is in the junction.
 
 ## Pedestrians
 

@@ -39,6 +39,7 @@ import { EdgeIndex } from './edge-index.ts';
 import { heightOff, RouteSampler, type BedTilt, type RoutePoint } from './route-sample.ts';
 import { SIGNAL_CYCLE, TrafficSignals } from './signals.ts';
 import { legAt, timeTour, walkTour, type Permit, type Tour } from './traffic-tour.ts';
+import { tramGuardOf, type TramGuard } from './tram-guard.ts';
 import { specOf, type VehicleClass, type VehicleState } from './vehicle.ts';
 
 /** Metres each way of one bucket of the index that says which vehicles can be near a place. */
@@ -202,6 +203,8 @@ export class AmbientTraffic {
   readonly vehicles: readonly AmbientVehicle[];
   /** The traffic lights the vehicles stop at; undefined when the roads came without junctions. */
   readonly signals: TrafficSignals | undefined;
+  /** The turns held while a tram crosses them (`tram-guard.ts`); undefined without a tram or lights. */
+  readonly guard: TramGuard | undefined;
   readonly roads: TrafficRoads;
   /**
    * How many people the stop on each leg gathers (`bus.ts`). It is held here
@@ -230,6 +233,7 @@ export class AmbientTraffic {
     const junctions = roads.junctions;
     const crossings = (roads.tram?.crossings ?? []).map((crossing) => crossing.node);
     this.signals = junctions === undefined ? undefined : new TrafficSignals(seed, roads.roads, graph, junctions, roads.heightAt, crossings);
+    this.guard = tramGuardOf(graph, this.signals, roads.tram);
     const busy = new Float64Array(graph.edges.length);
     for (const edge of graph.edges) {
       const mid = this.midpoint(edge);
@@ -369,7 +373,7 @@ export class AmbientTraffic {
       // carries the dwell at every kerb it pulls in at.
       const place = walk.float();
       const driver = drawDriver(walk);
-      const tour = timeTour(graph, route, this.signals, { place, driver, calls: cls === 'bus', demand: this.demand });
+      const tour = timeTour(graph, route, this.signals, { place, driver, calls: cls === 'bus', demand: this.demand }, this.guard);
       const phase = phaseOf(tour, tour.edges.indexOf(edge.id), offset, walk);
       vehicles.push({ id, cls, paint, lane, phase, driver, tour });
       for (const e of tour.edges) this.index.file(id, e);
