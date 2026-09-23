@@ -43,6 +43,9 @@ import { coverOf, polylineLength } from './seed-probes.ts';
 import { buildingsOf, seeds, worlds, footprintOf, parcelsOf } from './seed-fixture.ts';
 import { sweepSuite } from './seed-suite.ts';
 
+/** The districts `generateDistricts` names with a culture of their own. */
+const FIXED_NAMES = new Set(['The Barrio', 'Little Italy', 'Chinatown', 'The Blocks', 'The Docks', 'Freight Yards', 'Gull Island', 'Roadhouse Strip']);
+
 /**
  * The seed sweep of spec section 3, on the places a world is given: the tram,
  * the beaches and the districts.
@@ -183,6 +186,10 @@ sweepSuite('places', () => {
       }
       // The districts along it are the beach neighbourhood of spec section 8.3.
       if (!w.districts.some((d) => d.culture === 'beach')) fault('has no beach neighbourhood');
+      // It never takes a named neighbourhood: that culture is a faction's home turf (issue #348).
+      for (const d of w.districts) {
+        if (d.culture === 'beach' && FIXED_NAMES.has(d.name)) fault(`turns ${d.name} into a beach neighbourhood`);
+      }
       expect(complaint, `seed ${seed}`).toBeUndefined();
     }
   });
