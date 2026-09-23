@@ -8,6 +8,7 @@ trade, in `docs/shops.md`; the record both of them write is `src/sim/simulation.
 ## Contents
 
 - Nothing about a price is stored
+- The goods
 - What moves a price
 - The dealers and their corners
 - The deal
@@ -27,6 +28,22 @@ trade, in `docs/shops.md`; the record both of them write is `src/sim/simulation.
 - What the record does carry is `SimState.market`: the stash, what was paid for it, and the deal
   the player has open. A price never goes in there. Nothing the player does moves a price either —
   the market is the city's, not theirs.
+
+## The goods
+
+- `GOODS` (`src/sim/goods.ts`) is the list: twelve goods in three groups, each with a name, a
+  blurb for the panel's card and the numbers its price is made of. `contraband.ts` hands the same
+  names on, so callers that ask for a price import the list from there.
+- The record stores a holding per good in the order of `GOOD_IDS`. A good added or moved changes
+  the shape of every stash, so it raises `SAVE_VERSION`; version 20 is the move from six to twelve.
+- The panel draws the list in its own order, under the headings of `GOOD_GROUPS`. So a group has to
+  be one run of the list, and the test in `test/market.test.ts` holds that, cheapest first inside
+  a run.
+- The number keys reach the first nine goods only. The rest are traded with the cursor and `Enter`
+  or the buttons, as a shop's rows past the ninth are.
+- A price's random streams are keyed on `district.id * GOODS.length + good`, so a longer list
+  moves every price of every seed. That is fine once, with the save version raised, and it is why
+  a good is never added without a reason.
 
 ## What moves a price
 
@@ -50,10 +67,15 @@ trade, in `docs/shops.md`; the record both of them write is `src/sim/simulation.
 ## The dealers and their corners
 
 - One dealer works each district. `dealerPlaces(seed, districts, snap)` (`src/sim/dealer.ts`) picks
-  `PITCHES` corners spread round the district's site and hands each to `snap`, which is
-  `nearestRoadPlace` in the game: a dealer stands on a street, not in the middle of a block. The
-  snap is handed in rather than imported so that a simulation test can put a dealer on a hillside
-  with no roads on it.
+  `PITCHES` corners spread round the district's site and hands each to `snap`. The snap is handed
+  in rather than imported so that a simulation test can put a dealer on a hillside with no roads on
+  it.
+- In the game the snap is `kerbsidePlace` (`src/world/kerbside.ts`), not `nearestRoadPlace`. The
+  second answers the middle of the carriageway, which is where a car stands; a dealer put there
+  stood in the traffic. The kerbside answer is the middle of the pavement on the side the point was
+  asked from, turned to face the road. A road with a pavement is preferred over a nearer one
+  without, and a place that lands on any carriageway, as at a junction, tries the far side and then
+  gives up. `test/seed-places.test.ts` checks no pitch of the sweep stands in a road.
 - A district `snap` answers nothing for gets no dealer at all, which is how the wilderness is left
   alone.
 - `pitchOf(dealer, tick)` is the corner they are on. The pitches are shuffled once at build time
@@ -79,11 +101,21 @@ trade, in `docs/shops.md`; the record both of them write is `src/sim/simulation.
 
 ## The panel
 
-- `src/ui/trade-panel.ts` draws the record and nothing else, as the shop panel does. Its cells are
-  made once and written only when their own text changes: six rows of prices that move every few
-  ticks would otherwise lay the whole overlay out again for a dollar.
-- The history is a line of bars in text. A canvas here would be a second surface to size, to scale
-  and to redraw for twelve numbers nobody reads to the dollar.
+- `src/ui/trade-panel.ts` is built on the shop counter's layout and classes (`shop.css`), with the
+  parts a trade adds in `trade.css`. Keep the two alike, so a dealer reads like every other
+  counter in the game.
+- It draws the record and nothing else. The cursor is the panel's own. A click on a row only moves
+  the cursor and never trades, because a buy takes everything the money and the room allow.
+- The buy and sell buttons and `Enter` go through `Keyboard.trade`, which the next frame of input
+  carries as `InputFrame.trade`. So a trade made with the mouse replays like one made with a key.
+- `Keyboard.menuKeys` spends the arrow keys and `Enter` as it reads them. The frame reads them once
+  and hands the same answer to the shop panel and this one; only one of the two is ever open.
+- While a deal is open the arrow keys are the list's (`Keyboard.menu`) and the chase view lets the
+  pointer go, as it does in a shop.
+- The preview is the shop's `ShopPreview`, with a look of kind `good`. The props are in
+  `src/render/contraband-props.ts`, and `--gallery=goods` lays them all out in one picture.
+- The history is twelve bars drawn as DOM elements. Block glyphs in text were tried first, and the
+  panel's font does not draw them all at one width.
 - `dollars()` (`src/sim/market.ts`) groups the digits by hand. `toLocaleString` reads the machine's
   own locale, and two machines would then write two different records.
 

@@ -57,9 +57,9 @@ export class Keyboard {
   /** The map point under the mouse, which the frame writes; undefined while it is off the map. */
   private point: { x: number; y: number } | undefined = undefined;
   /**
-   * True while a shop counter is open. The arrow keys then walk its rows and
-   * `Enter` buys one, so they leave the player where they stand; `W A S D`
-   * still walk. The frame writes it.
+   * True while a shop counter or a deal is open. The arrow keys then walk its
+   * rows and `Enter` buys one, so they leave the player where they stand;
+   * `W A S D` still walk. The frame writes it.
    */
   menu = false;
   /** Which of the counter's keys were down last frame, so a held key moves the cursor once. */
@@ -72,6 +72,8 @@ export class Keyboard {
   turn = 0;
   /** A row picked off a panel with the mouse or `Enter`, handed to the next sample. */
   private picked = 0;
+  /** A good traded off the dealer's panel, as `InputFrame.trade` counts it, handed to the next sample. */
+  private traded = 0;
   /** A press of the interact key made on a panel, handed to the next sample. */
   private tapped = false;
   /** Wheel travel not yet taken as a weapon step, and the steps waiting for the next sample. */
@@ -175,16 +177,26 @@ export class Keyboard {
     this.picked = row;
   }
 
+  /**
+   * Trade a good off the dealer's panel, counted from 1 to buy and the same
+   * number negative to sell, as its number key would with or without the sell
+   * key held. A button and `Enter` both come here.
+   */
+  trade(good: number): void {
+    this.traded = good;
+  }
+
   /** Press the interact key once, as the leave button of a panel does. */
   tapInteract(): void {
     this.tapped = true;
   }
 
   /**
-   * The counter's own keys, read once a frame: the step the cursor takes, and
-   * whether `Enter` was pressed. Each key counts once however long it is held.
+   * The counter's own keys, read once a frame: the step the cursor takes,
+   * whether `Enter` was pressed, and whether the sell key was held with it.
+   * Each key counts once however long it is held.
    */
-  menuKeys(): { step: number; enter: boolean } {
+  menuKeys(): { step: number; enter: boolean; sell: boolean } {
     const up = this.is('ArrowUp');
     const down = this.is('ArrowDown');
     const enter = this.is('Enter') || this.is('NumpadEnter');
@@ -192,7 +204,7 @@ export class Keyboard {
     const step = (down && !held.down ? 1 : 0) - (up && !held.up ? 1 : 0);
     const pressed = enter && !held.enter;
     this.menuHeld = { up, down, enter };
-    return { step, enter: pressed };
+    return { step, enter: pressed, sell: this.is('ShiftLeft') || this.is('ShiftRight') };
   }
 
   sample(): InputFrame {
@@ -206,6 +218,8 @@ export class Keyboard {
     this.picked = 0;
     const tapped = this.tapped;
     this.tapped = false;
+    const traded = this.traded;
+    this.traded = 0;
     const cycle = this.steps;
     this.steps = 0;
     // The sprint key doubles as the sell key at a dealer's corner (spec section
@@ -236,7 +250,7 @@ export class Keyboard {
       station: this.dial(),
       travel: chosen,
       buy: picked > 0 ? picked : chosen,
-      trade: selling ? -chosen : chosen,
+      trade: traded !== 0 ? traded : selling ? -chosen : chosen,
       surrender: this.is('KeyX'),
     };
   }

@@ -1,0 +1,27 @@
+/* The dealer's counter of `trade-panel.ts`. It is the shop's counter (`shop.css`)
+   with the parts a trade adds: the carrying gauge, a number and a holding on each
+   row, the marks of a spike and a glut, and a sell button beside the buy. */
+
+.trade-load { padding-bottom: calc(.3 * var(--u)); }
+.trade-row { grid-template-columns: calc(.9 * var(--u)) minmax(0, 1fr) auto auto; }
+.trade-key { font-size: calc(.65 * var(--u)); color: var(--it-muted); font-variant-numeric: tabular-nums; }
+.trade-held { font-size: calc(.75 * var(--u)); font-weight: 600; color: #8a6420; font-variant-numeric: tabular-nums; }
+.shop-price.trade-spike, .shop-fact-value.trade-spike, .shop-fact-value.trade-down { color: var(--it-rosso); }
+.shop-price.trade-glut, .shop-fact-value.trade-glut, .shop-fact-value.trade-up { color: #2f7a3a; }
+.trade .shop-fact-value { white-space: nowrap; }
+
+/* Buy and sell side by side. Sell is dark, so the two are not taken for each other. */
+.trade-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: calc(.35 * var(--u)); }
+.trade-buttons .shop-buy { padding-inline: calc(.4 * var(--u)); font-size: calc(.7 * var(--u)); letter-spacing: .08em; }
+.shop-buy.trade-sell { background: var(--it-ink); }
+.shop-buy.trade-sell:hover { background: #3a2e24; }
+.trade-buttons .shop-buy:disabled { background: rgba(35,28,22,.25); color: var(--it-ink); cursor: default; transform: none; }
+
+@media (max-width: 52rem) {
+  .trade .shop-card { grid-template-rows: minmax(0, 1fr) auto; }
+}
+
+/* The price history: twelve bars standing on one line, the newest on the right. */
+.trade-spark { display: flex; align-items: flex-end; justify-content: flex-end; gap: 2px; height: var(--u); }
+.trade-spark-bar { width: calc(.32 * var(--u)); background: var(--it-gold); }
+.trade-spark-bar:last-child { background: var(--it-rosso); }

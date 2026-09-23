@@ -111,15 +111,16 @@ export class SessionFrame {
     const menu = session.pause.open;
     const paused = isPaused(session);
     // A chase view turns with the mouse under pointer lock, unless a menu, the
-    // map or a shop counter wants the pointer (`ui/mouse-look.ts`).
+    // map, a shop counter or a deal wants the pointer (`ui/mouse-look.ts`).
     const chase = this.parts.settings.view !== 'top-down';
-    this.parts.look.update(chase && !menu && !session.map.open && session.state.shop === null, flying);
+    const counter = session.state.shop !== null || session.state.market.deal !== null;
+    this.parts.look.update(chase && !menu && !session.map.open && !counter, flying);
     this.pointMouse(session, flying || menu);
     // Nothing samples the keys while the camera flies or a menu is open, so
     // the wheel turned then must not step the weapon afterwards.
     if (flying || menu) keyboard.forgetWheel();
-    // The arrow keys walk a shop's counter while the player stands at one.
-    keyboard.menu = session.state.shop !== null;
+    // The arrow keys walk a shop's counter or a dealer's while one is open.
+    keyboard.menu = counter;
     // A paused frame is drawn at `PAUSED_FPS` (`pace.ts`), so the frame after
     // the menu closes comes up to a tenth of a second later. That time was
     // spent in the menu, and the first frame back takes no step for it.
@@ -191,6 +192,7 @@ export class SessionFrame {
     session.post.render();
     // The turning preview of a shop's counter, on its own canvas.
     session.shopPanel.drawPreview(performance.now() / 1000);
+    session.tradePanel.drawPreview(performance.now() / 1000);
   }
 
   /**
@@ -454,12 +456,15 @@ export class SessionFrame {
     session.travel.update(session.state, session.metro, stationAt(session.metro, session.state), session.state.tick);
     // The shop of spec section 16.1: the counter on screen, and the room the
     // player is standing in, which is the only interior the scene ever holds.
-    session.shopPanel.update(session.state, session.shops, session.safehouses, this.parts.keyboard.menuKeys());
+    // The counter's keys are read once, since a read spends them, and handed to
+    // both panels; only one of the two is ever open.
+    const nav = this.parts.keyboard.menuKeys();
+    session.shopPanel.update(session.state, session.shops, session.safehouses, nav);
     session.world.shopInside(inShop);
     // The contraband market of spec section 16.2: where the dealers are
     // standing this spell, and the prices of the one the player is with.
     session.dealerMarks.update(session.state.tick, session.world);
-    session.tradePanel.update(session.state, session.dealers);
+    session.tradePanel.update(session.state, session.dealers, nav);
     // The enforcers of spec section 17.2, where the record left them this
     // tick, and the dealers standing behind them in the same list.
     session.enforcerMarks.update(session.state, session.world, session.dealerMarks);
