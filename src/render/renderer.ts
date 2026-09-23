@@ -125,11 +125,16 @@ function allowStringSwizzle(): void {
   };
 }
 
-export async function createRenderer(canvas: HTMLCanvasElement): Promise<WebGPURenderer> {
+/**
+ * The renderer of the page. `trackTimestamp` asks for GPU timestamps around
+ * every pass, which the profiler reads (`gpu-passes.ts`); the game leaves it
+ * off, since every pass then carries two more writes.
+ */
+export async function createRenderer(canvas: HTMLCanvasElement, trackTimestamp = false): Promise<WebGPURenderer> {
   allowStringSwizzle();
   // No multisampling: SMAA in the post chain is what takes the edges down
   // (spec section 10.6), and paying for both would be paying twice.
-  const renderer = new WebGPURenderer({ canvas, antialias: false, forceWebGL: false });
+  const renderer = new WebGPURenderer({ canvas, antialias: false, forceWebGL: false, trackTimestamp });
   configure(renderer);
   await renderer.init();
   // The upload record exists from `init` on.
