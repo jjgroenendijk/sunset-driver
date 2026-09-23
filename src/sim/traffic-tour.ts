@@ -16,7 +16,7 @@ import type { Rng } from '../core/rng.ts';
 import type { RoadEdge, RoadGraph } from '../world/graph.ts';
 import type { RoadTier } from '../world/types.ts';
 
-export { CRUISE, driveTicks, legAt, timeTour, type Tour } from './traffic-timing.ts';
+export { CRUISE, driveTicks, legAt, legNear, timeTour, type Tour } from './traffic-timing.ts';
 
 /** Metres a loop has to be before a walk ends on it. Shorter is a car circling a block. */
 export const MIN_LOOP = 400;
