@@ -24,7 +24,13 @@
  *                    those tiers at those drive frames. This is how a tier
  *                    change is timed: the frames around it say what it cost.
  *   --long           list every frame over 33 ms, with what it compiled.
- *   --cpuprofile     profile the drive and list where its time went.
+ *   --passes         time every pass on the GPU with timestamp queries: the
+ *                    shadow cascades, the scene, each step of the post chain.
+ *   --cpuprofile     profile the drive and list where its time went, by area
+ *                    (src/sim, three.js, the collector), by file and by
+ *                    function. --cpuprofile=drive.cpuprofile also writes the
+ *                    profile, for the Performance panel of Chrome DevTools.
+ *   --json=<file>    write every sample of the run, for `profile-compare.ts`.
  *   --memory         report what the page and the GPU hold: settled after the
  *                    still frames, and at the most over the drive. The GPU is
  *                    counted by wrapping `createBuffer`, `createTexture` and
@@ -42,6 +48,8 @@ import { createServer, type ViteDevServer } from 'vite';
 import { seedFromString } from '../src/core/rng.ts';
 import type { FrameSample, ProfileRequest, ProfileResult } from '../src/render/profile.ts';
 import { chromiumPath } from './chromium.ts';
+import { printProfile, saveProfile, summariseProfile, type CpuProfile, type CpuSummary } from './cpu-profile.ts';
+import { percentile, saveRun } from './profile-run.ts';
 
 const args = process.argv.slice(2);
 const positional = args.filter((a) => !a.startsWith('--'));
@@ -83,6 +91,7 @@ const request: ProfileRequest = {
   tierAt: options.get('tier-at')?.split(','),
   gate: options.has('cpuprofile') || options.has('memory'),
   memory: options.has('memory'),
+  passes: options.has('passes'),
 };
 
 /** The page's heap, and the typed arrays outside it, in bytes. */
@@ -93,10 +102,34 @@ interface HeapUsage {
 
 const mb = (bytes: number): string => `${(bytes / 2 ** 20).toFixed(0)} MB`;
 
+/** The fields of a frame that are one number each. */
+type Field = Exclude<keyof FrameSample, 'passes'>;
+
 /** A percentile of one field of the samples. */
-function pct(samples: readonly FrameSample[], field: keyof FrameSample, p: number): number {
-  const sorted = samples.map((s) => s[field]).sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))] ?? 0;
+function pct(samples: readonly FrameSample[], field: Field, p: number): number {
+  return percentile(
+    samples.map((s) => s[field]),
+    p,
+  );
+}
+
+/** The GPU time of every frame, and of every pass in it, by name; a pass a frame lacks took 0. */
+function passSeries(samples: readonly FrameSample[]): Map<string, number[]> {
+  const labels = new Set(samples.flatMap((s) => Object.keys(s.passes ?? {})));
+  const series = new Map<string, number[]>();
+  series.set('gpu', samples.map((s) => Object.values(s.passes ?? {}).reduce((a, b) => a + b, 0)));
+  for (const label of [...labels].sort()) series.set(`gpu: ${label}`, samples.map((s) => s.passes?.[label] ?? 0));
+  return series;
+}
+
+/** What each pass took on the GPU, the most costly first. */
+function reportPasses(name: string, samples: readonly FrameSample[]): void {
+  const series = [...passSeries(samples)].sort((a, b) => percentile(b[1], 0.5) - percentile(a[1], 0.5));
+  console.log(`${name} gpu passes, ms: p50  p95  max`);
+  for (const [label, values] of series) {
+    const cells = [0.5, 0.95, 1].map((p) => percentile(values, p).toFixed(2).padStart(6)).join(' ');
+    console.log(`  ${cells}  ${label}`);
+  }
 }
 
 function report(name: string, samples: readonly FrameSample[]): void {
@@ -112,7 +145,7 @@ function report(name: string, samples: readonly FrameSample[]): void {
       );
     });
   }
-  const f = (field: keyof FrameSample, p: number): string => pct(samples, field, p).toFixed(1);
+  const f = (field: Field, p: number): string => pct(samples, field, p).toFixed(1);
   const long = samples.filter((s) => s.totalMs > 33).length;
   console.log(
     `${name}: frame p50 ${f('totalMs', 0.5)} p95 ${f('totalMs', 0.95)} max ${f('totalMs', 1)} ms` +
@@ -122,36 +155,19 @@ function report(name: string, samples: readonly FrameSample[]): void {
   );
 }
 
-interface ProfileNode {
-  id: number;
-  callFrame: { functionName: string; url: string; lineNumber: number };
-}
-
-/** The functions the drive spent most of its own time in, from a V8 CPU profile. */
-function summarise(profile: { nodes: ProfileNode[]; samples: number[]; timeDeltas: number[] }): void {
-  const byId = new Map(profile.nodes.map((node) => [node.id, node]));
-  const self = new Map<string, number>();
-  let total = 0;
-  profile.samples.forEach((id, i) => {
-    const node = byId.get(id);
-    const ms = (profile.timeDeltas[i] ?? 0) / 1000;
-    total += ms;
-    if (node === undefined) return;
-    const file = node.callFrame.url.split('/').pop()?.split('?')[0] ?? '';
-    const key = `${node.callFrame.functionName || '(anonymous)'} ${file}:${node.callFrame.lineNumber + 1}`;
-    self.set(key, (self.get(key) ?? 0) + ms);
-  });
-  console.log(`cpu profile of the drive: ${total.toFixed(0)} ms sampled`);
-  for (const [key, ms] of [...self].sort((a, b) => b[1] - a[1]).slice(0, 30)) {
-    console.log(`  ${ms.toFixed(0).padStart(6)} ms  ${key}`);
-  }
-}
-
 let server: ViteDevServer | undefined;
 const browser = await chromium.launch({
   executablePath: chromiumPath({ hardware: true }),
   headless: true,
-  args: ['--enable-unsafe-webgpu', '--enable-gpu', '--disable-gpu-vsync', '--disable-frame-rate-limit'],
+  // Chrome rounds a timestamp query to a tenth of a millisecond unless the
+  // developer features are on, which would round a short pass to nothing.
+  args: [
+    '--enable-unsafe-webgpu',
+    '--enable-gpu',
+    '--disable-gpu-vsync',
+    '--disable-frame-rate-limit',
+    ...(request.passes === true ? ['--enable-webgpu-developer-features'] : []),
+  ],
 });
 try {
   server = await createServer({ server: { port: 0 }, logLevel: 'warn' });
@@ -172,6 +188,7 @@ try {
     request,
   );
   let result: ProfileResult;
+  let cpu: CpuSummary | undefined;
   let heap: { settled: HeapUsage; peak: HeapUsage } | undefined;
   if (request.gate === true) {
     await page.waitForFunction('window.driveReady === true', undefined, { timeout: 600_000 });
@@ -203,8 +220,10 @@ try {
     watching = false;
     await watch;
     if (options.has('cpuprofile')) {
-      const { profile } = await cdp.send('Profiler.stop');
-      summarise(profile as unknown as Parameters<typeof summarise>[0]);
+      const { profile } = (await cdp.send('Profiler.stop')) as unknown as { profile: CpuProfile };
+      cpu = summariseProfile(profile);
+      printProfile('the drive', cpu);
+      saveProfile(profile, options.get('cpuprofile'));
     }
   } else {
     result = await pending;
@@ -215,6 +234,27 @@ try {
   }
   report('still', result.still);
   report('drive', result.drive);
+  if (request.passes === true && !result.timed) console.log('the adapter offers no timestamp queries; no pass was timed');
+  if (result.timed) {
+    reportPasses('still', result.still);
+    reportPasses('drive', result.drive);
+  }
+  const json = options.get('json');
+  if (json !== undefined) {
+    const series: Record<string, number[]> = {};
+    for (const [phase, samples] of [['still', result.still], ['drive', result.drive]] as const) {
+      for (const field of ['totalMs', 'cpuMs', 'updateMs'] as const) {
+        series[`${phase} ${field.replace('Ms', '')}`] = samples.map((s) => s[field]);
+      }
+      if (result.timed) for (const [label, values] of passSeries(samples)) series[`${phase} ${label}`] = values;
+    }
+    saveRun(json, {
+      tool: 'render-profile',
+      label: args.filter((a) => !a.startsWith('--json')).join(' ') || seedText,
+      series,
+      ...(cpu === undefined ? {} : { cpu: { areas: cpu.areas, files: cpu.files } }),
+    });
+  }
   const memory = result.memory;
   if (memory !== undefined && heap !== undefined) {
     const gpu = memory.settled;

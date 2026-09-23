@@ -17,6 +17,7 @@ import { DEFAULT_APPEARANCE } from '../sim/character.ts';
 import { nearestRoadPlace } from '../world/surface.ts';
 import { generateWorld } from '../world/world.ts';
 import { FollowCamera } from './camera.ts';
+import { PassTimer, type PassTimes } from './gpu-passes.ts';
 import { tickAtHour } from './daylight.ts';
 import { PostChain } from './post.ts';
 import { geometryBytes, gpuMemory, gpuPeak, installGpuLedger, type GpuMemory } from './memory.ts';
@@ -60,6 +61,8 @@ export interface ProfileRequest {
   gate?: boolean;
   /** Count what the GPU and the scene's geometry hold (`memory.ts`). */
   memory?: boolean;
+  /** Time every pass of every frame on the GPU (`gpu-passes.ts`). */
+  passes?: boolean;
 }
 
 /** One frame, timed. */
@@ -78,6 +81,8 @@ export interface FrameSample {
   builds: number;
   /** Chunks asked for and not yet in the scene after the frame. */
   streaming: number;
+  /** Milliseconds of GPU time by pass, when the passes are timed. */
+  passes?: PassTimes;
 }
 
 /** What the batches of one kind hold, over every chunk in the scene. */
@@ -98,6 +103,8 @@ export interface MemorySample {
 }
 
 export interface ProfileResult {
+  /** Whether the adapter could time the passes; false leaves `passes` out of every frame. */
+  timed: boolean;
   still: FrameSample[];
   drive: FrameSample[];
   kinds: Record<string, BatchKind>;
@@ -118,6 +125,8 @@ interface SceneOwners {
   scenery: { surfaces: Record<string, Material> };
   /** The water sheet, which `look` shows or hides every frame. */
   water: { shown: boolean };
+  /** The sun's shadow cascades, built on the first frame that draws them. */
+  sky: { cascades: { lights: { name: string }[] } };
 }
 
 export async function runProfile(request: ProfileRequest): Promise<ProfileResult> {
@@ -125,7 +134,7 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
   if (request.memory === true) installGpuLedger();
   const canvas = document.createElement('canvas');
   document.body.append(canvas);
-  const renderer = await createRenderer(canvas);
+  const renderer = await createRenderer(canvas, request.passes === true);
   if (request.noClustered === true) renderer.lighting = new Lighting();
   if (request.noShadows === true) renderer.shadowMap.enabled = false;
   renderer.setSize(request.width, request.height, false);
@@ -156,6 +165,11 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
   // the frames timed here are the frames a session draws rather than a session
   // that skipped it.
   await warmPasses(scene, post);
+  const timer = request.passes === true ? new PassTimer(renderer) : undefined;
+  // A shadow pass is named for its light, and a cascade has no name of its own.
+  (scene as unknown as SceneOwners).sky.cascades.lights.forEach((light, i) => {
+    light.name = `sun cascade ${i + 1}`;
+  });
 
   const frame = async (x: number, y: number, heading: number, speed: number): Promise<FrameSample> => {
     renderer.info.reset();
@@ -168,8 +182,11 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
     const t2 = performance.now();
     await device.queue.onSubmittedWorkDone();
     const t3 = performance.now();
+    // Read after the frame is timed, so the readback is not counted in it.
+    const passes = await timer?.read();
     await new Promise((resolve) => requestAnimationFrame(resolve));
     return {
+      ...(passes === undefined ? {} : { passes }),
       updateMs: t1 - t0,
       cpuMs: t2 - t1,
       totalMs: t3 - t0,
@@ -228,7 +245,7 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
   scene.dispose();
   disposeRenderer(renderer);
   canvas.remove();
-  return { still, drive, kinds, ...(memory === undefined ? {} : { memory }) };
+  return { timed: timer?.available ?? false, still, drive, kinds, ...(memory === undefined ? {} : { memory }) };
 }
 
 /**
