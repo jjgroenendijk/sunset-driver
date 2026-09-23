@@ -305,7 +305,9 @@ an offline audio context and prints the peak, the loudness and how much of it wa
 
 Run it after changing a voice or a level in `src/audio`. It fails on a case that should make a
 sound and is silent, which is what a node that was never connected looks like, and on one that
-clips. The cases live in `src/audio/offline.ts` and each drives the real planner and the real mixer.
+clips. It also fails when one siren 20 m off or a gunshot in the player's hands peaks under the
+idling engine. The cases live in `src/audio/offline.ts` and each drives the real planner and the
+real mixer.
 
 ## The browser the previews need
 
