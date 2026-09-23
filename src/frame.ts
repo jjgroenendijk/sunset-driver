@@ -453,6 +453,8 @@ export class SessionFrame {
     // the record the simulation is playing, so the bar on screen is the bar
     // the presses are judged against.
     session.hotwire.update(session.state.theft, session.state.seed, session.state.tick);
+    // What the same key would do to a vehicle before it is pressed.
+    session.interact.update(session.state);
     // The metro panel of spec section 13.3: where the player may travel from
     // the station they are standing at, and the fade of a trip in progress.
     session.travel.update(session.state, session.metro, stationAt(session.metro, session.state), session.state.tick);

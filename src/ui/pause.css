@@ -5,7 +5,7 @@
 .pause .title-brand h1 { font-size: clamp(2rem, 4vw, 3rem); }
 .pause .menu-columns { padding-left: max(0px, calc(50% - 26rem)); }
 /* The HUD and the panels over play would show through the veil beside the menu, so they go while it is open. */
-body:has(.pause:not([hidden])) :is(.hud-left, .hud-right, .hud-top, .hud-ring, .hud-speed, .hud-fate, .minimap, .picker, .shop, .home, .job, .trade, .travel, .hotwire, .touch-bar, .free-camera-hint) { visibility: hidden; }
+body:has(.pause:not([hidden])) :is(.hud-left, .hud-right, .hud-top, .hud-ring, .hud-speed, .hud-fate, .interact, .minimap, .picker, .shop, .home, .job, .trade, .travel, .hotwire, .touch-bar, .free-camera-hint) { visibility: hidden; }
 /* A pause menu is there at once: the main page does not rise in as the title's does. */
 .pause .title-page:not([hidden]):not([data-column]) > * { animation: none; }
 /* Escape on the main page resumes, so the hint for it stays. */

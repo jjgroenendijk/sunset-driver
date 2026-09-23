@@ -92,3 +92,12 @@ body.dev-info .hud-dev { display: grid; }
 .hud-arrest-text { font-size: .85rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; }
 .hud-arrest-bar { width: 12rem; height: 5px; border-radius: 3px; background: rgba(243, 235, 219, .18); overflow: hidden; box-shadow: 0 1px 3px rgba(0, 0, 0, .6); }
 .hud-arrest-fill { height: 100%; background: #5a8dff; }
+
+/* What the interact key would do to a vehicle (`interact-prompt.ts`), below the
+   door panels and the arrest bar. The key cap is dropped on a touch screen,
+   which acts through a button of the touch bar rather than a key. */
+.interact { position: fixed; bottom: 14%; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: .5rem; padding: .35rem .8rem .35rem .4rem; border-radius: 999px; background: var(--hud-veil); color: var(--hud-text); font-family: var(--it-sans); pointer-events: none; animation: hud-in .2s ease-out; }
+.interact-key { display: grid; place-items: center; min-width: 1.6rem; height: 1.6rem; border: 1px solid var(--hud-gold); border-radius: 4px; color: var(--hud-gold); font: 600 .85rem var(--it-sans); }
+.interact-label { font-size: .85rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; text-shadow: var(--hud-shadow); }
+.touch .interact { padding-left: .8rem; }
+.touch .interact-key { display: none; }

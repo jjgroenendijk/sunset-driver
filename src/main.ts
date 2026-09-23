@@ -30,6 +30,7 @@ import { buildPickers } from './pickers.ts';
 import { JobPanel } from './ui/job-panel.ts';
 import { TradePanel } from './ui/trade-panel.ts';
 import { HotwireBar } from './ui/hotwire.ts';
+import { InteractPrompt } from './ui/interact-prompt.ts';
 import { Hud } from './ui/hud.ts';
 import { SaveSlots } from './ui/saves.ts';
 import { readSettings, writeSettings, type MenuSettings } from './ui/settings.ts';
@@ -421,6 +422,7 @@ async function boot(): Promise<void> {
     map,
     navigator,
     hotwire: new HotwireBar(document.body),
+    interact: new InteractPrompt(document.body),
     travel: new TravelPanel(document.body),
     metro,
     // The counter takes clicks and draws its preview with the game's renderer;
