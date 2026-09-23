@@ -421,8 +421,13 @@ sweepSuite('roads', () => {
         const found = samples[zone] ?? [];
         const covered = filled[zone] ?? [];
         const [lo, hi] = RANGE[zone];
-        // A zone can be a sliver on one seed; too few samples say nothing.
-        if (found.length >= 20) expect(median(found), `seed ${seed}: ${zone} blocks`).toBeGreaterThanOrEqual(lo);
+        // A zone can be a sliver on one seed; too few samples say nothing. A
+        // zone smaller than one block of its own widest spacing has no block to
+        // measure either: the two wilderness corners of one small map were
+        // 31 samples, and one road along a row of them halved the median.
+        const spacing = MINOR_BY_ZONE[zone];
+        const block = (spacing.across[1] * spacing.along[1]) / (8 * hf.cellSize) ** 2;
+        if (found.length >= Math.max(20, block)) expect(median(found), `seed ${seed}: ${zone} blocks`).toBeGreaterThanOrEqual(lo);
         if (covered.length >= 20) expect(median(covered), `seed ${seed}: ${zone} blocks`).toBeLessThanOrEqual(hi);
       }
     }
