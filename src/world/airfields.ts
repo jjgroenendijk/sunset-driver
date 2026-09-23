@@ -16,7 +16,7 @@
  */
 import { clamp, dist, smoothstep } from '../core/math.ts';
 import { atan2, cos, hypot, sin } from '../core/libm.ts';
-import { zoneAt, type ZoneLayout } from './districts.ts';
+import { ZONE_RADII, zoneAt, type ZoneLayout } from './districts.ts';
 import type { Heightfield } from './heightfield.ts';
 import { GradedLand } from './graded-land.ts';
 import { LandMasses } from './landmass.ts';
@@ -25,7 +25,7 @@ import { TIERS } from './tiers.ts';
 import type { AircraftClass, AircraftStand, Airfield, AirfieldKind, AirfieldPart, Point, WaterDescription, Zone } from './types.ts';
 
 export { airfieldAt, airfieldCorners, AirfieldMask, airfieldRamp, fromLocal, toLocal } from './airfield-frame.ts';
-import { fromLocal } from './airfield-frame.ts';
+import { fromLocal, toLocal } from './airfield-frame.ts';
 
 /** Metres the ground at every sample of a site and its margin must stand over the sea. */
 const SITE_DRY = 3;
@@ -54,6 +54,12 @@ const RAMP_GRADE = 0.25;
 export const RAMP_HALF = 9;
 /** Metres the roads and the parcels keep from an airfield's rectangle. */
 export const AIRFIELD_KEEP = 12;
+/**
+ * Metres the airport keeps from the middle of the core, margin and all, when
+ * no site outside the core's disc is left. Levelled ground there tilts the
+ * ground the whole city is built round.
+ */
+const CORE_CLEAR = 150;
 /** Metres of clear ground between two airfields, margins and all. */
 const APART = 300;
 
@@ -79,10 +85,16 @@ const SECOND_STRIP = 4500;
 
 /** How much a site in each zone is marked down, in metres of fall: the zones an airfield wants come first. */
 type ZonePenalty = Partial<Record<Zone, number>>;
-const AIRPORT_ZONES: ZonePenalty = { outskirts: 0, wilderness: 4, suburban: 6, industrial: 8 };
+// The outer zones at every length first, and the edge of the city after them:
+// an airport in the suburbs takes the ground the suburbs' streets grow over,
+// and bends the arterials round it out to the shore.
+const AIRPORT_OUTER: ZonePenalty = { outskirts: 0, wilderness: 4 };
+const AIRPORT_ZONES: ZonePenalty = { ...AIRPORT_OUTER, suburban: 6, industrial: 8 };
 const STRIP_ZONES: ZonePenalty = { wilderness: 0, outskirts: 2 };
-const POLICE_PAD_ZONES: ZonePenalty = { inner: 0, industrial: 4, suburban: 6 };
-const MEDICAL_PAD_ZONES: ZonePenalty = { suburban: 0, inner: 3, outskirts: 5 };
+// A pad in the dense grid of the inner ring cut its blocks apart, so both stand
+// where the city thins out: the police one by the industrial yards.
+const POLICE_PAD_ZONES: ZonePenalty = { industrial: 0, suburban: 4 };
+const MEDICAL_PAD_ZONES: ZonePenalty = { suburban: 0, outskirts: 5 };
 
 /** What one search asks for: the rectangle, its margin, and the zones it may stand in. */
 interface SiteAsk {
@@ -96,6 +108,10 @@ interface SiteAsk {
   headings: number;
   /** Where along the near side the gate stands, in the airfield's frame. */
   gateU: number;
+  /** Metres the rectangle and its margin keep from the core, where set. */
+  coreClear?: number;
+  /** True to stand only on the land the core stands on. */
+  mainland?: boolean;
 }
 
 /** A candidate site and how well it scored: the fall of the ground under it, marked down by its zone. */
@@ -182,19 +198,35 @@ export function gateChoices(field: Airfield, heightAt?: (x: number, y: number) =
 
 /**
  * The airport's site. Every seed has one (spec section 8.4), so the search
- * gives ground away rather than giving up: a shorter runway in the zones it
- * wants and in the inner ring, then a narrower margin, and the core only last.
+ * gives ground away rather than giving up: a shorter runway in the outer
+ * zones, then the edge of the city and the inner ring, then a narrower margin,
+ * and the core only last.
  * An airport in the core takes the middle out of the city.
  */
 function findAirport(ground: SiteGround, runway: number, taken: readonly Airfield[]): Candidate & { runway: number } {
   const lengths = [runway, RUNWAY_MIN, RUNWAY_MIN * 0.75, RUNWAY_MIN * 0.6];
-  const ask = (length: number, zones: ZonePenalty, margin = LEVEL_BLEND, step = 100): SiteAsk => ({ halfU: length / 2 + OVERRUN, halfV: AIRPORT_HALF_V, margin, step, headings: HEADINGS, gateU: 0, zones });
+  const ask = (length: number, zones: ZonePenalty, margin = LEVEL_BLEND, step = 100): SiteAsk => ({
+    halfU: length / 2 + OVERRUN,
+    halfV: AIRPORT_HALF_V,
+    margin,
+    step,
+    headings: HEADINGS,
+    gateU: 0,
+    zones,
+    coreClear: ZONE_RADII.core * ground.size,
+  });
+  const near = (each: SiteAsk): SiteAsk => ({ ...each, coreClear: CORE_CLEAR });
   // The core is the last resort: an airport there takes the city's middle out.
-  // Every shorter runway anywhere else comes first.
+  // Every shorter runway anywhere else comes first, then the edge of the core.
   const asks: SiteAsk[] = [
+    // The land the core stands on first: an island's airport hangs on the one
+    // link to it, and a seed whose link failed left its airport with no road.
+    ...lengths.map((length) => ({ ...ask(length, AIRPORT_OUTER), mainland: true })),
+    ...lengths.map((length) => ask(length, AIRPORT_OUTER)),
     ...lengths.flatMap((length) => [ask(length, AIRPORT_ZONES), ask(length, { ...AIRPORT_ZONES, inner: 12 })]),
     ...lengths.map((length) => ask(length, { ...AIRPORT_ZONES, inner: 12 }, LEVEL_BLEND / 2, 60)),
-    ...lengths.map((length) => ask(length, { ...AIRPORT_ZONES, inner: 12, core: 30 }, LEVEL_BLEND / 2, 60)),
+    ...lengths.map((length) => near(ask(length, { ...AIRPORT_ZONES, inner: 12, core: 30 }, LEVEL_BLEND / 2, 60))),
+    ...lengths.map((length) => ({ ...ask(length, { ...AIRPORT_ZONES, inner: 12, core: 30 }, LEVEL_BLEND / 2, 60), coreClear: undefined })),
   ];
   for (const each of asks) {
     const site = findSite(ground, each, taken);
@@ -228,13 +260,16 @@ function findSite(ground: SiteGround, ask: SiteAsk, taken: readonly Airfield[]):
   const limit = size / 2 - EDGE - reach;
   const shortlist: Candidate[] = [];
   const clear = taken.map((field) => reach + hypot(field.halfU, field.halfV) + APART);
+  const mainland = ground.land.massAt(ground.zones.core.x, ground.zones.core.y);
   for (let y = -limit; y <= limit; y += ask.step) {
     for (let x = -limit; x <= limit; x += ask.step) {
       const penalty = ask.zones[zoneAt(ground.zones, x, y)];
       if (penalty === undefined || !ground.land.reaches(x, y)) continue;
+      if (ask.mainland === true && ground.land.massAt(x, y) !== mainland) continue;
       if (taken.some((field, i) => dist(field.x, field.y, x, y) < (clear[i] as number))) continue;
       for (let k = 0; k < ask.headings; k++) {
         const heading = facingCore(ground.zones.core, x, y, (k * Math.PI) / ask.headings);
+        if (ask.coreClear !== undefined && offCore(ground.zones.core, ask, x, y, heading) < ask.coreClear) continue;
         const judged = judge(ground, ask, x, y, heading, COARSE);
         if (judged === undefined) continue;
         // A gate no street can climb to from the city is a gate no road reaches.
@@ -258,6 +293,14 @@ function findSite(ground: SiteGround, ask: SiteAsk, taken: readonly Airfield[]):
 function facingCore(core: Point, x: number, y: number, heading: number): number {
   const toward = -sin(heading) * (core.x - x) + cos(heading) * (core.y - y);
   return toward >= 0 ? heading : heading + Math.PI;
+}
+
+/** Metres from the core to a rectangle grown by its margin; zero with the core inside it. */
+function offCore(core: Point, ask: SiteAsk, x: number, y: number, heading: number): number {
+  const at = toLocal({ x, y, heading }, core.x, core.y, { u: 0, v: 0 });
+  const du = Math.max(0, Math.abs(at.u) - ask.halfU - ask.margin);
+  const dv = Math.max(0, Math.abs(at.v) - ask.halfV - ask.margin);
+  return hypot(du, dv);
 }
 
 /** Insert a candidate into a short list kept sorted by score, dropping the worst past its length. */
