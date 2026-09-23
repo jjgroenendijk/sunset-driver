@@ -206,6 +206,17 @@ and what lights them in `docs/lighting.md`.
   setback is outlined where it stands, and a hull wound the other way would hide the building
   instead of rimming it. `test/building-mesh.test.ts` pins the winding, because nothing else catches
   it before a frame is rendered.
+- A band reaches as far as the widest thing in it, so where a band is cut decides how far the hull
+  stands over a roof. `bandEdgesOf` moves each cut onto the largest roof within half a band of it,
+  and a level triangle belongs to the band it roofs. On a fixed grid the band that held a terrace
+  stood the hull of the podium up to a band over it, a black wall round the terrace. Each triangle
+  is also cut to the band it measures: measured whole, a sloping triangle held every band it spans
+  out at its widest, which boxed a gable and widened a tier under its cornice.
+  `test/building-hull.test.ts` pins both.
+- The hull is outside every pier and fin of a generated facade, and they stand up to 1.5 m proud of
+  the wall, with the corner of the building often set back between them. The camera sees the dark
+  of the hull down into that space past a corner. A hull set inside the piers is not the answer:
+  its far wall then covers the piers and ledges that stand behind it.
 - The hull is laid out on the shape's own ring, so an L and a U are outlined round their notch. Two
   things in `building-hull.ts` are what make a ring that is not convex work. Each face is measured
   from the shell that stands **along it** and not from the whole shell, because a face that looks
