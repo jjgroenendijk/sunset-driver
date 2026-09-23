@@ -176,13 +176,14 @@ class RoadTracer extends IslandLinkTrace {
     // carrying districts that no road reaches.
     this.linkIslands(true);
     this.serveDistricts();
-    // The airport next, while the arterials still leave room: the fill would
-    // otherwise take the ground in front of its gate.
-    const fields = this.world.airfields;
-    const served = fields.map((field) => (field.kind === 'airport' ? this.serveField(field) : { road: -1, gate: field.gate }));
     // Before the minor fill, so the fill grows around the boardwalk instead of
     // laying its own streets over the same ground.
     const boardwalks = this.world.beaches.map((beach, i) => this.traceBoardwalk(beach, i));
+    // The airport next, while the fill still leaves room in front of its gate.
+    // After the boardwalks: the airport's road once joined an arterial where a
+    // boardwalk's way on had to cross it, and the beach was left without one.
+    const fields = this.world.airfields;
+    const served = fields.map((field) => (field.kind === 'airport' ? this.serveField(field) : { road: -1, gate: field.gate }));
     this.fillMinor();
     // An airstrip stands out where the dirt roads are, which the fill has just
     // laid, so its track is the short one to the nearest of them. A heliport
