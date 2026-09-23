@@ -19,52 +19,13 @@
  */
 import { clamp, lerp, smoothstep } from '../core/math.ts';
 import { genRng, rngFor, Subsystem } from '../core/rng.ts';
-import type { Culture, District } from '../world/types.ts';
+import type { District } from '../world/types.ts';
 import { TICKS_PER_HOUR } from './clock.ts';
+import { GOODS } from './goods.ts';
 
-/** The goods of the trade, dearest last. The record stores a holding per row, in this order. */
-export const GOOD_IDS = ['cigarettes', 'liquor', 'counterfeits', 'parts', 'pills', 'powder'] as const;
-export type GoodId = (typeof GOOD_IDS)[number];
-
-/** One line of the trade. */
-export interface Good {
-  id: GoodId;
-  /** What the panel calls it. */
-  name: string;
-  /** Dollars a unit costs in a district that neither makes it nor wants it. */
-  base: number;
-  /**
-   * How far the drift and the shocks move this good, 0..1. A carton of
-   * cigarettes is worth much the same all week; a street drug is not.
-   */
-  volatility: number;
-  /**
-   * How much a rich district pays over a poor one, as a share of the base
-   * price each way. Negative for the goods the poorest streets buy most.
-   */
-  wealth: number;
-  /** How much a crowded district pays over an empty one, the same way. */
-  density: number;
-  /**
-   * The culture that trades this good at home (spec section 17.1). Its own
-   * district is where the good is plentiful, so that is where it is cheap.
-   */
-  home: Culture;
-}
-
-/**
- * The six goods. The prices are a ladder rather than a table of guesses: each
- * good is about twice the one before it, so a run of the cheapest is worth
- * carrying early and the dearest is a session's savings.
- */
-export const GOODS: readonly Good[] = Object.freeze([
-  { id: 'cigarettes', name: 'Untaxed cigarettes', base: 45, volatility: 0.25, wealth: -0.15, density: 0.1, home: 'irish' },
-  { id: 'liquor', name: 'Bootleg liquor', base: 120, volatility: 0.35, wealth: 0.1, density: 0.15, home: 'italian' },
-  { id: 'counterfeits', name: 'Counterfeit watches', base: 260, volatility: 0.4, wealth: 0.3, density: 0, home: 'chinese' },
-  { id: 'parts', name: 'Chop-shop parts', base: 520, volatility: 0.3, wealth: -0.1, density: -0.1, home: 'east-european' },
-  { id: 'pills', name: 'Prescription pills', base: 900, volatility: 0.5, wealth: 0.2, density: 0.1, home: 'outlaw' },
-  { id: 'powder', name: 'Cocaine', base: 1800, volatility: 0.6, wealth: 0.35, density: 0.05, home: 'latin' },
-] as const);
+// The list of goods moved to `goods.ts`; the prices are asked of this file,
+// so the names callers read with them are handed on from here.
+export { GOOD_GROUPS, GOOD_IDS, GOODS, goodIndex, type Good, type GoodGroup, type GoodId } from './goods.ts';
 
 /** The share taken off a price in the district whose own people trade the good. */
 const HOME_DISCOUNT = 0.3;
@@ -95,11 +56,6 @@ const SHOCK_HIGH = 2;
 /** A price this far over the district's standing price is a spike, and this far under it a glut. */
 export const SPIKE = 1.3;
 export const GLUT = 0.75;
-
-/** The row a good stands on, or -1 for a name no good carries. */
-export function goodIndex(id: GoodId): number {
-  return GOOD_IDS.indexOf(id);
-}
 
 /**
  * What one district pays for one good, before the day moves it: its wealth, its
