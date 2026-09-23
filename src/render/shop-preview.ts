@@ -11,7 +11,8 @@
  * What it draws comes from `ShopLook` (`src/sim/shop-goods.ts`), which names a
  * weapon, a vehicle and its paint, an outfit or a prop. The models are the
  * ones the city draws — `weapon.ts`, `vehicle.ts`, `character.ts` — and the
- * props of `shop-props.ts`. Whatever it is, it is framed to fill the window:
+ * props of `shop-props.ts`. The dealer's panel shows the goods of the
+ * contraband trade in it too, from `contraband-props.ts`. Whatever it is, it is framed to fill the window:
  * `shop-frame.ts` finds where the camera stands, and why a weapon sways rather
  * than spins.
  */
@@ -36,6 +37,7 @@ import { specOf } from '../sim/roster.ts';
 import type { ShopLook } from '../sim/shop-goods.ts';
 import { createVehicleState } from '../sim/vehicle.ts';
 import { CharacterModel } from './character.ts';
+import { buildGood } from './contraband-props.ts';
 import { buildProp } from './shop-props.ts';
 import { VehicleModel } from './vehicle.ts';
 import { WeaponArt } from './weapon.ts';
@@ -212,6 +214,10 @@ export class ShopPreview {
       }
       case 'prop': {
         const prop = buildProp(look.prop, look.colour);
+        return { object: prop.group, dispose: () => prop.dispose(), motion: SPIN };
+      }
+      case 'good': {
+        const prop = buildGood(look.good);
         return { object: prop.group, dispose: () => prop.dispose(), motion: SPIN };
       }
     }

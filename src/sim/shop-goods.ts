@@ -9,6 +9,7 @@
  *
  * Pure: plain data, no state.
  */
+import type { GoodId } from './goods.ts';
 import type { VehicleClass } from './vehicle.ts';
 import { WEAPON_IDS, weaponOf, type Attachment, type WeaponId, type WeaponSpec } from './weapon.ts';
 
@@ -64,7 +65,9 @@ export type ShopLook =
   | { kind: 'weapon'; id: WeaponId; attachments: readonly Attachment[] }
   | { kind: 'vehicle'; cls: VehicleClass; paint: number }
   | { kind: 'outfit'; outfit: number }
-  | { kind: 'prop'; prop: PropId; colour: number };
+  | { kind: 'prop'; prop: PropId; colour: number }
+  /** A good of the contraband trade (spec section 16.2), on the dealer's panel. */
+  | { kind: 'good'; good: GoodId };
 
 /**
  * One line of the card beside the preview. `bar` is where the fact stands

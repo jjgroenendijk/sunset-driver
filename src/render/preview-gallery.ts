@@ -1,13 +1,14 @@
 /**
  * The models of the game laid out in rows for one picture, for the preview
  * alone: every vehicle of the roster (spec section 11.3), every look the
- * character creator builds (spec section 11.1), and every good a counter sells
- * (spec section 16.1).
+ * character creator builds (spec section 11.1), every good a counter sells
+ * (spec section 16.1), and every good a dealer trades (spec section 16.2).
  *
  * `--pickups` already lays the arsenal out this way, and the gallery does for
  * the rest what it does for the weapons: a change to a mesh is judged against
  * its neighbours in one frame, rather than one picture at a time. The models
- * are the ones the city draws — `vehicle.ts`, `character.ts`, `shop-props.ts` —
+ * are the ones the game draws — `vehicle.ts`, `character.ts`, `shop-props.ts`,
+ * `contraband-props.ts` —
  * so what the row shows is what the game shows.
  *
  * A prop is modelled at the scale of the shop panel's window, where a coffee
@@ -27,13 +28,15 @@ import {
 import { CARE, FOODS, type PropId } from '../sim/shop-goods.ts';
 import { createVehicleState, rideHeight, specOf, VEHICLE_CLASSES } from '../sim/vehicle.ts';
 import { CharacterModel } from './character.ts';
-import { buildProp } from './shop-props.ts';
+import { GOOD_IDS } from '../sim/goods.ts';
+import { buildGood } from './contraband-props.ts';
+import { buildProp, type Prop } from './shop-props.ts';
 import { VehicleModel } from './vehicle.ts';
 
 /** The subjects a gallery lays out. */
-export type GallerySubject = 'vehicles' | 'people' | 'props';
+export type GallerySubject = 'vehicles' | 'people' | 'props' | 'goods';
 
-export const GALLERY_SUBJECTS: readonly GallerySubject[] = ['vehicles', 'people', 'props'];
+export const GALLERY_SUBJECTS: readonly GallerySubject[] = ['vehicles', 'people', 'props', 'goods'];
 
 /** How a subject is laid out: the grid it fills, and the room each model is given. */
 interface Layout {
@@ -53,6 +56,7 @@ const LAYOUTS: Readonly<Record<GallerySubject, Layout>> = {
   // the camera stands as close as it can.
   people: { columns: 4, across: 1.6, along: 2.2 },
   props: { columns: 5, across: 1.4, along: 1.8 },
+  goods: { columns: 4, across: 1.4, along: 1.8 },
 };
 
 /** Metres ahead of the player the near row of a gallery lies. */
@@ -147,7 +151,8 @@ export function layGallery(
 function piecesOf(subject: GallerySubject, appearance: CharacterAppearance): Piece[] {
   if (subject === 'vehicles') return VEHICLE_CLASSES.map(vehiclePiece);
   if (subject === 'people') return appearancesFrom(appearance).map(peoplePiece);
-  return GALLERY_PROPS.map(propPiece);
+  if (subject === 'goods') return GOOD_IDS.map((id) => groundPiece(id, buildGood(id)));
+  return GALLERY_PROPS.map((entry) => groundPiece(entry.prop, buildProp(entry.prop, entry.colour)));
 }
 
 /** Stand a model that hangs from its own group: on the ground, turned to face the camera. */
@@ -183,8 +188,7 @@ function peoplePiece(look: { label: string; appearance: CharacterAppearance }): 
   };
 }
 
-function propPiece(entry: { prop: PropId; colour: number }): Piece {
-  const prop = buildProp(entry.prop, entry.colour);
+function groundPiece(label: string, prop: Prop): Piece {
   // The panel frames a prop to fill its window; the ground has no window, so
   // the longest side is brought to a metre and the model stood on its own base.
   const box = new Box3().setFromObject(prop.group);
@@ -197,7 +201,7 @@ function propPiece(entry: { prop: PropId; colour: number }): Piece {
   prop.group.position.set(-centre.x * scale, -box.min.y * scale, -centre.z * scale);
   object.add(prop.group);
   return {
-    label: entry.prop,
+    label,
     object,
     place: (x, y, ground, facing) => standGroup(object, x, y, ground, facing),
     dispose: () => prop.dispose(),
