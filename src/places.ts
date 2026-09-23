@@ -23,6 +23,7 @@ import type { MetroPlace } from './sim/metro.ts';
 import { ParkedCars } from './sim/parked.ts';
 import type { Ground } from './sim/physics.ts';
 import { safehousePlaces, type SafehousePlace } from './sim/safehouse.ts';
+import { hangarPlaces } from './sim/hangar.ts';
 import { shopPlaces, type ShopPlace } from './sim/shop.ts';
 import { crimeGrounds, type CrimeGround } from './sim/street-crime.ts';
 import { venuesOf, type Venues } from './sim/city-events.ts';
@@ -114,7 +115,9 @@ export function findPlaces(
   const shops = shopPlaces(world.shops ?? [], description.districts);
   // A dealer stands on the pavement and watches the road, not in the traffic.
   const dealers = dealerPlaces(seed, description.districts, (x, y) => kerbsidePlace(description, x, y));
-  const safehouses = safehousePlaces(seed, description.districts, snap);
+  // The airport's hangar is a property too (spec section 16.3), after the houses.
+  const houses = safehousePlaces(seed, description.districts, snap);
+  const safehouses = [...houses, ...hangarPlaces(description.airfields, description.districts, houses.length)];
   // The turf is seeded from the district cultures the seed handed out.
   const turf = new TerritoryMap(description);
   const missions: MissionWorld = {

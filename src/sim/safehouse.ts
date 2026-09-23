@@ -33,6 +33,7 @@ import { genRng, Subsystem } from '../core/rng.ts';
 import { cos, hypot, sin } from '../core/libm.ts';
 import type { District } from '../world/types.ts';
 import { GOODS } from './contraband.ts';
+import { HANGAR_AIRCRAFT } from './hangar.ts';
 import type { InputFrame } from './input.ts';
 import { carrying, STASH_UNITS } from './market.ts';
 import { reachesVehicle, type Place } from './on-foot.ts';
@@ -87,6 +88,11 @@ export interface SafehousePlace extends Place {
   price: number;
   /** Cars its garage keeps, which never changes once it is bought. */
   slots: number;
+  /**
+   * Set on the hangar of `hangar.ts`: the apron its aircraft is brought out
+   * onto. A house stands its car at the kerb outside the door instead.
+   */
+  hangar?: Place;
 }
 
 /** A safehouse the player owns, and what is in it. */
@@ -232,7 +238,10 @@ function houseCar(seed: number, place: SafehousePlace, slot: number): VehicleSta
   const rng = genRng(seed, Subsystem.Safehouses, place.id * GARAGE_CLASSES.length + slot);
   const best = GARAGE_CLASSES.length - 1;
   const top = Math.min(best, Math.floor(place.district.wealth * GARAGE_CLASSES.length));
-  const cls = GARAGE_CLASSES[rng.int(0, top)] as VehicleClass;
+  // A hangar keeps an aircraft (`hangar.ts`). The draw is made either way, so
+  // a house's car does not change with whether the map has a hangar.
+  const drawn = GARAGE_CLASSES[rng.int(0, top)] as VehicleClass;
+  const cls = place.hangar === undefined ? drawn : HANGAR_AIRCRAFT;
   const car = createVehicleState(specOf(cls));
   // A car out of your own garage is a car you have the keys to (spec section 11.4).
   car.hotwired = true;
@@ -327,8 +336,9 @@ function fetchCar(state: SimState, place: SafehousePlace, slot: number): string 
   return `The ${specOf(car.cls).name} is outside. The ${specOf(was.cls).name} is put away.`;
 }
 
-/** Where a car taken out of the garage is stood: out of the door, facing the street. */
+/** Where a car taken out of the garage is stood: out of the door, facing the street, or a hangar's apron. */
 function carPlace(place: SafehousePlace): Place {
+  if (place.hangar !== undefined) return place.hangar;
   return {
     x: place.x + cos(place.heading) * CAR_STEP,
     y: place.y + sin(place.heading) * CAR_STEP,
