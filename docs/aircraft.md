@@ -25,6 +25,13 @@ stand, how an aircraft flies, what the police do about it, and the hangar of sec
 - `findSite` scores candidate sites with `judge`. The score is the fall across the rectangle, the
   bank round it, and twice the climb of the ramp out to the gate. Without the ramp term one seed
   put the airport's gate 41 m below the level, and no road could climb to it.
+- A site whose gate stands more than `RAMP_GRADE` of the ramp's run off the level is refused
+  outright. Seed 587507343 chose a gate 47 m below the level, and no road reached it.
+- `findAirport` shortens the runway before it takes worse zones, and takes the core only last. An
+  airport in the core broke the block sizes and, on one delta seed, dried up the river.
+  `airportAt` must be given the runway the site was judged for, not the one first asked for.
+- `LandMasses` is built at the road's `DRY_MARGIN`, not at `SITE_DRY`. On a low delta the mainland
+  is one piece only at the lower height, and no site was found at all.
 - The rectangle is levelled to one height, blended back into the hillside over `LEVEL_BLEND`.
 - The dock levels nothing. Its rectangle is water, and the roads and parcels keep off water anyway.
 
@@ -34,9 +41,14 @@ stand, how an aircraft flies, what the police do about it, and the hangar of sec
 - `serveField` (`src/world/roads.ts`) tries the gates from `gateChoices`, gentlest first. It keeps a
   laid road only if the network then has a curve within `GATE_REACH` of the gate. The network can
   keep only part of a route, and one seed's road began 185 m from its gate.
-- A second pass after the minor fill serves any field still without a road. The fill lays streets
-  the first pass could not reach.
-- One seed (2355512367) still has its gate far below the level. The gentler gates did not route.
+- `roadAtGate` measures to the segments, not to the points. A straight arterial has its points far
+  apart, and a street laid to a gate it ran past ended on its carriageway.
+- Only the airport is served before the minor fill, with an arterial. The airstrips and the
+  heliports are served after it: a dirt road for a strip, a street for a heliport. An arterial laid
+  to an inner-city heliport before the fill cut the blocks round it apart.
+- Any change here moves the district sites and the whole road network of most seeds, so run
+  `npm run test:full`, not only the airfield sweep. The first run of this work found fifteen seeds
+  broken in the road, terrain and traffic sweeps.
 
 ## The ground an airfield claims
 
