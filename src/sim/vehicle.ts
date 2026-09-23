@@ -19,6 +19,7 @@
  */
 import { atan2, cos, sin } from '../core/libm.ts';
 import type { Surface } from '../world/surface.ts';
+import { AIRCRAFT_CLASSES, type AircraftClass } from '../world/types.ts';
 import { createDamageState, type DamageState } from './damage.ts';
 import { ROAD_TYRES } from './roster.ts';
 
@@ -28,7 +29,8 @@ export { DEFAULT_CLASS, ROAD_TYRES, ROSTER, SALOON, specOf } from './roster.ts';
 
 /**
  * The classes of spec section 11.3, in the order the debug picker shows them:
- * the ordinary cars first, then the big vehicles, then the specials.
+ * the ordinary cars first, then the big vehicles, then the specials, then the
+ * aircraft of `aircraft-roster.ts`.
  */
 export type VehicleClass =
   | 'compact'
@@ -41,7 +43,8 @@ export type VehicleClass =
   | 'offroad'
   | 'buggy'
   | 'emergency'
-  | 'boat';
+  | 'boat'
+  | AircraftClass;
 
 /** Every class, in picker order. Nothing else should list them. */
 export const VEHICLE_CLASSES: readonly VehicleClass[] = [
@@ -56,6 +59,7 @@ export const VEHICLE_CLASSES: readonly VehicleClass[] = [
   'buggy',
   'emergency',
   'boat',
+  ...AIRCRAFT_CLASSES,
 ];
 
 /** A wheel, where it sits on the chassis and what it is asked to do. */
@@ -116,6 +120,29 @@ export interface HullSpec {
   sideDrag: number;
   /** Newton-metres of yaw the rudder gives per unit of steering at {@link HullSpec.topSpeed}. */
   rudder: number;
+}
+
+/**
+ * What an aircraft is made of (spec section 11.3). The flight is arcade: the
+ * throttle and the steering work as they do in a car, the jump key climbs and
+ * the sprint key descends. A rotor hovers; a wing needs {@link FlightSpec.stall}
+ * of speed before it lifts, and sinks when it loses it.
+ */
+export interface FlightSpec {
+  /** A rotor hovers and flies any way it points; a wing has to keep moving. */
+  kind: 'rotor' | 'wing';
+  /** Metres per second it reaches in level flight. */
+  topSpeed: number;
+  /** Metres per second squared the engine gives at a standstill. It falls away toward the top speed. */
+  thrust: number;
+  /** Metres per second a wing lifts its whole weight at, and zero on a rotor. */
+  stall: number;
+  /** Metres per second it climbs and descends at, with the key held. */
+  climb: number;
+  /** Radians per second it turns at, at full lock. */
+  turn: number;
+  /** Radians it banks into a turn at full lock, which is what the camera sees of it. */
+  bank: number;
 }
 
 /** What one vehicle is made of. The roster of spec section 11.3 is a table of these. */
@@ -187,6 +214,8 @@ export interface VehicleSpec {
   inline: boolean;
   /** Set on a boat, and undefined on everything that drives (spec section 11.3). */
   hull?: HullSpec;
+  /** Set on an aircraft, and undefined on everything that stays on the ground or the water. */
+  flight?: FlightSpec;
   /**
    * True on a vehicle with an alarm, and true on a luxury or high-end one.
    * Spec section 11.4 gives exactly these the hotwire minigame; everything
@@ -218,6 +247,8 @@ export function wheelbaseOf(spec: VehicleSpec): number {
  */
 export function rideHeight(spec: VehicleSpec): number {
   if (spec.hull !== undefined) return spec.halfHeight - spec.hull.draft;
+  // A helicopter stands on its skids, which are the bottom of its body.
+  if (spec.wheels.length === 0) return spec.halfHeight;
   const wheel = spec.wheels[0] as WheelSpec;
   return spec.suspensionRest - wheel.y + spec.wheelRadius;
 }
@@ -392,6 +423,11 @@ export function createVehicleState(spec: VehicleSpec, x = 0, z = 0, y = 0, headi
     hotwired: false,
     paint: spec.paint,
   };
+}
+
+/** True on a row that flies (spec section 11.3). */
+export function isAircraft(cls: VehicleClass): cls is AircraftClass {
+  return (AIRCRAFT_CLASSES as readonly VehicleClass[]).includes(cls);
 }
 
 /** Which way a vehicle points on the map, in radians. */

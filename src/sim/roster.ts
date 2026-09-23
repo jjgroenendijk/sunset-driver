@@ -5,6 +5,7 @@
  *
  * What a row is made of, and the record of one vehicle, is `vehicle.ts`.
  */
+import { AIRCRAFT_ROSTER } from './aircraft-roster.ts';
 import type { TyreSpec, VehicleClass, VehicleSpec, WheelSpec } from './vehicle.ts';
 
 /** Road tyres: the reference every other set is measured against. */
@@ -410,6 +411,7 @@ export const ROSTER: Record<VehicleClass, VehicleSpec> = {
   buggy: BUGGY,
   emergency: EMERGENCY,
   boat: BOAT,
+  ...AIRCRAFT_ROSTER,
 };
 
 /** The class a new session starts in. */

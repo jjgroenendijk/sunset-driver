@@ -108,7 +108,9 @@ scope.addEventListener('message', (event: MessageEvent) => {
     const bays = command.bays ? buildParkingBays(world, layers.junctions, layers.parcels, layers.carve) : undefined;
     // Handed over rather than copied, like a chunk: the worker keeps no reference to them.
     const arrays =
-      bays === undefined ? [] : [bays.x, bays.y, bays.height, bays.heading, bays.use, bays.street].map((a) => a.buffer);
+      bays === undefined
+        ? []
+        : [bays.x, bays.y, bays.height, bays.heading, bays.use, bays.street, ...(bays.craft === undefined ? [] : [bays.craft])].map((a) => a.buffer);
     scope.postMessage({ type: 'ready', stations, metro: layers.parcels.metro, shops, bays } satisfies ReadyReply, arrays);
     return;
   }

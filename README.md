@@ -29,8 +29,8 @@ how the steps are watched on a machine that does not need them.
 | Action | Keys |
 |---|---|
 | Move, drive | W A S D or arrows |
-| Sprint | Shift |
-| Handbrake, jump | Space |
+| Sprint; descend in an aircraft | Shift |
+| Handbrake, jump; climb in an aircraft | Space |
 | Horn | H |
 | Enter, use, hotwire | E |
 | Fire, swing | Left click |

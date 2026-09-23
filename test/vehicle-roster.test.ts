@@ -5,6 +5,7 @@ import { createSimState, stepSim } from '../src/sim/simulation.ts';
 import {
   gripOf,
   headingOf,
+  isAircraft,
   rideHeight,
   ROAD_TYRES,
   ROSTER,
@@ -28,6 +29,9 @@ import { DRY } from './helpers.ts';
  * painted differently — each reaches its own pace, turns in its own circle, and
  * the two on knobbly tyres keep more of that circle on sand.
  */
+
+/** The classes that drive or sail. The aircraft are `flight.test.ts`'s. */
+const GROUND_CLASSES = VEHICLE_CLASSES.filter((cls) => !isAircraft(cls));
 
 /** Ground of one surface, level everywhere, with the sea out of reach. */
 function flat(surface: Surface): Ground {
@@ -100,14 +104,15 @@ function drive(cls: VehicleClass, ground: Ground, ticks: number, input: Partial<
 
 describe('the vehicle roster', () => {
   it('has a row for every class, and every row knows which class it is', () => {
-    expect(VEHICLE_CLASSES.length).toBe(11);
+    expect(GROUND_CLASSES.length).toBe(11);
+    expect(VEHICLE_CLASSES.length).toBe(20);
     for (const cls of VEHICLE_CLASSES) expect(specOf(cls).cls).toBe(cls);
     const names = VEHICLE_CLASSES.map((cls) => ROSTER[cls].name);
     expect(new Set(names).size).toBe(names.length);
   });
 
   it('gives every wheeled row a wheelbase and the boat a hull instead', () => {
-    for (const cls of VEHICLE_CLASSES) {
+    for (const cls of GROUND_CLASSES) {
       const spec = ROSTER[cls];
       if (spec.hull === undefined) {
         expect(spec.wheels.length, cls).toBeGreaterThanOrEqual(2);
@@ -128,25 +133,25 @@ describe('the vehicle roster', () => {
   });
 
   it('puts an alarm on everything luxury, and asks a rider only of a two-wheeler', () => {
-    for (const cls of VEHICLE_CLASSES) {
+    for (const cls of GROUND_CLASSES) {
       const spec = ROSTER[cls];
       if (spec.luxury) expect(spec.alarm, cls).toBe(true);
       // Spec section 11.4: only these get the hotwire minigame, so most of the
       // roster must stay instant.
       expect(spec.balance === 0, cls).toBe(!spec.inline);
     }
-    const alarmed = VEHICLE_CLASSES.filter((cls) => ROSTER[cls].alarm);
-    expect(alarmed.length).toBeLessThan(VEHICLE_CLASSES.length / 2);
+    const alarmed = GROUND_CLASSES.filter((cls) => ROSTER[cls].alarm);
+    expect(alarmed.length).toBeLessThan(GROUND_CLASSES.length / 2);
     expect(VEHICLE_CLASSES.filter((cls) => ROSTER[cls].inline)).toEqual(['motorcycle']);
   });
 
   it('spreads the classes across mass, power and pace', () => {
-    const masses = VEHICLE_CLASSES.map((cls) => ROSTER[cls].mass);
+    const masses = GROUND_CLASSES.map((cls) => ROSTER[cls].mass);
     expect(Math.max(...masses) / Math.min(...masses)).toBeGreaterThan(20);
     expect(ROSTER.bus.mass).toBe(Math.max(...masses));
     expect(ROSTER.motorcycle.mass).toBe(Math.min(...masses));
     // No two rows claim the same top speed, so the picker's numbers differ too.
-    const tops = VEHICLE_CLASSES.map((cls) => ROSTER[cls].hull?.topSpeed ?? ROSTER[cls].topSpeed);
+    const tops = GROUND_CLASSES.map((cls) => ROSTER[cls].hull?.topSpeed ?? ROSTER[cls].topSpeed);
     expect(new Set(tops).size).toBe(tops.length);
   });
 });
@@ -206,7 +211,7 @@ describe('driving the roster', () => {
       'emergency',
       'sports',
     ];
-    expect([...order].sort()).toEqual(VEHICLE_CLASSES.filter((cls) => cls !== 'boat').slice().sort());
+    expect([...order].sort()).toEqual(GROUND_CLASSES.filter((cls) => cls !== 'boat').slice().sort());
     let slower = 0;
     let complaint = '';
     for (const cls of order) {

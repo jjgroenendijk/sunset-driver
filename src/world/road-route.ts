@@ -9,6 +9,7 @@
 import { clamp, dist } from '../core/math.ts';
 import { compareNumbers } from '../core/sort.ts';
 import { atan2, cos, sin } from '../core/libm.ts';
+import { AIRFIELD_KEEP, AirfieldMask } from './airfields.ts';
 import { BeachGround, isResort } from './beaches.ts';
 import { layoutZones, zoneAt, type ZoneLayout } from './districts.ts';
 import { Heightfield } from './heightfield.ts';
@@ -75,6 +76,8 @@ export abstract class RoadRoute {
    * over less of that ground finds none either.
    */
   protected rerouteHits = 0;
+  /** The airfields and their margins, as the router asks after them. */
+  private readonly airfields: AirfieldMask;
 
   constructor(world: WorldSkeleton, field: TensorField) {
     this.world = world;
@@ -84,14 +87,17 @@ export abstract class RoadRoute {
     this.size = world.size;
     this.half = world.size / 2 - EDGE_MARGIN;
     this.noise = coastNoise(world.seed);
+    this.airfields = new AirfieldMask(world.airfields, AIRFIELD_KEEP, world.size);
     // The network decides each crossing on the ground the trace runs on.
-    const ground = { canRun: groundRule(this.hf, this.seaLevel), heightAt: (x: number, y: number) => this.hf.sample(x, y) };
+    const ground = { canRun: groundRule(this.hf, this.seaLevel, this.keepOut), heightAt: (x: number, y: number) => this.hf.sample(x, y) };
     this.network = new RoadNetwork(world.size, (x, y) => this.islandOf(x, y), undefined, ground);
     const n = this.hf.gridSize;
     this.land = new Uint8Array(n * n);
     for (let iy = 0; iy < n; iy++) {
       for (let ix = 0; ix < n; ix++) {
-        const inside = Math.abs(this.hf.worldX(ix)) <= this.half && Math.abs(this.hf.worldY(iy)) <= this.half;
+        const x = this.hf.worldX(ix);
+        const y = this.hf.worldY(iy);
+        const inside = Math.abs(x) <= this.half && Math.abs(y) <= this.half && !this.keepOut(x, y);
         this.land[iy * n + ix] = inside && this.hf.at(ix, iy) >= this.seaLevel + DRY_MARGIN ? 1 : 0;
       }
     }
@@ -112,6 +118,13 @@ export abstract class RoadRoute {
     const zone = zoneAt(this.zones, x, y);
     return zone !== 'outskirts' && zone !== 'wilderness';
   };
+
+  /**
+   * Ground inside an airfield or its margin (spec section 8.4). The roads keep
+   * off it as they keep off the sea; the one road that serves an airfield starts
+   * at its gate, outside the margin.
+   */
+  protected readonly keepOut = (x: number, y: number): boolean => this.airfields.has(x, y);
 
   /** Ground that is not the sand of a beach (spec section 7.3). */
   protected readonly offSand = (x: number, y: number): boolean => this.sand.sandAt(x, y) < 0;
@@ -334,12 +347,12 @@ export abstract class RoadRoute {
   }
 
   protected isDry(x: number, y: number): boolean {
-    return this.hf.sample(x, y) >= this.seaLevel + DRY_MARGIN;
+    return this.hf.sample(x, y) >= this.seaLevel + DRY_MARGIN && !this.keepOut(x, y);
   }
 
   /** What the ground does under a straight span. {@link spanProfile} is the rule. */
   protected probe(ax: number, ay: number, bx: number, by: number): Profile {
-    return spanProfile(this.hf, this.seaLevel, ax, ay, bx, by);
+    return spanProfile(this.hf, this.seaLevel, ax, ay, bx, by, 0, 0, this.keepOut);
   }
 
   /**
@@ -496,7 +509,7 @@ export abstract class RoadRoute {
     if (liftA <= 0 && liftB <= 0) return true;
     const a = line.points[at] as Point;
     const b = line.points[at + 1] as Point;
-    const profile = spanProfile(this.hf, this.seaLevel, a.x, a.y, b.x, b.y, liftA, liftB);
+    const profile = spanProfile(this.hf, this.seaLevel, a.x, a.y, b.x, b.y, liftA, liftB, this.keepOut);
     if (!profile.dry) return true;
     if (this.rivers.spans(a, b)) return true;
     return profile.below > FILL;

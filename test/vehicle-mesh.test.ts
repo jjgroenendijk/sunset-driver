@@ -1,6 +1,6 @@
 import { BackSide, Box3, Mesh, type Material, type MeshStandardMaterial } from 'three';
 import { describe, expect, it } from 'vitest';
-import { createVehicleState, ROSTER, specOf, VEHICLE_CLASSES, type VehicleClass } from '../src/sim/vehicle.ts';
+import { createVehicleState, isAircraft, ROSTER, specOf, VEHICLE_CLASSES, type VehicleClass } from '../src/sim/vehicle.ts';
 import { VehicleModel, VEHICLE_OUTLINE_WIDTH } from '../src/render/vehicle.ts';
 import {
   LAMP,
@@ -44,11 +44,18 @@ describe('the vehicle models', () => {
       const bounds = new Box3().setFromObject(model.group);
       // Nothing hangs far off the body the physics collides with: a light bar,
       // a roll cage and a set of handlebars stand a little proud of it, and
-      // nothing stands a metre away from the vehicle it belongs to.
-      expect(bounds.max.x - spec.halfLength, cls).toBeLessThan(MAX_OVERHANG);
-      expect(-spec.halfLength - bounds.min.x, cls).toBeLessThan(MAX_OVERHANG);
-      expect(bounds.max.z - spec.halfWidth, cls).toBeLessThan(MAX_OVERHANG);
-      expect(bounds.max.y - spec.halfHeight, cls).toBeLessThan(MAX_OVERHANG);
+      // nothing stands a metre away from the vehicle it belongs to. An
+      // aircraft's wings and rotor are the exception: the physics holds its
+      // fuselage alone, so they span well past it, but never twice its length.
+      if (isAircraft(cls)) {
+        expect(bounds.max.z - bounds.min.z, cls).toBeLessThan(4 * spec.halfLength);
+        expect(bounds.max.x - bounds.min.x, cls).toBeLessThan(3 * spec.halfLength);
+      } else {
+        expect(bounds.max.x - spec.halfLength, cls).toBeLessThan(MAX_OVERHANG);
+        expect(-spec.halfLength - bounds.min.x, cls).toBeLessThan(MAX_OVERHANG);
+        expect(bounds.max.z - spec.halfWidth, cls).toBeLessThan(MAX_OVERHANG);
+        expect(bounds.max.y - spec.halfHeight, cls).toBeLessThan(MAX_OVERHANG);
+      }
       // The model straddles the middle of the body, which is where the pose is.
       expect(bounds.min.y, cls).toBeLessThan(0);
       expect(bounds.max.y, cls).toBeGreaterThan(0);
@@ -201,5 +208,20 @@ describe('the shape table', () => {
         expect(part.width, cls).toBeGreaterThan(0);
       }
     }
+  });
+});
+
+describe('the aircraft models', () => {
+  it('turns the blades of an aircraft while it is flown, and only then', () => {
+    const model = new VehicleModel('heli-light');
+    const blades = vehicleBoxes(ROSTER['heli-light']).filter((part) => part.spin !== undefined);
+    expect(blades.length).toBeGreaterThan(0);
+    const pivots = model.group.children.filter((child) => child.children.length > 0 && child.position.y > 0);
+    const before = pivots.map((pivot) => pivot.rotation.y);
+    model.spin(0);
+    expect(pivots.map((pivot) => pivot.rotation.y)).toEqual(before);
+    model.spin(0.1);
+    expect(pivots.some((pivot, i) => pivot.rotation.y !== before[i])).toBe(true);
+    model.dispose();
   });
 });

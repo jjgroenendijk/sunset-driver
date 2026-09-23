@@ -15,7 +15,8 @@
  */
 import type { Panel } from '../sim/damage.ts';
 import { doorAlong } from '../sim/boarding.ts';
-import type { VehicleSpec } from '../sim/vehicle.ts';
+import { isAircraft, type VehicleSpec } from '../sim/vehicle.ts';
+import { aircraftBoxes } from './aircraft-mesh.ts';
 
 /** Glass, lamps and the bare metal of a cage: the colours no row picks. */
 export const GLASS = 0x243040;
@@ -59,6 +60,11 @@ export interface VehicleBox {
    * player gets in or out (`boarding.ts`). Nothing else on a vehicle moves.
    */
   hinged?: boolean;
+  /**
+   * Set on a rotor blade, which turns about the vehicle's up axis, and on a
+   * propeller blade, which turns about its forward axis (`aircraft-mesh.ts`).
+   */
+  spin?: 'rotor' | 'prop';
 }
 
 /**
@@ -115,6 +121,7 @@ function shapeOf(spec: VehicleSpec): VehicleBox[] {
     case 'boat':
       return boat(spec);
     default:
+      if (isAircraft(spec.cls)) return aircraftBoxes(spec);
       return car(spec, { cabin: 0.44, cabinAt: -0.05, waist: 0.55 });
   }
 }
@@ -206,7 +213,8 @@ export function seatOf(spec: VehicleSpec): { x: number; y: number; z: number } {
     case 'boat':
       return { x: doorAlong(spec), y, z: -spec.halfWidth * 0.3 };
     default:
-      return { x: 0, y, z };
+      // A pilot sits just inside the cabin door, not amidships.
+      return { x: isAircraft(spec.cls) ? doorAlong(spec) : 0, y, z };
   }
 }
 

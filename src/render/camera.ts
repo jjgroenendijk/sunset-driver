@@ -38,6 +38,8 @@ export const CAMERA_PITCH = (58 * Math.PI) / 180;
 export const CAMERA_HEADING = 0;
 export const BASE_DISTANCE = 36;
 const DISTANCE_PER_SPEED = 0.9;
+/** Metres the top-down camera pulls back per metre an aircraft climbs. */
+const DISTANCE_PER_ALTITUDE = 0.9;
 const LEAD_PER_SPEED = 0.6;
 /** How fast the focus catches the target, in e-foldings a second. */
 const FOLLOW_RATE = 4;
@@ -101,6 +103,12 @@ export interface CameraLook {
   pull?: RoofHeight;
   turn?: RoofHeight;
   mouse?: boolean;
+  /**
+   * Metres the player's vehicle stands over the ground under it. An aircraft
+   * climbing pulls the top-down camera back with it (spec section 10.7), so
+   * the ground stays in the view rather than falling away below it.
+   */
+  altitude?: number;
 }
 
 /**
@@ -274,7 +282,8 @@ export class FollowCamera {
       target.height,
       target.y + Math.sin(target.heading) * lead,
     );
-    const zoom = target.driving === false ? 0 : Math.abs(target.speed) * DISTANCE_PER_SPEED;
+    const climb = Math.max(0, look.altitude ?? 0) * DISTANCE_PER_ALTITUDE;
+    const zoom = target.driving === false ? 0 : Math.abs(target.speed) * DISTANCE_PER_SPEED + climb;
     this.pitch = CAMERA_PITCH;
     const scratch = new Vector3();
     const goal = (distance: number): number =>

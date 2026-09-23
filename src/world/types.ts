@@ -292,6 +292,12 @@ export interface WorldDescription {
   districts: District[];
   /** The beaches of spec section 7.3, in the order the coastline was walked. */
   beaches: Beach[];
+  /**
+   * The airfields of spec section 8.4: the airport every seed has, the rural
+   * airstrips, the ground helipads and the seaplane dock. Planned before the
+   * roads, because the roads keep off them.
+   */
+  airfields: Airfield[];
   roads: RoadCurve[];
   corridors: Corridor[];
   tram: TramDescription;
@@ -299,3 +305,99 @@ export interface WorldDescription {
 
 /** The world before its roads: what the tensor field and the road tracer read. */
 export type WorldSkeleton = Omit<WorldDescription, 'roads' | 'corridors' | 'tram'>;
+
+/**
+ * The aircraft of spec section 11.3, as the world names them: a stand says
+ * which one waits on it. `src/sim/roster.ts` holds what each one is made of.
+ */
+export type AircraftClass =
+  | 'heli-light'
+  | 'heli-police'
+  | 'heli-transport'
+  | 'heli-attack'
+  | 'plane-light'
+  | 'seaplane'
+  | 'biplane'
+  | 'bizjet'
+  | 'fighter';
+
+/** Every aircraft, in picker order. Nothing else should list them. */
+export const AIRCRAFT_CLASSES: readonly AircraftClass[] = [
+  'heli-light',
+  'heli-police',
+  'heli-transport',
+  'heli-attack',
+  'plane-light',
+  'seaplane',
+  'biplane',
+  'bizjet',
+  'fighter',
+];
+
+/** What an airfield is (spec section 8.4). */
+export type AirfieldKind = 'airport' | 'airstrip' | 'heliport' | 'dock';
+
+/**
+ * A piece of an airfield, as a box in the airfield's own frame: `u` runs along
+ * the runway's heading and `v` across it, to the left.
+ */
+export interface AirfieldPart {
+  kind:
+    | 'runway'
+    | 'taxiway'
+    | 'apron'
+    | 'forecourt'
+    | 'pad'
+    | 'terminal'
+    | 'tower'
+    | 'hangar'
+    | 'shed'
+    | 'fence'
+    | 'windsock'
+    | 'deck'
+    /** The military compound: no surface of its own, only the ground the police guard. */
+    | 'compound';
+  u: number;
+  v: number;
+  halfU: number;
+  halfV: number;
+  /** Metres it stands over the airfield's level: zero for a surface. */
+  height: number;
+}
+
+/** Where an aircraft waits, on the map. */
+export interface AircraftStand {
+  cls: AircraftClass;
+  x: number;
+  y: number;
+  heading: number;
+  /** The ground or the water it rests on, in metres. */
+  height: number;
+  /** True inside the fence of the military compound: taking it is a serious crime (spec section 14). */
+  military: boolean;
+}
+
+/**
+ * One airfield: a levelled rectangle of ground the roads and the parcels keep
+ * off, with the parts drawn on it and the aircraft that wait there. A dock
+ * levels nothing; its rectangle is the water the seaplane is moored on.
+ */
+export interface Airfield {
+  id: number;
+  kind: AirfieldKind;
+  /** The middle of the rectangle, and the way the runway runs. */
+  x: number;
+  y: number;
+  heading: number;
+  /** Half the rectangle along the heading and across it, in metres. */
+  halfU: number;
+  halfV: number;
+  /** The height the ground is levelled to, or the sea level on a dock. */
+  level: number;
+  /** Where the road that serves it starts, just outside the rectangle. */
+  gate: Point;
+  /** The road laid from the gate, or -1 where none reached the network. */
+  road: number;
+  parts: AirfieldPart[];
+  stands: AircraftStand[];
+}

@@ -64,6 +64,7 @@ function gridWorld(roads: RoadCurve[]): WorldDescription {
     },
     districts: [district(0, 'inner', 0, 0), district(1, 'suburban', 250, 250)],
     beaches: [],
+    airfields: [],
     roads: withNodes(roads),
     corridors: [],
     tram: { route: [], edges: [], corridors: [], stops: [], crossings: [], length: 0 },

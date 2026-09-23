@@ -47,6 +47,8 @@ import { stepFires } from './fire.ts';
 import { blastDamageAt, BLAST_LIFT, CRASH_DAMAGE, hitVehicle, tickFire } from './damage.ts';
 import { unrotate } from './frame.ts';
 import { Drivetrain } from './drivetrain.ts';
+import { Flight } from './flight.ts';
+import { stepAirside, theftOf } from './airside.ts';
 import { GroundBodies, type Ground } from './ground-bodies.ts';
 import { GroundPlaces } from './ground-places.ts';
 import { Ragdolls } from './ragdoll.ts';
@@ -104,6 +106,8 @@ export class SimPhysics extends GroundPlaces {
   private readonly shots: Gunfire;
   /** What the driver's input does to the wheels, the rider and the hull. */
   private readonly controls: Drivetrain;
+  /** What the engine and the air do to an aircraft (`flight.ts`). */
+  private readonly flight: Flight;
   /** The row of the roster the body was built from. `adopt` reads it off the record. */
   private spec: VehicleSpec;
   /** The vehicle's moving body, and undefined while nobody is in it. */
@@ -149,6 +153,7 @@ export class SimPhysics extends GroundPlaces {
     this.bodies = new GroundBodies(this.world, ground);
     this.shots = new Gunfire(this.world);
     this.controls = new Drivetrain(ground);
+    this.flight = new Flight(ground);
     this.traffic = ground.traffic === undefined ? undefined : new TrafficBodies(this.world, ground.traffic, ground.tram);
     this.giveWay = ground.traffic === undefined ? undefined : new GiveWay(ground.traffic, ground.crowd);
     this.units = new UnitBodies(this.world);
@@ -257,7 +262,10 @@ export class SimPhysics extends GroundPlaces {
       chassis.resetForces(false);
       chassis.resetTorques(false);
       if (this.wheels === undefined) {
-        this.controls.sail(chassis, v, state.boarding === null ? input : EMPTY_INPUT, this.spec);
+        const held = state.boarding === null ? input : EMPTY_INPUT;
+        if (this.spec.hull !== undefined) this.controls.sail(chassis, v, held, this.spec);
+        // A helicopter has neither wheels nor a hull: its rotor is all of it.
+        if (this.spec.flight !== undefined) this.flight.fly(chassis, v, held, this.spec);
       } else {
         // How wet the road is is the weather of the tick (spec section 13.4),
         // which is a pure function of the seed and the tick like everything
@@ -266,6 +274,8 @@ export class SimPhysics extends GroundPlaces {
         const held = state.boarding === null ? input : BRAKED;
         this.controls.drive(this.wheels, v, held, this.spec, weatherAt(state.seed, state.tick).wetness);
         this.controls.hold(chassis, v, this.spec);
+        // A plane rolls and brakes on its wheels, and flies on its engine.
+        if (this.spec.flight !== undefined) this.flight.fly(chassis, v, held, this.spec);
         // The wheels roll over a ragdoll rather than standing on it: `car-strike.ts` is the bump.
         this.wheels.updateVehicle(this.world.timestep, undefined, SHUNS_RAGDOLL);
       }
@@ -284,6 +294,9 @@ export class SimPhysics extends GroundPlaces {
     this.traffic?.settle(state);
     // The police answer the tick the player has just driven, so they are
     // stepped once the record says where that left them (spec section 14).
+    // A player on the airport's airside is reported first, so the police
+    // answer it on the same tick (`airside.ts`).
+    stepAirside(state, this.ground.airfields);
     this.ground.police?.step(state, this.casualtyGround, this.ground.crimes);
     // The faction enforcers of spec section 17.2 answer the same tick for the
     // same reason: they walk at where the player has just got to.
@@ -643,7 +656,7 @@ export class SimPhysics extends GroundPlaces {
   private take(state: SimState, id: number): void {
     swapInto(state, id);
     this.traffic?.forget(id);
-    commitCrime(state, 'theft');
+    commitCrime(state, theftOf(state.vehicle.cls));
     this.adopt(state);
     this.climbIn(state);
   }
@@ -676,7 +689,7 @@ export class SimPhysics extends GroundPlaces {
       this.take(state, theft.target);
       return;
     }
-    commitCrime(state, 'theft');
+    commitCrime(state, theftOf(state.vehicle.cls));
     this.climbIn(state);
   }
 

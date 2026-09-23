@@ -56,6 +56,7 @@ import { districtAt, layoutZones, zoneAt, type ZoneLayout } from './districts.ts
 import type { RoadFootprint } from './footprint.ts';
 import type { RoadGraph } from './graph.ts';
 import { Heightfield } from './heightfield.ts';
+import { AIRFIELD_KEEP, airfieldCorners, airfieldRamp, RAMP_HALF } from './airfields.ts';
 import { landRegions } from './land.ts';
 import { MetroPlan, type MetroStation } from './metro.ts';
 import { ringsOf, RoadReach } from './road-reach.ts';
@@ -315,7 +316,15 @@ export function buildParcels(
   // The ground under the decks first: it is the corridor's, whatever else the
   // zone would have made of it.
   const decks = world.corridors.filter((corridor) => corridor.kind === 'elevated').map((c) => regionOf(c.polygon));
-  const land = difference(dry, footprint.regions);
+  // An airfield's rectangle and its margin are no parcel at all (spec section
+  // 8.4): the airfield draws its own ground and nothing is built on it.
+  // Nor is the ramp out to its gate.
+  const claimed = world.airfields.filter((field) => field.kind !== 'dock');
+  const fields = union([
+    ...claimed.map((field) => regionOf(airfieldCorners(field, AIRFIELD_KEEP))),
+    ...claimed.map((field) => regionOf(airfieldRamp(field, RAMP_HALF + AIRFIELD_KEEP))),
+  ]);
+  const land = difference(dry, [...footprint.regions, ...fields]);
   const under = decks.length === 0 ? { inside: [], outside: land } : split(land, union(decks));
   const free = under.outside;
   // The sand next, so the ground behind it is parcelled without it.

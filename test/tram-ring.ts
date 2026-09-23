@@ -63,6 +63,7 @@ function skeleton(): WorldSkeleton {
     water: { seaLevel: 0, islands: [{ id: 0, x: 0, y: 0, radius: SIZE / 2, main: true }], crossings: [], rivers: [], harbour: { x: 0, y: 0, radius: 10 }, industry: 0 },
     districts: [district(0, -d, -d), district(1, d, -d), district(2, d, d), district(3, -d, d)],
     beaches: [],
+    airfields: [],
   };
 }
 

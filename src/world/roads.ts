@@ -73,6 +73,7 @@
  */
 import { clamp, dist, directionDelta, lerp, wrapAngle } from '../core/math.ts';
 import { atan2, cos, sin } from '../core/libm.ts';
+import { gateChoices } from './airfields.ts';
 import { alleyPlan, alleySeeds, type AlleyGround } from './alleys.ts';
 import { ZONE_LOTS } from './buildings.ts';
 import { districtAt, layoutZones, zoneAt } from './districts.ts';
@@ -101,12 +102,15 @@ import {
 } from './road-trace.ts';
 import type { TensorField } from './tensor.ts';
 import { footprintHalfWidth, TIERS } from './tiers.ts';
-import type { Beach, Point, RoadCurve, RoadTier, WorldSkeleton, Zone } from './types.ts';
+import type { Airfield, Beach, Point, RoadCurve, RoadTier, WorldSkeleton, Zone } from './types.ts';
 
 // The trace itself is next door, and `roads.ts` is the door onto both: the
 // ground rules and the boardwalk length come out through here, as they did
 // while the two halves were one file.
 export { groundRule, MIN_BOARDWALK, spanProfile, type Profile } from './road-trace.ts';
+
+/** Metres from an airfield's gate within which a road already laid serves it. */
+const GATE_REACH = 40;
 
 /** What {@link seedAlong} lays besides the two roads parallel to the curve. */
 interface SeedOptions {
@@ -138,6 +142,13 @@ export interface TracedRoads {
    * ground refused the one it asked for.
    */
   boardwalks: number[];
+  /**
+   * The road laid from each airfield's gate, indexed like `world.airfields`
+   * (spec section 8.4). -1 on a dock, and where no road could reach the gate.
+   */
+  gates: number[];
+  /** The gate each of those roads was laid from, which may be another side of the airfield. */
+  gatePoints: Point[];
 }
 
 /** Trace every road of a world, widest tier first. Pure: same world and field, same roads. */
@@ -162,13 +173,25 @@ class RoadTracer extends IslandLinkTrace {
     // carrying districts that no road reaches.
     this.linkIslands(true);
     this.serveDistricts();
+    // The airport and the helipads next, while the arterials still leave room:
+    // the fill would otherwise take the ground in front of a gate.
+    const fields = this.world.airfields;
+    const served = fields.map((field) => (field.kind === 'airport' || field.kind === 'heliport' ? this.serveField(field) : { road: -1, gate: field.gate }));
     // Before the minor fill, so the fill grows around the boardwalk instead of
     // laying its own streets over the same ground.
     const boardwalks = this.world.beaches.map((beach, i) => this.traceBoardwalk(beach, i));
     this.fillMinor();
+    // An airstrip stands out where the dirt roads are, which the fill has just
+    // laid, so its track is the short one to the nearest of them. A field no
+    // road reached before the fill may find a street of it at its gate now.
+    fields.forEach((field, i) => {
+      if (field.kind !== 'dock' && (served[i] as { road: number }).road < 0) served[i] = this.serveField(field);
+    });
+    const gates = served.map((s) => s.road);
+    const gatePoints = served.map((s) => s.gate);
     // Every crossing was decided as its road was added (`crossing-plan.ts`), so
     // the curves are the network as it stands.
-    return { roads: [...this.curves], boardwalks };
+    return { roads: [...this.curves], boardwalks, gates, gatePoints };
   }
 
   // ------------------------------------------------------------------- fill
@@ -366,6 +389,43 @@ class RoadTracer extends IslandLinkTrace {
       const lane = this.routeToNetwork(at, island, 'street', STREET, this.offSand) ?? this.routeToNetwork(at, island, 'street', STREET);
       if (lane !== undefined) this.addCurve('street', lane, []);
     }
+  }
+
+  // ---------------------------------------------------------------- airfields
+
+  /** The road that serves an airfield and the gate it was laid from, trying each side in turn. */
+  private serveField(field: Airfield): { road: number; gate: Point } {
+    for (const gate of gateChoices(field, (x, y) => this.hf.sample(x, y))) {
+      const road = this.serveGate(gate, field.kind === 'airstrip');
+      if (road >= 0) return { road, gate };
+    }
+    return { road: -1, gate: field.gate };
+  }
+
+  /**
+   * The road that serves an airfield (spec section 8.4): from its gate to the
+   * nearest road, an arterial where one can be laid and a street where not. An
+   * airstrip out in the wilderness is served by a dirt road, as the ground
+   * round it is. Its id, or -1 where no route reaches the gate.
+   */
+  private serveGate(gate: Point, rural: boolean): number {
+    if (!this.isDry(gate.x, gate.y)) return -1;
+    // A road laid earlier may already run past the gate, and then it is the
+    // road that serves it: a second one would start on its carriageway.
+    const passing = this.network.nearest(gate.x, gate.y, GATE_REACH);
+    if (passing !== undefined) return passing.curve;
+    const island = this.islandOf(gate.x, gate.y);
+    const tiers: [RoadTier, TierParams][] = rural ? [['dirt', DIRT], ['street', STREET]] : [['arterial', ARTERIAL], ['street', STREET]];
+    for (const [tier, params] of tiers) {
+      const route = this.routeToNetwork(gate, island, tier, params, this.offSand);
+      if (route === undefined) continue;
+      // The network may keep only part of a route, so the road that serves
+      // the gate is whichever one now reaches it.
+      if (this.addCurve(tier, route, []) === undefined) continue;
+      const reached = this.network.nearest(gate.x, gate.y, GATE_REACH);
+      if (reached !== undefined) return reached.curve;
+    }
+    return -1;
   }
 
   // --------------------------------------------------------------- boardwalks

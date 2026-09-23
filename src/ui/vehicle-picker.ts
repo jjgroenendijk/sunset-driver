@@ -86,6 +86,13 @@ export class VehiclePicker {
 /** One line of numbers for a row: what separates it from the row above. */
 export function describe(cls: VehicleClass): string {
   const spec = ROSTER[cls];
+  if (spec.flight !== undefined) {
+    // An aircraft is told apart by how it flies: a rotor hovers, and a wing
+    // is read by the speed it needs to leave the ground.
+    const flight = spec.flight;
+    const lift = flight.kind === 'rotor' ? 'rotor' : `lifts at ${Math.round(flight.stall * 3.6)} km/h`;
+    return [`${spec.mass} kg`, `${Math.round(flight.topSpeed * 3.6)} km/h`, lift, `climbs ${flight.climb} m/s`].join(' · ');
+  }
   const top = Math.round((spec.hull?.topSpeed ?? spec.topSpeed) * 3.6);
   const power = Math.round((spec.hull?.thrust ?? spec.enginePower) / 1000);
   const parts = [`${spec.mass} kg`, `${power} kN`, `${top} km/h`];

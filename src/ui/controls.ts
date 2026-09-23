@@ -14,8 +14,8 @@ export interface ControlBinding {
  */
 export const CONTROLS: readonly ControlBinding[] = [
   { action: 'Move, drive', keys: 'W A S D or arrows' },
-  { action: 'Sprint', keys: 'Shift' },
-  { action: 'Handbrake, jump', keys: 'Space' },
+  { action: 'Sprint; descend in an aircraft', keys: 'Shift' },
+  { action: 'Handbrake, jump; climb in an aircraft', keys: 'Space' },
   { action: 'Horn', keys: 'H' },
   { action: 'Enter, use, hotwire', keys: 'E' },
   { action: 'Fire, swing', keys: 'Left click' },
