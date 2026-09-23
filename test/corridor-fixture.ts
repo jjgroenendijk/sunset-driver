@@ -34,6 +34,7 @@ export function world(ground: (x: number, y: number) => number, districts: Distr
     },
     districts,
     beaches: [],
+    airfields: [],
   };
 }
 

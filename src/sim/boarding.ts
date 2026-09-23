@@ -61,7 +61,8 @@ const WALK_PACE = 2.6;
  * Metres along a vehicle, forward of its middle, the driver's door is at: the
  * place a player stands to get in and is stood at when they get out. A car's
  * front door ends at its middle. A van, a truck and a bus are driven from a cab
- * at the nose, and a boat from the console behind its screen.
+ * at the nose, a boat from the console behind its screen, and an aircraft
+ * from its cabin.
  */
 export function doorAlong(spec: VehicleSpec): number {
   switch (spec.cls) {
@@ -74,6 +75,10 @@ export function doorAlong(spec: VehicleSpec): number {
     case 'boat':
       return -spec.halfLength * 0.28 - 0.4;
     default:
+      // A helicopter's door is in its cabin, forward of the boom; a plane's
+      // is ahead of the wing it would otherwise walk into.
+      if (spec.flight?.kind === 'rotor') return spec.halfLength * 0.45;
+      if (spec.flight?.kind === 'wing') return spec.halfLength * 0.55;
       return 0;
   }
 }

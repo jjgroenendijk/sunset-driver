@@ -8,7 +8,9 @@
  * model (spec section 6.4) already gives every piece of ground exactly one
  * owner, so this is a read of that allocation rather than a second one: a road
  * claims the ground within `footprintHalfWidth` of its centreline, a beach
- * claims its sand, and everything else is open ground.
+ * claims its sand, an airfield its paved parts and the ramp up to them (spec
+ * section 8.4), and everything else is open ground. An airstrip's runway is
+ * grass and dirt, so it drives as a dirt road does.
  *
  * It answers one place at a time and stores nothing per place, so the physics
  * may ask it for every wheel of every tick. The segments are filed in a bucket
@@ -16,9 +18,11 @@
  */
 import { pointInRing } from '../core/geom.ts';
 import { atan2, hypot } from '../core/libm.ts';
+import { airfieldAt, airfieldRamp, toLocal } from './airfield-frame.ts';
+import { RAMP_HALF } from './airfields.ts';
 import { Heightfield } from './heightfield.ts';
 import { footprintHalfWidth } from './tiers.ts';
-import type { Point, RoadCurve, RoadTier, WorldDescription } from './types.ts';
+import type { Airfield, AirfieldPart, Point, RoadCurve, RoadTier, WorldDescription } from './types.ts';
 
 /**
  * The ground a tyre is on. `ground` is everything the roads and the beaches
@@ -28,6 +32,11 @@ export type Surface = 'asphalt' | 'dirt' | 'sand' | 'ground';
 
 /** Side of one bucket of the segment index, in metres. */
 const INDEX_CELL = 48;
+
+/** The parts of an airfield a tyre runs on as it would on a road. */
+const PAVED: readonly AirfieldPart['kind'][] = ['runway', 'taxiway', 'apron', 'pad', 'forecourt'];
+
+const local = { u: 0, v: 0 };
 
 /** A beach's sand with the box around it, so a point outside is refused without walking the ring. */
 interface SandPatch {
@@ -57,6 +66,8 @@ export class SurfaceIndex {
   private readonly paved: boolean[] = [];
   private readonly buckets: number[][] = [];
   private readonly sand: SandPatch[] = [];
+  private readonly airfields: readonly Airfield[];
+  private readonly ramps: SandPatch[] = [];
   private readonly columns: number;
   private readonly originX: number;
   private readonly originY: number;
@@ -73,17 +84,36 @@ export class SurfaceIndex {
     for (const beach of world.beaches) {
       if (beach.sand.length >= 3) this.sand.push(boxed(beach.sand));
     }
+    this.airfields = world.airfields;
+    for (const field of world.airfields) {
+      if (field.kind !== 'dock') this.ramps.push(boxed(airfieldRamp(field, RAMP_HALF)));
+    }
   }
 
   /** What the ground is made of at a place. */
   at(x: number, y: number): Surface {
     const paved = this.roadAt(x, y);
     if (paved !== undefined) return paved ? 'asphalt' : 'dirt';
+    const field = this.airfieldAt(x, y);
+    if (field !== undefined) return field;
     for (const patch of this.sand) {
-      if (x < patch.minX || x > patch.maxX || y < patch.minY || y > patch.maxY) continue;
-      if (pointInRing({ x, y }, patch.ring)) return 'sand';
+      if (inPatch(patch, x, y)) return 'sand';
     }
     return 'ground';
+  }
+
+  /** The surface an airfield lays at a place, or undefined where it lays none. */
+  private airfieldAt(x: number, y: number): Surface | undefined {
+    for (const ramp of this.ramps) if (inPatch(ramp, x, y)) return 'asphalt';
+    const field = airfieldAt(this.airfields, x, y);
+    if (field === undefined) return undefined;
+    toLocal(field, x, y, local);
+    for (const part of field.parts) {
+      if (!PAVED.includes(part.kind)) continue;
+      if (Math.abs(local.u - part.u) > part.halfU || Math.abs(local.v - part.v) > part.halfV) continue;
+      return field.kind === 'airstrip' && part.kind === 'runway' ? 'dirt' : 'asphalt';
+    }
+    return undefined;
   }
 
   /** True where a paved road claims the place, false where a dirt road does, undefined off the roads. */
@@ -261,6 +291,12 @@ export function nearestWaterPlace(world: WorldDescription, x: number, y: number)
     }
   }
   return best;
+}
+
+/** True where a place is inside a ring, tried against its box first. */
+function inPatch(patch: SandPatch, x: number, y: number): boolean {
+  if (x < patch.minX || x > patch.maxX || y < patch.minY || y > patch.maxY) return false;
+  return pointInRing({ x, y }, patch.ring);
 }
 
 function boxed(ring: readonly Point[]): SandPatch {

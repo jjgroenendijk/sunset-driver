@@ -46,6 +46,7 @@ function islandWorld(): WorldDescription {
     },
     districts: [],
     beaches: [],
+    airfields: [],
     roads: [],
     corridors: [],
     tram: { route: [], edges: [], corridors: [], stops: [], crossings: [], length: 0 },

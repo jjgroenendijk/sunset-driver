@@ -43,7 +43,11 @@ export type Crime =
   /** Shooting at an officer. */
   | 'officerAssault'
   /** Killing an officer. */
-  | 'officerKilling';
+  | 'officerKilling'
+  /** Standing or driving on the airside of the airport (`airside.ts`). */
+  | 'trespass'
+  /** Taking one of the military's aircraft from its compound. */
+  | 'militaryTheft';
 
 /**
  * What each crime is worth, before {@link raiseHeat} makes the higher stars
@@ -59,6 +63,9 @@ export const CRIME_HEAT: Record<Crime, number> = {
   killing: 0.8,
   officerAssault: 1,
   officerKilling: 3,
+  trespass: 0.25,
+  // Four stars from no heat at all, which is where the helicopter comes up.
+  militaryTheft: 8,
 };
 
 /**

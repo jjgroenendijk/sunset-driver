@@ -112,7 +112,7 @@ describe('the body getting in and out', () => {
         for (let tick = 1; tick <= ticks; tick++) {
           const next = boardingFrame(input(cls, way, tick / ticks));
           // 0.1 m a tick is 6 m/s, a sprint.
-          expect(Math.hypot(next.x - last.x, next.y - last.y, next.z - last.z)).toBeLessThan(0.1);
+          expect(Math.hypot(next.x - last.x, next.y - last.y, next.z - last.z), `${cls} ${way} ${tick}/${ticks}`).toBeLessThan(0.1);
           last = next;
         }
       }

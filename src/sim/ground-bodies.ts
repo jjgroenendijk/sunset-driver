@@ -13,6 +13,7 @@ import { cos, sin } from '../core/libm.ts';
 import { PARAPET_HEIGHT, type DeckSpan } from '../world/decks.ts';
 import type { PierPost } from '../world/pier-posts.ts';
 import type { Surface } from '../world/surface.ts';
+import type { Airfield } from '../world/types.ts';
 import type { MetroPlace } from './metro.ts';
 import type { Place } from './on-foot.ts';
 import type { ShopPlace } from './shop.ts';
@@ -65,6 +66,11 @@ export interface Ground {
    * bridges, and a test that only needs a hillside, leaves them out.
    */
   piers?: readonly PierPost[];
+  /**
+   * The airfields of spec section 8.4, whose airside the police guard. A test
+   * that is not about them leaves them out.
+   */
+  airfields?: readonly Airfield[];
   /**
    * The places the police stations are entered from (spec section 11.7), where
    * an arrest puts the player back. A test that needs none leaves them out.

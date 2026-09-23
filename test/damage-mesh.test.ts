@@ -139,13 +139,16 @@ describe('a damaged vehicle model', () => {
     for (const cls of Object.keys(ROSTER) as (keyof typeof ROSTER)[]) {
       const spec = ROSTER[cls];
       const model = new VehicleModel(cls);
+      // An aircraft's wings and rotor span past its body by design, so what
+      // a dent may not do is push anything past the model it started as.
+      const whole = new Box3().setFromObject(model.group);
       const v = createVehicleState(spec);
       for (let i = 0; i < PANELS.length; i++) v.damage.dents[i] = 1;
       v.damage.stage = 'smoking';
       model.set(v);
       const bounds = new Box3().setFromObject(model.group);
-      expect(bounds.max.x - spec.halfLength, cls).toBeLessThan(0.8);
-      expect(bounds.max.z - spec.halfWidth, cls).toBeLessThan(0.8);
+      expect(bounds.max.x - Math.max(spec.halfLength, whole.max.x), cls).toBeLessThan(0.8);
+      expect(bounds.max.z - Math.max(spec.halfWidth, whole.max.z), cls).toBeLessThan(0.8);
       model.dispose();
     }
   });

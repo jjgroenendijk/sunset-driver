@@ -11,6 +11,7 @@ import type { WorldScene } from './render/world-scene.ts';
 import type { SimPhysics } from './sim/physics.ts';
 import { dropWeapon } from './sim/pickup.ts';
 import type { SimState } from './sim/simulation.ts';
+import { specOf } from './sim/vehicle.ts';
 import {
   currentSlot,
   currentWeapon,
@@ -22,6 +23,7 @@ import {
 } from './sim/weapon.ts';
 import { VehiclePicker } from './ui/vehicle-picker.ts';
 import { WeaponPicker } from './ui/weapon-picker.ts';
+import { runwayStart } from './world/airfield-frame.ts';
 import { nearestWaterPlace } from './world/surface.ts';
 import type { WorldDescription } from './world/types.ts';
 
@@ -47,13 +49,21 @@ export function buildPickers(
   smooth: RenderSmoother,
 ): DebugPickers {
   // The debug picker of spec section 11.3: every class of the roster, put down
-  // under the player. A boat goes on the nearest open water instead, since a
-  // boat on a street is not a boat that can be driven. The ground the physics
+  // under the player. A boat and a seaplane go on the nearest open water
+  // instead, since a boat on a street is not a boat that can be driven. The ground the physics
   // reads is the carve, which answers anywhere on the map, so the vehicle is
   // driveable the moment it lands and the chunks around it stream in after.
   const picker = new VehiclePicker(document.body, state.vehicle.cls, (cls) => {
     const here = { x: state.player.x, y: state.player.y, heading: state.player.heading };
-    const place = cls === 'boat' ? (nearestWaterPlace(description, here.x, here.y) ?? here) : here;
+    const spec = specOf(cls);
+    // A plane needs a runway to leave from, so it is put down at the end of
+    // the nearest one; a helicopter lifts off from wherever the player stands.
+    const place =
+      spec.hull !== undefined
+        ? (nearestWaterPlace(description, here.x, here.y) ?? here)
+        : spec.flight?.kind === 'wing'
+          ? (runwayStart(description.airfields, here.x, here.y) ?? here)
+          : here;
     physics().spawn(state, place.x, place.y, place.heading, cls);
     // A vehicle put down is a fresh vehicle: nothing of the last one's smoke or
     // skid marks belongs to it, and it is drawn where it lands rather than

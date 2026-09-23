@@ -91,6 +91,7 @@ function gridWorld(): WorldDescription {
     },
     districts: [district(0, 0, 0, 'italian'), district(1, 700, 0, 'chinese', 0.9)],
     beaches: [],
+    airfields: [],
     roads: withNodes(gridRoads()),
     corridors: [],
     tram: { route: [], edges: [], corridors: [], stops: [], crossings: [], length: 0 },

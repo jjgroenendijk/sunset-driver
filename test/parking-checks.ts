@@ -32,6 +32,8 @@ export function bayFaults(bays: ParkingBays, roads: readonly RoadCurve[], parcel
   const index = parcels === undefined ? undefined : new ParcelIndex(parcels);
   const filed = new Map<number, number[]>();
   for (let bay = 0; bay < bays.count; bay++) {
+    // An aircraft stand is the airfield's, and `seed-airfields.test.ts` checks it.
+    if ((bays.craft?.[bay] ?? -1) >= 0) continue;
     const ring = bayRing(bays, bay);
     const box = boxOf(ring);
     const at = `bay ${bay} at (${Math.round(bays.x[bay] as number)}, ${Math.round(bays.y[bay] as number)})`;

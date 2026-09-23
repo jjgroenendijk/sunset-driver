@@ -31,13 +31,13 @@ import type { CasualtyGround } from './casualty.ts';
 import { bark, CREW, type Bark, type Cuffs, type FallenOfficer, type Officer } from './officer.ts';
 import { dropPoliceCar } from './pickup.ts';
 import { inSight, Squad, type Quarry } from './squad.ts';
-import { unitFire } from './officer-fire.ts';
+import { helicopterFire, unitFire } from './officer-fire.ts';
 import { patrol } from './patrol.ts';
 import type { CrimeGround } from './street-crime.ts';
 import { UnitRoads, type DrivePose } from './unit-route.ts';
 import type { SimState } from './simulation.ts';
 import type { TrafficRoads } from './traffic.ts';
-import { headingOf } from './vehicle.ts';
+import { headingOf, isAircraft } from './vehicle.ts';
 
 /** What a unit is: a car of the force, or the helicopter of high heat. */
 export type PoliceKind = 'patrol' | 'interceptor' | 'swat' | 'helicopter';
@@ -157,6 +157,8 @@ export const UNITS_BY_STAR: readonly number[] = [0, 1, 2, 3, 4, 6, 8];
 
 /** Stars at which the helicopter comes up, and at which the heavy units come out. */
 export const HELICOPTER_STARS = 4;
+/** The stars the helicopter comes up at over a player flying an aircraft. */
+export const AIRBORNE_HELICOPTER_STARS = 2;
 export const INTERCEPTOR_STARS = 3;
 export const SWAT_STARS = 5;
 
@@ -407,7 +409,10 @@ export class PoliceForce {
     // pulled up, and back into one whose chase has driven off. A crew still in
     // a car that has stopped fires out of it.
     this.squad.step(state, quarry, ground);
-    for (const unit of police.units) unitFire(state, unit, quarry, ground);
+    for (const unit of police.units) {
+      unitFire(state, unit, quarry, ground);
+      helicopterFire(state, unit, quarry);
+    }
     this.standDown(state, quarry);
     this.sweep(state);
   }
@@ -518,6 +523,9 @@ export class PoliceForce {
     // The helicopter comes up over a chase that is already running, so the
     // first car to answer is always a car.
     if (stars >= HELICOPTER_STARS && !flying && state.police.units.length >= 2) return 'helicopter';
+    // A car cannot follow an aircraft, so a player at the controls of one has
+    // the helicopter sent up first, from the second star.
+    if (stars >= AIRBORNE_HELICOPTER_STARS && !flying && state.player.driving && isAircraft(state.vehicle.cls)) return 'helicopter';
     if (stars >= SWAT_STARS && state.police.units.length % 3 === 2) return 'swat';
     if (stars >= INTERCEPTOR_STARS) return 'interceptor';
     return 'patrol';

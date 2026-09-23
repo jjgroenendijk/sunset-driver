@@ -1,6 +1,8 @@
 import { type BufferGeometry } from 'three';
 import { hashInts } from '../src/core/hash.ts';
 import { type Region } from '../src/core/geom.ts';
+import { airfieldRamp, toLocal } from '../src/world/airfield-frame.ts';
+import { RAMP_HALF } from '../src/world/airfields.ts';
 import { CHUNK_SIZE, type WorldChunk } from '../src/world/chunks.ts';
 import { type RoadCarve } from '../src/world/carve.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
@@ -105,7 +107,8 @@ export function distanceToLine(p: Point, line: readonly Point[]): number {
 
 /**
  * What `SurfaceIndex.at` should answer, worked out the slow and obvious way:
- * every segment of every road measured, nearest claim wins, then the beaches.
+ * every segment of every road measured, nearest claim wins, then the
+ * airfields' ramps and paving, then the beaches.
  * The index files the same segments in a bucket grid; this is what says the
  * grid files them where they belong.
  */
@@ -123,6 +126,21 @@ export function surfaceByHand(w: WorldDescription, x: number, y: number): Surfac
     }
   }
   if (tier !== undefined) return tier === 'dirt' ? 'dirt' : 'asphalt';
+  for (const field of w.airfields) {
+    if (field.kind === 'dock') continue;
+    if (pointInRing(p, airfieldRamp(field, RAMP_HALF))) return 'asphalt';
+  }
+  for (const field of w.airfields) {
+    if (field.kind === 'dock') continue;
+    const at = toLocal(field, x, y, { u: 0, v: 0 });
+    if (Math.abs(at.u) > field.halfU || Math.abs(at.v) > field.halfV) continue;
+    for (const part of field.parts) {
+      if (!['runway', 'taxiway', 'apron', 'pad', 'forecourt'].includes(part.kind)) continue;
+      if (Math.abs(at.u - part.u) > part.halfU || Math.abs(at.v - part.v) > part.halfV) continue;
+      return field.kind === 'airstrip' && part.kind === 'runway' ? 'dirt' : 'asphalt';
+    }
+    break;
+  }
   for (const beach of w.beaches) {
     if (beach.sand.length >= 3 && pointInRing(p, beach.sand)) return 'sand';
   }

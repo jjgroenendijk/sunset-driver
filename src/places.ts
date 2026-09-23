@@ -74,6 +74,8 @@ export function buildPlaces(
   // An arrest comes back on the road nearest a station (spec section 11.7).
   ground.stations = places.stations.map((at) => snap(at.x, at.y) ?? { ...at, heading: 0 });
   ground.metro = places.metro;
+  // The police guard the airport's airside (spec section 14).
+  ground.airfields = description.airfields;
   ground.shops = places.shops;
   ground.dealers = places.dealers;
   ground.safehouses = places.safehouses;

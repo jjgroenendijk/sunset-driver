@@ -36,6 +36,17 @@ export const GEARS: Readonly<Record<VehicleClass, number>> = Object.freeze({
   buggy: 4,
   emergency: 5,
   boat: 1,
+  // A rotor and a propeller turn at the speed the engine does, so every
+  // aircraft is direct drive.
+  'heli-light': 1,
+  'heli-police': 1,
+  'heli-transport': 1,
+  'heli-attack': 1,
+  'plane-light': 1,
+  seaplane: 1,
+  biplane: 1,
+  bizjet: 1,
+  fighter: 1,
 });
 
 /** What the engine is doing, in the two numbers a voice needs and the gear that explains them. */

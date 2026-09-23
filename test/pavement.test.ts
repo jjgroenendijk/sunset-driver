@@ -42,6 +42,7 @@ function world(roads: RoadCurve[]): WorldDescription {
     },
     districts: [district(0, 'inner', 0, 0)],
     beaches: [],
+    airfields: [],
     roads: withNodes(roads),
     corridors: [],
     tram: { route: [], edges: [], corridors: [], stops: [], crossings: [], length: 0 },

@@ -20,7 +20,8 @@ import { rngFor, Subsystem, type Rng } from '../core/rng.ts';
 import { BAY_USES, type BayUse, type ParkingBays } from '../world/parking.ts';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from './clock.ts';
 import { PAINTS, promotedOf, type TrafficState } from './traffic.ts';
-import type { VehicleClass } from './vehicle.ts';
+import { AIRCRAFT_CLASSES, type AircraftClass } from '../world/types.ts';
+import { specOf, type VehicleClass } from './vehicle.ts';
 
 /**
  * The id a parked car is promoted under is this plus its bay. It stands above
@@ -46,6 +47,8 @@ export const FILL: Record<BayUse, readonly number[]> = {
   shops: [0.04, 0.03, 0.03, 0.03, 0.03, 0.03, 0.05, 0.15, 0.3, 0.45, 0.55, 0.6, 0.65, 0.55, 0.5, 0.55, 0.65, 0.8, 0.8, 0.6, 0.4, 0.2, 0.08, 0.05],
   // A beach or a trailhead: the middle of the day.
   leisure: [0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.05, 0.1, 0.2, 0.35, 0.5, 0.65, 0.7, 0.7, 0.7, 0.65, 0.55, 0.45, 0.3, 0.2, 0.12, 0.08, 0.05, 0.04],
+  // An aircraft stand of spec section 8.4: its aircraft never leaves it.
+  aircraft: Array.from({ length: 24 }, () => 1),
 };
 
 /** The shortest and longest stay at each kind of place, in game hours. */
@@ -55,6 +58,7 @@ const STAY: Record<BayUse, readonly [number, number]> = {
   work: [3, 9],
   shops: [0.5, 2],
   leisure: [1, 4],
+  aircraft: [24, 48],
 };
 
 /** The classes each kind of place parks, and how often each comes up. */
@@ -64,10 +68,12 @@ export const PARKED_MIX: Record<BayUse, Partial<Record<VehicleClass, number>>> =
   work: { van: 4, compact: 2, saloon: 2, offroad: 1 },
   shops: { compact: 4, saloon: 4, offroad: 2, van: 1, sports: 1 },
   leisure: { offroad: 4, compact: 2, saloon: 2, van: 1 },
+  // A stand keeps the one aircraft its airfield put there (`ParkingBays.craft`).
+  aircraft: {},
 };
 
-/** Every class that parks, in roster order. */
-export const PARKED_CLASSES: readonly VehicleClass[] = ['compact', 'saloon', 'sports', 'van', 'offroad'];
+/** Every class that parks, in roster order, the aircraft of the stands after the cars. */
+export const PARKED_CLASSES: readonly VehicleClass[] = ['compact', 'saloon', 'sports', 'van', 'offroad', ...AIRCRAFT_CLASSES];
 
 /** The share of a kind of place that is full at a tick. */
 export function fillAt(use: BayUse, tick: number): number {
@@ -146,6 +152,14 @@ export class ParkedCars {
     const rng = rngFor(this.seed, since, Subsystem.Parking, bay);
     if (rng.float() >= fillAt(use, since + stay / 2)) return false;
     if (traffic.promoted.length > 0 && promotedOf(traffic, PARKED_ID + bay) !== undefined) return false;
+    const craft = this.bays.craft?.[bay] ?? -1;
+    if (craft >= 0) {
+      // A stand's aircraft is the one it was laid out for, in its own livery.
+      out.cls = AIRCRAFT_CLASSES[craft] as AircraftClass;
+      out.paint = specOf(out.cls).paint;
+      out.since = since;
+      return true;
+    }
     out.cls = pickClass(PARKED_MIX[use], rng);
     out.paint = PAINTS[rng.int(0, PAINTS.length - 1)] as number;
     out.since = since;

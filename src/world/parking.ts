@@ -21,14 +21,14 @@ import type { JunctionMap } from './junctions.ts';
 import { insideRegion, ringsClash } from './lot-geom.ts';
 import type { Parcel, ParcelMap } from './parcels.ts';
 import { footprintHalfWidth, TIERS } from './tiers.ts';
-import type { RoadCurve, RoadTier, WorldDescription, Zone } from './types.ts';
+import { AIRCRAFT_CLASSES, type AircraftStand, type RoadCurve, type RoadTier, type WorldDescription, type Zone } from './types.ts';
 import { STREET_REACH } from './vegetation.ts';
 
 /** What the ground round a bay is used for, which is what says when its cars come and go. */
-export type BayUse = 'home' | 'town' | 'work' | 'shops' | 'leisure';
+export type BayUse = 'home' | 'town' | 'work' | 'shops' | 'leisure' | 'aircraft';
 
 /** Every use, in the order {@link ParkingBays.use} indexes them. Append; never reorder. */
-export const BAY_USES: readonly BayUse[] = ['home', 'town', 'work', 'shops', 'leisure'];
+export const BAY_USES: readonly BayUse[] = ['home', 'town', 'work', 'shops', 'leisure', 'aircraft'];
 
 /** The bays of a world, one entry per bay in each array. */
 export interface ParkingBays {
@@ -42,8 +42,13 @@ export interface ParkingBays {
   heading: Float32Array;
   /** Index into {@link BAY_USES}. */
   use: Uint8Array;
-  /** 1 for a bay along a street, 0 for a bay in a car park. */
+  /** 1 for a bay along a street, 0 for a bay in a car park or on an airfield. */
   street: Uint8Array;
+  /**
+   * The aircraft a stand of spec section 8.4 keeps, as an index into
+   * `AIRCRAFT_CLASSES`, and -1 on a bay for a car. Undefined where no bay is a stand.
+   */
+  craft?: Int8Array;
 }
 
 /** Metres along the kerb one street bay takes: a car and the room to pull out of it. */
@@ -96,7 +101,43 @@ interface Bay {
  */
 export function buildParkingBays(world: WorldDescription, junctions: JunctionMap, parcels: ParcelMap, carve: RoadCarve): ParkingBays {
   const zones = layoutZones(world.size, world.core, world.water);
-  return layBays(world.roads, junctions, parcels.parcels, (x, y) => zoneAt(zones, x, y), (x, y) => carve.heightAt(x, y));
+  const bays = layBays(world.roads, junctions, parcels.parcels, (x, y) => zoneAt(zones, x, y), (x, y) => carve.heightAt(x, y));
+  return withStands(bays, world.airfields.flatMap((field) => field.stands));
+}
+
+/**
+ * The bays with the aircraft stands of the airfields after them (spec section
+ * 8.4). A stand is a bay that always holds its own aircraft, so the parked
+ * cars, their bodies and the theft of one are the same code for a plane.
+ */
+export function withStands(bays: ParkingBays, stands: readonly AircraftStand[]): ParkingBays {
+  const count = bays.count + stands.length;
+  const out: Required<ParkingBays> = {
+    count,
+    x: new Float64Array(count),
+    y: new Float64Array(count),
+    height: new Float32Array(count),
+    heading: new Float32Array(count),
+    use: new Uint8Array(count),
+    street: new Uint8Array(count),
+    craft: new Int8Array(count).fill(-1),
+  };
+  out.x.set(bays.x);
+  out.y.set(bays.y);
+  out.height.set(bays.height);
+  out.heading.set(bays.heading);
+  out.use.set(bays.use);
+  out.street.set(bays.street);
+  stands.forEach((stand, i) => {
+    const at = bays.count + i;
+    out.x[at] = stand.x;
+    out.y[at] = stand.y;
+    out.height[at] = stand.height;
+    out.heading[at] = stand.heading;
+    out.use[at] = BAY_USES.indexOf('aircraft');
+    out.craft[at] = AIRCRAFT_CLASSES.indexOf(stand.cls);
+  });
+  return out;
 }
 
 /** Lay out the bays of a road network and its parcels, given the zone and the ground height at a place. */

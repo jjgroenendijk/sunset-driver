@@ -329,6 +329,8 @@ export class WorldScene {
   ): void {
     const model = this.character;
     this.vehicle.openDoor(0, 0);
+    // An aircraft's blades turn while somebody is flying it.
+    this.vehicle.spin(player.driving ? dt : 0);
     // A player getting in or out is drawn doing it, in the vehicle's frame,
     // and the door they go through swings with them (`boarder.ts`).
     if (boarding !== undefined && vehicle !== undefined) {

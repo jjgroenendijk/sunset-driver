@@ -301,6 +301,7 @@ export class SessionFrame {
         pull: settings.buildingView === 'pull-back' ? this.roofTop : undefined,
         turn: settings.buildingView === 'turn' ? this.sightTop : undefined,
         mouse: this.parts.look.active,
+        altitude: session.state.player.driving ? p.height - session.world.heightAt(p.x, p.y) : 0,
       });
       // A chase view has a near plane of its own, and the sun's cascades are
       // cut to the camera's frustum, so they are refitted.

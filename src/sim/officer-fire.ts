@@ -25,7 +25,7 @@ import { damageVehicle } from './damage.ts';
 import { hurt } from './on-foot.ts';
 import { bark, mayFire, OFFICER_MUZZLE, officerWeapon, type Officer } from './officer.ts';
 import type { SimState } from './simulation.ts';
-import { CAR_EYE, type PoliceUnit } from './police.ts';
+import { CAR_EYE, HELICOPTER_HEIGHT, HELICOPTER_STARS, type PoliceUnit } from './police.ts';
 import { inSight, type Quarry } from './squad.ts';
 import { markTracer, type TracerEnd } from './tracer.ts';
 import { headingOf, specOf } from './vehicle.ts';
@@ -125,6 +125,32 @@ export function unitFire(state: SimState, unit: PoliceUnit, quarry: Quarry, grou
   const rng = rngFor(state.seed, state.tick, Subsystem.UnitFire, unit.id);
   const muzzle = { id: unit.id, standX: unit.x, standY: unit.y, x: unit.x, y: unit.y, h: unit.height + CAR_EYE, heading: atan2(quarry.y - unit.y, quarry.x - unit.x) };
   shoot(state, muzzle, weapon, drill, quarry, distance, WINDOW_AIM, rng, ground);
+}
+
+/**
+ * The mounted gun of the police helicopter (spec section 14): from
+ * {@link HELICOPTER_STARS} up it fires down at a player it can see, in short
+ * aimed bursts. It sees over the roofs, so nothing but range stops it, and it
+ * is a poor shot at a moving target from a moving helicopter.
+ */
+const DOOR_GUN: Drill = { range: 110, cadence: 9, accuracy: 0.32, rounds: 1, share: 0.3 };
+
+/** Ticks the gunner fires for, and then holds off for, so the gun speaks in bursts. */
+const BURST = 60;
+const BURST_PAUSE = 90;
+
+/** One tick of the helicopter's gun. Every other unit is `unitFire`'s. */
+export function helicopterFire(state: SimState, unit: PoliceUnit, quarry: Quarry): void {
+  if (unit.kind !== 'helicopter' || heatStars(state.heat) < HELICOPTER_STARS || !mayShoot(state)) return;
+  if (state.tick % (BURST + BURST_PAUSE) >= BURST) return;
+  const distance = hypot(quarry.x - unit.x, quarry.y - unit.y);
+  if (distance > DOOR_GUN.range || state.tick - unit.fired < DOOR_GUN.cadence) return;
+  if (state.tick - unit.fired > OPEN_FIRE) bark(state, 'fire', unit.x, unit.y);
+  unit.fired = state.tick;
+  const rng = rngFor(state.seed, state.tick, Subsystem.UnitFire, unit.id);
+  const heading = atan2(quarry.y - unit.y, quarry.x - unit.x);
+  const muzzle = { id: unit.id, standX: unit.x, standY: unit.y, x: unit.x, y: unit.y, h: unit.height + HELICOPTER_HEIGHT, heading };
+  shoot(state, muzzle, 'm4a1', DOOR_GUN, quarry, distance, 1, rng, undefined);
 }
 
 /** True while the police may shoot at all: at the heat for it, at a player not in their hands. */

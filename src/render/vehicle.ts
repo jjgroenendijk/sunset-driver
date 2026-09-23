@@ -101,12 +101,17 @@ interface DrawnWheel {
   index: number;
 }
 
+/** Radians a second a rotor or a propeller turns at: fast enough to blur, slow enough not to strobe. */
+const SPIN_RATE = 23;
+
 export class VehicleModel {
   readonly group = new Group();
   private spec: VehicleSpec;
   private readonly wheels: DrawnWheel[] = [];
   /** The front door on each side that swings, hung from its front edge, by the side it is on. */
   private readonly hinges: { side: number; object: Group }[] = [];
+  /** The rotor and propeller blades, each hung from its own middle, and the axis it turns about. */
+  private readonly spinners: { axis: 'rotor' | 'prop'; object: Group }[] = [];
   private readonly boxes: DrawnBox[] = [];
   private readonly geometries: BufferGeometry[] = [];
   private readonly materials: Material[] = [];
@@ -181,6 +186,19 @@ export class VehicleModel {
     }
   }
 
+  /**
+   * Turn the rotors and the propellers of an aircraft on by `dt` seconds. The
+   * scene calls it with the frame's time while the player is at the controls,
+   * and with 0 while they are not, so a parked aircraft's blades stand still.
+   */
+  spin(dt: number): void {
+    const turn = dt * SPIN_RATE;
+    for (const spinner of this.spinners) {
+      if (spinner.axis === 'rotor') spinner.object.rotation.y += turn;
+      else spinner.object.rotation.x += turn;
+    }
+  }
+
   dispose(): void {
     this.clear();
   }
@@ -194,6 +212,7 @@ export class VehicleModel {
     this.materials.length = 0;
     this.wheels.length = 0;
     this.hinges.length = 0;
+    this.spinners.length = 0;
     this.boxes.length = 0;
     this.shown = '';
   }
@@ -210,6 +229,7 @@ export class VehicleModel {
       // back faces only, so it rims the mass instead of hiding it.
       const rim = part.outlined ? this.add(grown(part, VEHICLE_OUTLINE_WIDTH), outline) : undefined;
       if (part.hinged === true) this.hang(part, mesh, rim);
+      if (part.spin !== undefined) this.pivot(part, part.spin, mesh, rim);
       this.boxes.push({
         part,
         mesh,
@@ -306,6 +326,18 @@ export class VehicleModel {
     }
     this.group.add(hinge);
     this.hinges.push({ side: Math.sign(part.z), object: hinge });
+  }
+
+  /** Hang a blade from a group at its own middle, so turning the group spins it in place. */
+  private pivot(part: VehicleBox, axis: 'rotor' | 'prop', mesh: Mesh, rim: Mesh | undefined): void {
+    const pivot = new Group();
+    pivot.position.set(part.x, part.y, part.z);
+    for (const piece of rim === undefined ? [mesh] : [mesh, rim]) {
+      pivot.add(piece);
+      piece.position.set(0, 0, 0);
+    }
+    this.group.add(pivot);
+    this.spinners.push({ axis, object: pivot });
   }
 
   /** A tyre and a hub per wheel of the row, sharing one geometry and one material. */

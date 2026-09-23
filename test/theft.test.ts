@@ -17,7 +17,7 @@ import {
   type TheftState,
   wouldHit,
 } from '../src/sim/theft.ts';
-import { createVehicleState, ROSTER, specOf, VEHICLE_CLASSES } from '../src/sim/vehicle.ts';
+import { createVehicleState, isAircraft, ROSTER, specOf, VEHICLE_CLASSES } from '../src/sim/vehicle.ts';
 import { sweepSeeds } from './helpers.ts';
 
 /**
@@ -69,9 +69,11 @@ describe('what has to be stolen', () => {
   });
 
   it('leaves most of the roster to open on the key', () => {
-    const worked = VEHICLE_CLASSES.filter((cls) => needsHotwire(ROSTER[cls]));
+    // Every aircraft is behind a lock (`aircraft-roster.ts`); the cars are the roster this is about.
+    const cars = VEHICLE_CLASSES.filter((cls) => !isAircraft(cls));
+    const worked = cars.filter((cls) => needsHotwire(ROSTER[cls]));
     expect(worked.length).toBeGreaterThan(0);
-    expect(worked.length).toBeLessThan(VEHICLE_CLASSES.length / 2);
+    expect(worked.length).toBeLessThan(cars.length / 2);
   });
 
   it('locks a vehicle worth stealing until it has been hotwired, and then never again', () => {
