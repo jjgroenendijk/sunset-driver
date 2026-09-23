@@ -142,6 +142,11 @@ map into a canvas, and the pixels come back as a PNG. It needs no chunks either 
 description, the map art, and one `draw` call with the options the game passes. The seed defaults to
 `sunset` and the file to `previews/map-<seed>.png`.
 
+The marks are the game's own. The page builds the parcels a chunk worker builds, finds the places
+with `findPlaces` from `src/places.ts`, and marks them with `placeMarks` and `DealerMarks`, as
+`src/maps.ts` does. The marks that follow the player's session are left out: the enforcers, the
+events, the incidents, the officers and the objective.
+
 - `--x` and `--y` are the world point at the middle of the picture, and where the player stands.
   The default is `0,0`.
 - `--scale` is metres to the pixel. The default 4 is what the full map opens at; the minimap draws
@@ -152,11 +157,12 @@ description, the map art, and one `draw` call with the options the game passes. 
   icon size and clipping circle, with no labels and no scale bar.
 - `--waypoint=x,y` marks a place and draws the route to it, found the way the game finds it.
 - `--turf` washes the factions' turf over the land (spec section 17.2), and `--day=N` is the game
-  day it is read on, since the turf spreads. The default day is 0.
+  day it is read on, since the turf spreads. The dealers stand where that day puts them. The
+  default day is 0.
 - `--width` and `--height` are the size of the picture.
 
-The line it prints says where it drew, at what scale, and how long the world, the art and the draw
-took, with how many places are marked.
+The line it prints says where it drew, at what scale, and how long the world, the places, the art
+and the draw took, with how many places are marked. The places take about 2.5 s.
 
 ## `node scripts/icon-sheet.ts [out.png] [--sizes=18,20,30]`
 

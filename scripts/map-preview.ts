@@ -16,7 +16,7 @@
  *                icon size, rather than the full map.
  *   --waypoint   a place to mark, as `x,y`.
  *   --turf       wash the factions' turf over the land (spec section 17.2).
- *   --day        the game day the turf is read on, since it spreads. Default 0.
+ *   --day        the game day the turf and the dealers are read on. Default 0.
  *   --width,--height  the size of the picture.
  *
  * The browser comes from Playwright. A cloud session already has one; on a
@@ -114,7 +114,8 @@ try {
   console.log(
     `${out}: ${result.width}x${result.height}, seed ${seedText} at ${request.x},${request.y}` +
       ` at ${request.scale} m/px${request.rotate ? ', rotating' : ', north up'}` +
-      ` — world ${result.worldMs.toFixed(0)} ms, art ${result.artMs.toFixed(0)} ms,` +
+      ` — world ${result.worldMs.toFixed(0)} ms, places ${result.placesMs.toFixed(0)} ms,` +
+      ` art ${result.artMs.toFixed(0)} ms,` +
       ` draw ${result.drawMs.toFixed(1)} ms, ${result.pois} places marked`,
   );
 } finally {

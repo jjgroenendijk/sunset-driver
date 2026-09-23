@@ -15,11 +15,12 @@ import { EmergencyCrews } from './ui/emergency-crews.ts';
 import { GiverBodies } from './ui/givers.ts';
 import { OfficerMarks } from './ui/officers.ts';
 import { MapArt } from './ui/map-draw.ts';
-import { MapPois, SHOP_POIS } from './ui/map.ts';
+import { MapPois } from './ui/map.ts';
 import { MapScreen } from './ui/map-screen.ts';
 import { Navigator } from './ui/map-route.ts';
 import { Minimap } from './ui/minimap.ts';
 import { MissionMarks } from './ui/missions.ts';
+import { placeMarks } from './ui/place-marks.ts';
 import { StreetLife } from './ui/street-life.ts';
 import { TerritoryOverlay } from './ui/territory.ts';
 import { buildRoadGraph, type RoadGraph } from './world/graph.ts';
@@ -53,17 +54,9 @@ export function buildMaps(
   touch: boolean,
   ground: { heightAt(x: number, y: number): number },
 ): SessionMaps {
-  const { stations, metro, shops, safehouses, missions, dealers, venues, crimes, turf } = places;
+  const { missions, dealers, venues, crimes, turf } = places;
   const pois = new MapPois(description);
-  pois.extra = [
-    ...stations.map((at) => ({ type: 'police' as const, x: at.x, y: at.y })),
-    ...metro.map((at) => ({ type: 'metro-station' as const, x: at.x, y: at.y, name: `Metro · ${at.name}` })),
-    ...shops.map((at) => ({ type: SHOP_POIS[at.kind], x: at.x, y: at.y, name: at.name })),
-    ...safehouses.map((at) => ({ type: 'safehouse' as const, x: at.x, y: at.y, name: at.name })),
-    // The contacts of spec section 18 stand where the seed put them and never
-    // move, so they are marked once with the rest.
-    ...missions.givers.map((at) => ({ type: 'mission-giver' as const, x: at.x, y: at.y, name: at.name })),
-  ];
+  pois.extra = placeMarks(places);
   // The contacts never move, so their bodies are stood once and begin the list
   // of people the crowd's mesh draws for somebody else (spec section 18).
   const giverBodies = new GiverBodies(state.seed, missions.givers, ground);
