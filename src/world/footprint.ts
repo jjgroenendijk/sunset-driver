@@ -16,8 +16,9 @@
  * The ground under a deck over land belongs to that deck's elevated corridor,
  * and the ground under a deck over water is not land at all. What the corridor
  * gave up is the road's: `corridors.ts` cuts a claim at ground another corridor
- * already holds, and the strip it gave up is under the deck all the same, so
- * the road claims it and nothing is built there (issue #288).
+ * already holds, and gives up whole any segment that touches water, and the dry
+ * ground it gave up is under the deck all the same, so the road claims it and
+ * nothing is built there (issues #288 and #531).
  *
  * The pieces are unioned, so the result does not overlap itself and the blocks
  * between the roads come back as its holes. Subtracting it from the land is
@@ -29,7 +30,7 @@
 import { areaOf, difference, disc, regionOf, strip, union, type Region } from '../core/geom.ts';
 import type { RoadGraph, RoadNode } from './graph.ts';
 import { Heightfield } from './heightfield.ts';
-import { deckHalfWidth, deckRuns, overWater } from './piers.ts';
+import { deckHalfWidth, dryDeckLines } from './piers.ts';
 import { footprintHalfWidth } from './tiers.ts';
 import type { Point, RoadCurve, RoadTier, WorldDescription } from './types.ts';
 
@@ -102,8 +103,12 @@ export function footprintParts(world: WorldDescription, graph: RoadGraph): Footp
  * deck, so the road claims it: were it left over, `buildParcels` would hand it
  * to a parcel and a building would stand under the deck (issue #288).
  *
- * Only a deck over land leaves anything: a deck over water covers no ground,
- * which is the same rule `corridors.ts` claims by.
+ * Only the ground under a deck is left: a deck over water covers none, so the
+ * decks are cut at the waterline first (`dryDeckLines`). A corridor gives up a
+ * segment that touches water whole, though the segment leaving the shore stands
+ * on land for most of its length, and that land is under the deck all the same
+ * (issue #531). Cutting at the waterline rather than at the segment also keeps
+ * `area` a count of ground, since nothing over the sea is claimed.
  */
 function deckShadows(world: WorldDescription): Region[] {
   const hf = new Heightfield(world.terrain);
@@ -111,9 +116,7 @@ function deckShadows(world: WorldDescription): Region[] {
   const shadows: Region[] = [];
   for (const road of world.roads) {
     const halfWidth = deckHalfWidth(road);
-    for (const run of deckRuns(road, (a, b) => overWater(hf, sea, a, b), false)) {
-      shadows.push(regionOf(strip(road.points.slice(run.from, run.to + 2), halfWidth)));
-    }
+    for (const line of dryDeckLines(road, hf, sea)) shadows.push(regionOf(strip(line, halfWidth)));
   }
   if (shadows.length === 0) return [];
   const claimed = world.corridors.filter((corridor) => corridor.kind === 'elevated');
