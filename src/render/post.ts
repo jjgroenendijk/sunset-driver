@@ -139,6 +139,8 @@ export const FULL_QUALITY: PostQuality = { renderScale: 1, bloom: true, smaa: tr
 /** The frame, drawn through the effects of spec section 10.6. */
 export class PostChain {
   private readonly renderer: WebGPURenderer;
+  /** The scene the chain draws, whose world matrices it brings up to date once a frame. */
+  private readonly scene: Scene;
   private readonly pipeline: RenderPipeline;
   /** The scene drawn into a texture. Built once: it is what every effect reads. */
   private readonly scenePass: TslNode;
@@ -186,6 +188,12 @@ export class PostChain {
     // after everything here had run.
     this.pipeline.outputColorTransform = false;
 
+    // A frame renders the scene several times: the scene pass, each of the
+    // sun's cascades and the water's mirror. three.js walks the whole tree and
+    // recomputes every world matrix for each of them, and nothing moves in
+    // between, so the chain does it once in `render` instead (issue #639).
+    this.scene = scene;
+    scene.matrixWorldAutoUpdate = false;
     this.scenePass = pass(scene, camera);
     this.colour = vec4(this.scenePass.getTextureNode().rgb.mul(toneMappingExposure), 1);
     const sky = step(SKY_DEPTH, this.scenePass.getLinearDepthNode());
@@ -292,6 +300,7 @@ export class PostChain {
 
   /** Draw the frame. This replaces `renderer.render`, which draws no effects. */
   render(): void {
+    this.scene.updateMatrixWorld();
     this.pipeline.render();
     if (this.current !== undefined) this.current.drawn = true;
   }

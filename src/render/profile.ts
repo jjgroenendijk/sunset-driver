@@ -198,8 +198,11 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
     scene.update(x, y);
     const t1 = performance.now();
     camera.update(1 / 60, { x, y, height: scene.heightAt(x, y), heading, speed });
-    if (request.noPost === true) void renderer.render(scene.scene, camera.camera);
-    else post.render();
+    if (request.noPost === true) {
+      // The post chain brings the world matrices up to date, and the renderer does not.
+      scene.scene.updateMatrixWorld();
+      void renderer.render(scene.scene, camera.camera);
+    } else post.render();
     const t2 = performance.now();
     await device.queue.onSubmittedWorkDone();
     const t3 = performance.now();
