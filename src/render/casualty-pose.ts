@@ -18,7 +18,7 @@
  */
 import { Euler, Matrix4, Quaternion, Vector3, type Bone, type BufferGeometry, type Skeleton, type SkinnedMesh } from 'three';
 import type { Casualty, CasualtyPose } from '../sim/casualty-motion.ts';
-import { BONES, JOINTS, pedestrianRig, SWINGS } from './pedestrian-rig.ts';
+import { BONES, CARRIER, JOINTS, PART_PROP, pedestrianRig, SWINGS } from './pedestrian-rig.ts';
 
 /** Floats the matrices of one body take: sixteen for each bone. */
 export const BODY_FLOATS = BONES.length * 16;
@@ -381,11 +381,18 @@ export class CasualtyPoser {
  * bone: world place, then world turn. The matrices are written about `place`,
  * the hips' own place, and divided by `scale`, the size the shader draws the
  * body at, so the shader's scaling and placing put each bone back where the
- * ragdoll has it.
+ * ragdoll has it. The ragdoll holds the first nine bones; a forearm or a foot
+ * moves with the bone it hangs from, so it takes that bone's matrix.
  */
 export function ragdollMatrices(values: readonly number[], place: Vector3, scale: number, out: Float32Array, at: number): void {
   const m = scratch.m;
   for (let i = 0; i < BONES.length; i++) {
+    const carrier = CARRIER[BONES[i] as (typeof BONES)[number]];
+    if (carrier !== undefined) {
+      const from = at + BONES.indexOf(carrier) * 16;
+      out.copyWithin(at + i * 16, from, from + 16);
+      continue;
+    }
     const k = i * 7;
     const joint = JOINTS[BONES[i] as (typeof BONES)[number]].at;
     scratch.q.set(values[k + 3] as number, values[k + 4] as number, values[k + 5] as number, values[k + 6] as number);
@@ -417,13 +424,15 @@ function restOf(pose: CasualtyPose): number {
   }
 }
 
-/** The distinct corners of the body's boxes, with the bone each moves with. */
+/** The distinct corners of the body's boxes, with the bone each moves with. A casualty holds no prop. */
 function cornersOf(geometry: BufferGeometry): Float32Array {
   const position = geometry.getAttribute('position');
   const bone = geometry.getAttribute('bone');
+  const part = geometry.getAttribute('part');
   const seen = new Set<string>();
   const corners: number[] = [];
   for (let i = 0; i < position.count; i++) {
+    if (part.getX(i) >= PART_PROP) continue;
     const corner = [bone.getX(i), position.getX(i), position.getY(i), position.getZ(i)];
     const key = corner.join(',');
     if (seen.has(key)) continue;

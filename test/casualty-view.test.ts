@@ -3,7 +3,8 @@ import { Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { CASUALTY_CAP, CasualtyView } from '../src/render/casualties.ts';
 import { BODY_FLOATS, CasualtyPoser, ragdollMatrices } from '../src/render/casualty-pose.ts';
-import { BONES, JOINTS, pedestrianBody } from '../src/render/pedestrian-rig.ts';
+import { RAGDOLL_BONES } from '../src/sim/ragdoll-body.ts';
+import { BONES, JOINTS, PART_PROP, pedestrianBody } from '../src/render/pedestrian-rig.ts';
 import { emptyCasualtyPose, type Casualty, type CasualtyPose } from '../src/sim/casualty-motion.ts';
 import type { EmergencyUnit } from '../src/sim/emergency.ts';
 import { dropCrew, MEDIC_SIDE, placeCrew } from '../src/sim/emergency-crew.ts';
@@ -59,6 +60,7 @@ describe('the casualties, posed (spec section 11.6)', () => {
   const geometry = pedestrianBody();
   const position = geometry.getAttribute('position');
   const bone = geometry.getAttribute('bone');
+  const part = geometry.getAttribute('part');
 
   it('lays a body flat on the ground, on its back or its front, and never into it', () => {
     for (let id = 0; id < 12; id++) {
@@ -72,6 +74,7 @@ describe('the casualties, posed (spec section 11.6)', () => {
         // The lowest corner of the body is on the ground: it neither sinks nor floats.
         let lowest = Infinity;
         for (let i = 0; i < position.count; i++) {
+          if (part.getX(i) >= PART_PROP) continue;
           const p = apply(data, 0, bone.getX(i), [position.getX(i), position.getY(i), position.getZ(i)]);
           lowest = Math.min(lowest, p.y);
         }
@@ -107,7 +110,8 @@ describe('the casualties, posed (spec section 11.6)', () => {
     const place = new Vector3(values[0], values[1], values[2]);
     const scale = 1.1;
     ragdollMatrices(values, place, scale, data, 0);
-    for (let b = 0; b < BONES.length; b++) {
+    // The ragdoll holds its own bones; a forearm or a foot rides on the bone it hangs from.
+    for (let b = 0; b < RAGDOLL_BONES.length; b++) {
       const at = apply(data, 0, b, JOINTS[BONES[b] as (typeof BONES)[number]].at).multiplyScalar(scale).add(place);
       expect(at.distanceTo(new Vector3(values[b * 7], values[b * 7 + 1], values[b * 7 + 2]))).toBeLessThan(1e-4);
     }

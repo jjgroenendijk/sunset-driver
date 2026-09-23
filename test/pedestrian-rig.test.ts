@@ -1,6 +1,6 @@
 import { Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { bakedPoint, bakeWalks, BONES, FRAMES, PART_SHOES, pedestrianBody } from '../src/render/pedestrian-rig.ts';
+import { bakedPoint, bakeWalks, BONES, FRAMES, PART_GUITAR, pedestrianBody } from '../src/render/pedestrian-rig.ts';
 import { GAITS, STRIDE_HEIGHT } from '../src/sim/pedestrian-look.ts';
 
 describe('the pedestrian rig and its walk cycles (spec sections 13.1, 22.1)', () => {
@@ -20,7 +20,7 @@ describe('the pedestrian rig and its walk cycles (spec sections 13.1, 22.1)', ()
     const parts = body.getAttribute('part');
     for (let i = 0; i < bones.count; i++) {
       expect(Number.isInteger(bones.getX(i)) && bones.getX(i) >= 0 && bones.getX(i) < BONES.length).toBe(true);
-      expect(parts.getX(i) >= 0 && parts.getX(i) <= PART_SHOES).toBe(true);
+      expect(parts.getX(i) >= 0 && parts.getX(i) <= PART_GUITAR).toBe(true);
       expect(body.getAttribute('skinIndex').getX(i)).toBe(bones.getX(i));
     }
     body.dispose();
