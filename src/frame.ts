@@ -269,6 +269,7 @@ export class SessionFrame {
     // drawn rather than who exists.
     session.traffic.share = session.world.weatherNow.crowd;
     session.crowd.share = session.world.weatherNow.crowd;
+    session.crowd.rain = session.world.weatherNow.rain;
     session.wildlife.share = session.world.weatherNow.crowd;
     // The headlamps and tail lights of everything the scene does not draw
     // itself come on with the street lamps (spec section 13.4).

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { postBoxes, shelterBoxes } from '../src/render/bus-stops.ts';
 import { ARRIVAL_TICKS, boardTicks, busDwell, STOP_CAP, STOP_IN } from '../src/sim/bus.ts';
+import { ALIGHT_MOST, alighting, WALK_OFF as ALIGHT_WALK } from '../src/sim/bus-alight.ts';
 import { BusStops, POST_AHEAD, SHELTER_RIDERS } from '../src/sim/bus-stops.ts';
 import { pavementOffset } from '../src/sim/pedestrian-route.ts';
 import type { WaitingPassenger } from '../src/sim/stop-queue.ts';
@@ -119,10 +120,38 @@ describe('the bus stops of a world (spec section 20.2)', () => {
     expect(people, 'nobody ever waits near a stop').toBeGreaterThan(0);
     for (let i = 0; i < people; i++) {
       const passenger = out[i] as WaitingPassenger;
+      // Somebody off a bus walks away; the next test follows them.
+      if (passenger.pose.gait === 'stroll') continue;
       expect(passenger.pose.gait).toBe('stand');
       expect(passenger.pose.speed).toBe(0);
       expect(Math.hypot(passenger.pose.x - at.x, passenger.pose.y - at.y)).toBeLessThan(40);
     }
+  });
+
+  it('lets a few people off each bus, who walk away from the queue and turn in', () => {
+    const seed = SEEDS[1] as number;
+    const { stops } = stopsOf(seed);
+    const out: WaitingPassenger[] = [];
+    let seen = 0;
+    for (let i = 0; i < stops.count; i++) {
+      const at = stops.stopAt(i);
+      const box = [at.x - 60, at.y - 60, at.x + 60, at.y + 60] as const;
+      for (let tick = 0; tick < 6_000; tick += 3) {
+        const people = stops.passengers(...box, tick, out);
+        for (let k = 0; k < people; k++) {
+          const pose = (out[k] as WaitingPassenger).pose;
+          if (pose.gait !== 'stroll') continue;
+          seen++;
+          // Never further off the stop than the walk away takes them.
+          expect(Math.hypot(pose.x - at.x, pose.y - at.y)).toBeLessThan(POST_AHEAD + ALIGHT_WALK + 6);
+          expect(pose.speed).toBeGreaterThan(0);
+        }
+      }
+    }
+    expect(seen, 'nobody ever gets off a bus').toBeGreaterThan(0);
+    // Who gets off is the seed's and the lap's.
+    expect(alighting(3, 0, 5, seed)).toBe(alighting(3, 0, 5, seed));
+    expect(alighting(3, 0, 5, seed)).toBeLessThanOrEqual(ALIGHT_MOST);
   });
 
   it('gives the busiest stops a shelter, and draws every part of one on the pavement', () => {

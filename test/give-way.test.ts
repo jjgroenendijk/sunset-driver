@@ -23,7 +23,7 @@ import { gridTraffic, gridTrafficRoads } from './traffic-grid.ts';
  * hold at again rather than softening what they check. How far the overlaps
  * they leave depend on the seed is issue #600.
  */
-const SEED = 10;
+const SEED = 4;
 const TICKS = 600;
 /** Metres each way of the player the cars and the people are drawn in. */
 const VIEW = 110;

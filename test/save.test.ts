@@ -43,7 +43,7 @@ function played(seedText: string): { state: SimState; physics: SimPhysics; input
  * The version the record's shape was last pinned at, and a hash of that shape.
  * Raise both together: see the test that reads them.
  */
-const PINNED = { version: 20, shape: '16683fe9371d3236' };
+const PINNED = { version: 21, shape: 'b9ffcc5bfc3e4197' };
 
 /**
  * One line per field a save is checked for, the way `conform` in `save.ts`

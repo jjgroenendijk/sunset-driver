@@ -17,15 +17,19 @@
  *
  * The queue holds as many people as the stop was built to gather, which is
  * also what the timing stood the bus there for, so a bus pulls away from an
- * empty kerb.
+ * empty kerb. A few people get off each bus at the back door and walk away
+ * (`bus-alight.ts`).
  */
 import { hashInts } from '../core/hash.ts';
 import { atan2 } from '../core/libm.ts';
 import { rngFor, Subsystem } from '../core/rng.ts';
 import type { RoadEdge } from '../world/graph.ts';
+import { ALIGHT_GAP, ALIGHT_SPAN, alighterLook, DOORS_OPEN, alighting, alightPose, type AlightSite } from './bus-alight.ts';
 import { ARRIVAL_TICKS, boardTicks } from './bus.ts';
 import { lookOf, type PedestrianLook } from './pedestrian-look.ts';
 import { PAVEMENT_RISE, pavementOffset } from './pedestrian-route.ts';
+import { emptyPose } from './pedestrians.ts';
+import { TIERS } from '../world/tiers.ts';
 import type { DistrictAt } from './pedestrians.ts';
 import { RouteSampler, type RouteLegs, type RoutePoint } from './route-sample.ts';
 import { layQueue, queueMisses, waitingAt, writeQueue, type StopQueue, type WaitingPassenger } from './stop-queue.ts';
@@ -43,6 +47,9 @@ export const SHELTER_RIDERS = 4;
 
 /** The stream the looks of a queue are drawn from, kept off the one the demand uses. */
 const LOOK_STREAM = 0x5d09;
+/** The stream the looks of the people getting off are drawn from, and how many a stop draws. */
+const ALIGHT_LOOK_STREAM = 0x5d0b;
+const ALIGHT_LOOKS = 7;
 
 /** One kerb the buses of a world call at. */
 export interface BusStop {
@@ -71,10 +78,16 @@ interface StopRecord {
   stop: BusStop;
   queue: StopQueue;
   calls: BusCall[];
+  /** Where the people getting off step down and walk, and how they look. */
+  site: AlightSite;
+  alighters: readonly PedestrianLook[];
 }
 
 export class BusStops {
   private readonly records: StopRecord[] = [];
+  private readonly seed: number;
+  private readonly sampler: RouteSampler;
+  private readonly point: RoutePoint;
 
   /**
    * Gather the stops of a traffic. `districtAt` dresses the people waiting for
@@ -85,6 +98,9 @@ export class BusStops {
     const graph = traffic.roads.graph;
     const sampler = new RouteSampler(traffic.roads.roads, graph, traffic.roads.heightAt, traffic.roads.tiltAt);
     const point: RoutePoint = { x: 0, y: 0, height: 0, tiltX: 0, tiltY: 0, rightX: 0, rightY: 0, edge: graph.edges[0] as RoadEdge };
+    this.seed = seed;
+    this.sampler = sampler;
+    this.point = point;
     // The record of each directed edge, or -1 on an edge no bus calls on. An
     // array rather than a map, because `src/sim` may not walk one.
     const found = new Int32Array(graph.edges.length).fill(-1);
@@ -154,8 +170,27 @@ export class BusStops {
       const record = this.records[i] as StopRecord;
       if (queueMisses(record.queue, minX, minY, maxX, maxY)) continue;
       count = writeQueue(record.queue, this.waiting(i, Math.floor(tick)), out, count);
+      count = this.alighted(record, Math.floor(tick), out, count);
     }
     return count;
+  }
+
+  /** The people getting off the buses at one stop on a tick, written into `out` from `count` on. */
+  private alighted(record: StopRecord, tick: number, out: WaitingPassenger[], count: number): number {
+    let at = count;
+    for (const [c, call] of record.calls.entries()) {
+      const into = mod(tick - call.arrive, call.period);
+      if (into >= ALIGHT_SPAN) continue;
+      const lap = Math.floor((tick - call.arrive) / call.period);
+      const off = alighting(record.stop.edge, c, lap, this.seed);
+      for (let k = 0; k < off; k++) {
+        const entry = out[at] ?? { pose: emptyPose(), look: record.alighters[0] as PedestrianLook };
+        if (!alightPose(this.sampler, record.site, into - alightStart(k), this.point, entry.pose)) continue;
+        entry.look = alighterLook(record.alighters, lap, k);
+        out[at++] = entry;
+      }
+    }
+    return at;
   }
 }
 
@@ -175,7 +210,17 @@ function recordOf(seed: number, sampler: RouteSampler, point: RoutePoint, edge: 
   const looks: PedestrianLook[] = [];
   for (let i = 0; i < riders; i++) looks.push(lookOf(zone, rngFor(seed, 0, Subsystem.Bus, hashInts(LOOK_STREAM, edge.id, i))));
   const stop: BusStop = { edge: edge.id, call, x, y, height: at.height + PAVEMENT_RISE, heading: atan2(-at.rightY, -at.rightX), riders };
-  return { stop, queue: layQueue(sampler, leg, call + QUEUE_HEAD, QUEUE_STEP, looks, point), calls: [] };
+  const alighters: PedestrianLook[] = [];
+  for (let i = 0; i < ALIGHT_LOOKS; i++) alighters.push(lookOf(zone, rngFor(seed, 0, Subsystem.Bus, hashInts(ALIGHT_LOOK_STREAM, edge.id, i))));
+  // The kerb, the middle of the pavement, and its far side, where the buildings start.
+  const pavement = TIERS[edge.tier].pavement;
+  const site: AlightSite = { leg, call, kerb: offset - pavement / 2 + 0.2, lane: offset, wall: offset + pavement / 2 };
+  return { stop, queue: layQueue(sampler, leg, call + QUEUE_HEAD, QUEUE_STEP, looks, point), calls: [], site, alighters };
+}
+
+/** Ticks after a bus arrives that its `k`th passenger off steps down. */
+function alightStart(k: number): number {
+  return DOORS_OPEN + k * ALIGHT_GAP;
 }
 
 function mod(value: number, by: number): number {

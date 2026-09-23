@@ -18,7 +18,7 @@ import { rngFor, Subsystem } from '../core/rng.ts';
 import { TICK_RATE } from '../sim/clock.ts';
 import { casualtyPose, emptyCasualtyPose, FALL_TICKS, throwOf, type Casualty } from '../sim/casualty-motion.ts';
 import type { SimState } from '../sim/simulation.ts';
-import type { StartledPedestrian } from '../sim/pedestrians.ts';
+import { REACTIONS, type StartledPedestrian } from '../sim/pedestrians.ts';
 import { TRACER_CAP } from '../sim/tracer.ts';
 import { cueAt, type Cue } from './cue.ts';
 import { cryOf, type Cry } from './cry.ts';
@@ -48,6 +48,7 @@ const PANIC_STREAM = 0x0d01;
 const MOAN_STREAM = 0x0d02;
 const LANDING_STREAM = 0x0d03;
 const ROUND_STREAM = 0x0d04;
+const DODGE_STREAM = 0x0d05;
 
 /**
  * The tick a body hits the ground, and how hard, or null where it never
@@ -98,6 +99,7 @@ export class HurtEars {
     this.rounds(state, was, cues);
     this.casualties(state, was, cues, cries);
     this.panic(state, was, listener, cries);
+    this.dodges(state, was, listener, cries);
     this.moans(state, was, listener, cries);
     const dead = new Set<number>();
     for (const record of state.pedestrians.casualties) if (record.health <= 0) dead.add(record.id);
@@ -163,6 +165,23 @@ export class HurtEars {
         }
       }
       start = end;
+    }
+  }
+
+  /**
+   * Somebody who jumped clear of a car shouts after it, once they have turned
+   * to face it (`startledPose`). Each is heard alone: a dodge is one person
+   * and one car, not a crowd.
+   */
+  private dodges(state: SimState, was: number, listener: Listener, cries: Cry[]): void {
+    const after = REACTIONS.dodge.ticks;
+    for (const person of state.pedestrians.startled) {
+      if (person.reaction !== 'dodge') continue;
+      const tick = person.since + after;
+      if (tick <= was || tick > state.tick) continue;
+      if (hear(listener, person.x, person.y).distance > PANIC_REACH) continue;
+      const rng = rngFor(state.seed, tick, Subsystem.Audio, hashInts(DODGE_STREAM, person.id));
+      cries.push(cryOf(state.seed, tick, 'shout', person.id, person.x, person.y, rng.range(0.6, 0.9), rng.range(0, 0.2)));
     }
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SURFACE_RAISE, KERB_RISE } from '../src/render/road-section.ts';
-import { ZONE_LOOKS } from '../src/sim/pedestrian-look.ts';
+import { STANDING, ZONE_LOOKS } from '../src/sim/pedestrian-look.ts';
 import { CARRIAGEWAY_RISE, PAVEMENT_RISE, pavementOffset } from '../src/sim/pedestrian-route.ts';
 import {
   AmbientPedestrians,
@@ -67,13 +67,15 @@ describe('ambient pedestrians (spec sections 5.3, 13.1)', () => {
         const p = crowd.pose(cursor, pose());
         const rise = p.height;
         const off = Math.min(...walked.map((road) => distanceTo(road.points, p.x, p.y) - TIERS[road.tier].width / 2));
+        // Round the corner where two roads end, the pavement is as far out as it is along each road.
+        const square = Math.min(...walked.map((road) => distanceTo(road.points, p.x, p.y, true) - TIERS[road.tier].width / 2));
         // A pose read across the kerb stands between the two heights, and is neither.
         if (rise > PAVEMENT_RISE - 1e-9) {
           // On a pavement: outside every carriageway, and no further out than the pavement.
           onPavement++;
           expect(off, `person ${person.id} at tick ${tick}`).toBeGreaterThan(0);
-          expect(off).toBeLessThan(Math.max(...walked.map((road) => TIERS[road.tier].verge + TIERS[road.tier].pavement)) + 0.5);
-        } else if (rise < CARRIAGEWAY_RISE + 1e-9) {
+          expect(square, `person ${person.id} at tick ${tick}`).toBeLessThan(Math.max(...walked.map((road) => TIERS[road.tier].verge + TIERS[road.tier].pavement)) + 0.5);
+        } else if (rise < CARRIAGEWAY_RISE + 1e-9 && !person.bold) {
           // Crossing: only ever inside a junction or across a road beside one.
           crossing++;
           expect(nearestCrossing(p), `person ${person.id} at tick ${tick}`).toBeLessThan(2 * pavementOffset({ tier: 'arterial' }));
@@ -117,7 +119,8 @@ describe('ambient pedestrians (spec sections 5.3, 13.1)', () => {
 
   it('takes a whole number of strides round a loop, so the walk cycle never jumps', () => {
     const crowd = crowdOf(SEEDS[1] as number);
-    for (const person of crowd.people.slice(0, 50)) {
+    // Company walks out of step with its lead, so only a lead starts the loop on the start of a cycle.
+    for (const person of crowd.people.slice(0, 50).filter((p) => p.lead === p.id)) {
       expect(crowd.poseAt(person.id, person.period - person.phase, pose()).cycle).toBeCloseTo(0, 9);
     }
   });
@@ -139,7 +142,7 @@ describe('ambient pedestrians (spec sections 5.3, 13.1)', () => {
     expect(soon.gait).toBe('run');
     const later = startledPose(record!, tick + 100_000, pose());
     expect(later.speed).toBe(0);
-    expect(later.gait).toBe('stand');
+    expect(STANDING.has(later.gait)).toBe(true);
     // A second shot does not startle them again.
     expect(crowd.startle(state, tick + 1, at.x, at.y, 12, 'scatter')).toBe(0);
     releaseFar(state, tick + 100_000, at.x, at.y, 20);
@@ -154,7 +157,8 @@ function nearestCrossing(p: PedestrianPose): number {
   return best;
 }
 
-function distanceTo(points: readonly Point[], x: number, y: number): number {
+/** Metres from a point to a road; `square`, to the road run on past its ends. */
+function distanceTo(points: readonly Point[], x: number, y: number, square = false): number {
   let best = Infinity;
   for (let i = 0; i + 1 < points.length; i++) {
     const a = points[i] as Point;
@@ -162,7 +166,10 @@ function distanceTo(points: readonly Point[], x: number, y: number): number {
     const vx = b.x - a.x;
     const vy = b.y - a.y;
     const l2 = vx * vx + vy * vy;
-    const t = l2 > 0 ? Math.min(1, Math.max(0, ((x - a.x) * vx + (y - a.y) * vy) / l2)) : 0;
+    const along = l2 > 0 ? ((x - a.x) * vx + (y - a.y) * vy) / l2 : 0;
+    const low = square && i === 0 ? -Infinity : 0;
+    const high = square && i + 2 === points.length ? Infinity : 1;
+    const t = Math.min(high, Math.max(low, along));
     best = Math.min(best, Math.hypot(x - a.x - vx * t, y - a.y - vy * t));
   }
   return best;

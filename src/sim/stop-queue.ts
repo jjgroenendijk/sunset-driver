@@ -15,7 +15,7 @@
 import { atan2 } from '../core/libm.ts';
 import type { PedestrianLook } from './pedestrian-look.ts';
 import { PAVEMENT_RISE, pavementOffset } from './pedestrian-route.ts';
-import type { PedestrianPose } from './pedestrians.ts';
+import { emptyPose, type PedestrianPose } from './pedestrians.ts';
 import { RouteSampler, type RouteLegs, type RoutePoint } from './route-sample.ts';
 
 /** A person waiting at a stop. */
@@ -92,15 +92,19 @@ export function queueMisses(queue: StopQueue, minX: number, minY: number, maxX: 
 export function writeQueue(queue: StopQueue, people: number, out: WaitingPassenger[], count: number, moved = 0): number {
   let at = count;
   for (let i = 0; i < people; i++) {
-    const entry = out[at] ?? { pose: { x: 0, y: 0, height: 0, heading: 0, speed: 0, cycle: 0, gait: 'stand' }, look: queue.looks[i] as PedestrianLook };
+    const entry = out[at] ?? { pose: emptyPose(), look: queue.looks[i] as PedestrianLook };
     const p = entry.pose;
     p.x = towards(queue, i, 0, moved);
     p.y = towards(queue, i, 1, moved);
     p.height = towards(queue, i, 2, moved);
     p.heading = queue.places[i * 4 + 3] as number;
     p.speed = 0;
-    p.cycle = 0;
+    // Moving up a place is half a stride.
+    p.cycle = moved * 0.5;
     p.gait = moved > 0 ? 'amble' : 'stand';
+    p.blend = 0;
+    p.look = 0;
+    p.hidden = false;
     entry.look = queue.looks[i] as PedestrianLook;
     out[at++] = entry;
   }

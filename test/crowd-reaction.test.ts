@@ -19,6 +19,7 @@ import {
   type StartledPedestrian,
 } from '../src/sim/pedestrians.ts';
 import { createSimState, type SimState } from '../src/sim/simulation.ts';
+import { STANDING } from '../src/sim/pedestrian-look.ts';
 import { stableJson } from './helpers.ts';
 import { gridTrafficRoads } from './traffic-grid.ts';
 
@@ -97,7 +98,7 @@ describe('crowd reactions (spec section 20.1)', () => {
     expect(watched).toBeGreaterThan(0);
     // A gatherer stands and watches the wreck once they are there.
     const stood = startledPose(records.find((r) => r.reaction === 'gather') as StartledPedestrian, state.tick + 10_000, pose());
-    expect(stood.gait).toBe('stand');
+    expect(STANDING.has(stood.gait)).toBe(true);
     expect(stood.speed).toBe(0);
   });
 
@@ -111,7 +112,7 @@ describe('crowd reactions (spec section 20.1)', () => {
     const records = fast.pedestrians.startled;
     expect(records.length).toBeGreaterThan(0);
     for (const record of records) {
-      expect(record.reaction).toBe('scatter');
+      expect(record.reaction).toBe('dodge');
       expect(Math.hypot(record.x - CROWDED.x, record.y - CROWDED.y)).toBeLessThanOrEqual(CAR_REACH);
     }
   });
@@ -125,7 +126,7 @@ describe('crowd reactions (spec section 20.1)', () => {
     }
     // The same blast radius reaches further as a fright than a shot of its own size.
     const blast = driving(CROWDED.x, CROWDED.y);
-    const radius = SHOT_REACH / BLAST_FRIGHT + 4;
+    const radius = (2 * SHOT_REACH) / BLAST_FRIGHT;
     expect(crowdFeelsBlast(blast, crowd, CROWDED.x, CROWDED.y, radius)).toBeGreaterThan(
       shot.pedestrians.startled.length,
     );
