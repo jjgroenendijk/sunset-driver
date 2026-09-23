@@ -13,10 +13,35 @@ import type { Zone } from '../world/types.ts';
 import { HAIR_COLOURS, SKIN_TONES } from './character.ts';
 
 /**
- * The walk cycles a pedestrian moves with. The renderer bakes one clip for
- * each, in this order, so the index of a gait is its row of clips.
+ * The walk cycles a pedestrian moves with, and the things they do standing
+ * still. The renderer bakes one clip for each, in this order, so the index of
+ * a gait is its row of clips, and a new one goes at the end.
  */
-export const GAITS = ['stroll', 'brisk', 'amble', 'run', 'stand', 'aim'] as const;
+export const GAITS = [
+  'stroll',
+  'brisk',
+  'amble',
+  'run',
+  'stand',
+  'aim',
+  // A runner out for exercise, and an old person's short, stooped steps.
+  'jog',
+  'shuffle',
+  // Standing: a call, a cigarette, a look in a window, arms folded, talking with the hands.
+  'phone',
+  'smoke',
+  'window',
+  'fold',
+  'talk',
+  // A phone held up at arm's length to film something.
+  'film',
+  // A walk with an umbrella held up, and one hunched against the rain without.
+  'umbrella',
+  'hunch',
+  // A busker playing a guitar, and somebody shaking a fist at a driver.
+  'busk',
+  'shout',
+] as const;
 export type Gait = (typeof GAITS)[number];
 
 /** The slowest and fastest pace of each gait, in metres per second. */
@@ -28,7 +53,22 @@ export const GAIT_SPEED: Record<Gait, readonly [number, number]> = {
   stand: [0, 0],
   // A police officer's gun out in both hands, walking or standing (spec section 14).
   aim: [0, 1.5],
+  jog: [2.3, 2.9],
+  shuffle: [0.55, 0.8],
+  phone: [0, 0],
+  smoke: [0, 0],
+  window: [0, 0],
+  fold: [0, 0],
+  talk: [0, 0],
+  film: [0, 0],
+  umbrella: [1.1, 1.5],
+  hunch: [1.3, 1.7],
+  busk: [0, 0],
+  shout: [0, 0],
 };
+
+/** The gaits somebody stands in rather than walks. */
+export const STANDING: ReadonlySet<Gait> = new Set<Gait>(['stand', 'phone', 'smoke', 'window', 'fold', 'talk', 'film', 'busk', 'shout']);
 
 /**
  * Metres one whole cycle of a gait covers — two steps — for a person 1.75 m
@@ -41,6 +81,31 @@ export const GAIT_STRIDE: Record<Gait, number> = {
   run: 2.6,
   stand: 1,
   aim: 1.5,
+  jog: 2.1,
+  shuffle: 0.75,
+  phone: 1,
+  smoke: 1,
+  window: 1,
+  fold: 1,
+  talk: 1,
+  film: 1,
+  umbrella: 1.35,
+  hunch: 1.45,
+  busk: 1,
+  shout: 1,
+};
+
+/**
+ * The walking gait a person's own gait is blended towards, a little, so that
+ * two people of one gait still walk differently: one swings their arms more,
+ * one strides longer. A gait blended with itself is not blended.
+ */
+export const GAIT_NEIGHBOUR: Partial<Record<Gait, Gait>> = {
+  stroll: 'brisk',
+  brisk: 'stroll',
+  amble: 'stroll',
+  jog: 'run',
+  shuffle: 'amble',
 };
 
 /** The height a stride is measured for. */
@@ -105,6 +170,16 @@ export interface PedestrianLook {
   gait: Gait;
   /** Metres per second at their own pace. */
   speed: number;
+  /**
+   * How far their gait is blended towards its neighbour in
+   * {@link GAIT_NEIGHBOUR}, 0 to 0.45: the difference between two people who
+   * walk at one gait. None for somebody dressed by hand, such as an officer.
+   */
+  blend?: number;
+  /** Radians their upper body leans forward of upright: a stoop. None stands upright. */
+  lean?: number;
+  /** 0 to 1: how soon rain puts up their umbrella. Somebody at 1, or with none, carries none. */
+  umbrella?: number;
 }
 
 /** The look of one pedestrian of a zone, drawn from a stream. */

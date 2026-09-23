@@ -3,7 +3,8 @@
  * sections 13.1, 22.1).
  *
  * The body is boxes, like the player's, each bound to one bone of a skeleton:
- * hips, torso, head, a thigh and a shin each side, and an arm each side. It is
+ * hips, torso, head, and a thigh, shin, foot, upper arm and forearm each side,
+ * and the props a hand may hold. It is
  * a real `SkinnedMesh`, and each gait of `pedestrian-look.ts` is a generated
  * `AnimationClip` of keyframe tracks that swing the legs and arms against each
  * other and bob the hips. `AnimationClipCreator` has no clip that swings a
@@ -25,6 +26,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   Euler,
+  KeyframeTrack,
   MeshBasicMaterial,
   Quaternion,
   QuaternionKeyframeTrack,
@@ -35,9 +37,27 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GAITS, STRIDE_HEIGHT, type Gait } from '../sim/pedestrian-look.ts';
+import { clipPose } from './pedestrian-clips.ts';
+
+export { SWINGS } from './pedestrian-clips.ts';
 
 /** The bones, in the order their matrices are written. */
-export const BONES = ['hips', 'torso', 'head', 'thighL', 'shinL', 'thighR', 'shinR', 'armL', 'armR'] as const;
+export const BONES = [
+  'hips',
+  'torso',
+  'head',
+  'thighL',
+  'shinL',
+  'thighR',
+  'shinR',
+  'armL',
+  'armR',
+  // Added after the first nine, so the ragdoll's nine keep their places.
+  'foreL',
+  'foreR',
+  'footL',
+  'footR',
+] as const;
 export type BoneName = (typeof BONES)[number];
 
 /** Frames of each cycle written into the texture. The shader blends between two. */
@@ -50,41 +70,49 @@ export const PART_TOP = 2;
 export const PART_LEGS = 3;
 export const PART_SHOES = 4;
 
-/** How far each gait swings the body, in radians and metres. */
-interface Swing {
-  /** Thigh forward and back. */
-  leg: number;
-  /** Knee bend while the leg swings through. */
-  knee: number;
-  /** Arm forward and back, against the leg on its side. */
-  arm: number;
-  /** Hips up and down, twice a cycle. */
-  bob: number;
-  /** Torso tipped forward. */
-  lean: number;
-  /** Both arms held forward of hanging, whatever the cycle: out in front, to aim. */
-  raise: number;
+/**
+ * The things a person may hold. Each is a part of its own, drawn only on an
+ * instance whose prop is that part (`pedestrian-material.ts`).
+ */
+export const PART_PHONE = 5;
+export const PART_SMOKE = 6;
+export const PART_UMBRELLA = 7;
+export const PART_GUITAR = 8;
+
+/** The first part that is a prop rather than the body. */
+export const PART_PROP = PART_PHONE;
+
+/** The prop each gait holds, or 0 for none. */
+export function propOf(gait: Gait): number {
+  switch (gait) {
+    case 'phone':
+    case 'film':
+      return PART_PHONE;
+    case 'smoke':
+      return PART_SMOKE;
+    case 'umbrella':
+      return PART_UMBRELLA;
+    case 'busk':
+      return PART_GUITAR;
+    default:
+      return 0;
+  }
 }
 
-export const SWINGS: Record<Gait, Swing> = {
-  stroll: { leg: 0.42, knee: 0.55, arm: 0.35, bob: 0.02, lean: 0.02, raise: 0 },
-  brisk: { leg: 0.52, knee: 0.65, arm: 0.5, bob: 0.025, lean: 0.05, raise: 0 },
-  amble: { leg: 0.28, knee: 0.35, arm: 0.14, bob: 0.012, lean: 0.1, raise: 0 },
-  run: { leg: 0.85, knee: 1.5, arm: 0.95, bob: 0.05, lean: 0.22, raise: 0 },
-  stand: { leg: 0, knee: 0, arm: 0.03, bob: 0.004, lean: 0, raise: 0 },
-  // Arms straight out in front at shoulder height, the legs free to walk.
-  aim: { leg: 0.4, knee: 0.5, arm: 0, bob: 0.015, lean: 0.04, raise: Math.PI / 2 },
-};
-
 /** Keyframes of each clip; the last repeats the first so the clip loops. */
-const KEYS = 16;
+const KEYS = 32;
 
 /** The proportions of the body, for a person {@link STRIDE_HEIGHT} tall. The instance scales it. */
 const H = STRIDE_HEIGHT;
 const HIP = 0.52 * H;
+/** Where the hips stand in the bind pose, the point a stoop tips the upper body about. */
+export const HIP_HEIGHT = HIP;
 const KNEE = 0.28 * H;
 const SHOULDER = 0.82 * H;
 const SHOE = 0.05;
+const ARM_TOP = SHOULDER - 0.04;
+const ELBOW = ARM_TOP - 0.26;
+const HAND = ARM_TOP - 0.51;
 const HIP_ACROSS = 0.1;
 const SHOULDER_ACROSS = 0.26;
 
@@ -97,9 +125,16 @@ export const JOINTS: Record<BoneName, { parent: BoneName | null; at: [number, nu
   shinL: { parent: 'thighL', at: [0, KNEE, -HIP_ACROSS] },
   thighR: { parent: 'hips', at: [0, HIP, HIP_ACROSS] },
   shinR: { parent: 'thighR', at: [0, KNEE, HIP_ACROSS] },
-  armL: { parent: 'torso', at: [0, SHOULDER - 0.04, -SHOULDER_ACROSS] },
-  armR: { parent: 'torso', at: [0, SHOULDER - 0.04, SHOULDER_ACROSS] },
+  armL: { parent: 'torso', at: [0, ARM_TOP, -SHOULDER_ACROSS] },
+  armR: { parent: 'torso', at: [0, ARM_TOP, SHOULDER_ACROSS] },
+  foreL: { parent: 'armL', at: [0, ELBOW, -SHOULDER_ACROSS] },
+  foreR: { parent: 'armR', at: [0, ELBOW, SHOULDER_ACROSS] },
+  footL: { parent: 'shinL', at: [0, SHOE, -HIP_ACROSS] },
+  footR: { parent: 'shinR', at: [0, SHOE, HIP_ACROSS] },
 };
+
+/** The bone a bone added after the ragdoll's nine moves with when the ragdoll holds the body. */
+export const CARRIER: Partial<Record<BoneName, BoneName>> = { foreL: 'armL', foreR: 'armR', footL: 'shinL', footR: 'shinR' };
 
 /** One box of the body: its size along, up and across, its middle, its bone and its part. */
 interface BodyBox {
@@ -124,11 +159,20 @@ function bodyBoxes(): BodyBox[] {
     const arm = side === 'L' ? -SHOULDER_ACROSS : SHOULDER_ACROSS;
     boxes.push({ size: [0.15, HIP - KNEE, 0.15], at: [0, (HIP + KNEE) / 2, z], bone: `thigh${side}`, part: PART_LEGS });
     boxes.push({ size: [0.13, KNEE - SHOE, 0.13], at: [0, (KNEE + SHOE) / 2, z], bone: `shin${side}`, part: PART_LEGS });
-    boxes.push({ size: [0.26, SHOE, 0.14], at: [0.05, SHOE / 2, z], bone: `shin${side}`, part: PART_SHOES });
-    const elbow = SHOULDER - 0.04 - 0.46;
-    boxes.push({ size: [0.1, 0.46, 0.1], at: [0, SHOULDER - 0.04 - 0.23, arm], bone: `arm${side}`, part: PART_TOP });
-    boxes.push({ size: [0.09, 0.1, 0.09], at: [0, elbow - 0.05, arm], bone: `arm${side}`, part: PART_SKIN });
+    boxes.push({ size: [0.26, SHOE, 0.14], at: [0.05, SHOE / 2, z], bone: `foot${side}`, part: PART_SHOES });
+    boxes.push({ size: [0.1, ARM_TOP - ELBOW, 0.1], at: [0, (ARM_TOP + ELBOW) / 2, arm], bone: `arm${side}`, part: PART_TOP });
+    boxes.push({ size: [0.09, ELBOW - HAND + 0.05, 0.09], at: [0, (ELBOW + HAND + 0.05) / 2, arm], bone: `fore${side}`, part: PART_TOP });
+    boxes.push({ size: [0.09, 0.1, 0.09], at: [0, HAND - 0.05, arm], bone: `fore${side}`, part: PART_SKIN });
   }
+  // The props, in the right hand or across the body. In the bind pose the
+  // forearm hangs, so what a raised hand holds upright lies along +x here.
+  const hand = HAND - 0.06;
+  boxes.push({ size: [0.03, 0.13, 0.07], at: [0.03, hand, SHOULDER_ACROSS - 0.03], bone: 'foreR', part: PART_PHONE });
+  boxes.push({ size: [0.08, 0.016, 0.016], at: [0.07, hand, SHOULDER_ACROSS], bone: 'foreR', part: PART_SMOKE });
+  boxes.push({ size: [0.85, 0.025, 0.025], at: [0.42, hand, SHOULDER_ACROSS], bone: 'foreR', part: PART_UMBRELLA });
+  boxes.push({ size: [0.05, 0.95, 0.95], at: [0.85, hand, SHOULDER_ACROSS], bone: 'foreR', part: PART_UMBRELLA });
+  boxes.push({ size: [0.09, 0.34, 0.32], at: [0.2, HIP + 0.1, 0.06], bone: 'torso', part: PART_GUITAR });
+  boxes.push({ size: [0.05, 0.05, 0.5], at: [0.2, HIP + 0.24, -0.3], bone: 'torso', part: PART_GUITAR });
   return boxes;
 }
 
@@ -186,44 +230,31 @@ export function pedestrianRig(): { mesh: SkinnedMesh; skeleton: Skeleton } {
 }
 
 /**
- * The walk cycle of one gait, one second long: each thigh swings forward and
- * back, a half cycle apart; the knee bends while its leg swings through; each
- * arm swings against the leg on its side; the hips bob at every step.
+ * The cycle of one gait, one second long, as keyframe tracks: the hips' height
+ * and every other bone's turn, from `pedestrian-clips.ts`.
  */
 export function walkClip(gait: Gait): AnimationClip {
-  const swing = SWINGS[gait];
   const times: number[] = [];
   for (let k = 0; k <= KEYS; k++) times.push(k / KEYS);
-  const turn = (name: BoneName, angle: (phase: number) => number, axis: 'y' | 'z' = 'z'): QuaternionKeyframeTrack => {
-    const values: number[] = [];
-    const q = new Quaternion();
-    const euler = new Euler();
-    for (const t of times) {
-      const a = angle(2 * Math.PI * t);
-      euler.set(0, axis === 'y' ? a : 0, axis === 'z' ? a : 0);
-      values.push(...q.setFromEuler(euler).toArray());
-    }
-    return new QuaternionKeyframeTrack(`${name}.quaternion`, times, values);
-  };
-  // A turn about +z carries a hanging limb forward, to +x; a torso tips forward the other way.
-  const leg = (offset: number) => (p: number) => swing.leg * Math.sin(p + offset);
-  const knee = (offset: number) => (p: number) => -swing.knee * Math.max(0, Math.cos(p + offset));
-  const arm = (offset: number) => (p: number) => swing.raise - swing.arm * Math.sin(p + offset);
+  const poses = times.map((t) => clipPose(gait, 2 * Math.PI * t));
+  const q = new Quaternion();
+  const euler = new Euler();
   const hips: number[] = [];
-  for (const t of times) hips.push(0, HIP + swing.bob * Math.cos(4 * Math.PI * t), 0);
-  const tracks = [
-    new VectorKeyframeTrack('hips.position', times, hips),
-    turn('torso', () => -swing.lean),
-    turn('thighL', leg(0)),
-    turn('shinL', knee(0)),
-    turn('thighR', leg(Math.PI)),
-    turn('shinR', knee(Math.PI)),
-    turn('armL', arm(0)),
-    turn('armR', arm(Math.PI)),
-    turn('head', (p) => 0.04 * swing.leg * Math.sin(p), 'y'),
-  ];
+  for (const pose of poses) hips.push(0, HIP + pose.bob, 0);
+  const tracks: KeyframeTrack[] = [new VectorKeyframeTrack('hips.position', times, hips)];
+  for (const name of BONES) {
+    if (name === 'hips') continue;
+    const values: number[] = [];
+    for (const pose of poses) {
+      const turn = pose.turns[name] ?? REST;
+      values.push(...q.setFromEuler(euler.set(turn[0], turn[1], turn[2])).toArray());
+    }
+    tracks.push(new QuaternionKeyframeTrack(`${name}.quaternion`, times, values));
+  }
   return new AnimationClip(gait, 1, tracks);
 }
+
+const REST = [0, 0, 0] as const;
 
 /**
  * Every bone's matrix at every frame of every gait, as the texels of an RGBA

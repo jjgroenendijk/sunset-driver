@@ -77,7 +77,8 @@ describe('the ragdoll', () => {
   }
 
   it('matches the joints and the bones of the crowd rig, and weighs a person', () => {
-    expect([...RAGDOLL_BONES]).toEqual([...BONES]);
+    // The crowd rig adds its forearms and feet after the ragdoll's nine bones.
+    expect([...RAGDOLL_BONES]).toEqual(BONES.slice(0, RAGDOLL_BONES.length));
     const { skeleton } = pedestrianRig();
     const at = new Vector3();
     for (const [i, part] of RAGDOLL_PARTS.entries()) {
