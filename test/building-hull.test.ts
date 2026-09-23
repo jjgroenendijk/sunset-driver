@@ -56,6 +56,19 @@ describe('the outline hull, band by band', () => {
     }
   });
 
+  it('holds the hull under an overhang in to the storey under it', () => {
+    // A narrow base and a wider storey over it, meeting on a band edge. The
+    // soffit of the wider storey faces down, into the band over the edge:
+    // counted in the band under it, it stood the hull of the base out to the
+    // wider storey's width.
+    const soffit = 9.83;
+    const { hull } = hullAround(box(10, 10, 0, soffit), box(20, 20, soffit, 30.3));
+    for (const [x, y, z] of vertices(hull)) {
+      if (y >= soffit - TOLERANCE) continue;
+      expect(Math.max(Math.abs(x), Math.abs(z)), `at ${y.toFixed(2)}`).toBeLessThanOrEqual(5 + OUTLINE_WIDTH + TOLERANCE);
+    }
+  });
+
   it('draws in over a pitched roof rather than boxing it', () => {
     // A gable from eaves at 10 m to a ridge at 15 m. Each sloping triangle
     // spans the whole pitch, and measured whole it held every band of the roof

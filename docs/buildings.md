@@ -207,12 +207,14 @@ and what lights them in `docs/lighting.md`.
   instead of rimming it. `test/building-mesh.test.ts` pins the winding, because nothing else catches
   it before a frame is rendered.
 - A band reaches as far as the widest thing in it, so where a band is cut decides how far the hull
-  stands over a roof. `bandEdgesOf` moves each cut onto the largest roof within half a band of it,
-  and a level triangle belongs to the band it roofs. On a fixed grid the band that held a terrace
-  stood the hull of the podium up to a band over it, a black wall round the terrace. Each triangle
-  is also cut to the band it measures: measured whole, a sloping triangle held every band it spans
-  out at its widest, which boxed a gable and widened a tier under its cornice.
-  `test/building-hull.test.ts` pins both.
+  stands over a roof. `bandEdgesOf` moves each cut onto the largest level within half a band of it.
+  On a fixed grid the band that held a terrace stood the hull of the podium up to a band over it, a
+  black wall round the terrace. A level triangle belongs to the band on the side it faces, which the
+  winding tells: a roof to the band under it, a soffit to the band over it. A roof and the soffit
+  of a wider storey often share a level, and counted under the cut, the soffit held the storey below
+  out at the wider width. Each triangle is also cut to the band it measures: measured whole, a
+  sloping triangle held every band it spans out at its widest, which boxed a gable and widened a
+  tier under its cornice. `test/building-hull.test.ts` pins all three.
 - The hull is outside every pier and fin of a generated facade, and they stand up to 1.5 m proud of
   the wall, with the corner of the building often set back between them. The camera sees the dark
   of the hull down into that space past a corner. A hull set inside the piers is not the answer:
