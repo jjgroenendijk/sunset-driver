@@ -150,6 +150,11 @@ export class WorldScene {
   /** The weather of that same tick (spec section 13.4), and the tick itself. */
   private weather: Weather = CLEAR_WEATHER;
   private tick = START_TICK;
+  /**
+   * A weather to draw instead of the seed's, whatever the tick. Only a preview
+   * sets it; the game always draws the weather of spec section 13.4.
+   */
+  fixedWeather: Weather | undefined = undefined;
   /** The rain, the puddles and the litter that weather is drawn as. */
   private readonly weatherFx: WeatherFx;
   /** The quality tier the scene is drawn at (spec section 9.2). */
@@ -234,7 +239,7 @@ export class WorldScene {
   set time(tick: number) {
     this.tick = tick;
     this.light = daylightAt(tick);
-    this.weather = weatherAt(this.world.seed, tick);
+    this.weather = this.fixedWeather ?? weatherAt(this.world.seed, tick);
     this.apply();
   }
 

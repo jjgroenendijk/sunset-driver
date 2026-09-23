@@ -15,6 +15,7 @@ import { Mesh, type Material } from 'three';
 import { Lighting } from 'three/webgpu';
 import { DEFAULT_APPEARANCE } from '../sim/character.ts';
 import { nearestRoadPlace } from '../world/surface.ts';
+import { namedWeather } from '../sim/weather.ts';
 import { generateWorld } from '../world/world.ts';
 import { FollowCamera } from './camera.ts';
 import { PassTimer, type PassTimes } from './gpu-passes.ts';
@@ -63,6 +64,8 @@ export interface ProfileRequest {
   memory?: boolean;
   /** Time every pass of every frame on the GPU (`gpu-passes.ts`). */
   passes?: boolean;
+  /** `clear`, `rain`, `fog`, `storm`, or `seed` for the seed's own. Left out, clear. */
+  weather?: string;
 }
 
 /** One frame, timed. */
@@ -145,6 +148,8 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
   const scene = new WorldScene(world, DEFAULT_APPEARANCE);
   scene.quality = tier;
   const tick = tickAtHour(request.hour);
+  const weather = namedWeather(request.weather);
+  scene.fixedWeather = weather;
   scene.time = tick;
   const start = nearestRoadPlace(world, request.x, request.y) ?? { x: request.x, y: request.y, heading: 0 };
   await scene.settle(start.x, start.y);
@@ -158,6 +163,8 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
 
   const camera = new FollowCamera(request.width / request.height);
   const post = new PostChain(renderer, scene.scene, camera.camera, tier.post, scene.world.seed);
+  post.fixedWeather = weather;
+  post.regrade();
   post.time = tick;
   await post.ready();
   const device = (renderer.backend as unknown as { device: GPUDevice }).device;

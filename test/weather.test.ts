@@ -3,6 +3,7 @@ import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../src/sim/clock.ts';
 import {
   CLEAR_WEATHER,
   DRY_TICKS,
+  namedWeather,
   outInThis,
   SPELL_TICKS,
   weatherAt,
@@ -199,5 +200,24 @@ describe('the crowd hook', () => {
     for (let id = 0; id < 200; id++) expect(outInThis(id, 0.5)).toBe(outInThis(id, 0.5));
     // Anyone out in a storm is out in a shower: the shares nest.
     for (let id = 0; id < 200; id++) if (outInThis(id, 0.3)) expect(outInThis(id, 0.8)).toBe(true);
+  });
+});
+
+describe('the weather a preview names', () => {
+  it('is clear when none is named, and the seed\'s own when asked for', () => {
+    expect(namedWeather(undefined)).toEqual(CLEAR_WEATHER);
+    expect(namedWeather('seed')).toBeUndefined();
+  });
+
+  it('is the named kind at full strength, with the road as wet as its rain', () => {
+    const storm = namedWeather('storm');
+    expect(storm?.kind).toBe('storm');
+    expect(storm?.rain).toBe(1);
+    expect(storm?.wetness).toBe(1);
+    expect(namedWeather('fog')?.rain).toBe(0);
+  });
+
+  it('refuses a name that is not a weather', () => {
+    expect(() => namedWeather('snow')).toThrow(/snow/);
   });
 });

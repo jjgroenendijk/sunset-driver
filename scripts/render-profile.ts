@@ -15,6 +15,8 @@
  *   --width,--height the size of the page. Default 1600x900.
  *   --dpr            the device pixel ratio. Default 1; a Retina display is 2.
  *   --hour           the hour of the day to light the frame at. Default 12.
+ *   --weather        clear, rain, fog or storm, or seed for the weather the
+ *                    seed has at that hour. Default clear.
  *   --no-water, --no-shadows, --no-clustered, --no-post, --no-lamps
  *                    take one part of the frame away, to see what it cost.
  *   --no-cast        kinds of batch that cast no shadow, as a list:
@@ -82,6 +84,7 @@ const request: ProfileRequest = {
   drive: num('drive', 480),
   speed: num('speed', 25),
   ...(options.has('quality') ? { quality: options.get('quality') as string } : {}),
+  ...(options.has('weather') ? { weather: options.get('weather') as string } : {}),
   noWater: options.has('no-water'),
   noShadows: options.has('no-shadows'),
   noClustered: options.has('no-clustered'),

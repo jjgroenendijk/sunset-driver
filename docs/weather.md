@@ -61,5 +61,9 @@ light it bends and `src/render/weather-fx.ts` the rain, the puddles and the litt
   light is not one. A puddle reads from straight above by its colour, a pale sheet of sky over a
   dark road, and not by its reflection.
 - Take the frame before judging any of this: `node scripts/render-preview.ts <seed> out.png
-  --hour=N`, with an hour whose weather you have read off `weatherAt` first. Neither mistake above
-  was visible in the code, and both cost a render each to find.
+  --weather=rain`. Neither mistake above was visible in the code, and both cost a render each to
+  find.
+- A preview draws clear weather unless `--weather` names one: `clear`, `rain`, `fog`, `storm`, or
+  `seed` for the seed's own at `--hour`. `render-sheet.ts` and `render-profile.ts` take it too.
+  The seed's own was the default once, and `sunset` at noon is a storm, so every default preview
+  rained. `WorldScene.fixedWeather` and `PostChain.fixedWeather` carry the named weather.

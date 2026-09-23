@@ -3,6 +3,7 @@
  *
  * Usage: node scripts/render-sheet.ts [count] [out.png] [--cols=3] [--tile=480]
  *            [--hour=12] [--seeds=7,9,11] [--x=0] [--y=0] [--distance=..] [--quality=..]
+ *            [--weather=clear|rain|fog|storm|seed]
  *            [--software]
  *
  * It draws on the graphics card where there is one, as `preview-host.ts` says;
@@ -90,6 +91,7 @@ try {
       height: tileHeight,
       hour: num('hour', 12),
       ...(option('quality') === undefined ? {} : { quality: option('quality') as string }),
+      ...(option('weather') === undefined ? {} : { weather: option('weather') as string }),
     };
     // One page for every seed: the browser and the device are the slow part to
     // build, and the page builds the world for each seed anyway.

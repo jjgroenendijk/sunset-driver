@@ -21,6 +21,8 @@
  *   --speed          how fast the player moves, in metres per second.
  *   --width,--height the size of the picture.
  *   --hour           the hour of the day to light the frame at, 0 to 24.
+ *   --weather        clear, rain, fog or storm, or seed for the weather the
+ *                    seed has at that hour. Default clear.
  *   --buildings      what a building in the way does (spec section 10.7):
  *                    see-through, pull-back, turn or whole. Default see-through.
  *   --view           the view to draw from (spec section 10.7): top-down,
@@ -250,6 +252,7 @@ const request: PreviewRequest = {
   height: num('height', 540),
   hour: num('hour', 12),
   ...(options.has('quality') ? { quality: options.get('quality') as string } : {}),
+  ...(options.has('weather') ? { weather: options.get('weather') as string } : {}),
   ...(options.has('buildings') ? { buildings: options.get('buildings') as string } : {}),
   ...(options.has('view') ? { view: options.get('view') as string } : {}),
   ...(options.has('look-up') ? { lookUp: num('look-up', 0) } : {}),
@@ -297,7 +300,7 @@ const rgb = new Uint8Array(Buffer.from(result.rgb, 'base64'));
 writePng(out, result.width, result.height, rgb);
 console.log(
   `${out}: ${result.width}x${result.height}, seed ${seedText} at ${result.x.toFixed(0)},${result.y.toFixed(0)}` +
-    ` at ${request.hour.toFixed(1)}h on ${adapter}` +
+    ` at ${request.hour.toFixed(1)}h in ${request.weather ?? 'clear'} weather on ${adapter}` +
     ` — world ${result.kept ? 'kept' : `${result.worldMs.toFixed(0)} ms`}, chunks ${result.chunkMs.toFixed(0)} ms,` +
     ` frame ${result.frameMs.toFixed(0)} ms, dearest chunk ${result.peakDrawCalls} draw calls,` +
     ` ${result.lights} lights, ${result.shadows} shadow cascades, ${result.quality} quality,` +
