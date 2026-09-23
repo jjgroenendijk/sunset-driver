@@ -29,7 +29,7 @@
  */
 import { BackSide, Color } from 'three';
 import { createSkyscraperMaterial } from 'three/examples/jsm/generators/city/SkyscraperGenerator.js';
-import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
+import { MeshBasicNodeMaterial, MeshLambertNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import {
   BLOCK_BEACON,
   BLOCK_CONCRETE,
@@ -65,7 +65,7 @@ import {
   placeDraw,
 } from './night-material.ts';
 import { valueNoise01 } from './noise-material.ts';
-import { wallGloss, wallSurface, weathered } from './wall-material.ts';
+import { wallSurface, weathered } from './wall-material.ts';
 import {
   Fn,
   If,
@@ -124,6 +124,15 @@ const SLATE = 0x545a62;
 const WATER = 0x2f7f9c;
 const PAINT = 0xe6e2d6;
 
+/**
+ * What the block's colour is scaled by, because it is lit by the Lambert model
+ * rather than the physical one (issue #639). The physical model takes the
+ * Fresnel share off the diffuse light and adds a grey specular, so the same
+ * colour comes out darker under it. At this scale a noon frame of seed
+ * `sunset` reads within 2 % of the physical one.
+ */
+const LAMBERT_MATCH = 0.76;
+
 /** Metres of one rib of the corrugated metal a roller door and a metal roof are. */
 const RIB_METRES = 0.35;
 
@@ -165,12 +174,18 @@ const BOARD_METRES = 0.45;
 const CROWN = 0xc3bdb1;
 const LAMP_OFF = 0x5c2420;
 
+/**
+ * The block's material. Every node material draws an `emissiveNode`, but the
+ * types of three.js name it on the physical materials alone.
+ */
+export type BlockMaterial = MeshLambertNodeMaterial & { emissiveNode: TslNode | null };
+
 /** The materials a world's buildings are drawn with, and the night they share. */
 export interface BuildingMaterials {
   /** The generated towers and mid-rise blocks. */
   facade: MeshStandardNodeMaterial;
   /** Everything built as boxes: houses, shop rows, warehouses, roadhouses. */
-  block: MeshStandardNodeMaterial;
+  block: BlockMaterial;
   /** The inverted hulls that outline both. */
   outline: MeshBasicNodeMaterial;
   /** How far into the night it is, 0 by day and 1 at midnight. */
@@ -265,6 +280,14 @@ function finishOf(): { wall: TslNode; glow: TslNode; lit: TslNode; age: TslNode 
  * `uv` of a band of glazing is metres along the wall, so the windows are the
  * same width on a house and on a warehouse.
  *
+ * It is lit by the Lambert model, with no specular (issue #639). The blocks'
+ * roofs cover much of the screen from the game camera, and the physical model
+ * cost them 2.2 ms of a 9.4 ms scene pass at noon on an M1; its highlight is
+ * lost on felt, render and brick seen from 60 m. Only the glass of a curtain
+ * wall loses a glint of the sun. The neon's area lights reach no block either,
+ * since the Lambert model has no answer for them; the street under a sign
+ * still takes its colour.
+ *
  * Every part that carries a window — a band of glazing, a curtain wall, the
  * punched wall of a style, a Miami porthole — is lit off **one** grid and one
  * draw of which of its cells have their light on. A noise field is by far the
@@ -273,8 +296,8 @@ function finishOf(): { wall: TslNode; glow: TslNode; lit: TslNode; age: TslNode 
  * a frame several milliseconds. The grid is the same one each part draws its
  * windows on: only how wide a column of them stands changes.
  */
-function createBlockMaterial(night: TslNode, late: TslNode, beacon: TslNode): MeshStandardNodeMaterial {
-  const material = new MeshStandardNodeMaterial({ metalness: 0 });
+function createBlockMaterial(night: TslNode, late: TslNode, beacon: TslNode): BlockMaterial {
+  const material = new MeshLambertNodeMaterial() as BlockMaterial;
   const part = attribute('part', 'float');
   const tint = attribute('tint', 'vec3');
   const finish = finishOf();
@@ -290,7 +313,7 @@ function createBlockMaterial(night: TslNode, late: TslNode, beacon: TslNode): Me
   const rib = float(1).sub(uv().x.div(RIB_METRES).fract().sub(0.5).abs().mul(0.7));
 
   // Each is 1 on the part it names and 0 everywhere else. They are drawn once
-  // and used by the colour, the emissive and the roughness alike.
+  // and used by the colour and the emissive alike.
   const glassAt = is(part, BLOCK_GLASS);
   const curtainAt = is(part, BLOCK_CURTAIN);
   const concreteAt = is(part, BLOCK_CONCRETE);
@@ -342,7 +365,7 @@ function createBlockMaterial(night: TslNode, late: TslNode, beacon: TslNode): Me
   // building carries the same `part` value over the whole of a face, so the
   // branch is taken by every fragment of a triangle together, and a roof pays
   // for the roof alone. The plain tint the surface starts from reads both noise
-  // fields outside any branch, so every branch and the roughness share them.
+  // fields outside any branch, so every branch shares them.
   const whole = part.add(0.5).floor();
   material.colorNode = Fn(() => {
     const surface = tint.mul(float(0.78).add(patch.mul(0.28)).add(grain.mul(0.16))).toVar();
@@ -353,7 +376,7 @@ function createBlockMaterial(night: TslNode, late: TslNode, beacon: TslNode): Me
       };
       chain = chain === undefined ? If(whole.equal(id), body) : chain.ElseIf(whole.equal(id), body);
     }
-    return surface;
+    return surface.mul(LAMBERT_MATCH);
   })();
 
   // How wide one column of windows stands on whichever part this is, and which
@@ -398,21 +421,6 @@ function createBlockMaterial(night: TslNode, late: TslNode, beacon: TslNode): Me
     });
     return emissive;
   })();
-  // Render, brick and felt are rough; glass, a solar panel and water are not.
-  const mirror = curtainAt.mul(seeThrough);
-  const smooth = glassAt.add(is(part, BLOCK_SOLAR)).add(is(part, BLOCK_WATER)).add(mirror);
-  const wallAt = is(part, BLOCK_WALL);
-  material.roughnessNode = mix(
-    float(0.92)
-      .sub(grain.mul(0.12))
-      .sub(is(part, BLOCK_METAL).mul(0.35))
-      .sub(stuccoAt.mul(0.25))
-      .sub(wallGloss(finish.wall).mul(wallAt)),
-    float(0.1),
-    smooth,
-  );
-  // Only a pane of vision glass is a mirror. Everything else here is a wall.
-  material.metalnessNode = mirror.mul(0.65);
   return material;
 }
 

@@ -22,7 +22,7 @@
  * shadow pass reads none of this, so a ghost still casts its shadow.
  */
 import type { Vector3 } from 'three';
-import type { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
+import type { MeshBasicNodeMaterial, NodeMaterial } from 'three/webgpu';
 import { bayer4 } from './fade.ts';
 import type { RoofBox } from './roofs.ts';
 import { float, max, positionWorld, screenCoordinate, smoothstep, step, uniform, vec3, type TslNode } from './tsl.ts';
@@ -100,7 +100,7 @@ export class BuildingCutaway {
   }
 
   /** Cut a lit shell to a ghost. */
-  dressShell(material: MeshStandardNodeMaterial): void {
+  dressShell(material: NodeMaterial): void {
     material.opacityNode = float(1).sub(max(this.occluding.mul(1 - GHOST), this.inBox));
     material.alphaTestNode = bayer4(screenCoordinate);
   }
