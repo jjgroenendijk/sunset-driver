@@ -15,7 +15,8 @@
  * colour inside, the way a printed road map draws one, so it reads against any
  * ground. The icons are drawn by `map-icons.ts`.
  */
-import type { Point, RoadTier, WorldDescription } from '../world/types.ts';
+import { fromLocal } from '../world/airfield-frame.ts';
+import type { Airfield, AirfieldPart, Point, RoadTier, WorldDescription } from '../world/types.ts';
 import { renderGround, DEEP_SEA } from './map-ground.ts';
 import { drawMark, drawPlayer } from './map-icons.ts';
 import type { MapRoute } from './map-route.ts';
@@ -56,6 +57,9 @@ const CASED_PEN = 1.6;
 
 /** The colours of everything that is not a road. */
 const SAND = '#b39a66';
+/** The paved ground of an airfield, and an airstrip's dirt runway (spec section 8.4). */
+const TARMAC = '#6a6470';
+const STRIP = '#8a7454';
 const TRAM = '#e05ad0';
 // The route is the one cool colour on a warm map, so it is never read as a road.
 const ROUTE = '#48dcff';
@@ -180,6 +184,19 @@ export class MapArt {
       ring(ctx, beach.sand);
     }
     ctx.fill();
+
+    // The runways, the taxiways and the aprons, so an airfield reads as one.
+    for (const field of world.airfields) {
+      if (Math.abs(field.x - (bounds.minX + bounds.maxX) / 2) > (bounds.maxX - bounds.minX) / 2 + field.halfU) continue;
+      if (Math.abs(field.y - (bounds.minY + bounds.maxY) / 2) > (bounds.maxY - bounds.minY) / 2 + field.halfU) continue;
+      for (const part of field.parts) {
+        if (!PAVED.includes(part.kind)) continue;
+        ctx.fillStyle = field.kind === 'airstrip' && part.kind === 'runway' ? STRIP : TARMAC;
+        ctx.beginPath();
+        ring(ctx, partCorners(field, part));
+        ctx.fill();
+      }
+    }
 
     this.strokeRoads(ctx, view, bounds);
 
@@ -418,6 +435,15 @@ function projectInto(view: MapView, width: number, height: number, x: number, y:
 }
 
 /** Add a closed ring to the current path. */
+/** The parts of an airfield the map paints. */
+const PAVED: readonly AirfieldPart['kind'][] = ['runway', 'taxiway', 'apron', 'pad', 'forecourt', 'deck'];
+
+/** The four corners of one part of an airfield, on the map. */
+function partCorners(field: Airfield, part: AirfieldPart): Point[] {
+  const { u, v, halfU, halfV } = part;
+  return [fromLocal(field, u - halfU, v - halfV), fromLocal(field, u + halfU, v - halfV), fromLocal(field, u + halfU, v + halfV), fromLocal(field, u - halfU, v + halfV)];
+}
+
 function ring(ctx: CanvasRenderingContext2D, points: readonly Point[]): void {
   polyline(ctx, points);
   ctx.closePath();

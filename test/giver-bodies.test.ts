@@ -40,6 +40,7 @@ function pois(): MapPois {
     water: { harbour: { x: 0, y: 0, radius: 1 } },
     tram: { stops: [] },
     beaches: [],
+    airfields: [],
   } as unknown as WorldDescription;
   return new MapPois(world);
 }
