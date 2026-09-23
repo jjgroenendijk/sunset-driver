@@ -61,9 +61,10 @@ export function buildCity(seed: number, description: WorldDescription, world: He
   const surfaces = new SurfaceIndex(description);
   const roads = trafficRoadsOf(description);
   const traffic = new AmbientTraffic(seed, roads);
-  // The crowd walks the pavements of the same roads, and is placed once the same way.
+  // The crowd walks the pavements of the same roads, is placed once the same way,
+  // and waits for the same lights to cross.
   const districtAt = crowdDistrictsOf(description);
-  const crowd = new AmbientPedestrians(seed, roads, districtAt);
+  const crowd = new AmbientPedestrians(seed, roads, districtAt, traffic.signals);
   // The kerbs those buses call at (spec section 20.2), gathered from the tours
   // once they are timed: a stop is where a bus stands, not a thing the world
   // description carries.

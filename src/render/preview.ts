@@ -73,7 +73,7 @@ import { FULL_TIER, QUALITY_TIERS } from './quality.ts';
 import { clearPlaceFor, GALLERY_SUBJECTS, layGallery, type Gallery, type GallerySubject } from './preview-gallery.ts';
 import { forgetStage, peopleFor, stageFor, viewFor } from './preview-stage.ts';
 import type { WorldScene } from './world-scene.ts';
-import { namedWeather } from '../sim/weather.ts';
+import { namedWeather, weatherAt } from '../sim/weather.ts';
 import { roomOf, SHOP_KINDS, type Shop } from '../world/shops.ts';
 
 /** Where to stand, how far back to look from, and how big a picture to take. */
@@ -520,6 +520,8 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   tramStops.update(x, y);
   tramSigns.update(tick, x, y);
   busStops.update(x, y);
+  // The crowd puts its umbrellas up in the weather the picture is drawn in.
+  crowd.rain = (weather ?? weatherAt(seed, tick)).rain;
   crowd.update(record, tick, x, y);
   casualties.update(record, tick, x, y);
   guns.update(record);

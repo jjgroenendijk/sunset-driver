@@ -40,6 +40,12 @@ export const SIGNAL_CLEAR = 2 * TICK_RATE;
 /** Ticks of one whole cycle: both axes, each green, amber and clear. */
 export const SIGNAL_CYCLE = SIGNAL_GREEN[0] + SIGNAL_GREEN[1] + 2 * (SIGNAL_AMBER + SIGNAL_CLEAR);
 
+/**
+ * The share of a crossing's time a person may still step onto it in, when the
+ * whole crossing takes longer than that time to walk.
+ */
+const LATE_START = 0.3;
+
 /** The tick of the cycle each axis's green starts on. */
 const GREEN_START: readonly [number, number] = [0, SIGNAL_GREEN[0] + SIGNAL_AMBER + SIGNAL_CLEAR];
 
@@ -104,6 +110,8 @@ export class TrafficSignals {
   private readonly byEdge: Int32Array;
   /** 1 on each node a queue must keep out of: a junction with lights, or a level crossing of the tram. */
   private readonly clear: Uint8Array;
+  /** The junction at each node, or -1. */
+  private readonly byNode: Int32Array;
 
   /** `crossings` are the nodes of the tram's level crossings, which take a light whatever joins them. */
   constructor(seed: number, roads: readonly RoadCurve[], graph: RoadGraph, map: JunctionMap, heightAt: RoadHeight, crossings: readonly number[] = []) {
@@ -163,7 +171,11 @@ export class TrafficSignals {
     this.junctions = junctions;
     this.approaches = approaches;
     this.clear = level;
-    for (const junction of junctions) this.clear[junction.node] = 1;
+    this.byNode = new Int32Array(graph.nodes.length).fill(-1);
+    for (const [i, junction] of junctions.entries()) {
+      this.clear[junction.node] = 1;
+      this.byNode[junction.node] = i;
+    }
   }
 
   /**
@@ -203,6 +215,26 @@ export class TrafficSignals {
   crossingOpen(junction: number, axis: 0 | 1, tick: number): boolean {
     const beside = axis === 0 ? 1 : 0;
     return this.intoGreen(junction, beside, tick) < SIGNAL_GREEN[beside];
+  }
+
+  /**
+   * Ticks a person who reaches the kerb on `tick` waits before stepping onto a
+   * crossing of one axis that takes them `need` ticks to walk. Nobody starts
+   * over once the crossing has closed, nor so late in its time that the
+   * traffic gets its green with them halfway. A crossing too long to walk in
+   * the whole of its time is started in its first moments only.
+   */
+  crossingWait(junction: number, axis: 0 | 1, tick: number, need: number): number {
+    const beside = axis === 0 ? 1 : 0;
+    const green = SIGNAL_GREEN[beside];
+    const into = this.intoGreen(junction, beside, tick);
+    const latest = Math.max(green - need, Math.floor(green * LATE_START));
+    return into <= latest ? 0 : SIGNAL_CYCLE - into;
+  }
+
+  /** The junction at a node, as an index into {@link junctions}, or -1 where the node has no lights. */
+  junctionAt(node: number): number {
+    return this.byNode[node] ?? -1;
   }
 
   /** Ticks since the axis's green last started, 0 to {@link SIGNAL_CYCLE}. */

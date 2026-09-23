@@ -63,9 +63,10 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * emergency units of spec section 20.3: the firefighters and medics out of
  * their doors, what is left of each of them, and the ones who have fallen.
  * Version 20 widened the contraband of spec section 16.2 from six goods to
- * twelve, so every stash holds a row per good of the longer list.
+ * twelve, so every stash holds a row per good of the longer list. Version 21
+ * added the people of the crowd stepping out of the player's way.
  */
-export const SAVE_VERSION = 20;
+export const SAVE_VERSION = 21;
 
 export interface SaveFile {
   format: typeof SAVE_FORMAT;

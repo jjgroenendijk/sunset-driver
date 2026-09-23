@@ -125,13 +125,13 @@ export const ZONE_LOOKS: Record<Zone, ZoneLook> = {
   core: {
     tops: [0x2b2f36, 0x1f2a44, 0xe8e6e1, 0x5a6270, 0x7a1f2b, 0x3c4a5c],
     legs: [0x1c1e22, 0x2a2d33, 0x243047, 0x4b4f56],
-    gaits: { brisk: 5, stroll: 3, amble: 1 },
+    gaits: { brisk: 5, stroll: 3, amble: 1, jog: 0.3, shuffle: 0.3 },
   },
   // The mixed inner districts: bright shirts and denim.
   inner: {
     tops: [0xd9483b, 0x2f8f83, 0xe7b43c, 0x6a4c93, 0xf0efe9, 0x2d5fa8, 0xe07aa4],
     legs: [0x2d4a73, 0x1d2b44, 0x3a3a3a, 0x8a7a5c],
-    gaits: { stroll: 4, brisk: 3, amble: 1 },
+    gaits: { stroll: 4, brisk: 3, amble: 1, jog: 0.3, shuffle: 0.5 },
   },
   // The works: hi-vis orange and yellow, boiler suits, work trousers.
   industrial: {
@@ -143,19 +143,19 @@ export const ZONE_LOOKS: Record<Zone, ZoneLook> = {
   suburban: {
     tops: [0x9cc9e0, 0xf2b8a2, 0xc6e0a0, 0xf6e7a8, 0xffffff, 0xb59ad6],
     legs: [0x4e6d8f, 0xd8cfb8, 0x2f3b4a, 0x7d8a6a],
-    gaits: { stroll: 5, amble: 3, brisk: 1 },
+    gaits: { stroll: 5, amble: 3, brisk: 1, jog: 0.8, shuffle: 0.8 },
   },
   // Farms and small towns: earth colours, work boots.
   outskirts: {
     tops: [0x7a5a3a, 0x4f6b3a, 0xa33a2c, 0x8c8a7a, 0x3d4f63],
     legs: [0x3b4a5c, 0x5a4a36, 0x2c2c2a],
-    gaits: { amble: 4, stroll: 4, brisk: 1 },
+    gaits: { amble: 4, stroll: 4, brisk: 1, shuffle: 0.8 },
   },
   // Walkers and hikers: outdoor jackets.
   wilderness: {
     tops: [0x2f6b4f, 0xd0632b, 0x2b4f8a, 0xc9b23a],
     legs: [0x3a3f3a, 0x4b4436],
-    gaits: { stroll: 3, brisk: 2, amble: 2 },
+    gaits: { stroll: 3, brisk: 2, amble: 2, jog: 1 },
   },
 };
 
@@ -195,7 +195,11 @@ export function lookOf(zone: Zone, rng: Rng): PedestrianLook {
   const gait = pickGait(dress.gaits, rng);
   const [slow, fast] = GAIT_SPEED[gait];
   const speed = rng.range(slow, fast);
-  return { skin, hair, top, legs, height, gait, speed };
+  const blend = rng.range(0, 0.45);
+  // An old person's shuffle stoops; everybody else stands within a little of upright.
+  const lean = gait === 'shuffle' ? rng.range(0.25, 0.4) : rng.range(-0.04, 0.1);
+  const umbrella = rng.float();
+  return { skin, hair, top, legs, height, gait, speed, blend, lean, umbrella };
 }
 
 /** Metres one cycle of a gait covers for a person of a height. */

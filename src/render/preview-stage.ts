@@ -141,7 +141,7 @@ export function peopleFor(): PreviewPeople {
     const ambient = new AmbientTraffic(seed, roads);
     const line = new TramLine(seed, roads, world.tram, world.districts, ambient.signals);
     const districtAt = crowdDistrictsOf(world);
-    const walkers = new AmbientPedestrians(seed, roads, districtAt);
+    const walkers = new AmbientPedestrians(seed, roads, districtAt, ambient.signals);
     const stops = new BusStops(seed, ambient, districtAt);
     held.people = {
       traffic: new TrafficView(ambient),

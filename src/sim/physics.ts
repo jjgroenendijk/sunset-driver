@@ -40,6 +40,7 @@ import { cos as cosOf, hypot, sin as sinOf } from '../core/libm.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { TICK_RATE } from './clock.ts';
 import { stepCrowdReactions } from './crowd-reaction.ts';
+import { stepMakeWay } from './make-way.ts';
 import { stepCasualties, type CasualtyGround } from './casualty.ts';
 import { strikeCrowd, type CarStrike } from './car-strike.ts';
 import { stepFires } from './fire.ts';
@@ -273,6 +274,8 @@ export class SimPhysics extends GroundPlaces {
     // before the traffic is aimed at the next tick.
     if (state.player.driving) this.giveWay?.step(state, v.x, v.z, this.casualtyGround);
     else this.giveWay?.step(state, state.player.x, state.player.y, this.casualtyGround);
+    // The people round the player on foot step out of their way (`make-way.ts`).
+    if (this.ground.crowd !== undefined) stepMakeWay(state, this.ground.crowd, this.ids);
     // The traffic is aimed at the next tick once the player's own move is known.
     if (state.player.driving) this.traffic?.lead(state, v.x, v.z, this.ground.parked);
     else this.traffic?.lead(state, state.player.x, state.player.y, this.ground.parked);

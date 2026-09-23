@@ -97,7 +97,8 @@ export function stepCrowdReactions(state: SimState, crowd: CrowdSource, crash: n
     crowd.startle(state.pedestrians, state.tick, v.x, v.z, CRASH_FLEE, 'flee', ids);
     crowd.startle(state.pedestrians, state.tick, v.x, v.z, CRASH_WATCH, 'gather', ids);
   } else if (state.player.driving && hypot(v.vx, v.vz) >= CAR_SPEED) {
-    crowd.startle(state.pedestrians, state.tick, v.x, v.z, CAR_REACH, 'scatter', ids);
+    // Out of its way, and then they turn and shout after it.
+    crowd.startle(state.pedestrians, state.tick, v.x, v.z, CAR_REACH, 'dodge', ids);
   }
   const p = state.player;
   releaseFar(state.pedestrians, state.tick, p.driving ? v.x : p.x, p.driving ? v.z : p.y, RELEASE_FAR);
