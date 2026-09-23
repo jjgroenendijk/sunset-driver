@@ -6,9 +6,10 @@
  * ticks apart agree on the rain without exchanging a byte. A save carries the
  * tick, so it carries the weather.
  *
- * The day is cut into spells of {@link SPELL_TICKS}. Each spell draws a kind
- * and a strength from its own stream, and a spell hands over to the next across
- * {@link TURN_TICKS} so nothing on screen or under the tyres jumps.
+ * The day is cut into spells of {@link SPELL_TICKS}, which change on the odd
+ * hours ({@link SPELL_SHIFT}). Each spell draws a kind and a strength from its
+ * own stream, and a spell hands over to the next across {@link TURN_TICKS} so
+ * nothing on screen or under the tyres jumps.
  *
  * Wetness is the one quantity with a memory: a road stays wet after the rain
  * has stopped, and dries over about {@link DRY_TICKS}. It is still a function
@@ -32,6 +33,14 @@ export type WeatherKind = 'clear' | 'rain' | 'fog' | 'storm';
 
 /** Ticks one spell of weather lasts: two game hours, which is two real minutes. */
 export const SPELL_TICKS = TICKS_PER_HOUR * 2;
+
+/**
+ * Ticks the spells are moved forward by, so they change on the odd hours. A
+ * session starts at 08:00 and a preview lights noon. On a change the weather is
+ * half of each spell, and it rains if either spell rains, so a start on a
+ * change saw rain on more than half of the seeds rather than on a third.
+ */
+export const SPELL_SHIFT = TICKS_PER_HOUR;
 
 /**
  * Ticks a spell takes to hand over to the next, centred on the boundary
@@ -98,10 +107,10 @@ const PROFILES: Record<WeatherKind, Profile> = {
  * rare. The numbers are shares of the whole and add to 1.
  */
 const ODDS: readonly (readonly [WeatherKind, number])[] = [
-  ['clear', 0.52],
-  ['rain', 0.24],
-  ['fog', 0.14],
-  ['storm', 0.1],
+  ['clear', 0.66],
+  ['rain', 0.14],
+  ['fog', 0.12],
+  ['storm', 0.08],
 ];
 
 /** The weakest a spell may come out, as a share of its profile. */
@@ -146,8 +155,9 @@ export function wetnessAt(seed: number, tick: number): number {
 
 /** The spell a tick falls in, blended with its neighbour across the turn. */
 function spellAt(seed: number, tick: number): Weather {
-  const index = Math.floor(tick / SPELL_TICKS);
-  const into = tick - index * SPELL_TICKS;
+  const shifted = tick + SPELL_SHIFT;
+  const index = Math.floor(shifted / SPELL_TICKS);
+  const into = shifted - index * SPELL_TICKS;
   const half = TURN_TICKS / 2;
   const here = drawSpell(seed, index);
   if (into < half) return mix(drawSpell(seed, index - 1), here, 0.5 + into / TURN_TICKS);

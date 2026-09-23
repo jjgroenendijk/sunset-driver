@@ -17,6 +17,11 @@ light it bends and `src/render/weather-fx.ts` the rain, the puddles and the litt
   weather. The day is cut into spells of `SPELL_TICKS` — two game hours — and each spell draws its
   kind and its strength from its own stream. A spell hands over to the next across `TURN_TICKS`, so
   nothing on screen or under the tyres jumps.
+- Spells change on the odd hours (`SPELL_SHIFT`), so a session's 08:00 and a preview's noon fall in
+  the middle of a spell. On a change the weather is half of each spell, and it rains if either
+  spell rains. When spells changed on the even hours, rain fell at the start on 55% of seeds,
+  though only a third of spells rained. Now it is about 22%: rain and storm are 22% of the odds,
+  and clear is 66%.
 - Wetness is the one quantity with a memory, and it still holds no state: `wetnessAt` reads the rain
   of the last `WET_HORIZON` ticks backwards and weights each sample by how long ago it fell. So a
   session joined at any tick sees the same puddles as one that watched it rain, and a replay drives
