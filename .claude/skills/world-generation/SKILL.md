@@ -19,6 +19,8 @@ a slip at the edit.
   beds and the carve, ribbons and vegetation, chunks and the sweeps.
 - `docs/roads.md` — the tensor field, tracing, highways, the tiers and the fill, interchanges and
   crossings, the graph and the footprint.
+- `docs/interchanges.md` — the diamonds, the ramp line and its landings, and one-way roads in the
+  graph and the sim.
 - `docs/corridors.md` — the corridors, the piers under the decks and the tram track.
 - `docs/aircraft.md` — the airfields: where they stand, the road to the gate, the ground they claim.
 

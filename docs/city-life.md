@@ -34,7 +34,8 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   of a wide one over all its lanes. Each vehicle drives the closed tour
   `traffic-tour.ts` walks for it, at `CRUISE` of the speed limit of each edge. No tour reads
   another, so two tours can put two vehicles on the same ground. Near the player, giving way
-  (below) keeps them apart.
+  (below) keeps them apart. A ramp is one way, so a tour that drives one is closed by a route back
+  to its start rather than by driving its legs in reverse (`docs/interchanges.md`).
 - A tour is steps, not legs: `traffic-timing.ts` lays each one down as a drive over part of a leg or
   a wait in one place, in a whole number of ticks. That is why `cursorAt` (evaluated) and `advance`
   (stepped) agree exactly rather than to a rounding, and why `test/traffic.test.ts` and

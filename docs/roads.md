@@ -2,7 +2,8 @@
 
 The gotchas of the road half of `src/world`: the field a road follows, what a trace refuses, and
 how the tiers, the interchanges and the crossings are decided. `spec.md` section 6 is the design.
-The ground the roads are laid on is in `docs/world-generation.md`.
+The ground the roads are laid on is in `docs/world-generation.md`, and the diamond interchanges and
+their one-way ramps in `docs/interchanges.md`.
 
 ## Contents
 
@@ -172,9 +173,11 @@ The ground the roads are laid on is in `docs/world-generation.md`.
 ## Interchanges and crossings
 
 - Two tiers meet under two rules, both in `tiers.ts`. `mayJoin` says where they may exchange
-  traffic: a highway takes a junction only at an interchange, so a highway or an arterial ramp joins
-  one there and a street, alley or dirt road never joins a highway anywhere. `interchangesOf` places
-  the interchanges along the curve and `RoadCurve.interchanges` lists the point indices.
+  traffic: a highway takes a junction only at an interchange, and a street, alley or dirt road never
+  joins a highway anywhere. A highway joins another at an interchange. An arterial never meets one
+  at grade: it reaches the highway over the ramps of a diamond (`docs/interchanges.md`).
+  `interchangesOf` places the interchanges along the curve and `RoadCurve.interchanges` lists the
+  point indices.
 - `mayCross` says where they may meet at all. A grade separation is a severance — a place two roads
   pass and can never turn onto each other — so it is only worth the ground it takes where both roads
   carry the traffic for it. A highway's right-of-way is ground a minor road may not cross: only a
@@ -189,7 +192,9 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   `COUNTRY_DECK` in the middle of the stretch. The level segments of a deck are its `slots`. A
   highway that passes under an earlier one stays on the ground there. `NetworkClearance` refuses
   every step of a later road that crosses a highway away from a slot, so every highway crossing is
-  at a slot or an interchange by construction.
+  at a slot or an interchange by construction. At most one road passes under the slots of each
+  stretch between two interchanges; the next one has to reach the highway at an interchange
+  (issue #676, A4). `test/seed-interchanges.test.ts` bounds the slot crossings per kilometre.
 - A deck over water is raised clear of the sea (`water-lift.ts`, called from `addCurve`, issue
   #304). Both abutments of a strait crossing stand at the shore, so without a lift the deck is a
   straight line about a metre over the water and its underside, `DECK_SOFFIT` below the surface it
@@ -198,9 +203,11 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   carries a road over another one. The foot of a ramp carries no lift, so it lands on the first
   point that may not be raised: the end of the line, the far end of a bore, an interchange, a point
   the network already has a junction on, or a place the line passes under a highway. The end of a
-  line is a node it shares with the roads it joins, and raising it would make them climb to it. A
-  deck with nowhere to ramp keeps the height its shores give it, which over the 500 sweep seeds is
-  about a third of the decks over water.
+  line is a node it shares with the roads it joins, and raising it would make them climb to it. An
+  island link's deck is therefore split where it leaves and meets the water, so the dry line under
+  it carries the ramp (issue #676, D1). A deck with nowhere to ramp keeps the height its shores give
+  it. Over the 500 sweep seeds 945 of 1477 decks over water are lifted the full clearance, and 138
+  have their underside in the sea, most of them next to a bore.
 - **A ramp is an embankment, not a viaduct, and an embankment is ground.** `raised` lists every
   segment it lifts as a deck, which is what the level top of an overpass is; `onFill` in
   `road-route.ts` gives back to the ground every segment of a water raise the carve can make up —
@@ -284,6 +291,8 @@ The ground the roads are laid on is in `docs/world-generation.md`.
   the index. `grade-crossings.ts` finds them, and `graph-index.ts` is the grid of buckets behind
   them and behind `nearestNode` and `nearestEdge`. `shortestPath(from, to, allow?)` narrows the
   network to the edges `allow` accepts, which is how the tram is routed over the arterials alone.
+  It searches over edges, not nodes, so it keeps to `turnAllowed` where a one-way ramp lands
+  (`docs/interchanges.md`). Every road but a ramp is a pair of edges, each the other's `twin`.
   `tiers.ts` holds the width, verge, pavement, lanes, speed limit, permitted traffic and maximum
   grade of each tier; nothing else should carry those numbers.
 - `buildFootprint(world, graph)` (`footprint.ts`) is the ground the roads claim (spec
