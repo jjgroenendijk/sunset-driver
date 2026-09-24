@@ -82,10 +82,15 @@ const SUN_HIGH = 0xfff1d8;
 /** The sun's strength at its highest, in the renderer's units. */
 const SUN_INTENSITY = 3.2;
 
-/** Sky light: the colour from above and the bounce from below, by day and by night. */
-const SKY_FILL_DAY = 0xbcd7f4;
+/**
+ * Sky light: the colour from above and the bounce from below, by day and by
+ * night. The day sky is a pale lavender, so that with the warm sun the light on
+ * a lit surface sums to a warm white. A bluer sky outweighed the sun on blue
+ * and turned the cream pavements grey.
+ */
+const SKY_FILL_DAY = 0xc6cce0;
 const GROUND_FILL_DAY = 0x6b5e48;
-const SKY_FILL_NIGHT = 0x58668a;
+const SKY_FILL_NIGHT = 0x5a5a96;
 const GROUND_FILL_NIGHT = 0x3a3440;
 
 /**
@@ -96,10 +101,12 @@ const GROUND_FILL_NIGHT = 0x3a3440;
  * the street under a tower still came out as dusk at noon, which is what this
  * number was raised for. The night fill is moonlight: strong enough that a
  * street with no lamp still shows its kerbs, its cars and its people. Weaker,
- * and a night frame away from the lamps was black.
+ * and a night frame away from the lamps was black. It is set against the pale
+ * colours of the palette: at the strength the dark asphalt once needed, the
+ * night street came out a bright blue.
  */
 const FILL_DAY = 3.6;
-const FILL_NIGHT = 3.0;
+const FILL_NIGHT = 0.85;
 
 /** The haze the far chunks fade into: by day, at dusk and at night. */
 const HAZE_DAY = 0x9ab0c0;

@@ -32,7 +32,6 @@ import { Box3, BufferAttribute, BufferGeometry, Color, Matrix4, Quaternion, Vect
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
   SkyscraperGenerator,
-  pickBuildingColor,
   type SkyscraperGeneratorParameters,
 } from 'three/examples/jsm/generators/city/SkyscraperGenerator.js';
 import type { Point } from '../core/geom.ts';
@@ -151,18 +150,20 @@ const MIN_TERRACE = 4;
 type TierParameters = Partial<SkyscraperGeneratorParameters> & { baseStyle?: 'arcade' | 'storefront' };
 
 /**
- * The colours each kind of block is built in. A tower takes the masonry palette
- * of the generator instead, which is what its material is written against.
+ * The colours each kind of block is built in, in the bright key of
+ * `docs/art-style.md`. A generated tower takes {@link MASONRY_PALETTE} instead.
  */
 const BLOCK_PALETTE: Record<BuildingKind, readonly number[]> = {
-  tower: [0xb4afa1],
-  'mid-rise': [0xb0a99d, 0xa89c8a, 0xbcae97],
-  // Bare concrete.
-  'parking-garage': [0xa7a59f, 0x9d9c98],
-  'shop-row': [0xc9b394, 0xd0a07c, 0xb9a88c, 0xcdc0a6],
-  house: [0xd8c9a8, 0xc9b190, 0xbfc2ad, 0xd6b7a2, 0xc0ccc6, 0xe0d3b6],
-  warehouse: [0x9aa0a2, 0x8e8f8a, 0xa39a8c],
-  roadhouse: [0xd2c6ad, 0xc2a98c, 0xcfb9a0],
+  tower: [0xe3cfae],
+  'mid-rise': [0xd98b62, 0xd9b84a, 0xe8c9a0, 0xc98f9a],
+  // Bare concrete, in the warm lavender grey every grey surface takes.
+  'parking-garage': [0xbdb3c4, 0xaea6bd],
+  // Stucco shopfronts: coral, mustard, cream, rose and sage.
+  'shop-row': [0xd98b62, 0xd9b84a, 0xeddcb8, 0xe0a0a0, 0xa9c49a],
+  house: [0xd98b62, 0xd9b84a, 0xf1e2c0, 0xe6a98e, 0xb7d0c0, 0xe8c56e],
+  // Painted cladding: sage, periwinkle and brick.
+  warehouse: [0x9dbba4, 0xa4a8d0, 0xc98466],
+  roadhouse: [0xe6c98e, 0xd99870, 0xf0dcb4],
 };
 
 /** What a building's geometry asks about the world around it. */
@@ -368,17 +369,26 @@ export function buildingDrawCalls(chunk: WorldChunk): number {
 }
 
 /**
+ * The dressed stone a generated masonry tower is built in: cream limestone,
+ * sandstone, rose and ochre, and a lavender stone where the generator's own
+ * palette has granite. The generator's palette is limestone and grey, which
+ * reads as neutral grey in the bright key; its material weathers whatever
+ * colour it is given, so the stone changes and the soot and the grime stay.
+ */
+const MASONRY_PALETTE: readonly number[] = [0xeadfc4, 0xe3cfae, 0xf0e4c8, 0xdcb99a, 0xe6c79a, 0xc9bccf, 0xd9a889];
+
+/**
  * The colour a building is dressed in, from its style and its own seed (spec
  * section 10.3). Each of the four styled looks carries its own palette, so a
- * glass tower is glass-coloured wherever it stands; classical masonry keeps the
- * generator's palette, which its own material is written against.
+ * glass tower is glass-coloured wherever it stands; classical masonry is drawn
+ * from {@link MASONRY_PALETTE}.
  */
 function tintOf(building: Building, look: BuildingStyle, batch: BuildingBatch): Rgb {
   const hex =
     look !== 'masonry'
       ? styleColour(look, building.seed)
       : batch === 'facade'
-        ? pickBuildingColor(building.seed)
+        ? (MASONRY_PALETTE[hashInts(building.seed, 62) % MASONRY_PALETTE.length] as number)
         : (BLOCK_PALETTE[building.kind][hashInts(building.seed, 2) % BLOCK_PALETTE[building.kind].length] as number);
   const colour = new Color(hex);
   return [colour.r, colour.g, colour.b];

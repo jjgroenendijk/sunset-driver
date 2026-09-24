@@ -23,18 +23,18 @@ export const CORNER_DRAW_CAP = 64;
 /** One box of a prop: its size along, up and across, and its middle. */
 type Box = readonly [length: number, height: number, width: number, x: number, y: number, z: number, colour: number];
 
-const WOOD = 0x6b4a2f;
+const WOOD = 0x9a6a4a;
 const CANVAS = 0xc9412f;
 const STRIPE = 0xf1ece0;
-const STEEL = 0xb8bcc2;
-const DARK = 0x1d1e22;
+const STEEL = 0xc9c4d8;
+const DARK = 0x3a3148;
 
 /** The boxes of each prop. */
 export const PROP_BOXES: Record<CornerProp, readonly Box[]> = {
   // A small practice amp on the pavement, its grille to the road.
   amp: [
     [0.26, 0.34, 0.42, 0, 0.17, 0, DARK],
-    [0.02, 0.22, 0.34, 0.135, 0.18, 0, 0x3a3a3a],
+    [0.02, 0.22, 0.34, 0.135, 0.18, 0, 0x4a4060],
   ],
   // A steel cart on two wheels, with a striped umbrella over it.
   cart: [

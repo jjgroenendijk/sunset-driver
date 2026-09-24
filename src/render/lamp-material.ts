@@ -20,7 +20,7 @@ import { LAMP_LENS } from './lamp-mesh.ts';
 import { attribute, float, mix, step, uniform, vec3, type TslNode } from './tsl.ts';
 
 /** The painted mast, and the glass under the lantern when it is dark. */
-const MAST = 0x4b4f52;
+const MAST = 0x2e8c8a;
 const LENS = 0xffe0a8;
 
 /** How hard the lens burns when the lamps are full on. */

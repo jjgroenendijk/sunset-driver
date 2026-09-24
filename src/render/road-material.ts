@@ -24,23 +24,26 @@ import { attribute, float, floor, fract, fractalNoise, max, mix, positionWorld, 
 const GRAIN_METRES = 1.6;
 const PATCH_METRES = 26;
 
-/** Concrete: every deck, parapet, pier and portal, whatever tier carries it. */
-const CONCRETE = 0x8f8c85;
+/**
+ * Concrete: every deck, parapet, pier and portal, whatever tier carries it. It
+ * is a warm lavender grey, as every grey surface is (`docs/art-style.md`).
+ */
+const CONCRETE = 0xb4abb8;
 /**
  * The tram's lane: granite setts where it is paved, cut grass where it is open,
  * steel rails with a dark groove down each head, and a pale concrete panel at a
  * level crossing, outlined in white paint.
  */
-const SETTS_RGB = 0x6f6a63;
-const SETTS_JOINT_RGB = 0x4a453f;
-const TRACK_GRASS_RGB = 0x53703a;
-const RAIL_RGB = 0xa9aaae;
-const GROOVE_RGB = 0x2a2724;
-const CROSSING_RGB = 0xb3ab98;
-const CROSSING_MARK_RGB = 0xd7d4cb;
+const SETTS_RGB = 0x8c86a8;
+const SETTS_JOINT_RGB = 0x746c92;
+const TRACK_GRASS_RGB = 0x8fb04a;
+const RAIL_RGB = 0xc9c4d8;
+const GROOVE_RGB = 0x3a3148;
+const CROSSING_RGB = 0xe0d6bb;
+const CROSSING_MARK_RGB = 0xf6f1e4;
 /** The overhead line: galvanised masts, and a copper contact wire gone dark. */
-const CATENARY_RGB = 0x71747a;
-const WIRE_RGB = 0x3b3631;
+const CATENARY_RGB = 0x8a84a0;
+const WIRE_RGB = 0x4a3a52;
 
 /** Metres of one sett, along the track and across it. */
 const SETT_LONG = 0.34;
@@ -68,18 +71,19 @@ interface TierPalette {
 }
 
 const PALETTE: Record<RoadTier, TierPalette> = {
-  // Fresh asphalt on the fast roads. The verge is a paved hard shoulder of
-  // older, paler asphalt, with a strip of gravel at its back.
-  highway: { carriageway: 0x37383c, verge: 0x4b4b4c, pavement: 0x7a7468, roughness: 0.82, shoulder: 3 },
-  // Worn asphalt between granite kerbs and concrete pavements.
-  arterial: { carriageway: 0x3e3f43, verge: 0x84827d, pavement: 0x9c988f, roughness: 0.86 },
-  // A ramp is the highway's asphalt, with the same paved hard shoulder.
-  ramp: { carriageway: 0x37383c, verge: 0x4b4b4c, pavement: 0x7a7468, roughness: 0.82, shoulder: 2 },
-  street: { carriageway: 0x44454a, verge: 0x84827d, pavement: 0x97938b, roughness: 0.88 },
-  // Unmarked and patched, kerb to kerb: an alley is all carriageway.
-  alley: { carriageway: 0x393731, verge: 0x393731, pavement: 0x393731, roughness: 0.94 },
-  // Unpaved, with the dust of the outskirts on the shoulder.
-  dirt: { carriageway: 0x8a7350, verge: 0x76703f, pavement: 0x76703f, roughness: 0.97 },
+  // Periwinkle stone on the fast roads, a shade deeper than the town's. The
+  // verge is a paved hard shoulder of paler stone, with a strip of gravel at
+  // its back.
+  highway: { carriageway: 0x8a8db6, verge: 0xa39fbb, pavement: 0xcfc3a6, roughness: 0.82, shoulder: 3 },
+  // Periwinkle slabs between lavender kerbs and cream pavements.
+  arterial: { carriageway: 0x979abf, verge: 0xa1979f, pavement: 0xe7dec2, roughness: 0.86 },
+  // A ramp is the highway's stone, with the same paved hard shoulder.
+  ramp: { carriageway: 0x8a8db6, verge: 0xa39fbb, pavement: 0xcfc3a6, roughness: 0.82, shoulder: 2 },
+  street: { carriageway: 0x9ea0c4, verge: 0xa1979f, pavement: 0xe7dec2, roughness: 0.88 },
+  // Unmarked and patched, wall to wall: an alley is all carriageway.
+  alley: { carriageway: 0x8b86a6, verge: 0x8b86a6, pavement: 0x8b86a6, roughness: 0.94 },
+  // Unpaved ochre, with the dust of the outskirts on the shoulder.
+  dirt: { carriageway: 0xc99a5c, verge: 0xc2ab5a, pavement: 0xc2ab5a, roughness: 0.97 },
 };
 
 /** The material one tier's roads are drawn with, shared by every chunk of a world. */

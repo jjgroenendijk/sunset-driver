@@ -105,14 +105,14 @@ const DISTORTION = 1.2;
  * The colour of the water itself, as an albedo: what it gives back of the light
  * that falls on it, before the mirror is mixed in. It is lit like the ground.
  */
-const WATER_COLOUR = 0x174a5a;
+const WATER_COLOUR = 0x248a88;
 
 /**
  * The colour the water keeps when no light falls on it. By day it is lost under
  * the lit colour. At night it is what keeps the sea a dark blue, with its waves
  * in relief, rather than as black as the land.
  */
-const NIGHT_WATER = 0x10323c;
+const NIGHT_WATER = 0x1f2a5a;
 
 /** The water of one world: one mesh, and the texture and geometry it owns. */
 export interface WaterSurface {

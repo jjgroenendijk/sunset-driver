@@ -77,6 +77,14 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
 - The Preetham sky answers in real sky brightness, so the frame is tone mapped and `EXPOSURE` in
   `renderer.ts` is the one number every light in the game is set against. Change a light's strength
   only against a rendered frame.
+- A colour in a material is the colour on screen where the noon sun falls on it
+  (`docs/art-style.md`). three.js divides diffuse light by π, so the sun and the sky fill at
+  `SUN_INTENSITY` and `FILL_DAY`, times `EXPOSURE`, come to about 1 on a lit flat surface. The
+  tone map is `NeutralToneMapping`, which keeps hue and saturation up to near white. ACES washed
+  every pale colour to white and pulled it toward blue.
+- The sky fill decides the tint of the lit sum. `SKY_FILL_DAY` is a pale lavender, so the sum with
+  the warm sun is a warm white. A blue fill, stronger on blue than the sun is on red, turned cream
+  into grey.
 - `WorldScene.time = tick` sets the weather of spec section 13.4 as well as the light, and `apply`
   lays one over the other. `docs/weather.md` is the whole of that.
 
@@ -175,7 +183,7 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
 
 ## The light budget
 
-- A light source glows only if it clears `BLOOM_THRESHOLD` (`post.ts`) after the exposure of 0.62.
+- A light source glows only if it clears `BLOOM_THRESHOLD` (`post.ts`) after the exposure of 0.56.
   A window, a siren or a flame at colour 1 stays under it, so each burns at a gain of its own
   (`WINDOW_GAIN`, `BAR_GLOW`, `FLAME_GAIN`). The bloom reads only the light over the threshold.
   The addon's own pass reads the whole pixel, and a tower of lit windows seen from the street

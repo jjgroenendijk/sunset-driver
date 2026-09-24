@@ -36,7 +36,7 @@ const LENSES: readonly { light: Light; y: number; lit: number; dark: number }[] 
   { light: 'green', y: HOUSING_Y - 0.38, lit: 0x30ff70, dark: 0x103a1c },
 ];
 
-const FRAME_COLOUR = 0x2a2d31;
+const FRAME_COLOUR = 0x3a3a6a;
 
 /**
  * The pole, the arm and the housing of one head, in the head's own frame: the

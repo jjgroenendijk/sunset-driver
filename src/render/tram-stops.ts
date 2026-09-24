@@ -27,13 +27,13 @@ import { createVehicleTrim, type VehicleTrim } from './vehicle-glow.ts';
 export const TRAM_STOP_VIEW = TRAFFIC_VIEW;
 
 /** The concrete of the platform, its kerb, and the tactile strip along the edge. */
-const PLATFORM = 0x9c988f;
-const KERB = 0xb6b1a6;
-const TACTILE = 0xc9a63c;
+const PLATFORM = 0xe0d6bb;
+const KERB = 0xa1979f;
+const TACTILE = 0xf2c81e;
 /** The paint of the mast and the flag it carries. */
-const POST_PAINT = 0x2f4f6f;
+const POST_PAINT = 0x2f5fc4;
 /** The case the timetable panel is set in, behind its lettering. */
-const PANEL_CASE = 0x1b1f24;
+const PANEL_CASE = 0x3a3148;
 const SIGN_FACE = 0xf2efe6;
 
 /**

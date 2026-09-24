@@ -221,12 +221,12 @@ function writeColour(into: Float32Array, vertex: number, rgb: Rgb): void {
  * far apart they are, and from the cover painted over them.
  */
 const ZONE_RGB: Record<Zone, Rgb> = {
-  core: rgbOf(0x6f6a66),
-  inner: rgbOf(0x7d6a55),
-  industrial: rgbOf(0x5e6167),
-  suburban: rgbOf(0x6d7a56),
-  outskirts: rgbOf(0x8b7b58),
-  wilderness: rgbOf(0x54693f),
+  core: rgbOf(0xc9bca8),
+  inner: rgbOf(0xd0b38c),
+  industrial: rgbOf(0xa9a0b4),
+  suburban: rgbOf(0xa9bf5a),
+  outskirts: rgbOf(0xdabe40),
+  wilderness: rgbOf(0x86a845),
 };
 
 /**
@@ -235,12 +235,12 @@ const ZONE_RGB: Record<Zone, Rgb> = {
  * what covers it is the sea.
  */
 const COVER_RGB: Record<ParcelOwner, Rgb | undefined> = {
-  building: rgbOf(0x5b5249),
-  park: rgbOf(0x4d7a37),
-  'car-park': rgbOf(0x56585b),
-  plaza: rgbOf(0x8a8880),
-  'under-structure': rgbOf(0x4a4844),
-  beach: rgbOf(0xd9c48c),
+  building: rgbOf(0xdcc9a0),
+  park: rgbOf(0x9cc24a),
+  'car-park': rgbOf(0x9d98bb),
+  plaza: rgbOf(0xe7dec2),
+  'under-structure': rgbOf(0x8e86a0),
+  beach: rgbOf(0xf0dca6),
   water: undefined,
-  ground: rgbOf(0x6d7a45),
+  ground: rgbOf(0xb0c24e),
 };

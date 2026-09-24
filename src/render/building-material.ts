@@ -100,29 +100,32 @@ const STOREY = 3.2;
 const WINDOW_PITCH = 2.2;
 const MULLION = 0.28;
 
-/** Glass by day: dark, and darker still where it faces away from the sky. */
-const GLAZING = 0x2a3338;
+/**
+ * Glass by day: a deep cobalt, and darker still where it faces away from the
+ * sky. It is the one dark surface of a wall, so it keeps a hue.
+ */
+const GLAZING = 0x2e3a6a;
 
 /** The dark of every outline (spec section 10.1). */
 const OUTLINE = 0x150f12;
 
-/** Roofs and trim, which are the same felt and concrete whatever stands under them. */
-const ROOF = 0x4a4742;
-const TRIM = 0xb9b4a8;
+/** Roofs and trim: terracotta over cream, whatever stands under them. */
+const ROOF = 0xcc6a3b;
+const TRIM = 0xefe6cf;
 
 /**
  * The surfaces a dressed roof and a varied low-rise building add (spec section
  * 10.3). Each is one value of the `part` attribute, so they all share the one
  * block material and no building costs a draw call for its dressing.
  */
-const MEMBRANE = 0xd7d5cc;
-const PLANTED = 0x5c7a43;
-const SOLAR = 0x1b2440;
-const METAL = 0x9aa1a4;
-const TILE = 0xa85a3c;
-const SLATE = 0x545a62;
-const WATER = 0x2f7f9c;
-const PAINT = 0xe6e2d6;
+const MEMBRANE = 0xece4d2;
+const PLANTED = 0x9cc24a;
+const SOLAR = 0x2f3f86;
+const METAL = 0xb3b0cc;
+const TILE = 0xcc6a3b;
+const SLATE = 0x6f6d9a;
+const WATER = 0x5fd0c8;
+const PAINT = 0xf4efe2;
 
 /**
  * What the block's colour is scaled by, because it is lit by the Lambert model
@@ -147,7 +150,7 @@ const MULLION_SHARE = 0.1;
 /** How much of a floor is spandrel rather than vision glass. */
 const SPANDREL_SHARE = 0.34;
 /** The mullion of a curtain wall, and how much darker a pane is than its tint. */
-const MULLION_COLOUR = 0x8f9499;
+const MULLION_COLOUR = 0xb8b3cc;
 
 /**
  * The punched window each styled wall carries, drawn in the shader: how far
@@ -171,8 +174,8 @@ const PORTHOLE = { across: 0.42, up: 0.55, radius: 0.26 };
 const BOARD_METRES = 0.45;
 
 /** The concrete a crown and a beacon post are cast in by daylight. */
-const CROWN = 0xc3bdb1;
-const LAMP_OFF = 0x5c2420;
+const CROWN = 0xe0d4c0;
+const LAMP_OFF = 0x8a2e3a;
 
 /**
  * The block's material. Every node material draws an `emissiveNode`, but the
