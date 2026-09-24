@@ -7,8 +7,11 @@
  * block. Both speak of a seed and a plan, so the two types and the zone table
  * they read live here rather than in either of them.
  */
-import type { RoadTier, Zone } from './types.ts';
+import { atan2, cos, sin } from '../core/libm.ts';
+import { directionDelta, dist } from '../core/math.ts';
 import type { TierParams } from './road-trace.ts';
+import type { TensorField } from './tensor.ts';
+import type { Point, RoadCurve, RoadTier, Zone } from './types.ts';
 
 /**
  * What the minor fill lays in each zone: the tier, and the metres between
@@ -117,4 +120,66 @@ export interface FillSeed {
   depth: number;
   /** True when the seed sits on its parent, so the road it grows is joined to the network from its first point. */
   onParent: boolean;
+}
+
+/** What {@link seedAlong} lays besides the two roads parallel to the curve. */
+interface SeedOptions {
+  /**
+   * The tier being seeded may junction with a highway. Only the arterial fill
+   * sets it, and even then a seed stands on a highway only at one of its
+   * interchanges (spec section 6.2).
+   */
+  ramps?: boolean;
+}
+
+/**
+ * Seeds for the next generation of the fill. Along a curve: one seed to each
+ * side, pointing the same way, and one on the curve itself pointing across it.
+ * The first two lay the parallel roads that carry the traffic, the third the
+ * cross streets that tie them together.
+ *
+ * A zone has two spacings, so which one a seed is placed at depends on which
+ * way the curve runs here. The side seeds go out at the spacing of the curve's
+ * own family — an avenue's neighbour is another avenue — and the seeds are
+ * dropped along the curve at the spacing of the other family, because that is
+ * the cadence of the cross streets. Both are asked for at each point, so they
+ * follow the district under it.
+ */
+export function seedAlong(
+  curve: RoadCurve,
+  field: TensorField,
+  spacingAt: SpacingAt,
+  depth: number,
+  out: FillSeed[],
+  opts: SeedOptions = {},
+): void {
+  const points = curve.points;
+  let run: number | undefined;
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i] as Point;
+    const b = points[i + 1] as Point;
+    const seg = dist(a.x, a.y, b.x, b.y);
+    if (seg === 0) continue;
+    const along = atan2(b.y - a.y, b.x - a.x);
+    // Which family this stretch of the curve belongs to: with the field's major
+    // direction, or across it.
+    const runsAcross = directionDelta(field.majorAt(b.x, b.y), along) > Math.PI / 4;
+    const step = spacingAt(b.x, b.y, !runsAcross);
+    // A deck or a bore seeds nothing: there is no ground beside the road there.
+    const structure = curve.bridges.includes(i) || curve.tunnels.includes(i);
+    run = (run ?? step / 2) + seg;
+    if (run < step || structure) continue;
+    run -= step;
+    const side = spacingAt(b.x, b.y, runsAcross);
+    const nx = -sin(along) * side;
+    const ny = cos(along) * side;
+    for (const hand of [1, -1]) {
+      out.push({ x: b.x + nx * hand, y: b.y + ny * hand, along, parent: curve.id, depth, onParent: false });
+    }
+    // A seed on the curve itself grows a road out of a junction with it. A
+    // highway takes one only at an interchange, and only from an arterial ramp
+    // (spec section 6.2), so the minor fill seeds nothing on one.
+    const junctionable = curve.tier !== 'highway' || (opts.ramps === true && curve.interchanges.includes(i + 1));
+    if (junctionable) out.push({ x: b.x, y: b.y, along: along + Math.PI / 2, parent: curve.id, depth, onParent: true });
+  }
 }
