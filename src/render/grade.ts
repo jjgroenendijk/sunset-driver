@@ -108,16 +108,17 @@ const DUSK_GRADE: ColourGrade = {
 };
 
 /**
- * The grade after dark. The shadows go blue and the colour comes down, so the
- * neon and the lit windows are what carries the frame rather than competing
- * with a street that is still trying to be brown.
+ * The grade after dark. The colour comes down, so the neon and the lit windows
+ * carry the frame. The lift leans the dark toward indigo, so no street is ever
+ * black; the gain cools the light only a little, or the indigo of the shadow
+ * colour (`shade.ts`) went a royal blue.
  */
 const NIGHT_GRADE: ColourGrade = {
   key: 1,
-  contrast: 1.04,
+  contrast: 1.02,
   saturation: 0.95,
-  lift: [0, 0.004, 0.016],
-  gain: [0.94, 0.97, 1.08],
+  lift: [0.04, 0.037, 0.085],
+  gain: [0.98, 0.97, 1.03],
 };
 
 /**

@@ -19,7 +19,7 @@
 import { bloom as bloomNode } from 'three/examples/jsm/tsl/display/BloomNode.js';
 import { lut3D as lut3DNode } from 'three/examples/jsm/tsl/display/Lut3DNode.js';
 import { smaa as smaaNode } from 'three/examples/jsm/tsl/display/SMAANode.js';
-import type { Camera, Matrix4, Object3D, Scene, Texture } from 'three';
+import type { Camera, Matrix4, Object3D, Scene, Texture, Vector3 } from 'three';
 import * as tsl from 'three/tsl';
 
 /**
@@ -275,3 +275,10 @@ export const getViewPosition = tsl.getViewPosition as unknown as (
 ) => TslNode;
 export const screenSize: TslNode = tsl.screenSize;
 export const uniformMatrix = tsl.uniform as unknown as (matrix: Matrix4) => TslNode;
+/**
+ * A vector uniform: writing `value` changes every shader that reads it, and
+ * compiles nothing. Hold a colour in one as its linear channels. A `Color`
+ * handed to `uniform` is converted as if it were sRGB, so a dark colour comes
+ * out several times too bright; only black and a pure primary survive it.
+ */
+export const uniformVector = tsl.uniform as unknown as (vector: Vector3) => { value: Vector3 } & TslNode;

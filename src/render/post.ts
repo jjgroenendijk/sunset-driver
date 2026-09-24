@@ -4,8 +4,8 @@
  * Deliberately minimal: the game's look comes from geometry, lighting and
  * materials, and this adds four things over them.
  *
- * - The ink lines of the art style (`edges.ts`), drawn off the depth before
- *   anything else reads the frame.
+ * - The ink lines of the art style (`edges.ts`), found in the depth and laid
+ *   over the graded frame.
  * - Bloom, so neon, lit windows and headlights spill light the way a camera
  *   sees them.
  * - SMAA, so a kerb seen from 60 m up is a line rather than a staircase.
@@ -46,7 +46,7 @@ import type { Camera, Scene } from 'three';
 import { START_TICK } from '../sim/simulation.ts';
 import { weatherAt, type Weather } from '../sim/weather.ts';
 import { daylightAt } from './daylight.ts';
-import { inked, type Ghost } from './edges.ts';
+import { inkAt, inkLines, type Ghost } from './edges.ts';
 import { uploadLut } from './lut-upload.ts';
 import {
   gradeAt,
@@ -71,6 +71,7 @@ import {
   texture3D,
   toneMapping,
   toneMappingExposure,
+  uniformVector,
   vec4,
   type TslNode,
 } from './tsl.ts';
@@ -150,6 +151,10 @@ export class PostChain {
   private readonly colour: TslNode;
   /** What the bloom reads: the light over {@link BLOOM_THRESHOLD}, the sky turned down to {@link SKY_BLOOM_SHARE}. */
   private readonly glare: TslNode;
+  /** How much ink each pixel takes (`edges.ts`). */
+  private readonly lines: TslNode;
+  /** The colour of the ink lines, which darkens through the night (`edges.ts`). */
+  private readonly ink = uniformVector(inkAt(0));
   /** The colour grade, as a cube of colours the frame is looked up in. */
   private readonly lut: Data3DTexture;
   /** The cube in linear light, before it is packed into the texture's half floats. */
@@ -199,11 +204,9 @@ export class PostChain {
     this.scene = scene;
     scene.matrixWorldAutoUpdate = false;
     this.scenePass = pass(scene, camera);
-    // The ink goes on first, so the bloom and the grade read the frame with its
-    // lines (`edges.ts`).
-    const exposed = vec4(this.scenePass.getTextureNode().rgb.mul(toneMappingExposure), 1);
+    this.colour = vec4(this.scenePass.getTextureNode().rgb.mul(toneMappingExposure), 1);
     const depth = { depth: this.scenePass.getTextureNode('depth'), near: this.scenePass._cameraNear, far: this.scenePass._cameraFar };
-    this.colour = inked(exposed, depth, camera, ghost);
+    this.lines = inkLines(depth, camera, ghost);
     const sky = step(SKY_DEPTH, this.scenePass.getLinearDepthNode());
     const light = this.colour.rgb.mul(mix(float(1), float(SKY_BLOOM_SHARE), sky));
     // The excess is taken off the brightness rather than off each channel, so
@@ -245,6 +248,7 @@ export class PostChain {
     if (step === this.step) return;
     this.step = step;
     const light = daylightAt(tick);
+    this.ink.value.copy(inkAt(light.night));
     writeLut(gradeAt(light, this.fixedWeather ?? weatherAt(this.seed, tick)), this.graded);
     const texels = this.lut.image.data as Uint16Array;
     for (let i = 0; i < LUT_LENGTH; i++) texels[i] = DataUtils.toHalfFloat(this.graded[i] ?? 0);
@@ -377,6 +381,9 @@ export class PostChain {
     // The exposure is already in the frame, so the mapping is asked for none.
     colour = toneMapping(this.renderer.toneMapping, 1, colour);
     if (settings.grade) colour = this.lookUp(colour);
+    // The ink goes on after the grade, so it is the colour `edges.ts` names on
+    // screen, and before SMAA, which smooths its steps like any other edge.
+    colour = vec4(mix(colour.rgb, this.ink, this.lines), 1);
     if (settings.smaa) {
       const edges = smaa(colour);
       effects.push(edges);

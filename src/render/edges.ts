@@ -1,8 +1,8 @@
 /**
  * The ink lines of the art style (spec section 10.1, `docs/art-style.md`).
  *
- * One screen-space pass draws every line in the city, on the frame the scene
- * pass left, before the bloom reads it. It reads the depth and nothing else.
+ * One screen-space pass draws every line in the city, laid over the frame
+ * after the grade. It reads the depth and nothing else.
  *
  * On a plane, the inverse of view depth is linear across the screen, whatever
  * way the plane faces. So its second difference over a pixel and its two
@@ -26,7 +26,7 @@
  * sample the cut ghosts is set aside, and a ghosted pixel draws no line.
  */
 import type { Camera } from 'three';
-import { Color } from 'three';
+import { Color, Vector3 } from 'three';
 import {
   float,
   getViewPosition,
@@ -39,13 +39,27 @@ import {
   step,
   uniformMatrix,
   vec2,
-  vec3,
   vec4,
   type TslNode,
 } from './tsl.ts';
 
 /** The ink: a warm dark plum, never pure black. */
 const INK = 0x2a2430;
+
+/**
+ * The ink at night: darker, because the plum is lighter than the indigo of
+ * the night street, and the ink must stay the darkest thing in the frame.
+ */
+const NIGHT_INK = 0x0d0b18;
+
+/**
+ * The ink at a moment of the night, 0 by day and 1 at midnight
+ * (`Daylight.night`), as its linear channels.
+ */
+export function inkAt(night: number): Vector3 {
+  const ink = new Color(INK).lerp(new Color(NIGHT_INK), night);
+  return new Vector3(ink.r, ink.g, ink.b);
+}
 
 /**
  * Where the second difference of inverse depth, as a share of the pixel's own,
@@ -83,10 +97,11 @@ export interface EdgeSource {
 }
 
 /**
- * The frame with the ink laid over it. `colour` is the scene pass's colour,
- * in exposed linear light.
+ * How much ink each pixel of the frame takes, 0 to 1. The post chain lays it
+ * on after the grade, so the ink is the colour {@link inkAt} says on screen:
+ * laid on before, the night grade's lift raised it to the indigo of the street.
  */
-export function inked(colour: TslNode, source: EdgeSource, camera: Camera, ghost?: Ghost): TslNode {
+export function inkLines(source: EdgeSource, camera: Camera, ghost?: Ghost): TslNode {
   const texel = vec2(1, 1).div(screenSize);
   const projectionInverse = uniformMatrix(camera.projectionMatrixInverse);
   const world = uniformMatrix(camera.matrixWorld);
@@ -126,8 +141,5 @@ export function inked(colour: TslNode, source: EdgeSource, camera: Camera, ghost
   const silhouette = smoothstep(SILHOUETTE[0], SILHOUETTE[1], measure);
   const crease = smoothstep(CREASE[0], CREASE[1], measure).mul(CREASE_INK);
   const far = mix(float(1), float(FAR_INK), smoothstep(FADE[0], FADE[1], centre.distance));
-  const line = max(silhouette, crease).mul(far).mul(float(1).sub(ghosted(centre.distance)));
-
-  const ink = new Color(INK);
-  return vec4(mix(colour.rgb, vec3(ink.r, ink.g, ink.b), line), 1);
+  return max(silhouette, crease).mul(far).mul(float(1).sub(ghosted(centre.distance)));
 }

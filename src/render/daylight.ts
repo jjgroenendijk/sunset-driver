@@ -110,7 +110,7 @@ const GROUND_SHARE = 0.6;
  * night street came out a bright blue.
  */
 const FILL_DAY = 1.15;
-const FILL_NIGHT = 0.1;
+const FILL_NIGHT = 0.012;
 
 /**
  * The haze the far chunks fade into: by day, at dusk and at night. By day it
@@ -118,7 +118,7 @@ const FILL_NIGHT = 0.1;
  */
 const HAZE_DAY = 0xe9e3d3;
 const HAZE_DUSK = 0xe0906e;
-const HAZE_NIGHT = 0x0d1020;
+const HAZE_NIGHT = 0x1a1830;
 
 /** How much of the dusk haze is mixed in at its strongest. */
 const DUSK_SHARE = 0.85;
