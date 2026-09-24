@@ -447,6 +447,20 @@ export abstract class RoadRoute {
    */
   protected addCurve(tier: RoadTier, points: Point[], bridges: number[], interchanges: number[] = [], whole = false): RoadCurve | undefined {
     if (points.length < 2) return undefined;
+    return this.network.add(this.draftOf(tier, points, bridges, interchanges), whole);
+  }
+
+  /**
+   * True where {@link addCurve} would lay the road joined to the network: at a
+   * junction with a laid road, or on a node. Nothing is laid.
+   */
+  protected joinsNetwork(tier: RoadTier, points: Point[], whole = false): boolean {
+    if (points.length < 2) return false;
+    return this.network.wouldJoin(this.draftOf(tier, points, []), whole);
+  }
+
+  /** The road as the network is asked to take it: its structures, its highway plan and its lift over water. */
+  private draftOf(tier: RoadTier, points: Point[], bridges: number[], interchanges: number[] = []): RoadDraft {
     const tunnels = this.markStructures(points, bridges);
     const draft: RoadDraft = { tier, points, bridges, tunnels, interchanges };
     let under: readonly number[] | undefined;
@@ -460,7 +474,7 @@ export abstract class RoadRoute {
       draft.slots = plan.slots;
       if (plan.lift !== undefined) draft.lift = plan.lift;
     }
-    return this.network.add(this.liftOverWater(draft, under), whole);
+    return this.liftOverWater(draft, under);
   }
 
   /**
