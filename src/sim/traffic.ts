@@ -73,6 +73,7 @@ export const ZONE_TRAFFIC: Record<Zone, number> = {
 export const TIER_MIX: Record<RoadTier, Partial<Record<VehicleClass, number>>> = {
   highway: { saloon: 4, compact: 2, sports: 2, van: 2, truck: 2, bus: 1 },
   arterial: { saloon: 4, compact: 3, sports: 1, van: 2, truck: 1, bus: 1, motorcycle: 1 },
+  ramp: { saloon: 4, compact: 2, sports: 2, van: 2, truck: 2, bus: 1 },
   street: { compact: 4, saloon: 3, sports: 1, van: 1, motorcycle: 1, offroad: 1 },
   alley: { compact: 3, van: 2, motorcycle: 1 },
   dirt: { offroad: 4, truck: 2, van: 1, compact: 1 },
@@ -454,6 +455,8 @@ export function laneOn(edge: Pick<RoadEdge, 'lanes'>, share: number): number {
  */
 export function laneOffset(edge: Pick<RoadEdge, 'tier' | 'lanes'>, lane: number, tram = false, platform = false): number {
   const spec = TIERS[edge.tier];
+  // A ramp runs one way, so its lanes share the whole carriageway.
+  if (edge.tier === 'ramp') return ((Math.min(lane, edge.lanes - 1) + 0.5) / edge.lanes - 0.5) * spec.width;
   const inner = tram ? TRAM_LANE.halfWidth + (platform ? TRAM_LANE.platform : 0) : 0;
   const width = (spec.width / 2 - spec.parking - inner) / edge.lanes;
   return inner + (lane + 0.5) * width;

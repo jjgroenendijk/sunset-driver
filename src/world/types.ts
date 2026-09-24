@@ -147,8 +147,12 @@ export interface Beach {
   districts: number[];
 }
 
-/** Road hierarchy, widest first (spec section 6.2). */
-export type RoadTier = 'highway' | 'arterial' | 'street' | 'alley' | 'dirt';
+/**
+ * Road hierarchy, widest first (spec section 6.2). A ramp is the one-way link
+ * of an interchange between an arterial and a highway (`diamonds.ts`); it is
+ * never traced, only laid with the arterial it serves.
+ */
+export type RoadTier = 'highway' | 'arterial' | 'ramp' | 'street' | 'alley' | 'dirt';
 
 /**
  * One road as a curve. Carriageway, kerbs, rails and decks are lofted along it;
@@ -181,9 +185,9 @@ export interface RoadCurve {
   /**
    * Indices of the points another road may join this one at. Ascending. Only a
    * highway has them: spec section 6.2 gives a highway junctions at
-   * interchanges and nowhere else, and only a highway or an arterial ramp may
-   * use one. The list is empty on every other tier, which takes a junction
-   * anywhere along it.
+   * interchanges and nowhere else. Only a highway joins one there; an arterial
+   * that reaches one is given a diamond of ramps instead (`diamonds.ts`). The
+   * list is empty on every other tier, which takes a junction anywhere along it.
    */
   interchanges: number[];
   /**
@@ -202,6 +206,21 @@ export interface RoadCurve {
    * samples, and every raised segment is in `bridges`.
    */
   lift?: number[];
+  /**
+   * Present on the ramp of an interchange, and on nothing else: a one-way road
+   * between an arterial and a highway, driven from its first point to its last
+   * (`diamonds.ts`). `highway` is the curve it leaves or joins, `arterial` the
+   * curve whose foot it starts or ends on, and `exit` is true on an off-ramp.
+   * The graph lays one edge along it, never a pair.
+   */
+  ramp?: Ramp;
+}
+
+/** The interchange a ramp belongs to: the two roads it links, and which way it runs between them. */
+export interface Ramp {
+  highway: number;
+  arterial: number;
+  exit: boolean;
 }
 
 /** What a corridor carries (spec section 6.3). */

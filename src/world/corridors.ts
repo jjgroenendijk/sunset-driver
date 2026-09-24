@@ -383,7 +383,7 @@ class CorridorBuilder {
       const node = this.graph.nodes[id] as RoadNode;
       const own = mine.get(id) as number[];
       const roads: number[] = [];
-      for (const e of node.edges) {
+      for (const e of node.runs) {
         const curve = (this.graph.edges[e] as RoadEdge).curve;
         if (own.includes(curve) || roads.includes(curve)) continue;
         roads.push(curve);

@@ -155,9 +155,9 @@ function groundRuns(road: RoadCurve): Point[][] {
  * two roads that meet end to end, since they hand the strip over in line.
  */
 export function apronOf(graph: RoadGraph, node: RoadNode): { ring: Point[]; tier: RoadTier } | undefined {
-  if (node.edges.length < 3) return undefined;
+  if (node.runs.length < 3) return undefined;
   let tier: RoadTier | undefined;
-  for (const id of node.edges) {
+  for (const id of node.runs) {
     const edge = graph.edges[id];
     if (edge === undefined || edge.bridge || edge.tunnel) continue;
     if (tier === undefined || footprintHalfWidth(edge.tier) > footprintHalfWidth(tier)) tier = edge.tier;

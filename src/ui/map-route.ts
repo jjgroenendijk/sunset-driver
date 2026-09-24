@@ -65,8 +65,10 @@ export function findRoute(graph: RoadGraph, from: Point, to: Point): MapRoute {
   const aEdge = graph.edges[a.edge] as RoadEdge;
   const bEdge = graph.edges[b.edge] as RoadEdge;
 
-  // Both marks on one run of road: drive along it, no junction in between.
-  if (a.edge === b.edge || a.edge === bEdge.twin) {
+  // Both marks on one run of road: drive along it, no junction in between. A
+  // ramp is driven one way, so only a mark ahead on it is reached this way.
+  const sameRun = a.edge === b.edge || a.edge === bEdge.twin;
+  if (sameRun && (aEdge.twin >= 0 || ahead(graph.edgePoints(a.edge), a, b))) {
     const points = graph.edgePoints(a.edge);
     const road = between(points, a, b);
     const length = pathLength(road);
@@ -82,12 +84,15 @@ export function findRoute(graph: RoadGraph, from: Point, to: Point): MapRoute {
   const aSplit = splitAt(aPoints, a);
   const bSplit = splitAt(bPoints, b);
   for (const out of [0, 1]) {
-    // `out` 0 drives back to the edge's `from` node, 1 on to its `to` node.
+    // `out` 0 drives back to the edge's `from` node, 1 on to its `to` node. A
+    // ramp is left only by its far end and joined only by its near one.
+    if (out === 0 && aEdge.twin < 0) continue;
     const leave = out === 0 ? aEdge.from : aEdge.to;
     const firstLeg = out === 0 ? [...aSplit.before].reverse() : aSplit.after;
     const firstLength = pathLength(firstLeg);
     for (const into of [0, 1]) {
       // `into` 0 joins at the edge's `from` node, 1 at its `to` node.
+      if (into === 1 && bEdge.twin < 0) continue;
       const join = into === 0 ? bEdge.from : bEdge.to;
       const lastLeg = into === 0 ? bSplit.before : [...bSplit.after].reverse();
       const lastLength = pathLength(lastLeg);
@@ -135,6 +140,13 @@ function between(points: readonly Point[], a: EdgeHit, b: EdgeHit): Point[] {
   const last = { x: b.x, y: b.y };
   if (i < j || (i === j && ta <= tb)) return [first, ...points.slice(i + 1, j + 1), last];
   return [first, ...points.slice(j + 1, i + 1).reverse(), last];
+}
+
+/** True where hit `b` stands at or past hit `a` along a run of road. */
+function ahead(points: readonly Point[], a: EdgeHit, b: EdgeHit): boolean {
+  const i = segmentOf(points, a);
+  const j = segmentOf(points, b);
+  return i < j || (i === j && along(points, i, a) <= along(points, j, b));
 }
 
 /** The segment of a polyline a point on it lies on: the one nearest it. */

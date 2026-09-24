@@ -7,7 +7,10 @@
  * was placed on. The walk goes straight on or turns at each node, and turns
  * back only at a dead end. It stops when it comes back to a node it has stood
  * on and the loop from there is long enough to read as a drive, not as a lap of
- * one block. A walk that finds no such loop drives back the way it came.
+ * one block. A walk that finds no such loop drives back the way it came, or,
+ * where it took a one-way ramp, back by the fastest route to where it began.
+ * It never drives a ramp the wrong way, and it turns at a ramp's landing only
+ * as `RoadGraph.turnAllowed` lets it.
  *
  * `traffic-timing.ts` says when each leg is driven and where the vehicle waits
  * at a red light; its names come out through here too.
@@ -40,8 +43,13 @@ export type Permit = (edge: RoadEdge) => boolean;
 export function walkTour(graph: RoadGraph, first: number, rng: Rng, permit: Permit): number[] {
   const { route, loop } = walkOut(graph, first, rng, permit);
   if (loop >= 0) return route.slice(loop);
-  // No loop: drive back along the same road the other way.
-  return route.concat(backOf(graph, route));
+  // No loop: drive back along the same road the other way. A ramp has no other
+  // way, so a walk that took one is closed by the fastest route home instead.
+  if (route.every((e) => (graph.edges[e] as RoadEdge).twin >= 0)) return route.concat(backOf(graph, route));
+  const start = (graph.edges[first] as RoadEdge).from;
+  const end = (graph.edges[route[route.length - 1] as number] as RoadEdge).to;
+  const home = graph.shortestPath(end, start, permit);
+  return home === undefined ? route : route.concat(home.edges);
 }
 
 /**
@@ -68,7 +76,7 @@ export function walkOut(graph: RoadGraph, first: number, rng: Rng, permit: Permi
   return { route, loop: -1 };
 }
 
-/** The legs of a walk driven back the other way, last leg first. */
+/** The legs of a walk driven back the other way, last leg first. A leg with no other way is driven as it is. */
 export function backOf(graph: RoadGraph, route: readonly number[]): number[] {
   const back: number[] = [];
   for (let i = route.length - 1; i >= 0; i--) {
@@ -100,14 +108,15 @@ function loopBack(graph: RoadGraph, route: readonly number[], nodes: readonly nu
  */
 function choose(graph: RoadGraph, last: RoadEdge, home: RoadTier, rng: Rng, permit: Permit): number {
   const out = graph.edgesFrom(last.to);
+  const weight = (e: number, uturn: boolean): number => (graph.turnAllowed(last.id, e) ? weightOf(graph.edges[e] as RoadEdge, last, home, permit, uturn) : 0);
   let total = 0;
-  for (const e of out) total += weightOf(graph.edges[e] as RoadEdge, last, home, permit, false);
+  for (const e of out) total += weight(e, false);
   const uturn = total === 0;
-  if (uturn) for (const e of out) total += weightOf(graph.edges[e] as RoadEdge, last, home, permit, true);
+  if (uturn) for (const e of out) total += weight(e, true);
   if (total === 0) return last.twin >= 0 ? last.twin : last.id;
   let pick = rng.float() * total;
   for (const e of out) {
-    pick -= weightOf(graph.edges[e] as RoadEdge, last, home, permit, uturn);
+    pick -= weight(e, uturn);
     if (pick < 0) return e;
   }
   return out[out.length - 1] as number;

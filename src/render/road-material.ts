@@ -73,6 +73,8 @@ const PALETTE: Record<RoadTier, TierPalette> = {
   highway: { carriageway: 0x37383c, verge: 0x4b4b4c, pavement: 0x7a7468, roughness: 0.82, shoulder: 3 },
   // Worn asphalt between granite kerbs and concrete pavements.
   arterial: { carriageway: 0x3e3f43, verge: 0x84827d, pavement: 0x9c988f, roughness: 0.86 },
+  // A ramp is the highway's asphalt, with the same paved hard shoulder.
+  ramp: { carriageway: 0x37383c, verge: 0x4b4b4c, pavement: 0x7a7468, roughness: 0.82, shoulder: 2 },
   street: { carriageway: 0x44454a, verge: 0x84827d, pavement: 0x97938b, roughness: 0.88 },
   // Unmarked and patched, kerb to kerb: an alley is all carriageway.
   alley: { carriageway: 0x393731, verge: 0x393731, pavement: 0x393731, roughness: 0.94 },

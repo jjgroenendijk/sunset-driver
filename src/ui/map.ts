@@ -331,6 +331,7 @@ export function tierPen(tier: RoadTier, metresPerPixel: number): number {
 const TIER_MAP_WIDTH: Readonly<Record<RoadTier, number>> = Object.freeze({
   highway: 22,
   arterial: 14,
+  ramp: 7,
   street: 9,
   alley: 5,
   dirt: 5,

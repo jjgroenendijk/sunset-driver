@@ -29,7 +29,8 @@ sweepSuite('traffic', () => {
       const traffic = new AmbientTraffic(seed, roads);
 
       const length: Partial<Record<RoadTier, number>> = {};
-      for (const edge of graph.edges) length[edge.tier] = (length[edge.tier] ?? 0) + edge.length / 2;
+      // A two-way run is two edges on one road; a ramp is one.
+      for (const edge of graph.edges) length[edge.tier] = (length[edge.tier] ?? 0) + (edge.twin >= 0 ? edge.length / 2 : edge.length);
 
       // At the start of the day and at noon: a tier is not empty at one moment and full at another.
       for (const tick of [0, 12 * TICKS_PER_HOUR]) {
@@ -63,6 +64,13 @@ sweepSuite('traffic', () => {
         // Nor do the vehicles waiting at a light stand on one another.
         const stacked = overlaps(stopped) / standing.length;
         expect(stacked, `seed ${seed}: ${stacked.toFixed(3)} stopped pairs a vehicle at tick ${tick}`).toBeLessThan(TRAFFIC_STACKED);
+      }
+
+      // The traffic gets on and off the highway over the ramps of its
+      // interchanges (spec section 6.2), so some tour drives one.
+      if (graph.edges.some((e) => e.tier === 'ramp')) {
+        const drives = traffic.vehicles.some((v) => v.tour.edges.some((e) => graph.edges[e]?.tier === 'ramp'));
+        expect(drives, `seed ${seed}: no vehicle drives a ramp`).toBe(true);
       }
 
       // A city with arterials has traffic lights, and the vehicles timed to

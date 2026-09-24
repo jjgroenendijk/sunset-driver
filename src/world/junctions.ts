@@ -221,15 +221,15 @@ export function junctionMouths(node: Point, seeds: readonly MouthSeed[]): Juncti
 
 function junctionAt(node: RoadNode, roads: readonly RoadCurve[], graph: RoadGraph): Junction | undefined {
   const seeds: MouthSeed[] = [];
-  for (const id of node.edges) {
+  for (const id of node.runs) {
     const edge = graph.edges[id];
     if (edge === undefined) continue;
     const road = roads[edge.curve] as RoadCurve;
-    const direction: 1 | -1 = edge.end >= edge.start ? 1 : -1;
+    const { point, direction } = graph.mouthAt(id, node.id);
     // A mouth on a deck or in a bore meets nothing on the ground.
-    const first = direction === 1 ? edge.start : edge.start - 1;
+    const first = direction === 1 ? point : point - 1;
     if (road.bridges.includes(first) || road.tunnels.includes(first)) continue;
-    seeds.push({ curve: road.id, tier: road.tier, points: road.points, lift: road.lift, point: edge.start, direction });
+    seeds.push({ curve: road.id, tier: road.tier, points: road.points, lift: road.lift, point, direction });
   }
   const fitted = fitMouths(node, seeds);
   if (fitted === undefined) return undefined;

@@ -54,7 +54,7 @@ export interface DeckPier {
  * stands on wider piers. `corridor-mesh.ts` draws the column this wide and
  * `pier-posts.ts` gives the physics the same one, so a pier is where it looks.
  */
-export const PIER_HALF: Record<RoadTier, number> = { highway: 1, arterial: 0.8, street: 0.6, alley: 0.5, dirt: 0.5 };
+export const PIER_HALF: Record<RoadTier, number> = { highway: 1, arterial: 0.8, ramp: 0.6, street: 0.6, alley: 0.5, dirt: 0.5 };
 
 /** Metres each side of the centreline the strip under a curve's deck reaches. */
 export function deckHalfWidth(road: RoadCurve): number {
