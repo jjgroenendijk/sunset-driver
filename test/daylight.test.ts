@@ -11,6 +11,7 @@ import {
   tickAtHour,
 } from '../src/render/daylight.ts';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../src/sim/clock.ts';
+import { luma } from '../src/render/shade.ts';
 
 /** How close two floats have to be to count as the same light. */
 const CLOSE = 6;
@@ -110,7 +111,6 @@ describe('the sun', () => {
     // says, so much less and the city in its own shadow reads as dusk at noon.
     // Much more and the sun casts no shadow worth seeing.
     const noon = at(SOLAR_NOON_HOUR);
-    const luma = (c: { r: number; g: number; b: number }) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
     const shade = luma(noon.fillSky) * noon.fillIntensity;
     const sun = luma(noon.sunColour) * noon.sunIntensity * noon.altitude + shade;
     expect(shade / sun).toBeGreaterThan(0.4);
@@ -140,12 +140,12 @@ describe('night', () => {
   });
 
   it('fills the shadows more weakly than the day does', () => {
-    // The fill is a hemisphere light, so its strength is read against its
-    // colour: the night sky is a fifth of the day's before either is scaled.
+    // The fill's colour is the shadow's hue at a luma of 1, so its strength
+    // carries all of the difference: the night sky is a tenth of the day's.
     const day = at(12);
     const night = at(0);
-    expect(night.fillSky.r).toBeLessThan(day.fillSky.r * 0.2);
-    expect(night.fillGround.r).toBeLessThan(day.fillGround.r * 0.5);
+    expect(luma(night.fillSky) * night.fillIntensity).toBeLessThan(luma(day.fillSky) * day.fillIntensity * 0.1);
+    expect(luma(night.fillGround)).toBeLessThan(luma(night.fillSky));
   });
 
   it('turns the haze from day blue through a warm dusk to near black', () => {
