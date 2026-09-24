@@ -37,6 +37,13 @@ import ClusteredLightsNode from 'three/examples/jsm/tsl/lighting/ClusteredLights
 import { Lighting, LightsNode, NodeUtils, type LightingNode, type NodeBuilder, type NodeFrame, type WebGPURenderer } from 'three/webgpu';
 import type { Light } from 'three';
 import { clamp, float, Fn, int, log, positionView, screenUV, type TslNode } from './tsl.ts';
+import { LampLightNode } from './lamp-light.ts';
+import { NeonLightNode } from './sign-light.ts';
+
+/** Whether a light builds its term inside a branch that skips it while it is off. */
+function isBranched(node: LightingNode): boolean {
+  return node instanceof LampLightNode || node instanceof NeonLightNode;
+}
 
 /** A size in whole pixels. */
 export interface GridSize {
@@ -126,10 +133,20 @@ export class PinnedClusterLightsNode extends ClusteredLightsNode {
     return NodeUtils.hashArray([CLUSTERED, super.customCacheKey()]);
   }
 
-  /** The cluster loop goes into the shader only when it has a light to find. */
+  /**
+   * The cluster loop goes into the shader only when it has a light to find.
+   *
+   * The lights that burn in a branch (`lamp-light.ts`, `sign-light.ts`) are set
+   * up after every other light (issue #689). TSL builds a term once and reuses
+   * it, and the terms of the direct light, such as the Lambert of the diffuse
+   * colour, are shared by every light. Built first inside a lamp's branch, a
+   * term is written only while that lamp burns, and the sun read it as nothing
+   * all day: the city was lit by the sky fill alone and cast no shadow.
+   */
   override setupLights(builder: NodeBuilder, lightNodes: LightingNode[]): void {
-    if (this.clustering) super.setupLights(builder, lightNodes);
-    else LightsNode.prototype.setupLights.call(this, builder, lightNodes);
+    const ordered = [...lightNodes.filter((n) => !isBranched(n)), ...lightNodes.filter(isBranched)];
+    if (this.clustering) super.setupLights(builder, ordered);
+    else LightsNode.prototype.setupLights.call(this, builder, ordered);
   }
 
   /** The compute fills the clusters each frame, so it runs only when a shader reads them. */

@@ -62,10 +62,9 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
   every cascade's camera by as much. At noon it is shorter than 200 m.
 - The shadow pass skips a cell of road paved on the ground (`raisedPartsOf`, `road-mesh.ts`): it
   could shade only itself. A deck, a portal or a pier in the cell makes it cast.
-- The daytime sky fill (`FILL_DAY`, `daylight.ts`) leaves a street in shade about half as bright as
-  one in the sun. That is more light than the sky really gives, because the frame is tone mapped:
-  the curve's toe pulls a dark pixel down further than its share of the light says. At a third of
-  the sun the street under a tower still read as dusk at noon.
+- The daytime sky fill (`FILL_DAY`, `daylight.ts`) is 55 % of the light on a lit flat surface at
+  noon, so a street in shade is a little over half as bright as one in the sun. Less, and the
+  street under a tower reads as dusk.
 - `renderer.shadowMap.enabled` is false by default on `WebGPURenderer`. Without the line in
   `renderer.ts` the cascades are built every frame and never drawn, and the city is flat with
   nothing to say why.
@@ -133,6 +132,12 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
   keep both. `LampLight` (`lamp-light.ts`) draws with a node that wraps the light in `If` on a
   uniform, so a light that is off is a branch the fragment skips. `registerLampLight` in
   `renderer.ts` gives the renderer that node. A renderer that is not told draws the lamps unlit.
+- A branched light must be set up after the sun. TSL builds a shared term, such as the Lambert of
+  the diffuse colour, once and reuses it. Built first inside a lamp's branch, it is written only
+  while the lamp burns. Lights are set up in order of their id, and the lamps are made first, so
+  the sun lit nothing by day and nothing cast a shadow (issue #689).
+  `PinnedClusterLightsNode.setupLights` puts the lamps and the neon last. Test a light change with
+  `FILL_DAY` at 0: the frame must still show the sun and its shadows.
 
 ## Neon
 
