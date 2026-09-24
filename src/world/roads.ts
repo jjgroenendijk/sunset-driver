@@ -498,13 +498,22 @@ class RoadTracer extends IslandLinkTrace {
    */
   private layBoardwalk(beach: Beach, i: number, line: readonly Point[]): BoardwalkRun {
     this.network.reserve(-1 - i, 'street', line);
-    const head = this.besideOwnCrossing(line, this.reachNetwork(line[0] as Point, [...line].reverse()));
-    const tail = this.besideOwnCrossing(line, this.reachNetwork(line[line.length - 1] as Point, line));
+    const found = [this.reachNetwork(line[0] as Point, [...line].reverse()), this.reachNetwork(line[line.length - 1] as Point, line)];
     this.network.release(-1 - i);
+    const [head, tail] = found.map((route) => this.besideOwnCrossing(line, route)) as [Point[], Point[]];
     const ways: [Point[], Point][] = [];
     if (head.length > 0) ways.push([head, line[0] as Point]);
     if (tail.length > 0) ways.push([tail, line[line.length - 1] as Point]);
-    if (ways.length === 0) return { id: -1, line, ways };
+    if (ways.length === 0) {
+      // A way on was found and dropped because the line itself crosses the road
+      // it reached: the run joins the network at that crossing. It is laid on
+      // its own, whole, and only where the crossing plan gives it a junction;
+      // a run shortened back from its only crossing would hang off nothing
+      // (issue #676, F1).
+      const crossed = found.some((route, k) => route.length > 0 && (k === 0 ? head : tail).length === 0);
+      if (!crossed || !this.joinsNetwork('street', [...line], true)) return { id: -1, line, ways };
+      return { id: this.addCurve('street', [...line], [], [], true)?.id ?? -1, line, ways };
+    }
     // A way on to the network that turns back over the boardwalk has the turn
     // cut out of it. Where that cannot be done it is dropped, as long as the
     // other end still reaches the network.

@@ -145,6 +145,18 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
   }
 
   /**
+   * True where {@link add} would lay a road joined to the network: its settled
+   * line takes a junction with a laid road or stands on a point of one.
+   * Nothing is written.
+   */
+  wouldJoin(proposed: RoadDraft, whole = false): boolean {
+    if (proposed.points.length < 2 || selfOverlap(proposed.points, proposed.tier) !== undefined) return false;
+    const settled = settleCrossings(this, proposed, whole);
+    if (settled === undefined) return false;
+    return settled.edits.length > 0 || settled.road.points.some((p) => this.pointAt(p.x, p.y) !== undefined);
+  }
+
+  /**
    * True where the point of a curve at `index` is a node another curve stands
    * on too: a junction there already.
    */
