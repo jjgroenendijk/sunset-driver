@@ -2,6 +2,7 @@ import { NeutralToneMapping } from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { clamp } from '../core/math.ts';
 import { stopUploadingWith, uploadBatchesWith } from './batch.ts';
+import { installCelShading } from './cel.ts';
 import { PinnedClusterLighting } from './clustered-lights.ts';
 import { registerLampLight } from './lamp-light.ts';
 import { registerNeonLight } from './sign-light.ts';
@@ -41,6 +42,8 @@ function configure(renderer: WebGPURenderer): void {
   // Off by default on `WebGPURenderer`, and nothing else says so: without this
   // the sun's cascades are built and never drawn, and the city is flat.
   renderer.shadowMap.enabled = true;
+  // Every lit material shades the sun in bands (`cel.ts`).
+  installCelShading();
   registerLampLight(renderer);
   registerNeonLight(renderer);
 }

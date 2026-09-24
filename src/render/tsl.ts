@@ -249,3 +249,11 @@ export const normalLocal: TslNode = tsl.normalLocal;
 /** Sine and cosine of an angle in radians. */
 export const sin = tsl.sin as unknown as (x: TslNode) => TslNode;
 export const cos = tsl.cos as unknown as (x: TslNode) => TslNode;
+
+/**
+ * What a lighting model reads (`cel.ts`): the shaded normal in view space, the
+ * material's diffuse colour, and the Lambert term that turns light into colour.
+ */
+export const normalView: TslNode = tsl.normalView;
+export const diffuseColor: TslNode = tsl.diffuseColor;
+export const BRDF_Lambert = tsl.BRDF_Lambert as unknown as (input: { diffuseColor: TslNode }) => TslNode;

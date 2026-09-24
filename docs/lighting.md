@@ -8,6 +8,7 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
 ## Contents
 
 - Daylight, shadows and the sky
+- Bands
 - The buildings after dark
 - Street lamps
 - Neon
@@ -86,6 +87,26 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
   into grey.
 - `WorldScene.time = tick` sets the weather of spec section 13.4 as well as the light, and `apply`
   lays one over the other. `docs/weather.md` is the whole of that.
+
+## Bands
+
+- The sun lights in three bands, light, mid and shade, joined by a short soft ramp (`cel.ts`,
+  `docs/art-style.md`). The sun's cosine to the surface times its cast shadow is stepped by
+  `sunBand` before it lights anything. A face in shade takes the sky fill alone, which is a colour.
+- `installCelShading` replaces `setupLightingModel` on the prototypes of `MeshStandardNodeMaterial`
+  and `MeshLambertNodeMaterial`, once, from `renderer.ts`. That reaches a classic
+  `MeshStandardMaterial` too, since the renderer draws it through the node class. The water and the
+  sky have materials of their own and do not band.
+- Only the sun bands. The lamps, the headlights and the neon keep the physical model, so a pool of
+  lamplight keeps its falloff. The sun has no specular, and a metal takes it as paint: a metal lit
+  only by a specular it no longer has would be black.
+- The light hands `direct` its colour with the shadow multiplied in. The bands need the shadow and
+  the cosine together, so `sunDirect` reads the colour from before the shadow (`baseColorNode`)
+  and folds the shadow (`shadowNode`) into the cosine. Both belong to the light node, which every
+  material shares, so they are read only when this object takes shadows.
+- The fill is plain Lambert. The physical model takes a specular's share off it, which made a
+  smooth surface darker in shade than a rough one beside it. For the same reason the block
+  material no longer scales its colour to match the physical model.
 
 ## The buildings after dark
 
