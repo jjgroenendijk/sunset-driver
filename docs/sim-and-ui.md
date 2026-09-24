@@ -339,7 +339,7 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
   `VehicleSpec.balance` is the rider on top of that: roll is sprung and damped, pitch is only
   damped, so the bike still points up a hill.
 - `src/render/vehicle-mesh.ts` is the one place that says what shape each class is: boxes in the
-  vehicle's own frame, with the masses that carry the outline of spec section 10.1 marked. It holds
+  vehicle's own frame. It holds
   no three.js, so the silhouettes are measured headless.
 - How wet the road is comes from the weather of spec section 13.4, which is `docs/weather.md`.
 - `src/world/surface.ts` says what the ground is made of at a place — asphalt, dirt, sand or open

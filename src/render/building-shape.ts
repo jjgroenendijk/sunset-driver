@@ -30,7 +30,6 @@
  */
 import { hashInts } from '../core/hash.ts';
 import type { BuildingKind } from '../world/buildings.ts';
-import type { Point } from '../world/types.ts';
 
 /** How a tall building is massed. */
 export type BuildingPlan = 'box' | 'step' | 'ell' | 'u' | 'court' | 'podium' | 'setbacks';
@@ -383,66 +382,6 @@ function holdsCorner(part: ShapePart, chamfer: number): boolean {
   if (chamfer === 0) return false;
   const near = 1e-6;
   return part.z + part.depth / 2 >= 0.5 - near && chamfer * part.x + part.width / 2 >= 0.5 - near;
-}
-
-/**
- * The ground a shape covers, as a ring in the building's own frame: `x` across
- * the frontage and `y` towards the road, wound the way the footprint rectangle
- * is wound.
- *
- * A courtyard is given its outer rectangle and not its hole. The ring is what
- * the outline hull of `building-hull.ts` is drawn on, and an outline is the
- * silhouette a building cuts against the ground; the hole in the middle of a
- * block is neither.
- */
-export function ringOf(shape: BuildingShape, rect: { width: number; depth: number }): Point[] {
-  const hw = rect.width / 2;
-  const hd = rect.depth / 2;
-  const box: Point[] = [
-    { x: hw, y: hd },
-    { x: -hw, y: hd },
-    { x: -hw, y: -hd },
-    { x: hw, y: -hd },
-  ];
-  if (shape.plan !== 'ell' && shape.plan !== 'u') return box;
-  const front = shape.parts[0] as ShapePart;
-  // The back of the front wing, which is where the notch is cut up to.
-  const cut = (front.z - front.depth / 2) * rect.depth;
-  if (shape.plan === 'u') {
-    const left = shape.parts[1] as ShapePart;
-    const right = shape.parts[2] as ShapePart;
-    const inner = (part: ShapePart): number => (part.x - (Math.sign(part.x) * part.width) / 2) * rect.width;
-    return [
-      { x: hw, y: hd },
-      { x: -hw, y: hd },
-      { x: -hw, y: -hd },
-      { x: inner(left), y: -hd },
-      { x: inner(left), y: cut },
-      { x: inner(right), y: cut },
-      { x: inner(right), y: -hd },
-      { x: hw, y: -hd },
-    ];
-  }
-  const arm = shape.parts[1] as ShapePart;
-  // The side the arm stands on keeps its full depth; the other is cut back.
-  const edge = (arm.x - (Math.sign(arm.x) * arm.width) / 2) * rect.width;
-  return arm.x > 0
-    ? [
-        { x: hw, y: hd },
-        { x: -hw, y: hd },
-        { x: -hw, y: cut },
-        { x: edge, y: cut },
-        { x: edge, y: -hd },
-        { x: hw, y: -hd },
-      ]
-    : [
-        { x: hw, y: hd },
-        { x: -hw, y: hd },
-        { x: -hw, y: -hd },
-        { x: edge, y: -hd },
-        { x: edge, y: cut },
-        { x: hw, y: cut },
-      ];
 }
 
 /** A number in 0..1 from a building's seed, for the draws the shape makes. */

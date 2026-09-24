@@ -2,8 +2,10 @@
  * The post chain of spec section 10.6.
  *
  * Deliberately minimal: the game's look comes from geometry, lighting and
- * materials, and this adds three things over them.
+ * materials, and this adds four things over them.
  *
+ * - The ink lines of the art style (`edges.ts`), drawn off the depth before
+ *   anything else reads the frame.
  * - Bloom, so neon, lit windows and headlights spill light the way a camera
  *   sees them.
  * - SMAA, so a kerb seen from 60 m up is a line rather than a staircase.
@@ -44,6 +46,7 @@ import type { Camera, Scene } from 'three';
 import { START_TICK } from '../sim/simulation.ts';
 import { weatherAt, type Weather } from '../sim/weather.ts';
 import { daylightAt } from './daylight.ts';
+import { inked, type Ghost } from './edges.ts';
 import { uploadLut } from './lut-upload.ts';
 import {
   gradeAt,
@@ -178,6 +181,7 @@ export class PostChain {
     camera: Camera,
     quality: PostQuality = FULL_QUALITY,
     seed = 0,
+    ghost?: Ghost,
   ) {
     this.renderer = renderer;
     this.seed = seed;
@@ -195,7 +199,11 @@ export class PostChain {
     this.scene = scene;
     scene.matrixWorldAutoUpdate = false;
     this.scenePass = pass(scene, camera);
-    this.colour = vec4(this.scenePass.getTextureNode().rgb.mul(toneMappingExposure), 1);
+    // The ink goes on first, so the bloom and the grade read the frame with its
+    // lines (`edges.ts`).
+    const exposed = vec4(this.scenePass.getTextureNode().rgb.mul(toneMappingExposure), 1);
+    const depth = { depth: this.scenePass.getTextureNode('depth'), near: this.scenePass._cameraNear, far: this.scenePass._cameraFar };
+    this.colour = inked(exposed, depth, camera, ghost);
     const sky = step(SKY_DEPTH, this.scenePass.getLinearDepthNode());
     const light = this.colour.rgb.mul(mix(float(1), float(SKY_BLOOM_SHARE), sky));
     // The excess is taken off the brightness rather than off each channel, so

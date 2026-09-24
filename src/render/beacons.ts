@@ -85,7 +85,7 @@ export class BeaconPhase {
   constructor(beacons: readonly Beacon[], phase: 0 | 1, material: MeshBasicMaterial, cap: number) {
     const own = beacons.filter((beacon) => beacon.phase === phase);
     this.colour = new Color(own[0]?.box.colour ?? 0xffffff);
-    this.mesh = tinted(instanced(merged(own.map((beacon) => coloured(boxOf(beacon.box, 0), beacon.box.colour))), material, false, cap));
+    this.mesh = tinted(instanced(merged(own.map((beacon) => coloured(boxOf(beacon.box), beacon.box.colour))), material, false, cap));
   }
 
   /** Stand one unit's lamps of this phase, lit or dark. */

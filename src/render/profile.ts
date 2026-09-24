@@ -49,7 +49,7 @@ export interface ProfileRequest {
   noPost?: boolean;
   /** Take the street lamps' projector lights out of the scene. */
   noLamps?: boolean;
-  /** Kinds of batch that cast no shadow: road, facade, block, outline, plant, lamp. */
+  /** Kinds of batch that cast no shadow: road, facade, block, plant, lamp. */
   noCast?: string[];
   /**
    * Quality changes during the drive, as `frame:tier` pairs: at each drive
@@ -176,7 +176,7 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
   });
 
   const camera = new FollowCamera(request.width / request.height);
-  const post = new PostChain(renderer, scene.scene, camera.camera, tier.post, scene.world.seed);
+  const post = new PostChain(renderer, scene.scene, camera.camera, tier.post, scene.world.seed, scene.cutaway);
   post.fixedWeather = weather;
   post.regrade();
   post.time = tick;
@@ -294,7 +294,7 @@ function builtShaders(caches: RendererCaches): BuiltShaders {
 function batchKinds(scene: WorldScene, noCast: ReadonlySet<string>): Record<string, BatchKind> {
   const owners = scene as unknown as SceneOwners;
   const kindOf = new Map<unknown, string>();
-  for (const name of ['facade', 'block', 'outline']) kindOf.set(owners.buildings.materials[name], name);
+  for (const name of ['facade', 'block']) kindOf.set(owners.buildings.materials[name], name);
   kindOf.set(owners.vegetation.material, 'plant');
   kindOf.set(owners.lamps.materials.lamp, 'lamp');
   for (const material of Object.values(owners.scenery.surfaces)) kindOf.set(material, 'road');

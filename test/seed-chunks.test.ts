@@ -350,7 +350,6 @@ sweepSuite('chunks', () => {
             if (Math.min(reach.front, reach.back) < -WALL_REACH) fault(`${where} stops short of its ${side} wall`);
           }
           one.shell.dispose();
-          one.hull.dispose();
           if (complaint !== undefined) break;
         }
       }

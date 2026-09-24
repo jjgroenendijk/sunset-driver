@@ -344,7 +344,7 @@ async function boot(): Promise<void> {
   // The chain is built on the world's scene and the camera that follows the
   // player, so it is made here rather than beside the renderer. Waiting for it
   // means the first frame is antialiased like every frame after it.
-  const post = new PostChain(renderer, world.scene, camera.camera, undefined, state.seed);
+  const post = new PostChain(renderer, world.scene, camera.camera, undefined, state.seed, world.cutaway);
   await post.ready();
   // The tier the session opens on has to be put on the two halves that draw at
   // it, because nothing has changed a tier yet for `applyQuality` to report.

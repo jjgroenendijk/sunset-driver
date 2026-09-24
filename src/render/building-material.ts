@@ -1,16 +1,17 @@
 /**
  * The materials the buildings are drawn with (spec sections 10.1, 10.3).
  *
- * Three of them, which is what a chunk's three batches need:
+ * Two of them, which is what a chunk's two batches need:
  *
  * - the facade, which is the generator's own material dressing the towers and
  *   the mid-rise blocks, with the night added to it;
  * - the block, which shades the walls, roofs, trim and glazing of everything
- *   else from the `part` attribute `block-mesh.ts` writes;
- * - the outline, a flat dark shell drawn back-face only, which is the hard
- *   outline of spec section 10.1.
+ *   else from the `part` attribute `block-mesh.ts` writes.
  *
- * Both lit materials carry the emissive window mask: the glass of a building is
+ * The hard outline of spec section 10.1 is drawn by the edge pass of
+ * `edges.ts`, not by a material here.
+ *
+ * Both materials carry the emissive window mask: the glass of a building is
  * picked out, some of it is lit, and the whole of it is multiplied by one
  * `night` uniform. The uniform is 0 by daylight and nothing glows.
  *
@@ -27,9 +28,9 @@
  * Only this file, the other `*-material.ts` files and `tsl.ts` know about shader
  * nodes.
  */
-import { BackSide, Color } from 'three';
+import { Color } from 'three';
 import { createSkyscraperMaterial } from 'three/examples/jsm/generators/city/SkyscraperGenerator.js';
-import { MeshBasicNodeMaterial, MeshLambertNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
+import { MeshLambertNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import {
   BLOCK_BEACON,
   BLOCK_CONCRETE,
@@ -106,9 +107,6 @@ const MULLION = 0.28;
  */
 const GLAZING = 0x2e3a6a;
 
-/** The dark of every outline (spec section 10.1). */
-const OUTLINE = 0x150f12;
-
 /** Roofs and trim: terracotta over cream, whatever stands under them. */
 const ROOF = 0xcc6a3b;
 const TRIM = 0xefe6cf;
@@ -180,8 +178,6 @@ export interface BuildingMaterials {
   facade: MeshStandardNodeMaterial;
   /** Everything built as boxes: houses, shop rows, warehouses, roadhouses. */
   block: BlockMaterial;
-  /** The inverted hulls that outline both. */
-  outline: MeshBasicNodeMaterial;
   /** How far into the night it is, 0 by day and 1 at midnight. */
   night: { value: number };
   /**
@@ -195,7 +191,7 @@ export interface BuildingMaterials {
 }
 
 /**
- * Build the three materials every chunk of a world shares. All three are cut
+ * Build the two materials every chunk of a world shares. Both are cut
  * where a building hides the player (`cutaway.ts`).
  */
 export function createBuildingMaterials(cutaway: BuildingCutaway): BuildingMaterials {
@@ -204,21 +200,17 @@ export function createBuildingMaterials(cutaway: BuildingCutaway): BuildingMater
   const beacon = uniform(0);
   const facade = createFacadeMaterial(night, late);
   const block = createBlockMaterial(night, late, beacon);
-  const outline = new MeshBasicNodeMaterial({ color: new Color(OUTLINE), side: BackSide, fog: true });
   cutaway.dressShell(facade);
   cutaway.dressShell(block);
-  cutaway.dressOutline(outline);
   return {
     facade,
     block,
-    outline,
     night,
     late,
     beacon,
     dispose(): void {
       facade.dispose();
       block.dispose();
-      outline.dispose();
     },
   };
 }

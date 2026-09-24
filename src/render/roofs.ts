@@ -8,10 +8,10 @@
  * worker writes one box per building beside the batches, and the frame reads
  * the boxes.
  *
- * A box is the building's outline hull, turned with the lot. It is eight
+ * A box is the box of the building's shell, turned with the lot. It is eight
  * numbers: the middle on the ground, the lot's own x axis, the half width
  * along that axis and across it, and the bottom and the top. A lot on a bend
- * leans its side edges; the box is drawn around the leaned hull, so it covers
+ * leans its side edges; the box is drawn around the leaned shell, so it covers
  * the lean rather than follows it.
  */
 import { Box3, Vector3, type BufferAttribute, type BufferGeometry, type Matrix4 } from 'three';
@@ -40,13 +40,13 @@ const middle = new Vector3();
 const size = new Vector3();
 
 /**
- * Write the box of one building into `out` at `at`. `hull` is in the
+ * Write the box of one building into `out` at `at`. `shell` is in the
  * building's own frame and `matrix` puts it in the world, as
  * `building-mesh.ts` builds both. The frame is a turn about the up axis and a
  * scale, so its first column is the lot's x axis times the scale along it.
  */
-export function writeRoof(out: Float32Array, at: number, hull: BufferGeometry, matrix: Matrix4): void {
-  box.setFromBufferAttribute(hull.getAttribute('position') as BufferAttribute);
+export function writeRoof(out: Float32Array, at: number, shell: BufferGeometry, matrix: Matrix4): void {
+  box.setFromBufferAttribute(shell.getAttribute('position') as BufferAttribute);
   box.getCenter(middle);
   box.getSize(size);
   const e = matrix.elements;

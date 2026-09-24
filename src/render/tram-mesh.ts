@@ -16,11 +16,6 @@
  * Which design a tram is drawn in is the zone of the stop its lap starts at
  * (`tram.ts`): the core keeps its old cars, the inner districts got new ones.
  *
- * A box marked `outlined` is one of the masses the outline of spec section 10.1
- * follows, and every one of those stands inside the box the physics gives a car
- * (`tram-bodies.ts`). The bellows, the pantograph and the trolley pole reach
- * past it, so none of them is outlined.
- *
  * Nothing here touches the renderer, so a test reads the boxes directly.
  */
 import { BoxGeometry, type BufferGeometry } from 'three';
@@ -96,7 +91,7 @@ export function tramDoors(design: TramDesign, module: TramModule): number[] {
  * other flank of the car faces the oncoming track.
  */
 export function doorLeafBoxes(): TramBox[] {
-  return [box(DOOR_LONG - 0.06, DOOR_TALL, 0.09, 0, FLOOR + DOOR_TALL / 2, DOOR, false, -(CAR_HALF_WIDTH + 0.04))];
+  return [box(DOOR_LONG - 0.06, DOOR_TALL, 0.09, 0, FLOOR + DOOR_TALL / 2, DOOR, -(CAR_HALF_WIDTH + 0.04))];
 }
 
 /**
@@ -126,13 +121,12 @@ export interface TramBox {
   y: number;
   z: number;
   colour: number;
-  outlined: boolean;
   /** Radians the box is pitched nose-up about its own middle. Unset, it stands square. */
   pitch?: number;
 }
 
-function box(length: number, height: number, width: number, x: number, y: number, colour: number, outlined = false, z = 0): TramBox {
-  return { length, height, width, x, y, z, colour, outlined };
+function box(length: number, height: number, width: number, x: number, y: number, colour: number, z = 0): TramBox {
+  return { length, height, width, x, y, z, colour };
 }
 
 /** The boxes of one module of one design. */
@@ -162,10 +156,10 @@ function modernShell(bodyFrom: number, bodyTo: number): TramBox[] {
   const body = TOP - 0.3 - FLOOR;
   return [
     box(CAR_LENGTH - 0.5, 0.3, width - 0.3, 0, 0.2, UNDERFRAME),
-    box(length, body, width, middle, FLOOR + body / 2, MODERN_PAINT, true),
+    box(length, body, width, middle, FLOOR + body / 2, MODERN_PAINT),
     box(length - 0.2, 0.16, width + 0.02, middle, 1.62, MODERN_STRIPE),
     box(length - 1.4, 1.05, width + 0.04, middle, 2.25, GLASS),
-    box(length - 0.4, 0.22, width - 0.25, middle, TOP - 0.19, ROOF, true),
+    box(length - 0.4, 0.22, width - 0.25, middle, TOP - 0.19, ROOF),
     // The camera looks down on the roof, so it carries what a real one does:
     // the air conditioning, and the duct that runs the cables between modules.
     box(length - 2.4, 0.1, 0.5, middle, TOP - 0.03, UNDERFRAME),
@@ -194,12 +188,12 @@ function modernEnd(): TramBox[] {
     ...modernShell(-half, 3.8),
     ...modernFlank([-4.2, -0.9, 2.4], [-3.0, 1.2]),
     // The nose is two steps in, not a curve: the camera looks down on it.
-    box(0.7, body - 0.05, width - 0.1, 4.15, FLOOR + (body - 0.05) / 2, MODERN_PAINT, true),
-    box(0.5, body - 0.25, width - 0.3, 4.75, FLOOR + (body - 0.25) / 2, MODERN_PAINT, true),
+    box(0.7, body - 0.05, width - 0.1, 4.15, FLOOR + (body - 0.05) / 2, MODERN_PAINT),
+    box(0.5, body - 0.25, width - 0.3, 4.75, FLOOR + (body - 0.25) / 2, MODERN_PAINT),
     box(0.55, 1.05, width - 0.45, 4.4, 2.2, GLASS),
     box(0.06, 0.34, 1.5, 4.99, 2.62, BOARD),
-    box(0.08, 0.22, 0.5, 5.02, 1.2, LAMP, false, 0.75),
-    box(0.08, 0.22, 0.5, 5.02, 1.2, LAMP, false, -0.75),
+    box(0.08, 0.22, 0.5, 5.02, 1.2, LAMP, 0.75),
+    box(0.08, 0.22, 0.5, 5.02, 1.2, LAMP, -0.75),
     // The bellows fills the gap to the next module and reaches into both.
     box(CAR_GAP + 0.4, 2.3, width - 0.45, -(half + CAR_GAP / 2), 1.65, BELLOWS),
   ];
@@ -238,7 +232,6 @@ function arm(fromX: number, fromY: number, toX: number, toY: number, spread: num
     y: (fromY + toY) / 2,
     z: 0,
     colour: METAL,
-    outlined: false,
     pitch: Math.atan2(dy, dx),
   };
   return [
@@ -258,14 +251,14 @@ function heritageCar(): TramBox[] {
   const body = TOP - 0.55 - FLOOR;
   const out: TramBox[] = [
     box(CAR_LENGTH - 0.4, 0.4, width - 0.3, 0, 0.2, UNDERFRAME),
-    box(CAR_LENGTH - 1, body, width, 0, FLOOR + body / 2, HERITAGE_PAINT, true),
+    box(CAR_LENGTH - 1, body, width, 0, FLOOR + body / 2, HERITAGE_PAINT),
     box(7.6, 0.8, width + 0.03, 0, 2.05, GLASS),
     box(CAR_LENGTH - 1, 0.45, width + 0.02, 0, 2.52, HERITAGE_CREAM),
     box(CAR_LENGTH - 1, 0.2, width + 0.02, 0, 0.62, HERITAGE_CREAM),
     // A cream roof over a cream band is what the 1940s painted, and from a
     // camera looking down the roof is most of the car.
-    box(CAR_LENGTH - 1.2, 0.3, width - 0.25, 0, 2.9, HERITAGE_CREAM, true),
-    box(CAR_LENGTH - 2, 0.18, width - 0.85, 0, 3.14, HERITAGE_CREAM, true),
+    box(CAR_LENGTH - 1.2, 0.3, width - 0.25, 0, 2.9, HERITAGE_CREAM),
+    box(CAR_LENGTH - 2, 0.18, width - 0.85, 0, 3.14, HERITAGE_CREAM),
     box(2.2, 0.4, width - 0.4, -3.5, 0.2, TYRE),
     box(2.2, 0.4, width - 0.4, 3.5, 0.2, TYRE),
     ...[-2.6, 0, 2.6].map((x) => box(0.22, 0.8, width + 0.05, x, 2.05, HERITAGE_PAINT)),
@@ -274,7 +267,7 @@ function heritageCar(): TramBox[] {
     box(CAR_LENGTH - 3, 0.09, 0.34, 0, 3.26, ROOF),
   ];
   for (const end of [1, -1]) {
-    out.push(box(0.5, body - 0.4, width - 0.25, end * 4.75, FLOOR + (body - 0.4) / 2, HERITAGE_PAINT, true));
+    out.push(box(0.5, body - 0.4, width - 0.25, end * 4.75, FLOOR + (body - 0.4) / 2, HERITAGE_PAINT));
     out.push(box(0.08, 0.3, 0.44, end * 4.98, 1.95, LAMP));
     out.push(box(0.06, 0.28, 1.2, end * 4.94, 2.5, BOARD));
     out.push(box(0.35, 0.26, width - 0.5, end * 4.7, 0.42, METAL));
@@ -301,16 +294,15 @@ function trolleyPole(): TramBox[] {
       y: (base + toY) / 2,
       z: 0,
       colour: METAL,
-      outlined: false,
       pitch: Math.atan2(dy, dx),
     },
     box(0.5, 0.09, 0.28, toX, PANTOGRAPH_TOP, METAL),
   ];
 }
 
-/** One box of a car as a geometry standing in the car's frame, grown by `reach`. */
-export function tramBoxGeometry(part: TramBox, reach: number): BufferGeometry {
-  const geometry = new BoxGeometry(part.length + 2 * reach, part.height + 2 * reach, part.width + 2 * reach).toNonIndexed();
+/** One box of a car as a geometry standing in the car's frame. */
+export function tramBoxGeometry(part: TramBox): BufferGeometry {
+  const geometry = new BoxGeometry(part.length, part.height, part.width).toNonIndexed();
   if (part.pitch !== undefined) geometry.rotateZ(part.pitch);
   geometry.translate(part.x, part.y, part.z);
   return geometry;

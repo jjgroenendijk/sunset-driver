@@ -37,7 +37,7 @@ export function cellGrid(bounds: ChunkBounds, detail: ChunkDetail): CellGrid {
 
 /**
  * The cell a place stands in, numbered row by row. A place outside the chunk
- * — a hull's rim over the edge, a bevel past it — is given the nearest cell.
+ * — a bevel over the edge — is given the nearest cell.
  */
 export function cellAt(grid: CellGrid, x: number, y: number): number {
   const { bounds, perSide } = grid;

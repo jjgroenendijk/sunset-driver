@@ -1,8 +1,9 @@
 # Buildings
 
 The gotchas of the meshes `src/render` builds for the buildings of the city: how a building is
-massed, how its shell is generated, how it is stood on its lot and how it is outlined. `spec.md`
-section 10.3 is the design. What else stands in the world is in `docs/render-entities.md`, how the
+massed, how its shell is generated and how it is stood on its lot. `spec.md` section 10.3 is the
+design. The ink lines around a building come from the screen-space edge pass of `edges.ts`, not
+from any geometry here. What else stands in the world is in `docs/render-entities.md`, how the
 meshes reach the screen in `docs/streaming.md`, what a quality tier moves in `docs/rendering.md`,
 and what lights them in `docs/lighting.md`.
 
@@ -90,8 +91,8 @@ and what lights them in `docs/lighting.md`.
   whole frame costs 18 ms now. Only the width of a column of windows changes from part to part.
 - Art Deco asks `shapeOf` for the `setbacks` plan by name, through `planFor`, and falls back to a
   box where the lot has no room for a stack. Its crown and spire stand over the parapet of the top
-  tier, so a Deco tower reaches higher than its massing says — the outline hull follows the shell,
-  so the camera knows.
+  tier, so a Deco tower reaches higher than its massing says — the box `roofs.ts` writes is the
+  shell's, so the camera knows.
 - The neon strips of a Deco and a Miami tower are their own `part`. A shader cannot read a
   building's seed, so their colour is drawn from the ground the strip stands over: one building's
   strips are one colour and its neighbour's another.
@@ -128,8 +129,8 @@ and what lights them in `docs/lighting.md`.
 ## Building geometry
 
 - `buildChunkBuildings(chunk, lookup)` (`building-mesh.ts`) is the geometry of a chunk's buildings
-  (spec section 10.3), and `BuildingScenery` (`buildings.ts`) packs it into three batches: the
-  generated facades, the blocks, and the hulls that outline both. A tower and a mid-rise block are
+  (spec section 10.3), and `BuildingScenery` (`buildings.ts`) packs it into two batches: the
+  generated facades and the blocks. A tower and a mid-rise block are
   `SkyscraperGenerator`; every other kind, and a tower on a lot too narrow for the generator's bays,
   is boxes from `block-mesh.ts`. Nothing ever stands off its lot: the massing is the lot less a
   margin, a generated facade is asked for `CORNICE` less again because its cornices overhang
@@ -143,10 +144,10 @@ and what lights them in `docs/lighting.md`.
   the rest of the fall. The shell is already sunk `FOUNDATION` into the ground, so a fall smaller
   than that asks for no footing at all. Stood on the lowest corner instead, half the buildings of a
   seed were a metre or more into the hill and a tenth of them deeper than a storey. The footing
-  joins the block batch, as the roof dressing does, and the hull is outlined down over it.
-- `building-mesh.ts` is the door onto four files: it generates and places the shell,
-  `building-plan.ts` says how big a building is and what ground it may cover, `building-shape.ts`
-  what stands inside that box, and `building-hull.ts` builds the outline. The plan and the shape
+  joins the block batch, as the roof dressing does.
+- `building-mesh.ts` is the door onto three files: it generates and places the shell,
+  `building-plan.ts` says how big a building is and what ground it may cover, and
+  `building-shape.ts` what stands inside that box. The plan and the shape
   hold no three.js, so a massing is a handful of numbers a test can read.
 - `block-mesh.ts` is the door onto the kinds that are not generated: `block-shell.ts` is the kit
   they share — the `Shell` that collects triangles, the `part` numbers the material shades by, and
@@ -163,8 +164,8 @@ and what lights them in `docs/lighting.md`.
   most one use, which a rich district carries more often. The dressing is a geometry of its own,
   not part of the shell, and it joins the block batch of the cell — so a generated tower's chunk
   pays for the block batch even when it holds no block, which `buildingDrawCalls` counts. Keeping
-  it out of the shell is what keeps a six-metre mast out of the outline hull, and so out of the box
-  `roofs.ts` writes and the camera climbs. A generated tower has no known deck, so `roofDeckOf`
+  it out of the shell is what keeps a six-metre mast out of the box `roofs.ts` writes from the
+  shell, which the camera climbs. A generated tower has no known deck, so `roofDeckOf`
   measures one off each box of its shape: the highest flat plane that is a slab rather than a ring,
   which is that box's crown slab and not the cornice over it. A building of several boxes is
   dressed on each of them, each from its own draw, so a podium terrace and the tower over it do not
@@ -185,7 +186,7 @@ and what lights them in `docs/lighting.md`.
   ground a shell may cover — the lot, and `OVERHANG` past each shared edge — and it is what both
   sweeps ask. A shared edge never faces a road, so none of this puts a wall on the carriageway.
 - A lot on a bend is a trapezoid or a parallelogram, and a box inside it cannot reach both of its
-  side edges. So a lot that shares a side edge has its shell and hull leaned (`leanOf` in
+  side edges. So a lot that shares a side edge has its shell leaned (`leanOf` in
   `building-plan.ts`): each place moves along `x` by an amount linear in `x` at its depth, which
   maps the massing's sides onto the lot's side edges. A shear in the matrix cannot do this, because
   a trapezoid is wider at one end. The normals and the facade's `roomCenter` are leaned with the
@@ -203,50 +204,14 @@ and what lights them in `docs/lighting.md`.
   wider than a real tower's, because the camera looks down from 60 m and a window it cannot see is
   geometry the frame pays for; `BAY_WIDTH` and `FLOOR_HEIGHT` in `building-shape.ts` are the
   plainest of them.
-- The outline of spec section 10.1 is an inverted hull drawn back-face only, and it is the
-  building's massing rather than its facade: it follows the shell band of height by band, so a
-  setback is outlined where it stands, and a hull wound the other way would hide the building
-  instead of rimming it. `test/building-mesh.test.ts` pins the winding, because nothing else catches
-  it before a frame is rendered.
-- A band reaches as far as the widest thing in it, so where a band is cut decides how far the hull
-  stands over a roof. `bandEdgesOf` moves each cut onto the largest level within half a band of it.
-  On a fixed grid the band that held a terrace stood the hull of the podium up to a band over it, a
-  black wall round the terrace. A level triangle belongs to the band on the side it faces, which the
-  winding tells: a roof to the band under it, a soffit to the band over it. A roof and the soffit
-  of a wider storey often share a level, and counted under the cut, the soffit held the storey below
-  out at the wider width. Each triangle is also cut to the band it measures: measured whole, a
-  sloping triangle held every band it spans out at its widest, which boxed a gable and widened a
-  tier under its cornice. `test/building-hull.test.ts` pins all three.
-- The hull is outside every pier and fin of a generated facade, and they stand up to 1.5 m proud of
-  the wall, with the corner of the building often set back between them. The camera sees the dark
-  of the hull down into that space past a corner. A hull set inside the piers is not the answer:
-  its far wall then covers the piers and ledges that stand behind it.
-- The hull is laid out on the shape's own ring, so an L and a U are outlined round their notch. Two
-  things in `building-hull.ts` are what make a ring that is not convex work. Each face is measured
-  from the shell that stands **along it** and not from the whole shell, because a face that looks
-  into a notch has the far wing as the furthest thing in its direction and the notch would fill in;
-  a face with nothing standing along it in a band is pushed out until it binds on nothing, and the
-  ring then closes on its neighbours, which is what drops the notch of an L above the wing that
-  cuts it. And the caps are triangulated rather than fanned from one corner. A courtyard is given
-  its outer rectangle: an outline is the silhouette a building cuts against the ground, and the
-  hole in the middle of a block is not one.
-- The rim comes out `OUTLINE_WIDTH` wide on every building, whatever its lot. The hull is stretched
-  by `fitOf` and sheared by `leanOf` along with the shell, so pushing every face out by the same
-  amount in the building's own units rimmed the ends of a stretched building metres wide where its
-  front kept a third of a metre. `pushOf` pushes each face by what that transform takes back, read
-  at both ends of the face, since the lean is half as strong at one end of a wedge lot as at the
-  other. And a corner is held inside how far the shell itself reaches that way: two faces that
-  cross behind the shell cross a long way outside it, which used to fly the corner a chamfer cuts
-  tens of metres over the street. `test/building-mesh.test.ts` pins both.
-- `building-material.ts` holds the three materials and the one `night` uniform they share: the glass
+- `building-material.ts` holds the two materials and the one `night` uniform they share: the glass
   of every building is picked out, some of it is lit, and the whole of it is multiplied by that
   uniform. It is 0 by daylight, and `WorldScene.time` sets it off the day and night cycle.
 - `cutaway.ts` cuts a building that hides the player (spec section 10.7) with the dither of
-  `fade.ts`. Inside the cone the shell keeps `GHOST` of its pixels and the outline hull is cut away
-  whole, or its dark shows through the holes. The building the camera is inside is cut away whole,
-  because even a ghost of walls on every side veils the screen. It is known from `roofs.ts`: each
-  chunk payload carries one turned box per building, because the batches cannot say which building a
-  triangle belongs to. `WorldScene.roofOver` reads the boxes of the nine chunks around a point. The
-  cut sits in `opacityNode` and `alphaTestNode` on every building material, so the Off setting sets
-  a uniform to 0 and rebuilds nothing. The shadow pass does not see the cut, so a ghost casts its
-  whole shadow.
+  `fade.ts`. Inside the cone the shell keeps `GHOST` of its pixels. The building the camera is
+  inside is cut away whole, because even a ghost of walls on every side veils the screen. It is
+  known from `roofs.ts`: each chunk payload carries one turned box per building, because the batches
+  cannot say which building a triangle belongs to. `WorldScene.roofOver` reads the boxes of the nine
+  chunks around a point. The cut sits in `opacityNode` and `alphaTestNode` on every building
+  material, so the Off setting sets a uniform to 0 and rebuilds nothing. The shadow pass does not
+  see the cut, so a ghost casts its whole shadow.

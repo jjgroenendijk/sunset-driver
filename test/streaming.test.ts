@@ -1,4 +1,4 @@
-import { BackSide, Matrix4, MeshBasicMaterial, Vector3 } from 'three';
+import { Matrix4, MeshBasicMaterial, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { Batch, batchOfPacked } from '../src/render/batch.ts';
 import { buildChunkBuildings } from '../src/render/building-mesh.ts';
@@ -244,7 +244,6 @@ describe('a chunk as a payload', () => {
     // Every building is one part of a batch, and a roof dressed with plant is
     // one more part of the block batch, whatever shell stands under it.
     expect(partsIn(payload.blocks) + partsIn(payload.facades)).toBeGreaterThanOrEqual(chunk.buildings.length);
-    expect(partsIn(payload.outlines)).toBe(chunk.buildings.length);
     // The most a chunk costs is answered off the chunk alone, before any
     // geometry is built; the payload counts the cells it fills.
     expect(payload.drawCalls).toBeLessThanOrEqual(chunkDrawCalls(chunk));
@@ -256,8 +255,8 @@ describe('a chunk as a payload', () => {
     const grid = cellGrid(payload.bounds, 'near');
     // A core chunk has buildings in more than one quarter of it, so the view
     // culls a quarter rather than the whole chunk.
-    expect(payload.outlines.length).toBeGreaterThan(1);
-    for (const cells of [payload.outlines, payload.facades, payload.blocks]) {
+    expect(payload.blocks.length).toBeGreaterThan(1);
+    for (const cells of [payload.facades, payload.blocks]) {
       const held = cells.map((cell) => {
         const where = new Set(cell.parts.map((part) => cellAt(grid, part.matrix?.[12] as number, part.matrix?.[14] as number)));
         expect(where.size).toBe(1);
@@ -268,13 +267,14 @@ describe('a chunk as a payload', () => {
     }
     // The far ring is not cut: a draw costs more there than culling saves.
     const far = payloadOf(MIDDLE.cx, MIDDLE.cy, 'far');
-    expect(far.outlines).toHaveLength(1);
-    expect(far.drawCalls).toBe(1 + far.roads.length + 2);
+    expect(far.blocks).toHaveLength(1);
+    expect(far.drawCalls).toBe(1 + far.roads.length + 1);
   });
 
   it('builds every building as a block at mid detail, and keeps the rest of the near chunk', () => {
     const near = payloadOf(MIDDLE.cx, MIDDLE.cy, 'near');
     const mid = payloadOf(MIDDLE.cx, MIDDLE.cy, 'mid');
+    const buildings = source.chunk(MIDDLE.cx, MIDDLE.cy).buildings.length;
     expect(mid.facades).toHaveLength(0);
     // Mid detail dresses no roof but the aircraft beacon of the tallest towers
     // (`roof-dress.ts`), so a building is one block, the beacon where it stands
@@ -282,11 +282,8 @@ describe('a chunk as a payload', () => {
     // (`building-mesh.ts`).
     const dressed = dressedIn(MIDDLE.cx, MIDDLE.cy, 'mid');
     expect(dressed).toBeGreaterThan(0);
-    expect(dressed).toBeLessThan(partsIn(mid.outlines));
-    expect(partsIn(mid.blocks)).toBe(
-      partsIn(mid.outlines) + dressed + footingsIn(MIDDLE.cx, MIDDLE.cy, 'mid'),
-    );
-    expect(partsIn(mid.outlines)).toBe(partsIn(near.outlines));
+    expect(dressed).toBeLessThan(buildings);
+    expect(partsIn(mid.blocks)).toBe(buildings + dressed + footingsIn(MIDDLE.cx, MIDDLE.cy, 'mid'));
     expect(mid.ground.gridSize).toBe(near.ground.gridSize);
     expect(mid.roads.map((tier) => tier.tier)).toEqual(near.roads.map((tier) => tier.tier));
     expect(mid.plants.models).toEqual(near.plants.models);
@@ -304,10 +301,9 @@ describe('a chunk as a payload', () => {
     expect(far.ground.positions[(far.ground.gridSize * far.ground.gridSize - 1) * 3]).toBe(
       near.ground.positions[(near.ground.gridSize * near.ground.gridSize - 1) * 3],
     );
-    expect(partsIn(far.blocks)).toBe(partsIn(near.outlines) + footingsIn(MIDDLE.cx, MIDDLE.cy, 'far'));
+    const buildings = source.chunk(MIDDLE.cx, MIDDLE.cy).buildings.length;
+    expect(partsIn(far.blocks)).toBe(buildings + footingsIn(MIDDLE.cx, MIDDLE.cy, 'far'));
     expect(far.facades).toHaveLength(0);
-    // The outline stays: it is what the skyline reads by.
-    expect(partsIn(far.outlines)).toBe(partsIn(near.outlines));
     expect(far.plants.models).toHaveLength(0);
     expect(near.plants.models.length).toBeGreaterThan(0);
     expect(far.lamps).toHaveLength(0);
@@ -338,7 +334,7 @@ describe('a chunk as a payload', () => {
   it('packs a batch of buildings out of a payload, every part of it in world places', () => {
     const payload = payloadOf(MIDDLE.cx, MIDDLE.cy, 'near');
     const material = new MeshBasicMaterial();
-    const cell = payload.outlines[0] as ChunkPayload['outlines'][number];
+    const cell = payload.blocks[0] as ChunkPayload['blocks'][number];
     const firstPart = cell.parts[0]?.geometry.attributes.find((attribute) => attribute.name === 'position');
     const firstPositions = (firstPart?.array as Float32Array).slice();
     const batch = batchOfPacked(cell, material);
@@ -665,29 +661,23 @@ describe('the scene as the player drives', () => {
     scene.dispose();
   });
 
-  it('lets a chunk take the sun but keeps the outline hulls and the flat roads from casting', async () => {
+  it('lets a chunk take the sun but keeps the flat roads from casting', async () => {
     const scene = new WorldScene(world, DEFAULT_APPEARANCE, new DirectStream());
     await scene.settle(0, 0);
 
-    // The outlines are the only batch drawn back faces only (`buildings.ts`).
-    // Their top cap stands 0.35 m over the roof it rims, so a shadow one cast
-    // landed on that roof and blacked it out.
-    const outlines: Batch[] = [];
     const rest: Batch[] = [];
     scene.scene.traverse((object) => {
-      if (object instanceof Batch) (object.material.side === BackSide ? outlines : rest).push(object);
+      if (object instanceof Batch) rest.push(object);
     });
 
-    expect(outlines.length).toBeGreaterThan(0);
-    expect(outlines.some((batch) => batch.castShadow)).toBe(false);
     expect(rest.length).toBeGreaterThan(0);
     // Paving on the ground shades only itself, so a road cell with nothing
     // raised in it casts none (`roads.ts`). Everything else does.
     const road = (batch: Batch): boolean => batch.geometry.getAttribute('across') !== undefined;
     expect(rest.some((batch) => road(batch) && !batch.castShadow)).toBe(true);
     expect(rest.filter((batch) => !road(batch)).every((batch) => batch.castShadow)).toBe(true);
-    // Both still take the shadow of what stands over them.
-    expect([...outlines, ...rest].every((batch) => batch.receiveShadow)).toBe(true);
+    // Every batch still takes the shadow of what stands over it.
+    expect(rest.every((batch) => batch.receiveShadow)).toBe(true);
     scene.dispose();
   });
 

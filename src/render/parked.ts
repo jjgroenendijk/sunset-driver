@@ -1,20 +1,18 @@
 /**
  * The parked cars, drawn (spec sections 9.2, 13.1).
  *
- * Like the traffic, every class is three instanced meshes — the paint, the
- * trim and the outline — so the parked cars in view cost three draws per class
- * on screen. A parked car does not move, so the instances are written again
+ * Like the traffic, every class is two instanced meshes — the paint and the
+ * trim — so the parked cars in view cost two draws per class on screen. A parked car does not move, so the instances are written again
  * only when something changed: the point the frame is drawn round has moved
  * far enough to bring new bays into view, a stay has turned over, or a car has
  * been promoted. Between those the frame uploads nothing. A promoted car is
  * drawn by `traffic.ts` from its record.
  */
-import { BackSide, Color, Group, Matrix4, MeshBasicMaterial, MeshStandardMaterial, Quaternion, Vector3, type InstancedMesh, type Material } from 'three';
+import { Color, Group, Matrix4, MeshStandardMaterial, Quaternion, Vector3, type InstancedMesh, type Material } from 'three';
 import { PARKED_CLASSES, type ParkedCar, type ParkedCars } from '../sim/parked.ts';
 import type { SimState } from '../sim/simulation.ts';
 import { rideHeight, specOf, type VehicleClass } from '../sim/vehicle.ts';
 import { instanced, trafficParts } from './traffic.ts';
-import { OUTLINE } from './vehicle.ts';
 import { tinted } from './tint.ts';
 
 /** Metres each way of the point the frame is drawn round that parked cars are drawn in. */
@@ -61,15 +59,13 @@ export class ParkedView {
     this.cars = cars;
     const paint = new MeshStandardMaterial({ roughness: 0.45, metalness: 0.2 });
     const trim = new MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.1 });
-    const outline = new MeshBasicMaterial({ color: new Color(OUTLINE), side: BackSide, fog: true });
-    this.materials.push(paint, trim, outline);
+    this.materials.push(paint, trim);
     for (const cls of PARKED_CLASSES) {
       const spec = specOf(cls);
       const parts = trafficParts(spec);
       const meshes = [
         tinted(instanced(parts.paint, paint, true, PARKED_CAP)),
         instanced(parts.trim, trim, false, PARKED_CAP),
-        instanced(parts.rim, outline, false, PARKED_CAP),
       ];
       this.classes.push({ cls, lift: rideHeight(spec), meshes });
       this.group.add(...meshes);

@@ -40,17 +40,17 @@ function unit(id: number, kind: EmergencyUnit['kind'], x: number, y: number): Em
 
 describe('the emergency services, drawn (spec section 20.3)', () => {
   /**
-   * The meshes of the view by what they are: per kind a body, a rim, two
-   * beacon phases and a door each side, then the glow, the water and the hoses.
+   * The meshes of the view by what they are: per kind a body, two beacon
+   * phases and a door each side, then the glow, the water and the hoses.
    */
   function parts(view: EmergencyView): InstancedMesh[] {
     return view.group.children as InstancedMesh[];
   }
-  const ENGINE_PHASES = [2, 3];
-  const ENGINE_DOORS = [4, 5];
-  const GLOW = 12;
-  const WATER = 13;
-  const HOSES = 14;
+  const ENGINE_PHASES = [1, 2];
+  const ENGINE_DOORS = [3, 4];
+  const GLOW = 10;
+  const WATER = 11;
+  const HOSES = 12;
 
   it('draws the units in view and leaves out the ones over the horizon', () => {
     const view = new EmergencyView();

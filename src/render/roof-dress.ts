@@ -12,9 +12,9 @@
  * measured off the shell by {@link roofDeckOf}.
  *
  * The dressing is built as its own geometry and joins the block batch, so it
- * costs no draw call. It is kept out of the shell the outline hull is drawn
- * around on purpose: a mast six metres tall would otherwise raise the box that
- * `roofs.ts` writes, and the camera would climb the mast rather than the roof.
+ * costs no draw call. It is kept out of the shell on purpose: `roofs.ts` writes
+ * the camera's box from the shell, so a mast six metres tall would raise it,
+ * and the camera would climb the mast rather than the roof.
  */
 import type { BufferAttribute, BufferGeometry } from 'three';
 import {
@@ -352,7 +352,7 @@ function item(shell: Shell, x: number, z: number, top: number, seed: number, sal
     shell.box(x - 1.7, x + 1.7, top + 2.6, top + 2.75, z - 1.4, z + 1.4, BLOCK_ROOF);
   } else {
     // A mast. It stands well over the roof, which is why the dressing is kept
-    // out of the hull the camera reads.
+    // out of the shell whose box the camera reads.
     shell.box(x - 0.12, x + 0.12, top, top + 6, z - 0.12, z + 0.12, BLOCK_METAL);
     shell.box(x - 0.5, x + 0.5, top + 4.4, top + 4.6, z - 0.5, z + 0.5, BLOCK_METAL);
   }

@@ -149,6 +149,13 @@ export function createMarkingMaterial(): MeshStandardNodeMaterial {
     polygonOffset: true,
     polygonOffsetFactor: -1,
     polygonOffsetUnits: -4,
+    // The paint leaves the road's depth in the frame. The nudge above is a
+    // step in depth, and the edge pass of `edges.ts` would ink every line
+    // painted on the road. Drawn with the transparent objects, after the road,
+    // it still tests against the road's depth; it is opaque, so it blends to
+    // nothing.
+    transparent: true,
+    depthWrite: false,
   });
 }
 

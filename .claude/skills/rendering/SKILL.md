@@ -17,7 +17,7 @@ Six docs hold what costs a session:
 - `docs/rendering.md` — how a frame is put together: quality tiers, warming the shaders, smoothing
   and fading, the roads, and water.
 - `docs/post.md` — the post chain, the colour grade and getting its cube to the GPU.
-- `docs/buildings.md` — how a building is massed, generated, placed and outlined.
+- `docs/buildings.md` — how a building is massed, generated and placed.
 - `docs/render-entities.md` — what stands in the world: vehicles, weapons, plants,
   traffic, parked cars and the crowd.
 - `docs/lighting.md` — what lights it: daylight and shadows, the street lamps, and the lamps and

@@ -126,7 +126,7 @@ scene ever holds in `docs/shops.md`. The aircraft and the airfields are drawn as
   is built on what reads from 60 m up. An engine has a white cab roof and a ladder along its roof,
   since nothing else in the city has rungs. An ambulance has a red cross on its roof. Keep the
   ladder short of the light bar on the cab, or it hides the bar from above.
-- A unit's colours are on its vertices, so a kind is one body mesh, one outline and one mesh per
+- A unit's colours are on its vertices, so a kind is one body mesh and one mesh per
   phase of its beacons, and no instance paint. They are stepped once a tick like the police, so
   nothing here is evaluated between two ticks. `node scripts/render-preview.ts 7 out.png
   --emergency --junction=60` frames both on an open street.
@@ -265,8 +265,8 @@ scene ever holds in `docs/shops.md`. The aircraft and the airfields are drawn as
 
 ## Traffic, parked cars and the crowd
 
-- `src/render/traffic.ts` draws the traffic of spec section 13.1 as three `InstancedMesh`es per
-  class: the boxes in the row's paint, the trim with its colours per vertex, and the outline. A box
+- `src/render/traffic.ts` draws the traffic of spec section 13.1 as two `InstancedMesh`es per
+  class: the boxes in the row's paint, and the trim with its colours per vertex. A box
   whose colour is `VehicleSpec.paint` goes into the paint mesh, and the instance colour replaces
   it, so one mesh draws a saloon in every paint. A class with nothing in view is hidden, so it costs
   no draw. The traffic is evaluated at `tick - 1 + alpha`, the moment `smooth.ts` draws the player

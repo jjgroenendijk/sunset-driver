@@ -117,7 +117,7 @@ export function flagBoxes(): StopBox[] {
 
 /** The three geometries a stop is drawn with, each with its colours on its vertices. */
 export function tramStopParts(): { platform: BufferGeometry; shelter: BufferGeometry; flag: BufferGeometry } {
-  const grow = (parts: StopBox[]): BufferGeometry => merged(parts.map((part) => coloured(boxOf(part, 0), part.colour)));
+  const grow = (parts: StopBox[]): BufferGeometry => merged(parts.map((part) => coloured(boxOf(part), part.colour)));
   return { platform: grow(platformBoxes()), shelter: grow(shelterBoxes()), flag: grow(flagBoxes()) };
 }
 

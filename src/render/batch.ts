@@ -3,7 +3,7 @@
  * 9.1, 9.2).
  *
  * Everything of one kind in a cell of a chunk — every run of road, every
- * tower, every outline, every tree — is merged into one geometry and drawn as
+ * tower, every tree — is merged into one geometry and drawn as
  * one mesh. Each part is copied in already standing where it stands in the
  * world. The cells are `cells.ts`: a batch that spanned its whole chunk was
  * drawn whole wherever any corner of the chunk was seen.

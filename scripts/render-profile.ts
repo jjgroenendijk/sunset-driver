@@ -20,7 +20,7 @@
  *   --no-water, --no-shadows, --no-clustered, --no-post, --no-lamps
  *                    take one part of the frame away, to see what it cost.
  *   --no-cast        kinds of batch that cast no shadow, as a list:
- *                    road, facade, block, outline, plant, lamp.
+ *                    road, facade, block, plant, lamp.
  *   --tier-at        quality changes during the drive, as frame:tier pairs
  *                    separated by commas: --tier-at=150:high,300:full applies
  *                    those tiers at those drive frames. This is how a tier

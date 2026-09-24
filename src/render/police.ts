@@ -2,11 +2,10 @@
  * The police, drawn (spec sections 9.2, 14).
  *
  * A police car is the patrol row of the roster, drawn the way the traffic is:
- * the painted boxes, the parts with colours of their own, and the outline of
- * spec section 10.1. The two halves of the light bar on its roof flash
- * against each other (`beacons.ts`), red then blue, and throw their light on
- * the road round the car: that is what a player sees in the mirror before they
- * see the car.
+ * the painted boxes and the parts with colours of their own. The two halves
+ * of the light bar on its roof flash against each other (`beacons.ts`), red
+ * then blue, and throw their light on the road round the car: that is what a
+ * player sees in the mirror before they see the car.
  *
  * The helicopter is drawn over the roofs, {@link HELICOPTER_HEIGHT} above the
  * ground the record says is under it, with a rotor that turns with the tick.
@@ -14,12 +13,11 @@
  * The units are drawn where the record put them. They are stepped every tick
  * like the player, so nothing is evaluated between two ticks here.
  */
-import { BackSide, Color, Group, Matrix4, MeshBasicMaterial, MeshStandardMaterial, Quaternion, Vector3, type InstancedMesh, type Material } from 'three';
+import { Color, Group, Matrix4, MeshStandardMaterial, Quaternion, Vector3, type InstancedMesh, type Material } from 'three';
 import { HELICOPTER_HEIGHT, type PoliceUnit } from '../sim/police.ts';
 import type { SimState } from '../sim/simulation.ts';
 import { rideHeight, specOf } from '../sim/vehicle.ts';
 import { boxOf, coloured, instanced, merged, trafficParts, TRAFFIC_VIEW } from './traffic.ts';
-import { OUTLINE, VEHICLE_OUTLINE_WIDTH } from './vehicle.ts';
 import { createVehicleTrim, type VehicleTrim } from './vehicle-glow.ts';
 import { GLASS, METAL, patrolBeacons, TYRE } from './vehicle-mesh.ts';
 import { BeaconGlow, BeaconPhase, beaconMaterial, flashLit } from './beacons.ts';
@@ -38,7 +36,6 @@ export class PoliceView {
   readonly group = new Group();
   private readonly paint: InstancedMesh;
   private readonly trim: InstancedMesh;
-  private readonly rim: InstancedMesh;
   private readonly phases: [BeaconPhase, BeaconPhase];
   private readonly glow: BeaconGlow;
   private readonly heli: InstancedMesh;
@@ -61,11 +58,9 @@ export class PoliceView {
     this.trimMaterial = createVehicleTrim();
     const trim = this.trimMaterial.material;
     const lamp = beaconMaterial();
-    const outline = new MeshBasicMaterial({ color: new Color(OUTLINE), side: BackSide, fog: true });
-    this.materials = [paint, lamp, outline];
+    this.materials = [paint, lamp];
     this.paint = tinted(instanced(parts.paint, paint, true, UNIT_CAP));
     this.trim = instanced(parts.trim, trim, false, UNIT_CAP);
-    this.rim = instanced(parts.rim, outline, false, UNIT_CAP);
     const lenses = patrolBeacons(spec).map((beacon) => ({
       ...beacon,
       box: { ...beacon.box, length: beacon.box.length + LENS_GROW, height: beacon.box.height + LENS_GROW, width: beacon.box.width + LENS_GROW },
@@ -74,7 +69,7 @@ export class PoliceView {
     this.glow = new BeaconGlow(UNIT_CAP);
     this.heli = instanced(heliBody(), trim, true, UNIT_CAP);
     this.rotor = instanced(rotorBlades(), trim, false, UNIT_CAP);
-    this.group.add(this.paint, this.trim, this.rim, this.phases[0].mesh, this.phases[1].mesh, this.heli, this.rotor, this.glow.mesh);
+    this.group.add(this.paint, this.trim, this.phases[0].mesh, this.phases[1].mesh, this.heli, this.rotor, this.glow.mesh);
   }
 
   /**
@@ -122,7 +117,6 @@ export class PoliceView {
       this.matrix.compose(this.at, this.turn, this.one);
       this.paint.setMatrixAt(cars, this.matrix);
       this.trim.setMatrixAt(cars, this.matrix);
-      this.rim.setMatrixAt(cars, this.matrix);
       this.paint.setColorAt(cars, this.colour.set(specOf('emergency').paint));
       // A car driving off once its call is over has its siren off, and its bar dark.
       const calling = unit.task !== 'leave';
@@ -137,7 +131,7 @@ export class PoliceView {
   }
 
   dispose(): void {
-    for (const mesh of [this.paint, this.trim, this.rim, this.phases[0].mesh, this.phases[1].mesh, this.heli, this.rotor]) {
+    for (const mesh of [this.paint, this.trim, this.phases[0].mesh, this.phases[1].mesh, this.heli, this.rotor]) {
       mesh.geometry.dispose();
       mesh.dispose();
     }
@@ -151,7 +145,7 @@ export class PoliceView {
   private fill(cars: number, flying: number): void {
     for (const phase of this.phases) phase.commit(cars);
     this.glow.commit();
-    for (const mesh of [this.paint, this.trim, this.rim]) {
+    for (const mesh of [this.paint, this.trim]) {
       mesh.count = cars;
       mesh.visible = cars > 0;
       if (cars > 0) mesh.instanceMatrix.needsUpdate = true;
@@ -168,7 +162,7 @@ export class PoliceView {
 /** The helicopter's hull: the cabin, the tail and the boom that carries it. */
 export function heliBody(): ReturnType<typeof merged> {
   const box = (length: number, height: number, width: number, x: number, y: number, colour: number) =>
-    coloured(boxOf({ length, height, width, x, y, z: 0, colour }, 0), colour);
+    coloured(boxOf({ length, height, width, x, y, z: 0, colour }), colour);
   return merged([
     box(HELI.length, HELI.height, HELI.width, 0, 0, METAL),
     box(HELI.length * 0.45, HELI.height * 0.5, HELI.width * 0.95, HELI.length * 0.3, HELI.height * 0.1, GLASS),
@@ -181,7 +175,7 @@ export function heliBody(): ReturnType<typeof merged> {
 /** The rotor: two blades crossed, turned about the mast by the tick. */
 export function rotorBlades(): ReturnType<typeof merged> {
   const blade = (length: number, width: number) =>
-    coloured(boxOf({ length, height: 0.08, width, x: 0, y: 0, z: 0, colour: TYRE }, 0), TYRE);
+    coloured(boxOf({ length, height: 0.08, width, x: 0, y: 0, z: 0, colour: TYRE }), TYRE);
   const across = blade(0.4, HELI.rotor);
   return merged([blade(HELI.rotor, 0.4), across]);
 }
