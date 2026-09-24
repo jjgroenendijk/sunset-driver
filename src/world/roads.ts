@@ -531,6 +531,11 @@ class RoadTracer extends IslandLinkTrace {
       const points = this.untangled([...[...from].reverse(), ...line, ...to], 'street', STREET.maxGrade);
       // A cut that takes the boardwalk itself below its length leaves no boardwalk.
       if (points === undefined || keptLength(beach.boardwalk, points) < MIN_BOARDWALK) continue;
+      // The network shortens a road back to the piece joined to it, from a
+      // crossing it gives no junction. A way on that crosses a road so can
+      // keep only its own last step and none of the boardwalk (seed 4261874245).
+      const settled = this.settledLine('street', points);
+      if (settled !== undefined && settled.length < points.length && keptLength(beach.boardwalk, settled) < MIN_BOARDWALK) continue;
       const laid = this.addCurve('street', points, []);
       if (laid !== undefined) return { id: laid.id, line, ways };
     }
@@ -552,6 +557,9 @@ class RoadTracer extends IslandLinkTrace {
       for (const [way, end] of run.ways) {
         const spur = this.untangled([...[...way].reverse(), end], 'street', STREET.maxGrade);
         if (spur === undefined) continue;
+        // A spur the network would shorten no longer reaches the boardwalk.
+        const settled = this.settledLine('street', spur);
+        if (settled !== undefined && settled.length < spur.length) continue;
         if (this.addCurve('street', spur, []) === undefined) continue;
         return this.addCurve('street', [...run.line], [])?.id ?? -1;
       }
