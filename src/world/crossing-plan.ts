@@ -217,7 +217,8 @@ function planJunctions(network: CrossingNetwork, draft: DraftLine): Plan {
  * longer stand a clearance apart, once the junctions the plan gives the road
  * have laid its own line on their planes (issue #533). `separation` decided
  * each of these on the bed the road drives with no junction on it; this asks
- * the same question of the line it will really drive. A road is shortened back
+ * the same question of the line it will really drive, and of the laid road as
+ * those junctions refit it. A road is shortened back
  * from such a crossing, as it is from one it cannot be carried over.
  *
  * The junctions a laid road takes near a crossing already in the world are
@@ -230,12 +231,14 @@ function planedApart(network: CrossingNetwork, road: DraftLine, plan: Plan, apar
   if (nodes.length === 0) return [];
   const ground: Ground = (x, y) => network.heightAt(x, y);
   const line: PlaneLine = { id: network.curves.length, points: road.points, lift: road.lift };
+  // The road's own junctions refit the planes of the laid roads at them too.
+  const edits = nodes.map((node) => ({ at: road.points[node.point] as Point, seeds: node.seeds }));
   const out: Failure[] = [];
   for (const place of apart) {
     const segment = segmentAt(road.points, place, ON_CURVE);
     if (segment === undefined) continue;
     const here = spanOf(ground, line, nodes, segment, place);
-    const there = surfaceSpan(network, place.curve, place.other, place);
+    const there = surfaceSpan(network, place.curve, place.other, place, edits);
     const gap = Math.max(here.low - there.high, there.low - here.high);
     if (gap < CLEARANCE - HEADROOM_SLACK) out.push({ segment: place.segment, x: place.x, y: place.y, tier: place.tier });
   }
