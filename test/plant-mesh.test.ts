@@ -9,6 +9,8 @@ import {
   PLANT_LEAF,
   PLANT_SPECIES,
   SPECIES_MODELS,
+  WOOD_MODELS,
+  woodModelIndex,
   vegetationDrawCalls,
   type PlantLookup,
 } from '../src/render/plant-mesh.ts';
@@ -21,6 +23,9 @@ function groundAt(x: number, y: number): number {
 }
 
 const LOOKUP: PlantLookup = { heightAt: groundAt };
+
+/** The same ground, with every parcel a park: the broadleaf takes the crowns of a wood. */
+const WOODED: PlantLookup = { heightAt: groundAt, wooded: () => true };
 
 /**
  * Triangles one model may cost. A plant is drawn a few hundred times in a
@@ -71,7 +76,7 @@ const models = buildPlantModels();
 
 describe('plant models', () => {
   it('builds one model of every species and variant, and nothing else', () => {
-    expect(models.length).toBe(PLANT_SPECIES.length * SPECIES_MODELS);
+    expect(models.length).toBe(PLANT_SPECIES.length * SPECIES_MODELS + WOOD_MODELS);
     for (const species of PLANT_SPECIES) {
       for (let variant = 0; variant < SPECIES_MODELS; variant++) {
         expect(models[modelIndex(species, variant)]).toBeDefined();
@@ -86,25 +91,29 @@ describe('plant models', () => {
   it('stands every model on the ground, inside the canopy its species claims', () => {
     // Spec section 10.4: the placement keeps a canopy inside one parcel, and
     // that only holds if the model itself stays inside the canopy.
-    for (const species of PLANT_SPECIES) {
-      for (let variant = 0; variant < SPECIES_MODELS; variant++) {
-        const geometry = models[modelIndex(species, variant)] as (typeof models)[number];
-        const position = geometry.getAttribute('position').array as Float32Array;
-        expect(geometry.getIndex(), `${species} ${variant}`).toBeNull();
-        expect(position.length % 9, `${species} ${variant}`).toBe(0);
-        expect(position.length / 9, `${species} ${variant}`).toBeLessThanOrEqual(MAX_MODEL_TRIANGLES);
-        let reach = 0;
-        let low = Infinity;
-        let high = -Infinity;
-        for (let v = 0; v < position.length; v += 3) {
-          reach = Math.max(reach, Math.hypot(position[v] as number, position[v + 2] as number));
-          low = Math.min(low, position[v + 1] as number);
-          high = Math.max(high, position[v + 1] as number);
-        }
-        expect(reach, `${species} ${variant} reaches out`).toBeLessThanOrEqual(PLANT_RADIUS[species]);
-        expect(low, `${species} ${variant} digs down`).toBeGreaterThanOrEqual(-MODEL_UNDERCUT);
-        expect(high, `${species} ${variant} is flat`).toBeGreaterThan(0.3);
+    const all = PLANT_SPECIES.flatMap((species) =>
+      Array.from({ length: SPECIES_MODELS }, (_, variant) => ({ species, variant, model: modelIndex(species, variant) })),
+    );
+    for (let variant = 0; variant < WOOD_MODELS; variant++) {
+      all.push({ species: 'broadleaf', variant, model: woodModelIndex(variant) });
+    }
+    for (const { species, variant, model } of all) {
+      const geometry = models[model] as (typeof models)[number];
+      const position = geometry.getAttribute('position').array as Float32Array;
+      expect(geometry.getIndex(), `${species} ${variant}`).toBeNull();
+      expect(position.length % 9, `${species} ${variant}`).toBe(0);
+      expect(position.length / 9, `${species} ${variant}`).toBeLessThanOrEqual(MAX_MODEL_TRIANGLES);
+      let reach = 0;
+      let low = Infinity;
+      let high = -Infinity;
+      for (let v = 0; v < position.length; v += 3) {
+        reach = Math.max(reach, Math.hypot(position[v] as number, position[v + 2] as number));
+        low = Math.min(low, position[v + 1] as number);
+        high = Math.max(high, position[v + 1] as number);
       }
+      expect(reach, `${species} ${variant} reaches out`).toBeLessThanOrEqual(PLANT_RADIUS[species]);
+      expect(low, `${species} ${variant} digs down`).toBeGreaterThanOrEqual(-MODEL_UNDERCUT);
+      expect(high, `${species} ${variant} is flat`).toBeGreaterThan(0.3);
     }
   });
 
@@ -113,21 +122,63 @@ describe('plant models', () => {
     // round is lit on the inside: the crown comes out flat and dark, and the
     // trunk shows through it. These three species carry one shell standing on
     // the plant's own axis, so every leaf face of them has to look away from it.
+    // A crown of a wood is a ball, so its faces look away from its middle.
+    const shells: { name: string; model: number; ball: boolean }[] = [];
     for (const species of ['conifer', 'columnar', 'hedge'] as const) {
       for (let variant = 0; variant < SPECIES_MODELS; variant++) {
-        const geometry = models[modelIndex(species, variant)] as (typeof models)[number];
-        const position = geometry.getAttribute('position').array as Float32Array;
-        const normal = geometry.getAttribute('normal').array as Float32Array;
-        const part = geometry.getAttribute('part').array as Float32Array;
-        for (let t = 0; t * 9 < position.length; t++) {
-          const v = t * 9;
-          if (part[t * 3] !== PLANT_LEAF) continue;
-          const midX = ((position[v] as number) + (position[v + 3] as number) + (position[v + 6] as number)) / 3;
-          const midZ = ((position[v + 2] as number) + (position[v + 5] as number) + (position[v + 8] as number)) / 3;
-          const out = midX * (normal[v] as number) + midZ * (normal[v + 2] as number);
-          expect(out, `${species} ${variant} face ${t} looks inwards`).toBeGreaterThanOrEqual(0);
+        shells.push({ name: `${species} ${variant}`, model: modelIndex(species, variant), ball: false });
+      }
+    }
+    for (let variant = 0; variant < WOOD_MODELS; variant++) {
+      shells.push({ name: `wood ${variant}`, model: woodModelIndex(variant), ball: true });
+    }
+    for (const { name, model, ball } of shells) {
+      const geometry = models[model] as (typeof models)[number];
+      const position = geometry.getAttribute('position').array as Float32Array;
+      const normal = geometry.getAttribute('normal').array as Float32Array;
+      const part = geometry.getAttribute('part').array as Float32Array;
+      let low = Infinity;
+      let high = -Infinity;
+      for (let v = 0; v * 3 < position.length; v++) {
+        if (part[v] !== PLANT_LEAF) continue;
+        low = Math.min(low, position[v * 3 + 1] as number);
+        high = Math.max(high, position[v * 3 + 1] as number);
+      }
+      const middle = (low + high) / 2;
+      for (let t = 0; t * 9 < position.length; t++) {
+        const v = t * 9;
+        if (part[t * 3] !== PLANT_LEAF) continue;
+        const mid = [0, 1, 2].map((k) => ((position[v + k] as number) + (position[v + 3 + k] as number) + (position[v + 6 + k] as number)) / 3);
+        const up = ball ? ((mid[1] as number) - middle) * (normal[v + 1] as number) : 0;
+        const out = (mid[0] as number) * (normal[v] as number) + (mid[2] as number) * (normal[v + 2] as number) + up;
+        expect(out, `${name} face ${t} looks inwards`).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+
+  it('runs the foliage from 0 at its foot to 1 at its top, and leaves the bark at 0', () => {
+    // The material runs the hue of a crown along `rise` (`plant-material.ts`).
+    for (const geometry of models) {
+      const rise = geometry.getAttribute('rise').array as Float32Array;
+      const part = geometry.getAttribute('part').array as Float32Array;
+      const y = geometry.getAttribute('position');
+      let low = 1;
+      let high = 0;
+      for (let v = 0; v < rise.length; v++) {
+        const value = rise[v] as number;
+        expect(value).toBeGreaterThanOrEqual(0);
+        expect(value).toBeLessThanOrEqual(1);
+        if (part[v] === PLANT_BARK) expect(value).toBe(0);
+        else {
+          low = Math.min(low, value);
+          high = Math.max(high, value);
         }
       }
+      if (high > 0) {
+        expect(low).toBe(0);
+        expect(high).toBe(1);
+      }
+      expect(rise.length).toBe(y.count);
     }
   });
 
@@ -171,32 +222,38 @@ describe('the plants of a chunk', () => {
       const species = PLANT_SPECIES[i % PLANT_SPECIES.length] as PlantSpecies;
       plants.push(plantOf(species, 20 + (i % 12) * 9, 20 + Math.floor(i / 12) * 9, 0x1000 + i * 7919));
     }
-    const placed = buildChunkVegetation(chunkOf(plants), LOOKUP);
-    expect(placed.length).toBe(plants.length);
-    const takes = new Set<number>();
-    const at = new Vector3();
-    for (const one of placed) {
-      const plant = one.plant;
-      const where = `${plant.species} at ${plant.at.x}, ${plant.at.y}`;
-      const species = PLANT_SPECIES[Math.floor(one.model / SPECIES_MODELS)];
-      expect(species, where).toBe(plant.species);
-      takes.add(one.model);
-      const geometry = models[one.model] as (typeof models)[number];
-      const position = geometry.getAttribute('position') as BufferAttribute;
-      let sunk = 0;
-      for (let v = 0; v < position.count; v++) {
-        at.fromBufferAttribute(position, v).applyMatrix4(one.matrix);
-        expect(Number.isFinite(at.x + at.y + at.z), where).toBe(true);
-        const out = Math.hypot(at.x - plant.at.x, at.z - plant.at.y);
-        expect(out, `${where} reaches out of its canopy`).toBeLessThanOrEqual(plant.radius);
-        sunk = Math.max(sunk, groundAt(plant.at.x, plant.at.y) - at.y);
+    const wood = woodModelIndex(0);
+    for (const lookup of [LOOKUP, WOODED]) {
+      const placed = buildChunkVegetation(chunkOf(plants), lookup);
+      expect(placed.length).toBe(plants.length);
+      const takes = new Set<number>();
+      const at = new Vector3();
+      for (const one of placed) {
+        const plant = one.plant;
+        const where = `${plant.species} at ${plant.at.x}, ${plant.at.y}`;
+        // In a wood the broadleaf takes the crowns of a wood, and nothing else does.
+        const woody = lookup === WOODED && plant.species === 'broadleaf';
+        expect(one.model >= wood, where).toBe(woody);
+        const species = woody ? 'broadleaf' : PLANT_SPECIES[Math.floor(one.model / SPECIES_MODELS)];
+        expect(species, where).toBe(plant.species);
+        takes.add(one.model);
+        const geometry = models[one.model] as (typeof models)[number];
+        const position = geometry.getAttribute('position') as BufferAttribute;
+        let sunk = 0;
+        for (let v = 0; v < position.count; v++) {
+          at.fromBufferAttribute(position, v).applyMatrix4(one.matrix);
+          expect(Number.isFinite(at.x + at.y + at.z), where).toBe(true);
+          const out = Math.hypot(at.x - plant.at.x, at.z - plant.at.y);
+          expect(out, `${where} reaches out of its canopy`).toBeLessThanOrEqual(plant.radius);
+          sunk = Math.max(sunk, groundAt(plant.at.x, plant.at.y) - at.y);
+        }
+        // It is rooted in the ground rather than hovering over it or buried in it.
+        expect(sunk, `${where} stands off the ground`).toBeGreaterThan(0);
+        expect(sunk, `${where} is buried`).toBeLessThanOrEqual(ROOTING);
       }
-      // It is rooted in the ground rather than hovering over it or buried in it.
-      expect(sunk, `${where} stands off the ground`).toBeGreaterThan(0);
-      expect(sunk, `${where} is buried`).toBeLessThanOrEqual(ROOTING);
+      // The plants of a chunk take more than one model, so a wood is not one tree
+      // stamped over and over.
+      expect(takes.size).toBeGreaterThan(PLANT_SPECIES.length);
     }
-    // The plants of a chunk take more than one model, so a wood is not one tree
-    // stamped over and over.
-    expect(takes.size).toBeGreaterThan(PLANT_SPECIES.length);
   });
 });

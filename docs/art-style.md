@@ -181,7 +181,10 @@ Where each rule lands. None of it needs an asset file.
 - **Lines** — `edges.ts`, an edge pass in `PostChain`, laid on after the grade. It reads
   the depth alone: a silhouette and a crease are both bends in depth (`docs/post.md`). The
   inverted hulls it replaced are gone, with their geometry in every batch.
-- **Hue gradients** — a vertex colour or a height term in the foliage and flower materials.
+- **Hue gradients** — `plant-material.ts` runs the foliage from a deep green at the foot of a
+  crown to lime at its top, along the `rise` attribute of `plant-shell.ts`.
+- **Trees** — in town, the broadleaf blobs and cypress of `plant-mesh.ts`. In parks and the wild,
+  a broadleaf takes a crown of the form `ForestGenerator` draws, over `TreeGenerator` branches.
 - **Distance to haze** — the fog colour becomes the haze colour of the time of day.
 - **Grade** — the LUT of `grade.ts` lifts the day into high key and warms the lights. It only
   finishes the look; the colours must be right in the materials first.
@@ -190,8 +193,8 @@ Where each rule lands. None of it needs an asset file.
 ## Where the game stands today
 
 Issue #684 brings the style in, one step per pull request. Done: the palette, the bands, the
-shadow colour by the time of day, the ink of the edge pass, the warm haze and high-key grade, and
-the indigo night. Still to come: the foliage and trees, the grime strokes, and the UI.
+shadow colour by the time of day, the ink of the edge pass, the warm haze and high-key grade, the
+indigo night, and the foliage and trees. Still to come: the grime strokes and the UI.
 
 ## Decisions
 

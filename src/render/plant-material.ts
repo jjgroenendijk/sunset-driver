@@ -47,6 +47,15 @@ const HILL_HEIGHT = 140;
 const HILL_TINT: readonly [number, number, number] = [0.86, 1, 1.08];
 const HILL_COLD = 0.45;
 
+/**
+ * What the foliage is multiplied by at the foot of its crown and at the top:
+ * a deeper green under, a lime over (`docs/art-style.md`). The hue runs from
+ * one to the other up the crown, so a tree reads as lit from above even in
+ * shade, the way the style paints living things.
+ */
+const CROWN_FOOT: readonly [number, number, number] = [0.42, 0.6, 0.66];
+const CROWN_TOP: readonly [number, number, number] = [1.14, 1.1, 1];
+
 /** Metres of one period of the grain of bark, which runs up a trunk rather than round it. */
 const BARK_METRES = 0.35;
 
@@ -75,7 +84,8 @@ export function createPlantMaterial(): MeshStandardNodeMaterial {
   const away = clamp(positionWorld.xz.length().div(DRY_REACH), 0, 1);
   const dry = region.mul(REGION_DRY).add(away.mul(DISTANCE_DRY));
   const cold = clamp(positionWorld.y.div(HILL_HEIGHT), 0, 1).mul(HILL_COLD);
-  const foliage = mix(mix(lit, lit.mul(vec3(...DRY_TINT)), dry), lit.mul(vec3(...HILL_TINT)), cold);
+  const drifted = mix(mix(lit, lit.mul(vec3(...DRY_TINT)), dry), lit.mul(vec3(...HILL_TINT)), cold);
+  const foliage = drifted.mul(mix(vec3(...CROWN_FOOT), vec3(...CROWN_TOP), attribute('rise', 'float')));
 
   // Bark: a grain that runs up the trunk, so the rings of a tube read as wood.
   const grain = noise01(

@@ -17,7 +17,8 @@
  * Nothing here touches the renderer or TSL, so it runs headless and the tests
  * read it directly.
  */
-import { BufferAttribute, BufferGeometry, Vector3 } from 'three';
+import { BufferAttribute, BufferGeometry, IcosahedronGeometry, Vector3 } from 'three';
+import { hashInts } from '../core/hash.ts';
 import { Rng } from '../core/rng.ts';
 import type { Rgb } from './building-mesh.ts';
 
@@ -255,6 +256,48 @@ export class PlantShell {
     this.triangle(a, c, b, PLANT_LEAF, tint);
   }
 
+  /** How far up the foliage each vertex stands, 0 to 1, and 0 on bark. */
+  private rises(): Float32Array {
+    let low = Infinity;
+    let high = -Infinity;
+    for (let i = 0; i < this.parts.length; i++) {
+      if (this.parts[i] !== PLANT_LEAF) continue;
+      const y = this.positions[i * 3 + 1] as number;
+      low = Math.min(low, y);
+      high = Math.max(high, y);
+    }
+    const out = new Float32Array(this.parts.length);
+    for (let i = 0; i < this.parts.length; i++) {
+      if (this.parts[i] === PLANT_LEAF) out[i] = shareOf(this.positions[i * 3 + 1] as number, low, high);
+    }
+    return out;
+  }
+
+  /**
+   * A crown in the form of `ForestGenerator`: an icosphere with lumps, as the
+   * trees of a park or the wild are drawn (`docs/art-style.md`). It fills the
+   * box from `base` to `top`, `radius` out from the axis. A lump only ever
+   * pulls a corner in, so the crown never reaches past the radius. A lump is a
+   * function of where the corner stands, so the faces that share a corner
+   * still meet there and the shell stays closed.
+   */
+  blob(seed: number, base: number, top: number, radius: number, lumps: number, tint: Rgb): void {
+    const geometry = new IcosahedronGeometry(1, 1);
+    const position = geometry.getAttribute('position') as BufferAttribute;
+    const half = (top - base) / 2;
+    for (let i = 0; i < position.count; i++) {
+      const x = position.getX(i);
+      const y = position.getY(i);
+      const z = position.getZ(i);
+      const key = hashInts(seed, Math.round(x * 1000), Math.round(y * 1000), Math.round(z * 1000));
+      const keep = 1 - lumps * ((key >>> 8) / 0x1000000);
+      position.setXYZ(i, x * radius * keep, base + half + y * half * keep, z * radius * keep);
+    }
+    // Non-indexed, so this gives every face its own normal: flat-shaded.
+    geometry.computeVertexNormals();
+    this.add(geometry, PLANT_LEAF, tint);
+  }
+
   /** Four corners as two triangles. A pair that meets in a point is one triangle. */
   quad(a: Local, b: Local, c: Local, d: Local, part: number, tint: Rgb): void {
     if (!same(a, b)) this.triangle(a, b, c, part, tint);
@@ -272,15 +315,26 @@ export class PlantShell {
     }
   }
 
-  /** The triangles as a geometry. */
+  /**
+   * The triangles as a geometry. Each vertex also carries its `rise`: how far
+   * up the foliage of the model it stands, 0 at the lowest leaf and 1 at the
+   * highest, and 0 on bark. The material runs the hue of a crown along it
+   * (`plant-material.ts`).
+   */
   geometry(): BufferGeometry {
     const geometry = new BufferGeometry();
+    geometry.setAttribute('rise', new BufferAttribute(this.rises(), 1));
     geometry.setAttribute('position', new BufferAttribute(new Float32Array(this.positions), 3));
     geometry.setAttribute('normal', new BufferAttribute(new Float32Array(this.normals), 3));
     geometry.setAttribute('part', new BufferAttribute(new Float32Array(this.parts), 1));
     geometry.setAttribute('tint', new BufferAttribute(new Float32Array(this.tints), 3));
     return geometry;
   }
+}
+
+/** A share of the way from `low` to `high`, held to 0..1; 0 where the two are one. */
+function shareOf(value: number, low: number, high: number): number {
+  return high > low ? Math.min(Math.max((value - low) / (high - low), 0), 1) : 0;
 }
 
 /** True where two corners stand close enough together to make no triangle. */
