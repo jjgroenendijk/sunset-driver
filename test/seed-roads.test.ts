@@ -253,7 +253,8 @@ sweepSuite('roads', () => {
     // takes a diamond (`diamonds.ts`), and it shares a point with a highway
     // only where the highway ends on it. The one exception is an island link
     // that ends on an interchange with no ground for the foot of a diamond
-    // between the highway and its deck (`RoadNetwork.addWithDiamond`).
+    // between the highway and its deck (`RoadNetwork.addWithDiamond`), and
+    // another arterial that ends on that junction.
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       let complaint: string | undefined;
@@ -285,7 +286,11 @@ sweepSuite('roads', () => {
             } else if (other.road.tier === 'ramp') {
               if (other.road.ramp?.highway !== road.id) fault(`${where}, a ramp of another highway`);
             } else if (other.road.tier !== 'arterial') fault(where);
-            else if (!end && !linkEnd(other.road, other.at, road, i)) fault(`${where}, at grade`);
+            else if (end || linkEnd(other.road, other.at, road, i)) continue;
+            // Another arterial may end on the junction a link made there.
+            else if (!here.some((o) => linkEnd(o.road, o.at, road, i)) || (other.at !== 0 && other.at !== other.road.points.length - 1)) {
+              fault(`${where}, at grade`);
+            }
           }
         }
       }

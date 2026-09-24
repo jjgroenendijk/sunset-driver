@@ -40,7 +40,10 @@ the ramps that link the two, and how the graph, the traffic and the picture read
 - A road asked for `whole` is never split. Only an island link asks. A link that ends on a
   coastal interchange leaves it for its deck at once, and the few metres of shore hold no foot.
   There the link meets the highway at grade, the one arterial that does. The sweep allows it
-  (`linkEnd` in `test/seed-roads.test.ts`); without it the island has no arterial.
+  (`linkEnd` in `test/seed-roads.test.ts`); without it the island has no arterial. That junction
+  takes the room the ramps of a half diamond need, so another arterial that ends on the same
+  interchange joins the junction (`linkEndsAt`). Refused, seed 2556448952 lost the only arterial
+  on a peninsula and the fill that grows off it.
 - A ramp is a curve of its own tier, `ramp` (`tiers.ts`): one lane, no pavement, no pedestrians,
   no trams, and the arterial's `maxGrade`. `RoadCurve.ramp` names its highway and its arterial and
   says whether it is an exit. It is driven from its first point to its last.

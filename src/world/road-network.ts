@@ -240,14 +240,16 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
    * an interchange leaves it for its deck at once, over the few metres of
    * shore a coastal highway leaves. Where no half diamond fits there, the link
    * meets the highway at grade, as a junction at an interchange (spec section
-   * 6.2); without it the island is reached by no arterial.
+   * 6.2); without it the island is reached by no arterial. Another arterial
+   * that ends on that junction joins it too ({@link linkEndsAt}).
    */
   private addWithDiamond(proposed: RoadDraft, k: number, whole: boolean): RoadCurve | undefined {
     const place = proposed.points[k] as Point;
     const last = proposed.points.length - 1;
     if (k === 0 || k === last) {
       const half = this.halfDiamond(proposed, k === 0, place, whole);
-      if (half !== undefined || !whole || proposed.bridges.length === 0) return half;
+      if (half !== undefined) return half;
+      if ((!whole || proposed.bridges.length === 0) && !this.linkEndsAt(place)) return undefined;
       const settled = settleCrossings(this, proposed, whole);
       if (settled === undefined || onRamp(this.ramps.map((id) => this.curves[id] as RoadCurve), settled.road)) return undefined;
       return this.commit(settled.road, settled.edits);
@@ -259,6 +261,22 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
     if (one === undefined || two === undefined) return one ?? two;
     const length = (curve: RoadCurve): number => curveDistances(curve.points)[curve.points.length - 1] as number;
     return length(two) > length(one) ? two : one;
+  }
+
+  /**
+   * True where an island link already meets a highway at grade at a place
+   * (see {@link addWithDiamond}). Its junction takes the room the ramps of a
+   * half diamond would land in, so another arterial that ends there joins
+   * that junction instead. Refused, it was dropped, and seed 2556448952 lost
+   * the only arterial on a peninsula, and the fill that grows off it.
+   */
+  private linkEndsAt(place: Point): boolean {
+    const hit = this.pointAt(place.x, place.y);
+    if (hit === undefined) return false;
+    return this.pointsOn(hit).some(({ curve, index }) => {
+      const road = this.curves[curve] as RoadCurve;
+      return road.tier === 'arterial' && road.bridges.length > 0 && (index === 0 || index === road.points.length - 1);
+    });
   }
 
   /**
