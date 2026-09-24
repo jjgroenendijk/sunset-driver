@@ -17,6 +17,15 @@ import { type Zone } from '../src/world/types.ts';
 export const SEED_COUNT = Number(process.env.SWEEP_SEEDS ?? 6);
 
 /**
+ * Where in the list of sweep seeds the tier starts. The merge gate reads the
+ * first {@link SEED_COUNT} and nothing else, so a seed it passes is a seed it
+ * was tuned green on. `rotating-sweep.yml` reads a window further down the
+ * list, with the offset printed in its log: `SWEEP_OFFSET=1000
+ * SWEEP_SEEDS=500` runs that window again, seed for seed.
+ */
+export const SEED_OFFSET = Math.max(0, Math.trunc(Number(process.env.SWEEP_OFFSET ?? 0)) || 0);
+
+/**
  * Which share of the tier's seeds this run reads. `SWEEP_SHARD=2/4` is the
  * second of four shards, and no variable at all is the whole tier.
  *

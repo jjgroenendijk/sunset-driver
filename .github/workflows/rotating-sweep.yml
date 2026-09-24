@@ -1,0 +1,106 @@
+name: Rotating sweep
+
+# The merge gate reads the first 500 sweep seeds, and a fixed set the code was
+# tuned green against measures less than it seems to (issue #676, section C).
+# Once a day this reads another window of 500 further down the same fixed list.
+# The window moves with the date, and the log prints it, so
+# `SWEEP_OFFSET=<offset> SWEEP_SEEDS=500 npm run test:full -- --project sweep`
+# runs it again seed for seed. A failure files an issue and blocks nobody.
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+    inputs:
+      offset:
+        description: Index of the first sweep seed to read. Empty moves with the date.
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  SWEEP_SHARDS: 4
+  # Windows of 500 from index 500 on, forty of them before the first comes round again.
+  WINDOWS: 40
+
+jobs:
+  window:
+    name: window
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      offset: ${{ steps.pick.outputs.offset }}
+    steps:
+      - id: pick
+        env:
+          ASKED: ${{ inputs.offset }}
+        run: |
+          if [ -n "$ASKED" ]; then offset=$ASKED
+          else offset=$(( ( $(date -u +%s) / 86400 % WINDOWS + 1 ) * 500 )); fi
+          echo "Sweep window: SWEEP_OFFSET=$offset SWEEP_SEEDS=500"
+          echo "offset=$offset" >> "$GITHUB_OUTPUT"
+
+  sweep:
+    name: sweep ${{ matrix.shard }}
+    needs: window
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+
+      - env:
+          SWEEP_OFFSET: ${{ needs.window.outputs.offset }}
+          SWEEP_SHARD: ${{ matrix.shard }}/${{ env.SWEEP_SHARDS }}
+        run: |
+          echo "Sweep window: SWEEP_OFFSET=$SWEEP_OFFSET SWEEP_SEEDS=500 SWEEP_SHARD=$SWEEP_SHARD"
+          set -o pipefail
+          npm run test:full -- --project sweep 2>&1 | tee sweep.log
+
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sweep-${{ matrix.shard }}
+          path: sweep.log
+
+  # A failing window is a world the generator builds wrong, found by no pull
+  # request. It is filed once: the script finds an open or closed issue of the
+  # same title and stops.
+  report:
+    name: report
+    needs: [window, sweep]
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The job holds a token that writes issues, so no package's code runs beside it.
+      - uses: ./.github/actions/setup
+        with:
+          ignore-scripts: 'true'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: logs
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          OFFSET: ${{ needs.window.outputs.offset }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "The rotating sweep failed on the window \`SWEEP_OFFSET=$OFFSET SWEEP_SEEDS=500\`."
+            echo "Run it again with \`SWEEP_OFFSET=$OFFSET SWEEP_SEEDS=500 npm run test:full -- --project sweep\`."
+            echo
+            echo "Run: $RUN"
+            echo
+            echo '```'
+            grep -h -E 'AssertionError|FAIL ' logs/*/sweep.log | sort -u | head -40
+            echo '```'
+          } > body.md
+          node scripts/file-issue.ts "Rotating sweep fails on seed window $OFFSET" --body=- --label=bug < body.md

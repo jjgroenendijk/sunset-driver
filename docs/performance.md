@@ -10,6 +10,7 @@ assertion on a shared machine fails at random.
 - Reading a measurement
 - Where the full tier's cost goes
 - The shards
+- The rotating window
 - What a check costs per seed
 - What a frame holds in memory
 
@@ -92,6 +93,18 @@ On `ubuntu-latest` on 17 September 2026 the four shares took 1m12s, 1m42s, 1m35s
 `other` 43 s. The slowest share is within 20 s of the 2 min, so a check that reads every seed is
 what the tier has left to give: widen one and the sweep needs a fifth runner rather than a longer
 ceiling.
+
+## The rotating window
+
+The merge gate reads the first 500 seeds of `sweepSeeds`, and nothing else. The code was tuned green
+on those, so they measure less than they seem to: in September 2026 a window of the next 500 failed
+four checks, one seed in 125 (issue #676).
+
+`rotating-sweep.yml` runs once a day on another window of 500 from the same fixed list. The window
+moves with the date and blocks no pull request. `SWEEP_OFFSET` says where it starts, and the log
+prints it, so `SWEEP_OFFSET=1500 SWEEP_SEEDS=500 npm run test:full -- --project sweep` runs one
+window again, seed for seed. A single seed is `SWEEP_SEEDS=1` with its index as the offset. A
+failing window files an issue through `scripts/file-issue.ts`.
 
 Before the split, on 13 September 2026, the seed sweep alone took 103 s on its runner at 200 seeds
 and every other file took 24 s on the other. The sim sweep took 4 s on its own: in a whole run it
