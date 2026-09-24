@@ -89,6 +89,12 @@ export interface TraceOptions {
   around?: Ring;
   /** The road the trace carries on from, ending at its start, which it may not turn back over. */
   before?: readonly Point[];
+  /**
+   * The junction a trace that starts one step off the network leaves from.
+   * The steps may pass the ends of the roads there, as a trace that starts
+   * on the junction may.
+   */
+  junction?: Point;
 }
 
 /** One step of a trace: which way it goes, and how far it reaches. */
@@ -277,7 +283,7 @@ export abstract class RoadTrace extends RoadRoute {
     const arrive = params.step * 1.5;
     const points: Point[] = [{ x: start.x, y: start.y }];
     const clear: boolean[] = [true];
-    const trail: Trail = { crossed: [], start };
+    const trail: Trail = { crossed: [], start: opt.junction ?? start };
     let px = start.x;
     let py = start.y;
     let heading = opt.heading ?? this.startHeading(start, opt);

@@ -179,7 +179,7 @@ class RoadTracer extends IslandLinkTrace {
     // Once more, now the districts are served. The arterial to a district can
     // be the first road on the stretch of shore a bridge head stands on.
     const before = this.curves.length;
-    this.linkIslands(true);
+    this.linkIslands(true, true);
     if (this.curves.length > before) this.serveDistricts();
     // Before the minor fill, so the fill grows around the boardwalk instead of
     // laying its own streets over the same ground.
