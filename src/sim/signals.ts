@@ -61,8 +61,12 @@ const MIN_APPROACH = 4;
 /** Cosine of the widest angle a road may make with the axis and still be on it. */
 const ON_AXIS = cos(Math.PI / 4);
 
-/** The tiers a road across an arterial has to be for the junction to take a light. */
-const SIGNALLED_CROSS: readonly RoadTier[] = ['arterial', 'street'];
+/**
+ * The tiers a road across an arterial has to be for the junction to take a
+ * light. The foot of a diamond takes one, so the traffic off the highway gets
+ * its turn to join the arterial.
+ */
+const SIGNALLED_CROSS: readonly RoadTier[] = ['arterial', 'ramp', 'street'];
 
 /** The stream of `Subsystem.Traffic` the offsets are drawn from; 1 and 2 belong to `traffic.ts`. */
 const SIGNAL_STREAM = 3;
@@ -130,9 +134,10 @@ export class TrafficSignals {
       if (main === undefined) continue;
       const found: SignalApproach[] = [];
       for (const mouth of junction.mouths) {
-        const out = outgoing(graph, junction.node, mouth.curve, mouth.point, mouth.direction);
-        if (out === undefined || out.twin < 0) continue;
-        const arriving = graph.edges[out.twin] as RoadEdge;
+        // The edge that arrives along the mouth. A ramp that only leaves the
+        // junction has none, and needs no light.
+        const arriving = arrival(graph, junction.node, mouth.curve, mouth.point, mouth.direction);
+        if (arriving === undefined) continue;
         const stop = arriving.length - mouth.cut - STOP_BACK;
         if (stop < MIN_APPROACH) continue;
         const points = (roads[mouth.curve] as RoadCurve).points;
@@ -244,11 +249,15 @@ export class TrafficSignals {
   }
 }
 
-/** The edge that leaves a node along one mouth of its junction. */
-function outgoing(graph: RoadGraph, node: number, curve: number, point: number, direction: 1 | -1): RoadEdge | undefined {
-  for (const id of graph.edgesFrom(node)) {
+/**
+ * The edge that arrives at a node along one mouth of its junction: it comes in
+ * from the side the mouth leaves by. A one-way ramp that arrives is found as
+ * well as a two-way road; one that only leaves has no such edge.
+ */
+function arrival(graph: RoadGraph, node: number, curve: number, point: number, direction: 1 | -1): RoadEdge | undefined {
+  for (const id of graph.edgesInto(node)) {
     const edge = graph.edges[id] as RoadEdge;
-    if (edge.curve === curve && edge.start === point && Math.sign(edge.end - edge.start) === direction) return edge;
+    if (edge.to === node && edge.curve === curve && edge.end === point && Math.sign(edge.start - edge.end) === direction) return edge;
   }
   return undefined;
 }

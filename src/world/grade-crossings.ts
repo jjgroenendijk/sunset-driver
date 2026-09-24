@@ -22,8 +22,8 @@ const END_CLEARANCE = 0.01;
  * whatever it passes and a bore is under it; between roads on the ground the
  * hierarchy decides, because a highway is not the road that stops.
  */
-const CARRY_RANK: Record<RoadTier, number> = { highway: 4, arterial: 3, street: 2, alley: 1, dirt: 0 };
-const DECK_RANK = 5;
+const CARRY_RANK: Record<RoadTier, number> = { highway: 5, arterial: 4, ramp: 3, street: 2, alley: 1, dirt: 0 };
+const DECK_RANK = 6;
 const BORE_RANK = -1;
 
 /**

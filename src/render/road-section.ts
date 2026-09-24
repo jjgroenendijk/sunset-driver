@@ -19,7 +19,7 @@ import { footprintHalfWidth, TIERS } from '../world/tiers.ts';
 import type { Point, RoadTier } from '../world/types.ts';
 
 /** The tiers, in the order a chunk's batches are built. */
-export const TIER_ORDER: readonly RoadTier[] = ['highway', 'arterial', 'street', 'alley', 'dirt'];
+export const TIER_ORDER: readonly RoadTier[] = ['highway', 'arterial', 'ramp', 'street', 'alley', 'dirt'];
 
 /** Metres the carriageway stands above the bed the carve cut for it. */
 export const SURFACE_RAISE = 0.06;

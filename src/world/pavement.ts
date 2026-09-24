@@ -49,7 +49,7 @@ const DEPTH_REACH = 5;
 const MIN_PIECE_AREA = 1e-4;
 
 /** The tiers in the order they claim pavement: the widest first. */
-const CLAIM_ORDER: readonly RoadTier[] = ['highway', 'arterial', 'street', 'dirt', 'alley'];
+const CLAIM_ORDER: readonly RoadTier[] = ['highway', 'arterial', 'ramp', 'street', 'dirt', 'alley'];
 
 /** One piece of pavement or verge inside a chunk. */
 export interface ChunkPavement {

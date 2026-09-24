@@ -93,6 +93,21 @@ export const TIERS: Record<RoadTier, TierSpec> = {
     density: 20,
     walkers: 70,
   },
+  // The one-way link between an arterial and a highway: one lane with a hard
+  // shoulder each side, no pavement and no one on foot. It climbs no harder
+  // than the arterial it leaves.
+  ramp: {
+    width: 7,
+    verge: 2.5,
+    pavement: 0,
+    lanes: 1,
+    parking: 0,
+    speedLimit: kmh(60),
+    maxGrade: 0.08,
+    traffic: { trucks: true, buses: true, trams: false, pedestrians: false },
+    density: 10,
+    walkers: 0,
+  },
   // Residential and commercial, one lane each way with parking on both sides.
   street: {
     width: 11,
@@ -198,5 +213,5 @@ export function mayJoin(joiner: RoadTier, met: RoadTier, interchange: boolean): 
 export function mayCross(crosser: RoadTier, crossed: RoadTier): boolean {
   if (crosser !== 'highway' && crossed !== 'highway') return true;
   const minor = crosser === 'highway' ? crossed : crosser;
-  return minor === 'highway' || minor === 'arterial';
+  return minor === 'highway' || minor === 'arterial' || minor === 'ramp';
 }

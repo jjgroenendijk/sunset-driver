@@ -15,8 +15,9 @@
  * spatial index behind the nearest-point queries is in `graph-index.ts`.
  *
  * An edge is the run of one curve between two nodes, in one direction of
- * travel. Every road is two-way today, so edges come in pairs that point at
- * each other through `twin`. Width, lanes, speed limit and permitted traffic
+ * travel. A road is two-way, so its edges come in pairs that point at each
+ * other through `twin`; the ramp of an interchange is one-way, and its edge
+ * has none. Width, lanes, speed limit and permitted traffic
  * come from the tier table in `tiers.ts`.
  *
  * Building and querying are pure: the same curves give the same graph, and the
@@ -36,8 +37,15 @@ export interface RoadNode {
   id: number;
   x: number;
   y: number;
-  /** The edges that leave this node, ascending. Its junction degree is their count. */
+  /** The edges that leave this node, ascending. */
   edges: number[];
+  /**
+   * One edge for every run of road that meets this node, ascending: the edge
+   * that leaves it, or on a one-way ramp that only arrives, the edge that
+   * arrives. Its junction degree is their count. {@link mouthAt} says which
+   * way each run leaves the node.
+   */
+  runs: number[];
 }
 
 /** One run of a curve between two nodes, in one direction of travel. */
@@ -125,10 +133,15 @@ export class RoadGraph {
   /** Forward edges by the ground they cover; a twin covers the same ground. */
   private readonly edgeIndex: Buckets;
   private readonly nodeIndex: Buckets;
-  /** Scratch for {@link shortestPath}, allocated once and reused. */
+  /** Scratch for {@link shortestPath}, allocated once and reused: one entry per edge. */
   private readonly cost: Float64Array;
   private readonly cameEdge: Int32Array;
   private readonly settled: Uint8Array;
+  /** The direction each edge leaves its first node in and arrives at its last, two numbers each, for {@link turnAllowed}. */
+  private readonly heads: Float64Array;
+  private readonly tails: Float64Array;
+  /** The edges that arrive at each node, ascending. */
+  private readonly incoming: number[][];
 
   constructor(roads: readonly RoadCurve[]) {
     this.curves = roads;
@@ -138,9 +151,19 @@ export class RoadGraph {
     this.nodes = nodes;
     this.edges = edges;
     this.crossings = findCrossings(roads, edges);
-    this.cost = new Float64Array(nodes.length);
-    this.cameEdge = new Int32Array(nodes.length);
-    this.settled = new Uint8Array(nodes.length);
+    this.cost = new Float64Array(edges.length);
+    this.cameEdge = new Int32Array(edges.length);
+    this.settled = new Uint8Array(edges.length);
+    this.incoming = nodes.map(() => []);
+    for (const edge of edges) (this.incoming[edge.to] as number[]).push(edge.id);
+    this.heads = new Float64Array(edges.length * 2);
+    this.tails = new Float64Array(edges.length * 2);
+    for (const edge of edges) {
+      const points = (roads[edge.curve] as RoadCurve).points;
+      const step = edge.end >= edge.start ? 1 : -1;
+      unit(points[edge.start] as Point, points[edge.start + step] as Point, this.heads, edge.id);
+      unit(points[edge.end - step] as Point, points[edge.end] as Point, this.tails, edge.id);
+    }
 
     const bounds = boundsOf(nodes);
     this.nodeIndex = new Buckets(bounds, INDEX_CELL);
@@ -166,14 +189,31 @@ export class RoadGraph {
     }
   }
 
-  /** How many edges leave a node: 1 at a dead end, 2 on a bend, 3 or more at a junction. */
+  /** How many runs of road meet at a node: 1 at a dead end, 2 on a bend, 3 or more at a junction. */
   degree(node: number): number {
-    return (this.nodes[node] as RoadNode).edges.length;
+    return (this.nodes[node] as RoadNode).runs.length;
+  }
+
+  /**
+   * The point of its curve a run stands on the node at, and the way along the
+   * curve it leaves the node by: 1 towards the curve's end, -1 towards its
+   * start. `edge` is one of the node's {@link RoadNode.runs}.
+   */
+  mouthAt(edge: number, node: number): { point: number; direction: 1 | -1 } {
+    const e = this.edges[edge] as RoadEdge;
+    const forward = e.end >= e.start;
+    if (e.from === node) return { point: e.start, direction: forward ? 1 : -1 };
+    return { point: e.end, direction: forward ? -1 : 1 };
   }
 
   /** The edges that leave a node, ascending. */
   edgesFrom(node: number): readonly number[] {
     return (this.nodes[node] as RoadNode).edges;
+  }
+
+  /** The edges that arrive at a node, ascending. On a two-way road each is the twin of one that leaves. */
+  edgesInto(node: number): readonly number[] {
+    return this.incoming[node] as number[];
   }
 
   /** The nodes one edge away, ascending and without repeats. */
@@ -223,11 +263,33 @@ export class RoadGraph {
   }
 
   /**
+   * True where a car arriving on edge `from` may leave on edge `to`. Every turn
+   * is open but at the landing of a ramp, where a ramp meets a highway: there a
+   * car keeps to its own carriageway. It turns from the on-ramp only onto the
+   * carriageway it merges into, and onto the off-ramp only from the one it
+   * leaves — the turn less than a right angle — and never from one ramp onto
+   * another, which would take it across the highway.
+   */
+  turnAllowed(from: number, to: number): boolean {
+    const a = this.edges[from] as RoadEdge;
+    const b = this.edges[to] as RoadEdge;
+    const ramps = (a.tier === 'ramp' ? 1 : 0) + (b.tier === 'ramp' ? 1 : 0);
+    if (ramps === 0) return true;
+    const highway = a.tier === 'highway' || b.tier === 'highway' || this.edgesFrom(a.to).some((e) => (this.edges[e] as RoadEdge).tier === 'highway');
+    if (!highway) return true;
+    if (ramps === 2) return false;
+    const dot = (this.tails[from * 2] as number) * (this.heads[to * 2] as number) + (this.tails[from * 2 + 1] as number) * (this.heads[to * 2 + 1] as number);
+    return dot > 0;
+  }
+
+  /**
    * The fastest route between two nodes, or undefined when there is none.
    * Dijkstra over travel time: an edge costs its length at its speed limit, so
-   * a highway detour beats a crawl down an alley. Nodes of equal cost are
-   * settled in id order and only a strictly cheaper route replaces one already
-   * found, so the answer never depends on floating-point tie order.
+   * a highway detour beats a crawl down an alley. The search settles edges,
+   * not nodes, so it can keep to {@link turnAllowed} and to the one way a ramp
+   * runs. Edges of equal cost are settled in id order and only a strictly
+   * cheaper route replaces one already found, so the answer never depends on
+   * floating-point tie order.
    *
    * `allow` narrows the network the route may use, which is how a vehicle that
    * belongs to one tier — the tram on its arterials — is routed over the roads
@@ -243,45 +305,45 @@ export class RoadGraph {
     cost.fill(Infinity);
     cameEdge.fill(-1);
     settled.fill(0);
-    cost[from] = 0;
     const heap = new MinHeap();
-    heap.push(from, 0);
+    for (const e of (this.nodes[from] as RoadNode).edges) {
+      const edge = this.edges[e] as RoadEdge;
+      if (allow !== undefined && !allow(edge)) continue;
+      cost[e] = edge.length / edge.speedLimit;
+      heap.push(e, cost[e] as number);
+    }
     while (heap.size > 0) {
       const at = heap.pop();
       if (settled[at] === 1) continue;
       settled[at] = 1;
-      if (at === to) return this.routeTo(from, to);
-      for (const e of (this.nodes[at] as RoadNode).edges) {
+      const arrived = this.edges[at] as RoadEdge;
+      if (arrived.to === to) return this.routeTo(from, at);
+      for (const e of (this.nodes[arrived.to] as RoadNode).edges) {
+        if (settled[e] === 1) continue;
         const edge = this.edges[e] as RoadEdge;
-        if (settled[edge.to] === 1) continue;
         if (allow !== undefined && !allow(edge)) continue;
+        if (!this.turnAllowed(at, e)) continue;
         const through = (cost[at] as number) + edge.length / edge.speedLimit;
-        if (through >= (cost[edge.to] as number)) continue;
-        cost[edge.to] = through;
-        cameEdge[edge.to] = e;
-        heap.push(edge.to, through);
+        if (through >= (cost[e] as number)) continue;
+        cost[e] = through;
+        cameEdge[e] = at;
+        heap.push(e, through);
       }
     }
     return undefined;
   }
 
-  /** Walk the search tree back from the goal and add up what the route costs. */
-  private routeTo(from: number, to: number): RoadRoute {
+  /** Walk the search tree back from the last edge of the route and add up what the route costs. */
+  private routeTo(from: number, last: number): RoadRoute {
     const edges: number[] = [];
-    const nodes: number[] = [to];
-    let at = to;
-    while (at !== from) {
-      const e = this.cameEdge[at] as number;
-      edges.push(e);
-      at = (this.edges[e] as RoadEdge).from;
-      nodes.push(at);
-    }
+    for (let e = last; e >= 0; e = this.cameEdge[e] as number) edges.push(e);
     edges.reverse();
-    nodes.reverse();
+    const nodes: number[] = [from];
     let length = 0;
     let time = 0;
     for (const e of edges) {
       const edge = this.edges[e] as RoadEdge;
+      nodes.push(edge.to);
       length += edge.length;
       time += edge.length / edge.speedLimit;
     }
@@ -318,7 +380,7 @@ function build(roads: readonly RoadCurve[], nodes: RoadNode[], edges: RoadEdge[]
     if (known !== undefined) return known;
     const id = nodes.length;
     if (key >= 0) nodeOf.set(key, id);
-    nodes.push({ id, x: p.x, y: p.y, edges: [] });
+    nodes.push({ id, x: p.x, y: p.y, edges: [], runs: [] });
     return id;
   };
 
@@ -357,7 +419,11 @@ function build(roads: readonly RoadCurve[], nodes: RoadNode[], edges: RoadEdge[]
   }
 }
 
-/** The two edges of one run: one each way, pointing at each other. */
+/**
+ * The edges of one run: one each way, pointing at each other. A ramp is driven
+ * one way only, from its first point to its last, so it has the one edge and
+ * that edge has no twin.
+ */
 function addPair(
   edges: RoadEdge[],
   nodes: RoadNode[],
@@ -372,12 +438,28 @@ function addPair(
 ): void {
   const spec = TIERS[road.tier];
   const forward = edges.length;
-  const backward = forward + 1;
   const shared = { curve: road.id, tier: road.tier, lanes: spec.lanes, speedLimit: spec.speedLimit, length, bridge, tunnel };
+  if (road.ramp !== undefined) {
+    edges.push({ id: forward, from: fromNode, to: toNode, twin: -1, start: startIndex, end: endIndex, crossings: [], ...shared });
+    (nodes[fromNode] as RoadNode).edges.push(forward);
+    (nodes[fromNode] as RoadNode).runs.push(forward);
+    (nodes[toNode] as RoadNode).runs.push(forward);
+    return;
+  }
+  const backward = forward + 1;
   edges.push({ id: forward, from: fromNode, to: toNode, twin: backward, start: startIndex, end: endIndex, crossings: [], ...shared });
   edges.push({ id: backward, from: toNode, to: fromNode, twin: forward, start: endIndex, end: startIndex, crossings: [], ...shared });
   (nodes[fromNode] as RoadNode).edges.push(forward);
   (nodes[toNode] as RoadNode).edges.push(backward);
+  (nodes[fromNode] as RoadNode).runs.push(forward);
+  (nodes[toNode] as RoadNode).runs.push(backward);
+}
+
+/** Write the unit direction from `a` to `b` into two slots of `out` for edge `id`. */
+function unit(a: Point, b: Point, out: Float64Array, id: number): void {
+  const length = hypot(b.x - a.x, b.y - a.y);
+  out[id * 2] = length > 0 ? (b.x - a.x) / length : 0;
+  out[id * 2 + 1] = length > 0 ? (b.y - a.y) / length : 0;
 }
 
 /** The point of a segment nearest a place, and how far away it is. */
@@ -393,7 +475,7 @@ function closestOnSegment(px: number, py: number, a: Point, b: Point): { x: numb
 }
 
 /**
- * A binary heap of nodes by cost. Equal costs come out in node order, which is
+ * A binary heap of ids by cost. Equal costs come out in id order, which is
  * what keeps a route the same from run to run.
  */
 class MinHeap {

@@ -27,7 +27,7 @@ const args = process.argv.slice(2);
 const positional = args.filter((a) => !a.startsWith('--'));
 const seedText = positional[0] ?? 'sunset';
 const out = positional[1] ?? defaultOut(`preview-${seedText}.png`);
-const ALL_TIERS: RoadTier[] = ['highway', 'arterial', 'street', 'alley', 'dirt'];
+const ALL_TIERS: RoadTier[] = ['highway', 'arterial', 'ramp', 'street', 'alley', 'dirt'];
 const tiersFlag = args.find((a) => a.startsWith('--tiers='))?.slice('--tiers='.length);
 const shown = tiersFlag === undefined ? ALL_TIERS : (tiersFlag.split('+') as RoadTier[]);
 for (const tier of shown) {
@@ -196,6 +196,7 @@ for (const building of everyTier ? buildings.buildings : []) {
 const ROAD_STYLE = {
   highway: { col: [20, 20, 24] as [number, number, number], half: 1 },
   arterial: { col: [150, 30, 30] as [number, number, number], half: 0 },
+  ramp: { col: [230, 90, 20] as [number, number, number], half: 0 },
   street: { col: [40, 60, 150] as [number, number, number], half: 0 },
   alley: { col: [20, 130, 80] as [number, number, number], half: 0 },
   dirt: { col: [190, 160, 90] as [number, number, number], half: 0 },
@@ -219,7 +220,7 @@ const stroke = (a: Point, b: Point, col: [number, number, number], half: number)
   }
 };
 // Widest tier last, so a highway is never hidden under the streets beside it.
-const TIER_ORDER: RoadTier[] = ['alley', 'dirt', 'street', 'arterial', 'highway'];
+const TIER_ORDER: RoadTier[] = ['alley', 'dirt', 'street', 'ramp', 'arterial', 'highway'];
 // The level deck a lower road may cross a highway under (`highway-plan.ts`).
 const SLOT_COL: [number, number, number] = [255, 255, 170];
 const drawn = world.roads.filter((road) => shown.includes(road.tier));
