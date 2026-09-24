@@ -171,9 +171,11 @@ scene ever holds in `docs/shops.md`. The aircraft and the airfields are drawn as
   once for a world, and `PlantScenery` (`vegetation.ts`) packs a chunk's plants into one batch, so a
   wood costs one draw call however many trees stand in it. The trunk and branches of a tree are
   `TreeGenerator`, which grows branches only, so the crown is laid over it; a palm, a rosette, a
-  hedge and a tuft of dune grass are built from end to end there. `ForestGenerator` is not used: it
-  places its own trees by altitude and slope, which would stand them on the roads and the lots the
-  parcel model keeps them off.
+  hedge and a tuft of dune grass are built from end to end there. The placement of `ForestGenerator`
+  is not used: it stands trees by altitude and slope, so they would stand on the roads and the lots
+  the parcel model keeps them off. Its form is used. A broadleaf in a park, the outskirts or the
+  wild takes one of `WOOD_MODELS` models, whose crown is `PlantShell.blob`: a faceted icosphere
+  with dents, as `ForestGenerator` draws a crown. `plantLookup` says which parcels are wooded.
 - A crown is one faceted shell — `PlantShell.canopy` (`plant-shell.ts`) — and not a heap of balls.
   A heap of balls reads as a bunch of grapes from every angle the game's camera takes, and costs
   three times the triangles. `waist` bends the profile between a ball and an egg standing on its
@@ -192,6 +194,9 @@ scene ever holds in `docs/shops.md`. The aircraft and the airfields are drawn as
   does not. `plant-material.ts` drifts the whole canopy on top of that — dusty olive out in the dry
   country, cold blue-green up on the hills — from world places, so one wood is one colour and the
   next is another.
+- The foliage runs from `CROWN_FOOT` to `CROWN_TOP` (`plant-material.ts`) up its crown, along the
+  `rise` attribute a shell writes: 0 at the lowest leaf vertex, 1 at the highest, 0 on bark. The
+  top camera sees mostly the lime top; the deeper green shows from the side.
 
 ## Posters and hoardings
 

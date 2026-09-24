@@ -76,6 +76,14 @@ export const SPECIES_MODELS = 4;
  */
 export const ACCENT_CHANCE = 0.14;
 
+/**
+ * Models of the broadleaf of a park or the wild: a `TreeGenerator` skeleton
+ * under a crown in the form of `ForestGenerator` (`PlantShell.blob`). A street
+ * or a garden keeps the faceted crown. They are numbered after every species'
+ * own models ({@link woodModelIndex}).
+ */
+export const WOOD_MODELS = 4;
+
 /** Metres a plant is sunk, so no daylight shows under it on a slope. */
 const ROOTING = 0.15;
 
@@ -134,11 +142,22 @@ export interface PlantPlacement {
 export interface PlantLookup {
   /** The carved height at a place: the ground a plant stands on. */
   heightAt(x: number, y: number): number;
+  /** True where a parcel is a park or the wild rather than a street or a garden. Left out, none is. */
+  wooded?(parcel: number): boolean;
 }
 
 /** The lookup a world answers with, built once and shared by every chunk of it. */
 export function plantLookup(layers: WorldLayers): PlantLookup {
-  return { heightAt: (x, y) => layers.carve.heightAt(x, y) };
+  const wild = new Set<number>();
+  for (const parcel of layers.parcels.parcels) {
+    if (parcel.owner === 'park' || parcel.zone === 'outskirts' || parcel.zone === 'wilderness') wild.add(parcel.id);
+  }
+  return { heightAt: (x, y) => layers.carve.heightAt(x, y), wooded: (parcel) => wild.has(parcel) };
+}
+
+/** Which of the models of a world the broadleaf of a wood takes, after every species' own. */
+export function woodModelIndex(variant: number): number {
+  return PLANT_SPECIES.length * SPECIES_MODELS + (variant % WOOD_MODELS);
 }
 
 /** Which of the models of a world a species and a variant name. */
@@ -155,6 +174,7 @@ export function buildPlantModels(): BufferGeometry[] {
   for (const species of PLANT_SPECIES) {
     for (let variant = 0; variant < SPECIES_MODELS; variant++) out.push(modelOf(species, variant));
   }
+  for (let variant = 0; variant < WOOD_MODELS; variant++) out.push(woodModelOf(variant));
   return out;
 }
 
@@ -182,7 +202,8 @@ export function buildChunkVegetation(chunk: WorldChunk, lookup: PlantLookup): Pl
       new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), turn),
       new Vector3(spread, rise, spread),
     );
-    out.push({ plant, model: modelIndex(plant.species, variant), matrix });
+    const wood = plant.species === 'broadleaf' && lookup.wooded?.(plant.parcel) === true;
+    out.push({ plant, model: wood ? woodModelIndex(variant) : modelIndex(plant.species, variant), matrix });
   }
   return out;
 }
@@ -190,6 +211,20 @@ export function buildChunkVegetation(chunk: WorldChunk, lookup: PlantLookup): Pl
 /** Draw calls a chunk spends on its plants: one batch, or none where nothing grows. */
 export function vegetationDrawCalls(chunk: WorldChunk): number {
   return chunk.plants.length > 0 ? 1 : 0;
+}
+
+/** One broadleaf of a wood: the same skeleton, under a crown in the form of `ForestGenerator`. */
+function woodModelOf(variant: number): BufferGeometry {
+  const seed = hashInts(PLANT_SPECIES.length, variant);
+  const rng = new Rng(seed);
+  const shell = new PlantShell();
+  const radius = PLANT_RADIUS.broadleaf;
+  const height = radius * SPECIES_RISE.broadleaf;
+  const bark = rgbOf(BARK[variant % BARK.length] as number);
+  const leaf = rgbOf(LEAF.broadleaf[variant % LEAF.broadleaf.length] as number);
+  shell.add(branches(rng, radius * 0.13, height * 0.5, height, 34), PLANT_BARK, bark);
+  shell.blob(seed, height * 0.3, height, radius, 0.24, leaf);
+  return shell.geometry();
 }
 
 /** One model of one species, grown from a seed of its own. */
