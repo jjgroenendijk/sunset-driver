@@ -30,8 +30,12 @@ lights it in `docs/lighting.md`.
 
 ## The ink
 
-- `inked` (`edges.ts`) draws every ink line of the art style (`docs/art-style.md`), on the exposed
-  scene colour, before the bloom. There are no outline meshes: the inverted hulls round the
+- `inkLines` (`edges.ts`) finds every ink line of the art style (`docs/art-style.md`), and
+  `PostChain` lays the ink on after the grade and before SMAA. So the ink is on screen the colour
+  `inkAt` names, and the night grade's lift cannot raise it to the indigo of the street, which it
+  did while the ink went on first. The ink is held in a `Vector3` uniform of linear channels: a
+  `Color` handed to `uniform` is taken as sRGB and converted again, which turned the night ink
+  `#0d0b18` into `#403b56`. There are no outline meshes: the inverted hulls round the
   buildings and the vehicles were removed when the pass came in.
 - It reads the depth and nothing else. On any plane the inverse of view depth is linear across the
   screen, so its second difference over a pixel and its two neighbours is zero on a flat face,

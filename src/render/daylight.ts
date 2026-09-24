@@ -110,7 +110,7 @@ const GROUND_SHARE = 0.6;
  * night street came out a bright blue.
  */
 const FILL_DAY = 1.15;
-const FILL_NIGHT = 0.012;
+const FILL_NIGHT = 0.035;
 
 /**
  * The haze the far chunks fade into: by day, at dusk and at night. By day it
@@ -134,7 +134,7 @@ export interface Daylight {
   sunIntensity: number;
   /**
    * The colour a shadow takes at this hour (`shade.ts`): lavender by day, rose
-   * at the golden hour, violet at dusk, navy at night.
+   * at the golden hour, violet at dusk, indigo at night.
    */
   shadow: Color;
   /**

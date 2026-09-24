@@ -17,7 +17,7 @@ const DAWN = 0xa98bb8;
 const DAY = 0x8f8fc0;
 const GOLDEN = 0x9c78a8;
 const DUSK = 0x5c4a8a;
-const NIGHT = 0x232450;
+const NIGHT = 0x302b4a;
 
 /**
  * Sun altitudes, as the sine of its angle over the horizon, where the colours

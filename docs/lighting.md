@@ -29,9 +29,16 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
 - The day is a summer one: sunrise at `SUNRISE_HOUR` (05:30), sunset at `SUNSET_HOUR` (20:30).
   `sunFraction` stretches the clock onto the sun's circle; the clock the player reads is not
   changed. A sun on the plain 24-hour circle set at 18:00, and the frame was dark by 18:20.
-- The night fill (`FILL_NIGHT`, the navy shadow colour) is moonlight, and `NIGHT_GRADE` keeps its
-  contrast low. Together they keep a street away from the lamps readable at midnight. With a
-  weaker fill or a steeper grade, a night frame was black.
+- The night is indigo, never black (`docs/art-style.md`). The floor is `NIGHT_GRADE`'s lift: it
+  works after the tone curve, so an unlit street comes out near `#1e1b3a` whatever reaches it.
+  Its blue is held just under the grade test's bound. The night fill (`FILL_NIGHT`, the indigo
+  shadow colour) adds only the shape on top. A stronger fill does not make the night more indigo:
+  the tone curve's toe takes the smallest channel out of a dark colour, and a pale street lit
+  dimly in blue came out royal blue. The haze, the night sky and every colour in the scene are
+  set before that curve, so each comes out darker and more saturated than its hex says.
+- The glows (`WINDOW_GAIN`, `NEON_GAIN`, `FLOOD_GAIN` in `night-material.ts`) are set against
+  `BLOOM_THRESHOLD` in exposed light. They were scaled by 0.56 / 1.3 when the exposure rose, so a
+  window glows as far past the threshold as it did.
 - A shadow map is drawn again for every camera a frame renders with, and the water's mirror is a
   second camera. The cascades are fitted to the player's camera whichever camera asks, so the second
   draw is the same map twice: `sun.shadow.autoUpdate` is off and `SkyLighting.drawShadowOnce`,
@@ -98,7 +105,7 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
   `docs/art-style.md`). The sun's cosine to the surface times its cast shadow is stepped by
   `sunBand` before it lights anything. A face in shade takes the sky fill alone, which is a colour.
 - The fill is the shadow colour of the hour (`shade.ts`): lavender by day, violet-pink at dawn,
-  rose in the golden hour, deep violet at dusk, navy at night. `daylightAt` carries it as
+  rose in the golden hour, deep violet at dusk, indigo at night. `daylightAt` carries it as
   `shadow`, and `fillSky` is its hue at a luma of 1, so `FILL_DAY` and `FILL_NIGHT` alone set how
   bright shade is. `fillGround` is the same hue, dimmer, so a wall in shade matches the ground.
 - The fill keeps a quarter white (`HUE_SHARE`). The lit side takes the fill as well as the sun,

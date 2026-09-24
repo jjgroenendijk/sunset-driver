@@ -10,9 +10,9 @@ const hex = (colour: Color) => colour.getHex();
 const chroma = (colour: Color) => Math.max(colour.r, colour.g, colour.b) - Math.min(colour.r, colour.g, colour.b);
 
 describe('the shadow colour', () => {
-  it('is the lavender of the art style at noon and navy at midnight', () => {
+  it('is the lavender of the art style at noon and indigo at midnight', () => {
     expect(hex(at(SOLAR_NOON_HOUR).shadow)).toBe(0x8f8fc0);
-    expect(hex(at(0).shadow)).toBe(0x232450);
+    expect(hex(at(0).shadow)).toBe(0x302b4a);
   });
 
   it('is a different colour at dawn than at dusk, with the sun as high', () => {
