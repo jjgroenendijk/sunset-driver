@@ -169,6 +169,11 @@ their one-way ramps in `docs/interchanges.md`.
   downtown, where an arterial is 26 m wide with its verge and its pavement. Outside the city the
   multiple is one: the suburbs have no avenue grid, and out there an arterial is the road that
   reaches the next district.
+- A highway that ends in no other road gives the minor fill nothing to grow from. No street or dirt
+  road may join it, and `serveDistricts` counts a district beside its end as served. So after the
+  arterial fill, `deadEnds` seeds one more arterial on each such end. Without it a district out on
+  a coastal shelf kept no road but the highway, and a plateau beside it none at all (seed
+  1075207175).
 - An alley is one service lane inside one block (`alleys.ts`), never a fill generation of its own.
   `alleySeeds` walks each street and measures the ground to each side out to the next road; that
   distance is the block's depth, and the lane goes down the middle of it. So the lane stands between

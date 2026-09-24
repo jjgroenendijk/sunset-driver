@@ -231,7 +231,30 @@ class RoadTracer extends IslandLinkTrace {
     });
     const seeds: FillSeed[] = [];
     for (const curve of this.curves) seedAlong(curve, this.field, spacingAt, 0, seeds, { ramps: true });
-    this.grow(seeds, plan, FILL_GENERATIONS, FILL_LIMIT);
+    const laid = this.grow(seeds, plan, FILL_GENERATIONS, FILL_LIMIT);
+    // A highway that ends in no other road gives the fill nothing to grow
+    // from: no minor road may join it, and a district beside its end counts as
+    // served. So an arterial carries on from the end, after the rest of the
+    // fill, where no arterial covers the ground yet (seed 1075207175).
+    this.grow(this.deadEnds(), plan, FILL_GENERATIONS, FILL_LIMIT - laid.length);
+  }
+
+  /** A fill seed on each end of a highway that no other road meets. */
+  private deadEnds(): FillSeed[] {
+    const seeds: FillSeed[] = [];
+    for (const curve of this.curves) {
+      if (curve.tier !== 'highway') continue;
+      const last = curve.points.length - 1;
+      for (const [end, inner] of [[0, 1], [last, last - 1]] as const) {
+        const node = curve.nodes[end];
+        if (this.curves.some((c) => c !== curve && node !== undefined && c.nodes.includes(node))) continue;
+        const at = curve.points[end] as Point;
+        const from = curve.points[inner] as Point;
+        const along = atan2(at.y - from.y, at.x - from.x) + Math.PI / 2;
+        seeds.push({ x: at.x, y: at.y, along, parent: curve.id, depth: 0, onParent: true });
+      }
+    }
+    return seeds;
   }
 
   // ------------------------------------------------------------ minor roads
