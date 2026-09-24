@@ -320,7 +320,7 @@ function createBlockMaterial(night: TslNode, late: TslNode, beacon: TslNode): Bl
     // The wall the building is really made of — brick, stucco, siding,
     // corrugated metal, tile or concrete — weathered by as much as its own age
     // says. The wall and the roof come first because they cover the most.
-    [BLOCK_WALL, () => weathered(wallSurface(tint, finish.wall, grain, patch), finish.age, grain)],
+    [BLOCK_WALL, () => weathered(wallSurface(tint, finish.wall, grain, patch), finish.age)],
     [BLOCK_ROOF, () => rgb(ROOF).mul(float(0.85).add(grain.mul(0.3)))],
     [BLOCK_GLASS, () => mix(rgb(TRIM).mul(0.7), rgb(GLAZING), glazed)],
     [BLOCK_TRIM, () => rgb(TRIM).mul(float(0.86).add(grain.mul(0.22)))],

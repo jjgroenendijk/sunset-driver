@@ -70,18 +70,36 @@ const MORTAR = 0xbab2a4;
 const FINE_NEAR = 150;
 const FINE_FAR = 320;
 
-/** Metres of wall over the ground the stains reach, and how far up the paint fades. */
-const STAIN_RISE = 2.6;
-const FADE_LOW = 7;
-const FADE_HIGH = 34;
+/**
+ * Metres of wall over the ground the stain at its foot reaches, and the height
+ * the faded paint starts at, halfway up a tall wall.
+ */
+const STAIN_RISE = 1.8;
+const FADE_FROM = 18;
 
-/** Metres of one storey, as the window bands and the grime streaks are spaced. */
+/** Metres of one storey, as the window bands and the grime strokes are spaced. */
 const STOREY = 3.2;
 
-/** How dark the grime, the stains and the faded paint go at the worst weathering. */
-const GRIME = 0.26;
-const STAIN = 0.22;
-const FADE = 0.3;
+/**
+ * Metres of wall one column of grime strokes takes. Each column holds one
+ * stroke or none, of its own width and length, so the strokes never line up.
+ */
+const STROKE_COLUMN = 0.9;
+
+/**
+ * The shade each mark is painted in, as a multiple of the wall's own colour:
+ * darker and cooler, never brown (`docs/art-style.md`). Faded paint goes the
+ * other way, toward a paler grey of the same brightness.
+ */
+const GRIME_SHADE: readonly [number, number, number] = [0.7, 0.72, 0.84];
+const STAIN_SHADE: readonly [number, number, number] = [0.8, 0.8, 0.88];
+const FADE = 0.28;
+
+/**
+ * Metres a stroke's edge is softened over, so it stays one hard edge on screen
+ * without stepping into pixels. A painted stroke has an edge, not a fade.
+ */
+const EDGE = 0.04;
 
 /**
  * The face of a wall in whichever of the six materials the building carries.
@@ -108,30 +126,53 @@ export function wallSurface(tint: TslNode, wall: TslNode, grain: TslNode, patch:
 }
 
 /**
- * A wall as the weather leaves it: grime streaking down from every sill, stains
- * where the ground splashes it, and paint faded by the sun high up. `age` is
- * the building's own weathering off its vertices, 0 for a wall that is kept and
- * 1 for one that is not.
+ * A wall as the weather leaves it, painted as the art style paints it: flat
+ * strokes with hard edges, in a darker and cooler shade of the wall
+ * (`docs/art-style.md`). Grime runs down from the sill of each storey, a stain
+ * rises from the ground, and the paint high up is faded. `age` is the
+ * building's own weathering off its vertices, 0 for a wall that is kept and 1
+ * for one that is not: it sets how many strokes a wall carries.
  *
- * The streaks are a comb of two sine waves across the wall rather than a noise
- * field, for the reason the materials are: a field here would be the third of
- * the frame, and a comb broken by the grain already drawn reads the same.
+ * Every stroke is a hash of the metres the wall carries in its `uv`, not a
+ * noise field, for the reason the materials are: a field here would be the
+ * third of the frame.
  */
-export function weathered(colour: TslNode, age: TslNode, grain: TslNode): TslNode {
+export function weathered(colour: TslNode, age: TslNode): TslNode {
   const across = uv().x;
-  // A comb of two periods that do not divide each other, so no two streaks on
-  // one wall are the same width.
-  const comb = across.mul(1.7).sin().mul(0.5).add(across.mul(0.43).sin().mul(0.5)).add(1).mul(0.5);
-  // Grime runs down from the sill of each storey and fades as it falls.
-  const below = uv().y.div(STOREY).fract();
-  const drip = float(1).sub(smoothstep(0, 0.75, below)).mul(comb).mul(grain.mul(0.5).add(0.6));
-  const stain = float(1).sub(smoothstep(0, STAIN_RISE, uv().y));
-  const dirt = float(1).sub(drip.mul(GRIME).add(stain.mul(STAIN)).mul(age));
-  // Paint fades where the sun reaches it, which is the top of a tall wall.
+  const up = uv().y;
+  // One column of wall and one storey of it: each pair draws its own stroke.
+  const column = across.div(STROKE_COLUMN).floor();
+  const storey = up.div(STOREY).floor();
+  const cell = column.add(storey.mul(17.3));
+  const inColumn = across.div(STROKE_COLUMN).fract().sub(0.5).abs().mul(STROKE_COLUMN);
+  const below = float(1).sub(up.div(STOREY).fract()).mul(STOREY);
+  // Whether the stroke is there, how long it runs and how wide it starts.
+  const there = step(hash(cell, 0.1), age.mul(0.85));
+  const length = hash(cell, 0.7).mul(0.55).add(0.25).mul(STOREY);
+  const width = hash(cell, 1.3).mul(0.14).add(0.08);
+  // It narrows to a round end as it runs down, as a brush lifted off the wall.
+  const reach = width.mul(float(1).sub(below.div(length)).max(0).sqrt());
+  const drip = there.mul(edge(inColumn, reach));
+  // The stain's top edge waves along the wall, as a wet foot dries unevenly.
+  const wave = across.mul(1.7).sin().mul(0.5).add(across.mul(0.43).sin().mul(0.5)).mul(0.35).add(1);
+  const stain = edge(up, wave.mul(STAIN_RISE)).mul(step(0.25, age));
+  const dirty = mix(colour, colour.mul(vec3(...STAIN_SHADE)), stain);
+  const grimy = mix(dirty, colour.mul(vec3(...GRIME_SHADE)), drip);
+  // The faded paint is one flat band over a waving line high on a tall wall.
   // The metres are the wall's own, off its `uv`, so a house on a hill is not
   // weathered as if it stood at the height of the hill.
-  const sun = smoothstep(FADE_LOW, FADE_HIGH, uv().y).mul(age).mul(FADE);
-  return mix(colour.mul(dirt), vec3(0.82, 0.8, 0.76).mul(luminance(colour)), sun);
+  const faded = float(1).sub(edge(up, wave.mul(FADE_FROM))).mul(age).mul(FADE);
+  return mix(grimy, vec3(0.82, 0.8, 0.76).mul(luminance(grimy)), faded);
+}
+
+/** 1 below `limit` and 0 above it, with the one short edge a painted stroke has. */
+function edge(value: TslNode, limit: TslNode): TslNode {
+  return float(1).sub(smoothstep(limit.sub(EDGE), limit.add(EDGE), value));
+}
+
+/** A number from 0 to 1 for a whole number, the same on every call and every GPU near enough. */
+function hash(n: TslNode, salt: number): TslNode {
+  return n.mul(12.9898).add(salt * 78.233).sin().mul(43758.5453).fract();
 }
 
 /** Brick: courses of stretchers, each course offset half a brick from the one below. */
