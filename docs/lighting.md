@@ -23,6 +23,9 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
   `SkyLighting` (`sky.ts`) turns it into the `SkyMesh` dome, one directional light with
   `SHADOW_CASCADES` cascades and the fog; `WorldScene.time = tick` is the only way in, and one game
   day is 24 real minutes.
+- The haze is the colour of the fog and of the sky behind the far chunks: `HAZE_DAY`, a warm cream,
+  and `HAZE_DUSK`, a rose, mixed in around the horizon. Never grey or blue by day: the art style
+  fades distance to a warm haze (`docs/art-style.md`).
 - The day is a summer one: sunrise at `SUNRISE_HOUR` (05:30), sunset at `SUNSET_HOUR` (20:30).
   `sunFraction` stretches the clock onto the sun's circle; the clock the player reads is not
   changed. A sun on the plain 24-hour circle set at 18:00, and the frame was dark by 18:20.

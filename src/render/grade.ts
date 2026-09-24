@@ -33,6 +33,12 @@ export type Rgb = readonly [number, number, number];
 
 /** What the grade does to the frame. Every field leaves it alone at its neutral. */
 export interface ColourGrade {
+  /**
+   * The power each channel is raised to before the contrast. 1 is neutral;
+   * under 1 brightens the middle tones and leaves black and white where they
+   * are, which is what puts a day frame into high key (`docs/art-style.md`).
+   */
+  key: number;
   /** Contrast about {@link PIVOT}. 1 is neutral; above it darkens the shadows. */
   contrast: number;
   /** How far colours are pushed from grey. 1 is neutral. */
@@ -75,12 +81,18 @@ export const LUT_LENGTH = LUT_SIZE * LUT_SIZE * LUT_SIZE * 4;
  */
 export const GRADE_STEPS = 240;
 
-/** The grade at noon: the frame as it is, with a little more life in it. */
+/**
+ * The grade at noon: high key and warm. The key lifts the middle tones so most
+ * of the frame sits in the upper half of the brightness, and the contrast is
+ * left alone so the shade stays light. The gain warms the lights and the lift
+ * leans the dark toward lavender, as the shadow colour does (`shade.ts`).
+ */
 const DAY_GRADE: ColourGrade = {
-  contrast: 1.06,
-  saturation: 1.08,
-  lift: [0, 0.002, 0.006],
-  gain: [1, 1, 0.995],
+  key: 0.8,
+  contrast: 1,
+  saturation: 1.22,
+  lift: [0.004, 0.002, 0.01],
+  gain: [1.02, 1, 0.97],
 };
 
 /**
@@ -88,10 +100,11 @@ const DAY_GRADE: ColourGrade = {
  * goes warm, the shadows warm with it, and the colour comes up.
  */
 const DUSK_GRADE: ColourGrade = {
+  key: 0.92,
   contrast: 1.02,
-  saturation: 1.16,
+  saturation: 1.24,
   lift: [0.014, 0.005, 0],
-  gain: [1.06, 0.99, 0.92],
+  gain: [1.03, 0.99, 0.92],
 };
 
 /**
@@ -100,6 +113,7 @@ const DUSK_GRADE: ColourGrade = {
  * with a street that is still trying to be brown.
  */
 const NIGHT_GRADE: ColourGrade = {
+  key: 1,
   contrast: 1.04,
   saturation: 0.95,
   lift: [0, 0.004, 0.016],
@@ -112,6 +126,7 @@ const NIGHT_GRADE: ColourGrade = {
  * flat grey sheet, and the tail lights and neon on it are the only colour left.
  */
 const CLOUD_GRADE: ColourGrade = {
+  key: 1,
   contrast: 0.94,
   saturation: 0.72,
   lift: [0.004, 0.006, 0.012],
@@ -143,10 +158,10 @@ export function gradeStep(tick: number): number {
 
 /** What the grade makes of one colour. The whole of the grade is this function. */
 export function gradeColour(grade: ColourGrade, rgb: Rgb): [number, number, number] {
-  const { contrast, saturation, lift, gain } = grade;
-  const red = channel(rgb[0], contrast, gain[0], lift[0]);
-  const green = channel(rgb[1], contrast, gain[1], lift[1]);
-  const blue = channel(rgb[2], contrast, gain[2], lift[2]);
+  const { key, contrast, saturation, lift, gain } = grade;
+  const red = channel(rgb[0] ** key, contrast, gain[0], lift[0]);
+  const green = channel(rgb[1] ** key, contrast, gain[1], lift[1]);
+  const blue = channel(rgb[2] ** key, contrast, gain[2], lift[2]);
   // Saturation last, about the brightness the frame already has, so pushing the
   // colour never changes how bright the pixel reads.
   const luma = red * LUMA[0] + green * LUMA[1] + blue * LUMA[2];
@@ -200,6 +215,7 @@ export function writeLut(grade: ColourGrade, out: Float32Array): void {
 /** Blend two grades, field by field. */
 function mixGrade(from: ColourGrade, to: ColourGrade, t: number): ColourGrade {
   return {
+    key: lerp(from.key, to.key, t),
     contrast: lerp(from.contrast, to.contrast, t),
     saturation: lerp(from.saturation, to.saturation, t),
     lift: mixRgb(from.lift, to.lift, t),
