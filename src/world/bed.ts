@@ -314,6 +314,12 @@ export function junctionPlane(ground: Ground, node: Point, mouths: readonly Junc
  * road across a climbing one gives a plane that tilts along the climbing road
  * and is level along the flat one, which is what both of them asked for.
  *
+ * Each mouth counts by the square of its cut, so the fit gives the least
+ * height error at the cuts rather than the least grade error: the same grade
+ * error costs a mouth cut 27 m back thirteen times the height it costs one cut
+ * 2 m back (issue #676, E2). The weights are scaled to average 1, so
+ * {@link MIN_SPAN} reads the same whatever the cuts are.
+ *
  * The normal equations are solved along their own two axes, so a direction the
  * mouths barely span is left level rather than solved for, and the plane is
  * never tilted more steeply than the steepest road leaving the node.
@@ -325,17 +331,25 @@ function planeOf(ground: Ground, node: Point, level: number, mouths: readonly Ju
   let bx = 0;
   let by = 0;
   let steepest = 0;
+  let count = 0;
+  let squares = 0;
+  for (const mouth of mouths) {
+    if (mouth.cut < MIN_FIT_CUT) continue;
+    count++;
+    squares += mouth.cut * mouth.cut;
+  }
   for (const mouth of mouths) {
     if (mouth.cut < MIN_FIT_CUT) continue;
     // The grade of the line the road really drives, which is its own lift over
     // the ground at the cut, against the level of the node.
     const grade = (ground(mouth.at.x, mouth.at.y) + mouth.liftAtCut - level) / mouth.cut;
+    const weight = (mouth.cut * mouth.cut * count) / squares;
     steepest = Math.max(steepest, Math.abs(grade));
-    axx += mouth.dx * mouth.dx;
-    axy += mouth.dx * mouth.dy;
-    ayy += mouth.dy * mouth.dy;
-    bx += mouth.dx * grade;
-    by += mouth.dy * grade;
+    axx += weight * mouth.dx * mouth.dx;
+    axy += weight * mouth.dx * mouth.dy;
+    ayy += weight * mouth.dy * mouth.dy;
+    bx += weight * mouth.dx * grade;
+    by += weight * mouth.dy * grade;
   }
   // The eigenvectors of the symmetric 2 x 2 matrix: the axis the mouths span
   // most, and the one across it.

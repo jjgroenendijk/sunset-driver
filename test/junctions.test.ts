@@ -1,7 +1,7 @@
 import type { BufferGeometry } from 'three';
 import { describe, expect, it } from 'vitest';
 import { buildChunkRoads, partsOf, trimRun, type TierGeometry } from '../src/render/road-mesh.ts';
-import { RoadBeds } from '../src/world/bed.ts';
+import { junctionPlane, RoadBeds } from '../src/world/bed.ts';
 import { buildCarve } from '../src/world/carve.ts';
 import { buildLayers, ChunkSource } from '../src/world/chunks.ts';
 import { buildRoadGraph } from '../src/world/graph.ts';
@@ -201,6 +201,33 @@ describe('junction plane', () => {
     expect(beds.heightAt(0, 1, (2 * east.cut) / 100)).toBeCloseTo(hf.sample(2 * east.cut, 0), 6);
     expect(beds.pointHeight(1, 0)).toBeCloseTo(hf.sample(0, -200), 6);
     expect(carve.heightAt(0, -150)).toBeCloseTo(hf.sample(0, -150), 6);
+  });
+});
+
+describe('junction plane fit', () => {
+  const mouth = (dx: number, dy: number, cut: number): Junction['mouths'][number] => ({
+    curve: 0,
+    tier: 'street',
+    point: 0,
+    direction: 1,
+    dx,
+    dy,
+    cut,
+    at: { x: dx * cut, y: dy * cut },
+    segment: 0,
+    lift: 0,
+    liftAtCut: 0,
+  });
+
+  it('holds a long mouth near its own bed and lets a short one give way', () => {
+    // Two mouths along x disagree: the long one east climbs 10 %, the short
+    // one west climbs 10 % too, which is a fall along x. A grade fit would
+    // split them and level the plane; a height fit follows the long mouth.
+    const ground = (x: number): number => (x > 0 ? 0.1 * x : -0.1 * x);
+    const plane = junctionPlane((x) => ground(x), { x: 0, y: 0 }, [mouth(1, 0, 27), mouth(-1, 0, 2)]);
+    const miss = (x: number): number => Math.abs(plane.level + plane.gx * x - ground(x));
+    // The long mouth's cut stands within centimetres of its bed, not 2.7 m off.
+    expect(miss(27)).toBeLessThan(0.2);
   });
 });
 
