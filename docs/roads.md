@@ -94,8 +94,10 @@ their one-way ramps in `docs/interchanges.md`.
 - A ring trace (`TraceOptions.around`) aims along the ring's tangent and turns back towards it by up
   to `RING_TURN`, so the ground can still bend it. It stops once it has swept the whole ring, or the
   part the other half left.
-- The islands are linked twice: once after the highways, and once after the arterial fill, for an
-  island that carries a district and still has no road on it. A bridge is refused where its near
+- The islands are linked three times: after the highways, after the arterial fill, and after
+  `serveDistricts`, for an island that carries a district and still has no road on it. The
+  arterial to a district can be the first road on the shore a bridge head stands on, as in seed
+  1484789041. A bridge is refused where its near
   shore reaches no road. The span between the two heads is a deck because it stands over water;
   where a strait runs dry at its narrowest, the two heads stand on dry, gentle ground the whole way
   between them and the link is laid on the ground instead, with `markStructures` finding what it
