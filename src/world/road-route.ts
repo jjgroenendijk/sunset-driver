@@ -459,6 +459,11 @@ export abstract class RoadRoute {
     return this.network.wouldJoin(this.draftOf(tier, points, []), whole);
   }
 
+  /** The line the network would lay for a road of this tier: see `RoadNetwork.settledLine`. */
+  protected settledLine(tier: RoadTier, points: Point[]): readonly Point[] | undefined {
+    return points.length < 2 ? undefined : this.network.settledLine(this.draftOf(tier, points, []));
+  }
+
   /** The road as the network is asked to take it: its structures, its highway plan and its lift over water. */
   private draftOf(tier: RoadTier, points: Point[], bridges: number[], interchanges: number[] = []): RoadDraft {
     const tunnels = this.markStructures(points, bridges);

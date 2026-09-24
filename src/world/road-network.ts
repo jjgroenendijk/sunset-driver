@@ -407,6 +407,15 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
   }
 
   /**
+   * The line {@link add} would lay for a road with no interchange on it, or
+   * undefined where it would lay none. Nothing is written.
+   */
+  settledLine(proposed: RoadDraft): readonly Point[] | undefined {
+    if (proposed.points.length < 2 || selfOverlap(proposed.points, proposed.tier) !== undefined) return undefined;
+    return settleCrossings(this, proposed)?.road.points;
+  }
+
+  /**
    * True where {@link add} would lay a road joined to the network: its settled
    * line takes a junction with a laid road or stands on a point of one.
    * Nothing is written.
