@@ -29,7 +29,9 @@ export interface SignalLap {
  * A turn a tram crosses is held on a green as well (`tram-guard.ts`): a
  * vehicle may stand while the tram is in the junction, and while it would
  * reach the line in the tram's path however soon it pulled away, which is
- * within half the green for the last car of its queue.
+ * within half the green for the last car of its queue. Once the tram has left,
+ * it may stand on to the next green where the green has too little left for it
+ * to reach the line.
  */
 export function signalLap(traffic: AmbientTraffic, vehicle: AmbientVehicle): SignalLap {
   const signals = traffic.signals;
@@ -85,12 +87,18 @@ export function signalLap(traffic: AmbientTraffic, vehicle: AmbientVehicle): Sig
 /** True while a tram crossing its turn at `holding` holds a vehicle standing on leg `leg`. */
 function tramHolds(traffic: AmbientTraffic, vehicle: AmbientVehicle, holding: SignalApproach, leg: number, tick: number): boolean {
   const guard = traffic.guard;
-  if (guard === undefined) return false;
+  const signals = traffic.signals;
+  if (guard === undefined || signals === undefined) return false;
   const edges = vehicle.tour.edges;
   const at = edges[leg] === holding.edge ? leg : leg + 1;
   const next = edges[(at + 1) % edges.length] as number;
   const react = vehicle.driver.react;
-  return guard.blocks(holding.edge, next, tick - react, react + SIGNAL_GREEN[holding.axis] / 2 + 2);
+  const ahead = react + SIGNAL_GREEN[holding.axis] / 2 + 2;
+  if (guard.blocks(holding.edge, next, tick - react, ahead)) return true;
+  // A tram that has just left the junction holds the vehicle on to the next
+  // green where too little of this one is left for it to reach the line.
+  const left = SIGNAL_GREEN[holding.axis] - mod(tick - signals.greenStart(holding), SIGNAL_CYCLE);
+  return left < ahead && guard.blocks(holding.edge, next, tick - react - ahead, ahead);
 }
 
 function mod(value: number, by: number): number {
