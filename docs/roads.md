@@ -114,6 +114,14 @@ their one-way ramps in `docs/interchanges.md`.
   (`streetApproach`): a street climbs what an arterial may not, so it gets out of a pocket of steep
   ground that holds streets and no arterial. The street is a road of its own and the link begins
   where it ends, so the bridge and the island's road are still arterial (issue #277).
+- In the last pass only, where no street reaches the head either, the approach is laid out from
+  the network (`outbound`). The search in from the head walks a grid in eight directions, with
+  every cell inside the grade, so a steep bank met at the wrong angle closes the shore off. A
+  trace climbs it slantwise. A line is traced from a road near the head towards the head, and the
+  search runs from the head to any point of it. Its first step is vetted as a junction
+  (`meets`), since `stepOk` leaves little room between two roads that meet. In seed 2472114906
+  this is the only way off the shore. An earlier pass would take this way where the fill later
+  lays an ordinary one, and that moved the roads of seed 1100235079.
 - `serveDistricts` lays an arterial from every built-up district to the nearest road, and a street
   where no arterial line reaches the site, for the same reason (issue #398). A site on ground no
   road of any tier can climb to gets neither; that is issue #399.

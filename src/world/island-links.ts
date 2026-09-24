@@ -7,6 +7,7 @@
  * extends `HighwayTrace`, so a link can join a highway at its interchange, and
  * `RoadTracer` extends it in turn.
  */
+import { cos, sin } from '../core/libm.ts';
 import { dist } from '../core/math.ts';
 import { HighwayTrace } from './highways.ts';
 import { DRY_MARGIN } from './road-ground.ts';
@@ -37,8 +38,18 @@ const MIN_SHORE = 4;
 const RUN_ON = 60;
 /** Metres between the points of that run. */
 const RUN_ON_STEP = 20;
+/** Metres from a bridge head the roads an approach is laid out from may stand. */
+const OUTBOUND_REACH = 1500;
+/** Roads an approach is laid out from before the head is given up. */
+const OUTBOUND_ROADS = 6;
+/** Radians between the headings the first step of that line tries, and how many each way. */
+const FIRST_STEP_TURN = Math.PI / 18;
+const FIRST_STEP_TURNS = 6;
 
 export abstract class IslandLinkTrace extends HighwayTrace {
+
+  /** Whether the pass running is the last one, the only one that lays an approach out from the network. */
+  private lastPass = false;
 
   /**
    * Bridge out to every island that carries a district, over the strait
@@ -48,8 +59,13 @@ export abstract class IslandLinkTrace extends HighwayTrace {
    * `again` is the second pass, run once the arterial fill has covered the main
    * island. It leaves alone every island a road already stands on and tries the
    * rest against the whole network rather than against the highways alone.
+   * `last` is the pass after that, once the districts are served. Only there
+   * is an approach laid out from the network ({@link outbound}): it is the
+   * way on of last resort, and an earlier pass would take it where the fill
+   * later lays an ordinary one.
    */
-  protected linkIslands(again = false): void {
+  protected linkIslands(again = false, last = false): void {
+    this.lastPass = last;
     const islands = this.world.water.islands;
     const crossings = this.world.water.crossings;
     const count = islands.length;
@@ -197,8 +213,10 @@ export abstract class IslandLinkTrace extends HighwayTrace {
         if (approach === undefined && routed === 1 && !patient) break;
         if (approach === undefined) {
           // Every arterial way on is spent, so the patient round lays a street
-          // instead. An island that carries a district has to have a road.
-          const climbed = patient ? this.streetApproach(near, far, shore) : undefined;
+          // instead, and last an arterial laid out from the network. An island
+          // that carries a district has to have a road.
+          let climbed = patient ? this.streetApproach(near, far, shore) : undefined;
+          if (climbed === undefined && patient && this.lastPass) climbed = this.outbound(near, shore, [far, near]);
           if (climbed === undefined) continue;
           approach = climbed;
         } else approach.reverse();
@@ -226,6 +244,81 @@ export abstract class IslandLinkTrace extends HighwayTrace {
       if (this.addCurve('arterial', points, bridges, [], true) !== undefined) return true;
     }
     return false;
+  }
+
+  /**
+   * A way on to the network for a bridge head, laid out from the network
+   * rather than in from the head. The search in from the head walks a grid
+   * in eight directions, and each cell has to be inside the grade. A steep
+   * bank that the grid meets at the wrong angle closes the shore off, though
+   * a road climbing it slantwise stays inside the grade. A trace takes that
+   * slant. So a line is traced out from a road near the head, towards the
+   * head, and the search runs in from the head to any point of that line.
+   * The road points tried are the nearest few, one per road, each with the
+   * four headings of the field. Undefined where no line is reached. The
+   * points run from the network to the head.
+   */
+  private outbound(near: Point, shore: number, deck: readonly Point[]): Point[] | undefined {
+    const tried: number[] = [];
+    for (const hit of this.network.within(near.x, near.y, OUTBOUND_REACH, -1, 'arterial')) {
+      if (tried.length >= OUTBOUND_ROADS) break;
+      if (tried.includes(hit.curve) || this.islandOf(hit.x, hit.y) !== shore) continue;
+      if (this.network.refuses(hit.x, hit.y, 'arterial')) continue;
+      tried.push(hit.curve);
+      const major = this.field.majorAt(hit.x, hit.y);
+      for (let quarter = 0; quarter < 4; quarter++) {
+        const first = this.firstStep(hit, major + (quarter * Math.PI) / 2);
+        if (first === undefined) continue;
+        const opt = { params: ARTERIAL, joiner: 'arterial' as const, target: near, heading: first.heading, mergeAfter: Infinity, parentCurve: hit.curve, before: [hit, first.at], junction: hit };
+        const line = [hit, ...this.trace(first.at, opt).points];
+        if (line.length < 3) continue;
+        const route = this.routeToLine(near, line, deck);
+        if (route === undefined) continue;
+        const out = [...line.slice(0, route.join), ...route.points.reverse()];
+        if (selfOverlap([...out, ...deck.slice(1)], 'arterial') === undefined) return out;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * The first step of a line laid out from a road point, as near a heading as
+   * the ground and the roads there allow. A trace vets a step against the
+   * line of every road it passes, either way along it, which leaves little
+   * room at a junction of two roads. A road that meets another is vetted by
+   * the way it arrives (`meets`), so this step is too: it is the junction the
+   * line will make.
+   */
+  private firstStep(from: Point, heading: number): { at: Point; heading: number } | undefined {
+    for (let k = 0; k <= FIRST_STEP_TURNS; k++) {
+      for (const sign of k === 0 ? [1] : [1, -1]) {
+        const h = heading + sign * k * FIRST_STEP_TURN;
+        const at = { x: from.x + cos(h) * ARTERIAL.step, y: from.y + sin(h) * ARTERIAL.step };
+        if (!this.canRun(from.x, from.y, at.x, at.y, ARTERIAL.maxGrade)) continue;
+        if (this.network.meets(from, at, 'arterial')) return { at, heading: h };
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * The search in from a head to a line not yet laid: to the furthest point
+   * of it within a merge, over ground inside the grade. The route runs from
+   * the head and ends on the point at index `join` of the line.
+   */
+  private routeToLine(near: Point, line: readonly Point[], deck: readonly Point[]): { points: Point[]; join: number } | undefined {
+    let join = -1;
+    const goal = (x: number, y: number): Point | undefined => {
+      for (let j = line.length - 1; j >= 1; j--) {
+        const p = line[j] as Point;
+        if (dist(x, y, p.x, p.y) > ARTERIAL.mergeRadius || !this.canRun(x, y, p.x, p.y, ARTERIAL.maxGrade)) continue;
+        join = j;
+        return p;
+      }
+      return undefined;
+    };
+    const points = this.reroute(near, ARTERIAL.maxGrade, 'arterial', goal, undefined, false, deck);
+    return points === undefined ? undefined : { points, join };
   }
 
   /**
