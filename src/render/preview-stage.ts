@@ -17,7 +17,7 @@
  * land (`batch.ts`). A scene built before its renderer keeps every array until
  * the first draw.
  */
-import { RenderTarget, SRGBColorSpace, UnsignedByteType } from 'three';
+import { LinearSRGBColorSpace, RenderTarget, UnsignedByteType } from 'three';
 import type { WebGPURenderer } from 'three/webgpu';
 import { DEFAULT_APPEARANCE } from '../sim/character.ts';
 import { BusStops } from '../sim/bus-stops.ts';
@@ -187,7 +187,11 @@ export function viewFor(width: number, height: number): PreviewView {
   }
   dropView(held);
   const camera = new FollowCamera(width / height);
-  const target = new RenderTarget(width, height, { type: UnsignedByteType, colorSpace: SRGBColorSpace });
+  // A linear target, as the game's canvas is (`bgra8unorm`): the post chain
+  // encodes the frame to sRGB itself. An sRGB target is `rgba8unorm-srgb`, and
+  // the GPU encodes into it a second time, which made every preview far paler
+  // than the game (issue #695).
+  const target = new RenderTarget(width, height, { type: UnsignedByteType, colorSpace: LinearSRGBColorSpace });
   // Not `setRenderTarget`: a target set as the output of the frame is what the
   // tone mapping and the colour space conversion are written into.
   renderer.setOutputRenderTarget(target);

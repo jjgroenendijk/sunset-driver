@@ -182,6 +182,11 @@ It draws on the graphics card, through the preview server below. The first run o
 about 10 seconds. The next run of the same seed takes a quarter of a second when only the hour, the
 angle, the vehicle or the pose changes, and 1 to 3 seconds when the player stands somewhere new.
 
+The frame is read off a linear target, so the post chain's own sRGB encode is the only one, as on
+the game's canvas. Before issue #695 the target was sRGB, the GPU encoded the frame a second time,
+and every preview was far paler than the game: a noon frame read 70 % bright where the game showed
+9 %. A colour tuned against a picture from before the fix was tuned against the wrong frame.
+
 - `--quality` draws it at a quality tier of spec section 9.2 — `full`, `high`, `medium` or `low` —
   which is the one way to see what a tier does.
 - `--x` and `--y` say where the player stands; `--junction=N` stands them at the N-th junction out
