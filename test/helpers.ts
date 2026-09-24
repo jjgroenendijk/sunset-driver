@@ -14,10 +14,14 @@ export { pointInRing, ringArea };
  */
 export const DRY = -1000;
 
-/** Fixed list of seeds for the sweeps; deterministic and spread across the space. */
-export function sweepSeeds(count: number): number[] {
+/**
+ * Fixed list of seeds for the sweeps; deterministic and spread across the
+ * space. `offset` skips that many from the front of the list, so a window
+ * further down it is as fixed as the front.
+ */
+export function sweepSeeds(count: number, offset = 0): number[] {
   const seeds: number[] = [];
-  for (let i = 0; i < count; i++) seeds.push(hashInts(0x5eed, i));
+  for (let i = offset; i < offset + count; i++) seeds.push(hashInts(0x5eed, i));
   return seeds;
 }
 

@@ -1,6 +1,6 @@
 import { beforeAll, describe } from 'vitest';
 import { ready, seeds } from './seed-fixture.ts';
-import { SEED_COUNT, SHARD_COUNT, SHARD_INDEX } from './seed-limits.ts';
+import { SEED_COUNT, SEED_OFFSET, SHARD_COUNT, SHARD_INDEX } from './seed-limits.ts';
 
 /**
  * The suite every check file of the seed sweep declares (spec section 3). One
@@ -17,10 +17,11 @@ import { SEED_COUNT, SHARD_COUNT, SHARD_INDEX } from './seed-limits.ts';
  * the readings they take of it, and `seed-index.ts` the two indexes they ask
  * through.
  */
+const window = SEED_OFFSET === 0 ? '' : ` from ${SEED_OFFSET}`;
 const tier =
   SHARD_COUNT === 1
-    ? `${SEED_COUNT} seeds`
-    : `${seeds.length} of ${SEED_COUNT} seeds, shard ${SHARD_INDEX + 1}/${SHARD_COUNT}`;
+    ? `${SEED_COUNT} seeds${window}`
+    : `${seeds.length} of ${SEED_COUNT} seeds${window}, shard ${SHARD_INDEX + 1}/${SHARD_COUNT}`;
 
 /** Declare one subject's checks over the worlds the fixture builds. */
 export function sweepSuite(subject: string, checks: () => void): void {
