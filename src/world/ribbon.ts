@@ -302,6 +302,11 @@ export class RoadRibbons {
     return this.ribbon(curve).frameAt(segment, x, y);
   }
 
+  /** The points of curve `curve`, as the ribbon was built on them. */
+  pointsOf(curve: number): readonly Point[] {
+    return this.ribbon(curve).points;
+  }
+
   /** True where the segment is carried on a deck (spec section 6.1). */
   isBridge(curve: number, segment: number): boolean {
     return this.ribbon(curve).isBridge(segment);
