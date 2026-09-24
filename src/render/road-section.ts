@@ -47,6 +47,13 @@ const DASH_GAP = 4.5;
 
 /** Metres in from the kerb that an edge line is painted. */
 const EDGE_INSET = 0.4;
+/** Metres between the arrows painted down a one-way ramp. */
+const ARROW_EVERY = 30;
+/** Metres long and wide the stem of an arrow is, and its head. */
+const ARROW_STEM = 3.5;
+const ARROW_STEM_WIDTH = 0.3;
+const ARROW_HEAD = 2.5;
+const ARROW_HEAD_WIDTH = 1.6;
 
 /** Metres between the two lines of a solid double centre line. */
 const DOUBLE_GAP = 0.5;
@@ -123,6 +130,10 @@ export interface Marking {
   colour: Rgb;
   /** Metres wide. Unset, the line is {@link PAINT_WIDTH}. */
   width?: number;
+  /** Metres the dash pattern is moved on along the road. Unset, it starts at the start of the curve. */
+  offset?: number;
+  /** Each dash narrows to a point at its far end, which makes it the head of an arrow. */
+  taper?: boolean;
 }
 
 /** Square metres below which a junction surface is a sliver of rounding and is not drawn. */
@@ -192,6 +203,17 @@ export function markingsOf(tier: RoadTier): Marking[] {
   const spec = TIERS[tier];
   if (tier === 'alley' || tier === 'dirt') return [];
   const half = spec.width / 2;
+  if (tier === 'ramp') {
+    // One way: an edge line inside each kerb and an arrow down the middle
+    // every so often, pointing the way the curve runs, which is the way it is
+    // driven. The arrow is a thin stem with a head that narrows to its tip.
+    return [
+      { across: -(half - EDGE_INSET), dash: 0, gap: 0, colour: WHITE },
+      { across: half - EDGE_INSET, dash: 0, gap: 0, colour: WHITE },
+      { across: 0, dash: ARROW_STEM, gap: ARROW_EVERY - ARROW_STEM, colour: WHITE, width: ARROW_STEM_WIDTH },
+      { across: 0, dash: ARROW_HEAD, gap: ARROW_EVERY - ARROW_HEAD, colour: WHITE, width: ARROW_HEAD_WIDTH, offset: ARROW_STEM, taper: true },
+    ];
+  }
   const lane = half / spec.lanes;
   const out: Marking[] = [];
   if (spec.lanes === 1) {

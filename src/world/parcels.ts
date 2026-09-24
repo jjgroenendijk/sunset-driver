@@ -57,6 +57,7 @@ import type { RoadFootprint } from './footprint.ts';
 import type { RoadGraph } from './graph.ts';
 import { Heightfield } from './heightfield.ts';
 import { AIRFIELD_KEEP, airfieldCorners, airfieldRamp, RAMP_HALF } from './airfields.ts';
+import { interchangeInfields } from './diamonds.ts';
 import { landRegions } from './land.ts';
 import { MetroPlan, type MetroStation } from './metro.ts';
 import { ringsOf, RoadReach } from './road-reach.ts';
@@ -326,7 +327,10 @@ export function buildParcels(
   ]);
   const land = difference(dry, [...footprint.regions, ...fields]);
   const under = decks.length === 0 ? { inside: [], outside: land } : split(land, union(decks));
-  const free = under.outside;
+  // The ground inside a diamond of ramps is left open, one piece to a foot.
+  const infields = union(interchangeInfields(world.roads).map((ring) => regionOf(ring)));
+  const inside = infields.length === 0 ? { inside: [], outside: under.outside } : split(under.outside, infields);
+  const free = inside.outside;
   // The sand next, so the ground behind it is parcelled without it.
   const sand = world.beaches.map((beach) => regionOf(beach.sand));
   const shore = sand.length === 0 ? { inside: [], outside: free } : split(free, sand);
@@ -338,6 +342,10 @@ export function buildParcels(
     if (piece !== undefined) pieces.push({ ...piece, owner: 'beach' });
   }
   for (const region of shore.outside) cutToSize(region, zones, field, reach, pieces, 0);
+  for (const region of inside.inside) {
+    const piece = pieceOf(region, reach);
+    if (piece !== undefined) pieces.push({ ...piece, owner: 'ground' });
+  }
   markCarParks(pieces, world.beaches, reach);
   for (const region of under.inside) {
     const piece = pieceOf(region, reach);
