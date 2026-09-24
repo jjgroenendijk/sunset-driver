@@ -121,5 +121,8 @@ A ramp takes no junction on the way. Nothing may touch its line except at its tw
   head is drawn.
 - The palette, the map width, the grade-crossing rank, the pier size and the pavement claim order
   all carry a ramp row. `FAR_TIERS` leaves ramps out of the far chunks, as it does streets.
+- A ramp is drawn in the highway's batch (`batchOf` in `road-mesh.ts`), with its own section,
+  markings and structures per run. A batch of its own put chunk -1,1 of seed 3925451995 over
+  `CHUNK_DRAW_CALL_CAP` (49); in the highway's batch it costs 49.
 - Look at a diamond with `node scripts/landuse-preview.ts <seed> out.png --x= --y= --half=220`.
   The infields read as open ground. A rendered frame needs the ground height in `--look-at`.
