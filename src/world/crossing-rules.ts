@@ -44,6 +44,8 @@ export interface CrossingNetwork extends PlaneNetwork {
   canRun(a: Point, b: Point, tier: RoadTier): boolean;
   /** True where a road of this tier may end: its footprint stands on no other road's. */
   clearAt(x: number, y: number, tier: RoadTier): boolean;
+  /** True where a road already passes under the slots of the stretch of a highway that holds its segment `segment`. */
+  slotTaken(curve: number, segment: number): boolean;
 }
 
 /** A junction the plan takes: where, the point the draft is given, and the point the laid road takes. */

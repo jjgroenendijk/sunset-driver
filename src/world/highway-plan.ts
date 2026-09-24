@@ -24,9 +24,12 @@ import { footprintHalfWidth, TIERS } from './tiers.ts';
 import type { Point, RoadCurve } from './types.ts';
 
 /**
- * Metres each side of an interchange the highway stays on the ground. A
- * junction is one plane at the height of the ground, and its mouths blend back
- * onto the road over one cut more (`bed.ts`).
+ * Metres each side of an interchange the highway stays on the ground. The
+ * ramps of a diamond land on it inside this (`diamonds.ts`). A wider stretch
+ * would let the ramps of an overpass meet the highway at a shallower angle, but
+ * it costs the highway decks it needs (`docs/interchanges.md`). A junction is
+ * one plane at the height of the ground, and its mouths blend back onto the
+ * road over one cut more (`bed.ts`).
  */
 export const INTERCHANGE_CLEAR = 2 * MAX_CUT;
 /** Metres of ramp between the ground and the deck, at the highway's grade limit. */

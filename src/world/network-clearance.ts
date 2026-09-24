@@ -45,7 +45,7 @@ export const MIN_MEET = Math.PI / 6;
  * crossing traced at exactly the least angle can be joined a hair under it.
  */
 const MEET_MARGIN = (5 * Math.PI) / 180;
-const TRACE_MEET = MIN_MEET + MEET_MARGIN;
+export const TRACE_MEET = MIN_MEET + MEET_MARGIN;
 
 /** Metres within which two road points are the same place. The network snaps a point to a node by the same figure. */
 export const SAME_PLACE = 0.01;
@@ -108,8 +108,9 @@ export class NetworkClearance {
     // crosses may be moved by a snap as it is added, and the crossing moves
     // along the highway with it; it has to stay under the level deck. Any
     // other road is crossed on the ground or under the level top of a raise,
-    // never on a ramp.
+    // never on a ramp. The ramp of an interchange is crossed nowhere.
     const open = (i: number): boolean => {
+      if (curve.ramp !== undefined) return false;
       if (curve.tier === 'highway') return slots.includes(i - 1) && slots.includes(i) && slots.includes(i + 1);
       const low = Math.min(lift[i] ?? 0, lift[i + 1] ?? 0);
       const high = Math.max(lift[i] ?? 0, lift[i + 1] ?? 0);
@@ -283,15 +284,25 @@ export class NetworkClearance {
         return;
       }
       // A step that starts on a road, or ends on one, touches it there: that is
-      // the junction, not a crossing.
-      if (hypot(x - a.x, y - a.y) <= SAME_PLACE || hypot(x - b.x, y - b.y) <= SAME_PLACE) return;
+      // the junction, not a crossing. A ramp takes no junction on the way, so
+      // it is touched at its own two ends or nowhere.
+      if (hypot(x - a.x, y - a.y) <= SAME_PLACE || hypot(x - b.x, y - b.y) <= SAME_PLACE) {
+        if (this.tierOf[s] !== 'ramp') return;
+        const first = this.terminal[s * 2] === true && hypot(x - (e[k] as number), y - (e[k + 1] as number)) <= SAME_PLACE;
+        const last = this.terminal[s * 2 + 1] === true && hypot(x - (e[k + 2] as number), y - (e[k + 3] as number)) <= SAME_PLACE;
+        if (!first && !last) ok = false;
+        return;
+      }
       // Nor may it cross a road beside the junction it started from or ends on.
       for (const junction of [trail.start, meet]) {
         if (junction !== undefined && hypot(x - junction.x, y - junction.y) < width + half) ok = false;
       }
       if (!ok) return;
-      // A highway is crossed at one of its slots or not at all (spec section 6.2).
-      if (this.crossable[s] !== true) {
+      // A highway is crossed at one of its slots or not at all (spec section
+      // 6.2), and under the slots of one stretch between two interchanges by
+      // one road at most (issue #676).
+      const curve = this.curve[s] as number;
+      if (this.crossable[s] !== true || (this.tierOf[s] === 'highway' && this.slotTaken(curve, (this.segmentsOf[curve] as number[]).indexOf(s)))) {
         ok = false;
         return;
       }
@@ -302,6 +313,15 @@ export class NetworkClearance {
     });
     if (!ok) crossed.length = before;
     return ok;
+  }
+
+  /**
+   * True where a road already passes under the slots of the stretch of highway
+   * `curve` that holds its segment `segment`. The network that extends this
+   * keeps the count; on its own nothing is taken.
+   */
+  slotTaken(_curve: number, _segment: number): boolean {
+    return false;
   }
 
   /**

@@ -244,8 +244,11 @@ sweepSuite('roads', () => {
   it('junctions a highway only at an interchange, and never with a minor road', () => {
     // Spec section 6.2: a highway has junctions only at interchanges and no
     // pedestrians on it. So a street, an alley or a dirt road never shares a
-    // point with one — where they cross, the graph makes it an overpass — and a
-    // highway or an arterial ramp meets one only at a point it lists.
+    // point with one — where they cross, the graph makes it an overpass. A
+    // highway meets one only at a point it lists, and a ramp only as its own.
+    // An arterial never meets one at grade: where it reaches an interchange it
+    // takes a diamond (`diamonds.ts`), and it shares a point with a highway
+    // only where the highway ends on it.
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       let complaint: string | undefined;
@@ -271,8 +274,13 @@ sweepSuite('roads', () => {
           for (const other of here) {
             if (other.road.id === road.id) continue;
             const where = `highway ${road.id} meets ${other.road.tier} ${other.road.id} at point ${i}`;
-            if (other.road.tier !== 'highway' && other.road.tier !== 'arterial') fault(where);
-            else if (!road.interchanges.includes(i)) fault(`${where}, away from any interchange`);
+            const end = i === 0 || i === road.points.length - 1;
+            if (other.road.tier === 'highway') {
+              if (!road.interchanges.includes(i)) fault(`${where}, away from any interchange`);
+            } else if (other.road.tier === 'ramp') {
+              if (other.road.ramp?.highway !== road.id) fault(`${where}, a ramp of another highway`);
+            } else if (other.road.tier !== 'arterial') fault(where);
+            else if (!end) fault(`${where}, at grade`);
           }
         }
       }
@@ -282,9 +290,11 @@ sweepSuite('roads', () => {
 
   it('crosses a highway only under the level deck of one of its slots', () => {
     // Spec section 6.2: a highway is planned with its decks when it is laid,
-    // and a road laid later passes under a slot or joins the highway at an
+    // and a road laid later passes under a slot or reaches the highway at an
     // interchange. Every other crossing is refused while the road is traced,
-    // so none is left for `overpass.ts` to raise between two junctions.
+    // so none is left for `overpass.ts` to raise between two junctions. The one
+    // road raised over a highway is the arterial of a whole diamond, which
+    // crosses the interchange on an overpass between the feet of its ramps.
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       const graph = graphOf(seed);
@@ -306,7 +316,11 @@ sweepSuite('roads', () => {
         const where = `${(pair[0] as RoadCurve).tier} ${(pair[0] as RoadCurve).id} crosses ${(pair[1] as RoadCurve).tier} ${(pair[1] as RoadCurve).id} at ${crossing.x.toFixed(0)},${crossing.y.toFixed(0)}`;
         const above = pair.find((road) => (road.slots ?? []).includes(placeOn(road, crossing)?.segment ?? -1));
         if (above === undefined) {
-          fault(`${where}, at no slot`);
+          const over = w.roads[(graph.edges[crossing.over] as RoadEdge).curve] as RoadCurve;
+          const under = w.roads[(graph.edges[crossing.under] as RoadEdge).curve] as RoadCurve;
+          const diamond = over.tier === 'arterial' && under.tier === 'highway' && w.roads.some((r) => r.ramp?.arterial === over.id);
+          if (!diamond) fault(`${where}, at no slot`);
+          else if (liftAtCrossing(under, crossing) > 0) fault(`${where}, over a highway off the ground`);
           continue;
         }
         // The road underneath stays on the ground, or it would climb into the deck.
