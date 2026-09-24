@@ -554,19 +554,30 @@ function paintMarking(piece: Piece, marking: Marking, out: PaintBuffers, bare: (
     const a1 = place(pa, fa, marking.across + half, rise);
     const b0 = place(pb, fb, marking.across - half, rise);
     const b1 = place(pb, fb, marking.across + half, rise);
-    const stretch = (t0: number, t1: number): void =>
-      paint(between(a0, b0, t0), between(a1, b1, t0), between(a0, b0, t1), between(a1, b1, t1));
+    // `w0` and `w1` are the share of the full width the paint has at each end.
+    const stretch = (t0: number, t1: number, w0 = 1, w1 = 1): void => {
+      const narrow = (edge: Vector3, other: Vector3, w: number): Vector3 => between(other, edge, 0.5 + w / 2);
+      const l0 = between(a0, b0, t0);
+      const r0 = between(a1, b1, t0);
+      const l1 = between(a0, b0, t1);
+      const r1 = between(a1, b1, t1);
+      paint(narrow(l0, r0, w0), narrow(r0, l0, w0), narrow(l1, r1, w1), narrow(r1, l1, w1));
+    };
     if (marking.gap <= 0) {
       stretch(0, 1);
       continue;
     }
-    const first = Math.floor(from / period);
-    const last = Math.floor(fb.distance / period);
+    const shift = marking.offset ?? 0;
+    const first = Math.floor((from - shift) / period);
+    const last = Math.floor((fb.distance - shift) / period);
     for (let k = first; k <= last; k++) {
-      const start = Math.max(k * period, from);
-      const end = Math.min(k * period + marking.dash, fb.distance);
+      const dash = k * period + shift;
+      const start = Math.max(dash, from);
+      const end = Math.min(dash + marking.dash, fb.distance);
       if (end <= start) continue;
-      stretch((start - from) / span, (end - from) / span);
+      // A tapered dash is as wide as the line at its start and a point at its end.
+      const width = (at: number): number => (marking.taper === true ? 1 - (at - dash) / marking.dash : 1);
+      stretch((start - from) / span, (end - from) / span, width(start), width(end));
     }
   }
 }
