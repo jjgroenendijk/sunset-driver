@@ -185,6 +185,8 @@ Where each rule lands. None of it needs an asset file.
   crown to lime at its top, along the `rise` attribute of `plant-shell.ts`.
 - **Trees** — in town, the broadleaf blobs and cypress of `plant-mesh.ts`. In parks and the wild,
   a broadleaf takes a crown of the form `ForestGenerator` draws, over `TreeGenerator` branches.
+- **Grime** — `weathered` in `wall-material.ts` paints drips, stains and faded paint as flat
+  strokes with hard edges, each a darker, cooler shade of the wall (`docs/buildings.md`).
 - **Distance to haze** — the fog colour becomes the haze colour of the time of day.
 - **Grade** — the LUT of `grade.ts` lifts the day into high key and warms the lights. It only
   finishes the look; the colours must be right in the materials first.
@@ -194,7 +196,7 @@ Where each rule lands. None of it needs an asset file.
 
 Issue #684 brings the style in, one step per pull request. Done: the palette, the bands, the
 shadow colour by the time of day, the ink of the edge pass, the warm haze and high-key grade, the
-indigo night, and the foliage and trees. Still to come: the grime strokes and the UI.
+indigo night, the foliage and trees, and the grime strokes. Still to come: the UI.
 
 ## Decisions
 

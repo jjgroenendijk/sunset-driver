@@ -116,6 +116,11 @@ and what lights them in `docs/lighting.md`.
 - Only a `BLOCK_WALL` fragment is drawn in one of the six wall materials (`wall-material.ts`). A
   styled tower carries its own walls — a curtain wall, board-marked concrete, cut stone, pastel
   stucco — and a generated masonry facade is shaded by the generator's own material.
+- The weathering (`weathered`) is painted, not photographed (`docs/art-style.md`): hard-edged
+  strokes in a darker, cooler shade of the wall. A drip hangs under each sill, one to a column of
+  `STROKE_COLUMN` metres and a storey, with its width, length and presence hashed from the pair,
+  so the age of the building sets how many there are. A stain band with a waving top rises from
+  the ground, and a band of faded paint covers the top of a tall wall.
 - The wall materials and the weathering are drawn **behind a branch** on the part, and the night
   behind a branch on the `night` uniform. Both are coherent: every fragment of a face carries the
   same part, and the night is one number for the whole frame. Blended in with a `mix` instead, they
