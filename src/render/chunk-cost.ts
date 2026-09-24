@@ -69,12 +69,14 @@ export function chunkDrawCalls(chunk: WorldChunk): number {
  * together (spec section 9.2). `buildingVertices` is the count.
  *
  * Measured on the dearest chunk of each of 24 sweep seeds, the dearest of them
- * costs 1 240 000 at near detail, 87 000 at mid and 7 300 at far. Each cap
- * stands about a fifth over that. A count over a cap is a regression in the
- * geometry, not a cap to raise.
+ * costs 1 240 000 at near detail, 87 000 at mid and 9 600 at far. Each cap
+ * stands about a fifth over that. The far count follows the towers: the
+ * diamond interchanges moved the core of seed 4007327102 so that 58 towers
+ * stand in its chunk 0,0, where 43 stood before. A count over a cap with the
+ * same buildings is a regression in the geometry, not a cap to raise.
  */
 export const CHUNK_VERTEX_CAP: Readonly<Record<ChunkDetail, number>> = {
   near: 1_500_000,
   mid: 105_000,
-  far: 9_000,
+  far: 11_500,
 };

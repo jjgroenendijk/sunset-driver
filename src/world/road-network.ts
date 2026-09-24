@@ -25,8 +25,11 @@
  * claim are {@link NetworkClearance}, which this extends.
  */
 import { clamp, dist, lerp } from '../core/math.ts';
-import { deckApart, settleCrossings } from './crossing-plan.ts';
+import { toSegment } from './crossing-line.ts';
+import { curveDistances } from './ribbon.ts';
+import { deckApart, settleCrossings, type DraftLine, type PointEdit } from './crossing-plan.ts';
 import type { CrossingNetwork } from './crossing-rules.ts';
+import { cutBack, dropPoint, FOOT_MARGIN, HALF_FEET, nudgeOff, onRamp, overpassFeet, rampsAt, sliceLine, withPointAlong, type HighwayMeet, type RampPlan } from './diamonds.ts';
 import { NetworkClearance, SAME_PLACE } from './network-clearance.ts';
 import { pointOnFill } from './overpass.ts';
 import { selfOverlap } from './self-overlap.ts';
@@ -78,6 +81,10 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
   private readonly islands: number[][] = [];
   private readonly islandOf: (x: number, y: number) => number;
   private readonly ground: NetworkGround;
+  /** The stretches of each highway, by id, that a road already passes under the slots of. */
+  private readonly slotsUsed: number[][] = [];
+  /** The ids of the ramps laid so far, which no other road may lie on (`onRamp`). */
+  private readonly ramps: number[] = [];
 
   constructor(size: number, islandOf: (x: number, y: number) => number, cell = CELL, ground: NetworkGround = FLAT_GROUND) {
     super(size);
@@ -103,14 +110,22 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
    */
   add(proposed: RoadDraft, whole = false): RoadCurve | undefined {
     if (proposed.points.length < 2 || selfOverlap(proposed.points, proposed.tier) !== undefined) return undefined;
+    const meets = proposed.tier === 'arterial' && proposed.ramp === undefined ? this.interchangesOn(proposed.points) : [];
+    if (meets.length > 1) return undefined;
+    if (meets.length === 1) return this.addWithDiamond(proposed, meets[0] as number, whole);
     const settled = settleCrossings(this, proposed, whole);
-    if (settled === undefined) return undefined;
+    if (settled === undefined || onRamp(this.ramps.map((id) => this.curves[id] as RoadCurve), settled.road)) return undefined;
+    return this.commit(settled.road, settled.edits);
+  }
+
+  /** Write a settled road into the graph: the points the laid roads take for it first, then the road itself. */
+  private commit(draft: DraftLine, edits: readonly PointEdit[]): RoadCurve {
     // From the last point back, so an index still to be used never moves.
-    const edits = [...settled.edits].sort((m, n) => m.curve - n.curve || n.segment - m.segment || n.at - m.at);
-    for (const edit of edits) this.insertPoint(edit.curve, edit.segment, edit);
-    const draft = settled.road;
+    const sorted = [...edits].sort((m, n) => m.curve - n.curve || n.segment - m.segment || n.at - m.at);
+    for (const edit of sorted) this.insertPoint(edit.curve, edit.segment, edit);
+    const { overHighway: _, ...line } = draft;
     const id = this.curves.length;
-    const points = draft.points.slice();
+    const points = line.points.slice();
     const nodes = new Array<number>(points.length).fill(-1);
     for (let k = 0; k < points.length; k++) {
       const p = points[k] as Point;
@@ -127,11 +142,12 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
       nodes[k] = this.nodes.length;
       this.nodes.push({ x: p.x, y: p.y, on: [] });
     }
-    const curve: RoadCurve = { ...draft, id, points, nodes };
+    const curve: RoadCurve = { ...line, id, points, nodes };
     for (let k = 0; k < points.length; k++) {
       const node = nodes[k] as number;
       if (node >= 0) (this.nodes[node] as NetworkNode).on.push({ curve: id, index: k });
     }
+    this.takeSlots(curve);
     this.curves.push(curve);
     this.fileSegments(curve);
     const islands: number[] = [];
@@ -142,6 +158,170 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
     }
     this.islands.push(islands);
     return curve;
+  }
+
+  /**
+   * A stretch of a highway runs from one interchange to the next, and one road
+   * at most passes under its slots (issue #676). A road that passes under a
+   * highway is a severance, and two of them where no interchange stands
+   * between are two severances the traffic could have used one ramp for.
+   */
+  override slotTaken(curve: number, segment: number): boolean {
+    const road = this.curves[curve];
+    if (road === undefined || road.tier !== 'highway') return false;
+    return (this.slotsUsed[curve] ?? []).includes(stretchOf(road, segment));
+  }
+
+  /** Mark the stretches of highway a road about to be laid passes under the slots of. */
+  private takeSlots(curve: RoadCurve): void {
+    if (curve.tier === 'highway') return;
+    for (let i = 0; i + 1 < curve.points.length; i++) {
+      for (const hit of this.crossingsAlong(curve.points[i] as Point, curve.points[i + 1] as Point)) {
+        const highway = this.curves[hit.curve] as RoadCurve;
+        if (highway.tier !== 'highway' || !(highway.slots ?? []).includes(hit.segment)) continue;
+        const used = (this.slotsUsed[hit.curve] ??= []);
+        const stretch = stretchOf(highway, hit.segment);
+        if (!used.includes(stretch)) used.push(stretch);
+      }
+    }
+  }
+
+  // ------------------------------------------------------ interchanges
+
+  /** The points of a line that stand on a highway away from its ends: where an arterial would meet it at grade. */
+  private interchangesOn(points: readonly Point[]): number[] {
+    const out: number[] = [];
+    for (let k = 0; k < points.length; k++) if (this.highwayAt(points[k] as Point) !== undefined) out.push(k);
+    return out;
+  }
+
+  /**
+   * The highways standing on a place, each with its point there: the ones the
+   * place is inside first, then the ones that end there. Undefined unless it
+   * is inside at least one, which is where an arterial would meet it at grade.
+   */
+  private highwayAt(p: Point): HighwayMeet[] | undefined {
+    const hit = this.pointAt(p.x, p.y);
+    if (hit === undefined) return undefined;
+    const inside: HighwayMeet[] = [];
+    const ends: HighwayMeet[] = [];
+    for (const { curve, index } of this.pointsOn(hit)) {
+      const road = this.curves[curve] as RoadCurve;
+      if (road.tier !== 'highway') continue;
+      (index > 0 && index < road.points.length - 1 ? inside : ends).push({ highway: road, at: index });
+    }
+    return inside.length === 0 ? undefined : [...inside, ...ends];
+  }
+
+  /**
+   * Lay an arterial that reaches a highway's interchange at point `k`, with
+   * the ramps of a diamond instead of a junction (`diamonds.ts`). An arterial
+   * that ends there takes half a diamond. One that runs through is carried
+   * over the highway and takes the whole diamond; where it cannot be, each
+   * side of it takes half a diamond of its own. Undefined where no ramps fit.
+   */
+  private addWithDiamond(proposed: RoadDraft, k: number, whole: boolean): RoadCurve | undefined {
+    const place = proposed.points[k] as Point;
+    const last = proposed.points.length - 1;
+    if (k === 0 || k === last) return this.halfDiamond(proposed, k === 0, place, whole);
+    const over = this.overpassDiamond(proposed, k, place, whole);
+    if (over !== undefined) return over;
+    const one = this.halfDiamond(sliceLine(proposed, 0, k), false, place, whole);
+    const two = this.halfDiamond(sliceLine(proposed, k, last), true, place, whole);
+    if (one === undefined || two === undefined) return one ?? two;
+    const length = (curve: RoadCurve): number => curveDistances(curve.points)[curve.points.length - 1] as number;
+    return length(two) > length(one) ? two : one;
+  }
+
+  /** An arterial that ends on the interchange at `place`, cut back to a foot that takes two ramps. */
+  private halfDiamond(draft: DraftLine, atStart: boolean, place: Point, whole: boolean): RoadCurve | undefined {
+    const meets = this.highwayAt(place);
+    if (meets === undefined) return undefined;
+    for (const foot of HALF_FEET) {
+      const cut = cutBack(draft, atStart, foot, (p) => this.pointAt(p.x, p.y) !== undefined);
+      if (cut === undefined) continue;
+      const settled = settleCrossings(this, cut, whole);
+      if (settled === undefined) continue;
+      const road = settled.road;
+      const f = atStart ? 0 : road.points.length - 1;
+      const want = cut.points[atStart ? 0 : cut.points.length - 1] as Point;
+      const p = road.points[f] as Point;
+      if (dist(p.x, p.y, want.x, want.y) > SAME_PLACE || this.pointAt(p.x, p.y) !== undefined) continue;
+      if (this.interchangesOn(road.points).length > 0) continue;
+      const ramps = rampsAt(this, road, f, meets);
+      if (ramps === undefined) continue;
+      const curve = this.commit(road, settled.edits);
+      this.layRamps(ramps, curve.id);
+      return curve;
+    }
+    return undefined;
+  }
+
+  /**
+   * An arterial that runs through the interchange at point `k`, carried over
+   * the highway there. Each foot of the overpass, moved {@link FOOT_MARGIN}
+   * further out so the ramps' junction stands off its ramp, takes two ramps.
+   */
+  private overpassDiamond(draft: RoadDraft, k: number, place: Point, whole: boolean): RoadCurve | undefined {
+    const meets = this.highwayAt(place);
+    if (meets === undefined) return undefined;
+    const trunk = meets[0] as HighwayMeet;
+    const crosses = (line: DraftLine, from: number, to: number): boolean => {
+      for (let i = from; i < to; i++) {
+        if (this.crossingsAlong(line.points[i] as Point, line.points[i + 1] as Point).some((c) => c.curve === trunk.highway.id)) return true;
+      }
+      return false;
+    };
+    let dropped = dropPoint(draft, k);
+    if (dropped !== undefined && !crosses(dropped, k - 1, k)) dropped = dropPoint(draft, k, nudgeOff(draft, k, trunk.highway, trunk.at));
+    if (dropped === undefined) return undefined;
+    if (!crosses(dropped, k - 1, k + 1)) return undefined;
+    const settled = settleCrossings(this, { ...dropped, overHighway: true }, whole);
+    if (settled === undefined) return undefined;
+    if (this.interchangesOn(settled.road.points).length > 0) return undefined;
+    const feet = overpassFeet(settled.road, place);
+    if (feet === undefined) return undefined;
+    const distances = curveDistances(settled.road.points);
+    // The far foot first, so the near one's index does not move.
+    const far = withPointAlong(settled.road, (distances[feet[1]] as number) + FOOT_MARGIN);
+    if (far === undefined) return undefined;
+    const near = withPointAlong(far.line, (distances[feet[0]] as number) - FOOT_MARGIN);
+    if (near === undefined) return undefined;
+    const road = near.line;
+    const feetAt = [near.index, far.index + (near.index <= far.index ? 1 : 0)];
+    for (const f of feetAt) {
+      const p = road.points[f] as Point;
+      if (this.pointAt(p.x, p.y) !== undefined) return undefined;
+    }
+    const first = rampsAt(this, road, feetAt[0] as number, meets);
+    if (first === undefined) return undefined;
+    const second = rampsAt(this, road, feetAt[1] as number, meets, first);
+    if (second === undefined) return undefined;
+    const curve = this.commit(road, settled.edits);
+    this.layRamps([...first, ...second], curve.id);
+    return curve;
+  }
+
+  /** Lay the ramps of an interchange: each landing is made a point of the highway first, then the ramp joins it. */
+  private layRamps(ramps: readonly RampPlan[], arterial: number): void {
+    for (const ramp of ramps) {
+      const highway = ramp.highway;
+      if (this.pointAt(ramp.landing.x, ramp.landing.y) === undefined) {
+        const points = (this.curves[highway] as RoadCurve).points;
+        let segment = 0;
+        let best = Infinity;
+        for (let i = 0; i + 1 < points.length; i++) {
+          const off = toSegment(ramp.landing, points[i] as Point, points[i + 1] as Point);
+          if (off < best) {
+            best = off;
+            segment = i;
+          }
+        }
+        this.insertPoint(highway, segment, ramp.landing);
+      }
+      const line: DraftLine = { tier: 'ramp', points: ramp.points, bridges: [], tunnels: [], interchanges: [], ramp: { highway, arterial, exit: ramp.exit } };
+      this.ramps.push(this.commit(line, []).id);
+    }
   }
 
   /**
@@ -377,6 +557,8 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
     // road drives, so a junction there is a junction on the ground. That is
     // what lets a street meet the road at the end of a bridge (issue #593).
     if ((road.lift?.[index] ?? 0) > 0 && !pointOnFill(road, index)) return false;
+    // A ramp is one-way from end to end, and nothing joins it on the way.
+    if (road.ramp !== undefined) return false;
     return mayJoin(joiner, road.tier, road.interchanges.includes(index));
   }
 
@@ -400,4 +582,11 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
   private pointColumn(v: number): number {
     return clamp(Math.floor((v - this.pointOrigin) / this.pointCell), 0, this.rows - 1);
   }
+}
+
+/** The stretch of a highway a segment stands in: how many of its interchanges come at or before the segment's start. */
+function stretchOf(highway: RoadCurve, segment: number): number {
+  let count = 0;
+  for (const i of highway.interchanges) if (i <= segment) count++;
+  return count;
 }

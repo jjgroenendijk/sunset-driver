@@ -34,7 +34,7 @@ import { PLANE_REACH, seedsOn, spanOf, surfaceSpan, type PlaneLine, type PlaneNo
 import type { MouthSeed } from './junctions.ts';
 import { curveDistances } from './ribbon.ts';
 import { footprintHalfWidth, mayCross, mayJoin, TIERS } from './tiers.ts';
-import type { Point, RoadCurve, RoadTier } from './types.ts';
+import type { Point, Ramp, RoadCurve, RoadTier } from './types.ts';
 
 /** Metres a junction may be moved onto a point a road already has. Two junctions this close would stand inside each other. */
 export const CROSSING_SNAP = 4;
@@ -67,6 +67,14 @@ export interface DraftLine {
   interchanges: number[];
   slots?: number[];
   lift?: number[];
+  /**
+   * The draft may be carried over a highway it crosses on the ground. Only the
+   * arterial of a diamond asks for it, where it runs through an interchange
+   * (`diamonds.ts`); every other road crosses a highway at a slot or not at all.
+   */
+  overHighway?: boolean;
+  /** Present on the ramp of an interchange (`RoadCurve.ramp`). */
+  ramp?: Ramp;
 }
 
 /** A point a road already laid takes: where, and in which of its segments. */
@@ -185,7 +193,8 @@ function planJunctions(network: CrossingNetwork, draft: DraftLine): Plan {
       continue;
     }
     const ground = onGround(draft, crossing.segment) && onGround(other, crossing.other);
-    const join = mayJoin(draft.tier, other.tier, false) && mayJoin(other.tier, draft.tier, false);
+    // A ramp is one-way from end to end, and nothing joins it on the way.
+    const join = mayJoin(draft.tier, other.tier, false) && mayJoin(other.tier, draft.tier, false) && other.ramp === undefined;
     if (ground && join && !meetsNear(network, draft, plan, other, crossing)) {
       const junction = junctionAt(network, plan.draft, lineFor(other), draft, other, crossing, CROSSING_SNAP);
       if (junction !== undefined && !planeOverCrossing(network, other, crossing.other, junction)) {
@@ -198,6 +207,12 @@ function planJunctions(network: CrossingNetwork, draft: DraftLine): Plan {
         continue;
       }
     }
+    // One road at most passes under the slots of a stretch of highway.
+    const underSlot = other.tier === 'highway' && draft.tier !== 'highway' && (other.slots ?? []).includes(crossing.other);
+    if (underSlot && network.slotTaken(other.id, crossing.other)) {
+      plan.failures.push({ segment: crossing.segment, x: crossing.x, y: crossing.y, tier: other.tier });
+      continue;
+    }
     const apart = separation(network, draft, crossing, other);
     if (apart !== undefined) {
       const place = { segment: crossing.segment, x: crossing.x, y: crossing.y, tier: other.tier, curve: crossing.curve, other: crossing.other };
@@ -205,8 +220,10 @@ function planJunctions(network: CrossingNetwork, draft: DraftLine): Plan {
       else plan.over.push(place);
       continue;
     }
-    // A highway holds its line, and is crossed at a slot or nowhere.
-    if (ground && draft.tier !== 'highway' && other.tier !== 'highway') plan.candidates.push(crossing);
+    // A highway holds its line, and is crossed at a slot or nowhere, but for
+    // the arterial of a diamond. A ramp is carried over nothing either.
+    const over = other.tier !== 'highway' || draft.overHighway === true;
+    if (ground && draft.tier !== 'highway' && over && other.ramp === undefined) plan.candidates.push(crossing);
     else plan.failures.push({ segment: crossing.segment, x: crossing.x, y: crossing.y, tier: other.tier });
   }
   return plan;
