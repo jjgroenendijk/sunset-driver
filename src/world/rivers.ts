@@ -182,12 +182,13 @@ function inlandRiver(
   clear: number,
   signs: readonly number[],
   turns: readonly number[],
-  trace: (sign: number, turn: number) => RiverDescription,
+  trace: (sign: number, turn: number) => RiverDescription | undefined,
 ): RiverDescription[] {
   let first: RiverDescription | undefined;
   for (const turn of turns) {
     for (const sign of signs) {
       const river = trace(sign, turn);
+      if (river === undefined) continue;
       first ??= river;
       if (staysInland(coast, river, size, clear)) return [river];
     }
@@ -245,13 +246,24 @@ function spineRivers(
     const mouth = shoreToward(coast, source, seaward, size);
     if (hypot(mouth.x - source.x, mouth.y - source.y) < size * 0.1) continue;
     const river = traceRiver(seed, k, source, mouth, size, 0.6);
-    if (staysInland(coast, river, size, clear)) out.push(river);
+    if (river !== undefined && staysInland(coast, river, size, clear)) out.push(river);
   }
   return out;
 }
 
-/** A meandering river from source to mouth. `k` keeps two rivers of one map from meandering alike. */
-function traceRiver(seed: number, k: number, source: Point, mouth: Point, size: number, width: number): RiverDescription {
+/**
+ * Least length of a river from source to mouth, as a fraction of the map. A
+ * walk that finds no dry ground puts both ends on the one place it started
+ * from, and a river of no length has no direction to meander across: its
+ * every point came out NaN (issue #676, C).
+ */
+const MIN_RIVER = 0.05;
+
+/**
+ * A meandering river from source to mouth, or undefined where the two stand
+ * too close for one. `k` keeps two rivers of one map from meandering alike.
+ */
+function traceRiver(seed: number, k: number, source: Point, mouth: Point, size: number, width: number): RiverDescription | undefined {
   const noise = new Noise2D(seed ^ 0x51e4);
   const steps = 96;
   const path: Point[] = [];
@@ -259,6 +271,7 @@ function traceRiver(seed: number, k: number, source: Point, mouth: Point, size: 
   const dx = mouth.x - source.x;
   const dy = mouth.y - source.y;
   const len = hypot(dx, dy);
+  if (len < size * MIN_RIVER) return undefined;
   const nx = -dy / len;
   const ny = dx / len;
   for (let i = 0; i <= steps; i++) {

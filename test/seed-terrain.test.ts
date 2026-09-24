@@ -130,7 +130,10 @@ sweepSuite('terrain', () => {
       const landOf = (p: Point): number => islandAt(w.water.islands, w.size, noise, p.x, p.y);
       const idOf = (i: number): number => (w.water.islands[i] as { id: number }).id;
       for (const isl of w.water.islands) expect(hf.sample(isl.x, isl.y), `island ${isl.id} seed ${seed}`).toBeGreaterThan(w.water.seaLevel);
-      // Union-find over crossings: one connected archipelago.
+      // Union-find over crossings: one connected archipelago. A crossing names
+      // its islands by id, and an id is not an index: the islands dropped
+      // while the map was planned leave gaps in the ids.
+      const indexOf = (id: number): number => w.water.islands.findIndex((isl) => isl.id === id);
       const parent = w.water.islands.map((_, i) => i);
       const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i] as number)));
       for (const c of w.water.crossings) {
@@ -151,7 +154,7 @@ sweepSuite('terrain', () => {
         const span = Math.hypot(from.x - to.x, from.y - to.y);
         expect(span).toBeGreaterThan(20);
         expect(span, `seed ${seed}`).toBeLessThan(w.size * 0.12);
-        parent[find(c.fromIsland)] = find(c.toIsland);
+        parent[find(indexOf(c.fromIsland))] = find(indexOf(c.toIsland));
       }
       const roots = new Set(w.water.islands.map((_, i) => find(i)));
       expect(roots.size, `seed ${seed}`).toBe(1);
