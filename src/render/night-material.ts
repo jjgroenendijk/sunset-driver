@@ -41,7 +41,7 @@ const GLOW_COLOURS: Record<number, number> = {
  * under the bloom threshold of `post.ts` once exposed, and a lit tower read as
  * painted yellow rather than lit.
  */
-export const WINDOW_GAIN = 2.5;
+export const WINDOW_GAIN = 1.1;
 
 /**
  * How much of its light each kind of building loses in the small hours. An
@@ -60,11 +60,11 @@ const LIT_EDGE = 0.08;
 
 /** The neon of a Deco or a Miami edge after dark, and how hard it burns. */
 const NEON_COLOURS = [0xff3d8b, 0x36e6ff, 0xffc93d];
-export const NEON_GAIN = 3.2;
+export const NEON_GAIN = 1.4;
 
 /** The colours a crown is floodlit in: plain white light, and a wash of colour. */
 const FLOOD_WHITE = 0xfff0d2;
-const FLOOD_GAIN = 1.6;
+const FLOOD_GAIN = 0.7;
 
 /** The red of an aircraft beacon, and how hard it burns while it is on. */
 const BEACON_RED = 0xff2a18;

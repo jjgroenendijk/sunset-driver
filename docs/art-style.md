@@ -101,7 +101,7 @@ Rules for the palette:
 | Morning and noon | Lavender `#8f8fc0` | Warm white |
 | Golden hour | Rose-violet `#9c78a8` | Orange |
 | Dusk | Deep violet `#5c4a8a` | Rose and orange |
-| Night | Navy `#232450` | Neon, windows, lamps |
+| Night | Indigo `#302b4a` | Neon, windows, lamps |
 
 - A cast shadow is one shape in the shadow colour, with the soft edge the CSM shadows already give.
 - Bright lit areas glow a little: sun on lime foliage blooms into a soft yellow halo.
@@ -178,7 +178,7 @@ Where each rule lands. None of it needs an asset file.
 - **Shadow colour** — `daylightAt` carries it for the time of day (`shade.ts`). The shade band and
   a cast shadow are lit by the sky fill alone, and the fill is that colour, so both shift toward it
   instead of darkening.
-- **Lines** — `edges.ts`, an edge pass in `PostChain`, after the scene and before bloom. It reads
+- **Lines** — `edges.ts`, an edge pass in `PostChain`, laid on after the grade. It reads
   the depth alone: a silhouette and a crease are both bends in depth (`docs/post.md`). The
   inverted hulls it replaced are gone, with their geometry in every batch.
 - **Hue gradients** — a vertex colour or a height term in the foliage and flower materials.
@@ -190,8 +190,8 @@ Where each rule lands. None of it needs an asset file.
 ## Where the game stands today
 
 Issue #684 brings the style in, one step per pull request. Done: the palette, the bands, the
-shadow colour by the time of day, the ink of the edge pass, and the warm haze and high-key grade.
-Still to come: the indigo night, the foliage and trees, the grime strokes, and the UI.
+shadow colour by the time of day, the ink of the edge pass, the warm haze and high-key grade, and
+the indigo night. Still to come: the foliage and trees, the grime strokes, and the UI.
 
 ## Decisions
 

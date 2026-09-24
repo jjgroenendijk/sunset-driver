@@ -117,7 +117,7 @@ const NIGHT_GRADE: ColourGrade = {
   key: 1,
   contrast: 1.02,
   saturation: 0.95,
-  lift: [0.04, 0.037, 0.085],
+  lift: [0.13, 0.12, 0.165],
   gain: [0.98, 0.97, 1.03],
 };
 
