@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { EMPTY_INPUT } from '../src/sim/input.ts';
 import { initPhysics, SimPhysics, type Ground } from '../src/sim/physics.ts';
 import { createSimState, stepSim } from '../src/sim/simulation.ts';
-import { PARAPET_HEIGHT, roadDecks, type DeckSpan } from '../src/world/decks.ts';
+import { deckSurfaceAt, PARAPET_HEIGHT, roadDecks, type DeckSpan } from '../src/world/decks.ts';
 import type { PierPost } from '../src/world/pier-posts.ts';
 import { footprintHalfWidth } from '../src/world/tiers.ts';
 import type { RoadCurve, WorldDescription } from '../src/world/types.ts';
@@ -113,6 +113,29 @@ describe('the deck of a world', () => {
 
   it('gives a bridge over nothing no span', () => {
     expect(roadDecks(worldOf({ ...bridgedRoad(), bridges: [] }, 0))).toHaveLength(0);
+  });
+});
+
+describe('a vehicle put down on a bridge', () => {
+  beforeAll(async () => {
+    await initPhysics();
+  });
+
+  it('reads the deck surface where one covers the place, and nothing off it', () => {
+    const decks = deckAcross();
+    expect(deckSurfaceAt(decks, 0, 0)).toBeCloseTo(0, 6);
+    expect(deckSurfaceAt(decks, 0, footprintHalfWidth('street') + 1)).toBeUndefined();
+    expect(deckSurfaceAt(decks, CHASM + 20, 0)).toBeUndefined();
+  });
+
+  it('rests on the deck, not in the chasm under it', () => {
+    const state = createSimState(1);
+    const physics = new SimPhysics(chasm(deckAcross()), state);
+    physics.spawn(state, 0, 0, 0);
+    // Put down over the middle of the chasm, 40 m over its floor.
+    expect(state.vehicle.y).toBeGreaterThan(0);
+    for (let i = 0; i < 60; i++) stepSim(state, EMPTY_INPUT, physics);
+    expect(state.vehicle.y).toBeGreaterThan(-1);
   });
 });
 

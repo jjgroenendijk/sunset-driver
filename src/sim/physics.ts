@@ -51,6 +51,7 @@ import { Flight } from './flight.ts';
 import { stepAirside, theftOf } from './airside.ts';
 import { GroundBodies, type Ground } from './ground-bodies.ts';
 import { GroundPlaces } from './ground-places.ts';
+import { deckSurfaceAt } from '../world/decks.ts';
 import { Ragdolls } from './ragdoll.ts';
 import { SHUNS_RAGDOLL } from './collision-groups.ts';
 import { Gunfire, type ShotTarget } from './gunfire.ts';
@@ -171,6 +172,7 @@ export class SimPhysics extends GroundPlaces {
    *
    * A boat is put down on the water rather than on the ground, since that is
    * what it rests on; on ground that stands above the sea it simply sits there.
+   * Anything put down on a bridge rests on its deck.
    *
    * A vehicle put down while the player is on foot stands beside them rather
    * than on them, and they stay on foot: the debug picker of spec section 11.3
@@ -179,7 +181,10 @@ export class SimPhysics extends GroundPlaces {
   spawn(state: SimState, x: number, y: number, heading = 0, cls: VehicleClass = state.vehicle.cls): void {
     const spec = specOf(cls);
     const place = state.player.driving ? { x, y, heading } : besidePlayer(state.player, spec);
-    const ground = this.ground.heightAt(place.x, place.y);
+    // A bridge carves no ground, so under a deck the heightfield is the water
+    // or the valley floor it spans: the deck is asked first.
+    const deck = this.ground.decks === undefined ? undefined : deckSurfaceAt(this.ground.decks, place.x, place.y);
+    const ground = deck ?? this.ground.heightAt(place.x, place.y);
     const rest = spec.hull === undefined ? ground : Math.max(ground, this.ground.seaLevel);
     state.vehicle = createVehicleState(spec, place.x, place.y, rest + rideHeight(spec), place.heading);
     // A vehicle put down under a player who is driving is open to them, since
