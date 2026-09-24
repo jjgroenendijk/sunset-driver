@@ -134,3 +134,37 @@ function direction(road: RoadCurve, segment: number): Point {
   const length = hypot(b.x - a.x, b.y - a.y) || 1;
   return { x: (b.x - a.x) / length, y: (b.y - a.y) / length };
 }
+
+/**
+ * The height of the surface a deck carries at a place, or undefined where no
+ * deck covers it. Where two decks cover one place — one road over another —
+ * the higher is the one that answers: a thing put down there lands on top.
+ *
+ * The heightfield under a deck is the water or the valley floor it spans, so
+ * whatever is put down on a bridge asks this first (issue #676, D2).
+ */
+export function deckSurfaceAt(decks: readonly DeckSpan[], x: number, y: number): number | undefined {
+  let best: number | undefined;
+  for (const span of decks) {
+    if (x < span.minX || x > span.maxX || y < span.minY || y > span.maxY) continue;
+    for (let i = 0; i + 1 < span.points.length; i++) {
+      const a = span.points[i] as DeckPoint;
+      const b = span.points[i + 1] as DeckPoint;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const squared = dx * dx + dy * dy;
+      if (squared === 0) continue;
+      const t = ((x - a.x) * dx + (y - a.y) * dy) / squared;
+      if (t < 0 || t > 1) continue;
+      const cx = a.x + dx * t;
+      const cy = a.y + dy * t;
+      const acrossX = a.acrossX + (b.acrossX - a.acrossX) * t;
+      const acrossY = a.acrossY + (b.acrossY - a.acrossY) * t;
+      const off = (x - cx) * acrossX + (y - cy) * acrossY;
+      if (Math.abs(off) > span.halfWidth || hypot(x - cx, y - cy) > span.halfWidth) continue;
+      const height = a.height + (b.height - a.height) * t + (a.bank + (b.bank - a.bank) * t) * off;
+      if (best === undefined || height > best) best = height;
+    }
+  }
+  return best;
+}
