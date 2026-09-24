@@ -72,7 +72,7 @@ describe('the sun', () => {
     const evening = at(18.3);
     expect(evening.altitude).toBeGreaterThan(0.3);
     expect(evening.night).toBe(0);
-    expect(evening.sunIntensity).toBeGreaterThan(3);
+    expect(evening.sunIntensity).toBeGreaterThan(at(13).sunIntensity * 0.9);
   });
 
   it('moves the sun through its own day without a jump', () => {

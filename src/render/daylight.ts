@@ -79,8 +79,12 @@ const LAMP_ALTITUDE = 0.12;
 const SUN_LOW = 0xff7a35;
 const SUN_HIGH = 0xfff1d8;
 
-/** The sun's strength at its highest, in the renderer's units. */
-const SUN_INTENSITY = 3.2;
+/**
+ * The sun's strength at its highest, in the renderer's units. With the day fill
+ * it brings a flat surface in the noon sun to about its own colour at the
+ * exposure of `renderer.ts` (`docs/art-style.md`).
+ */
+const SUN_INTENSITY = 1.25;
 
 /**
  * Sky light: the colour from above and the bounce from below, by day and by
@@ -95,17 +99,15 @@ const GROUND_FILL_NIGHT = 0x3a3440;
 
 /**
  * How strong that fill is by day and at midnight. A clear sky is a light as
- * big as the whole dome, so by day a street in shadow is about half as bright
- * as one in the sun. The frame is tone mapped, and the curve's toe pulls a
- * shadow down further than its share of the light says: at a third of the sun
- * the street under a tower still came out as dusk at noon, which is what this
- * number was raised for. The night fill is moonlight: strong enough that a
+ * big as the whole dome, so by day a street in shadow is a little over half as
+ * bright as one in the sun: the fill is 55 % of the light on a lit flat surface
+ * at noon. Less, and the street under a tower reads as dusk. The night fill is moonlight: strong enough that a
  * street with no lamp still shows its kerbs, its cars and its people. Weaker,
  * and a night frame away from the lamps was black. It is set against the pale
  * colours of the palette: at the strength the dark asphalt once needed, the
  * night street came out a bright blue.
  */
-const FILL_DAY = 3.6;
+const FILL_DAY = 2.0;
 const FILL_NIGHT = 0.85;
 
 /** The haze the far chunks fade into: by day, at dusk and at night. */
