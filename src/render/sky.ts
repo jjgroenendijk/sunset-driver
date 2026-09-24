@@ -158,11 +158,11 @@ const SKY_GREY_OVERCAST = 0.7;
  * The night sky, in linear light before the exposure: at the horizon and
  * overhead. The Preetham model has no night, and once the sun was down the dome
  * went black and the grade turned it brown. This is added to the dome as the
- * night comes on, so the sky after dusk is a deep blue, lighter at the horizon,
- * where the city's light would lift it.
+ * night comes on, so the sky after dusk is indigo, never black, and lighter at
+ * the horizon, where the city's light would lift it (`docs/art-style.md`).
  */
-const NIGHT_HORIZON = [0.018, 0.024, 0.05] as const;
-const NIGHT_ZENITH = [0.002, 0.004, 0.014] as const;
+const NIGHT_HORIZON = [0.05, 0.044, 0.1] as const;
+const NIGHT_ZENITH = [0.03, 0.027, 0.07] as const;
 
 /**
  * Lights the scene may hold at once (spec section 10.5): the sun and the sky
