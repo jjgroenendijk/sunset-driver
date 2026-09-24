@@ -427,6 +427,60 @@ describe('junction carriageway', () => {
     expect(bare).toEqual([]);
   });
 
+  /** Places a hair inside a mouth's carriageway along its own curve, from the node to its cut. */
+  function curveSamples(points: readonly Point[], mouth: Junction['mouths'][number]): Point[] {
+    const line: Point[] = [points[mouth.point] as Point];
+    for (let k = mouth.point + mouth.direction; mouth.direction > 0 ? k <= mouth.segment : k > mouth.segment; k += mouth.direction) {
+      line.push(points[k] as Point);
+    }
+    line.push(mouth.at);
+    const kerb = TIERS[mouth.tier].width / 2 - 0.01;
+    const out: Point[] = [];
+    for (let i = 0; i + 1 < line.length; i++) {
+      const a = line[i] as Point;
+      const b = line[i + 1] as Point;
+      const length = Math.hypot(b.x - a.x, b.y - a.y);
+      const nx = -(b.y - a.y) / length;
+      const ny = (b.x - a.x) / length;
+      for (let t = 0.05; t < 1; t += 0.1) {
+        for (let c = -8; c <= 8; c++) {
+          const across = (kerb * c) / 8;
+          out.push({ x: a.x + (b.x - a.x) * t + nx * across, y: a.y + (b.y - a.y) * t + ny * across });
+        }
+      }
+    }
+    return out;
+  }
+
+  it('covers a mouth that bends inside its cut along its own curve (issue #676, E1)', () => {
+    const junction = bentMap.junctions.find((j) => Math.hypot(j.x, j.y) < TOLERANCE) as Junction;
+    const street = junction.mouths.find((m) => m.curve === 0) as Junction['mouths'][number];
+    // The street is cut past its bend, so its carriageway is two strips.
+    expect(street.segment).toBe(1);
+    const ring = junctionShape(junction, bentRibbons).carriageway;
+    const node: Point = { x: junction.x, y: junction.y };
+    const points = (bending.roads[0] as RoadCurve).points;
+    const bare = curveSamples(points, street).filter((p) => !inFan(ring, node, p));
+    expect(bare).toEqual([]);
+  });
+
+  it('draws a ring that never crosses itself, turning one way round the node', () => {
+    for (const [junctions, ribbonsOf] of [
+      [map.junctions, ribbons],
+      [bentMap.junctions, bentRibbons],
+    ] as const) {
+      for (const junction of junctions) {
+        const ring = junctionShape(junction, ribbonsOf).carriageway;
+        for (let i = 0; i < ring.length; i++) {
+          const a = ring[i] as Point;
+          const b = ring[(i + 1) % ring.length] as Point;
+          // Every edge turns anticlockwise about the node, so the fan is the ring.
+          expect((a.x - junction.x) * (b.y - junction.y) - (a.y - junction.y) * (b.x - junction.x)).toBeGreaterThanOrEqual(-1e-9);
+        }
+      }
+    }
+  });
+
   it('covers the whole of every mouth carriageway between the node and its cut', () => {
     const bare: string[] = [];
     for (const junction of map.junctions) {
