@@ -236,7 +236,7 @@ export class AmbientTraffic {
     this.index = new EdgeIndex(roads.roads, graph, REACH, TRAFFIC_CELL);
     this.sampler = new RouteSampler(roads.roads, graph, roads.heightAt, roads.tiltAt);
     this.point = { x: 0, y: 0, height: 0, tiltX: 0, tiltY: 0, rightX: 0, rightY: 0, edge: graph.edges[0] as RoadEdge };
-    this.tramLane = tramLaneOf(graph, roads.tram?.edges ?? [], roads.tram?.stops ?? []);
+    this.tramLane = tramLanes(roads);
 
     const junctions = roads.junctions;
     const crossings = (roads.tram?.crossings ?? []).map((crossing) => crossing.node);
@@ -361,8 +361,7 @@ export class AmbientTraffic {
   /** The point in a vehicle's lane a distance round its tour, and the road height there. */
   private sample(vehicle: AmbientVehicle, distance: number, out: Sample): void {
     const at = this.sampler.sample(vehicle.tour, distance, this.point);
-    const reserved = this.tramLane[at.edge.id] as number;
-    const offset = laneOffset(at.edge, laneOn(at.edge, vehicle.lane), reserved > 0, reserved === PLATFORM_LANE);
+    const offset = offsetIn(at.edge, laneOn(at.edge, vehicle.lane), this.tramLane);
     // The right hand of the direction of travel, which is where the lane is.
     out.x = at.x + at.rightX * offset;
     out.y = at.y + at.rightY * offset;
@@ -458,6 +457,17 @@ export function laneOffset(edge: Pick<RoadEdge, 'tier' | 'lanes'>, lane: number,
   const inner = tram ? TRAM_LANE.halfWidth + (platform ? TRAM_LANE.platform : 0) : 0;
   const width = (spec.width / 2 - spec.parking - inner) / edge.lanes;
   return inner + (lane + 0.5) * width;
+}
+
+/** {@link laneOffset} on a run, with the tram flags of {@link tramLanes} read for it. */
+export function offsetIn(edge: Pick<RoadEdge, 'id' | 'tier' | 'lanes'>, lane: number, tram: Uint8Array): number {
+  const reserved = tram[edge.id] as number;
+  return laneOffset(edge, lane, reserved > 0, reserved === PLATFORM_LANE);
+}
+
+/** The tram flags of every run of a road network, as {@link tramLaneOf} sets them. */
+export function tramLanes(roads: TrafficRoads): Uint8Array {
+  return tramLaneOf(roads.graph, roads.tram?.edges ?? [], roads.tram?.stops ?? []);
 }
 
 /** The flag of a run that carries a tram stop, whose island platform the traffic keeps off. */

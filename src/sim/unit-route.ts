@@ -18,7 +18,7 @@
 import { atan2, hypot } from '../core/libm.ts';
 import type { RoadEdge, RoadGraph } from '../world/graph.ts';
 import { heightOff, RouteSampler, type RouteLegs, type RoutePoint } from './route-sample.ts';
-import { laneOffset, type TrafficRoads } from './traffic.ts';
+import { offsetIn, tramLanes, type TrafficRoads } from './traffic.ts';
 
 /** Where a unit is on the ground: the lane point, the road height and the way it faces. */
 export interface DrivePose {
@@ -27,9 +27,6 @@ export interface DrivePose {
   height: number;
   heading: number;
 }
-
-/** The lane a police car drives in, which is the one nearest the kerb of its own side. */
-const KERB_LANE = 0;
 
 /** Metres behind and ahead of a car its heading is read over, so it turns a corner as a curve. */
 const SMOOTH = 4;
@@ -47,11 +44,14 @@ export class UnitRoads {
   private readonly sampler: RouteSampler;
   /** The legs of the route last asked about, keyed by the unit that drives it. */
   private readonly legs = new Map<number, { edges: readonly number[]; legs: RouteLegs }>();
+  /** The tram flags of each run, so a unit keeps off the tram's lane and platform as the traffic does. */
+  private readonly tramLane: Uint8Array;
   private readonly point: RoutePoint = { x: 0, y: 0, height: 0, tiltX: 0, tiltY: 0, rightX: 0, rightY: 0, edge: undefined as unknown as RoadEdge };
 
   constructor(roads: TrafficRoads) {
     this.graph = roads.graph;
     this.sampler = new RouteSampler(roads.roads, roads.graph, roads.heightAt, roads.tiltAt);
+    this.tramLane = tramLanes(roads);
   }
 
   /** The edge nearest a place, or -1 where the world has no roads at all. */
@@ -128,18 +128,18 @@ export class UnitRoads {
     const legs = this.legsOf(unit, edges);
     const here = this.clamp(legs, distance);
     const at = this.sampler.sample(legs, here, this.point);
-    const offset = laneOffset(at.edge, KERB_LANE);
+    const offset = this.kerbOffset(at.edge);
     out.x = at.x + at.rightX * offset;
     out.y = at.y + at.rightY * offset;
     out.height = heightOff(at, offset);
     // The heading is read from a point behind to a point ahead, so a car rounds
     // a corner rather than snapping round at the node.
     const back = this.sampler.sample(legs, this.clamp(legs, here - SMOOTH), this.point);
-    const bx = back.x + back.rightX * laneOffset(back.edge, KERB_LANE);
-    const by = back.y + back.rightY * laneOffset(back.edge, KERB_LANE);
+    const bx = back.x + back.rightX * this.kerbOffset(back.edge);
+    const by = back.y + back.rightY * this.kerbOffset(back.edge);
     const front = this.sampler.sample(legs, this.clamp(legs, here + SMOOTH), this.point);
-    const fx = front.x + front.rightX * laneOffset(front.edge, KERB_LANE);
-    const fy = front.y + front.rightY * laneOffset(front.edge, KERB_LANE);
+    const fx = front.x + front.rightX * this.kerbOffset(front.edge);
+    const fy = front.y + front.rightY * this.kerbOffset(front.edge);
     out.heading = fx === bx && fy === by ? 0 : atan2(fy - by, fx - bx);
     return out;
   }
@@ -186,6 +186,14 @@ export class UnitRoads {
   }
 
   /** The legs of a unit's drive, rebuilt only when the unit is given a new one. */
+  /**
+   * Metres right of the middle of a run a unit drives at: the lane nearest the
+   * kerb of its own side, which is the outermost one.
+   */
+  private kerbOffset(edge: RoadEdge): number {
+    return offsetIn(edge, edge.lanes - 1, this.tramLane);
+  }
+
   private legsOf(unit: number, edges: readonly number[]): RouteLegs {
     const held = this.legs.get(unit);
     if (held !== undefined && held.edges === edges) return held.legs;
