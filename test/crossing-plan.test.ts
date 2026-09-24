@@ -201,6 +201,20 @@ describe('a road that crosses a road already laid', () => {
     expect(far.degree(far.nearestNode(200, 0) as number)).toBe(3);
   });
 
+  it('never bends a segment that passes under a deck onto a snapped junction (issue #676, B1)', () => {
+    // The new road is one long segment. It passes under a deck far along, and
+    // crosses a street 2.5 m from a point the street already has. Snapping the
+    // junction onto that point would swing the whole segment, and move the
+    // place it passes under the deck to one nothing measured the headroom of.
+    const roads = network({ canRun: () => true, heightAt: () => 0 });
+    roads.add(alongX(-300, 300));
+    roads.add({ ...alongY(60, steps(100, 300)), bridges: [3, 4, 5, 6], lift: [0, 2, 4, 7, 7, 7, 7, 7, 4, 2, 0] });
+    const road = roads.add({ tier: 'street', points: [{ x: 39, y: -41 }, { x: 61.75, y: 225.5 }], bridges: [], tunnels: [], interchanges: [] }) as RoadCurve;
+    // The junction stands where the two really cross, on the new road's line.
+    expect(road.points[1]).toEqual({ x: 42.5, y: 0 });
+    expect(buildRoadGraph(roads.curves).crossings).toHaveLength(1);
+  });
+
   it('is refused where no piece of it reaches the network', () => {
     const roads = network(noShortSpans);
     roads.add(alongX(-100, 100));
