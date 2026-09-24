@@ -176,7 +176,8 @@ export abstract class RoadRoute {
       const hit = goal(hf.worldX(ix), hf.worldY(iy), ix, iy);
       if (hit !== undefined) this.rerouteHits++;
       if (hit !== undefined && tries++ < ROUTE_TRIES) {
-        const path = this.untangled(this.pathTo(at, from, hit, maxGrade, tier, before), tier, maxGrade);
+        const walked = this.pathTo(at, from, hit, maxGrade, tier, before);
+        const path = walked === undefined ? undefined : this.untangled(walked, tier, maxGrade);
         if (path !== undefined && this.keepsClear(path, tier, before)) return path;
         // Every try is spent, so nothing the search reaches from here is tried.
         if (tries === ROUTE_TRIES) return undefined;
@@ -217,7 +218,7 @@ export abstract class RoadRoute {
   }
 
   /** Walk the breadth-first tree back to the start, then straighten the staircase it left. */
-  protected pathTo(end: number, from: Point, hit: Point, maxGrade: number, tier: RoadTier, before: readonly Point[] = []): Point[] {
+  protected pathTo(end: number, from: Point, hit: Point, maxGrade: number, tier: RoadTier, before: readonly Point[] = []): Point[] | undefined {
     const hf = this.hf;
     const n = hf.gridSize;
     const nodes: Point[] = [];
@@ -256,9 +257,11 @@ export abstract class RoadRoute {
    * the last kept one by a straight line the tier can drive, that keeps off the
    * roads it passes, and that does not turn back over the points kept before
    * it. Every kept segment is checked, so the result stays on land and inside
-   * the grade.
+   * the grade. Undefined where a hop off the grid — from the start or to the
+   * place the goal accepted — crosses ground the tier may not drive (issue
+   * #676, F2).
    */
-  protected straighten(nodes: readonly Point[], maxGrade: number, tier: RoadTier, before: readonly Point[] = []): Point[] {
+  protected straighten(nodes: readonly Point[], maxGrade: number, tier: RoadTier, before: readonly Point[] = []): Point[] | undefined {
     const reach = ARTERIAL.step * 3;
     const out: Point[] = [nodes[0] as Point];
     let anchor = 0;
@@ -274,7 +277,12 @@ export abstract class RoadRoute {
         const far = dist(a.x, a.y, b.x, b.y);
         if (far > reach * (next < 0 ? STRAIGHTEN_REACH : 1)) break;
         const last = i === nodes.length - 1;
-        if (i > anchor + 1 && !this.canRun(a.x, a.y, b.x, b.y, maxGrade)) continue;
+        // Two grid nodes one step apart were walked by the search, which
+        // already found the cell between them dry and inside the grade. The
+        // first and the last node stand off the grid, so a hop to either is
+        // probed like any other.
+        const walked = i === anchor + 1 && anchor > 0 && !last;
+        if (!walked && !this.canRun(a.x, a.y, b.x, b.y, maxGrade)) continue;
         if (last ? this.network.meets(b, a, tier) : this.network.stepOk(a, b, tier)) {
           next = i;
           fits.push(i);
@@ -284,6 +292,8 @@ export abstract class RoadRoute {
       // The furthest node that fits is kept, unless it turns back over the
       // points kept before it; then the next furthest is.
       next = fits.reverse().find((i) => !stepOverlaps(out, nodes[i] as Point, tier, before)) ?? anchor + 1;
+      const forced = nodes[next] as Point;
+      if (next === nodes.length - 1 && !this.canRun(a.x, a.y, forced.x, forced.y, maxGrade)) return undefined;
       out.push(nodes[next] as Point);
       anchor = next;
     }
