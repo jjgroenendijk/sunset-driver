@@ -190,8 +190,8 @@ Where each rule lands. None of it needs an asset file.
 ## Where the game stands today
 
 Issue #684 brings the style in, one step per pull request. Done: the palette, the bands, the
-shadow colour by the time of day, and the ink of the edge pass. Still to come: the warm haze and
-the grade, the indigo night, the foliage and trees, the grime strokes, and the UI.
+shadow colour by the time of day, the ink of the edge pass, and the warm haze and high-key grade.
+Still to come: the indigo night, the foliage and trees, the grime strokes, and the UI.
 
 ## Decisions
 

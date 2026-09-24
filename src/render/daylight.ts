@@ -112,9 +112,12 @@ const GROUND_SHARE = 0.6;
 const FILL_DAY = 1.15;
 const FILL_NIGHT = 0.1;
 
-/** The haze the far chunks fade into: by day, at dusk and at night. */
-const HAZE_DAY = 0x9ab0c0;
-const HAZE_DUSK = 0xd2764a;
+/**
+ * The haze the far chunks fade into: by day, at dusk and at night. By day it
+ * is a warm cream, never grey or blue (`docs/art-style.md`), and rose at dusk.
+ */
+const HAZE_DAY = 0xe9e3d3;
+const HAZE_DUSK = 0xe0906e;
 const HAZE_NIGHT = 0x0d1020;
 
 /** How much of the dusk haze is mixed in at its strongest. */

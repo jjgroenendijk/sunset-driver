@@ -148,7 +148,7 @@ describe('night', () => {
     expect(luma(night.fillGround)).toBeLessThan(luma(night.fillSky));
   });
 
-  it('turns the haze from day blue through a warm dusk to near black', () => {
+  it('turns the haze from day cream through a warm dusk to dark', () => {
     const day = at(12).haze;
     const dusk = at(SUNSET_HOUR).haze;
     const night = at(0).haze;

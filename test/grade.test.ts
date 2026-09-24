@@ -14,7 +14,7 @@ import {
 import { TICKS_PER_DAY } from '../src/sim/clock.ts';
 
 /** A grade that leaves every colour where it found it. */
-const NEUTRAL: ColourGrade = { contrast: 1, saturation: 1, lift: [0, 0, 0], gain: [1, 1, 1] };
+const NEUTRAL: ColourGrade = { key: 1, contrast: 1, saturation: 1, lift: [0, 0, 0], gain: [1, 1, 1] };
 
 /**
  * How far from the identity the grade of any hour may take a channel: a fifth
@@ -104,6 +104,14 @@ describe('the grade of the day', () => {
     const { gain, lift } = at(0);
     expect(gain[2]).toBeGreaterThan(gain[0]);
     expect(lift[2]).toBeGreaterThan(lift[0]);
+  });
+
+  it('lifts the middle tones at noon into high key, and leaves black and white alone', () => {
+    const noon = at(12);
+    const [grey] = gradeColour(noon, [0.5, 0.5, 0.5]);
+    expect(grey).toBeGreaterThan(0.55);
+    expect(gradeColour(noon, [0, 0, 0])[1]).toBeLessThan(0.01);
+    expect(gradeColour(noon, [1, 1, 1])[1]).toBeGreaterThan(0.99);
   });
 
   it('takes the colour down at night and up at dusk, against noon', () => {
