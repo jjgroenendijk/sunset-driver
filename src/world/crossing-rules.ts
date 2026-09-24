@@ -10,6 +10,9 @@
  *   climb harder than the whole segment did;
  * - where the point bends a road back over its own carriageway, over the free
  *   end of a third road, or across a road the segment did not cross before;
+ * - where the point bends a segment that already passes over or under a third
+ *   road: the bend moves that crossing, and its headroom was decided where it
+ *   stood (issue #676, B1);
  * - where any two roads would leave the place, or the places beside it, at less
  *   than `MIN_MEET`, since each would lie in the other's carriageway.
  */
@@ -89,9 +92,9 @@ export function junctionAt(
   }
   for (const spot of snapped === undefined ? [here] : [{ x: snapped.x, y: snapped.y }, here]) {
     if (!network.joinableAt(spot, draft.tier) || !network.joinableAt(spot, other.tier)) continue;
-    const theirs = sideAt(network, otherLine, other.lift, crossing.other, spot, other.id, draftLine);
+    const theirs = sideAt(network, otherLine, other.lift, crossing.other, spot, other.id, draftLine, -1);
     if (theirs === undefined) continue;
-    const mine = sideAt(network, draftLine, draft.lift, crossing.segment, spot, -1, undefined);
+    const mine = sideAt(network, draftLine, draft.lift, crossing.segment, spot, -1, undefined, other.id);
     if (mine === undefined) continue;
     if (shallow(spot, theirs.around, mine.around)) continue;
     if (bends(network, spot, theirs.around, other.id, draftLine) || bends(network, spot, mine.around, -1, otherLine)) continue;
@@ -111,6 +114,7 @@ export function junctionAt(
  * already, else a point in `segment`. Undefined where the line may not take it.
  * `crossed` is the other line of the pair, which a bend of this one may not
  * cross; it is only asked of the laid road, since the draft is not laid yet.
+ * `partner` is the laid road of the pair, whose crossing is the junction.
  */
 function sideAt(
   network: CrossingNetwork,
@@ -120,6 +124,7 @@ function sideAt(
   spot: Point,
   curve: number,
   crossed: PlannedLine | undefined,
+  partner: number,
 ): Side | undefined {
   const own = line.placeAt(spot);
   if (own !== undefined) {
@@ -133,18 +138,36 @@ function sideAt(
   if (!network.canRun(before, spot, line.tier) || !network.canRun(spot, after, line.tier)) return undefined;
   const bent = line.bentAt(before, spot);
   if (bendOverlaps(bent.line, bent.segment, spot, line.tier)) return undefined;
-  if (toSegment(spot, before, after) > ON_LINE && crossesNew(network, before, spot, after, crossed)) return undefined;
+  if (toSegment(spot, before, after) > ON_LINE && swings(network, before, spot, after, crossed, curve, partner)) return undefined;
   if (buried(network, line.tier, spot, [before, after], curve)) return undefined;
   return { given: { x: spot.x, y: spot.y, segment, at, index: -1 }, around: [before, after] };
 }
 
 /**
  * True where a road bent from `before`–`after` through `spot` crosses a laid
- * road the straight run did not, or crosses `crossed` anywhere.
+ * road the straight run did not, or crosses `crossed` anywhere, or where the
+ * straight run already crosses a road other than itself and `partner`.
+ *
+ * Two roads that cross without a shared point pass over or under each other,
+ * and their headroom was measured where they cross. A bend swings the segment,
+ * which moves that place, so the crossing would stand where nothing measured
+ * it: seed 2426837815 once left a street 6.17 m over an arterial, under the
+ * 6.25 m the plan accepts (issue #676, B1). Constrained here, at placement
+ * time, not found afterwards (spec section 1.2).
  */
-function crossesNew(network: CrossingNetwork, before: Point, spot: Point, after: Point, crossed: PlannedLine | undefined): boolean {
+function swings(
+  network: CrossingNetwork,
+  before: Point,
+  spot: Point,
+  after: Point,
+  crossed: PlannedLine | undefined,
+  curve: number,
+  partner: number,
+): boolean {
   const key = (hit: SegmentCrossing): string => `${hit.curve}:${hit.segment}`;
-  const was = new Set(network.crossingsAlong(before, after).map(key));
+  const straight = network.crossingsAlong(before, after);
+  if (straight.some((hit) => hit.curve !== curve && hit.curve !== partner)) return true;
+  const was = new Set(straight.map(key));
   for (const [a, b] of [[before, spot], [spot, after]] as const) {
     if (network.crossingsAlong(a, b).some((hit) => !was.has(key(hit)))) return true;
     if (crossed === undefined) continue;
