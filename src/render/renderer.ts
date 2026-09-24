@@ -11,10 +11,12 @@ import { registerNeonLight } from './sign-light.ts';
  * How much light reaches the film. The sky of `sky.ts` is the Preetham model,
  * which answers in real sky brightness, so the frame has to be tone mapped or
  * the daylight sky is a white sheet. Every light in the game is set against
- * this one number. At noon it brings a flat surface in the sun to about its own
- * colour, so a colour in a material is the colour on screen (`docs/art-style.md`).
+ * this one number. At noon it brings a flat surface in the sun a little over
+ * its own colour, which is the high key of `docs/art-style.md`. It was 0.56
+ * while the previews encoded the frame twice and showed it far paler than the
+ * game (issue #695); at 0.56 the game's noon was a dim, low-key frame.
  */
-const EXPOSURE = 0.56;
+const EXPOSURE = 1.3;
 
 /**
  * Tone mapping and the lighting system, set the same way wherever a renderer is

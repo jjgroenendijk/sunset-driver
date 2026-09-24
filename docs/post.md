@@ -76,10 +76,10 @@ lights it in `docs/lighting.md`.
   `PostChain.lookUp` encodes a colour before the lookup and decodes it after: a lift big enough to
   warm a dusk shadow turns a whole night frame orange if it is added to light instead.
 - `key` is a power on each channel before the contrast, 1 neutral. It moves the middle tones and
-  leaves black and white where they are. `DAY_GRADE` sets it under 1, which puts about 70 % of a
-  noon frame into the upper half of the brightness: the high key of `docs/art-style.md`. Lifting
-  the key costs colour, so the day saturation rises with it. The grade finishes the look; the
-  colours must be right in the materials first.
+  leaves black and white where they are. `DAY_GRADE` sets it under 1, which puts more than half of
+  a noon city frame into the upper half of the brightness: the high key of `docs/art-style.md`.
+  Lifting the key costs colour, so the day saturation rises with it. The grade finishes the look;
+  the colours must be right in the materials first.
 - The table is a `Data3DTexture` read by `Lut3DNode`, so the sampler interpolates all three axes
   and the grade costs one texture fetch.
 
