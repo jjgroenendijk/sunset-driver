@@ -9,7 +9,6 @@ import {
   buildingLookup,
   buildingVertices,
   massingOf,
-  OUTLINE_WIDTH,
   standingGround,
   type BuildingLookup,
   type BuildingPlacement,
@@ -161,40 +160,6 @@ function wallReach(one: BuildingPlacement, side: 'left' | 'right'): SideReach {
     return best / 100;
   };
   return { most: mode(counts.most), front: mode(counts.front), back: mode(counts.back) };
-}
-
-/** How far out a geometry reaches along one axis, in the world. */
-function reachOf(geometry: BufferGeometry, placement: BuildingPlacement, pick: (p: Vector3) => number): number {
-  let out = -Infinity;
-  eachWorldVertex(geometry, placement, (p) => {
-    out = Math.max(out, pick(p));
-  });
-  return out;
-}
-
-/**
- * How wide the rim of an outline comes out, wall by wall: for each way a wall
- * of the hull faces, how far the hull stands past the shell that way. The shell
- * of a block is a box, so the furthest it reaches is the wall itself.
- */
-function rimsOf(placement: BuildingPlacement): [number, string][] {
-  const normal = placement.hull.getAttribute('normal') as BufferAttribute;
-  const ways = new Map<string, Vector3>();
-  const at = new Vector3();
-  for (let v = 0; v < normal.count; v++) {
-    at.fromBufferAttribute(normal, v).transformDirection(placement.matrix);
-    // The walls alone: the caps are covered by the reach along `y`.
-    if (Math.abs(at.y) > 0.1) continue;
-    at.y = 0;
-    at.normalize();
-    ways.set(`${at.x.toFixed(2)},${at.z.toFixed(2)}`, at.clone());
-  }
-  const out: [number, string][] = [];
-  for (const [name, way] of ways) {
-    const pick = (p: Vector3): number => p.dot(way);
-    out.push([reachOf(placement.hull, placement, pick) - reachOf(placement.shell, placement, pick), name]);
-  }
-  return out;
 }
 
 /** A geometry as one number, so two of them are compared without walking both. */
@@ -364,13 +329,13 @@ describe('which batch a building is built in', () => {
     }
   });
 
-  it('costs one batch for each kind a chunk holds, and one for the outlines', () => {
+  it('costs one batch for each kind a chunk holds', () => {
     expect(buildingDrawCalls(chunkOf([]))).toBe(0);
-    expect(buildingDrawCalls(chunkOf([buildingOf('house', 20, 22)]))).toBe(2);
+    expect(buildingDrawCalls(chunkOf([buildingOf('house', 20, 22)]))).toBe(1);
     // A tower's roof dressing is drawn with the blocks, so a chunk of towers
     // alone still pays for the block batch.
-    expect(buildingDrawCalls(chunkOf([buildingOf('tower', 26, 28)]))).toBe(3);
-    expect(buildingDrawCalls(chunkOf([buildingOf('tower', 26, 28), buildingOf('house', 20, 22)]))).toBe(3);
+    expect(buildingDrawCalls(chunkOf([buildingOf('tower', 26, 28)]))).toBe(2);
+    expect(buildingDrawCalls(chunkOf([buildingOf('tower', 26, 28), buildingOf('house', 20, 22)]))).toBe(2);
   });
 });
 
@@ -410,81 +375,8 @@ describe('how tall a building stands', () => {
   });
 });
 
-describe('the outline hull', () => {
-  it('stands outside the building it rims, all the way round', () => {
-    for (const kind of KINDS) {
-      const one = placed([buildingOf(kind, 26, 28)], lookupOf(undefined, 0, QUIET))[0] as BuildingPlacement;
-      // The hull is wider and taller than the shell by the width of the outline,
-      // and by no more than that: an outline is a rim, not a second building.
-      for (const pick of [(p: Vector3) => p.x, (p: Vector3) => p.z, (p: Vector3) => p.y]) {
-        const grew = reachOf(one.hull, one, pick) - reachOf(one.shell, one, pick);
-        expect(grew, kind).toBeGreaterThan(OUTLINE_WIDTH * 0.9);
-        expect(grew, kind).toBeLessThan(OUTLINE_WIDTH * 1.5);
-      }
-    }
-  });
-
-  it('keeps the rim one width wide on a lot that is not square', () => {
-    // A lot on a bend leans, and the shell and the hull are sheared and
-    // stretched onto its side edges. A rim pushed out by the same amount in
-    // the building's own units then comes out metres wide where the stretch is
-    // widest and a centimetre where it is narrowest.
-    const front = { x: 0, y: 0 };
-    const wedge = [
-      { x: -6, y: 0 },
-      { x: 6, y: 0 },
-      { x: 18, y: 24 },
-      { x: -18, y: 24 },
-    ];
-    for (const kind of ['house', 'warehouse', 'shop-row'] as const) {
-      const building = buildingOf(kind, 12, 24, { front, lot: wedge, shared: { left: true, right: true } });
-      const one = placed([building], lookupOf(undefined, 0, QUIET))[0] as BuildingPlacement;
-      for (const [rim, wall] of rimsOf(one)) {
-        expect(rim, `${kind} wall ${wall}`).toBeGreaterThan(OUTLINE_WIDTH * 0.8);
-        expect(rim, `${kind} wall ${wall}`).toBeLessThan(OUTLINE_WIDTH * 1.3);
-      }
-    }
-  });
-
-  it('never spikes a corner out past the building, whatever the shape', () => {
-    // Two faces of a footprint that cross behind the shell cross a long way
-    // outside it: the corner a chamfer cuts is the one that used to fly out
-    // tens of metres over the street above a setback.
-    for (let seed = 0; seed < 16; seed++) {
-      const building = buildingOf('mid-rise', 27, 27, { seed });
-      for (const chamfer of [-1, 1]) {
-        const chunk = chunkOf([building]);
-        const one = buildChunkBuildings(chunk, lookupOf(undefined, chamfer, CORE), 'mid')[0] as BuildingPlacement;
-        // A setback pulls the hull in over the tier below it, so only the
-        // outside of the rim is pinned here.
-        for (const [rim, wall] of rimsOf(one)) expect(rim, `seed ${seed} wall ${wall}`).toBeLessThan(OUTLINE_WIDTH * 1.3);
-      }
-    }
-  });
-
-  it('winds every face of the hull to look outward', () => {
-    // The hull is drawn back-face only, so a face wound the other way would put
-    // the near side of the hull over the building and hide it.
-    for (const kind of KINDS) {
-      const one = placed([buildingOf(kind, 26, 28)], lookupOf(() => GROUND, 1, QUIET))[0] as BuildingPlacement;
-      const hull = one.hull;
-      const position = hull.getAttribute('position') as BufferAttribute;
-      const normal = hull.getAttribute('normal') as BufferAttribute;
-      for (let t = 0; t + 2 < position.count; t += 3) {
-        const a = new Vector3().fromBufferAttribute(position, t);
-        const b = new Vector3().fromBufferAttribute(position, t + 1);
-        const c = new Vector3().fromBufferAttribute(position, t + 2);
-        const face = new Vector3().subVectors(b, a).cross(new Vector3().subVectors(c, b));
-        if (face.lengthSq() < TOLERANCE) continue;
-        const wants = new Vector3().fromBufferAttribute(normal, t);
-        expect(face.normalize().dot(wants), `${kind} face ${t / 3}`).toBeGreaterThan(0.5);
-      }
-    }
-  });
-});
-
 describe('a building past near detail', () => {
-  it('is a block at mid detail and its massing at far detail, outlined at both', () => {
+  it('is a block at mid detail and its massing at far detail', () => {
     const buildings = [buildingOf('tower', 26, 28), buildingOf('house', 16, 18, { front: { x: 40, y: 10 } })];
     const lookup = lookupOf(undefined, 0, QUIET);
     const near = buildChunkBuildings(chunkOf(buildings), lookup, 'near');
@@ -493,7 +385,6 @@ describe('a building past near detail', () => {
     expect(near[0]?.batch).toBe('facade');
     expect(mid.map((one) => one.batch)).toEqual(['block', 'block']);
     expect(far.map((one) => one.batch)).toEqual(['block', 'block']);
-    for (const one of [...mid, ...far]) expect(one.hull.getAttribute('position').count).toBeGreaterThan(0);
     // Each detail costs a fraction of the one before it (spec section 9.2).
     expect(buildingVertices(mid) * 10).toBeLessThan(buildingVertices(near));
     expect(buildingVertices(far) * 4).toBeLessThan(buildingVertices(mid));
@@ -534,7 +425,6 @@ describe('the same chunk twice', () => {
       expect(b.matrix.elements).toEqual(a.matrix.elements);
       expect(b.massing).toEqual(a.massing);
       expect(signature(b.shell)).toBe(signature(a.shell));
-      expect(signature(b.hull)).toBe(signature(a.hull));
     }
   });
 });

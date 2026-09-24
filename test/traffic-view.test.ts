@@ -8,12 +8,11 @@ import { sweepSeeds } from './helpers.ts';
 import { gridTraffic } from './traffic-grid.ts';
 
 describe('the traffic, drawn (spec section 13.1)', () => {
-  it('builds every ambient class out of paint, trim and outline', () => {
+  it('builds every ambient class out of paint and trim', () => {
     for (const cls of AMBIENT_CLASSES) {
       const parts = trafficParts(specOf(cls));
       expect(parts.paint.getAttribute('position').count, cls).toBeGreaterThan(0);
       expect(parts.trim.getAttribute('color').count, cls).toBe(parts.trim.getAttribute('position').count);
-      expect(parts.rim.getAttribute('position').count, cls).toBeGreaterThan(0);
     }
   });
 

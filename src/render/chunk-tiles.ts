@@ -202,9 +202,6 @@ export class ChunkTiles {
     for (const roads of payload.roads) {
       this.queueJob(tile, () => this.add(tile, kit.roads.build(roads)));
     }
-    if (payload.outlines.length > 0) {
-      this.queueJob(tile, () => this.add(tile, kit.buildings.build('outline', payload.outlines)));
-    }
     if (payload.facades.length > 0) {
       this.queueJob(tile, () => this.add(tile, kit.buildings.build('facade', payload.facades)));
     }
@@ -285,10 +282,8 @@ export class ChunkTiles {
    * still missing, and the frame after should be the one that finishes it.
    *
    * Every batch of a chunk is solid geometry standing on the ground, so it
-   * takes the sun's shadow, and casts one unless its piece says otherwise: the
-   * outline hulls stand over the roofs they rim and would shade them
-   * (`buildings.ts`), and paving and paint on the ground shade only themselves
-   * (`roads.ts`). `mirrored` is the same answer for the water's mirror, which
+   * takes the sun's shadow, and casts one unless its piece says otherwise:
+   * paving and paint on the ground shade only themselves (`roads.ts`). `mirrored` is the same answer for the water's mirror, which
    * draws what stands tall and leaves the ground to the view (`mirror.ts`).
    */
   private add(tile: ChunkTile, part: TilePart): void {

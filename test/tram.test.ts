@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { tramBoxes, tramCarPlan, type TramDesign, type TramModule } from '../src/render/tram-mesh.ts';
+import { tramCarPlan } from '../src/render/tram-mesh.ts';
 import { SIGNAL_CYCLE, TrafficSignals } from '../src/sim/signals.ts';
 import { laneOffset, type AmbientPose } from '../src/sim/traffic.ts';
 import { QUEUE_CLEAR } from '../src/sim/traffic-timing.ts';
-import { ARRIVAL_TICKS, BOARD_TICKS, CAR_GAP, CAR_HALF_HEIGHT, CAR_HALF_WIDTH, CAR_LENGTH, DWELL, STOP_CAP, TRAM_CARS, TRAM_CLEAR, TRAM_TRACK, TramLine } from '../src/sim/tram.ts';
+import { ARRIVAL_TICKS, BOARD_TICKS, CAR_GAP, CAR_HALF_WIDTH, CAR_LENGTH, DWELL, STOP_CAP, TRAM_CARS, TRAM_CLEAR, TRAM_TRACK, TramLine } from '../src/sim/tram.ts';
 import type { RoadEdge } from '../src/world/graph.ts';
 import { TIERS, TRAM_LANE } from '../src/world/tiers.ts';
 import { COUNTDOWN_CAP } from '../src/sim/tram.ts';
@@ -167,19 +167,6 @@ describe('the tram (spec section 13.2)', () => {
     expect(empty.trams).toBe(0);
     expect(empty.bells(10)).toEqual([]);
     expect(empty.waiting(0, 10)).toBe(0);
-  });
-
-  it('draws every module of both fleets inside the box the physics gives a car', () => {
-    for (const design of ['modern', 'heritage'] as TramDesign[]) {
-      for (const module of ['end', 'middle'] as TramModule[]) {
-        for (const box of tramBoxes(design, module)) {
-          if (!box.outlined) continue;
-          expect(Math.abs(box.x) + box.length / 2).toBeLessThanOrEqual(CAR_LENGTH / 2);
-          expect(Math.abs(box.z) + box.width / 2).toBeLessThanOrEqual(CAR_HALF_WIDTH);
-          expect(box.y + box.height / 2).toBeLessThanOrEqual(2 * CAR_HALF_HEIGHT);
-        }
-      }
-    }
   });
 
   it('turns the rear module of a modern tram about, and leaves a heritage car either way round', () => {

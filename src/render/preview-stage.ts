@@ -194,7 +194,7 @@ export function viewFor(width: number, height: number): PreviewView {
   // The effects of spec section 10.6 are part of what the game draws, so the
   // picture is taken through them. The chain tone maps and encodes the frame
   // itself, which is what the output target is written with.
-  const post = new PostChain(renderer, held.scene.scene, camera.camera, held.tier.post, held.seed);
+  const post = new PostChain(renderer, held.scene.scene, camera.camera, held.tier.post, held.seed, held.scene.cutaway);
   held.view = { camera, post, target, width, height };
   return held.view;
 }

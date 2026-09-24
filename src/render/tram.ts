@@ -2,15 +2,14 @@
  * The trams, drawn (spec sections 9.2, 13.2).
  *
  * A tram is drawn module by module: each car of each tram is one instance of
- * the geometry its design and its place in the tram call for (`tram-mesh.ts`),
- * with the outline of spec section 10.1 round its masses. The rear module of a
- * modern tram is the front one turned about, so the two share a geometry and a
- * draw.
+ * the geometry its design and its place in the tram call for (`tram-mesh.ts`).
+ * The rear module of a modern tram is the front one turned about, so the two
+ * share a geometry and a draw.
  *
  * Three geometries cover both fleets — a modern end module, a modern middle
- * module and a heritage car — and each is one mesh with its outline, so a
- * frame costs at most six draws and pays for none of a fleet that is not in
- * view: a mesh with nothing in it is hidden.
+ * module and a heritage car — and each is one mesh, so a frame costs at most
+ * three draws for the bodies and pays for none of a fleet that is not in view:
+ * a mesh with nothing in it is hidden.
  *
  * The colours are on the vertices and the lamps and destination boards burn off
  * the shared `glow` attribute (`vehicle-glow.ts`), so {@link TramView.lamps}
@@ -20,7 +19,7 @@
  * the traffic is. The people waiting at the stops are drawn with the crowd
  * (`pedestrians.ts`).
  */
-import { BackSide, Color, Group, Matrix4, MeshBasicMaterial, Quaternion, Vector3, type BufferGeometry, type InstancedMesh } from 'three';
+import { Group, Matrix4, Quaternion, Vector3, type BufferGeometry, type InstancedMesh } from 'three';
 import type { AmbientPose } from '../sim/traffic.ts';
 import { TRAM_CARS, type TramDesign, type TramLine } from '../sim/tram.ts';
 import { createVehicleTrim, type VehicleTrim } from './vehicle-glow.ts';
@@ -34,11 +33,9 @@ import {
   tramBoxGeometry,
   tramCarPlan,
   tramDoors,
-  type TramBox,
   type TramModule,
 } from './tram-mesh.ts';
 import { hashInts } from '../core/hash.ts';
-import { OUTLINE, VEHICLE_OUTLINE_WIDTH } from './vehicle.ts';
 import { coloured } from './traffic.ts';
 
 export { MODERN_PAINT as TRAM_PAINT } from './tram-mesh.ts';
@@ -51,25 +48,19 @@ const MODULES: { design: TramDesign; module: TramModule }[] = [
   { design: 'heritage', module: 'middle' },
 ];
 
-/** The geometry of one module: its boxes in their colours, and the outline round the masses. */
-export function tramParts(design: TramDesign = 'modern', module: TramModule = 'end'): { body: BufferGeometry; rim: BufferGeometry } {
-  const body: BufferGeometry[] = [];
-  const rim: BufferGeometry[] = [];
-  for (const part of tramBoxes(design, module) as TramBox[]) {
-    body.push(coloured(tramBoxGeometry(part, 0), part.colour));
-    if (part.outlined) rim.push(tramBoxGeometry(part, VEHICLE_OUTLINE_WIDTH));
-  }
-  return { body: merged(body), rim: merged(rim) };
+/** The geometry of one module: its boxes in their colours. */
+export function tramParts(design: TramDesign = 'modern', module: TramModule = 'end'): BufferGeometry {
+  return merged(tramBoxes(design, module).map((part) => coloured(tramBoxGeometry(part), part.colour)));
 }
 
 /** The geometry of one door leaf, which every module of both fleets shares. */
 function doorParts(): BufferGeometry {
-  return merged(doorLeafBoxes().map((part) => coloured(tramBoxGeometry(part, 0), part.colour)));
+  return merged(doorLeafBoxes().map((part) => coloured(tramBoxGeometry(part), part.colour)));
 }
 
 /** The geometry of the arc at a collector. */
 function sparkParts(): BufferGeometry {
-  return merged(sparkBoxes().map((part) => coloured(tramBoxGeometry(part, 0), part.colour)));
+  return merged(sparkBoxes().map((part) => coloured(tramBoxGeometry(part), part.colour)));
 }
 
 /**
@@ -82,12 +73,11 @@ const SPARK_ONE_IN = 11;
 /** Metres per second below which a tram is too slow to strike an arc. */
 const SPARK_SPEED = 2;
 
-/** One module's two meshes and how many instances of it the frame has written. */
+/** One module's mesh and how many instances of it the frame has written. */
 interface ModuleMeshes {
   design: TramDesign;
   module: TramModule;
   body: InstancedMesh;
-  rim: InstancedMesh;
   count: number;
 }
 
@@ -103,7 +93,6 @@ export class TramView {
   private readonly sparks: InstancedMesh;
   private sparkCount = 0;
   private readonly trim: VehicleTrim;
-  private readonly outline: MeshBasicMaterial;
   private readonly pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
   private readonly matrix = new Matrix4();
   private readonly at = new Vector3();
@@ -114,19 +103,16 @@ export class TramView {
   constructor(line: TramLine) {
     this.line = line;
     this.trim = createVehicleTrim();
-    this.outline = new MeshBasicMaterial({ color: new Color(OUTLINE), side: BackSide, fog: true });
     const cap = Math.max(1, line.trams * TRAM_CARS);
     for (const { design, module } of MODULES) {
-      const parts = tramParts(design, module);
       const meshes: ModuleMeshes = {
         design,
         module,
-        body: instanced(parts.body, this.trim.material, true, cap),
-        rim: instanced(parts.rim, this.outline, false, cap),
+        body: instanced(tramParts(design, module), this.trim.material, true, cap),
         count: 0,
       };
       this.meshes.push(meshes);
-      this.group.add(meshes.body, meshes.rim);
+      this.group.add(meshes.body);
     }
     this.doors = instanced(doorParts(), this.trim.material, true, Math.max(1, cap * 2));
     this.sparks = instanced(sparkParts(), this.trim.material, false, Math.max(1, line.trams));
@@ -168,18 +154,16 @@ export class TramView {
         this.turn.setFromAxisAngle(this.up, -pose.heading + (plan.reversed ? Math.PI : 0));
         this.matrix.compose(this.at, this.turn, this.one);
         meshes.body.setMatrixAt(meshes.count, this.matrix);
-        meshes.rim.setMatrixAt(meshes.count, this.matrix);
         meshes.count++;
         this.writeDoors(design, plan.module, open);
         this.writeSpark(design, tram, car, time, pose.speed);
       }
     }
     for (const meshes of this.meshes) {
-      for (const mesh of [meshes.body, meshes.rim]) {
-        mesh.count = meshes.count;
-        mesh.visible = meshes.count > 0;
-        if (meshes.count > 0) mesh.instanceMatrix.needsUpdate = true;
-      }
+      const mesh = meshes.body;
+      mesh.count = meshes.count;
+      mesh.visible = meshes.count > 0;
+      if (meshes.count > 0) mesh.instanceMatrix.needsUpdate = true;
     }
     for (const mesh of [this.doors, this.sparks]) {
       const count = mesh === this.doors ? this.doorCount : this.sparkCount;
@@ -224,13 +208,10 @@ export class TramView {
       mesh.dispose();
     }
     for (const meshes of this.meshes) {
-      for (const mesh of [meshes.body, meshes.rim]) {
-        mesh.geometry.dispose();
-        mesh.dispose();
-      }
+      meshes.body.geometry.dispose();
+      meshes.body.dispose();
     }
     this.trim.dispose();
-    this.outline.dispose();
     this.group.clear();
   }
 }

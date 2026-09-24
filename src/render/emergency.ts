@@ -4,9 +4,8 @@
  * Each kind has a shape of its own (`emergency-mesh.ts`): an engine is a long
  * red body with a ladder along the roof, and an ambulance a white box with a
  * red cross on it. A kind is three instanced meshes — the body with its colours
- * on the vertices, the outline of spec section 10.1, and one per phase of its
- * beacons (`beacons.ts`) — so every unit of a kind in view costs those draws
- * and no more.
+ * on the vertices, and one per phase of its beacons (`beacons.ts`) — so every
+ * unit of a kind in view costs those draws and no more.
  *
  * A unit on a call flashes its beacons and throws their light on the road
  * round it; one driving home after the job has them dark. Its doors are drawn
@@ -20,12 +19,9 @@
  * like the police, so nothing is evaluated between two ticks here.
  */
 import {
-  BackSide,
-  Color,
   CylinderGeometry,
   Group,
   Matrix4,
-  MeshBasicMaterial,
   Quaternion,
   Vector3,
   type BufferGeometry,
@@ -40,7 +36,6 @@ import { crewOf, CREW_SIZE, type CrewMember } from '../sim/emergency-crew.ts';
 import { emptyHose, hoseOf, type Hose } from './emergency-crew.ts';
 import { HoseLines, HoseSpray } from './hose.ts';
 import { boxOf, coloured, instanced, merged, TRAFFIC_VIEW } from './traffic.ts';
-import { OUTLINE, VEHICLE_OUTLINE_WIDTH } from './vehicle.ts';
 import { createVehicleTrim, type VehicleTrim } from './vehicle-glow.ts';
 import { TYRE } from './vehicle-mesh.ts';
 
@@ -55,7 +50,6 @@ interface KindMeshes {
   kind: EmergencyKind;
   shape: UnitShape;
   body: InstancedMesh;
-  rim: InstancedMesh;
   phases: [BeaconPhase, BeaconPhase];
   /** One mesh per door of the shape, since each door turns on its own hinge. */
   doors: InstancedMesh[];
@@ -66,7 +60,7 @@ interface KindMeshes {
 
 /** The body of a unit, with its wheels, as one geometry with its colours on the vertices. */
 export function unitBody(shape: UnitShape): BufferGeometry {
-  const parts = shape.boxes.map((part) => coloured(boxOf(part, 0), part.colour));
+  const parts = shape.boxes.map((part) => coloured(boxOf(part), part.colour));
   for (const wheel of shape.wheels) {
     const tyre = new CylinderGeometry(wheel.radius, wheel.radius, wheel.width, 12);
     tyre.rotateX(Math.PI / 2);
@@ -80,12 +74,7 @@ export function unitBody(shape: UnitShape): BufferGeometry {
 /** One door of a unit, built about its hinge so the instance matrix can turn it. */
 function doorPanel(door: UnitDoor): BufferGeometry {
   const panel = { ...door.box, x: door.box.x - door.hinge.x, y: door.box.y - door.hinge.y, z: door.box.z - door.hinge.z };
-  return coloured(boxOf(panel, 0), panel.colour);
-}
-
-/** The masses of a unit grown by the outline's width, which is the outline drawn behind it. */
-function unitRim(shape: UnitShape): BufferGeometry {
-  return merged(shape.boxes.filter((part) => part.outlined).map((part) => boxOf(part, VEHICLE_OUTLINE_WIDTH)));
+  return coloured(boxOf(panel), panel.colour);
 }
 
 export class EmergencyView {
@@ -109,22 +98,20 @@ export class EmergencyView {
   constructor() {
     this.trimMaterial = createVehicleTrim();
     const lamp = beaconMaterial();
-    const outline = new MeshBasicMaterial({ color: new Color(OUTLINE), side: BackSide, fog: true });
-    this.materials = [lamp, outline];
+    this.materials = [lamp];
     for (const kind of ['engine', 'ambulance'] as const) {
       const shape = unitShape(kind);
       const meshes: KindMeshes = {
         kind,
         shape,
         body: instanced(unitBody(shape), this.trimMaterial.material, true, UNIT_CAP),
-        rim: instanced(unitRim(shape), outline, false, UNIT_CAP),
         phases: [new BeaconPhase(shape.beacons, 0, lamp, UNIT_CAP), new BeaconPhase(shape.beacons, 1, lamp, UNIT_CAP)],
         doors: shape.doors.map((door) => instanced(doorPanel(door), this.trimMaterial.material, true, UNIT_CAP)),
         ride: UNIT_BODY[kind].ride,
         drawn: 0,
       };
       this.kinds.push(meshes);
-      this.group.add(meshes.body, meshes.rim, meshes.phases[0].mesh, meshes.phases[1].mesh, ...meshes.doors);
+      this.group.add(meshes.body, meshes.phases[0].mesh, meshes.phases[1].mesh, ...meshes.doors);
     }
     this.group.add(this.glow.mesh, this.hose.mesh, this.lines.mesh);
   }
@@ -190,7 +177,6 @@ export class EmergencyView {
     this.at.set(unit.x, unit.height + meshes.ride, unit.y);
     this.matrix.compose(this.at, this.turn, this.one);
     meshes.body.setMatrixAt(at, this.matrix);
-    meshes.rim.setMatrixAt(at, this.matrix);
     const calling = onCall(unit);
     let lit = -1;
     for (const phase of [0, 1] as const) {
@@ -232,13 +218,13 @@ export class EmergencyView {
   }
 
   private meshesOf(kind: KindMeshes): InstancedMesh[] {
-    return [kind.body, kind.rim, kind.phases[0].mesh, kind.phases[1].mesh, ...kind.doors];
+    return [kind.body, kind.phases[0].mesh, kind.phases[1].mesh, ...kind.doors];
   }
 
   /** Show what was written this frame and hide the meshes that took nothing. */
   private fill(kind: KindMeshes): void {
     const count = kind.drawn;
-    for (const mesh of [kind.body, kind.rim, ...kind.doors]) {
+    for (const mesh of [kind.body, ...kind.doors]) {
       mesh.count = count;
       mesh.visible = count > 0;
       if (count > 0) mesh.instanceMatrix.needsUpdate = true;

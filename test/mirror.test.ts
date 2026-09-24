@@ -156,11 +156,9 @@ describe('the pieces of a chunk', () => {
     const plants = new PlantScenery(fade);
     const roads = new RoadScenery();
 
-    // A building is what a grazing eye sees in the water; a hull is a rim
-    // 0.35 m wide around a shell the mirror draws anyway.
+    // A building is what a grazing eye sees in the water.
     expect(buildings.build('facade', []).mirrored).toBe(true);
     expect(buildings.build('block', []).mirrored).toBe(true);
-    expect(buildings.build('outline', []).mirrored).not.toBe(true);
     expect(lamps.build(GRID, []).mirrored).toBe(true);
 
     // The ground and everything lying flat on it stays out of the second pass.

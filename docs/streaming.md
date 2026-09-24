@@ -55,14 +55,16 @@ details in `docs/buildings.md`, and the frame and memory measurements in `docs/p
   starts, because what is compiled is what the camera can see. `render-profile.ts` throws away the
   same frames for the same reason.
 - The far ring is the same chunk at `'far'` detail: the ground, the highways and arterials over it,
-  and every building as its outlined massing, with no plants. A chunk that crosses between the
+  and every building as its massing, with no plants. A chunk that crosses between the
   rings is built again and swapped when it lands, so nothing disappears while its replacement is
   built.
 - The buildings have three details of their own (spec section 9.2). Only the chunks within
   `FACADE_RADIUS` of the player generate facades. The rest of the near ring is `'mid'` detail: the
   chunk in full, but every building a block from `block-mesh.ts`. The far ring is one box per
-  building (`buildMassingGeometry`). Every detail keeps the outline. On the dearest core chunk of
-  24 seeds the buildings cost 1 240 000 vertices near, 87 000 mid and 7 300 far.
+  building (`buildMassingGeometry`). No detail builds a line of ink: the edge pass of `edges.ts`
+  draws every one from the frame. On the dearest core chunk of 24 seeds the buildings cost
+  1 240 000 vertices near, 87 000 mid and 7 300 far, measured when each building still carried an
+  outline hull; without the hulls they cost less.
   `CHUNK_VERTEX_CAP` (`chunk-cost.ts`) holds each detail, and the sweep counts it with
   `buildingVertices`. A coarser bay and floor on the generated facade is not a middle detail: twice
   the bay and twice the floor still costs 45 % of the full facade, because the cornices, piers and
@@ -84,12 +86,12 @@ details in `docs/buildings.md`, and the frame and memory measurements in `docs/p
   chunk in the far ring. A mesh is culled whole in the view, in each shadow cascade and in the
   mirror, so a batch that spanned its 250 m chunk was drawn whole wherever a corner of it was seen.
   A part goes into the cell its frame's origin stands in, or the middle of its box when it has no
-  frame, so a building's shell and its outline always share a cell. On seed `sunset`, standing on
-  the core at full quality on an Apple M1 laptop, cells cut the still frame from 19.7 to 14.4 ms and
-  the triangles from 3.42 M to 1.89 M, for 66 more draws and about 1 ms more processor time. At a
-  pixel ratio of 2 the frame went from 35 to 28 ms. Cells of a ninth of a chunk drew 1.46 M
-  triangles but no faster a frame, with a worse 95th percentile, so the draws cost what they saved.
-  The far ring is not cut: its batches are a few thousand vertices each.
+  frame, so a building's shell, its roof dressing and its footing always share a cell. On seed
+  `sunset`, standing on the core at full quality on an Apple M1 laptop, cells cut the still frame
+  from 19.7 to 14.4 ms and the triangles from 3.42 M to 1.89 M, for 66 more draws and about 1 ms
+  more processor time. At a pixel ratio of 2 the frame went from 35 to 28 ms. Cells of a ninth of a
+  chunk drew 1.46 M triangles but no faster a frame, with a worse 95th percentile, so the draws cost
+  what they saved. The far ring is not cut: its batches are a few thousand vertices each.
 - **A chunk must not be held twice in the page's memory.** iOS Safari kills a page that holds too
   much, then reloads it, so the player lands on the title screen with no error (issue #448). Three
   things held the city twice and more: 1.45 GB of array storage, measured at the size of a phone.

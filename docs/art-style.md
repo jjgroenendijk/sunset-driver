@@ -109,8 +109,7 @@ Rules for the palette:
 
 ## Line
 
-- All lines come from one screen-space edge pass in the post chain. It replaces the inverted-hull
-  outlines of today.
+- All lines come from one screen-space edge pass in the post chain (`edges.ts`).
 - A depth step draws the heavy silhouette line. A normal step draws the thin crease line: roof
   edges, window reveals, kerbs, the corners of a vehicle.
 - Seams on flat surfaces, which have no depth or normal step, are drawn into the generated
@@ -179,9 +178,9 @@ Where each rule lands. None of it needs an asset file.
 - **Shadow colour** — `daylightAt` carries it for the time of day (`shade.ts`). The shade band and
   a cast shadow are lit by the sky fill alone, and the fill is that colour, so both shift toward it
   instead of darkening.
-- **Lines** — an edge pass in `PostChain`, after the scene and before bloom. It reads depth and a
-  normal target. The inverted hulls (`building-hull.ts`, `OUTLINE` in `vehicle.ts` and the others)
-  are removed when it lands, which also removes their geometry from every batch.
+- **Lines** — `edges.ts`, an edge pass in `PostChain`, after the scene and before bloom. It reads
+  the depth alone: a silhouette and a crease are both bends in depth (`docs/post.md`). The
+  inverted hulls it replaced are gone, with their geometry in every batch.
 - **Hue gradients** — a vertex colour or a height term in the foliage and flower materials.
 - **Distance to haze** — the fog colour becomes the haze colour of the time of day.
 - **Grade** — the LUT of `grade.ts` lifts the day into high key and warms the lights. It only
@@ -190,15 +189,9 @@ Where each rule lands. None of it needs an asset file.
 
 ## Where the game stands today
 
-A preview of seed 1 at noon (`node scripts/render-preview.ts 1 out.png`) shows the gap:
-
-- Mid greys dominate: asphalt, concrete, car parks. The frame is low key.
-- Shadows are dark grey, close to black.
-- Outlines are inverted hulls in near black (`0x150f12`), silhouettes only, no crease lines.
-- Shading is smooth, not banded; materials aim at realism.
-
-The layout, the bloom and the colour grade are the foundation the style builds on. The work is in
-the materials, the light model and the edge pass.
+Issue #684 brings the style in, one step per pull request. Done: the palette, the bands, the
+shadow colour by the time of day, and the ink of the edge pass. Still to come: the warm haze and
+the grade, the indigo night, the foliage and trees, the grime strokes, and the UI.
 
 ## Decisions
 

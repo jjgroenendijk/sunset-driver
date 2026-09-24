@@ -10,7 +10,7 @@
  *
  * The near ring has a middle detail of its own for the buildings (spec section
  * 9.2). Only the chunks within {@link FACADE_RADIUS} carry generated facades;
- * past it, a tower is an outlined block, and everything else is as near.
+ * past it, a tower is a block, and everything else is as near.
  *
  * Nothing here builds or draws anything: it says which chunks are wanted, in
  * which order, and how much of a frame their upload may take. That keeps the
@@ -38,8 +38,7 @@ export interface TilePart {
   steps: (() => void)[];
   /**
    * Whether the batches of this piece cast the sun's shadow. Left out, they
-   * do: a piece is solid geometry standing on the ground. The outline hulls of
-   * `buildings.ts` say otherwise.
+   * do: a piece is solid geometry standing on the ground.
    */
   castsShadow?: boolean;
   /**

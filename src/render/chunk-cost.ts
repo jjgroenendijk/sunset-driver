@@ -21,10 +21,10 @@ import type { ChunkDetail } from './streaming.ts';
 
 /**
  * Batches one cell of a chunk may draw: at most five for the roads, one per
- * tier, at most three for the buildings — the generated facades, the blocks
- * and the outlines that rim both — one for the plants, whatever species stand
- * there, one for the street lamps, whatever tiers carry them, and one for the
- * harm-reduction posters, whatever designs they carry.
+ * tier, at most two for the buildings — the generated facades and the blocks —
+ * one for the plants, whatever species stand there, one for the street lamps,
+ * whatever tiers carry them, one for the harm-reduction posters, whatever
+ * designs they carry, and one for the shop signs.
  */
 export const CELL_BATCH_CAP = 11;
 
@@ -39,7 +39,7 @@ const METRO_BATCHES = 1;
  * Draw calls a chunk may cost: {@link CELL_BATCH_CAP} in each of its
  * {@link CHUNK_CELLS} cells, one ground mesh, one line of markings for each of
  * the three marked tiers and one batch of metro entrances, none of which are
- * cut into cells. That is 53. A count over this is a batching regression, not a
+ * cut into cells. That is 49. A count over this is a batching regression, not a
  * cap to raise; a system that lands in a chunk later raises it together with
  * the batches it brings.
  */
@@ -65,8 +65,8 @@ export function chunkDrawCalls(chunk: WorldChunk): number {
 }
 
 /**
- * Vertices a chunk's buildings may cost at each detail, shells and outlines
- * together (spec section 9.2). `buildingVertices` is the count.
+ * Vertices a chunk's buildings may cost at each detail, shells, roofs and
+ * footings together (spec section 9.2). `buildingVertices` is the count.
  *
  * Measured on the dearest chunk of each of 24 sweep seeds, the dearest of them
  * costs 1 240 000 at near detail, 87 000 at mid and 9 600 at far. Each cap

@@ -91,7 +91,7 @@ export function shelterBoxes(): StopBox[] {
 
 /** The geometry of one post and of one shelter, each with its colours on its vertices. */
 export function busStopParts(): { post: BufferGeometry; shelter: BufferGeometry } {
-  const grow = (parts: StopBox[]): BufferGeometry => merged(parts.map((part) => coloured(boxOf(part, 0), part.colour)));
+  const grow = (parts: StopBox[]): BufferGeometry => merged(parts.map((part) => coloured(boxOf(part), part.colour)));
   return { post: grow(postBoxes()), shelter: grow(shelterBoxes()) };
 }
 

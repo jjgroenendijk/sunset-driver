@@ -17,12 +17,11 @@
  *   even a ghost of them veils the whole screen.
  *
  * The cut is the ordered dither of `fade.ts`: a fragment is kept or discarded,
- * never blended, so nothing is sorted. The outline hull is cut away whole where
- * the shell is cut to a ghost, or its dark would show through the holes. The
- * shadow pass reads none of this, so a ghost still casts its shadow.
+ * never blended, so nothing is sorted. The shadow pass reads none of this, so a
+ * ghost still casts its shadow.
  */
 import type { Vector3 } from 'three';
-import type { MeshBasicNodeMaterial, NodeMaterial } from 'three/webgpu';
+import type { NodeMaterial } from 'three/webgpu';
 import { bayer4 } from './fade.ts';
 import type { RoofBox } from './roofs.ts';
 import { float, max, positionWorld, screenCoordinate, smoothstep, step, uniform, vec3, type TslNode } from './tsl.ts';
@@ -44,9 +43,17 @@ const MARGIN = 2;
 const BAND = 3;
 
 /**
+ * Metres over the point the camera aims at below which the edge pass takes
+ * nothing as ghosted. It cannot tell a building from the street by depth, and
+ * the cone takes in the street in front of the player too: without this floor
+ * every car and kerb there lost its ink. A bus roof stands under it.
+ */
+const GHOST_FLOOR = 2.5;
+
+/**
  * Metres the box of a building is grown by when the camera is tested against
- * it and when it is cut: enough to take in its outline and the camera's near
- * plane.
+ * it and when it is cut: enough to take in the relief that stands proud of the
+ * shell and the camera's near plane.
  */
 export const CAMERA_ROOF_MARGIN = 1.5;
 
@@ -105,13 +112,37 @@ export class BuildingCutaway {
     material.alphaTestNode = bayer4(screenCoordinate);
   }
 
-  /** Cut an outline hull away whole. */
-  dressOutline(material: MeshBasicNodeMaterial): void {
-    material.opacityNode = float(1).sub(max(this.occluding, this.inBox));
-    material.alphaTestNode = bayer4(screenCoordinate);
+  /**
+   * How much the cut ghosts along one ray from the camera, for a pass that
+   * reads the frame after it is drawn: the edge pass of `edges.ts` draws no
+   * line where the dither has cut holes. `direction` is the ray's unit
+   * direction in the world, and the answer takes a distance along the ray and
+   * says how much of the place there is ghosted, 0 to 1.
+   *
+   * How far off the axis a place stands, as a share of how far along it, is the
+   * same all along one ray. So the dear half of the cone is worked out once for
+   * a pixel, not once for each depth sample; testing the whole cone at every
+   * sample cost the edge pass three times its own work. The box the camera
+   * stands inside is cut away whole, so it leaves nothing in the frame to test.
+   * Nothing under {@link GHOST_FLOOR} counts, so the street keeps its ink.
+   */
+  ghostAlong(direction: TslNode): (distance: TslNode) => TslNode {
+    const camera = vec3(this.camera[0], this.camera[1], this.camera[2]);
+    const toTarget = vec3(this.target[0], this.target[1], this.target[2]).sub(camera);
+    const reach = toTarget.length();
+    const axis = toTarget.div(reach);
+    const along = direction.dot(axis);
+    const off = direction.sub(axis.mul(along)).length().div(max(along, 0.001));
+    const aimed = float(1).sub(smoothstep(CONE * 0.7, CONE, off)).mul(step(0, along)).mul(this.on);
+    const floor = this.target[1].add(GHOST_FLOOR);
+    return (distance) => {
+      const nearer = float(1).sub(smoothstep(reach.sub(MARGIN + BAND), reach.sub(MARGIN), distance.mul(along)));
+      const raised = step(floor, this.camera[1].add(direction.y.mul(distance)));
+      return aimed.mul(nearer).mul(raised);
+    };
   }
 
-  /** How far a fragment stands inside the cone in front of the player, 0 to 1. */
+  /** How far a place stands inside the cone in front of the player, 0 to 1. */
   private buildCone(): TslNode {
     const camera = vec3(this.camera[0], this.camera[1], this.camera[2]);
     const toPoint = positionWorld.sub(camera);

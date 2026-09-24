@@ -46,8 +46,8 @@ describe('the police, drawn (spec sections 9.2, 14)', () => {
     expect(flashLit(1, 0, 0)).toBe(true);
     expect(flashLit(1, 1, 0)).toBe(false);
     view.update(state, 0, 0);
-    const red = view.group.children[3] as InstancedMesh;
-    const blue = view.group.children[4] as InstancedMesh;
+    const red = view.group.children[2] as InstancedMesh;
+    const blue = view.group.children[3] as InstancedMesh;
     expect(red.instanceColor?.getX(0)).toBe(BEACON_GLOW);
     expect(red.instanceColor?.getX(1)).toBeCloseTo(BEACON_DARK, 5);
     expect(blue.instanceColor?.getX(0)).toBeCloseTo(BEACON_DARK, 5);

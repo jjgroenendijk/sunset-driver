@@ -2,9 +2,8 @@
  * The vehicle, drawn (spec sections 10.1, 11.3).
  *
  * The shape comes from `vehicle-mesh.ts`, one plan per class of the roster.
- * This turns that plan into a model: a mesh per box, a wheel per wheel of the
- * row, and the outline of spec section 10.1 round the masses that make the
- * silhouette.
+ * This turns that plan into a model: a mesh per box and a wheel per wheel of
+ * the row. The ink line round it comes from the edge pass (`edges.ts`).
  *
  * The model reads the vehicle's serialisable state and nothing else, so what is
  * drawn is a function of the simulation record: the class decides the shape,
@@ -22,14 +21,11 @@
  * actually changes.
  */
 import {
-  BackSide,
   BoxGeometry,
   type BufferAttribute,
-  Color,
   CylinderGeometry,
   Group,
   Mesh,
-  MeshBasicMaterial,
   MeshStandardMaterial,
   Object3D,
   type BufferGeometry,
@@ -48,9 +44,6 @@ import {
 } from '../sim/vehicle.ts';
 import { glowOf } from './vehicle-glow.ts';
 import { TYRE, vehicleBoxes, type VehicleBox } from './vehicle-mesh.ts';
-
-/** The dark of the outline, as the buildings' is (spec section 10.1). */
-export const OUTLINE = 0x150f12;
 
 /** What a burnt-out shell is painted in (spec section 11.3). */
 const SCORCH = 0x231f1e;
@@ -74,26 +67,16 @@ const PANEL_PUSH: Readonly<Record<Panel, [number, number, number]>> = {
  */
 const DENT_DEPTH = 0.55;
 
-/** One box of the model: the mesh, the outline round it, and its pristine vertices. */
+/** One box of the model: the mesh and its pristine vertices. */
 interface DrawnBox {
   part: VehicleBox;
   mesh: Mesh;
-  /** The shell that rims it, on the masses that carry an outline. */
-  rim: Mesh | undefined;
   /** The vertices it was built with, so every dent is measured from the same shape. */
   base: Float32Array;
-  rimBase: Float32Array | undefined;
   /** The paint it was built in, so a scorched model can be painted back. */
   colour: number;
   material: MeshStandardMaterial;
 }
-
-/**
- * Metres the outline stands outside the box it rims. A vehicle is two metres
- * across and a building fifty, so this is a tenth of the buildings' width: the
- * same line on screen from the same camera.
- */
-export const VEHICLE_OUTLINE_WIDTH = 0.035;
 
 /** A wheel of the model, and the wheel of the record it hangs and turns with. */
 interface DrawnWheel {
@@ -218,27 +201,13 @@ export class VehicleModel {
   }
 
   private build(): void {
-    const outline = new MeshBasicMaterial({ color: new Color(OUTLINE), side: BackSide, fog: true });
-    this.materials.push(outline);
     for (const part of vehicleBoxes(this.spec)) {
       const material = new MeshStandardMaterial({ color: part.colour, roughness: 0.45, metalness: 0.2 });
       this.materials.push(material);
       const mesh = this.add(part, material);
-      mesh.castShadow = true;
-      // The outline is the same box grown by the width of the line and drawn
-      // back faces only, so it rims the mass instead of hiding it.
-      const rim = part.outlined ? this.add(grown(part, VEHICLE_OUTLINE_WIDTH), outline) : undefined;
-      if (part.hinged === true) this.hang(part, mesh, rim);
-      if (part.spin !== undefined) this.pivot(part, part.spin, mesh, rim);
-      this.boxes.push({
-        part,
-        mesh,
-        rim,
-        base: pristine(mesh),
-        rimBase: rim === undefined ? undefined : pristine(rim),
-        colour: part.colour,
-        material,
-      });
+      if (part.hinged === true) this.hang(part, mesh);
+      if (part.spin !== undefined) this.pivot(part, part.spin, mesh);
+      this.boxes.push({ part, mesh, base: pristine(mesh), colour: part.colour, material });
     }
     this.buildWheels();
     this.applyLamps();
@@ -281,31 +250,21 @@ export class VehicleModel {
       const index = panel === undefined ? -1 : PANELS.indexOf(panel);
       const gone = index >= 0 && (damage.lost[index] as boolean);
       drawn.mesh.visible = !gone;
-      if (drawn.rim !== undefined) drawn.rim.visible = !gone;
       // A respray (spec section 16.1) changes the body and nothing else, so it
       // reaches the boxes the roster painted in the class's own colour.
       const colour = drawn.colour === this.spec.paint ? paint : drawn.colour;
       drawn.material.color.set(scorched ? SCORCH : colour);
       if (gone) continue;
       crumple(drawn.mesh, drawn.base, damage.dents, depth, i);
-      if (drawn.rim !== undefined && drawn.rimBase !== undefined) {
-        crumple(drawn.rim, drawn.rimBase, damage.dents, depth, i);
-      }
     }
   }
 
-  /**
-   * One box of the plan, in the material it is handed.
-   *
-   * An outline casts no shadow. It is the mass it rims grown by a few
-   * centimetres, so its shadow is the body's shadow again, drawn twice and a
-   * little too big.
-   */
+  /** One box of the plan, in the material it is handed. It casts a shadow. */
   private add(part: VehicleBox, material: Material): Mesh {
     const geometry = new BoxGeometry(part.length, part.height, part.width);
     const mesh = new Mesh(geometry, material);
     mesh.position.set(part.x, part.y, part.z);
-    mesh.castShadow = false;
+    mesh.castShadow = true;
     this.geometries.push(geometry);
     this.group.add(mesh);
     return mesh;
@@ -316,26 +275,22 @@ export class VehicleModel {
    * the door. The door's own vertices are untouched, so a dent lands on it
    * the same open or shut.
    */
-  private hang(part: VehicleBox, mesh: Mesh, rim: Mesh | undefined): void {
+  private hang(part: VehicleBox, mesh: Mesh): void {
     const hinge = new Group();
     hinge.name = 'door';
     hinge.position.set(part.x + part.length / 2, part.y, part.z);
-    for (const piece of rim === undefined ? [mesh] : [mesh, rim]) {
-      hinge.add(piece);
-      piece.position.set(-part.length / 2, 0, 0);
-    }
+    hinge.add(mesh);
+    mesh.position.set(-part.length / 2, 0, 0);
     this.group.add(hinge);
     this.hinges.push({ side: Math.sign(part.z), object: hinge });
   }
 
   /** Hang a blade from a group at its own middle, so turning the group spins it in place. */
-  private pivot(part: VehicleBox, axis: 'rotor' | 'prop', mesh: Mesh, rim: Mesh | undefined): void {
+  private pivot(part: VehicleBox, axis: 'rotor' | 'prop', mesh: Mesh): void {
     const pivot = new Group();
     pivot.position.set(part.x, part.y, part.z);
-    for (const piece of rim === undefined ? [mesh] : [mesh, rim]) {
-      pivot.add(piece);
-      piece.position.set(0, 0, 0);
-    }
+    pivot.add(mesh);
+    mesh.position.set(0, 0, 0);
     this.group.add(pivot);
     this.spinners.push({ axis, object: pivot });
   }
@@ -413,14 +368,4 @@ function crumple(mesh: Mesh, base: Float32Array, dents: readonly number[], depth
   // A box has a vertex per corner per face, so this is the flat shading the
   // undented box already had, taken off the faces the dent has moved.
   mesh.geometry.computeVertexNormals();
-}
-
-/** The same box, `reach` metres larger on every side. */
-function grown(part: VehicleBox, reach: number): VehicleBox {
-  return {
-    ...part,
-    length: part.length + 2 * reach,
-    height: part.height + 2 * reach,
-    width: part.width + 2 * reach,
-  };
 }

@@ -13,14 +13,14 @@ import { DEFAULT_SETTINGS, readSettings, writeSettings } from '../src/ui/setting
 /** The packed box of a building `width` by `depth` by `height`, turned `angle` about the up axis. */
 function roofOf(x: number, z: number, width: number, depth: number, height: number, angle = 0): Float32Array {
   // A shell stands on its own origin, as `building-mesh.ts` builds it.
-  const hull = new BoxGeometry(width, height, depth).translate(0, height / 2, 0);
+  const shell = new BoxGeometry(width, height, depth).translate(0, height / 2, 0);
   const matrix = new Matrix4().compose(
     new Vector3(x, 0, z),
     new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), angle),
     new Vector3(1, 1, 1),
   );
   const out = new Float32Array(ROOF_STRIDE);
-  writeRoof(out, 0, hull, matrix);
+  writeRoof(out, 0, shell, matrix);
   return out;
 }
 

@@ -8,7 +8,7 @@
  *
  * It is a plain function of the roster row, with no three.js in it, so the
  * silhouettes can be measured headless. `vehicle.ts` turns the boxes into a
- * model and rims the masses among them with the outline of spec section 10.1.
+ * model.
  *
  * Every box is in the vehicle's own frame: `length` runs along local `+x`,
  * which is forward, `height` along `+y` and `width` along `+z`, the axle.
@@ -42,12 +42,6 @@ export interface VehicleBox {
   y: number;
   z: number;
   colour: number;
-  /**
-   * True on the masses that make the silhouette. Those are what the outline of
-   * spec section 10.1 follows; glass, lamps, beacons and cage bars are detail
-   * inside it and rimming each of them would draw a scribble, not an outline.
-   */
-  outlined: boolean;
   /**
    * The panel this box belongs to (spec section 11.3), and undefined on the
    * shell in the middle of the body. A dent pushes in the boxes of the panel
@@ -144,9 +138,8 @@ function box(
   x: number,
   y: number,
   z: number,
-  outlined = true,
 ): VehicleBox {
-  return { length, height, width, x, y, z, colour, outlined, panel: undefined };
+  return { length, height, width, x, y, z, colour, panel: undefined };
 }
 
 /**
@@ -163,11 +156,11 @@ function doors(spec: VehicleSpec, length: number, height: number, y: number, at:
   for (const side of [1, -1]) {
     const z = side * spec.halfWidth * at;
     if (!hinged) {
-      out.push(box(length, height, 0.06, spec.paint, 0, y, z, false));
+      out.push(box(length, height, 0.06, spec.paint, 0, y, z));
       continue;
     }
-    out.push({ ...box(length / 2, height, 0.06, spec.paint, length / 4, y, z, false), hinged: true });
-    out.push(box(length / 2, height, 0.06, spec.paint, -length / 4, y, z, false));
+    out.push({ ...box(length / 2, height, 0.06, spec.paint, length / 4, y, z), hinged: true });
+    out.push(box(length / 2, height, 0.06, spec.paint, -length / 4, y, z));
   }
   return out;
 }
@@ -238,15 +231,15 @@ function car(spec: VehicleSpec, shape: CarShape): VehicleBox[] {
     box(length, bodyHeight, width * 0.9, spec.paint, 0, bodyY, 0),
     box(cabinLength, cabinHeight, width * 0.8, spec.paint, cabinX, cabinY, 0),
     // Glass a little proud of the cabin, so the windows read as windows.
-    box(length * 0.06, cabinHeight * 0.82, width * 0.82, GLASS, cabinX + cabinLength / 2, cabinY, 0, false),
-    box(length * 0.05, cabinHeight * 0.82, width * 0.82, GLASS, cabinX - cabinLength / 2, cabinY, 0, false),
-    box(cabinLength * 0.7, cabinHeight * 0.5, width * 0.83, GLASS, cabinX, cabinY + cabinHeight * 0.08, 0, false),
+    box(length * 0.06, cabinHeight * 0.82, width * 0.82, GLASS, cabinX + cabinLength / 2, cabinY, 0),
+    box(length * 0.05, cabinHeight * 0.82, width * 0.82, GLASS, cabinX - cabinLength / 2, cabinY, 0),
+    box(cabinLength * 0.7, cabinHeight * 0.5, width * 0.83, GLASS, cabinX, cabinY + cabinHeight * 0.08, 0),
     ...doors(spec, length * 0.46, bodyHeight * 0.6, bodyY, 0.9, true),
     // A bonnet at the nose and a boot at the tail, sitting on the body: they
     // are the panels a shunt at either end pushes in, and a hard enough one
     // takes them off and leaves the shell.
-    box(length * 0.22, bodyHeight * 0.3, width * 0.86, spec.paint, spec.halfLength - length * 0.13, bodyY + bodyHeight * 0.36, 0, false),
-    box(length * 0.2, bodyHeight * 0.3, width * 0.86, spec.paint, -spec.halfLength + length * 0.12, bodyY + bodyHeight * 0.36, 0, false),
+    box(length * 0.22, bodyHeight * 0.3, width * 0.86, spec.paint, spec.halfLength - length * 0.13, bodyY + bodyHeight * 0.36, 0),
+    box(length * 0.2, bodyHeight * 0.3, width * 0.86, spec.paint, -spec.halfLength + length * 0.12, bodyY + bodyHeight * 0.36, 0),
   ];
   return [...boxes, ...lamps(spec, bodyY + bodyHeight * 0.2)];
 }
@@ -256,8 +249,8 @@ function lamps(spec: VehicleSpec, y: number): VehicleBox[] {
   const width = spec.halfWidth * 2;
   const out: VehicleBox[] = [];
   for (const side of [1, -1]) {
-    out.push(box(0.1, 0.14, width * 0.22, LAMP, spec.halfLength - 0.04, y, side * width * 0.28, false));
-    out.push(box(0.09, 0.14, width * 0.22, TAIL, -spec.halfLength + 0.04, y, side * width * 0.28, false));
+    out.push(box(0.1, 0.14, width * 0.22, LAMP, spec.halfLength - 0.04, y, side * width * 0.28));
+    out.push(box(0.09, 0.14, width * 0.22, TAIL, -spec.halfLength + 0.04, y, side * width * 0.28));
   }
   return out;
 }
@@ -279,7 +272,7 @@ export function patrolBeacons(spec: VehicleSpec): Beacon[] {
   const width = spec.halfWidth * 2;
   const x = -spec.halfLength * 0.1;
   const half = (colour: number, z: number, phase: 0 | 1): Beacon => ({
-    box: { length: 0.26, height: 0.13, width: width * 0.36, x, y: spec.halfHeight + 0.13, z, colour, outlined: false },
+    box: { length: 0.26, height: 0.13, width: width * 0.36, x, y: spec.halfHeight + 0.13, z, colour },
     phase,
   });
   return [half(BEACON_RED, -width * 0.2, 0), half(BEACON_BLUE, width * 0.2, 1)];
@@ -302,15 +295,15 @@ function patrolCar(spec: VehicleSpec): VehicleBox[] {
     if (part === boxes[0] || Math.abs(part.x) > spec.halfLength * 0.4) part.colour = spec.trim;
   }
   // The bar: a dark base across the roof, and the two halves over it.
-  boxes.push(box(0.3, 0.06, width * 0.8, BAR_BASE, -spec.halfLength * 0.1, spec.halfHeight + 0.04, 0, false));
+  boxes.push(box(0.3, 0.06, width * 0.8, BAR_BASE, -spec.halfLength * 0.1, spec.halfHeight + 0.04, 0));
   for (const beacon of patrolBeacons(spec)) {
     const b = beacon.box;
-    boxes.push(box(b.length, b.height, b.width, b.colour, b.x, b.y, b.z, false));
+    boxes.push(box(b.length, b.height, b.width, b.colour, b.x, b.y, b.z));
   }
   // The push bar on the nose, which is the one part of it wider than a saloon's front.
-  boxes.push(box(0.12, spec.halfHeight * 0.6, width * 0.7, BAR_BASE, spec.halfLength + 0.08, -spec.halfHeight * 0.5, 0, false));
+  boxes.push(box(0.12, spec.halfHeight * 0.6, width * 0.7, BAR_BASE, spec.halfLength + 0.08, -spec.halfHeight * 0.5, 0));
   // A spotlight on the driver's pillar.
-  boxes.push(box(0.16, 0.1, 0.1, METAL, length * 0.12, spec.halfHeight * 0.3, width * 0.43, false));
+  boxes.push(box(0.16, 0.1, 0.1, METAL, length * 0.12, spec.halfHeight * 0.3, width * 0.43));
   return boxes;
 }
 
@@ -327,10 +320,10 @@ function van(spec: VehicleSpec): VehicleBox[] {
     box(noseLength, noseHeight, width * 0.9, spec.paint, spec.halfLength - noseLength / 2, noseY, 0),
     // The windscreen stands where the nose meets the box, which is what says
     // which end the driver sits at.
-    box(length * 0.05, height * 0.4, width * 0.86, GLASS, spec.halfLength - noseLength, height * 0.06, 0, false),
+    box(length * 0.05, height * 0.4, width * 0.86, GLASS, spec.halfLength - noseLength, height * 0.06, 0),
     // A vent on the roof, which is the panel a van loses off the top of it and
     // the one thing that breaks up a flat white roof from above.
-    box(length * 0.18, 0.09, width * 0.5, spec.trim, -length * 0.1, spec.halfHeight + 0.05, 0, false),
+    box(length * 0.18, 0.09, width * 0.5, spec.trim, -length * 0.1, spec.halfHeight + 0.05, 0),
     // The sliding door down each side, which is the panel a van loses.
     ...doors(spec, length * 0.4, height * 0.34, -spec.halfHeight + height * 0.3, 0.94),
     ...lamps(spec, noseY),
@@ -349,7 +342,7 @@ function truck(spec: VehicleSpec): VehicleBox[] {
   const deckX = -spec.halfLength + deckLength / 2;
   return [
     box(cabLength, height, width, spec.paint, spec.halfLength - cabLength / 2, 0, 0),
-    box(length * 0.05, height * 0.36, width * 0.9, GLASS, spec.halfLength - cabLength, height * 0.2, 0, false),
+    box(length * 0.05, height * 0.36, width * 0.9, GLASS, spec.halfLength - cabLength, height * 0.2, 0),
     box(deckLength, deckHeight, width, spec.trim, deckX, deckY, 0),
     // The headboard behind the cab, which is what stops the load at 60 m up.
     box(length * 0.04, height * 0.4, width, spec.trim, deckX + deckLength / 2, deckY + height * 0.3, 0),
@@ -365,11 +358,11 @@ function bus(spec: VehicleSpec): VehicleBox[] {
   const bandY = height * 0.12;
   const boxes = [
     box(length, height, width, spec.paint, 0, 0, 0),
-    box(length * 0.94, height * 0.3, width * 1.01, GLASS, -length * 0.02, bandY, 0, false),
+    box(length * 0.94, height * 0.3, width * 1.01, GLASS, -length * 0.02, bandY, 0),
     // The windscreen, a little taller than the band, at the driver's end.
-    box(length * 0.03, height * 0.42, width * 0.94, GLASS, spec.halfLength, bandY, 0, false),
+    box(length * 0.03, height * 0.42, width * 0.94, GLASS, spec.halfLength, bandY, 0),
     // A roof hatch, so the roof is not one flat colour from above.
-    box(length * 0.12, 0.08, width * 0.4, spec.trim, length * 0.2, spec.halfHeight + 0.04, 0, false),
+    box(length * 0.12, 0.08, width * 0.4, spec.trim, length * 0.2, spec.halfHeight + 0.04, 0),
   ];
   return [...boxes, ...lamps(spec, -spec.halfHeight + height * 0.12)];
 }
@@ -439,33 +432,33 @@ function motorcycle(spec: VehicleSpec): VehicleBox[] {
     // The tank in two, a wide lower half under a narrower top, so it rounds
     // off rather than standing there as a brick. It carries the bike's paint.
     box(length * 0.24, height * 0.33, width * 0.54, spec.paint, length * 0.2, height * 0.1, 0),
-    box(length * 0.2, height * 0.2, width * 0.41, spec.paint, length * 0.19, height * 0.33, 0, false),
+    box(length * 0.2, height * 0.2, width * 0.41, spec.paint, length * 0.19, height * 0.33, 0),
     // The seat, with its top at the saddle, and the tail rising behind it.
     box(length * 0.29, height * 0.17, width * 0.47, SEAT, seat.x, seat.y - height * 0.085, 0),
     box(length * 0.17, height * 0.37, width * 0.38, spec.paint, -length * 0.35, height * 0.27, 0),
     // The front: a mudguard over the wheel, and the lamp housing over that.
-    box(length * 0.24, height * 0.13, width * 0.32, spec.paint, length * 0.38, height * 0.23, 0, false),
+    box(length * 0.24, height * 0.13, width * 0.32, spec.paint, length * 0.38, height * 0.23, 0),
     box(length * 0.07, height * 0.5, width * 0.44, BAR_BASE, length * 0.41, height * 0.5, 0),
-    box(0.06, height * 0.37, width * 0.32, LAMP, spec.halfLength - 0.09, height * 0.5, 0, false),
+    box(0.06, height * 0.37, width * 0.32, LAMP, spec.halfLength - 0.09, height * 0.5, 0),
     // The back: a mudguard, the tail light on it, and the exhaust down the
     // right side with its silencer at the end of it.
-    box(length * 0.24, height * 0.13, width * 0.35, spec.paint, -length * 0.38, height * 0.17, 0, false),
-    box(0.08, height * 0.17, width * 0.32, TAIL, -spec.halfLength + 0.05, height * 0.3, 0, false),
-    box(length * 0.38, height * 0.17, width * 0.15, METAL, -length * 0.17, -height * 0.5, -width * 0.32, false),
-    box(length * 0.2, height * 0.23, width * 0.21, METAL, -length * 0.31, -height * 0.43, -width * 0.32, false),
+    box(length * 0.24, height * 0.13, width * 0.35, spec.paint, -length * 0.38, height * 0.17, 0),
+    box(0.08, height * 0.17, width * 0.32, TAIL, -spec.halfLength + 0.05, height * 0.3, 0),
+    box(length * 0.38, height * 0.17, width * 0.15, METAL, -length * 0.17, -height * 0.5, -width * 0.32),
+    box(length * 0.2, height * 0.23, width * 0.21, METAL, -length * 0.31, -height * 0.43, -width * 0.32),
     // The bars, on a stem up from the forks: the one part of a bike wider than
     // the bike, and the T it reads as from straight above.
-    box(length * 0.18, height * 0.13, width * 0.15, BAR_BASE, length * 0.32, seat.gripY - height * 0.07, 0, false),
-    box(0.07, 0.07, seat.gripZ * 2 + 0.14, METAL, seat.gripX, seat.gripY, 0, false),
+    box(length * 0.18, height * 0.13, width * 0.15, BAR_BASE, length * 0.32, seat.gripY - height * 0.07, 0),
+    box(0.07, 0.07, seat.gripZ * 2 + 0.14, METAL, seat.gripX, seat.gripY, 0),
   ];
   for (const side of [1, -1]) {
     // A fork leg and a swingarm each side, a peg for each boot, a grip at each
     // end of the bars and a mirror on a stalk out past it.
-    boxes.push(box(length * 0.05, height * 1.1, width * 0.13, METAL, length * 0.36, height * 0.12, side * width * 0.19, false));
-    boxes.push(box(length * 0.24, height * 0.15, width * 0.15, METAL, -length * 0.24, -height * 0.37, side * width * 0.18, false));
-    boxes.push(box(length * 0.08, 0.04, width * 0.18, METAL, seat.pegX, seat.pegY, side * seat.pegZ, false));
-    boxes.push(box(0.09, 0.09, 0.14, SEAT, seat.gripX, seat.gripY, side * seat.gripZ, false));
-    boxes.push(box(0.04, height * 0.17, width * 0.2, METAL, seat.gripX, seat.gripY + height * 0.15, side * (seat.gripZ + 0.08), false));
+    boxes.push(box(length * 0.05, height * 1.1, width * 0.13, METAL, length * 0.36, height * 0.12, side * width * 0.19));
+    boxes.push(box(length * 0.24, height * 0.15, width * 0.15, METAL, -length * 0.24, -height * 0.37, side * width * 0.18));
+    boxes.push(box(length * 0.08, 0.04, width * 0.18, METAL, seat.pegX, seat.pegY, side * seat.pegZ));
+    boxes.push(box(0.09, 0.09, 0.14, SEAT, seat.gripX, seat.gripY, side * seat.gripZ));
+    boxes.push(box(0.04, height * 0.17, width * 0.2, METAL, seat.gripX, seat.gripY + height * 0.15, side * (seat.gripZ + 0.08)));
   }
   return boxes;
 }
@@ -482,11 +475,11 @@ function offroad(spec: VehicleSpec): VehicleBox[] {
   return [
     box(length, bodyHeight, width * 0.92, spec.paint, 0, bodyY, 0),
     box(length * 0.66, cabinHeight, width * 0.88, spec.paint, -length * 0.06, cabinY, 0),
-    box(length * 0.6, cabinHeight * 0.56, width * 0.9, GLASS, -length * 0.06, cabinY + cabinHeight * 0.12, 0, false),
+    box(length * 0.6, cabinHeight * 0.56, width * 0.9, GLASS, -length * 0.06, cabinY + cabinHeight * 0.12, 0),
     // The rack, which is the one thing that tells this from a tall van above.
-    box(length * 0.42, 0.08, width * 0.74, spec.trim, -length * 0.1, spec.halfHeight + 0.05, 0, false),
+    box(length * 0.42, 0.08, width * 0.74, spec.trim, -length * 0.1, spec.halfHeight + 0.05, 0),
     // A spare wheel on the back door.
-    box(0.14, spec.wheelRadius * 1.6, spec.wheelRadius * 1.6, TYRE, -spec.halfLength - 0.07, bodyY + bodyHeight * 0.3, 0, false),
+    box(0.14, spec.wheelRadius * 1.6, spec.wheelRadius * 1.6, TYRE, -spec.halfLength - 0.07, bodyY + bodyHeight * 0.3, 0),
     ...doors(spec, length * 0.44, bodyHeight * 0.56, bodyY, 0.92, true),
     ...lamps(spec, bodyY + bodyHeight * 0.24),
   ];
@@ -505,10 +498,10 @@ function buggy(spec: VehicleSpec): VehicleBox[] {
     box(length * 0.2, height * 0.36, width * 0.55, spec.trim, -spec.halfLength + length * 0.06, panY + panHeight * 0.5, 0),
   ];
   for (const side of [1, -1]) {
-    boxes.push(box(0.14, height * 0.46, width * 0.24, spec.trim, -length * 0.06, panY + panHeight * 0.7, side * width * 0.18, false));
+    boxes.push(box(0.14, height * 0.46, width * 0.24, spec.trim, -length * 0.06, panY + panHeight * 0.7, side * width * 0.18));
     // The cage: an upright each side and a bar across the top of them.
-    boxes.push(box(0.07, height * 0.7, 0.07, METAL, -length * 0.08, panY + panHeight * 0.9, side * width * 0.34, false));
-    boxes.push(box(0.07, 0.07, width * 0.75, METAL, -length * 0.08, panY + panHeight * 0.5 + height * 0.6, 0, false));
+    boxes.push(box(0.07, height * 0.7, 0.07, METAL, -length * 0.08, panY + panHeight * 0.9, side * width * 0.34));
+    boxes.push(box(0.07, 0.07, width * 0.75, METAL, -length * 0.08, panY + panHeight * 0.5 + height * 0.6, 0));
   }
   return [...boxes, ...lamps(spec, panY + panHeight * 0.2)];
 }
@@ -527,8 +520,8 @@ function boat(spec: VehicleSpec): VehicleBox[] {
     box(length * 0.28, hullHeight * 0.94, width * 0.72, spec.paint, length * 0.12, hullY + hullHeight * 0.03, 0),
     box(length * 0.2, hullHeight * 0.88, width * 0.36, spec.paint, spec.halfLength - length * 0.1, hullY + hullHeight * 0.06, 0),
     // The deck, in the trim, so the open cockpit reads as a hole in it.
-    box(length * 0.34, 0.06, width * 0.9, spec.trim, -spec.halfLength + length * 0.17, hullY + hullHeight / 2, 0, false),
-    box(length * 0.05, height * 0.22, width * 0.62, GLASS, -length * 0.02, hullY + hullHeight / 2 + height * 0.11, 0, false),
-    box(length * 0.14, height * 0.18, width * 0.3, spec.trim, -length * 0.14, hullY + hullHeight / 2 + height * 0.09, 0, false),
+    box(length * 0.34, 0.06, width * 0.9, spec.trim, -spec.halfLength + length * 0.17, hullY + hullHeight / 2, 0),
+    box(length * 0.05, height * 0.22, width * 0.62, GLASS, -length * 0.02, hullY + hullHeight / 2 + height * 0.11, 0),
+    box(length * 0.14, height * 0.18, width * 0.3, spec.trim, -length * 0.14, hullY + hullHeight / 2 + height * 0.09, 0),
   ];
 }

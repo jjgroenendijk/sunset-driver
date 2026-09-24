@@ -19,7 +19,7 @@
 import { bloom as bloomNode } from 'three/examples/jsm/tsl/display/BloomNode.js';
 import { lut3D as lut3DNode } from 'three/examples/jsm/tsl/display/Lut3DNode.js';
 import { smaa as smaaNode } from 'three/examples/jsm/tsl/display/SMAANode.js';
-import type { Camera, Object3D, Scene, Texture } from 'three';
+import type { Camera, Matrix4, Object3D, Scene, Texture } from 'three';
 import * as tsl from 'three/tsl';
 
 /**
@@ -257,3 +257,21 @@ export const cos = tsl.cos as unknown as (x: TslNode) => TslNode;
 export const normalView: TslNode = tsl.normalView;
 export const diffuseColor: TslNode = tsl.diffuseColor;
 export const BRDF_Lambert = tsl.BRDF_Lambert as unknown as (input: { diffuseColor: TslNode }) => TslNode;
+
+/**
+ * What the edge pass of `edges.ts` reads the depth with: the view-space z of a
+ * perspective depth, a view-space position from a screen place and a depth,
+ * the size of the drawing buffer in pixels, and a matrix held by reference.
+ */
+export const perspectiveDepthToViewZ = tsl.perspectiveDepthToViewZ as unknown as (
+  depth: TslNode,
+  near: TslNode,
+  far: TslNode,
+) => TslNode;
+export const getViewPosition = tsl.getViewPosition as unknown as (
+  screen: TslNode,
+  depth: TslNode,
+  projectionInverse: TslNode,
+) => TslNode;
+export const screenSize: TslNode = tsl.screenSize;
+export const uniformMatrix = tsl.uniform as unknown as (matrix: Matrix4) => TslNode;

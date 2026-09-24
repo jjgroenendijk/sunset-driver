@@ -17,7 +17,7 @@
  * A payload is built at one of three details (spec sections 9.1, 9.2). Near is
  * the city as the game draws it. Mid is the same, with every building built as
  * a block rather than a generated facade. Far is the ground, the highways and
- * arterials over it and the outlined massing of its buildings: no markings, no
+ * arterials over it and the massing of its buildings: no markings, no
  * minor roads, no plants and no street lamps, because none of them can be told
  * apart from the far ring.
  *
@@ -130,8 +130,6 @@ export interface ChunkPayload {
   ground: GroundAttributes;
   /** The road tiers that run through the chunk, in tier order. */
   roads: PackedRoads[];
-  /** The inverted hulls that outline the buildings, a batch per cell. */
-  outlines: PackedBatch[];
   /** The generated facades, a batch per cell. Empty unless the detail is near; elsewhere a tower is a block. */
   facades: PackedBatch[];
   /** The buildings built as blocks, which past near detail is all of them, a batch per cell. */
@@ -244,7 +242,6 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
     });
   }
 
-  const outlines: PackedPart[] = [];
   const facades: PackedPart[] = [];
   const blocks: PackedPart[] = [];
   const placements = buildChunkBuildings(chunk, lookups.buildings, detail);
@@ -255,7 +252,7 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
   const signs = near ? signsIn(placements, lookups.buildings, lookups.tradeOf) : [];
   const roofs = new Float32Array(placements.length * ROOF_STRIDE);
   for (const [i, placed] of placements.entries()) {
-    writeRoof(roofs, i * ROOF_STRIDE, placed.hull, placed.matrix);
+    writeRoof(roofs, i * ROOF_STRIDE, placed.shell, placed.matrix);
     const matrix = new Float32Array(placed.matrix.toArray());
     if (placed.batch === 'facade') facades.push({ geometry: packFacade(takeGeometry(placed.shell)), matrix });
     else blocks.push({ geometry: takeGeometry(placed.shell), matrix });
@@ -264,7 +261,6 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
     if (placed.dress !== undefined) blocks.push({ geometry: takeGeometry(placed.dress), matrix });
     // The footing under a building on a slope is drawn with the blocks as well.
     if (placed.footing !== undefined) blocks.push({ geometry: takeGeometry(placed.footing), matrix });
-    outlines.push({ geometry: takeGeometry(placed.hull), matrix });
   }
 
   const plants = far ? noPlants() : packPlants(chunk, lookups.plants);
@@ -276,7 +272,6 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
     bounds: chunk.bounds,
     ground: buildGroundAttributes(chunk, lookups.ground, far ? FAR_GROUND_STEP : 1),
     roads,
-    outlines: packCells(grid, outlines),
     facades: packCells(grid, facades),
     blocks: packCells(grid, blocks),
     roofs,
@@ -304,7 +299,7 @@ export function payloadDrawCalls(payload: ChunkPayload): number {
     calls += tier.surface.length;
     if (tier.markings.length > 0) calls++;
   }
-  calls += payload.outlines.length + payload.facades.length + payload.blocks.length;
+  calls += payload.facades.length + payload.blocks.length;
   const matrices = payload.plants.matrices;
   const plantAt = (i: number): { x: number; y: number } => ({
     x: matrices[i * 16 + 12] as number,
@@ -356,7 +351,6 @@ export function payloadTransfers(payload: ChunkPayload): ArrayBuffer[] {
     take(tier.markingNormals);
     take(tier.markingTints);
   }
-  payload.outlines.forEach(takeBatch);
   payload.facades.forEach(takeBatch);
   payload.blocks.forEach(takeBatch);
   take(payload.roofs);

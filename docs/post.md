@@ -1,13 +1,14 @@
 # Post and the colour grade
 
-The gotchas of the post chain: `src/render/post.ts`, `grade.ts` and `lut-upload.ts`. `spec.md`
-section 10.6 is the design. How a frame reaches the chain — the streaming and the batches — is in
-`docs/streaming.md`, what a quality tier moves in `docs/rendering.md`, and what lights it in
-`docs/lighting.md`.
+The gotchas of the post chain: `src/render/post.ts`, `edges.ts`, `grade.ts` and `lut-upload.ts`.
+`spec.md` section 10.6 is the design. How a frame reaches the chain — the streaming and the
+batches — is in `docs/streaming.md`, what a quality tier moves in `docs/rendering.md`, and what
+lights it in `docs/lighting.md`.
 
 ## Contents
 
 - The chain and its order
+- The ink
 - The graphs
 - The grade
 - The cube on the GPU
@@ -26,6 +27,32 @@ section 10.6 is the design. How a frame reaches the chain — the streaming and 
 - TSL's chained `mix` takes the receiver as the factor: `a.mix(b, t)` compiles to `mix(b, t, a)`. It
   reads like a blend and is not one. Use the free `mix(a, b, t)` from `tsl.ts`. `smoothstep` chains
   the same way.
+
+## The ink
+
+- `inked` (`edges.ts`) draws every ink line of the art style (`docs/art-style.md`), on the exposed
+  scene colour, before the bloom. There are no outline meshes: the inverted hulls round the
+  buildings and the vehicles were removed when the pass came in.
+- It reads the depth and nothing else. On any plane the inverse of view depth is linear across the
+  screen, so its second difference over a pixel and its two neighbours is zero on a flat face,
+  however steep. A large value is a silhouette, a small one a crease. The measure is divided by
+  the pixel's own inverse depth, so one threshold serves near and far.
+- Both pixels of a depth step see the step, so a silhouette is two pixels wide at any render scale.
+  A crease is drawn at `CREASE_INK`, which reads thinner. Past `FADE` the ink thins to `FAR_INK`.
+- What writes no depth draws no line. The sky writes none. The road markings are transparent and
+  write none, so a lane line is not a step over the road (`createMarkingMaterial`). A seam on a
+  flat surface has no depth step, so it must be painted into the material.
+- The See-through cut (`cutaway.ts`) dithers holes into a building, and every hole is a depth step.
+  So the pass asks `cutaway.ghostAlong` about each sample. A pair with a ghosted pixel in it
+  measures nothing, and a ghosted pixel draws nothing. Reading a ghosted neighbour as the centre
+  instead drew the edge of the cut as a line. Nothing under `GHOST_FLOOR` counts as ghosted: the
+  cone takes in the street in front of the player, and its cars lost their ink.
+- The cone is tested once per pixel, along the centre's ray, and each sample adds only its depth.
+  A full cone test at every sample was 0.5 ms of a 0.6 ms pass at 1600x900 on an M-series GPU.
+  The pass is in the `post RTT` line of `render-profile.ts --passes`: on seed 7 that line is 0.49 ms
+  against 0.14 ms without the pass, and 0.69 against 0.21 at a pixel ratio of 2.
+- The thresholds are tuned for the game camera. A lower camera sees planes at a grazing angle, where
+  depth precision runs out and a flat road can start to draw creases. Look before moving them.
 
 ## The graphs
 

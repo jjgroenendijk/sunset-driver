@@ -52,7 +52,6 @@ for (let cy = home.cy - RADIUS; cy <= home.cy + RADIUS; cy++) {
       }
       hulls.set(one.building.id, { building: one.building, hull: convexHull(points) });
       one.shell.dispose();
-      one.hull.dispose();
     }
   }
 }

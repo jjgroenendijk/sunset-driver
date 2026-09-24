@@ -77,7 +77,7 @@ const KINDS: readonly CornerProp[] = ['amp', 'cart', 'stall', 'dog'];
 /** The geometry of one prop, with its colours on its vertices. */
 export function propGeometry(kind: CornerProp): BufferGeometry {
   return merged(
-    PROP_BOXES[kind].map(([length, height, width, x, y, z, colour]) => coloured(boxOf({ length, height, width, x, y, z, colour }, 0), colour)),
+    PROP_BOXES[kind].map(([length, height, width, x, y, z, colour]) => coloured(boxOf({ length, height, width, x, y, z, colour }), colour)),
   );
 }
 

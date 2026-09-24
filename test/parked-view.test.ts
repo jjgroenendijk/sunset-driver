@@ -14,7 +14,7 @@ describe('the parked cars, drawn (spec section 13.1)', () => {
     // The warm-up draws each empty pool once; a program built without instance colours draws white.
     const view = new ParkedView(new ParkedCars(9, baysOf('home', 40)));
     const pools = view.group.children as InstancedMesh[];
-    for (let i = 0; i < pools.length; i += 3) {
+    for (let i = 0; i < pools.length; i += 2) {
       const paint = pools[i] as InstancedMesh;
       expect(paint.instanceColor?.count).toBe(paint.instanceMatrix.count);
     }

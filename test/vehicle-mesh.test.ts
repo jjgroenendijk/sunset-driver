@@ -1,7 +1,7 @@
-import { BackSide, Box3, Mesh, type Material, type MeshStandardMaterial } from 'three';
+import { Box3, Mesh, type MeshStandardMaterial } from 'three';
 import { describe, expect, it } from 'vitest';
 import { createVehicleState, isAircraft, ROSTER, specOf, VEHICLE_CLASSES, type VehicleClass } from '../src/sim/vehicle.ts';
-import { VehicleModel, VEHICLE_OUTLINE_WIDTH } from '../src/render/vehicle.ts';
+import { VehicleModel } from '../src/render/vehicle.ts';
 import {
   LAMP,
   SEAT,
@@ -13,8 +13,7 @@ import {
 } from '../src/render/vehicle-mesh.ts';
 
 /**
- * The models of spec sections 10.1 and 11.3: one silhouette per class, and the
- * outline round it.
+ * The models of spec sections 10.1 and 11.3: one silhouette per class.
  *
  * Nothing here needs a renderer, so the shapes are measured the way the
  * building meshes are: build the model and read the geometry back.
@@ -29,11 +28,6 @@ function meshes(model: VehicleModel): Mesh[] {
     if (object instanceof Mesh) found.push(object);
   });
   return found;
-}
-
-/** The dark shells drawn back faces only: the outline of spec section 10.1. */
-function outlines(model: VehicleModel): Mesh[] {
-  return meshes(model).filter((mesh) => (mesh.material as Material).side === BackSide);
 }
 
 describe('the vehicle models', () => {
@@ -73,26 +67,6 @@ describe('the vehicle models', () => {
       return `${(bounds.max.x - bounds.min.x).toFixed(2)}x${(bounds.max.z - bounds.min.z).toFixed(2)}x${(bounds.max.y - bounds.min.y).toFixed(2)}`;
     });
     expect(new Set(shapes).size).toBe(shapes.length);
-  });
-
-  it('rims each mass with an outline and leaves the detail inside it alone', () => {
-    for (const cls of VEHICLE_CLASSES) {
-      const model = new VehicleModel(cls);
-      const masses = vehicleBoxes(ROSTER[cls]).filter((part) => part.outlined);
-      const rims = outlines(model);
-      expect(rims.length, cls).toBe(masses.length);
-      expect(rims.length, cls).toBeGreaterThan(0);
-      // Every outline is its mass grown by the width of the line, so it rims
-      // the mass rather than hiding it; a hull the same size would z-fight.
-      for (let i = 0; i < masses.length; i++) {
-        const mass = masses[i] as (typeof masses)[number];
-        const rim = new Box3().setFromObject(rims[i] as Mesh);
-        expect(rim.max.x - rim.min.x, cls).toBeCloseTo(mass.length + 2 * VEHICLE_OUTLINE_WIDTH, 5);
-        expect(rim.max.y - rim.min.y, cls).toBeCloseTo(mass.height + 2 * VEHICLE_OUTLINE_WIDTH, 5);
-        expect(rim.max.z - rim.min.z, cls).toBeCloseTo(mass.width + 2 * VEHICLE_OUTLINE_WIDTH, 5);
-      }
-      model.dispose();
-    }
   });
 
   it('paints every class in the colour its row picked', () => {

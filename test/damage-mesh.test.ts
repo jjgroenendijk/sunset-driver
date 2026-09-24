@@ -58,7 +58,7 @@ describe('the panels of a shape', () => {
   it('reads the panel off where the box stands', () => {
     const spec = ROSTER.saloon;
     const at = (x: number, y: number, z: number): Panel | undefined =>
-      panelAt(spec, { length: 0.1, height: 0.1, width: 0.1, x, y, z, colour: 0, outlined: false, panel: undefined });
+      panelAt(spec, { length: 0.1, height: 0.1, width: 0.1, x, y, z, colour: 0, panel: undefined });
     expect(at(spec.halfLength * 0.9, -0.2, 0)).toBe('front');
     expect(at(-spec.halfLength * 0.9, -0.2, 0)).toBe('rear');
     expect(at(0, spec.halfHeight * 0.6, 0)).toBe('roof');
@@ -106,7 +106,7 @@ describe('a damaged vehicle model', () => {
     model.dispose();
   });
 
-  it('takes a lost panel out of the model, with the outline round it', () => {
+  it('takes a lost panel out of the model', () => {
     const model = new VehicleModel('saloon');
     const shown = (): number => meshes(model).filter((mesh) => mesh.visible).length;
     model.set(createVehicleState(specOf('saloon')));

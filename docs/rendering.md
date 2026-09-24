@@ -239,13 +239,11 @@ post chain and the colour grade in `docs/post.md`. The look all of it must keep 
   building shells, the lamp masts and the lights are put on it. What a grazing eye sees in water is
   the sky and what stands tall behind it; the ground, the roads, their markings, the plants, the
   traffic and the crowd lie flat along the shore, where the surface gives back two per cent of what
-  falls on it. The outline hulls stay out too: a hull is a rim 0.35 m wide around a shell the mirror
-  draws anyway, and it is a third of a chunk's building batches. On seed `1`, on the road beside the
-  river at (-295, 115), that takes the second pass from 68 draw calls and 1.38 M triangles to 19 and
-  1.22 M. The layer is added to an object, never set on it, so nothing is ever in the mirror alone
-  and a new object that says nothing is simply left out of it. The lights are the exception that has
-  to be carried: a pass lit by a different set of lights than the view builds every material's
-  shader a second time.
+  falls on it. The mirror draws no ink: the edge pass runs once, on the finished frame. The layer
+  is added to an object, never set on it, so nothing is ever in the mirror alone and a new object
+  that says nothing is simply left out of it. The lights are the exception that has to be carried:
+  a pass lit by a different set of lights than the view builds every material's shader a second
+  time.
 - The pass a session never runs is a pass it never compiles. An inland session first shows the sheet
   when the player reaches the sea, and that frame compiled every material again for the mirror:
   about 1.4 s, on a frame the player is driving through. `WaterSurface.show`, through

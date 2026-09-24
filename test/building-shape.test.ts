@@ -1,17 +1,11 @@
-import { Vector3, type BufferAttribute } from 'three';
 import { describe, expect, it } from 'vitest';
-import { ringArea } from '../src/core/ring.ts';
 import {
   boxesOf,
-  ringOf,
   shapeOf,
   type BuildingPlan,
   type BuildingShape,
   type ShapeBox,
 } from '../src/render/building-shape.ts';
-import { buildChunkBuildings, type BuildingPlacement } from '../src/render/building-mesh.ts';
-import { buildingOf, chunkOf, districtOf, lookupOf } from './building-fixture.ts';
-import type { Building } from '../src/world/buildings.ts';
 
 /** A lot big enough that no plan is turned down for want of room. */
 const ROOM = { width: 34, depth: 30, height: 120 };
@@ -104,20 +98,6 @@ describe('the shape a tall building is massed in', () => {
     }
   });
 
-  it('cuts the notch of an L and a U out of the outline, and leaves every other plan its rectangle', () => {
-    const rect = { width: 24, depth: 20 };
-    const box = rect.width * rect.depth;
-    for (const plan of PLANS) {
-      const kind = KIND_OF[plan];
-      const ring = ringOf(shapeOf(seedFor(plan, kind), kind, ROOM), rect);
-      const area = Math.abs(ringArea(ring));
-      if (plan === 'ell' || plan === 'u') expect(area, plan).toBeLessThan(box * 0.92);
-      else expect(area, plan).toBeCloseTo(box, 6);
-      // Wound the way the rectangle is, so every face of the hull looks outward.
-      expect(ringArea(ring), plan).toBeGreaterThan(0);
-    }
-  });
-
   it('lays the same shape on any rectangle, so the silhouette holds at every detail', () => {
     for (const plan of PLANS) {
       const kind = KIND_OF[plan];
@@ -150,68 +130,4 @@ describe('the shape a tall building is massed in', () => {
     expect(storeys.size).toBeGreaterThan(15);
     expect(bays.size).toBeGreaterThan(15);
   });
-});
-
-describe('the outline of a building that is not a box', () => {
-  /** A row of towers on wide lots, so the plans that need room are massed. */
-  function row(count: number): BuildingPlacement[] {
-    const buildings: Building[] = [];
-    for (let i = 0; i < count; i++) {
-      const one = buildingOf(i, 'tower', 1000 + i * 7919);
-      buildings.push({ ...one, skyline: 0.1 });
-    }
-    return buildChunkBuildings(chunkOf(buildings), lookupOf(districtOf('core', 0.7, 'none', 0.8)));
-  }
-
-  it('stands outside the shell and never over the ground the shell leaves open', () => {
-    const built = row(14);
-    let notched = 0;
-    for (const placed of built) {
-      const shell = span(placed.shell, placed);
-      const hull = span(placed.hull, placed);
-      for (const pick of ['x', 'y', 'z'] as const) {
-        expect(hull.max[pick] - shell.max[pick], pick).toBeGreaterThan(0);
-        expect(hull.max[pick] - shell.max[pick], pick).toBeLessThan(1);
-      }
-      // A shape with a notch outlines the notch: the hull of an L covers less
-      // ground than the box around it.
-      const ground = (hull.max.x - hull.min.x) * (hull.max.z - hull.min.z);
-      if (areaOf(placed) < ground * 0.93) notched++;
-    }
-    expect(notched, 'towers whose outline follows a notch').toBeGreaterThan(0);
-  });
-
-  function span(geometry: { getAttribute(name: string): unknown }, placed: BuildingPlacement): { min: Vector3; max: Vector3 } {
-    const position = geometry.getAttribute('position') as BufferAttribute;
-    const at = new Vector3();
-    const min = new Vector3(Infinity, Infinity, Infinity);
-    const max = new Vector3(-Infinity, -Infinity, -Infinity);
-    for (let v = 0; v < position.count; v++) {
-      at.fromBufferAttribute(position, v).applyMatrix4(placed.matrix);
-      min.min(at);
-      max.max(at);
-    }
-    return { min, max };
-  }
-
-  /** The ground the hull's floor covers, from the triangles that lie on it. */
-  function areaOf(placed: BuildingPlacement): number {
-    const position = placed.hull.getAttribute('position') as BufferAttribute;
-    const array = position.array as Float32Array;
-    let floor = Infinity;
-    for (let i = 1; i < array.length; i += 3) floor = Math.min(floor, array[i] as number);
-    let area = 0;
-    for (let t = 0; t + 8 < array.length; t += 9) {
-      if (Math.abs((array[t + 1] as number) - floor) > 1e-3) continue;
-      if (Math.abs((array[t + 4] as number) - floor) > 1e-3) continue;
-      if (Math.abs((array[t + 7] as number) - floor) > 1e-3) continue;
-      const ax = array[t] as number;
-      const az = array[t + 2] as number;
-      area += Math.abs(
-        ((array[t + 3] as number) - ax) * ((array[t + 8] as number) - az) -
-          ((array[t + 6] as number) - ax) * ((array[t + 5] as number) - az),
-      ) / 2;
-    }
-    return area;
-  }
 });

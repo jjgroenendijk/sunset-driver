@@ -67,20 +67,21 @@ describe('a dressed flat roof', () => {
     }
   });
 
-  it('never raises the outline the camera reads, however tall a mast stands', () => {
+  it('never raises the box the camera reads, however tall a mast stands', () => {
     // A mast is six metres of geometry over the roof. It is not in the shell,
-    // so it is not in the hull either, and `roofs.ts` writes the hull: the
-    // camera climbs the building and never the mast.
+    // and `roofs.ts` writes the camera's box from the shell: the camera climbs
+    // the building and never the mast. So some dressing stands well over the
+    // top of the shell, and the box the camera reads stops under it.
     let masts = 0;
+    let over = 0;
     for (const placed of placedRow('tower', RICH, ROW)) {
-      const hull = boxOf(placed.hull);
-      const shell = boxOf(placed.shell);
-      expect(hull.max.y).toBeLessThan(shell.max.y + 1);
       if (placed.dress === undefined) continue;
       const dress = boxOf(placed.dress);
       if (dress.max.y - dress.min.y > 4) masts++;
+      if (dress.max.y > boxOf(placed.shell).max.y + 4) over++;
     }
     expect(masts).toBeGreaterThan(0);
+    expect(over).toBeGreaterThan(0);
   });
 
   it('gives a rich district more roofs with a use on them than a poor one', () => {

@@ -93,8 +93,8 @@ export interface UnitShape {
   couplings: { x: number; y: number; z: number }[];
 }
 
-function box(length: number, height: number, width: number, colour: number, x: number, y: number, z: number, outlined = false): UnitBox {
-  return { length, height, width, x, y, z, colour, outlined };
+function box(length: number, height: number, width: number, colour: number, x: number, y: number, z: number): UnitBox {
+  return { length, height, width, x, y, z, colour };
 }
 
 function beacon(length: number, height: number, width: number, colour: number, x: number, y: number, z: number, phase: 0 | 1): Beacon {
@@ -133,8 +133,8 @@ function engine(): UnitShape {
   const bodyLength = hl + cabBack - 0.05;
   const boxes: UnitBox[] = [
     // The two masses: the cab and the body behind it, the body a little taller.
-    box(hl - cabBack, cabTop + hh, width * 0.96, ENGINE_RED, cabX, (cabTop - hh) / 2, 0, true),
-    box(bodyLength, bodyTop + hh, width, ENGINE_RED, bodyX, (bodyTop - hh) / 2, 0, true),
+    box(hl - cabBack, cabTop + hh, width * 0.96, ENGINE_RED, cabX, (cabTop - hh) / 2, 0),
+    box(bodyLength, bodyTop + hh, width, ENGINE_RED, bodyX, (bodyTop - hh) / 2, 0),
     // The cab roof in white, which is how the crew tell their own engine in a yard.
     box(hl - cabBack - 0.2, 0.08, width * 0.92, CAB_WHITE, cabX, cabTop + 0.04, 0),
     // The windscreen across the nose and a window down each side of the cab.
@@ -165,7 +165,7 @@ function engine(): UnitShape {
   const ladderTail = -hl + 0.6;
   // The ladder stops short of the bar on the cab, so the bar is seen from above.
   const ladderNose = hl - 0.8;
-  boxes.push(box(1.5, 0.36, 1.5, DECK, -hl + 1.1, bodyTop + 0.26, 0, true));
+  boxes.push(box(1.5, 0.36, 1.5, DECK, -hl + 1.1, bodyTop + 0.26, 0));
   boxes.push(box(0.5, 0.3, 0.9, METAL, -hl + 1.1, bodyTop + 0.55, 0));
   boxes.push(box(0.2, ladderY - cabTop, 0.9, DECK, cabBack + 0.6, (ladderY + cabTop) / 2, 0));
   for (const side of [1, -1]) {
@@ -222,9 +222,9 @@ function ambulance(): UnitShape {
   const cabTop = hh - 0.85;
   const boxes: UnitBox[] = [
     // The bonnet, the cab behind it and the box behind that.
-    box(0.85, 0.95, width * 0.9, AMBULANCE_WHITE, hl - 0.425, -hh + 0.475, 0, true),
-    box(1.0, cabTop + hh, width * 0.93, AMBULANCE_WHITE, boxFront + 0.45, (cabTop - hh) / 2, 0, true),
-    box(boxLength, hh * 2, width, AMBULANCE_WHITE, boxX, 0, 0, true),
+    box(0.85, 0.95, width * 0.9, AMBULANCE_WHITE, hl - 0.425, -hh + 0.475, 0),
+    box(1.0, cabTop + hh, width * 0.93, AMBULANCE_WHITE, boxFront + 0.45, (cabTop - hh) / 2, 0),
+    box(boxLength, hh * 2, width, AMBULANCE_WHITE, boxX, 0, 0),
     // The windscreen and the cab's side windows.
     box(0.08, 0.66, width * 0.86, GLASS, boxFront + 0.96, cabTop - 0.42, 0),
     box(0.75, 0.55, width * 0.95, GLASS, boxFront + 0.45, cabTop - 0.42, 0),

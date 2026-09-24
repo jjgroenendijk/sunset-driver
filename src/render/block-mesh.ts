@@ -15,9 +15,8 @@
  * `roof-dress.ts`.
  *
  * The dressing of a roof is built as its own geometry rather than as part of
- * the shell, because the outline hull is drawn around the shell and the camera
- * reads the hull: a mast six metres tall would otherwise be something the
- * camera climbs. It joins the same batch, so it costs no draw call.
+ * the shell, because the camera reads the shell's box (`roofs.ts`): a mast six
+ * metres tall would otherwise be something the camera climbs. It joins the same batch, so it costs no draw call.
  *
  * The local frame is the one {@link BuildingMassing} describes: the middle of
  * the lot at ground level, `x` along the frontage, `z` towards the road, `y` up.
