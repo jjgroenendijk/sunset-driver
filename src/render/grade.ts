@@ -88,9 +88,9 @@ export const GRADE_STEPS = 240;
  * leans the dark toward lavender, as the shadow colour does (`shade.ts`).
  */
 const DAY_GRADE: ColourGrade = {
-  key: 0.8,
+  key: 0.74,
   contrast: 1,
-  saturation: 1.22,
+  saturation: 1.18,
   lift: [0.004, 0.002, 0.01],
   gain: [1.02, 1, 0.97],
 };
