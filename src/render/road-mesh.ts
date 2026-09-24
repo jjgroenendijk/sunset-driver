@@ -154,11 +154,12 @@ export function partsOf(tier: TierGeometry): BufferGeometry[] {
 export function roadDrawCalls(chunk: WorldChunk, cells = 1): number {
   let calls = 0;
   for (const tier of TIER_ORDER) {
+    if (batchOf(tier) !== tier) continue;
     const drawn =
-      chunk.roads.some((run) => run.tier === tier) ||
+      chunk.roads.some((run) => batchOf(run.tier) === tier) ||
       chunk.junctions.some((junction) => pavesAs(junction, tier)) ||
-      chunk.pavement.some((piece) => piece.tier === tier) ||
-      chunk.piers.some((pier) => pier.tier === tier) ||
+      chunk.pavement.some((piece) => batchOf(piece.tier) === tier) ||
+      chunk.piers.some((pier) => batchOf(pier.tier) === tier) ||
       chunk.tram.some((run) => run.tier === tier) ||
       chunk.tramCrossings.some((crossing) => crossing.tier === tier);
     if (!drawn) continue;
@@ -183,6 +184,16 @@ const PORTAL_MARGIN = 1.6;
 const PORTAL_DEPTH = 1.2;
 
 /**
+ * The tier whose batch a tier is drawn in. A ramp is the highway's asphalt and
+ * a few hundred metres long, so it rides in the highway's batch rather than
+ * costing every cell of its chunk a batch of its own; each run is still lofted
+ * and painted from its own tier's section.
+ */
+export function batchOf(tier: RoadTier): RoadTier {
+  return tier === 'ramp' ? 'highway' : tier;
+}
+
+/**
  * Build the road geometry of one chunk, one entry per tier that runs through it.
  * The entries come back in {@link TIER_ORDER}, so two chunks of a world batch
  * their tiers the same way. `surfaceAt` is the surface drawn at a place beside
@@ -193,8 +204,8 @@ export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons, surface
   const junctions = new Map<RoadTier, BufferGeometry[]>();
   for (const junction of chunk.junctions) {
     for (const surface of junctionSurfaces(junction, ribbons, (x, y) => surfaceAt(x, y, junction.tier))) {
-      const list = junctions.get(surface.tier);
-      if (list === undefined) junctions.set(surface.tier, [surface.geometry]);
+      const list = junctions.get(batchOf(surface.tier));
+      if (list === undefined) junctions.set(batchOf(surface.tier), [surface.geometry]);
       else list.push(surface.geometry);
     }
   }
@@ -202,14 +213,14 @@ export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons, surface
   for (const piece of chunk.pavement) {
     const geometry = pavementSurface(piece, chunk.bounds, surfaceAt);
     if (geometry === undefined) continue;
-    const list = pavement.get(piece.tier);
-    if (list === undefined) pavement.set(piece.tier, [geometry]);
+    const list = pavement.get(batchOf(piece.tier));
+    if (list === undefined) pavement.set(batchOf(piece.tier), [geometry]);
     else list.push(geometry);
   }
   const corridors = new Map<RoadTier, BufferGeometry[]>();
   for (const part of buildChunkCorridors(chunk, ribbons, surfaceAt)) {
-    const list = corridors.get(part.tier);
-    if (list === undefined) corridors.set(part.tier, [part.geometry]);
+    const list = corridors.get(batchOf(part.tier));
+    if (list === undefined) corridors.set(batchOf(part.tier), [part.geometry]);
     else list.push(part.geometry);
   }
   // The curve segments the tram runs down. No paint is laid on its lane there,
@@ -217,19 +228,21 @@ export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons, surface
   const tracked = new Set<string>();
   for (const run of chunk.tram) for (let k = 0; k + 1 < run.points.length; k++) tracked.add(`${run.curve}:${run.from + k}`);
   for (const tier of TIER_ORDER) {
-    const runs = chunk.roads.filter((run) => run.tier === tier).flatMap((run) => trimRun(run, ribbons));
+    if (batchOf(tier) !== tier) continue;
+    const runs = chunk.roads.filter((run) => batchOf(run.tier) === tier).flatMap((run) => trimRun(run, ribbons));
     const paved = junctions.get(tier) ?? [];
     // Each piece of pavement is a part of its own, so it goes into the cell it
     // stands in rather than stretching one part over the whole chunk.
     const kerbside = pavement.get(tier) ?? [];
     const carried = corridors.get(tier) ?? [];
     if (runs.length === 0 && paved.length === 0 && kerbside.length === 0 && carried.length === 0) continue;
-    const ground = roadSection(tier);
-    const raised = structureSection(tier);
-    const markings = markingsOf(tier);
     const built: RunGeometry[] = [];
     const paint: PaintBuffers = { positions: [], normals: [], tints: [] };
     for (const run of runs) {
+      // A run of a tier batched with another keeps its own section and paint.
+      const ground = roadSection(run.tier);
+      const raised = structureSection(run.tier);
+      const markings = markingsOf(run.tier);
       const pieces = piecesOf(run, ribbons);
       const off = (segment: number): boolean => run.bridges.includes(segment) || run.tunnels.includes(segment);
       // The joints are one part rather than one each: a bevel is a handful of
@@ -241,7 +254,7 @@ export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons, surface
           stretchesOn(piece, off).map((stretch) => surfaceOf(stretch.piece, stretch.off ? raised : ground)),
         ),
         joints: joints.length > 0 ? [merge(joints)] : [],
-        structures: structuresOf(run, pieces, ribbons, tier, raised),
+        structures: structuresOf(run, pieces, ribbons, run.tier, raised),
       });
       const onTrack = (segment: number): boolean => tracked.has(`${run.curve}:${run.from + segment}`);
       for (const piece of pieces) {
