@@ -17,11 +17,18 @@ the ramps that link the two, and how the graph, the traffic and the picture read
 ## The diamond
 
 - An arterial never meets a highway at grade. `RoadNetwork.add` looks for an interchange of a laid
-  highway on the arterial's line (`interchangesOn`). Two on one line are refused; one goes to
-  `addWithDiamond`. The ramps are laid in the same `add`, never afterwards (spec section 1.2).
+  highway on the arterial's line (`interchangesOn`). One goes to `addWithDiamond`. A line with two
+  or more is cut halfway between each two, and each piece is added with its own diamond
+  (`addPieces`). Refusing that line lost seed 1578463448 18 arterials and its tram. The ramps are
+  laid in the same `add`, never afterwards (spec section 1.2).
+- `add` returns one curve, but a diamond can lay an arterial in two halves, and `addPieces` in
+  more. `takeLaid` gives every curve committed since the last call, and the fill seeds the next
+  generation from all of them. Seeding from the returned curve alone left a half with no seeds.
 - An arterial that ends on the interchange is cut back to a foot on the ground (`cutBack`,
   `HALF_FEET` along the arterial), and two ramps link the foot to the highway. That is half a
-  diamond. The cut-away piece has to lie plainly on the ground and meet nothing.
+  diamond. The cut-away piece has to lie plainly on the ground and meet nothing. The segments on
+  each side of a foot must be inside the arterial's grade (`footRuns`). A foot is a junction, so
+  its plane is levelled, and a segment beside it that climbs too hard makes a step there.
 - An arterial that runs through the interchange is carried over the highway (`overpassDiamond`).
   Its point on the interchange is taken out, so the arterial crosses the highway inside a segment.
   A line straight through the interchange crosses exactly on a highway point, which is no crossing
@@ -30,6 +37,10 @@ the ramps that link the two, and how the graph, the traffic and the picture read
   Each foot of the overpass, `FOOT_MARGIN` further out, takes two ramps: four in all.
 - Where the whole diamond does not fit, the arterial is split at the interchange into two half
   diamonds. Over the first 12 sweep seeds that leaves 8 whole diamonds and 70 halves, 172 ramps.
+- A road asked for `whole` is never split. Only an island link asks. A link that ends on a
+  coastal interchange leaves it for its deck at once, and the few metres of shore hold no foot.
+  There the link meets the highway at grade, the one arterial that does. The sweep allows it
+  (`linkEnd` in `test/seed-roads.test.ts`); without it the island has no arterial.
 - A ramp is a curve of its own tier, `ramp` (`tiers.ts`): one lane, no pavement, no pedestrians,
   no trams, and the arterial's `maxGrade`. `RoadCurve.ramp` names its highway and its arterial and
   says whether it is an exit. It is driven from its first point to its last.

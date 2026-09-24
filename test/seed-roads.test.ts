@@ -242,13 +242,18 @@ sweepSuite('roads', () => {
   });
 
   it('junctions a highway only at an interchange, and never with a minor road', () => {
+    // An island link carries a deck, and ends on the interchange.
+    const linkEnd = (link: RoadCurve, at: number, highway: RoadCurve, i: number): boolean =>
+      link.bridges.length > 0 && (at === 0 || at === link.points.length - 1) && highway.interchanges.includes(i);
     // Spec section 6.2: a highway has junctions only at interchanges and no
     // pedestrians on it. So a street, an alley or a dirt road never shares a
     // point with one — where they cross, the graph makes it an overpass. A
     // highway meets one only at a point it lists, and a ramp only as its own.
     // An arterial never meets one at grade: where it reaches an interchange it
     // takes a diamond (`diamonds.ts`), and it shares a point with a highway
-    // only where the highway ends on it.
+    // only where the highway ends on it. The one exception is an island link
+    // that ends on an interchange with no ground for the foot of a diamond
+    // between the highway and its deck (`RoadNetwork.addWithDiamond`).
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       let complaint: string | undefined;
@@ -280,7 +285,7 @@ sweepSuite('roads', () => {
             } else if (other.road.tier === 'ramp') {
               if (other.road.ramp?.highway !== road.id) fault(`${where}, a ramp of another highway`);
             } else if (other.road.tier !== 'arterial') fault(where);
-            else if (!end) fault(`${where}, at grade`);
+            else if (!end && !linkEnd(other.road, other.at, road, i)) fault(`${where}, at grade`);
           }
         }
       }

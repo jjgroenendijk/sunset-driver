@@ -329,11 +329,15 @@ class RoadTracer extends IslandLinkTrace {
       // A seed beside its parent starts a road of its own, so it has to stand
       // clear of every carriageway; one on its parent starts at a junction.
       if (!seed.onParent && !this.network.clearAt(seed.x, seed.y, plan.tier)) continue;
+      this.network.takeLaid();
       const curve = this.fillRoad(seed, plan, major, across);
       if (curve === undefined) continue;
       laid.push(curve);
       if (seed.depth + 1 < generations) {
-        seedAlong(curve, this.field, (x, y, a) => planAt(x, y, a).spacing, seed.depth + 1, seeds);
+        // Every piece the network laid for the road seeds, not only the one it returned.
+        for (const piece of this.network.takeLaid()) {
+          if (piece.tier === plan.tier) seedAlong(piece, this.field, (x, y, a) => planAt(x, y, a).spacing, seed.depth + 1, seeds);
+        }
       }
     }
     return laid;

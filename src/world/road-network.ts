@@ -85,6 +85,8 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
   private readonly slotsUsed: number[][] = [];
   /** The ids of the ramps laid so far, which no other road may lie on (`onRamp`). */
   private readonly ramps: number[] = [];
+  /** Every road committed since {@link takeLaid} was last asked, ramps and all. */
+  private laid: RoadCurve[] = [];
 
   constructor(size: number, islandOf: (x: number, y: number) => number, cell = CELL, ground: NetworkGround = FLAT_GROUND) {
     super(size);
@@ -111,11 +113,23 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
   add(proposed: RoadDraft, whole = false): RoadCurve | undefined {
     if (proposed.points.length < 2 || selfOverlap(proposed.points, proposed.tier) !== undefined) return undefined;
     const meets = proposed.tier === 'arterial' && proposed.ramp === undefined ? this.interchangesOn(proposed.points) : [];
-    if (meets.length > 1) return undefined;
+    if (meets.length > 1) return this.addPieces(proposed, meets, whole);
     if (meets.length === 1) return this.addWithDiamond(proposed, meets[0] as number, whole);
     const settled = settleCrossings(this, proposed, whole);
     if (settled === undefined || onRamp(this.ramps.map((id) => this.curves[id] as RoadCurve), settled.road)) return undefined;
     return this.commit(settled.road, settled.edits);
+  }
+
+  /**
+   * The roads committed since the last call, which is more than {@link add}
+   * returns: a diamond can lay an arterial in two halves, and an arterial that
+   * reaches two interchanges is laid in pieces. The fill seeds the next
+   * generation from every one of them.
+   */
+  takeLaid(): RoadCurve[] {
+    const out = this.laid;
+    this.laid = [];
+    return out;
   }
 
   /** Write a settled road into the graph: the points the laid roads take for it first, then the road itself. */
@@ -148,6 +162,7 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
       if (node >= 0) (this.nodes[node] as NetworkNode).on.push({ curve: id, index: k });
     }
     this.takeSlots(curve);
+    this.laid.push(curve);
     this.curves.push(curve);
     this.fileSegments(curve);
     const islands: number[] = [];
@@ -219,18 +234,56 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
    * that ends there takes half a diamond. One that runs through is carried
    * over the highway and takes the whole diamond; where it cannot be, each
    * side of it takes half a diamond of its own. Undefined where no ramps fit.
+   *
+   * A road asked for `whole` is never split: half of it laid would reach
+   * nothing it was laid for. Only an island link asks, and a link that ends on
+   * an interchange leaves it for its deck at once, over the few metres of
+   * shore a coastal highway leaves. Where no half diamond fits there, the link
+   * meets the highway at grade, as a junction at an interchange (spec section
+   * 6.2); without it the island is reached by no arterial.
    */
   private addWithDiamond(proposed: RoadDraft, k: number, whole: boolean): RoadCurve | undefined {
     const place = proposed.points[k] as Point;
     const last = proposed.points.length - 1;
-    if (k === 0 || k === last) return this.halfDiamond(proposed, k === 0, place, whole);
+    if (k === 0 || k === last) {
+      const half = this.halfDiamond(proposed, k === 0, place, whole);
+      if (half !== undefined || !whole || proposed.bridges.length === 0) return half;
+      const settled = settleCrossings(this, proposed, whole);
+      if (settled === undefined || onRamp(this.ramps.map((id) => this.curves[id] as RoadCurve), settled.road)) return undefined;
+      return this.commit(settled.road, settled.edits);
+    }
     const over = this.overpassDiamond(proposed, k, place, whole);
-    if (over !== undefined) return over;
+    if (over !== undefined || whole) return over;
     const one = this.halfDiamond(sliceLine(proposed, 0, k), false, place, whole);
     const two = this.halfDiamond(sliceLine(proposed, k, last), true, place, whole);
     if (one === undefined || two === undefined) return one ?? two;
     const length = (curve: RoadCurve): number => curveDistances(curve.points)[curve.points.length - 1] as number;
     return length(two) > length(one) ? two : one;
+  }
+
+  /**
+   * An arterial that reaches more than one interchange, cut halfway between
+   * each two into pieces that reach one each, and each piece laid with its own
+   * diamond. The pieces meet end to end where they were cut. The longest piece
+   * laid comes back.
+   */
+  private addPieces(proposed: RoadDraft, meets: readonly number[], whole: boolean): RoadCurve | undefined {
+    const cuts = [0];
+    for (let i = 0; i + 1 < meets.length; i++) cuts.push(Math.round(((meets[i] as number) + (meets[i + 1] as number)) / 2));
+    cuts.push(proposed.points.length - 1);
+    let longest: RoadCurve | undefined;
+    let best = 0;
+    for (let i = 0; i + 1 < cuts.length; i++) {
+      const piece = sliceLine(proposed, cuts[i] as number, cuts[i + 1] as number) as RoadDraft;
+      const laid = this.add(piece, whole);
+      if (laid === undefined) continue;
+      const length = curveDistances(laid.points)[laid.points.length - 1] as number;
+      if (length > best) {
+        best = length;
+        longest = laid;
+      }
+    }
+    return longest;
   }
 
   /** An arterial that ends on the interchange at `place`, cut back to a foot that takes two ramps. */
@@ -239,7 +292,7 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
     if (meets === undefined) return undefined;
     for (const foot of HALF_FEET) {
       const cut = cutBack(draft, atStart, foot, (p) => this.pointAt(p.x, p.y) !== undefined);
-      if (cut === undefined) continue;
+      if (cut === undefined || !this.footRuns(cut, atStart ? 0 : cut.points.length - 1)) continue;
       const settled = settleCrossings(this, cut, whole);
       if (settled === undefined) continue;
       const road = settled.road;
@@ -291,7 +344,7 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
     const feetAt = [near.index, far.index + (near.index <= far.index ? 1 : 0)];
     for (const f of feetAt) {
       const p = road.points[f] as Point;
-      if (this.pointAt(p.x, p.y) !== undefined) return undefined;
+      if (this.pointAt(p.x, p.y) !== undefined || !this.footRuns(road, f)) return undefined;
     }
     const first = rampsAt(this, road, feetAt[0] as number, meets);
     if (first === undefined) return undefined;
@@ -300,6 +353,17 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
     const curve = this.commit(road, settled.edits);
     this.layRamps([...first, ...second], curve.id);
     return curve;
+  }
+
+  /**
+   * True where the ground carries the arterial on each segment beside its foot
+   * at point `f`. The foot is a point put into a segment, and a short piece of
+   * a segment can climb harder than the whole of it did.
+   */
+  private footRuns(line: DraftLine, f: number): boolean {
+    const p = line.points[f] as Point;
+    for (const q of [line.points[f - 1], line.points[f + 1]]) if (q !== undefined && !this.canRun(q, p, line.tier)) return false;
+    return true;
   }
 
   /** Lay the ramps of an interchange: each landing is made a point of the highway first, then the ramp joins it. */
