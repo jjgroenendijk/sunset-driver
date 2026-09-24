@@ -124,7 +124,11 @@ export interface AmbientVehicle {
   id: number;
   cls: VehicleClass;
   paint: number;
-  /** Lanes out from the middle of the road, 0 nearest it. A road with fewer lanes uses its outermost. */
+  /**
+   * Where across its side of the carriageway it drives, from 0 at the middle
+   * of the road to 1 at the kerb. Each run turns it into a lane of its own
+   * ({@link laneOn}), so vehicles spread evenly over the lanes of every run.
+   */
   lane: number;
   /** The tick of its tour it stands at on tick 0. */
   phase: number;
@@ -358,7 +362,7 @@ export class AmbientTraffic {
   private sample(vehicle: AmbientVehicle, distance: number, out: Sample): void {
     const at = this.sampler.sample(vehicle.tour, distance, this.point);
     const reserved = this.tramLane[at.edge.id] as number;
-    const offset = laneOffset(at.edge, vehicle.lane, reserved > 0, reserved === PLATFORM_LANE);
+    const offset = laneOffset(at.edge, laneOn(at.edge, vehicle.lane), reserved > 0, reserved === PLATFORM_LANE);
     // The right hand of the direction of travel, which is where the lane is.
     out.x = at.x + at.rightX * offset;
     out.y = at.y + at.rightY * offset;
@@ -375,7 +379,8 @@ export class AmbientTraffic {
       const id = vehicles.length;
       const cls = pickClass(TIER_MIX[edge.tier], rng);
       const offset = ((j + rng.range(0.25, 0.75)) / count) * edge.length;
-      const lane = rng.int(0, edge.lanes - 1);
+      // One draw, as a lane index once was: on its home run it gives the same lane.
+      const lane = rng.float();
       const paint = cls === 'bus' ? specOf(cls).paint : (PAINTS[rng.int(0, PAINTS.length - 1)] as number);
       const walk = rngFor(seed, 0, Subsystem.Traffic, hashInts(VEHICLE_STREAM, id));
       const route = walkTour(graph, edge.id, walk, permitOf(cls));
@@ -428,7 +433,18 @@ function mod(value: number, by: number): number {
 }
 
 /**
- * Metres from the centreline to the middle of a lane. The lanes of one
+ * The lane of a run a vehicle drives, from its share of the carriageway. A
+ * narrower run divides the same shares among fewer lanes. Vehicles in
+ * different lanes of a wide road then share a lane of a narrow one only as
+ * often as its lane count forces, and not all on the outermost.
+ */
+export function laneOn(edge: Pick<RoadEdge, 'lanes'>, share: number): number {
+  return Math.min(Math.floor(share * edge.lanes), edge.lanes - 1);
+}
+
+/**
+ * Metres from the centreline to the middle of a lane, an index of this run's
+ * lanes, 0 nearest the middle. The lanes of one
  * direction share the right half of the carriageway evenly, less the parking
  * strip at the kerb, as the markings of `road-section.ts` divide it. An alley
  * and a dirt road have one lane both ways share, and a vehicle keeps to its
@@ -441,7 +457,7 @@ export function laneOffset(edge: Pick<RoadEdge, 'tier' | 'lanes'>, lane: number,
   const spec = TIERS[edge.tier];
   const inner = tram ? TRAM_LANE.halfWidth + (platform ? TRAM_LANE.platform : 0) : 0;
   const width = (spec.width / 2 - spec.parking - inner) / edge.lanes;
-  return inner + (Math.min(lane, edge.lanes - 1) + 0.5) * width;
+  return inner + (lane + 0.5) * width;
 }
 
 /** The flag of a run that carries a tram stop, whose island platform the traffic keeps off. */

@@ -29,7 +29,9 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 - `src/sim/traffic.ts` is the ambient traffic of spec sections 5.3 and 13.1. `AmbientTraffic`
   places the vehicles once for a world: per directed edge, the tier's `TierSpec.density` thinned by
   `ZONE_TRAFFIC` and the district's density, in a lane on the right of the carriageway that
-  `laneOffset` divides as `road-section.ts` paints it. Each vehicle drives the closed tour
+  `laneOffset` divides as `road-section.ts` paints it. A vehicle keeps a share of the carriageway,
+  not a lane index: `laneOn` turns it into a lane of each run, so a narrow run spreads the vehicles
+  of a wide one over all its lanes. Each vehicle drives the closed tour
   `traffic-tour.ts` walks for it, at `CRUISE` of the speed limit of each edge. No tour reads
   another, so two tours can put two vehicles on the same ground. Near the player, giving way
   (below) keeps them apart.
