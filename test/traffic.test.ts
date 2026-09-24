@@ -3,6 +3,7 @@ import {
   AmbientTraffic,
   footprintsTouch,
   laneOffset,
+  laneOn,
   permitOf,
   SMOOTH,
   type AmbientPose,
@@ -93,7 +94,7 @@ describe('ambient traffic (spec sections 5.3, 13.1)', () => {
         const dy = (b.y - a.y) / length;
         // The grid's roads are straight, so the lane is a fixed distance to the right.
         const right = -(at.x - a.x) * dy + (at.y - a.y) * dx;
-        expect(right, `vehicle ${vehicle.id} on ${edge.tier}`).toBeCloseTo(laneOffset(edge, vehicle.lane), 6);
+        expect(right, `vehicle ${vehicle.id} on ${edge.tier}`).toBeCloseTo(laneOffset(edge, laneOn(edge, vehicle.lane)), 6);
         expect(Math.cos(at.heading) * dx + Math.sin(at.heading) * dy).toBeGreaterThan(0.999);
         expect(at.speed).toBeLessThanOrEqual(edge.speedLimit * 1.001);
         // A tour that meets no light drives at its driver's cruising speed all
@@ -143,6 +144,32 @@ describe('ambient traffic (spec sections 5.3, 13.1)', () => {
       }
     }
     expect(near.length).toBeLessThan(traffic.vehicles.length);
+  });
+
+  it('spreads the vehicles evenly over the lanes of every run, narrow ones too', () => {
+    // A vehicle from each lane of a four-lane road keeps a lane apart from half of them on a two-lane one.
+    const wide = { lanes: 4 };
+    const narrow = { lanes: 2 };
+    const shares = [0.1, 0.35, 0.6, 0.85];
+    expect(shares.map((s) => laneOn(wide, s))).toEqual([0, 1, 2, 3]);
+    expect(shares.map((s) => laneOn(narrow, s))).toEqual([0, 0, 1, 1]);
+    // Over the grid, each lane of a run carries its share of the vehicles that drive it.
+    const graph = gridTrafficRoads().graph;
+    const tally = new Map<number, number[]>();
+    for (const seed of SEEDS) {
+      for (const vehicle of gridTraffic(seed).vehicles) {
+        for (const id of vehicle.tour.edges) {
+          const edge = graph.edges[id] as (typeof graph.edges)[number];
+          const counts = tally.get(edge.lanes) ?? new Array<number>(edge.lanes).fill(0);
+          counts[laneOn(edge, vehicle.lane)] = (counts[laneOn(edge, vehicle.lane)] as number) + 1;
+          tally.set(edge.lanes, counts);
+        }
+      }
+    }
+    for (const [lanes, counts] of tally) {
+      const total = counts.reduce((s, c) => s + c, 0);
+      for (const count of counts) expect(Math.abs(count / total - 1 / lanes), `${lanes} lanes: ${counts.join(', ')}`).toBeLessThan(0.1);
+    }
   });
 
   it('says two footprints touch only when they overlap or nearly do', () => {
