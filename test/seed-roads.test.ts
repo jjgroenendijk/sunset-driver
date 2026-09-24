@@ -420,7 +420,7 @@ sweepSuite('roads', () => {
       // Every sample of a zone, and the ones on the ground its fill was asked
       // to cover. Ground the fill was never asked to cover only ever puts the
       // median up, so the floor reads all of it and the ceiling the rest.
-      const samples: Partial<Record<Zone, number[]>> = {};
+      const samples: Partial<Record<Zone, Sample[]>> = {};
       const filled: Partial<Record<Zone, number[]>> = {};
       for (let iy = 0; iy < hf.gridSize; iy += 8) {
         for (let ix = 0; ix < hf.gridSize; ix += 8) {
@@ -432,7 +432,7 @@ sweepSuite('roads', () => {
           if (land.massAt(x, y) !== mainland) continue;
           const zone = zoneAt(zones, x, y);
           const half = grid.nearest(x, y);
-          (samples[zone] ??= []).push(half);
+          (samples[zone] ??= []).push({ ix: ix / 8, iy: iy / 8, half });
           const reach = climbable[MINOR_BY_ZONE[zone].tier] as Uint8Array;
           if (reach[iy * hf.gridSize + ix] !== 1) continue;
           // An airfield and its blend are ground the roads keep off (spec section 8.4).
@@ -446,12 +446,15 @@ sweepSuite('roads', () => {
         const covered = filled[zone] ?? [];
         const [lo, hi] = RANGE[zone];
         // A zone can be a sliver on one seed; too few samples say nothing. A
-        // zone smaller than one block of its own widest spacing has no block to
-        // measure either: the two wilderness corners of one small map were
-        // 31 samples, and one road along a row of them halved the median.
+        // piece of a zone smaller than one block of its own widest spacing has
+        // no block to measure either: the two wilderness corners of one small
+        // map were 31 samples, and one road along a row of them halved the
+        // median. Two such corners are no bigger a block for being two
+        // (seed 3749529874), so the floor reads only the pieces a block fits in.
         const spacing = MINOR_BY_ZONE[zone];
         const block = (spacing.across[1] * spacing.along[1]) / (8 * hf.cellSize) ** 2;
-        if (found.length >= Math.max(20, block)) expect(median(found), `seed ${seed}: ${zone} blocks`).toBeGreaterThanOrEqual(lo);
+        const whole = piecesOf(found, block);
+        if (whole.length >= 20) expect(median(whole), `seed ${seed}: ${zone} blocks`).toBeGreaterThanOrEqual(lo);
         if (covered.length >= 20) expect(median(covered), `seed ${seed}: ${zone} blocks`).toBeLessThanOrEqual(hi);
       }
     }
@@ -674,6 +677,42 @@ const CATCHMENT = 2;
  * place, on ground a road can climb to. A site on a knoll no road reaches
  * (issue #399) seeds no fill, so the ground around it is nobody's blocks.
  */
+/** One sample of the block measure: its place on the sample grid and the metres to the nearest road. */
+interface Sample {
+  ix: number;
+  iy: number;
+  half: number;
+}
+
+/**
+ * The metres to the nearest road of every sample in a piece of at least `size`
+ * samples, where a piece is the samples joined through their eight neighbours.
+ */
+function piecesOf(samples: readonly Sample[], size: number): number[] {
+  const at = new Map<string, number>();
+  samples.forEach((s, i) => at.set(`${s.ix},${s.iy}`, i));
+  const seen = new Uint8Array(samples.length);
+  const kept: number[] = [];
+  for (let i = 0; i < samples.length; i++) {
+    if (seen[i] === 1) continue;
+    seen[i] = 1;
+    const piece = [i];
+    for (let k = 0; k < piece.length; k++) {
+      const s = samples[piece[k] as number] as Sample;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const j = at.get(`${s.ix + dx},${s.iy + dy}`);
+          if (j === undefined || seen[j] === 1) continue;
+          seen[j] = 1;
+          piece.push(j);
+        }
+      }
+    }
+    if (piece.length >= size) for (const j of piece) kept.push((samples[j] as Sample).half);
+  }
+  return kept;
+}
+
 function nearADistrict(w: WorldDescription, zone: Zone, x: number, y: number, served: (d: District) => boolean): boolean {
   const reach = CATCHMENT * (MINOR_BY_ZONE[zone].along[1] as number);
   return w.districts.some((d) => d.zone === zone && Math.hypot(d.x - x, d.y - y) <= reach && served(d));
