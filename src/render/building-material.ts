@@ -127,15 +127,6 @@ const SLATE = 0x6f6d9a;
 const WATER = 0x5fd0c8;
 const PAINT = 0xf4efe2;
 
-/**
- * What the block's colour is scaled by, because it is lit by the Lambert model
- * rather than the physical one (issue #639). The physical model takes the
- * Fresnel share off the diffuse light and adds a grey specular, so the same
- * colour comes out darker under it. At this scale a noon frame of seed
- * `sunset` reads within 2 % of the physical one.
- */
-const LAMBERT_MATCH = 0.76;
-
 /** Metres of one rib of the corrugated metal a roller door and a metal roof are. */
 const RIB_METRES = 0.35;
 
@@ -379,7 +370,7 @@ function createBlockMaterial(night: TslNode, late: TslNode, beacon: TslNode): Bl
       };
       chain = chain === undefined ? If(whole.equal(id), body) : chain.ElseIf(whole.equal(id), body);
     }
-    return surface.mul(LAMBERT_MATCH);
+    return surface;
   })();
 
   // How wide one column of windows stands on whichever part this is, and which
