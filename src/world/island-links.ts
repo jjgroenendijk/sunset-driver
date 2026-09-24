@@ -9,6 +9,7 @@
  */
 import { dist } from '../core/math.ts';
 import { HighwayTrace } from './highways.ts';
+import { DRY_MARGIN } from './road-ground.ts';
 import { ANCHOR_REACH, ARTERIAL, STREET } from './road-trace.ts';
 import { selfOverlap } from './self-overlap.ts';
 import type { Island, Point } from './types.ts';
@@ -24,6 +25,18 @@ const LINK_TRIES = 4;
  * of {@link ANCHOR_REACH} and higher than an arterial may climb to.
  */
 const LAST_REACH = ANCHOR_REACH * 1.5;
+/** Metres between the samples that find where a deck leaves the shore. */
+const SHORE_STEP = 2;
+/** Least metres of dry ground between a head and the water worth a point of its own. */
+const MIN_SHORE = 4;
+/**
+ * Metres a link that would end at its far head runs on past it: the ramp of a
+ * deck lifted the full clearance over a shore at sea level, at an arterial's
+ * grade.
+ */
+const RUN_ON = 60;
+/** Metres between the points of that run. */
+const RUN_ON_STEP = 20;
 
 export abstract class IslandLinkTrace extends HighwayTrace {
 
@@ -191,13 +204,23 @@ export abstract class IslandLinkTrace extends HighwayTrace {
         } else approach.reverse();
       }
       if (selfOverlap([...approach, far], 'arterial') !== undefined) continue;
-      const points = [...approach, ...this.landOnIsland(far, island, [near, far])];
+      const landing = this.landOnIsland(far, island, [near, far]);
       // The span is a deck because it stands over water. Where the two heads
       // end up on dry, gentle ground the whole way between them — a strait that
       // runs dry at its narrowest — the link is a road on the ground, and the
       // structures it does need are found with the rest (issue #371).
       const span = this.probe(near.x, near.y, far.x, far.y);
-      const bridges = span.dry && span.grade <= ARTERIAL.maxGrade ? [] : [approach.length - 1];
+      const onGround = span.dry && span.grade <= ARTERIAL.maxGrade;
+      // A deck over water is lifted clear of the sea and ramps down each side
+      // on line the road already has (`water-lift.ts`). A head on the network,
+      // or at the end of the link, is a point no ramp may raise, so the dry
+      // ground between each head and the water is given points of its own, and
+      // a link that ends at its far head runs on past it (issue #676, D1).
+      const shore = onGround ? {} : this.waterline(near, far);
+      const tail = landing.length > 1 || onGround ? landing : this.runOn(near, far);
+      const deck = [...(shore.leave === undefined ? [] : [shore.leave]), ...(shore.meet === undefined ? [] : [shore.meet])];
+      const points = [...approach, ...deck, ...tail];
+      const bridges = onGround ? [] : [approach.length - 1 + (shore.leave === undefined ? 0 : 1)];
       if (!this.structuresAtSlots(points, bridges)) continue;
       // A link cut short of its deck reaches no island, so it is laid whole or not at all.
       if (this.addCurve('arterial', points, bridges, [], true) !== undefined) return true;
@@ -272,6 +295,58 @@ export abstract class IslandLinkTrace extends HighwayTrace {
       else further.push([near, far]);
     }
     return { open, joined, further };
+  }
+
+  /**
+   * The two places the straight deck from `near` to `far` leaves and meets
+   * the water, a step back on the dry ground each side: points the deck can be
+   * split at, so the dry ground under it carries a ramp and not a deck. Each
+   * is left out where it stands too close to its head to be worth a point.
+   */
+  private waterline(near: Point, far: Point): { leave?: Point; meet?: Point } {
+    const run = dist(near.x, near.y, far.x, far.y);
+    const steps = Math.ceil(run / SHORE_STEP);
+    const at = (t: number): Point => ({ x: near.x + (far.x - near.x) * t, y: near.y + (far.y - near.y) * t });
+    let first = -1;
+    let last = -1;
+    for (let k = 1; k < steps; k++) {
+      const p = at(k / steps);
+      if (this.hf.sample(p.x, p.y) >= this.seaLevel + DRY_MARGIN) continue;
+      if (first < 0) first = k;
+      last = k;
+    }
+    if (first < 0) return {};
+    const leave = at(Math.max(0, first - 2) / steps);
+    const meet = at(Math.min(steps, last + 2) / steps);
+    // A split turns that stretch of deck into road on the ground, so it keeps
+    // off the roads it passes as any step on the ground does.
+    const keeps = (p: Point, head: Point, a: Point, b: Point): boolean =>
+      dist(p.x, p.y, head.x, head.y) >= MIN_SHORE && this.acceptAnchor(p) && this.network.stepOk(a, b, 'arterial');
+    return {
+      ...(keeps(leave, near, near, leave) ? { leave } : {}),
+      ...(keeps(meet, far, meet, far) ? { meet } : {}),
+    };
+  }
+
+  /**
+   * The far head, and the line carried straight on past it over dry ground
+   * the tier may drive, out to {@link RUN_ON}: the room a ramp needs to come
+   * down on where the link would otherwise end at its deck.
+   */
+  private runOn(near: Point, far: Point): Point[] {
+    const run = dist(near.x, near.y, far.x, far.y);
+    const out: Point[] = [far];
+    if (run === 0) return out;
+    const ux = (far.x - near.x) / run;
+    const uy = (far.y - near.y) / run;
+    for (let s = RUN_ON_STEP; s <= RUN_ON; s += RUN_ON_STEP) {
+      const prev = out[out.length - 1] as Point;
+      const p = { x: far.x + ux * s, y: far.y + uy * s };
+      if (!this.acceptAnchor(p) || !this.canRun(prev.x, prev.y, p.x, p.y, ARTERIAL.maxGrade)) break;
+      if (!this.network.stepOk(prev, p, 'arterial')) break;
+      out.push(p);
+    }
+    return out;
   }
 
   /** The far side of a bridge, carried on to the nearest district of the island it reached. */
