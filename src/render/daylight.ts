@@ -21,6 +21,7 @@
 import { Color, Vector3 } from 'three';
 import { clamp, smoothstep } from '../core/math.ts';
 import { TICKS_PER_DAY } from '../sim/clock.ts';
+import { shadowColourAt, shadowLight } from './shade.ts';
 
 /**
  * Radians the sun's circle is tilted from straight overhead. The noon sun
@@ -75,9 +76,13 @@ export const BEACON_CYCLE = 90;
  */
 const LAMP_ALTITUDE = 0.12;
 
-/** The sun's colour on the horizon and at its highest. */
+/**
+ * The sun's colour on the horizon and at its highest. The fill of the shade is
+ * blue (`shade.ts`), and the lit side takes it as well, so the noon sun is a
+ * warm yellow and the two sum to a warm white.
+ */
 const SUN_LOW = 0xff7a35;
-const SUN_HIGH = 0xfff1d8;
+const SUN_HIGH = 0xffe39a;
 
 /**
  * The sun's strength at its highest, in the renderer's units. With the day fill
@@ -87,15 +92,12 @@ const SUN_HIGH = 0xfff1d8;
 const SUN_INTENSITY = 1.25;
 
 /**
- * Sky light: the colour from above and the bounce from below, by day and by
- * night. The day sky is a pale lavender, so that with the warm sun the light on
- * a lit surface sums to a warm white. A bluer sky outweighed the sun on blue
- * and turned the cream pavements grey.
+ * How much of the sky light's luma the bounce from below carries. The fill
+ * takes the shadow colour of the hour (`shade.ts`) from above and a dimmer
+ * copy of it from below, so a wall in shade reads as the same colour as the
+ * ground in shade, only darker.
  */
-const SKY_FILL_DAY = 0xc6cce0;
-const GROUND_FILL_DAY = 0x6b5e48;
-const SKY_FILL_NIGHT = 0x5a5a96;
-const GROUND_FILL_NIGHT = 0x3a3440;
+const GROUND_SHARE = 0.6;
 
 /**
  * How strong that fill is by day and at midnight. A clear sky is a light as
@@ -107,8 +109,8 @@ const GROUND_FILL_NIGHT = 0x3a3440;
  * colours of the palette: at the strength the dark asphalt once needed, the
  * night street came out a bright blue.
  */
-const FILL_DAY = 2.0;
-const FILL_NIGHT = 0.85;
+const FILL_DAY = 1.15;
+const FILL_NIGHT = 0.1;
 
 /** The haze the far chunks fade into: by day, at dusk and at night. */
 const HAZE_DAY = 0x9ab0c0;
@@ -127,7 +129,15 @@ export interface Daylight {
   sunColour: Color;
   /** 0 once the sun is under the horizon. */
   sunIntensity: number;
-  /** The sky light that fills the shadows: from above, from below, and how strong. */
+  /**
+   * The colour a shadow takes at this hour (`shade.ts`): lavender by day, rose
+   * at the golden hour, violet at dusk, navy at night.
+   */
+  shadow: Color;
+  /**
+   * The sky light that fills the shadows: from above, from below, and how
+   * strong. It is the shadow colour, at a luma of 1 before the strength.
+   */
   fillSky: Color;
   fillGround: Color;
   fillIntensity: number;
@@ -170,13 +180,17 @@ export function daylightAt(tick: number): Daylight {
   // Dusk is the band around the horizon, whichever side of it the sun is on.
   const dusk = 1 - smoothstep(0, DAY_ALTITUDE, Math.abs(altitude));
 
+  const shadow = shadowColourAt(altitude, dayFraction(tick) * 24 < SOLAR_NOON_HOUR);
+  const fillSky = shadowLight(shadow);
+
   return {
     sun,
     altitude,
     sunColour: blend(SUN_LOW, SUN_HIGH, smoothstep(0, DAY_ALTITUDE * 1.5, altitude)),
     sunIntensity: SUN_INTENSITY * smoothstep(DARK_ALTITUDE * 0.15, DAY_ALTITUDE, altitude),
-    fillSky: blend(SKY_FILL_NIGHT, SKY_FILL_DAY, day),
-    fillGround: blend(GROUND_FILL_NIGHT, GROUND_FILL_DAY, day),
+    shadow,
+    fillSky,
+    fillGround: fillSky.clone().multiplyScalar(GROUND_SHARE),
     fillIntensity: FILL_NIGHT + (FILL_DAY - FILL_NIGHT) * day,
     haze: blend(HAZE_NIGHT, HAZE_DAY, day).lerp(new Color(HAZE_DUSK), dusk * DUSK_SHARE),
     night,

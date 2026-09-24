@@ -174,10 +174,11 @@ on each system; that is accepted.
 
 Where each rule lands. None of it needs an asset file.
 
-- **Bands** — a TSL light model on the shared node materials: the diffuse term stepped into three
-  bands with a short `smoothstep` between them, then mixed toward the shadow colour.
-- **Shadow colour** — `daylightAt` carries it for the time of day. The CSM shadow term mixes toward
-  it instead of darkening.
+- **Bands** — `cel.ts`, a light model on the shared node materials: the sun's cosine times its
+  cast shadow, stepped into three bands with a short `smoothstep` between them.
+- **Shadow colour** — `daylightAt` carries it for the time of day (`shade.ts`). The shade band and
+  a cast shadow are lit by the sky fill alone, and the fill is that colour, so both shift toward it
+  instead of darkening.
 - **Lines** — an edge pass in `PostChain`, after the scene and before bloom. It reads depth and a
   normal target. The inverted hulls (`building-hull.ts`, `OUTLINE` in `vehicle.ts` and the others)
   are removed when it lands, which also removes their geometry from every batch.

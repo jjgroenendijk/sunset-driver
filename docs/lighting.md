@@ -26,7 +26,7 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
 - The day is a summer one: sunrise at `SUNRISE_HOUR` (05:30), sunset at `SUNSET_HOUR` (20:30).
   `sunFraction` stretches the clock onto the sun's circle; the clock the player reads is not
   changed. A sun on the plain 24-hour circle set at 18:00, and the frame was dark by 18:20.
-- The night fill (`FILL_NIGHT`, `SKY_FILL_NIGHT`) is moonlight, and `NIGHT_GRADE` keeps its
+- The night fill (`FILL_NIGHT`, the navy shadow colour) is moonlight, and `NIGHT_GRADE` keeps its
   contrast low. Together they keep a street away from the lamps readable at midnight. With a
   weaker fill or a steeper grade, a night frame was black.
 - A shadow map is drawn again for every camera a frame renders with, and the water's mirror is a
@@ -82,9 +82,9 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
   `SUN_INTENSITY` and `FILL_DAY`, times `EXPOSURE`, come to about 1 on a lit flat surface. The
   tone map is `NeutralToneMapping`, which keeps hue and saturation up to near white. ACES washed
   every pale colour to white and pulled it toward blue.
-- The sky fill decides the tint of the lit sum. `SKY_FILL_DAY` is a pale lavender, so the sum with
-  the warm sun is a warm white. A blue fill, stronger on blue than the sun is on red, turned cream
-  into grey.
+- The sky fill decides the tint of the lit sum as well as the shade. The fill is blue, so the noon
+  sun (`SUN_HIGH`) is a warm yellow and the sum is a warm white. A fill stronger on blue than the
+  sun is on red turned cream into grey.
 - `WorldScene.time = tick` sets the weather of spec section 13.4 as well as the light, and `apply`
   lays one over the other. `docs/weather.md` is the whole of that.
 
@@ -93,6 +93,13 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
 - The sun lights in three bands, light, mid and shade, joined by a short soft ramp (`cel.ts`,
   `docs/art-style.md`). The sun's cosine to the surface times its cast shadow is stepped by
   `sunBand` before it lights anything. A face in shade takes the sky fill alone, which is a colour.
+- The fill is the shadow colour of the hour (`shade.ts`): lavender by day, violet-pink at dawn,
+  rose in the golden hour, deep violet at dusk, navy at night. `daylightAt` carries it as
+  `shadow`, and `fillSky` is its hue at a luma of 1, so `FILL_DAY` and `FILL_NIGHT` alone set how
+  bright shade is. `fillGround` is the same hue, dimmer, so a wall in shade matches the ground.
+- The fill keeps a quarter white (`HUE_SHARE`). The lit side takes the fill as well as the sun,
+  so a fill of the full hue needs a sun with no blue to stay warm, and a cobalt shutter would look
+  the same in sun and in shade.
 - `installCelShading` replaces `setupLightingModel` on the prototypes of `MeshStandardNodeMaterial`
   and `MeshLambertNodeMaterial`, once, from `renderer.ts`. That reaches a classic
   `MeshStandardMaterial` too, since the renderer draws it through the node class. The water and the
