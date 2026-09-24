@@ -398,10 +398,16 @@ place. The seaplane waits only on a map with a dock. The map and the minimap mar
 
 Stylised, lit, hard outlines. Tone: gritty crime drama with a satirical edge.
 
-- Hard outlines on buildings, vehicles and characters keep silhouettes readable from above.
-  Implemented as inverted-hull shells on instanced geometry, not as a post-process.
-- Real lighting, shadows and material variation inside the outlines. Buildings have architectural
-  detail; terrain has relief.
+The look is a cel-shaded city in warm pastels with dark ink lines. Shadows are coloured, never
+black. The day is bright and sweet; the night is neon on indigo, and the crime tone lives there.
+`docs/art-style.md` holds the rules, the palette and the decisions.
+
+- Hard outlines on buildings, vehicles and characters keep silhouettes readable from above, and
+  thin lines mark their creases. Both come from one screen-space edge pass on depth and normals,
+  with a width fixed on screen. It replaces the inverted-hull shells.
+- Real lighting and shadows inside the outlines, shaded in three bands. A shadow shifts toward the
+  shadow colour of the time of day and is never black.
+- Material variation inside the outlines. Buildings have architectural detail; terrain has relief.
 - Strong, saturated colour identity per district and per time of day. Neon and emissive windows
   after dark; warm sand, bright parasols and pastel beachfront on the coast.
 
@@ -489,6 +495,7 @@ floodlit or lit in colour, and the tallest towers carry red aircraft beacons.
 
 Deliberately minimal:
 
+- The edge pass of section 10.1, which draws every outline.
 - Bloom for neon, emissive windows and headlights.
 - SMAA, with a render-scale tier for weak hardware.
 - A subtle colour grade per time of day and weather, as a runtime-generated 3D LUT.

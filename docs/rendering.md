@@ -6,7 +6,8 @@ chunk reaches the screen — the workers, the frame budget, the batches and the 
 `docs/streaming.md`. What the renderer draws on top of the ground — vehicles, weapons, plants and
 the crowd — is in `docs/render-entities.md`, the buildings in `docs/buildings.md`, what lights it —
 the sun, the sky, the street lamps and the lights a vehicle carries — in `docs/lighting.md`, and the
-post chain and the colour grade in `docs/post.md`.
+post chain and the colour grade in `docs/post.md`. The look all of it must keep is in
+`docs/art-style.md`.
 
 ## Contents
 
