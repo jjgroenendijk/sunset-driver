@@ -30,7 +30,7 @@ export const STOP_VIEW = TRAFFIC_VIEW;
 export const STOP_DRAW_CAP = 96;
 
 /** The livery of a stop: the post and the sign plate, and the roof over a shelter. */
-const POST_PAINT = 0x2f6f5e;
+const POST_PAINT = 0x2e8c8a;
 const SIGN_FACE = 0xf2efe6;
 
 /**

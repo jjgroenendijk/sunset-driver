@@ -67,7 +67,9 @@ and what lights them in `docs/lighting.md`.
   gives that facade only to masonry. `buildingDrawCalls` still counts a facade batch for every such
   lot, because it answers off the chunk alone and cannot know the district.
 - Colour follows the style, not the district. `styleColour` holds a palette for each style;
-  `tintOf` gives masonry the generator's `pickBuildingColor` as before.
+  `tintOf` gives masonry `MASONRY_PALETTE` (`building-mesh.ts`), warm stone in the key of
+  `docs/art-style.md`. The generator's own `pickBuildingColor` is limestone and granite, which read
+  as neutral grey. Its material weathers whatever colour it is given.
 - Masonry weighs four times any one other style. That is not taste: it is what holds the building
   LOD of spec section 9.2 together. A styled tower costs a fifth of a generated facade at near
   detail, so a core of styled towers alone would make near detail so cheap that mid detail could no

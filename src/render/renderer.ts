@@ -1,4 +1,4 @@
-import { ACESFilmicToneMapping } from 'three';
+import { NeutralToneMapping } from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { clamp } from '../core/math.ts';
 import { stopUploadingWith, uploadBatchesWith } from './batch.ts';
@@ -10,13 +10,18 @@ import { registerNeonLight } from './sign-light.ts';
  * How much light reaches the film. The sky of `sky.ts` is the Preetham model,
  * which answers in real sky brightness, so the frame has to be tone mapped or
  * the daylight sky is a white sheet. Every light in the game is set against
- * this one number.
+ * this one number. At noon it brings a flat surface in the sun to about its own
+ * colour, so a colour in a material is the colour on screen (`docs/art-style.md`).
  */
-const EXPOSURE = 0.62;
+const EXPOSURE = 0.56;
 
 /**
  * Tone mapping and the lighting system, set the same way wherever a renderer is
  * made (spec sections 10.5, 10.6).
+ *
+ * The tone map is the neutral one, which keeps a colour's hue and saturation
+ * until it is near white. ACES washed the pale colours of the palette to white
+ * and pulled them toward blue.
  *
  * The clustered lighting of spec section 10.5 partitions the view into a grid
  * and gives each fragment only the lights that reach it, which is what makes
@@ -31,7 +36,7 @@ const EXPOSURE = 0.62;
  * clustered path is not built at all.
  */
 function configure(renderer: WebGPURenderer): void {
-  renderer.toneMapping = ACESFilmicToneMapping;
+  renderer.toneMapping = NeutralToneMapping;
   renderer.toneMappingExposure = EXPOSURE;
   // Off by default on `WebGPURenderer`, and nothing else says so: without this
   // the sun's cascades are built and never drawn, and the city is flat.

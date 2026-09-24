@@ -19,13 +19,13 @@ import { isAircraft, type VehicleSpec } from '../sim/vehicle.ts';
 import { aircraftBoxes } from './aircraft-mesh.ts';
 
 /** Glass, lamps and the bare metal of a cage: the colours no row picks. */
-export const GLASS = 0x243040;
+export const GLASS = 0x2e3a6a;
 export const LAMP = 0xffe7b0;
 export const TAIL = 0x6e1210;
-export const METAL = 0x9aa0a6;
-export const TYRE = 0x161616;
-/** The black of a seat, which is leather on every bike in the city. */
-export const SEAT = 0x1a1a1e;
+export const METAL = 0xb8b3cc;
+export const TYRE = 0x2f2838;
+/** The dark of a seat, which is plum leather on every bike in the city. */
+export const SEAT = 0x3a2a3e;
 /** The blue-white of the arc at a tram's pantograph (`tram.ts`). */
 export const SPARK = 0xbcd6ff;
 /** The blue and red of a patrol car's light bar. */

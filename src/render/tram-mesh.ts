@@ -39,10 +39,10 @@ export const HERITAGE_PAINT = 0x8e3b30;
 const MODERN_STRIPE = 0xf3efe4;
 const HERITAGE_CREAM = 0xe9e3d3;
 /** The doors, the bellows between two modules, the roof and the underframe. */
-const DOOR = 0x35383d;
-const BELLOWS = 0x23262b;
-const ROOF = 0x70757b;
-const UNDERFRAME = 0x2b2f36;
+const DOOR = 0x2f5fc4;
+const BELLOWS = 0x3a3148;
+const ROOF = 0xa8a3c0;
+const UNDERFRAME = 0x3f3852;
 /**
  * The destination board over the windscreen. It is painted in {@link LAMP}, so
  * it burns with the headlamps after dark (`vehicle-glow.ts`) and the line the

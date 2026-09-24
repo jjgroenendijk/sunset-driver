@@ -65,7 +65,7 @@ const DOUBLE_GAP = 0.5;
  */
 const MEDIAN_WIDTH = 1;
 const MEDIAN_LINE = 0.7;
-const MEDIAN_RGB = 0x8f8c85;
+const MEDIAN_RGB = 0xb4abb8;
 
 /**
  * What a vertex belongs to: the cross section of a road, a structure carrying
@@ -117,8 +117,8 @@ export function rgbOf(hex: number): Rgb {
  * The two colours road paint comes in: yellow keeps the two directions apart,
  * white divides the lanes running the same way and marks the edges.
  */
-const YELLOW = rgbOf(0xd8b43a);
-const WHITE = rgbOf(0xd7d4cb);
+const YELLOW = rgbOf(0xf2c81e);
+const WHITE = rgbOf(0xf6f1e4);
 
 /** One line painted along a road. */
 export interface Marking {

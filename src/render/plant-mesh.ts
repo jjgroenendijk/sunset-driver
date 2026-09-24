@@ -98,28 +98,27 @@ const MIN_RISE = 0.85;
 const MAX_RISE = 1.25;
 
 /** The bark of a trunk, and of the stem of a shrub. One per model. */
-const BARK: readonly number[] = [0x6b5844, 0x5d4c3b, 0x776450, 0x50443a];
+const BARK: readonly number[] = [0x9a6a4a, 0x8a5e46, 0xa87a54, 0x7e5a4c];
 
-/** The bark of a dead tree, which is weathered grey rather than brown. */
-const DEAD_BARK: readonly number[] = [0x8b8175, 0x7a7167, 0x968c7e, 0x6e675e];
+/** The bark of a dead tree, which is weathered lavender grey rather than brown. */
+const DEAD_BARK: readonly number[] = [0xb3a7ae, 0xa396a4, 0xbfb2b0, 0x978b9e];
 
 /**
- * The leaf colours of each species, one per model, muted towards the palette
- * the buildings and the roads are painted in — the greens used to be the
- * loudest thing on the screen. The last of each four is the accent of
- * {@link ACCENT_CHANCE}.
+ * The leaf colours of each species, one per model, between the lime of lit
+ * foliage and the olive of its shade (`docs/art-style.md`). The last of each
+ * four is the accent of {@link ACCENT_CHANCE}.
  */
 const LEAF: Record<PlantSpecies, readonly number[]> = {
-  broadleaf: [0x556b41, 0x60764a, 0x49603c, 0x9a7338],
-  conifer: [0x44634a, 0x3b5641, 0x4f6f53, 0x3a5a58],
-  palm: [0x5b7a4a, 0x668253, 0x4f6e42, 0x74895c],
-  shrub: [0x55673c, 0x5f7145, 0x4a5b36, 0x8a6a3a],
-  grass: [0x717c46, 0x7c864f, 0x67723e, 0x8d8b52],
-  columnar: [0x4d6640, 0x587049, 0x445c3b, 0x8f7a3c],
-  blossom: [0x9c5c7a, 0xab6b88, 0x8d5270, 0xbf98a6],
-  dead: [0x8b8175, 0x7a7167, 0x968c7e, 0x6e675e],
-  agave: [0x6f8a63, 0x7d9670, 0x5f7a57, 0x88976a],
-  hedge: [0x4f6339, 0x5a6d42, 0x455833, 0x63744a],
+  broadleaf: [0x9cbc45, 0xb0cc48, 0x86a843, 0xe8923a],
+  conifer: [0x5f9a55, 0x6a8d41, 0x4f8a5c, 0x3f8a7a],
+  palm: [0xa8c84c, 0xbcd54c, 0x8fb048, 0xd9c24a],
+  shrub: [0x8fb046, 0xa3c24a, 0x7a9c44, 0xdabe40],
+  grass: [0xc2cc4a, 0xd0d24c, 0xafc048, 0xdabe40],
+  columnar: [0x6a8d41, 0x78a045, 0x5f8a45, 0x4f7f4a],
+  blossom: [0xc21966, 0xd8407a, 0xe8923a, 0xf0a8c8],
+  dead: [0xb3a7ae, 0xa396a4, 0xbfb2b0, 0x978b9e],
+  agave: [0x7fb89a, 0x8fc4a4, 0x6aa88c, 0xa6c88a],
+  hedge: [0x7fa845, 0x8cb44a, 0x6a8d41, 0x9cbc45],
 };
 
 /** One plant, ready for a batch. */
