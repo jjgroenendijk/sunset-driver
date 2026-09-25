@@ -137,6 +137,9 @@ under their own heading there.
 - Rain changes the gait in the renderer: an umbrella by `look.umbrella`, or a hunch. A walker's
   gait is blended a little towards `GAIT_NEIGHBOUR` by `look.blend`, so two people of one gait walk
   differently.
-- `CrowdPass` (`render/crowd-pass.ts`) steps two people walking at each other to their right, at
-  most `PASS_STEP`, for the moment they pass. It is drawing only: the record never moves them.
+- `CrowdPass` (`render/crowd-pass.ts`) steps two people walking at each other apart, at most
+  `PASS_STEP`, and keeps the room until they are past. It is drawing only: the record never moves
+  them. Each steps away from the side the other stands on. A fixed side walks a person who keeps
+  left straight into the other one, and the two looked stuck. A walker steps round a person who
+  stands or walks slower alone. Company, which shares a lead, never makes room for itself.
 - Heads turn to a car that passes fast and near (`WATCH_REACH`, `WATCH_SPEED`), in the renderer.
