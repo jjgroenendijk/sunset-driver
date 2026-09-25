@@ -76,6 +76,7 @@ const JAY_MIN = 45;
 /** The keys of the streams the crowd draws from, so none shifts another. */
 const EDGE_STREAM = 1;
 const PERSON_STREAM = 2;
+const KERB_STREAM = 5;
 
 /** One person of the crowd: how they look, and the walk they keep to. */
 export interface AmbientPedestrian {
@@ -131,7 +132,7 @@ export function placeOnEdge(ctx: PlaceContext, edge: RoadEdge, district: Pick<Di
     const shift = laneOf(ctx.graph, edges, company, walk);
     const route = ctx.pavements.route(legs, shift);
     const stops = stopsOf(ctx.graph, route, zone, walk);
-    const crossings = ctx.signals === undefined ? [] : signalCrossings(ctx.pavements, ctx.graph, route, ctx.signals);
+    const crossings = ctx.signals === undefined ? [] : signalCrossings(ctx.pavements, ctx.graph, route, ctx.signals, kerbDepth(ctx.seed, id));
     const sync = walk.int(0, SIGNAL_CYCLE - 1);
     const plan = planWalk({ route, pace: look.speed, stride: strideOf(look.gait, look.height), crossings, stops, signals: ctx.signals, sync });
     const period = plan.period;
@@ -163,6 +164,14 @@ export function placeOnEdge(ctx: PlaceContext, edge: RoadEdge, district: Pick<Di
     }
     placed += company;
   }
+}
+
+/**
+ * How far back of the kerb a person waits for the light, as a share of
+ * `KERB_SPREAD`. It is a stream of its own, so drawing it shifts nothing else.
+ */
+function kerbDepth(seed: number, id: number): number {
+  return rngFor(seed, 0, Subsystem.Pedestrians, hashInts(KERB_STREAM, id)).float();
 }
 
 /**

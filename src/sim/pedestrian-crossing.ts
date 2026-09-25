@@ -20,8 +20,15 @@ const SCAN = 18;
 /** Metres between two readings of the walk. */
 const STEP = 0.5;
 
-/** Metres back from the carriageway a person stands to wait for the light. */
+/** Metres back from the carriageway a person stands to wait for the light, at the least. */
 const KERB_BACK = 0.6;
+
+/**
+ * Metres further back a person may stand. Each waits at a depth of their own,
+ * so the people who meet at one corner stand spread along the pavement rather
+ * than on one spot, inside each other (#721).
+ */
+export const KERB_SPREAD = 2.4;
 
 /** One stretch of a walk that crosses a road under lights. */
 export interface Crossing {
@@ -35,8 +42,12 @@ export interface Crossing {
   axis: 0 | 1;
 }
 
-/** Every crossing under lights round a loop, ascending by where they wait. */
-export function signalCrossings(pavements: Pavements, graph: RoadGraph, route: WalkRoute, signals: TrafficSignals): Crossing[] {
+/**
+ * Every crossing under lights round a loop, ascending by where they wait.
+ * `depth` is the share of {@link KERB_SPREAD} this person stands back by.
+ */
+export function signalCrossings(pavements: Pavements, graph: RoadGraph, route: WalkRoute, signals: TrafficSignals, depth = 0): Crossing[] {
+  const back = KERB_BACK + depth * KERB_SPREAD;
   const out: Crossing[] = [];
   const point: WalkPoint = { x: 0, y: 0, height: 0 };
   const count = route.edges.length;
@@ -58,7 +69,7 @@ export function signalCrossings(pavements: Pavements, graph: RoadGraph, route: W
         edge = on;
       } else if (on < 0 && open >= 0) {
         const axis = axisOf(graph, signals, edge);
-        if (axis !== undefined) out.push({ at: wrap(open - KERB_BACK, route.length), end: wrap(d, route.length), junction, axis });
+        if (axis !== undefined) out.push({ at: wrap(open - back, route.length), end: wrap(d, route.length), junction, axis });
         open = -1;
       }
     }
