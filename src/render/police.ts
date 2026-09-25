@@ -2,7 +2,10 @@
  * The police, drawn (spec sections 9.2, 14).
  *
  * A police car is the patrol row of the roster, drawn the way the traffic is:
- * the painted boxes and the parts with colours of their own. The two halves
+ * the painted parts, the parts with colours of their own and the glass. Its
+ * front doors swing on meshes of their own (`police-doors.ts`) as the crew get
+ * out and back in, and the driver shows through the glass while the crew is
+ * aboard. The two halves
  * of the light bar on its roof flash against each other (`beacons.ts`), red
  * then blue, and throw their light on the road round the car: that is what a
  * player sees in the mirror before they see the car.
@@ -17,7 +20,9 @@ import { Color, Group, Matrix4, MeshStandardMaterial, Quaternion, Vector3, type 
 import { HELICOPTER_HEIGHT } from '../sim/police.ts';
 import type { SimState } from '../sim/simulation.ts';
 import { rideHeight, specOf } from '../sim/vehicle.ts';
-import { boxOf, coloured, instanced, merged, trafficParts, TRAFFIC_VIEW } from './traffic.ts';
+import { driverOf } from './occupant.ts';
+import { PATROL_LEAVES, PatrolDoors } from './police-doors.ts';
+import { boxOf, coloured, glassMaterial, instanced, merged, trafficParts, TRAFFIC_VIEW } from './traffic.ts';
 import { createVehicleTrim, type VehicleTrim } from './vehicle-glow.ts';
 import { GLASS, METAL, patrolBeacons, TYRE } from './vehicle-mesh.ts';
 import { BeaconGlow, BeaconPhase, beaconMaterial, flashLit } from './beacons.ts';
@@ -36,6 +41,9 @@ export class PoliceView {
   readonly group = new Group();
   private readonly paint: InstancedMesh;
   private readonly trim: InstancedMesh;
+  private readonly glass: InstancedMesh;
+  private readonly driver: InstancedMesh;
+  private readonly doors: PatrolDoors;
   private readonly phases: [BeaconPhase, BeaconPhase];
   private readonly glow: BeaconGlow;
   private readonly heli: InstancedMesh;
@@ -53,14 +61,18 @@ export class PoliceView {
   constructor() {
     const spec = specOf('emergency');
     this.ride = rideHeight(spec);
-    const parts = trafficParts(spec);
+    const parts = trafficParts(spec, PATROL_LEAVES);
     const paint = new MeshStandardMaterial({ roughness: 0.4, metalness: 0.2 });
+    const glass = glassMaterial();
     this.trimMaterial = createVehicleTrim();
     const trim = this.trimMaterial.material;
     const lamp = beaconMaterial();
-    this.materials = [paint, lamp];
+    this.materials = [paint, lamp, glass];
     this.paint = tinted(instanced(parts.paint, paint, true, UNIT_CAP));
     this.trim = instanced(parts.trim, trim, false, UNIT_CAP);
+    this.glass = instanced(parts.glass, glass, false, UNIT_CAP);
+    this.driver = instanced(merged(driverOf(spec).map((part) => coloured(boxOf(part), part.colour))), trim, true, UNIT_CAP);
+    this.doors = new PatrolDoors(spec, trim, glass, UNIT_CAP);
     const lenses = patrolBeacons(spec).map((beacon) => ({
       ...beacon,
       box: { ...beacon.box, length: beacon.box.length + LENS_GROW, height: beacon.box.height + LENS_GROW, width: beacon.box.width + LENS_GROW },
@@ -70,6 +82,7 @@ export class PoliceView {
     this.heli = instanced(heliBody(), trim, true, UNIT_CAP);
     this.rotor = instanced(rotorBlades(), trim, false, UNIT_CAP);
     this.group.add(this.paint, this.trim, this.phases[0].mesh, this.phases[1].mesh, this.heli, this.rotor, this.glow.mesh);
+    this.group.add(this.glass, this.driver, ...this.doors.meshes);
   }
 
   /**
@@ -95,6 +108,7 @@ export class PoliceView {
   update(state: SimState, x: number, y: number): void {
     let cars = 0;
     let flying = 0;
+    let crewed = 0;
     this.glow.begin();
     for (const unit of state.police.units) {
       if (Math.abs(unit.x - x) > TRAFFIC_VIEW || Math.abs(unit.y - y) > TRAFFIC_VIEW) continue;
@@ -117,6 +131,9 @@ export class PoliceView {
       this.matrix.compose(this.at, this.turn, this.one);
       this.paint.setMatrixAt(cars, this.matrix);
       this.trim.setMatrixAt(cars, this.matrix);
+      this.glass.setMatrixAt(cars, this.matrix);
+      this.doors.set(cars, this.matrix, unit.doors);
+      if (unit.crew > 0) this.driver.setMatrixAt(crewed++, this.matrix);
       this.paint.setColorAt(cars, this.colour.set(specOf('emergency').paint));
       // A car driving off once its call is over has its siren off, and its bar dark.
       const calling = unit.task !== 'leave';
@@ -128,13 +145,17 @@ export class PoliceView {
       cars++;
     }
     this.fill(cars, flying);
+    this.driver.count = crewed;
+    this.driver.visible = crewed > 0;
+    if (crewed > 0) this.driver.instanceMatrix.needsUpdate = true;
   }
 
   dispose(): void {
-    for (const mesh of [this.paint, this.trim, this.phases[0].mesh, this.phases[1].mesh, this.heli, this.rotor]) {
+    for (const mesh of [this.paint, this.trim, this.glass, this.driver, this.phases[0].mesh, this.phases[1].mesh, this.heli, this.rotor]) {
       mesh.geometry.dispose();
       mesh.dispose();
     }
+    this.doors.dispose();
     this.glow.dispose();
     for (const material of this.materials) material.dispose();
     this.trimMaterial.dispose();
@@ -145,7 +166,8 @@ export class PoliceView {
   private fill(cars: number, flying: number): void {
     for (const phase of this.phases) phase.commit(cars);
     this.glow.commit();
-    for (const mesh of [this.paint, this.trim]) {
+    this.doors.commit(cars);
+    for (const mesh of [this.paint, this.trim, this.glass]) {
       mesh.count = cars;
       mesh.visible = cars > 0;
       if (cars > 0) mesh.instanceMatrix.needsUpdate = true;

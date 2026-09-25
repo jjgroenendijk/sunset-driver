@@ -88,7 +88,7 @@ describe('the body getting in and out', () => {
   });
 
   it('opens no door on a vehicle with none that swings', () => {
-    for (const cls of ['bus', 'truck', 'van', 'boat', 'motorcycle', 'buggy'] as const) {
+    for (const cls of ['bus', 'boat', 'motorcycle', 'buggy'] as const) {
       expect(doorOf(ROSTER[cls], -1)).toBeUndefined();
       for (let u = 0; u <= 1; u += 0.05) expect(boardingFrame(input(cls, 'in', u)).door).toBe(0);
     }

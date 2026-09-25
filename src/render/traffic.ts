@@ -1,17 +1,18 @@
 /**
  * The traffic, drawn (spec sections 9.2, 13.1).
  *
- * Every class of the traffic is two instanced meshes: the painted boxes, and
- * the glass, lamps and tyres. Each vehicle is one instance of each, so the
- * whole traffic in view costs two draws per class that is on screen, however
- * many cars there are.
+ * Every class of the traffic is three instanced meshes: the painted parts; the
+ * lamps, tyres and trim; and the tinted glass the driver shows through. Each
+ * vehicle is one instance of each, so the whole traffic in view costs three
+ * draws per class that is on screen, however many cars there are.
  * The paint is the instance's colour, which is how two saloons in one mesh
  * come in two colours.
  *
- * A class ridden astride carries a third: the figure of `bike-rider.ts`, so
- * every bike driving its tour has somebody on it. Only the bikes on their
- * tours are written into it, since a bike the player has touched is one nobody
- * is driving any more.
+ * Every class carries a fourth: the figure of `bike-rider.ts` on a bike, and
+ * the driver of `occupant.ts` behind the glass of a car, so every vehicle
+ * driving its tour has somebody in it. Only the vehicles on their tours are
+ * written into it, since one the player has touched is one nobody is driving
+ * any more.
  *
  * The traffic is evaluated where the frame stands in time, between two ticks,
  * the way `smooth.ts` draws the player. A vehicle the player has touched is
@@ -40,8 +41,11 @@ import { rideHeight, specOf, type VehicleClass, type VehicleSpec } from '../sim/
 import { outInThis } from '../sim/weather.ts';
 import { riderStruts, type RiderStrut } from './bike-rider.ts';
 import { SignalView } from './signals.ts';
+import { driverOf } from './occupant.ts';
+import { partGeometry } from './vehicle-geometry.ts';
 import { createVehicleTrim, glowOf, type VehicleTrim } from './vehicle-glow.ts';
-import { TYRE, vehicleBoxes, type VehicleBox } from './vehicle-mesh.ts';
+import { GLASS, TYRE, vehicleBoxes, type VehicleBox } from './vehicle-mesh.ts';
+import { GLASS_OPACITY } from './vehicle-parts.ts';
 import { tinted } from './tint.ts';
 
 /** Metres each way of the point the frame is drawn round that traffic is drawn in. */
@@ -50,17 +54,24 @@ export const TRAFFIC_VIEW = 180;
 /** Vehicles of one class drawn at most. A frame with more leaves the rest out. */
 const CLASS_CAP = 256;
 
-/** The meshes one class is drawn with: two, and a third on a class ridden astride. */
+/** The tinted glass of every vehicle drawn instanced: one colour, seen through. */
+export function glassMaterial(): MeshStandardMaterial {
+  return new MeshStandardMaterial({ color: GLASS, roughness: 0.1, metalness: 0.2, transparent: true, opacity: GLASS_OPACITY });
+}
+
+/** The meshes one class is drawn with: three, and a fourth for whoever is in it. */
 interface ClassMeshes {
   cls: VehicleClass;
   spec: VehicleSpec;
   paint: InstancedMesh;
   trim: InstancedMesh;
+  glass: InstancedMesh;
   /**
-   * The rider of `bike-rider.ts`, on a class that is sat astride and undefined
-   * on every other. It is a mesh of its own rather than part of the trim
-   * because only some of the bikes drawn carry one: a bike the player has
-   * touched has nobody on it, and a parked one has nobody on it either.
+   * The rider of `bike-rider.ts` on a class that is sat astride, the driver
+   * of `occupant.ts` on a car, and undefined on anything else. It is a mesh of
+   * its own rather than part of the trim because only some of the vehicles
+   * drawn carry one: one the player has touched has nobody in it, and a
+   * parked one has nobody in it either.
    */
   rider: InstancedMesh | undefined;
 }
@@ -71,14 +82,23 @@ export interface TrafficParts {
   paint: BufferGeometry;
   /** Everything in a colour of its own, carried per vertex. */
   trim: BufferGeometry;
+  /** The glass, which is drawn seen through. */
+  glass: BufferGeometry;
 }
 
-/** Build the geometry one class of the traffic is drawn with. Headless: no renderer is needed. */
-export function trafficParts(spec: VehicleSpec): TrafficParts {
+/**
+ * Build the geometry one class of the traffic is drawn with. Headless: no
+ * renderer is needed. The parts of the leaves named in `apart` are left out,
+ * for a view that swings those leaves on meshes of their own.
+ */
+export function trafficParts(spec: VehicleSpec, apart: readonly number[] = []): TrafficParts {
   const paint: BufferGeometry[] = [];
   const trim: BufferGeometry[] = [];
+  const glass: BufferGeometry[] = [];
   for (const part of vehicleBoxes(spec)) {
-    if (part.colour === spec.paint) paint.push(boxOf(part));
+    if (part.hinge !== undefined && apart.includes(part.hinge.leaf)) continue;
+    if (part.glass === true) glass.push(boxOf(part));
+    else if (part.colour === spec.paint) paint.push(boxOf(part));
     else trim.push(coloured(boxOf(part), part.colour));
   }
   for (const wheel of spec.wheels) {
@@ -89,7 +109,7 @@ export function trafficParts(spec: VehicleSpec): TrafficParts {
     trim.push(coloured(tyre.toNonIndexed(), TYRE));
     tyre.dispose();
   }
-  return { paint: merged(paint), trim: merged(trim) };
+  return { paint: merged(paint), trim: merged(trim), glass: merged(glass) };
 }
 
 export class TrafficView {
@@ -118,22 +138,26 @@ export class TrafficView {
   constructor(traffic: AmbientTraffic) {
     this.traffic = traffic;
     const paint = new MeshStandardMaterial({ roughness: 0.45, metalness: 0.2 });
+    const glass = glassMaterial();
     this.trim = createVehicleTrim();
     const trim = this.trim.material;
-    this.materials.push(paint);
+    this.materials.push(paint, glass);
     for (const cls of AMBIENT_CLASSES) {
       const spec = specOf(cls);
       const parts = trafficParts(spec);
       const struts = riderStruts(spec);
+      const driver = driverOf(spec);
+      const figure = struts.length > 0 ? struts.map(strutOf) : driver.map((part) => coloured(boxOf(part), part.colour));
       const meshes: ClassMeshes = {
         cls,
         spec,
         paint: tinted(instanced(parts.paint, paint, true, CLASS_CAP)),
         trim: instanced(parts.trim, trim, false, CLASS_CAP),
-        rider: struts.length === 0 ? undefined : instanced(merged(struts.map(strutOf)), trim, true, CLASS_CAP),
+        glass: instanced(parts.glass, glass, false, CLASS_CAP),
+        rider: figure.length === 0 ? undefined : instanced(merged(figure), trim, true, CLASS_CAP),
       };
       this.classes.push(meshes);
-      this.group.add(meshes.paint, meshes.trim);
+      this.group.add(meshes.paint, meshes.trim, meshes.glass);
       if (meshes.rider !== undefined) this.group.add(meshes.rider);
     }
     this.signals = traffic.signals === undefined ? undefined : new SignalView(traffic.signals);
@@ -198,7 +222,8 @@ export class TrafficView {
     for (const meshes of this.classes) {
       const count = meshes.paint.count;
       meshes.trim.count = count;
-      for (const mesh of [meshes.paint, meshes.trim]) {
+      meshes.glass.count = count;
+      for (const mesh of [meshes.paint, meshes.trim, meshes.glass]) {
         mesh.visible = count > 0;
         if (count === 0) continue;
         mesh.instanceMatrix.needsUpdate = true;
@@ -214,7 +239,7 @@ export class TrafficView {
 
   dispose(): void {
     for (const meshes of this.classes) {
-      for (const mesh of [meshes.paint, meshes.trim, meshes.rider]) {
+      for (const mesh of [meshes.paint, meshes.trim, meshes.glass, meshes.rider]) {
         if (mesh === undefined) continue;
         mesh.geometry.dispose();
         mesh.dispose();
@@ -241,6 +266,7 @@ export class TrafficView {
     this.matrix.compose(this.at, this.turn, this.one);
     meshes.paint.setMatrixAt(index, this.matrix);
     meshes.trim.setMatrixAt(index, this.matrix);
+    meshes.glass.setMatrixAt(index, this.matrix);
     meshes.paint.setColorAt(index, this.colour.set(paint));
     meshes.paint.count = index + 1;
     const rider = meshes.rider;
@@ -261,9 +287,11 @@ export function instanced(geometry: BufferGeometry, material: Material, shadow: 
   return mesh;
 }
 
-/** One box of the plan as a geometry already standing in the vehicle's frame. */
+/** One part of the plan, box or lofted, as a geometry already standing in the vehicle's frame. */
 export function boxOf(part: Omit<VehicleBox, 'panel'>): BufferGeometry {
-  const geometry = new BoxGeometry(part.length, part.height, part.width).toNonIndexed();
+  const built = partGeometry(part);
+  const geometry = built.index === null ? built : built.toNonIndexed();
+  if (geometry !== built) built.dispose();
   geometry.translate(part.x, part.y, part.z);
   return geometry;
 }

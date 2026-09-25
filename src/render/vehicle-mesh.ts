@@ -3,8 +3,9 @@
  *
  * The camera looks down from 60 m, so what a vehicle needs is a silhouette that
  * reads at a glance: how long it is, how wide, what stands on its roof and
- * which end is the nose. That is boxes, as the character model and the smaller
- * buildings are, and this file is the one place that says which boxes.
+ * which end is the nose. The road bodies and a bike's pieces are lofted
+ * (`vehicle-hull.ts`, `loft.ts`); the rest are boxes, and this file is the one
+ * place that says which parts each class is made of.
  *
  * It is a plain function of the roster row, with no three.js in it, so the
  * silhouettes can be measured headless. `vehicle.ts` turns the boxes into a
@@ -17,49 +18,24 @@ import type { Panel } from '../sim/damage.ts';
 import { doorAlong } from '../sim/boarding.ts';
 import { isAircraft, type VehicleSpec } from '../sim/vehicle.ts';
 import { aircraftBoxes } from './aircraft-mesh.ts';
+import { arc, loft } from './loft.ts';
+import { BODY_WIDTH, hullOf } from './vehicle-hull.ts';
+import { BEACON_BLUE, BEACON_RED, box, GLASS, LAMP, METAL, SEAT, TAIL, TYRE, UNDER, type VehicleBox } from './vehicle-parts.ts';
 
-/** Glass, lamps and the bare metal of a cage: the colours no row picks. */
-export const GLASS = 0x2e3a6a;
-export const LAMP = 0xffe7b0;
-export const TAIL = 0x6e1210;
-export const METAL = 0xb8b3cc;
-export const TYRE = 0x2f2838;
-/** The dark of a seat, which is plum leather on every bike in the city. */
-export const SEAT = 0x3a2a3e;
-/** The blue-white of the arc at a tram's pantograph (`tram.ts`). */
-export const SPARK = 0xbcd6ff;
-/** The blue and red of a patrol car's light bar. */
-export const BEACON_BLUE = 0x2f6fe0;
-export const BEACON_RED = 0xd32c2c;
-
-/** One box of a vehicle's model. */
-export interface VehicleBox {
-  length: number;
-  height: number;
-  width: number;
-  /** The middle of the box, in the vehicle's own frame. */
-  x: number;
-  y: number;
-  z: number;
-  colour: number;
-  /**
-   * The panel this box belongs to (spec section 11.3), and undefined on the
-   * shell in the middle of the body. A dent pushes in the boxes of the panel
-   * it lands on, and a panel torn off takes its boxes with it; the shell stays,
-   * because a vehicle with no middle is not a vehicle.
-   */
-  panel: Panel | undefined;
-  /**
-   * True on a front door, which swings open about its front edge while the
-   * player gets in or out (`boarding.ts`). Nothing else on a vehicle moves.
-   */
-  hinged?: boolean;
-  /**
-   * Set on a rotor blade, which turns about the vehicle's up axis, and on a
-   * propeller blade, which turns about its forward axis (`aircraft-mesh.ts`).
-   */
-  spin?: 'rotor' | 'prop';
-}
+export {
+  BEACON_BLUE,
+  BEACON_RED,
+  BONNET,
+  GLASS,
+  LAMP,
+  METAL,
+  SEAT,
+  SPARK,
+  TAIL,
+  TYRE,
+  type Hinge,
+  type VehicleBox,
+} from './vehicle-parts.ts';
 
 /**
  * The boxes one vehicle is drawn as, each told which panel it stands on.
@@ -71,7 +47,11 @@ export interface VehicleBox {
  */
 export function vehicleBoxes(spec: VehicleSpec): VehicleBox[] {
   const boxes = shapeOf(spec);
-  for (const part of boxes) part.panel = panelAt(spec, part);
+  for (const part of boxes) {
+    // A lofted part says which panel it was cut for; a box is read off where it stands.
+    if (part.on === undefined) part.panel = panelAt(spec, part);
+    else part.panel = part.on === 'shell' ? undefined : part.on;
+  }
   return boxes;
 }
 
@@ -94,75 +74,88 @@ export function panelAt(spec: VehicleSpec, part: VehicleBox): Panel | undefined 
 /** The boxes of one class, before they are told which panel they are on. */
 function shapeOf(spec: VehicleSpec): VehicleBox[] {
   switch (spec.cls) {
-    case 'compact':
-      return car(spec, { cabin: 0.5, cabinAt: 0, waist: 0.5 });
-    case 'sports':
-      return car(spec, { cabin: 0.34, cabinAt: -0.2, waist: 0.62 });
     case 'emergency':
       return patrolCar(spec);
+    case 'sports':
+      return lofted(spec, [
+        // A wing on two posts over the tail.
+        ...[1, -1].map((z) => block(spec, [-0.93, -0.87], [0.6, 0.84], z * 0.55, 0.04, spec.trim)),
+        block(spec, [-0.99, -0.84], [0.84, 0.92], 0, 0.96, spec.trim),
+      ]);
+    case 'offroad':
+      return lofted(spec, [
+        // The rack, which is the one thing that tells this from a tall van above.
+        block(spec, [-0.62, 0.22], [1, 1.05], 0, 0.76, spec.trim),
+        // A spare wheel on the back door, and a dark flare over each wheel.
+        block(spec, [-1.09, -1], [0.26, 0.62], 0, 0.32, TYRE),
+        ...[1, -1].flatMap((z) => [
+          block(spec, [0.44, 0.8], [0.1, 0.34], z, 0.08, spec.trim),
+          block(spec, [-0.8, -0.44], [0.1, 0.34], z, 0.08, spec.trim),
+        ]),
+      ]);
     case 'van':
-      return van(spec);
+      return lofted(spec, [
+        // A vent on the roof, which breaks up a flat white roof from above.
+        block(spec, [-0.32, -0.08], [1, 1.05], 0, 0.5, spec.trim),
+        block(spec, [0.97, 1.03], [0.04, 0.16], 0, 0.92, BAR_BASE),
+        block(spec, [-1.04, -0.98], [0.02, 0.14], 0, 0.98, BAR_BASE),
+      ]);
     case 'truck':
-      return truck(spec);
+      return lofted(spec, [
+        // The chassis, the deck behind the cab and the headboard that stops the load.
+        block(spec, [-1, 0.6], [0.12, 0.26], 0, 0.5, UNDER),
+        block(spec, [-1, 0.52], [0.28, 0.38], 0, 1.08, spec.trim),
+        block(spec, [0.5, 0.54], [0.38, 0.78], 0, 1.04, spec.trim),
+        block(spec, [0.55, 0.57], [0.4, 1.1], 0.8, 0.06, METAL),
+        block(spec, [0.99, 1.03], [0.08, 0.2], 0, 0.98, BAR_BASE),
+      ]);
     case 'bus':
-      return bus(spec);
+      return lofted(spec, [
+        // A roof hatch and the air conditioning, so the roof is not one flat colour from above.
+        block(spec, [0.2, 0.36], [1, 1.03], 0, 0.4, spec.trim),
+        block(spec, [-0.5, -0.1], [1, 1.06], 0, 0.6, spec.trim),
+      ]);
     case 'motorcycle':
       return motorcycle(spec);
-    case 'offroad':
-      return offroad(spec);
     case 'buggy':
       return buggy(spec);
     case 'boat':
       return boat(spec);
     default:
       if (isAircraft(spec.cls)) return aircraftBoxes(spec);
-      return car(spec, { cabin: 0.44, cabinAt: -0.05, waist: 0.55 });
+      return lofted(spec, []);
   }
 }
 
-/** Where a car's cabin sits, as fractions of the body it stands on. */
-interface CarShape {
-  /** The cabin's length, as a fraction of the whole. */
-  cabin: number;
-  /** Where its middle stands, as a fraction of the whole from the middle of the body. */
-  cabinAt: number;
-  /** How much of the height the lower body takes; the cabin takes the rest. */
-  waist: number;
-}
-
-function box(
-  length: number,
-  height: number,
-  width: number,
-  colour: number,
-  x: number,
-  y: number,
-  z: number,
-): VehicleBox {
-  return { length, height, width, x, y, z, colour, panel: undefined };
+/** A lofted body (`vehicle-hull.ts`) with the class's own boxes on it. */
+function lofted(spec: VehicleSpec, extras: VehicleBox[], patrol = false): VehicleBox[] {
+  return [...(hullOf(spec, patrol) ?? []), ...extras];
 }
 
 /**
- * A door skin down each side of a body, half sunk into it so nothing z-fights.
- * It is what a shunt from the side pushes in and what a hard one tears off:
- * without it a flank is one face of the shell, and a shell never goes.
- *
- * A `hinged` skin is two doors, front and rear, and the front one opens: it is
- * the door the player gets in and out through. A van's skin is its sliding
- * door, which does not swing, so it stays one piece.
+ * A box placed the way a hull is drawn: along the body and up it as fractions
+ * of the half length and of the height from the floor, and across it as
+ * fractions of the body's half width.
  */
-function doors(spec: VehicleSpec, length: number, height: number, y: number, at: number, hinged = false): VehicleBox[] {
-  const out: VehicleBox[] = [];
-  for (const side of [1, -1]) {
-    const z = side * spec.halfWidth * at;
-    if (!hinged) {
-      out.push(box(length, height, 0.06, spec.paint, 0, y, z));
-      continue;
-    }
-    out.push({ ...box(length / 2, height, 0.06, spec.paint, length / 4, y, z), hinged: true });
-    out.push(box(length / 2, height, 0.06, spec.paint, -length / 4, y, z));
-  }
-  return out;
+function block(
+  spec: VehicleSpec,
+  along: readonly [number, number],
+  up: readonly [number, number],
+  across: number,
+  halfWidth: number,
+  colour: number,
+): VehicleBox {
+  const width = spec.halfWidth * BODY_WIDTH;
+  const height = spec.halfHeight * 2;
+  return box(
+    (along[1] - along[0]) * spec.halfLength,
+    (up[1] - up[0]) * height,
+    halfWidth * width * 2,
+    colour,
+    ((along[0] + along[1]) / 2) * spec.halfLength,
+    -spec.halfHeight + ((up[0] + up[1]) / 2) * height,
+    across * width,
+  );
 }
 
 /**
@@ -180,7 +173,8 @@ export interface Door {
 
 /** The front door on the side `side` stands on, -1 the driver's and +1 the other. */
 export function doorOf(spec: VehicleSpec, side: number): Door | undefined {
-  const part = vehicleBoxes(spec).find((b) => b.hinged === true && Math.sign(b.z) === Math.sign(side));
+  const leaf = side < 0 ? 0 : 1;
+  const part = vehicleBoxes(spec).find((b) => b.hinge?.leaf === leaf && b.hinge.axis === 'y' && b.glass !== true);
   if (part === undefined) return undefined;
   return { hingeX: part.x + part.length / 2, length: part.length, z: part.z, y: part.y, height: part.height };
 }
@@ -209,39 +203,6 @@ export function seatOf(spec: VehicleSpec): { x: number; y: number; z: number } {
       // A pilot sits just inside the cabin door, not amidships.
       return { x: isAircraft(spec.cls) ? doorAlong(spec) : 0, y, z };
   }
-}
-
-/**
- * A car: a lower body, a cabin set back from the nose, glass at each end of the
- * cabin and along it, and a lamp at each corner. A bonnet at one end and a boot
- * at the other is what tells a player which way the car is facing from 60 m up.
- */
-function car(spec: VehicleSpec, shape: CarShape): VehicleBox[] {
-  const length = spec.halfLength * 2;
-  const width = spec.halfWidth * 2;
-  const height = spec.halfHeight * 2;
-  const bodyHeight = height * shape.waist;
-  const bodyY = -spec.halfHeight + bodyHeight / 2;
-  const cabinHeight = height - bodyHeight;
-  const cabinY = bodyY + bodyHeight / 2 + cabinHeight / 2;
-  const cabinLength = length * shape.cabin;
-  const cabinX = length * shape.cabinAt;
-  const boxes = [
-    // The body is narrower than the track, so the wheels show from above.
-    box(length, bodyHeight, width * 0.9, spec.paint, 0, bodyY, 0),
-    box(cabinLength, cabinHeight, width * 0.8, spec.paint, cabinX, cabinY, 0),
-    // Glass a little proud of the cabin, so the windows read as windows.
-    box(length * 0.06, cabinHeight * 0.82, width * 0.82, GLASS, cabinX + cabinLength / 2, cabinY, 0),
-    box(length * 0.05, cabinHeight * 0.82, width * 0.82, GLASS, cabinX - cabinLength / 2, cabinY, 0),
-    box(cabinLength * 0.7, cabinHeight * 0.5, width * 0.83, GLASS, cabinX, cabinY + cabinHeight * 0.08, 0),
-    ...doors(spec, length * 0.46, bodyHeight * 0.6, bodyY, 0.9, true),
-    // A bonnet at the nose and a boot at the tail, sitting on the body: they
-    // are the panels a shunt at either end pushes in, and a hard enough one
-    // takes them off and leaves the shell.
-    box(length * 0.22, bodyHeight * 0.3, width * 0.86, spec.paint, spec.halfLength - length * 0.13, bodyY + bodyHeight * 0.36, 0),
-    box(length * 0.2, bodyHeight * 0.3, width * 0.86, spec.paint, -spec.halfLength + length * 0.12, bodyY + bodyHeight * 0.36, 0),
-  ];
-  return [...boxes, ...lamps(spec, bodyY + bodyHeight * 0.2)];
 }
 
 /** A lamp at each front corner and a tail light at each rear one. */
@@ -279,92 +240,23 @@ export function patrolBeacons(spec: VehicleSpec): Beacon[] {
 }
 
 /**
- * A patrol car: a saloon in black and white — a dark body, bonnet and boot
- * with a white cabin and white doors — a light bar across the roof and a push
- * bar on the nose. From above that is a white box between two black ends with a
- * red and blue bar across it, which no other car in the city is.
+ * A patrol car: a saloon in black and white — dark ends and a white middle —
+ * a light bar across the roof and a push bar on the nose. From above that is a
+ * white box between two black ends with a red and blue bar across it, which no
+ * other car in the city is.
  */
 function patrolCar(spec: VehicleSpec): VehicleBox[] {
-  const boxes = car(spec, { cabin: 0.42, cabinAt: -0.04, waist: 0.55 });
   const width = spec.halfWidth * 2;
-  const length = spec.halfLength * 2;
-  // The body is a car's first box, and the bonnet and the boot are the painted
-  // boxes out at either end; the doors and the cabin keep the paint.
-  for (const part of boxes) {
-    if (part.colour !== spec.paint) continue;
-    if (part === boxes[0] || Math.abs(part.x) > spec.halfLength * 0.4) part.colour = spec.trim;
-  }
-  // The bar: a dark base across the roof, and the two halves over it.
-  boxes.push(box(0.3, 0.06, width * 0.8, BAR_BASE, -spec.halfLength * 0.1, spec.halfHeight + 0.04, 0));
-  for (const beacon of patrolBeacons(spec)) {
-    const b = beacon.box;
-    boxes.push(box(b.length, b.height, b.width, b.colour, b.x, b.y, b.z));
-  }
-  // The push bar on the nose, which is the one part of it wider than a saloon's front.
-  boxes.push(box(0.12, spec.halfHeight * 0.6, width * 0.7, BAR_BASE, spec.halfLength + 0.08, -spec.halfHeight * 0.5, 0));
-  // A spotlight on the driver's pillar.
-  boxes.push(box(0.16, 0.1, 0.1, METAL, length * 0.12, spec.halfHeight * 0.3, width * 0.43));
-  return boxes;
-}
-
-/** A panel van: a cab at the nose and a tall blind box behind it. */
-function van(spec: VehicleSpec): VehicleBox[] {
-  const length = spec.halfLength * 2;
-  const width = spec.halfWidth * 2;
-  const height = spec.halfHeight * 2;
-  const noseLength = length * 0.24;
-  const noseHeight = height * 0.42;
-  const noseY = -spec.halfHeight + noseHeight / 2;
-  return [
-    box(length - noseLength, height, width * 0.94, spec.paint, -noseLength / 2, 0, 0),
-    box(noseLength, noseHeight, width * 0.9, spec.paint, spec.halfLength - noseLength / 2, noseY, 0),
-    // The windscreen stands where the nose meets the box, which is what says
-    // which end the driver sits at.
-    box(length * 0.05, height * 0.4, width * 0.86, GLASS, spec.halfLength - noseLength, height * 0.06, 0),
-    // A vent on the roof, which is the panel a van loses off the top of it and
-    // the one thing that breaks up a flat white roof from above.
-    box(length * 0.18, 0.09, width * 0.5, spec.trim, -length * 0.1, spec.halfHeight + 0.05, 0),
-    // The sliding door down each side, which is the panel a van loses.
-    ...doors(spec, length * 0.4, height * 0.34, -spec.halfHeight + height * 0.3, 0.94),
-    ...lamps(spec, noseY),
+  const extras = [
+    // The bar: a dark base across the roof, and the two halves over it.
+    box(0.3, 0.06, width * 0.8, BAR_BASE, -spec.halfLength * 0.1, spec.halfHeight + 0.04, 0),
+    ...patrolBeacons(spec).map(({ box: b }) => box(b.length, b.height, b.width, b.colour, b.x, b.y, b.z)),
+    // The push bar on the nose, which is the one part of it wider than a saloon's front.
+    box(0.12, spec.halfHeight * 0.6, width * 0.7, BAR_BASE, spec.halfLength + 0.08, -spec.halfHeight * 0.5, 0),
+    // A spotlight on the driver's pillar.
+    box(0.16, 0.1, 0.1, METAL, spec.halfLength * 0.24, spec.halfHeight * 0.3, -width * 0.46),
   ];
-}
-
-/** A flatbed truck: a tall cab, a gap, then a deck with a headboard behind it. */
-function truck(spec: VehicleSpec): VehicleBox[] {
-  const length = spec.halfLength * 2;
-  const width = spec.halfWidth * 2;
-  const height = spec.halfHeight * 2;
-  const cabLength = length * 0.26;
-  const deckLength = length * 0.6;
-  const deckHeight = height * 0.22;
-  const deckY = -spec.halfHeight + height * 0.5;
-  const deckX = -spec.halfLength + deckLength / 2;
-  return [
-    box(cabLength, height, width, spec.paint, spec.halfLength - cabLength / 2, 0, 0),
-    box(length * 0.05, height * 0.36, width * 0.9, GLASS, spec.halfLength - cabLength, height * 0.2, 0),
-    box(deckLength, deckHeight, width, spec.trim, deckX, deckY, 0),
-    // The headboard behind the cab, which is what stops the load at 60 m up.
-    box(length * 0.04, height * 0.4, width, spec.trim, deckX + deckLength / 2, deckY + height * 0.3, 0),
-    ...lamps(spec, -spec.halfHeight + height * 0.22),
-  ];
-}
-
-/** A city bus: one long box with a band of glass down each side. */
-function bus(spec: VehicleSpec): VehicleBox[] {
-  const length = spec.halfLength * 2;
-  const width = spec.halfWidth * 2;
-  const height = spec.halfHeight * 2;
-  const bandY = height * 0.12;
-  const boxes = [
-    box(length, height, width, spec.paint, 0, 0, 0),
-    box(length * 0.94, height * 0.3, width * 1.01, GLASS, -length * 0.02, bandY, 0),
-    // The windscreen, a little taller than the band, at the driver's end.
-    box(length * 0.03, height * 0.42, width * 0.94, GLASS, spec.halfLength, bandY, 0),
-    // A roof hatch, so the roof is not one flat colour from above.
-    box(length * 0.12, 0.08, width * 0.4, spec.trim, length * 0.2, spec.halfHeight + 0.04, 0),
-  ];
-  return [...boxes, ...lamps(spec, -spec.halfHeight + height * 0.12)];
+  return lofted(spec, extras, true);
 }
 
 /**
@@ -420,69 +312,97 @@ function saddle(spec: VehicleSpec): Saddle {
  * grips and the pegs are drawn exactly where the pose puts the body on them.
  */
 function motorcycle(spec: VehicleSpec): VehicleBox[] {
-  const length = spec.halfLength * 2;
-  const width = spec.halfWidth * 2;
-  const height = spec.halfHeight * 2;
   const seat = saddle(spec);
-  const boxes = [
-    // The frame, and the engine hung under it: the mass in the middle, which
-    // everything else is bolted to and which a bike never loses.
-    box(length * 0.52, height * 0.27, width * 0.44, spec.trim, -length * 0.01, -height * 0.27, 0),
-    box(length * 0.24, height * 0.57, width * 0.44, METAL, length * 0.02, -height * 0.5, 0),
-    // The tank in two, a wide lower half under a narrower top, so it rounds
-    // off rather than standing there as a brick. It carries the bike's paint.
-    box(length * 0.24, height * 0.33, width * 0.54, spec.paint, length * 0.2, height * 0.1, 0),
-    box(length * 0.2, height * 0.2, width * 0.41, spec.paint, length * 0.19, height * 0.33, 0),
-    // The seat, with its top at the saddle, and the tail rising behind it.
-    box(length * 0.29, height * 0.17, width * 0.47, SEAT, seat.x, seat.y - height * 0.085, 0),
-    box(length * 0.17, height * 0.37, width * 0.38, spec.paint, -length * 0.35, height * 0.27, 0),
-    // The front: a mudguard over the wheel, and the lamp housing over that.
-    box(length * 0.24, height * 0.13, width * 0.32, spec.paint, length * 0.38, height * 0.23, 0),
-    box(length * 0.07, height * 0.5, width * 0.44, BAR_BASE, length * 0.41, height * 0.5, 0),
-    box(0.06, height * 0.37, width * 0.32, LAMP, spec.halfLength - 0.09, height * 0.5, 0),
-    // The back: a mudguard, the tail light on it, and the exhaust down the
-    // right side with its silencer at the end of it.
-    box(length * 0.24, height * 0.13, width * 0.35, spec.paint, -length * 0.38, height * 0.17, 0),
-    box(0.08, height * 0.17, width * 0.32, TAIL, -spec.halfLength + 0.05, height * 0.3, 0),
-    box(length * 0.38, height * 0.17, width * 0.15, METAL, -length * 0.17, -height * 0.5, -width * 0.32),
-    box(length * 0.2, height * 0.23, width * 0.21, METAL, -length * 0.31, -height * 0.43, -width * 0.32),
+  const wheelY = -0.24;
+  const front = spec.halfLength * 0.72;
+  const rear = -front;
+  const parts = [
+    // The tank swells up from the steering head and tapers into the seat: the
+    // paint, and the one shape that says motorcycle from above.
+    loft([
+      { x: 0.4, bottom: 0.14, top: 0.26, half: 0.06 },
+      { x: 0.3, bottom: 0.0, top: 0.33, half: 0.13 },
+      { x: 0.14, bottom: -0.02, top: 0.35, half: 0.15 },
+      { x: 0.02, bottom: 0.02, top: 0.27, half: 0.12 },
+      { x: -0.04, bottom: 0.07, top: 0.2, half: 0.08 },
+    ], spec.paint, 0.45),
+    // The seat, dished where the rider sits, its top at the saddle.
+    loft([
+      { x: 0.0, bottom: 0.12, top: seat.y, half: 0.09 },
+      { x: -0.1, bottom: 0.1, top: seat.y - 0.025, half: 0.14 },
+      { x: -0.3, bottom: 0.1, top: seat.y - 0.02, half: 0.14 },
+      { x: -0.46, bottom: 0.14, top: seat.y, half: 0.1 },
+    ], SEAT, 0.5),
+    // The tail rises from under the seat to a point over the rear wheel.
+    loft([
+      { x: -0.2, bottom: -0.04, top: 0.12, half: 0.1 },
+      { x: -0.5, bottom: 0.06, top: 0.16, half: 0.11 },
+      { x: -0.78, bottom: 0.16, top: 0.25, half: 0.07 },
+      { x: -0.9, bottom: 0.2, top: 0.26, half: 0.04 },
+    ], spec.paint, 0.4),
+    box(0.05, 0.05, 0.12, TAIL, -0.9, 0.24, 0),
+    // The frame runs down from the steering head to the swingarm's pivot.
+    loft([
+      { x: 0.46, bottom: 0.24, top: 0.42, half: 0.04 },
+      { x: 0.2, bottom: -0.1, top: 0.04, half: 0.05 },
+      { x: -0.14, bottom: -0.34, top: -0.16, half: 0.06 },
+    ], spec.trim),
+    // The engine, hung under the tank, and its head leaning forwards.
+    loft([
+      { x: 0.24, bottom: -0.36, top: -0.12, half: 0.1 },
+      { x: 0.12, bottom: -0.46, top: -0.02, half: 0.15 },
+      { x: -0.08, bottom: -0.46, top: -0.06, half: 0.15 },
+      { x: -0.18, bottom: -0.38, top: -0.14, half: 0.1 },
+    ], METAL, 0.45),
+    // The nacelle round the headlamp, and the small screen on top of it.
+    loft([
+      { x: 0.64, bottom: 0.32, top: 0.46, half: 0.08 },
+      { x: 0.54, bottom: 0.24, top: 0.52, half: 0.13 },
+      { x: 0.42, bottom: 0.28, top: 0.48, half: 0.09 },
+    ], spec.paint, 0.5),
+    loft([
+      { x: 0.6, bottom: 0.47, top: 0.5, half: 0.08 },
+      { x: 0.46, bottom: 0.52, top: 0.66, half: 0.1 },
+    ], GLASS, 0.3),
+    box(0.04, 0.12, 0.13, LAMP, 0.65, 0.39, 0),
+    // A mudguard bent round each wheel.
+    loft(arc(front, wheelY, spec.wheelRadius + 0.05, 0.45, 2.1, 0.04, 0.07), spec.paint),
+    loft(arc(rear, wheelY, spec.wheelRadius + 0.05, 1.2, 2.5, 0.04, 0.08), spec.trim),
+    // The exhaust: a pipe out of the engine, under the peg, swelling into the
+    // silencer that rises past the rear wheel on the right side.
+    loft([
+      { x: 0.2, bottom: -0.34, top: -0.26, half: 0.035, z: -0.12 },
+      { x: 0.04, bottom: -0.52, top: -0.45, half: 0.035, z: -0.17 },
+      { x: -0.3, bottom: -0.48, top: -0.41, half: 0.035, z: -0.2 },
+      { x: -0.44, bottom: -0.42, top: -0.28, half: 0.065, z: -0.21 },
+      { x: -0.8, bottom: -0.28, top: -0.16, half: 0.055, z: -0.21 },
+    ], METAL, 0.5),
     // The bars, on a stem up from the forks: the one part of a bike wider than
     // the bike, and the T it reads as from straight above.
-    box(length * 0.18, height * 0.13, width * 0.15, BAR_BASE, length * 0.32, seat.gripY - height * 0.07, 0),
-    box(0.07, 0.07, seat.gripZ * 2 + 0.14, METAL, seat.gripX, seat.gripY, 0),
+    box(0.16, 0.08, 0.1, BAR_BASE, seat.gripX - 0.06, seat.gripY - 0.05, 0),
+    box(0.05, 0.05, seat.gripZ * 2 + 0.14, METAL, seat.gripX, seat.gripY, 0),
   ];
   for (const side of [1, -1]) {
-    // A fork leg and a swingarm each side, a peg for each boot, a grip at each
-    // end of the bars and a mirror on a stalk out past it.
-    boxes.push(box(length * 0.05, height * 1.1, width * 0.13, METAL, length * 0.36, height * 0.12, side * width * 0.19));
-    boxes.push(box(length * 0.24, height * 0.15, width * 0.15, METAL, -length * 0.24, -height * 0.37, side * width * 0.18));
-    boxes.push(box(length * 0.08, 0.04, width * 0.18, METAL, seat.pegX, seat.pegY, side * seat.pegZ));
-    boxes.push(box(0.09, 0.09, 0.14, SEAT, seat.gripX, seat.gripY, side * seat.gripZ));
-    boxes.push(box(0.04, height * 0.17, width * 0.2, METAL, seat.gripX, seat.gripY + height * 0.15, side * (seat.gripZ + 0.08)));
+    // A raked fork leg and a swingarm each side, a peg for each boot, a grip
+    // at each end of the bars and a mirror on a stalk out past it.
+    parts.push(
+      loft([
+        { x: seat.gripX + 0.02, bottom: 0.26, top: 0.44, half: 0.03, z: side * 0.09 },
+        { x: front, bottom: wheelY - 0.02, top: wheelY + 0.1, half: 0.025, z: side * 0.09 },
+      ], METAL, 0.5),
+    );
+    parts.push(
+      loft([
+        { x: -0.12, bottom: -0.36, top: -0.24, half: 0.03, z: side * 0.11 },
+        { x: rear, bottom: wheelY - 0.04, top: wheelY + 0.04, half: 0.025, z: side * 0.11 },
+      ], spec.trim, 0.5),
+    );
+    parts.push(box(0.08, 0.04, 0.12, METAL, seat.pegX, seat.pegY, side * seat.pegZ));
+    parts.push(box(0.09, 0.07, 0.14, SEAT, seat.gripX, seat.gripY, side * seat.gripZ));
+    parts.push(box(0.03, 0.12, 0.03, METAL, seat.gripX, seat.gripY + 0.08, side * (seat.gripZ + 0.04)));
+    parts.push(box(0.03, 0.06, 0.12, METAL, seat.gripX, seat.gripY + 0.16, side * (seat.gripZ + 0.1)));
   }
-  return boxes;
-}
-
-/** An off-roader: a tall body, glass all round and a rack on the roof. */
-function offroad(spec: VehicleSpec): VehicleBox[] {
-  const length = spec.halfLength * 2;
-  const width = spec.halfWidth * 2;
-  const height = spec.halfHeight * 2;
-  const bodyHeight = height * 0.56;
-  const bodyY = -spec.halfHeight + bodyHeight / 2;
-  const cabinHeight = height - bodyHeight;
-  const cabinY = bodyY + bodyHeight / 2 + cabinHeight / 2;
-  return [
-    box(length, bodyHeight, width * 0.92, spec.paint, 0, bodyY, 0),
-    box(length * 0.66, cabinHeight, width * 0.88, spec.paint, -length * 0.06, cabinY, 0),
-    box(length * 0.6, cabinHeight * 0.56, width * 0.9, GLASS, -length * 0.06, cabinY + cabinHeight * 0.12, 0),
-    // The rack, which is the one thing that tells this from a tall van above.
-    box(length * 0.42, 0.08, width * 0.74, spec.trim, -length * 0.1, spec.halfHeight + 0.05, 0),
-    // A spare wheel on the back door.
-    box(0.14, spec.wheelRadius * 1.6, spec.wheelRadius * 1.6, TYRE, -spec.halfLength - 0.07, bodyY + bodyHeight * 0.3, 0),
-    ...doors(spec, length * 0.44, bodyHeight * 0.56, bodyY, 0.92, true),
-    ...lamps(spec, bodyY + bodyHeight * 0.24),
-  ];
+  return parts;
 }
 
 /** A beach buggy: a floor pan, two seat backs and a roll cage over them. */
