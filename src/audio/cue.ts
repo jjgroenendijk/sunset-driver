@@ -18,6 +18,15 @@ export type CueKind =
   | 'impact'
   | 'explosion'
   | 'gunshot'
+  | 'shotgun'
+  | 'rifle'
+  | 'magnum'
+  | 'suppressed'
+  | 'flame'
+  | 'launch'
+  | 'thunk'
+  | 'glass'
+  | 'hiss'
   | 'swing'
   | 'thud'
   | 'clang'
@@ -63,6 +72,26 @@ export const CUES: Readonly<Record<CueKind, CueVoice>> = Object.freeze({
   explosion: { tone: 110, toneEnd: 32, noise: 1, cutoff: 2600, cutoffEnd: 90, attack: 0.004, decay: 1.5, gain: 1, ducks: true },
   // The crack of a round leaving the barrel, all attack and no body.
   gunshot: { tone: 420, toneEnd: 120, noise: 1, cutoff: 7200, cutoffEnd: 700, attack: 0.001, decay: 0.16, gain: 1, ducks: true },
+  // A shotgun's boom: lower and longer than a pistol's crack, with a heavy
+  // body that rolls off after it.
+  shotgun: { tone: 180, toneEnd: 55, noise: 1, cutoff: 4200, cutoffEnd: 260, attack: 0.001, decay: 0.42, gain: 1, ducks: true },
+  // A rifle round: a hard, bright crack with more tail than a pistol's.
+  rifle: { tone: 320, toneEnd: 90, noise: 1, cutoff: 8000, cutoffEnd: 500, attack: 0.001, decay: 0.26, gain: 1, ducks: true },
+  // A magnum, a .308 or a .50: the deepest crack, which rolls on longest.
+  magnum: { tone: 150, toneEnd: 40, noise: 1, cutoff: 6000, cutoffEnd: 180, attack: 0.001, decay: 0.62, gain: 1, ducks: true },
+  // A suppressed shot: a short dry cough, noise alone, with no crack in it.
+  suppressed: { tone: 0, toneEnd: 0, noise: 1, cutoff: 2600, cutoffEnd: 300, attack: 0.001, decay: 0.08, gain: 0.5, ducks: false },
+  // A flamethrower's roar: a low rumble under a soft band of noise. One comes
+  // with every tongue of the stream, and they overlap into one sound.
+  flame: { tone: 70, toneEnd: 55, noise: 1, cutoff: 1500, cutoffEnd: 420, attack: 0.05, decay: 0.22, gain: 0.55, ducks: false },
+  // A rocket leaving the tube: a rushing whoosh that falls as it goes.
+  launch: { tone: 900, toneEnd: 180, noise: 1, cutoff: 3000, cutoffEnd: 600, attack: 0.01, decay: 0.7, gain: 0.9, ducks: true },
+  // The hollow bloop of a grenade launcher.
+  thunk: { tone: 160, toneEnd: 70, noise: 0.5, cutoff: 900, cutoffEnd: 200, attack: 0.002, decay: 0.15, gain: 0.8, ducks: false },
+  // A bottle breaking: high, bright and short, which is how a Molotov lands.
+  glass: { tone: 2600, toneEnd: 1900, noise: 0.9, cutoff: 9000, cutoffEnd: 3000, attack: 0.001, decay: 0.25, gain: 0.6, ducks: false },
+  // A canister of smoke or gas letting go: a long hiss of high noise.
+  hiss: { tone: 0, toneEnd: 0, noise: 1, cutoff: 7000, cutoffEnd: 3500, attack: 0.08, decay: 1.6, gain: 0.4, ducks: false },
   // Air moved by a bat or a blade: noise alone, opening and closing.
   swing: { tone: 0, toneEnd: 0, noise: 1, cutoff: 1800, cutoffEnd: 260, attack: 0.03, decay: 0.16, gain: 0.35, ducks: false },
   // A blow landing on somebody (spec section 11.6): low, soft and dead, with
