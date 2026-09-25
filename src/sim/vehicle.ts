@@ -21,6 +21,7 @@ import { atan2, cos, sin } from '../core/libm.ts';
 import type { Surface } from '../world/surface.ts';
 import { AIRCRAFT_CLASSES, type AircraftClass } from '../world/types.ts';
 import { createDamageState, type DamageState } from './damage.ts';
+import { createLeafState, type LeafState } from './leaves.ts';
 import { ROAD_TYRES } from './roster.ts';
 
 // The rows live next door and come out through this file, so nothing outside
@@ -364,6 +365,8 @@ export interface VehicleState {
    * where the record carries them.
    */
   damage: DamageState;
+  /** How far open each door and the bonnet stand, and which are wanted open (`doors.ts`). */
+  leaves: LeafState;
   /**
    * How far round the radio dial this vehicle has been turned (spec section
    * 15). It is per vehicle, so a car keeps the station it was left on and a
@@ -419,6 +422,7 @@ export function createVehicleState(spec: VehicleSpec, x = 0, z = 0, y = 0, headi
     speed: 0,
     afloat: false,
     damage: createDamageState(),
+    leaves: createLeafState(),
     station: RADIO_OFF,
     hotwired: false,
     paint: spec.paint,

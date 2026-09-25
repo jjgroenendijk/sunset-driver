@@ -100,6 +100,9 @@ const BLAST_DAMAGE = 65;
 /** Newtons of impulse an explosion throws its own vehicle up with, per tonne. */
 export const BLAST_LIFT = 4200;
 
+/** How far in a panel is pushed before its door or its bonnet springs and hangs ajar. */
+export const AJAR_DENT = 0.5;
+
 /** Health a crash costs the driver, per unit of severity. */
 export const CRASH_DAMAGE = 45;
 
@@ -117,6 +120,11 @@ export interface DamageState {
   dents: number[];
   /** True where that panel has been torn off altogether. */
   lost: boolean[];
+  /**
+   * True where a hit has sprung that panel's door or bonnet, which then hangs
+   * ajar (`doors.ts`) until the panel is repaired or torn off.
+   */
+  ajar: boolean[];
   /** How far through the progression it is. */
   stage: DamageStage;
   /** The tick the fire caught, or -1 while nothing is burning. */
@@ -131,6 +139,7 @@ export function createDamageState(): DamageState {
     integrity: 1,
     dents: PANELS.map(() => 0),
     lost: PANELS.map(() => false),
+    ajar: PANELS.map(() => false),
     stage: 'intact',
     litTick: -1,
     blownTick: -1,
@@ -224,6 +233,7 @@ export function damageVehicle(
     const index = PANELS.indexOf(panel);
     const dent = Math.min(1, (damage.dents[index] as number) + severity * DENT_PER_SEVERITY);
     damage.dents[index] = dent;
+    if (dent >= AJAR_DENT) damage.ajar[index] = true;
     if (dent >= 1) damage.lost[index] = true;
   }
   damage.integrity = Math.max(0, damage.integrity - severity);

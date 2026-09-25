@@ -257,6 +257,7 @@ export class Keyboard {
       buy: picked > 0 ? picked : chosen,
       trade: traded !== 0 ? traded : selling ? -chosen : chosen,
       surrender: this.is('KeyX'),
+      bonnet: this.is('KeyO'),
     };
   }
 

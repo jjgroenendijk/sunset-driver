@@ -86,6 +86,10 @@ export interface PoliceUnit {
    * crew is out on foot stands where it stopped until they are back in it.
    */
   crew: number;
+  /** How far its front doors stand open, 0 shut to 1 open (`duty.ts`). */
+  doors: number;
+  /** The tick the crew last got out of it or back in, which holds its doors open a while. */
+  doorTick: number;
   /** The tick the crew last fired out of the car (`officer-fire.ts`). */
   fired: number;
   /** The street crime it was sent to while no chase is on, or -1 (`patrol.ts`). */
@@ -502,6 +506,8 @@ export class PoliceForce {
       goalX: x,
       goalY: y,
       crew: CREW[kind],
+      doors: 0,
+      doorTick: -1_000_000,
       fired: -1_000_000,
       incident: -1,
     };

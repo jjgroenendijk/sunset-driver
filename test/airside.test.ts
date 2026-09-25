@@ -105,6 +105,8 @@ describe('the police helicopter gun (spec section 14)', () => {
       goalX: x,
       goalY: y,
       crew: 2,
+      doors: 0,
+      doorTick: -1_000_000,
       fired: -1_000_000,
       incident: -1,
     };
