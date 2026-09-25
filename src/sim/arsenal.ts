@@ -492,11 +492,14 @@ export const ARSENAL: Record<WeaponId, WeaponSpec> = {
     calibre: 'fuel',
     capacity: 200,
     rpm: 600,
-    spread: 0.12,
+    spread: 0.14,
     recoil: 0.002,
     reloadTicks: 300,
-    damage: 9,
+    // A stream rather than a round: three tongues of it a tick of fuel, each
+    // cast on its own, so the fire fills a cone and not a line.
+    damage: 4,
     range: 12,
+    pellets: 3,
     penetration: 0.3,
     automatic: true,
     effect: 'fire',

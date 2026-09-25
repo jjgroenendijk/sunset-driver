@@ -1,3 +1,4 @@
+import type { Blast } from './blast.ts';
 import { stepArrest } from './arrest.ts';
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
 import { gameTime, TICKS_PER_HOUR } from './clock.ts';
@@ -83,6 +84,12 @@ export interface SimState {
    * how long one is kept and `gunfire.ts` writes them.
    */
   tracers: Tracer[];
+  /**
+   * The projectiles that went off in the last few ticks (spec section 11.6),
+   * so the frame can draw the burst and the mix can play it. `blast.ts` says
+   * how long one is kept and `gunfire.ts` writes them.
+   */
+  blasts: Blast[];
   /**
    * The weapons lying in the world to be picked up (spec section 11.6): what
    * the dead dropped and what was taken out of a police car.
@@ -240,6 +247,7 @@ export function createSimState(
     projectiles: [],
     hits: [],
     tracers: [],
+    blasts: [],
     pickups: [],
     nextPickup: 0,
     market: createMarketState(),

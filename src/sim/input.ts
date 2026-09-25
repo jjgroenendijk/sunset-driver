@@ -24,6 +24,12 @@ export interface InputFrame {
   pointing: boolean;
   pointX: number;
   pointY: number;
+  /**
+   * Radians above level the shot climbs, and below it where negative. Only the
+   * first-person view sets it, from where the view looks; every other view
+   * aims level, as the top-down game always has.
+   */
+  pitch: number;
   /** Reload the weapon in hand (spec section 11.6). */
   reload: boolean;
   /**
@@ -86,6 +92,7 @@ export const EMPTY_INPUT: Readonly<InputFrame> = Object.freeze({
   pointing: false,
   pointX: 0,
   pointY: 0,
+  pitch: 0,
   reload: false,
   cycle: 0,
   station: 0,
@@ -114,6 +121,7 @@ export const INPUT_FIELDS = [
   'pointing',
   'pointX',
   'pointY',
+  'pitch',
   'reload',
   'cycle',
   'station',

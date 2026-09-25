@@ -304,6 +304,12 @@ export const MAX_RECOIL = 0.22;
 export const MUZZLE_HEIGHT = 1.2;
 export const MUZZLE_REACH = 0.45;
 
+/**
+ * The most radians above or below level a shot may be aimed, which only the
+ * first-person view does (`InputFrame.pitch`).
+ */
+export const MAX_AIM_PITCH = 1.2;
+
 /** How much of the spread is spent up and down rather than left and right. */
 const PITCH_SHARE = 0.5;
 
@@ -463,7 +469,8 @@ export interface Shot {
  * who is out is a player who wants to reload.
  *
  * `yaw` is the direction the shot goes in, which is the way the player faces
- * unless the pointer says otherwise (`aim.ts`).
+ * unless the pointer says otherwise (`aim.ts`). The input's `pitch` tilts it
+ * up or down, which only the first-person view asks for.
  */
 export function stepWeapons(
   loadout: LoadoutState,
@@ -489,7 +496,8 @@ export function stepWeapons(
   const pulled = input.fire && (spec.automatic || !loadout.held.fire);
   loadout.held.fire = input.fire;
   if (!pulled) return undefined;
-  return fire(loadout, spec, player, seed, tick, yaw);
+  const climb = Math.max(-MAX_AIM_PITCH, Math.min(MAX_AIM_PITCH, input.pitch));
+  return fire(loadout, spec, player, seed, tick, yaw, climb);
 }
 
 /** Spend a round and answer what it threw, or undefined where the weapon would not fire. */
@@ -500,6 +508,7 @@ function fire(
   seed: number,
   tick: number,
   aim: number,
+  climb: number,
 ): Shot | undefined {
   if (reloading(loadout)) return undefined;
   // Only a pistol or an SMG is any use from a seat (spec section 11.6).
@@ -529,7 +538,7 @@ function fire(
   const flight = spec.projectile;
   if (flight !== undefined) {
     const yaw = aim + rng.range(-cone, cone);
-    const pitch = flight.pitch + rng.range(-cone, cone) * PITCH_SHARE;
+    const pitch = flight.pitch + climb + rng.range(-cone, cone) * PITCH_SHARE;
     const flat = cos(pitch) * flight.speed;
     const projectile: ProjectileState = {
       weapon: spec.id,
@@ -547,7 +556,7 @@ function fire(
   const rays: ShotRay[] = [];
   for (let i = 0; i < spec.pellets; i++) {
     const yaw = aim + rng.range(-cone, cone);
-    const pitch = rng.range(-cone, cone) * PITCH_SHARE;
+    const pitch = climb + rng.range(-cone, cone) * PITCH_SHARE;
     const flat = cos(pitch);
     rays.push({
       x: muzzleX,

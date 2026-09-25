@@ -32,6 +32,8 @@ import { hurtPerson, type CasualtyGround } from './casualty.ts';
 import { SHUNS_RAGDOLL } from './collision-groups.ts';
 import { peopleNear, personOnRay } from './crowd-contact.ts';
 import { forgetTracers, markTracer, type TracerEnd } from './tracer.ts';
+import { forgetBlasts, markBlast } from './blast.ts';
+import { light } from './fire.ts';
 import {
   blastFalloff,
   bounceProjectile,
@@ -122,6 +124,9 @@ export const SWING_RAYS: number = 3;
 export const PERSON_RADIUS = 0.3;
 
 
+/** The shortest and longest a Molotov's fire burns on the ground, in seconds. */
+export const MOLOTOV_SECONDS: readonly [number, number] = [12, 20];
+
 /** Metres per second a round or a blow knocks a person back at, from the damage it does. */
 export function shotPush(damage: number): number {
   return Math.min(3.5, 0.8 + damage * 0.03);
@@ -165,6 +170,7 @@ export class Gunfire {
     // had every frame of those ticks to see it (`melee.ts`).
     forgetHits(state.hits, state.tick);
     forgetTracers(state.tracers, state.tick);
+    forgetBlasts(state.blasts, state.tick);
     const yaw = aimYaw(state, input);
     const shot = stepWeapons(state.loadout, input, state.player, state.seed, state.tick, yaw);
     if (shot === undefined) return;
@@ -204,6 +210,7 @@ export class Gunfire {
         eh: ray.h + ray.dh * reach,
         end,
         by: 'player',
+        flame: shot.spec.effect === 'fire' || undefined,
       });
     }
   }
@@ -547,13 +554,19 @@ export class Gunfire {
    * Set off one projectile where it stands (spec section 11.6). A blast is felt
    * over its radius and falls away to nothing at the edge of it; a Molotov sets
    * what it lands on alight, which is the fire that spreads of spec section
-   * 11.3. Smoke and tear gas leave a cloud that nothing reads yet: it is the
+   * 11.3. Every burst is written into the record for the frame and the mix.
+   * Smoke and tear gas leave a cloud that only the frame reads yet: it is the
    * pedestrians and the police of spec sections 13.1 and 14 that will.
    */
   private burst(state: SimState, p: ProjectileState, target: ShotTarget): void {
     const spec = weaponOf(p.weapon);
     const flight = spec.projectile;
-    if (flight === undefined || spec.effect === 'smoke') return;
+    if (flight === undefined) return;
+    markBlast(state.blasts, { tick: state.tick, x: p.x, y: p.y, h: p.h, weapon: spec.id, radius: flight.blastRadius });
+    if (spec.effect === 'smoke') return;
+    // A Molotov leaves the ground it broke on alight, and that fire spreads to
+    // the cars round it the way a wreck's does (spec sections 11.3, 11.6).
+    if (spec.effect === 'fire') light(state, p.x, p.y, MOLOTOV_SECONDS);
     // Heard well past the ring it is felt in, so the street empties around it
     // (spec section 20.1).
     if (target.crowd !== undefined) {

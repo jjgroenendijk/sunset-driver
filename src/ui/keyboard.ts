@@ -56,6 +56,8 @@ export class Keyboard {
   private stationHeld = 0;
   /** The map point under the mouse, which the frame writes; undefined while it is off the map. */
   private point: { x: number; y: number } | undefined = undefined;
+  /** Radians the shot climbs, which only the first-person view sets. */
+  private pitch = 0;
   /**
    * True while a shop counter or a deal is open. The arrow keys then walk its
    * rows and `Enter` buys one, so they leave the player where they stand;
@@ -153,10 +155,12 @@ export class Keyboard {
   /**
    * Where the mouse points on the map, in map metres, or undefined where it is
    * not over the map. The frame writes it once a frame from the camera, which
-   * this class does not know.
+   * this class does not know. `pitch` is how far above level the view looks,
+   * in first person; every other view aims level.
    */
-  pointAt(x: number, y: number): void {
+  pointAt(x: number, y: number, pitch = 0): void {
     this.point = { x, y };
+    this.pitch = pitch;
   }
 
   /** The mouse has left the map. */
@@ -245,6 +249,7 @@ export class Keyboard {
       pointing: this.point !== undefined,
       pointX: this.point?.x ?? 0,
       pointY: this.point?.y ?? 0,
+      pitch: this.point === undefined ? 0 : this.pitch,
       reload: this.is('KeyR'),
       cycle,
       station: this.dial(),
