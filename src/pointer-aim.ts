@@ -8,6 +8,8 @@
  * same ray, so the two never disagree about where the mouse is.
  */
 import { Plane, Raycaster, Vector2, Vector3, type Camera } from 'three';
+import { EYE_HEIGHT_ON_FOOT } from './render/camera-view.ts';
+import { MUZZLE_HEIGHT } from './sim/weapon.ts';
 
 /**
  * Metres above the player's feet the pointer is laid on: about chest height,
@@ -23,6 +25,17 @@ export const AIM_PLANE_HEIGHT = 1.2;
  */
 export const LOOK_AIM_NEAR = 8;
 export const LOOK_AIM_FAR = 60;
+
+/**
+ * Radians above level a shot is aimed in first person, so the round goes where
+ * the crosshair in the middle of the view is. The muzzle stands below the eye,
+ * so the shot climbs to meet the line of sight `reach` metres out, which is
+ * where that line meets the aim plane or the far end of the aim.
+ */
+export function shotPitch(elevation: number, reach: number): number {
+  const d = Math.max(2, Math.min(LOOK_AIM_FAR, reach));
+  return Math.atan2(EYE_HEIGHT_ON_FOOT - MUZZLE_HEIGHT + d * Math.tan(elevation), d);
+}
 
 /** A point on the screen, in the page's CSS pixels. */
 export interface ScreenPoint {
@@ -44,6 +57,12 @@ export class PointerAim {
   private readonly plane = new Plane(new Vector3(0, 1, 0), 0);
   private readonly hit = new Vector3();
   private readonly v = new Vector3();
+  /**
+   * Metres across the map the last {@link PointerAim.ahead} found the middle of
+   * the view meeting the aim plane, before the clamp, or {@link LOOK_AIM_FAR}
+   * where it looked over it.
+   */
+  reach = LOOK_AIM_FAR;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -83,6 +102,7 @@ export class PointerAim {
     this.plane.constant = -(height + AIM_PLANE_HEIGHT);
     const hit = this.ray.ray.intersectPlane(this.plane, this.hit);
     const reach = hit === null ? LOOK_AIM_FAR : Math.hypot(hit.x - x, hit.z - y);
+    this.reach = reach;
     const d = Math.min(LOOK_AIM_FAR, Math.max(LOOK_AIM_NEAR, reach));
     return { x: x - Math.sin(yaw) * d, y: y - Math.cos(yaw) * d };
   }
@@ -107,6 +127,12 @@ export class PointerAim {
       x: rect.left + ((this.v.x + 1) / 2) * rect.width,
       y: rect.top + ((1 - this.v.y) / 2) * rect.height,
     };
+  }
+
+  /** The middle of the canvas, in page pixels: where the crosshair of first person stands. */
+  centre(): ScreenPoint {
+    const rect = this.canvas.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   }
 
   /** Show or hide the page's own cursor over the canvas, which the crosshair stands in for. */

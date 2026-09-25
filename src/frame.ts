@@ -20,10 +20,12 @@ import { visiting } from './sim/shop.ts';
 import { specOf } from './sim/vehicle.ts';
 import { stepSim } from './sim/simulation.ts';
 import { turfLine } from './sim/territory.ts';
-import { AIM_PLANE_HEIGHT, PointerAim } from './pointer-aim.ts';
+import { AIM_PLANE_HEIGHT, PointerAim, shotPitch } from './pointer-aim.ts';
 import { Crosshair } from './ui/crosshair.ts';
 import { aimPoint } from './sim/aim.ts';
 import { currentWeapon, spreadOf } from './sim/weapon.ts';
+import { zoomOf } from './render/viewmodel.ts';
+import type { DrawnPlayer } from './render/smooth.ts';
 import type { Tracer } from './sim/tracer.ts';
 import type { FreeCameraControls } from './ui/free-camera.ts';
 import type { Keyboard } from './ui/keyboard.ts';
@@ -282,6 +284,7 @@ export class SessionFrame {
     if (flying) {
       free.camera.update(elapsed / 1000, free.input(keyboard.freeCamera()));
       free.camera.writeTo(camera.camera);
+      session.world.viewModel.hide();
       // The streaming rings and the entity fade are measured from wherever
       // the view is, or a flight of a few hundred metres looks at empty
       // ground. Nothing waits for it: the chunks land as they are built.
@@ -302,7 +305,9 @@ export class SessionFrame {
         turn: settings.buildingView === 'turn' ? this.sightTop : undefined,
         mouse: this.parts.look.active,
         altitude: session.state.player.driving ? p.height - session.world.heightAt(p.x, p.y) : 0,
+        zoom: zoomOf(session.state.loadout),
       });
+      this.firstPerson(session, p, elapsed / 1000, drawnTick);
       // A chase view has a near plane of its own, and the sun's cascades are
       // cut to the camera's frustum, so they are refitted.
       if (camera.view !== view) session.world.resize();
@@ -331,8 +336,34 @@ export class SessionFrame {
       : look.active
         ? this.aim.ahead(me.x, me.y, me.height, camera.heading)
         : this.aim.ground(me.height);
+    // First person aims up and down as well, where the middle of the view is.
+    const level = !look.active || camera.view !== 'first-person' || me.driving;
     if (at === undefined) keyboard.unpoint();
-    else keyboard.pointAt(at.x, at.y);
+    else keyboard.pointAt(at.x, at.y, level ? 0 : shotPitch(camera.elevation, this.aim.reach));
+  }
+
+  /**
+   * First person on foot, drawn as a shooter draws it (spec section 10.7): the
+   * body the other views show stands behind the eyes, so it is hidden, and the
+   * weapon and the forearms holding it are drawn in the view instead.
+   */
+  private firstPerson(session: Session, p: DrawnPlayer, dt: number, tick: number): void {
+    const { camera } = this.parts;
+    const state = session.state;
+    const world = session.world;
+    const shown = camera.view === 'first-person' && !state.player.driving && state.boarding === null;
+    if (!shown) {
+      world.viewModel.hide();
+      return;
+    }
+    world.character.group.visible = false;
+    world.held.stow();
+    world.viewModel.update(camera.camera, state.loadout, state.character, tick, dt, {
+      yaw: camera.heading,
+      pitch: camera.elevation,
+      speed: p.speed,
+      grounded: state.player.grounded,
+    });
   }
 
   /** Push the camera back from every shot fired since the last frame. */
@@ -345,7 +376,8 @@ export class SessionFrame {
     for (let i = 0; i < tracers.length; i++) {
       const t = tracers[i] as Tracer;
       // Only the player's own rounds kick the camera: an officer's shot is not in their hands.
-      if (t.by !== 'player' || t.pellet !== 0 || t.tick <= this.kicked) continue;
+      // A flamethrower pushes nothing back; its stream is steady.
+      if (t.by !== 'player' || t.pellet !== 0 || t.flame === true || t.tick <= this.kicked) continue;
       this.parts.camera.kick(t.ex - t.x, t.ey - t.y, Math.min(MAX_KICK, BASE_KICK + spec.recoil * KICK_PER_RECOIL));
       newest = Math.max(newest, t.tick);
     }
@@ -405,7 +437,11 @@ export class SessionFrame {
       if (point.snapped) lock = middle;
     }
     // Under mouse look the crosshair stands on the aim, since the pointer does not move.
-    const at = locked && point !== undefined ? this.aim.screenOf(camera, point.x, h, point.y) : this.aim.client;
+    // In first person it stands in the middle of the view, where the round goes.
+    const first = this.parts.camera.view === 'first-person' && !state.player.driving;
+    const at = locked && first
+      ? this.aim.centre()
+      : locked && point !== undefined ? this.aim.screenOf(camera, point.x, h, point.y) : this.aim.client;
     this.crosshair.update({ at, gap, lock, aiming: state.loadout.aiming }, state.tracers, state.tick, performance.now());
   }
 

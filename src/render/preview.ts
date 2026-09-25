@@ -15,6 +15,8 @@
  *   unpadded below; a picture read without that step comes back sheared, which
  *   looks exactly like a broken mesh.
  */
+import { zoomOf } from './viewmodel.ts';
+import { heavyFire, type HeavyShow } from './preview-heavy.ts';
 import { DEFAULT_APPEARANCE } from '../sim/character.ts';
 import {
   createDamageState,
@@ -40,6 +42,7 @@ import { nearestContact, previewContacts, standContacts } from './preview-contac
 import {
   ATTACHMENTS,
   createLoadout,
+  type LoadoutState,
   fitAttachment,
   giveWeapon,
   MUZZLE_HEIGHT,
@@ -176,6 +179,8 @@ export interface PreviewRequest {
    * it. What they meet is laid by hand, since a preview casts nothing.
    */
   shots?: boolean;
+  /** Set to show the heavy weapons of spec section 11.6: a flame stream, a rocket, a blast and smoke. */
+  heavy?: HeavyShow;
   /**
    * Set to lay casualties of spec section 11.6 in the road ahead: two dead,
    * and one each falling, rising, crawling, limping and thrown. With
@@ -485,13 +490,14 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   // place is beside one of them.
   const services = request.emergency === true ? standCrews(record, scene, x, y) : undefined;
   if (request.shots === true) volley(record, stand, scene.heightAt(stand.x, stand.y), tick);
+  if (request.heavy !== undefined) heavyFire(record, stand, (px, py) => scene.heightAt(px, py), tick, request.heavy);
   // The surface of the ground, as the game reads it through the city: rubber
   // is left on the tarmac and nowhere else (spec section 11.3).
   const surfaces = new SurfaceIndex(world);
   const surfaceAt = (px: number, py: number): Surface => surfaces.at(px, py);
   for (let t = tick - FX_WARMUP; t <= tick; t++) scene.damage(vehicle, record, t, surfaceAt);
   if (request.skid === true) drift(scene, vehicle, spec, heading, surfaceAt);
-  arm(scene, request, stand, tick);
+  const loadout = arm(scene, request, stand, tick);
   // The gallery of `preview-gallery.ts` stands in the scene for this one
   // request, as the emergency view does, and is taken out again below.
   const gallery =
@@ -548,7 +554,13 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
   const eye = look === 'top-down' ? { x, y, heading } : stand;
   const driving = request.onFoot !== true && shop === undefined;
   const on = { x: eye.x, y: eye.y, height: scene.heightAt(eye.x, eye.y), heading: eye.heading, speed, driving };
-  camera.update(0, on, { view: look, pull, turn });
+  camera.update(0, on, { view: look, pull, turn, zoom: zoomOf(loadout) });
+  // First person on foot draws the weapon in view instead of the body (`viewmodel.ts`).
+  const first = look === 'first-person' && !driving;
+  if (first) scene.character.group.visible = false;
+  if (first) scene.held.stow();
+  if (first) scene.viewModel.update(camera.camera, loadout, DEFAULT_APPEARANCE, tick, 1, { yaw: camera.heading, pitch: camera.elevation, speed: 0, grounded: true });
+  else scene.viewModel.hide();
   // A gallery is what the picture is of, so the camera looks at the middle of
   // its grid unless the request named a place of its own.
   const at = request.lookAt ?? (gallery === undefined ? undefined : { x: gallery.x, y: gallery.y, height: 0 });
@@ -624,7 +636,7 @@ function clearStage(scene: WorldScene): void {
  * player's hands, and with `--pickups` every weapon of the arsenal lying in
  * rows ahead of them.
  */
-function arm(scene: WorldScene, request: PreviewRequest, stand: { x: number; y: number; heading: number }, tick: number): void {
+function arm(scene: WorldScene, request: PreviewRequest, stand: { x: number; y: number; heading: number }, tick: number): LoadoutState {
   const attachments = ATTACHMENTS.filter((name: Attachment) => request.attachments?.includes(name) === true);
   const loadout = createLoadout();
   const weapon = WEAPON_IDS.find((id) => id === request.weapon);
@@ -638,7 +650,7 @@ function arm(scene: WorldScene, request: PreviewRequest, stand: { x: number; y: 
   const ground = scene.heightAt(stand.x, stand.y);
   const grip = scene.character.grip(new Vector3());
   scene.held.set(loadout, player, { ...stand, height: ground }, scene.character.height, request.swing ?? -1, grip);
-  if (request.pickups !== true) return;
+  if (request.pickups !== true) return loadout;
   const laid: PickupState[] = WEAPON_IDS.filter((id) => id !== 'fists').map((weapon, i) => {
     const x = stand.x + ((i % PICKUP_ROW) - (PICKUP_ROW - 1) / 2) * PICKUP_GRID;
     const y = stand.y + (2 + Math.floor(i / PICKUP_ROW)) * PICKUP_GRID;
@@ -648,6 +660,7 @@ function arm(scene: WorldScene, request: PreviewRequest, stand: { x: number; y: 
   scene.pickups.hovered = laid[request.hover ?? -1]?.id;
   // A second of frames at once is long enough for the hover to grow all the way.
   scene.pickups.update(laid, tick, 1);
+  return loadout;
 }
 
 /**

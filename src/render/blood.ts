@@ -143,7 +143,8 @@ export class BloodView {
       this.keep(hit.tick, hit.x, hit.y, heightAt(hit.x, hit.y), hit.strength);
     }
     for (const t of tracers) {
-      if (t.end !== 'person' || t.tick <= since || t.tick > tick) continue;
+      // Fire burns rather than bleeds.
+      if (t.end !== 'person' || t.flame === true || t.tick <= since || t.tick > tick) continue;
       this.keep(t.tick, t.ex, t.ey, heightAt(t.ex, t.ey), ROUND_STRENGTH);
     }
   }

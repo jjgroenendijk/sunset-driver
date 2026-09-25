@@ -26,6 +26,16 @@ export function nextView(view: CameraView): CameraView {
 /** Radians below horizontal each chase view looks down at. */
 export const THIRD_PITCH = (16 * Math.PI) / 180;
 export const FIRST_PITCH = (6 * Math.PI) / 180;
+/** First person on foot looks level, as a shooter does: the crosshair is on the horizon. */
+export const FIRST_PITCH_ON_FOOT = 0;
+/**
+ * Degrees of vertical field of view: the game's, and first person's, which is
+ * wider, as a shooter's is. Aiming divides it by the weapon's zoom.
+ */
+export const BASE_FOV = 45;
+export const FIRST_FOV = 70;
+/** How fast the field of view follows a zoom, in e-foldings a second. */
+export const FOV_RATE = 12;
 /** Metres behind the player the third-person camera stands, on foot and at the wheel, and per m/s of speed. */
 export const THIRD_DISTANCE_ON_FOOT = 5;
 export const THIRD_DISTANCE_DRIVING = 9;
