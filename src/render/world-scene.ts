@@ -66,6 +66,7 @@ import { SkidMarks } from './skid.ts';
 import { SkyLighting } from './sky.ts';
 import { placeBoarder } from './boarder.ts';
 import { seatRider } from './rider.ts';
+import { hullOf } from './vehicle-hull.ts';
 import type { DrawnPlayer } from './smooth.ts';
 import { STREAM_BUDGET_MS } from './streaming.ts';
 import { PlantScenery } from './vegetation.ts';
@@ -95,6 +96,9 @@ export interface DrawnDamage {
   /** The people who have been hit, whose blood is on the ground. */
   pedestrians: { casualties: readonly Casualty[] };
 }
+
+/** The end of a move into the driver's seat, which is how a driver is sat while driving. */
+const SEATED: BoardingState = { way: 'in', start: 0, side: -1, walk: 0 };
 
 /** Milliseconds {@link WorldScene.settle} waits before giving up on the workers. */
 const SETTLE_TIMEOUT_MS = 120_000;
@@ -363,6 +367,13 @@ export class WorldScene {
     // A player on a motorcycle is on top of it rather than inside it, so the
     // model is seated on the saddle instead of hidden (`rider.ts`).
     if (player.driving && vehicle !== undefined && seatRider(model, vehicle, specOf(vehicle.cls))) {
+      model.group.visible = true;
+      return;
+    }
+    // A driver behind glass that is seen through sits in the seat, as the
+    // boarding move left them, rather than vanishing (`vehicle-hull.ts`).
+    if (player.driving && vehicle !== undefined && hullOf(specOf(vehicle.cls)) !== undefined) {
+      placeBoarder(model, vehicle, specOf(vehicle.cls), SEATED, 1, drawn);
       model.group.visible = true;
       return;
     }

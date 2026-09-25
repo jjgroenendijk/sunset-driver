@@ -158,6 +158,8 @@ export interface PreviewRequest {
    * straight out of the showroom.
    */
   damage?: string;
+  /** The leaves to draw open (spec section 11.3): `doors`, `bonnet` or `all`. */
+  open?: string;
   /**
    * Set to lay a drift's worth of skid marks into the road behind the vehicle
    * (spec section 11.3), which is the one way to look at them in a still frame.
@@ -464,6 +466,8 @@ async function draw(request: PreviewRequest): Promise<PreviewResult> {
       : { x: shop.x + Math.cos(shop.facing) * KERB, y: shop.y + Math.sin(shop.facing) * KERB };
   const vehicle = createVehicleState(spec, kerb.x, kerb.y, rest + rideHeight(spec), heading);
   if (request.damage !== undefined) vehicle.damage = damageAt(request.damage, tick);
+  const open = request.open === 'all' ? [0, 1, 2, 3, 4] : request.open === 'doors' ? [0, 1, 2, 3] : request.open === 'bonnet' ? [4] : [];
+  for (const leaf of open) vehicle.leaves.open[leaf] = 1;
   const stand = request.onFoot === true && shop === undefined ? exitPlace(vehicle, spec) : { x, y, heading };
   scene.character.group.position.set(stand.x, scene.heightAt(stand.x, stand.y), stand.y);
   scene.character.group.rotation.set(0, -stand.heading, 0);

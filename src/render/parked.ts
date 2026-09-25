@@ -12,7 +12,7 @@ import { Color, Group, Matrix4, MeshStandardMaterial, Quaternion, Vector3, type 
 import { PARKED_CLASSES, type ParkedCar, type ParkedCars } from '../sim/parked.ts';
 import type { SimState } from '../sim/simulation.ts';
 import { rideHeight, specOf, type VehicleClass } from '../sim/vehicle.ts';
-import { instanced, trafficParts } from './traffic.ts';
+import { glassMaterial, instanced, trafficParts } from './traffic.ts';
 import { tinted } from './tint.ts';
 
 /** Metres each way of the point the frame is drawn round that parked cars are drawn in. */
@@ -59,13 +59,15 @@ export class ParkedView {
     this.cars = cars;
     const paint = new MeshStandardMaterial({ roughness: 0.45, metalness: 0.2 });
     const trim = new MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.1 });
-    this.materials.push(paint, trim);
+    const glass = glassMaterial();
+    this.materials.push(paint, trim, glass);
     for (const cls of PARKED_CLASSES) {
       const spec = specOf(cls);
       const parts = trafficParts(spec);
       const meshes = [
         tinted(instanced(parts.paint, paint, true, PARKED_CAP)),
         instanced(parts.trim, trim, false, PARKED_CAP),
+        instanced(parts.glass, glass, false, PARKED_CAP),
       ];
       this.classes.push({ cls, lift: rideHeight(spec), meshes });
       this.group.add(...meshes);

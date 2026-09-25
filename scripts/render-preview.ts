@@ -51,6 +51,8 @@
  *                    through, 0 to 1. `in:0.4:1` goes in by the far side.
  *   --damage         the damage state to show the vehicle in (spec section
  *                    11.3): dented, smoking, burning or burnt.
+ *   --open           the doors or the bonnet to draw open (spec section 11.3):
+ *                    doors, bonnet or all.
  *   --skid           lay a drift's worth of skid marks into the road behind
  *                    the vehicle (spec section 11.3).
  *   --emergency      put a blaze in the road ahead, with a fire engine at it
@@ -268,6 +270,7 @@ const request: PreviewRequest = {
   ...(options.has('board') ? { board: options.get('board') as string } : {}),
   ...(options.has('swing') ? { swing: num('swing', 0.4) } : {}),
   ...(options.has('damage') ? { damage: options.get('damage') as string } : {}),
+  ...(options.has('open') ? { open: options.get('open') as string } : {}),
   ...(options.has('skid') ? { skid: true } : {}),
   ...(options.has('emergency') ? { emergency: true } : {}),
   ...(options.has('shots') ? { shots: true } : {}),

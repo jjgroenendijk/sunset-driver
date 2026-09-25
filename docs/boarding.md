@@ -45,9 +45,9 @@ Getting out is the same move the other way round. `spec.md` sections 11.2 and 11
 
 ## The door
 
-- `vehicle-mesh.ts` splits the door skin of a car and an off-road car into a front half, marked
-  `hinged`, and a rear half. `VehicleModel` hangs each hinged box under a group named `door` at
-  its front edge. `openDoor(side, angle)` turns one door and closes the other.
+- Every door of a lofted body hangs from its own hinge (`docs/vehicle-bodies.md`). `doorOf` finds
+  the front door of a side as leaf 0 or 1. `openDoor(side, angle)` holds that door open by the
+  move's angle, or by the record's where that is wider.
 - The wheel test finds the wheels as the groups with children, so it skips the groups named
   `door`.
 - A class with no hinged door gets a virtual one in `doorFor`, placed at `doorAlong`. The body

@@ -10,7 +10,7 @@ design; read the section the issue names before the code.
 
 ## The gotchas
 
-Six docs hold what costs a session:
+Seven docs hold what costs a session:
 
 - `docs/streaming.md` — how a chunk reaches the screen: the workers, the frame budget, the batches
   and the cells.
@@ -18,6 +18,8 @@ Six docs hold what costs a session:
   and fading, the roads, and water.
 - `docs/post.md` — the post chain, the colour grade and getting its cube to the GPU.
 - `docs/buildings.md` — how a building is massed, generated and placed.
+- `docs/vehicle-bodies.md` — the lofted road vehicles: the hull, the doors and bonnet that open,
+  and the glass that is seen through.
 - `docs/render-entities.md` — what stands in the world: vehicles, weapons, plants,
   traffic, parked cars and the crowd.
 - `docs/lighting.md` — what lights it: daylight and shadows, the street lamps, and the lamps and

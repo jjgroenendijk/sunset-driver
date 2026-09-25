@@ -74,9 +74,11 @@ scene ever holds in `docs/shops.md`. The aircraft and the airfields are drawn as
 
 ## Vehicles and weapons
 
-- `vehicle-mesh.ts` tells each box of a vehicle which panel it stands on, read off where the box
-  sits: above the waist is the roof, either end is the nose or the tail, and out at the flank is a
-  door. A box in the middle is the shell and belongs to no panel. `vehicle.ts` then draws the damage
+- The road vehicles are lofted hulls with doors, a bonnet and glass that open and show through:
+  `docs/vehicle-bodies.md`. `vehicle-mesh.ts` tells each box of any other vehicle which panel it
+  stands on, read off where the box sits: above the waist is the roof, either end is the nose or
+  the tail, and out at the flank is a door. A box in the middle is the shell and belongs to no
+  panel. `vehicle.ts` then draws the damage
   off the record: a dent pushes in the vertices of every face the blow landed on, the shell's
   included, and only the panel's own boxes can be torn off — a vehicle with no middle is not a
   vehicle. The vertices are moved rather than the geometry rebuilt, and only when the record's

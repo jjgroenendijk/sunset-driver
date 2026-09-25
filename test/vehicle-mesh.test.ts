@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createVehicleState, isAircraft, ROSTER, specOf, VEHICLE_CLASSES, type VehicleClass } from '../src/sim/vehicle.ts';
 import { VehicleModel } from '../src/render/vehicle.ts';
 import {
+  BONNET,
   LAMP,
   SEAT,
   saddleOf,
@@ -196,6 +197,49 @@ describe('the aircraft models', () => {
     expect(pivots.map((pivot) => pivot.rotation.y)).toEqual(before);
     model.spin(0.1);
     expect(pivots.some((pivot, i) => pivot.rotation.y !== before[i])).toBe(true);
+    model.dispose();
+  });
+});
+
+describe('the lofted bodies', () => {
+  /** The leaves each class can open, by the hinges its parts hang from. */
+  const leaves = (cls: VehicleClass): number[] =>
+    [...new Set(vehicleBoxes(ROSTER[cls]).flatMap((part) => (part.hinge === undefined ? [] : [part.hinge.leaf])))].sort();
+
+  it('hangs every door and the bonnet each class has on a hinge of its own', () => {
+    for (const cls of ['compact', 'saloon', 'emergency', 'offroad'] as const) expect(leaves(cls), cls).toEqual([0, 1, 2, 3, BONNET]);
+    expect(leaves('sports')).toEqual([0, 1, BONNET]);
+    // A van's cab doors swing, and the doors of its load run back along it.
+    expect(leaves('van')).toEqual([0, 1, 2, 3, BONNET]);
+    expect(vehicleBoxes(ROSTER.van).some((part) => part.hinge?.axis === 'slide')).toBe(true);
+    expect(leaves('truck')).toEqual([0, 1]);
+    expect(leaves('bus')).toEqual([]);
+  });
+
+  it('builds a body of faces, with glass that is seen through', () => {
+    for (const cls of ['compact', 'saloon', 'sports', 'emergency', 'offroad', 'van', 'truck', 'bus'] as const) {
+      const parts = vehicleBoxes(ROSTER[cls]);
+      expect(parts.some((part) => part.faces !== undefined), cls).toBe(true);
+      expect(parts.some((part) => part.glass === true), cls).toBe(true);
+      const model = new VehicleModel(cls);
+      const glass = meshes(model).filter((mesh) => (mesh.material as MeshStandardMaterial).transparent);
+      expect(glass.length, cls).toBeGreaterThan(0);
+      model.dispose();
+    }
+  });
+
+  it('opens the bonnet and the doors the record says are open', () => {
+    const model = new VehicleModel('saloon');
+    const state = createVehicleState(ROSTER.saloon);
+    const hinges = (): number[] => model.group.children.filter((child) => child.name === 'door').map((hinge) => hinge.rotation.y + hinge.rotation.z);
+    model.set(state);
+    expect(hinges().every((angle) => angle === 0)).toBe(true);
+    state.leaves.open[BONNET] = 1;
+    state.leaves.open[3] = 1;
+    model.set(state);
+    const open = hinges().filter((angle) => angle !== 0);
+    // The bonnet is one part; the rear door is its skin and its window.
+    expect(open.length).toBe(3);
     model.dispose();
   });
 });

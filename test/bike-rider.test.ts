@@ -81,13 +81,14 @@ describe('the rider of a bike in the traffic', () => {
 });
 
 describe('the traffic drawn with its riders', () => {
-  it('gives the mesh to the bikes alone, and one instance to each bike on its tour', () => {
+  it('gives one instance of somebody to each vehicle on its tour, a bike among them', () => {
     const seed = sweepSeeds(1)[0] as number;
     const traffic = gridTraffic(seed);
     const view = new TrafficView(traffic);
-    // Every class has a paint mesh, and the one class ridden astride a rider.
+    // Every class has a paint mesh and a mesh of whoever is in it: the rider
+    // astride a bike, the driver behind the glass of a car (`occupant.ts`).
     const shadowed = view.group.children.filter((child) => (child as InstancedMesh).isInstancedMesh && child.castShadow);
-    expect(shadowed.length).toBe(AMBIENT_CLASSES.length + 1);
+    expect(shadowed.length).toBe(AMBIENT_CLASSES.length * 2);
 
     const state = createSimState(seed, undefined, 0);
     const tick = 4321.5;

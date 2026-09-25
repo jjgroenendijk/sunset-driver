@@ -572,6 +572,11 @@ Driving is the primary mechanic.
 - A vehicle ridden astride carries its rider: the player's own character is drawn on the motorcycle
   they are riding, in the look they chose, and leans with it.
 - Visible progressive damage: deformation, lost panels, smoke, fire, explosion.
+- Road vehicles are low-poly hulls lofted from a side profile, not stacks of boxes, and the pieces
+  of a motorcycle are lofted the same way. Every door and the bonnet is hinged. The driver opens the
+  door they use, police crews open theirs, a hard hit leaves a door or the bonnet hanging ajar, a
+  workshop lifts the bonnet, and a key lifts and drops it. The glass is tinted and seen through,
+  onto seats and the people inside.
 - Cars can be set on fire, and fire spreads.
 
 **Aircraft.** Four helicopters (a light two-seater, the police helicopter, a heavy transport and an
@@ -1018,7 +1023,7 @@ Four rules decided most of them.
 | `Raymarching` with `curlNoise`, or `MarchingCubes` | No, both; the flat puffs stay | `MarchingCubes` re-meshes on the frame thread every frame, which section 9.1 took the last builder off. Raymarching pays per pixel for a plume the 58-degree camera sees as a disc, against two draws for every fire in the world. |
 | `SSRNode` | No | Off a flat road the mirror ray climbs about 1.6 m for every metre it travels forward, so on an open street it clears the rooftops and screen space holds nothing to reflect. Its fallback is an HDR environment, which section 1.2 forbids. It also wants depth, normal and metalness from the scene pass, and a history of its own. |
 | `ImportanceSampledEnvironment` | No | It samples an equirectangular HDR and builds luminance CDF tables from it. The sky is generated and changes through the day, so the tables would be rebuilt on every grade step. The want behind the row is real: a sky-driven environment is issue #431. |
-| `TessellateModifier` | No | It subdivides one geometry on the processor and hands back another. Vehicles are instanced off one body, and a dent already pushes in the boxes of the panel it lands on (section 11.3). |
+| `TessellateModifier` | No | It subdivides one geometry on the processor and hands back another. Vehicles are instanced off one body, and a dent already pushes in the parts of the panel it lands on (section 11.3). |
 | `CCDIKSolver` | No | It solves on the processor against one `SkinnedMesh` per person. The crowd is one draw of baked instanced skinning, and this camera looks down on the feet the solver would place. |
 | `TransitionNode` | No | It mixes two beauty passes, so the frame is drawn twice. The metro fade is a sheet over the page at a strength the record carries: no pass, and it stays in a replay. |
 | `CurveModifier` | No | It works through `material.onBeforeCompile`, which `WebGPURenderer` never calls (Appendix A). `LoftGeometry` sweeps the roads. |

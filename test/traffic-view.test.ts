@@ -20,7 +20,7 @@ describe('the traffic, drawn (spec section 13.1)', () => {
     // The warm-up draws each empty pool once; a program built without instance colours draws white.
     const view = new TrafficView(gridTraffic(sweepSeeds(1)[0] as number));
     const pools = view.group.children as InstancedMesh[];
-    const painted = pools.filter((mesh) => mesh.material instanceof MeshStandardMaterial && !mesh.material.vertexColors);
+    const painted = pools.filter((mesh) => mesh.material instanceof MeshStandardMaterial && !mesh.material.vertexColors && !mesh.material.transparent);
     expect(painted.length).toBe(AMBIENT_CLASSES.length);
     for (const mesh of painted) expect(mesh.instanceColor?.count).toBe(mesh.instanceMatrix.count);
   });

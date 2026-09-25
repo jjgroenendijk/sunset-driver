@@ -42,8 +42,10 @@ import {
   type WheelSpec,
   type WheelState,
 } from '../sim/vehicle.ts';
+import { partGeometry } from './vehicle-geometry.ts';
+import { GLASS_OPACITY } from './vehicle-parts.ts';
 import { glowOf } from './vehicle-glow.ts';
-import { TYRE, vehicleBoxes, type VehicleBox } from './vehicle-mesh.ts';
+import { BONNET, TYRE, vehicleBoxes, type Hinge, type VehicleBox } from './vehicle-mesh.ts';
 
 /** What a burnt-out shell is painted in (spec section 11.3). */
 const SCORCH = 0x231f1e;
@@ -87,12 +89,31 @@ interface DrawnWheel {
 /** Radians a second a rotor or a propeller turns at: fast enough to blur, slow enough not to strobe. */
 const SPIN_RATE = 23;
 
+/** Radians a door stands open at when it is all the way open; the boarding move opens it this far too. */
+const DOOR_SWING = 1.15;
+/** Radians the bonnet lifts at when it is all the way up. */
+const BONNET_LIFT = 0.95;
+/** How much of its own length a sliding door runs back, and how far it stands out as it goes. */
+const SLIDE_BACK = 0.85;
+const SLIDE_OUT = 0.08;
+
+/** A part of a leaf, hung from its hinge, and how long it is for a door that slides. */
+interface DrawnLeaf {
+  hinge: Hinge;
+  object: Group;
+  length: number;
+}
+
 export class VehicleModel {
   readonly group = new Group();
   private spec: VehicleSpec;
   private readonly wheels: DrawnWheel[] = [];
-  /** The front door on each side that swings, hung from its front edge, by the side it is on. */
-  private readonly hinges: { side: number; object: Group }[] = [];
+  /** Every part of a door or of the bonnet, hung from its hinge. */
+  private readonly hinges: DrawnLeaf[] = [];
+  /** How far open the record says each leaf is, 0 shut and 1 open (`sim/doors.ts`). */
+  private readonly open: number[] = [0, 0, 0, 0, 0];
+  /** The door the boarding move holds open, and by how many radians. */
+  private boarding = { leaf: -1, angle: 0 };
   /** The rotor and propeller blades, each hung from its own middle, and the axis it turns about. */
   private readonly spinners: { axis: 'rotor' | 'prop'; object: Group }[] = [];
   private readonly boxes: DrawnBox[] = [];
@@ -143,6 +164,8 @@ export class VehicleModel {
       this.build();
     }
     this.damage(v.damage, v.paint);
+    for (let i = 0; i < this.open.length; i++) this.open[i] = v.leaves.open[i] ?? 0;
+    this.swing();
     this.group.position.set(v.x, v.y, v.z);
     this.group.quaternion.set(v.qx, v.qy, v.qz, v.qw);
     for (const drawn of this.wheels) {
@@ -163,9 +186,30 @@ export class VehicleModel {
    * out is the one thing that opens a door (`boarding.ts`); 0 shuts both.
    */
   openDoor(side: number, angle: number): void {
-    for (const hinge of this.hinges) {
-      // A turn about up carries the rear edge of the door out to its own side.
-      hinge.object.rotation.y = hinge.side === Math.sign(side) ? hinge.side * angle : 0;
+    this.boarding = { leaf: angle === 0 ? -1 : side < 0 ? 0 : 1, angle };
+    this.swing();
+  }
+
+  /**
+   * Turn every leaf to how far open it is: the record's amount, or the
+   * boarding move's angle where that is further.
+   */
+  private swing(): void {
+    for (const drawn of this.hinges) {
+      const { hinge, object } = drawn;
+      const open = this.open[hinge.leaf] ?? 0;
+      if (hinge.axis === 'slide') {
+        // A sliding door stands out from the flank and runs back along it.
+        const side = Math.sign(hinge.z);
+        object.position.set(hinge.x - open * drawn.length * SLIDE_BACK, hinge.y, hinge.z + side * SLIDE_OUT * Math.min(1, open * 4));
+      } else if (hinge.leaf === BONNET) {
+        // A turn about the axle axis lifts the bonnet's front edge.
+        object.rotation.z = open * BONNET_LIFT;
+      } else {
+        // A turn about up carries the rear edge of the door out to its own side.
+        const boarding = this.boarding.leaf === hinge.leaf ? this.boarding.angle : 0;
+        object.rotation.y = Math.sign(hinge.z) * Math.max(open * DOOR_SWING, boarding);
+      }
     }
   }
 
@@ -203,9 +247,14 @@ export class VehicleModel {
   private build(): void {
     for (const part of vehicleBoxes(this.spec)) {
       const material = new MeshStandardMaterial({ color: part.colour, roughness: 0.45, metalness: 0.2 });
+      if (part.glass === true) {
+        material.transparent = true;
+        material.opacity = GLASS_OPACITY;
+        material.roughness = 0.1;
+      }
       this.materials.push(material);
       const mesh = this.add(part, material);
-      if (part.hinged === true) this.hang(part, mesh);
+      if (part.hinge !== undefined) this.hang(part, part.hinge, mesh);
       if (part.spin !== undefined) this.pivot(part, part.spin, mesh);
       this.boxes.push({ part, mesh, base: pristine(mesh), colour: part.colour, material });
     }
@@ -261,28 +310,28 @@ export class VehicleModel {
 
   /** One box of the plan, in the material it is handed. It casts a shadow. */
   private add(part: VehicleBox, material: Material): Mesh {
-    const geometry = new BoxGeometry(part.length, part.height, part.width);
+    const geometry = partGeometry(part);
     const mesh = new Mesh(geometry, material);
     mesh.position.set(part.x, part.y, part.z);
-    mesh.castShadow = true;
+    mesh.castShadow = part.glass !== true;
     this.geometries.push(geometry);
     this.group.add(mesh);
     return mesh;
   }
 
   /**
-   * Hang a door from a group at its front edge, so turning the group swings
-   * the door. The door's own vertices are untouched, so a dent lands on it
-   * the same open or shut.
+   * Hang a part of a door or of the bonnet from a group at its hinge, so
+   * turning the group swings the leaf. The part's own vertices are untouched,
+   * so a dent lands on it the same open or shut.
    */
-  private hang(part: VehicleBox, mesh: Mesh): void {
-    const hinge = new Group();
-    hinge.name = 'door';
-    hinge.position.set(part.x + part.length / 2, part.y, part.z);
-    hinge.add(mesh);
-    mesh.position.set(-part.length / 2, 0, 0);
-    this.group.add(hinge);
-    this.hinges.push({ side: Math.sign(part.z), object: hinge });
+  private hang(part: VehicleBox, hinge: Hinge, mesh: Mesh): void {
+    const object = new Group();
+    object.name = 'door';
+    object.position.set(hinge.x, hinge.y, hinge.z);
+    object.add(mesh);
+    mesh.position.set(part.x - hinge.x, part.y - hinge.y, part.z - hinge.z);
+    this.group.add(object);
+    this.hinges.push({ hinge, object, length: part.length });
   }
 
   /** Hang a blade from a group at its own middle, so turning the group spins it in place. */
