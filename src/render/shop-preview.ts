@@ -38,6 +38,7 @@ import type { ShopLook } from '../sim/shop-goods.ts';
 import { createVehicleState } from '../sim/vehicle.ts';
 import { CharacterModel } from './character.ts';
 import { buildGood } from './contraband-props.ts';
+import { basePixelRatioFor } from './renderer.ts';
 import { buildProp } from './shop-props.ts';
 import { VehicleModel } from './vehicle.ts';
 import { WeaponArt } from './weapon.ts';
@@ -144,7 +145,7 @@ export class ShopPreview {
     const height = this.canvas.clientHeight;
     if (width === 0 || height === 0) return;
     // The ratio is read every frame: a window dragged to another screen changes it.
-    const ratio = Math.min(window.devicePixelRatio, 2);
+    const ratio = basePixelRatioFor(window.devicePixelRatio);
     if (width !== this.width || height !== this.height || ratio !== this.ratio) {
       this.width = width;
       this.height = height;
