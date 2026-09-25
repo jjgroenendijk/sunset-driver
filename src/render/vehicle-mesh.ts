@@ -19,12 +19,11 @@ import { doorAlong } from '../sim/boarding.ts';
 import { isAircraft, type VehicleSpec } from '../sim/vehicle.ts';
 import { aircraftBoxes } from './aircraft-mesh.ts';
 import { arc, loft } from './loft.ts';
+import { boat, buggy } from './open-craft.ts';
 import { BODY_WIDTH, hullOf } from './vehicle-hull.ts';
 import { BEACON_BLUE, BEACON_RED, box, GLASS, LAMP, METAL, SEAT, TAIL, TYRE, UNDER, type VehicleBox } from './vehicle-parts.ts';
 
 export {
-  BEACON_BLUE,
-  BEACON_RED,
   BONNET,
   GLASS,
   LAMP,
@@ -203,17 +202,6 @@ export function seatOf(spec: VehicleSpec): { x: number; y: number; z: number } {
       // A pilot sits just inside the cabin door, not amidships.
       return { x: isAircraft(spec.cls) ? doorAlong(spec) : 0, y, z };
   }
-}
-
-/** A lamp at each front corner and a tail light at each rear one. */
-function lamps(spec: VehicleSpec, y: number): VehicleBox[] {
-  const width = spec.halfWidth * 2;
-  const out: VehicleBox[] = [];
-  for (const side of [1, -1]) {
-    out.push(box(0.1, 0.14, width * 0.22, LAMP, spec.halfLength - 0.04, y, side * width * 0.28));
-    out.push(box(0.09, 0.14, width * 0.22, TAIL, -spec.halfLength + 0.04, y, side * width * 0.28));
-  }
-  return out;
 }
 
 /** The dark base of a light bar, a push bar and the like. */
@@ -403,45 +391,4 @@ function motorcycle(spec: VehicleSpec): VehicleBox[] {
     parts.push(box(0.03, 0.06, 0.12, METAL, seat.gripX, seat.gripY + 0.16, side * (seat.gripZ + 0.1)));
   }
   return parts;
-}
-
-/** A beach buggy: a floor pan, two seat backs and a roll cage over them. */
-function buggy(spec: VehicleSpec): VehicleBox[] {
-  const length = spec.halfLength * 2;
-  const width = spec.halfWidth * 2;
-  const height = spec.halfHeight * 2;
-  const panHeight = height * 0.4;
-  const panY = -spec.halfHeight + panHeight / 2;
-  const boxes = [
-    box(length * 0.92, panHeight, width * 0.78, spec.paint, 0, panY, 0),
-    // The engine hangs out behind, as it does on the real thing.
-    box(length * 0.2, height * 0.36, width * 0.55, spec.trim, -spec.halfLength + length * 0.06, panY + panHeight * 0.5, 0),
-  ];
-  for (const side of [1, -1]) {
-    boxes.push(box(0.14, height * 0.46, width * 0.24, spec.trim, -length * 0.06, panY + panHeight * 0.7, side * width * 0.18));
-    // The cage: an upright each side and a bar across the top of them.
-    boxes.push(box(0.07, height * 0.7, 0.07, METAL, -length * 0.08, panY + panHeight * 0.9, side * width * 0.34));
-    boxes.push(box(0.07, 0.07, width * 0.75, METAL, -length * 0.08, panY + panHeight * 0.5 + height * 0.6, 0));
-  }
-  return [...boxes, ...lamps(spec, panY + panHeight * 0.2)];
-}
-
-/** A speedboat: a hull that narrows to the bow, a screen and a console. */
-function boat(spec: VehicleSpec): VehicleBox[] {
-  const length = spec.halfLength * 2;
-  const width = spec.halfWidth * 2;
-  const height = spec.halfHeight * 2;
-  const hullHeight = height * 0.7;
-  const hullY = -spec.halfHeight + hullHeight / 2;
-  return [
-    // Three lengths of hull, each narrower than the one behind it: a bow that
-    // comes to a point is what says which way a boat is pointing from above.
-    box(length * 0.52, hullHeight, width, spec.paint, -spec.halfLength + length * 0.26, hullY, 0),
-    box(length * 0.28, hullHeight * 0.94, width * 0.72, spec.paint, length * 0.12, hullY + hullHeight * 0.03, 0),
-    box(length * 0.2, hullHeight * 0.88, width * 0.36, spec.paint, spec.halfLength - length * 0.1, hullY + hullHeight * 0.06, 0),
-    // The deck, in the trim, so the open cockpit reads as a hole in it.
-    box(length * 0.34, 0.06, width * 0.9, spec.trim, -spec.halfLength + length * 0.17, hullY + hullHeight / 2, 0),
-    box(length * 0.05, height * 0.22, width * 0.62, GLASS, -length * 0.02, hullY + hullHeight / 2 + height * 0.11, 0),
-    box(length * 0.14, height * 0.18, width * 0.3, spec.trim, -length * 0.14, hullY + hullHeight / 2 + height * 0.09, 0),
-  ];
 }

@@ -158,6 +158,10 @@ https://claude.ai/artifact/GG1rY85JAWdEPzsmQWcheo. A vehicle is low-poly but nev
 - On a motorcycle, the tank, seat, tail, mudguards, engine and exhaust are each lofted. The tank
   swells and narrows, the seat dips where the rider sits, and a mudguard follows its wheel. Thin
   parts stay boxes: the bars, the fork legs, the pegs and the mirrors read as lines.
+- An aircraft's fuselage is lofted and tapers to its tail. Its wings, tailplanes and rotor blades
+  are thin and narrow toward their tips, and its fins lean back. Its glass wraps round the nose.
+- The boat has a V hull that rises to a sharp bow. The buggy is an open tub with a flared wing
+  over each tyre. Both show their seats from above.
 - Every vehicle keeps its top-down read: a lamp at the nose, a tail light at the back, and on a
   bike the bars across it.
 
@@ -217,8 +221,9 @@ Where each rule lands. None of it needs an asset file.
 - **Distance to haze** — the fog colour becomes the haze colour of the time of day.
 - **Grade** — the LUT of `grade.ts` lifts the day into high key and warms the lights. It only
   finishes the look; the colours must be right in the materials first.
-- **Vehicles** — `vehicle-hull.ts` lofts the car bodies and `loft.ts` the pieces of a bike, both
-  as flat-shaded parts of one colour (`docs/vehicle-bodies.md`).
+- **Vehicles** — `vehicle-hull.ts` lofts the car bodies and `loft.ts` everything else: the bike,
+  the buggy, the boat and the aircraft. Each part is flat-shaded in one colour
+  (`docs/vehicle-bodies.md`).
 - **UI** — CSS on the DOM overlay: the `--it-*` tokens of `title.css` dress every panel and HUD
   box (`docs/menus.md`), and `district-title.ts` names a district on entry.
 
