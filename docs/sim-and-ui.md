@@ -48,6 +48,10 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
   the objective is whose block the player is standing on and how far through taking it they are
   (spec section 17.2). `frame.ts` reads it off `turfLine` and hands it in, because the HUD knows
   the record and not the world.
+- `src/ui/district-title.ts` shows a district's name, large and hand-lettered, with its zone as a
+  one-line subtitle, as the player crosses into it; a CSS animation in `hud.css` fades it out.
+  `DistrictWatch` decides when: the player must stay `TITLE_SETTLE` ticks, so a border driven along
+  does not flicker, and titles stand `TITLE_GAP` ticks apart. Streets get no title.
 
 ## The map
 

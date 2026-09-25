@@ -5,8 +5,8 @@
    in `index.html` the page runs under both, and nothing may be laid out over
    them. `body.flying` is set while the free camera has the screen. */
 
-.touch-key { display: grid; place-items: center; box-sizing: border-box; min-width: 3rem; min-height: 3rem; padding: 0 .6rem; border: 1px solid rgba(243,235,219,.4); border-radius: 1.5rem; background: rgba(24,11,20,.72); color: #f6d6c1; font: 600 .8rem/1 var(--it-sans); letter-spacing: .08em; text-transform: uppercase; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); touch-action: none; }
-.touch-key-held { border-color: #ff8a5c; background: rgba(163,34,27,.6); color: #fff; }
+.touch-key { display: grid; place-items: center; box-sizing: border-box; min-width: 3rem; min-height: 3rem; padding: 0 .6rem; border: var(--it-card-edge); border-radius: 1.5rem; background: var(--it-ivory); color: var(--it-ink); box-shadow: var(--it-card-shadow); font: 600 .8rem/1 var(--it-sans); letter-spacing: .08em; text-transform: uppercase; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); touch-action: none; }
+.touch-key-held { background: var(--it-ink); color: var(--it-ivory); }
 
 .touch-bar { position: fixed; z-index: 12; top: calc(12px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right)); display: flex; gap: .5rem; }
 

@@ -1,8 +1,9 @@
 /* The HUD (`hud.ts`) and the minimap window it rings (`minimap.ts`).
    Each corner holds one subject, where open-world games hold it: the status
    stack at the top right, the map and the health at the bottom left, the
-   speedometer at the bottom right, the objective at the top left. The colours
-   are the title screen's: ivory text, a gold accent, red for danger.
+   speedometer at the bottom right, the objective at the top left. The figures
+   are cream with an ink outline, and the boxes are the cream cards and pills of
+   the menus (`title.css`, `docs/art-style.md`).
    `touch.css` moves the corners in from the notch and the home bar. */
 :root {
   --hud-top: 24px;
@@ -18,7 +19,8 @@
   --hud-health: #6fd08c;
   --hud-danger: #e5484d;
   --hud-veil: rgba(12, 9, 7, .62);
-  --hud-shadow: 0 1px 2px rgba(0, 0, 0, .85), 0 0 14px rgba(0, 0, 0, .35);
+  /* An ink outline round every letter, as the art style inks every shape. */
+  --hud-shadow: -1px -1px 0 #2a2430, 1px -1px 0 #2a2430, -1px 1px 0 #2a2430, 1px 1px 0 #2a2430, 0 2px 0 #2a2430;
 }
 @media (max-width: 760px), (max-height: 520px) {
   :root { --hud-top: 14px; --hud-right: 14px; --hud-bottom: 14px; --hud-left: 14px; --hud-map: 150px; --hud-ring: 5px; }
@@ -35,8 +37,8 @@
 .hud-dev { display: none; gap: .05rem; padding: .4rem .6rem; border-radius: 4px; background: rgba(0, 0, 0, .6); font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-shadow: none; }
 body.dev-info .hud-dev { display: grid; }
 .hud-dev-seed { color: var(--hud-gold); }
-.hud-objective { padding: .5rem .8rem .55rem; border-left: 3px solid var(--hud-gold); background: linear-gradient(to right, var(--hud-veil), rgba(12, 9, 7, .15)); font-size: .95rem; line-height: 1.35; animation: hud-in .35s ease-out; }
-.hud-objective::before { content: 'Objective'; display: block; margin-bottom: .15rem; font-size: .62rem; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: var(--hud-gold); }
+.hud-objective { padding: .5rem .8rem .55rem; border: var(--it-card-edge); border-radius: var(--it-card-radius); background: var(--it-ivory); box-shadow: var(--it-card-shadow); color: var(--it-ink); text-shadow: none; font-size: .95rem; line-height: 1.35; animation: hud-in .35s ease-out; }
+.hud-objective::before { content: 'Objective'; display: block; margin-bottom: .15rem; font: italic 1rem var(--it-hand); color: var(--it-rosso); }
 .hud-turf, .hud-happening { display: flex; align-items: center; gap: .45rem; font-size: .8rem; letter-spacing: .03em; animation: hud-in .35s ease-out; }
 .hud-turf::before, .hud-happening::before { content: ''; width: .45rem; height: .45rem; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; }
 .hud-turf { color: #ffc08a; }
@@ -48,7 +50,7 @@ body.dev-info .hud-dev { display: grid; }
 .hud-clock { font-size: 1.05rem; font-weight: 600; letter-spacing: .04em; }
 .hud-day { font-size: .66rem; letter-spacing: .2em; text-transform: uppercase; opacity: .75; }
 .hud-money { font-size: 2rem; font-weight: 700; line-height: 1.05; letter-spacing: .01em; color: var(--hud-money); }
-.hud-weapon { display: flex; align-items: baseline; gap: .7rem; margin-top: .1rem; padding: .3rem .7rem .3rem 1.4rem; border-right: 3px solid var(--hud-gold); background: linear-gradient(to left, var(--hud-veil), rgba(12, 9, 7, 0)); }
+.hud-weapon { display: flex; align-items: baseline; gap: .7rem; margin-top: .1rem; padding: .25rem .9rem; border: var(--it-card-edge); border-radius: 999px; background: var(--it-ivory); box-shadow: var(--it-card-shadow); color: var(--it-ink); text-shadow: none; }
 .hud-weapon-name { font-size: .7rem; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; opacity: .85; }
 .hud-ammo { font-size: 1.15rem; font-weight: 600; }
 .hud-stars { display: flex; gap: .1rem; margin-top: .1rem; font-size: 1.45rem; line-height: 1; animation: hud-in .25s ease-out; }
@@ -59,7 +61,7 @@ body.dev-info .hud-dev { display: grid; }
 
 /* Top centre: the radio station. */
 .hud-top { top: var(--hud-top); left: 50%; transform: translateX(-50%); }
-.hud-radio { max-width: min(32rem, 52vw); overflow: hidden; padding: .3rem .95rem; border-radius: 999px; background: var(--hud-veil); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); font-size: .8rem; letter-spacing: .04em; color: #cfe9f5; white-space: nowrap; text-overflow: ellipsis; text-shadow: none; animation: hud-in .4s ease-out; }
+.hud-radio { max-width: min(32rem, 52vw); overflow: hidden; padding: .3rem .95rem; border: var(--it-card-edge); border-radius: 999px; background: var(--it-ivory); box-shadow: var(--it-card-shadow); font-size: .8rem; letter-spacing: .04em; color: var(--it-ink); white-space: nowrap; text-overflow: ellipsis; text-shadow: none; animation: hud-in .4s ease-out; }
 
 /* Bottom left: the minimap in a ring of health. The ring is a conic gradient
    filled to `--hp`, masked to a band round the map. */
@@ -84,7 +86,7 @@ body.dev-info .hud-dev { display: grid; }
 
 /* The middle: Wasted or Busted, and what it cost. */
 .hud-fate { inset: 0; display: grid; place-content: center; justify-items: center; gap: .6rem; background: radial-gradient(ellipse at center, rgba(0, 0, 0, .5), rgba(0, 0, 0, 0) 65%); }
-.hud-fate-title { font: 400 clamp(3rem, 9vw, 6rem)/1 var(--it-serif); letter-spacing: .14em; text-transform: uppercase; color: var(--hud-danger); animation: hud-slam .5s cubic-bezier(.2, .8, .2, 1); }
+.hud-fate-title { font: 400 clamp(3rem, 9vw, 6rem)/1 var(--it-hand); letter-spacing: .14em; text-transform: uppercase; color: var(--hud-danger); animation: hud-slam .5s cubic-bezier(.2, .8, .2, 1); }
 .hud-fate-cost { font-size: .8rem; letter-spacing: .3em; text-transform: uppercase; }
 
 /* Being taken in: a line and the cuffs closing, under the middle of the screen. */
@@ -96,8 +98,18 @@ body.dev-info .hud-dev { display: grid; }
 /* What the interact key would do to a vehicle (`interact-prompt.ts`), below the
    door panels and the arrest bar. The key cap is dropped on a touch screen,
    which acts through a button of the touch bar rather than a key. */
-.interact { position: fixed; bottom: 14%; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: .5rem; padding: .35rem .8rem .35rem .4rem; border-radius: 999px; background: var(--hud-veil); color: var(--hud-text); font-family: var(--it-sans); pointer-events: none; animation: hud-in .2s ease-out; }
-.interact-key { display: grid; place-items: center; min-width: 1.6rem; height: 1.6rem; border: 1px solid var(--hud-gold); border-radius: 4px; color: var(--hud-gold); font: 600 .85rem var(--it-sans); }
-.interact-label { font-size: .85rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; text-shadow: var(--hud-shadow); }
+.interact { position: fixed; bottom: 14%; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: .5rem; padding: .35rem .9rem .35rem .4rem; border: var(--it-card-edge); border-radius: 999px; background: var(--it-ivory); box-shadow: var(--it-card-shadow); color: var(--it-ink); font-family: var(--it-sans); pointer-events: none; animation: hud-in .2s ease-out; }
+/* The key is a round yellow badge with an ink outline (`docs/art-style.md`). */
+.interact-key { display: grid; place-items: center; box-sizing: border-box; min-width: 1.8rem; height: 1.8rem; padding: 0 .3rem; border: 2px solid var(--it-ink); border-radius: 999px; background: var(--it-yellow); color: var(--it-ink); font: 600 .85rem var(--it-sans); }
+.interact-label { font-size: .85rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; }
 .touch .interact { padding-left: .8rem; }
 .touch .interact-key { display: none; }
+
+/* The name of a district the player has just crossed into (`district-title.ts`):
+   large, hand-lettered, in the middle of the screen, and gone again in a few
+   seconds. Streets get no title. */
+.district-title { position: fixed; top: 26%; left: 50%; z-index: 1; display: grid; justify-items: center; gap: .2rem; max-width: 90vw; transform: translateX(-50%); color: var(--it-ivory); text-align: center; text-shadow: var(--hud-shadow); pointer-events: none; opacity: 0; }
+.district-title-on { animation: district-title 4.5s ease-in-out both; }
+.district-title-name { font: italic 400 clamp(2.6rem, 7vw, 5.2rem)/1 var(--it-hand); letter-spacing: .03em; }
+.district-title-sub { padding: .15rem .8rem; border: var(--it-card-edge); border-radius: 999px; background: var(--it-yellow); color: var(--it-ink); text-shadow: none; font: 600 .72rem var(--it-sans); letter-spacing: .2em; text-transform: uppercase; }
+@keyframes district-title { 0% { opacity: 0; transform: translate(-50%, 10px); } 12%, 72% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, -6px); } }

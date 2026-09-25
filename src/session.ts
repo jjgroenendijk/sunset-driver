@@ -48,6 +48,7 @@ import type { MissionMarks } from './ui/missions.ts';
 import type { TradePanel } from './ui/trade-panel.ts';
 import type { HotwireBar } from './ui/hotwire.ts';
 import type { InteractPrompt } from './ui/interact-prompt.ts';
+import type { DistrictTitle } from './ui/district-title.ts';
 import type { Hud } from './ui/hud.ts';
 import type { MapScreen } from './ui/map-screen.ts';
 import type { Minimap } from './ui/minimap.ts';
@@ -86,6 +87,8 @@ export interface Session {
   hotwire: HotwireBar;
   /** What the interact key would do to a vehicle now: get in, hotwire, get out. */
   interact: InteractPrompt;
+  /** The name of a district the player has just crossed into. */
+  districtTitle: DistrictTitle;
   /** The metro station panel and the fade of a trip (spec section 13.3). */
   travel: TravelPanel;
   /** The station entrances the panel names, in the order the record numbers them. */
