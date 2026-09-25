@@ -2,7 +2,7 @@ name: Full tier
 
 # A reusable workflow: `ci.yml` calls it on every pull request. It runs
 # `verify:full` over five runners: four shares of the seed sweep's 500 seeds,
-# and every other file with the typecheck and both lints. Generating a world is
+# and every other file with the typecheck and the lints. Generating a world is
 # most of what the sweep costs and the pool already uses every core of one
 # runner, so the only way under the 2 min each job is given is more runners.
 # On Actions vitest adds its `github-actions` reporter, which writes the job
@@ -65,5 +65,5 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
 
-      - run: npm run typecheck && npm run lint && npm run lint:size
+      - run: npm run typecheck && npm run lint && npm run lint:size && npm run lint:dead
       - run: npm run test:full -- --project unit

@@ -14,17 +14,19 @@
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
     "lint": "node scripts/lint-determinism.ts",
     "lint:size": "node scripts/check-size.ts",
+    "lint:dead": "knip",
     "test": "vitest run",
     "test:full": "SWEEP_SEEDS=500 vitest run",
     "test:render": "node scripts/render-check.ts",
     "test:world": "node scripts/world-check.ts",
-    "verify": "npm run typecheck && npm run lint && npm run lint:size && npm run test",
-    "verify:full": "npm run typecheck && npm run lint && npm run lint:size && npm run test:full"
+    "verify": "npm run typecheck && npm run lint && npm run lint:size && npm run lint:dead && npm run test",
+    "verify:full": "npm run typecheck && npm run lint && npm run lint:size && npm run lint:dead && npm run test:full"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",
     "@types/three": "^0.186.0",
     "@webgpu/types": "^0.1.74",
+    "knip": "^6.38.0",
     "playwright-core": "^1.63.0",
     "tsapi": "npm:typescript@^5.9.3",
     "typescript": "^7.0.2",
@@ -34,6 +36,7 @@
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.20.0",
+    "@trystero-p2p/core": "^0.25.4",
     "@trystero-p2p/mqtt": "^0.25.4",
     "@trystero-p2p/nostr": "^0.25.4",
     "three": "^0.186.0",

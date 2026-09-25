@@ -20,7 +20,7 @@ The quick tier, `npm test`, has to stay under 15 s.
 
 The full tier is the five jobs of `full-tier.yml`, and **the ceiling is 2 minutes for each job, not
 for the tier**. Four of them are shares of the seed sweep's 500 seeds and the fifth is every other
-file with the typecheck and both lints. `npm run test:full` runs all five jobs' work in one process,
+file with the typecheck and the lints. `npm run test:full` runs all five jobs' work in one process,
 which is 3 min 36 s on an eight-core M1 Air; that command is the coverage, and the job is the
 ceiling. To run one job's work by hand:
 
