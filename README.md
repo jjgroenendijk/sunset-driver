@@ -32,6 +32,7 @@ how the steps are watched on a machine that does not need them.
 | Sprint; descend in an aircraft | Shift |
 | Handbrake, jump; climb in an aircraft | Space |
 | Horn | H |
+| Open or shut the bonnet | O |
 | Enter, use, hotwire | E |
 | Fire, swing | Left click |
 | Aim | Right click |

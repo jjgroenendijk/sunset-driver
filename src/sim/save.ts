@@ -66,8 +66,11 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * twelve, so every stash holds a row per good of the longer list. Version 21
  * added the people of the crowd stepping out of the player's way. Version 22
  * added the bursts of the projectiles that went off (spec section 11.6).
+ * Version 23 added the doors and the bonnet of a vehicle: how far each stands
+ * open and which are wanted open, the panels a hit has sprung ajar, the key
+ * that lifts the bonnet, and how far each police car's doors stand open.
  */
-export const SAVE_VERSION = 22;
+export const SAVE_VERSION = 23;
 
 export interface SaveFile {
   format: typeof SAVE_FORMAT;

@@ -59,7 +59,7 @@ interface AudioCase {
 }
 
 function unit(id: number, kind: PoliceKind, x: number, y: number): PoliceUnit {
-  return { id, kind, task: 'chase', x, y, heading: 0, height: 0, speed: 20, health: 100, edges: [], distance: 0, planned: 0, goalX: x, goalY: y, crew: 2, fired: -1_000_000, incident: -1 };
+  return { id, kind, task: 'chase', x, y, heading: 0, height: 0, speed: 20, health: 100, edges: [], distance: 0, planned: 0, goalX: x, goalY: y, crew: 2, doors: 0, doorTick: -1_000_000, fired: -1_000_000, incident: -1 };
 }
 
 /**

@@ -52,6 +52,8 @@ function unitAt(id: number, kind: PoliceKind, x: number, y: number): PoliceUnit 
     goalX: x,
     goalY: y,
     crew: 2,
+    doors: 0,
+    doorTick: -1_000_000,
     fired: -1_000_000,
     incident: -1,
   };

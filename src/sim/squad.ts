@@ -25,7 +25,7 @@
 import { atan2, cos, hypot, sin } from '../core/libm.ts';
 import type { CasualtyGround } from './casualty.ts';
 import { TICK_RATE } from './clock.ts';
-import { assignDuty, bailOut, beatGoal, board, patrolBeats, type Duty } from './duty.ts';
+import { assignDuty, bailOut, beatGoal, board, patrolBeats, swingDoors, type Duty } from './duty.ts';
 import { startCuffs } from './arrest.ts';
 import { officerFire } from './officer-fire.ts';
 import {
@@ -135,6 +135,7 @@ export class Squad {
       officerFire(state, officer, quarry, sees, ground);
     }
     board(state);
+    swingDoors(state);
     startCuffs(state);
     this.sweep(state);
   }

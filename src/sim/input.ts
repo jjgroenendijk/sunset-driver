@@ -77,6 +77,8 @@ export interface InputFrame {
    * less than an arrest costs (`arrest.ts`).
    */
   surrender: boolean;
+  /** Lift or drop the bonnet of the car the player is in or beside (`doors.ts`). An edge, like the interact key. */
+  bonnet: boolean;
 }
 
 export const EMPTY_INPUT: Readonly<InputFrame> = Object.freeze({
@@ -100,6 +102,7 @@ export const EMPTY_INPUT: Readonly<InputFrame> = Object.freeze({
   buy: 0,
   trade: 0,
   surrender: false,
+  bonnet: false,
 });
 
 /**
@@ -129,6 +132,7 @@ export const INPUT_FIELDS = [
   'buy',
   'trade',
   'surrender',
+  'bonnet',
 ] as const satisfies readonly (keyof InputFrame)[];
 
 /** `never` unless a field of `InputFrame` is missing from {@link INPUT_FIELDS}. */

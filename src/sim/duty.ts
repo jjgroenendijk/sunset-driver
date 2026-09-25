@@ -125,6 +125,7 @@ export function bailOut(state: SimState, quarry: Quarry, ground: CasualtyGround 
       police.nextOfficer += 1;
     }
     unit.crew = 0;
+    unit.doorTick = state.tick;
     // The first thing said getting out on a player who is only wanted for questioning.
     if (!block && heatStars(state.heat) < 2) bark(state, 'freeze', unit.x, unit.y);
   }
@@ -231,6 +232,23 @@ function leavePlace(state: SimState, officer: Officer, out: Duty): void {
   out.goalY = officer.y + sin(away) * 20;
 }
 
+/** Ticks a patrol car's doors stand open after somebody gets out of it or into it. */
+const DOOR_HOLD = 90;
+
+/** Ticks its doors take to swing all the way open, and to shut again. */
+const DOOR_SWING_TICKS = 18;
+
+/**
+ * Swing the front doors of every car: open while its crew is getting out or
+ * back in, and shut again once they are clear.
+ */
+export function swingDoors(state: SimState): void {
+  for (const unit of state.police.units) {
+    const open = state.tick - unit.doorTick < DOOR_HOLD;
+    unit.doors = Math.max(0, Math.min(1, unit.doors + (open ? 1 : -1) / DOOR_SWING_TICKS));
+  }
+}
+
 /**
  * Put the crew back in any car they have walked back to, and take off the map
  * everybody who has walked far enough off to go unseen.
@@ -245,6 +263,7 @@ export function board(state: SimState): void {
     const car = carOf(state, officer);
     if (officer.task === 'board' && car !== undefined && hypot(car.x - officer.x, car.y - officer.y) < BOARD_RANGE) {
       car.crew = Math.min(CREW[car.kind], car.crew + 1);
+      car.doorTick = state.tick;
       police.officers.splice(i, 1);
       continue;
     }

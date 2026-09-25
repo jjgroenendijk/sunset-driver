@@ -111,6 +111,7 @@ export const HEAL_BY_SOURCE: Readonly<Record<HealSource, number>> = Object.freez
 interface HeldKeys {
   interact: boolean;
   jump: boolean;
+  bonnet: boolean;
 }
 
 /**
@@ -150,7 +151,7 @@ export function createPlayerState(): PlayerState {
     grounded: false,
     driving: true,
     health: MAX_HEALTH,
-    held: { interact: false, jump: false },
+    held: { interact: false, jump: false, bonnet: false },
   };
 }
 

@@ -16,7 +16,8 @@ import { createLoadout, type LoadoutState, type ProjectileState } from './weapon
 import type { MeleeHit } from './melee.ts';
 import type { Tracer } from './tracer.ts';
 import { createMetroState, stepMetro, travelling, type MetroState } from './metro.ts';
-import { stepShops, type ShopVisit } from './shop.ts';
+import { stepShops, visiting, type ShopVisit } from './shop.ts';
+import { stepDoors } from './doors.ts';
 import { createMarketState, stepMarket, type MarketState } from './market.ts';
 import { createPropertyState, stepHome, type PropertyState } from './safehouse.ts';
 import { createPoliceState, type PoliceState } from './police.ts';
@@ -314,6 +315,9 @@ export function stepSim(state: SimState, input: InputFrame = EMPTY_INPUT, physic
   // edge. A player under the fade of a trip is holding nothing.
   const homes = physics?.safehouses ?? [];
   if (!travelling(state) && stepShops(state, input, physics?.shops ?? [], homes)) physics?.stand(state);
+  // The doors and the bonnet of the player's car (`doors.ts`): the bonnet key,
+  // and the mechanics of a workshop, who have the bonnet up while the player is in.
+  stepDoors(state, input, visiting(state, physics?.shops ?? [])?.kind === 'workshop');
   // The front doors of spec section 16.3 take what the shops left of the
   // interact key. Nothing here moves the player — a safehouse is a door and not
   // a room — but a car taken out of the garage has to be stood on the ground
