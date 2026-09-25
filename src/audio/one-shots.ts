@@ -16,7 +16,7 @@ import { CUES, type Cue } from './cue.ts';
 import { hear, type Listener } from './space.ts';
 
 /** One-shot voices the bank holds. Nothing beyond these is ever built. */
-export const VOICE_CAP = 12;
+const VOICE_CAP = 12;
 
 /** The floor an envelope ramps from and to: an exponential ramp may not touch zero. */
 const FLOOR = 0.0008;

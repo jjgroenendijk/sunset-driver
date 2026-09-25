@@ -8,7 +8,7 @@ const ARCHETYPE_STREAM = 3;
 export type ArchetypeName = 'archipelago' | 'bay' | 'strait' | 'delta' | 'ridge' | 'lagoon';
 
 /** A closed range of a number the layout draws. Both ends are fractions of the map side unless a field says otherwise. */
-export interface Span {
+interface Span {
   min: number;
   max: number;
 }
@@ -18,7 +18,7 @@ export interface Span {
  * `scatter` relaxes them; the others leave a site where the dice put it, or
  * on the line the shape is drawn along.
  */
-export type SitePattern = 'scatter' | 'bay' | 'strait' | 'delta' | 'ridge' | 'lagoon';
+type SitePattern = 'scatter' | 'bay' | 'strait' | 'delta' | 'ridge' | 'lagoon';
 
 /** How the island sites of the power diagram are placed and weighted. */
 export interface SiteProfile {
@@ -46,10 +46,10 @@ export interface SiteProfile {
  * the core. `spine` ramps it up towards the ridge line the layout draws, so the
  * steepest ground is far from the core and the coast.
  */
-export type ReliefKey = 'core' | 'spine';
+type ReliefKey = 'core' | 'spine';
 
 /** How high the land stands, and how rough it is. */
-export interface ReliefProfile {
+interface ReliefProfile {
   keyedTo: ReliefKey;
   /** Metres of relief at the near end of the ramp, and at the far end. */
   nearAmplitude: number;
@@ -88,10 +88,10 @@ export interface CoastProfile {
  * - `delta`: from inland to the head of the delta, where the channels between the islets carry it on.
  * - `spine`: short steep rivers off the flank of the spine, down to the sea.
  */
-export type RiverKind = 'source-to-mouth' | 'delta' | 'spine';
+type RiverKind = 'source-to-mouth' | 'delta' | 'spine';
 
 /** The rivers of an archetype. A count of zero leaves the map without one. */
-export interface RiverProfile {
+interface RiverProfile {
   kind: RiverKind;
   count: Span;
 }
@@ -101,7 +101,7 @@ export interface RiverProfile {
  * the sea. `waterfront` puts it on the shore the core faces: the bay, the
  * strait, the lagoon or the open sea, whichever the layout drew.
  */
-export type HarbourRule = 'river-mouth' | 'waterfront';
+type HarbourRule = 'river-mouth' | 'waterfront';
 
 /**
  * A coherent bundle of terrain parameters (spec section 7.2). A seed draws one

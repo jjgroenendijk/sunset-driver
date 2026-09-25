@@ -40,14 +40,14 @@ export const SPELL_TICKS = TICKS_PER_HOUR * 2;
  * half of each spell, and it rains if either spell rains, so a start on a
  * change saw rain on more than half of the seeds rather than on a third.
  */
-export const SPELL_SHIFT = TICKS_PER_HOUR;
+const SPELL_SHIFT = TICKS_PER_HOUR;
 
 /**
  * Ticks a spell takes to hand over to the next, centred on the boundary
  * between them. Half a game hour: long enough that fog rolls in rather than
  * appearing, short enough that a spell is mostly itself.
  */
-export const TURN_TICKS = TICKS_PER_HOUR / 2;
+const TURN_TICKS = TICKS_PER_HOUR / 2;
 
 /**
  * Ticks in which a wet road loses about two thirds of its water. One game
@@ -56,7 +56,7 @@ export const TURN_TICKS = TICKS_PER_HOUR / 2;
 export const DRY_TICKS = TICKS_PER_HOUR;
 
 /** How far back {@link wetnessAt} looks. Rain older than this is forgotten. */
-export const WET_HORIZON = DRY_TICKS * 3;
+const WET_HORIZON = DRY_TICKS * 3;
 
 /**
  * Samples of the rain that horizon is read at. Twelve puts a sample every
@@ -231,7 +231,7 @@ export function outInThis(id: number, share: number): boolean {
  * One kind of weather at its full strength, with the road as wet as that rain
  * leaves it. This is the weather a preview names rather than the seed's.
  */
-export function weatherOfKind(kind: WeatherKind): Weather {
+function weatherOfKind(kind: WeatherKind): Weather {
   const profile = PROFILES[kind];
   return { kind, rain: profile.rain, wetness: profile.rain, fog: profile.fog, wind: profile.wind, crowd: profile.crowd };
 }

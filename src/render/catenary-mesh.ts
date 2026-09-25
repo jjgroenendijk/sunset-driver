@@ -26,10 +26,10 @@ import type { Point } from '../world/types.ts';
 import { beam, SURFACE_CATENARY, SURFACE_RAISE, SURFACE_WIRE } from './road-section.ts';
 
 /** Metres along the track from one mast to the next. */
-export const MAST_SPACING = 28;
+const MAST_SPACING = 28;
 
 /** Metres above the road bed the contact wire hangs. A tram is 3.3 m tall, so its pantograph reaches. */
-export const WIRE_HEIGHT = 5.6;
+const WIRE_HEIGHT = 5.6;
 
 /** Metres each side of a wire's centre, and how deep it hangs. A wire is a line; this one reads. */
 const WIRE_HALF = 0.03;

@@ -15,7 +15,7 @@
 const ALL = 0xffff;
 
 /** The group of the ragdolls' bones. */
-export const RAGDOLL_BIT = 0x0002;
+const RAGDOLL_BIT = 0x0002;
 
 /** The two masks as one number. It stays unsigned, as the WebAssembly side reads it. */
 function groups(member: number, meets: number): number {

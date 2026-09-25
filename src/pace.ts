@@ -11,7 +11,7 @@
  */
 
 /** The frame rates the Options column offers, in the order it cycles them. 0 is no cap. */
-export const FRAME_CAPS: readonly { label: string; value: number }[] = [
+const FRAME_CAPS: readonly { label: string; value: number }[] = [
   { label: '60 fps', value: 60 },
   { label: '30 fps', value: 30 },
   { label: 'No cap', value: 0 },

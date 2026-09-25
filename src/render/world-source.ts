@@ -22,7 +22,7 @@ interface Build {
 }
 
 /** Why a build's promise rejected when another seed replaced it. */
-export const GIVEN_UP = 'another seed was asked for';
+const GIVEN_UP = 'another seed was asked for';
 
 export class WorldSource {
   private build: Build | null = null;

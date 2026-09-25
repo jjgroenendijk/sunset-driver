@@ -34,7 +34,7 @@ import type { TramLine } from './tram.ts';
 export const PHYSICS_TILE = 50;
 
 /** Metres between height samples of a tile. Four to a cell of the chunk terrain grid. */
-export const PHYSICS_CELL = 2.5;
+const PHYSICS_CELL = 2.5;
 
 /** Tiles each way of the player that carry a collider: a 250 m box around the car. */
 export const PHYSICS_RADIUS = 2;
@@ -148,7 +148,6 @@ export interface Ground {
    */
   crimes?: readonly CrimeGround[];
 }
-
 
 /** One tile of ground, and where it stands. */
 interface GroundTile {

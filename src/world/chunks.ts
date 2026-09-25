@@ -32,7 +32,6 @@ import { CHUNK_TERRAIN_CELL, TERRAIN_CELL } from './terrain.ts';
 import { PAVED_REACH, tramTrack, type TramCrossing, type TramTrack } from './tram-track.ts';
 import type { HeightfieldData, RoadCurve, RoadTier, WorldDescription, Zone } from './types.ts';
 import { Vegetation, type Plant } from './vegetation.ts';
-import { generateWorld } from './world.ts';
 
 /**
  * Metres each way of one chunk: 25 cells of the skeleton's grid. The chunk grid
@@ -402,17 +401,6 @@ export class ChunkSource {
     }
     return out;
   }
-}
-
-/**
- * Generate one chunk of a seed on its own, with nothing else to hand.
- *
- * This builds the whole-map skeleton and its layers, which is what a chunk is
- * cut from, so it costs a world per call. A caller that wants more than one
- * chunk of a seed builds a {@link ChunkSource} once instead.
- */
-export function generateChunk(seed: number, cx: number, cy: number): WorldChunk {
-  return new ChunkSource(generateWorld(seed)).chunk(cx, cy);
 }
 
 /** One piece of a parcel as the chunk carries it. */

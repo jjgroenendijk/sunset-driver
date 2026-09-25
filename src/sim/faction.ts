@@ -163,11 +163,6 @@ export function factionIndex(id: FactionId): number {
   return FACTION_IDS.indexOf(id);
 }
 
-/** The faction on a row, or undefined past the end of the roster. */
-export function factionOf(index: number): Faction | undefined {
-  return FACTIONS[index];
-}
-
 /**
  * The faction whose home turf a district culture is, or -1 where it is
  * nobody's. The beach and the unnamed districts belong to no one, and so does
@@ -210,7 +205,7 @@ export interface FactionState {
 }
 
 /** The block the player is standing their ground on (spec section 17.2). */
-export interface TakeoverState {
+interface TakeoverState {
   /** The packed block key of `territory.ts`. */
   block: number;
   /** The faction it is being taken off. */
@@ -223,7 +218,7 @@ export interface TakeoverState {
  * A retaliation wave (spec section 17.2): who is coming, what they are coming
  * for and until when. The enforcers themselves are `enforcer.ts`'s.
  */
-export interface WaveState {
+interface WaveState {
   faction: number;
   /** The block that started it. */
   block: number;
@@ -247,9 +242,6 @@ export function createFactionState(): FactionState {
 
 /** Standing at or under this and they shoot on sight (spec section 17.3). */
 export const HOSTILE = -0.4;
-
-/** Standing at or over this and they deal at a friend's price and put work the player's way. */
-export const TRUSTED = 0.4;
 
 /** The share of a shift that lands on each rival, the other way about. */
 const RIVAL_SHARE = 0.5;
@@ -280,15 +272,6 @@ export function shiftStanding(state: SimState, faction: number, amount: number):
 /** True where a faction shoots the player on sight (spec section 17.3). */
 export function hostileTo(state: SimState, faction: number): boolean {
   return faction >= 0 && faction < FACTIONS.length && standingOf(state, faction) <= HOSTILE;
-}
-
-/** The factions the player is at war with, in roster order. */
-export function enemiesOf(state: SimState): number[] {
-  const out: number[] = [];
-  for (let i = 0; i < FACTIONS.length; i++) {
-    if (hostileTo(state, i)) out.push(i);
-  }
-  return out;
 }
 
 /**

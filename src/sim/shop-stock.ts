@@ -99,7 +99,7 @@ export const BACK_ROOM_ROWS = 3;
  * The most doors one broker lists. A broker has the keys to the whole city,
  * and a list of every door would be a list nobody reads to the end.
  */
-export const BROKER_ROWS = 12;
+const BROKER_ROWS = 12;
 
 /** The base price of a weapon of each licence, before its own damage moves it. */
 const LICENCE_PRICE: readonly number[] = [0, 150, 500, 1400, 3200];

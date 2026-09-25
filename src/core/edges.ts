@@ -13,13 +13,13 @@ import { clamp } from './math.ts';
 /** Metres one unit of the boolean engine's grid stands for. */
 export const GRID = 1e-3;
 /** Grid units a node may stand from an edge before the edge is routed through it. */
-export const SNAP = 0.7072;
+const SNAP = 0.7072;
 /** How often the edges are cut and looked at again before the graph is taken as settled. */
-export const MAX_PASSES = 4;
+const MAX_PASSES = 4;
 /** Grid units one bucket of the spatial index covers: sixteen metres. */
-export const BUCKET = 16000;
+const BUCKET = 16000;
 /** Half the span of the node keys in grid units; keys stay exact integers well past a 6 km map. */
-export const KEY_OFFSET = 1 << 23;
+const KEY_OFFSET = 1 << 23;
 export const KEY_SPAN = 2 * KEY_OFFSET;
 
 /** Edges under construction: `a` to `b`, and which input the edge came from. */
@@ -75,7 +75,7 @@ export function settle(edges: Edges): Edges {
 }
 
 /** Where the edges end and where they cross, each place once. */
-export function nodesOf(edges: Edges, box: Box): { x: number[]; y: number[]; index: Buckets } {
+function nodesOf(edges: Edges, box: Box): { x: number[]; y: number[]; index: Buckets } {
   const x: number[] = [];
   const y: number[] = [];
   const seen = new Set<number>();
@@ -144,7 +144,7 @@ export function orient(ax: number, ay: number, bx: number, by: number, cx: numbe
  * Bend every edge onto the nodes it passes within half a cell of. Returns the
  * cut edges, or nothing at all when no edge had a node to pass through.
  */
-export function cutAt(edges: Edges, nodes: { x: number[]; y: number[]; index: Buckets }): Edges | undefined {
+function cutAt(edges: Edges, nodes: { x: number[]; y: number[]; index: Buckets }): Edges | undefined {
   const out = noEdges();
   let changed = false;
   const count = edges.ax.length;
@@ -328,7 +328,7 @@ export class Buckets {
 }
 
 /** The array again, at least `least` long. */
-export function grown(array: Int32Array, least: number): Int32Array {
+function grown(array: Int32Array, least: number): Int32Array {
   let size = array.length;
   while (size < least) size *= 2;
   const out = new Int32Array(size);
@@ -336,7 +336,7 @@ export function grown(array: Int32Array, least: number): Int32Array {
   return out;
 }
 
-export function columnOf(v: number): number {
+function columnOf(v: number): number {
   return Math.floor(v / BUCKET);
 }
 

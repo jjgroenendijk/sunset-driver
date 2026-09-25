@@ -39,11 +39,6 @@ const turn = new Quaternion();
  */
 export const RIDE = { thigh: 1.05, knee: -1.85, spread: 0.24, lean: 0.45 } as const;
 
-/** True where a class is ridden astride rather than sat inside. */
-export function isRidden(spec: VehicleSpec): boolean {
-  return saddleOf(spec) !== undefined;
-}
-
 /**
  * Sit a character on a vehicle, and answer whether it is a vehicle anybody
  * sits on: false on a car, and the caller hides the model as before.

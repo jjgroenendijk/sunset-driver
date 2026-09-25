@@ -38,7 +38,7 @@ export const PAVEMENT_EDGE = 16;
  * each, so an edge across a bend is split until it follows it. The ground may
  * stand at most twice this through the surface between two vertices.
  */
-export const PAVEMENT_SAG = 0.01;
+const PAVEMENT_SAG = 0.01;
 
 /** Metres below which an edge is never split, whatever the surface does. */
 const PAVEMENT_SHORTEST = 0.5;

@@ -38,11 +38,11 @@ import { bakeWalks, BONES, FRAMES, propOf } from './pedestrian-rig.ts';
 export const PEDESTRIAN_VIEW = 110;
 
 /** People drawn at most. A frame with more leaves the rest out. */
-export const PEDESTRIAN_CAP = 1024;
+const PEDESTRIAN_CAP = 1024;
 
 /** Metres from a car driven fast that heads turn to it, and the pace in metres per second it takes. */
-export const WATCH_REACH = 16;
-export const WATCH_SPEED = 9;
+const WATCH_REACH = 16;
+const WATCH_SPEED = 9;
 
 /** Radians the head turns at most from the way the body faces. */
 const LOOK_MOST = 1.3;

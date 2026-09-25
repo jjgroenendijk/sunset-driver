@@ -23,8 +23,8 @@ import { GLASS, LAMP, METAL, TAIL, type Beacon, type VehicleBox } from './vehicl
 export type { Beacon };
 
 /** The colours of an engine. */
-export const ENGINE_RED = 0xc01b1f;
-export const CAB_WHITE = 0xeeeeea;
+const ENGINE_RED = 0xc01b1f;
+const CAB_WHITE = 0xeeeeea;
 const LOCKER = 0xa9afb5;
 const DECK = 0x2c2f34;
 const LADDER = 0xd9dde0;
@@ -32,15 +32,15 @@ const REFLECTOR = 0xf2c230;
 const GRILLE = 0x1d1f22;
 
 /** The colours of an ambulance. */
-export const AMBULANCE_WHITE = 0xf4f5f1;
+const AMBULANCE_WHITE = 0xf4f5f1;
 export const AMBULANCE_RED = 0xd02a2a;
 const AMBULANCE_ORANGE = 0xf08a1c;
 const STAR_BLUE = 0x1f55c0;
 
 /** The colours a beacon burns. */
-export const FLASH_RED = 0xff2a22;
-export const FLASH_BLUE = 0x2a64ff;
-export const FLASH_WHITE = 0xfff4e0;
+const FLASH_RED = 0xff2a22;
+const FLASH_BLUE = 0x2a64ff;
+const FLASH_WHITE = 0xfff4e0;
 
 /** How big a cab door of an engine is, how high it rides, and how far it opens. */
 const CAB_DOOR = 1.3;
@@ -54,10 +54,10 @@ const REAR_DOOR_UP = 1.0;
 const REAR_SWING = 2.0;
 
 /** A box as `emergency.ts` draws it: no panel, since a unit takes no damage. */
-export type UnitBox = Omit<VehicleBox, 'panel'>;
+type UnitBox = Omit<VehicleBox, 'panel'>;
 
 /** A wheel of a unit: where its hub is, and how big it is. */
-export interface UnitWheel {
+interface UnitWheel {
   x: number;
   y: number;
   z: number;

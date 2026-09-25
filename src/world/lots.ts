@@ -107,7 +107,7 @@ const DEPTH_TRIES = [1, 0.7, 0.45];
  * where even its zone's least depth comes closer, so the sweep can ask a
  * detached zone for daylight rather than for overlap.
  */
-export const LOT_CLEARANCE = 0.1;
+const LOT_CLEARANCE = 0.1;
 /**
  * Metres two attached lots may overlap: one millimetre, the grid their corners
  * are rounded onto. They share a side edge, so the question to ask there is

@@ -37,7 +37,7 @@ import { footprintHalfWidth, mayCross, mayJoin, TIERS } from './tiers.ts';
 import type { Point, Ramp, RoadCurve, RoadTier } from './types.ts';
 
 /** Metres a junction may be moved onto a point a road already has. Two junctions this close would stand inside each other. */
-export const CROSSING_SNAP = 4;
+const CROSSING_SNAP = 4;
 
 /** Times a road is shortened and planned again before it is refused. */
 const ROUNDS = 4;
@@ -410,7 +410,6 @@ function crossingsWithin(network: CrossingNetwork, road: RoadCurve, distances: F
   return out;
 }
 
-
 /** Every place the draft crosses a laid road, in order along the draft. */
 function crossingsOf(network: CrossingNetwork, draft: DraftLine): Crossing[] {
   const out: Crossing[] = [];
@@ -677,4 +676,3 @@ function slice(draft: DraftLine, start: number, end: number): DraftLine {
   if (draft.lift !== undefined) piece.lift = draft.lift.slice(start, end + 1);
   return piece;
 }
-

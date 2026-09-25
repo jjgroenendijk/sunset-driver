@@ -32,7 +32,7 @@ function line(id: number, tier: RoadTier, from: Point, to: Point): RoadCurve {
   return { id, tier, points, bridges: [], tunnels: [], interchanges: [], nodes: [] };
 }
 
-export function ringRoads(): RoadCurve[] {
+function ringRoads(): RoadCurve[] {
   const r = RING;
   const far = r + CROSS_REACH;
   const near = r - CROSS_REACH;

@@ -52,7 +52,7 @@ export const MOUNT_TICKS = { in: 22, out: 30 } as const;
 export const DOOR_STAND = 0.35;
 
 /** Ticks at most spent walking to a door, however far round the vehicle it is. */
-export const WALK_CAP = 240;
+const WALK_CAP = 240;
 
 /** Metres per second a player walks to the door at. */
 const WALK_PACE = 2.6;

@@ -94,10 +94,10 @@ const STANDS: Record<Exclude<Grip, 'none'>, { hip: Stand; aimed: Stand }> = {
 };
 
 /** Radians the arms are thrown up by a shot at its strongest. */
-export const KICK_LIFT = 0.22;
+const KICK_LIFT = 0.22;
 
 /** How much of the walk's lean a body holding a gun keeps: the hands stay on it. */
-export const HOLD_LEAN = 0.3;
+const HOLD_LEAN = 0.3;
 
 /** The angles that point an arm from `shoulder` at `target`, in the body's frame, under a torso turned by `twist`. */
 export function pointArm(

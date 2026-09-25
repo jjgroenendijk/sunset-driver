@@ -32,7 +32,7 @@ export interface DrawnPlayer {
 }
 
 /** Blend two numbers. */
-export function lerp(a: number, b: number, t: number): number {
+function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 

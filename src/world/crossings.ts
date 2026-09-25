@@ -79,7 +79,7 @@ const GRADED_SPAN = 0.115;
  * has one line to try. Only lines that stay within the two islands' cells
  * qualify.
  */
-export function findCrossings(hf: Heightfield, layout: TerrainLayout, noise: CoastNoise): Crossing[] {
+function findCrossings(hf: Heightfield, layout: TerrainLayout, noise: CoastNoise): Crossing[] {
   const out: Crossing[] = [];
   const islands = layout.islands;
   // The land an arterial can climb to from the core (`graded-land.ts`). A

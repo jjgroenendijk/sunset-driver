@@ -137,7 +137,7 @@ const BARK_MEMORY = TICK_RATE;
 const BARK_CAP = 8;
 
 /** Ticks a fallen officer lies before the body is taken away. */
-export const FALLEN_TICKS = 90 * TICK_RATE;
+const FALLEN_TICKS = 90 * TICK_RATE;
 
 /** Fallen officers kept at once. The oldest is taken away first. */
 const FALLEN_CAP = 12;
@@ -156,7 +156,7 @@ export function officerWeapon(kind: OfficerKind, stars: number): WeaponId {
 }
 
 /** Stars at which the police start shooting. Below it they only arrest. */
-export const FIRE_STARS = 2;
+const FIRE_STARS = 2;
 
 /** True while the heat is high enough for officers to shoot. */
 export function mayFire(state: SimState): boolean {

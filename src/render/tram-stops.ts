@@ -70,7 +70,7 @@ function box(length: number, height: number, width: number, x: number, y: number
 const MIDDLE = -(INNER + WIDTH / 2);
 
 /** The slab itself: the platform, the kerb on the tram's side, and the tactile strip on it. */
-export function platformBoxes(): StopBox[] {
+function platformBoxes(): StopBox[] {
   return [
     box(TRAM_LENGTH, RISE, WIDTH, 0, RISE / 2, MIDDLE, PLATFORM),
     box(TRAM_LENGTH, RISE + 0.06, 0.16, 0, (RISE + 0.06) / 2, -(INNER + 0.08), KERB),
@@ -86,7 +86,7 @@ export function platformBoxes(): StopBox[] {
 export const TIMETABLE = { x: 1.5, y: RISE + 1.55, z: MIDDLE - WIDTH / 2 + 0.23, width: 1.1, height: 0.62 };
 
 /** The shelter in the middle of the platform: a roof, glass behind and at both ends, and a bench. */
-export function shelterBoxes(): StopBox[] {
+function shelterBoxes(): StopBox[] {
   const glass = SHELTER_TALL - 0.5;
   const back = MIDDLE - WIDTH / 2 + 0.16;
   const end = SHELTER_LONG / 2 - 0.05;
@@ -105,7 +105,7 @@ export function shelterBoxes(): StopBox[] {
 }
 
 /** The mast at the end the tram arrives from, with the line's flag on top of it. */
-export function flagBoxes(): StopBox[] {
+function flagBoxes(): StopBox[] {
   const tall = 2.5;
   const at = -(TRAM_LENGTH / 2 - 1.2);
   return [
@@ -116,7 +116,7 @@ export function flagBoxes(): StopBox[] {
 }
 
 /** The three geometries a stop is drawn with, each with its colours on its vertices. */
-export function tramStopParts(): { platform: BufferGeometry; shelter: BufferGeometry; flag: BufferGeometry } {
+function tramStopParts(): { platform: BufferGeometry; shelter: BufferGeometry; flag: BufferGeometry } {
   const grow = (parts: StopBox[]): BufferGeometry => merged(parts.map((part) => coloured(boxOf(part), part.colour)));
   return { platform: grow(platformBoxes()), shelter: grow(shelterBoxes()), flag: grow(flagBoxes()) };
 }

@@ -26,7 +26,7 @@ export const HEAT_CAP = 6;
 export const COOL_DELAY = 20 * TICK_RATE;
 
 /** Heat lost per second once the cooling has started. A full six stars runs out in a minute. */
-export const COOL_PER_SECOND = 0.1;
+const COOL_PER_SECOND = 0.1;
 
 /** A crime the police weigh (spec section 14). */
 export type Crime =
@@ -73,7 +73,7 @@ export const CRIME_HEAT: Record<Crime, number> = {
  * of what a crime is worth, so the first star costs 1.25, the third 2.25 and
  * the sixth 3.75. Six stars take 15 in all, where the first takes 1.25.
  */
-export const HEAT_CLIMB = 2;
+const HEAT_CLIMB = 2;
 
 /** What a crime has to be worth in all to take the heat from nothing to `heat`. */
 export function effortFor(heat: number): number {

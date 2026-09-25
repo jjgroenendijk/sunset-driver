@@ -148,7 +148,7 @@ export class Steps {
 }
 
 /** Ticks a whole edge takes at a cruising speed, {@link CRUISE} of the limit unless a driver says otherwise. */
-export function driveTicks(edge: RoadEdge, cruise: number = CRUISE): number {
+function driveTicks(edge: RoadEdge, cruise: number = CRUISE): number {
   return Math.max(1, Math.round((edge.length / (edge.speedLimit * cruise)) * TICK_RATE));
 }
 

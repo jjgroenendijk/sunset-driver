@@ -65,7 +65,7 @@ const RAGGED = 0.35;
 export const TAKEOVER_TICKS = 40 * 60;
 
 /** How far a capture moves the loser's standing. The rivals gain half of it (`faction.ts`). */
-export const CAPTURE_STANDING = 0.25;
+const CAPTURE_STANDING = 0.25;
 
 /** Dollars a block pays its holder each game day, before the district's wealth is counted. */
 export const BLOCK_INCOME = 140;
@@ -234,7 +234,7 @@ export class TerritoryMap {
 }
 
 /** Metres a faction reaches out of its own districts on a tick, widening by the day. */
-export function reachOn(tick: number): number {
+function reachOn(tick: number): number {
   const day = Math.max(0, Math.floor(tick / TICKS_PER_DAY));
   return Math.min(MAX_REACH, HOME_REACH + SPREAD_PER_DAY * day);
 }
@@ -311,7 +311,7 @@ function hired(state: SimState, key: number): boolean {
 }
 
 /** Ticks a wave keeps coming before the faction gives the block up for now. */
-export const WAVE_TICKS = 50 * 60;
+const WAVE_TICKS = 50 * 60;
 
 /** Call a faction out to a block. The wave already running is left to finish. */
 export function callWave(state: SimState, faction: number, block: number, round: number): void {
@@ -358,7 +358,7 @@ function lowerBound(list: readonly number[], value: number): number {
  * one payment on the day's turn, so a session that never holds a block never
  * pays for the walk over the list.
  */
-export function payIncome(state: SimState, map: TerritoryMap): void {
+function payIncome(state: SimState, map: TerritoryMap): void {
   const f = state.factions;
   if (state.tick - f.paidTick < TICKS_PER_DAY) return;
   f.paidTick = state.tick;

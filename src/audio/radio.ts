@@ -23,7 +23,7 @@ import { STEPS, type Part } from './stations.ts';
 import { RAMP } from './voices.ts';
 
 /** Seconds a bar is scheduled before it is due. Long enough to survive a slow frame. */
-export const LOOKAHEAD = 0.4;
+const LOOKAHEAD = 0.4;
 
 /** What each part is worth against the others inside the radio. */
 const PART_GAIN: Record<Part, number> = { bass: 0.5, chord: 0.22, lead: 0.3, kick: 0.6, snare: 0.35, hat: 0.12 };
@@ -46,7 +46,7 @@ const PULSE_SLOW = 2.2;
 const PULSE_FAST = 7;
 
 /** MIDI note to hertz. */
-export function hz(note: number): number {
+function hz(note: number): number {
   return 440 * Math.pow(2, (note - 69) / 12);
 }
 

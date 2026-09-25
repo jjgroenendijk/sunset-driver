@@ -84,8 +84,7 @@ import {
 } from './vehicle.ts';
 import { weatherAt } from './weather.ts';
 
-export { PHYSICS_CELL, PHYSICS_RADIUS, PHYSICS_TILE, type Ground } from './ground-bodies.ts';
-
+export { type Ground } from './ground-bodies.ts';
 
 /** Load Rapier's WebAssembly. Call once before the first {@link SimPhysics}. */
 export async function initPhysics(): Promise<void> {

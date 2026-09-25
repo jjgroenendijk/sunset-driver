@@ -27,7 +27,7 @@ import { tinted } from './tint.ts';
 export const WILDLIFE_VIEW = 120;
 
 /** Animals of one model drawn at most. A frame with more leaves the rest out. */
-export const WILDLIFE_CAP = 512;
+const WILDLIFE_CAP = 512;
 
 /** Which of the two models a species is drawn as. */
 export type Model = 'bird' | 'beast';

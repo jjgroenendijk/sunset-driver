@@ -22,7 +22,7 @@ export function districtOf(zone: Zone, wealth: number, culture: Culture = 'none'
 }
 
 /** A lot as `buildings.ts` lays one: the two front corners first, then the back two. */
-export function lotOf(front: Point, width: number, depth: number, facing: number): Point[] {
+function lotOf(front: Point, width: number, depth: number, facing: number): Point[] {
   const n = { x: -Math.cos(facing), y: -Math.sin(facing) };
   const t = { x: n.y, y: -n.x };
   const f0 = { x: front.x - (t.x * width) / 2, y: front.y - (t.y * width) / 2 };

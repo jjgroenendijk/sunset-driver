@@ -19,7 +19,7 @@ import type { RemotePlayer } from './roster.ts';
  * wait on the relays, which is this file's alone: a room that is open is one of
  * the phases `party.ts` reports.
  */
-export type ControlPhase = PartyState['phase'] | 'connecting';
+type ControlPhase = PartyState['phase'] | 'connecting';
 
 export interface ControlState extends Omit<PartyState, 'phase'> {
   phase: ControlPhase;

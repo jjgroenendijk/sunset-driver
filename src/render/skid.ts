@@ -43,7 +43,7 @@ import { CHUNK_TERRAIN_CELL } from '../world/terrain.ts';
 import { attribute, float } from './tsl.ts';
 
 /** Vertices the buffer holds. About four hundred marks, which is a long drift. */
-export const SKID_VERTEX_CAP = 12_000;
+const SKID_VERTEX_CAP = 12_000;
 
 /** Metres of ground between one mark of a tyre and the next. */
 export const SKID_STEP = 1.2;

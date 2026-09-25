@@ -31,10 +31,10 @@ import type { Listener } from './space.ts';
 import { EngineVoice, HornVoice, RAMP, SirenVoice, SquealVoice, TramVoice } from './voices.ts';
 
 /** Where the master sits before the limiter. Headroom for the cues to peak into. */
-export const MASTER_GAIN = 0.42;
+const MASTER_GAIN = 0.42;
 
 /** What each family of voices is worth against the others. */
-export const LEVELS = Object.freeze({
+const LEVELS = Object.freeze({
   engine: 0.42,
   siren: 3,
   squeal: 0.35,
@@ -48,7 +48,7 @@ export const LEVELS = Object.freeze({
 });
 
 /** Seconds the music bus takes to climb back after a cue has ducked it. */
-export const DUCK_RECOVER = 0.9;
+const DUCK_RECOVER = 0.9;
 
 /** The whole node graph of a session's audio. Built once and ramped after that. */
 export class Mixer {

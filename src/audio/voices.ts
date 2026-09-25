@@ -20,34 +20,34 @@ import type { AudioPlan, SirenPlan, TramNoisePlan } from './plan.ts';
 export const RAMP = 0.04;
 
 /** Hertz the engine fires at with the vehicle idling, and at the redline. */
-export const IDLE_HZ = 30;
-export const RED_HZ = 135;
+const IDLE_HZ = 30;
+const RED_HZ = 135;
 
 /** The two notes of a siren, in hertz, and the seconds it takes to swap them. */
-export const SIREN_LOW = 660;
-export const SIREN_HIGH = 880;
-export const SIREN_SWAP = 0.05;
+const SIREN_LOW = 660;
+const SIREN_HIGH = 880;
+const SIREN_SWAP = 0.05;
 
 /** The two notes of a horn, in hertz: a minor third, as a road car's is. */
-export const HORN_LOW = 400;
-export const HORN_HIGH = 480;
+const HORN_LOW = 400;
+const HORN_HIGH = 480;
 
 /**
  * A tram's wheels on the rail: where the rumble sits, in hertz, and how far it
  * rises as the tram runs faster. It is low and broad, which is what a steel
  * wheel on steel rail is, and nothing like a tyre.
  */
-export const RUMBLE_HZ = 105;
-export const RUMBLE_RISE = 90;
-export const RUMBLE_Q = 0.8;
+const RUMBLE_HZ = 105;
+const RUMBLE_RISE = 90;
+const RUMBLE_Q = 0.8;
 
 /** Where a flange biting the rail on a curve sings, in hertz, and how narrow that band is. */
-export const FLANGE_HZ = 2400;
-export const FLANGE_Q = 12;
+const FLANGE_HZ = 2400;
+const FLANGE_Q = 12;
 
 /** Where a sliding tyre sings, in hertz, and how narrow that band is. */
-export const SQUEAL_HZ = 1900;
-export const SQUEAL_Q = 7;
+const SQUEAL_HZ = 1900;
+const SQUEAL_Q = 7;
 
 /** The player's own engine: a firing note, its octave, and the air it draws. */
 export class EngineVoice {

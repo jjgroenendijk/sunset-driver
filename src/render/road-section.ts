@@ -108,7 +108,7 @@ export interface SectionPoint {
 /** A colour as the renderer wants it: three floats in the working colour space. */
 type Rgb = readonly [number, number, number];
 
-export function rgbOf(hex: number): Rgb {
+function rgbOf(hex: number): Rgb {
   const colour = new Color(hex);
   return [colour.r, colour.g, colour.b];
 }

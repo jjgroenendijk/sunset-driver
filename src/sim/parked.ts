@@ -36,7 +36,7 @@ const PARKED_CELL = 50;
  * How full each kind of place is at each hour of the day, 0 to 1, from
  * midnight. Between two hours the share is read off the straight line.
  */
-export const FILL: Record<BayUse, readonly number[]> = {
+const FILL: Record<BayUse, readonly number[]> = {
   // Houses: full at night, half empty while their people are at work.
   home: [0.9, 0.9, 0.9, 0.9, 0.9, 0.88, 0.8, 0.62, 0.5, 0.45, 0.45, 0.45, 0.45, 0.45, 0.45, 0.48, 0.55, 0.68, 0.8, 0.85, 0.88, 0.9, 0.9, 0.9],
   // Shops and offices on a town street: busy all day and into the evening.

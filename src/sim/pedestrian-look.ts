@@ -45,7 +45,7 @@ export const GAITS = [
 export type Gait = (typeof GAITS)[number];
 
 /** The slowest and fastest pace of each gait, in metres per second. */
-export const GAIT_SPEED: Record<Gait, readonly [number, number]> = {
+const GAIT_SPEED: Record<Gait, readonly [number, number]> = {
   stroll: [1.15, 1.4],
   brisk: [1.45, 1.75],
   amble: [0.8, 1.05],
@@ -74,7 +74,7 @@ export const STANDING: ReadonlySet<Gait> = new Set<Gait>(['stand', 'phone', 'smo
  * Metres one whole cycle of a gait covers — two steps — for a person 1.75 m
  * tall. A taller person takes a longer stride in proportion.
  */
-export const GAIT_STRIDE: Record<Gait, number> = {
+const GAIT_STRIDE: Record<Gait, number> = {
   stroll: 1.4,
   brisk: 1.6,
   amble: 1.05,

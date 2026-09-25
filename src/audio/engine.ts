@@ -21,7 +21,7 @@ import type { VehicleClass, VehicleSpec, VehicleState } from '../sim/vehicle.ts'
 export const IDLE_REV = 0.17;
 
 /** The share of the top speed first gear reaches. The rest of the box is spaced from it. */
-export const FIRST_GEAR = 0.22;
+const FIRST_GEAR = 0.22;
 
 /** How many gears each class of spec section 11.3 has. A boat has none: it is direct drive. */
 export const GEARS: Readonly<Record<VehicleClass, number>> = Object.freeze({
@@ -62,7 +62,7 @@ export interface EngineSound {
 }
 
 /** An engine that is not turning at all, which is what a dead one sounds like. */
-export const ENGINE_OFF: EngineSound = Object.freeze({ rev: 0, load: 0, gear: 0, running: false });
+const ENGINE_OFF: EngineSound = Object.freeze({ rev: 0, load: 0, gear: 0, running: false });
 
 /**
  * The note the player's own vehicle is making. `throttle` is the input frame's

@@ -49,7 +49,7 @@ import {
 import { createVehicleState, headingOf, rideHeight, specOf, type VehicleSpec, type VehicleState } from './vehicle.ts';
 
 /** Metres apart two footprints count as touching. A kinematic body stops a car a hair short of its box. */
-export const TOUCH_MARGIN = 0.1;
+const TOUCH_MARGIN = 0.1;
 
 const IDENTITY = { x: 0, y: 0, z: 0, w: 1 };
 

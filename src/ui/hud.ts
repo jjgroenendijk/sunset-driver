@@ -284,7 +284,7 @@ export class Hud {
  * ident or the harm-reduction announcement being read (spec section 19). A
  * station playing a song is the station's name alone.
  */
-export function radioLine(onAir: OnAirLine | null): string {
+function radioLine(onAir: OnAirLine | null): string {
   if (onAir === null) return '';
   if (onAir.text === '') return `♪ ${onAir.name}`;
   return onAir.from === '' ? `♪ ${onAir.text}` : `♪ ${onAir.text} — ${onAir.from}`;
@@ -295,7 +295,7 @@ export function radioLine(onAir: OnAirLine | null): string {
  * hands, and the rounds in its magazine over the pool behind them. A melee
  * weapon has no ammunition, and a weapon being reloaded says so instead.
  */
-export function weaponParts(state: SimState): { name: string; ammo: string } {
+function weaponParts(state: SimState): { name: string; ammo: string } {
   const spec = currentWeapon(state.loadout);
   if (spec.capacity === 0) return { name: spec.name, ammo: '' };
   if (reloading(state.loadout)) return { name: spec.name, ammo: 'reloading' };
@@ -323,7 +323,7 @@ export function fateLine(state: SimState): string {
  * {@link HEAT_STARS}: a whole point of heat is a full star, and a fraction of
  * one is a star that is filling, which the HUD makes blink.
  */
-export function heatStars(heat: number): ('full' | 'part' | 'empty')[] {
+function heatStars(heat: number): ('full' | 'part' | 'empty')[] {
   const full = Math.min(HEAT_STARS, Math.floor(heat));
   const lit = Math.min(HEAT_STARS, Math.ceil(heat));
   const out: ('full' | 'part' | 'empty')[] = [];

@@ -219,7 +219,7 @@ function reachingMouths(ground: Ground, line: PlaneLine, distances: Float32Array
  * off the graph. Nothing where one road alone has a point there: a point inside
  * a curve is no node, and the graph breaks no edge at it.
  */
-export function seedsAt(network: PlaneNetwork, at: Point): MouthSeed[] {
+function seedsAt(network: PlaneNetwork, at: Point): MouthSeed[] {
   const on = network.nodeAt(at);
   if (on.length < 2) return [];
   const seeds: MouthSeed[] = [];

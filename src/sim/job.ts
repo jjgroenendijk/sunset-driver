@@ -33,7 +33,7 @@ import type { District } from '../world/types.ts';
 export type JobKind = 'delivery' | 'theft' | 'pursuit' | 'protection' | 'sabotage' | 'race' | 'territory';
 
 /** What is asked at one place of a job. */
-export type LegKind =
+type LegKind =
   /** Be there, on foot or at the wheel. */
   | 'go'
   /** Be there driving a vehicle of the job's own class. */
@@ -114,7 +114,7 @@ const SITE_FAR = 220;
 const SITE_LIMIT = 320;
 
 /** Game ticks a contact's board stands before the work on it turns over. */
-export const OFFER_TICKS = TICKS_PER_HOUR * 2;
+const OFFER_TICKS = TICKS_PER_HOUR * 2;
 
 /** Metres apart two legs of one job are pushed, so no job is finished by standing still. */
 const MIN_RUN = 260;
@@ -184,7 +184,7 @@ export function jobSites(
  * and it steps again whenever a job ends, so the board a player comes back to
  * after finishing one is never the board they left.
  */
-export function offerIndex(state: SimState): number {
+function offerIndex(state: SimState): number {
   return Math.floor(Math.max(0, state.tick) / OFFER_TICKS) + state.missions.done + state.missions.failed;
 }
 

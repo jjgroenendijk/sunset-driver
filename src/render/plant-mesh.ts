@@ -42,7 +42,6 @@ import type { Rgb } from './building-mesh.ts';
 import { PlantShell, PLANT_BARK } from './plant-shell.ts';
 
 export { PLANT_BARK, PLANT_LEAF } from './plant-shell.ts';
-export type { Canopy, Local } from './plant-shell.ts';
 
 /** The species, in the order their models are built and indexed. */
 export const PLANT_SPECIES: readonly PlantSpecies[] = [
@@ -74,7 +73,7 @@ export const SPECIES_MODELS = 4;
  * a plant takes it, so a street of green carries the odd rust tree rather than
  * a quarter of them.
  */
-export const ACCENT_CHANCE = 0.14;
+const ACCENT_CHANCE = 0.14;
 
 /**
  * Models of the broadleaf of a park or the wild: a `TreeGenerator` skeleton

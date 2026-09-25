@@ -44,7 +44,7 @@ import { tramGuardOf, type TramGuard } from './tram-guard.ts';
 import { specOf, type VehicleClass, type VehicleState } from './vehicle.ts';
 
 /** Metres each way of one bucket of the index that says which vehicles can be near a place. */
-export const TRAFFIC_CELL = 100;
+const TRAFFIC_CELL = 100;
 
 /**
  * Metres behind and ahead of a vehicle its pose is read at. The vehicle stands
@@ -57,7 +57,7 @@ export const SMOOTH = 4;
 const REACH = 16;
 
 /** How busy each zone's roads are, as a share of the tier's density. */
-export const ZONE_TRAFFIC: Record<Zone, number> = {
+const ZONE_TRAFFIC: Record<Zone, number> = {
   core: 1,
   inner: 0.85,
   industrial: 0.6,
@@ -70,7 +70,7 @@ export const ZONE_TRAFFIC: Record<Zone, number> = {
  * The classes of the roster each tier's traffic is made of, and how often each
  * comes up. The patrol car, the boat and the buggy are not ambient traffic.
  */
-export const TIER_MIX: Record<RoadTier, Partial<Record<VehicleClass, number>>> = {
+const TIER_MIX: Record<RoadTier, Partial<Record<VehicleClass, number>>> = {
   highway: { saloon: 4, compact: 2, sports: 2, van: 2, truck: 2, bus: 1 },
   arterial: { saloon: 4, compact: 3, sports: 1, van: 2, truck: 1, bus: 1, motorcycle: 1 },
   ramp: { saloon: 4, compact: 2, sports: 2, van: 2, truck: 2, bus: 1 },

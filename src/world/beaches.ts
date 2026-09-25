@@ -73,7 +73,7 @@ const NORMAL_SPAN = 3;
  * resort however long it turned out to be.
  */
 export const MIN_BEACH = 140;
-export const RESORT_BEACH = 800;
+const RESORT_BEACH = 800;
 /**
  * How good a zone is to put a resort in, best first. Spec section 7.3 says the
  * long beach is typically on the suburban or outskirts coast, so those two are

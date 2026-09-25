@@ -49,7 +49,7 @@ import { specOf } from './vehicle.ts';
 export type EmergencyKind = 'engine' | 'ambulance';
 
 /** What a unit is doing. */
-export type EmergencyTask =
+type EmergencyTask =
   /** Driving at the scene it was given. */
   | 'respond'
   /** Standing at the scene and working it. */
@@ -146,7 +146,7 @@ export function onCall(unit: EmergencyUnit): boolean {
 }
 
 /** Metres per second each kind drives at. An engine is heavy; an ambulance is not. */
-export const UNIT_SPEED: Record<EmergencyKind, number> = {
+const UNIT_SPEED: Record<EmergencyKind, number> = {
   engine: 22,
   ambulance: 28,
 };
@@ -166,6 +166,7 @@ const SPAWN_RANGE = 320;
 /**
  * Metres from where an ambulance pulls up that it takes the people who are
  * down from: the whole scene a call folds together.
+ * @alias
  */
 export const COLLECT_RANGE = CALL_RANGE;
 
@@ -232,7 +233,7 @@ const DISPATCH_GAP = 3 * TICK_RATE;
 const REPLAN = 2 * TICK_RATE;
 
 /** Ticks a call nobody could answer is kept before it is given up on. */
-export const CALL_STALE = 5 * 60 * TICK_RATE;
+const CALL_STALE = 5 * 60 * TICK_RATE;
 
 /** Metres from the player a unit on its way out is taken off the map. */
 const RETIRE_RANGE = 240;

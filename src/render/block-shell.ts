@@ -102,8 +102,8 @@ export const EAVES = 0.4;
 export const MIN_WALLS = 2.5;
 
 /** Metres of the parapet that rims a flat roof, and how thick it is. */
-export const PARAPET_RISE = 0.7;
-export const PARAPET_WIDTH = 0.3;
+const PARAPET_RISE = 0.7;
+const PARAPET_WIDTH = 0.3;
 
 /**
  * Where a box of a building stands in its own frame. A building massed in

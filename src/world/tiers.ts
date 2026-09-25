@@ -14,7 +14,7 @@ function kmh(v: number): number {
 }
 
 /** Who a tier lets on. Cars are allowed on every tier, so they are not listed. */
-export interface TierTraffic {
+interface TierTraffic {
   trucks: boolean;
   buses: boolean;
   trams: boolean;

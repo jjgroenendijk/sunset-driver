@@ -32,7 +32,7 @@ import { attribute, uniform } from './tsl.ts';
 export const HEAD_GLOW = 6;
 export const TAIL_GLOW = 9;
 /** How hard the arc at a tram's pantograph burns. It is a spark, so it burns harder than a lamp. */
-export const SPARK_GLOW = 14;
+const SPARK_GLOW = 14;
 
 /** How hard the vertices of a box painted `colour` burn, and 0 on everything else. */
 export function glowOf(colour: number): number {

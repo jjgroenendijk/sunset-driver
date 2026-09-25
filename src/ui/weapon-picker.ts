@@ -176,7 +176,7 @@ export class WeaponPicker {
 }
 
 /** One line of numbers for a row: what separates it from the row above. */
-export function describeWeapon(id: WeaponId): string {
+function describeWeapon(id: WeaponId): string {
   const spec: WeaponSpec = ARSENAL[id];
   const parts: string[] = [];
   if (spec.cls === 'melee') {

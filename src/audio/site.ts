@@ -20,7 +20,7 @@ import type { WorldDescription, Zone } from '../world/types.ts';
 import { NOWHERE, type Site, type SiteSource } from './ambience.ts';
 
 /** How built up each zone is before its district's own density is read into it. */
-export const BUILT_BY_ZONE: Readonly<Record<Zone, number>> = Object.freeze({
+const BUILT_BY_ZONE: Readonly<Record<Zone, number>> = Object.freeze({
   core: 1,
   inner: 0.8,
   industrial: 0.62,
@@ -30,7 +30,7 @@ export const BUILT_BY_ZONE: Readonly<Record<Zone, number>> = Object.freeze({
 });
 
 /** How much green each zone carries: gardens, verges, parks and the country beyond. */
-export const GREEN_BY_ZONE: Readonly<Record<Zone, number>> = Object.freeze({
+const GREEN_BY_ZONE: Readonly<Record<Zone, number>> = Object.freeze({
   core: 0.05,
   inner: 0.14,
   industrial: 0.08,
@@ -46,7 +46,7 @@ export const SURF_NEAR = 35;
 export const SURF_FAR = 280;
 
 /** Metres the listener may walk before the site under them is looked up again. */
-export const RESAMPLE = 6;
+const RESAMPLE = 6;
 
 /** How built up a place is, from its zone and how dense the district there is. */
 export function builtOf(zone: Zone, density: number): number {

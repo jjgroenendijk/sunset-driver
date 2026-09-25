@@ -29,7 +29,7 @@ import { SIGNAL_CYCLE, type TrafficSignals } from './signals.ts';
 import { backOf, walkOut } from './traffic-tour.ts';
 
 /** How busy each zone's pavements are, as a share of the tier's walkers. */
-export const ZONE_PEDESTRIANS: Record<Zone, number> = {
+const ZONE_PEDESTRIANS: Record<Zone, number> = {
   core: 1,
   inner: 0.75,
   industrial: 0.25,
@@ -39,10 +39,10 @@ export const ZONE_PEDESTRIANS: Record<Zone, number> = {
 };
 
 /** Metres a walk covers before it turns back, so a person stays in their own few blocks. */
-export const WALK_REACH = 700;
+const WALK_REACH = 700;
 
 /** Metres a loop of pavement has to be before a walk ends on it: once round a city block. */
-export const WALK_LOOP = 250;
+const WALK_LOOP = 250;
 
 /** How often a person walks with company, by zone: the chance they are the first of a pair or a three. */
 const COMPANY: Record<Zone, number> = {
@@ -65,7 +65,7 @@ const JAYWALK: Record<Zone, number> = {
 };
 
 /** Metres between two people who walk side by side. */
-export const ABREAST = 0.62;
+const ABREAST = 0.62;
 
 /** Metres of a person's lane from the edge of the pavement, at the least. */
 const LANE_EDGE = 0.3;

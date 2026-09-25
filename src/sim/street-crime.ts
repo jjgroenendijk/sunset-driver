@@ -229,7 +229,7 @@ export function crimesAt(seed: number, tick: number, grounds: readonly CrimeGrou
 }
 
 /** The incident one district draws in one slot, or undefined where it draws none. */
-export function crimeOn(
+function crimeOn(
   seed: number,
   slot: number,
   index: number,

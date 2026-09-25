@@ -139,6 +139,7 @@ type UnlistedField = Exclude<keyof InputFrame, (typeof INPUT_FIELDS)[number]>;
  * of that field, which does not satisfy the `never` this alias demands.
  */
 type EveryFieldListed<T extends never> = T;
+/** @public */
 export type _EveryInputFieldListed = EveryFieldListed<UnlistedField>;
 
 /** Whether two frames hold the same input, field for field. */

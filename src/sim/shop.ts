@@ -41,13 +41,13 @@ import { specOf } from './vehicle.ts';
 export const DOOR_REACH = 4;
 
 /** Metres past the walls of a room a player counts as still inside it. */
-export const ROOM_MARGIN = 0.8;
+const ROOM_MARGIN = 0.8;
 
 /** Metres out of the door a player who has left stands. */
-export const DOOR_STEP = 1.5;
+const DOOR_STEP = 1.5;
 
 /** What each trade is called, on the panel and beside its icon on the map. */
-export const SHOP_LABELS: Readonly<Record<ShopKind, string>> = Object.freeze({
+const SHOP_LABELS: Readonly<Record<ShopKind, string>> = Object.freeze({
   weapons: 'Gun shop',
   workshop: 'Workshop',
   convenience: 'Store',
@@ -60,7 +60,7 @@ export const SHOP_LABELS: Readonly<Record<ShopKind, string>> = Object.freeze({
  * The trades that open to a player the police want, because shedding that is
  * what they sell (spec section 16.1).
  */
-export const SHELTERS_WANTED: readonly ShopKind[] = ['workshop', 'clothing'];
+const SHELTERS_WANTED: readonly ShopKind[] = ['workshop', 'clothing'];
 
 /** A shop as the simulation needs it: its door, its trade and the room inside. */
 export interface ShopPlace extends Place {
@@ -153,7 +153,7 @@ export function shopOffers(
 }
 
 /** True where a point stands inside a shop's room, walls and all. */
-export function inRoom(room: ShopRoom, x: number, y: number): boolean {
+function inRoom(room: ShopRoom, x: number, y: number): boolean {
   const dx = x - room.x;
   const dy = y - room.y;
   const along = dx * cos(room.facing) + dy * sin(room.facing);

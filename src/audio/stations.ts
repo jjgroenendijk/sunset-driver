@@ -35,10 +35,10 @@ export const MODES = Object.freeze({
   minorPentatonic: [0, 3, 5, 7, 10],
 } as const);
 
-export type ModeName = keyof typeof MODES;
+type ModeName = keyof typeof MODES;
 
 /** How the drums of a station are laid out over the sixteen steps of a bar. */
-export interface DrumFeel {
+interface DrumFeel {
   /** Steps the kick lands on. */
   kick: readonly number[];
   /** Steps the snare lands on. The backbeat is 4 and 12. */
@@ -82,7 +82,7 @@ export interface Station {
 }
 
 /** The waveforms a part may be played on. Tone.js names them. */
-export type OscillatorType = 'sine' | 'triangle' | 'sawtooth' | 'square';
+type OscillatorType = 'sine' | 'triangle' | 'sawtooth' | 'square';
 
 /** Steps one bar is divided into: sixteenths, which every feel here is written in. */
 export const STEPS = 16;
@@ -208,11 +208,6 @@ export const STATIONS: readonly Station[] = [
 /** Where a station stands on the dial, or -1 for a culture with no station. */
 export function stationOfCulture(culture: Culture): number {
   return STATIONS.findIndex((station) => station.culture === culture);
-}
-
-/** The station at a place on the dial. The dial does not wrap here; `radio.ts` does that. */
-export function stationAt(dial: number): Station | undefined {
-  return STATIONS[dial];
 }
 
 /** The notes of a chord of the station's mode, as MIDI offsets from the key. */

@@ -47,7 +47,7 @@ const THINNED = new Color(0x8c8884);
 const EMBER_TINT = new Color(1, 0.75, 0.45);
 const WHITE = new Color(1, 1, 1);
 
-export type Kind = keyof typeof DRAG;
+type Kind = keyof typeof DRAG;
 
 /** One puff in flight. Everything about it is read off its age. */
 export interface Puff {

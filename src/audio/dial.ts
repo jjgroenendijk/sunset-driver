@@ -19,7 +19,7 @@ import { STATIONS, type Station } from './stations.ts';
 export const DIAL_POSITIONS = STATIONS.length + 1;
 
 /** Beats to a bar. Everything on the dial is in four. */
-export const BEATS_PER_BAR = 4;
+const BEATS_PER_BAR = 4;
 
 /** Where an unbounded turn of the dial lands, 0 to {@link DIAL_POSITIONS} - 1. */
 export function wrapDial(dial: number): number {

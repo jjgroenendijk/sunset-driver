@@ -47,7 +47,7 @@ const MID = 0.5;
 const RAMP = 0.035;
 
 /** The share of the sun a surface takes: 0 in shade, {@link MID} in mid, 1 lit. */
-export function sunBand(light: TslNode): TslNode {
+function sunBand(light: TslNode): TslNode {
   const toMid = smoothstep(SHADE_TO_MID - RAMP, SHADE_TO_MID + RAMP, light);
   const toLit = smoothstep(MID_TO_LIT - RAMP, MID_TO_LIT + RAMP, light);
   return toMid.mul(MID).add(toLit.mul(1 - MID));

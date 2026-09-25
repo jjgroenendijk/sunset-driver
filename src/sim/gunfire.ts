@@ -114,20 +114,19 @@ export interface ShotTarget {
  * is three casts rather than a shape sweep, which Rapier would charge far more
  * for on every punch.
  */
-export const SWING_RAYS: number = 3;
+const SWING_RAYS: number = 3;
 
 /**
  * Metres of a person's width a swing counts as reach, so a blow is measured to
  * somebody's body rather than to the line down their middle.
  */
-export const PERSON_RADIUS = 0.3;
-
+const PERSON_RADIUS = 0.3;
 
 /** The shortest and longest a Molotov's fire burns on the ground, in seconds. */
-export const MOLOTOV_SECONDS: readonly [number, number] = [12, 20];
+const MOLOTOV_SECONDS: readonly [number, number] = [12, 20];
 
 /** Metres per second a round or a blow knocks a person back at, from the damage it does. */
-export function shotPush(damage: number): number {
+function shotPush(damage: number): number {
   return Math.min(3.5, 0.8 + damage * 0.03);
 }
 

@@ -24,17 +24,17 @@ import type { WeaponArt } from './weapon.ts';
  */
 export const PICKUP_SCALE = 1.8;
 export const PICKUP_MIN_LENGTH = 1;
-export const PICKUP_MAX_SCALE = 6;
+const PICKUP_MAX_SCALE = 6;
 
 /** Metres above the ground the model turns at. */
-export const PICKUP_HOVER = 0.3;
+const PICKUP_HOVER = 0.3;
 
 /** Radians a second a pickup turns. */
-export const PICKUP_SPIN = 1.4;
+const PICKUP_SPIN = 1.4;
 
 /** How much larger the pickup under the mouse is drawn, and how fast it grows to that, per second. */
-export const HOVER_GROW = 1.7;
-export const HOVER_RATE = 12;
+const HOVER_GROW = 1.7;
+const HOVER_RATE = 12;
 
 /** Metres across the disc under a pickup, how far it stands off the ground, and its colour. */
 const DISC_RADIUS = 0.55;

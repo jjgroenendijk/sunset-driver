@@ -12,7 +12,7 @@ import { rngFor, Subsystem } from '../core/rng.ts';
 import type { Cue } from './cue.ts';
 
 /** A busker playing: where they stand, and who they are. */
-export interface Busker {
+interface Busker {
   id: number;
   x: number;
   y: number;
@@ -24,7 +24,7 @@ export interface BuskerSource {
 }
 
 /** The chance a busker plucks a note on a tick: about three a second. */
-export const PLUCK_RATE = 0.05;
+const PLUCK_RATE = 0.05;
 
 /** The most buskers heard at once, nearest first. */
 const HEARD = 2;

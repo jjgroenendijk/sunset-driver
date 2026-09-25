@@ -47,7 +47,7 @@ export interface MetroPlace extends Place {
 }
 
 /** The trip in progress. */
-export interface MetroTravel {
+interface MetroTravel {
   /** Index into the world's stations of the station being travelled to. */
   to: number;
   /** The tick the trip started on. */

@@ -49,10 +49,10 @@ import type { VehicleClass } from './vehicle.ts';
 export type ChainRole = 'patron' | 'rival';
 
 /** The side the player threw in with at the fork, or '' before they did. */
-export type ChainBranch = '' | ChainRole;
+type ChainBranch = '' | ChainRole;
 
 /** How the chain finished: '' while it is still being walked. */
-export type ChainEnd = '' | 'done' | 'burned';
+type ChainEnd = '' | 'done' | 'burned';
 
 /** The factions the two sides are, where the seed gave them a corner to stand on. */
 const SIDES: Readonly<Record<ChainRole, FactionId>> = Object.freeze({
@@ -359,7 +359,7 @@ export function chaptersNow(chain: ChainState): Chapter[] {
 }
 
 /** A chapter by the name the record carries, or undefined for a name the chain does not hold. */
-export function chapterOf(id: string): Chapter | undefined {
+function chapterOf(id: string): Chapter | undefined {
   return CHAPTERS.find((chapter) => chapter.id === id);
 }
 

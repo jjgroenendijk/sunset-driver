@@ -24,7 +24,7 @@ import {
 import { holdOver, type Hold, type HoldRig } from './character-hold.ts';
 
 /** How quickly a raised or lowered aim settles, per second. About a fifth of a second. */
-export const AIM_EASE = 14;
+const AIM_EASE = 14;
 
 /**
  * The player model, built from boxes at the proportions the chosen body type

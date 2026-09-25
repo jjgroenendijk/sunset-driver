@@ -4,7 +4,7 @@
  */
 
 /** Finaliser from MurmurHash3: spreads entropy across all 32 bits. */
-export function mix32(h: number): number {
+function mix32(h: number): number {
   h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
   h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
   return (h ^ (h >>> 16)) >>> 0;
@@ -28,9 +28,4 @@ export function hashString(s: string): number {
     h = Math.imul(h, 0x01000193);
   }
   return mix32(h >>> 0);
-}
-
-/** Hash a 2D integer coordinate with a seed; used for chunk and cell keys. */
-export function hash2(seed: number, x: number, y: number): number {
-  return hashInts(seed, x, y);
 }

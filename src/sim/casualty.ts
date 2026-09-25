@@ -38,8 +38,7 @@ import {
   type CasualtyCause,
 } from './casualty-motion.ts';
 
-export { PERSON_HEALTH, type Casualty, type CasualtyCause } from './casualty-motion.ts';
-export { casualtyOf };
+export { PERSON_HEALTH, type Casualty } from './casualty-motion.ts';
 
 /** What a hit does to a person: how much health it takes, and how it moves them. */
 export interface Blow {
@@ -66,33 +65,33 @@ export interface CasualtyGround {
 }
 
 /** Damage at or above which a hit knocks a person off their feet rather than staggering them. */
-export const KNOCKDOWN = 20;
+const KNOCKDOWN = 20;
 
 /** Seconds the knocked-down wounded lie before they get up, least and most. */
-export const DOWN_SECONDS: readonly [number, number] = [3, 8];
+const DOWN_SECONDS: readonly [number, number] = [3, 8];
 
 /** Metres a wounding and a killing send the crowd running over. */
-export const WOUND_FLEE = 12;
-export const DEATH_FLEE = 30;
+const WOUND_FLEE = 12;
+const DEATH_FLEE = 30;
 
 /** Ticks after a death before the onlookers come, and how far they come from. */
-export const GATHER_DELAY = 10 * TICK_RATE;
-export const GATHER_REACH = 35;
+const GATHER_DELAY = 10 * TICK_RATE;
+const GATHER_REACH = 35;
 
 /** Dollars a dead person carries, least and most. */
-export const CASH: readonly [number, number] = [5, 60];
+const CASH: readonly [number, number] = [5, 60];
 
 /** Metres from a body a player on foot takes the cash from. */
-export const CASH_REACH = 1.1;
+const CASH_REACH = 1.1;
 
 /** Bodies that lie at once. One more takes the oldest away. */
 export const BODY_CAP = 24;
 
 /** Ticks a body lies before it is taken away unseen, if no ambulance has come: five minutes. */
-export const BODY_LIFE = 5 * 60 * TICK_RATE;
+const BODY_LIFE = 5 * 60 * TICK_RATE;
 
 /** Metres from the player a body has to be before it can be taken away unseen. */
-export const BODY_UNSEEN = 120;
+const BODY_UNSEEN = 120;
 
 /** Metres a body is measured along before a wall is looked for, beyond the longest throw. */
 const REACH_MAX = 60;

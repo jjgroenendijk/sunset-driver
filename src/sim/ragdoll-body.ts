@@ -13,7 +13,7 @@ import { STRIDE_HEIGHT } from './pedestrian-look.ts';
 
 /** The bones, in the order of the rig's, which is the order of `Casualty.ragdoll`. */
 export const RAGDOLL_BONES = ['hips', 'torso', 'head', 'thighL', 'shinL', 'thighR', 'shinR', 'armL', 'armR'] as const;
-export type RagdollBone = (typeof RAGDOLL_BONES)[number];
+type RagdollBone = (typeof RAGDOLL_BONES)[number];
 
 /** Numbers a bone takes in `Casualty.ragdoll`: its place, then its turn as a quaternion. */
 export const BONE_STRIDE = 7;

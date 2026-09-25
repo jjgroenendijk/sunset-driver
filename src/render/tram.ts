@@ -38,9 +38,6 @@ import {
 import { hashInts } from '../core/hash.ts';
 import { coloured } from './traffic.ts';
 
-export { MODERN_PAINT as TRAM_PAINT } from './tram-mesh.ts';
-export { tramBoxes, type TramBox } from './tram-mesh.ts';
-
 /** The modules a frame may have to draw: both of the modern design, and the heritage car. */
 const MODULES: { design: TramDesign; module: TramModule }[] = [
   { design: 'modern', module: 'end' },
@@ -49,7 +46,7 @@ const MODULES: { design: TramDesign; module: TramModule }[] = [
 ];
 
 /** The geometry of one module: its boxes in their colours. */
-export function tramParts(design: TramDesign = 'modern', module: TramModule = 'end'): BufferGeometry {
+function tramParts(design: TramDesign = 'modern', module: TramModule = 'end'): BufferGeometry {
   return merged(tramBoxes(design, module).map((part) => coloured(tramBoxGeometry(part), part.colour)));
 }
 

@@ -35,7 +35,7 @@ import type { BuildingKind } from '../world/buildings.ts';
 export type BuildingPlan = 'box' | 'step' | 'ell' | 'u' | 'court' | 'podium' | 'setbacks';
 
 /** A rectangle of a shape, in fractions: of the footprint across, of the height up. */
-export interface ShapePart {
+interface ShapePart {
   /** The middle of the rectangle, from -0.5 at one edge of the footprint to 0.5 at the other. */
   x: number;
   z: number;
@@ -87,8 +87,8 @@ export interface ShapeBox {
  * Both are wider than a real tower's: the camera looks down from 60 m, and every
  * window it cannot see is geometry the frame pays for.
  */
-export const BAY_WIDTH = 4.2;
-export const FLOOR_HEIGHT = 4;
+const BAY_WIDTH = 4.2;
+const FLOOR_HEIGHT = 4;
 
 /**
  * How much wider than the plainest one a bay and a storey grow. Neighbours in

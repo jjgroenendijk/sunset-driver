@@ -138,5 +138,3 @@ export class PoliceBodies extends CarBodies<PoliceUnit> {
     super(world, (state) => state.police.units.filter((unit) => unit.kind !== 'helicopter'), () => box);
   }
 }
-
-export { HELICOPTER_HEIGHT };

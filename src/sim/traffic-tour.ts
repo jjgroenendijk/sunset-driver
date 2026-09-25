@@ -19,16 +19,16 @@ import type { Rng } from '../core/rng.ts';
 import type { RoadEdge, RoadGraph } from '../world/graph.ts';
 import type { RoadTier } from '../world/types.ts';
 
-export { CRUISE, driveTicks, legAt, legNear, timeTour, type Tour } from './traffic-timing.ts';
+export { legAt, legNear, timeTour, type Tour } from './traffic-timing.ts';
 
 /** Metres a loop has to be before a walk ends on it. Shorter is a car circling a block. */
-export const MIN_LOOP = 400;
+const MIN_LOOP = 400;
 
 /** Legs a walk takes before it gives up on a loop and drives back the way it came. */
-export const MAX_LEGS = 24;
+const MAX_LEGS = 24;
 
 /** Metres a walk covers before it gives up on a loop, so a route stays near its start. */
-export const MAX_REACH = 2500;
+const MAX_REACH = 2500;
 
 /** How much likelier the walk is to stay on the tier it started on than to leave it. */
 const SAME_TIER = 4;

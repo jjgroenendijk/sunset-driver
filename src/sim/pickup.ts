@@ -46,8 +46,8 @@ export interface PickupState {
 }
 
 /** Metres from a pickup the player's feet take it from, across and up. */
-export const PICKUP_REACH = 1.1;
-export const PICKUP_HEIGHT = 1.5;
+const PICKUP_REACH = 1.1;
+const PICKUP_HEIGHT = 1.5;
 
 /**
  * Ticks a pickup lies before it is gone: three minutes. This is the only thing
@@ -56,13 +56,13 @@ export const PICKUP_HEIGHT = 1.5;
 export const PICKUP_LIFE = 3 * 60 * TICK_RATE;
 
 /** Metres apart the weapons of one body land, so they do not lie in one heap. */
-export const DROP_SPREAD = 0.7;
+const DROP_SPREAD = 0.7;
 
 /** What a police car holds (spec section 11.6): a shotgun or an M4. */
 export const POLICE_CAR_WEAPONS: readonly WeaponId[] = ['remington-870', 'm4a1'];
 
 /** Magazines of spare rounds that lie with a police car's weapon. */
-export const POLICE_CAR_SPARE = 2;
+const POLICE_CAR_SPARE = 2;
 
 /** Put one weapon down in the world, and answer the pickup. */
 export function dropWeapon(

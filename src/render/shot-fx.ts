@@ -38,9 +38,9 @@ import { MeleeFx } from './melee-fx.ts';
 import { tinted } from './tint.ts';
 
 /** Ticks a flash, a glow and a streak are drawn for. A round is quick. */
-export const FLASH_TICKS = 3;
-export const GLOW_TICKS = 5;
-export const STREAK_TICKS = 5;
+const FLASH_TICKS = 3;
+const GLOW_TICKS = 5;
+const STREAK_TICKS = 5;
 
 /** Metres across a flash and a glow, and metres wide a streak is drawn. */
 const FLASH_SIZE = 0.9;

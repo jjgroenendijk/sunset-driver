@@ -30,7 +30,7 @@ import type { WaitingCrowd, WaitingPassenger } from './stop-queue.ts';
 import type { TrafficRoads } from './traffic.ts';
 
 /** What stands on a corner. */
-export type CornerKind = 'busker' | 'cart' | 'stall' | 'club' | 'smokers' | 'dog' | 'stoop';
+type CornerKind = 'busker' | 'cart' | 'stall' | 'club' | 'smokers' | 'dog' | 'stoop';
 
 /** The things drawn on a corner besides its people. */
 export type CornerProp = 'amp' | 'cart' | 'stall' | 'dog';

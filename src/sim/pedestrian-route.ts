@@ -59,7 +59,7 @@ const NODE_REACH = 16;
 export const CORNER_REACH = 1.5;
 
 /** Metres along the road a jaywalker's slant across it covers. */
-export const JAY_RUN = 5;
+const JAY_RUN = 5;
 
 /** One leg of a loop as it is asked for: an edge, the pavement it is walked on, and where it leaves a jaywalked run. */
 export interface WalkLeg {

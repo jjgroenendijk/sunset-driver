@@ -25,7 +25,7 @@ import { DEFAULT_GORE, GORE, type Gore } from './gore.ts';
 import { tinted } from './tint.ts';
 
 /** Sparks the batch holds. The oldest is dropped when a new one has nowhere to go. */
-export const SPARK_CAP = 64;
+const SPARK_CAP = 64;
 
 /** Sparks one blow throws at full strength. A punch throws a third of them. */
 export const SPARKS_PER_HIT = 9;

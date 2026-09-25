@@ -3,12 +3,12 @@ export const TICK_RATE = 60;
 export const TICK_MS = 1000 / TICK_RATE;
 
 /** One in-game day is 24 real minutes: one real minute per game hour. */
-export const REAL_SECONDS_PER_DAY = 24 * 60;
+const REAL_SECONDS_PER_DAY = 24 * 60;
 export const TICKS_PER_DAY = REAL_SECONDS_PER_DAY * TICK_RATE;
 export const TICKS_PER_HOUR = TICKS_PER_DAY / 24;
 
 /** Most simulation steps taken in one render frame; beyond this the clock falls behind rather than freezing the frame. */
-export const MAX_STEPS_PER_FRAME = 8;
+const MAX_STEPS_PER_FRAME = 8;
 
 /**
  * Fixed-step accumulator. The render loop feeds it wall-clock deltas; it

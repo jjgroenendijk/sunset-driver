@@ -36,9 +36,9 @@ import type { RoadEdge, RoadGraph } from '../world/graph.ts';
 import type { TramDescription } from '../world/types.ts';
 
 /** Ticks before the tram's nose reaches the junction that a crossing vehicle has to be over its line by. */
-export const GUARD_BEFORE = 3 * TICK_RATE;
+const GUARD_BEFORE = 3 * TICK_RATE;
 /** Ticks after the tram's tail has left the junction before a crossing vehicle may cross its line. */
-export const GUARD_AFTER = 1 * TICK_RATE;
+const GUARD_AFTER = 1 * TICK_RATE;
 
 /** How a movement through a junction turns. `back` is a U-turn. */
 type Turn = 'straight' | 'left' | 'right' | 'back';

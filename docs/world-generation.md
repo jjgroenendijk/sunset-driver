@@ -325,8 +325,7 @@ corridors in `docs/corridors.md`. The airfields of section 8.4 are in `docs/airc
 - `new ChunkSource(world).chunk(cx, cy)` (`chunks.ts`) is the chunked generation of spec section
   9.1. A chunk is a window on the whole-map layers — the graph, the footprint, the parcels, the
   buildings and the carve — so a source pays for those layers once and every chunk after that is a
-  clip. `generateChunk(seed, cx, cy)` generates a whole world for one chunk; use it for one chunk
-  and no more. The grid is anchored on the origin, and a chunk owns its near edges but not its far
+  clip. The grid is anchored on the origin, and a chunk owns its near edges but not its far
   ones, so a road laid along a boundary is cut into one chunk and not two. A parcel that straddles a
   boundary gives a piece to each side, and each piece carries the id and the owner of the whole
   parcel. A building is never cut: the chunk its lot's middle stands in owns the whole of it, and a

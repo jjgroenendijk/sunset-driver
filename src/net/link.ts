@@ -17,7 +17,7 @@ import { APP_ID, MESSAGE_KINDS, type MessageKind } from './protocol.ts';
 import type { NetLink } from './party.ts';
 
 /** How long one strategy has to answer before the next is tried. */
-export const RELAY_TIMEOUT_MS = 5_000;
+const RELAY_TIMEOUT_MS = 5_000;
 
 /** How often the wait looks at the sockets while it waits. */
 const POLL_MS = 100;

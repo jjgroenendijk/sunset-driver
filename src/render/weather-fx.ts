@@ -40,7 +40,7 @@ import { KERB_RISE, SURFACE_RAISE } from './road-section.ts';
 import { tinted } from './tint.ts';
 
 /** Streaks of rain drawn at the hardest downpour. */
-export const RAIN_CAP = 700;
+const RAIN_CAP = 700;
 
 /** Metres each way of the box the rain falls through, and how tall it is. */
 const RAIN_BOX = 46;
@@ -55,7 +55,7 @@ const RAIN_WIDTH = 0.035;
 const RAIN_LENGTH = 0.85;
 
 /** Scraps of litter drawn at the hardest wind, and metres each way of their box. */
-export const LITTER_CAP = 90;
+const LITTER_CAP = 90;
 const LITTER_BOX = 40;
 
 /** Metres a scrap is blown per second at full wind, and how high it rides. */
@@ -70,7 +70,7 @@ const LITTER_HEIGHT = 0.16;
 const LITTER_COLOURS = [0xd8d2c4, 0xb59a74, 0xe7e9ea, 0xc8b8a0];
 
 /** Puddles on the lattice around the player, and the metres between lattice points. */
-export const PUDDLE_CAP = 120;
+const PUDDLE_CAP = 120;
 const PUDDLE_SPACING = 13;
 
 /** Metres across the largest puddle, and how far off its lattice point it may sit. */

@@ -44,7 +44,7 @@ const COAST_HEIGHT = 9;
  * stack of setbacks with a stepped crown, and a stack needs the height
  * `building-shape.ts` asks of its `setbacks` plan.
  */
-export const DECO_HEIGHT = 55;
+const DECO_HEIGHT = 55;
 
 /**
  * The colours each style is built in, in the bright key of `docs/art-style.md`.

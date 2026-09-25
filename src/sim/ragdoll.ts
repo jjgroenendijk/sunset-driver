@@ -33,19 +33,19 @@ import { BONE_STRIDE, KNEE_LIMITS, RAGDOLL_BONES, RAGDOLL_PARTS } from './ragdol
 import type { SimState } from './simulation.ts';
 
 /** Ragdolls live at once. A fresh hit past this freezes the oldest. */
-export const RAGDOLL_CAP = 3;
+const RAGDOLL_CAP = 3;
 
 /** Metres from the player within which a hit gets a ragdoll. */
-export const RAGDOLL_NEAR = 40;
+const RAGDOLL_NEAR = 40;
 
 /** Metres from the player beyond which a ragdoll freezes. */
-export const RAGDOLL_FAR = 60;
+const RAGDOLL_FAR = 60;
 
 /** Ticks a ragdoll lives at most: four seconds. */
 export const RAGDOLL_TICKS = 4 * TICK_RATE;
 
 /** Ticks every bone has to be still before the ragdoll counts as at rest: half a second. */
-export const REST_TICKS = Math.round(0.5 * TICK_RATE);
+const REST_TICKS = Math.round(0.5 * TICK_RATE);
 
 /** Metres a second, and radians a second, below which a bone counts as still. */
 const REST_SPEED = 0.2;

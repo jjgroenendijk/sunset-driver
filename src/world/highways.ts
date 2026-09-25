@@ -302,7 +302,7 @@ function onRing(ring: Ring, angle: number): Point {
  * was seeded at, and one every {@link INTERCHANGE_SPACING} along it. Ascending.
  * Every other point of a highway takes no junction at all (spec section 6.2).
  */
-export function interchangesOf(points: readonly Point[], seedIndex: number): number[] {
+function interchangesOf(points: readonly Point[], seedIndex: number): number[] {
   const at = new Array<boolean>(points.length).fill(false);
   at[0] = true;
   at[points.length - 1] = true;

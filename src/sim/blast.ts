@@ -26,7 +26,7 @@ export interface Blast {
 }
 
 /** Ticks a burst is remembered for: long enough for a frame after a stall to see it. */
-export const BLAST_MEMORY = 30;
+const BLAST_MEMORY = 30;
 
 /** Bursts the record holds at once. */
 export const BLAST_CAP = 16;

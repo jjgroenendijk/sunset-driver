@@ -35,7 +35,7 @@ const DOME_SIZE = 1600;
  * player, one for the rest of the draw distance. A third would cost a pass and
  * cover ground this camera never looks at.
  */
-export const SHADOW_CASCADES = 2;
+const SHADOW_CASCADES = 2;
 
 /**
  * Pixels each way of one cascade at full quality. The quality tiers of spec

@@ -84,7 +84,7 @@ export class VehiclePicker {
 }
 
 /** One line of numbers for a row: what separates it from the row above. */
-export function describe(cls: VehicleClass): string {
+function describe(cls: VehicleClass): string {
   const spec = ROSTER[cls];
   if (spec.flight !== undefined) {
     // An aircraft is told apart by how it flies: a rotor hovers, and a wing

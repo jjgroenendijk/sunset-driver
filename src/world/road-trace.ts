@@ -25,7 +25,6 @@ import type { Point, RoadTier } from './types.ts';
 
 // The numbers a trace runs on and the rule it asks the ground are next door;
 // callers read them through here, as they did while the three were one file.
-export { groundRule, spanProfile, type Profile } from './road-ground.ts';
 export * from './road-params.ts';
 
 /** Steps of the fan a step searches when water blocks the way, and the hardest turn water may force. */

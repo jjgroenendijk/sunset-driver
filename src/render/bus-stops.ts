@@ -24,10 +24,10 @@ import { boxOf, coloured, instanced, merged, TRAFFIC_VIEW } from './traffic.ts';
 import { GLASS, METAL } from './vehicle-mesh.ts';
 
 /** Metres each way of the point the frame is drawn round that stops are drawn in. */
-export const STOP_VIEW = TRAFFIC_VIEW;
+const STOP_VIEW = TRAFFIC_VIEW;
 
 /** Stops drawn at most. A frame with more in view leaves the rest out. */
-export const STOP_DRAW_CAP = 96;
+const STOP_DRAW_CAP = 96;
 
 /** The livery of a stop: the post and the sign plate, and the roof over a shelter. */
 const POST_PAINT = 0x2e8c8a;
@@ -90,7 +90,7 @@ export function shelterBoxes(): StopBox[] {
 }
 
 /** The geometry of one post and of one shelter, each with its colours on its vertices. */
-export function busStopParts(): { post: BufferGeometry; shelter: BufferGeometry } {
+function busStopParts(): { post: BufferGeometry; shelter: BufferGeometry } {
   const grow = (parts: StopBox[]): BufferGeometry => merged(parts.map((part) => coloured(boxOf(part), part.colour)));
   return { post: grow(postBoxes()), shelter: grow(shelterBoxes()) };
 }

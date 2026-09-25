@@ -36,8 +36,8 @@ import { tinted } from './tint.ts';
 import { windHeading } from './weather-fx.ts';
 
 /** Puffs each batch holds. A smoke grenade's cloud alone is a few dozen. */
-export const FX_SMOKE_CAP = 400;
-export const FX_FLAME_CAP = 400;
+const FX_SMOKE_CAP = 400;
+const FX_FLAME_CAP = 400;
 
 /** Bodies in flight drawn at once. */
 const BODY_CAP = 16;

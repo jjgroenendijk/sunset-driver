@@ -33,10 +33,10 @@ import { bloodMaterial } from './blood-material.ts';
 import { DEFAULT_GORE, GORE, type Gore } from './gore.ts';
 
 /** Metres over the ground a mark is laid, clear of the road and under the skid marks' 0.03. */
-export const BLOOD_LIFT = 0.025;
+const BLOOD_LIFT = 0.025;
 
 /** Ticks the marks of a body taken away take to fade out. */
-export const FADE_TICKS = 3 * 60;
+const FADE_TICKS = 3 * 60;
 
 /** Hits the view remembers for the spatter, and marks it keeps fading at once. */
 const SPATTER_MEMORY = 24;

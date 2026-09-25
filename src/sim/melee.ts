@@ -43,13 +43,13 @@ export const HIT_MEMORY = 20;
 export const HIT_CAP = 12;
 
 /** Ticks the longest swing is drawn over. A weapon that cycles faster swings faster. */
-export const SWING_TICKS = 22;
+const SWING_TICKS = 22;
 
 /** Metres above the feet a blow lands, which is where the burst is thrown from. */
 export const SWING_HEIGHT = 1.05;
 
 /** The damage one blow is worth at full strength, so a heavier weapon hits harder. */
-export const FULL_BLOW = 45;
+const FULL_BLOW = 45;
 
 /** Ticks one swing of this weapon is drawn and swept over. */
 export function swingTicks(spec: WeaponSpec): number {
@@ -116,4 +116,3 @@ export interface CrowdSource {
     ids?: number[],
   ): number;
 }
-

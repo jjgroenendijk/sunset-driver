@@ -82,20 +82,20 @@ export interface CharacterPose {
 export const STRIDE = 2.1;
 
 /** Metres per second under which the player counts as standing still. */
-export const IDLE_SPEED = 0.2;
+const IDLE_SPEED = 0.2;
 
 /** Cycles per second of the breath of a player standing still, and of a swimmer's stroke. */
-export const IDLE_RATE = 0.28;
-export const SWIM_RATE = 0.55;
+const IDLE_RATE = 0.28;
+const SWIM_RATE = 0.55;
 
 /** How much faster a swimmer strokes for every metre per second they make. */
-export const SWIM_URGENCY = 0.3;
+const SWIM_URGENCY = 0.3;
 
 /** Radians a swimmer's body tips forward from standing. */
-export const SWIM_PITCH = 1.25;
+const SWIM_PITCH = 1.25;
 
 /** How far under the surface a floating body lies, as a share of its height. */
-export const SWIM_DRAFT = 0.2;
+const SWIM_DRAFT = 0.2;
 
 /** What each stance swings, at its slowest and at its fastest. */
 const SWING = {
@@ -112,7 +112,7 @@ function mix(range: readonly [number, number], t: number): number {
 }
 
 /** True when the water over the feet is deep enough to swim in rather than wade through. */
-export function inDeepWater(motion: CharacterMotion): boolean {
+function inDeepWater(motion: CharacterMotion): boolean {
   return motion.depth > SWIM_DEPTH * motion.stature;
 }
 
@@ -253,14 +253,14 @@ export const SWING_WIND = 0.95;
 export const SWING_FOLLOW = 1.25;
 
 /** Radians the arm is raised in front of the body while the blow is thrown. */
-export const SWING_RAISE = 1.15;
+const SWING_RAISE = 1.15;
 
 /** How much of the arm's turn the torso and the off arm take. */
-export const TWIST_SHARE = 0.4;
-export const OFF_ARM_SHARE = 0.35;
+const TWIST_SHARE = 0.4;
+const OFF_ARM_SHARE = 0.35;
 
 /** Metres the body steps into the blow at the moment it lands. */
-export const SWING_LUNGE = 0.2;
+const SWING_LUNGE = 0.2;
 
 /** Ease a share of a part of the swing: slow at the ends and quick in the middle. */
 function ease(t: number): number {
@@ -289,7 +289,7 @@ export function swingAngle(progress: number): number {
  * body steps into the blow as it lands. `progress` is what `swingProgress` in
  * `src/sim/melee.ts` answers, and a negative one leaves the pose alone.
  */
-export function swingOver(pose: CharacterPose, progress: number): CharacterPose {
+function swingOver(pose: CharacterPose, progress: number): CharacterPose {
   if (progress < 0) return pose;
   const angle = swingAngle(progress);
   const through = Math.sin(Math.PI * Math.min(1, progress));
@@ -314,7 +314,7 @@ export function poseFor(stance: Stance, phase: number, motion: CharacterMotion):
 }
 
 /** Radians both arms stand from hanging with the hands up: a little short of straight up. */
-export const HANDS_UP = Math.PI - 0.25;
+const HANDS_UP = Math.PI - 0.25;
 
 /** Both arms up over the head, and nothing else moving, which is what giving up looks like. */
 function handsUp(pose: CharacterPose): CharacterPose {

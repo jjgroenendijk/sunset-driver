@@ -485,5 +485,3 @@ function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number
   ctx.fillText(text, x, y + 2);
   ctx.restore();
 }
-
-export { TIER_COLOURS };

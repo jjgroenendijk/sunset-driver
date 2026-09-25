@@ -26,7 +26,7 @@ import type { ChunkDetail } from './streaming.ts';
  * whatever tiers carry them, one for the harm-reduction posters, whatever
  * designs they carry, and one for the shop signs.
  */
-export const CELL_BATCH_CAP = 11;
+const CELL_BATCH_CAP = 11;
 
 /**
  * Batches a chunk spends on the metro entrances of spec section 13.3: one for

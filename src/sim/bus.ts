@@ -55,7 +55,7 @@ export const ARRIVAL_TICKS = 25 * TICK_RATE;
 export const DOOR_TICKS = 2 * TICK_RATE;
 
 /** Ticks one person takes to board. */
-export const BOARD_TICKS = Math.round(1.2 * TICK_RATE);
+const BOARD_TICKS = Math.round(1.2 * TICK_RATE);
 
 /** The people a stop on a leg gathers, which is what the bus stands there for. */
 export interface BusDemand {
@@ -63,7 +63,7 @@ export interface BusDemand {
 }
 
 /** The people a route timed without a world gathers: every stop the same. */
-export const EVEN_DEMAND: BusDemand = { riders: () => 3 };
+const EVEN_DEMAND: BusDemand = { riders: () => 3 };
 
 /**
  * The demand of a world's stops. `busyAt` is how busy the road is, 0 to 1, as

@@ -29,7 +29,7 @@ export const SEA_LEVEL = 0;
  * the coast reads them once per terrain sample. `mass` is the index of the
  * island a cell belongs to, or -1 for a cell of open sea.
  */
-export interface PowerCells {
+interface PowerCells {
   x: Float64Array;
   y: Float64Array;
   /** The squared weight. */
@@ -81,7 +81,7 @@ export function coastNoise(seed: number, archetype: TerrainArchetype = archetype
  * line up with the coastline in warped space, so any question about which island
  * a point belongs to has to ask here first. `out` is written and returned.
  */
-export function warpPoint(noise: CoastNoise, size: number, x: number, y: number, out: Point): Point {
+function warpPoint(noise: CoastNoise, size: number, x: number, y: number, out: Point): Point {
   const { warp, warpWavelength: w } = noise.profile;
   const amp = size * warp;
   out.x = x + noise.fbm(x / w + 3.7, y / w + 1.9, 2, 2, 0.5) * amp;
@@ -150,7 +150,7 @@ function powerCells(islands: readonly Island[], seas: readonly Site[]): PowerCel
  * reads the same distance with the sign turned, so the coast is continuous
  * across the boundary between the two.
  */
-export function coastOffset(layout: TerrainLayout, noise: CoastNoise, x: number, y: number): number {
+function coastOffset(layout: TerrainLayout, noise: CoastNoise, x: number, y: number): number {
   // Domain warp: bends the straits sideways without ever closing them, since the
   // whole partition is displaced together.
   const { x: wx, y: wy } = warpPoint(noise, layout.size, x, y, WARP_SCRATCH);

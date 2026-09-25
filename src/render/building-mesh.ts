@@ -66,8 +66,8 @@ import type { ChunkDetail } from './streaming.ts';
 
 // The plan of a building is drawn in `building-plan.ts`; this is the door
 // callers already import.
-export { CORNICE, massingOf, standingGround, type BuildingBatch, type BuildingMassing } from './building-plan.ts';
-export { shapeOf, type BuildingShape } from './building-shape.ts';
+export { massingOf, standingGround, type BuildingMassing } from './building-plan.ts';
+export { shapeOf } from './building-shape.ts';
 export { styleOf, type BuildingStyle } from './building-style.ts';
 
 /** A colour as the renderer wants it: three floats in the working colour space. */

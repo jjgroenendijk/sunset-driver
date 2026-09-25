@@ -39,7 +39,7 @@ export const KILL_SPEED = 22;
 export const LIFT_SPEED = 8;
 
 /** Kilograms a person weighs, which is what the car gives up in a hit. */
-export const PERSON_MASS = 75;
+const PERSON_MASS = 75;
 
 /** The share of the car's speed a person struck is thrown at. */
 export const THROW_SHARE = 0.8;
@@ -49,13 +49,13 @@ export const LIFT_SHARE = 0.2;
 export const LIFT_MAX = 5;
 
 /** Ticks between two bumps from the same body, so going over one is one bump a wheel pair. */
-export const BUMP_GAP = 20;
+const BUMP_GAP = 20;
 
 /** Metres per second up a body under the car gives it. */
-export const BUMP_LIFT = 0.9;
+const BUMP_LIFT = 0.9;
 
 /** Damage going over a person who is still alive does to them. */
-export const RUN_OVER_DAMAGE = 35;
+const RUN_OVER_DAMAGE = 35;
 
 /** What the car took from the people it met on one tick. */
 export interface CarStrike {

@@ -27,26 +27,26 @@ export const RESOLUTIONS: readonly Step<number>[] = [
 ];
 
 /** How far the city is streamed: the near ring gives way before the far one. */
-export const DISTANCES: readonly Step<{ near: number; far: number }>[] = [
+const DISTANCES: readonly Step<{ near: number; far: number }>[] = [
   { label: 'Far', value: { near: NEAR_RADIUS, far: FAR_RADIUS } },
   { label: 'Medium', value: { near: NEAR_RADIUS - 1, far: FAR_RADIUS } },
   { label: 'Near', value: { near: NEAR_RADIUS - 1, far: FAR_RADIUS - 1 } },
 ];
 
 /** Pixels each way of one cascade of the sun's shadow map. */
-export const SHADOWS: readonly Step<number>[] = [
+const SHADOWS: readonly Step<number>[] = [
   { label: 'High', value: SHADOW_MAP_SIZE },
   { label: 'Low', value: SHADOW_MAP_SIZE / 2 },
 ];
 
 /** The share of the frame the water's mirror is drawn at. */
-export const REFLECTIONS: readonly Step<number>[] = [
+const REFLECTIONS: readonly Step<number>[] = [
   { label: 'High', value: REFLECTION_SCALE },
   { label: 'Low', value: 0.2 },
 ];
 
 /** How much of each chunk's plants and lamps is placed. */
-export const DETAILS: readonly Step<number>[] = [
+const DETAILS: readonly Step<number>[] = [
   { label: '100%', value: 1 },
   { label: '70%', value: 0.7 },
   { label: '45%', value: 0.45 },

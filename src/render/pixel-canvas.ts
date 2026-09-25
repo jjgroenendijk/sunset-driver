@@ -22,7 +22,7 @@ export interface PixelCanvas {
 }
 
 /** The size of one glyph, and the pixels from the left of one to the left of the next. */
-export const GLYPH_WIDTH = 5;
+const GLYPH_WIDTH = 5;
 export const GLYPH_HEIGHT = 7;
 export const GLYPH_ADVANCE = GLYPH_WIDTH + 1;
 

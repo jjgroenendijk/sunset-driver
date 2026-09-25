@@ -36,7 +36,7 @@ import { TICK_RATE } from '../sim/clock.ts';
 import { tinted } from './tint.ts';
 
 /** Metres each way of the point the frame is drawn round that a contact is marked in. */
-export const MARKER_VIEW = 110;
+const MARKER_VIEW = 110;
 
 /** Metres across the diamond, and metres over the head it hangs. */
 const MARKER_SIZE = 0.4;

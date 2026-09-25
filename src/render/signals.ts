@@ -17,10 +17,10 @@ import type { Light, SignalApproach, SignalJunction, TrafficSignals } from '../s
 import { tinted } from './tint.ts';
 
 /** Metres each way of the point the frame is drawn round that signal heads are drawn in. */
-export const SIGNAL_VIEW = 180;
+const SIGNAL_VIEW = 180;
 
 /** Heads drawn at most. A frame with more leaves the rest out. */
-export const HEAD_CAP = 96;
+const HEAD_CAP = 96;
 
 /** Metres out from the kerb the pole stands, on the pavement. */
 export const POLE_OUT = 0.8;

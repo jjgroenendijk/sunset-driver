@@ -36,7 +36,7 @@ import type { VehicleSpec } from '../sim/vehicle.ts';
 export const DOOR_OPEN = 1.15;
 
 /** Radians a seated driver leans back from upright. */
-export const RECLINE = 0.3;
+const RECLINE = 0.3;
 
 /** Metres of headroom kept between the top of a seated head and the roof. */
 const HEADROOM = 0.06;
@@ -116,14 +116,14 @@ function mixSpot(a: Spot, b: Spot, t: number): Spot {
 }
 
 /** Every joint of one pose mixed toward another's. */
-export function blendPose(a: CharacterPose, b: CharacterPose, t: number): CharacterPose {
+function blendPose(a: CharacterPose, b: CharacterPose, t: number): CharacterPose {
   const out = restPose();
   for (const key of Object.keys(out) as (keyof CharacterPose)[]) out[key] = lerp(a[key], b[key], t);
   return out;
 }
 
 /** A driver in the seat: thighs level, shins down, leaning back, hands on the wheel. */
-export function seatedPose(): CharacterPose {
+function seatedPose(): CharacterPose {
   const pose = restPose();
   pose.thighL = 1.45;
   pose.thighR = 1.45;
@@ -145,7 +145,7 @@ function facing(dx: number, dz: number): number {
  * outside, the pull inside. The door turns about its front edge, out to the
  * side it is on.
  */
-export function doorEdge(door: Door, angle: number): { x: number; z: number } {
+function doorEdge(door: Door, angle: number): { x: number; z: number } {
   const out = Math.sign(door.z);
   return { x: door.hingeX - door.length * Math.cos(angle), z: door.z + out * door.length * Math.sin(angle) };
 }

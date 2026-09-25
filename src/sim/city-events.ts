@@ -29,7 +29,7 @@ import type { Place } from './on-foot.ts';
 export type EventKind = 'rush-hour' | 'night-market' | 'street-race' | 'parade' | 'match' | 'beach-party';
 
 /** The ground an event is held on. */
-export type Venue =
+type Venue =
   /** Every street at once: no place of its own. */
   | 'city'
   /** A district of a given culture, or the busiest inner one where the seed drew none. */
@@ -93,10 +93,10 @@ export const EVENT_ORDER: readonly EventKind[] = Object.freeze([
 ]);
 
 /** The second rush hour of the day, which is the same event at the other end of it. */
-export const EVENING_RUSH = { from: 16, to: 19 };
+const EVENING_RUSH = { from: 16, to: 19 };
 
 /** Days in a week, which is what an event that runs weekly is counted in. */
-export const DAYS_PER_WEEK = 7;
+const DAYS_PER_WEEK = 7;
 
 /** Where each kind is held, or undefined for a kind this world has no ground for. */
 export type Venues = Readonly<Partial<Record<EventKind, Place>>>;
@@ -222,7 +222,7 @@ export function eventAt(live: readonly LiveEvent[], x: number, y: number): LiveE
 }
 
 /** Metres per second a parade marches at, which is a slow walk. */
-export const MARCH_SPEED = 1.1;
+const MARCH_SPEED = 1.1;
 
 /** Metres between one rank of a parade and the next, and how many march abreast. */
 const RANK_GAP = 2.2;
