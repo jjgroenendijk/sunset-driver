@@ -15,6 +15,7 @@ today.
 - Light and shadow
 - Line
 - Forms
+- Vehicles
 - Sky, water and distance
 - Day, night and weather
 - The UI
@@ -131,8 +132,34 @@ Rules for the palette:
   from lit top to shaded bottom, and tall cypress spindles beside them. In parks and the wild,
   `TreeGenerator` and `ForestGenerator` forms with the same bands and gradient.
 - Flowers: large faceted clusters in magenta and orange, hanging over walls and arches.
-- Vehicles: chunky, with clear panels and colour blocks rather than materials.
+- Vehicles: chunky, with clear panels and colour blocks rather than materials. The next section
+  holds their rules.
 - Props: lamp posts, rocks and planters are low-poly with the same line and bands.
+
+## Vehicles
+
+The style is "clean low-poly", chosen in issue #713 from the mock-up at
+https://claude.ai/artifact/GG1rY85JAWdEPzsmQWcheo. A vehicle is low-poly but never boxy.
+
+- A body is one solid lofted through cross-sections, nose to tail. It is never a stack of boxes.
+- Each cross-section is a few straight sides with the corners cut off. A car ring has 14 points:
+  the floor, a sill chamfer, the flank, a shoulder ledge, the glass, a roof rail and the roof. A
+  part of a bike has 8.
+- The faces are flat, and the edge pass draws the crease between two of them. So each face reads
+  as one plane, and the count stays low enough to read from 60 m.
+- From above, the body tapers at the nose and the tail. The glass steps in from the flank above
+  the shoulder, so the cabin is narrower than the body. The wheels stand a little outside it.
+- Each part has one flat colour: paint on the body panels, trim on bumpers and the frame, plum on
+  the seats. There are no textures and no materials.
+- The glass is tinted blue and lets 55% of the light through. The seats and the people inside show
+  through it.
+- A part that opens or comes off shows the inside, never a hole: a dark engine bay under the
+  bonnet, plum trim inside a door.
+- On a motorcycle, the tank, seat, tail, mudguards, engine and exhaust are each lofted. The tank
+  swells and narrows, the seat dips where the rider sits, and a mudguard follows its wheel. Thin
+  parts stay boxes: the bars, the fork legs, the pegs and the mirrors read as lines.
+- Every vehicle keeps its top-down read: a lamp at the nose, a tail light at the back, and on a
+  bike the bars across it.
 
 ## Sky, water and distance
 
@@ -190,6 +217,8 @@ Where each rule lands. None of it needs an asset file.
 - **Distance to haze** — the fog colour becomes the haze colour of the time of day.
 - **Grade** — the LUT of `grade.ts` lifts the day into high key and warms the lights. It only
   finishes the look; the colours must be right in the materials first.
+- **Vehicles** — `vehicle-hull.ts` lofts the car bodies and `loft.ts` the pieces of a bike, both
+  as flat-shaded parts of one colour (`docs/vehicle-bodies.md`).
 - **UI** — CSS on the DOM overlay: the `--it-*` tokens of `title.css` dress every panel and HUD
   box (`docs/menus.md`), and `district-title.ts` names a district on entry.
 
@@ -216,6 +245,7 @@ Made on 2026-09-24. Change this list only with a new decision.
 | Grime | Kept, as painted strokes |
 | Lettering | System font stack |
 | Place titles | District names only |
+| Vehicles | Clean low-poly: lofted, chamfered bodies; tinted glass (2026-09-25) |
 
 ## Checking a change
 
