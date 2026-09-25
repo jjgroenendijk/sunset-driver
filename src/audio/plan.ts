@@ -29,7 +29,8 @@ import type { SimState } from '../sim/simulation.ts';
 import type { TramBell, TramNoise } from '../sim/tram.ts';
 import { specOf } from '../sim/vehicle.ts';
 import { weatherAt } from '../sim/weather.ts';
-import { currentWeapon, type WeaponSpec } from '../sim/weapon.ts';
+import { currentWeapon, weaponOf, type WeaponSpec } from '../sim/weapon.ts';
+import { BLAST_CAP, type Blast } from '../sim/blast.ts';
 import { HIT_CAP, type MeleeHit } from '../sim/melee.ts';
 import {
   bedsFor,
@@ -41,7 +42,7 @@ import {
   type CallRates,
   type SiteSource,
 } from './ambience.ts';
-import { CUES, cueAt as cueOf, HIT_CUES, type Cue } from './cue.ts';
+import { CUES, cueAt as cueOf, HIT_CUES, type Cue, type CueKind } from './cue.ts';
 import type { Cry } from './cry.ts';
 import { barSeconds, dialAt, dialName, wrapDial } from './dial.ts';
 import { enginePitch, engineSound, type EngineSound } from './engine.ts';
@@ -105,6 +106,9 @@ const CALL_STREAM: Readonly<Record<'bird' | 'gull', number>> = Object.freeze({ b
 
 /** The key of the stream a car's crunch is drawn from, so it is not the thump's note. */
 const CRUNCH_STREAM = 0x0d05;
+
+/** The stream the bursts of the record are jittered from, clear of the crunch's. */
+const BLAST_STREAM = 0x0b1a;
 
 /**
  * How a siren sounds. A police car swaps between two notes; a fire engine's
@@ -239,6 +243,8 @@ export class AudioPlanner {
   private stride = 0;
   /** The tick the last plan was made on, so the walk is measured over real ticks. */
   private tick = -1;
+  /** The tick the last burst was heard on, so no burst is played twice. */
+  private burst = -1;
   /** The tick the last blow was heard on, so no blow is played twice. */
   private heard = -1;
   /** Reused by the bells, so a frame allocates nothing for the ones that did not ring. */
@@ -260,6 +266,7 @@ export class AudioPlanner {
     this.stride = 0;
     this.tick = state.tick;
     this.heard = state.tick;
+    this.burst = state.tick;
     this.hurt.resync(state);
   }
 
@@ -278,6 +285,7 @@ export class AudioPlanner {
     const cries: Cry[] = [];
     this.collisions(state, cues);
     this.gunfire(state, cues);
+    this.bursts(state, cues);
     hearPolice(state, was, cues, cries);
     this.blows(state, cues);
     this.hurt.hear(state, was, listener, cues, cries);
@@ -351,9 +359,33 @@ export class AudioPlanner {
     if (fired <= 0) return;
     const spec = currentWeapon(state.loadout);
     const from = state.player.driving ? { x: state.vehicle.x, y: state.vehicle.z } : state.player;
-    const kind: Cue['kind'] = spec.cls === 'melee' ? 'swing' : 'gunshot';
+    const kind = shotCue(spec);
     for (let i = 0; i < Math.min(fired, CUES_PER_FRAME); i++) {
       cues.push(cueAt(state, kind, from.x, from.y, shotStrength(spec), this.shots - fired + i));
+    }
+  }
+
+  /**
+   * Every projectile that went off since the last frame (spec section 11.6):
+   * the bang of a grenade or a rocket, the bottle and the whoomp of a
+   * Molotov, the hiss of smoke or gas. A bigger blast is a louder one.
+   */
+  private bursts(state: SimState, cues: Cue[]): void {
+    const since = this.burst;
+    this.burst = state.tick;
+    for (let i = 0; i < state.blasts.length; i++) {
+      const blast = state.blasts[i] as Blast;
+      if (blast.tick <= since || blast.tick > state.tick) continue;
+      const id = hashInts(BLAST_STREAM, blast.tick * BLAST_CAP + i);
+      const effect = weaponOf(blast.weapon).effect;
+      if (effect === 'smoke' || effect === 'gas') {
+        cues.push(cueAt(state, 'hiss', blast.x, blast.y, 1, id));
+      } else if (effect === 'fire') {
+        cues.push(cueAt(state, 'glass', blast.x, blast.y, 1, id));
+        cues.push(cueAt(state, 'explosion', blast.x, blast.y, 0.45, id + 1));
+      } else {
+        cues.push(cueAt(state, 'explosion', blast.x, blast.y, Math.min(1, 0.55 + blast.radius / 18), id));
+      }
     }
   }
 
@@ -450,6 +482,22 @@ export class AudioPlanner {
 /** A cue of this tick, with the jitter of the seed's own stream folded into its pitch. */
 function cueAt(state: SimState, kind: Cue['kind'], x: number, y: number, strength: number, id: number): Cue {
   return cueOf(state.seed, state.tick, kind, x, y, strength, id);
+}
+
+/**
+ * The cue a pull of the trigger makes (spec section 11.6): what the weapon is
+ * decides it, so a shotgun booms, a rifle cracks, a flamethrower roars and a
+ * rocket rushes out of its tube. A suppressor takes the crack off any gun.
+ */
+export function shotCue(spec: WeaponSpec): CueKind {
+  if (spec.cls === 'melee' || spec.cls === 'thrown') return 'swing';
+  if (spec.effect === 'fire') return 'flame';
+  if (spec.projectile !== undefined) return spec.projectile.gravity ? 'thunk' : 'launch';
+  if (spec.suppressed) return 'suppressed';
+  if (spec.cls === 'shotgun') return 'shotgun';
+  if (spec.cls === 'precision' || spec.damage >= 50) return 'magnum';
+  if (spec.cls === 'rifle' || spec.cls === 'heavy') return 'rifle';
+  return 'gunshot';
 }
 
 /**

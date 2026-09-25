@@ -111,6 +111,8 @@ export class HurtEars {
     for (let i = 0; i < state.tracers.length; i++) {
       const round = state.tracers[i];
       if (round === undefined || round.end !== 'person' || round.tick <= was || round.tick > state.tick) continue;
+      // A flamethrower burns rather than strikes: the cry is the sound of it.
+      if (round.flame === true) continue;
       const id = hashInts(ROUND_STREAM, round.tick * TRACER_CAP + i);
       cues.push(cueAt(state.seed, round.tick, 'flesh', round.ex, round.ey, 0.85, id));
     }
