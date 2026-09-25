@@ -278,12 +278,17 @@ scene ever holds in `docs/shops.md`. The aircraft and the airfields are drawn as
 
 ## Traffic, parked cars and the crowd
 
-- `src/render/traffic.ts` draws the traffic of spec section 13.1 as two `InstancedMesh`es per
-  class: the boxes in the row's paint, and the trim with its colours per vertex. A box
-  whose colour is `VehicleSpec.paint` goes into the paint mesh, and the instance colour replaces
-  it, so one mesh draws a saloon in every paint. A class with nothing in view is hidden, so it costs
-  no draw. The traffic is evaluated at `tick - 1 + alpha`, the moment `smooth.ts` draws the player
-  at, and a promoted vehicle is drawn from its record.
+- `src/render/traffic.ts` draws the traffic of spec section 13.1 as four `InstancedMesh`es per
+  class: the parts in the row's paint, the trim with its colours per vertex, the glass and the
+  tyres. A part whose colour is `VehicleSpec.paint` goes into the paint mesh, and the instance
+  colour replaces it, so one mesh draws a saloon in every paint. A class with nothing in view is
+  hidden, so it costs no draw. The traffic is evaluated at `tick - 1 + alpha`, the moment
+  `smooth.ts` draws the player at, and a promoted vehicle is drawn from its record.
+- The body of an ambient car moves on its springs (`src/render/suspension.ts`). It pitches with the
+  car's change of speed and rolls with its turn, and rocks back once when either stops. The tyres
+  are a mesh of their own so they stay on the road. A bike leans into a turn instead, tyres and
+  all. The springs are drawing state kept per car id, and a gap of more than `GAP` between frames
+  resets them. A promoted car takes its turn from the physics.
 - A bike is ridden, so `src/render/bike-rider.ts` puts a figure of boxes on it: a fourth instanced
   mesh for the one ambient class with a saddle, written only for the bikes still driving their
   tours. A promoted bike has nobody driving it and a parked one nobody on it, so neither takes an
