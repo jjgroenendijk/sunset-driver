@@ -71,8 +71,12 @@ https://claude.ai/artifact/GG1rY85JAWdEPzsmQWcheo.
   them. The colour `GLASS` alone does not make a part transparent, because trams, bus shelters and
   aircraft use it too.
 - The glass still writes depth, so the edge pass keeps the outline of the cabin.
-- The hull faces out, so each cabin has a `tub`: a floor facing up and walls facing in, just inside
-  the hull. Without it the glass shows the road through the car. That was the bus with no bottom.
+- The hull faces out, and the renderer culls back faces. So each cabin has a `tub`, just inside the
+  hull: a floor facing up, walls to the shoulder facing in, and above the glass the pillars, rails
+  and ceiling facing in. Without it the glass shows the world through the car. Without the floor it
+  was the bus with no bottom; without the ceiling, a bus seen from the street was an empty cage.
+- The lining above the shoulder is on the roof panel, so it goes when the roof does. A cabin that
+  runs to the tail, as the bus's does, also gets a wall inside the tail.
 - The seats and dashboard are shell parts. The bus gets rows of seats instead.
 - A driver sits in the seat while driving (`WorldScene.walkPlayer`), at the end pose of the move in.
 
