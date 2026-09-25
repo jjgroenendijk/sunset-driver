@@ -1,0 +1,21 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  // The scripts run under plain `node`, and the pages beside them are served, so nothing imports
+  // either. The modules below are the ones those pages load: knip reads a page's imports as files
+  // and not as names, so a module a page loads is an entry of its own.
+  // An export nothing imports is dead; drop the `export`, then the code if nothing reads it.
+  // Two names for one value on purpose carry the JSDoc tag `@alias`, and a compile-time check
+  // exported only to be checked carries `@public`.
+  "entry": [
+    "scripts/*.ts",
+    "scripts/*.html",
+    "src/audio/offline.ts",
+    "src/render/preview.ts",
+    "src/render/profile.ts",
+    "src/ui/icon-sheet.ts",
+    "src/ui/map-preview.ts"
+  ],
+  "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
+  // The fixtures of the determinism lint break its rules on purpose; nothing imports them.
+  "ignore": ["test/fixtures/**"]
+}

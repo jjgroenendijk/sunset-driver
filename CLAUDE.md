@@ -16,9 +16,9 @@ near match: the same problem has been filed twice before.
 The commands:
 
 - `npm run typecheck` — `tsc --noEmit`.
-- `npm run lint` — the determinism lint. `npm run lint:size` — the file-size lint.
+- `npm run lint` — determinism. `lint:size` — file sizes. `lint:dead` — dead code (`knip.jsonc`).
 - `npm test` — the quick tier. `npm run test:full` — the full tier of 500 seeds (`SWEEP_SEEDS=500`).
-- `npm run verify` — typecheck, both lints and the quick tier, under 20 s. Run before every commit.
+- `npm run verify` — typecheck, the lints and the quick tier, under 20 s. Run before every commit.
 - `npm run verify:full` — the same with the full tier, about 4 min.
 
 Every pull request runs `verify:full` in CI through `full-tier.yml`, over five runners: four shares
