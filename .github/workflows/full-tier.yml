@@ -65,5 +65,5 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
 
-      - run: npm run typecheck && npm run lint && npm run lint:size && npm run lint:dead
+      - run: npm run typecheck && npm run lint && npm run lint:size && npm run lint:dead && npm run lint:deps
       - run: npm run test:full -- --project unit
