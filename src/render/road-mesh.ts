@@ -35,7 +35,7 @@ import { PARAPET_HEIGHT } from '../world/decks.ts';
 import { footprintHalfWidth, TIERS, TRAM_LANE } from '../world/tiers.ts';
 import type { Point, RoadTier } from '../world/types.ts';
 import { buildChunkCorridors } from './corridor-mesh.ts';
-import { junctionSurfaces, pavesAs, type HeightAt } from './junction-mesh.ts';
+import { junctionSurfaces, pavesAs } from './junction-mesh.ts';
 import { pavementSurface, type SurfaceAt } from './pavement-mesh.ts';
 import {
   beam,
@@ -52,7 +52,6 @@ import {
   structureSection,
   SURFACE_RAISE,
   SURFACE_ROAD,
-  SURFACE_STRUCTURE,
   tag,
   TIER_ORDER,
   type Marking,

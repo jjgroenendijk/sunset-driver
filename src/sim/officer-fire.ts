@@ -219,5 +219,5 @@ function shoot(
   const along = dx * cos(turn) + dy * sin(turn);
   const across = -dx * sin(turn) + dy * cos(turn);
   const scale = 1 / Math.max(1e-6, hypot(along, across));
-  damageVehicle(v.damage, specOf(v.cls), roundSeverity(spec) * landed, along * scale, across * scale, 0.3, state.seed, state.tick, muzzle.id);
+  damageVehicle(v.damage, roundSeverity(spec) * landed, along * scale, across * scale, 0.3, state.seed, state.tick, muzzle.id);
 }

@@ -38,7 +38,7 @@ import {
   percentile,
   landArea,
 } from './seed-probes.ts';
-import { seeds, worlds, footprintOf, carves, carveOf, bedsOf, graphOf, junctionsOf } from './seed-fixture.ts';
+import { seeds, worlds, footprintOf, carveOf, bedsOf, graphOf, junctionsOf } from './seed-fixture.ts';
 import { sweepSuite } from './seed-suite.ts';
 
 /**

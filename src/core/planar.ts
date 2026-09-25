@@ -12,7 +12,6 @@ import {
   Buckets,
   type Box,
   type Edges,
-  edgeBox,
   GRID,
   KEY_SPAN,
   nodeKey,

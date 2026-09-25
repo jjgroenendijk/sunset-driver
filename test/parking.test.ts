@@ -5,7 +5,6 @@ import { buildJunctions } from '../src/world/junctions.ts';
 import { insideRegion } from '../src/world/lot-geom.ts';
 import type { Parcel } from '../src/world/parcels.ts';
 import { BAY_USES, bayRing, layBays, STREET_BAY_LENGTH } from '../src/world/parking.ts';
-import { TIERS } from '../src/world/tiers.ts';
 import { STREET_REACH } from '../src/world/vegetation.ts';
 import { bayFaults } from './parking-checks.ts';
 import { gridHeight, gridRoads, GRID_SPACING } from './traffic-grid.ts';

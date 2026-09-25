@@ -1,6 +1,6 @@
 import { Box3, BufferAttribute, InstancedMesh, Mesh } from 'three';
 import { describe, expect, it } from 'vitest';
-import { createDamageState, explode, ignite, PANELS, type Panel } from '../src/sim/damage.ts';
+import { explode, ignite, PANELS, type Panel } from '../src/sim/damage.ts';
 import { createVehicleState, ROSTER, specOf, type VehicleState } from '../src/sim/vehicle.ts';
 import { DamageFx, FLAME_CAP, SMOKE_CAP } from '../src/render/damage-fx.ts';
 import { SKID_STEP, SkidMarks } from '../src/render/skid.ts';

@@ -242,7 +242,7 @@ export function buildChunkBuildings(
       // built, because its crown draws in from the footprint it was given.
       dress = dressOf(built.decks, style, tint, finish);
     } else if (detail === 'far') {
-      shell = buildMassingGeometry(massing, tint, finish, farBoxes(shape, massing));
+      shell = buildMassingGeometry(tint, finish, farBoxes(shape, massing));
     } else {
       const built = buildBlockGeometry(building.kind, massing, tint, finish, style, boxesOf(shape, massing, massing.height, 0));
       shell = built.shell;

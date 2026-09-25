@@ -134,7 +134,7 @@ export class MapArt {
     this.ground = renderGround(world);
     const rank = { core: 0, inner: 1, industrial: 2, suburban: 3, outskirts: 4, wilderness: 5 } as const;
     this.namingOrder = world.districts
-      .map((d, i) => i)
+      .map((_, i) => i)
       .sort((a, b) => {
         const da = world.districts[a]!;
         const db = world.districts[b]!;

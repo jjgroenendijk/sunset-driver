@@ -25,8 +25,8 @@ import { createFireState, type FireState } from './fire.ts';
 import { createEnforcerState, type EnforcerState } from './enforcer.ts';
 import { createFactionState, type FactionState } from './faction.ts';
 import { createMissionState, stepMissions, type MissionState } from './mission.ts';
-import { createCrimeState, stepStreetCrime, type CrimeGround, type CrimeState } from './street-crime.ts';
-import { stepTerritory, type TerritoryMap } from './territory.ts';
+import { createCrimeState, stepStreetCrime, type CrimeState } from './street-crime.ts';
+import { stepTerritory } from './territory.ts';
 import { stepRadio } from './radio.ts';
 import { stepTowing } from './tow.ts';
 

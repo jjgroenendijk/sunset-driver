@@ -39,7 +39,7 @@ import { Rng } from '../core/rng.ts';
 import type { WorldChunk, WorldLayers } from '../world/chunks.ts';
 import { PLANT_RADIUS, type Plant, type PlantSpecies } from '../world/vegetation.ts';
 import type { Rgb } from './building-mesh.ts';
-import { PlantShell, PLANT_BARK, PLANT_LEAF } from './plant-shell.ts';
+import { PlantShell, PLANT_BARK } from './plant-shell.ts';
 
 export { PLANT_BARK, PLANT_LEAF } from './plant-shell.ts';
 export type { Canopy, Local } from './plant-shell.ts';

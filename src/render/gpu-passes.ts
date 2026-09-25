@@ -47,7 +47,7 @@ export type PassTimes = Record<string, number>;
  * The label of one render context. A shadow map says whose, a full-screen
  * step says which material it drew, and a scene pass says where it drew to.
  */
-export function passLabel(scene: Object3D, camera: Camera, target: RenderTarget | null): string {
+export function passLabel(scene: Object3D, target: RenderTarget | null): string {
   const name = scene.name;
   // three.js names a shadow pass `Shadow Map [ <light> ]`, by the light's name or its id.
   if (name.startsWith('Shadow Map')) return `shadow ${name.slice(name.indexOf('[') + 1, name.lastIndexOf(']')).trim()}`;
@@ -64,8 +64,8 @@ class PassNames extends InspectorBase {
   readonly labels = new Map<string, string>();
 
   // three.js hands over a null target for the canvas, whatever its types say.
-  override beginRender(uid: string, scene: Scene, camera: Camera, target: RenderTarget): void {
-    this.labels.set(uid, passLabel(scene, camera, target as RenderTarget | null));
+  override beginRender(uid: string, scene: Scene, _camera: Camera, target: RenderTarget): void {
+    this.labels.set(uid, passLabel(scene, target as RenderTarget | null));
   }
 
   override beginCompute(uid: string): void {

@@ -40,7 +40,7 @@ describe('the airfield mesh (spec section 8.4)', () => {
   });
 
   it('stands every airfield on its level, and lays the ramp up the hill to the gate', () => {
-    const hill = (x: number, y: number): number => 12 + Math.max(0, (y - 90) * 0.1);
+    const hill = (_x: number, y: number): number => 12 + Math.max(0, (y - 90) * 0.1);
     const mesh = airfieldMesh([AIRPORT], hill);
     const position = mesh.geometry.getAttribute('position');
     const normal = mesh.geometry.getAttribute('normal');

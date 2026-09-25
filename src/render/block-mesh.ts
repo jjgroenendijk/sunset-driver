@@ -37,7 +37,6 @@ import {
   Shell,
   box,
   flatRoof,
-  shrink,
   windowBands,
   type BlockStyle,
 } from './block-shell.ts';
@@ -145,7 +144,6 @@ export function buildDressGeometry(
  * skyline, and a skyline is heights and footprints, not window bands.
  */
 export function buildMassingGeometry(
-  massing: BuildingMassing,
   tint: Rgb,
   finish: FinishCode,
   boxes: readonly ShapeBox[],

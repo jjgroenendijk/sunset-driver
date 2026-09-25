@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { hurtPerson, PERSON_HEALTH } from '../src/sim/casualty.ts';
-import { UNIT_BODY, type EmergencyUnit } from '../src/sim/emergency.ts';
+import { UNIT_BODY } from '../src/sim/emergency.ts';
 import { GiveWay } from '../src/sim/give-way.ts';
 import { heldTime } from '../src/sim/hold.ts';
 import { AmbientPedestrians, crowdPoseOf, type PedestrianPose } from '../src/sim/pedestrians.ts';
