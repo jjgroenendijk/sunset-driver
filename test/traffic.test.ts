@@ -10,6 +10,7 @@ import {
   type TrafficCursor,
 } from '../src/sim/traffic.ts';
 import { SIGNAL_CYCLE } from '../src/sim/signals.ts';
+import { ACCEL, endSpeeds } from '../src/sim/traffic-motion.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import type { Point, RoadCurve } from '../src/world/types.ts';
 import { sweepSeeds, stableJson } from './helpers.ts';
@@ -81,8 +82,7 @@ describe('ambient traffic (spec sections 5.3, 13.1)', () => {
         traffic.cursorAt(vehicle.id, tick, cursor);
         const edge = roads.graph.edges[traffic.edgeOf(cursor)] as (typeof roads.graph.edges)[number];
         const tour = vehicle.tour;
-        const from = tour.stepFrom[cursor.step] as number;
-        const along = from + (cursor.into / (tour.stepTicks[cursor.step] as number)) * ((tour.stepTo[cursor.step] as number) - from);
+        const along = traffic.metresOf(cursor);
         // Near either end of a leg the vehicle is taking the corner.
         if (along < SMOOTH * 2 || along > edge.length - SMOOTH * 2) continue;
         const at = traffic.pose(cursor, pose());
@@ -98,8 +98,16 @@ describe('ambient traffic (spec sections 5.3, 13.1)', () => {
         expect(Math.cos(at.heading) * dx + Math.sin(at.heading) * dy).toBeGreaterThan(0.999);
         expect(at.speed).toBeLessThanOrEqual(edge.speedLimit * 1.001);
         // A tour that meets no light drives at its driver's cruising speed all
-        // the way round, but for the kerbs a bus calls at (spec section 20.2).
-        if (tour.sync < 0 && tour.stepCall[cursor.step] !== 1) {
+        // the way round, but for the kerbs a bus calls at (spec section 20.2)
+        // and the turns it brakes for (`traffic-motion.ts`).
+        const top = edge.speedLimit * vehicle.driver.cruise;
+        const brake = (turn: number): number => (top * top - Math.min(turn, top) ** 2) / (2 * ACCEL);
+        const ends = endSpeeds(tour, roads.graph, vehicle.driver.cruise);
+        const steps = tour.stepTicks.length;
+        const into = along - (tour.stepFrom[cursor.step] as number);
+        const left = (tour.stepTo[cursor.step] as number) - along;
+        const cruising = into > brake(ends[(cursor.step + steps - 1) % steps] as number) && left > brake(ends[cursor.step] as number);
+        if (tour.sync < 0 && vehicle.cls !== 'bus' && cruising) {
           expect(at.speed, `vehicle ${vehicle.id}`).toBeGreaterThan(edge.speedLimit * vehicle.driver.cruise * 0.97);
           free++;
         }

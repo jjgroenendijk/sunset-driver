@@ -142,8 +142,14 @@ describe('the bus stops of a world (spec section 20.2)', () => {
           const pose = (out[k] as WaitingPassenger).pose;
           if (pose.gait !== 'stroll') continue;
           seen++;
-          // Never further off the stop than the walk away takes them.
-          expect(Math.hypot(pose.x - at.x, pose.y - at.y)).toBeLessThan(POST_AHEAD + ALIGHT_WALK + 6);
+          // Never further off their stop than the walk away takes them. The box
+          // round one stop can hold somebody off another stop close by.
+          let off = Infinity;
+          for (let j = 0; j < stops.count; j++) {
+            const stop = stops.stopAt(j);
+            off = Math.min(off, Math.hypot(pose.x - stop.x, pose.y - stop.y));
+          }
+          expect(off).toBeLessThan(POST_AHEAD + ALIGHT_WALK + 6);
           expect(pose.speed).toBeGreaterThan(0);
         }
       }

@@ -9,6 +9,7 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 ## Contents
 
 - Ambient traffic
+- How a vehicle moves
 - Giving way
 - The drivers
 - The buses
@@ -39,9 +40,34 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 - A tour is steps, not legs: `traffic-timing.ts` lays each one down as a drive over part of a leg or
   a wait in one place, in a whole number of ticks. That is why `cursorAt` (evaluated) and `advance`
   (stepped) agree exactly rather than to a rounding, and why `test/traffic.test.ts` and
-  `test/sim-traffic.test.ts` can compare them with `toEqual`. A pose is read `SMOOTH` metres behind
-  and ahead of the vehicle and stands between the two readings, which is how a vehicle rounds a
-  corner. `poseAt` takes a fractional tick, which is what the renderer draws between two ticks.
+  `test/sim-traffic.test.ts` can compare them with `toEqual`. `poseAt` takes a fractional tick,
+  which is what the renderer draws between two ticks. How a vehicle moves inside a step is the next
+  section.
+
+## How a vehicle moves
+
+- `src/sim/traffic-motion.ts` drives each step along a speed profile, not at one even speed. The
+  vehicle pulls away from rest, brakes into a halt, and slows for a turn. A step still starts and
+  ends on the same metre and tick, so the lights and the queues are kept. Read a vehicle's metre in
+  its step through `metresOf`, never as `into / ticks` of the step: the two differ.
+- The timing pays for the profile. `share` in `traffic-timing.ts` adds `rampTicks` for the speed at
+  each end of a drive, and `endSpeeds` gives the profile the same speeds. If the two disagree, the
+  profile makes up the time on the straight, above the speed limit. The worst of seed 1 was once
+  1.65 times the limit.
+- A drive is split at its stop line (`overLine`) when the vehicle pulls away from a queue. The line
+  is then crossed on the tick the timing read the light at, not later.
+- The speed through a join is the tighter of the two roads' cruise and `tour.turns`. `turnsOf` in
+  `traffic.ts` reads the turn from the centreline `SMOOTH` metres either side of the node.
+  `throughSpeed` then caps it at what the drives on either side can reach.
+- A pose is the mean of five readings of the lane over `SMOOTH` metres either side, and faces from
+  the first reading to the last. The old mean of two readings moved the car along a straight
+  diagonal while it turned, so it slid through the corner. At every corner of the road the lane
+  swings round over `SWING` metres (`RouteSampler`'s `around`), both where two edges meet and inside
+  one. Without that swing the lane point jumps by up to a lane width.
+- `SMOOTH` is 5 on purpose. At 6, a right turn cuts across the pavement corner, and giving way no
+  longer keeps the people out of the cars (`test/give-way.test.ts`, seed 4).
+- A bend inside one edge has no turn speed, because the timing splits drives only at joins and at
+  lines. A vehicle takes such a bend at its cruise (issue #727).
 
 ## Giving way
 

@@ -25,6 +25,7 @@
 import { hashInts } from '../core/hash.ts';
 import { rngFor, Subsystem, type Rng } from '../core/rng.ts';
 import { atan2, cos, sin } from '../core/libm.ts';
+import { surfaceHeight } from '../world/bed.ts';
 import { RoadBeds } from '../world/bed.ts';
 import { layoutZones, districtAt } from '../world/districts.ts';
 import { buildRoadGraph, type RoadEdge, type RoadGraph } from '../world/graph.ts';
@@ -32,14 +33,14 @@ import { buildJunctions, type JunctionMap } from '../world/junctions.ts';
 import { TIERS, TRAM_LANE } from '../world/tiers.ts';
 import type { Point, RoadCurve, RoadTier, TramDescription, TramStop, WorldDescription, Zone } from '../world/types.ts';
 import { busDemandOf, type BusDemand } from './bus.ts';
-import { TICK_RATE } from './clock.ts';
 import { drawDriver, type Driver } from './driver.ts';
 import { createHolds, type Holds } from './hold.ts';
 import { EdgeIndex } from './edge-index.ts';
 import { PoseMemo } from './pose-memo.ts';
-import { heightOff, RouteSampler, type BedTilt, type RoutePoint } from './route-sample.ts';
+import { RouteSampler, type BedTilt, type RouteAround, type RoutePoint } from './route-sample.ts';
 import { SIGNAL_CYCLE, TrafficSignals } from './signals.ts';
 import { legAt, legNear, timeTour, walkTour, type Permit, type Tour } from './traffic-tour.ts';
+import { endSpeeds, plateauOf, stepMotion, turnSpeed, type Plateau, type StepMotion } from './traffic-motion.ts';
 import { tramGuardOf, type TramGuard } from './tram-guard.ts';
 import { specOf, type VehicleClass, type VehicleState } from './vehicle.ts';
 
@@ -47,11 +48,23 @@ import { specOf, type VehicleClass, type VehicleState } from './vehicle.ts';
 const TRAFFIC_CELL = 100;
 
 /**
- * Metres behind and ahead of a vehicle its pose is read at. The vehicle stands
- * between the two readings and faces from one to the other, so it takes a
- * corner as a curve rather than snapping round at the node.
+ * Metres behind and ahead of a vehicle its pose is averaged over. The vehicle
+ * stands at the mean of its lane over that window and faces from the first
+ * reading to the last. The mean draws a corner as a curve whose radius grows
+ * with the window, and the facing is the direction that curve runs in, so the
+ * vehicle turns the way it moves rather than sliding round the node.
  */
-export const SMOOTH = 4;
+export const SMOOTH = 5;
+
+/**
+ * Metres before and after a corner of the road over which a lane swings round
+ * to the lane after it. Without it the lane point jumps across the corner by
+ * as much as the lane is wide.
+ */
+const SWING = 6;
+
+/** Metres off a straight line the middle reading of a pose may stand before the pose is taken as on a bend. */
+const STRAIGHT = 1e-6;
 
 /** Metres a vehicle may stand off the line of its road: its lane and the corner it cuts. */
 const REACH = 16;
@@ -227,6 +240,19 @@ export class AmbientTraffic {
   private readonly index: EdgeIndex;
   private readonly behind: Sample = { x: 0, y: 0, height: 0 };
   private readonly ahead: Sample = { x: 0, y: 0, height: 0 };
+  private readonly middle: Sample = { x: 0, y: 0, height: 0 };
+  private readonly extra: Sample = { x: 0, y: 0, height: 0 };
+  private readonly motion: StepMotion = { share: 0, speed: 0 };
+  /** The speed each vehicle leaves each step of its tour at (`traffic-motion.ts`), worked out when first asked. */
+  private readonly ends: (Float64Array | undefined)[];
+  /** The step each vehicle's plateau was last worked out for, and that plateau. */
+  private readonly plateauStep: Int32Array;
+  private readonly plateaus: Float64Array;
+  private readonly plateau: Plateau = { top: 0, accel: 0 };
+  /** How fast a vehicle takes the turn from one edge onto the next, by the pair, worked out once. */
+  private readonly turnMemo = new Map<number, number>();
+  /** The corners either side of the last point sampled for a pose. */
+  private readonly around: RouteAround;
   private readonly memo: PoseMemo;
   /** The step of its tour each vehicle was last found at, where the next search starts. */
   private readonly steps: Int32Array;
@@ -236,7 +262,9 @@ export class AmbientTraffic {
     const graph = roads.graph;
     this.index = new EdgeIndex(roads.roads, graph, REACH, TRAFFIC_CELL);
     this.sampler = new RouteSampler(roads.roads, graph, roads.heightAt, roads.tiltAt);
-    this.point = { x: 0, y: 0, height: 0, tiltX: 0, tiltY: 0, rightX: 0, rightY: 0, edge: graph.edges[0] as RoadEdge };
+    const first = graph.edges[0] as RoadEdge;
+    this.around = { back: 0, ahead: 0, backRightX: 0, backRightY: 0, aheadRightX: 0, aheadRightY: 0, backEdge: first, aheadEdge: first };
+    this.point = { x: 0, y: 0, height: 0, tiltX: 0, tiltY: 0, rightX: 0, rightY: 0, edge: first, around: this.around };
     this.tramLane = tramLanes(roads);
 
     const junctions = roads.junctions;
@@ -254,6 +282,9 @@ export class AmbientTraffic {
     this.vehicles = vehicles;
     this.memo = new PoseMemo(vehicles.length);
     this.steps = new Int32Array(vehicles.length);
+    this.ends = new Array<Float64Array | undefined>(vehicles.length);
+    this.plateauStep = new Int32Array(vehicles.length).fill(-1);
+    this.plateaus = new Float64Array(vehicles.length * 2);
   }
 
   /** Where a vehicle is on its tour at a tick, evaluated without stepping it there. */
@@ -306,7 +337,7 @@ export class AmbientTraffic {
     const tour = (this.vehicles[cursor.id] as AmbientVehicle).tour;
     const from = tour.stepFrom[cursor.step] as number;
     const to = tour.stepTo[cursor.step] as number;
-    return from + (cursor.into / (tour.stepTicks[cursor.step] as number)) * (to - from);
+    return from + this.moveOn(cursor.id, cursor.step, cursor.into).share * (to - from);
   }
 
   /** True when a cursor's step is a wait: at a light, in a queue or at a stop. */
@@ -345,28 +376,154 @@ export class AmbientTraffic {
     // A whole tick is asked for many times over; the renderer's moments between ticks are not.
     const whole = Number.isInteger(into);
     const at = (tour.stepStart[step] as number) + into;
+    const motion = this.moveOn(id, step, into);
     if (!whole || !this.memo.read(id, at, out)) {
-      const along = (tour.startDistance[leg] as number) + from + (into / ticks) * metres;
-      this.sample(vehicle, along - SMOOTH, this.behind);
-      this.sample(vehicle, along + SMOOTH, this.ahead);
-      out.x = (this.behind.x + this.ahead.x) / 2;
-      out.y = (this.behind.y + this.ahead.y) / 2;
-      out.height = (this.behind.height + this.ahead.height) / 2;
-      out.heading = atan2(this.ahead.y - this.behind.y, this.ahead.x - this.behind.x);
+      const along = (tour.startDistance[leg] as number) + from + motion.share * metres;
+      const behind = this.sample(vehicle, along - SMOOTH, this.behind);
+      const ahead = this.sample(vehicle, along + SMOOTH, this.ahead);
+      const middle = this.sample(vehicle, along, this.middle);
+      out.heading = atan2(ahead.y - behind.y, ahead.x - behind.x);
+      out.x = middle.x;
+      out.y = middle.y;
+      out.height = middle.height;
+      // On a straight the mean over the window is the middle reading. Anywhere
+      // else it is taken over five, weighted as the trapezoid rule weights them.
+      const offX = middle.x - (behind.x + ahead.x) / 2;
+      const offY = middle.y - (behind.y + ahead.y) / 2;
+      if (Math.abs(offX) > STRAIGHT || Math.abs(offY) > STRAIGHT) {
+        let x = behind.x + ahead.x + 2 * middle.x;
+        let y = behind.y + ahead.y + 2 * middle.y;
+        let height = behind.height + ahead.height + 2 * middle.height;
+        for (let side = -1; side <= 1; side += 2) {
+          const quarter = this.sample(vehicle, along + (side * SMOOTH) / 2, this.extra);
+          x += 2 * quarter.x;
+          y += 2 * quarter.y;
+          height += 2 * quarter.height;
+        }
+        out.x = x / 8;
+        out.y = y / 8;
+        out.height = height / 8;
+      }
       if (whole) this.memo.write(id, at, out);
     }
-    out.speed = (metres / ticks) * TICK_RATE;
+    out.speed = ticks > 0 && metres > 0 ? motion.speed : 0;
     return out;
   }
 
-  /** The point in a vehicle's lane a distance round its tour, and the road height there. */
-  private sample(vehicle: AmbientVehicle, distance: number, out: Sample): void {
+  /** Where in a step a vehicle is along its speed profile (`traffic-motion.ts`). */
+  private moveOn(id: number, step: number, into: number): StepMotion {
+    const vehicle = this.vehicles[id] as AmbientVehicle;
+    const tour = vehicle.tour;
+    let ends = this.ends[id];
+    if (ends === undefined) {
+      ends = endSpeeds(tour, this.roads.graph, vehicle.driver.cruise);
+      this.ends[id] = ends;
+    }
+    const count = tour.stepTicks.length;
+    const enter = ends[(step + count - 1) % count] as number;
+    const leave = ends[step] as number;
+    const metres = (tour.stepTo[step] as number) - (tour.stepFrom[step] as number);
+    const ticks = tour.stepTicks[step] as number;
+    const plateau = this.plateau;
+    if (this.plateauStep[id] === step) {
+      plateau.top = this.plateaus[id * 2] as number;
+      plateau.accel = this.plateaus[id * 2 + 1] as number;
+    } else {
+      plateauOf(metres, ticks, enter, leave, plateau);
+      this.plateauStep[id] = step;
+      this.plateaus[id * 2] = plateau.top;
+      this.plateaus[id * 2 + 1] = plateau.accel;
+    }
+    return stepMotion(metres, ticks, into, enter, leave, plateau, this.motion);
+  }
+
+  /**
+   * How fast a vehicle takes the turn after each leg of a route onto the next,
+   * from the bend of the centreline {@link SMOOTH} either side of the node.
+   */
+  private turnsOf(route: readonly number[]): Float64Array {
+    const graph = this.roads.graph;
+    const count = route.length;
+    const turns = new Float64Array(count);
+    const point = this.point;
+    for (let i = 0; i < count; i++) {
+      const a = graph.edges[route[i] as number] as RoadEdge;
+      const b = graph.edges[route[(i + 1) % count] as number] as RoadEdge;
+      const key = a.id * graph.edges.length + b.id;
+      let speed = this.turnMemo.get(key);
+      if (speed === undefined) {
+        const legs = { edges: Int32Array.of(a.id, b.id), startDistance: Float64Array.of(0, a.length), length: a.length + b.length };
+        this.sampler.sample(legs, a.length - Math.min(SMOOTH, a.length), point);
+        const x0 = point.x;
+        const y0 = point.y;
+        this.sampler.sample(legs, a.length, point);
+        const x1 = point.x;
+        const y1 = point.y;
+        this.sampler.sample(legs, a.length + Math.min(SMOOTH, b.length * 0.999), point);
+        const ux = x1 - x0;
+        const uy = y1 - y0;
+        const vx = point.x - x1;
+        const vy = point.y - y1;
+        speed = turnSpeed(Math.abs(atan2(ux * vy - uy * vx, ux * vx + uy * vy)), SMOOTH);
+        this.turnMemo.set(key, speed);
+      }
+      turns[i] = speed;
+    }
+    return turns;
+  }
+
+  /**
+   * The point in a vehicle's lane a distance round its tour, and the road
+   * height there. Within {@link SWING} of a corner of the road, whether inside
+   * a run or where one run meets the next, the lane swings round to the lane
+   * after it: at the corner it stands halfway between the two, on the line
+   * that halves the turn.
+   */
+  private sample(vehicle: AmbientVehicle, distance: number, out: Sample): Sample {
     const at = this.sampler.sample(vehicle.tour, distance, this.point);
-    const offset = offsetIn(at.edge, laneOn(at.edge, vehicle.lane), this.tramLane);
-    // The right hand of the direction of travel, which is where the lane is.
-    out.x = at.x + at.rightX * offset;
-    out.y = at.y + at.rightY * offset;
-    out.height = heightOff(at, offset);
+    const around = this.around;
+    let offset = offsetIn(at.edge, laneOn(at.edge, vehicle.lane), this.tramLane);
+    let rightX = at.rightX;
+    let rightY = at.rightY;
+    const swing = Math.min(SWING, (around.back + around.ahead) / 2);
+    // The segment the lane swings towards, and how far round towards it: 0.5 at the corner.
+    let share = 0;
+    let atBack = false;
+    let ox = 0;
+    let oy = 0;
+    let other = at.edge;
+    if (around.back < swing) {
+      share = 0.5 - (0.5 * around.back) / swing;
+      atBack = true;
+      ox = around.backRightX;
+      oy = around.backRightY;
+      other = around.backEdge;
+    } else if (around.ahead < swing) {
+      share = 0.5 - (0.5 * around.ahead) / swing;
+      ox = around.aheadRightX;
+      oy = around.aheadRightY;
+      other = around.aheadEdge;
+    }
+    if (share > 0) {
+      const cross = rightX * oy - rightY * ox;
+      const dot = rightX * ox + rightY * oy;
+      // A U-turn swings through the front of the segment coming in, never
+      // behind it: its right hand turns clockwise onto the segment going out,
+      // so seen from the segment going out the swing is anticlockwise.
+      let turn = atan2(cross, dot);
+      if (dot < -0.9 && !atBack && turn > 0) turn -= 2 * Math.PI;
+      if (dot < -0.9 && atBack && turn < 0) turn += 2 * Math.PI;
+      const c = cos(turn * share);
+      const s = sin(turn * share);
+      const x = rightX * c - rightY * s;
+      rightY = rightX * s + rightY * c;
+      rightX = x;
+      if (other !== at.edge) offset += (offsetIn(other, laneOn(other, vehicle.lane), this.tramLane) - offset) * share;
+    }
+    out.x = at.x + rightX * offset;
+    out.y = at.y + rightY * offset;
+    out.height = surfaceHeight(at.height, at.tiltX, at.tiltY, rightX * offset, rightY * offset);
+    return out;
   }
 
   /** Put the vehicles of one directed run of road down, and walk each its tour. */
@@ -391,7 +548,8 @@ export class AmbientTraffic {
       // carries the dwell at every kerb it pulls in at.
       const place = walk.float();
       const driver = drawDriver(walk);
-      const tour = timeTour(graph, route, this.signals, { place, driver, calls: cls === 'bus', demand: this.demand }, this.guard);
+      const turns = this.turnsOf(route);
+      const tour = timeTour(graph, route, this.signals, { place, driver, calls: cls === 'bus', demand: this.demand, turns }, this.guard);
       const phase = phaseOf(tour, tour.edges.indexOf(edge.id), offset, walk);
       vehicles.push({ id, cls, paint, lane, phase, driver, tour });
       for (const e of tour.edges) this.index.file(id, e);
