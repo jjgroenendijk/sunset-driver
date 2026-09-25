@@ -190,13 +190,14 @@ Where each rule lands. None of it needs an asset file.
 - **Distance to haze** — the fog colour becomes the haze colour of the time of day.
 - **Grade** — the LUT of `grade.ts` lifts the day into high key and warms the lights. It only
   finishes the look; the colours must be right in the materials first.
-- **UI** — CSS on the DOM overlay.
+- **UI** — CSS on the DOM overlay: the `--it-*` tokens of `title.css` dress every panel and HUD
+  box (`docs/menus.md`), and `district-title.ts` names a district on entry.
 
 ## Where the game stands today
 
 Issue #684 brings the style in, one step per pull request. Done: the palette, the bands, the
 shadow colour by the time of day, the ink of the edge pass, the warm haze and high-key grade, the
-indigo night, the foliage and trees, and the grime strokes. Still to come: the UI.
+indigo night, the foliage and trees, the grime strokes, and the UI. The style is in.
 
 ## Decisions
 

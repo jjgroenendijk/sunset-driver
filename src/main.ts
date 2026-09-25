@@ -31,6 +31,7 @@ import { JobPanel } from './ui/job-panel.ts';
 import { TradePanel } from './ui/trade-panel.ts';
 import { HotwireBar } from './ui/hotwire.ts';
 import { InteractPrompt } from './ui/interact-prompt.ts';
+import { DistrictTitle } from './ui/district-title.ts';
 import { Hud } from './ui/hud.ts';
 import { SaveSlots } from './ui/saves.ts';
 import { readSettings, writeSettings, type MenuSettings } from './ui/settings.ts';
@@ -423,6 +424,7 @@ async function boot(): Promise<void> {
     navigator,
     hotwire: new HotwireBar(document.body),
     interact: new InteractPrompt(document.body),
+    districtTitle: new DistrictTitle(document.body, description),
     travel: new TravelPanel(document.body),
     metro,
     // The counter takes clicks and draws its preview with the game's renderer;

@@ -13,8 +13,8 @@
 /* Buy and sell side by side. Sell is dark, so the two are not taken for each other. */
 .trade-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: calc(.35 * var(--u)); }
 .trade-buttons .shop-buy { padding-inline: calc(.4 * var(--u)); font-size: calc(.7 * var(--u)); letter-spacing: .08em; }
-.shop-buy.trade-sell { background: var(--it-ink); }
-.shop-buy.trade-sell:hover { background: #3a2e24; }
+.shop-buy.trade-sell { background: var(--it-ink); color: var(--it-ivory); }
+.shop-buy.trade-sell:hover { background: var(--it-rosso); }
 .trade-buttons .shop-buy:disabled { background: rgba(35,28,22,.25); color: var(--it-ink); cursor: default; transform: none; }
 
 @media (max-width: 52rem) {

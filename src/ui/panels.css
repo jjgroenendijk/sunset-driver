@@ -2,13 +2,11 @@
    `weapon-picker.ts`), the counters of a shop, a safehouse, a job board and a
    dealer, the metro's list and the hotwire gauge. The layout the shop and the
    dealer share is `shop.css`, and the dealer's own parts `trade.css`. They wear the menus' look
-   (`title.css`): ivory card stock, a serif heading, red for the current row and
-   for a refusal, gold for a price. */
+   (`title.css`): a cream card with an ink border, a hand-lettered heading, red
+   for the current row and for a refusal, gold for a price. */
 .picker, .shop, .home, .job, .travel, .hotwire {
   position: fixed; display: grid; gap: .3rem; padding: .9rem 1.1rem; color: var(--it-ink); font-family: var(--it-sans);
-  background: linear-gradient(160deg, var(--it-ivory), var(--it-paper)); box-shadow: 0 20px 50px rgba(0,0,0,.45);
-  /* The fine gold rule inside the edge. An outline, so a picker that scrolls keeps it still. */
-  outline: 1px solid rgba(193,154,83,.6); outline-offset: -.35rem;
+  background: var(--it-ivory); border: var(--it-card-edge); border-radius: var(--it-card-radius); box-shadow: var(--it-card-shadow);
 }
 
 /* The pickers stand at the sides, one on each, so both can be open together. Each
@@ -16,13 +14,13 @@
    speedometer on the right, the objective and the minimap on the left. */
 .picker { z-index: 3; top: calc(var(--hud-top) + 10.5rem); right: var(--hud-right); width: 17rem; max-height: calc(100% - var(--hud-top) - var(--hud-bottom) - 19.5rem); overflow-y: auto; gap: 0; }
 .picker-left { right: auto; left: var(--hud-left); top: calc(var(--hud-top) + 6rem); max-height: calc(100% - var(--hud-top) - var(--hud-bottom) - var(--hud-map) - 9.5rem); }
-.picker h2 { margin: 0 0 .3rem; padding-bottom: .4rem; border-bottom: 1px solid rgba(35,28,22,.15); font: 400 1.5rem/1.1 var(--it-serif); }
+.picker h2 { margin: 0 0 .3rem; padding-bottom: .4rem; border-bottom: 1px solid rgba(35,28,22,.15); font: 400 1.5rem/1.1 var(--it-hand); }
 .picker button { display: grid; gap: .05rem; padding: .35rem .6rem; border: 0; border-left: 2px solid transparent; border-bottom: 1px solid rgba(35,28,22,.1); background: transparent; color: inherit; font: inherit; font-size: .85rem; text-align: left; cursor: pointer; transition: background-color .2s; }
 .picker button:hover { background: rgba(163,34,27,.06); }
 .picker button:disabled { opacity: .35; cursor: default; }
 .picker button:disabled:hover { background: transparent; }
 .picker .picker-current { border-left-color: var(--it-rosso); background: rgba(163,34,27,.08); color: var(--it-rosso); }
-.picker-name { font: 400 1.1rem/1.15 var(--it-serif); }
+.picker-name { font: 400 1.1rem/1.15 var(--it-hand); }
 .picker-stats { font-size: .68rem; color: var(--it-muted); font-variant-numeric: tabular-nums; }
 .picker-group { margin: .7rem 0 .15rem; font-size: .62rem; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--it-rosso); }
 
@@ -31,7 +29,7 @@
 .home { bottom: 21%; min-width: min(22rem, 80%); }
 .job { bottom: 21%; min-width: min(24rem, 84%); }
 .travel { bottom: 8%; min-width: min(20rem, 80%); }
-.home-title, .job-title, .travel-title { padding-bottom: .35rem; border-bottom: 1px solid rgba(35,28,22,.15); font: 400 1.3rem/1.1 var(--it-serif); }
+.home-title, .job-title, .travel-title { padding-bottom: .35rem; border-bottom: 1px solid rgba(35,28,22,.15); font: 400 1.3rem/1.1 var(--it-hand); }
 .home-list, .job-list, .travel-list { display: grid; gap: .15rem; font-size: .92rem; font-variant-numeric: tabular-nums; }
 .home-here, .job-brief { color: var(--it-muted); }
 .home-price, .job-terms { color: #8a6420; }

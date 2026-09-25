@@ -12,11 +12,11 @@ body:has(.pause:not([hidden])) :is(.hud-left, .hud-right, .hud-top, .hud-ring, .
 .pause[data-page="main"] .title-hint span:last-child { display: inline-flex; }
 
 /* The room's code, set large enough to read out to a friend. */
-.pause-room { margin: 0; font: 400 1.6rem/1.2 var(--it-serif); letter-spacing: .03em; overflow-wrap: anywhere; }
+.pause-room { margin: 0; font: 400 1.6rem/1.2 var(--it-hand); letter-spacing: .03em; overflow-wrap: anywhere; }
 .pause-row { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1rem; }
 .pause .pause-row .title-back { margin-top: 0; padding: .7rem 1.2rem; }
 .pause .pause-row .title-cta { padding: .7rem 1.2rem; }
-.pause-status { min-height: 1.4em; margin: .9rem 0 0; font: italic .9rem var(--it-serif); color: var(--it-muted); }
+.pause-status { min-height: 1.4em; margin: .9rem 0 0; font: italic .9rem var(--it-hand); color: var(--it-muted); }
 
 /* A fixed width with the padding inside it: a share of the column would be read from a column that shrinks to fit. */
 .pause-transfer .title-card, .pause-party .title-card { box-sizing: border-box; width: 26rem; max-width: 100%; padding: 1.3rem 1.4rem; }

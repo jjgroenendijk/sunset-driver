@@ -28,6 +28,11 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   DOM order, and skip a disabled one. The pointer moves the same focus, so only one item is lit. A
   character row takes the focus itself and changes on left and right; its two buttons carry no
   `data-nav`. The look lives in `title.css`, which `style.css` imports.
+- The look is the art style's (`docs/art-style.md`), set by the `--it-*` tokens at the top of
+  `title.css`. Every panel and HUD box reads them: cream cards (`--it-ivory`, `#f4efe2`) with an
+  ink border and a small drop shadow, titles in the system hand of `--it-hand`, pill buttons, and
+  round yellow badges (`--it-yellow`). The game ships no font file, so the hand differs a little
+  between systems; that is accepted.
 - `src/ui/title-open.ts` decides what a page opens on: a pending start from a save, or the title
   screen. A page opened on an invite link shows who invited it first. The main page gets a banner
   with the room and the seed, and New game becomes **Join game**. The setup page drops the city

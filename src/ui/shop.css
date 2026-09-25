@@ -1,6 +1,6 @@
 /* The shop counter of `shop-panel.ts`: the rows on the left, the card of the row
    under the cursor on the right, with its turning preview in a dark shop window.
-   It wears the look of the other panels (`panels.css`): ivory card stock, a serif
+   It wears the look of the other panels (`panels.css`): a cream card, a hand-lettered
    heading, red for the current row and for a refusal, gold for a price. Unlike
    them it takes the mouse, since a row is bought with a click. */
 
@@ -24,7 +24,7 @@
 @keyframes shop-door-in { from { opacity: 0; transform: translate(-50%, .6rem); } to { opacity: 1; transform: translate(-50%, 0); } }
 
 .shop-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--u); padding-bottom: calc(.35 * var(--u)); border-bottom: 1px solid rgba(35,28,22,.15); }
-.shop-title { font: 400 calc(1.45 * var(--u))/1.1 var(--it-serif); }
+.shop-title { font: 400 calc(1.45 * var(--u))/1.1 var(--it-hand); }
 .shop-purse { font: 600 calc(.95 * var(--u)) var(--it-sans); color: #2f7a3a; font-variant-numeric: tabular-nums; }
 .shop-door { font-size: calc(.95 * var(--u)); }
 .shop-refused { color: var(--it-rosso); }
@@ -52,7 +52,7 @@
 .shop-preview { display: block; width: 100%; height: 100%; }
 /* A soft light falling from above, over the preview, as a shop window's lamp. */
 .shop-window::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 70% 55% at 50% 0%, rgba(255,230,190,.14), rgba(0,0,0,0) 70%), linear-gradient(to top, rgba(0,0,0,.25), rgba(0,0,0,0) 30%); }
-.shop-card-name { margin-top: calc(.2 * var(--u)); font: 400 calc(1.2 * var(--u))/1.15 var(--it-serif); }
+.shop-card-name { margin-top: calc(.2 * var(--u)); font: 400 calc(1.2 * var(--u))/1.15 var(--it-hand); }
 .shop-card-price { font: 600 calc(1.05 * var(--u)) var(--it-sans); color: #8a6420; font-variant-numeric: tabular-nums; }
 .shop-card-blurb { font-size: calc(.78 * var(--u)); font-style: italic; color: var(--it-muted); }
 .shop-facts { display: grid; gap: calc(.18 * var(--u)); margin-top: calc(.15 * var(--u)); }
@@ -62,8 +62,8 @@
 .shop-gauge { height: calc(.3 * var(--u)); background: rgba(35,28,22,.12); overflow: hidden; }
 .shop-gauge-none { visibility: hidden; }
 .shop-gauge-fill { display: block; height: 100%; background: linear-gradient(90deg, var(--it-gold), var(--it-rosso)); transition: width .3s ease; }
-.shop-buy { padding: calc(.5 * var(--u)) calc(.8 * var(--u)); border: 0; background: var(--it-rosso); color: var(--it-ivory); font: 600 calc(.8 * var(--u)) var(--it-sans); letter-spacing: .12em; text-transform: uppercase; cursor: pointer; transition: background-color .15s, transform .1s; }
-.shop-buy:hover { background: var(--it-rosso-dark); }
+.shop-buy { padding: calc(.5 * var(--u)) calc(.8 * var(--u)); border: 2px solid var(--it-ink); border-radius: 999px; background: var(--it-yellow); color: var(--it-ink); font: 600 calc(.8 * var(--u)) var(--it-sans); letter-spacing: .12em; text-transform: uppercase; cursor: pointer; transition: background-color .15s, transform .1s; }
+.shop-buy:hover { background: var(--it-ink); color: var(--it-ivory); }
 .shop-buy:active { transform: translateY(1px); }
 .shop-buy.shop-buy-dear { background: rgba(35,28,22,.25); color: var(--it-ink); cursor: default; }
 
@@ -73,7 +73,7 @@
 @keyframes shop-said { from { opacity: 0; transform: translateY(.3em); } to { opacity: 1; transform: none; } }
 
 .shop-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--u); padding-top: calc(.3 * var(--u)); border-top: 1px solid rgba(35,28,22,.12); font-size: calc(.72 * var(--u)); color: var(--it-muted); }
-.shop-leave { padding: calc(.25 * var(--u)) calc(.6 * var(--u)); border: 1px solid rgba(35,28,22,.35); background: transparent; color: var(--it-ink); font: 600 calc(.72 * var(--u)) var(--it-sans); letter-spacing: .08em; cursor: pointer; }
+.shop-leave { padding: calc(.25 * var(--u)) calc(.7 * var(--u)); border: 2px solid var(--it-ink); border-radius: 999px; background: transparent; color: var(--it-ink); font: 600 calc(.72 * var(--u)) var(--it-sans); letter-spacing: .08em; cursor: pointer; }
 .shop-leave:hover { border-color: var(--it-rosso); color: var(--it-rosso); }
 
 /* A narrow screen has no side to spare: the counter is a sheet across the
