@@ -42,7 +42,7 @@ describe(`traffic in the simulation (${SEED_COUNT} seeds)`, () => {
       if (bodies === undefined) throw new Error('no traffic in the physics');
       const seen = new Set<number>();
       let startedWith = -1;
-      const drive: InputFrame = { ...EMPTY_INPUT, throttle: 0.6 };
+      const drive: InputFrame = { ...EMPTY_INPUT, throttle: 1 };
       for (let i = 0; i < TICKS; i++) {
         stepSim(state, drive, physics);
         for (const cursor of bodies.cursors) seen.add(cursor.id);
@@ -107,9 +107,18 @@ describe(`traffic in the simulation (${SEED_COUNT} seeds)`, () => {
     state.vehicle.x = 5000;
     state.vehicle.z = 5000;
     state.player.driving = false;
-    state.player.x = -60;
+    // A spot in the lane no car stands on at the start, so one has to come up to it.
+    const pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
+    const clear = (x: number): boolean =>
+      traffic.vehicles.every((vehicle) => {
+        traffic.poseAt(vehicle.id, 0, pose);
+        return Math.hypot(pose.x - x, pose.y - arterial) > 12;
+      });
+    let x = -60;
+    while (!clear(x)) x -= 4;
+    state.player.x = x;
     state.player.y = arterial;
-    state.player.height = gridHeight(-60, arterial);
+    state.player.height = gridHeight(x, arterial);
     physics.adopt(state);
     let tick = 0;
     for (; tick < 3600 && state.traffic.promoted.length === 0; tick++) stepSim(state, EMPTY_INPUT, physics);

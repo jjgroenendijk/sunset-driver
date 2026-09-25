@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { rngFor, Subsystem } from '../src/core/rng.ts';
 import { boardTicks, busCalls, busDwell, DOOR_TICKS, NO_CALL, ridersAt, STOP_CAP, STOP_IN, STOP_ROOM, STOP_SPACING } from '../src/sim/bus.ts';
 import type { SignalApproach, TrafficSignals } from '../src/sim/signals.ts';
-import { QUEUE_CLEAR, timeTour } from '../src/sim/traffic-timing.ts';
+import { CRUISE, QUEUE_CLEAR, timeTour } from '../src/sim/traffic-timing.ts';
+import { ACCEL } from '../src/sim/traffic-motion.ts';
+import { TICK_RATE } from '../src/sim/clock.ts';
 import { walkTour } from '../src/sim/traffic-tour.ts';
 import { AmbientTraffic, permitOf, type AmbientVehicle } from '../src/sim/traffic.ts';
 import type { RoadEdge } from '../src/world/graph.ts';
@@ -151,9 +153,13 @@ describe('a bus calling at its stops (spec section 20.2)', () => {
     const calling = timeTour(roads.graph, route, undefined, { calls: true });
     expect(stops).toBeGreaterThan(0);
     // Splitting a leg in two rounds each half up, so the drive costs a tick or
-    // two more per call on top of the dwells themselves.
+    // two more per call on top of the dwells themselves. Braking into the kerb
+    // and pulling away from it each lose half the time the change of speed
+    // takes (`traffic-motion.ts`).
+    const top = Math.max(...route.map((id) => (roads.graph.edges[id] as RoadEdge).speedLimit)) * CRUISE;
+    const ramps = 2 * Math.ceil((top / (2 * ACCEL)) * TICK_RATE);
     expect(calling.period - straight.period).toBeGreaterThanOrEqual(dwelt);
-    expect(calling.period - straight.period).toBeLessThan(dwelt + stops * 4);
+    expect(calling.period - straight.period).toBeLessThan(dwelt + stops * (4 + ramps));
     expect(calling.length).toBe(straight.length);
   });
 
