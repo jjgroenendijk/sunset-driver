@@ -34,6 +34,11 @@ export interface Tracer {
    * kicks and the crosshair marks a hit only for the player's own.
    */
   by: 'player' | 'police';
+  /**
+   * True where it is a tongue of a flamethrower's stream rather than a round:
+   * it throws fire where a round throws a flash, a streak and sparks.
+   */
+  flame?: boolean;
 }
 
 /** Ticks a tracer is remembered for, as long as a blow of `melee.ts` is. */

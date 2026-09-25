@@ -64,9 +64,10 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * their doors, what is left of each of them, and the ones who have fallen.
  * Version 20 widened the contraband of spec section 16.2 from six goods to
  * twelve, so every stash holds a row per good of the longer list. Version 21
- * added the people of the crowd stepping out of the player's way.
+ * added the people of the crowd stepping out of the player's way. Version 22
+ * added the bursts of the projectiles that went off (spec section 11.6).
  */
-export const SAVE_VERSION = 21;
+export const SAVE_VERSION = 22;
 
 export interface SaveFile {
   format: typeof SAVE_FORMAT;

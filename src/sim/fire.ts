@@ -115,11 +115,11 @@ export function stepFires(state: SimState): void {
 }
 
 /**
- * Light a blaze where a wreck stands. How long it burns is drawn from its own
- * stream, so one wreck smoulders and the next one is still going when the
- * engine arrives.
+ * Light a blaze where a wreck stands, or where a Molotov broke. How long it
+ * burns is drawn from its own stream, between the seconds of `span`, so one
+ * wreck smoulders and the next one is still going when the engine arrives.
  */
-export function light(state: SimState, x: number, y: number): Blaze {
+export function light(state: SimState, x: number, y: number, span: readonly [number, number] = BLAZE_SECONDS): Blaze {
   const fires = state.fires;
   const id = fires.nextBlaze;
   fires.nextBlaze = id + 1;
@@ -127,7 +127,7 @@ export function light(state: SimState, x: number, y: number): Blaze {
   // keyed on a vehicle id at the same tick, and two decisions must never be
   // drawn from one stream.
   const rng = rngFor(state.seed, state.tick, Subsystem.Emergency, id);
-  const seconds = rng.range(BLAZE_SECONDS[0], BLAZE_SECONDS[1]);
+  const seconds = rng.range(span[0], span[1]);
   const blaze: Blaze = { id, x, y, lit: state.tick, out: state.tick + Math.round(seconds * TICK_RATE) };
   fires.blazes.push(blaze);
   return blaze;
