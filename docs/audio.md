@@ -60,6 +60,11 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
   the stream the pitch is jittered from, so a swing through a crowd is a run of knocks and not one
   knock played over. `swing` is the whoosh of the weapon itself, and it is fired whether or not the
   blow landed.
+- A shot's cue is `shotCue` of the weapon: `gunshot`, `shotgun`, `rifle`, `magnum` or
+  `suppressed` for a gun, `flame` for the flamethrower, `launch` for a rocket, `thunk` for the M79
+  and `swing` for a throw or a blow. A burst is read off `state.blasts` the way a blow is off
+  `state.hits`: `explosion` for a grenade or a rocket, `glass` and a small `explosion` for a
+  Molotov, `hiss` for smoke and gas.
 - A tram's bell is the one cue that is not in the record at all: `TramLine.bells(tick)` is a
   function of the tick (spec section 13.2), so the planner is handed the line itself through
   `GameAudio.watch` and asks it about **every tick the frame stepped**. Asking only about the tick

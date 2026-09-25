@@ -120,6 +120,12 @@ scene ever holds in `docs/shops.md`. The aircraft and the airfields are drawn as
   the ground, a streak per pellet and the spark batch of `melee-fx.ts` where each landed. It is
   three additive batches. The glow is a disc, not a light: a point light turns the clustered path
   on for every fragment in the city (`docs/lighting.md`). `render-preview.ts --shots` shows it.
+- `WeaponFx` (`weapon-fx.ts`) draws the heavy and thrown weapons: the bodies in flight, a
+  rocket's fire and smoke trail, the burst of `SimState.blasts` and the flamethrower's stream from
+  the tracers with `flame` set. It is two puff batches of its own and one instanced batch of
+  bodies. A trail laid for a tick the frame catches up on is laid back along the flight from the
+  record's own tick. `render-preview.ts --heavy` shows all four; `--heavy=flame` shows one.
+- `ViewModel` (`viewmodel.ts`) is the weapon in view in first person; `docs/camera.md` has it.
 - `EmergencyView` (`emergency.ts`) draws the fire engines and the ambulances of spec section 20.3.
   Neither service is a row of the roster, so each has a shape of its own in `emergency-mesh.ts`,
   sized off `UNIT_BODY` of `sim/emergency.ts`: the box the player's car hits is the box drawn. Each

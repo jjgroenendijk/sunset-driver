@@ -7,6 +7,7 @@ in `docs/dev-tooling.md`.
 ## Contents
 
 - The views
+- First person as a shooter
 - Buildings in the way
 - Walking in a turned view
 - Mouse look
@@ -24,6 +25,23 @@ in `docs/dev-tooling.md`.
   the frame.
 - `node scripts/render-preview.ts <seed> out.png --view=third-person` draws a chase view, and
   `--on-foot` follows the character instead of the car.
+
+## First person as a shooter
+
+- First person on foot draws no body. The model stands behind the eyes, and its weapon hangs below
+  the frame. `Frame.firstPerson` hides both after `walkPlayer` and draws `ViewModel`
+  (`src/render/viewmodel.ts`) instead: the weapon and two forearms, placed in the camera's frame
+  after the camera moves. It is render state only.
+- A pistol is drawn `SHORT_SCALE` larger than life, and held in one hand until it is aimed. At its
+  real size the hand over it hides it.
+- First person on foot looks level (`FIRST_PITCH_ON_FOOT`), with a wider field of view,
+  `FIRST_FOV`. Aiming zooms by `zoomOf`: a little for a pistol, most for a scope. At the wheel
+  first person keeps its 6° down.
+- A shot climbs with the view. `InputFrame.pitch` carries it, and only first person on foot under
+  the lock sets it. `shotPitch` aims from the muzzle, below the eye, up to where the line of sight
+  meets the aim plane, so the round goes where the crosshair is. The crosshair stands in the middle
+  of the screen.
+- `render-preview.ts --view=first-person --on-foot --weapon=<id>` draws it. Add `--aim` to raise it.
 
 ## Buildings in the way
 
@@ -62,5 +80,5 @@ in `docs/dev-tooling.md`.
   adds a look aside, which goes back behind the car after `LOOK_HOLD` seconds of a still mouse.
 - The free camera locks the same canvas. While it is detached the movement is its own.
 - A locked pointer does not move, so the aim is laid ahead of the player along the camera's heading
-  (`PointerAim.ahead`), as far as the middle of the screen meets the aim plane. The crosshair is
-  drawn on that point.
+  (`PointerAim.ahead`), as far as the middle of the screen meets the aim plane. In third person the
+  crosshair is drawn on that point; in first person it is in the middle of the screen.

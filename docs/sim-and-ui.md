@@ -200,8 +200,12 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
 - `physics.ts` is the Rapier half of that: a gun casts a ray per pellet, a melee weapon sweeps the
   arc `swingReaches` describes, and a thrown weapon or a launcher puts a `ProjectileState` into the
   record that `fly` carries one tick at a time, bouncing it off what it meets until its fuse burns
-  through. The shooter's own body is left out of every cast, so nobody shoots their own door. A
-  round can hit the player's vehicle, a police car, an enforcer or a car of the city.
+  through. `burst` writes every one that goes off into `SimState.blasts` (`blast.ts`) for the
+  frame and the mix, and a Molotov lights a blaze of `MOLOTOV_SECONDS` where it breaks, which
+  spreads to cars like a wreck's. The flamethrower is a gun of three pellets whose tracers carry
+  `flame`, so the round effects skip them and `weapon-fx.ts` draws fire. The shooter's own body
+  is left out of every cast, so nobody shoots their own door. A round can hit the player's
+  vehicle, a police car, an enforcer or a car of the city.
 - A round, a swing or a projectile that meets a car of the city goes through
   `TrafficBodies.strike`, which promotes the car (spec section 5.3) and answers its record, and the
   damage is written into that. A blast calls `strikeNear` over its radius first, then reaches every
@@ -231,6 +235,8 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
   and the fire roll; `hitVehicle` is the same rule with the severity read off the speed a crash
   lost, and `disableEngine` is what the Barrett M82 does. A direction reaches those as the vehicle's
   own `(along, across, up)`, which is `unrotate`'s `x`, `z`, `y` in that order.
+- `InputFrame.pitch` tilts a shot up or down, and a thrown or launched thing with it. Only first
+  person sets it (`docs/camera.md`); every other view aims level.
 - A shot goes toward the mouse (spec section 11.5). `InputFrame` carries the map point under the
   pointer, so a replay aims where the player aimed, and `aim.ts` pulls it onto the nearest enforcer,
   police unit or promoted car within `SNAP_RADIUS` (wider while aiming). The pull reads the record,
