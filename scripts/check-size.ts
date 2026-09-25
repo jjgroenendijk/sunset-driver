@@ -16,6 +16,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { compareStrings } from '../src/core/sort.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
@@ -69,7 +70,7 @@ export interface WidthFinding {
 export function sourceFiles(dirs: readonly string[] = SOURCE_DIRS, root: string = ROOT): string[] {
   const out: string[] = [];
   for (const dir of dirs) walk(path.resolve(root, dir), out);
-  return out.sort();
+  return out.sort(compareStrings);
 }
 
 function walk(dir: string, out: string[], match: RegExp = CODE): void {
@@ -101,7 +102,7 @@ export function markdownFiles(dirs: readonly string[] = DOC_DIRS, root: string =
       walk(full, out, MARKDOWN);
     }
   }
-  return out.sort();
+  return out.sort(compareStrings);
 }
 
 /** The line limit `file` is held to. */

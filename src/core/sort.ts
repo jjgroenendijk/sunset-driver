@@ -3,12 +3,19 @@
  * insertion order of Sets, Maps or object keys; it sorts by a stable key instead.
  */
 
+/** Ascending order of numbers, for `sort`. */
 export function compareNumbers(a: number, b: number): number {
-  return a < b ? -1 : a > b ? 1 : 0;
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
 }
 
-function compareStrings(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
+/**
+ * Ascending order of strings by UTF-16 code unit, which is the order a bare `sort()` gives.
+ * `localeCompare` would depend on the machine's locale.
+ */
+export function compareStrings(a: string, b: string): number {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
 }
 
 /** Sort a copy of a Map's entries by key so iteration order is stable. */
