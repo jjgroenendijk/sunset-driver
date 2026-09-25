@@ -17,8 +17,12 @@ https://claude.ai/artifact/GG1rY85JAWdEPzsmQWcheo.
 ## The hull
 
 - `vehicle-hull.ts` lofts the compact, saloon, sports, patrol, off-roader, van, truck cab and bus.
-  `loft.ts` lofts the pieces of the motorcycle: one octagon per section, and `arc` bends a strip
-  round a wheel. The buggy, the boat and the aircraft are still boxes in `vehicle-mesh.ts`.
+- `loft.ts` builds every other body. `loft` runs an octagon through sections along the vehicle,
+  `wing` a six-sided chord across it, `fin` a section up it, `vHull` a V bottom, and `disc` a
+  wheel. `arc` bends a strip round a wheel. The motorcycle is in `vehicle-mesh.ts`, the buggy and
+  the boat in `open-craft.ts`, and the aircraft in `aircraft-mesh.ts`.
+- `solid` joins the rings and turns every face outwards by the sign of the volume they close. So a
+  loft may run along any axis, and a ring may wind either way. A ring may shrink to a point.
 - A hull is a row of stations, nose to tail. A station gives its floor, shoulder and roof as
   shares of the body's height, and the body and roof widths as shares of `BODY_WIDTH` × the row's
   half width. The flag names the span to the next station: `W` windscreen or rear glass, `S` side

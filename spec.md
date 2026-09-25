@@ -572,11 +572,11 @@ Driving is the primary mechanic.
 - A vehicle ridden astride carries its rider: the player's own character is drawn on the motorcycle
   they are riding, in the look they chose, and leans with it.
 - Visible progressive damage: deformation, lost panels, smoke, fire, explosion.
-- Road vehicles are low-poly hulls lofted from a side profile, not stacks of boxes, and the pieces
-  of a motorcycle are lofted the same way. Every door and the bonnet is hinged. The driver opens the
-  door they use, police crews open theirs, a hard hit leaves a door or the bonnet hanging ajar, a
-  workshop lifts the bonnet, and a key lifts and drops it. The glass is tinted and seen through,
-  onto seats and the people inside.
+- Road vehicles are low-poly hulls lofted from a side profile, not stacks of boxes. The motorcycle,
+  the buggy, the boat and the aircraft are lofted the same way. Every door and the bonnet is hinged.
+  The driver opens the door they use, police crews open theirs, a hard hit leaves a door or the
+  bonnet hanging ajar, a workshop lifts the bonnet, and a key lifts and drops it. The glass is
+  tinted and seen through, onto seats and the people inside.
 - Cars can be set on fire, and fire spreads.
 
 **Aircraft.** Four helicopters (a light two-seater, the police helicopter, a heavy transport and an
