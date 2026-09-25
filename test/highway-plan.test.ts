@@ -3,7 +3,7 @@ import { COUNTRY_DECK, HIGHWAY_RAMP, INTERCHANGE_CLEAR, planHighway } from '../s
 import { CLEARANCE } from '../src/world/overpass.ts';
 import { RoadNetwork } from '../src/world/road-network.ts';
 import { TIERS } from '../src/world/tiers.ts';
-import type { Point, RoadCurve } from '../src/world/types.ts';
+import type { Point } from '../src/world/types.ts';
 
 /** A straight line along x from 0 to `length`, with a point every `step` metres. */
 function line(length: number, step = 30): Point[] {

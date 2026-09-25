@@ -193,7 +193,7 @@ export function hitVehicle(
   tick: number,
   id = 0,
 ): number {
-  return damageVehicle(damage, spec, severityOf(spec, hypot(along, across, up)), along, across, up, seed, tick, id);
+  return damageVehicle(damage, severityOf(spec, hypot(along, across, up)), along, across, up, seed, tick, id);
 }
 
 /**
@@ -208,7 +208,6 @@ export function hitVehicle(
  */
 export function damageVehicle(
   damage: DamageState,
-  spec: VehicleSpec,
   severity: number,
   along: number,
   across: number,

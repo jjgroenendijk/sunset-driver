@@ -560,11 +560,6 @@ function districtsAlong(shore: readonly WorldPoint[], zones: ZoneLayout, distric
   return sortedMembers(seen);
 }
 
-/** The ground between two lines that run the same way: out along one, back along the other. */
-function strip(near: readonly WorldPoint[], far: readonly WorldPoint[]): WorldPoint[] {
-  return [...near, ...[...far].reverse()];
-}
-
 /** A rectangle around the line from one point to another. */
 function rectangle(from: WorldPoint, to: WorldPoint, halfWidth: number): WorldPoint[] {
   const dx = to.x - from.x;

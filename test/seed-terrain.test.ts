@@ -9,7 +9,7 @@ import { type Point, type WorldDescription } from '../src/world/types.ts';
 import { stableJson } from './helpers.ts';
 import { REPEAT_COUNT } from './seed-limits.ts';
 import { wetFraction, standsClearOfWater, heightsHash, seaFraction } from './seed-probes.ts';
-import { seeds, worlds, repeats, carves } from './seed-fixture.ts';
+import { seeds, worlds, repeats } from './seed-fixture.ts';
 import { sweepSuite } from './seed-suite.ts';
 
 /**

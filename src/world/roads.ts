@@ -71,8 +71,8 @@
  *   refuses one that would, and the roads proposed to it have their folds cut
  *   out or turn away before they fold.
  */
-import { clamp, dist, directionDelta, lerp, wrapAngle } from '../core/math.ts';
-import { atan2, cos, sin } from '../core/libm.ts';
+import { clamp, dist, directionDelta, lerp } from '../core/math.ts';
+import { atan2 } from '../core/libm.ts';
 import { gateChoices } from './airfields.ts';
 import { toSegment } from './crossing-line.ts';
 import { alleyPlan, alleySeeds, type AlleyGround } from './alleys.ts';
@@ -102,8 +102,8 @@ import {
   type TraceOptions,
 } from './road-trace.ts';
 import type { TensorField } from './tensor.ts';
-import { footprintHalfWidth, TIERS } from './tiers.ts';
-import type { Airfield, Beach, Point, RoadCurve, RoadTier, WorldSkeleton, Zone } from './types.ts';
+import { footprintHalfWidth } from './tiers.ts';
+import type { Airfield, Beach, Point, RoadCurve, RoadTier, WorldSkeleton } from './types.ts';
 
 // The trace itself is next door, and `roads.ts` is the door onto both: the
 // ground rules and the boardwalk length come out through here, as they did

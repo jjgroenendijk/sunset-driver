@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { EMPTY_INPUT } from '../src/sim/input.ts';
 import { initPhysics, SimPhysics, type Ground } from '../src/sim/physics.ts';
 import { createSimState, stepSim } from '../src/sim/simulation.ts';
-import { deckSurfaceAt, PARAPET_HEIGHT, roadDecks, type DeckSpan } from '../src/world/decks.ts';
+import { deckSurfaceAt, roadDecks, type DeckSpan } from '../src/world/decks.ts';
 import type { PierPost } from '../src/world/pier-posts.ts';
 import { footprintHalfWidth } from '../src/world/tiers.ts';
 import type { RoadCurve, WorldDescription } from '../src/world/types.ts';

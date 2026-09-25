@@ -109,7 +109,7 @@ export class StreetLife {
     for (const crime of crimes) {
       marks.push({ type: 'incident', x: crime.x, y: crime.y, name: CRIMES[crime.kind].name });
       if (Math.hypot(crime.x - at.x, crime.y - at.y) > STREET_LIFE_NEAR) continue;
-      this.standCrime(state, crime, ground);
+      this.standCrime(crime, ground);
     }
     this.drawn = this.standing.length - before.standing.length;
     // Nobody is left at the event, so no face has to be kept for one.
@@ -132,7 +132,6 @@ export class StreetLife {
 
   /** The two people of one incident: the one doing it and the one it is done to. */
   private standCrime(
-    state: SimState,
     crime: StreetCrime,
     ground: { heightAt(x: number, y: number): number },
   ): void {

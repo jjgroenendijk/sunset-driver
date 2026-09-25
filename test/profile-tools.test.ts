@@ -1,4 +1,4 @@
-import { OrthographicCamera, RenderTarget, Scene } from 'three';
+import { RenderTarget, Scene } from 'three';
 import { describe, expect, it } from 'vitest';
 import { passLabel } from '../src/render/gpu-passes.ts';
 import { areaOf, summariseProfile, type CpuProfile } from '../scripts/cpu-profile.ts';
@@ -76,13 +76,12 @@ describe('the comparison of two runs', () => {
 
 describe('the GPU pass labels', () => {
   it('names a shadow map by its light, and a scene pass by where it drew to', () => {
-    const camera = new OrthographicCamera();
     const shadow = new Scene();
     shadow.name = 'Shadow Map [ sun cascade 2 ]';
-    expect(passLabel(shadow, camera, null)).toBe('shadow sun cascade 2');
+    expect(passLabel(shadow, null)).toBe('shadow sun cascade 2');
     const target = new RenderTarget(64, 32);
     target.texture.name = 'output';
-    expect(passLabel(new Scene(), camera, target)).toBe('scene -> output');
-    expect(passLabel(new Scene(), camera, null)).toBe('scene -> canvas');
+    expect(passLabel(new Scene(), target)).toBe('scene -> output');
+    expect(passLabel(new Scene(), null)).toBe('scene -> canvas');
   });
 });

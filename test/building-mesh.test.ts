@@ -19,9 +19,6 @@ import { buildLayers, chunkBounds, ChunkSource, CHUNK_SIZE, type WorldChunk } fr
 import { Heightfield } from '../src/world/heightfield.ts';
 import type { District, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
 
-/** Metres two places may stand apart and still be one place. */
-const TOLERANCE = 1e-6;
-
 /** The ground of the made-up chunk below: flat unless a test slopes it. */
 const GROUND = 12;
 

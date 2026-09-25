@@ -164,7 +164,7 @@ export function strikeCrowd(
     });
     // The front of the car takes the dent: the panel rule reads along, across, up.
     const side = Math.max(-1, Math.min(1, person.across / Math.max(0.5, spec.halfWidth))) * 0.5;
-    damageVehicle(v.damage, spec, speed * 0.004, 1, side, 0, state.seed, state.tick);
+    damageVehicle(v.damage, speed * 0.004, 1, side, 0, state.seed, state.tick);
   }
   return strike;
 }

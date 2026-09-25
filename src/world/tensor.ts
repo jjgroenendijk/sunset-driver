@@ -27,7 +27,7 @@
 import { clamp, lerp, smoothstep, wrapDirection } from '../core/math.ts';
 import { Noise2D } from '../core/noise.ts';
 import { genRng, Subsystem } from '../core/rng.ts';
-import { asin, atan2, cos, hypot, sin } from '../core/libm.ts';
+import { atan2, cos, hypot, sin } from '../core/libm.ts';
 import { ZONE_RADII } from './districts.ts';
 import { Heightfield } from './heightfield.ts';
 import { segmentDistance } from './terrain.ts';

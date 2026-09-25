@@ -304,7 +304,7 @@ export function junctionPlane(ground: Ground, node: Point, mouths: readonly Junc
   let lift = 0;
   for (const mouth of mouths) lift = Math.max(lift, mouth.lift);
   const level = ground(node.x, node.y) + lift;
-  const tilt = planeOf(ground, node, level, mouths);
+  const tilt = planeOf(ground, level, mouths);
   return { x: node.x, y: node.y, level, gx: tilt.x, gy: tilt.y };
 }
 
@@ -324,7 +324,7 @@ export function junctionPlane(ground: Ground, node: Point, mouths: readonly Junc
  * mouths barely span is left level rather than solved for, and the plane is
  * never tilted more steeply than the steepest road leaving the node.
  */
-function planeOf(ground: Ground, node: Point, level: number, mouths: readonly JunctionMouth[]): Point {
+function planeOf(ground: Ground, level: number, mouths: readonly JunctionMouth[]): Point {
   let axx = 0;
   let axy = 0;
   let ayy = 0;

@@ -14,7 +14,7 @@
  * like the player, so nothing is evaluated between two ticks here.
  */
 import { Color, Group, Matrix4, MeshStandardMaterial, Quaternion, Vector3, type InstancedMesh, type Material } from 'three';
-import { HELICOPTER_HEIGHT, type PoliceUnit } from '../sim/police.ts';
+import { HELICOPTER_HEIGHT } from '../sim/police.ts';
 import type { SimState } from '../sim/simulation.ts';
 import { rideHeight, specOf } from '../sim/vehicle.ts';
 import { boxOf, coloured, instanced, merged, trafficParts, TRAFFIC_VIEW } from './traffic.ts';

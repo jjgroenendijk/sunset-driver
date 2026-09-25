@@ -27,7 +27,6 @@ import {
   WALL_CONCRETE,
   WALL_METAL,
   WALL_SIDING,
-  WALL_STUCCO,
   WALL_TILE,
 } from './building-finish.ts';
 import {

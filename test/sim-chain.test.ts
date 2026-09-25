@@ -16,7 +16,7 @@ import { jobOffers, jobRows } from '../src/sim/mission.ts';
 import type { Place } from '../src/sim/on-foot.ts';
 import { initPhysics, type Ground } from '../src/sim/physics.ts';
 import { createSave, saveFromText, saveToText } from '../src/sim/save.ts';
-import { createSimState, type SimState } from '../src/sim/simulation.ts';
+import { createSimState } from '../src/sim/simulation.ts';
 import type { Culture, District } from '../src/world/types.ts';
 import { stableJson } from './helpers.ts';
 import { drive, hills, start, type Session } from './sim-harness.ts';

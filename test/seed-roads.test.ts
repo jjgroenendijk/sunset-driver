@@ -625,7 +625,6 @@ sweepSuite('roads', () => {
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       const hf = new Heightfield(w.terrain);
-      const rivers = new RiverWater(w.water.rivers, hf, w.water.seaLevel);
       let complaint: string | undefined;
       const fault = (text: string): void => {
         complaint ??= text;

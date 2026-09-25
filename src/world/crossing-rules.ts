@@ -138,7 +138,7 @@ function sideAt(
   const at = Math.min(1 - 1e-9, Math.max(1e-9, alongSegment(a, b, spot)));
   const [before, after] = line.halves(segment, at);
   if (!network.canRun(before, spot, line.tier) || !network.canRun(spot, after, line.tier)) return undefined;
-  const bent = line.bentAt(before, spot);
+  const bent = line.bentAt(before);
   if (bendOverlaps(bent.line, bent.segment, spot, line.tier)) return undefined;
   if (toSegment(spot, before, after) > ON_LINE && swings(network, before, spot, after, crossed, curve, partner)) return undefined;
   if (buried(network, line.tier, spot, [before, after], curve)) return undefined;

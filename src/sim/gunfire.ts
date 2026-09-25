@@ -20,14 +20,13 @@ import type { InputFrame } from './input.ts';
 import { hurt, SKIN, vehicleGap } from './on-foot.ts';
 import type { SimState } from './simulation.ts';
 import type { PromotedVehicle } from './traffic.ts';
-import { specOf, type VehicleSpec, type VehicleState } from './vehicle.ts';
+import { type VehicleSpec, type VehicleState } from './vehicle.ts';
 import { blastEnforcers, hurtEnforcer } from './enforcer.ts';
 import { blastOfficers, hurtOfficer } from './officer.ts';
 import { blastCrew, hurtCrew } from './emergency-crew.ts';
 import { PERSON_CAPSULE } from './person-bodies.ts';
 import { blastUnits, report, shootUnit } from './police.ts';
 import { blowStrength, forgetHits, markHit, SWING_HEIGHT, type CrowdSource, type HitSurface } from './melee.ts';
-import type { PedestrianPose } from './pedestrians.ts';
 import { hurtPerson, type CasualtyGround } from './casualty.ts';
 import { SHUNS_RAGDOLL } from './collision-groups.ts';
 import { peopleNear, personOnRay } from './crowd-contact.ts';
@@ -145,7 +144,6 @@ export class Gunfire {
   private readonly ids: number[] = [];
   /** Metres the last {@link Gunfire.scan} carried before it stopped. */
   private reach = 0;
-  private readonly pose: PedestrianPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0, cycle: 0, gait: 'stand' };
 
   constructor(world: RAPIER.World) {
     this.world = world;
@@ -267,14 +265,14 @@ export class Gunfire {
     // The round pushes the vehicle the way it was flying, which is the direction
     // the panel rule reads, exactly as a crash pushes it away from the wall.
     if (target.body !== undefined && hit.collider.handle === target.body.handle) {
-      this.hit(state, spec, state.vehicle, target.spec, ray.dx, ray.dh, ray.dy, roundSeverity(spec));
+      this.hit(state, spec, state.vehicle, ray.dx, ray.dh, ray.dy, roundSeverity(spec));
       return 'vehicle';
     }
     // A round that went into a car of the city takes it off its tour (spec
     // section 5.3) and is taken off the car.
     const car = target.cars?.strike(state, hit.collider.handle)?.vehicle;
     if (car === undefined) return 'hard';
-    this.hit(state, spec, car, specOf(car.cls), ray.dx, ray.dh, ray.dy, roundSeverity(spec));
+    this.hit(state, spec, car, ray.dx, ray.dh, ray.dy, roundSeverity(spec));
     return 'vehicle';
   }
 
@@ -355,7 +353,7 @@ export class Gunfire {
     const v = state.vehicle;
     const bearing = atan2(v.z - p.y, v.x - p.x);
     if (swingReaches(spec, p.heading, vehicleGap(p, v, target.spec), bearing)) {
-      this.hit(state, spec, v, target.spec, cos(bearing), 0, sin(bearing), roundSeverity(spec));
+      this.hit(state, spec, v, cos(bearing), 0, sin(bearing), roundSeverity(spec));
       this.land(state, spec, 'vehicle', v.x, v.z, v.y);
       met = true;
     }
@@ -453,7 +451,7 @@ export class Gunfire {
       this.land(state, spec, 'hard', x, y, h);
       return;
     }
-    this.hit(state, spec, car, specOf(car.cls), cos(angle), 0, sin(angle), roundSeverity(spec));
+    this.hit(state, spec, car, cos(angle), 0, sin(angle), roundSeverity(spec));
     this.land(state, spec, 'vehicle', x, y, h);
   }
 
@@ -466,13 +464,12 @@ export class Gunfire {
    * Put one hit into a vehicle: the dent, what it costs the vehicle, and what
    * the round does beyond that. The direction comes in world axes and is read in
    * the vehicle's own frame, so the panel that takes it is the panel that was
-   * facing the shot. `row` is the roster row of the vehicle `v`.
+   * facing the shot.
    */
   private hit(
     state: SimState,
     spec: WeaponSpec,
     v: VehicleState,
-    row: VehicleSpec,
     dx: number,
     dh: number,
     dy: number,
@@ -483,7 +480,6 @@ export class Gunfire {
     // across it, which is the order the panel rule reads them in.
     damageVehicle(
       v.damage,
-      row,
       severity,
       this.point.x,
       this.point.z,
@@ -592,7 +588,7 @@ export class Gunfire {
     blastOfficers(state, p.x, p.y, spec.damage, (gap) => blastFalloff(gap, flight.blastRadius));
     // And by the crews of the emergency units standing in it (spec section 20.3).
     blastCrew(state, p.x, p.y, spec.damage, (gap) => blastFalloff(gap, flight.blastRadius));
-    this.blast(state, spec, v, specOf(v.cls), dx, dh, dy, distance, flight.blastRadius);
+    this.blast(state, spec, v, dx, dh, dy, distance, flight.blastRadius);
     // Every car of the city inside it is taken off its tour, and then feels it
     // as the player's own car does.
     target.cars?.strikeNear(state, p.x, p.h, p.y, flight.blastRadius);
@@ -601,7 +597,7 @@ export class Gunfire {
       const cx = car.x - p.x;
       const ch = car.y - p.h;
       const cy = car.z - p.y;
-      this.blast(state, spec, car, specOf(car.cls), cx, ch, cy, hypot(cx, ch, cy), flight.blastRadius);
+      this.blast(state, spec, car, cx, ch, cy, hypot(cx, ch, cy), flight.blastRadius);
     }
   }
 
@@ -631,7 +627,6 @@ export class Gunfire {
     state: SimState,
     spec: WeaponSpec,
     v: VehicleState,
-    row: VehicleSpec,
     dx: number,
     dh: number,
     dy: number,
@@ -641,7 +636,7 @@ export class Gunfire {
     const share = blastFalloff(distance, radius);
     if (share === 0) return;
     const length = Math.max(distance, 1e-6);
-    this.hit(state, spec, v, row, dx / length, dh / length, dy / length, roundSeverity(spec) * share);
+    this.hit(state, spec, v, dx / length, dh / length, dy / length, roundSeverity(spec) * share);
   }
 
 }

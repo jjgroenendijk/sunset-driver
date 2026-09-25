@@ -74,8 +74,8 @@ export class PlannedLine {
     return this.sequence().find((q) => hypot(q.x - p.x, q.y - p.y) <= SAME_PLACE);
   }
 
-  /** The polyline with a point at `p` put between `before` and `after`, and the index `before` stands at. */
-  bentAt(before: Place, p: Point): { line: Point[]; segment: number } {
+  /** The polyline as it stands, and the index `before` stands at: the segment a new point would split. */
+  bentAt(before: Place): { line: Point[]; segment: number } {
     const seq = this.sequence();
     const i = seq.indexOf(before);
     return { line: seq.map((q) => ({ x: q.x, y: q.y })), segment: i < 0 ? seq.findIndex((q) => q.index === before.index) : i };
