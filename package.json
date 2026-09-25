@@ -16,6 +16,7 @@
     "lint:size": "node scripts/check-size.ts",
     "lint:dead": "knip",
     "lint:deps": "depcruise src --config .dependency-cruiser.mjs",
+    "lint:smells": "eslint --concurrency auto --cache --cache-location node_modules/.cache/eslint/ --cache-strategy content src scripts test",
     "test": "vitest run",
     "test:full": "SWEEP_SEEDS=500 vitest run",
     "test:render": "node scripts/render-check.ts",
@@ -24,15 +25,19 @@
     "verify:full": "npm run typecheck && npm run lint && npm run lint:size && npm run lint:dead && npm run lint:deps && npm run test:full"
   },
   "devDependencies": {
+    "@eslint-community/eslint-plugin-eslint-comments": "^4.8.1",
     "@swc/core": "^1.16.2",
     "@types/node": "^26.6.2",
     "@types/three": "^0.186.0",
     "@webgpu/types": "^0.1.74",
     "dependency-cruiser": "^18.4.0",
+    "eslint": "^10.11.0",
+    "eslint-plugin-sonarjs": "^4.2.1",
     "knip": "^6.38.0",
     "playwright-core": "^1.63.0",
     "tsapi": "npm:typescript@^5.9.3",
     "typescript": "^7.0.2",
+    "typescript-eslint": "^8.70.1",
     "vite": "^8.3.0",
     "vitest": "^5.0.1",
     "wrangler": "^4.136.1"
@@ -44,5 +49,8 @@
     "@trystero-p2p/nostr": "^0.25.4",
     "three": "^0.186.0",
     "tone": "^15.1.22"
+  },
+  "overrides": {
+    "typescript": "$typescript"
   }
 }
