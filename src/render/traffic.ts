@@ -1,10 +1,12 @@
 /**
  * The traffic, drawn (spec sections 9.2, 13.1).
  *
- * Every class of the traffic is three instanced meshes: the painted parts; the
- * lamps, tyres and trim; and the tinted glass the driver shows through. Each
- * vehicle is one instance of each, so the whole traffic in view costs three
- * draws per class that is on screen, however many cars there are.
+ * Every class of the traffic is four instanced meshes: the painted parts; the
+ * lamps and trim; the tinted glass the driver shows through; and the tyres.
+ * Each vehicle is one instance of each, so the whole traffic in view costs
+ * four draws per class that is on screen, however many cars there are. The
+ * tyres are a mesh of their own because the body moves on its springs
+ * (`suspension.ts`) and they do not.
  * The paint is the instance's colour, which is how two saloons in one mesh
  * come in two colours.
  *
@@ -24,6 +26,7 @@ import {
   BufferAttribute,
   Color,
   CylinderGeometry,
+  Euler,
   Group,
   InstancedMesh,
   Matrix4,
@@ -41,6 +44,7 @@ import { rideHeight, specOf, type VehicleClass, type VehicleSpec } from '../sim/
 import { outInThis } from '../sim/weather.ts';
 import { riderStruts, type RiderStrut } from './bike-rider.ts';
 import { SignalView } from './signals.ts';
+import { Suspension, type Lean } from './suspension.ts';
 import { driverOf } from './occupant.ts';
 import { partGeometry } from './vehicle-geometry.ts';
 import { createVehicleTrim, glowOf, type VehicleTrim } from './vehicle-glow.ts';
@@ -59,13 +63,14 @@ export function glassMaterial(): MeshStandardMaterial {
   return new MeshStandardMaterial({ color: GLASS, roughness: 0.1, metalness: 0.2, transparent: true, opacity: GLASS_OPACITY });
 }
 
-/** The meshes one class is drawn with: three, and a fourth for whoever is in it. */
+/** The meshes one class is drawn with: four, and a fifth for whoever is in it. */
 interface ClassMeshes {
   cls: VehicleClass;
   spec: VehicleSpec;
   paint: InstancedMesh;
   trim: InstancedMesh;
   glass: InstancedMesh;
+  tyres: InstancedMesh;
   /**
    * The rider of `bike-rider.ts` on a class that is sat astride, the driver
    * of `occupant.ts` on a car, and undefined on anything else. It is a mesh of
@@ -84,17 +89,22 @@ export interface TrafficParts {
   trim: BufferGeometry;
   /** The glass, which is drawn seen through. */
   glass: BufferGeometry;
+  /** The tyres, in the trim's colours, when they were asked for apart; otherwise in the trim. */
+  tyres: BufferGeometry | undefined;
 }
 
 /**
  * Build the geometry one class of the traffic is drawn with. Headless: no
  * renderer is needed. The parts of the leaves named in `apart` are left out,
- * for a view that swings those leaves on meshes of their own.
+ * for a view that swings those leaves on meshes of their own. With `tyresApart`
+ * the tyres come as a geometry of their own, for a body that moves on its
+ * springs above them.
  */
-export function trafficParts(spec: VehicleSpec, apart: readonly number[] = []): TrafficParts {
+export function trafficParts(spec: VehicleSpec, apart: readonly number[] = [], tyresApart = false): TrafficParts {
   const paint: BufferGeometry[] = [];
   const trim: BufferGeometry[] = [];
   const glass: BufferGeometry[] = [];
+  const tyres: BufferGeometry[] = tyresApart ? [] : trim;
   for (const part of vehicleBoxes(spec)) {
     if (part.hinge !== undefined && apart.includes(part.hinge.leaf)) continue;
     if (part.glass === true) glass.push(boxOf(part));
@@ -106,10 +116,10 @@ export function trafficParts(spec: VehicleSpec, apart: readonly number[] = []): 
     const tyre = new CylinderGeometry(spec.wheelRadius, spec.wheelRadius, spec.wheelWidth, 10);
     tyre.rotateX(Math.PI / 2);
     tyre.translate(wheel.x, wheel.y - spec.suspensionRest, spec.inline ? 0 : wheel.z);
-    trim.push(coloured(tyre.toNonIndexed(), TYRE));
+    tyres.push(coloured(tyre.toNonIndexed(), TYRE));
     tyre.dispose();
   }
-  return { paint: merged(paint), trim: merged(trim), glass: merged(glass) };
+  return { paint: merged(paint), trim: merged(trim), glass: merged(glass), tyres: tyresApart ? merged(tyres) : undefined };
 }
 
 export class TrafficView {
@@ -131,6 +141,13 @@ export class TrafficView {
   private readonly matrix = new Matrix4();
   private readonly at = new Vector3();
   private readonly turn = new Quaternion();
+  /** The turn of the body on its springs, on top of {@link turn}. */
+  private readonly body = new Quaternion();
+  private readonly tilt = new Quaternion();
+  private readonly tiltAngles = new Euler();
+  private readonly springs = new Suspension();
+  private readonly lean: Lean = { pitch: 0, roll: 0 };
+  private readonly wheels = new Matrix4();
   private readonly up = new Vector3(0, 1, 0);
   private readonly one = new Vector3(1, 1, 1);
   private readonly colour = new Color();
@@ -144,7 +161,7 @@ export class TrafficView {
     this.materials.push(paint, glass);
     for (const cls of AMBIENT_CLASSES) {
       const spec = specOf(cls);
-      const parts = trafficParts(spec);
+      const parts = trafficParts(spec, [], true);
       const struts = riderStruts(spec);
       const driver = driverOf(spec);
       const figure = struts.length > 0 ? struts.map(strutOf) : driver.map((part) => coloured(boxOf(part), part.colour));
@@ -154,10 +171,11 @@ export class TrafficView {
         paint: tinted(instanced(parts.paint, paint, true, CLASS_CAP)),
         trim: instanced(parts.trim, trim, false, CLASS_CAP),
         glass: instanced(parts.glass, glass, false, CLASS_CAP),
+        tyres: instanced(parts.tyres as BufferGeometry, trim, false, CLASS_CAP),
         rider: figure.length === 0 ? undefined : instanced(merged(figure), trim, true, CLASS_CAP),
       };
       this.classes.push(meshes);
-      this.group.add(meshes.paint, meshes.trim, meshes.glass);
+      this.group.add(meshes.paint, meshes.trim, meshes.glass, meshes.tyres);
       if (meshes.rider !== undefined) this.group.add(meshes.rider);
     }
     this.signals = traffic.signals === undefined ? undefined : new SignalView(traffic.signals);
@@ -194,6 +212,7 @@ export class TrafficView {
       if (meshes.rider !== undefined) meshes.rider.count = 0;
     }
     const traffic = this.traffic;
+    this.springs.begin();
     const minX = x - TRAFFIC_VIEW;
     const minY = y - TRAFFIC_VIEW;
     const maxX = x + TRAFFIC_VIEW;
@@ -207,6 +226,9 @@ export class TrafficView {
       const meshes = this.meshesOf(vehicle.cls);
       this.at.set(pose.x, pose.height + rideHeight(meshes.spec), pose.y);
       this.turn.setFromAxisAngle(this.up, -pose.heading);
+      const lean = this.springs.lean(id, time, pose.x, pose.y, pose.heading, pose.speed, meshes.spec.inline, this.lean);
+      this.tilt.setFromEuler(this.tiltAngles.set(lean.roll, 0, lean.pitch, 'XZY'));
+      this.body.copy(this.turn).multiply(this.tilt);
       this.add(meshes, vehicle.paint, true);
     }
     for (const record of state.traffic.promoted) {
@@ -215,15 +237,19 @@ export class TrafficView {
       const meshes = this.meshesOf(v.cls);
       this.at.set(v.x, v.y, v.z);
       this.turn.set(v.qx, v.qy, v.qz, v.qw);
+      // The physics already moves a promoted body on its own springs.
+      this.body.copy(this.turn);
       // Nobody drives a promoted vehicle, so a bike the player has touched
       // rolls on with an empty saddle.
       this.add(meshes, record.paint, false);
     }
+    this.springs.end();
     for (const meshes of this.classes) {
       const count = meshes.paint.count;
       meshes.trim.count = count;
       meshes.glass.count = count;
-      for (const mesh of [meshes.paint, meshes.trim, meshes.glass]) {
+      meshes.tyres.count = count;
+      for (const mesh of [meshes.paint, meshes.trim, meshes.glass, meshes.tyres]) {
         mesh.visible = count > 0;
         if (count === 0) continue;
         mesh.instanceMatrix.needsUpdate = true;
@@ -239,7 +265,7 @@ export class TrafficView {
 
   dispose(): void {
     for (const meshes of this.classes) {
-      for (const mesh of [meshes.paint, meshes.trim, meshes.glass, meshes.rider]) {
+      for (const mesh of [meshes.paint, meshes.trim, meshes.glass, meshes.tyres, meshes.rider]) {
         if (mesh === undefined) continue;
         mesh.geometry.dispose();
         mesh.dispose();
@@ -257,16 +283,20 @@ export class TrafficView {
 
   /**
    * Write one vehicle, standing at `at` and turned by `turn`, into its class's
-   * meshes. `ridden` says whether anybody is on it, which only a class with a
-   * saddle can answer yes to.
+   * meshes, its body turned by `body` on its springs. `ridden` says whether
+   * anybody is in it, which only a class that carries a figure can answer yes
+   * to.
    */
   private add(meshes: ClassMeshes, paint: number, ridden: boolean): void {
     const index = meshes.paint.count;
     if (index >= CLASS_CAP) return;
-    this.matrix.compose(this.at, this.turn, this.one);
+    this.matrix.compose(this.at, this.body, this.one);
+    // A bike's wheels lean with it; a car's stay square on the road.
+    this.wheels.compose(this.at, meshes.spec.inline ? this.body : this.turn, this.one);
     meshes.paint.setMatrixAt(index, this.matrix);
     meshes.trim.setMatrixAt(index, this.matrix);
     meshes.glass.setMatrixAt(index, this.matrix);
+    meshes.tyres.setMatrixAt(index, this.wheels);
     meshes.paint.setColorAt(index, this.colour.set(paint));
     meshes.paint.count = index + 1;
     const rider = meshes.rider;
