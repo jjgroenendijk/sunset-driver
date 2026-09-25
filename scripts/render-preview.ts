@@ -57,6 +57,10 @@
  *                    and an ambulance behind the player (spec section 20.3).
  *   --shots          put a shotgun blast and a pistol round in the air, with
  *                    their flash, streaks and impacts (spec section 11.6).
+ *   --heavy          put a flamethrower's stream, a rocket in flight, a grenade
+ *                    going off and a smoke cloud ahead of the player (spec
+ *                    section 11.6). `--heavy=flame`, `rocket`, `blast` or
+ *                    `smoke` shows one alone.
  *   --bodies         lay casualties in the road ahead: two dead, and one each
  *                    falling, rising, crawling, limping and thrown (spec
  *                    section 11.6). With --emergency, medics kneel at one.
@@ -106,6 +110,7 @@
 import { seedFromString } from '../src/core/rng.ts';
 import { BASE_DISTANCE } from '../src/render/camera.ts';
 import type { PreviewRequest } from '../src/render/preview.ts';
+import type { HeavyShow } from '../src/render/preview-heavy.ts';
 import type { Junction } from '../src/world/junctions.ts';
 import { askServer, ensureServer, stopServer } from './preview-client.ts';
 import type { HostFrame } from './preview-host.ts';
@@ -266,6 +271,7 @@ const request: PreviewRequest = {
   ...(options.has('skid') ? { skid: true } : {}),
   ...(options.has('emergency') ? { emergency: true } : {}),
   ...(options.has('shots') ? { shots: true } : {}),
+  ...(options.has('heavy') ? { heavy: (options.get('heavy') === 'true' ? 'all' : options.get('heavy')) as HeavyShow } : {}),
   ...(options.has('bodies') ? { bodies: true } : {}),
   ...(options.has('police') ? { police: true } : {}),
   ...(options.has('contacts') ? { contacts: true } : {}),

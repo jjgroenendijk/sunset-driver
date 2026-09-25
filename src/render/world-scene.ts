@@ -71,6 +71,10 @@ import { STREAM_BUDGET_MS } from './streaming.ts';
 import { PlantScenery } from './vegetation.ts';
 import { VehicleModel } from './vehicle.ts';
 import { HeldWeapon, WeaponArt } from './weapon.ts';
+import { WeaponFx } from './weapon-fx.ts';
+import { ViewModel } from './viewmodel.ts';
+import type { Blast } from '../sim/blast.ts';
+import type { ProjectileState } from '../sim/weapon.ts';
 import { WeatherFx } from './weather-fx.ts';
 import { fogOf, overcast, overcastOf } from './weather-look.ts';
 import { createWaterSurface, type WaterSurface } from './water-surface.ts';
@@ -78,9 +82,14 @@ import { createWaterSurface, type WaterSurface } from './water-surface.ts';
 /** What the damage of a frame is drawn from, beyond the vehicle itself. */
 export interface DrawnDamage {
   seed: number;
+  /** The tick the record stands at. */
+  tick: number;
   hits: readonly MeleeHit[];
   /** The paths of the rounds fired lately. */
   tracers: readonly Tracer[];
+  /** The rockets, grenades and bottles in the air, and where they went off. */
+  projectiles: readonly ProjectileState[];
+  blasts: readonly Blast[];
   /** What the wrecks have left burning on the ground (spec section 20.3). */
   fires: { blazes: readonly Blaze[] };
   /** The people who have been hit, whose blood is on the ground. */
@@ -101,6 +110,8 @@ export class WorldScene {
   private readonly weaponArt = new WeaponArt();
   /** The weapon in the player's hands. */
   readonly held = new HeldWeapon(this.weaponArt);
+  /** The weapon and the forearms in view in first person (spec section 10.7). */
+  readonly viewModel = new ViewModel(this.weaponArt);
   /** The weapons lying in the world to be picked up. */
   readonly pickups = new PickupModels(this.weaponArt);
   /** The room of the shop the player is standing in (spec section 16.1). */
@@ -111,6 +122,8 @@ export class WorldScene {
   readonly melee = new MeleeFx();
   /** The flash, the streak and the burst of every round fired (spec section 11.6). */
   readonly shots = new ShotFx();
+  /** The rockets, grenades and bottles in the air, their bursts, and the flamethrower's stream. */
+  readonly weapons = new WeaponFx();
   /** The rubber it leaves on the road (spec section 11.3). */
   readonly skid = new SkidMarks();
   /** The blood on the ground: pools, smears and spatter (spec section 11.6). */
@@ -218,11 +231,13 @@ export class WorldScene {
     this.scene.add(this.character.group);
     this.scene.add(this.vehicle.group);
     this.scene.add(this.held.group);
+    this.scene.add(this.viewModel.group);
     this.scene.add(this.pickups.group);
     this.scene.add(this.interior.group);
     this.scene.add(this.fx.group);
     this.scene.add(this.melee.group);
     this.scene.add(this.shots.group);
+    this.scene.add(this.weapons.group);
     this.scene.add(this.skid.mesh);
     this.scene.add(this.blood.mesh);
     // Every light stands by now and no pool ever grows, so this is where the
@@ -300,6 +315,7 @@ export class WorldScene {
     this.skid.update(v, this.vehicle.vehicle, this.height, surfaceAt);
     this.melee.update(record.hits, record.seed, tick);
     this.shots.update(record.tracers, record.seed, tick);
+    this.weapons.update(record, record.seed, tick);
     this.blood.update(record.pedestrians.casualties, record.hits, record.tracers, tick, this.height);
   }
 
@@ -388,6 +404,7 @@ export class WorldScene {
     this.fx.reset(tick);
     this.melee.reset(tick);
     this.shots.reset(tick);
+    this.weapons.reset(tick);
     this.blood.reset(tick);
     this.skid.clear();
   }
@@ -635,14 +652,16 @@ export class WorldScene {
     this.remotes.dispose();
     this.scene.remove(this.vehicle.group);
     this.vehicle.dispose();
-    this.scene.remove(this.held.group, this.pickups.group);
+    this.scene.remove(this.held.group, this.pickups.group, this.viewModel.group);
     this.held.dispose();
     this.pickups.dispose();
     this.weaponArt.dispose();
-    this.scene.remove(this.fx.group, this.melee.group, this.shots.group);
+    this.scene.remove(this.fx.group, this.melee.group, this.shots.group, this.weapons.group);
     this.fx.dispose();
     this.melee.dispose();
     this.shots.dispose();
+    this.weapons.dispose();
+    this.viewModel.dispose();
     this.scene.remove(this.skid.mesh);
     this.skid.dispose();
     this.scene.remove(this.blood.mesh);

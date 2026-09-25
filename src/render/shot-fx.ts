@@ -128,7 +128,8 @@ export class ShotFx {
     for (let i = 0; i < tracers.length; i++) {
       const t = tracers[i] as Tracer;
       const age = tick - t.tick;
-      if (age < 0) continue;
+      // A tongue of a flamethrower's stream is fire, which `weapon-fx.ts` draws.
+      if (age < 0 || t.flame === true) continue;
       if (t.end !== 'none') landed = this.land(landed, t);
       if (t.pellet === 0 && age < FLASH_TICKS && discs < DISC_CAP) {
         this.disc(discs++, t.x, t.h, t.y, FLASH_SIZE * (1 - age / FLASH_TICKS / 2), FLASH_COLOUR, 1 - age / FLASH_TICKS);

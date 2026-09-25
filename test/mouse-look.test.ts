@@ -34,6 +34,7 @@ describe('the mouse look', () => {
 
   it('tilts the view down when the mouse moves down', () => {
     const camera = settled(WALKER);
+    camera.update(FRAME, WALKER, { view: 'first-person', mouse: true });
     const before = camera.camera.rotation.x;
     camera.look(0, 80);
     camera.update(FRAME, WALKER, { view: 'first-person', mouse: true });

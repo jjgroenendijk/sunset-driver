@@ -8,7 +8,11 @@ import {
   EYE_AHEAD_ON_FOOT,
   EYE_HEIGHT_DRIVING,
   EYE_HEIGHT_ON_FOOT,
+  BASE_FOV,
+  FIRST_FOV,
   FIRST_PITCH,
+  FIRST_PITCH_ON_FOOT,
+  FOV_RATE,
   FIRST_PITCH_MIN,
   FIRST_TURN_RATE,
   LOOK_HOLD,
@@ -109,6 +113,11 @@ export interface CameraLook {
    * the ground stays in the view rather than falling away below it.
    */
   altitude?: number;
+  /**
+   * How much first person zooms in, 1 for none: aiming a weapon narrows the
+   * view, and a scope narrows it further. Ignored by the other views.
+   */
+  zoom?: number;
 }
 
 /**
@@ -151,12 +160,17 @@ export class FollowCamera {
   private still = LOOK_HOLD;
 
   constructor(aspect: number) {
-    this.camera = new PerspectiveCamera(45, aspect, TOP_NEAR, 2000);
+    this.camera = new PerspectiveCamera(BASE_FOV, aspect, TOP_NEAR, 2000);
     this.applyOrientation();
   }
 
   private applyOrientation(): void {
     this.camera.rotation.set(-this.pitch, this.yaw + this.lookYaw, 0, 'YXZ');
+  }
+
+  /** Radians above level the view looks: negative looking down. */
+  get elevation(): number {
+    return -this.pitch;
   }
 
   /** The view the camera stands in now. */
@@ -260,12 +274,21 @@ export class FollowCamera {
       this.camera.near = view === 'top-down' ? TOP_NEAR : CHASE_NEAR;
       this.camera.updateProjectionMatrix();
     }
+    this.fit(view === 'first-person' ? FIRST_FOV / Math.max(1, look.zoom ?? 1) : BASE_FOV, dt);
     if (view === 'top-down') this.followOver(dt, target, look);
     else this.followBehind(dt, target, view === 'first-person', look.mouse === true);
     this.shake.multiplyScalar(Math.exp(-KICK_RATE * dt));
     this.camera.position.add(this.shake);
     this.joltBy(dt, this.camera.position);
     this.applyOrientation();
+  }
+
+  /** Ease the field of view toward `fov` degrees, and snap it on a change of view. */
+  private fit(fov: number, dt: number): void {
+    const next = this.initialised ? this.camera.fov + (fov - this.camera.fov) * (1 - Math.exp(-FOV_RATE * dt)) : fov;
+    if (Math.abs(next - this.camera.fov) < 1e-3) return;
+    this.camera.fov = next;
+    this.camera.updateProjectionMatrix();
   }
 
   /**
@@ -330,7 +353,7 @@ export class FollowCamera {
     const steered = mouse && !driving;
     const moved = mouse && (this.lookX !== 0 || this.lookY !== 0);
     this.still = moved ? 0 : this.still + dt;
-    const base = first ? FIRST_PITCH : THIRD_PITCH;
+    const base = first ? (driving ? FIRST_PITCH : FIRST_PITCH_ON_FOOT) : THIRD_PITCH;
     const low = (first ? FIRST_PITCH_MIN : THIRD_PITCH_MIN) - base;
     if (mouse) {
       this.lookYaw -= this.lookX * LOOK_PER_PIXEL;
