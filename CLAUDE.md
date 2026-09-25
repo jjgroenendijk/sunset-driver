@@ -16,7 +16,7 @@ near match: the same problem has been filed twice before.
 The commands:
 
 - `npm run typecheck` — `tsc --noEmit`.
-- `npm run lint` — determinism. `lint:size` — file sizes. `lint:dead` — dead code (`knip.jsonc`).
+- `npm run lint` — determinism. `lint:size` — sizes. `lint:dead` — dead code. `lint:deps` — imports.
 - `npm test` — the quick tier. `npm run test:full` — the full tier of 500 seeds (`SWEEP_SEEDS=500`).
 - `npm run verify` — typecheck, the lints and the quick tier, under 20 s. Run before every commit.
 - `npm run verify:full` — the same with the full tier, about 4 min.
@@ -83,7 +83,7 @@ The whole game is a pure function of its seed, so the tooling enforces:
 
 ## Directory constraints
 
-Beyond what the file names suggest:
+Beyond what the file names suggest. `lint:deps` (`.dependency-cruiser.mjs`) checks the imports:
 
 - `src/core` — pure; no DOM, no three.js renderer.
 - `src/sim` — plain serialisable state; no wall-clock, no frame delta.

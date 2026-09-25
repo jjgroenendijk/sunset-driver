@@ -17,5 +17,7 @@
   ],
   "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
   // The fixtures of the determinism lint break its rules on purpose; nothing imports them.
-  "ignore": ["test/fixtures/**"]
+  "ignore": ["test/fixtures/**"],
+  // dependency-cruiser loads swc by name at run time, to read TypeScript (`.dependency-cruiser.mjs`).
+  "ignoreDependencies": ["@swc/core"]
 }
