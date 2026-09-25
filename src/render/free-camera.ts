@@ -28,7 +28,7 @@ export const SPEED_STEP = 1.2;
 export const FAST_MULTIPLIER = 6;
 
 /** Radians the view turns per pixel the mouse moves under pointer lock. */
-export const LOOK_PER_PIXEL = 0.0025;
+const LOOK_PER_PIXEL = 0.0025;
 
 /**
  * How far from the horizon the view may pitch. Short of a quarter turn, so the

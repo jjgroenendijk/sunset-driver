@@ -71,8 +71,8 @@ export function silentBeds(): BedPlan {
 }
 
 /** Calls at full strength, per second, before the site and the weather take their share. */
-export const BIRD_CALLS = 0.8;
-export const GULL_CALLS = 0.5;
+const BIRD_CALLS = 0.8;
+const GULL_CALLS = 0.5;
 
 /** Metres a call is placed within, around the listener. */
 export const CALL_NEAR = 8;

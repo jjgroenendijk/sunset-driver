@@ -74,26 +74,26 @@ export function weaponGeometry(boxes: readonly WeaponBox[]): BufferGeometry | un
 }
 
 /** Metres in front of the player's middle the hand holds a weapon. */
-export const HOLD_REACH = 0.3;
+const HOLD_REACH = 0.3;
 
 /** Metres to the side of the player's middle the weapon is held, toward the hand that holds it. */
-export const HOLD_SIDE = 0.14;
+const HOLD_SIDE = 0.14;
 
 /** Metres the arm reaches further out while a blow is thrown. */
-export const SWING_EXTEND = 0.25;
+const SWING_EXTEND = 0.25;
 
 /** Radians the weapon is thrown down through the arc at the middle of a swing. */
-export const SWING_PITCH = 0.7;
+const SWING_PITCH = 0.7;
 
 /**
  * How high the weapon is held, as a share of the player's height: at the hip,
  * and at the shoulder while aiming (spec section 11.5).
  */
-export const HIP_HEIGHT = 0.55;
-export const AIM_HEIGHT = 0.74;
+const HIP_HEIGHT = 0.55;
+const AIM_HEIGHT = 0.74;
 
 /** Radians the muzzle is thrown up by a shot at its strongest. */
-export const KICK_TILT = 0.35;
+const KICK_TILT = 0.35;
 
 /**
  * The weapon in the player's hands. It is posed like the character: the group

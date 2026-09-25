@@ -32,7 +32,7 @@ const KNEE = JOINTS.shinL.at[1];
  * is 0.22 m deep and 0.4 m wide, so this keeps its lowest face on the ground
  * when the body is rolled a little onto one side.
  */
-export const LIE_LIFT = 0.14;
+const LIE_LIFT = 0.14;
 
 /** Metres the hips of a person on one knee stand above the ground. */
 const KNEEL_HIPS = KNEE + 0.03;

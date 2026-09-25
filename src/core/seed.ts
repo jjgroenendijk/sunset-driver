@@ -24,7 +24,7 @@ export function randomSeedString(): string {
 }
 
 /** The word that, typed as a seed, starts the session rich instead of naming a city. */
-export const MONEY_CODE = 'money';
+const MONEY_CODE = 'money';
 /** What the money code starts the player with: a billion. */
 export const MONEY_CODE_FUNDS = 1_000_000_000;
 

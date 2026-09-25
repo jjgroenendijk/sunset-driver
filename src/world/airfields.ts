@@ -24,7 +24,7 @@ import { DRY_MARGIN } from './road-ground.ts';
 import { TIERS } from './tiers.ts';
 import type { AircraftClass, AircraftStand, Airfield, AirfieldKind, AirfieldPart, Point, WaterDescription, Zone } from './types.ts';
 
-export { airfieldAt, airfieldCorners, AirfieldMask, airfieldRamp, fromLocal, toLocal } from './airfield-frame.ts';
+export { airfieldAt, airfieldCorners, AirfieldMask, airfieldRamp } from './airfield-frame.ts';
 import { fromLocal, toLocal } from './airfield-frame.ts';
 
 /** Metres the ground at every sample of a site and its margin must stand over the sea. */
@@ -47,7 +47,7 @@ const HEADINGS = 8;
  * it was, so the road that serves it climbs nothing the levelling made. The
  * ground between is the airfield's own ramp, which no road needs to climb.
  */
-export const GATE_OUT = LEVEL_BLEND + 8;
+const GATE_OUT = LEVEL_BLEND + 8;
 /** The steepest rise over run the ramp up to the gate may take. */
 const RAMP_GRADE = 0.25;
 /** Half the width of that ramp. */
@@ -562,7 +562,7 @@ function shoreNear(ground: SiteGround, x: number, y: number): Point | undefined 
  * hillside over {@link LEVEL_BLEND} past the rectangle. The sites keep their
  * margins dry and apart, so no blend reaches the water or another airfield.
  */
-export function levelAirfield(hf: Heightfield, field: Airfield): void {
+function levelAirfield(hf: Heightfield, field: Airfield): void {
   const reach = hypot(field.halfU, field.halfV) + LEVEL_BLEND;
   const c = cos(field.heading);
   const s = sin(field.heading);

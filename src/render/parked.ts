@@ -16,7 +16,7 @@ import { instanced, trafficParts } from './traffic.ts';
 import { tinted } from './tint.ts';
 
 /** Metres each way of the point the frame is drawn round that parked cars are drawn in. */
-export const PARKED_VIEW = 170;
+const PARKED_VIEW = 170;
 
 /** Metres the point the frame is drawn round may move before the view is written again. */
 const MOVE = 10;
@@ -28,7 +28,7 @@ const MOVE = 10;
 const REFRESH = 30;
 
 /** Parked cars of one class drawn at most. A frame with more leaves the rest out. */
-export const PARKED_CAP = 1024;
+const PARKED_CAP = 1024;
 
 interface ClassMeshes {
   cls: VehicleClass;

@@ -33,7 +33,7 @@ const ARREST_KEY = 'KeyB';
 const CRIME_KEY = 'KeyL';
 
 /** The key that steps the camera through its views (spec section 10.7). */
-export const VIEW_KEY = 'KeyC';
+const VIEW_KEY = 'KeyC';
 
 /** What the keys open, toggle and write. */
 export interface KeyTargets {

@@ -116,7 +116,7 @@ export function backOf(yaw: number, pitch: number, out: Vector3): Vector3 {
  * `(x, height, z)` sees them over every roof between. The line leaves from
  * {@link SIGHT_HEIGHT} over the feet, where the body is.
  */
-export function sees(x: number, height: number, z: number, back: Vector3, reach: number, roofs: RoofHeight): boolean {
+function sees(x: number, height: number, z: number, back: Vector3, reach: number, roofs: RoofHeight): boolean {
   const y0 = height + SIGHT_HEIGHT;
   for (let along = SIGHT_STEP; along <= reach; along += SIGHT_STEP) {
     const top = roofs(x + back.x * along, z + back.z * along);

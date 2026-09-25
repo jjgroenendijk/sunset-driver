@@ -112,7 +112,7 @@ export interface ParcelMap {
 }
 
 /** A building parcel that is a police station (spec section 11.7). */
-export interface PoliceStation {
+interface PoliceStation {
   /** Id of the parcel it stands on, which is owned by `building`. */
   parcel: number;
   district: number;

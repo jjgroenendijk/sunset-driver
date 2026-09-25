@@ -34,7 +34,7 @@ import type { SimState } from './simulation.ts';
 export type CrewRole = 'firefighter' | 'medic';
 
 /** What a member of a crew is doing. */
-export type CrewTask =
+type CrewTask =
   /** Out of the door and walking to their place. */
   | 'out'
   /** At their place, working the scene. */
@@ -85,7 +85,7 @@ export interface FallenCrew {
 export const CREW_SIZE: Record<EmergencyKind, number> = { engine: 2, ambulance: 2 };
 
 /** The role each kind's crew are. */
-export const CREW_ROLE: Record<EmergencyKind, CrewRole> = { engine: 'firefighter', ambulance: 'medic' };
+const CREW_ROLE: Record<EmergencyKind, CrewRole> = { engine: 'firefighter', ambulance: 'medic' };
 
 /** What one of them can take before they fall, on the player's own scale. */
 export const CREW_HEALTH = MAX_HEALTH;
@@ -94,13 +94,13 @@ export const CREW_HEALTH = MAX_HEALTH;
 export const CREW_HEIGHT: Record<CrewRole, number> = { firefighter: 1.8, medic: 1.78 };
 
 /** Ticks a unit's doors take to swing open, and to shut again. */
-export const DOOR_TICKS = 0.7 * TICK_RATE;
+const DOOR_TICKS = 0.7 * TICK_RATE;
 
 /** Ticks the second of a crew climbs down after the first. */
-export const STAGGER = 20;
+const STAGGER = 20;
 
 /** Metres per second a crew member covers the ground at, going out and coming back. */
-export const CREW_PACE = 3.8;
+const CREW_PACE = 3.8;
 
 /** Metres from their place a crew member counts as having reached it. */
 const ARRIVE = 0.2;
@@ -150,10 +150,10 @@ const BEHIND = 0.7;
 
 /** Metres from the line of a body a medic kneels at, and how far up the body from the hips. */
 export const MEDIC_SIDE = 0.95;
-export const MEDIC_UP = 0.35;
+const MEDIC_UP = 0.35;
 
 /** Ticks a fallen crew member lies before the body is taken away, and how many lie at once. */
-export const FALLEN_TICKS = 90 * TICK_RATE;
+const FALLEN_TICKS = 90 * TICK_RATE;
 const FALLEN_CAP = 8;
 
 /** Metres per second a round pushes one of them over at, and how far it can carry them. */
@@ -472,7 +472,7 @@ function medicStation(state: SimState, unit: EmergencyUnit, member: number): Spo
  * of it, of those lying or crawling. A body still in the air or going over is
  * not one to kneel at yet.
  */
-export function bodyNear(state: SimState, unit: EmergencyUnit): { x: number; y: number; dir: number } | undefined {
+function bodyNear(state: SimState, unit: EmergencyUnit): { x: number; y: number; dir: number } | undefined {
   const pose = emptyCasualtyPose();
   let best: { x: number; y: number; dir: number } | undefined;
   let nearest = COLLECT_RANGE;

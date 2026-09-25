@@ -32,7 +32,7 @@ export const PARAPET_HEIGHT = 0.9;
 export const DECK_SOFFIT = 1.9;
 
 /** One point of a deck: where it stands on the map, and how high the road drives there. */
-export interface DeckPoint {
+interface DeckPoint {
   x: number;
   y: number;
   height: number;

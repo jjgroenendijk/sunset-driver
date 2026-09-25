@@ -63,7 +63,7 @@ export function stepTowing(state: SimState): number {
 }
 
 /** True when a record is a wreck the truck may take at this tick, with the player at `(x, y)`. */
-export function towable(record: PromotedVehicle, tick: number, x: number, y: number): boolean {
+function towable(record: PromotedVehicle, tick: number, x: number, y: number): boolean {
   const v = record.vehicle;
   const damage = v.damage;
   if (damage.stage !== 'burnt' || damage.blownTick < 0) return false;

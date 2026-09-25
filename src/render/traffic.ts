@@ -48,7 +48,7 @@ import { tinted } from './tint.ts';
 export const TRAFFIC_VIEW = 180;
 
 /** Vehicles of one class drawn at most. A frame with more leaves the rest out. */
-export const CLASS_CAP = 256;
+const CLASS_CAP = 256;
 
 /** The meshes one class is drawn with: two, and a third on a class ridden astride. */
 interface ClassMeshes {

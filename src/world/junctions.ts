@@ -90,7 +90,7 @@ export interface JunctionMouth {
  * The pavement between two neighbouring mouths: from the near kerb of one to
  * the near kerb of the next, and the back edge of the pavement behind it.
  */
-export interface JunctionCorner {
+interface JunctionCorner {
   /**
    * The kerb, from the left kerb of the first mouth at its cut to the right
    * kerb of the next at its cut. Several points where the corner is rounded.
@@ -121,7 +121,7 @@ export interface Junction {
 }
 
 /** One end of a stretch of curve a junction takes: metres from the start of the curve, and the place. */
-export interface GapEnd {
+interface GapEnd {
   distance: number;
   at: Point;
   /** The curve segment the place stands on. */
@@ -536,7 +536,7 @@ function headingOf(points: readonly Point[], from: number, direction: 1 | -1): P
  * The place `metres` along a curve from point `from` going `direction`, and the
  * segment it stands on. A curve too short is answered with its end.
  */
-export function alongCurve(points: readonly Point[], from: number, direction: 1 | -1, metres: number): { at: Point; segment: number } {
+function alongCurve(points: readonly Point[], from: number, direction: 1 | -1, metres: number): { at: Point; segment: number } {
   let left = metres;
   let i = from;
   while (i + direction >= 0 && i + direction < points.length) {

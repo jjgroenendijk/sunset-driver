@@ -34,7 +34,7 @@ export const POOL_TICKS = 30 * TICK_RATE;
 const DRY_TICKS = 3 * 60 * TICK_RATE;
 
 /** Ticks the pool of a wounded person takes to fade once they are up again. */
-export const POOL_FADE = 8 * TICK_RATE;
+const POOL_FADE = 8 * TICK_RATE;
 
 /** The share of its full size a pool starts at, so the first frame shows something. */
 const POOL_START = 0.15;
@@ -49,7 +49,7 @@ const SMEAR_MIN = 0.4;
 const IMPACT_SHARE = 1.6;
 
 /** Ticks a spot of spatter lasts, and the ticks at the end of that it fades over. */
-export const SPATTER_LIFE = 3 * 60 * TICK_RATE;
+const SPATTER_LIFE = 3 * 60 * TICK_RATE;
 const SPATTER_FADE = 20 * TICK_RATE;
 
 /** One mark on the ground. `y` is the map's; `h` is the ground's height. */

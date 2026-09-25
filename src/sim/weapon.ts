@@ -69,9 +69,7 @@ export {
   selectWeapon,
   SPARE_MAGAZINES,
   type LoadoutState,
-  type WeaponSlot,
 } from './loadout.ts';
-
 
 /** The classes of the spec's table, in the order the debug picker shows them. */
 export type WeaponClass = 'melee' | 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'precision' | 'heavy' | 'thrown';
@@ -280,8 +278,6 @@ export interface WeaponSpec {
   hipSpread: number;
 }
 
-
-
 /** How much narrower an aimed shot is than a hip-fired one (spec section 11.5). */
 export const AIM_TIGHTEN = 0.35;
 
@@ -308,7 +304,7 @@ export const MUZZLE_REACH = 0.45;
  * The most radians above or below level a shot may be aimed, which only the
  * first-person view does (`InputFrame.pitch`).
  */
-export const MAX_AIM_PITCH = 1.2;
+const MAX_AIM_PITCH = 1.2;
 
 /** How much of the spread is spent up and down rather than left and right. */
 const PITCH_SHARE = 0.5;
@@ -320,10 +316,10 @@ const PITCH_SHARE = 0.5;
  * thirty rounds of a rifle are about two.
  */
 export const SHOT_HEAT_CONCEALED = 0.05;
-export const SHOT_HEAT_OPEN = 0.12;
+const SHOT_HEAT_OPEN = 0.12;
 
 /** How much of a shot's heat a suppressor leaves (spec section 11.6). */
-export const SUPPRESSED_HEAT = 0.4;
+const SUPPRESSED_HEAT = 0.4;
 
 /**
  * Metres a shot is heard over, which is the radius police are alerted from
@@ -341,7 +337,7 @@ export const SUPPRESSED_ALERT_RADIUS = 40;
 export const VEHICLE_SHARE_PER_POINT = 0.002;
 
 /** Ticks a projectile may fly before it is given up on, wherever it has got to. */
-export const PROJECTILE_LIFE = 600;
+const PROJECTILE_LIFE = 600;
 
 /** Metres per second squared on a thrown thing. Earth's, as everywhere else. */
 const GRAVITY = 9.81;
@@ -397,7 +393,6 @@ export function blastFalloff(distance: number, radius: number): number {
   const reach = 1 - distance / radius;
   return reach * reach;
 }
-
 
 /**
  * The half-angle of the cone a shot leaves in, in radians. Aiming narrows it to
@@ -604,7 +599,7 @@ export function stepProjectile(p: ProjectileState): void {
  * at the foot of it rather than coming back at the thrower.
  */
 export const BOUNCE = 0.35;
-export const BOUNCE_DAMP = 0.7;
+const BOUNCE_DAMP = 0.7;
 
 /**
  * Bounce a projectile off a surface with the given unit normal, in map axes
@@ -630,4 +625,3 @@ export function projectileDue(p: ProjectileState, tick: number): boolean {
   if (spec !== undefined && spec.fuse >= 0 && age >= spec.fuse) return true;
   return age >= PROJECTILE_LIFE;
 }
-

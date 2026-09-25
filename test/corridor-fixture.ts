@@ -41,7 +41,7 @@ export function world(ground: (x: number, y: number) => number, districts: Distr
 /** Flat ground well above the sea. */
 export const FLAT = (): number => 20;
 
-export function district(id: number, zone: Zone, x: number, y: number): District {
+function district(id: number, zone: Zone, x: number, y: number): District {
   return { id, name: `D${id}`, zone, x, y, density: 0.5, wealth: 0.5, culture: 'none' };
 }
 

@@ -160,7 +160,7 @@ export class ChunkPool implements ChunkStream {
 }
 
 /** Workers to run. One core is left to the frame, whatever the machine. */
-export function poolSize(): number {
+function poolSize(): number {
   const cores = typeof navigator === 'undefined' ? 4 : (navigator.hardwareConcurrency ?? 4);
   return Math.max(1, Math.min(MAX_WORKERS, cores - 1));
 }

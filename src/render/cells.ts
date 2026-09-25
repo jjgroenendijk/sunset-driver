@@ -19,7 +19,7 @@ import type { ChunkBounds } from '../world/chunks.ts';
 import type { ChunkDetail } from './streaming.ts';
 
 /** Cells along each side of a chunk, at each detail. */
-export const CELLS_PER_SIDE: Readonly<Record<ChunkDetail, number>> = { near: 2, mid: 2, far: 1 };
+const CELLS_PER_SIDE: Readonly<Record<ChunkDetail, number>> = { near: 2, mid: 2, far: 1 };
 
 /** Cells a chunk is cut into at most, which is at near detail. */
 export const CHUNK_CELLS = CELLS_PER_SIDE.near ** 2;

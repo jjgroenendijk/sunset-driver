@@ -61,7 +61,7 @@ export function kerbsidePlace(world: WorldDescription, x: number, y: number): Ro
 }
 
 /** Metres from a road's centreline to where a person stands beside it. */
-export function besideRoad(tier: RoadTier): number {
+function besideRoad(tier: RoadTier): number {
   const spec = TIERS[tier];
   const edge = spec.width / 2 + spec.verge;
   return spec.pavement > 0 ? edge + spec.pavement / 2 : edge + VERGE_STEP;

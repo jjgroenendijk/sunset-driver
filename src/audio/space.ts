@@ -41,7 +41,7 @@ export const PAN_WIDTH = 26;
  * dropped at {@link FAR} would be cut off mid-sound; with it, anything dropped
  * there was already silent.
  */
-export const FADE = 0.3;
+const FADE = 0.3;
 
 /** How a sound at a point reaches the listener. */
 export interface Heard {

@@ -21,7 +21,7 @@ const SCAN = 18;
 const STEP = 0.5;
 
 /** Metres back from the carriageway a person stands to wait for the light. */
-export const KERB_BACK = 0.6;
+const KERB_BACK = 0.6;
 
 /** One stretch of a walk that crosses a road under lights. */
 export interface Crossing {

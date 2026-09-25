@@ -13,10 +13,10 @@ import { struck, type Tracer } from '../sim/tracer.ts';
 const HIT_SHOW_MS = 160;
 
 /** Pixels the ticks stand off the middle at the least, so a tight aim still reads. */
-export const MIN_GAP = 4;
+const MIN_GAP = 4;
 
 /** Pixels the ticks stand off the middle at the most, so a sprayed gun does not fill the screen. */
-export const MAX_GAP = 90;
+const MAX_GAP = 90;
 
 /** What the frame hands the crosshair: page pixels, or undefined for a part not shown. */
 export interface CrosshairView {

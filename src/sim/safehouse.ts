@@ -41,7 +41,7 @@ import type { SimState } from './simulation.ts';
 import { createVehicleState, specOf, type VehicleClass, type VehicleState } from './vehicle.ts';
 
 /** Metres of a front door a player on foot may open it from: the reach of a shop door. */
-export const SAFEHOUSE_REACH = 4;
+const SAFEHOUSE_REACH = 4;
 
 /** Metres past the reach a player may drift before the door shuts behind them. */
 const DOOR_MARGIN = 2;
@@ -108,7 +108,7 @@ export interface OwnedSafehouse {
 }
 
 /** The safehouse the player has the door open at, as the record carries it. */
-export interface HomeVisit {
+interface HomeVisit {
   /** Index into the game's safehouses of the one they are standing in. */
   safehouse: number;
   /** The tick they opened the door on. */

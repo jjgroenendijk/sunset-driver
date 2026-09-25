@@ -139,7 +139,7 @@ export function gatherRings(rings: readonly Point[][], owner: readonly number[])
 }
 
 /** The smallest of the outlines a point stands inside, or none of them. */
-export function smallestAround(outers: readonly Region[], p: Point): Region | undefined {
+function smallestAround(outers: readonly Region[], p: Point): Region | undefined {
   let best: Region | undefined;
   let bestArea = Infinity;
   for (const region of outers) {

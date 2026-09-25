@@ -26,7 +26,7 @@ import {
 import { hear, type Listener } from './space.ts';
 
 /** Cry voices the bank holds: a scream, a crowd of three, and room for their tails. */
-export const CRY_VOICES = 6;
+const CRY_VOICES = 6;
 
 /**
  * What the envelope's peak is lifted by. Narrow bands take most of a

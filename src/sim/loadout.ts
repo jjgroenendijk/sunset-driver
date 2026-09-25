@@ -30,7 +30,7 @@ export interface WeaponSlot {
  * The classes that are a long gun: the ones nobody carries under a coat, so
  * police who see one raise the heat (spec section 11.6).
  */
-export const LONG_GUN_CLASSES: readonly WeaponClass[] = ['shotgun', 'rifle', 'precision', 'heavy'];
+const LONG_GUN_CLASSES: readonly WeaponClass[] = ['shotgun', 'rifle', 'precision', 'heavy'];
 
 /**
  * What the player is carrying, as the record holds it: the weapons, the pools

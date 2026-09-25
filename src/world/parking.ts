@@ -73,7 +73,7 @@ export const BAY_SHARE = 0.01;
 const CELL = 50;
 
 /** The long half and the short half of a bay. */
-export function baySize(bays: ParkingBays, bay: number): { halfLength: number; halfWidth: number } {
+function baySize(bays: ParkingBays, bay: number): { halfLength: number; halfWidth: number } {
   if (bays.street[bay] === 1) return { halfLength: STREET_BAY_LENGTH / 2, halfWidth: TIERS.street.parking / 2 };
   return { halfLength: LOT_BAY_LENGTH / 2, halfWidth: LOT_BAY_WIDTH / 2 };
 }
@@ -110,7 +110,7 @@ export function buildParkingBays(world: WorldDescription, junctions: JunctionMap
  * 8.4). A stand is a bay that always holds its own aircraft, so the parked
  * cars, their bodies and the theft of one are the same code for a plane.
  */
-export function withStands(bays: ParkingBays, stands: readonly AircraftStand[]): ParkingBays {
+function withStands(bays: ParkingBays, stands: readonly AircraftStand[]): ParkingBays {
   const count = bays.count + stands.length;
   const out: Required<ParkingBays> = {
     count,

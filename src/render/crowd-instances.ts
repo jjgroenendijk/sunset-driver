@@ -21,7 +21,7 @@ import type { PedestrianLook } from '../sim/pedestrian-look.ts';
 import { pedestrianBody } from './pedestrian-rig.ts';
 
 /** Floats one person takes in the instance buffer: place, motion, blend, style and four colours. */
-export const CROWD_STRIDE = 28;
+const CROWD_STRIDE = 28;
 
 /** The body as an instanced geometry for `cap` people, and the attributes each is written through. */
 export class CrowdInstances {

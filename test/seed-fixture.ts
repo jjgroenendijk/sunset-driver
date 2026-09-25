@@ -29,14 +29,14 @@ export const worlds = new Map<number, WorldDescription>();
 /** The second generation of the repeated seeds, for the byte-identical check. */
 export const repeats = new Map<number, WorldDescription>();
 /** The footprint of a seed, laid by the pool for the first FOOTPRINT_COUNT seeds. */
-export const footprints = new Map<number, RoadFootprint>();
+const footprints = new Map<number, RoadFootprint>();
 export const footprintOf = (seed: number): RoadFootprint => {
   const known = footprints.get(seed);
   if (known === undefined) throw new Error(`no footprint for seed ${seed}: the pool lays the first ${FOOTPRINT_COUNT}`);
   return known;
 };
 /** The parcels of a seed, cut by the pool for the same seeds. */
-export const parcelMaps = new Map<number, ParcelMap>();
+const parcelMaps = new Map<number, ParcelMap>();
 export const parcelsOf = (seed: number): ParcelMap => {
   const known = parcelMaps.get(seed);
   if (known === undefined) throw new Error(`no parcels for seed ${seed}: the pool cuts the first ${FOOTPRINT_COUNT}`);
@@ -49,7 +49,7 @@ export const repeatParts = new Map<number, WorldParts>();
  * source built from the world alone would lay the footprint and cut the
  * parcels a second time.
  */
-export const sources = new Map<number, ChunkSource>();
+const sources = new Map<number, ChunkSource>();
 export const sourceOf = (seed: number): ChunkSource => {
   const known = sources.get(seed);
   if (known !== undefined) return known;
@@ -74,7 +74,7 @@ export const sourceOf = (seed: number): ChunkSource => {
  * a chunk cuts the same in isolation cuts its own, since that cut is what it
  * checks.
  */
-export const chunkMaps = new Map<number, Map<string, WorldChunk>>();
+const chunkMaps = new Map<number, Map<string, WorldChunk>>();
 export const chunkOf = (seed: number, cx: number, cy: number): WorldChunk => {
   let cut = chunkMaps.get(seed);
   if (cut === undefined) {
@@ -89,7 +89,7 @@ export const chunkOf = (seed: number, cx: number, cy: number): WorldChunk => {
   return built;
 };
 /** The junctions of a seed, built once however many tests ask about them. */
-export const junctionMaps = new Map<number, JunctionMap>();
+const junctionMaps = new Map<number, JunctionMap>();
 export const junctionsOf = (seed: number): JunctionMap => {
   const known = junctionMaps.get(seed);
   if (known !== undefined) return known;
@@ -99,7 +99,7 @@ export const junctionsOf = (seed: number): JunctionMap => {
   return built;
 };
 /** The carve of a seed, built once however many tests ask about it. */
-export const carves = new Map<number, RoadCarve>();
+const carves = new Map<number, RoadCarve>();
 export const carveOf = (seed: number): RoadCarve => {
   const known = carves.get(seed);
   if (known !== undefined) return known;
@@ -109,7 +109,7 @@ export const carveOf = (seed: number): RoadCarve => {
   return built;
 };
 /** The beds of a seed's roads: the line each is lofted onto and carved to. */
-export const bedMaps = new Map<number, RoadBeds>();
+const bedMaps = new Map<number, RoadBeds>();
 export const bedsOf = (seed: number): RoadBeds => {
   const known = bedMaps.get(seed);
   if (known !== undefined) return known;
@@ -119,15 +119,15 @@ export const bedsOf = (seed: number): RoadBeds => {
   return built;
 };
 /** The buildings of a seed, laid by the pool for the same seeds. */
-export const buildingMaps = new Map<number, BuildingMap>();
+const buildingMaps = new Map<number, BuildingMap>();
 export const buildingsOf = (seed: number): BuildingMap => {
   const known = buildingMaps.get(seed);
   if (known === undefined) throw new Error(`no buildings for seed ${seed}: the pool lays the first ${FOOTPRINT_COUNT}`);
   return known;
 };
 /** The vegetation of a seed, which stands on its parcels and off its lots. */
-export const vegetations = new Map<number, Vegetation>();
-export const vegetationOf = (seed: number): Vegetation => {
+const vegetations = new Map<number, Vegetation>();
+const vegetationOf = (seed: number): Vegetation => {
   const known = vegetations.get(seed);
   if (known !== undefined) return known;
   const built = new Vegetation(seed, parcelsOf(seed), buildingsOf(seed));
@@ -135,7 +135,7 @@ export const vegetationOf = (seed: number): Vegetation => {
   return built;
 };
 /** The graph of a seed, built once however many tests ask about it. */
-export const graphs = new Map<number, RoadGraph>();
+const graphs = new Map<number, RoadGraph>();
 export const graphOf = (seed: number): RoadGraph => {
   const known = graphs.get(seed);
   if (known !== undefined) return known;

@@ -36,7 +36,7 @@ export type GoodId = (typeof GOOD_IDS)[number];
 
 /** The headings the panel groups the goods under, in the order it draws them. */
 export const GOOD_GROUPS = ['Smokes and drink', 'Fakes and stolen goods', 'Street pharmacy'] as const;
-export type GoodGroup = (typeof GOOD_GROUPS)[number];
+type GoodGroup = (typeof GOOD_GROUPS)[number];
 
 /** One line of the trade. */
 export interface Good {

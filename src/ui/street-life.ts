@@ -35,7 +35,7 @@ import type { StandingPerson } from '../render/pedestrians.ts';
 import type { MapPoi, MapPois } from './map.ts';
 
 /** Metres from the player an event or an incident is built at all. */
-export const STREET_LIFE_NEAR = 160;
+const STREET_LIFE_NEAR = 160;
 
 /** Metres apart the two people of an incident stand, facing each other. */
 const APART = 1.6;

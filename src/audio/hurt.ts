@@ -29,16 +29,16 @@ export const CRIES_PER_FRAME = 4;
 
 /** Voices a fleeing crowd cries in at once, and how many must flee on one tick to start it. */
 export const PANIC_VOICES = 3;
-export const PANIC_MIN = 3;
+const PANIC_MIN = 3;
 
 /** Metres from the listener within which a fleeing crowd is heard to cry. */
-export const PANIC_REACH = 45;
+const PANIC_REACH = 45;
 
 /** Seconds after a hit before the wounded start to moan: the scream has to finish first. */
-export const MOAN_AFTER = 2.5;
+const MOAN_AFTER = 2.5;
 
 /** The chance per tick that one of the wounded on the ground moans: about one every five seconds. */
-export const MOAN_RATE = 1 / (5 * TICK_RATE);
+const MOAN_RATE = 1 / (5 * TICK_RATE);
 
 /** How loud a body landing from standing is, against a throw. */
 export const FALL_STRENGTH = 0.35;

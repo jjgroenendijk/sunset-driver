@@ -76,7 +76,7 @@ const KIND_MARGIN: Record<BuildingKind, number> = {
  * ground beside it, so the shell stands inside the lot there; a side edge the
  * lot shares keeps none, and the cornices hang over the wall past it.
  */
-export const CORNICE = 2;
+const CORNICE = 2;
 
 /**
  * Metres of float error the sweeps allow a shell past an edge it shares, which

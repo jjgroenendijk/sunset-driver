@@ -36,7 +36,7 @@ import type { TrafficRoads } from './traffic.ts';
 export type Species = 'seagull' | 'pigeon' | 'crab' | 'cat' | 'rat' | 'deer' | 'hawk';
 
 /** The ground a species is placed on. */
-export type Habitat =
+type Habitat =
   /** The waterline of a beach, and the air over it. */
   | 'shore'
   /** The sand between the waterline and the dunes. */
@@ -101,7 +101,7 @@ export const SPECIES_ORDER: readonly Species[] = Object.freeze([
 ]);
 
 /** How much of a habitat's wildlife each zone carries. */
-export const ZONE_WILDLIFE: Record<Zone, number> = {
+const ZONE_WILDLIFE: Record<Zone, number> = {
   core: 1,
   inner: 1,
   industrial: 0.8,
@@ -111,7 +111,7 @@ export const ZONE_WILDLIFE: Record<Zone, number> = {
 };
 
 /** Metres each way of one bucket of the index that says which animals can be near a place. */
-export const WILDLIFE_CELL = 100;
+const WILDLIFE_CELL = 100;
 
 /** Metres an anchor is thrown off the point it was placed at. */
 const ANCHOR_JITTER = 8;
@@ -123,7 +123,7 @@ const ANCHOR_JITTER = 8;
 const WANDER_REACH = 1 + 0.3 * Math.SQRT2;
 
 /** Metres the widest-ranging animal may stand off the point it was placed at. */
-export function wildlifeReach(): number {
+function wildlifeReach(): number {
   let reach = 0;
   for (const species of SPECIES_ORDER) {
     const spec = SPECIES[species];

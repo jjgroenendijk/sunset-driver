@@ -23,14 +23,14 @@ import { Filter, Gain, LFO, Noise } from 'tone';
 import type { BedPlan } from './ambience.ts';
 
 /** Seconds a bed takes to reach the level the plan asked for. */
-export const BED_RAMP = 1.5;
+const BED_RAMP = 1.5;
 
 /**
  * What each bed is worth against the others at full strength. Noise through a
  * closing filter is much quieter than its gain suggests, so these are read off
  * the meter of `scripts/audio-check.ts` rather than reasoned about.
  */
-export const BED_LEVELS = Object.freeze({ traffic: 0.85, surf: 0.7, wind: 0.8, rain: 0.35, metal: 0.16 });
+const BED_LEVELS = Object.freeze({ traffic: 0.85, surf: 0.7, wind: 0.8, rain: 0.35, metal: 0.16 });
 
 /** One bed: a colour of noise, a filter over it, and a gain the plan ramps. */
 class BedVoice {

@@ -64,7 +64,7 @@ export type BoneName = (typeof BONES)[number];
 export const FRAMES = 32;
 
 /** What colour a box of the body takes from its instance. */
-export const PART_SKIN = 0;
+const PART_SKIN = 0;
 export const PART_HAIR = 1;
 export const PART_TOP = 2;
 export const PART_LEGS = 3;
@@ -79,7 +79,10 @@ export const PART_SMOKE = 6;
 export const PART_UMBRELLA = 7;
 export const PART_GUITAR = 8;
 
-/** The first part that is a prop rather than the body. */
+/**
+ * The first part that is a prop rather than the body.
+ * @alias
+ */
 export const PART_PROP = PART_PHONE;
 
 /** The prop each gait holds, or 0 for none. */
@@ -233,7 +236,7 @@ export function pedestrianRig(): { mesh: SkinnedMesh; skeleton: Skeleton } {
  * The cycle of one gait, one second long, as keyframe tracks: the hips' height
  * and every other bone's turn, from `pedestrian-clips.ts`.
  */
-export function walkClip(gait: Gait): AnimationClip {
+function walkClip(gait: Gait): AnimationClip {
   const times: number[] = [];
   for (let k = 0; k <= KEYS; k++) times.push(k / KEYS);
   const poses = times.map((t) => clipPose(gait, 2 * Math.PI * t));

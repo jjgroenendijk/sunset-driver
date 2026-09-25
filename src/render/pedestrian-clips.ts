@@ -60,7 +60,7 @@ export const SWINGS: Record<Gait, Swing> = {
 };
 
 /** A bone's turn: roll out to the side, twist, and forward swing, in radians. */
-export type Turn = readonly [number, number, number];
+type Turn = readonly [number, number, number];
 
 /** The body at one moment of a cycle: the hips' height over their rest, and each bone's turn. */
 export interface ClipPose {
@@ -69,7 +69,7 @@ export interface ClipPose {
 }
 
 /** A clip as a function of the phase through its cycle, 0 to 2π. */
-export type ClipAt = (phase: number) => ClipPose;
+type ClipAt = (phase: number) => ClipPose;
 
 /** The walking part of every gait: legs, feet, the swing of the arms, the bob and the lean. */
 function walking(swing: Swing, phase: number): ClipPose {

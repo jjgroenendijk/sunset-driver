@@ -29,7 +29,7 @@ import type { ParcelMap } from './parcels.ts';
 import type { District, WorldDescription, Zone } from './types.ts';
 
 // The lots are cut in `lots.ts`; this is the door callers already import.
-export { FRONT_REACH, LOT_CLEARANCE, ZONE_LOTS, type Lot, type LotSpec, type Shared } from './lots.ts';
+export { FRONT_REACH, ZONE_LOTS } from './lots.ts';
 
 /** What stands on a lot (spec section 10.3). */
 export type BuildingKind = 'tower' | 'mid-rise' | 'parking-garage' | 'shop-row' | 'house' | 'warehouse' | 'roadhouse';

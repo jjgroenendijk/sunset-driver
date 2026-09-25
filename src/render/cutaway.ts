@@ -27,7 +27,7 @@ import type { RoofBox } from './roofs.ts';
 import { float, max, positionWorld, screenCoordinate, smoothstep, step, uniform, vec3, type TslNode } from './tsl.ts';
 
 /** How much of a ghosted building is kept: five of the sixteen dither cells. */
-export const GHOST = 0.3;
+const GHOST = 0.3;
 
 /**
  * The cone around the player, as the tangent of its half angle. The view is

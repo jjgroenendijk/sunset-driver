@@ -209,7 +209,7 @@ export class ShopInterior {
 }
 
 /** The plane that cuts the ceiling off: everything over the room goes. */
-export function ceilingPlane(floor: number): Plane {
+function ceilingPlane(floor: number): Plane {
   return new Plane().setFromNormalAndCoplanarPoint(new Vector3(0, -1, 0), new Vector3(0, floor + SHOP_ROOM_HEIGHT, 0));
 }
 
@@ -218,7 +218,7 @@ export function ceilingPlane(floor: number): Plane {
  * inner face of the shopfront goes. The room's `facing` points out at the road,
  * so that is the direction the plane keeps nothing beyond.
  */
-export function frontPlane(room: ShopRoom): Plane {
+function frontPlane(room: ShopRoom): Plane {
   const out = new Vector3(Math.cos(room.facing), 0, Math.sin(room.facing));
   const face = new Vector3(room.x + out.x * room.halfDepth, 0, room.y + out.z * room.halfDepth);
   return new Plane().setFromNormalAndCoplanarPoint(out.clone().negate(), face);

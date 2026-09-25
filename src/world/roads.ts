@@ -108,7 +108,7 @@ import type { Airfield, Beach, Point, RoadCurve, RoadTier, WorldSkeleton } from 
 // The trace itself is next door, and `roads.ts` is the door onto both: the
 // ground rules and the boardwalk length come out through here, as they did
 // while the two halves were one file.
-export { groundRule, MIN_BOARDWALK, spanProfile, type Profile } from './road-trace.ts';
+export { MIN_BOARDWALK } from './road-trace.ts';
 
 /** Metres from an airfield's gate within which a road already laid serves it. */
 const GATE_REACH = 40;

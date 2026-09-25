@@ -1,7 +1,7 @@
 import type { Blast } from './blast.ts';
 import { stepArrest } from './arrest.ts';
 import { EMPTY_INPUT, type InputFrame } from './input.ts';
-import { gameTime, TICKS_PER_HOUR } from './clock.ts';
+import { TICKS_PER_HOUR } from './clock.ts';
 import { type CharacterAppearance, DEFAULT_APPEARANCE, normaliseAppearance } from './character.ts';
 import { createPlayerState, type Place, type PlayerState } from './on-foot.ts';
 import type { SimPhysics } from './physics.ts';
@@ -354,5 +354,3 @@ export function stepSim(state: SimState, input: InputFrame = EMPTY_INPUT, physic
   }
   state.tick += 1;
 }
-
-export { gameTime };

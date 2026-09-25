@@ -32,7 +32,7 @@ import type { WalkRoute } from './pedestrian-route.ts';
 import { SIGNAL_CYCLE, type TrafficSignals } from './signals.ts';
 
 /** What a step does. */
-export const WALK = 0;
+const WALK = 0;
 /** Waits at the kerb for the light. */
 export const KERB = 1;
 /** Stands in their lane: a call, a cigarette, a wait. */
@@ -52,7 +52,7 @@ export const HURRY = 7;
 export const IDLES: readonly Gait[] = ['stand', 'phone', 'smoke', 'window', 'fold', 'talk'];
 
 /** How much faster than their own pace a jaywalker crosses. */
-export const HURRY_PACE = 1.9;
+const HURRY_PACE = 1.9;
 
 /** The most the walk after the last light is slowed by to close a lap: this share of its time. */
 const STRETCH = 0.35;

@@ -19,7 +19,7 @@ import type { PedestrianPose } from './pedestrians.ts';
 import type { RouteLegs, RoutePoint, RouteSampler } from './route-sample.ts';
 
 /** Metres behind the call the back door stands. */
-export const BACK_DOOR = 3;
+const BACK_DOOR = 3;
 
 /** Ticks after the bus stops before the first person steps off, and between one and the next. */
 export const DOORS_OPEN = Math.round(1.2 * TICK_RATE);
@@ -39,7 +39,7 @@ const STEP_DOWN = Math.round(0.8 * TICK_RATE);
 const TURN_IN = 1.5;
 
 /** Ticks from stepping off the bus to out of sight. */
-export const ALIGHT_TICKS = STEP_DOWN + Math.ceil(((WALK_OFF + TURN_IN) / PACE) * TICK_RATE);
+const ALIGHT_TICKS = STEP_DOWN + Math.ceil(((WALK_OFF + TURN_IN) / PACE) * TICK_RATE);
 
 /** The ticks since a bus called that its last passenger is still in sight: how long a call is read for. */
 export const ALIGHT_SPAN = DOORS_OPEN + (ALIGHT_MOST - 1) * ALIGHT_GAP + ALIGHT_TICKS;

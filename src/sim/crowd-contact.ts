@@ -18,7 +18,7 @@ import { crowdPoseOf, type PedestrianPose, type PedestrianState } from './pedest
 export const BODY_RADIUS = 0.3;
 
 /** Metres of a standing person a round meets them over, from the feet up. */
-export const BODY_HEIGHT = 1.8;
+const BODY_HEIGHT = 1.8;
 
 /** Metres across each of the three balls a lying body is met in, and how far apart they are. */
 const LYING_RADIUS = 0.25;
@@ -92,7 +92,7 @@ export function personOnRay(
 }
 
 /** How far along a line it meets a casualty as they are posed at a moment, or undefined. */
-export function rayCasualty(
+function rayCasualty(
   record: Casualty,
   time: number,
   pose: CasualtyPose,
@@ -153,7 +153,7 @@ export function peopleNear(
  * Where a line first enters an upright cylinder standing on `(cx, ch, cy)`,
  * or undefined where it misses. A line that starts inside meets it at once.
  */
-export function rayCylinder(
+function rayCylinder(
   ox: number,
   oh: number,
   oy: number,
@@ -186,7 +186,7 @@ export function rayCylinder(
 }
 
 /** Where a line first enters a ball, or undefined where it misses. */
-export function raySphere(
+function raySphere(
   ox: number,
   oh: number,
   oy: number,

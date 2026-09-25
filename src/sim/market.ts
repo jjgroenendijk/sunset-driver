@@ -60,7 +60,7 @@ export interface MarketState {
 }
 
 /** The deal the player has open, as the record carries it. */
-export interface DealState {
+interface DealState {
   /** Index into the world's dealers of the one they are dealing with. */
   dealer: number;
   /** The tick the deal was opened on. */
@@ -132,7 +132,7 @@ function credit(state: SimState, dealer: DealerPlace): void {
 }
 
 /** Dollars a unit costs from this dealer on this tick. */
-export function buyPrice(state: SimState, dealer: DealerPlace, good: number): number {
+function buyPrice(state: SimState, dealer: DealerPlace, good: number): number {
   return priceAt(state.seed, state.tick, dealer.district, good);
 }
 

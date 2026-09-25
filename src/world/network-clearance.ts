@@ -58,7 +58,7 @@ const CELL = 60;
  * width, four numbers to a crossing. {@link NetworkClearance.stepOk} reads and
  * extends it.
  */
-export type Crossings = number[];
+type Crossings = number[];
 
 /** The road laid so far, as the next step of it is vetted. */
 export interface Trail {

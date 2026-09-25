@@ -22,10 +22,10 @@ import { heldTime } from './hold.ts';
 import type { SimState } from './simulation.ts';
 
 /** Metres from the player within which people make way and look. */
-export const MAKE_WAY_REACH = 4.5;
+const MAKE_WAY_REACH = 4.5;
 
 /** Metres either side of the player's line a person has to be to let them by. */
-export const PASS_ROOM = 0.9;
+const PASS_ROOM = 0.9;
 
 /** Metres a person steps aside at most. */
 export const MAKE_WAY_MOST = 0.85;
@@ -38,7 +38,7 @@ const LOOK_PACE = 3;
 const LOOK_MOST = 1.3;
 
 /** Metres within which a player sprinting at a person makes them jump clear. */
-export const BARGE_REACH = 0.8;
+const BARGE_REACH = 0.8;
 
 /** Metres per second above which the player is running, not walking. */
 const BARGE_SPEED = WALK_SPEED + 1;

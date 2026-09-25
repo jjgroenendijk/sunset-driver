@@ -22,7 +22,7 @@ import { BOARDWALK_DRIFT, CHUNK_BLOCK, FAR_CHUNKS, BEYOND_MAP } from './seed-lim
 /** Metres between the samples that ask whether a road segment is over water. */
 export const WET_SAMPLE = 5;
 /** Metres a bridge head may stand from the crossing's own shore point. */
-export const BRIDGE_TOLERANCE = 150;
+const BRIDGE_TOLERANCE = 150;
 
 /**
  * Metres of the line a beach laid for its boardwalk that the road really
@@ -40,7 +40,7 @@ export function coverOf(road: readonly Point[], line: readonly Point[]): number 
   return covered;
 }
 
-export function onRoad(road: readonly Point[], p: Point): boolean {
+function onRoad(road: readonly Point[], p: Point): boolean {
   for (let i = 0; i + 1 < road.length; i++) {
     if (distanceToSegment(p, road[i] as Point, road[i + 1] as Point) <= BOARDWALK_DRIFT) return true;
   }
@@ -414,7 +414,7 @@ export function quadOf(surface: BufferGeometry, columns: number, row: number, co
 }
 
 /** True when a place is one of the two ends of a curve. */
-export function isCurveEnd(road: RoadCurve, p: Point): boolean {
+function isCurveEnd(road: RoadCurve, p: Point): boolean {
   const head = road.points[0] as Point;
   const tail = road.points[road.points.length - 1] as Point;
   return (head.x === p.x && head.y === p.y) || (tail.x === p.x && tail.y === p.y);

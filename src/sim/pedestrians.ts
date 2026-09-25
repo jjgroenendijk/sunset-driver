@@ -46,16 +46,16 @@ import { createHolds, heldStep, heldTime, type Holds } from './hold.ts';
 import type { TrafficSignals } from './signals.ts';
 import type { TrafficRoads } from './traffic.ts';
 
-export { WALK_LOOP, WALK_REACH, ZONE_PEDESTRIANS, type AmbientPedestrian } from './pedestrian-place.ts';
+export { type AmbientPedestrian } from './pedestrian-place.ts';
 
 /** Metres each way of one bucket of the index that says which people can be near a place. */
-export const PEDESTRIAN_CELL = 100;
+const PEDESTRIAN_CELL = 100;
 
 /** Metres behind and ahead of a person their pose is read at, so they turn a corner rather than snap round. */
-export const HALF_STEP = 0.3;
+const HALF_STEP = 0.3;
 
 /** Ticks a change of gait is blended over. */
-export const BLEND_TICKS = 18;
+const BLEND_TICKS = 18;
 
 /** Ticks a turn of a startled person takes. */
 const TURN_TICKS = 12;
@@ -64,7 +64,7 @@ const TURN_TICKS = 12;
 export const IDLE_TICKS = 4 * TICK_RATE;
 
 /** Ticks a person who dodged a car stands shouting after it. */
-export const SHOUT_TICKS = Math.round(2.5 * TICK_RATE);
+const SHOUT_TICKS = Math.round(2.5 * TICK_RATE);
 
 /** Ticks one glance of company at each other takes, and the most the head turns in one. */
 const GLANCE_TICKS = 7 * TICK_RATE;

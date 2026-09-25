@@ -29,7 +29,7 @@ import { SIGNAL_CYCLE, SIGNAL_GREEN, STOP_BACK, type SignalApproach, type Traffi
 import { CRUISE, finish, Steps, type Tour } from './traffic-timing.ts';
 
 /** Metres per second the tram drives at most: a street tram, not a train. */
-export const TRAM_TOP = 50 / 3.6;
+const TRAM_TOP = 50 / 3.6;
 
 /** Ticks the tram stands at a stop. */
 export const DWELL = 20 * TICK_RATE;
@@ -38,13 +38,13 @@ export const DWELL = 20 * TICK_RATE;
 export const TRAM_CLEAR = 6 * TICK_RATE;
 
 /** Metres short of a junction's middle the tram halts where no stop line says where. */
-export const HALT_SHORT = 14;
+const HALT_SHORT = 14;
 
 /** Metres short of the stop line its front halts at. */
 const LINE_GAP = 1;
 
 /** Metres of a run the junction behind a halted tram may take, which its tail has to stay clear of. */
-export const BEHIND_CLEAR = 15;
+const BEHIND_CLEAR = 15;
 
 /** One call at a stop: when the tram arrives and leaves, as ticks of its loop, and where its front stands. */
 export interface TramCall {
@@ -65,7 +65,7 @@ export interface TramTiming {
 }
 
 /** Metres per second the tram drives a run at. */
-export function tramSpeed(edge: RoadEdge): number {
+function tramSpeed(edge: RoadEdge): number {
   return Math.min(edge.speedLimit * CRUISE, TRAM_TOP);
 }
 
@@ -191,7 +191,7 @@ export function timeTram(
  * enough of its green is left to clear the junction, and otherwise until its
  * next green.
  */
-export function waitFor(signals: TrafficSignals, approach: SignalApproach, tick: number): number {
+function waitFor(signals: TrafficSignals, approach: SignalApproach, tick: number): number {
   const into = mod(tick - signals.greenStart(approach), SIGNAL_CYCLE);
   return into <= SIGNAL_GREEN[approach.axis] - TRAM_CLEAR ? 0 : SIGNAL_CYCLE - into;
 }

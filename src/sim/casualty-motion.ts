@@ -85,19 +85,19 @@ export interface Casualty {
 export const PERSON_HEALTH = 100;
 
 /** Metres per second squared a body falls at. */
-export const FALL_GRAVITY = 9.81;
+const FALL_GRAVITY = 9.81;
 
 /** Metres per second squared a body sliding over the road slows at. */
-export const SLIDE_DECEL = 7;
+const SLIDE_DECEL = 7;
 
 /** The share of their speed a thrown body keeps when it lands. */
-export const LANDING_KEEP = 0.5;
+const LANDING_KEEP = 0.5;
 
 /** Ticks a knocked-down person takes to go from standing to lying. */
 export const FALL_TICKS = Math.round(0.6 * TICK_RATE);
 
 /** Ticks a stagger lasts before they run. */
-export const STAGGER_TICKS = Math.round(0.5 * TICK_RATE);
+const STAGGER_TICKS = Math.round(0.5 * TICK_RATE);
 
 /** Ticks it takes to get up. */
 export const RISE_TICKS = Math.round(1.2 * TICK_RATE);
@@ -106,21 +106,21 @@ export const RISE_TICKS = Math.round(1.2 * TICK_RATE);
 export const TUMBLE_RATE = 0.06;
 
 /** How fast, and for how long, the wounded move off once they are up again. */
-export const AFTER: Record<'limp' | 'run' | 'crawl', { speed: number; ticks: number }> = {
+const AFTER: Record<'limp' | 'run' | 'crawl', { speed: number; ticks: number }> = {
   limp: { speed: 1.1, ticks: 12 * TICK_RATE },
   run: { speed: 4, ticks: 8 * TICK_RATE },
   crawl: { speed: 0.3, ticks: 30 * TICK_RATE },
 };
 
 /** Metres clear of a wall a wounded person needs to move off the way they were pushed. */
-export const WALL_ROOM = 3;
+const WALL_ROOM = 3;
 
 /** Health below which the wounded limp rather than run, and below which they crawl. */
-export const LIMP_BELOW = 60;
-export const CRAWL_BELOW = 25;
+const LIMP_BELOW = 60;
+const CRAWL_BELOW = 25;
 
 /** What a casualty is doing. */
-export type CasualtyPhase =
+type CasualtyPhase =
   /** Knocked back a step, still on their feet. */
   | 'stagger'
   /** Going over, from standing to lying. */
@@ -165,7 +165,7 @@ export function emptyCasualtyPose(): CasualtyPose {
 }
 
 /** The way a wounded person moves off, from the health they have left. */
-export function afterOf(record: Casualty): 'limp' | 'run' | 'crawl' {
+function afterOf(record: Casualty): 'limp' | 'run' | 'crawl' {
   if (record.health < CRAWL_BELOW) return 'crawl';
   return record.health < LIMP_BELOW ? 'limp' : 'run';
 }

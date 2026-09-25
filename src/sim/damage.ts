@@ -68,14 +68,14 @@ export const IMPACT_FLOOR = 1.2;
 export const CRUSH_SPEED = 28;
 
 /** How deep one impact pushes the panel it lands on, per unit of severity. */
-export const DENT_PER_SEVERITY = 1.7;
+const DENT_PER_SEVERITY = 1.7;
 
 /** Integrity under which the engine trails smoke, and under which it can catch fire. */
-export const SMOKE_BELOW = 0.45;
+const SMOKE_BELOW = 0.45;
 export const FIRE_BELOW = 0.12;
 
 /** The chance an impact on an already ruined vehicle sets it alight. */
-export const FIRE_CHANCE = 0.35;
+const FIRE_CHANCE = 0.35;
 
 /** Ticks a vehicle burns before it explodes: seven seconds to get clear of it. */
 export const FUSE_TICKS = 420;
@@ -95,7 +95,7 @@ export const SPREAD_CHANCE = 0.3;
 
 /** Metres an explosion is felt over, and the health it takes at the middle of it. */
 export const BLAST_RADIUS = 9;
-export const BLAST_DAMAGE = 65;
+const BLAST_DAMAGE = 65;
 
 /** Newtons of impulse an explosion throws its own vehicle up with, per tonne. */
 export const BLAST_LIFT = 4200;

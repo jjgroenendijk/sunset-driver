@@ -80,7 +80,7 @@ const MAX_KICK = 0.6;
  * The jolt of the player's car hitting a person: seconds it lasts, metres it
  * moves the view at the hardest hit, and the two rates it shakes at, per second.
  */
-export const JOLT_SECONDS = 0.25;
+const JOLT_SECONDS = 0.25;
 const JOLT_METRES = 0.3;
 const JOLT_RATE_X = 23;
 const JOLT_RATE_Z = 17;

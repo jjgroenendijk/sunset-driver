@@ -59,7 +59,7 @@ interface KindMeshes {
 }
 
 /** The body of a unit, with its wheels, as one geometry with its colours on the vertices. */
-export function unitBody(shape: UnitShape): BufferGeometry {
+function unitBody(shape: UnitShape): BufferGeometry {
   const parts = shape.boxes.map((part) => coloured(boxOf(part), part.colour));
   for (const wheel of shape.wheels) {
     const tyre = new CylinderGeometry(wheel.radius, wheel.radius, wheel.width, 12);

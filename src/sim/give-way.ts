@@ -41,13 +41,13 @@ import { footprintsTouch, promotedOf, turnedTouch, type AmbientPose, type Ambien
 import { headingOf, specOf } from './vehicle.ts';
 
 /** Metres each way of the player that cars give way in. Wider than the traffic's view. */
-export const GIVE_WAY_REACH = 200;
+const GIVE_WAY_REACH = 200;
 
 /** Metres each way of the player that people give way in. Wider than the crowd's view. */
-export const CROWD_REACH = 130;
+const CROWD_REACH = 130;
 
 /** Metres a car leaves in front of it when it stops, bumper to whatever it stopped for. */
-export const STOP_GAP = 1.5;
+const STOP_GAP = 1.5;
 
 /** Seconds of its speed a car adds to the room it stops in, and to the room it slows over. */
 const STOP_TIME = 0.3;
@@ -63,10 +63,10 @@ const HEAD_ON = -0.5;
 export const PATIENCE = 12 * TICK_RATE;
 
 /** Ticks a car stands for a person on their loop before they go back the way they came. */
-export const BACK_OFF = Math.round(0.5 * TICK_RATE);
+const BACK_OFF = Math.round(0.5 * TICK_RATE);
 
 /** Ticks a car stands for a person off their loop before they step aside for it. */
-export const NUDGE = 3 * TICK_RATE;
+const NUDGE = 3 * TICK_RATE;
 
 /** Metres a person keeps from a car, and seconds of a moving car's speed they keep out of in front of it. */
 const PERSON_ROOM = 0.4;

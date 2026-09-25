@@ -29,8 +29,8 @@ export type TramDesign = 'modern' | 'heritage';
 export type TramModule = 'end' | 'middle';
 
 /** The livery of each design, the band it carries, and the colours shared by both. */
-export const MODERN_PAINT = 0xe2a52b;
-export const HERITAGE_PAINT = 0x8e3b30;
+const MODERN_PAINT = 0xe2a52b;
+const HERITAGE_PAINT = 0x8e3b30;
 const MODERN_STRIPE = 0xf3efe4;
 const HERITAGE_CREAM = 0xe9e3d3;
 /** The doors, the bellows between two modules, the roof and the underframe. */

@@ -53,7 +53,7 @@ export function collect(regions: readonly Region[], set: number, into: Edges): v
   }
 }
 
-export function ringEdges(ring: readonly Point[], hole: boolean, set: number, into: Edges): void {
+function ringEdges(ring: readonly Point[], hole: boolean, set: number, into: Edges): void {
   if (ring.length < 3) return;
   // A hole winds the other way, so the ground its region owns is on its left too.
   const reverse = ringArea(ring) < 0 !== hole;
@@ -68,7 +68,6 @@ export function ringEdges(ring: readonly Point[], hole: boolean, set: number, in
     else pushEdge(into, ax, ay, bx, by, set);
   }
 }
-
 
 export interface Graph {
   /** Node positions in grid units. */
@@ -98,7 +97,7 @@ export interface Graph {
   outside: number;
 }
 
-export function arrange(edges: Edges): Graph {
+function arrange(edges: Edges): Graph {
   const x: number[] = [];
   const y: number[] = [];
   const ids = new Map<number, number>();
@@ -184,16 +183,16 @@ export function arrange(edges: Edges): Graph {
   return graph;
 }
 
-export function halfFrom(graph: Graph, half: number): number {
+function halfFrom(graph: Graph, half: number): number {
   return (half & 1) === 0 ? (graph.from[half >> 1] as number) : (graph.to[half >> 1] as number);
 }
 
-export function halfTo(graph: Graph, half: number): number {
+function halfTo(graph: Graph, half: number): number {
   return (half & 1) === 0 ? (graph.to[half >> 1] as number) : (graph.from[half >> 1] as number);
 }
 
 /** Order the half-edges leaving each node by the direction they set off in. */
-export function sortLeaving(graph: Graph): void {
+function sortLeaving(graph: Graph): void {
   const leaving: number[][] = [];
   for (let n = 0; n < graph.x.length; n++) leaving.push([]);
   for (let half = 0; half < graph.halves; half++) {
@@ -212,7 +211,7 @@ export function sortLeaving(graph: Graph): void {
   graph.slot = slot;
 }
 
-export function angleOf(graph: Graph, half: number): number {
+function angleOf(graph: Graph, half: number): number {
   const u = halfFrom(graph, half);
   const v = halfTo(graph, half);
   return atan2((graph.y[v] as number) - (graph.y[u] as number), (graph.x[v] as number) - (graph.x[u] as number));
@@ -223,7 +222,7 @@ export function angleOf(graph: Graph, half: number): number {
  * bounds it, so on arriving at a node the walk takes the half-edge just
  * clockwise of the way it came.
  */
-export function traceCycles(graph: Graph): void {
+function traceCycles(graph: Graph): void {
   const cycle = new Array<number>(graph.halves).fill(-1);
   let next = 0;
   for (let start = 0; start < graph.halves; start++) {
@@ -249,7 +248,7 @@ export function traceCycles(graph: Graph): void {
  * finds an edge of the face it is a hole of; one that finds nothing is a hole
  * in the ground outside everything.
  */
-export function gatherFaces(graph: Graph): void {
+function gatherFaces(graph: Graph): void {
   const parent = new Array<number>(graph.cycles).fill(0).map((_, i) => i);
   const find = (a: number): number => {
     let root = a;
@@ -305,7 +304,7 @@ export function gatherFaces(graph: Graph): void {
 }
 
 /** The leftmost corner of each cycle, and how the cycle winds. */
-export function leftmostCorners(graph: Graph): { node: number[]; area: number[] } {
+function leftmostCorners(graph: Graph): { node: number[]; area: number[] } {
   const node = new Array<number>(graph.cycles).fill(-1);
   const area = new Array<number>(graph.cycles).fill(0);
   const originX = new Array<number>(graph.cycles).fill(0);
@@ -345,7 +344,7 @@ export function leftmostCorners(graph: Graph): { node: number[]; area: number[] 
  * left along the row and take the nearest edge it meets, in the direction that
  * keeps the point on its left. Returns -1 where the ray leaves the map.
  */
-export function edgeLeftOf(graph: Graph, index: Buckets, px: number, py: number): number {
+function edgeLeftOf(graph: Graph, index: Buckets, px: number, py: number): number {
   let bestX = -Infinity;
   let best = -1;
   // Column by column to the left. An edge that crosses the ray further right
@@ -471,7 +470,7 @@ export function assemble(graph: Graph, inside: readonly boolean[]): Region[] {
  * The next edge of the ring being traced: at the node the edge arrives at, the
  * first kept edge clockwise of the way it came.
  */
-export function nextKept(graph: Graph, kept: readonly boolean[], half: number): number {
+function nextKept(graph: Graph, kept: readonly boolean[], half: number): number {
   const back = half ^ 1;
   const at = halfTo(graph, half);
   const list = graph.leaving[at] as number[];
@@ -484,7 +483,7 @@ export function nextKept(graph: Graph, kept: readonly boolean[], half: number): 
 }
 
 /** Drop the corners a ring only bends imperceptibly at, which the cutting left behind. */
-export function straighten(ring: readonly Point[]): Point[] {
+function straighten(ring: readonly Point[]): Point[] {
   const out: Point[] = [];
   for (let i = 0; i < ring.length; i++) {
     const back = ring[(i + ring.length - 1) % ring.length] as Point;

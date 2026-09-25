@@ -40,7 +40,7 @@ const FREE_BASE = 4;
 const FREE_PER_STAR = 2;
 
 /** Metres per second a player on foot must be under to be taken hold of: a sprint gets away. */
-export const HOLD_SPEED = 3.4;
+const HOLD_SPEED = 3.4;
 
 /** Metres from the side of a stopped car an officer drags the driver out from. */
 const DRAG_REACH = 1.4;
@@ -53,7 +53,7 @@ const STUN_TICKS = 2 * TICK_RATE;
 const SHOVE = 1.6;
 
 /** The most stars at which the police take a surrender (spec section 14). */
-export const SURRENDER_STARS = 2;
+const SURRENDER_STARS = 2;
 
 /** Metres from an officer or a car a player may give up at: somebody has to be there to take them. */
 const SURRENDER_RANGE = 70;

@@ -170,7 +170,7 @@ const LAMP_OFF = 0x8a2e3a;
  * The block's material. Every node material draws an `emissiveNode`, but the
  * types of three.js name it on the physical materials alone.
  */
-export type BlockMaterial = MeshLambertNodeMaterial & { emissiveNode: TslNode | null };
+type BlockMaterial = MeshLambertNodeMaterial & { emissiveNode: TslNode | null };
 
 /** The materials a world's buildings are drawn with, and the night they share. */
 export interface BuildingMaterials {

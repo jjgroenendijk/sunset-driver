@@ -28,7 +28,7 @@ export type Vowel = 'a' | 'o';
  * The first three formants of each vowel, in hertz, for an adult male voice.
  * A higher voice scales them up by its own `formant`.
  */
-export const VOWELS: Readonly<Record<Vowel, readonly [number, number, number]>> = Object.freeze({
+const VOWELS: Readonly<Record<Vowel, readonly [number, number, number]>> = Object.freeze({
   a: [800, 1150, 2900],
   o: [450, 800, 2830],
 });
@@ -122,7 +122,7 @@ export interface Cry {
 }
 
 /** Points per second of the pitch curve. Enough to draw a vibrato of seven hertz smoothly. */
-export const CURVE_RATE = 100;
+const CURVE_RATE = 100;
 
 /** Seconds between two points of the wobble, and how far it strays, as a share of the pitch. */
 const WOBBLE_STEP = 0.05;
@@ -154,7 +154,7 @@ export function voiceOf(seed: number, id: number): CryVoice {
 }
 
 /** The stream of one cry of person `id` on `tick`. */
-export function takeOf(seed: number, tick: number, id: number): number {
+function takeOf(seed: number, tick: number, id: number): number {
   return hashInts(seed, tick, TAKE_STREAM, id);
 }
 

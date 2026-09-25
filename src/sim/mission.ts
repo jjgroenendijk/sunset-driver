@@ -49,7 +49,7 @@ const BOARD_MARGIN = 2;
 export const JOB_STANDING = 0.06;
 
 /** How far losing one moves it the other way. It is the smaller of the two: they hired a stranger. */
-export const JOB_FAILURE = 0.03;
+const JOB_FAILURE = 0.03;
 
 /** Ticks the line about the job just ended stays on the HUD. */
 const SAID_TICKS = 6 * TICK_RATE;
@@ -71,7 +71,7 @@ export interface MissionState {
 }
 
 /** The contact the player is talking to, as the record carries it. */
-export interface GiverVisit {
+interface GiverVisit {
   /** Index into the world's contacts of the one they are standing at. */
   giver: number;
   /** The tick they opened the board on. */
@@ -323,7 +323,7 @@ function say(state: SimState, line: string): void {
  * The line the HUD shows (spec section 12): what is being carried and how long
  * is left of it, or what the end of the last job left, for a few seconds.
  */
-export function objectiveLine(state: SimState): string {
+function objectiveLine(state: SimState): string {
   const job = state.missions.active;
   const leg = activeLeg(state);
   if (job !== null && leg !== undefined) {

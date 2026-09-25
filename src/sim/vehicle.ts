@@ -388,7 +388,7 @@ export interface VehicleState {
 }
 
 /** Where a new vehicle's dial stands: one step back from the first station, which is Off. */
-export const RADIO_OFF = -1;
+const RADIO_OFF = -1;
 
 /** A vehicle at rest at a place, with its wheels hanging at their rest length. */
 export function createVehicleState(spec: VehicleSpec, x = 0, z = 0, y = 0, heading = 0): VehicleState {

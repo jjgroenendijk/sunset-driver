@@ -95,7 +95,7 @@ export function drawIcon(
 }
 
 /** An icon as a pin, its point on the place and its picture in the head. */
-export function drawPin(
+function drawPin(
   ctx: CanvasRenderingContext2D,
   glyph: GlyphName,
   colour: string,

@@ -160,7 +160,7 @@ export class PoliceView {
 }
 
 /** The helicopter's hull: the cabin, the tail and the boom that carries it. */
-export function heliBody(): ReturnType<typeof merged> {
+function heliBody(): ReturnType<typeof merged> {
   const box = (length: number, height: number, width: number, x: number, y: number, colour: number) =>
     coloured(boxOf({ length, height, width, x, y, z: 0, colour }), colour);
   return merged([
@@ -173,11 +173,9 @@ export function heliBody(): ReturnType<typeof merged> {
 }
 
 /** The rotor: two blades crossed, turned about the mast by the tick. */
-export function rotorBlades(): ReturnType<typeof merged> {
+function rotorBlades(): ReturnType<typeof merged> {
   const blade = (length: number, width: number) =>
     coloured(boxOf({ length, height: 0.08, width, x: 0, y: 0, z: 0, colour: TYRE }), TYRE);
   const across = blade(0.4, HELI.rotor);
   return merged([blade(HELI.rotor, 0.4), across]);
 }
-
-export { HELICOPTER_HEIGHT };

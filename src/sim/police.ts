@@ -129,8 +129,8 @@ export interface PoliceState {
 export const UNIT_ARMOUR = 1.4;
 
 /** Metres a car sees the player over, and the much longer sight of the helicopter. */
-export const SIGHT_RANGE = 70;
-export const HELICOPTER_SIGHT = 220;
+const SIGHT_RANGE = 70;
+const HELICOPTER_SIGHT = 220;
 
 /**
  * Metres over the road a car looks and fires from: over its own roof, so the
@@ -142,7 +142,7 @@ export const CAR_EYE = 1.7;
 export const HELICOPTER_HEIGHT = 45;
 
 /** Metres per second each kind drives or flies at. */
-export const UNIT_SPEED: Record<PoliceKind, number> = {
+const UNIT_SPEED: Record<PoliceKind, number> = {
   patrol: 26,
   interceptor: 34,
   swat: 24,
@@ -153,14 +153,14 @@ export const UNIT_SPEED: Record<PoliceKind, number> = {
 const URGENCY = 1.25;
 
 /** Units out at each star of heat, from none at all to the full force. */
-export const UNITS_BY_STAR: readonly number[] = [0, 1, 2, 3, 4, 6, 8];
+const UNITS_BY_STAR: readonly number[] = [0, 1, 2, 3, 4, 6, 8];
 
 /** Stars at which the helicopter comes up, and at which the heavy units come out. */
 export const HELICOPTER_STARS = 4;
 /** The stars the helicopter comes up at over a player flying an aircraft. */
-export const AIRBORNE_HELICOPTER_STARS = 2;
-export const INTERCEPTOR_STARS = 3;
-export const SWAT_STARS = 5;
+const AIRBORNE_HELICOPTER_STARS = 2;
+const INTERCEPTOR_STARS = 3;
+const SWAT_STARS = 5;
 
 /** Ticks between one dispatch and the next, on top of the district's response time. */
 const DISPATCH_GAP = 2 * TICK_RATE;
@@ -186,7 +186,7 @@ const HOLD_RANGE = 8;
 const SEARCH_RADIUS = 120;
 
 /** Ticks with nobody in sight before the units give up the chase and search. */
-export const SEARCH_DELAY = 5 * TICK_RATE;
+const SEARCH_DELAY = 5 * TICK_RATE;
 
 /** Metres a unit stands off the player before it is taken off the map once the heat is out. */
 const STAND_DOWN_RANGE = 150;
@@ -195,7 +195,7 @@ const STAND_DOWN_RANGE = 150;
 const RESPONSE_BASE = 6;
 
 /** How long each zone takes to answer, as a share of {@link RESPONSE_BASE}: downtown is immediate. */
-export const ZONE_RESPONSE: Record<District['zone'], number> = {
+const ZONE_RESPONSE: Record<District['zone'], number> = {
   core: 0.5,
   inner: 0.8,
   industrial: 1.6,
@@ -648,5 +648,3 @@ export class PoliceForce {
     if (units.length === 0) state.police.lastKnown = null;
   }
 }
-
-export { raiseHeat };

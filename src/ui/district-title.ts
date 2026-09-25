@@ -36,7 +36,7 @@ const ZONE_LINES: Record<Zone, string> = {
 };
 
 /** The subtitle a district is shown with. */
-export function districtLine(district: District): string {
+function districtLine(district: District): string {
   return ZONE_LINES[district.zone];
 }
 

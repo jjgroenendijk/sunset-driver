@@ -70,7 +70,7 @@ export const TRAM_LENGTH = TRAM_CARS * CAR_LENGTH + (TRAM_CARS - 1) * CAR_GAP;
 /** Metres from the middle of the road to the track: the middle of the right half of the reserved lane. */
 export const TRAM_TRACK = TRAM_LANE.trackSpacing / 2;
 /** Metres from the middle of a car to each of its bogies, where the car is read on the track. */
-export const BOGIE = 3.5;
+const BOGIE = 3.5;
 
 /**
  * Metres of loop per tram: the headway, so a long loop runs more of them. A
@@ -78,9 +78,9 @@ export const BOGIE = 3.5;
  * or four minutes at a stop — a city service, and often enough that a player
  * driving down an arterial meets one.
  */
-export const TRAM_SPACING = 1500;
+const TRAM_SPACING = 1500;
 /** Trams one loop runs at most. */
-export const MAX_TRAMS = 16;
+const MAX_TRAMS = 16;
 
 /** People one stop holds at most. */
 export const STOP_CAP = 8;
@@ -93,7 +93,7 @@ export const ARRIVAL_TICKS = 25 * TICK_RATE;
 /** Ticks the people at a stop take to board once the tram stands there. */
 export const BOARD_TICKS = 12 * TICK_RATE;
 /** Ticks a tram's doors take to slide open, and to shut again before it pulls away. */
-export const DOOR_TICKS = Math.round(1.5 * TICK_RATE);
+const DOOR_TICKS = Math.round(1.5 * TICK_RATE);
 /** Metres between two people waiting in a line along the platform. */
 const QUEUE_STEP = 2.2;
 /**
@@ -101,7 +101,7 @@ const QUEUE_STEP = 2.2;
  * island platform, which the traffic gives up (`laneOffset` in `traffic.ts`)
  * and `render/tram-stops.ts` draws.
  */
-export const PLATFORM_STAND = TRAM_TRACK + 1.45 + TRAM_LANE.platform / 2;
+const PLATFORM_STAND = TRAM_TRACK + 1.45 + TRAM_LANE.platform / 2;
 
 /**
  * Where a stop's island platform stands: the middle of it, on the track, with

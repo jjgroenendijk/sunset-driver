@@ -44,10 +44,10 @@ import type { PromotedVehicle } from './traffic.ts';
  * The id the player's own vehicle burns under. Every other id is a vehicle of
  * the traffic or a parked car, and those start at 0, so nothing shares it.
  */
-export const PLAYER_FIRE = -1;
+const PLAYER_FIRE = -1;
 
 /** The shortest and longest a blaze burns, in seconds, before it burns itself out. */
-export const BLAZE_SECONDS: readonly [number, number] = [35, 70];
+const BLAZE_SECONDS: readonly [number, number] = [35, 70];
 
 /** What a wreck leaves burning where it stood (spec section 20.3). */
 export interface Blaze {
@@ -73,7 +73,7 @@ export function createFireState(): FireState {
 }
 
 /** Every vehicle of the record, as the fire rules need to see it. */
-export function burnablesOf(state: SimState): Burnable[] {
+function burnablesOf(state: SimState): Burnable[] {
   const v = state.vehicle;
   const list: Burnable[] = [{ id: PLAYER_FIRE, x: v.x, y: v.z, damage: v.damage }];
   for (const promoted of state.traffic.promoted as readonly PromotedVehicle[]) {
@@ -168,7 +168,7 @@ export function firesOf(state: SimState): { x: number; y: number }[] {
 }
 
 /** True while a vehicle is still burning, which is what a fire engine is called to. */
-export function alight(damage: DamageState): boolean {
+function alight(damage: DamageState): boolean {
   return damage.stage === 'burning';
 }
 

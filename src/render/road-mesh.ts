@@ -60,23 +60,19 @@ import {
 
 // The cross section and the junction surfaces are next door. Both come out
 // through this file, so a caller asks one place for a chunk's road geometry.
-export type { HeightAt } from './junction-mesh.ts';
 export { trimRun } from '../world/road-pieces.ts';
 export {
-  isMarked,
   markingsOf,
   roadSection,
   structureSection,
-  SURFACE_ROAD,
   SURFACE_STRUCTURE,
   TIER_ORDER,
   vergeRise,
-  type Marking,
   type SectionPoint,
 } from './road-section.ts';
 
 /** The geometry of one run of road. */
-export interface RunGeometry {
+interface RunGeometry {
   run: ChunkRoad;
   /**
    * The lofted surface: one section of `roadSection(run.tier)` per point on the
@@ -188,7 +184,7 @@ const PORTAL_DEPTH = 1.2;
  * costing every cell of its chunk a batch of its own; each run is still lofted
  * and painted from its own tier's section.
  */
-export function batchOf(tier: RoadTier): RoadTier {
+function batchOf(tier: RoadTier): RoadTier {
   return tier === 'ramp' ? 'highway' : tier;
 }
 
@@ -276,7 +272,6 @@ export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons, surface
   }
   return out;
 }
-
 
 /**
  * A piece cut where it leaves the ground and where it lands again, so each

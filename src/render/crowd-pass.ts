@@ -12,7 +12,7 @@
  */
 
 /** Metres apart two people start to step aside for each other. */
-export const PASS_REACH = 1.8;
+const PASS_REACH = 1.8;
 
 /** Metres a person steps aside at most. */
 export const PASS_STEP = 0.32;

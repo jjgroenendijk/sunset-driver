@@ -91,14 +91,14 @@ export interface FrameSample {
 }
 
 /** What the batches of one kind hold, over every chunk in the scene. */
-export interface BatchKind {
+interface BatchKind {
   batches: number;
   parts: number;
   vertices: number;
 }
 
 /** What the frame held, standing still and at the most over the drive. */
-export interface MemorySample {
+interface MemorySample {
   /** What the GPU holds once the still frames are drawn. */
   settled: GpuMemory;
   /** The most the GPU held over the drive. */
@@ -119,7 +119,7 @@ export interface ProfileResult {
 }
 
 /** The WGSL of every stage the renderer compiled, as three.js generated it. */
-export interface BuiltShaders {
+interface BuiltShaders {
   vertex: string[];
   fragment: string[];
 }

@@ -43,7 +43,7 @@ const ORANGE = 0xd0651e;
 const BOTTLE = 0x4d6b2f;
 const RAG = 0xd6c8a4;
 /** The red of a laser's lens, the one bright point on a dark model. */
-export const LASER_LENS = 0xff3a2a;
+const LASER_LENS = 0xff3a2a;
 
 /**
  * What a gun is made of, in metres. The receiver is the middle of it; the rest

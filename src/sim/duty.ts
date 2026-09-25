@@ -92,7 +92,7 @@ const BEAT_DROP = 230;
 const BEAT_REACH = 160;
 
 /** The car an officer came in, while it is still out. */
-export function carOf(state: SimState, officer: Officer): PoliceUnit | undefined {
+function carOf(state: SimState, officer: Officer): PoliceUnit | undefined {
   if (officer.unit < 0) return undefined;
   return state.police.units.find((unit: PoliceUnit) => unit.id === officer.unit);
 }

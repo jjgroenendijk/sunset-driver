@@ -292,7 +292,7 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
  * the posters and the signs are cut into cells on the frame thread, so their cells are
  * counted here off where each one stands.
  */
-export function payloadDrawCalls(payload: ChunkPayload): number {
+function payloadDrawCalls(payload: ChunkPayload): number {
   const grid = cellGrid(payload.bounds, payload.detail);
   let calls = 1;
   for (const tier of payload.roads) {

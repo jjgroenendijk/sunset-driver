@@ -37,7 +37,7 @@ const APPROACH = 220;
 const APPROACH_SPREAD = 0.9;
 
 /** Metres behind a stopped driver the patrol car pulls up. */
-export const PULL_UP = 7;
+const PULL_UP = 7;
 
 /** Metres from the player a car that is done drives off to, past where it is taken off the map. */
 const LEAVE_REACH = 320;

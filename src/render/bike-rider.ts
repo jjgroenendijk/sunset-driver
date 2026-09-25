@@ -21,16 +21,16 @@ import { RIDE } from './rider.ts';
 import { SEAT, saddleOf, type Saddle } from './vehicle-mesh.ts';
 
 /** The jacket, the trousers and the helmet the traffic's riders wear. */
-export const RIDER_JACKET = 0x3b4252;
-export const RIDER_LEGS = 0x23262d;
+const RIDER_JACKET = 0x3b4252;
+const RIDER_LEGS = 0x23262d;
 /**
  * A pale helmet. The camera looks down from 60 m, so the crown is the face of
  * a rider it sees most of, and a dark one on a dark bike shows nothing.
  */
-export const RIDER_HELMET = 0xd8d2c2;
+const RIDER_HELMET = 0xd8d2c2;
 
 /** A point in the vehicle's own frame: along, up and across. */
-export type RiderPoint = readonly [number, number, number];
+type RiderPoint = readonly [number, number, number];
 
 /** One limb, the torso or the helmet: a box run from one point to another. */
 export interface RiderStrut {

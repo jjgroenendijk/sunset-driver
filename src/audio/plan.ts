@@ -64,7 +64,7 @@ export const CUES_PER_FRAME = 6;
 export const STRIDE = 1.5;
 
 /** Metres per second under which a sliding tyre is not squealing yet. */
-export const SQUEAL_SPEED = 3;
+const SQUEAL_SPEED = 3;
 
 /** How far the integrity must fall in one frame to be worth a collision. */
 export const IMPACT_MIN = 0.004;
@@ -80,22 +80,22 @@ export interface BellSource {
 }
 
 /** How loud a tram running at {@link RUMBLE_SPEED} is, against the other voices. */
-export const RUMBLE_STRENGTH = 0.9;
+const RUMBLE_STRENGTH = 0.9;
 
 /** Metres a second at which a tram's wheels rumble their loudest. */
-export const RUMBLE_SPEED = 12;
+const RUMBLE_SPEED = 12;
 
 /** Metres a second under which a tram is too slow for its flanges to squeal on a curve. */
-export const FLANGE_SPEED = 2.5;
+const FLANGE_SPEED = 2.5;
 
 /** How loud a tram's bell is, against the other one-shots. */
-export const BELL_STRENGTH = 0.8;
+const BELL_STRENGTH = 0.8;
 
 /** Ticks one full siren wail takes, up and back down. */
-export const WAIL_TICKS = 90;
+const WAIL_TICKS = 90;
 
 /** How far the music bus is pulled down under a cue that ducks (spec section 15). */
-export const DUCK_DEPTH = 0.65;
+const DUCK_DEPTH = 0.65;
 
 /**
  * The streams the bird and the gull calls are drawn from. They are their own
@@ -115,10 +115,10 @@ const BLAST_STREAM = 0x0b1a;
  * wail sweeps slowly up and down, low; an ambulance's yelp sweeps fast. Each
  * service is known by ear before it is seen.
  */
-export type SirenSound = 'two-tone' | 'wail' | 'yelp';
+type SirenSound = 'two-tone' | 'wail' | 'yelp';
 
 /** The sound, the ticks of one cycle and the pitch, as a multiple of the police car's, of each service's siren. */
-export const SIREN_OF: Readonly<Record<'police' | EmergencyKind, { sound: SirenSound; ticks: number; pitch: number }>> = Object.freeze({
+const SIREN_OF: Readonly<Record<'police' | EmergencyKind, { sound: SirenSound; ticks: number; pitch: number }>> = Object.freeze({
   police: { sound: 'two-tone', ticks: WAIL_TICKS, pitch: 1 },
   engine: { sound: 'wail', ticks: 240, pitch: 0.72 },
   ambulance: { sound: 'yelp', ticks: 22, pitch: 1.05 },
@@ -209,7 +209,7 @@ export interface AudioPlan {
 }
 
 /** The radio of a session with the dial at Off, which is what silence looks like. */
-export function silentRadio(): RadioPlan {
+function silentRadio(): RadioPlan {
   return { seed: 0, dial: 0, station: null, name: '', text: '', from: '', next: null, gain: 0 };
 }
 
@@ -504,7 +504,7 @@ export function shotCue(spec: WeaponSpec): CueKind {
  * How loud a shot is, and how dark. A heavier round carries further and hits
  * lower, and a suppressor takes most of the crack off the front of it.
  */
-export function shotStrength(spec: WeaponSpec): number {
+function shotStrength(spec: WeaponSpec): number {
   const weight = Math.min(1, spec.damage / 60);
   return (spec.suppressed ? 0.3 : 1) * (0.45 + 0.55 * weight);
 }
@@ -586,7 +586,7 @@ function broadcastOfNextBar(seed: number, dial: number, bar: number): { song: nu
  * stand makes no noise at all: the rumble is its wheels turning, and the squeal
  * is the flanges of a tram going fast enough round a bend to bite.
  */
-export function tramNoiseOf(listener: Listener, trams: BellSource | undefined, tick: number, out: TramNoise): TramNoisePlan | null {
+function tramNoiseOf(listener: Listener, trams: BellSource | undefined, tick: number, out: TramNoise): TramNoisePlan | null {
   const at = trams?.nearestNoise?.(listener.x, listener.y, tick, out);
   if (at === undefined) return null;
   const heard = hear(listener, at.x, at.y);

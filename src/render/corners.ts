@@ -15,10 +15,10 @@ import { boxOf, coloured, instanced, merged, TRAFFIC_VIEW } from './traffic.ts';
 import { METAL } from './vehicle-mesh.ts';
 
 /** Metres each way of the point the frame is drawn round that props are drawn in. */
-export const CORNER_VIEW = TRAFFIC_VIEW;
+const CORNER_VIEW = TRAFFIC_VIEW;
 
 /** Props of one kind drawn at most. */
-export const CORNER_DRAW_CAP = 64;
+const CORNER_DRAW_CAP = 64;
 
 /** One box of a prop: its size along, up and across, and its middle. */
 type Box = readonly [length: number, height: number, width: number, x: number, y: number, z: number, colour: number];
@@ -30,7 +30,7 @@ const STEEL = 0xc9c4d8;
 const DARK = 0x3a3148;
 
 /** The boxes of each prop. */
-export const PROP_BOXES: Record<CornerProp, readonly Box[]> = {
+const PROP_BOXES: Record<CornerProp, readonly Box[]> = {
   // A small practice amp on the pavement, its grille to the road.
   amp: [
     [0.26, 0.34, 0.42, 0, 0.17, 0, DARK],
@@ -75,7 +75,7 @@ export const PROP_BOXES: Record<CornerProp, readonly Box[]> = {
 const KINDS: readonly CornerProp[] = ['amp', 'cart', 'stall', 'dog'];
 
 /** The geometry of one prop, with its colours on its vertices. */
-export function propGeometry(kind: CornerProp): BufferGeometry {
+function propGeometry(kind: CornerProp): BufferGeometry {
   return merged(
     PROP_BOXES[kind].map(([length, height, width, x, y, z, colour]) => coloured(boxOf({ length, height, width, x, y, z, colour }), colour)),
   );

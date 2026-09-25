@@ -107,7 +107,7 @@ export interface ChunkRings {
 }
 
 /** The rings at full quality: {@link NEAR_RADIUS} and {@link FAR_RADIUS}. */
-export const FULL_RINGS: ChunkRings = { near: NEAR_RADIUS, far: FAR_RADIUS };
+const FULL_RINGS: ChunkRings = { near: NEAR_RADIUS, far: FAR_RADIUS };
 
 /** One chunk the streamer wants, and the detail it wants it at. */
 export interface ChunkWant {

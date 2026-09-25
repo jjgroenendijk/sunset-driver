@@ -23,8 +23,8 @@ export const AIM_PLANE_HEIGHT = 1.2;
  * stand: near, so it does not fall on the player's own feet, and far, so a
  * view looking over the horizon still aims somewhere.
  */
-export const LOOK_AIM_NEAR = 8;
-export const LOOK_AIM_FAR = 60;
+const LOOK_AIM_NEAR = 8;
+const LOOK_AIM_FAR = 60;
 
 /**
  * Radians above level a shot is aimed in first person, so the round goes where

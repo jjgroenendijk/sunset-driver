@@ -25,7 +25,7 @@ import { GOODS } from './goods.ts';
 
 // The list of goods moved to `goods.ts`; the prices are asked of this file,
 // so the names callers read with them are handed on from here.
-export { GOOD_GROUPS, GOOD_IDS, GOODS, goodIndex, type Good, type GoodGroup, type GoodId } from './goods.ts';
+export { GOOD_GROUPS, GOOD_IDS, GOODS, goodIndex, type Good } from './goods.ts';
 
 /** The share taken off a price in the district whose own people trade the good. */
 const HOME_DISCOUNT = 0.3;

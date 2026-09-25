@@ -34,7 +34,7 @@ export const WALL_METAL = 3;
 export const WALL_TILE = 4;
 export const WALL_CONCRETE = 5;
 /** How many there are, which is what the code is packed against. */
-export const WALL_KINDS = 6;
+const WALL_KINDS = 6;
 
 /** The colour a building's windows burn at night. Numbered as the walls are. */
 export const GLOW_WARM = 0;

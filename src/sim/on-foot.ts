@@ -47,18 +47,18 @@ export const SWIM_DEPTH = 0.7;
 export const FLOAT_DEPTH = 0.8;
 
 /** Metres per second the player swims at, and at a sprint. */
-export const SWIM_SPEED = 1.5;
-export const SWIM_SPRINT_SPEED = 2.4;
+const SWIM_SPEED = 1.5;
+const SWIM_SPRINT_SPEED = 2.4;
 
 /** Metres per second squared of lift per metre the body is held under where it floats. */
-export const BUOYANCY = 18;
+const BUOYANCY = 18;
 
 /** How much of the speed up or down the water takes back, per second. */
-export const SWIM_DRAG = 6;
+const SWIM_DRAG = 6;
 
 /** Metres per second the water lets a body rise and sink at. */
-export const SWIM_RISE = 2.5;
-export const SWIM_SINK = 3;
+const SWIM_RISE = 2.5;
+const SWIM_SINK = 3;
 
 /** Metres of kerb or step the player walks up without jumping. */
 export const STEP_HEIGHT = 0.35;
@@ -108,7 +108,7 @@ export const HEAL_BY_SOURCE: Readonly<Record<HealSource, number>> = Object.freez
 });
 
 /** The keys that were down last tick, so a press acts once rather than every tick. */
-export interface HeldKeys {
+interface HeldKeys {
   interact: boolean;
   jump: boolean;
 }

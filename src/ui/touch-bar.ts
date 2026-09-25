@@ -11,7 +11,7 @@ import type { PerspectiveCamera } from 'three';
 import type { FreeCameraControls } from './free-camera.ts';
 
 /** What the bar's three buttons do, and how it reads the flight's state back. */
-export interface TouchActions {
+interface TouchActions {
   menu(): void;
   map(): void;
   fly(): void;
@@ -35,7 +35,7 @@ export function markTouchUi(doc: Document): void {
 }
 
 /** Three round buttons in a corner, over the canvas. */
-export class TouchBar {
+class TouchBar {
   private readonly fly: HTMLButtonElement;
   private readonly actions: TouchActions;
 

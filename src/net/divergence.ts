@@ -34,7 +34,7 @@
 import type { SimState } from '../sim/simulation.ts';
 
 /** The parts of a record the host owns. Everything else is derived or a career. */
-export const DIVERGENCE_KEYS = [
+const DIVERGENCE_KEYS = [
   'traffic',
   'pedestrians',
   'fires',

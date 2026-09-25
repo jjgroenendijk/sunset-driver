@@ -27,7 +27,7 @@ export const STICK_RADIUS = 7;
  * Ticks after a shot the player keeps facing the aim. A player who fires and
  * then walks away turns back to the way they walk once this runs out.
  */
-export const FACE_TICKS = 45;
+const FACE_TICKS = 45;
 
 /** Radians per second a player on foot turns toward the aim. Quick, not instant. */
 export const AIM_TURN_RATE = 5 * Math.PI;
