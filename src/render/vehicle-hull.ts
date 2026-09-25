@@ -295,7 +295,7 @@ export function hullOf(spec: VehicleSpec, patrol = false): VehicleBox[] | undefi
     const b = points[i + 1] as Point[];
     const door = hull.doors.findIndex((span) => within(span, mid));
     const sliding = within(hull.slide, mid);
-    if (i >= first - 1 && i < last) tub(a, b, add);
+    if (i >= first - 1 && i < last) tub(a, b, ring.flag, add);
     for (let k = 0; k < 14; k++) {
       const face: Point[] = [a[k] as Point, a[(k + 1) % 14] as Point, b[(k + 1) % 14] as Point, b[k] as Point];
       const side = sideOf(k);
@@ -344,6 +344,8 @@ export function hullOf(spec: VehicleSpec, patrol = false): VehicleBox[] | undefi
   const tail = points[points.length - 1] as Point[];
   add([...nose].reverse(), paintAt(hl), 'shell');
   add(tail, paintAt(-hl), 'shell');
+  // A cabin that runs to the tail, as a bus's does, is closed inside by a wall facing forward.
+  if (last === rings.length - 1) add(tail.map(([x, y, z]) => [x + INSET, y, z] as Point).reverse(), TRIM_INSIDE, 'shell');
 
   return [...buckets.map(partOf), ...cabinOf(hull, rings, spec, width), ...lampsOf(rings)];
 }
@@ -363,18 +365,22 @@ function lampsOf(rings: Ring[]): VehicleBox[] {
 }
 
 /**
- * The inside of the cabin between two stations: a floor facing up and a wall
- * up to the shoulder facing in, each just inside the hull. The hull's own
- * faces face out, so without these a body seen through its glass has no floor
- * and no far side, and shows the road through it.
+ * The inside of the cabin between two stations: a floor facing up, a wall up
+ * to the shoulder and a ceiling over the glass facing in, each just inside the
+ * hull. The hull's own faces face out, so without these a body seen through its
+ * glass has no floor, no far side and no roof, and shows the world through it:
+ * a bus, all glass above a low shoulder, read as an empty cage. The lining above
+ * the shoulder belongs to the roof, so it goes when the roof does.
  */
-function tub(a: Point[], b: Point[], add: (face: Point[], colour: number, on: Panel | 'shell') => void): void {
+function tub(a: Point[], b: Point[], flag: Flag, add: (face: Point[], colour: number, on: Panel | 'shell') => void): void {
   const lift = (p: Point): Point => [p[0], p[1] + INSET * 0.5, p[2]];
   add([lift(a[1] as Point), lift(a[13] as Point), lift(b[13] as Point), lift(b[1] as Point)], TRIM_INSIDE, 'shell');
-  for (const k of [1, 2, 11, 12]) {
-    const wall = [b[k], b[k + 1], a[k + 1], a[k]] as Point[];
-    add(inset(wall, 0, k < 7 ? -0.5 : 0.5), TRIM_INSIDE, 'shell');
-  }
+  const wall = (k: number): Point[] => [b[k], b[k + 1], a[k + 1], a[k]] as Point[];
+  for (const k of [1, 2, 11, 12]) add(inset(wall(k), 0, k < 7 ? -0.5 : 0.5), TRIM_INSIDE, 'shell');
+  // The pillars between the side windows, and the painted flank of a span with no glass.
+  if (flag !== 'W' && flag !== 'S') for (const k of [4, 9]) add(inset(wall(k), 0, k < 7 ? -0.5 : 0.5), TRIM_INSIDE, 'roof');
+  // The rails and the ceiling, where the top is not all windscreen.
+  if (flag !== 'W') for (const k of [5, 6, 7, 8]) add(inset(wall(k), -0.5, k === 5 ? -0.5 : k === 8 ? 0.5 : 0), TRIM_INSIDE, 'roof');
 }
 
 /** A face moved `dy` insets down and `dz` insets across, which is how a panel's copy in the shell sits inside it. */
