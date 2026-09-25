@@ -9,7 +9,10 @@
  * map, so a player can find the clinics without reading the icons. The tram
  * line and the territory are switched the same way.
  *
- * The panel sits over the right edge of the map and folds away to a tab.
+ * The panel sits over the right edge of the map and folds away to a tab. The
+ * whole head is the tab's tap target, since a finger misses the small arrow.
+ * A phone's screen is too narrow to share, so `MapScreen` folds it there each
+ * time the map opens.
  */
 import { drawIcon } from './map-icons.ts';
 import { ALWAYS_SHOWN, POI_STYLES, poiCounts, type MapPois, type PoiType } from './map.ts';
@@ -60,8 +63,8 @@ export class MapLegend {
     fold.className = 'map-legend-fold';
     fold.setAttribute('aria-label', 'Fold the legend away');
     fold.textContent = '›';
-    fold.addEventListener('click', () => this.fold());
     head.append(title, fold);
+    head.addEventListener('click', () => this.fold());
     this.routeLine = document.createElement('div');
     this.routeLine.className = 'map-legend-route';
     this.routeLine.hidden = true;
@@ -90,6 +93,11 @@ export class MapLegend {
   fold(): void {
     this.root.classList.toggle('folded');
     this.store();
+  }
+
+  /** Fold the panel to a tab without keeping it as the player's choice. */
+  collapse(): void {
+    this.root.classList.add('folded');
   }
 
   /**

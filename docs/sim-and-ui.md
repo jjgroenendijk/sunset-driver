@@ -97,8 +97,11 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
   both maps through `MapPois.hidden`; the choice is kept in `localStorage`. The player, waypoint
   and objective are never hidden.
 - `MapScreen` is given a `touch` flag, and a touch browser is drawn a row of zoom and close keys
-  over the picture: it has no wheel to zoom with and no `M` to close with. `docs/menus.md` holds
-  the rest of what a phone changes.
+  over the picture: it has no wheel to zoom with and no `M` to close with. There the legend opens
+  folded, in the top left corner, because the bar of `touch-bar.ts` holds the top right and an open
+  legend covers most of a phone's map. `docs/menus.md` holds the rest of what a phone changes.
+- While the free camera flies, the route starts at the camera, as the arrow on both maps does.
+  From the player left on the ground it would start off the screen.
 - Look at the map before judging a change to it: `node scripts/map-preview.ts <seed> out.png`, and
   `--minimap` for the round window at the minimap's own scale. It needs a Chromium but no WebGPU
   device, because the map is a 2D canvas.

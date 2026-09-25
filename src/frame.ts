@@ -176,11 +176,13 @@ export class SessionFrame {
       ? { x: free.camera.x, y: free.camera.z, heading: free.camera.heading }
       : { x: p.x, y: p.y, heading: p.heading };
     // The waypoint is a place to get to, so it is taken away once the player
-    // is there. The route to it follows the roads (`map-route.ts`).
+    // is there. The route to it follows the roads (`map-route.ts`), and starts
+    // where the maps put the arrow: in Explore that is the camera, and a route
+    // from the player left on the ground would start off the screen.
     const mark = session.state.waypoint;
     if (mark && !flying && Math.hypot(mark.x - p.x, mark.y - p.y) < ARRIVED) session.state.waypoint = null;
     const nav = session.navigator;
-    nav.update(p, session.state.waypoint);
+    nav.update(at, session.state.waypoint);
     session.minimap.northUp = this.parts.settings.northUp;
     session.world.gore = this.parts.settings.gore;
     session.minimap.update(at, session.state.waypoint, nav.route, nav.version);

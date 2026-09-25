@@ -65,6 +65,7 @@ export class MapScreen {
   private readonly art: MapArt;
   private readonly legend: MapLegend;
   private readonly onWaypoint: (place: { x: number; y: number } | null) => void;
+  private readonly touch: boolean;
   private dpr = 1;
   private view: MapView = { x: 0, y: 0, metresPerPixel: OPEN_SCALE, rotation: 0 };
   /** The scale the zoom is easing toward. */
@@ -98,6 +99,7 @@ export class MapScreen {
   ) {
     this.art = art;
     this.onWaypoint = onWaypoint;
+    this.touch = touch;
     this.root = document.createElement('div');
     this.root.className = 'map-screen';
     this.root.hidden = true;
@@ -252,6 +254,8 @@ export class MapScreen {
       this.anchor = null;
       this.lastFrame = 0;
       this.clampToWorld();
+      // A phone opens on the map, not on a legend that covers most of it.
+      if (this.touch) this.legend.collapse();
       this.legend.refresh();
       this.dirty = true;
     }

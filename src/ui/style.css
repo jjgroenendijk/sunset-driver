@@ -29,7 +29,7 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .map-canvas:active { cursor: grabbing; }
 /* The legend is a menu of the map's layers, so it wears the menus' look (`title.css`). */
 .map-legend { position: absolute; top: 12px; right: 12px; bottom: 12px; width: 220px; display: flex; flex-direction: column; background: var(--it-ivory); border: var(--it-card-edge); border-radius: var(--it-card-radius); box-shadow: var(--it-card-shadow); color: var(--it-ink); font: .82rem var(--it-sans); }
-.map-legend-head { display: flex; align-items: center; justify-content: space-between; padding: .6rem .6rem .45rem .9rem; border-bottom: 1px solid rgba(35,28,22,.15); }
+.map-legend-head { cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: .6rem .6rem .45rem .9rem; border-bottom: 1px solid rgba(35,28,22,.15); }
 .map-legend-head h2 { margin: 0; font: 400 1.3rem/1.1 var(--it-hand); }
 .map-legend button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
 .map-legend-fold { font-size: 1.2rem !important; line-height: 1; padding: 0 .3rem; color: var(--it-muted) !important; }
