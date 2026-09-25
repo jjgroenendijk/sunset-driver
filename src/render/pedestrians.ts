@@ -17,7 +17,7 @@
  * Some of what a person does is decided here, since it changes nothing the
  * simulation measures. The hour thins the crowd of each zone as the weather
  * does (`crowd-hours.ts`). Rain puts up the umbrellas of those who carry one
- * and hunches the rest. Two people walking at each other step aside to pass
+ * and hunches the rest. Two people walking at each other step apart to pass
  * (`crowd-pass.ts`), and heads turn to a car driven fast past them.
  */
 import { DataTexture, FloatType, Group, Mesh, NearestFilter, RGBAFormat } from 'three';
@@ -142,7 +142,7 @@ export class PedestrianView {
       if (pose.hidden === true) continue;
       if (pose.x < minX || pose.x > maxX || pose.y < minY || pose.y > maxY) continue;
       this.turnHead(pose);
-      if (pose.speed > 0.3) this.pass.add(pose.x, pose.y, pose.heading, count);
+      this.pass.add(pose.x, pose.y, pose.heading, pose.speed, person.lead, count);
       this.write(count++, person.look, pose);
     }
     this.stepAside();
@@ -202,7 +202,7 @@ export class PedestrianView {
     pose.look = (pose.look ?? 0) * (1 - pull) + want * pull;
   }
 
-  /** Move each walker the step aside `crowd-pass.ts` gives them, to their right. */
+  /** Move each person the step aside `crowd-pass.ts` gives them: right of their way, or left when negative. */
   private stepAside(): void {
     const pass = this.pass;
     if (pass.count < 2) return;

@@ -3,22 +3,53 @@
  *
  * Every person walks a lane of their own, most of them on the right, so two
  * walking at each other mostly pass already. Some keep left, and company walks
- * abreast; when two of them meet head on, each steps a little to their own
- * right for the moment they pass, and back.
+ * abreast; when two of them meet head on, each steps away from the side the
+ * other stands on, keeps that room while they pass, and steps back after. A
+ * walker who comes up behind somebody slower, or at somebody standing still,
+ * steps round them alone. Two people standing, or walking the same way at one
+ * pace, move apart as they come closer than a body's width.
+ *
+ * Each steps away from the other, never to a fixed side: a person keeping
+ * left who stepped to their right would walk into the other one.
  *
  * This is drawing only. A person of the crowd is a function of the tick and
- * reads nobody else (`pedestrians.ts`), and the step is a few tens of
- * centimetres, less than anything the simulation measures a person by.
+ * reads nobody else (`pedestrians.ts`), and the step is less than a metre,
+ * less than anything the simulation measures a person by.
  */
 
-/** Metres apart two people start to step aside for each other. */
-const PASS_REACH = 1.8;
+/** Metres apart two people start to make room for each other. */
+const PASS_REACH = 2.2;
+
+/** Metres across their way two people want between them as they pass. */
+const CLEAR = 0.6;
+
+/** Metres apart two standing, or two walking side by side, start to move apart. */
+const NEAR = 0.9;
 
 /** Metres a person steps aside at most. */
-export const PASS_STEP = 0.32;
+export const PASS_STEP = 0.6;
+
+/** Metres past the other a passer keeps the whole room, and metres past by which it is let go. */
+const KEPT = 0.3;
+const PAST = 1.2;
+
+/** Metres before the other one the room is fully made. */
+const READY = 0.8;
 
 /** Cosine of the angle between two headings under which two people walk at each other. */
 const HEAD_ON = -0.5;
+
+/** Cosine under which two people walk the same way, one overtaking the other. */
+const SAME_WAY = 0.5;
+
+/** Metres per second faster a walker has to be to step round somebody ahead of them. */
+const OVERTAKE = 0.2;
+
+/** Metres across under which the other one stands dead ahead. */
+const TIE = 1e-6;
+
+/** Metres per second under which a person stands rather than walks. */
+const STILL = 0.3;
 
 /** The walkers of one frame, and the step each takes. The caller fills the first `count`. */
 export class CrowdPass {
@@ -26,9 +57,12 @@ export class CrowdPass {
   readonly x: Float64Array;
   readonly y: Float64Array;
   readonly heading: Float64Array;
+  readonly speed: Float64Array;
+  /** Who each one walks with: company never makes room for itself. */
+  readonly group: Int32Array;
   /** The instance each one was written to. */
   readonly index: Int32Array;
-  /** Metres right of their way each steps, written by {@link solve}. */
+  /** Metres right of their way each steps, left when negative, written by {@link solve}. */
   readonly step: Float64Array;
   private readonly order: number[] = [];
 
@@ -36,53 +70,101 @@ export class CrowdPass {
     this.x = new Float64Array(cap);
     this.y = new Float64Array(cap);
     this.heading = new Float64Array(cap);
+    this.speed = new Float64Array(cap);
+    this.group = new Int32Array(cap);
     this.index = new Int32Array(cap);
     this.step = new Float64Array(cap);
   }
 
-  /** Take a walker. Returns false once the pass is full. */
-  add(x: number, y: number, heading: number, index: number): boolean {
+  /** Take a person. Returns false once the pass is full. */
+  add(x: number, y: number, heading: number, speed: number, group: number, index: number): boolean {
     if (this.count >= this.x.length) return false;
     const i = this.count++;
     this.x[i] = x;
     this.y[i] = y;
     this.heading[i] = heading;
+    this.speed[i] = speed;
+    this.group[i] = group;
     this.index[i] = index;
     return true;
   }
 
-  /** Work out each walker's step, from everyone walking at them within {@link PASS_REACH}. */
+  /** Work out each person's step, from everyone they have to make room for within {@link PASS_REACH}. */
   solve(): void {
     const n = this.count;
-    const { x, y, heading, step, order } = this;
+    const { x, y, step, order } = this;
     step.fill(0, 0, n);
     order.length = n;
     for (let i = 0; i < n; i++) order[i] = i;
-    // Sorted along x, so each walker is held against only the ones within reach of it along x.
+    // Sorted along x, so each person is held against only the ones within reach of them along x.
     order.sort((a, b) => (x[a] as number) - (x[b] as number));
     for (let oi = 0; oi < n; oi++) {
       const i = order[oi] as number;
-      const ci = Math.cos(heading[i] as number);
-      const si = Math.sin(heading[i] as number);
       for (let oj = oi + 1; oj < n; oj++) {
         const j = order[oj] as number;
         const dx = (x[j] as number) - (x[i] as number);
         if (dx > PASS_REACH) break;
         const dy = (y[j] as number) - (y[i] as number);
-        const gap = Math.hypot(dx, dy);
-        if (gap >= PASS_REACH || gap < 1e-6) continue;
-        const cj = Math.cos(heading[j] as number);
-        const sj = Math.sin(heading[j] as number);
-        if (ci * cj + si * sj > HEAD_ON) continue;
-        // Only while each is still ahead of the other, fading as they draw level, so they drift back once past.
-        const ahead = Math.min((dx * ci + dy * si) / gap, (-dx * cj - dy * sj) / gap);
-        if (ahead <= 0) continue;
-        // Nearer the line between them, the more each needs to give.
-        const across = Math.abs(-dx * si + dy * ci);
-        const need = Math.min(1, 3 * ahead) * (1 - gap / PASS_REACH) * Math.max(0, 1 - across / (2 * PASS_STEP + 0.4));
-        step[i] = Math.min(PASS_STEP, (step[i] as number) + need * PASS_STEP);
-        step[j] = Math.min(PASS_STEP, (step[j] as number) + need * PASS_STEP);
+        if (dx * dx + dy * dy >= PASS_REACH * PASS_REACH || this.group[i] === this.group[j]) continue;
+        this.pair(i, j, dx, dy);
       }
     }
+    for (let i = 0; i < n; i++) step[i] = Math.max(-PASS_STEP, Math.min(PASS_STEP, step[i] as number));
+  }
+
+  /** Add what `i` and `j` owe each other to their steps. `(dx, dy)` runs from `i` to `j`. */
+  private pair(i: number, j: number, dx: number, dy: number): void {
+    const ci = Math.cos(this.heading[i] as number);
+    const si = Math.sin(this.heading[i] as number);
+    const cj = Math.cos(this.heading[j] as number);
+    const sj = Math.sin(this.heading[j] as number);
+    const vi = this.speed[i] as number;
+    const vj = this.speed[j] as number;
+    const facing = ci * cj + si * sj;
+    const walksI = vi >= STILL;
+    const walksJ = vj >= STILL;
+    if (walksI === walksJ && (!walksI || (facing > SAME_WAY && Math.abs(vi - vj) <= OVERTAKE))) {
+      // Two standing, or two walking the same way at one pace: they move apart as they come close.
+      const near = Math.min(1, (NEAR - Math.hypot(dx, dy)) / (NEAR - CLEAR));
+      if (near <= 0) return;
+      // Facing one way, a tie sends them to opposite hands; facing each other, each to their right.
+      const tie = facing > 0 ? -1 : 1;
+      this.give(i, dx, dy, ci, si, near / 2, false, 1);
+      this.give(j, -dx, -dy, cj, sj, near / 2, false, tie);
+      return;
+    }
+    let gi = walksI && walksJ && facing < HEAD_ON;
+    let gj = gi;
+    if (!gi) {
+      // Somebody who stands, or walks slower the same way, is stepped round by the one coming up.
+      gi = walksI && (!walksJ || (facing > SAME_WAY && vi - vj > OVERTAKE));
+      gj = walksJ && (!walksI || (facing > SAME_WAY && vj - vi > OVERTAKE));
+    }
+    const share = gi && gj ? 0.5 : 1;
+    if (gi) this.give(i, dx, dy, ci, si, share, true, 1);
+    if (gj) this.give(j, -dx, -dy, cj, sj, share, true, 1);
+  }
+
+  /**
+   * Step person `k`, heading `(c, s)`, away from somebody `(dx, dy)` off,
+   * until the two are {@link CLEAR} apart across `k`'s way. A passer makes
+   * the room as they come up to the other and lets it go once past. `tie`
+   * is the hand they take, +1 the right, when the other stands dead ahead.
+   */
+  private give(k: number, dx: number, dy: number, c: number, s: number, share: number, passing: boolean, tie: number): void {
+    // How far the other stands ahead, and to the right.
+    const along = dx * c + dy * s;
+    const across = -dx * s + dy * c;
+    const need = CLEAR - Math.abs(across);
+    if (need <= 0) return;
+    let weight = 1;
+    if (passing) {
+      if (along > 0) weight = Math.min(1, (PASS_REACH - along) / (PASS_REACH - READY));
+      else weight = Math.max(0, Math.min(1, (PAST + along) / (PAST - KEPT)));
+    }
+    // Away from the other: to the left of somebody on the right. The tie has a margin: the sine of
+    // a heading of pi is not quite 0, so two facing each other would read it apart.
+    const away = across > TIE ? -1 : across < -TIE ? 1 : tie;
+    this.step[k] = (this.step[k] as number) + away * need * share * weight;
   }
 }
