@@ -68,29 +68,18 @@ function pinClusterGrid(renderer: WebGPURenderer, width: number, height: number,
 export const MIN_RENDER_SCALE = 0.5;
 
 /**
- * The most pixels the full tier draws on a high-density screen (issue #639).
+ * The densest a frame is drawn: one pixel per CSS pixel (issue #714).
  *
  * The GPU cost of a frame is per pixel. An M1 at 1600×900 and a pixel ratio of
  * 1 already spends most of the frame on the GPU, and at a Retina ratio of 2 the
  * frame took 50 ms. The tiers then fell all the way to the low one, which gives
- * up the plants, the lamps and the bloom as well as the pixels. So a screen
- * denser than one pixel per CSS pixel is drawn at a ratio that keeps the frame
- * near this many pixels, and never under one pixel per CSS pixel. A screen of
- * one pixel per CSS pixel is drawn at its own size, whatever it is.
+ * up the plants, the lamps and the bloom as well as the pixels.
  */
-export const PIXEL_BUDGET = 1920 * 1080;
+const MAX_PIXEL_RATIO = 1;
 
-/** The densest a frame is drawn: past 2 the eye no longer tells the difference. */
-const MAX_PIXEL_RATIO = 2;
-
-/**
- * The pixel ratio a page of `width` × `height` CSS pixels is drawn at by the
- * full tier, before any render scale.
- */
-export function basePixelRatioFor(devicePixelRatio: number, width: number, height: number): number {
-  const device = Math.min(devicePixelRatio, MAX_PIXEL_RATIO);
-  if (device <= 1 || width <= 0 || height <= 0) return device;
-  return clamp(Math.sqrt(PIXEL_BUDGET / (width * height)), 1, device);
+/** The pixel ratio a page is drawn at by the full tier, before any render scale. */
+export function basePixelRatioFor(devicePixelRatio: number): number {
+  return Math.min(devicePixelRatio, MAX_PIXEL_RATIO);
 }
 
 /**
@@ -117,10 +106,10 @@ export function setRenderScale(renderer: WebGPURenderer, scale: number): void {
 
 /**
  * Size the page's renderer for a window of a new size. The base pixel ratio
- * follows the size, since {@link PIXEL_BUDGET} is a number of pixels.
+ * is read again, since a window dragged to another screen changes it.
  */
 export function resizeRenderer(renderer: WebGPURenderer, width: number, height: number): void {
-  basePixelRatio.set(renderer, basePixelRatioFor(window.devicePixelRatio, width, height));
+  basePixelRatio.set(renderer, basePixelRatioFor(window.devicePixelRatio));
   setRenderScale(renderer, renderScale.get(renderer) ?? 1);
   renderer.setSize(width, height, false);
 }
@@ -189,7 +178,7 @@ export async function createRenderer(canvas: HTMLCanvasElement, trackTimestamp =
   await renderer.init();
   // The upload record exists from `init` on.
   uploadBatchesWith(renderer);
-  const base = basePixelRatioFor(window.devicePixelRatio, window.innerWidth, window.innerHeight);
+  const base = basePixelRatioFor(window.devicePixelRatio);
   basePixelRatio.set(renderer, base);
   setRenderScale(renderer, 1);
   renderer.setSize(window.innerWidth, window.innerHeight, false);

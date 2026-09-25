@@ -41,12 +41,10 @@ post chain and the colour grade in `docs/post.md`. The look all of it must keep 
   the player's cap of 60 or 30 fps, 10 fps behind the pause menu and 30 fps behind the title screen.
   At 30 fps every frame measures 33 ms, so `QualityMonitor.cap` judges against the cap's interval
   when it is longer than the budget. Otherwise the monitor would walk a 30 fps player down to low.
-- **A dense screen is drawn near `PIXEL_BUDGET`, not at its full density.** The render scale is a
-  share of the base pixel ratio, and the base on a Retina screen was 2. An M1 then took 50 ms a
-  frame, and the monitor walked to low: about 9.5 s of missed windows, and the plants, the lamps
-  and the bloom lost to buy back pixels. `basePixelRatioFor` (`renderer.ts`) holds the full tier
-  near 1920×1080 pixels and never under one pixel per CSS pixel, and `resizeRenderer` works it out
-  again for a new window. A screen of one pixel per CSS pixel is drawn at its own size.
+- **A dense screen is drawn at one pixel per CSS pixel.** The render scale is a share of the base
+  pixel ratio, and the base on a Retina screen was 2. An M1 then took 50 ms a frame, and the monitor
+  walked to low: the plants, the lamps and the bloom lost to buy back pixels. `MAX_PIXEL_RATIO`
+  (`renderer.ts`) is 1 (issue #714), and the shop preview uses the same cap.
 - `graphics.ts` is the Graphics menu's model. With Auto off, `tierOf` builds a tier from the
   player's knobs; it answers the preset's own tier object when the knobs match one. A knob is kept
   as an index into its table, so `readGraphics` can check it. A custom tier can ask for bloom
