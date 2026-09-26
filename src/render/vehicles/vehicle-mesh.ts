@@ -170,12 +170,28 @@ export interface Door {
   height: number;
 }
 
+/**
+ * The two front doors of each spec, driver's side first. Finding one builds
+ * every box of the vehicle, about a millisecond, and the body getting in reads
+ * the door several times a frame.
+ */
+const doorsOf = new WeakMap<VehicleSpec, readonly [Door | undefined, Door | undefined]>();
+
 /** The front door on the side `side` stands on, -1 the driver's and +1 the other. */
 export function doorOf(spec: VehicleSpec, side: number): Door | undefined {
-  const leaf = side < 0 ? 0 : 1;
-  const part = vehicleBoxes(spec).find((b) => b.hinge?.leaf === leaf && b.hinge.axis === 'y' && b.glass !== true);
-  if (part === undefined) return undefined;
-  return { hingeX: part.x + part.length / 2, length: part.length, z: part.z, y: part.y, height: part.height };
+  let doors = doorsOf.get(spec);
+  if (doors === undefined) {
+    const boxes = vehicleBoxes(spec);
+    const leafDoor = (leaf: number): Door | undefined => {
+      const part = boxes.find((b) => b.hinge?.leaf === leaf && b.hinge.axis === 'y' && b.glass !== true);
+      if (part === undefined) return undefined;
+      return { hingeX: part.x + part.length / 2, length: part.length, z: part.z, y: part.y, height: part.height };
+    };
+    doors = [leafDoor(0), leafDoor(1)];
+    doorsOf.set(spec, doors);
+  }
+  const door = doors[side < 0 ? 0 : 1];
+  return door === undefined ? undefined : { ...door };
 }
 
 /**
