@@ -99,11 +99,22 @@ function findCrossings(hf: Heightfield, layout: TerrainLayout, noise: CoastNoise
 /** The crossing between islands `i` and `j`, or undefined where no chord bridges two islands. */
 function crossingBetween(hf: Heightfield, layout: TerrainLayout, noise: CoastNoise, graded: GradedLand, i: number, j: number): Crossing | undefined {
   let best: Found | undefined;
-  for (const pair of cellPairs(layout, i, j).slice(0, CELL_PAIRS)) {
-    const found = searchLine(hf, layout, noise, graded, i, j, pair.from, pair.to);
-    if (found === undefined) continue;
-    if (best === undefined || beats(found, best, worth)) best = found;
-  }
+  const search = (pairs: readonly { from: Site; to: Site }[], joining = false): void => {
+    for (const pair of pairs) {
+      const found = searchLine(hf, layout, noise, graded, i, j, pair.from, pair.to);
+      if (found === undefined || (joining && !found.straddles)) continue;
+      if (best === undefined || beats(found, best, worth)) best = found;
+    }
+  };
+  search(cellPairs(layout, i, j).slice(0, CELL_PAIRS));
+  // The middle of a cell can stand in the sea: a thin island's cell is wider
+  // than the land it leaves, and a line to it runs out into the water before
+  // it reaches the island. The island's own site stands on its land, so the
+  // lines between the two sites and the cells are searched as well before
+  // the pair is given up (issue #720, seed 1799071266). Only a chord that
+  // joins the two is taken there, so no pair gains a crossing it did not
+  // need.
+  if (best === undefined) search(sitePairs(layout, i, j), true);
   if (best === undefined) return undefined;
   const { from, to } = best;
   // The islands the chord reached, not the pair it was searched for: where
@@ -134,6 +145,17 @@ function cellPairs(layout: TerrainLayout, i: number, j: number): { from: Site; t
     if (Math.abs(mx) >= half || Math.abs(my) >= half) pairs.splice(k, 1);
   }
   return pairs;
+}
+
+/** The pairs of {@link cellPairs} that take the site of one island or of both in place of a cell. */
+function sitePairs(layout: TerrainLayout, i: number, j: number): { from: Site; to: Site }[] {
+  const a = layout.islands[i] as Island;
+  const b = layout.islands[j] as Island;
+  const pairs: { from: Site; to: Site }[] = [{ from: a, to: b }];
+  for (const to of b.cells ?? []) pairs.push({ from: a, to });
+  for (const from of a.cells ?? []) pairs.push({ from, to: b });
+  const half = layout.size / 2 - layout.seaMargin;
+  return pairs.filter((pair) => Math.abs((pair.from.x + pair.to.x) / 2) < half && Math.abs((pair.from.y + pair.to.y) / 2) < half);
 }
 
 /** The best chord across the water between islands `i` and `j`, searched along the line from one site to the other. */
