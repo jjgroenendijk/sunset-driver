@@ -452,7 +452,7 @@ function layLeg(lap: Lap, i: number): void {
   let clear: number | undefined;
   if (red || tram) {
     hold = holdOf(lap, i, edge, approach);
-    if (guarded) clear = release(signals, guard, approach, next, sync, arrive, toLineFrom(lap, i, edge, approach, hold), driver);
+    if (guarded) clear = releaseAt(lap, i, edge, approach, hold, call, arrive);
   }
   if (hold === undefined || (!red && clear === undefined)) {
     // Driven in two at the line, so the drive over it starts on the tick
@@ -484,14 +484,26 @@ function holdOf(lap: Lap, i: number, edge: RoadEdge, approach: SignalApproach): 
   return { on: edge, halt: approach.stop - queued, spilt: false };
 }
 
+/** The tick a vehicle held by a tram at the light of leg `i` pulls away on, as `release` finds it. */
+function releaseAt(lap: Lap, i: number, edge: RoadEdge, approach: SignalApproach, hold: Hold, call: Call, arrive: number): number | undefined {
+  const { signals, guard, sync, driver, steps } = lap;
+  // It pulls away no sooner than it can stand at its place in the queue, which
+  // braking to a halt can make later than it would have reached the line.
+  const standing = hold.spilt ? arrive : Math.max(arrive, steps.tick + legTicks(edge, 0, hold.halt, call, driver, lap.into(i), 0) - driver.react);
+  const next = lap.turned[i + 1] as number;
+  return release(signals, guard as TramGuard, approach, next, sync, { arrive, standing }, toLineFrom(lap, i, edge, approach, hold), driver);
+}
+
 /** The ticks from pulling away at a hold to crossing the line of leg `i`. */
 function toLineFrom(lap: Lap, i: number, edge: RoadEdge, approach: SignalApproach, hold: Hold): number {
   const { on, halt } = hold;
   const driver = lap.driver;
-  return (
-    driver.react +
-    (hold.spilt ? share(on, on.length - halt, driver, 0, lap.into(i)) + share(edge, approach.stop, driver, lap.into(i)) : share(edge, approach.stop - halt, driver, 0))
-  );
+  // As `overLine` lays it: up to the speed it crosses the line at.
+  const from = hold.spilt ? 0 : halt;
+  const enter = hold.spilt ? lap.into(i) : 0;
+  const line = throughSpeed(topOf(edge, driver), enter, approach.stop - from, lap.out(i), edge.length - approach.stop);
+  const before = hold.spilt ? share(on, on.length - halt, driver, 0, lap.into(i)) : 0;
+  return driver.react + before + share(edge, approach.stop - from, driver, enter, line);
 }
 
 /**
@@ -520,7 +532,8 @@ function waitAtLight(lap: Lap, i: number, edge: RoadEdge, approach: SignalApproa
  * The tick of the lap a vehicle held at a light pulls away on, where a tram
  * may cross its turn: the first tick from `arrive` that is green and brings it
  * to the line `toLine` ticks later with no tram in the junction and on a
- * colour it may cross on. Undefined where no such tick comes within two
+ * colour it may cross on, and no sooner than `standing`, when it can be at
+ * rest in its place. Undefined where no such tick comes within two
  * cycles, which is a turn the windows leave no room for.
  */
 function release(
@@ -529,10 +542,11 @@ function release(
   approach: SignalApproach,
   next: number,
   sync: number,
-  arrive: number,
+  reach: { arrive: number; standing: number },
   toLine: number,
   driver: Driver,
 ): number | undefined {
+  const { arrive, standing } = reach;
   const green = arrive + mod(signals.greenStart(approach) - sync - arrive, SIGNAL_CYCLE);
   const windows = guard.windows(approach.edge, next);
   if (windows.length === 0) return green;
@@ -545,14 +559,14 @@ function release(
   };
   // Pulling away on the green, or on the tick that brings the vehicle to the
   // line as a window closes, over two cycles.
-  const candidates = [arrive, green, green + SIGNAL_CYCLE];
+  const candidates = [standing, green, green + SIGNAL_CYCLE];
   for (let w = 0; w < windows.length; w += 2) {
     const end = (windows[w] as number) + (windows[w + 1] as number);
     const first = arrive + mod(end - toLine - sync - arrive, SIGNAL_CYCLE);
     candidates.push(first, first + SIGNAL_CYCLE);
   }
   candidates.sort((a, b) => a - b);
-  for (const at of candidates) if (clears(at)) return at;
+  for (const at of candidates) if (at >= standing && clears(at)) return at;
   return undefined;
 }
 
