@@ -119,6 +119,14 @@ writes each shard's durations into its job summary.
 Issue #88 tracks the wall clock the quick tier misses its 15 s by on a four-core session, and
 issue #198 what the city filling the map added to both tiers.
 
+Issue #707 measured it again on 26 September 2026, on an Apple M1 of 8 cores at a load average of
+about 24. Main (3f9b785) read 178 and 178 CPU-seconds, and the same tests with five cuts read 144
+and 153. The cuts: a vehicle spec's front doors are cached rather than rebuilt at every call,
+the quick tier reads one layered seed instead of two, the fire engine's run stops at its first
+touch, the map suites generate world 1 once, and the weather check asserts once per seed. The
+dearest files left are `give-way`, `streaming` and `sim-traffic`, at 8 to 10 s each, all of it
+ticks of a scenario rather than seeds.
+
 The sweep's thirteen check files are the vitest project `sweep`, which `vitest.config.ts` holds to
 one worker. Vitest hands a project's files to one worker in a single request when it may run only
 one and does not isolate them, so the files share a module registry and `seed-fixture.ts` generates
