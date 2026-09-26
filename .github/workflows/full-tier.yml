@@ -1,8 +1,8 @@
 name: Full tier
 
 # A reusable workflow: `ci.yml` calls it on every pull request. It runs
-# `verify:full` over five runners: four shares of the seed sweep's 500 seeds,
-# and every other file with the typecheck and the lints. Generating a world is
+# `verify:full` over six runners: four shares of the seed sweep's 500 seeds,
+# every other file, and the typecheck with the lints. Generating a world is
 # most of what the sweep costs and the pool already uses every core of one
 # runner, so the only way under the 2 min each job is given is more runners.
 # On Actions vitest adds its `github-actions` reporter, which writes the job
@@ -56,9 +56,10 @@ jobs:
             exit 1
           fi
 
-  # Every other file, so a new test file runs here without a change.
-  other:
-    name: other
+  # The typecheck and the lints. The smell lint builds the TypeScript program and
+  # costs about 35 s cold, so the lints have a runner of their own.
+  lints:
+    name: lints
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -66,4 +67,33 @@ jobs:
       - uses: ./.github/actions/setup
 
       - run: npm run typecheck && npm run lint && npm run lint:size && npm run lint:dead && npm run lint:deps && npm run lint:smells
+
+  # Every other file, so a new test file runs here without a change.
+  unit:
+    name: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+
       - run: npm run test:full -- --project unit
+
+  # One status for the lints and the other files, so the ruleset keeps asking
+  # for the one check name `full-tier / other`.
+  other:
+    name: other
+    needs: [lints, unit]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          LINTS: ${{ needs.lints.result }}
+          UNIT: ${{ needs.unit.result }}
+        run: |
+          if [ "$LINTS" != success ] || [ "$UNIT" != success ]; then
+            echo "lints: $LINTS, unit: $UNIT. The failing check holds the output:"
+            echo "node scripts/pr-wait.ts <pr> --all."
+            exit 1
+          fi
