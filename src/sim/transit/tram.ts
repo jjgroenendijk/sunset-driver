@@ -23,11 +23,14 @@ import type { District, TramDescription } from '../../world/types.ts';
 import { TICK_RATE } from '../clock.ts';
 import { lookOf, type PedestrianLook } from '../crowd/pedestrian-look.ts';
 import { heightOff, RouteSampler, type RouteLegs, type RoutePoint } from '../traffic/route-sample.ts';
-import { layQueue, queueMisses, waitingAt, writeQueue, type StopQueue, type WaitingPassenger } from './stop-queue.ts';
+import { queueMisses, waitingAt, type WaitingPassenger } from './stop-queue.ts';
+import { layCrowd, setDoors, writeCrowd, type CrowdMoment, type StopCrowd } from './stop-crowd.ts';
+import { tramCarPlan, tramDoors } from './tram-doors.ts';
 import { SIGNAL_CYCLE, type TrafficSignals } from '../traffic/signals.ts';
 import type { AmbientPose, TrafficRoads } from '../traffic/traffic.ts';
 import { legAt, type Tour } from '../traffic/traffic-timing.ts';
 import { timeTram, type TramCall } from './tram-timing.ts';
+import type { TramMotion } from './tram-motion.ts';
 
 export { DWELL, TRAM_CLEAR, type TramCall } from './tram-timing.ts';
 export type { WaitingPassenger } from './stop-queue.ts';
@@ -94,14 +97,16 @@ export const ARRIVAL_TICKS = 25 * TICK_RATE;
 export const BOARD_TICKS = 12 * TICK_RATE;
 /** Ticks a tram's doors take to slide open, and to shut again before it pulls away. */
 const DOOR_TICKS = Math.round(1.5 * TICK_RATE);
-/** Metres between two people waiting in a line along the platform. */
-const QUEUE_STEP = 2.2;
 /**
  * Metres right of the centreline the people at a stop stand: the middle of the
  * island platform, which the traffic gives up (`laneOffset` in `traffic.ts`)
  * and `render/transit/tram-stops.ts` draws.
  */
-const PLATFORM_STAND = TRAM_TRACK + 1.45 + TRAM_LANE.platform / 2;
+const PLATFORM_STAND = TRAM_TRACK + TRAM_LANE.platformInner + TRAM_LANE.platform / 2;
+/** Metres either side of the middle of the platform a person stands, clear of both kerbs. */
+const PLATFORM_SPREAD = TRAM_LANE.platform / 2 - 0.35;
+/** The fleets in the order a stop's crowd keeps their doors. */
+const FLEETS: readonly TramDesign[] = ['heritage', 'modern'];
 
 /**
  * Where a stop's island platform stands: the middle of it, on the track, with
@@ -140,10 +145,10 @@ export interface TramBell {
   y: number;
 }
 
-/** One stop of the loop and the line of people waiting at it. */
+/** One stop of the loop and the people waiting at it. */
 interface TramStop {
   call: TramCall;
-  queue: StopQueue;
+  crowd: StopCrowd;
   /** The zone of the district the stop stands in, which decides the fleet that starts there. */
   zone: District['zone'];
   /** What the stop is called, which is the name of the district it stands in. */
@@ -155,6 +160,8 @@ export class TramLine {
   readonly trams: number;
   /** The timing every tram drives. Empty when the world has no loop. */
   readonly tour: Tour | undefined;
+  /** Where the front is inside each step of {@link tour}. */
+  private readonly motion: TramMotion | undefined;
   /** The calls the loop makes, in stop order. */
   readonly calls: readonly TramCall[];
   private readonly bell: Uint8Array;
@@ -169,6 +176,8 @@ export class TramLine {
   private readonly point: RoutePoint;
   private readonly behind: RoutePoint;
   private readonly ahead: RoutePoint;
+  /** Scratch a stop's people are read through, so a frame allocates nothing. */
+  private readonly moment: CrowdMoment = { people: 0, since: 0, boarding: -1, fleet: 0, opening: DOOR_TICKS, time: 0, arrival: ARRIVAL_TICKS };
   /** Scratch the noise walk reads poses into, so a frame allocates nothing. */
   private readonly noiseAt: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
 
@@ -183,6 +192,7 @@ export class TramLine {
     if (tram.edges.length < 2 || tram.stops.length === 0) {
       this.trams = 0;
       this.tour = undefined;
+      this.motion = undefined;
       this.bell = new Uint8Array(0);
       this.calls = [];
       this.phases = new Int32Array(0);
@@ -191,6 +201,7 @@ export class TramLine {
     const crossings = tram.crossings.map((crossing) => crossing.node);
     const timing = timeTram(graph, tram.edges, TRAM_LENGTH, tram.stops, crossings, signals);
     this.tour = timing.tour;
+    this.motion = timing.motion;
     this.bell = timing.bell;
     this.calls = timing.calls;
     const period = timing.tour.period;
@@ -227,19 +238,13 @@ export class TramLine {
     return mod(time - tour.sync + (this.phases[tram] as number), tour.period);
   }
 
-  /** Metres round the loop the front of a tram stands at. */
+  /** Metres round the loop the front of a tram stands at: it eases out of a halt and into the next. */
   frontAt(tram: number, time: number): number {
-    const tour = this.tour as Tour;
-    const at = this.loopTick(tram, time);
-    const step = legAt(tour.stepStart, at);
-    const from = tour.stepFrom[step] as number;
-    const into = (at - (tour.stepStart[step] as number)) / (tour.stepTicks[step] as number);
-    return (tour.startDistance[tour.stepLeg[step] as number] as number) + from + Math.min(1, into) * ((tour.stepTo[step] as number) - from);
+    return (this.motion as TramMotion).frontAt(this.loopTick(tram, time));
   }
 
   /** The pose of one car of a tram at a moment. `height` is the rail, `y` is the map's. */
   carPose(tram: number, car: number, time: number, out: AmbientPose): AmbientPose {
-    const tour = this.tour as Tour;
     const middle = this.frontAt(tram, time) - CAR_LENGTH / 2 - car * (CAR_LENGTH + CAR_GAP);
     const behind = this.track(middle - BOGIE, this.behind);
     const ahead = this.track(middle + BOGIE, this.ahead);
@@ -247,9 +252,7 @@ export class TramLine {
     out.y = (behind.y + ahead.y) / 2;
     out.height = (behind.height + ahead.height) / 2;
     out.heading = atan2(ahead.y - behind.y, ahead.x - behind.x);
-    const at = this.loopTick(tram, time);
-    const step = legAt(tour.stepStart, at);
-    out.speed = (((tour.stepTo[step] as number) - (tour.stepFrom[step] as number)) / (tour.stepTicks[step] as number)) * TICK_RATE;
+    out.speed = (this.motion as TramMotion).speedAt(this.loopTick(tram, time));
     return out;
   }
 
@@ -309,28 +312,30 @@ export class TramLine {
    */
   passengers(minX: number, minY: number, maxX: number, maxY: number, tick: number, out: WaitingPassenger[]): number {
     let count = 0;
-    for (const stop of this.stops) {
-      if (queueMisses(stop.queue, minX, minY, maxX, maxY)) continue;
-      const at = Math.floor(tick);
-      count = writeQueue(stop.queue, this.waiting(stop.call.stop, at), out, count, this.boarding(stop.call, tick));
-    }
-    return count;
-  }
-
-  /**
-   * How far the queue at a stop has moved up towards the doors, 0 to 1. It is
-   * how far into the boarding a tram standing there is, and 0 where none is.
-   */
-  private boarding(call: TramCall, time: number): number {
     const tour = this.tour;
     if (tour === undefined) return 0;
-    const dwell = call.depart - call.arrive;
-    let moved = 0;
-    for (let k = 0; k < this.trams; k++) {
-      const into = mod(this.loopTick(k, time) - call.arrive, tour.period);
-      if (into < dwell) moved = Math.max(moved, Math.min(1, into / BOARD_TICKS));
+    for (const stop of this.stops) {
+      if (queueMisses(stop.crowd, minX, minY, maxX, maxY)) continue;
+      const call = stop.call;
+      const dwell = call.depart - call.arrive;
+      const moment = this.moment;
+      moment.since = Infinity;
+      moment.boarding = -1;
+      moment.time = tick;
+      for (let k = 0; k < this.trams; k++) {
+        const at = this.loopTick(k, tick);
+        moment.since = Math.min(moment.since, mod(at - call.depart, tour.period));
+        const into = mod(at - call.arrive, tour.period);
+        if (into >= dwell) continue;
+        moment.boarding = into;
+        moment.fleet = FLEETS.indexOf(this.design(k));
+      }
+      // Those boarding are the ones who had come by the time the tram arrived.
+      const gathered = moment.boarding < 0 ? moment.since : moment.since - moment.boarding;
+      moment.people = Math.min(STOP_CAP, Math.floor(Math.max(0, gathered) / ARRIVAL_TICKS));
+      count = writeCrowd(stop.crowd, moment, out, count);
     }
-    return moved;
+    return count;
   }
 
   /** What the stop at a call is called. */
@@ -423,15 +428,31 @@ export class TramLine {
     return at;
   }
 
-  /** One stop and its queue: a line along the pavement back from where the tram calls, facing the road. */
+  /** One stop and the people who wait on its platform, spread about it rather than in a line. */
   private stopOf(seed: number, call: TramCall, districts: readonly Pick<District, 'id' | 'zone' | 'name'>[], tram: TramDescription): TramStop {
     const place = tram.stops[call.stop] as TramDescription['stops'][number];
     const district = districts.find((d) => d.id === place.district);
     const zone = district?.zone ?? 'inner';
     const looks: PedestrianLook[] = [];
     for (let i = 0; i < STOP_CAP; i++) looks.push(lookOf(zone, rngFor(seed, 0, Subsystem.Tram, hashInts(call.stop, i))));
-    const queue = layQueue(this.sampler, this.tour as RouteLegs, call.front - CAR_LENGTH / 2, QUEUE_STEP, looks, this.point, PLATFORM_STAND);
-    return { call, queue, zone, name: district?.name ?? 'Terminus' };
+    const frame = { route: this.tour as RouteLegs, middle: call.front - TRAM_LENGTH / 2, length: TRAM_LENGTH, across: PLATFORM_STAND, spread: PLATFORM_SPREAD };
+    const crowd = layCrowd(this.sampler, frame, looks, rngFor(seed, 1, Subsystem.Tram, call.stop), this.point);
+    for (const design of FLEETS) setDoors(crowd, this.doorways(call, design));
+    return { call, crowd, zone, name: district?.name ?? 'Terminus' };
+  }
+
+  /** Where a passenger steps up into each doorway of a tram of a design standing at a call: `x`, `y` pairs. */
+  private doorways(call: TramCall, design: TramDesign): number[] {
+    const points: number[] = [];
+    for (let car = 0; car < TRAM_CARS; car++) {
+      const plan = tramCarPlan(design, car, TRAM_CARS);
+      const middle = call.front - CAR_LENGTH / 2 - car * (CAR_LENGTH + CAR_GAP);
+      for (const door of tramDoors(design, plan.module)) {
+        const at = this.track(middle + (plan.reversed ? -door : door), this.point);
+        points.push(at.x + at.rightX * CAR_HALF_WIDTH, at.y + at.rightY * CAR_HALF_WIDTH);
+      }
+    }
+    return points;
   }
 }
 

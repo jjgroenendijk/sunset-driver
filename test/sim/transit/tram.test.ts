@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { tramCarPlan } from '../../../src/render/transit/tram-mesh.ts';
-import { SIGNAL_CYCLE, TrafficSignals } from '../../../src/sim/traffic/signals.ts';
+import { SIGNAL_CYCLE, STOP_BACK, TrafficSignals } from '../../../src/sim/traffic/signals.ts';
 import { laneOffset, type AmbientPose } from '../../../src/sim/traffic/traffic.ts';
 import { QUEUE_CLEAR } from '../../../src/sim/traffic/traffic-timing.ts';
-import { ARRIVAL_TICKS, BOARD_TICKS, CAR_GAP, CAR_HALF_WIDTH, CAR_LENGTH, DWELL, STOP_CAP, TRAM_CARS, TRAM_CLEAR, TRAM_TRACK, TramLine } from '../../../src/sim/transit/tram.ts';
+import { ARRIVAL_TICKS, BOARD_TICKS, CAR_GAP, CAR_HALF_WIDTH, CAR_LENGTH, DWELL, STOP_CAP, TRAM_CARS, TRAM_CLEAR, TRAM_LENGTH, TRAM_TRACK, TramLine } from '../../../src/sim/transit/tram.ts';
 import type { RoadEdge } from '../../../src/world/roads/graph.ts';
 import { TIERS, TRAM_LANE } from '../../../src/world/roads/tiers.ts';
 import { COUNTDOWN_CAP } from '../../../src/sim/transit/tram.ts';
 import { CELL_HEIGHT, CELL_WIDTH, countdownCell, destinationCell, stopNameCell, tramSignAtlas } from '../../../src/render/transit/tram-sign-art.ts';
+import { PLATFORM_BEHIND } from '../../../src/sim/transit/tram-stop-place.ts';
 import { RING, ring } from '../../support/tram-ring.ts';
 
 describe('the tram (spec section 13.2)', () => {
@@ -47,6 +48,8 @@ describe('the tram (spec section 13.2)', () => {
       const approach = signals.approachOf(tour.edges[leg] as number);
       const leaving = step > 0 && tour.stepFrom[step] === tour.stepTo[step - 1] && (tour.stepTo[step] as number) > (tour.stepFrom[step] as number);
       if (approach === undefined || !leaving || tour.stepLeg[step - 1] !== leg) continue;
+      // A drive away from a stop short of the light is not yet at the line.
+      if (Math.abs((tour.stepFrom[step] as number) - (approach.stop + STOP_BACK)) > 2) continue;
       for (let lap = 0; lap < 3; lap++) {
         const tick = (tour.stepStart[step] as number) + tour.sync + lap * tour.period;
         expect(signals.light(approach, tick), `step ${step}`).toBe('green');
@@ -65,9 +68,9 @@ describe('the tram (spec section 13.2)', () => {
       const at = (tick: number): number => line.frontAt(0, tick - line.loopTick(0, 0));
       const standing = at(call.arrive);
       for (const into of [1, DWELL / 2, call.depart - call.arrive - 1]) expect(at(call.arrive + into)).toBeCloseTo(standing, 9);
-      // The stop is at a corner of the ring, and the front halts short of it.
+      // The stop is named for a corner of the ring, and its platform stands just clear of the corner.
       const front = line.carPose(0, 0, call.arrive - line.loopTick(0, 0), { ...pose });
-      expect(Math.hypot(front.x - stop.x, front.y - stop.y)).toBeLessThan(40);
+      expect(Math.hypot(front.x - stop.x, front.y - stop.y)).toBeLessThan(PLATFORM_BEHIND + TRAM_LENGTH + 5);
       const depart = mod(call.depart, tour.period) - line.loopTick(0, 0);
       expect(line.bells(depart).map((bell) => bell.tram)).toContain(0);
       expect(line.bells(depart + 1)).toEqual([]);
@@ -164,7 +167,8 @@ describe('the tram (spec section 13.2)', () => {
     const stop = tram.stops[1] as (typeof tram.stops)[number];
     expect(line.passengers(stop.x - 60, stop.y - 60, stop.x + 60, stop.y + 60, tickOf(call.arrive), out)).toBe(full);
     for (const person of out.slice(0, full)) {
-      expect(person.pose.gait).toBe('stand');
+      expect(person.pose.speed).toBe(0);
+      expect(['stand', 'phone', 'fold', 'smoke', 'talk']).toContain(person.pose.gait);
       expect(Math.hypot(person.pose.x - stop.x, person.pose.y - stop.y)).toBeLessThan(60);
     }
   });

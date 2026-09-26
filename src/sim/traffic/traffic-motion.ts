@@ -62,21 +62,22 @@ export function turnSpeed(angle: number, window: number): number {
 /**
  * Ticks a drive of `metres` takes on top of driving it all at `top`, when it
  * enters at `enter` and leaves at `leave` metres per second. Both are capped at
- * `top`. A drive too short to reach `top` peaks lower.
+ * `top`. A drive too short to reach `top` peaks lower. `rate` is the
+ * acceleration: {@link ACCEL} for a car, less for a tram.
  */
-export function rampTicks(metres: number, top: number, enter: number, leave: number): number {
+export function rampTicks(metres: number, top: number, enter: number, leave: number, rate = ACCEL): number {
   if (metres <= 0 || top <= 0) return 0;
   if (Math.min(enter, leave) >= top) return 0;
   // Neither end faster than the other end reaches over the drive, as `throughSpeed` holds them.
-  const vs = Math.min(enter, top, Math.sqrt(Math.min(leave, top) ** 2 + 2 * ACCEL * metres));
-  const ve = Math.min(leave, top, Math.sqrt(vs * vs + 2 * ACCEL * metres));
-  const ramps = (2 * top * top - vs * vs - ve * ve) / (2 * ACCEL);
+  const vs = Math.min(enter, top, Math.sqrt(Math.min(leave, top) ** 2 + 2 * rate * metres));
+  const ve = Math.min(leave, top, Math.sqrt(vs * vs + 2 * rate * metres));
+  const ramps = (2 * top * top - vs * vs - ve * ve) / (2 * rate);
   let seconds: number;
   if (ramps <= metres) {
-    seconds = metres / top + ((top - vs) ** 2 + (top - ve) ** 2) / (2 * ACCEL * top);
+    seconds = metres / top + ((top - vs) ** 2 + (top - ve) ** 2) / (2 * rate * top);
   } else {
-    const peak = Math.sqrt(ACCEL * metres + (vs * vs + ve * ve) / 2);
-    seconds = peak < Math.max(vs, ve) ? (2 * metres) / (vs + ve) : (2 * peak - vs - ve) / ACCEL;
+    const peak = Math.sqrt(rate * metres + (vs * vs + ve * ve) / 2);
+    seconds = peak < Math.max(vs, ve) ? (2 * metres) / (vs + ve) : (2 * peak - vs - ve) / rate;
   }
   return Math.max(0, Math.ceil((seconds - metres / top) * TICK_RATE - 1e-9));
 }
@@ -87,10 +88,10 @@ export function rampTicks(metres: number, top: number, enter: number, leave: num
  * can reach from `enter` in the `before` metres behind, or brake down to
  * `leave` from in the `after` metres ahead.
  */
-export function throughSpeed(top: number, enter: number, before: number, leave: number, after: number): number {
+export function throughSpeed(top: number, enter: number, before: number, leave: number, after: number, rate = ACCEL): number {
   const e = Math.min(enter, top);
   const l = Math.min(leave, top);
-  return Math.min(top, Math.sqrt(e * e + 2 * ACCEL * before), Math.sqrt(l * l + 2 * ACCEL * after));
+  return Math.min(top, Math.sqrt(e * e + 2 * rate * before), Math.sqrt(l * l + 2 * rate * after));
 }
 
 /**
@@ -129,12 +130,12 @@ export function endSpeeds(tour: Tour, graph: RoadGraph, cruise: number): Float64
 /**
  * The plateau that covers `metres` in `ticks` from `enter` to `leave` metres
  * per second. The distance a profile covers grows with its plateau, so it is
- * found by halving. Where no plateau fits at {@link ACCEL}, the ramps are
- * made harder until one does.
+ * found by halving. Where no plateau fits at `rate`, {@link ACCEL} unless the
+ * caller says, the ramps are made harder until one does.
  */
-export function plateauOf(metres: number, ticks: number, enter: number, leave: number, out: Plateau): Plateau {
+export function plateauOf(metres: number, ticks: number, enter: number, leave: number, out: Plateau, rate = ACCEL): Plateau {
   const span = ticks / TICK_RATE;
-  let accel = ACCEL;
+  let accel = rate;
   for (let tries = 0; tries < 40; tries++) {
     // The plateaus whose two ramps fit in the step.
     const lo = Math.max(0, (enter + leave - accel * span) / 2);
