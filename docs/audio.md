@@ -69,6 +69,11 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
   function of the tick (spec section 13.2), so the planner is handed the line itself through
   `GameAudio.watch` and asks it about **every tick the frame stepped**. Asking only about the tick
   the frame landed on drops about half the bells at the frame rate the game is written for.
+- A honk of the traffic (`honks.ts`) is read off `Hold.waited`, which climbs by one a tick while a
+  car stands for the player, a wreck or a person. The first honk comes after the driver's own
+  patience, by `Personality`, and the rest at a pace drawn from the car's id. So nothing is stored
+  for it, and a frame asks about every tick it stepped, as the bells do. The traffic comes in
+  through `GameAudio.hearTraffic`, since a car's place is not in the record.
 - `CUES_PER_FRAME` caps what one frame may fire, and `VOICE_CAP` caps what the bank holds. A cue
   that finds no free voice is **dropped, never stolen**: stealing would restart an oscillator that
   is still scheduled to stop, and Tone.js refuses a start before a pending stop.

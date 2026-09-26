@@ -291,6 +291,8 @@ async function boot(): Promise<void> {
   audio.survey(new WorldSites(description));
   // The buskers of spec section 20.1 play on the corners the city laid out.
   audio.hearBuskers(corners);
+  // The drivers of the traffic honk at what they stand behind (spec section 20.2).
+  if (traffic !== undefined) audio.hearTraffic(traffic);
   const start = nearestRoadPlace(description, state.player.x, state.player.y);
   // Rapier was fetched while the graphics were being set up, and this is the
   // first line that needs it.

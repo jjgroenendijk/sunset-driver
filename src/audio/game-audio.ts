@@ -17,6 +17,7 @@ import type { InputFrame } from '../sim/input.ts';
 import type { SimState } from '../sim/simulation.ts';
 import type { SiteSource } from './ambience.ts';
 import type { BuskerSource } from './busking.ts';
+import type { HonkSource } from './honks.ts';
 import { Mixer } from './mixer.ts';
 import { AudioPlanner, type BellSource } from './plan.ts';
 import type { Listener } from './space.ts';
@@ -54,6 +55,8 @@ export class GameAudio {
   private sites: SiteSource | null = null;
   /** The occupied corners of spec section 20.1, whose buskers play; null before a session has them. */
   private corners: BuskerSource | null = null;
+  /** The traffic of spec section 13.1, whose drivers honk; null before a session has it. */
+  private traffic: HonkSource | null = null;
   /** When the mix was first hushed, in page milliseconds, or null while it plays. */
   private hushedAt: number | null = null;
   /** True once a hush has lasted {@link REST_AFTER_MS}, until the next frame that plays. */
@@ -94,6 +97,11 @@ export class GameAudio {
    */
   survey(sites: SiteSource): void {
     this.sites = sites;
+  }
+
+  /** Take the session's traffic, so its drivers are heard honking (spec section 20.2). */
+  hearTraffic(traffic: HonkSource): void {
+    this.traffic = traffic;
   }
 
   /** Take the session's occupied corners, so the buskers of spec section 20.1 are heard. */
@@ -145,7 +153,15 @@ export class GameAudio {
       this.mixer.start();
       this.planner.resync(state);
     }
-    const plan = this.planner.plan(state, input, listener, this.trams ?? undefined, this.sites ?? undefined, this.corners ?? undefined);
+    const plan = this.planner.plan(
+      state,
+      input,
+      listener,
+      this.trams ?? undefined,
+      this.sites ?? undefined,
+      this.corners ?? undefined,
+      this.traffic ?? undefined,
+    );
     this.mixer.apply(plan, listener);
     const radio = plan.radio;
     this.air = radio.station === null ? null : { name: radio.name, text: radio.text, from: radio.from };
