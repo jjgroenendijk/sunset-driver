@@ -1,18 +1,24 @@
 /**
  * The wrecks the city clears away (spec section 20.2).
  *
- * Every vehicle the player has touched stays in the record for ever
- * (`TrafficState.promoted`), because from the moment it is touched the physics
- * owns it and it can never go back to its tour. A session spent crashing into
+ * Every vehicle the player has touched stays in the record
+ * (`TrafficState.promoted`) until something takes it out, because from the
+ * moment it is touched the physics owns it. A session spent crashing into
  * traffic therefore leaves a trail of burnt-out shells behind it, and the list
  * only ever grows.
  *
  * The city tows them. A shell that has stood {@link TOW_WAIT} ticks since it
  * went up, with the player {@link TOW_REACH} metres away or further, is taken
- * and its record dropped. Only a shell: a car the player abandoned in one
+ * and its record dropped. A wreck the player is standing over is never taken,
+ * however long it has burnt.
+ *
+ * A car of the city that was only bumped, and is not on fire, goes as soon as
+ * the player is that far from it. Its record is dropped, so its tour drives it
+ * again, or its bay stands it at the kerb again. Near the player such a car
+ * drives on by itself (`rejoin.ts`). The player's own car, left where they
+ * took another (`left`), is never taken: a car the player abandoned in one
  * piece is still there when they come back, which is what spec section 20.2
- * asks for. A wreck the player is standing over is never taken either, however
- * long it has burnt.
+ * asks for.
  *
  * The reach is wider than the traffic the renderer draws, so nothing is ever
  * taken in front of the player: a wreck is gone when they return, never gone
@@ -29,6 +35,7 @@
 import { hypot } from '../../core/libm.ts';
 import { TICKS_PER_HOUR } from '../clock.ts';
 import type { SimState } from '../simulation.ts';
+import { isFlammable } from '../vehicles/damage.ts';
 import type { PromotedVehicle } from './traffic.ts';
 
 /** Ticks a wreck is left where it stopped before the city takes it: two hours of game time. */
@@ -62,11 +69,11 @@ export function stepTowing(state: SimState): number {
   return taken;
 }
 
-/** True when a record is a wreck the truck may take at this tick, with the player at `(x, y)`. */
+/** True when the truck may take a record at this tick, with the player at `(x, y)`. */
 function towable(record: PromotedVehicle, tick: number, x: number, y: number): boolean {
   const v = record.vehicle;
   const damage = v.damage;
-  if (damage.stage !== 'burnt' || damage.blownTick < 0) return false;
-  if (tick - damage.blownTick < TOW_WAIT) return false;
-  return hypot(v.x - x, v.z - y) >= TOW_REACH;
+  if (hypot(v.x - x, v.z - y) < TOW_REACH) return false;
+  if (isFlammable(damage)) return record.left !== true;
+  return damage.stage === 'burnt' && damage.blownTick >= 0 && tick - damage.blownTick >= TOW_WAIT;
 }
