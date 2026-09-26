@@ -10,6 +10,7 @@ import { EMPTY_INPUT } from '../../../src/sim/input.ts';
 import { createPlayerState } from '../../../src/sim/player/on-foot.ts';
 import { createLoadout, giveWeapon, stepWeapons, weaponOf, type WeaponId } from '../../../src/sim/weapons/weapon.ts';
 import { createSimState } from '../../../src/sim/simulation.ts';
+import { UNIT_ARMOUR, type PoliceUnit } from '../../../src/sim/police/police.ts';
 import { AudioPlanner, shotCue } from '../../../src/audio/plan.ts';
 import { kickOf, zoomOf } from '../../../src/render/weapons/viewmodel.ts';
 import { shotPitch } from '../../../src/pointer-aim.ts';
@@ -51,6 +52,40 @@ describe('the heavy weapons', () => {
     const blast = session.state.blasts.at(-1);
     expect(blast?.weapon).toBe('rpg-7');
     expect(blast?.radius).toBe(weaponOf('rpg-7').projectile?.blastRadius);
+    session.physics.dispose();
+  });
+
+  it('takes a rocket off a police car at its own share, not a share of it', () => {
+    const session = armed('rpg-7');
+    const { state } = session;
+    // A car parked where the rocket goes off, two metres short of the burst.
+    const unit: PoliceUnit = {
+      id: state.police.nextUnit++,
+      kind: 'patrol',
+      task: 'search',
+      x: state.player.x + 4,
+      y: state.player.y,
+      heading: 0,
+      height: state.player.height,
+      speed: 0,
+      health: UNIT_ARMOUR,
+      edges: [],
+      distance: 0,
+      planned: state.tick,
+      goalX: state.player.x + 4,
+      goalY: state.player.y,
+      crew: 0,
+      doors: 0,
+      doorTick: 0,
+      fired: 0,
+      incident: -1,
+    };
+    state.police.units.push(unit);
+    burst(session, 'rpg-7');
+    // Two metres into a nine metre blast is about half a car's armour. The
+    // share scaled twice took a thousandth of that.
+    const left = state.police.units.find((u: PoliceUnit) => u.id === unit.id)?.health ?? 0;
+    expect(UNIT_ARMOUR - left).toBeGreaterThan(0.2);
     session.physics.dispose();
   });
 
