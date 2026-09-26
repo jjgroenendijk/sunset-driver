@@ -14,7 +14,7 @@
  * reason arrives with the verdict rather than after two more commands.
  *
  * `gh pr checks --required` lists only the required checks that have reported.
- * `full-tier / seed-sweep` reports only after the four sweep shares finish, so
+ * `full-tier / seed-sweep` reports only after every sweep share finishes, so
  * the wait also lasts until every check the base branch's ruleset requires has
  * reported.
  *

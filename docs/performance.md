@@ -18,15 +18,19 @@ assertion on a shared machine fails at random.
 
 The quick tier, `npm test`, has to stay under 15 s.
 
-The full tier is the five jobs of `full-tier.yml`, and **the ceiling is 2 minutes for each job, not
-for the tier**. Four of them are shares of the seed sweep's 500 seeds and the fifth is every other
-file with the typecheck and the lints. `npm run test:full` runs all five jobs' work in one process,
-which is 3 min 36 s on an eight-core M1 Air; that command is the coverage, and the job is the
-ceiling. To run one job's work by hand:
+The full tier is the jobs of `full-tier.yml`, and **the ceiling is 2 minutes for each job, not for
+the tier**. Eight of them are shares of the seed sweep's 500 seeds, one is every other file and one
+is the typecheck with the lints. `npm run test:full` runs all of that work on one machine; that
+command is the coverage, and the job is the ceiling. To run one job's work by hand:
 
 ```
-SWEEP_SHARD=2/4 npm run test:full -- --project sweep
+SWEEP_SHARD=2/8 npm run test:full -- --project sweep
 ```
+
+`npm run test:full` runs through `scripts/test-full.ts`. It runs the sweep as four vitest processes,
+one after the other, and then every other file. One process cannot hold the sweep: the fixture keeps
+every world of its share for all the check files, and 500 worlds ran the worker out of heap (issue
+#726). A run that sets `SWEEP_SHARD` is one process.
 
 ## Reading a measurement
 
@@ -77,22 +81,23 @@ the four shares take 52, 51, 67 and 54 s, for about 730 CPU-seconds together: th
 
 ## The shards
 
-`full-tier.yml` gives the seed sweep four runners and every other file with the typecheck and both
-lints a fifth. `SWEEP_SHARD=2/4` is what tells a run which share to read: `seed-limits.ts` takes the
+`full-tier.yml` gives the seed sweep eight runners, every other file a ninth and the typecheck with
+the lints a tenth. `SWEEP_SHARD=2/4` is what tells a run which share to read: `seed-limits.ts` takes the
 tier's seeds in turn, so shard 1 reads seed 0, shard 2 seed 1, and every shard gets the same spread
 of the seed space. The counts taken from the front of the tier — `FOOTPRINT_COUNT`, `REPEAT_COUNT`
 and the rest — are shared out the same way, so **the four shards together read exactly the seeds one
 unsharded run reads**. Widen a count and every shard grows by its share of it.
 
-A fifth job named `seed-sweep` needs the four and passes only when they all did, because the
+A job named `seed-sweep` needs the eight and passes only when they all did, because the
 ruleset requires the one check name `full-tier / seed-sweep`. A failure there says nothing itself:
-the output is in the `sweep 1` to `sweep 4` checks, which `node scripts/pr-wait.ts <pr> --all`
+the output is in the `sweep 1` to `sweep 8` checks, which `node scripts/pr-wait.ts <pr> --all`
 lists.
 
-On `ubuntu-latest` on 17 September 2026 the four shares took 1m12s, 1m42s, 1m35s and 1m20s, and
-`other` 43 s. The slowest share is within 20 s of the 2 min, so a check that reads every seed is
-what the tier has left to give: widen one and the sweep needs a fifth runner rather than a longer
-ceiling.
+On `ubuntu-latest` on 17 September 2026 the four shares took 1m12s, 1m42s, 1m35s and 1m20s. By 26
+September the four jobs took 2m05s to 2m43s, over the ceiling (issue #731): about 20 s of each job
+is checkout and setup, and the sweep step alone took 1m43s to 2m20s. Eight shares halve the sweep
+step and leave the setup as it is. A check that reads every seed still costs every share its part
+of it, so the next answer to a slow share is more runners, not a longer ceiling.
 
 ## The rotating window
 

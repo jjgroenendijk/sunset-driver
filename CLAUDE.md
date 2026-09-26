@@ -18,12 +18,12 @@ The commands:
 - `npm run typecheck` — `tsc --noEmit`.
 - `npm run lint` — determinism. `lint:size` — sizes. `lint:dead` — dead code. `lint:deps` — imports.
   `lint:smells` — the sonarjs code smells, at zero findings (#712).
-- `npm test` — the quick tier. `npm run test:full` — the full tier of 500 seeds (`SWEEP_SEEDS=500`).
+- `npm test` — the quick tier. `npm run test:full` — 500 seeds, the sweep in four processes.
 - `npm run verify` — typecheck, the lints and the quick tier, under 20 s. Run before every commit.
 - `npm run verify:full` — the same with the full tier, about 4 min.
 
-Every pull request runs `verify:full` in CI through `full-tier.yml`, over six runners: four shares
-of the seed sweep's 500 seeds, every other file, and the lints. `SWEEP_SHARD=2/4` runs one by
+Every pull request runs `verify:full` in CI through `full-tier.yml`, over ten runners: eight shares
+of the seed sweep's 500 seeds, every other file, and the lints. `SWEEP_SHARD=2/8` runs one by
 hand. `ci.yml` also builds with `build.yml` and deploys main. The build, `full-tier / other` and
 `full-tier / seed-sweep` — each one job, green only when all its runners are — gate the merge. A
 Dependabot pull request merges itself when they pass. Main runs no tests: it deploys the `dist` the
@@ -37,7 +37,7 @@ is refused, and `--watch` costs a tool call for every turn of the loop. `--all` 
 do not gate the merge, which is where a failing share of the seed sweep prints what it found.
 
 `npm test` must stay under 15 s, and **each job of `full-tier.yml` under 2 min** — the job is the
-ceiling, not the tier, since `npm run test:full` runs all five jobs' work in one process. Cut seeds
+ceiling, not the tier, since `npm run test:full` runs every job's work on one machine. Cut seeds
 or ticks in the quick tier and keep coverage behind `SWEEP_SEEDS`; never make a test slower to pass.
 Both ceilings are wall clock, the work divided by the cores it runs on, so compare the CPU-seconds
 `time npm test` prints. `docs/performance.md` has the measurements and where a sweep's cost goes.
