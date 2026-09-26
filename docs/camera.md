@@ -76,6 +76,11 @@ in `docs/dev-tooling.md`.
   it does not also fire.
 - `frame.ts` tells it each frame whether it is wanted. A menu, the map and a shop counter want the
   pointer, so the lock is let go under them. A touch screen has no lock and never asks.
+- The browser keeps the Escape that takes the lock away. A lock it took while still wanted calls
+  `onLost`, which `main.ts` points at the pause menu. A lock the frame let go is not lost: `update`
+  forgets the request first. `PauseMenu.onResume` calls `resume`, which asks again on the same
+  press. `PauseMenu` ignores an Escape in the first `SAME_PRESS_MS`, since a browser may deliver
+  the key that took the lock as well.
 - On foot the mouse steers the yaw alone: the camera stops turning after the player. At the wheel it
   adds a look aside, which goes back behind the car after `LOOK_HOLD` seconds of a still mouse.
 - The free camera locks the same canvas. While it is detached the movement is its own.

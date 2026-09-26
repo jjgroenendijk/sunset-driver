@@ -406,6 +406,12 @@ async function boot(): Promise<void> {
     settings: menuSettings,
     party: party.actions,
   });
+  // The browser keeps the Escape that takes the chase views' pointer lock, so
+  // losing the lock opens the menu, and Resume asks for it back (spec section 10.7).
+  look.onLost = () => {
+    if (!pause.open) pause.show();
+  };
+  pause.onResume = () => look.resume();
   // A page opened on an invite link joins that room, now that there is a menu
   // to report it on (`docs/multiplayer.md`).
   party.join();

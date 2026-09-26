@@ -8,6 +8,11 @@
  * it, so it does not also fire. The lock is let go when the view goes back to
  * top down, and when a menu, the map or a shop counter wants the pointer.
  *
+ * The browser keeps the Escape that takes the lock away, so the page never sees
+ * that key. A lock taken away while this still wants it — by Escape, or by a
+ * switch to another window — therefore calls `onLost`, which opens the pause
+ * menu as the key would have. Resume asks for the lock again (`resume`).
+ *
  * The developer free camera of `free-camera.ts` locks the same canvas. While
  * it is detached it owns the movement, and this hands none to the camera.
  */
@@ -21,6 +26,12 @@ export class MouseLook {
   /** True while the camera is detached, so the movement is the free camera's. */
   private flying = false;
   private locked = false;
+  /** True while the lock held is one this asked for, and the view still wants it. */
+  private asked = false;
+  /** True while a chase view is on screen and only the pause menu wants the pointer. */
+  private ready = false;
+  /** Called when the browser took away a lock the view still wants. */
+  onLost: (() => void) | null = null;
   private shownHint = '';
   /** A touch screen has no lock to ask for, so it never wants one. */
   private readonly touch: boolean;
@@ -48,6 +59,8 @@ export class MouseLook {
     );
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === this.canvas;
+      if (!this.locked && this.asked && this.wanted && !this.flying) this.onLost?.();
+      if (!this.locked) this.asked = false;
       this.showHint();
     });
   }
@@ -59,12 +72,15 @@ export class MouseLook {
 
   /**
    * Say, once a frame, whether a chase view is on screen with nothing over it,
-   * and whether the free camera is detached. A lock this holds is let go when
-   * the view no longer wants it.
+   * whether the pause menu is the only thing over it, and whether the free
+   * camera is detached. A lock this holds is let go when the view no longer
+   * wants it, and that release is not a lost lock.
    */
-  update(wanted: boolean, flying: boolean): void {
+  update(wanted: boolean, flying: boolean, paused = false): void {
     this.wanted = wanted && !this.touch;
+    this.ready = (wanted || paused) && !this.touch;
     this.flying = flying;
+    if (!this.wanted || flying) this.asked = false;
     if (!wanted && !flying && this.locked) document.exitPointerLock();
     this.showHint();
   }
@@ -76,7 +92,17 @@ export class MouseLook {
    */
   lock(): void {
     if (this.locked || this.touch) return;
+    this.asked = true;
     void Promise.resolve(this.canvas.requestPointerLock() as unknown).catch(() => {});
+  }
+
+  /**
+   * The pause menu closed on a press of Resume or Escape: ask for the lock
+   * again if the view under the menu wants it. The press is a gesture the
+   * browser trusts, so no click is needed. A refusal leaves the hint up.
+   */
+  resume(): void {
+    if (this.ready && !this.flying) this.lock();
   }
 
   /** The line over the canvas that says a click turns the mouse look on, written only when it changes. */

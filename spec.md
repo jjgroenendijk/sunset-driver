@@ -521,6 +521,11 @@ In the two chase views the mouse turns the view, under pointer lock. On foot the
 view alone, and the player walks the way it looks. At the wheel the mouse looks aside from the car,
 and the view goes back behind the car when the mouse is still. A shot goes where the view looks.
 
+The browser keeps the Escape that ends pointer lock, and the page never sees it. So a lock the
+player loses — by Escape, or by a switch to another window — opens the pause menu, as Escape does
+in top down. A lock the game lets go itself, for the map, a shop counter or a menu, does not.
+Resume, by click, Enter or Escape, asks for the lock again, so no extra click is needed.
+
 The camera stands about 30 m over the street, and a tower stands up to 150 m. A building therefore
 often stands between the camera and the player, or holds the camera inside it. A setting on the
 Buildings page of the title screen and of the pause menu says what happens then:

@@ -101,6 +101,18 @@ export class SessionFrame {
   /** The roof over a ground point, which the camera turns to see past when the player asks it to. */
   private readonly sightTop: RoofHeight = (x, z) => this.session?.world.roofOver(x, z, TURN_MARGIN)?.top;
 
+  /**
+   * A chase view turns with the mouse under pointer lock, unless a menu, the
+   * map, a shop counter or a deal wants the pointer (`ui/input/mouse-look.ts`).
+   * The mouse look is told when the pause menu alone stands over such a view,
+   * so Resume can ask for the lock again.
+   */
+  private lookWith(session: Session, counter: boolean, flying: boolean): void {
+    const menu = session.pause.open;
+    const lookable = this.parts.settings.view !== 'top-down' && !session.map.open && !counter;
+    this.parts.look.update(lookable && !menu, flying, lookable && menu);
+  }
+
   /** Step the session by the time the last frame took, and draw it. */
   draw(session: Session, elapsed: number): void {
     this.session = session;
@@ -115,11 +127,8 @@ export class SessionFrame {
     // stop (`docs/multiplayer.md`). The menu takes the keys either way.
     const menu = session.pause.open;
     const paused = isPaused(session);
-    // A chase view turns with the mouse under pointer lock, unless a menu, the
-    // map, a shop counter or a deal wants the pointer (`ui/input/mouse-look.ts`).
-    const chase = this.parts.settings.view !== 'top-down';
     const counter = session.state.shop !== null || session.state.market.deal !== null;
-    this.parts.look.update(chase && !menu && !session.map.open && !counter, flying);
+    this.lookWith(session, counter, flying);
     this.pointMouse(session, flying || menu);
     // Nothing samples the keys while the camera flies or a menu is open, so
     // the wheel turned then must not step the weapon afterwards.
