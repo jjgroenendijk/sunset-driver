@@ -39,31 +39,37 @@ export function packFacade(geometry: PackedGeometry): PackedGeometry {
 function packAttribute(attribute: PackedAttribute): PackedAttribute {
   const { name, array, itemSize } = attribute;
   if (!(array instanceof Float32Array)) return attribute;
-  if (name === 'normal' && itemSize === 3) {
-    const out = new Int8Array((array.length / 3) * 4);
-    // A unit normal is within ±1, so each byte is within ±127 and needs no clamp.
-    for (let v = 0, at = 0; v < array.length; v += 3, at += 4) {
-      for (let k = 0; k < 3; k++) {
-        const x = (array[v + k] as number) * 127;
-        out[at + k] = x < 0 ? x - 0.5 : x + 0.5;
-      }
-    }
-    return { name, array: out, itemSize: 4, normalized: true };
-  }
-  if ((name === 'tint' || name === 'finish') && itemSize === 3) {
-    // A clamped array rounds and clamps as it is written.
-    const out = new Uint8ClampedArray((array.length / 3) * 4);
-    for (let v = 0, at = 0; v < array.length; v += 3, at += 4) {
-      out[at] = (array[v] as number) * 255;
-      out[at + 1] = (array[v + 1] as number) * 255;
-      out[at + 2] = (array[v + 2] as number) * 255;
-    }
-    return { name, array: new Uint8Array(out.buffer), itemSize: 4, normalized: true };
-  }
+  if (name === 'normal' && itemSize === 3) return packNormal(name, array);
+  if ((name === 'tint' || name === 'finish') && itemSize === 3) return packUnit(name, array);
   if ((name === 'uv' || name === 'roomSize') && Half !== undefined) {
     return { name, array: new Half(array), itemSize, normalized: false };
   }
   return attribute;
+}
+
+/** A normal as four signed bytes, the fourth one padding. */
+function packNormal(name: string, array: Float32Array): PackedAttribute {
+  const out = new Int8Array((array.length / 3) * 4);
+  // A unit normal is within ±1, so each byte is within ±127 and needs no clamp.
+  for (let v = 0, at = 0; v < array.length; v += 3, at += 4) {
+    for (let k = 0; k < 3; k++) {
+      const x = (array[v + k] as number) * 127;
+      out[at + k] = x < 0 ? x - 0.5 : x + 0.5;
+    }
+  }
+  return { name, array: out, itemSize: 4, normalized: true };
+}
+
+/** Three numbers in 0..1 as four unsigned bytes, the fourth one padding. */
+function packUnit(name: string, array: Float32Array): PackedAttribute {
+  // A clamped array rounds and clamps as it is written.
+  const out = new Uint8ClampedArray((array.length / 3) * 4);
+  for (let v = 0, at = 0; v < array.length; v += 3, at += 4) {
+    out[at] = (array[v] as number) * 255;
+    out[at + 1] = (array[v + 1] as number) * 255;
+    out[at + 2] = (array[v + 2] as number) * 255;
+  }
+  return { name, array: new Uint8Array(out.buffer), itemSize: 4, normalized: true };
 }
 
 /**

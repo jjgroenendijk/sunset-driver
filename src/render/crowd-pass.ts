@@ -133,13 +133,7 @@ export class CrowdPass {
       this.give(j, -dx, -dy, cj, sj, near / 2, false, tie);
       return;
     }
-    let gi = walksI && walksJ && facing < HEAD_ON;
-    let gj = gi;
-    if (!gi) {
-      // Somebody who stands, or walks slower the same way, is stepped round by the one coming up.
-      gi = walksI && (!walksJ || (facing > SAME_WAY && vi - vj > OVERTAKE));
-      gj = walksJ && (!walksI || (facing > SAME_WAY && vj - vi > OVERTAKE));
-    }
+    const [gi, gj] = passers(walksI, walksJ, facing, vi, vj);
     const share = gi && gj ? 0.5 : 1;
     if (gi) this.give(i, dx, dy, ci, si, share, true, 1);
     if (gj) this.give(j, -dx, -dy, cj, sj, share, true, 1);
@@ -164,7 +158,27 @@ export class CrowdPass {
     }
     // Away from the other: to the left of somebody on the right. The tie has a margin: the sine of
     // a heading of pi is not quite 0, so two facing each other would read it apart.
-    const away = across > TIE ? -1 : across < -TIE ? 1 : tie;
+    const away = sideAway(across, tie);
     this.step[k] = (this.step[k] as number) + away * need * share * weight;
   }
+}
+
+/**
+ * Which of two people make room as they pass, `i` first: both when they meet
+ * head on, else the one coming up on somebody who stands, or walks slower the
+ * same way.
+ */
+function passers(walksI: boolean, walksJ: boolean, facing: number, vi: number, vj: number): [boolean, boolean] {
+  if (walksI && walksJ && facing < HEAD_ON) return [true, true];
+  // Somebody who stands, or walks slower the same way, is stepped round by the one coming up.
+  const gi = walksI && (!walksJ || (facing > SAME_WAY && vi - vj > OVERTAKE));
+  const gj = walksJ && (!walksI || (facing > SAME_WAY && vj - vi > OVERTAKE));
+  return [gi, gj];
+}
+
+/** The hand to step to, +1 the right, away from somebody `across` metres to the right; `tie` when dead ahead. */
+function sideAway(across: number, tie: number): number {
+  if (across > TIE) return -1;
+  if (across < -TIE) return 1;
+  return tie;
 }

@@ -78,6 +78,26 @@ const HAND = new Vector3(0.055, 0.05, 0.085);
 /** How the weapon in hand is held. */
 type Carry = 'fists' | 'short' | 'long' | 'tube' | 'melee' | 'thrown';
 
+/** Where a gun is held at the hip, and where at the eye. */
+function stanceOf(carry: Carry): readonly [Vector3, Vector3] {
+  if (carry === 'tube') return [HIP_TUBE, AIM_TUBE];
+  if (carry === 'short') return [HIP_SHORT, AIM_SHORT];
+  return [HIP_LONG, AIM_LONG];
+}
+
+/** How far forward of the grip the left hand holds a gun. */
+function foreOf(carry: Carry, muzzle: number): number {
+  if (carry === 'short') return 0.02;
+  if (carry === 'tube') return 0.28;
+  return Math.min(0.32, muzzle * 0.45);
+}
+
+/** How big the flash at the muzzle is: a pilot flame small or firing, a shot's flash shrinking. */
+function flashSize(pilot: boolean, firing: boolean, age: number, spec: WeaponSpec): number {
+  if (pilot) return firing ? 0.16 : 0.05;
+  return 0.22 * (1 - age / FLASH_TICKS / 2) * (spec.projectile ? 2 : 1);
+}
+
 function carryOf(spec: WeaponSpec): Carry {
   if (spec.id === 'fists' || spec.id === 'brass-knuckles') return 'fists';
   if (spec.cls === 'melee') return 'melee';
@@ -232,8 +252,7 @@ export class ViewModel {
 
   /** A gun: at the hip or at the eye, kicked back and up by a shot, with a flash at the muzzle. */
   private gun(carry: Carry, kick: number, dip: number, age: number, spec: WeaponSpec): void {
-    const hip = carry === 'tube' ? HIP_TUBE : carry === 'short' ? HIP_SHORT : HIP_LONG;
-    const aim = carry === 'tube' ? AIM_TUBE : carry === 'short' ? AIM_SHORT : AIM_LONG;
+    const [hip, aim] = stanceOf(carry);
     const at = this.a.copy(hip).lerp(aim, this.aimed);
     at.z += kick * 0.07;
     at.y += kick * 0.015;
@@ -245,7 +264,7 @@ export class ViewModel {
     this.weapon.updateMatrix();
     // The right hand on the grip, the left along the barrel: a pistol takes
     // both hands at the grip, a long gun the left under the handguard.
-    const fore = carry === 'short' ? 0.02 : carry === 'tube' ? 0.28 : Math.min(0.32, this.muzzle * 0.45);
+    const fore = foreOf(carry, this.muzzle);
     // The fist wraps the grip below the bore, so the slide or the receiver
     // shows over it. A pistol is held in one hand at the hip, and the other
     // comes up under it only to aim.
@@ -253,17 +272,24 @@ export class ViewModel {
     if (carry !== 'short') this.hand(1, this.local(fore, -0.045, 0), ELBOW_LEFT);
     else if (this.aimed > 0.5) this.hand(1, this.local(-0.03, -0.085, -0.03), ELBOW_LEFT);
     else this.drop(1);
+    this.muzzleFlash(age, spec);
+  }
+
+  /**
+   * The flash at the muzzle for a few ticks after a shot, unless the gun is
+   * suppressed. A flamethrower shows a pilot flame instead, which flares as it fires.
+   */
+  private muzzleFlash(age: number, spec: WeaponSpec): void {
     const flashing = age >= 0 && age < FLASH_TICKS && spec.effect !== 'fire' && !spec.suppressed;
     const pilot = spec.effect === 'fire';
-    if (flashing || pilot) {
-      this.flash.visible = true;
-      this.flash.position.copy(this.local(this.muzzle + 0.04, 0, 0));
-      this.flash.quaternion.identity();
-      const firing = pilot && age >= 0 && age < 8;
-      const size = pilot ? (firing ? 0.16 : 0.05) : 0.22 * (1 - age / FLASH_TICKS / 2) * (spec.projectile ? 2 : 1);
-      this.flash.scale.set(size, size, size);
-      (this.flash.material as MeshBasicMaterial).color.setHex(pilot && !firing ? 0x7fa8ff : 0xffd48a);
-    }
+    if (!flashing && !pilot) return;
+    this.flash.visible = true;
+    this.flash.position.copy(this.local(this.muzzle + 0.04, 0, 0));
+    this.flash.quaternion.identity();
+    const firing = pilot && age >= 0 && age < 8;
+    const size = flashSize(pilot, firing, age, spec);
+    this.flash.scale.set(size, size, size);
+    (this.flash.material as MeshBasicMaterial).color.setHex(pilot && !firing ? 0x7fa8ff : 0xffd48a);
   }
 
   /** A melee weapon: carried up at the right, swung across the view from right to left. */

@@ -98,31 +98,27 @@ export class ParkedView {
     this.lastPromoted = state.traffic.promoted.length;
 
     for (const entry of this.classes) for (const mesh of entry.meshes) mesh.count = 0;
-    const bays = this.cars.bays;
     for (const bay of this.cars.near(x - PARKED_VIEW, y - PARKED_VIEW, x + PARKED_VIEW, y + PARKED_VIEW, this.ids)) {
-      if (!this.cars.carAt(bay, tick, state.traffic, this.car)) continue;
-      const entry = this.classes.find((c) => c.cls === this.car.cls) as ClassMeshes;
-      const paint = entry.meshes[0] as InstancedMesh;
-      const index = paint.count;
-      if (index >= PARKED_CAP) continue;
-      this.at.set(bays.x[bay] as number, (bays.height[bay] as number) + entry.lift, bays.y[bay] as number);
-      this.turn.setFromAxisAngle(this.up, -(bays.heading[bay] as number));
-      this.matrix.compose(this.at, this.turn, this.one);
-      for (const mesh of entry.meshes) {
-        mesh.setMatrixAt(index, this.matrix);
-        mesh.count = index + 1;
-      }
-      paint.setColorAt(index, this.colour.set(this.car.paint));
+      if (this.cars.carAt(bay, tick, state.traffic, this.car)) this.place(bay);
     }
-    for (const entry of this.classes) {
-      const count = (entry.meshes[0] as InstancedMesh).count;
-      for (const mesh of entry.meshes) {
-        mesh.visible = count > 0;
-        if (count > 0) mesh.instanceMatrix.needsUpdate = true;
-      }
-      const colours = (entry.meshes[0] as InstancedMesh).instanceColor;
-      if (count > 0 && colours !== null) colours.needsUpdate = true;
+    for (const entry of this.classes) flagUpload(entry);
+  }
+
+  /** Add the car now in `this.car` as the next instance of its class, standing in `bay`. */
+  private place(bay: number): void {
+    const bays = this.cars.bays;
+    const entry = this.classes.find((c) => c.cls === this.car.cls) as ClassMeshes;
+    const paint = entry.meshes[0] as InstancedMesh;
+    const index = paint.count;
+    if (index >= PARKED_CAP) return;
+    this.at.set(bays.x[bay] as number, (bays.height[bay] as number) + entry.lift, bays.y[bay] as number);
+    this.turn.setFromAxisAngle(this.up, -(bays.heading[bay] as number));
+    this.matrix.compose(this.at, this.turn, this.one);
+    for (const mesh of entry.meshes) {
+      mesh.setMatrixAt(index, this.matrix);
+      mesh.count = index + 1;
     }
+    paint.setColorAt(index, this.colour.set(this.car.paint));
   }
 
   dispose(): void {
@@ -135,4 +131,15 @@ export class ParkedView {
     for (const material of this.materials) material.dispose();
     this.group.clear();
   }
+}
+
+/** Show a class only when it holds a car, and upload what was written to it. */
+function flagUpload(entry: ClassMeshes): void {
+  const count = (entry.meshes[0] as InstancedMesh).count;
+  for (const mesh of entry.meshes) {
+    mesh.visible = count > 0;
+    if (count > 0) mesh.instanceMatrix.needsUpdate = true;
+  }
+  const colours = (entry.meshes[0] as InstancedMesh).instanceColor;
+  if (count > 0 && colours !== null) colours.needsUpdate = true;
 }

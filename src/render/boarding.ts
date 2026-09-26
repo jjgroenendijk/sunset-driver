@@ -360,23 +360,31 @@ function climbOut(input: BoardingInput): BoardingFrame {
     pose = blendPose(seatedPose(), standing, ease(span(t, 0.2, 0.8)));
     pose.lean += 0.55 * Math.sin(Math.PI * span(t, 0.1, 0.8));
   } else {
-    // A step clear, turned to the door, and the door pushed shut behind.
-    const t = span(u, 0.66, 1);
-    angle = swings ? DOOR_OPEN * (1 - ease(span(t, 0.3, 0.85))) : 0;
-    const out: Spot = { x: rear - 0.1, y: input.ground, z: side * (hw + 0.25), yaw: facing(0.8, -side * 0.5) };
-    const step = mixSpot(out, clear, ease(span(t, 0, 0.4)));
-    at = { ...step, yaw: turn(out.yaw, 0, ease(span(t, 0.6, 1))) };
-    const walking = span(t, 0, 0.4) > 0 && span(t, 0, 0.4) < 1;
-    pose = poseFor(walking ? 'walk' : 'stand', span(t, 0, 0.4) * Math.PI, {
-      speed: walking ? 1.2 : 0,
-      grounded: true,
-      vy: 0,
-      depth: 0,
-      stature: input.stature,
-    });
-    const edge = doorEdge(door, angle);
-    reachFor(pose, at, [edge.x, door.y + door.height * 0.3, edge.z], input, right, Math.sin(Math.PI * span(t, 0.2, 0.95)));
+    return stepClear(input, span(u, 0.66, 1), door, swings, clear);
   }
+  return { ...at, pose, door: angle };
+}
+
+/** The last beat of a move out: a step clear, turned to the door, and the door pushed shut behind. */
+function stepClear(input: BoardingInput, t: number, door: Door, swings: boolean, clear: Spot): BoardingFrame {
+  const side = input.side;
+  const hw = input.spec.halfWidth;
+  const rear = doorEdge(door, 0).x;
+  const right = side < 0;
+  const angle = swings ? DOOR_OPEN * (1 - ease(span(t, 0.3, 0.85))) : 0;
+  const out: Spot = { x: rear - 0.1, y: input.ground, z: side * (hw + 0.25), yaw: facing(0.8, -side * 0.5) };
+  const step = mixSpot(out, clear, ease(span(t, 0, 0.4)));
+  const at = { ...step, yaw: turn(out.yaw, 0, ease(span(t, 0.6, 1))) };
+  const walking = span(t, 0, 0.4) > 0 && span(t, 0, 0.4) < 1;
+  const pose = poseFor(walking ? 'walk' : 'stand', span(t, 0, 0.4) * Math.PI, {
+    speed: walking ? 1.2 : 0,
+    grounded: true,
+    vy: 0,
+    depth: 0,
+    stature: input.stature,
+  });
+  const edge = doorEdge(door, angle);
+  reachFor(pose, at, [edge.x, door.y + door.height * 0.3, edge.z], input, right, Math.sin(Math.PI * span(t, 0.2, 0.95)));
   return { ...at, pose, door: angle };
 }
 

@@ -141,20 +141,7 @@ export class TramView {
     for (let tram = 0; tram < this.line.trams; tram++) {
       const design = this.line.design(tram);
       const open = this.line.doorsAt(tram, time);
-      for (let car = 0; car < TRAM_CARS; car++) {
-        const pose = this.line.carPose(tram, car, time, this.pose);
-        if (Math.abs(pose.x - x) > TRAFFIC_VIEW || Math.abs(pose.y - y) > TRAFFIC_VIEW) continue;
-        const plan = tramCarPlan(design, car, TRAM_CARS);
-        const meshes = this.meshes.find((m) => m.design === design && m.module === plan.module);
-        if (meshes === undefined || meshes.count >= meshes.body.instanceMatrix.count) continue;
-        this.at.set(pose.x, pose.height, pose.y);
-        this.turn.setFromAxisAngle(this.up, -pose.heading + (plan.reversed ? Math.PI : 0));
-        this.matrix.compose(this.at, this.turn, this.one);
-        meshes.body.setMatrixAt(meshes.count, this.matrix);
-        meshes.count++;
-        this.writeDoors(design, plan.module, open);
-        this.writeSpark(design, tram, car, time, pose.speed);
-      }
+      for (let car = 0; car < TRAM_CARS; car++) this.writeCar(design, tram, car, open, time, x, y);
     }
     for (const meshes of this.meshes) {
       const mesh = meshes.body;
@@ -168,6 +155,22 @@ export class TramView {
       mesh.visible = count > 0;
       if (count > 0) mesh.instanceMatrix.needsUpdate = true;
     }
+  }
+
+  /** One car of a tram, with its doors and its spark, if it stands in view of a place. */
+  private writeCar(design: TramDesign, tram: number, car: number, open: number, time: number, x: number, y: number): void {
+    const pose = this.line.carPose(tram, car, time, this.pose);
+    if (Math.abs(pose.x - x) > TRAFFIC_VIEW || Math.abs(pose.y - y) > TRAFFIC_VIEW) return;
+    const plan = tramCarPlan(design, car, TRAM_CARS);
+    const meshes = this.meshes.find((m) => m.design === design && m.module === plan.module);
+    if (meshes === undefined || meshes.count >= meshes.body.instanceMatrix.count) return;
+    this.at.set(pose.x, pose.height, pose.y);
+    this.turn.setFromAxisAngle(this.up, -pose.heading + (plan.reversed ? Math.PI : 0));
+    this.matrix.compose(this.at, this.turn, this.one);
+    meshes.body.setMatrixAt(meshes.count, this.matrix);
+    meshes.count++;
+    this.writeDoors(design, plan.module, open);
+    this.writeSpark(design, tram, car, time, pose.speed);
   }
 
   /**

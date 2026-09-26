@@ -32,7 +32,7 @@ import type { RoadRibbons } from '../world/ribbon.ts';
 import { buildShops, type Shop } from '../world/shops.ts';
 import { CHUNK_TERRAIN_CELL, TERRAIN_CELL } from '../world/terrain.ts';
 import type { RoadTier, WorldDescription } from '../world/types.ts';
-import { buildChunkBuildings, buildingLookup, type BuildingLookup } from './building-mesh.ts';
+import { buildChunkBuildings, buildingLookup, type BuildingLookup, type BuildingPlacement } from './building-mesh.ts';
 import { byCell, cellGrid, cellOfPart, cellsHolding, type CellGrid } from './cells.ts';
 import { packFacade } from './facade-pack.ts';
 import { buildGroundAttributes, groundLookup, type GroundAttributes, type GroundLookup } from './ground.ts';
@@ -209,59 +209,15 @@ export function chunkLookups(
 export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, detail: ChunkDetail): ChunkPayload {
   const far = detail === 'far';
   const grid = cellGrid(chunk.bounds, detail);
-  const roads: PackedRoads[] = [];
-  // At far detail the minor fill is dropped before it is lofted, so the tiers
-  // that are not drawn cost nothing to leave out.
-  // The far ring keeps no junctions either: a junction is drawn where the
-  // roads that meet there are cut back, and neither can be read from that far.
-  const traced = far
-    ? {
-        ...chunk,
-        roads: chunk.roads.filter((run) => FAR_TIERS.includes(run.tier)).map((run) => ({ ...run, gaps: [] })),
-        junctions: [],
-        pavement: chunk.pavement.filter((piece) => FAR_TIERS.includes(piece.tier)),
-        // A pier holds a deck up from as far off as the deck is seen; the rails
-        // of the tram are paint at that distance, and the far ring has no paint.
-        piers: chunk.piers.filter((pier) => FAR_TIERS.includes(pier.tier)),
-        tram: [],
-        tramCrossings: [],
-        tramPaved: [],
-      }
-    : chunk;
-  for (const tier of buildChunkRoads(traced, lookups.ribbons, lookups.surfaceAt)) {
-    const raised = new Set(raisedPartsOf(tier));
-    roads.push({
-      tier: tier.tier,
-      surface: packCells(
-        grid,
-        partsOf(tier).map((geometry) => ({ geometry: takeGeometry(geometry), raised: raised.has(geometry) })),
-      ),
-      markings: far ? new Float32Array(0) : tier.markings,
-      markingNormals: far ? new Float32Array(0) : tier.markingNormals,
-      markingTints: far ? new Float32Array(0) : tier.markingTints,
-    });
-  }
+  const roads = packRoads(tracedAt(chunk, far), lookups, grid, far);
 
-  const facades: PackedPart[] = [];
-  const blocks: PackedPart[] = [];
   const placements = buildChunkBuildings(chunk, lookups.buildings, detail);
   // Asked before the shells are packed away, because a board is hung on the
   // wall that was really built rather than on the one the massing asked for.
   const near = detail === 'near';
   const posters = near ? postersIn(placements, lookups.buildings) : [];
   const signs = near ? signsIn(placements, lookups.buildings, lookups.tradeOf) : [];
-  const roofs = new Float32Array(placements.length * ROOF_STRIDE);
-  for (const [i, placed] of placements.entries()) {
-    writeRoof(roofs, i * ROOF_STRIDE, placed.shell, placed.matrix);
-    const matrix = new Float32Array(placed.matrix.toArray());
-    if (placed.batch === 'facade') facades.push({ geometry: packFacade(takeGeometry(placed.shell)), matrix });
-    else blocks.push({ geometry: takeGeometry(placed.shell), matrix });
-    // What stands on the roof is drawn with the blocks whatever the shell under
-    // it is, so a dressed tower costs no draw call of its own.
-    if (placed.dress !== undefined) blocks.push({ geometry: takeGeometry(placed.dress), matrix });
-    // The footing under a building on a slope is drawn with the blocks as well.
-    if (placed.footing !== undefined) blocks.push({ geometry: takeGeometry(placed.footing), matrix });
-  }
+  const { facades, blocks, roofs } = packBuildings(placements);
 
   const plants = far ? noPlants() : packPlants(chunk, lookups.plants);
 
@@ -284,6 +240,70 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
   };
   payload.drawCalls = payloadDrawCalls(payload);
   return payload;
+}
+
+/**
+ * The chunk the roads are lofted from. At far detail the minor fill is dropped
+ * before it is lofted, so the tiers that are not drawn cost nothing to leave out.
+ * The far ring keeps no junctions either: a junction is drawn where the roads
+ * that meet there are cut back, and neither can be read from that far.
+ */
+function tracedAt(chunk: WorldChunk, far: boolean): WorldChunk {
+  if (!far) return chunk;
+  return {
+    ...chunk,
+    roads: chunk.roads.filter((run) => FAR_TIERS.includes(run.tier)).map((run) => ({ ...run, gaps: [] })),
+    junctions: [],
+    pavement: chunk.pavement.filter((piece) => FAR_TIERS.includes(piece.tier)),
+    // A pier holds a deck up from as far off as the deck is seen; the rails
+    // of the tram are paint at that distance, and the far ring has no paint.
+    piers: chunk.piers.filter((pier) => FAR_TIERS.includes(pier.tier)),
+    tram: [],
+    tramCrossings: [],
+    tramPaved: [],
+  };
+}
+
+/** Loft the roads of a chunk and pack each tier into cells. The far ring has no markings. */
+function packRoads(traced: WorldChunk, lookups: ChunkLookups, grid: CellGrid, far: boolean): PackedRoads[] {
+  const roads: PackedRoads[] = [];
+  for (const tier of buildChunkRoads(traced, lookups.ribbons, lookups.surfaceAt)) {
+    const raised = new Set(raisedPartsOf(tier));
+    roads.push({
+      tier: tier.tier,
+      surface: packCells(
+        grid,
+        partsOf(tier).map((geometry) => ({ geometry: takeGeometry(geometry), raised: raised.has(geometry) })),
+      ),
+      markings: far ? new Float32Array(0) : tier.markings,
+      markingNormals: far ? new Float32Array(0) : tier.markingNormals,
+      markingTints: far ? new Float32Array(0) : tier.markingTints,
+    });
+  }
+  return roads;
+}
+
+/** Take the geometry of every building placed in a chunk: the facades, the blocks and the roofs. */
+function packBuildings(placements: readonly BuildingPlacement[]): {
+  facades: PackedPart[];
+  blocks: PackedPart[];
+  roofs: Float32Array;
+} {
+  const facades: PackedPart[] = [];
+  const blocks: PackedPart[] = [];
+  const roofs = new Float32Array(placements.length * ROOF_STRIDE);
+  for (const [i, placed] of placements.entries()) {
+    writeRoof(roofs, i * ROOF_STRIDE, placed.shell, placed.matrix);
+    const matrix = new Float32Array(placed.matrix.toArray());
+    if (placed.batch === 'facade') facades.push({ geometry: packFacade(takeGeometry(placed.shell)), matrix });
+    else blocks.push({ geometry: takeGeometry(placed.shell), matrix });
+    // What stands on the roof is drawn with the blocks whatever the shell under
+    // it is, so a dressed tower costs no draw call of its own.
+    if (placed.dress !== undefined) blocks.push({ geometry: takeGeometry(placed.dress), matrix });
+    // The footing under a building on a slope is drawn with the blocks as well.
+    if (placed.footing !== undefined) blocks.push({ geometry: takeGeometry(placed.footing), matrix });
+  }
+  return { facades, blocks, roofs };
 }
 
 /**

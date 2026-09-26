@@ -37,15 +37,7 @@ export function frameContents(camera: Camera, chunks: readonly ChunkContents[]):
   const point = new Vector3();
   const counts: FrameContents = { buildings: 0, lamps: 0, posters: 0 };
   for (const chunk of chunks) {
-    for (let i = 0; i < chunk.roofs.length / ROOF_STRIDE; i++) {
-      const roof = roofAt(chunk.roofs, i);
-      // The box turns with its lot; the square round it is close enough to count by.
-      const reach = Math.abs(roof.ux) * roof.halfAlong + Math.abs(roof.uz) * roof.halfAcross;
-      const deep = Math.abs(roof.uz) * roof.halfAlong + Math.abs(roof.ux) * roof.halfAcross;
-      box.min.set(roof.x - reach, roof.bottom, roof.z - deep);
-      box.max.set(roof.x + reach, roof.top, roof.z + deep);
-      if (frustum.intersectsBox(box)) counts.buildings++;
-    }
+    counts.buildings += buildingsInView(frustum, box, chunk.roofs);
     for (const lamp of chunk.lamps) {
       if (frustum.containsPoint(point.set(lamp.headX, lamp.headHeight, lamp.headY))) counts.lamps++;
     }
@@ -54,4 +46,19 @@ export function frameContents(camera: Camera, chunks: readonly ChunkContents[]):
     }
   }
   return counts;
+}
+
+/** How many of the buildings in `roofs` stand inside `frustum`. `box` is scratch. */
+function buildingsInView(frustum: Frustum, box: Box3, roofs: Float32Array): number {
+  let count = 0;
+  for (let i = 0; i < roofs.length / ROOF_STRIDE; i++) {
+    const roof = roofAt(roofs, i);
+    // The box turns with its lot; the square round it is close enough to count by.
+    const reach = Math.abs(roof.ux) * roof.halfAlong + Math.abs(roof.uz) * roof.halfAcross;
+    const deep = Math.abs(roof.uz) * roof.halfAlong + Math.abs(roof.ux) * roof.halfAcross;
+    box.min.set(roof.x - reach, roof.bottom, roof.z - deep);
+    box.max.set(roof.x + reach, roof.top, roof.z + deep);
+    if (frustum.intersectsBox(box)) count++;
+  }
+  return count;
 }

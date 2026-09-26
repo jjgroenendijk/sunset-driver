@@ -62,6 +62,19 @@ export interface StandingPerson {
   uniform?: number;
 }
 
+/** The square round the point the frame is drawn round that people are drawn in. */
+interface View {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+/** True where a pose stands inside the view. */
+function inView(pose: PedestrianPose, view: View): boolean {
+  return !(pose.x < view.minX || pose.x > view.maxX || pose.y < view.minY || pose.y > view.maxY);
+}
+
 export class PedestrianView {
   readonly group = new Group();
   /**
@@ -120,53 +133,74 @@ export class PedestrianView {
    * between two ticks. Called once a frame.
    */
   update(state: SimState, time: number, x: number, y: number): void {
-    const crowd = this.crowd;
-    const minX = x - PEDESTRIAN_VIEW;
-    const minY = y - PEDESTRIAN_VIEW;
-    const maxX = x + PEDESTRIAN_VIEW;
-    const maxY = y + PEDESTRIAN_VIEW;
-    const startled = state.pedestrians.startled;
-    const hurt = state.pedestrians.casualties;
-    let count = 0;
+    const view: View = {
+      minX: x - PEDESTRIAN_VIEW,
+      minY: y - PEDESTRIAN_VIEW,
+      maxX: x + PEDESTRIAN_VIEW,
+      maxY: y + PEDESTRIAN_VIEW,
+    };
     this.watch(state);
     this.pass.count = 0;
-    for (const id of crowd.near(minX, minY, maxX, maxY, this.ids)) {
+    let count = this.drawCrowd(state, time, view);
+    this.stepAside();
+    for (const record of state.pedestrians.startled) {
       if (count >= PEDESTRIAN_CAP) break;
-      if (!crowd.edgeMeets(crowd.edgeAt(id, heldTime(state.pedestrians.held, id, time)), minX, minY, maxX, maxY)) continue;
-      if (startled.length > 0 && startledOf(state.pedestrians, id) !== undefined) continue;
-      // Somebody who has been hit is drawn by `casualties.ts`, lying or limping.
-      if (hurt.length > 0 && casualtyOf(state.pedestrians, id) !== undefined) continue;
+      const pose = startledPose(record, time, this.pose);
+      if (inView(pose, view)) this.write(count++, this.lookOf(record.id), pose);
+    }
+    count = this.drawWaiting(time, view, count);
+    for (const person of this.standing) {
+      if (count >= PEDESTRIAN_CAP) break;
+      if (inView(person.pose, view)) this.write(count++, person.look, person.pose, person.uniform ?? 0);
+    }
+    this.body.commit(count);
+    this.mesh.visible = count > 0;
+  }
+
+  /** Write the people of the crowd walking their loops in view, from instance 0. Returns how many. */
+  private drawCrowd(state: SimState, time: number, view: View): number {
+    const crowd = this.crowd;
+    let count = 0;
+    for (const id of crowd.near(view.minX, view.minY, view.maxX, view.maxY, this.ids)) {
+      if (count >= PEDESTRIAN_CAP) break;
+      const pose = this.walking(state, time, view, id);
+      if (pose === undefined) continue;
       const person = crowd.people[id] as AmbientPedestrians['people'][number];
-      if (!outInThis(id, this.share * crowdAtHour(person.zone, time))) continue;
-      const pose = walkingPose(crowd, state.pedestrians, id, time, this.pose);
-      if (pose.hidden === true) continue;
-      if (pose.x < minX || pose.x > maxX || pose.y < minY || pose.y > maxY) continue;
       this.turnHead(pose);
       this.pass.add(pose.x, pose.y, pose.heading, pose.speed, person.lead, count);
       this.write(count++, person.look, pose);
     }
-    this.stepAside();
-    for (const record of startled) {
-      if (count >= PEDESTRIAN_CAP) break;
-      const pose = startledPose(record, time, this.pose);
-      if (pose.x < minX || pose.x > maxX || pose.y < minY || pose.y > maxY) continue;
-      this.write(count++, this.lookOf(record.id), pose);
-    }
+    return count;
+  }
+
+  /**
+   * The pose of person `id` of the crowd walking their loop, or undefined when
+   * they are not drawn as one of the crowd in view this frame.
+   */
+  private walking(state: SimState, time: number, view: View, id: number): PedestrianPose | undefined {
+    const crowd = this.crowd;
+    const held = heldTime(state.pedestrians.held, id, time);
+    if (!crowd.edgeMeets(crowd.edgeAt(id, held), view.minX, view.minY, view.maxX, view.maxY)) return undefined;
+    if (state.pedestrians.startled.length > 0 && startledOf(state.pedestrians, id) !== undefined) return undefined;
+    // Somebody who has been hit is drawn by `casualties.ts`, lying or limping.
+    if (state.pedestrians.casualties.length > 0 && casualtyOf(state.pedestrians, id) !== undefined) return undefined;
+    const person = crowd.people[id] as AmbientPedestrians['people'][number];
+    if (!outInThis(id, this.share * crowdAtHour(person.zone, time))) return undefined;
+    const pose = walkingPose(crowd, state.pedestrians, id, time, this.pose);
+    if (pose.hidden === true || !inView(pose, view)) return undefined;
+    return pose;
+  }
+
+  /** Write the people waiting at the stops, from instance `count`. Returns the count after them. */
+  private drawWaiting(time: number, view: View, count: number): number {
     for (const queue of this.queues) {
-      const waiting = queue.passengers(minX, minY, maxX, maxY, time, this.waiting);
+      const waiting = queue.passengers(view.minX, view.minY, view.maxX, view.maxY, time, this.waiting);
       for (let i = 0; i < waiting && count < PEDESTRIAN_CAP; i++) {
         const passenger = this.waiting[i] as WaitingPassenger;
         this.write(count++, passenger.look, passenger.pose);
       }
     }
-    for (const person of this.standing) {
-      if (count >= PEDESTRIAN_CAP) break;
-      const pose = person.pose;
-      if (pose.x < minX || pose.x > maxX || pose.y < minY || pose.y > maxY) continue;
-      this.write(count++, person.look, pose, person.uniform ?? 0);
-    }
-    this.body.commit(count);
-    this.mesh.visible = count > 0;
+    return count;
   }
 
   dispose(): void {

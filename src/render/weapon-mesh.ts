@@ -163,38 +163,56 @@ function gun(f: GunForm, attachments: readonly Attachment[]): WeaponBox[] {
   if (f.bulge !== undefined) boxes.push(box(f.bulge[0], height * 1.1, f.bulge[1], 0.02, 0, 0, f.metal));
   if (f.tube) boxes.push(box(f.barrel * 0.8, f.bore, f.bore, front + f.barrel * 0.4, -f.bore, 0, f.metal));
 
-  const scale = f.small ? 0.8 : 1;
-  for (const attachment of attachments) {
-    switch (attachment) {
-      case 'suppressor': {
-        const sl = 0.17 * scale;
-        const sw = Math.max(f.bore * 1.7, 0.034);
-        boxes.push(box(sl, sw, sw, muzzle + sl / 2, 0, 0, POLYMER, attachment));
-        break;
-      }
-      case 'extended-mag':
-        boxes.push(...extendedMag(f, bottom, front, attachment));
-        break;
-      case 'optic': {
-        const at = f.top !== undefined && f.top[3] < front - 0.1 ? f.top[3] + f.top[0] / 2 + 0.07 : f.at;
-        boxes.push(box(0.12 * scale, 0.045, 0.036, at, top + 0.035, 0, POLYMER, attachment));
-        break;
-      }
-      case 'laser': {
-        // On the side of the front, where the camera above can see it.
-        const lx = front - 0.03;
-        const lz = width / 2 + 0.012;
-        boxes.push(box(0.05, 0.022, 0.022, lx, bottom + 0.01, lz, POLYMER, attachment));
-        boxes.push(box(0.006, 0.012, 0.012, lx + 0.028, bottom + 0.01, lz, LASER_LENS, attachment));
-        break;
-      }
-      case 'foregrip': {
-        const gx = f.fore !== undefined ? front + f.fore[2] + f.fore[0] * 0.5 : front + 0.05;
-        boxes.push(box(0.035, 0.09, 0.032, gx, bottom - 0.045, 0, POLYMER, attachment));
-        // A grip pad to the side, so the fit reads from above as well as below.
-        boxes.push(box(0.05, 0.02, width + 0.03, gx, bottom - 0.005, 0, POLYMER, attachment));
-        break;
-      }
+  const mount: Mount = { front, top, bottom, width, muzzle, scale: f.small ? 0.8 : 1 };
+  for (const attachment of attachments) boxes.push(...attachmentBoxes(f, attachment, mount));
+  return boxes;
+}
+
+/** The places on a gun its attachments mount on. */
+interface Mount {
+  front: number;
+  top: number;
+  bottom: number;
+  width: number;
+  /** The end of the barrel and its brake, where a suppressor goes. */
+  muzzle: number;
+  /** The size of an attachment on this gun: a small gun takes a smaller one. */
+  scale: number;
+}
+
+/** The boxes of one attachment on a gun. */
+function attachmentBoxes(f: GunForm, attachment: Attachment, m: Mount): WeaponBox[] {
+  const { front, top, bottom, width, muzzle, scale } = m;
+  const boxes: WeaponBox[] = [];
+  switch (attachment) {
+    case 'suppressor': {
+      const sl = 0.17 * scale;
+      const sw = Math.max(f.bore * 1.7, 0.034);
+      boxes.push(box(sl, sw, sw, muzzle + sl / 2, 0, 0, POLYMER, attachment));
+      break;
+    }
+    case 'extended-mag':
+      boxes.push(...extendedMag(f, bottom, front, attachment));
+      break;
+    case 'optic': {
+      const at = f.top !== undefined && f.top[3] < front - 0.1 ? f.top[3] + f.top[0] / 2 + 0.07 : f.at;
+      boxes.push(box(0.12 * scale, 0.045, 0.036, at, top + 0.035, 0, POLYMER, attachment));
+      break;
+    }
+    case 'laser': {
+      // On the side of the front, where the camera above can see it.
+      const lx = front - 0.03;
+      const lz = width / 2 + 0.012;
+      boxes.push(box(0.05, 0.022, 0.022, lx, bottom + 0.01, lz, POLYMER, attachment));
+      boxes.push(box(0.006, 0.012, 0.012, lx + 0.028, bottom + 0.01, lz, LASER_LENS, attachment));
+      break;
+    }
+    case 'foregrip': {
+      const gx = f.fore !== undefined ? front + f.fore[2] + f.fore[0] * 0.5 : front + 0.05;
+      boxes.push(box(0.035, 0.09, 0.032, gx, bottom - 0.045, 0, POLYMER, attachment));
+      // A grip pad to the side, so the fit reads from above as well as below.
+      boxes.push(box(0.05, 0.02, width + 0.03, gx, bottom - 0.005, 0, POLYMER, attachment));
+      break;
     }
   }
   return boxes;

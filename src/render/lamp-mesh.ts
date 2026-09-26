@@ -105,31 +105,52 @@ export function lampsIn(chunk: WorldChunk, ribbons: RoadRibbons): Lamp[] {
       const b = run.points[i + 1] as { x: number; y: number };
       const from = ribbons.frameAt(run.curve, segment, a.x, a.y).distance;
       const to = ribbons.frameAt(run.curve, segment, b.x, b.y).distance;
-      if (!(to > from)) continue;
-      for (let k = Math.ceil(from / spec.spacing); k * spec.spacing < to; k++) {
-        const at = k * spec.spacing;
-        // The stretches the junctions take carry no road surface, so a mast
-        // placed there would stand in the middle of the carriageway. The gaps
-        // are the curve's own, so both chunks of a run cut at a boundary leave
-        // out the same lamps.
-        if (run.gaps.some((gap) => at >= gap.from.distance && at <= gap.to.distance)) continue;
-        const t = (at - from) / (to - from);
-        const x = a.x + (b.x - a.x) * t;
-        const y = a.y + (b.y - a.y) * t;
-        const frame = ribbons.frameAt(run.curve, segment, x, y);
-        // The sides of a single-sided tier alternate, so one side of the street
-        // is never left dark for a whole block.
-        const sides = spec.bothSides ? [-1, 1] : [k % 2 === 0 ? -1 : 1];
-        for (const side of sides) {
-          // Inside a mouth's blend the road banks, so the pavement under the
-          // mast stands off the centreline's height by the bank.
-          const foot = frame.height + frame.bank * side * offset + rise;
-          out.push(lampAt(run.tier, spec, x, y, frame.height, foot, frame.acrossX * side, frame.acrossY * side, offset));
-        }
-      }
+      if (to > from) lampsAlong({ run, spec, ribbons, offset, rise, segment, a, b, from, to }, out);
     }
   }
   return out;
+}
+
+/** One segment of a run, from `a` at distance `from` along its curve to `b` at `to`. */
+interface Stretch {
+  run: WorldChunk['roads'][number];
+  spec: LampSpec;
+  ribbons: RoadRibbons;
+  /** Metres from the centreline out to the masts. */
+  offset: number;
+  /** How far the verge stands over the road bed. */
+  rise: number;
+  segment: number;
+  a: { x: number; y: number };
+  b: { x: number; y: number };
+  from: number;
+  to: number;
+}
+
+/** Add the lamps along one stretch to `out`, one each `spacing` along the curve. */
+function lampsAlong(stretch: Stretch, out: Lamp[]): void {
+  const { run, spec, ribbons, offset, rise, segment, a, b, from, to } = stretch;
+  for (let k = Math.ceil(from / spec.spacing); k * spec.spacing < to; k++) {
+    const at = k * spec.spacing;
+    // The stretches the junctions take carry no road surface, so a mast
+    // placed there would stand in the middle of the carriageway. The gaps
+    // are the curve's own, so both chunks of a run cut at a boundary leave
+    // out the same lamps.
+    if (run.gaps.some((gap) => at >= gap.from.distance && at <= gap.to.distance)) continue;
+    const t = (at - from) / (to - from);
+    const x = a.x + (b.x - a.x) * t;
+    const y = a.y + (b.y - a.y) * t;
+    const frame = ribbons.frameAt(run.curve, segment, x, y);
+    // The sides of a single-sided tier alternate, so one side of the street
+    // is never left dark for a whole block.
+    const sides = spec.bothSides ? [-1, 1] : [k % 2 === 0 ? -1 : 1];
+    for (const side of sides) {
+      // Inside a mouth's blend the road banks, so the pavement under the
+      // mast stands off the centreline's height by the bank.
+      const foot = frame.height + frame.bank * side * offset + rise;
+      out.push(lampAt(run.tier, spec, x, y, frame.height, foot, frame.acrossX * side, frame.acrossY * side, offset));
+    }
+  }
 }
 
 /** One lamp, given the way across the road that its verge lies. */

@@ -131,14 +131,7 @@ export class CasualtyView {
       const s = seen[i] as Seen;
       const look = lookOf(this.crowd, state.seed, s);
       const scale = look.height / STRIDE_HEIGHT;
-      const ragdoll = s.record.ragdoll;
-      if (ragdoll !== null) {
-        this.place.set(s.x, ragdoll[1] as number, s.y);
-        ragdollMatrices(ragdoll, this.place, scale, this.data, count * BODY_FLOATS);
-      } else {
-        this.place.set(s.pose.x, s.pose.height, s.pose.y);
-        this.poser.write(s.record, s.pose, this.data, count * BODY_FLOATS);
-      }
+      this.writeBody(s, scale, count * BODY_FLOATS);
       this.writeInstance(count++, look, scale, s.officer === null ? 0 : UNIFORM_FLAG[s.officer]);
       if (dead(s.record) && s.record.cash > 0) this.writeCash(notes++, s);
     }
@@ -162,6 +155,21 @@ export class CasualtyView {
     this.cash.geometry.dispose();
     (this.cash.material as MeshStandardMaterial).dispose();
     this.group.clear();
+  }
+
+  /**
+   * Write the bones of one casualty at `offset` into the bone texture, and
+   * set `place` to its hips: the ragdoll's where it holds the body, else the pose's.
+   */
+  private writeBody(s: Seen, scale: number, offset: number): void {
+    const ragdoll = s.record.ragdoll;
+    if (ragdoll !== null) {
+      this.place.set(s.x, ragdoll[1] as number, s.y);
+      ragdollMatrices(ragdoll, this.place, scale, this.data, offset);
+    } else {
+      this.place.set(s.pose.x, s.pose.height, s.pose.y);
+      this.poser.write(s.record, s.pose, this.data, offset);
+    }
   }
 
   /** Pose the casualties in view at a moment into the first entries of `seen`, and answer how many. */

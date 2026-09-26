@@ -111,6 +111,12 @@ export function trafficParts(spec: VehicleSpec, apart: readonly number[] = [], t
     else if (part.colour === spec.paint) paint.push(boxOf(part));
     else trim.push(coloured(boxOf(part), part.colour));
   }
+  pushTyres(spec, tyres);
+  return { paint: merged(paint), trim: merged(trim), glass: merged(glass), tyres: tyresApart ? merged(tyres) : undefined };
+}
+
+/** Add the tyres of a class. A class with its wheels in line takes one of each pair, on the centre line. */
+function pushTyres(spec: VehicleSpec, tyres: BufferGeometry[]): void {
   for (const wheel of spec.wheels) {
     if (spec.inline && wheel.z < 0) continue;
     const tyre = new CylinderGeometry(spec.wheelRadius, spec.wheelRadius, spec.wheelWidth, 10);
@@ -119,7 +125,6 @@ export function trafficParts(spec: VehicleSpec, apart: readonly number[] = [], t
     tyres.push(coloured(tyre.toNonIndexed(), TYRE));
     tyre.dispose();
   }
-  return { paint: merged(paint), trim: merged(trim), glass: merged(glass), tyres: tyresApart ? merged(tyres) : undefined };
 }
 
 export class TrafficView {
@@ -211,12 +216,21 @@ export class TrafficView {
       meshes.paint.count = 0;
       if (meshes.rider !== undefined) meshes.rider.count = 0;
     }
-    const traffic = this.traffic;
     this.springs.begin();
     const minX = x - TRAFFIC_VIEW;
     const minY = y - TRAFFIC_VIEW;
     const maxX = x + TRAFFIC_VIEW;
     const maxY = y + TRAFFIC_VIEW;
+    this.addAmbient(state, time, minX, minY, maxX, maxY);
+    this.addPromoted(state, minX, minY, maxX, maxY);
+    this.springs.end();
+    for (const meshes of this.classes) finish(meshes);
+    this.signals?.update(time, x, y);
+  }
+
+  /** Write the ambient vehicles in a box that are out and not promoted. */
+  private addAmbient(state: SimState, time: number, minX: number, minY: number, maxX: number, maxY: number): void {
+    const traffic = this.traffic;
     for (const id of traffic.near(minX, minY, maxX, maxY, this.ids)) {
       if (promotedOf(state.traffic, id) !== undefined) continue;
       if (!outInThis(id, this.share)) continue;
@@ -231,6 +245,10 @@ export class TrafficView {
       this.body.copy(this.turn).multiply(this.tilt);
       this.add(meshes, vehicle.paint, true);
     }
+  }
+
+  /** Write the promoted vehicles in a box, which the physics moves. */
+  private addPromoted(state: SimState, minX: number, minY: number, maxX: number, maxY: number): void {
     for (const record of state.traffic.promoted) {
       const v = record.vehicle;
       if (v.x < minX || v.x > maxX || v.z < minY || v.z > maxY) continue;
@@ -243,24 +261,6 @@ export class TrafficView {
       // rolls on with an empty saddle.
       this.add(meshes, record.paint, false);
     }
-    this.springs.end();
-    for (const meshes of this.classes) {
-      const count = meshes.paint.count;
-      meshes.trim.count = count;
-      meshes.glass.count = count;
-      meshes.tyres.count = count;
-      for (const mesh of [meshes.paint, meshes.trim, meshes.glass, meshes.tyres]) {
-        mesh.visible = count > 0;
-        if (count === 0) continue;
-        mesh.instanceMatrix.needsUpdate = true;
-      }
-      if (count > 0 && meshes.paint.instanceColor !== null) meshes.paint.instanceColor.needsUpdate = true;
-      const rider = meshes.rider;
-      if (rider === undefined) continue;
-      rider.visible = rider.count > 0;
-      if (rider.count > 0) rider.instanceMatrix.needsUpdate = true;
-    }
-    this.signals?.update(time, x, y);
   }
 
   dispose(): void {
@@ -304,6 +304,24 @@ export class TrafficView {
     rider.setMatrixAt(rider.count, this.matrix);
     rider.count += 1;
   }
+}
+
+/** Match a class's other meshes to the vehicles written into its paint, and upload them. */
+function finish(meshes: ClassMeshes): void {
+  const count = meshes.paint.count;
+  meshes.trim.count = count;
+  meshes.glass.count = count;
+  meshes.tyres.count = count;
+  for (const mesh of [meshes.paint, meshes.trim, meshes.glass, meshes.tyres]) {
+    mesh.visible = count > 0;
+    if (count === 0) continue;
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+  if (count > 0 && meshes.paint.instanceColor !== null) meshes.paint.instanceColor.needsUpdate = true;
+  const rider = meshes.rider;
+  if (rider === undefined) return;
+  rider.visible = rider.count > 0;
+  if (rider.count > 0) rider.instanceMatrix.needsUpdate = true;
 }
 
 /** An instanced mesh of up to `cap` vehicles, drawing none until it is filled. */

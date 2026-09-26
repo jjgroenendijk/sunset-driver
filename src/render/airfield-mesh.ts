@@ -99,17 +99,7 @@ function markings(field: Airfield, part: AirfieldPart, top: number): AirfieldBox
     out.push(box(part.u + u, part.v + v, halfU, halfV, top - PAINT_LIFT, top, colour));
   };
   if (part.kind === 'runway' && field.kind !== 'airstrip') {
-    const bar = part.halfV * 0.06;
-    const pitch = (2 * part.halfV) / THRESHOLD_BARS;
-    for (const end of [-1, 1]) {
-      for (let k = 0; k < THRESHOLD_BARS; k++) {
-        const v = -part.halfV + pitch * (k + 0.5);
-        if (Math.abs(v) < pitch / 2) continue;
-        at(end * (part.halfU - 20), v, 15, bar, WHITE);
-      }
-    }
-    const reach = part.halfU - 50;
-    for (let u = -reach + DASH / 2; u <= reach - DASH / 2; u += DASH + DASH_GAP) at(u, 0, DASH / 2, DASH_WIDTH / 2, WHITE);
+    runwayPaint(part, at);
   } else if (part.kind === 'taxiway') {
     const alongU = part.halfU >= part.halfV;
     at(0, 0, alongU ? part.halfU - 2 : 0.25, alongU ? 0.25 : part.halfV - 2, YELLOW);
@@ -120,6 +110,21 @@ function markings(field: Airfield, part: AirfieldPart, top: number): AirfieldBox
     at(0, 0, h * 0.6, 0.8, WHITE);
   }
   return out;
+}
+
+/** A paved runway's paint: the threshold bars at each end, then the dashed centreline. */
+function runwayPaint(part: AirfieldPart, at: (u: number, v: number, halfU: number, halfV: number, colour: number) => void): void {
+  const bar = part.halfV * 0.06;
+  const pitch = (2 * part.halfV) / THRESHOLD_BARS;
+  for (const end of [-1, 1]) {
+    for (let k = 0; k < THRESHOLD_BARS; k++) {
+      const v = -part.halfV + pitch * (k + 0.5);
+      if (Math.abs(v) < pitch / 2) continue;
+      at(end * (part.halfU - 20), v, 15, bar, WHITE);
+    }
+  }
+  const reach = part.halfU - 50;
+  for (let u = -reach + DASH / 2; u <= reach - DASH / 2; u += DASH + DASH_GAP) at(u, 0, DASH / 2, DASH_WIDTH / 2, WHITE);
 }
 
 /** What stands on the ground: the buildings, the fence, the windsock and the dock's deck. */
