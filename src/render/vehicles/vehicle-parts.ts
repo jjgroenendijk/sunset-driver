@@ -13,6 +13,8 @@ import { BONNET_LEAF } from '../../sim/vehicles/leaves.ts';
 export const GLASS = 0x2e3a6a;
 export const LAMP = 0xffe7b0;
 export const TAIL = 0x6e1210;
+/** The amber of an indicator, which flashes on the side a driver turns to (`vehicle-glow.ts`). */
+export const INDICATOR = 0xff9a1f;
 export const METAL = 0xb8b3cc;
 export const TYRE = 0x2f2838;
 /** The dark of a seat, which is plum leather on every bike in the city. */

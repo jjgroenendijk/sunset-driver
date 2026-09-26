@@ -6,7 +6,8 @@
  * else: how fast the driver cruises, how close they stand to the car in front
  * at a red light, how long they take to pull away when it turns green,
  * whether they cross a line on amber rather than wait for the next green, and
- * how long they stand behind the player or a wreck before they lean on the horn.
+ * how long they stand behind the player or a wreck before they lean on the horn,
+ * and how far before a turn they put the indicator on.
  *
  * `traffic-timing.ts` reads those four numbers while it lays the tour down, so
  * the personality is baked into the timing rather than stepped. That is what
@@ -41,6 +42,11 @@ export interface Driver {
    * the first honk (`src/audio/honks.ts`); 0 for a driver who never honks.
    */
   honks: number;
+  /**
+   * Metres before a turn they put the indicator on (`indicator.ts`); 0 for a
+   * driver who turns without one.
+   */
+  indicates: number;
 }
 
 /**
@@ -54,16 +60,17 @@ export interface Driver {
  */
 export const PERSONALITIES: readonly (Driver & { share: number })[] = [
   // Slow away from every light and slow between them: the driver everyone else is stuck behind.
-  // Patient with whatever holds them up, and never on the horn.
-  { personality: 'hesitant', share: 2, cruise: 0.82, gap: 8, react: Math.round(1.2 * TICK_RATE), runsAmber: false, honks: 0 },
-  // Under the limit, a long gap in the queue, never a chance taken on an amber, and never a honk.
-  { personality: 'careful', share: 3, cruise: 0.86, gap: 9, react: Math.round(0.8 * TICK_RATE), runsAmber: false, honks: 0 },
+  // Patient with whatever holds them up, never on the horn, and indicating well before a turn.
+  { personality: 'hesitant', share: 2, cruise: 0.82, gap: 8, react: Math.round(1.2 * TICK_RATE), runsAmber: false, honks: 0, indicates: 45 },
+  // Under the limit, a long gap in the queue, no chance taken on an amber, no honk, and the indicator on early.
+  { personality: 'careful', share: 3, cruise: 0.86, gap: 9, react: Math.round(0.8 * TICK_RATE), runsAmber: false, honks: 0, indicates: 50 },
   // The middle of the road, and what the traffic drove like before this file.
-  { personality: 'steady', share: 6, cruise: 0.9, gap: 7, react: Math.round(0.45 * TICK_RATE), runsAmber: false, honks: Math.round(3.5 * TICK_RATE) },
-  // Up to the limit, away quickly, and through on an amber.
-  { personality: 'brisk', share: 4, cruise: 0.95, gap: 6, react: Math.round(0.25 * TICK_RATE), runsAmber: true, honks: 2 * TICK_RATE },
-  // Over the limit, half a car off the one in front, gone the moment it is green, and on the horn at once.
-  { personality: 'tailgater', share: 2, cruise: 0.99, gap: 4.5, react: Math.round(0.1 * TICK_RATE), runsAmber: true, honks: TICK_RATE },
+  { personality: 'steady', share: 6, cruise: 0.9, gap: 7, react: Math.round(0.45 * TICK_RATE), runsAmber: false, honks: Math.round(3.5 * TICK_RATE), indicates: 35 },
+  // Up to the limit, away quickly, through on an amber, and the indicator on late.
+  { personality: 'brisk', share: 4, cruise: 0.95, gap: 6, react: Math.round(0.25 * TICK_RATE), runsAmber: true, honks: 2 * TICK_RATE, indicates: 15 },
+  // Over the limit, half a car off the one in front, gone the moment it is green, on the horn at once,
+  // and never an indicator.
+  { personality: 'tailgater', share: 2, cruise: 0.99, gap: 4.5, react: Math.round(0.1 * TICK_RATE), runsAmber: true, honks: TICK_RATE, indicates: 0 },
 ];
 
 /** The driver of a vehicle that has none: the middle of the roster. */
@@ -89,6 +96,6 @@ export function driverNamed(personality: Personality): Driver {
 
 /** A row of the roster without the share, which is no business of a driver's. */
 function rowOf(row: Driver & { share: number }): Driver {
-  const { personality, cruise, gap, react, runsAmber, honks } = row;
-  return { personality, cruise, gap, react, runsAmber, honks };
+  const { personality, cruise, gap, react, runsAmber, honks, indicates } = row;
+  return { personality, cruise, gap, react, runsAmber, honks, indicates };
 }

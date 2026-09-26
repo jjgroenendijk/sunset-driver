@@ -94,6 +94,12 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 - `test/support/signal-lap.ts` is what holds a driver honest over a whole lap. It allows standing
   still on a green only within that driver's own `react` of the green starting, and crossing on an
   amber only for a driver who takes ambers. Nobody crosses on red.
+- The indicators (`indicator.ts`) are a pure function of the tour, like the pose. `turnSides`
+  reads the side of the turn at the end of each leg off `RoadGraph.bend`; only a node of degree 3
+  or more counts, so a driver does not indicate round a bend in one road. `sideOn` turns it on
+  `Driver.indicates` metres before the node and keeps it `THROUGH` metres into the next road. A
+  driver with 0 there never indicates. `bend` is above 0 for a right turn: the map's `y` runs down
+  the screen, so the right of a driver heading along `(x, y)` is `(-y, x)`, as in `swerveOnto`.
 
 ## The buses
 
