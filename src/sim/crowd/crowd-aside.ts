@@ -5,7 +5,8 @@
  * A person of the crowd is a function of the tick, and the player is not, so
  * the step aside is the one part of it that has to be stored: each person near
  * the player on foot carries how far they stand off their lane and which way
- * their head is turned. `make-way.ts` steps the list once a tick; this file
+ * their head is turned. Somebody keeping out of a car, or walking round what
+ * stands in their way, carries how far they stand off their loop. `make-way.ts` steps the list once a tick; this file
  * holds the record and reads it, and nothing else, so the crowd's own poses can
  * read it without importing the step.
  */
@@ -19,6 +20,37 @@ export interface Aside {
   side: number;
   /** Radians their head is turned from their body, towards the player. */
   look: number;
+  /**
+   * Metres east and north they stand off their loop to keep out of a car or
+   * round something standing in their way (`detour.ts`), and where giving
+   * way wants them to stand this tick. Both 0 for somebody on their loop.
+   */
+  dodgeX: number;
+  dodgeY: number;
+  wantX: number;
+  wantY: number;
+}
+
+/** A record of somebody on their lane, looking ahead. */
+export function freshAside(id: number): Aside {
+  return { id, off: 0, side: 0, look: 0, dodgeX: 0, dodgeY: 0, wantX: 0, wantY: 0 };
+}
+
+/**
+ * Ask person `id` to stand `(x, y)` metres off their loop, from the next tick
+ * on, adding a record for them where they have none. They walk there at a
+ * step's pace (`make-way.ts`), and back once nobody asks any more.
+ */
+export function wantDodge(list: Aside[], id: number, x: number, y: number): void {
+  let record = asideOf(list, id);
+  if (record === undefined) {
+    let i = list.length;
+    while (i > 0 && (list[i - 1] as Aside).id > id) i--;
+    record = freshAside(id);
+    list.splice(i, 0, record);
+  }
+  record.wantX = x;
+  record.wantY = y;
 }
 
 /** The step aside of a person, or undefined for somebody on their lane and looking ahead. */

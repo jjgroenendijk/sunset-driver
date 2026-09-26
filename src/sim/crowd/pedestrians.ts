@@ -203,8 +203,8 @@ export function crowdPoseOf(crowd: PoseSource, state: PedestrianState, id: numbe
 
 /**
  * Where a person stands on their loop at a moment, held back as far as they
- * have waited for the traffic, and stepped as far aside as the player has
- * made them.
+ * have waited for the traffic, stepped as far aside as the player has made
+ * them, and as far off it as they keep out of a car's way.
  */
 export function walkingPose(crowd: PoseSource, state: PedestrianState, id: number, time: number, out: PedestrianPose): PedestrianPose {
   crowd.poseAt(id, heldTime(state.held, id, time), out);
@@ -218,8 +218,8 @@ export function walkingPose(crowd: PoseSource, state: PedestrianState, id: numbe
   }
   const aside = state.aside.length > 0 ? asideOf(state.aside, id) : undefined;
   if (aside !== undefined) {
-    out.x -= sin(out.heading) * aside.off;
-    out.y += cos(out.heading) * aside.off;
+    out.x -= sin(out.heading) * aside.off - aside.dodgeX;
+    out.y += cos(out.heading) * aside.off + aside.dodgeY;
     out.look = aside.look;
   }
   return out;

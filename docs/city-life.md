@@ -10,7 +10,7 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 
 - Ambient traffic
 - How a vehicle moves
-- Giving way
+- Giving way (in `docs/giving-way.md`)
 - The drivers
 - The buses
 - The bus stops
@@ -68,40 +68,6 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   longer keeps the people out of the cars (`test/sim/traffic/give-way.test.ts`, seed 4).
 - A bend inside one edge has no turn speed, because the timing splits drives only at joins and at
   lines. A vehicle takes such a bend at its cruise (issue #727).
-
-## Giving way
-
-- `src/sim/traffic/give-way.ts` keeps the cars and the people within `GIVE_WAY_REACH` of the player
-  off each other and off the player, their car and the wrecks. Spec section 13.1 and issue #361
-  ask for it. It holds a car or a person back on their loop: `hold.ts` keeps each one's lag, in
-  `state.traffic.held` and `state.pedestrians.held`. Everyone else keeps a lag of 0.
-- **Read a car or a person through `heldTime`, never at the bare tick.** The physics
-  (`traffic-bodies.ts`), `walkingPose`, `crowdPoseOf` and both renderers do. A reader that forgets
-  it draws a car on top of the one it is waiting behind.
-- A car stops for what is in the lane ahead of it and slows for what is further ahead. It also
-  stops when its next step meets a car coming in from the side. When cars stop for each other in a
-  ring, the car with the lowest id goes. Two cars that already touch may only move apart.
-- Besides the player, their car and the wrecks, a car stops for the police cars, the fire engines
-  and the ambulances, so the traffic queues behind an engine at a fire. It ignores any of these
-  whose middle is behind its own. An engine is longer than a car, so one that comes up on a car
-  from behind reaches past its nose. Without that rule the car would stand in the engine for
-  `PATIENCE`.
-- A car with a lag can meet a light its tour was timed to pass on green, so it stops at the line
-  when the light is not green. It makes up the lag during its tour's next wait. It does not move
-  while it does, so this is never seen.
-- A car that comes into the box on top of another is moved back along its tour until it stands
-  clear. The box is wider than the view, so nobody sees the jump. On the first tick of a session
-  every car counts as new. That is why `createHolds` starts at tick -1.
-- A person holds before stepping into a car, or into the road just ahead of a moving one. If a car
-  stands for a person on their loop, the person walks back the way they came. A person off their
-  loop is moved aside with `stepAside` after `NUDGE`. The player, their car and a wreck get
-  `PATIENCE`, and then the car drives into them. That is how the traffic still promotes.
-- A moving car that meets a person all the same hits them, with a `Blow` marked `city`: it is no
-  crime of the player's. With the rules above, this happens only to someone running.
-- The step costs about 2 ms a tick in the core of seed 1. Most of it is reading poses. The
-  candidates are looked up again only when the player moves to another `NEAR_SNAP` of the map.
-- Each peer of a multiplayer room gives way round its own player, so `applyWorld` keeps the local
-  holds when it writes the host's traffic and crowd.
 
 ## The drivers
 
