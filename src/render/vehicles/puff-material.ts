@@ -12,6 +12,9 @@
  * - `z` — its age, 0 to 1. The noise rolls with it, so the shape churns.
  * - `w` — how much fire lights it from below. Only smoke reads it.
  *
+ * Heat haze is the third kind, and it is not a colour at all: see
+ * {@link hazeMaterial}.
+ *
  * Smoke is lit by the scene, so it is grey at noon and dark at night, where
  * only the fire under it shows it up. Flame is its own light: a colour ramp
  * from white at the core to red at the rim, added onto the frame and bright
@@ -19,7 +22,21 @@
  */
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import { AdditiveBlending, DoubleSide, NormalBlending } from 'three';
-import { attribute, clamp, float, fractalNoise, mix, smoothstep, uv, vec2, vec3, vec4, type TslNode } from '../tsl.ts';
+import {
+  attribute,
+  clamp,
+  float,
+  fractalNoise,
+  mix,
+  screenUV,
+  smoothstep,
+  uv,
+  vec2,
+  vec3,
+  vec4,
+  viewportSharedTexture,
+  type TslNode,
+} from '../tsl.ts';
 
 /** The colour fire casts onto the smoke over it. */
 const GLOW = vec3(1, 0.34, 0.08);
@@ -31,6 +48,12 @@ const CORE = vec3(1, 0.86, 0.55);
 
 /** How bright the core of a flame is, over 1 so the bloom picks it up. */
 const FLAME_GAIN = 3;
+
+/**
+ * How far heat haze pushes what is behind it at most, as a share of the frame.
+ * A few pixels at 1600x900: enough to see the street waver, not enough to tear it.
+ */
+const HAZE_PUSH = 0.02;
 
 interface Puff {
   fade: TslNode;
@@ -100,5 +123,36 @@ export function flameMaterial(): MeshBasicNodeMaterial {
   });
   material.colorNode = vec4(ramp.mul(FLAME_GAIN), 1);
   material.opacityNode = heat.mul(p.fade);
+  return material;
+}
+
+/**
+ * Heat haze: hot air over a fire, which has no colour and bends what is behind
+ * it. The shader reads the frame drawn so far a little to one side of the
+ * fragment, pushed by noise that rises through the patch as it ages, and
+ * blends that over the frame. The push fades to nothing at the rim, so the
+ * patch has no edge.
+ *
+ * A post pass over the whole frame was the other way to draw it, but it costs
+ * every pixel of every frame, and it needs the fires on screen handed to it as
+ * a list. A patch costs only the pixels it covers, and the copy of the frame it
+ * reads is made only while one is drawn: a frame with no fire pays nothing.
+ */
+export function hazeMaterial(): MeshBasicNodeMaterial {
+  const p = puff();
+  const place = vec3(p.at.x.mul(5).add(p.variant.mul(29)), p.at.y.mul(4).sub(p.age.mul(6)), p.variant.mul(13));
+  const push = vec2(fractalNoise(place, 2), fractalNoise(place.add(vec3(41, 0, 17)), 2));
+  const shape = float(1).sub(smoothstep(0.15, 1, p.at.length().mul(2)));
+  const strength = shape.mul(p.fade);
+  const behind = viewportSharedTexture(screenUV.add(push.mul(strength).mul(HAZE_PUSH)));
+  const material = new MeshBasicNodeMaterial({
+    transparent: true,
+    depthWrite: false,
+    side: DoubleSide,
+    blending: NormalBlending,
+    fog: false,
+  });
+  material.colorNode = vec4(behind.rgb, 1);
+  material.opacityNode = strength;
   return material;
 }

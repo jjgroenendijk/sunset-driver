@@ -2,7 +2,7 @@ import { Box3, BufferAttribute, InstancedMesh, Mesh } from 'three';
 import { describe, expect, it } from 'vitest';
 import { explode, ignite, PANELS, type Panel } from '../../../src/sim/vehicles/damage.ts';
 import { createVehicleState, ROSTER, specOf, type VehicleState } from '../../../src/sim/vehicles/vehicle.ts';
-import { DamageFx, FLAME_CAP, SMOKE_CAP } from '../../../src/render/vehicles/damage-fx.ts';
+import { DamageFx, FLAME_CAP, HAZE_CAP, SMOKE_CAP } from '../../../src/render/vehicles/damage-fx.ts';
 import { SKID_STEP, SkidMarks } from '../../../src/render/vehicles/skid.ts';
 import type { Surface } from '../../../src/world/terrain/surface.ts';
 import { panelAt, vehicleBoxes } from '../../../src/render/vehicles/vehicle-mesh.ts';
@@ -242,6 +242,25 @@ describe('the smoke and the flames', () => {
     fx.update(v, spec, 3, 101);
     // The second frame ages the burst; it does not throw a second one.
     expect(counts(fx).flame).toBeLessThanOrEqual(burst);
+    fx.dispose();
+  });
+
+  it('raises heat haze over a burning car, and hides it where there is none or the tier draws none', () => {
+    const haze = (fx: DamageFx): InstancedMesh => fx.group.children[2] as InstancedMesh;
+    const quiet = run(dented('front', 0.4), 120);
+    expect(haze(quiet).count).toBe(0);
+    expect(haze(quiet).visible).toBe(false);
+    quiet.dispose();
+
+    const v = createVehicleState(spec);
+    ignite(v.damage, 0);
+    const fx = run(v, 300);
+    expect(haze(fx).count).toBeGreaterThan(0);
+    expect(haze(fx).count).toBeLessThanOrEqual(HAZE_CAP);
+    expect(haze(fx).visible).toBe(true);
+    fx.haze = false;
+    fx.update(v, spec, 3, 300);
+    expect(haze(fx).visible).toBe(false);
     fx.dispose();
   });
 

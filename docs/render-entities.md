@@ -104,20 +104,28 @@ scene ever holds in `docs/shops.md`. The aircraft and the airfields are drawn as
   `PickupModels.pick` walks up from the mesh it hits to the group that carries the pickup's id.
   Nothing caps how many pickups lie at once; a pickup off screen is culled and costs no draw.
 - `DamageFx` (`damage-fx.ts`) is the smoke, the flames and the blast of spec section 11.3, as two
-  batches of puffs (`puffs.ts`): one blended the ordinary way and one additively. A puff is a square
-  turned to the camera of the last frame, which `onBeforeRender` records; `puff-material.ts` cuts a
-  soft, ragged shape out of it with noise. Each instance carries a `puff` attribute of fade,
+  colour batches of puffs (`puffs.ts`): one blended the ordinary way and one additively. A puff is a
+  square turned to the camera of the last frame, which `onBeforeRender` records; `puff-material.ts`
+  cuts a soft, ragged shape out of it with noise. Each instance carries a `puff` attribute of fade,
   variant, age and glow, which the batch rewrites every frame. Smoke is lit by the scene, so it goes
   dark at night except where the `glow` of the fire under it lights it. Flame is drawn after smoke
   (`renderOrder`), so it shows through its own plume. A puff is placed and faded from its age alone
   and jittered from `rngFor(seed, tick, Subsystem.Damage, n)`, so a replay burns the way the drive
   did. The pools are fixed, so a fire that burns all day costs what one that burns for a second
   does. The blazes of spec section 20.3 — what a wreck leaves burning on the ground — draw from the
-  same two batches, so every fire in a scene costs those two draw calls and no more. `watch` is how
-  they are handed in, with the ground under them: a blaze on the record is a place and not a height.
-  A blaze throws embers and a column of smoke as well as flame, which is how a fire on the ground
-  reads as one rather than as a car alight. Smoke leans with `windHeading(seed)` of `weather-fx.ts`,
-  the wind the litter blows in.
+  same batches, so every fire in a scene costs those draw calls and no more. `watch` is how they are
+  handed in, with the ground under them: a blaze on the record is a place and not a height. A blaze
+  throws embers and a column of smoke as well as flame, which is how a fire on the ground reads as
+  one rather than as a car alight. Smoke leans with `windHeading(seed)` of `weather-fx.ts`, the wind
+  the litter blows in.
+- Heat haze is a third batch of `DamageFx`, over a burning car and a blaze. It has no colour: its
+  material reads the frame drawn so far through `viewportSharedTexture`, pushed by rising noise,
+  and blends that over the frame. It is drawn first (`renderOrder` -1), so it bends the street
+  and not the smoke or the flame. Reading the frame makes three.js copy the scene target each time
+  the batch is drawn, so the batch is hidden while it is empty; an empty but visible batch still
+  pays the copy. It follows the bloom switch of the tier (`WorldScene.quality`): the medium and low
+  tiers draw no haze. A post pass was the other way: it costs every pixel of every frame and needs
+  the fires on screen handed to it as a list.
 - `ShotFx` (`shot-fx.ts`) draws the rounds of `SimState.tracers`: a flash at the muzzle, a glow on
   the ground, a streak per pellet and the spark batch of `melee-fx.ts` where each landed. It is
   three additive batches. The glow is a disc, not a light: a point light turns the clustered path

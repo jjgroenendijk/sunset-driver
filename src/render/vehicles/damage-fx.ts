@@ -9,13 +9,16 @@
  * and then smoulders.
  *
  * The blazes of `src/sim/vehicles/fire.ts` — what a wreck leaves burning on the ground
- * — are drawn from the same two batches, so every fire in the scene costs the
- * frame the same two draw calls however many there are. A blaze throws embers
+ * — are drawn from the same batches, so every fire in the scene costs the
+ * frame the same draw calls however many there are. A blaze throws embers
  * and a column of smoke as well as flame: the embers fly further and live
  * longer, which is what tells a fire on the ground from a car alight.
  *
- * It is two draw calls, whatever is going on: one batch of puffs blended the
- * ordinary way for the smoke and one blended additively for the fire. A puff is
+ * It is three draw calls, whatever is going on: one batch of puffs blended the
+ * ordinary way for the smoke, one blended additively for the fire, and one of
+ * heat haze that bends the frame behind it. The haze is hidden while there is
+ * none, and at the tiers that draw no bloom, since reading the frame it bends
+ * copies it. A puff is
  * a soft, ragged square turned to face the camera (`puffs.ts`), placed and
  * faded from its age alone, so a frame only ever reads the record and the tick.
  * Smoke leans with the wind of `weather-fx.ts`, and smoke low over a fire is lit
@@ -30,13 +33,14 @@ import { rngFor, Subsystem } from '../../core/rng.ts';
 import { isSmoking, type DamageState } from '../../sim/vehicles/damage.ts';
 import type { Blaze } from '../../sim/vehicles/fire.ts';
 import type { VehicleSpec, VehicleState } from '../../sim/vehicles/vehicle.ts';
-import { flameMaterial, smokeMaterial } from './puff-material.ts';
+import { flameMaterial, hazeMaterial, smokeMaterial } from './puff-material.ts';
 import { Puffs, smokePuff, type Puff } from './puffs.ts';
 import { windHeading } from '../environment/weather-fx.ts';
 
 /** Puffs each batch holds. The oldest is taken when a new one has nowhere to go. */
 export const SMOKE_CAP = 96;
 export const FLAME_CAP = 160;
+export const HAZE_CAP = 48;
 
 /** Ticks between puffs of smoke, and between the flames of a fire. */
 const SMOKE_PERIOD = 6;
@@ -56,6 +60,14 @@ const BLAZE_SMOKE_LIFE = 220;
 const BLAZE_SPREAD = 2.4;
 const EMBER_SPEED = 2.2;
 
+/** Ticks between the patches of haze over a blaze and over a burning vehicle, and how long one lives. */
+const BLAZE_HAZE_PERIOD = 8;
+const BURNING_HAZE_PERIOD = 10;
+const HAZE_LIFE = 100;
+
+/** Metres a second hot air rises off a fire. */
+const HAZE_RISE = 3;
+
 /** Ticks an ember lives for, which is longer than a flame: it is what carries a fire. */
 const EMBER_LIFE = 90;
 
@@ -72,11 +84,20 @@ const SMOKE_RISE = 2.4;
 /** Where the stream ids of a blaze's smoke begin, clear of every other stream of the subsystem. */
 const BLAZE_SMOKE_STREAM = 60_000;
 
+/** Where the stream ids of a blaze's haze begin, past those of its smoke. */
+const BLAZE_HAZE_STREAM = 70_000;
+
 /** The smoke and fire of the player's vehicle. */
 export class DamageFx {
   readonly group = new Group();
   private readonly smoke = new Puffs(SMOKE_CAP, smokeMaterial());
   private readonly flame = new Puffs(FLAME_CAP, flameMaterial());
+  private readonly heat = new Puffs(HAZE_CAP, hazeMaterial());
+  /**
+   * Whether heat haze is drawn, which the quality tier sets (spec section 9.2).
+   * Drawing it copies the frame, so it goes with the bloom.
+   */
+  haze = true;
   /** The last tick that was spawned for, so a frame spawns each tick once. */
   private spawned = -1;
   /** The explosion already drawn, so a blast is thrown out once and not every frame. */
@@ -90,8 +111,11 @@ export class DamageFx {
   private readonly at = new Vector3();
 
   constructor() {
-    this.group.add(this.smoke.mesh, this.flame.mesh);
+    this.group.add(this.smoke.mesh, this.flame.mesh, this.heat.mesh);
     // Fire is drawn over smoke, so a flame shows through the plume it feeds.
+    // The haze goes first, so it bends the street and the cars and not the
+    // smoke and flame, which would smear.
+    this.heat.mesh.renderOrder = -1;
     this.flame.mesh.renderOrder = 1;
   }
 
@@ -120,12 +144,17 @@ export class DamageFx {
     this.spawned = tick;
     this.smoke.draw(tick);
     this.flame.draw(tick);
+    this.heat.draw(tick);
+    // A hidden batch is left out of the frame, and so is the copy of the frame
+    // it reads. An empty one would still be drawn and still copy it.
+    this.heat.mesh.visible = this.haze && this.heat.mesh.count > 0;
   }
 
   /** Forget everything in flight: a new session, a loaded save or a new vehicle. */
   reset(tick: number): void {
     this.smoke.clear();
     this.flame.clear();
+    this.heat.clear();
     this.spawned = tick - 1;
     this.blown = -1;
   }
@@ -134,6 +163,7 @@ export class DamageFx {
     this.group.clear();
     this.smoke.dispose();
     this.flame.dispose();
+    this.heat.dispose();
   }
 
   /** What one tick of this vehicle's state puts into the air. */
@@ -148,6 +178,11 @@ export class DamageFx {
     const burning = damage.stage === 'burning';
     if (tick % SMOKE_PERIOD === 0) this.spawnSmoke(v, spec, seed, tick, burning);
     if (burning && tick % FLAME_PERIOD === 0) this.spawnFlame(v, spec, seed, tick);
+    if (burning && tick % BURNING_HAZE_PERIOD === 0) {
+      const rng = rngFor(seed, tick, Subsystem.Damage, 3);
+      this.place(v, rng.range(-0.5, 0.5) * spec.halfLength, spec.halfHeight * 2, 0, 0);
+      this.heat.add(this.hazePuff(tick, spec.halfLength * rng.range(1.2, 1.6), rng.range(0, 1)));
+    }
   }
 
   /** A puff of smoke off a damaged vehicle: black off the whole body when it burns, else off the engine. */
@@ -236,6 +271,11 @@ export class DamageFx {
         ),
       );
     }
+    if (tick % BLAZE_HAZE_PERIOD === 0) {
+      const rng = rngFor(seed, tick, Subsystem.Damage, BLAZE_HAZE_STREAM + blaze.id);
+      this.at.set(blaze.x + rng.range(-0.4, 0.4) * BLAZE_SPREAD, height + 1.2, blaze.y + rng.range(-0.4, 0.4) * BLAZE_SPREAD);
+      this.heat.add(this.hazePuff(tick, BLAZE_SPREAD * rng.range(1.3, 1.8), rng.range(0, 1)));
+    }
     if (tick % EMBER_PERIOD !== 0) return;
     const rng = rngFor(seed, tick, Subsystem.Damage, 400 + blaze.id);
     const heading = rng.range(0, Math.PI * 2);
@@ -255,6 +295,13 @@ export class DamageFx {
       tone: 0,
       glow: 0,
     });
+  }
+
+  /** A patch of hot air rising from where {@link at} is, `size` metres across at birth. */
+  private hazePuff(tick: number, size: number, variant: number): Puff {
+    const { x, y, z } = this.at;
+    const life = Math.round(HAZE_LIFE * (0.85 + 0.3 * variant));
+    return { kind: 'haze', born: tick, life, x, y, z, dx: 0, dy: HAZE_RISE, dz: 0, size, variant, tone: 0, glow: 0 };
   }
 
   /** A tongue of flame standing where {@link at} is, rising at `rise` metres a second. */
