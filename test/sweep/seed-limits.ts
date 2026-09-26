@@ -377,6 +377,14 @@ export const ISOLATED_COUNT = SEED_COUNT > 20 ? perShard(2) : 1;
  * one seed and the full tier spreads the check.
  */
 export const BUILDING_MESH_COUNT = SEED_COUNT > 20 ? perShard(4) : 1;
+/**
+ * Chunks each way of the origin whose buildings the full tier counts at near
+ * detail, for the seeds it builds geometry for. The dearest chunk is not
+ * always the one on the core: on seeds 7 and 1234 it is chunk 0, -2, two
+ * chunks south of it (issue #540). Building a chunk's towers costs about a
+ * quarter of a second, so the quick tier counts the core chunk alone.
+ */
+export const VERTEX_BLOCK = SEED_COUNT > 20 ? 2 : 0;
 /** Places in the block of chunks each way that are asked which parcel claims them. */
 export const CHUNK_SAMPLES = 18;
 /**

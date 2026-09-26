@@ -48,6 +48,7 @@ import {
   BEYOND_MAP,
   ISOLATED_COUNT,
   BUILDING_MESH_COUNT,
+  VERTEX_BLOCK,
   CHUNK_SAMPLES,
   VEGETATION_CHUNKS,
   VEGETATION_SAMPLES,
@@ -419,6 +420,28 @@ function checkDetail(
   return { vertices, built };
 }
 
+/** Every chunk of the block round the core stays inside the near vertex cap, not only the one on it. */
+function checkNearBlock(seed: number, lookup: BuildingLookup, complaint: Complaint): void {
+  const block: [number, number][] = [];
+  for (let cx = -VERTEX_BLOCK; cx <= VERTEX_BLOCK; cx++) {
+    for (let cy = -VERTEX_BLOCK; cy <= VERTEX_BLOCK; cy++) if (cx !== 0 || cy !== 0) block.push([cx, cy]);
+  }
+  for (const [cx, cy] of block) {
+    const vertices = nearVertices(chunkOf(seed, cx, cy), lookup);
+    if (vertices > CHUNK_VERTEX_CAP.near) complaint.fault(`chunk ${cx}, ${cy} costs ${vertices} vertices at near detail`);
+    if (complaint.found) return;
+  }
+}
+
+/** Vertices the buildings of a chunk cost at near detail. */
+function nearVertices(chunk: WorldChunk, lookup: BuildingLookup): number {
+  if (chunk.buildings.length === 0) return 0;
+  const placements = buildChunkBuildings(chunk, lookup, 'near');
+  const vertices = buildingVertices(placements);
+  for (const one of placements) one.shell.dispose();
+  return vertices;
+}
+
 // --- The vegetation ---------------------------------------------------------
 
 /** The lots of every parcel that has buildings on it. */
@@ -599,6 +622,7 @@ sweepSuite('chunks', () => {
       }
       if (vertices.mid * 10 > vertices.near) complaint.fault(`mid detail costs ${vertices.mid} of ${vertices.near} vertices`);
       if (vertices.far * 4 > vertices.mid) complaint.fault(`far detail costs ${vertices.far} of ${vertices.mid} vertices`);
+      checkNearBlock(seed, lookup, complaint);
       expect(complaint.first, `seed ${seed}`).toBeUndefined();
       expect(built, `seed ${seed}`).toBeGreaterThan(0);
     }
