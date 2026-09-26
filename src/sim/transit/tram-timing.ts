@@ -12,10 +12,12 @@
  * and the tram never crosses on theirs.
  *
  * A run too short to hold the whole tram at its light is cramped: a tram that
- * waited there would leave its tail across the junction behind it, on the
- * cross traffic's green. So the tram holds at the light before instead, until
- * it can pass the cramped lights ahead of it on their green. Where one wait
- * cannot fit all their greens, it fits the nearest ones.
+ * waits there leaves its tail across the junction behind it. That is harmless
+ * only until the traffic across that junction gets its green. So at every
+ * light the tram tries each wait out over the cramped runs ahead, and takes
+ * the shortest one that keeps its tail out of their junctions on the green
+ * across them, or else the one that leaves it there least. At a light it
+ * could run past, it halts too where running on would do worse.
  *
  * A light is a function of the tick, so the loop has to take a whole number of
  * signal cycles to agree with the lights for ever. Tick 0 is the tram pulling
@@ -25,7 +27,7 @@
 import type { RoadEdge, RoadGraph } from '../../world/roads/graph.ts';
 import type { TramStop } from '../../world/types.ts';
 import { TICK_RATE } from '../clock.ts';
-import { SIGNAL_CYCLE, SIGNAL_GREEN, STOP_BACK, type SignalApproach, type TrafficSignals } from '../traffic/signals.ts';
+import { SIGNAL_AMBER, SIGNAL_CLEAR, SIGNAL_CYCLE, SIGNAL_GREEN, STOP_BACK, type SignalApproach, type TrafficSignals } from '../traffic/signals.ts';
 import { CRUISE, finish, Steps, type Tour } from '../traffic/traffic-timing.ts';
 import { TRAM_ACCEL, tramDriveTicks, tramJoins, TramMotion } from './tram-motion.ts';
 import { placeTramStops } from './tram-stop-place.ts';
@@ -65,6 +67,9 @@ const ROLL_STEP = 1.5;
  * then creeping up to the line.
  */
 const MERGE = 12;
+
+/** Ticks between the waits the tram tries at a halt, for one that keeps its tail out of the junctions ahead. */
+const SETTLE_STEP = TICK_RATE / 4;
 
 /** One call at a stop: when the tram arrives and leaves, as ticks of its loop, and where its front stands. */
 export interface TramCall {
@@ -187,52 +192,115 @@ export function timeTram(
     const line = lineOf(leg);
     return stopOf(leg) === undefined && signals?.approachOf(edgeOf(leg).id) !== undefined && line !== undefined && line < length + BEHIND_CLEAR;
   };
+  /** Ticks the tram waits at the light of a run it reaches on an absolute tick, or none where the run has no light. */
+  const ownWait = (leg: number, tick: number): number => {
+    const light = signals?.approachOf(edgeOf(leg).id);
+    return light === undefined || signals === undefined ? 0 : waitFor(signals, light, tick);
+  };
+  /** Lay a whole run. */
+  const lay = (leg: number): void => {
+    if (stopOf(leg) === undefined) onward(leg, 0, false);
+    else onward(leg, call(leg, false), true);
+  };
+  /** Ticks the tail stands in the junction behind a halt on the green across it: {@link tailAt}. */
+  const tailExposed = (leg: number, at: number, tick: number, ticks: number): number =>
+    signals === undefined ? 0 : tailAt(signals, edgeOf((leg + count - 1) % count).id, length, at, tick, ticks);
+  /** True while a choice is being tried out, when the tram keeps to its own lights and chooses nothing. */
+  let trying = false;
   /**
-   * The ticks to wait at `at` metres along a run from an absolute tick, running
-   * past it at `through`: until every cramped light the tram then drives
-   * straight on to is green as it reaches it, and the run's own light too
-   * where `own` says the tram stands at it, or as many of the nearest of them
-   * as one wait allows.
+   * Try `rest`, which lays the rest of run `leg`, then the cramped runs after
+   * it up to the next place the tram halts clear of a junction. Return the
+   * ticks its tail stands in a junction on the green across it, and take the
+   * steps back.
    */
-  const hold = (leg: number, at: number, tick: number, through: number, own: boolean): number => {
-    if (signals === undefined) return 0;
-    const lights: { approach: SignalApproach; after: number }[] = [];
-    const light = signals.approachOf(edgeOf(leg).id);
-    if (own && light !== undefined) lights.push({ approach: light, after: 0 });
-    let after = tramDriveTicks(edgeOf(leg).length - at, topOf(leg), through, joins[leg] as number);
-    for (let ahead = 1; ahead < count; ahead++) {
-      const next = (leg + ahead) % count;
-      if (next === home) break;
-      const enter = joins[(next + count - 1) % count] as number;
-      const leave = joins[next] as number;
-      if (!halts(next)) {
-        after += tramDriveTicks(edgeOf(next).length, topOf(next), enter, leave);
-        continue;
-      }
-      if (!cramped(next)) break;
-      const line = lineOf(next) as number;
-      after += tramDriveTicks(line, topOf(next), enter, passOf(next, line));
-      lights.push({ approach: signals.approachOf(edgeOf(next).id) as SignalApproach, after });
-      after += tramDriveTicks(edgeOf(next).length - line, topOf(next), passOf(next, line), leave);
+  const exposure = (leg: number, rest: () => void): number => {
+    const first = steps.ticks.length;
+    const start = steps.tick;
+    const was = speed;
+    const rung = bells.length;
+    trying = true;
+    rest();
+    for (let next = (leg + 1) % count; next !== home && (!halts(next) || cramped(next)); next = (next + 1) % count) lay(next);
+    trying = false;
+    let exposed = 0;
+    for (let i = first, tick = start; i < steps.ticks.length; tick += steps.ticks[i] as number, i++) {
+      if (steps.from[i] === steps.to[i]) exposed += tailExposed(steps.leg[i] as number, steps.to[i] as number, sync + tick, steps.ticks[i] as number);
     }
-    return firstGreen(signals, lights, tick);
+    rewind(first, rung, was);
+    return exposed;
+  };
+  /** Take back the steps from `first` on, and the bells rung on them. */
+  const rewind = (first: number, rung: number, was: number): void => {
+    steps.truncate(first);
+    leaves.length = first;
+    bells.length = rung;
+    speed = was;
+  };
+  /**
+   * The ticks to wait at `at` metres along a run before driving on, and the
+   * ticks the tail then stands in a junction on the green across it: at the
+   * run's own light where `own` says the tram stands at it, and at the cramped
+   * lights it drives on to. The shortest wait that keeps the tail out of
+   * every junction, or else the one that leaves it there least.
+   */
+  const settle = (leg: number, at: number, own: boolean): { wait: number; exposed: number } => {
+    const now = sync + steps.tick;
+    const first = own ? ownWait(leg, now) : 0;
+    const best = { wait: first, exposed: 0 };
+    if (signals === undefined || trying) return best;
+    best.exposed = Number.POSITIVE_INFINITY;
+    for (let wait = first; wait < first + SIGNAL_CYCLE; wait += SETTLE_STEP) {
+      if (own && ownWait(leg, now + wait) !== 0) break;
+      const exposed = exposure(leg, () => {
+        add(leg, at, at, wait, 0);
+        drive(leg, at, edgeOf(leg).length, joins[leg] as number, true);
+      });
+      if (exposed < best.exposed) {
+        best.exposed = exposed;
+        best.wait = wait;
+      }
+      if (exposed === 0) break;
+    }
+    return best;
   };
   /**
    * Drive from `from` up to the light or the crossing of a run. Where its
    * light is green as the tram comes up, it runs past without braking, slowing
-   * if that meets the green; otherwise it halts at the line and waits.
+   * if that meets the green; otherwise it halts at the line and waits. It
+   * halts on a green too where a wait keeps its tail out of the junctions
+   * of the cramped lights ahead better than running on does.
    */
   const toLine = (leg: number, from: number, bell: boolean): number => {
     const line = lineOf(leg) as number;
+    const roll = (through: number): void => drive(leg, from, line, through, bell);
+    let pass = 0;
+    let passed = Number.POSITIVE_INFINITY;
     // As fast as it may, or slower to meet a light that is about to turn green, but never crawling.
-    for (let through = passOf(leg, line); through >= ROLL; through -= ROLL_STEP) {
+    for (let through = passOf(leg, line); through >= ROLL && passed > 0; through -= ROLL_STEP) {
       const reach = tramDriveTicks(line - from, topOf(leg), speed, through);
-      if (hold(leg, line, sync + steps.tick + reach, through, true) !== 0) continue;
-      drive(leg, from, line, through, bell);
+      if (ownWait(leg, sync + steps.tick + reach) !== 0) continue;
+      const exposed = trying ? 0 : exposure(leg, () => {
+        roll(through);
+        drive(leg, line, edgeOf(leg).length, joins[leg] as number, true);
+      });
+      if (exposed < passed) {
+        pass = through;
+        passed = exposed;
+      }
+    }
+    if (passed === 0) {
+      roll(pass);
       return line;
     }
-    drive(leg, from, line, 0, bell);
-    add(leg, line, line, hold(leg, line, sync + steps.tick, 0, true), 0);
+    const first = steps.ticks.length;
+    const rung = bells.length;
+    const was = speed;
+    roll(0);
+    const halt = settle(leg, line, true);
+    if (passed <= halt.exposed) {
+      rewind(first, rung, was);
+      roll(pass);
+    } else add(leg, line, line, halt.wait, 0);
     return line;
   };
   /** Drive from the start of a run to its stop and call there. The closing run waits for the end of the lap instead. */
@@ -243,7 +311,7 @@ export function timeTram(
     add(leg, stop, stop, DWELL, 0);
     if (closing) add(leg, stop, stop, mod(-steps.tick, SIGNAL_CYCLE), 0);
     // A light further on is waited for at its own line; one at the stop is waited for here.
-    else if (merged(leg) || lineOf(leg) === undefined) add(leg, stop, stop, hold(leg, stop, sync + steps.tick, 0, merged(leg)), 0);
+    else if (merged(leg) || lineOf(leg) === undefined) add(leg, stop, stop, settle(leg, stop, merged(leg)).wait, 0);
     calls.push({ stop: arrives[leg] as number, arrive: at, depart: steps.tick, front: (starts[leg] as number) + stop });
     return stop;
   };
@@ -260,11 +328,7 @@ export function timeTram(
 
   // Tick 0: the front at the first stop's halt, pulling away on its green.
   onward(home, stopOf(home) ?? 0, true);
-  for (let lap = 1; lap < count; lap++) {
-    const leg = (home + lap) % count;
-    if (stopOf(leg) === undefined) onward(leg, 0, false);
-    else onward(leg, call(leg, false), true);
-  }
+  for (let lap = 1; lap < count; lap++) lay((home + lap) % count);
   call(home, true);
   // The first stop is called at on the closing run, so its call comes last; the calls go in stop order.
   calls.sort((a, b) => a.stop - b.stop);
@@ -277,17 +341,48 @@ export function timeTram(
 }
 
 /**
- * The fewest ticks to wait from an absolute tick for every one of `lights` to
- * be green as the tram reaches it, `after` ticks on. The farthest light is
- * given up first, so the nearest ones are still passed.
+ * Ticks of one lap a halted tram `length` metres long stands with its tail in
+ * a junction while the traffic across that junction has its green: the time
+ * that traffic may drive through the tail.
  */
-function firstGreen(signals: TrafficSignals, lights: { approach: SignalApproach; after: number }[], tick: number): number {
-  for (; lights.length > 0; lights.pop()) {
-    for (let wait = 0; wait < SIGNAL_CYCLE; wait++) {
-      if (lights.every((light) => waitFor(signals, light.approach, tick + wait + light.after) === 0)) return wait;
-    }
+export function tailAcross(tour: Tour, signals: TrafficSignals, length: number): number {
+  const count = tour.edges.length;
+  let total = 0;
+  for (let step = 0; step < tour.stepTicks.length; step++) {
+    if (tour.stepFrom[step] !== tour.stepTo[step]) continue;
+    const behind = tour.edges[((tour.stepLeg[step] as number) + count - 1) % count] as number;
+    total += tailAt(signals, behind, length, tour.stepTo[step] as number, tour.sync + (tour.stepStart[step] as number), tour.stepTicks[step] as number);
   }
-  return 0;
+  return total;
+}
+
+/**
+ * Ticks a halted tram's tail stands in the junction at the end of edge
+ * `behind` while the traffic across it has its green: the tram halted `at`
+ * metres along the next run for `ticks` from an absolute tick, and pulling its
+ * tail clear after.
+ */
+function tailAt(signals: TrafficSignals, behind: number, length: number, at: number, tick: number, ticks: number): number {
+  const reach = length + BEHIND_CLEAR - at;
+  const approach = signals.approachOf(behind);
+  if (reach <= 0 || approach === undefined) return 0;
+  const clear = Math.ceil(Math.sqrt((2 * reach) / TRAM_ACCEL) * TICK_RATE);
+  return acrossGreen(signals, approach, tick, tick + ticks + clear);
+}
+
+/**
+ * Ticks from `from` to `to`, both absolute, in which the traffic across an
+ * approach has its green: the approach's own red, but for the moments both
+ * axes are red.
+ */
+function acrossGreen(signals: TrafficSignals, approach: SignalApproach, from: number, to: number): number {
+  const open = SIGNAL_GREEN[approach.axis] + SIGNAL_AMBER + SIGNAL_CLEAR;
+  const shut = SIGNAL_CYCLE - SIGNAL_CLEAR;
+  let total = 0;
+  for (let cycle = from - mod(from - signals.greenStart(approach), SIGNAL_CYCLE); cycle < to; cycle += SIGNAL_CYCLE) {
+    total += Math.max(0, Math.min(to, cycle + shut) - Math.max(from, cycle + open));
+  }
+  return total;
 }
 
 /**
