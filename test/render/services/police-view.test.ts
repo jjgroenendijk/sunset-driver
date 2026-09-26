@@ -4,6 +4,9 @@ import { BEACON_DARK, BEACON_GLOW, FLASH_CYCLE, flashLit } from '../../../src/re
 import { PoliceView } from '../../../src/render/services/police.ts';
 import { HELICOPTER_HEIGHT, type PoliceUnit } from '../../../src/sim/police/police.ts';
 import { createSimState, type SimState } from '../../../src/sim/simulation.ts';
+import { specOf } from '../../../src/sim/vehicles/vehicle.ts';
+import { boxOf } from '../../../src/render/vehicles/traffic.ts';
+import { vehicleBoxes } from '../../../src/render/vehicles/vehicle-mesh.ts';
 
 /** A unit standing where a case needs it, with everything else at rest. */
 function unit(id: number, kind: PoliceUnit['kind'], x: number, y: number): PoliceUnit {
@@ -25,6 +28,18 @@ describe('the police, drawn (spec sections 9.2, 14)', () => {
     // Far from the units nothing is drawn at all.
     view.update(state, 4000, 4000);
     expect(view.drawn).toBe(0);
+    view.dispose();
+  });
+
+  it('draws the police helicopter of the roster, not a box of its own', () => {
+    const view = new PoliceView();
+    const state = session();
+    view.update(state, 0, 0);
+    const heli = view.group.children.find((mesh) => (mesh as InstancedMesh).count === 1) as InstancedMesh;
+    const drawn = heli.geometry.getAttribute('position').count;
+    const spec = specOf('heli-police');
+    const own = vehicleBoxes(spec).filter((part) => part.spin !== 'rotor').map((part) => boxOf(part).getAttribute('position').count);
+    expect(drawn).toBe(own.reduce((a, b) => a + b, 0));
     view.dispose();
   });
 

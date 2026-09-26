@@ -12,19 +12,21 @@
  *
  * The helicopter is drawn over the roofs, {@link HELICOPTER_HEIGHT} above the
  * ground the record says is under it, with a rotor that turns with the tick.
+ * It is the police helicopter of the roster (`aircraft-mesh.ts`), so the one
+ * that chases the player is the one the player can fly.
  *
  * The units are drawn where the record put them. They are stepped every tick
  * like the player, so nothing is evaluated between two ticks here.
  */
-import { Color, Group, Matrix4, MeshStandardMaterial, Quaternion, Vector3, type InstancedMesh, type Material } from 'three';
+import { Color, Group, Matrix4, MeshStandardMaterial, Quaternion, Vector3, type BufferGeometry, type InstancedMesh, type Material } from 'three';
 import { HELICOPTER_HEIGHT } from '../../sim/police/police.ts';
 import type { SimState } from '../../sim/simulation.ts';
-import { rideHeight, specOf } from '../../sim/vehicles/vehicle.ts';
+import { rideHeight, specOf, type VehicleSpec } from '../../sim/vehicles/vehicle.ts';
 import { driverOf } from '../vehicles/occupant.ts';
 import { PATROL_LEAVES, PatrolDoors } from './police-doors.ts';
 import { boxOf, coloured, glassMaterial, instanced, merged, trafficParts, TRAFFIC_VIEW } from '../vehicles/traffic.ts';
 import { createVehicleTrim, type VehicleTrim } from '../vehicles/vehicle-glow.ts';
-import { GLASS, METAL, patrolBeacons, TYRE } from '../vehicles/vehicle-mesh.ts';
+import { patrolBeacons, vehicleBoxes } from '../vehicles/vehicle-mesh.ts';
 import { BeaconGlow, BeaconPhase, beaconMaterial, flashLit } from './beacons.ts';
 import { tinted } from '../look/tint.ts';
 
@@ -34,8 +36,6 @@ const UNIT_CAP = 16;
 /** Metres a lit half of the bar is grown by over the unlit one `vehicle-mesh.ts` draws, so the two never z-fight. */
 const LENS_GROW = 0.012;
 
-/** The body of the helicopter, its tail and the rotor over it, in metres. */
-const HELI = { length: 5.5, height: 1.6, width: 1.6, tail: 4.2, rotor: 7 };
 
 export class PoliceView {
   readonly group = new Group();
@@ -48,6 +48,9 @@ export class PoliceView {
   private readonly glow: BeaconGlow;
   private readonly heli: InstancedMesh;
   private readonly rotor: InstancedMesh;
+  /** Where the rotor's hub stands on the helicopter, and the turn of the blades about it. */
+  private readonly hub = new Matrix4();
+  private readonly spin = new Matrix4();
   private readonly materials: Material[];
   private readonly trimMaterial: VehicleTrim;
   private readonly matrix = new Matrix4();
@@ -79,8 +82,10 @@ export class PoliceView {
     }));
     this.phases = [new BeaconPhase(lenses, 0, lamp, UNIT_CAP), new BeaconPhase(lenses, 1, lamp, UNIT_CAP)];
     this.glow = new BeaconGlow(UNIT_CAP);
-    this.heli = instanced(heliBody(), trim, true, UNIT_CAP);
-    this.rotor = instanced(rotorBlades(), trim, false, UNIT_CAP);
+    const heli = heliParts(specOf('heli-police'));
+    this.hub.makeTranslation(heli.hub.x, heli.hub.y, 0);
+    this.heli = instanced(heli.body, trim, true, UNIT_CAP);
+    this.rotor = instanced(heli.rotor, trim, false, UNIT_CAP);
     this.group.add(this.paint, this.trim, this.phases[0].mesh, this.phases[1].mesh, this.heli, this.rotor, this.glow.mesh);
     this.group.add(this.glass, this.driver, ...this.doors.meshes);
   }
@@ -131,10 +136,9 @@ export class PoliceView {
     this.at.set(unit.x, unit.height + HELICOPTER_HEIGHT, unit.y);
     this.matrix.compose(this.at, this.turn, this.one);
     this.heli.setMatrixAt(index, this.matrix);
-    // The rotor turns a sixth of a revolution a tick, which reads as a blur.
-    this.turn.setFromAxisAngle(this.up, tick / 6);
-    this.at.set(unit.x, unit.height + HELICOPTER_HEIGHT + HELI.height / 2, unit.y);
-    this.matrix.compose(this.at, this.turn, this.one);
+    // The rotor turns a sixth of a revolution a tick about its own hub, which reads as a blur.
+    this.spin.makeRotationY(tick / 6);
+    this.matrix.multiply(this.hub).multiply(this.spin);
     this.rotor.setMatrixAt(index, this.matrix);
   }
 
@@ -197,23 +201,25 @@ export class PoliceView {
 /** One police unit as the record holds it. */
 type PoliceUnit = SimState['police']['units'][number];
 
-/** The helicopter's hull: the cabin, the tail and the boom that carries it. */
-function heliBody(): ReturnType<typeof merged> {
-  const box = (length: number, height: number, width: number, x: number, y: number, colour: number) =>
-    coloured(boxOf({ length, height, width, x, y, z: 0, colour }), colour);
-  return merged([
-    box(HELI.length, HELI.height, HELI.width, 0, 0, METAL),
-    box(HELI.length * 0.45, HELI.height * 0.5, HELI.width * 0.95, HELI.length * 0.3, HELI.height * 0.1, GLASS),
-    box(HELI.tail, 0.35, 0.35, -HELI.length / 2 - HELI.tail / 2, HELI.height * 0.2, METAL),
-    box(0.4, 1.3, 0.2, -HELI.length / 2 - HELI.tail, HELI.height * 0.2 + 0.4, METAL),
-    box(0.3, 0.7, 0.25, 0, -HELI.height / 2 - 0.35, TYRE),
-  ]);
-}
-
-/** The rotor: two blades crossed, turned about the mast by the tick. */
-function rotorBlades(): ReturnType<typeof merged> {
-  const blade = (length: number, width: number) =>
-    coloured(boxOf({ length, height: 0.08, width, x: 0, y: 0, z: 0, colour: TYRE }), TYRE);
-  const across = blade(0.4, HELI.rotor);
-  return merged([blade(HELI.rotor, 0.4), across]);
+/**
+ * The helicopter of the roster in two geometries: the body, and the blades of
+ * the main rotor about their own hub, so they turn in place. The hub is where
+ * they stand on the body.
+ */
+function heliParts(spec: VehicleSpec): { body: BufferGeometry; rotor: BufferGeometry; hub: { x: number; y: number } } {
+  const body: BufferGeometry[] = [];
+  const blades: BufferGeometry[] = [];
+  let hub = { x: 0, y: 0 };
+  for (const part of vehicleBoxes(spec)) {
+    const geometry = coloured(boxOf(part), part.colour);
+    if (part.spin !== 'rotor') {
+      body.push(geometry);
+      continue;
+    }
+    hub = { x: part.x, y: part.y };
+    blades.push(geometry);
+  }
+  const rotor = merged(blades);
+  rotor.translate(-hub.x, -hub.y, 0);
+  return { body: merged(body), rotor, hub };
 }
