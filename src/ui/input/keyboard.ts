@@ -42,6 +42,11 @@ function tradeOf(traded: number, chosen: number, selling: boolean): number {
   return selling ? -chosen : chosen;
 }
 
+/** An axis of two keys: 1 for the first, -1 for the second, 0 for both or neither. */
+function axis(plus: boolean, minus: boolean): number {
+  return (plus ? 1 : 0) - (minus ? 1 : 0);
+}
+
 /**
  * The walking axes turned by a view's yaw. Up the screen is `-z` turned by
  * `yaw`, and the walk of `walker-body.ts` reads the steering axis as `+x` and
@@ -96,6 +101,14 @@ export class Keyboard {
   /** Wheel travel not yet taken as a weapon step, and the steps waiting for the next sample. */
   private wheel = 0;
   private steps = 0;
+  /**
+   * The stick of the phone's play pad (`touch-play.ts`), -1 to 1 each way with
+   * `y` up the screen. While it is pushed it stands in for the walking keys.
+   */
+  private stickX = 0;
+  private stickY = 0;
+  /** Keys a tap pressed for one sample alone: a row of a panel, or the radio. */
+  private readonly pulses = new Set<string>();
 
   constructor(target: Window) {
     target.addEventListener('keydown', (e) => {
@@ -161,6 +174,20 @@ export class Keyboard {
     );
   }
 
+  /**
+   * Take a tap or a click on a row of a panel as the key the row is numbered
+   * with: the metro's stations, a safehouse's rows and a contact's board write
+   * that key into `data-key`. A phone reaches no number key, and a mouse may
+   * use it too.
+   */
+  listenRows(doc: Document): void {
+    doc.addEventListener('click', (e) => {
+      const row = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-key]') : null;
+      const code = row?.dataset.key;
+      if (code !== undefined) this.pulse(code);
+    });
+  }
+
   /** Drop the wheel travel not yet taken, while nothing samples the keys. */
   forgetWheel(): void {
     this.wheel = 0;
@@ -184,7 +211,38 @@ export class Keyboard {
   }
 
   private is(code: string): boolean {
-    return this.down.has(code);
+    return this.down.has(code) || this.pulses.has(code);
+  }
+
+  /**
+   * Hold a key down, as a button of the phone's play pad does, until
+   * {@link Keyboard.release}. The code is the one the real key has, so the pad
+   * and a keyboard mean the same thing by it, and every edge this class keeps
+   * works for both.
+   */
+  press(code: string): void {
+    this.down.add(code);
+  }
+
+  /** Let go of a key {@link Keyboard.press} held. */
+  release(code: string): void {
+    this.down.delete(code);
+  }
+
+  /** Press a key for the next sample alone, as a tap on a numbered row does. */
+  pulse(code: string): void {
+    this.pulses.add(code);
+  }
+
+  /** Where the pad's stick stands, -1 to 1 each way with `y` up the screen. */
+  stick(x: number, y: number): void {
+    this.stickX = x;
+    this.stickY = y;
+  }
+
+  /** Step to the next weapon carried, as one notch of the wheel does. */
+  nextWeapon(): void {
+    this.steps = 1;
   }
 
   /**
@@ -250,8 +308,11 @@ export class Keyboard {
     const back = this.is('KeyS') || (!this.menu && this.is('ArrowDown'));
     const left = this.is('KeyA') || this.is('ArrowLeft');
     const right = this.is('KeyD') || this.is('ArrowRight');
-    const { throttle, steer } = turned((forward ? 1 : 0) - (back ? 1 : 0), (right ? 1 : 0) - (left ? 1 : 0), this.turn);
-    return {
+    const pushed = this.stickX !== 0 || this.stickY !== 0;
+    const ahead = pushed ? this.stickY : axis(forward, back);
+    const across = pushed ? this.stickX : axis(right, left);
+    const { throttle, steer } = turned(ahead, across, this.turn);
+    const frame: InputFrame = {
       throttle,
       steer,
       handbrake: this.is('Space'),
@@ -274,6 +335,8 @@ export class Keyboard {
       surrender: this.is('KeyX'),
       bonnet: this.is('KeyO'),
     };
+    this.pulses.clear();
+    return frame;
   }
 
   /**

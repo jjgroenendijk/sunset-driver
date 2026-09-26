@@ -21,6 +21,8 @@ export class InteractPrompt {
     this.root = document.createElement('div');
     this.root.className = 'interact';
     this.root.hidden = true;
+    // A tap on the prompt presses the key it names (`Keyboard.listenRows`).
+    this.root.dataset.key = 'KeyE';
     const key = document.createElement('kbd');
     key.className = 'interact-key';
     key.textContent = INTERACT_KEY;

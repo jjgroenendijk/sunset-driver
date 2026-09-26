@@ -29,6 +29,7 @@ import type { DrawnPlayer } from './render/frame/smooth.ts';
 import type { Tracer } from './sim/weapons/tracer.ts';
 import type { FreeCameraControls } from './ui/input/free-camera.ts';
 import type { Keyboard } from './ui/input/keyboard.ts';
+import type { TouchPlay } from './ui/input/touch-play.ts';
 import type { MouseLook } from './ui/input/mouse-look.ts';
 import { ARRIVED } from './ui/map/map-route.ts';
 import type { Settings } from './ui/menus/settings.ts';
@@ -43,6 +44,8 @@ export interface FrameParts {
   look: MouseLook;
   audio: GameAudio;
   settings: Settings;
+  /** The phone's play pad, or null where there is a keyboard (`ui/input/touch-play.ts`). */
+  pad: TouchPlay | null;
 }
 
 /** Metres a shot pushes the camera back, before and for the weapon's recoil, and the most. */
@@ -123,6 +126,7 @@ export class SessionFrame {
     if (flying || menu) keyboard.forgetWheel();
     // The arrow keys walk a shop's counter or a dealer's while one is open.
     keyboard.menu = counter;
+    this.showPad(session, flying || menu);
     // A paused frame is drawn at `PAUSED_FPS` (`pace.ts`), so the frame after
     // the menu closes comes up to a tenth of a second later. That time was
     // spent in the menu, and the first frame back takes no step for it.
@@ -336,6 +340,11 @@ export class SessionFrame {
     keyboard.turn = session.state.player.driving ? 0 : camera.heading;
     session.world.cutaway.enabled = settings.buildingView !== 'whole';
     session.world.seeThrough(camera.camera.position, p.x, p.height, p.y, inShop);
+  }
+
+  /** The phone's pad goes away under the flight, a menu and the map, and lets go of its keys. */
+  private showPad(session: Session, away: boolean): void {
+    this.parts.pad?.update(session.state.player.driving, !away && !session.map.open);
   }
 
   /**

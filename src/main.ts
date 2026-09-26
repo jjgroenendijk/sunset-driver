@@ -39,6 +39,7 @@ import { FreeCameraControls } from './ui/input/free-camera.ts';
 import { MouseLook } from './ui/input/mouse-look.ts';
 import { isTouchDevice, readTouchProbe } from './ui/input/touch.ts';
 import { markTouchUi, mountTouchBar } from './ui/input/touch-bar.ts';
+import { TouchPlay } from './ui/input/touch-play.ts';
 import { Keyboard } from './ui/input/keyboard.ts';
 import { LoadingScreen } from './ui/menus/loading.ts';
 import { openingChoice } from './ui/menus/title-open.ts';
@@ -110,14 +111,20 @@ async function boot(): Promise<void> {
   // The camera behind the menu swings about the car, unless the player asks the browser for less motion.
   const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   // A phone has no keys and no pointer lock, so it is given the buttons of
-  // `touch-bar.ts` and the fly pad of `touch-fly.ts` instead (`docs/menus.md`).
+  // `touch-bar.ts`, the play pad of `touch-play.ts` and the fly pad of
+  // `touch-fly.ts` instead (`docs/menus.md`).
   const touch = isTouchDevice(readTouchProbe(window));
   const preview = createTitleScene(renderer, DEFAULT_APPEARANCE, { width: window.innerWidth, height: window.innerHeight }, { still, touch });
   const camera = new FollowCamera(window.innerWidth / window.innerHeight);
   const clock = new FixedStepClock();
   const keyboard = new Keyboard(window);
   keyboard.listenMouse(canvas);
-  if (touch) markTouchUi(document);
+  keyboard.listenRows(document);
+  let pad: TouchPlay | null = null;
+  if (touch) {
+    markTouchUi(document);
+    pad = new TouchPlay(document.body, keyboard);
+  }
   // The developer free camera of `docs/dev-tooling.md`. It writes into the same
   // camera the game is played through, so nothing else in the frame changes.
   const free = new FreeCameraControls(canvas, touch);
@@ -213,7 +220,7 @@ async function boot(): Promise<void> {
   let session: Session | null = null;
   // What a frame of a session does (`frame.ts`). Until there is one the title
   // screen's preview is drawn instead.
-  const loop = new SessionFrame(canvas, { camera, clock, keyboard, free, look, audio, settings });
+  const loop = new SessionFrame(canvas, { camera, clock, keyboard, free, look, audio, settings, pad });
   let last = performance.now();
   // Which of the browser's frames are drawn (`pace.ts`). A frame not drawn is
   // skipped whole, so its time is carried into the next one that is.
@@ -466,7 +473,7 @@ async function boot(): Promise<void> {
     pause,
     party: party.control,
   };
-  // The three buttons a phone drives a session from, over the canvas.
+  // The bar of buttons a phone opens the menu, the map and the flight from.
   if (touch) mountTouchBar(document.body, free, camera.camera, { menu: () => pause.show(), map: () => map.toggle() });
   // Explore opens the city from the air rather than from the driver's seat: the
   // camera is detached before the first frame and lifted over where the session

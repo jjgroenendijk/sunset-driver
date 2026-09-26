@@ -69,11 +69,14 @@ export class TravelPanel {
     this.shown = text;
     this.root.hidden = false;
     this.title.textContent = `Metro · ${here.name}`;
+    // A row a trip may take is numbered as its key, which a tap presses.
+    const numbered = refusal === null && destinations(state, at).length > 0;
     this.list.replaceChildren(
-      ...rows.map((row) => {
+      ...rows.map((row, i) => {
         const line = document.createElement('div');
         line.className = refusal !== null ? 'travel-refused' : 'travel-row';
         line.textContent = row;
+        if (numbered) line.dataset.key = `Digit${i + 1}`;
         return line;
       }),
     );

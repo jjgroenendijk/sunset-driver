@@ -68,6 +68,7 @@ export class JobPanel {
         const line = document.createElement('div');
         line.className = row.className;
         line.textContent = row.text;
+        if (row.key !== undefined) line.dataset.key = row.key;
         return line;
       }),
     );
@@ -87,13 +88,15 @@ export class JobPanel {
 interface Row {
   text: string;
   className: string;
+  /** The key the row stands for, which a tap on it presses (`Keyboard.listenRows`). */
+  key?: string;
 }
 
 /** What a player standing on the corner is told: how to talk, or why they are not being talked to. */
 function cornerLine(state: SimState, giver: GiverPlace): Row {
   const refusal = giverRefusal(state, giver);
   if (refusal === null || state.missions.active?.giver === giver.id) {
-    return { text: `${TALK_KEY} · talk`, className: 'job-row' };
+    return { text: `${TALK_KEY} · talk`, className: 'job-row', key: 'KeyE' };
   }
   return { text: refusal, className: 'job-refused' };
 }
@@ -112,11 +115,11 @@ function board(state: SimState, world: MissionWorld, giver: GiverPlace): Row[] {
   rows.push(
     ...jobRows(state, world, giver)
       .slice(0, CHOICE_KEYS)
-      .map((row, i) => ({ text: `${i + 1} · ${row.label}`, className: 'job-row' })),
+      .map((row, i) => ({ text: `${i + 1} · ${row.label}`, className: 'job-row', key: `Digit${i + 1}` })),
   );
   const said = state.missions.visit?.said ?? '';
   if (said !== '') rows.push({ text: said, className: 'job-said' });
-  rows.push({ text: `${TALK_KEY} · leave`, className: 'job-row' });
+  rows.push({ text: `${TALK_KEY} · leave`, className: 'job-row', key: 'KeyE' });
   return rows;
 }
 
