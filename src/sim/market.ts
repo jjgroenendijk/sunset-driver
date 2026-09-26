@@ -142,6 +142,13 @@ export function sellPrice(state: SimState, dealer: DealerPlace, good: number): n
   return Math.max(1, Math.round(buyPrice(state, dealer, good) * (1 - cut)));
 }
 
+/** How a price reads against the ordinary one: 'spike' when dear, 'glut' when cheap, else ''. */
+function moodOf(buy: number, standing: number): string {
+  if (buy >= standing * SPIKE) return 'spike';
+  if (buy <= standing * GLUT) return 'glut';
+  return '';
+}
+
 /** The counter of the dealer the player is with: nothing at all while they are with none. */
 export function tradeRows(state: SimState, dealers: readonly DealerPlace[]): TradeRow[] {
   const dealer = dealing(state, dealers);
@@ -160,7 +167,7 @@ export function tradeRows(state: SimState, dealers: readonly DealerPlace[]): Tra
       room: Math.max(0, Math.min(room, Math.floor(state.money / buy))),
       paid: state.market.paid[good] ?? 0,
       standing,
-      mood: buy >= standing * SPIKE ? 'spike' : buy <= standing * GLUT ? 'glut' : '',
+      mood: moodOf(buy, standing),
     });
   }
   return rows;

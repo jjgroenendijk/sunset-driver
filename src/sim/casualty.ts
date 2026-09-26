@@ -36,6 +36,7 @@ import {
   upright,
   type Casualty,
   type CasualtyCause,
+  type CasualtyPose,
 } from './casualty-motion.ts';
 
 export { PERSON_HEALTH, type Casualty } from './casualty-motion.ts';
@@ -138,12 +139,7 @@ export function hurtPerson(
   const lying = was !== undefined && lyingAt(was, state.tick);
   const health = Math.max(0, (was?.health ?? PERSON_HEALTH) - Math.max(0, blow.damage));
   const rng = rngFor(state.seed, state.tick, Subsystem.Casualties, hashInts(HIT_STREAM, id));
-  const heavy = blow.damage >= KNOCKDOWN || blow.lift > 0 || blow.cause === 'car' || blow.cause === 'blast';
-  let down = 0;
-  if (health <= 0) down = -1;
-  else if (heavy || (was !== undefined && was.down !== 0)) {
-    down = Math.round(rng.range(DOWN_SECONDS[0], DOWN_SECONDS[1]) * TICK_RATE);
-  }
+  const down = downTicks(blow, health, was, rng);
   const side = rng.chance(0.5) ? 1 : -1;
   const h = pose.height;
   const reach = ground === undefined ? REACH_MAX : ground.reach(pose.x, h + 0.9, pose.y, blow.dir, REACH_MAX);
@@ -178,9 +174,39 @@ export function hurtPerson(
   if (health <= 0 && !already) record.cash = rng.int(CASH[0], CASH[1]);
   setCasualty(peds, record);
   if (already) return record;
-  if (was === undefined && blow.city !== true) commitCrime(state, CRIMES[blow.cause]);
+  answerHurt(state, crowd, pose, blow, was === undefined, record);
+  return record;
+}
+
+/**
+ * Ticks a person hit stays down: -1 for the dead, 0 for a stagger, and a
+ * random spell for a heavy blow or somebody already down.
+ */
+function downTicks(blow: Blow, health: number, was: Casualty | undefined, rng: ReturnType<typeof rngFor>): number {
+  if (health <= 0) return -1;
+  const heavy = blow.damage >= KNOCKDOWN || blow.lift > 0 || blow.cause === 'car' || blow.cause === 'blast';
+  if (heavy || (was !== undefined && was.down !== 0)) {
+    return Math.round(rng.range(DOWN_SECONDS[0], DOWN_SECONDS[1]) * TICK_RATE);
+  }
+  return 0;
+}
+
+/**
+ * What a new hit on a living person sets off: the crime, the fright around
+ * them, and an ambulance for whoever is down.
+ */
+function answerHurt(
+  state: SimState,
+  crowd: CrowdSource,
+  pose: Pick<PedestrianPose, 'x' | 'y'>,
+  blow: Blow,
+  first: boolean,
+  record: Casualty,
+): void {
+  const peds = state.pedestrians;
+  if (first && blow.city !== true) commitCrime(state, CRIMES[blow.cause]);
   const ids: number[] = [];
-  if (health <= 0) {
+  if (record.health <= 0) {
     if (blow.city !== true) commitCrime(state, 'killing');
     crowd.startle(peds, state.tick, pose.x, pose.y, DEATH_FLEE, 'flee', ids);
     capBodies(state);
@@ -189,8 +215,7 @@ export function hurtPerson(
   }
   // Somebody calls it in, and an ambulance comes to whoever is down (spec
   // section 20.3). A stagger is not worth one.
-  if (down !== 0) callAmbulance(state, pose.x, pose.y);
-  return record;
+  if (record.down !== 0) callAmbulance(state, pose.x, pose.y);
 }
 
 /**
@@ -213,16 +238,32 @@ export function stepCasualties(state: SimState, crowd: CrowdSource, ids?: number
     if (away > RELEASE_FAR) continue;
     keep.push(record);
     if (record.gone || !dead(record)) continue;
-    if (state.tick - record.first === GATHER_DELAY) {
-      crowd.startle(peds, state.tick, pose.x, pose.y, GATHER_REACH, 'gather', ids);
-    }
-    if (record.cash > 0 && !p.driving && hypot(pose.x - p.x, pose.y - p.y) <= CASH_REACH) {
-      state.money += record.cash;
-      record.cash = 0;
-    }
-    if (state.tick - record.first >= BODY_LIFE && away > BODY_UNSEEN) record.gone = true;
+    tendBody(state, crowd, record, pose, away, ids);
   }
   peds.casualties = keep;
+}
+
+/**
+ * One tick of a body `away` metres from the player: onlookers gather, the
+ * player on foot takes its cash, and one left long and unseen is taken away.
+ */
+function tendBody(
+  state: SimState,
+  crowd: CrowdSource,
+  record: Casualty,
+  pose: CasualtyPose,
+  away: number,
+  ids: number[] | undefined,
+): void {
+  const p = state.player;
+  if (state.tick - record.first === GATHER_DELAY) {
+    crowd.startle(state.pedestrians, state.tick, pose.x, pose.y, GATHER_REACH, 'gather', ids);
+  }
+  if (record.cash > 0 && !p.driving && hypot(pose.x - p.x, pose.y - p.y) <= CASH_REACH) {
+    state.money += record.cash;
+    record.cash = 0;
+  }
+  if (state.tick - record.first >= BODY_LIFE && away > BODY_UNSEEN) record.gone = true;
 }
 
 /**

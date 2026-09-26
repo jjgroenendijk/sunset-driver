@@ -253,46 +253,16 @@ export class SimPhysics extends GroundPlaces {
     const wasX = v.vx;
     const wasY = v.vy;
     const wasZ = v.vz;
-    if (chassis === undefined) {
-      this.bodies.cover(state.player.x, state.player.y);
-      // A player bent over a lock stands at the door (spec section 11.4): they
-      // are stepped with nothing held down, so only gravity moves them.
-      walk(this.walker as Walker, state, busy(state) ? EMPTY_INPUT : input, this.ground.seaLevel);
-    } else {
-      this.bodies.cover(v.x, v.z);
-      // Rapier keeps a force until it is told to forget it, so a tick that adds
-      // one has to clear the last tick's first. Without this the buoyancy of a
-      // hull and the rider of a motorcycle both grow without bound.
-      chassis.resetForces(false);
-      chassis.resetTorques(false);
-      if (this.wheels === undefined) {
-        const held = state.boarding === null ? input : EMPTY_INPUT;
-        if (this.spec.hull !== undefined) this.controls.sail(chassis, v, held, this.spec);
-        // A helicopter has neither wheels nor a hull: its rotor is all of it.
-        if (this.spec.flight !== undefined) this.flight.fly(chassis, v, held, this.spec);
-      } else {
-        // How wet the road is is the weather of the tick (spec section 13.4),
-        // which is a pure function of the seed and the tick like everything
-        // else, so a replay drives on the same water the session did.
-        // A driver on the way out of the seat holds the vehicle on its brakes.
-        const held = state.boarding === null ? input : BRAKED;
-        this.controls.drive(this.wheels, v, held, this.spec, weatherAt(state.seed, state.tick).wetness);
-        this.controls.hold(chassis, v, this.spec);
-        // A plane rolls and brakes on its wheels, and flies on its engine.
-        if (this.spec.flight !== undefined) this.flight.fly(chassis, v, held, this.spec);
-        // The wheels roll over a ragdoll rather than standing on it: `car-strike.ts` is the bump.
-        this.wheels.updateVehicle(this.world.timestep, undefined, SHUNS_RAGDOLL);
-      }
-    }
+    if (chassis === undefined) this.stepWalker(state, input);
+    else this.stepChassis(state, input, chassis);
     // The traffic and the crowd give way to each other and to the player
     // before the traffic is aimed at the next tick.
-    if (state.player.driving) this.giveWay?.step(state, v.x, v.z, this.casualtyGround);
-    else this.giveWay?.step(state, state.player.x, state.player.y, this.casualtyGround);
+    const p = state.player;
+    this.giveWay?.step(state, p.driving ? v.x : p.x, p.driving ? v.z : p.y, this.casualtyGround);
     // The people round the player on foot step out of their way (`make-way.ts`).
     if (this.ground.crowd !== undefined) stepMakeWay(state, this.ground.crowd, this.ids);
     // The traffic is aimed at the next tick once the player's own move is known.
-    if (state.player.driving) this.traffic?.lead(state, v.x, v.z, this.ground.parked);
-    else this.traffic?.lead(state, state.player.x, state.player.y, this.ground.parked);
+    this.traffic?.lead(state, p.driving ? v.x : p.x, p.driving ? v.z : p.y, this.ground.parked);
     this.world.step();
     this.read(state);
     this.traffic?.settle(state);
@@ -312,17 +282,7 @@ export class SimPhysics extends GroundPlaces {
       if (unit.kind === 'helicopter') unit.height = this.ground.heightAt(unit.x, unit.y);
     }
     const crash = chassis === undefined ? 0 : this.crash(state, wasX, wasY, wasZ);
-    // The crowd answers the tick the car has just had (spec section 20.1): the
-    // crash it took, or the people it is about to run over. It is read after
-    // the step, so the fright is written where the car ended the tick.
-    const crowd = this.ground.crowd;
-    if (crowd !== undefined) {
-      // The car strikes the people it is on top of (spec section 13.1), and
-      // feels them: it slows, and bumps over a body in the road.
-      if (chassis !== undefined) this.feel(state, chassis, strikeCrowd(state, crowd, this.spec, this.casualtyGround, this.ids));
-      stepCrowdReactions(state, crowd, crash, this.ids);
-      stepCasualties(state, crowd, this.ids);
-    }
+    this.answerCrowd(state, chassis, crash);
     // The weapons are run after the step, so a shot leaves the muzzle from where
     // the player ended the tick rather than from where they started it. A player
     // bent over a lock cannot shoot, for the same reason they cannot walk.
@@ -339,6 +299,58 @@ export class SimPhysics extends GroundPlaces {
     // Last, once every round, blow, blast and car of the tick has landed: the
     // ragdolls read what the step did to them, and the hits of this tick get theirs.
     this.ragdolls.step(state);
+  }
+
+  /** One tick of the player on foot, or bent over a lock. */
+  private stepWalker(state: SimState, input: InputFrame): void {
+    this.bodies.cover(state.player.x, state.player.y);
+    // A player bent over a lock stands at the door (spec section 11.4): they
+    // are stepped with nothing held down, so only gravity moves them.
+    walk(this.walker as Walker, state, busy(state) ? EMPTY_INPUT : input, this.ground.seaLevel);
+  }
+
+  /** One tick of the controls of the vehicle the player drives: its wheels, its hull or its flight. */
+  private stepChassis(state: SimState, input: InputFrame, chassis: RAPIER.RigidBody): void {
+    const v = state.vehicle;
+    this.bodies.cover(v.x, v.z);
+    // Rapier keeps a force until it is told to forget it, so a tick that adds
+    // one has to clear the last tick's first. Without this the buoyancy of a
+    // hull and the rider of a motorcycle both grow without bound.
+    chassis.resetForces(false);
+    chassis.resetTorques(false);
+    if (this.wheels === undefined) {
+      const held = state.boarding === null ? input : EMPTY_INPUT;
+      if (this.spec.hull !== undefined) this.controls.sail(chassis, v, held, this.spec);
+      // A helicopter has neither wheels nor a hull: its rotor is all of it.
+      if (this.spec.flight !== undefined) this.flight.fly(chassis, v, held, this.spec);
+      return;
+    }
+    // How wet the road is is the weather of the tick (spec section 13.4),
+    // which is a pure function of the seed and the tick like everything
+    // else, so a replay drives on the same water the session did.
+    // A driver on the way out of the seat holds the vehicle on its brakes.
+    const held = state.boarding === null ? input : BRAKED;
+    this.controls.drive(this.wheels, v, held, this.spec, weatherAt(state.seed, state.tick).wetness);
+    this.controls.hold(chassis, v, this.spec);
+    // A plane rolls and brakes on its wheels, and flies on its engine.
+    if (this.spec.flight !== undefined) this.flight.fly(chassis, v, held, this.spec);
+    // The wheels roll over a ragdoll rather than standing on it: `car-strike.ts` is the bump.
+    this.wheels.updateVehicle(this.world.timestep, undefined, SHUNS_RAGDOLL);
+  }
+
+  /**
+   * The crowd answers the tick the car has just had (spec section 20.1): the
+   * crash it took, or the people it is about to run over. It is read after
+   * the step, so the fright is written where the car ended the tick.
+   */
+  private answerCrowd(state: SimState, chassis: RAPIER.RigidBody | undefined, crash: number): void {
+    const crowd = this.ground.crowd;
+    if (crowd === undefined) return;
+    // The car strikes the people it is on top of (spec section 13.1), and
+    // feels them: it slows, and bumps over a body in the road.
+    if (chassis !== undefined) this.feel(state, chassis, strikeCrowd(state, crowd, this.spec, this.casualtyGround, this.ids));
+    stepCrowdReactions(state, crowd, crash, this.ids);
+    stepCasualties(state, crowd, this.ids);
   }
 
   /**
@@ -579,7 +591,12 @@ export class SimPhysics extends GroundPlaces {
       this.board(state, state.boarding);
       return;
     }
-    if (!pressed) return;
+    if (pressed) this.press(state);
+  }
+
+  /** What a fresh press of the interact key does: open a door, start on a lock, or take a car of the city. */
+  private press(state: SimState): void {
+    const p = state.player;
     if (p.driving) {
       if (Math.abs(state.vehicle.speed) > EXIT_SPEED) return;
       state.boarding = createBoarding('out', state.tick, -1);

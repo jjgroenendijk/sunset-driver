@@ -349,6 +349,25 @@ export function quarryOf(state: SimState): Quarry {
 }
 
 /**
+ * The radio says when the player is picked up again and when they are lost.
+ * `lost` is whether they were lost before this tick's look.
+ */
+function radio(state: SimState, quarry: Quarry, lost: boolean): void {
+  const police = state.police;
+  if (state.heat > 0 && lost && police.seenTick === state.tick) bark(state, 'spotted', quarry.x, quarry.y);
+  if (state.heat > 0 && state.tick - police.seenTick === SEARCH_DELAY && police.lastKnown !== null) {
+    bark(state, 'lost', police.lastKnown.x, police.lastKnown.y);
+  }
+}
+
+/** Metres ahead of the player a car aims, by its task: a cutoff and a roadblock lead them. */
+function leadOf(task: PoliceUnit['task']): number {
+  if (task === 'cutoff') return CUTOFF_LEAD;
+  if (task === 'block') return BLOCK_LEAD;
+  return 0;
+}
+
+/**
  * The police of one session: the road network they drive and the districts they
  * answer from. It holds no state of the chase — that is all on the record — so
  * a save is loaded and the same force carries on from it.
@@ -385,11 +404,7 @@ export class PoliceForce {
     const lost = state.tick - police.seenTick >= SEARCH_DELAY;
     this.look(state, quarry, ground);
     this.squad.look(state, quarry, ground);
-    // The radio says when the player is picked up again and when they are lost.
-    if (state.heat > 0 && lost && police.seenTick === state.tick) bark(state, 'spotted', quarry.x, quarry.y);
-    if (state.heat > 0 && state.tick - police.seenTick === SEARCH_DELAY && police.lastKnown !== null) {
-      bark(state, 'lost', police.lastKnown.x, police.lastKnown.y);
-    }
+    radio(state, quarry, lost);
     state.heat = decayHeat(state.heat, state.tick, police.seenTick);
     this.dispatch(state, quarry);
     // The world is policed only while the player is not: a chase costs this nothing.
@@ -568,7 +583,7 @@ export class PoliceForce {
       unit.goalY = known.y + sin(bearing) * reach;
       return;
     }
-    const lead = unit.task === 'cutoff' ? CUTOFF_LEAD : unit.task === 'block' ? BLOCK_LEAD : 0;
+    const lead = leadOf(unit.task);
     // A player standing still is not going anywhere, so the lead is dropped
     // rather than aimed at the way they happen to be pointing.
     const reach = quarry.speed > 2 ? lead : 0;

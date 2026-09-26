@@ -219,63 +219,82 @@ function place(spot: CornerSpot, along: number, out: number, at: { x: number; y:
   at.height = spot.height;
 }
 
+/** Add one person to the spot being laid out: where they stand, which way they turn, what they do. */
+type AddPerson = (along: number, out: number, turn: number, gait: Gait) => void;
+
+/** The prop of a spot, if it has one. */
+type SpotProp = CornerSpot['prop'];
+
 /** Lay out the people and the prop of one spot. */
 function spotOf(seed: number, id: number, kind: CornerKind, zone: Zone, x: number, y: number, height: number, heading: number, rng: Rng): CornerSpot {
   const people: CornerPerson[] = [];
-  const person = (along: number, out: number, turn: number, gait: Gait): void => {
+  const person: AddPerson = (along, out, turn, gait) => {
     const look = lookOf(zone, rngFor(seed, 0, Subsystem.Corners, hashInts(PERSON_STREAM, id, people.length)));
     people.push({ look, along, out, turn, gait, phase: rng.float() });
   };
-  const idle = (): Gait => (['stand', 'phone', 'smoke', 'talk', 'fold'] as const)[rng.int(0, 4)] as Gait;
-  let prop: CornerSpot['prop'];
-  switch (kind) {
-    case 'busker': {
-      person(0, 0, 0, 'busk');
-      prop = { kind: 'amp', along: 0.55, out: -0.1, turn: 0 };
-      // The ones who have stopped to listen, in a loose ring towards the road, facing the busker.
-      const listeners = rng.int(0, 3);
-      for (let k = 0; k < listeners; k++) {
-        const along = (k % 2 === 0 ? 1 : -1) * rng.range(0.9, 1.8);
-        const out = rng.range(1.2, 2);
-        person(along, out, Math.PI + atan2(along, out) + rng.range(-0.2, 0.2), rng.chance(0.3) ? 'film' : rng.chance(0.5) ? 'fold' : 'stand');
-      }
-      break;
-    }
-    case 'cart': {
-      prop = { kind: 'cart', along: 0, out: 0.9, turn: 0 };
-      person(0, 0.05, 0, 'stand');
-      const queue = rng.int(1, 3);
-      for (let k = 0; k < queue; k++) person(-0.3 + k * 0.7, 2 + k * 0.15, Math.PI + rng.range(-0.3, 0.3), k === 0 ? 'stand' : idle());
-      break;
-    }
-    case 'stall': {
-      prop = { kind: 'stall', along: 0, out: 0.8, turn: 0 };
-      person(0.2, 0.05, 0, 'fold');
-      if (rng.chance(0.7)) person(rng.range(-0.8, 0.8), 1.7, Math.PI, 'window');
-      break;
-    }
-    case 'club': {
-      // A line along the wall, all facing the door at its head.
-      const line = rng.int(3, 6);
-      for (let k = 0; k < line; k++) person(k * 0.75, 0.15, Math.PI / 2 + rng.range(-0.3, 0.3), idle());
-      break;
-    }
-    case 'smokers': {
-      const two = rng.int(2, 3);
-      for (let k = 0; k < two; k++) person(k * 0.8 - 0.4, 0.2 + rng.range(0, 0.4), (k % 2 === 0 ? 1 : -1) * rng.range(0.6, 1.2), rng.chance(0.7) ? 'smoke' : 'talk');
-      break;
-    }
-    case 'dog':
-      person(0, 1.1, Math.PI / 2, rng.chance(0.5) ? 'phone' : 'stand');
-      prop = { kind: 'dog', along: 0.9, out: 1.2, turn: Math.PI / 2 + rng.range(-0.8, 0.8) };
-      break;
-    case 'stoop':
-      person(0, 0, 0, 'fold');
-      if (rng.chance(0.5)) person(0.8, 0.1, -0.6, 'talk');
-      break;
-  }
+  const prop = LAYOUTS[kind](person, rng);
   return { id, kind, x, y, height, heading, people, ...(prop === undefined ? {} : { prop }) };
 }
+
+/** A gait to idle in: standing, on the phone, smoking, talking or arms folded. */
+function idleGait(rng: Rng): Gait {
+  return (['stand', 'phone', 'smoke', 'talk', 'fold'] as const)[rng.int(0, 4)] as Gait;
+}
+
+/** What a listener to a busker does: films, folds their arms or stands. */
+function listenerGait(rng: Rng): Gait {
+  if (rng.chance(0.3)) return 'film';
+  return rng.chance(0.5) ? 'fold' : 'stand';
+}
+
+/** How each kind of spot lays out its people, and the prop it answers. */
+const LAYOUTS: Record<CornerKind, (person: AddPerson, rng: Rng) => SpotProp> = {
+  busker(person, rng) {
+    person(0, 0, 0, 'busk');
+    const prop: SpotProp = { kind: 'amp', along: 0.55, out: -0.1, turn: 0 };
+    // The ones who have stopped to listen, in a loose ring towards the road, facing the busker.
+    const listeners = rng.int(0, 3);
+    for (let k = 0; k < listeners; k++) {
+      const along = (k % 2 === 0 ? 1 : -1) * rng.range(0.9, 1.8);
+      const out = rng.range(1.2, 2);
+      person(along, out, Math.PI + atan2(along, out) + rng.range(-0.2, 0.2), listenerGait(rng));
+    }
+    return prop;
+  },
+  cart(person, rng) {
+    const prop: SpotProp = { kind: 'cart', along: 0, out: 0.9, turn: 0 };
+    person(0, 0.05, 0, 'stand');
+    const queue = rng.int(1, 3);
+    for (let k = 0; k < queue; k++) person(-0.3 + k * 0.7, 2 + k * 0.15, Math.PI + rng.range(-0.3, 0.3), k === 0 ? 'stand' : idleGait(rng));
+    return prop;
+  },
+  stall(person, rng) {
+    const prop: SpotProp = { kind: 'stall', along: 0, out: 0.8, turn: 0 };
+    person(0.2, 0.05, 0, 'fold');
+    if (rng.chance(0.7)) person(rng.range(-0.8, 0.8), 1.7, Math.PI, 'window');
+    return prop;
+  },
+  club(person, rng) {
+    // A line along the wall, all facing the door at its head.
+    const line = rng.int(3, 6);
+    for (let k = 0; k < line; k++) person(k * 0.75, 0.15, Math.PI / 2 + rng.range(-0.3, 0.3), idleGait(rng));
+    return undefined;
+  },
+  smokers(person, rng) {
+    const two = rng.int(2, 3);
+    for (let k = 0; k < two; k++) person(k * 0.8 - 0.4, 0.2 + rng.range(0, 0.4), (k % 2 === 0 ? 1 : -1) * rng.range(0.6, 1.2), rng.chance(0.7) ? 'smoke' : 'talk');
+    return undefined;
+  },
+  dog(person, rng) {
+    person(0, 1.1, Math.PI / 2, rng.chance(0.5) ? 'phone' : 'stand');
+    return { kind: 'dog', along: 0.9, out: 1.2, turn: Math.PI / 2 + rng.range(-0.8, 0.8) };
+  },
+  stoop(person, rng) {
+    person(0, 0, 0, 'fold');
+    if (rng.chance(0.5)) person(0.8, 0.1, -0.6, 'talk');
+    return undefined;
+  },
+};
 
 function pick(weights: Partial<Record<CornerKind, number>>, rng: Rng): CornerKind | undefined {
   const kinds: CornerKind[] = ['busker', 'cart', 'stall', 'club', 'smokers', 'dog', 'stoop'];

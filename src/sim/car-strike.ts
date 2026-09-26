@@ -74,6 +74,147 @@ export function carDamage(speed: number): number {
   return 100 * share ** 1.6;
 }
 
+/** A person standing inside the car's footprint, and how far off its middle. */
+interface Standing {
+  id: number;
+  x: number;
+  y: number;
+  height: number;
+  heading: number;
+  across: number;
+}
+
+/** The car's footprint on one tick: where it is, which way it faces, where it sits. */
+interface Footprint {
+  x: number;
+  z: number;
+  fx: number;
+  fy: number;
+  floor: number;
+  spec: VehicleSpec;
+}
+
+/** How fast the car goes on this tick, and the angle it travels along. */
+interface Motion {
+  speed: number;
+  travel: number;
+}
+
+/**
+ * How far off the car's middle a point at (`x`, `y`) and height `h` is, or
+ * undefined when it lies outside the footprint grown by `pad`.
+ */
+function insideFootprint(f: Footprint, x: number, y: number, h: number, pad: number): number | undefined {
+  const rx = x - f.x;
+  const ry = y - f.z;
+  const along = rx * f.fx + ry * f.fy;
+  const across = -rx * f.fy + ry * f.fx;
+  if (Math.abs(along) > f.spec.halfLength + pad || Math.abs(across) > f.spec.halfWidth + pad) return undefined;
+  if (Math.abs(h - f.floor) > 1.5) return undefined;
+  return across;
+}
+
+/** Push every walker of the crowd inside the footprint onto `standing`. */
+function gatherWalkers(
+  state: SimState,
+  crowd: CrowdSource & CrowdLookup,
+  foot: Footprint,
+  ids: number[],
+  standing: Standing[],
+): void {
+  const v = state.vehicle;
+  const reach = foot.spec.halfLength + foot.spec.halfWidth + BODY_RADIUS;
+  const peds = state.pedestrians;
+  const pose: PedestrianPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0, cycle: 0, gait: 'stand' };
+  for (const id of crowd.near(v.x - reach, v.z - reach, v.x + reach, v.z + reach, ids)) {
+    if (crowdPoseOf(crowd, peds, id, state.tick, pose) === undefined) continue;
+    const across = insideFootprint(foot, pose.x, pose.y, pose.height, BODY_RADIUS);
+    if (across !== undefined) standing.push({ id, x: pose.x, y: pose.y, height: pose.height, heading: pose.heading, across });
+  }
+}
+
+/**
+ * Go through the casualties inside the footprint: one still on their feet
+ * joins `standing`, and the car goes over one lying in the road.
+ */
+function meetCasualties(
+  state: SimState,
+  crowd: CrowdSource & CrowdLookup,
+  foot: Footprint,
+  motion: Motion,
+  ground: CasualtyGround | undefined,
+  standing: Standing[],
+  strike: CarStrike,
+): void {
+  const { speed, travel } = motion;
+  const hurt = emptyCasualtyPose();
+  for (const record of [...state.pedestrians.casualties]) {
+    if (record.gone) continue;
+    casualtyPose(record, state.tick, hurt);
+    if (hurt.phase === 'air') continue;
+    const across = insideFootprint(foot, hurt.x, hurt.y, hurt.height, upright(hurt) ? BODY_RADIUS : 0);
+    if (across === undefined) continue;
+    if (upright(hurt)) {
+      standing.push({ id: record.id, x: hurt.x, y: hurt.y, height: hurt.height, heading: hurt.heading, across });
+      continue;
+    }
+    // Lying in the road: the car goes over them.
+    if (state.tick - record.bumped < BUMP_GAP || speed < 1.5) continue;
+    record.bumped = state.tick;
+    strike.bump += PERSON_MASS * BUMP_LIFT;
+    strike.loss += PERSON_MASS * speed * 0.15;
+    markHit(state.hits, { tick: state.tick, x: hurt.x, y: hurt.y, h: hurt.height + 0.3, surface: 'person', strength: 0.4 });
+    if (!dead(record)) {
+      hurtPerson(state, crowd, record.id, hurt, { cause: 'car', damage: RUN_OVER_DAMAGE, dir: travel, push: 0.5, lift: 0 }, ground);
+    }
+  }
+}
+
+/** Strike one person standing in the car's way, and add what it cost the car to `strike`. */
+function strikeStanding(
+  state: SimState,
+  crowd: CrowdSource & CrowdLookup,
+  spec: VehicleSpec,
+  motion: Motion,
+  ground: CasualtyGround | undefined,
+  ids: number[],
+  person: Standing,
+  strike: CarStrike,
+): void {
+  const { speed, travel } = motion;
+  const v = state.vehicle;
+  if (speed < SHOVE_SPEED) {
+    // A car at a crawl pushes somebody aside, and they run: a fright from a
+    // hair behind them, so nobody else is taken with them.
+    const back = atan2(person.y - v.z, person.x - v.x);
+    crowd.startle(state.pedestrians, state.tick, person.x - cos(back) * 0.05, person.y - sin(back) * 0.05, 0.1, 'flee', ids);
+    return;
+  }
+  const rng = rngFor(state.seed, state.tick, Subsystem.Casualties, hashInts(2, person.id));
+  // Past the speed that kills, it kills whoever it is: the spread is below it.
+  const damage = speed >= KILL_SPEED ? PERSON_HEALTH : carDamage(speed) * rng.range(0.8, 1.2);
+  // Struck off the middle of the bonnet, a person goes off to that side.
+  const dir = travel + 0.35 * (person.across / Math.max(0.5, spec.halfWidth)) + rng.range(-0.1, 0.1);
+  const fast = speed >= LIFT_SPEED;
+  const push = speed * (fast ? THROW_SHARE : 0.9);
+  const lift = fast ? Math.min(LIFT_MAX, speed * LIFT_SHARE) : 0;
+  const record = hurtPerson(state, crowd, person.id, person, { cause: 'car', damage, dir, push, lift }, ground);
+  if (record === undefined) return;
+  strike.struck++;
+  strike.loss += PERSON_MASS * push;
+  markHit(state.hits, {
+    tick: state.tick,
+    x: person.x,
+    y: person.y,
+    h: person.height + 1,
+    surface: 'person',
+    strength: Math.min(1, speed / 20),
+  });
+  // The front of the car takes the dent: the panel rule reads along, across, up.
+  const side = Math.max(-1, Math.min(1, person.across / Math.max(0.5, spec.halfWidth))) * 0.5;
+  damageVehicle(v.damage, speed * 0.004, 1, side, 0, state.seed, state.tick);
+}
+
 /**
  * Strike everyone inside the player's car on this tick, and answer what the
  * car lost. Only a car the player is driving strikes anybody.
@@ -91,80 +232,11 @@ export function strikeCrowd(
   const speed = hypot(v.vx, v.vz);
   if (speed < 1) return strike;
   const heading = headingOf(v);
-  const fx = cos(heading);
-  const fy = sin(heading);
-  const travel = atan2(v.vz, v.vx);
-  const floor = v.y - spec.halfHeight;
-  const reach = spec.halfLength + spec.halfWidth + BODY_RADIUS;
-  const inside = (x: number, y: number, h: number, pad: number): number | undefined => {
-    const rx = x - v.x;
-    const ry = y - v.z;
-    const along = rx * fx + ry * fy;
-    const across = -rx * fy + ry * fx;
-    if (Math.abs(along) > spec.halfLength + pad || Math.abs(across) > spec.halfWidth + pad) return undefined;
-    if (Math.abs(h - floor) > 1.5) return undefined;
-    return across;
-  };
-  const peds = state.pedestrians;
-  const pose: PedestrianPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0, cycle: 0, gait: 'stand' };
-  const standing: { id: number; x: number; y: number; height: number; heading: number; across: number }[] = [];
-  for (const id of crowd.near(v.x - reach, v.z - reach, v.x + reach, v.z + reach, ids)) {
-    if (crowdPoseOf(crowd, peds, id, state.tick, pose) === undefined) continue;
-    const across = inside(pose.x, pose.y, pose.height, BODY_RADIUS);
-    if (across !== undefined) standing.push({ id, x: pose.x, y: pose.y, height: pose.height, heading: pose.heading, across });
-  }
-  const hurt = emptyCasualtyPose();
-  for (const record of [...peds.casualties]) {
-    if (record.gone) continue;
-    casualtyPose(record, state.tick, hurt);
-    if (hurt.phase === 'air') continue;
-    const across = inside(hurt.x, hurt.y, hurt.height, upright(hurt) ? BODY_RADIUS : 0);
-    if (across === undefined) continue;
-    if (upright(hurt)) {
-      standing.push({ id: record.id, x: hurt.x, y: hurt.y, height: hurt.height, heading: hurt.heading, across });
-      continue;
-    }
-    // Lying in the road: the car goes over them.
-    if (state.tick - record.bumped < BUMP_GAP || speed < 1.5) continue;
-    record.bumped = state.tick;
-    strike.bump += PERSON_MASS * BUMP_LIFT;
-    strike.loss += PERSON_MASS * speed * 0.15;
-    markHit(state.hits, { tick: state.tick, x: hurt.x, y: hurt.y, h: hurt.height + 0.3, surface: 'person', strength: 0.4 });
-    if (!dead(record)) {
-      hurtPerson(state, crowd, record.id, hurt, { cause: 'car', damage: RUN_OVER_DAMAGE, dir: travel, push: 0.5, lift: 0 }, ground);
-    }
-  }
-  for (const person of standing) {
-    if (speed < SHOVE_SPEED) {
-      // A car at a crawl pushes somebody aside, and they run: a fright from a
-      // hair behind them, so nobody else is taken with them.
-      const back = atan2(person.y - v.z, person.x - v.x);
-      crowd.startle(peds, state.tick, person.x - cos(back) * 0.05, person.y - sin(back) * 0.05, 0.1, 'flee', ids);
-      continue;
-    }
-    const rng = rngFor(state.seed, state.tick, Subsystem.Casualties, hashInts(2, person.id));
-    // Past the speed that kills, it kills whoever it is: the spread is below it.
-    const damage = speed >= KILL_SPEED ? PERSON_HEALTH : carDamage(speed) * rng.range(0.8, 1.2);
-    // Struck off the middle of the bonnet, a person goes off to that side.
-    const dir = travel + 0.35 * (person.across / Math.max(0.5, spec.halfWidth)) + rng.range(-0.1, 0.1);
-    const fast = speed >= LIFT_SPEED;
-    const push = speed * (fast ? THROW_SHARE : 0.9);
-    const lift = fast ? Math.min(LIFT_MAX, speed * LIFT_SHARE) : 0;
-    const record = hurtPerson(state, crowd, person.id, person, { cause: 'car', damage, dir, push, lift }, ground);
-    if (record === undefined) continue;
-    strike.struck++;
-    strike.loss += PERSON_MASS * push;
-    markHit(state.hits, {
-      tick: state.tick,
-      x: person.x,
-      y: person.y,
-      h: person.height + 1,
-      surface: 'person',
-      strength: Math.min(1, speed / 20),
-    });
-    // The front of the car takes the dent: the panel rule reads along, across, up.
-    const side = Math.max(-1, Math.min(1, person.across / Math.max(0.5, spec.halfWidth))) * 0.5;
-    damageVehicle(v.damage, speed * 0.004, 1, side, 0, state.seed, state.tick);
-  }
+  const foot: Footprint = { x: v.x, z: v.z, fx: cos(heading), fy: sin(heading), floor: v.y - spec.halfHeight, spec };
+  const motion: Motion = { speed, travel: atan2(v.vz, v.vx) };
+  const standing: Standing[] = [];
+  gatherWalkers(state, crowd, foot, ids, standing);
+  meetCasualties(state, crowd, foot, motion, ground, standing, strike);
+  for (const person of standing) strikeStanding(state, crowd, spec, motion, ground, ids, person, strike);
   return strike;
 }

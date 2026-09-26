@@ -171,19 +171,24 @@ export function planWalk(input: PlanInput): WalkPlan {
     if (stop === undefined || stop.at < d) continue;
     steps.walkTo(d, stop.at, hurries);
     d = stop.at;
-    if (stop.kind === PAUSE) {
-      steps.stand(PAUSE, d, stop.ticks, stop.idle, 0);
-    } else {
-      const side = Math.round(STEP_SECONDS * TICK_RATE);
-      steps.stand(STEP_IN, d, side, 0, stop.aside);
-      steps.stand(stop.kind, d, stop.ticks, stop.idle, stop.aside);
-      steps.stand(STEP_OUT, d, side, 0, stop.aside);
-    }
+    standAt(steps, stop, d);
   }
   steps.walkTo(d, route.length, hurries);
   if (lastLight >= 0) steps.closeLap(lastLight, route.length);
   const strides = Math.max(1, Math.round(route.length / input.stride));
   return steps.build(route.length / strides);
+}
+
+/** Lay down the steps of one stop at `d`: a pause where they stand, or a step aside, the stop and a step back. */
+function standAt(steps: PlanBuilder, stop: Stop, d: number): void {
+  if (stop.kind === PAUSE) {
+    steps.stand(PAUSE, d, stop.ticks, stop.idle, 0);
+    return;
+  }
+  const side = Math.round(STEP_SECONDS * TICK_RATE);
+  steps.stand(STEP_IN, d, side, 0, stop.aside);
+  steps.stand(stop.kind, d, stop.ticks, stop.idle, stop.aside);
+  steps.stand(STEP_OUT, d, side, 0, stop.aside);
 }
 
 /** The step a moment of the loop falls in, how far into it, and the distance round the loop there. */

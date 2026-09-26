@@ -131,20 +131,37 @@ export function restoreSimState(target: SimState, save: SaveFile): void {
 
 /** Check a parsed value is a save this version can play, and answer with a clean copy of it. */
 function checkSave(value: unknown): SaveFile {
+  const seed = checkHeader(value);
+  const template = cloneSimState(createSimState(seedFromString(seed)));
+  const state = conform(template, (value as Record<string, unknown>).state, 'state') as SimState;
+  if (state.seed !== template.seed) throw new SaveError('The save does not belong to its own seed.');
+  if (!Number.isInteger(state.tick) || state.tick < 0) throw new SaveError('The save has no valid time.');
+  checkKit(state);
+  checkStashes(state);
+  checkRosters(state);
+  return { format: SAVE_FORMAT, version: SAVE_VERSION, seed, state };
+}
+
+/** Check the format, the version and the seed a save says it has, and answer the seed. */
+function checkHeader(value: unknown): string {
   if (!isObject(value) || value.format !== SAVE_FORMAT) throw new SaveError('This is not a Sunset Driver save.');
   if (value.version !== SAVE_VERSION) {
     throw new SaveError(`The save is from version ${String(value.version)}; this game reads version ${SAVE_VERSION}.`);
   }
   if (typeof value.seed !== 'string' || value.seed.length === 0) throw new SaveError('The save has no seed.');
-  const seed = value.seed;
-  const template = cloneSimState(createSimState(seedFromString(seed)));
-  const state = conform(template, value.state, 'state') as SimState;
-  if (state.seed !== template.seed) throw new SaveError('The save does not belong to its own seed.');
-  if (!Number.isInteger(state.tick) || state.tick < 0) throw new SaveError('The save has no valid time.');
+  return value.seed;
+}
+
+/** Check the vehicle and the weapons carried are ones this game has. */
+function checkKit(state: SimState): void {
   if (!VEHICLE_CLASSES.includes(state.vehicle.cls)) throw new SaveError('The save names a vehicle this game does not have.');
   for (const slot of state.loadout.slots) {
     if (!WEAPON_IDS.includes(slot.id)) throw new SaveError('The save names a weapon this game does not have.');
   }
+}
+
+/** Check every stash holds a row per good, and every garaged car is one this game has. */
+function checkStashes(state: SimState): void {
   // An array is conformed element by element, so a stash of the wrong length is
   // still a stash of numbers. The market of spec section 16.2 reads a row per
   // good, and a row that is not there is a good that cannot be sold.
@@ -161,6 +178,10 @@ function checkSave(value: unknown): SaveFile {
       if (!VEHICLE_CLASSES.includes(car.cls)) throw new SaveError('The save names a vehicle this game does not have.');
     }
   }
+}
+
+/** Check the reputation holds a row per faction, and every enforcer out carries a known weapon. */
+function checkRosters(state: SimState): void {
   // The reputation of spec section 17.3 is a row per faction, so a save one row
   // short is a save that would read somebody else's standing.
   if (state.factions.standing.length !== FACTIONS.length) {
@@ -171,7 +192,6 @@ function checkSave(value: unknown): SaveFile {
   for (const unit of state.enforcers.units) {
     if (!WEAPON_IDS.includes(unit.weapon)) throw new SaveError('The save names a weapon this game does not have.');
   }
-  return { format: SAVE_FORMAT, version: SAVE_VERSION, seed, state };
 }
 
 /**

@@ -90,15 +90,7 @@ export function startCuffs(state: SimState): void {
   if (!driving && Math.abs(p.speed) > HOLD_SPEED && !police.surrendered) return;
   // A car is reached at its side, which stands its half width out from the middle.
   const reach = driving ? specOf(state.vehicle.cls).halfWidth + DRAG_REACH : CUFF_REACH + 0.25;
-  let taker: Officer | undefined;
-  let nearest = reach;
-  for (const officer of police.officers) {
-    if (officer.stunned > state.tick || (officer.task !== 'pursue' && officer.task !== 'cover')) continue;
-    const gap = hypot(officer.x - x, officer.y - y);
-    if (gap > nearest) continue;
-    nearest = gap;
-    taker = officer;
-  }
+  const taker = nearestTaker(state, x, y, reach);
   if (taker === undefined) return;
   police.cuffs = {
     officer: taker.id,
@@ -110,6 +102,20 @@ export function startCuffs(state: SimState): void {
   };
   taker.task = 'cuff';
   bark(state, 'cuff', taker.x, taker.y);
+}
+
+/** The nearest officer within reach of (x, y) who is up and chasing or covering, if any. */
+function nearestTaker(state: SimState, x: number, y: number, reach: number): Officer | undefined {
+  let taker: Officer | undefined;
+  let nearest = reach;
+  for (const officer of state.police.officers) {
+    if (officer.stunned > state.tick || (officer.task !== 'pursue' && officer.task !== 'cover')) continue;
+    const gap = hypot(officer.x - x, officer.y - y);
+    if (gap > nearest) continue;
+    nearest = gap;
+    taker = officer;
+  }
+  return taker;
 }
 
 /**

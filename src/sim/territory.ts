@@ -213,23 +213,31 @@ export class TerritoryMap {
    * the water are nobody's.
    */
   private fill(world: WorldDescription): void {
-    const hf = world.terrain;
-    const sea = world.water.seaLevel;
-    const half = world.size / 2;
     for (let cy = 0; cy < this.cols; cy++) {
       for (let cx = 0; cx < this.cols; cx++) {
         const middle = blockMiddle(cx + this.minBx, cy + this.minBy);
-        if (Math.abs(middle.x) > half || Math.abs(middle.y) > half) continue;
-        const ix = Math.round((middle.x - hf.originX) / hf.cellSize);
-        const iy = Math.round((middle.y - hf.originY) / hf.cellSize);
-        if (ix < 0 || ix >= hf.gridSize || iy < 0 || iy >= hf.gridSize) continue;
-        if ((hf.heights[iy * hf.gridSize + ix] as number) < sea) continue;
-        if (zoneAt(this.layout, middle.x, middle.y) === 'wilderness') continue;
-        const district = districtAt(this.districts, this.layout, middle.x, middle.y);
-        if (district.zone === 'wilderness') continue;
-        this.owner[cy * this.cols + cx] = district.id;
+        const id = this.cityAt(world, middle.x, middle.y);
+        if (id !== undefined) this.owner[cy * this.cols + cx] = id;
       }
     }
+  }
+
+  /**
+   * The district a block's middle at (x, y) lies in, or undefined when it is
+   * off the map, under the sea or in the wilderness.
+   */
+  private cityAt(world: WorldDescription, x: number, y: number): number | undefined {
+    const hf = world.terrain;
+    const half = world.size / 2;
+    if (Math.abs(x) > half || Math.abs(y) > half) return undefined;
+    const ix = Math.round((x - hf.originX) / hf.cellSize);
+    const iy = Math.round((y - hf.originY) / hf.cellSize);
+    if (ix < 0 || ix >= hf.gridSize || iy < 0 || iy >= hf.gridSize) return undefined;
+    if ((hf.heights[iy * hf.gridSize + ix] as number) < world.water.seaLevel) return undefined;
+    if (zoneAt(this.layout, x, y) === 'wilderness') return undefined;
+    const district = districtAt(this.districts, this.layout, x, y);
+    if (district.zone === 'wilderness') return undefined;
+    return district.id;
   }
 }
 

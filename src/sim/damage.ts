@@ -352,20 +352,23 @@ export function spreadFire(vehicles: readonly Burnable[], seed: number, tick: nu
   if (tick % SPREAD_PERIOD !== 0) return lit;
   for (const target of vehicles) {
     if (!isFlammable(target.damage)) continue;
-    let reached = false;
-    for (const source of vehicles) {
-      if (source.id === target.id || source.damage.stage !== 'burning') continue;
-      if (tick - source.damage.litTick < SPREAD_DELAY) continue;
-      if (hypot(source.x - target.x, source.y - target.y) > SPREAD_RADIUS) continue;
-      reached = true;
-      break;
-    }
-    if (!reached) continue;
+    if (!fireReaches(vehicles, target, tick)) continue;
     if (!rngFor(seed, tick, Subsystem.Damage, target.id).chance(SPREAD_CHANCE)) continue;
     ignite(target.damage, tick);
     lit.push(target.id);
   }
   return lit;
+}
+
+/** True when some other vehicle has burned long enough, and stands near enough, to reach the target. */
+function fireReaches(vehicles: readonly Burnable[], target: Burnable, tick: number): boolean {
+  for (const source of vehicles) {
+    if (source.id === target.id || source.damage.stage !== 'burning') continue;
+    if (tick - source.damage.litTick < SPREAD_DELAY) continue;
+    if (hypot(source.x - target.x, source.y - target.y) > SPREAD_RADIUS) continue;
+    return true;
+  }
+  return false;
 }
 
 /**

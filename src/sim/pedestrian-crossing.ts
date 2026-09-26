@@ -59,22 +59,48 @@ export function signalCrossings(pavements: Pavements, graph: RoadGraph, route: W
     const next = (i + 1) % count;
     const from = (route.toCorner[i] as number) - SCAN;
     const to = (next === 0 ? route.length : (route.start[next] as number)) + SCAN;
-    let open = -1;
-    let edge = -1;
-    for (let d = from; d <= to + STEP / 2; d += STEP) {
-      pavements.sample(route, d, point);
-      const on = d <= to ? pavements.carriagewayAt(node, point.x, point.y) : -1;
-      if (on >= 0 && open < 0) {
-        open = d;
-        edge = on;
-      } else if (on < 0 && open >= 0) {
-        const axis = axisOf(graph, signals, edge);
-        if (axis !== undefined) out.push({ at: wrap(open - back, route.length), end: wrap(d, route.length), junction, axis });
-        open = -1;
-      }
-    }
+    scanCorner({ pavements, graph, route, signals }, node, junction, [from, to], back, point, out);
   }
   return out.sort((a, b) => a.at - b.at);
+}
+
+/** What a scan for crossings reads: the pavements, the roads, the loop and the lights. */
+interface CrossingScene {
+  pavements: Pavements;
+  graph: RoadGraph;
+  route: WalkRoute;
+  signals: TrafficSignals;
+}
+
+/**
+ * Walk the loop over `span` round the corner at `node`, a step at a time, and
+ * push a crossing for every stretch of carriageway under lights it goes over.
+ */
+function scanCorner(
+  scene: CrossingScene,
+  node: number,
+  junction: number,
+  span: [number, number],
+  back: number,
+  point: WalkPoint,
+  out: Crossing[],
+): void {
+  const { pavements, graph, route, signals } = scene;
+  const [from, to] = span;
+  let open = -1;
+  let edge = -1;
+  for (let d = from; d <= to + STEP / 2; d += STEP) {
+    pavements.sample(route, d, point);
+    const on = d <= to ? pavements.carriagewayAt(node, point.x, point.y) : -1;
+    if (on >= 0 && open < 0) {
+      open = d;
+      edge = on;
+    } else if (on < 0 && open >= 0) {
+      const axis = axisOf(graph, signals, edge);
+      if (axis !== undefined) out.push({ at: wrap(open - back, route.length), end: wrap(d, route.length), junction, axis });
+      open = -1;
+    }
+  }
 }
 
 /** The axis of the road a leaving edge is, read off the approach that arrives along it. */

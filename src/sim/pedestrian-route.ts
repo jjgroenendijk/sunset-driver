@@ -191,7 +191,7 @@ export class Pavements {
       out.y = at.y;
       // A pavement that runs straight on over a junction crosses the road that meets it there.
       const run = this.edge(edge);
-      const node = s < NODE_REACH ? run.from : run.length - s < NODE_REACH ? run.to : -1;
+      const node = nodeNear(run, s);
       out.height = at.height + (node >= 0 && this.onCarriageway(node, at.x, at.y) ? CARRIAGEWAY_RISE : PAVEMENT_RISE);
       return out;
     }
@@ -403,6 +403,15 @@ function lastAtOrBelow(starts: Float64Array, value: number): number {
   return lo;
 }
 
+/** The node at the end of `run` that `s` metres along it is within reach of, or -1 for neither. */
+function nodeNear(run: RoadEdge, s: number): number {
+  if (s < NODE_REACH) return run.from;
+  if (run.length - s < NODE_REACH) return run.to;
+  return -1;
+}
+
 function clamp(value: number, lo: number, hi: number): number {
-  return value < lo ? lo : value > hi ? hi : value;
+  if (value < lo) return lo;
+  if (value > hi) return hi;
+  return value;
 }

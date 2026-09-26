@@ -93,7 +93,8 @@ export class EdgeIndex {
 
   private column(v: number, origin: number, count: number): number {
     const i = Math.floor((v - origin) / this.cell);
-    return i < 0 ? 0 : i >= count ? count - 1 : i;
+    if (i < 0) return 0;
+    return i >= count ? count - 1 : i;
   }
 }
 

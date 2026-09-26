@@ -62,9 +62,7 @@ export function stepMakeWay(state: SimState, crowd: CrowdSource, ids: number[] =
   const want: Want = { off: 0, side: 0, look: 0 };
   const pose = emptyPose();
   // Everybody already stepping aside moves towards what they want, and is kept while they still stand off.
-  if (on) crowd.near(p.x - MAKE_WAY_REACH, p.y - MAKE_WAY_REACH, p.x + MAKE_WAY_REACH, p.y + MAKE_WAY_REACH, ids);
-  else ids.length = 0;
-  const found = on ? ids.slice().sort((a, b) => a - b) : [];
+  const found = nearPlayer(state, crowd, on, ids);
   let a = 0;
   let b = 0;
   const list = peds.aside;
@@ -76,21 +74,53 @@ export function stepMakeWay(state: SimState, crowd: CrowdSource, ids: number[] =
     if (at === key) a++;
     if (id === key) b++;
     const record: Aside = at === key ? { ...(had as Aside) } : { id: key, off: 0, side: 0, look: 0 };
-    // Somebody who has chosen a side keeps to it, so nobody dithers in front of the player.
-    want.side = record.side;
-    if (!on || !free(peds, key) || !wanted(state, crowd, key, pose, want)) {
-      want.off = 0;
-      want.side = record.side;
-      want.look = 0;
-    }
-    if (want.off !== 0) record.side = want.side;
-    move(record, want);
+    stepAside(state, crowd, on, record, pose, want);
     if (Math.abs(record.off) > 1e-3 || Math.abs(record.look) > 1e-3) next.push(record);
   }
   peds.aside = next;
   if (on && p.speed > BARGE_SPEED) {
     crowd.startle(peds, state.tick, p.x, p.y, BARGE_REACH, 'scatter', ids);
   }
+}
+
+/**
+ * The ids of the people within reach of the player on foot, ascending; none
+ * while the player drives. `ids` is left holding the lookup's own answer.
+ */
+function nearPlayer(state: SimState, crowd: CrowdSource, on: boolean, ids: number[]): number[] {
+  const p = state.player;
+  if (!on) {
+    ids.length = 0;
+    return [];
+  }
+  crowd.near(p.x - MAKE_WAY_REACH, p.y - MAKE_WAY_REACH, p.x + MAKE_WAY_REACH, p.y + MAKE_WAY_REACH, ids);
+  return ids.slice().sort((a, b) => a - b);
+}
+
+/** Move one person's record a tick towards what they want of the player; `on` is false while the player drives. */
+function stepAside(
+  state: SimState,
+  crowd: CrowdSource,
+  on: boolean,
+  record: Aside,
+  pose: ReturnType<typeof emptyPose>,
+  want: Want,
+): void {
+  // Somebody who has chosen a side keeps to it, so nobody dithers in front of the player.
+  want.side = record.side;
+  if (!on || !free(state.pedestrians, record.id) || !wanted(state, crowd, record.id, pose, want)) {
+    want.off = 0;
+    want.side = record.side;
+    want.look = 0;
+  }
+  if (want.off !== 0) record.side = want.side;
+  move(record, want);
+}
+
+/** The side a person steps to: the one they chose before, else the side of the player's line they stand on. */
+function sideOf(chosen: number, right: number): number {
+  if (chosen !== 0) return chosen;
+  return right >= 0 ? 1 : -1;
 }
 
 /** True for somebody still on their loop: not startled, not hurt. */
@@ -119,7 +149,7 @@ function wanted(state: SimState, crowd: CrowdSource, id: number, pose: ReturnTyp
   const inWay = p.speed > 0.3 ? ahead > -0.3 && Math.abs(right) < PASS_ROOM : gap < PASS_ROOM * 0.7;
   if (inWay) {
     // Away from the player's line, on the side of it they already stand: +1 the player's right.
-    const side = want.side !== 0 ? want.side : right >= 0 ? 1 : -1;
+    const side = sideOf(want.side, right);
     want.side = side;
     // Far enough that the player's line is PASS_ROOM off, and no further than a step.
     const need = PASS_ROOM - side * right;

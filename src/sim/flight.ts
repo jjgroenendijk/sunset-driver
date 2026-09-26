@@ -82,6 +82,8 @@ export class Flight {
   private readonly nose = { x: 0, y: 0, z: 0 };
   private readonly axle = { x: 0, y: 0, z: 0 };
   private readonly force = { x: 0, y: 0, z: 0 };
+  /** Scratch for what the rotor or the wing reads, filled before either is asked. */
+  private readonly pose: Pose = { power: 0, along: 0, climb: 0, airborne: false, flying: false };
 
   constructor(ground: Ground) {
     this.ground = ground;
@@ -118,28 +120,18 @@ export class Flight {
     // Nothing leaves the ground until it is asked to climb: an aircraft
     // standing on it idles, and a plane taxies on its wheels.
     const flying = airborne || ask > 0;
-    let push = 0;
-    let lift = 0;
-    let pitch = 0;
-    let turn = 0;
-    if (flight.kind === 'rotor') {
-      const top = flight.topSpeed * power;
-      const wanted = input.throttle >= 0 ? input.throttle * top : input.throttle * top * ROTOR_REVERSE;
-      if (airborne) push = clamp(ROTOR_GAIN * (wanted - along), -flight.thrust, flight.thrust) * power;
-      if (flying) lift = power * (GRAVITY + LIFT_GAIN * (climb - v.vy));
-      pitch = -ROTOR_TILT * input.throttle;
-      turn = 1;
-    } else {
-      if (input.throttle > 0) push = input.throttle * flight.thrust * power * Math.max(0, 1 - along / flight.topSpeed);
-      else if (input.throttle < 0 && airborne) push = input.throttle * AIR_BRAKE * Math.max(0, along);
-      const share = clamp((along - (1 - LIFT_FADE) * flight.stall) / (LIFT_FADE * flight.stall), 0, 1);
-      if (flying) lift = share * (GRAVITY + LIFT_GAIN * (climb - v.vy));
-      // A stalled wing sinks, but gently: the fall past a walking pace is damped.
-      if (airborne) lift += (1 - share) * STALL_DAMPING * Math.max(0, -v.vy - STALL_SINK);
-      pitch = clamp(atan2(v.vy, Math.max(along, 5)), -PITCH_LIMIT, PITCH_LIMIT);
-      turn = Math.min(1, Math.max(0, along) / flight.stall);
-    }
-    lift = clamp(lift, 0, LIFT_MAX * GRAVITY);
+    const pose = this.pose;
+    pose.power = power;
+    pose.along = along;
+    pose.climb = climb;
+    pose.airborne = airborne;
+    pose.flying = flying;
+    if (flight.kind === 'rotor') rotorAero(v, input, flight, pose);
+    else wingAero(v, input, flight, pose);
+    const push = aero.push;
+    const lift = clamp(aero.lift, 0, LIFT_MAX * GRAVITY);
+    const pitch = aero.pitch;
+    const turn = aero.turn;
     const slip = airborne ? -SIDE_GRIP * across : 0;
     this.force.x = mass * (hx * push - hz * slip);
     this.force.y = mass * lift;
@@ -170,6 +162,47 @@ export class Flight {
     this.force.z = this.axle.z * aboutAxle + this.nose.z * aboutNose;
     chassis.addTorque(this.force, true);
   }
+}
+
+/** What one tick of flight is worked out from, beside the state, the input and the spec. */
+interface Pose {
+  power: number;
+  along: number;
+  climb: number;
+  airborne: boolean;
+  flying: boolean;
+}
+
+/** The thrust, lift, pitch and share of the turn one tick asks for, written by the two below. */
+const aero = { push: 0, lift: 0, pitch: 0, turn: 0 };
+
+/** A rotor: it holds a speed asked for, lifts its weight at any speed and tips into the way it flies. */
+function rotorAero(v: VehicleState, input: InputFrame, flight: FlightSpec, p: Pose): void {
+  const power = p.power;
+  aero.push = 0;
+  aero.lift = 0;
+  const top = flight.topSpeed * power;
+  const wanted = input.throttle >= 0 ? input.throttle * top : input.throttle * top * ROTOR_REVERSE;
+  if (p.airborne) aero.push = clamp(ROTOR_GAIN * (wanted - p.along), -flight.thrust, flight.thrust) * power;
+  if (p.flying) aero.lift = power * (GRAVITY + LIFT_GAIN * (p.climb - v.vy));
+  aero.pitch = -ROTOR_TILT * input.throttle;
+  aero.turn = 1;
+}
+
+/** A wing: it lifts with its speed, fades below the stall and sinks gently when stalled. */
+function wingAero(v: VehicleState, input: InputFrame, flight: FlightSpec, p: Pose): void {
+  const power = p.power;
+  const along = p.along;
+  aero.push = 0;
+  aero.lift = 0;
+  if (input.throttle > 0) aero.push = input.throttle * flight.thrust * power * Math.max(0, 1 - along / flight.topSpeed);
+  else if (input.throttle < 0 && p.airborne) aero.push = input.throttle * AIR_BRAKE * Math.max(0, along);
+  const share = clamp((along - (1 - LIFT_FADE) * flight.stall) / (LIFT_FADE * flight.stall), 0, 1);
+  if (p.flying) aero.lift = share * (GRAVITY + LIFT_GAIN * (p.climb - v.vy));
+  // A stalled wing sinks, but gently: the fall past a walking pace is damped.
+  if (p.airborne) aero.lift += (1 - share) * STALL_DAMPING * Math.max(0, -v.vy - STALL_SINK);
+  aero.pitch = clamp(atan2(v.vy, Math.max(along, 5)), -PITCH_LIMIT, PITCH_LIMIT);
+  aero.turn = Math.min(1, Math.max(0, along) / flight.stall);
 }
 
 function clamp(x: number, lo: number, hi: number): number {

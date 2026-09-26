@@ -85,6 +85,8 @@ export class TrafficBodies {
   /** The tile the ids above were looked up round: the box is a function of it alone. */
   private idsKey = '';
   private readonly pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
+  /** The box of ground the physics holds, as `lead` last worked it out. */
+  private readonly box = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
   private readonly spot = { x: 0, y: 0, z: 0 };
   private readonly turn = { x: 0, y: 0, z: 0, w: 1 };
   private readonly axis = { x: 0, y: 0, z: 0 };
@@ -121,7 +123,8 @@ export class TrafficBodies {
    */
   strike(state: SimState, collider: number): PromotedVehicle | undefined {
     const body = this.world.getCollider(collider)?.parent();
-    if (body === undefined || body === null) return undefined;
+    // `getCollider` answers undefined for a handle it no longer holds, whatever its type says.
+    if (!body) return undefined;
     const handle = body.handle;
     const pushed = this.pushed.find((entry) => entry.body.handle === handle);
     if (pushed !== undefined) return promotedOf(state.traffic, pushed.id);
@@ -182,42 +185,24 @@ export class TrafficBodies {
     const minY = (cz - PHYSICS_RADIUS) * PHYSICS_TILE;
     const maxX = (cx + PHYSICS_RADIUS + 1) * PHYSICS_TILE;
     const maxY = (cz + PHYSICS_RADIUS + 1) * PHYSICS_TILE;
-    const inside = (pose: AmbientPose): boolean => pose.x >= minX && pose.x < maxX && pose.y >= minY && pose.y < maxY;
+    const box = this.box;
+    box.minX = minX;
+    box.minY = minY;
+    box.maxX = maxX;
+    box.maxY = maxY;
 
-    const traffic = this.traffic;
-    const held = state.traffic.held;
     const key = `${cx},${cz}`;
     if (key !== this.idsKey) {
       this.idsKey = key;
-      traffic.near(minX, minY, maxX, maxY, this.ids);
+      this.traffic.near(minX, minY, maxX, maxY, this.ids);
     }
-    const ids = this.ids;
     const kept: Moving[] = [];
     let k = 0;
-    for (const id of ids) {
+    for (const id of this.ids) {
       while (k < this.moving.length && (this.moving[k] as Moving).cursor.id < id) this.drop(this.moving[k++] as Moving);
-      let entry = this.moving[k]?.cursor.id === id ? (this.moving[k++] as Moving) : undefined;
-      if (promotedOf(state.traffic, id) !== undefined) {
-        if (entry !== undefined) this.drop(entry);
-        continue;
-      }
-      if (entry === undefined) {
-        // Evaluated on demand at the tick it arrives on, held back as far as it has given way.
-        const cursor = traffic.cursorAt(id, heldTime(held, id, state.tick));
-        if (!traffic.edgeMeets(traffic.edgeOf(cursor), minX, minY, maxX, maxY)) continue;
-        if (!inside(traffic.pose(cursor, this.pose))) continue;
-        entry = this.enter(cursor, this.pose);
-      }
-      traffic.cursorAt(id, heldTime(held, id, state.tick + 1), entry.cursor);
-      traffic.pose(entry.cursor, this.pose);
-      if (!inside(this.pose)) {
-        this.drop(entry);
-        continue;
-      }
-      this.place(this.pose, entry.spec);
-      entry.body.setNextKinematicTranslation(this.spot);
-      entry.body.setNextKinematicRotation(this.turn);
-      kept.push(entry);
+      const known = this.moving[k]?.cursor.id === id ? (this.moving[k++] as Moving) : undefined;
+      const entry = this.advance(state, id, known);
+      if (entry !== undefined) kept.push(entry);
     }
     while (k < this.moving.length) this.drop(this.moving[k++] as Moving);
     this.moving = kept;
@@ -226,6 +211,49 @@ export class TrafficBodies {
     this.parked?.lead(state, minX, minY, maxX, maxY);
     this.standPromoted(state, minX, minY, maxX, maxY);
     this.trams?.lead(state.tick, minX, minY, maxX, maxY);
+  }
+
+  /** True where a pose stands inside the box of ground the physics holds. */
+  private inside(pose: AmbientPose): boolean {
+    const box = this.box;
+    return pose.x >= box.minX && pose.x < box.maxX && pose.y >= box.minY && pose.y < box.maxY;
+  }
+
+  /**
+   * Aim one vehicle of the box at where its tour puts it on the next tick,
+   * bringing it into the world first where it has just arrived. Answers the
+   * entry to keep, or undefined where it was promoted or is out of the box.
+   */
+  private advance(state: SimState, id: number, known: Moving | undefined): Moving | undefined {
+    const traffic = this.traffic;
+    const held = state.traffic.held;
+    if (promotedOf(state.traffic, id) !== undefined) {
+      if (known !== undefined) this.drop(known);
+      return undefined;
+    }
+    const entry = known ?? this.arrive(state, id);
+    if (entry === undefined) return undefined;
+    traffic.cursorAt(id, heldTime(held, id, state.tick + 1), entry.cursor);
+    traffic.pose(entry.cursor, this.pose);
+    if (!this.inside(this.pose)) {
+      this.drop(entry);
+      return undefined;
+    }
+    this.place(this.pose, entry.spec);
+    entry.body.setNextKinematicTranslation(this.spot);
+    entry.body.setNextKinematicRotation(this.turn);
+    return entry;
+  }
+
+  /** A body for a vehicle that has just come into the box, or undefined where it is not in it yet. */
+  private arrive(state: SimState, id: number): Moving | undefined {
+    const traffic = this.traffic;
+    const box = this.box;
+    // Evaluated on demand at the tick it arrives on, held back as far as it has given way.
+    const cursor = traffic.cursorAt(id, heldTime(state.traffic.held, id, state.tick));
+    if (!traffic.edgeMeets(traffic.edgeOf(cursor), box.minX, box.minY, box.maxX, box.maxY)) return undefined;
+    if (!this.inside(traffic.pose(cursor, this.pose))) return undefined;
+    return this.enter(cursor, this.pose);
   }
 
   /**
@@ -290,15 +318,20 @@ export class TrafficBodies {
       const entry = this.pushed[k]?.id === record.id ? (this.pushed[k++] as Pushed) : undefined;
       const v = record.vehicle;
       const inBox = v.x >= minX && v.x < maxX && v.z >= minY && v.z < maxY;
-      if (entry !== undefined && !inBox) this.world.removeRigidBody(entry.body);
-      if (entry !== undefined && inBox) kept.push(entry);
-      if (entry === undefined && inBox) {
-        const spec = specOf(v.cls);
-        kept.push({ id: record.id, spec, body: this.buildPushed(v, spec) });
+      if (!inBox) {
+        if (entry !== undefined) this.world.removeRigidBody(entry.body);
+        continue;
       }
+      kept.push(entry ?? this.pushedOf(record.id, v));
     }
     while (k < this.pushed.length) this.world.removeRigidBody((this.pushed[k++] as Pushed).body);
     this.pushed = kept;
+  }
+
+  /** A new body for a promoted vehicle that has come into the box. */
+  private pushedOf(id: number, v: VehicleState): Pushed {
+    const spec = specOf(v.cls);
+    return { id, spec, body: this.buildPushed(v, spec) };
   }
 
   private addPushed(entry: Pushed): void {

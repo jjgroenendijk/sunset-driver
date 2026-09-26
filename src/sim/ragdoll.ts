@@ -90,6 +90,12 @@ function thrown(record: Casualty): boolean {
   return record.push > 0 || record.lift > 0;
 }
 
+/** The extra share of the push a car gives one bone: the thighs and the shins, which it sweeps. */
+function sweepOf(bone: string): number {
+  if (bone.startsWith('shin')) return SWEEP_SHIN;
+  return bone.startsWith('thigh') ? SWEEP_THIGH : 0;
+}
+
 /** The record under an id, in a list kept in id order. */
 function recordOf(list: readonly Casualty[], id: number): Casualty | undefined {
   let lo = 0;
@@ -136,65 +142,83 @@ export class Ragdolls {
     const py = p.driving ? state.vehicle.z : p.y;
     const keep: Live[] = [];
     for (const doll of this.live) {
-      const record = recordOf(list, doll.id);
-      if (record === undefined || record.gone || record.ragdoll !== doll.pose) {
-        this.remove(doll);
-        continue;
-      }
-      if (record.since !== doll.since) {
-        // Hit again while the ragdoll holds them: the new hit throws the bodies it has.
-        if (record.since !== state.tick || !thrown(record)) {
-          this.remove(doll);
-          continue;
-        }
-        this.kick(doll, record, false);
-        doll.since = record.since;
-        doll.start = state.tick;
-        doll.calm = 0;
-      }
-      this.read(doll);
-      const still = this.still(doll);
-      doll.calm = still ? doll.calm + 1 : 0;
-      const away = hypot((doll.pose[0] as number) - px, (doll.pose[2] as number) - py);
-      if (doll.calm >= REST_TICKS || state.tick - doll.start >= RAGDOLL_TICKS || away > RAGDOLL_FAR) {
-        this.remove(doll);
-        this.rebase(record, state.tick);
-        continue;
-      }
-      keep.push(doll);
+      if (this.stepLive(doll, list, state.tick, px, py)) keep.push(doll);
     }
     this.live = keep;
     for (const record of list) {
       if (record.gone || this.holds(record.id)) continue;
-      const fresh = record.since === state.tick && record.down !== 0 && thrown(record);
-      if (fresh) {
-        if (hypot(record.x - px, record.y - py) > RAGDOLL_NEAR) {
-          record.ragdoll = null;
-          continue;
-        }
-        this.room(list, state.tick);
-        // A body hit again after its ragdoll froze starts from where it lay.
-        const doll = this.build(record, record.ragdoll, state.tick);
-        this.kick(doll, record, true);
-        continue;
-      }
-      if (record.ragdoll === null) continue;
-      if (thrown(record)) {
-        // A save caught mid-ragdoll: build it again from the record, at rest,
-        // or freeze it at once if the player is far from it.
-        const pose = record.ragdoll;
-        if (hypot((pose[0] as number) - px, (pose[2] as number) - py) > RAGDOLL_FAR) {
-          this.rebase(record, state.tick);
-          continue;
-        }
-        this.room(list, state.tick);
-        this.build(record, pose, record.since);
-        continue;
-      }
-      // Re-based and lying still. Once they get up, the closed form draws them again.
-      if (casualtyPose(record, state.tick, this.scratch).phase !== 'lie') record.ragdoll = null;
+      this.admit(record, list, state.tick, px, py);
     }
     this.live.sort((a, b) => a.id - b.id);
+  }
+
+  /**
+   * One tick of a live ragdoll: read it into its record, kick it again for a
+   * new hit, and freeze it once it is done. False where it is no longer live.
+   * (`px`, `py`) is where the player is.
+   */
+  private stepLive(doll: Live, list: readonly Casualty[], tick: number, px: number, py: number): boolean {
+    const record = recordOf(list, doll.id);
+    if (record === undefined || record.gone || record.ragdoll !== doll.pose) {
+      this.remove(doll);
+      return false;
+    }
+    if (record.since !== doll.since) {
+      // Hit again while the ragdoll holds them: the new hit throws the bodies it has.
+      if (record.since !== tick || !thrown(record)) {
+        this.remove(doll);
+        return false;
+      }
+      this.kick(doll, record, false);
+      doll.since = record.since;
+      doll.start = tick;
+      doll.calm = 0;
+    }
+    this.read(doll);
+    const still = this.still(doll);
+    doll.calm = still ? doll.calm + 1 : 0;
+    const away = hypot((doll.pose[0] as number) - px, (doll.pose[2] as number) - py);
+    if (doll.calm >= REST_TICKS || tick - doll.start >= RAGDOLL_TICKS || away > RAGDOLL_FAR) {
+      this.remove(doll);
+      this.rebase(record, tick);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * One tick of a record no ragdoll holds: build one for a fresh hit near the
+   * player, build again one a load brought in, and let go of the transforms of
+   * anyone who got up. (`px`, `py`) is where the player is.
+   */
+  private admit(record: Casualty, list: readonly Casualty[], tick: number, px: number, py: number): void {
+    const fresh = record.since === tick && record.down !== 0 && thrown(record);
+    if (fresh) {
+      if (hypot(record.x - px, record.y - py) > RAGDOLL_NEAR) {
+        record.ragdoll = null;
+        return;
+      }
+      this.room(list, tick);
+      // A body hit again after its ragdoll froze starts from where it lay.
+      const doll = this.build(record, record.ragdoll, tick);
+      this.kick(doll, record, true);
+      return;
+    }
+    if (record.ragdoll === null) return;
+    if (thrown(record)) {
+      // A save caught mid-ragdoll: build it again from the record, at rest,
+      // or freeze it at once if the player is far from it.
+      const pose = record.ragdoll;
+      if (hypot((pose[0] as number) - px, (pose[2] as number) - py) > RAGDOLL_FAR) {
+        this.rebase(record, tick);
+        return;
+      }
+      this.room(list, tick);
+      this.build(record, pose, record.since);
+      return;
+    }
+    // Re-based and lying still. Once they get up, the closed form draws them again.
+    if (casualtyPose(record, tick, this.scratch).phase !== 'lie') record.ragdoll = null;
   }
 
   /** Take every ragdoll out of the world, leaving the records as they are. */
@@ -334,8 +358,7 @@ export class Ragdolls {
       const rx = t.x - hips.x;
       const ry = t.y - hips.y;
       const rz = t.z - hips.z;
-      let sweep = 0;
-      if (record.cause === 'car') sweep = bone.startsWith('shin') ? SWEEP_SHIN : bone.startsWith('thigh') ? SWEEP_THIGH : 0;
+      const sweep = record.cause === 'car' ? sweepOf(bone) : 0;
       const v = body.linvel();
       const gain = Math.max(0, record.push * (1 + sweep) - (v.x * dx + v.z * dz));
       const rise = Math.max(0, record.lift - v.y);
