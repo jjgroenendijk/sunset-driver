@@ -334,8 +334,16 @@ export class SessionFrame {
     // does none of it. The chase views stand too close to need either move.
     this.kick(session);
     const view = camera.view;
-    camera.update(elapsed / 1000, p, {
-      view: settings.view,
+    // Inside a shop the eyes stand on the room's floor, which stands on the
+    // highest ground under it: on a slope the ground the player walks on is
+    // lower, and eyes over it would look at the floor from below.
+    const floor = inShop ? session.world.interior.floor : undefined;
+    const eye = floor === undefined ? p : { ...p, height: Math.max(p.height, floor) };
+    camera.update(elapsed / 1000, eye, {
+      // Inside a shop the room is seen through the player's eyes, whatever the
+      // view they play in (spec section 10.7): from 30 m over the street a
+      // room is a box with its lid off.
+      view: inShop ? 'first-person' : settings.view,
       pull: settings.buildingView === 'pull-back' ? this.roofTop : undefined,
       turn: settings.buildingView === 'turn' ? this.sightTop : undefined,
       mouse: this.parts.look.active,

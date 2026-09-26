@@ -150,6 +150,8 @@ export interface PreviewRequest {
    * left at the kerb, and it overrides {@link PreviewRequest.onFoot}.
    */
   shop?: string;
+  /** With {@link PreviewRequest.shop}, how many nearer shops of the trade to pass over: 0 is the nearest. */
+  nth?: number;
   /**
    * The subject of a gallery to lay in rows ahead of the player: `vehicles`,
    * `people` or `props` (`preview-gallery.ts`). The camera is pointed at the

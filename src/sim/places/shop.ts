@@ -6,8 +6,8 @@
  * front of its door, which puts the player inside the room the building holds.
  * They walk about it like any other ground — nothing in the city is a wall to
  * them — so they leave it by pressing the key again or by simply walking out
- * of the front. The renderer clips the roof and the front wall away while they
- * are in there, which is how a top-down camera sees a room at all.
+ * of the front. While they are in there the camera looks through their own
+ * eyes, whatever view they play in (spec section 10.7).
  *
  * The key is the one the vehicles use, so the press is handed over rather than
  * read twice: a press that opens a shop door marks the key as held, and
@@ -30,6 +30,7 @@
 import { wrapAngle } from '../../core/math.ts';
 import { cos, hypot, sin } from '../../core/libm.ts';
 import { roomOf, type Shop, type ShopKind, type ShopRoom } from '../../world/city/shops.ts';
+import { venueName } from '../../world/city/venue-names.ts';
 import type { InputFrame } from '../input.ts';
 import { reachesVehicle, type Place } from '../player/on-foot.ts';
 import type { SafehousePlace } from './safehouse.ts';
@@ -46,6 +47,19 @@ const ROOM_MARGIN = 0.8;
 /** Metres out of the door a player who has left stands. */
 const DOOR_STEP = 1.5;
 
+/**
+ * Metres inside the shopfront a player who walks in stands. Just inside the
+ * door, facing the counter, the whole room is in front of them; in the middle
+ * of a café they would be standing in its tables.
+ */
+export const ENTRY_STEP = 1.2;
+
+/** Where a player who walks into a room stands: just inside its door, in the middle of the front. */
+export function entryOf(room: ShopRoom): { x: number; y: number } {
+  const inside = Math.max(0, room.halfDepth - ENTRY_STEP);
+  return { x: room.x + cos(room.facing) * inside, y: room.y + sin(room.facing) * inside };
+}
+
 /** What each trade is called, on the panel and beside its icon on the map. */
 const SHOP_LABELS: Readonly<Record<ShopKind, string>> = Object.freeze({
   weapons: 'Gun shop',
@@ -54,6 +68,8 @@ const SHOP_LABELS: Readonly<Record<ShopKind, string>> = Object.freeze({
   clothing: 'Clothes',
   clinic: 'Clinic',
   broker: 'Property broker',
+  cafe: 'Café',
+  bar: 'Bar',
 });
 
 /**
@@ -67,10 +83,17 @@ export interface ShopPlace extends Place {
   /** The shop's own id, which keys its stock. */
   id: number;
   kind: ShopKind;
-  /** What the panel and the map call it: the trade and the district it stands in. */
+  /**
+   * What the panel and the map call it: the trade and the district it stands
+   * in, or a café's or a bar's own name and the district.
+   */
   name: string;
+  /** A café's or a bar's own name, and the trade's for every other shop. */
+  title: string;
   /** The licence a weapon shop holds; every other trade reads it for nothing. */
   licence: number;
+  /** The wealth of its district, 0 to 1, which prices a café's or a bar's menu. */
+  wealth: number;
   /** The room behind the door, as `roomOf` cuts it from the lot. */
   room: ShopRoom;
 }
@@ -88,19 +111,24 @@ export interface ShopVisit {
 /**
  * The shops as the simulation reads them: the door faces out of the lot, which
  * is the way a player who leaves is turned. `districts` is the world's own
- * list, for the names.
+ * list, for the names, and `seed` names the cafés and the bars.
  */
-export function shopPlaces(shops: readonly Shop[], districts: readonly { name: string }[]): ShopPlace[] {
-  return shops.map((shop) => ({
-    id: shop.id,
-    kind: shop.kind,
-    name: `${SHOP_LABELS[shop.kind]} · ${districts[shop.district]?.name ?? 'Downtown'}`,
-    licence: shop.licence,
-    x: shop.x,
-    y: shop.y,
-    heading: shop.facing,
-    room: roomOf(shop),
-  }));
+export function shopPlaces(shops: readonly Shop[], districts: readonly { name: string }[], seed = 0): ShopPlace[] {
+  return shops.map((shop) => {
+    const title = venueName(seed, shop.id, shop.kind) ?? SHOP_LABELS[shop.kind];
+    return {
+      id: shop.id,
+      kind: shop.kind,
+      name: `${title} · ${districts[shop.district]?.name ?? 'Downtown'}`,
+      title,
+      licence: shop.licence,
+      wealth: shop.wealth,
+      x: shop.x,
+      y: shop.y,
+      heading: shop.facing,
+      room: roomOf(shop),
+    };
+  });
 }
 
 /**
@@ -216,8 +244,9 @@ export function stepShops(
   p.held.interact = true;
   state.shop = { shop: at, started: state.tick, said: '' };
   const room = place.room;
-  p.x = room.x;
-  p.y = room.y;
+  const entry = entryOf(room);
+  p.x = entry.x;
+  p.y = entry.y;
   p.heading = wrapAngle(room.facing + Math.PI);
   p.speed = 0;
   p.vy = 0;

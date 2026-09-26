@@ -17,7 +17,7 @@ import { MAX_LICENCE, MIN_LICENCE, type Shop, type ShopKind } from '../../../src
 
 /** One shop of a trade, with the licence a test wants it to hold. */
 function place(kind: ShopKind, licence = 2, id = 0): ShopPlace {
-  const shop: Shop = { id, kind, building: id, district: 0, x: 0, y: 0, facing: 0, width: 10, depth: 12, licence };
+  const shop: Shop = { id, kind, building: id, district: 0, x: 0, y: 0, facing: 0, width: 10, depth: 12, licence, wealth: 0.5 };
   return shopPlaces([shop], [{ name: 'Old Town' }])[0] as ShopPlace;
 }
 

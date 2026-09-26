@@ -88,7 +88,11 @@
  *                    picture of the arsenal.
  *   --shop           stand inside the nearest shop of a trade (spec section
  *                    16.1): weapons, workshop, convenience, clothing, clinic,
- *                    broker, or `any`. The vehicle waits at the kerb.
+ *                    broker, cafe, bar, or `any`. The vehicle waits at the
+ *                    kerb. The view is first person, as in the game, facing
+ *                    the counter; --heading turns from there, in degrees.
+ *   --nth=N          with --shop, the N-th nearest shop of the trade rather
+ *                    than the nearest, so the rooms of one city are compared.
  *   --face[=M]       with --tram, stand M metres ahead of its nose facing back
  *                    down the track, so a chase camera looks the destination
  *                    board in the face; with --stop, stand at the shelter's
@@ -288,6 +292,7 @@ const request: PreviewRequest = {
   ...(options.has('pickups') ? { pickups: true } : {}),
   ...(options.has('hover') ? { hover: num('hover', 0) } : {}),
   ...(options.has('shop') ? { shop: (options.get('shop') as string) || 'any' } : {}),
+  ...(options.has('nth') ? { nth: num('nth', 0) } : {}),
   ...(options.has('gallery') ? { gallery: options.get('gallery') as string } : {}),
   ...(options.has('fast') ? { fast: true } : {}),
 };

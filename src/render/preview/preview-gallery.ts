@@ -251,6 +251,16 @@ export const GALLERY_PROPS: readonly { prop: PropId; colour: number }[] = [
   { prop: 'naloxone', colour: 0xe45a3c },
   { prop: 'strips', colour: 0x3f7fbf },
   { prop: 'works', colour: 0xd8a544 },
+  // The cups, glasses and plates of the cafés and the bars.
+  { prop: 'tea', colour: 0x6ab080 },
+  { prop: 'pastry', colour: 0xd9a45a },
+  { prop: 'cake', colour: 0xf0e0c0 },
+  { prop: 'beer', colour: 0xe8c040 },
+  { prop: 'wine', colour: 0x7a1a28 },
+  { prop: 'cocktail', colour: 0xc0e0a0 },
+  { prop: 'spirit', colour: 0xc08030 },
+  { prop: 'shot', colour: 0xf0e0b0 },
+  { prop: 'snack', colour: 0xc89050 },
 ];
 
 /**

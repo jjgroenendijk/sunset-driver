@@ -98,12 +98,14 @@ is one frame and a call takes the best part of a minute.
 ## A shop interior
 
 ```
-node scripts/render-preview.ts sunset shop.png --shop=weapons --distance=22
+node scripts/render-preview.ts sunset cafe.png --shop=cafe --nth=2
 ```
 
-`--shop=weapons|workshop|convenience|clothing|clinic|broker|any` is the one way to see an interior.
-It moves the frame off `--x` and `--y` to the nearest such shop, and the line it prints says where
-it ended up. A room is about 7 m across, so `--distance=22` is the frame that holds it.
+`--shop=weapons|workshop|convenience|clothing|clinic|broker|cafe|bar|any` is the one way to see an
+interior. It moves the frame off `--x` and `--y` to the nearest such shop, or with `--nth=N` the
+N-th nearest, and the line it prints says where it ended up. The view is first person from where
+the player walks in, facing the counter, as in the game. `--heading=180` looks back out of the
+door. Every room is dealt from the seed and the shop, so `--nth` compares the looks of one city.
 
 ## The tram
 

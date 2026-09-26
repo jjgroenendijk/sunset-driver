@@ -46,6 +46,7 @@ export const Subsystem = {
   Corners: 38,
   WeaponFx: 39,
   Beach: 40,
+  Venues: 41,
 } as const;
 export type SubsystemId = (typeof Subsystem)[keyof typeof Subsystem];
 

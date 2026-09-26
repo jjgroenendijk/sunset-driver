@@ -47,7 +47,9 @@ export type PoiType =
   | 'gun-shop'
   | 'clothes-shop'
   | 'food-shop'
-  | 'broker';
+  | 'broker'
+  | 'cafe'
+  | 'bar';
 
 /** How one kind of place is drawn, and what the full map calls it. */
 export interface PoiStyle {
@@ -111,6 +113,8 @@ export const POI_STYLES: Readonly<Record<PoiType, PoiStyle>> = Object.freeze({
   'clothes-shop': { glyph: 'shirt', colour: '#d0c05a', label: 'Clothes', maxScale: 4 },
   'food-shop': { glyph: 'basket', colour: '#7ad0c0', label: 'Food', maxScale: 4 },
   broker: { glyph: 'key', colour: '#c0a0e0', label: 'Property broker', maxScale: 6 },
+  cafe: { glyph: 'cup', colour: '#e8b87a', label: 'Café', maxScale: 4 },
+  bar: { glyph: 'glass', colour: '#f070b0', label: 'Bar', maxScale: 4 },
 });
 
 /**
@@ -126,6 +130,8 @@ export const SHOP_POIS: Readonly<Record<ShopKind, PoiType>> = Object.freeze({
   clothing: 'clothes-shop',
   clinic: 'clinic',
   broker: 'broker',
+  cafe: 'cafe',
+  bar: 'bar',
 });
 
 /** The kinds of place the legend may not switch off. */

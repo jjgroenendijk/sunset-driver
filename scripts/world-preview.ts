@@ -324,6 +324,8 @@ const SHOP_COL: Record<ShopKind, [number, number, number]> = {
   clothing: [230, 90, 220],
   clinic: [90, 200, 255],
   broker: [250, 240, 90],
+  cafe: [200, 140, 80],
+  bar: [255, 110, 180],
 };
 const shops = everyTier ? buildShops(world, buildings) : [];
 for (const shop of shops) mark(shop.x, shop.y, SHOP_COL[shop.kind], 2);

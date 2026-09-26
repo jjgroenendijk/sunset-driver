@@ -50,7 +50,7 @@ import {
 import { SurfaceIndex, type Surface } from '../../world/terrain/surface.ts';
 import type { WorldDescription } from '../../world/types.ts';
 import { BASE_DISTANCE, PULL_MARGIN, TURN_MARGIN, type FollowCamera } from '../camera/camera.ts';
-import { CAMERA_VIEWS } from '../camera/camera-view.ts';
+import { CAMERA_VIEWS, type CameraView } from '../camera/camera-view.ts';
 import { seatRider } from '../vehicles/rider.ts';
 import type { Camera, Object3D } from 'three';
 import { tickAtHour } from '../environment/daylight.ts';
@@ -63,6 +63,7 @@ import type { StandingPerson } from '../people/pedestrians.ts';
 import type { WorldScene } from '../world-scene.ts';
 import { namedWeather, weatherAt, type Weather } from '../../sim/city/weather.ts';
 import { roomOf, SHOP_KINDS, type Shop } from '../../world/city/shops.ts';
+import { entryOf } from '../../sim/places/shop.ts';
 
 export type { PreviewRequest, PreviewResult } from './preview-request.ts';
 
@@ -81,23 +82,17 @@ const SHOP_DISTANCE = 22;
 
 /**
  * The shop `--shop` asks for: the nearest one of that trade to where the player
- * was going to stand, or the nearest of any trade for `any`. Nothing is asked
- * for, or no shop of that trade was built, and the frame is the street.
+ * was going to stand, or the nearest of any trade for `any`, passing over the
+ * `nth` nearer ones. Nothing is asked for, or no shop of that trade was built,
+ * and the frame is the street.
  */
-function shopFor(shops: readonly Shop[] | undefined, wanted: string | undefined, x: number, y: number): Shop | undefined {
+function shopFor(shops: readonly Shop[] | undefined, wanted: string | undefined, x: number, y: number, nth = 0): Shop | undefined {
   if (wanted === undefined || shops === undefined) return undefined;
   const kind = SHOP_KINDS.find((name) => name === wanted);
   if (kind === undefined && wanted !== 'any') throw new Error(`no shop trade called ${wanted}`);
-  let found: Shop | undefined;
-  let near = Infinity;
-  for (const shop of shops) {
-    if (kind !== undefined && shop.kind !== kind) continue;
-    const away = Math.hypot(shop.x - x, shop.y - y);
-    if (away >= near) continue;
-    near = away;
-    found = shop;
-  }
-  return found;
+  const away = (shop: Shop): number => Math.hypot(shop.x - x, shop.y - y);
+  const found = shops.filter((shop) => kind === undefined || shop.kind === kind).sort((a, b) => away(a) - away(b) || a.id - b.id);
+  return found[Math.min(Math.max(0, nth), found.length - 1)];
 }
 
 /**
@@ -264,13 +259,13 @@ async function placeFor(request: PreviewRequest, tier: QualityTier, world: World
   // The shops of spec section 16.1 come back with the first chunk, so the
   // nearest one of the trade asked for is picked here and the ground round it
   // built in turn. The room is then the frame's own middle.
-  const shop = shopFor(scene.shops, request.shop, x, y);
+  const shop = shopFor(scene.shops, request.shop, x, y, request.nth);
   if (shop !== undefined) {
     const room = roomOf(shop);
-    x = room.x;
-    y = room.y;
+    // Where the game stands a player who walks in: just inside the door.
+    ({ x, y } = entryOf(room));
     await scene.settle(x, y, radius);
-    scene.shopInside({ kind: shop.kind, room });
+    scene.shopInside({ kind: shop.kind, id: shop.id, wealth: shop.wealth, room });
   }
   // A gallery is moved onto the nearest ground clear of buildings, and the
   // player with it, because a model behind a wall is not in the picture.
@@ -310,7 +305,10 @@ function stageVehicle(request: PreviewRequest, world: WorldDescription, scene: W
   const vehicle = createVehicleState(spec, kerb.x, kerb.y, rest + rideHeight(spec), heading);
   if (request.damage !== undefined) vehicle.damage = damageAt(request.damage, tick);
   for (const leaf of leavesOf(request.open)) vehicle.leaves.open[leaf] = 1;
-  const stand = request.onFoot === true && shop === undefined ? exitPlace(vehicle, spec) : { x, y, heading };
+  // Inside a shop the player faces the counter, as they do on walking in, and
+  // `--heading` turns them from there.
+  const inside = shop === undefined ? heading : shop.facing + Math.PI + heading;
+  const stand = request.onFoot === true && shop === undefined ? exitPlace(vehicle, spec) : { x, y, heading: inside };
   scene.character.group.position.set(stand.x, scene.heightAt(stand.x, stand.y), stand.y);
   scene.character.group.rotation.set(0, -stand.heading, 0);
   scene.character.group.visible = request.onFoot === true || shop !== undefined;
@@ -454,12 +452,12 @@ function pointCamera(
   const view = request.buildings ?? 'see-through';
   const pull = view === 'pull-back' ? (px: number, pz: number) => scene.roofOver(px, pz, PULL_MARGIN)?.top : undefined;
   const turn = view === 'turn' ? (px: number, pz: number) => scene.roofOver(px, pz, TURN_MARGIN)?.top : undefined;
-  const look = CAMERA_VIEWS.find((choice) => choice.value === request.view)?.value ?? 'top-down';
+  const look = viewOf(request, shop !== undefined);
   // Top down looks at the vehicle, as it always has; a chase view follows
   // whoever the player is, in the car or beside it.
   const eye = look === 'top-down' ? { x, y, heading: request.heading } : stand;
   const driving = request.onFoot !== true && shop === undefined;
-  const on = { x: eye.x, y: eye.y, height: scene.heightAt(eye.x, eye.y), heading: eye.heading, speed: request.speed, driving };
+  const on = { x: eye.x, y: eye.y, height: groundOf(scene, eye, shop !== undefined), heading: eye.heading, speed: request.speed, driving };
   camera.update(0, on, { view: look, pull, turn, zoom: zoomOf(loadout) });
   showHands(scene, camera, loadout, look === 'first-person' && !driving, tick);
   const seen = aimCamera(request, scene, camera.camera, on, gallery, stand);
@@ -467,6 +465,20 @@ function pointCamera(
   scene.cutaway.enabled = view !== 'whole';
   // A building in the way of the place looked at is ghosted, as one in the way of the player is.
   scene.seeThrough(camera.camera.position, seen.x, seen.height, seen.y, shop !== undefined);
+}
+
+/** The view the request asks for; a shop is seen in first person, as the game sees it (spec section 10.7). */
+function viewOf(request: PreviewRequest, inShop: boolean): CameraView {
+  const asked = CAMERA_VIEWS.find((choice) => choice.value === request.view)?.value;
+  if (asked !== undefined) return asked;
+  return inShop ? 'first-person' : 'top-down';
+}
+
+/** The height of the feet the camera stands over: inside a shop, the room's floor, as the game stands them (`frame.ts`). */
+function groundOf(scene: WorldScene, at: { x: number; y: number }, inShop: boolean): number {
+  const ground = scene.heightAt(at.x, at.y);
+  const floor = inShop ? scene.interior.floor : undefined;
+  return floor === undefined ? ground : Math.max(ground, floor);
 }
 
 /**

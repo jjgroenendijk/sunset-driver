@@ -468,8 +468,11 @@ black. The day is bright and sweet; the night is neon on indigo, and the crime t
 - The core and the inner ring build on nearly every block. They park cars in parking garages, a
   building kind with open decks, and not on open car parks.
 - A handful of shop types are enterable; every other building is exterior only, with lit windows and
-  moving silhouettes. No generated interiors beyond shops and safehouses. Inside, a `ClippingGroup`
-  clips away the roof and front wall so the top-down camera can see in.
+  moving silhouettes. No generated interiors beyond shops and safehouses. A shop's room is closed,
+  with a glazed shopfront, and is seen in first person (section 10.7).
+- Every shop room is generated from the seed and the shop: a theme, then its floor, wall finish,
+  ceiling, lamps, colours and furniture. Cafés and bars vary most, from a diner to a speakeasy, so
+  two of one city rarely look alike.
 - three.js also ships `CityGenerator`, which composes the above on a rigid rectangular grid with no
   road graph and no tier hierarchy — a layout this game does not want. Use its building generators;
   do not use its layout. The warning is about the missing graph and hierarchy, not about
@@ -516,6 +519,9 @@ default and the view the game is designed for. **Third person** stands behind an
 and turns after them, on foot or in a car. **First person** stands at the player's eyes and turns
 with them. On foot, the walking keys follow the camera's heading in every view, so `W` walks up the
 screen.
+
+Inside a shop the view is first person, whatever the setting: from 30 m up a room is a box with its
+lid off. It goes back to the chosen view at the door.
 
 In the two chase views the mouse turns the view, under pointer lock. On foot the mouse steers the
 view alone, and the player walks the way it looks. At the wheel the mouse looks aside from the car,
@@ -770,6 +776,8 @@ Each has a distinct minimap icon.
 | Clothing | Appearance; a change of clothes reduces recognition |
 | Clinic / needle exchange | Health, and the harm-reduction content |
 | Property broker | Safehouse purchase |
+| Café | Coffee, tea, cakes and light meals; a menu of its own, priced by district |
+| Bar | Beer, wine, cocktails, spirits and bar food; a menu of its own, priced by district |
 
 Storefronts you cannot enter still work as robbery targets and scenery.
 
@@ -991,7 +999,6 @@ Maximise coverage, subject to the veto that no feature exists purely to justify 
 | `BatchedMesh` and instancing | Draw-call budget, GPU-side per-instance culling |
 | `SkinnedMesh` with `AnimationClip` keyframe tracks, baked for instanced skinning | Animated pedestrians with moving limbs, in one draw |
 | `DecalGeometry` | Skid marks, bullet holes, blood, road stains, graffiti |
-| `ClippingGroup` | Enterable shops: roof and front wall clipped away when the player is inside |
 | `Bayer` dither | Per-instance near-camera fade without transparency sorting |
 | `Line2` | Map rendering. Road markings are flat strips on the carriageway: a fat line stands up off the road when the camera is low |
 | Water addons | River, harbour, sea |

@@ -112,7 +112,7 @@ export function findPlaces(
   }));
   // A shop is entered from its own shopfront rather than from the road, so
   // these need no lookup.
-  const shops = shopPlaces(world.shops ?? [], description.districts);
+  const shops = shopPlaces(world.shops ?? [], description.districts, description.seed);
   // A dealer stands on the pavement and watches the road, not in the traffic.
   const dealers = dealerPlaces(seed, description.districts, (x, y) => kerbsidePlace(description, x, y));
   // The airport's hangar is a property too (spec section 16.3), after the houses.

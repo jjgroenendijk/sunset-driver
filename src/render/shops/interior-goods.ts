@@ -2,10 +2,10 @@
  * What stands in a shop's room (spec section 16.1): the goods of its trade on
  * the shelves and the counter, and someone behind the counter to sell them.
  *
- * The room of `interior.ts` is read from a camera 30 m over the street, so
- * what matters is the shape and the colour of a thing seen from above: guns
- * laid flat and hung on the back wall, cans and cups in rows, figures in the
- * clothes for sale. The models are the ones the city and the shop preview
+ * The room of `interior.ts` is seen from the player's eyes, and these goods
+ * were first laid out for a camera 30 m over the street: guns laid flat and
+ * hung on the back wall, cans and cups in rows, figures in the clothes for
+ * sale. A café and a bar are furnished by `venue-fit.ts` instead. The models are the ones the city and the shop preview
  * already draw — `WeaponArt`, `CharacterModel` and the props of
  * `shop-props.ts` — each scaled here to a real size.
  *
@@ -60,7 +60,7 @@ const SHELVED: Readonly<Partial<Record<ShopKind, readonly PropId[]>>> = {
 };
 
 /** What stands on the counter of each trade, beside the till. */
-const ON_COUNTER: Readonly<Record<ShopKind, readonly PropId[]>> = {
+const ON_COUNTER: Readonly<Partial<Record<ShopKind, readonly PropId[]>>> = {
   weapons: ['ammo'],
   workshop: ['wrench'],
   convenience: ['coffee', 'burger'],
@@ -98,7 +98,7 @@ export class InteriorGoods {
     this.shelves(kind, f.shelf);
     // The counter: the goods of the trade at one end, the till at the other.
     const { counter } = f;
-    const goods = ON_COUNTER[kind];
+    const goods = ON_COUNTER[kind] ?? [];
     goods.forEach((id, i) => {
       this.prop(id, new Vector3(-counter.half * (0.6 - i * 0.3), counter.top, counter.z), 0.3, WRAPPERS[i % 4] as number);
     });
@@ -250,7 +250,7 @@ function glowing(colour: number): MeshStandardMaterial {
 }
 
 /** Make every surface of a model give off its own colour. The model owns its materials, so they are changed in place. */
-function glow(object: Object3D): void {
+export function glow(object: Object3D): void {
   object.traverse((child) => {
     if (!(child instanceof Mesh)) return;
     const material = child.material as MeshStandardMaterial;
