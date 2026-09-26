@@ -44,6 +44,12 @@ export const LAND_FRACTION: LayoutBand = { min: 0.38, max: 0.78 };
  * The comment over each zone is the spread those 80 seeds gave, so how much
  * room a band leaves is visible without measuring again.
  *
+ * The check reads only the first `FOOTPRINT_COUNT` seeds of each shard, 16 in
+ * the full tier, so a band tuned on those fails further down the list. Issue
+ * #687 measured the first 200 seeds of the tier and widened each band that
+ * failed there; the comment over the zone gives the 200-seed spread it moved
+ * to. Measure that many again before narrowing one.
+ *
  * Measured on a grid of `METRIC_CELL` metres in `scripts/layout-metrics.ts`,
  * over the dry land of the zone.
  */
@@ -59,11 +65,12 @@ export const LAYOUT_BANDS: Record<Zone, ZoneBands> = {
   // cover now carries buildings, which took the building share up to 20 to 36 %
   // and the buildings a hectare up to 4.0 to 7.9. Issue #262 moved the road
   // share from 44 to 55 % down to 42 to 53 %: the highways
-  // run on a ring outside the core, not through it.
+  // run on a ring outside the core, not through it. Issue #687: over 200 seeds
+  // the buildings a hectare read 5.2 to 9.6, so the ceiling is 10.5.
   core: {
     roadShare: { min: 0.32, max: 0.63 },
     buildingShare: { min: 0.15, max: 0.42 },
-    buildingsPerHectare: { min: 3, max: 9.5 },
+    buildingsPerHectare: { min: 3, max: 10.5 },
     medianParcelArea: { min: 800, max: 4500 },
   },
   // 40 to 47 %, 23 to 34 %, 5.9 to 9.1, 2020 to 3471 m². Issue #190 moved the
@@ -71,31 +78,38 @@ export const LAYOUT_BANDS: Record<Zone, ZoneBands> = {
   // Issue #192 took the building share from 15 to 23 % up to 19 to 29 %, and
   // the buildings a hectare from 3.4 to 5.0 up to 4.8 to 7.4. Issue #193 took
   // them up again, to 23 to 34 % and 5.9 to 9.1, for the same reason as in the
-  // core.
+  // core. Issue #687: over 200 seeds the road share read 25 to 40 %, and 16 of
+  // them fell under the old floor of 30 %; the building share 17 to 39 % and
+  // the buildings a hectare 4.4 to 9.9, the lowest of both on seed 1278759347.
   inner: {
-    roadShare: { min: 0.3, max: 0.58 },
-    buildingShare: { min: 0.18, max: 0.4 },
-    buildingsPerHectare: { min: 4.6, max: 11 },
+    roadShare: { min: 0.22, max: 0.58 },
+    buildingShare: { min: 0.15, max: 0.4 },
+    buildingsPerHectare: { min: 4, max: 11 },
     medianParcelArea: { min: 1300, max: 5500 },
   },
   // 20 to 39 %, 12 to 31 %, 0.8 to 2.4, 2176 to 14857 m². The wedge lies along
   // the harbour, so how much of it is water — and how much city is left in it —
   // moves further from seed to seed than any other zone, which is why the floor
   // under the building share is well below what any of the 80 gave. Issue #192
-  // took that share from 10 to 27 % up to 12 to 31 %.
+  // took that share from 10 to 27 % up to 12 to 31 %. Issue #687: over 200
+  // seeds the building share read 2.6 to 33 % and the buildings a hectare 0.24
+  // to 2.8, the lowest of both on seed 1278759347, where the wedge is mostly
+  // water.
   industrial: {
     roadShare: { min: 0.06, max: 0.6 },
-    buildingShare: { min: 0.06, max: 0.4 },
-    buildingsPerHectare: { min: 0.5, max: 3 },
+    buildingShare: { min: 0.02, max: 0.4 },
+    buildingsPerHectare: { min: 0.2, max: 3 },
     medianParcelArea: { min: 1200, max: 20000 },
   },
   // 21 to 36 %, 10 to 19 %, 4.2 to 8.2, 5032 to 10278 m². Issue #192 moved the
   // last two from 9 to 17 % and 3.4 to 6.7: a suburban lot keeps its garden,
-  // but a block with a road each side is now built on both sides.
+  // but a block with a road each side is now built on both sides. Issue #687:
+  // over 200 seeds the building share read 5.4 to 20 % and the buildings a
+  // hectare 2.3 to 8.3; six seeds fell under each old floor.
   suburban: {
     roadShare: { min: 0.06, max: 0.55 },
-    buildingShare: { min: 0.07, max: 0.27 },
-    buildingsPerHectare: { min: 3.2, max: 10 },
+    buildingShare: { min: 0.045, max: 0.27 },
+    buildingsPerHectare: { min: 2, max: 10 },
     medianParcelArea: { min: 2500, max: 16000 },
   },
   // 4 to 19 %, 3 to 9 %, 0.5 to 1.8, 11660 to 48745 m². Issue #192 raised the
@@ -117,8 +131,11 @@ export const LAYOUT_BANDS: Record<Zone, ZoneBands> = {
   // sixteen seeds that were read and below nothing else. An outskirts nobody
   // built in is a fair seed, as an empty wilderness is, and the ceilings still
   // catch a ring built up like a suburb.
+  //
+  // Issue #687: over 200 seeds the road share read 4 to 31 %, so its ceiling
+  // is 35 %.
   outskirts: {
-    roadShare: { min: 0.015, max: 0.3 },
+    roadShare: { min: 0.015, max: 0.35 },
     buildingShare: { min: 0, max: 0.16 },
     buildingsPerHectare: { min: 0, max: 3 },
     medianParcelArea: { min: 2000, max: 80000 },
@@ -134,9 +151,11 @@ export const LAYOUT_BANDS: Record<Zone, ZoneBands> = {
   // like a suburb and nothing finer than that. The road ceiling is loose for
   // the same slivers: a ridge seed of 3.3 km leaves 32 ha of wilderness in the
   // corners, with a highway along the coast through them, and reads 18.5 %.
+  // Issue #687: over 200 seeds the building share reached 5.5 %, so its
+  // ceiling is 7 %.
   wilderness: {
     roadShare: { min: 0, max: 0.2 },
-    buildingShare: { min: 0, max: 0.05 },
+    buildingShare: { min: 0, max: 0.07 },
     buildingsPerHectare: { min: 0, max: 1.5 },
     medianParcelArea: { min: 400, max: 6e5 },
   },
