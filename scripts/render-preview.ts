@@ -110,6 +110,7 @@
  * there is one (`preview-host.ts`).
  */
 import { seedFromString } from '../src/core/rng.ts';
+import { compareStrings } from '../src/core/sort.ts';
 import { BASE_DISTANCE } from '../src/render/camera.ts';
 import type { PreviewRequest } from '../src/render/preview.ts';
 import type { HeavyShow } from '../src/render/preview-heavy.ts';
@@ -158,13 +159,16 @@ async function junctionAt(seed: number, index: number, tiers: string | undefined
     (a, b) => Math.hypot(a.x - world.core.x, a.y - world.core.y) - Math.hypot(b.x - world.core.x, b.y - world.core.y),
   );
   const found = junctions[index];
-  if (found === undefined) throw new Error(`only ${junctions.length} junctions${tiers === undefined ? '' : ` of ${tiers}`}`);
+  if (found === undefined) {
+    const of = tiers === undefined ? '' : ` of ${tiers}`;
+    throw new Error(`only ${junctions.length} junctions${of}`);
+  }
   return found;
 }
 
 /** The tiers that meet at a junction, each named once, as `--tiers` names them. */
 function mixOf(junction: Junction): string {
-  return [...new Set(junction.mouths.map((mouth) => mouth.tier))].sort().join('+');
+  return [...new Set(junction.mouths.map((mouth) => mouth.tier))].sort(compareStrings).join('+');
 }
 
 const seed = seedFromString(seedText);
@@ -306,11 +310,12 @@ const errors = [...failures.thrown, ...failures.logged];
 if (errors.length > 0) console.error(`page errors:\n  ${errors.join('\n  ')}`);
 
 const rgb = new Uint8Array(Buffer.from(result.rgb, 'base64'));
+const worldTime = result.kept ? 'kept' : `${result.worldMs.toFixed(0)} ms`;
 writePng(out, result.width, result.height, rgb);
 console.log(
   `${out}: ${result.width}x${result.height}, seed ${seedText} at ${result.x.toFixed(0)},${result.y.toFixed(0)}` +
     ` at ${request.hour.toFixed(1)}h in ${request.weather ?? 'clear'} weather on ${adapter}` +
-    ` — world ${result.kept ? 'kept' : `${result.worldMs.toFixed(0)} ms`}, chunks ${result.chunkMs.toFixed(0)} ms,` +
+    ` — world ${worldTime}, chunks ${result.chunkMs.toFixed(0)} ms,` +
     ` frame ${result.frameMs.toFixed(0)} ms, dearest chunk ${result.peakDrawCalls} draw calls,` +
     ` ${result.lights} lights, ${result.shadows} shadow cascades, ${result.quality} quality,` +
     ` ${result.traffic} vehicles of traffic, ${result.parked} parked cars, ${result.pedestrians} pedestrians;` +

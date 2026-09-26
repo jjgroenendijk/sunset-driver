@@ -88,17 +88,30 @@ export function measureLayout(world: WorldDescription, layers: LandUseLayers, ce
   return metricsOf(world, layers, grid);
 }
 
-/** Measure the ground one grid already covers. */
-export function metricsOf(world: WorldDescription, layers: LandUseLayers, grid: LandUseGrid): LayoutMetrics {
+/** The cells of each kind a grid holds, counted per zone. */
+interface CellTallies {
+  land: Map<Zone, number>;
+  road: Map<Zone, number>;
+  parcel: Map<Zone, number>;
+  lot: Map<Zone, number>;
+  apron: Map<Zone, number>;
+  corridor: Map<Zone, number>;
+}
+
+function bump(tally: Map<Zone, number>, zone: Zone): void {
+  tally.set(zone, (tally.get(zone) ?? 0) + 1);
+}
+
+/** Count the dry cells of `grid` by zone and by what covers them. */
+function tallyCells(world: WorldDescription, grid: LandUseGrid): CellTallies {
   const zones = layoutZones(world.size, world.core, world.water);
-  const land = new Map<Zone, number>();
-  const road = new Map<Zone, number>();
-  const parcel = new Map<Zone, number>();
-  const lot = new Map<Zone, number>();
-  const apron = new Map<Zone, number>();
-  const corridor = new Map<Zone, number>();
-  const bump = (tally: Map<Zone, number>, zone: Zone): void => {
-    tally.set(zone, (tally.get(zone) ?? 0) + 1);
+  const t: CellTallies = {
+    land: new Map(),
+    road: new Map(),
+    parcel: new Map(),
+    lot: new Map(),
+    apron: new Map(),
+    corridor: new Map(),
   };
   for (let iy = 0; iy < grid.side; iy++) {
     const y = grid.worldY(iy);
@@ -107,26 +120,41 @@ export function metricsOf(world: WorldDescription, layers: LandUseLayers, grid: 
       if (grid.land[i] === 0) continue;
       // An airfield is no district's land, as water is not: nothing is built on it.
       if (airfieldAt(world.airfields, grid.worldX(ix), y, AIRFIELD_KEEP) !== undefined) continue;
-      const zone = zoneAt(zones, grid.worldX(ix), y);
-      bump(land, zone);
-      const use = grid.use[i] as number;
-      if (use === USE_ROAD) bump(road, zone);
-      if (use === USE_PARCEL || use === USE_LOT) bump(parcel, zone);
-      if (use === USE_LOT) bump(lot, zone);
-      const cover = grid.cover[i] as number;
-      if ((cover & COVER_STRIP) === 0) {
-        if ((cover & COVER_APRON) !== 0) bump(apron, zone);
-        if ((cover & COVER_CORRIDOR) !== 0) bump(corridor, zone);
-      }
+      tallyCell(t, grid, i, zoneAt(zones, grid.worldX(ix), y));
     }
   }
+  return t;
+}
 
+/** Count the dry cell `i` of `grid`, which lies in `zone`. */
+function tallyCell(t: CellTallies, grid: LandUseGrid, i: number, zone: Zone): void {
+  bump(t.land, zone);
+  const use = grid.use[i] as number;
+  if (use === USE_ROAD) bump(t.road, zone);
+  if (use === USE_PARCEL || use === USE_LOT) bump(t.parcel, zone);
+  if (use === USE_LOT) bump(t.lot, zone);
+  const cover = grid.cover[i] as number;
+  if ((cover & COVER_STRIP) === 0) {
+    if ((cover & COVER_APRON) !== 0) bump(t.apron, zone);
+    if ((cover & COVER_CORRIDOR) !== 0) bump(t.corridor, zone);
+  }
+}
+
+/** The area of every parcel, listed by zone. */
+function parcelAreasByZone(layers: LandUseLayers): Map<Zone, number[]> {
   const parcelAreas = new Map<Zone, number[]>();
   for (const p of layers.parcels.parcels) {
     const list = parcelAreas.get(p.zone);
     if (list === undefined) parcelAreas.set(p.zone, [p.area]);
     else list.push(p.area);
   }
+  return parcelAreas;
+}
+
+/** Measure the ground one grid already covers. */
+export function metricsOf(world: WorldDescription, layers: LandUseLayers, grid: LandUseGrid): LayoutMetrics {
+  const { land, road, parcel, lot, apron, corridor } = tallyCells(world, grid);
+  const parcelAreas = parcelAreasByZone(layers);
   const buildings = new Map<Zone, number>();
   for (const b of layers.buildings.buildings) buildings.set(b.zone, (buildings.get(b.zone) ?? 0) + 1);
 

@@ -143,22 +143,28 @@ export class LandUseGrid {
     const touched = this.touched;
     touched.length = 0;
     for (const ring of [region.outer, ...region.holes]) {
-      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-        const a = ring[i] as Point;
-        const b = ring[j] as Point;
-        if (a.y === b.y) continue;
-        const from = Math.max(0, Math.ceil((Math.min(a.y, b.y) - this.originY) / this.cell));
-        const to = Math.min(this.side - 1, Math.floor((Math.max(a.y, b.y) - this.originY) / this.cell));
-        for (let iy = from; iy <= to; iy++) {
-          const y = this.worldY(iy);
-          if (a.y > y === b.y > y) continue;
-          const bucket = this.rowX[iy] as number[];
-          if (bucket.length === 0) touched.push(iy);
-          bucket.push(a.x + ((b.x - a.x) * (y - a.y)) / (b.y - a.y));
-        }
-      }
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) this.fileEdge(ring[i] as Point, ring[j] as Point);
     }
-    for (const iy of touched) {
+    this.fillRows(paint);
+  }
+
+  /** File the crossings of the edge `a`–`b` under each row of the grid it spans. */
+  private fileEdge(a: Point, b: Point): void {
+    if (a.y === b.y) return;
+    const from = Math.max(0, Math.ceil((Math.min(a.y, b.y) - this.originY) / this.cell));
+    const to = Math.min(this.side - 1, Math.floor((Math.max(a.y, b.y) - this.originY) / this.cell));
+    for (let iy = from; iy <= to; iy++) {
+      const y = this.worldY(iy);
+      if (a.y > y === b.y > y) continue;
+      const bucket = this.rowX[iy] as number[];
+      if (bucket.length === 0) this.touched.push(iy);
+      bucket.push(a.x + ((b.x - a.x) * (y - a.y)) / (b.y - a.y));
+    }
+  }
+
+  /** Paint the cells between each pair of filed crossings, and empty the rows. */
+  private fillRows(paint: (index: number) => void): void {
+    for (const iy of this.touched) {
       const bucket = this.rowX[iy] as number[];
       bucket.sort((p, q) => p - q);
       const row = iy * this.side;

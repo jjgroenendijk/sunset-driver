@@ -70,9 +70,9 @@ for (const dir of dirs) {
     sessions.push({
       file,
       day,
-      claimed: /gh issue edit \S*\s*[^\n]*--add-assignee/.test(ran),
+      claimed: /gh issue edit [^\n]*--add-assignee/.test(ran),
       opened: /gh pr create/.test(ran),
-      released: /gh issue edit \S*\s*[^\n]*--remove-assignee/.test(ran),
+      released: /gh issue edit [^\n]*--remove-assignee/.test(ran),
       skill: /"skill":"working-issues"/.test(text),
     });
   }
@@ -80,7 +80,8 @@ for (const dir of dirs) {
 
 const worked = sessions.filter((s) => s.opened);
 if (args.includes('--sessions')) {
-  for (const s of worked.sort((a, b) => (a.day < b.day ? -1 : 1))) {
+  worked.sort((a, b) => (a.day < b.day ? -1 : 1));
+  for (const s of worked) {
     const marks = [s.claimed ? 'claimed' : '-', s.released ? 'released' : '-', s.skill ? 'skill' : '-'];
     console.log(`  ${s.day}  ${marks.join('  ')}  ${path.basename(s.file)}`);
   }
@@ -92,7 +93,8 @@ function rate(what: string, count: number, of: number): string {
   return `  ${what.padEnd(28)} ${String(count).padStart(3)} of ${of}  (${share.toFixed(0)} %)`;
 }
 
-console.log(`${sessions.length} sessions${since === '' ? '' : ` since ${since}`}, ${worked.length} opened a pull request`);
+const sinceText = since === '' ? '' : ` since ${since}`;
+console.log(`${sessions.length} sessions${sinceText}, ${worked.length} opened a pull request`);
 console.log(rate('claimed the issue first', worked.filter((s) => s.claimed).length, worked.length));
 console.log(rate('released it afterwards', worked.filter((s) => s.released).length, worked.length));
 console.log(rate('did both', worked.filter((s) => s.claimed && s.released).length, worked.length));

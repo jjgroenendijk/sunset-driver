@@ -122,6 +122,19 @@ const t2 = performance.now();
 const footprint = buildFootprint(world, graph);
 const footprintMs = performance.now() - t2;
 const FOOTPRINT_COL: [number, number, number] = [64, 62, 70];
+/** Where the edges of `rings` cross the line at height `y`, into `crossX`, sorted. */
+const crossings = (rings: readonly (readonly Point[])[], y: number, crossX: number[]): void => {
+  crossX.length = 0;
+  for (const ring of rings) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const a = ring[i] as Point;
+      const b = ring[j] as Point;
+      if (a.y > y === b.y > y) continue;
+      crossX.push(a.x + ((b.x - a.x) * (y - a.y)) / (b.y - a.y));
+    }
+  }
+  crossX.sort((p, q) => p - q);
+};
 const fill = (region: Region, col: [number, number, number]): void => {
   const rings = [region.outer, ...region.holes];
   let lo = Infinity;
@@ -132,17 +145,7 @@ const fill = (region: Region, col: [number, number, number]): void => {
   }
   const crossX: number[] = [];
   for (let iy = Math.floor((lo - hf.originY) / hf.cellSize); iy <= Math.ceil((hi - hf.originY) / hf.cellSize); iy++) {
-    const y = hf.worldY(iy);
-    crossX.length = 0;
-    for (const ring of rings) {
-      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-        const a = ring[i] as Point;
-        const b = ring[j] as Point;
-        if (a.y > y === b.y > y) continue;
-        crossX.push(a.x + ((b.x - a.x) * (y - a.y)) / (b.y - a.y));
-      }
-    }
-    crossX.sort((p, q) => p - q);
+    crossings(rings, hf.worldY(iy), crossX);
     for (let k = 0; k + 1 < crossX.length; k += 2) {
       const from = Math.ceil(((crossX[k] as number) - hf.originX) / hf.cellSize);
       const to = Math.floor(((crossX[k + 1] as number) - hf.originX) / hf.cellSize);
@@ -224,13 +227,20 @@ const TIER_ORDER: RoadTier[] = ['alley', 'dirt', 'street', 'ramp', 'arterial', '
 // The level deck a lower road may cross a highway under (`highway-plan.ts`).
 const SLOT_COL: [number, number, number] = [255, 255, 170];
 const drawn = world.roads.filter((road) => shown.includes(road.tier));
-for (const road of drawn.sort((a, b) => TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier))) {
+drawn.sort((a, b) => TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier));
+/** The colour of segment `i` of `road`: a deck slot, a bridge, a tunnel or the tier's own. */
+const segmentCol = (road: (typeof drawn)[number], i: number): [number, number, number] => {
+  if (road.slots?.includes(i) === true) return SLOT_COL;
+  if (road.bridges.includes(i)) return BRIDGE_COL;
+  if (road.tunnels.includes(i)) return TUNNEL_COL;
+  return ROAD_STYLE[road.tier].col;
+};
+for (const road of drawn) {
   const style = ROAD_STYLE[road.tier];
   for (let i = 0; i + 1 < road.points.length; i++) {
     const bridge = road.bridges.includes(i);
     const tunnel = road.tunnels.includes(i);
-    const col = road.slots?.includes(i) === true ? SLOT_COL : bridge ? BRIDGE_COL : tunnel ? TUNNEL_COL : style.col;
-    stroke(road.points[i] as Point, road.points[i + 1] as Point, col, bridge || tunnel ? 1 : style.half);
+    stroke(road.points[i] as Point, road.points[i + 1] as Point, segmentCol(road, i), bridge || tunnel ? 1 : style.half);
   }
 }
 

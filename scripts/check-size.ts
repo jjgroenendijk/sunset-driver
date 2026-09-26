@@ -16,6 +16,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { compareStrings } from '../src/core/sort.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
@@ -69,7 +70,7 @@ export interface WidthFinding {
 export function sourceFiles(dirs: readonly string[] = SOURCE_DIRS, root: string = ROOT): string[] {
   const out: string[] = [];
   for (const dir of dirs) walk(path.resolve(root, dir), out);
-  return out.sort();
+  return out.sort(compareStrings);
 }
 
 function walk(dir: string, out: string[], match: RegExp = CODE): void {
@@ -79,7 +80,8 @@ function walk(dir: string, out: string[], match: RegExp = CODE): void {
   } catch {
     return;
   }
-  for (const entry of entries.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+  entries.sort((a, b) => compareStrings(a.name, b.name));
+  for (const entry of entries) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) walk(full, out, match);
     else if (match.test(entry.name)) out.push(full);
@@ -94,14 +96,16 @@ export function markdownFiles(dirs: readonly string[] = DOC_DIRS, root: string =
     // The root holds the markdown beside `node_modules` and `dist`, so it is
     // read one level deep; `docs` is walked.
     if (path.resolve(dir) === path.resolve(root, '.') || dir === '.') {
-      for (const entry of fs.readdirSync(full, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      const entries = fs.readdirSync(full, { withFileTypes: true });
+      entries.sort((a, b) => compareStrings(a.name, b.name));
+      for (const entry of entries) {
         if (entry.isFile() && MARKDOWN.test(entry.name)) out.push(path.join(full, entry.name));
       }
     } else {
       walk(full, out, MARKDOWN);
     }
   }
-  return out.sort();
+  return out.sort(compareStrings);
 }
 
 /** The line limit `file` is held to. */
@@ -120,27 +124,39 @@ export function markdownLimit(file: string, root: string = ROOT): number {
 export function lintWidths(fileNames: readonly string[], limit: number, root: string = ROOT): WidthFinding[] {
   const findings: WidthFinding[] = [];
   for (const file of fileNames) {
-    let fenced = false;
-    const lines = fs.readFileSync(file, 'utf8').split('\n');
-    // A file that opens with `---` opens with YAML frontmatter, which runs to
-    // the next `---`. A skill's `description` is one line by definition.
-    let front = lines[0] === '---';
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]!;
-      if (front) {
-        if (i > 0 && line === '---') front = false;
-        continue;
-      }
-      if (/^\s*(```|~~~)/.test(line)) {
-        fenced = !fenced;
-        continue;
-      }
-      if (fenced || line.trimStart().startsWith('|')) continue;
-      const columns = [...line].length;
-      if (columns > limit) findings.push({ file: path.relative(root, file), line: i + 1, columns });
+    const rel = path.relative(root, file);
+    for (const [line, text] of wrappableLines(fs.readFileSync(file, 'utf8').split('\n'))) {
+      const columns = [...text].length;
+      if (columns > limit) findings.push({ file: rel, line, columns });
     }
   }
   return findings.sort((a, b) => b.columns - a.columns);
+}
+
+/**
+ * The lines of a markdown file that prose wrapping applies to, as 1-based line
+ * numbers with their text: not frontmatter, not a fenced block, not a table row.
+ */
+function wrappableLines(lines: readonly string[]): [number, string][] {
+  const out: [number, string][] = [];
+  let fenced = false;
+  // A file that opens with `---` opens with YAML frontmatter, which runs to
+  // the next `---`. A skill's `description` is one line by definition.
+  let front = lines[0] === '---';
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (front) {
+      if (i > 0 && line === '---') front = false;
+      continue;
+    }
+    if (/^\s*(```|~~~)/.test(line)) {
+      fenced = !fenced;
+      continue;
+    }
+    if (fenced || line.trimStart().startsWith('|')) continue;
+    out.push([i + 1, line]);
+  }
+  return out;
 }
 
 /** The number of lines in `file`, counted the way `wc -l` counts them. */

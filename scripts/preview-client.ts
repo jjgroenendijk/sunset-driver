@@ -128,7 +128,8 @@ export async function ensureServer(): Promise<ServerState> {
       await pause(250);
     }
     const printed = existsSync(logPath()) ? readFileSync(logPath(), 'utf8').trim() : '';
-    throw new Error(`the preview server did not start${printed === '' ? '' : `:\n${printed}`}`);
+    const tail = printed === '' ? '' : `:\n${printed}`;
+    throw new Error(`the preview server did not start${tail}`);
   } finally {
     if (owner) rmSync(lock, { force: true });
   }
