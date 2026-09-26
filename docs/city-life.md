@@ -153,14 +153,15 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 
 ## The wrecks the city tows
 
-- `src/sim/traffic/tow.ts` is the one thing that ever takes a vehicle back out of the record.
-  Everything the player touches goes into `TrafficState.promoted` and stays there, so a session
-  spent crashing into traffic leaves a growing trail of burnt-out shells behind it.
+- `src/sim/traffic/tow.ts` takes a vehicle back out of the record, and `rejoin.ts` puts a bumped
+  car near the player back on its tour (`docs/giving-way.md`). Everything else the player touches
+  stays in `TrafficState.promoted`, so a session spent crashing into traffic leaves shells behind.
 - A shell that has stood `TOW_WAIT` ticks since it went up, with the player `TOW_REACH` metres away
-  or further, is taken. Only a shell: a car abandoned in one piece is still there on the player's
-  return, which is what spec section 20.2 asks for. `TOW_REACH` is wider than `TRAFFIC_VIEW`, so a
-  wreck is never taken while it is on the screen, and wider than the physics box, so a towed record
-  never leaves a Rapier body behind it.
+  or further, is taken. A car of the city that was only bumped, and is not on fire, is taken as
+  soon as the player is that far. The player's own car, left where they took another, carries
+  `left` and is never taken: it is still there on their return, as spec section 20.2 asks.
+  `TOW_REACH` is wider than `TRAFFIC_VIEW`, so a wreck is never taken while it is on the screen,
+  and wider than the physics box, so a towed record never leaves a Rapier body behind it.
 - The tow truck is not on the road. Driving one to the wreck needs the routing spec section 20.3
   brings for the police, the ambulances and the fire engines; until then this is the parked cars'
   bargain, where the city turns over while nobody is looking at it.
@@ -208,9 +209,10 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   vehicle is a kinematic body aimed at its pose on the next tick. A vehicle entering the box is
   evaluated on that tick and stepped after it. The player touches a vehicle when `footprintsTouch`
   finds their car or their capsule within `TOUCH_MARGIN` of it. The touched vehicle leaves its tour
-  for good: its record goes into `SimState.traffic.promoted`, ascending by id, and it becomes a
-  dynamic box with its speed. A touch is a 2D box test and not a Rapier contact: Rapier makes no
-  contact between two kinematic bodies by default, and the player's capsule is one.
+  until it rejoins it or is towed: its record goes into `SimState.traffic.promoted`, ascending by
+  id, and it becomes a dynamic box with its speed. A touch is a 2D box test and not a Rapier
+  contact: Rapier makes no contact between two kinematic bodies by default, and the player's
+  capsule is one.
 - A shot, a swing or a blast promotes a car as a touch does (`docs/sim-and-ui.md`, Weapons). A
   promoted car takes crash damage from the speed its body lost over one tick, as the player's does.
 

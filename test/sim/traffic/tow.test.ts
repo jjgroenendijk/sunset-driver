@@ -56,10 +56,21 @@ describe('the wrecks the city tows away (spec section 20.2)', () => {
     // Spec section 20.2: an abandoned car is still there when you return. Only
     // a wreck goes with the truck.
     for (const stage of ['intact', 'dented', 'smoking', 'burning'] as DamageStage[]) {
-      const state = session(OLD * 10, wreck(4, FAR, 0, stage, -1));
+      const state = session(OLD * 10, { ...wreck(4, FAR, 0, stage, -1), left: true });
       expect(stepTowing(state), stage).toBe(0);
       expect(state.traffic.promoted.length, stage).toBe(1);
     }
+  });
+
+  it('gives a car of the city that was only bumped back to its tour once nobody sees it', () => {
+    for (const stage of ['intact', 'dented', 'smoking'] as DamageStage[]) {
+      const state = session(0, wreck(4, FAR, 0, stage, -1));
+      expect(stepTowing(state), stage).toBe(1);
+      const near = session(0, wreck(4, TOW_REACH - 1, 0, stage, -1));
+      expect(stepTowing(near), stage).toBe(0);
+    }
+    // One on fire burns out where it stands first.
+    expect(stepTowing(session(0, wreck(4, FAR, 0, 'burning', -1)))).toBe(0);
   });
 
   it('measures from the car when the player is driving, not from where they got out', () => {
@@ -78,7 +89,7 @@ describe('the wrecks the city tows away (spec section 20.2)', () => {
       wreck(2, FAR, 0, 'burnt', 0),
       wreck(5, 0, 0, 'burnt', 0),
       wreck(7, 0, FAR, 'burnt', 0),
-      wreck(9, FAR, FAR, 'intact', -1),
+      { ...wreck(9, FAR, FAR, 'intact', -1), left: true },
     );
     expect(stepTowing(state)).toBe(2);
     expect(state.traffic.promoted.map((record) => record.id)).toEqual([5, 9]);
@@ -87,7 +98,7 @@ describe('the wrecks the city tows away (spec section 20.2)', () => {
   it('clears a wreck out of a running session, and is the only thing that ever does', () => {
     // The tick is stepped after the towing, so the run below clears the wreck
     // on the tick its wait is up and not one before it.
-    const state = session(TOW_WAIT - 3, wreck(4, FAR, 0, 'burnt', 0), wreck(6, FAR, FAR, 'dented', -1));
+    const state = session(TOW_WAIT - 3, wreck(4, FAR, 0, 'burnt', 0), { ...wreck(6, FAR, FAR, 'dented', -1), left: true });
     for (let i = 0; i < 3; i++) stepSim(state);
     expect(state.traffic.promoted.map((record) => record.id), 'taken before its time').toEqual([4, 6]);
     stepSim(state);
