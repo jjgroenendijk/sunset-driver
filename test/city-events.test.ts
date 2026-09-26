@@ -165,7 +165,7 @@ describe('the people an event puts on the street', () => {
     const day = firstDay('night-market');
     const market = eventOn(11, 'night-market', day, venues) as LiveEvent;
     const people = eventPeople(market, 11, market.from + 600, out);
-    expect(people.length).toBe(market.crowd);
+    expect(people).toHaveLength(market.crowd);
     for (const person of people) {
       expect(Math.hypot(person.x - market.x, person.y - market.y)).toBeLessThanOrEqual(market.radius + 1e-6);
       expect(person.speed).toBe(0);
@@ -177,7 +177,7 @@ describe('the people an event puts on the street', () => {
     const parade = eventOn(11, 'parade', day, venues) as LiveEvent;
     const early = eventPeople(parade, 11, parade.from, out).map((p) => ({ ...p }));
     const later = eventPeople(parade, 11, parade.from + 120, out);
-    expect(early.length).toBe(parade.crowd);
+    expect(early).toHaveLength(parade.crowd);
     for (const person of early) expect(person.speed).toBeGreaterThan(0);
     // Two seconds on, the ranks have moved along the street rather than across it.
     const along = (a: EventPerson, b: EventPerson): number =>

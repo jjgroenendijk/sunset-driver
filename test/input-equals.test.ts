@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { EMPTY_INPUT, INPUT_FIELDS, type InputFrame, inputEquals } from '../src/sim/input.ts';
+import { compareStrings } from '../src/core/sort.ts';
 
 const fields = Object.keys(EMPTY_INPUT) as (keyof InputFrame)[];
 
@@ -15,7 +16,7 @@ describe('inputEquals', () => {
   });
 
   it('compares every field the frame holds', () => {
-    expect([...INPUT_FIELDS].sort()).toEqual([...fields].sort());
+    expect([...INPUT_FIELDS].sort(compareStrings)).toEqual([...fields].sort(compareStrings));
   });
 
   for (const field of fields) {

@@ -92,7 +92,7 @@ describe('the player model', () => {
     expect(new Set(colours(model)).has(resolveAppearance(next).skin.colour)).toBe(true);
     expect(new Set(colours(model)).has((SKIN_TONES[0] as { colour: number }).colour)).toBe(false);
     model.dispose();
-    expect(model.group.children.length).toBe(0);
+    expect(model.group.children).toHaveLength(0);
   });
 
   it('accepts an appearance that a save left out of range', () => {

@@ -27,7 +27,7 @@ describe('the pedestrian rig and its walk cycles (spec sections 13.1, 22.1)', ()
   });
 
   it('bakes a frame of every gait into the texture, standing still in the bind pose', () => {
-    expect(data.length).toBe(BONES.length * 4 * GAITS.length * FRAMES * 4);
+    expect(data).toHaveLength(BONES.length * 4 * GAITS.length * FRAMES * 4);
     for (const bone of BONES) {
       const at = bakedPoint(data, 'stand', 0, bone, foot);
       expect(at.distanceTo(foot), bone).toBeLessThan(0.02);

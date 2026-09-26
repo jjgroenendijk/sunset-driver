@@ -11,14 +11,14 @@ import { pointInRing, ringArea, ringsOverlap } from './helpers.ts';
 describe('elevated corridors', () => {
   it('claims the ground under a deck and stands its pillars inside it', () => {
     const { corridors } = build(world(dip(2), []), [viaduct([1, 2])]);
-    expect(corridors.length).toBe(1);
+    expect(corridors).toHaveLength(1);
     const corridor = corridors[0] as Corridor;
     expect(corridor.kind).toBe('elevated');
     expect(corridor.roads).toEqual([0]);
     expect(corridor.halfWidth).toBeGreaterThan(TIERS.highway.width / 2);
 
     // The strip runs the length of the deck and is twice its half-width across.
-    expect(corridor.points.length).toBe(3);
+    expect(corridor.points).toHaveLength(3);
     expect(ringArea(corridor.polygon), 'the ring is wound anticlockwise').toBeGreaterThan(0);
     expect(ringArea(corridor.polygon)).toBeCloseTo(200 * 2 * corridor.halfWidth, 0);
 
@@ -45,7 +45,7 @@ describe('the tram', () => {
     const { corridors, tram } = build(world(FLAT, ringDistricts()), roads);
 
     // A stop for every district, called at in the order they stand round the core.
-    expect(tram.stops.length).toBe(4);
+    expect(tram.stops).toHaveLength(4);
     expect(tram.stops.map((s) => s.district)).toEqual([0, 1, 2, 3]);
     expect(tram.length).toBeGreaterThan(4 * 600 - 1);
 
@@ -65,7 +65,7 @@ describe('the tram', () => {
 
   it('marks a level crossing where another road meets the line, and nowhere else', () => {
     const { tram } = build(world(FLAT, ringDistricts()), ringRoads());
-    expect(tram.crossings.length).toBe(1);
+    expect(tram.crossings).toHaveLength(1);
     const crossing = tram.crossings[0] as { x: number; y: number; roads: number[] };
     expect(crossing.x).toBeCloseTo(0);
     expect(crossing.y).toBeCloseTo(-300);
@@ -111,7 +111,7 @@ describe('claiming ground', () => {
     const footprint = buildFootprint(w, buildRoadGraph(w.roads));
     const deck = w.roads[5] as RoadCurve;
     const elevated = w.corridors.filter((corridor) => corridor.kind === 'elevated');
-    expect(elevated.length).toBe(2);
+    expect(elevated).toHaveLength(2);
     for (const i of deck.bridges) {
       const a = deck.points[i] as Point;
       const b = deck.points[i + 1] as Point;

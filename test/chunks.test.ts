@@ -13,6 +13,7 @@ import { Heightfield } from '../src/world/heightfield.ts';
 import { RoadRibbons } from '../src/world/ribbon.ts';
 import type { District, Point, RoadCurve, WorldDescription, Zone } from '../src/world/types.ts';
 import { stableJson, withNodes } from './helpers.ts';
+import { compareStrings } from '../src/core/sort.ts';
 
 const SIZE = 1000;
 const CELL = 10;
@@ -240,7 +241,7 @@ function boundaryPoints(chunk: WorldChunk, side: 'east' | 'west'): string[] {
     const p = (side === 'east' ? run.points[run.points.length - 1] : run.points[0]) as Point;
     if (Math.abs(p.x - at) <= TOLERANCE) keys.push(`${run.curve}:${p.y.toFixed(3)}`);
   }
-  return keys.sort();
+  return keys.sort(compareStrings);
 }
 
 describe('chunk parcels', () => {
@@ -374,6 +375,6 @@ describe('chunk isolation', () => {
     const far = source.chunk(40, -40);
     expect(far.roads).toEqual([]);
     expect(far.parcels).toEqual([]);
-    expect(far.terrain.heights.length).toBe(far.terrain.gridSize * far.terrain.gridSize);
+    expect(far.terrain.heights).toHaveLength(far.terrain.gridSize * far.terrain.gridSize);
   });
 });

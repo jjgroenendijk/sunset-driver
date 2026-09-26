@@ -55,7 +55,7 @@ describe('shop interiors', () => {
       const room = roomOf(shop);
       interior.show(room, FLOOR, shop.kind);
       const planes = interior.group.clippingPlanes;
-      expect(planes.length).toBe(2);
+      expect(planes).toHaveLength(2);
       // A point is drawn only where every plane keeps it.
       const kept = (x: number, y: number, z: number): boolean =>
         planes.every((plane) => plane.distanceToPoint(new Vector3(x, y, z)) >= 0);
@@ -83,13 +83,13 @@ describe('shop interiors', () => {
     interior.show(room, FLOOR, shop.kind);
     const built = interior.group.children.length;
     interior.show(room, FLOOR, shop.kind);
-    expect(interior.group.children.length).toBe(built);
+    expect(interior.group.children).toHaveLength(built);
     interior.hide();
     expect(interior.group.visible).toBe(false);
-    expect(interior.group.children.length).toBe(0);
+    expect(interior.group.children).toHaveLength(0);
     // A second room is built in its place, not beside it.
     interior.show(roomOf(shopOf(1, 'clinic')), FLOOR, 'clinic');
-    expect(interior.group.children.length).toBe(built);
+    expect(interior.group.children).toHaveLength(built);
     interior.dispose();
   });
 });

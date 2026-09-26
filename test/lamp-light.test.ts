@@ -12,7 +12,7 @@ function poolOf(scene: Scene): LampLight[] {
 describe('lamp lights', () => {
   it('fills the pool with lights the gated node draws', () => {
     const scene = new Scene();
-    new LampLights(scene);
+    expect(() => new LampLights(scene)).not.toThrow();
     expect(poolOf(scene)).toHaveLength(LAMP_LIGHT_CAP);
   });
 

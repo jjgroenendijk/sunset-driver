@@ -27,7 +27,7 @@ describe('the crowd, drawn (spec section 13.1)', () => {
     });
     expect(inView.length).toBeGreaterThan(20);
     expect(view.drawn).toBe(inView.length);
-    expect(view.group.children.length).toBe(1);
+    expect(view.group.children).toHaveLength(1);
 
     // The first instance stands where the first person in view stands, or a step aside to pass somebody.
     const geometry = (view.group.children[0] as Mesh).geometry as InstancedBufferGeometry;

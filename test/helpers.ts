@@ -4,6 +4,7 @@ import { Rng } from '../src/core/rng.ts';
 import { EMPTY_INPUT, type InputFrame } from '../src/sim/input.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import type { Point, WorldDescription } from '../src/world/types.ts';
+import { compareStrings } from '../src/core/sort.ts';
 
 export { pointInRing, ringArea };
 
@@ -133,13 +134,18 @@ function ringBounds(ring: readonly Point[]): { minX: number; minY: number; maxX:
 }
 
 /** Which side of the line through two points a third one falls. */
-function side(a: Point, b: Point, c: Point): number {
-  return Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
+function side(from: Point, to: Point, point: Point): number {
+  return Math.sign((to.x - from.x) * (point.y - from.y) - (to.y - from.y) * (point.x - from.x));
 }
 
 /** True when a point that stands on the line through a segment stands on the segment itself. */
-function within(a: Point, b: Point, c: Point): boolean {
-  return c.x >= Math.min(a.x, b.x) && c.x <= Math.max(a.x, b.x) && c.y >= Math.min(a.y, b.y) && c.y <= Math.max(a.y, b.y);
+function within(from: Point, to: Point, point: Point): boolean {
+  return (
+    point.x >= Math.min(from.x, to.x) &&
+    point.x <= Math.max(from.x, to.x) &&
+    point.y >= Math.min(from.y, to.y) &&
+    point.y <= Math.max(from.y, to.y)
+  );
 }
 
 function segmentsMeet(a: Point, b: Point, c: Point, d: Point): boolean {
@@ -161,7 +167,7 @@ export function stableJson(value: unknown): string {
     if (v && typeof v === 'object' && !Array.isArray(v) && !ArrayBuffer.isView(v)) {
       const o = v as Record<string, unknown>;
       const out: Record<string, unknown> = {};
-      for (const k of Object.keys(o).sort()) out[k] = o[k];
+      for (const k of Object.keys(o).sort(compareStrings)) out[k] = o[k];
       return out;
     }
     if (ArrayBuffer.isView(v)) return Array.from(v as unknown as ArrayLike<number>);

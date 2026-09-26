@@ -74,8 +74,8 @@ describe('road graph', () => {
   it('makes a node where curves meet and one at every free end', () => {
     const graph = buildRoadGraph(crossroads());
     // Four ends and the junction. The bends of a curve are not nodes.
-    expect(graph.nodes.length).toBe(5);
-    expect(graph.edges.length).toBe(8);
+    expect(graph.nodes).toHaveLength(5);
+    expect(graph.edges).toHaveLength(8);
 
     const centre = graph.nearestNode(0, 0) as number;
     expect(graph.degree(centre)).toBe(4);
@@ -89,7 +89,7 @@ describe('road graph', () => {
       expect(graph.degree(node), `${end[0]},${end[1]}`).toBe(1);
     }
     expect(graph.neighbours(centre)).toEqual(graph.neighbours(centre).slice().sort((a, b) => a - b));
-    expect(graph.neighbours(centre).length).toBe(4);
+    expect(graph.neighbours(centre)).toHaveLength(4);
   });
 
   it('carries a curve straight through a bend', () => {
@@ -100,16 +100,16 @@ describe('road graph', () => {
         [200, 0],
       ]),
     ]);
-    expect(graph.nodes.length).toBe(2);
-    expect(graph.edges.length).toBe(2);
+    expect(graph.nodes).toHaveLength(2);
+    expect(graph.edges).toHaveLength(2);
     const edge = graph.edges[0] as RoadEdge;
-    expect(edge.length).toBe(200);
+    expect(edge).toHaveProperty('length', 200);
     expect(edge.start).toBe(0);
     expect(edge.end).toBe(2);
     expect(edge.tier).toBe('street');
     expect(edge.lanes).toBe(TIERS.street.lanes);
     expect(edge.speedLimit).toBe(TIERS.street.speedLimit);
-    expect(graph.edgePoints(edge.id).length).toBe(3);
+    expect(graph.edgePoints(edge.id)).toHaveLength(3);
   });
 
   it('pairs every edge with the same run the other way', () => {
@@ -119,7 +119,7 @@ describe('road graph', () => {
       expect(twin.twin).toBe(edge.id);
       expect(twin.from).toBe(edge.to);
       expect(twin.to).toBe(edge.from);
-      expect(twin.length).toBe(edge.length);
+      expect(twin).toHaveProperty('length', edge.length);
       expect(graph.edgePoints(twin.id).reverse()).toEqual(graph.edgePoints(edge.id));
     }
   });
@@ -167,7 +167,7 @@ describe('road graph', () => {
     const route = graph.shortestPath(from, to);
     expect(route).toBeDefined();
     const taken = route as NonNullable<typeof route>;
-    expect(taken.edges.length).toBe(1);
+    expect(taken.edges).toHaveLength(1);
     expect((graph.edges[taken.edges[0] as number] as RoadEdge).tier).toBe('highway');
     expect(taken.length).toBeCloseTo(1400, 6);
     expect(taken.time).toBeCloseTo(1400 / TIERS.highway.speedLimit, 6);
@@ -193,8 +193,8 @@ describe('road graph', () => {
     const from = graph.nearestNode(0, 0) as number;
     const to = graph.nearestNode(200, 100) as number;
     const route = graph.shortestPath(from, to) as NonNullable<ReturnType<typeof graph.shortestPath>>;
-    expect(route.edges.length).toBe(3);
-    expect(route.nodes.length).toBe(4);
+    expect(route.edges).toHaveLength(3);
+    expect(route.nodes).toHaveLength(4);
     expect(route.length).toBeCloseTo(300, 6);
     for (let i = 0; i < route.edges.length; i++) {
       const edge = graph.edges[route.edges[i] as number] as RoadEdge;
@@ -291,11 +291,11 @@ describe('road graph', () => {
       ]),
     ]);
     // Four free ends and nothing else: the crossing is not a place to turn.
-    expect(graph.nodes.length).toBe(4);
+    expect(graph.nodes).toHaveLength(4);
     for (const node of graph.nodes) expect(graph.degree(node.id)).toBe(1);
     expect(graph.shortestPath(graph.nearestNode(0, -100) as number, graph.nearestNode(100, 0) as number)).toBeUndefined();
 
-    expect(graph.crossings.length).toBe(1);
+    expect(graph.crossings).toHaveLength(1);
     const crossing = graph.crossings[0] as GradeCrossing;
     expect(crossing.x).toBeCloseTo(0, 6);
     expect(crossing.y).toBeCloseTo(0, 6);
@@ -311,7 +311,7 @@ describe('road graph', () => {
 
   it('leaves a junction where the two roads share the point they cross at', () => {
     const graph = buildRoadGraph(crossroads());
-    expect(graph.crossings.length).toBe(0);
+    expect(graph.crossings).toHaveLength(0);
     for (const edge of graph.edges) expect(edge.crossings).toEqual([]);
   });
 
@@ -332,7 +332,7 @@ describe('road graph', () => {
         [0],
       ),
     ]);
-    expect(graph.crossings.length).toBe(1);
+    expect(graph.crossings).toHaveLength(1);
     const crossing = graph.crossings[0] as GradeCrossing;
     expect((graph.edges[crossing.over] as RoadEdge).tier).toBe('alley');
     expect((graph.edges[crossing.under] as RoadEdge).tier).toBe('arterial');

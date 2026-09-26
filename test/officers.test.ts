@@ -13,6 +13,7 @@ import { createSimState, type SimState } from '../src/sim/simulation.ts';
 import { arrestLine } from '../src/ui/arrest-line.ts';
 import { stableJson } from './helpers.ts';
 import { gridTrafficRoads } from './traffic-grid.ts';
+import { compareStrings } from '../src/core/sort.ts';
 
 /**
  * The police on foot of spec section 14, run headless on the grid of
@@ -56,7 +57,7 @@ describe('the police on foot (spec section 14)', () => {
   it('lets the whole crew out of a car that pulls up near the player, and holds the car', () => {
     const { state, unit } = pulledUp(3, 1.5);
     const crew = state.police.officers.filter((o) => o.unit === unit.id);
-    expect(crew.length).toBe(CREW[unit.kind]);
+    expect(crew).toHaveLength(CREW[unit.kind]);
     expect(unit.crew).toBe(0);
     expect(crew.every((o) => o.kind === 'patrol')).toBe(true);
   });
@@ -154,9 +155,9 @@ describe('the police on foot (spec section 14)', () => {
     expect(hurtOfficer(state, 4, OFFICER_HEALTH.patrol, 0)).toBe(false);
     expect(hurtOfficer(state, 4, OFFICER_HEALTH.swat, 0)).toBe(true);
     expect(state.police.officers).toEqual([]);
-    expect(state.police.fallen.length).toBe(1);
+    expect(state.police.fallen).toHaveLength(1);
     expect(state.police.fallen[0]?.kind).toBe('swat');
-    expect(state.pickups.length).toBe(1);
+    expect(state.pickups).toHaveLength(1);
     expect(state.heat).toBeGreaterThan(0);
     expect(state.police.barks.some((b) => b.kind === 'down')).toBe(true);
   });
@@ -207,8 +208,8 @@ describe('the police on foot (spec section 14)', () => {
     const cues: Cue[] = [];
     const cries: Cry[] = [];
     hearPolice(state, 98, cues, cries);
-    expect(cues.filter((c) => c.kind === 'gunshot').length).toBe(1);
-    expect(cues.filter((c) => c.kind === 'squelch').length).toBe(1);
-    expect(cries.map((c) => c.kind).sort()).toEqual(['radio', 'shout']);
+    expect(cues.filter((c) => c.kind === 'gunshot')).toHaveLength(1);
+    expect(cues.filter((c) => c.kind === 'squelch')).toHaveLength(1);
+    expect(cries.map((c) => c.kind).sort(compareStrings)).toEqual(['radio', 'shout']);
   });
 });

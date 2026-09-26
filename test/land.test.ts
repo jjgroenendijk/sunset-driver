@@ -36,7 +36,7 @@ function plateauArea(reach: number): number {
 describe('land polygons', () => {
   it('traces a plateau as one ring wound with the land on its left', () => {
     const rings = landRings(plateau(30), 0);
-    expect(rings.length).toBe(1);
+    expect(rings).toHaveLength(1);
     const ring = rings[0] as Point[];
     expect(ringArea(ring)).toBeCloseTo(plateauArea(30), 6);
   });
@@ -47,10 +47,10 @@ describe('land polygons', () => {
       return Math.abs(x) <= 10 && Math.abs(y) <= 10 ? -3 : 10;
     });
     const regions = landRegions(hf, 0);
-    expect(regions.length).toBe(1);
+    expect(regions).toHaveLength(1);
     const region = regions[0] as (typeof regions)[number];
     expect(ringArea(region.outer)).toBeGreaterThan(0);
-    expect(region.holes.length).toBe(1);
+    expect(region.holes).toHaveLength(1);
     const hole = region.holes[0] as Point[];
     // A hole winds the other way, and stands inside the coast around it.
     expect(ringArea(hole)).toBeLessThan(0);
@@ -61,9 +61,9 @@ describe('land polygons', () => {
     // Dry everywhere: the land has no shore of its own, so the only ring is the
     // one the edge of the grid cuts.
     const regions = landRegions(field(() => 10), 0);
-    expect(regions.length).toBe(1);
+    expect(regions).toHaveLength(1);
     const region = regions[0] as (typeof regions)[number];
-    expect(region.holes.length).toBe(0);
+    expect(region.holes).toHaveLength(0);
     // The waterline closes on the last node of the grid, so the land is the
     // whole extent the heightfield covers.
     const extent = (NODES - 1) * CELL;
@@ -73,7 +73,7 @@ describe('land polygons', () => {
   it('drops a rock too small to stand anything on', () => {
     // One dry node: a patch a third of a cell across, well under the smallest
     // piece of land the trace keeps.
-    expect(landRings(field((x, y) => (x === 0 && y === 0 ? 1 : -5)), 0).length).toBe(0);
+    expect(landRings(field((x, y) => (x === 0 && y === 0 ? 1 : -5)), 0)).toHaveLength(0);
   });
 
   it('gathers rings into regions by the outline each one stands in', () => {
@@ -90,7 +90,7 @@ describe('land polygons', () => {
       { x: 60, y: 40 },
     ];
     const regions = regionsFromRings([outer, hole]);
-    expect(regions.length).toBe(1);
-    expect((regions[0] as (typeof regions)[number]).holes.length).toBe(1);
+    expect(regions).toHaveLength(1);
+    expect((regions[0] as (typeof regions)[number]).holes).toHaveLength(1);
   });
 });

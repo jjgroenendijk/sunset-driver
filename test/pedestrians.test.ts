@@ -132,7 +132,7 @@ describe('ambient pedestrians (spec sections 5.3, 13.1)', () => {
     const state = createPedestrianState();
     const count = crowd.startle(state, tick, at.x + 1, at.y, 12, 'flee');
     expect(count).toBeGreaterThan(0);
-    expect(state.startled.length).toBe(count);
+    expect(state.startled).toHaveLength(count);
     expect(state.startled.map((r) => r.id)).toEqual([...state.startled.map((r) => r.id)].sort((a, b) => a - b));
     const record = startledOf(state, 7);
     expect(record).toBeDefined();
@@ -146,7 +146,7 @@ describe('ambient pedestrians (spec sections 5.3, 13.1)', () => {
     // A second shot does not startle them again.
     expect(crowd.startle(state, tick + 1, at.x, at.y, 12, 'scatter')).toBe(0);
     releaseFar(state, tick + 100_000, at.x, at.y, 20);
-    expect(state.startled.length).toBe(0);
+    expect(state.startled).toHaveLength(0);
   });
 });
 

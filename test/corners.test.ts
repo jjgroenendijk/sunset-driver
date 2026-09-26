@@ -16,6 +16,21 @@ function cornersOf(seed: number): StreetCorners {
   return new StreetCorners(seed, gridTrafficRoads());
 }
 
+/**
+ * Checks a spot keeps to its hours over three days, and counts the nights a
+ * club has its queue out.
+ */
+function nightsOut(corners: StreetCorners, spot: CornerSpot): number {
+  let nights = 0;
+  for (let day = 0; day < 3; day++) {
+    // Four in the morning: nothing but the end of a club's night is out.
+    if (spot.kind !== 'club') expect(corners.isOut(spot, at(4.5, day))).toBe(false);
+    if (spot.kind === 'club' && corners.isOut(spot, at(23, day))) nights++;
+    if (spot.kind === 'club') expect(corners.isOut(spot, at(15, day))).toBe(false);
+  }
+  return nights;
+}
+
 describe('the occupied corners of spec section 20.1', () => {
   it('lays out the same corners for the same seed, and some on every seed', () => {
     for (const seed of SEEDS) {
@@ -30,14 +45,7 @@ describe('the occupied corners of spec section 20.1', () => {
     let club = 0;
     for (const seed of SEEDS) {
       const corners = cornersOf(seed);
-      for (const spot of corners.spots) {
-        for (let day = 0; day < 3; day++) {
-          // Four in the morning: nothing but the end of a club's night is out.
-          if (spot.kind !== 'club') expect(corners.isOut(spot, at(4.5, day))).toBe(false);
-          if (spot.kind === 'club' && corners.isOut(spot, at(23, day))) club++;
-          if (spot.kind === 'club') expect(corners.isOut(spot, at(15, day))).toBe(false);
-        }
-      }
+      for (const spot of corners.spots) club += nightsOut(corners, spot);
     }
     // A club somewhere has its queue out at night.
     expect(club).toBeGreaterThan(0);

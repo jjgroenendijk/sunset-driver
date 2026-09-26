@@ -70,7 +70,7 @@ describe('the contacts standing on their corners', () => {
   it('stands one person on every contact’s corner, on the ground under them', () => {
     const bodies = new GiverBodies(SEED, givers, hill);
     expect(givers.length).toBeGreaterThan(0);
-    expect(bodies.standing.length).toBe(givers.length);
+    expect(bodies.standing).toHaveLength(givers.length);
     for (let i = 0; i < givers.length; i++) {
       const giver = givers[i]!;
       const person = bodies.standing[i]!;
@@ -93,7 +93,7 @@ describe('the contacts standing on their corners', () => {
 
   it('stands a beam on every contact’s corner, with the marker over their head', () => {
     const bodies = new GiverBodies(SEED, givers, hill);
-    expect(bodies.markers.length).toBe(givers.length);
+    expect(bodies.markers).toHaveLength(givers.length);
     for (let i = 0; i < givers.length; i++) {
       const marker = bodies.markers[i]!;
       const person = bodies.standing[i]!;

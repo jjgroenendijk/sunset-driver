@@ -12,6 +12,7 @@ import { RoadRibbons } from '../src/world/ribbon.ts';
 import { footprintHalfWidth, TIERS } from '../src/world/tiers.ts';
 import type { District, Point, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
 import { withNodes } from './helpers.ts';
+import { compareStrings } from '../src/core/sort.ts';
 
 const SIZE = 800;
 const CELL = 10;
@@ -80,10 +81,20 @@ function junctionAt(x: number, y: number): Junction {
   return found;
 }
 
+/** Each vertex of a geometry as a key that two vertices at one place share. */
+function vertexKeys(geometry: BufferGeometry): string[] {
+  const position = geometry.getAttribute('position');
+  const keys: string[] = [];
+  for (let v = 0; v < position.count; v++) {
+    keys.push(`${position.getX(v).toFixed(4)}:${position.getY(v).toFixed(4)}:${position.getZ(v).toFixed(4)}`);
+  }
+  return keys;
+}
+
 describe('junction model', () => {
   it('finds a junction at every node where roads meet, and none where they only cross or end', () => {
     // The crossing, the T, and no junction at the four free ends.
-    expect(junctions.junctions.map((junction) => `${junction.x},${junction.y}`).sort()).toEqual(['0,0', '100,0']);
+    expect(junctions.junctions.map((junction) => `${junction.x},${junction.y}`).sort(compareStrings)).toEqual(['0,0', '100,0']);
     expect(junctionAt(0, 0).mouths).toHaveLength(4);
     expect(junctionAt(100, 0).mouths).toHaveLength(3);
   });
@@ -292,19 +303,13 @@ describe('junction geometry', () => {
     const street = tierOf('street');
     const junctionVertices = new Set<string>();
     for (const part of arterial.junctions) {
-      const position = part.getAttribute('position');
-      for (let v = 0; v < position.count; v++) {
-        junctionVertices.add(`${position.getX(v).toFixed(4)}:${position.getY(v).toFixed(4)}:${position.getZ(v).toFixed(4)}`);
-      }
+      for (const key of vertexKeys(part)) junctionVertices.add(key);
     }
     let met = 0;
     for (const tier of [arterial, street]) {
       for (const { surfaces } of tier.runs) {
         for (const surface of surfaces as BufferGeometry[]) {
-          const position = surface.getAttribute('position');
-          for (let v = 0; v < position.count; v++) {
-            if (junctionVertices.has(`${position.getX(v).toFixed(4)}:${position.getY(v).toFixed(4)}:${position.getZ(v).toFixed(4)}`)) met++;
-          }
+          met += vertexKeys(surface).filter((key) => junctionVertices.has(key)).length;
         }
       }
     }

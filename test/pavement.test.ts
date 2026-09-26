@@ -7,6 +7,7 @@ import { Heightfield } from '../src/world/heightfield.ts';
 import { footprintHalfWidth, TIERS } from '../src/world/tiers.ts';
 import type { District, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
 import { withNodes } from './helpers.ts';
+import { compareStrings } from '../src/core/sort.ts';
 
 const SIZE = 800;
 const CELL = 10;
@@ -132,14 +133,7 @@ describe('pavement', () => {
 
   it('leaves the sharp corner with a pavement that never crosses itself', () => {
     for (const piece of home.pavement) {
-      for (const ring of [piece.region.outer, ...piece.region.holes]) {
-        for (let i = 0; i < ring.length; i++) {
-          for (let j = i + 2; j < ring.length; j++) {
-            if (i === 0 && j === ring.length - 1) continue;
-            expect(crosses(ring[i] as Point, ring[(i + 1) % ring.length] as Point, ring[j] as Point, ring[(j + 1) % ring.length] as Point)).toBe(false);
-          }
-        }
-      }
+      for (const ring of [piece.region.outer, ...piece.region.holes]) expectSimple(ring);
     }
     // Down the middle of the sharp corner the two kerbs meet 18 m out and the
     // backs of the two pavements 28 m out. The junction's rounded kerb takes the
@@ -157,7 +151,7 @@ describe('pavement', () => {
         .flatMap((piece) => [piece.region.outer, ...piece.region.holes].flat())
         .filter((p) => Math.abs(p.x) < 1e-6)
         .map((p) => `${p.y.toFixed(3)}`)
-        .sort();
+        .sort(compareStrings);
     expect(onLine(home).length).toBeGreaterThan(0);
     expect(onLine(west)).toEqual(onLine(home));
   });
@@ -212,4 +206,14 @@ describe('pavement', () => {
 function crosses(a: Point, b: Point, c: Point, d: Point): boolean {
   const side = (o: Point, p: Point, q: Point): number => (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
   return side(c, d, a) * side(c, d, b) < 0 && side(a, b, c) * side(a, b, d) < 0;
+}
+
+/** Expects no edge of a closed ring to cross another edge of it that it does not touch. */
+function expectSimple(ring: readonly Point[]): void {
+  for (let i = 0; i < ring.length; i++) {
+    for (let j = i + 2; j < ring.length; j++) {
+      if (i === 0 && j === ring.length - 1) continue;
+      expect(crosses(ring[i] as Point, ring[(i + 1) % ring.length] as Point, ring[j] as Point, ring[(j + 1) % ring.length] as Point)).toBe(false);
+    }
+  }
 }

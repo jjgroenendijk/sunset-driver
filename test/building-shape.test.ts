@@ -32,6 +32,28 @@ const KIND_OF: Readonly<Record<BuildingPlan, 'tower' | 'mid-rise'>> = {
   setbacks: 'tower',
 };
 
+/**
+ * What the boxes on the ground wall off: whether one runs from the back of the
+ * lot along each side edge, and how much of the frontage they cover.
+ */
+function groundWalls(
+  boxes: readonly ShapeBox[],
+  rect: { width: number; depth: number },
+): { left: boolean; right: boolean; frontage: number } {
+  let left = false;
+  let right = false;
+  let frontage = 0;
+  for (const box of boxes) {
+    if (box.from > 1e-6) continue;
+    if (box.z - box.depth / 2 <= -rect.depth / 2 + 1e-6) {
+      if (box.x - box.width / 2 <= -rect.width / 2 + 1e-6) left = true;
+      if (box.x + box.width / 2 >= rect.width / 2 - 1e-6) right = true;
+    }
+    if (box.z + box.depth / 2 >= rect.depth / 2 - 1e-6) frontage += box.width;
+  }
+  return { left, right, frontage };
+}
+
 describe('the shape a tall building is massed in', () => {
   it('masses one of every plan, and nothing else for the kinds that are not tall', () => {
     for (const plan of PLANS) expect(shapeOf(seedFor(plan, KIND_OF[plan]), KIND_OF[plan], ROOM).plan).toBe(plan);
@@ -67,17 +89,7 @@ describe('the shape a tall building is massed in', () => {
       // one from the front of the lot to the back of it, except an L's, which
       // cuts its notch out of one back corner — `planOf` only draws an L where
       // that corner has no neighbour against it.
-      let left = false;
-      let right = false;
-      let frontage = 0;
-      for (const box of boxesOf(shape, rect, 90, 0)) {
-        if (box.from > 1e-6) continue;
-        if (box.z - box.depth / 2 <= -rect.depth / 2 + 1e-6) {
-          if (box.x - box.width / 2 <= -rect.width / 2 + 1e-6) left = true;
-          if (box.x + box.width / 2 >= rect.width / 2 - 1e-6) right = true;
-        }
-        if (box.z + box.depth / 2 >= rect.depth / 2 - 1e-6) frontage += box.width;
-      }
+      const { left, right, frontage } = groundWalls(boxesOf(shape, rect, 90, 0), rect);
       expect(frontage, `${plan} frontage`).toBeCloseTo(rect.width, 6);
       expect(plan === 'ell' ? left || right : left && right, `${plan} side edges`).toBe(true);
     }

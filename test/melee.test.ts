@@ -69,13 +69,13 @@ describe('melee', () => {
   it('keeps a bounded run of the blows that landed, and forgets the old ones', () => {
     const hits: MeleeHit[] = [];
     for (let i = 0; i < HIT_CAP + 5; i++) markHit(hits, hit(i));
-    expect(hits.length).toBe(HIT_CAP);
+    expect(hits).toHaveLength(HIT_CAP);
     // The oldest go, so what is left is the newest.
     expect((hits[hits.length - 1] as MeleeHit).tick).toBe(HIT_CAP + 4);
     forgetHits(hits, HIT_CAP + 4);
     expect(hits.length).toBeGreaterThan(0);
     forgetHits(hits, HIT_CAP + 4 + HIT_MEMORY);
-    expect(hits.length).toBe(0);
+    expect(hits).toHaveLength(0);
   });
 
   it('draws the arm back, through, and home again', () => {
@@ -145,6 +145,6 @@ describe('melee', () => {
     expect(cues[0]?.pitch).not.toBe(cues[1]?.pitch);
     // The same record on the next frame is silent: the blows have been heard.
     state.tick += 1;
-    expect(planner.plan(state, EMPTY_INPUT, state.player).cues.length).toBe(0);
+    expect(planner.plan(state, EMPTY_INPUT, state.player).cues).toHaveLength(0);
   });
 });

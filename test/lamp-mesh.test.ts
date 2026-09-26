@@ -13,6 +13,7 @@ import { LAMP_LIGHT_CAP, nearest } from '../src/render/lamps.ts';
 import { SCENE_LIGHT_CAP } from '../src/render/sky.ts';
 import { buildLayers, ChunkSource, CHUNK_SIZE } from '../src/world/chunks.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
+import type { RoadGap } from '../src/world/junctions.ts';
 import { RoadRibbons } from '../src/world/ribbon.ts';
 import { footprintHalfWidth, TIERS } from '../src/world/tiers.ts';
 import type { District, RoadCurve, RoadTier, WorldDescription, Zone } from '../src/world/types.ts';
@@ -179,6 +180,17 @@ describe('where the street lamps stand', () => {
     }
   });
 
+  /** Says which junction gap a lamp of the crossing stands in; undefined when it stands in none. */
+  function gapComplaint(lamp: Lamp, gaps: readonly (readonly RoadGap[])[]): string | undefined {
+    // The arterial runs along x and the street along y, and each is one
+    // curve, so the distance along it is the distance from its start.
+    const curveId = lamp.tier === 'street' ? 1 : 0;
+    const at = curveId === 1 ? lamp.y + END : lamp.x + END;
+    const gap = (gaps[curveId] ?? []).find((g) => at >= g.from.distance && at <= g.to.distance);
+    if (gap === undefined) return undefined;
+    return `${lamp.tier} lamp ${at} m along stands in the junction from ${gap.from.distance} to ${gap.to.distance}`;
+  }
+
   it('leaves the stretches the junctions take unlit', () => {
     // The roads above only cross on the map; these two share the point at the
     // origin, which is what makes a junction and cuts a gap out of each curve.
@@ -191,7 +203,7 @@ describe('where the street lamps stand', () => {
     const frames = new RoadRibbons(crossing.terrain, crossing.roads, met.junctions);
     expect(met.junctions.junctions).toHaveLength(1);
     const gaps = met.junctions.gaps;
-    expect(gaps.some((list) => list !== undefined && list.length > 0)).toBe(true);
+    expect(gaps.some((list) => list.length > 0)).toBe(true);
 
     let complaint: string | undefined;
     let lit = 0;
@@ -199,15 +211,7 @@ describe('where the street lamps stand', () => {
       for (let cx = -REACH; cx <= REACH; cx++) {
         for (const lamp of lampsIn(cut.chunk(cx, cy), frames)) {
           lit++;
-          // The arterial runs along x and the street along y, and each is one
-          // curve, so the distance along it is the distance from its start.
-          const curveId = lamp.tier === 'street' ? 1 : 0;
-          const at = curveId === 1 ? lamp.y + END : lamp.x + END;
-          for (const gap of gaps[curveId] ?? []) {
-            if (at >= gap.from.distance && at <= gap.to.distance) {
-              complaint ??= `${lamp.tier} lamp ${at} m along stands in the junction from ${gap.from.distance} to ${gap.to.distance}`;
-            }
-          }
+          complaint ??= gapComplaint(lamp, gaps);
         }
       }
     }
@@ -263,7 +267,7 @@ describe('the lamps of a chunk, as geometry', () => {
       const part = geometry.getAttribute('part');
       const kinds = new Set<number>();
       for (let v = 0; v < part.count; v++) kinds.add(part.getX(v));
-      expect([...kinds].sort()).toEqual([LAMP_POST, LAMP_LENS]);
+      expect([...kinds].sort((a, b) => a - b)).toEqual([LAMP_POST, LAMP_LENS]);
 
       // Nothing reaches past the arm, back behind the mast, under the ground or
       // over the top of the mast.
@@ -287,7 +291,7 @@ describe('the light the lamps are given', () => {
 
   it('hands the pool to the nearest lamps, nearest first', () => {
     const chosen = nearest(0, 0, [lamps]);
-    expect(chosen.length).toBe(LAMP_LIGHT_CAP);
+    expect(chosen).toHaveLength(LAMP_LIGHT_CAP);
     for (let i = 1; i < chosen.length; i++) {
       const before = chosen[i - 1] as Lamp;
       const here = chosen[i] as Lamp;
@@ -302,7 +306,7 @@ describe('the light the lamps are given', () => {
   });
 
   it('takes fewer than the cap where there are fewer lamps, and none from nothing', () => {
-    expect(nearest(0, 0, []).length).toBe(0);
-    expect(nearest(0, 0, [lamps.slice(0, 3)]).length).toBe(3);
+    expect(nearest(0, 0, [])).toHaveLength(0);
+    expect(nearest(0, 0, [lamps.slice(0, 3)])).toHaveLength(3);
   });
 });
