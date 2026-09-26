@@ -142,17 +142,13 @@ export class PedestrianView {
     this.watch(state);
     this.pass.count = 0;
     let count = this.drawCrowd(state, time, view);
-    this.stepAside();
-    for (const record of state.pedestrians.startled) {
-      if (count >= PEDESTRIAN_CAP) break;
-      const pose = startledPose(record, time, this.pose);
-      if (inView(pose, view)) this.write(count++, this.lookOf(record.id), pose);
-    }
+    count = this.drawStartled(state, time, view, count);
     count = this.drawWaiting(time, view, count);
-    for (const person of this.standing) {
-      if (count >= PEDESTRIAN_CAP) break;
-      if (inView(person.pose, view)) this.write(count++, person.look, person.pose, person.uniform ?? 0);
-    }
+    count = this.drawStanding(view, count);
+    // The crowd steps round the player on foot too.
+    const p = state.player;
+    if (!p.driving) this.pass.addFixed(p.x, p.y, p.heading, p.speed);
+    this.stepAside();
     this.body.commit(count);
     this.mesh.visible = count > 0;
   }
@@ -191,12 +187,36 @@ export class PedestrianView {
     return pose;
   }
 
+  /** Write the people the player startled, from instance `count`. Returns the count after them. */
+  private drawStartled(state: SimState, time: number, view: View, count: number): number {
+    for (const record of state.pedestrians.startled) {
+      if (count >= PEDESTRIAN_CAP) break;
+      const pose = startledPose(record, time, this.pose);
+      if (!inView(pose, view)) continue;
+      this.pass.addFixed(pose.x, pose.y, pose.heading, pose.speed);
+      this.write(count++, this.lookOf(record.id), pose);
+    }
+    return count;
+  }
+
+  /** Write the people somebody else owns, from instance `count`. Returns the count after them. */
+  private drawStanding(view: View, count: number): number {
+    for (const person of this.standing) {
+      if (count >= PEDESTRIAN_CAP) break;
+      if (!inView(person.pose, view)) continue;
+      this.pass.addFixed(person.pose.x, person.pose.y, person.pose.heading, person.pose.speed);
+      this.write(count++, person.look, person.pose, person.uniform ?? 0);
+    }
+    return count;
+  }
+
   /** Write the people waiting at the stops, from instance `count`. Returns the count after them. */
   private drawWaiting(time: number, view: View, count: number): number {
     for (const queue of this.queues) {
       const waiting = queue.passengers(view.minX, view.minY, view.maxX, view.maxY, time, this.waiting);
       for (let i = 0; i < waiting && count < PEDESTRIAN_CAP; i++) {
         const passenger = this.waiting[i] as WaitingPassenger;
+        this.pass.addFixed(passenger.pose.x, passenger.pose.y, passenger.pose.heading, 0);
         this.write(count++, passenger.look, passenger.pose);
       }
     }

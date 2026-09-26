@@ -8,6 +8,8 @@ interface Walker {
   heading: number;
   speed: number;
   group: number;
+  /** Drawn by someone else: the crowd steps round them, and they do not step. */
+  fixed?: boolean;
 }
 
 /**
@@ -20,11 +22,12 @@ function drawn(walkers: Walker[], seconds: number, dt = 0.05): { x: number; y: n
   for (let t = 0; t <= seconds; t += dt) {
     pass.count = 0;
     const at = walkers.map((w) => ({ x: w.x + Math.cos(w.heading) * w.speed * t, y: w.y + Math.sin(w.heading) * w.speed * t }));
-    walkers.forEach((w, i) => pass.add(at[i]!.x, at[i]!.y, w.heading, w.speed, w.group, i));
+    walkers.forEach((w, i) => (w.fixed === true ? pass.addFixed(at[i]!.x, at[i]!.y, w.heading, w.speed) : pass.add(at[i]!.x, at[i]!.y, w.heading, w.speed, w.group, i)));
     pass.solve();
     frames.push(
       walkers.map((w, i) => {
         const step = pass.step[i] as number;
+        if (w.fixed === true) expect(step).toBe(0);
         expect(Math.abs(step)).toBeLessThanOrEqual(PASS_STEP);
         return { x: at[i]!.x - Math.sin(w.heading) * step, y: at[i]!.y + Math.cos(w.heading) * step };
       }),
@@ -113,5 +116,38 @@ describe('people passing each other on a pavement (spec sections 13.1, 20.1)', (
       2,
     );
     for (const f of frames) expect(f[1]!.y - f[0]!.y).toBeCloseTo(0.5, 9);
+  });
+
+  it('steps round the player standing in the way, who does not move for it', () => {
+    const frames = drawn(
+      [
+        { x: -4, y: 0, heading: 0, speed: 1.4, group: 0 },
+        { x: 0, y: 0.05, heading: Math.PI / 2, speed: 0, group: 0, fixed: true },
+      ],
+      6,
+    );
+    expect(closest(frames, 0, 1)).toBeGreaterThan(0.55);
+  });
+
+  it('passes the player walking at the crowd head on, taking the whole room itself', () => {
+    const frames = drawn(
+      [
+        { x: -4, y: 0, heading: 0, speed: 1.4, group: 0 },
+        { x: 4, y: 0, heading: Math.PI, speed: 1.4, group: 1, fixed: true },
+      ],
+      6,
+    );
+    expect(closest(frames, 0, 1)).toBeGreaterThan(0.55);
+  });
+
+  it('makes room for the police coming up from behind', () => {
+    const frames = drawn(
+      [
+        { x: 0, y: 0, heading: 0, speed: 1, group: 0 },
+        { x: -4, y: 0.02, heading: 0, speed: 3, group: 1, fixed: true },
+      ],
+      4,
+    );
+    expect(closest(frames, 0, 1)).toBeGreaterThan(0.5);
   });
 });
