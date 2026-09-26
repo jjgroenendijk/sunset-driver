@@ -54,11 +54,14 @@ sweepSuite('road overlap', () => {
   });
 });
 
-/** Where two curves leave a shared node closest to each other's line, and the angle between them. */
-function shallowestMeeting(roads: readonly RoadCurve[]): { turn: number; text: string } | undefined {
-  const rays = new Map<number, { curve: RoadCurve; to: Point }[]>();
+type Ray = { curve: RoadCurve; to: Point };
+type Meeting = { turn: number; text: string };
+
+/** For each shared node, the rays every curve through it leaves along. */
+function raysByNode(roads: readonly RoadCurve[]): Map<number, Ray[]> {
+  const rays = new Map<number, Ray[]>();
   for (const [node, on] of nodePoints(roads)) {
-    const here: { curve: RoadCurve; to: Point }[] = [];
+    const here: Ray[] = [];
     for (const { road, at } of on) {
       for (const to of [road.points[at - 1], road.points[at + 1]]) {
         if (to !== undefined) here.push({ curve: road, to });
@@ -66,33 +69,51 @@ function shallowestMeeting(roads: readonly RoadCurve[]): { turn: number; text: s
     }
     rays.set(node, here);
   }
-  let worst: { turn: number; text: string } | undefined;
+  return rays;
+}
+
+/** The shallowest meeting of `road` with a curve of higher id at point `p`, or `worst` if that is shallower. */
+function shallowestAt(road: RoadCurve, p: Point, here: readonly Ray[], worst: Meeting | undefined): Meeting | undefined {
+  let best = worst;
+  for (const u of here) {
+    if (u.curve.id !== road.id) continue;
+    for (const v of here) {
+      if (v.curve.id <= road.id) continue;
+      let turn = Math.abs(Math.atan2(u.to.y - p.y, u.to.x - p.x) - Math.atan2(v.to.y - p.y, v.to.x - p.x)) % (2 * Math.PI);
+      if (turn > Math.PI) turn = 2 * Math.PI - turn;
+      if (best !== undefined && turn >= best.turn) continue;
+      const where = `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
+      best = { turn, text: `${road.tier} ${road.id} leaves ${v.curve.tier} ${v.curve.id} at ${where}` };
+    }
+  }
+  return best;
+}
+
+/** Where two curves leave a shared node closest to each other's line, and the angle between them. */
+function shallowestMeeting(roads: readonly RoadCurve[]): Meeting | undefined {
+  const rays = raysByNode(roads);
+  let worst: Meeting | undefined;
   for (const road of roads) {
     for (let i = 0; i < road.points.length; i++) {
-      const p = road.points[i] as Point;
-      const here = rays.get(road.nodes[i] ?? -1) ?? [];
-      for (const u of here) {
-        if (u.curve.id !== road.id) continue;
-        for (const v of here) {
-          if (v.curve.id <= road.id) continue;
-          let turn = Math.abs(Math.atan2(u.to.y - p.y, u.to.x - p.x) - Math.atan2(v.to.y - p.y, v.to.x - p.x)) % (2 * Math.PI);
-          if (turn > Math.PI) turn = 2 * Math.PI - turn;
-          if (worst !== undefined && turn >= worst.turn) continue;
-          const where = `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
-          worst = { turn, text: `${road.tier} ${road.id} leaves ${v.curve.tier} ${v.curve.id} at ${where}` };
-        }
-      }
+      worst = shallowestAt(road, road.points[i] as Point, rays.get(road.nodes[i] ?? -1) ?? [], worst);
     }
   }
   return worst;
 }
 
-/** The first end of a curve that meets nothing and stands inside another road's footprint on the ground. */
-function endOnCarriageway(roads: readonly RoadCurve[]): string | undefined {
-  const CELL = 50;
-  const shared = nodePoints(roads);
-  const cells = new Map<number, { road: RoadCurve; i: number }[]>();
-  const cell = (cx: number, cy: number): number => (cy + 10_000) * 20_000 + cx + 10_000;
+/** The side of a bucket of the segment grid, in metres. */
+const CELL = 50;
+
+type Segment = { road: RoadCurve; i: number };
+
+/** The key of one bucket of the segment grid. */
+function cellKey(cx: number, cy: number): number {
+  return (cy + 10_000) * 20_000 + cx + 10_000;
+}
+
+/** Every segment on the ground, in the buckets its bounds cover. */
+function groundSegments(roads: readonly RoadCurve[]): Map<number, Segment[]> {
+  const cells = new Map<number, Segment[]>();
   for (const road of roads) {
     for (let i = 0; i + 1 < road.points.length; i++) {
       // A deck and a bore are not on the ground, so nothing stands in them.
@@ -101,7 +122,7 @@ function endOnCarriageway(roads: readonly RoadCurve[]): string | undefined {
       const b = road.points[i + 1] as Point;
       for (let cy = Math.floor(Math.min(a.y, b.y) / CELL); cy <= Math.floor(Math.max(a.y, b.y) / CELL); cy++) {
         for (let cx = Math.floor(Math.min(a.x, b.x) / CELL); cx <= Math.floor(Math.max(a.x, b.x) / CELL); cx++) {
-          const key = cell(cx, cy);
+          const key = cellKey(cx, cy);
           const list = cells.get(key) ?? [];
           list.push({ road, i });
           cells.set(key, list);
@@ -109,21 +130,34 @@ function endOnCarriageway(roads: readonly RoadCurve[]): string | undefined {
       }
     }
   }
+  return cells;
+}
+
+/** The first road of another curve whose footprint holds `end`, in words. */
+function footprintAt(road: RoadCurve, end: Point, cells: Map<number, Segment[]>): string | undefined {
   const reach = footprintHalfWidth('highway');
+  for (let cy = Math.floor((end.y - reach) / CELL); cy <= Math.floor((end.y + reach) / CELL); cy++) {
+    for (let cx = Math.floor((end.x - reach) / CELL); cx <= Math.floor((end.x + reach) / CELL); cx++) {
+      for (const { road: other, i } of cells.get(cellKey(cx, cy)) ?? []) {
+        if (other.id === road.id) continue;
+        const d = distanceToSegment(end, other.points[i] as Point, other.points[i + 1] as Point);
+        if (d >= footprintHalfWidth(other.tier)) continue;
+        return `${road.tier} ${road.id} ends at ${end.x.toFixed(1)},${end.y.toFixed(1)}, ${d.toFixed(1)} m from ${other.tier} ${other.id}`;
+      }
+    }
+  }
+  return undefined;
+}
+
+/** The first end of a curve that meets nothing and stands inside another road's footprint on the ground. */
+function endOnCarriageway(roads: readonly RoadCurve[]): string | undefined {
+  const shared = nodePoints(roads);
+  const cells = groundSegments(roads);
   for (const road of roads) {
     for (const i of [0, road.points.length - 1]) {
-      const end = road.points[i] as Point;
       if (nodeVisits(shared, road, i) > 1) continue;
-      for (let cy = Math.floor((end.y - reach) / CELL); cy <= Math.floor((end.y + reach) / CELL); cy++) {
-        for (let cx = Math.floor((end.x - reach) / CELL); cx <= Math.floor((end.x + reach) / CELL); cx++) {
-          for (const { road: other, i } of cells.get(cell(cx, cy)) ?? []) {
-            if (other.id === road.id) continue;
-            const d = distanceToSegment(end, other.points[i] as Point, other.points[i + 1] as Point);
-            if (d >= footprintHalfWidth(other.tier)) continue;
-            return `${road.tier} ${road.id} ends at ${end.x.toFixed(1)},${end.y.toFixed(1)}, ${d.toFixed(1)} m from ${other.tier} ${other.id}`;
-          }
-        }
-      }
+      const found = footprintAt(road, road.points[i] as Point, cells);
+      if (found !== undefined) return found;
     }
   }
   return undefined;

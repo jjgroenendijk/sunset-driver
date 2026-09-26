@@ -4,7 +4,7 @@ import { toSegment } from '../src/world/crossing-line.ts';
 import { fromLocal } from '../src/world/airfield-frame.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { SurfaceIndex } from '../src/world/surface.ts';
-import { AIRCRAFT_CLASSES, type Point, type RoadCurve, type WorldDescription } from '../src/world/types.ts';
+import { AIRCRAFT_CLASSES, type Airfield, type Point, type RoadCurve, type WorldDescription } from '../src/world/types.ts';
 import { buildingsOf, seeds, worlds } from './seed-fixture.ts';
 import { FOOTPRINT_COUNT } from './seed-limits.ts';
 import { sweepSuite } from './seed-suite.ts';
@@ -46,14 +46,7 @@ sweepSuite('airfields', () => {
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       const surfaces = new SurfaceIndex(w);
-      for (const field of w.airfields) {
-        for (const part of field.parts) {
-          if (part.kind !== 'runway' && part.kind !== 'apron') continue;
-          const at = fromLocal(field, part.u, part.v);
-          const want = field.kind === 'airstrip' && part.kind === 'runway' ? 'dirt' : 'asphalt';
-          expect(surfaces.at(at.x, at.y), `seed ${seed}: the ${field.kind}'s ${part.kind}`).toBe(want);
-        }
-      }
+      for (const field of w.airfields) checkPaving(seed, surfaces, field);
     }
   });
 
@@ -104,3 +97,13 @@ sweepSuite('airfields', () => {
     }
   });
 });
+
+/** Checks that the runways and aprons of one airfield are paved, and an airstrip's runway is dirt. */
+function checkPaving(seed: number, surfaces: SurfaceIndex, field: Airfield): void {
+  for (const part of field.parts) {
+    if (part.kind !== 'runway' && part.kind !== 'apron') continue;
+    const at = fromLocal(field, part.u, part.v);
+    const want = field.kind === 'airstrip' && part.kind === 'runway' ? 'dirt' : 'asphalt';
+    expect(surfaces.at(at.x, at.y), `seed ${seed}: the ${field.kind}'s ${part.kind}`).toBe(want);
+  }
+}

@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { compareStrings } from '../src/core/sort.ts';
 import { AmbientTraffic, footprintsTouch, SMOOTH, trafficRoadsOf, type AmbientPose, type Footprint, type TrafficCursor } from '../src/sim/traffic.ts';
 import { specOf } from '../src/sim/vehicle.ts';
-import type { RoadEdge } from '../src/world/graph.ts';
+import type { RoadEdge, RoadGraph } from '../src/world/graph.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import type { RoadTier, WorldDescription } from '../src/world/types.ts';
 import { TICKS_PER_HOUR } from '../src/sim/clock.ts';
@@ -34,38 +34,7 @@ sweepSuite('traffic', () => {
       for (const edge of graph.edges) length[edge.tier] = (length[edge.tier] ?? 0) + (edge.twin >= 0 ? edge.length / 2 : edge.length);
 
       // At the start of the day and at noon: a tier is not empty at one moment and full at another.
-      for (const tick of [0, 12 * TICKS_PER_HOUR]) {
-        const carried: Partial<Record<RoadTier, number>> = {};
-        const standing: Footprint[] = [];
-        const stopped: Footprint[] = [];
-        for (const vehicle of traffic.vehicles) {
-          traffic.cursorAt(vehicle.id, tick, cursor);
-          const edge = graph.edges[traffic.edgeOf(cursor)] as RoadEdge;
-          carried[edge.tier] = (carried[edge.tier] ?? 0) + 1;
-          traffic.pose(cursor, pose);
-          const spec = specOf(vehicle.cls);
-          const box = { x: pose.x, y: pose.y, heading: pose.heading, halfLength: spec.halfLength, halfWidth: spec.halfWidth };
-          standing.push(box);
-          if (pose.speed === 0) stopped.push(box);
-          if (vehicle.id % 7 !== 0) continue;
-          // A vehicle takes a corner inside the junction, so it may stand a
-          // few metres off its own run there; it never leaves the carriageway.
-          const off = distanceTo(graph.edgePoints(edge.id), pose.x, pose.y);
-          expect(off, `seed ${seed}: vehicle ${vehicle.id} off its ${edge.tier}`).toBeLessThan(TIERS[edge.tier].width / 2 + SMOOTH);
-        }
-        for (const tier of Object.keys(TIERS).sort(compareStrings) as RoadTier[]) {
-          if ((length[tier] ?? 0) < TRAFFIC_TIER_MIN) continue;
-          expect(carried[tier] ?? 0, `seed ${seed}: no traffic on ${Math.round(length[tier] ?? 0)} m of ${tier} at tick ${tick}`).toBeGreaterThan(0);
-        }
-        // The city's traffic is spread over its roads, not stood in piles:
-        // the timing of the tours is the only thing that keeps two vehicles
-        // apart, since neither ever reads the other.
-        const piled = overlaps(standing) / standing.length;
-        expect(piled, `seed ${seed}: ${piled.toFixed(2)} overlapping pairs a vehicle at tick ${tick}`).toBeLessThan(TRAFFIC_OVERLAP);
-        // Nor do the vehicles waiting at a light stand on one another.
-        const stacked = overlaps(stopped) / standing.length;
-        expect(stacked, `seed ${seed}: ${stacked.toFixed(3)} stopped pairs a vehicle at tick ${tick}`).toBeLessThan(TRAFFIC_STACKED);
-      }
+      for (const tick of [0, 12 * TICKS_PER_HOUR]) checkMoment(seed, graph, traffic, length, tick, cursor, pose);
 
       // The traffic gets on and off the highway over the ramps of its
       // interchanges (spec section 6.2), so some tour drives one.
@@ -77,17 +46,67 @@ sweepSuite('traffic', () => {
       // A city with arterials has traffic lights, and the vehicles timed to
       // them keep to them on its real, crooked junctions.
       if ((length.arterial ?? 0) < TRAFFIC_TIER_MIN) continue;
-      expect(traffic.signals?.junctions.length ?? 0, `seed ${seed}: no traffic lights`).toBeGreaterThan(0);
-      const timed = traffic.vehicles.filter((v) => v.tour.sync >= 0);
-      expect(timed.length, `seed ${seed}: no vehicle meets a light`).toBeGreaterThan(0);
-      const stride = Math.max(1, Math.floor(timed.length / SIGNAL_LAPS));
-      for (let i = 0; i < timed.length; i += stride) {
-        expect(signalLap(traffic, timed[i] as (typeof timed)[number]).faults, `seed ${seed}`).toEqual([]);
-      }
+      checkSignals(seed, traffic);
       checkTram(seed, world, roads, traffic);
     }
   });
 });
+
+/**
+ * Checks the traffic at one moment: each vehicle stands on its road, each tier
+ * long enough carries some, and the vehicles do not stand in piles.
+ */
+function checkMoment(
+  seed: number,
+  graph: RoadGraph,
+  traffic: AmbientTraffic,
+  length: Partial<Record<RoadTier, number>>,
+  tick: number,
+  cursor: TrafficCursor,
+  pose: AmbientPose,
+): void {
+  const carried: Partial<Record<RoadTier, number>> = {};
+  const standing: Footprint[] = [];
+  const stopped: Footprint[] = [];
+  for (const vehicle of traffic.vehicles) {
+    traffic.cursorAt(vehicle.id, tick, cursor);
+    const edge = graph.edges[traffic.edgeOf(cursor)] as RoadEdge;
+    carried[edge.tier] = (carried[edge.tier] ?? 0) + 1;
+    traffic.pose(cursor, pose);
+    const spec = specOf(vehicle.cls);
+    const box = { x: pose.x, y: pose.y, heading: pose.heading, halfLength: spec.halfLength, halfWidth: spec.halfWidth };
+    standing.push(box);
+    if (pose.speed === 0) stopped.push(box);
+    if (vehicle.id % 7 !== 0) continue;
+    // A vehicle takes a corner inside the junction, so it may stand a
+    // few metres off its own run there; it never leaves the carriageway.
+    const off = distanceTo(graph.edgePoints(edge.id), pose.x, pose.y);
+    expect(off, `seed ${seed}: vehicle ${vehicle.id} off its ${edge.tier}`).toBeLessThan(TIERS[edge.tier].width / 2 + SMOOTH);
+  }
+  for (const tier of Object.keys(TIERS).sort(compareStrings) as RoadTier[]) {
+    if ((length[tier] ?? 0) < TRAFFIC_TIER_MIN) continue;
+    expect(carried[tier] ?? 0, `seed ${seed}: no traffic on ${Math.round(length[tier] ?? 0)} m of ${tier} at tick ${tick}`).toBeGreaterThan(0);
+  }
+  // The city's traffic is spread over its roads, not stood in piles:
+  // the timing of the tours is the only thing that keeps two vehicles
+  // apart, since neither ever reads the other.
+  const piled = overlaps(standing) / standing.length;
+  expect(piled, `seed ${seed}: ${piled.toFixed(2)} overlapping pairs a vehicle at tick ${tick}`).toBeLessThan(TRAFFIC_OVERLAP);
+  // Nor do the vehicles waiting at a light stand on one another.
+  const stacked = overlaps(stopped) / standing.length;
+  expect(stacked, `seed ${seed}: ${stacked.toFixed(3)} stopped pairs a vehicle at tick ${tick}`).toBeLessThan(TRAFFIC_STACKED);
+}
+
+/** Checks that a city has lights, and that the vehicles timed to them keep to them round a lap. */
+function checkSignals(seed: number, traffic: AmbientTraffic): void {
+  expect(traffic.signals?.junctions.length ?? 0, `seed ${seed}: no traffic lights`).toBeGreaterThan(0);
+  const timed = traffic.vehicles.filter((v) => v.tour.sync >= 0);
+  expect(timed.length, `seed ${seed}: no vehicle meets a light`).toBeGreaterThan(0);
+  const stride = Math.max(1, Math.floor(timed.length / SIGNAL_LAPS));
+  for (let i = 0; i < timed.length; i += stride) {
+    expect(signalLap(traffic, timed[i] as (typeof timed)[number]).faults, `seed ${seed}`).toEqual([]);
+  }
+}
 
 /** Metres each way of one bucket of the grid the overlapping pairs are counted over. */
 const PILE_CELL = 20;
