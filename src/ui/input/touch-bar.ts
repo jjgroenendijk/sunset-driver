@@ -4,11 +4,18 @@
  *
  * A phone reaches none of the keys `controls.ts` lists, so the three that open
  * something on screen — the pause menu, the map and the free camera — are put
- * in a corner as buttons. Everything else on the street stays a key: a phone is
- * for looking at the city (`docs/menus.md`), not for driving through it.
+ * in a corner as buttons, with a fourth that takes the whole screen. The street
+ * itself is played from the pad of `touch-play.ts` (`docs/menus.md`).
  */
 import type { PerspectiveCamera } from 'three';
 import type { FreeCameraControls } from './free-camera.ts';
+import {
+  fullscreenRoute,
+  HOME_SCREEN_HINT,
+  readFullscreenProbe,
+  toggleFullscreen,
+  type FullscreenRoute,
+} from './fullscreen.ts';
 
 /** What the bar's three buttons do, and how it reads the flight's state back. */
 interface TouchActions {
@@ -46,6 +53,8 @@ class TouchBar {
     root.setAttribute('aria-label', 'Game controls');
     this.fly = tap('Fly', () => actions.fly());
     root.append(tap('Menu', () => actions.menu()), tap('Map', () => actions.map()), this.fly);
+    const full = fullButton(parent, fullscreenRoute(readFullscreenProbe(window)));
+    if (full) root.append(full);
     parent.append(root);
     this.sync();
   }
@@ -70,6 +79,35 @@ function tap(text: string, action: () => void): HTMLButtonElement {
   el.addEventListener('click', action);
   return el;
 }
+
+/**
+ * The button that takes the whole screen, or null where the page already has
+ * it. On an iPhone it cannot, so the button shows how to add the game to the
+ * Home Screen instead, until the note is tapped away or its time runs out.
+ */
+function fullButton(parent: HTMLElement, route: FullscreenRoute): HTMLButtonElement | null {
+  if (route === 'none') return null;
+  if (route === 'api') return tap('Full', () => toggleFullscreen(document));
+  const note = document.createElement('p');
+  note.className = 'touch-note';
+  note.textContent = HOME_SCREEN_HINT;
+  note.hidden = true;
+  parent.append(note);
+  let timer = 0;
+  const hide = (): void => {
+    note.hidden = true;
+    window.clearTimeout(timer);
+  };
+  note.addEventListener('click', hide);
+  return tap('Full', () => {
+    if (!note.hidden) return hide();
+    note.hidden = false;
+    timer = window.setTimeout(hide, NOTE_MS);
+  });
+}
+
+/** Milliseconds the Home Screen note stays up untouched. */
+const NOTE_MS = 8000;
 
 /**
  * Raise the bar over a session and keep its Fly button in step with the
