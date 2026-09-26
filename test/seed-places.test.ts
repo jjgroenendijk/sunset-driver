@@ -13,18 +13,20 @@ import {
 import { MIN_BOARDWALK } from '../src/world/roads.ts';
 import { kerbsidePlace, onCarriageway } from '../src/world/kerbside.ts';
 import { nearestRoadPlace } from '../src/world/surface.ts';
-import { CHAPTERS, chainSides, chapterJob } from '../src/sim/chain.ts';
-import { dealerPlaces, PITCH_LIMIT } from '../src/sim/dealer.ts';
+import { CHAPTERS, chainSides, chapterJob, type Chapter } from '../src/sim/chain.ts';
+import { dealerPlaces, PITCH_LIMIT, type DealerPlace } from '../src/sim/dealer.ts';
 import { giverPlaces } from '../src/sim/giver.ts';
 import { jobSites, type MissionWorld } from '../src/sim/job.ts';
 import type { Place } from '../src/sim/on-foot.ts';
 import { createSimState } from '../src/sim/simulation.ts';
+import { type BuildingMap } from '../src/world/buildings.ts';
 import { layoutZones, SERVED_BY, zoneAt, zoneFallback } from '../src/world/districts.ts';
+import { type RoadFootprint } from '../src/world/footprint.ts';
 import { GradedLand } from '../src/world/graded-land.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { LandMasses } from '../src/world/landmass.ts';
 import { type Parcel } from '../src/world/parcels.ts';
-import { buildShops, roomOf, MAX_LICENCE, MIN_LICENCE, SHOP_KINDS } from '../src/world/shops.ts';
+import { buildShops, roomOf, MAX_LICENCE, MIN_LICENCE, SHOP_KINDS, type Shop } from '../src/world/shops.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import { type Beach, type Corridor, type Point, type RoadCurve, type WorldDescription } from '../src/world/types.ts';
 import { ringArea } from './helpers.ts';
@@ -45,6 +47,239 @@ import { sweepSuite } from './seed-suite.ts';
 
 /** The districts `generateDistricts` names with a culture of their own. */
 const FIXED_NAMES = new Set(['The Barrio', 'Little Italy', 'Chinatown', 'The Blocks', 'The Docks', 'Freight Yards', 'Gull Island', 'Roadhouse Strip']);
+
+/** Records the first fault a check finds. */
+type Fault = (text: string) => void;
+/** What a beach is checked against. */
+type Coast = { w: WorldDescription; hf: Heightfield; land: LandMasses; roaded: Uint8Array; sea: number };
+
+/** The beach's own lines: numbered in order, long enough, and wound the right way. */
+function checkBeachShape(beach: Beach, i: number, fault: Fault): void {
+  const where = `beach ${i}`;
+  if (beach.id !== i) fault(`${where} is numbered ${beach.id}`);
+  if (beach.shore.length < 2) fault(`${where} has no waterline`);
+  if (beach.back.length !== beach.shore.length) fault(`${where} has a dune line of a different length`);
+  if (beach.length < MIN_BEACH) fault(`${where} is only ${beach.length.toFixed(0)} m of coast`);
+  if (Math.abs(beach.length - polylineLength(beach.shore)) > 1e-6) fault(`${where} misreports its length`);
+  if (ringArea(beach.sand) <= 0) fault(`${where} has its sand wound the wrong way`);
+  if (ringArea(beach.shallows) <= 0) fault(`${where} has its shallows wound the wrong way`);
+}
+
+/** One place along the waterline, where `k` indexes the shore and the dune line. */
+function checkShoreSample(beach: Beach, k: number, at: string, coast: Coast, fault: Fault): void {
+  const { w, hf, sea } = coast;
+  const p = beach.shore[k] as Point;
+  const back = beach.back[k] as Point;
+  // The dune line stands inland of the waterline, on dry ground: that
+  // is the whole of what says which way is inland here.
+  const sand = Math.hypot(back.x - p.x, back.y - p.y);
+  if (sand < MIN_SAND - 1e-6) fault(`${at} has only ${sand.toFixed(1)} m of sand`);
+  if (hf.sample(back.x, back.y) <= sea) fault(`${at} has its dune line under water`);
+  // The coast is gentle, which is what made it a beach: the ground
+  // stands above the sea a beach's reach inland, but not far above it.
+  const nx = (back.x - p.x) / sand;
+  const ny = (back.y - p.y) / sand;
+  const rise = hf.sample(p.x + nx * BEACH_REACH, p.y + ny * BEACH_REACH) - sea;
+  if (rise <= 0) fault(`${at} has water behind it`);
+  if (rise > BEACH_RISE) fault(`${at} stands below a cliff`);
+  // The harbour is quay and the river mouth is bank, never beach.
+  const harbour = Math.hypot(p.x - w.water.harbour.x, p.y - w.water.harbour.y);
+  if (harbour < w.water.harbour.radius) fault(`${at} is inside the harbour`);
+}
+
+/** A resort carries a boardwalk line, car parks and a laid boardwalk road, on land a road reaches. */
+function checkResort(beach: Beach, where: string, coast: Coast, fault: Fault): void {
+  if (beach.boardwalk.length !== beach.shore.length) fault(`${where} has a boardwalk line of a different length`);
+  if (beach.carParks.length === 0) fault(`${where} is a resort with nowhere to park`);
+  // A resort carries a boardwalk, a pier and two car parks, so it is
+  // worth building only where a road is really laid. The network
+  // bridges to an island that carries a district and to the islands
+  // on the way there, and to nothing else (issue #367).
+  const mid = beach.back[Math.floor(beach.back.length / 2)] as Point;
+  const mass = coast.land.massAt(mid.x, mid.y);
+  if (mass < 0 || coast.roaded[mass] !== 1) fault(`${where} is a resort on land no road is laid on`);
+  // A resort is a beach with a boardwalk on it. One whose boardwalk
+  // was never laid keeps a pier and two car parks that no road
+  // reaches, so spec section 7.3 is not kept (issue #374).
+  if (beach.boardwalkRoad < 0) fault(`${where} is a resort whose boardwalk was never laid`);
+}
+
+/** A beach that is no resort carries none of what a resort does. */
+function checkPlainBeach(beach: Beach, where: string, fault: Fault): void {
+  if (beach.boardwalk.length > 0) fault(`${where} is no resort but carries a boardwalk line`);
+  if (beach.pier !== undefined) fault(`${where} is no resort but carries a pier`);
+  if (beach.carParks.length > 0) fault(`${where} is no resort but carries a car park`);
+  if (beach.boardwalkRoad >= 0) fault(`${where} is no resort but names a boardwalk road`);
+}
+
+/** The boardwalk road a beach names is a street that runs along its back. */
+function checkBoardwalkRoad(beach: Beach, where: string, w: WorldDescription, fault: Fault): void {
+  if (beach.boardwalkRoad < 0) return;
+  const road = w.roads[beach.boardwalkRoad];
+  if (road === undefined) fault(`${where} names a boardwalk road that does not exist`);
+  else if (road.tier !== 'street') fault(`${where} has a boardwalk that is a ${road.tier}`);
+  else {
+    const cover = coverOf(road.points, beach.boardwalk);
+    if (cover < MIN_BOARDWALK) fault(`${where} has a boardwalk along only ${cover.toFixed(0)} m of its back`);
+  }
+}
+
+function checkPier(beach: Beach, where: string, coast: Coast, fault: Fault): void {
+  const pier = beach.pier;
+  if (pier === undefined) return;
+  if (coast.hf.sample(pier.head.x, pier.head.y) >= coast.sea) fault(`${where} has a pier that ends on dry land`);
+  if (Math.hypot(pier.head.x - pier.root.x, pier.head.y - pier.root.y) < MIN_PIER) {
+    fault(`${where} has a pier that hardly leaves the shore`);
+  }
+  if (ringArea(pier.polygon) <= 0) fault(`${where} has its pier wound the wrong way`);
+}
+
+function checkBeach(beach: Beach, i: number, coast: Coast, fault: Fault): void {
+  const where = `beach ${i}`;
+  checkBeachShape(beach, i, fault);
+  for (let k = 0; k < beach.shore.length; k += BEACH_STRIDE) checkShoreSample(beach, k, `${where} at ${k}`, coast, fault);
+  if (isResort(beach)) checkResort(beach, where, coast, fault);
+  else checkPlainBeach(beach, where, fault);
+  checkBoardwalkRoad(beach, where, coast.w, fault);
+  checkPier(beach, where, coast, fault);
+}
+
+/**
+ * The one beach spec section 7.3 asks for: a long beach outside the core, with
+ * the boardwalk laid and the pier built.
+ */
+function checkGuaranteedBeach(w: WorldDescription, fault: Fault): void {
+  const zones = layoutZones(w.size, w.core, w.water);
+  const served = w.beaches.filter(
+    (b) => isResort(b) && b.boardwalkRoad >= 0 && b.pier !== undefined && zoneAt(zones, (b.shore[0] as Point).x, (b.shore[0] as Point).y) !== 'core',
+  );
+  const longest = Math.max(0, ...served.map((b) => b.length));
+  if (longest < GUARANTEED_BEACH) {
+    fault(`has no beach outside the core with a boardwalk and a pier longer than ${longest.toFixed(0)} m`);
+  }
+  // The districts along it are the beach neighbourhood of spec section 8.3.
+  if (!w.districts.some((d) => d.culture === 'beach')) fault('has no beach neighbourhood');
+  // It never takes a named neighbourhood: that culture is a faction's home turf (issue #348).
+  for (const d of w.districts) {
+    if (d.culture === 'beach' && FIXED_NAMES.has(d.name)) fault(`turns ${d.name} into a beach neighbourhood`);
+  }
+}
+
+/**
+ * A beach parcel is a piece of one beach's sand, so every corner of it stands
+ * within a beach's width of a waterline. Asking whether its middle is inside
+ * the sand would not do: a strip that follows a bay is a crescent, and the
+ * middle of a crescent is outside it.
+ */
+function checkBeachParcels(w: WorldDescription, parcels: Parcel[], fault: Fault): void {
+  const waterline: Point[] = w.beaches.flatMap((b) => b.shore);
+  for (const parcel of parcels) {
+    if (parcel.owner !== 'beach') continue;
+    for (let k = 0; k < parcel.region.outer.length; k += SAMPLE_STRIDE) {
+      const p = parcel.region.outer[k] as Point;
+      let near = Infinity;
+      for (const q of waterline) near = Math.min(near, Math.hypot(q.x - p.x, q.y - p.y));
+      if (near > MAX_SAND + SHORE_STEP) fault(`parcel ${parcel.id} is a beach ${near.toFixed(0)} m from any waterline`);
+    }
+  }
+}
+
+/**
+ * The guaranteed beach: what the roads left of its sand is the beach's own
+ * parcels, and there is enough of it left to be a beach. A through route may
+ * still cross a beach — an island link has to reach its bridge head, and a
+ * seafront boulevard is a real road — so the sand a road took is not counted
+ * against the rest.
+ */
+function checkOwnedSand(w: WorldDescription, footprint: RoadFootprint, parcels: Parcel[], fault: Fault): void {
+  const beach = [...w.beaches].filter((b) => isResort(b) && b.boardwalkRoad >= 0).sort((a, b) => b.length - a.length)[0];
+  if (beach === undefined) {
+    fault('has no resort with a boardwalk');
+    return;
+  }
+  const index = new ParcelIndex(parcels);
+  let free = 0;
+  let owned = 0;
+  for (let k = 0; k < beach.shore.length; k += BEACH_STRIDE) {
+    const p = beach.shore[k] as Point;
+    const back = beach.back[k] as Point;
+    // Halfway between the waterline and the dune line, which is sand
+    // wherever the beach has any width at all.
+    const at = { x: (p.x + back.x) / 2, y: (p.y + back.y) / 2 };
+    if (pointInRegions(at, footprint.regions)) continue;
+    // Sand under a deck is the deck's under-structure, as road ground is the road's.
+    const owners = index.at(at);
+    const owner = owners.length === 1 ? (parcels[owners[0] as number] as Parcel).owner : undefined;
+    if (owner === 'under-structure') continue;
+    free++;
+    if (owner === 'beach') owned++;
+  }
+  if (owned < free * MIN_SAND_OWNED) fault(`leaves ${free - owned} of ${free} free places on its beach unclaimed`);
+  if (owned < MIN_SAND_PLACES) fault(`has only ${owned} places of beach parcel on its longest beach`);
+}
+
+function checkShop(shop: Shop, buildings: BuildingMap, fault: Fault): void {
+  const row = buildings.buildings[shop.building];
+  if (row === undefined) fault(`shop ${shop.id} stands on no building`);
+  else if (row.kind !== 'shop-row') fault(`shop ${shop.id} stands on a ${row.kind}`);
+  else if (row.district !== shop.district) fault(`shop ${shop.id} is in the wrong district`);
+  if (shop.licence < MIN_LICENCE || shop.licence > MAX_LICENCE) fault(`shop ${shop.id} holds licence ${shop.licence}`);
+  // The room it holds stands inside the lot the building was given.
+  const room = roomOf(shop);
+  if (Math.hypot(room.x - shop.x, room.y - shop.y) > shop.depth) fault(`shop ${shop.id} has a room off its lot`);
+}
+
+/** Every corner a dealer works is near their district, on the map, and off the carriageway. */
+function checkDealer(w: WorldDescription, dealer: DealerPlace, fault: Fault): void {
+  if (dealer.pitches.length === 0) fault(`${dealer.name} works no corner`);
+  for (const pitch of dealer.pitches) {
+    const away = Math.hypot(pitch.x - dealer.district.x, pitch.y - dealer.district.y);
+    if (away > PITCH_LIMIT) fault(`${dealer.name} works a corner ${away.toFixed(0)} m out of their district`);
+    if (Math.abs(pitch.x) > w.size / 2 || Math.abs(pitch.y) > w.size / 2) fault(`${dealer.name} works a corner off the map`);
+    if (onCarriageway(w, pitch.x, pitch.y)) fault(`${dealer.name} stands in the road at ${pitch.x.toFixed(0)}, ${pitch.y.toFixed(0)}`);
+  }
+}
+
+/** One chapter builds against the world, with every leg on the map and naming a district. */
+function checkChapter(job: ReturnType<typeof chapterJob>, chapter: Chapter, w: WorldDescription, fault: Fault): void {
+  if (job === undefined) {
+    fault(`${chapter.id} could not be built`);
+    return;
+  }
+  if (job.legs.length !== chapter.legs.length) fault(`${chapter.id} lost a leg`);
+  if (job.limit <= 0) fault(`${chapter.id} allows no time`);
+  for (const leg of job.legs) {
+    if (Math.abs(leg.x) > w.size / 2 || Math.abs(leg.y) > w.size / 2) fault(`${chapter.id} sends the player off the map`);
+    if (leg.label.includes('{where}')) fault(`${chapter.id} has a leg that names no district`);
+  }
+}
+
+/** The first thing wrong with the authored chain on one seed. */
+function chainComplaint(seed: number): string | undefined {
+  const w = worlds.get(seed) as WorldDescription;
+  const snap = (x: number, y: number): Place | undefined => nearestRoadPlace(w, x, y);
+  const world: MissionWorld = {
+    givers: giverPlaces(seed, w.districts, snap),
+    sites: jobSites(seed, w.districts, snap),
+  };
+  const state = createSimState(seed);
+  const sides = chainSides(world);
+  const { patron, rival } = sides;
+  if (patron === undefined || rival === undefined) return 'has nobody to run the chain through';
+  let complaint: string | undefined;
+  const fault = (text: string): void => {
+    complaint ??= text;
+  };
+  for (const chapter of CHAPTERS) checkChapter(chapterJob(state, world, chapter, sides), chapter, w, fault);
+  // The fork is a choice only where the two sides stand apart, which is
+  // what the fallback in `chain.ts` is for.
+  const fork = CHAPTERS.filter((chapter) => chapter.branch !== '');
+  const at = Math.min(...fork.map((chapter) => chapter.step));
+  const roles = new Set(fork.filter((chapter) => chapter.step === at).map((chapter) => chapter.role));
+  if (roles.size !== 2) fault('offers both sides of the fork from one side');
+  if (patron.id === rival.id) fault('runs both sides of the chain through one contact');
+  return complaint;
+}
 
 /**
  * The seed sweep of spec section 3, on the places a world is given: the tram,
@@ -95,101 +330,14 @@ sweepSuite('places', () => {
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       const hf = new Heightfield(w.terrain);
-      const zones = layoutZones(w.size, w.core, w.water);
       const land = new LandMasses(hf, w.water, w.water.seaLevel + 1);
-      const roaded = land.servedMasses(w.districts);
-      const sea = w.water.seaLevel;
+      const coast: Coast = { w, hf, land, roaded: land.servedMasses(w.districts), sea: w.water.seaLevel };
       let complaint: string | undefined;
       const fault = (text: string): void => {
         complaint ??= text;
       };
-
-      for (let i = 0; i < w.beaches.length; i++) {
-        const beach = w.beaches[i] as Beach;
-        const where = `beach ${i}`;
-        if (beach.id !== i) fault(`${where} is numbered ${beach.id}`);
-        if (beach.shore.length < 2) fault(`${where} has no waterline`);
-        if (beach.back.length !== beach.shore.length) fault(`${where} has a dune line of a different length`);
-        if (beach.length < MIN_BEACH) fault(`${where} is only ${beach.length.toFixed(0)} m of coast`);
-        if (Math.abs(beach.length - polylineLength(beach.shore)) > 1e-6) fault(`${where} misreports its length`);
-        if (ringArea(beach.sand) <= 0) fault(`${where} has its sand wound the wrong way`);
-        if (ringArea(beach.shallows) <= 0) fault(`${where} has its shallows wound the wrong way`);
-
-        for (let k = 0; k < beach.shore.length; k += BEACH_STRIDE) {
-          const p = beach.shore[k] as Point;
-          const back = beach.back[k] as Point;
-          const at = `${where} at ${k}`;
-          // The dune line stands inland of the waterline, on dry ground: that
-          // is the whole of what says which way is inland here.
-          const sand = Math.hypot(back.x - p.x, back.y - p.y);
-          if (sand < MIN_SAND - 1e-6) fault(`${at} has only ${sand.toFixed(1)} m of sand`);
-          if (hf.sample(back.x, back.y) <= sea) fault(`${at} has its dune line under water`);
-          // The coast is gentle, which is what made it a beach: the ground
-          // stands above the sea a beach's reach inland, but not far above it.
-          const nx = (back.x - p.x) / sand;
-          const ny = (back.y - p.y) / sand;
-          const rise = hf.sample(p.x + nx * BEACH_REACH, p.y + ny * BEACH_REACH) - sea;
-          if (rise <= 0) fault(`${at} has water behind it`);
-          if (rise > BEACH_RISE) fault(`${at} stands below a cliff`);
-          // The harbour is quay and the river mouth is bank, never beach.
-          const harbour = Math.hypot(p.x - w.water.harbour.x, p.y - w.water.harbour.y);
-          if (harbour < w.water.harbour.radius) fault(`${at} is inside the harbour`);
-        }
-
-        if (isResort(beach)) {
-          if (beach.boardwalk.length !== beach.shore.length) fault(`${where} has a boardwalk line of a different length`);
-          if (beach.carParks.length === 0) fault(`${where} is a resort with nowhere to park`);
-          // A resort carries a boardwalk, a pier and two car parks, so it is
-          // worth building only where a road is really laid. The network
-          // bridges to an island that carries a district and to the islands
-          // on the way there, and to nothing else (issue #367).
-          const mid = beach.back[Math.floor(beach.back.length / 2)] as Point;
-          const mass = land.massAt(mid.x, mid.y);
-          if (mass < 0 || roaded[mass] !== 1) fault(`${where} is a resort on land no road is laid on`);
-          // A resort is a beach with a boardwalk on it. One whose boardwalk
-          // was never laid keeps a pier and two car parks that no road
-          // reaches, so spec section 7.3 is not kept (issue #374).
-          if (beach.boardwalkRoad < 0) fault(`${where} is a resort whose boardwalk was never laid`);
-        } else {
-          if (beach.boardwalk.length > 0) fault(`${where} is no resort but carries a boardwalk line`);
-          if (beach.pier !== undefined) fault(`${where} is no resort but carries a pier`);
-          if (beach.carParks.length > 0) fault(`${where} is no resort but carries a car park`);
-          if (beach.boardwalkRoad >= 0) fault(`${where} is no resort but names a boardwalk road`);
-        }
-        if (beach.boardwalkRoad >= 0) {
-          const road = w.roads[beach.boardwalkRoad];
-          if (road === undefined) fault(`${where} names a boardwalk road that does not exist`);
-          else if (road.tier !== 'street') fault(`${where} has a boardwalk that is a ${road.tier}`);
-          else {
-            const cover = coverOf(road.points, beach.boardwalk);
-            if (cover < MIN_BOARDWALK) fault(`${where} has a boardwalk along only ${cover.toFixed(0)} m of its back`);
-          }
-        }
-        const pier = beach.pier;
-        if (pier !== undefined) {
-          if (hf.sample(pier.head.x, pier.head.y) >= sea) fault(`${where} has a pier that ends on dry land`);
-          if (Math.hypot(pier.head.x - pier.root.x, pier.head.y - pier.root.y) < MIN_PIER) {
-            fault(`${where} has a pier that hardly leaves the shore`);
-          }
-          if (ringArea(pier.polygon) <= 0) fault(`${where} has its pier wound the wrong way`);
-        }
-      }
-
-      // The one spec section 7.3 asks for: a long beach outside the core, with
-      // the boardwalk laid and the pier built.
-      const served = w.beaches.filter(
-        (b) => isResort(b) && b.boardwalkRoad >= 0 && b.pier !== undefined && zoneAt(zones, (b.shore[0] as Point).x, (b.shore[0] as Point).y) !== 'core',
-      );
-      const longest = Math.max(0, ...served.map((b) => b.length));
-      if (longest < GUARANTEED_BEACH) {
-        fault(`has no beach outside the core with a boardwalk and a pier longer than ${longest.toFixed(0)} m`);
-      }
-      // The districts along it are the beach neighbourhood of spec section 8.3.
-      if (!w.districts.some((d) => d.culture === 'beach')) fault('has no beach neighbourhood');
-      // It never takes a named neighbourhood: that culture is a faction's home turf (issue #348).
-      for (const d of w.districts) {
-        if (d.culture === 'beach' && FIXED_NAMES.has(d.name)) fault(`turns ${d.name} into a beach neighbourhood`);
-      }
+      for (let i = 0; i < w.beaches.length; i++) checkBeach(w.beaches[i] as Beach, i, coast, fault);
+      checkGuaranteedBeach(w, fault);
       expect(complaint, `seed ${seed}`).toBeUndefined();
     }
   });
@@ -202,55 +350,12 @@ sweepSuite('places', () => {
       const w = worlds.get(seed) as WorldDescription;
       const footprint = footprintOf(seed);
       const parcels = parcelsOf(seed).parcels;
-      const index = new ParcelIndex(parcels);
       let complaint: string | undefined;
       const fault = (text: string): void => {
         complaint ??= text;
       };
-
-      // A beach parcel is a piece of one beach's sand, so every corner of it
-      // stands within a beach's width of a waterline. Asking whether its middle
-      // is inside the sand would not do: a strip that follows a bay is a
-      // crescent, and the middle of a crescent is outside it.
-      const waterline: Point[] = w.beaches.flatMap((b) => b.shore);
-      for (const parcel of parcels) {
-        if (parcel.owner !== 'beach') continue;
-        for (let k = 0; k < parcel.region.outer.length; k += SAMPLE_STRIDE) {
-          const p = parcel.region.outer[k] as Point;
-          let near = Infinity;
-          for (const q of waterline) near = Math.min(near, Math.hypot(q.x - p.x, q.y - p.y));
-          if (near > MAX_SAND + SHORE_STEP) fault(`parcel ${parcel.id} is a beach ${near.toFixed(0)} m from any waterline`);
-        }
-      }
-
-      // The guaranteed beach: what the roads left of its sand is the beach's
-      // own parcels, and there is enough of it left to be a beach. A through
-      // route may still cross a beach — an island link has to reach its bridge
-      // head, and a seafront boulevard is a real road — so the sand a road took
-      // is not counted against the rest.
-      const beach = [...w.beaches].filter((b) => isResort(b) && b.boardwalkRoad >= 0).sort((a, b) => b.length - a.length)[0];
-      if (beach === undefined) {
-        fault('has no resort with a boardwalk');
-      } else {
-        let free = 0;
-        let owned = 0;
-        for (let k = 0; k < beach.shore.length; k += BEACH_STRIDE) {
-          const p = beach.shore[k] as Point;
-          const back = beach.back[k] as Point;
-          // Halfway between the waterline and the dune line, which is sand
-          // wherever the beach has any width at all.
-          const at = { x: (p.x + back.x) / 2, y: (p.y + back.y) / 2 };
-          if (pointInRegions(at, footprint.regions)) continue;
-          // Sand under a deck is the deck's under-structure, as road ground is the road's.
-          const owners = index.at(at);
-          const owner = owners.length === 1 ? (parcels[owners[0] as number] as Parcel).owner : undefined;
-          if (owner === 'under-structure') continue;
-          free++;
-          if (owner === 'beach') owned++;
-        }
-        if (owned < free * MIN_SAND_OWNED) fault(`leaves ${free - owned} of ${free} free places on its beach unclaimed`);
-        if (owned < MIN_SAND_PLACES) fault(`has only ${owned} places of beach parcel on its longest beach`);
-      }
+      checkBeachParcels(w, parcels, fault);
+      checkOwnedSand(w, footprint, parcels, fault);
       expect(complaint, `seed ${seed}`).toBeUndefined();
     }
   });
@@ -267,16 +372,7 @@ sweepSuite('places', () => {
       const fault = (text: string): void => {
         complaint ??= text;
       };
-      for (const shop of shops) {
-        const row = buildings.buildings[shop.building];
-        if (row === undefined) fault(`shop ${shop.id} stands on no building`);
-        else if (row.kind !== 'shop-row') fault(`shop ${shop.id} stands on a ${row.kind}`);
-        else if (row.district !== shop.district) fault(`shop ${shop.id} is in the wrong district`);
-        if (shop.licence < MIN_LICENCE || shop.licence > MAX_LICENCE) fault(`shop ${shop.id} holds licence ${shop.licence}`);
-        // The room it holds stands inside the lot the building was given.
-        const room = roomOf(shop);
-        if (Math.hypot(room.x - shop.x, room.y - shop.y) > shop.depth) fault(`shop ${shop.id} has a room off its lot`);
-      }
+      for (const shop of shops) checkShop(shop, buildings, fault);
       if (new Set(shops.map((shop) => shop.building)).size !== shops.length) fault('two trades share one building');
       for (const kind of SHOP_KINDS) {
         if (!shops.some((shop) => shop.kind === kind)) fault(`has no ${kind}`);
@@ -301,15 +397,7 @@ sweepSuite('places', () => {
       for (const district of w.districts) {
         if (district.zone !== 'wilderness' && !dealt.has(district.id)) fault(`${district.name} has no dealer`);
       }
-      for (const dealer of dealers) {
-        if (dealer.pitches.length === 0) fault(`${dealer.name} works no corner`);
-        for (const pitch of dealer.pitches) {
-          const away = Math.hypot(pitch.x - dealer.district.x, pitch.y - dealer.district.y);
-          if (away > PITCH_LIMIT) fault(`${dealer.name} works a corner ${away.toFixed(0)} m out of their district`);
-          if (Math.abs(pitch.x) > w.size / 2 || Math.abs(pitch.y) > w.size / 2) fault(`${dealer.name} works a corner off the map`);
-          if (onCarriageway(w, pitch.x, pitch.y)) fault(`${dealer.name} stands in the road at ${pitch.x.toFixed(0)}, ${pitch.y.toFixed(0)}`);
-        }
-      }
+      for (const dealer of dealers) checkDealer(w, dealer, fault);
       expect(complaint, `seed ${seed}`).toBeUndefined();
     }
   });
@@ -320,43 +408,7 @@ sweepSuite('places', () => {
     // branches builds against the world, and every leg of every chapter
     // stands on a street of the map with a clock long enough to reach it.
     for (const seed of seeds.slice(0, CHAIN_COUNT)) {
-      const w = worlds.get(seed) as WorldDescription;
-      const snap = (x: number, y: number): Place | undefined => nearestRoadPlace(w, x, y);
-      const world: MissionWorld = {
-        givers: giverPlaces(seed, w.districts, snap),
-        sites: jobSites(seed, w.districts, snap),
-      };
-      const state = createSimState(seed);
-      const sides = chainSides(world);
-      let complaint: string | undefined;
-      const fault = (text: string): void => {
-        complaint ??= text;
-      };
-
-      if (sides.patron === undefined || sides.rival === undefined) fault('has nobody to run the chain through');
-      else {
-        for (const chapter of CHAPTERS) {
-          const job = chapterJob(state, world, chapter, sides);
-          if (job === undefined) {
-            fault(`${chapter.id} could not be built`);
-            continue;
-          }
-          if (job.legs.length !== chapter.legs.length) fault(`${chapter.id} lost a leg`);
-          if (job.limit <= 0) fault(`${chapter.id} allows no time`);
-          for (const leg of job.legs) {
-            if (Math.abs(leg.x) > w.size / 2 || Math.abs(leg.y) > w.size / 2) fault(`${chapter.id} sends the player off the map`);
-            if (leg.label.includes('{where}')) fault(`${chapter.id} has a leg that names no district`);
-          }
-        }
-        // The fork is a choice only where the two sides stand apart, which is
-        // what the fallback in `chain.ts` is for.
-        const fork = CHAPTERS.filter((chapter) => chapter.branch !== '');
-        const at = Math.min(...fork.map((chapter) => chapter.step));
-        const roles = new Set(fork.filter((chapter) => chapter.step === at).map((chapter) => chapter.role));
-        if (roles.size !== 2) fault('offers both sides of the fork from one side');
-        if (sides.patron.id === sides.rival.id) fault('runs both sides of the chain through one contact');
-      }
-      expect(complaint, `seed ${seed}`).toBeUndefined();
+      expect(chainComplaint(seed), `seed ${seed}`).toBeUndefined();
     }
   });
 
