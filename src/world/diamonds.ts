@@ -125,47 +125,93 @@ function firstRamp(
   exit: boolean,
   planned: readonly RampPlan[],
 ): RampPlan | undefined {
-  for (const { highway, at } of meets) {
-    const last = highway.points.length - 1;
-    const h = highway.points[at] as Point;
-    const before = highway.points[Math.max(0, at - 1)] as Point;
-    const after = highway.points[Math.min(last, at + 1)] as Point;
-    const span = hypot(after.x - before.x, after.y - before.y);
-    if (span === 0) continue;
-    const t = { x: (after.x - before.x) / span, y: (after.y - before.y) / span };
-    // The right hand of the highway's own direction, which is how `route-sample.ts` reads it.
-    const right = { x: -t.y, y: t.x };
-    const across = (f.x - h.x) * right.x + (f.y - h.y) * right.y;
-    if (Math.abs(across) < footprintHalfWidth('highway') + footprintHalfWidth('ramp')) continue;
-    // Right of the highway the carriageway runs with it: the exit leaves it
-    // before the interchange and the entry joins it after.
-    const way = (exit ? -1 : 1) * Math.sign(across);
-    const distances = curveDistances(highway.points);
-    const from = (distances[at] as number) + (f.x - h.x) * t.x + (f.y - h.y) * t.y;
-    // A landing of the other side's ramps is tried first: the two
-    // carriageways' ramps share their landings.
-    const shared: number[] = [];
-    for (const other of planned) {
-      if (other.highway !== highway.id || other.exit === exit) continue;
-      const along = alongAt(highway, distances, other.landing) - from;
-      if (along * way > 0) shared.push(Math.abs(along) / Math.abs(across));
-    }
+  for (const meet of meets) {
+    const frame = rampFrame(meet, f, exit);
+    if (frame === undefined) continue;
+    const shared = sharedSpreads(frame, exit, planned);
     for (const angle of LANDING_ANGLES) {
       for (const spread of [...shared, ...SPREADS]) {
-        const landing = landingAt(network, highway, distances, from + way * spread * Math.abs(across), planned);
-        if (landing === undefined) continue;
-        // The ramp leaves the foot towards a control point on the line that
-        // meets the highway at `angle`, halfway back from the landing.
-        const back = (spread * Math.abs(across)) / 2;
-        const rise = back * tan(angle) * Math.sign(across);
-        const control = { x: landing.at.x - way * back * t.x + rise * right.x, y: landing.at.y - way * back * t.y + rise * right.y };
-        const line = rampLine(f, control, landing.at);
-        if (!rampOk(network, road, foot, line, planned)) continue;
-        return { points: exit ? line.slice().reverse() : line, exit, highway: highway.id, landing: landing.at };
+        const ramp = rampAt(network, road, foot, f, frame, angle, spread, exit, planned);
+        if (ramp !== undefined) return ramp;
       }
     }
   }
   return undefined;
+}
+
+/** A highway's frame at the place a foot meets it, as the ramps from the foot are laid in it. */
+interface RampFrame {
+  highway: RoadCurve;
+  distances: Float32Array;
+  /** Metres along the highway to the foot. */
+  from: number;
+  /** The unit direction of the highway there, and its right hand. */
+  t: Point;
+  right: Point;
+  /** Metres the foot stands to the right of the highway. */
+  across: number;
+  /** Which way along the highway the ramp lands: +1 with the highway's direction, -1 against it. */
+  way: number;
+}
+
+/** The frame of a highway at the place a foot meets it, or undefined where the foot stands too near it for a ramp. */
+function rampFrame({ highway, at }: HighwayMeet, f: Point, exit: boolean): RampFrame | undefined {
+  const last = highway.points.length - 1;
+  const h = highway.points[at] as Point;
+  const before = highway.points[Math.max(0, at - 1)] as Point;
+  const after = highway.points[Math.min(last, at + 1)] as Point;
+  const span = hypot(after.x - before.x, after.y - before.y);
+  if (span === 0) return undefined;
+  const t = { x: (after.x - before.x) / span, y: (after.y - before.y) / span };
+  // The right hand of the highway's own direction, which is how `route-sample.ts` reads it.
+  const right = { x: -t.y, y: t.x };
+  const across = (f.x - h.x) * right.x + (f.y - h.y) * right.y;
+  if (Math.abs(across) < footprintHalfWidth('highway') + footprintHalfWidth('ramp')) return undefined;
+  // Right of the highway the carriageway runs with it: the exit leaves it
+  // before the interchange and the entry joins it after.
+  const way = (exit ? -1 : 1) * Math.sign(across);
+  const distances = curveDistances(highway.points);
+  const from = (distances[at] as number) + (f.x - h.x) * t.x + (f.y - h.y) * t.y;
+  return { highway, distances, from, t, right, across, way };
+}
+
+/**
+ * The spreads that land a ramp on a landing of the other side's ramps, which
+ * are tried first: the two carriageways' ramps share their landings.
+ */
+function sharedSpreads(frame: RampFrame, exit: boolean, planned: readonly RampPlan[]): number[] {
+  const shared: number[] = [];
+  for (const other of planned) {
+    if (other.highway !== frame.highway.id || other.exit === exit) continue;
+    const along = alongAt(frame.highway, frame.distances, other.landing) - frame.from;
+    if (along * frame.way > 0) shared.push(Math.abs(along) / Math.abs(frame.across));
+  }
+  return shared;
+}
+
+/** The ramp from a foot that lands `spread` times its offset down the highway and leaves it at `angle`, or undefined where it does not fit. */
+function rampAt(
+  network: DiamondNetwork,
+  road: DraftLine,
+  foot: number,
+  f: Point,
+  frame: RampFrame,
+  angle: number,
+  spread: number,
+  exit: boolean,
+  planned: readonly RampPlan[],
+): RampPlan | undefined {
+  const { highway, distances, from, t, right, across, way } = frame;
+  const landing = landingAt(network, highway, distances, from + way * spread * Math.abs(across), planned);
+  if (landing === undefined) return undefined;
+  // The ramp leaves the foot towards a control point on the line that
+  // meets the highway at `angle`, halfway back from the landing.
+  const back = (spread * Math.abs(across)) / 2;
+  const rise = back * tan(angle) * Math.sign(across);
+  const control = { x: landing.at.x - way * back * t.x + rise * right.x, y: landing.at.y - way * back * t.y + rise * right.y };
+  const line = rampLine(f, control, landing.at);
+  if (!rampOk(network, road, foot, line, planned)) return undefined;
+  return { points: exit ? line.slice().reverse() : line, exit, highway: highway.id, landing: landing.at };
 }
 
 /**
@@ -198,21 +244,37 @@ function landingAt(
   // Each half of the segment the landing cuts has to carry the highway: a
   // short half can climb harder than the whole segment did.
   if (!network.canRun(a, at, 'highway') || !network.canRun(at, b, 'highway')) return undefined;
+  return landingClear(network, highway, distances, along, at, planned) ? { segment, at } : undefined;
+}
+
+/**
+ * True where a landing keeps its gap from every junction the highway carries
+ * and every landing of the `planned` ramps, or is one of those landings.
+ */
+function landingClear(
+  network: DiamondNetwork,
+  highway: RoadCurve,
+  distances: Float32Array,
+  along: number,
+  at: Point,
+  planned: readonly RampPlan[],
+): boolean {
   // The ramps planned with this one are not laid yet, so their landings are
   // no points of the highway: they keep the same gap.
   for (const other of planned) {
     const gap = hypot(other.landing.x - at.x, other.landing.y - at.y);
-    if (gap > 1e-3 && gap < LANDING_GAP) return undefined;
+    if (gap > 1e-3 && gap < LANDING_GAP) return false;
   }
+  const last = highway.points.length - 1;
   for (let i = 0; i <= last; i++) {
     const gap = Math.abs((distances[i] as number) - along);
     if (gap >= LANDING_GAP || !network.sharedAt(highway.id, i)) continue;
     // A landing already made: every road on it is the highway or a ramp.
     const p = highway.points[i] as Point;
     const landed = hypot(p.x - at.x, p.y - at.y) < 1e-3;
-    if (!landed || network.curvesAt(p).some((c) => c !== highway.id && (network.curves[c] as RoadCurve).ramp === undefined)) return undefined;
+    if (!landed || network.curvesAt(p).some((c) => c !== highway.id && (network.curves[c] as RoadCurve).ramp === undefined)) return false;
   }
-  return { segment, at };
+  return true;
 }
 
 /** Metres along a highway to the place on it nearest `p`. */
@@ -313,14 +375,20 @@ export function onRamp(ramps: readonly RoadCurve[], line: DraftLine): boolean {
     const clear = (TIERS.ramp.width + TIERS[line.tier].width) / 2;
     const other = boxOf(ramp.points);
     if (other.minX > box.maxX + clear || other.maxX < box.minX - clear || other.minY > box.maxY + clear || other.maxY < box.minY - clear) continue;
-    const free = clear + footprintHalfWidth(line.tier);
-    const ends = [ramp.points[0] as Point, ramp.points[ramp.points.length - 1] as Point];
-    for (const p of ramp.points) {
-      if (ends.some((e) => hypot(e.x - p.x, e.y - p.y) < free)) continue;
-      for (let j = 0; j + 1 < line.points.length; j++) {
-        if (line.bridges.includes(j) || line.tunnels.includes(j)) continue;
-        if (toSegment(p, line.points[j] as Point, line.points[j + 1] as Point) < clear) return true;
-      }
+    if (laysOnRamp(ramp, line, clear)) return true;
+  }
+  return false;
+}
+
+/** True where a line on the ground comes within `clear` of a point of one ramp away from the ramp's ends. */
+function laysOnRamp(ramp: RoadCurve, line: DraftLine, clear: number): boolean {
+  const free = clear + footprintHalfWidth(line.tier);
+  const ends = [ramp.points[0] as Point, ramp.points[ramp.points.length - 1] as Point];
+  for (const p of ramp.points) {
+    if (ends.some((e) => hypot(e.x - p.x, e.y - p.y) < free)) continue;
+    for (let j = 0; j + 1 < line.points.length; j++) {
+      if (line.bridges.includes(j) || line.tunnels.includes(j)) continue;
+      if (toSegment(p, line.points[j] as Point, line.points[j + 1] as Point) < clear) return true;
     }
   }
   return false;
@@ -519,11 +587,12 @@ export function interchangeInfields(roads: readonly RoadCurve[]): Point[][] {
     const foot = exit.points[exit.points.length - 1] as Point;
     const entry = roads.find((r) => r.ramp?.exit === false && r.ramp.arterial === exit.ramp?.arterial && same(r.points[0] as Point, foot));
     if (entry === undefined) continue;
-    const from = exit.points[0] as Point;
-    const to = entry.points[entry.points.length - 1] as Point;
+    const exitLanding = exit.points[0] as Point;
+    const entryLanding = entry.points[entry.points.length - 1] as Point;
     const ring = [...exit.points, ...entry.points.slice(1)];
     const highway = roads[exit.ramp.highway] as RoadCurve;
-    if (entry.ramp?.highway === highway.id) ring.push(...between(highway.points, to, from));
+    // The ring comes back along the highway from where the entry lands to where the exit leaves.
+    if (entry.ramp?.highway === highway.id) ring.push(...between(highway.points, entryLanding, exitLanding));
     out.push(ring);
   }
   return out;

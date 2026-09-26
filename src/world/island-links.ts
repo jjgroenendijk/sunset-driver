@@ -11,6 +11,7 @@ import { cos, sin } from '../core/libm.ts';
 import { dist } from '../core/math.ts';
 import { HighwayTrace } from './highways.ts';
 import { DRY_MARGIN } from './road-ground.ts';
+import type { NetworkHit } from './road-network.ts';
 import { ANCHOR_REACH, ARTERIAL, STREET } from './road-trace.ts';
 import { selfOverlap } from './self-overlap.ts';
 import type { Island, Point } from './types.ts';
@@ -45,6 +46,38 @@ const OUTBOUND_ROADS = 6;
 /** Radians between the headings the first step of that line tries, and how many each way. */
 const FIRST_STEP_TURN = Math.PI / 18;
 const FIRST_STEP_TURNS = 6;
+
+/**
+ * Breadth-first over the crossings from the main island: the parent of an
+ * island is the crossing that first reached it, so following parents always
+ * leads back to the main island. `order` is the islands in the order reached,
+ * the main one left out.
+ */
+function crossingTree(count: number, mainIsland: number, crossings: number, endsOf: (ci: number) => [number, number]): { parent: Int32Array; order: number[] } {
+  const parent = new Int32Array(count).fill(-1);
+  const seen = new Uint8Array(count);
+  const order: number[] = [];
+  const queue: number[] = [mainIsland];
+  seen[mainIsland] = 1;
+  for (let qi = 0; qi < queue.length; qi++) {
+    const from = queue[qi] as number;
+    for (let ci = 0; ci < crossings; ci++) {
+      const other = otherEnd(endsOf(ci), from);
+      if (other < 0 || seen[other] === 1) continue;
+      seen[other] = 1;
+      parent[other] = ci;
+      order.push(other);
+      queue.push(other);
+    }
+  }
+  return { parent, order };
+}
+
+/** The island at the other end of a crossing from `from`, or -1 where the crossing does not reach `from`. */
+function otherEnd([a, b]: [number, number], from: number): number {
+  if (a === from) return b;
+  return b === from ? a : -1;
+}
 
 export abstract class IslandLinkTrace extends HighwayTrace {
 
@@ -81,29 +114,20 @@ export abstract class IslandLinkTrace extends HighwayTrace {
 
     let mainIsland = 0;
     for (let i = 0; i < count; i++) if ((islands[i] as Island).main) mainIsland = i;
+    const { parent, order } = crossingTree(count, mainIsland, crossings.length, endsOf);
+    const needed = this.neededIslands(count, mainIsland, parent, endsOf);
 
-    // Breadth-first over the crossings: the parent of an island is the crossing
-    // that first reached it, so following parents always leads back to the main island.
-    const parent = new Int32Array(count).fill(-1);
-    const seen = new Uint8Array(count);
-    const order: number[] = [];
-    const queue: number[] = [mainIsland];
-    seen[mainIsland] = 1;
-    for (let qi = 0; qi < queue.length; qi++) {
-      const from = queue[qi] as number;
-      for (let ci = 0; ci < crossings.length; ci++) {
-        const [a, b] = endsOf(ci);
-        const other = a === from ? b : b === from ? a : -1;
-        if (other < 0 || seen[other] === 1) continue;
-        seen[other] = 1;
-        parent[other] = ci;
-        order.push(other);
-        queue.push(other);
-      }
+    const reached = again ? this.islandsWithRoads(count) : new Uint8Array(count);
+    for (const island of order) {
+      if (needed[island] === 1 && reached[island] === 0) this.linkIsland(island, parent[island] as number);
     }
+  }
 
-    // Only the islands a district stands on are worth a bridge, and with them
-    // every island on the way there.
+  /**
+   * One flag per island, set where it is worth a bridge. Only the islands a
+   * district stands on are, and with them every island on the way there.
+   */
+  private neededIslands(count: number, mainIsland: number, parent: Int32Array, endsOf: (ci: number) => [number, number]): Uint8Array {
     const needed = new Uint8Array(count);
     for (const d of this.world.districts) {
       let i = this.islandOf(d.x, d.y);
@@ -115,11 +139,7 @@ export abstract class IslandLinkTrace extends HighwayTrace {
         i = a === i ? b : a;
       }
     }
-
-    const reached = again ? this.islandsWithRoads(count) : new Uint8Array(count);
-    for (const island of order) {
-      if (needed[island] === 1 && reached[island] === 0) this.linkIsland(island, parent[island] as number);
-    }
+    return needed;
   }
 
   /** One flag per island, set where a road already stands on its dry ground. */
@@ -197,53 +217,78 @@ export abstract class IslandLinkTrace extends HighwayTrace {
     // approach at all, then the rest of the open ground, and last the heads on
     // the network further from the shore.
     const pairs = [...open.slice(0, 1), ...joined, ...open.slice(1), ...further];
-    const tries = patient ? HEAD_TRIES : LINK_TRIES;
-    let routed = 0;
+    const budget = { routed: 0, tries: patient ? HEAD_TRIES : LINK_TRIES };
     for (const [near, far] of pairs) {
       const onNetwork = joined.some((pair) => pair[0] === near) || further.some((pair) => pair[0] === near);
-      let approach: Point[] | undefined = [near];
-      if (!onNetwork) {
-        if (routed++ >= tries) break;
-        // The approach carries on from the deck, so it is looked for first
-        // among the routes that do not turn back under it.
-        const shore = this.islandOf(near.x, near.y);
-        approach = this.routeToNetwork(near, shore, 'arterial', ARTERIAL, undefined, false, [far, near]) ?? this.routeToNetwork(near, shore);
-        // A near shore the network cannot be reached from is the other shore's
-        // to try, in the round that has another shore left to try.
-        if (approach === undefined && routed === 1 && !patient) break;
-        if (approach === undefined) {
-          // Every arterial way on is spent, so the patient round lays a street
-          // instead, and last an arterial laid out from the network. An island
-          // that carries a district has to have a road.
-          let climbed = patient ? this.streetApproach(near, far, shore) : undefined;
-          if (climbed === undefined && patient && this.lastPass) climbed = this.outbound(near, shore, [far, near]);
-          if (climbed === undefined) continue;
-          approach = climbed;
-        } else approach.reverse();
-      }
-      if (selfOverlap([...approach, far], 'arterial') !== undefined) continue;
-      const landing = this.landOnIsland(far, island, [near, far]);
-      // The span is a deck because it stands over water. Where the two heads
-      // end up on dry, gentle ground the whole way between them — a strait that
-      // runs dry at its narrowest — the link is a road on the ground, and the
-      // structures it does need are found with the rest (issue #371).
-      const span = this.probe(near.x, near.y, far.x, far.y);
-      const onGround = span.dry && span.grade <= ARTERIAL.maxGrade;
-      // A deck over water is lifted clear of the sea and ramps down each side
-      // on line the road already has (`water-lift.ts`). A head on the network,
-      // or at the end of the link, is a point no ramp may raise, so the dry
-      // ground between each head and the water is given points of its own, and
-      // a link that ends at its far head runs on past it (issue #676, D1).
-      const shore = onGround ? {} : this.waterline(near, far);
-      const tail = landing.length > 1 || onGround ? landing : this.runOn(near, far);
-      const deck = [...(shore.leave === undefined ? [] : [shore.leave]), ...(shore.meet === undefined ? [] : [shore.meet])];
-      const points = [...approach, ...deck, ...tail];
-      const bridges = onGround ? [] : [approach.length - 1 + (shore.leave === undefined ? 0 : 1)];
-      if (!this.structuresAtSlots(points, bridges)) continue;
-      // A link cut short of its deck reaches no island, so it is laid whole or not at all.
-      if (this.addCurve('arterial', points, bridges, [], true) !== undefined) return true;
+      const found = onNetwork ? { approach: [near], stop: false } : this.approachFor(near, far, patient, budget);
+      if (found.stop) break;
+      if (found.approach === undefined) continue;
+      if (this.layLink(island, near, far, found.approach)) return true;
     }
     return false;
+  }
+
+  /**
+   * The approach to a head off the network, running from the network to the
+   * head, and whether the shore is given up. `budget` counts the heads routed
+   * on this shore against how many it may route.
+   */
+  private approachFor(near: Point, far: Point, patient: boolean, budget: { routed: number; tries: number }): { approach?: Point[]; stop: boolean } {
+    if (budget.routed++ >= budget.tries) return { stop: true };
+    const shore = this.islandOf(near.x, near.y);
+    const approach = this.arterialApproach(near, far, shore);
+    // A near shore the network cannot be reached from is the other shore's
+    // to try, in the round that has another shore left to try.
+    if (approach === undefined && budget.routed === 1 && !patient) return { stop: true };
+    return { approach: approach ?? this.lastApproach(near, far, shore, patient), stop: false };
+  }
+
+  /**
+   * An arterial way on to the network for a bridge head, running from the
+   * network to the head. The approach carries on from the deck, so it is
+   * looked for first among the routes that do not turn back under it.
+   */
+  private arterialApproach(near: Point, far: Point, shore: number): Point[] | undefined {
+    const route = this.routeToNetwork(near, shore, 'arterial', ARTERIAL, undefined, false, [far, near]) ?? this.routeToNetwork(near, shore);
+    route?.reverse();
+    return route;
+  }
+
+  /**
+   * Where every arterial way on is spent, the patient round lays a street
+   * instead, and last an arterial laid out from the network. An island that
+   * carries a district has to have a road.
+   */
+  private lastApproach(near: Point, far: Point, shore: number, patient: boolean): Point[] | undefined {
+    if (!patient) return undefined;
+    const climbed = this.streetApproach(near, far, shore);
+    if (climbed === undefined && this.lastPass) return this.outbound(near, shore, [far, near]);
+    return climbed;
+  }
+
+  /** Lay the link from an approach over the bridge to the far head and on to the island. True where it was laid. */
+  private layLink(island: number, near: Point, far: Point, approach: Point[]): boolean {
+    if (selfOverlap([...approach, far], 'arterial') !== undefined) return false;
+    const landing = this.landOnIsland(far, island, [near, far]);
+    // The span is a deck because it stands over water. Where the two heads
+    // end up on dry, gentle ground the whole way between them — a strait that
+    // runs dry at its narrowest — the link is a road on the ground, and the
+    // structures it does need are found with the rest (issue #371).
+    const span = this.probe(near.x, near.y, far.x, far.y);
+    const onGround = span.dry && span.grade <= ARTERIAL.maxGrade;
+    // A deck over water is lifted clear of the sea and ramps down each side
+    // on line the road already has (`water-lift.ts`). A head on the network,
+    // or at the end of the link, is a point no ramp may raise, so the dry
+    // ground between each head and the water is given points of its own, and
+    // a link that ends at its far head runs on past it (issue #676, D1).
+    const shore = onGround ? {} : this.waterline(near, far);
+    const tail = landing.length > 1 || onGround ? landing : this.runOn(near, far);
+    const deck = [...(shore.leave === undefined ? [] : [shore.leave]), ...(shore.meet === undefined ? [] : [shore.meet])];
+    const points = [...approach, ...deck, ...tail];
+    const bridges = onGround ? [] : [approach.length - 1 + (shore.leave === undefined ? 0 : 1)];
+    if (!this.structuresAtSlots(points, bridges)) return false;
+    // A link cut short of its deck reaches no island, so it is laid whole or not at all.
+    return this.addCurve('arterial', points, bridges, [], true) !== undefined;
   }
 
   /**
@@ -265,18 +310,28 @@ export abstract class IslandLinkTrace extends HighwayTrace {
       if (tried.includes(hit.curve) || this.islandOf(hit.x, hit.y) !== shore) continue;
       if (this.network.refuses(hit.x, hit.y, 'arterial')) continue;
       tried.push(hit.curve);
-      const major = this.field.majorAt(hit.x, hit.y);
-      for (let quarter = 0; quarter < 4; quarter++) {
-        const first = this.firstStep(hit, major + (quarter * Math.PI) / 2);
-        if (first === undefined) continue;
-        const opt = { params: ARTERIAL, joiner: 'arterial' as const, target: near, heading: first.heading, mergeAfter: Infinity, parentCurve: hit.curve, before: [hit, first.at], junction: hit };
-        const line = [hit, ...this.trace(first.at, opt).points];
-        if (line.length < 3) continue;
-        const route = this.routeToLine(near, line, deck);
-        if (route === undefined) continue;
-        const out = [...line.slice(0, route.join), ...route.points.reverse()];
-        if (selfOverlap([...out, ...deck.slice(1)], 'arterial') === undefined) return out;
-      }
+      const out = this.outboundFrom(hit, near, deck);
+      if (out !== undefined) return out;
+    }
+    return undefined;
+  }
+
+  /** A way on for a bridge head laid out from one road point, over the four headings of the field there. */
+  private outboundFrom(hit: NetworkHit, near: Point, deck: readonly Point[]): Point[] | undefined {
+    const major = this.field.majorAt(hit.x, hit.y);
+    for (let quarter = 0; quarter < 4; quarter++) {
+      const first = this.firstStep(hit, major + (quarter * Math.PI) / 2);
+      if (first === undefined) continue;
+      const opt = { params: ARTERIAL, joiner: 'arterial' as const, target: near, heading: first.heading, mergeAfter: Infinity, parentCurve: hit.curve, before: [hit, first.at], junction: hit };
+      const line = [hit, ...this.trace(first.at, opt).points];
+      if (line.length < 3) continue;
+      const route = this.routeToLine(near, line, deck);
+      if (route === undefined) continue;
+      // The route runs from the head; the way on runs from the network.
+      const back = route.points;
+      back.reverse();
+      const out = [...line.slice(0, route.join), ...back];
+      if (selfOverlap([...out, ...deck.slice(1)], 'arterial') === undefined) return out;
     }
     return undefined;
   }

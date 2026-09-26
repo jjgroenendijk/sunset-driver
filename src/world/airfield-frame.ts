@@ -127,17 +127,25 @@ export function runwayStart(fields: readonly Airfield[], x: number, y: number): 
   let best: { x: number; y: number; heading: number } | undefined;
   let bestDistance = Infinity;
   for (const field of fields) {
-    for (const part of field.parts) {
-      if (part.kind !== 'runway') continue;
-      for (const end of [-1, 1]) {
-        const at = fromLocal(field, part.u + end * (part.halfU - LINE_UP), part.v);
-        const distance = (at.x - x) ** 2 + (at.y - y) ** 2;
-        if (distance >= bestDistance) continue;
-        bestDistance = distance;
-        // Lined up to roll toward the other end.
-        best = { x: at.x, y: at.y, heading: end < 0 ? field.heading : field.heading + Math.PI };
-      }
+    for (const at of runwayEnds(field)) {
+      const distance = (at.x - x) ** 2 + (at.y - y) ** 2;
+      if (distance >= bestDistance) continue;
+      bestDistance = distance;
+      best = at;
     }
   }
   return best;
+}
+
+/** Both ends of every runway of one field, in order, each lined up to roll toward the other end. */
+function runwayEnds(field: Airfield): { x: number; y: number; heading: number }[] {
+  const ends: { x: number; y: number; heading: number }[] = [];
+  for (const part of field.parts) {
+    if (part.kind !== 'runway') continue;
+    for (const end of [-1, 1]) {
+      const at = fromLocal(field, part.u + end * (part.halfU - LINE_UP), part.v);
+      ends.push({ x: at.x, y: at.y, heading: end < 0 ? field.heading : field.heading + Math.PI });
+    }
+  }
+  return ends;
 }

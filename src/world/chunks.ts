@@ -476,8 +476,7 @@ function maskOf(indices: readonly number[], length: number): Uint8Array {
  * road laid on a boundary is cut into one chunk rather than into both.
  */
 function clipSegment(a: Point, b: Point, box: ChunkBounds): { t0: number; t1: number } | undefined {
-  let t0 = 0;
-  let t1 = 1;
+  const range = { t0: 0, t1: 1 };
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   /** Each edge as the rate the segment approaches it, how far it starts inside it, and whether it is a far edge. */
@@ -488,21 +487,29 @@ function clipSegment(a: Point, b: Point, box: ChunkBounds): { t0: number; t1: nu
     [dy, box.maxY - a.y, true],
   ];
   for (const [denominator, distance, far] of edges) {
-    if (denominator === 0) {
-      // Parallel to this edge: either wholly on the inside of it or wholly out.
-      if (distance < 0 || (far && distance === 0)) return undefined;
-      continue;
-    }
-    const t = distance / denominator;
-    if (denominator < 0) {
-      if (t > t1) return undefined;
-      if (t > t0) t0 = t;
-    } else {
-      if (t < t0) return undefined;
-      if (t < t1) t1 = t;
-    }
+    if (!clipToEdge(range, denominator, distance, far)) return undefined;
   }
-  return { t0, t1 };
+  return range;
+}
+
+/**
+ * Narrow the stretch of a segment inside a box to one edge of the box, as
+ * {@link clipSegment} gives the edge. False when nothing of it is left.
+ */
+function clipToEdge(range: { t0: number; t1: number }, denominator: number, distance: number, far: boolean): boolean {
+  if (denominator === 0) {
+    // Parallel to this edge: either wholly on the inside of it or wholly out.
+    return !(distance < 0 || (far && distance === 0));
+  }
+  const t = distance / denominator;
+  if (denominator < 0) {
+    if (t > range.t1) return false;
+    if (t > range.t0) range.t0 = t;
+  } else {
+    if (t < range.t0) return false;
+    if (t < range.t1) range.t1 = t;
+  }
+  return true;
 }
 
 /** A point along a segment, on the millimetre grid the polygon arithmetic rounds to. */

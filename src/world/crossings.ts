@@ -89,40 +89,51 @@ function findCrossings(hf: Heightfield, layout: TerrainLayout, noise: CoastNoise
   const graded = new GradedLand(hf, layout.core, TIERS.arterial.maxGrade);
   for (let i = 0; i < islands.length; i++) {
     for (let j = i + 1; j < islands.length; j++) {
-      const a = islands[i] as Island;
-      const b = islands[j] as Island;
-      const pairs: { from: Site; to: Site; d: number }[] = [];
-      for (const from of a.cells ?? [a]) {
-        for (const to of b.cells ?? [b]) pairs.push({ from, to, d: hypot(to.x - from.x, to.y - from.y) });
-      }
-      // A pair whose line crosses outside the map searches the sea margin, where no shore stands.
-      const half = layout.size / 2 - layout.seaMargin;
-      pairs.sort((p, q) => p.d - q.d);
-      for (let k = pairs.length - 1; k >= 0; k--) {
-        const pair = pairs[k] as { from: Site; to: Site };
-        const mx = (pair.from.x + pair.to.x) / 2;
-        const my = (pair.from.y + pair.to.y) / 2;
-        if (Math.abs(mx) >= half || Math.abs(my) >= half) pairs.splice(k, 1);
-      }
-      let best: Found | undefined;
-      for (const pair of pairs.slice(0, CELL_PAIRS)) {
-        const found = searchLine(hf, layout, noise, graded, i, j, pair.from, pair.to);
-        if (found === undefined) continue;
-        if (best === undefined || beats(found, best, worth)) best = found;
-      }
-      if (best === undefined) continue;
-      const { from, to } = best;
-      // The islands the chord reached, not the pair it was searched for: where
-      // no chord joins that pair, the best one found still links the two shores
-      // it does stand on, and a crossing must name them. One that came back to
-      // a single island bridges nothing and is dropped.
-      const fromIsland = landIdAt(layout, noise, from);
-      const toIsland = landIdAt(layout, noise, to);
-      if (fromIsland === toIsland) continue;
-      out.push({ fromIsland, toIsland, from, to });
+      const crossing = crossingBetween(hf, layout, noise, graded, i, j);
+      if (crossing !== undefined) out.push(crossing);
     }
   }
   return out;
+}
+
+/** The crossing between islands `i` and `j`, or undefined where no chord bridges two islands. */
+function crossingBetween(hf: Heightfield, layout: TerrainLayout, noise: CoastNoise, graded: GradedLand, i: number, j: number): Crossing | undefined {
+  let best: Found | undefined;
+  for (const pair of cellPairs(layout, i, j).slice(0, CELL_PAIRS)) {
+    const found = searchLine(hf, layout, noise, graded, i, j, pair.from, pair.to);
+    if (found === undefined) continue;
+    if (best === undefined || beats(found, best, worth)) best = found;
+  }
+  if (best === undefined) return undefined;
+  const { from, to } = best;
+  // The islands the chord reached, not the pair it was searched for: where
+  // no chord joins that pair, the best one found still links the two shores
+  // it does stand on, and a crossing must name them. One that came back to
+  // a single island bridges nothing and is dropped.
+  const fromIsland = landIdAt(layout, noise, from);
+  const toIsland = landIdAt(layout, noise, to);
+  if (fromIsland === toIsland) return undefined;
+  return { fromIsland, toIsland, from, to };
+}
+
+/** Every pair of a cell of island `i` and a cell of island `j`, nearest first, that the search may run between. */
+function cellPairs(layout: TerrainLayout, i: number, j: number): { from: Site; to: Site; d: number }[] {
+  const a = layout.islands[i] as Island;
+  const b = layout.islands[j] as Island;
+  const pairs: { from: Site; to: Site; d: number }[] = [];
+  for (const from of a.cells ?? [a]) {
+    for (const to of b.cells ?? [b]) pairs.push({ from, to, d: hypot(to.x - from.x, to.y - from.y) });
+  }
+  // A pair whose line crosses outside the map searches the sea margin, where no shore stands.
+  const half = layout.size / 2 - layout.seaMargin;
+  pairs.sort((p, q) => p.d - q.d);
+  for (let k = pairs.length - 1; k >= 0; k--) {
+    const pair = pairs[k] as { from: Site; to: Site };
+    const mx = (pair.from.x + pair.to.x) / 2;
+    const my = (pair.from.y + pair.to.y) / 2;
+    if (Math.abs(mx) >= half || Math.abs(my) >= half) pairs.splice(k, 1);
+  }
+  return pairs;
 }
 
 /** The best chord across the water between islands `i` and `j`, searched along the line from one site to the other. */
@@ -147,46 +158,16 @@ function searchLine(
   // Sample ownership and wetness along the line; the strait is the wet run around the ownership flip.
   const step = hf.cellSize / 2;
   const count = Math.floor(len / step);
-  let flip = -1;
-  const wet: boolean[] = [];
-  for (let k = 0; k <= count; k++) {
-    const x = start.x + ux * k * step;
-    const y = start.y + uy * k * step;
-    const owner = islandIndexAt(islands, x, y);
-    if (owner !== i && owner !== j) return undefined;
-    if (owner === j && flip < 0) flip = k;
-    wet.push(hf.sample(x, y) < SEA_LEVEL);
-  }
-  if (flip < 0) return undefined;
-  let lo = flip;
-  let hi = flip;
-  if (!wet[flip]) {
-    // The flip landed on land (a wandering shore); find the nearest wet sample.
-    let found = -1;
-    for (let d = 1; d < count && found < 0; d++) {
-      if (wet[flip - d]) found = flip - d;
-      else if (wet[flip + d]) found = flip + d;
-    }
-    if (found < 0) return undefined;
-    lo = hi = found;
-  }
-  while (lo > 0 && wet[lo - 1]) lo--;
-  while (hi < count && wet[hi + 1]) hi++;
-  if (lo === 0 || hi === count) return undefined;
+  const sampled = sampleLine(hf, islands, i, j, start, ux, uy, step, count);
+  if (sampled === undefined) return undefined;
+  const run = wetRun(sampled.wet, sampled.flip, count);
+  if (run === undefined) return undefined;
   // Slide along the strait (perpendicular to the site line) looking for its narrowest point.
-  const mid = (lo + hi) / 2;
+  const mid = (run.lo + run.hi) / 2;
   const mx = start.x + ux * mid * step;
   const my = start.y + uy * mid * step;
   const reaches = (chord: { from: Point; to: Point }): boolean => joins(layout, noise, a, b, chord);
-  // A chord with an end in the water found no shore to land on.
-  const landed = (chord: { from: Point; to: Point }): boolean =>
-    hf.sample(chord.from.x, chord.from.y) >= SEA_LEVEL && hf.sample(chord.to.x, chord.to.y) >= SEA_LEVEL;
-  const found = (chord: { from: Point; to: Point }): Found | undefined => {
-    if (!landed(chord)) return undefined;
-    const span = hypot(chord.to.x - chord.from.x, chord.to.y - chord.from.y);
-    const short = span < layout.size * GRADED_SPAN;
-    return { from: chord.from, to: chord.to, span, straddles: reaches(chord), graded: short && (graded.near(chord.from) || graded.near(chord.to)) };
-  };
+  const found = (chord: { from: Point; to: Point }): Found | undefined => foundChord(hf, layout, graded, reaches, chord);
   const spanOf = (f: Found): number => f.span;
   let best = found(narrowestChord(hf, mx, my, ux, uy, reaches));
   for (const sign of [-1, 1]) {
@@ -203,6 +184,79 @@ function searchLine(
     }
   }
   return best;
+}
+
+/**
+ * Wetness at every sample along a line of search, and the first sample on
+ * island `j`. Undefined where the line leaves the two islands or never
+ * reaches `j`.
+ */
+function sampleLine(
+  hf: Heightfield,
+  islands: readonly Island[],
+  i: number,
+  j: number,
+  start: Point,
+  ux: number,
+  uy: number,
+  step: number,
+  count: number,
+): { wet: boolean[]; flip: number } | undefined {
+  let flip = -1;
+  const wet: boolean[] = [];
+  for (let k = 0; k <= count; k++) {
+    const x = start.x + ux * k * step;
+    const y = start.y + uy * k * step;
+    const owner = islandIndexAt(islands, x, y);
+    if (owner !== i && owner !== j) return undefined;
+    if (owner === j && flip < 0) flip = k;
+    wet.push(hf.sample(x, y) < SEA_LEVEL);
+  }
+  return flip < 0 ? undefined : { wet, flip };
+}
+
+/**
+ * The run of wet samples around the ownership flip: the strait. Undefined
+ * where no wet sample is near, or the run reaches an end of the line.
+ */
+function wetRun(wet: readonly boolean[], flip: number, count: number): { lo: number; hi: number } | undefined {
+  let lo = flip;
+  let hi = flip;
+  if (!wet[flip]) {
+    // The flip landed on land (a wandering shore); find the nearest wet sample.
+    const found = nearestWet(wet, flip, count);
+    if (found < 0) return undefined;
+    lo = found;
+    hi = found;
+  }
+  while (lo > 0 && wet[lo - 1]) lo--;
+  while (hi < count && wet[hi + 1]) hi++;
+  if (lo === 0 || hi === count) return undefined;
+  return { lo, hi };
+}
+
+/** The wet sample nearest a dry one, the one before it first on a tie; -1 where none is. */
+function nearestWet(wet: readonly boolean[], flip: number, count: number): number {
+  for (let d = 1; d < count; d++) {
+    if (wet[flip - d]) return flip - d;
+    if (wet[flip + d]) return flip + d;
+  }
+  return -1;
+}
+
+/** A chord ranked, or undefined where an end of it is in the water and found no shore to land on. */
+function foundChord(
+  hf: Heightfield,
+  layout: TerrainLayout,
+  graded: GradedLand,
+  reaches: (chord: { from: Point; to: Point }) => boolean,
+  chord: { from: Point; to: Point },
+): Found | undefined {
+  const landed = hf.sample(chord.from.x, chord.from.y) >= SEA_LEVEL && hf.sample(chord.to.x, chord.to.y) >= SEA_LEVEL;
+  if (!landed) return undefined;
+  const span = hypot(chord.to.x - chord.from.x, chord.to.y - chord.from.y);
+  const short = span < layout.size * GRADED_SPAN;
+  return { from: chord.from, to: chord.to, span, straddles: reaches(chord), graded: short && (graded.near(chord.from) || graded.near(chord.to)) };
 }
 
 /**

@@ -185,22 +185,7 @@ function nudged(ray: Ray, hand: number): Ray {
  */
 function outline(node: Point, all: readonly Edge[]): JunctionVertex[] {
   const edges = new AngularIndex(node, all);
-  const rays: Ray[] = [];
-  for (const edge of all) {
-    for (const v of [edge.a, edge.b]) {
-      const dx = v.x - node.x;
-      const dy = v.y - node.y;
-      if (dx * dx + dy * dy > SAME_VERTEX * SAME_VERTEX) rays.push(rayOf(dx, dy));
-    }
-  }
-  rays.sort((m, n) => m.turn - n.turn);
-  // Two vertices in one direction are one ray.
-  const unique = rays.filter((r, i) => {
-    const q = rays[i - 1];
-    if (q === undefined) return true;
-    const scale = Math.sqrt((r.dx * r.dx + r.dy * r.dy) * (q.dx * q.dx + q.dy * q.dy));
-    return Math.abs(r.dx * q.dy - r.dy * q.dx) > NUDGE * scale || r.dx * q.dx + r.dy * q.dy < 0;
-  });
+  const unique = vertexRays(node, all);
   const out: JunctionVertex[] = [];
   const push = (v: JunctionVertex | undefined): void => {
     if (v === undefined) return;
@@ -227,6 +212,25 @@ function outline(node: Point, all: readonly Edge[]): JunctionVertex[] {
   const last = out[out.length - 1];
   if (first !== undefined && last !== undefined && out.length > 1 && (first.x - last.x) ** 2 + (first.y - last.y) ** 2 <= SAME_VERTEX * SAME_VERTEX) out.pop();
   return out;
+}
+
+/** A ray from the node through every vertex of the pieces, in order of turn, two vertices in one direction being one ray. */
+function vertexRays(node: Point, all: readonly Edge[]): Ray[] {
+  const rays: Ray[] = [];
+  for (const edge of all) {
+    for (const v of [edge.a, edge.b]) {
+      const dx = v.x - node.x;
+      const dy = v.y - node.y;
+      if (dx * dx + dy * dy > SAME_VERTEX * SAME_VERTEX) rays.push(rayOf(dx, dy));
+    }
+  }
+  rays.sort((m, n) => m.turn - n.turn);
+  return rays.filter((r, i) => {
+    const q = rays[i - 1];
+    if (q === undefined) return true;
+    const scale = Math.sqrt((r.dx * r.dx + r.dy * r.dy) * (q.dx * q.dx + q.dy * q.dy));
+    return Math.abs(r.dx * q.dy - r.dy * q.dx) > NUDGE * scale || r.dx * q.dx + r.dy * q.dy < 0;
+  });
 }
 
 /** How many times the stretch between two rays is split while the outside edge keeps changing. */

@@ -157,7 +157,8 @@ export function buildJunctions(roads: readonly RoadCurve[], graph: RoadGraph): J
       (gaps[mouth.curve] as RoadGap[]).push(gapOf(road, along, mouth));
     }
   }
-  for (const list of gaps) if (list !== undefined) mergeGaps(list);
+  // Filed by curve id, so a gap in the ids is a hole in the array, which forEach skips.
+  gaps.forEach((list) => mergeGaps(list));
   return { junctions, gaps };
 }
 

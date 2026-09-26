@@ -81,6 +81,16 @@ const SADDLE_10_JOINED: readonly Side[] = [LEFT, BOTTOM, RIGHT, TOP];
 const SADDLE_10_SPLIT: readonly Side[] = [RIGHT, BOTTOM, LEFT, TOP];
 
 /**
+ * The pieces of a saddle cell, pattern 5 or 10. The middle of the cell
+ * decides whether the land runs through it or the water does, so the two
+ * pieces never cross each other.
+ */
+function saddleSides(pattern: number, middleDry: boolean): readonly Side[] {
+  if (pattern === 5) return middleDry ? SADDLE_5_JOINED : SADDLE_5_SPLIT;
+  return middleDry ? SADDLE_10_JOINED : SADDLE_10_SPLIT;
+}
+
+/**
  * The dry land of a heightfield as regions, with the ponds in it as holes.
  * `level` is the height the water stands at.
  */
@@ -174,14 +184,7 @@ class Trace {
     const pattern =
       (h00 >= level ? 1 : 0) | (h10 >= level ? 2 : 0) | (h11 >= level ? 4 : 0) | (h01 >= level ? 8 : 0);
     if (pattern === 0 || pattern === 15) return;
-    let sides = PIECES[pattern] as readonly Side[];
-    if (pattern === 5 || pattern === 10) {
-      // A saddle: the middle of the cell decides whether the land runs through
-      // it or the water does, so the two pieces never cross each other.
-      const middle = (h00 + h10 + h11 + h01) / 4 >= level;
-      if (pattern === 5) sides = middle ? SADDLE_5_JOINED : SADDLE_5_SPLIT;
-      else sides = middle ? SADDLE_10_JOINED : SADDLE_10_SPLIT;
-    }
+    const sides = pattern === 5 || pattern === 10 ? saddleSides(pattern, (h00 + h10 + h11 + h01) / 4 >= level) : (PIECES[pattern] as readonly Side[]);
     for (let i = 0; i + 1 < sides.length; i += 2) {
       this.piece(ix, iy, sides[i] as Side, sides[i + 1] as Side);
     }

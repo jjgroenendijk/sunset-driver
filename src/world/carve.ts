@@ -36,6 +36,7 @@
 import { hypot } from '../core/libm.ts';
 import { clamp, lerp, smoothstep } from '../core/math.ts';
 import { planeHeight, RoadBeds, surfaceHeight, type JunctionPlane, type Knot } from './bed.ts';
+import { ClaimTally } from './carve-claim.ts';
 import { Heightfield } from './heightfield.ts';
 import { JunctionCover } from './junction-cover.ts';
 import { junctionShape } from './junction-shape.ts';
@@ -103,6 +104,28 @@ const CROWDED_BY = 0.05;
  */
 export function benchHalfWidth(tier: RoadTier): number {
   return Math.max(footprintHalfWidth(tier), MIN_BENCH) + BENCH_MARGIN;
+}
+
+/**
+ * The stretch filed before the next one on the same curve, where it ended and
+ * which way it ran, so two stretches that meet at a knot are capped against
+ * each other and the ground between them is carved once. `at` is -1 before
+ * the first stretch.
+ */
+interface LastStretch {
+  at: number;
+  segment: number;
+  end: number;
+  ux: number;
+  uy: number;
+}
+
+/** One per segment of a road: 1 where it stands on the ground, 0 where it is on a deck or in a bore. */
+function standingSegments(road: RoadCurve, segments: number): Uint8Array {
+  const standing = new Uint8Array(segments).fill(1);
+  for (const i of road.bridges) if (i >= 0 && i < segments) standing[i] = 0;
+  for (const i of road.tunnels) if (i >= 0 && i < segments) standing[i] = 0;
+  return standing;
 }
 
 /**
@@ -193,6 +216,8 @@ export class RoadCarve {
   private crowded = false;
   /** True where the last place asked is on a bench or a junction's cover: ground a surface is drawn over. */
   private benched = false;
+  /** The claimants of the last place asked, kept so asking allocates nothing. */
+  private readonly tally = new ClaimTally();
 
   constructor(terrain: HeightfieldData, roads: readonly RoadCurve[], junctions?: JunctionMap) {
     const hf = new Heightfield(terrain);
@@ -208,101 +233,107 @@ export class RoadCarve {
       this.buckets.push([]);
       this.junctionBuckets.push([]);
     }
-    if (junctions !== undefined) {
-      const ribbons = this.ribbons;
-      for (let j = 0; j < junctions.junctions.length; j++) {
-        const junction = junctions.junctions[j] as JunctionMap['junctions'][number];
-        const plane = beds.planes[j] as JunctionPlane;
-        const mouth = junction.mouths[0];
-        if (mouth === undefined || junction.outline.length < 3) continue;
-        const at = this.junctions.length;
-        const cover = new JunctionCover(junction.outline, junction, junctionShape(junction, ribbons));
-        this.junctions.push({ cover, plane, curve: mouth.curve, claimed: footprintHalfWidth(junction.tier) });
-        this.fileJunction(at, cover.minX, cover.minY, cover.maxX, cover.maxY, BENCH_MARGIN + CARVE_BLEND);
-      }
-    }
+    if (junctions !== undefined) this.fileJunctions(beds, junctions);
+    for (const road of roads) this.fileRoad(beds, road);
+  }
 
-    for (const road of roads) {
-      const halfWidth = benchHalfWidth(road.tier);
-      const claimed = footprintHalfWidth(road.tier);
-      const reach = halfWidth + CARVE_BLEND;
-      const segments = Math.max(0, road.points.length - 1);
-      const standing = new Uint8Array(segments).fill(1);
-      for (const i of road.bridges) if (i >= 0 && i < segments) standing[i] = 0;
-      for (const i of road.tunnels) if (i >= 0 && i < segments) standing[i] = 0;
-      // The stretch filed before this one on the same curve, where it ended and
-      // which way it ran, so two stretches that meet at a knot are capped
-      // against each other and the ground between them is carved once.
-      let lastAt = -1;
-      let lastSegment = -1;
-      let lastEnd = 0;
-      let lastUx = 0;
-      let lastUy = 0;
-      for (let i = 0; i < segments; i++) {
-        if (standing[i] === 0) continue;
-        const a = road.points[i] as Point;
-        const b = road.points[i + 1] as Point;
-        // A curve that stands still carves nothing the segments beside it do not.
-        if (a.x === b.x && a.y === b.y) continue;
-        // The bed is straight between the knots of the segment, so each stretch
-        // between two knots is filed on its own with its own rise.
-        const knots = beds.knotsOf(road.id, i);
-        for (let k = 0; k + 1 < knots.length; k++) {
-          const from = knots[k] as Knot;
-          const to = knots[k + 1] as Knot;
-          if (to.t <= from.t) continue;
-          const ax = a.x + (b.x - a.x) * from.t;
-          const ay = a.y + (b.y - a.y) * from.t;
-          const dx = (b.x - a.x) * (to.t - from.t);
-          const dy = (b.y - a.y) * (to.t - from.t);
-          const squared = dx * dx + dy * dy;
-          if (squared === 0) continue;
-          const at = this.ax.length;
-          this.ax.push(ax);
-          this.ay.push(ay);
-          this.vx.push(dx);
-          this.vy.push(dy);
-          this.inv.push(1 / squared);
-          this.h0.push(from.h);
-          this.rise.push(to.h - from.h);
-          this.gx0.push(from.gx);
-          this.gy0.push(from.gy);
-          this.dgx.push(to.gx - from.gx);
-          this.dgy.push(to.gy - from.gy);
-          this.half.push(halfWidth);
-          this.claimed.push(claimed);
-          this.reach.push(reach);
-          this.curve.push(road.id);
-          this.tier.push(road.tier);
-          this.before.push(k === 0 && standing[i - 1] !== 1 ? -Infinity : 0);
-          this.after.push(k === knots.length - 2 && standing[i + 1] !== 1 ? Infinity : 1);
-          this.nx0.push(0);
-          this.ny0.push(0);
-          this.nx1.push(0);
-          this.ny1.push(0);
-          const length = hypot(dx, dy);
-          const ux = dx / length;
-          const uy = dy / length;
-          // The stretch before this one ends where this one starts: in the same
-          // segment at the same knot, or at the point two segments share.
-          const meets =
-            lastAt >= 0 &&
-            ((lastSegment === i && lastEnd === from.t) || (lastSegment === i - 1 && lastEnd === 1 && from.t === 0));
-          if (meets) {
-            this.nx0[at] = lastUx + ux;
-            this.ny0[at] = lastUy + uy;
-            this.nx1[lastAt] = -(lastUx + ux);
-            this.ny1[lastAt] = -(lastUy + uy);
-          }
-          lastAt = at;
-          lastSegment = i;
-          lastEnd = to.t;
-          lastUx = ux;
-          lastUy = uy;
-          this.file(at, Math.min(ax, ax + dx), Math.min(ay, ay + dy), Math.max(ax, ax + dx), Math.max(ay, ay + dy), reach);
-        }
+  /** File every junction with a mouth and an outline, each levelled to its plane. */
+  private fileJunctions(beds: RoadBeds, junctions: JunctionMap): void {
+    const ribbons = this.ribbons;
+    for (let j = 0; j < junctions.junctions.length; j++) {
+      const junction = junctions.junctions[j] as JunctionMap['junctions'][number];
+      const plane = beds.planes[j] as JunctionPlane;
+      const mouth = junction.mouths[0];
+      if (mouth === undefined || junction.outline.length < 3) continue;
+      const at = this.junctions.length;
+      const cover = new JunctionCover(junction.outline, junction, junctionShape(junction, ribbons));
+      this.junctions.push({ cover, plane, curve: mouth.curve, claimed: footprintHalfWidth(junction.tier) });
+      this.fileJunction(at, cover.minX, cover.minY, cover.maxX, cover.maxY, BENCH_MARGIN + CARVE_BLEND);
+    }
+  }
+
+  /** File every stretch of one road that stands on the ground, between each two knots of its bed. */
+  private fileRoad(beds: RoadBeds, road: RoadCurve): void {
+    const segments = Math.max(0, road.points.length - 1);
+    const standing = standingSegments(road, segments);
+    const last: LastStretch = { at: -1, segment: -1, end: 0, ux: 0, uy: 0 };
+    for (let i = 0; i < segments; i++) {
+      if (standing[i] === 0) continue;
+      const a = road.points[i] as Point;
+      const b = road.points[i + 1] as Point;
+      // A curve that stands still carves nothing the segments beside it do not.
+      if (a.x === b.x && a.y === b.y) continue;
+      // The bed is straight between the knots of the segment, so each stretch
+      // between two knots is filed on its own with its own rise.
+      const knots = beds.knotsOf(road.id, i);
+      const openBefore = standing[i - 1] !== 1;
+      const openAfter = standing[i + 1] !== 1;
+      for (let k = 0; k + 1 < knots.length; k++) {
+        const ends = { before: k === 0 && openBefore, after: k === knots.length - 2 && openAfter };
+        this.fileStretch(road, i, a, b, knots[k] as Knot, knots[k + 1] as Knot, ends, last);
       }
     }
+  }
+
+  /**
+   * File the stretch of a segment between two knots. `ends` says where the
+   * road leaves the ground past either end, and `last` is the stretch filed
+   * before it on the same curve, which this one is capped against where they
+   * meet and which it then replaces.
+   */
+  private fileStretch(road: RoadCurve, i: number, a: Point, b: Point, from: Knot, to: Knot, ends: { before: boolean; after: boolean }, last: LastStretch): void {
+    if (to.t <= from.t) return;
+    const halfWidth = benchHalfWidth(road.tier);
+    const reach = halfWidth + CARVE_BLEND;
+    const ax = a.x + (b.x - a.x) * from.t;
+    const ay = a.y + (b.y - a.y) * from.t;
+    const dx = (b.x - a.x) * (to.t - from.t);
+    const dy = (b.y - a.y) * (to.t - from.t);
+    const squared = dx * dx + dy * dy;
+    if (squared === 0) return;
+    const at = this.ax.length;
+    this.ax.push(ax);
+    this.ay.push(ay);
+    this.vx.push(dx);
+    this.vy.push(dy);
+    this.inv.push(1 / squared);
+    this.h0.push(from.h);
+    this.rise.push(to.h - from.h);
+    this.gx0.push(from.gx);
+    this.gy0.push(from.gy);
+    this.dgx.push(to.gx - from.gx);
+    this.dgy.push(to.gy - from.gy);
+    this.half.push(halfWidth);
+    this.claimed.push(footprintHalfWidth(road.tier));
+    this.reach.push(reach);
+    this.curve.push(road.id);
+    this.tier.push(road.tier);
+    this.before.push(ends.before ? -Infinity : 0);
+    this.after.push(ends.after ? Infinity : 1);
+    this.nx0.push(0);
+    this.ny0.push(0);
+    this.nx1.push(0);
+    this.ny1.push(0);
+    const length = hypot(dx, dy);
+    const ux = dx / length;
+    const uy = dy / length;
+    // The stretch before this one ends where this one starts: in the same
+    // segment at the same knot, or at the point two segments share.
+    const meets =
+      last.at >= 0 &&
+      ((last.segment === i && last.end === from.t) || (last.segment === i - 1 && last.end === 1 && from.t === 0));
+    if (meets) {
+      this.nx0[at] = last.ux + ux;
+      this.ny0[at] = last.uy + uy;
+      this.nx1[last.at] = -(last.ux + ux);
+      this.ny1[last.at] = -(last.uy + uy);
+    }
+    last.at = at;
+    last.segment = i;
+    last.end = to.t;
+    last.ux = ux;
+    last.uy = uy;
+    this.file(at, Math.min(ax, ax + dx), Math.min(ay, ay + dy), Math.max(ax, ax + dx), Math.max(ay, ay + dy), reach);
   }
 
   /** How many road segments carve the ground. */
@@ -443,43 +474,20 @@ export class RoadCarve {
     const at = this.row(y) * this.columns + this.column(x);
     const bucket = this.buckets[at];
     if (bucket === undefined) return;
-    /** The highest and lowest bed the claims ask for, which say if they differ. */
-    let asked = Infinity;
-    let askedHigh = -Infinity;
-    let bestClaimed = 0;
-    let bestWeight = 0;
-    let bestDistance = Infinity;
-    let bestHeight = 0;
-    let bestRoad = -1;
-    /**
-     * Take a claimant where it beats the best so far. `claimed` is how wide the
-     * road that claims the place is, and zero where the place is outside the
-     * ground it claims. A claim always beats ground merely reached; between two
-     * claims the lower bed wins, then the wider road, then the nearer one.
-     */
-    const offer = (claimed: number, weight: number, distance: number, bed: number, road: number): void => {
-      if (claimed > 0) {
-        asked = Math.min(asked, bed);
-        askedHigh = Math.max(askedHigh, bed);
-      }
-      if (claimed > 0 || bestClaimed > 0) {
-        if (bestClaimed > 0 && claimed === 0) return;
-        if (
-          bestClaimed > 0 &&
-          (bed > bestHeight ||
-            (bed === bestHeight && (claimed < bestClaimed || (claimed === bestClaimed && distance >= bestDistance))))
-        ) {
-          return;
-        }
-      } else if (weight < bestWeight || (weight === bestWeight && distance >= bestDistance)) {
-        return;
-      }
-      bestClaimed = claimed;
-      bestWeight = weight;
-      bestDistance = distance;
-      bestHeight = bed;
-      bestRoad = road;
-    };
+    const tally = this.tally;
+    tally.reset();
+    this.claimJunctions(tally, x, y, at);
+    for (const i of bucket) this.claimStretch(tally, i, x, y);
+    const owned = tally.ownerRoad >= 0;
+    this.weight = owned ? 1 : tally.bestWeight;
+    this.height = owned ? tally.ownerHeight : tally.bestHeight;
+    this.road = owned ? tally.ownerRoad : tally.bestRoad;
+    this.crowded = tally.askedHigh - tally.asked > CROWDED_BY;
+    this.benched = owned || tally.bestClaimed > 0;
+  }
+
+  /** Offer every junction that reaches a place to the tally, and note the one whose cover holds it. */
+  private claimJunctions(tally: ClaimTally, x: number, y: number, at: number): void {
     // A place inside a junction's cover is the junction's, whatever else
     // reaches it: the whole cover stands on the one plane, which is what
     // leaves no crease under the surfaces laid over it (`bed.ts`). The scan
@@ -507,60 +515,53 @@ export class RoadCarve {
       }
       if (distance === 0) {
         inside = true;
-        asked = Math.min(asked, bed);
-        askedHigh = Math.max(askedHigh, bed);
+        tally.ask(bed);
         continue;
       }
-      offer(claims ? junction.claimed : 0, weight, distance, bed, junction.curve);
+      tally.offer(claims ? junction.claimed : 0, weight, distance, bed, junction.curve);
     }
-    const ownerHeight = inside ? lowestHeight : 0;
-    const ownerRoad = inside ? lowestRoad : -1;
-    for (const i of bucket) {
-      const reach = this.reach[i] as number;
-      const dx = x - (this.ax[i] as number);
-      const dy = y - (this.ay[i] as number);
-      const vx = this.vx[i] as number;
-      const vy = this.vy[i] as number;
-      const along = (dx * vx + dy * vy) * (this.inv[i] as number);
-      const t = clamp(along, 0, 1);
-      const offX = dx - vx * t;
-      const offY = dy - vy * t;
-      const distance = Math.sqrt(offX * offX + offY * offY);
-      if (distance >= reach) continue;
-      const half = this.half[i] as number;
-      const weight = distance <= half ? 1 : 1 - smoothstep(half, reach, distance);
-      // The bench stands on the road's surface carried out past its edge, so
-      // a bench inside a mouth tilts as the junction's plane does. A stretch
-      // the line at a knot has handed the place to carries its own grade on
-      // instead, which is the height its surface would be drawn at there.
-      const capped = this.capped(i, dx, dy, vx, vy);
-      const grade = capped ? along : clamp(along, this.before[i] as number, this.after[i] as number);
-      const bed = surfaceHeight(
-        (this.h0[i] as number) + (this.rise[i] as number) * grade,
-        (this.gx0[i] as number) + (this.dgx[i] as number) * t,
-        (this.gy0[i] as number) + (this.dgy[i] as number) * t,
-        dx - vx * grade,
-        dy - vy * grade,
-      );
-      // A capped stretch carves nothing, but the grid around the knot still
-      // holds its bed as well as its neighbour's, so it is a claimant for
-      // `crowdedAt` where the two ask for different heights.
-      if (capped) {
-        if (distance <= half) {
-          asked = Math.min(asked, bed);
-          askedHigh = Math.max(askedHigh, bed);
-        }
-        continue;
-      }
-      // The bench is the ground the road draws its surface on, plus the margin
-      // the grid needs around it, so that is the ground the road claims.
-      offer(distance <= half ? (this.claimed[i] as number) : 0, weight, distance, bed, this.curve[i] as number);
+    tally.ownerHeight = inside ? lowestHeight : 0;
+    tally.ownerRoad = inside ? lowestRoad : -1;
+  }
+
+  /** Offer one stretch of road to the tally where it reaches a place. */
+  private claimStretch(tally: ClaimTally, i: number, x: number, y: number): void {
+    const reach = this.reach[i] as number;
+    const dx = x - (this.ax[i] as number);
+    const dy = y - (this.ay[i] as number);
+    const vx = this.vx[i] as number;
+    const vy = this.vy[i] as number;
+    const along = (dx * vx + dy * vy) * (this.inv[i] as number);
+    const t = clamp(along, 0, 1);
+    const offX = dx - vx * t;
+    const offY = dy - vy * t;
+    const distance = Math.sqrt(offX * offX + offY * offY);
+    if (distance >= reach) return;
+    const half = this.half[i] as number;
+    const weight = distance <= half ? 1 : 1 - smoothstep(half, reach, distance);
+    // The bench stands on the road's surface carried out past its edge, so
+    // a bench inside a mouth tilts as the junction's plane does. A stretch
+    // the line at a knot has handed the place to carries its own grade on
+    // instead, which is the height its surface would be drawn at there.
+    const capped = this.capped(i, dx, dy, vx, vy);
+    const grade = capped ? along : clamp(along, this.before[i] as number, this.after[i] as number);
+    const bed = surfaceHeight(
+      (this.h0[i] as number) + (this.rise[i] as number) * grade,
+      (this.gx0[i] as number) + (this.dgx[i] as number) * t,
+      (this.gy0[i] as number) + (this.dgy[i] as number) * t,
+      dx - vx * grade,
+      dy - vy * grade,
+    );
+    // A capped stretch carves nothing, but the grid around the knot still
+    // holds its bed as well as its neighbour's, so it is a claimant for
+    // `crowdedAt` where the two ask for different heights.
+    if (capped) {
+      if (distance <= half) tally.ask(bed);
+      return;
     }
-    this.weight = ownerRoad >= 0 ? 1 : bestWeight;
-    this.height = ownerRoad >= 0 ? ownerHeight : bestHeight;
-    this.road = ownerRoad >= 0 ? ownerRoad : bestRoad;
-    this.crowded = askedHigh - asked > CROWDED_BY;
-    this.benched = ownerRoad >= 0 || bestClaimed > 0;
+    // The bench is the ground the road draws its surface on, plus the margin
+    // the grid needs around it, so that is the ground the road claims.
+    tally.offer(distance <= half ? (this.claimed[i] as number) : 0, weight, distance, bed, this.curve[i] as number);
   }
 
   /** File a segment in every bucket the ground it carves reaches into. */

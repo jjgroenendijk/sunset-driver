@@ -278,7 +278,10 @@ export class RoadBeds {
     let end = i;
     while (end >= 0 && end < road.points.length && along(end) < blendEnd) end += mouth.direction;
     const span = end >= 0 && end < road.points.length ? along(end) - mouth.cut : blendEnd - mouth.cut;
-    for (let k = i; k !== end; k += mouth.direction) {
+    // `end` lies `steps` points from `i` in the mouth's direction.
+    const steps = (end - i) * mouth.direction;
+    for (let s = 0; s < steps; s++) {
+      const k = i + s * mouth.direction;
       if (fixed[k] === 1) continue;
       const share = 1 - (along(k) - mouth.cut) / span;
       lay(k, (own[k] as number) + offset * share, share);

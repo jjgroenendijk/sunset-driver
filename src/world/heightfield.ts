@@ -1,5 +1,11 @@
 import type { HeightfieldData } from './types.ts';
 
+/** A grid index held to the grid: 0 to `n - 1`. */
+function clampIndex(i: number, n: number): number {
+  if (i < 0) return 0;
+  return i >= n ? n - 1 : i;
+}
+
 /** Bilinear sampling and slope over a square height grid. */
 export class Heightfield implements HeightfieldData {
   readonly gridSize: number;
@@ -28,9 +34,7 @@ export class Heightfield implements HeightfieldData {
 
   at(ix: number, iy: number): number {
     const n = this.gridSize;
-    const cx = ix < 0 ? 0 : ix >= n ? n - 1 : ix;
-    const cy = iy < 0 ? 0 : iy >= n ? n - 1 : iy;
-    return this.heights[cy * n + cx] as number;
+    return this.heights[clampIndex(iy, n) * n + clampIndex(ix, n)] as number;
   }
 
   set(ix: number, iy: number, h: number): void {

@@ -233,7 +233,8 @@ export class RoadGraph {
     const points = (this.curves[e.curve] as RoadCurve).points;
     const out: Point[] = [];
     const step = e.end >= e.start ? 1 : -1;
-    for (let i = e.start; i !== e.end + step; i += step) out.push(points[i] as Point);
+    const count = Math.abs(e.end - e.start) + 1;
+    for (let k = 0; k < count; k++) out.push(points[e.start + k * step] as Point);
     return out;
   }
 
@@ -318,19 +319,25 @@ export class RoadGraph {
       settled[at] = 1;
       const arrived = this.edges[at] as RoadEdge;
       if (arrived.to === to) return this.routeTo(from, at);
-      for (const e of (this.nodes[arrived.to] as RoadNode).edges) {
-        if (settled[e] === 1) continue;
-        const edge = this.edges[e] as RoadEdge;
-        if (allow !== undefined && !allow(edge)) continue;
-        if (!this.turnAllowed(at, e)) continue;
-        const through = (cost[at] as number) + edge.length / edge.speedLimit;
-        if (through >= (cost[e] as number)) continue;
-        cost[e] = through;
-        cameEdge[e] = at;
-        heap.push(e, through);
-      }
+      this.relax(heap, at, arrived, allow);
     }
     return undefined;
+  }
+
+  /** Offer every edge a car may leave on after edge `at`, where it is cheaper than the route found to it so far. */
+  private relax(heap: MinHeap, at: number, arrived: RoadEdge, allow: ((edge: RoadEdge) => boolean) | undefined): void {
+    const cost = this.cost;
+    for (const e of (this.nodes[arrived.to] as RoadNode).edges) {
+      if (this.settled[e] === 1) continue;
+      const edge = this.edges[e] as RoadEdge;
+      if (allow !== undefined && !allow(edge)) continue;
+      if (!this.turnAllowed(at, e)) continue;
+      const through = (cost[at] as number) + edge.length / edge.speedLimit;
+      if (through >= (cost[e] as number)) continue;
+      cost[e] = through;
+      this.cameEdge[e] = at;
+      heap.push(e, through);
+    }
   }
 
   /** Walk the search tree back from the last edge of the route and add up what the route costs. */
@@ -383,39 +390,46 @@ function build(roads: readonly RoadCurve[], nodes: RoadNode[], edges: RoadEdge[]
     nodes.push({ id, x: p.x, y: p.y, edges: [], runs: [] });
     return id;
   };
+  for (const road of roads) buildRuns(road, nodes, edges, nodeAt);
+}
 
-  for (const road of roads) {
-    const points = road.points;
-    const last = points.length - 1;
-    const deck = new Uint8Array(Math.max(0, last));
-    for (const at of road.bridges) if (at >= 0 && at < deck.length) deck[at] = 1;
-    const bore = new Uint8Array(Math.max(0, last));
-    for (const at of road.tunnels) if (at >= 0 && at < bore.length) bore[at] = 1;
+/** A mask of `length` segments, 1 at every index listed. */
+function segmentMask(indices: readonly number[], length: number): Uint8Array {
+  const mask = new Uint8Array(length);
+  for (const at of indices) if (at >= 0 && at < mask.length) mask[at] = 1;
+  return mask;
+}
 
-    let startIndex = 0;
-    let startNode = nodeAt(road, 0);
-    let length = 0;
-    let bridge = false;
-    let tunnel = false;
-    for (let i = 1; i <= last; i++) {
-      const a = points[i - 1] as Point;
-      const b = points[i] as Point;
-      length += hypot(b.x - a.x, b.y - a.y);
-      if (deck[i - 1] === 1) bridge = true;
-      if (bore[i - 1] === 1) tunnel = true;
-      if (i !== last && (road.nodes[i] ?? -1) < 0) continue;
-      const endNode = nodeAt(road, i);
-      // A run of no length is no road: two curves can share two points a
-      // rounding apart, and an edge between them would only confuse a route.
-      if (length > 0) {
-        addPair(edges, nodes, road, startIndex, i, startNode, endNode, length, bridge, tunnel);
-      }
-      startIndex = i;
-      startNode = endNode;
-      length = 0;
-      bridge = false;
-      tunnel = false;
+/** Cut one curve into runs between its nodes, and lay the edges of each run. */
+function buildRuns(road: RoadCurve, nodes: RoadNode[], edges: RoadEdge[], nodeAt: (road: RoadCurve, i: number) => number): void {
+  const points = road.points;
+  const last = points.length - 1;
+  const deck = segmentMask(road.bridges, Math.max(0, last));
+  const bore = segmentMask(road.tunnels, Math.max(0, last));
+
+  let startIndex = 0;
+  let startNode = nodeAt(road, 0);
+  let length = 0;
+  let bridge = false;
+  let tunnel = false;
+  for (let i = 1; i <= last; i++) {
+    const a = points[i - 1] as Point;
+    const b = points[i] as Point;
+    length += hypot(b.x - a.x, b.y - a.y);
+    if (deck[i - 1] === 1) bridge = true;
+    if (bore[i - 1] === 1) tunnel = true;
+    if (i !== last && (road.nodes[i] ?? -1) < 0) continue;
+    const endNode = nodeAt(road, i);
+    // A run of no length is no road: two curves can share two points a
+    // rounding apart, and an edge between them would only confuse a route.
+    if (length > 0) {
+      addPair(edges, nodes, road, startIndex, i, startNode, endNode, length, bridge, tunnel);
     }
+    startIndex = i;
+    startNode = endNode;
+    length = 0;
+    bridge = false;
+    tunnel = false;
   }
 }
 
@@ -468,7 +482,8 @@ function closestOnSegment(px: number, py: number, a: Point, b: Point): { x: numb
   const vy = b.y - a.y;
   const l2 = vx * vx + vy * vy;
   let t = l2 > 0 ? ((px - a.x) * vx + (py - a.y) * vy) / l2 : 0;
-  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
   const x = a.x + vx * t;
   const y = a.y + vy * t;
   return { x, y, d: hypot(px - x, py - y) };

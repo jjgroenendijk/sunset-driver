@@ -634,16 +634,7 @@ export class BeachGround {
 
   /** Fill every cell whose centre falls inside a small ring. */
   private paint(grid: Int16Array, ring: readonly WorldPoint[], id: number): void {
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const p of ring) {
-      if (p.x < minX) minX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y > maxY) maxY = p.y;
-    }
+    const { minX, minY, maxX, maxY } = ringBounds(ring);
     if (minX > maxX) return;
     const lo = (v: number): number => Math.max(0, Math.round((v - this.origin) / this.cell));
     const hi = (v: number): number => Math.min(this.n - 1, Math.round((v - this.origin) / this.cell));
@@ -654,4 +645,19 @@ export class BeachGround {
       }
     }
   }
+}
+
+/** The bounding box of a ring; an empty ring gives minX above maxX. */
+function ringBounds(ring: readonly WorldPoint[]): { minX: number; minY: number; maxX: number; maxY: number } {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of ring) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { minX, minY, maxX, maxY };
 }

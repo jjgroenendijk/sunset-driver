@@ -114,26 +114,35 @@ export class GradedLand {
    */
   private seedNear(p: Point): boolean {
     const hf = this.hf;
-    const n = hf.gridSize;
     const cx = Math.round((p.x - hf.originX) / hf.cellSize);
     const cy = Math.round((p.y - hf.originY) / hf.cellSize);
     for (let r = 0; r <= HEAD_REACH; r++) {
-      for (let dy = -r; dy <= r; dy++) {
-        for (let dx = -r; dx <= r; dx++) {
-          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-          const ix = cx + dx;
-          const iy = cy + dy;
-          if (ix < 0 || iy < 0 || ix >= n || iy >= n) continue;
-          const node = iy * n + ix;
-          if ((hf.heights[node] as number) < this.dry) continue;
-          if (this.reached[node] === 1) return false;
-          this.reached[node] = 1;
-          this.queue[this.tail++] = node;
-          return true;
-        }
-      }
+      const node = this.dryOnRing(cx, cy, r);
+      if (node < 0) continue;
+      if (this.reached[node] === 1) return false;
+      this.reached[node] = 1;
+      this.queue[this.tail++] = node;
+      return true;
     }
     return false;
+  }
+
+  /** The first dry node on the square ring `r` nodes out from a node, row by row; -1 where none is. */
+  private dryOnRing(cx: number, cy: number, r: number): number {
+    const hf = this.hf;
+    const n = hf.gridSize;
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const ix = cx + dx;
+        const iy = cy + dy;
+        if (ix < 0 || iy < 0 || ix >= n || iy >= n) continue;
+        const node = iy * n + ix;
+        if ((hf.heights[node] as number) < this.dry) continue;
+        return node;
+      }
+    }
+    return -1;
   }
 
   /** Walk the queue out over every dry step the tier can climb. */

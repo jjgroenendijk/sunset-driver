@@ -215,7 +215,8 @@ function distanceSquaredToSegment(p: Point, a: Point, b: Point): number {
   const vy = b.y - a.y;
   const lengthSquared = vx * vx + vy * vy;
   let t = lengthSquared > 0 ? ((p.x - a.x) * vx + (p.y - a.y) * vy) / lengthSquared : 0;
-  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
   const dx = p.x - (a.x + vx * t);
   const dy = p.y - (a.y + vy * t);
   return dx * dx + dy * dy;
