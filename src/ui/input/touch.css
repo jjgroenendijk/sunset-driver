@@ -72,3 +72,22 @@ body.touch .map-legend.folded .map-legend-fold { transform: none; }
   body.touch .map-legend:not(.folded) { top: calc(12px + 3rem + 12px + env(safe-area-inset-top)); max-height: calc(100% - 24px - 3rem - 5.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
 }
 body.touch.flying .minimap-distance { display: none; }
+
+/* The title screen on a phone. Held upright, the main menu stands at the
+   bottom, under the thumbs, and the car stands between it and the name
+   (`render/title/scene.ts`). Held sideways, the rows close up so the whole
+   menu fits beside the car without scrolling. */
+@media (orientation: portrait) {
+  body.touch .title[data-page="main"] .menu-columns { align-items: flex-end; padding-top: 0; }
+  body.touch .title-menu-item { padding: .7rem .9rem; }
+}
+@media (orientation: landscape) and (max-height: 480px) {
+  body.touch .title { gap: .25rem; }
+  body.touch .title-eyebrow { display: none; }
+  body.touch .title-brand h1 { font-size: 2.1rem; }
+  body.touch .title-rule { display: none; }
+  body.touch .menu-columns { padding-top: 0; }
+  body.touch .title-menu { padding: .4rem .6rem; }
+  body.touch .title-menu-item { min-height: 44px; padding: .3rem .8rem; align-items: center; }
+  body.touch .title-menu-label { font-size: 1.25rem; }
+}
