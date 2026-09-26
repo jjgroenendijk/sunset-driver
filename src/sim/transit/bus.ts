@@ -127,7 +127,7 @@ export function busCalls(graph: RoadGraph, route: readonly number[], signals?: T
  * arrives at a light, with its stop line far enough ahead that the kerb is
  * clear of the queue. A highway has no pavement, so a bus drives one through.
  */
-function holdsStop(edge: RoadEdge, approach: SignalApproach | undefined): boolean {
+export function holdsStop(edge: RoadEdge, approach: SignalApproach | undefined): boolean {
   if (TIERS[edge.tier].pavement <= 0) return false;
   if (edge.length < STOP_IN + STOP_ROOM) return false;
   return approach === undefined || approach.stop > STOP_IN;

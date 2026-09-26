@@ -12,6 +12,7 @@
  * onto, since the lamp goes off only when the wheel comes back. A driver whose
  * row says 0 turns with no warning. Only a turn at a junction is indicated: a
  * node where two runs meet is a bend in one road, and a driver follows it.
+ * A delivery van at its kerb puts both on: the hazards.
  */
 import type { RoadEdge, RoadGraph } from '../../world/roads/graph.ts';
 import type { Driver } from './driver.ts';
@@ -23,6 +24,9 @@ const TURN = 0.35;
 
 /** Metres into the road turned onto that the indicator stays on. */
 export const THROUGH = 8;
+
+/** The side a vehicle standing with its hazards on shows: both at once. */
+export const HAZARDS = 2;
 
 /** Ticks the lamp is lit and then dark: 0.4 s each, so it flashes 75 times a minute. */
 export const BLINK = 24;
@@ -82,7 +86,11 @@ export class Indicators {
     this.sides = new Array<Int8Array | undefined>(traffic.vehicles.length);
   }
 
-  /** The side a vehicle indicates at a moment of its tour, lit or not: 1 right, -1 left, 0 none. */
+  /**
+   * The side a vehicle indicates at a moment of its tour, lit or not: 1 right,
+   * -1 left, 0 none, and {@link HAZARDS} for a delivery van unloading at the
+   * kerb (`jobs.ts`).
+   */
   sideAt(id: number, time: number): number {
     const vehicle = this.traffic.vehicles[id] as AmbientTraffic['vehicles'][number];
     const tour = vehicle.tour;
@@ -92,6 +100,7 @@ export class Indicators {
       this.sides[id] = sides;
     }
     const cursor = this.traffic.cursorAt(id, time, this.cursor);
+    if (vehicle.job === 'delivery' && tour.stepCall[cursor.step] === 1) return HAZARDS;
     return sideOn(tour, sides, vehicle.driver, tour.stepLeg[cursor.step] as number, this.traffic.metresOf(cursor));
   }
 

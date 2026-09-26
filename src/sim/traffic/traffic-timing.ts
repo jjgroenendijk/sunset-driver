@@ -37,7 +37,7 @@
  */
 import type { RoadEdge, RoadGraph } from '../../world/roads/graph.ts';
 import { TICK_RATE } from '../clock.ts';
-import { busCalls, NO_CALL, type BusDemand, type BusRoute } from '../transit/bus.ts';
+import { NO_CALL, type BusRoute } from '../transit/bus.ts';
 import { STEADY, type Driver } from './driver.ts';
 import { SIGNAL_AMBER, SIGNAL_CYCLE, SIGNAL_GREEN, type SignalApproach, type TrafficSignals } from './signals.ts';
 import type { TramGuard } from '../transit/tram-guard.ts';
@@ -176,7 +176,7 @@ export function timeTour(graph: RoadGraph, route: readonly number[], signals?: T
   const best = signals === undefined ? undefined : bestAnchor(graph, route, signals, plan, place, driver, guard);
   if (best !== undefined) return finish(graph, best.route, best.steps, best.sync, best.joins);
   const steps = new Steps();
-  const calls = plan.calls === true ? busCalls(graph, route, signals, plan.demand) : undefined;
+  const calls = plan.calls?.(graph, route, signals);
   const joins = joinsOf(graph, route, plan.turns, 0, driver);
   for (let i = 0; i < count; i++) {
     const edge = graph.edges[route[i] as number] as RoadEdge;
@@ -199,12 +199,11 @@ function bestAnchor(
   driver: Driver,
   guard: TramGuard | undefined,
 ): Anchored | undefined {
-  const demand = plan.calls === true ? (plan.demand ?? EVEN) : undefined;
   let best: Anchored | undefined;
   for (let k = 0; k < route.length; k++) {
     const approach = signals.approachOf(route[k] as number);
     if (approach === undefined) continue;
-    const laid = anchoredAt(graph, route, k, approach, signals, place, driver, demand, guard, plan.turns);
+    const laid = anchoredAt(graph, route, k, approach, signals, place, driver, plan.calls, guard, plan.turns);
     if (best === undefined || betterAnchor(laid, best)) best = laid;
   }
   return best;
@@ -225,22 +224,22 @@ export interface TourPlan {
    * amber. The steady driver of the roster when left out.
    */
   driver?: Driver;
-  /** True for a vehicle that calls at the stops of its route: a bus (`bus.ts`). */
-  calls?: boolean;
+  /**
+   * Where a vehicle that stops along its route stands at the kerb, and for how
+   * long: a bus at its stops (`bus.ts`), or a vehicle at its work (`jobs.ts`).
+   * It is asked again for the route turned to each anchor, so the calls follow
+   * the route rather than the leg it happened to start on. No calls when left out.
+   */
+  calls?: CallPlan;
   /**
    * The fastest the vehicle takes the turn after each leg of the route, in
    * metres per second (`traffic-motion.ts`). No turn slows it when left out.
    */
   turns?: ArrayLike<number>;
-  /**
-   * How many people the stops of the route gather, which is how long the bus
-   * stands at each of them (`bus.ts`). Every stop the same when left out.
-   */
-  demand?: BusDemand;
 }
 
-/** The demand a plan that names none takes. */
-const EVEN: BusDemand = { riders: () => 3 };
+/** The calls of a route: metres along each leg a vehicle stands at, and for how long. */
+export type CallPlan = (graph: RoadGraph, route: readonly number[], signals: TrafficSignals | undefined) => BusRoute;
 
 /** A call on one leg: where it stands and for how long, or no call at all. */
 interface Call {
@@ -317,7 +316,7 @@ function anchoredAt(
   signals: TrafficSignals,
   place: number,
   driver: Driver,
-  demand: BusDemand | undefined,
+  plan: CallPlan | undefined,
   guard: TramGuard | undefined,
   turns: ArrayLike<number> | undefined,
 ): Anchored {
@@ -333,7 +332,7 @@ function anchoredAt(
   const last = graph.edges[turned[count - 1] as number] as RoadEdge;
   // The stops of the turned route, so a bus calls at the same kerbs whichever
   // of its lights the lap ends up anchored at.
-  const calls = demand === undefined ? undefined : busCalls(graph, turned, signals, demand);
+  const calls = plan?.(graph, turned, signals);
   const callOn = (leg: number): Call => callOf(calls, leg);
   // The leg a queue for the light at the end of leg `i` may run back onto.
   const spill = (i: number): RoadEdge | undefined => {

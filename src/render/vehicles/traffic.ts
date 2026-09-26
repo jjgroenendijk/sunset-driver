@@ -24,7 +24,9 @@
  * The trim of each class carries an instanced `signal`, the side whose
  * indicators are lit on each vehicle this frame (`sim/traffic/indicator.ts`).
  * The tyres and the figures carry no indicator, so they are drawn with a trim
- * of their own that reads no `signal`.
+ * of their own that reads no `signal`. A vehicle at work (`sim/traffic/jobs.ts`)
+ * wears its job's livery as its paint, and a taxi sign or a beacon on its roof
+ * (`job-tops.ts`).
  */
 import {
   BoxGeometry,
@@ -45,6 +47,7 @@ import {
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { heldPose, heldTime } from '../../sim/traffic/hold.ts';
 import { Indicators } from '../../sim/traffic/indicator.ts';
+import { JobTops } from './job-tops.ts';
 import type { SimState } from '../../sim/simulation.ts';
 import { AMBIENT_CLASSES, promotedOf, type AmbientPose, type AmbientTraffic } from '../../sim/traffic/traffic.ts';
 import { rideHeight, specOf, type VehicleClass, type VehicleSpec } from '../../sim/vehicles/vehicle.ts';
@@ -153,6 +156,8 @@ export class TrafficView {
   /** The trim of the tyres and the figures, which carries no indicator. */
   private readonly plain: VehicleTrim;
   private readonly indicators: Indicators;
+  /** The taxi signs and the beacons on the roofs of the vehicles at work (`job-tops.ts`). */
+  private readonly tops: JobTops;
   private readonly materials: Material[] = [];
   private readonly ids: number[] = [];
   private readonly pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
@@ -177,6 +182,8 @@ export class TrafficView {
     this.trim = createVehicleTrim(true);
     this.plain = createVehicleTrim();
     this.indicators = new Indicators(traffic);
+    this.tops = new JobTops(traffic);
+    this.group.add(this.tops.group);
     const trim = this.trim.material;
     const plain = this.plain.material;
     this.materials.push(paint, glass);
@@ -237,6 +244,7 @@ export class TrafficView {
       if (meshes.rider !== undefined) meshes.rider.count = 0;
     }
     this.springs.begin();
+    this.tops.begin();
     const minX = x - TRAFFIC_VIEW;
     const minY = y - TRAFFIC_VIEW;
     const maxX = x + TRAFFIC_VIEW;
@@ -245,6 +253,7 @@ export class TrafficView {
     this.addPromoted(state, minX, minY, maxX, maxY);
     this.springs.end();
     for (const meshes of this.classes) finish(meshes);
+    this.tops.finish();
     this.signals?.update(time, x, y);
   }
 
@@ -263,7 +272,9 @@ export class TrafficView {
       const lean = this.springs.lean(id, time, pose.x, pose.y, pose.heading, pose.speed, meshes.spec.inline, this.lean);
       this.tilt.setFromEuler(this.tiltAngles.set(lean.roll, 0, lean.pitch, 'XZY'));
       this.body.copy(this.turn).multiply(this.tilt);
-      this.add(meshes, vehicle.paint, true, this.indicators.litAt(id, heldTime(state.traffic.held, id, time)));
+      const held = heldTime(state.traffic.held, id, time);
+      this.add(meshes, vehicle.paint, true, this.indicators.litAt(id, held));
+      if (vehicle.job !== 'none') this.tops.add(id, vehicle.job, meshes.spec, this.matrix, held);
     }
   }
 
@@ -294,6 +305,7 @@ export class TrafficView {
     for (const material of this.materials) material.dispose();
     this.trim.dispose();
     this.plain.dispose();
+    this.tops.dispose();
     this.signals?.dispose();
     this.group.clear();
   }

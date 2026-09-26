@@ -37,6 +37,7 @@ describe('the bus stops of a world (spec section 20.2)', () => {
       const { traffic, stops } = stopsOf(seed);
       const called = new Set<number>();
       for (const vehicle of traffic.vehicles) {
+        if (vehicle.cls !== 'bus') continue;
         const tour = vehicle.tour;
         for (let step = 0; step < tour.stepCall.length; step++) {
           if (tour.stepCall[step] === 1) called.add(tour.edges[tour.stepLeg[step] as number] as number);

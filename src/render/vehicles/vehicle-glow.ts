@@ -25,10 +25,11 @@
  * and -1 on the left, and each vehicle of the traffic an instanced `signal`
  * that says which side is lit this frame (`sim/traffic/indicator.ts`). Where
  * the two agree the amber burns, so one mesh flashes each car on its own side.
+ * A `signal` of 2 is the hazards, and both sides burn.
  */
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { INDICATOR, LAMP, SPARK, TAIL } from './vehicle-mesh.ts';
-import { attribute, max, uniform } from '../tsl.ts';
+import { attribute, clamp, max, step, uniform } from '../tsl.ts';
 
 /**
  * How hard a headlamp and a tail light burn at full night, as a multiple of
@@ -80,7 +81,10 @@ export function createVehicleTrim(indicators = false): VehicleTrim {
   const colour = attribute('color', 'vec3');
   const night = colour.mul(attribute('glow', 'float')).mul(lamps);
   // flash times signal is 1 only where the lit side is this indicator's side.
-  const lit = max(0, attribute('flash', 'float').mul(attribute('signal', 'float')));
+  // A signal of 2 is the hazards, which light both sides: flash squared is 1 on either.
+  const flash = attribute('flash', 'float');
+  const signal = attribute('signal', 'float');
+  const lit = max(clamp(flash.mul(signal), 0, 1), step(1.5, signal).mul(flash.mul(flash)));
   material.emissiveNode = indicators ? night.add(colour.mul(lit).mul(INDICATOR_GLOW)) : night;
   return {
     material,
