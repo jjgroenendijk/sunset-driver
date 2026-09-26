@@ -276,11 +276,13 @@ export function aircraftBoxes(spec: VehicleSpec): VehicleBox[] {
         // Low wings swept back, with a winglet at each tip.
         wings({ front: root, back: -l * 0.1 - 1.6, y: -h * 0.6, thick: 0.3 }, { z: span, chord: 1.2, sweep: 3.2, lift: 0.35, thick: 0.12 }, spec.paint),
         ...[1, -1].map((side) => tailFin(root - 3.2 - 1.2, -h * 0.6 + 0.35, h * 0.6, 1.1, spec.trim, side * span, 0.05)),
-        // An engine each side of the tail, on a pylon, and a T-tail over them.
+        // An engine each side of the tail, on a pylon that runs from inside
+        // the fuselage into the nacelle, so no daylight shows between them,
+        // and a T-tail over them.
         ...[1, -1].flatMap((side) => [
-          loft([at(-l * 0.4, h * 0.05, h * 0.75, 0.38, side * (w + 0.55)), at(-l * 0.5, 0, h * 0.8, 0.42, side * (w + 0.55)), at(-l * 0.75, h * 0.1, h * 0.7, 0.34, side * (w + 0.55))], spec.trim, 0.5),
-          loft([at(-l * 0.4 + 0.02, h * 0.12, h * 0.68, 0.32, side * (w + 0.55)), at(-l * 0.4 + 0.01, h * 0.12, h * 0.68, 0.32, side * (w + 0.55))], DARK, 0.5),
-          wing([{ z: side * w * 0.6, front: -l * 0.5, back: -l * 0.65, y: h * 0.4, thick: 0.15 }, { z: side * (w + 0.3), front: -l * 0.5, back: -l * 0.65, y: h * 0.4, thick: 0.15 }], spec.trim),
+          loft([at(-l * 0.4, h * 0.05, h * 0.75, 0.38, side * (w + 0.4)), at(-l * 0.5, 0, h * 0.8, 0.42, side * (w + 0.4)), at(-l * 0.75, h * 0.1, h * 0.7, 0.34, side * (w + 0.4))], spec.trim, 0.5),
+          loft([at(-l * 0.4 + 0.02, h * 0.12, h * 0.68, 0.32, side * (w + 0.4)), at(-l * 0.4 + 0.01, h * 0.12, h * 0.68, 0.32, side * (w + 0.4))], DARK, 0.5),
+          wing([{ z: side * w * 0.4, front: -l * 0.45, back: -l * 0.7, y: h * 0.4, thick: 0.3 }, { z: side * (w + 0.4), front: -l * 0.45, back: -l * 0.7, y: h * 0.4, thick: 0.3 }], spec.trim),
         ]),
         tailFin(-l + 0.1, h * 0.6, h * 2.6, 2.2, spec.trim, 0, 0.12),
         wings({ front: -l + 1.1, back: -l - 0.1, y: h * 2.6, thick: 0.12 }, { z: 2.7, chord: 0.6, sweep: 0.8 }, spec.trim),
