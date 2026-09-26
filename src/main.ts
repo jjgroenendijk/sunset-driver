@@ -7,7 +7,7 @@ import { choiceOf, nearestTier } from './render/frame/graphics.ts';
 import { frameBudgetFrom } from './render/frame/quality.ts';
 import { QualityMonitor } from './render/frame/quality-monitor.ts';
 import { createRenderer, probeWebGpu, resizeRenderer } from './render/renderer.ts';
-import { createTitleScene } from './render/scene.ts';
+import { createTitleScene } from './render/title/scene.ts';
 import { RenderSmoother } from './render/frame/smooth.ts';
 import { WorldSource } from './render/streaming/world-source.ts';
 import { warmPasses } from './render/frame/warm.ts';
@@ -109,14 +109,14 @@ async function boot(): Promise<void> {
 
   // The camera behind the menu swings about the car, unless the player asks the browser for less motion.
   const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const preview = createTitleScene(DEFAULT_APPEARANCE, window.innerWidth / window.innerHeight, still);
+  // A phone has no keys and no pointer lock, so it is given the buttons of
+  // `touch-bar.ts` and the fly pad of `touch-fly.ts` instead (`docs/menus.md`).
+  const touch = isTouchDevice(readTouchProbe(window));
+  const preview = createTitleScene(renderer, DEFAULT_APPEARANCE, { width: window.innerWidth, height: window.innerHeight }, { still, touch });
   const camera = new FollowCamera(window.innerWidth / window.innerHeight);
   const clock = new FixedStepClock();
   const keyboard = new Keyboard(window);
   keyboard.listenMouse(canvas);
-  // A phone has no keys and no pointer lock, so it is given the buttons of
-  // `touch-bar.ts` and the fly pad of `touch-fly.ts` instead (`docs/menus.md`).
-  const touch = isTouchDevice(readTouchProbe(window));
   if (touch) markTouchUi(document);
   // The developer free camera of `docs/dev-tooling.md`. It writes into the same
   // camera the game is played through, so nothing else in the frame changes.
@@ -127,7 +127,7 @@ async function boot(): Promise<void> {
   window.addEventListener('resize', () => {
     resizeRenderer(renderer, window.innerWidth, window.innerHeight);
     camera.resize(window.innerWidth / window.innerHeight);
-    preview.resize(window.innerWidth / window.innerHeight);
+    preview.resize(window.innerWidth, window.innerHeight);
     // The sun's shadow cascades are cut to the camera's frustum (spec section
     // 10.5), so a new shape needs them refitted.
     session?.world.resize();
@@ -230,7 +230,7 @@ async function boot(): Promise<void> {
       loop.draw(session, elapsed);
     } else {
       preview.update(elapsed / 1000);
-      renderer.render(preview.scene, preview.camera);
+      preview.render();
     }
   };
   requestAnimationFrame(frame);
