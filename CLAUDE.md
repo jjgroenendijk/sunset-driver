@@ -22,10 +22,10 @@ The commands:
 - `npm run verify` — typecheck, the lints and the quick tier, under 20 s. Run before every commit.
 - `npm run verify:full` — the same with the full tier, about 4 min.
 
-Every pull request runs `verify:full` in CI through `full-tier.yml`, over five runners: four shares
-of the seed sweep's 500 seeds, and every other file with the checks. `SWEEP_SHARD=2/4` runs one by
+Every pull request runs `verify:full` in CI through `full-tier.yml`, over six runners: four shares
+of the seed sweep's 500 seeds, every other file, and the lints. `SWEEP_SHARD=2/4` runs one by
 hand. `ci.yml` also builds with `build.yml` and deploys main. The build, `full-tier / other` and
-`full-tier / seed-sweep` — one job green only when all four shares are — gate the merge. A
+`full-tier / seed-sweep` — each one job, green only when all its runners are — gate the merge. A
 Dependabot pull request merges itself when they pass. Main runs no tests: it deploys the `dist` the
 pull request built when the tree is the same, else builds. A hook runs `npm run verify` before
 `gh pr create`. `.github/actions/setup` installs Node and `node_modules` from caches.
