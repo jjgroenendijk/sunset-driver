@@ -18,7 +18,7 @@
     "lint:deps": "depcruise src --config .dependency-cruiser.mjs",
     "lint:smells": "eslint --concurrency auto --cache --cache-location node_modules/.cache/eslint/ --cache-strategy content src scripts test",
     "test": "vitest run",
-    "test:full": "SWEEP_SEEDS=500 vitest run",
+    "test:full": "node scripts/test-full.ts",
     "test:render": "node scripts/render-check.ts",
     "test:world": "node scripts/world-check.ts",
     "verify": "npm run typecheck && npm run lint && npm run lint:size && npm run lint:dead && npm run lint:deps && npm run lint:smells && npm run test",
