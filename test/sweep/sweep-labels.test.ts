@@ -19,6 +19,8 @@ describe('the seed sweep names the seed of every failure', () => {
 
   it('holds every check file of the sweep to it', () => {
     const files = readdirSync(HERE).filter((name) => /^seed-.*\.test\.ts$/.test(name));
+    // A move of the sweep's files would otherwise leave this reading none.
+    expect(files.length).toBeGreaterThan(10);
     const found = files.flatMap((name) => unlabelledExpects(path.join(HERE, name)));
     const report = found.map((u) => `${path.basename(u.file)}:${u.line} ${u.text.slice(0, 80)}`);
     expect(report.join('\n')).toBe('');
