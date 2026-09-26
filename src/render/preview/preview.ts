@@ -386,7 +386,7 @@ function movePeople(
 ): PreviewPeople {
   const { x, y } = place;
   const people = peopleFor();
-  const { traffic, trams, tramStops, tramSigns, busStops, corners, crowd, casualties, guns, markers, wildlife, parked } = people;
+  const { traffic, trams, tramStops, tramSigns, busStops, corners, beach, crowd, casualties, guns, markers, wildlife, parked } = people;
   // The contacts of spec section 18 stand at the head of the crowd's own list,
   // as they do in a session, and their markers turn over them.
   const bodies = request.contacts === true ? standContacts(request.seed, place.givers, scene, record) : undefined;
@@ -406,6 +406,9 @@ function movePeople(
   tramSigns.update(tick, x, y);
   busStops.update(x, y);
   corners.update(tick, x, y);
+  // The beach thins in the weather the picture is drawn in.
+  beach.weather = weather;
+  beach.update(tick, x, y);
   // The crowd puts its umbrellas up in the weather the picture is drawn in.
   crowd.rain = weather.rain;
   crowd.update(record, tick, x, y);
@@ -419,8 +422,8 @@ function movePeople(
 
 /** The groups of the city's own moving parts, which a gallery hides. */
 function ambientOf(people: PreviewPeople): Object3D[] {
-  const { traffic, trams, tramStops, tramSigns, busStops, corners, crowd, casualties, wildlife, parked } = people;
-  const groups = [traffic.group, trams.group, tramStops.group, tramSigns.group, busStops.group, corners.group, crowd.group, casualties.group, wildlife.group];
+  const { traffic, trams, tramStops, tramSigns, busStops, corners, beach, crowd, casualties, wildlife, parked } = people;
+  const groups = [traffic.group, trams.group, tramStops.group, tramSigns.group, busStops.group, corners.group, beach.group, crowd.group, casualties.group, wildlife.group];
   if (parked !== undefined) groups.push(parked.group);
   return groups;
 }

@@ -12,6 +12,7 @@
  * pipeline for the object it draws with rather than for the material alone.
  */
 import type { City } from './city.ts';
+import { BeachPropView } from './render/environment/beach.ts';
 import { CasualtyView } from './render/people/casualties.ts';
 import { BusStopView } from './render/transit/bus-stops.ts';
 import { CornerPropView } from './render/crime/corners.ts';
@@ -46,6 +47,8 @@ export interface SessionViews {
   busStops: BusStopView;
   /** The amps, carts, stalls and dogs of the occupied corners of spec section 20.1. */
   corners: CornerPropView;
+  /** The towels, towers, stands, nets, fires and boards of the beaches of spec section 20.1. */
+  beach: BeachPropView;
   crowd: PedestrianView;
   /** The people who have been hit, and the medics at them. */
   casualties: CasualtyView;
@@ -65,7 +68,7 @@ export interface SessionViews {
  */
 export function buildViews(
   world: WorldScene,
-  city: Pick<City, 'traffic' | 'busStops' | 'corners' | 'crowd' | 'tram' | 'wildlife'>,
+  city: Pick<City, 'traffic' | 'busStops' | 'corners' | 'beach' | 'crowd' | 'tram' | 'wildlife'>,
   parked: ParkedCars | undefined,
   standing: readonly StandingPerson[],
   contacts: readonly ContactMark[],
@@ -81,7 +84,8 @@ export function buildViews(
     tramSigns: new TramSignView(city.tram),
     busStops: new BusStopView(city.busStops),
     corners: new CornerPropView(city.corners),
-    crowd: new PedestrianView(city.crowd, city.tram, city.busStops, city.corners),
+    beach: new BeachPropView(city.beach),
+    crowd: new PedestrianView(city.crowd, city.tram, city.busStops, city.corners, city.beach),
     casualties: new CasualtyView(city.crowd),
     guns: new OfficerGunView(),
     markers: new ContactMarkers(contacts.length),
@@ -98,6 +102,7 @@ export function buildViews(
     views.tramSigns.group,
     views.busStops.group,
     views.corners.group,
+    views.beach.group,
     views.crowd.group,
     views.casualties.group,
     views.guns.group,

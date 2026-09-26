@@ -2,9 +2,9 @@
 
 The gotchas of the people on the pavements of spec sections 5.3, 13.1 and 20.1: how they are put
 down, how they walk and wait, how they react, how they make way for the player, the occupied
-corners, and how the crowd is drawn. The code is `src/sim/crowd/pedestrians.ts` and the files named
-below. The traffic, the lights and the bus stops are in `docs/city-life.md`, and the casualties
-under their own heading there.
+corners, the beach, and how the crowd is drawn. The code is `src/sim/crowd/pedestrians.ts` and
+the files named below. The traffic, the lights and the bus stops are in `docs/city-life.md`, and
+the casualties under their own heading there.
 
 ## Contents
 
@@ -15,6 +15,7 @@ under their own heading there.
 - Making way for the player
 - Off the buses
 - The occupied corners
+- The beach
 - Drawing the crowd
 
 ## Placing the crowd
@@ -120,6 +121,27 @@ under their own heading there.
 - A busker is heard: `audio/busking.ts` draws a `pluck` per tick from a pentatonic scale, for the
   two nearest, and pushes them last so a full frame drops a note before a gunshot.
 - `Subsystem.Corners` is the stream the spots and their people are drawn from.
+
+## The beach
+
+- `BeachLife` (`sim/city/beach-life.ts`) tries one spot at each sample of a waterline, 12 m apart:
+  towels, swimmers, a volleyball court, surfers, a bonfire or a party, drawn from `SPOT_ODDS`. A
+  lifeguard tower stands every `TOWER_EVERY` samples and a stand every `STAND_EVERY`. The joggers
+  and the skaters go to and fro along the dune line (`beach-path.ts`), read from the metres covered.
+- Who is out is a function of the seed, the tick and the weather (`beach-hours.ts`). The hour gives
+  each kind a fill, the weather a share, and a person is out while a draw fixed for the day is under
+  the two multiplied. A falling share sends people home one at a time and never brings one back.
+- The beach does not read `Weather.crowd`. `beachShare` falls to 0 at `BEACH_RAIN`, a drizzle the
+  pavement carries on through. Surfers follow `surfShare`: the wind is the swell, so a calm day
+  has none and a storm brings them in. The lifeguard and the vendors stay while anybody is out.
+- `BeachLife.weather` is set every frame by `frame.ts` through `BeachPropView.weather`. A test sets
+  it by hand; left alone, it is clear.
+- The people stand in the crowd's mesh through `WaitingCrowd`. The gaits `lie`, `sit`, `swim`,
+  `surf`, `volley` and `dance` drop the hips or tip the torso in the clip; a skater is `surf` in
+  motion. A swimmer stands `SWIM_DEPTH` under the surface, so the water hides all but the head.
+- The props are eight instanced meshes in `render/environment/beach.ts`, with `+x` at the sea.
+  Towels, parasols and boards take a colour per instance. The flames of a fire are a ninth mesh,
+  unlit, so a fire shows after dark.
 
 ## Drawing the crowd
 

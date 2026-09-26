@@ -295,6 +295,8 @@ export class SessionFrame {
     session.crowd.share = session.world.weatherNow.crowd;
     session.crowd.rain = session.world.weatherNow.rain;
     session.wildlife.share = session.world.weatherNow.crowd;
+    // The beach has its own rule: it empties at a drizzle (spec section 20.1).
+    session.beach.weather = session.world.weatherNow;
     // The headlamps and tail lights of everything the scene does not draw
     // itself come on with the street lamps (spec section 13.4).
     session.traffic.lamps = session.world.lampsNow;
@@ -499,6 +501,7 @@ export class SessionFrame {
     // rather than at the moment it stands at.
     session.busStops.update(round.x, round.y);
     session.corners.update(session.state.tick, round.x, round.y);
+    session.beach.update(session.state.tick, round.x, round.y);
     session.crowd.update(session.state, moment, round.x, round.y);
     // The marker over each contact in view (spec section 18), which turns and
     // bobs with the frame's moment rather than with the wall clock.

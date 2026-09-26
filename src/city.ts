@@ -6,7 +6,8 @@
  * `main.ts` builds the pieces of a session and `frame.ts` runs them. This is the
  * piece that is a city rather than a screen: the ambient traffic of spec
  * section 13.1 and the crowd that walks beside it, the tram of 13.2, the
- * police of 14, the emergency services of 20.3 and the wildlife of 20.4. Each
+ * police of 14, the emergency services of 20.3, the beaches of 20.1 and the
+ * wildlife of 20.4. Each
  * is placed once for a world and then evaluated from the tick, so the physics
  * and the renderer share one plan.
  *
@@ -14,6 +15,7 @@
  * a pure function of the seed and the world built from it, so two sessions of
  * one seed are driven through the same streets.
  */
+import { BeachLife } from './sim/city/beach-life.ts';
 import { BusStops } from './sim/transit/bus-stops.ts';
 import { StreetCorners } from './sim/crime/corners.ts';
 import type { Ground } from './sim/physics/ground-bodies.ts';
@@ -45,6 +47,8 @@ export interface City {
   crowd: AmbientPedestrians;
   /** The occupied corners of spec section 20.1: buskers, carts, stalls and the people round them. */
   corners: StreetCorners;
+  /** The life on the beaches of spec section 20.1: towels, swimmers, games, stands and fires. */
+  beach: BeachLife;
   tram: TramLine;
   police: PoliceForce;
   /** The animals of spec section 20.4, placed along the same roads and the shore. */
@@ -92,6 +96,13 @@ export function buildCity(seed: number, description: WorldDescription, world: He
     seaLevel: description.water.seaLevel,
     districtAt,
   });
+  // The beaches of spec section 20.1 fill from the same seed, on the carved sand.
+  const beach = new BeachLife(seed, {
+    beaches: description.beaches,
+    seaLevel: description.water.seaLevel,
+    heightAt: (x, y) => world.heightAt(x, y),
+    districtAt,
+  });
   const ground: Ground = {
     heightAt: (x, y) => world.heightAt(x, y),
     surfaceAt: (x, y) => surfaces.at(x, y),
@@ -107,5 +118,5 @@ export function buildCity(seed: number, description: WorldDescription, world: He
     police,
     emergency,
   };
-  return { ground, roads, traffic, busStops, crowd, corners, tram, police, wildlife };
+  return { ground, roads, traffic, busStops, crowd, corners, beach, tram, police, wildlife };
 }
