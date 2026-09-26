@@ -20,13 +20,14 @@
  */
 import { BoxGeometry, type BufferGeometry } from 'three';
 import { CAR_GAP, CAR_HALF_HEIGHT, CAR_HALF_WIDTH, CAR_LENGTH } from '../../sim/transit/tram.ts';
+import type { TramModule } from '../../sim/transit/tram-doors.ts';
+
+export { tramCarPlan, tramDoors, type TramModule } from '../../sim/transit/tram-doors.ts';
 import { GLASS, LAMP, METAL, SPARK, TYRE } from '../vehicles/vehicle-mesh.ts';
 
 /** The two fleets the city runs. */
 export type TramDesign = 'modern' | 'heritage';
 
-/** Which module of a tram a geometry is: an end module with a cab, or the one between them. */
-export type TramModule = 'end' | 'middle';
 
 /** The livery of each design, the band it carries, and the colours shared by both. */
 const MODERN_PAINT = 0xe2a52b;
@@ -78,12 +79,6 @@ const PANTOGRAPH_TOP = 5.52;
 export const DOOR_LONG = 1.3;
 const DOOR_TALL = 2.3;
 
-/** Where the doorways of a module stand along it, in the car's own frame. */
-export function tramDoors(design: TramDesign, module: TramModule): number[] {
-  if (design === 'heritage') return [-2.2, 2.2];
-  return module === 'end' ? [-3.0, 1.2] : [-1.8, 1.8];
-}
-
 /**
  * The leaf that slides over one doorway, drawn at the origin of the car's frame
  * and moved to its doorway by the view. It stands on the right of travel, which
@@ -133,18 +128,6 @@ function box(length: number, height: number, width: number, x: number, y: number
 export function tramBoxes(design: TramDesign = 'modern', module: TramModule = 'end'): TramBox[] {
   if (design === 'heritage') return heritageCar();
   return module === 'end' ? modernEnd() : modernMiddle();
-}
-
-/**
- * How a tram of a design is put together: which module each car is drawn as,
- * and whether it is turned about. The rear module of a modern tram is the front
- * one reversed; a heritage car is the same either way round.
- */
-export function tramCarPlan(design: TramDesign, car: number, cars: number): { module: TramModule; reversed: boolean } {
-  if (design === 'heritage') return { module: 'middle', reversed: false };
-  if (car === 0) return { module: 'end', reversed: false };
-  if (car === cars - 1) return { module: 'end', reversed: true };
-  return { module: 'middle', reversed: false };
 }
 
 // ------------------------------------------------------------------- modern
