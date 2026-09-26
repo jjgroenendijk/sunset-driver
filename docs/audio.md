@@ -71,8 +71,10 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
   the frame landed on drops about half the bells at the frame rate the game is written for.
 - A honk of the traffic (`honks.ts`) is read off `Hold.waited`, which climbs by one a tick while a
   car stands for the player, a wreck or a person. The first honk comes after the driver's own
-  patience, by `Personality`, and the rest at a pace drawn from the car's id. So nothing is stored
-  for it, and a frame asks about every tick it stepped, as the bells do. The traffic comes in
+  patience, `Driver.honks` in the roster of `driver.ts`, and the rest at a pace drawn from the
+  car's id. A hesitant or careful driver has 0 there and never honks. `HORN_PITCH` pitches the
+  horn by class, so a bus sounds low and a motorcycle high. Nothing is stored for a honk, and a
+  frame asks about every tick it stepped, as the bells do. The traffic comes in
   through `GameAudio.hearTraffic`, since a car's place is not in the record.
 - `CUES_PER_FRAME` caps what one frame may fire, and `VOICE_CAP` caps what the bank holds. A cue
   that finds no free voice is **dropped, never stolen**: stealing would restart an oscillator that
