@@ -381,16 +381,25 @@ function pristine(mesh: Mesh): Float32Array {
   return Float32Array.from((mesh.geometry.getAttribute('position') as BufferAttribute).array);
 }
 
+/** A coordinate to the tenth of a millimetre, so the vertices at one corner hash alike. */
+function corner(at: number): number {
+  return Math.round(at * 10_000);
+}
+
 /**
  * Push the dented faces of a box in (spec section 11.3).
  *
  * A dent moves only the vertices on the face the blow landed on, so the box
  * crumples rather than shrinking, and every box of the vehicle takes it: the
  * nose of the shell is pushed back by the same blow that pushes in the bonnet
- * standing on it. Each vertex moves by its own fraction of the depth, taken
- * from a hash of where it is in the model, so the panel comes out torn rather
- * than pressed flat; the same hash always gives the same crumple, so a saved
- * car reloads with the dents it had.
+ * standing on it. Each corner moves by its own fraction of the depth, taken
+ * from a hash of where it stands, so the panel comes out crumpled rather than
+ * pressed flat; the same hash always gives the same crumple, so a saved car
+ * reloads with the dents it had.
+ *
+ * The hash reads the corner's place, not its index. A lofted part has a vertex
+ * per corner per triangle, and hashed by index the triangles that share a
+ * corner each took it somewhere else: the skin tore into gaps along every seam.
  */
 function crumple(mesh: Mesh, base: Float32Array, dents: readonly number[], depth: number, index: number): void {
   const position = mesh.geometry.getAttribute('position') as BufferAttribute;
@@ -408,7 +417,7 @@ function crumple(mesh: Mesh, base: Float32Array, dents: readonly number[], depth
       // The struck face is the one the blow points away from. Everything behind
       // it holds its place, which is what keeps the box a box.
       if (x * -px + y * -py + z * -pz <= 0) continue;
-      const bite = dent * depth * (0.45 + 0.55 * (hashInts(index, i, p) / 0x1_0000_0000));
+      const bite = dent * depth * (0.45 + 0.55 * (hashInts(index, corner(x), corner(y), corner(z), p) / 0x1_0000_0000));
       ox += px * bite;
       oy += py * bite;
       oz += pz * bite;
