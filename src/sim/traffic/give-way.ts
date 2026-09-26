@@ -16,6 +16,8 @@
  * - A car that is behind its tour may meet a light its tour was timed to pass
  *   on green. It stops at the line when the light is not green. It makes up
  *   the lag at the next place its tour stands still, which it leaves on time.
+ * - At a junction without lights a car waits at the mouth while another
+ *   car's path through it comes first (`give-way-junction.ts`).
  * - A person does not step into a car or into the road just ahead of a moving
  *   one. A person a car has stopped for, who would walk into it, steps aside.
  * - A moving car that meets a person all the same hits them. That is the
@@ -35,6 +37,7 @@ import { holdOf, type Hold } from './hold.ts';
 import { FREE, HEAD_ON, LIGHT, OTHER, PERSON, sideOf, STANDING, type Car, type Person } from './give-way-scene.ts';
 import { Steering } from './swerve.ts';
 import { JunctionClear } from './junction-clear.ts';
+import { JunctionYield } from './give-way-junction.ts';
 import { Rejoin } from './rejoin.ts';
 import type { SimState } from '../simulation.ts';
 import { footprintsTouch, promotedOf, turnedTouch, type AmbientPose, type AmbientTraffic, type Footprint, type Kerbs, type TrafficCursor } from './traffic.ts';
@@ -103,6 +106,7 @@ export class GiveWay {
   private readonly steering: Steering;
   private readonly rejoin: Rejoin;
   private readonly junctions: JunctionClear;
+  private readonly yielding: JunctionYield;
   private readonly kerbCursor: TrafficCursor = { id: 0, step: 0, into: 0 };
   private tick = 0;
 
@@ -120,6 +124,7 @@ export class GiveWay {
       carsNear,
     });
     this.rejoin = new Rejoin(traffic);
+    this.yielding = new JunctionYield(traffic.roads.graph, traffic.roads.junctions, traffic.signals);
     this.junctions = new JunctionClear(traffic, {
       get cars() {
         return scene.cars;
@@ -161,6 +166,7 @@ export class GiveWay {
     this.gatherCars(state);
     this.gatherOthers(state);
     for (const car of this.cars) this.readAhead(state, car);
+    this.placeAtJunctions(state);
     for (let i = 0; i < this.cars.length; i++) this.look(state, i);
     for (let i = 0; i < this.cars.length; i++) this.steering.steer(i);
     this.breakRings();
@@ -247,6 +253,7 @@ export class GiveWay {
       person: -1,
       stop: false,
       slow: false,
+      yields: false,
       facing: false,
       next: { x: 0, y: 0, heading: 0, halfLength: spec.halfLength, halfWidth: spec.halfWidth },
       nextCos: 1,
@@ -347,6 +354,7 @@ export class GiveWay {
     setAhead(this.probe, box, fx, fy, stopRoom);
     setAhead(this.reach, box, fx, fy, slowRoom);
     this.lookSide(car, i);
+    this.lookJunction(i, slowRoom);
     this.lookAhead(car, i);
     this.lookOthers(car);
     this.lookPeople(car);
@@ -503,9 +511,35 @@ export class GiveWay {
     return traffic.edgeOf(this.ahead) === edge ? traffic.metresOf(this.ahead) : Infinity;
   }
 
+  /** Where each car stands to the junctions without lights it is coming to or going through. */
+  private placeAtJunctions(state: SimState): void {
+    const traffic = this.traffic;
+    this.yielding.reset(this.cars.length);
+    for (let i = 0; i < this.cars.length; i++) {
+      const car = this.cars[i] as Car;
+      traffic.cursorAt(car.id, state.tick - car.lag, this.cursor);
+      traffic.cursorAt(car.id, state.tick + 1 - car.lag, this.ahead);
+      this.yielding.place(traffic, i, this.cursor, this.ahead, car.box.halfLength, car.speed);
+    }
+  }
+
+  /** A car at the mouth of a junction without lights waits for one whose path through it comes first. */
+  private lookJunction(i: number, slowRoom: number): void {
+    const car = this.cars[i] as Car;
+    const wait = this.yielding.waitFor(i, (j) => (this.cars[j] as Car).id, slowRoom);
+    if (wait === undefined) return;
+    if (!wait.stop) car.slow = true;
+    else {
+      this.block(car, wait.car);
+      car.yields = true;
+    }
+  }
+
   /**
    * Two cars that each stop for the other, or a ring of them, stand forever.
-   * In each ring the car with the lowest id goes.
+   * In each ring the car with the lowest id goes, of those that do not wait
+   * at the mouth of a junction: a car inside one may stop for where a car
+   * waiting for it would have driven, and it is the one that has to go.
    */
   private breakRings(): void {
     const cars = this.cars;
@@ -521,17 +555,19 @@ export class GiveWay {
     }
   }
 
-  /** True when car `i` stands in a ring of cars that each stop for the next, and has the lowest id in it. */
+  /** True when car `i` stands in a ring of cars that each stop for the next, and is the one of it that goes. */
   private leadsRing(i: number): boolean {
     const cars = this.cars;
     const car = cars[i] as Car;
     let lowest = car.id;
+    let free = car.yields ? Infinity : car.id;
     let at = car.blocker;
     for (let hop = 0; hop < RING_HOPS && at >= 0; hop++) {
-      if (at === i) return lowest === car.id;
+      if (at === i) return (free < Infinity ? free : lowest) === car.id;
       const next = cars[at] as Car;
       if (!next.stop) return false;
       lowest = Math.min(lowest, next.id);
+      if (!next.yields) free = Math.min(free, next.id);
       at = next.blocker;
     }
     return false;
