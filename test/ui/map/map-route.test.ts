@@ -12,7 +12,7 @@ import {
 import { findRoute, Navigator, pathLength } from '../../../src/ui/map/map-route.ts';
 import { buildRoadGraph, type RoadGraph } from '../../../src/world/roads/graph.ts';
 import type { Point, RoadCurve, RoadTier, WorldDescription } from '../../../src/world/types.ts';
-import { worldsFor } from '../../sweep/world-pool.ts';
+import { sharedWorld } from '../../sweep/world-pool.ts';
 
 function curve(id: number, tier: RoadTier, coords: readonly [number, number][], nodes: number[]): RoadCurve {
   return { id, tier, points: coords.map(([x, y]) => ({ x, y })), bridges: [], tunnels: [], interchanges: [], nodes };
@@ -110,7 +110,7 @@ describe('the route to the waypoint (spec section 12)', () => {
     let world: WorldDescription;
     let graph: RoadGraph;
     beforeAll(async () => {
-      [world] = (await worldsFor([1])) as [WorldDescription];
+      world = await sharedWorld(1);
       graph = buildRoadGraph(world.roads);
     });
 
@@ -134,7 +134,7 @@ describe('the route to the waypoint (spec section 12)', () => {
 describe('the legend of the full map (spec section 12)', () => {
   let world: WorldDescription;
   beforeAll(async () => {
-    [world] = (await worldsFor([1])) as [WorldDescription];
+    world = await sharedWorld(1);
   });
 
   it('counts the kinds of place a city has, in the order of the icon table', () => {
