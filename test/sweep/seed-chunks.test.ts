@@ -243,6 +243,30 @@ function kerbColumn(section: readonly SectionPoint[], half: number): number {
   return kerb;
 }
 
+/** Every tier, for reading which one a surface was lofted as. */
+const TIER_NAMES = Object.keys(TIERS) as TierGeometry['tier'][];
+
+/**
+ * The section a surface was lofted with, and the half width of its
+ * carriageway. A tier's batch can carry a narrower road than the tier itself
+ * — a highway's holds its ramps — so the section is read off the surface's
+ * first column: a carriageway edge on the ground, the outer edge on a
+ * structure. The tier the batch is named for is tried first.
+ */
+function sectionOf(surface: BufferGeometry, named: TierGeometry['tier']): { section: SectionPoint[]; half: number } {
+  const first = surface.getAttribute('across').getX(0);
+  const tiers = [named, ...TIER_NAMES.filter((tier) => tier !== named)];
+  for (const tier of tiers) {
+    const half = -TIERS[tier].width / 2;
+    if (first === half) return { section: roadSection(tier), half };
+  }
+  for (const tier of tiers) {
+    const half = -TIERS[tier].width / 2;
+    if (first === -footprintHalfWidth(tier)) return { section: structureSection(tier), half };
+  }
+  return { section: structureSection(named), half: -TIERS[named].width / 2 };
+}
+
 /**
  * The carriageway is the span between the two kerbs, and it is lofted face
  * up: the camera looks down on a road, never through it. The column it starts
@@ -252,9 +276,7 @@ function kerbColumn(section: readonly SectionPoint[], half: number): number {
  * Returns the number of carriageway quads that face up.
  */
 function countCarriageway(surface: BufferGeometry, tier: TierGeometry['tier'], where: string, fault: Fault): number {
-  const half = -TIERS[tier].width / 2;
-  const ground = surface.getAttribute('across').getX(0) === half;
-  const section = ground ? roadSection(tier) : structureSection(tier);
+  const { section, half } = sectionOf(surface, tier);
   const kerb = kerbColumn(section, half);
   const rows = surface.getAttribute('position').count / section.length;
   let up = 0;
