@@ -24,6 +24,9 @@ import { buildSettingsPage } from './title-settings.ts';
 /** The key that opens and closes the pause menu. Listed in `controls.ts`. */
 export const PAUSE_KEY = 'Escape';
 
+/** Milliseconds after the menu opens in which an Escape is the press that opened it. */
+const SAME_PRESS_MS = 200;
+
 export interface PauseActions {
   /** Keep the session in the browser. Answers what the status line says. */
   save(): string;
@@ -80,6 +83,10 @@ export class PauseMenu {
   /** One status line per page that has one; both say the same thing. */
   private readonly statuses: HTMLElement[] = [];
   private isOpen = false;
+  /** Called when Resume or Escape closes the menu: a press the browser trusts to ask for pointer lock. */
+  onResume: (() => void) | null = null;
+  /** When the menu last opened, on the clock of `performance.now()` and of a key event's time stamp. */
+  private shownAt = -Infinity;
 
   constructor(parent: HTMLElement, seed: string, actions: PauseActions) {
     this.seed = seed;
@@ -135,6 +142,7 @@ export class PauseMenu {
   }
 
   show(): void {
+    this.shownAt = performance.now();
     this.isOpen = true;
     this.root.hidden = false;
     this.say('');
@@ -154,12 +162,21 @@ export class PauseMenu {
     (document.activeElement as HTMLElement | null)?.blur();
   }
 
+  /** Close the menu and go back to the game. */
+  private resume(): void {
+    this.hide();
+    this.onResume?.();
+  }
+
   /** A key pressed while the menu is open. Escape on the main page resumes. */
   key(event: KeyboardEvent): void {
     if (this.pages.key(event)) return;
     if (event.code === PAUSE_KEY) {
       event.preventDefault();
-      this.hide();
+      // A browser may hand the page the Escape that took the pointer lock as
+      // well, after the lost lock opened the menu. That press must not close it.
+      if (event.timeStamp - this.shownAt < SAME_PRESS_MS) return;
+      this.resume();
     }
   }
 
@@ -167,7 +184,7 @@ export class PauseMenu {
     const main = page('title-page pause-main');
     main.append(
       menuList([
-        { numeral: 'I', label: 'Resume', action: () => this.hide() },
+        { numeral: 'I', label: 'Resume', action: () => this.resume() },
         { numeral: 'II', label: 'Multiplayer', opens: 'party' },
         { numeral: 'III', label: 'Save game', opens: 'saves' },
         { numeral: 'IV', label: 'Load game', opens: 'loads' },
