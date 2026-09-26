@@ -21,18 +21,18 @@ sweepSuite('terrain', () => {
     for (const seed of seeds.slice(0, REPEAT_COUNT)) {
       const a = worlds.get(seed) as WorldDescription;
       const b = repeats.get(seed) as WorldDescription;
-      expect(heightsHash(b.terrain.heights)).toBe(heightsHash(a.terrain.heights));
-      expect(stableJson({ ...b, terrain: null })).toBe(stableJson({ ...a, terrain: null }));
+      expect(heightsHash(b.terrain.heights), `seed ${seed}: the heights differ`).toBe(heightsHash(a.terrain.heights));
+      expect(stableJson({ ...b, terrain: null }), `seed ${seed}: the description differs`).toBe(stableJson({ ...a, terrain: null }));
     }
   });
 
   it('draws a square world between 3 km and 6 km', () => {
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
-      expect(w.size).toBeGreaterThanOrEqual(MIN_WORLD_SIZE);
-      expect(w.size).toBeLessThanOrEqual(MAX_WORLD_SIZE);
-      expect(w.size % TERRAIN_CELL).toBe(0);
-      expect(new Heightfield(w.terrain).extent).toBe(w.size);
+      expect(w.size, `seed ${seed}`).toBeGreaterThanOrEqual(MIN_WORLD_SIZE);
+      expect(w.size, `seed ${seed}`).toBeLessThanOrEqual(MAX_WORLD_SIZE);
+      expect(w.size % TERRAIN_CELL, `seed ${seed}`).toBe(0);
+      expect(new Heightfield(w.terrain).extent, `seed ${seed}`).toBe(w.size);
     }
   });
 
@@ -49,8 +49,8 @@ sweepSuite('terrain', () => {
         if (v > max) max = v;
       }
       expect(finite, `seed ${seed}`).toBe(true);
-      expect(min).toBeGreaterThan(-40);
-      expect(max).toBeLessThan(260);
+      expect(min, `seed ${seed}`).toBeGreaterThan(-40);
+      expect(max, `seed ${seed}`).toBeLessThan(260);
     }
   });
 
@@ -79,9 +79,9 @@ sweepSuite('terrain', () => {
       const w = worlds.get(seed) as WorldDescription;
       const hf = new Heightfield(w.terrain);
       for (const river of w.water.rivers) {
-        for (const p of river.path) expect(hf.sample(p.x, p.y)).toBeLessThan(w.water.seaLevel);
+        for (const p of river.path) expect(hf.sample(p.x, p.y), `seed ${seed}: river at ${p.x.toFixed(0)}, ${p.y.toFixed(0)}`).toBeLessThan(w.water.seaLevel);
       }
-      expect(hf.sample(w.water.harbour.x, w.water.harbour.y)).toBeLessThan(-5);
+      expect(hf.sample(w.water.harbour.x, w.water.harbour.y), `seed ${seed}: the harbour`).toBeLessThan(-5);
     }
   });
 
@@ -144,8 +144,8 @@ sweepSuite('terrain', () => {
       };
       for (const c of w.water.crossings) {
         const { from, to } = c;
-        expect(hf.sample(from.x, from.y)).toBeGreaterThanOrEqual(w.water.seaLevel);
-        expect(hf.sample(to.x, to.y)).toBeGreaterThanOrEqual(w.water.seaLevel);
+        expect(hf.sample(from.x, from.y), `seed ${seed}: a bridge head in the water`).toBeGreaterThanOrEqual(w.water.seaLevel);
+        expect(hf.sample(to.x, to.y), `seed ${seed}: a bridge head in the water`).toBeGreaterThanOrEqual(w.water.seaLevel);
         // Both bridge heads stand on the island the crossing claims, so the
         // union-find above joins the land the roads will actually reach. A
         // chord that lands on one island twice, or on a rock in the strait,
@@ -158,12 +158,12 @@ sweepSuite('terrain', () => {
         // a rock in the strait to reach ground a bridge head can stand on.
         expect(wetFraction(hf, from, to, w.water.seaLevel), `seed ${seed}`).toBeGreaterThan(0.5);
         const span = Math.hypot(from.x - to.x, from.y - to.y);
-        expect(span).toBeGreaterThan(20);
+        expect(span, `seed ${seed}`).toBeGreaterThan(20);
         expect(span, `seed ${seed}`).toBeLessThan(w.size * 0.12);
         parent[find(indexOf(c.fromIsland))] = find(indexOf(c.toIsland));
       }
       const roots = new Set(w.water.islands.map((_, i) => find(i)));
-      expect(roots.size, `seed ${seed}`).toBe(1);
+      expect(roots.size, `seed ${seed}: the islands form ${roots.size} groups no crossing joins`).toBe(1);
     }
   });
 });

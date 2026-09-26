@@ -307,7 +307,7 @@ sweepSuite('places', () => {
         expect(zones.has(district.zone), `seed ${seed}: stop ${stop.id} serves the ${district.zone}`).toBe(true);
       }
       // No district waits at two stops, and no stop stands on top of another.
-      expect(new Set(tram.stops.map((s) => s.district)).size).toBe(tram.stops.length);
+      expect(new Set(tram.stops.map((s) => s.district)).size, `seed ${seed}: two stops serve one district`).toBe(tram.stops.length);
 
       for (const id of tram.corridors) {
         const corridor = w.corridors[id] as Corridor;
@@ -435,7 +435,7 @@ sweepSuite('places', () => {
       const onABeach = w.beaches.some((b) => isResort(b) && b.districts.includes(boardwalk?.id ?? -1));
       expect(onABeach, `seed ${seed}: The Boardwalk stands on no resort beach`).toBe(true);
       for (const d of w.districts) {
-        expect(hf.sample(d.x, d.y)).toBeGreaterThanOrEqual(w.water.seaLevel);
+        expect(hf.sample(d.x, d.y), `seed ${seed}: ${d.name} stands under the sea`).toBeGreaterThanOrEqual(w.water.seaLevel);
         // The land it stands on carries an island of the water description, so
         // a crossing leads there and the roads can arrive. A rock in the sea
         // would take a district that could never be reached or built.
@@ -457,12 +457,12 @@ sweepSuite('places', () => {
             const held = zoneFallback(zones, d.zone, hf, land, climbs[tier]).climbed;
             expect(held, `seed ${seed}: no ${tier} climbs to ${d.name}, though its ${d.zone} has ground one can`).toBeUndefined();
           }
-          expect(zoneAt(zones, d.x, d.y)).toBe(d.zone);
+          expect(zoneAt(zones, d.x, d.y), `seed ${seed}: ${d.name}`).toBe(d.zone);
         }
-        expect(d.density).toBeGreaterThanOrEqual(0);
-        expect(d.density).toBeLessThanOrEqual(1);
-        expect(d.wealth).toBeGreaterThanOrEqual(0);
-        expect(d.wealth).toBeLessThanOrEqual(1);
+        expect(d.density, `seed ${seed}: ${d.name}`).toBeGreaterThanOrEqual(0);
+        expect(d.density, `seed ${seed}: ${d.name}`).toBeLessThanOrEqual(1);
+        expect(d.wealth, `seed ${seed}: ${d.name}`).toBeGreaterThanOrEqual(0);
+        expect(d.wealth, `seed ${seed}: ${d.name}`).toBeLessThanOrEqual(1);
       }
     }
   });

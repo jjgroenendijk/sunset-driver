@@ -117,8 +117,8 @@ sweepSuite('roads', () => {
       const route = graph.shortestPath(start, far);
       expect(route, `seed ${seed}: no route from the core to node ${far}`).toBeDefined();
       const taken = route as NonNullable<typeof route>;
-      expect(taken.nodes[0]).toBe(start);
-      expect(taken.nodes[taken.nodes.length - 1]).toBe(far);
+      expect(taken.nodes[0], `seed ${seed}: the route starts elsewhere`).toBe(start);
+      expect(taken.nodes[taken.nodes.length - 1], `seed ${seed}: the route ends elsewhere`).toBe(far);
       // A drive is never shorter than the straight line it covers.
       const head = graph.nodes[start] as RoadNode;
       const tail = graph.nodes[far] as RoadNode;
