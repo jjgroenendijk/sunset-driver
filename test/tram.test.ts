@@ -74,23 +74,32 @@ describe('the tram (spec section 13.2)', () => {
     }
   });
 
+  /** Expect each car off the middle of the nearest side of the ring by the track, away from the corners. */
+  function expectOnTrack(cars: AmbientPose[], tick: number): void {
+    for (const car of cars) {
+      const side = Math.abs(Math.abs(car.x) - RING) < Math.abs(Math.abs(car.y) - RING) ? Math.abs(car.x) : Math.abs(car.y);
+      const along = side === Math.abs(car.x) ? Math.abs(car.y) : Math.abs(car.x);
+      if (along > RING - 20) continue;
+      expect(Math.abs(side - RING), `tick ${tick}`).toBeCloseTo(TRAM_TRACK, 6);
+    }
+  }
+
+  /** Expect each car to follow the one before it at no more than its length and the gap. */
+  function expectNoseToTail(cars: AmbientPose[], tick: number): void {
+    for (let i = 0; i + 1 < TRAM_CARS; i++) {
+      const a = cars[i] as AmbientPose;
+      const b = cars[i + 1] as AmbientPose;
+      expect(Math.hypot(a.x - b.x, a.y - b.y), `tick ${tick}`).toBeLessThanOrEqual(CAR_LENGTH + CAR_GAP + 1e-6);
+      // Round a corner the straight line between two cars is shorter than the track between them.
+      if (Math.abs(a.heading - b.heading) < 1e-6) expect(Math.hypot(a.x - b.x, a.y - b.y), `tick ${tick}`).toBeGreaterThan(CAR_LENGTH);
+    }
+  }
+
   it('runs its cars nose to tail on the right-hand track of the reserved lane', () => {
     for (let tick = 0; tick < tour.period; tick += 997) {
       const cars = [0, 1, 2].map((car) => line.carPose(0, car, tick, { ...pose }));
-      for (const car of cars) {
-        // Off the middle of the nearest side of the ring by the track, away from the corners.
-        const side = Math.abs(Math.abs(car.x) - RING) < Math.abs(Math.abs(car.y) - RING) ? Math.abs(car.x) : Math.abs(car.y);
-        const along = side === Math.abs(car.x) ? Math.abs(car.y) : Math.abs(car.x);
-        if (along > RING - 20) continue;
-        expect(Math.abs(side - RING), `tick ${tick}`).toBeCloseTo(TRAM_TRACK, 6);
-      }
-      for (let i = 0; i + 1 < TRAM_CARS; i++) {
-        const a = cars[i] as AmbientPose;
-        const b = cars[i + 1] as AmbientPose;
-        expect(Math.hypot(a.x - b.x, a.y - b.y), `tick ${tick}`).toBeLessThanOrEqual(CAR_LENGTH + CAR_GAP + 1e-6);
-        // Round a corner the straight line between two cars is shorter than the track between them.
-        if (Math.abs(a.heading - b.heading) < 1e-6) expect(Math.hypot(a.x - b.x, a.y - b.y), `tick ${tick}`).toBeGreaterThan(CAR_LENGTH);
-      }
+      expectOnTrack(cars, tick);
+      expectNoseToTail(cars, tick);
     }
   });
 

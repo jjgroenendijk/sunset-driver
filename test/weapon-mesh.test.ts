@@ -58,6 +58,23 @@ function viewDifference(a: Map<string, number>, b: Map<string, number>): number 
   return count;
 }
 
+/** The first thing wrong with the boxes of a drawn weapon, or '' when nothing is. */
+function modelComplaint(id: string, boxes: ReturnType<typeof weaponBoxes>): string {
+  let complaint = '';
+  if (boxes.length === 0) complaint ||= `${id} has no model`;
+  for (const b of boxes) {
+    const sizes = [b.length, b.height, b.width, b.x, b.y, b.z];
+    if (!sizes.every(Number.isFinite)) complaint ||= `${id} has a box that is not a number`;
+    if (b.length <= 0 || b.height <= 0 || b.width <= 0) complaint ||= `${id} has a flat box`;
+    if (b.part !== undefined) complaint ||= `${id} is drawn with ${b.part} it was not given`;
+  }
+  // Nothing held in one hand is longer than a man is tall, or wider than a shoulder.
+  const reach = Math.max(...boxes.map((b) => Math.abs(b.x) + b.length / 2));
+  const side = Math.max(...boxes.map((b) => Math.abs(b.z) + b.width / 2));
+  if (reach > 1.6 || side > 0.25) complaint ||= `${id} reaches ${reach.toFixed(2)} by ${side.toFixed(2)} m`;
+  return complaint;
+}
+
 describe('the weapon models', () => {
   it('builds every weapon but bare fists from boxes of real size', () => {
     let complaint = '';
@@ -67,17 +84,7 @@ describe('the weapon models', () => {
         if (boxes.length > 0) complaint ||= 'fists are drawn';
         continue;
       }
-      if (boxes.length === 0) complaint ||= `${id} has no model`;
-      for (const b of boxes) {
-        const sizes = [b.length, b.height, b.width, b.x, b.y, b.z];
-        if (!sizes.every(Number.isFinite)) complaint ||= `${id} has a box that is not a number`;
-        if (b.length <= 0 || b.height <= 0 || b.width <= 0) complaint ||= `${id} has a flat box`;
-        if (b.part !== undefined) complaint ||= `${id} is drawn with ${b.part} it was not given`;
-      }
-      // Nothing held in one hand is longer than a man is tall, or wider than a shoulder.
-      const reach = Math.max(...boxes.map((b) => Math.abs(b.x) + b.length / 2));
-      const side = Math.max(...boxes.map((b) => Math.abs(b.z) + b.width / 2));
-      if (reach > 1.6 || side > 0.25) complaint ||= `${id} reaches ${reach.toFixed(2)} by ${side.toFixed(2)} m`;
+      complaint ||= modelComplaint(id, boxes);
     }
     expect(complaint, complaint).toBe('');
   });

@@ -74,6 +74,18 @@ function chunkOf(plants: Plant[]): WorldChunk {
 /** The models of a world, grown once for every test that reads them. */
 const models = buildPlantModels();
 
+/** The height halfway between the lowest and the highest leaf vertex of a model. */
+function leafMiddle(position: Float32Array, part: Float32Array): number {
+  let low = Infinity;
+  let high = -Infinity;
+  for (let v = 0; v * 3 < position.length; v++) {
+    if (part[v] !== PLANT_LEAF) continue;
+    low = Math.min(low, position[v * 3 + 1] as number);
+    high = Math.max(high, position[v * 3 + 1] as number);
+  }
+  return (low + high) / 2;
+}
+
 describe('plant models', () => {
   it('builds one model of every species and variant, and nothing else', () => {
     expect(models).toHaveLength(PLANT_SPECIES.length * SPECIES_MODELS + WOOD_MODELS);
@@ -137,14 +149,7 @@ describe('plant models', () => {
       const position = geometry.getAttribute('position').array as Float32Array;
       const normal = geometry.getAttribute('normal').array as Float32Array;
       const part = geometry.getAttribute('part').array as Float32Array;
-      let low = Infinity;
-      let high = -Infinity;
-      for (let v = 0; v * 3 < position.length; v++) {
-        if (part[v] !== PLANT_LEAF) continue;
-        low = Math.min(low, position[v * 3 + 1] as number);
-        high = Math.max(high, position[v * 3 + 1] as number);
-      }
-      const middle = (low + high) / 2;
+      const middle = leafMiddle(position, part);
       for (let t = 0; t * 9 < position.length; t++) {
         const v = t * 9;
         if (part[t * 3] !== PLANT_LEAF) continue;
