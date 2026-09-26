@@ -357,7 +357,7 @@ export class AmbientTraffic {
     const half = spec.width / 2;
     out.right = half - offset;
     out.left = (edge.twin >= 0 || edge.tier === 'ramp' ? -half : 0) - offset;
-    out.pavement = spec.pavement > 0 ? spec.verge + spec.pavement : 0;
+    out.pavement = spec.verge + spec.pavement + (edge.tier === 'dirt' ? OPEN_GROUND : 0);
     return out;
   }
 
@@ -697,9 +697,16 @@ function pickClass(mix: Partial<Record<VehicleClass, number>>, rng: Rng): Vehicl
 }
 
 /**
+ * Metres of open ground past the verge of a dirt road that a car steering
+ * round something may drive over. A dirt road runs through the country; the
+ * other roads have buildings, a barrier or a drop past their edge.
+ */
+const OPEN_GROUND = 2;
+
+/**
  * Metres right of the middle of a lane the two kerbs of its carriageway stand:
- * the left one below 0. `pavement` is how far past a kerb the verge and the
- * pavement reach, 0 on a road that has none.
+ * the left one below 0. `pavement` is how far past a kerb a car may drive:
+ * the verge and the pavement, and on a dirt road some open ground.
  */
 export interface Kerbs {
   left: number;

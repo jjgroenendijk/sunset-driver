@@ -12,10 +12,15 @@
  * then creeps out, slower than its tour, turned towards where it steers,
  * passes, and steers back into its lane once the lane beside it is clear.
  *
+ * Its patience runs out after {@link MOUNT_WAIT}. It then squeezes by, drives
+ * up on the pavement or the verge, and noses out into the next lane as soon
+ * as the ground beside it is clear.
+ *
  * What the swerve moves is the car's side: metres right of its lane, stored in
  * its hold (`hold.ts`) and read by every reader of its pose through
- * `heldPose`. A car that finds no side with room stands and waits. It never
- * drives into what is in its way.
+ * `heldPose`. A car that finds no side with room even then stands and waits:
+ * only an alley with a car across it has none. It never drives into what is
+ * in its way.
  */
 import { cos, sin } from '../../core/libm.ts';
 import { TICK_RATE } from '../clock.ts';
@@ -34,8 +39,24 @@ const PAST = 1.5;
 const ROOM = 0.6;
 const KERB = 0.3;
 
-/** Ticks a car stands behind something before it will put two wheels on the pavement to pass it. */
-const MOUNT_WAIT = 4 * TICK_RATE;
+/**
+ * Ticks a car stands behind something before it runs out of patience. It then
+ * drives up on the pavement or the verge to pass, as far as its whole body,
+ * squeezes by with {@link SQUEEZE} of room, and noses out into the next lane
+ * as soon as the few metres beside it are clear ({@link NOSE_BEHIND},
+ * {@link NOSE_AHEAD}): the cars coming up in that lane stop for it.
+ */
+const MOUNT_WAIT = 3 * TICK_RATE;
+
+/** Metres a car out of patience keeps from the side of what it passes. */
+const SQUEEZE = 0.3;
+
+/** Metres behind its rear and ahead of its front a car out of patience needs clear to nose out. */
+const NOSE_BEHIND = 3;
+const NOSE_AHEAD = 4;
+
+/** Ticks a car stands behind something at a red light, or in a queue of its tour, before it passes it anyway. */
+const RED_PATIENCE = 10 * TICK_RATE;
 
 /** Metres off its lane a car steers at most: two lanes over. */
 const SWERVE_MOST = 7;
@@ -54,6 +75,9 @@ const YAW_PACE = 0.8 / TICK_RATE;
 
 /** Seconds a pass takes at most: every car near is run on this far before a car sets off. */
 const PASS_TIME = 4;
+
+/** Seconds a car out of patience runs the cars near it on before it noses out. */
+const NOSE_TIME = 1.5;
 
 /** Seconds a car coming up is run on before a car steers back into its lane in front of it. */
 const BACK_TIME = 2;
@@ -132,19 +156,30 @@ export class Steering {
     const blocking = this.blockingOf(i, side);
     const blocked = blocking.lo <= blocking.hi;
     let aim = side;
-    let waited = blocked ? (was?.blocked ?? 0) + 1 : 0;
+    const waited = blocked ? (was?.blocked ?? 0) + 1 : 0;
     if (blocked) {
-      const chosen = this.aimPast(car, blocking, was?.aim ?? 0, waited >= MOUNT_WAIT);
+      const impatient = waited >= MOUNT_WAIT;
+      const chosen = this.aimPast(car, blocking, was?.aim ?? 0, impatient);
       const committed = was !== undefined && was.aim !== 0 && Math.sign(was.aim) === Math.sign(chosen ?? 0);
-      const ready = committed || (waited >= START && !this.scene.queuedAtRed(car));
-      if (chosen !== undefined && ready && (committed || this.clear(i, chosen, -car.box.halfLength - BEHIND, blocking.end + car.box.halfLength + 2, PASS_TIME))) {
-        aim = chosen;
-        waited = 0;
-      }
-    } else if (side !== 0 && this.clear(i, 0, -car.box.halfLength - PAST, car.box.halfLength + 6, BACK_TIME)) {
+      const ready = committed || (waited >= START && (waited >= RED_PATIENCE || !this.scene.queuedAtRed(car)));
+      // The wait goes on counting while it passes: a car that got its patience back lost the room it chose by.
+      if (chosen !== undefined && ready && (committed || this.passable(i, chosen, blocking, impatient))) aim = chosen;
+    } else if (side !== 0 && this.clear(i, 0, -car.box.halfLength - PAST, car.box.halfLength + 6, BACK_TIME, CLEAR)) {
       aim = 0;
     }
     this.move(i, side, aim, waited, blocked);
+  }
+
+  /**
+   * True when car `i` may set off to pass at `side`: the whole ground it
+   * passes over is clear while it has patience, and only the ground beside it
+   * once it has none.
+   */
+  private passable(i: number, side: number, blocking: Blocking, impatient: boolean): boolean {
+    const hl = (this.scene.cars[i] as Car).box.halfLength;
+    // What it squeezes past is what it chose the side by, so the margin is under the squeeze.
+    if (impatient) return this.clear(i, side, -hl - NOSE_BEHIND, hl + NOSE_AHEAD, NOSE_TIME, SQUEEZE - 0.1);
+    return this.clear(i, side, -hl - BEHIND, blocking.end + hl + 2, PASS_TIME, CLEAR);
   }
 
   /** Move car `i` a tick sideways towards `aim`, where the step touches nothing, and turn it to face the way it steers. */
@@ -168,8 +203,8 @@ export class Steering {
     shift(car.next, car.laneCos, car.laneSin, drift, turned - yaw);
     car.nextCos = cos(car.next.heading);
     car.nextSin = sin(car.next.heading);
-    // Out in the road beside what it passes, it goes at half its pace.
-    if (blocked && aim !== next) car.slow = true;
+    // Out of its lane beside what it passes, it goes at half its pace.
+    if (blocked && next !== 0) car.slow = true;
     const still = next === 0 && aim === 0 && turned === 0 && waited === 0 && drift === 0;
     car.swerve = still ? undefined : ({ side: next, aim, drift, yaw: turned, blocked: waited } satisfies Swerve);
   }
@@ -232,10 +267,13 @@ export class Steering {
   private aimPast(car: Car, blocking: Blocking, chosen: number, mount: boolean): number | undefined {
     const kerbs = this.scene.kerbs(car, this.kerbs);
     const w = car.box.halfWidth;
-    const right = Math.max(0, blocking.hi + w + ROOM);
-    const left = Math.min(0, blocking.lo - w - ROOM);
-    // Out of patience, a car puts its outer wheels up on the pavement: its middle may reach the kerb.
-    const over = mount ? Math.min(kerbs.pavement, w) : 0;
+    const room = mount ? SQUEEZE : ROOM;
+    const right = Math.max(0, blocking.hi + w + room);
+    const left = Math.min(0, blocking.lo - w - room);
+    // Out of patience, a car drives up on the pavement or the verge, its whole body if it must.
+    const over = mount ? Math.max(0, kerbs.pavement - KERB) : 0;
+    // What it passes lies wholly to one side of its own lane: the lane is the way past.
+    if (right === 0 || left === 0) return 0;
     const canRight = right > 0 && right <= Math.min(SWERVE_MOST, kerbs.right + over - w - KERB);
     const canLeft = left < 0 && left >= Math.max(-SWERVE_MOST, kerbs.left - over + w + KERB);
     if (chosen > 0 && canRight) return right;
@@ -249,11 +287,12 @@ export class Steering {
    * True when the ground car `i` would stand on at `side`, from `a0` to `a1`
    * metres along its lane, is clear: of every car near it where each stands
    * and where it will stand over `seconds` at its speed, of the people, and of
-   * anything else moving. What stands still there is what it passes.
+   * anything else moving, with `margin` either side of its body. What stands
+   * still there is what it passes.
    */
-  private clear(i: number, side: number, a0: number, a1: number, seconds: number): boolean {
+  private clear(i: number, side: number, a0: number, a1: number, seconds: number, margin: number): boolean {
     const car = this.scene.cars[i] as Car;
-    const band: Band = { a0, a1, lo: side - car.box.halfWidth - CLEAR, hi: side + car.box.halfWidth + CLEAR };
+    const band: Band = { a0, a1, lo: side - car.box.halfWidth - margin, hi: side + car.box.halfWidth + margin };
     return this.carsClear(i, band, seconds) && this.othersClear(car, band) && this.peopleClear(car, band);
   }
 

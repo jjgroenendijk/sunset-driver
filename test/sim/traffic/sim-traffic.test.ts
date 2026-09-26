@@ -114,6 +114,21 @@ describe(`traffic in the simulation (${SEED_COUNT} seeds)`, () => {
     physics.dispose();
   });
 
+  it('drives up on the verge round a car parked in the middle of a narrow road', () => {
+    const seed = seeds[0] as number;
+    const traffic = gridTraffic(seed);
+    const { state, physics } = session(seed, traffic);
+    // The dirt road: 5 m kerb to kerb, a lane each way, a metre of verge. The car leaves too little of the carriageway.
+    const road = 2 * GRID_SPACING;
+    const lane = road + laneOffset({ tier: 'dirt', lanes: TIERS.dirt.lanes }, 0);
+    physics.spawn(state, 60, road, 0);
+    // Longer than the others: the first car only comes up after a while, and passes at a crawl.
+    const { passed } = passing(state, physics, traffic, 60, lane, 2400);
+    expect(state.traffic.promoted).toEqual([]);
+    expect(passed, 'no car got past the parked one').toBeGreaterThan(0);
+    physics.dispose();
+  });
+
   it('steers the traffic round a player on foot standing in the lane', () => {
     const seed = seeds[1] as number;
     const traffic = gridTraffic(seed);

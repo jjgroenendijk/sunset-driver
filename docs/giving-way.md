@@ -76,23 +76,42 @@ tour is in `docs/city-life.md`, and how a person walks their loop in `docs/crowd
   side to pass on. That is the player, their car, a wreck, a unit, a car facing it that stands, or
   a person who stands in the road. It takes the side that goes least far off the lane and that the
   carriageway has room for, up to `SWERVE_MOST`. It keeps a side once chosen. Past a car facing
-  it, it keeps right.
+  it, it keeps right. What it passes may lie wholly beside its lane, once it has swerved: then it
+  aims back at its lane (`aimPast` answers 0).
 - `AmbientTraffic.kerbsOf` says where the kerbs are, right of the middle of the car's lane. A
   two-way road gives the oncoming half too. A one-way run that is not a ramp gives only its own.
 - It sets off only when the ground it passes over is clear, with every car near it run on
   `PASS_TIME` at its speed. A car standing behind it the same way round is left out: that one
   queues behind it and follows it out. Counting it once stood every queue still.
 - It does not start at a red light: `queuedAtRed` stands a car within `QUEUE_REACH` of a stop line
-  that is not green, or in a wait of its tour. Without it a car overtook a queue at a light.
-- A car that has waited `MOUNT_WAIT` and still finds no room on the carriageway may put two
-  wheels on the pavement, as far as `kerbs.pavement` allows. A narrow street with a car parked in
-  it had no room to pass otherwise.
+  that is not green, or in a wait of its tour. Without it a car overtook a queue at a light. After
+  `RED_PATIENCE` it starts anyway. A car held back stands at a frozen moment of its tour, and when
+  that moment was a wait, `queuedAtRed` answered true for ever.
+- **After `MOUNT_WAIT` a car is out of patience.** It keeps `SQUEEZE` from what it passes, not
+  `ROOM`. It drives up on the pavement, the verge, or on a dirt road `OPEN_GROUND` past the verge,
+  as far as `kerbs.pavement` goes. It needs only `NOSE_BEHIND` to `NOSE_AHEAD` clear, over
+  `NOSE_TIME`, to nose out: the cars coming up behind it in that lane stop for it. The full check
+  asked for a gap of about 50 m in the next lane, which a busy street never has.
+- **The patience counts on while the car passes** (`Swerve.blocked`). It was reset when the car
+  set off. The car then lost the squeeze it chose its side by, found no room on that side, and
+  stood half out of its lane for ever.
+- Out of its lane beside what it passes, a car goes at half its pace.
+- Only an alley has no room at all: 4 m kerb to kerb, no verge, and buildings. A car parked in
+  the middle of one holds the traffic until it moves.
+- The speed of the player's car and of a wreck is read from their velocity, not
+  `VehicleState.speed`. That is the wheels' speed, and a standing car can read -2.7 m/s. Steering
+  took it for a moving car and never passed it.
 - The side is metres right of the lane, the sign the lane's own offset uses: a car in the oncoming
   lane stands at a negative side. It lives in the hold as `Swerve`, beside the lag, with the turn
   of the body (`yaw`) and what the side changed by on the last tick (`drift`), which the renderer
   reads between two ticks.
 - A step sideways or a turn that would put a corner against something is not taken. A car turned
   in place next to the player on foot and promoted itself on them before this rule.
+- A swerving car keeps `PASS_ROOM` from the player, their car, a wreck or a unit, not
+  `OTHER_ROOM`. That is under `SQUEEZE` and over the 0.1 m touch that promotes a car.
+- Two cars already within `SIDE_ROOM` of each other may still move past each other while the step
+  keeps `BRUSH` between them. The old rule let them only move apart, and two cars squeezing round
+  one obstacle from both ends stood beside each other for ever.
 
 ## A bumped car
 

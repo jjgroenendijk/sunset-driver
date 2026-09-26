@@ -27,7 +27,7 @@
  * leaves the box goes back to their loop's time. The box is wider than the
  * view, so nobody sees that jump.
  */
-import { cos, sin } from '../../core/libm.ts';
+import { cos, hypot, sin } from '../../core/libm.ts';
 import type { CasualtyGround } from '../crowd/casualty.ts';
 import { UNIT_BODY } from '../city/emergency.ts';
 import { BoxFrame, Grid, NearCache } from './give-way-grid.ts';
@@ -73,11 +73,21 @@ const UNSEEN_CATCH = 4;
 /** Metres a car keeps between its body and the player, their car, a wreck or a unit. */
 const OTHER_ROOM = 0.25;
 
+/**
+ * Metres a car steering round the player, their car, a wreck or a unit keeps
+ * from it. `swerve.ts` passes at 0.3; the touch that promotes a car is 0.1
+ * (`traffic-bodies.ts`).
+ */
+const PASS_ROOM = 0.15;
+
 /** Metres more than a person's radius a car keeps from them, so a step of theirs does not meet it. */
 const STEP_ROOM = 0.2;
 
 /** Metres a car keeps from the side of another it would drive into. */
 const SIDE_ROOM = 0.2;
+
+/** Metres two cars already within {@link SIDE_ROOM} of each other may still pass at. */
+const BRUSH = 0.05;
 
 /** Ticks at a time a car that came in on another is moved back, and how many times at most. */
 const BACK_STEP = 20;
@@ -308,12 +318,13 @@ export class GiveWay {
     this.others = [];
     const v = state.vehicle;
     const spec = specOf(v.cls);
-    this.other(v.x, v.z, headingOf(v), spec, v.speed);
+    // What a vehicle moves at over the ground: its `speed` is the wheels', which spin on a car that stands.
+    this.other(v.x, v.z, headingOf(v), spec, hypot(v.vx, v.vz));
     if (!state.player.driving) this.other(state.player.x, state.player.y, 0, { halfLength: 0.4, halfWidth: 0.4 }, state.player.speed);
     for (const record of state.traffic.promoted) {
       const w = record.vehicle;
       if (!this.frame.inBox(w.x, w.z)) continue;
-      this.other(w.x, w.z, headingOf(w), specOf(w.cls), w.speed);
+      this.other(w.x, w.z, headingOf(w), specOf(w.cls), hypot(w.vx, w.vz));
     }
     const patrol = specOf('emergency');
     for (const unit of state.police.units) {
@@ -382,10 +393,21 @@ export class GiveWay {
         turnedTouch(car.next, nc, ns, other.box, other.cos, other.sin, SIDE_ROOM) ||
         turnedTouch(car.next, nc, ns, other.next, other.nextCos, other.nextSin, SIDE_ROOM);
       if (!into) continue;
-      // Two cars already touching may only move apart.
+      // Two cars already this close may move apart, or on past each other where the step really touches nothing.
       const touching = turnedTouch(box, car.cos, car.sin, other.box, other.cos, other.sin, SIDE_ROOM);
-      if (!touching || apart(car.next, other.box) <= apart(box, other.box)) this.block(car, j);
+      if (!touching || (apart(car.next, other.box) <= apart(box, other.box) && this.brushes(car, other))) this.block(car, j);
     }
+  }
+
+  /**
+   * True when car `car`'s next step comes within {@link BRUSH} of `other`,
+   * where it stands or where it goes. Two cars squeezing past each other
+   * round something that stands in the road pass this close.
+   */
+  private brushes(car: Car, other: Car): boolean {
+    const nc = car.nextCos;
+    const ns = car.nextSin;
+    return turnedTouch(car.next, nc, ns, other.box, other.cos, other.sin, BRUSH) || turnedTouch(car.next, nc, ns, other.next, other.nextCos, other.nextSin, BRUSH);
   }
 
   /** The cars of the traffic in the lane ahead of car `i` that head the same way. */
@@ -419,10 +441,12 @@ export class GiveWay {
       else car.slow = true;
     }
     // Its whole body, not only the lane ahead: a corner that would clip one of them stops it too.
+    // A car steering round one squeezes by closer, still wider than the touch that promotes it.
+    const room = sideOf(car) === 0 ? OTHER_ROOM : PASS_ROOM;
     for (const other of this.others) {
-      if (!close(car.next, other, OTHER_ROOM)) continue;
-      const into = turnedTouch(car.next, car.nextCos, car.nextSin, other, other.cos, other.sin, OTHER_ROOM);
-      if (into && !turnedTouch(box, fx, fy, other, other.cos, other.sin, OTHER_ROOM)) this.block(car, OTHER);
+      if (!close(car.next, other, room)) continue;
+      const into = turnedTouch(car.next, car.nextCos, car.nextSin, other, other.cos, other.sin, room);
+      if (into && !turnedTouch(box, fx, fy, other, other.cos, other.sin, room)) this.block(car, OTHER);
     }
   }
 
