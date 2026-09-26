@@ -30,7 +30,7 @@ export interface Swerve {
   drift: number;
   /** Radians the body is turned from the lane, towards where it steers. */
   yaw: number;
-  /** Ticks it has stood unable to get round what is in its lane. */
+  /** Ticks it has stood behind something in its lane, passing it or not: its patience. */
   blocked: number;
 }
 
