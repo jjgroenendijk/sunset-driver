@@ -27,6 +27,10 @@ stand, how an aircraft flies, what the police do about it, and the hangar of sec
   put the airport's gate 41 m below the level, and no road could climb to it.
 - A site whose gate stands more than `RAMP_GRADE` of the ramp's run off the level is refused
   outright. Seed 587507343 chose a gate 47 m below the level, and no road reached it.
+- The coarse pass asks whether a street can climb from the core to the gate. That flood runs over
+  the ground as it was, so it can reach the gate across the site itself. `confirmBest` floods again
+  with the site and its margin kept out, and needs one of the four gates reached. Seed 2224331034
+  stood its airport on a hilltop whose only gentle way up ran across the runway.
 - `findAirport` tries every runway length in the outskirts and the wilderness first. An airport in
   the suburbs bent the arterials round it to the shore, and one seed's suburbs lost their streets.
   Then it shortens the runway before it takes worse zones, and takes the core only last. An airport
