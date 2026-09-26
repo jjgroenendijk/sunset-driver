@@ -43,6 +43,7 @@ import {
   type SiteSource,
 } from './ambience.ts';
 import { CUES, cueAt as cueOf, HIT_CUES, type Cue, type CueKind } from './cue.ts';
+import { hearHonks, type HonkSource } from './honks.ts';
 import type { Cry } from './cry.ts';
 import { barSeconds, dialAt, dialName, wrapDial } from './dial.ts';
 import { enginePitch, engineSound, type EngineSound } from './engine.ts';
@@ -276,7 +277,15 @@ export class AudioPlanner {
    * session has one: its bells are a function of the tick rather than part of
    * the record, so they are read here for every tick the frame stepped.
    */
-  plan(state: SimState, input: InputFrame, listener: Listener, trams?: BellSource, around?: SiteSource, corners?: BuskerSource): AudioPlan {
+  plan(
+    state: SimState,
+    input: InputFrame,
+    listener: Listener,
+    trams?: BellSource,
+    around?: SiteSource,
+    corners?: BuskerSource,
+    traffic?: HonkSource,
+  ): AudioPlan {
     if (this.tick < 0) this.resync(state);
     const ticks = Math.max(0, Math.min(state.tick - this.tick, TICK_RATE));
     const was = state.tick - ticks;
@@ -291,6 +300,7 @@ export class AudioPlanner {
     this.hurt.hear(state, was, listener, cues, cries);
     this.footsteps(state, ticks, cues);
     this.bells(state, was, trams, cues);
+    if (traffic !== undefined) hearHonks(state, was, traffic, listener.x, listener.y, cues);
     const score = scoreOf(state);
     // Where the player is standing, what the sky is doing and what hour it is:
     // the three the ambient beds of spec section 15 are read from. All of it is
