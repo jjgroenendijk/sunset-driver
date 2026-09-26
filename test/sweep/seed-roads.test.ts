@@ -295,14 +295,17 @@ sweepSuite('roads', () => {
     // they were given, since their fill works around far more refused ground.
     // The floors catch the opposite fault, a fill collapsed into a mesh far
     // tighter than the zone asks for. These are here to catch a fill that has
-    // gone wrong, not to pin the figure down.
+    // gone wrong, not to pin the figure down. The wilderness ceiling is
+    // 1000 m: on the 5.8 km map of seed 974684281 the corners round its
+    // wilderness districts carry no road for over a kilometre, which the
+    // wilderness is allowed to do, and the median read 905 m (issue #720).
     const RANGE: Record<Zone, [number, number]> = {
       core: [3, 20],
       inner: [5, 30],
       industrial: [7, 200],
       suburban: [7, 200],
       outskirts: [14, 400],
-      wilderness: [25, 800],
+      wilderness: [25, 1000],
     };
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
@@ -426,7 +429,7 @@ sweepSuite('roads', () => {
           const clearance = lowestSurface(beds, road, run) - DECK_SOFFIT - sea;
           wet++;
           if (clearance >= WATER_CLEARANCE - 1e-6) lifted++;
-          if (!deckPinned(road, run) && clearance <= 0) {
+          if (!deckPinned(road, run, hf, sea) && clearance <= 0) {
             complaint ??= `${road.tier} ${road.id} spans water with its underside ${(-clearance).toFixed(2)} m under it`;
           }
         }
@@ -671,19 +674,39 @@ function lowestSurface(beds: ReturnType<typeof bedsOf>, road: RoadCurve, run: De
 }
 
 /**
- * True where a run of decks has an abutment no ramp may be laid back from: the
- * end of the line, a bore, an interchange, or a junction the network already
- * had there when the deck was laid. A deck held by none of them had the room,
- * so it stands clear of the water.
+ * True where a run of decks had no room for the ramps that would lift it clear
+ * of the water. `water-lift.ts` ramps a wet deck back from each abutment to the
+ * first thing that has to stay on the ground: the end of the line, a bore, an
+ * interchange or a junction. Where either ramp is too short, the lift is cut to
+ * what the grade reaches, and such a deck may stand low. A deck with room on
+ * both sides stands clear of the water.
  */
-function deckPinned(road: RoadCurve, run: DeckRun): boolean {
-  return (
-    run.from === 0 ||
-    run.to + 1 === road.points.length - 1 ||
-    road.tunnels.includes(run.from - 1) ||
-    road.tunnels.includes(run.to + 1) ||
-    [run.from, run.to + 1].some((i) => (road.nodes[i] ?? -1) >= 0 || road.interchanges.includes(i))
-  );
+function deckPinned(road: RoadCurve, run: DeckRun, hf: Heightfield, sea: number): boolean {
+  const held = (i: number): boolean => (road.nodes[i] ?? -1) >= 0 || road.interchanges.includes(i);
+  let back = run.from;
+  while (back > 0 && !held(back) && !road.tunnels.includes(back - 1)) back--;
+  const last = road.points.length - 1;
+  let ahead = run.to + 1;
+  while (ahead < last && !held(ahead) && !road.tunnels.includes(ahead)) ahead++;
+  let lowest = Infinity;
+  for (let i = run.from; i <= run.to + 1; i++) {
+    const p = road.points[i] as Point;
+    lowest = Math.min(lowest, hf.sample(p.x, p.y));
+  }
+  const wanted = sea + WATER_CLEARANCE + DECK_SOFFIT - lowest;
+  const room = Math.min(pathLength(road.points, back, run.from), pathLength(road.points, run.to + 1, ahead));
+  return room * TIERS[road.tier].maxGrade < wanted - 1e-6;
+}
+
+/** Metres along a line from point `from` to point `to`. */
+function pathLength(points: readonly Point[], from: number, to: number): number {
+  let length = 0;
+  for (let i = from; i < to; i++) {
+    const a = points[i] as Point;
+    const b = points[i + 1] as Point;
+    length += Math.hypot(b.x - a.x, b.y - a.y);
+  }
+  return length;
 }
 
 /** Faults where a bore runs past the end of its curve, or is a deck too. */

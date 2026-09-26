@@ -389,8 +389,12 @@ export const VEGETATION_CHUNKS: readonly (readonly [number, number])[] = [[0, 0]
 export const VEGETATION_SAMPLES = 24;
 /** Points round the rim of a canopy that are asked which parcel they stand on. */
 export const CANOPY_POINTS = 8;
-/** Plants the two chunks of a seed carry between them, at least. A map with none is a fault. */
-export const MIN_PLANTS = 20;
+/**
+ * Plants the two chunks of a seed carry between them, at least. A map with none
+ * is a fault. The far chunk can be open sea: on seed 275281509, an archipelago,
+ * it is, and the core chunk carries 18 trees along its pavements (issue #720).
+ */
+export const MIN_PLANTS = 10;
 /**
  * Seeds whose plants are checked. Walking the rim of a canopy asks the parcels
  * of a whole map which of them claims a place, so the quick tier takes a few
