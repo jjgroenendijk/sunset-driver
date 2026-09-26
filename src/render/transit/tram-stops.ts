@@ -2,9 +2,10 @@
  * The tram stops, drawn (spec sections 9.2, 13.2).
  *
  * A stop is an island platform beside the track, as long as a tram: a kerbed
- * slab with a tactile strip down its edge, a shelter in the middle of it with a
- * bench and a lit timetable panel, and a flag on a mast at the end the tram
- * arrives from. The traffic gives up the ground the platform stands on
+ * slab with a tactile strip down its edge and a ramp at each end, a shelter in
+ * the middle of it with a bench and a lit timetable panel, and a flag on a mast
+ * at the end the tram arrives from. Bollards and a keep-left sign stand at each
+ * nose, and white hatching on the road ahead of it keeps the traffic off. The traffic gives up the ground the platform stands on
  * (`laneOffset` in `sim/traffic/traffic.ts`), so nobody waits across a live lane.
  *
  * The places are a function of the line and never move, so the view writes them
@@ -18,6 +19,7 @@
  */
 import { Group, Matrix4, Quaternion, Vector3, type BufferGeometry, type InstancedMesh } from 'three';
 import { CAR_HALF_WIDTH, TRAM_LENGTH, type TramLine } from '../../sim/transit/tram.ts';
+import { PLATFORM_RAMP, PLATFORM_RISE, SHELTER_LONG, SHELTER_TALL } from '../../sim/transit/tram-stop-place.ts';
 import { TRAM_LANE } from '../../world/roads/tiers.ts';
 import { boxOf, coloured, instanced, merged, TRAFFIC_VIEW } from '../vehicles/traffic.ts';
 import { GLASS, METAL } from '../vehicles/vehicle-mesh.ts';
@@ -39,17 +41,20 @@ const SIGN_FACE = 0xf2efe6;
 /**
  * Metres from the track's centre to the near edge of the platform, and how wide
  * it is. A tram is {@link CAR_HALF_WIDTH} across, so the gap a passenger steps
- * over is 15 cm. The places come off the track (`TramLine.stopPlaces`), so this
+ * over is 10 cm. The places come off the track (`TramLine.stopPlaces`), so this
  * is measured from there and not from the road's centreline.
  */
-const INNER = 1.45;
+const INNER = TRAM_LANE.platformInner;
 const WIDTH = TRAM_LANE.platform;
 /** Metres the platform stands above the road, and how deep its kerb is. */
-const RISE = 0.22;
+const RISE = PLATFORM_RISE;
+/** Metres of the painted hatching on the road ahead of each nose, which says the ground is not a lane. */
+const HATCH_LONG = 7;
+const HATCH = 0xf2efe6;
+/** The bollards at each nose, and the keep-left sign between them. */
+const BOLLARD = 0xf2efe6;
+const REFLECTOR = 0xf2c81e;
 
-/** Metres of the shelter, along the platform and up. */
-const SHELTER_LONG = 4.6;
-const SHELTER_TALL = 2.5;
 
 /** One box of a stop, in the stop's own frame. */
 interface StopBox {
@@ -60,6 +65,8 @@ interface StopBox {
   y: number;
   z: number;
   colour: number;
+  /** The faces of a part that is not a box, as `VehicleBox.faces` has them. */
+  faces?: readonly (readonly number[])[];
 }
 
 function box(length: number, height: number, width: number, x: number, y: number, z: number, colour: number): StopBox {
@@ -69,13 +76,85 @@ function box(length: number, height: number, width: number, x: number, y: number
 /** The middle of the platform, across from the track. */
 const MIDDLE = -(INNER + WIDTH / 2);
 
-/** The slab itself: the platform, the kerb on the tram's side, and the tactile strip on it. */
+/**
+ * The slab itself: the platform, the kerb on the tram's side, the tactile
+ * strip on it, a ramp down to the road at each end, and a kerb along the
+ * traffic's side so the island reads as one from a car.
+ */
 function platformBoxes(): StopBox[] {
+  const end = TRAM_LENGTH / 2 + PLATFORM_RAMP / 2;
   return [
     box(TRAM_LENGTH, RISE, WIDTH, 0, RISE / 2, MIDDLE, PLATFORM),
     box(TRAM_LENGTH, RISE + 0.06, 0.16, 0, (RISE + 0.06) / 2, -(INNER + 0.08), KERB),
+    box(TRAM_LENGTH, RISE + 0.04, 0.14, 0, (RISE + 0.04) / 2, -(INNER + WIDTH - 0.07), KERB),
     box(TRAM_LENGTH - 0.6, 0.03, 0.4, 0, RISE + 0.015, -(INNER + 0.42), TACTILE),
+    { ...wedge(PLATFORM_RAMP, RISE, WIDTH, 1), x: end, y: RISE / 2, z: MIDDLE, colour: PLATFORM },
+    { ...wedge(PLATFORM_RAMP, RISE, WIDTH, -1), x: -end, y: RISE / 2, z: MIDDLE, colour: PLATFORM },
+    ...hatching(1),
+    ...hatching(-1),
   ];
+}
+
+/**
+ * A ramp `long` metres by `wide`, `tall` at the platform's end and nothing at
+ * the road's. `side` is the end it stands at: 1 ahead of the platform, -1
+ * behind it. Its faces are wound to face outwards.
+ */
+function wedge(long: number, tall: number, wide: number, side: 1 | -1): Omit<StopBox, 'x' | 'y' | 'z' | 'colour'> {
+  const a = long / 2;
+  const h = tall / 2;
+  const w = wide / 2;
+  const faces = [
+    [-a, -h, -w, a, -h, -w, a, -h, w, -a, -h, w],
+    [-a, -h, -w, -a, -h, w, -a, h, w, -a, h, -w],
+    [-a, h, -w, -a, h, w, a, -h, w, a, -h, -w],
+    [-a, -h, w, a, -h, w, -a, h, w],
+    [-a, -h, -w, -a, h, -w, a, -h, -w],
+  ];
+  // The end behind the platform is the same ramp turned about: mirrored, with each face wound back.
+  const turned = side === 1 ? faces : faces.map((face) => mirrored(face));
+  return { length: long, height: tall, width: wide, faces: turned };
+}
+
+/** A face mirrored along `x`, with its corners taken in the other order so it still faces outwards. */
+function mirrored(face: readonly number[]): number[] {
+  const out: number[] = [];
+  for (let i = face.length - 3; i >= 0; i -= 3) out.push(-(face[i] as number), face[i + 1] as number, face[i + 2] as number);
+  return out;
+}
+
+/**
+ * The white bars painted on the road ahead of one nose, slanting across the
+ * width of the platform: the ground a car keeps off. Each bar is a flat face
+ * facing up, just proud of the road.
+ */
+function hatching(side: 1 | -1): StopBox[] {
+  const bars: StopBox[] = [];
+  const start = TRAM_LENGTH / 2 + PLATFORM_RAMP;
+  const w = WIDTH / 2;
+  for (let along = 0.6; along < HATCH_LONG; along += 1.4) {
+    // Each bar narrows with the island it stands for, which tapers to a point.
+    const reach = w * (1 - along / HATCH_LONG);
+    const a = 0.22;
+    const top = [-a + reach * 0.6, 0, reach, a + reach * 0.6, 0, reach, a - reach * 0.6, 0, -reach, -a - reach * 0.6, 0, -reach];
+    const face = side === 1 ? top : mirrored(top);
+    bars.push({ length: 2 * a + reach * 1.2, height: 0.01, width: 2 * reach, x: side * (start + along), y: 0.03, z: MIDDLE + w - reach, colour: HATCH, faces: [face] });
+  }
+  return bars;
+}
+
+/** The two bollards and the keep-left sign at each nose of the platform, where a car meets it head on. */
+function noseBoxes(): StopBox[] {
+  const at = TRAM_LENGTH / 2 + 0.35;
+  return [1, -1].flatMap((side) => [
+    box(0.2, 0.9, 0.2, side * at, RISE + 0.45, -(INNER + 0.35), BOLLARD),
+    box(0.22, 0.12, 0.22, side * at, RISE + 0.75, -(INNER + 0.35), REFLECTOR),
+    box(0.2, 0.9, 0.2, side * at, RISE + 0.45, -(INNER + WIDTH - 0.3), BOLLARD),
+    box(0.22, 0.12, 0.22, side * at, RISE + 0.75, -(INNER + WIDTH - 0.3), REFLECTOR),
+    box(0.08, 1.4, 0.08, side * at, RISE + 0.7, MIDDLE, METAL),
+    box(0.06, 0.6, 0.6, side * (at + 0.05), RISE + 1.5, MIDDLE, POST_PAINT),
+    box(0.07, 0.34, 0.12, side * (at + 0.05), RISE + 1.5, MIDDLE, SIGN_FACE),
+  ]);
 }
 
 /**
@@ -112,6 +191,7 @@ function flagBoxes(): StopBox[] {
     box(0.12, tall, 0.12, at, tall / 2 + RISE, MIDDLE, POST_PAINT),
     box(0.07, 0.5, 0.5, at, RISE + tall + 0.2, MIDDLE, POST_PAINT),
     box(0.11, 0.34, 0.34, at, RISE + tall + 0.2, MIDDLE, SIGN_FACE),
+    ...noseBoxes(),
   ];
 }
 
