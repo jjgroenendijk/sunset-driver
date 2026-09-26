@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { hurtPerson, PERSON_HEALTH } from '../../../src/sim/crowd/casualty.ts';
 import { UNIT_BODY } from '../../../src/sim/city/emergency.ts';
-import { GiveWay } from '../../../src/sim/traffic/give-way.ts';
+import { GiveWay, UNSEEN } from '../../../src/sim/traffic/give-way.ts';
+import { TRAFFIC_VIEW } from '../../../src/render/vehicles/traffic.ts';
 import { heldPose } from '../../../src/sim/traffic/hold.ts';
 import { AmbientPedestrians, crowdPoseOf, type PedestrianPose } from '../../../src/sim/crowd/pedestrians.ts';
 import { createSimState, type SimState } from '../../../src/sim/simulation.ts';
@@ -97,6 +98,10 @@ function peopleInCars(state: SimState, boxes: readonly Footprint[], pose: Pedest
 }
 
 describe('giving way', () => {
+  it('catches a car up fast only where the traffic is not drawn', () => {
+    expect(UNSEEN).toBeGreaterThan(TRAFFIC_VIEW);
+  });
+
   it('keeps the cars off each other and the people out of the cars', () => {
     const loose = overlaps(false);
     const kept = overlaps(true);

@@ -34,6 +34,9 @@ const PAST = 1.5;
 const ROOM = 0.6;
 const KERB = 0.3;
 
+/** Ticks a car stands behind something before it will put two wheels on the pavement to pass it. */
+const MOUNT_WAIT = 4 * TICK_RATE;
+
 /** Metres off its lane a car steers at most: two lanes over. */
 const SWERVE_MOST = 7;
 
@@ -106,9 +109,11 @@ export class Steering {
   private readonly scene: SwerveScene;
   private readonly span: Span = { a0: 0, a1: 0, c0: 0, c1: 0 };
   private readonly blocking: Blocking = { lo: 0, hi: 0, end: 0, headOn: false };
-  private readonly kerbs: Kerbs = { left: 0, right: 0 };
+  private readonly kerbs: Kerbs = { left: 0, right: 0, pavement: 0 };
   private readonly moved: Footprint = { x: 0, y: 0, heading: 0, halfLength: 0, halfWidth: 0 };
   private readonly near: number[] = [];
+  /** A person as a footprint: a small square about where they stand. */
+  private readonly body: Footprint = { x: 0, y: 0, heading: 0, halfLength: 0.3, halfWidth: 0.3 };
 
   constructor(scene: SwerveScene) {
     this.scene = scene;
@@ -127,9 +132,9 @@ export class Steering {
     const blocking = this.blockingOf(i, side);
     const blocked = blocking.lo <= blocking.hi;
     let aim = side;
-    let waited = blocked && car.stop ? (was?.blocked ?? 0) + 1 : 0;
+    let waited = blocked ? (was?.blocked ?? 0) + 1 : 0;
     if (blocked) {
-      const chosen = this.aimPast(car, blocking, was?.aim ?? 0);
+      const chosen = this.aimPast(car, blocking, was?.aim ?? 0, waited >= MOUNT_WAIT);
       const committed = was !== undefined && was.aim !== 0 && Math.sign(was.aim) === Math.sign(chosen ?? 0);
       const ready = committed || (waited >= START && !this.scene.queuedAtRed(car));
       if (chosen !== undefined && ready && (committed || this.clear(i, chosen, -car.box.halfLength - BEHIND, blocking.end + car.box.halfLength + 2, PASS_TIME))) {
@@ -181,6 +186,15 @@ export class Steering {
     for (const other of scene.others) {
       if (Math.abs(other.speed) < STANDING) this.take(car, side, other, other.cos, other.sin, false);
     }
+    // Somebody standing in the road: at a kerb corner a turn cuts, or stopped on a crossing.
+    const person = this.body;
+    for (const k of scene.peopleNear(car.laneX, car.laneY, car.box.halfLength + LOOK, this.near)) {
+      const standing = scene.people[k] as Person;
+      if (standing.speed >= STANDING) continue;
+      person.x = standing.x;
+      person.y = standing.y;
+      this.take(car, side, person, 1, 0, false);
+    }
     const reach = car.box.halfLength + LOOK;
     const x = car.laneX + car.laneCos * (LOOK / 2);
     const y = car.laneY + car.laneSin * (LOOK / 2);
@@ -215,13 +229,15 @@ export class Steering {
    * carriageway has no room either side. It keeps a side it already chose;
    * past a car facing it, it keeps right; else the nearer side wins.
    */
-  private aimPast(car: Car, blocking: Blocking, chosen: number): number | undefined {
+  private aimPast(car: Car, blocking: Blocking, chosen: number, mount: boolean): number | undefined {
     const kerbs = this.scene.kerbs(car, this.kerbs);
     const w = car.box.halfWidth;
     const right = Math.max(0, blocking.hi + w + ROOM);
     const left = Math.min(0, blocking.lo - w - ROOM);
-    const canRight = right > 0 && right <= Math.min(SWERVE_MOST, kerbs.right - w - KERB);
-    const canLeft = left < 0 && left >= Math.max(-SWERVE_MOST, kerbs.left + w + KERB);
+    // Out of patience, a car puts its outer wheels up on the pavement: its middle may reach the kerb.
+    const over = mount ? Math.min(kerbs.pavement, w) : 0;
+    const canRight = right > 0 && right <= Math.min(SWERVE_MOST, kerbs.right + over - w - KERB);
+    const canLeft = left < 0 && left >= Math.max(-SWERVE_MOST, kerbs.left - over + w + KERB);
     if (chosen > 0 && canRight) return right;
     if (chosen < 0 && canLeft) return left;
     if (blocking.headOn && canRight) return right;

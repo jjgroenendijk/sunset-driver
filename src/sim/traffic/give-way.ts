@@ -32,8 +32,9 @@ import { BoxFrame, Grid, NearCache } from './give-way-grid.ts';
 import { apart, close, crossesStop, setAhead, within, type Other } from './give-way-geometry.ts';
 import { CrowdWay, PERSON_RADIUS, type Crowd } from './give-way-people.ts';
 import { holdOf, type Hold } from './hold.ts';
-import { FREE, HEAD_ON, LIGHT, OTHER, PERSON, sideOf, type Car, type Person } from './give-way-scene.ts';
+import { FREE, HEAD_ON, LIGHT, OTHER, PERSON, sideOf, STANDING, type Car, type Person } from './give-way-scene.ts';
 import { Steering } from './swerve.ts';
+import { JunctionClear } from './junction-clear.ts';
 import type { SimState } from '../simulation.ts';
 import { footprintsTouch, promotedOf, turnedTouch, type AmbientPose, type AmbientTraffic, type Footprint, type Kerbs, type TrafficCursor } from './traffic.ts';
 import { headingOf, specOf } from '../vehicles/vehicle.ts';
@@ -50,6 +51,20 @@ const SLOW_TIME = 1.2;
 
 /** Metres before a stop line on red within which a car queues rather than steering round the car in front. */
 const QUEUE_REACH = 40;
+
+/**
+ * A car behind its tour makes up one tick in this many as it drives a free
+ * road where it is drawn: a fifth over its pace, which does not show.
+ */
+const CATCH_EVERY = 5;
+
+/**
+ * Metres from the player each way past which the traffic is not drawn
+ * (`TRAFFIC_VIEW` of the renderer, and a little), and the ticks a car makes up
+ * in one there.
+ */
+export const UNSEEN = 185;
+const UNSEEN_CATCH = 4;
 
 /** Metres a car keeps between its body and the player, their car, a wreck or a unit. */
 const OTHER_ROOM = 0.25;
@@ -85,6 +100,7 @@ export class GiveWay {
   /** The cars in the order they were placed, while the ones that have just come in are cleared. */
   private readonly filed = new Grid();
   private readonly steering: Steering;
+  private readonly junctions: JunctionClear;
   private readonly kerbCursor: TrafficCursor = { id: 0, step: 0, into: 0 };
   private tick = 0;
 
@@ -98,6 +114,12 @@ export class GiveWay {
       },
       get others() {
         return scene.others;
+      },
+      carsNear,
+    });
+    this.junctions = new JunctionClear(traffic, {
+      get cars() {
+        return scene.cars;
       },
       carsNear,
     });
@@ -323,7 +345,11 @@ export class GiveWay {
     this.lookAhead(car, i);
     this.lookOthers(car);
     this.lookPeople(car);
-    if (car.lag > 0 && this.redAhead(state, car)) this.block(car, LIGHT);
+    if (!this.crossesLine(state, car)) return;
+    const edge = this.traffic.edgeOf(this.cursor);
+    // Behind its tour it may meet a red it was timed to pass on green; on time or not, it keeps the junction clear.
+    const red = car.lag > 0 && this.redOn(edge, state.tick + 1);
+    if (red || (!car.stop && this.junctions.blocked(i, edge, state.tick - car.lag))) this.block(car, LIGHT);
   }
 
   /**
@@ -426,8 +452,27 @@ export class GiveWay {
     return metres > approach.stop - QUEUE_REACH && metres <= approach.stop + 1 && signals.light(approach, this.tick) !== 'green';
   }
 
-  /** True when a car behind its tour is about to cross a stop line on a light that is not green. */
-  private redAhead(state: SimState, car: Car): boolean {
+  /**
+   * Ticks a car behind its tour makes up on the next tick as it drives: one
+   * in {@link CATCH_EVERY} where it is drawn, {@link UNSEEN_CATCH} beyond the
+   * traffic's view. Only on a free road, off its swerve and away from a stop
+   * line, whose light its tour was not timed for.
+   */
+  private catchUp(state: SimState, car: Car): number {
+    if (car.stop || car.slow || car.facing || car.swerve !== undefined || car.speed < STANDING) return 0;
+    const unseen = Math.max(Math.abs(car.box.x - this.frame.midX), Math.abs(car.box.y - this.frame.midY)) > UNSEEN;
+    if (!unseen && (state.tick + car.id) % CATCH_EVERY !== 0) return 0;
+    const signals = this.traffic.signals;
+    const approach = signals?.approachOf(this.traffic.edgeOf(this.cursor));
+    if (approach !== undefined && this.traffic.metresOf(this.cursor) > approach.stop - QUEUE_REACH) return 0;
+    return unseen ? UNSEEN_CATCH : 1;
+  }
+
+  /**
+   * True when a car's next tick takes it over the stop line of a signalled
+   * approach. The cursor is left where the car stands now.
+   */
+  private crossesLine(state: SimState, car: Car): boolean {
     const signals = this.traffic.signals;
     if (signals === undefined) return false;
     const traffic = this.traffic;
@@ -437,8 +482,14 @@ export class GiveWay {
     const edge = traffic.edgeOf(this.cursor);
     const approach = signals.approachOf(edge);
     if (approach === undefined) return false;
-    if (!crossesStop(traffic.metresOf(this.cursor), this.metresAhead(edge), approach.stop)) return false;
-    return signals.light(approach, state.tick + 1) !== 'green';
+    return crossesStop(traffic.metresOf(this.cursor), this.metresAhead(edge), approach.stop);
+  }
+
+  /** True when the light of the approach on `edge` is not green at `tick`. */
+  private redOn(edge: number, tick: number): boolean {
+    const signals = this.traffic.signals;
+    const approach = signals?.approachOf(edge);
+    return approach !== undefined && signals?.light(approach, tick) !== 'green';
   }
 
   /** Metres along `edge` the ahead cursor stands, or Infinity where it has left that edge. */
@@ -495,9 +546,9 @@ export class GiveWay {
         lag += 1;
         step = 1;
       } else if (lag > 0) {
-        // Where its tour stands still, it makes up the lag without moving.
+        // Where its tour stands still, it makes up the lag without moving; on a free road, a little as it drives.
         traffic.cursorAt(car.id, next - lag, this.cursor);
-        const made = Math.min(lag, traffic.waitLeft(this.cursor));
+        const made = Math.min(lag, traffic.waitLeft(this.cursor) || this.catchUp(state, car));
         lag -= made;
         step = -made;
       }
