@@ -82,9 +82,16 @@ export function waterRaises(
     const high = along[run.to + 1] as number;
     // The ramps reach out to the first thing that may not be raised, and the
     // shorter of the two rooms holds the height: the deck is level, so both
-    // ramps climb the same way.
-    const before = low - Math.max(along[clearBack(line, run.from, onNetwork)] as number, lastUnder(under, low));
-    const after = Math.min(along[clearOn(line, run.to + 1, onNetwork)] as number, firstUnder(under, high)) - high;
+    // ramps climb the same way. A ramp's foot is a point of the line, so the
+    // room past a highway the line passes under starts at the first point
+    // beyond it: a foot snapped back behind the crossing would lift the road
+    // where it runs under the deck (issue #720, seed 1314055302).
+    const behind = lastUnder(under, low);
+    const ahead = firstUnder(under, high);
+    const backStop = behind > 0 ? (along[firstAtOrAfter(along, behind)] as number) : 0;
+    const aheadStop = ahead < Infinity ? (along[lastAtOrBefore(along, ahead)] as number) : Infinity;
+    const before = low - Math.max(along[clearBack(line, run.from, onNetwork)] as number, backStop);
+    const after = Math.min(along[clearOn(line, run.to + 1, onNetwork)] as number, aheadStop) - high;
     const height = Math.min(wanted, before * grade, after * grade);
     if (height <= 0) continue;
     const ramp = height / grade;
