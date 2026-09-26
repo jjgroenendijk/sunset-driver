@@ -70,8 +70,9 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * open and which are wanted open, the panels a hit has sprung ajar, the key
  * that lifts the bonnet, and how far each police car's doors stand open.
  * Version 24 added how far a car of the traffic steers off its lane round what
- * stands in it, and how far a person of the crowd steps off their loop to keep
- * out of a car's way.
+ * stands in it, how far a person of the crowd steps off their loop to keep
+ * out of a car's way, and which promoted car is the player's own, left where
+ * they took another.
  */
 export const SAVE_VERSION = 24;
 

@@ -175,6 +175,8 @@ export interface PromotedVehicle {
   /** The colour it was painted while it drove its tour or stood in its bay. */
   paint: number;
   vehicle: VehicleState;
+  /** True for the player's own vehicle, left under this id when they took another: it stays where they left it. */
+  left?: boolean;
 }
 
 /** What the simulation record holds of the traffic: only what has left its trajectory. */

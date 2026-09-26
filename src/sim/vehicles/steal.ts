@@ -50,5 +50,6 @@ export function swapInto(state: SimState, id: number): void {
   stolen.paint = record.paint;
   record.vehicle = state.vehicle;
   record.paint = state.vehicle.paint;
+  record.left = true;
   state.vehicle = stolen;
 }

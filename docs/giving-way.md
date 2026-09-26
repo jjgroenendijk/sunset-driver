@@ -10,6 +10,7 @@ tour is in `docs/city-life.md`, and how a person walks their loop in `docs/crowd
 - Holding back
 - What a car stops for
 - Steering round
+- A bumped car
 - What a person does
 - Measuring it
 
@@ -84,6 +85,18 @@ tour is in `docs/city-life.md`, and how a person walks their loop in `docs/crowd
   reads between two ticks.
 - A step sideways or a turn that would put a corner against something is not taken. A car turned
   in place next to the player on foot and promoted itself on them before this rule.
+
+## A bumped car
+
+- `rejoin.ts`: a promoted car of the traffic that stands still, upright, whole or dented, and
+  `ROOM` clear of the player and their car goes back to its tour. Each is looked at once a second.
+- Its tour is searched back up to `SEARCH_BACK` seconds for the moment nearest where it stands.
+  That moment is its lag, and what is left over is a `Swerve` of side and yaw. So its pose does not
+  jump, and the steering takes it back into its lane.
+- The player's own car, left under an id when they took another, carries `left` and never rejoins.
+  A parked car has no tour and stays. So does a car whose lock the player is working.
+- Out of sight, `tow.ts` does the same job: a car that was only bumped and is not on fire is
+  dropped once the player is `TOW_REACH` away. Its tour or its bay takes it back.
 
 ## What a person does
 
