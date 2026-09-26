@@ -20,6 +20,11 @@
  * the way `smooth.ts` draws the player. A vehicle the player has touched is
  * drawn from its record instead, since it no longer drives its tour. The
  * traffic lights the vehicles stop at are drawn with them (`signals.ts`).
+ *
+ * The trim of each class carries an instanced `signal`, the side whose
+ * indicators are lit on each vehicle this frame (`sim/traffic/indicator.ts`).
+ * The tyres and the figures carry no indicator, so they are drawn with a trim
+ * of their own that reads no `signal`.
  */
 import {
   BoxGeometry,
@@ -28,6 +33,7 @@ import {
   CylinderGeometry,
   Euler,
   Group,
+  InstancedBufferAttribute,
   InstancedMesh,
   Matrix4,
   MeshStandardMaterial,
@@ -37,7 +43,8 @@ import {
   type Material,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { heldPose } from '../../sim/traffic/hold.ts';
+import { heldPose, heldTime } from '../../sim/traffic/hold.ts';
+import { Indicators } from '../../sim/traffic/indicator.ts';
 import type { SimState } from '../../sim/simulation.ts';
 import { AMBIENT_CLASSES, promotedOf, type AmbientPose, type AmbientTraffic } from '../../sim/traffic/traffic.ts';
 import { rideHeight, specOf, type VehicleClass, type VehicleSpec } from '../../sim/vehicles/vehicle.ts';
@@ -47,7 +54,7 @@ import { SignalView } from '../roads/signals.ts';
 import { Suspension, type Lean } from './suspension.ts';
 import { driverOf } from './occupant.ts';
 import { partGeometry } from './vehicle-geometry.ts';
-import { createVehicleTrim, glowOf, type VehicleTrim } from './vehicle-glow.ts';
+import { createVehicleTrim, flashOf, glowOf, type VehicleTrim } from './vehicle-glow.ts';
 import { GLASS, TYRE, vehicleBoxes, type VehicleBox } from './vehicle-mesh.ts';
 import { GLASS_OPACITY } from './vehicle-parts.ts';
 import { tinted } from '../look/tint.ts';
@@ -71,6 +78,8 @@ interface ClassMeshes {
   trim: InstancedMesh;
   glass: InstancedMesh;
   tyres: InstancedMesh;
+  /** The side whose indicators are lit on each vehicle of the trim: 1 right, -1 left, 0 none. */
+  signal: InstancedBufferAttribute;
   /**
    * The rider of `bike-rider.ts` on a class that is sat astride, the driver
    * of `occupant.ts` on a car, and undefined on anything else. It is a mesh of
@@ -109,7 +118,7 @@ export function trafficParts(spec: VehicleSpec, apart: readonly number[] = [], t
     if (part.hinge !== undefined && apart.includes(part.hinge.leaf)) continue;
     if (part.glass === true) glass.push(boxOf(part));
     else if (part.colour === spec.paint) paint.push(boxOf(part));
-    else trim.push(coloured(boxOf(part), part.colour));
+    else trim.push(flashed(coloured(boxOf(part), part.colour), flashOf(part.colour, part.z)));
   }
   pushTyres(spec, tyres);
   return { paint: merged(paint), trim: merged(trim), glass: merged(glass), tyres: tyresApart ? merged(tyres) : undefined };
@@ -122,7 +131,7 @@ function pushTyres(spec: VehicleSpec, tyres: BufferGeometry[]): void {
     const tyre = new CylinderGeometry(spec.wheelRadius, spec.wheelRadius, spec.wheelWidth, 10);
     tyre.rotateX(Math.PI / 2);
     tyre.translate(wheel.x, wheel.y - spec.suspensionRest, spec.inline ? 0 : wheel.z);
-    tyres.push(coloured(tyre.toNonIndexed(), TYRE));
+    tyres.push(flashed(coloured(tyre.toNonIndexed(), TYRE), 0));
     tyre.dispose();
   }
 }
@@ -139,7 +148,11 @@ export class TrafficView {
   share = 1;
   private readonly traffic: AmbientTraffic;
   private readonly classes: ClassMeshes[] = [];
+  /** The trim of the bodies, which flashes the indicators. */
   private readonly trim: VehicleTrim;
+  /** The trim of the tyres and the figures, which carries no indicator. */
+  private readonly plain: VehicleTrim;
+  private readonly indicators: Indicators;
   private readonly materials: Material[] = [];
   private readonly ids: number[] = [];
   private readonly pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
@@ -161,8 +174,11 @@ export class TrafficView {
     this.traffic = traffic;
     const paint = new MeshStandardMaterial({ roughness: 0.45, metalness: 0.2 });
     const glass = glassMaterial();
-    this.trim = createVehicleTrim();
+    this.trim = createVehicleTrim(true);
+    this.plain = createVehicleTrim();
+    this.indicators = new Indicators(traffic);
     const trim = this.trim.material;
+    const plain = this.plain.material;
     this.materials.push(paint, glass);
     for (const cls of AMBIENT_CLASSES) {
       const spec = specOf(cls);
@@ -170,14 +186,17 @@ export class TrafficView {
       const struts = riderStruts(spec);
       const driver = driverOf(spec);
       const figure = struts.length > 0 ? struts.map(strutOf) : driver.map((part) => coloured(boxOf(part), part.colour));
+      const signal = new InstancedBufferAttribute(new Float32Array(CLASS_CAP), 1);
+      parts.trim.setAttribute('signal', signal);
       const meshes: ClassMeshes = {
         cls,
         spec,
         paint: tinted(instanced(parts.paint, paint, true, CLASS_CAP)),
         trim: instanced(parts.trim, trim, false, CLASS_CAP),
         glass: instanced(parts.glass, glass, false, CLASS_CAP),
-        tyres: instanced(parts.tyres as BufferGeometry, trim, false, CLASS_CAP),
-        rider: figure.length === 0 ? undefined : instanced(merged(figure), trim, true, CLASS_CAP),
+        tyres: instanced(parts.tyres as BufferGeometry, plain, false, CLASS_CAP),
+        signal,
+        rider: figure.length === 0 ? undefined : instanced(merged(figure), plain, true, CLASS_CAP),
       };
       this.classes.push(meshes);
       this.group.add(meshes.paint, meshes.trim, meshes.glass, meshes.tyres);
@@ -194,6 +213,7 @@ export class TrafficView {
    */
   set lamps(amount: number) {
     this.trim.lamps.value = amount;
+    this.plain.lamps.value = amount;
   }
 
   get lamps(): number {
@@ -243,7 +263,7 @@ export class TrafficView {
       const lean = this.springs.lean(id, time, pose.x, pose.y, pose.heading, pose.speed, meshes.spec.inline, this.lean);
       this.tilt.setFromEuler(this.tiltAngles.set(lean.roll, 0, lean.pitch, 'XZY'));
       this.body.copy(this.turn).multiply(this.tilt);
-      this.add(meshes, vehicle.paint, true);
+      this.add(meshes, vehicle.paint, true, this.indicators.litAt(id, heldTime(state.traffic.held, id, time)));
     }
   }
 
@@ -259,7 +279,7 @@ export class TrafficView {
       this.body.copy(this.turn);
       // Nobody drives a promoted vehicle, so a bike the player has touched
       // rolls on with an empty saddle.
-      this.add(meshes, record.paint, false);
+      this.add(meshes, record.paint, false, 0);
     }
   }
 
@@ -273,6 +293,7 @@ export class TrafficView {
     }
     for (const material of this.materials) material.dispose();
     this.trim.dispose();
+    this.plain.dispose();
     this.signals?.dispose();
     this.group.clear();
   }
@@ -285,9 +306,9 @@ export class TrafficView {
    * Write one vehicle, standing at `at` and turned by `turn`, into its class's
    * meshes, its body turned by `body` on its springs. `ridden` says whether
    * anybody is in it, which only a class that carries a figure can answer yes
-   * to.
+   * to, and `signal` which side's indicators are lit.
    */
-  private add(meshes: ClassMeshes, paint: number, ridden: boolean): void {
+  private add(meshes: ClassMeshes, paint: number, ridden: boolean, signal: number): void {
     const index = meshes.paint.count;
     if (index >= CLASS_CAP) return;
     this.matrix.compose(this.at, this.body, this.one);
@@ -298,6 +319,7 @@ export class TrafficView {
     meshes.glass.setMatrixAt(index, this.matrix);
     meshes.tyres.setMatrixAt(index, this.wheels);
     meshes.paint.setColorAt(index, this.colour.set(paint));
+    meshes.signal.setX(index, signal);
     meshes.paint.count = index + 1;
     const rider = meshes.rider;
     if (!ridden || rider === undefined) return;
@@ -318,6 +340,7 @@ function finish(meshes: ClassMeshes): void {
     mesh.instanceMatrix.needsUpdate = true;
   }
   if (count > 0 && meshes.paint.instanceColor !== null) meshes.paint.instanceColor.needsUpdate = true;
+  if (count > 0) meshes.signal.needsUpdate = true;
   const rider = meshes.rider;
   if (rider === undefined) return;
   rider.visible = rider.count > 0;
@@ -374,6 +397,13 @@ export function coloured(geometry: BufferGeometry, colour: number): BufferGeomet
   for (let i = 0; i < count; i++) colours.set([c.r, c.g, c.b], i * 3);
   geometry.setAttribute('color', new BufferAttribute(colours, 3));
   geometry.setAttribute('glow', new BufferAttribute(new Float32Array(count).fill(glowOf(colour)), 1));
+  return geometry;
+}
+
+/** A geometry whose every vertex carries one `flash` (`vehicle-glow.ts`): the side of an indicator, or 0. */
+function flashed(geometry: BufferGeometry, flash: number): BufferGeometry {
+  const count = geometry.getAttribute('position').count;
+  geometry.setAttribute('flash', new BufferAttribute(new Float32Array(count).fill(flash), 1));
   return geometry;
 }
 

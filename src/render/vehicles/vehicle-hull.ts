@@ -21,7 +21,7 @@
 import type { Panel } from '../../sim/vehicles/damage.ts';
 import type { VehicleClass, VehicleSpec } from '../../sim/vehicles/vehicle.ts';
 import { partFrom, type Point } from './loft.ts';
-import { BONNET, box, GLASS, LAMP, SEAT, TAIL, TRIM_INSIDE, UNDER, type Hinge, type VehicleBox } from './vehicle-parts.ts';
+import { BONNET, box, GLASS, INDICATOR, LAMP, SEAT, TAIL, TRIM_INSIDE, UNDER, type Hinge, type VehicleBox } from './vehicle-parts.ts';
 
 /** What the span from a station to the next one holds above the shoulder. */
 type Flag =
@@ -431,7 +431,11 @@ function lidFace(h: HullBuild, mid: number, face: Point[], colour: number): bool
   return false;
 }
 
-/** A lamp at each front corner of the nose and a tail light at each rear one. */
+/**
+ * A lamp at each front corner of the nose and a tail light at each rear one,
+ * with an indicator outboard of each. A lamp reaches at most 0.82 of the half
+ * width out, so the indicator takes the band from there to 0.94.
+ */
 function lampsOf(rings: Ring[]): VehicleBox[] {
   const out: VehicleBox[] = [];
   for (const [ring, colour, x] of [
@@ -440,7 +444,10 @@ function lampsOf(rings: Ring[]): VehicleBox[] {
   ] as const) {
     const y = (ring.floor + (ring.glazed ? ring.shoulder : ring.roof)) / 2;
     const across = Math.min(0.4, ring.body * 0.44);
-    for (const side of [1, -1]) out.push(box(0.1, 0.12, across, colour, ring.x + x, y, side * ring.body * 0.6));
+    for (const side of [1, -1]) {
+      out.push(box(0.1, 0.12, across, colour, ring.x + x, y, side * ring.body * 0.6));
+      out.push(box(0.1, 0.12, ring.body * 0.12, INDICATOR, ring.x + x, y, side * ring.body * 0.88));
+    }
   }
   return out;
 }

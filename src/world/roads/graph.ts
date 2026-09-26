@@ -25,7 +25,7 @@
  * over travel time, and it breaks ties by node id, so a route never depends on
  * the order a heap happened to pop equal costs in.
  */
-import { hypot } from '../../core/libm.ts';
+import { atan2, hypot } from '../../core/libm.ts';
 import { compareNumbers } from '../../core/sort.ts';
 import { findCrossings } from '../junctions/grade-crossings.ts';
 import { boundsOf, Buckets, INDEX_CELL } from './graph-index.ts';
@@ -281,6 +281,20 @@ export class RoadGraph {
     if (ramps === 2) return false;
     const dot = (this.tails[from * 2] as number) * (this.heads[to * 2] as number) + (this.tails[from * 2 + 1] as number) * (this.heads[to * 2 + 1] as number);
     return dot > 0;
+  }
+
+  /**
+   * The angle, in radians, a car turns through arriving on edge `from` and
+   * leaving on edge `to`: above 0 for a turn to the driver's right, below 0 for
+   * one to the left, and near ±π for a turn back. The map's `y` runs down the
+   * screen, so the right of a driver heading along `(x, y)` is `(-y, x)`.
+   */
+  bend(from: number, to: number): number {
+    const tx = this.tails[from * 2] as number;
+    const ty = this.tails[from * 2 + 1] as number;
+    const hx = this.heads[to * 2] as number;
+    const hy = this.heads[to * 2 + 1] as number;
+    return atan2(tx * hy - ty * hx, tx * hx + ty * hy);
   }
 
   /**

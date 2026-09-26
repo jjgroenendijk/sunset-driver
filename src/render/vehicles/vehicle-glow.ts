@@ -19,10 +19,16 @@
  * spec section 10.5 has no room for two per car in view. From a camera 60 m up
  * a lit lens is what reads anyway, which is the same bargain `lamps.ts` strikes
  * for the street lamps.
+ *
+ * An indicator ({@link INDICATOR}) is not a lamp of the night: it flashes by
+ * day as well. Its vertices carry a `flash` of 1 on the right of the vehicle
+ * and -1 on the left, and each vehicle of the traffic an instanced `signal`
+ * that says which side is lit this frame (`sim/traffic/indicator.ts`). Where
+ * the two agree the amber burns, so one mesh flashes each car on its own side.
  */
 import { MeshStandardNodeMaterial } from 'three/webgpu';
-import { LAMP, SPARK, TAIL } from './vehicle-mesh.ts';
-import { attribute, uniform } from '../tsl.ts';
+import { INDICATOR, LAMP, SPARK, TAIL } from './vehicle-mesh.ts';
+import { attribute, max, uniform } from '../tsl.ts';
 
 /**
  * How hard a headlamp and a tail light burn at full night, as a multiple of
@@ -31,6 +37,8 @@ import { attribute, uniform } from '../tsl.ts';
  */
 export const HEAD_GLOW = 6;
 export const TAIL_GLOW = 9;
+/** How hard a lit indicator burns, by day or night. */
+const INDICATOR_GLOW = 5;
 /** How hard the arc at a tram's pantograph burns. It is a spark, so it burns harder than a lamp. */
 const SPARK_GLOW = 14;
 
@@ -40,6 +48,15 @@ export function glowOf(colour: number): number {
   if (colour === TAIL) return TAIL_GLOW;
   if (colour === SPARK) return SPARK_GLOW;
   return 0;
+}
+
+/**
+ * The `flash` of the vertices of a box painted `colour` and standing `z`
+ * across the vehicle: the side of an indicator, 1 right and -1 left, and 0 on
+ * everything else.
+ */
+export function flashOf(colour: number, z: number): number {
+  return colour === INDICATOR ? Math.sign(z) : 0;
 }
 
 /** The trim of a whole traffic: one material, and the switch every vehicle in it shares. */
@@ -54,12 +71,17 @@ export interface VehicleTrim {
  * The material the glass, lamps and tyres of an instanced vehicle are drawn
  * with. The colour is on the vertices, as it was before; what is new is that
  * the vertices of a lamp also carry a `glow`, and that glow times the switch is
- * the emissive.
+ * the emissive. With `indicators` the vertices must also carry a `flash` and
+ * the mesh an instanced `signal`, and a lit indicator adds its own burn.
  */
-export function createVehicleTrim(): VehicleTrim {
+export function createVehicleTrim(indicators = false): VehicleTrim {
   const lamps = uniform(0);
   const material = new MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.1 });
-  material.emissiveNode = attribute('color', 'vec3').mul(attribute('glow', 'float')).mul(lamps);
+  const colour = attribute('color', 'vec3');
+  const night = colour.mul(attribute('glow', 'float')).mul(lamps);
+  // flash times signal is 1 only where the lit side is this indicator's side.
+  const lit = max(0, attribute('flash', 'float').mul(attribute('signal', 'float')));
+  material.emissiveNode = indicators ? night.add(colour.mul(lit).mul(INDICATOR_GLOW)) : night;
   return {
     material,
     lamps,

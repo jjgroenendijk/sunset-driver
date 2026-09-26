@@ -21,11 +21,12 @@ import { aircraftBoxes } from './aircraft-mesh.ts';
 import { arc, loft } from './loft.ts';
 import { boat, buggy } from './open-craft.ts';
 import { BODY_WIDTH, hullOf } from './vehicle-hull.ts';
-import { BEACON_BLUE, BEACON_RED, box, GLASS, LAMP, METAL, SEAT, TAIL, TYRE, UNDER, type VehicleBox } from './vehicle-parts.ts';
+import { BEACON_BLUE, BEACON_RED, box, GLASS, INDICATOR, LAMP, METAL, SEAT, TAIL, TYRE, UNDER, type VehicleBox } from './vehicle-parts.ts';
 
 export {
   BONNET,
   GLASS,
+  INDICATOR,
   LAMP,
   METAL,
   SEAT,
@@ -107,6 +108,8 @@ function shapeOf(spec: VehicleSpec): VehicleBox[] {
         block(spec, [0.5, 0.54], [0.38, 0.78], 0, 1.04, spec.trim),
         block(spec, [0.55, 0.57], [0.4, 1.1], 0.8, 0.06, METAL),
         block(spec, [0.99, 1.03], [0.08, 0.2], 0, 0.98, BAR_BASE),
+        // The hull ends at the cab, so the indicators behind are at the end of the chassis.
+        ...[1, -1].map((z) => block(spec, [-1.03, -1], [0.14, 0.26], z * 0.85, 0.08, INDICATOR)),
       ]);
     case 'bus':
       return lofted(spec, [
@@ -345,6 +348,11 @@ function motorcycle(spec: VehicleSpec): VehicleBox[] {
       { x: -0.9, bottom: 0.2, top: 0.26, half: 0.04 },
     ], spec.paint, 0.4),
     box(0.05, 0.05, 0.12, TAIL, -0.9, 0.24, 0),
+    // An indicator each side of the tail light and each side of the headlamp's nacelle.
+    ...[1, -1].flatMap((side) => [
+      box(0.06, 0.05, 0.06, INDICATOR, -0.88, 0.24, side * 0.12),
+      box(0.06, 0.05, 0.06, INDICATOR, 0.58, 0.36, side * 0.17),
+    ]),
     // The frame runs down from the steering head to the swingarm's pivot.
     loft([
       { x: 0.46, bottom: 0.24, top: 0.42, half: 0.04 },

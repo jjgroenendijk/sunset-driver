@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { Headlights, headlampsOf, HEADLIGHT_CAP } from '../../../src/render/vehicles/headlights.ts';
 import { LampLight } from '../../../src/render/roads/lamp-light.ts';
 import { trafficParts } from '../../../src/render/vehicles/traffic.ts';
-import { HEAD_GLOW, TAIL_GLOW, glowOf } from '../../../src/render/vehicles/vehicle-glow.ts';
-import { LAMP, METAL, TAIL, TYRE } from '../../../src/render/vehicles/vehicle-mesh.ts';
+import { HEAD_GLOW, TAIL_GLOW, flashOf, glowOf } from '../../../src/render/vehicles/vehicle-glow.ts';
+import { INDICATOR, LAMP, METAL, TAIL, TYRE } from '../../../src/render/vehicles/vehicle-mesh.ts';
 import { AMBIENT_CLASSES } from '../../../src/sim/traffic/traffic.ts';
 import { createVehicleState, specOf, rideHeight, type VehicleClass } from '../../../src/sim/vehicles/vehicle.ts';
 
@@ -34,6 +34,29 @@ describe('what a vehicle lights up (spec section 13.4)', () => {
       expect(lit, cls).toBeGreaterThan(0);
       expect(lit, cls).toBeLessThan(glow.count);
     }
+  });
+
+  it('gives every class of the traffic an indicator at the nose and the tail on each side (spec section 20.2)', () => {
+    for (const cls of AMBIENT_CLASSES) {
+      const trim = trafficParts(specOf(cls)).trim;
+      const flash = trim.getAttribute('flash');
+      const position = trim.getAttribute('position');
+      expect(flash.count, cls).toBe(position.count);
+      // Nose and tail, right and left: the four corners an indicator is seen from.
+      const corners = new Set<string>();
+      for (let i = 0; i < flash.count; i++) {
+        const side = flash.getX(i);
+        if (side === 0) continue;
+        // A flash of 1 is on the right, which is +z in the vehicle's frame.
+        expect(Math.sign(position.getZ(i)), cls).toBe(side);
+        corners.add(`${position.getX(i) > 0 ? 'nose' : 'tail'} ${side}`);
+      }
+      expect(corners.size, cls).toBe(4);
+    }
+    expect(glowOf(INDICATOR)).toBe(0);
+    expect(flashOf(INDICATOR, 0.5)).toBe(1);
+    expect(flashOf(INDICATOR, -0.5)).toBe(-1);
+    expect(flashOf(LAMP, 0.5)).toBe(0);
   });
 
   it('stands a beam on each headlamp of the class, pointing the way it faces', () => {

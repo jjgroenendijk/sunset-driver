@@ -221,6 +221,12 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
   road about 20 m out. Any nearer and the pool is a blown white patch against the bumper. The
   traffic gets lit lenses and no cones, for the reason `lamps.ts` gives about the street lamps: a
   light is paid for by every fragment it can reach.
+- An indicator is painted `INDICATOR` and burns by day as well as by night, so it does not ride
+  the lamp uniform. `trafficParts` writes a `flash` per vertex, the side of the indicator (+1 is
+  +z, the right) or 0, and the traffic's trim carries an instanced `signal`, the side lit this
+  frame (`sim/traffic/indicator.ts`). The emissive burns where the two agree. The tyres and the
+  figures carry neither attribute, so the traffic draws them with a second trim that reads
+  neither. The police, the tram and the parked cars keep the plain trim.
 - `WorldScene.setVehicle` is the door onto the player's model. It places it, burns its lamps and
   aims the beams together, because a caller that reaches past it to `vehicle.set` gets a car with
   its lights off and nothing to say why.
