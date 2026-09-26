@@ -148,8 +148,7 @@ describe('on foot', () => {
     const session = onFoot(ramp('asphalt', 0));
     drive(session, 60, { throttle: 1 });
     // Forward walks up the screen, which is toward -y on the map.
-    expect(Math.abs(session.state.player.heading + Math.PI / 2)).toBeLessThan
-      (0.01);
+    expect(Math.abs(session.state.player.heading + Math.PI / 2)).toBeLessThan(0.01);
     drive(session, 60, { steer: 1 });
     expect(Math.abs(session.state.player.heading)).toBeLessThan(0.01);
     session.physics.dispose();

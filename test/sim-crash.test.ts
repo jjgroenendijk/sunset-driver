@@ -23,7 +23,10 @@ describe('crash panels', () => {
   /** Flat ground with a cliff face, so a car can be run into a wall. */
   function wall(at: number): Ground {
     return {
-      heightAt: (x) => (at > 0 ? x >= at : x <= at) ? 60 : 0,
+      heightAt: (x) => {
+        const beyond = at > 0 ? x >= at : x <= at;
+        return beyond ? 60 : 0;
+      },
       surfaceAt: () => 'asphalt',
       seaLevel: DRY,
     };

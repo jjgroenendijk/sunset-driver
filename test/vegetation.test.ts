@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { regionOf, type Point } from '../src/core/geom.ts';
+import { compareStrings } from '../src/core/sort.ts';
 import type { Building, BuildingMap } from '../src/world/buildings.ts';
 import type { Parcel, ParcelMap, ParcelOwner } from '../src/world/parcels.ts';
 import type { Zone } from '../src/world/types.ts';
@@ -106,7 +107,7 @@ function edgeDistance(at: Point, ring: readonly Point[]): number {
     const vy = b.y - a.y;
     const span = vx * vx + vy * vy;
     let t = span > 0 ? ((at.x - a.x) * vx + (at.y - a.y) * vy) / span : 0;
-    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    t = Math.min(1, Math.max(0, t));
     best = Math.min(best, Math.hypot(at.x - (a.x + vx * t), at.y - (a.y + vy * t)));
   }
   return best;
@@ -199,7 +200,7 @@ describe('vegetation', () => {
       quarters.push(...plantsOn(parcels, NOTHING, window));
     }
     const key = (plant: Plant): string => `${plant.at.x} ${plant.at.y} ${plant.species} ${plant.seed}`;
-    expect(quarters.map(key).sort()).toEqual(whole.map(key).sort());
+    expect(quarters.map(key).sort(compareStrings)).toEqual(whole.map(key).sort(compareStrings));
   });
 
   it('plants only what the mix of the parcel allows, and no cell twice', () => {

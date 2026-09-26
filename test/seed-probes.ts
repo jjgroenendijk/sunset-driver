@@ -1,6 +1,7 @@
 import { type BufferGeometry } from 'three';
 import { hashInts } from '../src/core/hash.ts';
 import { type Region } from '../src/core/geom.ts';
+import { compareStrings } from '../src/core/sort.ts';
 import { airfieldRamp, toLocal } from '../src/world/airfield-frame.ts';
 import { RAMP_HALF } from '../src/world/airfields.ts';
 import { CHUNK_SIZE, type WorldChunk } from '../src/world/chunks.ts';
@@ -52,7 +53,7 @@ export function distanceToSegment(p: Point, a: Point, b: Point): number {
   const vy = b.y - a.y;
   const lengthSquared = vx * vx + vy * vy;
   let t = lengthSquared > 0 ? ((p.x - a.x) * vx + (p.y - a.y) * vy) / lengthSquared : 0;
-  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  t = Math.min(1, Math.max(0, t));
   return Math.hypot(p.x - (a.x + vx * t), p.y - (a.y + vy * t));
 }
 
@@ -349,7 +350,7 @@ export function handovers(chunk: WorldChunk, roads: readonly RoadCurve[], axis: 
       keys.push(`${run.curve}:${along.toFixed(3)}`);
     }
   }
-  return keys.sort();
+  return keys.sort(compareStrings);
 }
 
 /** Metres round the boundary of a region: its outer ring and its holes. */
@@ -385,7 +386,7 @@ export function distanceToBoundary(p: Point, region: Region): number {
       const vy = b.y - a.y;
       const squared = vx * vx + vy * vy;
       let t = squared > 0 ? ((p.x - a.x) * vx + (p.y - a.y) * vy) / squared : 0;
-      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      t = Math.min(1, Math.max(0, t));
       best = Math.min(best, Math.hypot(p.x - (a.x + vx * t), p.y - (a.y + vy * t)));
     }
   }

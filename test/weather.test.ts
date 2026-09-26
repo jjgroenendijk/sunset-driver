@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { compareStrings } from '../src/core/sort.ts';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../src/sim/clock.ts';
 import {
   CLEAR_WEATHER,
@@ -104,7 +105,7 @@ describe('the weather', () => {
   it('brings all four kinds up over a week', () => {
     const kinds = new Set<WeatherKind>();
     for (let day = 0; day < 7; day++) for (const weather of overADay(SEEDS[0] as number, day)) kinds.add(weather.kind);
-    expect([...kinds].sort()).toEqual(['clear', 'fog', 'rain', 'storm']);
+    expect([...kinds].sort(compareStrings)).toEqual(['clear', 'fog', 'rain', 'storm']);
   });
 });
 

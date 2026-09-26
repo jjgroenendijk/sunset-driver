@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { compareStrings } from '../src/core/sort.ts';
 import { TrafficSignals } from '../src/sim/signals.ts';
 import { AmbientTraffic, laneOffset, type TrafficRoads } from '../src/sim/traffic.ts';
 import { buildRoadGraph, type RoadEdge, type RoadGraph } from '../src/world/graph.ts';
@@ -52,7 +53,7 @@ describe('the ramps of an interchange (spec section 6.2)', () => {
   it('lays each ramp as one edge, driven only from its first point to its last', () => {
     const { graph } = rampRoads();
     const ramps = graph.edges.filter((e) => e.tier === 'ramp');
-    expect(ramps.length).toBe(2);
+    expect(ramps).toHaveLength(2);
     for (const edge of ramps) expect(edge.twin).toBe(-1);
     const exit = edgeAt(graph, 3, { x: 0, y: 60 }, true);
     expect(graph.nodes[exit.from]).toMatchObject({ x: -70, y: 0 });
@@ -134,7 +135,7 @@ describe('the ramps of an interchange (spec section 6.2)', () => {
       const node = graph.nearestNode(x, 0) as number;
       const junction = map.junctions.find((j) => j.node === node);
       if (junction === undefined) throw new Error(`no junction at the landing at x = ${x}`);
-      expect(junction.mouths.map((m) => roads[m.curve]?.tier).sort()).toEqual(['highway', 'highway', 'ramp']);
+      expect(junction.mouths.map((m) => roads[m.curve]?.tier ?? '').sort(compareStrings)).toEqual(['highway', 'highway', 'ramp']);
       const ring = junctionShape(junction, ribbons).carriageway;
       for (const p of ring) expect(Math.hypot(p.x - junction.x, p.y - junction.y), `landing at x = ${x}`).toBeLessThan(reach);
     }

@@ -135,7 +135,13 @@ sweepSuite('terrain', () => {
       // while the map was planned leave gaps in the ids.
       const indexOf = (id: number): number => w.water.islands.findIndex((isl) => isl.id === id);
       const parent = w.water.islands.map((_, i) => i);
-      const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i] as number)));
+      const find = (i: number): number => {
+        const up = parent[i] as number;
+        if (up === i) return i;
+        const root = find(up);
+        parent[i] = root;
+        return root;
+      };
       for (const c of w.water.crossings) {
         const { from, to } = c;
         expect(hf.sample(from.x, from.y)).toBeGreaterThanOrEqual(w.water.seaLevel);

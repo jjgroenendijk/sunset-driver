@@ -72,7 +72,7 @@ describe('the rider of a motorcycle', () => {
       // highest, and it is the only other one.
       const skin = partsOf(model, look.skin.colour).sort((a, b) => a.y - b.y);
       const hands = skin.slice(0, 2);
-      expect(hands.length).toBe(2);
+      expect(hands).toHaveLength(2);
       for (const hand of hands) {
         expect(Math.hypot(hand.x - saddle.gripX, hand.y - saddle.gripY), `body ${body}`).toBeLessThan(HAND_SLACK);
         expect(Math.abs(Math.abs(hand.z) - saddle.gripZ), `body ${body}`).toBeLessThan(HAND_SLACK);

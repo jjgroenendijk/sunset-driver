@@ -7,6 +7,7 @@ import {
   SNAPSHOT_TICKS,
   WorldSender,
 } from '../src/net/divergence.ts';
+import { compareStrings } from '../src/core/sort.ts';
 import { FRAME_LENGTH, frameOf, packFrame, readFrame, type PlayerFrame } from '../src/net/move.ts';
 import { MAX_PLAYERS, Party, type MessageBody, type NetLink } from '../src/net/party.ts';
 import type { MessageKind } from '../src/net/protocol.ts';
@@ -178,7 +179,7 @@ describe('who is owed a frame', () => {
     expect(roster.due(DELAY_TICKS, here)).toEqual(['near']);
     expect(roster.due(DELAY_TICKS + NEAR_TICKS - 1, here)).toEqual([]);
     expect(roster.due(DELAY_TICKS + NEAR_TICKS, here)).toEqual(['near']);
-    expect(roster.due(FAR_TICKS, here).sort()).toEqual(['far', 'near']);
+    expect(roster.due(FAR_TICKS, here).sort(compareStrings)).toEqual(['far', 'near']);
   });
 
   it('forgets a peer that left, and everybody at once when the room closes', () => {

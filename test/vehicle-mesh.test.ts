@@ -1,5 +1,6 @@
 import { Box3, Mesh, type MeshStandardMaterial } from 'three';
 import { describe, expect, it } from 'vitest';
+import { compareNumbers } from '../src/core/sort.ts';
 import { createVehicleState, isAircraft, ROSTER, specOf, VEHICLE_CLASSES, type VehicleClass } from '../src/sim/vehicle.ts';
 import { VehicleModel } from '../src/render/vehicle.ts';
 import {
@@ -85,15 +86,15 @@ describe('the vehicle models', () => {
     const bike = new VehicleModel('motorcycle');
     // The physics needs a track to have any roll stiffness at all; the rider
     // sees one wheel at each end, on the centreline.
-    expect(ROSTER.motorcycle.wheels.length).toBe(4);
+    expect(ROSTER.motorcycle.wheels).toHaveLength(4);
     const wheels = bike.group.children.filter((child) => child.children.length > 0);
-    expect(wheels.length).toBe(2);
+    expect(wheels).toHaveLength(2);
     for (const wheel of wheels) expect(wheel.position.z).toBe(0);
     bike.dispose();
 
     // A boat has neither.
     const boat = new VehicleModel('boat');
-    expect(boat.group.children.filter((child) => child.children.length > 0).length).toBe(0);
+    expect(boat.group.children.filter((child) => child.children.length > 0)).toHaveLength(0);
     boat.dispose();
   });
 
@@ -138,14 +139,14 @@ describe('the motorcycle', () => {
     // The seat is drawn with its top at the saddle, so the rider of
     // `rider.ts` sits on the seat and not through it.
     const seat = boxes.filter((part) => part.colour === SEAT && part.z === 0);
-    expect(seat.length).toBe(1);
+    expect(seat).toHaveLength(1);
     const top = (seat[0] as VehicleBox).y + (seat[0] as VehicleBox).height / 2;
     expect(top).toBeCloseTo(saddle.y, 6);
     // A grip at each end of the bars, and a peg for each boot.
     const at = (x: number, y: number): VehicleBox[] =>
       boxes.filter((part) => Math.abs(part.x - x) < 1e-6 && Math.abs(part.y - y) < 1e-6 && part.z !== 0);
     expect(at(saddle.gripX, saddle.gripY).length).toBeGreaterThanOrEqual(2);
-    expect(at(saddle.pegX, saddle.pegY).length).toBe(2);
+    expect(at(saddle.pegX, saddle.pegY)).toHaveLength(2);
   });
 
   it('reads as a bike from above: a lamp at the nose, a tail light behind, bars across', () => {
@@ -204,7 +205,7 @@ describe('the aircraft models', () => {
 describe('the lofted bodies', () => {
   /** The leaves each class can open, by the hinges its parts hang from. */
   const leaves = (cls: VehicleClass): number[] =>
-    [...new Set(vehicleBoxes(ROSTER[cls]).flatMap((part) => (part.hinge === undefined ? [] : [part.hinge.leaf])))].sort();
+    [...new Set(vehicleBoxes(ROSTER[cls]).flatMap((part) => (part.hinge === undefined ? [] : [part.hinge.leaf])))].sort(compareNumbers);
 
   it('hangs every door and the bonnet each class has on a hinge of its own', () => {
     for (const cls of ['compact', 'saloon', 'emergency', 'offroad'] as const) expect(leaves(cls), cls).toEqual([0, 1, 2, 3, BONNET]);
@@ -239,7 +240,7 @@ describe('the lofted bodies', () => {
     model.set(state);
     const open = hinges().filter((angle) => angle !== 0);
     // The bonnet is one part; the rear door is its skin and its window.
-    expect(open.length).toBe(3);
+    expect(open).toHaveLength(3);
     model.dispose();
   });
 });

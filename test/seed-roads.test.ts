@@ -78,7 +78,13 @@ sweepSuite('roads', () => {
         complaint ??= text;
       };
       const parent = w.roads.map((_, i) => i);
-      const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i] as number)));
+      const find = (i: number): number => {
+        const up = parent[i] as number;
+        if (up === i) return i;
+        const root = find(up);
+        parent[i] = root;
+        return root;
+      };
       const owner = new Map<number, number>();
       for (let i = 0; i < w.roads.length; i++) {
         const road = w.roads[i] as RoadCurve;

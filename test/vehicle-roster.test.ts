@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { compareStrings } from '../src/core/sort.ts';
 import { EMPTY_INPUT, type InputFrame } from '../src/sim/input.ts';
 import { initPhysics, SimPhysics, type Ground } from '../src/sim/physics.ts';
 import { createSimState, stepSim } from '../src/sim/simulation.ts';
@@ -104,8 +105,8 @@ function drive(cls: VehicleClass, ground: Ground, ticks: number, input: Partial<
 
 describe('the vehicle roster', () => {
   it('has a row for every class, and every row knows which class it is', () => {
-    expect(GROUND_CLASSES.length).toBe(11);
-    expect(VEHICLE_CLASSES.length).toBe(20);
+    expect(GROUND_CLASSES).toHaveLength(11);
+    expect(VEHICLE_CLASSES).toHaveLength(20);
     for (const cls of VEHICLE_CLASSES) expect(specOf(cls).cls).toBe(cls);
     const names = VEHICLE_CLASSES.map((cls) => ROSTER[cls].name);
     expect(new Set(names).size).toBe(names.length);
@@ -211,7 +212,7 @@ describe('driving the roster', () => {
       'emergency',
       'sports',
     ];
-    expect([...order].sort()).toEqual(GROUND_CLASSES.filter((cls) => cls !== 'boat').slice().sort());
+    expect([...order].sort(compareStrings)).toEqual(GROUND_CLASSES.filter((cls) => cls !== 'boat').slice().sort(compareStrings));
     let slower = 0;
     let complaint = '';
     for (const cls of order) {
@@ -291,7 +292,7 @@ describe('driving the roster', () => {
     const physics = new SimPhysics(flat('asphalt'), state);
     physics.spawn(state, 0, 0, 0, 'truck');
     expect(state.vehicle.cls).toBe('truck');
-    expect(state.vehicle.wheels.length).toBe(ROSTER.truck.wheels.length);
+    expect(state.vehicle.wheels).toHaveLength(ROSTER.truck.wheels.length);
 
     // The record is what the body is rebuilt from, so a world made again from
     // it stands the same vehicle in the same place.

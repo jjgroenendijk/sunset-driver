@@ -9,6 +9,7 @@ import {
   type AmbientPose,
   type TrafficCursor,
 } from '../src/sim/traffic.ts';
+import { compareStrings } from '../src/core/sort.ts';
 import { SIGNAL_CYCLE } from '../src/sim/signals.ts';
 import { ACCEL, endSpeeds } from '../src/sim/traffic-motion.ts';
 import { TIERS } from '../src/world/tiers.ts';
@@ -130,14 +131,14 @@ describe('ambient traffic (spec sections 5.3, 13.1)', () => {
     const cursor: TrafficCursor = { id: 0, step: 0, into: 0 };
     const tiers = new Set<string>();
     for (const vehicle of traffic.vehicles) tiers.add(roads.graph.edges[traffic.edgeOf(traffic.cursorAt(vehicle.id, 0, cursor))]?.tier ?? '');
-    expect([...tiers].sort()).toEqual(['alley', 'arterial', 'dirt', 'highway', 'street']);
+    expect([...tiers].sort(compareStrings)).toEqual(['alley', 'arterial', 'dirt', 'highway', 'street']);
 
     // A quiet district carries a fraction of the traffic of a busy one: with
     // the western roads of the grid at a tenth, well under the whole is left.
     const quiet = new AmbientTraffic(seed, gridTrafficRoads((x) => (x < 0 ? 0.1 : 1)));
     expect(quiet.vehicles.length).toBeLessThan(traffic.vehicles.length * 0.8);
     expect(quiet.vehicles.length).toBeGreaterThan(traffic.vehicles.length * 0.4);
-    expect(new AmbientTraffic(seed, gridTrafficRoads(() => 0)).vehicles.length).toBe(0);
+    expect(new AmbientTraffic(seed, gridTrafficRoads(() => 0)).vehicles).toHaveLength(0);
   });
 
   it('finds every vehicle that is in a box among the ones it says are near it', () => {

@@ -54,7 +54,7 @@ function find(seed: number, breakable: boolean): { crime: StreetCrime; tick: num
 
 describe('the corners', () => {
   it('gives every district that has streets some corners of its own', () => {
-    expect(grounds.length).toBe(3);
+    expect(grounds).toHaveLength(3);
     for (const ground of grounds) expect(ground.corners.length).toBeGreaterThan(0);
   });
 
@@ -155,7 +155,7 @@ describe('breaking one up', () => {
     state.tick += 1;
     expect(stepStreetCrime(state, grounds)).toEqual([]);
     expect(state.money).toBe(money);
-    expect(state.crimes.settled.length).toBe(1);
+    expect(state.crimes.settled).toHaveLength(1);
   });
 
   it('leaves the police to their own business', () => {

@@ -13,6 +13,7 @@ import {
   type SectionPoint,
   type TierGeometry,
 } from '../src/render/road-mesh.ts';
+import { compareStrings } from '../src/core/sort.ts';
 import { buildLayers, ChunkSource, CHUNK_SIZE } from '../src/world/chunks.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
 import { RoadRibbons } from '../src/world/ribbon.ts';
@@ -105,7 +106,7 @@ function vertices(tier: TierGeometry): { x: number; y: number; z: number }[] {
 function onPlane(tier: TierGeometry, x: number): string[] {
   // Each place once: how many faces of a pavement's edge meet at a place on the
   // boundary depends on the side, and the seam only asks where they stand.
-  return [...new Set(vertices(tier).filter((p) => Math.abs(p.x - x) < TOLERANCE).map((p) => `${p.y}:${p.z}`))].sort();
+  return [...new Set(vertices(tier).filter((p) => Math.abs(p.x - x) < TOLERANCE).map((p) => `${p.y}:${p.z}`))].sort(compareStrings);
 }
 
 /** True of a deck, a parapet or a portal: everything that is not a road surface. */
@@ -190,7 +191,7 @@ describe('road surface', () => {
   it('builds one batch for the one tier the chunk carries', () => {
     expect(built).toHaveLength(1);
     expect(streetOf(built).tier).toBe('street');
-    expect(streetOf(built).runs.length).toBe(chunk.roads.length);
+    expect(streetOf(built).runs).toHaveLength(chunk.roads.length);
   });
 
   it('stands every section on the bed of the curve it was cut from', () => {
@@ -278,7 +279,7 @@ describe('road seams', () => {
     const marks = street.markings;
     const normals = street.markingNormals;
     expect(marks.length).toBeGreaterThan(0);
-    expect(normals.length).toBe(marks.length);
+    expect(normals).toHaveLength(marks.length);
     for (let i = 0; i < normals.length; i += 3) expect(normals[i + 1] as number).toBeGreaterThan(0.99);
     for (let i = 0; i < marks.length; i += 9) {
       const edge = (from: number, to: number): number[] => [0, 1, 2].map((k) => (marks[i + to * 3 + k] as number) - (marks[i + from * 3 + k] as number));
@@ -399,7 +400,7 @@ describe('a turn too sharp to mitre', () => {
   it('cuts the loft in two and bevels the joint between them', () => {
     // The two frames at the bend differ, so the surface comes in two pieces
     // with one bevel between them.
-    expect(run.surfaces.length).toBe(2);
+    expect(run.surfaces).toHaveLength(2);
     expect(run.joints).toHaveLength(1);
   });
 
