@@ -83,5 +83,6 @@ export class BuildingScenery {
 
 /** A share held inside 0..1, whatever the caller hands over. */
 function held(amount: number): number {
-  return amount < 0 ? 0 : amount > 1 ? 1 : amount;
+  if (amount < 0) return 0;
+  return amount > 1 ? 1 : amount;
 }

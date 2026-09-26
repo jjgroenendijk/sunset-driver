@@ -186,7 +186,9 @@ export class VehicleModel {
    * out is the one thing that opens a door (`boarding.ts`); 0 shuts both.
    */
   openDoor(side: number, angle: number): void {
-    this.boarding = { leaf: angle === 0 ? -1 : side < 0 ? 0 : 1, angle };
+    let leaf = -1;
+    if (angle !== 0) leaf = side < 0 ? 0 : 1;
+    this.boarding = { leaf, angle };
     this.swing();
   }
 

@@ -162,7 +162,9 @@ export function holdOver(pose: CharacterPose, hold: Hold, rig: HoldRig): Charact
 
   // The left hand reaches for the gun where the right fist actually is, one
   // reach along the arm, since the target may lie nearer or further than that.
-  const leftShare = stands.hip.fore !== undefined ? 1 : stands.aimed.fore !== undefined ? aim : 0;
+  let leftShare = 0;
+  if (stands.hip.fore !== undefined) leftShare = 1;
+  else if (stands.aimed.fore !== undefined) leftShare = aim;
   if (leftShare > 0) {
     const d = [target[0] - rightShoulder[0], target[1] - rightShoulder[1], target[2] - rightShoulder[2]];
     const length = Math.hypot(d[0] ?? 0, d[1] ?? 0, d[2] ?? 0) || 1;

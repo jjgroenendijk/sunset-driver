@@ -252,7 +252,7 @@ function wings(seed: number, sides: number, shared: Shared): ShapePart[] {
   // The one wing of an L stands on the side the notch may not be cut out of:
   // the wall the lot shares has to reach the back of the lot. The lot's `left`
   // side edge is the one at local +x.
-  const free = shared.left ? 1 : shared.right ? -1 : unit(seed, 35) < 0.5 ? -1 : 1;
+  const free = freeSide(seed, shared);
   for (const side of sides === 1 ? [free] : [-1, 1]) {
     const to = sides === 1 ? 0.6 + unit(seed, 36) * 0.4 : 1;
     const x = side * (0.5 - arm / 2);
@@ -260,6 +260,13 @@ function wings(seed: number, sides: number, shared: Shared): ShapePart[] {
     parts.push(piece(x, z, arm, behind, 0, to));
   }
   return parts;
+}
+
+/** The side an L's one wing stands on: the shared side, else one drawn from the seed. */
+function freeSide(seed: number, shared: Shared): number {
+  if (shared.left) return 1;
+  if (shared.right) return -1;
+  return unit(seed, 35) < 0.5 ? -1 : 1;
 }
 
 /**

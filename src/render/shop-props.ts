@@ -111,8 +111,9 @@ const BUILDERS: Readonly<Record<PropId, (p: Prop, colour: number) => void>> = {
     p.add(new CylinderGeometry(1, 1, 0.1, 24, 1, false, -Math.PI / 8, Math.PI / 4), colour, 0, 0.05, 0);
     const crust = p.add(new TorusGeometry(1, 0.07, 8, 24, Math.PI / 4), BREAD, 0, 0.1, 0);
     crust.rotation.set(Math.PI / 2, 0, -Math.PI / 8 + Math.PI / 2);
-    for (const [x, z] of [[0.55, 0.05], [0.8, -0.12], [0.8, 0.16]] as const) {
-      p.add(new CylinderGeometry(0.09, 0.09, 0.03, 16), 0xa32b28, z, 0.12, x);
+    // Each topping sits out along the slice, which points along +z, and to one side of it.
+    for (const [out, side] of [[0.55, 0.05], [0.8, -0.12], [0.8, 0.16]] as const) {
+      p.add(new CylinderGeometry(0.09, 0.09, 0.03, 16), 0xa32b28, side, 0.12, out);
     }
   },
   noodles: (p, colour) => {

@@ -92,5 +92,6 @@ export function cellsHolding(grid: CellGrid, count: number, placeOf: (i: number)
 }
 
 function clamp(index: number, perSide: number): number {
-  return index < 0 ? 0 : index >= perSide ? perSide - 1 : index;
+  if (index < 0) return 0;
+  return index >= perSide ? perSide - 1 : index;
 }

@@ -131,7 +131,8 @@ function box(length: number, height: number, width: number, x: number, y: number
 
 /** The boxes of one module of one design. */
 export function tramBoxes(design: TramDesign = 'modern', module: TramModule = 'end'): TramBox[] {
-  return design === 'heritage' ? heritageCar() : module === 'end' ? modernEnd() : modernMiddle();
+  if (design === 'heritage') return heritageCar();
+  return module === 'end' ? modernEnd() : modernMiddle();
 }
 
 /**

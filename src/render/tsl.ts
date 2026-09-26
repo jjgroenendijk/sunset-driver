@@ -26,6 +26,7 @@ import * as tsl from 'three/tsl';
  * An expression in a shader graph. Deliberately `any`: the shader type is not a
  * TypeScript type, and every operator on a node returns another node.
  */
+// eslint-disable-next-line sonarjs/redundant-type-aliases -- the name documents a shader node
 export type TslNode = any;
 
 /** A per-vertex attribute of the geometry, by name and shader type. */

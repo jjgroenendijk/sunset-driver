@@ -518,7 +518,9 @@ export class WorldScene {
     // A player inside a shop is under the building that holds it, and the
     // camera is over its roof: it is the shell over the player that has to go,
     // or the room the clip of `interior.ts` opened is roofed over again.
-    const over = this.cutaway.enabled ? this.roofOver(inShop ? x : camera.x, inShop ? y : camera.z, CAMERA_ROOF_MARGIN) : undefined;
+    const overX = inShop ? x : camera.x;
+    const overZ = inShop ? y : camera.z;
+    const over = this.cutaway.enabled ? this.roofOver(overX, overZ, CAMERA_ROOF_MARGIN) : undefined;
     const inside = inShop || (over !== undefined && over.top + CAMERA_ROOF_MARGIN > camera.y) ? over : undefined;
     this.cutaway.aim(camera, x, height, y, inside);
   }

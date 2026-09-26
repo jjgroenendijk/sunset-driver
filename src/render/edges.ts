@@ -97,6 +97,22 @@ export interface EdgeSource {
 }
 
 /**
+ * The test of the cut along the centre pixel's own ray: 1 where a point at a
+ * view distance along it is ghosted, else 0.
+ */
+function ghostedAlong(
+  ghost: Ghost,
+  depth: TslNode,
+  projectionInverse: TslNode,
+  world: TslNode,
+): (distance: TslNode) => TslNode {
+  const view = getViewPosition(screenUV, depth, projectionInverse);
+  const stretch = view.length().div(view.z.negate());
+  const along = ghost.ghostAlong(world.mul(vec4(view, 0)).xyz.normalize());
+  return (distance) => step(0.05, along(distance.mul(stretch)));
+}
+
+/**
  * How much ink each pixel of the frame takes, 0 to 1. The post chain lays it
  * on after the grade, so the ink is the colour {@link inkAt} says on screen:
  * laid on before, the night grade's lift raised it to the indigo of the street.
@@ -116,13 +132,8 @@ export function inkLines(source: EdgeSource, camera: Camera, ghost?: Ghost): Tsl
 
   // The cut is tested along the centre's own ray. A neighbour is a pixel off
   // it, and the cone does not turn in a pixel, so only its depth is its own.
-  let ghosted: (distance: TslNode) => TslNode = () => float(0);
-  if (ghost !== undefined) {
-    const view = getViewPosition(screenUV, centre.depth, projectionInverse);
-    const stretch = view.length().div(view.z.negate());
-    const along = ghost.ghostAlong(world.mul(vec4(view, 0)).xyz.normalize());
-    ghosted = (distance) => step(0.05, along(distance.mul(stretch)));
-  }
+  const ghostTest = ghost === undefined ? undefined : ghostedAlong(ghost, centre.depth, projectionInverse, world);
+  const ghosted = (distance: TslNode): TslNode => (ghostTest === undefined ? float(0) : ghostTest(distance));
 
   // A pair with a ghosted pixel in it measures nothing, so a hole the dither
   // cut next to this pixel is no step. Reading the ghost as the centre instead

@@ -59,6 +59,12 @@ function count(object: object, bytes: number, kind: Kind): void {
   peak = Math.max(peak, standing.total);
 }
 
+/** The ledger line a buffer counts on, by the usage it was made for. */
+function bufferKind(usage: number): Kind {
+  if ((usage & GPUBufferUsage.VERTEX) !== 0) return 'vertex';
+  return (usage & GPUBufferUsage.INDEX) !== 0 ? 'index' : 'otherBuffers';
+}
+
 function forget(object: object): void {
   const entry = alive.get(object);
   if (entry === undefined) return;
@@ -94,9 +100,7 @@ export function installGpuLedger(): void {
   device.createBuffer = function (this: GPUDevice, descriptor: GPUBufferDescriptor): GPUBuffer {
     const buffer = createBuffer.call(this, descriptor);
     const usage = descriptor.usage;
-    const kind: Kind =
-      (usage & GPUBufferUsage.VERTEX) !== 0 ? 'vertex' : (usage & GPUBufferUsage.INDEX) !== 0 ? 'index' : 'otherBuffers';
-    count(buffer, descriptor.size, kind);
+    count(buffer, descriptor.size, bufferKind(usage));
     return buffer;
   };
   const createTexture = device.createTexture;

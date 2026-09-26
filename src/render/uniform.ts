@@ -54,7 +54,14 @@ export function officerPerson(officer: Officer, look: PedestrianLook): StandingP
       heading: officer.heading,
       speed: officer.speed,
       cycle: officer.cycle,
-      gait: officer.aiming ? 'aim' : officer.speed > 2.5 ? 'run' : officer.speed > 0 ? 'brisk' : 'stand',
+      gait: officerGait(officer),
     },
   };
+}
+
+/** The gait an officer is drawn in: aiming, else by pace. */
+function officerGait(officer: Officer): StandingPerson['pose']['gait'] {
+  if (officer.aiming) return 'aim';
+  if (officer.speed > 2.5) return 'run';
+  return officer.speed > 0 ? 'brisk' : 'stand';
 }

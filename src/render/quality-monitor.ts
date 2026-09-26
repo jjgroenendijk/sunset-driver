@@ -139,7 +139,7 @@ export class QualityMonitor {
 
   /** Count one frame, and answer the change it caused if it caused one. */
   sample(frameMs: number): QualityChange | undefined {
-    if (!(frameMs > 0) || frameMs > STALL_MS) return undefined;
+    if (Number.isNaN(frameMs) || frameMs <= 0 || frameMs > STALL_MS) return undefined;
     this.frames.push(frameMs);
     this.spent += frameMs;
     // Half a millisecond short is a whole window: thirty frames of a 60 Hz

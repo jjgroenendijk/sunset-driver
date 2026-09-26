@@ -79,13 +79,18 @@ export function tramSignAtlas(names: readonly string[]): TramSignAtlas {
     panel(canvas, stopNameCell(names.length, stop), names[stop] as string);
   }
   for (let minutes = 0; minutes <= COUNTDOWN_CAP; minutes++) {
-    const text = minutes === 0 ? 'due' : minutes >= COUNTDOWN_CAP ? `${COUNTDOWN_CAP} min or more` : `${minutes} min`;
-    panel(canvas, countdownCell(names.length, minutes), text);
+    panel(canvas, countdownCell(names.length, minutes), countdownText(minutes));
   }
   return { width: canvas.width, height: canvas.height, data: canvas.data, cells };
 }
 
 /** A destination board: the route number in a block, and the stop it is bound for beside it. */
+/** The words of the countdown for a whole number of minutes. */
+function countdownText(minutes: number): string {
+  if (minutes === 0) return 'due';
+  return minutes >= COUNTDOWN_CAP ? `${COUNTDOWN_CAP} min or more` : `${minutes} min`;
+}
+
 function destination(canvas: PixelCanvas, cell: number, route: number, name: string): void {
   const top = cell * CELL_HEIGHT;
   fillRect(canvas, 0, top, CELL_WIDTH, CELL_HEIGHT, BOARD_BACK);
