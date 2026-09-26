@@ -1,7 +1,9 @@
 import { expect, it } from 'vitest';
-import { pavementTriangles, type PavementVertex } from '../src/render/pavement-mesh.ts';
+import { pavementTriangles, type PavementVertex, type SurfaceAt } from '../src/render/pavement-mesh.ts';
+import type { RoadCarve } from '../src/world/carve.ts';
 import { junctionShape } from '../src/world/junction-shape.ts';
 import type { JunctionMap } from '../src/world/junctions.ts';
+import type { ChunkPavement } from '../src/world/pavement.ts';
 import { RoadRibbons } from '../src/world/ribbon.ts';
 import { TIERS } from '../src/world/tiers.ts';
 import type { Point, RoadTier, WorldDescription } from '../src/world/types.ts';
@@ -41,28 +43,7 @@ sweepSuite('pavement', () => {
       for (const [cx, cy] of chunkKeys()) {
         for (const piece of chunkOf(seed, cx, cy).pavement) {
           if (pieces++ % SURFACE_STRIDE !== 0) continue;
-          const where = `chunk ${cx}, ${cy}: ${piece.tier} pavement`;
-          for (const ring of [piece.region.outer, ...piece.region.holes]) {
-            const crossing = selfCrossing(ring);
-            if (crossing !== undefined) fault(`${where} crosses itself at ${crossing.x.toFixed(1)},${crossing.y.toFixed(1)}`);
-          }
-          const mesh = pavementTriangles(piece, surfaceAt);
-          if (mesh === undefined) continue;
-          const ground = (v: { x: number; y: number; h: number }): void => {
-            if (chunkCrowdedAt(carve, v.x, v.y)) return;
-            const above = chunkGroundAt(carve, v.x, v.y) - v.h;
-            if (above > SURFACE_ABOVE) fault(`${where} at ${v.x.toFixed(1)},${v.y.toFixed(1)} has the ground ${above.toFixed(2)} m above it`);
-          };
-          for (const v of mesh.vertices) ground(v);
-          for (const face of mesh.faces) {
-            const [a, b, c] = face.map((k) => mesh.vertices[k] as PavementVertex) as [PavementVertex, PavementVertex, PavementVertex];
-            const middle = { x: (a.x + b.x + c.x) / 3, y: (a.y + b.y + c.y) / 3, h: (a.h + b.h + c.h) / 3 };
-            ground(middle);
-            for (const p of [middle, halfway(middle, a), halfway(middle, b), halfway(middle, c)]) {
-              const road = carriageway.under(p);
-              if (road !== undefined) fault(`${where} at ${p.x.toFixed(1)},${p.y.toFixed(1)} lies over ${road}`);
-            }
-          }
+          checkPiece(piece, `chunk ${cx}, ${cy}: ${piece.tier} pavement`, carve, carriageway, surfaceAt, fault);
         }
       }
       expect(pieces, `seed ${seed}`).toBeGreaterThan(0);
@@ -71,6 +52,41 @@ sweepSuite('pavement', () => {
     }
   });
 });
+
+/**
+ * Asks one piece of pavement whether a ring crosses itself, whether the ground
+ * stands through it and whether it lies over a carriageway. Each fault goes to `fault`.
+ */
+function checkPiece(
+  piece: ChunkPavement,
+  where: string,
+  carve: RoadCarve,
+  carriageway: CarriagewayIndex,
+  surfaceAt: SurfaceAt,
+  fault: (text: string) => void,
+): void {
+  for (const ring of [piece.region.outer, ...piece.region.holes]) {
+    const crossing = selfCrossing(ring);
+    if (crossing !== undefined) fault(`${where} crosses itself at ${crossing.x.toFixed(1)},${crossing.y.toFixed(1)}`);
+  }
+  const mesh = pavementTriangles(piece, surfaceAt);
+  if (mesh === undefined) return;
+  const ground = (v: { x: number; y: number; h: number }): void => {
+    if (chunkCrowdedAt(carve, v.x, v.y)) return;
+    const above = chunkGroundAt(carve, v.x, v.y) - v.h;
+    if (above > SURFACE_ABOVE) fault(`${where} at ${v.x.toFixed(1)},${v.y.toFixed(1)} has the ground ${above.toFixed(2)} m above it`);
+  };
+  for (const v of mesh.vertices) ground(v);
+  for (const face of mesh.faces) {
+    const [a, b, c] = face.map((k) => mesh.vertices[k] as PavementVertex) as [PavementVertex, PavementVertex, PavementVertex];
+    const middle = { x: (a.x + b.x + c.x) / 3, y: (a.y + b.y + c.y) / 3, h: (a.h + b.h + c.h) / 3 };
+    ground(middle);
+    for (const p of [middle, halfway(middle, a), halfway(middle, b), halfway(middle, c)]) {
+      const road = carriageway.under(p);
+      if (road !== undefined) fault(`${where} at ${p.x.toFixed(1)},${p.y.toFixed(1)} lies over ${road}`);
+    }
+  }
+}
 
 function halfway(a: Point, b: Point): Point {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
@@ -97,18 +113,23 @@ function selfCrossing(ring: readonly Point[]): Point | undefined {
       const d = ring[(j + 1) % n] as Point;
       if (Math.min(c.x, d.x) > right) break;
       if (Math.abs(i - j) <= 1 || Math.abs(i - j) === n - 1) continue;
-      if (Math.max(a.y, b.y) < Math.min(c.y, d.y) || Math.max(c.y, d.y) < Math.min(a.y, b.y)) continue;
-      const d1 = cross(c, d, a);
-      const d2 = cross(c, d, b);
-      const d3 = cross(a, b, c);
-      const d4 = cross(a, b, d);
-      if (d1 * d2 < 0 && d3 * d4 < 0) {
-        const t = d1 / (d1 - d2);
-        return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
-      }
+      const at = segmentsCross(a, b, c, d);
+      if (at !== undefined) return at;
     }
   }
   return undefined;
+}
+
+/** Where segment `ab` crosses segment `cd` strictly inside both, or nothing. */
+function segmentsCross(a: Point, b: Point, c: Point, d: Point): Point | undefined {
+  if (Math.max(a.y, b.y) < Math.min(c.y, d.y) || Math.max(c.y, d.y) < Math.min(a.y, b.y)) return undefined;
+  const d1 = cross(c, d, a);
+  const d2 = cross(c, d, b);
+  const d3 = cross(a, b, c);
+  const d4 = cross(a, b, d);
+  if (!(d1 * d2 < 0 && d3 * d4 < 0)) return undefined;
+  const t = d1 / (d1 - d2);
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
 }
 
 function cross(o: Point, a: Point, p: Point): number {

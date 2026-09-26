@@ -1,19 +1,17 @@
 import { expect, it } from 'vitest';
-import { airfieldAt, LEVEL_BLEND } from '../src/world/airfields.ts';
-import { layoutZones, zoneAt } from '../src/world/districts.ts';
 import { MINOR_BY_ZONE } from '../src/world/fill.ts';
-import { type GradeCrossing, type RoadEdge, type RoadNode } from '../src/world/graph.ts';
+import { type GradeCrossing, type RoadEdge, type RoadGraph, type RoadNode, type RoadRoute } from '../src/world/graph.ts';
 import { HEADROOM_SLACK } from '../src/world/crossing-plan.ts';
 import { DECK_SOFFIT } from '../src/world/decks.ts';
 import { deckRuns, overWater } from '../src/world/piers.ts';
 import { WATER_CLEARANCE } from '../src/world/water-lift.ts';
 import { CLEARANCE as OVERPASS_CLEARANCE } from '../src/world/overpass.ts';
 import { Heightfield } from '../src/world/heightfield.ts';
-import { LandMasses } from '../src/world/landmass.ts';
 import { RiverWater } from '../src/world/river-decks.ts';
 import { coastNoise, islandAt } from '../src/world/terrain.ts';
 import { mayCross, TIERS } from '../src/world/tiers.ts';
-import { type District, type Point, type RoadCurve, type RoadTier, type WorldDescription, type Zone } from '../src/world/types.ts';
+import { type Point, type RoadCurve, type RoadTier, type WorldDescription, type Zone } from '../src/world/types.ts';
+import { blockSamples, piecesOf } from './seed-blocks.ts';
 import { PointGrid } from './seed-index.ts';
 import {
   WET_SAMPLE,
@@ -54,6 +52,20 @@ const HIGHWAY_KM_FLOOR = 2;
  */
 const WATER_DECKS_LIFTED = 0.5;
 
+/** The first fault of one seed: a test asserts once a seed, not once a segment. */
+class Faults {
+  first: string | undefined;
+  add(text: string | undefined): void {
+    this.first ??= text;
+  }
+}
+
+/** A point of a curve that stands on a node, with the index it sits at. */
+interface NodePoint {
+  road: RoadCurve;
+  at: number;
+}
+
 /**
  * The seed sweep of spec section 3, on the road network of spec section 6: one
  * component, one graph, and the rules two roads meet under.
@@ -71,48 +83,14 @@ sweepSuite('roads', () => {
         expect(w.roads.some((r) => r.tier === tier), `seed ${seed} has no ${tier}`).toBe(true);
       }
 
+      const faults = new Faults();
+      w.roads.forEach((road, i) => curveFaults(road, i, faults));
+      nodePlaceFaults(w.roads, faults);
+      expect(faults.first, `seed ${seed}`).toBeUndefined();
       // Curves that share a node are one road network. Every curve is traced
       // from a road already laid or into one, so there is only ever one.
-      let complaint: string | undefined;
-      const fault = (text: string): void => {
-        complaint ??= text;
-      };
-      const parent = w.roads.map((_, i) => i);
-      const find = (i: number): number => {
-        const up = parent[i] as number;
-        if (up === i) return i;
-        const root = find(up);
-        parent[i] = root;
-        return root;
-      };
-      const owner = new Map<number, number>();
-      for (let i = 0; i < w.roads.length; i++) {
-        const road = w.roads[i] as RoadCurve;
-        if (road.id !== i) fault(`curve ${i} carries id ${road.id}`);
-        if (road.points.length < 2) fault(`curve ${i} has ${road.points.length} points`);
-        for (const at of road.bridges) {
-          if (at >= road.points.length - 1) fault(`curve ${i} bridges segment ${at}, past its end`);
-        }
-        if (road.nodes.length !== road.points.length) fault(`curve ${i} has ${road.nodes.length} nodes for ${road.points.length} points`);
-        if ((road.nodes[0] ?? -1) < 0 || (road.nodes[road.nodes.length - 1] ?? -1) < 0) fault(`curve ${i} has an end that is no node`);
-        for (const node of road.nodes) {
-          if (node < 0) continue;
-          const met = owner.get(node);
-          if (met === undefined) owner.set(node, i);
-          else parent[find(met)] = find(i);
-        }
-      }
-      // A node is one place: every point that stands on it stands there.
-      for (const [node, here] of nodePoints(w.roads)) {
-        const first = here[0]?.road.points[here[0].at] as Point;
-        for (const { road, at } of here) {
-          const p = road.points[at] as Point;
-          if (p.x !== first.x || p.y !== first.y) fault(`node ${node} stands at two places, on ${road.tier} ${road.id}`);
-        }
-      }
-      expect(complaint, `seed ${seed}`).toBeUndefined();
-      const roots = new Set(w.roads.map((_, i) => find(i)));
-      expect(roots.size, `seed ${seed}: ${roots.size} road networks`).toBe(1);
+      const networks = networkCount(w.roads);
+      expect(networks, `seed ${seed}: ${networks} road networks`).toBe(1);
     }
   });
 
@@ -123,40 +101,19 @@ sweepSuite('roads', () => {
       expect(graph.nodes.length, `seed ${seed}`).toBeGreaterThan(0);
 
       // Every curve is on the graph, and every node has a road leaving it.
-      let complaint: string | undefined;
-      const fault = (text: string): void => {
-        complaint ??= text;
-      };
+      const faults = new Faults();
       const covered = new Uint8Array(w.roads.length);
       for (const edge of graph.edges) covered[edge.curve] = 1;
-      for (const road of w.roads) if (covered[road.id] !== 1) fault(`curve ${road.id} has no edge`);
-      for (const node of graph.nodes) if (graph.degree(node.id) <= 0) fault(`node ${node.id} has no road leaving it`);
-      expect(complaint, `seed ${seed}`).toBeUndefined();
+      for (const road of w.roads) if (covered[road.id] !== 1) faults.add(`curve ${road.id} has no edge`);
+      for (const node of graph.nodes) if (graph.degree(node.id) <= 0) faults.add(`node ${node.id} has no road leaving it`);
+      expect(faults.first, `seed ${seed}`).toBeUndefined();
 
       // The curves are one network, so the graph is one component too.
-      const seen = new Uint8Array(graph.nodes.length);
-      const queue = [0];
-      seen[0] = 1;
-      for (let i = 0; i < queue.length; i++) {
-        for (const e of graph.edgesFrom(queue[i] as number)) {
-          const to = (graph.edges[e] as RoadEdge).to;
-          if (seen[to] === 1) continue;
-          seen[to] = 1;
-          queue.push(to);
-        }
-      }
-      expect(queue.length, `seed ${seed}: the graph is not one network`).toBe(graph.nodes.length);
+      expect(reachedFromFirst(graph), `seed ${seed}: the graph is not one network`).toBe(graph.nodes.length);
 
       // Pathfinding crosses that network: the core to the node furthest from it.
       const start = graph.nearestNode(w.core.x, w.core.y) as number;
-      let far = 0;
-      let farD = -1;
-      for (const node of graph.nodes) {
-        const d = Math.hypot(node.x - w.core.x, node.y - w.core.y);
-        if (d <= farD) continue;
-        farD = d;
-        far = node.id;
-      }
+      const far = furthestNode(graph, w.core);
       const route = graph.shortestPath(start, far);
       expect(route, `seed ${seed}: no route from the core to node ${far}`).toBeDefined();
       const taken = route as NonNullable<typeof route>;
@@ -166,11 +123,8 @@ sweepSuite('roads', () => {
       const head = graph.nodes[start] as RoadNode;
       const tail = graph.nodes[far] as RoadNode;
       expect(taken.length, `seed ${seed}`).toBeGreaterThanOrEqual(Math.hypot(head.x - tail.x, head.y - tail.y) - 1e-6);
-      for (let i = 0; i < taken.edges.length; i++) {
-        const edge = graph.edges[taken.edges[i] as number] as RoadEdge;
-        if (edge.from !== taken.nodes[i] || edge.to !== taken.nodes[i + 1]) fault(`route breaks at edge ${edge.id}`);
-      }
-      expect(complaint, `seed ${seed}`).toBeUndefined();
+      routeFaults(graph, taken, faults);
+      expect(faults.first, `seed ${seed}`).toBeUndefined();
 
       // The nearest point of the network to a node is that node's own ground.
       const probe = graph.nodes[graph.nodes.length >> 1] as RoadNode;
@@ -184,22 +138,19 @@ sweepSuite('roads', () => {
     // crossing, and no node stands on it, so no car can turn there.
     for (const seed of seeds) {
       const graph = graphOf(seed);
-      let complaint: string | undefined;
-      const fault = (text: string): void => {
-        complaint ??= text;
-      };
+      const faults = new Faults();
       for (let k = 0; k < graph.crossings.length; k++) {
         const crossing = graph.crossings[k] as GradeCrossing;
         const where = `crossing ${k} at ${crossing.x.toFixed(0)},${crossing.y.toFixed(0)}`;
         const node = graph.nodes[graph.nearestNode(crossing.x, crossing.y) as number] as RoadNode;
-        if (Math.hypot(node.x - crossing.x, node.y - crossing.y) <= 0.001) fault(`${where} is a junction`);
+        if (Math.hypot(node.x - crossing.x, node.y - crossing.y) <= 0.001) faults.add(`${where} is a junction`);
         const over = graph.edges[crossing.over] as RoadEdge;
         const under = graph.edges[crossing.under] as RoadEdge;
-        if (over.curve === under.curve) fault(`${where} joins a road to itself`);
-        if (!over.crossings.includes(k)) fault(`${where} is not marked on the road above`);
-        if (!under.crossings.includes(k)) fault(`${where} is not marked on the road below`);
+        if (over.curve === under.curve) faults.add(`${where} joins a road to itself`);
+        if (!over.crossings.includes(k)) faults.add(`${where} is not marked on the road above`);
+        if (!under.crossings.includes(k)) faults.add(`${where} is not marked on the road below`);
       }
-      expect(complaint, `seed ${seed}`).toBeUndefined();
+      expect(faults.first, `seed ${seed}`).toBeUndefined();
     }
   });
 
@@ -248,9 +199,6 @@ sweepSuite('roads', () => {
   });
 
   it('junctions a highway only at an interchange, and never with a minor road', () => {
-    // An island link carries a deck, and ends on the interchange.
-    const linkEnd = (link: RoadCurve, at: number, highway: RoadCurve, i: number): boolean =>
-      link.bridges.length > 0 && (at === 0 || at === link.points.length - 1) && highway.interchanges.includes(i);
     // Spec section 6.2: a highway has junctions only at interchanges and no
     // pedestrians on it. So a street, an alley or a dirt road never shares a
     // point with one — where they cross, the graph makes it an overpass. A
@@ -263,44 +211,18 @@ sweepSuite('roads', () => {
     // another arterial that ends on that junction.
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
-      let complaint: string | undefined;
-      const fault = (text: string): void => {
-        complaint ??= text;
-      };
+      const faults = new Faults();
       // Every curve point on each node, with the index the point sits at.
       const met = nodePoints(w.roads);
       for (const road of w.roads) {
         if (road.tier !== 'highway') {
-          if (road.interchanges.length > 0) fault(`${road.tier} ${road.id} lists interchanges`);
+          if (road.interchanges.length > 0) faults.add(`${road.tier} ${road.id} lists interchanges`);
           continue;
         }
-        if (road.interchanges.length === 0) fault(`highway ${road.id} has no interchange`);
-        for (let k = 1; k < road.interchanges.length; k++) {
-          if ((road.interchanges[k] as number) <= (road.interchanges[k - 1] as number)) fault(`highway ${road.id} lists its interchanges out of order`);
-        }
-        for (const at of road.interchanges) {
-          if (at < 0 || at >= road.points.length) fault(`highway ${road.id} puts an interchange past its end at ${at}`);
-        }
-        for (let i = 0; i < road.points.length; i++) {
-          const here = met.get(road.nodes[i] ?? -1) ?? [];
-          for (const other of here) {
-            if (other.road.id === road.id) continue;
-            const where = `highway ${road.id} meets ${other.road.tier} ${other.road.id} at point ${i}`;
-            const end = i === 0 || i === road.points.length - 1;
-            if (other.road.tier === 'highway') {
-              if (!road.interchanges.includes(i)) fault(`${where}, away from any interchange`);
-            } else if (other.road.tier === 'ramp') {
-              if (other.road.ramp?.highway !== road.id) fault(`${where}, a ramp of another highway`);
-            } else if (other.road.tier !== 'arterial') fault(where);
-            else if (end || linkEnd(other.road, other.at, road, i)) continue;
-            // Another arterial may end on the junction a link made there.
-            else if (!here.some((o) => linkEnd(o.road, o.at, road, i)) || (other.at !== 0 && other.at !== other.road.points.length - 1)) {
-              fault(`${where}, at grade`);
-            }
-          }
-        }
+        interchangeListFaults(road, faults);
+        meetingFaults(road, met, faults);
       }
-      expect(complaint, `seed ${seed}`).toBeUndefined();
+      expect(faults.first, `seed ${seed}`).toBeUndefined();
     }
   });
 
@@ -314,36 +236,10 @@ sweepSuite('roads', () => {
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       const graph = graphOf(seed);
-      let complaint: string | undefined;
-      const fault = (text: string): void => {
-        complaint ??= text;
-      };
-      for (const road of w.roads) {
-        const slots = road.slots ?? [];
-        if (road.tier !== 'highway' && slots.length > 0) fault(`${road.tier} ${road.id} lists slots`);
-        for (const at of slots) {
-          const level = (road.lift?.[at] ?? 0) >= OVERPASS_CLEARANCE - 1e-6 && (road.lift?.[at + 1] ?? 0) >= OVERPASS_CLEARANCE - 1e-6;
-          if (!road.bridges.includes(at) || !level) fault(`highway ${road.id} has slot ${at} off its level deck`);
-        }
-      }
-      for (const crossing of graph.crossings) {
-        const pair = [crossing.over, crossing.under].map((e) => w.roads[(graph.edges[e] as RoadEdge).curve] as RoadCurve);
-        if (!pair.some((road) => road.tier === 'highway')) continue;
-        const where = `${(pair[0] as RoadCurve).tier} ${(pair[0] as RoadCurve).id} crosses ${(pair[1] as RoadCurve).tier} ${(pair[1] as RoadCurve).id} at ${crossing.x.toFixed(0)},${crossing.y.toFixed(0)}`;
-        const above = pair.find((road) => (road.slots ?? []).includes(placeOn(road, crossing)?.segment ?? -1));
-        if (above === undefined) {
-          const over = w.roads[(graph.edges[crossing.over] as RoadEdge).curve] as RoadCurve;
-          const under = w.roads[(graph.edges[crossing.under] as RoadEdge).curve] as RoadCurve;
-          const diamond = over.tier === 'arterial' && under.tier === 'highway' && w.roads.some((r) => r.ramp?.arterial === over.id);
-          if (!diamond) fault(`${where}, at no slot`);
-          else if (liftAtCrossing(under, crossing) > 0) fault(`${where}, over a highway off the ground`);
-          continue;
-        }
-        // The road underneath stays on the ground, or it would climb into the deck.
-        const below = pair[0] === above ? (pair[1] as RoadCurve) : (pair[0] as RoadCurve);
-        if (liftAtCrossing(below, crossing) > 0) fault(`${where}, and climbs into the deck`);
-      }
-      expect(complaint, `seed ${seed}`).toBeUndefined();
+      const faults = new Faults();
+      for (const road of w.roads) slotFaults(road, faults);
+      for (const crossing of graph.crossings) faults.add(highwayCrossingFault(w, graph, crossing));
+      expect(faults.first, `seed ${seed}`).toBeUndefined();
     }
   });
 
@@ -360,15 +256,11 @@ sweepSuite('roads', () => {
       const w = worlds.get(seed) as WorldDescription;
       const graph = graphOf(seed);
       let complaint: string | undefined;
-      let highwayKm = 0;
-      for (const road of w.roads) {
-        if (road.tier !== 'highway') continue;
-        highwayKm += polylineLength(road.points) / 1000;
-      }
+      const highwayKm = highwayLength(w.roads);
       let separations = 0;
       for (const crossing of graph.crossings) {
-        const pair = [crossing.over, crossing.under].map((e) => w.roads[(graph.edges[e] as RoadEdge).curve] as RoadCurve);
-        const [over, under] = pair as [RoadCurve, RoadCurve];
+        const over = curveOf(w, graph, crossing.over);
+        const under = curveOf(w, graph, crossing.under);
         if (!mayCross(over.tier, under.tier)) {
           complaint ??= `${over.tier} ${over.id} crosses ${under.tier} ${under.id} at ${crossing.x.toFixed(0)},${crossing.y.toFixed(0)}`;
         }
@@ -415,38 +307,7 @@ sweepSuite('roads', () => {
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       const hf = new Heightfield(w.terrain);
-      const zones = layoutZones(w.size, w.core, w.water);
-      const grid = new PointGrid(w.size, 40, w.roads);
-      const land = new LandMasses(hf, w.water, w.water.seaLevel + 1);
-      const mainland = land.massAt(w.core.x, w.core.y);
-      const climbable: Partial<Record<RoadTier, Uint8Array>> = {
-        street: climbableFrom(hf, w, 'street'),
-        dirt: climbableFrom(hf, w, 'dirt'),
-      };
-      // Every sample of a zone, and the ones on the ground its fill was asked
-      // to cover. Ground the fill was never asked to cover only ever puts the
-      // median up, so the floor reads all of it and the ceiling the rest.
-      const samples: Partial<Record<Zone, Sample[]>> = {};
-      const filled: Partial<Record<Zone, number[]>> = {};
-      for (let iy = 0; iy < hf.gridSize; iy += 8) {
-        for (let ix = 0; ix < hf.gridSize; ix += 8) {
-          const x = hf.worldX(ix);
-          const y = hf.worldY(iy);
-          // Dry ground only, and not the strip along the edge that roads keep off.
-          if (hf.at(ix, iy) < w.water.seaLevel + 1) continue;
-          if (Math.abs(x) > w.size / 2 - 120 || Math.abs(y) > w.size / 2 - 120) continue;
-          if (land.massAt(x, y) !== mainland) continue;
-          const zone = zoneAt(zones, x, y);
-          const half = grid.nearest(x, y);
-          (samples[zone] ??= []).push({ ix: ix / 8, iy: iy / 8, half });
-          const reach = climbable[MINOR_BY_ZONE[zone].tier] as Uint8Array;
-          if (reach[iy * hf.gridSize + ix] !== 1) continue;
-          // An airfield and its blend are ground the roads keep off (spec section 8.4).
-          if (airfieldAt(w.airfields, x, y, LEVEL_BLEND) !== undefined) continue;
-          if (!nearADistrict(w, zone, x, y, (d) => onClimbable(hf, reach, d.x, d.y))) continue;
-          (filled[zone] ??= []).push(half);
-        }
-      }
+      const { samples, filled } = blockSamples(w, hf);
       for (const zone of Object.keys(RANGE) as Zone[]) {
         const found = samples[zone] ?? [];
         const covered = filled[zone] ?? [];
@@ -504,18 +365,13 @@ sweepSuite('roads', () => {
       const grid = new PointGrid(w.size, 100, w.roads);
       const on = nodePoints(w.roads);
       const boardwalks = new Set(w.beaches.map((beach) => beach.boardwalkRoad));
-      let complaint: string | undefined;
+      const faults = new Faults();
       for (const road of w.roads) {
         const cap = CAP[road.tier];
         if (cap === undefined || boardwalks.has(road.id)) continue;
-        for (const i of [0, road.points.length - 1]) {
-          const end = road.points[i] as Point;
-          if (nodeVisits(on, road, i) > 1) continue;
-          const away = grid.nearest(end.x, end.y, road.id);
-          if (away > cap) complaint ??= `${road.tier} ${road.id} dead-ends ${away.toFixed(0)} m from any road`;
-        }
+        for (const i of [0, road.points.length - 1]) faults.add(deadEndFault(road, i, cap, on, grid));
       }
-      expect(complaint, `seed ${seed}`).toBeUndefined();
+      expect(faults.first, `seed ${seed}`).toBeUndefined();
     }
   });
 
@@ -542,37 +398,9 @@ sweepSuite('roads', () => {
       const w = worlds.get(seed) as WorldDescription;
       const hf = new Heightfield(w.terrain);
       const rivers = new RiverWater(w.water.rivers, hf, w.water.seaLevel);
-      let complaint: string | undefined;
-      const fault = (text: string): void => {
-        complaint ??= text;
-      };
-      for (const road of w.roads) {
-        for (let i = 0; i + 1 < road.points.length; i++) {
-          const a = road.points[i] as Point;
-          const b = road.points[i + 1] as Point;
-          const where = `${road.tier} ${road.id} segment ${i}`;
-          if (road.bridges.includes(i)) {
-            // A deck lands on dry ground at both ends. One over water spans a
-            // strait crossing or a river; one over land carries the road over
-            // a dip, and the grade test below is what vets that one.
-            if (hf.sample(a.x, a.y) < w.water.seaLevel) fault(`${where} starts in the water`);
-            if (hf.sample(b.x, b.y) < w.water.seaLevel) fault(`${where} ends in the water`);
-            if (wetFraction(hf, a, b, w.water.seaLevel) > 0) {
-              const spans = w.water.crossings.some((c) => spansCrossing(a, b, c.from, c.to)) || rivers.spans(a, b);
-              if (!spans) fault(`${where} is a bridge at no crossing`);
-            }
-            continue;
-          }
-          const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / WET_SAMPLE));
-          let lowest = Infinity;
-          for (let s = 0; s <= steps; s++) {
-            const t = s / steps;
-            lowest = Math.min(lowest, hf.sample(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t));
-          }
-          if (lowest < w.water.seaLevel) fault(`${where} runs through water`);
-        }
-      }
-      expect(complaint, `seed ${seed}`).toBeUndefined();
+      const faults = new Faults();
+      for (const road of w.roads) waterFaults(w, hf, rivers, road, faults);
+      expect(faults.first, `seed ${seed}`).toBeUndefined();
     }
   });
 
@@ -594,24 +422,11 @@ sweepSuite('roads', () => {
       const sea = w.water.seaLevel;
       let complaint: string | undefined;
       for (const road of w.roads) {
-        const last = road.points.length - 1;
         for (const run of deckRuns(road, (a, b) => overWater(hf, sea, a, b), true)) {
-          let surface = Infinity;
-          for (let i = run.from; i <= run.to + 1; i++) surface = Math.min(surface, beds.pointHeight(road.id, i));
-          const clearance = surface - DECK_SOFFIT - sea;
+          const clearance = lowestSurface(beds, road, run) - DECK_SOFFIT - sea;
           wet++;
           if (clearance >= WATER_CLEARANCE - 1e-6) lifted++;
-          // The abutments no ramp may be laid back from: the end of the line,
-          // a bore, an interchange, or a junction the network already had
-          // there when the deck was laid. A deck held by none of them had the
-          // room, so it stands clear of the water.
-          const pinned =
-            run.from === 0 ||
-            run.to + 1 === last ||
-            road.tunnels.includes(run.from - 1) ||
-            road.tunnels.includes(run.to + 1) ||
-            [run.from, run.to + 1].some((i) => (road.nodes[i] ?? -1) >= 0 || road.interchanges.includes(i));
-          if (!pinned && clearance <= 0) {
+          if (!deckPinned(road, run) && clearance <= 0) {
             complaint ??= `${road.tier} ${road.id} spans water with its underside ${(-clearance).toFixed(2)} m under it`;
           }
         }
@@ -631,140 +446,270 @@ sweepSuite('roads', () => {
     for (const seed of seeds) {
       const w = worlds.get(seed) as WorldDescription;
       const hf = new Heightfield(w.terrain);
-      let complaint: string | undefined;
-      const fault = (text: string): void => {
-        complaint ??= text;
-      };
+      const faults = new Faults();
       for (const road of w.roads) {
-        const limit = TIERS[road.tier].maxGrade;
-        for (const at of road.tunnels) {
-          if (at >= road.points.length - 1) fault(`${road.tier} ${road.id} bores past its end at ${at}`);
-          if (road.bridges.includes(at)) fault(`${road.tier} ${road.id} segment ${at} is deck and bore at once`);
-        }
-        for (let i = 0; i + 1 < road.points.length; i++) {
-          const a = road.points[i] as Point;
-          const b = road.points[i + 1] as Point;
-          const where = `${road.tier} ${road.id} segment ${i}`;
-          if (road.tunnels.includes(i)) {
-            if (profileUnder(hf, a, b).above <= CLEARANCE) fault(`${where} is a bore through nothing`);
-            continue;
-          }
-          if (road.bridges.includes(i)) {
-            // A deck over dry land is only worth building over a dip, or to
-            // carry the road over another one (`overpass.ts`), which is what
-            // the lift says it does.
-            const dry = wetFraction(hf, a, b, w.water.seaLevel) === 0;
-            const carried = (road.lift?.[i] ?? 0) > 0 || (road.lift?.[i + 1] ?? 0) > 0;
-            if (dry && !carried && profileUnder(hf, a, b).below <= CLEARANCE) {
-              fault(`${where} is a deck over nothing`);
-            }
-            continue;
-          }
-          const grade = gradeOf(hf, a, b);
-          if (grade > limit) fault(`${where} climbs ${(grade * 100).toFixed(0)}%, over the ${(limit * 100).toFixed(0)}% of its tier`);
-        }
+        boreFaults(road, faults);
+        for (let i = 0; i + 1 < road.points.length; i++) faults.add(segmentGradeFault(w, hf, road, i));
       }
-      expect(complaint, `seed ${seed}`).toBeUndefined();
+      expect(faults.first, `seed ${seed}`).toBeUndefined();
     }
   });
 });
 
-/**
- * How far from a district site of its own zone the ground still belongs to that
- * district's fill, as a multiple of the zone's widest `along` spacing. The
- * minor fill is seeded at the district sites and grows outward, so ground
- * further out than this is ground the fill was never asked to cover.
- */
-const CATCHMENT = 2;
-
-/**
- * True where a district of a zone stands within the zone's catchment of a
- * place, on ground a road can climb to. A site on a knoll no road reaches
- * (issue #399) seeds no fill, so the ground around it is nobody's blocks.
- */
-/** One sample of the block measure: its place on the sample grid and the metres to the nearest road. */
-interface Sample {
-  ix: number;
-  iy: number;
-  half: number;
-}
-
-/**
- * The metres to the nearest road of every sample in a piece of at least `size`
- * samples, where a piece is the samples joined through their eight neighbours.
- */
-function piecesOf(samples: readonly Sample[], size: number): number[] {
-  const at = new Map<string, number>();
-  samples.forEach((s, i) => at.set(`${s.ix},${s.iy}`, i));
-  const seen = new Uint8Array(samples.length);
-  const kept: number[] = [];
-  for (let i = 0; i < samples.length; i++) {
-    if (seen[i] === 1) continue;
-    seen[i] = 1;
-    const piece = [i];
-    for (let k = 0; k < piece.length; k++) {
-      const s = samples[piece[k] as number] as Sample;
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          const j = at.get(`${s.ix + dx},${s.iy + dy}`);
-          if (j === undefined || seen[j] === 1) continue;
-          seen[j] = 1;
-          piece.push(j);
-        }
-      }
-    }
-    if (piece.length >= size) for (const j of piece) kept.push((samples[j] as Sample).half);
+/** The kilometres of highway among the curves. */
+function highwayLength(roads: readonly RoadCurve[]): number {
+  let km = 0;
+  for (const road of roads) {
+    if (road.tier !== 'highway') continue;
+    km += polylineLength(road.points) / 1000;
   }
-  return kept;
+  return km;
 }
 
-function nearADistrict(w: WorldDescription, zone: Zone, x: number, y: number, served: (d: District) => boolean): boolean {
-  const reach = CATCHMENT * (MINOR_BY_ZONE[zone].along[1] as number);
-  return w.districts.some((d) => d.zone === zone && Math.hypot(d.x - x, d.y - y) <= reach && served(d));
+/** The curve an edge of the graph runs along. */
+function curveOf(w: WorldDescription, graph: RoadGraph, edge: number): RoadCurve {
+  return w.roads[(graph.edges[edge] as RoadEdge).curve] as RoadCurve;
 }
 
-/** True where a place stands on ground of a climbable flag grid. */
-function onClimbable(hf: Heightfield, reach: Uint8Array, x: number, y: number): boolean {
-  const ix = Math.round((x - hf.originX) / hf.cellSize);
-  const iy = Math.round((y - hf.originY) / hf.cellSize);
-  if (ix < 0 || iy < 0 || ix >= hf.gridSize || iy >= hf.gridSize) return false;
-  return reach[iy * hf.gridSize + ix] === 1;
-}
-
-/**
- * The ground a road of a tier could be laid on: every terrain node joined to
- * the core by steps over dry land no steeper than the tier climbs. Ground
- * outside it — a knoll, a ledge, a shelf behind a cliff — carries no road
- * whatever the fill does, so it says nothing about how the fill spaces them.
- */
-function climbableFrom(hf: Heightfield, w: WorldDescription, tier: RoadTier): Uint8Array {
-  const n = hf.gridSize;
-  const rise = TIERS[tier].maxGrade * hf.cellSize;
-  const dry = w.water.seaLevel + 1;
-  const reached = new Uint8Array(n * n);
-  const queue = new Int32Array(n * n);
-  const cx = Math.round((w.core.x - hf.originX) / hf.cellSize);
-  const cy = Math.round((w.core.y - hf.originY) / hf.cellSize);
-  let tail = 0;
-  if (cx >= 0 && cy >= 0 && cx < n && cy < n) {
-    reached[cy * n + cx] = 1;
-    queue[tail++] = cy * n + cx;
+/** Faults in the shape of one curve: its id, its points, its decks and the nodes at its ends. */
+function curveFaults(road: RoadCurve, i: number, faults: Faults): void {
+  if (road.id !== i) faults.add(`curve ${i} carries id ${road.id}`);
+  if (road.points.length < 2) faults.add(`curve ${i} has ${road.points.length} points`);
+  for (const at of road.bridges) {
+    if (at >= road.points.length - 1) faults.add(`curve ${i} bridges segment ${at}, past its end`);
   }
-  for (let head = 0; head < tail; head++) {
-    const at = queue[head] as number;
-    const ix = at % n;
-    const iy = (at - ix) / n;
-    const h = hf.at(ix, iy);
-    for (let k = 0; k < 4; k++) {
-      const jx = ix + (k === 0 ? 1 : k === 1 ? -1 : 0);
-      const jy = iy + (k === 2 ? 1 : k === 3 ? -1 : 0);
-      if (jx < 0 || jy < 0 || jx >= n || jy >= n) continue;
-      const to = jy * n + jx;
-      const g = hf.at(jx, jy);
-      if (reached[to] === 1 || g < dry || Math.abs(g - h) > rise) continue;
-      reached[to] = 1;
-      queue[tail++] = to;
+  if (road.nodes.length !== road.points.length) faults.add(`curve ${i} has ${road.nodes.length} nodes for ${road.points.length} points`);
+  if ((road.nodes[0] ?? -1) < 0 || (road.nodes[road.nodes.length - 1] ?? -1) < 0) faults.add(`curve ${i} has an end that is no node`);
+}
+
+/** A node is one place: every point that stands on it stands there. */
+function nodePlaceFaults(roads: readonly RoadCurve[], faults: Faults): void {
+  for (const [node, here] of nodePoints(roads)) {
+    const first = here[0]?.road.points[here[0].at] as Point;
+    for (const { road, at } of here) {
+      const p = road.points[at] as Point;
+      if (p.x !== first.x || p.y !== first.y) faults.add(`node ${node} stands at two places, on ${road.tier} ${road.id}`);
     }
   }
-  return reached;
+}
+
+/** How many networks the curves make, joining two curves that share a node. */
+function networkCount(roads: readonly RoadCurve[]): number {
+  const parent = roads.map((_, i) => i);
+  const rootOf = (i: number): number => {
+    const up = parent[i] as number;
+    if (up !== i) parent[i] = rootOf(up);
+    return parent[i] as number;
+  };
+  const owner = new Map<number, number>();
+  for (let i = 0; i < roads.length; i++) {
+    for (const node of (roads[i] as RoadCurve).nodes) {
+      if (node < 0) continue;
+      const met = owner.get(node);
+      if (met === undefined) owner.set(node, i);
+      else parent[rootOf(met)] = rootOf(i);
+    }
+  }
+  return new Set(roads.map((_, i) => rootOf(i))).size;
+}
+
+/** How many nodes of the graph a walk from node 0 reaches. */
+function reachedFromFirst(graph: RoadGraph): number {
+  const seen = new Uint8Array(graph.nodes.length);
+  const queue = [0];
+  seen[0] = 1;
+  for (let i = 0; i < queue.length; i++) {
+    for (const e of graph.edgesFrom(queue[i] as number)) {
+      const to = (graph.edges[e] as RoadEdge).to;
+      if (seen[to] === 1) continue;
+      seen[to] = 1;
+      queue.push(to);
+    }
+  }
+  return queue.length;
+}
+
+/** The node furthest from a place; the first of them on a tie. */
+function furthestNode(graph: RoadGraph, from: Point): number {
+  let far = 0;
+  let farD = -1;
+  for (const node of graph.nodes) {
+    const d = Math.hypot(node.x - from.x, node.y - from.y);
+    if (d <= farD) continue;
+    farD = d;
+    far = node.id;
+  }
+  return far;
+}
+
+/** Faults where a route's edges do not run from one of its nodes to the next. */
+function routeFaults(graph: RoadGraph, taken: RoadRoute, faults: Faults): void {
+  for (let i = 0; i < taken.edges.length; i++) {
+    const edge = graph.edges[taken.edges[i] as number] as RoadEdge;
+    if (edge.from !== taken.nodes[i] || edge.to !== taken.nodes[i + 1]) faults.add(`route breaks at edge ${edge.id}`);
+  }
+}
+
+/** Faults in the interchanges a highway lists: none, out of order, or past its end. */
+function interchangeListFaults(road: RoadCurve, faults: Faults): void {
+  if (road.interchanges.length === 0) faults.add(`highway ${road.id} has no interchange`);
+  for (let k = 1; k < road.interchanges.length; k++) {
+    if ((road.interchanges[k] as number) <= (road.interchanges[k - 1] as number)) faults.add(`highway ${road.id} lists its interchanges out of order`);
+  }
+  for (const at of road.interchanges) {
+    if (at < 0 || at >= road.points.length) faults.add(`highway ${road.id} puts an interchange past its end at ${at}`);
+  }
+}
+
+/** Faults where another road meets a highway at a point it may not. */
+function meetingFaults(road: RoadCurve, met: Map<number, NodePoint[]>, faults: Faults): void {
+  for (let i = 0; i < road.points.length; i++) {
+    const here = met.get(road.nodes[i] ?? -1) ?? [];
+    for (const other of here) {
+      if (other.road.id !== road.id) faults.add(highwayMeetingFault(road, i, other, here));
+    }
+  }
+}
+
+/** True where an island link, which carries a deck, ends on an interchange of a highway. */
+function linkEnd(link: RoadCurve, at: number, highway: RoadCurve, i: number): boolean {
+  return link.bridges.length > 0 && (at === 0 || at === link.points.length - 1) && highway.interchanges.includes(i);
+}
+
+/** What is wrong where another road meets point `i` of a highway, or undefined. */
+function highwayMeetingFault(road: RoadCurve, i: number, other: NodePoint, here: readonly NodePoint[]): string | undefined {
+  const where = `highway ${road.id} meets ${other.road.tier} ${other.road.id} at point ${i}`;
+  if (other.road.tier === 'highway') return road.interchanges.includes(i) ? undefined : `${where}, away from any interchange`;
+  if (other.road.tier === 'ramp') return other.road.ramp?.highway === road.id ? undefined : `${where}, a ramp of another highway`;
+  if (other.road.tier !== 'arterial') return where;
+  const end = i === 0 || i === road.points.length - 1;
+  if (end || linkEnd(other.road, other.at, road, i)) return undefined;
+  // Another arterial may end on the junction a link made there.
+  const otherEnd = other.at === 0 || other.at === other.road.points.length - 1;
+  if (here.some((o) => linkEnd(o.road, o.at, road, i)) && otherEnd) return undefined;
+  return `${where}, at grade`;
+}
+
+/** Faults where a road that is no highway lists slots, or a slot is off a level deck. */
+function slotFaults(road: RoadCurve, faults: Faults): void {
+  const slots = road.slots ?? [];
+  if (road.tier !== 'highway' && slots.length > 0) faults.add(`${road.tier} ${road.id} lists slots`);
+  for (const at of slots) {
+    const level = (road.lift?.[at] ?? 0) >= OVERPASS_CLEARANCE - 1e-6 && (road.lift?.[at + 1] ?? 0) >= OVERPASS_CLEARANCE - 1e-6;
+    if (!road.bridges.includes(at) || !level) faults.add(`highway ${road.id} has slot ${at} off its level deck`);
+  }
+}
+
+/** What is wrong with a crossing of a highway, or undefined: it is at a slot or a whole diamond. */
+function highwayCrossingFault(w: WorldDescription, graph: RoadGraph, crossing: GradeCrossing): string | undefined {
+  const pair = [crossing.over, crossing.under].map((e) => curveOf(w, graph, e));
+  if (!pair.some((road) => road.tier === 'highway')) return undefined;
+  const where = `${(pair[0] as RoadCurve).tier} ${(pair[0] as RoadCurve).id} crosses ${(pair[1] as RoadCurve).tier} ${(pair[1] as RoadCurve).id} at ${crossing.x.toFixed(0)},${crossing.y.toFixed(0)}`;
+  const above = pair.find((road) => (road.slots ?? []).includes(placeOn(road, crossing)?.segment ?? -1));
+  if (above === undefined) {
+    const [over, under] = pair as [RoadCurve, RoadCurve];
+    const diamond = over.tier === 'arterial' && under.tier === 'highway' && w.roads.some((r) => r.ramp?.arterial === over.id);
+    if (!diamond) return `${where}, at no slot`;
+    return liftAtCrossing(under, crossing) > 0 ? `${where}, over a highway off the ground` : undefined;
+  }
+  // The road underneath stays on the ground, or it would climb into the deck.
+  const below = pair[0] === above ? (pair[1] as RoadCurve) : (pair[0] as RoadCurve);
+  return liftAtCrossing(below, crossing) > 0 ? `${where}, and climbs into the deck` : undefined;
+}
+
+/** How far the end at point `i` of a road stands from any other road, in words, if it is further than `cap`. */
+function deadEndFault(road: RoadCurve, i: number, cap: number, on: Map<number, NodePoint[]>, grid: PointGrid): string | undefined {
+  // Only a free end, one that met no other road, is a dead end.
+  if (nodeVisits(on, road, i) > 1) return undefined;
+  const end = road.points[i] as Point;
+  const away = grid.nearest(end.x, end.y, road.id);
+  return away > cap ? `${road.tier} ${road.id} dead-ends ${away.toFixed(0)} m from any road` : undefined;
+}
+
+/** Faults where a road runs through water, or a deck over water spans no crossing. */
+function waterFaults(w: WorldDescription, hf: Heightfield, rivers: RiverWater, road: RoadCurve, faults: Faults): void {
+  const sea = w.water.seaLevel;
+  for (let i = 0; i + 1 < road.points.length; i++) {
+    const a = road.points[i] as Point;
+    const b = road.points[i + 1] as Point;
+    const where = `${road.tier} ${road.id} segment ${i}`;
+    if (!road.bridges.includes(i)) {
+      if (lowestAlong(hf, a, b) < sea) faults.add(`${where} runs through water`);
+      continue;
+    }
+    // A deck lands on dry ground at both ends. One over water spans a
+    // strait crossing or a river; one over land carries the road over
+    // a dip, and the grade test is what vets that one.
+    if (hf.sample(a.x, a.y) < sea) faults.add(`${where} starts in the water`);
+    if (hf.sample(b.x, b.y) < sea) faults.add(`${where} ends in the water`);
+    if (wetFraction(hf, a, b, sea) > 0) {
+      const spans = w.water.crossings.some((c) => spansCrossing(a, b, c.from, c.to)) || rivers.spans(a, b);
+      if (!spans) faults.add(`${where} is a bridge at no crossing`);
+    }
+  }
+}
+
+/** The lowest ground along a segment, sampled every {@link WET_SAMPLE} metres. */
+function lowestAlong(hf: Heightfield, a: Point, b: Point): number {
+  const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / WET_SAMPLE));
+  let lowest = Infinity;
+  for (let s = 0; s <= steps; s++) {
+    const t = s / steps;
+    lowest = Math.min(lowest, hf.sample(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t));
+  }
+  return lowest;
+}
+
+/** A run of deck segments along a curve, first to last. */
+type DeckRun = ReturnType<typeof deckRuns>[number];
+
+/** The lowest surface a run of decks is driven on, over all its points. */
+function lowestSurface(beds: ReturnType<typeof bedsOf>, road: RoadCurve, run: DeckRun): number {
+  let surface = Infinity;
+  for (let i = run.from; i <= run.to + 1; i++) surface = Math.min(surface, beds.pointHeight(road.id, i));
+  return surface;
+}
+
+/**
+ * True where a run of decks has an abutment no ramp may be laid back from: the
+ * end of the line, a bore, an interchange, or a junction the network already
+ * had there when the deck was laid. A deck held by none of them had the room,
+ * so it stands clear of the water.
+ */
+function deckPinned(road: RoadCurve, run: DeckRun): boolean {
+  return (
+    run.from === 0 ||
+    run.to + 1 === road.points.length - 1 ||
+    road.tunnels.includes(run.from - 1) ||
+    road.tunnels.includes(run.to + 1) ||
+    [run.from, run.to + 1].some((i) => (road.nodes[i] ?? -1) >= 0 || road.interchanges.includes(i))
+  );
+}
+
+/** Faults where a bore runs past the end of its curve, or is a deck too. */
+function boreFaults(road: RoadCurve, faults: Faults): void {
+  for (const at of road.tunnels) {
+    if (at >= road.points.length - 1) faults.add(`${road.tier} ${road.id} bores past its end at ${at}`);
+    if (road.bridges.includes(at)) faults.add(`${road.tier} ${road.id} segment ${at} is deck and bore at once`);
+  }
+}
+
+/** What is wrong with segment `i` of a road against the ground under it, or undefined. */
+function segmentGradeFault(w: WorldDescription, hf: Heightfield, road: RoadCurve, i: number): string | undefined {
+  const a = road.points[i] as Point;
+  const b = road.points[i + 1] as Point;
+  const where = `${road.tier} ${road.id} segment ${i}`;
+  if (road.tunnels.includes(i)) {
+    return profileUnder(hf, a, b).above <= CLEARANCE ? `${where} is a bore through nothing` : undefined;
+  }
+  if (road.bridges.includes(i)) {
+    // A deck over dry land is only worth building over a dip, or to carry the
+    // road over another one (`overpass.ts`), which is what the lift says it does.
+    const dry = wetFraction(hf, a, b, w.water.seaLevel) === 0;
+    const carried = (road.lift?.[i] ?? 0) > 0 || (road.lift?.[i + 1] ?? 0) > 0;
+    return dry && !carried && profileUnder(hf, a, b).below <= CLEARANCE ? `${where} is a deck over nothing` : undefined;
+  }
+  const limit = TIERS[road.tier].maxGrade;
+  const grade = gradeOf(hf, a, b);
+  return grade > limit ? `${where} climbs ${(grade * 100).toFixed(0)}%, over the ${(limit * 100).toFixed(0)}% of its tier` : undefined;
 }

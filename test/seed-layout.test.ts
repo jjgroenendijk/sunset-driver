@@ -45,31 +45,32 @@ sweepSuite('layout', () => {
       const fault = (text: string): void => {
         complaint ??= text;
       };
-
-      for (const zone of ZONES) {
-        const m = metrics[zone];
-        // A zone the water left a few hectares of says nothing about the
-        // layout: one block either way moves every share of it.
-        if (m.hectares < MIN_ZONE_HECTARES) continue;
-        const bands = LAYOUT_BANDS[zone];
-        for (const metric of ['roadShare', 'buildingShare', 'buildingsPerHectare'] as const) {
-          check(fault, zone, metric, m[metric], bands[metric]);
-        }
-        if (m.parcels >= MIN_ZONE_PARCELS) {
-          check(fault, zone, 'medianParcelArea', m.medianParcelArea, bands.medianParcelArea);
-        }
-        // The parcels are the land the roads left, so the two shares are the
-        // whole of the ground the map reaches. What is missing is land no road
-        // reaches, which `seed-parcels.test.ts` holds to its own ceiling.
-        if (m.roadShare + m.parcelShare > 1.001) {
-          fault(`the ${zone} is ${(m.roadShare * 100).toFixed(1)} % road and ${(m.parcelShare * 100).toFixed(1)} % parcel at once`);
-        }
-      }
+      for (const zone of ZONES) checkZone(fault, zone, metrics[zone]);
       if (complaint !== undefined) complaints.push(`seed ${seed}: ${complaint}`);
     }
     expect(complaints.join('\n')).toBe('');
   });
 });
+
+/** Hold every reading of one zone to its band, and its road and parcel shares to the whole. */
+function checkZone(fault: (text: string) => void, zone: Zone, m: ZoneMetrics): void {
+  // A zone the water left a few hectares of says nothing about the
+  // layout: one block either way moves every share of it.
+  if (m.hectares < MIN_ZONE_HECTARES) return;
+  const bands = LAYOUT_BANDS[zone];
+  for (const metric of ['roadShare', 'buildingShare', 'buildingsPerHectare'] as const) {
+    check(fault, zone, metric, m[metric], bands[metric]);
+  }
+  if (m.parcels >= MIN_ZONE_PARCELS) {
+    check(fault, zone, 'medianParcelArea', m.medianParcelArea, bands.medianParcelArea);
+  }
+  // The parcels are the land the roads left, so the two shares are the
+  // whole of the ground the map reaches. What is missing is land no road
+  // reaches, which `seed-parcels.test.ts` holds to its own ceiling.
+  if (m.roadShare + m.parcelShare > 1.001) {
+    fault(`the ${zone} is ${(m.roadShare * 100).toFixed(1)} % road and ${(m.parcelShare * 100).toFixed(1)} % parcel at once`);
+  }
+}
 
 /** Hold one reading of one zone to its band. */
 function check(

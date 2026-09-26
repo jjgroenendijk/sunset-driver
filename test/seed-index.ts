@@ -91,30 +91,37 @@ export class PointGrid {
   nearest(x: number, y: number, except = -1): number {
     const cx = this.column(x);
     const cy = this.column(y);
-    const last = this.n - 1;
     let best = Infinity; // Squared, so the search does one square root and no more.
     for (let ring = 0; ring <= this.n; ring++) {
-      const loY = cy - ring;
-      const hiY = cy + ring;
-      const loX = cx - ring;
-      const hiX = cx + ring;
-      for (let iy = Math.max(0, loY); iy <= Math.min(last, hiY); iy++) {
-        if (iy === loY || iy === hiY) {
-          // A full row of the ring: its top and its bottom.
-          for (let ix = Math.max(0, loX); ix <= Math.min(last, hiX); ix++) {
-            best = this.closest(iy * this.n + ix, x, y, except, best);
-          }
-        } else {
-          // A row between them: only the two cells on the sides.
-          if (loX >= 0) best = this.closest(iy * this.n + loX, x, y, except, best);
-          if (hiX <= last) best = this.closest(iy * this.n + hiX, x, y, except, best);
-        }
-      }
+      best = this.ring(cx, cy, ring, x, y, except, best);
       // Only trust the answer once the rings searched cover it.
       const covered = (ring - 1) * this.cell;
       if (ring >= 1 && best < covered * covered) return Math.sqrt(best);
     }
     return Math.sqrt(best);
+  }
+
+  /** The squared distance to the nearest point on one ring of cells, or `best` if it is nearer. */
+  private ring(cx: number, cy: number, ring: number, x: number, y: number, except: number, best: number): number {
+    const last = this.n - 1;
+    const loY = cy - ring;
+    const hiY = cy + ring;
+    const loX = cx - ring;
+    const hiX = cx + ring;
+    let near = best;
+    for (let iy = Math.max(0, loY); iy <= Math.min(last, hiY); iy++) {
+      if (iy === loY || iy === hiY) {
+        // A full row of the ring: its top and its bottom.
+        for (let ix = Math.max(0, loX); ix <= Math.min(last, hiX); ix++) {
+          near = this.closest(iy * this.n + ix, x, y, except, near);
+        }
+      } else {
+        // A row between them: only the two cells on the sides.
+        if (loX >= 0) near = this.closest(iy * this.n + loX, x, y, except, near);
+        if (hiX <= last) near = this.closest(iy * this.n + hiX, x, y, except, near);
+      }
+    }
+    return near;
   }
 
   /** The squared distance to the nearest point in one cell, or `best` if it is nearer. */

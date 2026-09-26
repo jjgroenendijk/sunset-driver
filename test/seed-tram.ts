@@ -1,5 +1,5 @@
 import { expect } from 'vitest';
-import { SIGNAL_CYCLE } from '../src/sim/signals.ts';
+import { SIGNAL_CYCLE, type TrafficSignals } from '../src/sim/signals.ts';
 import type { AmbientPose, AmbientTraffic, TrafficRoads } from '../src/sim/traffic.ts';
 import { DWELL, TRAM_CARS, TRAM_CLEAR, TramLine } from '../src/sim/tram.ts';
 import type { RoadEdge } from '../src/world/graph.ts';
@@ -24,18 +24,7 @@ export function checkTram(seed: number, world: WorldDescription, roads: TrafficR
   expect(line.trams, `seed ${seed}`).toBeGreaterThan(0);
   expect(tour.period % SIGNAL_CYCLE, `seed ${seed}`).toBe(0);
 
-  // The running noise of spec section 15: over a lap some tram is bent round a
-  // corner, and none is ever bent past the 1 the flange squeal is capped at.
-  const noise = { x: 0, y: 0, speed: 0, bend: 0 };
-  let bent = 0;
-  for (let step = 0; step < 60; step++) {
-    const at = line.nearestNoise(0, 0, Math.floor((step * tour.period) / 60), noise);
-    if (at === undefined) throw new Error(`seed ${seed}: no tram to hear`);
-    expect(at.bend, `seed ${seed}`).toBeGreaterThanOrEqual(0);
-    expect(at.bend, `seed ${seed}`).toBeLessThanOrEqual(1);
-    bent = Math.max(bent, at.bend);
-  }
-  expect(bent, `seed ${seed}: no tram ever bends`).toBeGreaterThan(0);
+  checkNoise(seed, line, tour.period);
 
   expect(line.calls.map((call) => call.stop), `seed ${seed}`).toEqual(world.tram.stops.map((stop) => stop.id));
   for (const call of line.calls) expect(call.depart - call.arrive, `seed ${seed}: stop ${call.stop}`).toBeGreaterThanOrEqual(DWELL);
@@ -44,7 +33,29 @@ export function checkTram(seed: number, world: WorldDescription, roads: TrafficR
   const litCrossings = world.tram.crossings.filter((crossing) => lit.has(crossing.node)).length;
   expect(litCrossings, `seed ${seed}: level crossings with a light`).toBeGreaterThanOrEqual(TRAM_LIT_SHARE * world.tram.crossings.length);
 
-  // Every drive out of a halt at a light starts on the tram's green, with time left to clear.
+  checkDepartures(seed, tour, signals);
+  checkCarsOnRuns(seed, world, roads, line);
+}
+
+/**
+ * The running noise of spec section 15: over a lap some tram is bent round a
+ * corner, and none is ever bent past the 1 the flange squeal is capped at.
+ */
+function checkNoise(seed: number, line: TramLine, period: number): void {
+  const noise = { x: 0, y: 0, speed: 0, bend: 0 };
+  let bent = 0;
+  for (let step = 0; step < 60; step++) {
+    const at = line.nearestNoise(0, 0, Math.floor((step * period) / 60), noise);
+    if (at === undefined) throw new Error(`seed ${seed}: no tram to hear`);
+    expect(at.bend, `seed ${seed}`).toBeGreaterThanOrEqual(0);
+    expect(at.bend, `seed ${seed}`).toBeLessThanOrEqual(1);
+    bent = Math.max(bent, at.bend);
+  }
+  expect(bent, `seed ${seed}: no tram ever bends`).toBeGreaterThan(0);
+}
+
+/** Every drive out of a halt at a light starts on the tram's green, with time left to clear. */
+function checkDepartures(seed: number, tour: NonNullable<TramLine['tour']>, signals: TrafficSignals): void {
   for (let step = 1; step < tour.stepTicks.length; step++) {
     const leg = tour.stepLeg[step] as number;
     const approach = signals.approachOf(tour.edges[leg] as number);
@@ -54,8 +65,10 @@ export function checkTram(seed: number, world: WorldDescription, roads: TrafficR
     expect(signals.light(approach, tick), `seed ${seed}: step ${step}`).toBe('green');
     expect(signals.light(approach, tick + TRAM_CLEAR - 1), `seed ${seed}: step ${step}`).toBe('green');
   }
+}
 
-  // Every car stands on the carriageway of a run the loop drives.
+/** Every car stands on the carriageway of a run the loop drives. */
+function checkCarsOnRuns(seed: number, world: WorldDescription, roads: TrafficRoads, line: TramLine): void {
   const pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
   const edges = [...new Set(world.tram.edges)].map((id) => roads.graph.edges[id] as RoadEdge);
   for (const tick of SAMPLE_TICKS) {
