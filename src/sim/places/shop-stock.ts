@@ -29,6 +29,7 @@ import { buySafehouse, ownedAt, type SafehousePlace } from './safehouse.ts';
 import type { ShopPlace } from './shop.ts';
 import { CARE, FOODS, RESPRAY_PAINTS, weaponFacts, type PropId, type ShopFact, type ShopLook } from './shop-goods.ts';
 import type { SimState } from '../simulation.ts';
+import { menuOf } from './venue-menu.ts';
 import {
   AMMO_CAP,
   addAmmo,
@@ -151,7 +152,32 @@ export function offersOf(state: SimState, place: ShopPlace, homes: readonly Safe
       return clinicOffers(state);
     case 'broker':
       return brokerOffers(state, place, homes);
+    case 'cafe':
+    case 'bar':
+      return venueOffers(state, place);
   }
+}
+
+/**
+ * The counter of a café or a bar: its own menu (`venue-menu.ts`). Unlike the
+ * store it serves a player who is not hurt, since a drink at the bar is what
+ * the room is for; the health comes only to one who is.
+ */
+function venueOffers(state: SimState, place: ShopPlace): ShopOffer[] {
+  const menu = menuOf(state.seed, place.id, place.kind === 'bar', place.wealth, place.title);
+  return menu.map((item) => ({
+    label: item.label,
+    price: item.price,
+    group: item.group,
+    look: { kind: 'prop', prop: item.prop, colour: item.colour },
+    blurb: item.blurb,
+    facts: [{ label: 'Health', text: `+${item.health}`, bar: item.health / MAX_HEALTH }],
+    take: (s) => {
+      if (s.player.health >= MAX_HEALTH) return `${item.label}. You enjoy it.`;
+      healBy(s.player, item.health);
+      return `${item.label}. Health ${Math.round(s.player.health)}.`;
+    },
+  }));
 }
 
 /**

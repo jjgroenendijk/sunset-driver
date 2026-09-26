@@ -3,7 +3,7 @@ import type { InputFrame } from '../../../src/sim/input.ts';
 import { travelRefusal } from '../../../src/sim/transit/metro.ts';
 import { MAX_HEALTH } from '../../../src/sim/player/on-foot.ts';
 import { initPhysics, type Ground } from '../../../src/sim/physics/physics.ts';
-import { shopOffers, shopPlaces, shopRefusal, DOOR_REACH, type ShopPlace } from '../../../src/sim/places/shop.ts';
+import { entryOf, shopOffers, shopPlaces, shopRefusal, DOOR_REACH, ENTRY_STEP, type ShopPlace } from '../../../src/sim/places/shop.ts';
 import { CLOTHES_HEAT, RESPRAY_PAINTS } from '../../../src/sim/places/shop-stock.ts';
 import { specOf } from '../../../src/sim/vehicles/vehicle.ts';
 import { currentWeapon } from '../../../src/sim/weapons/weapon.ts';
@@ -11,7 +11,7 @@ import type { Shop, ShopKind } from '../../../src/world/city/shops.ts';
 import { drive, finishBoarding, hills, start, type Session } from '../../support/sim-harness.ts';
 
 /** One shop of each trade, a hundred metres apart along the hillside, clear of the spawn. */
-const KINDS: readonly ShopKind[] = ['weapons', 'workshop', 'convenience', 'clothing', 'clinic', 'broker'];
+const KINDS: readonly ShopKind[] = ['weapons', 'workshop', 'convenience', 'clothing', 'clinic', 'broker', 'cafe', 'bar'];
 
 const SHOPS: readonly Shop[] = KINDS.map((kind, i) => ({
   id: i,
@@ -25,6 +25,7 @@ const SHOPS: readonly Shop[] = KINDS.map((kind, i) => ({
   width: 10,
   depth: 12,
   licence: 3,
+  wealth: 0.5,
 }));
 
 const PLACES: readonly ShopPlace[] = shopPlaces(SHOPS, [{ name: 'Old Town' }]);
@@ -80,13 +81,18 @@ describe('shops', () => {
     await initPhysics();
   });
 
-  it('opens the door on the interact key and puts the player inside the room', () => {
+  it('opens the door on the interact key and puts the player just inside it, facing the counter', () => {
     const session = start(served());
     const place = enter(session, 'convenience');
     expect(session.state.shop?.shop).toBe(KINDS.indexOf('convenience'));
     const p = session.state.player;
-    expect(p.x).toBeCloseTo(place.room.x, 3);
-    expect(p.y).toBeCloseTo(place.room.y, 3);
+    const entry = entryOf(place.room);
+    expect(p.x).toBeCloseTo(entry.x, 3);
+    expect(p.y).toBeCloseTo(entry.y, 3);
+    // Inside the room, a step in from its front wall.
+    const toFront = place.room.halfDepth - Math.hypot(p.x - place.room.x, p.y - place.room.y);
+    expect(toFront).toBeCloseTo(ENTRY_STEP, 3);
+    expect(Math.cos(p.heading - place.room.facing)).toBeCloseTo(-1, 3);
     // Standing on the floor of the room, not in the air over it.
     expect(p.height).toBeCloseTo(hills().heightAt(p.x, p.y), 1);
     session.physics.dispose();
@@ -310,8 +316,33 @@ describe('shops', () => {
     session.physics.dispose();
   });
 
-  it('names every shop for its trade and its district', () => {
+  it('names every shop for its trade and its district, and a café or a bar by its own name', () => {
     expect(placeOf('weapons').name).toBe('Gun shop · Old Town');
     expect(placeOf('broker').name).toBe('Property broker · Old Town');
+    for (const kind of ['cafe', 'bar'] as const) {
+      const place = placeOf(kind);
+      expect(place.title).not.toBe(kind);
+      expect(place.name).toBe(`${place.title} · Old Town`);
+    }
+  });
+
+  it('serves a drink at a café or a bar to a player who is not hurt, and heals one who is', () => {
+    const session = start(served());
+    session.state.money = 500;
+    session.state.player.health = MAX_HEALTH;
+    const place = enter(session, 'bar');
+    const menu = shopOffers(session.state, PLACES);
+    expect(menu.length).toBeGreaterThan(5);
+    // The house pours a drink of its own, named after it.
+    expect(menu[0]?.label.startsWith(place.title)).toBe(true);
+    buy(session, 2);
+    expect(session.state.money).toBe(500 - (menu[1]?.price ?? 0));
+    expect(session.state.shop?.said).toContain('You enjoy it');
+    press(session);
+    session.state.player.health = 30;
+    enter(session, 'cafe');
+    buy(session, 1);
+    expect(session.state.player.health).toBeGreaterThan(30);
+    session.physics.dispose();
   });
 });

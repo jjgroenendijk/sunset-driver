@@ -515,9 +515,9 @@ export class WorldScene {
    * stands, and the player at the height of their feet.
    */
   seeThrough(camera: Vector3, x: number, height: number, y: number, inShop = false): void {
-    // A player inside a shop is under the building that holds it, and the
-    // camera is over its roof: it is the shell over the player that has to go,
-    // or the room the clip of `interior.ts` opened is roofed over again.
+    // A player inside a shop is under the building that holds it: it is the
+    // shell over the player that has to go, or the street the shopfront's
+    // glass looks out on is the inside of the building's own walls.
     const overX = inShop ? x : camera.x;
     const overZ = inShop ? y : camera.z;
     const over = this.cutaway.enabled ? this.roofOver(overX, overZ, CAMERA_ROOF_MARGIN) : undefined;
@@ -530,12 +530,32 @@ export class WorldScene {
    * and nothing where they are out on the street. The room stands on the carved
    * ground under its own floor.
    */
-  shopInside(place: { kind: ShopKind; room: ShopRoom } | undefined): void {
+  shopInside(place: { kind: ShopKind; id: number; wealth: number; room: ShopRoom } | undefined): void {
     if (place === undefined) {
       this.interior.hide();
       return;
     }
-    this.interior.show(place.room, this.heightAt(place.room.x, place.room.y), place.kind);
+    const look = { kind: place.kind, id: place.id, wealth: place.wealth, seed: this.world.seed };
+    this.interior.show(place.room, this.floorUnder(place.room), look);
+  }
+
+  /**
+   * The height a room's floor stands at: the highest ground under it. On a
+   * street that slopes, a floor laid at the height of its middle has the
+   * ground come up through its back half.
+   */
+  private floorUnder(room: ShopRoom): number {
+    const c = Math.cos(room.facing);
+    const s = Math.sin(room.facing);
+    let top = -Infinity;
+    for (let i = -2; i <= 2; i++) {
+      for (let j = -2; j <= 2; j++) {
+        const along = (i / 2) * room.halfDepth;
+        const across = (j / 2) * room.halfWidth;
+        top = Math.max(top, this.heightAt(room.x + c * along - s * across, room.y + s * along + c * across));
+      }
+    }
+    return top;
   }
 
   /** Refit the sun's shadow cascades after the camera's shape changes. */

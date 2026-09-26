@@ -1,7 +1,8 @@
 /**
  * The small things a shop counter sells, drawn for the turning preview of the
  * shop panel: the food, the care, the needle exchange's kits, a box of rounds,
- * a house for the broker and a wrench for the repair.
+ * a house for the broker, a wrench for the repair, and the cups, glasses and
+ * plates of the cafés and the bars.
  *
  * Each one is a few primitives at no particular scale. The preview frames what
  * it is given, so a coffee cup and a house fill the window alike. Nothing here
@@ -26,6 +27,8 @@ const WHITE = 0xf2ede6;
 const STEEL = 0xb8bcc2;
 const DARK = 0x2a2320;
 const BRASS = 0xc19a53;
+/** Glass, drawn as a pale solid: a prop is too small for the glass to need to be clear. */
+const GLASS = 0xdfeef2;
 
 /** The meshes of one prop, and what they are made of, so all of it can be let go at once. */
 export class Prop {
@@ -184,7 +187,81 @@ const BUILDERS: Readonly<Record<PropId, (p: Prop, colour: number) => void>> = {
     const ring = p.add(new TorusGeometry(0.18, 0.07, 8, 16), colour, -0.92, 0.05, 0);
     ring.rotation.x = Math.PI / 2;
   },
+  // A prop is solid, so a glass is drawn as the drink in it with the glass
+  // over the drink's level: a pale cylinder round the drink would hide it.
+  tea: (p, colour) => {
+    saucer(p);
+    p.add(new CylinderGeometry(0.37, 0.3, 0.5, 24), colour, 0, 0.31, 0);
+    p.add(new CylinderGeometry(0.4, 0.37, 0.2, 24), GLASS, 0, 0.66, 0);
+    const handle = p.add(new TorusGeometry(0.16, 0.05, 8, 16), GLASS, 0.44, 0.45, 0);
+    handle.rotation.z = Math.PI / 2;
+  },
+  pastry: (p, colour) => {
+    plate(p);
+    const body = p.add(new TorusGeometry(0.45, 0.22, 10, 20, Math.PI * 1.2), colour, 0, 0.26, 0);
+    body.rotation.set(Math.PI / 2, 0, Math.PI * 0.9);
+    p.add(new SphereGeometry(0.2, 12, 8), colour, 0, 0.24, -0.1);
+  },
+  cake: (p, colour) => {
+    plate(p);
+    const slice = p.add(new CylinderGeometry(0.9, 0.9, 0.55, 16, 1, false, 0, Math.PI / 4), colour, -0.3, 0.33, -0.3);
+    slice.rotation.y = Math.PI * 0.1;
+    const top = p.add(new CylinderGeometry(0.9, 0.9, 0.08, 16, 1, false, 0, Math.PI / 4), WHITE, -0.3, 0.64, -0.3);
+    top.rotation.y = Math.PI * 0.1;
+    p.add(new SphereGeometry(0.1, 10, 8), 0xc02030, 0, 0.72, 0.1);
+  },
+  beer: (p, colour) => {
+    p.add(new CylinderGeometry(0.3, 0.3, 0.08, 24), GLASS, 0, 0.04, 0);
+    p.add(new CylinderGeometry(0.35, 0.3, 1.02, 24), colour, 0, 0.59, 0);
+    p.add(new CylinderGeometry(0.36, 0.35, 0.22, 24), WHITE, 0, 1.21, 0);
+  },
+  wine: (p, colour) => {
+    p.add(new CylinderGeometry(0.3, 0.3, 0.04, 24), GLASS, 0, 0.02, 0);
+    p.add(new CylinderGeometry(0.035, 0.035, 0.7, 8), GLASS, 0, 0.37, 0);
+    p.add(new CylinderGeometry(0.34, 0.12, 0.3, 24), colour, 0, 0.87, 0);
+    p.add(new CylinderGeometry(0.36, 0.34, 0.35, 24), GLASS, 0, 1.18, 0);
+  },
+  cocktail: (p, colour) => {
+    p.add(new CylinderGeometry(0.28, 0.28, 0.06, 24), GLASS, 0, 0.03, 0);
+    p.add(new CylinderGeometry(0.29, 0.28, 0.96, 24), colour, 0, 0.54, 0);
+    p.add(new CylinderGeometry(0.3, 0.29, 0.18, 24), GLASS, 0, 1.11, 0);
+    const straw = p.add(new CylinderGeometry(0.03, 0.03, 1.1, 8), 0xe03a3a, 0.1, 1.1, 0);
+    straw.rotation.z = -0.25;
+    const lime = p.add(new CylinderGeometry(0.2, 0.2, 0.05, 16), 0x8cc63f, -0.25, 1.15, 0);
+    lime.rotation.x = Math.PI / 2;
+  },
+  spirit: (p, colour) => {
+    p.add(new CylinderGeometry(0.4, 0.4, 0.06, 24), GLASS, 0, 0.03, 0);
+    p.add(new CylinderGeometry(0.4, 0.4, 0.26, 24), colour, 0, 0.19, 0);
+    p.add(new CylinderGeometry(0.42, 0.4, 0.28, 24), GLASS, 0, 0.46, 0);
+    p.add(new BoxGeometry(0.28, 0.28, 0.28), 0xe8f4f8, 0.05, 0.38, 0.02).rotation.set(0.3, 0.5, 0.2);
+  },
+  shot: (p, colour) => {
+    p.add(new CylinderGeometry(0.2, 0.2, 0.08, 20), GLASS, 0, 0.04, 0);
+    p.add(new CylinderGeometry(0.24, 0.2, 0.38, 20), colour, 0, 0.27, 0);
+    p.add(new CylinderGeometry(0.26, 0.24, 0.14, 20), GLASS, 0, 0.53, 0);
+    const lime = p.add(new CylinderGeometry(0.22, 0.22, 0.12, 16, 1, false, 0, Math.PI), 0x8cc63f, 0.5, 0.06, 0);
+    lime.rotation.y = Math.PI / 2;
+  },
+  snack: (p, colour) => {
+    p.add(new CylinderGeometry(0.7, 0.45, 0.35, 24), 0xe8e0d0, 0, 0.18, 0);
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2;
+      const r = i === 0 ? 0 : 0.35;
+      p.add(new SphereGeometry(0.16, 8, 6), colour, Math.cos(a) * r, 0.38 + (i % 3) * 0.05, Math.sin(a) * r);
+    }
+  },
 };
+
+/** A small white plate for a pastry or a slice of cake. */
+function plate(p: Prop): void {
+  p.add(new CylinderGeometry(0.85, 0.7, 0.08, 28), WHITE, 0, 0.04, 0);
+}
+
+/** A saucer under a cup. */
+function saucer(p: Prop): void {
+  p.add(new CylinderGeometry(0.6, 0.5, 0.06, 24), WHITE, 0, 0.03, 0);
+}
 
 /** A can: a body and a rim at each end. */
 function can(p: Prop, colour: number, radius: number, height: number, rim: number): void {

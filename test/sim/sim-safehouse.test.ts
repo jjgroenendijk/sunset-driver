@@ -59,7 +59,7 @@ const HOMES: readonly SafehousePlace[] = [
 
 /** A property broker far enough from either door that the two panels never overlap. */
 const BROKER: readonly ShopPlace[] = shopPlaces(
-  [{ id: 0, kind: 'broker', building: 0, district: 0, x: -300, y: 0, facing: Math.PI / 2, width: 10, depth: 12, licence: 1 }] as Shop[],
+  [{ id: 0, kind: 'broker', building: 0, district: 0, x: -300, y: 0, facing: Math.PI / 2, width: 10, depth: 12, licence: 1, wealth: 0.5 }] as Shop[],
   [{ name: 'D0' }],
 );
 

@@ -7,6 +7,12 @@ import {
   SHOP_FRONT,
   SHOP_ROOM_DEPTH,
   SHOP_WALL,
+  tradesFor,
+  isVenue,
+  MAX_EXTRA_VENUES,
+  VENUE_FRONT,
+  VENUE_ROOM_DEPTH,
+  VENUE_ROWS,
   MAX_LICENCE,
   MIN_LICENCE,
   type Shop,
@@ -68,7 +74,7 @@ function map(buildings: Building[]): BuildingMap {
 /** Spec section 16.1: which building of which district holds which trade. */
 describe('shops', () => {
   it('deals every trade down a district with a long high street', () => {
-    const shops = buildShops(world([district(0, 0.5)]), map(street(0, 6)));
+    const shops = buildShops(world([district(0, 0.5)]), map(street(0, SHOP_ORDER.length)));
     expect(shops.map((shop) => shop.kind)).toEqual([...SHOP_ORDER]);
     // No two trades share a building, and every shop stands on a shop row.
     expect(new Set(shops.map((shop) => shop.building)).size).toBe(shops.length);
@@ -92,15 +98,15 @@ describe('shops', () => {
   });
 
   it('spreads the trades down the street rather than taking a run of it', () => {
-    // Six trades over twelve rows step two apart, so no two shops are neighbours.
-    const shops = buildShops(world([district(0, 0.5)]), map(street(0, 12)));
+    // Eight trades over sixteen rows step two apart, so no two shops are neighbours.
+    const shops = buildShops(world([district(0, 0.5)]), map(street(0, 2 * SHOP_ORDER.length)));
     const at = shops.map((shop) => shop.building % 100).sort((a, b) => a - b);
     for (let i = 1; i < at.length; i++) expect((at[i] as number) - (at[i - 1] as number)).toBeGreaterThan(1);
   });
 
   it('licenses a weapon shop by the wealth of its district', () => {
     const licenceIn = (wealth: number): number => {
-      const shops = buildShops(world([district(0, wealth)]), map(street(0, 6)));
+      const shops = buildShops(world([district(0, wealth)]), map(street(0, SHOP_ORDER.length)));
       return (shops.find((shop) => shop.kind === 'weapons') as Shop).licence;
     };
     expect(licenceIn(0)).toBe(MIN_LICENCE);
@@ -125,6 +131,24 @@ describe('shops', () => {
     expect(other.map((shop) => shop.building)).not.toEqual(once.map((shop) => shop.building));
   });
 
+  it('lines a long high street with more cafés and bars, turn about', () => {
+    expect(tradesFor(SHOP_ORDER.length)).toEqual([...SHOP_ORDER]);
+    expect(tradesFor(SHOP_ORDER.length + VENUE_ROWS - 1)).toEqual([...SHOP_ORDER]);
+    expect(tradesFor(SHOP_ORDER.length + 2 * VENUE_ROWS)).toEqual([...SHOP_ORDER, 'cafe', 'bar']);
+    // A very long street stops at the most a district gets.
+    const long = tradesFor(1000);
+    expect(long).toHaveLength(SHOP_ORDER.length + MAX_EXTRA_VENUES);
+    // Each trade still takes a building of its own.
+    const shops = buildShops(world([district(0, 0.5)]), map(street(0, 60)));
+    expect(new Set(shops.map((shop) => shop.building)).size).toBe(shops.length);
+    expect(shops.filter((shop) => isVenue(shop.kind))).toHaveLength(2 + MAX_EXTRA_VENUES);
+  });
+
+  it('writes the wealth of its district on every shop', () => {
+    const shops = buildShops(world([district(0, 0.3), district(1, 0.9)]), map([...street(0, 3), ...street(1, 3)]));
+    expect(shops.map((shop) => shop.wealth)).toEqual([0.3, 0.3, 0.3, 0.9, 0.9, 0.9]);
+  });
+
   it('names a trade for every shop type the spec lists', () => {
     expect([...SHOP_ORDER].sort(compareStrings)).toEqual([...SHOP_KINDS].sort(compareStrings));
   });
@@ -133,11 +157,14 @@ describe('shops', () => {
 /** Spec section 10.3: the room the shop holds stands inside the building's lot. */
 describe('shop rooms', () => {
   it('stands behind the shopfront, inside the walls of the lot', () => {
-    const shops = buildShops(world([district(0, 0.5)]), map(street(0, 6)));
+    const shops = buildShops(world([district(0, 0.5)]), map(street(0, SHOP_ORDER.length)));
     for (const shop of shops) {
       const room = roomOf(shop);
-      expect(room.halfWidth).toBeCloseTo(Math.min(shop.width / 2 - SHOP_WALL, SHOP_FRONT / 2));
-      expect(room.halfDepth).toBeCloseTo(Math.min(shop.depth, SHOP_ROOM_DEPTH) / 2 - SHOP_WALL);
+      // A café or a bar seats people, so it takes more of the lot.
+      const front = isVenue(shop.kind) ? VENUE_FRONT : SHOP_FRONT;
+      const deep = isVenue(shop.kind) ? VENUE_ROOM_DEPTH : SHOP_ROOM_DEPTH;
+      expect(room.halfWidth).toBeCloseTo(Math.min(shop.width / 2 - SHOP_WALL, front / 2));
+      expect(room.halfDepth).toBeCloseTo(Math.min(shop.depth, deep) / 2 - SHOP_WALL);
       // The lot fronts +y, so the room lies at -y of the door and no further
       // back than the lot goes.
       expect(room.x).toBeCloseTo(shop.x);

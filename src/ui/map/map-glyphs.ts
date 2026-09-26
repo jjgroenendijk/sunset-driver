@@ -390,6 +390,32 @@ export const GLYPHS = Object.freeze({
     }
   },
 
+  /** A café: a cup on its saucer, with a handle. */
+  cup: (ctx, r) => {
+    poly(ctx, r, [
+      [-0.72, -0.5],
+      [0.44, -0.5],
+      [0.34, 0.5],
+      [-0.62, 0.5],
+    ]);
+    band(ctx, r, 0.44, -0.08, 0.4, 0.2, -Math.PI / 2, Math.PI / 2); // the handle
+    box(ctx, r, -0.96, 0.6, 1.72, 0.2); // the saucer
+    box(ctx, r, -0.3, -0.96, 0.14, 0.34); // the steam
+    box(ctx, r, 0.02, -0.9, 0.14, 0.28);
+  },
+
+  /** A bar: a cocktail glass, the bowl over a stem and a foot. */
+  glass: (ctx, r) => {
+    poly(ctx, r, [
+      [-0.92, -0.9],
+      [0.92, -0.9],
+      [0.1, 0.02],
+      [-0.1, 0.02],
+    ]);
+    box(ctx, r, -0.1, 0, 0.2, 0.7);
+    box(ctx, r, -0.56, 0.7, 1.12, 0.22);
+  },
+
   /** A property broker: a key. */
   key: (ctx, r) => {
     band(ctx, r, -0.5, 0, 0.5, 0.22, 0, Math.PI * 2);

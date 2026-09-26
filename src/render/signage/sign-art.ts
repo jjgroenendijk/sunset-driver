@@ -84,6 +84,8 @@ const TRADE_WORDS: Record<ShopKind, string> = {
   clothing: 'CLOTHING',
   clinic: 'PHARMACY',
   broker: 'REALTY',
+  cafe: 'CAFE',
+  bar: 'BAR',
 };
 
 /**

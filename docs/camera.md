@@ -23,6 +23,8 @@ in `docs/dev-tooling.md`.
 - First person stands the eyes a little ahead of the middle of the head. At the middle, the inside
   of the head fills the view. At the wheel it stands them over the bonnet, or the bonnet fills half
   the frame.
+- Inside a shop the view is first person whatever the setting (`Frame.follow`), and back to the
+  setting at the door. `docs/shops.md` has the room it looks at.
 - `node scripts/render-preview.ts <seed> out.png --view=third-person` draws a chase view, and
   `--on-foot` follows the character instead of the car.
 

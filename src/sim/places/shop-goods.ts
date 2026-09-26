@@ -32,7 +32,16 @@ export type PropId =
   | 'strips'
   | 'works'
   | 'house'
-  | 'wrench';
+  | 'wrench'
+  | 'tea'
+  | 'pastry'
+  | 'cake'
+  | 'beer'
+  | 'wine'
+  | 'cocktail'
+  | 'spirit'
+  | 'shot'
+  | 'snack';
 
 /**
  * Every prop there is, in no order that matters. A gallery of the models
@@ -58,6 +67,15 @@ export const PROP_IDS: readonly PropId[] = [
   'works',
   'house',
   'wrench',
+  'tea',
+  'pastry',
+  'cake',
+  'beer',
+  'wine',
+  'cocktail',
+  'spirit',
+  'shot',
+  'snack',
 ];
 
 /** What the preview of a row draws. */
