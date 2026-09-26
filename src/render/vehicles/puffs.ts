@@ -6,7 +6,8 @@
  * soft, ragged shape out of it. Smoke rises fast and slows as it cools, spreads
  * as it goes and leans with the wind. Flame climbs faster the longer it burns,
  * flares and dies within a second, and flickers. An ember keeps its size and
- * flies on.
+ * flies on. Heat haze has no colour: it rises out of a fire, swells, and bends
+ * what is behind it.
  */
 import {
   Color,
@@ -30,10 +31,16 @@ const WIND_DRIFT = 0.9;
 const SMOKE_GROWTH = 2.6;
 
 /** How fast each kind of puff loses its speed, per second: smoke cools, a blast stalls. */
-const DRAG = { smoke: 0.55, flame: 1.6, ember: 0.35 } as const;
+const DRAG = { smoke: 0.55, flame: 1.6, ember: 0.35, haze: 0.4 } as const;
 
 /** Metres a second squared that hot air pushes a flame up by. */
 const BUOYANCY = 3;
+
+/** How much wider a patch of heat haze is at the end of its life than at the start. */
+const HAZE_GROWTH = 1.2;
+
+/** How much taller than wide a patch of heat haze is drawn: hot air rises in a column. */
+const HAZE_TALL = 1.6;
 
 /** How much taller than wide a flame is drawn. */
 const FLAME_TALL = 1.5;
@@ -174,6 +181,14 @@ export class Puffs {
         .copy(SOOT)
         .lerp(STEAM, puff.tone)
         .lerp(THINNED, age * 0.45);
+    } else if (puff.kind === 'haze') {
+      rise = drifted(puff.dy, drag, seconds);
+      width = puff.size * (1 + HAZE_GROWTH * age);
+      tall = HAZE_TALL;
+      // It shimmers in out of nothing and out again, with no edge in time.
+      fade = Math.sin(Math.PI * age);
+      turn = (puff.variant - 0.5) * 0.4;
+      this.colour.copy(WHITE);
     } else {
       const flicker = 0.82 + 0.36 * (0.5 + 0.5 * Math.sin(tick * 1.7 + puff.variant * 40));
       if (puff.kind === 'flame') {

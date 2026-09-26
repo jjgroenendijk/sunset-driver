@@ -167,6 +167,14 @@ export const screenCoordinate: TslNode = tsl.screenCoordinate;
 export const screenUV: TslNode = tsl.screenUV;
 
 /**
+ * What the target holds under the fragment, read at `at` (a share of the
+ * target, as {@link screenUV}). The target is copied once each time a material
+ * that reads it is drawn, and only then: the heat haze of `puff-material.ts`
+ * is the one caller, so a frame with no fire copies nothing.
+ */
+export const viewportSharedTexture = tsl.viewportSharedTexture as unknown as (at?: TslNode) => TslNode;
+
+/**
  * Fractal value noise in -1..1, summed over `octaves`. This is the runtime
  * texture of spec section 10.2: the build ships no image files, so every
  * surface detail is generated in the shader.

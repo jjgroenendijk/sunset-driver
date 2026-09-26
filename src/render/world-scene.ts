@@ -434,8 +434,10 @@ export class WorldScene {
    * Draw the world at a quality tier (spec section 9.2). The scene owns five
    * of the tier's knobs: the draw distance, the haze that closes at the end of
    * it, the sun's shadow, how much of each category a chunk places, and the
-   * share of the frame the water's mirror is rendered at. `PostChain` owns the
-   * rest.
+   * share of the frame the water's mirror is rendered at. It also turns the
+   * heat haze over a fire off where the tier draws no bloom: the haze copies
+   * the frame to bend it, and it is a luxury of the same order. `PostChain`
+   * owns the rest.
    *
    * Nothing already in the scene is rebuilt. A tier that pulls the rings in
    * drops the chunks past the new far ring at once and asks for the ones that
@@ -452,6 +454,7 @@ export class WorldScene {
     this.sky.shadowDistance = shadowDistance(tier);
     this.fade.distance = entityDistance(tier);
     this.water.mirror = tier.mirror;
+    this.fx.haze = tier.post.bloom;
   }
 
   get quality(): QualityTier {
