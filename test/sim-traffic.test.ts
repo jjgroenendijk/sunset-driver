@@ -34,30 +34,33 @@ describe(`traffic in the simulation (${SEED_COUNT} seeds)`, () => {
     return { state, physics };
   };
 
-  it('steps every vehicle near the player to exactly where evaluating it on demand puts it', () => {
-    for (const seed of seeds) {
-      const traffic = gridTraffic(seed);
-      const { state, physics } = session(seed, traffic);
-      const bodies = physics.traffic;
-      if (bodies === undefined) throw new Error('no traffic in the physics');
-      const seen = new Set<number>();
-      let startedWith = -1;
-      const drive: InputFrame = { ...EMPTY_INPUT, throttle: 1 };
-      for (let i = 0; i < TICKS; i++) {
-        stepSim(state, drive, physics);
-        for (const cursor of bodies.cursors) seen.add(cursor.id);
-        if (startedWith < 0) startedWith = seen.size;
-        if (i % 50 !== 49) continue;
-        for (const cursor of bodies.cursors) {
-          expect(cursor, `seed ${seed}, tick ${state.tick}`).toEqual(traffic.cursorAt(cursor.id, heldTime(state.traffic.held, cursor.id, state.tick)));
-        }
+  /** Drive past the traffic of one seed and hold each stepped vehicle to where evaluating it puts it. */
+  const checkStepping = (seed: number): void => {
+    const traffic = gridTraffic(seed);
+    const { state, physics } = session(seed, traffic);
+    const bodies = physics.traffic;
+    if (bodies === undefined) throw new Error('no traffic in the physics');
+    const seen = new Set<number>();
+    let startedWith = -1;
+    const drive: InputFrame = { ...EMPTY_INPUT, throttle: 1 };
+    for (let i = 0; i < TICKS; i++) {
+      stepSim(state, drive, physics);
+      for (const cursor of bodies.cursors) seen.add(cursor.id);
+      if (startedWith < 0) startedWith = seen.size;
+      if (i % 50 !== 49) continue;
+      for (const cursor of bodies.cursors) {
+        expect(cursor, `seed ${seed}, tick ${state.tick}`).toEqual(traffic.cursorAt(cursor.id, heldTime(state.traffic.held, cursor.id, state.tick)));
       }
-      // Vehicles came into range during the run, so what was checked is the
-      // evaluation on arrival as well as the stepping.
-      expect(bodies.cursors.length, `seed ${seed}`).toBeGreaterThan(0);
-      expect(seen.size, `seed ${seed}`).toBeGreaterThan(startedWith);
-      physics.dispose();
     }
+    // Vehicles came into range during the run, so what was checked is the
+    // evaluation on arrival as well as the stepping.
+    expect(bodies.cursors.length, `seed ${seed}`).toBeGreaterThan(0);
+    expect(seen.size, `seed ${seed}`).toBeGreaterThan(startedWith);
+    physics.dispose();
+  };
+
+  it('steps every vehicle near the player to exactly where evaluating it on demand puts it', () => {
+    for (const seed of seeds) checkStepping(seed);
   });
 
   it('replays a recorded input stream to identical state with the traffic in the loop', () => {

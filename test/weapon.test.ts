@@ -81,6 +81,42 @@ function hold(loadout: LoadoutState, player: PlayerState, seed: number, from: nu
   return shots;
 }
 
+type Spec = ReturnType<typeof weaponOf>;
+
+/** The first thing wrong with a melee weapon's entry in the table, or '' when nothing is. */
+function meleeComplaint(spec: Spec): string {
+  const id = spec.id;
+  let complaint = '';
+  if (spec.calibre !== undefined) complaint ||= `${id} is melee and takes ${spec.calibre}`;
+  if (spec.capacity !== 0) complaint ||= `${id} is melee and holds ${spec.capacity}`;
+  if (spec.reach <= 0 || spec.arc <= 0) complaint ||= `${id} swings at nothing`;
+  return complaint;
+}
+
+/** The first thing wrong with a fired weapon's calibre and pool, or '' when nothing is. */
+function firedComplaint(spec: Spec): string {
+  const id = spec.id;
+  let complaint = '';
+  if (spec.calibre === undefined) complaint ||= `${id} fires nothing`;
+  else if (!CALIBRES.includes(spec.calibre)) complaint ||= `${id} takes an unlisted ${spec.calibre}`;
+  else if (AMMO_CAP[spec.calibre] < spec.capacity) complaint ||= `${id} holds more than ${spec.calibre} allows`;
+  if (spec.capacity <= 0) complaint ||= `${id} has no magazine`;
+  if (spec.reloadTicks <= 0) complaint ||= `${id} reloads in no time`;
+  if (spec.rpm <= 0) complaint ||= `${id} cycles at no rate`;
+  if (spec.damage < 0) complaint ||= `${id} heals what it hits`;
+  if (spec.projectile === undefined && spec.range <= 0) complaint ||= `${id} carries nowhere`;
+  if (spec.projectile !== undefined && spec.projectile.blastRadius <= 0) complaint ||= `${id} bursts over nothing`;
+  return complaint;
+}
+
+/** What is wrong with what a shot threw for the weapon that fired it, or '' when nothing is. */
+function shotComplaint(spec: Spec, shot: Shot): string {
+  const id = spec.id;
+  if (spec.cls === 'melee') return shot.rays.length !== 0 || shot.projectile !== undefined ? `${id} swung a bullet` : '';
+  if (spec.projectile !== undefined) return shot.projectile === undefined ? `${id} threw nothing` : '';
+  return shot.rays.length === spec.pellets ? '' : `${id} threw ${shot.rays.length} of ${spec.pellets} pellets`;
+}
+
 describe('the arsenal', () => {
   it('lists every weapon once, in a class the spec names', () => {
     expect(WEAPON_IDS).toHaveLength(Object.keys(ARSENAL).length);
@@ -104,21 +140,7 @@ describe('the arsenal', () => {
     let complaint = '';
     for (const id of WEAPON_IDS) {
       const spec = weaponOf(id);
-      if (spec.cls === 'melee') {
-        if (spec.calibre !== undefined) complaint ||= `${id} is melee and takes ${spec.calibre}`;
-        if (spec.capacity !== 0) complaint ||= `${id} is melee and holds ${spec.capacity}`;
-        if (spec.reach <= 0 || spec.arc <= 0) complaint ||= `${id} swings at nothing`;
-        continue;
-      }
-      if (spec.calibre === undefined) complaint ||= `${id} fires nothing`;
-      else if (!CALIBRES.includes(spec.calibre)) complaint ||= `${id} takes an unlisted ${spec.calibre}`;
-      else if (AMMO_CAP[spec.calibre] < spec.capacity) complaint ||= `${id} holds more than ${spec.calibre} allows`;
-      if (spec.capacity <= 0) complaint ||= `${id} has no magazine`;
-      if (spec.reloadTicks <= 0) complaint ||= `${id} reloads in no time`;
-      if (spec.rpm <= 0) complaint ||= `${id} cycles at no rate`;
-      if (spec.damage < 0) complaint ||= `${id} heals what it hits`;
-      if (spec.projectile === undefined && spec.range <= 0) complaint ||= `${id} carries nowhere`;
-      if (spec.projectile !== undefined && spec.projectile.blastRadius <= 0) complaint ||= `${id} bursts over nothing`;
+      complaint ||= spec.cls === 'melee' ? meleeComplaint(spec) : firedComplaint(spec);
     }
     expect(complaint, complaint).toBe('');
   });
@@ -186,13 +208,7 @@ describe('what the player carries', () => {
         continue;
       }
       if (shot.spec.id !== id) complaint ||= `${id} fired as ${shot.spec.id}`;
-      if (spec.cls === 'melee') {
-        if (shot.rays.length !== 0 || shot.projectile !== undefined) complaint ||= `${id} swung a bullet`;
-      } else if (spec.projectile !== undefined) {
-        if (shot.projectile === undefined) complaint ||= `${id} threw nothing`;
-      } else if (shot.rays.length !== spec.pellets) {
-        complaint ||= `${id} threw ${shot.rays.length} of ${spec.pellets} pellets`;
-      }
+      complaint ||= shotComplaint(spec, shot);
     }
     expect(complaint, complaint).toBe('');
   });

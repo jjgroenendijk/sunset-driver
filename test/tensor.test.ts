@@ -51,6 +51,37 @@ function quantile(sorted: number[], p: number): number {
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] as number;
 }
 
+/**
+ * The district of a grid in a city's quiet interior, or undefined where
+ * something else is meant to override the grid.
+ */
+function quietGridDistrict(c: Case, g: TensorField['grids'][number]): WorldDescription['districts'][number] | undefined {
+  const d = c.world.districts[g.districtId];
+  if (!d || (d.zone !== 'core' && d.zone !== 'inner' && d.zone !== 'industrial')) return undefined;
+  // Steep ground and the waterfront are meant to override the grid; this is
+  // about the quiet interior, where nothing else is pulling.
+  if (c.hf.slope(g.x, g.y) > 0.05) return undefined;
+  if (nearestWater(c.hf, c.world.water.seaLevel, g.x, g.y, 300)) return undefined;
+  // Inside an organic city the water and the rings override a district's
+  // own grid, which is what makes it organic (spec section 6.1). The
+  // district grid is measured where the city leaves it alone.
+  if (c.field.planHolds(g.x, g.y) * (1 - c.field.plannedness) > 0.3) return undefined;
+  return d;
+}
+
+/** The median turn of the field off the city plan where the plan holds, or undefined on too few samples. */
+function medianOffPlan(c: Case): number | undefined {
+  const devs: number[] = [];
+  for (const p of landPoints(c.world, 4000, 0x91a)) {
+    if (devs.length >= 80) break;
+    if (c.field.planHolds(p.x, p.y) < 0.99) continue;
+    devs.push(directionDelta(c.field.majorAt(p.x, p.y), c.field.cityAngle));
+  }
+  if (devs.length < 20) return undefined;
+  devs.sort((a, b) => a - b);
+  return quantile(devs, 0.5);
+}
+
 describe(`tensor field (${SEED_COUNT} seeds)`, () => {
   const seeds = sweepSeeds(SEED_COUNT);
   /** The first seed's world, generated a second time for the purity check. */
@@ -145,16 +176,8 @@ describe(`tensor field (${SEED_COUNT} seeds)`, () => {
     for (const c of cases) {
       const devs: number[] = [];
       for (const g of c.field.grids) {
-        const d = c.world.districts[g.districtId];
-        if (!d || (d.zone !== 'core' && d.zone !== 'inner' && d.zone !== 'industrial')) continue;
-        // Steep ground and the waterfront are meant to override the grid; this is
-        // about the quiet interior, where nothing else is pulling.
-        if (c.hf.slope(g.x, g.y) > 0.05) continue;
-        if (nearestWater(c.hf, c.world.water.seaLevel, g.x, g.y, 300)) continue;
-        // Inside an organic city the water and the rings override a district's
-        // own grid, which is what makes it organic (spec section 6.1). The
-        // district grid is measured where the city leaves it alone.
-        if (c.field.planHolds(g.x, g.y) * (1 - c.field.plannedness) > 0.3) continue;
+        const d = quietGridDistrict(c, g);
+        if (d === undefined) continue;
         const dev = directionDelta(c.field.majorAt(g.x, g.y), g.angle);
         expect(dev, `${d.name} (seed ${c.seed}) runs ${deg(dev)} off its grid`).toBeLessThan(25 * DEG);
         devs.push(dev);
@@ -198,15 +221,8 @@ describe(`tensor field (${SEED_COUNT} seeds)`, () => {
     let planned = 0;
     const organic: number[] = [];
     for (const c of cases) {
-      const devs: number[] = [];
-      for (const p of landPoints(c.world, 4000, 0x91a)) {
-        if (devs.length >= 80) break;
-        if (c.field.planHolds(p.x, p.y) < 0.99) continue;
-        devs.push(directionDelta(c.field.majorAt(p.x, p.y), c.field.cityAngle));
-      }
-      if (devs.length < 20) continue;
-      devs.sort((a, b) => a - b);
-      const median = quantile(devs, 0.5);
+      const median = medianOffPlan(c);
+      if (median === undefined) continue;
       if (c.field.plannedness > 0.6) {
         planned++;
         // The grid outweighs everything inside the ring, so the whole city

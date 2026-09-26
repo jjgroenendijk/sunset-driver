@@ -115,6 +115,18 @@ export function distanceToLine(p: Point, line: readonly Point[]): number {
  */
 export function surfaceByHand(w: WorldDescription, x: number, y: number): Surface {
   const p = { x, y };
+  const tier = nearestRoadTier(w, p);
+  if (tier !== undefined) return tier === 'dirt' ? 'dirt' : 'asphalt';
+  const airfield = airfieldSurfaceByHand(w, p);
+  if (airfield !== undefined) return airfield;
+  for (const beach of w.beaches) {
+    if (beach.sand.length >= 3 && pointInRing(p, beach.sand)) return 'sand';
+  }
+  return 'ground';
+}
+
+/** The tier of the road whose footprint claims a place nearest, if any does. */
+function nearestRoadTier(w: WorldDescription, p: Point): RoadTier | undefined {
   let tier: RoadTier | undefined;
   let nearest = Infinity;
   for (const road of w.roads) {
@@ -126,26 +138,35 @@ export function surfaceByHand(w: WorldDescription, x: number, y: number): Surfac
       tier = road.tier;
     }
   }
-  if (tier !== undefined) return tier === 'dirt' ? 'dirt' : 'asphalt';
+  return tier;
+}
+
+/**
+ * The surface an airfield lays at a place: a ramp first, then the paving of
+ * the first field whose bounds hold the place. Undefined off every airfield.
+ */
+function airfieldSurfaceByHand(w: WorldDescription, p: Point): Surface | undefined {
   for (const field of w.airfields) {
     if (field.kind === 'dock') continue;
     if (pointInRing(p, airfieldRamp(field, RAMP_HALF))) return 'asphalt';
   }
   for (const field of w.airfields) {
     if (field.kind === 'dock') continue;
-    const at = toLocal(field, x, y, { u: 0, v: 0 });
+    const at = toLocal(field, p.x, p.y, { u: 0, v: 0 });
     if (Math.abs(at.u) > field.halfU || Math.abs(at.v) > field.halfV) continue;
-    for (const part of field.parts) {
-      if (!['runway', 'taxiway', 'apron', 'pad', 'forecourt'].includes(part.kind)) continue;
-      if (Math.abs(at.u - part.u) > part.halfU || Math.abs(at.v - part.v) > part.halfV) continue;
-      return field.kind === 'airstrip' && part.kind === 'runway' ? 'dirt' : 'asphalt';
-    }
-    break;
+    return pavingOf(field, at);
   }
-  for (const beach of w.beaches) {
-    if (beach.sand.length >= 3 && pointInRing(p, beach.sand)) return 'sand';
+  return undefined;
+}
+
+/** The surface of the first paved part of a field under a local place, if any. */
+function pavingOf(field: WorldDescription['airfields'][number], at: { u: number; v: number }): Surface | undefined {
+  for (const part of field.parts) {
+    if (!['runway', 'taxiway', 'apron', 'pad', 'forecourt'].includes(part.kind)) continue;
+    if (Math.abs(at.u - part.u) > part.halfU || Math.abs(at.v - part.v) > part.halfV) continue;
+    return field.kind === 'airstrip' && part.kind === 'runway' ? 'dirt' : 'asphalt';
   }
-  return 'ground';
+  return undefined;
 }
 
 /** The middle of a ring's corners. */
@@ -343,14 +364,22 @@ export function handovers(chunk: WorldChunk, roads: readonly RoadCurve[], axis: 
   for (const run of chunk.roads) {
     const road = roads[run.curve] as RoadCurve;
     for (const p of [run.points[0] as Point, run.points[run.points.length - 1] as Point]) {
-      const along = axis === 'x' ? p.y : p.x;
-      if (Math.abs((axis === 'x' ? p.x : p.y) - at) > 1e-9) continue;
-      if (along % CHUNK_SIZE === 0) continue;
-      if (isCurveEnd(road, p)) continue;
-      keys.push(`${run.curve}:${along.toFixed(3)}`);
+      if (handsOver(road, p, axis, at)) keys.push(`${run.curve}:${alongOf(p, axis).toFixed(3)}`);
     }
   }
   return keys.sort(compareStrings);
+}
+
+/** Where a point stands along a boundary that crosses `axis`. */
+function alongOf(p: Point, axis: 'x' | 'y'): number {
+  return axis === 'x' ? p.y : p.x;
+}
+
+/** Whether the end `p` of a run of `road` hands the road over at the boundary `axis = at`. */
+function handsOver(road: RoadCurve, p: Point, axis: 'x' | 'y', at: number): boolean {
+  if (Math.abs((axis === 'x' ? p.x : p.y) - at) > 1e-9) return false;
+  if (alongOf(p, axis) % CHUNK_SIZE === 0) return false;
+  return !isCurveEnd(road, p);
 }
 
 /** Metres round the boundary of a region: its outer ring and its holes. */

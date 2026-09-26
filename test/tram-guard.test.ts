@@ -65,31 +65,36 @@ describe('the tram guard', () => {
     const tour = r.line.tour;
     if (tour === undefined || signals === undefined) throw new Error('no tram');
     const tram: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
-    const pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
-    const cursor: TrafficCursor = { id: 0, step: 0, into: 0 };
-    const near: number[] = [];
     const touches: string[] = [];
     for (let tick = 0; tick < tour.period; tick += EVERY) {
       for (let k = 0; k < r.line.trams; k++) {
         for (let car = 0; car < TRAM_CARS; car++) {
           r.line.carPose(k, car, tick, tram);
           const lit = signals.junctions.some((j) => Math.hypot(j.x - tram.x, j.y - tram.y) < NEAR_LIGHT);
-          if (!lit) continue;
-          const box = { x: tram.x, y: tram.y, heading: tram.heading, halfLength: CAR_LENGTH / 2, halfWidth: CAR_HALF_WIDTH };
-          r.traffic.near(tram.x - 10, tram.y - 10, tram.x + 10, tram.y + 10, near);
-          for (const id of near) {
-            r.traffic.cursorAt(id, tick, cursor);
-            r.traffic.pose(cursor, pose);
-            if (pose.speed === 0) continue;
-            const spec = specOf((r.traffic.vehicles[id] as (typeof r.traffic.vehicles)[number]).cls);
-            const other = { x: pose.x, y: pose.y, heading: pose.heading, halfLength: spec.halfLength, halfWidth: spec.halfWidth };
-            if (footprintsTouch(box, other, 0)) touches.push(`tram ${k} car ${car} and vehicle ${id} on edge ${(graph.edges[r.traffic.edgeOf(cursor)] as RoadEdge).id} at tick ${tick}`);
-          }
+          if (lit) addTouches(tram, tick, `tram ${k} car ${car}`, touches);
         }
       }
     }
     expect(touches).toEqual([]);
   });
+
+  const pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
+  const cursor: TrafficCursor = { id: 0, step: 0, into: 0 };
+  const near: number[] = [];
+
+  /** Add to `touches` every moving vehicle whose footprint touches the tram car at `tram`. */
+  function addTouches(tram: AmbientPose, tick: number, name: string, touches: string[]): void {
+    const box = { x: tram.x, y: tram.y, heading: tram.heading, halfLength: CAR_LENGTH / 2, halfWidth: CAR_HALF_WIDTH };
+    r.traffic.near(tram.x - 10, tram.y - 10, tram.x + 10, tram.y + 10, near);
+    for (const id of near) {
+      r.traffic.cursorAt(id, tick, cursor);
+      r.traffic.pose(cursor, pose);
+      if (pose.speed === 0) continue;
+      const spec = specOf((r.traffic.vehicles[id] as (typeof r.traffic.vehicles)[number]).cls);
+      const other = { x: pose.x, y: pose.y, heading: pose.heading, halfLength: spec.halfLength, halfWidth: spec.halfWidth };
+      if (footprintsTouch(box, other, 0)) touches.push(`${name} and vehicle ${id} on edge ${(graph.edges[r.traffic.edgeOf(cursor)] as RoadEdge).id} at tick ${tick}`);
+    }
+  }
 
   it('keeps every vehicle to the lights and the trams', () => {
     for (const vehicle of r.traffic.vehicles) {

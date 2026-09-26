@@ -28,6 +28,16 @@ import { tramTrack } from '../src/world/tram-track.ts';
 import type { Corridor, RoadCurve, RoadTier } from '../src/world/types.ts';
 import { curve, dip, FLAT, ringDistricts, ringRoads, viaduct, world, worldOf } from './corridor-fixture.ts';
 
+/** Add the surface kind of every vertex of the tiers' corridors to `kinds`. */
+function addCorridorKinds(tiers: ReturnType<typeof buildChunkRoads>, kinds: Set<number>): void {
+  for (const tier of tiers) {
+    for (const part of tier.corridors) {
+      const kind = part.getAttribute('kind');
+      for (let v = 0; v < kind.count; v++) kinds.add(kind.getX(v));
+    }
+  }
+}
+
 describe('piers', () => {
   it('stands the piers of a deck over water in the water, in pairs across the deck', () => {
     const w = worldOf(world(dip(-5), []), [viaduct([1, 2])]);
@@ -184,12 +194,7 @@ describe('the corridors of a chunk', () => {
       for (let cy = -4; cy <= 4; cy++) {
         const chunk = source.chunk(cx, cy);
         if (chunk.tram.length === 0) continue;
-        for (const tier of buildChunkRoads(chunk, layers.carve.ribbons, surfaceAt)) {
-          for (const part of tier.corridors) {
-            const kind = part.getAttribute('kind');
-            for (let v = 0; v < kind.count; v++) kinds.add(kind.getX(v));
-          }
-        }
+        addCorridorKinds(buildChunkRoads(chunk, layers.carve.ribbons, surfaceAt), kinds);
       }
     }
     expect(kinds.has(SURFACE_TRACK_GRASS)).toBe(true);
