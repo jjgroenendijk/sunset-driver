@@ -334,7 +334,7 @@ export const SUPPRESSED_ALERT_RADIUS = 40;
  * about a third of the car, so the door gives way in three; a pistol is a
  * scratch, and a rocket is most of the car at once.
  */
-export const VEHICLE_SHARE_PER_POINT = 0.002;
+const VEHICLE_SHARE_PER_POINT = 0.002;
 
 /** Ticks a projectile may fly before it is given up on, wherever it has got to. */
 const PROJECTILE_LIFE = 600;

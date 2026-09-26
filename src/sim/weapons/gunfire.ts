@@ -38,7 +38,6 @@ import {
   bounceProjectile,
   projectileDue,
   roundSeverity,
-  VEHICLE_SHARE_PER_POINT,
   stepProjectile,
   stepWeapons,
   swingReaches,
@@ -236,7 +235,7 @@ export class Gunfire {
     // 14), and shooting at officers is what it costs the player.
     const unit = target.police?.unitAt(hit.collider.handle);
     if (unit !== undefined) {
-      shootUnit(state, unit, roundSeverity(spec) * VEHICLE_SHARE_PER_POINT);
+      shootUnit(state, unit, roundSeverity(spec));
       return 'vehicle';
     }
     // A round that went into an enforcer is taken off them, on the health scale
@@ -580,7 +579,7 @@ export class Gunfire {
     const distance = hypot(dx, dh, dy);
     // A blast is felt by every police car inside it, wherever the player's own
     // car stands (spec section 14).
-    blastUnits(state, p.x, p.y, roundSeverity(spec) * VEHICLE_SHARE_PER_POINT, (gap) => blastFalloff(gap, flight.blastRadius));
+    blastUnits(state, p.x, p.y, roundSeverity(spec), (gap) => blastFalloff(gap, flight.blastRadius));
     // And by every enforcer inside it, who feel it as people rather than as
     // panels (spec section 17.2).
     blastEnforcers(state, p.x, p.y, spec.damage, (gap) => blastFalloff(gap, flight.blastRadius));
