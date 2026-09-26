@@ -46,9 +46,16 @@ code is `src/sim/transit/tram.ts`, `tram-timing.ts`, `tram-motion.ts`, `tram-bod
 ## Short runs
 
 - A tram is 32 m long, and many arterial runs are shorter than that and a junction. A tram waiting
-  at such a light leaves its tail across the junction behind. `hold` waits at the light before
-  instead, for a start that meets the short lights ahead on green. One wait seldom fits more than
-  two of them, so on seed 1 about a third of the tram's waits are still on a short run.
+  at such a light leaves its tail across the junction behind. That is harmless until the traffic
+  across that junction gets its green, and then the traffic drives through the tail.
+- Downtown a chain of such runs is often 7 to 19 lights long, so one wait before it cannot fit all
+  their greens. `settle` chooses the wait at every light instead: it lays each wait out over the
+  chain ahead, measures the time the tail stands in a junction on the green across it, and takes
+  the steps back. `toLine` weighs running past a green against halting there the same way. Inside
+  such a trial the tram only keeps to its own lights, so trials never nest.
+- Most of what is left is forced by the offsets: where the light at the end of a short run turns
+  green only after the green across the junction behind it starts, no timing helps.
+  `scripts/tram-tail.ts` measures the tail's time in the junctions for a list of seeds.
 
 ## The track and the stops
 
