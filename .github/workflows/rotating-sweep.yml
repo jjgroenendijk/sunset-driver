@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 env:
-  SWEEP_SHARDS: 4
+  SWEEP_SHARDS: 8
   # Windows of 500 from index 500 on, forty of them before the first comes round again.
   WINDOWS: 40
 
@@ -48,7 +48,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup

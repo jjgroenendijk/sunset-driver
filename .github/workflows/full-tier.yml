@@ -1,7 +1,7 @@
 name: Full tier
 
 # A reusable workflow: `ci.yml` calls it on every pull request. It runs
-# `verify:full` over six runners: four shares of the seed sweep's 500 seeds,
+# `verify:full` over ten runners: eight shares of the seed sweep's 500 seeds,
 # every other file, and the typecheck with the lints. Generating a world is
 # most of what the sweep costs and the pool already uses every core of one
 # runner, so the only way under the 2 min each job is given is more runners.
@@ -19,7 +19,7 @@ permissions:
 env:
   # The shares the seed sweep is split into. `seed-limits.ts` hands each run the
   # seeds of its share, and the shares together are the whole tier.
-  SWEEP_SHARDS: 4
+  SWEEP_SHARDS: 8
 
 jobs:
   sweep:
@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
@@ -38,7 +38,7 @@ jobs:
           SWEEP_SHARD: ${{ matrix.shard }}/${{ env.SWEEP_SHARDS }}
         run: npm run test:full -- --project sweep
 
-  # One status for the four shares, so the ruleset keeps asking for the one
+  # One status for the eight shares, so the ruleset keeps asking for the one
   # check name `full-tier / seed-sweep` however many runners the sweep takes.
   seed-sweep:
     name: seed-sweep
@@ -51,7 +51,7 @@ jobs:
           RESULT: ${{ needs.sweep.result }}
         run: |
           if [ "$RESULT" != success ]; then
-            echo "A share of the seed sweep failed. Its own check — sweep 1 to sweep 4 —"
+            echo "A share of the seed sweep failed. Its own check — sweep 1 to sweep 8 —"
             echo "holds the output: node scripts/pr-wait.ts <pr> --all."
             exit 1
           fi
