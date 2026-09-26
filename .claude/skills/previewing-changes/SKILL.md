@@ -31,6 +31,7 @@ times before judging a performance change.
 | Which GPU pass, or which code, costs the frame? | `node scripts/render-profile.ts <seed> --passes --cpuprofile` |
 | What does a simulation tick cost, and where? | `node scripts/sim-profile.ts <seed>` |
 | Is the new build faster, or is it noise? | `--json=<file>` on each build, then `node scripts/profile-compare.ts` |
+| Does the title screen look right, on a desktop and a phone? | `node scripts/title-preview.ts out` |
 | Is the map or the minimap right? | `node scripts/map-preview.ts <seed> out.png` |
 | Do the map icons read at the size they are drawn? | `node scripts/icon-sheet.ts out.png` |
 | Whose turf is whose, and how it spreads? | `node scripts/map-preview.ts <seed> out.png --turf --day=8` |

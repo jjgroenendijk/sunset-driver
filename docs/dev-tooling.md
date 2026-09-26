@@ -21,6 +21,7 @@ The two checks that open a browser — `npm run test:render` and `npm run test:w
 - `node scripts/map-preview.ts [seed] [out.png]`
 - `node scripts/icon-sheet.ts [out.png] [--sizes=18,20,30]`
 - `node scripts/render-preview.ts <seed> out.png`
+- `node scripts/title-preview.ts <prefix>`
 - The preview server
 - `node scripts/render-sheet.ts <count> out.png [--cols=3] [--tile=480]`
 - `node scripts/render-profile.ts <seed>` and the other profilers
@@ -268,6 +269,13 @@ It prints the lights and shadow cascades the frame cost beside the draw calls, a
 of the traffic, parked cars and pedestrians it drew. It also counts the buildings, street lamps and
 posters inside the view (`src/render/frame/frame-contents.ts`). A thing missing from a picture looks
 the same as a thing never built; a count of zero tells the two apart.
+
+## `node scripts/title-preview.ts <prefix>`
+
+The title screen, at a desktop window and at a phone held upright and sideways, as
+`<prefix>-desk.png`, `-phone.png` and `-land.png`. The phones are emulated with touch, so the page
+takes the layout `touch.css` gives a phone. It starts a Vite server of its own and waits nine
+seconds for the page, which `--wait=` changes. It prints what the page logged as an error.
 
 ## The preview server
 

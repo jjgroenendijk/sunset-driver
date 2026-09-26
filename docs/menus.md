@@ -109,10 +109,19 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
 
 ## The scene behind the menu
 
-- `src/render/scene.ts` is the scene behind the menu: a parked car, a lit street lamp and the
-  driver, with no world. The camera swings over the front of the car and never goes all the way
-  round, because the lamp post stands on the far side. The lamp is the game's own `LampLight`, so
-  the scene draws only through a renderer from `createRenderer`, which registers that light.
+- `src/render/title/scene.ts` is the scene behind the menu: a red sports car on a seafront at
+  sunset, its door open and the driver beside it, with no world. `backdrop.ts` builds the rest from
+  boxes, cones and planes: the sky, the sun, the sea, the palms and a town on a headland. The camera
+  swings over the front of the car and never goes all the way round.
+- The scene is drawn through its own `PostChain`, so it has the ink, the bloom and the grade of
+  play. The chain grades it at a fixed hour, `HOUR`. The sky and the sun write no depth: the ink
+  would outline the sun, and the bloom would read the dome as a wall. The lamps are the game's own
+  `LampLight`, so the scene draws only through a renderer from `createRenderer`.
+- `frameCamera` fits the car to the width of the window and shifts the view with `setViewOffset`.
+  The car stands right of the menu on a wide screen and above it on an upright one, where
+  `touch.css` puts the main menu at the bottom. A change to where the menu stands moves `FOCUS_*`.
+  `node scripts/title-preview.ts <prefix>` takes the picture at a desktop and at a phone held both
+  ways; judge a change to the scene or the menu layout from those three.
 - `src/ui/menus/seed-preview.ts` draws the map of the seed on the title screen, through the same
   `MapArt`, so the picture the player picks a seed from is the map they will play on. A build takes
   a second or more and runs in the worker of `world-source.ts`, so the scene behind the menu keeps
