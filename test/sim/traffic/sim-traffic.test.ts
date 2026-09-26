@@ -4,7 +4,8 @@ import { EMPTY_INPUT, type InputFrame } from '../../../src/sim/input.ts';
 import { initPhysics, SimPhysics } from '../../../src/sim/physics/physics.ts';
 import { createSimState, stepSim, type SimState } from '../../../src/sim/simulation.ts';
 import { PARKED_ID, ParkedCars, type ParkedCar } from '../../../src/sim/traffic/parked.ts';
-import { laneOffset, type AmbientPose, type AmbientTraffic } from '../../../src/sim/traffic/traffic.ts';
+import { addPromoted, laneOffset, type AmbientPose, type AmbientTraffic } from '../../../src/sim/traffic/traffic.ts';
+import { createVehicleState, rideHeight, specOf } from '../../../src/sim/vehicles/vehicle.ts';
 import { BAY_USES, type ParkingBays } from '../../../src/world/city/parking.ts';
 import { TIERS } from '../../../src/world/roads/tiers.ts';
 import { inputStream, stableJson, sweepSeeds } from '../../support/helpers.ts';
@@ -129,6 +130,50 @@ describe(`traffic in the simulation (${SEED_COUNT} seeds)`, () => {
     const { passed } = passing(state, physics, traffic, 60, arterial, 1800);
     expect(state.traffic.promoted).toEqual([]);
     expect(passed, 'no car got past the player').toBeGreaterThan(0);
+    physics.dispose();
+  });
+
+  it('puts a bumped car that stands clear back on its tour, where it stands', () => {
+    const seed = seeds[0] as number;
+    const traffic = gridTraffic(seed);
+    const { state, physics } = session(seed, traffic);
+    for (let i = 0; i < 60; i++) stepSim(state, EMPTY_INPUT, physics);
+    // A car of the box away from the player's, stopped where it stands as a blow would leave it.
+    const pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
+    const id = (physics.traffic?.cursors ?? []).map((cursor) => cursor.id).find((at) => {
+      heldPose(traffic, state.traffic.held, at, state.tick, pose);
+      return Math.hypot(pose.x - state.vehicle.x, pose.y - state.vehicle.z) > 20;
+    });
+    if (id === undefined) throw new Error('no car in the box');
+    heldPose(traffic, state.traffic.held, id, state.tick, pose);
+    const spec = specOf((traffic.vehicles[id] as AmbientTraffic['vehicles'][number]).cls);
+    const vehicle = createVehicleState(spec, pose.x, pose.y, pose.height + rideHeight(spec), pose.heading + 0.2);
+    addPromoted(state.traffic, { id, paint: 0, vehicle });
+    const stood = { x: vehicle.x, y: vehicle.z };
+    let joined = -1;
+    for (let i = 0; i < 90 && joined < 0; i++) {
+      stepSim(state, EMPTY_INPUT, physics);
+      if (!state.traffic.promoted.some((record) => record.id === id)) joined = state.tick;
+    }
+    expect(joined, 'the car never rejoined its tour').toBeGreaterThan(0);
+    // It went back to its tour where it stood, turned as it was: nothing jumped.
+    heldPose(traffic, state.traffic.held, id, state.tick, pose);
+    expect(Math.hypot(pose.x - stood.x, pose.y - stood.y)).toBeLessThan(0.5);
+    expect(state.traffic.held.list.find((at) => at.id === id)?.swerve?.yaw).toBeCloseTo(0.2, 1);
+    physics.dispose();
+  });
+
+  it("leaves the player's own car where they left it", () => {
+    const seed = seeds[0] as number;
+    const traffic = gridTraffic(seed);
+    const { state, physics } = session(seed, traffic);
+    const spec = specOf(state.vehicle.cls);
+    const pose = traffic.poseAt(0, state.tick, { x: 0, y: 0, height: 0, heading: 0, speed: 0 });
+    const vehicle = createVehicleState(spec, pose.x, pose.y, pose.height + rideHeight(spec), pose.heading);
+    addPromoted(state.traffic, { id: 0, paint: 0, vehicle, left: true });
+    physics.spawn(state, pose.x + 40, pose.y, 0);
+    for (let i = 0; i < 90; i++) stepSim(state, EMPTY_INPUT, physics);
+    expect(state.traffic.promoted.map((record) => record.id)).toContain(0);
     physics.dispose();
   });
 

@@ -35,6 +35,7 @@ import { holdOf, type Hold } from './hold.ts';
 import { FREE, HEAD_ON, LIGHT, OTHER, PERSON, sideOf, STANDING, type Car, type Person } from './give-way-scene.ts';
 import { Steering } from './swerve.ts';
 import { JunctionClear } from './junction-clear.ts';
+import { Rejoin } from './rejoin.ts';
 import type { SimState } from '../simulation.ts';
 import { footprintsTouch, promotedOf, turnedTouch, type AmbientPose, type AmbientTraffic, type Footprint, type Kerbs, type TrafficCursor } from './traffic.ts';
 import { headingOf, specOf } from '../vehicles/vehicle.ts';
@@ -100,6 +101,7 @@ export class GiveWay {
   /** The cars in the order they were placed, while the ones that have just come in are cleared. */
   private readonly filed = new Grid();
   private readonly steering: Steering;
+  private readonly rejoin: Rejoin;
   private readonly junctions: JunctionClear;
   private readonly kerbCursor: TrafficCursor = { id: 0, step: 0, into: 0 };
   private tick = 0;
@@ -117,6 +119,7 @@ export class GiveWay {
       },
       carsNear,
     });
+    this.rejoin = new Rejoin(traffic);
     this.junctions = new JunctionClear(traffic, {
       get cars() {
         return scene.cars;
@@ -147,6 +150,8 @@ export class GiveWay {
    * traffic at the next tick.
    */
   step(state: SimState, x: number, y: number, ground?: CasualtyGround): void {
+    // A bumped car that stands clear goes back to its tour before the cars are read.
+    if (state.traffic.promoted.length > 0) this.rejoin.step(state, x, y, GIVE_WAY_REACH);
     const cells = this.frame.set(x, y, GIVE_WAY_REACH);
     this.carGrid.reset(cells);
     this.filed.reset(cells);
