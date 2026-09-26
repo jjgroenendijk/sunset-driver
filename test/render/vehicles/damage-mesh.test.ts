@@ -154,6 +154,32 @@ describe('a damaged vehicle model', () => {
   });
 });
 
+describe('a dented lofted body', () => {
+  it('moves every vertex at one corner together, so the skin never tears', () => {
+    for (const cls of ['saloon', 'heli-police', 'bizjet', 'fighter'] as const) {
+      const model = new VehicleModel(cls);
+      const v = createVehicleState(specOf(cls));
+      for (let i = 0; i < PANELS.length; i++) v.damage.dents[i] = 1;
+      v.damage.stage = 'dented';
+      const before = meshes(model).map((mesh) => Float32Array.from(mesh.geometry.getAttribute('position').array));
+      model.set(v);
+      meshes(model).forEach((mesh, m) => {
+        const was = before[m] as Float32Array;
+        const now = mesh.geometry.getAttribute('position').array;
+        // Where a corner stood before the dent, all its vertices stand after it.
+        const moved = new Map<string, string>();
+        for (let i = 0; i < was.length; i += 3) {
+          const key = `${was[i]?.toFixed(4)},${was[i + 1]?.toFixed(4)},${was[i + 2]?.toFixed(4)}`;
+          const to = `${now[i]?.toFixed(4)},${now[i + 1]?.toFixed(4)},${now[i + 2]?.toFixed(4)}`;
+          expect(moved.get(key) ?? to, cls).toBe(to);
+          moved.set(key, to);
+        }
+      });
+      model.dispose();
+    }
+  });
+});
+
 describe('the smoke and the flames', () => {
   const spec = ROSTER.saloon;
 
