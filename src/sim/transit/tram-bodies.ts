@@ -6,18 +6,22 @@
  * solid and cannot push it off its track, and nothing the player does takes a
  * tram off its loop. Outside the box a car has no body. The tram is a function
  * of the tick, so a car that comes into the box is simply put where the tick
- * says it is.
+ * says it is. The platforms of the stops in the box stand as fixed colliders
+ * (`platform-bodies.ts`).
  */
 import { cos, sin } from '../../core/libm.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import type { AmbientPose } from '../traffic/traffic.ts';
 import { CAR_HALF_HEIGHT, CAR_HALF_WIDTH, CAR_LENGTH, TRAM_CARS, type TramLine } from './tram.ts';
+import { PlatformBodies } from './platform-bodies.ts';
 
 export class TramBodies {
   private readonly world: RAPIER.World;
   private readonly line: TramLine;
   /** One entry per car of every tram, in tram order then car order; undefined while out of the box. */
   private readonly bodies: (RAPIER.RigidBody | undefined)[];
+  /** The platforms of the stops in the box, which a car meets as it meets a kerb and a post. */
+  readonly platforms: PlatformBodies;
   private readonly pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
   private readonly spot = { x: 0, y: 0, z: 0 };
   private readonly turn = { x: 0, y: 0, z: 0, w: 1 };
@@ -26,6 +30,7 @@ export class TramBodies {
     this.world = world;
     this.line = line;
     this.bodies = new Array<RAPIER.RigidBody | undefined>(line.trams * TRAM_CARS).fill(undefined);
+    this.platforms = new PlatformBodies(world, line.stopPlaces());
   }
 
   /** How many cars stand in the world as bodies. */
@@ -40,6 +45,7 @@ export class TramBodies {
    * take it from each car that has left, and aim every body at the next tick.
    */
   lead(tick: number, minX: number, minY: number, maxX: number, maxY: number): void {
+    this.platforms.cover(minX, minY, maxX, maxY);
     for (let tram = 0; tram < this.line.trams; tram++) {
       for (let car = 0; car < TRAM_CARS; car++) {
         const index = tram * TRAM_CARS + car;
