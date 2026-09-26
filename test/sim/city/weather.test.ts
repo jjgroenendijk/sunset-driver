@@ -72,15 +72,17 @@ describe('the weather', () => {
   });
 
   it('never jumps: a tick moves nothing far', () => {
+    // The largest step is collected and asserted once: an expect per field
+    // per tick is 150 000 of them.
     for (const seed of SEEDS) {
       let last = weatherAt(seed, 0);
+      let largest = 0;
       for (let tick = 1; tick < SPELL_TICKS * 6; tick += 7) {
         const now = weatherAt(seed, tick);
-        for (const field of FIELDS) {
-          expect(Math.abs((now[field] as number) - (last[field] as number))).toBeLessThan(0.02);
-        }
+        for (const field of FIELDS) largest = Math.max(largest, Math.abs((now[field] as number) - (last[field] as number)));
         last = now;
       }
+      expect(largest, `seed ${seed}`).toBeLessThan(0.02);
     }
   });
 
