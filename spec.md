@@ -44,8 +44,10 @@ Do not implement these, and do not propose them again.
 - Rapier (`@dimforge/rapier3d-compat`) for physics, with `DynamicRayCastVehicleController` for
   vehicles.
 - Tone.js for all audio and music, synthesised at runtime.
-- Keyboard and mouse input. A touch browser is offered the free camera over the world
-  instead, since it reaches none of the keys; see `docs/menus.md`.
+- Keyboard and mouse input. A touch browser plays from an on-screen stick and buttons instead,
+  since it reaches none of the keys, and may fly the free camera over the world; see
+  `docs/menus.md`. It is full screen where the browser allows it, and from the Home Screen on an
+  iPhone.
 - Conventional Commits, one atomic change per commit.
 
 ### 2.2 Simulation loop

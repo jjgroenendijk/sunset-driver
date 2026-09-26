@@ -41,19 +41,24 @@ export const CONTROLS: readonly ControlBinding[] = [
 ];
 
 /**
- * What a finger does instead, while the free camera has the screen
- * (`touch-fly.ts`). A phone is shown this list rather than the keys: it reaches
- * none of them, and the flight is all it is offered (`docs/menus.md`).
+ * What a finger does instead. A phone is shown this list rather than the keys,
+ * since it reaches none of them: the play pad of `touch-play.ts` while the
+ * camera follows the player, and the fly pad of `touch-fly.ts` while the free
+ * camera has the screen (`docs/menus.md`).
  *
  * `keys` is prose here rather than key caps, so `keyParts` draws each word as a
  * cap and the page reads as a list of gestures.
  */
 export const TOUCH_CONTROLS: readonly ControlBinding[] = [
-  { action: 'Fly', keys: 'Stick' },
-  { action: 'Look', keys: 'Drag' },
-  { action: 'Speed', keys: 'Pinch' },
-  { action: 'Rise, fall', keys: '▲ or ▼' },
-  { action: 'Boost', keys: 'Fast' },
-  { action: 'Take off, land', keys: 'Fly or Land' },
-  { action: 'Pause, map', keys: 'Menu or Map' },
+  { action: 'Walk, drive', keys: 'Stick' },
+  { action: 'Enter, use, hotwire', keys: 'Use' },
+  { action: 'Fire, swing', keys: 'Fire' },
+  { action: 'Jump; handbrake', keys: 'Jump or Brake' },
+  { action: 'Sprint; horn', keys: 'Run or Horn' },
+  { action: 'Reload, cycle weapon', keys: 'Load or Gun' },
+  { action: 'Pick a row', keys: 'Tap' },
+  { action: 'Fly over the city', keys: 'Fly' },
+  { action: 'Fly: look, speed', keys: 'Drag or Pinch' },
+  { action: 'Fly: rise, fall, boost', keys: '▲ ▼ Fast' },
+  { action: 'Pause, map, full screen', keys: 'Menu Map Full' },
 ];

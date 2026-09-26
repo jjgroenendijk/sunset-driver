@@ -142,26 +142,46 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   yes: the screen reports fingers and `(pointer: coarse)` matches. A touchscreen laptop reports
   fingers and is played with the keys; an iPad claims to be a desktop in every other way and is
   caught by the fingers. `main.ts` asks once, before the title screen, and passes the answer down.
-- A phone reaches none of the keys of `controls.ts`, so it is offered the city rather than the game:
-  the main menu gains **Explore** at the top, which starts the seed the New game page holds
-  and detaches the free camera before the first frame. `FreeCamera.survey` lifts it `SURVEY_HEIGHT`
-  over the ground it was let go at and tips the view down, so the screen the loading screen fades
-  off is already the flight.
-- `src/ui/input/touch-fly.ts` is the pad: a stick under the left thumb, the whole screen behind it
-  as a surface the right thumb turns the view on, a pinch that sets the speed, and three keys down
-  the right edge. It reads pointer events, never `TouchEvent`, because iOS Safari reports a touch as
-  a pointer. The arithmetic — the dead zone, the stick's range, what a pinch is worth — is in
-  `touch.ts` and tested there; the pad is the browser half alone.
+- A phone reaches none of the keys of `controls.ts`, so a session on one is played from the pad of
+  `src/ui/input/touch-play.ts`: the stick under the left thumb, and a cluster of buttons under the
+  right one. The main menu also gains **Explore** at the top, which starts the seed the New game
+  page holds and detaches the free camera before the first frame. `FreeCamera.survey` lifts it
+  `SURVEY_HEIGHT` over the ground it was let go at and tips the view down, so the screen the loading
+  screen fades off is already the flight.
+- The play pad writes into `Keyboard` rather than into the input frame: the stick through
+  `Keyboard.stick`, which stands in for the walking keys and is turned by the view as they are, and
+  each button through `Keyboard.press` and `release` with the code of the real key. So every edge
+  the keys keep — the jump, the interact, the number rows — holds for a finger too. A button takes
+  its key when the finger goes down and lets go of that key, so Horn held while getting out does not
+  leave the horn stuck. Space is both Jump and Brake; the fourth button is Run on foot and Horn in a
+  vehicle. The frame hides the pad under the flight, a menu and the map (`SessionFrame.showPad`),
+  and hiding it lets go of everything.
+- A tap presses a key for one sample through `Keyboard.pulse`. The metro, safehouse and job panels
+  write the key of each numbered row into `data-key`, the interact prompt writes `KeyE`, and
+  `Keyboard.listenRows` takes a click on any of them as that key. A finger aims nothing
+  (`PointerAim.mouse`), so a shot goes the way the player faces.
+- `src/ui/input/fullscreen.ts` is the Full button of the bar. Android Chrome and iPad Safari have
+  the Fullscreen API. iPhone Safari gives it to a video alone, so a page is full screen there only
+  when opened from the Home Screen, which `public/manifest.webmanifest` and the
+  `apple-mobile-web-app-*` tags ask for. On an iPhone the button shows how to add the game there; a
+  page already opened from the Home Screen gets no button.
+- `src/ui/input/touch-fly.ts` is the fly pad: a stick under the left thumb, the whole screen behind
+  it as a surface the right thumb turns the view on, a pinch that sets the speed, and three keys
+  down the right edge. It reads pointer events, never `TouchEvent`, because iOS Safari reports a
+  touch as a pointer. The arithmetic — the dead zone, the stick's range, what a pinch is worth — is
+  in `touch.ts` and tested there; the pad is the browser half alone.
 - The stick takes its centre from wherever the thumb lands, not from the middle of the pad: the
   thumb cannot see the spot it is covering. A key is held rather than clicked, and captures its
   pointer, so a thumb resting on Rise keeps rising while the other thumb turns the view.
-- `src/ui/input/touch-bar.ts` is the three buttons a session is driven from — Menu, Map and Fly —
-  and `markTouchUi`, which sets `body.touch` and blocks Safari's own pinch zoom of the page.
+- `src/ui/input/touch-bar.ts` is the bar in the top corner — Menu, Map, Fly and Full — and
+  `markTouchUi`, which sets `body.touch` and blocks Safari's own pinch zoom of the page.
   `FreeCameraControls` sets `body.flying` while the camera is detached; `touch.css` hangs the rest
   on those two classes.
-- `src/ui/input/touch.css` holds the pad and everything `body.touch` changes: tap targets at 44 px,
-  the key hints hidden, the safe-area insets of the notch and the home bar, and a 16 px font on
-  every field, because Safari zooms the page in on a smaller one and never zooms back out.
+- `src/ui/input/touch.css` holds both pads and everything `body.touch` changes: tap targets at 44
+  px, the key hints hidden, the safe-area insets of the notch and the home bar, and a 16 px font on
+  every field, because Safari zooms the page in on a smaller one and never zooms back out. While the
+  play pad is up, the minimap and the speedometer rise above it and the counters stand clear of both
+  thumbs; a phone held sideways has no room for the minimap, and the Map button stands in.
 - A touch session starts at `TOUCH_START_TIER` rather than at full quality (`main.ts`). The monitor
   would find that level within a second anyway, but the frames it spends getting there are the first
   frames of the flight, and the warm-up compiles at whatever tier is standing.

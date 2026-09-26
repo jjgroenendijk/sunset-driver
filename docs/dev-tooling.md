@@ -46,12 +46,12 @@ it back where the player stands.
 | `Shift` | Fly six times as fast. |
 | Wheel | Set the speed, between 2 and 600 metres a second. |
 
-On a touch browser the camera is flown with the pad of `src/ui/input/touch-fly.ts` instead. There is
-no pointer lock to ask for — iOS Safari has never had one — so the view is turned by dragging
-anywhere on the screen, the stick under the left thumb moves the camera, a pinch sets the speed, and
-the keys down the right edge rise, fall and go fast. The flight is started and ended from the bar of
-`src/ui/input/touch-bar.ts` rather than from `` ` ``. `docs/menus.md` holds the rest of what a phone
-changes.
+On a touch browser the camera is flown with the fly pad of `src/ui/input/touch-fly.ts` instead.
+There is no pointer lock to ask for — iOS Safari has never had one — so the view is turned by
+dragging anywhere on the screen, the stick under the left thumb moves the camera, a pinch sets the
+speed, and the keys down the right edge rise, fall and go fast. The flight is started and ended from
+the bar of `src/ui/input/touch-bar.ts` rather than from `` ` ``. `docs/menus.md` holds the rest of
+what a phone changes.
 
 While the camera is detached the keys drive the camera alone: the simulation is stepped with an
 empty input frame, so the car left behind is not also driven. The streaming rings and the entity

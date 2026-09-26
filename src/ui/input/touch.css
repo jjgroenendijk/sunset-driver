@@ -20,6 +20,35 @@
 .touch-side { position: absolute; right: calc(16px + env(safe-area-inset-right)); top: 50%; display: grid; gap: .6rem; transform: translateY(-50%); }
 .touch-readout { position: absolute; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom)); padding: .2rem .6rem; border-radius: .8rem; background: rgba(24,11,20,.6); font-size: .8rem; font-variant-numeric: tabular-nums; transform: translateX(-50%); pointer-events: none; }
 
+/* The play pad (`touch-play.ts`): the same stick under the left thumb, and a
+   cluster of held buttons under the right one, Fire in the corner where the
+   thumb rests. It stands under the counters, so a tap on a row reaches it. */
+.touch-play { position: fixed; z-index: 4; inset: 0; pointer-events: none; }
+.touch-play > * { pointer-events: auto; }
+.touch-cluster { position: absolute; right: calc(16px + env(safe-area-inset-right)); bottom: calc(20px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3, 3.4rem); grid-template-rows: repeat(3, 3.4rem); grid-template-areas: "gun load radio" "run use fire" ". jump fire"; gap: .5rem; place-items: center; }
+.touch-cluster .touch-key { width: 3.4rem; height: 3.4rem; padding: 0; font-size: .7rem; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.touch-cluster .touch-key[hidden] { display: none; }
+.touch-cluster .touch-fire { grid-area: fire; height: 7.3rem; border-radius: 1.7rem; background: var(--it-rosso); color: var(--it-ivory); }
+.touch-jump { grid-area: jump; }
+.touch-cluster .touch-use { grid-area: use; background: var(--it-yellow); }
+.touch-cluster .touch-key-held { background: var(--it-ink); color: var(--it-ivory); }
+.touch-run { grid-area: run; }
+.touch-load { grid-area: load; }
+.touch-gun { grid-area: gun; }
+.touch-radio { grid-area: radio; }
+/* The corners the pad stands in are the minimap's and the speedometer's, so
+   those rise above it while it is there. */
+body.touch:not(.flying) :is(.minimap, .hud-ring, .minimap-distance) { --hud-bottom: calc(9.5rem + env(safe-area-inset-bottom)); }
+body.touch:not(.flying) .hud-speed { --hud-bottom: calc(12.5rem + env(safe-area-inset-bottom)); }
+/* The counters come up clear of both thumbs, and their rows take a tap. */
+body.touch :is(.home, .job, .travel) { z-index: 5; bottom: calc(15rem + env(safe-area-inset-bottom)); }
+[data-key] { pointer-events: auto; cursor: pointer; }
+body.touch :is(.home-list, .job-list, .travel-list) [data-key] { padding: .45rem 0; }
+.interact { z-index: 5; }
+body.touch .interact { bottom: calc(13rem + env(safe-area-inset-bottom)); }
+/* How to take the whole screen on an iPhone (`fullscreen.ts`). */
+.touch-note { position: fixed; z-index: 12; top: calc(4.2rem + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right)); max-width: min(18rem, calc(100vw - 24px)); margin: 0; padding: .7rem .9rem; border: var(--it-card-edge); border-radius: var(--it-card-radius); background: var(--it-ivory); color: var(--it-ink); box-shadow: var(--it-card-shadow); font: .85rem/1.35 var(--it-sans); }
+
 /* The map has to come out over the pad, and the pause menu over both. */
 .map-screen { z-index: 8; }
 
@@ -49,6 +78,15 @@ body.touch.flying .minimap { bottom: calc(9.5rem + env(safe-area-inset-bottom));
   /* A phone held sideways has no room under the stick for the corner map. */
   body.touch.flying .minimap { display: none; }
   .touch-stick { width: 7rem; height: 7rem; }
+  /* Nor beside the pad: the map button stands in for it. */
+  body.touch :is(.minimap, .hud-ring, .minimap-distance) { display: none; }
+  .touch-cluster { grid-template-columns: repeat(3, 3rem); grid-template-rows: repeat(3, 3rem); gap: .4rem; }
+  .touch-cluster .touch-key { width: 3rem; height: 3rem; }
+  .touch-cluster .touch-fire { height: 6.4rem; }
+  body.touch:not(.flying) .hud-speed { right: calc(var(--hud-right) + 11rem); }
+  body.touch:not(.flying) .hud-speed { --hud-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  body.touch :is(.home, .job, .travel) { bottom: calc(12px + env(safe-area-inset-bottom)); max-height: 60vh; overflow-y: auto; }
+  body.touch .interact { bottom: calc(1.2rem + env(safe-area-inset-bottom)); }
 }
 
 /* The map's own buttons, over the picture rather than under it: the footer is

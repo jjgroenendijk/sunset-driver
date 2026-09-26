@@ -70,6 +70,7 @@ export class HomePanel {
         const line = document.createElement('div');
         line.className = row.className;
         line.textContent = row.text;
+        if (row.key !== undefined) line.dataset.key = row.key;
         return line;
       }),
     );
@@ -89,6 +90,8 @@ export class HomePanel {
 interface Row {
   text: string;
   className: string;
+  /** The key the row stands for, which a tap on it presses (`Keyboard.listenRows`). */
+  key?: string;
 }
 
 /** What a player standing at the door is told: how to go in, or what it costs. */
@@ -97,17 +100,17 @@ function doorLine(state: SimState, place: SafehousePlace): Row {
     return { text: `For sale · ${dollars(place.price)} · at a property broker`, className: 'home-price' };
   }
   if (state.player.driving) return { text: 'Not with a vehicle.', className: 'home-price' };
-  return { text: `${ENTER_KEY} · go in`, className: 'home-row' };
+  return { text: `${ENTER_KEY} · go in`, className: 'home-row', key: 'KeyE' };
 }
 
 /** What the house does, inside: one row per thing, and the line the last one left. */
 function panel(state: SimState, place: SafehousePlace): Row[] {
   const rows: Row[] = homeOffers(state, place)
     .slice(0, CHOICE_KEYS)
-    .map((offer, i) => ({ text: `${i + 1} · ${offer.label}`, className: 'home-row' }));
+    .map((offer, i) => ({ text: `${i + 1} · ${offer.label}`, className: 'home-row', key: `Digit${i + 1}` }));
   if (state.property.active === place.id) rows.unshift({ text: 'You come back here.', className: 'home-here' });
   const said = state.property.visit?.said ?? '';
   if (said !== '') rows.push({ text: said, className: 'home-said' });
-  rows.push({ text: `${ENTER_KEY} · leave`, className: 'home-row' });
+  rows.push({ text: `${ENTER_KEY} · leave`, className: 'home-row', key: 'KeyE' });
   return rows;
 }
