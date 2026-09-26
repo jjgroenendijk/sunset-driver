@@ -32,8 +32,8 @@ const CLEAR_OF_CAR = 0.9;
 /** Metres a person keeps from the side of what they walk round. */
 const ROUND_ROOM = 0.5;
 
-/** Metres a person steps off their loop at most. */
-const DODGE_MOST = 3;
+/** Metres a person steps off their loop at most: past a car that stands on the pavement, into the road. */
+const DODGE_MOST = 4.5;
 
 /** Metres a person counts as round, when a place is checked for somebody to stand on. */
 const BODY = 0.35;
@@ -151,11 +151,12 @@ export class Detours {
 
 /**
  * The sides a person tries to walk round something on, in order, as metres
- * right of where they stand: the side they already stepped to, where they
- * stepped at all, else the nearer side first.
+ * right of where they stand: the side they already stepped to first, where
+ * they stepped at all, else the nearer side first. The other side is tried
+ * after it: a side with no room left a person standing there for ever.
  */
 function sidesOf(was: number, right: number, left: number): number[] {
-  if (was > 0) return [right];
-  if (was < 0) return [left];
+  if (was > 0) return [right, left];
+  if (was < 0) return [left, right];
   return Math.abs(right) <= Math.abs(left) ? [right, left] : [left, right];
 }
