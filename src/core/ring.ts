@@ -120,22 +120,29 @@ export function gatherRings(rings: readonly Point[][], owner: readonly number[])
   keys.sort((a, b) => a - b);
   const regions: Region[] = [];
   for (const key of keys) {
-    const group = groups.get(key) as number[];
-    const outers: Region[] = [];
-    const holes: Point[][] = [];
-    for (const i of group) {
-      const ring = rings[i] as Point[];
-      if (ringArea(ring) > 0) outers.push({ outer: ring, holes: [] });
-      else holes.push(ring);
-    }
-    if (outers.length === 0) continue;
-    for (const hole of holes) {
-      const home = smallestAround(outers, hole[0] as Point);
-      if (home !== undefined) home.holes.push(hole);
-    }
-    for (const region of outers) regions.push(region);
+    for (const region of groupRegions(rings, groups.get(key) as number[])) regions.push(region);
   }
   return regions;
+}
+
+/**
+ * The regions one owner's rings make: each outline, with every hole put in the
+ * smallest outline around it. None where the owner has holes and no outline.
+ */
+function groupRegions(rings: readonly Point[][], group: readonly number[]): Region[] {
+  const outers: Region[] = [];
+  const holes: Point[][] = [];
+  for (const i of group) {
+    const ring = rings[i] as Point[];
+    if (ringArea(ring) > 0) outers.push({ outer: ring, holes: [] });
+    else holes.push(ring);
+  }
+  if (outers.length === 0) return outers;
+  for (const hole of holes) {
+    const home = smallestAround(outers, hole[0] as Point);
+    if (home !== undefined) home.holes.push(hole);
+  }
+  return outers;
 }
 
 /** The smallest of the outlines a point stands inside, or none of them. */

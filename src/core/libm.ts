@@ -235,21 +235,39 @@ const PI_QUARTER = 0.7853981633974483;
  */
 export function atan2(y: number, x: number): number {
   if (Number.isNaN(x) || Number.isNaN(y)) return NaN;
+  const edge = atan2Edge(y, x);
+  if (edge !== undefined) return edge;
+  const z = atan(Math.abs(y / x));
+  if (x > 0) return y > 0 ? z : -z;
+  return y > 0 ? PI_HI - (z - PI_LO) : z - PI_LO - PI_HI;
+}
+
+/**
+ * `atan2` where a side is zero or infinite, which the arc tangent is never
+ * asked; undefined where both sides are finite and neither is zero.
+ */
+function atan2Edge(y: number, x: number): number | undefined {
   if (!Number.isFinite(x) && !Number.isFinite(y)) {
     const q = x > 0 ? PI_QUARTER : 3 * PI_QUARTER;
     return y > 0 ? q : -q;
   }
-  if (y === 0) {
-    // The sign of a zero decides the answer, so ask for it rather than compare.
-    if (x > 0 || Object.is(x, 0)) return y;
-    return Object.is(y, -0) ? -PI_HI : PI_HI;
-  }
-  if (x === 0) return y > 0 ? PI_HALF : -PI_HALF;
-  if (!Number.isFinite(y)) return y > 0 ? PI_HALF : -PI_HALF;
-  if (!Number.isFinite(x)) return x > 0 ? (y > 0 ? 0 : -0) : y > 0 ? PI_HI + PI_LO : -(PI_HI + PI_LO);
-  const z = atan(Math.abs(y / x));
-  if (x > 0) return y > 0 ? z : -z;
-  return y > 0 ? PI_HI - (z - PI_LO) : z - PI_LO - PI_HI;
+  if (y === 0) return atan2OnXAxis(y, x);
+  if (x === 0 || !Number.isFinite(y)) return y > 0 ? PI_HALF : -PI_HALF;
+  if (!Number.isFinite(x)) return atan2InfiniteX(y, x);
+  return undefined;
+}
+
+/** `atan2` of a zero `y`, whose sign decides the answer. */
+function atan2OnXAxis(y: number, x: number): number {
+  // The sign of a zero decides the answer, so ask for it rather than compare.
+  if (x > 0 || Object.is(x, 0)) return y;
+  return Object.is(y, -0) ? -PI_HI : PI_HI;
+}
+
+/** `atan2` of an infinite `x` and a finite, non-zero `y`. */
+function atan2InfiniteX(y: number, x: number): number {
+  if (x > 0) return y > 0 ? 0 : -0;
+  return y > 0 ? PI_HI + PI_LO : -(PI_HI + PI_LO);
 }
 
 /**
@@ -354,12 +372,8 @@ export function log(x: number): number {
   k += over >> 20;
   const f = value - 1;
   const dk = k;
-  if ((0x000f_ffff & (2 + high)) < 3) {
-    // |f| is under 2^-20, where the polynomial is two terms.
-    if (f === 0) return k === 0 ? 0 : dk * LN2_HI + dk * LN2_LO;
-    const r = f * f * (0.5 - 0.3333333333333333 * f);
-    return k === 0 ? f - r : dk * LN2_HI - (r - dk * LN2_LO - f);
-  }
+  // |f| is under 2^-20, where the polynomial is two terms.
+  if ((0x000f_ffff & (2 + high)) < 3) return logNearOne(f, k);
   const s = f / (2 + f);
   const z = s * s;
   const w = z * z;
@@ -371,6 +385,14 @@ export function log(x: number): number {
     return k === 0 ? f - (half - s * (half + r)) : dk * LN2_HI - (half - (s * (half + r) + dk * LN2_LO) - f);
   }
   return k === 0 ? f - s * (f - r) : dk * LN2_HI - (s * (f - r) - dk * LN2_LO - f);
+}
+
+/** `log` of `f + 1` times two to the `k`, where |f| is under 2^-20. */
+function logNearOne(f: number, k: number): number {
+  const dk = k;
+  if (f === 0) return k === 0 ? 0 : dk * LN2_HI + dk * LN2_LO;
+  const r = f * f * (0.5 - 0.3333333333333333 * f);
+  return k === 0 ? f - r : dk * LN2_HI - (r - dk * LN2_LO - f);
 }
 
 /** 1 / ln 2, for counting powers of two in the exponential. */
@@ -387,6 +409,12 @@ const P3 = 6.61375632143793436117e-5;
 const P4 = -1.6533902205465239e-6;
 const P5 = 4.13813679705723846039e-8;
 
+/** How many powers of two `exp` takes out of `x`, whose size is `a`, over half of ln 2. */
+function wholePowersOfTwo(x: number, a: number): number {
+  if (a < 1.0397207708399179) return x > 0 ? 1 : -1;
+  return Math.round(INV_LN2 * x);
+}
+
 /** Euler's number raised to `x`, the same to the last bit on every engine. */
 export function exp(x: number): number {
   if (Number.isNaN(x)) return NaN;
@@ -401,15 +429,9 @@ export function exp(x: number): number {
   let r = x;
   if (a > 0.34657359027997264) {
     // Over half of ln 2: take out whole powers of two and work on the rest.
-    if (a < 1.0397207708399179) {
-      k = x > 0 ? 1 : -1;
-      hi = x - k * LN2_HI;
-      lo = k * LN2_LO;
-    } else {
-      k = Math.round(INV_LN2 * x);
-      hi = x - k * LN2_HI;
-      lo = k * LN2_LO;
-    }
+    k = wholePowersOfTwo(x, a);
+    hi = x - k * LN2_HI;
+    lo = k * LN2_LO;
     r = hi - lo;
   } else if (a < 3.725290298461914e-9) {
     // Under 2^-28 the answer is 1 + x to the last bit.

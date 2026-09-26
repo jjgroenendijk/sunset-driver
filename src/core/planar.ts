@@ -60,12 +60,9 @@ function ringEdges(ring: readonly Point[], hole: boolean, set: number, into: Edg
   for (let i = 0; i < ring.length; i++) {
     const a = ring[i] as Point;
     const b = ring[(i + 1) % ring.length] as Point;
-    const ax = toGrid(a.x);
-    const ay = toGrid(a.y);
-    const bx = toGrid(b.x);
-    const by = toGrid(b.y);
-    if (reverse) pushEdge(into, bx, by, ax, ay, set);
-    else pushEdge(into, ax, ay, bx, by, set);
+    const from = reverse ? b : a;
+    const to = reverse ? a : b;
+    pushEdge(into, toGrid(from.x), toGrid(from.y), toGrid(to.x), toGrid(to.y), set);
   }
 }
 
@@ -141,28 +138,12 @@ function arrange(edges: Edges): Graph {
     else windClip[id] = (windClip[id] as number) + way;
   }
 
-  // An edge the rings cancel on has the same ground each side, so it bounds
-  // nothing and is dropped before the faces are walked.
-  const keptFrom: number[] = [];
-  const keptTo: number[] = [];
-  const keptSubject: number[] = [];
-  const keptClip: number[] = [];
-  for (let e = 0; e < from.length; e++) {
-    if (windSubject[e] === 0 && windClip[e] === 0) continue;
-    keptFrom.push(from[e] as number);
-    keptTo.push(to[e] as number);
-    keptSubject.push(windSubject[e] as number);
-    keptClip.push(windClip[e] as number);
-  }
-
+  const kept = woundEdges({ from, to, windSubject, windClip });
   const graph: Graph = {
     x,
     y,
-    from: keptFrom,
-    to: keptTo,
-    windSubject: keptSubject,
-    windClip: keptClip,
-    halves: keptFrom.length * 2,
+    ...kept,
+    halves: kept.from.length * 2,
     leaving: [],
     slot: [],
     cycle: [],
@@ -174,13 +155,43 @@ function arrange(edges: Edges): Graph {
   sortLeaving(graph);
   traceCycles(graph);
   gatherFaces(graph);
+  indexHalvesByFace(graph);
+  return graph;
+}
+
+/** The edges of a graph, each with how many rings of each input wind along it. */
+interface WoundEdges {
+  from: number[];
+  to: number[];
+  windSubject: number[];
+  windClip: number[];
+}
+
+/**
+ * The edges some ring still winds along. An edge the rings cancel on has the
+ * same ground each side, so it bounds nothing and is dropped before the faces
+ * are walked.
+ */
+function woundEdges(all: WoundEdges): WoundEdges {
+  const kept: WoundEdges = { from: [], to: [], windSubject: [], windClip: [] };
+  for (let e = 0; e < all.from.length; e++) {
+    if (all.windSubject[e] === 0 && all.windClip[e] === 0) continue;
+    kept.from.push(all.from[e] as number);
+    kept.to.push(all.to[e] as number);
+    kept.windSubject.push(all.windSubject[e] as number);
+    kept.windClip.push(all.windClip[e] as number);
+  }
+  return kept;
+}
+
+/** File every half-edge under the face on its left. */
+function indexHalvesByFace(graph: Graph): void {
   for (let half = 0; half < graph.halves; half++) {
     const face = graph.face[graph.cycle[half] as number] as number;
     const list = graph.halvesByFace.get(face);
     if (list === undefined) graph.halvesByFace.set(face, [half]);
     else list.push(half);
   }
-  return graph;
 }
 
 function halfFrom(graph: Graph, half: number): number {
@@ -368,23 +379,48 @@ function edgeLeftOf(graph: Graph, index: Buckets, px: number, py: number): numbe
       best = e;
     }
   }
-  if (best === -1) return -1;
-  // Of the two ways along that edge, the one running down the map has the
-  // point on its left.
-  const u = graph.from[best] as number;
-  const v = graph.to[best] as number;
-  return (graph.y[v] as number) < (graph.y[u] as number) ? 2 * best : 2 * best + 1;
+  return best === -1 ? -1 : downHalf(graph, best);
+}
+
+/**
+ * Of the two ways along edge `e`, the one running down the map. A point just
+ * right of the edge is on its left.
+ */
+function downHalf(graph: Graph, e: number): number {
+  const u = graph.from[e] as number;
+  const v = graph.to[e] as number;
+  return (graph.y[v] as number) < (graph.y[u] as number) ? 2 * e : 2 * e + 1;
 }
 
 /** Which faces the operation keeps: how many rings of each input wind round each one. */
 export function classify(graph: Graph, operation: Operation): boolean[] {
-  const subject = new Array<number>(graph.cycles).fill(0);
-  const clip = new Array<number>(graph.cycles).fill(0);
-  const known = new Array<boolean>(graph.cycles).fill(false);
   const inside = new Array<boolean>(graph.cycles).fill(false);
   // The face outside everything has no ring winding round it. Every other face
   // is reached by stepping over an edge from a face already counted.
   if (graph.outside === -1) return inside;
+  const { subject, clip, known } = faceWindings(graph);
+  for (let face = 0; face < graph.cycles; face++) {
+    if (!known[face]) continue;
+    inside[face] = keeps(operation, (subject[face] as number) !== 0, (clip[face] as number) !== 0);
+  }
+  return inside;
+}
+
+/** Whether `operation` keeps ground that is in the subject or not, and in the clip or not. */
+function keeps(operation: Operation, inSubject: boolean, inClip: boolean): boolean {
+  if (operation === 'union') return inSubject || inClip;
+  if (operation === 'difference') return inSubject && !inClip;
+  return inSubject && inClip;
+}
+
+/**
+ * How many rings of each input wind round each face, walked out from the face
+ * outside everything, and which faces the walk reached.
+ */
+function faceWindings(graph: Graph): { subject: number[]; clip: number[]; known: boolean[] } {
+  const subject = new Array<number>(graph.cycles).fill(0);
+  const clip = new Array<number>(graph.cycles).fill(0);
+  const known = new Array<boolean>(graph.cycles).fill(false);
   known[graph.outside] = true;
   const queue = [graph.outside];
   for (let head = 0; head < queue.length; head++) {
@@ -402,15 +438,7 @@ export function classify(graph: Graph, operation: Operation): boolean[] {
       queue.push(other);
     }
   }
-
-  for (let face = 0; face < graph.cycles; face++) {
-    if (!known[face]) continue;
-    const inSubject = (subject[face] as number) !== 0;
-    const inClip = (clip[face] as number) !== 0;
-    inside[face] =
-      operation === 'union' ? inSubject || inClip : operation === 'difference' ? inSubject && !inClip : inSubject && inClip;
-  }
-  return inside;
+  return { subject, clip, known };
 }
 
 /** Trace the edges the result keeps into rings, and gather the rings into regions. */
@@ -423,8 +451,32 @@ export function assemble(graph: Graph, inside: readonly boolean[]): Region[] {
     if (left === right) continue;
     kept[left ? 2 * e : 2 * e + 1] = true;
   }
+  const find = groundOf(graph, inside, faceOf);
 
-  // Faces of the result that touch along a dropped edge are one piece of ground.
+  const rings: Point[][] = [];
+  const owner: number[] = [];
+  const done = new Array<boolean>(graph.halves).fill(false);
+  for (let start = 0; start < graph.halves; start++) {
+    if (!kept[start] || done[start]) continue;
+    const walk = traceKept(graph, kept, done, start);
+    // Straightened on the whole grid units the walk is made of, where three
+    // points either stand on one line exactly or do not stand on one at all.
+    const simple = straighten(walk);
+    if (simple.length < 3) continue;
+    const ring = simple.map((p) => ({ x: p.x * GRID, y: p.y * GRID }));
+    if (Math.abs(ringArea(ring)) < MIN_RING_AREA) continue;
+    rings.push(ring);
+    owner.push(find(faceOf(start)));
+  }
+  return gatherRings(rings, owner);
+}
+
+/**
+ * The piece of ground each face of the result belongs to, as a face that
+ * stands for it. Faces of the result that touch along a dropped edge are one
+ * piece of ground.
+ */
+function groundOf(graph: Graph, inside: readonly boolean[], faceOf: (half: number) => number): (face: number) => number {
   const parent = new Array<number>(graph.cycles).fill(0).map((_, i) => i);
   const find = (a: number): number => {
     let root = a;
@@ -439,31 +491,21 @@ export function assemble(graph: Graph, inside: readonly boolean[]): Region[] {
     const rb = find(right);
     if (ra !== rb) parent[ra] = rb;
   }
+  return find;
+}
 
-  const rings: Point[][] = [];
-  const owner: number[] = [];
-  const done = new Array<boolean>(graph.halves).fill(false);
-  for (let start = 0; start < graph.halves; start++) {
-    if (!kept[start] || done[start]) continue;
-    const walk: Point[] = [];
-    let half = start;
-    do {
-      done[half] = true;
-      const u = halfFrom(graph, half);
-      walk.push({ x: graph.x[u] as number, y: graph.y[u] as number });
-      half = nextKept(graph, kept, half);
-      if (half === -1) break;
-    } while (half !== start);
-    // Straightened on the whole grid units the walk is made of, where three
-    // points either stand on one line exactly or do not stand on one at all.
-    const simple = straighten(walk);
-    if (simple.length < 3) continue;
-    const ring = simple.map((p) => ({ x: p.x * GRID, y: p.y * GRID }));
-    if (Math.abs(ringArea(ring)) < MIN_RING_AREA) continue;
-    rings.push(ring);
-    owner.push(find(faceOf(start)));
-  }
-  return gatherRings(rings, owner);
+/** The corners of the ring of kept edges that `start` opens, marking each edge done. */
+function traceKept(graph: Graph, kept: readonly boolean[], done: boolean[], start: number): Point[] {
+  const walk: Point[] = [];
+  let half = start;
+  do {
+    done[half] = true;
+    const u = halfFrom(graph, half);
+    walk.push({ x: graph.x[u] as number, y: graph.y[u] as number });
+    half = nextKept(graph, kept, half);
+    if (half === -1) break;
+  } while (half !== start);
+  return walk;
 }
 
 /**
