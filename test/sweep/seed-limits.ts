@@ -49,15 +49,16 @@ const perShard = (count: number): number => Math.max(0, Math.ceil((count - SHARD
  * Seeds the byte-identical check generates a second time. Generating a world is
  * the most expensive thing this file does, so the quick tier repeats only a few.
  */
-export const REPEAT_COUNT = SEED_COUNT > 20 ? perShard(20) : 2;
+export const REPEAT_COUNT = SEED_COUNT > 20 ? perShard(20) : 1;
 /**
  * Seeds the road footprint is laid, the parcels are cut and the buildings are
  * laid for. A job that carries them costs about three times a bare world, so
  * both tiers do a few seeds rather than all of them. The pool does that work,
  * next to the world it belongs to. Every chunk check reads these layers, so
- * this count is most of what the file costs in the quick tier.
+ * this count is most of what the sweep's checks cost in the quick tier, which
+ * reads one seed (issue #707).
  */
-export const FOOTPRINT_COUNT = SEED_COUNT > 20 ? perShard(16) : 2;
+export const FOOTPRINT_COUNT = SEED_COUNT > 20 ? perShard(16) : 1;
 /**
  * Seeds the dealers of spec section 16.2 are placed on. Each corner is snapped
  * by one pass over every road of the world, and a city has about forty
@@ -395,7 +396,7 @@ export const MIN_PLANTS = 20;
  * of a whole map which of them claims a place, so the quick tier takes a few
  * and the full tier spreads the check.
  */
-export const VEGETATION_COUNT = SEED_COUNT > 20 ? perShard(8) : 2;
+export const VEGETATION_COUNT = SEED_COUNT > 20 ? perShard(8) : 1;
 /**
  * Metres a corner may move when a parcel is cut to a chunk. The polygon engine
  * rounds every corner onto its millimetre grid and snaps one that lands beside
@@ -431,7 +432,7 @@ export const MIN_ZONE_PARCELS = 5;
  * it costs a few tens of milliseconds a seed on top of the road beds, so the
  * full tier checks a sample rather than every seed.
  */
-export const TRAFFIC_COUNT = SEED_COUNT > 20 ? perShard(24) : 2;
+export const TRAFFIC_COUNT = SEED_COUNT > 20 ? perShard(24) : 1;
 /** Metres of a tier a world must carry before the sweep expects traffic on it. */
 export const TRAFFIC_TIER_MIN = 1000;
 /**

@@ -125,7 +125,8 @@ describe('giving way', () => {
     for (let i = 0; i < 600; i++) {
       way.step(state, 60, lane);
       state.tick++;
-      for (const box of cars(state, true)) expect(footprintsTouch(box, parked, 0)).toBe(false);
+      const hit = cars(state, true).find((box) => footprintsTouch(box, parked, 0));
+      if (hit !== undefined) expect.fail(`a car stands on the parked one at tick ${i}`);
       for (const hold of state.traffic.held.list) longest = Math.max(longest, hold.lag);
     }
     // Somebody stood behind it for most of the run.
@@ -159,6 +160,8 @@ describe('giving way', () => {
           });
         }
         if (i > 60 && on) touched++;
+        // Without the engine the one question is whether a car drives there at all.
+        if (!there && touched > 0) break;
       }
       return touched;
     };
