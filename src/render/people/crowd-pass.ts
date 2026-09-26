@@ -12,6 +12,12 @@
  * Each steps away from the other, never to a fixed side: a person keeping
  * left who stepped to their right would walk into the other one.
  *
+ * Somebody else owns some of the people on the pavement: the player on foot,
+ * the police, the dealers, the queues at the stops, the startled running
+ * off. They are added with {@link CrowdPass.addFixed}. The crowd steps round
+ * them as round anybody, and takes the whole step itself, since they do not
+ * move for it. One of them coming up from behind is made room for too.
+ *
  * This is drawing only. A person of the crowd is a function of the tick and
  * reads nobody else (`pedestrians.ts`), and the step is less than a metre,
  * less than anything the simulation measures a person by.
@@ -51,6 +57,9 @@ const TIE = 1e-6;
 /** Metres per second under which a person stands rather than walks. */
 const STILL = 0.3;
 
+/** The group and the instance of somebody the crowd steps round who does not step themselves. */
+const FIXED = -1;
+
 /** The walkers of one frame, and the step each takes. The caller fills the first `count`. */
 export class CrowdPass {
   count = 0;
@@ -89,6 +98,11 @@ export class CrowdPass {
     return true;
   }
 
+  /** Take somebody the crowd steps round, who is drawn by someone else and does not step. */
+  addFixed(x: number, y: number, heading: number, speed: number): boolean {
+    return this.add(x, y, heading, speed, FIXED, FIXED);
+  }
+
   /** Work out each person's step, from everyone they have to make room for within {@link PASS_REACH}. */
   solve(): void {
     const n = this.count;
@@ -124,19 +138,38 @@ export class CrowdPass {
     const walksI = vi >= STILL;
     const walksJ = vj >= STILL;
     if (walksI === walksJ && (!walksI || (facing > SAME_WAY && Math.abs(vi - vj) <= OVERTAKE))) {
-      // Two standing, or two walking the same way at one pace: they move apart as they come close.
-      const near = Math.min(1, (NEAR - Math.hypot(dx, dy)) / (NEAR - CLEAR));
-      if (near <= 0) return;
-      // Facing one way, a tie sends them to opposite hands; facing each other, each to their right.
-      const tie = facing > 0 ? -1 : 1;
-      this.give(i, dx, dy, ci, si, near / 2, false, 1);
-      this.give(j, -dx, -dy, cj, sj, near / 2, false, tie);
+      this.apart(i, j, dx, dy, facing);
       return;
     }
-    const [gi, gj] = passers(walksI, walksJ, facing, vi, vj);
+    const [gi, gj] = this.movers(i, j, passers(walksI, walksJ, facing, vi, vj));
     const share = gi && gj ? 0.5 : 1;
     if (gi) this.give(i, dx, dy, ci, si, share, true, 1);
     if (gj) this.give(j, -dx, -dy, cj, sj, share, true, 1);
+  }
+
+  /** Two standing, or two walking the same way at one pace: they move apart as they come close. */
+  private apart(i: number, j: number, dx: number, dy: number, facing: number): void {
+    const near = Math.min(1, (NEAR - Math.hypot(dx, dy)) / (NEAR - CLEAR));
+    if (near <= 0) return;
+    // Facing one way, a tie sends them to opposite hands; facing each other, each to their right.
+    const tie = facing > 0 ? -1 : 1;
+    const fixedI = this.index[i] === FIXED;
+    const fixedJ = this.index[j] === FIXED;
+    const share = fixedI || fixedJ ? 1 : 0.5;
+    const hi = this.heading[i] as number;
+    const hj = this.heading[j] as number;
+    if (!fixedI) this.give(i, dx, dy, Math.cos(hi), Math.sin(hi), near * share, false, 1);
+    if (!fixedJ) this.give(j, -dx, -dy, Math.cos(hj), Math.sin(hj), near * share, false, tie);
+  }
+
+  /**
+   * Who of two passers moves: nobody drawn by someone else. One of those who
+   * should have made room leaves it to the other.
+   */
+  private movers(i: number, j: number, [gi, gj]: [boolean, boolean]): [boolean, boolean] {
+    const fixedI = this.index[i] === FIXED;
+    const fixedJ = this.index[j] === FIXED;
+    return [!fixedI && (gi || (fixedJ && gj)), !fixedJ && (gj || (fixedI && gi))];
   }
 
   /**

@@ -144,4 +144,7 @@ under their own heading there.
   them. Each steps away from the side the other stands on. A fixed side walks a person who keeps
   left straight into the other one, and the two looked stuck. A walker steps round a person who
   stands or walks slower alone. Company, which shares a lead, never makes room for itself.
+- The people drawn beside the crowd go into the pass with `addFixed`: the player on foot, the
+  startled, the queues at the stops, and the `standing` list of the police and the dealers. The
+  crowd steps round them and takes the whole step. Before, a walker went through them.
 - Heads turn to a car that passes fast and near (`WATCH_REACH`, `WATCH_SPEED`), in the renderer.
