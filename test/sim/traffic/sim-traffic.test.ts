@@ -114,6 +114,29 @@ describe(`traffic in the simulation (${SEED_COUNT} seeds)`, () => {
     physics.dispose();
   });
 
+  /**
+   * A place along a lane running east, 30 m ahead of where a car's tour drives
+   * it 2 to 10 s from now, clear of the junctions and of every car now.
+   */
+  const aheadOfTraffic = (traffic: AmbientTraffic, tick: number, lane: number): number => {
+    const pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
+    const clear = (x: number): boolean =>
+      traffic.near(x - 12, lane - 12, x + 12, lane + 12, []).every((id) => {
+        traffic.poseAt(id, tick, pose);
+        return Math.hypot(pose.x - x, pose.y - lane) > 10;
+      });
+    for (let t = tick + 120; t < tick + 600; t += 10) {
+      for (let id = 0; id < traffic.vehicles.length; id++) {
+        traffic.poseAt(id, t, pose);
+        const x = pose.x + 30;
+        const off = ((x % GRID_SPACING) + GRID_SPACING) % GRID_SPACING;
+        if (Math.abs(pose.y - lane) > 0.3 || Math.cos(pose.heading) < 0.99 || off < 20 || off > GRID_SPACING - 20) continue;
+        if (clear(x)) return x;
+      }
+    }
+    throw new Error('no car drives the lane');
+  };
+
   it('drives up on the verge round a car parked in the middle of a narrow road', () => {
     const seed = seeds[0] as number;
     const traffic = gridTraffic(seed);
@@ -121,9 +144,10 @@ describe(`traffic in the simulation (${SEED_COUNT} seeds)`, () => {
     // The dirt road: 5 m kerb to kerb, a lane each way, a metre of verge. The car leaves too little of the carriageway.
     const road = 2 * GRID_SPACING;
     const lane = road + laneOffset({ tier: 'dirt', lanes: TIERS.dirt.lanes }, 0);
-    physics.spawn(state, 60, road, 0);
-    // Longer than the others: the first car only comes up after a while, and passes at a crawl.
-    const { passed } = passing(state, physics, traffic, 60, lane, 2400);
+    // Parked ahead of a car whose tour drives the road eastward soon, clear of the junctions.
+    const x = aheadOfTraffic(traffic, state.tick, lane);
+    physics.spawn(state, x, road, 0);
+    const { passed } = passing(state, physics, traffic, x, lane, 1800);
     expect(state.traffic.promoted).toEqual([]);
     expect(passed, 'no car got past the parked one').toBeGreaterThan(0);
     physics.dispose();
