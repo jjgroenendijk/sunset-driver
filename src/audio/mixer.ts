@@ -172,16 +172,7 @@ export class Mixer {
    */
   private setSirens(plan: AudioPlan): void {
     const taken = new Array<boolean>(this.sirens.length).fill(false);
-    const placed = new Array<boolean>(plan.sirens.length).fill(false);
-    for (let i = 0; i < plan.sirens.length; i++) {
-      const siren = plan.sirens[i];
-      if (siren === undefined) continue;
-      const at = this.sirens.findIndex((voice, v) => !taken[v] && voice.unit === siren.id);
-      if (at < 0) continue;
-      taken[at] = true;
-      placed[i] = true;
-      this.sirens[at]?.set(siren, LEVELS.siren);
-    }
+    const placed = this.followSirens(plan, taken);
     for (let i = 0; i < plan.sirens.length; i++) {
       const siren = plan.sirens[i];
       if (siren === undefined || placed[i]) continue;
@@ -200,5 +191,23 @@ export class Mixer {
       voice.unit = -1;
       voice.silence();
     }
+  }
+
+  /**
+   * Hand each siren of the plan to the voice already following its unit,
+   * marking that voice `taken`. Returns which sirens of the plan were placed.
+   */
+  private followSirens(plan: AudioPlan, taken: boolean[]): boolean[] {
+    const placed = new Array<boolean>(plan.sirens.length).fill(false);
+    for (let i = 0; i < plan.sirens.length; i++) {
+      const siren = plan.sirens[i];
+      if (siren === undefined) continue;
+      const at = this.sirens.findIndex((voice, v) => !taken[v] && voice.unit === siren.id);
+      if (at < 0) continue;
+      taken[at] = true;
+      placed[i] = true;
+      this.sirens[at]?.set(siren, LEVELS.siren);
+    }
+    return placed;
   }
 }
