@@ -16,11 +16,11 @@
  */
 import { seedFromString } from '../core/rng.ts';
 import { sortedKeys } from '../core/sort.ts';
-import { GOODS } from './contraband.ts';
-import { FACTIONS } from './faction.ts';
+import { GOODS } from './crime/contraband.ts';
+import { FACTIONS } from './crime/faction.ts';
 import { cloneSimState, createSimState, type SimState } from './simulation.ts';
-import { VEHICLE_CLASSES } from './vehicle.ts';
-import { WEAPON_IDS } from './weapon.ts';
+import { VEHICLE_CLASSES } from './vehicles/vehicle.ts';
+import { WEAPON_IDS } from './weapons/weapon.ts';
 
 /** The name every save carries, so a stray piece of text is not read as one. */
 export const SAVE_FORMAT = 'sunset-driver-save';
@@ -30,7 +30,7 @@ export const SAVE_FORMAT = 'sunset-driver-save';
  * {@link SimState} changes meaning, and when one is added that an older save
  * cannot have: the record is read against a fresh one, so a save without the
  * new field is refused either way, and the version is what says so in words a
- * player understands. A save of another version is refused. `test/save.test.ts`
+ * player understands. A save of another version is refused. `test/sim/save.test.ts`
  * pins the version to a hash of the record's shape, so a new field that does
  * not raise it fails there.
  *

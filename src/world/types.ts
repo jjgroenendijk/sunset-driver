@@ -4,7 +4,7 @@
  */
 
 import type { Point as GeomPoint } from '../core/geom.ts';
-import type { ArchetypeName } from './archetype.ts';
+import type { ArchetypeName } from './terrain/archetype.ts';
 
 export type Zone = 'core' | 'inner' | 'industrial' | 'suburban' | 'outskirts' | 'wilderness';
 
@@ -327,7 +327,7 @@ export type WorldSkeleton = Omit<WorldDescription, 'roads' | 'corridors' | 'tram
 
 /**
  * The aircraft of spec section 11.3, as the world names them: a stand says
- * which one waits on it. `src/sim/roster.ts` holds what each one is made of.
+ * which one waits on it. `src/sim/vehicles/roster.ts` holds what each one is made of.
  */
 export type AircraftClass =
   | 'heli-light'

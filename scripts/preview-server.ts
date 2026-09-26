@@ -21,7 +21,7 @@
  */
 import { rmSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import type { PreviewRequest } from '../src/render/preview.ts';
+import type { PreviewRequest } from '../src/render/preview/preview.ts';
 import { readState, statePath, type ServerState } from './preview-client.ts';
 import { PreviewHost } from './preview-host.ts';
 

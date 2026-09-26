@@ -27,7 +27,7 @@ import { chromium, type Browser } from 'playwright-core';
 import { createServer, type ViteDevServer } from 'vite';
 import { seedFromString } from '../src/core/rng.ts';
 import { TICKS_PER_DAY } from '../src/sim/clock.ts';
-import type { MapPreviewRequest, MapPreviewResult } from '../src/ui/map-preview.ts';
+import type { MapPreviewRequest, MapPreviewResult } from '../src/ui/map/map-preview.ts';
 import { chromiumPath } from './chromium.ts';
 import { defaultOut, writePng } from './png.ts';
 

@@ -269,10 +269,10 @@ post chain and the colour grade in `docs/post.md`. The look all of it must keep 
 
 ## The preview page and the ground
 
-- `src/render/preview.ts` is the page half of that tool, and holds everything awkward about taking
-  the picture: a headless WebGPU canvas never reaches the compositor, so a screenshot of the page is
-  blank and the frame is read back off a render target; a render target set with `setRenderTarget`
-  skips the output pass and comes back almost black, so the target is set with
+- `src/render/preview/preview.ts` is the page half of that tool, and holds everything awkward about
+  taking the picture: a headless WebGPU canvas never reaches the compositor, so a screenshot of the
+  page is blank and the frame is read back off a render target; a render target set with
+  `setRenderTarget` skips the output pass and comes back almost black, so the target is set with
   `setOutputRenderTarget` instead; and WebGPU pads each row of a readback to 256 bytes, so a picture
   read without unpadding the rows comes back sheared, which looks exactly like a broken mesh.
 - `buildGroundAttributes` (`ground.ts`) asks the world which parcel and zone each vertex stands on,

@@ -25,10 +25,10 @@
  * The browser comes from Playwright, as the render previews' does.
  */
 import { resolve } from 'node:path';
-import type { PreviewRequest } from '../src/render/preview.ts';
+import type { PreviewRequest } from '../src/render/preview/preview.ts';
 
 // Vite, Playwright and the renderer's own modules are loaded inside `check`
-// rather than here, so `test/render-check.test.ts` can measure frames of its
+// rather than here, so `test/scripts/render-check.test.ts` can measure frames of its
 // own without any of them. They are most of what this file costs to import.
 
 /**
@@ -67,7 +67,7 @@ export interface FrameMetrics {
 
 /**
  * What the pixels say. `rgb` is the rows, top row first, three bytes a pixel,
- * which is what `src/render/preview.ts` hands back.
+ * which is what `src/render/preview/preview.ts` hands back.
  */
 export function measureFrame(rgb: Uint8Array, width: number, height: number): FrameMetrics {
   const pixels = width * height;
@@ -166,7 +166,7 @@ export function judgeFrame(metrics: FrameMetrics): string[] {
  */
 async function check(seedText: string): Promise<boolean> {
   const { seedFromString } = await import('../src/core/rng.ts');
-  const { BASE_DISTANCE } = await import('../src/render/camera.ts');
+  const { BASE_DISTANCE } = await import('../src/render/camera/camera.ts');
   const { PreviewHost } = await import('./preview-host.ts');
 
   // SwiftShader on every machine, because that is what CI draws on, and the

@@ -2,7 +2,7 @@
  * The engine note of spec section 15, modelled from what the record already
  * holds: the speed, the throttle and the roster row of the vehicle.
  *
- * There is no RPM in `sim/vehicle.ts`, and there should not be: the drivetrain
+ * There is no RPM in `sim/vehicles/vehicle.ts`, and there should not be: the drivetrain
  * of spec section 11.3 puts a force through the wheels and reads a speed back,
  * with no gearbox in between. So the gearbox lives here, in the audio, where it
  * is heard and nowhere else. It is a pure function of the speed, so a replay of
@@ -14,8 +14,8 @@
  * is spaced. Within a gear the revs run from idle to the redline, so a pull
  * through the box sweeps up, drops, and sweeps up again.
  */
-import { enginePowerScale } from '../sim/damage.ts';
-import type { VehicleClass, VehicleSpec, VehicleState } from '../sim/vehicle.ts';
+import { enginePowerScale } from '../sim/vehicles/damage.ts';
+import type { VehicleClass, VehicleSpec, VehicleState } from '../sim/vehicles/vehicle.ts';
 
 /** Where the revs sit with the engine running and the vehicle standing still. */
 export const IDLE_REV = 0.17;

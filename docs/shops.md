@@ -19,10 +19,10 @@ corners, and has its own page in `docs/market.md`.
 
 ## Which building is a shop
 
-- `buildShops(world, buildings)` (`src/world/shops.ts`) deals the trades over the buildings. Only a
-  `shop-row` can hold one — a storefront the player cannot enter is still scenery and still a
-  robbery target — and the trades are dealt per district, because a district's own shop rows are
-  its high street.
+- `buildShops(world, buildings)` (`src/world/city/shops.ts`) deals the trades over the buildings.
+  Only a `shop-row` can hold one — a storefront the player cannot enter is still scenery and still a
+  robbery target — and the trades are dealt per district, because a district's own shop rows are its
+  high street.
 - `SHOP_ORDER` runs commonest first, and a district fills from the top of it: one shop row gets the
   convenience store, and only a long high street reaches the property broker. So a small district
   is never the only one with a gun shop, and no district is left with nothing.
@@ -55,8 +55,8 @@ corners, and has its own page in `docs/market.md`.
 
 ## The door
 
-- `stepShops` (`src/sim/shop.ts`) runs before the physics, like the metro, because walking in moves
-  the player and the physics has to stand them on the ground where they landed.
+- `stepShops` (`src/sim/places/shop.ts`) runs before the physics, like the metro, because walking in
+  moves the player and the physics has to stand them on the ground where they landed.
 - It is also where the interact key is spent. A press that opens a door sets
   `player.held.interact`, so `SimPhysics.transfer` sees no edge on that tick and the car at the
   kerb stays shut. This hand-off is the whole reason the shops step before the physics and not
@@ -75,8 +75,8 @@ corners, and has its own page in `docs/market.md`.
 
 ## The counter and the prices
 
-- `offersOf(state, place)` (`src/sim/shop-stock.ts`) is the counter: a line, a price, and what
-  buying it does to the record. A row that cannot be taken is never offered, so a store sells
+- `offersOf(state, place)` (`src/sim/places/shop-stock.ts`) is the counter: a line, a price, and
+  what buying it does to the record. A row that cannot be taken is never offered, so a store sells
   nothing to a player at full health and the panel says so.
 - A clinic is the exception to that first rule. `CLINIC_SUPPLIES` — the naloxone, the test strips
   and the clean works of spec section 19 — is on the counter whatever the player's health, priced
@@ -94,9 +94,9 @@ corners, and has its own page in `docs/market.md`.
   The two are never read at once, because `travelRefusal` refuses a trip from inside a shop. The
   number keys reach the first `CHOICE_KEYS` rows. A longer counter is fine: a click or `Enter`
   hands any row to `Keyboard.choose`, and the next input frame carries it as `buy`.
-- What the last purchase said is in the record, on the visit, because `src/ui/shop-panel.ts` draws
-  the record and nothing else. A purchase is money out of `state.money` and then the offer's own
-  `take`; nothing else in the project may move the money for a trade.
+- What the last purchase said is in the record, on the visit, because `src/ui/panels/shop-panel.ts`
+  draws the record and nothing else. A purchase is money out of `state.money` and then the offer's
+  own `take`; nothing else in the project may move the money for a trade.
 - A respray writes `VehicleState.paint`, which starts as the colour of the vehicle's row of the
   roster, and takes the heat to nothing: the radio is looking for the colour it was. A change of
   clothes takes `CLOTHES_HEAT` off instead. The workshop works on the vehicle of the record, which
@@ -113,13 +113,13 @@ corners, and has its own page in `docs/market.md`.
 
 - Each `ShopOffer` carries what the panel shows beside its price: a `group` heading, a `look` for
   the preview, a `blurb` and a list of `facts`. The tables behind them — the foods, the care, the
-  paints and the weapon gauges — are `src/sim/shop-goods.ts`. They are plain data, so the
+  paints and the weapon gauges — are `src/sim/places/shop-goods.ts`. They are plain data, so the
   simulation stays free of the renderer.
-- The cursor belongs to `src/ui/shop-panel.ts`, not to the record. Hover, the arrow keys and a tap
-  move it. Buying always goes through `InputFrame.buy`, so a click replays like a number key.
+- The cursor belongs to `src/ui/panels/shop-panel.ts`, not to the record. Hover, the arrow keys and
+  a tap move it. Buying always goes through `InputFrame.buy`, so a click replays like a number key.
 - While a counter is open, `Keyboard.menu` gives the up and down arrows to the cursor. `W` and `S`
   still walk, so a player can still walk out of the room.
-- `ShopPreview` (`src/render/shop-preview.ts`) draws the look with the game's own renderer,
+- `ShopPreview` (`src/render/shops/shop-preview.ts`) draws the look with the game's own renderer,
   through a `CanvasTarget` on the panel's canvas. It swaps the target in for one draw and back,
   after the post chain. A second `WebGPURenderer` would be a second GPU device and would compile
   every shader twice.
@@ -138,9 +138,9 @@ corners, and has its own page in `docs/market.md`.
 
 ## The interior, drawn
 
-- `ShopInterior` (`src/render/interior.ts`) holds exactly one room: the one the player is standing
-  in. Nothing here streams and nothing is batched, because no second interior ever exists — every
-  other building is exterior only (spec section 10.3).
+- `ShopInterior` (`src/render/shops/interior.ts`) holds exactly one room: the one the player is
+  standing in. Nothing here streams and nothing is batched, because no second interior ever exists —
+  every other building is exterior only (spec section 10.3).
 - The room is a closed box and a `ClippingGroup` (`three/webgpu`) cuts the roof and the front wall
   away, so the camera overhead sees in. The two planes are in world space and are rebuilt on every
   `show`, so a room is built the same way whichever way its door faces. Clipping planes keep what
@@ -160,9 +160,10 @@ corners, and has its own page in `docs/market.md`.
 
 ## The map
 
-- `SHOP_POIS` (`src/ui/map.ts`) is the icon each trade is marked with: a workshop is the garage
+- `SHOP_POIS` (`src/ui/map/map.ts`) is the icon each trade is marked with: a workshop is the garage
   mark and a clinic the clinic mark, since that is what they are, and the broker has a key of its
   own. Every type of `POI_STYLES` has a shape and a colour no other type uses, and
-  `test/map.test.ts` pins that, so a new trade needs a new shape rather than a second use of one.
+  `test/ui/map/map.test.ts` pins that, so a new trade needs a new shape rather than a second use of
+  one.
 - `maps.ts` writes them into `MapPois.extra`, which is the one slot a system that owns places
   writes; both maps read it.

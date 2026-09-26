@@ -1,0 +1,246 @@
+import { Box3, Mesh, type MeshStandardMaterial } from 'three';
+import { describe, expect, it } from 'vitest';
+import { compareNumbers } from '../../../src/core/sort.ts';
+import { createVehicleState, isAircraft, ROSTER, specOf, VEHICLE_CLASSES, type VehicleClass } from '../../../src/sim/vehicles/vehicle.ts';
+import { VehicleModel } from '../../../src/render/vehicles/vehicle.ts';
+import {
+  BONNET,
+  LAMP,
+  SEAT,
+  saddleOf,
+  TAIL,
+  vehicleBoxes,
+  type Saddle,
+  type VehicleBox,
+} from '../../../src/render/vehicles/vehicle-mesh.ts';
+
+/**
+ * The models of spec sections 10.1 and 11.3: one silhouette per class.
+ *
+ * Nothing here needs a renderer, so the shapes are measured the way the
+ * building meshes are: build the model and read the geometry back.
+ */
+
+/** Metres a detail may stand outside the body the physics collides with. */
+const MAX_OVERHANG = 0.8;
+
+function meshes(model: VehicleModel): Mesh[] {
+  const found: Mesh[] = [];
+  model.group.traverse((object) => {
+    if (object instanceof Mesh) found.push(object);
+  });
+  return found;
+}
+
+describe('the vehicle models', () => {
+  it('gives every class a shape that stands on its own numbers', () => {
+    for (const cls of VEHICLE_CLASSES) {
+      const spec = ROSTER[cls];
+      const model = new VehicleModel(cls);
+      const bounds = new Box3().setFromObject(model.group);
+      // Nothing hangs far off the body the physics collides with: a light bar,
+      // a roll cage and a set of handlebars stand a little proud of it, and
+      // nothing stands a metre away from the vehicle it belongs to. An
+      // aircraft's wings and rotor are the exception: the physics holds its
+      // fuselage alone, so they span well past it, but never twice its length.
+      if (isAircraft(cls)) {
+        expect(bounds.max.z - bounds.min.z, cls).toBeLessThan(4 * spec.halfLength);
+        expect(bounds.max.x - bounds.min.x, cls).toBeLessThan(3 * spec.halfLength);
+      } else {
+        expect(bounds.max.x - spec.halfLength, cls).toBeLessThan(MAX_OVERHANG);
+        expect(-spec.halfLength - bounds.min.x, cls).toBeLessThan(MAX_OVERHANG);
+        expect(bounds.max.z - spec.halfWidth, cls).toBeLessThan(MAX_OVERHANG);
+        expect(bounds.max.y - spec.halfHeight, cls).toBeLessThan(MAX_OVERHANG);
+      }
+      // The model straddles the middle of the body, which is where the pose is.
+      expect(bounds.min.y, cls).toBeLessThan(0);
+      expect(bounds.max.y, cls).toBeGreaterThan(0);
+      model.dispose();
+      expect(model.group.children.length, cls).toBe(0);
+    }
+  });
+
+  it('draws a silhouette no two classes share', () => {
+    const shapes = VEHICLE_CLASSES.map((cls) => {
+      const model = new VehicleModel(cls);
+      const bounds = new Box3().setFromObject(model.group);
+      model.dispose();
+      // What a player reads from 60 m up is the footprint and how tall it is.
+      return `${(bounds.max.x - bounds.min.x).toFixed(2)}x${(bounds.max.z - bounds.min.z).toFixed(2)}x${(bounds.max.y - bounds.min.y).toFixed(2)}`;
+    });
+    expect(new Set(shapes).size).toBe(shapes.length);
+  });
+
+  it('paints every class in the colour its row picked', () => {
+    for (const cls of VEHICLE_CLASSES) {
+      const model = new VehicleModel(cls);
+      const used = new Set(
+        meshes(model).map((mesh) => (mesh.material as MeshStandardMaterial).color.getHex()),
+      );
+      expect(used.has(ROSTER[cls].paint), cls).toBe(true);
+      model.dispose();
+    }
+  });
+
+  it('draws a motorcycle on the two wheels it rides on, not the four it stands on', () => {
+    const bike = new VehicleModel('motorcycle');
+    // The physics needs a track to have any roll stiffness at all; the rider
+    // sees one wheel at each end, on the centreline.
+    expect(ROSTER.motorcycle.wheels).toHaveLength(4);
+    const wheels = bike.group.children.filter((child) => child.children.length > 0);
+    expect(wheels).toHaveLength(2);
+    for (const wheel of wheels) expect(wheel.position.z).toBe(0);
+    bike.dispose();
+
+    // A boat has neither.
+    const boat = new VehicleModel('boat');
+    expect(boat.group.children.filter((child) => child.children.length > 0)).toHaveLength(0);
+    boat.dispose();
+  });
+
+  it('rebuilds for the class the record names, and keeps nothing of the last one', () => {
+    const model = new VehicleModel('saloon');
+    expect(model.vehicle.cls).toBe('saloon');
+    const before = new Box3().setFromObject(model.group);
+
+    model.set(createVehicleState(specOf('bus'), 12, 34, 5));
+    expect(model.vehicle.cls).toBe('bus');
+    const after = new Box3().setFromObject(model.group);
+    expect(after.max.x - after.min.x).toBeGreaterThan(before.max.x - before.min.x);
+    expect(model.group.position.x).toBe(12);
+    expect(model.group.position.z).toBe(34);
+    const used = new Set(meshes(model).map((mesh) => (mesh.material as MeshStandardMaterial).color.getHex()));
+    expect(used.has(ROSTER.bus.paint)).toBe(true);
+    expect(used.has(ROSTER.saloon.paint)).toBe(false);
+    model.dispose();
+  });
+
+  it('hangs each wheel where its suspension left it', () => {
+    const model = new VehicleModel('saloon');
+    const spec = ROSTER.saloon;
+    const state = createVehicleState(spec);
+    const wheel = state.wheels[0] as (typeof state.wheels)[number];
+    wheel.suspension = spec.suspensionRest + 0.1;
+    model.set(state);
+    // The wheels are the groups with something in them that are not a door on its hinge.
+    const drawn = model.group.children.filter((child) => child.children.length > 0 && child.name !== 'door');
+    const mount = spec.wheels[0] as (typeof spec.wheels)[number];
+    expect((drawn[0] as { position: { y: number } }).position.y).toBeCloseTo(mount.y - wheel.suspension, 6);
+    model.dispose();
+  });
+});
+
+describe('the motorcycle', () => {
+  const spec = ROSTER.motorcycle;
+
+  it('builds the bike round the rider it carries', () => {
+    const saddle = saddleOf(spec) as Saddle;
+    const boxes = vehicleBoxes(spec);
+    // The seat is drawn with its top at the saddle, so the rider of
+    // `rider.ts` sits on the seat and not through it.
+    const seat = boxes.filter((part) => part.colour === SEAT && part.z === 0);
+    expect(seat).toHaveLength(1);
+    const top = (seat[0] as VehicleBox).y + (seat[0] as VehicleBox).height / 2;
+    expect(top).toBeCloseTo(saddle.y, 6);
+    // A grip at each end of the bars, and a peg for each boot.
+    const at = (x: number, y: number): VehicleBox[] =>
+      boxes.filter((part) => Math.abs(part.x - x) < 1e-6 && Math.abs(part.y - y) < 1e-6 && part.z !== 0);
+    expect(at(saddle.gripX, saddle.gripY).length).toBeGreaterThanOrEqual(2);
+    expect(at(saddle.pegX, saddle.pegY)).toHaveLength(2);
+  });
+
+  it('reads as a bike from above: a lamp at the nose, a tail light behind, bars across', () => {
+    const boxes = vehicleBoxes(spec);
+    const lamp = boxes.find((part) => part.colour === LAMP) as VehicleBox;
+    const tail = boxes.find((part) => part.colour === TAIL) as VehicleBox;
+    expect(lamp.x).toBeGreaterThan(spec.halfLength * 0.5);
+    expect(tail.x).toBeLessThan(-spec.halfLength * 0.5);
+    // The bars are the one part of a bike wider than the bike, which is what
+    // tells a bike from a box at the far end of a street.
+    const widest = Math.max(...boxes.map((part) => Math.abs(part.z) + part.width / 2));
+    expect(widest).toBeGreaterThan(spec.halfWidth * 1.3);
+  });
+
+  it('has no roof to lose, and ends that can go', () => {
+    const panels = new Set(vehicleBoxes(spec).map((part) => part.panel));
+    // A blow from above finds nothing on a bike to tear off; the nose and the
+    // tail are what a bike loses, and the middle of it always stays.
+    expect(panels.has('roof')).toBe(false);
+    expect(panels.has('front')).toBe(true);
+    expect(panels.has('rear')).toBe(true);
+    expect(panels.has(undefined)).toBe(true);
+  });
+});
+
+/** A silhouette a class does not build is a class the picker cannot show. */
+describe('the shape table', () => {
+  it('answers boxes for every class', () => {
+    for (const cls of VEHICLE_CLASSES as readonly VehicleClass[]) {
+      const boxes = vehicleBoxes(ROSTER[cls]);
+      expect(boxes.length, cls).toBeGreaterThan(2);
+      for (const part of boxes) {
+        expect(part.length, cls).toBeGreaterThan(0);
+        expect(part.height, cls).toBeGreaterThan(0);
+        expect(part.width, cls).toBeGreaterThan(0);
+      }
+    }
+  });
+});
+
+describe('the aircraft models', () => {
+  it('turns the blades of an aircraft while it is flown, and only then', () => {
+    const model = new VehicleModel('heli-light');
+    const blades = vehicleBoxes(ROSTER['heli-light']).filter((part) => part.spin !== undefined);
+    expect(blades.length).toBeGreaterThan(0);
+    const pivots = model.group.children.filter((child) => child.children.length > 0 && child.position.y > 0);
+    const before = pivots.map((pivot) => pivot.rotation.y);
+    model.spin(0);
+    expect(pivots.map((pivot) => pivot.rotation.y)).toEqual(before);
+    model.spin(0.1);
+    expect(pivots.some((pivot, i) => pivot.rotation.y !== before[i])).toBe(true);
+    model.dispose();
+  });
+});
+
+describe('the lofted bodies', () => {
+  /** The leaves each class can open, by the hinges its parts hang from. */
+  const leaves = (cls: VehicleClass): number[] =>
+    [...new Set(vehicleBoxes(ROSTER[cls]).flatMap((part) => (part.hinge === undefined ? [] : [part.hinge.leaf])))].sort(compareNumbers);
+
+  it('hangs every door and the bonnet each class has on a hinge of its own', () => {
+    for (const cls of ['compact', 'saloon', 'emergency', 'offroad'] as const) expect(leaves(cls), cls).toEqual([0, 1, 2, 3, BONNET]);
+    expect(leaves('sports')).toEqual([0, 1, BONNET]);
+    // A van's cab doors swing, and the doors of its load run back along it.
+    expect(leaves('van')).toEqual([0, 1, 2, 3, BONNET]);
+    expect(vehicleBoxes(ROSTER.van).some((part) => part.hinge?.axis === 'slide')).toBe(true);
+    expect(leaves('truck')).toEqual([0, 1]);
+    expect(leaves('bus')).toEqual([]);
+  });
+
+  it('builds a body of faces, with glass that is seen through', () => {
+    for (const cls of ['compact', 'saloon', 'sports', 'emergency', 'offroad', 'van', 'truck', 'bus'] as const) {
+      const parts = vehicleBoxes(ROSTER[cls]);
+      expect(parts.some((part) => part.faces !== undefined), cls).toBe(true);
+      expect(parts.some((part) => part.glass === true), cls).toBe(true);
+      const model = new VehicleModel(cls);
+      const glass = meshes(model).filter((mesh) => (mesh.material as MeshStandardMaterial).transparent);
+      expect(glass.length, cls).toBeGreaterThan(0);
+      model.dispose();
+    }
+  });
+
+  it('opens the bonnet and the doors the record says are open', () => {
+    const model = new VehicleModel('saloon');
+    const state = createVehicleState(ROSTER.saloon);
+    const hinges = (): number[] => model.group.children.filter((child) => child.name === 'door').map((hinge) => hinge.rotation.y + hinge.rotation.z);
+    model.set(state);
+    expect(hinges().every((angle) => angle === 0)).toBe(true);
+    state.leaves.open[BONNET] = 1;
+    state.leaves.open[3] = 1;
+    model.set(state);
+    const open = hinges().filter((angle) => angle !== 0);
+    // The bonnet is one part; the rear door is its skin and its window.
+    expect(open).toHaveLength(3);
+    model.dispose();
+  });
+});

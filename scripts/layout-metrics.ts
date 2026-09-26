@@ -10,12 +10,12 @@
  * per cell, because the pieces of the road footprint overlap at every junction
  * and adding their areas up counts an apron once per road that meets there.
  *
- * `test/seed-layout.test.ts` holds each number to the band `test/layout-bands.ts` pins,
+ * `test/sweep/seed-layout.test.ts` holds each number to the band `test/sweep/layout-bands.ts` pins,
  * and `landuse-preview.ts` prints them beside the picture.
  */
-import { airfieldAt } from '../src/world/airfield-frame.ts';
-import { AIRFIELD_KEEP } from '../src/world/airfields.ts';
-import { layoutZones, zoneAt } from '../src/world/districts.ts';
+import { airfieldAt } from '../src/world/transit/airfield-frame.ts';
+import { AIRFIELD_KEEP } from '../src/world/transit/airfields.ts';
+import { layoutZones, zoneAt } from '../src/world/terrain/districts.ts';
 import type { HeightfieldData, WorldDescription, Zone } from '../src/world/types.ts';
 import {
   COVER_APRON,

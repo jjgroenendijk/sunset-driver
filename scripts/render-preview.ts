@@ -3,7 +3,7 @@
  *
  * `world-preview.ts` draws the world description; this draws the game. It needs
  * a real WebGPU device, so it serves the project with Vite, opens the page in a
- * headless Chromium, and asks `src/render/preview.ts` for one frame.
+ * headless Chromium, and asks `src/render/preview/preview.ts` for one frame.
  *
  * The first run starts the preview server of `preview-server.ts` and leaves it
  * running; each run after that asks it for the frame. The server keeps the
@@ -111,10 +111,10 @@
  */
 import { seedFromString } from '../src/core/rng.ts';
 import { compareStrings } from '../src/core/sort.ts';
-import { BASE_DISTANCE } from '../src/render/camera.ts';
-import type { PreviewRequest } from '../src/render/preview.ts';
-import type { HeavyShow } from '../src/render/preview-heavy.ts';
-import type { Junction } from '../src/world/junctions.ts';
+import { BASE_DISTANCE } from '../src/render/camera/camera.ts';
+import type { PreviewRequest } from '../src/render/preview/preview.ts';
+import type { HeavyShow } from '../src/render/preview/preview-heavy.ts';
+import type { Junction } from '../src/world/junctions/junctions.ts';
 import { askServer, ensureServer, stopServer } from './preview-client.ts';
 import type { HostFrame } from './preview-host.ts';
 import { defaultOut, writePng } from './png.ts';
@@ -149,8 +149,8 @@ function num(name: string, fallback: number): number {
  */
 async function junctionAt(seed: number, index: number, tiers: string | undefined): Promise<Junction> {
   const { generateWorld } = await import('../src/world/world.ts');
-  const { buildRoadGraph } = await import('../src/world/graph.ts');
-  const { buildJunctions } = await import('../src/world/junctions.ts');
+  const { buildRoadGraph } = await import('../src/world/roads/graph.ts');
+  const { buildJunctions } = await import('../src/world/junctions/junctions.ts');
   const world = generateWorld(seed);
   const junctions = buildJunctions(world.roads, buildRoadGraph(world.roads)).junctions.filter(
     (junction) => tiers === undefined || mixOf(junction) === tiers,
@@ -187,8 +187,8 @@ if (junction !== undefined) {
 async function busStopPlace(): Promise<{ x: number; y: number } | undefined> {
   if (!options.has('bus-stop')) return undefined;
   const { generateWorld } = await import('../src/world/world.ts');
-  const { BusStops } = await import('../src/sim/bus-stops.ts');
-  const { AmbientTraffic, trafficRoadsOf } = await import('../src/sim/traffic.ts');
+  const { BusStops } = await import('../src/sim/transit/bus-stops.ts');
+  const { AmbientTraffic, trafficRoadsOf } = await import('../src/sim/traffic/traffic.ts');
   const world = generateWorld(seed);
   const roads = trafficRoadsOf(world);
   const stops = new BusStops(seed, new AmbientTraffic(seed, roads));
@@ -203,9 +203,9 @@ async function busStopPlace(): Promise<{ x: number; y: number } | undefined> {
 async function tramPlace(): Promise<{ x: number; y: number; heading?: number } | undefined> {
   if (!options.has('tram') && !options.has('stop')) return undefined;
   const { generateWorld } = await import('../src/world/world.ts');
-  const { tickAtHour } = await import('../src/render/daylight.ts');
-  const { AmbientTraffic, trafficRoadsOf } = await import('../src/sim/traffic.ts');
-  const { TramLine } = await import('../src/sim/tram.ts');
+  const { tickAtHour } = await import('../src/render/environment/daylight.ts');
+  const { AmbientTraffic, trafficRoadsOf } = await import('../src/sim/traffic/traffic.ts');
+  const { TramLine } = await import('../src/sim/transit/tram.ts');
   const world = generateWorld(seed);
   const roads = trafficRoadsOf(world);
   const line = new TramLine(seed, roads, world.tram, world.districts, new AmbientTraffic(seed, roads).signals);

@@ -12,23 +12,23 @@
  * pipeline for the object it draws with rather than for the material alone.
  */
 import type { City } from './city.ts';
-import { CasualtyView } from './render/casualties.ts';
-import { BusStopView } from './render/bus-stops.ts';
-import { CornerPropView } from './render/corners.ts';
-import { ContactMarkers, type ContactMark } from './render/markers.ts';
-import { EmergencyView } from './render/emergency.ts';
-import { OfficerGunView } from './render/officer-guns.ts';
-import { ParkedView } from './render/parked.ts';
-import { PedestrianView } from './render/pedestrians.ts';
-import { PoliceView } from './render/police.ts';
-import { TrafficView } from './render/traffic.ts';
-import { TramView } from './render/tram.ts';
-import { TramSignView } from './render/tram-signs.ts';
-import { TramStopView } from './render/tram-stops.ts';
-import { WildlifeView } from './render/wildlife.ts';
+import { CasualtyView } from './render/people/casualties.ts';
+import { BusStopView } from './render/transit/bus-stops.ts';
+import { CornerPropView } from './render/crime/corners.ts';
+import { ContactMarkers, type ContactMark } from './render/crime/markers.ts';
+import { EmergencyView } from './render/services/emergency.ts';
+import { OfficerGunView } from './render/services/officer-guns.ts';
+import { ParkedView } from './render/vehicles/parked.ts';
+import { PedestrianView } from './render/people/pedestrians.ts';
+import { PoliceView } from './render/services/police.ts';
+import { TrafficView } from './render/vehicles/traffic.ts';
+import { TramView } from './render/transit/tram.ts';
+import { TramSignView } from './render/transit/tram-signs.ts';
+import { TramStopView } from './render/transit/tram-stops.ts';
+import { WildlifeView } from './render/environment/wildlife.ts';
 import type { WorldScene } from './render/world-scene.ts';
-import type { ParkedCars } from './sim/parked.ts';
-import type { StandingPerson } from './render/pedestrians.ts';
+import type { ParkedCars } from './sim/traffic/parked.ts';
+import type { StandingPerson } from './render/people/pedestrians.ts';
 
 /** The views of a session, in the order they are drawn. */
 export interface SessionViews {

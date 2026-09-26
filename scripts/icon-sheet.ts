@@ -8,7 +8,7 @@
  */
 import { chromium, type Browser } from 'playwright-core';
 import { createServer, type ViteDevServer } from 'vite';
-import type { IconSheetRequest, IconSheetResult } from '../src/ui/icon-sheet.ts';
+import type { IconSheetRequest, IconSheetResult } from '../src/ui/map/icon-sheet.ts';
 import { chromiumPath } from './chromium.ts';
 import { defaultOut, writePng } from './png.ts';
 

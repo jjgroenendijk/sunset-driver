@@ -9,21 +9,21 @@
  */
 import type { WorldPlaces } from './places.ts';
 import type { SimState } from './sim/simulation.ts';
-import { DealerMarks } from './ui/dealers.ts';
-import { EnforcerMarks } from './ui/enforcers.ts';
-import { EmergencyCrews } from './ui/emergency-crews.ts';
-import { GiverBodies } from './ui/givers.ts';
-import { OfficerMarks } from './ui/officers.ts';
-import { MapArt } from './ui/map-draw.ts';
-import { MapPois } from './ui/map.ts';
-import { MapScreen } from './ui/map-screen.ts';
-import { Navigator } from './ui/map-route.ts';
-import { Minimap } from './ui/minimap.ts';
-import { MissionMarks } from './ui/missions.ts';
-import { placeMarks } from './ui/place-marks.ts';
-import { StreetLife } from './ui/street-life.ts';
-import { TerritoryOverlay } from './ui/territory.ts';
-import { buildRoadGraph, type RoadGraph } from './world/graph.ts';
+import { DealerMarks } from './ui/hud/dealers.ts';
+import { EnforcerMarks } from './ui/hud/enforcers.ts';
+import { EmergencyCrews } from './ui/hud/emergency-crews.ts';
+import { GiverBodies } from './ui/hud/givers.ts';
+import { OfficerMarks } from './ui/hud/officers.ts';
+import { MapArt } from './ui/map/map-draw.ts';
+import { MapPois } from './ui/map/map.ts';
+import { MapScreen } from './ui/map/map-screen.ts';
+import { Navigator } from './ui/map/map-route.ts';
+import { Minimap } from './ui/map/minimap.ts';
+import { MissionMarks } from './ui/map/missions.ts';
+import { placeMarks } from './ui/map/place-marks.ts';
+import { StreetLife } from './ui/hud/street-life.ts';
+import { TerritoryOverlay } from './ui/map/territory.ts';
+import { buildRoadGraph, type RoadGraph } from './world/roads/graph.ts';
 import type { WorldDescription } from './world/types.ts';
 
 /** The two maps, and the marks that move on them. */

@@ -5,21 +5,21 @@
  * The keys that drive the player are read by `Keyboard` once a tick; these act
  * once a press, on the page. They are here rather than in `main.ts` because
  * they are one subject — what a press opens or writes — and `main.ts` is the
- * boot. `ui/controls.ts` lists them for the player.
+ * boot. `ui/input/controls.ts` lists them for the player.
  */
-import type { FollowCamera } from './render/camera.ts';
-import { nextView, type CameraView } from './render/camera-view.ts';
-import { commitCrime } from './sim/police.ts';
+import type { FollowCamera } from './render/camera/camera.ts';
+import { nextView, type CameraView } from './render/camera/camera-view.ts';
+import { commitCrime } from './sim/police/police.ts';
 import type { SimState } from './sim/simulation.ts';
-import { FREE_CAMERA_KEY, type FreeCameraControls } from './ui/free-camera.ts';
-import { DEV_INFO_KEY } from './ui/hud.ts';
-import { MAP_CENTRE_KEY, MAP_KEY, MAP_LEGEND_KEY, type MapScreen } from './ui/map-screen.ts';
-import type { Minimap } from './ui/minimap.ts';
-import type { MouseLook } from './ui/mouse-look.ts';
-import type { Choice } from './ui/settings.ts';
-import { PAUSE_KEY, type PauseMenu } from './ui/pause.ts';
-import { PICKER_KEY, type VehiclePicker } from './ui/vehicle-picker.ts';
-import { WEAPON_PICKER_KEY, type WeaponPicker } from './ui/weapon-picker.ts';
+import { FREE_CAMERA_KEY, type FreeCameraControls } from './ui/input/free-camera.ts';
+import { DEV_INFO_KEY } from './ui/hud/hud.ts';
+import { MAP_CENTRE_KEY, MAP_KEY, MAP_LEGEND_KEY, type MapScreen } from './ui/map/map-screen.ts';
+import type { Minimap } from './ui/map/minimap.ts';
+import type { MouseLook } from './ui/input/mouse-look.ts';
+import type { Choice } from './ui/menus/settings.ts';
+import { PAUSE_KEY, type PauseMenu } from './ui/menus/pause.ts';
+import { PICKER_KEY, type VehiclePicker } from './ui/panels/vehicle-picker.ts';
+import { WEAPON_PICKER_KEY, type WeaponPicker } from './ui/panels/weapon-picker.ts';
 
 /** The debug keys that end a run (spec section 11.7), until the damage does. */
 const DIE_KEY = 'KeyK';

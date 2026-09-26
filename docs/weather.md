@@ -1,8 +1,9 @@
 # Weather
 
 The gotchas of the weather of spec section 13.4: what it is, what it changes, and what the frames
-caught that the code did not. `src/sim/weather.ts` is the model, `src/render/weather-look.ts` the
-light it bends and `src/render/weather-fx.ts` the rain, the puddles and the litter.
+caught that the code did not. `src/sim/city/weather.ts` is the model,
+`src/render/environment/weather-look.ts` the light it bends and
+`src/render/environment/weather-fx.ts` the rain, the puddles and the litter.
 
 ## Contents
 
@@ -12,11 +13,11 @@ light it bends and `src/render/weather-fx.ts` the rain, the puddles and the litt
 
 ## The model
 
-- `src/sim/weather.ts` is the weather of spec section 13.4, and it is a pure function of the seed
-  and the tick: nothing is kept, nothing is saved, and a save carries the tick so it carries the
-  weather. The day is cut into spells of `SPELL_TICKS` — two game hours — and each spell draws its
-  kind and its strength from its own stream. A spell hands over to the next across `TURN_TICKS`, so
-  nothing on screen or under the tyres jumps.
+- `src/sim/city/weather.ts` is the weather of spec section 13.4, and it is a pure function of the
+  seed and the tick: nothing is kept, nothing is saved, and a save carries the tick so it carries
+  the weather. The day is cut into spells of `SPELL_TICKS` — two game hours — and each spell draws
+  its kind and its strength from its own stream. A spell hands over to the next across `TURN_TICKS`,
+  so nothing on screen or under the tyres jumps.
 - Spells change on the odd hours (`SPELL_SHIFT`), so a session's 08:00 and a preview's noon fall in
   the middle of a spell. On a change the weather is half of each spell, and it rains if either
   spell rains. When spells changed on the even hours, rain fell at the start on 55% of seeds,

@@ -45,11 +45,11 @@ it back where the player stands.
 | `Shift` | Fly six times as fast. |
 | Wheel | Set the speed, between 2 and 600 metres a second. |
 
-On a touch browser the camera is flown with the pad of `src/ui/touch-fly.ts` instead. There is no
-pointer lock to ask for — iOS Safari has never had one — so the view is turned by dragging anywhere
-on the screen, the stick under the left thumb moves the camera, a pinch sets the speed, and the keys
-down the right edge rise, fall and go fast. The flight is started and ended from the bar of
-`src/ui/touch-bar.ts` rather than from `` ` ``. `docs/menus.md` holds the rest of what a phone
+On a touch browser the camera is flown with the pad of `src/ui/input/touch-fly.ts` instead. There is
+no pointer lock to ask for — iOS Safari has never had one — so the view is turned by dragging
+anywhere on the screen, the stick under the left thumb moves the camera, a pinch sets the speed, and
+the keys down the right edge rise, fall and go fast. The flight is started and ended from the bar of
+`src/ui/input/touch-bar.ts` rather than from `` ` ``. `docs/menus.md` holds the rest of what a phone
 changes.
 
 While the camera is detached the keys drive the camera alone: the simulation is stepped with an
@@ -66,8 +66,9 @@ the window loses focus, and the flight carries on without it: the keys still fly
 mouse does nothing, and a click on the canvas asks for the lock again. A hint over the canvas says
 which of the two states the camera is in and which key ends the flight.
 
-`src/render/free-camera.ts` is where it stands and where it looks. `src/ui/free-camera.ts` is the
-pointer lock, the mouse, the wheel and the touch pad, and `Keyboard.freeCamera` samples the keys.
+`src/render/camera/free-camera.ts` is where it stands and where it looks.
+`src/ui/input/free-camera.ts` is the pointer lock, the mouse, the wheel and the touch pad, and
+`Keyboard.freeCamera` samples the keys.
 
 ## `node scripts/world-preview.ts <seed> out.png [--tiers=highway]`
 
@@ -101,8 +102,8 @@ at a time hides that the maps all look alike.
 
 The seeds are the sweep's, in order. It builds the terrain alone, without roads, so 80 seeds take
 about 20 s. The console lists each tile with its seed, its archetype, its island count and the share
-of the map that is dry land. `test/layout-bands.ts` holds that share to `LAND_FRACTION`, and each
-archetype holds it to its own `landFraction`.
+of the map that is dry land. `test/sweep/layout-bands.ts` holds that share to `LAND_FRACTION`, and
+each archetype holds it to its own `landFraction`.
 
 ## `node scripts/landuse-preview.ts <seed> out.png`
 
@@ -123,9 +124,9 @@ road, how much is parcel with nothing on it, and how much is building.
 Under the picture it prints those shares as numbers, for every zone of the whole map and not only
 for the part it drew: the ground the roads claim, the ground the parcels claim, the ground the lots
 cover, the ground a junction apron or a corridor takes on top of the carriageways, the buildings per
-hectare and the middle parcel size. `test/layout-bands.ts` pins each of them to a band per zone and
-`test/seed-layout.test.ts` fails when a seed falls outside it, so a layout change is judged by the
-picture and the numbers together.
+hectare and the middle parcel size. `test/sweep/layout-bands.ts` pins each of them to a band per
+zone and `test/sweep/seed-layout.test.ts` fails when a seed falls outside it, so a layout change is
+judged by the picture and the numbers together.
 
 The shares are sampled off a grid, one reading per cell, and never added up from polygon areas: the
 pieces of the footprint overlap at every junction, so their areas together count an apron once per
@@ -171,8 +172,8 @@ how an icon is judged at the size it is read at: 18 pixels is the full map, 20 t
 is there to see what the drawing is meant to be.
 
 It draws through `map-icons.ts` and `POI_STYLES`, so the sheet cannot disagree with the game. Look
-at it before and after any change to a glyph in `src/ui/map-glyphs.ts`: a picture that reads at 30
-pixels may be a blob at 18, and the sheet is where that shows.
+at it before and after any change to a glyph in `src/ui/map/map-glyphs.ts`: a picture that reads at
+30 pixels may be a blob at 18, and the sheet is where that shows.
 
 ## `node scripts/render-preview.ts <seed> out.png`
 
@@ -263,10 +264,10 @@ and every preview was far paler than the game: a noon frame read 70 % bright whe
   `--no-server` draws in a browser of its own on the graphics card. `--stop-server` stops the
   server and draws nothing.
 
-It prints the lights and shadow cascades the frame cost beside the draw calls, and how many
-vehicles of the traffic, parked cars and pedestrians it drew. It also counts the buildings, street
-lamps and posters inside the view (`src/render/frame-contents.ts`). A thing missing from a picture
-looks the same as a thing never built; a count of zero tells the two apart.
+It prints the lights and shadow cascades the frame cost beside the draw calls, and how many vehicles
+of the traffic, parked cars and pedestrians it drew. It also counts the buildings, street lamps and
+posters inside the view (`src/render/frame/frame-contents.ts`). A thing missing from a picture looks
+the same as a thing never built; a count of zero tells the two apart.
 
 ## The preview server
 
@@ -275,8 +276,9 @@ looks the same as a thing never built; a count of zero tells the two apart.
 twenty idle minutes. Its output goes to `sunset-preview-<hash>.log` in the temporary directory.
 
 - The page keeps the renderer, and for the last seed and tier the world, the chunks, the traffic,
-  the crowd, the camera and the post chain (`src/render/preview-stage.ts`). A frame costs 20 ms once
-  its shaders are compiled. A view made again compiles them again, which cost 700 ms of every frame.
+  the crowd, the camera and the post chain (`src/render/preview/preview-stage.ts`). A frame costs 20
+  ms once its shaders are compiled. A view made again compiles them again, which cost 700 ms of
+  every frame.
 - A kept scene takes the same picture a new one does, byte for byte. Anything a request changes
   that the next one may not set again is reset in `clearStage` (`preview.ts`). A new kind of
   request that leaves state behind breaks this. Check it: draw a frame, draw the new request, draw

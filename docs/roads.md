@@ -45,7 +45,8 @@ their one-way ramps in `docs/interchanges.md`.
   The segments and their rules are `NetworkClearance` (`network-clearance.ts`), which the network
   extends.
 - A test that builds curves by hand gives them `nodes: []` and passes the list through `withNodes`
-  (`test/helpers.ts`). Without it every curve is an island of its own and no junction is found.
+  (`test/support/helpers.ts`). Without it every curve is an island of its own and no junction is
+  found.
 - No road lies over its own carriageway (`self-overlap.ts`): two places closer than the width,
   with more than `π / 2` times the width of curve between them. Every place of a segment is tried,
   so a point added on a straight stretch never changes the answer. `RoadNetwork.add` refuses such a
@@ -209,7 +210,7 @@ their one-way ramps in `docs/interchanges.md`.
   every step of a later road that crosses a highway away from a slot, so every highway crossing is
   at a slot or an interchange by construction. At most one road passes under the slots of each
   stretch between two interchanges; the next one has to reach the highway at an interchange
-  (issue #676, A4). `test/seed-interchanges.test.ts` bounds the slot crossings per kilometre.
+  (issue #676, A4). `test/sweep/seed-interchanges.test.ts` bounds the slot crossings per kilometre.
 - A deck over water is raised clear of the sea (`water-lift.ts`, called from `addCurve`, issue
   #304). Both abutments of a strait crossing stand at the shore, so without a lift the deck is a
   straight line about a metre over the water and its underside, `DECK_SOFFIT` below the surface it

@@ -12,14 +12,14 @@
  * page it opens. Nothing in the game imports this.
  */
 import { Offline } from 'tone';
-import type { Casualty } from '../sim/casualty-motion.ts';
+import type { Casualty } from '../sim/crowd/casualty-motion.ts';
 import { TICKS_PER_HOUR } from '../sim/clock.ts';
 import { EMPTY_INPUT, type InputFrame } from '../sim/input.ts';
-import type { PoliceKind, PoliceUnit } from '../sim/police.ts';
+import type { PoliceKind, PoliceUnit } from '../sim/police/police.ts';
 import { createSimState, type SimState } from '../sim/simulation.ts';
-import type { TramBell, TramNoise } from '../sim/tram.ts';
-import { weatherAt, type Weather } from '../sim/weather.ts';
-import { giveWeapon } from '../sim/weapon.ts';
+import type { TramBell, TramNoise } from '../sim/transit/tram.ts';
+import { weatherAt, type Weather } from '../sim/city/weather.ts';
+import { giveWeapon } from '../sim/weapons/weapon.ts';
 import type { Site, SiteSource } from './ambience.ts';
 import { barTicks } from './dial.ts';
 import { Mixer } from './mixer.ts';

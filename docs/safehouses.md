@@ -19,10 +19,10 @@ is a property too; `docs/aircraft.md` has what is its own.
 
 ## Where a property stands
 
-- `safehousePlaces(seed, districts, snap)` (`src/sim/safehouse.ts`) is the whole list: one property
-  per district. It is built on the main thread from the world's districts, the way the dealers of
-  `docs/market.md` are, and not in the chunk workers. Nothing about a safehouse is a building, so
-  nothing has to cross the worker boundary for one.
+- `safehousePlaces(seed, districts, snap)` (`src/sim/places/safehouse.ts`) is the whole list: one
+  property per district. It is built on the main thread from the world's districts, the way the
+  dealers of `docs/market.md` are, and not in the chunk workers. Nothing about a safehouse is a
+  building, so nothing has to cross the worker boundary for one.
 - A door is a point round the district's site, snapped to the nearest road, so it stands on a
   pavement a player can walk up to. `snap` is handed in rather than read here, which is what lets a
   simulation test stand a property on a bare hillside.
@@ -31,7 +31,7 @@ is a property too; `docs/aircraft.md` has what is its own.
   is the wilderness, which is the right answer.
 - There is no room behind the door and no interior. A safehouse is a door and a record: the panel
   opens on the step, as a deal opens on a corner. The renderer therefore knows nothing about
-  safehouses at all, and `src/render/interior.ts` still holds exactly one room — a shop's.
+  safehouses at all, and `src/render/shops/interior.ts` still holds exactly one room — a shop's.
 
 ## What it costs
 
@@ -44,7 +44,7 @@ is a property too; `docs/aircraft.md` has what is its own.
 ## Buying one
 
 - The broker's counter is the only place a property is sold, and the money is taken by
-  `src/sim/shop.ts` like any other shop row: nothing in `safehouse.ts` moves `state.money`.
+  `src/sim/places/shop.ts` like any other shop row: nothing in `safehouse.ts` moves `state.money`.
 - A counter shows `CHOICE_KEYS` rows, so an office sells the doors nearest it and not the whole
   city. A player who wants a door across town walks into the broker across town.
 - `buySafehouse` writes the row into `SimState.property.owned` and fills its garage. The first

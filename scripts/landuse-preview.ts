@@ -9,11 +9,11 @@
  * Usage: node scripts/landuse-preview.ts [seed] [out.png] [--half=350] [--x=0] [--y=0] [--width=900]
  */
 import { seedFromString } from '../src/core/rng.ts';
-import { buildBuildings, type BuildingKind } from '../src/world/buildings.ts';
-import { buildRoadGraph } from '../src/world/graph.ts';
-import { buildFootprint } from '../src/world/footprint.ts';
-import { buildParcels } from '../src/world/parcels.ts';
-import { buildTensorField } from '../src/world/tensor.ts';
+import { buildBuildings, type BuildingKind } from '../src/world/city/buildings.ts';
+import { buildRoadGraph } from '../src/world/roads/graph.ts';
+import { buildFootprint } from '../src/world/city/footprint.ts';
+import { buildParcels } from '../src/world/city/parcels.ts';
+import { buildTensorField } from '../src/world/roads/tensor.ts';
 import { generateWorld } from '../src/world/world.ts';
 import {
   KINDS,

@@ -26,7 +26,7 @@
  * the top of {@link Party.frame}, so a message from a socket never lands in the
  * middle of a tick.
  */
-import { normaliseAppearance, type CharacterAppearance } from '../sim/character.ts';
+import { normaliseAppearance, type CharacterAppearance } from '../sim/player/character.ts';
 import type { InputFrame } from '../sim/input.ts';
 import type { SimState } from '../sim/simulation.ts';
 import { applyWorld, readWorld, WorldSender, type WorldUpdate } from './divergence.ts';

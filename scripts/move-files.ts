@@ -9,12 +9,12 @@
  *
  * The script rewrites three kinds of path in every tracked text file:
  *
- * - a relative specifier in code (`'./batch.ts'`, `'../src/sim/traffic.ts'`),
+ * - a relative specifier in code (`'./batch.ts'`, `'../src/sim/traffic/traffic.ts'`),
  *   resolved against the file that holds it, in imports, worker URLs and CSS
  *   `@import` alike;
- * - a path from the repository root (`src/render/batch.ts`, and `/src/...` in
+ * - a path from the repository root (`src/render/streaming/batch.ts`, and `/src/...` in
  *   the HTML pages), in code, configs and docs;
- * - a path from the layer, without `src/` (`render/batch.ts`), as the docs
+ * - a path from the layer, without `src/` (`render/streaming/batch.ts`), as the docs
  *   write it.
  *
  * It then moves each file with `git mv`, so git follows the rename. A string

@@ -10,10 +10,10 @@
     "scripts/*.ts",
     "scripts/*.html",
     "src/audio/offline.ts",
-    "src/render/preview.ts",
-    "src/render/profile.ts",
-    "src/ui/icon-sheet.ts",
-    "src/ui/map-preview.ts"
+    "src/render/preview/preview.ts",
+    "src/render/preview/profile.ts",
+    "src/ui/map/icon-sheet.ts",
+    "src/ui/map/map-preview.ts"
   ],
   "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
   // The fixtures of the determinism lint break its rules on purpose; nothing imports them.

@@ -39,7 +39,7 @@
  *   --memory         report what the page and the GPU hold: settled after the
  *                    still frames, and at the most over the drive. The GPU is
  *                    counted by wrapping `createBuffer`, `createTexture` and
- *                    `destroy` (`src/render/memory.ts`); the page's heap and its
+ *                    `destroy` (`src/render/frame/memory.ts`); the page's heap and its
  *                    typed arrays come from DevTools, after a collection.
  *
  * GPU timings move by several milliseconds from one run to the next. Compare two
@@ -54,7 +54,7 @@ import { chromium } from 'playwright-core';
 import { createServer, type ViteDevServer } from 'vite';
 import { seedFromString } from '../src/core/rng.ts';
 import { compareStrings } from '../src/core/sort.ts';
-import type { FrameSample, ProfileRequest, ProfileResult } from '../src/render/profile.ts';
+import type { FrameSample, ProfileRequest, ProfileResult } from '../src/render/preview/profile.ts';
 import { chromiumPath } from './chromium.ts';
 import { printProfile, saveProfile, summariseProfile, type CpuProfile, type CpuSummary } from './cpu-profile.ts';
 import { percentile, saveRun } from './profile-run.ts';

@@ -1,7 +1,7 @@
 /**
  * The README's control table, generated from `CONTROLS`. The table drifted from
  * the bindings once already (issue #353), because it was written by hand beside
- * the one table `src/ui/controls.ts` says is the only description of the keys.
+ * the one table `src/ui/input/controls.ts` says is the only description of the keys.
  *
  * Run as a script it rewrites the table between the markers in `README.md`.
  * Imported it exports `readmeWithControls`, so the test can ask whether the file
@@ -9,13 +9,13 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { CONTROLS } from '../src/ui/controls.ts';
+import { CONTROLS } from '../src/ui/input/controls.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
 /** Where the README holds the generated table. */
 export const README = path.join(ROOT, 'README.md');
-const START = '<!-- controls: generated from src/ui/controls.ts by scripts/readme-controls.ts -->';
+const START = '<!-- controls: generated from src/ui/input/controls.ts by scripts/readme-controls.ts -->';
 const END = '<!-- end controls -->';
 
 /** `CONTROLS` as a markdown table, without the markers around it. */
@@ -39,6 +39,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.met
     console.log('README.md control table is current.');
   } else {
     fs.writeFileSync(README, next);
-    console.log('README.md control table rewritten from src/ui/controls.ts.');
+    console.log('README.md control table rewritten from src/ui/input/controls.ts.');
   }
 }

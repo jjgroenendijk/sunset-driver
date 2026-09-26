@@ -1,6 +1,6 @@
 /**
  * The page the previews draw in: Vite serving the project, a headless Chromium
- * with a WebGPU adapter, and `src/render/preview.ts` loaded in it.
+ * with a WebGPU adapter, and `src/render/preview/preview.ts` loaded in it.
  *
  * `render-preview.ts`, `render-sheet.ts`, `render-check.ts` and the preview
  * server all draw through this, so there is one place that knows how to get a
@@ -14,7 +14,7 @@
 import { statSync } from 'node:fs';
 import { chromium, type Browser, type Page } from 'playwright-core';
 import { createServer, type ViteDevServer } from 'vite';
-import type { PreviewRequest, PreviewResult } from '../src/render/preview.ts';
+import type { PreviewRequest, PreviewResult } from '../src/render/preview/preview.ts';
 import { chromiumPath } from './chromium.ts';
 
 /**

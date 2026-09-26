@@ -24,7 +24,7 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
   record and answer an `AudioPlan`. `voices.ts`, `one-shots.ts`, `cries.ts`, `beds.ts` and
   `mixer.ts` own the Web Audio node graph and play that plan. `game-audio.ts` is the door `main.ts`
   holds.
-- The split is what lets `test/audio.test.ts` run in Node. A rule that decides whether a sound
+- The split is what lets `test/audio/audio.test.ts` run in Node. A rule that decides whether a sound
   happens belongs in the pure half; a rule about how it sounds belongs in the other. When adding
   something, put the decision in `plan.ts` and let the mixer take it as given.
 - `frame.ts` calls `audio.update(state, input, listener)` once a frame with the **drawn** player
@@ -33,9 +33,9 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
 
 ## The engine has a gearbox the physics does not
 
-- `sim/vehicle.ts` has no RPM, and it should not: the drivetrain puts a force through the wheels and
-  reads a speed back. `engine.ts` is where the gearbox lives, and it exists only to be heard.
-  Nothing in it can reach the simulation.
+- `sim/vehicles/vehicle.ts` has no RPM, and it should not: the drivetrain puts a force through the
+  wheels and reads a speed back. `engine.ts` is where the gearbox lives, and it exists only to be
+  heard. Nothing in it can reach the simulation.
 - The box is geometric: first gear reaches `FIRST_GEAR` of the top speed and every gear after it is
   the same ratio longer, so each change sounds like the last. `GEARS` is a count per class of spec
   section 11.3, and a boat has one — direct drive.
@@ -54,12 +54,12 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
 - Footfalls are paced by the ground covered, not by the clock, so a sprint quickens on its own and
   standing still takes no step.
 - A blow of a melee weapon is the one cue read off a list rather than off a difference: `state.hits`
-  carries what a swing struck for a few ticks (`src/sim/melee.ts`), and the planner fires a cue for
-  every hit newer than the tick it last heard. `HIT_CUES` maps what was struck onto the sound —
-  `thud` for a body, `clang` for a panel, `knock` for a wall — and the place in the list is part of
-  the stream the pitch is jittered from, so a swing through a crowd is a run of knocks and not one
-  knock played over. `swing` is the whoosh of the weapon itself, and it is fired whether or not the
-  blow landed.
+  carries what a swing struck for a few ticks (`src/sim/weapons/melee.ts`), and the planner fires a
+  cue for every hit newer than the tick it last heard. `HIT_CUES` maps what was struck onto the
+  sound — `thud` for a body, `clang` for a panel, `knock` for a wall — and the place in the list is
+  part of the stream the pitch is jittered from, so a swing through a crowd is a run of knocks and
+  not one knock played over. `swing` is the whoosh of the weapon itself, and it is fired whether or
+  not the blow landed.
 - A shot's cue is `shotCue` of the weapon: `gunshot`, `shotgun`, `rifle`, `magnum` or
   `suppressed` for a gun, `flame` for the flamethrower, `launch` for a rocket, `thunk` for the M79
   and `swing` for a throw or a blow. A burst is read off `state.blasts` the way a blow is off
@@ -76,7 +76,7 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
 
 ## The hurt: cries, thumps and falling bodies
 
-- `hurt.ts` reads the people of spec section 13.1 who are hurt, and `test/audio-hurt.test.ts`
+- `hurt.ts` reads the people of spec section 13.1 who are hurt, and `test/audio/audio-hurt.test.ts`
   holds its rules. Every sound is read off a tick in the record, the way a blow is: a hit is the
   casualty's `since`, a round is its tracer's tick, a landing is `landingOf(record).tick`. So a
   frame hears the ticks it stepped over, and nothing twice.
@@ -120,11 +120,11 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
   it is; `radio.ts` hands the whole bar to the instruments at absolute context times once it is
   within `LOOKAHEAD`. That is the one place in `src/audio` where the audio clock and the game clock
   meet, and `dial.ts` is what keeps them from drifting.
-- `programme.ts` is the schedule: a song, then a break of the station's ident, and every
-  `PSA_EVERY` songs one of the harm-reduction announcements of spec section 19 (`psa.ts`). Nothing
-  synthesises a voice, so an announcement is a line on the HUD over a bed of the station's chords
-  and drums. The posters of section 19 are `src/render/poster-art.ts` and what the clinic hands
-  out free is `src/sim/shop-stock.ts`.
+- `programme.ts` is the schedule: a song, then a break of the station's ident, and every `PSA_EVERY`
+  songs one of the harm-reduction announcements of spec section 19 (`psa.ts`). Nothing synthesises a
+  voice, so an announcement is a line on the HUD over a bed of the station's chords and drums. The
+  posters of section 19 are `src/render/signage/poster-art.ts` and what the clinic hands out free is
+  `src/sim/places/shop-stock.ts`.
 
 ## The score over the radio
 
@@ -198,8 +198,9 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
 - Muted means **no graph at all**, not a gain of zero: the mixer is disposed of and rebuilt on the
   next unmuted frame. Spec section 15 asks that nothing be synthesised when muted, and a silent
   oscillator is still an oscillator.
-- The setting lives in `ui/settings.ts` beside the camera one. It is the Sound checkbox of the
-  Options column (`ui/title-settings.ts`), which the title screen and the pause menu both show.
+- The setting lives in `ui/menus/settings.ts` beside the camera one. It is the Sound checkbox of the
+  Options column (`ui/menus/title-settings.ts`), which the title screen and the pause menu both
+  show.
 - A paused session hushes the mix, and after half a second of hush `GameAudio` suspends the
   context: a silent oscillator still costs the audio thread its CPU. A hidden page suspends it too,
   because a hidden page draws no frames and would play the held notes on. The first frame that

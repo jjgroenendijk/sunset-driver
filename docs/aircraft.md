@@ -18,8 +18,8 @@ stand, how an aircraft flies, what the police do about it, and the hangar of sec
 
 ## Where the airfields stand
 
-- `planAirfields` (`src/world/airfields.ts`) runs before the roads and returns every field. The
-  airport comes first, then up to two airstrips, the two heliports and the seaplane dock.
+- `planAirfields` (`src/world/transit/airfields.ts`) runs before the roads and returns every field.
+  The airport comes first, then up to two airstrips, the two heliports and the seaplane dock.
 - A field is a rectangle in its own frame: `u` along the runway, `v` across it to the left.
   `airfield-frame.ts` holds the frame, and every question about a place on a field goes through it.
 - `findSite` scores candidate sites with `judge`. The score is the fall across the rectangle, the
@@ -47,9 +47,9 @@ stand, how an aircraft flies, what the police do about it, and the hangar of sec
 ## The road to the gate
 
 - The gate stands `GATE_OUT` past the rectangle: past the blend, on the ground as it was.
-- `serveField` (`src/world/roads.ts`) tries the gates from `gateChoices`, gentlest first. It keeps a
-  laid road only if the network then has a curve within `GATE_REACH` of the gate. The network can
-  keep only part of a route, and one seed's road began 185 m from its gate.
+- `serveField` (`src/world/roads/roads.ts`) tries the gates from `gateChoices`, gentlest first. It
+  keeps a laid road only if the network then has a curve within `GATE_REACH` of the gate. The
+  network can keep only part of a route, and one seed's road began 185 m from its gate.
 - `roadAtGate` measures to the segments, not to the points. A straight arterial has its points far
   apart, and a street laid to a gate it ran past ended on its carriageway.
 - Only the airport is served before the minor fill, with an arterial, and after the boardwalks. An
@@ -72,8 +72,8 @@ stand, how an aircraft flies, what the police do about it, and the hangar of sec
 
 ## The aircraft roster
 
-- `src/sim/aircraft-roster.ts` holds the nine aircraft. `ROSTER` spreads them in, so every lookup
-  by class finds them. `isAircraft` and `isMilitary` tell them apart.
+- `src/sim/vehicles/aircraft-roster.ts` holds the nine aircraft. `ROSTER` spreads them in, so every
+  lookup by class finds them. `isAircraft` and `isMilitary` tell them apart.
 - A helicopter has no wheels (`SKIDS`). `rideHeight` returns its `halfHeight`, so it rests on its
   skids. A plane has a tricycle gear. The seaplane has a hull and floats as a boat does.
 - `FlightSpec` is the whole flight model's input: `topSpeed`, `thrust` in m/s², `stall`, `climb`,
@@ -83,8 +83,8 @@ stand, how an aircraft flies, what the police do about it, and the hangar of sec
 
 ## Flight
 
-- `Flight` (`src/sim/flight.ts`) is arcade: it sets targets and closes on them. It does not model
-  lift. Physics calls it for every vehicle with a `flight`, after the wheels or the hull.
+- `Flight` (`src/sim/vehicles/flight.ts`) is arcade: it sets targets and closes on them. It does not
+  model lift. Physics calls it for every vehicle with a `flight`, after the wheels or the hull.
 - A rotor lifts only once the climb key asks. A wing's lift fades in over the last 30% below its
   stall speed, so a plane that slows sinks rather than drops.
 - Climb is `jump` (Space) and descend is `sprint` (Shift). `CEILING` is 260 m.
@@ -92,7 +92,7 @@ stand, how an aircraft flies, what the police do about it, and the hangar of sec
   until it is told to forget it, so every step resets the forces first.
 - A plane is airborne when no wheel touches. A helicopter or the seaplane is airborne above 1.2 m.
 - The camera adds `DISTANCE_PER_ALTITUDE` of zoom for each metre of height over the ground
-  (`src/render/camera.ts`).
+  (`src/render/camera/camera.ts`).
 
 ## Stands, theft and the picker
 
@@ -107,26 +107,26 @@ stand, how an aircraft flies, what the police do about it, and the hangar of sec
 
 ## The airside and the police
 
-- `stepAirside` (`src/sim/airside.ts`) runs every `AIRSIDE_EVERY` ticks and stores nothing. It
-  reports a player on the runway, a taxiway, the apron or a pad, up to `AIRSIDE_STARS`, and one in
-  the compound, up to `COMPOUND_STARS`. A player more than 4 m over the level is flying over it.
+- `stepAirside` (`src/sim/police/airside.ts`) runs every `AIRSIDE_EVERY` ticks and stores nothing.
+  It reports a player on the runway, a taxiway, the apron or a pad, up to `AIRSIDE_STARS`, and one
+  in the compound, up to `COMPOUND_STARS`. A player more than 4 m over the level is flying over it.
 - A pilot in a civil aircraft is exempt on the airside, because the hangar brings its aircraft out
   onto the apron. The compound is never exempt.
-- `helicopterFire` (`src/sim/officer-fire.ts`) fires the door gun at four stars and above, in
+- `helicopterFire` (`src/sim/police/officer-fire.ts`) fires the door gun at four stars and above, in
   bursts. At two stars the helicopter already comes up for a player who is flying.
 
 ## The hangar
 
-- `hangarPlaces` (`src/sim/hangar.ts`) makes the airport's first hangar a `SafehousePlace`. Its
-  door stands behind the hangar, on the landside, so walking to it is no trespass.
+- `hangarPlaces` (`src/sim/places/hangar.ts`) makes the airport's first hangar a `SafehousePlace`.
+  Its door stands behind the hangar, on the landside, so walking to it is no trespass.
 - `hangar` on the place is the yard in front of the doors. `carPlace` brings a garage vehicle out
   there instead of at the door, and the yard is on the taxiway.
 - A new hangar's garage holds `HANGAR_AIRCRAFT`, a light helicopter.
 
 ## Drawing an airfield
 
-- `airfieldMesh` (`src/render/airfield-mesh.ts`) builds every field once, as one merged mesh. The
-  scene adds it at the start. A map has a handful of fields, so they are not cut into chunks.
+- `airfieldMesh` (`src/render/roads/airfield-mesh.ts`) builds every field once, as one merged mesh.
+  The scene adds it at the start. A map has a handful of fields, so they are not cut into chunks.
 - Each surface kind lies at its own height over the level (`LIFT`), so overlapping parts never
   fight over one depth. The ramp is a strip laid on the carved ground's heights.
 - A rotor or a propeller is a `VehicleBox` with `spin`. `VehicleModel.spin(dt)` turns them.

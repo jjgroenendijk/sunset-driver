@@ -17,7 +17,7 @@
  * every peer computes from `(seed, tick)` is the same city, and this is only
  * the people in it.
  */
-import type { VehicleClass } from '../sim/vehicle.ts';
+import type { VehicleClass } from '../sim/vehicles/vehicle.ts';
 import type { PlayerFrame } from './move.ts';
 
 /**

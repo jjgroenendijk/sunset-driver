@@ -34,8 +34,8 @@ https://claude.ai/artifact/GG1rY85JAWdEPzsmQWcheo.
   faces by comparing with a centre. The mock-up did, and the low bonnet faces came out inside out.
 - A station must stand at each end of each door, bonnet and boot span. A span takes the intervals
   whose middles lie inside it.
-- Door length drives the boarding move. `test/boarding.test.ts` fails when a door longer than
-  about 1.15 m makes the body step faster than 0.1 m a tick. Move the door, not the test.
+- Door length drives the boarding move. `test/sim/player/boarding.test.ts` fails when a door longer
+  than about 1.15 m makes the body step faster than 0.1 m a tick. Move the door, not the test.
 
 ## The parts
 
@@ -52,13 +52,13 @@ https://claude.ai/artifact/GG1rY85JAWdEPzsmQWcheo.
 ## The leaves
 
 - Leaves are the four doors and the bonnet: 0 the driver's front door (`-z`), 1 the other front
-  door, 2 and 3 the rear doors, 4 the bonnet (`BONNET_LEAF`, `sim/leaves.ts`). A class simply has
-  no parts for a leaf it lacks.
+  door, 2 and 3 the rear doors, 4 the bonnet (`BONNET_LEAF`, `sim/vehicles/leaves.ts`). A class
+  simply has no parts for a leaf it lacks.
 - Every part of a leaf carries the same `hinge`. `VehicleModel` hangs each part from a group at
   that point, named `door`, and `swing` turns them. A door turns about up, the bonnet about the
   axle axis, and a van's load door slides back along the flank.
-- `VehicleState.leaves` holds `open` (0 to 1) and `want`. `sim/doors.ts` steps them each tick
-  toward their target:
+- `VehicleState.leaves` holds `open` (0 to 1) and `want`. `sim/vehicles/doors.ts` steps them each
+  tick toward their target:
   - the bonnet key (O), from the seat or beside the car;
   - a workshop visit, which holds the bonnet up;
   - `damage.ajar`, set when a panel's dent reaches `AJAR_DENT`, which leaves the front door of that
@@ -92,8 +92,8 @@ https://claude.ai/artifact/GG1rY85JAWdEPzsmQWcheo.
 
 ## Tests and previews
 
-- `test/vehicle-mesh.test.ts` checks which leaves each class hangs, that each body has faces and
-  transparent glass, and that the record's leaves turn the hinges.
-- `test/doors.test.ts` checks the stepping, the key, the workshop and the ajar flags.
+- `test/render/vehicles/vehicle-mesh.test.ts` checks which leaves each class hangs, that each body
+  has faces and transparent glass, and that the record's leaves turn the hinges.
+- `test/sim/vehicles/doors.test.ts` checks the stepping, the key, the workshop and the ajar flags.
 - `node scripts/render-preview.ts 7 out.png --vehicle=saloon --on-foot --heading=150 --distance=9
   --open=all` draws the doors and the bonnet open. `--open=doors` and `--open=bonnet` open one set.

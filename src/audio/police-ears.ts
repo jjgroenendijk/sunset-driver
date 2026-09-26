@@ -4,15 +4,15 @@
  * radio when the player is picked up or lost.
  *
  * This is the pure half. It reads the tracers and the barks the record keeps
- * (`src/sim/officer.ts`) and answers cues and cries; `one-shots.ts` and
+ * (`src/sim/police/officer.ts`) and answers cues and cries; `one-shots.ts` and
  * `cries.ts` play them as they play every other. The player's own shots are
  * counted off the loadout in `plan.ts`, so only a tracer marked `police` is
  * heard here, and only its first pellet: a shotgun blast is one bang.
  */
 import { hashInts } from '../core/hash.ts';
-import type { BarkKind } from '../sim/officer.ts';
+import type { BarkKind } from '../sim/police/officer.ts';
 import type { SimState } from '../sim/simulation.ts';
-import { TRACER_CAP } from '../sim/tracer.ts';
+import { TRACER_CAP } from '../sim/weapons/tracer.ts';
 import { cueAt, type Cue } from './cue.ts';
 import { cryOf, type Cry, type CryKind } from './cry.ts';
 

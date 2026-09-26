@@ -125,15 +125,15 @@ on 19 September 2026 the quick tier read 44 s and 118 CPU-seconds as one suite a
 CPU-seconds as thirteen files, one share of the 500 seeds 97 s and 244 against 97 s and 241, and
 `other` 31 s and 100 against 30 s and 100.
 
-Sweeps get their worlds from `worldsFor` in `test/world-pool.ts`, which generates them in worker
-threads, so no sweep calls `generateWorld` itself. `buildWorlds` takes a job per seed, and a job
-that sets `parts` lays the footprint, cuts the parcels and lays the buildings in the worker as well:
-they are the dearest things built on a world, and building them on the test thread is what pushed
-the quick tier over its budget. The pool hands out the jobs that ask for parts first, whatever order
-the caller listed them in, because one long job started last leaves every other worker idle. The
-road graph stays on the test thread, because it carries methods and cannot cross a thread boundary.
-`test/world-worker.ts` runs under plain Node, not Vite, so it may import only what `src/world`
-imports.
+Sweeps get their worlds from `worldsFor` in `test/sweep/world-pool.ts`, which generates them in
+worker threads, so no sweep calls `generateWorld` itself. `buildWorlds` takes a job per seed, and a
+job that sets `parts` lays the footprint, cuts the parcels and lays the buildings in the worker as
+well: they are the dearest things built on a world, and building them on the test thread is what
+pushed the quick tier over its budget. The pool hands out the jobs that ask for parts first,
+whatever order the caller listed them in, because one long job started last leaves every other
+worker idle. The road graph stays on the test thread, because it carries methods and cannot cross a
+thread boundary. `test/sweep/world-worker.ts` runs under plain Node, not Vite, so it may import only
+what `src/world` imports.
 
 ## What a check costs per seed
 

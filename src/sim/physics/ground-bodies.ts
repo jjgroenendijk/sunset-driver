@@ -1,0 +1,398 @@
+/**
+ * The ground the physics stands on, as Rapier colliders: a heightfield per tile
+ * of a grid around the player, the decks of the bridges over it, and the piers
+ * those decks stand on.
+ *
+ * The grid is anchored on the origin, so a tile is the same tile whenever it is
+ * built and two tiles agree along the edge they share. Only the box around the
+ * player carries colliders, so the physics streams the way the city does (spec
+ * section 9.1); `physics.ts` moves the box as the player moves.
+ */
+import RAPIER from '@dimforge/rapier3d-compat';
+import { cos, sin } from '../../core/libm.ts';
+import { PARAPET_HEIGHT, type DeckSpan } from '../../world/decks/decks.ts';
+import type { PierPost } from '../../world/decks/pier-posts.ts';
+import type { Surface } from '../../world/terrain/surface.ts';
+import type { Airfield } from '../../world/types.ts';
+import type { MetroPlace } from '../transit/metro.ts';
+import type { Place } from '../player/on-foot.ts';
+import type { ShopPlace } from '../places/shop.ts';
+import type { DealerPlace } from '../crime/dealer.ts';
+import type { SafehousePlace } from '../places/safehouse.ts';
+import type { MissionWorld } from '../missions/job.ts';
+import type { CrimeGround } from '../city/street-crime.ts';
+import type { ParkedCars } from '../traffic/parked.ts';
+import type { AmbientTraffic } from '../traffic/traffic.ts';
+import type { CrowdSource } from '../weapons/melee.ts';
+import type { EmergencyServices } from '../city/emergency.ts';
+import type { PoliceForce } from '../police/police.ts';
+import type { EnforcerGang } from '../crime/enforcer.ts';
+import type { TerritoryMap } from '../crime/territory.ts';
+import type { TramLine } from '../transit/tram.ts';
+
+/** Metres each way of one tile of ground the physics holds. */
+export const PHYSICS_TILE = 50;
+
+/** Metres between height samples of a tile. Four to a cell of the chunk terrain grid. */
+const PHYSICS_CELL = 2.5;
+
+/** Tiles each way of the player that carry a collider: a 250 m box around the car. */
+export const PHYSICS_RADIUS = 2;
+
+/** Height samples each way of one tile. */
+const TILE_CELLS = PHYSICS_TILE / PHYSICS_CELL;
+
+/**
+ * What the world is, as the physics needs it: how high the ground is at a
+ * place, what it is made of, and where the sea stands. `src/world` answers all
+ * three; nothing here knows how.
+ */
+export interface Ground {
+  /** The carved height of the ground at a place, in metres. */
+  heightAt(x: number, y: number): number;
+  /** What the ground is made of there. */
+  surfaceAt(x: number, y: number): Surface;
+  /** The one level the sea, the straits, the river and the harbour stand at. */
+  seaLevel: number;
+  /**
+   * The decks the roads are carried on, which the heightfield knows nothing
+   * about: a bridged segment carves no ground. A world with no bridges, and a
+   * test that only needs a hillside, leaves them out.
+   */
+  decks?: readonly DeckSpan[];
+  /**
+   * The piers those decks stand on (spec section 6.3), which the heightfield
+   * knows nothing about either: a pier carves no ground. A world with no
+   * bridges, and a test that only needs a hillside, leaves them out.
+   */
+  piers?: readonly PierPost[];
+  /**
+   * The airfields of spec section 8.4, whose airside the police guard. A test
+   * that is not about them leaves them out.
+   */
+  airfields?: readonly Airfield[];
+  /**
+   * The places the police stations are entered from (spec section 11.7), where
+   * an arrest puts the player back. A test that needs none leaves them out.
+   */
+  stations?: readonly Place[];
+  /**
+   * The street entrances of the metro stations (spec section 13.3), which fast
+   * travel goes between. A test that needs none leaves them out.
+   */
+  metro?: readonly MetroPlace[];
+  /**
+   * The shops of spec section 16.1, which the player walks into and buys from.
+   * A test that is not about them leaves them out, and every door is shut.
+   */
+  shops?: readonly ShopPlace[];
+  /**
+   * The dealers of spec section 16.2, one to a district, whose corners the
+   * player trades contraband at. A test that is not about them leaves them out,
+   * and nobody is dealing.
+   */
+  dealers?: readonly DealerPlace[];
+  /**
+   * The safehouses of spec section 16.3, one to a district, whose front doors
+   * the player buys and comes back to. A test that is not about them leaves
+   * them out, and the city has no property for sale.
+   */
+  safehouses?: readonly SafehousePlace[];
+  /**
+   * The ambient traffic of the roads (spec section 13.1). A test that is not
+   * about traffic leaves it out, and nothing drives past.
+   */
+  traffic?: AmbientTraffic;
+  /**
+   * The parked cars of the streets and car parks (spec section 13.1). The bays
+   * are laid out in the chunk workers, so the game sets this once they answer.
+   * Nothing parks where there is no traffic.
+   */
+  parked?: ParkedCars;
+  /**
+   * The crowd of spec section 13.1, who walk the pavements of the same roads.
+   * A test that is not about them leaves it out, and the street is empty: a
+   * swing meets nobody and nobody is put to flight.
+   */
+  crowd?: CrowdSource;
+  /** The trams of spec section 13.2. They run with the traffic, so a ground without traffic has none. */
+  tram?: TramLine;
+  /**
+   * The police of spec section 14, who route over the same roads the traffic
+   * drives. A test that is not about the police leaves it out, and nobody comes.
+   */
+  police?: PoliceForce;
+  /**
+   * The fire engines and the ambulances of spec section 20.3, who route over
+   * the same roads. A test that is not about them leaves it out, and nobody
+   * answers a fire.
+   */
+  emergency?: EmergencyServices;
+  /**
+   * The turf of spec section 17.2: which block is whose, and the enforcers a
+   * faction sends after a capture. A test that is not about the factions leaves
+   * them out, and no ground is anybody's.
+   */
+  turf?: TerritoryMap;
+  enforcers?: EnforcerGang;
+  /**
+   * The work of spec section 18: the contacts who hand it out and the corners
+   * they send the player to. A test that is not about the missions leaves them
+   * out, and nobody is offering anything.
+   */
+  missions?: MissionWorld;
+  /**
+   * The corners the street crime of spec section 20.5 happens on, one set to a
+   * district. A test that is not about it leaves them out, and the city behaves
+   * itself.
+   */
+  crimes?: readonly CrimeGround[];
+}
+
+/** One tile of ground, and where it stands. */
+interface GroundTile {
+  cx: number;
+  cy: number;
+  collider: RAPIER.Collider;
+}
+
+/** One deck standing in the world, and the span it was built from. */
+interface DeckPiece {
+  span: DeckSpan;
+  collider: RAPIER.Collider;
+}
+
+/** One pier standing in the world, and the post it was built from. */
+interface PierPiece {
+  post: PierPost;
+  collider: RAPIER.Collider;
+}
+
+/** The tiles, decks and piers standing in one Rapier world. */
+export class GroundBodies {
+  private readonly world: RAPIER.World;
+  private readonly ground: Ground;
+  private readonly tiles: GroundTile[] = [];
+  /** The decks standing in the world, over the same box of ground the tiles cover. */
+  private readonly decks: DeckPiece[] = [];
+  /** The piers standing in the world, over the same box of ground again. */
+  private readonly piers: PierPiece[] = [];
+  /** The tile the box was last laid around, so a step that stays in it lays nothing again. */
+  private laidAt: { cx: number; cy: number } | undefined;
+
+  constructor(world: RAPIER.World, ground: Ground) {
+    this.world = world;
+    this.ground = ground;
+  }
+
+  /** How many tiles of ground carry a collider, which the budget test measures. */
+  get count(): number {
+    return this.tiles.length;
+  }
+
+  /** Forget every collider, for a world that is being freed. */
+  clear(): void {
+    this.tiles.length = 0;
+    this.decks.length = 0;
+    this.piers.length = 0;
+    this.laidAt = undefined;
+  }
+
+  /**
+   * Make sure every tile within {@link PHYSICS_RADIUS} of a place carries a
+   * collider, and drop the ones the player has left behind. The grid is
+   * anchored on the origin, so a tile is the same tile whenever it is built.
+   *
+   * What stands is decided by the tile the place falls in and nothing else, so
+   * a step that leaves the player in the same tile has nothing to do. The
+   * physics calls this every step, and a world holds a few hundred piers.
+   */
+  cover(x: number, z: number): void {
+    const cx = Math.floor(x / PHYSICS_TILE);
+    const cy = Math.floor(z / PHYSICS_TILE);
+    if (this.laidAt?.cx === cx && this.laidAt.cy === cy) return;
+    this.laidAt = { cx, cy };
+    for (let i = this.tiles.length - 1; i >= 0; i--) {
+      const tile = this.tiles[i] as GroundTile;
+      if (Math.max(Math.abs(tile.cx - cx), Math.abs(tile.cy - cy)) <= PHYSICS_RADIUS) continue;
+      this.world.removeCollider(tile.collider, false);
+      this.tiles.splice(i, 1);
+    }
+    // Row by row and column by column, so the colliders go into the world in
+    // the same order however the player reached the place.
+    for (let ty = cy - PHYSICS_RADIUS; ty <= cy + PHYSICS_RADIUS; ty++) {
+      for (let tx = cx - PHYSICS_RADIUS; tx <= cx + PHYSICS_RADIUS; tx++) {
+        if (this.tiles.some((tile) => tile.cx === tx && tile.cy === ty)) continue;
+        this.tiles.push({ cx: tx, cy: ty, collider: this.layTile(tx, ty) });
+      }
+    }
+    this.coverDecks(cx, cy);
+    this.coverPiers(cx, cy);
+  }
+
+  /** The box of ground the decks and the piers are laid over: the one the tiles cover. */
+  private box(cx: number, cy: number): { minX: number; minY: number; maxX: number; maxY: number } {
+    return {
+      minX: (cx - PHYSICS_RADIUS) * PHYSICS_TILE,
+      minY: (cy - PHYSICS_RADIUS) * PHYSICS_TILE,
+      maxX: (cx + PHYSICS_RADIUS + 1) * PHYSICS_TILE,
+      maxY: (cy + PHYSICS_RADIUS + 1) * PHYSICS_TILE,
+    };
+  }
+
+  /**
+   * The decks over the same box of ground the tiles cover. A whole span is laid
+   * or dropped at once, however long it is: a bridge the player is halfway
+   * across must not end under them.
+   */
+  private coverDecks(cx: number, cy: number): void {
+    const spans = this.ground.decks;
+    if (spans === undefined || spans.length === 0) return;
+    const { minX, minY, maxX, maxY } = this.box(cx, cy);
+    const near = (span: DeckSpan): boolean =>
+      span.minX <= maxX && span.maxX >= minX && span.minY <= maxY && span.maxY >= minY;
+    for (let i = this.decks.length - 1; i >= 0; i--) {
+      const deck = this.decks[i] as DeckPiece;
+      if (near(deck.span)) continue;
+      this.world.removeCollider(deck.collider, false);
+      this.decks.splice(i, 1);
+    }
+    // In the order the world lists them, so the colliders go into the world in
+    // the same order however the player reached the place.
+    for (const span of spans) {
+      if (!near(span)) continue;
+      if (this.decks.some((deck) => deck.span === span)) continue;
+      this.decks.push({ span, collider: this.layDeck(span) });
+    }
+  }
+
+  /**
+   * The piers over the same box of ground, each dropped as soon as the player
+   * has left it behind. A pier is a box a few metres across, so it is laid and
+   * dropped one at a time rather than a whole bridge's worth at once.
+   */
+  private coverPiers(cx: number, cy: number): void {
+    const posts = this.ground.piers;
+    if (posts === undefined || posts.length === 0) return;
+    const { minX, minY, maxX, maxY } = this.box(cx, cy);
+    // A post is turned about its middle, so its reach is the diagonal of its own box.
+    const near = (post: PierPost): boolean => {
+      const reach = post.half * Math.SQRT2;
+      return post.x - reach <= maxX && post.x + reach >= minX && post.y - reach <= maxY && post.y + reach >= minY;
+    };
+    for (let i = this.piers.length - 1; i >= 0; i--) {
+      const pier = this.piers[i] as PierPiece;
+      if (near(pier.post)) continue;
+      this.world.removeCollider(pier.collider, false);
+      this.piers.splice(i, 1);
+    }
+    // In the order the world lists them, so the colliders go into the world in
+    // the same order however the player reached the place.
+    for (const post of posts) {
+      if (!near(post)) continue;
+      if (this.piers.some((pier) => pier.post === post)) continue;
+      this.piers.push({ post, collider: this.layPier(post) });
+    }
+  }
+
+  /**
+   * One pier as a Rapier cuboid: the column `corridor-mesh.ts` draws, from the
+   * ground under the foot up into the underside of its deck, turned the way the
+   * deck runs. A solid box, not a trimesh: a car is stopped by a pier, never
+   * driven over it.
+   *
+   * The world's `y` is Rapier's `z`, as it is for the ground tiles, so the turn
+   * is about Rapier's `y`.
+   */
+  private layPier(post: PierPost): RAPIER.Collider {
+    const half = (post.top - post.base) / 2;
+    return this.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(post.half, half, post.half)
+        .setTranslation(post.x, post.base + half, post.y)
+        .setRotation({ x: 0, y: sin(post.angle / 2), z: 0, w: cos(post.angle / 2) })
+        .setFriction(1),
+    );
+  }
+
+  /**
+   * One deck as a Rapier trimesh: the strip the road drives on, and a wall up
+   * each side of it where the parapet stands. A trimesh has no thickness, which
+   * is what the wheels' rays want; the walls are what keep the car on the
+   * bridge, as the parapet keeps a driver on it.
+   *
+   * The world's `y` is Rapier's `z`, as it is for the ground tiles.
+   */
+  private layDeck(span: DeckSpan): RAPIER.Collider {
+    const count = span.points.length;
+    const vertices = new Float32Array(count * 4 * 3);
+    for (let i = 0; i < count; i++) {
+      const p = span.points[i] as DeckSpan['points'][number];
+      const ox = p.acrossX * span.halfWidth;
+      const oy = p.acrossY * span.halfWidth;
+      // The deck tilts across as the drawn road does inside a junction's mouth.
+      const low = p.height - p.bank * span.halfWidth;
+      const high = p.height + p.bank * span.halfWidth;
+      const corners = [
+        [p.x - ox, low + PARAPET_HEIGHT, p.y - oy],
+        [p.x - ox, low, p.y - oy],
+        [p.x + ox, high, p.y + oy],
+        [p.x + ox, high + PARAPET_HEIGHT, p.y + oy],
+      ];
+      for (let c = 0; c < 4; c++) {
+        const corner = corners[c] as number[];
+        const at = (i * 4 + c) * 3;
+        vertices[at] = corner[0] as number;
+        vertices[at + 1] = corner[1] as number;
+        vertices[at + 2] = corner[2] as number;
+      }
+    }
+    // Three quads per step of the span: the left parapet, the deck, the right
+    // parapet. Each is two triangles between one section and the next.
+    const indices = new Uint32Array((count - 1) * 3 * 6);
+    let at = 0;
+    for (let i = 0; i + 1 < count; i++) {
+      for (let c = 0; c < 3; c++) {
+        const a = i * 4 + c;
+        const b = a + 1;
+        const d = (i + 1) * 4 + c;
+        const e = d + 1;
+        indices[at] = a;
+        indices[at + 1] = b;
+        indices[at + 2] = d;
+        indices[at + 3] = b;
+        indices[at + 4] = e;
+        indices[at + 5] = d;
+        at += 6;
+      }
+    }
+    return this.world.createCollider(RAPIER.ColliderDesc.trimesh(vertices, indices).setFriction(1));
+  }
+
+  /**
+   * One tile of ground as a Rapier heightfield.
+   *
+   * Rapier lays a heightfield in the XZ plane, centred on the collider, and
+   * reads its samples as `heights[j * (rows + 1) + i]`: `i` walks `z` and `j`
+   * walks `x`. The far row and column of a tile are the near ones of the next,
+   * sampled from the same ground, so the seam between two tiles is flat.
+   */
+  private layTile(tx: number, ty: number): RAPIER.Collider {
+    const heights = new Float32Array((TILE_CELLS + 1) * (TILE_CELLS + 1));
+    const x0 = tx * PHYSICS_TILE;
+    const y0 = ty * PHYSICS_TILE;
+    for (let j = 0; j <= TILE_CELLS; j++) {
+      for (let i = 0; i <= TILE_CELLS; i++) {
+        heights[j * (TILE_CELLS + 1) + i] = this.ground.heightAt(x0 + j * PHYSICS_CELL, y0 + i * PHYSICS_CELL);
+      }
+    }
+    return this.world.createCollider(
+      RAPIER.ColliderDesc.heightfield(TILE_CELLS, TILE_CELLS, heights, {
+        x: PHYSICS_TILE,
+        y: 1,
+        z: PHYSICS_TILE,
+      })
+        .setTranslation(x0 + PHYSICS_TILE / 2, 0, y0 + PHYSICS_TILE / 2)
+        .setFriction(1),
+    );
+  }
+}

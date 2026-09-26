@@ -1,10 +1,10 @@
-@import url('./title.css');
-@import url('./pause.css');
-@import url('./hud.css');
-@import url('./panels.css');
-@import url('./shop.css');
-@import url('./trade.css');
-@import url('./touch.css');
+@import url('./menus/title.css');
+@import url('./menus/pause.css');
+@import url('./hud/hud.css');
+@import url('./panels/panels.css');
+@import url('./panels/shop.css');
+@import url('./panels/trade.css');
+@import url('./input/touch.css');
 html, body { margin: 0; height: 100%; overflow: hidden; background: #17110d; color: #f3ebdb; font: 16px/1.5 system-ui, sans-serif; }
 /* Safari's toolbars grow and shrink as the page is scrolled, and `100%` is the
    height with them hidden, so a page sized that way is taller than the screen

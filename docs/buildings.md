@@ -27,12 +27,13 @@ and what lights them in `docs/lighting.md`.
   stand to the same height together. `boxesOf(shape, rect, height, chamfer)` is what turns the
   fractions into metres. Keeping the fractions shared is what stops the skyline jumping where the
   detail steps.
-- Two rules hold the street wall of spec section 10.3 together, and `test/building-shape.test.ts`
-  pins both. The first box covers the whole frontage and stands on the ground, so a row of
-  buildings has no daylight between its walls. Every side edge carries a wall from the front of the
-  lot to the back of it — except an L's, which cuts its notch out of one back corner, so `planOf`
-  draws an L only where that corner has no neighbour against it. A lot walled on both sides is
-  built as a box. The seed sweep checks this at mid detail and will fail on a plan that forgets it.
+- Two rules hold the street wall of spec section 10.3 together, and
+  `test/render/buildings/building-shape.test.ts` pins both. The first box covers the whole frontage
+  and stands on the ground, so a row of buildings has no daylight between its walls. Every side edge
+  carries a wall from the front of the lot to the back of it — except an L's, which cuts its notch
+  out of one back corner, so `planOf` draws an L only where that corner has no neighbour against it.
+  A lot walled on both sides is built as a box. The seed sweep checks this at mid detail and will
+  fail on a plan that forgets it.
 - A plan a lot has no room for falls back to the box. The lots of the core are wide and shallow —
   about 22 m by 16 m at the median — so the plans that split along the depth are rare and `step`,
   which splits along the frontage, is what varies most of the inner ring.
@@ -74,8 +75,8 @@ and what lights them in `docs/lighting.md`.
 - Masonry weighs four times any one other style. That is not taste: it is what holds the building
   LOD of spec section 9.2 together. A styled tower costs a fifth of a generated facade at near
   detail, so a core of styled towers alone would make near detail so cheap that mid detail could no
-  longer cost a tenth of it, and `test/seed-chunks.test.ts` would fail on the ratio rather than on
-  the cap. Change the weight and measure that test.
+  longer cost a tenth of it, and `test/sweep/seed-chunks.test.ts` would fail on the ratio rather
+  than on the cap. Change the weight and measure that test.
 - **Nothing a style lays on a wall reaches out of the box the shape gave it.** The walls are drawn
   in by whatever the relief stands proud — `REACH` in `tall-mesh.ts` — so the relief lands on the
   edge of the massing. A shell that reached past it would be scaled back by `fitOf`, and scaling
@@ -112,7 +113,7 @@ and what lights them in `docs/lighting.md`.
 - The first of the three numbers is the wall and the window light as one whole number stepped by
   `FINISH_STEP`. The attribute is packed into bytes — four a vertex, by `facade-pack.ts` on a
   facade and by `Shell.geometry` on a block — and a step that wide is what survives a byte.
-  `test/building-finish.test.ts` pins the round trip.
+  `test/render/buildings/building-finish.test.ts` pins the round trip.
 - Only a `BLOCK_WALL` fragment is drawn in one of the six wall materials (`wall-material.ts`). A
   styled tower carries its own walls — a curtain wall, board-marked concrete, cut stone, pastel
   stucco — and a generated masonry facade is shaded by the generator's own material.

@@ -11,7 +11,7 @@
  *
  * Pure, like the rest of the planning half: `radio.ts` is what plays it.
  */
-import { heatStars } from '../sim/crime.ts';
+import { heatStars } from '../sim/police/crime.ts';
 import type { SimState } from '../sim/simulation.ts';
 
 /** What the scene is, musically. */

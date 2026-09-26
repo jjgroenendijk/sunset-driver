@@ -1,12 +1,12 @@
-import { planAirfields, withAirfieldRoad } from './airfields.ts';
-import { nameBoardwalk, planBeaches, withBeachCulture, withBoardwalkRoad } from './beaches.ts';
-import { buildCorridors } from './corridors.ts';
-import { generateDistricts, layoutZones } from './districts.ts';
-import { buildRoadGraph } from './graph.ts';
-import { traceRoads } from './roads.ts';
-import { buildTensorField } from './tensor.ts';
-import { describeWater } from './crossings.ts';
-import { generateTerrain, layoutTerrain, TERRAIN_CELL } from './terrain.ts';
+import { planAirfields, withAirfieldRoad } from './transit/airfields.ts';
+import { nameBoardwalk, planBeaches, withBeachCulture, withBoardwalkRoad } from './terrain/beaches.ts';
+import { buildCorridors } from './transit/corridors.ts';
+import { generateDistricts, layoutZones } from './terrain/districts.ts';
+import { buildRoadGraph } from './roads/graph.ts';
+import { traceRoads } from './roads/roads.ts';
+import { buildTensorField } from './roads/tensor.ts';
+import { describeWater } from './junctions/crossings.ts';
+import { generateTerrain, layoutTerrain, TERRAIN_CELL } from './terrain/terrain.ts';
 import { worldSizeFor } from './size.ts';
 import type { WorldDescription, WorldSkeleton } from './types.ts';
 

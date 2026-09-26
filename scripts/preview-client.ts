@@ -11,7 +11,7 @@ import { closeSync, existsSync, openSync, readFileSync, rmSync, statSync } from 
 import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import type { PreviewRequest } from '../src/render/preview.ts';
+import type { PreviewRequest } from '../src/render/preview/preview.ts';
 import type { HostFrame } from './preview-host.ts';
 
 /** Where the server of this checkout says it listens. */

@@ -14,11 +14,11 @@
  * Headless and pure: the same world gives the same grid.
  */
 import type { Point, Region } from '../src/core/geom.ts';
-import { footprintParts, type FootprintParts } from '../src/world/footprint.ts';
-import type { RoadGraph } from '../src/world/graph.ts';
-import { Heightfield } from '../src/world/heightfield.ts';
-import type { BuildingKind, BuildingMap } from '../src/world/buildings.ts';
-import type { ParcelMap, ParcelOwner } from '../src/world/parcels.ts';
+import { footprintParts, type FootprintParts } from '../src/world/city/footprint.ts';
+import type { RoadGraph } from '../src/world/roads/graph.ts';
+import { Heightfield } from '../src/world/terrain/heightfield.ts';
+import type { BuildingKind, BuildingMap } from '../src/world/city/buildings.ts';
+import type { ParcelMap, ParcelOwner } from '../src/world/city/parcels.ts';
 import type { WorldDescription } from '../src/world/types.ts';
 
 /** What stands on a cell. The later codes cover the earlier ones. */

@@ -83,7 +83,7 @@ corridors in `docs/corridors.md`. The airfields of section 8.4 are in `docs/airc
   The determinism lint refuses the approximated set in `src/core`, `src/sim` and `src/world`, and
   `npm run test:world` builds a seed on both sides and fails when the two worlds differ.
 - **A function `libm.ts` does not hold yet is not a reason to reach for `Math`.** Add it there, with
-  the accuracy row in `test/libm.test.ts` that says how far from `Math` it may sit.
+  the accuracy row in `test/core/libm.test.ts` that says how far from `Math` it may sit.
 
 ## Beaches and boardwalks
 
@@ -330,9 +330,9 @@ corridors in `docs/corridors.md`. The airfields of section 8.4 are in `docs/airc
   boundary gives a piece to each side, and each piece carries the id and the owner of the whole
   parcel. A building is never cut: the chunk its lot's middle stands in owns the whole of it, and a
   plant belongs to the chunk it stands in the same way.
-- `test/seed-surface.test.ts` asks the chunk grid's ground against every road and junction vertex
-  drawn, and the middle of the triangles between them, and allows `SURFACE_ABOVE` above none of
-  them.
+- `test/sweep/seed-surface.test.ts` asks the chunk grid's ground against every road and junction
+  vertex drawn, and the middle of the triangles between them, and allows `SURFACE_ABOVE` above none
+  of them.
 - The seed sweep runs 6 seeds, or 500 under `SWEEP_SEEDS=500`. The quick count is what holds
   `npm test` under its 15 s, since a seed generates a whole world. The checks are grouped by
   subject, one `test/seed-*.test.ts` file each, and they all read the worlds `seed-fixture.ts`

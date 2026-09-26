@@ -44,8 +44,8 @@ scene ever holds in `docs/shops.md`. The aircraft and the airfields are drawn as
   way, and the body steps into the blow. The turn is about **up** (`yawL`, `yawR`, `twist`), not
   across, because the camera of spec section 10.7 looks straight down: an arm swung forward and back
   reads as nothing from there. How far through the swing the body is comes from `swingOf` in
-  `src/sim/melee.ts`, which reads it off the record, so the blow is drawn between two ticks like the
-  rest of the frame.
+  `src/sim/weapons/melee.ts`, which reads it off the record, so the blow is drawn between two ticks
+  like the rest of the frame.
 - `HeldWeapon` hangs the weapon off a **hand** group that takes the same `swingAngle`, so the weapon
   sweeps the arc the arm does rather than hanging level through it. Bare fists have no geometry, so
   the arm is the whole of that animation.
@@ -65,8 +65,8 @@ scene ever holds in `docs/shops.md`. The aircraft and the airfields are drawn as
   hip height below it, and hands it the whole of the vehicle's turn, so the rider leans into a
   corner with the bike. Legs are fixed angles — a leg is two pieces and any build lands near enough
   the pegs — but the arms are pointed at the grips through `pointArm`, so a tall player and a short
-  one both hold the bars. `test/rider.test.ts` measures the hands, the boots and the hips against
-  the places the mesh drew them.
+  one both hold the bars. `test/render/vehicles/rider.test.ts` measures the hands, the boots and the
+  hips against the places the mesh drew them.
 - `WorldScene.walkPlayer` is the one door: it stands the model where the frame says and animates it.
   Nothing else writes the player's pose. The move into a seat and out of it is in
   `docs/boarding.md`. The model is a handful of meshes rather than a crowd, so it is plain three.js
@@ -91,10 +91,10 @@ scene ever holds in `docs/shops.md`. The aircraft and the airfields are drawn as
   only part of a bike a camera 60 m up can pick out.
 - `weapon-mesh.ts` is the one place that says what shape each weapon is, and each attachment on it,
   as boxes in the weapon's own frame with the muzzle along `+x`. It holds no three.js.
-  `test/weapon-mesh.test.ts` draws every weapon from above on a 5 mm grid and fails when two share a
-  silhouette or an attachment changes nothing the camera sees. An extended magazine, a laser and a
-  foregrip each carry a part that stands out to the side, because a camera above sees nothing that
-  only hangs down.
+  `test/render/weapons/weapon-mesh.test.ts` draws every weapon from above on a 5 mm grid and fails
+  when two share a silhouette or an attachment changes nothing the camera sees. An extended
+  magazine, a laser and a foregrip each carry a part that stands out to the side, because a camera
+  above sees nothing that only hangs down.
 - `WeaponArt` (`weapon.ts`) merges a weapon's boxes into one geometry with a colour per vertex, and
   keeps one per weapon and attachment list, so the weapon in the hands and every pickup of the same
   kind share it. A pickup (`pickups.ts`) is drawn larger than life over a pale disc: a pistol at the
@@ -130,9 +130,9 @@ scene ever holds in `docs/shops.md`. The aircraft and the airfields are drawn as
 - `ViewModel` (`viewmodel.ts`) is the weapon in view in first person; `docs/camera.md` has it.
 - `EmergencyView` (`emergency.ts`) draws the fire engines and the ambulances of spec section 20.3.
   Neither service is a row of the roster, so each has a shape of its own in `emergency-mesh.ts`,
-  sized off `UNIT_BODY` of `sim/emergency.ts`: the box the player's car hits is the box drawn. Each
-  is built on what reads from 60 m up. An engine has a white cab roof and a ladder along its roof,
-  since nothing else in the city has rungs. An ambulance has a red cross on its roof. Keep the
+  sized off `UNIT_BODY` of `sim/city/emergency.ts`: the box the player's car hits is the box drawn.
+  Each is built on what reads from 60 m up. An engine has a white cab roof and a ladder along its
+  roof, since nothing else in the city has rungs. An ambulance has a red cross on its roof. Keep the
   ladder short of the light bar on the cab, or it hides the bar from above.
 - A unit's colours are on its vertices, so a kind is one body mesh and one mesh per
   phase of its beacons, and no instance paint. They are stepped once a tick like the police, so
@@ -149,11 +149,11 @@ scene ever holds in `docs/shops.md`. The aircraft and the airfields are drawn as
   `doors` times the door's `swing`. The geometry is built about the hinge for that reason, and a
   dark box behind each door is the doorway an open one shows.
 - The water comes from the crew, never from the engine. Where the crew stand is the record's
-  (`sim/emergency-crew.ts`); `render/emergency-crew.ts` adds only what they wear and the line of
-  the hose. `HoseLines` (`hose.ts`) draws each hose from the coupling on the flank that faces the
-  scene, along the road, to the nozzle in their hands; `HoseSpray` plays the water from that
-  nozzle. Each is one draw call for every engine in view. The bodies are the crowd's:
-  `ui/emergency-crews.ts` ends the list the crowd mesh draws, after the police on foot.
+  (`sim/city/emergency-crew.ts`); `render/services/emergency-crew.ts` adds only what they wear and
+  the line of the hose. `HoseLines` (`hose.ts`) draws each hose from the coupling on the flank that
+  faces the scene, along the road, to the nozzle in their hands; `HoseSpray` plays the water from
+  that nozzle. Each is one draw call for every engine in view. The bodies are the crowd's:
+  `ui/hud/emergency-crews.ts` ends the list the crowd mesh draws, after the police on foot.
 - The crew work from the flank nearer the scene, so a camera on the other side sees only the
   engine. The preview's blaze burns off the line towards the camera (`FIRE_ASIDE`) for that
   reason.
@@ -192,11 +192,11 @@ scene ever holds in `docs/shops.md`. The aircraft and the airfields are drawn as
 - **A shell of revolution wound like a tube's ring faces inwards.** The material draws front faces
   alone, so such a shell is lit on the inside: the crown comes out flat and dark and the trunk
   shows through it, which reads as a lighting bug rather than as a winding one. `canopy` and `cone`
-  wind the other way round from `tube`; `test/plant-mesh.test.ts` pins it.
+  wind the other way round from `tube`; `test/render/environment/plant-mesh.test.ts` pins it.
 - A model is built at the canopy its species claims at its ordinary size, and a placement scales it
   by `plant.radius / PLANT_RADIUS[species]` — the share of that size this plant grew to. So a model
   never reaches out of the ground `vegetation.ts` cleared for it, which is what carries the parcel
-  model's rule through to the frame; `test/plant-mesh.test.ts` pins both.
+  model's rule through to the frame; `test/render/environment/plant-mesh.test.ts` pins both.
 - The last model of each species is its accent, taken by `ACCENT_CHANCE` of the plants rather than
   by a quarter of them: an autumn canopy where the species turns, another ordinary tone where it
   does not. `plant-material.ts` drifts the whole canopy on top of that — dusty olive out in the dry
@@ -273,61 +273,62 @@ scene ever holds in `docs/shops.md`. The aircraft and the airfields are drawn as
 - The stairs stand on the kerb, which is `surfaceAt` plus `vergeRise(tier)`, the way a street lamp
   does. Left on the road bed the treads are buried and only the parapets show, which looks exactly
   like a stairwell that failed to build.
-- Where an entrance stands is `src/world/metro.ts` and not this directory, because the simulation
-  stands the player at the same place: `docs/city-life.md` has that half.
+- Where an entrance stands is `src/world/transit/metro.ts` and not this directory, because the
+  simulation stands the player at the same place: `docs/city-life.md` has that half.
 
 ## Traffic, parked cars and the crowd
 
-- `src/render/traffic.ts` draws the traffic of spec section 13.1 as four `InstancedMesh`es per
-  class: the parts in the row's paint, the trim with its colours per vertex, the glass and the
+- `src/render/vehicles/traffic.ts` draws the traffic of spec section 13.1 as four `InstancedMesh`es
+  per class: the parts in the row's paint, the trim with its colours per vertex, the glass and the
   tyres. A part whose colour is `VehicleSpec.paint` goes into the paint mesh, and the instance
   colour replaces it, so one mesh draws a saloon in every paint. A class with nothing in view is
   hidden, so it costs no draw. The traffic is evaluated at `tick - 1 + alpha`, the moment
   `smooth.ts` draws the player at, and a promoted vehicle is drawn from its record.
-- The body of an ambient car moves on its springs (`src/render/suspension.ts`). It pitches with the
-  car's change of speed and rolls with its turn, and rocks back once when either stops. The tyres
-  are a mesh of their own so they stay on the road. A bike leans into a turn instead, tyres and
-  all. The springs are drawing state kept per car id, and a gap of more than `GAP` between frames
-  resets them. A promoted car takes its turn from the physics.
-- A bike is ridden, so `src/render/bike-rider.ts` puts a figure of boxes on it: a fourth instanced
-  mesh for the one ambient class with a saddle, written only for the bikes still driving their
-  tours. A promoted bike has nobody driving it and a parked one nobody on it, so neither takes an
-  instance. The figure cannot be the `CharacterModel` the player rides with (`rider.ts`), since the
-  whole class is one geometry, but it sits on the same `saddleOf` seat, grips and pegs and takes
+- The body of an ambient car moves on its springs (`src/render/vehicles/suspension.ts`). It pitches
+  with the car's change of speed and rolls with its turn, and rocks back once when either stops. The
+  tyres are a mesh of their own so they stay on the road. A bike leans into a turn instead, tyres
+  and all. The springs are drawing state kept per car id, and a gap of more than `GAP` between
+  frames resets them. A promoted car takes its turn from the physics.
+- A bike is ridden, so `src/render/vehicles/bike-rider.ts` puts a figure of boxes on it: a fourth
+  instanced mesh for the one ambient class with a saddle, written only for the bikes still driving
+  their tours. A promoted bike has nobody driving it and a parked one nobody on it, so neither takes
+  an instance. The figure cannot be the `CharacterModel` the player rides with (`rider.ts`), since
+  the whole class is one geometry, but it sits on the same `saddleOf` seat, grips and pegs and takes
   the same `RIDE.lean`, so both riders move when the bike does. A strut is a box run between two
   points, and `strutOf` in `traffic.ts` pitches and turns it into place.
-- `src/render/signals.ts` draws the traffic lights, and `TrafficView` owns it, so the game and the
-  render preview draw them with no wiring of their own. Every head in view is one instance of the
-  frame and three of the lens mesh, so the lights cost two draws. The lens colour is set each frame
-  from `TrafficSignals.light`. The lenses stand proud of the housing, because the camera sees a head
-  from above and would not see a lens set flush in its face.
-- `src/render/parked.ts` draws the parked cars with the traffic's own parts, three meshes per class.
-  A parked car does not move, so `ParkedView` writes its instances only when the view has moved
-  `MOVE` metres, `REFRESH` ticks have passed, or a car was promoted. A frame between those uploads
-  nothing. `needsUpdate` on an instance matrix uploads the whole buffer, and at `PARKED_CAP` that is
-  about a megabyte a frame.
-- `src/render/pedestrians.ts` draws the crowd as one `Mesh` over an `InstancedBufferGeometry`, not
-  an `InstancedMesh`. An `InstancedMesh` applies its instance matrix before `positionNode` runs, so
-  a shader that skins the body has to do the placing too. `pedestrian-material.ts` reads each
-  vertex's bone matrix from the texture `bakeWalks` fills, at two frames of the gait's cycle, blends
-  them, and then scales, turns and places the body. It assigns `normalLocal` in the same `Fn`, or
-  the lighting sees the bind pose.
+- `src/render/roads/signals.ts` draws the traffic lights, and `TrafficView` owns it, so the game and
+  the render preview draw them with no wiring of their own. Every head in view is one instance of
+  the frame and three of the lens mesh, so the lights cost two draws. The lens colour is set each
+  frame from `TrafficSignals.light`. The lenses stand proud of the housing, because the camera sees
+  a head from above and would not see a lens set flush in its face.
+- `src/render/vehicles/parked.ts` draws the parked cars with the traffic's own parts, three meshes
+  per class. A parked car does not move, so `ParkedView` writes its instances only when the view has
+  moved `MOVE` metres, `REFRESH` ticks have passed, or a car was promoted. A frame between those
+  uploads nothing. `needsUpdate` on an instance matrix uploads the whole buffer, and at `PARKED_CAP`
+  that is about a megabyte a frame.
+- `src/render/people/pedestrians.ts` draws the crowd as one `Mesh` over an
+  `InstancedBufferGeometry`, not an `InstancedMesh`. An `InstancedMesh` applies its instance matrix
+  before `positionNode` runs, so a shader that skins the body has to do the placing too.
+  `pedestrian-material.ts` reads each vertex's bone matrix from the texture `bakeWalks` fills, at
+  two frames of the gait's cycle, blends them, and then scales, turns and places the body. It
+  assigns `normalLocal` in the same `Fn`, or the lighting sees the bind pose.
 - A WebGPU pipeline reads at most eight vertex buffers, and a `BufferAttribute` is a buffer each.
   Over eight, the pipeline fails and nothing is drawn, with only a console error to say so. The
   crowd packs its bone and colour part into one `rig` attribute and its eight instance attributes
   into one `InstancedInterleavedBuffer`, and it uploads only the `CROWD_STRIDE` floats of each
   person written. The rig, the props and the blends are in `docs/crowd.md`.
-- `src/render/bus-stops.ts` stands a post at each kerb the buses of spec section 20.2 call at, and
-  a shelter at the busy ones: two instanced meshes, so every stop in view costs two draws. A stop
-  never moves, so `BusStopView.update` takes no moment, only the place the frame is drawn round.
-  The stops come from `src/sim/bus-stops.ts` rather than from a chunk, because where a bus calls is
-  a function of the route it walked and the chunk worker has only the world.
-- `src/render/markers.ts` marks each mission contact of spec section 18 twice: a beam of light
+- `src/render/transit/bus-stops.ts` stands a post at each kerb the buses of spec section 20.2 call
+  at, and a shelter at the busy ones: two instanced meshes, so every stop in view costs two draws. A
+  stop never moves, so `BusStopView.update` takes no moment, only the place the frame is drawn
+  round. The stops come from `src/sim/transit/bus-stops.ts` rather than from a chunk, because where
+  a bus calls is a function of the route it walked and the chunk worker has only the world.
+- `src/render/crime/markers.ts` marks each mission contact of spec section 18 twice: a beam of light
   standing on the road they stand on, and a diamond turning over their head. Each is one instanced
-  mesh, so the whole city's contacts cost two draws. Who stands where is `src/ui/givers.ts`; this
-  only turns and bobs them off the frame's own moment, so two machines at the same tick draw the
-  same frame. The colour is per instance — amber while the contact will talk, dull while they will
-  not — so both pools pass through `tinted`, or the warm-up compiles a program that never reads it.
+  mesh, so the whole city's contacts cost two draws. Who stands where is `src/ui/hud/givers.ts`;
+  this only turns and bobs them off the frame's own moment, so two machines at the same tick draw
+  the same frame. The colour is per instance — amber while the contact will talk, dull while they
+  will not — so both pools pass through `tinted`, or the warm-up compiles a program that never reads
+  it.
 - The beam is added over the scene and writes no depth, as the light a police bar throws is
   (`beacons.ts`): a real light would turn the clustered path on for every fragment in the city. Its
   column fades to black at the head on its own vertices, so the top of it has no edge.
@@ -337,7 +338,7 @@ scene ever holds in `docs/shops.md`. The aircraft and the airfields are drawn as
 - A gait is a row of the baked texture, so a new one goes at the **end** of `GAITS`. `raise` in
   `SWINGS` holds both arms at a fixed angle over the swing: the `aim` gait of the police on foot has
   them straight out in front. The fourth value of `pedMotion` is free for a flag, and
-  `render/uniform.ts` uses it for the police uniform (`docs/police.md`).
+  `render/services/uniform.ts` uses it for the police uniform (`docs/police.md`).
 
 ## Blood
 
@@ -361,10 +362,10 @@ scene ever holds in `docs/shops.md`. The aircraft and the airfields are drawn as
 
 ## The casualties
 
-- `src/render/casualties.ts` draws the people who have been hit, the medics at them and the cash on
-  the dead. The people are one instance each of the crowd's body and material, so they cost one
-  draw however many there are; the cash is one more. `crowd-instances.ts` holds the instanced body
-  both views share.
+- `src/render/people/casualties.ts` draws the people who have been hit, the medics at them and the
+  cash on the dead. The people are one instance each of the crowd's body and material, so they cost
+  one draw however many there are; the cash is one more. `crowd-instances.ts` holds the instanced
+  body both views share.
 - The bones come from a `DataTexture` written every frame, one row per person, not from the baked
   walks. The shader reads row `motion.x` and the row after, and blends them by the fraction of
   `motion.y * FRAMES`. So each instance has `motion.y = 0` and `motion.x` its own row, and the
@@ -380,7 +381,7 @@ scene ever holds in `docs/shops.md`. The aircraft and the airfields are drawn as
   are written about the hips and divided by the person's size, because the shader scales them
   back up by `motion.z` before it places them.
 - A medic of an ambulance is drawn here only while the record has them knelt at a body; the walk
-  out of the back and back again is the crowd's mesh (`ui/emergency-crews.ts`). Drawing them in
+  out of the back and back again is the crowd's mesh (`ui/hud/emergency-crews.ts`). Drawing them in
   both would stand a knelt medic up as well.
 - A fallen member of an emergency crew lies here too, in the gear of their role (spec section
   20.3), as a fallen officer lies in their uniform.

@@ -14,18 +14,18 @@
  * a pure function of the seed and the world built from it, so two sessions of
  * one seed are driven through the same streets.
  */
-import { BusStops } from './sim/bus-stops.ts';
-import { StreetCorners } from './sim/corners.ts';
-import type { Ground } from './sim/ground-bodies.ts';
-import { EmergencyServices } from './sim/emergency.ts';
-import { AmbientPedestrians, crowdDistrictsOf } from './sim/pedestrians.ts';
-import { PoliceForce, policeDistrictsOf } from './sim/police.ts';
-import { AmbientTraffic, trafficRoadsOf, type TrafficRoads } from './sim/traffic.ts';
-import { TramLine } from './sim/tram.ts';
-import { AmbientWildlife } from './sim/wildlife.ts';
-import { roadDecks } from './world/decks.ts';
-import { pierPosts } from './world/pier-posts.ts';
-import { SurfaceIndex } from './world/surface.ts';
+import { BusStops } from './sim/transit/bus-stops.ts';
+import { StreetCorners } from './sim/crime/corners.ts';
+import type { Ground } from './sim/physics/ground-bodies.ts';
+import { EmergencyServices } from './sim/city/emergency.ts';
+import { AmbientPedestrians, crowdDistrictsOf } from './sim/crowd/pedestrians.ts';
+import { PoliceForce, policeDistrictsOf } from './sim/police/police.ts';
+import { AmbientTraffic, trafficRoadsOf, type TrafficRoads } from './sim/traffic/traffic.ts';
+import { TramLine } from './sim/transit/tram.ts';
+import { AmbientWildlife } from './sim/city/wildlife.ts';
+import { roadDecks } from './world/decks/decks.ts';
+import { pierPosts } from './world/decks/pier-posts.ts';
+import { SurfaceIndex } from './world/terrain/surface.ts';
 import type { WorldDescription } from './world/types.ts';
 
 /** The carved ground a city stands on: a `WorldScene`, or the carve it reads. */

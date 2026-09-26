@@ -37,13 +37,13 @@ the ramps that link the two, and how the graph, the traffic and the picture read
   Each foot of the overpass, `FOOT_MARGIN` further out, takes two ramps: four in all.
 - Where the whole diamond does not fit, the arterial is split at the interchange into two half
   diamonds. Over the first 12 sweep seeds that leaves 8 whole diamonds and 70 halves, 172 ramps.
-- A road asked for `whole` is never split. Only an island link asks. A link that ends on a
-  coastal interchange leaves it for its deck at once, and the few metres of shore hold no foot.
-  There the link meets the highway at grade, the one arterial that does. The sweep allows it
-  (`linkEnd` in `test/seed-roads.test.ts`); without it the island has no arterial. That junction
-  takes the room the ramps of a half diamond need, so another arterial that ends on the same
-  interchange joins the junction (`linkEndsAt`). Refused, seed 2556448952 lost the only arterial
-  on a peninsula and the fill that grows off it.
+- A road asked for `whole` is never split. Only an island link asks. A link that ends on a coastal
+  interchange leaves it for its deck at once, and the few metres of shore hold no foot. There the
+  link meets the highway at grade, the one arterial that does. The sweep allows it (`linkEnd` in
+  `test/sweep/seed-roads.test.ts`); without it the island has no arterial. That junction takes the
+  room the ramps of a half diamond need, so another arterial that ends on the same interchange joins
+  the junction (`linkEndsAt`). Refused, seed 2556448952 lost the only arterial on a peninsula and
+  the fill that grows off it.
 - A ramp is a curve of its own tier, `ramp` (`tiers.ts`): one lane, no pavement, no pedestrians,
   no trams, and the arterial's `maxGrade`. `RoadCurve.ramp` names its highway and its arterial and
   says whether it is an exit. It is driven from its first point to its last.
@@ -106,9 +106,9 @@ A ramp takes no junction on the way. Nothing may touch its line except at its tw
   highway at an interchange.
 - `RoadNetwork.takeSlots` records the stretch a crossing takes when the road is committed.
   `slotTaken` answers `stepOk` while a road is traced and `crossing-plan.ts` while it is settled.
-- `test/seed-interchanges.test.ts` holds the rule, and a bound of `SLOT_CROSSINGS_PER_KM` over the
-  whole world. Over 12 seeds the slot crossings fall from 85 to 76 on 113.5 km of highway, and the
-  worst world has 0.97 per km.
+- `test/sweep/seed-interchanges.test.ts` holds the rule, and a bound of `SLOT_CROSSINGS_PER_KM` over
+  the whole world. Over 12 seeds the slot crossings fall from 85 to 76 on 113.5 km of highway, and
+  the worst world has 0.97 per km.
 
 ## One-way roads in the graph and the sim
 

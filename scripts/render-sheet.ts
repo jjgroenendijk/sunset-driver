@@ -23,9 +23,9 @@
  * failure named.
  */
 import { seedFromString } from '../src/core/rng.ts';
-import { BASE_DISTANCE } from '../src/render/camera.ts';
-import type { PreviewRequest } from '../src/render/preview.ts';
-import { sweepSeeds } from '../test/helpers.ts';
+import { BASE_DISTANCE } from '../src/render/camera/camera.ts';
+import type { PreviewRequest } from '../src/render/preview/preview.ts';
+import { sweepSeeds } from '../test/support/helpers.ts';
 import { defaultOut, writePng } from './png.ts';
 import { PreviewHost } from './preview-host.ts';
 
