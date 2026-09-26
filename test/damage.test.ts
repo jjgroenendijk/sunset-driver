@@ -241,7 +241,7 @@ describe('fire spreading', () => {
     }
     expect(vehicles.every((v) => !isFlammable(v.damage))).toBe(true);
     // Every car after the first caught at its own time.
-    expect(litAt.length).toBe(vehicles.length - 1);
+    expect(litAt).toHaveLength(vehicles.length - 1);
     for (let i = 1; i < litAt.length; i++) {
       expect(litAt[i] as number, `car ${i}`).toBeGreaterThan(litAt[i - 1] as number);
     }

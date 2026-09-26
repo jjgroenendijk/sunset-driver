@@ -92,7 +92,8 @@ describe('ground mesh', () => {
       // millimetre rather than to the last bit.
       const height = attributes.positions[v * 3 + 1] as number;
       const carved = layers.carve.heightAt(place.x, place.y);
-      if (!(Math.abs(height - carved) < 5e-5)) complaint ??= `vertex ${v} stands at ${height}, not ${carved}`;
+      const agrees = Math.abs(height - carved) < 5e-5;
+      if (!agrees) complaint ??= `vertex ${v} stands at ${height}, not ${carved}`;
     }
     expect(complaint).toBeUndefined();
     // The grid spans the whole chunk and no more.
@@ -108,8 +109,11 @@ describe('ground mesh', () => {
       const y = attributes.normals[v * 3 + 1] as number;
       const z = attributes.normals[v * 3 + 2] as number;
       const length = Math.hypot(x, y, z);
-      if (!(Math.abs(length - 1) < 5e-6)) complaint ??= `vertex ${v} has a normal of length ${length}`;
-      if (!(y > 0)) complaint ??= `vertex ${v} has a normal facing down`;
+      // Each check is named so that a NaN fails it too.
+      const unit = Math.abs(length - 1) < 5e-6;
+      const upward = y > 0;
+      if (!unit) complaint ??= `vertex ${v} has a normal of length ${length}`;
+      if (!upward) complaint ??= `vertex ${v} has a normal facing down`;
     }
     expect(complaint).toBeUndefined();
     // The hand-built ground rises with x and faster with y, so away from the
@@ -137,7 +141,8 @@ describe('ground mesh', () => {
       const acx = (p[c * 3] as number) - (p[a * 3] as number);
       const acz = (p[c * 3 + 2] as number) - (p[a * 3 + 2] as number);
       // The y of the cross product: positive where the face is seen from above.
-      if (!(acx * abz - acz * abx > 0)) complaint ??= `triangle ${i / 3} faces down`;
+      const facesUp = acx * abz - acz * abx > 0;
+      if (!facesUp) complaint ??= `triangle ${i / 3} faces down`;
     }
     expect(complaint).toBeUndefined();
   });

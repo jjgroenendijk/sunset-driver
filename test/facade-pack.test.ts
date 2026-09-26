@@ -35,6 +35,12 @@ function tower(): PackedGeometry {
 const find = (geometry: PackedGeometry, name: string): PackedAttribute =>
   geometry.attributes.find((attribute) => attribute.name === name) as PackedAttribute;
 
+/** What a stored number of an attribute is divided by to read it: its byte's range when normalised. */
+function scaleOf(attribute: PackedAttribute): number {
+  if (!attribute.normalized) return 1;
+  return attribute.array instanceof Int8Array ? 127 : 255;
+}
+
 describe('packFacade', () => {
   const before = tower();
   const count = find(before, 'position').array.length / 3;
@@ -48,7 +54,7 @@ describe('packFacade', () => {
     expect(bytes / kept).toBe(48);
     // A quad is two triangles over four corners, not six.
     expect(kept).toBeLessThan(count * 0.75);
-    expect(index.length).toBe(count);
+    expect(index).toHaveLength(count);
   });
 
   it('draws every triangle through the index as the generator built it', () => {
@@ -68,7 +74,7 @@ describe('packFacade', () => {
     for (const [name, tolerance] of fields) {
       const was = find(before, name);
       const now = find(after, name);
-      const scale = now.normalized ? (now.array instanceof Int8Array ? 127 : 255) : 1;
+      const scale = scaleOf(now);
       for (let v = 0; v < count; v++) {
         const at = index[v] as number;
         for (let k = 0; k < was.itemSize; k++) {

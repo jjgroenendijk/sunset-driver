@@ -62,6 +62,17 @@ describe('the casualties, posed (spec section 11.6)', () => {
   const bone = geometry.getAttribute('bone');
   const part = geometry.getAttribute('part');
 
+  /** The height of the lowest corner of the body as `data` poses it, props left out. */
+  function lowestCorner(): number {
+    let lowest = Infinity;
+    for (let i = 0; i < position.count; i++) {
+      if (part.getX(i) >= PART_PROP) continue;
+      const p = apply(data, 0, bone.getX(i), [position.getX(i), position.getY(i), position.getZ(i)]);
+      lowest = Math.min(lowest, p.y);
+    }
+    return lowest;
+  }
+
   it('lays a body flat on the ground, on its back or its front, and never into it', () => {
     for (let id = 0; id < 12; id++) {
       for (const heading of [0, Math.PI]) {
@@ -72,13 +83,7 @@ describe('the casualties, posed (spec section 11.6)', () => {
           expect(at.y).toBeLessThan(0.6);
         }
         // The lowest corner of the body is on the ground: it neither sinks nor floats.
-        let lowest = Infinity;
-        for (let i = 0; i < position.count; i++) {
-          if (part.getX(i) >= PART_PROP) continue;
-          const p = apply(data, 0, bone.getX(i), [position.getX(i), position.getY(i), position.getZ(i)]);
-          lowest = Math.min(lowest, p.y);
-        }
-        expect(lowest).toBeCloseTo(0, 4);
+        expect(lowestCorner()).toBeCloseTo(0, 4);
       }
     }
     // The head lies along the push, here -x from the hips.
@@ -129,7 +134,7 @@ describe('the casualties, drawn (spec sections 11.6, 20.3)', () => {
     expect(view.drawn).toBe(2);
     expect(view.notes).toBe(1);
     // Two meshes, however many are drawn: the bodies and the cash.
-    expect(view.group.children.length).toBe(2);
+    expect(view.group.children).toHaveLength(2);
 
     const unit: EmergencyUnit = {
       id: 4,

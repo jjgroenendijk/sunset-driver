@@ -49,7 +49,7 @@ describe('free camera', () => {
     // Where it stands on the map and which way it faces are the session's.
     expect(free.x).toBe(400);
     expect(free.z).toBe(-120);
-    expect(free.yaw).toBe(1.2);
+    expect(free.yaw).toBeCloseTo(1.2, 12);
   });
 
   it('holds still with no key held', () => {

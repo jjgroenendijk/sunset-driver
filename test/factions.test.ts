@@ -495,7 +495,7 @@ describe('the enforcers of spec section 17.2', () => {
     }
     // What they carried is left where they fell, which is how a player arms
     // themselves off a wave (spec section 11.6).
-    expect(state.pickups.length).toBe(WAVE_UNITS);
+    expect(state.pickups).toHaveLength(WAVE_UNITS);
     run(state, gang, 1);
     expect(state.factions.wave).toBeNull();
     expect(state.enforcers.units).toHaveLength(0);
@@ -508,7 +508,7 @@ describe('the enforcers of spec section 17.2', () => {
     hurtEnforcer(state, first.id, ENFORCER_HEALTH);
     run(state, gang, 900);
     expect(state.factions.wave?.sent).toBe(WAVE_UNITS);
-    expect(state.enforcers.units.length).toBe(WAVE_UNITS - 1);
+    expect(state.enforcers.units).toHaveLength(WAVE_UNITS - 1);
   });
 
   it('leaves a player in a car alone: they are already driving away', () => {

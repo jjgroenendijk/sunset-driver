@@ -15,7 +15,7 @@ describe('waiting at the lights (spec section 13.1, #721)', () => {
     if (person === undefined) throw new Error('nobody on the grid crosses under lights');
     const near = signalCrossings(crowd.pavements, roads.graph, person.route, signals, 0);
     const far = signalCrossings(crowd.pavements, roads.graph, person.route, signals, 1);
-    expect(far.length).toBe(near.length);
+    expect(far).toHaveLength(near.length);
     const length = person.route.length;
     for (let i = 0; i < near.length; i++) {
       const back = ((near[i]!.at - far[i]!.at) % length + length) % length;

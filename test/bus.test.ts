@@ -149,7 +149,7 @@ describe('a bus calling at its stops (spec section 20.2)', () => {
       stops++;
       dwelt += calls.dwell[i] as number;
     }
-    const straight = timeTour(roads.graph, route, undefined);
+    const straight = timeTour(roads.graph, route);
     const calling = timeTour(roads.graph, route, undefined, { calls: true });
     expect(stops).toBeGreaterThan(0);
     // Splitting a leg in two rounds each half up, so the drive costs a tick or
@@ -160,7 +160,7 @@ describe('a bus calling at its stops (spec section 20.2)', () => {
     const ramps = 2 * Math.ceil((top / (2 * ACCEL)) * TICK_RATE);
     expect(calling.period - straight.period).toBeGreaterThanOrEqual(dwelt);
     expect(calling.period - straight.period).toBeLessThan(dwelt + stops * (4 + ramps));
-    expect(calling.length).toBe(straight.length);
+    expect(calling).toHaveLength(straight.length);
   });
 
   it('still keeps a calling bus to the lights all the way round its lap', () => {

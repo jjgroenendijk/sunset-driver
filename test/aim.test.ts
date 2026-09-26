@@ -58,7 +58,7 @@ describe('mouse aim', () => {
     const share = (point: typeof near, from: number): number => 1 - Math.abs(point?.y ?? 0) / from;
     expect(share(near, SNAP_RADIUS_AIMED + 1)).toBeGreaterThan(share(far, STICK_RADIUS - 1));
     expect(share(far, STICK_RADIUS - 1)).toBeGreaterThan(0);
-    expect(aimPoint(state, pointing(20, -(STICK_RADIUS + 0.1), { aim: true }))?.y).toBe(-(STICK_RADIUS + 0.1));
+    expect(aimPoint(state, pointing(20, -(STICK_RADIUS + 0.1), { aim: true }))?.y).toBeCloseTo(-(STICK_RADIUS + 0.1), 12);
     // From the hip there is no soft pull.
     expect(aimPoint(state, pointing(20, -(SNAP_RADIUS_AIMED + 1)))?.y).toBe(-(SNAP_RADIUS_AIMED + 1));
   });
@@ -100,8 +100,8 @@ describe('tracers', () => {
     const y = state.player.y;
     drive(session, 1, pointing(x, y - 15, { fire: true }));
     const fired = state.tracers;
-    expect(fired.length).toBe(8);
-    expect(fired.filter((t) => t.pellet === 0).length).toBe(1);
+    expect(fired).toHaveLength(8);
+    expect(fired.filter((t) => t.pellet === 0)).toHaveLength(1);
     for (const t of fired) expect(t.ey).toBeLessThan(t.y);
     // The player turns square to the shot.
     expect(state.player.heading).toBeCloseTo(-Math.PI / 2, 1);
@@ -111,8 +111,8 @@ describe('tracers', () => {
   it('forgets a tracer once it is old', () => {
     const tracers = [{ tick: 10, pellet: 0, x: 0, y: 0, h: 0, ex: 1, ey: 0, eh: 0, end: 'none' as const, by: 'player' as const }];
     forgetTracers(tracers, 10 + TRACER_MEMORY - 1);
-    expect(tracers.length).toBe(1);
+    expect(tracers).toHaveLength(1);
     forgetTracers(tracers, 10 + TRACER_MEMORY);
-    expect(tracers.length).toBe(0);
+    expect(tracers).toHaveLength(0);
   });
 });

@@ -1,4 +1,4 @@
-import { BoxGeometry, type BufferAttribute, Euler, Matrix3, Matrix4, MeshBasicMaterial, Quaternion, Vector3 } from 'three';
+import { BoxGeometry, type BufferAttribute, type BufferGeometry, Euler, Matrix3, Matrix4, MeshBasicMaterial, Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   batchOfPacked,
@@ -108,6 +108,44 @@ function vertexOf(geometry: PackedGeometry, name: string, i: number): Vector3 {
   return new Vector3(array[i * 3] as number, array[i * 3 + 1] as number, array[i * 3 + 2] as number);
 }
 
+/**
+ * What is wrong with vertex `v` of part `p` of a batch built from `source`
+ * under `matrix`, in words, or undefined when it is right.
+ */
+function vertexComplaint(
+  geometry: BufferGeometry,
+  source: PackedGeometry,
+  matrix: Matrix4 | undefined,
+  p: number,
+  v: number,
+): string | undefined {
+  const at = p * 4 + v;
+  // A place moves with the part, and turns and scales with it.
+  const wanted = vertexOf(source, 'position', v);
+  if (matrix !== undefined) wanted.applyMatrix4(matrix);
+  const stood = new Vector3().fromBufferAttribute(geometry.getAttribute('position') as BufferAttribute, at);
+  if (stood.distanceTo(wanted) > 1e-4) return `part ${p} vertex ${v} stands at ${stood.toArray()}, not ${wanted.toArray()}`;
+
+  // A direction only turns, and comes back the length it went in.
+  const way = vertexOf(source, 'normal', v);
+  if (matrix !== undefined) way.applyMatrix3(new Matrix3().getNormalMatrix(matrix)).normalize();
+  const faces = new Vector3().fromBufferAttribute(geometry.getAttribute('normal') as BufferAttribute, at);
+  if (faces.distanceTo(way) > 1e-4) return `part ${p} normal ${v} faces ${faces.toArray()}, not ${way.toArray()}`;
+
+  // Anything that is neither is carried across as it stands.
+  if (geometry.getAttribute('tint').getX(at) !== p + 1) return `part ${p} vertex ${v} lost its tint`;
+  return undefined;
+}
+
+/** What is wrong with the triangles of part `p`: each reads its own vertices and nobody else's. */
+function indexComplaint(index: BufferAttribute | null, p: number): string | undefined {
+  for (let k = 0; k < 6; k++) {
+    const read = index?.getX(p * 6 + k) ?? -1;
+    if (read < p * 4 || read >= (p + 1) * 4) return `part ${p} index ${k} reads vertex ${read}`;
+  }
+  return undefined;
+}
+
 describe('a chunk batch', () => {
   const material = new MeshBasicMaterial();
 
@@ -117,8 +155,6 @@ describe('a chunk batch', () => {
     const batch = batchOfPacked(packed(parts), material);
 
     const position = batch.geometry.getAttribute('position');
-    const normal = batch.geometry.getAttribute('normal');
-    const tint = batch.geometry.getAttribute('tint');
     const index = batch.geometry.getIndex();
     expect(batch.parts).toBe(parts.length);
     expect(position.count).toBe(parts.length * 4);
@@ -128,30 +164,9 @@ describe('a chunk batch', () => {
 
     let complaint: string | undefined;
     for (let p = 0; p < parts.length; p++) {
-      const matrix = frames[p];
-      const packed = (parts[p] as PackedPart).geometry;
-      for (let v = 0; v < 4; v++) {
-        const at = p * 4 + v;
-        // A place moves with the part, and turns and scales with it.
-        const wanted = vertexOf(packed, 'position', v);
-        if (matrix !== undefined) wanted.applyMatrix4(matrix);
-        const stood = new Vector3().fromBufferAttribute(position, at);
-        if (stood.distanceTo(wanted) > 1e-4) complaint ??= `part ${p} vertex ${v} stands at ${stood.toArray()}, not ${wanted.toArray()}`;
-
-        // A direction only turns, and comes back the length it went in.
-        const way = vertexOf(packed, 'normal', v);
-        if (matrix !== undefined) way.applyMatrix3(new Matrix3().getNormalMatrix(matrix)).normalize();
-        const faces = new Vector3().fromBufferAttribute(normal, at);
-        if (faces.distanceTo(way) > 1e-4) complaint ??= `part ${p} normal ${v} faces ${faces.toArray()}, not ${way.toArray()}`;
-
-        // Anything that is neither is carried across as it stands.
-        if (tint.getX(at) !== p + 1) complaint ??= `part ${p} vertex ${v} lost its tint`;
-      }
-      // Each part's triangles read its own vertices and nobody else's.
-      for (let k = 0; k < 6; k++) {
-        const read = index?.getX(p * 6 + k) ?? -1;
-        if (read < p * 4 || read >= (p + 1) * 4) complaint ??= `part ${p} index ${k} reads vertex ${read}`;
-      }
+      const source = (parts[p] as PackedPart).geometry;
+      for (let v = 0; v < 4; v++) complaint ??= vertexComplaint(batch.geometry, source, frames[p], p, v);
+      complaint ??= indexComplaint(index, p);
     }
     expect(complaint).toBeUndefined();
 
@@ -194,7 +209,7 @@ describe('a chunk batch', () => {
     record.set(attribute('position'), { version: attribute('position').version });
     draw();
     // A batch still filling keeps every array: the next step writes into them.
-    expect(geometry.getAttribute('position').array.length).toBe(24);
+    expect(geometry.getAttribute('position').array).toHaveLength(24);
 
     (fill.steps[1] as () => void)();
     const position = attribute('position');
@@ -205,8 +220,8 @@ describe('a chunk batch', () => {
     record.set(index, { version: index?.version ?? 0 });
     draw();
     // The positions on the GPU are a version behind, so they stay; the rest go.
-    expect(position.array.length).toBe(24);
-    expect(normal.array.length).toBe(0);
+    expect(position.array).toHaveLength(24);
+    expect(normal.array).toHaveLength(0);
     expect(normal.array).toBeInstanceOf(Float32Array);
     expect(index?.array).toBeInstanceOf(Uint16Array);
     expect(index?.array.length).toBe(0);
@@ -217,7 +232,7 @@ describe('a chunk batch', () => {
     record.set(position, { version: position.version });
     record.set(attribute('tint'), { version: attribute('tint').version });
     draw();
-    expect(position.array.length).toBe(0);
+    expect(position.array).toHaveLength(0);
     mesh.dispose();
   });
 
@@ -251,12 +266,12 @@ describe('a chunk batch', () => {
       (fill.steps[4] as () => void)();
       // Each attribute and the index are uploaded again by the step that wrote them.
       expect(uploads).toHaveLength(8);
-      expect(geometry.getAttribute('position').array.length).toBe(24);
+      expect(geometry.getAttribute('position').array).toHaveLength(24);
 
       (fill.steps[5] as () => void)();
       // Never drawn, and every array is gone: the GPU holds the batch.
-      expect(geometry.getAttribute('position').array.length).toBe(0);
-      expect(geometry.getAttribute('normal').array.length).toBe(0);
+      expect(geometry.getAttribute('position').array).toHaveLength(0);
+      expect(geometry.getAttribute('normal').array).toHaveLength(0);
       expect(geometry.getIndex()?.array.length).toBe(0);
       expect(geometry.getAttribute('position').count).toBe(8);
 
@@ -287,7 +302,7 @@ describe('a chunk batch', () => {
       const fill = fillOfPacked(packed([part(1)]), material);
       for (const step of fill.steps) step();
       expect(record.size).toBe(0);
-      expect(fill.mesh.geometry.getAttribute('position').array.length).toBe(12);
+      expect(fill.mesh.geometry.getAttribute('position').array).toHaveLength(12);
     } finally {
       uploadBatchesWith(undefined);
     }
@@ -321,7 +336,7 @@ describe('a chunk batch', () => {
     const vertices = MAX_STEP_VERTICES * 3 + 17;
     const tower = big(vertices);
     const fill = fillOfPacked(packed([tower]), material);
-    expect(fill.steps.length).toBe(4);
+    expect(fill.steps).toHaveLength(4);
 
     // The part is drawn only once its last step is in: the index is what the
     // renderer reads vertices through, so a half-copied part must not be in it.

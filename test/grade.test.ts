@@ -35,6 +35,28 @@ function lutAt(hour: number): Float32Array {
   return out;
 }
 
+/** The first entry of an hour's cube that moves a colour further than subtle, in words. */
+function unsubtleEntry(hour: number): string | undefined {
+  const last = LUT_SIZE - 1;
+  const lut = lutAt(hour);
+  for (let b = 0; b < LUT_SIZE; b++) {
+    for (let g = 0; g < LUT_SIZE; g++) {
+      for (let r = 0; r < LUT_SIZE; r++) {
+        const i = lutIndex(r, g, b);
+        const shift = Math.max(
+          Math.abs((lut[i] ?? 0) - r / last),
+          Math.abs((lut[i + 1] ?? 0) - g / last),
+          Math.abs((lut[i + 2] ?? 0) - b / last),
+        );
+        // Written so that a NaN shift is a complaint too.
+        const subtle = shift < SUBTLE;
+        if (!subtle) return `hour ${hour} moves ${r},${g},${b} by ${shift}`;
+      }
+    }
+  }
+  return undefined;
+}
+
 describe('a colour grade', () => {
   it('leaves the frame alone when it is neutral', () => {
     for (const colour of [0, 0.18, 0.5, 1]) {
@@ -60,24 +82,8 @@ describe('a colour grade', () => {
   it('is subtle at every hour: the look is the lighting, not the grade', () => {
     // One assertion after the loop: an `expect` per channel of every entry of
     // every hour is most of a second of the quick tier.
-    const last = LUT_SIZE - 1;
     let complaint: string | undefined;
-    for (let hour = 0; hour < 24 && complaint === undefined; hour++) {
-      const lut = lutAt(hour);
-      for (let b = 0; b < LUT_SIZE; b++) {
-        for (let g = 0; g < LUT_SIZE; g++) {
-          for (let r = 0; r < LUT_SIZE; r++) {
-            const i = lutIndex(r, g, b);
-            const shift = Math.max(
-              Math.abs((lut[i] ?? 0) - r / last),
-              Math.abs((lut[i + 1] ?? 0) - g / last),
-              Math.abs((lut[i + 2] ?? 0) - b / last),
-            );
-            if (!(shift < SUBTLE)) complaint ??= `hour ${hour} moves ${r},${g},${b} by ${shift}`;
-          }
-        }
-      }
-    }
+    for (let hour = 0; hour < 24 && complaint === undefined; hour++) complaint = unsubtleEntry(hour);
     expect(complaint).toBeUndefined();
   });
 

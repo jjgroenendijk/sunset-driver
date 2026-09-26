@@ -97,7 +97,7 @@ describe('casualties (spec section 13.1)', () => {
     expect(hit?.t).toBeLessThanOrEqual(10);
     // A line aimed above their head meets nobody at all.
     const high = personOnRay(crowd, state.pedestrians, TICK, at.x - 10, at.height + 3, at.y, 1, 0, 0, 40);
-    expect(high?.id === id).toBe(false);
+    expect(high?.id).not.toBe(id);
   });
 
   it('takes the cash off a body the player stands over, and an ambulance takes the body', () => {
@@ -139,7 +139,7 @@ describe('casualties (spec section 13.1)', () => {
       state.tick++;
     }
     const lying = state.pedestrians.casualties.filter((r) => !r.gone && r.health <= 0);
-    expect(lying.length).toBe(BODY_CAP);
+    expect(lying).toHaveLength(BODY_CAP);
   });
 });
 

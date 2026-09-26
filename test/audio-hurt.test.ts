@@ -164,7 +164,7 @@ describe('audio: bodies struck and falling', () => {
       s.hits.push({ tick: s.tick, x: 4, y: 0, h: 1, surface: 'person', strength: 0.8 });
     });
     expect(car.cues.map((c) => c.kind)).toEqual(['thump', 'crunch']);
-    expect(car.cues[0]?.strength).toBe(0.8);
+    expect(car.cues[0]?.strength).toBeCloseTo(0.8, 12);
 
     state.player.driving = false;
     const fist = step(planner, state, (s) => {

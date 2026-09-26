@@ -48,7 +48,7 @@ describe('people passing each other on a pavement (spec sections 13.1, 20.1)', (
     );
     expect(closest(frames, 0, 1)).toBeGreaterThan(0.5);
     // Heading +x, their right is +y; heading -x, it is -y.
-    const level = frames.reduce((a, f) => (Math.abs(f[0]!.x - f[1]!.x) < Math.abs(a[0]!.x - a[1]!.x) ? f : a));
+    const level = frames.reduce((a, f) => (Math.abs(f[0]!.x - f[1]!.x) < Math.abs(a[0]!.x - a[1]!.x) ? f : a), frames[0]!);
     expect(level[0]!.y).toBeGreaterThan(level[1]!.y);
   });
 

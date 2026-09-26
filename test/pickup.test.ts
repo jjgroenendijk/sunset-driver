@@ -49,10 +49,10 @@ describe('pickups', () => {
     dropWeapon(state, 'm4a1', 30, 60, ['optic', 'laser'], 0.5, 0, 0);
     state.player.driving = true;
     stepSim(state);
-    expect(state.pickups.length).toBe(1);
+    expect(state.pickups).toHaveLength(1);
     state.player.driving = false;
     stepSim(state);
-    expect(state.pickups.length).toBe(0);
+    expect(state.pickups).toHaveLength(0);
     // The hands held fists, so the rifle goes into them, fitted and loaded.
     expect(currentSlot(state.loadout)).toEqual({ id: 'm4a1', loaded: 30, attachments: ['optic', 'laser'] });
     expect(state.loadout.ammo['5.56×45']).toBe(60);
@@ -64,16 +64,16 @@ describe('pickups', () => {
     state.loadout.ammo['9×19'] = AMMO_CAP['9×19'] - 10;
     dropWeapon(state, 'glock-17', 17, 0, [], 0, 0, 0);
     stepSim(state);
-    expect(state.pickups.length).toBe(0);
+    expect(state.pickups).toHaveLength(0);
     expect(state.loadout.ammo['9×19']).toBe(AMMO_CAP['9×19']);
     // Full, and with nothing new fitted: the pistol stays on the ground.
     dropWeapon(state, 'glock-17', 17, 0, [], 0, 0, 0);
     stepSim(state);
-    expect(state.pickups.length).toBe(1);
+    expect(state.pickups).toHaveLength(1);
     // A suppressor on it is something new, so now it is taken.
     dropWeapon(state, 'glock-17', 17, 0, ['suppressor'], 0, 0, 0);
     stepSim(state);
-    expect(state.pickups.length).toBe(1);
+    expect(state.pickups).toHaveLength(1);
     expect(currentSlot(state.loadout).attachments).toEqual(['suppressor']);
   });
 
@@ -82,16 +82,16 @@ describe('pickups', () => {
     dropWeapon(state, 'uzi', 32, 0, [], 50, 50, 0);
     state.tick += PICKUP_LIFE - 1;
     stepSim(state);
-    expect(state.pickups.length).toBe(1);
+    expect(state.pickups).toHaveLength(1);
     stepSim(state);
-    expect(state.pickups.length).toBe(0);
+    expect(state.pickups).toHaveLength(0);
     // A robbed gun store's stock all lies at once; nothing is thrown away to make room.
     for (let i = 0; i < 100; i++) dropWeapon(state, 'uzi', 32, 0, [], 50 + i, 50, 0);
     stepSim(state);
-    expect(state.pickups.length).toBe(100);
+    expect(state.pickups).toHaveLength(100);
     state.tick += PICKUP_LIFE;
     stepSim(state);
-    expect(state.pickups.length).toBe(0);
+    expect(state.pickups).toHaveLength(0);
   });
 
   it('finds a shotgun or an M4 in a police car, the same one every time', () => {

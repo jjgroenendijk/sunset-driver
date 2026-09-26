@@ -61,19 +61,23 @@ describe('POI icon table (spec section 12)', () => {
     // A glyph that traces nothing paints nothing at all, and the map loses
     // that place without saying so.
     const painted: string[] = [];
+    const paint = (key: string) => (): void => {
+      painted.push(key);
+    };
+    // A fill or a stroke is counted, a style reads as empty, and every other
+    // method does nothing.
+    const members = new Map<string, unknown>([
+      ['fill', paint('fill')],
+      ['stroke', paint('stroke')],
+      ['lineCap', ''],
+      ['fillStyle', ''],
+      ['strokeStyle', ''],
+      ['lineWidth', ''],
+    ]);
     const ctx = new Proxy(
       {},
       {
-        get: (_target, key: string) => {
-          if (key === 'save' || key === 'restore' || key === 'translate' || key === 'beginPath') return () => undefined;
-          if (key === 'fill' || key === 'stroke') {
-            return () => {
-              painted.push(key);
-            };
-          }
-          if (key === 'lineCap' || key === 'fillStyle' || key === 'strokeStyle' || key === 'lineWidth') return '';
-          return () => undefined;
-        },
+        get: (_target, key: string) => members.get(key) ?? (() => undefined),
         set: () => true,
       },
     ) as unknown as CanvasRenderingContext2D;
@@ -273,7 +277,7 @@ describe('road segment index', () => {
     }
     expect(complaint).toBe('');
     // Every segment of both curves, once each.
-    expect(keys.length).toBe(3);
+    expect(keys).toHaveLength(3);
   });
 
   it('finds a segment from any of the cells it crosses', () => {
@@ -286,7 +290,7 @@ describe('road segment index', () => {
       ]),
     ];
     const wide = new RoadSegmentIndex(long, 2000, 200);
-    expect(wide.segmentsIn({ minX: -10, minY: -10, maxX: 10, maxY: 10 }).length).toBe(1);
+    expect(wide.segmentsIn({ minX: -10, minY: -10, maxX: 10, maxY: 10 })).toHaveLength(1);
   });
 });
 
@@ -294,8 +298,8 @@ describe('heat line (spec section 14)', () => {
   it('draws one star a whole point and never more than the table allows', () => {
     expect(heatLine(0.4)).toContain('☆');
     expect(heatLine(1)).toContain('★');
-    expect((heatLine(3.2).match(/★/g) ?? []).length).toBe(3);
-    expect((heatLine(99).match(/★/g) ?? []).length).toBe(HEAT_STARS);
+    expect(heatLine(3.2).match(/★/g) ?? []).toHaveLength(3);
+    expect(heatLine(99).match(/★/g) ?? []).toHaveLength(HEAT_STARS);
   });
 });
 
@@ -337,7 +341,7 @@ describe('places the world carries (spec section 12)', () => {
     const before = pois.visible(box, 1).length;
     pois.extra = [{ type: 'safehouse', x: 0, y: 0, name: 'Home' }];
     const after = pois.visible(box, 1);
-    expect(after.length).toBe(before + 1);
+    expect(after).toHaveLength(before + 1);
     expect(after[after.length - 1]?.name).toBe('Home');
   });
 

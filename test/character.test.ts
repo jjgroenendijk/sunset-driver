@@ -17,11 +17,12 @@ import { createSimState, stepSim } from '../src/sim/simulation.ts';
 import { DEFAULT_SEED, readSeedFromLocation, writeSeedToHash } from '../src/core/seed.ts';
 import { seedFromString } from '../src/core/rng.ts';
 import { sweepSeeds } from './helpers.ts';
+import { compareStrings } from '../src/core/sort.ts';
 
 describe('character options', () => {
   it('offers a choice for every field of an appearance', () => {
-    const keys = CHARACTER_CHOICES.map((c) => c.key).sort();
-    expect(keys).toEqual(Object.keys(DEFAULT_APPEARANCE).sort());
+    const keys = CHARACTER_CHOICES.map((c) => c.key).sort(compareStrings);
+    expect(keys).toEqual(Object.keys(DEFAULT_APPEARANCE).sort(compareStrings));
   });
 
   it('gives every option a unique id and at least two to pick from', () => {
@@ -59,7 +60,7 @@ describe('normaliseAppearance', () => {
     expect(wrapped.hair).toBe(1);
     expect(wrapped.hairColour).toBe(0);
     expect(wrapped.outfit).toBe(0);
-    expect(normaliseAppearance(undefined)).toEqual(DEFAULT_APPEARANCE);
+    expect(normaliseAppearance()).toEqual(DEFAULT_APPEARANCE);
   });
 });
 

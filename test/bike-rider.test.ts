@@ -88,7 +88,7 @@ describe('the traffic drawn with its riders', () => {
     // Every class has a paint mesh and a mesh of whoever is in it: the rider
     // astride a bike, the driver behind the glass of a car (`occupant.ts`).
     const shadowed = view.group.children.filter((child) => (child as InstancedMesh).isInstancedMesh && child.castShadow);
-    expect(shadowed.length).toBe(AMBIENT_CLASSES.length * 2);
+    expect(shadowed).toHaveLength(AMBIENT_CLASSES.length * 2);
 
     const state = createSimState(seed, undefined, 0);
     const tick = 4321.5;

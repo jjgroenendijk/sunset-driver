@@ -75,7 +75,12 @@ describe('graded land', () => {
   it('hops no crossing whose near head it cannot climb to', () => {
     // The near head stands on a knoll the street cannot climb, so the bridge is
     // never arrived at and the far shore stays unreached.
-    const ledge = field((x) => (x < 60 ? DRY : x <= 100 ? DRY + 30 : x <= 140 ? SEA_LEVEL - 5 : DRY));
+    const ledge = field((x) => {
+      if (x < 60) return DRY;
+      if (x <= 100) return DRY + 30;
+      if (x <= 140) return SEA_LEVEL - 5;
+      return DRY;
+    });
     const crossing: Crossing = { fromIsland: 0, toIsland: 1, from: { x: 90, y: 0 }, to: { x: 150, y: 0 } };
     expect(new GradedLand(ledge, CORE, STREET, [crossing]).at(170, 0)).toBe(false);
   });

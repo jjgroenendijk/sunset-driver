@@ -59,7 +59,7 @@ describe('the heavy weapons', () => {
     const { state } = session;
     const before = state.fires.blazes.length;
     burst(session, 'molotov');
-    expect(state.fires.blazes.length).toBe(before + 1);
+    expect(state.fires.blazes).toHaveLength(before + 1);
     const blaze = state.fires.blazes.at(-1);
     expect(blaze).toBeDefined();
     const seconds = ((blaze?.out ?? 0) - (blaze?.lit ?? 0)) / 60;
@@ -81,7 +81,7 @@ describe('the heavy weapons', () => {
     const session = armed('flamethrower');
     drive(session, 1, { fire: true });
     const tongues = session.state.tracers.filter((t) => t.tick === session.state.tick - 1 || t.tick === session.state.tick);
-    expect(tongues.length).toBe(weaponOf('flamethrower').pellets);
+    expect(tongues).toHaveLength(weaponOf('flamethrower').pellets);
     expect(tongues.every((t) => t.flame === true)).toBe(true);
     session.physics.dispose();
   });

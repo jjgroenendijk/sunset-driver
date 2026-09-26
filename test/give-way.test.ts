@@ -69,17 +69,31 @@ function overlaps(giving: boolean): { cars: number; people: number } {
     state.tick++;
     if (i % 10 !== 0) continue;
     const boxes = cars(state, giving);
-    for (let a = 0; a < boxes.length; a++) {
-      for (let b = a + 1; b < boxes.length; b++) if (footprintsTouch(boxes[a] as Footprint, boxes[b] as Footprint, -0.1)) count.cars++;
-    }
-    for (const id of crowd.near(-VIEW, -VIEW, VIEW, VIEW, [])) {
-      if (crowdPoseOf(crowd, state.pedestrians, id, state.tick, pose) === undefined) continue;
-      if (Math.abs(pose.x) > VIEW || Math.abs(pose.y) > VIEW) continue;
-      const person = { x: pose.x, y: pose.y, heading: 0, halfLength: 0.1, halfWidth: 0.1 };
-      for (const box of boxes) if (footprintsTouch(person, box, 0)) count.people++;
-    }
+    count.cars += carsOnCars(boxes);
+    count.people += peopleInCars(state, boxes, pose);
   }
   return count;
+}
+
+/** Pairs of cars standing on each other. */
+function carsOnCars(boxes: readonly Footprint[]): number {
+  let touching = 0;
+  for (let a = 0; a < boxes.length; a++) {
+    for (let b = a + 1; b < boxes.length; b++) if (footprintsTouch(boxes[a] as Footprint, boxes[b] as Footprint, -0.1)) touching++;
+  }
+  return touching;
+}
+
+/** People of the crowd in view standing in a car, counted once for each car. */
+function peopleInCars(state: SimState, boxes: readonly Footprint[], pose: PedestrianPose): number {
+  let inside = 0;
+  for (const id of crowd.near(-VIEW, -VIEW, VIEW, VIEW, [])) {
+    if (crowdPoseOf(crowd, state.pedestrians, id, state.tick, pose) === undefined) continue;
+    if (Math.abs(pose.x) > VIEW || Math.abs(pose.y) > VIEW) continue;
+    const person = { x: pose.x, y: pose.y, heading: 0, halfLength: 0.1, halfWidth: 0.1 };
+    for (const box of boxes) if (footprintsTouch(person, box, 0)) inside++;
+  }
+  return inside;
 }
 
 describe('giving way', () => {

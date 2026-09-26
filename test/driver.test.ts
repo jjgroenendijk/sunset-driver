@@ -85,10 +85,10 @@ describe('the driver behind the wheel (spec section 20.2)', () => {
     const route = walkTour(roads.graph, 0, walk, () => true);
     const slow = timeTour(roads.graph, route, undefined, { driver: driverNamed('hesitant') });
     const quick = timeTour(roads.graph, route, undefined, { driver: driverNamed('tailgater') });
-    expect(slow.length).toBe(quick.length);
+    expect(slow).toHaveLength(quick.length);
     expect(slow.period).toBeGreaterThan(quick.period);
     // The steady driver is the traffic as it drove before there were drivers.
-    const steady = timeTour(roads.graph, route, undefined);
+    const steady = timeTour(roads.graph, route);
     expect(steady.period).toBe(timeTour(roads.graph, route, undefined, { driver: STEADY }).period);
     expect(steady.period).toBeLessThan(slow.period);
     expect(steady.period).toBeGreaterThan(quick.period);

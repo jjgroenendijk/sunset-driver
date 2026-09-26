@@ -1,3 +1,4 @@
+import type { BufferGeometry } from 'three';
 import { describe, expect, it } from 'vitest';
 import { buildChunkRoads, partsOf } from '../src/render/road-mesh.ts';
 import { RoadBeds } from '../src/world/bed.ts';
@@ -91,6 +92,49 @@ function groundAt(carve: ReturnType<typeof buildCarve>, x: number, y: number): n
   return near + fy * (across - near) + fx * (far - across);
 }
 
+/** A vertex of a road mesh on the map: `h` is its height. */
+interface Place {
+  x: number;
+  h: number;
+  y: number;
+}
+
+/** Every triangle of a geometry, indexed or not, as the places of its corners. */
+function trianglesOf(part: BufferGeometry): [Place, Place, Place][] {
+  const position = part.getAttribute('position');
+  const index = part.getIndex();
+  const count = index === null ? position.count : index.count;
+  const out: [Place, Place, Place][] = [];
+  for (let t = 0; t + 2 < count; t += 3) {
+    const ids = [0, 1, 2].map((k) => (index === null ? t + k : index.getX(t + k)));
+    const p = ids.map((v) => ({ x: position.getX(v), h: position.getY(v), y: position.getZ(v) }));
+    out.push(p as [Place, Place, Place]);
+  }
+  return out;
+}
+
+/** Where the ground stands through a face of the road surface, in words, at its corners, middle and edges. */
+function groundThrough(carve: ReturnType<typeof buildCarve>, tier: RoadTier, a: Place, b: Place, c: Place): string | undefined {
+  for (const [wa, wb, wc] of [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+    [1 / 3, 1 / 3, 1 / 3],
+    [0.5, 0.5, 0],
+    [0, 0.5, 0.5],
+    [0.5, 0, 0.5],
+  ] as const) {
+    const x = a.x * wa + b.x * wb + c.x * wc;
+    const y = a.y * wa + b.y * wb + c.y * wc;
+    const surface = a.h * wa + b.h * wb + c.h * wc;
+    const ground = groundAt(carve, x, y);
+    if (ground > surface + SAG) {
+      return `${tier} at ${x.toFixed(1)},${y.toFixed(1)}: ground ${ground.toFixed(3)} over surface ${surface.toFixed(3)}`;
+    }
+  }
+  return undefined;
+}
+
 describe('the ground under a road', () => {
   // A dome, so the ground falls away across every road laid on it and the
   // carve has a bench to cut. A street keeps a pavement above its carriageway
@@ -120,40 +164,18 @@ describe('the ground under a road', () => {
   const built = buildChunkRoads(chunk, ribbons, (x, y, tier) => layers.carve.surfaceAt(x, y, tier));
 
   it('never stands above the surface the road draws over it', () => {
-    expect(built.length).toBe(2);
+    expect(built).toHaveLength(2);
     let complaint: string | undefined;
     let tested = 0;
     for (const tier of built) {
       for (const part of partsOf(tier)) {
-        const position = part.getAttribute('position');
-        const index = part.getIndex();
-        const count = index === null ? position.count : index.count;
-        for (let t = 0; t + 2 < count; t += 3) {
-          const ids = [0, 1, 2].map((k) => (index === null ? t + k : index.getX(t + k)));
-          const p = ids.map((v) => ({ x: position.getX(v), h: position.getY(v), y: position.getZ(v) }));
-          const [a, b, c] = p as [(typeof p)[number], (typeof p)[number], (typeof p)[number]];
+        for (const [a, b, c] of trianglesOf(part)) {
           // Only the faces the camera sees the road through. The skirt down
           // each edge is buried in the ground on purpose.
           const up = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
           if (Math.abs(up) < 1e-9) continue;
           tested++;
-          for (const [wa, wb, wc] of [
-            [1, 0, 0],
-            [0, 1, 0],
-            [0, 0, 1],
-            [1 / 3, 1 / 3, 1 / 3],
-            [0.5, 0.5, 0],
-            [0, 0.5, 0.5],
-            [0.5, 0, 0.5],
-          ] as const) {
-            const x = a.x * wa + b.x * wb + c.x * wc;
-            const y = a.y * wa + b.y * wb + c.y * wc;
-            const surface = a.h * wa + b.h * wb + c.h * wc;
-            const ground = groundAt(layers.carve, x, y);
-            if (ground > surface + SAG) {
-              complaint ??= `${tier.tier} at ${x.toFixed(1)},${y.toFixed(1)}: ground ${ground.toFixed(3)} over surface ${surface.toFixed(3)}`;
-            }
-          }
+          complaint ??= groundThrough(layers.carve, tier.tier, a, b, c);
         }
       }
     }
