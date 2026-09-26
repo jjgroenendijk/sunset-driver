@@ -476,3 +476,10 @@ export const TRAFFIC_STACKED = 0.12;
  * seed 4081019190 read 0.84.
  */
 export const TRAM_LIT_SHARE = 0.8;
+/**
+ * The share of a tram's lap its tail may stand in a junction while the traffic
+ * across it has its green (`tailAcross` in `tram-timing.ts`). Issue #652 took
+ * the first 40 sweep seeds from a middle of 0.115 and a highest of 0.161 to
+ * 0.078 and 0.106. Most of the rest is forced by the offsets of the lights.
+ */
+export const TRAM_TAIL_ACROSS = 0.13;

@@ -6,7 +6,8 @@ import { placeTramStops } from '../../src/sim/transit/tram-stop-place.ts';
 import type { RoadEdge } from '../../src/world/roads/graph.ts';
 import { TIERS } from '../../src/world/roads/tiers.ts';
 import type { Point, WorldDescription } from '../../src/world/types.ts';
-import { TRAM_LIT_SHARE } from './seed-limits.ts';
+import { tailAcross } from '../../src/sim/transit/tram-timing.ts';
+import { TRAM_LIT_SHARE, TRAM_TAIL_ACROSS } from './seed-limits.ts';
 
 /** Ticks of the day the trams' cars are read at. */
 const SAMPLE_TICKS = [0, 7919, 43_200, 86_399];
@@ -35,6 +36,8 @@ export function checkTram(seed: number, world: WorldDescription, roads: TrafficR
   expect(litCrossings, `seed ${seed}: level crossings with a light`).toBeGreaterThanOrEqual(TRAM_LIT_SHARE * world.tram.crossings.length);
 
   checkDepartures(seed, tour, signals);
+  const across = tailAcross(tour, signals, TRAM_LENGTH) / tour.period;
+  expect(across, `seed ${seed}: share of the lap the tail stands in a junction on the green across it`).toBeLessThanOrEqual(TRAM_TAIL_ACROSS);
   checkCarsOnRuns(seed, world, roads, line);
   checkPlatforms(seed, world, roads);
 }
