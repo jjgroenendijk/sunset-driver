@@ -21,7 +21,7 @@ import { drawIcon } from '../../../src/ui/map/map-draw.ts';
 import { GLYPHS, type GlyphName } from '../../../src/ui/map/map-glyphs.ts';
 import { heatLine, HEAT_STARS } from '../../../src/ui/hud/hud.ts';
 import type { RoadCurve, RoadTier, WorldDescription } from '../../../src/world/types.ts';
-import { worldsFor } from '../../sweep/world-pool.ts';
+import { sharedWorld } from '../../sweep/world-pool.ts';
 
 /** A hand-built curve, so the index can be checked without generating a world. */
 function curve(id: number, tier: RoadTier, coords: readonly [number, number][]): RoadCurve {
@@ -307,7 +307,7 @@ describe('places the world carries (spec section 12)', () => {
   let world: WorldDescription;
 
   beforeAll(async () => {
-    [world] = (await worldsFor([1])) as [WorldDescription];
+    world = await sharedWorld(1);
   });
 
   it('marks the harbour, every tram stop and every pier', () => {

@@ -53,6 +53,21 @@ export async function worldsFor(seeds: readonly number[]): Promise<WorldDescript
 }
 
 /**
+ * The world of one seed, generated once however many suites ask for it. The
+ * unit project does not isolate its files, so the files one worker runs share
+ * this cache: the map suites read seed 1 three times, and it is generated once.
+ */
+const shared = new Map<number, Promise<WorldDescription>>();
+export function sharedWorld(seed: number): Promise<WorldDescription> {
+  let world = shared.get(seed);
+  if (world === undefined) {
+    world = worldsFor([seed]).then((built) => built[0] as WorldDescription);
+    shared.set(seed, world);
+  }
+  return world;
+}
+
+/**
  * Run one job per element, several at a time. The result lines up with `jobs`,
  * whatever order the pool ran them in.
  *
