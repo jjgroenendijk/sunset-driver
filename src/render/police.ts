@@ -114,40 +114,53 @@ export class PoliceView {
       if (Math.abs(unit.x - x) > TRAFFIC_VIEW || Math.abs(unit.y - y) > TRAFFIC_VIEW) continue;
       this.turn.setFromAxisAngle(this.up, -unit.heading);
       if (unit.kind === 'helicopter') {
-        if (flying >= UNIT_CAP) continue;
-        this.at.set(unit.x, unit.height + HELICOPTER_HEIGHT, unit.y);
-        this.matrix.compose(this.at, this.turn, this.one);
-        this.heli.setMatrixAt(flying, this.matrix);
-        // The rotor turns a sixth of a revolution a tick, which reads as a blur.
-        this.turn.setFromAxisAngle(this.up, state.tick / 6);
-        this.at.set(unit.x, unit.height + HELICOPTER_HEIGHT + HELI.height / 2, unit.y);
-        this.matrix.compose(this.at, this.turn, this.one);
-        this.rotor.setMatrixAt(flying, this.matrix);
-        flying++;
+        if (flying < UNIT_CAP) this.placeHeli(unit, flying++, state.tick);
         continue;
       }
       if (cars >= UNIT_CAP) continue;
-      this.at.set(unit.x, unit.height + this.ride, unit.y);
-      this.matrix.compose(this.at, this.turn, this.one);
-      this.paint.setMatrixAt(cars, this.matrix);
-      this.trim.setMatrixAt(cars, this.matrix);
-      this.glass.setMatrixAt(cars, this.matrix);
-      this.doors.set(cars, this.matrix, unit.doors);
-      if (unit.crew > 0) this.driver.setMatrixAt(crewed++, this.matrix);
-      this.paint.setColorAt(cars, this.colour.set(specOf('emergency').paint));
-      // A car driving off once its call is over has its siren off, and its bar dark.
-      const calling = unit.task !== 'leave';
-      for (const phase of [0, 1] as const) {
-        const lit = calling && flashLit(state.tick, unit.id, phase);
-        this.phases[phase].set(cars, this.matrix, lit);
-        if (lit) this.glow.add(unit.x, unit.height, unit.y, this.phases[phase].colour);
-      }
-      cars++;
+      crewed = this.placeCar(unit, cars++, crewed, state.tick);
     }
     this.fill(cars, flying);
     this.driver.count = crewed;
     this.driver.visible = crewed > 0;
     if (crewed > 0) this.driver.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Write the helicopter `unit` into instance `index`, and its rotor turned by the tick. `this.turn` holds its heading. */
+  private placeHeli(unit: PoliceUnit, index: number, tick: number): void {
+    this.at.set(unit.x, unit.height + HELICOPTER_HEIGHT, unit.y);
+    this.matrix.compose(this.at, this.turn, this.one);
+    this.heli.setMatrixAt(index, this.matrix);
+    // The rotor turns a sixth of a revolution a tick, which reads as a blur.
+    this.turn.setFromAxisAngle(this.up, tick / 6);
+    this.at.set(unit.x, unit.height + HELICOPTER_HEIGHT + HELI.height / 2, unit.y);
+    this.matrix.compose(this.at, this.turn, this.one);
+    this.rotor.setMatrixAt(index, this.matrix);
+  }
+
+  /**
+   * Write the patrol car `unit` into instance `index`, its driver into
+   * instance `crewed` when it has one, and light its bar. `this.turn` holds
+   * its heading. Returns how many drivers are written after it.
+   */
+  private placeCar(unit: PoliceUnit, index: number, crewed: number, tick: number): number {
+    this.at.set(unit.x, unit.height + this.ride, unit.y);
+    this.matrix.compose(this.at, this.turn, this.one);
+    this.paint.setMatrixAt(index, this.matrix);
+    this.trim.setMatrixAt(index, this.matrix);
+    this.glass.setMatrixAt(index, this.matrix);
+    this.doors.set(index, this.matrix, unit.doors);
+    let drivers = crewed;
+    if (unit.crew > 0) this.driver.setMatrixAt(drivers++, this.matrix);
+    this.paint.setColorAt(index, this.colour.set(specOf('emergency').paint));
+    // A car driving off once its call is over has its siren off, and its bar dark.
+    const calling = unit.task !== 'leave';
+    for (const phase of [0, 1] as const) {
+      const lit = calling && flashLit(tick, unit.id, phase);
+      this.phases[phase].set(index, this.matrix, lit);
+      if (lit) this.glow.add(unit.x, unit.height, unit.y, this.phases[phase].colour);
+    }
+    return drivers;
   }
 
   dispose(): void {
@@ -180,6 +193,9 @@ export class PoliceView {
     if (cars > 0 && this.paint.instanceColor !== null) this.paint.instanceColor.needsUpdate = true;
   }
 }
+
+/** One police unit as the record holds it. */
+type PoliceUnit = SimState['police']['units'][number];
 
 /** The helicopter's hull: the cabin, the tail and the boom that carries it. */
 function heliBody(): ReturnType<typeof merged> {

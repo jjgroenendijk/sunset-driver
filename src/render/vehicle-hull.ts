@@ -275,67 +275,26 @@ export function hullOf(spec: VehicleSpec, patrol = false): VehicleBox[] | undefi
   const last = rings.length - 1 - [...rings].reverse().findIndex((r) => r.glazed);
 
   const buckets: Bucket[] = [];
-  const add = (face: Point[], colour: number, on: Panel | 'shell', extra: Partial<Bucket> = {}): void => {
-    const key = `${colour}|${on}|${extra.hinge?.leaf ?? ''}|${extra.glass === true}`;
-    let bucket = buckets.find((b) => b.key === key);
-    if (bucket === undefined) {
-      bucket = { key, colour, on, faces: [], ...extra };
-      buckets.push(bucket);
-    }
-    bucket.faces.push(face);
-  };
-  const within = (span: Span | undefined, x: number): boolean => span !== undefined && x < span[0] * hl && x > span[1] * hl;
+  const add = bucketsInto(buckets);
   const paintAt = (x: number): number => (patrol && (x > hl * 0.5 || x < -hl * 0.45) ? spec.trim : spec.paint);
-  const hingeOf = (leaf: number, axis: Hinge['axis'], x: number, y: number, z: number): Hinge => ({ leaf, axis, x, y, z });
+  const build: HullBuild = { hull, rings, hl, width, add, paintAt };
 
   for (let i = 0; i < rings.length - 1; i++) {
     const ring = rings[i] as Ring;
     const mid = (ring.x + (rings[i + 1] as Ring).x) / 2;
     const a = points[i] as Point[];
     const b = points[i + 1] as Point[];
-    const door = hull.doors.findIndex((span) => within(span, mid));
-    const sliding = within(hull.slide, mid);
-    if (i >= first - 1 && i < last) tub(a, b, ring.flag, add);
+    const between: Between = {
+      ring,
+      mid,
+      door: hull.doors.findIndex((span) => within(span, mid, hl)),
+      sliding: within(hull.slide, mid, hl),
+      roofed: i >= first - 1 && i < last,
+    };
+    if (between.roofed) tub(a, b, ring.flag, add);
     for (let k = 0; k < 14; k++) {
       const face: Point[] = [a[k] as Point, a[(k + 1) % 14] as Point, b[(k + 1) % 14] as Point, b[k] as Point];
-      const side = sideOf(k);
-      const z = k <= 6 ? 1 : -1;
-      // The driver's door is leaf 0 and stands on -z; the one across is 1.
-      const leaf = (d: number): number => d * 2 + (z < 0 ? 0 : 1);
-      if (side === 0) {
-        add(face, UNDER, 'shell');
-        continue;
-      }
-      const glass = (ring.flag === 'W' && side >= 4) || (ring.flag === 'S' && side === 4);
-      if (glass) {
-        const hinged = door >= 0 && ring.flag === 'S';
-        const hinge = hinged ? hingeOf(leaf(door), 'y', (hull.doors[door] as Span)[0] * hl, 0, z * width) : undefined;
-        add(face, GLASS, hinged ? (z > 0 ? 'left' : 'right') : 'roof', { glass: true, ...(hinge && { hinge }) });
-        continue;
-      }
-      const colour = paintAt(mid);
-      if ((door >= 0 || sliding) && (side === 2 || side === 3)) {
-        const hinge =
-          door >= 0
-            ? hingeOf(leaf(door), 'y', (hull.doors[door] as Span)[0] * hl, 0, z * width)
-            : hingeOf(leaf(1), 'slide', (hull.slide as Span)[0] * hl, 0, z * width);
-        add(face, colour, z > 0 ? 'left' : 'right', { hinge });
-        add(inset(face, 0, -z), TRIM_INSIDE, 'shell');
-        continue;
-      }
-      if (side >= 3 && within(hull.bonnet, mid)) {
-        const back = (hull.bonnet as Span)[1] * hl;
-        const top = (rings.find((r) => Math.abs(r.x - back) < 1e-9) as Ring).roof;
-        add(face, colour, 'front', { hinge: hingeOf(BONNET, 'z', back, top, 0) });
-        add(inset(face, -1.5, 0), UNDER, 'shell');
-        continue;
-      }
-      if (side >= 3 && within(hull.boot, mid)) {
-        add(face, colour, 'rear');
-        add(inset(face, -1.5, 0), UNDER, 'shell');
-        continue;
-      }
-      add(face, colour, side >= 4 && i >= first - 1 && i < last ? 'roof' : 'shell');
+      faceOf(build, between, face, k);
     }
   }
   // The nose and the tail close the ends; each ring winds the same way, so the
@@ -348,6 +307,128 @@ export function hullOf(spec: VehicleSpec, patrol = false): VehicleBox[] | undefi
   if (last === rings.length - 1) add(tail.map(([x, y, z]) => [x + INSET, y, z] as Point).reverse(), TRIM_INSIDE, 'shell');
 
   return [...buckets.map(partOf), ...cabinOf(hull, rings, spec, width), ...lampsOf(rings)];
+}
+
+/** Adds a face to the bucket of its colour, panel, leaf and glass. */
+type AddFace = (face: Point[], colour: number, on: Panel | 'shell', extra?: Partial<Bucket>) => void;
+
+/** What each face of a hull is placed by. */
+interface HullBuild {
+  hull: Hull;
+  rings: Ring[];
+  /** Half the length of the body, which the hull's spans are fractions of. */
+  hl: number;
+  width: number;
+  add: AddFace;
+  /** The colour of the flank at a place along the body. */
+  paintAt: (x: number) => number;
+}
+
+/** The stretch of hull between one ring and the next. */
+interface Between {
+  ring: Ring;
+  /** Where it stands along the body, halfway between the two rings. */
+  mid: number;
+  /** The door it is part of, or -1. */
+  door: number;
+  sliding: boolean;
+  /** Whether it is under the roof, from a station before the first glass to the last. */
+  roofed: boolean;
+}
+
+/** An adder that puts each face in the bucket of its key, starting the bucket if need be. */
+function bucketsInto(buckets: Bucket[]): AddFace {
+  return (face, colour, on, extra = {}) => {
+    const key = `${colour}|${on}|${extra.hinge?.leaf ?? ''}|${extra.glass === true}`;
+    let bucket = buckets.find((b) => b.key === key);
+    if (bucket === undefined) {
+      bucket = { key, colour, on, faces: [], ...extra };
+      buckets.push(bucket);
+    }
+    bucket.faces.push(face);
+  };
+}
+
+/** True where a place along the body falls inside a span, given as fractions of half the length. */
+function within(span: Span | undefined, x: number, hl: number): boolean {
+  return span !== undefined && x < span[0] * hl && x > span[1] * hl;
+}
+
+function hingeOf(leaf: number, axis: Hinge['axis'], x: number, y: number, z: number): Hinge {
+  return { leaf, axis, x, y, z };
+}
+
+/** The driver's door is leaf 0 and stands on -z; the one across is 1. */
+function leafOf(door: number, z: number): number {
+  return door * 2 + (z < 0 ? 0 : 1);
+}
+
+/** The door panel on a side of the body. */
+function flankOf(z: number): Panel {
+  return z > 0 ? 'left' : 'right';
+}
+
+/** One face of the hull: the k-th side of the stretch between two rings, put on its panel. */
+function faceOf(h: HullBuild, between: Between, face: Point[], k: number): void {
+  const { ring, mid, door } = between;
+  const side = sideOf(k);
+  const z = k <= 6 ? 1 : -1;
+  if (side === 0) {
+    h.add(face, UNDER, 'shell');
+    return;
+  }
+  const glass = (ring.flag === 'W' && side >= 4) || (ring.flag === 'S' && side === 4);
+  if (glass) {
+    glassFace(h, door, ring.flag === 'S', face, z);
+    return;
+  }
+  const colour = h.paintAt(mid);
+  if ((door >= 0 || between.sliding) && (side === 2 || side === 3)) {
+    doorFace(h, door, face, z, colour);
+    return;
+  }
+  if (side >= 3 && lidFace(h, mid, face, colour)) return;
+  h.add(face, colour, side >= 4 && between.roofed ? 'roof' : 'shell');
+}
+
+/**
+ * A pane of glass. A side window in a door swings with the door; the
+ * windscreen and any other pane belong to the roof.
+ */
+function glassFace(h: HullBuild, door: number, side: boolean, face: Point[], z: number): void {
+  const hinged = door >= 0 && side;
+  const hinge = hinged ? hingeOf(leafOf(door, z), 'y', (h.hull.doors[door] as Span)[0] * h.hl, 0, z * h.width) : undefined;
+  h.add(face, GLASS, hinged ? flankOf(z) : 'roof', { glass: true, ...(hinge && { hinge }) });
+}
+
+/** A face of a door, hung on its hinge or its slide, and its lining inside. */
+function doorFace(h: HullBuild, door: number, face: Point[], z: number, colour: number): void {
+  const hinge =
+    door >= 0
+      ? hingeOf(leafOf(door, z), 'y', (h.hull.doors[door] as Span)[0] * h.hl, 0, z * h.width)
+      : hingeOf(leafOf(1, z), 'slide', (h.hull.slide as Span)[0] * h.hl, 0, z * h.width);
+  h.add(face, colour, flankOf(z), { hinge });
+  h.add(inset(face, 0, -z), TRIM_INSIDE, 'shell');
+}
+
+/**
+ * A face of the bonnet or the boot lid, with its lining under it. False where
+ * the place is on neither, and nothing is added.
+ */
+function lidFace(h: HullBuild, mid: number, face: Point[], colour: number): boolean {
+  if (within(h.hull.bonnet, mid, h.hl)) {
+    const back = (h.hull.bonnet as Span)[1] * h.hl;
+    const top = (h.rings.find((r) => Math.abs(r.x - back) < 1e-9) as Ring).roof;
+    h.add(face, colour, 'front', { hinge: hingeOf(BONNET, 'z', back, top, 0) });
+    h.add(inset(face, -1.5, 0), UNDER, 'shell');
+    return true;
+  }
+  if (within(h.hull.boot, mid, h.hl)) {
+    h.add(face, colour, 'rear');
+    h.add(inset(face, -1.5, 0), UNDER, 'shell');
+    return true;
+  }
+  return false;
 }
 
 /** A lamp at each front corner of the nose and a tail light at each rear one. */
@@ -376,11 +457,23 @@ function tub(a: Point[], b: Point[], flag: Flag, add: (face: Point[], colour: nu
   const lift = (p: Point): Point => [p[0], p[1] + INSET * 0.5, p[2]];
   add([lift(a[1] as Point), lift(a[13] as Point), lift(b[13] as Point), lift(b[1] as Point)], TRIM_INSIDE, 'shell');
   const wall = (k: number): Point[] => [b[k], b[k + 1], a[k + 1], a[k]] as Point[];
-  for (const k of [1, 2, 11, 12]) add(inset(wall(k), 0, k < 7 ? -0.5 : 0.5), TRIM_INSIDE, 'shell');
+  for (const k of [1, 2, 11, 12]) add(inset(wall(k), 0, inward(k)), TRIM_INSIDE, 'shell');
   // The pillars between the side windows, and the painted flank of a span with no glass.
-  if (flag !== 'W' && flag !== 'S') for (const k of [4, 9]) add(inset(wall(k), 0, k < 7 ? -0.5 : 0.5), TRIM_INSIDE, 'roof');
+  if (flag !== 'W' && flag !== 'S') for (const k of [4, 9]) add(inset(wall(k), 0, inward(k)), TRIM_INSIDE, 'roof');
   // The rails and the ceiling, where the top is not all windscreen.
-  if (flag !== 'W') for (const k of [5, 6, 7, 8]) add(inset(wall(k), -0.5, k === 5 ? -0.5 : k === 8 ? 0.5 : 0), TRIM_INSIDE, 'roof');
+  if (flag !== 'W') for (const k of [5, 6, 7, 8]) add(inset(wall(k), -0.5, railInward(k)), TRIM_INSIDE, 'roof');
+}
+
+/** How far a lining on the k-th side of a ring moves across, in insets, to stand inside the flank. */
+function inward(k: number): number {
+  return k < 7 ? -0.5 : 0.5;
+}
+
+/** The same for the rails and the ceiling: the two rails move in, the ceiling stays over the middle. */
+function railInward(k: number): number {
+  if (k === 5) return -0.5;
+  if (k === 8) return 0.5;
+  return 0;
 }
 
 /** A face moved `dy` insets down and `dz` insets across, which is how a panel's copy in the shell sits inside it. */

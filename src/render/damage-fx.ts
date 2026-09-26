@@ -146,54 +146,60 @@ export class DamageFx {
     }
     if (!isSmoking(damage)) return;
     const burning = damage.stage === 'burning';
-    if (tick % SMOKE_PERIOD === 0) {
-      const rng = rngFor(seed, tick, Subsystem.Damage, 1);
-      if (burning) {
-        // A car alight pours black smoke off the whole of its body.
-        this.place(
-          v,
-          rng.range(-0.8, 0.8) * spec.halfLength,
-          spec.halfHeight * 1.2,
-          rng.range(-0.6, 0.6) * spec.halfWidth,
-          0,
-        );
-      } else {
-        // The smoke comes off the engine, which is under the nose of everything
-        // in the roster but the buggy, and a buggy on fire is close enough.
-        this.place(v, spec.halfLength * 0.7, spec.halfHeight, 0, rng.range(-0.3, 0.3));
-      }
-      this.smoke.add(
-        smokePuff(
-          {
-            born: tick,
-            life: Math.round((burning ? SMOKE_LIFE * 1.3 : SMOKE_LIFE) * rng.range(0.85, 1.15)),
-            x: this.at.x,
-            y: this.at.y,
-            z: this.at.z,
-            dx: rng.range(-0.4, 0.4),
-            dy: SMOKE_RISE * (burning ? 1 : 0.7) * rng.range(0.8, 1.2),
-            dz: rng.range(-0.4, 0.4),
-            size: spec.halfWidth * (burning ? 1.1 : 0.6) * rng.range(0.8, 1.2),
-            tone: burning ? rng.range(0, 0.12) : rng.range(0.7, 0.9),
-            glow: burning ? 0.8 : 0,
-          },
-          rng.range(0, 1),
-        ),
-      );
-    }
-    if (burning && tick % FLAME_PERIOD === 0) {
-      const rng = rngFor(seed, tick, Subsystem.Damage, 2);
+    if (tick % SMOKE_PERIOD === 0) this.spawnSmoke(v, spec, seed, tick, burning);
+    if (burning && tick % FLAME_PERIOD === 0) this.spawnFlame(v, spec, seed, tick);
+  }
+
+  /** A puff of smoke off a damaged vehicle: black off the whole body when it burns, else off the engine. */
+  private spawnSmoke(v: VehicleState, spec: VehicleSpec, seed: number, tick: number, burning: boolean): void {
+    const rng = rngFor(seed, tick, Subsystem.Damage, 1);
+    if (burning) {
+      // A car alight pours black smoke off the whole of its body.
       this.place(
         v,
-        rng.range(-spec.halfLength, spec.halfLength),
-        spec.halfHeight,
-        rng.range(-1, 1) * spec.halfWidth,
+        rng.range(-0.8, 0.8) * spec.halfLength,
+        spec.halfHeight * 1.2,
+        rng.range(-0.6, 0.6) * spec.halfWidth,
         0,
       );
-      this.flame.add(
-        this.flamePuff(tick, FLAME_LIFE, rng.range(0.4, 1.4), spec.halfWidth * rng.range(0.9, 1.5), rng.range(0, 1)),
-      );
+    } else {
+      // The smoke comes off the engine, which is under the nose of everything
+      // in the roster but the buggy, and a buggy on fire is close enough.
+      this.place(v, spec.halfLength * 0.7, spec.halfHeight, 0, rng.range(-0.3, 0.3));
     }
+    this.smoke.add(
+      smokePuff(
+        {
+          born: tick,
+          life: Math.round((burning ? SMOKE_LIFE * 1.3 : SMOKE_LIFE) * rng.range(0.85, 1.15)),
+          x: this.at.x,
+          y: this.at.y,
+          z: this.at.z,
+          dx: rng.range(-0.4, 0.4),
+          dy: SMOKE_RISE * (burning ? 1 : 0.7) * rng.range(0.8, 1.2),
+          dz: rng.range(-0.4, 0.4),
+          size: spec.halfWidth * (burning ? 1.1 : 0.6) * rng.range(0.8, 1.2),
+          tone: burning ? rng.range(0, 0.12) : rng.range(0.7, 0.9),
+          glow: burning ? 0.8 : 0,
+        },
+        rng.range(0, 1),
+      ),
+    );
+  }
+
+  /** A tongue of flame somewhere over a burning vehicle's body. */
+  private spawnFlame(v: VehicleState, spec: VehicleSpec, seed: number, tick: number): void {
+    const rng = rngFor(seed, tick, Subsystem.Damage, 2);
+    this.place(
+      v,
+      rng.range(-spec.halfLength, spec.halfLength),
+      spec.halfHeight,
+      rng.range(-1, 1) * spec.halfWidth,
+      0,
+    );
+    this.flame.add(
+      this.flamePuff(tick, FLAME_LIFE, rng.range(0.4, 1.4), spec.halfWidth * rng.range(0.9, 1.5), rng.range(0, 1)),
+    );
   }
 
   /**

@@ -95,54 +95,68 @@ export class InteriorGoods {
   }
 
   private stock(kind: ShopKind, f: Fittings): void {
-    const { shelf, counter } = f;
-    const shelved = SHELVED[kind] ?? [];
-    // Along each shelf, spaced evenly, a row of goods on its top.
-    const slots = Math.max(2, Math.floor((2 * shelf.half) / 0.55));
-    for (const side of [-1, 1]) {
-      for (let i = 0; i < slots; i++) {
-        const z = shelf.z - shelf.half + ((i + 0.5) / slots) * 2 * shelf.half;
-        const at = new Vector3(side * shelf.x, shelf.top, z);
-        const n = i + (side > 0 ? slots : 0);
-        if (kind === 'weapons' && i % 2 === 0) this.gun(LAID[n % LAID.length] as WeaponId, at, 0.55, side);
-        else if (kind === 'workshop') this.tin(TINS[n % TINS.length] as number, at);
-        else if (kind === 'clothing') this.folded(TINS[n % TINS.length] as number, at);
-        else if (shelved.length > 0) this.prop(shelved[n % shelved.length] as PropId, at, 0.32, WRAPPERS[i % 4] as number);
-      }
-    }
+    this.shelves(kind, f.shelf);
     // The counter: the goods of the trade at one end, the till at the other.
+    const { counter } = f;
     const goods = ON_COUNTER[kind];
     goods.forEach((id, i) => {
       this.prop(id, new Vector3(-counter.half * (0.6 - i * 0.3), counter.top, counter.z), 0.3, WRAPPERS[i % 4] as number);
     });
     this.box(0.35, 0.22, 0.3, 0x2a2320, new Vector3(counter.half * 0.6, counter.top, counter.z));
-    if (kind === 'weapons') {
-      COUNTER_GUNS.forEach((id, i) => this.gun(id, new Vector3((i - 0.5) * 0.5, counter.top, counter.z), 0.3, 1));
-      // The long guns hang on the back wall, one over another, above the counter's height.
-      RACK.forEach((id, i) => this.hung(id, new Vector3(0, 1.3 + i * 0.42, -f.halfDepth + 0.08), 1.1));
-    }
-    if (kind === 'clothing') {
-      // Figures in the clothes for sale, in a row across the middle of the floor.
-      const count = Math.min(4, Math.max(2, Math.floor((2 * f.halfWidth) / 1.2)));
-      for (let i = 0; i < count; i++) {
-        const x = (i - (count - 1) / 2) * ((1.6 * f.halfWidth) / count);
-        this.figure(i + 1, new Vector3(x, 0, f.halfDepth * 0.3), -Math.PI / 2);
+    if (kind === 'weapons') this.armoury(f);
+    if (kind === 'clothing') this.figures(f);
+    if (kind === 'workshop') this.tyres(f);
+  }
+
+  /** Along each shelf, spaced evenly, a row of goods on its top. */
+  private shelves(kind: ShopKind, shelf: Fittings['shelf']): void {
+    const slots = Math.max(2, Math.floor((2 * shelf.half) / 0.55));
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < slots; i++) {
+        const z = shelf.z - shelf.half + ((i + 0.5) / slots) * 2 * shelf.half;
+        this.shelved(kind, i, i + (side > 0 ? slots : 0), new Vector3(side * shelf.x, shelf.top, z), side);
       }
     }
-    if (kind === 'workshop') {
-      // A stack of tyres in each back corner.
-      for (const side of [-1, 1]) {
-        for (let i = 0; i < 3; i++) {
-          this.tyre(new Vector3(side * (f.halfWidth - 0.5), 0.1 + i * 0.2, -f.halfDepth + 0.5));
-        }
+  }
+
+  /** The good in slot `i` of a shelf, the `n`th along both shelves. */
+  private shelved(kind: ShopKind, i: number, n: number, at: Vector3, side: number): void {
+    const shelved = SHELVED[kind] ?? [];
+    if (kind === 'weapons' && i % 2 === 0) this.gun(LAID[n % LAID.length] as WeaponId, at, 0.55, side);
+    else if (kind === 'workshop') this.tin(TINS[n % TINS.length] as number, at);
+    else if (kind === 'clothing') this.folded(TINS[n % TINS.length] as number, at);
+    else if (shelved.length > 0) this.prop(shelved[n % shelved.length] as PropId, at, 0.32, WRAPPERS[i % 4] as number);
+  }
+
+  /** Guns on the counter, and the long guns on the back wall. */
+  private armoury(f: Fittings): void {
+    const { counter } = f;
+    COUNTER_GUNS.forEach((id, i) => this.gun(id, new Vector3((i - 0.5) * 0.5, counter.top, counter.z), 0.3, 1));
+    // The long guns hang on the back wall, one over another, above the counter's height.
+    RACK.forEach((id, i) => this.hung(id, new Vector3(0, 1.3 + i * 0.42, -f.halfDepth + 0.08), 1.1));
+  }
+
+  /** Figures in the clothes for sale, in a row across the middle of the floor. */
+  private figures(f: Fittings): void {
+    const count = Math.min(4, Math.max(2, Math.floor((2 * f.halfWidth) / 1.2)));
+    for (let i = 0; i < count; i++) {
+      const x = (i - (count - 1) / 2) * ((1.6 * f.halfWidth) / count);
+      this.figure(i + 1, new Vector3(x, 0, f.halfDepth * 0.3), -Math.PI / 2);
+    }
+  }
+
+  /** A stack of tyres in each back corner. */
+  private tyres(f: Fittings): void {
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 3; i++) {
+        this.tyre(new Vector3(side * (f.halfWidth - 0.5), 0.1 + i * 0.2, -f.halfDepth + 0.5));
       }
     }
   }
 
   /** The one who sells: behind the counter, facing the door. */
   private keeper(kind: ShopKind, f: Fittings): void {
-    const outfit = kind === 'clinic' ? 4 : kind === 'broker' ? 3 : 0;
-    this.figure(outfit, new Vector3(0, 0, f.counter.z - BEHIND), -Math.PI / 2);
+    this.figure(keeperOutfit(kind), new Vector3(0, 0, f.counter.z - BEHIND), -Math.PI / 2);
   }
 
   /** Add an object to the room, scaled so its longest side is `size` metres, standing at `at`. */
@@ -244,4 +258,11 @@ function glow(object: Object3D): void {
     material.emissive = material.color.clone();
     material.emissiveIntensity = GLOW;
   });
+}
+
+/** What the one behind the counter wears. */
+function keeperOutfit(kind: ShopKind): number {
+  if (kind === 'clinic') return 4;
+  if (kind === 'broker') return 3;
+  return 0;
 }

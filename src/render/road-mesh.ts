@@ -196,28 +196,15 @@ function batchOf(tier: RoadTier): RoadTier {
  */
 export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons, surfaceAt: SurfaceAt): TierGeometry[] {
   const out: TierGeometry[] = [];
-  const junctions = new Map<RoadTier, BufferGeometry[]>();
-  for (const junction of chunk.junctions) {
-    for (const surface of junctionSurfaces(junction, ribbons, (x, y) => surfaceAt(x, y, junction.tier))) {
-      const list = junctions.get(batchOf(surface.tier));
-      if (list === undefined) junctions.set(batchOf(surface.tier), [surface.geometry]);
-      else list.push(surface.geometry);
-    }
-  }
+  const junctions = junctionsByBatch(chunk, ribbons, surfaceAt);
   const pavement = new Map<RoadTier, BufferGeometry[]>();
   for (const piece of chunk.pavement) {
     const geometry = pavementSurface(piece, chunk.bounds, surfaceAt);
     if (geometry === undefined) continue;
-    const list = pavement.get(batchOf(piece.tier));
-    if (list === undefined) pavement.set(batchOf(piece.tier), [geometry]);
-    else list.push(geometry);
+    addTo(pavement, batchOf(piece.tier), geometry);
   }
   const corridors = new Map<RoadTier, BufferGeometry[]>();
-  for (const part of buildChunkCorridors(chunk, ribbons, surfaceAt)) {
-    const list = corridors.get(batchOf(part.tier));
-    if (list === undefined) corridors.set(batchOf(part.tier), [part.geometry]);
-    else list.push(part.geometry);
-  }
+  for (const part of buildChunkCorridors(chunk, ribbons, surfaceAt)) addTo(corridors, batchOf(part.tier), part.geometry);
   // The curve segments the tram runs down. No paint is laid on its lane there,
   // because the lane is the tram's and a line would show between the rails.
   const tracked = new Set<string>();
@@ -231,34 +218,8 @@ export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons, surface
     const kerbside = pavement.get(tier) ?? [];
     const carried = corridors.get(tier) ?? [];
     if (runs.length === 0 && paved.length === 0 && kerbside.length === 0 && carried.length === 0) continue;
-    const built: RunGeometry[] = [];
     const paint: PaintBuffers = { positions: [], normals: [], tints: [] };
-    for (const run of runs) {
-      // A run of a tier batched with another keeps its own section and paint.
-      const ground = roadSection(run.tier);
-      const raised = structureSection(run.tier);
-      const markings = markingsOf(run.tier);
-      const pieces = piecesOf(run, ribbons);
-      const off = (segment: number): boolean => run.bridges.includes(segment) || run.tunnels.includes(segment);
-      // The joints are one part rather than one each: a bevel is a handful of
-      // triangles, and a batch pays for every part it is filled from.
-      const joints = jointsOf(pieces, (segment) => (off(segment) ? raised : ground));
-      built.push({
-        run,
-        surfaces: pieces.flatMap((piece) =>
-          stretchesOn(piece, off).map((stretch) => surfaceOf(stretch.piece, stretch.off ? raised : ground)),
-        ),
-        joints: joints.length > 0 ? [merge(joints)] : [],
-        structures: structuresOf(run, pieces, ribbons, run.tier, raised),
-      });
-      const onTrack = (segment: number): boolean => tracked.has(`${run.curve}:${run.from + segment}`);
-      for (const piece of pieces) {
-        for (const marking of markings) {
-          const inLane = Math.abs(marking.across) < TRAM_LANE.halfWidth;
-          paintMarking(piece, marking, paint, (i) => inLane && onTrack(piece.from + i));
-        }
-      }
-    }
+    const built = runs.map((run) => buildRun(run, ribbons, tracked, paint));
     out.push({
       tier,
       runs: built,
@@ -271,6 +232,56 @@ export function buildChunkRoads(chunk: WorldChunk, ribbons: RoadRibbons, surface
     });
   }
   return out;
+}
+
+/** The surfaces of a chunk's junctions, by the tier whose batch draws them. */
+function junctionsByBatch(chunk: WorldChunk, ribbons: RoadRibbons, surfaceAt: SurfaceAt): Map<RoadTier, BufferGeometry[]> {
+  const junctions = new Map<RoadTier, BufferGeometry[]>();
+  for (const junction of chunk.junctions) {
+    for (const surface of junctionSurfaces(junction, ribbons, (x, y) => surfaceAt(x, y, junction.tier))) {
+      addTo(junctions, batchOf(surface.tier), surface.geometry);
+    }
+  }
+  return junctions;
+}
+
+/** Add a geometry to the list a map keeps under a tier, starting the list if need be. */
+function addTo(map: Map<RoadTier, BufferGeometry[]>, tier: RoadTier, geometry: BufferGeometry): void {
+  const list = map.get(tier);
+  if (list === undefined) map.set(tier, [geometry]);
+  else list.push(geometry);
+}
+
+/**
+ * The geometry of one run: its surfaces, joints and structures. Its markings
+ * go into `paint`, except on a lane the tram runs down (`tracked`).
+ */
+function buildRun(run: ChunkRoad, ribbons: RoadRibbons, tracked: ReadonlySet<string>, paint: PaintBuffers): RunGeometry {
+  // A run of a tier batched with another keeps its own section and paint.
+  const ground = roadSection(run.tier);
+  const raised = structureSection(run.tier);
+  const markings = markingsOf(run.tier);
+  const pieces = piecesOf(run, ribbons);
+  const off = (segment: number): boolean => run.bridges.includes(segment) || run.tunnels.includes(segment);
+  // The joints are one part rather than one each: a bevel is a handful of
+  // triangles, and a batch pays for every part it is filled from.
+  const joints = jointsOf(pieces, (segment) => (off(segment) ? raised : ground));
+  const built: RunGeometry = {
+    run,
+    surfaces: pieces.flatMap((piece) =>
+      stretchesOn(piece, off).map((stretch) => surfaceOf(stretch.piece, stretch.off ? raised : ground)),
+    ),
+    joints: joints.length > 0 ? [merge(joints)] : [],
+    structures: structuresOf(run, pieces, ribbons, run.tier, raised),
+  };
+  const onTrack = (segment: number): boolean => tracked.has(`${run.curve}:${run.from + segment}`);
+  for (const piece of pieces) {
+    for (const marking of markings) {
+      const inLane = Math.abs(marking.across) < TRAM_LANE.halfWidth;
+      paintMarking(piece, marking, paint, (i) => inLane && onTrack(piece.from + i));
+    }
+  }
+  return built;
 }
 
 /**
@@ -452,31 +463,51 @@ function structuresOf(
   // A parapet stands on the outer edge of the surface, whatever height the
   // tier's section leaves it at: a pavement, a verge or the carriageway itself.
   const deckTop = (section[1] as SectionPoint).rise;
-  for (const stretch of stretchesOf(run.bridges)) {
-    // A deck is swept like the surface over it, so it is cut where the surface
-    // is: at a chunk boundary, and at a turn too sharp to mitre.
-    for (const piece of pieces) {
-      const lo = Math.max(stretch.from, piece.from);
-      const hi = Math.min(stretch.to, piece.from + piece.points.length - 2);
-      if (lo > hi) continue;
-      const points = piece.points.slice(lo - piece.from, hi - piece.from + 2);
-      const span = piece.frames.slice(lo - piece.from, hi - piece.from + 2);
-      out.push(beam(points, span, -outer, outer, -SKIRT - DECK_DEPTH, -SKIRT));
-      out.push(beam(points, span, -outer, -outer + PARAPET_WIDTH, deckTop, deckTop + PARAPET_HEIGHT));
-      out.push(beam(points, span, outer - PARAPET_WIDTH, outer, deckTop, deckTop + PARAPET_HEIGHT));
-    }
+  for (const stretch of stretchesOf(run.bridges)) out.push(...deckOf(stretch, pieces, outer, deckTop));
+  for (const stretch of stretchesOf(run.tunnels)) out.push(...portalsOf(run, stretch, pieces, ribbons, tier));
+  return out;
+}
+
+/**
+ * The deck under one stretch carried over the ground, and its parapets. A deck
+ * is swept like the surface over it, so it is cut where the surface is: at a
+ * chunk boundary, and at a turn too sharp to mitre.
+ */
+function deckOf(stretch: { from: number; to: number }, pieces: readonly Piece[], outer: number, deckTop: number): BufferGeometry[] {
+  const out: BufferGeometry[] = [];
+  for (const piece of pieces) {
+    const lo = Math.max(stretch.from, piece.from);
+    const hi = Math.min(stretch.to, piece.from + piece.points.length - 2);
+    if (lo > hi) continue;
+    const points = piece.points.slice(lo - piece.from, hi - piece.from + 2);
+    const span = piece.frames.slice(lo - piece.from, hi - piece.from + 2);
+    out.push(beam(points, span, -outer, outer, -SKIRT - DECK_DEPTH, -SKIRT));
+    out.push(beam(points, span, -outer, -outer + PARAPET_WIDTH, deckTop, deckTop + PARAPET_HEIGHT));
+    out.push(beam(points, span, outer - PARAPET_WIDTH, outer, deckTop, deckTop + PARAPET_HEIGHT));
   }
-  for (const stretch of stretchesOf(run.tunnels)) {
-    // A stretch that reaches the end of the run may carry on into the next
-    // chunk, so the curve says where the bore really opens.
-    if (!ribbons.isTunnel(run.curve, run.from + stretch.from - 1)) {
-      const mouth = pieceAt(pieces, stretch.from);
-      if (mouth !== undefined) out.push(portal(mouth.piece, mouth.at, tier, -1));
-    }
-    if (!ribbons.isTunnel(run.curve, run.from + stretch.to + 1)) {
-      const mouth = pieceAt(pieces, stretch.to);
-      if (mouth !== undefined) out.push(portal(mouth.piece, mouth.at + 1, tier, 1));
-    }
+  return out;
+}
+
+/**
+ * The portals at the mouths of one stretch in a bore. A stretch that reaches
+ * the end of the run may carry on into the next chunk, so the curve says where
+ * the bore really opens.
+ */
+function portalsOf(
+  run: ChunkRoad,
+  stretch: { from: number; to: number },
+  pieces: readonly Piece[],
+  ribbons: RoadRibbons,
+  tier: RoadTier,
+): BufferGeometry[] {
+  const out: BufferGeometry[] = [];
+  if (!ribbons.isTunnel(run.curve, run.from + stretch.from - 1)) {
+    const mouth = pieceAt(pieces, stretch.from);
+    if (mouth !== undefined) out.push(portal(mouth.piece, mouth.at, tier, -1));
+  }
+  if (!ribbons.isTunnel(run.curve, run.from + stretch.to + 1)) {
+    const mouth = pieceAt(pieces, stretch.to);
+    if (mouth !== undefined) out.push(portal(mouth.piece, mouth.at + 1, tier, 1));
   }
   return out;
 }

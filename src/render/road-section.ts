@@ -265,15 +265,7 @@ export function isMarked(tier: RoadTier): boolean {
  * which holds for a ring every point of which can be seen from the centre.
  */
 export function flatSurface(ring: readonly Vector3[], across: number, centre?: Vector3): BufferGeometry | undefined {
-  const points: Vector3[] = [];
-  for (const p of ring) {
-    const last = points[points.length - 1];
-    if (last !== undefined && last.distanceTo(p) < SAME_PLACE) continue;
-    points.push(p);
-  }
-  const first = points[0];
-  const last = points[points.length - 1];
-  if (first !== undefined && last !== undefined && points.length > 1 && first.distanceTo(last) < SAME_PLACE) points.pop();
+  const points = distinctPoints(ring);
   if (points.length < 3) return undefined;
   const flat = points.map((p) => new Vector2(p.x, p.z));
   if (Math.abs(ShapeUtils.area(flat)) < MIN_SURFACE_AREA) return undefined;
@@ -327,6 +319,20 @@ export function flatSurface(ring: readonly Vector3[], across: number, centre?: V
   geometry.setAttribute('uv', new BufferAttribute(uvs, 2));
   geometry.setIndex(new BufferAttribute(index, 1));
   return tag(geometry, new Float32Array(count).fill(across), SURFACE_ROAD);
+}
+
+/** A ring without a point on the one before it, or a last point on the first. */
+function distinctPoints(ring: readonly Vector3[]): Vector3[] {
+  const points: Vector3[] = [];
+  for (const p of ring) {
+    const last = points[points.length - 1];
+    if (last !== undefined && last.distanceTo(p) < SAME_PLACE) continue;
+    points.push(p);
+  }
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (first !== undefined && last !== undefined && points.length > 1 && first.distanceTo(last) < SAME_PLACE) points.pop();
+  return points;
 }
 
 /** Where one point of a cross section stands in the scene. */

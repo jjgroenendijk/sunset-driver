@@ -378,11 +378,7 @@ function fill(
           const size = into.itemSize;
           const start = (base + from) * size;
           const source = part.attributes.find((attribute) => attribute.name === name);
-          if (source !== undefined) {
-            if (part.matrix !== undefined && size === 3 && PLACES.has(name)) place(source.array, out, start, from, to, part.matrix);
-            else if (turn !== undefined && size >= 3 && DIRECTIONS.has(name)) direct(source.array, out, start, from, to, turn, size);
-            else out.set(source.array.subarray(from * size, to * size), start);
-          }
+          if (source !== undefined) copyAttribute(source.array, out, name, size, start, from, to, part.matrix, turn);
           into.addUpdateRange(start, (to - from) * size);
           into.needsUpdate = true;
           records?.update(into, VERTEX);
@@ -392,14 +388,7 @@ function fill(
         if (!last) return;
 
         const index = geometry.getIndex();
-        if (index !== null) {
-          const out = index.array as Uint32Array | Uint16Array;
-          const own = part.index;
-          for (let k = 0; k < drawn; k++) out[indexBase + k] = base + (own === undefined ? k : (own[k] as number));
-          index.addUpdateRange(indexBase, drawn);
-          index.needsUpdate = true;
-          records?.update(index, INDEX);
-        }
+        if (index !== null) writeIndex(index, part.index, base, indexBase, drawn, records);
         geometry.setDrawRange(0, indexBase + drawn);
         bounds.getBoundingSphere(sphere);
         mesh.parts++;
@@ -416,6 +405,42 @@ function fill(
     indexAt += drawn;
   });
   return { mesh, steps };
+}
+
+/**
+ * Copy the vertices `from` up to `to` of one attribute of a part into the
+ * batch: places moved by the part's frame, directions turned, the rest as they are.
+ */
+function copyAttribute(
+  source: AttributeArray,
+  out: AttributeArray,
+  name: string,
+  size: number,
+  start: number,
+  from: number,
+  to: number,
+  matrix: Matrix4 | undefined,
+  turn: Matrix3 | undefined,
+): void {
+  if (matrix !== undefined && size === 3 && PLACES.has(name)) place(source, out, start, from, to, matrix);
+  else if (turn !== undefined && size >= 3 && DIRECTIONS.has(name)) direct(source, out, start, from, to, turn, size);
+  else out.set(source.subarray(from * size, to * size), start);
+}
+
+/** Write a part's index into the batch's, moved on by the vertices before it, and upload it. */
+function writeIndex(
+  index: BufferAttribute,
+  own: ArrayLike<number> | undefined,
+  base: number,
+  indexBase: number,
+  drawn: number,
+  records: UploadRecords | undefined,
+): void {
+  const out = index.array as Uint32Array | Uint16Array;
+  for (let k = 0; k < drawn; k++) out[indexBase + k] = base + (own === undefined ? k : (own[k] as number));
+  index.addUpdateRange(indexBase, drawn);
+  index.needsUpdate = true;
+  records?.update(index, INDEX);
 }
 
 /** A batch's `onAfterRender` once it is full, which stops being called when every array is gone. */

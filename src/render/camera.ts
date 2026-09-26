@@ -351,10 +351,43 @@ export class FollowCamera {
     const driving = target.driving !== false;
     const goal = yawBehind(target.heading);
     const steered = mouse && !driving;
+    const frame = behindFrame(first, driving);
+    const base = frame.pitch;
+    this.turnLook(dt, mouse, steered, base, frame.pitchMin - base);
+    this.pitch = base + this.lookPitch;
+    const wanted = new Vector3(
+      target.x + Math.cos(target.heading) * frame.ahead,
+      target.height + frame.up,
+      target.y + Math.sin(target.heading) * frame.ahead,
+    );
+    const zoom = first ? 0 : Math.abs(target.speed) * THIRD_DISTANCE_PER_SPEED;
+    if (!this.initialised) {
+      this.yaw = goal;
+      this.zoom = zoom;
+      this.pull = 0;
+      this.lookYaw = 0;
+      this.lookPitch = 0;
+      this.initialised = true;
+    } else {
+      if (!steered) this.yaw = turnToward(this.yaw, goal, 1 - Math.exp(-frame.turnRate * dt));
+      this.zoom += (zoom - this.zoom) * (1 - Math.exp(-ZOOM_RATE * dt));
+    }
+    // The focus is the player and not a lag behind them: the view turns
+    // smoothly, and a lag on top of that swings the player across the screen.
+    this.focus.copy(wanted);
+    const distance = first ? 0 : frame.distance + this.zoom;
+    backOf(this.yaw + this.lookYaw, this.pitch, this.back);
+    this.camera.position.copy(this.focus).addScaledVector(this.back, distance);
+  }
+
+  /**
+   * Turn the look aside by the mouse's movement since the last frame, and let
+   * it go back behind once the mouse is still. `low` is the lowest look pitch
+   * over the view's own.
+   */
+  private turnLook(dt: number, mouse: boolean, steered: boolean, base: number, low: number): void {
     const moved = mouse && (this.lookX !== 0 || this.lookY !== 0);
     this.still = moved ? 0 : this.still + dt;
-    const base = first ? (driving ? FIRST_PITCH : FIRST_PITCH_ON_FOOT) : THIRD_PITCH;
-    const low = (first ? FIRST_PITCH_MIN : THIRD_PITCH_MIN) - base;
     if (mouse) {
       this.lookYaw -= this.lookX * LOOK_PER_PIXEL;
       this.lookPitch = Math.min(PITCH_MAX - base, Math.max(low, this.lookPitch + this.lookY * LOOK_PER_PIXEL));
@@ -370,35 +403,62 @@ export class FollowCamera {
       this.lookYaw -= this.lookYaw * back;
       this.lookPitch -= this.lookPitch * back;
     }
-    this.pitch = base + this.lookPitch;
-    const up = first
-      ? driving ? EYE_HEIGHT_DRIVING : EYE_HEIGHT_ON_FOOT
-      : driving ? LOOK_HEIGHT_DRIVING : LOOK_HEIGHT_ON_FOOT;
-    const ahead = first ? (driving ? EYE_AHEAD_DRIVING : EYE_AHEAD_ON_FOOT) : 0;
-    const wanted = new Vector3(
-      target.x + Math.cos(target.heading) * ahead,
-      target.height + up,
-      target.y + Math.sin(target.heading) * ahead,
-    );
-    const zoom = first ? 0 : Math.abs(target.speed) * THIRD_DISTANCE_PER_SPEED;
-    if (!this.initialised) {
-      this.yaw = goal;
-      this.zoom = zoom;
-      this.pull = 0;
-      this.lookYaw = 0;
-      this.lookPitch = 0;
-      this.initialised = true;
-    } else {
-      if (!steered) this.yaw = turnToward(this.yaw, goal, 1 - Math.exp(-(first ? FIRST_TURN_RATE : THIRD_TURN_RATE) * dt));
-      this.zoom += (zoom - this.zoom) * (1 - Math.exp(-ZOOM_RATE * dt));
-    }
-    // The focus is the player and not a lag behind them: the view turns
-    // smoothly, and a lag on top of that swings the player across the screen.
-    this.focus.copy(wanted);
-    const distance = first ? 0 : (driving ? THIRD_DISTANCE_DRIVING : THIRD_DISTANCE_ON_FOOT) + this.zoom;
-    backOf(this.yaw + this.lookYaw, this.pitch, this.back);
-    this.camera.position.copy(this.focus).addScaledVector(this.back, distance);
   }
+}
+
+/** The numbers of one chase view: first or third person, at the wheel or on foot. */
+interface BehindFrame {
+  /** The pitch of the view and the lowest the look may take it. */
+  pitch: number;
+  pitchMin: number;
+  /** Metres over the player and ahead of them the view looks from, or at. */
+  up: number;
+  ahead: number;
+  /** How fast the view turns after the heading. */
+  turnRate: number;
+  /** Metres the view stands back, before the zoom; unused in first person. */
+  distance: number;
+}
+
+function behindFrame(first: boolean, driving: boolean): BehindFrame {
+  if (first && driving) {
+    return {
+      pitch: FIRST_PITCH,
+      pitchMin: FIRST_PITCH_MIN,
+      up: EYE_HEIGHT_DRIVING,
+      ahead: EYE_AHEAD_DRIVING,
+      turnRate: FIRST_TURN_RATE,
+      distance: 0,
+    };
+  }
+  if (first) {
+    return {
+      pitch: FIRST_PITCH_ON_FOOT,
+      pitchMin: FIRST_PITCH_MIN,
+      up: EYE_HEIGHT_ON_FOOT,
+      ahead: EYE_AHEAD_ON_FOOT,
+      turnRate: FIRST_TURN_RATE,
+      distance: 0,
+    };
+  }
+  if (driving) {
+    return {
+      pitch: THIRD_PITCH,
+      pitchMin: THIRD_PITCH_MIN,
+      up: LOOK_HEIGHT_DRIVING,
+      ahead: 0,
+      turnRate: THIRD_TURN_RATE,
+      distance: THIRD_DISTANCE_DRIVING,
+    };
+  }
+  return {
+    pitch: THIRD_PITCH,
+    pitchMin: THIRD_PITCH_MIN,
+    up: LOOK_HEIGHT_ON_FOOT,
+    ahead: 0,
+    turnRate: THIRD_TURN_RATE,
+    distance: THIRD_DISTANCE_ON_FOOT,
+  };
 }
 
 /**

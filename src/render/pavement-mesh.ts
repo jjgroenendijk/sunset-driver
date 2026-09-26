@@ -108,25 +108,8 @@ export function pavementSurface(piece: ChunkPavement, bounds: ChunkBounds, surfa
   const top = pavementTriangles(piece, surfaceAt);
   if (top === undefined) return undefined;
   const { vertices, faces } = top;
-  // An edge only one triangle holds is an edge of the piece, and the piece lies
-  // to its left, since every triangle turns anticlockwise.
   const n = vertices.length;
-  const held = new Map<number, number>();
-  for (const [a, b, c] of faces) {
-    for (const [p, q] of [[a, b], [b, c], [c, a]] as const) {
-      const key = Math.min(p, q) * n + Math.max(p, q);
-      held.set(key, (held.get(key) ?? 0) + 1);
-    }
-  }
-  const skirts: [PavementVertex, PavementVertex][] = [];
-  for (const [a, b, c] of faces) {
-    for (const [p, q] of [[a, b], [b, c], [c, a]] as const) {
-      if (held.get(Math.min(p, q) * n + Math.max(p, q)) !== 1) continue;
-      const from = vertices[p] as PavementVertex;
-      const to = vertices[q] as PavementVertex;
-      if (!alongBoundary(from, to, bounds)) skirts.push([from, to]);
-    }
-  }
+  const skirts = skirtEdges(vertices, faces, bounds);
 
   const total = n + skirts.length * 4;
   const positions = new Float32Array(total * 3);
@@ -181,6 +164,37 @@ export function pavementSurface(piece: ChunkPavement, bounds: ChunkBounds, surfa
   return tag(geometry, across, SURFACE_ROAD);
 }
 
+/**
+ * The edges of a piece that take a skirt down to the ground: every edge of the
+ * piece but those along a side of the chunk. An edge only one triangle holds is
+ * an edge of the piece, and the piece lies to its left, since every triangle
+ * turns anticlockwise.
+ */
+function skirtEdges(
+  vertices: readonly PavementVertex[],
+  faces: readonly [number, number, number][],
+  bounds: ChunkBounds,
+): [PavementVertex, PavementVertex][] {
+  const n = vertices.length;
+  const held = new Map<number, number>();
+  for (const [a, b, c] of faces) {
+    for (const [p, q] of [[a, b], [b, c], [c, a]] as const) {
+      const key = Math.min(p, q) * n + Math.max(p, q);
+      held.set(key, (held.get(key) ?? 0) + 1);
+    }
+  }
+  const skirts: [PavementVertex, PavementVertex][] = [];
+  for (const [a, b, c] of faces) {
+    for (const [p, q] of [[a, b], [b, c], [c, a]] as const) {
+      if (held.get(Math.min(p, q) * n + Math.max(p, q)) !== 1) continue;
+      const from = vertices[p] as PavementVertex;
+      const to = vertices[q] as PavementVertex;
+      if (!alongBoundary(from, to, bounds)) skirts.push([from, to]);
+    }
+  }
+  return skirts;
+}
+
 /** Twice the area of a triangle on the map: positive where it turns anticlockwise. */
 function turn(vertices: readonly Point[], a: number, b: number, c: number): number {
   const pa = vertices[a] as Point;
@@ -201,69 +215,97 @@ function turn(vertices: readonly Point[], a: number, b: number, c: number): numb
  * the edge's two ends.
  */
 function refine(vertices: PavementVertex[], faces: [number, number, number][], height: (x: number, y: number) => number): void {
-  const longest = PAVEMENT_EDGE * PAVEMENT_EDGE;
-  const shortest = PAVEMENT_SHORTEST * PAVEMENT_SHORTEST;
   /** Edges already asked and found straight, which no later pass asks again. */
   const straight = new Set<number>();
   // Passes in which no edge was too long, which are the passes that count
   // towards the limit on splitting for bending.
   let settled = 0;
   for (;;) {
-    let anyLong = false;
-    const bent = new Map<number, { a: number; b: number; length: number; h: number }>();
-    for (const [a, b, c] of faces) {
-      for (const [p, q] of [[a, b], [b, c], [c, a]] as const) {
-        const lo = Math.min(p, q);
-        const hi = Math.max(p, q);
-        const key = lo * EDGE_KEY + hi;
-        if (straight.has(key) || bent.has(key)) continue;
-        const u = vertices[lo] as PavementVertex;
-        const w = vertices[hi] as PavementVertex;
-        const length = (u.x - w.x) ** 2 + (u.y - w.y) ** 2;
-        const long = length > longest;
-        anyLong ||= long;
-        if (!long && (length <= shortest || settled >= REFINE_PASSES)) {
-          straight.add(key);
-          continue;
-        }
-        const h = height((u.x + w.x) / 2, (u.y + w.y) / 2);
-        if (long || Math.abs(h - (u.h + w.h) / 2) > PAVEMENT_SAG) bent.set(key, { a: lo, b: hi, length, h });
-        else straight.add(key);
-      }
-    }
+    const { bent, anyLong } = bentEdges(vertices, faces, height, straight, settled);
     if (bent.size === 0) return;
     if (!anyLong) settled++;
     const order = [...bent.values()].sort((e, f) => f.length - e.length || e.a - f.a || e.b - f.b);
-    // The triangles holding each vertex, so an edge finds the two that hold it.
-    const around: number[][] = vertices.map(() => []);
-    faces.forEach((face, f) => {
-      for (const corner of face) (around[corner] as number[]).push(f);
-    });
-    // A triangle split in this pass waits for the next one, so every edge is
-    // split in the triangles that really hold it.
-    const split = new Set<number>();
-    for (const edge of order) {
-      const holders = (around[edge.a] as number[]).filter((f) => (faces[f] as number[]).includes(edge.b));
-      if (holders.length === 0 || holders.some((f) => split.has(f))) continue;
-      const u = vertices[edge.a] as PavementVertex;
-      const w = vertices[edge.b] as PavementVertex;
-      const m = vertices.length;
-      vertices.push({ x: (u.x + w.x) / 2, y: (u.y + w.y) / 2, h: edge.h, across: (u.across + w.across) / 2 });
-      for (const f of holders) {
-        const face = faces[f] as [number, number, number];
-        // The corner the edge starts at, going round the triangle its own way.
-        const k = face.findIndex((corner, i) => {
-          const next = face[(i + 1) % 3] as number;
-          return (corner === edge.a && next === edge.b) || (corner === edge.b && next === edge.a);
-        });
-        const p = face[k] as number;
-        const q = face[(k + 1) % 3] as number;
-        const r = face[(k + 2) % 3] as number;
-        faces[f] = [p, m, r];
-        split.add(f);
-        split.add(faces.length);
-        faces.push([m, q, r]);
+    splitEdges(vertices, faces, order);
+  }
+}
+
+/** An edge to split, from vertex `a` to `b`, with its squared length and the height of the surface at its middle. */
+interface BentEdge {
+  a: number;
+  b: number;
+  length: number;
+  h: number;
+}
+
+/**
+ * The edges of one pass of {@link refine} to split, by key, and whether any of
+ * them was split for its length. Edges found straight are added to `straight`.
+ */
+function bentEdges(
+  vertices: readonly PavementVertex[],
+  faces: readonly [number, number, number][],
+  height: (x: number, y: number) => number,
+  straight: Set<number>,
+  settled: number,
+): { bent: Map<number, BentEdge>; anyLong: boolean } {
+  const longest = PAVEMENT_EDGE * PAVEMENT_EDGE;
+  const shortest = PAVEMENT_SHORTEST * PAVEMENT_SHORTEST;
+  let anyLong = false;
+  const bent = new Map<number, BentEdge>();
+  for (const [a, b, c] of faces) {
+    for (const [p, q] of [[a, b], [b, c], [c, a]] as const) {
+      const lo = Math.min(p, q);
+      const hi = Math.max(p, q);
+      const key = lo * EDGE_KEY + hi;
+      if (straight.has(key) || bent.has(key)) continue;
+      const u = vertices[lo] as PavementVertex;
+      const w = vertices[hi] as PavementVertex;
+      const length = (u.x - w.x) ** 2 + (u.y - w.y) ** 2;
+      const long = length > longest;
+      anyLong ||= long;
+      if (!long && (length <= shortest || settled >= REFINE_PASSES)) {
+        straight.add(key);
+        continue;
       }
+      const h = height((u.x + w.x) / 2, (u.y + w.y) / 2);
+      if (long || Math.abs(h - (u.h + w.h) / 2) > PAVEMENT_SAG) bent.set(key, { a: lo, b: hi, length, h });
+      else straight.add(key);
+    }
+  }
+  return { bent, anyLong };
+}
+
+/** Split each edge of `order` at its middle, in both triangles that hold it. */
+function splitEdges(vertices: PavementVertex[], faces: [number, number, number][], order: readonly BentEdge[]): void {
+  // The triangles holding each vertex, so an edge finds the two that hold it.
+  const around: number[][] = vertices.map(() => []);
+  faces.forEach((face, f) => {
+    for (const corner of face) (around[corner] as number[]).push(f);
+  });
+  // A triangle split in this pass waits for the next one, so every edge is
+  // split in the triangles that really hold it.
+  const split = new Set<number>();
+  for (const edge of order) {
+    const holders = (around[edge.a] as number[]).filter((f) => (faces[f] as number[]).includes(edge.b));
+    if (holders.length === 0 || holders.some((f) => split.has(f))) continue;
+    const u = vertices[edge.a] as PavementVertex;
+    const w = vertices[edge.b] as PavementVertex;
+    const m = vertices.length;
+    vertices.push({ x: (u.x + w.x) / 2, y: (u.y + w.y) / 2, h: edge.h, across: (u.across + w.across) / 2 });
+    for (const f of holders) {
+      const face = faces[f] as [number, number, number];
+      // The corner the edge starts at, going round the triangle its own way.
+      const k = face.findIndex((corner, i) => {
+        const next = face[(i + 1) % 3] as number;
+        return (corner === edge.a && next === edge.b) || (corner === edge.b && next === edge.a);
+      });
+      const p = face[k] as number;
+      const q = face[(k + 1) % 3] as number;
+      const r = face[(k + 2) % 3] as number;
+      faces[f] = [p, m, r];
+      split.add(f);
+      split.add(faces.length);
+      faces.push([m, q, r]);
     }
   }
 }

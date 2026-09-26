@@ -231,23 +231,7 @@ export function buildChunkBuildings(
     // tower asks for the stack of setbacks its style is.
     const shape = shapeOf(building.seed, building.kind, massing, building.shared, planFor(look));
     if (look !== 'masonry') style.tall = { look, bay: shape.bayWidth };
-    let shell: BufferGeometry;
-    let dress: BufferGeometry | undefined;
-    let walls: { min: number; max: number } | undefined;
-    if (batch === 'facade') {
-      const built = facadeGeometry(building, massing, shape, tint, finish);
-      shell = built.shell;
-      walls = built.walls;
-      // A generated tower's roofs are measured off the geometry the generator
-      // built, because its crown draws in from the footprint it was given.
-      dress = dressOf(built.decks, style, tint, finish);
-    } else if (detail === 'far') {
-      shell = buildMassingGeometry(tint, finish, farBoxes(shape, massing));
-    } else {
-      const built = buildBlockGeometry(building.kind, massing, tint, finish, style, boxesOf(shape, massing, massing.height, 0));
-      shell = built.shell;
-      dress = built.dress;
-    }
+    const { shell, dress, walls } = shellOf(building, massing, shape, batch, detail, style, tint, finish);
     const { box, dx } = centreOnLot(shell, dress);
     // A block fills its massing; the walls of a generated facade stand short of
     // it, so where the lot has a wall against it the shell is stretched until
@@ -261,11 +245,7 @@ export function buildChunkBuildings(
     const footing = footingGeometry(shape, box, fit, stand.footing, tint, finish);
     // A lot on a bend leans its side edges, and a wall it shares follows them.
     const lean = leanOf(building, massing, fit.shift);
-    if (lean !== undefined) {
-      leanGeometry(shell, lean, fit);
-      if (dress !== undefined) leanGeometry(dress, lean, fit);
-      if (footing !== undefined) leanGeometry(footing, lean, fit);
-    }
+    if (lean !== undefined) leanAll(lean, fit, shell, dress, footing);
     out.push({
       building,
       massing,
@@ -277,6 +257,46 @@ export function buildChunkBuildings(
     });
   }
   return out;
+}
+
+/**
+ * The shell of one building at one detail, the roof dressing on it and, for a
+ * generated facade, where its walls stand across the lot.
+ */
+function shellOf(
+  building: Building,
+  massing: BuildingMassing,
+  shape: BuildingShape,
+  batch: BuildingBatch,
+  detail: ChunkDetail,
+  style: BlockStyle,
+  tint: Rgb,
+  finish: FinishCode,
+): { shell: BufferGeometry; dress: BufferGeometry | undefined; walls: { min: number; max: number } | undefined } {
+  if (batch === 'facade') {
+    const built = facadeGeometry(building, massing, shape, tint, finish);
+    // A generated tower's roofs are measured off the geometry the generator
+    // built, because its crown draws in from the footprint it was given.
+    return { shell: built.shell, walls: built.walls, dress: dressOf(built.decks, style, tint, finish) };
+  }
+  if (detail === 'far') {
+    return { shell: buildMassingGeometry(tint, finish, farBoxes(shape, massing)), dress: undefined, walls: undefined };
+  }
+  const built = buildBlockGeometry(building.kind, massing, tint, finish, style, boxesOf(shape, massing, massing.height, 0));
+  return { shell: built.shell, dress: built.dress, walls: undefined };
+}
+
+/** Lean the shell, the dressing and the footing of one building alike. */
+function leanAll(
+  lean: Lean,
+  fit: Fit,
+  shell: BufferGeometry,
+  dress: BufferGeometry | undefined,
+  footing: BufferGeometry | undefined,
+): void {
+  leanGeometry(shell, lean, fit);
+  if (dress !== undefined) leanGeometry(dress, lean, fit);
+  if (footing !== undefined) leanGeometry(footing, lean, fit);
 }
 
 /**
@@ -374,14 +394,15 @@ const MASONRY_PALETTE: readonly number[] = [0xeadfc4, 0xe3cfae, 0xf0e4c8, 0xdcb9
  * from {@link MASONRY_PALETTE}.
  */
 function tintOf(building: Building, look: BuildingStyle, batch: BuildingBatch): Rgb {
-  const hex =
-    look !== 'masonry'
-      ? styleColour(look, building.seed)
-      : batch === 'facade'
-        ? (MASONRY_PALETTE[hashInts(building.seed, 62) % MASONRY_PALETTE.length] as number)
-        : (BLOCK_PALETTE[building.kind][hashInts(building.seed, 2) % BLOCK_PALETTE[building.kind].length] as number);
-  const colour = new Color(hex);
+  const colour = new Color(tintHex(building, look, batch));
   return [colour.r, colour.g, colour.b];
+}
+
+/** The colour of {@link tintOf}, as the hex number its palette holds. */
+function tintHex(building: Building, look: BuildingStyle, batch: BuildingBatch): number {
+  if (look !== 'masonry') return styleColour(look, building.seed);
+  if (batch === 'facade') return MASONRY_PALETTE[hashInts(building.seed, 62) % MASONRY_PALETTE.length] as number;
+  return BLOCK_PALETTE[building.kind][hashInts(building.seed, 2) % BLOCK_PALETTE[building.kind].length] as number;
 }
 
 /**

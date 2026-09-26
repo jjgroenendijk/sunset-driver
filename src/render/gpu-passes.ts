@@ -111,24 +111,25 @@ export class PassTimer {
       await this.renderer.resolveTimestampsAsync(type);
       const raw = this.raw as BigUint64Array | undefined;
       if (raw === undefined) continue;
-      const spans: { uid: string; start: bigint; end: bigint }[] = [];
-      for (const [uid, offset] of offsets) {
-        const start = raw[offset];
-        const end = raw[offset + 1];
-        if (start !== undefined && end !== undefined && end >= start) spans.push({ uid, start, end });
-      }
-      spans.sort((a, b) => (a.end < b.end ? -1 : a.end > b.end ? 1 : 0));
-      let last: bigint | undefined;
-      for (const { uid, start, end } of spans) {
-        const from = last === undefined || start > last ? start : last;
-        const label = this.names.labels.get(uid) ?? type;
-        times[label] = (times[label] ?? 0) + Number(end > from ? end - from : 0n) / 1e6;
-        if (last === undefined || end > last) last = end;
-      }
+      this.addSpans(times, type, spansOf(raw, offsets));
       pool.timestamps.clear();
     }
     this.names.labels.clear();
     return times;
+  }
+
+  /**
+   * Give each span the time it moved the end of the work, summed into `times`
+   * by label. The spans come ordered by their end.
+   */
+  private addSpans(times: PassTimes, type: string, spans: readonly Span[]): void {
+    let last: bigint | undefined;
+    for (const { uid, start, end } of spans) {
+      const from = last === undefined || start > last ? start : last;
+      const label = this.names.labels.get(uid) ?? type;
+      times[label] = (times[label] ?? 0) + Number(end > from ? end - from : 0n) / 1e6;
+      if (last === undefined || end > last) last = end;
+    }
   }
 
   /** Copy the raw timestamps out of the buffer three.js reads them from, each time it maps it. */
@@ -142,4 +143,29 @@ export class PassTimer {
       return range;
     };
   }
+}
+
+/** One render context's pair of timestamps, in nanoseconds. */
+interface Span {
+  uid: string;
+  start: bigint;
+  end: bigint;
+}
+
+/** The whole spans in `raw`, ordered by when they ended. */
+function spansOf(raw: BigUint64Array, offsets: readonly (readonly [string, number])[]): Span[] {
+  const spans: Span[] = [];
+  for (const [uid, offset] of offsets) {
+    const start = raw[offset];
+    const end = raw[offset + 1];
+    if (start !== undefined && end !== undefined && end >= start) spans.push({ uid, start, end });
+  }
+  spans.sort((a, b) => compareBig(a.end, b.end));
+  return spans;
+}
+
+function compareBig(a: bigint, b: bigint): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
 }

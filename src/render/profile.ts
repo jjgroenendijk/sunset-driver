@@ -201,7 +201,7 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
     if (request.noPost === true) {
       // The post chain brings the world matrices up to date, and the renderer does not.
       scene.scene.updateMatrixWorld();
-      void renderer.render(scene.scene, camera.camera);
+      renderer.render(scene.scene, camera.camera);
     } else post.render();
     const t2 = performance.now();
     await device.queue.onSubmittedWorkDone();
@@ -232,33 +232,15 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
 
   let memory: MemorySample | undefined;
   if (request.memory === true) memory = { settled: gpuMemory(), drivePeak: 0, geometry: geometryBytes(scene.scene) };
-  if (request.gate === true) {
-    const gate = window as unknown as { driveReady: boolean; startDrive: () => void };
-    await new Promise<void>((resolve) => {
-      gate.startDrive = resolve;
-      gate.driveReady = true;
-    });
-  }
+  if (request.gate === true) await driveGate();
   const drive: FrameSample[] = [];
   const dx = Math.cos(start.heading);
   const dy = Math.sin(start.heading);
-  // The quality changes asked for, by the drive frame they land on. The tier is
-  // put to the two halves that draw at it exactly as `applyQuality` puts it.
-  const changes = new Map(
-    (request.tierAt ?? []).map((pair) => {
-      const [at, name] = pair.split(':');
-      const to = QUALITY_TIERS.find((entry) => entry.name === name);
-      if (to === undefined) throw new Error(`No quality tier named '${name}'.`);
-      return [Number(at), to] as const;
-    }),
-  );
+  // The tier is put to the two halves that draw at it exactly as `applyQuality` puts it.
+  const changes = tierChanges(request.tierAt ?? []);
   gpuPeak();
   for (let i = 0; i < request.drive; i++) {
-    const to = changes.get(i);
-    if (to !== undefined) {
-      scene.quality = to;
-      post.quality = to.post;
-    }
+    retier(scene, post, changes.get(i));
     const s = (i / 60) * request.speed;
     drive.push(await frame(start.x + dx * s, start.y + dy * s, start.heading, request.speed));
   }
@@ -279,6 +261,34 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
     ...(memory === undefined ? {} : { memory }),
     ...(shaders === undefined ? {} : { shaders }),
   };
+}
+
+/** Put the scene and the post chain to the tier `to`, where one is given. */
+function retier(scene: WorldScene, post: PostChain, to: (typeof QUALITY_TIERS)[number] | undefined): void {
+  if (to === undefined) return;
+  scene.quality = to;
+  post.quality = to.post;
+}
+
+/** Say the drive is ready to start, and wait until the page is told to start it. */
+async function driveGate(): Promise<void> {
+  const gate = window as unknown as { driveReady: boolean; startDrive: () => void };
+  await new Promise<void>((resolve) => {
+    gate.startDrive = resolve;
+    gate.driveReady = true;
+  });
+}
+
+/** The quality changes asked for, as `frame:tier` pairs, by the drive frame they land on. */
+function tierChanges(pairs: readonly string[]): Map<number, (typeof QUALITY_TIERS)[number]> {
+  return new Map(
+    pairs.map((pair) => {
+      const [at, name] = pair.split(':');
+      const to = QUALITY_TIERS.find((entry) => entry.name === name);
+      if (to === undefined) throw new Error(`No quality tier named '${name}'.`);
+      return [Number(at), to] as const;
+    }),
+  );
 }
 
 /** Every stage the renderer compiled, each once. Compute programs are left out. */

@@ -210,10 +210,16 @@ function tall(shell: Shell, massing: BuildingMassing, style: BlockStyle, boxes: 
     deck = { x: one.terrace.x, z: one.terrace.z, hw: one.terrace.width / 2, hd: one.terrace.depth / 2, top: one.to + 0.12 };
   }
   if (deck !== undefined) return deck;
-  // No box of the shape offered a terrace, so the deck is the roof of the box
-  // that reaches the top. The massing is the whole building and a stack of
-  // setbacks is narrower than that up there; a deck measured off the massing
-  // would hang its plant, its crown and its beacon over the street.
+  return topDeck(massing, boxes);
+}
+
+/**
+ * No box of the shape offered a terrace, so the deck is the roof of the box
+ * that reaches the top. The massing is the whole building and a stack of
+ * setbacks is narrower than that up there; a deck measured off the massing
+ * would hang its plant, its crown and its beacon over the street.
+ */
+function topDeck(massing: BuildingMassing, boxes: readonly ShapeBox[]): RoofDeck {
   let highest = boxes[0] as ShapeBox | undefined;
   for (const one of boxes) if (highest === undefined || one.to > highest.to) highest = one;
   if (highest === undefined) {
