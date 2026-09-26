@@ -61,6 +61,14 @@ tour is in `docs/city-life.md`, and how a person walks their loop in `docs/crowd
 - `junction-clear.ts`: a car does not cross the stop line of a signalled junction while a car of
   the traffic stands where it will stand past the junction. It runs its own tour on to find that
   spot. A wreck there does not hold it, or it would wait at the line for ever.
+- `give-way-junction.ts`: at a junction without lights, a car waits at the mouth while its path
+  meets another car's: one already inside, or one with the right of way. The car on the faster
+  road has it, then the car that arrives first, then the lower id. So one car of a junction can
+  always go, and a ring never releases a car that waits at a mouth. Issue #360 asked for it: on
+  the first sweep seeds, cross traffic drove through itself at every busy junction without lights.
+- The mouth is the junction's `cut` on each road. A car inside one junction that its tour takes
+  straight into the next, over an edge shorter than the two cuts, never waits at the second mouth:
+  it is already past it.
 
 ## Steering round
 

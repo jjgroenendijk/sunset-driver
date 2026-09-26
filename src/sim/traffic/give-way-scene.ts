@@ -46,6 +46,8 @@ export interface Car {
   person: number;
   stop: boolean;
   slow: boolean;
+  /** True when it waits at the mouth of a junction without lights, which a ring never releases it from. */
+  yields: boolean;
   /** True when the player, their car or a wreck stands in the lane ahead. */
   facing: boolean;
   next: Footprint;
