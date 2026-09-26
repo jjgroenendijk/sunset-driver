@@ -56,9 +56,9 @@
 .menu-columns > .title-page > * { min-height: 0; overflow-y: auto; }
 .menu-columns > .title-page[data-column]:not([hidden]) > * { animation: it-slide .3s cubic-bezier(.2,.7,.2,1) both; }
 .menu-columns > .title-page[data-behind] > * { animation: none; }
-.menu-columns > .title-setup { display: grid; flex: 1 1 auto; align-self: stretch; }
+.menu-columns > .title-setup { display: grid; flex: 1 1 auto; align-self: stretch; overflow-y: auto; }
 .title[data-page="setup"] .menu-columns { padding-top: 0; }
-.menu-columns > .title-setup > * { overflow-y: visible; }
+.menu-columns > .title-setup > * { overflow-y: visible; min-height: auto; }
 .title-page { display: grid; align-items: center; min-height: 0; }
 .title-page:not([hidden]) > * { animation: it-rise .5s cubic-bezier(.2,.7,.2,1) both; }
 .title-page:not([hidden]) > :nth-child(2) { animation-delay: .06s; }
@@ -102,7 +102,9 @@
 .title-card-head p { grid-column: 1 / -1; margin: .3rem 0 0; font-size: .75rem; color: var(--it-muted); }
 .title-field-label { font-size: .66rem; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--it-muted); }
 
-.title-setup { grid-template-columns: minmax(0, 22rem) 1fr minmax(0, 22rem); grid-template-rows: 1fr auto; align-items: start; column-gap: 2rem; row-gap: 1.25rem; }
+/* The cards' row never shrinks under them: a short screen scrolls the page
+   rather than lay the next card or the buttons over them. */
+.title-setup { grid-template-columns: minmax(0, 22rem) 1fr minmax(0, 22rem); grid-template-rows: minmax(min-content, 1fr) auto; align-items: start; column-gap: 2rem; row-gap: 1.25rem; }
 .title-setup > .title-card:nth-child(2) { grid-column: 3; }
 .title-setup-foot { grid-column: 1 / -1; display: flex; justify-content: center; gap: 1rem; }
 
@@ -159,7 +161,7 @@
 @media (max-width: 720px) {
   .menu-columns > .title-page[data-behind] { display: none; }
   .menu-columns .menu-back { display: inline-block; }
-  .title-setup { grid-template-columns: 1fr; }
+  .title-setup { grid-template-columns: 1fr; grid-template-rows: none; }
   .title-setup > .title-card:nth-child(2) { grid-column: 1; }
   .title-menu { justify-self: stretch; }
 }
