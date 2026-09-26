@@ -104,12 +104,14 @@ describe('a bus calling at its stops (spec section 20.2)', () => {
     }
   });
 
-  it('puts buses on the city streets and nothing else at a kerb', () => {
+  it('puts buses on the city streets and nothing else at a kerb but a vehicle at work', () => {
     let buses = 0;
     for (const seed of SEEDS) {
       const traffic = gridTraffic(seed);
       for (const vehicle of traffic.vehicles) {
         const calls = callSteps(vehicle);
+        // A taxi, a delivery or a garbage truck calls at kerbs of its own (`jobs.ts`).
+        if (vehicle.job !== 'none') continue;
         if (vehicle.cls !== 'bus') {
           expect(calls, `${vehicle.cls} ${vehicle.id} calls at a stop`).toEqual([]);
           continue;
@@ -150,7 +152,7 @@ describe('a bus calling at its stops (spec section 20.2)', () => {
       dwelt += calls.dwell[i] as number;
     }
     const straight = timeTour(roads.graph, route);
-    const calling = timeTour(roads.graph, route, undefined, { calls: true });
+    const calling = timeTour(roads.graph, route, undefined, { calls: (g, r, s) => busCalls(g, r, s) });
     expect(stops).toBeGreaterThan(0);
     // Splitting a leg in two rounds each half up, so the drive costs a tick or
     // two more per call on top of the dwells themselves. Braking into the kerb

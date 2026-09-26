@@ -14,6 +14,7 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 - The drivers
 - The buses
 - The bus stops
+- The vehicles at work
 - The wrecks the city tows
 - Traffic lights
 - Parked cars
@@ -156,6 +157,30 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   pavement, so nothing may reach further than half the narrowest pavement a bus route runs along.
   `test/sim/transit/bus-stops.test.ts` holds every box to that. A flag sits on top of the mast
   rather than across it: a face the mast runs through reads as two white bars.
+
+## The vehicles at work
+
+- `src/sim/traffic/jobs.ts` gives a vehicle of the traffic a job: a taxi, a delivery van, a
+  garbage truck or a street sweeper. `drawJob` takes one draw from a stream of its own
+  (`JOB_STREAM`), so no other vehicle's class, paint, route or driver moves. A job is not a class:
+  a taxi is a saloon and a sweeper a van. Only a garbage truck changes the class drawn, to a truck.
+- A job changes three things before the tour is timed: the kerbs it calls at, the roads it may
+  take and the driver's cruise. The calls go through `TourPlan.calls`, the same door a bus uses, so
+  `stepCall` is 1 on a taxi at a kerb as well. `bus-stops.ts` therefore reads the buses alone.
+- Every call stands `STOP_IN` into a leg that `holdsStop` accepts, as a bus stop does. That keeps
+  a job's halt out of the queue for a light. A call further along a leg would need the same care.
+- A taxi picks up at the first kerb and sets down at the first kerb a third of the route further
+  on. `fareOf` reads the two back off the tour, and `hiredAt` says when the fare is on board: the
+  roof sign is dark from pulling away at the pick up to pulling away at the set down.
+- A delivery van stands `UNLOAD` at one kerb. `Indicators.sideAt` returns `HAZARDS` (2) on that
+  step, and the trim shader of `vehicle-glow.ts` lights both sides on a signal above 1.5.
+- A garbage truck and a sweeper keep to streets and alleys (`jobPermit`, which lets the truck onto
+  roads that bar trucks) and cruise at `CRAWL` of the limit. The truck also stops `BINS` at every
+  kerb. They work at every hour, since the tour has no time of day (issue #766).
+- `src/render/vehicles/job-tops.ts` draws the taxi signs and the beacons as one instanced unit
+  box, stretched onto the roof by the instance matrix. The roof stands at `spec.halfHeight`. A
+  truck of the roster has an open deck, so a garbage truck gets a bin body on it: a second box, in
+  a lit material. Without it the truck reads as a flatbed with a green cab.
 
 ## The wrecks the city tows
 

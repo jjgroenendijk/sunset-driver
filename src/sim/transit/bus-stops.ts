@@ -105,6 +105,8 @@ export class BusStops {
     // array rather than a map, because `src/sim` may not walk one.
     const found = new Int32Array(graph.edges.length).fill(-1);
     for (const vehicle of traffic.vehicles) {
+      // A taxi or a van at work calls at a kerb too, and no stop stands there.
+      if (vehicle.cls !== 'bus') continue;
       const tour = vehicle.tour;
       for (let step = 0; step < tour.stepCall.length; step++) {
         if (tour.stepCall[step] !== 1) continue;

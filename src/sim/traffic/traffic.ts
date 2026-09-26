@@ -32,14 +32,16 @@ import { buildRoadGraph, type RoadEdge, type RoadGraph } from '../../world/roads
 import { buildJunctions, type JunctionMap } from '../../world/junctions/junctions.ts';
 import { TIERS } from '../../world/roads/tiers.ts';
 import type { Point, RoadCurve, RoadTier, TramDescription, WorldDescription, Zone } from '../../world/types.ts';
-import { busDemandOf, type BusDemand } from '../transit/bus.ts';
+import { busCalls, busDemandOf, type BusDemand } from '../transit/bus.ts';
 import { drawDriver, type Driver } from './driver.ts';
+import { drawJob, JOB_PAINT, jobCalls, jobDriver, jobPermit, type Job } from './jobs.ts';
 import { createHolds, type Holds } from './hold.ts';
 import { EdgeIndex } from './edge-index.ts';
 import { PoseMemo } from './pose-memo.ts';
 import { RouteSampler, type BedTilt, type RouteAround, type RoutePoint } from './route-sample.ts';
 import { SIGNAL_CYCLE, TrafficSignals } from './signals.ts';
 import { legAt, legNear, timeTour, walkTour, type Permit, type Tour } from './traffic-tour.ts';
+import type { CallPlan } from './traffic-timing.ts';
 import { endSpeeds, plateauOf, stepMotion, turnSpeed, type Plateau, type StepMotion } from './traffic-motion.ts';
 import { tramGuardOf, type TramGuard } from '../transit/tram-guard.ts';
 import { laneInner, offsetIn, PLATFORM_LANE, tramLanes } from './tram-lanes.ts';
@@ -111,9 +113,10 @@ export const PAINTS: readonly number[] = [
   0x3f7d63, 0xb8352c, 0xe0b13a, 0xd8d4c8, 0x2f5d86, 0x1f1f24, 0x8a8f96, 0x6b2f4a, 0xf2f4f5, 0x4a5a3a, 0xc4592f, 0x27404f,
 ];
 
-/** The keys of the two streams traffic draws from, so neither shifts the other. */
+/** The keys of the streams traffic draws from, so none shifts another. */
 const EDGE_STREAM = 1;
 const VEHICLE_STREAM = 2;
+const JOB_STREAM = 3;
 
 /** The road network as traffic needs it. */
 export interface TrafficRoads {
@@ -139,6 +142,8 @@ export interface TrafficRoads {
 export interface AmbientVehicle {
   id: number;
   cls: VehicleClass;
+  /** What it does besides driving (`jobs.ts`): a taxi, a delivery, the bins or the sweeping. */
+  job: Job;
   paint: number;
   /**
    * Where across its side of the carriageway it drives, from 0 at the middle
@@ -560,24 +565,29 @@ export class AmbientTraffic {
     const count = Math.floor(expected + rng.float());
     for (let j = 0; j < count; j++) {
       const id = vehicles.length;
-      const cls = pickClass(TIER_MIX[edge.tier], rng);
+      const drawn = pickClass(TIER_MIX[edge.tier], rng);
       const offset = ((j + rng.range(0.25, 0.75)) / count) * edge.length;
       // One draw, as a lane index once was: on its home run it gives the same lane.
       const lane = rng.float();
-      const paint = cls === 'bus' ? specOf(cls).paint : (PAINTS[rng.int(0, PAINTS.length - 1)] as number);
+      const colour = drawn === 'bus' ? specOf(drawn).paint : (PAINTS[rng.int(0, PAINTS.length - 1)] as number);
+      // What it does besides driving (`jobs.ts`), from a stream of its own.
+      const { job, cls } = drawJob(drawn, edge.tier, rngFor(seed, 0, Subsystem.Traffic, hashInts(JOB_STREAM, id)));
+      const paint = job === 'none' ? colour : JOB_PAINT[job];
       const walk = rngFor(seed, 0, Subsystem.Traffic, hashInts(VEHICLE_STREAM, id));
-      const route = walkTour(graph, edge.id, walk, permitOf(cls));
+      const route = walkTour(graph, edge.id, walk, jobPermit(job) ?? permitOf(cls));
       // Its own place in every queue it joins, which is what holds it off the
       // vehicles that wait at the same lights, and the driver whose speed, gap,
       // reaction and nerve at an amber the whole lap is then timed to. A bus
-      // also calls at the stops of its route (spec section 20.2), so its lap
-      // carries the dwell at every kerb it pulls in at.
+      // also calls at the stops of its route (spec section 20.2), and a
+      // vehicle at work at the kerbs of its job, so its lap carries the dwell
+      // at every kerb it pulls in at.
       const place = walk.float();
-      const driver = drawDriver(walk);
+      const driver = jobDriver(job, drawDriver(walk));
       const turns = this.turnsOf(route);
-      const tour = timeTour(graph, route, this.signals, { place, driver, calls: cls === 'bus', demand: this.demand, turns }, this.guard);
+      const calls: CallPlan | undefined = cls === 'bus' ? (g, r, s) => busCalls(g, r, s, this.demand) : jobCalls(job);
+      const tour = timeTour(graph, route, this.signals, { place, driver, calls, turns }, this.guard);
       const phase = phaseOf(tour, tour.edges.indexOf(edge.id), offset, walk);
-      vehicles.push({ id, cls, paint, lane, phase, driver, tour });
+      vehicles.push({ id, cls, job, paint, lane, phase, driver, tour });
       for (const e of tour.edges) this.index.file(id, e);
     }
   }
