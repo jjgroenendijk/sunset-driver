@@ -14,6 +14,7 @@
  * A phone's screen is too narrow to share, so `MapScreen` folds it there each
  * time the map opens.
  */
+import { compareStrings } from '../core/sort.ts';
 import { drawIcon } from './map-icons.ts';
 import { ALWAYS_SHOWN, POI_STYLES, poiCounts, type MapPois, type PoiType } from './map.ts';
 import { distanceText } from './map-draw.ts';
@@ -224,8 +225,8 @@ export class MapLegend {
       localStorage.setItem(
         STORE_KEY,
         JSON.stringify({
-          hidden: [...this.pois.hidden].sort(),
-          layers: [...this.hiddenLayers].sort(),
+          hidden: [...this.pois.hidden].sort(compareStrings),
+          layers: [...this.hiddenLayers].sort(compareStrings),
           folded: this.root.classList.contains('folded'),
         }),
       );
@@ -239,13 +240,7 @@ export class MapLegend {
       const raw = localStorage.getItem(STORE_KEY);
       if (!raw) return;
       const saved = JSON.parse(raw) as { hidden?: unknown; layers?: unknown; folded?: unknown };
-      if (Array.isArray(saved.hidden)) {
-        for (const type of saved.hidden) {
-          if (typeof type === 'string' && type in POI_STYLES && !ALWAYS_SHOWN.includes(type as PoiType)) {
-            this.pois.hidden.add(type as PoiType);
-          }
-        }
-      }
+      if (Array.isArray(saved.hidden)) this.loadHidden(saved.hidden);
       if (Array.isArray(saved.layers)) {
         for (const layer of saved.layers) {
           if (LAYERS.some((l) => l.layer === layer)) this.hiddenLayers.add(layer as MapLayer);
@@ -254,6 +249,15 @@ export class MapLegend {
       if (saved.folded === true) this.root.classList.add('folded');
     } catch {
       // A choice that cannot be read is no choice: everything is shown.
+    }
+  }
+
+  /** Hide the icon types a saved legend hid, of those that exist and may be hidden. */
+  private loadHidden(types: readonly unknown[]): void {
+    for (const type of types) {
+      if (typeof type === 'string' && type in POI_STYLES && !ALWAYS_SHOWN.includes(type as PoiType)) {
+        this.pois.hidden.add(type as PoiType);
+      }
     }
   }
 }

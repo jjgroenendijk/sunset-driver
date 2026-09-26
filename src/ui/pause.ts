@@ -94,7 +94,9 @@ export class PauseMenu {
     this.party = buildPartyPage(actions.party, (text, done) => void this.copy(text, done), () => this.pages.back());
     const loads = this.buildLoads();
     this.loadItem = loads.querySelector<HTMLButtonElement>('.title-menu-item') as HTMLButtonElement;
-    const back = (): void => void this.pages.back();
+    const back = (): void => {
+      this.pages.back();
+    };
     const pages: Record<PageName, HTMLElement> = {
       main: this.buildMain(),
       party: this.party.root,

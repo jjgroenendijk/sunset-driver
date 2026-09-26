@@ -107,31 +107,44 @@ export class MenuPages<Name extends string> {
     const active = document.activeElement as HTMLElement | null;
     // In a text box the arrows move the caret.
     if (active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement) return false;
-    const side = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-    if (side !== 0 && active?.dataset.cycle !== undefined) {
-      event.preventDefault();
-      active.dispatchEvent(new CustomEvent(CYCLE_EVENT, { detail: side }));
-      return true;
-    }
+    if (this.cycle(event, active)) return true;
     if (event.key === 'ArrowRight' && active?.dataset.opens) {
       event.preventDefault();
-      const name = active.dataset.opens as Name;
-      if (!this.chain(this.shown).includes(name)) this.show(name);
-      else this.items(this.pages[name])[0]?.focus();
+      this.open(active.dataset.opens as Name);
       return true;
     }
-    if (event.key === 'ArrowLeft') {
-      const page = this.pageOf(active);
-      if (page === null || !this.columns.has(page)) return false;
-      event.preventDefault();
-      this.toggle(page);
-      return true;
-    }
+    if (event.key === 'ArrowLeft') return this.fold(event, active);
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return false;
     event.preventDefault();
     const items = this.items(this.pages[this.pageOf(active) ?? this.shown]);
     const at = items.indexOf(active as HTMLElement);
     items[nextIndex(at, event.key === 'ArrowDown' ? 1 : -1, items.length)]?.focus();
+    return true;
+  }
+
+  /** Step the choice under the focus left or right, and answer whether there was one. */
+  private cycle(event: KeyboardEvent, active: HTMLElement | null): boolean {
+    let side = 0;
+    if (event.key === 'ArrowRight') side = 1;
+    else if (event.key === 'ArrowLeft') side = -1;
+    if (side === 0 || active?.dataset.cycle === undefined) return false;
+    event.preventDefault();
+    active.dispatchEvent(new CustomEvent(CYCLE_EVENT, { detail: side }));
+    return true;
+  }
+
+  /** Open page `name` beside this one, or move into it when it is open already. */
+  private open(name: Name): void {
+    if (!this.chain(this.shown).includes(name)) this.show(name);
+    else this.items(this.pages[name])[0]?.focus();
+  }
+
+  /** Fold the column the focus is in, and answer whether it was one. */
+  private fold(event: KeyboardEvent, active: HTMLElement | null): boolean {
+    const page = this.pageOf(active);
+    if (page === null || !this.columns.has(page)) return false;
+    event.preventDefault();
+    this.toggle(page);
     return true;
   }
 

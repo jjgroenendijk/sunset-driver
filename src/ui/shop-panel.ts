@@ -313,7 +313,7 @@ export class ShopPanel {
     const offer = this.offers[this.cursor];
     const dear = offer !== undefined && state.money < offer.price;
     this.buy.disabled = offer === undefined;
-    this.buy.textContent = offer === undefined ? '' : dear ? 'Not enough money' : `Buy · ${priceText(offer.price)}`;
+    this.buy.textContent = buyLabel(offer, dear);
     this.buy.classList.toggle('shop-buy-dear', dear);
     if (this.carded === this.cursor && this.cardFor === offer?.label) return;
     this.carded = this.cursor;
@@ -347,10 +347,16 @@ export class ShopPanel {
     this.said.textContent = said;
     this.said.classList.toggle('shop-said-short', said === 'Not enough money.');
     this.said.classList.remove('shop-said-flash');
-    // Reading the width restarts the animation the class is about to add back.
-    void this.said.offsetWidth;
+    // Reading the layout restarts the animation the class is about to add back.
+    this.said.getBoundingClientRect();
     this.said.classList.add('shop-said-flash');
   }
+}
+
+/** The words on the buy button: none with no offer, a refusal the player cannot pay, else the price. */
+function buyLabel(offer: ShopOffer | undefined, dear: boolean): string {
+  if (offer === undefined) return '';
+  return dear ? 'Not enough money' : `Buy · ${priceText(offer.price)}`;
 }
 
 function priceText(price: number): string {

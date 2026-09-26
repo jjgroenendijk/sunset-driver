@@ -97,28 +97,33 @@ export class TerritoryOverlay {
       for (let bx = bx0; bx <= bx1; bx++) {
         const holder = this.map.holderAt(this.state, bx, by);
         if (holder === NOBODY) continue;
-        const x = bx * BLOCK_SIZE;
-        const y = by * BLOCK_SIZE;
         ctx.strokeStyle = holderColour(holder);
         ctx.beginPath();
-        if (this.map.holderAt(this.state, bx, by - 1) !== holder) {
-          ctx.moveTo(x, y);
-          ctx.lineTo(x + BLOCK_SIZE, y);
-        }
-        if (this.map.holderAt(this.state, bx, by + 1) !== holder) {
-          ctx.moveTo(x, y + BLOCK_SIZE);
-          ctx.lineTo(x + BLOCK_SIZE, y + BLOCK_SIZE);
-        }
-        if (this.map.holderAt(this.state, bx - 1, by) !== holder) {
-          ctx.moveTo(x, y);
-          ctx.lineTo(x, y + BLOCK_SIZE);
-        }
-        if (this.map.holderAt(this.state, bx + 1, by) !== holder) {
-          ctx.moveTo(x + BLOCK_SIZE, y);
-          ctx.lineTo(x + BLOCK_SIZE, y + BLOCK_SIZE);
-        }
+        this.traceBorders(ctx, bx, by, holder);
         ctx.stroke();
       }
+    }
+  }
+
+  /** Trace the sides of block (`bx`, `by`) whose neighbour is not `holder`'s too. */
+  private traceBorders(ctx: CanvasRenderingContext2D, bx: number, by: number, holder: number): void {
+    const x = bx * BLOCK_SIZE;
+    const y = by * BLOCK_SIZE;
+    if (this.map.holderAt(this.state, bx, by - 1) !== holder) {
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + BLOCK_SIZE, y);
+    }
+    if (this.map.holderAt(this.state, bx, by + 1) !== holder) {
+      ctx.moveTo(x, y + BLOCK_SIZE);
+      ctx.lineTo(x + BLOCK_SIZE, y + BLOCK_SIZE);
+    }
+    if (this.map.holderAt(this.state, bx - 1, by) !== holder) {
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y + BLOCK_SIZE);
+    }
+    if (this.map.holderAt(this.state, bx + 1, by) !== holder) {
+      ctx.moveTo(x + BLOCK_SIZE, y);
+      ctx.lineTo(x + BLOCK_SIZE, y + BLOCK_SIZE);
     }
   }
 }

@@ -173,20 +173,52 @@ export class MapArt {
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(this.ground, -half, -half, world.size, world.size);
 
-    // The sand of spec section 7.3. It is the one parcel type worth a colour of
-    // its own at map scale: a resort is what a player steers toward.
+    this.fillBeaches(ctx, bounds);
+    this.fillAirfields(ctx, bounds);
+    this.strokeRoads(ctx, view, bounds);
+    if (opts.tram !== false) this.strokeTram(ctx, px);
+
+    opts.overlay?.(ctx, view, bounds);
+
+    if (opts.waypoint && opts.player) drawRoute(ctx, px, opts.player, opts.waypoint, opts.route ?? null);
+
+    ctx.restore();
+
+    const { taken, placed } = this.drawIcons(ctx, view, width, height, bounds, opts);
+    if (opts.labels) {
+      // Names are placed after every icon, so a name never covers an icon, and
+      // each only where it runs into no name placed before it. The districts go
+      // first, the city before the country, since they are what a player reads
+      // a map by.
+      this.drawDistrictNames(ctx, view, width, height, bounds, taken);
+      // A name under every icon is unreadable on a map pulled back far enough to
+      // hold a district. Past that the shape and the colour carry the icon.
+      if (px <= LABEL_SCALE) {
+        for (const at of placed) label(ctx, at.name, at.x, at.y + opts.iconSize * 0.75, taken);
+      }
+    }
+    if (opts.scaleBar) drawScaleBar(ctx, px, height);
+  }
+
+  /**
+   * The sand of spec section 7.3. It is the one parcel type worth a colour of
+   * its own at map scale: a resort is what a player steers toward.
+   */
+  private fillBeaches(ctx: CanvasRenderingContext2D, bounds: MapBounds): void {
     ctx.fillStyle = SAND;
     ctx.beginPath();
-    for (const beach of world.beaches) {
+    for (const beach of this.world.beaches) {
       if (beach.sand.length < 3) continue;
       if (beach.sand[0]!.x < bounds.minX - 200 || beach.sand[0]!.x > bounds.maxX + 200) continue;
       if (beach.sand[0]!.y < bounds.minY - 200 || beach.sand[0]!.y > bounds.maxY + 200) continue;
       ring(ctx, beach.sand);
     }
     ctx.fill();
+  }
 
-    // The runways, the taxiways and the aprons, so an airfield reads as one.
-    for (const field of world.airfields) {
+  /** The runways, the taxiways and the aprons, so an airfield reads as one. */
+  private fillAirfields(ctx: CanvasRenderingContext2D, bounds: MapBounds): void {
+    for (const field of this.world.airfields) {
       if (Math.abs(field.x - (bounds.minX + bounds.maxX) / 2) > (bounds.maxX - bounds.minX) / 2 + field.halfU) continue;
       if (Math.abs(field.y - (bounds.minY + bounds.maxY) / 2) > (bounds.maxY - bounds.minY) / 2 + field.halfU) continue;
       for (const part of field.parts) {
@@ -197,33 +229,42 @@ export class MapArt {
         ctx.fill();
       }
     }
+  }
 
-    this.strokeRoads(ctx, view, bounds);
+  /**
+   * The tram of spec section 13.2, a thin dashed line down the arterials it
+   * runs along. Pulled back past a district it is only clutter.
+   */
+  private strokeTram(ctx: CanvasRenderingContext2D, px: number): void {
+    const route = this.world.tram.route;
+    if (px > TRAM_SCALE || route.length <= 1) return;
+    ctx.strokeStyle = TRAM;
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = 2 * px;
+    ctx.setLineDash([6 * px, 5 * px]);
+    ctx.beginPath();
+    polyline(ctx, route);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  }
 
-    // The tram of spec section 13.2, a thin dashed line down the arterials it
-    // runs along. Pulled back past a district it is only clutter.
-    if (opts.tram !== false && px <= TRAM_SCALE && world.tram.route.length > 1) {
-      ctx.strokeStyle = TRAM;
-      ctx.globalAlpha = 0.85;
-      ctx.lineWidth = 2 * px;
-      ctx.setLineDash([6 * px, 5 * px]);
-      ctx.beginPath();
-      polyline(ctx, world.tram.route);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.globalAlpha = 1;
-    }
-
-    opts.overlay?.(ctx, view, bounds);
-
-    if (opts.waypoint && opts.player) drawRoute(ctx, px, opts.player, opts.waypoint, opts.route ?? null);
-
-    ctx.restore();
-
-    // The icons are drawn in screen pixels, so they stay the same size however
-    // far the map is pulled back and never turn with a rotating map.
+  /**
+   * The icons and the player's arrow. They are drawn in screen pixels, so they
+   * stay the same size however far the map is pulled back and never turn with
+   * a rotating map. Answers the room each one takes and where each icon's
+   * name would go.
+   */
+  private drawIcons(
+    ctx: CanvasRenderingContext2D,
+    view: MapView,
+    width: number,
+    height: number,
+    bounds: MapBounds,
+    opts: MapDrawOptions,
+  ): { taken: Taken[]; placed: { x: number; y: number; name: string }[] } {
     const taken: Taken[] = [];
-    const marks = this.pois.visible(bounds, px);
+    const marks = this.pois.visible(bounds, view.metresPerPixel);
     if (opts.waypoint) marks.push({ type: 'waypoint', x: opts.waypoint.x, y: opts.waypoint.y });
     const placed: { x: number; y: number; name: string }[] = [];
     for (const poi of marks) {
@@ -240,19 +281,7 @@ export class MapArt {
       const r = opts.iconSize * 1.15;
       taken.push({ x0: me.x - r, y0: me.y - r, x1: me.x + r, y1: me.y + r });
     }
-    if (opts.labels) {
-      // Names are placed after every icon, so a name never covers an icon, and
-      // each only where it runs into no name placed before it. The districts go
-      // first, the city before the country, since they are what a player reads
-      // a map by.
-      this.drawDistrictNames(ctx, view, width, height, bounds, taken);
-      // A name under every icon is unreadable on a map pulled back far enough to
-      // hold a district. Past that the shape and the colour carry the icon.
-      if (px <= LABEL_SCALE) {
-        for (const at of placed) label(ctx, at.name, at.x, at.y + opts.iconSize * 0.75, taken);
-      }
-    }
-    if (opts.scaleBar) drawScaleBar(ctx, px, height);
+    return { taken, placed };
   }
 
   /**

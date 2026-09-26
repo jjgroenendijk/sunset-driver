@@ -70,26 +70,30 @@ export class Crosshair {
     this.seen = tick;
     const hit = now < this.hitUntil;
 
-    const at = view.at;
-    const gap = Math.round(Math.min(MAX_GAP, Math.max(MIN_GAP, view.gap)));
-    const key = at === undefined ? '' : `${Math.round(at.x)},${Math.round(at.y)},${gap},${hit},${view.aiming}`;
-    if (key !== this.shown) {
-      this.shown = key;
-      this.root.hidden = at === undefined;
-      if (at !== undefined) {
-        this.root.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px)${hit ? ' rotate(45deg)' : ''}`;
-        this.root.style.setProperty('--gap', `${gap}px`);
-        this.root.classList.toggle('crosshair-hit', hit);
-        this.root.classList.toggle('crosshair-aiming', view.aiming);
-      }
-    }
-    const lock = at === undefined ? undefined : view.lock;
+    this.place(view, hit);
+    const lock = view.at === undefined ? undefined : view.lock;
     const lockKey = lock === undefined ? '' : `${Math.round(lock.x)},${Math.round(lock.y)}`;
     if (lockKey !== this.lockShown) {
       this.lockShown = lockKey;
       this.lock.hidden = lock === undefined;
       if (lock !== undefined) this.lock.style.transform = `translate(${Math.round(lock.x)}px, ${Math.round(lock.y)}px)`;
     }
+  }
+
+  /** Move the cross, open it to the gap and mark a hit, redrawing only on a change. */
+  private place(view: CrosshairView, hit: boolean): void {
+    const at = view.at;
+    const gap = Math.round(Math.min(MAX_GAP, Math.max(MIN_GAP, view.gap)));
+    const key = at === undefined ? '' : `${Math.round(at.x)},${Math.round(at.y)},${gap},${hit},${view.aiming}`;
+    if (key === this.shown) return;
+    this.shown = key;
+    this.root.hidden = at === undefined;
+    if (at === undefined) return;
+    const turn = hit ? ' rotate(45deg)' : '';
+    this.root.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px)${turn}`;
+    this.root.style.setProperty('--gap', `${gap}px`);
+    this.root.classList.toggle('crosshair-hit', hit);
+    this.root.classList.toggle('crosshair-aiming', view.aiming);
   }
 
   /** Hide it: the camera is detached, a menu is open or the weapon in hand is not a gun. */

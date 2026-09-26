@@ -271,13 +271,19 @@ const PAGE_PIXELS = 800;
  * A positive `deltaY` pulls the map back. The change is a factor of the scale,
  * so the zoom feels the same at every distance.
  */
+/** Pixels one unit of a wheel event's delta counts as, by its `deltaMode`. */
+function pixelsPerDelta(deltaMode: number): number {
+  if (deltaMode === 1) return LINE_PIXELS;
+  return deltaMode === 2 ? PAGE_PIXELS : 1;
+}
+
 export function wheelScale(
   metresPerPixel: number,
   deltaY: number,
   deltaMode: number,
   pinch: boolean,
 ): number {
-  const pixels = deltaY * (deltaMode === 1 ? LINE_PIXELS : deltaMode === 2 ? PAGE_PIXELS : 1);
+  const pixels = deltaY * pixelsPerDelta(deltaMode);
   const capped = Math.max(-WHEEL_CAP, Math.min(WHEEL_CAP, pixels));
   const factor = 2 ** (capped / (pinch ? PINCH_PER_DOUBLING : WHEEL_PER_DOUBLING));
   return clampScale(metresPerPixel * factor);
