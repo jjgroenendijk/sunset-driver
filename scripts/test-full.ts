@@ -14,6 +14,7 @@
  * through; `SWEEP_SEEDS` is 500 unless set.
  */
 import { spawnSync } from 'node:child_process';
+import path from 'node:path';
 
 /**
  * The shares a local run cuts the sweep into. Each process holds only its own
@@ -21,6 +22,9 @@ import { spawnSync } from 'node:child_process';
  * wall clock (`full-tier.yml`), which changes nothing about the seeds read.
  */
 const LOCAL_SHARDS = 4;
+
+/** Vitest's own entry, run by this Node rather than through a command found on the path. */
+const VITEST = path.resolve(import.meta.dirname, '../node_modules/vitest/vitest.mjs');
 
 const env = { ...process.env, SWEEP_SEEDS: process.env.SWEEP_SEEDS ?? '500' };
 
@@ -43,7 +47,7 @@ function splitProjects(args: readonly string[]): { projects: string[]; rest: str
  */
 let failed = false;
 function vitest(args: readonly string[], extra: Record<string, string> = {}): void {
-  const run = spawnSync('npx', ['vitest', 'run', ...args], { stdio: 'inherit', env: { ...env, ...extra } });
+  const run = spawnSync(process.execPath, [VITEST, 'run', ...args], { stdio: 'inherit', env: { ...env, ...extra } });
   if (run.status !== 0) failed = true;
 }
 

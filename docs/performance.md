@@ -82,11 +82,11 @@ the four shares take 52, 51, 67 and 54 s, for about 730 CPU-seconds together: th
 ## The shards
 
 `full-tier.yml` gives the seed sweep eight runners, every other file a ninth and the typecheck with
-the lints a tenth. `SWEEP_SHARD=2/4` is what tells a run which share to read: `seed-limits.ts` takes the
-tier's seeds in turn, so shard 1 reads seed 0, shard 2 seed 1, and every shard gets the same spread
-of the seed space. The counts taken from the front of the tier — `FOOTPRINT_COUNT`, `REPEAT_COUNT`
-and the rest — are shared out the same way, so **the four shards together read exactly the seeds one
-unsharded run reads**. Widen a count and every shard grows by its share of it.
+the lints a tenth. `SWEEP_SHARD=2/8` is what tells a run which share to read: `seed-limits.ts`
+takes the tier's seeds in turn, so shard 1 reads seed 0, shard 2 seed 1, and every shard gets the
+same spread of the seed space. The counts taken from the front of the tier — `FOOTPRINT_COUNT`,
+`REPEAT_COUNT` and the rest — are shared out the same way, so **the shards together read exactly
+the seeds one unsharded run reads**. Widen a count and every shard grows by its share of it.
 
 A job named `seed-sweep` needs the eight and passes only when they all did, because the
 ruleset requires the one check name `full-tier / seed-sweep`. A failure there says nothing itself:
