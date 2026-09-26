@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { jobPermit } from '../../../src/sim/traffic/jobs.ts';
 import {
   AmbientTraffic,
   footprintsTouch,
@@ -63,7 +64,9 @@ describe('ambient traffic (spec sections 5.3, 13.1)', () => {
           const edge = graph.edges[edges[i] as number];
           const next = graph.edges[edges[(i + 1) % edges.length] as number];
           expect(edge?.to, `seed ${seed}, vehicle ${vehicle.id}, leg ${i}`).toBe(next?.from);
-          expect(permitOf(vehicle.cls)(edge as (typeof graph.edges)[number]), `${vehicle.cls} on ${edge?.tier}`).toBe(true);
+          // A garbage truck works the streets that bar every other truck (`jobs.ts`).
+          const permit = jobPermit(vehicle.job) ?? permitOf(vehicle.cls);
+          expect(permit(edge as (typeof graph.edges)[number]), `${vehicle.cls} on ${edge?.tier}`).toBe(true);
         }
         expect(vehicle.tour.period).toBe(vehicle.tour.stepTicks.reduce((s, t) => s + t, 0));
         // A tour timed to the lights takes whole cycles of them, or the two would drift apart.
