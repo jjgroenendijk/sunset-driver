@@ -62,7 +62,9 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   `opens` opens its column, and a second press closes it. Right opens it too, and Left closes the
   column the focus is in. The columns stand in one row, `.menu-columns`, all hung from one top line,
   so opening one never moves the list it came from. A column's Back button shows only on a narrow
-  screen, where one column is shown at a time. `src/ui/menus/pause.ts` is the pause menu of spec
+  screen, where one column is shown at a time. The New game page scrolls rather than shrink: its
+  cards keep `min-height: auto`, or a short screen lays the Driver card and the buttons over the
+  City card. `src/ui/menus/pause.ts` is the pause menu of spec
   section 12, drawn with the title's classes and the few rules of `pause.css`. Its main list is
   Resume, Multiplayer, Save game, Load game, Controls, Graphics, Options and Quit to main menu. The
   HUD, the minimap and the panels over play are hidden while it is open, so no text shows through
@@ -156,6 +158,11 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   leave the horn stuck. Space is both Jump and Brake; the fourth button is Run on foot and Horn in a
   vehicle. The frame hides the pad under the flight, a menu and the map (`SessionFrame.showPad`),
   and hiding it lets go of everything.
+- While a shop's counter or a deal is open, the pad's buttons are hidden and let go, and the stick
+  stays. The counter stands in their corner, and the stick still walks out of the room.
+- A phone has no pointer lock, so `MouseLook` turns the first person view by a drag on the canvas
+  instead, `TOUCH_LOOK_GAIN` times a mouse pixel. It reads `camera.view`, so a shop's room turns
+  too. A counter does not stop the drag: a tap on a row lands on the row, not on the canvas.
 - A tap presses a key for one sample through `Keyboard.pulse`. The metro, safehouse and job panels
   write the key of each numbered row into `data-key`, the interact prompt writes `KeyE`, and
   `Keyboard.listenRows` takes a click on any of them as that key. A finger aims nothing

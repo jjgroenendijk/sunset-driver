@@ -56,10 +56,12 @@ export class TouchPlay {
   private readonly knob: HTMLElement;
   private readonly buttons: Button[];
   private readonly radio: HTMLButtonElement;
+  private readonly cluster: HTMLElement;
   /** The thumb on the stick, where it went down, and where it has reached. */
   private thumb: { id: number; fromX: number; fromY: number; x: number; y: number } | null = null;
   private driving = false;
   private live = false;
+  private counter = false;
 
   constructor(parent: HTMLElement, keyboard: Keyboard) {
     this.keyboard = keyboard;
@@ -77,6 +79,7 @@ export class TouchPlay {
 
     const cluster = document.createElement('div');
     cluster.className = 'touch-cluster';
+    this.cluster = cluster;
     this.buttons = BUTTONS.map((spec) => this.buildButton(spec));
     // The weapon and the radio are steps rather than holds, so a tap is enough.
     const weapon = tapButton('Gun', 'touch-gun', () => keyboard.nextWeapon());
@@ -92,12 +95,19 @@ export class TouchPlay {
    * Bring the pad in step with the frame: shown while the player is being
    * played rather than flown over or paused, and labelled for foot or wheel.
    * Put away, it lets go of every finger, so nothing stays held behind a menu.
+   * While a shop's counter or a deal is open the buttons are put away alone:
+   * the counter stands in their corner, and the stick still walks out.
    */
-  update(driving: boolean, live: boolean): void {
+  update(driving: boolean, live: boolean, counter = false): void {
     if (live !== this.live) {
       this.live = live;
       this.root.hidden = !live;
       if (!live) this.forget();
+    }
+    if (counter !== this.counter) {
+      this.counter = counter;
+      this.cluster.hidden = counter;
+      if (counter) for (const button of this.buttons) this.release(button);
     }
     if (driving === this.driving) return;
     this.driving = driving;

@@ -154,6 +154,9 @@ corners, and has its own page in `docs/market.md`.
 - The panel is sized in `--u`, one unit that grows with the screen, not in `rem`. It stands at the
   right, under the HUD's status stack, so the room stays in sight in the middle of the frame. Below
   52rem wide it becomes a sheet across the bottom, with the card over the rows.
+- On a phone (`body.touch`, in `touch.css`) the counter is that stacked sheet with a small window,
+  at the top when the phone is upright and along the right when it lies sideways. The room stays in
+  sight, and a drag on it turns the view.
 - A group heading is sticky, and `scrollIntoView` does not know it covers the top of the list, so
   `ShopPanel.scrollTo` scrolls a row clear of it by hand.
 

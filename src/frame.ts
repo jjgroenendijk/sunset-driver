@@ -105,12 +105,14 @@ export class SessionFrame {
    * A chase view turns with the mouse under pointer lock, unless a menu, the
    * map, a shop counter or a deal wants the pointer (`ui/input/mouse-look.ts`).
    * The mouse look is told when the pause menu alone stands over such a view,
-   * so Resume can ask for the lock again.
+   * so Resume can ask for the lock again. A phone drags the first person view
+   * round instead, a shop's room included, and a counter does not stop it.
    */
   private lookWith(session: Session, counter: boolean, flying: boolean): void {
     const menu = session.pause.open;
     const lookable = this.parts.settings.view !== 'top-down' && !session.map.open && !counter;
-    this.parts.look.update(lookable && !menu, flying, lookable && menu);
+    const dragged = this.parts.camera.view === 'first-person' && !session.map.open && !menu;
+    this.parts.look.update(lookable && !menu, flying, lookable && menu, dragged);
   }
 
   /** Step the session by the time the last frame took, and draw it. */
@@ -135,7 +137,7 @@ export class SessionFrame {
     if (flying || menu) keyboard.forgetWheel();
     // The arrow keys walk a shop's counter or a dealer's while one is open.
     keyboard.menu = counter;
-    this.showPad(session, flying || menu);
+    this.showPad(session, flying || menu, counter);
     // A paused frame is drawn at `PAUSED_FPS` (`pace.ts`), so the frame after
     // the menu closes comes up to a tenth of a second later. That time was
     // spent in the menu, and the first frame back takes no step for it.
@@ -361,9 +363,13 @@ export class SessionFrame {
     session.world.seeThrough(camera.camera.position, p.x, p.height, p.y, inShop);
   }
 
-  /** The phone's pad goes away under the flight, a menu and the map, and lets go of its keys. */
-  private showPad(session: Session, away: boolean): void {
-    this.parts.pad?.update(session.state.player.driving, !away && !session.map.open);
+  /**
+   * The phone's pad goes away under the flight, a menu and the map, and lets
+   * go of its keys. Its buttons also step aside for a counter, which takes
+   * their corner.
+   */
+  private showPad(session: Session, away: boolean, counter: boolean): void {
+    this.parts.pad?.update(session.state.player.driving, !away && !session.map.open, counter);
   }
 
   /**

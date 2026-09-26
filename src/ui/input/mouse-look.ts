@@ -15,8 +15,14 @@
  *
  * The developer free camera of `free-camera.ts` locks the same canvas. While
  * it is detached it owns the movement, and this hands none to the camera.
+ *
+ * A touch screen has no lock and no mouse. There a finger dragged over the
+ * canvas turns the first person view instead; the stick and the buttons are
+ * elements of their own over it. A tap on a counter's row is not a drag on the
+ * canvas, so a counter leaves the drag on: it is how the room is seen past it.
  */
 import type { FollowCamera } from '../../render/camera/camera.ts';
+import { TOUCH_LOOK_GAIN } from './touch.ts';
 
 export class MouseLook {
   private readonly canvas: HTMLCanvasElement;
@@ -35,6 +41,8 @@ export class MouseLook {
   private shownHint = '';
   /** A touch screen has no lock to ask for, so it never wants one. */
   private readonly touch: boolean;
+  /** The finger dragging the view on a touch screen, and where it was last. */
+  private finger: { id: number; x: number; y: number } | null = null;
 
   constructor(canvas: HTMLCanvasElement, camera: FollowCamera, touch = false) {
     this.canvas = canvas;
@@ -57,6 +65,7 @@ export class MouseLook {
       },
       { capture: true },
     );
+    if (touch) this.bindDrag(canvas, camera);
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === this.canvas;
       if (!this.locked && this.asked && this.wanted && !this.flying) this.onLost?.();
@@ -65,22 +74,26 @@ export class MouseLook {
     });
   }
 
-  /** True while the mouse turns the view. */
+  /** True while the mouse, or on a touch screen a drag, turns the view. */
   get active(): boolean {
-    return this.locked && this.wanted && !this.flying;
+    return (this.locked || this.touch) && this.wanted && !this.flying;
   }
 
   /**
    * Say, once a frame, whether a chase view is on screen with nothing over it,
    * whether the pause menu is the only thing over it, and whether the free
    * camera is detached. A lock this holds is let go when the view no longer
-   * wants it, and that release is not a lost lock.
+   * wants it, and that release is not a lost lock. `dragged` is what a touch
+   * screen reads instead of `wanted`: a first person view with no menu over it.
    */
-  update(wanted: boolean, flying: boolean, paused = false): void {
-    this.wanted = wanted && !this.touch;
+  update(wanted: boolean, flying: boolean, paused = false, dragged = false): void {
+    this.wanted = this.touch ? dragged : wanted;
     this.ready = (wanted || paused) && !this.touch;
     this.flying = flying;
-    if (!this.wanted || flying) this.asked = false;
+    if (!this.wanted || flying) {
+      this.asked = false;
+      this.finger = null;
+    }
     if (!wanted && !flying && this.locked) document.exitPointerLock();
     this.showHint();
   }
@@ -105,9 +118,34 @@ export class MouseLook {
     if (this.ready && !this.flying) this.lock();
   }
 
+  /**
+   * One finger on the canvas turns the view as the mouse would, faster by
+   * `TOUCH_LOOK_GAIN`, since a thumb has only the screen to cross. A second
+   * finger is left alone.
+   */
+  private bindDrag(canvas: HTMLCanvasElement, camera: FollowCamera): void {
+    canvas.addEventListener('pointerdown', (event) => {
+      if (event.pointerType === 'mouse' || this.finger || !this.active) return;
+      canvas.setPointerCapture(event.pointerId);
+      this.finger = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    });
+    canvas.addEventListener('pointermove', (event) => {
+      const finger = this.finger;
+      if (finger?.id !== event.pointerId) return;
+      if (this.active) camera.look((event.clientX - finger.x) * TOUCH_LOOK_GAIN, (event.clientY - finger.y) * TOUCH_LOOK_GAIN);
+      finger.x = event.clientX;
+      finger.y = event.clientY;
+    });
+    const drop = (event: PointerEvent): void => {
+      if (this.finger?.id === event.pointerId) this.finger = null;
+    };
+    canvas.addEventListener('pointerup', drop);
+    canvas.addEventListener('pointercancel', drop);
+  }
+
   /** The line over the canvas that says a click turns the mouse look on, written only when it changes. */
   private showHint(): void {
-    const text = this.wanted && !this.flying && !this.locked ? 'Click to look around with the mouse' : '';
+    const text = this.wanted && !this.flying && !this.locked && !this.touch ? 'Click to look around with the mouse' : '';
     if (text === this.shownHint) return;
     this.shownHint = text;
     this.hint.hidden = text === '';

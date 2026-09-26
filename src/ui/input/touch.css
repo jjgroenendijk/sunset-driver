@@ -46,6 +46,20 @@ body.touch :is(.home, .job, .travel) { z-index: 5; bottom: calc(15rem + env(safe
 body.touch :is(.home-list, .job-list, .travel-list) [data-key] { padding: .45rem 0; }
 .interact { z-index: 5; }
 body.touch .interact { bottom: calc(13rem + env(safe-area-inset-bottom)); }
+/* A shop's counter on a phone keeps most of the room in sight, and a drag on
+   the room turns the view past it. It is the narrow screen's stacked counter,
+   with a small window, at the top when the phone is upright and along the
+   right when it lies sideways. Its top clears the bar of keys, and the pad's
+   buttons step aside for it (`touch-play.ts`). */
+body.touch .shop:not(.shop-at-door) { top: calc(var(--hud-top) + 3.6rem); right: auto; bottom: auto; left: 50%; width: 94vw; max-height: 42vh; transform: translateX(-50%); animation: none; }
+body.touch .shop-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+body.touch .shop-card { order: -1; grid-template-columns: calc(6 * var(--u)) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; column-gap: calc(.7 * var(--u)); max-height: calc(6 * var(--u)); }
+body.touch .shop-window { grid-row: span 2; aspect-ratio: auto; height: 100%; max-height: none; }
+body.touch :is(.shop-facts, .shop-hint, .shop-card-blurb) { display: none; }
+body.touch .shop-foot { justify-content: flex-end; }
+@media (orientation: landscape) {
+  body.touch .shop:not(.shop-at-door) { left: auto; right: var(--hud-right); bottom: var(--hud-bottom); width: min(calc(28 * var(--u)), 42vw); max-height: none; transform: none; }
+}
 /* How to take the whole screen on an iPhone (`fullscreen.ts`). */
 .touch-note { position: fixed; z-index: 12; top: calc(4.2rem + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right)); max-width: min(18rem, calc(100vw - 24px)); margin: 0; padding: .7rem .9rem; border: var(--it-card-edge); border-radius: var(--it-card-radius); background: var(--it-ivory); color: var(--it-ink); box-shadow: var(--it-card-shadow); font: .85rem/1.35 var(--it-sans); }
 
