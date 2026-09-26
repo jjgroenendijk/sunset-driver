@@ -83,7 +83,8 @@ export function offsetSides(points: readonly Point[], halfWidth: number): { left
  */
 export function strip(points: readonly Point[], halfWidth: number): Point[] {
   const sides = offsetSides(points, halfWidth);
-  const ring = sides.left.concat(sides.right.reverse());
+  sides.right.reverse();
+  const ring = sides.left.concat(sides.right);
   if (ringArea(ring) < 0) ring.reverse();
   return ring;
 }

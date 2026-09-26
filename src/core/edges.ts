@@ -135,9 +135,12 @@ export function crossings(edges: Edges, box: Box, add: (x: number, y: number) =>
   }
 }
 
-/** Twice the signed area of the triangle: which side of the line through a and b the point c falls. */
-export function orient(ax: number, ay: number, bx: number, by: number, cx: number, cy: number): number {
-  return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+/**
+ * Twice the signed area of the triangle: which side of the line from `from` to
+ * `to` the point `p` falls.
+ */
+export function orient(fromX: number, fromY: number, toX: number, toY: number, px: number, py: number): number {
+  return (toX - fromX) * (py - fromY) - (toY - fromY) * (px - fromX);
 }
 
 /**
