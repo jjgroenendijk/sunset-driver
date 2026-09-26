@@ -369,7 +369,8 @@ export function generateDistricts(seed: number, layout: ZoneLayout, hf: Heightfi
 
   // Outlaw MC roadhouses in the outskirts.
   const outskirts = districts.filter((d) => d.zone === 'outskirts');
-  const saints = outskirts.sort((a, b) => a.wealth - b.wealth)[0];
+  outskirts.sort((a, b) => a.wealth - b.wealth);
+  const saints = outskirts[0];
   if (saints) {
     saints.name = 'Roadhouse Strip';
     saints.culture = 'outlaw';

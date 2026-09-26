@@ -39,13 +39,16 @@ function path(points: readonly Point[]): string {
  */
 export function worldDigest(world: WorldDescription, layers: WorldLayers = buildLayers(world)): string[] {
   const { parcels, buildings } = layers;
+  const water = world.water.islands.map((i) => `${i.id}:${n(i.x)},${n(i.y)},${n(i.radius)}`).join(';');
+  const districts = world.districts.map((d) => `${d.id}:${d.zone}:${n(d.x)},${n(d.y)}:${n(d.density)}`).join(';');
+  const beaches = world.beaches.map((b) => `${b.id}:${n(b.length)}:${b.boardwalkRoad}:${b.carParks.length}`).join(';');
   return [
     `seed ${world.seed}`,
     `archetype ${world.archetype}`,
     `terrain ${hash(world.terrain.heights.join(','))}`,
-    `water ${hash(world.water.islands.map((i) => `${i.id}:${n(i.x)},${n(i.y)},${n(i.radius)}`).join(';'))}`,
-    `districts ${hash(world.districts.map((d) => `${d.id}:${d.zone}:${n(d.x)},${n(d.y)}:${n(d.density)}`).join(';'))}`,
-    `beaches ${hash(world.beaches.map((b) => `${b.id}:${n(b.length)}:${b.boardwalkRoad}:${b.carParks.length}`).join(';'))}`,
+    `water ${hash(water)}`,
+    `districts ${hash(districts)}`,
+    `beaches ${hash(beaches)}`,
     `roads ${world.roads.length} ${hash(
       world.roads.map((r) => `${r.id}:${r.tier}:${path(r.points)}:${r.nodes.join(',')}`).join(';'),
     )}`,

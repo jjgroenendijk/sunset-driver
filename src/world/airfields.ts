@@ -263,26 +263,48 @@ function findSite(ground: SiteGround, ask: SiteAsk, taken: readonly Airfield[]):
   const mainland = ground.land.massAt(ground.zones.core.x, ground.zones.core.y);
   for (let y = -limit; y <= limit; y += ask.step) {
     for (let x = -limit; x <= limit; x += ask.step) {
-      const penalty = ask.zones[zoneAt(ground.zones, x, y)];
-      if (penalty === undefined || !ground.land.reaches(x, y)) continue;
-      if (ask.mainland === true && ground.land.massAt(x, y) !== mainland) continue;
-      if (taken.some((field, i) => dist(field.x, field.y, x, y) < (clear[i] as number))) continue;
+      const penalty = placePenalty(ground, ask, taken, clear, mainland, x, y);
+      if (penalty === undefined) continue;
       for (let k = 0; k < ask.headings; k++) {
-        const heading = facingCore(ground.zones.core, x, y, (k * Math.PI) / ask.headings);
-        if (ask.coreClear !== undefined && offCore(ground.zones.core, ask, x, y, heading) < ask.coreClear) continue;
-        const judged = judge(ground, ask, x, y, heading, COARSE);
-        if (judged === undefined) continue;
-        // A gate no street can climb to from the city is a gate no road reaches.
-        if (!ground.graded.near(fromLocal({ x, y, heading }, ask.gateU, ask.halfV + GATE_OUT))) continue;
-        keepBest(shortlist, { x, y, heading, score: judged.fall + penalty, level: judged.level });
+        const candidate = coarseCandidate(ground, ask, x, y, (k * Math.PI) / ask.headings, penalty);
+        if (candidate !== undefined) keepBest(shortlist, candidate);
       }
     }
   }
+  return confirmBest(ground, ask, shortlist);
+}
+
+/** The best of a short list that the fine pass confirms, at the level that pass finds; undefined where none is. */
+function confirmBest(ground: SiteGround, ask: SiteAsk, shortlist: readonly Candidate[]): Candidate | undefined {
   for (const candidate of shortlist) {
     const judged = judge(ground, ask, candidate.x, candidate.y, candidate.heading, FINE);
     if (judged !== undefined) return { ...candidate, level: judged.level };
   }
   return undefined;
+}
+
+/**
+ * The zone penalty of a place for a site, or undefined where the site may not
+ * stand there: a zone it may not stand in, land the roads cannot reach, off
+ * the mainland when it asks for it, or too near an airfield already placed.
+ */
+function placePenalty(ground: SiteGround, ask: SiteAsk, taken: readonly Airfield[], clear: readonly number[], mainland: number, x: number, y: number): number | undefined {
+  const penalty = ask.zones[zoneAt(ground.zones, x, y)];
+  if (penalty === undefined || !ground.land.reaches(x, y)) return undefined;
+  if (ask.mainland === true && ground.land.massAt(x, y) !== mainland) return undefined;
+  if (taken.some((field, i) => dist(field.x, field.y, x, y) < (clear[i] as number))) return undefined;
+  return penalty;
+}
+
+/** A site at a place and a heading, judged on the coarse pass, or undefined where it fails. */
+function coarseCandidate(ground: SiteGround, ask: SiteAsk, x: number, y: number, turn: number, penalty: number): Candidate | undefined {
+  const heading = facingCore(ground.zones.core, x, y, turn);
+  if (ask.coreClear !== undefined && offCore(ground.zones.core, ask, x, y, heading) < ask.coreClear) return undefined;
+  const judged = judge(ground, ask, x, y, heading, COARSE);
+  if (judged === undefined) return undefined;
+  // A gate no street can climb to from the city is a gate no road reaches.
+  if (!ground.graded.near(fromLocal({ x, y, heading }, ask.gateU, ask.halfV + GATE_OUT))) return undefined;
+  return { x, y, heading, score: judged.fall + penalty, level: judged.level };
 }
 
 /**
@@ -469,18 +491,7 @@ function findDock(ground: SiteGround, airport: Airfield, taken: readonly Airfiel
   // Every node deep enough, nearest the airport first: most of them fail the
   // later tests, and those are the dear ones, so they run in that order and
   // stop at the first that passes.
-  const deep: number[] = [];
-  const far: number[] = [];
-  for (let iy = 0; iy < n; iy++) {
-    const y = hf.worldY(iy);
-    for (let ix = 0; ix < n; ix++) {
-      const x = hf.worldX(ix);
-      if (Math.abs(x) > ground.size / 2 - EDGE || Math.abs(y) > ground.size / 2 - EDGE) continue;
-      if (seaLevel - hf.at(ix, iy) < DOCK_DEPTH) continue;
-      deep.push(iy * n + ix);
-      far.push(dist(x, y, airport.x, airport.y));
-    }
-  }
+  const { deep, far } = deepNodes(ground, airport);
   const order = deep.map((_, i) => i).sort((a, b) => (far[a] as number) - (far[b] as number) || a - b);
   const clear = taken.map((field) => hypot(field.halfU, field.halfV) + LEVEL_BLEND + DOCK_REACH);
   for (const i of order) {
@@ -493,6 +504,25 @@ function findDock(ground: SiteGround, airport: Airfield, taken: readonly Airfiel
     if (root !== undefined) return dockAt(taken.length, seaLevel, root, { x, y });
   }
   return undefined;
+}
+
+/** Every grid node on the map deep enough for a dock, in grid order, with its distance from the airport. */
+function deepNodes(ground: SiteGround, airport: Airfield): { deep: number[]; far: number[] } {
+  const { hf, seaLevel } = ground;
+  const n = hf.gridSize;
+  const deep: number[] = [];
+  const far: number[] = [];
+  for (let iy = 0; iy < n; iy++) {
+    const y = hf.worldY(iy);
+    for (let ix = 0; ix < n; ix++) {
+      const x = hf.worldX(ix);
+      if (Math.abs(x) > ground.size / 2 - EDGE || Math.abs(y) > ground.size / 2 - EDGE) continue;
+      if (seaLevel - hf.at(ix, iy) < DOCK_DEPTH) continue;
+      deep.push(iy * n + ix);
+      far.push(dist(x, y, airport.x, airport.y));
+    }
+  }
+  return { deep, far };
 }
 
 /** The dock from a place on the shore out to its mooring. */

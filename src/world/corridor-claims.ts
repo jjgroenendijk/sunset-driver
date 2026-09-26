@@ -62,15 +62,20 @@ export class ClaimIndex {
     for (let iy = this.column(box.minY); iy <= this.column(box.maxY); iy++) {
       for (let ix = this.column(box.minX); ix <= this.column(box.maxX); ix++) {
         for (const claim of this.buckets[iy * this.n + ix] as Claim[]) {
-          if (claim.run === run) continue;
-          if (claim.minX - box.maxX >= CLAIM_CLEARANCE || box.minX - claim.maxX >= CLAIM_CLEARANCE) continue;
-          if (claim.minY - box.maxY >= CLAIM_CLEARANCE || box.minY - claim.maxY >= CLAIM_CLEARANCE) continue;
-          if (near(quad, claim.quad, CLAIM_CLEARANCE)) return true;
+          if (clashes(run, quad, box, claim)) return true;
         }
       }
     }
     return false;
   }
+}
+
+/** True when a quad of one run stands within {@link CLAIM_CLEARANCE} of a claim of another. */
+function clashes(run: number, quad: readonly Point[], box: { minX: number; minY: number; maxX: number; maxY: number }, claim: Claim): boolean {
+  if (claim.run === run) return false;
+  if (claim.minX - box.maxX >= CLAIM_CLEARANCE || box.minX - claim.maxX >= CLAIM_CLEARANCE) return false;
+  if (claim.minY - box.maxY >= CLAIM_CLEARANCE || box.minY - claim.maxY >= CLAIM_CLEARANCE) return false;
+  return near(quad, claim.quad, CLAIM_CLEARANCE);
 }
 
 function boundsOf(quad: readonly Point[]): { minX: number; minY: number; maxX: number; maxY: number } {
@@ -94,16 +99,18 @@ function near(a: readonly Point[], b: readonly Point[], gap: number): boolean {
   return !apart(a, b, gap) && !apart(b, a, gap);
 }
 
-function apart(a: readonly Point[], b: readonly Point[], gap: number): boolean {
-  for (let i = 0; i < a.length; i++) {
-    const p = a[i] as Point;
-    const q = a[(i + 1) % a.length] as Point;
+/** True when the shadows of two rings on the normal of some edge of the first stand `gap` apart. */
+function apart(edges: readonly Point[], other: readonly Point[], gap: number): boolean {
+  for (let i = 0; i < edges.length; i++) {
+    const p = edges[i] as Point;
+    const q = edges[(i + 1) % edges.length] as Point;
     const len = dist(p.x, p.y, q.x, q.y);
     if (len < EPSILON) continue;
     const nx = -(q.y - p.y) / len;
     const ny = (q.x - p.x) / len;
-    const sa = span(a, nx, ny);
-    const sb = span(b, nx, ny);
+    const sa = span(edges, nx, ny);
+    const sb = span(other, nx, ny);
+
     if (sb.lo - sa.hi >= gap || sa.lo - sb.hi >= gap) return true;
   }
   return false;

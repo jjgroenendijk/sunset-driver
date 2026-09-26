@@ -76,31 +76,8 @@ export function planHighway(
   for (const i of [...bridges, ...tunnels]) blocked.push([along[i] as number, along[i + 1] as number]);
   for (const d of under) blocked.push([d - UNDER_CLEAR, d + UNDER_CLEAR]);
   for (const [lo, hi] of freeStretches(along, blocked)) {
-    // The stretch holds the ramps and the deck; its two ends stay on the ground.
-    const start = firstAtOrAfter(along, lo);
-    const end = lastAtOrBefore(along, hi);
-    if (start === undefined || end === undefined) continue;
-    let low = firstAtOrAfter(along, (along[start] as number) + HIGHWAY_RAMP);
-    let high = lastAtOrBefore(along, (along[end] as number) - HIGHWAY_RAMP);
-    if (low === undefined || high === undefined || high - low < 3) continue;
-    const middle = points[(low + high) >> 1] as Point;
-    if (!builtUp(middle.x, middle.y)) {
-      const centre = ((along[low] as number) + (along[high] as number)) / 2;
-      low = Math.max(low, firstAtOrAfter(along, centre - COUNTRY_DECK / 2) as number);
-      high = Math.min(high, lastAtOrBefore(along, centre + COUNTRY_DECK / 2) as number);
-      if (high - low < 3) continue;
-    }
-    // A ramp ends on a point of the line, so it is never steeper than the
-    // grade allows; it can only be longer.
-    const foot = lastAtOrBefore(along, (along[low] as number) - HIGHWAY_RAMP) as number;
-    const toe = firstAtOrAfter(along, (along[high] as number) + HIGHWAY_RAMP) as number;
-    for (let i = foot + 1; i < toe; i++) {
-      const d = along[i] as number;
-      let h = CLEARANCE;
-      if (i < low) h = (CLEARANCE * (d - (along[foot] as number))) / ((along[low] as number) - (along[foot] as number));
-      else if (i > high) h = (CLEARANCE * ((along[toe] as number) - d)) / ((along[toe] as number) - (along[high] as number));
-      lift[i] = h;
-    }
+    const deck = deckIn(points, along, lo, hi, builtUp);
+    if (deck !== undefined) liftDeck(along, lift, deck.low, deck.high);
   }
 
   const decks = bridges.slice();
@@ -109,13 +86,54 @@ export function planHighway(
     if (((lift[i] as number) > 0 || (lift[i + 1] as number) > 0) && !decks.includes(i)) decks.push(i);
     // A slot has the full clearance over it and over the segment each side, so
     // a road that crosses near its end still passes under the level deck.
-    if (i < 1 || i + 2 > last) continue;
-    let level = true;
-    for (let k = i - 1; k <= i + 2; k++) if (lift[k] !== CLEARANCE) level = false;
-    if (level) slots.push(i);
+    if (i >= 1 && i + 2 <= last && levelAround(lift, i)) slots.push(i);
   }
   decks.sort((a, b) => a - b);
   return { lift: lift.some((h) => h > 0) ? lift : undefined, bridges: decks, slots };
+}
+
+/**
+ * The level deck a free stretch holds, as its first and last point, or
+ * undefined where the stretch is too short for one. The stretch holds the
+ * ramps and the deck; its two ends stay on the ground. Out of the city the
+ * deck is cut to {@link COUNTRY_DECK} round the middle of the stretch.
+ */
+function deckIn(points: readonly Point[], along: Float32Array, lo: number, hi: number, builtUp: (x: number, y: number) => boolean): { low: number; high: number } | undefined {
+  const start = firstAtOrAfter(along, lo);
+  const end = lastAtOrBefore(along, hi);
+  if (start === undefined || end === undefined) return undefined;
+  let low = firstAtOrAfter(along, (along[start] as number) + HIGHWAY_RAMP);
+  let high = lastAtOrBefore(along, (along[end] as number) - HIGHWAY_RAMP);
+  if (low === undefined || high === undefined || high - low < 3) return undefined;
+  const middle = points[(low + high) >> 1] as Point;
+  if (!builtUp(middle.x, middle.y)) {
+    const centre = ((along[low] as number) + (along[high] as number)) / 2;
+    low = Math.max(low, firstAtOrAfter(along, centre - COUNTRY_DECK / 2) as number);
+    high = Math.min(high, lastAtOrBefore(along, centre + COUNTRY_DECK / 2) as number);
+    if (high - low < 3) return undefined;
+  }
+  return { low, high };
+}
+
+/** Lift the points of a deck to the clearance, and the ramps each side of it up to that. */
+function liftDeck(along: Float32Array, lift: number[], low: number, high: number): void {
+  // A ramp ends on a point of the line, so it is never steeper than the
+  // grade allows; it can only be longer.
+  const foot = lastAtOrBefore(along, (along[low] as number) - HIGHWAY_RAMP) as number;
+  const toe = firstAtOrAfter(along, (along[high] as number) + HIGHWAY_RAMP) as number;
+  for (let i = foot + 1; i < toe; i++) {
+    const d = along[i] as number;
+    let h = CLEARANCE;
+    if (i < low) h = (CLEARANCE * (d - (along[foot] as number))) / ((along[low] as number) - (along[foot] as number));
+    else if (i > high) h = (CLEARANCE * ((along[toe] as number) - d)) / ((along[toe] as number) - (along[high] as number));
+    lift[i] = h;
+  }
+}
+
+/** True where the points from one before segment `i` to two after it all stand at the full clearance. */
+function levelAround(lift: readonly number[], i: number): boolean {
+  for (let k = i - 1; k <= i + 2; k++) if (lift[k] !== CLEARANCE) return false;
+  return true;
 }
 
 /**

@@ -141,7 +141,8 @@ function segmentDistanceSquared(a: Point, b: Point, x: number, y: number): numbe
   const dy = b.y - a.y;
   const squared = dx * dx + dy * dy;
   let t = squared === 0 ? 0 : ((x - a.x) * dx + (y - a.y) * dy) / squared;
-  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
   const ox = x - (a.x + dx * t);
   const oy = y - (a.y + dy * t);
   return ox * ox + oy * oy;

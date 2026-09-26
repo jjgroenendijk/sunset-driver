@@ -133,32 +133,43 @@ export function settleCrossings(network: CrossingNetwork, proposed: DraftLine, w
   let draft = proposed;
   for (let round = 0; round < ROUNDS; round++) {
     const plan = planJunctions(network, draft);
-    const road = lineOf(draft, plan.draft);
-    const raises: Raise[] = [];
-    const apart: Apart[] = [...plan.under, ...plan.over];
-    for (const crossing of plan.candidates) {
-      const raise = raiseFor(network, draft, road, plan, crossing);
-      const tier = (network.curves[crossing.curve] as RoadCurve).tier;
-      const place = { segment: crossing.segment, x: crossing.x, y: crossing.y, tier, curve: crossing.curve, other: crossing.other };
-      if (raise === undefined) plan.failures.push(place);
-      else {
-        raises.push(raise);
-        apart.push(place);
-      }
-    }
-    if (plan.failures.length === 0) {
-      const lifted = raised(road, raises);
-      for (const place of planedApart(network, lifted, plan, apart)) plan.failures.push(place);
-      if (plan.failures.length === 0) {
-        return joinsPlanedCrossing(network, lifted, plan) ? undefined : { road: lifted, edits: plan.edits };
-      }
-    }
-    if (whole) return undefined;
+    const settled = settleRound(network, draft, plan);
+    if (settled !== undefined) return settled;
+    // With no crossing failed, the road was refused outright.
+    if (whole || plan.failures.length === 0) return undefined;
     const shorter = shorten(network, draft, plan);
     if (shorter === undefined) return undefined;
     draft = shorter;
   }
   return undefined;
+}
+
+/**
+ * One round of {@link settleCrossings}: raise the road over the crossings the
+ * plan left to decide, and check the finished line. Undefined where the road
+ * is not settled: the crossings that failed are then in the plan's failures,
+ * and with none there the road is refused outright.
+ */
+function settleRound(network: CrossingNetwork, draft: DraftLine, plan: Plan): { road: DraftLine; edits: PointEdit[] } | undefined {
+  const road = lineOf(draft, plan.draft);
+  const raises: Raise[] = [];
+  const apart: Apart[] = [...plan.under, ...plan.over];
+  for (const crossing of plan.candidates) {
+    const raise = raiseFor(network, draft, road, plan, crossing);
+    const tier = (network.curves[crossing.curve] as RoadCurve).tier;
+    const place = { segment: crossing.segment, x: crossing.x, y: crossing.y, tier, curve: crossing.curve, other: crossing.other };
+    if (raise === undefined) {
+      plan.failures.push(place);
+    } else {
+      raises.push(raise);
+      apart.push(place);
+    }
+  }
+  if (plan.failures.length > 0) return undefined;
+  const lifted = raised(road, raises);
+  for (const place of planedApart(network, lifted, plan, apart)) plan.failures.push(place);
+  if (plan.failures.length > 0) return undefined;
+  return joinsPlanedCrossing(network, lifted, plan) ? undefined : { road: lifted, edits: plan.edits };
 }
 
 /**
@@ -182,51 +193,64 @@ function planJunctions(network: CrossingNetwork, draft: DraftLine): Plan {
     lines.set(curve.id, line);
     return line;
   };
-  for (const crossing of crossingsOf(network, draft)) {
-    const other = network.curves[crossing.curve] as RoadCurve;
-    // The crossing policy comes first: a pair the tiers may not cross is no
-    // crossing at all, on the ground, on a deck or in a bore (issue #269).
-    // Only a junction is exempt, and `mayCross` refuses no pair `mayJoin`
-    // allows, so a junction is never lost to it.
-    if (!mayCross(draft.tier, other.tier)) {
-      plan.failures.push({ segment: crossing.segment, x: crossing.x, y: crossing.y, tier: other.tier });
-      continue;
-    }
-    const ground = onGround(draft, crossing.segment) && onGround(other, crossing.other);
-    // A ramp is one-way from end to end, and nothing joins it on the way.
-    const join = mayJoin(draft.tier, other.tier, false) && mayJoin(other.tier, draft.tier, false) && other.ramp === undefined;
-    if (ground && join && !meetsNear(network, draft, plan, other, crossing)) {
-      const junction = junctionAt(network, plan.draft, lineFor(other), draft, other, crossing, CROSSING_SNAP);
-      if (junction !== undefined && !planeOverCrossing(network, other, crossing.other, junction)) {
-        if (junction.draft !== undefined) plan.draft.given.push(junction.draft);
-        if (junction.edit !== undefined) {
-          lineFor(other).given.push({ x: junction.edit.x, y: junction.edit.y, segment: junction.edit.segment, at: junction.edit.at, index: -1 });
-          plan.edits.push(junction.edit);
-        }
-        plan.junctions.push({ x: junction.x, y: junction.y, curve: other.id, segment: crossing.segment });
-        continue;
-      }
-    }
-    // One road at most passes under the slots of a stretch of highway.
-    const underSlot = other.tier === 'highway' && draft.tier !== 'highway' && (other.slots ?? []).includes(crossing.other);
-    if (underSlot && network.slotTaken(other.id, crossing.other)) {
-      plan.failures.push({ segment: crossing.segment, x: crossing.x, y: crossing.y, tier: other.tier });
-      continue;
-    }
-    const apart = separation(network, draft, crossing, other);
-    if (apart !== undefined) {
-      const place = { segment: crossing.segment, x: crossing.x, y: crossing.y, tier: other.tier, curve: crossing.curve, other: crossing.other };
-      if (apart < 0) plan.under.push(place);
-      else plan.over.push(place);
-      continue;
-    }
-    // A highway holds its line, and is crossed at a slot or nowhere, but for
-    // the arterial of a diamond. A ramp is carried over nothing either.
-    const over = other.tier !== 'highway' || draft.overHighway === true;
-    if (ground && draft.tier !== 'highway' && over && other.ramp === undefined) plan.candidates.push(crossing);
-    else plan.failures.push({ segment: crossing.segment, x: crossing.x, y: crossing.y, tier: other.tier });
-  }
+  for (const crossing of crossingsOf(network, draft)) planCrossing(network, draft, plan, lineFor, crossing);
   return plan;
+}
+
+/** Decide one crossing of a road: a junction where it may be one, else sorted into what it is. */
+function planCrossing(network: CrossingNetwork, draft: DraftLine, plan: Plan, lineFor: (curve: RoadCurve) => PlannedLine, crossing: Crossing): void {
+  const other = network.curves[crossing.curve] as RoadCurve;
+  // The crossing policy comes first: a pair the tiers may not cross is no
+  // crossing at all, on the ground, on a deck or in a bore (issue #269).
+  // Only a junction is exempt, and `mayCross` refuses no pair `mayJoin`
+  // allows, so a junction is never lost to it.
+  if (!mayCross(draft.tier, other.tier)) {
+    plan.failures.push({ segment: crossing.segment, x: crossing.x, y: crossing.y, tier: other.tier });
+    return;
+  }
+  const ground = onGround(draft, crossing.segment) && onGround(other, crossing.other);
+  // A ramp is one-way from end to end, and nothing joins it on the way.
+  const join = mayJoin(draft.tier, other.tier, false) && mayJoin(other.tier, draft.tier, false) && other.ramp === undefined;
+  if (ground && join && !meetsNear(network, draft, plan, other, crossing) && joinAt(network, draft, plan, lineFor, other, crossing)) return;
+  sortCrossing(network, draft, plan, other, crossing, ground);
+}
+
+/** Lay a junction at a crossing into the plan. False where no junction may stand there. */
+function joinAt(network: CrossingNetwork, draft: DraftLine, plan: Plan, lineFor: (curve: RoadCurve) => PlannedLine, other: RoadCurve, crossing: Crossing): boolean {
+  const junction = junctionAt(network, plan.draft, lineFor(other), draft, other, crossing, CROSSING_SNAP);
+  if (junction === undefined || planeOverCrossing(network, other, crossing.other, junction)) return false;
+  if (junction.draft !== undefined) plan.draft.given.push(junction.draft);
+  if (junction.edit !== undefined) {
+    lineFor(other).given.push({ x: junction.edit.x, y: junction.edit.y, segment: junction.edit.segment, at: junction.edit.at, index: -1 });
+    plan.edits.push(junction.edit);
+  }
+  plan.junctions.push({ x: junction.x, y: junction.y, curve: other.id, segment: crossing.segment });
+  return true;
+}
+
+/**
+ * Sort a crossing that is no junction: a place the road passes under or over
+ * the laid one already, one to raise it over, or a failure.
+ */
+function sortCrossing(network: CrossingNetwork, draft: DraftLine, plan: Plan, other: RoadCurve, crossing: Crossing, ground: boolean): void {
+  // One road at most passes under the slots of a stretch of highway.
+  const underSlot = other.tier === 'highway' && draft.tier !== 'highway' && (other.slots ?? []).includes(crossing.other);
+  if (underSlot && network.slotTaken(other.id, crossing.other)) {
+    plan.failures.push({ segment: crossing.segment, x: crossing.x, y: crossing.y, tier: other.tier });
+    return;
+  }
+  const apart = separation(network, draft, crossing, other);
+  if (apart !== undefined) {
+    const place = { segment: crossing.segment, x: crossing.x, y: crossing.y, tier: other.tier, curve: crossing.curve, other: crossing.other };
+    if (apart < 0) plan.under.push(place);
+    else plan.over.push(place);
+    return;
+  }
+  // A highway holds its line, and is crossed at a slot or nowhere, but for
+  // the arterial of a diamond. A ramp is carried over nothing either.
+  const over = other.tier !== 'highway' || draft.overHighway === true;
+  if (ground && draft.tier !== 'highway' && over && other.ramp === undefined) plan.candidates.push(crossing);
+  else plan.failures.push({ segment: crossing.segment, x: crossing.x, y: crossing.y, tier: other.tier });
 }
 
 /**
@@ -631,29 +655,11 @@ function lineOf(draft: DraftLine, line: PlannedLine): DraftLine {
  */
 function shorten(network: CrossingNetwork, draft: DraftLine, plan: Plan): DraftLine | undefined {
   const failures = [...plan.failures].sort((m, n) => m.segment - n.segment);
-  const last = draft.points.length - 1;
-  const endsOk = (i: number, failure: Failure | undefined): boolean => {
-    const p = draft.points[i] as Point;
-    if (network.curvesAt(p).length > 0) return true;
-    if (!network.clearAt(p.x, p.y, draft.tier)) return false;
-    return failure === undefined || hypot(p.x - failure.x, p.y - failure.y) >= footprintHalfWidth(draft.tier) + footprintHalfWidth(failure.tier);
-  };
   let best: DraftLine | undefined;
   let bestLength = 2 * footprintHalfWidth(draft.tier);
   for (let k = 0; k <= failures.length; k++) {
-    const before = failures[k - 1];
-    const after = failures[k];
-    let start = before === undefined ? 0 : before.segment + 1;
-    let end = after === undefined ? last : after.segment;
-    // Only an end cut at a crossing moves; the draft's own ends stay where they were proposed.
-    while (before !== undefined && start < end && !endsOk(start, before)) start++;
-    while (after !== undefined && end > start && !endsOk(end, after)) end--;
-    if (end <= start) continue;
-    const meets =
-      draft.points.slice(start, end + 1).some((p) => network.curvesAt(p).length > 0) ||
-      plan.junctions.some((j) => j.segment >= start && j.segment < end);
-    if (!meets) continue;
-    const piece = slice(draft, start, end);
+    const piece = pieceBetween(network, draft, plan, failures[k - 1], failures[k]);
+    if (piece === undefined) continue;
     const length = curveDistances(piece.points)[piece.points.length - 1] as number;
     if (length <= bestLength) continue;
     bestLength = length;
@@ -662,7 +668,34 @@ function shorten(network: CrossingNetwork, draft: DraftLine, plan: Plan): DraftL
   return best;
 }
 
+/**
+ * The piece of a draft between two failed crossings, either of them undefined
+ * at an end of the draft, cut back to where it may end. Undefined where
+ * nothing is left or the piece does not meet the network.
+ */
+function pieceBetween(network: CrossingNetwork, draft: DraftLine, plan: Plan, before: Failure | undefined, after: Failure | undefined): DraftLine | undefined {
+  let start = before === undefined ? 0 : before.segment + 1;
+  let end = after === undefined ? draft.points.length - 1 : after.segment;
+  // Only an end cut at a crossing moves; the draft's own ends stay where they were proposed.
+  while (before !== undefined && start < end && !endsOk(network, draft, start, before)) start++;
+  while (after !== undefined && end > start && !endsOk(network, draft, end, after)) end--;
+  if (end <= start) return undefined;
+  const meets =
+    draft.points.slice(start, end + 1).some((p) => network.curvesAt(p).length > 0) ||
+    plan.junctions.some((j) => j.segment >= start && j.segment < end);
+  return meets ? slice(draft, start, end) : undefined;
+}
+
+/** True where a draft may end at point `i`: on a road, or clear of every road and of the failed crossing it stops short of. */
+function endsOk(network: CrossingNetwork, draft: DraftLine, i: number, failure: Failure | undefined): boolean {
+  const p = draft.points[i] as Point;
+  if (network.curvesAt(p).length > 0) return true;
+  if (!network.clearAt(p.x, p.y, draft.tier)) return false;
+  return failure === undefined || hypot(p.x - failure.x, p.y - failure.y) >= footprintHalfWidth(draft.tier) + footprintHalfWidth(failure.tier);
+}
+
 /** The part of a draft from point `start` to point `end`, its structures with it. */
+
 function slice(draft: DraftLine, start: number, end: number): DraftLine {
   const keep = (segments: readonly number[]): number[] => segments.filter((s) => s >= start && s < end).map((s) => s - start);
   const piece: DraftLine = {

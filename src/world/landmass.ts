@@ -29,6 +29,29 @@ const SITE_REACH = 8;
 const NEIGHBOUR_X = [1, -1, 0, 0];
 const NEIGHBOUR_Y = [0, 0, 1, -1];
 
+/** Label every node of the piece of land a node stands on, flooding out over the four neighbours of each. */
+function floodMass(hf: Heightfield, label: Int32Array, queue: Int32Array, start: number, mass: number, minHeight: number): void {
+  const n = hf.gridSize;
+  label[start] = mass;
+  queue[0] = start;
+  let head = 0;
+  let tail = 1;
+  while (head < tail) {
+    const at = queue[head++] as number;
+    const ix = at % n;
+    const iy = (at - ix) / n;
+    for (let k = 0; k < NEIGHBOUR_X.length; k++) {
+      const jx = ix + (NEIGHBOUR_X[k] as number);
+      const jy = iy + (NEIGHBOUR_Y[k] as number);
+      if (jx < 0 || jy < 0 || jx >= n || jy >= n) continue;
+      const to = jy * n + jx;
+      if (label[to] !== -1 || (hf.heights[to] as number) < minHeight) continue;
+      label[to] = mass;
+      queue[tail++] = to;
+    }
+  }
+}
+
 export class LandMasses {
   private readonly hf: Heightfield;
   /** Piece of land each grid node belongs to, or -1 where it is water. */
@@ -48,25 +71,7 @@ export class LandMasses {
     let count = 0;
     for (let start = 0; start < label.length; start++) {
       if (label[start] !== -1 || (hf.heights[start] as number) < minHeight) continue;
-      const mass = count++;
-      label[start] = mass;
-      queue[0] = start;
-      let head = 0;
-      let tail = 1;
-      while (head < tail) {
-        const at = queue[head++] as number;
-        const ix = at % n;
-        const iy = (at - ix) / n;
-        for (let k = 0; k < NEIGHBOUR_X.length; k++) {
-          const jx = ix + (NEIGHBOUR_X[k] as number);
-          const jy = iy + (NEIGHBOUR_Y[k] as number);
-          if (jx < 0 || jy < 0 || jx >= n || jy >= n) continue;
-          const to = jy * n + jx;
-          if (label[to] !== -1 || (hf.heights[to] as number) < minHeight) continue;
-          label[to] = mass;
-          queue[tail++] = to;
-        }
-      }
+      floodMass(hf, label, queue, start, count++, minHeight);
     }
     this.label = label;
     this.reached = this.floodFromMain(water, count);
@@ -165,19 +170,26 @@ export class LandMasses {
 
   /** The piece of land at a site, or the nearest one within {@link SITE_REACH}. */
   private massNear(x: number, y: number): number {
-    const n = this.hf.gridSize;
     const cx = Math.round((x - this.hf.originX) / this.hf.cellSize);
     const cy = Math.round((y - this.hf.originY) / this.hf.cellSize);
     for (let r = 0; r <= SITE_REACH; r++) {
-      for (let dy = -r; dy <= r; dy++) {
-        for (let dx = -r; dx <= r; dx++) {
-          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-          const ix = cx + dx;
-          const iy = cy + dy;
-          if (ix < 0 || iy < 0 || ix >= n || iy >= n) continue;
-          const mass = this.label[iy * n + ix] as number;
-          if (mass >= 0) return mass;
-        }
+      const mass = this.massOnRing(cx, cy, r);
+      if (mass >= 0) return mass;
+    }
+    return -1;
+  }
+
+  /** The first piece of land on the square ring `r` nodes out from a node, row by row; -1 where it is all water. */
+  private massOnRing(cx: number, cy: number, r: number): number {
+    const n = this.hf.gridSize;
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const ix = cx + dx;
+        const iy = cy + dy;
+        if (ix < 0 || iy < 0 || ix >= n || iy >= n) continue;
+        const mass = this.label[iy * n + ix] as number;
+        if (mass >= 0) return mass;
       }
     }
     return -1;

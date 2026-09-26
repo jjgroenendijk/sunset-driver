@@ -83,6 +83,23 @@ function markCrossing(edges: readonly RoadEdge[], edge: number, crossing: number
   if (run.twin >= 0) (edges[run.twin] as RoadEdge).crossings.push(crossing);
 }
 
+/** How readily a segment of a road is carried over another road: a deck first, then a bore, then by tier. */
+function segmentRank(road: RoadCurve, i: number): number {
+  if (road.bridges.includes(i)) return DECK_RANK;
+  if (road.tunnels.includes(i)) return BORE_RANK;
+  return CARRY_RANK[road.tier];
+}
+
+/** Grow a box to hold every point of a line. */
+function growBounds(bounds: Bounds, points: readonly Point[]): void {
+  for (const p of points) {
+    if (p.x < bounds.minX) bounds.minX = p.x;
+    if (p.y < bounds.minY) bounds.minY = p.y;
+    if (p.x > bounds.maxX) bounds.maxX = p.x;
+    if (p.y > bounds.maxY) bounds.maxY = p.y;
+  }
+}
+
 /**
  * The segments of every curve as one numbered list, with the run that covers
  * each and how readily it is carried over another road.
@@ -114,16 +131,16 @@ class Segments {
       for (let i = 0; i + 1 < road.points.length; i++, at++) {
         this.curve[at] = road.id;
         this.index[at] = i;
-        this.rank[at] = road.bridges.includes(i) ? DECK_RANK : road.tunnels.includes(i) ? BORE_RANK : CARRY_RANK[road.tier];
+        this.rank[at] = segmentRank(road, i);
       }
-      for (const p of road.points) {
-        if (p.x < bounds.minX) bounds.minX = p.x;
-        if (p.y < bounds.minY) bounds.minY = p.y;
-        if (p.x > bounds.maxX) bounds.maxX = p.x;
-        if (p.y > bounds.maxY) bounds.maxY = p.y;
-      }
+      growBounds(bounds, road.points);
     }
     this.bounds = bounds;
+    this.fileEdges(edges, first);
+  }
+
+  /** Note the run that covers each segment, given the first segment of each curve. */
+  private fileEdges(edges: readonly RoadEdge[], first: Int32Array): void {
     // One of a two-way pair covers each segment; the twin stands on the same ground.
     for (const edge of edges) {
       if (edge.twin >= 0 && edge.twin < edge.id) continue;

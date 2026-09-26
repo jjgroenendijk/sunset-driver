@@ -360,7 +360,29 @@ class CorridorBuilder {
    * crossing: nothing crosses the tram there.
    */
   private levelCrossings(routes: readonly (readonly number[])[]): TramLevelCrossing[] {
-    // The curves the line itself runs along at each junction it passes.
+    const { mine, order } = this.lineCurves(routes);
+    const crossings: TramLevelCrossing[] = [];
+    for (const id of order) {
+      const node = this.graph.nodes[id] as RoadNode;
+      const own = mine.get(id) as number[];
+      const roads: number[] = [];
+      for (const e of node.runs) {
+        const curve = (this.graph.edges[e] as RoadEdge).curve;
+        if (own.includes(curve) || roads.includes(curve)) continue;
+        roads.push(curve);
+      }
+      if (roads.length === 0) continue;
+      roads.sort(compareNumbers);
+      crossings.push({ x: node.x, y: node.y, node: id, roads });
+    }
+    return crossings;
+  }
+
+  /**
+   * The curves the line itself runs along at each junction it passes, and the
+   * junctions in the order the routes first reach them.
+   */
+  private lineCurves(routes: readonly (readonly number[])[]): { mine: Map<number, number[]>; order: number[] } {
     const mine = new Map<number, number[]>();
     const order: number[] = [];
     for (const route of routes) {
@@ -377,22 +399,7 @@ class CorridorBuilder {
         }
       }
     }
-
-    const crossings: TramLevelCrossing[] = [];
-    for (const id of order) {
-      const node = this.graph.nodes[id] as RoadNode;
-      const own = mine.get(id) as number[];
-      const roads: number[] = [];
-      for (const e of node.runs) {
-        const curve = (this.graph.edges[e] as RoadEdge).curve;
-        if (own.includes(curve) || roads.includes(curve)) continue;
-        roads.push(curve);
-      }
-      if (roads.length === 0) continue;
-      roads.sort(compareNumbers);
-      crossings.push({ x: node.x, y: node.y, node: id, roads });
-    }
-    return crossings;
+    return { mine, order };
   }
 
   // ------------------------------------------------------------ the elevated
@@ -445,20 +452,7 @@ class CorridorBuilder {
     const points = line.points;
     if (points.length < 2) return [];
     const { left, right } = offsetSides(points, halfWidth);
-    const run = this.nextRun++;
-    const pieces: { from: number; to: number }[] = [];
-    let open: { from: number; to: number } | undefined;
-    for (let i = 0; i + 1 < points.length; i++) {
-      const quad = [left[i] as Point, left[i + 1] as Point, right[i + 1] as Point, right[i] as Point];
-      if (this.overWater(points[i] as Point, points[i + 1] as Point) || this.claims.taken(run, quad)) {
-        open = undefined;
-        continue;
-      }
-      this.claims.add(run, quad);
-      if (open !== undefined && open.to === i - 1) open.to = i;
-      else pieces.push((open = { from: i, to: i }));
-    }
-
+    const pieces = this.claimPieces(points, left, right);
     const made: Corridor[] = [];
     for (const piece of pieces) {
       const own = points.slice(piece.from, piece.to + 2);
@@ -486,6 +480,32 @@ class CorridorBuilder {
     }
     return made;
   }
+
+  /**
+   * Claim a strip segment by segment as a run of its own, and give the runs of
+   * segments it won, as the first and last segment of each.
+   */
+  private claimPieces(points: readonly Point[], left: readonly Point[], right: readonly Point[]): { from: number; to: number }[] {
+    const run = this.nextRun++;
+    const pieces: { from: number; to: number }[] = [];
+    let open: { from: number; to: number } | undefined;
+    for (let i = 0; i + 1 < points.length; i++) {
+      const quad = [left[i] as Point, left[i + 1] as Point, right[i + 1] as Point, right[i] as Point];
+      if (this.overWater(points[i] as Point, points[i + 1] as Point) || this.claims.taken(run, quad)) {
+        open = undefined;
+        continue;
+      }
+      this.claims.add(run, quad);
+      if (open !== undefined && open.to === i - 1) {
+        open.to = i;
+      } else {
+        open = { from: i, to: i };
+        pieces.push(open);
+      }
+    }
+    return pieces;
+  }
+
 
   /**
    * The feet of the pillars under a deck. A foot stands on the ground the

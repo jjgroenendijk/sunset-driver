@@ -93,22 +93,36 @@ export function junctionAt(
     snapped = hypot(second.x - here.x, second.y - here.y) < hypot(first.x - here.x, first.y - here.y) ? second : first;
   }
   for (const spot of snapped === undefined ? [here] : [{ x: snapped.x, y: snapped.y }, here]) {
-    if (!network.joinableAt(spot, draft.tier) || !network.joinableAt(spot, other.tier)) continue;
-    const theirs = sideAt(network, otherLine, other.lift, crossing.other, spot, other.id, draftLine, -1);
-    if (theirs === undefined) continue;
-    const mine = sideAt(network, draftLine, draft.lift, crossing.segment, spot, -1, undefined, other.id);
-    if (mine === undefined) continue;
-    if (shallow(spot, theirs.around, mine.around)) continue;
-    if (bends(network, spot, theirs.around, other.id, draftLine) || bends(network, spot, mine.around, -1, otherLine)) continue;
-    const junction: Junction = { x: spot.x, y: spot.y };
-    if (mine.given !== undefined) junction.draft = mine.given;
-    if (theirs.given !== undefined) {
-      const g = theirs.given;
-      junction.edit = { curve: other.id, segment: g.segment, at: g.at, x: g.x, y: g.y };
-    }
-    return junction;
+    const junction = junctionAtSpot(network, draftLine, otherLine, draft, other, crossing, spot);
+    if (junction !== undefined) return junction;
   }
   return undefined;
+}
+
+/** The junction a crossing takes at one spot, or undefined where the spot is refused. */
+function junctionAtSpot(
+  network: CrossingNetwork,
+  draftLine: PlannedLine,
+  otherLine: PlannedLine,
+  draft: DraftLine,
+  other: RoadCurve,
+  crossing: CrossingAt,
+  spot: Point,
+): Junction | undefined {
+  if (!network.joinableAt(spot, draft.tier) || !network.joinableAt(spot, other.tier)) return undefined;
+  const theirs = sideAt(network, otherLine, other.lift, crossing.other, spot, other.id, draftLine, -1);
+  if (theirs === undefined) return undefined;
+  const mine = sideAt(network, draftLine, draft.lift, crossing.segment, spot, -1, undefined, other.id);
+  if (mine === undefined) return undefined;
+  if (shallow(spot, theirs.around, mine.around)) return undefined;
+  if (bends(network, spot, theirs.around, other.id, draftLine) || bends(network, spot, mine.around, -1, otherLine)) return undefined;
+  const junction: Junction = { x: spot.x, y: spot.y };
+  if (mine.given !== undefined) junction.draft = mine.given;
+  if (theirs.given !== undefined) {
+    const g = theirs.given;
+    junction.edit = { curve: other.id, segment: g.segment, at: g.at, x: g.x, y: g.y };
+  }
+  return junction;
 }
 
 /**

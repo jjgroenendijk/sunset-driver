@@ -88,35 +88,7 @@ interface Candidate {
 export function alleySeeds(streets: readonly RoadCurve[], network: Pick<RoadNetwork, 'nearest'>, ground: AlleyGround): FillSeed[] {
   const found: Candidate[] = [];
   for (const curve of streets) {
-    if (curve.tier !== 'street') continue;
-    const points = curve.points;
-    let run: number | undefined;
-    for (let i = 0; i + 1 < points.length; i++) {
-      const a = points[i] as Point;
-      const b = points[i + 1] as Point;
-      const seg = dist(a.x, a.y, b.x, b.y);
-      if (seg === 0) continue;
-      const step = ground.streetGap(b.x, b.y);
-      // A deck or a bore has no block beside it: there is no ground there at all.
-      const structure = curve.bridges.includes(i) || curve.tunnels.includes(i);
-      run = (run ?? step / 2) + seg;
-      if (run < step || structure) continue;
-      run -= step;
-      if (!ground.within(b.x, b.y)) continue;
-      const along = atan2(b.y - a.y, b.x - a.x);
-      for (const hand of [1, -1]) {
-        const nx = -sin(along) * hand;
-        const ny = cos(along) * hand;
-        const depth = blockDepth(network, b, nx, ny, step * PROBE_REACH, curve.id);
-        if (depth === undefined) continue;
-        const strip = depth / 2 - footprintHalfWidth('alley');
-        const least = ground.minStrip(b.x, b.y);
-        if (strip < least.depth || strip * ground.blockLength(b.x, b.y) < least.area) continue;
-        const x = b.x + (nx * depth) / 2;
-        const y = b.y + (ny * depth) / 2;
-        found.push({ depth, seed: { x, y, along, parent: curve.id, depth: 0, onParent: false } });
-      }
-    }
+    if (curve.tier === 'street') streetCandidates(curve, network, ground, found);
   }
   // Shallowest first, and the place itself breaks a tie, so the order is the
   // same on every machine whatever order the streets were laid in.
@@ -124,6 +96,44 @@ export function alleySeeds(streets: readonly RoadCurve[], network: Pick<RoadNetw
     (p, q) => compareNumbers(p.depth, q.depth) || compareNumbers(p.seed.x, q.seed.x) || compareNumbers(p.seed.y, q.seed.y),
   );
   return found.map((candidate) => candidate.seed);
+}
+
+/** The places along one street an alley could go, a street gap apart, pushed onto `found`. */
+function streetCandidates(curve: RoadCurve, network: Pick<RoadNetwork, 'nearest'>, ground: AlleyGround, found: Candidate[]): void {
+  const points = curve.points;
+  let run: number | undefined;
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i] as Point;
+    const b = points[i + 1] as Point;
+    const seg = dist(a.x, a.y, b.x, b.y);
+    if (seg === 0) continue;
+    const step = ground.streetGap(b.x, b.y);
+    // A deck or a bore has no block beside it: there is no ground there at all.
+    const structure = curve.bridges.includes(i) || curve.tunnels.includes(i);
+    run = (run ?? step / 2) + seg;
+    if (run < step || structure) continue;
+    run -= step;
+    if (!ground.within(b.x, b.y)) continue;
+    const along = atan2(b.y - a.y, b.x - a.x);
+    for (const hand of [1, -1]) {
+      const candidate = sideCandidate(curve, network, ground, b, along, hand, step);
+      if (candidate !== undefined) found.push(candidate);
+    }
+  }
+}
+
+/** The alley across the block on one side of a street at a point, or undefined where the block takes none. */
+function sideCandidate(curve: RoadCurve, network: Pick<RoadNetwork, 'nearest'>, ground: AlleyGround, b: Point, along: number, hand: number, step: number): Candidate | undefined {
+  const nx = -sin(along) * hand;
+  const ny = cos(along) * hand;
+  const depth = blockDepth(network, b, nx, ny, step * PROBE_REACH, curve.id);
+  if (depth === undefined) return undefined;
+  const strip = depth / 2 - footprintHalfWidth('alley');
+  const least = ground.minStrip(b.x, b.y);
+  if (strip < least.depth || strip * ground.blockLength(b.x, b.y) < least.area) return undefined;
+  const x = b.x + (nx * depth) / 2;
+  const y = b.y + (ny * depth) / 2;
+  return { depth, seed: { x, y, along, parent: curve.id, depth: 0, onParent: false } };
 }
 
 /**

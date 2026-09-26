@@ -56,7 +56,8 @@ export class Buckets {
 
   private column(v: number, origin: number, count: number): number {
     const i = Math.floor((v - origin) / this.cell);
-    return i < 0 ? 0 : i >= count ? count - 1 : i;
+    if (i < 0) return 0;
+    return i >= count ? count - 1 : i;
   }
 
   add(id: number, minX: number, minY: number, maxX: number, maxY: number): void {
@@ -95,25 +96,29 @@ export class Buckets {
     const cx = this.column(x, this.originX, this.nx);
     const cy = this.column(y, this.originY, this.ny);
     const rings = Math.max(this.nx, this.ny);
-    let best = -1;
-    let bestD = Infinity;
+    const best = { id: -1, distance: Infinity };
     for (let r = 0; r <= rings; r++) {
-      for (let iy = Math.max(0, cy - r); iy <= Math.min(this.ny - 1, cy + r); iy++) {
-        const edgeRow = iy === cy - r || iy === cy + r;
-        for (let ix = Math.max(0, cx - r); ix <= Math.min(this.nx - 1, cx + r); ix++) {
-          // Only the ring itself; the cells inside it were searched already.
-          if (!edgeRow && ix !== cx - r && ix !== cx + r) continue;
-          for (const id of this.buckets[iy * this.nx + ix] as number[]) {
-            const d = distanceOf(id);
-            if (d >= bestD) continue;
-            bestD = d;
-            best = id;
-          }
+      this.nearestOnRing(cx, cy, r, distanceOf, best);
+      // Everything within `r` cells has been seen, so a nearer id cannot exist.
+      if (best.id >= 0 && best.distance <= r * this.cell) break;
+    }
+    return best.id < 0 ? undefined : best;
+  }
+
+  /** Visit every id in the square ring of buckets `r` out from a bucket, keeping the nearest in `best`. */
+  private nearestOnRing(cx: number, cy: number, r: number, distanceOf: (id: number) => number, best: { id: number; distance: number }): void {
+    for (let iy = Math.max(0, cy - r); iy <= Math.min(this.ny - 1, cy + r); iy++) {
+      const edgeRow = iy === cy - r || iy === cy + r;
+      for (let ix = Math.max(0, cx - r); ix <= Math.min(this.nx - 1, cx + r); ix++) {
+        // Only the ring itself; the cells inside it were searched already.
+        if (!edgeRow && ix !== cx - r && ix !== cx + r) continue;
+        for (const id of this.buckets[iy * this.nx + ix] as number[]) {
+          const d = distanceOf(id);
+          if (d >= best.distance) continue;
+          best.distance = d;
+          best.id = id;
         }
       }
-      // Everything within `r` cells has been seen, so a nearer id cannot exist.
-      if (best >= 0 && bestD <= r * this.cell) break;
     }
-    return best < 0 ? undefined : { id: best, distance: bestD };
   }
 }
