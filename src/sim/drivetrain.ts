@@ -92,18 +92,9 @@ export class Drivetrain {
     // A damaged engine gives less of its power, and a burnt-out one gives none
     // at all (spec section 11.3).
     const power = spec.enginePower * enginePowerScale(v.damage);
-    let engine = 0;
-    let pedal = 0;
-    if (input.throttle > 0) {
-      if (speed < -0.5) pedal = input.throttle;
-      else engine = input.throttle * power * Math.max(0, 1 - speed / spec.topSpeed);
-    } else if (input.throttle < 0) {
-      if (speed > 0.5) pedal = -input.throttle;
-      else {
-        const top = spec.topSpeed * spec.reverse;
-        engine = input.throttle * power * REVERSE_PULL * Math.max(0, 1 + speed / top);
-      }
-    }
+    splitThrottle(input.throttle, speed, power, spec);
+    const engine = pedals.engine;
+    let pedal = pedals.pedal;
 
     // A car left alone at walking pace holds where it is rather than rolling
     // off down the hill: the driver has stopped, so the car has stopped.
@@ -252,6 +243,28 @@ export class Drivetrain {
     return this.ground.surfaceAt(v.x + this.point.x, v.z + this.point.z);
   }
 
+}
+
+/** The engine force and the brake pedal one throttle asks for, written by `splitThrottle`. */
+const pedals = { engine: 0, pedal: 0 };
+
+/**
+ * Split the throttle into engine force and brake pedal: it brakes rather than
+ * changes gear while the car still rolls the other way.
+ */
+function splitThrottle(throttle: number, speed: number, power: number, spec: VehicleSpec): void {
+  pedals.engine = 0;
+  pedals.pedal = 0;
+  if (throttle > 0) {
+    if (speed < -0.5) pedals.pedal = throttle;
+    else pedals.engine = throttle * power * Math.max(0, 1 - speed / spec.topSpeed);
+  } else if (throttle < 0) {
+    if (speed > 0.5) pedals.pedal = -throttle;
+    else {
+      const top = spec.topSpeed * spec.reverse;
+      pedals.engine = throttle * power * REVERSE_PULL * Math.max(0, 1 + speed / top);
+    }
+  }
 }
 
 /** Move `from` toward `to` by at most `step`. */

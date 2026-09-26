@@ -26,7 +26,7 @@ import { hashInts } from '../core/hash.ts';
 import { rngFor, Subsystem } from '../core/rng.ts';
 import { atan2, cos } from '../core/libm.ts';
 import type { RoadGraph, RoadEdge } from '../world/graph.ts';
-import type { JunctionMap } from '../world/junctions.ts';
+import type { Junction, JunctionMap, JunctionMouth } from '../world/junctions.ts';
 import { TIERS } from '../world/tiers.ts';
 import type { RoadCurve, RoadTier } from '../world/types.ts';
 import { TICK_RATE } from './clock.ts';
@@ -132,34 +132,7 @@ export class TrafficSignals {
       if (level[junction.node] !== 1 && junction.mouths.some((mouth) => mouth.tier === 'highway')) continue;
       const main = junction.mouths.find((mouth) => mouth.tier === 'arterial');
       if (main === undefined) continue;
-      const found: SignalApproach[] = [];
-      for (const mouth of junction.mouths) {
-        // The edge that arrives along the mouth. A ramp that only leaves the
-        // junction has none, and needs no light.
-        const arriving = arrival(graph, junction.node, mouth.curve, mouth.point, mouth.direction);
-        if (arriving === undefined) continue;
-        const stop = arriving.length - mouth.cut - STOP_BACK;
-        if (stop < MIN_APPROACH) continue;
-        const points = (roads[mouth.curve] as RoadCurve).points;
-        const a = points[mouth.segment];
-        const b = points[mouth.segment + 1];
-        let t = 0;
-        if (a !== undefined && b !== undefined) {
-          const l2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
-          t = l2 > 0 ? Math.min(1, Math.max(0, ((mouth.at.x - a.x) * (b.x - a.x) + (mouth.at.y - a.y) * (b.y - a.y)) / l2)) : 0;
-        }
-        found.push({
-          edge: arriving.id,
-          junction: junctions.length,
-          axis: Math.abs(mouth.dx * main.dx + mouth.dy * main.dy) >= ON_AXIS ? 0 : 1,
-          stop,
-          x: mouth.at.x,
-          y: mouth.at.y,
-          height: heightAt(mouth.curve, mouth.segment, t, mouth.at.x, mouth.at.y),
-          heading: atan2(-mouth.dy, -mouth.dx),
-          kerb: TIERS[mouth.tier].width / 2,
-        });
-      }
+      const found = approachesOf(junction, main, junctions.length, roads, graph, heightAt);
       // A junction whose roads all lie on one axis has nobody to take turns with,
       // and an alley or a dirt track that joins an arterial gives way without a light.
       const crossed = (f: SignalApproach): boolean => f.axis === 1 && (level[junction.node] === 1 || SIGNALLED_CROSS.includes(tierOf(graph, f.edge)));
@@ -247,6 +220,52 @@ export class TrafficSignals {
     const at = this.junctions[junction] as SignalJunction;
     return mod(Math.floor(tick) + at.offset - GREEN_START[axis], SIGNAL_CYCLE);
   }
+}
+
+/**
+ * The approaches into one junction: one for each mouth an edge arrives along
+ * with room to stop short of it. `index` is the junction's own index.
+ */
+function approachesOf(
+  junction: Junction,
+  main: JunctionMouth,
+  index: number,
+  roads: readonly RoadCurve[],
+  graph: RoadGraph,
+  heightAt: RoadHeight,
+): SignalApproach[] {
+  const found: SignalApproach[] = [];
+  for (const mouth of junction.mouths) {
+    // The edge that arrives along the mouth. A ramp that only leaves the
+    // junction has none, and needs no light.
+    const arriving = arrival(graph, junction.node, mouth.curve, mouth.point, mouth.direction);
+    if (arriving === undefined) continue;
+    const stop = arriving.length - mouth.cut - STOP_BACK;
+    if (stop < MIN_APPROACH) continue;
+    const t = mouthAlong(roads, mouth);
+    found.push({
+      edge: arriving.id,
+      junction: index,
+      axis: Math.abs(mouth.dx * main.dx + mouth.dy * main.dy) >= ON_AXIS ? 0 : 1,
+      stop,
+      x: mouth.at.x,
+      y: mouth.at.y,
+      height: heightAt(mouth.curve, mouth.segment, t, mouth.at.x, mouth.at.y),
+      heading: atan2(-mouth.dy, -mouth.dx),
+      kerb: TIERS[mouth.tier].width / 2,
+    });
+  }
+  return found;
+}
+
+/** How far along its segment, 0 to 1, a mouth stands. */
+function mouthAlong(roads: readonly RoadCurve[], mouth: JunctionMouth): number {
+  const points = (roads[mouth.curve] as RoadCurve).points;
+  const a = points[mouth.segment];
+  const b = points[mouth.segment + 1];
+  if (a === undefined || b === undefined) return 0;
+  const l2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
+  return l2 > 0 ? Math.min(1, Math.max(0, ((mouth.at.x - a.x) * (b.x - a.x) + (mouth.at.y - a.y) * (b.y - a.y)) / l2)) : 0;
 }
 
 /**

@@ -52,25 +52,33 @@ export class ParkedBodies {
     const box = this.box;
     if (box.minX !== minX || box.minY !== minY || box.maxX !== maxX || box.maxY !== maxY) {
       Object.assign(box, { minX, minY, maxX, maxY });
-      const kept: Bay[] = [];
-      let k = 0;
-      for (const bay of this.cars.near(minX, minY, maxX, maxY, this.ids)) {
-        while (k < this.bays.length && (this.bays[k] as Bay).bay < bay) this.drop(this.bays[k++] as Bay);
-        const known = this.bays[k]?.bay === bay ? (this.bays[k++] as Bay) : undefined;
-        kept.push(known ?? { bay, until: -Infinity, car: undefined, spec: undefined, body: undefined });
-      }
-      while (k < this.bays.length) this.drop(this.bays[k++] as Bay);
-      this.bays = kept;
+      this.rebox(minX, minY, maxX, maxY);
     }
-    for (const entry of this.bays) {
-      if (state.tick < entry.until && state.tick >= (entry.car?.since ?? -Infinity)) continue;
-      const car: ParkedCar = { cls: 'saloon', paint: 0, since: 0 };
-      const held = this.cars.carAt(entry.bay, state.tick, state.traffic, car);
-      entry.until = this.cars.stayEnd(entry.bay, state.tick);
-      if (held && entry.car?.since === car.since && entry.body !== undefined) continue;
-      this.drop(entry);
-      if (held) this.stand(entry, car);
+    for (const entry of this.bays) this.refresh(state, entry);
+  }
+
+  /** Keep the bays still in the new box, drop the bodies of those that left it, and add the new ones empty. */
+  private rebox(minX: number, minY: number, maxX: number, maxY: number): void {
+    const kept: Bay[] = [];
+    let k = 0;
+    for (const bay of this.cars.near(minX, minY, maxX, maxY, this.ids)) {
+      while (k < this.bays.length && (this.bays[k] as Bay).bay < bay) this.drop(this.bays[k++] as Bay);
+      const known = this.bays[k]?.bay === bay ? (this.bays[k++] as Bay) : undefined;
+      kept.push(known ?? { bay, until: -Infinity, car: undefined, spec: undefined, body: undefined });
     }
+    while (k < this.bays.length) this.drop(this.bays[k++] as Bay);
+    this.bays = kept;
+  }
+
+  /** Ask one bay again when its stay has turned over, and stand or drop its body to match. */
+  private refresh(state: SimState, entry: Bay): void {
+    if (state.tick < entry.until && state.tick >= (entry.car?.since ?? -Infinity)) return;
+    const car: ParkedCar = { cls: 'saloon', paint: 0, since: 0 };
+    const held = this.cars.carAt(entry.bay, state.tick, state.traffic, car);
+    entry.until = this.cars.stayEnd(entry.bay, state.tick);
+    if (held && entry.car?.since === car.since && entry.body !== undefined) return;
+    this.drop(entry);
+    if (held) this.stand(entry, car);
   }
 
   /**

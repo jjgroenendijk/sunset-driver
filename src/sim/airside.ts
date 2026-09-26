@@ -37,19 +37,31 @@ const AIRSIDE: readonly AirfieldPart['kind'][] = ['runway', 'taxiway', 'apron', 
 
 const scratch = { u: 0, v: 0 };
 
+/** The two kinds of airside ground: the military compound and the rest. */
+type Zone = 'compound' | 'airside';
+
 /** What a place on an airport is: the compound, the rest of the airside, or neither. */
-export function airsideAt(fields: readonly Airfield[], x: number, y: number): 'compound' | 'airside' | undefined {
-  let found: 'compound' | 'airside' | undefined;
+export function airsideAt(fields: readonly Airfield[], x: number, y: number): Zone | undefined {
+  let found: Zone | undefined;
   for (const field of fields) {
     if (field.kind !== 'airport') continue;
     toLocal(field, x, y, scratch);
     if (Math.abs(scratch.u) > field.halfU || Math.abs(scratch.v) > field.halfV) continue;
-    for (const part of field.parts) {
-      if (!AIRSIDE.includes(part.kind)) continue;
-      if (Math.abs(scratch.u - part.u) > part.halfU || Math.abs(scratch.v - part.v) > part.halfV) continue;
-      if (part.kind === 'compound') return 'compound';
-      found = 'airside';
-    }
+    const zone = zoneInField(field);
+    if (zone === 'compound') return 'compound';
+    found = zone ?? found;
+  }
+  return found;
+}
+
+/** The airside zone of one airport under the local point in `scratch`, or undefined. */
+function zoneInField(field: Airfield): Zone | undefined {
+  let found: Zone | undefined;
+  for (const part of field.parts) {
+    if (!AIRSIDE.includes(part.kind)) continue;
+    if (Math.abs(scratch.u - part.u) > part.halfU || Math.abs(scratch.v - part.v) > part.halfV) continue;
+    if (part.kind === 'compound') return 'compound';
+    found = 'airside';
   }
   return found;
 }

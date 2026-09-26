@@ -125,7 +125,7 @@ export function placeOnEdge(ctx: PlaceContext, edge: RoadEdge, district: Pick<Di
     const walk = rngFor(ctx.seed, 0, Subsystem.Pedestrians, hashInts(PERSON_STREAM, id));
     const look = lookOf(zone, walk);
     const side = walk.chance(0.5) ? 1 : -1;
-    const company = walk.chance(COMPANY[zone]) ? (walk.chance(0.3) ? 3 : 2) : 1;
+    const company = companyOf(zone, walk);
     const edges = loopFrom(ctx.graph, edge.id, walk);
     const bold = company === 1 && walk.chance(JAYWALK[zone]);
     const legs = legsOf(ctx.graph, edges, side, bold ? walk : undefined);
@@ -141,29 +141,48 @@ export function placeOnEdge(ctx: PlaceContext, edge: RoadEdge, district: Pick<Di
     const along = ((placed + walk.range(0.2, 0.8)) / count) * (route.toCorner[0] as number);
     const phase = phaseAt(plan, along, sync, crossings.length > 0);
     const jaywalks = legs.some((leg) => leg.cut !== undefined);
-    for (let k = 0; k < company; k++) {
-      const member = k === 0 ? look : lookOf(zone, rngFor(ctx.seed, 0, Subsystem.Pedestrians, hashInts(PERSON_STREAM, id, k)));
-      // Company walks at the pace of the first of them.
-      const kept = k === 0 ? member : { ...member, gait: look.gait, speed: look.speed };
-      people.push({
-        id: id + k,
-        look: kept,
-        zone,
-        side,
-        phase,
-        period,
-        strides,
-        route,
-        plan,
-        lead: id,
-        beside: -k * ABREAST,
-        company,
-        bold: jaywalks,
-      });
-      for (const e of route.edges) ctx.file(id + k, e);
-    }
+    const lead = { id, look, zone, side, phase, period, strides, route, plan, company, bold: jaywalks };
+    for (let k = 0; k < company; k++) people.push(memberOf(ctx, lead, k));
     placed += company;
   }
+}
+
+/** How many walk together, drawn from `walk`: one, or a company of two or three. */
+function companyOf(zone: Zone, walk: Rng): number {
+  if (!walk.chance(COMPANY[zone])) return 1;
+  return walk.chance(0.3) ? 3 : 2;
+}
+
+/**
+ * The `k`th member of the company `lead` heads, filed on every edge of their
+ * loop. The lead is member 0; the rest look their own way but keep its pace.
+ */
+function memberOf(
+  ctx: PlaceContext,
+  lead: Omit<AmbientPedestrian, 'lead' | 'beside'>,
+  k: number,
+): AmbientPedestrian {
+  const { id, look, zone } = lead;
+  const member = k === 0 ? look : lookOf(zone, rngFor(ctx.seed, 0, Subsystem.Pedestrians, hashInts(PERSON_STREAM, id, k)));
+  // Company walks at the pace of the first of them.
+  const kept = k === 0 ? member : { ...member, gait: look.gait, speed: look.speed };
+  const person: AmbientPedestrian = {
+    id: id + k,
+    look: kept,
+    zone,
+    side: lead.side,
+    phase: lead.phase,
+    period: lead.period,
+    strides: lead.strides,
+    route: lead.route,
+    plan: lead.plan,
+    lead: id,
+    beside: -k * ABREAST,
+    company: lead.company,
+    bold: lead.bold,
+  };
+  for (const e of lead.route.edges) ctx.file(id + k, e);
+  return person;
 }
 
 /**

@@ -105,8 +105,11 @@ export const RISE_TICKS = Math.round(1.2 * TICK_RATE);
 /** Turns a second a thrown body spins through, per metre a second of the throw. */
 export const TUMBLE_RATE = 0.06;
 
+/** The ways the wounded move off once they are up again. */
+type After = 'limp' | 'run' | 'crawl';
+
 /** How fast, and for how long, the wounded move off once they are up again. */
-const AFTER: Record<'limp' | 'run' | 'crawl', { speed: number; ticks: number }> = {
+const AFTER: Record<After, { speed: number; ticks: number }> = {
   limp: { speed: 1.1, ticks: 12 * TICK_RATE },
   run: { speed: 4, ticks: 8 * TICK_RATE },
   crawl: { speed: 0.3, ticks: 30 * TICK_RATE },
@@ -165,7 +168,7 @@ export function emptyCasualtyPose(): CasualtyPose {
 }
 
 /** The way a wounded person moves off, from the health they have left. */
-function afterOf(record: Casualty): 'limp' | 'run' | 'crawl' {
+function afterOf(record: Casualty): After {
   if (record.health < CRAWL_BELOW) return 'crawl';
   return record.health < LIMP_BELOW ? 'limp' : 'run';
 }
@@ -207,28 +210,7 @@ export function casualtyPose(record: Casualty, time: number, out: CasualtyPose):
   out.cycle = 0;
   out.progress = 0;
   out.speed = 0;
-  let along: number;
-  if (t < flight.air) {
-    along = record.push * t;
-    out.lift = record.lift * t - (FALL_GRAVITY * t * t) / 2;
-    out.tumble = record.side * 2 * Math.PI * TUMBLE_RATE * record.push * t;
-    out.phase = 'air';
-    out.speed = record.push;
-  } else {
-    const s = Math.min(t - flight.air, flight.slide);
-    const landing = flight.slide * SLIDE_DECEL;
-    along = flight.airDistance + landing * s - (SLIDE_DECEL * s * s) / 2;
-    out.tumble = record.side * 2 * Math.PI * TUMBLE_RATE * record.push * flight.air;
-    out.speed = Math.max(0, landing - SLIDE_DECEL * s);
-    const settle = (record.down === 0 ? STAGGER_TICKS : FALL_TICKS) / TICK_RATE;
-    if (record.lift <= 0 && t < settle) {
-      out.phase = record.down === 0 ? 'stagger' : 'fall';
-      out.progress = t / settle;
-    } else {
-      out.phase = record.down === 0 ? 'stand' : 'lie';
-    }
-  }
-  along = Math.min(along, rest);
+  const along = Math.min(t < flight.air ? airPose(record, t, out) : slidePose(record, t, flight, out), rest);
   const share = rest > 0 ? along / rest : 1;
   out.x = record.x + cos(record.dir) * along;
   out.y = record.y + sin(record.dir) * along;
@@ -241,6 +223,47 @@ export function casualtyPose(record: Casualty, time: number, out: CasualtyPose):
     out.phase = 'lie';
     return out;
   }
+  return afterPose(record, up, rest, out);
+}
+
+/** The pose of a body in the air `t` seconds after the hit; answers how far along it is. */
+function airPose(record: Casualty, t: number, out: CasualtyPose): number {
+  out.lift = record.lift * t - (FALL_GRAVITY * t * t) / 2;
+  out.tumble = record.side * 2 * Math.PI * TUMBLE_RATE * record.push * t;
+  out.phase = 'air';
+  out.speed = record.push;
+  return record.push * t;
+}
+
+/** The pose of a body sliding, staggering or falling `t` seconds after the hit; answers how far along it is. */
+function slidePose(record: Casualty, t: number, flight: ReturnType<typeof throwOf>, out: CasualtyPose): number {
+  const s = Math.min(t - flight.air, flight.slide);
+  const landing = flight.slide * SLIDE_DECEL;
+  const along = flight.airDistance + landing * s - (SLIDE_DECEL * s * s) / 2;
+  out.tumble = record.side * 2 * Math.PI * TUMBLE_RATE * record.push * flight.air;
+  out.speed = Math.max(0, landing - SLIDE_DECEL * s);
+  const settle = (record.down === 0 ? STAGGER_TICKS : FALL_TICKS) / TICK_RATE;
+  if (record.lift <= 0 && t < settle) {
+    out.phase = record.down === 0 ? 'stagger' : 'fall';
+    out.progress = t / settle;
+  } else {
+    out.phase = record.down === 0 ? 'stand' : 'lie';
+  }
+  return along;
+}
+
+/** Metres of one stride for the way a casualty moves off. */
+function strideOf(after: After): number {
+  if (after === 'crawl') return 0.5;
+  if (after === 'run') return 2.2;
+  return 0.9;
+}
+
+/**
+ * The pose of a body `up` seconds after it could get up: it rises, then moves
+ * off from where it came to rest, `rest` metres from the hit.
+ */
+function afterPose(record: Casualty, up: number, rest: number, out: CasualtyPose): CasualtyPose {
   const after = afterOf(record);
   let moving = up;
   if (after !== 'crawl' && record.down > 0) {
@@ -265,10 +288,10 @@ export function casualtyPose(record: Casualty, time: number, out: CasualtyPose):
   out.heading = away;
   out.dir = away;
   out.speed = still ? 0 : spec.speed;
-  const stride = after === 'crawl' ? 0.5 : after === 'run' ? 2.2 : 0.9;
-  const cycles = distance / stride;
+  const cycles = distance / strideOf(after);
   out.cycle = cycles - Math.floor(cycles);
-  out.phase = still ? (after === 'crawl' ? 'lie' : 'stand') : after;
+  if (!still) out.phase = after;
+  else out.phase = after === 'crawl' ? 'lie' : 'stand';
   return out;
 }
 

@@ -339,19 +339,27 @@ export class AmbientPedestrians {
       const dx = pose.x - x;
       const dy = pose.y - y;
       if (dx * dx + dy * dy > radius * radius) continue;
-      let heading = dx === 0 && dy === 0 ? pose.heading + Math.PI : atan2(dy, dx);
-      if (reaction === 'scatter' || reaction === 'dodge') {
-        // A quarter turn off the line from the threat, and a little more or less.
-        const across = dx * sin(pose.heading) - dy * cos(pose.heading) >= 0 ? -1 : 1;
-        const rng = rngFor(this.seed, tick, Subsystem.Pedestrians, hashInts(REACTION_STREAM, id));
-        heading = pose.heading + across * (Math.PI / 2 + rng.range(-0.4, 0.4));
-      } else if (REACTIONS[reaction].toward) {
-        heading += Math.PI;
-      }
+      const heading = this.reactionHeading(tick, id, pose, dx, dy, reaction);
       addStartled(state, { id, reaction, since: tick, x: pose.x, y: pose.y, height: pose.height, heading, was: pose.heading, from: pose.gait });
       count++;
     }
     return count;
+  }
+
+  /**
+   * The way a person startled at `pose` heads off, (`dx`, `dy`) from the
+   * threat: away from it, a quarter turn off its line, or towards it.
+   */
+  private reactionHeading(tick: number, id: number, pose: PedestrianPose, dx: number, dy: number, reaction: Reaction): number {
+    const heading = dx === 0 && dy === 0 ? pose.heading + Math.PI : atan2(dy, dx);
+    if (reaction === 'scatter' || reaction === 'dodge') {
+      // A quarter turn off the line from the threat, and a little more or less.
+      const across = dx * sin(pose.heading) - dy * cos(pose.heading) >= 0 ? -1 : 1;
+      const rng = rngFor(this.seed, tick, Subsystem.Pedestrians, hashInts(REACTION_STREAM, id));
+      return pose.heading + across * (Math.PI / 2 + rng.range(-0.4, 0.4));
+    }
+    if (REACTIONS[reaction].toward) return heading + Math.PI;
+    return heading;
   }
 
   private poseOn(id: number, at: number, out: PedestrianPose): PedestrianPose {
@@ -497,7 +505,10 @@ export function startledPose(record: StartledPedestrian, time: number, out: Pede
  */
 function afterFright(record: StartledPedestrian): Gait {
   const roll = ((hashInts(AFTER_STREAM, record.id, record.since) >>> 0) % 1000) / 1000;
-  if (record.reaction === 'gather') return roll < 0.45 ? 'film' : roll < 0.65 ? 'fold' : 'stand';
+  if (record.reaction === 'gather') {
+    if (roll < 0.45) return 'film';
+    return roll < 0.65 ? 'fold' : 'stand';
+  }
   if (record.reaction === 'flee') return roll < 0.4 ? 'phone' : 'stand';
   return 'stand';
 }

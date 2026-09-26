@@ -615,7 +615,8 @@ export function laneOffset(edge: Pick<RoadEdge, 'tier' | 'lanes'>, lane: number,
   const spec = TIERS[edge.tier];
   // A ramp runs one way, so its lanes share the whole carriageway.
   if (edge.tier === 'ramp') return ((Math.min(lane, edge.lanes - 1) + 0.5) / edge.lanes - 0.5) * spec.width;
-  const inner = tram ? TRAM_LANE.halfWidth + (platform ? TRAM_LANE.platform : 0) : 0;
+  let inner = 0;
+  if (tram) inner = TRAM_LANE.halfWidth + (platform ? TRAM_LANE.platform : 0);
   const width = (spec.width / 2 - spec.parking - inner) / edge.lanes;
   return inner + (lane + 0.5) * width;
 }

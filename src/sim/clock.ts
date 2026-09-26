@@ -20,7 +20,7 @@ export class FixedStepClock {
 
   /** Feed elapsed wall time; returns the number of fixed steps to take now. */
   advance(elapsedMs: number): number {
-    if (!(elapsedMs > 0)) return 0;
+    if (Number.isNaN(elapsedMs) || elapsedMs <= 0) return 0;
     this.accumulatorMs += Math.min(elapsedMs, MAX_STEPS_PER_FRAME * TICK_MS);
     let steps = 0;
     while (this.accumulatorMs >= TICK_MS - 1e-6 && steps < MAX_STEPS_PER_FRAME) {

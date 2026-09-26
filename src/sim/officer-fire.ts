@@ -190,23 +190,57 @@ function shoot(
   const chance = drill.accuracy * (1 - (RANGE_FALLOFF * distance) / drill.range) * moving * aim;
   const driving = state.player.driving;
   const aimH = driving ? state.vehicle.y - specOf(state.vehicle.cls).halfHeight + DOOR : state.player.height + CHEST;
-  const { x, y, h } = muzzle;
   let landed = 0;
   for (let round = 0; round < drill.rounds; round++) {
     const hit = rng.float() < chance;
-    const wide = hit ? 0 : rng.range(MISS_WIDE[0], MISS_WIDE[1]) * (rng.float() < 0.5 ? -1 : 1);
+    const wide = hit ? 0 : missAngle(rng);
     if (hit) landed += 1;
-    const dir = muzzle.heading + wide;
-    const reach = hit ? distance : drill.range;
-    const blocked = hit || ground === undefined ? reach : ground.reach(x, h, y, dir, reach);
-    const end: TracerEnd = hit ? (driving ? 'vehicle' : 'person') : blocked < reach ? 'hard' : 'none';
-    const along = hit ? distance : blocked;
-    const drop = hit ? aimH - h : (aimH - h) * (along / Math.max(1, distance));
-    markTracer(state.tracers, { tick: state.tick, pellet: round, x, y, h, ex: x + cos(dir) * along, ey: y + sin(dir) * along, eh: h + drop, end, by: 'police' });
+    traceRound(state, muzzle, round, hit, muzzle.heading + wide, distance, drill.range, aimH, ground);
   }
   if (landed === 0) return;
+  landRounds(state, muzzle, weapon, drill, landed);
+}
+
+/** How far wide of the player a round that misses flies, to one side or the other. */
+function missAngle(rng: Rng): number {
+  const spread = rng.range(MISS_WIDE[0], MISS_WIDE[1]);
+  return spread * (rng.float() < 0.5 ? -1 : 1);
+}
+
+/** What a round's tracer ends on: the player or their car on a hit, a wall, or nothing. */
+function tracerEnd(hit: boolean, driving: boolean, blocked: number, reach: number): TracerEnd {
+  if (hit) return driving ? 'vehicle' : 'person';
+  return blocked < reach ? 'hard' : 'none';
+}
+
+/**
+ * Mark the tracer of one round flying `dir` from the muzzle: to the player on
+ * a hit, else out to the drill's range or the first thing in the way.
+ */
+function traceRound(
+  state: SimState,
+  muzzle: Muzzle,
+  round: number,
+  hit: boolean,
+  dir: number,
+  distance: number,
+  range: number,
+  aimH: number,
+  ground: CasualtyGround | undefined,
+): void {
+  const { x, y, h } = muzzle;
+  const reach = hit ? distance : range;
+  const blocked = hit || ground === undefined ? reach : ground.reach(x, h, y, dir, reach);
+  const end = tracerEnd(hit, state.player.driving, blocked, reach);
+  const along = hit ? distance : blocked;
+  const drop = hit ? aimH - h : (aimH - h) * (along / Math.max(1, distance));
+  markTracer(state.tracers, { tick: state.tick, pellet: round, x, y, h, ex: x + cos(dir) * along, ey: y + sin(dir) * along, eh: h + drop, end, by: 'police' });
+}
+
+/** What the rounds that landed do: they hurt the player on foot, or damage the car they drive. */
+function landRounds(state: SimState, muzzle: Muzzle, weapon: WeaponId, drill: Drill, landed: number): void {
   const spec = weaponOf(weapon);
-  if (!driving) {
+  if (!state.player.driving) {
     hurt(state.player, spec.damage * drill.share * landed);
     return;
   }

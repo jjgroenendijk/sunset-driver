@@ -166,23 +166,7 @@ function board(state: SimState, input: InputFrame, world: MissionWorld): void {
   const pressed = input.interact && !p.held.interact;
   const visit = state.missions.visit;
   if (visit !== null) {
-    const giver = givers[visit.giver];
-    if (giver === undefined) {
-      state.missions.visit = null;
-      return;
-    }
-    if (pressed) {
-      // The press is spent here, so the car at the kerb does not open on it.
-      p.held.interact = true;
-      state.missions.visit = null;
-      return;
-    }
-    if (p.driving || hypot(giver.x - p.x, giver.y - p.y) > GIVER_REACH + BOARD_MARGIN) {
-      state.missions.visit = null;
-      return;
-    }
-    const row = Math.trunc(input.buy);
-    if (row >= 1) use(state, world, giver, row - 1);
+    readBoard(state, input, world, visit.giver, pressed);
     return;
   }
   if (!pressed || p.driving) return;
@@ -287,6 +271,31 @@ function stand(state: SimState, job: MissionJob, leg: JobLeg, away: number): boo
  * A chapter of the chain carries the record a step further as well, and says so
  * in its own words rather than in the words a job of the street gets.
  */
+/**
+ * A board already open: shut it on a press, when its contact is gone, or when
+ * the player drives or walks off; else take the job on the number key pressed.
+ */
+function readBoard(state: SimState, input: InputFrame, world: MissionWorld, at: number, pressed: boolean): void {
+  const p = state.player;
+  const giver = world.givers[at];
+  if (giver === undefined) {
+    state.missions.visit = null;
+    return;
+  }
+  if (pressed) {
+    // The press is spent here, so the car at the kerb does not open on it.
+    p.held.interact = true;
+    state.missions.visit = null;
+    return;
+  }
+  if (p.driving || hypot(giver.x - p.x, giver.y - p.y) > GIVER_REACH + BOARD_MARGIN) {
+    state.missions.visit = null;
+    return;
+  }
+  const row = Math.trunc(input.buy);
+  if (row >= 1) use(state, world, giver, row - 1);
+}
+
 function finish(state: SimState, job: MissionJob): void {
   state.money += job.pay;
   shiftStanding(state, job.faction, JOB_STANDING);
@@ -298,7 +307,8 @@ function finish(state: SimState, job: MissionJob): void {
   state.missions.done += 1;
   state.missions.active = null;
   const written = job.chapter === '' ? '' : chainFinished(state, job);
-  say(state, `Paid ${dollars(job.pay)}. ${written === '' ? `${job.title}.` : written}`);
+  const closing = written === '' ? `${job.title}.` : written;
+  say(state, `Paid ${dollars(job.pay)}. ${closing}`);
 }
 
 /**
@@ -311,7 +321,8 @@ function lose(state: SimState, job: MissionJob, why: string, gaveUp = false): vo
   state.missions.failed += 1;
   state.missions.active = null;
   const written = job.chapter === '' ? '' : chainLost(state, job, gaveUp);
-  say(state, `${why} ${written === '' ? `${job.title} is off.` : written}`);
+  const closing = written === '' ? `${job.title} is off.` : written;
+  say(state, `${why} ${closing}`);
 }
 
 function say(state: SimState, line: string): void {

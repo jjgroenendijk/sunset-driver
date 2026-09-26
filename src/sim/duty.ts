@@ -113,22 +113,31 @@ export function bailOut(state: SimState, quarry: Quarry, ground: CasualtyGround 
     const block = unit.task === 'block' && gap < BLOCK_BAIL_RANGE;
     const near = gap < BAIL_RANGE && (!driving || quarry.speed < DRAG_SPEED);
     if (!block && !near) continue;
-    const kind: OfficerKind = unit.kind === 'swat' ? 'swat' : 'patrol';
-    for (let seat = 0; seat < unit.crew; seat++) {
-      // Two sit in front and two behind, and each gets out of their own side.
-      const along = seat < 2 ? 0.4 : -1.2;
-      const side = seat % 2 === 0 ? 1 : -1;
-      const x = unit.x + cos(unit.heading) * along - sin(unit.heading) * side * 1.35;
-      const y = unit.y + sin(unit.heading) * along + cos(unit.heading) * side * 1.35;
-      const height = ground?.heightAt(x, y) ?? unit.height;
-      police.officers.push(createOfficer(police.nextOfficer, kind, unit.id, block ? 'cover' : 'pursue', x, y, height, unit.heading));
-      police.nextOfficer += 1;
-    }
-    unit.crew = 0;
-    unit.doorTick = state.tick;
-    // The first thing said getting out on a player who is only wanted for questioning.
-    if (!block && heatStars(state.heat) < 2) bark(state, 'freeze', unit.x, unit.y);
+    letCrewOut(state, unit, block, ground);
   }
+}
+
+/**
+ * Put every seat of one car on the map beside it, each at their own door: to
+ * cover behind a roadblock, or else to go after the player.
+ */
+function letCrewOut(state: SimState, unit: PoliceUnit, block: boolean, ground: CasualtyGround | undefined): void {
+  const police = state.police;
+  const kind: OfficerKind = unit.kind === 'swat' ? 'swat' : 'patrol';
+  for (let seat = 0; seat < unit.crew; seat++) {
+    // Two sit in front and two behind, and each gets out of their own side.
+    const along = seat < 2 ? 0.4 : -1.2;
+    const side = seat % 2 === 0 ? 1 : -1;
+    const x = unit.x + cos(unit.heading) * along - sin(unit.heading) * side * 1.35;
+    const y = unit.y + sin(unit.heading) * along + cos(unit.heading) * side * 1.35;
+    const height = ground?.heightAt(x, y) ?? unit.height;
+    police.officers.push(createOfficer(police.nextOfficer, kind, unit.id, block ? 'cover' : 'pursue', x, y, height, unit.heading));
+    police.nextOfficer += 1;
+  }
+  unit.crew = 0;
+  unit.doorTick = state.tick;
+  // The first thing said getting out on a player who is only wanted for questioning.
+  if (!block && heatStars(state.heat) < 2) bark(state, 'freeze', unit.x, unit.y);
 }
 
 /**
@@ -175,17 +184,30 @@ export function assignDuty(state: SimState, officer: Officer, quarry: Quarry, se
 function taskOf(state: SimState, officer: Officer, car: PoliceUnit | undefined, quarry: Quarry): OfficerTask {
   const police = state.police;
   if (police.cuffs?.officer === officer.id) return 'cuff';
-  if (state.heat <= 0) return car !== undefined ? 'board' : officer.task === 'beat' ? 'beat' : 'leave';
+  if (state.heat <= 0) return calmTask(officer, car);
   if (officer.task === 'beat') {
     const known = police.lastKnown;
     if (known === null || hypot(known.x - officer.x, known.y - officer.y) > ANSWER_RANGE) return 'beat';
   }
-  if (car !== undefined) {
-    const gone = state.player.driving && quarry.speed >= DRAG_SPEED && hypot(car.x - quarry.x, car.y - quarry.y) > RECALL_RANGE;
-    if (gone) return 'board';
-    const rushed = !state.player.driving && hypot(officer.x - quarry.x, officer.y - quarry.y) < RUSH_RANGE;
-    if (car.task === 'block' && !rushed) return 'cover';
-  }
+  if (car !== undefined) return carTask(state, officer, car, quarry);
+  return 'pursue';
+}
+
+/** With no heat: back to the car if it is still out, on along the beat, or else home. */
+function calmTask(officer: Officer, car: PoliceUnit | undefined): OfficerTask {
+  if (car !== undefined) return 'board';
+  return officer.task === 'beat' ? 'beat' : 'leave';
+}
+
+/**
+ * An officer with a car still out: back to it once the player has driven off,
+ * behind it at a roadblock until the player comes close on foot, else after them.
+ */
+function carTask(state: SimState, officer: Officer, car: PoliceUnit, quarry: Quarry): OfficerTask {
+  const gone = state.player.driving && quarry.speed >= DRAG_SPEED && hypot(car.x - quarry.x, car.y - quarry.y) > RECALL_RANGE;
+  if (gone) return 'board';
+  const rushed = !state.player.driving && hypot(officer.x - quarry.x, officer.y - quarry.y) < RUSH_RANGE;
+  if (car.task === 'block' && !rushed) return 'cover';
   return 'pursue';
 }
 
