@@ -210,54 +210,17 @@ export class Hud {
     this.weaponName.set(armed.name);
     this.ammo.set(armed.ammo);
 
-    const stars = state.heat > 0 ? heatStars(state.heat).join(' ') : '';
-    if (stars !== this.shownStars) {
-      this.shownStars = stars;
-      this.stars.hidden = stars === '';
-      const kinds = stars === '' ? [] : stars.split(' ');
-      this.starEls.forEach((el, i) => {
-        el.className = `hud-star hud-star-${kinds[i] ?? 'empty'}`;
-      });
-    }
-
+    this.showStars(state.heat);
     // The speedometer, and what is being driven and what is left of it.
     const kmh = Math.round(Math.abs(p.speed) * 3.6);
-    if (this.speed.hidden === p.driving) this.speed.hidden = !p.driving;
-    if (p.driving) {
-      this.kmh.set(String(kmh));
-      this.vehicle.set(specOf(state.vehicle.cls).name);
-      const damage = state.vehicle.damage;
-      const integrity = damage.stage === 'burnt' ? 0 : Math.round(damage.integrity * 100);
-      if (integrity !== this.shownIntegrity) {
-        this.shownIntegrity = integrity;
-        this.conditionFill.style.width = `${integrity}%`;
-        this.conditionFill.classList.toggle('hud-condition-low', integrity <= 30);
-      }
-      this.condition.set(damage.stage === 'burning' || damage.stage === 'burnt' ? conditionOf(damage) : '');
-    }
+    this.showVehicle(state, kmh);
 
     this.objective.set(state.objective);
     this.turf.set(turf);
     this.happening.set(happening);
     this.radio.set(radioLine(onAir));
-
-    const arrest = arrestLine(state);
-    if (this.arrest.hidden !== (arrest.text === '')) this.arrest.hidden = arrest.text === '';
-    this.arrestText.set(arrest.text);
-    const cuffs = Math.round(arrest.progress * 100);
-    if (cuffs !== this.shownCuffs) {
-      this.shownCuffs = cuffs;
-      this.arrestFill.parentElement?.toggleAttribute('hidden', cuffs < 0);
-      this.arrestFill.style.width = `${Math.max(0, cuffs)}%`;
-    }
-
-    const fate = fateLine(state);
-    if (this.fate.hidden !== (fate === '')) this.fate.hidden = fate === '';
-    if (fate !== '') {
-      const split = fate.indexOf('  ');
-      this.fateTitle.set(fate.slice(0, split));
-      this.fateCost.set(fate.slice(split + 2));
-    }
+    this.showArrest(state);
+    this.showFate(state);
 
     // The developer block. It is written while hidden too, so it is right the
     // moment it is shown; a hidden element costs no layout.
@@ -272,6 +235,59 @@ export class Hud {
     // nothing about streaming, which is what a settled city should say.
     const queue = streaming > 0 ? `  ${streaming} streaming` : '';
     this.devDraws.set(`${drawCalls} draws/chunk  ${lights} lights  ${tier}${queue}`);
+  }
+
+  /** The wanted stars, redrawn only when they change. */
+  private showStars(heat: number): void {
+    const stars = heat > 0 ? heatStars(heat).join(' ') : '';
+    if (stars === this.shownStars) return;
+    this.shownStars = stars;
+    this.stars.hidden = stars === '';
+    const kinds = stars === '' ? [] : stars.split(' ');
+    this.starEls.forEach((el, i) => {
+      el.className = `hud-star hud-star-${kinds[i] ?? 'empty'}`;
+    });
+  }
+
+  /** The speedometer, and what is being driven and what is left of it, shown while driving. */
+  private showVehicle(state: SimState, kmh: number): void {
+    const p = state.player;
+    if (this.speed.hidden === p.driving) this.speed.hidden = !p.driving;
+    if (!p.driving) return;
+    this.kmh.set(String(kmh));
+    this.vehicle.set(specOf(state.vehicle.cls).name);
+    const damage = state.vehicle.damage;
+    const integrity = damage.stage === 'burnt' ? 0 : Math.round(damage.integrity * 100);
+    if (integrity !== this.shownIntegrity) {
+      this.shownIntegrity = integrity;
+      this.conditionFill.style.width = `${integrity}%`;
+      this.conditionFill.classList.toggle('hud-condition-low', integrity <= 30);
+    }
+    this.condition.set(damage.stage === 'burning' || damage.stage === 'burnt' ? conditionOf(damage) : '');
+  }
+
+  /** The arrest line and the cuffs filling, while the police are taking the player in. */
+  private showArrest(state: SimState): void {
+    const arrest = arrestLine(state);
+    if (this.arrest.hidden !== (arrest.text === '')) this.arrest.hidden = arrest.text === '';
+    this.arrestText.set(arrest.text);
+    const cuffs = Math.round(arrest.progress * 100);
+    if (cuffs !== this.shownCuffs) {
+      this.shownCuffs = cuffs;
+      this.arrestFill.parentElement?.toggleAttribute('hidden', cuffs < 0);
+      this.arrestFill.style.width = `${Math.max(0, cuffs)}%`;
+    }
+  }
+
+  /** What a death or an arrest cost the player, while it is shown. */
+  private showFate(state: SimState): void {
+    const fate = fateLine(state);
+    if (this.fate.hidden !== (fate === '')) this.fate.hidden = fate === '';
+    if (fate !== '') {
+      const split = fate.indexOf('  ');
+      this.fateTitle.set(fate.slice(0, split));
+      this.fateCost.set(fate.slice(split + 2));
+    }
   }
 
   destroy(): void {
@@ -318,25 +334,37 @@ export function fateLine(state: SimState): string {
   return `${what} $${last.cost.toLocaleString('en-US')}`;
 }
 
+/** How far one wanted star is lit. */
+type StarKind = 'full' | 'part' | 'empty';
+
 /**
  * The wanted stars of spec section 14, one slot for each of
  * {@link HEAT_STARS}: a whole point of heat is a full star, and a fraction of
  * one is a star that is filling, which the HUD makes blink.
  */
-function heatStars(heat: number): ('full' | 'part' | 'empty')[] {
+function heatStars(heat: number): StarKind[] {
   const full = Math.min(HEAT_STARS, Math.floor(heat));
   const lit = Math.min(HEAT_STARS, Math.ceil(heat));
-  const out: ('full' | 'part' | 'empty')[] = [];
-  for (let i = 0; i < HEAT_STARS; i++) out.push(i < full ? 'full' : i < lit ? 'part' : 'empty');
+  const out: StarKind[] = [];
+  for (let i = 0; i < HEAT_STARS; i++) out.push(starKind(i, full, lit));
   return out;
 }
+
+/** Star `i` of a line with `full` whole stars and `lit` stars begun. */
+function starKind(i: number, full: number, lit: number): StarKind {
+  if (i < full) return 'full';
+  return i < lit ? 'part' : 'empty';
+}
+
+/** The character each kind of star is written as in a line of text. */
+const STAR_GLYPH = { full: '★', part: '☆', empty: '' } as const;
 
 /**
  * Heat as a line of text: a full star `★` for each whole point and `☆` for the
  * one filling, then the number, because a fraction of a star is not a star.
  */
 export function heatLine(heat: number): string {
-  const stars = heatStars(heat).map((kind) => (kind === 'full' ? '★' : kind === 'part' ? '☆' : '')).join('');
+  const stars = heatStars(heat).map((kind) => STAR_GLYPH[kind]).join('');
   return `${stars}  heat ${heat.toFixed(1)}`;
 }
 

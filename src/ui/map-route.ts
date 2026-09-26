@@ -78,34 +78,7 @@ export function findRoute(graph: RoadGraph, from: Point, to: Point): MapRoute {
   // Leave the first run by either end, and join the last by either end. Of the
   // four, the one with the least time wins; ties go to the first tried, so the
   // answer never depends on the order of anything but this list.
-  let best: { road: Point[]; time: number; length: number } | undefined;
-  const aPoints = graph.edgePoints(a.edge);
-  const bPoints = graph.edgePoints(b.edge);
-  const aSplit = splitAt(aPoints, a);
-  const bSplit = splitAt(bPoints, b);
-  for (const out of [0, 1]) {
-    // `out` 0 drives back to the edge's `from` node, 1 on to its `to` node. A
-    // ramp is left only by its far end and joined only by its near one.
-    if (out === 0 && aEdge.twin < 0) continue;
-    const leave = out === 0 ? aEdge.from : aEdge.to;
-    const firstLeg = out === 0 ? [...aSplit.before].reverse() : aSplit.after;
-    const firstLength = pathLength(firstLeg);
-    for (const into of [0, 1]) {
-      // `into` 0 joins at the edge's `from` node, 1 at its `to` node.
-      if (into === 1 && bEdge.twin < 0) continue;
-      const join = into === 0 ? bEdge.from : bEdge.to;
-      const lastLeg = into === 0 ? bSplit.before : [...bSplit.after].reverse();
-      const lastLength = pathLength(lastLeg);
-      const path = graph.shortestPath(leave, join);
-      if (path === undefined) continue;
-      const time = path.time + firstLength / aEdge.speedLimit + lastLength / bEdge.speedLimit;
-      if (best !== undefined && time >= best.time) continue;
-      const road: Point[] = [...firstLeg];
-      for (const e of path.edges) append(road, graph.edgePoints(e));
-      append(road, lastLeg);
-      best = { road, time, length: firstLength + path.length + lastLength };
-    }
-  }
+  const best = fastestJoin(graph, aEdge, bEdge, splitAt(graph.edgePoints(a.edge), a), splitAt(graph.edgePoints(b.edge), b));
   if (best === undefined) return direct;
   return {
     lead,
@@ -114,6 +87,72 @@ export function findRoute(graph: RoadGraph, from: Point, to: Point): MapRoute {
     length: best.length + a.distance + b.distance,
     time: best.time,
   };
+}
+
+/** One end of a run of road the route may leave or join it by, and the part of the run driven. */
+interface Leg {
+  /** The node at that end. */
+  node: number;
+  /** The part of the run driven, in the direction it is driven. */
+  points: Point[];
+  length: number;
+}
+
+/**
+ * The ways off the first run: back to the edge's `from` node, then on to its
+ * `to` node. A ramp is left only by its far end.
+ */
+function legsOut(edge: RoadEdge, split: { before: Point[]; after: Point[] }): Leg[] {
+  const legs: Leg[] = [];
+  if (edge.twin >= 0) {
+    const points = [...split.before];
+    points.reverse();
+    legs.push({ node: edge.from, points, length: pathLength(points) });
+  }
+  legs.push({ node: edge.to, points: split.after, length: pathLength(split.after) });
+  return legs;
+}
+
+/**
+ * The ways onto the last run: at the edge's `from` node, then at its `to`
+ * node. A ramp is joined only by its near end.
+ */
+function legsIn(edge: RoadEdge, split: { before: Point[]; after: Point[] }): Leg[] {
+  const legs: Leg[] = [{ node: edge.from, points: split.before, length: pathLength(split.before) }];
+  if (edge.twin >= 0) {
+    const points = [...split.after];
+    points.reverse();
+    legs.push({ node: edge.to, points, length: pathLength(points) });
+  }
+  return legs;
+}
+
+/**
+ * The fastest drive from the first run to the last over the road graph, or
+ * undefined where no road joins them. Ties go to the pair tried first.
+ */
+function fastestJoin(
+  graph: RoadGraph,
+  aEdge: RoadEdge,
+  bEdge: RoadEdge,
+  aSplit: { before: Point[]; after: Point[] },
+  bSplit: { before: Point[]; after: Point[] },
+): { road: Point[]; time: number; length: number } | undefined {
+  let best: { road: Point[]; time: number; length: number } | undefined;
+  const ins = legsIn(bEdge, bSplit);
+  for (const first of legsOut(aEdge, aSplit)) {
+    for (const last of ins) {
+      const path = graph.shortestPath(first.node, last.node);
+      if (path === undefined) continue;
+      const time = path.time + first.length / aEdge.speedLimit + last.length / bEdge.speedLimit;
+      if (best !== undefined && time >= best.time) continue;
+      const road: Point[] = [...first.points];
+      for (const e of path.edges) append(road, graph.edgePoints(e));
+      append(road, last.points);
+      best = { road, time, length: first.length + path.length + last.length };
+    }
+  }
+  return best;
 }
 
 /**

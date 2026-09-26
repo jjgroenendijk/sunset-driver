@@ -128,12 +128,12 @@ export class FreeCameraControls {
 
   /** The line over the canvas, written only when it changes. */
   private showHint(): void {
-    const text =
-      !this.on || this.pad
-        ? ''
-        : this.locked
-          ? 'Free camera — press ` to return to the player'
-          : 'Free camera — click to look around, ` to return to the player';
+    let text = '';
+    if (this.on && !this.pad) {
+      text = this.locked
+        ? 'Free camera — press ` to return to the player'
+        : 'Free camera — click to look around, ` to return to the player';
+    }
     if (text === this.shownHint) return;
     this.shownHint = text;
     this.hint.hidden = text === '';

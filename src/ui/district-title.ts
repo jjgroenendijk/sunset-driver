@@ -90,7 +90,7 @@ export class DistrictTitle {
     this.line.textContent = districtLine(district);
     // Taking the class off and reading the layout restarts the fade.
     this.root.classList.remove('district-title-on');
-    void this.root.offsetWidth;
+    this.root.getBoundingClientRect();
     this.root.classList.add('district-title-on');
   }
 }

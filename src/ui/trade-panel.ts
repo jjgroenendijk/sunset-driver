@@ -239,7 +239,7 @@ export class TradePanel {
       if (cells === undefined) return;
       write(cells.held, row.held > 0 ? `×${row.held}` : '');
       write(cells.price, `${moodMark(row.mood)}${dollars(row.buy)}`);
-      const className = `shop-price${row.mood === '' ? '' : ` trade-${row.mood}`}`;
+      const className = withTone('shop-price', row.mood);
       if (cells.price.className !== className) cells.price.className = className;
       cells.line.classList.toggle('shop-dear', row.room === 0 && row.held === 0);
       cells.line.classList.toggle('shop-current', i === this.cursor);
@@ -326,8 +326,8 @@ export class TradePanel {
     const short = !said.startsWith('Bought') && !said.startsWith('Sold');
     this.said.classList.toggle('shop-said-short', short || said.includes('Down $'));
     this.said.classList.remove('shop-said-flash');
-    // Reading the width restarts the animation the class is about to add back.
-    void this.said.offsetWidth;
+    // Reading the layout restarts the animation the class is about to add back.
+    this.said.getBoundingClientRect();
     this.said.classList.add('shop-said-flash');
   }
 }
@@ -350,20 +350,45 @@ interface Fact {
 export function cardFacts(row: TradeRow, good: Good, history: readonly number[], favour: number): Fact[] {
   const against = row.buy / row.standing;
   const change = Math.round((against - 1) * 100);
-  const price = row.mood === 'spike' ? `Spike, +${change}%` : row.mood === 'glut' ? `Glut, ${change}%` : change === 0 ? 'Usual price' : `${change > 0 ? '+' : ''}${change}% on usual`;
   const facts: Fact[] = [
-    { label: 'Here', text: price, bar: (against - GLUT) / (SPIKE - GLUT), tone: row.mood === 'spike' ? 'spike' : row.mood === 'glut' ? 'glut' : undefined },
+    { label: 'Here', text: priceText(row.mood, change), bar: (against - GLUT) / (SPIKE - GLUT), tone: moodTone(row.mood) },
     { label: '12 hours', text: '', spark: history },
     { label: 'Cheapest', text: homeOf(good) },
   ];
-  if (row.held > 0) {
-    const each = Math.round(row.paid / row.held);
-    const made = row.held * row.sell - row.paid;
-    facts.push({ label: 'Holding', text: `${row.held} at ${dollars(each)}` });
-    facts.push({ label: 'Sale now', text: made >= 0 ? `Up ${dollars(made)}` : `Down ${dollars(-made)}`, tone: made >= 0 ? 'up' : 'down' });
-  }
+  if (row.held > 0) facts.push(...holdingFacts(row));
   if (favour !== 0) facts.push({ label: 'Terms', text: favour > 0 ? 'They like you' : 'They do not trust you', bar: (favour + 1) / 2 });
   return facts;
+}
+
+/** The price here against the usual one, as `change` percent over it. */
+function priceText(mood: string, change: number): string {
+  if (mood === 'spike') return `Spike, +${change}%`;
+  if (mood === 'glut') return `Glut, ${change}%`;
+  if (change === 0) return 'Usual price';
+  const sign = change > 0 ? '+' : '';
+  return `${sign}${change}% on usual`;
+}
+
+/** The colour a price's mood gives its value: a spike, a glut or none. */
+function moodTone(mood: string): Fact['tone'] {
+  if (mood === 'spike') return 'spike';
+  return mood === 'glut' ? 'glut' : undefined;
+}
+
+/** What the player holds of a good, and what selling it now would make or lose. */
+function holdingFacts(row: TradeRow): Fact[] {
+  const each = Math.round(row.paid / row.held);
+  const made = row.held * row.sell - row.paid;
+  const sale = made >= 0 ? `Up ${dollars(made)}` : `Down ${dollars(-made)}`;
+  return [
+    { label: 'Holding', text: `${row.held} at ${dollars(each)}` },
+    { label: 'Sale now', text: sale, tone: made >= 0 ? 'up' : 'down' },
+  ];
+}
+
+/** A class name with the trade colour of `tone` added, where there is one. */
+function withTone(className: string, tone: string | undefined): string {
+  return tone === undefined || tone === '' ? className : `${className} trade-${tone}`;
 }
 
 /** Where a good is cheap: the turf of the faction whose people trade it at home. */
@@ -376,12 +401,14 @@ function homeOf(good: Good): string {
 
 /** What the buy button says when it can take nothing, and why. */
 function cannotBuy(state: SimState, row: TradeRow): string {
-  return carrying(state.market) >= STASH_UNITS ? 'Carrying all you can' : state.money < row.buy ? 'Not enough money' : 'Cannot buy';
+  if (carrying(state.market) >= STASH_UNITS) return 'Carrying all you can';
+  return state.money < row.buy ? 'Not enough money' : 'Cannot buy';
 }
 
 /** A spike is marked up and a glut down, so the list can be read at a glance. */
 function moodMark(mood: string): string {
-  return mood === 'spike' ? '▲ ' : mood === 'glut' ? '▼ ' : '';
+  if (mood === 'spike') return '▲ ';
+  return mood === 'glut' ? '▼ ' : '';
 }
 
 function fact(item: Fact): HTMLElement {
@@ -394,7 +421,7 @@ function fact(item: Fact): HTMLElement {
     fill.style.width = `${Math.round(Math.min(1, Math.max(0, item.bar)) * 100)}%`;
     gauge.append(fill);
   } else gauge.classList.add('shop-gauge-none');
-  const value = element('span', `shop-fact-value${item.tone === undefined ? '' : ` trade-${item.tone}`}`);
+  const value = element('span', withTone('shop-fact-value', item.tone));
   value.textContent = item.text;
   if (item.spark !== undefined) {
     value.classList.add('trade-spark');

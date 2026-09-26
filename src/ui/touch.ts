@@ -95,6 +95,7 @@ export const TOUCH_LOOK_GAIN = 1.8;
  * many notches as it takes to double the speed, whatever the step is set to.
  */
 export function pinchNotches(from: number, to: number, step: number): number {
-  if (!(from > 0) || !(to > 0) || step <= 1) return 0;
+  // A NaN gap is no pinch either, so it is asked for before the sizes.
+  if (Number.isNaN(from) || Number.isNaN(to) || from <= 0 || to <= 0 || step <= 1) return 0;
   return Math.log(to / from) / Math.log(step);
 }

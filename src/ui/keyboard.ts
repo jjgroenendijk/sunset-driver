@@ -27,6 +27,21 @@ const WHEEL_STEP = 100;
 const WHEEL_LINE = 33;
 const WHEEL_PAGE = 800;
 
+/** Pixels one unit of a wheel event's delta counts as, by its `deltaMode`. */
+function wheelScale(deltaMode: number): number {
+  if (deltaMode === 1) return WHEEL_LINE;
+  return deltaMode === 2 ? WHEEL_PAGE : 1;
+}
+
+/**
+ * The trade a tick hands the dealer: a row clicked on the panel, or else the
+ * number key, sold rather than bought while the sell key is held.
+ */
+function tradeOf(traded: number, chosen: number, selling: boolean): number {
+  if (traded !== 0) return traded;
+  return selling ? -chosen : chosen;
+}
+
 /**
  * The walking axes turned by a view's yaw. Up the screen is `-z` turned by
  * `yaw`, and the walk of `walker-body.ts` reads the steering axis as `+x` and
@@ -133,7 +148,7 @@ export class Keyboard {
       'wheel',
       (e) => {
         e.preventDefault();
-        const scale = e.deltaMode === 1 ? WHEEL_LINE : e.deltaMode === 2 ? WHEEL_PAGE : 1;
+        const scale = wheelScale(e.deltaMode);
         this.wheel += e.deltaY * scale;
         while (Math.abs(this.wheel) >= WHEEL_STEP) {
           const step = Math.sign(this.wheel);
@@ -255,7 +270,7 @@ export class Keyboard {
       station: this.dial(),
       travel: chosen,
       buy: picked > 0 ? picked : chosen,
-      trade: traded !== 0 ? traded : selling ? -chosen : chosen,
+      trade: tradeOf(traded, chosen, selling),
       surrender: this.is('KeyX'),
       bonnet: this.is('KeyO'),
     };
