@@ -162,7 +162,7 @@ export class ShopPreview {
     const before = this.renderer.getCanvasTarget();
     this.renderer.setCanvasTarget(this.target);
     try {
-      void this.renderer.render(this.scene, this.camera);
+      this.renderer.render(this.scene, this.camera);
     } catch (error) {
       // The preview is a picture of the row, not the row: the counter still
       // works without it, so it is let go rather than thrown every frame.

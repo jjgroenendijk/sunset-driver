@@ -22,6 +22,7 @@ import {
   windowBands,
   type BlockStyle,
   type Shell,
+  type Side,
 } from './block-shell.ts';
 import { deckPartOf, type RoofDeck } from './roof-dress.ts';
 
@@ -57,7 +58,9 @@ export function shopRow(shell: Shell, massing: BuildingMassing, style: BlockStyl
   // The flats over the shops are glazed on the street alone, on the street and
   // the sides, or all round where the row stands free.
   const upper = unit(seed, SALT_UPPER);
-  const sides = upper < 0.35 ? (['front'] as const) : upper < 0.8 ? (['front', 'left', 'right'] as const) : ALL_SIDES;
+  let sides: readonly Side[] = ALL_SIDES;
+  if (upper < 0.35) sides = ['front'];
+  else if (upper < 0.8) sides = ['front', 'left', 'right'];
   windowBands(shell, walls, shopfront + 0.8, top, sides);
   if (style.detail === 'near') doors(shell, walls, shopfront, seed);
 

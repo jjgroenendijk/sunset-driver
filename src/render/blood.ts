@@ -35,6 +35,12 @@ import { DEFAULT_GORE, GORE, type Gore } from './gore.ts';
 /** Metres over the ground a mark is laid, clear of the road and under the skid marks' 0.03. */
 const BLOOD_LIFT = 0.025;
 
+/** The extra lift of a mark's layer: streaks lowest, then pools, then spots. */
+function layerLift(mark: BloodMark): number {
+  if (mark.streak > 0) return 0;
+  return mark.owner < 0 ? 0.002 : 0.001;
+}
+
 /** Ticks the marks of a body taken away take to fade out. */
 const FADE_TICKS = 3 * 60;
 
@@ -198,7 +204,7 @@ export class BloodView {
       const mark = this.marks[i] as BloodMark;
       // Streaks lie a hair under the pools, and spots over both, so the
       // overlaps never flicker between two frames.
-      const lift = BLOOD_LIFT + (mark.streak > 0 ? 0 : mark.owner < 0 ? 0.002 : 0.001);
+      const lift = BLOOD_LIFT + layerLift(mark);
       this.dummy.position.set(mark.x, mark.h + lift, mark.y);
       // Turned about the up axis to its angle on the map, whose y is the world's z.
       this.dummy.rotation.set(0, -mark.angle, 0);

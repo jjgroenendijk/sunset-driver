@@ -199,23 +199,23 @@ export class CharacterModel {
     h: number,
     d: number,
     colour: number,
-    x: number,
-    y: number,
-    z: number,
+    across: number,
+    up: number,
+    along: number,
   ): void {
     const geometry = new BoxGeometry(d, h, w);
     const material = new MeshStandardMaterial({ color: colour, roughness: 0.7 });
     const mesh = new Mesh(geometry, material);
-    mesh.position.set(z, y, x);
+    mesh.position.set(along, up, across);
     this.geometries.push(geometry);
     this.materials.push(material);
     parent.add(mesh);
   }
 
   /** A piece of the rig, hanging from another at a place given across, up and along. */
-  private joint(parent: Object3D, x: number, y: number, z: number): Group {
+  private joint(parent: Object3D, across: number, up: number, along: number): Group {
     const group = new Group();
-    group.position.set(z, y, x);
+    group.position.set(along, up, across);
     parent.add(group);
     return group;
   }

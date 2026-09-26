@@ -43,13 +43,48 @@ function scatter(drop: number, axis: number): number {
   return s - Math.floor(s);
 }
 
-export class HoseSpray {
+/**
+ * Unit boxes drawn as one instanced mesh, filled again every frame: `begin`
+ * empties it, the caller adds instances, and `commit` shows them.
+ */
+abstract class InstancedBoxes {
   readonly mesh: InstancedMesh;
-  private count = 0;
-  private readonly matrix = new Matrix4();
+  protected count = 0;
+  protected readonly matrix = new Matrix4();
+  protected readonly turn = new Quaternion();
+  protected readonly size = new Vector3();
+
+  protected constructor(material: MeshStandardMaterial, capacity: number, castShadow: boolean) {
+    this.mesh = new InstancedMesh(new BoxGeometry(1, 1, 1), material, capacity);
+    this.mesh.frustumCulled = false;
+    this.mesh.castShadow = castShadow;
+    this.mesh.count = 0;
+    this.mesh.visible = false;
+  }
+
+  /** Start a frame with nothing drawn. */
+  begin(): void {
+    this.count = 0;
+  }
+
+  /** Show what was added this frame. */
+  commit(): void {
+    if (this.count === 0 && this.mesh.count === 0) return;
+    this.mesh.count = this.count;
+    this.mesh.visible = this.count > 0;
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  dispose(): void {
+    this.mesh.geometry.dispose();
+    (this.mesh.material as MeshStandardMaterial).dispose();
+    this.mesh.dispose();
+  }
+}
+
+/** The water in the air: every drop of every stream in view. */
+export class HoseSpray extends InstancedBoxes {
   private readonly at = new Vector3();
-  private readonly turn = new Quaternion();
-  private readonly size = new Vector3();
 
   /** A spray for up to `nozzles` nozzles with water on at once. */
   constructor(nozzles: number) {
@@ -61,16 +96,7 @@ export class HoseSpray {
       opacity: 0.6,
       depthWrite: false,
     });
-    this.mesh = new InstancedMesh(new BoxGeometry(1, 1, 1), material, nozzles * DROPS);
-    this.mesh.frustumCulled = false;
-    this.mesh.castShadow = false;
-    this.mesh.count = 0;
-    this.mesh.visible = false;
-  }
-
-  /** Start a frame with no water in the air. */
-  begin(): void {
-    this.count = 0;
+    super(material, nozzles * DROPS, false);
   }
 
   /**
@@ -116,19 +142,6 @@ export class HoseSpray {
     }
   }
 
-  /** Show what was added this frame. */
-  commit(): void {
-    if (this.count === 0 && this.mesh.count === 0) return;
-    this.mesh.count = this.count;
-    this.mesh.visible = this.count > 0;
-    this.mesh.instanceMatrix.needsUpdate = true;
-  }
-
-  dispose(): void {
-    this.mesh.geometry.dispose();
-    (this.mesh.material as MeshStandardMaterial).dispose();
-    this.mesh.dispose();
-  }
 }
 
 /** Metres across a hose. */
@@ -145,29 +158,15 @@ const X_AXIS = new Vector3(1, 0, 0);
  * thin boxes, one per stretch between two points. Every stretch is one
  * instance of one mesh.
  */
-export class HoseLines {
-  readonly mesh: InstancedMesh;
-  private count = 0;
-  private readonly matrix = new Matrix4();
+export class HoseLines extends InstancedBoxes {
   private readonly from = new Vector3();
   private readonly to = new Vector3();
   private readonly mid = new Vector3();
-  private readonly turn = new Quaternion();
-  private readonly size = new Vector3();
 
   /** Lines for up to `stretches` stretches of hose at once. */
   constructor(stretches: number) {
     const material = new MeshStandardMaterial({ color: new Color(HOSE_COLOUR), roughness: 0.85, metalness: 0 });
-    this.mesh = new InstancedMesh(new BoxGeometry(1, 1, 1), material, stretches);
-    this.mesh.frustumCulled = false;
-    this.mesh.castShadow = true;
-    this.mesh.count = 0;
-    this.mesh.visible = false;
-  }
-
-  /** Start a frame with no hose on the road. */
-  begin(): void {
-    this.count = 0;
+    super(material, stretches, true);
   }
 
   /** One hose, as points of x, height and the map's y. */
@@ -187,17 +186,4 @@ export class HoseLines {
     }
   }
 
-  /** Show what was added this frame. */
-  commit(): void {
-    if (this.count === 0 && this.mesh.count === 0) return;
-    this.mesh.count = this.count;
-    this.mesh.visible = this.count > 0;
-    this.mesh.instanceMatrix.needsUpdate = true;
-  }
-
-  dispose(): void {
-    this.mesh.geometry.dispose();
-    (this.mesh.material as MeshStandardMaterial).dispose();
-    this.mesh.dispose();
-  }
 }

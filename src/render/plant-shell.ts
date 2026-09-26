@@ -304,10 +304,14 @@ export class PlantShell {
     if (!same(c, d)) this.triangle(a, c, d, part, tint);
   }
 
-  /** One triangle, with the normal of the face it belongs to. */
-  triangle(a: Local, b: Local, c: Local, part: number, tint: Rgb): void {
-    const n = normalOf(a, b, c);
-    for (const p of [a, b, c]) {
+  /**
+   * One triangle, with the normal of the face it belongs to. The order of the
+   * corners sets the way the face looks, so a caller passes the same three in
+   * both orders to draw a leaf from both sides.
+   */
+  triangle(first: Local, second: Local, third: Local, part: number, tint: Rgb): void {
+    const n = normalOf(first, second, third);
+    for (const p of [first, second, third]) {
       this.positions.push(p[0], p[1], p[2]);
       this.normals.push(n[0], n[1], n[2]);
       this.parts.push(part);

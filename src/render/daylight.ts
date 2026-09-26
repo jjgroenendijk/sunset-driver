@@ -233,10 +233,9 @@ export function sunFraction(clock: number): number {
   const rise = SUNRISE_HOUR;
   const set = SUNSET_HOUR;
   // The night runs from sunset over midnight to the next sunrise.
-  const sun =
-    hour >= rise && hour <= set
-      ? 6 + ((hour - rise) / (set - rise)) * 12
-      : 18 + (((hour < rise ? hour + 24 : hour) - set) / (24 - (set - rise))) * 12;
+  let sun: number;
+  if (hour >= rise && hour <= set) sun = 6 + ((hour - rise) / (set - rise)) * 12;
+  else sun = 18 + (((hour < rise ? hour + 24 : hour) - set) / (24 - (set - rise))) * 12;
   return (sun / 24) % 1;
 }
 

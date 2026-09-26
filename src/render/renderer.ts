@@ -159,7 +159,8 @@ function allowStringSwizzle(): void {
         strip = true;
       }
     }
-    const { swizzle: _swizzle, ...rest } = descriptor;
+    const rest: GPUTextureViewDescriptor = { ...descriptor };
+    delete rest.swizzle;
     return createView.call(this, rest);
   };
 }
