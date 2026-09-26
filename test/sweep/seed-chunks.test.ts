@@ -252,17 +252,15 @@ const TIER_NAMES = Object.keys(TIERS) as TierGeometry['tier'][];
  * carriageway. A tier's batch can carry a narrower road than the tier itself
  * — a highway's holds its ramps — so the section is read off the surface's
  * first column: a carriageway edge on the ground, the outer edge on a
- * structure. The tier the batch is named for is tried first.
+ * structure. Both sections of the tier the batch is named for are tried
+ * first, because widths clash across tiers: an arterial deck's outer edge is
+ * a highway's carriageway edge.
  */
 function sectionOf(surface: BufferGeometry, named: TierGeometry['tier']): { section: SectionPoint[]; half: number } {
   const first = surface.getAttribute('across').getX(0);
-  const tiers = [named, ...TIER_NAMES.filter((tier) => tier !== named)];
-  for (const tier of tiers) {
+  for (const tier of [named, ...TIER_NAMES.filter((other) => other !== named)]) {
     const half = -TIERS[tier].width / 2;
     if (first === half) return { section: roadSection(tier), half };
-  }
-  for (const tier of tiers) {
-    const half = -TIERS[tier].width / 2;
     if (first === -footprintHalfWidth(tier)) return { section: structureSection(tier), half };
   }
   return { section: structureSection(named), half: -TIERS[named].width / 2 };
