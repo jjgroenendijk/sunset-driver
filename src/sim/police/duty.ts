@@ -322,7 +322,7 @@ export function patrolBeats(state: SimState, roads: UnitRoads, districtAt: Distr
     officer.edges = [edge];
     // The second walks a stride behind the first.
     officer.distance = i === 0 ? 1.6 : 0;
-    roads.pose(officer.id, officer.edges, officer.distance, pose);
+    roads.pose(officer.id, officer.edges, officer.distance, pose, true);
     officer.x = pose.x;
     officer.y = pose.y;
     officer.height = pose.height;

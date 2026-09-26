@@ -19,6 +19,7 @@ import { atan2, hypot } from '../../core/libm.ts';
 import type { RoadEdge, RoadGraph } from '../../world/roads/graph.ts';
 import { heightOff, RouteSampler, type RouteLegs, type RoutePoint } from '../traffic/route-sample.ts';
 import { offsetIn, tramLanes, type TrafficRoads } from '../traffic/traffic.ts';
+import { TIERS } from '../../world/roads/tiers.ts';
 
 /** Where a unit is on the ground: the lane point, the road height and the way it faces. */
 export interface DrivePose {
@@ -26,6 +27,15 @@ export interface DrivePose {
   y: number;
   height: number;
   heading: number;
+}
+
+/**
+ * Metres right of the middle of a run the middle of its pavement stands at,
+ * past the kerb and the verge. A road with no pavement is walked at its edge.
+ */
+function pavementOffset(edge: RoadEdge): number {
+  const spec = TIERS[edge.tier];
+  return spec.width / 2 + (spec.pavement > 0 ? spec.verge + spec.pavement / 2 : 0);
 }
 
 /** Metres behind and ahead of a car its heading is read over, so it turns a corner as a curve. */
@@ -120,26 +130,27 @@ export class UnitRoads {
   }
 
   /**
-   * Where a drive stands a distance along it, in the unit's own lane. A
-   * distance past the end of the drive stands at the end of it, because a
-   * drive is a line and not a loop.
+   * Where a drive stands a distance along it, in the unit's own lane, or on
+   * the pavement beside it for one who `walks`. A distance past the end of the
+   * drive stands at the end of it, because a drive is a line and not a loop.
    */
-  pose(unit: number, edges: readonly number[], distance: number, out: DrivePose): DrivePose {
+  pose(unit: number, edges: readonly number[], distance: number, out: DrivePose, walks = false): DrivePose {
     const legs = this.legsOf(unit, edges);
     const here = this.clamp(legs, distance);
     const at = this.sampler.sample(legs, here, this.point);
-    const offset = this.kerbOffset(at.edge);
+    const side = walks ? pavementOffset : this.kerbOffset;
+    const offset = side(at.edge);
     out.x = at.x + at.rightX * offset;
     out.y = at.y + at.rightY * offset;
     out.height = heightOff(at, offset);
     // The heading is read from a point behind to a point ahead, so a car rounds
     // a corner rather than snapping round at the node.
     const back = this.sampler.sample(legs, this.clamp(legs, here - SMOOTH), this.point);
-    const bx = back.x + back.rightX * this.kerbOffset(back.edge);
-    const by = back.y + back.rightY * this.kerbOffset(back.edge);
+    const bx = back.x + back.rightX * side(back.edge);
+    const by = back.y + back.rightY * side(back.edge);
     const front = this.sampler.sample(legs, this.clamp(legs, here + SMOOTH), this.point);
-    const fx = front.x + front.rightX * this.kerbOffset(front.edge);
-    const fy = front.y + front.rightY * this.kerbOffset(front.edge);
+    const fx = front.x + front.rightX * side(front.edge);
+    const fy = front.y + front.rightY * side(front.edge);
     out.heading = fx === bx && fy === by ? 0 : atan2(fy - by, fx - bx);
     return out;
   }
@@ -185,15 +196,13 @@ export class UnitRoads {
     this.legs.delete(unit);
   }
 
-  /** The legs of a unit's drive, rebuilt only when the unit is given a new one. */
   /**
    * Metres right of the middle of a run a unit drives at: the lane nearest the
    * kerb of its own side, which is the outermost one.
    */
-  private kerbOffset(edge: RoadEdge): number {
-    return offsetIn(edge, edge.lanes - 1, this.tramLane);
-  }
+  private readonly kerbOffset = (edge: RoadEdge): number => offsetIn(edge, edge.lanes - 1, this.tramLane);
 
+  /** The legs of a unit's drive, rebuilt only when the unit is given a new one. */
   private legsOf(unit: number, edges: readonly number[]): RouteLegs {
     const held = this.legs.get(unit);
     if (held !== undefined && held.edges === edges) return held.legs;
