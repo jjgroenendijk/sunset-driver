@@ -59,6 +59,13 @@ const ORBIT_SWING = 0.22;
 const ORBIT_PERIOD = 70;
 
 /**
+ * The camera's near plane, in metres. The nearest thing it sees is the driver,
+ * about nine metres off, and a plane further out keeps the depth fine enough
+ * that the town across the bay, 150 m away, does not fight its own windows.
+ */
+const NEAR = 0.5;
+
+/**
  * Degrees the camera sees across, and the most it may see top to bottom. A
  * window held upright is narrow, so the car is fitted to its width and the
  * sunset fills the height above it.
@@ -155,6 +162,10 @@ export function createTitleScene(
   sun.shadow.camera.bottom = -10;
   sun.shadow.camera.far = 70;
   sun.shadow.bias = -0.0005;
+  // The sun grazes the road and the kerb, so without this they shadow
+  // themselves in stripes that crawl as the camera swings. Two texels, as in
+  // `sky.ts`.
+  sun.shadow.normalBias = (2 * (sun.shadow.camera.right - sun.shadow.camera.left)) / sun.shadow.mapSize.x;
   scene.add(sun);
   // The sky's glow on the side of the car turned from the sun: rose from above, warm off the road.
   const glow = new DirectionalLight(0xff8f86, 1.6);
@@ -162,7 +173,7 @@ export function createTitleScene(
   scene.add(glow);
   scene.add(new HemisphereLight(0xb58ad8, 0xe0906a, 1.5));
 
-  const camera = new PerspectiveCamera(50, size.width / size.height, 0.1, 400);
+  const camera = new PerspectiveCamera(50, size.width / size.height, NEAR, 400);
   let seconds = 0;
   const place = (): void => {
     const angle = ORBIT_MIDDLE + ORBIT_SWING * Math.sin((seconds / ORBIT_PERIOD) * Math.PI * 2);

@@ -68,6 +68,8 @@ const WALLS = [0xd98b62, 0xd9b84a, 0xe9e3d3, 0x2e8c8a, 0xcc6a3b, 0xe7a79a];
 const ROOF = 0xcc6a3b;
 /** A lit window, over white so it blooms. */
 const WINDOW_GLOW = new Color(0xffc870).multiplyScalar(4);
+/** Metres a window stands proud of its wall: enough to win the depth test 150 m away. */
+const WINDOW_PROUD = 0.1;
 
 /** What the backdrop added to the scene, for the scene to release. */
 export interface Backdrop {
@@ -329,7 +331,7 @@ function town(): [BufferGeometry, BufferGeometry] {
     for (let row = 0; row < Math.floor(height / 2.2); row++) {
       if ((i + row) % 3 === 0) continue;
       const pane = new PlaneGeometry(0.7, 0.9);
-      matrix.makeTranslation(x - width / 4 + ((i + row) % 2) * (width / 2), ground + 1.4 + row * 2.2, z + 1.52);
+      matrix.makeTranslation(x - width / 4 + ((i + row) % 2) * (width / 2), ground + 1.4 + row * 2.2, z + 1.5 + WINDOW_PROUD);
       pane.applyMatrix4(matrix);
       windows.push(pane);
     }
