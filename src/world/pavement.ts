@@ -82,19 +82,7 @@ export interface PavementWindow {
 /** Cut the pavement of the chunk inside `bounds`. */
 export function pavementIn(bounds: ChunkBounds, window: PavementWindow, ribbons: RoadRibbons): ChunkPavement[] {
   const carriageway = carriagewayOf(window, ribbons);
-  const claims = new Map<RoadTier, Region[]>();
-  const stretches = window.roads.map((run) => groundStretches(run));
-  for (const tier of CLAIM_ORDER) {
-    const reach = footprintHalfWidth(tier);
-    if (reach <= TIERS[tier].width / 2) continue;
-    const claimed: Region[] = [];
-    window.roads.forEach((run, r) => {
-      if (run.tier !== tier) return;
-      for (const stretch of stretches[r] as Stretch[]) claimed.push(regionOf(claimOf(run, stretch, reach, ribbons)));
-    });
-    for (const apron of window.aprons) if (apron.tier === tier) claimed.push(regionOf(apron.ring));
-    if (claimed.length > 0) claims.set(tier, claimed);
-  }
+  const claims = claimsOf(window, ribbons);
   const tiers = CLAIM_ORDER.filter((tier) => claims.has(tier));
   if (tiers.length === 0) return [];
   // One pass takes the carriageway and everything outside the chunk away from
@@ -127,6 +115,24 @@ export function pavementIn(bounds: ChunkBounds, window: PavementWindow, ribbons:
   return out;
 }
 
+/** The ground each tier claims beyond its carriageway, for the tiers that claim any. */
+function claimsOf(window: PavementWindow, ribbons: RoadRibbons): Map<RoadTier, Region[]> {
+  const claims = new Map<RoadTier, Region[]>();
+  const stretches = window.roads.map((run) => groundStretches(run));
+  for (const tier of CLAIM_ORDER) {
+    const reach = footprintHalfWidth(tier);
+    if (reach <= TIERS[tier].width / 2) continue;
+    const claimed: Region[] = [];
+    window.roads.forEach((run, r) => {
+      if (run.tier !== tier) return;
+      for (const stretch of stretches[r] as Stretch[]) claimed.push(regionOf(claimOf(run, stretch, reach, ribbons)));
+    });
+    for (const apron of window.aprons) if (apron.tier === tier) claimed.push(regionOf(apron.ring));
+    if (claimed.length > 0) claims.set(tier, claimed);
+  }
+  return claims;
+}
+
 /**
  * The carriageway as it is drawn: a ring along every stretch of a run on the
  * ground, cut short of its junctions as `road-mesh.ts` lofts it, and the fan of
@@ -139,79 +145,97 @@ function carriagewayOf(window: PavementWindow, ribbons: RoadRibbons): Region[] {
   };
   for (const run of window.roads) {
     const half = TIERS[run.tier].width / 2;
-    const off = (segment: number): boolean => run.bridges.includes(segment) || run.tunnels.includes(segment);
-    for (const sub of trimRun(run, ribbons)) {
-      // One ring per stretch on the ground: the left kerb out and the right one
-      // back. A stretch carries on through a turn too sharp to mitre, taking the
-      // frame it arrives on and the one it leaves on, so the outer kerb runs
-      // along the bevel `road-mesh.ts` lays there. The inner kerb loops over
-      // itself at the turn, and that loop is ground the carriageway covers.
-      const offSub = (segment: number): boolean => sub.bridges.includes(segment) || sub.tunnels.includes(segment);
-      let left: Point[] = [];
-      let right: Point[] = [];
-      let end = -1;
-      const close = (): void => {
-        if (left.length > 1) add([...left, ...right.reverse()]);
-        left = [];
-        right = [];
-      };
-      for (const piece of piecesOf(sub, ribbons)) {
-        if (piece.from !== end) close();
-        for (let k = 0; k + 1 < piece.points.length; k++) {
-          if (offSub(piece.from + k)) {
-            close();
-            continue;
-          }
-          for (const i of k === 0 || left.length === 0 ? [k, k + 1] : [k + 1]) {
-            left.push(side(piece.points[i] as Point, piece.frames[i] as RoadFrame, -half));
-            right.push(side(piece.points[i] as Point, piece.frames[i] as RoadFrame, half));
-          }
-        }
-        end = piece.from + piece.points.length - 1;
-      }
-      close();
-    }
-    // A junction's fan still leaves some of a road's own carriageway between
-    // its cut and the node, where the road bends inside its cut (issue #542),
-    // and that is no place for a pavement. So every stretch of segments a
-    // junction takes is added whole.
-    if (run.gaps.length === 0) continue;
-    let taken: Point[] = [];
-    for (let k = 0; k + 1 < run.points.length; k++) {
-      const a = run.points[k] as Point;
-      const b = run.points[k + 1] as Point;
-      const from = ribbons.frameAt(run.curve, run.from + k, a.x, a.y).distance;
-      const to = ribbons.frameAt(run.curve, run.from + k, b.x, b.y).distance;
-      const inGap = run.gaps.some((gap) => gap.from.distance < Math.max(from, to) && gap.to.distance > Math.min(from, to));
-      if (!off(k) && inGap) {
-        if (taken.length === 0) taken.push(a);
-        taken.push(b);
-        continue;
-      }
-      if (taken.length > 1) add(strip(taken, half));
-      taken = [];
-    }
-    if (taken.length > 1) add(strip(taken, half));
+    for (const sub of trimRun(run, ribbons)) stretchRings(sub, ribbons, half, add);
+    gapStrips(run, ribbons, half, add);
   }
   for (const junction of window.junctions) {
-    const ring: Point[] = junctionShape(junction, ribbons).carriageway.map((v) => ({ x: v.x, y: v.y }));
-    // A junction is what its fan draws, which is every triangle from the node
-    // to an edge of the ring, whichever way each turns. The ring's own outline
-    // says less than that: it is not the outline of the ground the mouths
-    // cover, and where it crosses itself it is not an outline at all. The
-    // triangles are joined here rather than handed over one by one, because
-    // `difference` leaves a subtrahend standing where two of them overlap
-    // (issue #493).
-    const node: Point = { x: junction.x, y: junction.y };
-    const fan: Region[] = [];
-    for (let i = 0; i < ring.length; i++) {
-      const triangle = [node, ring[i] as Point, ring[(i + 1) % ring.length] as Point];
-      if (Math.abs(ringArea(triangle)) < MIN_PIECE_AREA) continue;
-      fan.push(regionOf(triangle));
-    }
-    for (const piece of union(fan)) out.push(piece);
+    for (const piece of junctionFan(junction, ribbons)) out.push(piece);
   }
   return out;
+}
+
+/**
+ * One ring per stretch on the ground of a trimmed run: the left kerb out and
+ * the right one back. A stretch carries on through a turn too sharp to mitre,
+ * taking the frame it arrives on and the one it leaves on, so the outer kerb
+ * runs along the bevel `road-mesh.ts` lays there. The inner kerb loops over
+ * itself at the turn, and that loop is ground the carriageway covers.
+ */
+function stretchRings(sub: ChunkRoad, ribbons: RoadRibbons, half: number, add: (ring: Point[]) => void): void {
+  const offSub = (segment: number): boolean => sub.bridges.includes(segment) || sub.tunnels.includes(segment);
+  let left: Point[] = [];
+  let right: Point[] = [];
+  let end = -1;
+  const close = (): void => {
+    if (left.length > 1) {
+      right.reverse();
+      add([...left, ...right]);
+    }
+    left = [];
+    right = [];
+  };
+  for (const piece of piecesOf(sub, ribbons)) {
+    if (piece.from !== end) close();
+    for (let k = 0; k + 1 < piece.points.length; k++) {
+      if (offSub(piece.from + k)) {
+        close();
+        continue;
+      }
+      for (const i of k === 0 || left.length === 0 ? [k, k + 1] : [k + 1]) {
+        left.push(side(piece.points[i] as Point, piece.frames[i] as RoadFrame, -half));
+        right.push(side(piece.points[i] as Point, piece.frames[i] as RoadFrame, half));
+      }
+    }
+    end = piece.from + piece.points.length - 1;
+  }
+  close();
+}
+
+/**
+ * A junction's fan still leaves some of a road's own carriageway between its
+ * cut and the node, where the road bends inside its cut (issue #542), and that
+ * is no place for a pavement. So every stretch of segments a junction takes is
+ * added whole.
+ */
+function gapStrips(run: ChunkRoad, ribbons: RoadRibbons, half: number, add: (ring: Point[]) => void): void {
+  if (run.gaps.length === 0) return;
+  const off = (segment: number): boolean => run.bridges.includes(segment) || run.tunnels.includes(segment);
+  let taken: Point[] = [];
+  for (let k = 0; k + 1 < run.points.length; k++) {
+    const a = run.points[k] as Point;
+    const b = run.points[k + 1] as Point;
+    const from = ribbons.frameAt(run.curve, run.from + k, a.x, a.y).distance;
+    const to = ribbons.frameAt(run.curve, run.from + k, b.x, b.y).distance;
+    const inGap = run.gaps.some((gap) => gap.from.distance < Math.max(from, to) && gap.to.distance > Math.min(from, to));
+    if (!off(k) && inGap) {
+      if (taken.length === 0) taken.push(a);
+      taken.push(b);
+      continue;
+    }
+    if (taken.length > 1) add(strip(taken, half));
+    taken = [];
+  }
+  if (taken.length > 1) add(strip(taken, half));
+}
+
+/**
+ * A junction as its fan draws it, which is every triangle from the node to an
+ * edge of the ring, whichever way each turns. The ring's own outline says less
+ * than that: it is not the outline of the ground the mouths cover, and where
+ * it crosses itself it is not an outline at all. The triangles are joined here
+ * rather than handed over one by one, because `difference` leaves a subtrahend
+ * standing where two of them overlap (issue #493).
+ */
+function junctionFan(junction: Junction, ribbons: RoadRibbons): Region[] {
+  const ring: Point[] = junctionShape(junction, ribbons).carriageway.map((v) => ({ x: v.x, y: v.y }));
+  const node: Point = { x: junction.x, y: junction.y };
+  const fan: Region[] = [];
+  for (let i = 0; i < ring.length; i++) {
+    const triangle = [node, ring[i] as Point, ring[(i + 1) % ring.length] as Point];
+    if (Math.abs(ringArea(triangle)) < MIN_PIECE_AREA) continue;
+    fan.push(regionOf(triangle));
+  }
+  return union(fan);
 }
 
 /** Where a place `across` metres off a piece's centreline stands, as the loft puts it. */
@@ -353,7 +377,8 @@ function segmentDistanceSquared(ax: number, ay: number, bx: number, by: number, 
   const dy = by - ay;
   const squared = dx * dx + dy * dy;
   let t = squared === 0 ? 0 : ((p.x - ax) * dx + (p.y - ay) * dy) / squared;
-  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
   const ox = p.x - (ax + dx * t);
   const oy = p.y - (ay + dy * t);
   return ox * ox + oy * oy;

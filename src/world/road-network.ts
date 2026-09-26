@@ -137,7 +137,8 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
     // From the last point back, so an index still to be used never moves.
     const sorted = [...edits].sort((m, n) => m.curve - n.curve || n.segment - m.segment || n.at - m.at);
     for (const edit of sorted) this.insertPoint(edit.curve, edit.segment, edit);
-    const { overHighway: _, ...line } = draft;
+    const line: DraftLine = { ...draft };
+    delete line.overHighway;
     const id = this.curves.length;
     const points = line.points.slice();
     const nodes = new Array<number>(points.length).fill(-1);
@@ -309,23 +310,29 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
     const meets = this.highwayAt(place);
     if (meets === undefined) return undefined;
     for (const foot of HALF_FEET) {
-      const cut = cutBack(draft, atStart, foot, (p) => this.pointAt(p.x, p.y) !== undefined);
-      if (cut === undefined || !this.footRuns(cut, atStart ? 0 : cut.points.length - 1)) continue;
-      const settled = settleCrossings(this, cut, whole);
-      if (settled === undefined) continue;
-      const road = settled.road;
-      const f = atStart ? 0 : road.points.length - 1;
-      const want = cut.points[atStart ? 0 : cut.points.length - 1] as Point;
-      const p = road.points[f] as Point;
-      if (dist(p.x, p.y, want.x, want.y) > SAME_PLACE || this.pointAt(p.x, p.y) !== undefined) continue;
-      if (this.interchangesOn(road.points).length > 0) continue;
-      const ramps = rampsAt(this, road, f, meets);
-      if (ramps === undefined) continue;
-      const curve = this.commit(road, settled.edits);
-      this.layRamps(ramps, curve.id);
-      return curve;
+      const curve = this.halfFoot(draft, atStart, foot, meets, whole);
+      if (curve !== undefined) return curve;
     }
     return undefined;
+  }
+
+  /** The arterial of {@link halfDiamond} cut back to one foot, laid with its ramps, or undefined where that foot fails. */
+  private halfFoot(draft: DraftLine, atStart: boolean, foot: number, meets: HighwayMeet[], whole: boolean): RoadCurve | undefined {
+    const cut = cutBack(draft, atStart, foot, (p) => this.pointAt(p.x, p.y) !== undefined);
+    if (cut === undefined || !this.footRuns(cut, atStart ? 0 : cut.points.length - 1)) return undefined;
+    const settled = settleCrossings(this, cut, whole);
+    if (settled === undefined) return undefined;
+    const road = settled.road;
+    const f = atStart ? 0 : road.points.length - 1;
+    const want = cut.points[atStart ? 0 : cut.points.length - 1] as Point;
+    const p = road.points[f] as Point;
+    if (dist(p.x, p.y, want.x, want.y) > SAME_PLACE || this.pointAt(p.x, p.y) !== undefined) return undefined;
+    if (this.interchangesOn(road.points).length > 0) return undefined;
+    const ramps = rampsAt(this, road, f, meets);
+    if (ramps === undefined) return undefined;
+    const curve = this.commit(road, settled.edits);
+    this.layRamps(ramps, curve.id);
+    return curve;
   }
 
   /**
@@ -337,12 +344,7 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
     const meets = this.highwayAt(place);
     if (meets === undefined) return undefined;
     const trunk = meets[0] as HighwayMeet;
-    const crosses = (line: DraftLine, from: number, to: number): boolean => {
-      for (let i = from; i < to; i++) {
-        if (this.crossingsAlong(line.points[i] as Point, line.points[i + 1] as Point).some((c) => c.curve === trunk.highway.id)) return true;
-      }
-      return false;
-    };
+    const crosses = (line: DraftLine, from: number, to: number): boolean => this.crossesCurve(line, from, to, trunk.highway.id);
     let dropped = dropPoint(draft, k);
     if (dropped !== undefined && !crosses(dropped, k - 1, k)) dropped = dropPoint(draft, k, nudgeOff(draft, k, trunk.highway, trunk.at));
     if (dropped === undefined) return undefined;
@@ -350,11 +352,37 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
     const settled = settleCrossings(this, { ...dropped, overHighway: true }, whole);
     if (settled === undefined) return undefined;
     if (this.interchangesOn(settled.road.points).length > 0) return undefined;
-    const feet = overpassFeet(settled.road, place);
+    const footed = this.withFeet(settled.road, place);
+    if (footed === undefined) return undefined;
+    const { road, feetAt } = footed;
+    const first = rampsAt(this, road, feetAt[0] as number, meets);
+    if (first === undefined) return undefined;
+    const second = rampsAt(this, road, feetAt[1] as number, meets, first);
+    if (second === undefined) return undefined;
+    const curve = this.commit(road, settled.edits);
+    this.layRamps([...first, ...second], curve.id);
+    return curve;
+  }
+
+  /** True where a line crosses curve `curve` on one of its segments from `from` up to `to`. */
+  private crossesCurve(line: DraftLine, from: number, to: number, curve: number): boolean {
+    for (let i = from; i < to; i++) {
+      if (this.crossingsAlong(line.points[i] as Point, line.points[i + 1] as Point).some((c) => c.curve === curve)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * The road of {@link overpassDiamond} with a point put in at each foot of its
+   * overpass, and the indices of those two points; undefined where a foot
+   * cannot stand.
+   */
+  private withFeet(settled: DraftLine, place: Point): { road: DraftLine; feetAt: number[] } | undefined {
+    const feet = overpassFeet(settled, place);
     if (feet === undefined) return undefined;
-    const distances = curveDistances(settled.road.points);
+    const distances = curveDistances(settled.points);
     // The far foot first, so the near one's index does not move.
-    const far = withPointAlong(settled.road, (distances[feet[1]] as number) + FOOT_MARGIN);
+    const far = withPointAlong(settled, (distances[feet[1]] as number) + FOOT_MARGIN);
     if (far === undefined) return undefined;
     const near = withPointAlong(far.line, (distances[feet[0]] as number) - FOOT_MARGIN);
     if (near === undefined) return undefined;
@@ -364,13 +392,7 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
       const p = road.points[f] as Point;
       if (this.pointAt(p.x, p.y) !== undefined || !this.footRuns(road, f)) return undefined;
     }
-    const first = rampsAt(this, road, feetAt[0] as number, meets);
-    if (first === undefined) return undefined;
-    const second = rampsAt(this, road, feetAt[1] as number, meets, first);
-    if (second === undefined) return undefined;
-    const curve = this.commit(road, settled.edits);
-    this.layRamps([...first, ...second], curve.id);
-    return curve;
+    return { road, feetAt };
   }
 
   /**
@@ -530,27 +552,8 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
     const span = dist(a.x, a.y, b.x, b.y);
     const t = span === 0 ? 0 : clamp(((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / (span * span), 0, 1);
     const at = segment + 1;
-    const shift = (segments: readonly number[]): number[] => {
-      const out: number[] = [];
-      for (const s of segments) {
-        if (s < segment) out.push(s);
-        else if (s === segment) out.push(s, s + 1);
-        else out.push(s + 1);
-      }
-      return out;
-    };
-    // The entries filed past the new point move on by one, from the last back,
-    // so no entry is moved onto one still to be moved.
-    for (let k = road.points.length - 1; k >= at; k--) {
-      const q = road.points[k] as Point;
-      const bucket = this.pointBuckets[this.pointColumn(q.y) * this.rows + this.pointColumn(q.x)] as number[];
-      for (let e = 0; e < bucket.length; e += 2) {
-        if (bucket[e] === id && bucket[e + 1] === k) bucket[e + 1] = k + 1;
-      }
-      const node = road.nodes[k] as number;
-      if (node < 0) continue;
-      for (const entry of (this.nodes[node] as NetworkNode).on) if (entry.curve === id && entry.index === k) entry.index = k + 1;
-    }
+    const shift = (segments: readonly number[]): number[] => shiftSegments(segments, segment);
+    this.renumberFrom(road, id, at);
     road.points.splice(at, 0, { x: p.x, y: p.y });
     road.nodes.splice(at, 0, -1);
     road.bridges = shift(road.bridges);
@@ -561,6 +564,24 @@ export class RoadNetwork extends NetworkClearance implements CrossingNetwork {
     (this.islands[id] as number[]).splice(at, 0, this.islandOf(p.x, p.y));
     (this.pointBuckets[this.pointColumn(p.y) * this.rows + this.pointColumn(p.x)] as number[]).push(id, at);
     this.splitSegment(road, segment);
+  }
+
+  /**
+   * Move on by one every entry the network files point `at` of curve `id` and
+   * those past it under, from the last back, so no entry is moved onto one
+   * still to be moved.
+   */
+  private renumberFrom(road: RoadCurve, id: number, at: number): void {
+    for (let k = road.points.length - 1; k >= at; k--) {
+      const q = road.points[k] as Point;
+      const bucket = this.pointBuckets[this.pointColumn(q.y) * this.rows + this.pointColumn(q.x)] as number[];
+      for (let e = 0; e < bucket.length; e += 2) {
+        if (bucket[e] === id && bucket[e + 1] === k) bucket[e + 1] = k + 1;
+      }
+      const node = road.nodes[k] as number;
+      if (node < 0) continue;
+      for (const entry of (this.nodes[node] as NetworkNode).on) if (entry.curve === id && entry.index === k) entry.index = k + 1;
+    }
   }
 
   // ------------------------------------------------------ what a plan asks
@@ -680,4 +701,15 @@ function stretchOf(highway: RoadCurve, segment: number): number {
   let count = 0;
   for (const i of highway.interchanges) if (i <= segment) count++;
   return count;
+}
+
+/** Segment indices after a point is put into segment `segment`: that one becomes two, and those past it move on by one. */
+function shiftSegments(segments: readonly number[], segment: number): number[] {
+  const out: number[] = [];
+  for (const s of segments) {
+    if (s < segment) out.push(s);
+    else if (s === segment) out.push(s, s + 1);
+    else out.push(s + 1);
+  }
+  return out;
 }

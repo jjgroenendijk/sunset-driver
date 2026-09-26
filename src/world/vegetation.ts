@@ -517,18 +517,21 @@ class EdgeIndex {
     this.minRow = empty ? 0 : columnOf(minY);
     this.columns = empty ? 1 : columnOf(maxX) - this.minColumn + 1;
     this.rows = empty ? 1 : columnOf(maxY) - this.minRow + 1;
-    for (let e = 0; e < this.ax.length; e++) {
-      const loX = columnOf(Math.min(this.ax[e] as number, this.bx[e] as number));
-      const hiX = columnOf(Math.max(this.ax[e] as number, this.bx[e] as number));
-      const loY = columnOf(Math.min(this.ay[e] as number, this.by[e] as number));
-      const hiY = columnOf(Math.max(this.ay[e] as number, this.by[e] as number));
-      for (let column = loX; column <= hiX; column++) {
-        for (let row = loY; row <= hiY; row++) {
-          const key = this.keyOf(column, row);
-          const bucket = this.buckets.get(key);
-          if (bucket === undefined) this.buckets.set(key, [e]);
-          else bucket.push(e);
-        }
+    for (let e = 0; e < this.ax.length; e++) this.file(e);
+  }
+
+  /** File edge `e` in every bucket the box around it touches. */
+  private file(e: number): void {
+    const loX = columnOf(Math.min(this.ax[e] as number, this.bx[e] as number));
+    const hiX = columnOf(Math.max(this.ax[e] as number, this.bx[e] as number));
+    const loY = columnOf(Math.min(this.ay[e] as number, this.by[e] as number));
+    const hiY = columnOf(Math.max(this.ay[e] as number, this.by[e] as number));
+    for (let column = loX; column <= hiX; column++) {
+      for (let row = loY; row <= hiY; row++) {
+        const key = this.keyOf(column, row);
+        const bucket = this.buckets.get(key);
+        if (bucket === undefined) this.buckets.set(key, [e]);
+        else bucket.push(e);
       }
     }
   }
@@ -599,7 +602,8 @@ function distanceSquaredToSegment(px: number, py: number, ax: number, ay: number
   const vy = by - ay;
   const lengthSquared = vx * vx + vy * vy;
   let t = lengthSquared > 0 ? ((px - ax) * vx + (py - ay) * vy) / lengthSquared : 0;
-  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
   const dx = px - (ax + vx * t);
   const dy = py - (ay + vy * t);
   return dx * dx + dy * dy;

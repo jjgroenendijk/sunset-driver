@@ -123,20 +123,30 @@ class CurveRibbon {
     this.bridged = new Uint8Array(segments);
     this.bored = new Uint8Array(segments);
     this.standing = new Uint8Array(segments).fill(1);
-    for (const i of road.bridges) {
-      if (i >= 0 && i < segments) {
-        this.bridged[i] = 1;
-        this.standing[i] = 0;
-      }
-    }
-    for (const i of road.tunnels) {
-      if (i >= 0 && i < segments) {
-        this.bored[i] = 1;
-        this.standing[i] = 0;
-      }
-    }
+    this.markOffGround(road.bridges, this.bridged);
+    this.markOffGround(road.tunnels, this.bored);
 
     this.distances = curveDistances(points);
+    this.measureSegments();
+    const half = footprintHalfWidth(road.tier);
+    for (let i = 0; i < n; i++) this.mitreAt(i, half);
+  }
+
+  /** Mark the listed segments in `flags` and take them off the ground. */
+  private markOffGround(list: readonly number[], flags: Uint8Array): void {
+    const segments = this.spans.length;
+    for (const i of list) {
+      if (i >= 0 && i < segments) {
+        flags[i] = 1;
+        this.standing[i] = 0;
+      }
+    }
+  }
+
+  /** The length and the direction across the road of every segment. */
+  private measureSegments(): void {
+    const points = this.points;
+    const segments = this.spans.length;
     for (let i = 0; i < segments; i++) {
       const a = points[i] as Point;
       const b = points[i + 1] as Point;
@@ -165,43 +175,44 @@ class CurveRibbon {
         this.segY[i] = this.segY[i + 1] as number;
       }
     }
+  }
 
-    const half = footprintHalfWidth(road.tier);
-    for (let i = 0; i < n; i++) {
-      const before = i > 0 ? i - 1 : 0;
-      const after = i < segments ? i : segments - 1;
-      if (segments === 0) {
-        this.pointX[i] = 0;
-        this.pointY[i] = 1;
-        this.mitres[i] = 1;
-        this.mitred[i] = 1;
-        continue;
-      }
-      const ax = (this.segX[before] as number) + (this.segX[after] as number);
-      const ay = (this.segY[before] as number) + (this.segY[after] as number);
-      const length = hypot(ax, ay);
+  /** The frame at point `i`, mitred where the room beside it allows; `half` is the footprint's half width. */
+  private mitreAt(i: number, half: number): void {
+    const segments = this.spans.length;
+    const before = i > 0 ? i - 1 : 0;
+    const after = i < segments ? i : segments - 1;
+    if (segments === 0) {
+      this.pointX[i] = 0;
+      this.pointY[i] = 1;
       this.mitres[i] = 1;
-      this.pointX[i] = this.segX[before] as number;
-      this.pointY[i] = this.segY[before] as number;
-      // A point the road doubles back at has no bisector to swing to at all.
-      if (length < 1e-9) continue;
-      const ux = ax / length;
-      const uy = ay / length;
-      const cosine = ux * (this.segX[before] as number) + uy * (this.segY[before] as number);
-      if (cosine <= 0) continue;
-      // How far the mitre would move the outer corner along the road, against
-      // the room the two segments beside the point leave for it.
-      const shift = (half * Math.sqrt(Math.max(0, 1 - cosine * cosine))) / cosine;
-      const room = Math.min(MITRE_SHIFT, MITRE_SHARE * Math.min(this.spans[before] as number, this.spans[after] as number));
-      // A point where the two segments lie on one line moves nothing, so it
-      // takes the mitre whatever room there is. That is every point of a
-      // straight road, and both ends of every curve.
-      if (shift > room) continue;
-      this.pointX[i] = ux;
-      this.pointY[i] = uy;
-      this.mitres[i] = 1 / cosine;
       this.mitred[i] = 1;
+      return;
     }
+    const ax = (this.segX[before] as number) + (this.segX[after] as number);
+    const ay = (this.segY[before] as number) + (this.segY[after] as number);
+    const length = hypot(ax, ay);
+    this.mitres[i] = 1;
+    this.pointX[i] = this.segX[before] as number;
+    this.pointY[i] = this.segY[before] as number;
+    // A point the road doubles back at has no bisector to swing to at all.
+    if (length < 1e-9) return;
+    const ux = ax / length;
+    const uy = ay / length;
+    const cosine = ux * (this.segX[before] as number) + uy * (this.segY[before] as number);
+    if (cosine <= 0) return;
+    // How far the mitre would move the outer corner along the road, against
+    // the room the two segments beside the point leave for it.
+    const shift = (half * Math.sqrt(Math.max(0, 1 - cosine * cosine))) / cosine;
+    const room = Math.min(MITRE_SHIFT, MITRE_SHARE * Math.min(this.spans[before] as number, this.spans[after] as number));
+    // A point where the two segments lie on one line moves nothing, so it
+    // takes the mitre whatever room there is. That is every point of a
+    // straight road, and both ends of every curve.
+    if (shift > room) return;
+    this.pointX[i] = ux;
+    this.pointY[i] = uy;
+    this.mitres[i] = 1 / cosine;
+    this.mitred[i] = 1;
   }
 
   get segments(): number {
@@ -222,17 +233,16 @@ class CurveRibbon {
     const a = this.points[i] as Point;
     const b = this.points[i + 1] as Point | undefined;
     if (b === undefined) return this.atPoint(i);
-    const vertex = x === a.x && y === a.y ? i : x === b.x && y === b.y ? i + 1 : -1;
+    let vertex = -1;
+    if (x === a.x && y === a.y) vertex = i;
+    else if (x === b.x && y === b.y) vertex = i + 1;
     if (vertex >= 0 && this.mitred[vertex] === 1) return this.atPoint(vertex);
     const span = this.spans[i] as number;
-    const t =
-      vertex === i
-        ? 0
-        : vertex === i + 1
-          ? 1
-          : span === 0
-            ? 0
-            : clamp(((x - a.x) * (b.x - a.x) + (y - a.y) * (b.y - a.y)) / (span * span), 0, 1);
+    let t: number;
+    if (vertex === i) t = 0;
+    else if (vertex === i + 1) t = 1;
+    else if (span === 0) t = 0;
+    else t = clamp(((x - a.x) * (b.x - a.x) + (y - a.y) * (b.y - a.y)) / (span * span), 0, 1);
     const profile = vertex >= 0 ? this.beds.pointProfile(this.curve, vertex) : this.beds.profileAt(this.curve, i, t);
     return {
       height: profile.h,

@@ -249,6 +249,41 @@ function standOnLand(layout: TerrainLayout, noise: CoastNoise, index: number): v
   }
 }
 
+/** The least and the greatest finite value of an array; Infinity and -Infinity where there is none. */
+function finiteRange(raw: Float32Array): [number, number] {
+  let rawMin = Infinity;
+  let rawMax = -Infinity;
+  for (let i = 0; i < raw.length; i++) {
+    const v = raw[i] as number;
+    if (!Number.isFinite(v)) continue;
+    if (v < rawMin) rawMin = v;
+    if (v > rawMax) rawMax = v;
+  }
+  return [rawMin, rawMax];
+}
+
+/**
+ * How steep the relief is at a place (`ramp`) and how high its base rises
+ * (`rise`), both in [0, 1]: from the core the relief climbs outward, from a
+ * spine it climbs inward.
+ */
+function reliefAt(layout: TerrainLayout, spine: TerrainLayout['spine'], x: number, y: number): { ramp: number; rise: number } {
+  const relief = layout.archetype.relief;
+  const size = layout.size;
+  if (spine === undefined) {
+    const d = hypot(x - layout.core.x, y - layout.core.y);
+    return {
+      ramp: smoothstep(relief.rampFrom * size, relief.rampTo * size, d),
+      rise: smoothstep(relief.baseFrom * size, relief.baseTo * size, d),
+    };
+  }
+  const d = segmentDistance(x, y, spine.from, spine.to);
+  return {
+    ramp: 1 - smoothstep(relief.rampFrom * size, relief.rampTo * size, d),
+    rise: 1 - smoothstep(relief.baseFrom * size, relief.baseTo * size, d),
+  };
+}
+
 /** Bake the full heightfield for a world. */
 export function generateTerrain(seed: number, layout: TerrainLayout): Heightfield {
   const size = layout.size;
@@ -274,14 +309,7 @@ export function generateTerrain(seed: number, layout: TerrainLayout): Heightfiel
   gen.build();
   const raw = gen.heights as Float32Array;
   gen.dispose();
-  let rawMin = Infinity;
-  let rawMax = -Infinity;
-  for (let i = 0; i < raw.length; i++) {
-    const v = raw[i] as number;
-    if (!Number.isFinite(v)) continue;
-    if (v < rawMin) rawMin = v;
-    if (v > rawMax) rawMax = v;
-  }
+  const [rawMin, rawMax] = finiteRange(raw);
   const rawRange = Math.max(1e-6, rawMax - rawMin);
   // From the core the relief climbs outward; from a spine it climbs inward.
   const spine = relief.keyedTo === 'spine' ? layout.spine : undefined;
@@ -296,17 +324,7 @@ export function generateTerrain(seed: number, layout: TerrainLayout): Heightfiel
 
       // Land: gentle near the core, or far from the spine; steep far from the one or close to the other, and deep inland.
       const inland = smoothstep(0, size * 0.09, -coast);
-      let ramp: number;
-      let rise: number;
-      if (spine === undefined) {
-        const d = hypot(x - layout.core.x, y - layout.core.y);
-        ramp = smoothstep(relief.rampFrom * size, relief.rampTo * size, d);
-        rise = smoothstep(relief.baseFrom * size, relief.baseTo * size, d);
-      } else {
-        const d = segmentDistance(x, y, spine.from, spine.to);
-        ramp = 1 - smoothstep(relief.rampFrom * size, relief.rampTo * size, d);
-        rise = 1 - smoothstep(relief.baseFrom * size, relief.baseTo * size, d);
-      }
+      const { ramp, rise } = reliefAt(layout, spine, x, y);
       const amplitude = lerp(relief.nearAmplitude, relief.farAmplitude, ramp) * lerp(0.2, 1, inland);
       const base = 2.5 + relief.baseRise * rise * inland;
       let land = base + rough * amplitude;

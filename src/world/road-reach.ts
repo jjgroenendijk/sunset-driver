@@ -98,19 +98,22 @@ export class RoadReach {
     this.minRow = empty ? 0 : columnOf(minY);
     this.columns = empty ? 1 : columnOf(maxX) - this.minColumn + 1;
     this.rows = empty ? 1 : columnOf(maxY) - this.minRow + 1;
-    for (let s = 0; s < this.ax.length; s++) {
-      const reach = Math.sqrt(this.reachSquared[s] as number);
-      const loX = columnOf(Math.min(this.ax[s] as number, this.bx[s] as number) - reach);
-      const hiX = columnOf(Math.max(this.ax[s] as number, this.bx[s] as number) + reach);
-      const loY = columnOf(Math.min(this.ay[s] as number, this.by[s] as number) - reach);
-      const hiY = columnOf(Math.max(this.ay[s] as number, this.by[s] as number) + reach);
-      for (let cx = loX; cx <= hiX; cx++) {
-        for (let cy = loY; cy <= hiY; cy++) {
-          const key = this.keyOf(cx, cy);
-          const bucket = this.buckets.get(key);
-          if (bucket === undefined) this.buckets.set(key, [s]);
-          else bucket.push(s);
-        }
+    for (let s = 0; s < this.ax.length; s++) this.file(s);
+  }
+
+  /** File segment `s` in every bucket its reach covers. */
+  private file(s: number): void {
+    const reach = Math.sqrt(this.reachSquared[s] as number);
+    const loX = columnOf(Math.min(this.ax[s] as number, this.bx[s] as number) - reach);
+    const hiX = columnOf(Math.max(this.ax[s] as number, this.bx[s] as number) + reach);
+    const loY = columnOf(Math.min(this.ay[s] as number, this.by[s] as number) - reach);
+    const hiY = columnOf(Math.max(this.ay[s] as number, this.by[s] as number) + reach);
+    for (let cx = loX; cx <= hiX; cx++) {
+      for (let cy = loY; cy <= hiY; cy++) {
+        const key = this.keyOf(cx, cy);
+        const bucket = this.buckets.get(key);
+        if (bucket === undefined) this.buckets.set(key, [s]);
+        else bucket.push(s);
       }
     }
   }
@@ -204,7 +207,8 @@ function distanceSquaredToSegment(px: number, py: number, ax: number, ay: number
   const vy = by - ay;
   const lengthSquared = vx * vx + vy * vy;
   let t = lengthSquared > 0 ? ((px - ax) * vx + (py - ay) * vy) / lengthSquared : 0;
-  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
   const dx = px - (ax + vx * t);
   const dy = py - (ay + vy * t);
   return dx * dx + dy * dy;

@@ -132,7 +132,10 @@ export function spanOf(ground: Ground, line: PlaneLine, nodes: readonly PlaneNod
       const laid = laidHeight(points, distances, own, reach, i);
       if (laid !== undefined) (laid.cut ? cut : blend).push(laid.height);
     }
-    const heights = cut.length > 0 ? cut : blend.length > 0 ? blend : [own(i)];
+    let heights: number[];
+    if (cut.length > 0) heights = cut;
+    else if (blend.length > 0) heights = blend;
+    else heights = [own(i)];
     return { low: Math.min(...heights), high: Math.max(...heights) };
   });
   // A cut inside the segment is a knot of the profile, as `bed.ts` inserts it.

@@ -335,22 +335,13 @@ export function buildParcels(
   const sand = world.beaches.map((beach) => regionOf(beach.sand));
   const shore = sand.length === 0 ? { inside: [], outside: free } : split(free, sand);
   const pieces: Piece[] = [];
-  for (const region of shore.inside) {
-    // A strip of sand is kept whole: the roads bound it on one side only, so
-    // cutting it would leave pieces the sea surrounds on every side but one.
-    const piece = pieceOf(region, reach);
-    if (piece !== undefined) pieces.push({ ...piece, owner: 'beach' });
-  }
+  // A strip of sand is kept whole: the roads bound it on one side only, so
+  // cutting it would leave pieces the sea surrounds on every side but one.
+  pushOwned(pieces, shore.inside, reach, 'beach');
   for (const region of shore.outside) cutToSize(region, zones, field, reach, pieces, 0);
-  for (const region of inside.inside) {
-    const piece = pieceOf(region, reach);
-    if (piece !== undefined) pieces.push({ ...piece, owner: 'ground' });
-  }
+  pushOwned(pieces, inside.inside, reach, 'ground');
   markCarParks(pieces, world.beaches, reach);
-  for (const region of under.inside) {
-    const piece = pieceOf(region, reach);
-    if (piece !== undefined) pieces.push({ ...piece, owner: 'under-structure' });
-  }
+  pushOwned(pieces, under.inside, reach, 'under-structure');
 
   const parcels: Parcel[] = [];
   const stations: PoliceStation[] = [];
@@ -376,6 +367,14 @@ export function buildParcels(
   }
   stations.sort((a, b) => a.district - b.district);
   return { parcels, area, land: areaOf(dry), stations, metro: metro.stations() };
+}
+
+/** Add each region as a whole piece of the owner its ground forces, where it is a piece at all. */
+function pushOwned(pieces: Piece[], regions: readonly Region[], reach: RoadReach, owner: ParcelOwner): void {
+  for (const region of regions) {
+    const piece = pieceOf(region, reach);
+    if (piece !== undefined) pieces.push({ ...piece, owner });
+  }
 }
 
 /**
@@ -407,24 +406,24 @@ function offerStation(stations: PoliceStation[], district: District, parcel: num
  */
 function markCarParks(pieces: Piece[], beaches: readonly Beach[], reach: RoadReach): void {
   for (const beach of beaches) {
-    for (const park of beach.carParks) {
-      const at = middleOf(park);
-      const host = pieces.findIndex((piece) => piece.owner === undefined && pointInRegion(at, piece.region));
-      if (host < 0) continue;
-      const halves = split([(pieces[host] as Piece).region], [regionOf(park)]);
-      const cut: Piece[] = [];
-      for (const region of halves.inside) {
-        const piece = pieceOf(region, reach);
-        if (piece !== undefined) cut.push({ ...piece, owner: 'car-park' });
-      }
-      if (cut.length === 0) continue;
-      for (const region of halves.outside) {
-        const piece = pieceOf(region, reach);
-        if (piece !== undefined) cut.push(piece);
-      }
-      pieces.splice(host, 1, ...cut);
-    }
+    for (const park of beach.carParks) cutCarPark(pieces, park, reach);
   }
+}
+
+/** Cut one car park out of the unowned piece it stands in, where a road runs along it. */
+function cutCarPark(pieces: Piece[], park: readonly Point[], reach: RoadReach): void {
+  const at = middleOf(park);
+  const host = pieces.findIndex((piece) => piece.owner === undefined && pointInRegion(at, piece.region));
+  if (host < 0) return;
+  const halves = split([(pieces[host] as Piece).region], [regionOf(park)]);
+  const cut: Piece[] = [];
+  pushOwned(cut, halves.inside, reach, 'car-park');
+  if (cut.length === 0) return;
+  for (const region of halves.outside) {
+    const piece = pieceOf(region, reach);
+    if (piece !== undefined) cut.push(piece);
+  }
+  pieces.splice(host, 1, ...cut);
 }
 
 /** The middle of a ring's corners. */

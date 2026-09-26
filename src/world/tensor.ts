@@ -176,6 +176,8 @@ export class TensorField {
   private readonly radialOuter: number;
   /** Scratch for {@link sample} and {@link majorAt}: (a, b, total weight). Reused, never escapes. */
   private readonly acc = new Float64Array(3);
+  /** Scratch for one influence of {@link accumulate}, as the helpers that sum it leave it. Reused, never escapes. */
+  private readonly part = new Float64Array(3);
 
   constructor(world: WorldSkeleton) {
     const size = world.size;
@@ -309,19 +311,11 @@ export class TensorField {
     // The city's own plan is one more grid, the one that covers the whole of the
     // core and the inner ring rather than a disc around a district site: without
     // it the ground between two sites holds no plan at all.
-    let ga = inCity * this.cityC2;
-    let gb = inCity * this.cityS2;
-    let gw = inCity;
-    for (const g of this.grids) {
-      const dx = x - g.x;
-      const dy = y - g.y;
-      const d2 = dx * dx + dy * dy;
-      if (d2 >= g.radius * g.radius) continue;
-      const w = g.hold * (1 - smoothstep(0, g.radius, Math.sqrt(d2)));
-      ga += w * g.c2;
-      gb += w * g.s2;
-      gw += w;
-    }
+    const part = this.part;
+    this.gridSum(x, y, inCity);
+    const ga = part[0] as number;
+    const gb = part[1] as number;
+    const gw = part[2] as number;
     if (gw > 0) {
       const scale = wGrid / Math.max(1, gw);
       a += ga * scale;
@@ -351,40 +345,18 @@ export class TensorField {
     // Coast: near the water, roads run along the shore. The shoreline is a level
     // set of the signed distance field, so its gradient is the shore normal.
     const coast = wCoast * (1 - smoothstep(COAST_HOLD, COAST_REACH, Math.abs(this.shore.sample(x, y))));
-    if (coast > 0) {
-      const nx = this.shore.sample(x + SHORE_STEP, y) - this.shore.sample(x - SHORE_STEP, y);
-      const ny = this.shore.sample(x, y + SHORE_STEP) - this.shore.sample(x, y - SHORE_STEP);
-      const n2 = nx * nx + ny * ny;
-      // Where the distance field folds — the middle of a bay, a nook between two
-      // shores — opposite normals cancel and the gradient shortens. There is no
-      // one shore to run along there, so the coast lets go instead of spinning.
-      const along = smoothstep(0.35, 0.75, Math.sqrt(n2) / (2 * SHORE_STEP));
-      if (n2 > 0 && along > 0) {
-        const w = coast * along;
-        a -= (w * (nx * nx - ny * ny)) / n2;
-        b -= (w * 2 * nx * ny) / n2;
-        total += w;
-      }
+    if (coast > 0 && this.coastPull(x, y, coast)) {
+      a -= part[0] as number;
+      b -= part[1] as number;
+      total += part[2] as number;
     }
 
     // River banks pull the same way a coast does; nearby segments share one budget
     // so a meander doubling back on itself does not count twice.
-    const from = this.riverFrom;
-    let ra = 0;
-    let rb = 0;
-    let rw = 0;
-    for (let i = 0; i < from.length; i++) {
-      const p = from[i] as Point;
-      const q = this.riverTo[i] as Point;
-      const reach = this.riverReach[i] as number;
-      if (x < Math.min(p.x, q.x) - reach || x > Math.max(p.x, q.x) + reach) continue;
-      if (y < Math.min(p.y, q.y) - reach || y > Math.max(p.y, q.y) + reach) continue;
-      const w = 1 - smoothstep(0, reach, segmentDistance(x, y, p, q));
-      if (w <= 0) continue;
-      ra += w * (this.riverC2[i] as number);
-      rb += w * (this.riverS2[i] as number);
-      rw += w;
-    }
+    this.riverSum(x, y);
+    const ra = part[0] as number;
+    const rb = part[1] as number;
+    const rw = part[2] as number;
     if (rw > 0) {
       const scale = wRiver / Math.max(1, rw);
       a += ra * scale;
@@ -403,6 +375,75 @@ export class TensorField {
     acc[1] = b;
     acc[2] = total;
     return acc;
+  }
+
+  /**
+   * The district grids and the city's own plan, summed into `part` as (a, b,
+   * weight). The city's plan comes first, weighted by `inCity`.
+   */
+  private gridSum(x: number, y: number, inCity: number): void {
+    let ga = inCity * this.cityC2;
+    let gb = inCity * this.cityS2;
+    let gw = inCity;
+    for (const g of this.grids) {
+      const dx = x - g.x;
+      const dy = y - g.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= g.radius * g.radius) continue;
+      const w = g.hold * (1 - smoothstep(0, g.radius, Math.sqrt(d2)));
+      ga += w * g.c2;
+      gb += w * g.s2;
+      gw += w;
+    }
+    const part = this.part;
+    part[0] = ga;
+    part[1] = gb;
+    part[2] = gw;
+  }
+
+  /**
+   * The pull of the shore, `coast` at full strength, into `part` as the (a, b)
+   * to take away and the weight to add. False where the shore lets go.
+   */
+  private coastPull(x: number, y: number, coast: number): boolean {
+    const nx = this.shore.sample(x + SHORE_STEP, y) - this.shore.sample(x - SHORE_STEP, y);
+    const ny = this.shore.sample(x, y + SHORE_STEP) - this.shore.sample(x, y - SHORE_STEP);
+    const n2 = nx * nx + ny * ny;
+    // Where the distance field folds — the middle of a bay, a nook between two
+    // shores — opposite normals cancel and the gradient shortens. There is no
+    // one shore to run along there, so the coast lets go instead of spinning.
+    const along = smoothstep(0.35, 0.75, Math.sqrt(n2) / (2 * SHORE_STEP));
+    if (!(n2 > 0 && along > 0)) return false;
+    const w = coast * along;
+    const part = this.part;
+    part[0] = (w * (nx * nx - ny * ny)) / n2;
+    part[1] = (w * 2 * nx * ny) / n2;
+    part[2] = w;
+    return true;
+  }
+
+  /** The river banks near a place, summed into `part` as (a, b, weight). */
+  private riverSum(x: number, y: number): void {
+    const from = this.riverFrom;
+    let ra = 0;
+    let rb = 0;
+    let rw = 0;
+    for (let i = 0; i < from.length; i++) {
+      const p = from[i] as Point;
+      const q = this.riverTo[i] as Point;
+      const reach = this.riverReach[i] as number;
+      if (x < Math.min(p.x, q.x) - reach || x > Math.max(p.x, q.x) + reach) continue;
+      if (y < Math.min(p.y, q.y) - reach || y > Math.max(p.y, q.y) + reach) continue;
+      const w = 1 - smoothstep(0, reach, segmentDistance(x, y, p, q));
+      if (w <= 0) continue;
+      ra += w * (this.riverC2[i] as number);
+      rb += w * (this.riverS2[i] as number);
+      rw += w;
+    }
+    const part = this.part;
+    part[0] = ra;
+    part[1] = rb;
+    part[2] = rw;
   }
 }
 
@@ -439,35 +480,42 @@ function buildShoreField(hf: Heightfield, seaLevel: number): Heightfield {
 
 /** Two-pass chamfer distance in cells from every cell whose mask is `from`. */
 function chamfer(mask: Uint8Array, n: number, from: number): Float32Array {
-  const diag = Math.SQRT2;
   const far = n * 2;
   const d = new Float32Array(n * n);
   for (let i = 0; i < d.length; i++) d[i] = mask[i] === from ? 0 : far;
-  const relax = (i: number, j: number, cost: number): void => {
-    const v = (d[j] as number) + cost;
-    if (v < (d[i] as number)) d[i] = v;
-  };
   for (let iy = 0; iy < n; iy++) {
-    for (let ix = 0; ix < n; ix++) {
-      const i = iy * n + ix;
-      if (ix > 0) relax(i, i - 1, 1);
-      if (iy > 0) {
-        relax(i, i - n, 1);
-        if (ix > 0) relax(i, i - n - 1, diag);
-        if (ix < n - 1) relax(i, i - n + 1, diag);
-      }
-    }
+    for (let ix = 0; ix < n; ix++) relaxForward(d, n, ix, iy);
   }
   for (let iy = n - 1; iy >= 0; iy--) {
-    for (let ix = n - 1; ix >= 0; ix--) {
-      const i = iy * n + ix;
-      if (ix < n - 1) relax(i, i + 1, 1);
-      if (iy < n - 1) {
-        relax(i, i + n, 1);
-        if (ix < n - 1) relax(i, i + n + 1, diag);
-        if (ix > 0) relax(i, i + n - 1, diag);
-      }
-    }
+    for (let ix = n - 1; ix >= 0; ix--) relaxBackward(d, n, ix, iy);
   }
   return d;
+}
+
+/** Take cell `i` down to the distance through cell `j`, a step of `cost` away, where that is shorter. */
+function relax(d: Float32Array, i: number, j: number, cost: number): void {
+  const v = (d[j] as number) + cost;
+  if (v < (d[i] as number)) d[i] = v;
+}
+
+/** The forward pass of {@link chamfer} at one cell: from the cells before it. */
+function relaxForward(d: Float32Array, n: number, ix: number, iy: number): void {
+  const i = iy * n + ix;
+  if (ix > 0) relax(d, i, i - 1, 1);
+  if (iy > 0) {
+    relax(d, i, i - n, 1);
+    if (ix > 0) relax(d, i, i - n - 1, Math.SQRT2);
+    if (ix < n - 1) relax(d, i, i - n + 1, Math.SQRT2);
+  }
+}
+
+/** The backward pass of {@link chamfer} at one cell: from the cells after it. */
+function relaxBackward(d: Float32Array, n: number, ix: number, iy: number): void {
+  const i = iy * n + ix;
+  if (ix < n - 1) relax(d, i, i + 1, 1);
+  if (iy < n - 1) {
+    relax(d, i, i + n, 1);
+    if (ix < n - 1) relax(d, i, i + n + 1, Math.SQRT2);
+    if (ix > 0) relax(d, i, i + n - 1, Math.SQRT2);
+  }
 }

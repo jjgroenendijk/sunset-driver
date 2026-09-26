@@ -67,6 +67,17 @@ export interface Trail {
   start?: Point;
 }
 
+/** A step {@link NetworkClearance.stepOk} vets, with what it derives from it once. */
+interface Step {
+  a: Point;
+  b: Point;
+  tier: RoadTier;
+  half: number;
+  heading: number;
+  trail: Trail;
+  meet: Point | undefined;
+}
+
 /** Where along the stored segment the last {@link closest} came nearest, from 0 at its start to 1 at its end. */
 let closestT = 0;
 
@@ -235,83 +246,98 @@ export class NetworkClearance {
    */
   stepOk(a: Point, b: Point, tier: RoadTier, trail: Trail = { crossed: [] }, meet?: Point): boolean {
     const half = footprintHalfWidth(tier);
-    const heading = atan2(b.y - a.y, b.x - a.x);
+    const step: Step = { a, b, tier, half, heading: atan2(b.y - a.y, b.x - a.x), trail, meet };
     const crossed = trail.crossed;
     const before = crossed.length;
     let ok = true;
     this.visit(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.max(a.x, b.x), Math.max(a.y, b.y), half, (s) => {
-      if (!ok) return;
-      const e = this.ends;
-      const k = s * 4;
-      const reach = half + (this.halfWidth[s] as number);
-      // A segment whose box stands a reach clear of the step's is further
-      // than a reach from every part of it, so nothing below can refuse it.
-      if (apart(e, k, a, b, reach)) return;
-      // The end of a road that met nothing stands on whatever passes within
-      // reach of it, crossing or not, so a step keeps that far from it. A step
-      // from that end, or meeting a road on it, is a junction there instead.
-      for (const [flag, end] of [[s * 2, k], [s * 2 + 1, k + 2]] as const) {
-        if (this.terminal[flag] !== true || touches(e, end, a) || (meet !== undefined && touches(e, end, meet))) continue;
-        if (trail.start !== undefined && touches(e, end, trail.start)) continue;
-        if (toSegment(e[end] as number, e[end + 1] as number, a.x, a.y, b.x, b.y) < reach) {
-          ok = false;
-          return;
-        }
-      }
-      if (meet !== undefined && (touches(e, k, meet) || touches(e, k + 2, meet))) return;
-      const distance = closest(a.x, a.y, b.x, b.y, e, s);
-      const t = closestT;
-      if (distance >= reach) return;
-      // Near only a corner of the segment, the step does not run beside its
-      // line; the segment on the other side of the corner answers for that.
-      if (distance > 0 && (t <= 0 || t >= 1)) return;
-      const along = atan2((e[k + 3] as number) - (e[k + 1] as number), (e[k + 2] as number) - (e[k] as number));
-      if (directionDelta(heading, along) < TRACE_MEET) {
-        ok = false;
-        return;
-      }
-      if (distance > 0) return;
-      const x = (e[k] as number) + ((e[k + 2] as number) - (e[k] as number)) * t;
-      const y = (e[k + 1] as number) + ((e[k + 3] as number) - (e[k + 1] as number)) * t;
-      const width = this.halfWidth[s] as number;
-      // A step that touches the line of a road the policy keeps this tier off
-      // is refused, whether it crosses there or ends there. A place two roads
-      // share is a junction, and `RoadNetwork.add` gives one to any point that
-      // lands within `SAME_PLACE` of a road point without asking `mayJoin`, so
-      // a street walking onto a highway vertex would junction with it.
-      if (!mayCross(tier, this.tierOf[s] as RoadTier)) {
-        ok = false;
-        return;
-      }
-      // A step that starts on a road, or ends on one, touches it there: that is
-      // the junction, not a crossing. A ramp takes no junction on the way, so
-      // it is touched at its own two ends or nowhere.
-      if (hypot(x - a.x, y - a.y) <= SAME_PLACE || hypot(x - b.x, y - b.y) <= SAME_PLACE) {
-        if (this.tierOf[s] !== 'ramp') return;
-        const first = this.terminal[s * 2] === true && hypot(x - (e[k] as number), y - (e[k + 1] as number)) <= SAME_PLACE;
-        const last = this.terminal[s * 2 + 1] === true && hypot(x - (e[k + 2] as number), y - (e[k + 3] as number)) <= SAME_PLACE;
-        if (!first && !last) ok = false;
-        return;
-      }
-      // Nor may it cross a road beside the junction it started from or ends on.
-      for (const junction of [trail.start, meet]) {
-        if (junction !== undefined && hypot(x - junction.x, y - junction.y) < width + half) ok = false;
-      }
-      if (!ok) return;
-      // A highway is crossed at one of its slots or not at all (spec section
-      // 6.2), and under the slots of one stretch between two interchanges by
-      // one road at most (issue #676).
-      const curve = this.curve[s] as number;
-      if (this.crossable[s] !== true || (this.tierOf[s] === 'highway' && this.slotTaken(curve, (this.segmentsOf[curve] as number[]).indexOf(s)))) {
-        ok = false;
-        return;
-      }
-      for (let c = 0; c < crossed.length; c += 4) {
-        if (hypot((crossed[c] as number) - x, (crossed[c + 1] as number) - y) < width + (crossed[c + 3] as number)) ok = false;
-      }
-      crossed.push(x, y, this.curve[s] as number, width);
+      if (ok && !this.stepPasses(s, step)) ok = false;
     });
     if (!ok) crossed.length = before;
+    return ok;
+  }
+
+  /** True where the step of {@link stepOk} may pass segment `s`. A crossing it makes is added to its trail. */
+  private stepPasses(s: number, step: Step): boolean {
+    const { a, b, half, meet } = step;
+    const e = this.ends;
+    const k = s * 4;
+    const reach = half + (this.halfWidth[s] as number);
+    // A segment whose box stands a reach clear of the step's is further
+    // than a reach from every part of it, so nothing below can refuse it.
+    if (apart(e, k, a, b, reach)) return true;
+    if (this.nearLooseEnd(s, step, reach)) return false;
+    if (meet !== undefined && (touches(e, k, meet) || touches(e, k + 2, meet))) return true;
+    const distance = closest(a.x, a.y, b.x, b.y, e, s);
+    const t = closestT;
+    if (distance >= reach) return true;
+    // Near only a corner of the segment, the step does not run beside its
+    // line; the segment on the other side of the corner answers for that.
+    if (distance > 0 && (t <= 0 || t >= 1)) return true;
+    const along = atan2((e[k + 3] as number) - (e[k + 1] as number), (e[k + 2] as number) - (e[k] as number));
+    if (directionDelta(step.heading, along) < TRACE_MEET) return false;
+    if (distance > 0) return true;
+    return this.crossingOk(s, t, step);
+  }
+
+  /**
+   * True where the step comes within reach of an end of segment `s` that met
+   * nothing. That end stands on whatever passes within reach of it, crossing
+   * or not, so a step keeps that far from it. A step from that end, or
+   * meeting a road on it, is a junction there instead.
+   */
+  private nearLooseEnd(s: number, step: Step, reach: number): boolean {
+    const { a, b, meet, trail } = step;
+    const e = this.ends;
+    const k = s * 4;
+    for (const [flag, end] of [[s * 2, k], [s * 2 + 1, k + 2]] as const) {
+      if (this.terminal[flag] !== true || touches(e, end, a) || (meet !== undefined && touches(e, end, meet))) continue;
+      if (trail.start !== undefined && touches(e, end, trail.start)) continue;
+      if (toSegment(e[end] as number, e[end + 1] as number, a.x, a.y, b.x, b.y) < reach) return true;
+    }
+    return false;
+  }
+
+  /** True where the step may touch the line of segment `s` at `t` along it. A crossing is added to the trail. */
+  private crossingOk(s: number, t: number, step: Step): boolean {
+    const { a, b, half, meet, trail } = step;
+    const e = this.ends;
+    const k = s * 4;
+    const x = (e[k] as number) + ((e[k + 2] as number) - (e[k] as number)) * t;
+    const y = (e[k + 1] as number) + ((e[k + 3] as number) - (e[k + 1] as number)) * t;
+    const width = this.halfWidth[s] as number;
+    // A step that touches the line of a road the policy keeps this tier off
+    // is refused, whether it crosses there or ends there. A place two roads
+    // share is a junction, and `RoadNetwork.add` gives one to any point that
+    // lands within `SAME_PLACE` of a road point without asking `mayJoin`, so
+    // a street walking onto a highway vertex would junction with it.
+    if (!mayCross(step.tier, this.tierOf[s] as RoadTier)) return false;
+    // A step that starts on a road, or ends on one, touches it there: that is
+    // the junction, not a crossing. A ramp takes no junction on the way, so
+    // it is touched at its own two ends or nowhere.
+    if (hypot(x - a.x, y - a.y) <= SAME_PLACE || hypot(x - b.x, y - b.y) <= SAME_PLACE) {
+      if (this.tierOf[s] !== 'ramp') return true;
+      const first = this.terminal[s * 2] === true && hypot(x - (e[k] as number), y - (e[k + 1] as number)) <= SAME_PLACE;
+      const last = this.terminal[s * 2 + 1] === true && hypot(x - (e[k + 2] as number), y - (e[k + 3] as number)) <= SAME_PLACE;
+      return first || last;
+    }
+    // Nor may it cross a road beside the junction it started from or ends on.
+    for (const junction of [trail.start, meet]) {
+      if (junction !== undefined && hypot(x - junction.x, y - junction.y) < width + half) return false;
+    }
+    // A highway is crossed at one of its slots or not at all (spec section
+    // 6.2), and under the slots of one stretch between two interchanges by
+    // one road at most (issue #676).
+    const curve = this.curve[s] as number;
+    if (this.crossable[s] !== true || (this.tierOf[s] === 'highway' && this.slotTaken(curve, (this.segmentsOf[curve] as number[]).indexOf(s)))) {
+      return false;
+    }
+    const crossed = trail.crossed;
+    let ok = true;
+    for (let c = 0; c < crossed.length; c += 4) {
+      if (hypot((crossed[c] as number) - x, (crossed[c + 1] as number) - y) < width + (crossed[c + 3] as number)) ok = false;
+    }
+    crossed.push(x, y, this.curve[s] as number, width);
     return ok;
   }
 
