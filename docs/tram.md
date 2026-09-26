@@ -2,14 +2,18 @@
 
 The gotchas of the tram of spec section 13.2: the loop and how it keeps to the lights, the short
 runs a tram does not fit, the track, and the traffic that waits while a tram crosses its turn. The
-code is `src/sim/transit/tram.ts`, `tram-timing.ts`, `tram-bodies.ts` and `tram-guard.ts`. The
-traffic and the lights themselves are in `docs/city-life.md`.
+code is `src/sim/transit/tram.ts`, `tram-timing.ts`, `tram-motion.ts`, `tram-bodies.ts` and
+`tram-guard.ts`. The traffic and the lights themselves are in `docs/city-life.md`.
 
 ## Contents
 
 - The loop and its lights
+- How the tram drives
 - Short runs
 - The track and the stops
+- Where a stop stands
+- The platform
+- The people at a stop
 - The turns a tram crosses
 
 ## The loop and its lights
@@ -22,6 +26,22 @@ traffic and the lights themselves are in `docs/city-life.md`.
   tram runs it whole cycles behind, for the reason a traffic tour does.
 - The pedestrians wait at the lights (`docs/crowd.md`), so they keep to the tram too: it only
   crosses on their red.
+
+## How the tram drives
+
+- `tram-motion.ts` gives the tram its own rate, `TRAM_ACCEL` 1.3 m/s², half a car's. `timeTram`
+  asks `tramDriveTicks` how long each drive takes with its ramps. `TramMotion` then drives each
+  step along a trapezoid that covers its metres in its ticks, as `traffic-motion.ts` does for a car.
+  The guard reads the front through `TramMotion.tickAt`, so the two agree.
+- A drive may not leave faster than the tram can reach from its entry speed. `TramMotion` also runs
+  a backward pass, twice round the loop, that caps each exit at what the tram can brake from before
+  the next halt. Without both, a short drive between two halts ramped at about 10 m/s².
+- The tram slows for a corner: `tramJoins` reads the bend at each node over 8 m, since the bogies
+  are 7 m apart.
+- At a light the tram does not always stop. `toLine` tries to run past at `passOf`, then slower in
+  steps of `ROLL_STEP` down to `ROLL`, for a speed that meets the green. Only when none does, it
+  brakes to the line and waits. `TRAM_CLEAR` is 7 s of green left.
+- The bell rings on every drive that starts from rest, not only at the stop line.
 
 ## Short runs
 
@@ -37,10 +57,50 @@ traffic and the lights themselves are in `docs/city-life.md`.
   track, `TRAM_TRACK` right of the centreline. On a run the tram drives, `laneOffset` moves the
   traffic lanes out of the middle `TRAM_HALF`, so no car drives through a tram.
 - `tram-bodies.ts` stands each car in the physics box as a kinematic box, under `TrafficBodies`, so
-  a ground without traffic has no tram. A touch does not take a tram off its loop. The people at a
-  stop are a count of the ticks since the last tram left, and fall to none while one boards them;
-  `PedestrianView` draws them standing. `TramLine.bells` is the hook the tram bells of spec section
-  15 will ring: a tram pulling away from a halt on that tick.
+  a ground without traffic has no tram. A touch does not take a tram off its loop.
+  `TramLine.bells` is the hook the tram bells of spec section 15 ring: a tram pulling away from a
+  halt on that tick.
+
+## Where a stop stands
+
+- The world names a stop by the junction nearest its district, and the tram used to halt on the
+  run into it. Many of those runs are shorter than a tram, so the platform reached back into the
+  junction behind, and the cars drove straight through it.
+- `tram-stop-place.ts` finds each stop a stretch of the loop between two breaks that holds the
+  whole platform: `PLATFORM_AHEAD` clear of the break ahead and `PLATFORM_BEHIND` of the one behind.
+  A break is a node that is not two runs end to end, or a bend of more than `CORNER`, since a car
+  cuts a corner. The same test catches the loop turning back on itself.
+- The stretch must also be straight: `LoopLine.straight` rejects one that strays more than
+  `STRAIGHT` off its chord. A front slides in steps of `SLIDE` to find straight track.
+- The rules relax in `PASSES` until a stop is placed. Downtown the blocks are shorter than a tram,
+  so a stop there walks to the nearest longer one. On a tie the stretch before the junction wins.
+- Two platforms never overlap, and **no two stops share a run**: `tram-timing.ts` keeps one stop to
+  a run and silently drops the other. The seed sweep checks both.
+
+## The platform
+
+- The platform stands on the side of the track away from the kerb, `platformInner` out from it
+  and `platform` wide (`TRAM_LANE` in `world/roads/tiers.ts`). `PLATFORM_EDGE` is its outer edge.
+- `tram-lanes.ts` holds the lane offsets. On every run a platform reaches, `tramLaneOf` moves the
+  traffic lane out to `PLATFORM_EDGE + platformClear`, over the platform's length plus the swing and
+  the smoothing either side. `kerbsOf` keeps a swerving car off it too.
+- `platform-bodies.ts` gives the slab, the shelter, the mast and the bollards fixed colliders, so a
+  car the player drives stops at a platform. It uses the transform `render/transit/tram-stops.ts`
+  draws with: `+x` along the platform, the platform at `-z`, a yaw of `−heading`.
+- The render adds a ramp at each end, a kerb on the traffic side, hatching on the road before the
+  nose, and bollards, reflectors and a keep-left sign on the nose.
+- Wide vehicles still clip a ramp end by centimetres on a corner. That is left; the colliders
+  stand on the slab, not the ramps.
+
+## The people at a stop
+
+- `stop-crowd.ts` lays the people out. `layCrowd` picks a spot for each one from the stop's own
+  random stream: a spread about the shelter that grows with each arrival, at least `APART` from
+  anyone else. About a third stand in pairs that talk. Some look up the line for the tram.
+- Each person has an idle gait — stand, phone, arms folded, smoke — and sways on a cycle of their
+  own. An arrival walks in from the nearer ramp at `WALK`.
+- When the doors open, each walks to the nearest door (`tram-doors.ts`, shared with the render)
+  and queues there, one every `DOOR_TURN`. Everyone is aboard before the dwell ends.
 
 ## The turns a tram crosses
 
