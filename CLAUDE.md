@@ -58,8 +58,7 @@ subsystem they name; `previewing-changes` says which preview answers which quest
 
 `npm run lint:size` (`scripts/check-size.ts`) holds every limit, in `verify` and in CI, and the edit
 hook reports the file just written against the one it passed: 800 lines of code, 400 of markdown,
-160 for this file, 100 columns of prose. `spec.md` is exempt, being the whole design as one
-document.
+160 for this file, 100 columns of prose. `spec.md` is exempt.
 
 A long file is a file nobody reads to the end. Split it along the seams it already has — one
 concern per file — and keep the name callers import as the door onto the pieces: `geom.ts`
@@ -67,6 +66,8 @@ re-exports the shapes it moved to `ring.ts`, and `weapon.ts` the table it moved 
 Never cut a file in half at the line count, and never answer a doc that reached its limit by
 writing more tightly: move a subject out into a doc of its own.
 
+A long directory is the same problem. Each layer groups its files into feature folders one level
+deep, and `test/` mirrors them; `scripts/move-files.ts` moves files and rewrites their paths.
 
 ## Determinism
 
@@ -120,8 +121,8 @@ The ones that cost a session with nothing to say why. The subsystem docs hold th
 - Rapier reads a heightfield as `heights[j * (rows + 1) + i]` with `i` walking `z`; the other way
   round gives a world rotated a quarter turn, with no error. It also keeps a force or a torque until
   it is told to forget it.
-- iOS Safari has no pointer lock and no wheel, so `ui/free-camera.ts` raises the touch pad instead;
-  a field under 16 px zooms the page in and never zooms back out.
+- iOS Safari has no pointer lock and no wheel, so `ui/input/free-camera.ts` raises the touch pad
+  instead; a field under 16 px zooms the page in and never zooms back out.
 - WebGPU pads each row of a readback to 256 bytes, so a picture read without unpadding the rows
   comes back sheared — which looks exactly like a broken mesh.
 
@@ -152,7 +153,6 @@ up front. No idioms, no wordplay, no cleverness a reader has to decode.
 Aim for the highest information per word: every sentence carries something the reader did not know,
 and nothing restates the sentence before it. Cut a qualifier before you add one. When a sentence
 needs two readings, split it rather than explain it.
-
 
 ## Keeping this file current
 
