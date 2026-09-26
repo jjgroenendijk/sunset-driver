@@ -14,7 +14,7 @@
  * side, `y` twists it, and `z` carries a hanging limb forward. The body faces
  * +x, so a torso tips forward with a turn of -z.
  */
-import type { Gait } from '../../sim/crowd/pedestrian-look.ts';
+import { STRIDE_HEIGHT, type Gait } from '../../sim/crowd/pedestrian-look.ts';
 import type { BoneName } from './pedestrian-rig.ts';
 
 /** How far a walking gait swings the body, in radians and metres. */
@@ -57,7 +57,19 @@ export const SWINGS: Record<Gait, Swing> = {
   hunch: { leg: 0.5, knee: 0.62, arm: 0.12, bob: 0.02, lean: 0.24, raise: 0, elbow: 0.9, foot: 0.25 },
   busk: { leg: 0, knee: 0, arm: 0, bob: 0.006, lean: 0.03, raise: 0, elbow: 0, foot: 0 },
   shout: { leg: 0, knee: 0, arm: 0, bob: 0.01, lean: 0.12, raise: 0, elbow: 0, foot: 0 },
+  lie: { leg: 0, knee: 0, arm: 0, bob: 0, lean: 0, raise: 0, elbow: 0, foot: 0 },
+  sit: { leg: 0, knee: 0, arm: 0, bob: 0, lean: 0, raise: 0, elbow: 0, foot: 0 },
+  swim: { leg: 0, knee: 0, arm: 0, bob: 0, lean: 0, raise: 0, elbow: 0, foot: 0 },
+  surf: { leg: 0, knee: 0, arm: 0, bob: 0, lean: 0, raise: 0, elbow: 0, foot: 0 },
+  volley: { leg: 0, knee: 0, arm: 0, bob: 0, lean: 0, raise: 0, elbow: 0, foot: 0 },
+  dance: { leg: 0, knee: 0, arm: 0, bob: 0, lean: 0, raise: 0, elbow: 0, foot: 0 },
 };
+
+/**
+ * Metres the hips drop to sit or lie on the ground, from where they stand in
+ * the bind pose (`HIP_HEIGHT` in `pedestrian-rig.ts`, which imports this file).
+ */
+const GROUND_DROP = 0.52 * STRIDE_HEIGHT - 0.12;
 
 /** A bone's turn: roll out to the side, twist, and forward swing, in radians. */
 type Turn = readonly [number, number, number];
@@ -208,6 +220,100 @@ const POSES: Partial<Record<Gait, ClipAt>> = {
       foreL: [0, 0, 0.5],
       head: [0, 0, 0.18],
     }),
+  // Flat on the back on a towel: the torso tipped back and the legs out along the sand.
+  lie: (p) => ({
+    bob: -GROUND_DROP,
+    turns: {
+      torso: [0, 0, Math.PI / 2 - 0.08],
+      head: [0, 0.15 * Math.sin(p), -0.25],
+      thighL: [-0.08, 0, Math.PI / 2 - 0.1],
+      thighR: [0.08, 0, Math.PI / 2 - 0.1],
+      shinL: [0, 0, 0.1 * Math.max(0, Math.sin(p))],
+      armL: [-0.25, 0, 0.02 * Math.sin(p)],
+      armR: [0.25, 0, 0.02 * Math.sin(p)],
+    },
+  }),
+  // Sat on the sand with the knees up, leaning back on both hands.
+  sit: (p) => ({
+    bob: -GROUND_DROP,
+    turns: {
+      torso: [0, 0, 0.3 + 0.02 * Math.sin(p)],
+      head: [0, 0.3 * Math.sin(p), -0.25],
+      thighL: [-0.12, 0, 1.95],
+      thighR: [0.12, 0, 1.95],
+      shinL: [0, 0, -1.1],
+      shinR: [0, 0, -1.1],
+      armL: [-0.3, 0, -0.55],
+      armR: [0.3, 0, -0.55],
+    },
+  }),
+  // A breaststroke: tipped forward in the water, the arms reaching and sweeping out, the legs kicking.
+  swim: (p) => {
+    const sweep = Math.max(0, Math.sin(p));
+    return {
+      bob: 0.04 * Math.cos(p),
+      turns: {
+        torso: [0, 0, -1.1],
+        head: [0, 0, 0.9],
+        armL: [-0.2 - 0.7 * sweep, 0, 2.4 - 0.6 * sweep],
+        armR: [0.2 + 0.7 * sweep, 0, 2.4 - 0.6 * sweep],
+        foreL: [0, 0, 0.6 * sweep],
+        foreR: [0, 0, 0.6 * sweep],
+        thighL: [-0.2 * sweep, 0, -0.4],
+        thighR: [0.2 * sweep, 0, -0.4],
+        shinL: [0, 0, -1.2 * (1 - sweep)],
+        shinR: [0, 0, -1.2 * (1 - sweep)],
+      },
+    };
+  },
+  // Crouched to balance on a board or on skates, the arms out and swaying.
+  surf: (p) => ({
+    bob: -0.14,
+    turns: {
+      torso: [0.06 * Math.sin(p), 0.2, -0.25],
+      head: [0, -0.2, 0.2],
+      thighL: [0, 0, 0.55],
+      thighR: [0, 0, 0.55],
+      shinL: [0, 0, -0.9],
+      shinR: [0, 0, -0.9],
+      footL: [0, 0, 0.35],
+      footR: [0, 0, 0.35],
+      armL: [-1.1 - 0.2 * Math.sin(p), 0, 0.3],
+      armR: [1.1 - 0.2 * Math.sin(p), 0, 0.3],
+      foreL: [0, 0, 0.3],
+      foreR: [0, 0, 0.3],
+    },
+  }),
+  // Ready for the ball, knees bent and arms low, then a jump with both arms up once a cycle.
+  volley: (p) => {
+    const jump = Math.max(0, Math.sin(p)) ** 3;
+    return {
+      bob: -0.12 + 0.4 * jump,
+      turns: {
+        torso: [0, 0, -0.2 + 0.2 * jump],
+        thighL: [0, 0, 0.5 * (1 - jump)],
+        thighR: [0, 0, 0.5 * (1 - jump)],
+        shinL: [0, 0, -0.8 * (1 - jump)],
+        shinR: [0, 0, -0.8 * (1 - jump)],
+        armL: [-0.1, 0, 0.8 + 2.2 * jump],
+        armR: [0.1, 0, 0.8 + 2.2 * jump],
+      },
+    };
+  },
+  // Dancing at a party: a bounce twice a cycle, the hips swaying and the arms up in turn.
+  dance: (p) =>
+    over(standing(p), {
+      torso: [0.12 * Math.sin(p), 0.25 * Math.sin(p), 0],
+      thighL: [0, 0, 0.25 * Math.max(0, Math.sin(p))],
+      thighR: [0, 0, 0.25 * Math.max(0, -Math.sin(p))],
+      shinL: [0, 0, -0.4 * Math.max(0, Math.sin(p))],
+      shinR: [0, 0, -0.4 * Math.max(0, -Math.sin(p))],
+      armL: [-0.3, 0, 1.6 + 0.9 * Math.sin(p)],
+      armR: [0.3, 0, 1.6 - 0.9 * Math.sin(p)],
+      foreL: [0, 0, 0.8],
+      foreR: [0, 0, 0.8],
+      head: [0, 0, 0.1 * Math.sin(2 * p)],
+    }, 0.05 * Math.abs(Math.sin(2 * p))),
 };
 
 /** The body of a gait at a phase of its cycle. */

@@ -41,6 +41,15 @@ export const GAITS = [
   // A busker playing a guitar, and somebody shaking a fist at a driver.
   'busk',
   'shout',
+  // The beach of spec section 20.1: flat on a towel, sat on the sand, a swimmer's
+  // stroke, a surfer or skater crouched to balance, a player ready for the ball,
+  // and dancing at a party.
+  'lie',
+  'sit',
+  'swim',
+  'surf',
+  'volley',
+  'dance',
 ] as const;
 export type Gait = (typeof GAITS)[number];
 
@@ -65,10 +74,32 @@ const GAIT_SPEED: Record<Gait, readonly [number, number]> = {
   hunch: [1.3, 1.7],
   busk: [0, 0],
   shout: [0, 0],
+  lie: [0, 0],
+  sit: [0, 0],
+  swim: [0, 0],
+  surf: [0, 0],
+  volley: [0, 0],
+  dance: [0, 0],
 };
 
 /** The gaits somebody stands in rather than walks. */
-export const STANDING: ReadonlySet<Gait> = new Set<Gait>(['stand', 'phone', 'smoke', 'window', 'fold', 'talk', 'film', 'busk', 'shout']);
+export const STANDING: ReadonlySet<Gait> = new Set<Gait>([
+  'stand',
+  'phone',
+  'smoke',
+  'window',
+  'fold',
+  'talk',
+  'film',
+  'busk',
+  'shout',
+  'lie',
+  'sit',
+  'swim',
+  'surf',
+  'volley',
+  'dance',
+]);
 
 /**
  * Metres one whole cycle of a gait covers — two steps — for a person 1.75 m
@@ -93,6 +124,12 @@ const GAIT_STRIDE: Record<Gait, number> = {
   hunch: 1.45,
   busk: 1,
   shout: 1,
+  lie: 1,
+  sit: 1,
+  swim: 1,
+  surf: 1,
+  volley: 1,
+  dance: 1,
 };
 
 /**
