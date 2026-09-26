@@ -167,26 +167,8 @@ export class SessionFrame {
     if (change !== undefined) applyQuality(session, change);
     this.drawPanels(session, p.inShop);
     this.drawAim(session, flying || menu);
-    // The maps of spec section 12. Both follow the player from the record,
-    // and both redraw only when something on them has moved, so a session
-    // standing still pays for neither. The minimap follows the free camera
-    // while it is detached, because that is what the player is looking at,
-    // and it turns with the camera's view rather than the player's facing.
-    const at = flying
-      ? { x: free.camera.x, y: free.camera.z, heading: free.camera.heading }
-      : { x: p.x, y: p.y, heading: p.heading };
-    // The waypoint is a place to get to, so it is taken away once the player
-    // is there. The route to it follows the roads (`map-route.ts`), and starts
-    // where the maps put the arrow: in Explore that is the camera, and a route
-    // from the player left on the ground would start off the screen.
-    const mark = session.state.waypoint;
-    if (mark && !flying && Math.hypot(mark.x - p.x, mark.y - p.y) < ARRIVED) session.state.waypoint = null;
-    const nav = session.navigator;
-    nav.update(at, session.state.waypoint);
-    session.minimap.northUp = this.parts.settings.northUp;
+    this.drawMaps(session, p, flying);
     session.world.gore = this.parts.settings.gore;
-    session.minimap.update(at, session.state.waypoint, nav.route, nav.version);
-    session.map.update(at, session.state.waypoint, nav.route, nav.version);
     // The mix of spec section 15 stands where the frame is drawn from, which
     // is the player or the free camera. A paused session holds no note.
     if (paused) audio.hush();
@@ -200,12 +182,37 @@ export class SessionFrame {
   }
 
   /**
+   * The maps of spec section 12. Both follow the player from the record, and
+   * both redraw only when something on them has moved, so a session standing
+   * still pays for neither. The minimap follows the free camera while it is
+   * detached, because that is what the player is looking at, and it turns
+   * with the camera's view rather than the player's facing.
+   */
+  private drawMaps(session: Session, p: { x: number; y: number; heading: number }, flying: boolean): void {
+    const free = this.parts.free;
+    const at = flying
+      ? { x: free.camera.x, y: free.camera.z, heading: free.camera.heading }
+      : { x: p.x, y: p.y, heading: p.heading };
+    // The waypoint is a place to get to, so it is taken away once the player
+    // is there. The route to it follows the roads (`map-route.ts`), and starts
+    // where the maps put the arrow: in Explore that is the camera, and a route
+    // from the player left on the ground would start off the screen.
+    const mark = session.state.waypoint;
+    if (mark && !flying && Math.hypot(mark.x - p.x, mark.y - p.y) < ARRIVED) session.state.waypoint = null;
+    const nav = session.navigator;
+    nav.update(at, session.state.waypoint);
+    session.minimap.northUp = this.parts.settings.northUp;
+    session.minimap.update(at, session.state.waypoint, nav.route, nav.version);
+    session.map.update(at, session.state.waypoint, nav.route, nav.version);
+  }
+
+  /**
    * Draw the city between the last two ticks and put the camera over it.
    * Answers the drawn player, where the frame is drawn from, and the shop the
    * player is standing in.
    */
   private drawCity(session: Session, elapsed: number, flying: boolean) {
-    const { camera, clock, keyboard, free, settings } = this.parts;
+    const { clock, free } = this.parts;
     // A frame falls between two ticks, so what is drawn is the blend of them
     // `smooth.ts` describes. Without it the record steps 0, 1 or 2 ticks a
     // frame while the camera slides every frame, and the city judders.
@@ -283,43 +290,52 @@ export class SessionFrame {
     session.tramSigns.lamps = session.world.lampsNow;
     session.police.lamps = session.world.lampsNow;
     session.emergency.lamps = session.world.lampsNow;
-    if (flying) {
-      free.camera.update(elapsed / 1000, free.input(keyboard.freeCamera()));
-      free.camera.writeTo(camera.camera);
-      session.world.viewModel.hide();
-      // The streaming rings and the entity fade are measured from wherever
-      // the view is, or a flight of a few hundred metres looks at empty
-      // ground. Nothing waits for it: the chunks land as they are built.
-      session.world.update(free.camera.x, free.camera.z);
-      // The cut is aimed at the player, and a flight looks at buildings whole.
-      session.world.cutaway.enabled = false;
-    } else {
-      session.world.update(p.x, p.y);
-      // A building between the camera and the player (spec section 10.7):
-      // it is cut to a ghost, and with Pull back the camera first moves over
-      // the roofs, or with Turn swings round the player to see past them. Off
-      // does none of it. The chase views stand too close to need either move.
-      this.kick(session);
-      const view = camera.view;
-      camera.update(elapsed / 1000, p, {
-        view: settings.view,
-        pull: settings.buildingView === 'pull-back' ? this.roofTop : undefined,
-        turn: settings.buildingView === 'turn' ? this.sightTop : undefined,
-        mouse: this.parts.look.active,
-        altitude: session.state.player.driving ? p.height - session.world.heightAt(p.x, p.y) : 0,
-        zoom: zoomOf(session.state.loadout),
-      });
-      this.firstPerson(session, p, elapsed / 1000, drawnTick);
-      // A chase view has a near plane of its own, and the sun's cascades are
-      // cut to the camera's frustum, so they are refitted.
-      if (camera.view !== view) session.world.resize();
-      // On foot the keys walk relative to the view, so up the screen is
-      // forward whichever way the camera faces. A car steers as it did.
-      keyboard.turn = session.state.player.driving ? 0 : camera.heading;
-      session.world.cutaway.enabled = settings.buildingView !== 'whole';
-      session.world.seeThrough(camera.camera.position, p.x, p.height, p.y, inShop !== undefined);
-    }
+    if (flying) this.fly(session, elapsed);
+    else this.follow(session, elapsed, p, drawnTick, inShop !== undefined);
     return { x: p.x, y: p.y, heading: p.heading, round, inShop };
+  }
+
+  /** Fly the detached camera by the keys, and stream the city round it. */
+  private fly(session: Session, elapsed: number): void {
+    const { camera, keyboard, free } = this.parts;
+    free.camera.update(elapsed / 1000, free.input(keyboard.freeCamera()));
+    free.camera.writeTo(camera.camera);
+    session.world.viewModel.hide();
+    // The streaming rings and the entity fade are measured from wherever
+    // the view is, or a flight of a few hundred metres looks at empty
+    // ground. Nothing waits for it: the chunks land as they are built.
+    session.world.update(free.camera.x, free.camera.z);
+    // The cut is aimed at the player, and a flight looks at buildings whole.
+    session.world.cutaway.enabled = false;
+  }
+
+  /** Put the camera over the drawn player, and stream the city round them. */
+  private follow(session: Session, elapsed: number, p: DrawnPlayer, drawnTick: number, inShop: boolean): void {
+    const { camera, keyboard, settings } = this.parts;
+    session.world.update(p.x, p.y);
+    // A building between the camera and the player (spec section 10.7):
+    // it is cut to a ghost, and with Pull back the camera first moves over
+    // the roofs, or with Turn swings round the player to see past them. Off
+    // does none of it. The chase views stand too close to need either move.
+    this.kick(session);
+    const view = camera.view;
+    camera.update(elapsed / 1000, p, {
+      view: settings.view,
+      pull: settings.buildingView === 'pull-back' ? this.roofTop : undefined,
+      turn: settings.buildingView === 'turn' ? this.sightTop : undefined,
+      mouse: this.parts.look.active,
+      altitude: session.state.player.driving ? p.height - session.world.heightAt(p.x, p.y) : 0,
+      zoom: zoomOf(session.state.loadout),
+    });
+    this.firstPerson(session, p, elapsed / 1000, drawnTick);
+    // A chase view has a near plane of its own, and the sun's cascades are
+    // cut to the camera's frustum, so they are refitted.
+    if (camera.view !== view) session.world.resize();
+    // On foot the keys walk relative to the view, so up the screen is
+    // forward whichever way the camera faces. A car steers as it did.
+    keyboard.turn = session.state.player.driving ? 0 : camera.heading;
+    session.world.cutaway.enabled = settings.buildingView !== 'whole';
+    session.world.seeThrough(camera.camera.position, p.x, p.height, p.y, inShop);
   }
 
   /**
@@ -333,11 +349,8 @@ export class SessionFrame {
     const me = session.state.player;
     // Under mouse look the pointer is locked, and the aim is ahead of the view.
     this.aim.cast(camera.camera, look.active);
-    const at = away
-      ? undefined
-      : look.active
-        ? this.aim.ahead(me.x, me.y, me.height, camera.heading)
-        : this.aim.ground(me.height);
+    let at: { x: number; y: number } | undefined;
+    if (!away) at = look.active ? this.aim.ahead(me.x, me.y, me.height, camera.heading) : this.aim.ground(me.height);
     // First person aims up and down as well, where the middle of the view is.
     const level = !look.active || camera.view !== 'first-person' || me.driving;
     if (at === undefined) keyboard.unpoint();
@@ -441,9 +454,9 @@ export class SessionFrame {
     // Under mouse look the crosshair stands on the aim, since the pointer does not move.
     // In first person it stands in the middle of the view, where the round goes.
     const first = this.parts.camera.view === 'first-person' && !state.player.driving;
-    const at = locked && first
-      ? this.aim.centre()
-      : locked && point !== undefined ? this.aim.screenOf(camera, point.x, h, point.y) : this.aim.client;
+    let at = this.aim.client;
+    if (locked && first) at = this.aim.centre();
+    else if (locked && point !== undefined) at = this.aim.screenOf(camera, point.x, h, point.y);
     this.crosshair.update({ at, gap, lock, aiming: state.loadout.aiming }, state.tracers, state.tick, performance.now());
   }
 

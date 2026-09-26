@@ -58,12 +58,9 @@ export function buildPickers(
     const spec = specOf(cls);
     // A plane needs a runway to leave from, so it is put down at the end of
     // the nearest one; a helicopter lifts off from wherever the player stands.
-    const place =
-      spec.hull !== undefined
-        ? (nearestWaterPlace(description, here.x, here.y) ?? here)
-        : spec.flight?.kind === 'wing'
-          ? (runwayStart(description.airfields, here.x, here.y) ?? here)
-          : here;
+    let place = here;
+    if (spec.hull !== undefined) place = nearestWaterPlace(description, here.x, here.y) ?? here;
+    else if (spec.flight?.kind === 'wing') place = runwayStart(description.airfields, here.x, here.y) ?? here;
     physics().spawn(state, place.x, place.y, place.heading, cls);
     // A vehicle put down is a fresh vehicle: nothing of the last one's smoke or
     // skid marks belongs to it, and it is drawn where it lands rather than

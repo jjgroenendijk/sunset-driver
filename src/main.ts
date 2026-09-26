@@ -70,6 +70,15 @@ const TOUCH_START_TIER = 2;
 /** The loading screen of the session being started, so a failure can be put on it. */
 let loadingNow: LoadingScreen | null = null;
 
+/**
+ * The shortest time between two drawn frames when nothing needs a smooth one:
+ * the title screen, and a paused session. A session being played has none.
+ */
+function idleInterval(session: Session | null): number {
+  if (session === null) return intervalOf(TITLE_FPS);
+  return isPaused(session) ? intervalOf(PAUSED_FPS) : 0;
+}
+
 async function boot(): Promise<void> {
   const status = document.getElementById('status');
   const say = (text: string): void => {
@@ -214,15 +223,14 @@ async function boot(): Promise<void> {
     requestAnimationFrame(frame);
     const cap = intervalOf(settings.frameCap);
     quality.cap(cap);
-    const idle = session ? (isPaused(session) ? intervalOf(PAUSED_FPS) : 0) : intervalOf(TITLE_FPS);
-    if (!pacer.ready(now, Math.max(cap, idle))) return;
+    if (!pacer.ready(now, Math.max(cap, idleInterval(session)))) return;
     const elapsed = now - last;
     last = now;
     if (session) {
       loop.draw(session, elapsed);
     } else {
       preview.update(elapsed / 1000);
-      void renderer.render(preview.scene, preview.camera);
+      renderer.render(preview.scene, preview.camera);
     }
   };
   requestAnimationFrame(frame);

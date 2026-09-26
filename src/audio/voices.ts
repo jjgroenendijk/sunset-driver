@@ -99,6 +99,13 @@ export class EngineVoice {
   }
 }
 
+/** The note a siren sounds now, before its pitch: two notes swapped at the half, or one swept up and back down. */
+function sirenNote(siren: SirenPlan): number {
+  if (siren.sound === 'two-tone') return siren.wail < 0.5 ? SIREN_HIGH : SIREN_LOW;
+  const sweep = 1 - Math.abs(2 * siren.wail - 1);
+  return SIREN_LOW + (SIREN_HIGH - SIREN_LOW) * sweep;
+}
+
 /**
  * One siren: a square and a saw a hair apart. A police car's swaps between two
  * notes on the wail the plan hands it (spec section 14); a fire engine's and an
@@ -127,9 +134,7 @@ export class SirenVoice {
   }
 
   set(siren: SirenPlan, level: number): void {
-    // Two notes swapped at the half, or one note swept up and back down.
-    const sweep = 1 - Math.abs(2 * siren.wail - 1);
-    const hz = siren.pitch * (siren.sound === 'two-tone' ? (siren.wail < 0.5 ? SIREN_HIGH : SIREN_LOW) : SIREN_LOW + (SIREN_HIGH - SIREN_LOW) * sweep);
+    const hz = siren.pitch * sirenNote(siren);
     this.square.frequency.rampTo(hz, SIREN_SWAP);
     this.saw.frequency.rampTo(hz, SIREN_SWAP);
     this.out.gain.rampTo(siren.gain * level, RAMP);

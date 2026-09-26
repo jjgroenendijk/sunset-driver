@@ -51,9 +51,42 @@ export interface KeyTargets {
   view: Choice<CameraView>;
 }
 
+/**
+ * The debug triggers of spec section 11.7. Each writes the record between two
+ * ticks, as the damage and the police will, and the next tick resolves it, so
+ * a run ended this way replays like any other.
+ */
+function debugKey(code: string, state: SimState): void {
+  if (code === DIE_KEY) state.player.health = 0;
+  if (code === ARREST_KEY) state.arrested = true;
+  if (code === CRIME_KEY) commitCrime(state, 'assault');
+}
+
+/** Step the camera view on to the next one. */
+function stepView({ view, free, look }: KeyTargets): void {
+  const next = nextView(view.current());
+  view.choose(next);
+  // The press is a gesture the browser trusts, so the lock is asked for
+  // now, and the mouse turns the chase view without a click first.
+  if (next !== 'top-down' && !free.detached) look.lock();
+}
+
+/** A key pressed while the full map is open: close it, zoom it, centre it or show its legend. */
+function mapKey(code: string, map: MapScreen): void {
+  if (code === 'Escape') {
+    // Escape closes the map, and the map takes no other key of this press.
+    map.toggle();
+    return;
+  }
+  if (code === 'Equal' || code === 'NumpadAdd') map.zoom(-1);
+  if (code === 'Minus' || code === 'NumpadSubtract') map.zoom(1);
+  if (code === MAP_CENTRE_KEY) map.centre();
+  if (code === MAP_LEGEND_KEY) map.toggleLegend();
+}
+
 /** Listen on the window for the keys and the minimap clicks of a session. */
 export function listenForKeys(target: Window, keys: KeyTargets): void {
-  const { state, pause, map, minimap, picker, weapons, free, camera, look, view } = keys;
+  const { state, pause, map, minimap, picker, weapons, free, camera } = keys;
   // A click on the minimap sets a waypoint too, so a player driving does not
   // have to stop and open the full map to mark where they are going.
   target.addEventListener('pointerdown', (event) => {
@@ -74,25 +107,10 @@ export function listenForKeys(target: Window, keys: KeyTargets): void {
     }
     if (event.code === PICKER_KEY) picker.toggle();
     if (event.code === WEAPON_PICKER_KEY) weapons.toggle();
-    // The debug triggers of spec section 11.7. Each writes the record between
-    // two ticks, as the damage and the police will, and the next tick resolves
-    // it, so a run ended this way replays like any other.
-    if (event.code === DIE_KEY) state.player.health = 0;
-    if (event.code === ARREST_KEY) state.arrested = true;
-    if (event.code === CRIME_KEY) commitCrime(state, 'assault');
+    debugKey(event.code, state);
     if (event.code === MAP_KEY) map.toggle();
-    if (event.code === VIEW_KEY && !map.open) {
-      const next = nextView(view.current());
-      view.choose(next);
-      // The press is a gesture the browser trusts, so the lock is asked for
-      // now, and the mouse turns the chase view without a click first.
-      if (next !== 'top-down' && !free.detached) look.lock();
-    }
-    if (event.code === 'Escape' && map.open) map.toggle();
-    if (map.open && (event.code === 'Equal' || event.code === 'NumpadAdd')) map.zoom(-1);
-    if (map.open && (event.code === 'Minus' || event.code === 'NumpadSubtract')) map.zoom(1);
-    if (map.open && event.code === MAP_CENTRE_KEY) map.centre();
-    if (map.open && event.code === MAP_LEGEND_KEY) map.toggleLegend();
+    if (event.code === VIEW_KEY && !map.open) stepView(keys);
+    if (map.open) mapKey(event.code, map);
     // The developer free camera. It takes over from where the game camera
     // stands, and pointer lock needs this key press to ask for it.
     if (event.code === FREE_CAMERA_KEY) free.toggle(camera.camera);
