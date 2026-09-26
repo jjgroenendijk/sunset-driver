@@ -17,6 +17,7 @@ import { execFileSync } from 'node:child_process';
  */
 export function requireGh(instead: string): void {
   try {
+    // eslint-disable-next-line sonarjs/no-os-command-from-path -- a developer tool runs the gh the developer installed, which sits in a different directory on each machine
     execFileSync('gh', ['--version'], { stdio: 'ignore' });
     return;
   } catch {

@@ -61,6 +61,7 @@ function gh(...argv: string[]): string | undefined {
   try {
     // `gh` writes its own complaints to stderr, and they are inherited into
     // this command's output unless they are caught here.
+    // eslint-disable-next-line sonarjs/no-os-command-from-path -- a developer tool runs the gh the developer installed, which sits in a different directory on each machine
     return execFileSync('gh', argv, {
       encoding: 'utf8',
       maxBuffer: 64 * 1024 * 1024,
@@ -139,9 +140,21 @@ function jobId(link: string): string | undefined {
   return /\/(?:job|runs)\/(\d+)$/.exec(link)?.[1];
 }
 
-/** Actions plumbing, which says nothing about why the job failed. */
-const PLUMBING =
-  /^(##\[(group|endgroup|debug|section|start-action|end-action|set-output|add-matcher|remove-matcher|save-state)[\] ]|\[command\]|Received \d+ of |Cache (hit|Size|restored)|Post job cleanup|Prepare all required actions|Getting action download info|Download action repository )/;
+/** An Actions workflow command, which says nothing about why the job failed. */
+const WORKFLOW_COMMAND =
+  /^(##\[(group|endgroup|debug|section|start-action|end-action|set-output|add-matcher|remove-matcher|save-state)[\] ]|\[command\])/;
+
+/** The runner's own progress lines, which say nothing about it either. */
+const RUNNER_PROGRESS =
+  /^(Received \d+ of |Cache (hit|Size|restored)|Post job cleanup|Prepare all required actions|Getting action download info|Download action repository )/;
+
+/** Whether `line` is Actions plumbing rather than output of the job. */
+function isPlumbing(line: string): boolean {
+  return WORKFLOW_COMMAND.test(line) || RUNNER_PROGRESS.test(line);
+}
+
+/** The escape byte that opens a colour code in a terminal. */
+const ESCAPE = String.fromCharCode(27);
 
 /**
  * The part of a run log worth reading: the lines running up to the last
@@ -161,16 +174,16 @@ function readable(log: string, lines: number): string[] {
       .replace(/^\uFEFF/, '')
       .replace(/^\S*Z /, '')
       // A colour escape. The log API writes the escape as the two literal
-      // characters `^[`, so that form is stripped as well as the real byte.
-      // eslint-disable-next-line no-control-regex
-      .replace(/(\u001b|\^\[)\[[0-9;]*m/g, '');
+      // characters `^[`, so the real byte is turned into that form first.
+      .replaceAll(ESCAPE, '^[')
+      .replace(/\^\[\[[0-9;]*m/g, '');
     if (/^(with|env):$/.test(line)) {
       inSettings = true;
       continue;
     }
     if (inSettings && /^\s/.test(line)) continue;
     inSettings = false;
-    if (line.trim() === '' || PLUMBING.test(line)) continue;
+    if (line.trim() === '' || isPlumbing(line)) continue;
     body.push(line);
   }
   let last = -1;
@@ -220,10 +233,16 @@ for (;;) {
   await wait(intervalMs);
 }
 
+/** The verdict column for a check: quiet for a pass or a skip, loud otherwise. */
+function bucketLabel(bucket: string): string {
+  if (bucket === 'pass') return 'pass';
+  if (bucket === 'skipping') return 'skip';
+  return bucket.toUpperCase();
+}
+
 const elapsed = `${Math.floor((Date.now() - started) / 60000)}m${String(Math.round(((Date.now() - started) % 60000) / 1000)).padStart(2, '0')}s`;
 for (const c of seen) {
-  const label = c.bucket === 'pass' ? 'pass' : c.bucket === 'skipping' ? 'skip' : c.bucket.toUpperCase();
-  console.log(`  ${label.padEnd(6)} ${took(c).padEnd(7)} ${c.name}`);
+  console.log(`  ${bucketLabel(c.bucket).padEnd(6)} ${took(c).padEnd(7)} ${c.name}`);
 }
 
 const bad = seen.filter((c) => c.bucket === 'fail' || c.bucket === 'cancel');

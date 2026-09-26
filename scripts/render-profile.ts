@@ -53,6 +53,7 @@ import { join } from 'node:path';
 import { chromium } from 'playwright-core';
 import { createServer, type ViteDevServer } from 'vite';
 import { seedFromString } from '../src/core/rng.ts';
+import { compareStrings } from '../src/core/sort.ts';
 import type { FrameSample, ProfileRequest, ProfileResult } from '../src/render/profile.ts';
 import { chromiumPath } from './chromium.ts';
 import { printProfile, saveProfile, summariseProfile, type CpuProfile, type CpuSummary } from './cpu-profile.ts';
@@ -127,7 +128,7 @@ function passSeries(samples: readonly FrameSample[]): Map<string, number[]> {
   const labels = new Set(samples.flatMap((s) => Object.keys(s.passes ?? {})));
   const series = new Map<string, number[]>();
   series.set('gpu', samples.map((s) => Object.values(s.passes ?? {}).reduce((a, b) => a + b, 0)));
-  for (const label of [...labels].sort()) series.set(`gpu: ${label}`, samples.map((s) => s.passes?.[label] ?? 0));
+  for (const label of [...labels].sort(compareStrings)) series.set(`gpu: ${label}`, samples.map((s) => s.passes?.[label] ?? 0));
   return series;
 }
 

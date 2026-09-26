@@ -20,6 +20,7 @@
  * `--all` lists every series; by default a series whose median is under
  * 0.05 ms on both sides is left out, as nothing a frame would notice.
  */
+import { compareStrings } from '../src/core/sort.ts';
 import { loadRun, medianShift, percentile, type ProfileRun } from './profile-run.ts';
 
 const args = process.argv.slice(2);
@@ -63,10 +64,11 @@ for (const name of names) {
   const [low, high] = medianShift(a, b);
   const noise = Math.max(spread(before, name) ?? 0, spread(after, name) ?? 0, SMALLEST * ma);
   const shift = mb - ma;
-  const verdict =
-    (low > 0 || high < 0) && Math.abs(shift) > noise
-      ? `${shift < 0 ? 'faster' : 'slower'} by ${((100 * Math.abs(shift)) / Math.max(ma, 1e-9)).toFixed(0)}%`
-      : 'within noise';
+  let verdict = 'within noise';
+  if ((low > 0 || high < 0) && Math.abs(shift) > noise) {
+    const way = shift < 0 ? 'faster' : 'slower';
+    verdict = `${way} by ${((100 * Math.abs(shift)) / Math.max(ma, 1e-9)).toFixed(0)}%`;
+  }
   const single = before.length < 2 || after.length < 2;
   console.log(
     `${name.slice(0, 34).padEnd(34)}${f(ma)}${f(percentile(a, 0.95))}  ${f(mb)}${f(percentile(b, 0.95))}  ` +
@@ -75,7 +77,7 @@ for (const name of names) {
 }
 // A pass one build draws and the other does not, such as a shadow map switched off.
 const every = new Set([...before, ...after].flatMap((run) => Object.keys(run.series)));
-for (const name of [...every].sort()) {
+for (const name of [...every].sort(compareStrings)) {
   if (names.includes(name)) continue;
   const side = before.some((run) => run.series[name] !== undefined) ? before : after;
   const median = percentile(side.flatMap((run) => run.series[name] ?? []), 0.5);

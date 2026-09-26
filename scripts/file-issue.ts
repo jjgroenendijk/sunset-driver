@@ -44,6 +44,7 @@ requireGh(
 );
 
 function gh(argv: string[], input?: string): string {
+  // eslint-disable-next-line sonarjs/no-os-command-from-path -- a developer tool runs the gh the developer installed, which sits in a different directory on each machine
   return execFileSync('gh', argv, {
     encoding: 'utf8',
     maxBuffer: 16 * 1024 * 1024,

@@ -126,55 +126,60 @@ export function lintDeterminism(
     return path.relative(root, node.getSourceFile().fileName) === path.join('src', 'core', 'sort.ts');
   }
 
-  function visit(node: ts.Node, orderStable: boolean): void {
-    // Math.random anywhere.
+  /** The name of the `Math` method `node` calls, or undefined when it calls none. */
+  function mathMethod(node: ts.Node): string | undefined {
     if (
       ts.isCallExpression(node) &&
       ts.isPropertyAccessExpression(node.expression) &&
       ts.isIdentifier(node.expression.expression) &&
-      node.expression.expression.text === 'Math' &&
-      node.expression.name.text === 'random'
+      node.expression.expression.text === 'Math'
     ) {
+      return node.expression.name.text;
+    }
+    return undefined;
+  }
+
+  /** A call of `forEach`, `keys`, `values` or `entries` on a Set or a Map, or of `Array.from` on one. */
+  function checkCollectionCall(node: ts.CallExpression): void {
+    const e = node.expression;
+    if (!ts.isPropertyAccessExpression(e)) return;
+    const method = e.name.text;
+    if ((method === 'forEach' || method === 'keys' || method === 'values' || method === 'entries') && !isSortHelper(node)) {
+      const recvType = checker.getTypeAtLocation(e.expression);
+      if (isUnorderedCollection(recvType)) {
+        report(node, `${typeName(recvType)}.${method}() follows insertion order; use sortedEntries/sortedMembers`);
+      }
+    }
+    if (ts.isIdentifier(e.expression) && e.expression.text === 'Array' && method === 'from' && node.arguments[0]) {
+      checkIterationSource(node.arguments[0]);
+    }
+  }
+
+  /** The rules that hold only where iteration order and rounding must be stable. */
+  function checkOrderStable(node: ts.Node): void {
+    // An approximated Math function rounds differently in Node and in the
+    // browser, which is enough to build a different city (issue #243).
+    const name = mathMethod(node);
+    if (name !== undefined && APPROXIMATED.has(name)) {
+      report(node, `Math.${name}() is rounded differently by each engine; use src/core/libm.ts`);
+    }
+    if (ts.isForOfStatement(node)) checkIterationSource(node.expression);
+    if (ts.isForInStatement(node)) report(node, 'for-in iterates object keys in insertion order; sort the keys first');
+    if (ts.isSpreadElement(node)) checkIterationSource(node.expression);
+    if (ts.isCallExpression(node)) {
+      checkCollectionCall(node);
+      if (isObjectKeysCall(node) && !isSortHelper(node)) {
+        report(node, 'Object.keys/values/entries order is unstable; use sortedKeys');
+      }
+    }
+  }
+
+  function visit(node: ts.Node, orderStable: boolean): void {
+    // Math.random anywhere.
+    if (mathMethod(node) === 'random') {
       report(node, 'Math.random() is forbidden; use rngFor(seed, tick, subsystem, id)');
     }
-
-    if (orderStable) {
-      // An approximated Math function rounds differently in Node and in the
-      // browser, which is enough to build a different city (issue #243).
-      if (
-        ts.isCallExpression(node) &&
-        ts.isPropertyAccessExpression(node.expression) &&
-        ts.isIdentifier(node.expression.expression) &&
-        node.expression.expression.text === 'Math' &&
-        APPROXIMATED.has(node.expression.name.text)
-      ) {
-        const name = node.expression.name.text;
-        report(node, `Math.${name}() is rounded differently by each engine; use src/core/libm.ts`);
-      }
-      if (ts.isForOfStatement(node)) checkIterationSource(node.expression);
-      if (ts.isForInStatement(node)) report(node, 'for-in iterates object keys in insertion order; sort the keys first');
-      if (ts.isSpreadElement(node)) checkIterationSource(node.expression);
-      if (ts.isCallExpression(node)) {
-        const e = node.expression;
-        if (ts.isPropertyAccessExpression(e)) {
-          const method = e.name.text;
-          if (method === 'forEach' || method === 'keys' || method === 'values' || method === 'entries') {
-            if (!isSortHelper(node)) {
-              const recvType = checker.getTypeAtLocation(e.expression);
-              if (isUnorderedCollection(recvType)) {
-                report(node, `${typeName(recvType)}.${method}() follows insertion order; use sortedEntries/sortedMembers`);
-              }
-            }
-          }
-          if (ts.isIdentifier(e.expression) && e.expression.text === 'Array' && method === 'from' && node.arguments[0]) {
-            checkIterationSource(node.arguments[0]);
-          }
-        }
-        if (isObjectKeysCall(node) && !isSortHelper(node)) {
-          report(node, 'Object.keys/values/entries order is unstable; use sortedKeys');
-        }
-      }
-    }
+    if (orderStable) checkOrderStable(node);
     ts.forEachChild(node, (child) => visit(child, orderStable));
   }
 

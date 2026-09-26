@@ -24,11 +24,17 @@ export interface ProfileRun {
   cpu?: { areas: Ranking; files: Ranking };
 }
 
+/** Run `git` with `args` and return its trimmed output. */
+function git(...args: string[]): string {
+  // eslint-disable-next-line sonarjs/no-os-command-from-path -- a developer tool runs the git the developer installed, which sits in a different directory on each machine
+  return execFileSync('git', args, { encoding: 'utf8' }).trim();
+}
+
 /** The commit the tree is at, or `unknown` outside a repository. */
 export function commitOf(): string {
   try {
-    const head = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();
-    const dirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], { encoding: 'utf8' }).trim();
+    const head = git('rev-parse', '--short', 'HEAD');
+    const dirty = git('status', '--porcelain', '--untracked-files=no');
     return dirty === '' ? head : `${head}+`;
   } catch {
     return 'unknown';
