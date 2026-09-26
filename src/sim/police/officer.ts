@@ -67,6 +67,12 @@ export interface Officer {
   stunned: number;
   /** -1 or 1: the way they go round a wall that stands between them and where they go. */
   detour: number;
+  /** Metres from the goal where they met the wall they follow (`wall-follow.ts`), or -1 on the straight line. */
+  wallGap: number;
+  /** The heading they last walked along that wall. */
+  wallDir: number;
+  /** Ticks they have followed it. */
+  wallTicks: number;
   /** The edges of the beat they walk, in order. Empty while they are off the roads. */
   edges: number[];
   /** Metres covered along the beat. */
@@ -181,6 +187,9 @@ export function createOfficer(id: number, kind: OfficerKind, unit: number, task:
     aiming: false,
     stunned: -1,
     detour: id % 2 === 0 ? 1 : -1,
+    wallGap: -1,
+    wallDir: 0,
+    wallTicks: 0,
     edges: [],
     distance: 0,
     planned: -1_000_000,

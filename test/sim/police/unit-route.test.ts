@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { laneOffset } from '../../../src/sim/traffic/traffic.ts';
 import { UnitRoads, type DrivePose } from '../../../src/sim/police/unit-route.ts';
 import type { Point, RoadCurve } from '../../../src/world/types.ts';
+import { TIERS } from '../../../src/world/roads/tiers.ts';
 import { gridTrafficRoads } from '../../support/traffic-grid.ts';
 
 describe('the roads a unit drives (spec section 14)', () => {
@@ -23,5 +24,25 @@ describe('the roads a unit drives (spec section 14)', () => {
       if (edge.lanes > 1) wide++;
     }
     expect(wide).toBeGreaterThan(0);
+  });
+
+  it('walks an officer on the middle of the pavement, past the kerb and the verge (#512)', () => {
+    const roads = gridTrafficRoads();
+    const units = new UnitRoads(roads);
+    const out: DrivePose = { x: 0, y: 0, height: 0, heading: 0 };
+    let walked = 0;
+    for (const edge of roads.graph.edges) {
+      const spec = TIERS[edge.tier];
+      if (edge.length < 40 || spec.pavement <= 0) continue;
+      const at = units.pose(edge.id, [edge.id], edge.length / 2, out, true);
+      const curve = roads.roads[edge.curve] as RoadCurve;
+      const a = curve.points[edge.start] as Point;
+      const b = curve.points[edge.end] as Point;
+      const length = Math.hypot(b.x - a.x, b.y - a.y);
+      const right = (-(at.x - a.x) * (b.y - a.y) + (at.y - a.y) * (b.x - a.x)) / length;
+      expect(right, `edge ${edge.id} on ${edge.tier}`).toBeCloseTo(spec.width / 2 + spec.verge + spec.pavement / 2, 6);
+      walked++;
+    }
+    expect(walked).toBeGreaterThan(0);
   });
 });

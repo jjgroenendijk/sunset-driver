@@ -8,16 +8,14 @@
  * one put the cuffs on (`arrest.ts`).
  *
  * An officer off the roads walks the straight line to where they are going,
- * and a wall in the way is walked round rather than through: the physics
- * answers how far a person can go along a heading before something solid
- * stops them (`CasualtyGround.reach`), and an officer turns further and further
- * off the straight line, always to the same side, until the way is clear. That
- * is the whole of their path finding, and in a city of blocks it is enough to
- * bring them round a corner after the player. The same question answers
- * whether an officer can see the player at all, which is what the enforcers of
- * spec section 17.2 still cannot ask.
+ * and a wall in the way is followed round rather than walked through
+ * (`wall-follow.ts`). The physics answers how far a person can go along a
+ * heading before something solid stops them (`CasualtyGround.reach`). The same
+ * question answers whether an officer can see the player at all, which is what
+ * the enforcers of spec section 17.2 still cannot ask.
  *
- * An officer on a beat walks the road graph instead, the way the enforcers do.
+ * An officer on a beat walks the road graph instead, the way the enforcers do,
+ * on the pavement beside it.
  *
  * Everything is plain data stepped from `(seed, tick)`, and the officers are
  * stepped in the order of the record, so a replay is walked the same way.
@@ -42,6 +40,7 @@ import type { DistrictAt } from './police.ts';
 import type { SimState } from '../simulation.ts';
 import type { TrafficRoads } from '../traffic/traffic.ts';
 import { UnitRoads, type DrivePose } from './unit-route.ts';
+import { leaveWall, wayRound } from './wall-follow.ts';
 
 /** A place with a way of facing and a pace: what the police are after. */
 export interface Quarry {
@@ -50,18 +49,6 @@ export interface Quarry {
   heading: number;
   speed: number;
 }
-
-/** Radians each try turns further off the straight line when a wall is in the way. */
-const DETOUR_STEP = 0.45;
-
-/** Tries at a way round, each side, before an officer stands and waits. */
-const DETOUR_TRIES = 5;
-
-/** Metres ahead an officer looks for a wall, at the least. */
-const FEELER = 1.1;
-
-/** Metres over their feet an officer feels for a wall: over a kerb, under a car roof. */
-const FEEL_HEIGHT = 0.9;
 
 /** Ticks a beat is walked before its route is planned again. */
 const REPLAN = 3 * TICK_RATE;
@@ -149,6 +136,7 @@ export class Squad {
     // Anybody off the roads has left the beat they were on.
     officer.edges = [];
     if (gap <= duty.stop) {
+      leaveWall(officer);
       officer.speed = 0;
       // Standing, an officer faces what they came for.
       if (gap > 0.05) officer.heading = atan2(duty.goalY - officer.y, duty.goalX - officer.x);
@@ -156,10 +144,11 @@ export class Squad {
     }
     const step = Math.min(pace / TICK_RATE, gap - duty.stop);
     const want = atan2(duty.goalY - officer.y, duty.goalX - officer.x);
-    const dir = this.wayRound(officer, want, step, gap, ground);
+    const dir = wayRound(officer, want, step, gap, ground);
     if (dir === undefined) {
       // Boxed in: they wait a tick and try the other way round next.
       officer.detour = -officer.detour;
+      leaveWall(officer);
       officer.speed = 0;
       return;
     }
@@ -170,26 +159,6 @@ export class Squad {
     officer.speed = step * TICK_RATE;
     const stride = duty.run ? RUN_STRIDE : WALK_STRIDE;
     officer.cycle = (officer.cycle + step / stride) % 1;
-  }
-
-  /**
-   * The heading an officer can walk this tick: the straight one where it is
-   * clear, else the nearest one off it on their own side, then on the other.
-   * Undefined where every way is shut.
-   */
-  private wayRound(officer: Officer, want: number, step: number, gap: number, ground: CasualtyGround | undefined): number | undefined {
-    if (ground === undefined) return want;
-    // Not further than the goal: the player's own body is solid to the ray.
-    const feel = Math.min(Math.max(FEELER, step * 3), gap - 0.4);
-    if (feel <= 0.2) return want;
-    const h = officer.height + FEEL_HEIGHT;
-    for (const side of [officer.detour, -officer.detour]) {
-      for (let i = side === officer.detour ? 0 : 1; i <= DETOUR_TRIES; i++) {
-        const dir = want + side * i * DETOUR_STEP;
-        if (ground.reach(officer.x, h, officer.y, dir, feel) >= feel) return dir;
-      }
-    }
-    return undefined;
   }
 
   /** One tick of a beat: route it if due, walk it along the street, and put the officer where that is. */
@@ -210,7 +179,7 @@ export class Squad {
     }
     const step = BEAT_SPEED / TICK_RATE;
     officer.distance = Math.min(officer.distance + step, roads.length(officer.edges));
-    roads.pose(officer.id, officer.edges, officer.distance, this.pose);
+    roads.pose(officer.id, officer.edges, officer.distance, this.pose, true);
     officer.x = this.pose.x;
     officer.y = this.pose.y;
     officer.height = ground?.heightAt(officer.x, officer.y) ?? this.pose.height;

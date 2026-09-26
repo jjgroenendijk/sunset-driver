@@ -95,11 +95,16 @@ airside, the theft of a military aircraft and the helicopter's gun are in `docs/
   `physics.ts` then pulls them out of the seat, whatever `EXIT_SPEED` says.
 - **A key held when the cuffs go on is not a press.** `Cuffs.held` starts true, so the struggle
   counts from the first fresh press of jump. A test that mashes from the first tick is one short.
-- **An officer's path is a straight line round walls.** `Squad.wayRound` feels ahead with
-  `CasualtyGround.reach` and turns further off the line, always to its own side, until it is clear.
-  The same ray answers whether an officer sees the player. It is enough for a city of blocks; an
-  officer can still be stuck in a concave courtyard. Without a ground, as in a test, the street is
-  open.
+- **An officer walks a straight line, and follows a wall that stands in it.** `wayRound`
+  (`wall-follow.ts`) feels ahead with `CasualtyGround.reach`. At a wall the officer follows it on
+  their own side (`detour`), `KEEP` off it, until they are nearer the goal than where they met it
+  and the line is clear. The old rule turned off the line only until it was clear, and walked back
+  into the corner of a courtyard open away from the goal each time (#512). `Officer.wallGap` is -1
+  on the line. The same ray answers whether an officer sees the player. Without a ground, as in a
+  test, the street is open.
+- **A beat is walked on the pavement.** `UnitRoads.pose` with `walks` stands at the middle of the
+  pavement on the right, past the kerb and the verge. Without it the beat walked in the kerb lane,
+  among the traffic.
 - **The police shoot through the player's own record.** `officerFire` writes tracers with `by:
   'police'`. Only `by === 'player'` tracers kick the camera (`frame.ts`) and mark the crosshair;
   `audio/police-ears.ts` plays a gunshot for each police tracer with `pellet === 0`. The shooting
