@@ -206,15 +206,51 @@ const LOT_USE: Record<Zone, BayUse> = {
 
 /** The bays along both kerbs of one street. */
 function streetBays(road: RoadCurve, junctions: JunctionMap, grid: SegmentGrid, useAt: (x: number, y: number) => BayUse, out: Bay[]): void {
-  const points = road.points;
+  const along = distancesAlong(road.points);
+  const blocked = blockedStretches(road, junctions, along);
+  const kerbs: Kerbs = {
+    road,
+    along,
+    grid,
+    out,
+    inset: TIERS.street.width / 2 - TIERS.street.parking / 2,
+    right: undefined,
+    left: undefined,
+  };
+  let from = -Infinity;
+  for (const [start, end] of blocked) {
+    if (from > -Infinity) gapBays(kerbs, from, start, useAt);
+    from = Math.max(from, end);
+  }
+}
+
+/** One street as its bays are laid along it, with the last bay laid along each kerb. */
+interface Kerbs {
+  road: RoadCurve;
+  /** Metres along the street at each of its points. */
+  along: Float64Array;
+  grid: SegmentGrid;
+  out: Bay[];
+  /** Metres from the centreline to the middle of a bay. */
+  inset: number;
+  right: Point[] | undefined;
+  left: Point[] | undefined;
+}
+
+/** Metres along a curve at each of its points. */
+function distancesAlong(points: readonly Point[]): Float64Array {
   const along = new Float64Array(points.length);
   for (let i = 1; i < points.length; i++) {
     const a = points[i - 1] as Point;
     const b = points[i] as Point;
     along[i] = (along[i - 1] as number) + hypot(b.x - a.x, b.y - a.y);
   }
-  const total = along[points.length - 1] as number;
-  // The stretches no bay may reach: the ends, the junctions, the decks and the bores.
+  return along;
+}
+
+/** The stretches of a street no bay may reach, by their start: the ends, the junctions, the decks and the bores. */
+function blockedStretches(road: RoadCurve, junctions: JunctionMap, along: Float64Array): [number, number][] {
+  const total = along[road.points.length - 1] as number;
   const blocked: [number, number][] = [
     [-Infinity, SETBACK],
     [total - SETBACK, Infinity],
@@ -222,51 +258,54 @@ function streetBays(road: RoadCurve, junctions: JunctionMap, grid: SegmentGrid, 
   for (const gap of junctions.gaps[road.id] ?? []) blocked.push([gap.from.distance - SETBACK, gap.to.distance + SETBACK]);
   for (const i of [...road.bridges, ...road.tunnels]) blocked.push([(along[i] as number) - SETBACK, (along[i + 1] as number) + SETBACK]);
   blocked.sort((a, b) => a[0] - b[0]);
+  return blocked;
+}
 
-  const inset = TIERS.street.width / 2 - TIERS.street.parking / 2;
-  // The last bay laid along each kerb.
-  let right: Point[] | undefined;
-  let left: Point[] | undefined;
-  let from = -Infinity;
-  for (const [start, end] of blocked) {
-    const room = start - from;
-    const count = Math.floor(room / STREET_BAY_LENGTH);
-    if (from > -Infinity && count > 0) {
-      const first = from + (room - count * STREET_BAY_LENGTH) / 2;
-      const middle = pointAt(points, along, (from + start) / 2);
-      const use = useAt(middle.x, middle.y);
-      for (let j = 0; j < count; j++) {
-        const s = first + (j + 0.5) * STREET_BAY_LENGTH;
-        const back = pointAt(points, along, s - STREET_BAY_LENGTH / 2);
-        const ahead = pointAt(points, along, s + STREET_BAY_LENGTH / 2);
-        const centre = pointAt(points, along, s);
-        if (bendOver(points, along, s - STREET_BAY_LENGTH / 2, s + STREET_BAY_LENGTH / 2) > MAX_BEND) continue;
-        const length = hypot(ahead.x - back.x, ahead.y - back.y);
-        const tx = (ahead.x - back.x) / length;
-        const ty = (ahead.y - back.y) / length;
-        const heading = atan2(ty, tx);
-        // The right hand of the curve's direction first, where its traffic drives
-        // that way, then the left, where a car faces the other way.
-        for (const side of [1, -1] as const) {
-          const bay: Bay = {
-            x: centre.x - side * ty * inset,
-            y: centre.y + side * tx * inset,
-            heading: side > 0 ? heading : heading + Math.PI,
-            use,
-            street: true,
-          };
-          const ring = rectangle(bay.x, bay.y, tx, ty, STREET_BAY_LENGTH / 2, TIERS.street.parking / 2);
-          // On a bend two neighbours meet at the corners inside it, so the later one gives way.
-          const before = side > 0 ? right : left;
-          if (before !== undefined && ringsClash(ring, before, -BAY_SHARE)) continue;
-          if (!grid.clear(ring, road.id, along, s)) continue;
-          out.push(bay);
-          if (side > 0) right = ring;
-          else left = ring;
-        }
-      }
-    }
-    from = Math.max(from, end);
+/** The bays of the open stretch from `from` to `start`, centred in it. */
+function gapBays(kerbs: Kerbs, from: number, start: number, useAt: (x: number, y: number) => BayUse): void {
+  const points = kerbs.road.points;
+  const room = start - from;
+  const count = Math.floor(room / STREET_BAY_LENGTH);
+  if (count <= 0) return;
+  const first = from + (room - count * STREET_BAY_LENGTH) / 2;
+  const middle = pointAt(points, kerbs.along, (from + start) / 2);
+  const use = useAt(middle.x, middle.y);
+  for (let j = 0; j < count; j++) {
+    const s = first + (j + 0.5) * STREET_BAY_LENGTH;
+    if (bendOver(points, kerbs.along, s - STREET_BAY_LENGTH / 2, s + STREET_BAY_LENGTH / 2) > MAX_BEND) continue;
+    bayPair(kerbs, s, use);
+  }
+}
+
+/** The bay on each kerb `s` metres along the street, where each is clear. */
+function bayPair(kerbs: Kerbs, s: number, use: BayUse): void {
+  const { road, along, inset } = kerbs;
+  const points = road.points;
+  const back = pointAt(points, along, s - STREET_BAY_LENGTH / 2);
+  const ahead = pointAt(points, along, s + STREET_BAY_LENGTH / 2);
+  const centre = pointAt(points, along, s);
+  const length = hypot(ahead.x - back.x, ahead.y - back.y);
+  const tx = (ahead.x - back.x) / length;
+  const ty = (ahead.y - back.y) / length;
+  const heading = atan2(ty, tx);
+  // The right hand of the curve's direction first, where its traffic drives
+  // that way, then the left, where a car faces the other way.
+  for (const side of [1, -1] as const) {
+    const bay: Bay = {
+      x: centre.x - side * ty * inset,
+      y: centre.y + side * tx * inset,
+      heading: side > 0 ? heading : heading + Math.PI,
+      use,
+      street: true,
+    };
+    const ring = rectangle(bay.x, bay.y, tx, ty, STREET_BAY_LENGTH / 2, TIERS.street.parking / 2);
+    // On a bend two neighbours meet at the corners inside it, so the later one gives way.
+    const before = side > 0 ? kerbs.right : kerbs.left;
+    if (before !== undefined && ringsClash(ring, before, -BAY_SHARE)) continue;
+    if (!kerbs.grid.clear(ring, road.id, along, s)) continue;
+    kerbs.out.push(bay);
+    if (side > 0) kerbs.right = ring;
+    else kerbs.left = ring;
   }
 }
 
@@ -376,14 +415,19 @@ class SegmentGrid {
         const b = road.points[i + 1] as Point;
         const index = this.segments.length / 2;
         this.segments.push(road.id, i);
-        for (let cy = cellOf(Math.min(a.y, b.y) - reach); cy <= cellOf(Math.max(a.y, b.y) + reach); cy++) {
-          for (let cx = cellOf(Math.min(a.x, b.x) - reach); cx <= cellOf(Math.max(a.x, b.x) + reach); cx++) {
-            const key = keyOf(cx, cy);
-            const list = this.cells.get(key);
-            if (list === undefined) this.cells.set(key, [index]);
-            else list.push(index);
-          }
-        }
+        this.file(index, a, b, reach);
+      }
+    }
+  }
+
+  /** File segment `index`, from `a` to `b`, in every cell its footprint covers. */
+  private file(index: number, a: Point, b: Point, reach: number): void {
+    for (let cy = cellOf(Math.min(a.y, b.y) - reach); cy <= cellOf(Math.max(a.y, b.y) + reach); cy++) {
+      for (let cx = cellOf(Math.min(a.x, b.x) - reach); cx <= cellOf(Math.max(a.x, b.x) + reach); cx++) {
+        const key = keyOf(cx, cy);
+        const list = this.cells.get(key);
+        if (list === undefined) this.cells.set(key, [index]);
+        else list.push(index);
       }
     }
   }
@@ -408,17 +452,22 @@ class SegmentGrid {
     for (let cy = cellOf(minY); cy <= cellOf(maxY); cy++) {
       for (let cx = cellOf(minX); cx <= cellOf(maxX); cx++) {
         for (const index of this.cells.get(keyOf(cx, cy)) ?? []) {
-          const id = this.segments[index * 2] as number;
-          const i = this.segments[index * 2 + 1] as number;
-          const own = id === curve && (along[i + 1] as number) > s - OWN_REACH && (along[i] as number) < s + OWN_REACH;
-          const road = this.roads[id] as RoadCurve;
-          const reach = own ? laneHalfWidth(road.tier) : footprintHalfWidth(road.tier);
-          const quad = segmentQuad(road.points[i] as Point, road.points[i + 1] as Point, reach);
-          if (quad !== undefined && ringsClash(ring, quad, own ? -BAY_SHARE : 0)) return false;
+          if (this.clashes(ring, index, curve, along, s)) return false;
         }
       }
     }
     return true;
+  }
+
+  /** True when the bay's ring stands on the ground segment `index` claims, as {@link clear} reads it. */
+  private clashes(ring: readonly Point[], index: number, curve: number, along: Float64Array, s: number): boolean {
+    const id = this.segments[index * 2] as number;
+    const i = this.segments[index * 2 + 1] as number;
+    const own = id === curve && (along[i + 1] as number) > s - OWN_REACH && (along[i] as number) < s + OWN_REACH;
+    const road = this.roads[id] as RoadCurve;
+    const reach = own ? laneHalfWidth(road.tier) : footprintHalfWidth(road.tier);
+    const quad = segmentQuad(road.points[i] as Point, road.points[i + 1] as Point, reach);
+    return quad !== undefined && ringsClash(ring, quad, own ? -BAY_SHARE : 0);
   }
 }
 

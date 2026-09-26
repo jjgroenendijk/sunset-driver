@@ -121,16 +121,7 @@ function relaxSites(islands: Island[], size: number, rounds: number): void {
       for (let ix = 0; ix < n; ix++) {
         const x = ((ix + 0.5) / n - 0.5) * size;
         const y = ((iy + 0.5) / n - 0.5) * size;
-        let k = 0;
-        let best = Infinity;
-        for (let i = 0; i < islands.length; i++) {
-          const isl = islands[i] as Island;
-          const p = (x - isl.x) ** 2 + (y - isl.y) ** 2 - isl.radius * isl.radius;
-          if (p < best) {
-            best = p;
-            k = i;
-          }
-        }
+        const k = nearestSite(islands, x, y);
         sx[k] = (sx[k] as number) + x;
         sy[k] = (sy[k] as number) + y;
         cnt[k] = (cnt[k] as number) + 1;
@@ -144,6 +135,21 @@ function relaxSites(islands: Island[], size: number, rounds: number): void {
       isl.y = (sy[k] as number) / c;
     }
   }
+}
+
+/** The island whose power cell holds a place: the least squared distance less squared radius, the first on a tie. */
+function nearestSite(islands: readonly Island[], x: number, y: number): number {
+  let k = 0;
+  let best = Infinity;
+  for (let i = 0; i < islands.length; i++) {
+    const isl = islands[i] as Island;
+    const p = (x - isl.x) ** 2 + (y - isl.y) ** 2 - isl.radius * isl.radius;
+    if (p < best) {
+      best = p;
+      k = i;
+    }
+  }
+  return k;
 }
 
 /** The main island as one cell at the core and a ring of cells round it at `reach`, skipping the arc about `gap`. */

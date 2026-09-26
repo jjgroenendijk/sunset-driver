@@ -36,38 +36,52 @@ export function planWater(
   const radius = size * 0.035;
   const profile = archetype.rivers;
   const count = profile.count.min === profile.count.max ? profile.count.min : rng.int(profile.count.min, profile.count.max);
-  const waterfront = (): Harbour => {
-    const toward = atan2(sites.waterfront.y, sites.waterfront.x);
-    const at = shoreToward(coast, { x: 0, y: 0 }, toward, size);
-    // The basin is dug nine metres down and blends back into the ground over
-    // {@link HARBOUR_REACH}. Where the core faces water closer than the basin is
-    // wide — the inner shore of a lagoon — a basin dug at the shore leaves the
-    // core on the rim of the bowl, and the core stands on gentle ground (spec
-    // section 7.2). So the basin is pushed out into the water until it clears
-    // the core, blend and all. It still faces the shore the core faces, which is
-    // what the archetype asks for, and one seed in 500 is far enough in to move.
-    const want = radius + HARBOUR_REACH;
-    if (hypot(at.x, at.y) >= want) return { x: at.x, y: at.y, radius };
-    return { x: cos(toward) * want, y: sin(toward) * want, radius };
-  };
+  const waterfront = (): Harbour => waterfrontHarbour(sites, coast, size, radius);
   // A harbour on the waterfront is placed first, and the rivers keep clear of the water it carves.
   const placed = archetype.harbour === 'waterfront' ? waterfront() : undefined;
   const wet: CoastAt =
     placed === undefined
       ? coast
       : (x, y) => Math.max(coast(x, y), placed.radius + HARBOUR_REACH - hypot(x - placed.x, y - placed.y));
-  const clear = placed === undefined ? CORE_CLEAR : RING_CLEAR;
-  const rivers: RiverDescription[] = [];
-  if (count > 0) {
-    if (profile.kind === 'source-to-mouth') rivers.push(...sourceToMouth(seed, rng, size, wet, clear));
-    else if (profile.kind === 'delta') rivers.push(...deltaTrunk(seed, sites, rng, size, wet, clear));
-    else rivers.push(...spineRivers(seed, sites, rng, size, wet, count, clear));
-  }
+  const keep: CoreKeep = placed === undefined ? 'core' : 'ring';
+  const rivers = count > 0 ? riversOfKind(profile.kind, seed, sites, rng, size, wet, count, keep) : [];
   const first = rivers[0];
   if (placed !== undefined) return { rivers, harbour: placed };
   if (first === undefined) return { rivers, harbour: waterfront() };
   const mouth = first.path[first.path.length - 1] as Point;
   return { rivers, harbour: { x: mouth.x, y: mouth.y, radius } };
+}
+
+/** The rivers of one kind, `count` of them where the kind lays more than one. */
+function riversOfKind(
+  kind: TerrainArchetype['rivers']['kind'],
+  seed: number,
+  sites: SiteLayout,
+  rng: Rng,
+  size: number,
+  coast: CoastAt,
+  count: number,
+  keep: CoreKeep,
+): RiverDescription[] {
+  if (kind === 'source-to-mouth') return sourceToMouth(seed, rng, size, coast, keep);
+  if (kind === 'delta') return deltaTrunk(seed, sites, rng, size, coast, keep);
+  return spineRivers(seed, sites, rng, size, coast, count, keep);
+}
+
+/** The harbour on the shore the core faces, clear of the core. */
+function waterfrontHarbour(sites: SiteLayout, coast: CoastAt, size: number, radius: number): Harbour {
+  const toward = atan2(sites.waterfront.y, sites.waterfront.x);
+  const at = shoreToward(coast, { x: 0, y: 0 }, toward, size);
+  // The basin is dug nine metres down and blends back into the ground over
+  // {@link HARBOUR_REACH}. Where the core faces water closer than the basin is
+  // wide — the inner shore of a lagoon — a basin dug at the shore leaves the
+  // core on the rim of the bowl, and the core stands on gentle ground (spec
+  // section 7.2). So the basin is pushed out into the water until it clears
+  // the core, blend and all. It still faces the shore the core faces, which is
+  // what the archetype asks for, and one seed in 500 is far enough in to move.
+  const want = radius + HARBOUR_REACH;
+  if (hypot(at.x, at.y) >= want) return { x: at.x, y: at.y, radius };
+  return { x: cos(toward) * want, y: sin(toward) * want, radius };
 }
 
 /** Walking out from a point in a direction, the last dry place before the water. */
@@ -109,7 +123,7 @@ function sourceAlong(coast: CoastAt, angle: number, size: number, within: readon
  * From the main island's interior to its shore. The mouth faces the widest
  * stretch of the main island's own coast, found by walking outward from the core.
  */
-function sourceToMouth(seed: number, rng: Rng, size: number, coast: CoastAt, clear: number): RiverDescription[] {
+function sourceToMouth(seed: number, rng: Rng, size: number, coast: CoastAt, keep: CoreKeep): RiverDescription[] {
   const mouthAngle = rng.range(-Math.PI, Math.PI);
   let mouth: Point = { x: 0, y: 0 };
   let bestReach = -Infinity;
@@ -125,13 +139,13 @@ function sourceToMouth(seed: number, rng: Rng, size: number, coast: CoastAt, cle
   const mouthDir = atan2(mouth.y, mouth.x);
   const sign = rng.chance(0.5) ? 1 : -1;
   const turn = rng.range(0.6, 1.3);
-  if (clear === RING_CLEAR) {
+  if (keep === 'ring') {
     // Kept off the ring: the source stands far out, a quarter turn or so from the mouth, so the river runs round the city.
-    return inlandRiver(coast, size, clear, [sign, -sign], [1.1, 1.4, 1.7], (s, t) =>
+    return inlandRiver(coast, size, keep, [sign, -sign], [1.1, 1.4, 1.7], (s, t) =>
       traceRiver(seed, 0, sourceAlong(coast, mouthDir + s * t, size, FAR_SOURCE), mouth, size, 1),
     );
   }
-  return inlandRiver(coast, size, clear, [sign, -sign], [turn, 0.9, 0.6], (s, t) =>
+  return inlandRiver(coast, size, keep, [sign, -sign], [turn, 0.9, 0.6], (s, t) =>
     traceRiver(seed, 0, sourceAlong(coast, mouthDir + Math.PI + s * t, size), mouth, size, 1),
   );
 }
@@ -150,6 +164,11 @@ const CORE_CLEAR = 0.03;
  */
 const RING_CLEAR = 0.2;
 
+/** Which of the two distances from the core a river keeps: {@link CORE_CLEAR} or {@link RING_CLEAR}. */
+type CoreKeep = 'core' | 'ring';
+
+const CORE_KEEP: Record<CoreKeep, number> = { core: CORE_CLEAR, ring: RING_CLEAR };
+
 /**
  * True when a river stays inland from its source down to near its mouth. A
  * river whose upper course touches the water cuts the land it runs across in
@@ -157,14 +176,14 @@ const RING_CLEAR = 0.2;
  * (`river-decks.ts`), so the thin strip between such a river and the shore
  * may still get no arterial.
  */
-function staysInland(coast: CoastAt, river: RiverDescription, size: number, clear: number): boolean {
+function staysInland(coast: CoastAt, river: RiverDescription, size: number, keep: CoreKeep): boolean {
   const last = Math.floor(river.path.length * (1 - MOUTH_SHARE));
   for (let i = 0; i < river.path.length; i++) {
     const p = river.path[i] as Point;
     const bank = river.halfWidths[i] as number;
     if (i < last && coast(p.x, p.y) > -(bank + INLAND)) return false;
     // The core stands on dry, gentle ground, so no river runs through it.
-    if (hypot(p.x, p.y) < size * clear + bank) return false;
+    if (hypot(p.x, p.y) < size * CORE_KEEP[keep] + bank) return false;
   }
   return true;
 }
@@ -179,7 +198,7 @@ function staysInland(coast: CoastAt, river: RiverDescription, size: number, clea
 function inlandRiver(
   coast: CoastAt,
   size: number,
-  clear: number,
+  keep: CoreKeep,
   signs: readonly number[],
   turns: readonly number[],
   trace: (sign: number, turn: number) => RiverDescription | undefined,
@@ -190,20 +209,20 @@ function inlandRiver(
       const river = trace(sign, turn);
       if (river === undefined) continue;
       first ??= river;
-      if (staysInland(coast, river, size, clear)) return [river];
+      if (staysInland(coast, river, size, keep)) return [river];
     }
   }
-  return clear === CORE_CLEAR && first !== undefined ? [first] : [];
+  return keep === 'core' && first !== undefined ? [first] : [];
 }
 
 /** From inland to the head of the delta, a little to one side of the core. The islets' channels carry it on. */
-function deltaTrunk(seed: number, sites: SiteLayout, rng: Rng, size: number, coast: CoastAt, clear: number): RiverDescription[] {
+function deltaTrunk(seed: number, sites: SiteLayout, rng: Rng, size: number, coast: CoastAt, keep: CoreKeep): RiverDescription[] {
   const seaward = atan2(sites.waterfront.y, sites.waterfront.x);
   const mouth = shoreToward(coast, { x: 0, y: 0 }, seaward + (rng.chance(0.5) ? 1 : -1) * rng.range(0.3, 0.6), size);
   const mouthDir = atan2(mouth.y, mouth.x);
   const sign = rng.chance(0.5) ? 1 : -1;
   const turn = rng.range(0.6, 1.1);
-  return inlandRiver(coast, size, clear, [sign, -sign], [turn, 0.9, 0.6], (s, t) =>
+  return inlandRiver(coast, size, keep, [sign, -sign], [turn, 0.9, 0.6], (s, t) =>
     traceRiver(seed, 0, sourceAlong(coast, mouthDir + Math.PI + s * t, size), mouth, size, 1.3),
   );
 }
@@ -226,7 +245,7 @@ function spineRivers(
   size: number,
   coast: CoastAt,
   count: number,
-  clear: number,
+  keep: CoreKeep,
 ): RiverDescription[] {
   const spine = sites.spine;
   if (spine === undefined) return [];
@@ -246,7 +265,7 @@ function spineRivers(
     const mouth = shoreToward(coast, source, seaward, size);
     if (hypot(mouth.x - source.x, mouth.y - source.y) < size * 0.1) continue;
     const river = traceRiver(seed, k, source, mouth, size, 0.6);
-    if (river !== undefined && staysInland(coast, river, size, clear)) out.push(river);
+    if (river !== undefined && staysInland(coast, river, size, keep)) out.push(river);
   }
   return out;
 }
@@ -291,28 +310,30 @@ export function carveRiver(hf: Heightfield, river: RiverDescription): void {
   const bank = 70;
   const path = river.path;
   for (let i = 0; i + 1 < path.length; i++) {
-    const a = path[i] as Point;
-    const b = path[i + 1] as Point;
-    const hw = river.halfWidths[i] as number;
-    const reach = hw + bank;
-    const minX = Math.min(a.x, b.x) - reach;
-    const maxX = Math.max(a.x, b.x) + reach;
-    const minY = Math.min(a.y, b.y) - reach;
-    const maxY = Math.max(a.y, b.y) + reach;
-    const ix0 = clamp(Math.floor((minX - hf.originX) / hf.cellSize), 0, hf.gridSize - 1);
-    const ix1 = clamp(Math.ceil((maxX - hf.originX) / hf.cellSize), 0, hf.gridSize - 1);
-    const iy0 = clamp(Math.floor((minY - hf.originY) / hf.cellSize), 0, hf.gridSize - 1);
-    const iy1 = clamp(Math.ceil((maxY - hf.originY) / hf.cellSize), 0, hf.gridSize - 1);
-    for (let iy = iy0; iy <= iy1; iy++) {
-      for (let ix = ix0; ix <= ix1; ix++) {
-        const x = hf.worldX(ix);
-        const y = hf.worldY(iy);
-        const d = segmentDistance(x, y, a, b);
-        if (d > reach) continue;
-        const h = hf.at(ix, iy);
-        const target = d < hw ? bed : lerp(bed, h, smoothstep(hw, reach, d));
-        if (target < h) hf.set(ix, iy, target);
-      }
+    carveReach(hf, path[i] as Point, path[i + 1] as Point, river.halfWidths[i] as number, bed, bank);
+  }
+}
+
+/** Cut one reach of a river valley, from `a` to `b`, `hw` metres wide each side. */
+function carveReach(hf: Heightfield, a: Point, b: Point, hw: number, bed: number, bank: number): void {
+  const reach = hw + bank;
+  const minX = Math.min(a.x, b.x) - reach;
+  const maxX = Math.max(a.x, b.x) + reach;
+  const minY = Math.min(a.y, b.y) - reach;
+  const maxY = Math.max(a.y, b.y) + reach;
+  const ix0 = clamp(Math.floor((minX - hf.originX) / hf.cellSize), 0, hf.gridSize - 1);
+  const ix1 = clamp(Math.ceil((maxX - hf.originX) / hf.cellSize), 0, hf.gridSize - 1);
+  const iy0 = clamp(Math.floor((minY - hf.originY) / hf.cellSize), 0, hf.gridSize - 1);
+  const iy1 = clamp(Math.ceil((maxY - hf.originY) / hf.cellSize), 0, hf.gridSize - 1);
+  for (let iy = iy0; iy <= iy1; iy++) {
+    for (let ix = ix0; ix <= ix1; ix++) {
+      const x = hf.worldX(ix);
+      const y = hf.worldY(iy);
+      const d = segmentDistance(x, y, a, b);
+      if (d > reach) continue;
+      const h = hf.at(ix, iy);
+      const target = d < hw ? bed : lerp(bed, h, smoothstep(hw, reach, d));
+      if (target < h) hf.set(ix, iy, target);
     }
   }
 }

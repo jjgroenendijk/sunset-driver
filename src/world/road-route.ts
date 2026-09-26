@@ -157,7 +157,7 @@ export abstract class RoadRoute {
     const hf = this.hf;
     const n = hf.gridSize;
     const straight = maxGrade * hf.cellSize;
-    const diagonal = straight * Math.SQRT2;
+    const rules: StepRules = { straight, diagonal: straight * Math.SQRT2, tier, within, vetSteps };
     this.rerouteHits = 0;
     const start = this.nearestLandNode(from, maxGrade);
     if (start < 0) return undefined;
@@ -176,36 +176,64 @@ export abstract class RoadRoute {
       const hit = goal(hf.worldX(ix), hf.worldY(iy), ix, iy);
       if (hit !== undefined) this.rerouteHits++;
       if (hit !== undefined && tries++ < ROUTE_TRIES) {
-        const walked = this.pathTo(at, from, hit, maxGrade, tier, before);
-        const path = walked === undefined ? undefined : this.untangled(walked, tier, maxGrade);
-        if (path !== undefined && this.keepsClear(path, tier, before)) return path;
+        const path = this.tryRoute(at, from, hit, maxGrade, tier, before);
+        if (path !== undefined) return path;
         // Every try is spent, so nothing the search reaches from here is tried.
         if (tries === ROUTE_TRIES) return undefined;
       }
-      // The step that reached this node. A road that turns more than a right
-      // angle within one cell of the grid folds over its own carriageway.
-      const back = came[at] as number;
-      const inX = ix - (back % n);
-      const inY = iy - (back - (back % n)) / n;
-      for (let k = 0; k < NEIGHBOUR_X.length; k++) {
-        const dx = NEIGHBOUR_X[k] as number;
-        const dy = NEIGHBOUR_Y[k] as number;
-        if (dx * inX + dy * inY < 0) continue;
-        const jx = ix + dx;
-        const jy = iy + dy;
-        if (jx < 0 || jy < 0 || jx >= n || jy >= n) continue;
-        const to = jy * n + jx;
-        if (came[to] !== -1 || this.land[to] === 0) continue;
-        if (dx !== 0 && dy !== 0 && (this.land[iy * n + jx] === 0 || this.land[jy * n + ix] === 0)) continue;
-        if (within !== undefined && !within(hf.worldX(jx), hf.worldY(jy))) continue;
-        const rise = Math.abs(hf.at(jx, jy) - hf.at(ix, iy));
-        if (rise > (dx !== 0 && dy !== 0 ? diagonal : straight)) continue;
-        if (vetSteps && !this.network.stepOk({ x: hf.worldX(ix), y: hf.worldY(iy) }, { x: hf.worldX(jx), y: hf.worldY(jy) }, tier)) continue;
-        came[to] = at;
-        queue[tail++] = to;
-      }
+      tail = this.spread(at, ix, iy, tail, rules);
     }
     return undefined;
+  }
+
+  /** The route {@link reroute} walks back from node `at` to a place the goal accepted, where it is a road at all. */
+  private tryRoute(at: number, from: Point, hit: Point, maxGrade: number, tier: RoadTier, before: readonly Point[]): Point[] | undefined {
+    const walked = this.pathTo(at, from, hit, maxGrade, tier, before);
+    const path = walked === undefined ? undefined : this.untangled(walked, tier, maxGrade);
+    if (path !== undefined && this.keepsClear(path, tier, before)) return path;
+    return undefined;
+  }
+
+  /**
+   * Queue the neighbours of node `at`, at column `ix` and row `iy`, that the
+   * search may step to, and return the new end of the queue.
+   */
+  private spread(at: number, ix: number, iy: number, tail: number, rules: StepRules): number {
+    const n = this.hf.gridSize;
+    const came = this.came;
+    // The step that reached this node. A road that turns more than a right
+    // angle within one cell of the grid folds over its own carriageway.
+    const back = came[at] as number;
+    const inX = ix - (back % n);
+    const inY = iy - (back - (back % n)) / n;
+    for (let k = 0; k < NEIGHBOUR_X.length; k++) {
+      const dx = NEIGHBOUR_X[k] as number;
+      const dy = NEIGHBOUR_Y[k] as number;
+      if (dx * inX + dy * inY < 0) continue;
+      const jx = ix + dx;
+      const jy = iy + dy;
+      if (jx < 0 || jy < 0 || jx >= n || jy >= n) continue;
+      const to = jy * n + jx;
+      if (came[to] !== -1 || this.land[to] === 0) continue;
+      if (!this.mayStep(ix, iy, dx, dy, rules)) continue;
+      came[to] = at;
+      this.queue[tail++] = to;
+    }
+    return tail;
+  }
+
+  /** True where the search may step by `(dx, dy)` from the node at column `ix` and row `iy` onto dry land. */
+  private mayStep(ix: number, iy: number, dx: number, dy: number, rules: StepRules): boolean {
+    const hf = this.hf;
+    const n = hf.gridSize;
+    const jx = ix + dx;
+    const jy = iy + dy;
+    if (dx !== 0 && dy !== 0 && (this.land[iy * n + jx] === 0 || this.land[jy * n + ix] === 0)) return false;
+    if (rules.within !== undefined && !rules.within(hf.worldX(jx), hf.worldY(jy))) return false;
+    const rise = Math.abs(hf.at(jx, jy) - hf.at(ix, iy));
+    if (rise > (dx !== 0 && dy !== 0 ? rules.diagonal : rules.straight)) return false;
+    if (rules.vetSteps && !this.network.stepOk({ x: hf.worldX(ix), y: hf.worldY(iy) }, { x: hf.worldX(jx), y: hf.worldY(jy) }, rules.tier)) return false;
+    return true;
   }
 
   /**
@@ -262,36 +290,15 @@ export abstract class RoadRoute {
    * #676, F2).
    */
   protected straighten(nodes: readonly Point[], maxGrade: number, tier: RoadTier, before: readonly Point[] = []): Point[] | undefined {
-    const reach = ARTERIAL.step * 3;
     const out: Point[] = [nodes[0] as Point];
     let anchor = 0;
     while (anchor < nodes.length - 1) {
       const a = nodes[anchor] as Point;
-      let next = -1;
-      const fits: number[] = [];
-      for (let i = anchor + 1; i < nodes.length; i++) {
-        const b = nodes[i] as Point;
-        // The grid only steps along its axes and diagonals, so a road it meets
-        // at a shallow angle can refuse every short segment. Then the search
-        // reaches further for one that crosses it cleanly.
-        const far = dist(a.x, a.y, b.x, b.y);
-        if (far > reach * (next < 0 ? STRAIGHTEN_REACH : 1)) break;
-        const last = i === nodes.length - 1;
-        // Two grid nodes one step apart were walked by the search, which
-        // already found the cell between them dry and inside the grade. The
-        // first and the last node stand off the grid, so a hop to either is
-        // probed like any other.
-        const walked = i === anchor + 1 && anchor > 0 && !last;
-        if (!walked && !this.canRun(a.x, a.y, b.x, b.y, maxGrade)) continue;
-        if (last ? this.network.meets(b, a, tier) : this.network.stepOk(a, b, tier)) {
-          next = i;
-          fits.push(i);
-        } else if (i === anchor + 1) continue;
-        if (next >= 0 && far > reach) break;
-      }
+      const fits = this.fitsFrom(nodes, anchor, maxGrade, tier);
       // The furthest node that fits is kept, unless it turns back over the
       // points kept before it; then the next furthest is.
-      next = fits.reverse().find((i) => !stepOverlaps(out, nodes[i] as Point, tier, before)) ?? anchor + 1;
+      fits.reverse();
+      const next = fits.find((i) => !stepOverlaps(out, nodes[i] as Point, tier, before)) ?? anchor + 1;
       const forced = nodes[next] as Point;
       if (next === nodes.length - 1 && !this.canRun(a.x, a.y, forced.x, forced.y, maxGrade)) return undefined;
       out.push(nodes[next] as Point);
@@ -300,21 +307,63 @@ export abstract class RoadRoute {
     return out;
   }
 
+  /**
+   * The nodes after `anchor` that a straight segment from it may reach, in
+   * order: those the tier can drive to and that keep off the roads passed.
+   */
+  private fitsFrom(nodes: readonly Point[], anchor: number, maxGrade: number, tier: RoadTier): number[] {
+    const reach = ARTERIAL.step * 3;
+    const a = nodes[anchor] as Point;
+    const fits: number[] = [];
+    for (let i = anchor + 1; i < nodes.length; i++) {
+      const b = nodes[i] as Point;
+      // The grid only steps along its axes and diagonals, so a road it meets
+      // at a shallow angle can refuse every short segment. Then the search
+      // reaches further for one that crosses it cleanly.
+      const far = dist(a.x, a.y, b.x, b.y);
+      if (far > reach * (fits.length === 0 ? STRAIGHTEN_REACH : 1)) break;
+      if (this.fits(nodes, anchor, i, maxGrade, tier)) fits.push(i);
+      if (fits.length > 0 && far > reach) break;
+    }
+    return fits;
+  }
+
+  /** True where a straight segment from node `anchor` to node `i` is one the tier can drive and that keeps off the roads. */
+  private fits(nodes: readonly Point[], anchor: number, i: number, maxGrade: number, tier: RoadTier): boolean {
+    const a = nodes[anchor] as Point;
+    const b = nodes[i] as Point;
+    const last = i === nodes.length - 1;
+    // Two grid nodes one step apart were walked by the search, which
+    // already found the cell between them dry and inside the grade. The
+    // first and the last node stand off the grid, so a hop to either is
+    // probed like any other.
+    const walked = i === anchor + 1 && anchor > 0 && !last;
+    if (!walked && !this.canRun(a.x, a.y, b.x, b.y, maxGrade)) return false;
+    return last ? this.network.meets(b, a, tier) : this.network.stepOk(a, b, tier);
+  }
+
   /** Index of the terrain node nearest a point that the road can reach, searched outward. */
   protected nearestLandNode(p: Point, maxGrade: number): number {
-    const n = this.hf.gridSize;
     const cx = this.node(p.x);
     const cy = this.node(p.y);
     for (let r = 0; r <= 4; r++) {
-      for (let dy = -r; dy <= r; dy++) {
-        for (let dx = -r; dx <= r; dx++) {
-          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-          const ix = cx + dx;
-          const iy = cy + dy;
-          if (ix < 0 || iy < 0 || ix >= n || iy >= n) continue;
-          const i = iy * n + ix;
-          if (this.land[i] === 1 && this.canRun(p.x, p.y, this.hf.worldX(ix), this.hf.worldY(iy), maxGrade)) return i;
-        }
+      const i = this.landOnRing(p, cx, cy, r, maxGrade);
+      if (i >= 0) return i;
+    }
+    return -1;
+  }
+
+  /** The first node on the square ring `r` nodes round `(cx, cy)` that the road can reach from `p`, or -1. */
+  private landOnRing(p: Point, cx: number, cy: number, r: number, maxGrade: number): number {
+    const n = this.hf.gridSize;
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const ix = cx + dx;
+        const iy = cy + dy;
+        if (ix < 0 || iy < 0 || ix >= n || iy >= n) continue;
+        const i = iy * n + ix;
+        if (this.land[i] === 1 && this.canRun(p.x, p.y, this.hf.worldX(ix), this.hf.worldY(iy), maxGrade)) return i;
       }
     }
     return -1;
@@ -415,15 +464,7 @@ export abstract class RoadRoute {
     const last = points.length - 1;
     for (const crossing of this.world.water.crossings) {
       for (const shore of [crossing.from, crossing.to]) {
-        let best = -1;
-        let bestD = ANCHOR_REACH / 2;
-        for (let i = 1; i < last; i++) {
-          const p = points[i] as Point;
-          const d = dist(p.x, p.y, shore.x, shore.y);
-          if (d >= bestD) continue;
-          bestD = d;
-          best = i;
-        }
+        const best = nearestInner(points, last, shore);
         if (best < 0) continue;
         // The junction stands on the ground, so neither segment beside it is a structure.
         if ([...bridges, ...tunnels].some((i) => i === best || i === best - 1)) continue;
@@ -563,3 +604,27 @@ export abstract class RoadRoute {
 /** Eight-way steps of the reroute search, straight ones first. */
 const NEIGHBOUR_X = [1, -1, 0, 0, 1, 1, -1, -1];
 const NEIGHBOUR_Y = [0, 0, 1, -1, 1, -1, 1, -1];
+
+/** How the search of {@link RoadRoute.reroute} may step from one node of the grid to the next. */
+interface StepRules {
+  /** The most a straight step may climb, in metres; `diagonal` for a diagonal one. */
+  straight: number;
+  diagonal: number;
+  tier: RoadTier;
+  within: ((x: number, y: number) => boolean) | undefined;
+  vetSteps: boolean;
+}
+
+/** The inner point of a line, before point `last`, nearest `shore` and within half {@link ANCHOR_REACH} of it, or -1. */
+function nearestInner(points: readonly Point[], last: number, shore: Point): number {
+  let best = -1;
+  let bestD = ANCHOR_REACH / 2;
+  for (let i = 1; i < last; i++) {
+    const p = points[i] as Point;
+    const d = dist(p.x, p.y, shore.x, shore.y);
+    if (d >= bestD) continue;
+    bestD = d;
+    best = i;
+  }
+  return best;
+}

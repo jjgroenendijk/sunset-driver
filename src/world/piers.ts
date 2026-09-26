@@ -112,8 +112,12 @@ export function deckRuns(road: DeckedLine, wet: (a: Point, b: Point) => boolean,
       open = undefined;
       continue;
     }
-    if (open !== undefined && open.to === at - 1) open.to = at;
-    else runs.push((open = { from: at, to: at }));
+    if (open !== undefined && open.to === at - 1) {
+      open.to = at;
+    } else {
+      open = { from: at, to: at };
+      runs.push(open);
+    }
   }
   return runs;
 }
@@ -308,14 +312,19 @@ export class RoadGround {
         const b = road.points[i + 1] as Point;
         const id = this.segments.length;
         this.segments.push({ curve: road.id, a, b, reach });
-        for (let row = cellOf(Math.min(a.y, b.y) - reach); row <= cellOf(Math.max(a.y, b.y) + reach); row++) {
-          for (let col = cellOf(Math.min(a.x, b.x) - reach); col <= cellOf(Math.max(a.x, b.x) + reach); col++) {
-            const key = bucketKey(col, row);
-            const bucket = this.buckets.get(key);
-            if (bucket === undefined) this.buckets.set(key, [id]);
-            else bucket.push(id);
-          }
-        }
+        this.file(id, a, b, reach);
+      }
+    }
+  }
+
+  /** File segment `id`, from `a` to `b`, in every bucket its footprint covers. */
+  private file(id: number, a: Point, b: Point, reach: number): void {
+    for (let row = cellOf(Math.min(a.y, b.y) - reach); row <= cellOf(Math.max(a.y, b.y) + reach); row++) {
+      for (let col = cellOf(Math.min(a.x, b.x) - reach); col <= cellOf(Math.max(a.x, b.x) + reach); col++) {
+        const key = bucketKey(col, row);
+        const bucket = this.buckets.get(key);
+        if (bucket === undefined) this.buckets.set(key, [id]);
+        else bucket.push(id);
       }
     }
   }

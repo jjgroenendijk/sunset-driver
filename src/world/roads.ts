@@ -337,28 +337,35 @@ class RoadTracer extends IslandLinkTrace {
       const major = this.field.majorAt(seed.x, seed.y);
       const across = directionDelta(major, seed.along) > Math.PI / 4;
       const plan = planAt(seed.x, seed.y, across);
-      if (!plan.within(seed.x, seed.y)) continue;
-      // A road begins at its seed, so a seed standing on a road this tier may
-      // not junction with would make the junction anyway. A street seeded where
-      // an arterial ramp meets a highway is that case (spec section 6.2).
-      if (this.network.refuses(seed.x, seed.y, plan.tier)) continue;
-      // Somewhere already covered: a road within the clearance, other than the parent.
-      if (this.network.nearest(seed.x, seed.y, plan.clearance, seed.parent) !== undefined) continue;
-      // A seed beside its parent starts a road of its own, so it has to stand
-      // clear of every carriageway; one on its parent starts at a junction.
-      if (!seed.onParent && !this.network.clearAt(seed.x, seed.y, plan.tier)) continue;
+      if (!this.mayStartAt(seed, plan)) continue;
       this.network.takeLaid();
       const curve = this.fillRoad(seed, plan, major, across);
       if (curve === undefined) continue;
       laid.push(curve);
-      if (seed.depth + 1 < generations) {
-        // Every piece the network laid for the road seeds, not only the one it returned.
-        for (const piece of this.network.takeLaid()) {
-          if (piece.tier === plan.tier) seedAlong(piece, this.field, (x, y, a) => planAt(x, y, a).spacing, seed.depth + 1, seeds);
-        }
-      }
+      if (seed.depth + 1 < generations) this.reseed(plan.tier, planAt, seed.depth + 1, seeds);
     }
     return laid;
+  }
+
+  /** Seed the next generation along every piece of `tier` the network laid for a road, not only the one it returned. */
+  private reseed(tier: RoadTier, planAt: PlanAt, depth: number, seeds: FillSeed[]): void {
+    for (const piece of this.network.takeLaid()) {
+      if (piece.tier === tier) seedAlong(piece, this.field, (x, y, a) => planAt(x, y, a).spacing, depth, seeds);
+    }
+  }
+
+  /** True where a fill road of the plan may start at its seed. */
+  private mayStartAt(seed: FillSeed, plan: FillPlan): boolean {
+    if (!plan.within(seed.x, seed.y)) return false;
+    // A road begins at its seed, so a seed standing on a road this tier may
+    // not junction with would make the junction anyway. A street seeded where
+    // an arterial ramp meets a highway is that case (spec section 6.2).
+    if (this.network.refuses(seed.x, seed.y, plan.tier)) return false;
+    // Somewhere already covered: a road within the clearance, other than the parent.
+    if (this.network.nearest(seed.x, seed.y, plan.clearance, seed.parent) !== undefined) return false;
+    // A seed beside its parent starts a road of its own, so it has to stand
+    // clear of every carriageway; one on its parent starts at a junction.
+    return seed.onParent || this.network.clearAt(seed.x, seed.y, plan.tier);
   }
 
   /** One fill road, traced both ways along the field line it was seeded with. */
@@ -444,9 +451,7 @@ class RoadTracer extends IslandLinkTrace {
     const passing = this.roadAtGate(gate);
     if (passing >= 0) return passing;
     const island = this.islandOf(gate.x, gate.y);
-    const tiers: [RoadTier, TierParams][] =
-      kind === 'airstrip' ? [['dirt', DIRT], ['street', STREET]] : kind === 'heliport' ? [['street', STREET]] : [['arterial', ARTERIAL], ['street', STREET]];
-    for (const [tier, params] of tiers) {
+    for (const [tier, params] of gateTiers(kind)) {
       const route = this.routeToNetwork(gate, island, tier, params, this.offSand);
       if (route === undefined) continue;
       // The network may keep only part of a route, so the road that serves
@@ -536,9 +541,17 @@ class RoadTracer extends IslandLinkTrace {
       if (!crossed || !this.joinsNetwork('street', [...line], true)) return { id: -1, line, ways };
       return { id: this.addCurve('street', [...line], [], [], true)?.id ?? -1, line, ways };
     }
-    // A way on to the network that turns back over the boardwalk has the turn
-    // cut out of it. Where that cannot be done it is dropped, as long as the
-    // other end still reaches the network.
+    return { id: this.layWithWays(beach, line, head, tail), line, ways };
+  }
+
+  /**
+   * Lay a boardwalk run with its ways on to the network, `head` from its first
+   * point and `tail` from its last. A way on to the network that turns back
+   * over the boardwalk has the turn cut out of it. Where that cannot be done it
+   * is dropped, as long as the other end still reaches the network. The id of
+   * the road laid, or -1.
+   */
+  private layWithWays(beach: Beach, line: readonly Point[], head: Point[], tail: Point[]): number {
     for (const [from, to] of [[head, tail], [[], tail], [head, []]] as const) {
       if (from.length === 0 && to.length === 0) continue;
       const points = this.untangled([...[...from].reverse(), ...line, ...to], 'street', STREET.maxGrade);
@@ -550,9 +563,9 @@ class RoadTracer extends IslandLinkTrace {
       const settled = this.settledLine('street', points);
       if (settled !== undefined && settled.length < points.length && keptLength(beach.boardwalk, settled) < MIN_BOARDWALK) continue;
       const laid = this.addCurve('street', points, []);
-      if (laid !== undefined) return { id: laid.id, line, ways };
+      if (laid !== undefined) return laid.id;
     }
-    return { id: -1, line, ways };
+    return -1;
   }
 
   /**
@@ -597,15 +610,28 @@ class RoadTracer extends IslandLinkTrace {
         const c = curve.points[s] as Point;
         const d = curve.points[s + 1] as Point;
         if (dist(c.x, c.y, end.x, end.y) > within + dist(c.x, c.y, d.x, d.y) && dist(d.x, d.y, end.x, end.y) > within + dist(c.x, c.y, d.x, d.y)) continue;
-        for (let k = 0; k + 1 < line.length; k++) {
-          const at = crossPoint(line[k] as Point, line[k + 1] as Point, c, d);
-          if (at !== undefined && dist(at.x, at.y, end.x, end.y) < within) return [];
-        }
+        if (crossesNear(line, c, d, end, within)) return [];
       }
     }
     return route;
   }
 
+}
+
+/** The tiers tried in turn for the road to an airfield's gate, with their parameters. */
+function gateTiers(kind: Airfield['kind']): [RoadTier, TierParams][] {
+  if (kind === 'airstrip') return [['dirt', DIRT], ['street', STREET]];
+  if (kind === 'heliport') return [['street', STREET]];
+  return [['arterial', ARTERIAL], ['street', STREET]];
+}
+
+/** True where a line crosses the segment from `c` to `d` less than `within` metres from `end`. */
+function crossesNear(line: readonly Point[], c: Point, d: Point, end: Point, within: number): boolean {
+  for (let k = 0; k + 1 < line.length; k++) {
+    const at = crossPoint(line[k] as Point, line[k + 1] as Point, c, d);
+    if (at !== undefined && dist(at.x, at.y, end.x, end.y) < within) return true;
+  }
+  return false;
 }
 
 /** Metres of a line whose segments survive whole, both ends, in a road cut from it. */

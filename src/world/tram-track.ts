@@ -55,6 +55,20 @@ export function tramTrack(world: WorldDescription, graph: RoadGraph): TramTrack 
     segments[edge.curve] = mask;
   }
 
+  const crossings = tramCrossings(world, graph, runs);
+  const paved: Point[] = [];
+  for (const edge of runs) {
+    for (const node of [graph.nodes[edge.from], graph.nodes[edge.to]]) {
+      if (node !== undefined) paved.push({ x: node.x, y: node.y });
+    }
+  }
+  for (const crossing of world.tram.crossings) paved.push({ x: crossing.x, y: crossing.y });
+  for (const stop of world.tram.stops) paved.push({ x: stop.x, y: stop.y });
+  return { segments, crossings, paved };
+}
+
+/** Where the loop crosses a road, with the direction of the track through it: from the run arriving to the run leaving. */
+function tramCrossings(world: WorldDescription, graph: RoadGraph, runs: readonly RoadEdge[]): TramCrossing[] {
   const crossings: TramCrossing[] = [];
   for (const crossing of world.tram.crossings) {
     // The run that arrives at the crossing and the one that leaves it. The loop
@@ -72,13 +86,5 @@ export function tramTrack(world: WorldDescription, graph: RoadGraph): TramTrack 
     const tier = (runs[k] as RoadEdge).tier;
     crossings.push({ x: crossing.x, y: crossing.y, alongX: dx / length, alongY: dy / length, tier });
   }
-  const paved: Point[] = [];
-  for (const edge of runs) {
-    for (const node of [graph.nodes[edge.from], graph.nodes[edge.to]]) {
-      if (node !== undefined) paved.push({ x: node.x, y: node.y });
-    }
-  }
-  for (const crossing of world.tram.crossings) paved.push({ x: crossing.x, y: crossing.y });
-  for (const stop of world.tram.stops) paved.push({ x: stop.x, y: stop.y });
-  return { segments, crossings, paved };
+  return crossings;
 }

@@ -103,6 +103,9 @@ interface Step {
   reach: number;
 }
 
+/** The answer of a search for a step when a climb too hard for the tier turned one away. Compared by identity. */
+const STEEP: Step = { heading: 0, reach: 0 };
+
 interface TraceResult {
   points: Point[];
   /** Ended on an existing road. */
@@ -117,6 +120,36 @@ interface TraceResult {
   clear: boolean[];
   /** Radians the trace swept round its ring; 0 for a trace with none. */
   swept: number;
+}
+
+/** A trace as it is laid, step by step: see {@link RoadTrace.trace}. */
+interface TraceState {
+  points: Point[];
+  clear: boolean[];
+  trail: Trail;
+  /** The last point laid, and the heading of the step that reached it. */
+  px: number;
+  py: number;
+  heading: number;
+  /** Metres laid so far. */
+  length: number;
+  merged: boolean;
+  arrived: boolean;
+  /** The nearest the trace has come to its target, and the steps since it came nearer. */
+  closest: number;
+  stalled: number;
+  /** The heading out from the ring's middle to the last point, and the radians swept round it. */
+  bearing: number;
+  swept: number;
+}
+
+/** Add the last step's sweep round the ring the trace runs round. True where the trace has swept all it may. */
+function sweptRound(st: TraceState, ring: Ring | undefined): boolean {
+  if (ring === undefined) return false;
+  const now = atan2(st.py - ring.y, st.px - ring.x);
+  st.swept += Math.abs(wrapAngle(now - st.bearing));
+  st.bearing = now;
+  return st.swept >= ring.sweep;
 }
 
 /** A trace over the ground and the network {@link RoadRoute} holds. */
@@ -276,105 +309,126 @@ export abstract class RoadTrace extends RoadRoute {
    * road, so it never ends inside another road's carriageway.
    */
   protected trace(start: Point, opt: TraceOptions): TraceResult {
-    const params = opt.params;
-    const maxLength = params.maxLength * this.size;
-    const mergeAfter = opt.mergeAfter ?? 0;
-    const arrive = params.step * 1.5;
-    const points: Point[] = [{ x: start.x, y: start.y }];
-    const clear: boolean[] = [true];
-    const trail: Trail = { crossed: [], start: opt.junction ?? start };
-    let px = start.x;
-    let py = start.y;
-    let heading = opt.heading ?? this.startHeading(start, opt);
-    let length = 0;
-    let merged = false;
-    let arrived = false;
-    let closest = opt.target === undefined ? 0 : dist(px, py, opt.target.x, opt.target.y);
-    let stalled = 0;
+    const maxLength = opt.params.maxLength * this.size;
     const ring = opt.around;
-    let bearing = ring === undefined ? 0 : atan2(py - ring.y, px - ring.x);
-    let swept = 0;
-
-    while (length < maxLength) {
-      const wanted = this.desiredHeading(px, py, heading, opt);
-      let next = this.stepHeading(px, py, heading, wanted, params);
-      if (next === undefined) break;
-      let qx = px + cos(next.heading) * next.reach;
-      let qy = py + sin(next.heading) * next.reach;
-      if (Math.abs(qx) > this.half || Math.abs(qy) > this.half) break;
-      if (opt.within !== undefined && !opt.within(qx, qy)) break;
-
-      // A road joins any other road on close approach, but only rejoins the one
-      // it branched off after it has gone somewhere.
-      const parent = opt.parentCurve ?? -1;
-      const candidates = length >= mergeAfter ? this.network.within(qx, qy, params.mergeRadius, parent, opt.joiner) : [];
-      if (candidates.length === 0 && parent >= 0 && length >= (opt.parentMergeAfter ?? mergeAfter)) {
-        candidates.push(...this.network.within(qx, qy, params.mergeRadius, -1, opt.joiner));
-      }
-      const here = { x: px, y: py };
-      const turnsBack = (p: Point): boolean => stepOverlaps(points, p, opt.joiner, opt.before);
-      const hit = this.mergeAt(candidates, here, heading, opt.joiner, params, trail, turnsBack);
-      if (hit !== undefined) {
-        points.push({ x: hit.x, y: hit.y });
-        clear.push(true);
-        merged = true;
-        break;
-      }
-      // Whether this road may junction with the one it comes near or not, it
-      // crosses it or leaves it; it never runs along it. A road coming in too
-      // shallow turns until it does, and stops where no turn is left.
-      if (!this.network.stepOk(here, { x: qx, y: qy }, opt.joiner, trail)) {
-        next = this.turnClear(here, heading, next, opt, trail);
-        if (next === undefined) break;
-        qx = px + cos(next.heading) * next.reach;
-        qy = py + sin(next.heading) * next.reach;
-      }
-      // A road never comes back onto its own carriageway: it ends where the
-      // next step would, as it ends where the field curls it back.
-      if (foldsBack(points, qx, qy, params.step) || stepOverlaps(points, { x: qx, y: qy }, opt.joiner, opt.before)) break;
-
-      points.push({ x: qx, y: qy });
-      clear.push(this.network.clearAt(qx, qy, opt.joiner));
-      length += next.reach;
-      heading = next.heading;
-      px = qx;
-      py = qy;
-      if (ring !== undefined) {
-        const now = atan2(py - ring.y, px - ring.x);
-        swept += Math.abs(wrapAngle(now - bearing));
-        bearing = now;
-        if (swept >= ring.sweep) break;
-      }
-
-      const target = opt.target;
-      if (target === undefined) continue;
-      const d = dist(px, py, target.x, target.y);
-      if (d <= arrive) {
-        // Only an arrival that can be driven counts: a last step over water or
-        // up a wall is no arrival, and the caller reroutes instead.
-        if (!this.canRun(px, py, target.x, target.y, params.maxGrade)) break;
-        if (this.network.refuses(target.x, target.y, opt.joiner)) break;
-        if (!this.network.meets(target, { x: px, y: py }, opt.joiner, trail)) break;
-        if (stepOverlaps(points, target, opt.joiner, opt.before)) break;
-        points.push({ x: target.x, y: target.y });
-        clear.push(true);
-        arrived = true;
-        break;
-      }
-      if (d < closest - 1) {
-        closest = d;
-        stalled = 0;
-      } else if (++stalled > STALL_STEPS) {
-        break;
-      }
+    const st: TraceState = {
+      points: [{ x: start.x, y: start.y }],
+      clear: [true],
+      trail: { crossed: [], start: opt.junction ?? start },
+      px: start.x,
+      py: start.y,
+      heading: opt.heading ?? this.startHeading(start, opt),
+      length: 0,
+      merged: false,
+      arrived: false,
+      closest: opt.target === undefined ? 0 : dist(start.x, start.y, opt.target.x, opt.target.y),
+      stalled: 0,
+      bearing: ring === undefined ? 0 : atan2(start.y - ring.y, start.x - ring.x),
+      swept: 0,
+    };
+    while (st.length < maxLength) {
+      if (!this.traceStep(st, opt)) break;
     }
-    if (!merged && !arrived) {
+    const { points, clear } = st;
+    if (!st.merged && !st.arrived) {
       while (points.length > 1 && clear[clear.length - 1] !== true) {
         points.pop();
         clear.pop();
       }
     }
-    return { points, merged, arrived, clear, swept };
+    return { points, merged: st.merged, arrived: st.arrived, clear, swept: st.swept };
+  }
+
+  /** Take one step of a trace. False where the trace ends here. */
+  private traceStep(st: TraceState, opt: TraceOptions): boolean {
+    const params = opt.params;
+    const wanted = this.desiredHeading(st.px, st.py, st.heading, opt);
+    let next = this.stepHeading(st.px, st.py, st.heading, wanted, params);
+    if (next === undefined) return false;
+    let qx = st.px + cos(next.heading) * next.reach;
+    let qy = st.py + sin(next.heading) * next.reach;
+    if (Math.abs(qx) > this.half || Math.abs(qy) > this.half) return false;
+    if (opt.within !== undefined && !opt.within(qx, qy)) return false;
+    const here = { x: st.px, y: st.py };
+    if (this.mergeStep(st, opt, qx, qy, here)) return false;
+    // Whether this road may junction with the one it comes near or not, it
+    // crosses it or leaves it; it never runs along it. A road coming in too
+    // shallow turns until it does, and stops where no turn is left.
+    if (!this.network.stepOk(here, { x: qx, y: qy }, opt.joiner, st.trail)) {
+      next = this.turnClear(here, st.heading, next, opt, st.trail);
+      if (next === undefined) return false;
+      qx = st.px + cos(next.heading) * next.reach;
+      qy = st.py + sin(next.heading) * next.reach;
+    }
+    // A road never comes back onto its own carriageway: it ends where the
+    // next step would, as it ends where the field curls it back.
+    if (foldsBack(st.points, qx, qy, params.step) || stepOverlaps(st.points, { x: qx, y: qy }, opt.joiner, opt.before)) return false;
+
+    st.points.push({ x: qx, y: qy });
+    st.clear.push(this.network.clearAt(qx, qy, opt.joiner));
+    st.length += next.reach;
+    st.heading = next.heading;
+    st.px = qx;
+    st.py = qy;
+    if (sweptRound(st, opt.around)) return false;
+    return this.approach(st, opt);
+  }
+
+  /**
+   * End the trace on a road near the step to `(qx, qy)`, where it may merge
+   * into one. A road joins any other road on close approach, but only rejoins
+   * the one it branched off after it has gone somewhere. True where it merged.
+   */
+  private mergeStep(st: TraceState, opt: TraceOptions, qx: number, qy: number, here: Point): boolean {
+    const params = opt.params;
+    const mergeAfter = opt.mergeAfter ?? 0;
+    const parent = opt.parentCurve ?? -1;
+    const candidates = st.length >= mergeAfter ? this.network.within(qx, qy, params.mergeRadius, parent, opt.joiner) : [];
+    if (candidates.length === 0 && parent >= 0 && st.length >= (opt.parentMergeAfter ?? mergeAfter)) {
+      candidates.push(...this.network.within(qx, qy, params.mergeRadius, -1, opt.joiner));
+    }
+    const turnsBack = (p: Point): boolean => stepOverlaps(st.points, p, opt.joiner, opt.before);
+    const hit = this.mergeAt(candidates, here, st.heading, opt.joiner, params, st.trail, turnsBack);
+    if (hit === undefined) return false;
+    st.points.push({ x: hit.x, y: hit.y });
+    st.clear.push(true);
+    st.merged = true;
+    return true;
+  }
+
+  /**
+   * Close on the target of a guided trace, ending the trace where it arrives
+   * or stalls. False where the trace ends here.
+   */
+  private approach(st: TraceState, opt: TraceOptions): boolean {
+    const target = opt.target;
+    if (target === undefined) return true;
+    const d = dist(st.px, st.py, target.x, target.y);
+    if (d <= opt.params.step * 1.5) {
+      this.arrive(st, opt, target);
+      return false;
+    }
+    if (d < st.closest - 1) {
+      st.closest = d;
+      st.stalled = 0;
+      return true;
+    }
+    return ++st.stalled <= STALL_STEPS;
+  }
+
+  /**
+   * End the trace on its target. Only an arrival that can be driven counts: a
+   * last step over water or up a wall is no arrival, and the caller reroutes
+   * instead.
+   */
+  private arrive(st: TraceState, opt: TraceOptions, target: Point): void {
+    if (!this.canRun(st.px, st.py, target.x, target.y, opt.params.maxGrade)) return;
+    if (this.network.refuses(target.x, target.y, opt.joiner)) return;
+    if (!this.network.meets(target, { x: st.px, y: st.py }, opt.joiner, st.trail)) return;
+    if (stepOverlaps(st.points, target, opt.joiner, opt.before)) return;
+    st.points.push({ x: target.x, y: target.y });
+    st.clear.push(true);
+    st.arrived = true;
   }
 
   /**
@@ -422,15 +476,20 @@ export abstract class RoadTrace extends RoadRoute {
         const h = step.heading + sign * k * params.maxTurn;
         if (Math.abs(wrapAngle(h - heading)) > limit) continue;
         const to = { x: from.x + cos(h) * step.reach, y: from.y + sin(h) * step.reach };
-        if (Math.abs(to.x) > this.half || Math.abs(to.y) > this.half) continue;
-        if (opt.within !== undefined && !opt.within(to.x, to.y)) continue;
-        if (Math.abs(this.hf.sample(to.x, to.y) - here) / step.reach > params.maxGrade) continue;
-        const profile = this.probe(from.x, from.y, to.x, to.y);
-        if (!profile.dry || profile.above > MAX_COVER || profile.below > MAX_COVER) continue;
-        if (this.network.stepOk(from, to, opt.joiner, trail)) return { heading: h, reach: step.reach };
+        if (this.turnFits(from, to, here, step.reach, opt, trail)) return { heading: h, reach: step.reach };
       }
     }
     return undefined;
+  }
+
+  /** True where the turned step of {@link turnClear} from `from` to `to` stays on the map and on ground it may take, clear of the roads. */
+  private turnFits(from: Point, to: Point, here: number, reach: number, opt: TraceOptions, trail: Trail): boolean {
+    if (Math.abs(to.x) > this.half || Math.abs(to.y) > this.half) return false;
+    if (opt.within !== undefined && !opt.within(to.x, to.y)) return false;
+    if (Math.abs(this.hf.sample(to.x, to.y) - here) / reach > opt.params.maxGrade) return false;
+    const profile = this.probe(from.x, from.y, to.x, to.y);
+    if (!profile.dry || profile.above > MAX_COVER || profile.below > MAX_COVER) return false;
+    return this.network.stepOk(from, to, opt.joiner, trail);
   }
 
   /** The field's line through a point: its major direction, or the cross street. */
@@ -487,39 +546,58 @@ export abstract class RoadTrace extends RoadRoute {
     const limit = params.maxTurn * AVOID_TURNS;
     const here = this.hf.sample(x, y);
     for (let span = 1; span <= SPAN_STEPS; span++) {
-      const reach = params.step * span;
-      let steep = false;
-      for (let k = 0; k <= AVOID_STEPS; k++) {
-        for (const sign of k === 0 ? [1] : [1, -1]) {
-          const h = wanted + sign * k * params.maxTurn;
-          if (Math.abs(wrapAngle(h - heading)) > limit) continue;
-          const qx = x + cos(h) * reach;
-          const qy = y + sin(h) * reach;
-          // A river met nearly head on is crossed rather than followed, by a
-          // tier that bridges rivers, so its two banks are one network (issue #276).
-          if (span === 1 && k <= RIVER_TURNS && params.bridgesRivers === true && !this.probe(x, y, qx, qy).dry) {
-            const deck = this.riverDeck(x, y, h, params);
-            if (deck !== undefined) return deck;
-          }
-          // The climb between the two ends costs two samples and turns most
-          // candidates away; only what survives it is worth walking over.
-          if (Math.abs(this.hf.sample(qx, qy) - here) / reach > params.maxGrade) {
-            steep = true;
-            continue;
-          }
-          const profile = this.probe(x, y, qx, qy);
-          if (!profile.dry) continue;
-          if (profile.above > MAX_COVER || profile.below > MAX_COVER) continue;
-          return { heading: h, reach };
-        }
-      }
+      const found = this.fanAt(x, y, heading, wanted, params, span, here, limit);
       // Spanning further is for ground the road may not climb. Where water was
       // what stopped it, the road stops too: a deck belongs at a strait
       // crossing of the water description or across a river met nearly
       // head on, not wherever a trace ran out.
-      if (!steep) return undefined;
+      if (found !== STEEP) return found;
     }
     return undefined;
+  }
+
+  /**
+   * The first step of {@link stepHeading}'s fan at one span that the ground
+   * takes; else {@link STEEP} where a climb turned one away, and undefined
+   * where only water did.
+   */
+  private fanAt(x: number, y: number, heading: number, wanted: number, params: TierParams, span: number, here: number, limit: number): Step | undefined {
+    const reach = params.step * span;
+    let steep = false;
+    for (let k = 0; k <= AVOID_STEPS; k++) {
+      for (const sign of k === 0 ? [1] : [1, -1]) {
+        const h = wanted + sign * k * params.maxTurn;
+        if (Math.abs(wrapAngle(h - heading)) > limit) continue;
+        const found = this.stepAlong(x, y, h, reach, span === 1 && k <= RIVER_TURNS, params, here);
+        if (found === STEEP) steep = true;
+        else if (found !== undefined) return found;
+      }
+    }
+    return steep ? STEEP : undefined;
+  }
+
+  /**
+   * One step of `reach` metres along heading `h`, where the ground takes it;
+   * {@link STEEP} where the climb is too hard, and undefined where it is wet
+   * or too far over or under the ground. `river` says whether a river met
+   * here may be decked.
+   */
+  private stepAlong(x: number, y: number, h: number, reach: number, river: boolean, params: TierParams, here: number): Step | undefined {
+    const qx = x + cos(h) * reach;
+    const qy = y + sin(h) * reach;
+    // A river met nearly head on is crossed rather than followed, by a
+    // tier that bridges rivers, so its two banks are one network (issue #276).
+    if (river && params.bridgesRivers === true && !this.probe(x, y, qx, qy).dry) {
+      const deck = this.riverDeck(x, y, h, params);
+      if (deck !== undefined) return deck;
+    }
+    // The climb between the two ends costs two samples and turns most
+    // candidates away; only what survives it is worth walking over.
+    if (Math.abs(this.hf.sample(qx, qy) - here) / reach > params.maxGrade) return STEEP;
+    const profile = this.probe(x, y, qx, qy);
+    if (!profile.dry) return undefined;
+    if (profile.above > MAX_COVER || profile.below > MAX_COVER) return undefined;
+    return { heading: h, reach };
   }
 
   /**

@@ -34,21 +34,7 @@ export function trimRun(run: ChunkRoad, ribbons: RoadRibbons): ChunkRoad[] {
   for (let i = 0; i + 1 < count; i++) {
     const d0 = distances[i] as number;
     const d1 = distances[i + 1] as number;
-    // The stretches of this segment no gap covers, in order.
-    let at = d0;
-    let atPoint = run.points[i] as Point;
-    const pieces: { a: number; aAt: Point; b: number; bAt: Point }[] = [];
-    for (const gap of run.gaps) {
-      if (gap.to.distance <= at || gap.from.distance >= d1) {
-        if (gap.from.distance >= d1) break;
-        continue;
-      }
-      if (gap.from.distance > at) pieces.push({ a: at, aAt: atPoint, b: gap.from.distance, bAt: gap.from.at });
-      at = gap.to.distance;
-      atPoint = gap.to.at;
-      if (at >= d1) break;
-    }
-    if (at < d1) pieces.push({ a: at, aAt: atPoint, b: d1, bAt: run.points[i + 1] as Point });
+    const pieces = uncovered(run, i, d0, d1);
     for (const piece of pieces) {
       if (piece.a !== d0 || open === undefined) {
         close();
@@ -61,6 +47,31 @@ export function trimRun(run: ChunkRoad, ribbons: RoadRibbons): ChunkRoad[] {
   }
   close();
   return out;
+}
+
+/** A stretch of one segment, from `a` metres along the curve at `aAt` to `b` metres at `bAt`. */
+interface Stretch {
+  a: number;
+  aAt: Point;
+  b: number;
+  bAt: Point;
+}
+
+/** The stretches of segment `i` of a run, from `d0` to `d1` metres along its curve, that no gap covers, in order. */
+function uncovered(run: ChunkRoad, i: number, d0: number, d1: number): Stretch[] {
+  let at = d0;
+  let atPoint = run.points[i] as Point;
+  const pieces: Stretch[] = [];
+  for (const gap of run.gaps) {
+    if (gap.from.distance >= d1) break;
+    if (gap.to.distance <= at) continue;
+    if (gap.from.distance > at) pieces.push({ a: at, aAt: atPoint, b: gap.from.distance, bAt: gap.from.at });
+    at = gap.to.distance;
+    atPoint = gap.to.at;
+    if (at >= d1) break;
+  }
+  if (at < d1) pieces.push({ a: at, aAt: atPoint, b: d1, bAt: run.points[i + 1] as Point });
+  return pieces;
 }
 
 /** A stretch of a run as a run of its own, starting on curve segment `from`. */

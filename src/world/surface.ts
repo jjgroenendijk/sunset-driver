@@ -230,24 +230,35 @@ export function nearestRoadSpot(
   for (const road of world.roads) {
     if (road.tier === 'highway') continue;
     if (accept !== undefined && !accept(road.tier)) continue;
-    for (let i = 0; i + 1 < road.points.length; i++) {
-      if (road.bridges.includes(i) || road.tunnels.includes(i)) continue;
-      const a = road.points[i] as Point;
-      const b = road.points[i + 1] as Point;
-      const vx = b.x - a.x;
-      const vy = b.y - a.y;
-      const length2 = vx * vx + vy * vy;
-      if (length2 === 0) continue;
-      const t = Math.max(0, Math.min(1, ((x - a.x) * vx + (y - a.y) * vy) / length2));
-      const px = a.x + vx * t;
-      const py = a.y + vy * t;
-      const distance = hypot(px - x, py - y);
-      if (distance >= bestDistance) continue;
-      bestDistance = distance;
-      best = { x: px, y: py, heading: atan2(vy, vx), tier: road.tier };
-    }
+    const found = nearestOnRoad(road, x, y, bestDistance);
+    if (found === undefined) continue;
+    bestDistance = found.distance;
+    best = found.spot;
   }
   return best;
+}
+
+/** The place on the ground of one road nearest a point, where it is nearer than `within` metres. */
+function nearestOnRoad(road: RoadCurve, x: number, y: number, within: number): { spot: RoadSpot; distance: number } | undefined {
+  let best: RoadSpot | undefined;
+  let bestDistance = within;
+  for (let i = 0; i + 1 < road.points.length; i++) {
+    if (road.bridges.includes(i) || road.tunnels.includes(i)) continue;
+    const a = road.points[i] as Point;
+    const b = road.points[i + 1] as Point;
+    const vx = b.x - a.x;
+    const vy = b.y - a.y;
+    const length2 = vx * vx + vy * vy;
+    if (length2 === 0) continue;
+    const t = Math.max(0, Math.min(1, ((x - a.x) * vx + (y - a.y) * vy) / length2));
+    const px = a.x + vx * t;
+    const py = a.y + vy * t;
+    const distance = hypot(px - x, py - y);
+    if (distance >= bestDistance) continue;
+    bestDistance = distance;
+    best = { x: px, y: py, heading: atan2(vy, vx), tier: road.tier };
+  }
+  return best === undefined ? undefined : { spot: best, distance: bestDistance };
 }
 
 /** Metres of water a boat needs under it, and of open water around it, to be put down. */
