@@ -1,7 +1,8 @@
 import { expect } from 'vitest';
-import { SIGNAL_CYCLE, type TrafficSignals } from '../../src/sim/traffic/signals.ts';
+import { SIGNAL_CYCLE, STOP_BACK, type TrafficSignals } from '../../src/sim/traffic/signals.ts';
 import type { AmbientPose, AmbientTraffic, TrafficRoads } from '../../src/sim/traffic/traffic.ts';
-import { DWELL, TRAM_CARS, TRAM_CLEAR, TramLine } from '../../src/sim/transit/tram.ts';
+import { DWELL, TRAM_CARS, TRAM_CLEAR, TRAM_LENGTH, TramLine } from '../../src/sim/transit/tram.ts';
+import { placeTramStops } from '../../src/sim/transit/tram-stop-place.ts';
 import type { RoadEdge } from '../../src/world/roads/graph.ts';
 import { TIERS } from '../../src/world/roads/tiers.ts';
 import type { Point, WorldDescription } from '../../src/world/types.ts';
@@ -35,6 +36,15 @@ export function checkTram(seed: number, world: WorldDescription, roads: TrafficR
 
   checkDepartures(seed, tour, signals);
   checkCarsOnRuns(seed, world, roads, line);
+  checkPlatforms(seed, world, roads);
+}
+
+/** Every stop finds a stretch of the loop for its platform, clear of the junctions (`tram-stop-place.ts`), each on a run of its own. */
+function checkPlatforms(seed: number, world: WorldDescription, roads: TrafficRoads): void {
+  const placed = placeTramStops(roads.graph, world.tram.edges, world.tram.stops, TRAM_LENGTH);
+  placed.forEach((place, i) => expect(place, `seed ${seed}: stop ${i} has no platform`).toBeDefined());
+  const legs = placed.map((place) => place?.leg);
+  expect(new Set(legs).size, `seed ${seed}: two stops on one run`).toBe(legs.length);
 }
 
 /**
@@ -61,6 +71,8 @@ function checkDepartures(seed: number, tour: NonNullable<TramLine['tour']>, sign
     const approach = signals.approachOf(tour.edges[leg] as number);
     if (approach === undefined || tour.stepLeg[step - 1] !== leg || tour.stepFrom[step] !== tour.stepTo[step - 1]) continue;
     if ((tour.stepTo[step] as number) <= (tour.stepFrom[step] as number)) continue;
+    // A drive away from a stop short of the light is not yet at the line.
+    if (Math.abs((tour.stepFrom[step] as number) - (approach.stop + STOP_BACK)) > 2) continue;
     const tick = (tour.stepStart[step] as number) + tour.sync;
     expect(signals.light(approach, tick), `seed ${seed}: step ${step}`).toBe('green');
     expect(signals.light(approach, tick + TRAM_CLEAR - 1), `seed ${seed}: step ${step}`).toBe('green');

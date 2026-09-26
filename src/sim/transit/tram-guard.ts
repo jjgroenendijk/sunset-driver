@@ -29,7 +29,8 @@
 import { atan2 } from '../../core/libm.ts';
 import { TICK_RATE } from '../clock.ts';
 import { SIGNAL_CYCLE, STOP_BACK, type SignalApproach, type SignalJunction, type TrafficSignals } from '../traffic/signals.ts';
-import { legAt, type Tour } from '../traffic/traffic-timing.ts';
+import type { Tour } from '../traffic/traffic-timing.ts';
+import type { TramMotion } from './tram-motion.ts';
 import { TRAM_LENGTH } from './tram.ts';
 import { timeTram } from './tram-timing.ts';
 import type { RoadEdge, RoadGraph } from '../../world/roads/graph.ts';
@@ -63,7 +64,7 @@ export function tramGuardOf(graph: RoadGraph, signals: TrafficSignals | undefine
   if (signals === undefined || tram === undefined || tram.edges.length < 2 || tram.stops.length === 0) return undefined;
   const crossings = tram.crossings.map((crossing) => crossing.node);
   const timing = timeTram(graph, tram.edges, TRAM_LENGTH, tram.stops, crossings, signals);
-  return new TramGuard(graph, signals, timing.tour, TRAM_LENGTH);
+  return new TramGuard(graph, signals, timing.tour, timing.motion, TRAM_LENGTH);
 }
 
 export class TramGuard {
@@ -78,8 +79,8 @@ export class TramGuard {
   private readonly graph: RoadGraph;
   private readonly signals: TrafficSignals;
 
-  /** `tour` is the tram's loop as `tram-timing.ts` times it, for a tram `length` metres long. */
-  constructor(graph: RoadGraph, signals: TrafficSignals, tour: Tour, length: number) {
+  /** `tour` and `motion` are the tram's loop as `tram-timing.ts` times it, for a tram `length` metres long. */
+  constructor(graph: RoadGraph, signals: TrafficSignals, tour: Tour, motion: TramMotion, length: number) {
     this.graph = graph;
     this.signals = signals;
     this.leaving = new Float64Array(graph.edges.length).fill(Number.NaN);
@@ -93,8 +94,8 @@ export class TramGuard {
       const cutIn = edge.length - approach.stop - STOP_BACK;
       const back = next.twin < 0 ? undefined : signals.approachOf(next.twin);
       const cutOut = back === undefined ? cutIn : (graph.edges[back.edge] as RoadEdge).length - back.stop - STOP_BACK;
-      const enter = frontTick(tour, (tour.startDistance[i] as number) + edge.length - cutIn);
-      const exit = frontTick(tour, (tour.startDistance[i] as number) + edge.length + cutOut + length);
+      const enter = motion.tickAt((tour.startDistance[i] as number) + edge.length - cutIn);
+      const exit = motion.tickAt((tour.startDistance[i] as number) + edge.length + cutOut + length);
       const inside = mod(exit - enter, tour.period);
       (this.passes[approach.junction] as TramPass[]).push({
         edge: edge.id,
@@ -191,24 +192,6 @@ function turnOf(arrive: number, leave: number): Turn {
   if (Math.abs(d) < Math.PI / 4) return 'straight';
   if (Math.abs(d) > (3 * Math.PI) / 4) return 'back';
   return d > 0 ? 'right' : 'left';
-}
-
-/** The first tick of a tour on which the front is `distance` metres round it or further. */
-function frontTick(tour: Tour, distance: number): number {
-  const at = mod(distance, tour.length);
-  const leg = legAt(tour.startDistance, at);
-  const metres = at - (tour.startDistance[leg] as number);
-  let fallback = 0;
-  for (let s = 0; s < tour.stepLeg.length; s++) {
-    if (tour.stepLeg[s] !== leg) continue;
-    const from = tour.stepFrom[s] as number;
-    const to = tour.stepTo[s] as number;
-    if (to <= from) continue;
-    fallback = tour.stepStart[s] as number;
-    if (metres < from || metres >= to) continue;
-    return (tour.stepStart[s] as number) + Math.ceil(((metres - from) / (to - from)) * (tour.stepTicks[s] as number));
-  }
-  return fallback;
 }
 
 /** An angle in radians brought into -π to π. */

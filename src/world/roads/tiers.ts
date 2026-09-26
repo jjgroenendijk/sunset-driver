@@ -163,11 +163,22 @@ export const TRAM_LANE = {
   /**
    * Metres of island platform beside the lane at a stop (spec section 13.2).
    * A passenger boards from it rather than from the pavement across a traffic
-   * lane, so the traffic gives up this much more of the road on a run that
-   * carries a stop (`laneOffset` in `sim/traffic/traffic.ts`).
+   * lane, so the traffic gives up the platform on a run that carries a stop
+   * (`laneOffset` in `sim/traffic/traffic.ts`).
    */
-  platform: 1.8,
+  platform: 1.6,
+  /** Metres from the track to the near edge of the platform: a car's half width and a 10 cm step. */
+  platformInner: 1.4,
+  /**
+   * Metres the traffic keeps clear of the far edge of the platform. A bus in
+   * the inner lane is wider than the lane beside a stop, and this keeps its
+   * flank off the kerb.
+   */
+  platformClear: 0.3,
 } as const;
+
+/** Metres from the middle of the road to the far edge of a tram stop's island platform. */
+export const PLATFORM_EDGE = TRAM_LANE.trackSpacing / 2 + TRAM_LANE.platformInner + TRAM_LANE.platform;
 
 /**
  * How far the ground a road claims reaches each side of its centreline:
