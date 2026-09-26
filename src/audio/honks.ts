@@ -4,32 +4,42 @@
  *
  * Nothing is stored for it. Giving way counts the ticks a car has stood for
  * one of these in its hold (`Hold.waited`), one a tick, so the honks are a
- * function of that count: the first comes after the driver's own patience,
- * and the rest follow at a pace of their own, fewer as they give up. A frame
+ * function of that count: the first comes after the driver's own patience
+ * (`Driver.honks`), and the rest follow at a pace of their own, fewer as they
+ * give up. A patient driver never honks at all. The horn is pitched by the
+ * class of the car, so a bus bellows where a scooter bleats. A frame
  * asks about every tick it stepped, as the tram's bells do, so no honk is
  * heard twice or lost between two frames.
  */
 import { hashInts } from '../core/hash.ts';
 import { TICK_RATE } from '../sim/clock.ts';
 import type { SimState } from '../sim/simulation.ts';
-import type { Personality } from '../sim/traffic/driver.ts';
+import type { Driver } from '../sim/traffic/driver.ts';
 import { heldPose, type Hold } from '../sim/traffic/hold.ts';
 import type { AmbientPose } from '../sim/traffic/traffic.ts';
+import type { VehicleClass } from '../sim/vehicles/vehicle.ts';
 import { cueAt as cueOf, type Cue } from './cue.ts';
 
-/** What the honks read of the traffic: who drives each car, and where a car stands. */
+/** What the honks read of the traffic: who drives each car and what it is, and where a car stands. */
 export interface HonkSource {
-  readonly vehicles: readonly { readonly driver: { readonly personality: Personality } }[];
+  readonly vehicles: readonly { readonly cls: VehicleClass; readonly driver: Pick<Driver, 'honks'> }[];
   poseAt(id: number, time: number, out: AmbientPose): AmbientPose;
 }
 
-/** Seconds a driver of each kind stands before the first honk. */
-const PATIENCE: Readonly<Record<Personality, number>> = Object.freeze({
-  hesitant: 7,
-  careful: 5,
-  steady: 3.5,
-  brisk: 2,
-  tailgater: 1,
+/**
+ * The pitch of each class's horn over a saloon's. A big vehicle has a low,
+ * heavy horn and a small one a thin, high one. A class that is not in the
+ * traffic sounds like a saloon.
+ */
+const HORN_PITCH: Readonly<Partial<Record<VehicleClass, number>>> = Object.freeze({
+  motorcycle: 1.6,
+  compact: 1.25,
+  sports: 1.12,
+  saloon: 1,
+  offroad: 0.85,
+  van: 0.8,
+  truck: 0.58,
+  bus: 0.5,
 });
 
 /** Seconds between two honks at the least, and how many a driver gives before they give up. */
@@ -64,6 +74,7 @@ export function hearHonks(state: SimState, was: number, traffic: HonkSource, x: 
     heldPose(traffic, holds, hold.id, state.tick, pose);
     if (Math.abs(pose.x - x) > HONK_REACH || Math.abs(pose.y - y) > HONK_REACH) continue;
     const low = cueOf(state.seed, state.tick, 'honk', pose.x, pose.y, HONK_STRENGTH, hashInts(HONK_STREAM, hold.id));
+    low.pitch *= hornPitch(traffic, hold.id);
     cues.push(low, { ...low, pitch: low.pitch * THIRD });
     fired++;
   }
@@ -73,7 +84,8 @@ export function hearHonks(state: SimState, was: number, traffic: HonkSource, x: 
 function honked(traffic: HonkSource, hold: Hold, ticks: number): boolean {
   const vehicle = traffic.vehicles[hold.id];
   if (vehicle === undefined) return false;
-  const first = Math.round(PATIENCE[vehicle.driver.personality] * TICK_RATE);
+  const first = vehicle.driver.honks;
+  if (first <= 0) return false;
   // Each driver keeps a pace of their own between honks, drawn from their id.
   const every = Math.round((AGAIN + (hashInts(HONK_STREAM, hold.id) % 100) / 40) * TICK_RATE);
   for (let back = 0; back < ticks; back++) {
@@ -83,4 +95,10 @@ function honked(traffic: HonkSource, hold: Hold, ticks: number): boolean {
     if (since % every === 0 && since / every < MOST) return true;
   }
   return false;
+}
+
+/** The pitch of car `id`'s horn over a saloon's. */
+function hornPitch(traffic: HonkSource, id: number): number {
+  const cls = traffic.vehicles[id]?.cls;
+  return (cls === undefined ? undefined : HORN_PITCH[cls]) ?? 1;
 }
