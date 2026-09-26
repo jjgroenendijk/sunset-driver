@@ -37,6 +37,7 @@ export class GradedLand {
   private readonly queue: Int32Array;
   private readonly rise: number;
   private readonly dry: number;
+  private readonly avoid: ((x: number, y: number) => boolean) | undefined;
   private tail = 0;
   private head = 0;
 
@@ -45,9 +46,12 @@ export class GradedLand {
    * @param crossings Crossings the flood may hop. Left out, it stays on the
    * land the core stands on, which is what a search for the crossings
    * themselves has to ask.
+   * @param avoid Ground the flood may not step on: ground a site is about to
+   * take, which the roads will keep off.
    */
-  constructor(hf: Heightfield, core: Point, maxGrade: number, crossings: readonly Crossing[] = []) {
+  constructor(hf: Heightfield, core: Point, maxGrade: number, crossings: readonly Crossing[] = [], avoid?: (x: number, y: number) => boolean) {
     this.hf = hf;
+    this.avoid = avoid;
     const n = hf.gridSize;
     this.rise = maxGrade * hf.cellSize;
     this.dry = SEA_LEVEL + DRY_MARGIN;
@@ -163,6 +167,7 @@ export class GradedLand {
         const to = jy * n + jx;
         const g = hf.heights[to] as number;
         if (reached[to] === 1 || g < this.dry || Math.abs(g - h) > this.rise) continue;
+        if (this.avoid?.(hf.worldX(jx), hf.worldY(jy)) === true) continue;
         reached[to] = 1;
         queue[this.tail++] = to;
       }
