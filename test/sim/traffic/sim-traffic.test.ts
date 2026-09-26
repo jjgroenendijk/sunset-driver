@@ -1,12 +1,10 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { PATIENCE } from '../../../src/sim/traffic/give-way.ts';
-import { heldTime } from '../../../src/sim/traffic/hold.ts';
+import { heldPose, heldTime } from '../../../src/sim/traffic/hold.ts';
 import { EMPTY_INPUT, type InputFrame } from '../../../src/sim/input.ts';
 import { initPhysics, SimPhysics } from '../../../src/sim/physics/physics.ts';
 import { createSimState, stepSim, type SimState } from '../../../src/sim/simulation.ts';
 import { PARKED_ID, ParkedCars, type ParkedCar } from '../../../src/sim/traffic/parked.ts';
 import { laneOffset, type AmbientPose, type AmbientTraffic } from '../../../src/sim/traffic/traffic.ts';
-import { rideHeight, SALOON } from '../../../src/sim/vehicles/vehicle.ts';
 import { BAY_USES, type ParkingBays } from '../../../src/world/city/parking.ts';
 import { TIERS } from '../../../src/world/roads/tiers.ts';
 import { inputStream, stableJson, sweepSeeds } from '../../support/helpers.ts';
@@ -77,58 +75,60 @@ describe(`traffic in the simulation (${SEED_COUNT} seeds)`, () => {
     }
   });
 
-  it('promotes a vehicle that runs into the parked car, and hands it to the physics', () => {
+  /**
+   * Step a session for `ticks` and answer the ambient cars that drove past
+   * `x` eastbound within 6 m of `y`, and whether any of them swerved.
+   */
+  const passing = (state: SimState, physics: SimPhysics, traffic: AmbientTraffic, x: number, y: number, ticks: number): { passed: number; swerved: boolean } => {
+    const pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
+    const behind = new Set<number>();
+    const past = new Set<number>();
+    let swerved = false;
+    for (let i = 0; i < ticks; i++) {
+      stepSim(state, EMPTY_INPUT, physics);
+      swerved ||= state.traffic.held.list.some((hold) => hold.swerve !== undefined && hold.swerve.side !== 0);
+      for (const id of traffic.near(x - 30, y - 10, x + 30, y + 10, [])) {
+        if (state.traffic.promoted.some((record) => record.id === id)) continue;
+        heldPose(traffic, state.traffic.held, id, state.tick, pose);
+        if (Math.abs(pose.y - y) > 6 || Math.cos(pose.heading) < 0.5) continue;
+        if (pose.x < x - 8) behind.add(id);
+        else if (pose.x > x + 8 && behind.has(id)) past.add(id);
+      }
+    }
+    return { passed: past.size, swerved };
+  };
+
+  it('steers the traffic round the car parked in its lane, and drives into nothing', () => {
     const seed = seeds[0] as number;
     const traffic = gridTraffic(seed);
     const { state, physics } = session(seed, traffic);
-    // Across the eastbound lanes of the arterial, between two junctions.
-    physics.spawn(state, 60, 4, Math.PI / 2);
-    let tick = 0;
-    for (; tick < 3600 && state.traffic.promoted.length === 0; tick++) stepSim(state, EMPTY_INPUT, physics);
-    expect(state.traffic.promoted.length, 'nothing ran into the car').toBeGreaterThan(0);
-    // The traffic stood behind the car first (`give-way.ts`), and drove into it only out of patience.
-    expect(tick).toBeGreaterThan(PATIENCE);
-    const promoted = state.traffic.promoted[0] as SimState['traffic']['promoted'][number];
-    expect(Math.hypot(promoted.vehicle.x - state.vehicle.x, promoted.vehicle.z - state.vehicle.z)).toBeLessThan(10);
-    // Off its tour: no longer stepped as a kinematic body, and given a body of its own.
-    expect(physics.traffic?.cursors.some((cursor) => cursor.id === promoted.id)).toBe(false);
-    expect(physics.traffic?.promotedBodies).toBe(state.traffic.promoted.length);
-    // It carries on as a body, and slides to a stop rather than driving on.
-    for (let i = 0; i < 300; i++) stepSim(state, EMPTY_INPUT, physics);
-    expect(Math.hypot(promoted.vehicle.vx, promoted.vehicle.vz)).toBeLessThan(1);
-    expect(Math.abs(promoted.vehicle.y - (gridHeight(promoted.vehicle.x, promoted.vehicle.z) + rideHeight(SALOON)))).toBeLessThan(1.5);
+    // In the inner eastbound lane of the arterial, between two junctions.
+    const lane = laneOffset({ tier: 'arterial', lanes: TIERS.arterial.lanes }, 0);
+    physics.spawn(state, 60, lane, 0);
+    const { passed, swerved } = passing(state, physics, traffic, 60, lane, 1800);
+    // Nobody drives into the car and is left standing in the lane (`swerve.ts`).
+    expect(state.traffic.promoted).toEqual([]);
+    expect(swerved, 'no car steered round the parked one').toBe(true);
+    expect(passed, 'no car got past the parked one').toBeGreaterThan(0);
     physics.dispose();
   });
 
-  it('promotes a vehicle that a player on foot is standing in the way of', () => {
+  it('steers the traffic round a player on foot standing in the lane', () => {
     const seed = seeds[1] as number;
     const traffic = gridTraffic(seed);
     const { state, physics } = session(seed, traffic);
-    // The car is left far off the grid, and the player stands in the lane.
-    // The inner eastbound lane of the arterial.
+    // The car is left far off the grid, and the player stands in the inner eastbound lane of the arterial.
     const arterial = laneOffset({ tier: 'arterial', lanes: TIERS.arterial.lanes }, 0);
     state.vehicle.x = 5000;
     state.vehicle.z = 5000;
     state.player.driving = false;
-    // A spot in the lane no car stands on at the start, so one has to come up to it.
-    const pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
-    const clear = (x: number): boolean =>
-      traffic.vehicles.every((vehicle) => {
-        traffic.poseAt(vehicle.id, 0, pose);
-        return Math.hypot(pose.x - x, pose.y - arterial) > 12;
-      });
-    let x = -60;
-    while (!clear(x)) x -= 4;
-    state.player.x = x;
+    state.player.x = 60;
     state.player.y = arterial;
-    state.player.height = gridHeight(x, arterial);
+    state.player.height = gridHeight(60, arterial);
     physics.adopt(state);
-    let tick = 0;
-    for (; tick < 3600 && state.traffic.promoted.length === 0; tick++) stepSim(state, EMPTY_INPUT, physics);
-    expect(state.traffic.promoted.length, 'nothing ran into the player').toBeGreaterThan(0);
-    expect(tick).toBeGreaterThan(PATIENCE);
-    const promoted = state.traffic.promoted[0] as SimState['traffic']['promoted'][number];
-    expect(Math.hypot(promoted.vehicle.x - state.player.x, promoted.vehicle.z - state.player.y)).toBeLessThan(10);
+    const { passed } = passing(state, physics, traffic, 60, arterial, 1800);
+    expect(state.traffic.promoted).toEqual([]);
+    expect(passed, 'no car got past the player').toBeGreaterThan(0);
     physics.dispose();
   });
 

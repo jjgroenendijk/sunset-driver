@@ -29,7 +29,7 @@ import { SHUNS_RAGDOLL } from '../physics/collision-groups.ts';
 import { ParkedBodies } from './parked-bodies.ts';
 import { PARKED_ID, type ParkedCar, type ParkedCars } from './parked.ts';
 import { hitVehicle } from '../vehicles/damage.ts';
-import { heldStep, heldTime } from './hold.ts';
+import { heldStep, heldTime, swerveOnto } from './hold.ts';
 import { rotate, unrotate } from '../vehicles/frame.ts';
 import { TramBodies } from '../transit/tram-bodies.ts';
 import type { TramLine } from '../transit/tram.ts';
@@ -133,7 +133,7 @@ export class TrafficBodies {
     if (i >= 0) {
       const entry = this.moving[i] as Moving;
       this.moving.splice(i, 1);
-      this.promote(state, entry, this.traffic.pose(entry.cursor, this.pose));
+      this.promote(state, entry, this.poseOf(state, entry));
       id = entry.cursor.id;
     } else {
       const bay = this.parked?.take(handle, (at, car, spec) => this.handParked(state, at, car, spec));
@@ -234,7 +234,7 @@ export class TrafficBodies {
     const entry = known ?? this.arrive(state, id);
     if (entry === undefined) return undefined;
     traffic.cursorAt(id, heldTime(held, id, state.tick + 1), entry.cursor);
-    traffic.pose(entry.cursor, this.pose);
+    this.poseOf(state, entry);
     if (!this.inside(this.pose)) {
       this.drop(entry);
       return undefined;
@@ -252,7 +252,7 @@ export class TrafficBodies {
     // Evaluated on demand at the tick it arrives on, held back as far as it has given way.
     const cursor = traffic.cursorAt(id, heldTime(state.traffic.held, id, state.tick));
     if (!traffic.edgeMeets(traffic.edgeOf(cursor), box.minX, box.minY, box.maxX, box.maxY)) return undefined;
-    if (!this.inside(traffic.pose(cursor, this.pose))) return undefined;
+    if (!this.inside(swerveOnto(state.traffic.held, id, state.tick, traffic.pose(cursor, this.pose)))) return undefined;
     return this.enter(cursor, this.pose);
   }
 
@@ -272,7 +272,7 @@ export class TrafficBodies {
     }
     const kept: Moving[] = [];
     for (const entry of this.moving) {
-      const pose = this.traffic.pose(entry.cursor, this.pose);
+      const pose = this.poseOf(state, entry);
       setFootprint(this.theirs, pose.x, pose.y, pose.heading, entry.spec.halfLength, entry.spec.halfWidth);
       const touched =
         footprintsTouch(this.car, this.theirs, TOUCH_MARGIN) || (onFoot && footprintsTouch(this.walker, this.theirs, TOUCH_MARGIN));
@@ -281,6 +281,11 @@ export class TrafficBodies {
     }
     this.moving = kept;
     this.parked?.touched(this.car, onFoot ? this.walker : undefined, TOUCH_MARGIN, (bay, car, spec) => this.handParked(state, bay, car, spec));
+  }
+
+  /** Where a kinematic vehicle stands on the tick its cursor was aimed at, swerving as far as it does then. */
+  private poseOf(state: SimState, entry: Moving): AmbientPose {
+    return swerveOnto(state.traffic.held, entry.cursor.id, state.tick + 1, this.traffic.pose(entry.cursor, this.pose));
   }
 
   /** Hand a parked car taken out of its bay to the physics, standing still where it stood. */

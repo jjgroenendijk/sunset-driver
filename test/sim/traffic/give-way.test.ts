@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { hurtPerson, PERSON_HEALTH } from '../../../src/sim/crowd/casualty.ts';
 import { UNIT_BODY } from '../../../src/sim/city/emergency.ts';
 import { GiveWay } from '../../../src/sim/traffic/give-way.ts';
-import { heldTime } from '../../../src/sim/traffic/hold.ts';
+import { heldPose } from '../../../src/sim/traffic/hold.ts';
 import { AmbientPedestrians, crowdPoseOf, type PedestrianPose } from '../../../src/sim/crowd/pedestrians.ts';
 import { createSimState, type SimState } from '../../../src/sim/simulation.ts';
 import { footprintsTouch, laneOffset, type AmbientPose, type AmbientTraffic, type Footprint } from '../../../src/sim/traffic/traffic.ts';
@@ -49,8 +49,8 @@ function cars(state: SimState, lagged: boolean): Footprint[] {
   const pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
   const out: Footprint[] = [];
   for (const id of traffic.near(-VIEW, -VIEW, VIEW, VIEW, [])) {
-    const time = lagged ? heldTime(state.traffic.held, id, state.tick) : state.tick;
-    traffic.poseAt(id, time, pose);
+    if (lagged) heldPose(traffic, state.traffic.held, id, state.tick, pose);
+    else traffic.poseAt(id, state.tick, pose);
     if (Math.abs(pose.x) > VIEW || Math.abs(pose.y) > VIEW) continue;
     const spec = specOf((traffic.vehicles[id] as AmbientTraffic['vehicles'][number]).cls);
     out.push({ x: pose.x, y: pose.y, heading: pose.heading, halfLength: spec.halfLength, halfWidth: spec.halfWidth });

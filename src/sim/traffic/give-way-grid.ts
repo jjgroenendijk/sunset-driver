@@ -1,6 +1,6 @@
 /**
- * The buckets giving way files the cars and the people of the box in, and
- * the cache of whose loop passes near the box (`give-way.ts`).
+ * The box giving way decides (`give-way.ts`), the buckets it files the cars
+ * and the people of the box in, and the cache of whose loop passes near it.
  */
 
 /** Metres the box of candidates is grown by, and snapped to, so it is looked up again only now and then. */
@@ -48,5 +48,63 @@ export class Grid {
     const list = this.cells[cell] as number[];
     if (list.length === 0) this.used.push(cell);
     list.push(entry);
+  }
+}
+
+/** Metres of one bucket of the grids the box is filed in. */
+const CELL = 12;
+
+/**
+ * The box round the player that giving way decides, cut into the buckets its
+ * grids file the cars and the people in.
+ */
+export class BoxFrame {
+  minX = 0;
+  minY = 0;
+  cols = 0;
+  /** Metres each way of the middle the box reaches. */
+  reach = 0;
+
+  /** Stand the box round `(x, y)`, `reach` metres each way, and answer how many buckets a grid of it needs. */
+  set(x: number, y: number, reach: number): number {
+    this.minX = x - reach;
+    this.minY = y - reach;
+    this.reach = reach;
+    this.cols = Math.ceil((2 * reach) / CELL) + 1;
+    return this.cols * this.cols;
+  }
+
+  get midX(): number {
+    return this.minX + this.reach;
+  }
+
+  get midY(): number {
+    return this.minY + this.reach;
+  }
+
+  inBox(x: number, y: number): boolean {
+    const max = 2 * this.reach;
+    return x >= this.minX && x < this.minX + max && y >= this.minY && y < this.minY + max;
+  }
+
+  cellOf(x: number, y: number): number {
+    const cx = Math.max(0, Math.min(this.cols - 1, Math.floor((x - this.minX) / CELL)));
+    const cy = Math.max(0, Math.min(this.cols - 1, Math.floor((y - this.minY) / CELL)));
+    return cy * this.cols + cx;
+  }
+
+  /** Every entry of a grid filed within `r` of a point, into `out`. */
+  around(grid: Grid, x: number, y: number, r: number, out: number[]): number[] {
+    out.length = 0;
+    const cx0 = Math.max(0, Math.floor((x - r - this.minX) / CELL));
+    const cx1 = Math.min(this.cols - 1, Math.floor((x + r - this.minX) / CELL));
+    const cy0 = Math.max(0, Math.floor((y - r - this.minY) / CELL));
+    const cy1 = Math.min(this.cols - 1, Math.floor((y + r - this.minY) / CELL));
+    for (let cy = cy0; cy <= cy1; cy++) {
+      for (let cx = cx0; cx <= cx1; cx++) {
+        for (const entry of grid.cells[cy * this.cols + cx] as number[]) out.push(entry);
+      }
+    }
+    return out;
   }
 }

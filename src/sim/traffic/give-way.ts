@@ -25,27 +25,21 @@
  * leaves the box goes back to their loop's time. The box is wider than the
  * view, so nobody sees that jump.
  */
-import { hashInts } from '../../core/hash.ts';
 import { cos, sin } from '../../core/libm.ts';
-import { rngFor, Subsystem } from '../../core/rng.ts';
-import { carDamage, KILL_SPEED, LIFT_MAX, LIFT_SHARE, LIFT_SPEED, SHOVE_SPEED, THROW_SHARE } from '../vehicles/car-strike.ts';
-import { hurtPerson, PERSON_HEALTH, type CasualtyGround } from '../crowd/casualty.ts';
-import { TICK_RATE } from '../clock.ts';
+import type { CasualtyGround } from '../crowd/casualty.ts';
 import { UNIT_BODY } from '../city/emergency.ts';
-import { Grid, NearCache } from './give-way-grid.ts';
-import { apart, away, close, crossesStop, CROSS_TIME, meets, othersBlock, PERSON_ROOM, setAhead, within, type Other } from './give-way-geometry.ts';
-import { heldTime, holdOf, type Hold } from './hold.ts';
-import type { CrowdSource } from '../weapons/melee.ts';
-import { casualtyOf, crowdPoseOf, startledOf, stepAside, type PedestrianPose } from '../crowd/pedestrians.ts';
+import { BoxFrame, Grid, NearCache } from './give-way-grid.ts';
+import { apart, close, crossesStop, setAhead, within, type Other } from './give-way-geometry.ts';
+import { CrowdWay, PERSON_RADIUS, type Crowd } from './give-way-people.ts';
+import { holdOf, type Hold } from './hold.ts';
+import { FREE, HEAD_ON, LIGHT, OTHER, PERSON, sideOf, type Car, type Person } from './give-way-scene.ts';
+import { Steering } from './swerve.ts';
 import type { SimState } from '../simulation.ts';
-import { footprintsTouch, promotedOf, turnedTouch, type AmbientPose, type AmbientTraffic, type Footprint, type TrafficCursor } from './traffic.ts';
+import { footprintsTouch, promotedOf, turnedTouch, type AmbientPose, type AmbientTraffic, type Footprint, type Kerbs, type TrafficCursor } from './traffic.ts';
 import { headingOf, specOf } from '../vehicles/vehicle.ts';
 
 /** Metres each way of the player that cars give way in. Wider than the traffic's view. */
 const GIVE_WAY_REACH = 200;
-
-/** Metres each way of the player that people give way in. Wider than the crowd's view. */
-const CROWD_REACH = 130;
 
 /** Metres a car leaves in front of it when it stops, bumper to whatever it stopped for. */
 const STOP_GAP = 1.5;
@@ -54,29 +48,14 @@ const STOP_GAP = 1.5;
 const STOP_TIME = 0.3;
 const SLOW_TIME = 1.2;
 
-/** A car does not stop for one it meets head on: that one is in the other lane. */
-const HEAD_ON = -0.5;
+/** Metres before a stop line on red within which a car queues rather than steering round the car in front. */
+const QUEUE_REACH = 40;
 
-/** Ticks a car stands for the player or a wreck before it drives on regardless. */
-export const PATIENCE = 12 * TICK_RATE;
-
-/** Ticks a car stands for a person on their loop before they go back the way they came. */
-const BACK_OFF = Math.round(0.5 * TICK_RATE);
-
-/** Ticks a car stands for a person off their loop before they step aside for it. */
-const NUDGE = 3 * TICK_RATE;
-
-/** Metres a person counts as round, for a car that looks ahead and for a car that hits them. */
-const PERSON_RADIUS = 0.3;
+/** Metres a car keeps between its body and the player, their car, a wreck or a unit. */
+const OTHER_ROOM = 0.25;
 
 /** Metres more than a person's radius a car keeps from them, so a step of theirs does not meet it. */
 const STEP_ROOM = 0.2;
-
-/** Metres per second a car has to be moving at to hit anybody. */
-const STRIKE_SPEED = 1;
-
-/** Metres of one bucket of the grid the obstacles are filed in. */
-const CELL = 12;
 
 /** Metres a car keeps from the side of another it would drive into. */
 const SIDE_ROOM = 0.2;
@@ -88,100 +67,55 @@ const BACK_TRIES = 90;
 /** Hops followed along who stops for whom, looking for a ring of cars that each wait for the next. */
 const RING_HOPS = 16;
 
-/** The key of the stream a car of the traffic hitting a person draws from. */
-const STRIKE_STREAM = 3;
-
-/** What a car stopped for. */
-const FREE = -1;
-const OTHER = -2;
-const PERSON = -3;
-const LIGHT = -4;
-
-/**
- * The crowd as giving way reads it. The edge a person walks is optional: with
- * it, the people whose loops pass the box but who are far from it are skipped
- * before their pose is read.
- */
-export type Crowd = CrowdSource & {
-  edgeAt?(id: number, time: number): number;
-  edgeMeets?(edge: number, minX: number, minY: number, maxX: number, maxY: number): boolean;
-};
-
-/** One car of the traffic in the box, for one tick. */
-interface Car {
-  id: number;
-  lag: number;
-  waited: number;
-  box: Footprint;
-  /** The cosine and sine of the box's heading. */
-  cos: number;
-  sin: number;
-  speed: number;
-  /** What it stops for: the index of a car, or one of the kinds above. */
-  blocker: number;
-  /** The index of the person it stops for, or -1. */
-  person: number;
-  stop: boolean;
-  slow: boolean;
-  /** True when the player, their car or a wreck stands in the lane ahead. */
-  facing: boolean;
-  next: Footprint;
-  /** The cosine and sine of the next footprint's heading. */
-  nextCos: number;
-  nextSin: number;
-  nextSpeed: number;
-}
-
-/** One person of the crowd in the box, for one tick. */
-interface Person {
-  id: number;
-  /** False for someone off their loop: frightened, they go where the fright takes them. */
-  walking: boolean;
-  lag: number;
-  waited: number;
-  x: number;
-  y: number;
-  height: number;
-  nextX: number;
-  nextY: number;
-  held: boolean;
-}
-
 export class GiveWay {
   private readonly traffic: AmbientTraffic;
-  private readonly crowd: Crowd | undefined;
   private readonly trafficNear = new NearCache();
-  private readonly crowdNear = new NearCache();
-  private readonly ids: number[] = [];
+  private readonly frame = new BoxFrame();
+  private readonly crowd: CrowdWay;
   private readonly spare: number[] = [];
   private readonly cursor: TrafficCursor = { id: 0, step: 0, into: 0 };
   private readonly ahead: TrafficCursor = { id: 0, step: 0, into: 0 };
   private readonly pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
-  private readonly walk: PedestrianPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0, cycle: 0, gait: 'stand' };
   private readonly probe: Footprint = { x: 0, y: 0, heading: 0, halfLength: 0, halfWidth: 0 };
   private readonly reach: Footprint = { x: 0, y: 0, heading: 0, halfLength: 0, halfWidth: 0 };
   private cars: Car[] = [];
-  /** By index of a person, the car standing for them that has stood longest. */
-  private waiting: (Car | undefined)[] = [];
-  private people: Person[] = [];
   /** The player, their car and the wrecks: what a car stops for that is not a car of the traffic. */
   private others: Other[] = [];
   private readonly carGrid = new Grid();
   /** The cars in the order they were placed, while the ones that have just come in are cleared. */
   private readonly filed = new Grid();
-  /** The cars where they will stand on the next tick, filed by where they stand now. */
-  private readonly nextGrid = new Grid();
-  private readonly near: number[] = [];
-  /** Metres the next step of a car or a person reaches at most, which is what the next grid is read round. */
-  private nextReach = 0;
-  private readonly personGrid = new Grid();
-  private minX = 0;
-  private minY = 0;
-  private cols = 0;
+  private readonly steering: Steering;
+  private readonly kerbCursor: TrafficCursor = { id: 0, step: 0, into: 0 };
+  private tick = 0;
 
   constructor(traffic: AmbientTraffic, crowd?: Crowd) {
     this.traffic = traffic;
-    this.crowd = crowd;
+    const scene = this;
+    const carsNear = (x: number, y: number, r: number, out: number[]): number[] => this.frame.around(this.carGrid, x, y, r, out);
+    this.crowd = new CrowdWay(crowd, this.frame, {
+      get cars() {
+        return scene.cars;
+      },
+      get others() {
+        return scene.others;
+      },
+      carsNear,
+    });
+    this.steering = new Steering({
+      get cars() {
+        return scene.cars;
+      },
+      get people() {
+        return scene.crowd.people;
+      },
+      get others() {
+        return scene.others;
+      },
+      carsNear,
+      peopleNear: (x, y, r, out) => this.frame.around(this.crowd.grid, x, y, r, out),
+      kerbs: (car, out) => this.kerbsOf(car, out),
+      queuedAtRed: (car) => this.queuedAtRed(car),
+    });
   }
 
   /**
@@ -191,102 +125,26 @@ export class GiveWay {
    * traffic at the next tick.
    */
   step(state: SimState, x: number, y: number, ground?: CasualtyGround): void {
-    this.frame(x, y);
-    this.gatherPeople(state);
+    const cells = this.frame.set(x, y, GIVE_WAY_REACH);
+    this.carGrid.reset(cells);
+    this.filed.reset(cells);
+    this.crowd.reset(cells);
+    this.tick = state.tick;
+    this.crowd.gather(state);
     this.gatherCars(state);
     this.gatherOthers(state);
     for (const car of this.cars) this.readAhead(state, car);
     for (let i = 0; i < this.cars.length; i++) this.look(state, i);
+    for (let i = 0; i < this.cars.length; i++) this.steering.steer(i);
     this.breakRings();
     this.moveCars(state);
-    this.movePeople(state);
-    this.strike(state, ground);
-  }
-
-  private frame(x: number, y: number): void {
-    this.minX = x - GIVE_WAY_REACH;
-    this.minY = y - GIVE_WAY_REACH;
-    this.cols = Math.ceil((2 * GIVE_WAY_REACH) / CELL) + 1;
-    const cells = this.cols * this.cols;
-    this.carGrid.reset(cells);
-    this.personGrid.reset(cells);
-    this.filed.reset(cells);
-    this.nextGrid.reset(cells);
-  }
-
-  private inBox(x: number, y: number): boolean {
-    const max = 2 * GIVE_WAY_REACH;
-    return x >= this.minX && x < this.minX + max && y >= this.minY && y < this.minY + max;
-  }
-
-  private cellOf(x: number, y: number): number {
-    const cx = Math.max(0, Math.min(this.cols - 1, Math.floor((x - this.minX) / CELL)));
-    const cy = Math.max(0, Math.min(this.cols - 1, Math.floor((y - this.minY) / CELL)));
-    return cy * this.cols + cx;
+    this.crowd.move(state, this.others);
+    this.crowd.strike(state, ground);
   }
 
   /** Every entry of a grid filed within `pad` of a footprint's reach, once each. */
   private around(grid: Grid, box: Footprint, pad: number, out: number[]): number[] {
-    out.length = 0;
-    const r = box.halfLength + box.halfWidth + pad;
-    const cx0 = Math.max(0, Math.floor((box.x - r - this.minX) / CELL));
-    const cx1 = Math.min(this.cols - 1, Math.floor((box.x + r - this.minX) / CELL));
-    const cy0 = Math.max(0, Math.floor((box.y - r - this.minY) / CELL));
-    const cy1 = Math.min(this.cols - 1, Math.floor((box.y + r - this.minY) / CELL));
-    for (let cy = cy0; cy <= cy1; cy++) {
-      for (let cx = cx0; cx <= cx1; cx++) {
-        for (const entry of grid.cells[cy * this.cols + cx] as number[]) out.push(entry);
-      }
-    }
-    return out;
-  }
-
-  /** Every entry of a grid filed within the next reach of a point. */
-  private aroundPoint(grid: Grid, x: number, y: number, out: number[]): number[] {
-    out.length = 0;
-    const r = this.nextReach;
-    const cx0 = Math.max(0, Math.floor((x - r - this.minX) / CELL));
-    const cx1 = Math.min(this.cols - 1, Math.floor((x + r - this.minX) / CELL));
-    const cy0 = Math.max(0, Math.floor((y - r - this.minY) / CELL));
-    const cy1 = Math.min(this.cols - 1, Math.floor((y + r - this.minY) / CELL));
-    for (let cy = cy0; cy <= cy1; cy++) {
-      for (let cx = cx0; cx <= cx1; cx++) {
-        for (const entry of grid.cells[cy * this.cols + cx] as number[]) out.push(entry);
-      }
-    }
-    return out;
-  }
-
-  /** The people in the box where they stand now. A casualty is not in the way: a car goes over a body. */
-  private gatherPeople(state: SimState): void {
-    this.people = [];
-    const crowd = this.crowd;
-    if (crowd === undefined) return;
-    const peds = state.pedestrians;
-    const x = this.minX + GIVE_WAY_REACH;
-    const y = this.minY + GIVE_WAY_REACH;
-    const r = CROWD_REACH;
-    for (const id of this.crowdNear.of(x, y, r, (a, b, c, d, out) => crowd.near(a, b, c, d, out))) {
-      if (skipsBox(crowd, state, id, x, y, r)) continue;
-      const walking = peds.startled.length === 0 || startledOf(peds, id) === undefined;
-      if (crowdPoseOf(crowd, peds, id, state.tick, this.walk) === undefined) continue;
-      if (Math.abs(this.walk.x - x) > CROWD_REACH || Math.abs(this.walk.y - y) > CROWD_REACH) continue;
-      const hold = walking ? holdOf(peds.held, id) : undefined;
-      const index = this.people.length;
-      this.people.push({
-        id,
-        walking,
-        lag: hold?.lag ?? 0,
-        waited: hold?.waited ?? 0,
-        x: this.walk.x,
-        y: this.walk.y,
-        height: this.walk.height,
-        nextX: this.walk.x,
-        nextY: this.walk.y,
-        held: false,
-      });
-      this.personGrid.add(this.cellOf(this.walk.x, this.walk.y), index);
-    }
+    return this.frame.around(grid, box.x, box.y, box.halfLength + box.halfWidth + pad, out);
   }
 
   /**
@@ -299,39 +157,15 @@ export class GiveWay {
     this.cars = [];
     const traffic = this.traffic;
     const held = state.traffic.held;
-    const max = 2 * GIVE_WAY_REACH;
     const fresh = held.tick !== state.tick;
     const entering: Car[] = [];
-    const x = this.minX + GIVE_WAY_REACH;
-    const y = this.minY + GIVE_WAY_REACH;
+    const x = this.frame.midX;
+    const y = this.frame.midY;
     for (const id of this.trafficNear.of(x, y, GIVE_WAY_REACH, (a, b, c, d, out) => traffic.near(a, b, c, d, out))) {
       if (state.traffic.promoted.length > 0 && promotedOf(state.traffic, id) !== undefined) continue;
-      const hold = holdOf(held, id);
-      const lag = hold?.lag ?? 0;
-      traffic.cursorAt(id, state.tick - lag, this.cursor);
-      if (!traffic.edgeMeets(traffic.edgeOf(this.cursor), this.minX, this.minY, this.minX + max, this.minY + max)) continue;
-      const pose = traffic.pose(this.cursor, this.pose);
-      if (!this.inBox(pose.x, pose.y)) continue;
-      const spec = specOf((traffic.vehicles[id] as AmbientTraffic['vehicles'][number]).cls);
-      const car: Car = {
-        id,
-        lag,
-        waited: hold?.waited ?? 0,
-        box: { x: pose.x, y: pose.y, heading: pose.heading, halfLength: spec.halfLength, halfWidth: spec.halfWidth },
-        cos: cos(pose.heading),
-        sin: sin(pose.heading),
-        speed: pose.speed,
-        blocker: FREE,
-        person: -1,
-        stop: false,
-        slow: false,
-        facing: false,
-        next: { x: 0, y: 0, heading: 0, halfLength: spec.halfLength, halfWidth: spec.halfWidth },
-        nextCos: 1,
-        nextSin: 0,
-        nextSpeed: 0,
-      };
-      const inside = Math.abs(pose.x - held.x) < GIVE_WAY_REACH && Math.abs(pose.y - held.y) < GIVE_WAY_REACH;
+      const car = this.carOf(state, id);
+      if (car === undefined) continue;
+      const inside = Math.abs(car.box.x - held.x) < GIVE_WAY_REACH && Math.abs(car.box.y - held.y) < GIVE_WAY_REACH;
       if (fresh || !inside) entering.push(car);
       else this.file(car);
     }
@@ -343,13 +177,60 @@ export class GiveWay {
     this.cars.sort((a, b) => a.id - b.id);
     for (let i = 0; i < this.cars.length; i++) {
       const car = this.cars[i] as Car;
-      this.carGrid.add(this.cellOf(car.box.x, car.box.y), i);
+      this.carGrid.add(this.frame.cellOf(car.box.x, car.box.y), i);
     }
+  }
+
+  /** Car `id` where its hold stands it now, swerve and all, or undefined where it is out of the box. */
+  private carOf(state: SimState, id: number): Car | undefined {
+    const traffic = this.traffic;
+    const max = 2 * GIVE_WAY_REACH;
+    const hold = holdOf(state.traffic.held, id);
+    const lag = hold?.lag ?? 0;
+    traffic.cursorAt(id, state.tick - lag, this.cursor);
+    if (!traffic.edgeMeets(traffic.edgeOf(this.cursor), this.frame.minX, this.frame.minY, this.frame.minX + max, this.frame.minY + max)) return undefined;
+    const pose = traffic.pose(this.cursor, this.pose);
+    if (!this.frame.inBox(pose.x, pose.y)) return undefined;
+    const spec = specOf((traffic.vehicles[id] as AmbientTraffic['vehicles'][number]).cls);
+    const laneX = pose.x;
+    const laneY = pose.y;
+    const laneCos = cos(pose.heading);
+    const laneSin = sin(pose.heading);
+    const swerve = hold?.swerve === undefined ? undefined : { ...hold.swerve };
+    if (swerve !== undefined) {
+      pose.x -= laneSin * swerve.side;
+      pose.y += laneCos * swerve.side;
+      pose.heading += swerve.yaw;
+    }
+    return {
+      id,
+      lag,
+      waited: hold?.waited ?? 0,
+      box: { x: pose.x, y: pose.y, heading: pose.heading, halfLength: spec.halfLength, halfWidth: spec.halfWidth },
+      cos: cos(pose.heading),
+      sin: sin(pose.heading),
+      speed: pose.speed,
+      laneX,
+      laneY,
+      laneCos,
+      laneSin,
+      waiting: traffic.isWait(this.cursor),
+      swerve,
+      blocker: FREE,
+      person: -1,
+      stop: false,
+      slow: false,
+      facing: false,
+      next: { x: 0, y: 0, heading: 0, halfLength: spec.halfLength, halfWidth: spec.halfWidth },
+      nextCos: 1,
+      nextSin: 0,
+      nextSpeed: 0,
+    };
   }
 
   private file(car: Car): void {
     this.cars.push(car);
-    this.filed.add(this.cellOf(car.box.x, car.box.y), this.cars.length - 1);
+    this.filed.add(this.frame.cellOf(car.box.x, car.box.y), this.cars.length - 1);
   }
 
   /** Move a car that has come into the box back along its tour until it stands on no other car. */
@@ -368,6 +249,12 @@ export class GiveWay {
       car.cos = cos(pose.heading);
       car.sin = sin(pose.heading);
       car.speed = pose.speed;
+      car.laneX = pose.x;
+      car.laneY = pose.y;
+      car.laneCos = car.cos;
+      car.laneSin = car.sin;
+      car.waiting = traffic.isWait(this.cursor);
+      car.swerve = undefined;
     }
   }
 
@@ -387,35 +274,36 @@ export class GiveWay {
     this.others = [];
     const v = state.vehicle;
     const spec = specOf(v.cls);
-    this.other(v.x, v.z, headingOf(v), spec);
-    if (!state.player.driving) this.other(state.player.x, state.player.y, 0, { halfLength: 0.4, halfWidth: 0.4 });
+    this.other(v.x, v.z, headingOf(v), spec, v.speed);
+    if (!state.player.driving) this.other(state.player.x, state.player.y, 0, { halfLength: 0.4, halfWidth: 0.4 }, state.player.speed);
     for (const record of state.traffic.promoted) {
       const w = record.vehicle;
-      if (!this.inBox(w.x, w.z)) continue;
-      this.other(w.x, w.z, headingOf(w), specOf(w.cls));
+      if (!this.frame.inBox(w.x, w.z)) continue;
+      this.other(w.x, w.z, headingOf(w), specOf(w.cls), w.speed);
     }
     const patrol = specOf('emergency');
     for (const unit of state.police.units) {
-      if (unit.kind === 'helicopter' || !this.inBox(unit.x, unit.y)) continue;
-      this.other(unit.x, unit.y, unit.heading, patrol);
+      if (unit.kind === 'helicopter' || !this.frame.inBox(unit.x, unit.y)) continue;
+      this.other(unit.x, unit.y, unit.heading, patrol, unit.speed);
     }
     for (const unit of state.emergency.units) {
-      if (!this.inBox(unit.x, unit.y)) continue;
-      this.other(unit.x, unit.y, unit.heading, UNIT_BODY[unit.kind]);
+      if (!this.frame.inBox(unit.x, unit.y)) continue;
+      this.other(unit.x, unit.y, unit.heading, UNIT_BODY[unit.kind], unit.speed);
     }
   }
 
-  private other(x: number, y: number, heading: number, body: { halfLength: number; halfWidth: number }): void {
-    this.others.push({ x, y, heading, halfLength: body.halfLength, halfWidth: body.halfWidth, cos: cos(heading), sin: sin(heading) });
+  private other(x: number, y: number, heading: number, body: { halfLength: number; halfWidth: number }, speed: number): void {
+    this.others.push({ x, y, heading, halfLength: body.halfLength, halfWidth: body.halfWidth, cos: cos(heading), sin: sin(heading), speed });
   }
 
   /** Where a car's tour puts it on the next tick if nothing holds it. */
   private readAhead(state: SimState, car: Car): void {
     this.traffic.cursorAt(car.id, state.tick + 1 - car.lag, this.cursor);
     const ahead = this.traffic.pose(this.cursor, this.pose);
-    car.next.x = ahead.x;
-    car.next.y = ahead.y;
-    car.next.heading = ahead.heading;
+    const side = sideOf(car);
+    car.next.x = ahead.x - sin(ahead.heading) * side;
+    car.next.y = ahead.y + cos(ahead.heading) * side;
+    car.next.heading = ahead.heading + (car.swerve?.yaw ?? 0);
     car.nextCos = cos(ahead.heading);
     car.nextSin = sin(ahead.heading);
     car.nextSpeed = ahead.speed;
@@ -470,7 +358,8 @@ export class GiveWay {
       const ahead = this.cars[j] as Car;
       const other = ahead.box;
       if (!close(this.reach, other, 0)) continue;
-      if (ahead.cos * fx + ahead.sin * fy < HEAD_ON) continue;
+      // One coming the other way is in its own lane, unless either of the two is out of theirs.
+      if (ahead.cos * fx + ahead.sin * fy < HEAD_ON && sideOf(car) === 0 && sideOf(ahead) === 0) continue;
       if (turnedTouch(this.probe, fx, fy, other, ahead.cos, ahead.sin, 0)) this.block(car, j);
       else if (turnedTouch(this.reach, fx, fy, other, ahead.cos, ahead.sin, 0)) car.slow = true;
     }
@@ -481,16 +370,20 @@ export class GiveWay {
     const box = car.box;
     const fx = car.cos;
     const fy = car.sin;
-    const patient = car.waited < PATIENCE;
     for (const other of this.others) {
       if (!close(this.reach, other, 0) || !turnedTouch(this.reach, fx, fy, other, other.cos, other.sin, 0)) continue;
       // Something longer than the car that has come up on it from behind
       // reaches past its nose, and is not in its way: it drives on.
       if ((other.x - box.x) * fx + (other.y - box.y) * fy <= 0) continue;
       car.facing = true;
-      if (!patient) continue;
       if (turnedTouch(this.probe, fx, fy, other, other.cos, other.sin, 0)) this.block(car, OTHER);
       else car.slow = true;
+    }
+    // Its whole body, not only the lane ahead: a corner that would clip one of them stops it too.
+    for (const other of this.others) {
+      if (!close(car.next, other, OTHER_ROOM)) continue;
+      const into = turnedTouch(car.next, car.nextCos, car.nextSin, other, other.cos, other.sin, OTHER_ROOM);
+      if (into && !turnedTouch(box, fx, fy, other, other.cos, other.sin, OTHER_ROOM)) this.block(car, OTHER);
     }
   }
 
@@ -498,8 +391,8 @@ export class GiveWay {
   private lookPeople(car: Car): void {
     const fx = car.cos;
     const fy = car.sin;
-    for (const k of this.around(this.personGrid, this.reach, 1, this.spare)) {
-      const person = this.people[k] as Person;
+    for (const k of this.around(this.crowd.grid, this.reach, 1, this.spare)) {
+      const person = this.crowd.people[k] as Person;
       const stepped = within(car.next, car.nextCos, car.nextSin, person.x, person.y, PERSON_RADIUS + STEP_ROOM);
       if (!stepped && !within(this.reach, fx, fy, person.x, person.y, PERSON_RADIUS)) continue;
       if (stepped || within(this.probe, fx, fy, person.x, person.y, PERSON_RADIUS)) {
@@ -513,6 +406,24 @@ export class GiveWay {
     // A car of the traffic comes first: it is the one a ring of waiting cars is looked for along.
     if (!car.stop || (car.blocker < 0 && by >= 0)) car.blocker = by;
     car.stop = true;
+  }
+
+  /** Where the kerbs of a car's carriageway stand, right of the middle of its lane. */
+  private kerbsOf(car: Car, out: Kerbs): Kerbs {
+    this.traffic.cursorAt(car.id, this.tick - car.lag, this.kerbCursor);
+    return this.traffic.kerbsOf(this.kerbCursor, out);
+  }
+
+  /** True where a car stands within {@link QUEUE_REACH} of a stop line whose light is not green. */
+  private queuedAtRed(car: Car): boolean {
+    const signals = this.traffic.signals;
+    if (car.waiting) return true;
+    if (signals === undefined) return false;
+    const cursor = this.traffic.cursorAt(car.id, this.tick - car.lag, this.kerbCursor);
+    const approach = signals.approachOf(this.traffic.edgeOf(cursor));
+    if (approach === undefined) return false;
+    const metres = this.traffic.metresOf(cursor);
+    return metres > approach.stop - QUEUE_REACH && metres <= approach.stop + 1 && signals.light(approach, this.tick) !== 'green';
   }
 
   /** True when a car behind its tour is about to cross a stop line on a light that is not green. */
@@ -573,7 +484,7 @@ export class GiveWay {
   /** Write the cars' holds for the next tick, and where each will stand on it. */
   private moveCars(state: SimState): void {
     const traffic = this.traffic;
-    this.waiting = new Array<Car | undefined>(this.people.length);
+    this.crowd.begin(this.cars);
     const next = state.tick + 1;
     const list: Hold[] = [];
     for (const car of this.cars) {
@@ -592,182 +503,23 @@ export class GiveWay {
       }
       const waited = waitedNext(car);
       car.waited = waited;
-      if (car.stop && car.blocker === PERSON && car.person >= 0) this.noteWaiting(car);
-      if (lag > 0 || step !== 0 || waited > 0) list.push({ id: car.id, lag, step, waited });
+      if (car.stop && car.blocker === PERSON && car.person >= 0) this.crowd.noteWaiting(car);
+      const swerve = car.swerve;
+      if (swerve !== undefined) list.push({ id: car.id, lag, step, waited, swerve });
+      else if (lag > 0 || step !== 0 || waited > 0) list.push({ id: car.id, lag, step, waited });
       // Moving, it stands where `look` read it ahead; making up lag, it stands still there too.
       if (held) standStill(car);
     }
-    this.nextReach = 0;
-    for (let i = 0; i < this.cars.length; i++) {
-      const car = this.cars[i] as Car;
-      this.nextGrid.add(this.cellOf(car.next.x, car.next.y), i);
-      const reach = car.next.halfLength + car.next.halfWidth + PERSON_ROOM + car.nextSpeed * CROSS_TIME;
-      this.nextReach = Math.max(this.nextReach, reach);
-    }
-    state.traffic.held = { tick: next, x: this.minX + GIVE_WAY_REACH, y: this.minY + GIVE_WAY_REACH, list };
+    this.crowd.fileNext();
+    state.traffic.held = { tick: next, x: this.frame.midX, y: this.frame.midY, list };
   }
 
-  /** File a car standing for a person as the one standing for them, where it has stood longest. */
-  private noteWaiting(car: Car): void {
-    const was = this.waiting[car.person];
-    if (was === undefined || was.waited < car.waited) this.waiting[car.person] = car;
-  }
 
-  /** Write the people's holds for the next tick: nobody steps into a car. */
-  private movePeople(state: SimState): void {
-    const crowd = this.crowd;
-    const peds = state.pedestrians;
-    const next = state.tick + 1;
-    if (crowd === undefined) {
-      peds.held = { tick: next, x: this.minX + GIVE_WAY_REACH, y: this.minY + GIVE_WAY_REACH, list: [] };
-      return;
-    }
-    const list: Hold[] = [];
-    const aside: [Person, Car][] = [];
-    for (let k = 0; k < this.people.length; k++) {
-      const person = this.people[k] as Person;
-      const waiting = this.waiting[k];
-      if (!person.walking) {
-        // Somebody off their loop standing in a car's way is moved out of it.
-        if (waiting !== undefined && waiting.waited >= NUDGE) aside.push([person, waiting]);
-        continue;
-      }
-      crowd.poseAt(person.id, next - person.lag, this.walk);
-      person.nextX = this.walk.x;
-      person.nextY = this.walk.y;
-      const step = this.stepOf(person, waiting, next);
-      person.held = step > 0;
-      person.lag += step;
-      person.waited = step > 0 ? person.waited + 1 : 0;
-      if (person.lag > 0) list.push({ id: person.id, lag: person.lag, step, waited: person.waited });
-    }
-    peds.held = { tick: next, x: this.minX + GIVE_WAY_REACH, y: this.minY + GIVE_WAY_REACH, list };
-    for (const [person, car] of aside) {
-      // Towards the car's right hand, which is the kerb its lane runs along.
-      stepAside(peds, state.tick, person.id, person, car.box.heading + Math.PI / 2);
-    }
-  }
-
-  /**
-   * How many ticks a person on their loop falls back on the next tick: 2 when
-   * a car stands for them and they go back the way they came, off its lane; 1
-   * when their next step takes them into a car and they stand; else 0.
-   */
-  private stepOf(person: Person, waiting: Car | undefined, next: number): number {
-    const car = this.inWay(person);
-    if (waiting !== undefined && (waiting.waited >= BACK_OFF || car === waiting) && this.backOff(person, waiting, next)) return 2;
-    if (car === undefined) return 0;
-    person.nextX = person.x;
-    person.nextY = person.y;
-    return 1;
-  }
-
-  /** Walk a person back one tick along their loop, unless that puts them against another car. Answers whether it did. */
-  private backOff(person: Person, waiting: Car, next: number): boolean {
-    const crowd = this.crowd as Crowd;
-    crowd.poseAt(person.id, next - person.lag - 2, this.walk);
-    for (const i of this.aroundPoint(this.nextGrid, this.walk.x, this.walk.y, this.near)) {
-      const car = this.cars[i] as Car;
-      if (car !== waiting && within(car.next, car.nextCos, car.nextSin, this.walk.x, this.walk.y, PERSON_RADIUS)) return false;
-    }
-    person.nextX = this.walk.x;
-    person.nextY = this.walk.y;
-    return true;
-  }
-
-  /**
-   * The car a person's next step takes them into, or into the road just
-   * ahead of: undefined for none, null for the player's car or a wreck. A
-   * person already standing against a car walks on out of it; one standing in
-   * the road ahead of it waits there.
-   */
-  private inWay(person: Person): Car | null | undefined {
-    for (const i of this.aroundPoint(this.nextGrid, person.nextX, person.nextY, this.near)) {
-      const car = this.cars[i] as Car;
-      const box = car.next;
-      const dx = person.nextX - box.x;
-      const dy = person.nextY - box.y;
-      const r = box.halfLength + box.halfWidth + PERSON_ROOM + car.nextSpeed * CROSS_TIME;
-      if (dx * dx + dy * dy > r * r) continue;
-      const fx = car.nextCos;
-      const fy = car.nextSin;
-      if (!meets(box, fx, fy, car.nextSpeed, person.nextX, person.nextY)) continue;
-      // A car standing for this person waits for them, so they keep clear of its body only.
-      if (car.person >= 0 && this.people[car.person] === person && !within(box, fx, fy, person.nextX, person.nextY, PERSON_RADIUS)) continue;
-      // Somebody already against a car walks on only when the step takes them away from it.
-      if (!meets(box, fx, fy, 0, person.x, person.y) || !away(box, person)) return car;
-    }
-    if (person.waited >= PATIENCE) return undefined;
-    return othersBlock(this.others, person) ? null : undefined;
-  }
-
-  /** A moving car of the traffic hits whoever stands in it on the next tick. */
-  private strike(state: SimState, ground: CasualtyGround | undefined): void {
-    const crowd = this.crowd;
-    if (crowd === undefined) return;
-    const peds = state.pedestrians;
-    const next = state.tick + 1;
-    for (const car of this.cars) {
-      if (car.nextSpeed < STRIKE_SPEED) continue;
-      const box = car.next;
-      for (const k of this.around(this.personGrid, box, 2, this.ids)) {
-        const person = this.people[k] as Person;
-        // The holds were written for the next tick, so this is where each person will stand on it.
-        const pose = crowdPoseOf(crowd, peds, person.id, next, this.walk);
-        if (pose === undefined || !within(box, car.nextCos, car.nextSin, pose.x, pose.y, PERSON_RADIUS)) continue;
-        this.hit(state, crowd, car, person.id, pose, ground);
-      }
-    }
-  }
-
-  private hit(
-    state: SimState,
-    crowd: CrowdSource,
-    car: Car,
-    id: number,
-    pose: PedestrianPose,
-    ground: CasualtyGround | undefined,
-  ): void {
-    const { x, y, height, heading } = pose;
-    const speed = car.nextSpeed;
-    const travel = car.next.heading;
-    if (speed < SHOVE_SPEED) {
-      // At a crawl a car only pushes somebody aside.
-      crowd.startle(state.pedestrians, state.tick, x - cos(travel) * 0.05, y - sin(travel) * 0.05, 0.1, 'scatter', this.spare);
-      return;
-    }
-    const rng = rngFor(state.seed, state.tick, Subsystem.Casualties, hashInts(STRIKE_STREAM, id));
-    const damage = speed >= KILL_SPEED ? PERSON_HEALTH : carDamage(speed) * rng.range(0.8, 1.2);
-    const fast = speed >= LIFT_SPEED;
-    const push = speed * (fast ? THROW_SHARE : 0.9);
-    const lift = fast ? Math.min(LIFT_MAX, speed * LIFT_SHARE) : 0;
-    const dir = travel + rng.range(-0.3, 0.3);
-    hurtPerson(state, crowd, id, { x, y, height, heading }, { cause: 'car', damage, dir, push, lift, city: true }, ground);
-  }
 }
 
-/**
- * True for a person giving way leaves out before their pose is read: a
- * casualty, or somebody whose walk is on an edge far from the box of reach `r`
- * round `(x, y)`.
- */
-function skipsBox(crowd: Crowd, state: SimState, id: number, x: number, y: number, r: number): boolean {
-  const peds = state.pedestrians;
-  if (peds.casualties.length > 0 && casualtyOf(peds, id) !== undefined) return true;
-  if (crowd.edgeAt === undefined || crowd.edgeMeets === undefined) return false;
-  const time = heldTime(peds.held, id, state.tick);
-  return !crowd.edgeMeets(crowd.edgeAt(id, time), x - r, y - r, x + r, y + r);
-}
-
-/**
- * The ticks a car will have stood for the player, a wreck or a person on the
- * next tick. A car out of patience stays out of it while the thing it stood
- * for is still ahead of it.
- */
+/** The ticks a car will have stood for the player, a wreck or a person on the next tick. */
 function waitedNext(car: Car): number {
-  if (car.stop && (car.blocker === OTHER || car.blocker === PERSON)) return car.waited + 1;
-  const impatient = car.waited >= PATIENCE && car.facing;
-  return impatient ? car.waited : 0;
+  return car.stop && (car.blocker === OTHER || car.blocker === PERSON) ? car.waited + 1 : 0;
 }
 
 /** Stand a held car on the next tick where it stands now. */

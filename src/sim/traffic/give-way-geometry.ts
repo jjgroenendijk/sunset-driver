@@ -11,8 +11,8 @@ const LANE_SHARE = 0.8;
 export const PERSON_ROOM = 0.4;
 export const CROSS_TIME = 0.8;
 
-/** What a car stops for that is not a car of the traffic, with the cosine and sine of its heading. */
-export type Other = Footprint & { cos: number; sin: number };
+/** What a car stops for that is not a car of the traffic, with the cosine and sine of its heading and its speed. */
+export type Other = Footprint & { cos: number; sin: number; speed: number };
 
 /** Where a person stands now and where their next step takes them. */
 export interface Stepping {

@@ -14,7 +14,7 @@
  */
 import { atan2, cos, hypot, sin } from '../../core/libm.ts';
 import { TICK_RATE } from '../clock.ts';
-import type { Aside } from './crowd-aside.ts';
+import { freshAside, type Aside } from './crowd-aside.ts';
 import type { CrowdSource } from '../weapons/melee.ts';
 import { WALK_SPEED } from '../player/on-foot.ts';
 import { casualtyOf, emptyPose, startledOf, type PedestrianState } from './pedestrians.ts';
@@ -32,6 +32,9 @@ export const MAKE_WAY_MOST = 0.85;
 
 /** Metres per second a person steps aside and back at. */
 const STEP_PACE = 1.1;
+
+/** Metres per second a person walks off their loop at, to keep out of a car's way, and back. */
+const DODGE_PACE = 1.3;
 
 /** Radians per second a head turns at, and the most it turns from the body. */
 const LOOK_PACE = 3;
@@ -73,9 +76,11 @@ export function stepMakeWay(state: SimState, crowd: CrowdSource, ids: number[] =
     const key = Math.min(at, id);
     if (at === key) a++;
     if (id === key) b++;
-    const record: Aside = at === key ? { ...(had as Aside) } : { id: key, off: 0, side: 0, look: 0 };
+    const record: Aside = at === key ? { ...(had as Aside) } : freshAside(key);
     stepAside(state, crowd, on, record, pose, want);
-    if (Math.abs(record.off) > 1e-3 || Math.abs(record.look) > 1e-3) next.push(record);
+    stepDodge(record);
+    const dodging = record.dodgeX !== 0 || record.dodgeY !== 0;
+    if (Math.abs(record.off) > 1e-3 || Math.abs(record.look) > 1e-3 || dodging) next.push(record);
   }
   peds.aside = next;
   if (on && p.speed > BARGE_SPEED) {
@@ -164,6 +169,28 @@ function wanted(state: SimState, crowd: CrowdSource, id: number, pose: ReturnTyp
   // A head turns to the player only where it can without turning the body.
   want.look = Math.abs(look) > LOOK_MOST + 0.4 ? 0 : Math.max(-LOOK_MOST, Math.min(LOOK_MOST, look));
   return true;
+}
+
+/**
+ * Move a person one tick towards where giving way wants them off their loop,
+ * at a walking step, and forget the want: giving way asks again on the next
+ * tick while they still need to stand there, and they walk back once it
+ * stops asking.
+ */
+function stepDodge(record: Aside): void {
+  const dx = record.wantX - record.dodgeX;
+  const dy = record.wantY - record.dodgeY;
+  const gap = hypot(dx, dy);
+  const step = DODGE_PACE / TICK_RATE;
+  if (gap <= step) {
+    record.dodgeX = record.wantX;
+    record.dodgeY = record.wantY;
+  } else {
+    record.dodgeX += (dx / gap) * step;
+    record.dodgeY += (dy / gap) * step;
+  }
+  record.wantX = 0;
+  record.wantY = 0;
 }
 
 /** Move a record one tick towards what the person wants, at a walking step and a turn of the head. */

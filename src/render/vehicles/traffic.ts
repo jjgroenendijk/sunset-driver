@@ -37,7 +37,7 @@ import {
   type Material,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { heldTime } from '../../sim/traffic/hold.ts';
+import { heldPose } from '../../sim/traffic/hold.ts';
 import type { SimState } from '../../sim/simulation.ts';
 import { AMBIENT_CLASSES, promotedOf, type AmbientPose, type AmbientTraffic } from '../../sim/traffic/traffic.ts';
 import { rideHeight, specOf, type VehicleClass, type VehicleSpec } from '../../sim/vehicles/vehicle.ts';
@@ -234,7 +234,7 @@ export class TrafficView {
     for (const id of traffic.near(minX, minY, maxX, maxY, this.ids)) {
       if (promotedOf(state.traffic, id) !== undefined) continue;
       if (!outInThis(id, this.share)) continue;
-      const pose = traffic.poseAt(id, heldTime(state.traffic.held, id, time), this.pose);
+      const pose = heldPose(traffic, state.traffic.held, id, time, this.pose);
       if (pose.x < minX || pose.x > maxX || pose.y < minY || pose.y > maxY) continue;
       const vehicle = traffic.vehicles[id] as AmbientTraffic['vehicles'][number];
       const meshes = this.meshesOf(vehicle.cls);
