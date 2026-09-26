@@ -132,6 +132,8 @@ interface SiteGround {
   land: LandMasses;
   /** The ground a street can climb to from the core: where a gate can be served from. */
   graded: GradedLand;
+  /** The crossings of the water, which the roads to a gate may take. */
+  crossings: WaterDescription['crossings'];
 }
 
 /**
@@ -149,6 +151,7 @@ export function planAirfields(hf: Heightfield, water: WaterDescription, zones: Z
     // on a low delta the mainland is one piece only at the road's own margin.
     land: new LandMasses(hf, water, water.seaLevel + DRY_MARGIN),
     graded: new GradedLand(hf, zones.core, TIERS.street.maxGrade, water.crossings),
+    crossings: water.crossings,
   };
   const fields: Airfield[] = [];
   const runway = clamp(Math.round((zones.size * 0.2) / 50) * 50, RUNWAY_MIN, RUNWAY_MAX);
@@ -278,9 +281,34 @@ function findSite(ground: SiteGround, ask: SiteAsk, taken: readonly Airfield[]):
 function confirmBest(ground: SiteGround, ask: SiteAsk, shortlist: readonly Candidate[]): Candidate | undefined {
   for (const candidate of shortlist) {
     const judged = judge(ground, ask, candidate.x, candidate.y, candidate.heading, FINE);
-    if (judged !== undefined) return { ...candidate, level: judged.level };
+    if (judged !== undefined && gateClimbsOut(ground, ask, candidate)) return { ...candidate, level: judged.level };
   }
   return undefined;
+}
+
+/**
+ * True where a street can climb from the core to one of a site's gates without
+ * crossing the site. The coarse pass asks only whether the flood from the core
+ * reached the gate, and that flood ran over the ground the site is about to
+ * take: seed 2224331034 stood its airport on a hilltop whose only gentle way
+ * up ran across the runway (issue #720). A flood a site costs is one over the
+ * whole map, so only the short list is asked.
+ */
+function gateClimbsOut(ground: SiteGround, ask: SiteAsk, site: Candidate): boolean {
+  const frame = { x: site.x, y: site.y, heading: site.heading };
+  const local = { u: 0, v: 0 };
+  const avoid = (x: number, y: number): boolean => {
+    const at = toLocal(frame, x, y, local);
+    return Math.abs(at.u) <= ask.halfU + ask.margin && Math.abs(at.v) <= ask.halfV + ask.margin;
+  };
+  const graded = new GradedLand(ground.hf, ground.zones.core, TIERS.street.maxGrade, ground.crossings, avoid);
+  const gates = [
+    fromLocal(frame, ask.gateU, ask.halfV + GATE_OUT),
+    fromLocal(frame, ask.gateU, -ask.halfV - GATE_OUT),
+    fromLocal(frame, ask.halfU + GATE_OUT, 0),
+    fromLocal(frame, -ask.halfU - GATE_OUT, 0),
+  ];
+  return gates.some((gate) => graded.near(gate));
 }
 
 /**
