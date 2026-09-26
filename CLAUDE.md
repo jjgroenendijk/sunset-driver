@@ -17,6 +17,7 @@ The commands:
 
 - `npm run typecheck` — `tsc --noEmit`.
 - `npm run lint` — determinism. `lint:size` — sizes. `lint:dead` — dead code. `lint:deps` — imports.
+  `lint:smells` — the sonarjs code smells, at zero findings (#712).
 - `npm test` — the quick tier. `npm run test:full` — the full tier of 500 seeds (`SWEEP_SEEDS=500`).
 - `npm run verify` — typecheck, the lints and the quick tier, under 20 s. Run before every commit.
 - `npm run verify:full` — the same with the full tier, about 4 min.
@@ -132,8 +133,7 @@ The ones that cost a session with nothing to say why. The subsystem docs hold th
   both accept it. Write the field out.
 - The lints' TypeScript compiler API comes from the `tsapi` alias (TypeScript 5), because the
   TypeScript 7 the project builds with ships no JS API; ESLint reaches it through
-  `scripts/eslint-typescript.mjs`. A bare `tsc` is TypeScript 5 too, so call
-  `node_modules/typescript/bin/tsc` by path. `npm run lint:smells` is the sonarjs lint (#680).
+  `scripts/eslint-typescript.mjs`. A bare `tsc` is 5 too: run `node_modules/typescript/bin/tsc`.
 - three.js 0.186 with `@types/three` 0.186. `TerrainGenerator`, `SkyscraperGenerator` and
   `SidewalkGenerator` live under `three/examples/jsm/generators/` and run headless in Node.
 - Conventional Commits, one atomic change per commit, feature branches from `main`, one PR per issue
