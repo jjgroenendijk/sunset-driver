@@ -1,5 +1,6 @@
 import { Box3 } from 'three';
 import { describe, expect, it } from 'vitest';
+import { compareNumbers } from '../src/core/sort.ts';
 import { pierGeometry } from '../src/render/corridor-mesh.ts';
 import { buildChunkRoads, roadDrawCalls, TIER_ORDER } from '../src/render/road-mesh.ts';
 import {
@@ -33,7 +34,7 @@ describe('piers', () => {
     const piers = deckPiers(w);
     const hf = new Heightfield(w.terrain);
     // 200 m of deck in bays of about 25 m: seven bays inside the abutments, a pair at each.
-    expect(piers.length).toBe(14);
+    expect(piers).toHaveLength(14);
     for (const pier of piers) {
       expect(hf.sample(pier.x, pier.y), `${pier.x},${pier.y}`).toBeLessThan(w.water.seaLevel);
       expect([1, 2]).toContain(pier.segment);
@@ -56,7 +57,7 @@ describe('piers', () => {
     const w = worldOf(world(dip(2), []), [viaduct([1, 2]), street]);
     const piers = deckPiers(w);
     // The bay over the street loses its pair, and no other bay does.
-    expect(piers.length).toBe(12);
+    expect(piers).toHaveLength(12);
     for (const pier of piers) expect(Math.abs(pier.x + 50)).toBeGreaterThan(footprintHalfWidth('street'));
   });
 
@@ -100,7 +101,7 @@ describe('piers', () => {
       expect(post?.top).toBeCloseTo(frame.height + frame.bank * pier.across - SKIRT - DECK_DEPTH, 6);
       expect(post?.base).toBeLessThan(ground);
     }
-    expect(posts.length).toBe(drawn);
+    expect(posts).toHaveLength(drawn);
     expect(drawn).toBeGreaterThan(0);
   });
 
@@ -128,7 +129,7 @@ describe('the tram track', () => {
   it('turns each level crossing along the track it lies on', () => {
     const w = worldOf(world(FLAT, ringDistricts()), ringRoads());
     const track = tramTrack(w, buildRoadGraph(w.roads));
-    expect(track.crossings.length).toBe(1);
+    expect(track.crossings).toHaveLength(1);
     const crossing = track.crossings[0] as (typeof track.crossings)[number];
     expect(crossing.tier).toBe('arterial');
     // The street meets the south side of the ring, which runs along x.
@@ -155,7 +156,7 @@ describe('the corridors of a chunk', () => {
     const { cx, cy } = chunkAt(0, -300);
     const chunk = source.chunk(cx, cy);
     expect(chunk.tram.length).toBeGreaterThan(0);
-    expect(chunk.tramCrossings.length).toBe(1);
+    expect(chunk.tramCrossings).toHaveLength(1);
     const tiers = buildChunkRoads(chunk, layers.carve.ribbons, surfaceAt);
     const kinds = new Set<number>();
     for (const tier of tiers) {
@@ -168,8 +169,8 @@ describe('the corridors of a chunk', () => {
     // The lane is setts by a junction and grass on the open run between two,
     // and this chunk holds a crossing, so it is all setts. The masts and the
     // contact wire over the track go into the same batch.
-    expect([...kinds].sort()).toEqual(
-      [SURFACE_SETTS, SURFACE_RAIL, SURFACE_GROOVE, SURFACE_CROSSING, SURFACE_CROSSING_MARK, SURFACE_CATENARY, SURFACE_WIRE].sort(),
+    expect([...kinds].sort(compareNumbers)).toEqual(
+      [SURFACE_SETTS, SURFACE_RAIL, SURFACE_GROOVE, SURFACE_CROSSING, SURFACE_CROSSING_MARK, SURFACE_CATENARY, SURFACE_WIRE].sort(compareNumbers),
     );
     // The corridors add parts to a tier the chunk already draws, and no draw call.
     const drawn = TIER_ORDER.filter((tier) => chunk.roads.some((run) => run.tier === tier) || chunk.pavement.some((p) => p.tier === tier));

@@ -11,6 +11,7 @@ import {
   MIN_LICENCE,
   type Shop,
 } from '../src/world/shops.ts';
+import { compareStrings } from '../src/core/sort.ts';
 import type { Building, BuildingKind, BuildingMap } from '../src/world/buildings.ts';
 import type { District, WorldDescription, Zone } from '../src/world/types.ts';
 
@@ -125,7 +126,7 @@ describe('shops', () => {
   });
 
   it('names a trade for every shop type the spec lists', () => {
-    expect([...SHOP_ORDER].sort()).toEqual([...SHOP_KINDS].sort());
+    expect([...SHOP_ORDER].sort(compareStrings)).toEqual([...SHOP_KINDS].sort(compareStrings));
   });
 });
 

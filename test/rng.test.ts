@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { hashInts, hashString } from '../src/core/hash.ts';
 import { Rng, rngFor, seedFromString, Subsystem } from '../src/core/rng.ts';
+import { compareNumbers } from '../src/core/sort.ts';
 
 describe('hash', () => {
   it('is stable across runs', () => {
@@ -36,7 +37,7 @@ describe('rng', () => {
     const r = new Rng(3);
     const seen = new Set<number>();
     for (let i = 0; i < 1000; i++) seen.add(r.int(2, 5));
-    expect([...seen].sort()).toEqual([2, 3, 4, 5]);
+    expect([...seen].sort(compareNumbers)).toEqual([2, 3, 4, 5]);
   });
 });
 

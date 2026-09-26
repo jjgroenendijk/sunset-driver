@@ -91,7 +91,7 @@ sweepSuite('chunks', () => {
           // ends of it are cut, and the points between them are the curve's own.
           for (let k = 1; k + 1 < run.points.length; k++) {
             const mine = run.points[k] as Point;
-            const theirs = road.points[run.from + k] as Point;
+            const theirs = road.points[run.from + k];
             if (theirs === undefined || mine.x !== theirs.x || mine.y !== theirs.y) fault(`${name} strays off it`);
           }
           for (let k = 0; k + 1 < run.points.length; k++) {

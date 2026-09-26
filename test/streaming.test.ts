@@ -608,11 +608,11 @@ describe('the scene as the player drives', () => {
     expect(scene.scene.children.length).toBeLessThan(filled);
     await scene.settle(away, away);
     // Open sea past the edge of the map: one ground mesh a chunk and nothing on it.
-    expect(scene.scene.children.length).toBe(bare + (FAR_RADIUS * 2 + 1) ** 2);
+    expect(scene.scene.children).toHaveLength(bare + (FAR_RADIUS * 2 + 1) ** 2);
 
     // Driving back builds the same city again, piece for piece.
     await scene.settle(0, 0);
-    expect(scene.scene.children.length).toBe(filled);
+    expect(scene.scene.children).toHaveLength(filled);
     scene.dispose();
   });
 
@@ -657,7 +657,7 @@ describe('the scene as the player drives', () => {
     // Back at full quality the city comes back whole, piece for piece.
     scene.quality = FULL_TIER;
     await scene.settle(0, 0);
-    expect(scene.scene.children.length).toBe(atFull);
+    expect(scene.scene.children).toHaveLength(atFull);
     scene.dispose();
   });
 
@@ -673,7 +673,7 @@ describe('the scene as the player drives', () => {
     expect(rest.length).toBeGreaterThan(0);
     // Paving on the ground shades only itself, so a road cell with nothing
     // raised in it casts none (`roads.ts`). Everything else does.
-    const road = (batch: Batch): boolean => batch.geometry.getAttribute('across') !== undefined;
+    const road = (batch: Batch): boolean => batch.geometry.hasAttribute('across');
     expect(rest.some((batch) => road(batch) && !batch.castShadow)).toBe(true);
     expect(rest.filter((batch) => !road(batch)).every((batch) => batch.castShadow)).toBe(true);
     // Every batch still takes the shadow of what stands over it.

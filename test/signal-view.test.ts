@@ -43,7 +43,7 @@ describe('the traffic lights, drawn (spec section 13.1)', () => {
         lenses.getColorAt(i * 3 + lens, colour);
         return colour.r + colour.g + colour.b > 1;
       });
-      expect(lit.filter(Boolean).length).toBe(1);
+      expect(lit.filter(Boolean)).toHaveLength(1);
       expect(lit[['red', 'amber', 'green'].indexOf(signals.light(approach, tick))]).toBe(true);
     }
     view.dispose();

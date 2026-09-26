@@ -73,7 +73,7 @@ describe('the drawn weapons', () => {
     state.pickups.shift();
     models.update(state.pickups, 101);
     expect(models.count).toBe(1);
-    expect(models.group.children.length).toBe(1);
+    expect(models.group.children).toHaveLength(1);
     // Two dropped weapons of one kind share one geometry.
     dropWeapon(state, 'katana', 0, 0, [], 9, 6, 1);
     models.update(state.pickups, 102);

@@ -43,13 +43,13 @@ describe('the wrecks the city tows away (spec section 20.2)', () => {
   it('leaves a shell the player is standing near, however long it has been there', () => {
     const state = session(OLD * 10, wreck(4, TOW_REACH - 1, 0, 'burnt', 0));
     expect(stepTowing(state)).toBe(0);
-    expect(state.traffic.promoted.length).toBe(1);
+    expect(state.traffic.promoted).toHaveLength(1);
   });
 
   it('leaves a shell that went up a moment ago, however far away it is', () => {
     const state = session(TOW_WAIT - 1, wreck(4, FAR, 0, 'burnt', 0));
     expect(stepTowing(state)).toBe(0);
-    expect(state.traffic.promoted.length).toBe(1);
+    expect(state.traffic.promoted).toHaveLength(1);
   });
 
   it('leaves a car the player abandoned in one piece where they left it', () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { compareStrings } from '../src/core/sort.ts';
 import { SIGNAL_AMBER, SIGNAL_CLEAR, SIGNAL_CYCLE, SIGNAL_GREEN, type SignalApproach, TrafficSignals } from '../src/sim/signals.ts';
 import type { RoadEdge } from '../src/world/graph.ts';
 import { AmbientTraffic } from '../src/sim/traffic.ts';
@@ -19,8 +20,8 @@ function signalsOf(traffic: AmbientTraffic): TrafficSignals {
 describe('traffic lights (spec section 13.1)', () => {
   it('stands where the arterial meets a street, and not where it meets the highway or the alley', () => {
     const signals = signalsOf(gridTraffic(SEEDS[0] as number));
-    const places = signals.junctions.map((j) => `${j.x},${j.y}`).sort();
-    expect(places).toEqual([-1, 1, 2].map((i) => `${i * GRID_SPACING},0`).sort());
+    const places = signals.junctions.map((j) => `${j.x},${j.y}`).sort(compareStrings);
+    expect(places).toEqual([-1, 1, 2].map((i) => `${i * GRID_SPACING},0`).sort(compareStrings));
     for (const junction of signals.junctions) {
       const axes = junction.approaches.map((a) => (signals.approaches[a] as SignalApproach).axis);
       expect(axes).toContain(0);

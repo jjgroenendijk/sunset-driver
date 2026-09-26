@@ -23,29 +23,44 @@ function seesALining(cls: VehicleClass, from: Vec, dir: Vec): boolean {
   for (const part of vehicleBoxes(ROSTER[cls])) {
     if (part.faces === undefined || part.glass === true) continue;
     for (const flat of part.faces) {
-      const p: Vec[] = [];
-      for (let i = 0; i < flat.length; i += 3) {
-        p.push([(flat[i] as number) + part.x, (flat[i + 1] as number) + part.y, (flat[i + 2] as number) + part.z]);
-      }
+      const p = cornersOf(flat, part);
       for (let i = 1; i < p.length - 1; i++) {
-        const [a, b, c] = [p[0] as Vec, p[i] as Vec, p[i + 1] as Vec];
-        const e1 = sub(b, a);
-        const e2 = sub(c, a);
-        const h = cross(dir, e2);
-        const det = dot(e1, h);
-        if (Math.abs(det) < 1e-12) continue;
-        const s = sub(from, a);
-        const u = dot(s, h) / det;
-        const q = cross(s, e1);
-        const v = dot(dir, q) / det;
-        const t = dot(e2, q) / det;
-        if (u < 0 || v < 0 || u + v > 1 || t <= 1e-6 || t >= nearest) continue;
-        nearest = t;
-        facing = dot(cross(e1, e2), dir) < 0;
+        const hit = rayHit(from, dir, p[0] as Vec, p[i] as Vec, p[i + 1] as Vec);
+        if (hit === undefined || hit.t >= nearest) continue;
+        nearest = hit.t;
+        facing = hit.facing;
       }
     }
   }
   return nearest < Infinity && facing;
+}
+
+/** The corners of one flat face, moved to where its part stands. */
+function cornersOf(flat: ArrayLike<number>, part: { x: number; y: number; z: number }): Vec[] {
+  const p: Vec[] = [];
+  for (let i = 0; i < flat.length; i += 3) {
+    p.push([(flat[i] as number) + part.x, (flat[i + 1] as number) + part.y, (flat[i + 2] as number) + part.z]);
+  }
+  return p;
+}
+
+/**
+ * Where a ray meets the triangle `p0 p1 p2` (Möller-Trumbore), and whether the
+ * triangle faces back at it; undefined when it misses.
+ */
+function rayHit(from: Vec, dir: Vec, p0: Vec, p1: Vec, p2: Vec): { t: number; facing: boolean } | undefined {
+  const e1 = sub(p1, p0);
+  const e2 = sub(p2, p0);
+  const h = cross(dir, e2);
+  const det = dot(e1, h);
+  if (Math.abs(det) < 1e-12) return undefined;
+  const s = sub(from, p0);
+  const u = dot(s, h) / det;
+  const q = cross(s, e1);
+  const v = dot(dir, q) / det;
+  const t = dot(e2, q) / det;
+  if (u < 0 || v < 0 || u + v > 1 || t <= 1e-6) return undefined;
+  return { t, facing: dot(cross(e1, e2), dir) < 0 };
 }
 
 describe('the inside of a cabin', () => {

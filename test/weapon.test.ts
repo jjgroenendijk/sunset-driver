@@ -83,7 +83,7 @@ function hold(loadout: LoadoutState, player: PlayerState, seed: number, from: nu
 
 describe('the arsenal', () => {
   it('lists every weapon once, in a class the spec names', () => {
-    expect(WEAPON_IDS.length).toBe(Object.keys(ARSENAL).length);
+    expect(WEAPON_IDS).toHaveLength(Object.keys(ARSENAL).length);
     const seen = new Set<string>();
     let complaint = '';
     for (const id of WEAPON_IDS) {
@@ -166,7 +166,7 @@ describe('what the player carries', () => {
   it('starts with fists and nothing else', () => {
     const loadout = createLoadout();
     expect(currentWeapon(loadout).id).toBe('fists');
-    expect(loadout.slots.length).toBe(1);
+    expect(loadout.slots).toHaveLength(1);
     for (const calibre of CALIBRES) expect(loadout.ammo[calibre], calibre).toBe(0);
   });
 
@@ -268,11 +268,11 @@ describe('firing', () => {
     const ticks = 60;
     const shots = hold(auto, player, 0x51a, 2_000, ticks);
     // A magazine of 30 at 800 rounds a minute is gone in well under a second.
-    expect(shots.length).toBe(Math.min(mp5.capacity, Math.floor((ticks - 1) / shotInterval(mp5)) + 1));
+    expect(shots).toHaveLength(Math.min(mp5.capacity, Math.floor((ticks - 1) / shotInterval(mp5)) + 1));
 
     const semi = createLoadout();
     giveWeapon(semi, 'colt-m1911');
-    expect(hold(semi, player, 0x51a, 2_000, ticks).length).toBe(1);
+    expect(hold(semi, player, 0x51a, 2_000, ticks)).toHaveLength(1);
   });
 
   it('spends a round on a shot and nothing on a swing', () => {

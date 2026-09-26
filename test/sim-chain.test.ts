@@ -9,6 +9,7 @@ import {
   type Chapter,
   type ChainRole,
 } from '../src/sim/chain.ts';
+import { compareStrings } from '../src/core/sort.ts';
 import { factionIndex } from '../src/sim/faction.ts';
 import { giverPlaces, type GiverPlace } from '../src/sim/giver.ts';
 import { jobSites, type JobLeg, type MissionJob, type MissionWorld } from '../src/sim/job.ts';
@@ -181,7 +182,7 @@ describe('the chain as it is written', () => {
     // what makes it a choice rather than a road.
     const at = Math.min(...slots);
     const open = chaptersNow({ ...createChainState(), step: at });
-    expect(open.map((chapter) => chapter.branch).sort()).toEqual(['patron', 'rival']);
+    expect(open.map((chapter) => chapter.branch).sort(compareStrings)).toEqual(['patron', 'rival']);
   });
 });
 
@@ -280,7 +281,7 @@ describe('walking the chain', () => {
     state.player.driving = false;
     const giver = giverFor(world, 'patron');
     const offers = jobOffers(state, world, giver);
-    expect(offers.length).toBe(2);
+    expect(offers).toHaveLength(2);
     expect(offers[0]?.job.chapter).toBe((CHAPTERS[0] as Chapter).id);
     expect(offers[0]?.note.length).toBeGreaterThan(0);
     expect(offers[1]?.job.chapter).toBe('');

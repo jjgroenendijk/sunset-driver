@@ -20,8 +20,12 @@ function memoryStore(): KeyListStore & { size(): number } {
   const items = new Map<string, string>();
   return {
     getItem: (key) => items.get(key) ?? null,
-    setItem: (key, value) => void items.set(key, value),
-    removeItem: (key) => void items.delete(key),
+    setItem: (key, value) => {
+      items.set(key, value);
+    },
+    removeItem: (key) => {
+      items.delete(key);
+    },
     get length() {
       return items.size;
     },

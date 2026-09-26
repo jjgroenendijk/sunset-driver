@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { compareStrings } from '../src/core/sort.ts';
 import { AmbientTraffic, footprintsTouch, SMOOTH, trafficRoadsOf, type AmbientPose, type Footprint, type TrafficCursor } from '../src/sim/traffic.ts';
 import { specOf } from '../src/sim/vehicle.ts';
 import type { RoadEdge } from '../src/world/graph.ts';
@@ -52,7 +53,7 @@ sweepSuite('traffic', () => {
           const off = distanceTo(graph.edgePoints(edge.id), pose.x, pose.y);
           expect(off, `seed ${seed}: vehicle ${vehicle.id} off its ${edge.tier}`).toBeLessThan(TIERS[edge.tier].width / 2 + SMOOTH);
         }
-        for (const tier of Object.keys(TIERS).sort() as RoadTier[]) {
+        for (const tier of Object.keys(TIERS).sort(compareStrings) as RoadTier[]) {
           if ((length[tier] ?? 0) < TRAFFIC_TIER_MIN) continue;
           expect(carried[tier] ?? 0, `seed ${seed}: no traffic on ${Math.round(length[tier] ?? 0)} m of ${tier} at tick ${tick}`).toBeGreaterThan(0);
         }

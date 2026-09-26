@@ -62,7 +62,7 @@ describe('weapons', () => {
     expect(damage.stage).not.toBe('intact');
     // The player stands beside the car, so it is a side panel that takes it.
     const dented = PANELS.filter((panel) => (damage.dents[PANELS.indexOf(panel)] as number) > 0);
-    expect(dented.length).toBe(1);
+    expect(dented).toHaveLength(1);
     expect(['left', 'right']).toContain(dented[0]);
     session.physics.dispose();
   });
@@ -146,7 +146,7 @@ describe('weapons', () => {
       thrownTick: state.tick,
     });
     drive(session, 120);
-    expect(state.projectiles.length).toBe(0);
+    expect(state.projectiles).toHaveLength(0);
     expect(state.vehicle.damage.stage).toBe('burning');
     session.physics.dispose();
   });
@@ -167,7 +167,7 @@ describe('weapons', () => {
       thrownTick: state.tick,
     });
     drive(session, fuse + 2);
-    expect(state.projectiles.length).toBe(0);
+    expect(state.projectiles).toHaveLength(0);
     expect(state.player.health).toBeLessThan(health);
     expect(state.vehicle.damage.integrity).toBeLessThan(1);
     session.physics.dispose();
@@ -178,7 +178,7 @@ describe('weapons', () => {
     const { state } = session;
     drive(session, 1, { fire: true });
     drive(session, 1);
-    expect(state.projectiles.length).toBe(1);
+    expect(state.projectiles).toHaveLength(1);
     const copy = cloneSimState(state);
     expect(copy.projectiles).toEqual(state.projectiles);
     expect(copy.loadout).toEqual(state.loadout);

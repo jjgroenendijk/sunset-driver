@@ -57,7 +57,7 @@ describe('what the player sees of the city’s own life', () => {
     state.player.x = 50000;
     state.player.y = 50000;
     life.update(state, flat, nothing);
-    expect(life.standing.length).toBe(0);
+    expect(life.standing).toHaveLength(0);
     expect(life.happening).toBe('');
   });
 

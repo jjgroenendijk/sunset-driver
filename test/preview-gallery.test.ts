@@ -1,5 +1,6 @@
 import { Box3, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
+import { compareStrings } from '../src/core/sort.ts';
 import { DEFAULT_APPEARANCE, OUTFITS } from '../src/sim/character.ts';
 import { GOOD_IDS } from '../src/sim/goods.ts';
 import { PROP_IDS } from '../src/sim/shop-goods.ts';
@@ -75,7 +76,7 @@ describe('the gallery of a preview', () => {
   });
 
   it('shows every prop the counters sell, and no prop twice', () => {
-    expect([...GALLERY_PROPS.map((entry) => entry.prop)].sort()).toEqual([...PROP_IDS].sort());
+    expect([...GALLERY_PROPS.map((entry) => entry.prop)].sort(compareStrings)).toEqual([...PROP_IDS].sort(compareStrings));
   });
 });
 

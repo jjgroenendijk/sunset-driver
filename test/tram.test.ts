@@ -31,11 +31,11 @@ describe('the tram (spec section 13.2)', () => {
 
   it('gives a light to every level crossing, an alley included', () => {
     const lit = signals.junctions.map((junction) => junction.node);
-    expect(tram.crossings.length).toBe(4);
+    expect(tram.crossings).toHaveLength(4);
     for (const crossing of tram.crossings) expect(lit, `node ${crossing.node}`).toContain(crossing.node);
     // Without the tram the alley's junction takes no light.
     const without = new TrafficSignals(1, r.roads.roads, graph, r.roads.junctions as NonNullable<typeof r.roads.junctions>, r.roads.heightAt);
-    expect(without.junctions.length).toBe(3);
+    expect(without.junctions).toHaveLength(3);
   });
 
   it('crosses a light only on its green, with time left to clear the junction', () => {
@@ -233,7 +233,7 @@ describe('the lettering of the tram (spec section 13.2)', () => {
     const atlas = tramSignAtlas(names);
     expect(atlas.width).toBe(CELL_WIDTH);
     expect(atlas.height).toBe(CELL_HEIGHT * atlas.cells);
-    expect(atlas.data.length).toBe(atlas.width * atlas.height * 4);
+    expect(atlas.data).toHaveLength(atlas.width * atlas.height * 4);
     const taken = new Set<number>();
     for (let stop = 0; stop < names.length; stop++) {
       for (const design of ['heritage', 'modern'] as const) taken.add(destinationCell(stop, design));

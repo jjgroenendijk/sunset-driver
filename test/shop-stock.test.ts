@@ -58,8 +58,8 @@ describe('shop prices', () => {
 describe('shop stock', () => {
   it('stocks a counter and a back room, and never the fists a player starts with', () => {
     const stock = stockOf(11, place('weapons', 2));
-    expect(stock.counter.length).toBe(COUNTER_ROWS);
-    expect(stock.back.length).toBe(BACK_ROOM_ROWS);
+    expect(stock.counter).toHaveLength(COUNTER_ROWS);
+    expect(stock.back).toHaveLength(BACK_ROOM_ROWS);
     const all = [...stock.counter, ...stock.back];
     expect(new Set(all).size).toBe(all.length);
     expect(all).not.toContain('fists' as WeaponId);
@@ -79,7 +79,7 @@ describe('shop stock', () => {
     const shop = place('weapons', 2);
     const rows = offersOf(state, shop);
     const back = rows.filter((row) => row.label.includes('back room'));
-    expect(back.length).toBe(BACK_ROOM_ROWS);
+    expect(back).toHaveLength(BACK_ROOM_ROWS);
     for (const row of back) {
       const id = row.label.replace(' · back room', '');
       const spec = WEAPON_IDS.map((weapon) => weaponOf(weapon)).find((candidate) => candidate.name === id);
@@ -102,10 +102,10 @@ describe('shop stock', () => {
     expect(rows.some((row) => row.label.includes('MP5'))).toBe(true);
     // Every attachment the weapon takes is on the counter, each shown fitted.
     const fitted = rows.filter((row) => row.group === 'Attachments');
-    expect(fitted.length).toBe(fitsOf(weaponOf('mp5')).length);
+    expect(fitted).toHaveLength(fitsOf(weaponOf('mp5')).length);
     for (const row of fitted) {
       expect(row.look.kind).toBe('weapon');
-      if (row.look.kind === 'weapon') expect(row.look.attachments.length).toBe(1);
+      if (row.look.kind === 'weapon') expect(row.look.attachments).toHaveLength(1);
     }
   });
 
@@ -143,7 +143,7 @@ describe('spread', () => {
       for (const count of [1, 2, 4, 6, 40]) {
         for (const offset of [0, 1, 7, 38]) {
           const picks = spread(total, count, offset % total);
-          expect(picks.length).toBe(Math.min(count, total));
+          expect(picks).toHaveLength(Math.min(count, total));
           expect(new Set(picks).size).toBe(picks.length);
           for (const at of picks) {
             expect(at).toBeGreaterThanOrEqual(0);

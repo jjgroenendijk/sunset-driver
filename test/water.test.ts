@@ -101,7 +101,8 @@ describe('water surface', () => {
       const place = placeOf(attributes, v);
       const depth = attributes.depths[v] as number;
       const wanted = world.water.seaLevel - lowestAround(place.x, place.y);
-      if (!(Math.abs(depth - wanted) < 5e-5)) complaint ??= `vertex ${v} is ${depth} deep, not ${wanted}`;
+      const level = Math.abs(depth - wanted) < 5e-5;
+      if (!level) complaint ??= `vertex ${v} is ${depth} deep, not ${wanted}`;
       // The sheet itself is flat: the third local axis is what the turn sends up.
       if (attributes.positions[v * 3 + 2] !== 0) complaint ??= `vertex ${v} stands off the sheet`;
       if (attributes.normals[v * 3 + 2] !== 1) complaint ??= `vertex ${v} has a normal off the sheet's`;
@@ -163,7 +164,8 @@ describe('water surface', () => {
       }) as [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }];
       // The upward component of the cross product, in the world's own plane.
       const up = -((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
-      if (!(up > 0)) complaint ??= `triangle ${t / 3} faces down`;
+      const upward = up > 0;
+      if (!upward) complaint ??= `triangle ${t / 3} faces down`;
     }
     expect(complaint).toBeUndefined();
   });

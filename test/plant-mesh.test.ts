@@ -76,7 +76,7 @@ const models = buildPlantModels();
 
 describe('plant models', () => {
   it('builds one model of every species and variant, and nothing else', () => {
-    expect(models.length).toBe(PLANT_SPECIES.length * SPECIES_MODELS + WOOD_MODELS);
+    expect(models).toHaveLength(PLANT_SPECIES.length * SPECIES_MODELS + WOOD_MODELS);
     for (const species of PLANT_SPECIES) {
       for (let variant = 0; variant < SPECIES_MODELS; variant++) {
         expect(models[modelIndex(species, variant)]).toBeDefined();
@@ -178,7 +178,7 @@ describe('plant models', () => {
         expect(low).toBe(0);
         expect(high).toBe(1);
       }
-      expect(rise.length).toBe(y.count);
+      expect(rise).toHaveLength(y.count);
     }
   });
 
@@ -225,7 +225,7 @@ describe('the plants of a chunk', () => {
     const wood = woodModelIndex(0);
     for (const lookup of [LOOKUP, WOODED]) {
       const placed = buildChunkVegetation(chunkOf(plants), lookup);
-      expect(placed.length).toBe(plants.length);
+      expect(placed).toHaveLength(plants.length);
       const takes = new Set<number>();
       const at = new Vector3();
       for (const one of placed) {
