@@ -17,7 +17,7 @@
  *   --places  how many places round the map. Default 4.
  *   --mode    walk (the player stands by their car), or drive. Default walk.
  *   --long    seconds a car is held in a row before it counts as stuck. Default 10.
- *   --dump    print the chain of the first stuck episodes.
+ *   --dump    print the chain of the first stuck episodes; --dump=person only those whose root names a person.
  *   --promo   print every car promoted, with its hold.
  *   --nopark  leave the player's car far off, for how the same streets run without it.
  */
@@ -51,7 +51,7 @@ const ticks = num('ticks', 7200);
 const places = num('places', 4);
 const long = num('long', 10) * 60;
 const mode = options.get('mode') ?? 'walk';
-const dumping = options.has('dump');
+const dumping = options.get('dump');
 
 /** Metres from the parked car a car of the traffic counts as passing it. */
 const PASS_REACH = 25;
@@ -76,6 +76,8 @@ interface CarRead {
 }
 interface PersonRead {
   id: number;
+  dodgeX: number;
+  dodgeY: number;
   by: number;
   held: boolean;
   walking: boolean;
@@ -86,7 +88,7 @@ interface PersonRead {
 }
 interface GiveWayRead {
   cars: CarRead[];
-  people: PersonRead[];
+  crowd: { people: PersonRead[] };
 }
 const KINDS: Record<number, string> = { [-2]: 'player, wreck or unit', [-3]: 'person', [-4]: 'light (lagged)' };
 
@@ -110,8 +112,8 @@ function rootOf(cars: readonly CarRead[], i: number): string {
 }
 
 /** The lines of a person at the end of a chain, and of the car they stand for. */
-function personLines(way: GiveWayRead, car: CarRead): string[] {
-  const q = way.people[car.person];
+function personLines(way: GiveWayRead, car: CarRead, tick: number): string[] {
+  const q = way.crowd.people[car.person];
   if (q === undefined) return [];
   const { x, y, heading } = car.box;
   const dx = q.x - x;
@@ -119,6 +121,8 @@ function personLines(way: GiveWayRead, car: CarRead): string[] {
   const ahead = dx * Math.cos(heading) + dy * Math.sin(heading);
   const right = -dx * Math.sin(heading) + dy * Math.cos(heading);
   const lines = [`person ${q.id} walking ${q.walking} lag ${q.lag} held ${q.held} by ${q.by} ahead ${ahead.toFixed(2)} right ${right.toFixed(2)}`];
+  const walk = city.ground.crowd?.poseAt(q.id, tick - q.lag, { x: 0, y: 0, height: 0, heading: 0, speed: 0, cycle: 0, gait: 'stand' });
+  lines.push(`  dodge (${q.dodgeX.toFixed(2)}, ${q.dodgeY.toFixed(2)}) gait ${walk?.gait ?? '?'} speed ${walk?.speed.toFixed(2) ?? '?'} heading ${walk?.heading.toFixed(2) ?? '?'}`);
   const by = way.cars[q.by];
   if (by !== undefined) lines.push(`  who waits for car ${by.id} stop ${by.stop} by ${by.blocker} (${by.box.x.toFixed(1)}, ${by.box.y.toFixed(1)})`);
   return lines;
@@ -135,7 +139,7 @@ function dump(way: GiveWayRead, state: SimState, c: number): void {
     const { x, y, heading } = car.box;
     lines.push(`car ${car.id} (${x.toFixed(1)}, ${y.toFixed(1)}) facing ${heading.toFixed(2)} by ${car.blocker} lag ${car.lag}`);
     if (!car.stop || car.blocker === c) break;
-    if (car.blocker === -3) lines.push(...personLines(way, car));
+    if (car.blocker === -3) lines.push(...personLines(way, car, state.tick));
     if (car.blocker < 0) break;
     at = car.blocker;
   }
@@ -216,12 +220,12 @@ for (let p = 0; p < places; p++) {
       if (run === undefined) runs.set(car.id, { ticks: 1, root: rootOf(way.cars, c) });
       else if (++run.ticks === long) {
         run.root = rootOf(way.cars, c);
-        if (dumping && dumped++ < 12) dump(way, state, c);
+        if (dumping !== undefined && (dumping === 'true' || run.root.includes(dumping)) && dumped++ < 12) dump(way, state, c);
       }
     }
     for (const id of [...runs.keys()]) if (!seen.has(id)) runs.delete(id);
     for (const hold of state.traffic.held.list) worstLag = Math.max(worstLag, hold.lag);
-    personTicks += way.people.length;
+    personTicks += way.crowd.people.length;
     personHeldTicks += state.pedestrians.held.list.filter((h) => h.step > 0).length;
   }
   for (const run of runs.values()) {

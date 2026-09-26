@@ -345,15 +345,17 @@ export class AmbientTraffic {
    * where a cursor is: the left kerb below 0 and the right one above. A two-way
    * road gives the whole carriageway, the oncoming half too, which is where a
    * car steers round what stands in its lane (`swerve.ts`). A one-way run that
-   * is not a ramp keeps to its own half.
+   * is not a ramp keeps to its own half. The pavement is past the kerb.
    */
   kerbsOf(cursor: TrafficCursor, out: Kerbs): Kerbs {
     const vehicle = this.vehicles[cursor.id] as AmbientVehicle;
     const edge = this.roads.graph.edges[this.edgeOf(cursor)] as RoadEdge;
     const offset = offsetIn(edge, laneOn(edge, vehicle.lane), this.tramLane);
-    const half = TIERS[edge.tier].width / 2;
+    const spec = TIERS[edge.tier];
+    const half = spec.width / 2;
     out.right = half - offset;
     out.left = (edge.twin >= 0 || edge.tier === 'ramp' ? -half : 0) - offset;
+    out.pavement = spec.pavement > 0 ? spec.verge + spec.pavement : 0;
     return out;
   }
 
@@ -692,10 +694,15 @@ function pickClass(mix: Partial<Record<VehicleClass, number>>, rng: Rng): Vehicl
   return 'saloon';
 }
 
-/** Metres right of the middle of a lane the two kerbs of its carriageway stand: the left one below 0. */
+/**
+ * Metres right of the middle of a lane the two kerbs of its carriageway stand:
+ * the left one below 0. `pavement` is how far past a kerb the verge and the
+ * pavement reach, 0 on a road that has none.
+ */
 export interface Kerbs {
   left: number;
   right: number;
+  pavement: number;
 }
 
 /** A vehicle or a person seen from above: a box about its middle, turned to a heading. */

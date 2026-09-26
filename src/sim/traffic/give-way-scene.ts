@@ -65,8 +65,9 @@ export interface Person {
   x: number;
   y: number;
   height: number;
-  /** The heading they walk at. */
+  /** The heading they walk at, and their speed: 0 while they stand. */
   heading: number;
+  speed: number;
   /** Metres east and north they stand off their loop, keeping out of a car's way (`detour.ts`). */
   dodgeX: number;
   dodgeY: number;

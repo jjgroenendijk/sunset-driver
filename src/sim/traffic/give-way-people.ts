@@ -7,6 +7,7 @@
  * The cars' half decides first. This half reads where each car stands on the
  * next tick, filed in its own grid, and which car stands for which person.
  */
+import { cos, sin } from '../../core/libm.ts';
 import type { CasualtyGround } from '../crowd/casualty.ts';
 import type { Aside } from '../crowd/crowd-aside.ts';
 import { asideOf } from '../crowd/crowd-aside.ts';
@@ -35,6 +36,10 @@ const NUDGE = 3 * TICK_RATE;
 
 /** Metres a person counts as round, for a car that looks ahead and for a car that hits them. */
 export const PERSON_RADIUS = 0.3;
+
+/** Metres per second a person walks at, at least, and the share of it across a car's path, to count as crossing it. */
+const CROSSING_PACE = 0.4;
+const CROSSING_SHARE = 0.5;
 
 /** Metres per second a car has to be moving at to hit anybody. */
 const STRIKE_SPEED = 1;
@@ -108,6 +113,7 @@ export class CrowdWay {
         y: this.walk.y,
         height: this.walk.height,
         heading: this.walk.heading,
+        speed: this.walk.speed,
         dodgeX: aside?.dodgeX ?? 0,
         dodgeY: aside?.dodgeY ?? 0,
         nextX: this.walk.x,
@@ -186,11 +192,18 @@ export class CrowdWay {
   private stepOf(person: Person, waiting: Car | undefined, next: number, aside: Aside[], others: readonly Other[]): number {
     const car = this.inWay(person, others);
     person.by = this.blockerOf(car);
+    // Somebody walking over the path of the car that waits for them walks on out of it.
+    if (waiting !== undefined && crossing(person, waiting)) return car === undefined ? 0 : this.stand(person);
     // Stepping off their loop, out of a car's path or round what stands in their way, they need not walk back.
     const off = this.detours.plan(aside, person, waiting);
     if (off && car === undefined) return 0;
     if (!off && waiting !== undefined && (waiting.waited >= BACK_OFF || car === waiting) && this.backOff(person, waiting, next)) return 2;
     if (car === undefined) return 0;
+    return this.stand(person);
+  }
+
+  /** Hold a person where they stand for the next tick. */
+  private stand(person: Person): number {
     person.nextX = person.x;
     person.nextY = person.y;
     return 1;
@@ -262,6 +275,12 @@ export class CrowdWay {
       }
     }
   }
+}
+
+/** True when a person walks across the path of a car rather than along it or not at all. */
+function crossing(person: Person, car: Car): boolean {
+  if (person.speed < CROSSING_PACE) return false;
+  return Math.abs(-cos(person.heading) * car.sin + sin(person.heading) * car.cos) > CROSSING_SHARE;
 }
 
 /**

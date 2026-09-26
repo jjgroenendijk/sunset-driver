@@ -53,13 +53,21 @@ tour is in `docs/city-life.md`, and how a person walks their loop in `docs/crowd
   or waits.
 - A car with a lag can meet a light its tour was timed to pass on green, so it stops at the line
   when the light is not green. It makes up the lag during its tour's next wait.
+- A car that nobody sees also makes up lag while the road ahead is clear: `catchUp`, one tick in
+  `CATCH_EVERY`, beyond `UNSEEN` of the player. `UNSEEN` must stay past `TRAFFIC_VIEW`, which a
+  test checks, or a car jumps on screen. Without it a lag built behind the player's car was kept
+  until the next red light.
+- `junction-clear.ts`: a car does not cross the stop line of a signalled junction while a car of
+  the traffic stands where it will stand past the junction. It runs its own tour on to find that
+  spot. A wreck there does not hold it, or it would wait at the line for ever.
 
 ## Steering round
 
 - `swerve.ts`: a car that has stood `START` behind something standing still in its lane picks a
-  side to pass on. That is the player, their car, a wreck, a unit, or a car facing it that stands.
-  It takes the side that goes least far off the lane and that the carriageway has room for, up to
-  `SWERVE_MOST`. It keeps a side once chosen. Past a car facing it, it keeps right.
+  side to pass on. That is the player, their car, a wreck, a unit, a car facing it that stands, or
+  a person who stands in the road. It takes the side that goes least far off the lane and that the
+  carriageway has room for, up to `SWERVE_MOST`. It keeps a side once chosen. Past a car facing
+  it, it keeps right.
 - `AmbientTraffic.kerbsOf` says where the kerbs are, right of the middle of the car's lane. A
   two-way road gives the oncoming half too. A one-way run that is not a ramp gives only its own.
 - It sets off only when the ground it passes over is clear, with every car near it run on
@@ -67,6 +75,9 @@ tour is in `docs/city-life.md`, and how a person walks their loop in `docs/crowd
   queues behind it and follows it out. Counting it once stood every queue still.
 - It does not start at a red light: `queuedAtRed` stands a car within `QUEUE_REACH` of a stop line
   that is not green, or in a wait of its tour. Without it a car overtook a queue at a light.
+- A car that has waited `MOUNT_WAIT` and still finds no room on the carriageway may put two
+  wheels on the pavement, as far as `kerbs.pavement` allows. A narrow street with a car parked in
+  it had no room to pass otherwise.
 - The side is metres right of the lane, the sign the lane's own offset uses: a car in the oncoming
   lane stands at a negative side. It lives in the hold as `Swerve`, beside the lag, with the turn
   of the body (`yaw`) and what the side changed by on the last tick (`drift`), which the renderer
@@ -86,6 +97,9 @@ tour is in `docs/city-life.md`, and how a person walks their loop in `docs/crowd
 - The old answer to a car waiting for a person was to walk the person back along their loop. A
   person standing still in their own plan, at a kerb or a window, moves nowhere when walked back,
   and the car waited for ever. That was the largest group of stuck cars.
+- A person who crosses the path of the car waiting for them walks on across it (`crossing`), with
+  no dodge and no walk back. A dodge sideways against their own walk left them treading on the
+  spot in front of the car.
 - A moving car that meets a person all the same hits them (`city-strike.ts`), with a `Blow` marked
   `city`: it is no crime of the player's. With the rules above, this happens only to someone
   running.
