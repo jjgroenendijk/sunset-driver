@@ -15,6 +15,7 @@ import type { RenderSmoother } from './render/frame/smooth.ts';
 import type { ParkedView } from './render/vehicles/parked.ts';
 import type { BusStopView } from './render/transit/bus-stops.ts';
 import type { CornerPropView } from './render/crime/corners.ts';
+import type { BeachPropView } from './render/environment/beach.ts';
 import type { PedestrianView } from './render/people/pedestrians.ts';
 import type { CasualtyView } from './render/people/casualties.ts';
 import type { ContactMarkers } from './render/crime/markers.ts';
@@ -148,6 +149,8 @@ export interface Session {
   busStops: BusStopView;
   /** The amps, carts, stalls and dogs of the occupied corners of spec section 20.1. */
   corners: CornerPropView;
+  /** The towels, towers, stands, nets, fires and boards of the beaches of spec section 20.1. */
+  beach: BeachPropView;
   /** The pedestrians of spec section 13.1, drawn. */
   crowd: PedestrianView;
   /** The people who have been hit, lying, limping or crawling, and the medics at them (spec section 11.6). */
