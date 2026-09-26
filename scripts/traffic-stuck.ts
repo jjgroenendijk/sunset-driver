@@ -73,6 +73,7 @@ interface CarRead {
   lag: number;
   person: number;
   box: { x: number; y: number; heading: number };
+  swerve?: { side: number; aim: number; blocked: number };
 }
 interface PersonRead {
   id: number;
@@ -130,6 +131,13 @@ function personLines(way: GiveWayRead, car: CarRead, tick: number): string[] {
 
 let dumped = 0;
 /** Print the chain a stuck car waits along, down to the person at its end. */
+/** A car's swerve, as the dump prints it: empty for a car in its lane. */
+function swerveText(car: CarRead): string {
+  const swerve = car.swerve;
+  if (swerve === undefined) return '';
+  return ` swerve ${swerve.side.toFixed(2)}->${swerve.aim.toFixed(2)} blocked ${swerve.blocked}`;
+}
+
 function dump(way: GiveWayRead, state: SimState, c: number): void {
   const lines: string[] = [];
   let at = c;
@@ -137,7 +145,8 @@ function dump(way: GiveWayRead, state: SimState, c: number): void {
     const car = way.cars[at];
     if (car === undefined) break;
     const { x, y, heading } = car.box;
-    lines.push(`car ${car.id} (${x.toFixed(1)}, ${y.toFixed(1)}) facing ${heading.toFixed(2)} by ${car.blocker} lag ${car.lag}`);
+    lines.push(`car ${car.id} (${x.toFixed(1)}, ${y.toFixed(1)}) facing ${heading.toFixed(2)} by ${car.blocker} lag ${car.lag} waited ${car.waited}${swerveText(car)}`);
+    if (car.blocker === -2) lines.push(`  player (${state.player.x.toFixed(1)}, ${state.player.y.toFixed(1)}) speed ${state.player.speed.toFixed(2)} driving ${state.player.driving}; car (${state.vehicle.x.toFixed(1)}, ${state.vehicle.z.toFixed(1)})`);
     if (!car.stop || car.blocker === c) break;
     if (car.blocker === -3) lines.push(...personLines(way, car, state.tick));
     if (car.blocker < 0) break;
