@@ -15,7 +15,7 @@
  * to step.
  */
 import { clamp, smoothstep } from '../core/math.ts';
-import { districtAt, layoutZones, zoneAt, type ZoneLayout } from '../world/districts.ts';
+import { districtAt, layoutZones, zoneAt, type ZoneLayout } from '../world/terrain/districts.ts';
 import type { WorldDescription, Zone } from '../world/types.ts';
 import { NOWHERE, type Site, type SiteSource } from './ambience.ts';
 

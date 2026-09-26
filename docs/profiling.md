@@ -31,7 +31,7 @@ alone and runs no simulation. `sim-profile.ts` times the step alone. The two add
 ## `node scripts/render-profile.ts <seed>`
 
 It draws a few hundred frames, standing still and then driving, and prints the frame times, the
-draws, and what each long frame compiled or built. It runs the warm-up of `src/render/warm.ts`
+draws, and what each long frame compiled or built. It runs the warm-up of `src/render/frame/warm.ts`
 first, as a session does, so a long frame here is a long frame in the game and not one the game
 had already paid for behind its loading screen. Its switches take one part of the frame away —
 `--no-water`, `--no-shadows`, `--no-lamps`, `--no-post` — so two runs say what that part costs, and
@@ -46,8 +46,8 @@ not run in a cloud container. `docs/dev-tooling.md` says how the browser is foun
 ## What each GPU pass costs: `--passes`
 
 A frame is many passes: the sun's shadow cascades, the scene, and each step of the post chain.
-`--passes` puts a WebGPU timestamp query around every one of them (`src/render/gpu-passes.ts`) and
-prints the milliseconds each took, at the median, the 95th percentile and the most.
+`--passes` puts a WebGPU timestamp query around every one of them (`src/render/frame/gpu-passes.ts`)
+and prints the milliseconds each took, at the median, the 95th percentile and the most.
 
 The time a pass is given is **the time it moved the end of the frame's GPU work**, not its end less
 its start. A tiled GPU, as in every Apple machine, runs the passes of a frame over each other. A
@@ -136,6 +136,7 @@ code: the engine and the WebGPU calls. The game's own `src/render` took under 10
 
 Driving, the simulation took 5.5 to 5.7 ms a tick at the median and 10 to 12.5 ms at the 95th
 percentile, over five runs. One run of 1 800 ticks had 27 ticks over 16.7 ms. More than half of a
-tick was `give way`, the traffic and the crowd keeping out of each other (`src/sim/give-way.ts`).
-By file, the most self time was in `pedestrian-route.ts`, `give-way.ts`, the road bed of
-`src/world/bed.ts` and `src/core/libm.ts`. Rapier's own step took 0.1 ms.
+tick was `give way`, the traffic and the crowd keeping out of each other
+(`src/sim/traffic/give-way.ts`). By file, the most self time was in `pedestrian-route.ts`,
+`give-way.ts`, the road bed of `src/world/carve/bed.ts` and `src/core/libm.ts`. Rapier's own step
+took 0.1 ms.

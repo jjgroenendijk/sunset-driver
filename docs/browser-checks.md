@@ -35,9 +35,9 @@ threshold has more than four times the margin it needs. They are set that low on
 check says the renderer drew a world, not that the world looks right. A picture from
 `render-preview.ts` is what answers that.
 
-`test/render-check.test.ts` measures frames built by hand — blank, flat, a bare sky gradient, and
-one with blocks in it — so what the check would say costs nothing to test. Only the frame needs a
-browser.
+`test/scripts/render-check.test.ts` measures frames built by hand — blank, flat, a bare sky
+gradient, and one with blocks in it — so what the check would say costs nothing to test. Only the
+frame needs a browser.
 
 It takes about a minute, almost all of it the one SwiftShader frame, so it runs neither in `npm
 test` nor in `npm run verify`. On a pull request the `render-smoke` job of `ci.yml` runs it, in

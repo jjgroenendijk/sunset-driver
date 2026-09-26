@@ -14,9 +14,9 @@ in `docs/dev-tooling.md`.
 
 ## The views
 
-- `FollowCamera` (`src/render/camera.ts`) is the one camera the game is played through. It takes
-  the view and the building moves as one `CameraLook` each frame. `camera-view.ts` holds the chase
-  views and the turn; `camera.ts` re-exports its types.
+- `FollowCamera` (`src/render/camera/camera.ts`) is the one camera the game is played through. It
+  takes the view and the building moves as one `CameraLook` each frame. `camera-view.ts` holds the
+  chase views and the turn; `camera.ts` re-exports its types.
 - A change of view snaps the camera rather than sliding it across the city. It also swaps the near
   plane: 1 m top down, 0.1 m in a chase view, since first person stands a hand's width from the
   head. The sun's cascades are cut to the camera's frustum, so `frame.ts` refits them then.
@@ -30,8 +30,8 @@ in `docs/dev-tooling.md`.
 
 - First person on foot draws no body. The model stands behind the eyes, and its weapon hangs below
   the frame. `Frame.firstPerson` hides both after `walkPlayer` and draws `ViewModel`
-  (`src/render/viewmodel.ts`) instead: the weapon and two forearms, placed in the camera's frame
-  after the camera moves. It is render state only.
+  (`src/render/weapons/viewmodel.ts`) instead: the weapon and two forearms, placed in the camera's
+  frame after the camera moves. It is render state only.
 - A pistol is drawn `SHORT_SCALE` larger than life, and held in one hand until it is aimed. At its
   real size the hand over it hides it.
 - First person on foot looks level (`FIRST_PITCH_ON_FOOT`), with a wider field of view,
@@ -59,10 +59,10 @@ in `docs/dev-tooling.md`.
 
 ## Walking in a turned view
 
-- `walk` (`src/sim/walker-body.ts`) moves the player in the map's own axes. `Keyboard.sample` turns
-  the two walking axes by `Keyboard.turn`, the camera's heading, which `frame.ts` writes each frame
-  while the player is on foot. `W` then walks up the screen in every view. A car ignores it, since
-  its keys already steer.
+- `walk` (`src/sim/player/walker-body.ts`) moves the player in the map's own axes. `Keyboard.sample`
+  turns the two walking axes by `Keyboard.turn`, the camera's heading, which `frame.ts` writes each
+  frame while the player is on foot. `W` then walks up the screen in every view. A car ignores it,
+  since its keys already steer.
 - The turn happens in the input frame, before the record. A replay or a peer therefore reads the
   turned axes and needs no camera.
 - In a chase view the camera turns after the player, and the player turns to face the way they
@@ -70,7 +70,7 @@ in `docs/dev-tooling.md`.
 
 ## Mouse look
 
-- `ui/mouse-look.ts` holds the pointer lock of the chase views and hands each movement to
+- `ui/input/mouse-look.ts` holds the pointer lock of the chase views and hands each movement to
   `FollowCamera.look`. The lock is asked for on the `C` press into a chase view, and on a click on
   the canvas. The browser grants it only to a gesture. That click is taken in the capture phase, so
   it does not also fire.

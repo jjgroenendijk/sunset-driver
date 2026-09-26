@@ -2,7 +2,7 @@
 
 The gotchas of the people on the pavements of spec sections 5.3, 13.1 and 20.1: how they are put
 down, how they walk and wait, how they react, how they make way for the player, the occupied
-corners, and how the crowd is drawn. The code is `src/sim/pedestrians.ts` and the files named
+corners, and how the crowd is drawn. The code is `src/sim/crowd/pedestrians.ts` and the files named
 below. The traffic, the lights and the bus stops are in `docs/city-life.md`, and the casualties
 under their own heading there.
 
@@ -110,13 +110,13 @@ under their own heading there.
 
 ## The occupied corners
 
-- `StreetCorners` (`sim/corners.ts`) lays spots on long runs of pavement, by zone: a busker and
-  listeners, a food cart, a stall, a club queue, smokers, a dog walker, a stoop (#409). Each kind
-  keeps `HOURS`, and a spot is out on `OUT_CHANCE` of the days, hashed from the seed, the spot and
-  the day. A night that runs past midnight counts as the day it began on.
+- `StreetCorners` (`sim/crime/corners.ts`) lays spots on long runs of pavement, by zone: a busker
+  and listeners, a food cart, a stall, a club queue, smokers, a dog walker, a stoop (#409). Each
+  kind keeps `HOURS`, and a spot is out on `OUT_CHANCE` of the days, hashed from the seed, the spot
+  and the day. A night that runs past midnight counts as the day it began on.
 - The people stand in the crowd's mesh through `WaitingCrowd`, like a stop queue. The props — amp,
-  cart, stall, dog — are four instanced meshes in `render/corners.ts`. A prop's frame has `+x` at
-  the road.
+  cart, stall, dog — are four instanced meshes in `render/crime/corners.ts`. A prop's frame has `+x`
+  at the road.
 - A busker is heard: `audio/busking.ts` draws a `pluck` per tick from a pentatonic scale, for the
   two nearest, and pushes them last so a full frame drops a note before a gunshot.
 - `Subsystem.Corners` is the stream the spots and their people are drawn from.
@@ -139,7 +139,7 @@ under their own heading there.
 - Rain changes the gait in the renderer: an umbrella by `look.umbrella`, or a hunch. A walker's
   gait is blended a little towards `GAIT_NEIGHBOUR` by `look.blend`, so two people of one gait walk
   differently.
-- `CrowdPass` (`render/crowd-pass.ts`) steps two people walking at each other apart, at most
+- `CrowdPass` (`render/people/crowd-pass.ts`) steps two people walking at each other apart, at most
   `PASS_STEP`, and keeps the room until they are past. It is drawing only: the record never moves
   them. Each steps away from the side the other stands on. A fixed side walks a person who keeps
   left straight into the other one, and the two looked stuck. A walker steps round a person who

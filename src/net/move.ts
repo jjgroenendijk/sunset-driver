@@ -17,10 +17,10 @@
  * number. The reader never throws: a peer that sends rubbish goes still, which
  * is what a peer that stopped sending looks like anyway.
  */
-import { normaliseAppearance, type CharacterAppearance } from '../sim/character.ts';
+import { normaliseAppearance, type CharacterAppearance } from '../sim/player/character.ts';
 import type { InputFrame } from '../sim/input.ts';
 import type { SimState } from '../sim/simulation.ts';
-import { VEHICLE_CLASSES, type VehicleClass } from '../sim/vehicle.ts';
+import { VEHICLE_CLASSES, type VehicleClass } from '../sim/vehicles/vehicle.ts';
 
 /** Numbers in one packed frame. */
 export const FRAME_LENGTH = 25;

@@ -13,9 +13,9 @@
 import { Vector3, type BufferAttribute } from 'three';
 import type { Point } from '../src/core/geom.ts';
 import { seedFromString } from '../src/core/rng.ts';
-import { buildChunkBuildings, buildingLookup } from '../src/render/building-mesh.ts';
-import type { ChunkDetail } from '../src/render/streaming.ts';
-import type { Building } from '../src/world/buildings.ts';
+import { buildChunkBuildings, buildingLookup } from '../src/render/buildings/building-mesh.ts';
+import type { ChunkDetail } from '../src/render/streaming/streaming.ts';
+import type { Building } from '../src/world/city/buildings.ts';
 import { buildLayers, chunkAt, ChunkSource } from '../src/world/chunks.ts';
 import { generateWorld } from '../src/world/world.ts';
 

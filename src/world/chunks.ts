@@ -19,19 +19,19 @@
  */
 import { regionArea, regionOf, split, type Point, type Region } from '../core/geom.ts';
 import { hypot } from '../core/libm.ts';
-import { buildBuildings, lotMiddle, type Building, type BuildingMap } from './buildings.ts';
-import { buildCarve, type RoadCarve } from './carve.ts';
-import { apronOf, buildFootprint, type RoadFootprint } from './footprint.ts';
-import { buildRoadGraph, type RoadGraph } from './graph.ts';
-import { buildJunctions, type Junction, type JunctionMap, type RoadGap } from './junctions.ts';
-import { buildParcels, type Parcel, type ParcelMap, type ParcelOwner } from './parcels.ts';
-import { PAVEMENT_WINDOW, pavementIn, type ChunkPavement, type PavementApron } from './pavement.ts';
-import { deckPiers, type DeckPier } from './piers.ts';
-import { buildTensorField } from './tensor.ts';
-import { CHUNK_TERRAIN_CELL, TERRAIN_CELL } from './terrain.ts';
-import { PAVED_REACH, tramTrack, type TramCrossing, type TramTrack } from './tram-track.ts';
+import { buildBuildings, lotMiddle, type Building, type BuildingMap } from './city/buildings.ts';
+import { buildCarve, type RoadCarve } from './carve/carve.ts';
+import { apronOf, buildFootprint, type RoadFootprint } from './city/footprint.ts';
+import { buildRoadGraph, type RoadGraph } from './roads/graph.ts';
+import { buildJunctions, type Junction, type JunctionMap, type RoadGap } from './junctions/junctions.ts';
+import { buildParcels, type Parcel, type ParcelMap, type ParcelOwner } from './city/parcels.ts';
+import { PAVEMENT_WINDOW, pavementIn, type ChunkPavement, type PavementApron } from './city/pavement.ts';
+import { deckPiers, type DeckPier } from './decks/piers.ts';
+import { buildTensorField } from './roads/tensor.ts';
+import { CHUNK_TERRAIN_CELL, TERRAIN_CELL } from './terrain/terrain.ts';
+import { PAVED_REACH, tramTrack, type TramCrossing, type TramTrack } from './transit/tram-track.ts';
 import type { HeightfieldData, RoadCurve, RoadTier, WorldDescription, Zone } from './types.ts';
-import { Vegetation, type Plant } from './vegetation.ts';
+import { Vegetation, type Plant } from './terrain/vegetation.ts';
 
 /**
  * Metres each way of one chunk: 25 cells of the skeleton's grid. The chunk grid

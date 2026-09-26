@@ -14,7 +14,7 @@ import { defineConfig } from 'vitest/config';
 const timeout = process.env.SWEEP_SEEDS ? 300_000 : 60_000;
 
 /** The check files of the seed sweep, one per subject. `seed-suite.ts` has how they share a world. */
-const SWEEP = 'test/seed-*.test.ts';
+const SWEEP = 'test/sweep/seed-*.test.ts';
 
 export default defineConfig({
   test: {

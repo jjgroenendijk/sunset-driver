@@ -1,11 +1,11 @@
 import { NeutralToneMapping } from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { clamp } from '../core/math.ts';
-import { stopUploadingWith, uploadBatchesWith } from './batch.ts';
-import { installCelShading } from './cel.ts';
-import { PinnedClusterLighting } from './clustered-lights.ts';
-import { registerLampLight } from './lamp-light.ts';
-import { registerNeonLight } from './sign-light.ts';
+import { stopUploadingWith, uploadBatchesWith } from './streaming/batch.ts';
+import { installCelShading } from './look/cel.ts';
+import { PinnedClusterLighting } from './look/clustered-lights.ts';
+import { registerLampLight } from './roads/lamp-light.ts';
+import { registerNeonLight } from './signage/sign-light.ts';
 
 /**
  * How much light reaches the film. The sky of `sky.ts` is the Preetham model,

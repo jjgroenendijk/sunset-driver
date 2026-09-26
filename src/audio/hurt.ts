@@ -16,10 +16,10 @@
 import { hashInts } from '../core/hash.ts';
 import { rngFor, Subsystem } from '../core/rng.ts';
 import { TICK_RATE } from '../sim/clock.ts';
-import { casualtyPose, emptyCasualtyPose, FALL_TICKS, throwOf, type Casualty } from '../sim/casualty-motion.ts';
+import { casualtyPose, emptyCasualtyPose, FALL_TICKS, throwOf, type Casualty } from '../sim/crowd/casualty-motion.ts';
 import type { SimState } from '../sim/simulation.ts';
-import { REACTIONS, type StartledPedestrian } from '../sim/pedestrians.ts';
-import { TRACER_CAP } from '../sim/tracer.ts';
+import { REACTIONS, type StartledPedestrian } from '../sim/crowd/pedestrians.ts';
+import { TRACER_CAP } from '../sim/weapons/tracer.ts';
 import { cueAt, type Cue } from './cue.ts';
 import { cryOf, type Cry } from './cry.ts';
 import { hear, type Listener } from './space.ts';

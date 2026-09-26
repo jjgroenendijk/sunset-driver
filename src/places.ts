@@ -15,23 +15,23 @@
  * is snapped to the road nearest it, because a person stands on a street.
  */
 import type { WorldScene } from './render/world-scene.ts';
-import { dealerPlaces, type DealerPlace } from './sim/dealer.ts';
-import { EnforcerGang } from './sim/enforcer.ts';
-import { giverPlaces } from './sim/giver.ts';
-import { jobSites, type MissionWorld } from './sim/job.ts';
-import type { MetroPlace } from './sim/metro.ts';
-import { ParkedCars } from './sim/parked.ts';
-import type { Ground } from './sim/physics.ts';
-import { safehousePlaces, type SafehousePlace } from './sim/safehouse.ts';
-import { hangarPlaces } from './sim/hangar.ts';
-import { shopPlaces, type ShopPlace } from './sim/shop.ts';
-import { crimeGrounds, type CrimeGround } from './sim/street-crime.ts';
-import { venuesOf, type Venues } from './sim/city-events.ts';
-import { TerritoryMap } from './sim/territory.ts';
-import type { TrafficRoads } from './sim/traffic.ts';
-import { metroEntrances } from './world/metro.ts';
-import { kerbsidePlace } from './world/kerbside.ts';
-import { nearestRoadPlace } from './world/surface.ts';
+import { dealerPlaces, type DealerPlace } from './sim/crime/dealer.ts';
+import { EnforcerGang } from './sim/crime/enforcer.ts';
+import { giverPlaces } from './sim/missions/giver.ts';
+import { jobSites, type MissionWorld } from './sim/missions/job.ts';
+import type { MetroPlace } from './sim/transit/metro.ts';
+import { ParkedCars } from './sim/traffic/parked.ts';
+import type { Ground } from './sim/physics/physics.ts';
+import { safehousePlaces, type SafehousePlace } from './sim/places/safehouse.ts';
+import { hangarPlaces } from './sim/places/hangar.ts';
+import { shopPlaces, type ShopPlace } from './sim/places/shop.ts';
+import { crimeGrounds, type CrimeGround } from './sim/city/street-crime.ts';
+import { venuesOf, type Venues } from './sim/city/city-events.ts';
+import { TerritoryMap } from './sim/crime/territory.ts';
+import type { TrafficRoads } from './sim/traffic/traffic.ts';
+import { metroEntrances } from './world/transit/metro.ts';
+import { kerbsidePlace } from './world/roads/kerbside.ts';
+import { nearestRoadPlace } from './world/terrain/surface.ts';
 import type { Point, WorldDescription } from './world/types.ts';
 
 /** The places of one session, for whoever draws or names them. */

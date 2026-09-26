@@ -17,7 +17,7 @@ block is whose, and who comes when a block is taken. The contraband the standing
 
 ## The roster is one table
 
-- `FACTIONS` (`src/sim/faction.ts`) is the spec's own table: home culture, business, arsenal,
+- `FACTIONS` (`src/sim/crime/faction.ts`) is the spec's own table: home culture, business, arsenal,
   vehicles, the offer, the rivals and the map colour. Everything else reads it. A new faction goes
   in that array and nowhere else; `FACTION_IDS` is the order the record stores a row per faction in,
   so never reorder it — a save would then read somebody else's standing.
@@ -29,16 +29,16 @@ block is whose, and who comes when a block is taken. The contraband the standing
 ## Home turf is the seed's, not the roster's
 
 - A faction's ground is seeded from the districts whose `culture` matches it, and
-  `src/world/districts.ts` is what hands those cultures out. So a faction has as many home
+  `src/world/terrain/districts.ts` is what hands those cultures out. So a faction has as many home
   neighbourhoods as the seed gave it, in the places the seed put them, and a seed that fails to
   place one leaves that faction with no ground at all.
 - `districtFactions` answers who runs each district, as an array indexed by district id. It is an
   array and not a map because `src/sim` may not walk a map (the determinism rules of `CLAUDE.md`).
 - So a faction with no district of its culture holds nothing anywhere. That is not only a theory:
-  `withBeachCulture` in `src/world/beaches.ts` overwrites the culture of the districts its longest
-  resort runs through, which on seed `sunset` costs Los Reyes and the Bratva every block they would
-  have had. Issue #348 is that bug. Look at a seed before concluding a faction is missing from the
-  roster: `node scripts/map-preview.ts <seed> out.png --turf --day=8`.
+  `withBeachCulture` in `src/world/terrain/beaches.ts` overwrites the culture of the districts its
+  longest resort runs through, which on seed `sunset` costs Los Reyes and the Bratva every block
+  they would have had. Issue #348 is that bug. Look at a seed before concluding a faction is missing
+  from the roster: `node scripts/map-preview.ts <seed> out.png --turf --day=8`.
 
 ## Reputation, and why a rivalry is symmetric
 
@@ -47,9 +47,9 @@ block is whose, and who comes when a block is taken. The contraband the standing
 - `shiftStanding` is the one door onto it. Helping one faction is the same act as crossing its
   rivals, so it moves the rivals the other way by half as much in the same call. Nothing else may
   write the row, or a shift would move one side of a rivalry and not the other.
-- The rivalries are named on both sides of every pair, and `test/factions.test.ts` pins it. A
-  one-sided pair would move the standing in only one direction, which is a bug you would find weeks
-  later as a faction that can never be made friendly.
+- The rivalries are named on both sides of every pair, and `test/sim/crime/factions.test.ts` pins
+  it. A one-sided pair would move the standing in only one direction, which is a bug you would find
+  weeks later as a faction that can never be made friendly.
 - What moves it today: a capture (`captureBlock`, a quarter of the range off the loser) and every
   contraband trade on a faction's own street (`credit` in `market.ts`, a hundredth). The missions of
   spec section 18 are the rest of it.
@@ -91,14 +91,14 @@ block is whose, and who comes when a block is taken. The contraband the standing
 
 ## The enforcers, and the fight they put up
 
-- `EnforcerGang` (`src/sim/enforcer.ts`) is stepped by the physics beside `PoliceForce`, and for the
-  same reason: they answer the tick the player has just walked. It holds no state of the fight, so a
-  save is loaded and the same people carry on walking.
+- `EnforcerGang` (`src/sim/crime/enforcer.ts`) is stepped by the physics beside `PoliceForce`, and
+  for the same reason: they answer the tick the player has just walked. It holds no state of the
+  fight, so a save is loaded and the same people carry on walking.
 - They walk the road graph through `UnitRoads` (`unit-route.ts`) — the same routing the police
   drive, which is why that class is named for a unit and not for the police.
-- They are drawn in the crowd's own mesh, so a wave costs no draw call. `src/ui/enforcers.ts` writes
-  the list of people the mesh reads for both them and the dealers, because the mesh reads one list
-  and the enforcers move every tick while the dealers move every few hours.
+- They are drawn in the crowd's own mesh, so a wave costs no draw call. `src/ui/hud/enforcers.ts`
+  writes the list of people the mesh reads for both them and the dealers, because the mesh reads one
+  list and the enforcers move every tick while the dealers move every few hours.
 - **They and the police officers on foot are the only people with a collider.** A `PersonBodies`
   (`person-bodies.ts`) stands each one inside the physics box in a kinematic capsule, the shape
   `capsuleOf` gives the average build, and answers `unitAt(handle)` the way `PoliceBodies` does.
@@ -130,8 +130,8 @@ block is whose, and who comes when a block is taken. The contraband the standing
 
 ## The overlay
 
-- `TerritoryOverlay` (`src/ui/territory.ts`) draws through the `overlay` slot `map-draw.ts` already
-  carried, so the corner map and the full map cannot disagree about a border.
+- `TerritoryOverlay` (`src/ui/map/territory.ts`) draws through the `overlay` slot `map-draw.ts`
+  already carried, so the corner map and the full map cannot disagree about a border.
 - The canvas arrives in world metres and with the world box the view can show, so the overlay walks
   only the blocks on screen and draws nothing at all where nobody holds anything.
 - A block's edge is stroked only where its neighbour belongs to somebody else. Stroking every block

@@ -17,11 +17,11 @@
  *
  * The numbers here are what is heard where, not how any of it sounds. A change
  * of voice belongs in `beds.ts`; a change of rule belongs here, where
- * `test/audio.test.ts` reads it without a browser.
+ * `test/audio/audio.test.ts` reads it without a browser.
  */
 import { clamp, smoothstep } from '../core/math.ts';
 import { TICK_RATE } from '../sim/clock.ts';
-import type { Weather } from '../sim/weather.ts';
+import type { Weather } from '../sim/city/weather.ts';
 
 /**
  * What the ground around the listener is like. Three numbers, each 0 to 1,
@@ -114,7 +114,7 @@ export function callsFor(site: Site, weather: Weather, hour: number): CallRates 
 
 /**
  * How far up the sun is, 0 at night and 1 by day. It is the hour alone: the
- * sun of `render/daylight.ts` is a vector for the light, and the audio wants a
+ * sun of `render/environment/daylight.ts` is a vector for the light, and the audio wants a
  * number and no three.js.
  */
 export function sunUp(hour: number): number {

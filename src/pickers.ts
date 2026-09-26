@@ -6,12 +6,12 @@
  * press of a row does to the record — and `main.ts` is the boot. Both write
  * the record between two ticks, as a pickup or a shop would.
  */
-import type { RenderSmoother } from './render/smooth.ts';
+import type { RenderSmoother } from './render/frame/smooth.ts';
 import type { WorldScene } from './render/world-scene.ts';
-import type { SimPhysics } from './sim/physics.ts';
-import { dropWeapon } from './sim/pickup.ts';
+import type { SimPhysics } from './sim/physics/physics.ts';
+import { dropWeapon } from './sim/weapons/pickup.ts';
 import type { SimState } from './sim/simulation.ts';
-import { specOf } from './sim/vehicle.ts';
+import { specOf } from './sim/vehicles/vehicle.ts';
 import {
   currentSlot,
   currentWeapon,
@@ -20,11 +20,11 @@ import {
   removeAttachment,
   SPARE_MAGAZINES,
   weaponOf,
-} from './sim/weapon.ts';
-import { VehiclePicker } from './ui/vehicle-picker.ts';
-import { WeaponPicker } from './ui/weapon-picker.ts';
-import { runwayStart } from './world/airfield-frame.ts';
-import { nearestWaterPlace } from './world/surface.ts';
+} from './sim/weapons/weapon.ts';
+import { VehiclePicker } from './ui/panels/vehicle-picker.ts';
+import { WeaponPicker } from './ui/panels/weapon-picker.ts';
+import { runwayStart } from './world/transit/airfield-frame.ts';
+import { nearestWaterPlace } from './world/terrain/surface.ts';
 import type { WorldDescription } from './world/types.ts';
 
 /** Metres ahead of the player the weapon picker drops a weapon. */

@@ -24,7 +24,7 @@ how the steps are watched on a machine that does not need them.
 
 ## Controls
 
-<!-- controls: generated from src/ui/controls.ts by scripts/readme-controls.ts -->
+<!-- controls: generated from src/ui/input/controls.ts by scripts/readme-controls.ts -->
 
 | Action | Keys |
 |---|---|
@@ -57,7 +57,7 @@ how the steps are watched on a machine that does not need them.
 <!-- end controls -->
 
 The title screen shows the same list, drawn as key caps. To change a binding, change
-`src/ui/controls.ts` and run `node scripts/readme-controls.ts`.
+`src/ui/input/controls.ts` and run `node scripts/readme-controls.ts`.
 
 ## On a phone
 

@@ -13,7 +13,7 @@
  * The rate is decided per peer rather than per room, so one player far away
  * costs the sender nothing while the two beside it stay at the full rate.
  */
-import type { CharacterAppearance } from '../sim/character.ts';
+import type { CharacterAppearance } from '../sim/player/character.ts';
 import { readAppearance, type PlayerFrame } from './move.ts';
 import { Replica, type RemotePose } from './replica.ts';
 

@@ -28,12 +28,12 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
 
 ## The player and the HUD
 
-- The player's look is indices into the tables in `src/sim/character.ts`, so a save carries numbers,
-  not colours. `normaliseAppearance` folds an out-of-range index back onto a real option, and
-  `resolveAppearance` hands the renderer the entries. `src/render/character.ts` builds the model
-  from them as boxes; the parts a top-down camera sees carry the chosen colours. What moves those
-  boxes — the walk, the jump and the stroke — is in `docs/render-entities.md`.
-- `src/ui/hud.ts` is the HUD of spec section 12, laid out as open-world games lay theirs out:
+- The player's look is indices into the tables in `src/sim/player/character.ts`, so a save carries
+  numbers, not colours. `normaliseAppearance` folds an out-of-range index back onto a real option,
+  and `resolveAppearance` hands the renderer the entries. `src/render/people/character.ts` builds
+  the model from them as boxes; the parts a top-down camera sees carry the chosen colours. What
+  moves those boxes — the walk, the jump and the stroke — is in `docs/render-entities.md`.
+- `src/ui/hud/hud.ts` is the HUD of spec section 12, laid out as open-world games lay theirs out:
   clock, money, weapon and wanted stars at the top right; the minimap in a ring of health at the
   bottom left; the speedometer at the bottom right while driving; the objective at the top left;
   the radio at the top centre. `hud.css` places them from `--hud-*` variables, which `touch.css`
@@ -48,16 +48,16 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
   the objective is whose block the player is standing on and how far through taking it they are
   (spec section 17.2). `frame.ts` reads it off `turfLine` and hands it in, because the HUD knows
   the record and not the world.
-- `src/ui/district-title.ts` shows a district's name, large and hand-lettered, with its zone as a
-  one-line subtitle, as the player crosses into it; a CSS animation in `hud.css` fades it out.
+- `src/ui/hud/district-title.ts` shows a district's name, large and hand-lettered, with its zone as
+  a one-line subtitle, as the player crosses into it; a CSS animation in `hud.css` fades it out.
   `DistrictWatch` decides when: the player must stay `TITLE_SETTLE` ticks, so a border driven along
   does not flicker, and titles stand `TITLE_GAP` ticks apart. Streets get no title.
 
 ## The map
 
-- `src/ui/map.ts` is the map model of spec section 12, and it is pure, so the projection, the zoom
-  steps, the icon table and the culling are tested headless. The map keeps the world's own axes:
-  world `(x, y)` is drawn at pixel `(x, y)`, so north is up and the map reads the way
+- `src/ui/map/map.ts` is the map model of spec section 12, and it is pure, so the projection, the
+  zoom steps, the icon table and the culling are tested headless. The map keeps the world's own
+  axes: world `(x, y)` is drawn at pixel `(x, y)`, so north is up and the map reads the way
   `scripts/world-preview.ts` draws the same world. `rotationForHeading` is what turns a rotating map
   so the player faces up; while the free camera flies, the minimap is handed `FreeCamera.heading`
   instead, so up is where the view looks. A rotating minimap marks north with an N on its rim. The
@@ -65,14 +65,14 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
   and a canvas of a fixed size put the arrow off the middle.
 - `POI_STYLES` is the one icon table: every type is drawn as a picture of what it is — a pistol for
   the gun shop, a shirt for the clothes shop — with a drawing no other type uses and a colour no
-  other type uses, and `test/map.test.ts` pins both, and that no drawing is left unused.
+  other type uses, and `test/ui/map/map.test.ts` pins both, and that no drawing is left unused.
   `MapPois.extra` is the slot a system that owns places writes — the shops of spec section 16.1,
   the safehouses of 16.3, the factions of 17, the missions of 18 — and nothing reads a second list.
 - `MapDrawOptions.overlay` is the slot the territory of spec section 17.2 draws through
   (`docs/factions.md`). It is handed the canvas in world metres and the world box the view can show,
   so an overlay over the whole map draws only the part on screen.
-- `src/ui/map-draw.ts` is the one place that says what a map looks like, with the ground bitmap in
-  `map-ground.ts` and the icons in `map-icons.ts`. `Minimap` (`minimap.ts`) and `MapScreen`
+- `src/ui/map/map-draw.ts` is the one place that says what a map looks like, with the ground bitmap
+  in `map-ground.ts` and the icons in `map-icons.ts`. `Minimap` (`minimap.ts`) and `MapScreen`
   (`map-screen.ts`) both draw through one `MapArt`, so the corner map and the full map cannot
   disagree about a road or a mark. The land and the sea are a bitmap one pixel to a terrain cell,
   drawn scaled; the roads are strokes off `RoadSegmentIndex`, so the map is sharp at half a metre to
@@ -108,15 +108,15 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
 
 ## Physics
 
-- `src/sim/physics.ts` is the only place Rapier is used, with `ground-bodies.ts` (the heightfield
-  tiles and the decks), `vehicle-bodies.ts` (the chassis, the wheels, the parked body and the read
-  back into the record), `drivetrain.ts` (what the input does to the wheels, the rider and the hull)
-  and `gunfire.ts` (the casts, the swings and the flights) beside it. `ground-places.ts` is the
-  getters that hand the simulation the places of a `Ground`; `SimPhysics` extends it.
-  `await initPhysics()` loads its WebAssembly once, then `new SimPhysics(ground, state)` builds a
-  world and `stepSim(state, input, physics)` steps it once per tick. The bodies are built from
-  `state.vehicle` and never stored in it, so the state stays plain data: `adopt` makes the world
-  agree with the record again after a load, and `spawn` puts the car down on the ground.
+- `src/sim/physics/physics.ts` is the only place Rapier is used, with `ground-bodies.ts` (the
+  heightfield tiles and the decks), `vehicle-bodies.ts` (the chassis, the wheels, the parked body
+  and the read back into the record), `drivetrain.ts` (what the input does to the wheels, the rider
+  and the hull) and `gunfire.ts` (the casts, the swings and the flights) beside it.
+  `ground-places.ts` is the getters that hand the simulation the places of a `Ground`; `SimPhysics`
+  extends it. `await initPhysics()` loads its WebAssembly once, then `new SimPhysics(ground, state)`
+  builds a world and `stepSim(state, input, physics)` steps it once per tick. The bodies are built
+  from `state.vehicle` and never stored in it, so the state stays plain data: `adopt` makes the
+  world agree with the record again after a load, and `spawn` puts the car down on the ground.
 - The `Ground` it is built from is `src/city.ts`: everything placed once for a seed and then read
   every tick — the traffic, the crowd, the tram, the police, the emergency services — and the
   heights and decks under them. `main.ts` calls `buildCity` and `frame.ts` runs the frame; a test
@@ -136,8 +136,8 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
 
 ## On foot
 
-- `src/sim/on-foot.ts` is the player out of the car (spec sections 11.2, 11.5): their record, the
-  numbers a person is made of, and the pure rules for reaching a door and stepping out of one.
+- `src/sim/player/on-foot.ts` is the player out of the car (spec sections 11.2, 11.5): their record,
+  the numbers a person is made of, and the pure rules for reaching a door and stepping out of one.
   `physics.ts` is the Rapier half. Exactly one body moves: driving builds the vehicle's dynamic
   body, and on foot builds the player's kinematic capsule and leaves the vehicle as a fixed body, so
   a parked car is walked round rather than simulated. `adopt` builds whichever the record asks for,
@@ -167,39 +167,39 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
   becomes `state.vehicle` and the one left behind takes its place in `TrafficState.promoted`, under
   the same id, so the tour of the stolen car stays suppressed. `TheftState.target` names the
   promoted vehicle whose lock is being worked, and is absent for the player's own.
-- `src/sim/theft.ts` is the hotwire minigame (spec section 11.4). `needsHotwire` reads the roster's
-  own `alarm` and `luxury` flags, so nothing carries a second list of what is worth stealing, and
-  `VehicleState.hotwired` says a lock is beaten once and not again. An attempt can only end in the
-  vehicle opening: `HOTWIRE_CAP` ticks after it starts the last pin gives way, so no player is ever
-  stranded at a door. `physics.ts` steps it from the tick it steps everything else from, which is
-  what keeps the world running around it, and a player working at a lock is walked with an empty
-  input rather than frozen, so the ground still holds them up. `transfer` owns the interact key
-  while an attempt runs; nothing else may read that edge.
+- `src/sim/vehicles/theft.ts` is the hotwire minigame (spec section 11.4). `needsHotwire` reads the
+  roster's own `alarm` and `luxury` flags, so nothing carries a second list of what is worth
+  stealing, and `VehicleState.hotwired` says a lock is beaten once and not again. An attempt can
+  only end in the vehicle opening: `HOTWIRE_CAP` ticks after it starts the last pin gives way, so no
+  player is ever stranded at a door. `physics.ts` steps it from the tick it steps everything else
+  from, which is what keeps the world running around it, and a player working at a lock is walked
+  with an empty input rather than frozen, so the ground still holds them up. `transfer` owns the
+  interact key while an attempt runs; nothing else may read that edge.
 
 ## Weapons
 
-- `src/sim/weapon.ts` is the arsenal of spec section 11.6: what a weapon is made of and the firing
-  model. `arsenal.ts` is the table of every weapon the spec lists and `loadout.ts` what the player
-  is carrying; both come out through `weapon.ts`. Ammunition is per calibre, so a magazine is two
-  numbers — the rounds in the weapon and the pool behind it — and `AMMO_CAP` is what a player can
-  carry of each. `stepWeapons` is one tick of the whole model, the way `stepTheft` is one tick of
-  the minigame: the aim, the weapon cycle, the reload, the recoil and the trigger. A trigger is read
-  as a level on an automatic weapon and as an edge on everything else, and a pull on an empty
+- `src/sim/weapons/weapon.ts` is the arsenal of spec section 11.6: what a weapon is made of and the
+  firing model. `arsenal.ts` is the table of every weapon the spec lists and `loadout.ts` what the
+  player is carrying; both come out through `weapon.ts`. Ammunition is per calibre, so a magazine is
+  two numbers — the rounds in the weapon and the pool behind it — and `AMMO_CAP` is what a player
+  can carry of each. `stepWeapons` is one tick of the whole model, the way `stepTheft` is one tick
+  of the minigame: the aim, the weapon cycle, the reload, the recoil and the trigger. A trigger is
+  read as a level on an automatic weapon and as an edge on everything else, and a pull on an empty
   magazine starts the reload instead of firing. Recoil only comes back `RECOIL_SETTLE` ticks after
   the last shot, which is why holding a machine gun sprays and letting go settles it. Only a pistol
   or an SMG fires from a seat.
-- `src/sim/attachment.ts` is what an attachment does. A fitted weapon is a `WeaponSpec` like any
-  row, so read a carried weapon through `slotSpec` or `currentWeapon`, never `weaponOf(slot.id)`:
-  the bare row has the wrong magazine and the wrong heat. `fitted` shares one frozen row per weapon
-  and list, because the firing model reads the weapon in hand several times a tick. A slot keeps its
-  attachments in the order of `ATTACHMENTS`, so a save does not depend on the order they were
-  fitted in. `Shot.alert` is the radius police hear a shot from and `showsLongGun` is whether they
-  see a long gun; the police of spec section 14 are what will read both.
-- `src/sim/pickup.ts` is the weapons lying in the world. `stepSim` steps them after the physics, so
-  the player takes what lies where the tick left them. `takeWeapon` answers false where a pickup
-  would give nothing, and such a pickup stays on the ground rather than vanishing. `dropCarried` and
-  `dropPoliceCar` are the calls the pedestrians of spec section 13.1 and the police of section 14
-  make; nothing calls them yet but the picker.
+- `src/sim/weapons/attachment.ts` is what an attachment does. A fitted weapon is a `WeaponSpec` like
+  any row, so read a carried weapon through `slotSpec` or `currentWeapon`, never
+  `weaponOf(slot.id)`: the bare row has the wrong magazine and the wrong heat. `fitted` shares one
+  frozen row per weapon and list, because the firing model reads the weapon in hand several times a
+  tick. A slot keeps its attachments in the order of `ATTACHMENTS`, so a save does not depend on the
+  order they were fitted in. `Shot.alert` is the radius police hear a shot from and `showsLongGun`
+  is whether they see a long gun; the police of spec section 14 are what will read both.
+- `src/sim/weapons/pickup.ts` is the weapons lying in the world. `stepSim` steps them after the
+  physics, so the player takes what lies where the tick left them. `takeWeapon` answers false where
+  a pickup would give nothing, and such a pickup stays on the ground rather than vanishing.
+  `dropCarried` and `dropPoliceCar` are the calls the pedestrians of spec section 13.1 and the
+  police of section 14 make; nothing calls them yet but the picker.
 - `physics.ts` is the Rapier half of that: a gun casts a ray per pellet, a melee weapon sweeps the
   arc `swingReaches` describes, and a thrown weapon or a launcher puts a `ProjectileState` into the
   record that `fly` carries one tick at a time, bouncing it off what it meets until its fuse burns
@@ -214,7 +214,7 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
   damage is written into that. A blast calls `strikeNear` over its radius first, then reaches every
   promoted vehicle as it reaches the player's own. Rapier 0.20 lets the later pellets of the same
   tick find the dynamic body that replaced the kinematic one, with no step between them;
-  `test/sim-traffic-interaction.test.ts` holds that for a shotgun.
+  `test/sim/sim-traffic-interaction.test.ts` holds that for a shotgun.
 - A swing reaches four things, and one blow may meet several. The enforcers of spec section 17.2 and
   the crowd of section 13.1 are swept **off the record** rather than out of the world, because an
   arc is not a cast: so a bat reaches an enforcer who has just walked into the physics box, and a
@@ -226,12 +226,13 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
   what shooting at one costs. The crowd reaches the physics through `Ground.crowd`, which is a
   `CrowdSource` — who is near, where they are and a fright — so a test hands it a bystander rather
   than a city.
-- Every blow that lands is written into `SimState.hits` by `src/sim/melee.ts`: what was struck
-  (`person`, `vehicle` or `hard`), where, and how hard. It is on the record because two readers need
-  it a frame later and neither is the simulation — `src/render/melee-fx.ts` throws the burst and
-  `src/audio/plan.ts` fires the cue — and both read every hit newer than the tick they last read, so
-  a frame that stepped six ticks sees all six. A hit is forgotten `HIT_MEMORY` ticks after it lands.
-  `swingProgress` is how far through a swing the weapon is, which is what the pose is drawn from.
+- Every blow that lands is written into `SimState.hits` by `src/sim/weapons/melee.ts`: what was
+  struck (`person`, `vehicle` or `hard`), where, and how hard. It is on the record because two
+  readers need it a frame later and neither is the simulation — `src/render/weapons/melee-fx.ts`
+  throws the burst and `src/audio/plan.ts` fires the cue — and both read every hit newer than the
+  tick they last read, so a frame that stepped six ticks sees all six. A hit is forgotten
+  `HIT_MEMORY` ticks after it lands. `swingProgress` is how far through a swing the weapon is, which
+  is what the pose is drawn from.
 - A swing never shoves a car: a player on foot is a player whose own vehicle is a **fixed** body, so
   it takes the dent and stands still.
 - Gunfire damages a vehicle through `damageVehicle` in `damage.ts`, which is the dent, the integrity
@@ -251,22 +252,22 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
 - A button pressed while another is held fires no `pointerdown`, only a `pointermove` with the new
   `buttons`. `Keyboard` reads the bits of `buttons` on both, so aiming and firing work together.
 - Every pellet writes a `Tracer` into `SimState.tracers` (`tracer.ts`): the muzzle, where it stopped
-  and what it met. It is kept like a blow of `melee.ts`, for the flash, the streak and the impact
-  of `src/render/shot-fx.ts`, the hit marker of `src/ui/crosshair.ts` and the camera kick.
-- Every panel over play wears the menus' ivory look, from `src/ui/panels.css`: the two pickers,
-  the counters of a shop, a safehouse, a job board and a dealer, the metro list and the hotwire
-  gauge. The pickers stand clear of the HUD's corners, and the pause menu hides them all.
-- `src/ui/weapon-picker.ts` is the debug picker for the arsenal, as `vehicle-picker.ts` is for the
-  roster: `G` opens it, and a row hands over the weapon loaded with spare ammunition behind it.
-  Shift and a row drops the weapon three metres ahead as a pickup instead, and the buttons under the
-  rows fit and remove the attachments of the weapon in hand. The weapon shops and faction dealers of
-  spec section 11.6 are what will replace it.
+  and what it met. It is kept like a blow of `melee.ts`, for the flash, the streak and the impact of
+  `src/render/weapons/shot-fx.ts`, the hit marker of `src/ui/hud/crosshair.ts` and the camera kick.
+- Every panel over play wears the menus' ivory look, from `src/ui/panels/panels.css`: the two
+  pickers, the counters of a shop, a safehouse, a job board and a dealer, the metro list and the
+  hotwire gauge. The pickers stand clear of the HUD's corners, and the pause menu hides them all.
+- `src/ui/panels/weapon-picker.ts` is the debug picker for the arsenal, as `vehicle-picker.ts` is
+  for the roster: `G` opens it, and a row hands over the weapon loaded with spare ammunition behind
+  it. Shift and a row drops the weapon three metres ahead as a pickup instead, and the buttons under
+  the rows fit and remove the attachments of the weapon in hand. The weapon shops and faction
+  dealers of spec section 11.6 are what will replace it.
 
 ## The emergency services
 
-- `src/sim/emergency.ts` is the fire engines and the ambulances of spec section 20.3. It is not the
-  police: the police come out on the heat, which is about the player, and these come out on what has
-  happened, which is not — a car left burning across town draws an engine whether anybody is
+- `src/sim/city/emergency.ts` is the fire engines and the ambulances of spec section 20.3. It is not
+  the police: the police come out on the heat, which is about the player, and these come out on what
+  has happened, which is not — a car left burning across town draws an engine whether anybody is
   watching or not. What has happened is written down as an `EmergencyCall` on the record. A call
   within `CALL_RANGE` of one already open is the same scene, so a street of burning cars and a
   firefight that goes on for a minute are each one call.
@@ -281,7 +282,7 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
   a street would stop at the corner and hose nothing. `planBeside` drives the run of road the scene
   stands on, and `nearestAlong` says where along it to pull up. A unit's `stop` is that distance,
   and reaching it is what counts as arriving.
-- `src/sim/emergency-crew.ts` is the crew of a unit standing at a scene, on the record like any
+- `src/sim/city/emergency-crew.ts` is the crew of a unit standing at a scene, on the record like any
   other person. The unit's doors swing open over `DOOR_TICKS`; once they stand open the crew climb
   down and walk to their places — a throw short of the fire for a firefighter, beside the body for
   a medic — work until the unit's `until`, walk back to their door and board. `crewAboard` is what
@@ -308,7 +309,7 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
 - The physics reads the world through a `Ground`: the carved height at a place, what that ground is
   made of, and where the sea stands. The game hands it `WorldScene.heightAt`, `SurfaceIndex` and
   `world.water.seaLevel`; a test hands it a hillside of its own, which is why
-  `test/sim-sweep.test.ts` generates no cities.
+  `test/sim/sim-sweep.test.ts` generates no cities.
 - `roadDecks(world)` (`decks.ts`) is the deck of every bridged stretch as plain data: the strip the
   road drives on at its bed height, as wide as the surface `road-mesh.ts` lofts, with a parapet
   `PARAPET_HEIGHT` high each side. A bridged segment carves nothing, so nothing else says where a
@@ -334,12 +335,12 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
   model already uses, since a yaw of `-heading` points local `+x` along the map heading. Rapier
   turns a steered wheel the other way round the up axis, so the steering angle is the negative of
   the input.
-- `src/sim/roster.ts` holds the roster of spec section 11.3 as a table of `VehicleSpec`, and
-  `vehicle.ts` `SURFACE_GRIP`, what a tyre finds on each surface; nothing else should carry those
-  numbers. `vehicle.ts` re-exports the roster and stays the door callers import.
+- `src/sim/vehicles/roster.ts` holds the roster of spec section 11.3 as a table of `VehicleSpec`,
+  and `vehicle.ts` `SURFACE_GRIP`, what a tyre finds on each surface; nothing else should carry
+  those numbers. `vehicle.ts` re-exports the roster and stays the door callers import.
   `VehicleState.cls` names the row, so the body, the handling and the model are all rebuilt from the
   record; `specOf` reads it and `VEHICLE_CLASSES` is the order the picker shows.
-  `src/ui/vehicle-picker.ts` is that picker.
+  `src/ui/panels/vehicle-picker.ts` is that picker.
 - Rapier keeps a force or a torque until it is told to forget it, so `step` clears the last tick's
   before adding this tick's. Without that the buoyancy of a hull and the rider of a two-wheeler both
   grow without bound over a few seconds, and nothing says why.
@@ -351,31 +352,30 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
   centimetres; `VehicleSpec.inline` tells the model to draw the two the rider sees.
   `VehicleSpec.balance` is the rider on top of that: roll is sprung and damped, pitch is only
   damped, so the bike still points up a hill.
-- `src/render/vehicle-mesh.ts` is the one place that says what shape each class is: boxes in the
-  vehicle's own frame. It holds
-  no three.js, so the silhouettes are measured headless.
+- `src/render/vehicles/vehicle-mesh.ts` is the one place that says what shape each class is: boxes
+  in the vehicle's own frame. It holds no three.js, so the silhouettes are measured headless.
 - How wet the road is comes from the weather of spec section 13.4, which is `docs/weather.md`.
-- `src/world/surface.ts` says what the ground is made of at a place — asphalt, dirt, sand or open
-  ground — and where the nearest road a car can start on, or the nearest open water a boat can, is.
-  It is a read of the parcel model's allocation, not a second one: a road claims the ground within
-  `footprintHalfWidth` of its centreline and a beach claims its sand.
+- `src/world/terrain/surface.ts` says what the ground is made of at a place — asphalt, dirt, sand or
+  open ground — and where the nearest road a car can start on, or the nearest open water a boat can,
+  is. It is a read of the parcel model's allocation, not a second one: a road claims the ground
+  within `footprintHalfWidth` of its centreline and a beach claims its sand.
 
 ## Damage, fire and skids
 
-- `src/sim/damage.ts` is the damage, fire and explosion of spec section 11.3: what one impact does
-  to a vehicle, the panels it dents and tears off, and the progression `intact` to `dented` to
-  `smoking` to `burning` to `burnt`. A vehicle only ever moves forward through it. `physics.ts`
-  measures the impacts as the speed the chassis lost over one step, because Rapier resolves a crash
-  inside one step and nothing a driver does moves a vehicle by anything near `IMPACT_FLOOR` in a
-  tick; the direction it was pushed says which panel took the blow. `spreadFire(vehicles, seed,
-  tick)` is the rule for fire between vehicles: it reaches out every `SPREAD_PERIOD` ticks once a
-  fire has burned for `SPREAD_DELAY`, and each vehicle in reach takes one roll however many fires
-  reach it, so the answer does not depend on the order of the list. `extinguish` is the one step
-  back through the progression, from `burning` to `smoking`, and nothing takes a vehicle out of
-  `burnt`.
-- `src/sim/fire.ts` is the list those rules are run over: the player's vehicle and every promoted
-  one, which is everything in the record that can burn. `physics.ts` calls `stepFires` after `burn`,
-  because `burn` is where the player's own car goes up and it has the body to throw.
+- `src/sim/vehicles/damage.ts` is the damage, fire and explosion of spec section 11.3: what one
+  impact does to a vehicle, the panels it dents and tears off, and the progression `intact` to
+  `dented` to `smoking` to `burning` to `burnt`. A vehicle only ever moves forward through it.
+  `physics.ts` measures the impacts as the speed the chassis lost over one step, because Rapier
+  resolves a crash inside one step and nothing a driver does moves a vehicle by anything near
+  `IMPACT_FLOOR` in a tick; the direction it was pushed says which panel took the blow.
+  `spreadFire(vehicles, seed, tick)` is the rule for fire between vehicles: it reaches out every
+  `SPREAD_PERIOD` ticks once a fire has burned for `SPREAD_DELAY`, and each vehicle in reach takes
+  one roll however many fires reach it, so the answer does not depend on the order of the list.
+  `extinguish` is the one step back through the progression, from `burning` to `smoking`, and
+  nothing takes a vehicle out of `burnt`.
+- `src/sim/vehicles/fire.ts` is the list those rules are run over: the player's vehicle and every
+  promoted one, which is everything in the record that can burn. `physics.ts` calls `stepFires`
+  after `burn`, because `burn` is where the player's own car goes up and it has the body to throw.
 - A vehicle burns for `FUSE_TICKS`, which is seven seconds, and nothing can cross a city in seven
   seconds. So a fire engine never saves the car that started a fire: what it fights is the `Blaze`
   the wreck leaves where it stood. A blaze burns for `BLAZE_SECONDS`, lights the vehicles within
@@ -384,8 +384,8 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
   an engine put out.
 - `WheelState.skid` is the one definition of a sliding tyre: the body is going across its own axle
   faster than `SKID_SLIP`, whether that came from the handbrake, a corner or a spin.
-  `src/render/skid.ts` is what draws it, on tarmac alone: the flag says the tyre is sliding, and the
-  surface under it says whether that leaves anything behind.
+  `src/render/vehicles/skid.ts` is what draws it, on tarmac alone: the flag says the tyre is
+  sliding, and the surface under it says whether that leaves anything behind.
 - The gradient needs no rule of its own. The chassis is a rigid body, so a climb has gravity to
   fight and a descent has it behind; adding a slope term on top of that would count it twice.
 

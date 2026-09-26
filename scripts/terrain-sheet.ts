@@ -11,11 +11,11 @@
  * fraction. `--archetype` builds every seed on that one archetype instead of the
  * one the seed draws, which is how the numbers of one archetype are tuned.
  */
-import { archetypeNamed, ARCHETYPES, type ArchetypeName } from '../src/world/archetype.ts';
-import { Heightfield } from '../src/world/heightfield.ts';
+import { archetypeNamed, ARCHETYPES, type ArchetypeName } from '../src/world/terrain/archetype.ts';
+import { Heightfield } from '../src/world/terrain/heightfield.ts';
 import { worldSizeFor } from '../src/world/size.ts';
-import { generateTerrain, layoutTerrain, SEA_LEVEL, TERRAIN_CELL } from '../src/world/terrain.ts';
-import { sweepSeeds } from '../test/helpers.ts';
+import { generateTerrain, layoutTerrain, SEA_LEVEL, TERRAIN_CELL } from '../src/world/terrain/terrain.ts';
+import { sweepSeeds } from '../test/support/helpers.ts';
 import { landFraction } from './layout-metrics.ts';
 import { defaultOut, writePng } from './png.ts';
 

@@ -1,0 +1,217 @@
+/**
+ * What each road tier is (spec section 6.2): how wide it is, how many lanes it
+ * carries, how fast traffic may go on it, and who is allowed on it.
+ *
+ * This is the one table those numbers live in. The road graph (spec section
+ * 6.5) copies them onto its edges, so traffic, police, navigation and the
+ * minimap all read the same figures.
+ */
+import type { RoadTier } from '../types.ts';
+
+/** Metres per second from kilometres per hour, so the table reads in signposted numbers. */
+function kmh(v: number): number {
+  return v / 3.6;
+}
+
+/** Who a tier lets on. Cars are allowed on every tier, so they are not listed. */
+interface TierTraffic {
+  trucks: boolean;
+  buses: boolean;
+  trams: boolean;
+  pedestrians: boolean;
+}
+
+export interface TierSpec {
+  /** Carriageway width in metres, kerb to kerb. Verge and pavement are not in it. */
+  width: number;
+  /**
+   * Metres of verge each side of the carriageway: the kerb, the gutter and the
+   * strip of ground between the kerb and the pavement.
+   */
+  verge: number;
+  /** Metres of pavement each side. A tier with no pavement is walked on its own surface. */
+  pavement: number;
+  /**
+   * Lanes in each direction. An alley and a dirt road have a single lane that
+   * both directions share.
+   */
+  lanes: number;
+  /**
+   * Metres of parking strip inside each kerb (spec section 13.1). It is part of
+   * the carriageway, but no lane runs over it: the lanes share what is left.
+   */
+  parking: number;
+  /** Speed limit in metres per second. */
+  speedLimit: number;
+  /**
+   * Steepest grade the tier accepts, as rise over run. A road that would climb
+   * harder than this is rerouted along the contour, bridged or tunnelled; it is
+   * never laid over the hill (spec section 6.1). The through-routes hold the
+   * gentle grades a fast road needs; the tiers below them take the bank, the
+   * way the streets of a hillside city do.
+   */
+  maxGrade: number;
+  traffic: TierTraffic;
+  /**
+   * Ambient vehicles per kilometre of lane in each direction, in a district as
+   * busy as the core (spec sections 6.2, 13.1). `src/sim/traffic/traffic.ts` thins it
+   * by the district a road runs through.
+   */
+  density: number;
+  /**
+   * Pedestrians per kilometre of each pavement, in a district as busy as the
+   * core (spec section 13.1). `src/sim/crowd/pedestrians.ts` thins it by the district
+   * a road runs through. Zero on a tier without a pavement.
+   */
+  walkers: number;
+}
+
+export const TIERS: Record<RoadTier, TierSpec> = {
+  // Multi-lane and fast, junctions only at interchanges, no pedestrians.
+  highway: {
+    width: 26,
+    verge: 4,
+    pavement: 0,
+    lanes: 3,
+    parking: 0,
+    speedLimit: kmh(110),
+    maxGrade: 0.06,
+    traffic: { trucks: true, buses: true, trams: false, pedestrians: false },
+    density: 14,
+    walkers: 0,
+  },
+  // The main urban through-routes: buses, the tram lane, dense traffic.
+  arterial: {
+    width: 18,
+    verge: 1,
+    pavement: 3,
+    lanes: 2,
+    parking: 0,
+    speedLimit: kmh(60),
+    maxGrade: 0.08,
+    traffic: { trucks: true, buses: true, trams: true, pedestrians: true },
+    density: 20,
+    walkers: 70,
+  },
+  // The one-way link between an arterial and a highway: one lane with a hard
+  // shoulder each side, no pavement and no one on foot. It climbs no harder
+  // than the arterial it leaves.
+  ramp: {
+    width: 7,
+    verge: 2.5,
+    pavement: 0,
+    lanes: 1,
+    parking: 0,
+    speedLimit: kmh(60),
+    maxGrade: 0.08,
+    traffic: { trucks: true, buses: true, trams: false, pedestrians: false },
+    density: 10,
+    walkers: 0,
+  },
+  // Residential and commercial, one lane each way with parking on both sides.
+  street: {
+    width: 11,
+    verge: 0.5,
+    pavement: 2.5,
+    lanes: 1,
+    parking: 2.2,
+    speedLimit: kmh(40),
+    maxGrade: 0.18,
+    traffic: { trucks: false, buses: false, trams: false, pedestrians: true },
+    density: 12,
+    walkers: 45,
+  },
+  // Narrow and unmarked: bins, loading bays, shortcuts.
+  alley: {
+    width: 4,
+    verge: 0,
+    pavement: 0,
+    lanes: 1,
+    parking: 0,
+    speedLimit: kmh(20),
+    maxGrade: 0.22,
+    traffic: { trucks: false, buses: false, trams: false, pedestrians: true },
+    density: 5,
+    walkers: 0,
+  },
+  // Unpaved, in the outskirts and the wilderness. Farm and site traffic uses it.
+  dirt: {
+    width: 5,
+    verge: 1,
+    pavement: 0,
+    lanes: 1,
+    parking: 0,
+    speedLimit: kmh(40),
+    maxGrade: 0.2,
+    traffic: { trucks: true, buses: false, trams: false, pedestrians: true },
+    density: 3,
+    walkers: 0,
+  },
+};
+
+/**
+ * The tram's reserved lane down the middle of an arterial (spec sections 6.3,
+ * 13.2), in metres. Two tracks of standard gauge stand `trackSpacing` apart
+ * centre to centre. A tram car is 2.6 m wide (`src/sim/transit/tram.ts`), so two of
+ * them passing need 3.2 + 2.6 = 5.8 m, and the lane keeps a 0.3 m margin each
+ * side of that. The lane is 6.4 m of the arterial's 18 m carriageway.
+ */
+export const TRAM_LANE = {
+  halfWidth: 3.2,
+  trackSpacing: 3.2,
+  gauge: 1.435,
+  /**
+   * Metres of island platform beside the lane at a stop (spec section 13.2).
+   * A passenger boards from it rather than from the pavement across a traffic
+   * lane, so the traffic gives up this much more of the road on a run that
+   * carries a stop (`laneOffset` in `sim/traffic/traffic.ts`).
+   */
+  platform: 1.8,
+} as const;
+
+/**
+ * How far the ground a road claims reaches each side of its centreline:
+ * carriageway, verge and pavement (spec section 6.4).
+ */
+export function footprintHalfWidth(tier: RoadTier): number {
+  const spec = TIERS[tier];
+  return spec.width / 2 + spec.verge + spec.pavement;
+}
+
+/**
+ * True when a road of one tier may join another where the two meet. Spec
+ * section 6.2: a highway has junctions only at interchanges and no pedestrians,
+ * so only a highway or an arterial ramp joins one, and only there. Every other
+ * tier takes a junction anywhere along it.
+ *
+ * A minor road that meets a highway therefore does not meet it at all: it runs
+ * past, and where the two cross the road graph makes it an overpass. The
+ * tracer asks this before it ends a road on another one, and the network
+ * before it makes a crossing a junction (`crossing-plan.ts`).
+ */
+export function mayJoin(joiner: RoadTier, met: RoadTier, interchange: boolean): boolean {
+  if (met !== 'highway') return true;
+  return interchange && (joiner === 'highway' || joiner === 'arterial');
+}
+
+/**
+ * True when a road of one tier may cross another where the two meet, whether
+ * as a junction, on a deck or under one.
+ *
+ * `mayJoin` above says where two roads may exchange traffic; this says where
+ * they may meet at all. A crossing the two tiers may not join is a severance —
+ * a place two roads pass and can never turn onto each other — so it is only
+ * worth the ground it takes where both roads carry enough traffic to need it.
+ *
+ * A highway's right-of-way is ground a minor road may not cross: a street, an
+ * alley or a dirt road stops short of it and takes a cul-de-sac, or bends to
+ * run beside it. Only a highway or an arterial crosses one, and an arterial
+ * crosses it to reach an interchange. Every other pair may cross: two
+ * arterials, or an arterial and a street, take a junction where the tiers
+ * allow, which is nearly everywhere (issue #269).
+ */
+export function mayCross(crosser: RoadTier, crossed: RoadTier): boolean {
+  if (crosser !== 'highway' && crossed !== 'highway') return true;
+  const minor = crosser === 'highway' ? crossed : crosser;
+  return minor === 'highway' || minor === 'arterial' || minor === 'ramp';
+}

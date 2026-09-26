@@ -9,29 +9,29 @@
  */
 import { Vector3 } from 'three';
 import type { GameAudio } from './audio/game-audio.ts';
-import { holdOf } from './render/character-hold.ts';
-import { PULL_MARGIN, TURN_MARGIN, type FollowCamera, type RoofHeight } from './render/camera.ts';
+import { holdOf } from './render/people/character-hold.ts';
+import { PULL_MARGIN, TURN_MARGIN, type FollowCamera, type RoofHeight } from './render/camera/camera.ts';
 import type { FixedStepClock } from './sim/clock.ts';
 import { EMPTY_INPUT, type InputFrame } from './sim/input.ts';
-import { boardingProgress } from './sim/boarding.ts';
-import { stationAt } from './sim/metro.ts';
-import { swingOf } from './sim/melee.ts';
-import { visiting } from './sim/shop.ts';
-import { specOf } from './sim/vehicle.ts';
+import { boardingProgress } from './sim/player/boarding.ts';
+import { stationAt } from './sim/transit/metro.ts';
+import { swingOf } from './sim/weapons/melee.ts';
+import { visiting } from './sim/places/shop.ts';
+import { specOf } from './sim/vehicles/vehicle.ts';
 import { stepSim } from './sim/simulation.ts';
-import { turfLine } from './sim/territory.ts';
+import { turfLine } from './sim/crime/territory.ts';
 import { AIM_PLANE_HEIGHT, PointerAim, shotPitch } from './pointer-aim.ts';
-import { Crosshair } from './ui/crosshair.ts';
-import { aimPoint } from './sim/aim.ts';
-import { currentWeapon, spreadOf } from './sim/weapon.ts';
-import { zoomOf } from './render/viewmodel.ts';
-import type { DrawnPlayer } from './render/smooth.ts';
-import type { Tracer } from './sim/tracer.ts';
-import type { FreeCameraControls } from './ui/free-camera.ts';
-import type { Keyboard } from './ui/keyboard.ts';
-import type { MouseLook } from './ui/mouse-look.ts';
-import { ARRIVED } from './ui/map-route.ts';
-import type { Settings } from './ui/settings.ts';
+import { Crosshair } from './ui/hud/crosshair.ts';
+import { aimPoint } from './sim/player/aim.ts';
+import { currentWeapon, spreadOf } from './sim/weapons/weapon.ts';
+import { zoomOf } from './render/weapons/viewmodel.ts';
+import type { DrawnPlayer } from './render/frame/smooth.ts';
+import type { Tracer } from './sim/weapons/tracer.ts';
+import type { FreeCameraControls } from './ui/input/free-camera.ts';
+import type { Keyboard } from './ui/input/keyboard.ts';
+import type { MouseLook } from './ui/input/mouse-look.ts';
+import { ARRIVED } from './ui/map/map-route.ts';
+import type { Settings } from './ui/menus/settings.ts';
 import { applyQuality, type Session } from './session.ts';
 
 /** What a frame reads beside the session: the camera, the clock, the keys and the mix. */
@@ -113,7 +113,7 @@ export class SessionFrame {
     const menu = session.pause.open;
     const paused = isPaused(session);
     // A chase view turns with the mouse under pointer lock, unless a menu, the
-    // map, a shop counter or a deal wants the pointer (`ui/mouse-look.ts`).
+    // map, a shop counter or a deal wants the pointer (`ui/input/mouse-look.ts`).
     const chase = this.parts.settings.view !== 'top-down';
     const counter = session.state.shop !== null || session.state.market.deal !== null;
     this.parts.look.update(chase && !menu && !session.map.open && !counter, flying);

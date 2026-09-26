@@ -8,17 +8,17 @@
  */
 import type { Region } from '../src/core/geom.ts';
 import { seedFromString } from '../src/core/rng.ts';
-import { buildCarve, carvedTerrain } from '../src/world/carve.ts';
-import { districtAt, layoutZones } from '../src/world/districts.ts';
-import { buildFootprint } from '../src/world/footprint.ts';
-import { buildRoadGraph } from '../src/world/graph.ts';
-import { buildJunctions } from '../src/world/junctions.ts';
-import { Heightfield } from '../src/world/heightfield.ts';
-import { isResort } from '../src/world/beaches.ts';
-import { buildBuildings, type BuildingKind } from '../src/world/buildings.ts';
-import { buildParcels, type ParcelOwner } from '../src/world/parcels.ts';
-import { buildShops, SHOP_KINDS, type ShopKind } from '../src/world/shops.ts';
-import { buildTensorField } from '../src/world/tensor.ts';
+import { buildCarve, carvedTerrain } from '../src/world/carve/carve.ts';
+import { districtAt, layoutZones } from '../src/world/terrain/districts.ts';
+import { buildFootprint } from '../src/world/city/footprint.ts';
+import { buildRoadGraph } from '../src/world/roads/graph.ts';
+import { buildJunctions } from '../src/world/junctions/junctions.ts';
+import { Heightfield } from '../src/world/terrain/heightfield.ts';
+import { isResort } from '../src/world/terrain/beaches.ts';
+import { buildBuildings, type BuildingKind } from '../src/world/city/buildings.ts';
+import { buildParcels, type ParcelOwner } from '../src/world/city/parcels.ts';
+import { buildShops, SHOP_KINDS, type ShopKind } from '../src/world/city/shops.ts';
+import { buildTensorField } from '../src/world/roads/tensor.ts';
 import { generateWorld } from '../src/world/world.ts';
 import type { Point, RoadTier, Zone } from '../src/world/types.ts';
 import { defaultOut, writePng } from './png.ts';

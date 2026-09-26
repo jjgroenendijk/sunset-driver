@@ -10,7 +10,7 @@
 import type { SimState } from '../sim/simulation.ts';
 import { clearRoomFromHash, readRoomFromLocation, writeRoomToHash } from './invite.ts';
 import { PartyControl, type ControlState } from './control.ts';
-import type { PartyActions } from '../ui/party.ts';
+import type { PartyActions } from '../ui/menus/party.ts';
 
 export interface PartyHooks {
   /** Put the record on the host's tick, as a load or a metro trip puts it somewhere else. */

@@ -14,7 +14,7 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
 
 ## The title screen, the settings and the menu walk
 
-- `src/ui/title.ts` is the title screen as a main menu of pages: the main page, New game
+- `src/ui/menus/title.ts` is the title screen as a main menu of pages: the main page, New game
   (`title-setup.ts`), Load game (`title-load.ts`), Controls (`title-controls.ts`), Options
   (`title-settings.ts`), and View and Buildings under Options (`title-camera.ts`). `PARENT` says
   where Escape and Back go from each page. A menu item with no action is drawn disabled.
@@ -33,11 +33,11 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   ink border and a small drop shadow, titles in the system hand of `--it-hand`, pill buttons, and
   round yellow badges (`--it-yellow`). The game ships no font file, so the hand differs a little
   between systems; that is accepted.
-- `src/ui/title-open.ts` decides what a page opens on: a pending start from a save, or the title
-  screen. A page opened on an invite link shows who invited it first. The main page gets a banner
-  with the room and the seed, and New game becomes **Join game**. The setup page drops the city
-  card, because the seed is the host's: a joiner picks only a driver.
-- `src/ui/settings.ts` holds the settings that belong to the browser rather than to a save, in
+- `src/ui/menus/title-open.ts` decides what a page opens on: a pending start from a save, or the
+  title screen. A page opened on an invite link shows who invited it first. The main page gets a
+  banner with the room and the seed, and New game becomes **Join game**. The setup page drops the
+  city card, because the seed is the host's: a joiner picks only a driver.
+- `src/ui/menus/settings.ts` holds the settings that belong to the browser rather than to a save, in
   `localStorage` under one key. A value it does not know falls back to the default. The Options
   column and the columns it opens are shared by the title screen and the pause menu, through one
   `MenuSettings` object that `main.ts` builds, and a choice takes effect on the next frame. A
@@ -48,36 +48,36 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   Muting throws the whole audio graph away rather than turning it down — `docs/audio.md` says why.
 - Gore is one choice of four, Off, Subtle, Moderate and Heavy, with Moderate the default. It opens
   a column beside Options, as View and Buildings do; `title-camera.ts` builds all three from one
-  choice page. The levels live in `src/render/gore.ts`, because only the renderer reads them:
+  choice page. The levels live in `src/render/people/gore.ts`, because only the renderer reads them:
   `frame.ts` hands the setting to `WorldScene.gore` each frame. It never enters `SimState`, so a
   save and a replay are the same at every level.
-- `src/ui/title-graphics.ts` is the Graphics column of both menus: Auto, a preset and each knob
-  of a tier. A knob of several steps is a `cycle` item, which names its step at the end of the row;
-  a press moves it on and the side arrows move it either way. `menuList` redraws every checkbox and
-  cycle on the list after a press and when the list takes the focus, because one row moves another:
-  a preset sets every knob, and a knob turns Auto off from the tier Auto was drawing.
-- `src/ui/menu-pages.ts` is the page walk both menus share: `parent`, the arrow keys, the pointer
-  focus, and Escape going up a page. A page in `columns` opens as a column beside its parent, and
-  the parent stays on screen: a submenu is an accordion on its side. An item with `opens` opens its
-  column, and a second press closes it. Right opens it too, and Left closes the column the focus
-  is in. The columns stand in one row, `.menu-columns`, all hung from one top line, so opening one
-  never moves the list it came from. A column's Back button shows only on a narrow screen, where
-  one column is shown at a time. `src/ui/pause.ts` is the pause menu of spec section 12, drawn
-  with the title's classes and the few rules of `pause.css`. Its main list is Resume, Multiplayer,
-  Save game, Load game, Controls, Graphics, Options and Quit to main menu. The HUD, the minimap and
-  the panels over play are hidden while it is open, so no text shows through beside it. It listens
-  to no key: Escape both opens and closes it, so `keys.ts` hands it every key while it is open.
-  While it is open the frame loop takes no steps and the clock keeps its place between two ticks —
-  unless a room is open, because a session in company cannot stop the city
+- `src/ui/menus/title-graphics.ts` is the Graphics column of both menus: Auto, a preset and each
+  knob of a tier. A knob of several steps is a `cycle` item, which names its step at the end of the
+  row; a press moves it on and the side arrows move it either way. `menuList` redraws every checkbox
+  and cycle on the list after a press and when the list takes the focus, because one row moves
+  another: a preset sets every knob, and a knob turns Auto off from the tier Auto was drawing.
+- `src/ui/menus/menu-pages.ts` is the page walk both menus share: `parent`, the arrow keys, the
+  pointer focus, and Escape going up a page. A page in `columns` opens as a column beside its
+  parent, and the parent stays on screen: a submenu is an accordion on its side. An item with
+  `opens` opens its column, and a second press closes it. Right opens it too, and Left closes the
+  column the focus is in. The columns stand in one row, `.menu-columns`, all hung from one top line,
+  so opening one never moves the list it came from. A column's Back button shows only on a narrow
+  screen, where one column is shown at a time. `src/ui/menus/pause.ts` is the pause menu of spec
+  section 12, drawn with the title's classes and the few rules of `pause.css`. Its main list is
+  Resume, Multiplayer, Save game, Load game, Controls, Graphics, Options and Quit to main menu. The
+  HUD, the minimap and the panels over play are hidden while it is open, so no text shows through
+  beside it. It listens to no key: Escape both opens and closes it, so `keys.ts` hands it every key
+  while it is open. While it is open the frame loop takes no steps and the clock keeps its place
+  between two ticks — unless a room is open, because a session in company cannot stop the city
   (`docs/multiplayer.md`).
-- `src/ui/party.ts` is the Multiplayer column of spec section 21: the room code, the invite
+- `src/ui/menus/party.ts` is the Multiplayer column of spec section 21: the room code, the invite
   link and who is in the city. It holds no networking and is redrawn from one state object, which
   `main.ts` hands it through `PauseMenu.refresh` whenever the room changes under it.
 
 ## The loading screen
 
-- `src/ui/loading.ts` is the screen between Start and the street. It names the step being taken —
-  the world, the ground under the player, the shaders of the first frame — and shows how far
+- `src/ui/menus/loading.ts` is the screen between Start and the street. It names the step being
+  taken — the world, the ground under the player, the shaders of the first frame — and shows how far
   through the whole wait it is. `main.ts` drives it, and every step it shows is a real one: the
   chunk count comes from `settle`, not from a guess.
 - Nothing on that path blocks the frame loop any more, which is what lets the screen draw its own
@@ -94,7 +94,7 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   older save has no such field, is refused either way, and the version is the only refusal a player
   can read. It is read against a fresh record: a missing field or a
   wrong type is refused, and an unknown field is dropped. Raise `SAVE_VERSION` when a field changes
-  meaning. `src/ui/saves.ts` keeps one save per seed in `localStorage`.
+  meaning. `src/ui/menus/saves.ts` keeps one save per seed in `localStorage`.
 - `SaveSlots.write` also keeps the wall-clock time it was written under a key of its own, because
   the record is the simulation and the simulation never reads that clock. `SaveSlots.list` walks
   the store's keys and answers with a line per save for the title screen. It reads each save in
@@ -113,47 +113,46 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   driver, with no world. The camera swings over the front of the car and never goes all the way
   round, because the lamp post stands on the far side. The lamp is the game's own `LampLight`, so
   the scene draws only through a renderer from `createRenderer`, which registers that light.
-- `src/ui/seed-preview.ts` draws the map of the seed on the title screen, through the same `MapArt`,
-  so the picture the player picks a seed from is the map they will play on. A build takes a second
-  or more and runs in the worker of `world-source.ts`, so the scene behind the menu keeps turning;
-  it still happens only when the player asks for it — the dice button, the Show the map button, or
-  Enter in the seed box — and never on a key press in the box.
-  `MapDrawOptions.player` is null there: the preview is the map alone, with no arrow on it. The
-  world it built travels back in `TitleChoice.world`, and `main.ts` reuses it rather than
-  generating the same seed twice.
+- `src/ui/menus/seed-preview.ts` draws the map of the seed on the title screen, through the same
+  `MapArt`, so the picture the player picks a seed from is the map they will play on. A build takes
+  a second or more and runs in the worker of `world-source.ts`, so the scene behind the menu keeps
+  turning; it still happens only when the player asks for it — the dice button, the Show the map
+  button, or Enter in the seed box — and never on a key press in the box. `MapDrawOptions.player` is
+  null there: the preview is the map alone, with no arrow on it. The world it built travels back in
+  `TitleChoice.world`, and `main.ts` reuses it rather than generating the same seed twice.
 - The seed box reads one code, `money` in any case (`readSeedCode` in `src/core/seed.ts`). It is
   not a seed: the box swaps it for a random seed, and the session starts with a billion rather than
   `START_MONEY`. The amount travels in `TitleChoice.money` to `createSimState`.
-- `src/ui/controls.ts` is the one list of key bindings. It is shown on the title screen and copied
-  into the README; `Keyboard.sample` must stay in step with the rows that are part of the input
-  frame, and `keys.ts` listens for the rows after them.
+- `src/ui/input/controls.ts` is the one list of key bindings. It is shown on the title screen and
+  copied into the README; `Keyboard.sample` must stay in step with the rows that are part of the
+  input frame, and `keys.ts` listens for the rows after them.
 
 ## On a phone
 
-- `src/ui/touch.ts` decides whether this is a touch browser, and it takes two answers to say yes:
-  the screen reports fingers and `(pointer: coarse)` matches. A touchscreen laptop reports fingers
-  and is played with the keys; an iPad claims to be a desktop in every other way and is caught by
-  the fingers. `main.ts` asks once, before the title screen, and passes the answer down.
+- `src/ui/input/touch.ts` decides whether this is a touch browser, and it takes two answers to say
+  yes: the screen reports fingers and `(pointer: coarse)` matches. A touchscreen laptop reports
+  fingers and is played with the keys; an iPad claims to be a desktop in every other way and is
+  caught by the fingers. `main.ts` asks once, before the title screen, and passes the answer down.
 - A phone reaches none of the keys of `controls.ts`, so it is offered the city rather than the game:
   the main menu gains **Explore** at the top, which starts the seed the New game page holds
   and detaches the free camera before the first frame. `FreeCamera.survey` lifts it `SURVEY_HEIGHT`
   over the ground it was let go at and tips the view down, so the screen the loading screen fades
   off is already the flight.
-- `src/ui/touch-fly.ts` is the pad: a stick under the left thumb, the whole screen behind it as a
-  surface the right thumb turns the view on, a pinch that sets the speed, and three keys down the
-  right edge. It reads pointer events, never `TouchEvent`, because iOS Safari reports a touch as a
-  pointer. The arithmetic — the dead zone, the stick's range, what a pinch is worth — is in
+- `src/ui/input/touch-fly.ts` is the pad: a stick under the left thumb, the whole screen behind it
+  as a surface the right thumb turns the view on, a pinch that sets the speed, and three keys down
+  the right edge. It reads pointer events, never `TouchEvent`, because iOS Safari reports a touch as
+  a pointer. The arithmetic — the dead zone, the stick's range, what a pinch is worth — is in
   `touch.ts` and tested there; the pad is the browser half alone.
 - The stick takes its centre from wherever the thumb lands, not from the middle of the pad: the
   thumb cannot see the spot it is covering. A key is held rather than clicked, and captures its
   pointer, so a thumb resting on Rise keeps rising while the other thumb turns the view.
-- `src/ui/touch-bar.ts` is the three buttons a session is driven from — Menu, Map and Fly — and
-  `markTouchUi`, which sets `body.touch` and blocks Safari's own pinch zoom of the page.
+- `src/ui/input/touch-bar.ts` is the three buttons a session is driven from — Menu, Map and Fly —
+  and `markTouchUi`, which sets `body.touch` and blocks Safari's own pinch zoom of the page.
   `FreeCameraControls` sets `body.flying` while the camera is detached; `touch.css` hangs the rest
   on those two classes.
-- `src/ui/touch.css` holds the pad and everything `body.touch` changes: tap targets at 44 px, the
-  key hints hidden, the safe-area insets of the notch and the home bar, and a 16 px font on every
-  field, because Safari zooms the page in on a smaller one and never zooms back out.
+- `src/ui/input/touch.css` holds the pad and everything `body.touch` changes: tap targets at 44 px,
+  the key hints hidden, the safe-area insets of the notch and the home bar, and a 16 px font on
+  every field, because Safari zooms the page in on a smaller one and never zooms back out.
 - A touch session starts at `TOUCH_START_TIER` rather than at full quality (`main.ts`). The monitor
   would find that level within a second anyway, but the frames it spends getting there are the first
   frames of the flight, and the warm-up compiles at whatever tier is standing.

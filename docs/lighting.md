@@ -142,7 +142,7 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
   ring keeps them where every other piece of rooftop plant is dropped: a skyline at night is what
   they are for. Both stand inside the rim of the deck, never proud of it — a terrace deck is
   measured off the box of the shape and already stands a few centimetres outside the walls, so a
-  band proud of that reaches past the lot and `test/seed-chunks.test.ts` fails.
+  band proud of that reaches past the lot and `test/sweep/seed-chunks.test.ts` fails.
 - The beacons blink off the tick alone: `beaconPhase(tick)` is one `BEACON_CYCLE`, and each tower
   offsets it by the draw of the ground it stands on, so a skyline blinks out of step. Nothing here
   reads a frame time, so two machines blink together.
@@ -238,4 +238,4 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
   and the HUD shows it, so a leak is visible while playing.
 - A count over the cap is a regression, not a number to raise. A system that brings lighting of its
   own raises it together with the pool it brings, and adds that pool to the check in
-  `test/signs.test.ts`.
+  `test/render/signage/signs.test.ts`.

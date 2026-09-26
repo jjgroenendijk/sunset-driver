@@ -32,10 +32,10 @@ in `docs/menus.md`.
   late. Pure arithmetic; it holds no models.
 - `roster.ts` — everybody else: their looks, their replicas, and who is owed a frame now.
 - `divergence.ts` — the parts of a record the host owns, the deltas and the correction snapshots.
-- `party.ts` — the room as a state machine: the handshake, the peer count, the refusals and the
-  fall back to single player. It holds no Trystero and no DOM; `NetLink` is the whole of its contact
-  with a socket. `test/multiplayer.test.ts` drives it with a link that has nothing behind it, and
-  `test/replication.test.ts` stands a whole room of them back to back.
+- `party.ts` — the room as a state machine: the handshake, the peer count, the refusals and the fall
+  back to single player. It holds no Trystero and no DOM; `NetLink` is the whole of its contact with
+  a socket. `test/net/multiplayer.test.ts` drives it with a link that has nothing behind it, and
+  `test/net/replication.test.ts` stands a whole room of them back to back.
 - `link.ts` — the Trystero half: the strategies, the relay wait, and the two actions. Loaded only
   from `control.ts`, never at the top level.
 - `control.ts` — what the session holds: offline until a press, and the one place the lazy import
@@ -48,7 +48,7 @@ in `docs/menus.md`.
 record freely, and writes exactly one thing into it — the divergence set of `divergence.ts`, at the
 top of `Party.frame`, so a message off a socket never lands in the middle of a tick.
 
-`src/render/remote-players.ts` draws the room. It imports the pose type from `roster.ts` and
+`src/render/people/remote-players.ts` draws the room. It imports the pose type from `roster.ts` and
 nothing else, as a type, so a single-player build still pulls in no networking.
 
 ## The room code and the invite link

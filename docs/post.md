@@ -1,9 +1,9 @@
 # Post and the colour grade
 
-The gotchas of the post chain: `src/render/post.ts`, `edges.ts`, `grade.ts` and `lut-upload.ts`.
-`spec.md` section 10.6 is the design. How a frame reaches the chain — the streaming and the
-batches — is in `docs/streaming.md`, what a quality tier moves in `docs/rendering.md`, and what
-lights it in `docs/lighting.md`.
+The gotchas of the post chain: `src/render/look/post.ts`, `edges.ts`, `grade.ts` and
+`lut-upload.ts`. `spec.md` section 10.6 is the design. How a frame reaches the chain — the streaming
+and the batches — is in `docs/streaming.md`, what a quality tier moves in `docs/rendering.md`, and
+what lights it in `docs/lighting.md`.
 
 ## Contents
 

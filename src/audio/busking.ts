@@ -2,7 +2,7 @@
  * The buskers of spec section 20.1, heard: the notes of a guitar from the
  * corner where one stands.
  *
- * A busker is out on a corner for the hours `sim/corners.ts` gives them, so
+ * A busker is out on a corner for the hours `sim/crime/corners.ts` gives them, so
  * whether one is playing is a function of the seed and the tick, and so is
  * each note. A note is drawn per tick, over every tick a frame stepped, from a
  * pentatonic scale, so what is played never clashes with itself and two

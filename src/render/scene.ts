@@ -17,13 +17,13 @@ import {
   type BufferGeometry,
   type Material,
 } from 'three';
-import type { CharacterAppearance } from '../sim/character.ts';
-import { createVehicleState, rideHeight, specOf } from '../sim/vehicle.ts';
-import { CharacterModel } from './character.ts';
-import { LampLight } from './lamp-light.ts';
-import { createLampMaterials } from './lamp-material.ts';
-import { LAMP_BY_TIER, lampGeometry } from './lamp-mesh.ts';
-import { VehicleModel } from './vehicle.ts';
+import type { CharacterAppearance } from '../sim/player/character.ts';
+import { createVehicleState, rideHeight, specOf } from '../sim/vehicles/vehicle.ts';
+import { CharacterModel } from './people/character.ts';
+import { LampLight } from './roads/lamp-light.ts';
+import { createLampMaterials } from './roads/lamp-material.ts';
+import { LAMP_BY_TIER, lampGeometry } from './roads/lamp-mesh.ts';
+import { VehicleModel } from './vehicles/vehicle.ts';
 
 /** What the title screen shows, the camera it is seen through, and how to release it. */
 export interface TitleScene {

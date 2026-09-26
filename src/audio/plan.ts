@@ -6,7 +6,7 @@
  * `SimState` the simulation wrote, the input frame the player pressed and where
  * the player is listening from, and answers a plan. It makes no sound, holds no
  * Web Audio node and imports nothing from Tone.js, so every rule below is
- * exercised headless in `test/audio.test.ts`. `mixer.ts` takes the plan and
+ * exercised headless in `test/audio/audio.test.ts`. `mixer.ts` takes the plan and
  * plays it.
  *
  * Only the little that cannot be read off one tick is kept: what the shot
@@ -23,15 +23,15 @@ import { hashInts } from '../core/hash.ts';
 import { rngFor, Subsystem } from '../core/rng.ts';
 import { gameTime, TICK_RATE } from '../sim/clock.ts';
 import type { InputFrame } from '../sim/input.ts';
-import { onCall, type EmergencyKind, type EmergencyUnit } from '../sim/emergency.ts';
-import type { PoliceUnit } from '../sim/police.ts';
+import { onCall, type EmergencyKind, type EmergencyUnit } from '../sim/city/emergency.ts';
+import type { PoliceUnit } from '../sim/police/police.ts';
 import type { SimState } from '../sim/simulation.ts';
-import type { TramBell, TramNoise } from '../sim/tram.ts';
-import { specOf } from '../sim/vehicle.ts';
-import { weatherAt } from '../sim/weather.ts';
-import { currentWeapon, weaponOf, type WeaponSpec } from '../sim/weapon.ts';
-import { BLAST_CAP, type Blast } from '../sim/blast.ts';
-import { HIT_CAP, type MeleeHit } from '../sim/melee.ts';
+import type { TramBell, TramNoise } from '../sim/transit/tram.ts';
+import { specOf } from '../sim/vehicles/vehicle.ts';
+import { weatherAt } from '../sim/city/weather.ts';
+import { currentWeapon, weaponOf, type WeaponSpec } from '../sim/weapons/weapon.ts';
+import { BLAST_CAP, type Blast } from '../sim/weapons/blast.ts';
+import { HIT_CAP, type MeleeHit } from '../sim/weapons/melee.ts';
 import {
   bedsFor,
   callsFor,
@@ -391,7 +391,7 @@ export class AudioPlanner {
 
   /**
    * Every blow a melee weapon landed since the last frame (spec section 11.6).
-   * The record carries them for a few ticks (`src/sim/melee.ts`), so a frame
+   * The record carries them for a few ticks (`src/sim/weapons/melee.ts`), so a frame
    * that stepped six ticks hears all six and a frame that stepped none hears
    * nothing twice. What was struck picks the cue: a body, a panel or a wall.
    */
@@ -407,7 +407,7 @@ export class AudioPlanner {
       const id = hit.tick * HIT_CAP + i;
       if (hit.surface === 'person' && state.player.driving) {
         // Nobody swings from behind a wheel, so a person struck while the
-        // player drives was struck by the car (`sim/car-strike.ts`): the thump
+        // player drives was struck by the car (`sim/vehicles/car-strike.ts`): the thump
         // of a body, and the crunch of the bumper that took it.
         cues.push(cueAt(state, 'thump', hit.x, hit.y, hit.strength, id));
         cues.push(cueAt(state, 'crunch', hit.x, hit.y, hit.strength * 0.8, hashInts(CRUNCH_STREAM, id)));

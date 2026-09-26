@@ -8,8 +8,8 @@
  * same ray, so the two never disagree about where the mouse is.
  */
 import { Plane, Raycaster, Vector2, Vector3, type Camera } from 'three';
-import { EYE_HEIGHT_ON_FOOT } from './render/camera-view.ts';
-import { MUZZLE_HEIGHT } from './sim/weapon.ts';
+import { EYE_HEIGHT_ON_FOOT } from './render/camera/camera-view.ts';
+import { MUZZLE_HEIGHT } from './sim/weapons/weapon.ts';
 
 /**
  * Metres above the player's feet the pointer is laid on: about chest height,

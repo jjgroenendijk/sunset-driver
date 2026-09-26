@@ -2,19 +2,19 @@
  * The pause menu of a session and what its items do: the saves of spec section
  * 16.4, the restart into another seed, and the settings and the room it shows.
  *
- * `ui/pause.ts` draws the menu and holds no session. This hands it the session:
+ * `ui/menus/pause.ts` draws the menu and holds no session. This hands it the session:
  * the record it saves and the slots it saves into. It is here rather than in
  * `main.ts` because it is one subject — the save and restart path — and
  * `main.ts` is the boot.
  */
 import { randomSeedString, writeSeedToHash } from './core/seed.ts';
-import type { PartyActions } from './ui/party.ts';
+import type { PartyActions } from './ui/menus/party.ts';
 import { gameTime } from './sim/clock.ts';
 import { createSave, saveFromText, saveToText, type SaveFile } from './sim/save.ts';
 import type { SimState } from './sim/simulation.ts';
-import { PauseMenu } from './ui/pause.ts';
-import { setPendingStart, type SaveSlots } from './ui/saves.ts';
-import type { MenuSettings } from './ui/settings.ts';
+import { PauseMenu } from './ui/menus/pause.ts';
+import { setPendingStart, type SaveSlots } from './ui/menus/saves.ts';
+import type { MenuSettings } from './ui/menus/settings.ts';
 
 /** What the menu is built over. */
 export interface PauseSession {

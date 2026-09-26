@@ -11,7 +11,7 @@
  */
 
 import { rngFor, Subsystem } from '../core/rng.ts';
-import type { HitSurface } from '../sim/melee.ts';
+import type { HitSurface } from '../sim/weapons/melee.ts';
 
 /** The one-shots the game fires. Nothing else should name them. */
 export type CueKind =
@@ -133,7 +133,7 @@ export const CUES: Readonly<Record<CueKind, CueVoice>> = Object.freeze({
 
 /**
  * The cue a blow of a melee weapon makes, by what it landed on (spec section
- * 11.6). `src/sim/melee.ts` says which is which; nothing else should map them.
+ * 11.6). `src/sim/weapons/melee.ts` says which is which; nothing else should map them.
  */
 export const HIT_CUES: Readonly<Record<HitSurface, CueKind>> = Object.freeze({
   person: 'thud',

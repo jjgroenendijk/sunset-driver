@@ -12,8 +12,8 @@ Getting out is the same move the other way round. `spec.md` sections 11.2 and 11
 
 ## The record
 
-- `src/sim/boarding.ts` holds one move as `state.boarding`: the way (`in` or `out`), the start
-  tick, the side, and the ticks of walking to the door. It is `null` when no move runs. A save
+- `src/sim/player/boarding.ts` holds one move as `state.boarding`: the way (`in` or `out`), the
+  start tick, the side, and the ticks of walking to the door. It is `null` when no move runs. A save
   from before the field loads, because a `null` template field accepts `undefined`.
 - The move is time, not a switch. `player.driving` changes only on the tick the move ends, in
   `Physics.board`. Until then the player on foot walks with `EMPTY_INPUT`, and a driver's vehicle
@@ -31,11 +31,11 @@ Getting out is the same move the other way round. `spec.md` sections 11.2 and 11
 
 ## The body
 
-- `src/render/boarding.ts` turns the record and a progress from 0 to 1 into a frame: the body's
-  place and turn in the vehicle's own frame, its pose, and how far the door is open. It has no
-  three.js, so it is tested in Node.
-- `src/render/boarder.ts` puts that frame on the model. It applies the vehicle's whole turn, as
-  `rider.ts` does for a rider, so the body moves with a vehicle that rolls or lists.
+- `src/render/people/boarding.ts` turns the record and a progress from 0 to 1 into a frame: the
+  body's place and turn in the vehicle's own frame, its pose, and how far the door is open. It has
+  no three.js, so it is tested in Node.
+- `src/render/people/boarder.ts` puts that frame on the model. It applies the vehicle's whole turn,
+  as `rider.ts` does for a rider, so the body moves with a vehicle that rolls or lists.
 - The beats are shares of the time after the walk: the door opens, the body turns and ducks into
   the seat, the arm pulls the door shut. `pointArm` points the hand at the handle and at the inner
   edge of the door. So a tall player and a short one both reach it.
@@ -55,10 +55,10 @@ Getting out is the same move the other way round. `spec.md` sections 11.2 and 11
 
 ## Tests
 
-- `test/boarding.test.ts` checks the first and last frames, the door, the headroom, the record
-  and the hold. It also checks that no class moves the body faster than 0.1 m a tick, which is
-  where a jump shows.
+- `test/sim/player/boarding.test.ts` checks the first and last frames, the door, the headroom, the
+  record and the hold. It also checks that no class moves the body faster than 0.1 m a tick, which
+  is where a jump shows.
 - Tests that press interact and expect to drive at once call `finishBoarding` from
-  `test/sim-harness.ts`.
+  `test/support/sim-harness.ts`.
 - `node scripts/render-preview.ts <seed> out.png --vehicle=saloon --board=in:0.4` draws one
   frame of the move. `out:0.7` draws a move out, and `in:0.4:1` a move in from the far side.

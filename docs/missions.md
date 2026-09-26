@@ -20,12 +20,13 @@ territory job is aimed at is in the same place, and the record all of it is writ
 
 ## Four files, four subjects
 
-- `src/sim/giver.ts` is where the contacts stand and whether one will talk.
-- `src/sim/job.ts` is what a job is made of and how one is drawn from the seed. It keeps nothing.
-- `src/sim/chain.ts` is the authored spine: the chapters as they are written, and how one is built
-  against a seeded world. It keeps nothing either.
-- `src/sim/mission.ts` is the state machine: the board, the job on the record, and the objective
-  line the HUD reads.
+- `src/sim/missions/giver.ts` is where the contacts stand and whether one will talk.
+- `src/sim/missions/job.ts` is what a job is made of and how one is drawn from the seed. It keeps
+  nothing.
+- `src/sim/missions/chain.ts` is the authored spine: the chapters as they are written, and how one
+  is built against a seeded world. It keeps nothing either.
+- `src/sim/missions/mission.ts` is the state machine: the board, the job on the record, and the
+  objective line the HUD reads.
 
 Nothing else writes `SimState.missions`, and nothing else writes `SimState.objective`.
 
@@ -43,15 +44,15 @@ Nothing else writes `SimState.missions`, and nothing else writes `SimState.objec
 - They do not move. A dealer walks their pitches through the day (`docs/market.md`); a contact
   stands where the seed put them for the whole session, which is what makes the work something to
   come back to.
-- `src/ui/givers.ts` stands them on the street: one person per contact, dressed for the district
+- `src/ui/hud/givers.ts` stands them on the street: one person per contact, dressed for the district
   they work, drawn in the crowd's own mesh so they cost no draw call. They never move, so the
   bodies are written once at the start of a session and the list is copied from there.
 - A beam of light stands on their corner with a diamond turning over their head
-  (`src/render/markers.ts`), both in the amber the map marks them with, so the flag on the map and
-  the person on the street are plainly the same and the corner reads from the far end of it. Both
-  are amber while `giverRefusal` answers nothing and dull grey while it answers something, which is
-  how a player reads across the street that nobody is hiring: driving, wanted, crossed off, or
-  carrying a job already.
+  (`src/render/crime/markers.ts`), both in the amber the map marks them with, so the flag on the map
+  and the person on the street are plainly the same and the corner reads from the far end of it.
+  Both are amber while `giverRefusal` answers nothing and dull grey while it answers something,
+  which is how a player reads across the street that nobody is hiring: driving, wanted, crossed off,
+  or carrying a job already.
 
 ## The board is a function, not a list
 
@@ -144,7 +145,7 @@ Nothing else writes `SimState.missions`, and nothing else writes `SimState.objec
   stream's, where a job that cannot be built is simply not offered.
 - No chapter asks for a vehicle class the roster does not park in the street. `plates` asks for a
   van, which every city has.
-- `test/sim-chain.test.ts` walks both sides end to end on three worlds, and
+- `test/sim/missions/sim-chain.test.ts` walks both sides end to end on three worlds, and
   `seed-places.test.ts` builds every chapter against real cities in the sweep. A chapter that
   cannot be built on a seed fails the sweep rather than stranding a player.
 
@@ -161,13 +162,13 @@ Nothing else writes `SimState.missions`, and nothing else writes `SimState.objec
 
 ## The panel and the marks
 
-- `src/ui/job-panel.ts` draws the board where the shop counter and the safehouse panel draw, and
-  hides itself while either of those or a deal has the screen — which is also when the simulation
-  shuts the board. What it does not do is move out of the way of a front door standing within four
-  metres of a contact, which no seed measured has produced and which would draw one panel over the
-  other if one did.
+- `src/ui/panels/job-panel.ts` draws the board where the shop counter and the safehouse panel draw,
+  and hides itself while either of those or a deal has the screen — which is also when the
+  simulation shuts the board. What it does not do is move out of the way of a front door standing
+  within four metres of a contact, which no seed measured has produced and which would draw one
+  panel over the other if one did.
 - The contacts are marked on both maps once, with the rest of the places, because they never move.
-- The objective is marked by `src/ui/missions.ts`, which is the last link of the chain that runs
+- The objective is marked by `src/ui/map/missions.ts`, which is the last link of the chain that runs
   from the dealers through the enforcers: each of them writes `MapPois.extra` and hands the list it
   wrote to the next. That is why `EnforcerMarks.marks` is kept up to date even on the frames when
   no enforcer is out.

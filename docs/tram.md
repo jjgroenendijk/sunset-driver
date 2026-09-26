@@ -2,8 +2,8 @@
 
 The gotchas of the tram of spec section 13.2: the loop and how it keeps to the lights, the short
 runs a tram does not fit, the track, and the traffic that waits while a tram crosses its turn. The
-code is `src/sim/tram.ts`, `tram-timing.ts`, `tram-bodies.ts` and `tram-guard.ts`. The traffic and
-the lights themselves are in `docs/city-life.md`.
+code is `src/sim/transit/tram.ts`, `tram-timing.ts`, `tram-bodies.ts` and `tram-guard.ts`. The
+traffic and the lights themselves are in `docs/city-life.md`.
 
 ## Contents
 
@@ -14,12 +14,12 @@ the lights themselves are in `docs/city-life.md`.
 
 ## The loop and its lights
 
-- `src/sim/tram.ts` is the tram of spec section 13.2, a function of the tick like the traffic.
-  `tram-timing.ts` lays the loop down as the steps of a traffic tour: it halts short of every stop,
-  light and level crossing, stands `DWELL` at a stop, and goes on at a light only with `TRAM_CLEAR`
-  of its green left. So a level crossing is obeyed through the lights: the tram never crosses on the
-  green of the road across it. The loop takes whole `SIGNAL_CYCLE`s, and each further tram runs it
-  whole cycles behind, for the reason a traffic tour does.
+- `src/sim/transit/tram.ts` is the tram of spec section 13.2, a function of the tick like the
+  traffic. `tram-timing.ts` lays the loop down as the steps of a traffic tour: it halts short of
+  every stop, light and level crossing, stands `DWELL` at a stop, and goes on at a light only with
+  `TRAM_CLEAR` of its green left. So a level crossing is obeyed through the lights: the tram never
+  crosses on the green of the road across it. The loop takes whole `SIGNAL_CYCLE`s, and each further
+  tram runs it whole cycles behind, for the reason a traffic tour does.
 - The pedestrians wait at the lights (`docs/crowd.md`), so they keep to the tram too: it only
   crosses on their red.
 
@@ -44,10 +44,10 @@ the lights themselves are in `docs/city-life.md`.
 
 ## The turns a tram crosses
 
-- `src/sim/tram-guard.ts` holds the traffic on the tram's own green that crosses the tram's path
-  (issue #301). The road across is held on red. Three movements share the tram's green: a vehicle
-  from the other way that turns left, one beside the tram that turns off, and one beside a tram
-  that turns right. The guard holds all three while the tram is in the junction.
+- `src/sim/transit/tram-guard.ts` holds the traffic on the tram's own green that crosses the tram's
+  path (issue #301). The road across is held on red. Three movements share the tram's green: a
+  vehicle from the other way that turns left, one beside the tram that turns off, and one beside a
+  tram that turns right. The guard holds all three while the tram is in the junction.
 - Every tram drives one timing, whole cycles behind the one before, so a tram is in a junction on
   the same ticks of the cycle on every lap. That span, `GUARD_BEFORE` ahead of the nose and
   `GUARD_AFTER` behind the tail, is a window. A turn the tram crosses is held for it on every cycle,
@@ -56,9 +56,9 @@ the lights themselves are in `docs/city-life.md`.
   line is built after the traffic. `timeTour` reads the guard at every light on the way: a vehicle
   pulls away on the first green tick that brings it to its line clear of every window. An anchor
   whose green sends a vehicle into a tram is taken only where every anchor would.
-- A vehicle held by a tram stands on a green, so `test/signal-lap.ts` asks the guard before it
-  calls a stop a fault. `test/tram-guard.test.ts` holds the ring free of vehicles that touch a tram
-  within 30 m of a light.
+- A vehicle held by a tram stands on a green, so `test/support/signal-lap.ts` asks the guard before
+  it calls a stop a fault. `test/sim/transit/tram-guard.test.ts` holds the ring free of vehicles
+  that touch a tram within 30 m of a light.
 - Where the tram stands with its tail in a junction (Short runs, above), a window can outlast the
   green, and no tick is clear. Such a turn is not held, and still meets the tram (#652). On seed
   `sunset` that is most of the tram's contacts with the traffic that are left. The guard adds about

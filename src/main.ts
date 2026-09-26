@@ -1,21 +1,21 @@
 import { GameAudio } from './audio/game-audio.ts';
 import { WorldSites } from './audio/site.ts';
 import { seedFromString, writeSeedToHash } from './core/seed.ts';
-import { BASE_DISTANCE, FollowCamera } from './render/camera.ts';
-import { PostChain } from './render/post.ts';
-import { choiceOf, nearestTier } from './render/graphics.ts';
-import { frameBudgetFrom } from './render/quality.ts';
-import { QualityMonitor } from './render/quality-monitor.ts';
+import { BASE_DISTANCE, FollowCamera } from './render/camera/camera.ts';
+import { PostChain } from './render/look/post.ts';
+import { choiceOf, nearestTier } from './render/frame/graphics.ts';
+import { frameBudgetFrom } from './render/frame/quality.ts';
+import { QualityMonitor } from './render/frame/quality-monitor.ts';
 import { createRenderer, probeWebGpu, resizeRenderer } from './render/renderer.ts';
 import { createTitleScene } from './render/scene.ts';
-import { RenderSmoother } from './render/smooth.ts';
-import { WorldSource } from './render/world-source.ts';
-import { warmPasses } from './render/warm.ts';
+import { RenderSmoother } from './render/frame/smooth.ts';
+import { WorldSource } from './render/streaming/world-source.ts';
+import { warmPasses } from './render/frame/warm.ts';
 import { WorldScene } from './render/world-scene.ts';
 import { FixedStepClock } from './sim/clock.ts';
-import { DEFAULT_APPEARANCE } from './sim/character.ts';
+import { DEFAULT_APPEARANCE } from './sim/player/character.ts';
 import { buildPlaces } from './places.ts';
-import { initPhysics, SimPhysics } from './sim/physics.ts';
+import { initPhysics, SimPhysics } from './sim/physics/physics.ts';
 import { restoreSimState, type SaveFile } from './sim/save.ts';
 import { createSimState } from './sim/simulation.ts';
 import { attachParty } from './net/attach.ts';
@@ -27,26 +27,26 @@ import { listenForKeys } from './keys.ts';
 import { buildMaps } from './maps.ts';
 import { buildPauseMenu } from './pause-actions.ts';
 import { buildPickers } from './pickers.ts';
-import { JobPanel } from './ui/job-panel.ts';
-import { TradePanel } from './ui/trade-panel.ts';
-import { HotwireBar } from './ui/hotwire.ts';
-import { InteractPrompt } from './ui/interact-prompt.ts';
-import { DistrictTitle } from './ui/district-title.ts';
-import { Hud } from './ui/hud.ts';
-import { SaveSlots } from './ui/saves.ts';
-import { readSettings, writeSettings, type MenuSettings } from './ui/settings.ts';
-import { FreeCameraControls } from './ui/free-camera.ts';
-import { MouseLook } from './ui/mouse-look.ts';
-import { isTouchDevice, readTouchProbe } from './ui/touch.ts';
-import { markTouchUi, mountTouchBar } from './ui/touch-bar.ts';
-import { Keyboard } from './ui/keyboard.ts';
-import { LoadingScreen } from './ui/loading.ts';
-import { openingChoice } from './ui/title-open.ts';
-import { HomePanel } from './ui/home-panel.ts';
-import { ShopPanel } from './ui/shop-panel.ts';
-import { TravelPanel } from './ui/travel.ts';
+import { JobPanel } from './ui/panels/job-panel.ts';
+import { TradePanel } from './ui/panels/trade-panel.ts';
+import { HotwireBar } from './ui/panels/hotwire.ts';
+import { InteractPrompt } from './ui/hud/interact-prompt.ts';
+import { DistrictTitle } from './ui/hud/district-title.ts';
+import { Hud } from './ui/hud/hud.ts';
+import { SaveSlots } from './ui/menus/saves.ts';
+import { readSettings, writeSettings, type MenuSettings } from './ui/menus/settings.ts';
+import { FreeCameraControls } from './ui/input/free-camera.ts';
+import { MouseLook } from './ui/input/mouse-look.ts';
+import { isTouchDevice, readTouchProbe } from './ui/input/touch.ts';
+import { markTouchUi, mountTouchBar } from './ui/input/touch-bar.ts';
+import { Keyboard } from './ui/input/keyboard.ts';
+import { LoadingScreen } from './ui/menus/loading.ts';
+import { openingChoice } from './ui/menus/title-open.ts';
+import { HomePanel } from './ui/panels/home-panel.ts';
+import { ShopPanel } from './ui/panels/shop-panel.ts';
+import { TravelPanel } from './ui/panels/travel.ts';
 import { drawAt, drawnTier, type Session } from './session.ts';
-import { nearestRoadPlace } from './world/surface.ts';
+import { nearestRoadPlace } from './world/terrain/surface.ts';
 import type { WorldDescription } from './world/types.ts';
 
 /**
@@ -121,7 +121,7 @@ async function boot(): Promise<void> {
   // The developer free camera of `docs/dev-tooling.md`. It writes into the same
   // camera the game is played through, so nothing else in the frame changes.
   const free = new FreeCameraControls(canvas, touch);
-  // The mouse look of the chase views, under pointer lock (`ui/mouse-look.ts`).
+  // The mouse look of the chase views, under pointer lock (`ui/input/mouse-look.ts`).
   const look = new MouseLook(canvas, camera, touch);
 
   window.addEventListener('resize', () => {
@@ -236,7 +236,7 @@ async function boot(): Promise<void> {
   requestAnimationFrame(frame);
 
   // The seed and the look, from the title screen or from the save that
-  // reloaded the page (`ui/title-open.ts`).
+  // reloaded the page (`ui/menus/title-open.ts`).
   const choice = await openingChoice({
     worlds,
     onPreview: (appearance) => preview.character.set(appearance),

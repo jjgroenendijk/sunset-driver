@@ -7,7 +7,7 @@
  * a test.
  *
  * The camera of spec section 10.7 never yaws — `CAMERA_HEADING` in
- * `render/camera.ts` is a constant — so the screen's right is always the map's
+ * `render/camera/camera.ts` is a constant — so the screen's right is always the map's
  * `+x` and the pan is the sideways offset alone. A sound a long way ahead and a
  * little to the right belongs near the middle, which is why the offset is
  * measured against a fixed width rather than against the distance.

@@ -27,29 +27,29 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 
 ## Ambient traffic
 
-- `src/sim/traffic.ts` is the ambient traffic of spec sections 5.3 and 13.1. `AmbientTraffic`
-  places the vehicles once for a world: per directed edge, the tier's `TierSpec.density` thinned by
-  `ZONE_TRAFFIC` and the district's density, in a lane on the right of the carriageway that
-  `laneOffset` divides as `road-section.ts` paints it. A vehicle keeps a share of the carriageway,
-  not a lane index: `laneOn` turns it into a lane of each run, so a narrow run spreads the vehicles
-  of a wide one over all its lanes. Each vehicle drives the closed tour
+- `src/sim/traffic/traffic.ts` is the ambient traffic of spec sections 5.3 and 13.1.
+  `AmbientTraffic` places the vehicles once for a world: per directed edge, the tier's
+  `TierSpec.density` thinned by `ZONE_TRAFFIC` and the district's density, in a lane on the right of
+  the carriageway that `laneOffset` divides as `road-section.ts` paints it. A vehicle keeps a share
+  of the carriageway, not a lane index: `laneOn` turns it into a lane of each run, so a narrow run
+  spreads the vehicles of a wide one over all its lanes. Each vehicle drives the closed tour
   `traffic-tour.ts` walks for it, at `CRUISE` of the speed limit of each edge. No tour reads
-  another, so two tours can put two vehicles on the same ground. Near the player, giving way
-  (below) keeps them apart. A ramp is one way, so a tour that drives one is closed by a route back
-  to its start rather than by driving its legs in reverse (`docs/interchanges.md`).
+  another, so two tours can put two vehicles on the same ground. Near the player, giving way (below)
+  keeps them apart. A ramp is one way, so a tour that drives one is closed by a route back to its
+  start rather than by driving its legs in reverse (`docs/interchanges.md`).
 - A tour is steps, not legs: `traffic-timing.ts` lays each one down as a drive over part of a leg or
   a wait in one place, in a whole number of ticks. That is why `cursorAt` (evaluated) and `advance`
-  (stepped) agree exactly rather than to a rounding, and why `test/traffic.test.ts` and
-  `test/sim-traffic.test.ts` can compare them with `toEqual`. `poseAt` takes a fractional tick,
-  which is what the renderer draws between two ticks. How a vehicle moves inside a step is the next
-  section.
+  (stepped) agree exactly rather than to a rounding, and why `test/sim/traffic/traffic.test.ts` and
+  `test/sim/traffic/sim-traffic.test.ts` can compare them with `toEqual`. `poseAt` takes a
+  fractional tick, which is what the renderer draws between two ticks. How a vehicle moves inside a
+  step is the next section.
 
 ## How a vehicle moves
 
-- `src/sim/traffic-motion.ts` drives each step along a speed profile, not at one even speed. The
-  vehicle pulls away from rest, brakes into a halt, and slows for a turn. A step still starts and
-  ends on the same metre and tick, so the lights and the queues are kept. Read a vehicle's metre in
-  its step through `metresOf`, never as `into / ticks` of the step: the two differ.
+- `src/sim/traffic/traffic-motion.ts` drives each step along a speed profile, not at one even speed.
+  The vehicle pulls away from rest, brakes into a halt, and slows for a turn. A step still starts
+  and ends on the same metre and tick, so the lights and the queues are kept. Read a vehicle's metre
+  in its step through `metresOf`, never as `into / ticks` of the step: the two differ.
 - The timing pays for the profile. `share` in `traffic-timing.ts` adds `rampTicks` for the speed at
   each end of a drive, and `endSpeeds` gives the profile the same speeds. If the two disagree, the
   profile makes up the time on the straight, above the speed limit. The worst of seed 1 was once
@@ -65,13 +65,13 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   swings round over `SWING` metres (`RouteSampler`'s `around`), both where two edges meet and inside
   one. Without that swing the lane point jumps by up to a lane width.
 - `SMOOTH` is 5 on purpose. At 6, a right turn cuts across the pavement corner, and giving way no
-  longer keeps the people out of the cars (`test/give-way.test.ts`, seed 4).
+  longer keeps the people out of the cars (`test/sim/traffic/give-way.test.ts`, seed 4).
 - A bend inside one edge has no turn speed, because the timing splits drives only at joins and at
   lines. A vehicle takes such a bend at its cruise (issue #727).
 
 ## Giving way
 
-- `src/sim/give-way.ts` keeps the cars and the people within `GIVE_WAY_REACH` of the player
+- `src/sim/traffic/give-way.ts` keeps the cars and the people within `GIVE_WAY_REACH` of the player
   off each other and off the player, their car and the wrecks. Spec section 13.1 and issue #361
   ask for it. It holds a car or a person back on their loop: `hold.ts` keeps each one's lag, in
   `state.traffic.held` and `state.pedestrians.held`. Everyone else keeps a lag of 0.
@@ -105,7 +105,7 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 
 ## The drivers
 
-- `src/sim/driver.ts` is who is at the wheel of each ambient vehicle (spec section 20.2): a
+- `src/sim/traffic/driver.ts` is who is at the wheel of each ambient vehicle (spec section 20.2): a
   `Personality` drawn once from the vehicle's own stream, and four numbers. `cruise` is the share
   of the speed limit they drive at, `gap` the metres they leave for each car ahead of them at a
   red, `react` the ticks they stand after their green before pulling away, and `runsAmber` whether
@@ -121,24 +121,24 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   stands, capped at the room the approach has. Counting it at the driver's own gap instead makes
   every place land at about the same metre and the personality stops showing.
 - The spread of `cruise` is narrow on purpose. Two vehicles on one stretch pass through each other
-  rather than queue, and `test/seed-traffic.test.ts` caps the pairs that stand on the same ground at
-  `TRAFFIC_OVERLAP`. The roster as it stands reads about 0.21 pairs a vehicle on the worst of the
-  first 24 sweep seeds, against 0.24 before there were drivers and a cap of 0.3: the varied speeds
-  and gaps spread the city out rather than pile it up.
-- `test/signal-lap.ts` is what holds a driver honest over a whole lap. It allows standing still on
-  a green only within that driver's own `react` of the green starting, and crossing on an amber
-  only for a driver who takes ambers. Nobody crosses on red.
+  rather than queue, and `test/sweep/seed-traffic.test.ts` caps the pairs that stand on the same
+  ground at `TRAFFIC_OVERLAP`. The roster as it stands reads about 0.21 pairs a vehicle on the worst
+  of the first 24 sweep seeds, against 0.24 before there were drivers and a cap of 0.3: the varied
+  speeds and gaps spread the city out rather than pile it up.
+- `test/support/signal-lap.ts` is what holds a driver honest over a whole lap. It allows standing
+  still on a green only within that driver's own `react` of the green starting, and crossing on an
+  amber only for a driver who takes ambers. Nobody crosses on red.
 
 ## The buses
 
-- `src/sim/bus.ts` says where a bus calls. A bus of the ambient traffic drives the same closed
-  route every other vehicle does, and that route is its line. `busCalls` walks the route and takes a
-  stop on the first leg that can hold one and on every leg after `STOP_SPACING` metres of route
-  since the last call, so a line has stops every few blocks rather than at every corner.
+- `src/sim/transit/bus.ts` says where a bus calls. A bus of the ambient traffic drives the same
+  closed route every other vehicle does, and that route is its line. `busCalls` walks the route and
+  takes a stop on the first leg that can hold one and on every leg after `STOP_SPACING` metres of
+  route since the last call, so a line has stops every few blocks rather than at every corner.
 - A stop stands `STOP_IN` metres past the junction the bus came in through. That has to stay under
   `QUEUE_CLEAR`, the least road a signalled approach keeps clear behind its queue: a stop further in
   could fall inside the queue for the lights, and the halt for the light would land on the same
-  metre as the halt at the kerb. `test/bus.test.ts` holds the two constants to that.
+  metre as the halt at the kerb. `test/sim/transit/bus.test.ts` holds the two constants to that.
 - A stop also needs a pavement, which a highway has none of, so a bus drives a motorway leg
   through without calling. On the grid of `traffic-grid.ts` about half the buses walk a route of
   nothing but highway and so never call at all.
@@ -147,9 +147,9 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   which is how the tick a bus reaches a stop line already carries the dwell it spent at the kerb;
   reading the light without it would read the wrong colour.
 - `Tour.stepCall` is 1 on each of those halts. Without it nothing downstream can tell a bus at a
-  kerb from a vehicle the timing forgot to send on: `test/signal-lap.ts` reads it to allow the one
-  and still fault the other, and it has to allow the step behind the cursor as well, since the tick
-  a call ends on is the first tick of the drive out of it and the bus has not moved yet.
+  kerb from a vehicle the timing forgot to send on: `test/support/signal-lap.ts` reads it to allow
+  the one and still fault the other, and it has to allow the step behind the cursor as well, since
+  the tick a call ends on is the first tick of the drive out of it and the bus has not moved yet.
 - `Steps.stretch` never grows a wait, for the same reason. The stretch that brings a lap round to
   its anchor may only slow drives; growing a dwell would stand the bus at the kerb for longer than
   its own stop.
@@ -164,32 +164,32 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 
 ## The bus stops
 
-- `src/sim/bus-stops.ts` gathers the stops of a world once the tours are timed. A call always
-  stands `STOP_IN` metres into its leg, so the stops are the directed edges the buses call on, and
-  two buses on one line share one record. A stop is not in the world description and cannot be:
-  where a bus calls is a function of the route it walked.
+- `src/sim/transit/bus-stops.ts` gathers the stops of a world once the tours are timed. A call
+  always stands `STOP_IN` metres into its leg, so the stops are the directed edges the buses call
+  on, and two buses on one line share one record. A stop is not in the world description and cannot
+  be: where a bus calls is a function of the route it walked.
 - Nothing is stepped. Each call is kept as `arrive` and `depart` in the ticks of the world —
   `stepStart - phase` over the tour's period, the way `cursorAt` reads a vehicle — so the ticks
   since the kerb was last free is the smallest of those residues, over every bus that calls there.
   That is what fills the queue, exactly as the ticks since the last tram left fill a tram stop's.
-- `src/sim/stop-queue.ts` is the half the tram and the buses share: `layQueue` stands people along
-  the pavement to the right of the direction of travel, `waitingAt` says how many of the places are
-  filled on a tick, and `writeQueue` writes them into a caller's list without allocating. Both stops
-  keep their own caps and rates; only the arithmetic is shared.
-- `src/render/bus-stops.ts` draws the post and, at a stop of `SHELTER_RIDERS` or more, the shelter.
-  It is not chunk furniture for the same reason the record is not in the world: the chunk worker
-  has the world and not the traffic. `BusStopView` stands them round the player as `TramView` does,
-  two draws for every stop in view. The people are drawn with the crowd (`PedestrianView`).
+- `src/sim/transit/stop-queue.ts` is the half the tram and the buses share: `layQueue` stands people
+  along the pavement to the right of the direction of travel, `waitingAt` says how many of the
+  places are filled on a tick, and `writeQueue` writes them into a caller's list without allocating.
+  Both stops keep their own caps and rates; only the arithmetic is shared.
+- `src/render/transit/bus-stops.ts` draws the post and, at a stop of `SHELTER_RIDERS` or more, the
+  shelter. It is not chunk furniture for the same reason the record is not in the world: the chunk
+  worker has the world and not the traffic. `BusStopView` stands them round the player as `TramView`
+  does, two draws for every stop in view. The people are drawn with the crowd (`PedestrianView`).
 - A stop is drawn in its own frame with `+x` at the road and the origin on the middle of the
   pavement, so nothing may reach further than half the narrowest pavement a bus route runs along.
-  `test/bus-stops.test.ts` holds every box to that. A flag sits on top of the mast rather than
-  across it: a face the mast runs through reads as two white bars.
+  `test/sim/transit/bus-stops.test.ts` holds every box to that. A flag sits on top of the mast
+  rather than across it: a face the mast runs through reads as two white bars.
 
 ## The wrecks the city tows
 
-- `src/sim/tow.ts` is the one thing that ever takes a vehicle back out of the record. Everything the
-  player touches goes into `TrafficState.promoted` and stays there, so a session spent crashing
-  into traffic leaves a growing trail of burnt-out shells behind it.
+- `src/sim/traffic/tow.ts` is the one thing that ever takes a vehicle back out of the record.
+  Everything the player touches goes into `TrafficState.promoted` and stays there, so a session
+  spent crashing into traffic leaves a growing trail of burnt-out shells behind it.
 - A shell that has stood `TOW_WAIT` ticks since it went up, with the player `TOW_REACH` metres away
   or further, is taken. Only a shell: a car abandoned in one piece is still there on the player's
   return, which is what spec section 20.2 asks for. `TOW_REACH` is wider than `TRAFFIC_VIEW`, so a
@@ -203,18 +203,19 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 
 ## Traffic lights
 
-- `src/sim/signals.ts` is the traffic lights. A junction takes one where an arterial meets a street
-  or another arterial on the ground, and never with a highway. Its roads split into the arterial's
-  axis and the one across it, and a light is a function of the tick and the junction's seeded
-  offset alone. `crossingOpen` is the phase the pedestrians of spec section 13.1 will wait for.
-  `TrafficRoads.junctions` is what turns the lights on; a test that leaves it out gets none. A
+- `src/sim/traffic/signals.ts` is the traffic lights. A junction takes one where an arterial meets a
+  street or another arterial on the ground, and never with a highway. Its roads split into the
+  arterial's axis and the one across it, and a light is a function of the tick and the junction's
+  seeded offset alone. `crossingOpen` is the phase the pedestrians of spec section 13.1 will wait
+  for. `TrafficRoads.junctions` is what turns the lights on; a test that leaves it out gets none. A
   level crossing of the tram takes a light whatever joins it, an alley included, and a highway at
   its interchange too: without one nothing holds the traffic while the tram crosses, so the tram
   halted and rang at a crossing nobody obeyed (issue #302).
 - A light and a tour only agree for ever when the tour takes whole `SIGNAL_CYCLE`s. So a tour that
   meets a light is timed from one stop line, its `sync`: tick 0 is that line's green. The drive back
   to it is stretched to arrive on red, and `phaseOf` moves the vehicle by up to half a cycle so its
-  tick 0 falls on that green. `test/signal-lap.ts` steps a lap and holds a vehicle to the lights.
+  tick 0 falls on that green. `test/support/signal-lap.ts` steps a lap and holds a vehicle to the
+  lights.
 - That snap leaves a lap only `period / SIGNAL_CYCLE` ticks a vehicle may stand at, so the slot
   placement drew for it is gone and nothing in the phase keeps two vehicles apart (issue #356). What
   does is the vehicle's own place in the queue, drawn once and passed to `timeTour`: it waits that
@@ -227,7 +228,7 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   and stopped ones at `TRAFFIC_STACKED`.
 - A queue that does not fit its road runs back onto the leg before, through any node that does not
   keep clear (issue #357). Without that, every place on a short approach maps to the same car, and
-  a whole red's worth of vehicles stands on one spot. `test/signal-lap.ts` holds a vehicle
+  a whole red's worth of vehicles stands on one spot. `test/support/signal-lap.ts` holds a vehicle
   standing there to the light of the next leg. A bus never spills back, so its halt never lands
   on its own call. What still stacks is a short block between two junctions with lights: the
   queue may not run into the junction behind, and holding the overflow at the light before is
@@ -237,21 +238,21 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   crossing a tick early, and on the first tick of a green that tick is still red.
 - On seed 1 about three vehicles in four meet a light, they spend about a third of the time
   standing, and timing the tours takes the traffic from about 35 ms to about 180 ms to place.
-- `src/sim/traffic-bodies.ts` is the Rapier half. Inside the box of ground tiles, each vehicle is a
-  kinematic body aimed at its pose on the next tick. A vehicle entering the box is evaluated on that
-  tick and stepped after it. The player touches a vehicle when `footprintsTouch` finds their car or
-  their capsule within `TOUCH_MARGIN` of it. The touched vehicle leaves its tour for good: its
-  record goes into `SimState.traffic.promoted`, ascending by id, and it becomes a dynamic box with
-  its speed. A touch is a 2D box test and not a Rapier contact: Rapier makes no contact between
-  two kinematic bodies by default, and the player's capsule is one.
+- `src/sim/traffic/traffic-bodies.ts` is the Rapier half. Inside the box of ground tiles, each
+  vehicle is a kinematic body aimed at its pose on the next tick. A vehicle entering the box is
+  evaluated on that tick and stepped after it. The player touches a vehicle when `footprintsTouch`
+  finds their car or their capsule within `TOUCH_MARGIN` of it. The touched vehicle leaves its tour
+  for good: its record goes into `SimState.traffic.promoted`, ascending by id, and it becomes a
+  dynamic box with its speed. A touch is a 2D box test and not a Rapier contact: Rapier makes no
+  contact between two kinematic bodies by default, and the player's capsule is one.
 - A shot, a swing or a blast promotes a car as a touch does (`docs/sim-and-ui.md`, Weapons). A
   promoted car takes crash damage from the speed its body lost over one tick, as the player's does.
 
 ## Parked cars
 
-- `src/sim/parked.ts` says which bay holds a car at a tick. Each bay has its own stay length and
-  offset; a stay rolls once, keyed on its first tick, against `FILL` at the middle of the stay. So
-  a car stays put for the whole stay, and a street fills and empties by the hour with nothing
+- `src/sim/traffic/parked.ts` says which bay holds a car at a tick. Each bay has its own stay length
+  and offset; a stay rolls once, keyed on its first tick, against `FILL` at the middle of the stay.
+  So a car stays put for the whole stay, and a street fills and empties by the hour with nothing
   stepped. A touched parked car is promoted like the traffic, under `PARKED_ID` plus its bay, and
   the bay stays empty while that record lasts. `PromotedVehicle.paint` is kept because a parked
   car's paint depends on the stay it was taken in.
@@ -260,7 +261,8 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   come from the chunk workers, so `main.ts` sets `Ground.parked` after `settle`, and the physics
   reads it on every step rather than once when it is built.
 - The ground of the game hands the physics the traffic as `Ground.traffic`. A test that is not about
-  traffic leaves it out. `test/traffic-grid.ts` is a grid of every tier for the tests that need it.
+  traffic leaves it out. `test/support/traffic-grid.ts` is a grid of every tier for the tests that
+  need it.
 
 ## The tram
 
@@ -275,11 +277,11 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 
 ## Casualties
 
-- `src/sim/casualty.ts` holds the rules for hurting a person, and `casualty-motion.ts` holds the
-  record and where it puts them. A person has no health until the first hit writes them into
-  `SimState.pedestrians.casualties`. A hit takes them out of `startled`, so nobody is in both
-  lists. `startle` skips a casualty, and `crowdPoseOf` answers undefined for one: every caller
-  that walks the crowd has to pose a casualty through `casualtyPose` instead.
+- `src/sim/crowd/casualty.ts` holds the rules for hurting a person, and `casualty-motion.ts` holds
+  the record and where it puts them. A person has no health until the first hit writes them into
+  `SimState.pedestrians.casualties`. A hit takes them out of `startled`, so nobody is in both lists.
+  `startle` skips a casualty, and `crowdPoseOf` answers undefined for one: every caller that walks
+  the crowd has to pose a casualty through `casualtyPose` instead.
 - The motion is a closed form of the record and the tick, like a fright's. A new hit replaces the
   record and starts a new motion from wherever the old one had got to. The record's `reach` is how
   far the physics said the push could go before a wall. The motion never passes it, and a
@@ -298,52 +300,53 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 
 ## The metro
 
-- `src/sim/metro.ts` is the fast travel of spec section 13.3, and nothing of the line itself is
-  simulated: what the player meets is a station entrance on the street. `src/world/metro.ts` picks
-  the parcels, out of the same pass that picks the police stations, and `metroEntrances` in the same
-  file stands each one on the middle of the pavement beside it. A player on foot within
-  `ENTRANCE_REACH` of one has visited it, so a station is earned by walking to it and never by
-  driving past.
-- That one answer is where the stairs are drawn as well (`src/render/metro-mesh.ts`), because the
-  reach is measured from it: a station snapped to the road centreline instead puts an arterial's
-  stairs 10 m outside the reach of the panel they belong to. The road it is found from is one with a
-  pavement, since a tier without one claims no ground beside its carriageway to stand a stair on.
+- `src/sim/transit/metro.ts` is the fast travel of spec section 13.3, and nothing of the line itself
+  is simulated: what the player meets is a station entrance on the street.
+  `src/world/transit/metro.ts` picks the parcels, out of the same pass that picks the police
+  stations, and `metroEntrances` in the same file stands each one on the middle of the pavement
+  beside it. A player on foot within `ENTRANCE_REACH` of one has visited it, so a station is earned
+  by walking to it and never by driving past.
+- That one answer is where the stairs are drawn as well (`src/render/transit/metro-mesh.ts`),
+  because the reach is measured from it: a station snapped to the road centreline instead puts an
+  arterial's stairs 10 m outside the reach of the panel they belong to. The road it is found from is
+  one with a pavement, since a tier without one claims no ground beside its carriageway to stand a
+  stair on.
 - A trip is `TRAVEL_TICKS` of fade, teleport and arrival, and those ticks are stepped like any
   others: the clock never skips, which is what makes the trip safe in the shared session of spec
   section 19. `stepMetro` runs before the physics, and while a trip is in the record the physics is
   stepped with an empty frame, so nothing the player presses steers the walk under the fade.
-- The destination is `InputFrame.travel`: a place in the list the panel shows, counted from 1, not
-  a station id. A recorded stream therefore replays the trip the player picked. `src/ui/travel.ts`
-  draws that list and the black sheet over the frame; the number keys are read as an edge in
-  `Keyboard`, or a held key would ride the line back and forth.
+- The destination is `InputFrame.travel`: a place in the list the panel shows, counted from 1, not a
+  station id. A recorded stream therefore replays the trip the player picked.
+  `src/ui/panels/travel.ts` draws that list and the black sheet over the frame; the number keys are
+  read as an edge in `Keyboard`, or a held key would ride the line back and forth.
 
 ## Wildlife
 
-- `src/sim/wildlife.ts` is spec section 20.4. `AmbientWildlife` places each species on anchors of
-  its own habitat — the waterline of a beach, a run of pavement, an alley, a wilderness track — and
-  each animal then works a small patch around its anchor for ever. Nothing is stepped and nothing
-  is on the record: `poseAt` evaluates one at any moment, whole tick or between two.
+- `src/sim/city/wildlife.ts` is spec section 20.4. `AmbientWildlife` places each species on anchors
+  of its own habitat — the waterline of a beach, a run of pavement, an alley, a wilderness track —
+  and each animal then works a small patch around its anchor for ever. Nothing is stepped and
+  nothing is on the record: `poseAt` evaluates one at any moment, whole tick or between two.
 - A patch is a circle with a wander laid over it, so an animal never stands more than
   `1 + 0.3 * √2` radii from its anchor. `wildlifeReach()` is that bound over the whole table, and
   it is what the `EdgeIndex` is built with: build the index with a smaller reach and the animals at
   the edge of a view are simply never found.
 - `SPECIES` is the one table. A row holds the habitat, the hours the species keeps, its pace, its
   patch, how many share an anchor, and how far it gives way. Adding an animal is a row there and a
-  row in `LOOKS` in `src/render/wildlife.ts`; nothing else branches on a species.
+  row in `LOOKS` in `src/render/environment/wildlife.ts`; nothing else branches on a species.
 - Giving way is a pure displacement off whoever is nearest, so a flock parts as the player walks
   into it and closes again behind them with no byte written down. `lift` is what makes that a flock
   of pigeons taking off rather than sidling.
-- `src/render/wildlife.ts` draws them as two instanced models, a bird and a beast, so seven species
-  cost two draws. There is no rig: the camera stands 36 m up, so a wing beat is the bird drawn
-  narrower and wider and a stride is the beast bobbing, both off the tick.
+- `src/render/environment/wildlife.ts` draws them as two instanced models, a bird and a beast, so
+  seven species cost two draws. There is no rig: the camera stands 36 m up, so a wing beat is the
+  bird drawn narrower and wider and a stride is the beast bobbing, both off the tick.
 
 ## What the city puts on
 
-- `src/sim/city-events.ts` is the diary of spec section 20.5. A venue is picked once for a world
-  the way a dealer's corners are — a point in a district of the right character, snapped to the
-  nearest street — and whether an event runs at all is drawn from the day it would run on. A kind
-  whose ground is missing on a seed simply never runs, which is how a seed with no beach holds no
-  beach party.
+- `src/sim/city/city-events.ts` is the diary of spec section 20.5. A venue is picked once for a
+  world the way a dealer's corners are — a point in a district of the right character, snapped to
+  the nearest street — and whether an event runs at all is drawn from the day it would run on. A
+  kind whose ground is missing on a seed simply never runs, which is how a seed with no beach holds
+  no beach party.
 - An hour past 24 in `EVENTS` closes an event on the next day, and `eventsAt` therefore reads
   yesterday's diary as well as today's. Read only today's and a party that runs to two in the
   morning disappears at midnight.
@@ -357,7 +360,7 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 
 ## The crime the city commits
 
-- `src/sim/street-crime.ts` is the other half of spec section 20.5. The day is cut into
+- `src/sim/city/street-crime.ts` is the other half of spec section 20.5. The day is cut into
   `SLOT_TICKS`, and each district draws at most one incident per slot from `(seed, slot)`: one roll
   over every kind at once, so the weights hold against each other and no district ever holds two.
   The corners are picked once for a world, exactly as the dealers' pitches are.
@@ -369,11 +372,11 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 - Breaking one up is `INTERRUPT_RANGE` and nothing else. A kind that is not `breakable` — the
   traffic stop — is the police's own business and breaks up for nobody. Robbing a deal pays and
   raises the heat, and every raise goes through `report` in `police.ts` like all the others.
-- `src/ui/street-life.ts` is the screen half of both: the event crowd and the two people of each
+- `src/ui/hud/street-life.ts` is the screen half of both: the event crowd and the two people of each
   incident, written into the same list of standing people the dealers and the enforcers stand in,
   and the marks both put on the map. It is the last link of that chain, so `MissionMarks` is
   written after it. Only what is within `STREET_LIFE_NEAR` is built at all.
-- The list of people runs from `ui/givers.ts` through the dealers, the enforcers, this, the police
-  on foot and the emergency crews, and what the last of them holds is what the crowd mesh draws.
-  A link with nobody of its own still copies what it was handed: it may skip its own work on a quiet
-  frame, never the copy, or everybody before it leaves the street.
+- The list of people runs from `ui/hud/givers.ts` through the dealers, the enforcers, this, the
+  police on foot and the emergency crews, and what the last of them holds is what the crowd mesh
+  draws. A link with nobody of its own still copies what it was handed: it may skip its own work on
+  a quiet frame, never the copy, or everybody before it leaves the street.
