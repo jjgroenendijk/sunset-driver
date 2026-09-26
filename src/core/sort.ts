@@ -4,11 +4,14 @@
  */
 
 export function compareNumbers(a: number, b: number): number {
-  return a < b ? -1 : a > b ? 1 : 0;
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
 }
 
-function compareStrings(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
+/** The bare `sort()` order of two strings, by UTF-16 code unit, with no locale. */
+export function compareStrings(a: string, b: string): number {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
 }
 
 /** Sort a copy of a Map's entries by key so iteration order is stable. */
