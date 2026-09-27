@@ -14,7 +14,7 @@ const DEVICE = '^node_modules/(three/build/three\\.(webgpu|tsl)|@dimforge/|tone/
 const RENDERER = '^node_modules/three/build/three\\.(webgpu|tsl)';
 
 /** The half of `src/audio` that owns the Web Audio graph (`docs/audio.md`). */
-const AUDIO_GRAPH = '^src/audio/(beds|cries|game-audio|mixer|offline|one-shots|radio|voices)\\.ts$';
+const AUDIO_GRAPH = '^src/audio/(beds|cries|game-audio|graph|mixer|offline|one-shots|radio|voices)\\.ts$';
 
 /** The modules of `src/net` that load with the game; the rest load on the press (spec section 21). */
 const NET_DOORS = '^src/net/(invite|control|attach)\\.ts$';
