@@ -26,6 +26,7 @@ performance change: the answer is a number from one of these tools, not a readin
 | What does a material's shader really compute? | `render-profile.ts <seed> --shaders=<dir>` |
 | Does the city pop in, and where? | `render-profile.ts <seed> --view=third-person` |
 | Is the frame smooth on a phone? | `render-profile.ts <seed> --device=phone`, and `?dev` on the phone |
+| How long does a new game take to load, and in which step? | `load-profile.ts <seed>` (`docs/loading.md`) |
 
 The frame of a session is the simulation step and then the draw. `render-profile.ts` times the draw
 alone and runs no simulation. `sim-profile.ts` times the step alone. The two add up to the frame.
