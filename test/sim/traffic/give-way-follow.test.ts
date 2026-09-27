@@ -48,6 +48,7 @@ function carsAt(state: SimState, node: { id: number; x: number; y: number }): At
   const cursor: TrafficCursor = { id: 0, step: 0, into: 0 };
   const out: AtJunction[] = [];
   for (const id of traffic.near(node.x - AT, node.y - AT, node.x + AT, node.y + AT, [])) {
+    if (!traffic.outAt(id, heldTime(state.traffic.held, id, state.tick))) continue;
     heldPose(traffic, state.traffic.held, id, state.tick, pose);
     if (Math.abs(pose.x - node.x) > AT || Math.abs(pose.y - node.y) > AT) continue;
     traffic.cursorAt(id, heldTime(state.traffic.held, id, state.tick), cursor);

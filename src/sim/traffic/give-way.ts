@@ -215,7 +215,8 @@ export class GiveWay {
       const car = this.carOf(state, id);
       if (car === undefined) continue;
       const inside = Math.abs(car.box.x - held.x) < GIVE_WAY_REACH && Math.abs(car.box.y - held.y) < GIVE_WAY_REACH;
-      if (fresh || !inside) entering.push(car);
+      // A car that has just come out onto the road (`traffic-hours.ts`) comes in like one from outside.
+      if (fresh || !inside || !traffic.outAt(id, state.tick - car.lag - 1)) entering.push(car);
       else this.file(car);
     }
     for (const car of entering) {
@@ -238,6 +239,7 @@ export class GiveWay {
     const lag = hold?.lag ?? 0;
     const frame = this.frame;
     if (this.far.skips(id, state.tick, -lag, frame.midX, frame.midY)) return undefined;
+    if (!traffic.outAt(id, state.tick - lag)) return undefined;
     traffic.cursorAt(id, state.tick - lag, this.cursor);
     const edge = traffic.edgeOf(this.cursor);
     if (!traffic.edgeMeets(edge, frame.minX, frame.minY, frame.minX + max, frame.minY + max)) {

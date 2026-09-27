@@ -404,6 +404,8 @@ async function boot(): Promise<void> {
   const places = buildPlaces(state.seed, description, world, roads, ground);
   mark('places');
   const { metro, shops, dealers, safehouses, turf, missions, parked } = places;
+  // The traffic keeps off the street a parade shuts (spec section 20.5).
+  traffic.hours.close(places.venues);
 
   loading.say('Getting the first frame ready', LOADED.ground);
   // The camera is put where the session starts before anything is compiled,

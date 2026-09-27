@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GiveWay } from '../../../src/sim/traffic/give-way.ts';
 import { heldTime } from '../../../src/sim/traffic/hold.ts';
-import { createSimState, type SimState } from '../../../src/sim/simulation.ts';
+import { createSimState, START_TICK, type SimState } from '../../../src/sim/simulation.ts';
 import { footprintsTouch, type AmbientPose, type AmbientTraffic, type Footprint } from '../../../src/sim/traffic/traffic.ts';
 import { specOf } from '../../../src/sim/vehicles/vehicle.ts';
 import { GRID_SPACING, gridTraffic } from '../../support/traffic-grid.ts';
@@ -30,7 +30,8 @@ const plain = graph.nodes.filter((node) => graph.degree(node.id) >= 3 && (traffi
 
 /** A session on foot in the middle of a block, where no car stops for the player. */
 function session(): SimState {
-  const state = createSimState(SEED, undefined, 0);
+  // At rush hour, when every car of the grid is out (`traffic-hours.ts`).
+  const state = createSimState(SEED, undefined, START_TICK);
   state.player.driving = false;
   state.player.x = GRID_SPACING / 2;
   state.player.y = GRID_SPACING / 2;
@@ -46,6 +47,7 @@ function cars(state: SimState, lagged: boolean): Footprint[] {
   const out: Footprint[] = [];
   for (const id of traffic.near(x - VIEW, y - VIEW, x + VIEW, y + VIEW, [])) {
     const time = lagged ? heldTime(state.traffic.held, id, state.tick) : state.tick;
+    if (!traffic.outAt(id, time)) continue;
     traffic.poseAt(id, time, pose);
     if (Math.abs(pose.x - x) > VIEW || Math.abs(pose.y - y) > VIEW) continue;
     const spec = specOf((traffic.vehicles[id] as AmbientTraffic['vehicles'][number]).cls);

@@ -274,6 +274,7 @@ export class TrafficView {
     for (const id of traffic.near(minX, minY, maxX, maxY, this.ids)) {
       if (promotedOf(state.traffic, id) !== undefined) continue;
       if (!outInThis(id, this.share)) continue;
+      if (!traffic.outAt(id, heldTime(state.traffic.held, id, time))) continue;
       const pose = heldPose(traffic, state.traffic.held, id, time, this.pose);
       if (pose.x < minX || pose.x > maxX || pose.y < minY || pose.y > maxY) continue;
       const vehicle = traffic.vehicles[id] as AmbientTraffic['vehicles'][number];

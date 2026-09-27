@@ -44,6 +44,16 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   `test/sim/traffic/sim-traffic.test.ts` can compare them with `toEqual`. `poseAt` takes a
   fractional tick, which is what the renderer draws between two ticks. How a vehicle moves inside a
   step is the next section.
+- `src/sim/traffic/traffic-hours.ts` decides who is out on the road at a tick: every vehicle at rush
+  hour, fewer through the day, and few at night (`TRAFFIC_HOURS`). A parade's street is shut: nobody
+  is out on a leg that runs within its radius while it marches. The vehicles and their tours never
+  change; `outAt` only hides some of them. A vehicle decides when it turns onto a leg and keeps that
+  choice to the end of the leg, so it appears and leaves at a junction, never mid-street. A bus is
+  out at every hour. Every reader that puts a vehicle in the world asks `outAt` at the tick of the
+  pose it reads: the physics bodies, giving way and the renderer. A test that counts cars must ask
+  too, or it counts cars that are not there.
+- `main.ts` hands the event venues to `traffic.hours.close` once the places are built. A traffic
+  built without them (the previews, the tests) has no street shut.
 
 ## How a vehicle moves
 
@@ -344,8 +354,8 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   yesterday's diary as well as today's. Read only today's and a party that runs to two in the
   morning disappears at midnight.
 - The rush hour is the one event with no ground of its own, so it carries radius 0 and is asked
-  through `rushHourAt` rather than found through `eventAt`. It does not yet thin or thicken the
-  traffic: the tours are laid out once for a world (#424).
+  through `rushHourAt` rather than found through `eventAt`. The traffic reads the same hours: see
+  who is out, under Ambient traffic.
 - `eventPeople` is the crowd an event has drawn, as a function of the seed and the tick. A parade
   is ranks marching along its own street, which is what closing the street looks like from above;
   everything else stands and sways. Both kinds draw the same three numbers per person, so the
