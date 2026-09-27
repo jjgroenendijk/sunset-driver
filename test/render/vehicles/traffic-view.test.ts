@@ -1,4 +1,5 @@
-import { MeshStandardMaterial, type InstancedMesh } from 'three';
+import type { InstancedMesh } from 'three';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import { TrafficView, trafficParts } from '../../../src/render/vehicles/traffic.ts';
 import { createSimState } from '../../../src/sim/simulation.ts';
@@ -20,7 +21,7 @@ describe('the traffic, drawn (spec section 13.1)', () => {
     // The warm-up draws each empty pool once; a program built without instance colours draws white.
     const view = new TrafficView(gridTraffic(sweepSeeds(1)[0] as number));
     const pools = view.group.children as InstancedMesh[];
-    const painted = pools.filter((mesh) => mesh.material instanceof MeshStandardMaterial && !mesh.material.vertexColors && !mesh.material.transparent);
+    const painted = pools.filter((mesh) => mesh.material instanceof MeshStandardNodeMaterial && !mesh.material.vertexColors && !mesh.material.transparent);
     expect(painted).toHaveLength(AMBIENT_CLASSES.length);
     for (const mesh of painted) expect(mesh.instanceColor?.count).toBe(mesh.instanceMatrix.count);
   });

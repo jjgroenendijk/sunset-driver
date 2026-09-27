@@ -20,7 +20,7 @@
  * and leads them at speed, so a ring measured from it would sit off-centre and
  * would slide about as the car turned.
  */
-import type { MeshStandardNodeMaterial } from 'three/webgpu';
+import type { MeshStandardNodeMaterial, NodeMaterial } from 'three/webgpu';
 import { floor, fract, positionWorld, screenCoordinate, smoothstep, uniform, type TslNode } from '../tsl.ts';
 
 /**
@@ -77,11 +77,27 @@ export class EntityFade {
    * before the band starts.
    */
   dress(material: MeshStandardNodeMaterial): void {
+    material.opacityNode = this.left();
+    material.alphaTestNode = bayer4(screenCoordinate);
+  }
+
+  /**
+   * Fade a material out over the band through its mask, which discards a
+   * fragment and leaves the opacity alone. This is the form for the traffic,
+   * the parked cars and the crowd: their glass is seen through, and an alpha
+   * test against the dither would throw most of it away at any distance. The
+   * shadow pass reads a mask, so a car fading out takes its shadow with it.
+   */
+  mask(material: NodeMaterial): void {
+    material.maskNode = this.left().greaterThan(bayer4(screenCoordinate));
+  }
+
+  /** How much of a surface survives where it stands: 1 inside the band, 0 past it. */
+  private left(): TslNode {
     const dx = positionWorld.x.sub(this.atX);
     const dy = positionWorld.z.sub(this.atY);
     const span = dx.mul(dx).add(dy.mul(dy)).sqrt();
-    material.opacityNode = smoothstep(this.gone.sub(FADE_BAND), this.gone, span).oneMinus();
-    material.alphaTestNode = bayer4(screenCoordinate);
+    return smoothstep(this.gone.sub(FADE_BAND), this.gone, span).oneMinus();
   }
 }
 

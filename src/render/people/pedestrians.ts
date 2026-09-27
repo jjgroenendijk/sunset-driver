@@ -32,6 +32,7 @@ import { outInThis } from '../../sim/city/weather.ts';
 import { CrowdInstances } from './crowd-instances.ts';
 import { CrowdPass } from './crowd-pass.ts';
 import { createPedestrianMaterial } from './pedestrian-material.ts';
+import { EntityFade } from '../camera/fade.ts';
 import { bakeWalks, BONES, FRAMES, propOf } from './pedestrian-rig.ts';
 
 /** Metres each way of the point the frame is drawn round that people are drawn in. */
@@ -104,6 +105,8 @@ export class PedestrianView {
   /** Where a car driven fast is this frame, which heads turn to; NaN for none. */
   private carX = NaN;
   private carY = NaN;
+  /** The dither fade of spec section 9.2, so a person walking into the view thins in rather than pops. */
+  private readonly fade = new EntityFade(PEDESTRIAN_VIEW);
 
   constructor(crowd: AmbientPedestrians, ...queues: (WaitingCrowd | undefined)[]) {
     this.crowd = crowd;
@@ -114,7 +117,9 @@ export class PedestrianView {
     this.bones.generateMipmaps = false;
     this.bones.needsUpdate = true;
 
-    this.mesh = new Mesh(this.body.geometry, createPedestrianMaterial(this.bones));
+    const material = createPedestrianMaterial(this.bones);
+    this.fade.mask(material);
+    this.mesh = new Mesh(this.body.geometry, material);
     // The instances are spread over the view; the body's own bounds say nothing about them.
     this.mesh.frustumCulled = false;
     this.mesh.castShadow = true;
@@ -133,6 +138,7 @@ export class PedestrianView {
    * between two ticks. Called once a frame.
    */
   update(state: SimState, time: number, x: number, y: number): void {
+    this.fade.focus(x, y);
     const view: View = {
       minX: x - PEDESTRIAN_VIEW,
       minY: y - PEDESTRIAN_VIEW,

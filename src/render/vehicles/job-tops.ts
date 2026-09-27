@@ -14,7 +14,8 @@
  * The bin body that makes it a garbage truck stands on that deck, as a second
  * instanced box in a lit material and the job's livery: one more draw.
  */
-import { BoxGeometry, Color, Group, InstancedMesh, Matrix4, MeshBasicMaterial, MeshStandardMaterial, Quaternion, Vector3 } from 'three';
+import { BoxGeometry, Color, Group, InstancedMesh, Matrix4, Quaternion, Vector3 } from 'three';
+import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import { blinkLit } from '../../sim/traffic/indicator.ts';
 import { fareOf, hiredAt, JOB_PAINT, type Job } from '../../sim/traffic/jobs.ts';
 import type { AmbientTraffic, TrafficCursor } from '../../sim/traffic/traffic.ts';
@@ -72,16 +73,21 @@ export class JobTops {
     this.traffic = traffic;
     this.fares = new Array<Fare | undefined>(traffic.vehicles.length);
     // Coloured from the start, or the warm-up compiles a program that draws every sign white.
-    this.mesh = tinted(new InstancedMesh(new BoxGeometry(1, 1, 1), new MeshBasicMaterial(), TOP_CAP));
+    this.mesh = tinted(new InstancedMesh(new BoxGeometry(1, 1, 1), new MeshBasicNodeMaterial(), TOP_CAP));
     // The instances are spread over hundreds of metres; the box's own bounds say nothing about them.
     this.mesh.frustumCulled = false;
     this.mesh.count = 0;
-    this.bodies = new InstancedMesh(new BoxGeometry(1, 1, 1), new MeshStandardMaterial({ color: JOB_PAINT.garbage, roughness: 0.6 }), TOP_CAP);
+    this.bodies = new InstancedMesh(new BoxGeometry(1, 1, 1), new MeshStandardNodeMaterial({ color: JOB_PAINT.garbage, roughness: 0.6 }), TOP_CAP);
     this.bodies.frustumCulled = false;
     this.bodies.castShadow = true;
     this.bodies.receiveShadow = true;
     this.bodies.count = 0;
     this.group.add(this.mesh, this.bodies);
+  }
+
+  /** The materials of both meshes, which the traffic fades with its own (`traffic.ts`). */
+  get materials(): (MeshBasicNodeMaterial | MeshStandardNodeMaterial)[] {
+    return [this.mesh.material as MeshBasicNodeMaterial, this.bodies.material as MeshStandardNodeMaterial];
   }
 
   begin(): void {
@@ -126,7 +132,7 @@ export class JobTops {
   dispose(): void {
     for (const mesh of [this.mesh, this.bodies]) {
       mesh.geometry.dispose();
-      (mesh.material as MeshBasicMaterial | MeshStandardMaterial).dispose();
+      (mesh.material as MeshBasicNodeMaterial | MeshStandardNodeMaterial).dispose();
       mesh.dispose();
     }
   }
