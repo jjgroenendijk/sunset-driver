@@ -9,6 +9,7 @@
  * of the multiplayer and connects to nothing.
  */
 import type { InputFrame } from '../sim/input.ts';
+import type { PeerHit } from '../sim/physics/peer-bodies.ts';
 import type { SimState } from '../sim/simulation.ts';
 import { inviteLink, randomRoomCode } from './invite.ts';
 import type { Party, PartyState } from './party.ts';
@@ -91,6 +92,11 @@ export class PartyControl {
    */
   frame(state: SimState, input: InputFrame, steps: number): number {
     return this.party?.frame(state, input, steps) ?? steps;
+  }
+
+  /** Tell the players the rounds of the last steps went into (spec section 21.5). Single player sends nothing. */
+  fire(hits: readonly PeerHit[]): void {
+    if (hits.length > 0) this.party?.fire(hits);
   }
 
   /** Everybody else in the city, as the frame draws them (spec section 21.5). */

@@ -149,6 +149,10 @@ export class SessionFrame {
     const steps = session.party.frame(session.state, this.heard, paused || resumed ? 0 : clock.advance(elapsed));
     const respawned = session.state.respawn;
     const trips = session.state.metro.trips;
+    // The other players stand in the physics where they are drawn, so a round
+    // can find them (spec section 21.5). Single player hands in nobody.
+    const peers = session.physics.units.peers;
+    peers.hold(session.party.remotes(session.state.tick));
     for (let i = 0; i < steps; i++) {
       // The pose the step starts from is kept before it is taken, so the
       // frame is drawn between the last two ticks rather than on the last.
@@ -156,6 +160,8 @@ export class SessionFrame {
       this.heard = flying || menu ? EMPTY_INPUT : keyboard.sample();
       stepSim(session.state, this.heard, session.physics);
     }
+    // The rounds those steps put into another player are theirs to take.
+    session.party.fire(peers.take());
     // A respawn and a metro trip both put the player down somewhere else on
     // the map (spec sections 11.7, 13.3), so the frame stands the camera
     // there rather than sliding it over the city.

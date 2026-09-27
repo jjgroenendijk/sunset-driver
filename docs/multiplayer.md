@@ -13,6 +13,7 @@ in `docs/menus.md`.
 - Who owns what
 - The players on the wire
 - The world the host owns
+- Friendly fire
 - When the host leaves
 - Signalling, the relays and the CSP
 - Going back to single player
@@ -31,6 +32,7 @@ in `docs/menus.md`.
 - `replica.ts` — one remote player, drawn between the frames they sent and carried on when one is
   late. Pure arithmetic; it holds no models.
 - `roster.ts` — everybody else: their looks, their replicas, and who is owed a frame now.
+- `fire.ts` — a round one player put into another, as it crosses the wire.
 - `divergence.ts` — the parts of a record the host owns, the deltas and the correction snapshots.
 - `party.ts` — the room as a state machine: the handshake, the peer count, the refusals and the fall
   back to single player. It holds no Trystero and no DOM; `NetLink` is the whole of its contact with
@@ -146,6 +148,26 @@ Spec section 21.4 splits authority three ways, and every file above sits on one 
   through JSON before it is written in. The host is trusted to describe its own world; this is what
   keeps a malformed peer from putting something in a record that the simulation then steps.
 
+## Friendly fire
+
+Spec section 21.5 has it on. A round finds what it hits by a Rapier cast, and a remote player is a
+pose in `src/net`, which `src/sim` may not import.
+
+- `frame.ts` hands the poses the room draws to `sim/physics/peer-bodies.ts` before it steps. Inside
+  the box of ground the physics holds, a player on foot stands as a capsule and a driver as the box
+  of their car, where they are drawn. That is where the shooter sees them.
+- **Both shapes are sensors.** A cast finds them and nothing is pushed by them. A solid box would
+  stop the local car against a car that feels nothing on the other browser, since each player owns
+  their own vehicle.
+- The shooter applies nothing. `gunfire.ts` writes the hit into the outbox of `PeerBodies`, the
+  frame hands it to `Party.fire`, and the room sends a `hit` to that one peer.
+- The owner takes the hit at the top of its next frame, with `takeRound` from
+  `sim/weapons/struck.ts`: health for a round in the body, a dent for a round in the car. A round
+  in the body of a player who has since got into their car goes into the car.
+- **A `hit` names the weapon and the direction, never the damage.** The owner reads what the round
+  is worth from its own arsenal, so a peer can claim a hit but not the size of one.
+- Only rounds reach another player. A swing, a blast and a thrown thing do not yet.
+
 ## When the host leaves
 
 - The lowest peer id takes over. Every peer sorts the same list and reaches the same answer on its
@@ -181,10 +203,6 @@ answers at all. The session keeps the tick it stands on and carries on without a
 
 ## What is not here yet
 
-- **Friendly fire.** Spec section 21.5 has it on, and nothing here carries a hit yet. A shot finds
-  what it hits by a Rapier cast, so a remote player has to stand in the physics world as a body of
-  its own — `police-bodies.ts` and `person-bodies.ts` are that file for the police cars and the
-  people on foot — before the owner of the body struck can be told to take the damage.
 - **A remote vehicle's damage.** The dents, the lost panels and the fire are not on the wire, so
   another player's car is drawn clean however hard they have been driving it.
 - **The round trip.** A beat still carries the host's tick as it was when it was sent, so a joiner
