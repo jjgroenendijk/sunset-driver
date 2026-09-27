@@ -258,6 +258,10 @@ async function boot(): Promise<void> {
 
   // The session is null until the title screen hands over a seed and a look.
   let session: Session | null = null;
+  // True once the loading screen stands over the title scene. The screen is
+  // opaque, so the scene behind it is not drawn: every frame of the wait goes
+  // to building the session instead.
+  let covered = false;
   // What a frame of a session does (`frame.ts`). Until there is one the title
   // screen's preview is drawn instead.
   const loop = new SessionFrame(canvas, { camera, clock, keyboard, free, look, audio, settings, pad });
@@ -275,7 +279,7 @@ async function boot(): Promise<void> {
     last = now;
     if (session) {
       loop.draw(session, elapsed);
-    } else {
+    } else if (!covered) {
       preview.update(elapsed / 1000);
       preview.render();
     }
@@ -305,6 +309,7 @@ async function boot(): Promise<void> {
   // for that build, and the world is a pure function of the seed, so the
   // preview's world is the session's world.
   const loading = new LoadingScreen(document.body, choice.seed);
+  covered = true;
   loadingNow = loading;
   loading.say('Drawing the city plan', 0);
   const state = createSimState(seedFromString(choice.seed), choice.character, undefined, choice.money);
