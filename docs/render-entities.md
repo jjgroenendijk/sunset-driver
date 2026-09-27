@@ -234,9 +234,9 @@ says.
 - The atlas is a row of cells with no gutter, so the material carries no mipmaps and the texture
   coordinates stop half a texel inside the cell. Both are there to keep one poster's paper out of
   the next one's edge.
-- Looking at one in `render-preview.ts` takes some aiming: the camera's heading is fixed, so only a
-  board with open ground to the south of it is in view at all, and a building between the camera
-  and the player is cut away unless `--buildings=whole` is passed.
+- Looking at one in `render-preview.ts` takes some aiming: the camera looks north, so only a
+  board with open ground to the south of it is in view at all. A building between the camera and
+  the player turns the camera or is cut away unless `--buildings=whole` is passed.
 
 ## Shop signage and billboards
 

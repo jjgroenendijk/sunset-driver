@@ -46,7 +46,7 @@ what lights it in `docs/lighting.md`.
 - What writes no depth draws no line. The sky writes none. The road markings are transparent and
   write none, so a lane line is not a step over the road (`createMarkingMaterial`). A seam on a
   flat surface has no depth step, so it must be painted into the material.
-- The See-through cut (`cutaway.ts`) dithers holes into a building, and every hole is a depth step.
+- The building cut (`cutaway.ts`) dithers holes into a building, and every hole is a depth step.
   So the pass asks `cutaway.ghostAlong` about each sample. A pair with a ghosted pixel in it
   measures nothing, and a ghosted pixel draws nothing. Reading a ghosted neighbour as the centre
   instead drew the edge of the cut as a line. Nothing under `GHOST_FLOOR` counts as ghosted: the

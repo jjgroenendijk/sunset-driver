@@ -193,13 +193,6 @@ async function boot(): Promise<void> {
   // What the Settings column of both menus reads and writes. A choice holds at
   // once and is kept for every seed.
   const menuSettings: MenuSettings = {
-    buildingView: {
-      current: () => settings.buildingView,
-      choose: (view) => {
-        settings.buildingView = view;
-        writeSettings(localStorage, settings);
-      },
-    },
     view: {
       current: () => settings.view,
       choose: (view) => {

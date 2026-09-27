@@ -55,24 +55,11 @@ const FOLLOW_RATE = 4;
 const ZOOM_RATE = 1.2;
 
 /**
- * Metres the camera keeps over a roof when it pulls back over one, and metres
- * every footprint is grown by when the camera asks which roof it is over. A
- * roof just under the lens fills the view, so both are wider than the lens needs.
- */
-const ROOF_CLEARANCE = 10;
-export const PULL_MARGIN = 6;
-/**
  * Metres every footprint is grown by when the turn asks which roofs stand
  * between the camera and the player. A little, so a sight line that grazes a
  * wall counts as blocked.
  */
 export const TURN_MARGIN = 1;
-/** How fast the camera climbs over a roof, and how fast it comes down again, in e-foldings a second. */
-const CLIMB_RATE = 6;
-const SETTLE_RATE = 1.5;
-/** The most metres the camera pulls back over roofs, and the most steps it takes to find them. */
-const MAX_PULL = 400;
-const PULL_STEPS = 12;
 /** How fast a shot's kick settles, in e-foldings a second, and the most metres kicks add up to. */
 const KICK_RATE = 18;
 const MAX_KICK = 0.6;
@@ -97,14 +84,13 @@ export interface CameraTarget {
 
 /**
  * How the camera looks this frame (spec section 10.7). `view` is top down
- * unless the player chose otherwise. `pull` stands the top-down camera back
- * over the roof under it; `turn` turns it round the player to a heading from
- * which no roof hides them. The chase views read neither. `mouse` is true
+ * unless the player chose otherwise. `turn` turns the top-down camera round
+ * the player to a heading from which no roof hides them. The chase views do
+ * not read it. `mouse` is true
  * while the pointer is locked to the game, so the mouse turns a chase view.
  */
 export interface CameraLook {
   view?: CameraView;
-  pull?: RoofHeight;
   turn?: RoofHeight;
   mouse?: boolean;
   /**
@@ -123,7 +109,7 @@ export interface CameraLook {
 /**
  * The game camera. Top down, it is tilted at a fixed pitch and only moves: it
  * leads the target in its direction of travel and pulls back as speed rises.
- * Its heading is north until the Turn setting swings it past a building, and
+ * Its heading is north until a building hides the player and it turns past it, and
  * stays where that turn left it rather than swinging back. The chase views of
  * `camera-view.ts` stand behind the player or at their eyes.
  */
@@ -134,8 +120,6 @@ export class FollowCamera {
   private baseDistance = BASE_DISTANCE;
   /** Metres the camera stands back for speed, on top of the base distance. */
   private zoom = 0;
-  /** Metres the camera stands back over roofs, on top of its distance (spec section 10.7). */
-  private pull = 0;
   /** Metres the last shots pushed the view, across the map, settling back to nothing. */
   private readonly shake = new Vector3();
   /** Seconds since the last jolt, how hard it was, and the two phases its tick gave it. */
@@ -292,10 +276,7 @@ export class FollowCamera {
   }
 
   /**
-   * The top-down view. With `pull`, the camera does not stand inside a
-   * building: it pulls back along its view until it is over the roof under it.
-   * It climbs fast and comes down slowly, so a row of roofs does not make it
-   * bob. With `turn`, it turns round the player, pitch held, to a heading from
+   * The top-down view. With `turn`, it turns round the player, pitch held, to a heading from
    * which they are seen.
    */
   private followOver(dt: number, target: CameraTarget, look: CameraLook): void {
@@ -316,8 +297,6 @@ export class FollowCamera {
       this.zoom = zoom;
       this.turnGoal = goal(this.baseDistance + this.zoom);
       this.yaw = this.turnGoal;
-      const back = backOf(this.yaw, this.pitch, this.back);
-      this.pull = look.pull === undefined ? 0 : pullOver(this.focus, back, this.baseDistance + this.zoom, look.pull);
       this.initialised = true;
     } else {
       // Exponential smoothing, not a linear factor on `dt`. A frame's length
@@ -327,14 +306,11 @@ export class FollowCamera {
       this.focus.lerp(wanted, 1 - Math.exp(-FOLLOW_RATE * dt));
       this.zoom += (zoom - this.zoom) * (1 - Math.exp(-ZOOM_RATE * dt));
       const distance = this.baseDistance + this.zoom;
-      this.turnGoal = goal(distance + this.pull);
+      this.turnGoal = goal(distance);
       this.yaw = turnToward(this.yaw, this.turnGoal, 1 - Math.exp(-TURN_RATE * dt));
-      const back = backOf(this.yaw, this.pitch, this.back);
-      const pull = look.pull === undefined ? 0 : pullOver(this.focus, back, distance, look.pull);
-      const rate = pull > this.pull ? CLIMB_RATE : SETTLE_RATE;
-      this.pull += (pull - this.pull) * (1 - Math.exp(-rate * dt));
     }
-    this.camera.position.copy(this.focus).addScaledVector(this.back, this.baseDistance + this.zoom + this.pull);
+    backOf(this.yaw, this.pitch, this.back);
+    this.camera.position.copy(this.focus).addScaledVector(this.back, this.baseDistance + this.zoom);
   }
 
   /**
@@ -364,7 +340,6 @@ export class FollowCamera {
     if (!this.initialised) {
       this.yaw = goal;
       this.zoom = zoom;
-      this.pull = 0;
       this.lookYaw = 0;
       this.lookPitch = 0;
       this.initialised = true;
@@ -459,21 +434,4 @@ function behindFrame(first: boolean, driving: boolean): BehindFrame {
     turnRate: THIRD_TURN_RATE,
     distance: THIRD_DISTANCE_ON_FOOT,
   };
-}
-
-/**
- * Metres past `distance` the camera must stand back along `back` to be over
- * every roof under it. Each step stands the camera at the height of the roof
- * it found; that moves it back over the ground, where another roof may stand.
- */
-export function pullOver(focus: Vector3, back: Vector3, distance: number, roofs: RoofHeight): number {
-  let reach = distance;
-  for (let i = 0; i < PULL_STEPS; i++) {
-    const top = roofs(focus.x + back.x * reach, focus.z + back.z * reach);
-    const y = focus.y + back.y * reach;
-    if (top === undefined || y >= top + ROOF_CLEARANCE) break;
-    reach = Math.min(distance + MAX_PULL, (top + ROOF_CLEARANCE - focus.y) / back.y);
-    if (reach >= distance + MAX_PULL) break;
-  }
-  return reach - distance;
 }

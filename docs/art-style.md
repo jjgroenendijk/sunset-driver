@@ -118,7 +118,7 @@ Rules for the palette:
 - The width is fixed on screen, in pixels, at every distance. The heavy line is about two pixels at
   full render scale and scales with the render scale; the thin line is about one.
 - The ink colour is warm plum (`#2a2430`). Far away the line lightens toward the haze.
-- The pass must leave out what the See-through camera of spec 10.7 dithers: a dithered building
+- The pass must leave out what the building cut of spec 10.7 dithers: a dithered building
   has no line inside the cone. Pixels the cutaway drops must not draw edges.
 - The water mirror and the sky draw no lines.
 
