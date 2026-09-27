@@ -24,6 +24,12 @@ import { edgeInSight, groundInSight, pastCircle, pastRing, pastSquare } from './
 export const EDGES = ['facades', 'streets', 'city', 'traffic', 'parked', 'crowd', 'plants'] as const;
 export type Edge = (typeof EDGES)[number];
 
+/**
+ * The edges that dither out over a band (`fade.ts`) rather than stop. One of
+ * these in sight thins in; any other edge in sight pops.
+ */
+export const FADING: ReadonlySet<Edge> = new Set<Edge>(['traffic', 'parked', 'crowd', 'plants']);
+
 /** Metres from the camera to where each thing pops in, `Infinity` where it does not show. */
 export interface PopIn {
   /** A chunk in sight that is missing, or has only some of its batches. */

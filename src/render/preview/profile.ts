@@ -71,6 +71,8 @@ export interface ProfileRequest {
   shaders?: boolean;
   /** The camera view to draw from. Left out, top down. */
   view?: CameraView;
+  /** The streaming rings to draw at instead of the tier's own, to price a draw distance. */
+  rings?: { near: number; far: number };
 }
 
 /** One frame, timed. */
@@ -152,7 +154,8 @@ interface SceneOwners {
 }
 
 export async function runProfile(request: ProfileRequest): Promise<ProfileResult> {
-  const tier = QUALITY_TIERS.find((entry) => entry.name === request.quality) ?? FULL_TIER;
+  const named = QUALITY_TIERS.find((entry) => entry.name === request.quality) ?? FULL_TIER;
+  const tier = request.rings === undefined ? named : { ...named, rings: request.rings };
   if (request.memory === true) installGpuLedger();
   const canvas = document.createElement('canvas');
   document.body.append(canvas);
