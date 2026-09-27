@@ -359,28 +359,32 @@ export class Shell {
    * is metres: along the face from its first corner, and up it.
    */
   quad(a: Local, b: Local, c: Local, d: Local, part: number): void {
-    this.triangle(a, b, c, part, 0);
-    this.triangle(a, c, d, part, 1);
+    // Both triangles are laid out on the quad's own first edge, so they share
+    // its metres and the pattern the material draws does not break at the
+    // diagonal between them.
+    this.triangle(a, b, c, part, a, b);
+    this.triangle(a, c, d, part, a, b);
   }
 
-  /** One triangle of a face. `corner` says which of a quad's two this is. */
-  triangle(a: Local, b: Local, c: Local, part: number, corner = 0): void {
+  /**
+   * One triangle of a face. Its `uv` is each corner in metres along the edge
+   * from `from` to `to`, and up the face at right angles to that edge. A lone
+   * triangle is measured along its own first edge.
+   */
+  triangle(a: Local, b: Local, c: Local, part: number, from: Local = a, to: Local = b): void {
     const n = normalOf(a, b, c);
-    const across = length(a, b);
-    const up = length(b, c);
-    // The two triangles of a quad share its corners, so both are laid out on the
-    // same metres and the pattern the material draws does not break at the seam.
-    const uv: Local[] =
-      corner === 0
-        ? [[0, 0, 0], [across, 0, 0], [across, up, 0]]
-        : [[0, 0, 0], [across, up, 0], [0, up, 0]];
-    const points = [a, b, c];
-    for (let i = 0; i < 3; i++) {
-      const p = points[i] as Local;
-      const t = uv[i] as Local;
+    const along = direction(from, to);
+    // Up the face: the normal crossed with the edge, which is +y on a wall.
+    const up: Local = [
+      n[1] * along[2] - n[2] * along[1],
+      n[2] * along[0] - n[0] * along[2],
+      n[0] * along[1] - n[1] * along[0],
+    ];
+    for (const p of [a, b, c]) {
+      const d: Local = [p[0] - from[0], p[1] - from[1], p[2] - from[2]];
       this.positions.push(p[0] + this.offset, p[1], p[2]);
       this.normals.push(n[0], n[1], n[2]);
-      this.uvs.push(t[0], t[1]);
+      this.uvs.push(dot(d, along), dot(d, up));
       this.parts.push(part);
     }
   }
@@ -432,6 +436,15 @@ function normalOf(a: Local, b: Local, c: Local): Local {
   return [nx / span, ny / span, nz / span];
 }
 
-function length(a: Local, b: Local): number {
-  return Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+/** The unit vector from `a` towards `b`. */
+function direction(a: Local, b: Local): Local {
+  const x = b[0] - a[0];
+  const y = b[1] - a[1];
+  const z = b[2] - a[2];
+  const span = Math.hypot(x, y, z) || 1;
+  return [x / span, y / span, z / span];
+}
+
+function dot(a: Local, b: Local): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
