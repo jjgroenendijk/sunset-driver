@@ -26,6 +26,11 @@ const GIVEN_UP = 'another seed was asked for';
 
 export class WorldSource {
   private build: Build | null = null;
+  /**
+   * Told of each world as it is built, before anyone awaiting it. `main.ts`
+   * starts the next session's chunk pool from here while the title screen is up.
+   */
+  onBuilt: ((world: WorldDescription) => void) | null = null;
 
   /**
    * Start building `seed` now and pay no attention to the answer.
@@ -43,8 +48,13 @@ export class WorldSource {
     const held = this.build;
     if (held !== null && held.seed === seed) return held.world;
     held?.cancel();
-    this.build = startBuild(seed);
-    return this.build.world;
+    const build = startBuild(seed);
+    build.world = build.world.then((world) => {
+      this.onBuilt?.(world);
+      return world;
+    });
+    this.build = build;
+    return build.world;
   }
 
   /** Give up on whatever is in flight. */

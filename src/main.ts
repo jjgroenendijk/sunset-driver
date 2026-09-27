@@ -11,11 +11,12 @@ import { createRenderer, probeWebGpu, resizeRenderer } from './render/renderer.t
 import { createTitleScene } from './render/title/scene.ts';
 import { RenderSmoother } from './render/frame/smooth.ts';
 import { WorldSource } from './render/streaming/world-source.ts';
-import { startChunkWorkers } from './render/streaming/chunk-pool.ts';
+import { prepareChunkPool, startChunkWorkers, takeChunkPool } from './render/streaming/chunk-pool.ts';
 import { warmPasses } from './render/frame/warm.ts';
 import { WorldScene } from './render/world-scene.ts';
 import { FixedStepClock } from './sim/clock.ts';
 import { DEFAULT_APPEARANCE } from './sim/player/character.ts';
+import { createPlayerState } from './sim/player/on-foot.ts';
 import { buildPlaces } from './places.ts';
 import { initPhysics, SimPhysics } from './sim/physics/physics.ts';
 import { restoreSimState, type SaveFile } from './sim/save.ts';
@@ -262,6 +263,14 @@ async function boot(): Promise<void> {
   // opaque, so the scene behind it is not drawn: every frame of the wait goes
   // to building the session instead.
   let covered = false;
+  // Each world the title screen builds gets the chunk pool of its session at
+  // once, so the workers build their layers and the ground under a new game's
+  // start while the player chooses a look (`docs/loading.md`).
+  worlds.onBuilt = (built) => {
+    if (covered) return;
+    const origin = createPlayerState();
+    prepareChunkPool(built, nearestRoadPlace(built, origin.x, origin.y));
+  };
   // What a frame of a session does (`frame.ts`). Until there is one the title
   // screen's preview is drawn instead.
   const loop = new SessionFrame(canvas, { camera, clock, keyboard, free, look, audio, settings, pad });
@@ -322,7 +331,7 @@ async function boot(): Promise<void> {
     return;
   }
   mark('plan');
-  const world = new WorldScene(description, state.character);
+  const world = new WorldScene(description, state.character, takeChunkPool(description));
   const start = startPlace(description, world, state.player, choice.load);
   loading.say('Laying out the streets', LOADED.plan);
 
