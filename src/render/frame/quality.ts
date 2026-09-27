@@ -11,7 +11,7 @@
  *   of (`renderer.ts`);
  * - the effects of spec section 10.6, bloom first, then SMAA;
  * - the draw distance, as the two streaming rings of spec section 9.1;
- * - how far the sun's shadow reaches and what it is drawn at (`sky.ts`);
+ * - whether the sun casts a shadow, how far and at what size (`sky.ts`);
  * - what the water's mirror is rendered at (`water-surface.ts`);
  * - how much of each category's {@link ENTITY_CAPS} a chunk places;
  * - and, through the draw distance, how far the dither fade of `fade.ts`
@@ -46,7 +46,7 @@ export interface QualityTier {
   post: PostQuality;
   /** How far the two streaming rings of spec section 9.1 reach. */
   rings: ChunkRings;
-  /** Pixels each way of one cascade of the sun's shadow map. */
+  /** Pixels each way of one cascade of the sun's shadow map, or 0 for no shadow (`sky.ts`). */
   shadowMapSize: number;
   /**
    * The share of the frame the water's mirror is rendered at. The mirror is a
@@ -65,11 +65,14 @@ export interface QualityTier {
  * game starts there: a machine that can hold the frame should never see the
  * tiers at all, and one that cannot finds its level in a few seconds.
  *
- * The colour grade stays on at every tier. It is one lookup in a table the
- * frame is already paying to sample, and it is the whole look of spec section
- * 10.6; turning it off would save a fraction of a millisecond and cost the
- * game its identity. Bloom goes first instead, then SMAA, which the falling
- * render scale is already blurring the edges of.
+ * What gives way first is what the player misses least for what it saves
+ * (`docs/performance-budget.md`). Bloom and the mirror go first. The sun's
+ * shadow goes next: redrawing its maps is about 45 % of the GPU's frame on a
+ * phone's screen, whatever their size. The resolution goes after that, and the
+ * draw distance last, because a soft frame and a city that pops in near are
+ * what a player notices most. The colour grade stays on at every tier: it is
+ * one lookup in a table the frame already samples, and it is the whole look
+ * of spec section 10.6.
  */
 export const QUALITY_TIERS: readonly QualityTier[] = [
   {
@@ -82,30 +85,38 @@ export const QUALITY_TIERS: readonly QualityTier[] = [
   },
   {
     name: 'high',
-    post: { renderScale: 0.85, bloom: true, smaa: true, grade: true },
+    post: { renderScale: 1, bloom: false, smaa: true, grade: true },
     rings: { near: NEAR_RADIUS, far: FAR_RADIUS },
-    shadowMapSize: SHADOW_MAP_SIZE,
-    mirror: REFLECTION_SCALE,
+    shadowMapSize: SHADOW_MAP_SIZE / 2,
+    // The reflection is small on screen and broken up by the waves, so the
+    // mirror costs the square of this and still reads the same.
+    mirror: 0.2,
     density: 0.7,
   },
   {
     name: 'medium',
-    post: { renderScale: 0.75, bloom: false, smaa: true, grade: true },
-    // The near ring gives way before the far one does. A city that ends
-    // nearer is seen to end; a city drawn more simply from 250 m out, where
-    // the camera of spec section 10.7 already reads it as massing, is not.
-    rings: { near: NEAR_RADIUS - 1, far: FAR_RADIUS },
-    shadowMapSize: SHADOW_MAP_SIZE / 2,
-    // The reflection is small on screen and broken up by the waves, so the
-    // mirror costs the square of this and still reads the same.
+    post: { renderScale: 1, bloom: false, smaa: true, grade: true },
+    rings: { near: NEAR_RADIUS, far: FAR_RADIUS },
+    shadowMapSize: 0,
     mirror: 0.2,
     density: 0.45,
   },
   {
     name: 'low',
+    post: { renderScale: 0.75, bloom: false, smaa: true, grade: true },
+    rings: { near: NEAR_RADIUS, far: FAR_RADIUS },
+    shadowMapSize: 0,
+    mirror: 0.2,
+    density: 0.35,
+  },
+  {
+    name: 'lowest',
     post: { renderScale: MIN_RENDER_SCALE, bloom: false, smaa: false, grade: true },
+    // The near ring gives way before the far one does. A city that ends
+    // nearer is seen to end; a city drawn more simply from 250 m out, where
+    // the camera of spec section 10.7 already reads it as massing, is not.
     rings: { near: NEAR_RADIUS - 1, far: FAR_RADIUS - 1 },
-    shadowMapSize: SHADOW_MAP_SIZE / 2,
+    shadowMapSize: 0,
     mirror: 0.2,
     density: 0.25,
   },

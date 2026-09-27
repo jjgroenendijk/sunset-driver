@@ -75,7 +75,7 @@ describe('the quality tiers', () => {
       expect(entityDistance(tier)).toBe(tier.rings.near * CHUNK_SIZE);
       expect(entityDistance(tier)).toBeGreaterThan(FADE_BAND);
     }
-    expect(entityDistance(FULL_TIER)).toBeGreaterThan(entityDistance(QUALITY_TIERS[3] as never));
+    expect(entityDistance(FULL_TIER)).toBeGreaterThan(entityDistance(QUALITY_TIERS[QUALITY_TIERS.length - 1] as never));
   });
 
   it('stops the shadow of the sun before the plants start fading', () => {
@@ -90,7 +90,7 @@ describe('the quality tiers', () => {
     // The shadow reaches as far as the camera sees and no tier pulls the rings
     // in past that, so every tier keeps the whole range.
     expect(shadowDistance(FULL_TIER)).toBe(SHADOW_DISTANCE);
-    expect(shadowDistance(QUALITY_TIERS[3] as never)).toBe(SHADOW_DISTANCE);
+    expect(shadowDistance(QUALITY_TIERS[QUALITY_TIERS.length - 1] as never)).toBe(SHADOW_DISTANCE);
   });
 });
 
@@ -207,7 +207,7 @@ describe('a chunk thinned to its tier', () => {
     expect(instances(whole)).toBe(300);
     whole.dispose();
 
-    const limit = entityBudget(QUALITY_TIERS[3] as never, 'plants', 300);
+    const limit = entityBudget(QUALITY_TIERS[QUALITY_TIERS.length - 1] as never, 'plants', 300);
     const thin = scenery.build(grid, plants, limit);
     // A thinned chunk costs the same draw calls: the tiers cut what is drawn,
     // not how many draws it takes (spec section 9.2).

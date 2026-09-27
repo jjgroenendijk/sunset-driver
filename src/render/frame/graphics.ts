@@ -33,10 +33,14 @@ const DISTANCES: readonly Step<{ near: number; far: number }>[] = [
   { label: 'Near', value: { near: NEAR_RADIUS - 1, far: FAR_RADIUS - 1 } },
 ];
 
-/** Pixels each way of one cascade of the sun's shadow map. */
+/**
+ * Pixels each way of one cascade of the sun's shadow map, or none. A step is
+ * kept by its index, so a new one goes at the end.
+ */
 const SHADOWS: readonly Step<number>[] = [
   { label: 'High', value: SHADOW_MAP_SIZE },
   { label: 'Low', value: SHADOW_MAP_SIZE / 2 },
+  { label: 'Off', value: 0 },
 ];
 
 /** The share of the frame the water's mirror is drawn at. */
@@ -123,10 +127,13 @@ export function presetOf(choice: GraphicsChoice): number | undefined {
 }
 
 /**
- * The automatic tier nearest a choice, by resolution, which is the knob that
- * costs most. Auto starts there when it is turned on.
+ * The automatic tier nearest a choice: the one it matches, or else the nearest
+ * by resolution, the knob that costs most. Auto starts there when it is turned
+ * on. Several tiers draw at the full resolution, so a match is asked first.
  */
 export function nearestTier(choice: GraphicsChoice): number {
+  const preset = presetOf(choice);
+  if (preset !== undefined) return preset;
   const scale = step(RESOLUTIONS, choice.resolution);
   let best = 0;
   QUALITY_TIERS.forEach((tier, i) => {

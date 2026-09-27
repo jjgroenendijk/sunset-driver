@@ -65,9 +65,11 @@ const LOADED = { plan: 0.35, ground: 0.85 };
  * level on its own in a few seconds, but those are the first seconds of the
  * flight, and the frame it warms and compiles at full
  * quality is the dearest one the session ever draws. Starting here spends
- * neither. The monitor is free to walk back up if the phone can hold it.
+ * neither. It keeps the sun's shadow, which the tier below drops first on a
+ * phone that cannot hold the frame (`docs/performance-budget.md`). The monitor
+ * is free to walk back up if the phone can hold more.
  */
-const TOUCH_START_TIER = 2;
+const TOUCH_START_TIER = 1;
 
 /** The loading screen of the session being started, so a failure can be put on it. */
 let loadingNow: LoadingScreen | null = null;

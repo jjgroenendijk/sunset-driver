@@ -9,7 +9,7 @@
  * Usage: node scripts/render-profile.ts [seed] [--option=value]
  *   --x, --y         where to stand, in metres. The drive starts on the nearest
  *                    road to it. Default the nearest road to the origin.
- *   --quality        the quality tier to draw at: full, high, medium or low.
+ *   --quality        the quality tier to draw at: full, high, medium, low or lowest.
  *   --still, --drive frames drawn standing still, then driving. Default 240, 480.
  *   --speed          metres per second the drive goes at. Default 25.
  *   --width,--height the size of the page. Default 1600x900.
@@ -97,7 +97,7 @@ function ringsOf(text: string): { near: number; far: number } {
   return { near: near as number, far: far as number };
 }
 
-/** The screens `--device` names: the size of the page, its pixel ratio and the tier a session starts on. */
+/** The screens `--device` names: the size of the page, its pixel ratio and the tier it settles on. */
 const DEVICES: Record<string, { width: number; height: number; dpr: number; quality: string }> = {
   phone: { width: 844, height: 390, dpr: 3, quality: 'medium' },
 };

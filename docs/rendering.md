@@ -53,13 +53,16 @@ post chain and the colour grade in `docs/post.md`. The look all of it must keep 
   tier one window away: the render scale and the effects (`post.ts`), the two streaming rings, how
   far the sun's shadow reaches and what it is drawn at (`sky.ts`; the cascade count is fixed,
   because changing it rebuilds every shader), what the water's mirror is rendered at
-  (`water-surface.ts`), and how much of `ENTITY_CAPS` a chunk places. The mirror steps at medium and
-  goes no lower: at the low tier the render scale has already halved the frame, and the reflection
-  is small on screen and broken up by the waves, so a cheaper mirror there wrecks the look of the
-  sea for almost nothing. The near ring gives way before the far one, so the city never visibly ends
-  nearer. Nothing already in the scene is rebuilt on a change: chunks past the new far ring are
-  dropped and chunks that cross between the details are asked for again, and a chunk still standing
-  keeps the plants it was built with.
+  (`water-surface.ts`), and how much of `ENTITY_CAPS` a chunk places. The mirror steps at high and
+  goes no lower: the reflection is small on screen and broken up by the waves, so a cheaper mirror
+  wrecks the look of the sea for almost nothing. The near ring gives way before the far one, so the
+  city never visibly ends nearer. Nothing already in the scene is rebuilt on a change: chunks past
+  the new far ring are dropped and chunks that cross between the details are asked for again, and a
+  chunk still standing keeps the plants it was built with.
+- **The order is what the player misses least for what it saves** (issue #774). Bloom and the
+  mirror go at high, the shadow at medium, the render scale at low, the rings at lowest. The shadow
+  is the dearest thing a frame draws on a phone. A soft frame and a city that pops in near are what
+  a player notices most, so they go last. A touch session starts at high (`TOUCH_START_TIER`).
 - **A tier change must compile nothing.** three.js builds a WGSL program on the frame thread, which
   takes about a quarter of a second each, so a tier change that rebuilt the post chain held the game
   still for half a second — and it never got cheaper, because a rebuilt node is a fresh cache key
