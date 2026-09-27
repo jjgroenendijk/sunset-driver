@@ -1,9 +1,12 @@
 /**
- * The fire engines and the ambulances, drawn (spec sections 9.2, 20.3).
+ * The fire engines, the ambulances and the tow trucks, drawn (spec sections
+ * 9.2, 20.2, 20.3).
  *
  * Each kind has a shape of its own (`emergency-mesh.ts`): an engine is a long
- * red body with a ladder along the roof, and an ambulance a white box with a
- * red cross on it. A kind is three instanced meshes — the body with its colours
+ * red body with a ladder along the roof, an ambulance a white box with a red
+ * cross on it, and a tow truck a yellow cab with a flat deck behind it. The
+ * vehicle on a tow truck's deck is drawn with the traffic
+ * (`vehicles/traffic.ts`), since it is one of the city's cars. A kind is three instanced meshes — the body with its colours
  * on the vertices, and one per phase of its beacons (`beacons.ts`) — so every
  * unit of a kind in view costs those draws and no more.
  *
@@ -99,7 +102,7 @@ export class EmergencyView {
     this.trimMaterial = createVehicleTrim();
     const lamp = beaconMaterial();
     this.materials = [lamp];
-    for (const kind of ['engine', 'ambulance'] as const) {
+    for (const kind of ['engine', 'ambulance', 'tow'] as const) {
       const shape = unitShape(kind);
       const meshes: KindMeshes = {
         kind,

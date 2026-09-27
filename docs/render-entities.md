@@ -136,11 +136,13 @@ says.
   bodies. A trail laid for a tick the frame catches up on is laid back along the flight from the
   record's own tick. `render-preview.ts --heavy` shows all four; `--heavy=flame` shows one.
 - `ViewModel` (`viewmodel.ts`) is the weapon in view in first person; `docs/camera.md` has it.
-- `EmergencyView` (`emergency.ts`) draws the fire engines and the ambulances of spec section 20.3.
+- `EmergencyView` (`emergency.ts`) draws the fire engines and the ambulances of spec section 20.3,
+  and the tow trucks of 20.2. The car on a truck's deck is drawn by `vehicles/traffic.ts`.
   Neither service is a row of the roster, so each has a shape of its own in `emergency-mesh.ts`,
   sized off `UNIT_BODY` of `sim/city/emergency.ts`: the box the player's car hits is the box drawn.
   Each is built on what reads from 60 m up. An engine has a white cab roof and a ladder along its
-  roof, since nothing else in the city has rungs. An ambulance has a red cross on its roof. Keep the
+  roof, since nothing else in the city has rungs. An ambulance has a red cross on its roof. A tow
+  truck has a flat deck at `DECK_UP`, the height its load is winched to. Keep the
   ladder short of the light bar on the cab, or it hides the bar from above.
 - A unit's colours are on its vertices, so a kind is one body mesh and one mesh per
   phase of its beacons, and no instance paint. They are stepped once a tick like the police, so
