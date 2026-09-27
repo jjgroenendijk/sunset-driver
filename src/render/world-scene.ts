@@ -14,7 +14,7 @@
  *
  * The scene reads the world description and never mutates it.
  */
-import { Scene, type Material, type Mesh, type Vector3 } from 'three';
+import { Scene, type Material, type Mesh, type Object3D, type Vector3 } from 'three';
 import type { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { CharacterAppearance } from '../sim/player/character.ts';
 import { airfieldMesh } from './roads/airfield-mesh.ts';
@@ -467,10 +467,12 @@ export class WorldScene {
    * frame after, off the water that stands near. The one caller is the warm-up
    * behind the loading screen: an inland session that never showed the sheet
    * compiles every material again for the mirror the first time the sea comes
-   * into view, which is a frame the player is driving through.
+   * into view, which is a frame the player is driving through. The sheet is
+   * answered, so the warm-up can keep it in every frame it draws.
    */
-  showWater(): void {
+  showWater(): Object3D {
     this.water.show();
+    return this.water.object;
   }
 
   /**
