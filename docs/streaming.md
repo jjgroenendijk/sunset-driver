@@ -45,6 +45,10 @@ details in `docs/buildings.md`, and the frame and memory measurements in `docs/p
   hands back the same promise, and asking for another seed gives up on the one in flight and rejects
   it with `GIVEN_UP`. `warm` starts the seed the title screen opens on, so Start usually finds it
   finished. In Node there is no `Worker` of that kind and it falls back to the calling thread.
+- The workers are started at boot by `startChunkWorkers`, and the first pool takes them. A module
+  worker starts only between tasks on the main thread, and the pool is made just before `buildCity`
+  holds that thread for 2 s or more. Made there, a worker received its world 2.6 s late
+  (`docs/loading.md`).
 - Only the first worker of the pool is asked for the parking bays. Every worker builds the same
   bays from the same layers and the pool keeps one answer, so asking them all cost every worker but
   one a chunk's worth of time before its first chunk.
