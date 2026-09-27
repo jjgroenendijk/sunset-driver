@@ -108,11 +108,18 @@ is the node builder of three.js on the main thread. The GPU's own compile is a s
 | A graph without SMAA reads the frame through two copies, so the scene pass is drawn as deep as under SMAA | `atSmaaDepth`, `post.ts` | post graphs 3.5 s → 0.05 s |
 | Each group's frame takes the rest of the scene off its layers; the water sheet stays, so the mirror runs | `drawGroup`, `warm.ts` | the bar moves evenly; no time saved |
 | The title scene is not drawn behind the opaque loading screen | `covered`, `main.ts` | small, not measured |
+| Rapier's WebAssembly is a file of its own, and Tone.js loads on the first gesture | `vite.config.ts`, `graph.ts` | main script 1.94 MB → 0.81 MB gzipped |
 
 From Play to a playable city now takes **9.3–9.6 s**, against 14–15 s before. Two copies cost a
 graph without SMAA two full-screen passes, where SMAA costs three. With the workers now building
 beside it, `buildCity` took 3.0–3.2 s rather than 2.3–2.8 s. A drive through
 `render-profile.ts --long --tier-at=120:lowest,240:full` still built no program.
+
+Rapier's compat build carries its WebAssembly as base64 inside the script. The package ships the
+same file beside it, and the build's `rapier-wasm-file` plugin points the loader at that file. The
+browser then compiles it while it streams in. Only the build does this: the tests and the dev
+server keep the inline copy. `vite preview` sends a `.wasm` file uncompressed, so
+`load-profile.ts` counts it at 1.97 MB; gzipped it is 0.77 MB.
 
 ## What is left
 
@@ -121,5 +128,4 @@ beside it, `buildCity` took 3.0–3.2 s rather than 2.3–2.8 s. A drive through
 | Draw the city with fewer distinct programs: the warm-up is now 5.7 s of the wait | up to about 5 s | #786 |
 | Find the crowd's signal crossings with fewer samples | about 1.2 s | #787 |
 | Build the workers' layers while the player is on the title screen | 0.3 s here, more on a phone | #788 |
-| Load Tone.js later and Rapier's WebAssembly as a file | page load only | #789 |
 | Size the worker pool from the device's memory | streaming after Play | #790 |
