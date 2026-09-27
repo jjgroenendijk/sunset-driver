@@ -1,6 +1,7 @@
 /**
  * The pause menu of spec section 12. The main list is Resume, Multiplayer,
- * Save game, Load game, Controls, Graphics, Options and Quit to main menu. Every
+ * Save game, Load game, Controls, Graphics, Options and Quit to main menu, with
+ * a phone's Fly and Full screen before Quit. Every
  * item but Resume and Quit opens a column beside the list, and Export, Import, Camera and Gore
  * open one beside that. Multiplayer is the room of spec section 21 (`party.ts`).
  * Save game also copies the city's seed, which is all anyone needs to drive the
@@ -17,7 +18,7 @@ import { buildPartyPage, type PartyActions, type PartyPage } from './party.ts';
 import { buildCameraPage, buildGorePage, buildViewPage } from './title-camera.ts';
 import { buildControlsPage } from './title-controls.ts';
 import { MenuPages } from './menu-pages.ts';
-import { backButton, button, card, columnsOf, menuList, page } from './title-parts.ts';
+import { backButton, button, card, columnsOf, menuList, page, type MenuItem } from './title-parts.ts';
 import { buildGraphicsPage } from './title-graphics.ts';
 import { buildSettingsPage } from './title-settings.ts';
 
@@ -46,7 +47,21 @@ export interface PauseActions {
   settings: MenuSettings;
   /** The room of spec section 21: where it stands, and the two presses that open and leave it. */
   party: PartyActions;
+  /**
+   * Items listed before Quit that resume the game and then act: a phone's
+   * flight and full screen, which have no key to live on (`touch-bar.ts`).
+   */
+  extras?: readonly PauseExtra[];
 }
+
+/** An item of the main list that closes the menu and then does one thing. */
+export interface PauseExtra {
+  label: string;
+  action: () => void;
+}
+
+/** The numerals of the main list, which grows by the extras a phone adds. */
+const NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
 
 const PAGE_NAMES = ['main', 'party', 'saves', 'export', 'loads', 'import', 'controls', 'graphics', 'settings', 'view', 'camera', 'gore'] as const;
 type PageName = (typeof PAGE_NAMES)[number];
@@ -182,18 +197,25 @@ export class PauseMenu {
 
   private buildMain(): HTMLElement {
     const main = page('title-page pause-main');
-    main.append(
-      menuList([
-        { numeral: 'I', label: 'Resume', action: () => this.resume() },
-        { numeral: 'II', label: 'Multiplayer', opens: 'party' },
-        { numeral: 'III', label: 'Save game', opens: 'saves' },
-        { numeral: 'IV', label: 'Load game', opens: 'loads' },
-        { numeral: 'V', label: 'Controls', opens: 'controls' },
-        { numeral: 'VI', label: 'Graphics', opens: 'graphics' },
-        { numeral: 'VII', label: 'Options', opens: 'settings' },
-        { numeral: 'VIII', label: 'Quit to main menu', action: () => this.actions.quit() },
-      ]),
-    );
+    const extras = (this.actions.extras ?? []).map((extra) => ({
+      label: extra.label,
+      action: () => {
+        this.resume();
+        extra.action();
+      },
+    }));
+    const items: Omit<MenuItem, 'numeral'>[] = [
+      { label: 'Resume', action: () => this.resume() },
+      { label: 'Multiplayer', opens: 'party' },
+      { label: 'Save game', opens: 'saves' },
+      { label: 'Load game', opens: 'loads' },
+      { label: 'Controls', opens: 'controls' },
+      { label: 'Graphics', opens: 'graphics' },
+      { label: 'Options', opens: 'settings' },
+      ...extras,
+      { label: 'Quit to main menu', action: () => this.actions.quit() },
+    ];
+    main.append(menuList(items.map((item, i) => ({ ...item, numeral: NUMERALS[i] ?? '' }))));
     return main;
   }
 

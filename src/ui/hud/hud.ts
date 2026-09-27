@@ -4,7 +4,7 @@ import type { SimState } from '../../sim/simulation.ts';
 import { conditionOf } from '../../sim/vehicles/damage.ts';
 import { MAX_HEALTH } from '../../sim/player/on-foot.ts';
 import { specOf } from '../../sim/vehicles/vehicle.ts';
-import { currentSlot, currentWeapon, poolOf, reloading } from '../../sim/weapons/weapon.ts';
+import { currentSlot, currentWeapon, DEFAULT_WEAPON, poolOf, reloading } from '../../sim/weapons/weapon.ts';
 import { weatherAt } from '../../sim/city/weather.ts';
 import { arrestLine } from './arrest-line.ts';
 
@@ -57,7 +57,8 @@ function box(parent: HTMLElement, className: string): HTMLElement {
  * each thing where they already look for it:
  *
  * - top right, the clock, the money, the weapon and the wanted stars;
- * - bottom left, the health ring round the minimap (`minimap.ts`);
+ * - bottom left, the health ring round the minimap (`minimap.ts`), which a
+ *   phone raises to the top left, over the objective (`touch.css`);
  * - bottom right, the speedometer, while the player drives;
  * - top left, the objective and what the ground underfoot is;
  * - top centre, the radio station; the middle, Wasted or Busted;
@@ -73,6 +74,8 @@ export class Hud {
   private readonly money: Field;
   private readonly weaponName: Field;
   private readonly ammo: Field;
+  private readonly weapon: HTMLElement;
+  private shownBare: boolean | null = null;
   private readonly stars: HTMLElement;
   private readonly starEls: HTMLElement[] = [];
   private readonly ring: HTMLElement;
@@ -127,9 +130,9 @@ export class Hud {
     this.clock = new Field(time, 'hud-clock', false);
     this.day = new Field(time, 'hud-day', false);
     this.money = new Field(right, 'hud-money', false);
-    const weapon = box(right, 'hud-weapon');
-    this.weaponName = new Field(weapon, 'hud-weapon-name', false);
-    this.ammo = new Field(weapon, 'hud-ammo');
+    this.weapon = box(right, 'hud-weapon');
+    this.weaponName = new Field(this.weapon, 'hud-weapon-name', false);
+    this.ammo = new Field(this.weapon, 'hud-ammo');
     // Heat as stars (spec section 14), shown only once something has raised it,
     // so a session that has drawn no attention says nothing about attention.
     this.stars = box(right, 'hud-stars');
@@ -209,6 +212,12 @@ export class Hud {
     const armed = weaponParts(state);
     this.weaponName.set(armed.name);
     this.ammo.set(armed.ammo);
+    // Bare hands are marked, so a phone's narrow stack can leave them out (`touch.css`).
+    const bare = currentWeapon(state.loadout).id === DEFAULT_WEAPON;
+    if (bare !== this.shownBare) {
+      this.shownBare = bare;
+      this.weapon.classList.toggle('hud-weapon-bare', bare);
+    }
 
     this.showStars(state.heat);
     // The speedometer, and what is being driven and what is left of it.

@@ -155,9 +155,11 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   each button through `Keyboard.press` and `release` with the code of the real key. So every edge
   the keys keep — the jump, the interact, the number rows — holds for a finger too. A button takes
   its key when the finger goes down and lets go of that key, so Horn held while getting out does not
-  leave the horn stuck. Space is both Jump and Brake; the fourth button is Run on foot and Horn in a
-  vehicle. The frame hides the pad under the flight, a menu and the map (`SessionFrame.showPad`),
-  and hiding it lets go of everything.
+  leave the horn stuck. Space is both Jump and Brake. The pad has no sprint. A button that would
+  do nothing is hidden: Horn and Radio outside a vehicle, Load unless `canReload` holds, and Gun
+  while one weapon is carried. A button hidden under a finger lets its key go. The frame hides the
+  pad under the flight, a menu and the map (`SessionFrame.showPad`), and hiding it lets go of
+  everything.
 - While a shop's counter or a deal is open, the pad's buttons are hidden and let go, and the stick
   stays. The counter stands in their corner, and the stick still walks out of the room.
 - A phone has no pointer lock, so `MouseLook` turns the first person view by a drag on the canvas
@@ -167,11 +169,12 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
   write the key of each numbered row into `data-key`, the interact prompt writes `KeyE`, and
   `Keyboard.listenRows` takes a click on any of them as that key. A finger aims nothing
   (`PointerAim.mouse`), so a shot goes the way the player faces.
-- `src/ui/input/fullscreen.ts` is the Full button of the bar. Android Chrome and iPad Safari have
+- `src/ui/input/fullscreen.ts` is the Full screen item of the pause menu, which a phone gains with
+  Fly over the city through `touchPauseItems`. Android Chrome and iPad Safari have
   the Fullscreen API. iPhone Safari gives it to a video alone, so a page is full screen there only
   when opened from the Home Screen, which `public/manifest.webmanifest` and the
-  `apple-mobile-web-app-*` tags ask for. On an iPhone the button shows how to add the game there; a
-  page already opened from the Home Screen gets no button.
+  `apple-mobile-web-app-*` tags ask for. On an iPhone the item shows how to add the game there; a
+  page already opened from the Home Screen gets no item.
 - `src/ui/input/touch-fly.ts` is the fly pad: a stick under the left thumb, the whole screen behind
   it as a surface the right thumb turns the view on, a pinch that sets the speed, and three keys
   down the right edge. It reads pointer events, never `TouchEvent`, because iOS Safari reports a
@@ -180,15 +183,18 @@ HUD, the map and the rest — is in `docs/sim-and-ui.md`. `spec.md` section 12 i
 - The stick takes its centre from wherever the thumb lands, not from the middle of the pad: the
   thumb cannot see the spot it is covering. A key is held rather than clicked, and captures its
   pointer, so a thumb resting on Rise keeps rising while the other thumb turns the view.
-- `src/ui/input/touch-bar.ts` is the bar in the top corner — Menu, Map, Fly and Full — and
+- `src/ui/input/touch-bar.ts` is the bar in the top corner — Menu, and Land while flying — and
   `markTouchUi`, which sets `body.touch` and blocks Safari's own pinch zoom of the page.
   `FreeCameraControls` sets `body.flying` while the camera is detached; `touch.css` hangs the rest
   on those two classes.
 - `src/ui/input/touch.css` holds both pads and everything `body.touch` changes: tap targets at 44
   px, the key hints hidden, the safe-area insets of the notch and the home bar, and a 16 px font on
-  every field, because Safari zooms the page in on a smaller one and never zooms back out. While the
-  play pad is up, the minimap and the speedometer rise above it and the counters stand clear of both
-  thumbs; a phone held sideways has no room for the minimap, and the Map button stands in.
+  every field, because Safari zooms the page in on a smaller one and never zooms back out. The pad
+  holds both bottom corners, so the minimap and its ring stand at the top left, and a tap on the
+  minimap opens the map (`Minimap.onTap`). The objective stands under the ring, or beside it on a
+  phone held sideways, and the radio at the right on the same line. The status stack is small: the
+  clock without the day, smaller money, and no pill for bare hands (`hud-weapon-bare`). The
+  speedometer rises above the pad, and the counters stand clear of both thumbs.
 - A touch session starts at `TOUCH_START_TIER` rather than at full quality (`main.ts`). The monitor
   would find that level within a second anyway, but the frames it spends getting there are the first
   frames of the flight, and the warm-up compiles at whatever tier is standing.

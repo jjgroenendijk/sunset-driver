@@ -2,12 +2,15 @@
  * The buttons a session is driven from on a phone, and the few things a page
  * has to say to a touch browser before any of it works.
  *
- * A phone reaches none of the keys `controls.ts` lists, so the three that open
- * something on screen — the pause menu, the map and the free camera — are put
- * in a corner as buttons, with a fourth that takes the whole screen. The street
+ * A phone reaches none of the keys `controls.ts` lists. The pause menu is a
+ * button in the top corner, and a tap on the minimap opens the map
+ * (`main.ts`). The free camera and full screen are items of the pause menu,
+ * because a player rarely wants them and the corner has little room. While
+ * the camera flies, a Land button beside Menu ends the flight. The street
  * itself is played from the pad of `touch-play.ts` (`docs/menus.md`).
  */
 import type { PerspectiveCamera } from 'three';
+import type { PauseExtra } from '../menus/pause.ts';
 import type { FreeCameraControls } from './free-camera.ts';
 import {
   fullscreenRoute,
@@ -16,14 +19,6 @@ import {
   toggleFullscreen,
   type FullscreenRoute,
 } from './fullscreen.ts';
-
-/** What the bar's three buttons do, and how it reads the flight's state back. */
-interface TouchActions {
-  menu(): void;
-  map(): void;
-  fly(): void;
-  flying(): boolean;
-}
 
 /**
  * Tell the page it is being used with a finger.
@@ -41,33 +36,28 @@ export function markTouchUi(doc: Document): void {
   }
 }
 
-/** Three round buttons in a corner, over the canvas. */
+/**
+ * The Menu button in a corner, over the canvas, and Land beside it while the
+ * camera flies. A button that would do nothing is hidden rather than shown.
+ */
 class TouchBar {
-  private readonly fly: HTMLButtonElement;
-  private readonly actions: TouchActions;
+  private readonly land: HTMLButtonElement;
+  private readonly free: FreeCameraControls;
 
-  constructor(parent: HTMLElement, actions: TouchActions) {
-    this.actions = actions;
+  constructor(parent: HTMLElement, free: FreeCameraControls, camera: PerspectiveCamera, menu: () => void) {
+    this.free = free;
     const root = document.createElement('nav');
     root.className = 'touch-bar';
     root.setAttribute('aria-label', 'Game controls');
-    this.fly = tap('Fly', () => actions.fly());
-    root.append(tap('Menu', () => actions.menu()), tap('Map', () => actions.map()), this.fly);
-    const full = fullButton(parent, fullscreenRoute(readFullscreenProbe(window)));
-    if (full) root.append(full);
+    this.land = tap('Land', () => free.toggle(camera));
+    root.append(this.land, tap('Menu', menu));
     parent.append(root);
     this.sync();
   }
 
-  /**
-   * Write the flight's state onto the button. The pad of `touch-fly.ts` has a
-   * Done button of its own, so the flight can end without this being pressed,
-   * and the label would otherwise still offer what is already happening.
-   */
+  /** Show Land only while the camera is detached, however the flight began. */
   sync(): void {
-    const flying = this.actions.flying();
-    this.fly.textContent = flying ? 'Land' : 'Fly';
-    this.fly.classList.toggle('touch-key-held', flying);
+    this.land.hidden = !this.free.detached;
   }
 }
 
@@ -81,13 +71,29 @@ function tap(text: string, action: () => void): HTMLButtonElement {
 }
 
 /**
- * The button that takes the whole screen, or null where the page already has
- * it. On an iPhone it cannot, so the button shows how to add the game to the
- * Home Screen instead, until the note is tapped away or its time runs out.
+ * The items a phone adds to the pause menu: the flight, and full screen where
+ * the page does not already have it. On an iPhone full screen cannot be taken,
+ * so the item shows how to add the game to the Home Screen instead, until the
+ * note is tapped away or its time runs out. A session played with the keys
+ * gets none: it has a key for each.
  */
-function fullButton(parent: HTMLElement, route: FullscreenRoute): HTMLButtonElement | null {
+export function touchPauseItems(
+  touch: boolean,
+  parent: HTMLElement,
+  free: FreeCameraControls,
+  camera: PerspectiveCamera,
+): PauseExtra[] {
+  if (!touch) return [];
+  const items: PauseExtra[] = [{ label: 'Fly over the city', action: () => free.toggle(camera) }];
+  const full = fullAction(parent, fullscreenRoute(readFullscreenProbe(window)));
+  if (full) items.push({ label: 'Full screen', action: full });
+  return items;
+}
+
+/** What the Full screen item does, or null where the page already has the screen. */
+function fullAction(parent: HTMLElement, route: FullscreenRoute): (() => void) | null {
   if (route === 'none') return null;
-  if (route === 'api') return tap('Full', () => toggleFullscreen(document));
+  if (route === 'api') return () => toggleFullscreen(document);
   const note = document.createElement('p');
   note.className = 'touch-note';
   note.textContent = HOME_SCREEN_HINT;
@@ -99,30 +105,23 @@ function fullButton(parent: HTMLElement, route: FullscreenRoute): HTMLButtonElem
     window.clearTimeout(timer);
   };
   note.addEventListener('click', hide);
-  return tap('Full', () => {
+  return () => {
     if (!note.hidden) return hide();
     note.hidden = false;
     timer = window.setTimeout(hide, NOTE_MS);
-  });
+  };
 }
 
 /** Milliseconds the Home Screen note stays up untouched. */
 const NOTE_MS = 8000;
 
-/**
- * Raise the bar over a session and keep its Fly button in step with the
- * flight, however the flight was started or ended.
- */
+/** Raise the bar over a session and keep its Land button in step with the flight. */
 export function mountTouchBar(
   parent: HTMLElement,
   free: FreeCameraControls,
   camera: PerspectiveCamera,
-  actions: { menu(): void; map(): void },
+  menu: () => void,
 ): void {
-  const bar = new TouchBar(parent, {
-    ...actions,
-    fly: () => free.toggle(camera),
-    flying: () => free.detached,
-  });
+  const bar = new TouchBar(parent, free, camera, menu);
   free.onChange = () => bar.sync();
 }
