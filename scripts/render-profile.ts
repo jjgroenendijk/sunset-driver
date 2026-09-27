@@ -39,13 +39,15 @@
  *                    Default top-down.
  *   --rings=N,F      the near and far streaming rings, in chunks, instead of
  *                    the tier's own: what a draw distance costs.
- *   --cpu-slowdown=N run the page and its chunk workers N times slower, through
- *                    Chrome's CPU throttling: a phone whose workers land on
- *                    its slow cores. The GPU is not slowed.
+ *   --cpu-slowdown=N run the page N times slower, through Chrome's CPU
+ *                    throttling. Chrome refuses to throttle a worker, so the
+ *                    chunk workers run at full speed. The GPU is not slowed.
+ *   --worker-slowdown=N  hold each chunk worker's answer back until N times
+ *                    its build: a phone whose workers land on its slow cores.
  *   --device=phone   the screen of an iPhone 13 Pro held sideways, 844x390 at
- *                    3x, and the tier a touch session starts on. The GPU is
- *                    still this machine's: `docs/performance-budget.md` says
- *                    how its numbers are read against the phone's.
+ *                    3x, at the tier the phone is expected to settle on. The
+ *                    GPU is still this machine's: `docs/performance-budget.md`
+ *                    says how its numbers are read against the phone's.
  *   --json=<file>    write every sample of the run, for `profile-compare.ts`.
  *   --memory         report what the page and the GPU hold: settled after the
  *                    still frames, and at the most over the drive. The GPU is
@@ -121,6 +123,7 @@ const request: ProfileRequest = {
   ...(quality === undefined ? {} : { quality }),
   ...(options.has('view') ? { view: options.get('view') as ProfileRequest['view'] } : {}),
   ...(options.has('rings') ? { rings: ringsOf(options.get('rings') as string) } : {}),
+  ...(options.has('worker-slowdown') ? { workerSlowdown: num('worker-slowdown', 1) } : {}),
   ...(options.has('weather') ? { weather: options.get('weather') as string } : {}),
   noWater: options.has('no-water'),
   noShadows: options.has('no-shadows'),

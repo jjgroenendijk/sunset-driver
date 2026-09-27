@@ -166,11 +166,38 @@ function poolSize(): number {
 }
 
 /** A real worker, running `chunk-worker.ts` as a module. */
-function spawnChunkWorker(): ChunkWorker {
+export function spawnChunkWorker(): ChunkWorker {
   const worker = new Worker(new URL('./chunk-worker.ts', import.meta.url), { type: 'module' });
   return {
     post: (command) => worker.postMessage(command),
     onReply: (listener) => worker.addEventListener('message', (event) => listener(event.data as WorkerReply)),
+    terminate: () => worker.terminate(),
+  };
+}
+
+/**
+ * A worker that answers `factor` times later than it built, for the profiler.
+ *
+ * Chrome's CPU throttling slows a page and refuses a worker, so a phone whose
+ * workers run on its slow cores cannot be had that way. Each reply is held back
+ * by what the build took, times `factor - 1`. The replies keep their order, and
+ * the worker counts as busy until its last reply lands, as a slow one would.
+ */
+export function slowedWorker(worker: ChunkWorker, factor: number): ChunkWorker {
+  let posted = 0;
+  let due = 0;
+  return {
+    post: (command) => {
+      posted = performance.now();
+      worker.post(command);
+    },
+    onReply: (listener) =>
+      worker.onReply((reply) => {
+        const now = performance.now();
+        due = Math.max(due, now + (factor - 1) * (now - posted));
+        posted = now;
+        setTimeout(() => listener(reply), due - now);
+      }),
     terminate: () => worker.terminate(),
   };
 }
