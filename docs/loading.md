@@ -110,6 +110,7 @@ is the node builder of three.js on the main thread. The GPU's own compile is a s
 | The title scene is not drawn behind the opaque loading screen | `covered`, `main.ts` | small, not measured |
 | Rapier's WebAssembly is a file of its own, and Tone.js loads on the first gesture | `vite.config.ts`, `graph.ts` | main script 1.94 MB → 0.81 MB gzipped |
 | The title screen's world gets its chunk pool at once: the layers and the start's chunks are built before Play | `prepareChunkPool`, `chunk-pool.ts` | the workers no longer run beside `buildCity` |
+| The crowd's crossings are read only near a kerb or a bend, and without the ground's height | `scanCorner`, `pedestrian-crossing.ts` | crossings 4.6 s → 1.0 s of the profile, on a loaded machine (issue #787) |
 
 From Play to a playable city now takes **9.3–9.6 s**, against 14–15 s before. Two copies cost a
 graph without SMAA two full-screen passes, where SMAA costs three. With the workers now building
@@ -127,5 +128,4 @@ server keep the inline copy. `vite preview` sends a `.wasm` file uncompressed, s
 | Option | Saving on an M1 | Issue |
 | --- | --- | --- |
 | Draw the city with fewer distinct programs: the warm-up is now 5.7 s of the wait | up to about 5 s | #786 |
-| Find the crowd's signal crossings with fewer samples | about 1.2 s | #787 |
 | Size the worker pool from the device's memory | streaming after Play | #790 |

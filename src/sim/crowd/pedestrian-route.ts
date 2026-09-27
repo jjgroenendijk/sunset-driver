@@ -176,8 +176,11 @@ export class Pavements {
     return (route.sides[i] as number) * pavementOffset(this.edge(route.edges[i] as number)) + route.shift;
   }
 
-  /** The point a distance round a route, which wraps. */
-  sample(route: WalkRoute, distance: number, out: WalkPoint): WalkPoint {
+  /**
+   * The point a distance round a route, which wraps. With `height` false only
+   * the place is written and the height is 0, which skips reading the ground.
+   */
+  sample(route: WalkRoute, distance: number, out: WalkPoint, height = true): WalkPoint {
     let d = distance % route.length;
     if (d < 0) d += route.length;
     const leg = lastAtOrBelow(route.start, d);
@@ -186,9 +189,11 @@ export class Pavements {
     const fromCorner = route.fromCorner[leg] as number;
     if (d < toCorner) {
       const s = (route.from[leg] as number) + d - (route.start[leg] as number);
-      const at = this.pavementPoint(route, leg, s, this.a);
+      const at = this.pavementPoint(route, leg, s, this.a, height);
       out.x = at.x;
       out.y = at.y;
+      out.height = 0;
+      if (!height) return out;
       // A pavement that runs straight on over a junction crosses the road that meets it there.
       const run = this.edge(edge);
       const node = nodeNear(run, s);
@@ -197,36 +202,72 @@ export class Pavements {
     }
     const next = (leg + 1) % route.edges.length;
     const stop = next === 0 ? route.length : (route.start[next] as number);
-    if (route.jay[leg] === 1) return this.across(route, leg, (d - toCorner) / (stop - toCorner), out);
+    if (route.jay[leg] === 1) return this.across(route, leg, (d - toCorner) / (stop - toCorner), out, height);
     const cx = route.cornerX[leg] as number;
     const cy = route.cornerY[leg] as number;
     const node = this.edge(edge).to;
     if (d < fromCorner) {
-      const end = this.pavementPoint(route, leg, route.to[leg] as number, this.a);
-      return this.between(end, cx, cy, (d - toCorner) / (fromCorner - toCorner), node, out);
+      const end = this.pavementPoint(route, leg, route.to[leg] as number, this.a, height);
+      return this.between(end, cx, cy, (d - toCorner) / (fromCorner - toCorner), height ? node : -1, out);
     }
-    const begin = this.pavementPoint(route, next, route.from[next] as number, this.a);
+    const begin = this.pavementPoint(route, next, route.from[next] as number, this.a, height);
     // The line from the corner is walked towards the next leg, so it is read from that end.
-    return this.between(begin, cx, cy, (stop - d) / (stop - fromCorner), node, out);
+    return this.between(begin, cx, cy, (stop - d) / (stop - fromCorner), height ? node : -1, out);
+  }
+
+  /**
+   * Metres from a distance round a route to the next place the walk bends: a
+   * corner of the road's line, or an end of a line to or from a corner. Up to
+   * there the place moves in a straight line, a metre or less for each metre
+   * round the route. At a bend it may jump: a pavement offset from a sharp
+   * corner of the road's line does.
+   */
+  straightFor(route: WalkRoute, distance: number): number {
+    let d = distance % route.length;
+    if (d < 0) d += route.length;
+    const leg = lastAtOrBelow(route.start, d);
+    const toCorner = route.toCorner[leg] as number;
+    const next = (leg + 1) % route.edges.length;
+    const stop = next === 0 ? route.length : (route.start[next] as number);
+    if (d >= toCorner) {
+      const fromCorner = route.fromCorner[leg] as number;
+      return (d < fromCorner && route.jay[leg] !== 1 ? fromCorner : stop) - d;
+    }
+    // Read the way `sample` reads it, to the last bit: a bend often stands on a step.
+    const s = (route.from[leg] as number) + d - (route.start[leg] as number);
+    const run = this.runOf(this.edge(route.edges[leg] as number));
+    // `alongEdge` runs the first and the last segments on past the ends of the run.
+    const k = lastAtOrBelow(run, s) + 1;
+    const bend = k < run.length - 1 ? (run[k] as number) - s : Infinity;
+    return Math.min(toCorner - d, bend);
   }
 
   /**
    * True when a place stands on the carriageway of a road that leaves a node,
-   * and which road: the edge whose carriageway it is, or -1.
+   * and which road: the edge whose carriageway it is, or -1. With `room`, it
+   * also says how far the place may move before the answer can change: the
+   * metres to the nearest edge of any carriageway at the node, or less.
    */
-  carriagewayAt(node: number, x: number, y: number): number {
+  carriagewayAt(node: number, x: number, y: number, room?: { clear: number }): number {
     const at = this.graph.nodes[node];
+    if (room !== undefined) room.clear = Infinity;
     if (at === undefined) return -1;
+    let found = -1;
     for (const id of at.edges) {
       const edge = this.edge(id);
       const along = this.alongEdge(id, 0, this.b, false);
+      const half = TIERS[edge.tier].width / 2;
       const vx = x - along.x;
       const vy = y - along.y;
       const forward = vx * along.dx + vy * along.dy;
-      if (forward < -TIERS[edge.tier].width / 2 || forward > edge.length) continue;
-      if (Math.abs(vx * along.dy - vy * along.dx) < TIERS[edge.tier].width / 2) return id;
+      const side = Math.abs(vx * along.dy - vy * along.dx);
+      const inside = forward >= -half && forward <= edge.length && side < half;
+      if (inside && found < 0) found = id;
+      if (room === undefined) {
+        if (found >= 0) return found;
+      } else room.clear = Math.min(room.clear, kerbGap(forward, side, half, edge.length));
     }
-    return -1;
+    return found;
   }
 
   /**
@@ -237,13 +278,17 @@ export class Pavements {
     return this.carriagewayAt(node, x, y) >= 0;
   }
 
-  /** A point on the line from one end of a corner line towards the corner, `t` of the way. */
+  /**
+   * A point on the line from one end of a corner line towards the corner, `t`
+   * of the way. A `node` of -1 asks for the place alone, and the height is 0.
+   */
   private between(end: WalkPoint, cx: number, cy: number, t: number, node: number, out: WalkPoint): WalkPoint {
     const f = Number.isFinite(t) ? clamp(t, 0, 1) : 0;
-    const bed = end.height;
     out.x = end.x + (cx - end.x) * f;
     out.y = end.y + (cy - end.y) * f;
-    out.height = bed + (this.onCarriageway(node, out.x, out.y) ? CARRIAGEWAY_RISE : PAVEMENT_RISE);
+    out.height = 0;
+    if (node < 0) return out;
+    out.height = end.height + (this.onCarriageway(node, out.x, out.y) ? CARRIAGEWAY_RISE : PAVEMENT_RISE);
     return out;
   }
 
@@ -252,13 +297,15 @@ export class Pavements {
    * `leg`'s pavement to the start of the next leg's on the other side of the
    * road. Over the carriageway it stands on the road; either side, on the kerb.
    */
-  private across(route: WalkRoute, leg: number, t: number, out: WalkPoint): WalkPoint {
+  private across(route: WalkRoute, leg: number, t: number, out: WalkPoint, height: boolean): WalkPoint {
     const f = Number.isFinite(t) ? clamp(t, 0, 1) : 0;
     const next = (leg + 1) % route.edges.length;
-    const end = this.pavementPoint(route, leg, route.to[leg] as number, this.a);
-    const begin = this.pavementPoint(route, next, route.from[next] as number, this.b);
+    const end = this.pavementPoint(route, leg, route.to[leg] as number, this.a, height);
+    const begin = this.pavementPoint(route, next, route.from[next] as number, this.b, height);
     out.x = end.x + (begin.x - end.x) * f;
     out.y = end.y + (begin.y - end.y) * f;
+    out.height = 0;
+    if (!height) return out;
     const edge = this.edge(route.edges[leg] as number);
     const lateral = this.offsetOf(route, leg) + (this.offsetOf(route, next) - this.offsetOf(route, leg)) * f;
     const bed = end.height + (begin.height - end.height) * f;
@@ -325,10 +372,13 @@ export class Pavements {
     enter[i] = cut + JAY_RUN;
   }
 
-  /** The point a leg of a route is walked at a distance along its edge, and the road height there. */
-  private pavementPoint(route: WalkRoute, i: number, s: number, out: Along): Along {
+  /**
+   * The point a leg of a route is walked at a distance along its edge, and the
+   * road height there, which is left alone when `height` is false.
+   */
+  private pavementPoint(route: WalkRoute, i: number, s: number, out: Along, height = true): Along {
     const id = route.edges[i] as number;
-    const along = this.alongEdge(id, s, out);
+    const along = this.alongEdge(id, s, out, height);
     const offset = this.offsetOf(route, i);
     const x = along.x - along.dy * offset;
     const y = along.y + along.dx * offset;
@@ -414,4 +464,16 @@ function clamp(value: number, lo: number, hi: number): number {
   if (value < lo) return lo;
   if (value > hi) return hi;
   return value;
+}
+
+/**
+ * Metres from a place to the edge of a carriageway, inside it or out, from
+ * where it stands `forward` along the road and `side` off its centreline.
+ * Outside, it is the widest gap along one axis of the road, which is never
+ * more than the distance.
+ */
+function kerbGap(forward: number, side: number, half: number, length: number): number {
+  const inside = Math.min(forward + half, length - forward, half - side);
+  if (inside >= 0) return inside;
+  return Math.max(-half - forward, forward - length, side - half);
 }
