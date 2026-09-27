@@ -18,8 +18,8 @@
  * keeps the pose it had, the way the player's parked car does.
  *
  * The parked cars of the streets and car parks (`parked-bodies.ts`) stand in
- * the same box as fixed bodies, and a touch promotes one the same way, from
- * standing still. The trams (`tram-bodies.ts`) stand in it as kinematic bodies
+ * the same box as kinematic bodies, and a touch promotes one the same way,
+ * from standing still, where the car has got to on its way in or out. The trams (`tram-bodies.ts`) stand in it as kinematic bodies
  * that no touch takes off their loop.
  */
 import { cos, sin } from '../../core/libm.ts';
@@ -109,7 +109,7 @@ export class TrafficBodies {
     return this.moving.map((entry) => entry.cursor);
   }
 
-  /** How many parked cars stand in the world as fixed bodies. */
+  /** How many parked cars stand in the world as bodies. */
   get parkedBodies(): number {
     return this.parked?.count ?? 0;
   }
@@ -290,8 +290,10 @@ export class TrafficBodies {
 
   /** Hand a parked car taken out of its bay to the physics, standing still where it stood. */
   private handParked(state: SimState, bay: number, car: ParkedCar, spec: VehicleSpec): void {
-    const bays = (this.parked as ParkedBodies).cars.bays;
-    const at = { x: bays.x[bay] as number, y: bays.y[bay] as number, height: bays.height[bay] as number, heading: bays.heading[bay] as number, speed: 0 };
+    const cars = (this.parked as ParkedBodies).cars;
+    // A car pulling in or out is taken where it has got to, not from its bay.
+    const pose = cars.poseAt(bay, state.tick, { x: 0, y: 0, heading: 0, moving: false });
+    const at = { x: pose.x, y: pose.y, height: cars.bays.height[bay] as number, heading: pose.heading, speed: 0 };
     this.hand(state, PARKED_ID + bay, car.paint, spec, at);
   }
 

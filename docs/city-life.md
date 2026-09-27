@@ -255,8 +255,14 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   stepped. A touched parked car is promoted like the traffic, under `PARKED_ID` plus its bay, and
   the bay stays empty while that record lasts. `PromotedVehicle.paint` is kept because a parked
   car's paint depends on the stay it was taken in.
-- `parked-bodies.ts` stands a fixed body in each full bay of the physics box. It asks a bay again
-  only when its stay ends, so a tick costs nothing for the bays that did not turn over. The bays
+- A car in a street bay pulls in over the first `PULL_TICKS` of its stay and out over the last
+  (`parked-pull.ts`). It comes up the lane from behind the bay and leaves into the lane ahead. The
+  pose is a function of the tick, like the stay. `ParkedCars.poseAt` gives it, and `changeAt` the
+  next tick it must be read again. A car park bay has no lane beside it, so its car never moves.
+- `parked-bodies.ts` stands a kinematic body in each full bay of the physics box. It asks a bay
+  again only when its stay ends or its car moves, so a tick costs nothing for the other bays.
+  `render/vehicles/parked.ts` writes the whole view when a stay turns over, and only the moving
+  cars on the ticks between. The bays
   come from the chunk workers, so `main.ts` sets `Ground.parked` after `settle`, and the physics
   reads it on every step rather than once when it is built.
 - The ground of the game hands the physics the traffic as `Ground.traffic`. A test that is not about

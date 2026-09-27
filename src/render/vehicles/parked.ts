@@ -2,17 +2,20 @@
  * The parked cars, drawn (spec sections 9.2, 13.1).
  *
  * Like the traffic, every class is two instanced meshes — the paint and the
- * trim — so the parked cars in view cost two draws per class on screen. A parked car does not move, so the instances are written again
- * only when something changed: the point the frame is drawn round has moved
- * far enough to bring new bays into view, a stay has turned over, or a car has
- * been promoted. Between those the frame uploads nothing. A promoted car is
- * drawn by `traffic.ts` from its record.
+ * trim — so the parked cars in view cost two draws per class on screen. A
+ * parked car stands still for almost all of its stay, so the instances are
+ * written again only when something changed: the point the frame is drawn
+ * round has moved far enough to bring new bays into view, a stay has turned
+ * over, a car has been promoted, or a car in view is pulling in or out of its
+ * bay (`sim/traffic/parked-pull.ts`). Between those the frame uploads nothing.
+ * A promoted car is drawn by `traffic.ts` from its record.
  */
 import { Color, Group, Matrix4, Quaternion, Vector3, type Material } from 'three';
 import type { Pool } from '../look/pool.ts';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { EntityFade } from '../camera/fade.ts';
 import { PARKED_CLASSES, type ParkedCar, type ParkedCars } from '../../sim/traffic/parked.ts';
+import type { ParkedPose } from '../../sim/traffic/parked-pull.ts';
 import type { SimState } from '../../sim/simulation.ts';
 import { rideHeight, specOf, type VehicleClass } from '../../sim/vehicles/vehicle.ts';
 import { glassMaterial, instanced, trafficParts } from './traffic.ts';
@@ -25,8 +28,8 @@ export const PARKED_VIEW = 170;
 const MOVE = 10;
 
 /**
- * Ticks between two readings of the bays. A stay that turns over shows up
- * within this, which is half a second.
+ * The most ticks between two full writes of the bays, whatever else says. A
+ * stay that turns over is written on its own tick already.
  */
 const REFRESH = 30;
 
@@ -46,6 +49,7 @@ export class ParkedView {
   private readonly materials: Material[] = [];
   private readonly ids: number[] = [];
   private readonly car: ParkedCar = { cls: 'saloon', paint: 0, since: 0 };
+  private readonly pose: ParkedPose = { x: 0, y: 0, heading: 0, moving: false };
   private readonly matrix = new Matrix4();
   private readonly at = new Vector3();
   private readonly turn = new Quaternion();
@@ -57,6 +61,12 @@ export class ParkedView {
   private lastY = NaN;
   private lastTick = -Infinity;
   private lastPromoted = -1;
+  /** The first tick a stay of a bay in view turns over, when the whole view is written again. */
+  private nextTurn = Infinity;
+  /** The first tick a car in view moves on its way in or out, when only the moving cars are written. */
+  private nextMove = Infinity;
+  /** The cars in view that pull in or out before their stay ends, and the instance each is. */
+  private readonly moving: { bay: number; entry: ClassMeshes; index: number }[] = [];
   /**
    * The dither fade of spec section 9.2, so a parked car thins in at the edge
    * of the view rather than pops. It ends {@link MOVE} short of
@@ -102,35 +112,63 @@ export class ParkedView {
     this.fade.focus(x, y);
     const tick = state.tick;
     const moved = !(Math.abs(x - this.lastX) < MOVE && Math.abs(y - this.lastY) < MOVE);
-    const stale = tick < this.lastTick || tick >= this.lastTick + REFRESH;
-    if (!moved && !stale && state.traffic.promoted.length === this.lastPromoted) return;
+    const stale = tick < this.lastTick || tick >= this.lastTick + REFRESH || tick >= this.nextTurn;
+    if (moved || stale || state.traffic.promoted.length !== this.lastPromoted) this.write(state, x, y);
+    else if (tick >= this.nextMove) this.steer(tick);
+  }
+
+  /** Write every car in view again, and note the ones that pull in or out before their stay ends. */
+  private write(state: SimState, x: number, y: number): void {
+    const tick = state.tick;
     this.lastX = x;
     this.lastY = y;
     this.lastTick = tick;
     this.lastPromoted = state.traffic.promoted.length;
-
+    this.nextTurn = Infinity;
+    this.nextMove = Infinity;
+    this.moving.length = 0;
     for (const entry of this.classes) for (const mesh of entry.meshes) mesh.count = 0;
     for (const bay of this.cars.near(x - PARKED_VIEW, y - PARKED_VIEW, x + PARKED_VIEW, y + PARKED_VIEW, this.ids)) {
-      if (this.cars.carAt(bay, tick, state.traffic, this.car)) this.place(bay);
+      const end = this.cars.stayEnd(bay, tick);
+      this.nextTurn = Math.min(this.nextTurn, end);
+      if (!this.cars.carAt(bay, tick, state.traffic, this.car)) continue;
+      const entry = this.classes.find((c) => c.cls === this.car.cls) as ClassMeshes;
+      const index = this.place(entry, bay, this.cars.poseAt(bay, tick, this.pose));
+      const change = this.cars.changeAt(bay, tick);
+      if (index < 0 || change >= end) continue;
+      this.moving.push({ bay, entry, index });
+      this.nextMove = Math.min(this.nextMove, change);
     }
     for (const entry of this.classes) flagUpload(entry);
   }
 
-  /** Add the car now in `this.car` as the next instance of its class, standing in `bay`. */
-  private place(bay: number): void {
-    const bays = this.cars.bays;
-    const entry = this.classes.find((c) => c.cls === this.car.cls) as ClassMeshes;
+  /** Move only the cars pulling in or out: the set of cars in view is the same until a stay turns over. */
+  private steer(tick: number): void {
+    this.nextMove = Infinity;
+    for (const car of this.moving) {
+      this.put(car.entry, car.index, car.bay, this.cars.poseAt(car.bay, tick, this.pose));
+      car.entry.meshes.forEach((mesh) => (mesh.instanceMatrix.needsUpdate = true));
+      this.nextMove = Math.min(this.nextMove, this.cars.changeAt(car.bay, tick));
+    }
+  }
+
+  /** Add the car now in `this.car` as the next instance of its class, standing in `bay` at `pose`. Answers its index, or -1 past the cap. */
+  private place(entry: ClassMeshes, bay: number, pose: ParkedPose): number {
     const paint = entry.meshes[0] as Pool;
     const index = paint.count;
-    if (index >= PARKED_CAP) return;
-    this.at.set(bays.x[bay] as number, (bays.height[bay] as number) + entry.lift, bays.y[bay] as number);
-    this.turn.setFromAxisAngle(this.up, -(bays.heading[bay] as number));
-    this.matrix.compose(this.at, this.turn, this.one);
-    for (const mesh of entry.meshes) {
-      mesh.setMatrixAt(index, this.matrix);
-      mesh.count = index + 1;
-    }
+    if (index >= PARKED_CAP) return -1;
+    this.put(entry, index, bay, pose);
+    for (const mesh of entry.meshes) mesh.count = index + 1;
     paint.setColorAt(index, this.colour.set(this.car.paint));
+    return index;
+  }
+
+  /** Stand instance `index` of a class at `pose` over `bay`. */
+  private put(entry: ClassMeshes, index: number, bay: number, pose: ParkedPose): void {
+    this.at.set(pose.x, (this.cars.bays.height[bay] as number) + entry.lift, pose.y);
+    this.turn.setFromAxisAngle(this.up, -pose.heading);
+    this.matrix.compose(this.at, this.turn, this.one);
+    for (const mesh of entry.meshes) mesh.setMatrixAt(index, this.matrix);
   }
 
   dispose(): void {

@@ -22,6 +22,7 @@ import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../clock.ts';
 import { PAINTS, promotedOf, type TrafficState } from './traffic.ts';
 import { AIRCRAFT_CLASSES, type AircraftClass } from '../../world/types.ts';
 import { specOf, type VehicleClass } from '../vehicles/vehicle.ts';
+import { pullChange, pullPhase, pullPose, type ParkedPose } from './parked-pull.ts';
 
 /**
  * The id a parked car is promoted under is this plus its bay. It stands above
@@ -171,6 +172,35 @@ export class ParkedCars {
     const stay = this.stay[bay] as number;
     const offset = this.offset[bay] as number;
     return (Math.floor((tick + offset) / stay) + 1) * stay - offset;
+  }
+
+  /**
+   * Where the car of a bay stands at a tick, written into `out`: in the bay, or
+   * on its way in or out of a street bay (`parked-pull.ts`). Asks nothing of
+   * whether the bay holds a car; {@link carAt} says that.
+   */
+  poseAt(bay: number, tick: number, out: ParkedPose): ParkedPose {
+    const bays = this.bays;
+    const phase = bays.street[bay] === 1 ? pullPhase(this.into(bay, tick), this.stay[bay] as number) : 0;
+    return pullPose(bays.x[bay] as number, bays.y[bay] as number, bays.heading[bay] as number, phase, out);
+  }
+
+  /**
+   * The next tick after `tick` on which the car of a bay has to be asked
+   * again: the end of its stay, or sooner while it pulls in or out.
+   */
+  changeAt(bay: number, tick: number): number {
+    const end = this.stayEnd(bay, tick);
+    if (this.bays.street[bay] !== 1) return end;
+    const into = this.into(bay, tick);
+    return tick - into + pullChange(into, this.stay[bay] as number);
+  }
+
+  /** Ticks since the stay a bay is in at a tick started. */
+  private into(bay: number, tick: number): number {
+    const stay = this.stay[bay] as number;
+    const shifted = tick + (this.offset[bay] as number);
+    return shifted - Math.floor(shifted / stay) * stay;
   }
 
   /** The bays inside a box, ascending. */
