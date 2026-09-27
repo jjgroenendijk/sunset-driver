@@ -19,7 +19,10 @@
  *   frame holds, so a material's programs for those meet the same frame.
  * - **One material at a time, not the city at once.** The scene's objects are
  *   grouped by material, and one frame is drawn for each group with the rest
- *   held hidden. A frame costs what one material costs to compile, and an
+ *   held hidden (issue #784). The rest is hidden by its layers, not by
+ *   `visible`, because a hidden parent would hide a child of another group
+ *   with it. The water sheet is never hidden: its mirror is a pass of its own,
+ *   and it runs only in a frame that draws the sheet. A frame costs what one material costs to compile, and an
  *   animation frame is waited for after each, so the loading screen keeps
  *   drawing its own progress however dear a material proves. The wait is also
  *   what gives each group a frame of its own: three.js draws a shadow map once
@@ -66,14 +69,15 @@ export async function warmPasses(
   // so an inland session never runs the mirror pass. Showing it here is what
   // compiles that pass; `WorldScene.look` hides it again in the first frame of
   // the session.
-  world.showWater();
+  const sheet = world.showWater();
+  const drawn = groups.flatMap((group) => group.objects).filter((object) => object !== sheet);
   let done = 0;
   while (done < groups.length) {
     // The sun's shadow maps are drawn for the first pass of a frame that asks
     // for them and reused by the rest, and `WorldScene.look` is what asks. The
     // warm-up draws its frames without it.
     world.drawShadow();
-    drawGroup(groups[done] as MaterialGroup, post);
+    drawGroup(groups[done] as MaterialGroup, drawn, post);
     done++;
     progress?.(done, groups.length);
     await new Promise((frame) => requestAnimationFrame(frame));
@@ -126,10 +130,23 @@ function materialGroups(scene: { traverse: (visit: (object: Object3D) => void) =
  * Draw one material's objects for a frame and put the scene back as it was.
  * Hidden objects are shown, culling comes off and an empty pool is given one
  * instance, so the frame meets every combination the material is ever drawn
- * with — and nothing else is drawn, so the frame costs one material.
+ * with — and nothing else is drawn, so the frame costs one material. `drawn`
+ * is every object of the warm-up but the water sheet, and each of them outside
+ * the group is taken off its layers for the frame.
  */
-function drawGroup(group: MaterialGroup, post: PostChain): void {
+function drawGroup(group: MaterialGroup, drawn: readonly Object3D[], post: PostChain): void {
   const restore: (() => void)[] = [];
+  // A camera draws an object only where their layers meet, and no camera meets
+  // an object on no layer at all. Unlike `visible`, a layer is not inherited.
+  const own = new Set(group.objects);
+  for (const object of drawn) {
+    if (own.has(object)) continue;
+    const mask = object.layers.mask;
+    object.layers.mask = 0;
+    restore.push(() => {
+      object.layers.mask = mask;
+    });
+  }
   for (const object of group.objects) {
     if (!object.visible) {
       object.visible = true;
