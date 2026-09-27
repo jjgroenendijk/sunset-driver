@@ -102,6 +102,8 @@ taken to need about twice these.
 | `medium` | 6.0 | 9.0 / 13.5 | 724 m, in the haze | 242 m |
 | `high` | 8.4 | 9.7 / 13.9 | 724 m, in the haze | 242 m |
 | `medium`, workers 4 times slower | 6.0 | 9.0 / 13.5 | 703 m, in the haze | 235 m |
+| `medium` after #781 | 5.9 | 7.7 / 11.4 | not measured again | not measured again |
+| `high` after #781 | 8.5 | 9.5 / 12.8 | not measured again | not measured again |
 
 Top down, no hole and no edge that pops shows at any tier. The one edge in sight is the crowd's,
 which fades at 144 m. The main thread takes 2.5 ms of a frame. Memory at `medium` peaks at 248 MB
@@ -109,9 +111,12 @@ of GPU and 169 MB of typed arrays, well inside the budget.
 
 What is still over, on the estimate of twice the M1:
 
-- **The GPU while driving.** About 18 ms against 12. The water's mirror is 2 ms of it at the
-  median and 3.7 ms at the 95th percentile (`--no-water`), whatever its resolution: a 169 by 78
-  mirror costs the same (issue #781). The lamps' clustered lights are 1.2 ms after dark
-  (`--no-lamps`). The render scale is worth 0.7 ms, so the frame is not paying for its pixels.
-- **The simulation tick.** 11 ms at the 95th percentile against 4 (issue #778).
+- **The GPU while driving.** About 15 ms against 12 at `medium`. The water's mirror was 2 ms of it
+  at the median and 3.7 ms at the 95th percentile, whatever its resolution. It now draws each
+  generated facade as its massing and costs 0.9 / 1.9 ms (issue #781). The lamps' clustered lights
+  are 1.2 ms after dark (`--no-lamps`). The render scale is worth 0.7 ms, so the frame is not
+  paying for its pixels.
 
+The simulation tick at `--heat=4` was 5.4 ms at the median and 26 ms at the 95th percentile. Giving
+way now skips who is far from the player, and the tick takes 3.1 / 4.1 ms, at the budget
+(issue #778). `sim-profile.ts --hash` shows the state after the run is the same as before.
