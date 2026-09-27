@@ -205,6 +205,12 @@ The gotchas of `src/audio`: the engine, the sirens, the impacts and the footstep
 - Tone.js is not in the page's first download. The first gesture loads `graph.ts` with `import()`,
   and `mixerOn` hands Tone.js the gesture's context. A muted game never downloads Tone.js. Tone.js
   makes a context of its own as its module loads, so `setContext` is asked to close that one.
+- The gesture's context is `standardized-audio-context`'s `AudioContext`, never the browser's.
+  `arm` loads that class with `import()`, since the gesture must make the context at once. Tone.js
+  reads `listener.positionX` as it takes a context. Firefox's native listener has none, so a native
+  context threw in `new Mixer()` on every frame, before the scene was drawn. The 3D froze while
+  the minimap ran, and the pause menu, which hushes rather than plays, drew it again.
+- A graph that fails to build leaves the game silent with one warning. It never stops a frame.
 - Muted means **no graph at all**, not a gain of zero: the mixer is disposed of and rebuilt on the
   next unmuted frame. Spec section 15 asks that nothing be synthesised when muted, and a silent
   oscillator is still an oscillator.
