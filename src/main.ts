@@ -6,6 +6,7 @@ import { PostChain } from './render/look/post.ts';
 import { choiceOf, nearestTier } from './render/frame/graphics.ts';
 import { frameBudgetFrom } from './render/frame/quality.ts';
 import { QualityMonitor } from './render/frame/quality-monitor.ts';
+import { DEV_INFO_CLASS, devInfoFrom } from './ui/hud/hud.ts';
 import { createRenderer, probeWebGpu, resizeRenderer } from './render/renderer.ts';
 import { createTitleScene } from './render/title/scene.ts';
 import { RenderSmoother } from './render/frame/smooth.ts';
@@ -152,6 +153,9 @@ async function boot(): Promise<void> {
   // Graphics setting is Auto. `?budget=6` holds the game to a frame no machine
   // makes at full quality, so the tiers can be watched stepping down.
   const quality = new QualityMonitor(frameBudgetFrom(location.search), touch ? TOUCH_START_TIER : 0);
+  // `?dev` shows the developer block and its frame watch from the start, on a
+  // phone that has no key to show it with (`docs/performance-budget.md`).
+  document.body.classList.toggle(DEV_INFO_CLASS, devInfoFrom(location.search));
   // What the Settings column of both menus reads and writes. A choice holds at
   // once and is kept for every seed.
   const menuSettings: MenuSettings = {

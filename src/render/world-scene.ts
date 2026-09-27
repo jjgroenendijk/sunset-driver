@@ -40,7 +40,7 @@ import { BuildingCutaway, CAMERA_ROOF_MARGIN } from './camera/cutaway.ts';
 import { CharacterModel } from './people/character.ts';
 import type { Hold } from './people/character-hold.ts';
 import { ChunkPool, type ChunkStream } from './streaming/chunk-pool.ts';
-import { ChunkTiles } from './streaming/chunk-tiles.ts';
+import { ChunkTiles, type ChunkDrawn } from './streaming/chunk-tiles.ts';
 import { BloodView } from './people/blood.ts';
 import { DamageFx } from './vehicles/damage-fx.ts';
 import { beaconPhase, daylightAt, type Daylight } from './environment/daylight.ts';
@@ -635,6 +635,16 @@ export class WorldScene {
   /** What every chunk in the scene holds, for counting what a frame shows. */
   get contents(): ChunkContents[] {
     return this.tiles.contents();
+  }
+
+  /** How the chunk under a ground point is drawn now, which says whether it pops in (`pop-in.ts`). */
+  drawnAt(x: number, y: number): ChunkDrawn {
+    return this.tiles.drawnAt(x, y);
+  }
+
+  /** Metres from the camera at which the haze has closed, so nothing past it shows. */
+  get hazeFar(): number {
+    return fogOf(this.tier.rings, this.weather).far;
   }
 
   /** Chunks asked for and not yet drawn, which the HUD shows as the city fills in. */

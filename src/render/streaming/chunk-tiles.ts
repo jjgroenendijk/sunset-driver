@@ -17,7 +17,7 @@
  */
 import type { Scene } from 'three';
 import type { MeshStandardNodeMaterial } from 'three/webgpu';
-import { chunkAt } from '../../world/chunks.ts';
+import { CHUNK_SIZE, chunkAt } from '../../world/chunks.ts';
 import { Batch } from './batch.ts';
 import type { BuildingScenery } from '../buildings/buildings.ts';
 import { cellGrid } from './cells.ts';
@@ -51,6 +51,14 @@ export interface TileSceneries {
   lampLights: LampLights;
 }
 
+/**
+ * How the chunk under a ground point is drawn: `whole` at the detail its ring
+ * asks for, `late` whole but at another detail while the right one is built,
+ * `partial` with some of its batches still to land, `missing` not at all. The
+ * last two are what a player sees pop in.
+ */
+export type ChunkDrawn = 'whole' | 'late' | 'partial' | 'missing';
+
 /** One chunk, as the scene holds it. */
 interface ChunkTile {
   cx: number;
@@ -83,6 +91,8 @@ export class ChunkTiles {
   private readonly jobs: (() => void)[] = [];
   /** Draw calls the dearest near chunk built so far costs. */
   private peakDrawCalls = 0;
+  /** The chunk the player stood in at the last follow. */
+  private here = { cx: 0, cy: 0 };
 
   constructor(scene: Scene, kit: TileSceneries, tier: () => QualityTier) {
     this.scene = scene;
@@ -97,6 +107,7 @@ export class ChunkTiles {
    */
   follow(stream: ChunkStream, x: number, y: number, budgetMs: number, now: () => number): void {
     const here = chunkAt(x, y);
+    this.here = here;
     const rings = this.tier().rings;
     for (const tile of [...this.tiles.values()]) {
       if (detailAt(tile.cx, tile.cy, here.cx, here.cy, rings) === undefined) this.drop(tile);
@@ -156,6 +167,16 @@ export class ChunkTiles {
       if (tile === undefined || tile.detail !== want.detail || !tile.whole) waiting++;
     }
     return waiting;
+  }
+
+  /** How the chunk under the ground point `(x, y)` is drawn now. */
+  drawnAt(x: number, y: number): ChunkDrawn {
+    const cx = Math.floor(x / CHUNK_SIZE);
+    const cy = Math.floor(y / CHUNK_SIZE);
+    const tile = this.tiles.get(keyOf(cx, cy));
+    if (tile === undefined) return 'missing';
+    if (!tile.whole) return tile.superseded === undefined ? 'partial' : 'late';
+    return tile.detail === detailAt(cx, cy, this.here.cx, this.here.cy, this.tier().rings) ? 'whole' : 'late';
   }
 
   /** Forget the queue and take every tile out of the scene. */

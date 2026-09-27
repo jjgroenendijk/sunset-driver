@@ -22,10 +22,13 @@ import { stepSim } from './sim/simulation.ts';
 import { turfLine } from './sim/crime/territory.ts';
 import { AIM_PLANE_HEIGHT, PointerAim, shotPitch } from './pointer-aim.ts';
 import { Crosshair } from './ui/hud/crosshair.ts';
+import { DEV_INFO_CLASS } from './ui/hud/hud.ts';
 import { aimPoint } from './sim/player/aim.ts';
 import { currentWeapon, spreadOf } from './sim/weapons/weapon.ts';
 import { zoomOf } from './render/weapons/viewmodel.ts';
 import type { DrawnPlayer } from './render/frame/smooth.ts';
+import { FrameWatch } from './render/frame/frame-watch.ts';
+import { popIn } from './render/frame/pop-in.ts';
 import type { Tracer } from './sim/weapons/tracer.ts';
 import type { FreeCameraControls } from './ui/input/free-camera.ts';
 import type { Keyboard } from './ui/input/keyboard.ts';
@@ -89,6 +92,8 @@ export class SessionFrame {
   private stopped = false;
   /** The last frame of input the simulation was stepped with, which the mix reads. */
   private heard: InputFrame = EMPTY_INPUT;
+  /** What the frames took and where they popped in, for the developer block (`frame-watch.ts`). */
+  private readonly watch = new FrameWatch();
 
   constructor(canvas: HTMLCanvasElement, parts: FrameParts) {
     this.parts = parts;
@@ -180,6 +185,7 @@ export class SessionFrame {
     const judged = !flying && !paused && this.parts.settings.graphics.auto;
     const change = judged ? session.quality.sample(elapsed) : undefined;
     if (change !== undefined) applyQuality(session, change);
+    this.watchFrame(session, elapsed, p, flying);
     this.drawPanels(session, p);
     this.drawAim(session, flying || menu);
     this.drawMaps(session, p, flying);
@@ -194,6 +200,21 @@ export class SessionFrame {
     // The turning preview of a shop's counter, on its own canvas.
     session.shopPanel.drawPreview(performance.now() / 1000);
     session.tradePanel.drawPreview(performance.now() / 1000);
+  }
+
+  /**
+   * Time the frame for the developer block, and now and then read where it
+   * shows things pop in. Nothing is read while the block is hidden: sampling
+   * the ground is a fraction of a millisecond, which a player should not pay
+   * for a line they cannot see.
+   */
+  private watchFrame(session: Session, elapsed: number, p: Viewpoint, flying: boolean): void {
+    if (!document.body.classList.contains(DEV_INFO_CLASS)) return;
+    if (this.watch.sample(elapsed) && !flying) {
+      const camera = this.parts.camera.camera;
+      this.watch.pop(popIn(camera, session.world, p.x, p.y, session.world.heightAt(p.x, p.y)));
+    }
+    session.hud.watch(this.watch.line());
   }
 
   /**

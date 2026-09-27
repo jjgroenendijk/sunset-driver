@@ -10,9 +10,20 @@ import { arrestLine } from './arrest-line.ts';
 
 /**
  * The key that shows and hides the developer block. Listed in `controls.ts`.
- * It sets `dev-info` on the body, and `hud.css` shows the block by that class.
+ * It sets {@link DEV_INFO_CLASS} on the body, and `hud.css` shows the block by
+ * that class.
  */
 export const DEV_INFO_KEY = 'F3';
+export const DEV_INFO_CLASS = 'dev-info';
+
+/**
+ * Whether the page was opened with `?dev`, which shows the developer block from
+ * the start. A phone has no F3 key, and the phone is where the frame budget of
+ * `docs/performance-budget.md` is kept.
+ */
+export function devInfoFrom(search: string): boolean {
+  return new URLSearchParams(search).has('dev');
+}
 
 /**
  * One line of text on the HUD. It keeps what it last wrote and writes only a
@@ -97,6 +108,7 @@ export class Hud {
   private readonly devClock: Field;
   private readonly devStatus: Field;
   private readonly devDraws: Field;
+  private readonly devWatch: Field;
   private shownHealth = -1;
   private shownStars = '';
   private shownIntegrity = -1;
@@ -118,6 +130,7 @@ export class Hud {
     this.devClock = new Field(dev, 'hud-dev-line', false);
     this.devStatus = new Field(dev, 'hud-dev-line', false);
     this.devDraws = new Field(dev, 'hud-dev-line', false);
+    this.devWatch = new Field(dev, 'hud-dev-line', false);
     this.objective = new Field(left, 'hud-objective');
     // Whose ground the player is standing on (spec section 17.2), and what the
     // city has on there (spec section 20.5): the context of the objective.
@@ -244,6 +257,11 @@ export class Hud {
     // nothing about streaming, which is what a settled city should say.
     const queue = streaming > 0 ? `  ${streaming} streaming` : '';
     this.devDraws.set(`${drawCalls} draws/chunk  ${lights} lights  ${tier}${queue}`);
+  }
+
+  /** The frame watch's line (`frame-watch.ts`): frame times and where the frame pops in. */
+  watch(line: string): void {
+    this.devWatch.set(line);
   }
 
   /** The wanted stars, redrawn only when they change. */
