@@ -194,13 +194,15 @@ and every preview was far paler than the game: a noon frame read 70 % bright whe
 - `--x` and `--y` say where the player stands; `--junction=N` stands them at the N-th junction out
   from the core instead and prints what meets there, and `--tiers=arterial+street` narrows that
   count to junctions of that mix.
-- The camera always stands south of what it frames, at greater `y`, and looks north. A wall that
-  faces any other way is seen edge-on or not at all.
+- The camera stands south of what it frames, at greater `y`, and looks north. It turns only when
+  a roof hides the player, as the game camera does. A wall that faces any other way is seen
+  edge-on or not at all.
 - `--look-at=x,y,height` frames that place instead of the player: the camera keeps its pitch,
   heading and distance, and moves so the place is where the player would be. `height` is metres
   over the ground there and may be left off. The player stays at `--x`, `--y`, and a building
   between the camera and the place is ghosted, as one in front of the player is.
-- A building between the camera and the player is ghosted. `--buildings=whole` draws it whole,
+- A building between the camera and the player turns the camera, or is ghosted where no heading
+  clears it. `--buildings=whole` does neither: the camera looks north and draws the building whole,
   which is how the building the player stands at is looked at without `--look-at`.
 - `--look-up=<degrees>` tilts a `third-person` or `first-person` view up by that much. The game
   camera never looks at the sky; this is how the sky, its clouds and its bloom are judged.

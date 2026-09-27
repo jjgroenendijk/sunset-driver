@@ -13,16 +13,7 @@ import type { KeyValueStore } from './saves.ts';
 
 const SETTINGS_KEY = 'sunset-driver.settings';
 
-/**
- * What happens when a building stands between the camera and the player (spec
- * section 10.7): the building turns see-through, the camera also pulls back
- * over the roofs or turns round the player to a heading that sees them, or
- * nothing happens and every building is drawn whole.
- */
-export type BuildingView = 'see-through' | 'pull-back' | 'turn' | 'whole';
-
 export interface Settings {
-  buildingView: BuildingView;
   /** Top down, the view the game is played in, or one of the two chase views. */
   view: CameraView;
   /** True while the audio of spec section 15 is off. A muted game synthesises nothing at all. */
@@ -37,9 +28,7 @@ export interface Settings {
   frameCap: number;
 }
 
-/** See-through is what GTA Chinatown Wars does, and it keeps the camera where it is. */
 export const DEFAULT_SETTINGS: Settings = {
-  buildingView: 'see-through',
   view: 'top-down',
   muted: false,
   northUp: false,
@@ -48,21 +37,11 @@ export const DEFAULT_SETTINGS: Settings = {
   frameCap: DEFAULT_FRAME_CAP,
 };
 
-/** Each choice of {@link BuildingView}, in the order a menu lists them, with what it is called there. */
-export const BUILDING_VIEWS: readonly { value: BuildingView; label: string }[] = [
-  { value: 'see-through', label: 'See-through' },
-  { value: 'pull-back', label: 'Pull back' },
-  { value: 'turn', label: 'Turn' },
-  { value: 'whole', label: 'Off' },
-];
-
 /** What a menu page reads a setting of several choices from and hands a new choice to. */
 export interface Choice<T> {
   current(): T;
   choose(value: T): void;
 }
-
-export type BuildingViewChoice = Choice<BuildingView>;
 
 /** A setting that is on or off, drawn as a checkbox in the Settings column. */
 export interface ToggleChoice {
@@ -85,7 +64,6 @@ export type GraphicsMenu = Choice<GraphicsChoice>;
 
 /** Every setting a menu offers, handed to the title screen and the pause menu alike. */
 export interface MenuSettings {
-  buildingView: BuildingViewChoice;
   view: Choice<CameraView>;
   /** On while the audio of spec section 15 plays. */
   sound: ToggleChoice;
@@ -107,7 +85,6 @@ export function readSettings(store: KeyValueStore): Settings {
     raw = {};
   }
   const held = raw as {
-    buildingView?: unknown;
     view?: unknown;
     muted?: unknown;
     northUp?: unknown;
@@ -115,10 +92,8 @@ export function readSettings(store: KeyValueStore): Settings {
     graphics?: unknown;
     frameCap?: unknown;
   } | null;
-  const known = BUILDING_VIEWS.some((choice) => choice.value === held?.buildingView);
   const seen = CAMERA_VIEWS.some((choice) => choice.value === held?.view);
   return {
-    buildingView: known ? (held?.buildingView as BuildingView) : DEFAULT_SETTINGS.buildingView,
     view: seen ? (held?.view as CameraView) : DEFAULT_SETTINGS.view,
     muted: typeof held?.muted === 'boolean' ? held.muted : DEFAULT_SETTINGS.muted,
     northUp: typeof held?.northUp === 'boolean' ? held.northUp : DEFAULT_SETTINGS.northUp,

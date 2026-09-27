@@ -21,7 +21,7 @@
  * window frames — so they are painted into the materials instead.
  *
  * The sky writes no depth and the water's mirror is a picture on a flat sheet,
- * so neither draws a line of its own. The See-through camera of spec section
+ * so neither draws a line of its own. The building cut of spec section
  * 10.7 cuts holes in a building in a dither, and a hole is a depth step: every
  * sample the cut ghosts is set aside, and a ghosted pixel draws no line.
  */
@@ -80,7 +80,7 @@ const FADE: readonly [number, number] = [140, 420];
 const FAR_INK = 0.25;
 
 /**
- * The See-through cut (`cutaway.ts`): for a ray from the camera, how much of
+ * The building cut (`cutaway.ts`): for a ray from the camera, how much of
  * the place a distance along it the cut ghosts, 0 to 1.
  */
 export interface Ghost {

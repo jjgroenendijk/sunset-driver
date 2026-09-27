@@ -1,6 +1,6 @@
 import { CAMERA_VIEWS, type CameraView } from '../../render/camera/camera-view.ts';
 import { GORE_LEVELS, type Gore } from '../../render/people/gore.ts';
-import { BUILDING_VIEWS, type BuildingViewChoice, type Choice } from './settings.ts';
+import type { Choice } from './settings.ts';
 import { backButton, menuList, page } from './title-parts.ts';
 
 const NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI'];
@@ -43,11 +43,6 @@ function buildChoicePage<T>(
   menu.append(backButton(back));
   root.append(menu);
   return root;
-}
-
-/** The Buildings column: what happens when a building stands between the camera and the player (spec section 10.7). */
-export function buildCameraPage(setting: BuildingViewChoice, back: () => void): HTMLElement {
-  return buildChoicePage('title-camera', 'Buildings', BUILDING_VIEWS, setting, back);
 }
 
 /** The View column: top down, the view the game is played in, or one of the two chase views (spec section 10.7). */

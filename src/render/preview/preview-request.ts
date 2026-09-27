@@ -31,8 +31,8 @@ export interface PreviewRequest {
   quality?: string;
   /**
    * What a building between the camera and the player does (spec section
-   * 10.7): `see-through`, `pull-back`, `turn` or `whole`. Left out, it is
-   * see-through, as the game starts.
+   * 10.7): `turn`, as the game does, or `whole`, which neither turns the
+   * camera nor cuts the building. Left out, it is `turn`.
    */
   buildings?: string;
   /**

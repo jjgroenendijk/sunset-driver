@@ -15,7 +15,7 @@
  */
 import type { MenuSettings } from './settings.ts';
 import { buildPartyPage, type PartyActions, type PartyPage } from './party.ts';
-import { buildCameraPage, buildGorePage, buildViewPage } from './title-camera.ts';
+import { buildGorePage, buildViewPage } from './title-camera.ts';
 import { buildControlsPage } from './title-controls.ts';
 import { MenuPages } from './menu-pages.ts';
 import { backButton, button, card, columnsOf, menuList, page, type MenuItem } from './title-parts.ts';
@@ -63,7 +63,7 @@ export interface PauseExtra {
 /** The numerals of the main list, which grows by the extras a phone adds. */
 const NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
 
-const PAGE_NAMES = ['main', 'party', 'saves', 'export', 'loads', 'import', 'controls', 'graphics', 'settings', 'view', 'camera', 'gore'] as const;
+const PAGE_NAMES = ['main', 'party', 'saves', 'export', 'loads', 'import', 'controls', 'graphics', 'settings', 'view', 'gore'] as const;
 type PageName = (typeof PAGE_NAMES)[number];
 
 const PARENT: Record<PageName, PageName | null> = {
@@ -77,7 +77,6 @@ const PARENT: Record<PageName, PageName | null> = {
   graphics: 'main',
   settings: 'main',
   view: 'settings',
-  camera: 'settings',
   gore: 'settings',
 };
 
@@ -130,7 +129,6 @@ export class PauseMenu {
       graphics: buildGraphicsPage(actions.settings.graphics, back),
       settings: buildSettingsPage(actions.settings, back),
       view: buildViewPage(actions.settings.view, back),
-      camera: buildCameraPage(actions.settings.buildingView, back),
       gore: buildGorePage(actions.settings.gore, back),
     };
     this.pages = new MenuPages(this.root, pages, PARENT, 'main', COLUMNS);

@@ -10,7 +10,7 @@
 import { Vector3 } from 'three';
 import type { GameAudio } from './audio/game-audio.ts';
 import { holdOf } from './render/people/character-hold.ts';
-import { PULL_MARGIN, TURN_MARGIN, type FollowCamera, type RoofHeight } from './render/camera/camera.ts';
+import { TURN_MARGIN, type FollowCamera, type RoofHeight } from './render/camera/camera.ts';
 import type { FixedStepClock } from './sim/clock.ts';
 import { EMPTY_INPUT, type InputFrame } from './sim/input.ts';
 import { boardingProgress } from './sim/player/boarding.ts';
@@ -101,9 +101,7 @@ export class SessionFrame {
     this.crosshair = new Crosshair(document.body);
   }
 
-  /** The roof over a ground point, which the camera pulls back over when the player asks it to. */
-  private readonly roofTop: RoofHeight = (x, z) => this.session?.world.roofOver(x, z, PULL_MARGIN)?.top;
-  /** The roof over a ground point, which the camera turns to see past when the player asks it to. */
+  /** The roof over a ground point, which the top-down camera turns to see past. */
   private readonly sightTop: RoofHeight = (x, z) => this.session?.world.roofOver(x, z, TURN_MARGIN)?.top;
 
   /**
@@ -351,10 +349,10 @@ export class SessionFrame {
   private follow(session: Session, elapsed: number, p: DrawnPlayer, drawnTick: number, inShop: boolean): void {
     const { camera, keyboard, settings } = this.parts;
     session.world.update(p.x, p.y);
-    // A building between the camera and the player (spec section 10.7):
-    // it is cut to a ghost, and with Pull back the camera first moves over
-    // the roofs, or with Turn swings round the player to see past them. Off
-    // does none of it. The chase views stand too close to need either move.
+    // A building between the camera and the player (spec section 10.7): the
+    // top-down camera turns round the player to see past it, and a building
+    // no heading clears is cut to a ghost. The chase views stand too close
+    // to need the turn.
     this.kick(session);
     const view = camera.view;
     // Inside a shop the eyes stand on the room's floor, which stands on the
@@ -366,8 +364,7 @@ export class SessionFrame {
       // A shop keeps the view the player plays in (spec section 10.7): the
       // room's lid is lifted off for a camera over it.
       view: settings.view,
-      pull: settings.buildingView === 'pull-back' ? this.roofTop : undefined,
-      turn: settings.buildingView === 'turn' ? this.sightTop : undefined,
+      turn: this.sightTop,
       mouse: this.parts.look.active,
       altitude: session.state.player.driving ? p.height - session.world.heightAt(p.x, p.y) : 0,
       zoom: zoomOf(session.state.loadout),
@@ -379,7 +376,7 @@ export class SessionFrame {
     // On foot the keys walk relative to the view, so up the screen is
     // forward whichever way the camera faces. A car steers as it did.
     keyboard.turn = session.state.player.driving ? 0 : camera.heading;
-    session.world.cutaway.enabled = settings.buildingView !== 'whole';
+    session.world.cutaway.enabled = true;
     session.world.seeThrough(camera.camera.position, p.x, p.height, p.y, inShop);
   }
 

@@ -534,20 +534,15 @@ in top down. A lock the game lets go itself, for the map, a shop counter or a me
 Resume, by click, Enter or Escape, asks for the lock again, so no extra click is needed.
 
 The camera stands about 30 m over the street, and a tower stands up to 150 m. A building therefore
-often stands between the camera and the player, or holds the camera inside it. A setting on the
-Buildings page of the title screen and of the pause menu says what happens then:
+often stands between the camera and the player, or holds the camera inside it. Top down then
+turns, and no setting changes that:
 
-- **See-through**, the default, as in GTA Chinatown Wars. A building nearer the camera than the
-  player, inside a cone around the player, keeps a dithered scatter of its pixels, and its outline
-  is left out there. The building the camera stands inside is not drawn.
-- **Pull back.** The camera moves back along its fixed view until it stands over the roof under it.
-  It climbs fast and comes down slowly. Pitch and heading do not change. A building that still
-  hides the player is cut as with See-through.
-- **Turn.** The camera turns smoothly round the player, pitch held, to the nearest heading from
-  which no roof hides them. It keeps that heading while the heading sees, and never turns back to
-  north on its own: a turn back is a movement the player did not ask for. A building that no
-  heading clears is cut as with See-through.
-- **Off.** Every building is drawn whole.
+- The camera turns smoothly round the player, pitch held, to the nearest heading from which no roof
+  hides them. It keeps that heading while the heading sees, and never turns back to north on its
+  own: a turn back is a movement the player did not ask for.
+- A building that no heading clears is cut. Nearer the camera than the player, inside a cone
+  around the player, it keeps a dithered scatter of its pixels, and its outline is left out there.
+- The building the camera stands inside is not drawn.
 
 ---
 

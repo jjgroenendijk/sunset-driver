@@ -47,14 +47,13 @@ in `docs/dev-tooling.md`.
 
 ## Buildings in the way
 
-- The Buildings setting picks See-through, Pull back, Turn or Off. The cut of `cutaway.ts` stays on
-  under Pull back and Turn, for what the move does not clear.
+- There is no setting: top down always turns. The cut of `cutaway.ts` stays on for a building
+  that no heading clears. See-through, Pull back and Off were settings once and are gone.
 - The turn tests the sight line to the player every metre against the roof boxes of `roofs.ts`. A
   coarser step lets a building corner fall between two points.
 - The turn is one way. `clearYaw` keeps the heading it is given while that heading sees, so the
   camera turns only when a roof comes between, and stays where the last turn left it. It does not
   go back to north once north is clear: that second turn moves the view when nothing asked it to.
-  Switching the setting away from Turn puts the heading back to north.
 - `cutaway.ts` also cuts the room of each shop near the player out of its building, whatever the
   setting says: that cut is a window onto the shop, not a way to see the player. `ROOM_CUTS` boxes
   are tested in every building fragment, so a fifth room needs a fifth box, not a longer list.

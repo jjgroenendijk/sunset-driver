@@ -49,7 +49,7 @@ import {
 } from '../../sim/vehicles/vehicle.ts';
 import { SurfaceIndex, type Surface } from '../../world/terrain/surface.ts';
 import type { WorldDescription } from '../../world/types.ts';
-import { BASE_DISTANCE, PULL_MARGIN, TURN_MARGIN, type FollowCamera } from '../camera/camera.ts';
+import { BASE_DISTANCE, TURN_MARGIN, type FollowCamera } from '../camera/camera.ts';
 import { CAMERA_VIEWS, type CameraView } from '../camera/camera-view.ts';
 import { seatRider } from '../vehicles/rider.ts';
 import type { Camera, Object3D } from 'three';
@@ -452,22 +452,21 @@ function pointCamera(
   const { x, y, shop } = place;
   // The first update snaps the camera onto its target rather than easing in,
   // so one call is a settled frame and no render time has to be simulated.
-  const view = request.buildings ?? 'see-through';
-  const pull = view === 'pull-back' ? (px: number, pz: number) => scene.roofOver(px, pz, PULL_MARGIN)?.top : undefined;
-  const turn = view === 'turn' ? (px: number, pz: number) => scene.roofOver(px, pz, TURN_MARGIN)?.top : undefined;
+  const whole = request.buildings === 'whole';
+  const turn = !whole ? (px: number, pz: number) => scene.roofOver(px, pz, TURN_MARGIN)?.top : undefined;
   const look = viewOf(request, shop !== undefined);
   // Top down looks at the vehicle, as it always has; a chase view follows
   // whoever the player is, in the car or beside it.
   const eye = look === 'top-down' ? { x, y, heading: request.heading } : stand;
   const driving = request.onFoot !== true && shop === undefined;
   const on = { x: eye.x, y: eye.y, height: groundOf(scene, eye, shop !== undefined), heading: eye.heading, speed: request.speed, driving };
-  camera.update(0, on, { view: look, pull, turn, zoom: zoomOf(loadout) });
+  camera.update(0, on, { view: look, turn, zoom: zoomOf(loadout) });
   // Each room's lid is lifted off for a camera over it.
   showRooms(scene, place, camera.camera.position.y);
   showHands(scene, camera, loadout, look === 'first-person' && !driving, tick);
   const seen = aimCamera(request, scene, camera.camera, on, gallery, stand);
   if (look !== 'top-down' && request.lookUp !== undefined) tiltUp(camera.camera, request.lookUp);
-  scene.cutaway.enabled = view !== 'whole';
+  scene.cutaway.enabled = !whole;
   // A building in the way of the place looked at is ghosted, as one in the way of the player is.
   scene.seeThrough(camera.camera.position, seen.x, seen.height, seen.y, shop !== undefined);
 }

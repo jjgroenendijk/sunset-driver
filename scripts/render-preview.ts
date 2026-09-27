@@ -24,7 +24,7 @@
  *   --weather        clear, rain, fog or storm, or seed for the weather the
  *                    seed has at that hour. Default clear.
  *   --buildings      what a building in the way does (spec section 10.7):
- *                    see-through, pull-back, turn or whole. Default see-through.
+ *                    turn, as the game does, or whole. Default turn.
  *   --view           the view to draw from (spec section 10.7): top-down,
  *                    third-person or first-person. Default top-down.
  *   --look-at        x,y,height: a place to frame instead of the player, in

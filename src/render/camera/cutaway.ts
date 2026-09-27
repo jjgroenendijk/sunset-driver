@@ -1,5 +1,5 @@
 /**
- * The see-through buildings of spec section 10.7.
+ * The ghosted buildings of spec section 10.7.
  *
  * The camera stands about 30 m over the street, and a tower stands up to 150 m.
  * A building therefore often stands between the camera and the player, and in
@@ -156,8 +156,8 @@ export class BuildingCutaway {
 
   /**
    * The shop rooms to cut out of their buildings this frame, at most
-   * {@link ROOM_CUTS}. The cut does not hang on the See-through setting: it
-   * is a window, not a way to see the player.
+   * {@link ROOM_CUTS}. The cut is on even where the player is in plain
+   * view: it is a window, not a way to see the player.
    */
   cutRooms(rooms: readonly RoomCut[]): void {
     for (let i = 0; i < this.slots.length; i++) {

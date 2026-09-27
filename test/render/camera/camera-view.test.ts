@@ -153,10 +153,17 @@ describe('the view setting', () => {
 
   it('keeps a choice, and falls back on a value it does not know', () => {
     const store = memoryStore();
-    writeSettings(store, { ...DEFAULT_SETTINGS, view: 'first-person', buildingView: 'turn' });
+    writeSettings(store, { ...DEFAULT_SETTINGS, view: 'first-person' });
     expect(readSettings(store).view).toBe('first-person');
-    expect(readSettings(store).buildingView).toBe('turn');
     store.setItem('sunset-driver.settings', '{"view":"sideways"}');
     expect(readSettings(store).view).toBe('top-down');
+    store.setItem('sunset-driver.settings', 'not json');
+    expect(readSettings(store)).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it('forgets the building view an older build kept, since top down always turns', () => {
+    const store = memoryStore();
+    store.setItem('sunset-driver.settings', '{"buildingView":"see-through"}');
+    expect(readSettings(store)).toEqual(DEFAULT_SETTINGS);
   });
 });
