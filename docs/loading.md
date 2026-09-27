@@ -9,8 +9,8 @@ the chunk workers, and `docs/rendering.md` the shader warm-up.
 - Measuring a load: `node scripts/load-profile.ts`
 - The steps
 - What the first runs found
-- Where the shader time goes
-- Options, largest saving first
+- What was fixed
+- What is left
 
 ## Measuring a load: `node scripts/load-profile.ts`
 
@@ -54,7 +54,7 @@ not only the total, and run each build more than once.
 ## What the first runs found
 
 Seed `sunset`, the deployed build, 1600×900, headless Chrome on an Apple M1, on 27 September 2026.
-The time from Play to a playable city was **14 to 15 s**:
+Before the fixes below, the time from Play to a playable city was **14 to 15 s**:
 
 | Step | Took | Share |
 | --- | --- | --- |
@@ -82,55 +82,44 @@ The time from Play to a playable city was **14 to 15 s**:
 
 A module worker starts through the page's main thread: its script runs only between tasks there.
 The pool used to be made just before `buildCity`, which holds the thread for 2.3 s, so each worker
-received its world 2.6 s after it was sent. Its layers then took 1.0 s, and only then did the
-chunks start. `startChunkWorkers` (`chunk-pool.ts`) now starts them at boot, and the pool takes
-them. The workers now build their layers while `buildCity` runs, and `ground` fell from about 2 s
-to about 1 s.
+received its world 2.6 s late, and a chunk could be handed to it only after it answered, which it
+could not do until `buildCity` ended.
 
-## Where the shader time goes
+### The shader warm-up
 
 `warm.ts` draws one frame for each material group, then one frame through each post graph. The time
 is the node builder of three.js on the main thread. The GPU's own compile is a small part of it.
 
-- **The first group is most of it.** `drawGroup` shows the group's hidden objects, but it does not
-  hide the rest of the scene. The first frame therefore builds every program the scene around the
-  player draws with: 4.5 s of the 6.2 s. The loading bar stands still for that time.
-  `docs/rendering.md` says the rest of the scene is hidden. The code does not do that (issue #784).
-- **The third post graph builds every scene program a second time.** three.js keys a render
-  context on the render target, the MRT and the renderer's call depth, and a program on its render
-  context. SMAA reads the frame through a texture of its own, so with SMAA on, the scene pass is
-  drawn three `render` calls deep. The graph of the lowest tier has no SMAA, and the scene pass is
-  drawn one call deep. Every scene material is a new program there: 3.3–4.3 s on an M1, 17.6 s at a
-  fourfold slowdown. The session then holds each of those programs twice. One extra texture copy
-  (`convertToTexture`) takes the depth to two and changes nothing (issue #783).
-- The first two graphs cost 30 ms together, because the material frames already went through them.
+- `drawGroup` showed each group's hidden objects, but did not hide the rest of the scene. The first
+  frame built every program the scene around the player draws with: 4.5 s of 6.2 s, with the bar
+  standing still (issue #784).
+- three.js keys a render context on the render target, the MRT and the renderer's call depth, and a
+  program on its render context. SMAA reads the frame through a texture of its own, so with SMAA
+  the scene pass is drawn three `render` calls deep. Without SMAA it was drawn one call deep, and
+  every scene material was a program of its own there: the lowest tier's graph cost 3.3–4.3 s, and
+  the session held each program twice (issue #783).
 
-## Options, largest saving first
+## What was fixed
 
-The savings are for the M1 above. A phone saves about four times as much in the main-thread steps.
+| Fix | Where | Effect on an M1 |
+| --- | --- | --- |
+| The chunk workers start at boot | `startChunkWorkers`, `chunk-pool.ts` | `ground` 2 s → 1 s |
+| A worker is handed up to five chunks before its layers are built, and `main.ts` asks for the start's chunks before `buildCity` | `EARLY_CHUNKS`, `chunk-pool.ts` | `ground` 1 s → 0.3 s |
+| A graph without SMAA reads the frame through two copies, so the scene pass is drawn as deep as under SMAA | `atSmaaDepth`, `post.ts` | post graphs 3.5 s → 0.05 s |
+| Each group's frame takes the rest of the scene off its layers; the water sheet stays, so the mirror runs | `drawGroup`, `warm.ts` | the bar moves evenly; no time saved |
+| The title scene is not drawn behind the opaque loading screen | `covered`, `main.ts` | small, not measured |
 
-1. **Build the lowest tier's graph at the same call depth (about 3.5 s, 25 %).** Either keep SMAA at
-   the lowest tier, so its graph is the tier above's at a smaller render scale and there are two
-   graphs, not three; or wrap its frame in two texture copies, so the scene pass is drawn three
-   calls deep as with SMAA. The first costs the lowest tier SMAA at half scale, the second two
-   full-screen copies. Spec section 9.2 does not require the lowest tier to drop SMAA.
-2. **Fewer distinct programs (up to about 6 s, scales with the count).** The warm-up is 118 material
-   groups, and each is a program per pass: the scene, the shadow cascades and the mirror. Materials
-   that differ only in a colour or a number can share one program if the value comes from a uniform
-   or an attribute. An audit of the groups by cost is the first step: `drawGroup` can time each one.
-3. **Queue the first chunks before the workers are ready (about 1 s).** The pool hands a worker a
-   chunk only after that worker says its layers are built. That message waits until `buildCity`
-   ends. If the start chunks were posted with the world, a worker would build them straight after
-   its layers, and the ground would be done when the city is. A deeper step: send the world to the
-   workers as soon as the title screen has built it, so the layers are built before Play.
-4. **Find the crowd's crossings for less (about 1.2 s).** `scanCorner` reads the walk every 0.5 m
-   round every corner with lights, for every person. A coarse step with a bisection at each edge
-   of a carriageway would read far fewer points. The crossings would move by less than a step, so
-   the sweep's expectations may need to be updated.
-5. **Hide the rest of the scene in `drawGroup` (no saving, a moving bar).** The same programs are
-   built either way, but one material a frame spreads the 4.5 s of the first frame over the bar.
-6. **Stop drawing the title scene behind the loading screen (small, not measured).** The frame loop
-   draws the title preview at 30 fps until the session exists, behind an opaque screen.
-7. **A smaller first download (about 1 s on a slow phone link, nothing after Play).** Load Tone.js
-   when the first sound plays, and Rapier's WebAssembly as a file of its own so the browser can
-   compile it while it streams in.
+From Play to a playable city now takes **9.3–9.6 s**, against 14–15 s before. Two copies cost a
+graph without SMAA two full-screen passes, where SMAA costs three. With the workers now building
+beside it, `buildCity` took 3.0–3.2 s rather than 2.3–2.8 s. A drive through
+`render-profile.ts --long --tier-at=120:lowest,240:full` still built no program.
+
+## What is left
+
+| Option | Saving on an M1 | Issue |
+| --- | --- | --- |
+| Draw the city with fewer distinct programs: the warm-up is now 5.7 s of the wait | up to about 5 s | #786 |
+| Find the crowd's signal crossings with fewer samples | about 1.2 s | #787 |
+| Build the workers' layers while the player is on the title screen | 0.3 s here, more on a phone | #788 |
+| Load Tone.js later and Rapier's WebAssembly as a file | page load only | #789 |
+| Size the worker pool from the device's memory | streaming after Play | #790 |
