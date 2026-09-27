@@ -11,11 +11,11 @@
  * in, which is the trade spec section 9.1 asks for.
  *
  * A chunk that crosses between the two rings is built again at its new detail
- * and swapped when it lands, so nothing ever disappears while its replacement
- * is being built. The pipeline holds no game state: `world-scene.ts` owns the
+ * and swapped once the whole of it is in, so nothing ever disappears while its
+ * replacement is being built. The pipeline holds no game state: `world-scene.ts` owns the
  * sceneries it builds with and hands them in.
  */
-import type { Scene } from 'three';
+import { Group, type Scene } from 'three';
 import type { MeshStandardNodeMaterial } from 'three/webgpu';
 import { CHUNK_SIZE, chunkAt } from '../../world/chunks.ts';
 import { Batch } from './batch.ts';
@@ -76,8 +76,14 @@ interface ChunkTile {
   whole: boolean;
   /** True once it has been dropped, so any job left for it does nothing. */
   dead: boolean;
-  /** The tile it replaces, drawn until the first piece of this one lands. */
+  /** The tile it replaces, drawn until the last piece of this one lands. */
   superseded?: ChunkTile;
+  /**
+   * Where the pieces of a tile that replaces another are put while it fills:
+   * a group held hidden until the tile is whole. A batch shows itself as its
+   * first part lands (`batch.ts`), so it is the group that holds it back.
+   */
+  holder?: Group;
 }
 
 /** The streamed chunks of the world, and the upload of them spread over frames. */
@@ -215,7 +221,12 @@ export class ChunkTiles {
       dead: false,
     };
     const standing = this.tiles.get(key);
-    if (standing !== undefined) tile.superseded = standing;
+    if (standing !== undefined) {
+      tile.superseded = standing;
+      tile.holder = new Group();
+      tile.holder.visible = false;
+      this.scene.add(tile.holder);
+    }
     this.tiles.set(key, tile);
 
     const { ground, bounds } = payload;
@@ -270,6 +281,7 @@ export class ChunkTiles {
     }
     this.queueJob(tile, () => {
       tile.whole = true;
+      this.retire(tile);
       if (tile.detail !== 'far') this.peakDrawCalls = Math.max(this.peakDrawCalls, tile.drawCalls);
     });
   }
@@ -282,14 +294,19 @@ export class ChunkTiles {
   /** A job that does nothing once its tile has been dropped. */
   private guarded(tile: ChunkTile, job: () => void): () => void {
     return () => {
-      if (tile.dead) return;
-      this.retire(tile);
-      job();
+      if (!tile.dead) job();
     };
   }
 
-  /** Take away the tile this one replaces, once there is something to replace it with. */
+  /**
+   * Show a tile that replaces another, and take the old one away, in the same
+   * frame. Swapping when the first piece landed took the old buildings away
+   * while the new ones were still to come, and the batches of a core chunk take
+   * dozens of frames: the street stood empty and then filled in, in sight of a
+   * chase view (issue #774).
+   */
   private retire(tile: ChunkTile): void {
+    if (tile.holder !== undefined) tile.holder.visible = true;
     if (tile.superseded === undefined) return;
     const old = tile.superseded;
     tile.superseded = undefined;
@@ -315,7 +332,7 @@ export class ChunkTiles {
         object.receiveShadow = true;
       }
       if (part.mirrored === true) reflected(object);
-      this.scene.add(object);
+      (tile.holder ?? this.scene).add(object);
     }
     tile.parts.push(part);
     tile.drawCalls += part.drawCalls;
@@ -339,9 +356,10 @@ export class ChunkTiles {
       tile.superseded = undefined;
     }
     for (const part of tile.parts) {
-      for (const object of part.objects) this.scene.remove(object);
+      for (const object of part.objects) object.removeFromParent();
       part.dispose();
     }
+    tile.holder?.removeFromParent();
     tile.parts.length = 0;
     tile.posters = [];
     if (tile.lamps.length > 0) {

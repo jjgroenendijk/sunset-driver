@@ -56,8 +56,10 @@ details in `docs/buildings.md`, and the frame and memory measurements in `docs/p
   same frames for the same reason.
 - The far ring is the same chunk at `'far'` detail: the ground, the highways and arterials over it,
   and every building as its massing, with no plants. A chunk that crosses between the
-  rings is built again and swapped when it lands, so nothing disappears while its replacement is
-  built.
+  rings is built again and swapped when the whole of it is in, so nothing disappears while its
+  replacement is built. Its batches fill inside a hidden `Group` (`ChunkTile.holder`), because a
+  batch shows itself when its first part lands. Swapping on the first piece, the ground, left the
+  street without buildings for the dozens of frames a core chunk takes to fill (issue #774).
 - The buildings have three details of their own (spec section 9.2). Only the chunks within
   `FACADE_RADIUS` of the player generate facades. The rest of the near ring is `'mid'` detail: the
   chunk in full, but every building a block from `block-mesh.ts`. The far ring is one box per
