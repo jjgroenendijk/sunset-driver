@@ -9,6 +9,7 @@ import {
   ARSENAL,
   beginReload,
   blastFalloff,
+  canReload,
   bounceProjectile,
   BOUNCE,
   CALIBRES,
@@ -331,16 +332,22 @@ describe('firing', () => {
 
   it('refuses a reload with nothing to reload', () => {
     const loadout = createLoadout();
-    // Fists: nothing to reload at all.
+    // Fists: nothing to reload at all. The phone's Load button asks `canReload`,
+    // so it has to agree with the reload at every step.
+    expect(canReload(loadout)).toBe(false);
     expect(beginReload(loadout, 0)).toBe(false);
     giveWeapon(loadout, 'mp5', 0);
     // A full magazine and an empty pool: there is nowhere for a round to come from.
+    expect(canReload(loadout)).toBe(false);
     expect(beginReload(loadout, 0)).toBe(false);
     const player = standing();
     expect(pull(loadout, player, 0x51a, 100)).toBeDefined();
+    expect(canReload(loadout)).toBe(false);
     expect(beginReload(loadout, 101)).toBe(false);
     addAmmo(loadout, '9×19', 5);
+    expect(canReload(loadout)).toBe(true);
     expect(beginReload(loadout, 101)).toBe(true);
+    expect(canReload(loadout)).toBe(false);
     expect(beginReload(loadout, 101)).toBe(false);
     stepWeapons(loadout, EMPTY_INPUT, player, 0x51a, 101 + weaponOf('mp5').reloadTicks);
     // A pool shorter than the magazine fills what it can.

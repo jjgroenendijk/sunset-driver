@@ -59,6 +59,7 @@ export {
   slotSpec,
   takeWeapon,
   beginReload,
+  canReload,
   createLoadout,
   currentSlot,
   currentWeapon,
