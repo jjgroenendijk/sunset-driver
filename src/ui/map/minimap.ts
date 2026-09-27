@@ -59,6 +59,9 @@ export class Minimap {
   /** The territory overlay slot of spec section 12; see `MapDrawOptions.overlay`. */
   overlay: MapDrawOptions['overlay'];
 
+  /** What a tap on the window does, or null where it does nothing. */
+  onTap: (() => void) | null = null;
+
   constructor(parent: HTMLElement, art: MapArt) {
     this.art = art;
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -68,6 +71,8 @@ export class Minimap {
     this.ctx = this.canvas.getContext('2d')!;
     this.root.append(this.canvas);
     parent.append(this.root);
+    // A phone has no map key, so a tap on the window opens the map (`main.ts`).
+    this.root.addEventListener('click', () => this.onTap?.());
     this.distance = document.createElement('div');
     this.distance.className = 'minimap-distance';
     this.distance.hidden = true;

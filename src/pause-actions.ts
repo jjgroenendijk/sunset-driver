@@ -12,7 +12,7 @@ import type { PartyActions } from './ui/menus/party.ts';
 import { gameTime } from './sim/clock.ts';
 import { createSave, saveFromText, saveToText, type SaveFile } from './sim/save.ts';
 import type { SimState } from './sim/simulation.ts';
-import { PauseMenu } from './ui/menus/pause.ts';
+import { PauseMenu, type PauseExtra } from './ui/menus/pause.ts';
 import { setPendingStart, type SaveSlots } from './ui/menus/saves.ts';
 import type { MenuSettings } from './ui/menus/settings.ts';
 
@@ -25,6 +25,8 @@ export interface PauseSession {
   loadInto: (save: SaveFile) => void;
   settings: MenuSettings;
   party: PartyActions;
+  /** The phone's items of the main list (`touch-bar.ts`). */
+  extras?: readonly PauseExtra[];
 }
 
 /** Build the pause menu of a session, closed. */
@@ -58,6 +60,7 @@ export function buildPauseMenu(session: PauseSession): PauseMenu {
     },
     settings: session.settings,
     party: session.party,
+    extras: session.extras,
     regenerate: () => restart(randomSeedString(), state.character, false),
     quit: () => location.reload(),
   });

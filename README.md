@@ -62,16 +62,17 @@ The title screen shows the same list, drawn as key caps. To change a binding, ch
 ## On a phone
 
 A phone reaches none of those keys, so it is given a pad instead. The left thumb walks and drives
-with a stick. The right thumb has Fire, Use, Jump or Brake, Run or Horn, Load and Gun, and Radio in
-a vehicle. A tap on a numbered row of a panel chooses it. Menu, Map, Fly and Full sit in the top
-corner.
+with a stick. The right thumb has Fire, Use, and Jump or Brake. Load shows only while a reload would
+start, Gun only while more than one weapon is carried, and Horn and Radio only in a vehicle. A tap
+on a numbered row of a panel chooses it. A tap on the minimap opens the map. Menu sits in the top
+corner, and the pause menu holds Fly over the city and Full screen.
 
 The title screen also opens on **Explore**, which starts the seed in the box straight into the free
 camera, two hundred metres over the streets. The left thumb flies it, a drag anywhere turns the
 view, a pinch sets the speed, and the keys down the right edge rise, fall and go six times as fast.
 
 An iPhone gives full screen only to a page opened from the Home Screen: tap Share, then Add to Home
-Screen, and open the game from there. Full does the rest on other phones.
+Screen, and open the game from there. Full screen in the pause menu does the rest on other phones.
 
 It needs WebGPU, which on an iPhone means iOS 26 or later; an older one is told so and stops.
 

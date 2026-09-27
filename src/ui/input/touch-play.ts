@@ -12,6 +12,8 @@
  * detached, and this one is put away. The arithmetic of the stick is in
  * `touch.ts` and tested there; this is the browser half alone.
  */
+import type { SimState } from '../../sim/simulation.ts';
+import { canReload } from '../../sim/weapons/weapon.ts';
 import type { Keyboard } from './keyboard.ts';
 import { stickVector } from './touch.ts';
 
@@ -23,21 +25,38 @@ interface ButtonSpec {
   labels: readonly [string, string];
   /** The extra class that places the button in the cluster. */
   place: string;
+  /** When the button is on screen: always, only in a vehicle, or only while a reload would start. */
+  shown: 'always' | 'driving' | 'reload';
+}
+
+/** What the pad reads off the record to decide which buttons it shows. */
+interface PadView {
+  driving: boolean;
+  reload: boolean;
+  /** More than one weapon carried, so the Gun button has somewhere to step to. */
+  choice: boolean;
 }
 
 /**
  * The held buttons, under the right thumb. Fire is the largest and nearest the
  * corner, where the thumb rests. Space is both the jump and the handbrake, so
- * that button is only relabelled; the other one is the sprint on foot and the
- * horn in a vehicle, because a driver has no legs to run with.
+ * that button is only relabelled. The pad has no sprint: the phone walks at the
+ * walk, and the horn is there only in a vehicle. A button that would do
+ * nothing is hidden rather than shown dead, so Load is up only while a reload
+ * would start.
  */
 const BUTTONS: readonly ButtonSpec[] = [
-  { foot: 'Mouse0', drive: 'Mouse0', labels: ['Fire', 'Fire'], place: 'touch-fire' },
-  { foot: 'Space', drive: 'Space', labels: ['Jump', 'Brake'], place: 'touch-jump' },
-  { foot: 'KeyE', drive: 'KeyE', labels: ['Use', 'Exit'], place: 'touch-use' },
-  { foot: 'ShiftLeft', drive: 'KeyH', labels: ['Run', 'Horn'], place: 'touch-run' },
-  { foot: 'KeyR', drive: 'KeyR', labels: ['Load', 'Load'], place: 'touch-load' },
+  { foot: 'Mouse0', drive: 'Mouse0', labels: ['Fire', 'Fire'], place: 'touch-fire', shown: 'always' },
+  { foot: 'Space', drive: 'Space', labels: ['Jump', 'Brake'], place: 'touch-jump', shown: 'always' },
+  { foot: 'KeyE', drive: 'KeyE', labels: ['Use', 'Exit'], place: 'touch-use', shown: 'always' },
+  { foot: 'KeyH', drive: 'KeyH', labels: ['Horn', 'Horn'], place: 'touch-horn', shown: 'driving' },
+  { foot: 'KeyR', drive: 'KeyR', labels: ['Load', 'Load'], place: 'touch-load', shown: 'reload' },
 ];
+
+function showsButton(spec: ButtonSpec, view: PadView): boolean {
+  if (spec.shown === 'driving') return view.driving;
+  return spec.shown === 'reload' ? view.reload : true;
+}
 
 /** A button of the pad, and the key its finger is holding, or '' while it is up. */
 interface Button {
@@ -56,10 +75,11 @@ export class TouchPlay {
   private readonly knob: HTMLElement;
   private readonly buttons: Button[];
   private readonly radio: HTMLButtonElement;
+  private readonly weapon: HTMLButtonElement;
   private readonly cluster: HTMLElement;
   /** The thumb on the stick, where it went down, and where it has reached. */
   private thumb: { id: number; fromX: number; fromY: number; x: number; y: number } | null = null;
-  private driving = false;
+  private view: PadView = { driving: false, reload: false, choice: false };
   private live = false;
   private counter = false;
 
@@ -82,9 +102,9 @@ export class TouchPlay {
     this.cluster = cluster;
     this.buttons = BUTTONS.map((spec) => this.buildButton(spec));
     // The weapon and the radio are steps rather than holds, so a tap is enough.
-    const weapon = tapButton('Gun', 'touch-gun', () => keyboard.nextWeapon());
+    this.weapon = tapButton('Gun', 'touch-gun', () => keyboard.nextWeapon());
     this.radio = tapButton('Radio', 'touch-radio', () => keyboard.pulse('BracketRight'));
-    cluster.append(...this.buttons.map((b) => b.el), weapon, this.radio);
+    cluster.append(...this.buttons.map((b) => b.el), this.weapon, this.radio);
 
     this.root.append(pad, cluster);
     parent.append(this.root);
@@ -93,12 +113,13 @@ export class TouchPlay {
 
   /**
    * Bring the pad in step with the frame: shown while the player is being
-   * played rather than flown over or paused, and labelled for foot or wheel.
+   * played rather than flown over or paused, labelled for foot or wheel, and
+   * with only the buttons that would do something.
    * Put away, it lets go of every finger, so nothing stays held behind a menu.
    * While a shop's counter or a deal is open the buttons are put away alone:
    * the counter stands in their corner, and the stick still walks out.
    */
-  update(driving: boolean, live: boolean, counter = false): void {
+  update(state: SimState, live: boolean, counter = false): void {
     if (live !== this.live) {
       this.live = live;
       this.root.hidden = !live;
@@ -109,14 +130,29 @@ export class TouchPlay {
       this.cluster.hidden = counter;
       if (counter) for (const button of this.buttons) this.release(button);
     }
-    if (driving === this.driving) return;
-    this.driving = driving;
+    const view: PadView = {
+      driving: state.player.driving,
+      reload: canReload(state.loadout),
+      choice: state.loadout.slots.length > 1,
+    };
+    const was = this.view;
+    if (view.driving === was.driving && view.reload === was.reload && view.choice === was.choice) return;
+    this.view = view;
     this.relabel();
   }
 
+  /** Label every button for foot or wheel, and hide the ones that would do nothing. */
   private relabel(): void {
-    for (const button of this.buttons) button.el.textContent = button.spec.labels[this.driving ? 1 : 0];
-    this.radio.hidden = !this.driving;
+    const view = this.view;
+    for (const button of this.buttons) {
+      button.el.textContent = button.spec.labels[view.driving ? 1 : 0];
+      const shown = showsButton(button.spec, view);
+      // A button taken away under a finger lets its key go, or it stays held.
+      if (!shown) this.release(button);
+      button.el.hidden = !shown;
+    }
+    this.radio.hidden = !view.driving;
+    this.weapon.hidden = !view.choice;
   }
 
   /** Let go of the stick and every button. */
@@ -177,7 +213,7 @@ export class TouchPlay {
       if (button.pointer >= 0) return;
       el.setPointerCapture(event.pointerId);
       button.pointer = event.pointerId;
-      button.code = this.driving ? spec.drive : spec.foot;
+      button.code = this.view.driving ? spec.drive : spec.foot;
       this.keyboard.press(button.code);
       el.classList.add('touch-key-held');
     });

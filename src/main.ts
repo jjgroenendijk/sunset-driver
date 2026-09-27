@@ -38,7 +38,7 @@ import { readSettings, writeSettings, type MenuSettings } from './ui/menus/setti
 import { FreeCameraControls } from './ui/input/free-camera.ts';
 import { MouseLook } from './ui/input/mouse-look.ts';
 import { isTouchDevice, readTouchProbe } from './ui/input/touch.ts';
-import { markTouchUi, mountTouchBar } from './ui/input/touch-bar.ts';
+import { markTouchUi, mountTouchBar, touchPauseItems } from './ui/input/touch-bar.ts';
 import { TouchPlay } from './ui/input/touch-play.ts';
 import { Keyboard } from './ui/input/keyboard.ts';
 import { LoadingScreen } from './ui/menus/loading.ts';
@@ -405,6 +405,7 @@ async function boot(): Promise<void> {
     loadInto,
     settings: menuSettings,
     party: party.actions,
+    extras: touchPauseItems(touch, document.body, free, camera.camera),
   });
   // The browser keeps the Escape that takes the chase views' pointer lock, so
   // losing the lock opens the menu, and Resume asks for it back (spec section 10.7).
@@ -481,8 +482,11 @@ async function boot(): Promise<void> {
     pause,
     party: party.control,
   };
-  // The bar of buttons a phone opens the menu, the map and the flight from.
-  if (touch) mountTouchBar(document.body, free, camera.camera, { menu: () => pause.show(), map: () => map.toggle() });
+  // The button a phone opens the menu from, and the minimap it opens the map from.
+  if (touch) {
+    mountTouchBar(document.body, free, camera.camera, () => pause.show());
+    minimap.onTap = () => map.toggle();
+  }
   // Explore opens the city from the air rather than from the driver's seat: the
   // camera is detached before the first frame and lifted over where the session
   // started, so the screen the loading screen fades off is already the flight.

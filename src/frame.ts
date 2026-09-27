@@ -368,7 +368,7 @@ export class SessionFrame {
    * their corner.
    */
   private showPad(session: Session, away: boolean, counter: boolean): void {
-    this.parts.pad?.update(session.state.player.driving, !away && !session.map.open, counter);
+    this.parts.pad?.update(session.state, !away && !session.map.open, counter);
   }
 
   /**

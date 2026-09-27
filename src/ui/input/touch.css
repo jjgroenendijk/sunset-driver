@@ -7,6 +7,7 @@
 
 .touch-key { display: grid; place-items: center; box-sizing: border-box; min-width: 3rem; min-height: 3rem; padding: 0 .6rem; border: var(--it-card-edge); border-radius: 1.5rem; background: var(--it-ivory); color: var(--it-ink); box-shadow: var(--it-card-shadow); font: 600 .8rem/1 var(--it-sans); letter-spacing: .08em; text-transform: uppercase; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); touch-action: none; }
 .touch-key-held { background: var(--it-ink); color: var(--it-ivory); }
+.touch-key[hidden] { display: none; }
 
 .touch-bar { position: fixed; z-index: 12; top: calc(12px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right)); display: flex; gap: .5rem; }
 
@@ -25,21 +26,31 @@
    thumb rests. It stands under the counters, so a tap on a row reaches it. */
 .touch-play { position: fixed; z-index: 4; inset: 0; pointer-events: none; }
 .touch-play > * { pointer-events: auto; }
-.touch-cluster { position: absolute; right: calc(16px + env(safe-area-inset-right)); bottom: calc(20px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3, 3.4rem); grid-template-rows: repeat(3, 3.4rem); grid-template-areas: "gun load radio" "run use fire" ". jump fire"; gap: .5rem; place-items: center; }
+.touch-cluster { position: absolute; right: calc(16px + env(safe-area-inset-right)); bottom: calc(20px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3, 3.4rem); grid-template-rows: repeat(3, 3.4rem); grid-template-areas: "gun load radio" "horn use fire" ". jump fire"; gap: .5rem; place-items: center; }
 .touch-cluster .touch-key { width: 3.4rem; height: 3.4rem; padding: 0; font-size: .7rem; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-.touch-cluster .touch-key[hidden] { display: none; }
+/* The pad's buttons let the street show through until a thumb holds one. */
+.touch-cluster .touch-key:not(.touch-key-held) { opacity: .6; }
 .touch-cluster .touch-fire { grid-area: fire; height: 7.3rem; border-radius: 1.7rem; background: var(--it-rosso); color: var(--it-ivory); }
 .touch-jump { grid-area: jump; }
 .touch-cluster .touch-use { grid-area: use; background: var(--it-yellow); }
 .touch-cluster .touch-key-held { background: var(--it-ink); color: var(--it-ivory); }
-.touch-run { grid-area: run; }
+.touch-horn { grid-area: horn; }
 .touch-load { grid-area: load; }
 .touch-gun { grid-area: gun; }
 .touch-radio { grid-area: radio; }
-/* The corners the pad stands in are the minimap's and the speedometer's, so
-   those rise above it while it is there. */
-body.touch:not(.flying) :is(.minimap, .hud-ring, .minimap-distance) { --hud-bottom: calc(9.5rem + env(safe-area-inset-bottom)); }
+/* The pad stands in both bottom corners, so the minimap and its ring go to
+   the top left, and a tap on the map opens the big one (`main.ts`). The
+   objective stands under the ring, and the speedometer rises above the pad. */
+body.touch { --hud-disc: calc(var(--hud-map) + 2 * (var(--hud-ring) + var(--hud-gap))); }
+body.touch .minimap { z-index: 6; top: calc(var(--hud-top) + var(--hud-ring) + var(--hud-gap)); bottom: auto; cursor: pointer; }
+body.touch .hud-ring { top: var(--hud-top); bottom: auto; }
+body.touch .minimap-distance { top: calc(var(--hud-top) + var(--hud-disc) + 4px); bottom: auto; }
+body.touch .hud-left { top: calc(var(--hud-top) + var(--hud-disc) + 1.6rem); }
 body.touch:not(.flying) .hud-speed { --hud-bottom: calc(12.5rem + env(safe-area-inset-bottom)); }
+/* The top centre has no room between the ring and the stack, so the radio
+   stands at the right, level with the objective. */
+body.touch .hud-top { top: calc(var(--hud-top) + var(--hud-disc) + 1.6rem); left: auto; right: var(--hud-right); transform: none; }
+body.touch .hud-radio { max-width: 46vw; }
 /* The counters come up clear of both thumbs, and their rows take a tap. */
 body.touch :is(.home, .job, .travel) { z-index: 5; bottom: calc(15rem + env(safe-area-inset-bottom)); }
 [data-key] { pointer-events: auto; cursor: pointer; }
@@ -78,22 +89,34 @@ body.touch .title-choice { grid-template-columns: 6rem 2.9rem 1fr 2.9rem; }
 body.touch .title-seed, body.touch .pause-text { font-size: 16px; }
 body.touch .title, body.touch .pause { padding: calc(1rem + env(safe-area-inset-top)) calc(1rem + env(safe-area-inset-right)) calc(1rem + env(safe-area-inset-bottom)) calc(1rem + env(safe-area-inset-left)); }
 /* The HUD's corners come in from the notch and the home bar, and the top
-   right stack drops below the bar of keys in that corner. */
+   right stack stands beside the Menu button in that corner. */
 body.touch { --hud-top: calc(12px + env(safe-area-inset-top)); --hud-right: calc(12px + env(safe-area-inset-right)); --hud-bottom: calc(12px + env(safe-area-inset-bottom)); --hud-left: calc(12px + env(safe-area-inset-left)); --hud-map: 120px; --hud-ring: 4px; }
-body.touch .hud-right { top: calc(var(--hud-top) + 3.6rem); }
+body.touch .hud-right { right: calc(var(--hud-right) + 5.4rem); }
+/* A phone's stack is small: the clock without the day and the weather, the
+   money at the size of the clock, and no pill for bare hands. */
+body.touch .hud-day { display: none; }
+body.touch .hud-money { font-size: 1.2rem; }
+body.touch .hud-weapon-bare { display: none; }
+body.touch .hud-stars { font-size: 1.1rem; }
+/* The objective loses its heading, and the district's name its size. */
+body.touch .hud-objective { padding: .35rem .6rem; font-size: .8rem; }
+body.touch .hud-objective::before { display: none; }
+body.touch .district-title-name { font-size: clamp(1.8rem, 6vw, 2.8rem); }
+body.touch .district-title-sub { font-size: .62rem; }
+/* The speedometer is read at a glance, and a phone has no room to spare. */
+body.touch .hud-speed { min-width: 0; }
+body.touch .hud-kmh { font-size: 2rem; }
+body.touch .hud-condition { width: 6rem; }
 /* The developer pickers are key-only, and a phone reaches neither key. */
 body.touch .picker { display: none; }
 /* Nothing of the street's own HUD means anything from the air. */
 body.touch.flying :is(.hud-left, .hud-right, .hud-ring, .hud-speed), body.touch.flying .hotwire, body.touch.flying .travel { display: none; }
-/* The stick would stand on the corner map, so the map goes up out of its way. */
-body.touch.flying .minimap { bottom: calc(9.5rem + env(safe-area-inset-bottom)); }
 
 @media (orientation: landscape) and (max-height: 480px) {
-  /* A phone held sideways has no room under the stick for the corner map. */
-  body.touch.flying .minimap { display: none; }
   .touch-stick { width: 7rem; height: 7rem; }
-  /* Nor beside the pad: the map button stands in for it. */
-  body.touch :is(.minimap, .hud-ring, .minimap-distance) { display: none; }
+  /* Held sideways, the objective stands beside the minimap rather than under
+     it, where the stick would reach it. */
+  body.touch .hud-left { top: var(--hud-top); left: calc(var(--hud-left) + var(--hud-disc) + 12px); max-width: min(18rem, 30vw); }
   .touch-cluster { grid-template-columns: repeat(3, 3rem); grid-template-rows: repeat(3, 3rem); gap: .4rem; }
   .touch-cluster .touch-key { width: 3rem; height: 3rem; }
   .touch-cluster .touch-fire { height: 6.4rem; }
