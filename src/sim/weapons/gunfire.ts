@@ -13,8 +13,7 @@ import { atan2, cos, hypot, sin } from '../../core/libm.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { crowdFeelsBlast, crowdHearsShot } from '../crowd/crowd-reaction.ts';
 import { callAmbulance } from '../city/emergency.ts';
-import { damageVehicle, disableEngine, ignite } from '../vehicles/damage.ts';
-import { unrotate } from '../vehicles/frame.ts';
+import { roundInto } from './struck.ts';
 import { aimYaw } from '../player/aim.ts';
 import type { InputFrame } from '../input.ts';
 import { hurt, SKIN, vehicleGap } from '../player/on-foot.ts';
@@ -44,6 +43,7 @@ import {
   weaponOf,
   type ProjectileState,
   type ShotRay,
+  type WeaponId,
   type WeaponSpec,
 } from './weapon.ts';
 
@@ -82,6 +82,15 @@ export interface ShotTarget {
    * services leaves it out.
    */
   crew?: { unitAt(handle: number): number | undefined };
+  /**
+   * The other players of a room (spec section 21.5), so a round that went
+   * into one is written down for the room to tell its owner. A session on its
+   * own leaves it out, or holds nobody in it.
+   */
+  peers?: {
+    shoot(handle: number, weapon: WeaponId, dx: number, dh: number, dy: number): 'person' | 'vehicle' | undefined;
+    has(handle: number): boolean;
+  };
   /**
    * The crowd of spec section 13.1, so a swing can reach the people on the
    * pavement. They walk loops rather than stand in the physics world, so they
@@ -129,11 +138,25 @@ function shotPush(damage: number): number {
   return Math.min(3.5, 0.8 + damage * 0.03);
 }
 
+/**
+ * Whether a collider a swing's rays met is somebody the swing has already
+ * dealt with. An enforcer, an officer and a crew member have been swept off
+ * the record, and so has the player's own vehicle: none is hit twice for one
+ * swing. Another player of the room is not the ground either, and a swing that
+ * meets one lands on nothing yet.
+ */
+function sweptOff(target: ShotTarget, handle: number): boolean {
+  if (target.enforcers?.unitAt(handle) !== undefined) return true;
+  if (target.officers?.unitAt(handle) !== undefined) return true;
+  if (target.crew?.unitAt(handle) !== undefined) return true;
+  if (target.peers?.has(handle) === true) return true;
+  return target.body !== undefined && handle === target.body.handle;
+}
+
 /** The casts and the flights of one session. It owns no state but its scratch. */
 export class Gunfire {
   private readonly world: RAPIER.World;
   /** Scratch vectors, so a tick allocates nothing. */
-  private readonly point = { x: 0, y: 0, z: 0 };
   private readonly from = { x: 0, y: 0, z: 0 };
   private readonly along = { x: 0, y: 0, z: 0 };
   /** The one ray every shot and every projectile step is cast with. */
@@ -260,17 +283,21 @@ export class Gunfire {
       hurtCrew(state, crew, spec.damage, atan2(ray.dy, ray.dx), target.ground);
       return 'person';
     }
+    // A round that went into another player of the room is theirs to take
+    // (spec section 21.4): it is written down here and their browser applies it.
+    const peer = target.peers?.shoot(hit.collider.handle, spec.id, ray.dx, ray.dh, ray.dy);
+    if (peer !== undefined) return peer;
     // The round pushes the vehicle the way it was flying, which is the direction
     // the panel rule reads, exactly as a crash pushes it away from the wall.
     if (target.body !== undefined && hit.collider.handle === target.body.handle) {
-      this.hit(state, spec, state.vehicle, ray.dx, ray.dh, ray.dy, roundSeverity(spec));
+      roundInto(state, spec, state.vehicle, ray.dx, ray.dh, ray.dy, roundSeverity(spec));
       return 'vehicle';
     }
     // A round that went into a car of the city takes it off its tour (spec
     // section 5.3) and is taken off the car.
     const car = target.cars?.strike(state, hit.collider.handle)?.vehicle;
     if (car === undefined) return 'hard';
-    this.hit(state, spec, car, ray.dx, ray.dh, ray.dy, roundSeverity(spec));
+    roundInto(state, spec, car, ray.dx, ray.dh, ray.dy, roundSeverity(spec));
     return 'vehicle';
   }
 
@@ -351,7 +378,7 @@ export class Gunfire {
     const v = state.vehicle;
     const bearing = atan2(v.z - p.y, v.x - p.x);
     if (swingReaches(spec, p.heading, vehicleGap(p, v, target.spec), bearing)) {
-      this.hit(state, spec, v, cos(bearing), 0, sin(bearing), roundSeverity(spec));
+      roundInto(state, spec, v, cos(bearing), 0, sin(bearing), roundSeverity(spec));
       this.land(state, spec, 'vehicle', v.x, v.z, v.y);
       met = true;
     }
@@ -422,12 +449,7 @@ export class Gunfire {
     }
     if (nearest === null) return;
     const handle = nearest.collider.handle;
-    // An enforcer and an officer have already been swept off the record, and
-    // so has the player's own vehicle: none is hit twice for one swing.
-    if (target.enforcers?.unitAt(handle) !== undefined) return;
-    if (target.officers?.unitAt(handle) !== undefined) return;
-    if (target.crew?.unitAt(handle) !== undefined) return;
-    if (target.body !== undefined && handle === target.body.handle) return;
+    if (sweptOff(target, handle)) return;
     const at = nearest.timeOfImpact;
     const x = p.x + cos(angle) * at;
     const y = p.y + sin(angle) * at;
@@ -449,45 +471,13 @@ export class Gunfire {
       this.land(state, spec, 'hard', x, y, h);
       return;
     }
-    this.hit(state, spec, car, cos(angle), 0, sin(angle), roundSeverity(spec));
+    roundInto(state, spec, car, cos(angle), 0, sin(angle), roundSeverity(spec));
     this.land(state, spec, 'vehicle', x, y, h);
   }
 
   /** Write one landed blow into the record, for the burst and the knock to read. */
   private land(state: SimState, spec: WeaponSpec, surface: HitSurface, x: number, y: number, h: number): void {
     markHit(state.hits, { tick: state.tick, x, y, h, surface, strength: blowStrength(spec) });
-  }
-
-  /**
-   * Put one hit into a vehicle: the dent, what it costs the vehicle, and what
-   * the round does beyond that. The direction comes in world axes and is read in
-   * the vehicle's own frame, so the panel that takes it is the panel that was
-   * facing the shot.
-   */
-  private hit(
-    state: SimState,
-    spec: WeaponSpec,
-    v: VehicleState,
-    dx: number,
-    dh: number,
-    dy: number,
-    severity: number,
-  ): void {
-    unrotate(this.point, v, dx, dh, dy);
-    // `unrotate` answers the vehicle's own axes: `x` along it, `y` up and `z`
-    // across it, which is the order the panel rule reads them in.
-    damageVehicle(
-      v.damage,
-      severity,
-      this.point.x,
-      this.point.z,
-      this.point.y,
-      state.seed,
-      state.tick,
-      state.loadout.shots,
-    );
-    if (spec.effect === 'fire') ignite(v.damage, state.tick);
-    if (spec.effect === 'engine') disableEngine(v.damage);
   }
 
   /**
@@ -634,7 +624,7 @@ export class Gunfire {
     const share = blastFalloff(distance, radius);
     if (share === 0) return;
     const length = Math.max(distance, 1e-6);
-    this.hit(state, spec, v, dx / length, dh / length, dy / length, roundSeverity(spec) * share);
+    roundInto(state, spec, v, dx / length, dh / length, dy / length, roundSeverity(spec) * share);
   }
 
 }

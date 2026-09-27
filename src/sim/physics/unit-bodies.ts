@@ -9,7 +9,8 @@
  * the player is moving — and taken out of the world at the same moment. Each
  * half keeps its own file, because a car is a box moved with its heading and a
  * person is an upright capsule: `police-bodies.ts` and `person-bodies.ts`.
- * `emergency-bodies.ts` is the police cars' file with the services' sizes.
+ * `emergency-bodies.ts` is the police cars' file with the services' sizes, and
+ * `peer-bodies.ts` stands the other players of a room (spec section 21.5).
  *
  * `physics.ts` owns one of these and hands every part to `gunfire.ts`, which
  * asks each of them which unit a collider belongs to.
@@ -19,6 +20,7 @@ import { PHYSICS_RADIUS, PHYSICS_TILE } from './ground-bodies.ts';
 import { EmergencyBodies } from '../city/emergency-bodies.ts';
 import { PersonBodies } from '../police/person-bodies.ts';
 import { PoliceBodies } from '../police/police-bodies.ts';
+import { PeerBodies } from './peer-bodies.ts';
 import type { SimState } from '../simulation.ts';
 
 export class UnitBodies {
@@ -32,6 +34,8 @@ export class UnitBodies {
   readonly emergency: EmergencyBodies;
   /** Their crews on the street as capsules (spec section 20.3), so they can be shot like anybody else. */
   readonly crew: PersonBodies;
+  /** The other players of a room as sensors (spec section 21.5), so friendly fire can find them. */
+  readonly peers: PeerBodies;
 
   constructor(world: RAPIER.World) {
     this.police = new PoliceBodies(world);
@@ -39,6 +43,7 @@ export class UnitBodies {
     this.officers = new PersonBodies(world, (state) => state.police.officers);
     this.emergency = new EmergencyBodies(world);
     this.crew = new PersonBodies(world, (state) => state.emergency.crew);
+    this.peers = new PeerBodies(world);
   }
 
   /**
@@ -61,6 +66,7 @@ export class UnitBodies {
     this.officers.settle(state, minX, minY, maxX, maxY);
     this.emergency.settle(state, minX, minY, maxX, maxY);
     this.crew.settle(state, minX, minY, maxX, maxY);
+    this.peers.settle(minX, minY, maxX, maxY);
   }
 
   /** Take every body out of the world. */
@@ -70,5 +76,6 @@ export class UnitBodies {
     this.officers.clear();
     this.emergency.clear();
     this.crew.clear();
+    this.peers.clear();
   }
 }

@@ -22,14 +22,18 @@
  *   the rest of the city is a function of `(seed, tick)`, which is why the
  *   shared clock is worth what it costs.
  *
- * The record is read here and written in one place only: the divergence set, at
- * the top of {@link Party.frame}, so a message from a socket never lands in the
- * middle of a tick.
+ * The record is read here and written in one place only: the top of
+ * {@link Party.frame}, where the divergence set and the rounds other players
+ * put into this one are written in, so a message from a socket never lands in
+ * the middle of a tick.
  */
 import { normaliseAppearance, type CharacterAppearance } from '../sim/player/character.ts';
 import type { InputFrame } from '../sim/input.ts';
 import type { SimState } from '../sim/simulation.ts';
+import type { PeerHit } from '../sim/physics/peer-bodies.ts';
+import { takeRound } from '../sim/weapons/struck.ts';
 import { applyWorld, readWorld, WorldSender, type WorldUpdate } from './divergence.ts';
+import { readHit, type Hit } from './fire.ts';
 import { frameOf, packFrame, readFrame } from './move.ts';
 import {
   readBeat,
@@ -47,7 +51,7 @@ import { beatDue, TickLock } from './tick-lock.ts';
 export const MAX_PLAYERS = 6;
 
 /** What a message weighs on the wire: a `hello`, a tick, a player's frame, or the world. */
-export type MessageBody = Hello | { tick: number } | WorldUpdate | Float32Array;
+export type MessageBody = Hello | { tick: number } | WorldUpdate | Hit | Float32Array;
 
 /**
  * The half of the room that owns a socket. `link.ts` is the one that really
@@ -118,6 +122,8 @@ export class Party {
   private world: WorldSender | null;
   /** Updates that arrived between two frames, written into the record at the next one. */
   private readonly incoming: WorldUpdate[] = [];
+  /** Rounds other players put into this one, taken at the next frame (spec section 21.5). */
+  private readonly struck: Hit[] = [];
   /** The host tick of the last update written in, so a late one does not undo a newer one. */
   private applied = -1;
   /**
@@ -213,6 +219,7 @@ export class Party {
     this.greeted.clear();
     this.roster.clear();
     this.incoming.length = 0;
+    this.struck.length = 0;
     this.world = null;
     this.link.onPeerJoin = null;
     this.link.onPeerLeave = null;
@@ -221,8 +228,27 @@ export class Party {
     this.changed();
   }
 
-  /** Write in what the host said about the world it owns. A host owns it and writes nothing. */
+  /**
+   * Tell each player a round went into about it (spec section 21.5). A hit on
+   * somebody who has left the room since is dropped.
+   */
+  fire(hits: readonly PeerHit[]): void {
+    if (this.phase === 'offline') return;
+    for (const hit of hits) {
+      if (!this.peers.has(hit.peer)) continue;
+      const body: Hit = { weapon: hit.weapon, part: hit.part, dx: hit.dx, dh: hit.dh, dy: hit.dy };
+      this.link.send('hit', body, hit.peer);
+    }
+  }
+
+  /**
+   * Write in what the host said about the world it owns, and the rounds other
+   * players put into this one. A host owns the world and writes none of it;
+   * every peer owns itself and takes its own hits.
+   */
   private settle(state: SimState): void {
+    for (const hit of this.struck) takeRound(state, hit.weapon, hit.part, hit.dx, hit.dh, hit.dy);
+    this.struck.length = 0;
     for (const update of this.incoming) {
       if (this.isHost || update.tick < this.applied) continue;
       this.applied = update.tick;
@@ -273,6 +299,14 @@ export class Party {
     else if (kind === 'move') this.moved(body, from);
     else if (kind === 'world') this.told(body, from);
     else if (kind === 'host') this.claimed(body, from);
+    else if (kind === 'hit') this.shot(body, from);
+  }
+
+  /** A round another player put into this one. It is kept until the next frame takes it. */
+  private shot(body: unknown, from: string): void {
+    if (!this.peers.has(from)) return;
+    const hit = readHit(body);
+    if (hit !== null) this.struck.push(hit);
   }
 
   /**
