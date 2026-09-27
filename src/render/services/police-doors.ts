@@ -9,7 +9,9 @@
  * record's `doors`. The skin and the glass are a mesh each, so the glass is
  * still seen through.
  */
-import { Matrix4, type InstancedMesh, type Material } from 'three';
+import { Matrix4 } from 'three';
+import type { NodeMaterial } from 'three/webgpu';
+import type { Pool } from '../look/pool.ts';
 import type { VehicleSpec } from '../../sim/vehicles/vehicle.ts';
 import { boxOf, coloured, instanced, merged } from '../vehicles/traffic.ts';
 import { vehicleBoxes, type Hinge } from '../vehicles/vehicle-mesh.ts';
@@ -23,16 +25,16 @@ const SWING = 1.15;
 /** One door: its hinge, and the two meshes it is drawn with. */
 interface Leaf {
   hinge: Hinge;
-  meshes: InstancedMesh[];
+  meshes: Pool[];
 }
 
 export class PatrolDoors {
-  readonly meshes: InstancedMesh[] = [];
+  readonly meshes: Pool[] = [];
   private readonly leaves: Leaf[] = [];
   private readonly turn = new Matrix4();
   private readonly out = new Matrix4();
 
-  constructor(spec: VehicleSpec, trim: Material, glass: Material, cap: number) {
+  constructor(spec: VehicleSpec, trim: NodeMaterial, glass: NodeMaterial, cap: number) {
     const parts = vehicleBoxes(spec);
     for (const leaf of PATROL_LEAVES) {
       const own = parts.filter((part) => part.hinge?.leaf === leaf);

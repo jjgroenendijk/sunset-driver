@@ -11,12 +11,13 @@ things standing in the world in `docs/render-entities.md`.
 
 ## The views
 
-- `src/render/vehicles/traffic.ts` draws the traffic of spec section 13.1 as four `InstancedMesh`es
-  per class: the parts in the row's paint, the trim with its colours per vertex, the glass and the
-  tyres. A part whose colour is `VehicleSpec.paint` goes into the paint mesh, and the instance
-  colour replaces it, so one mesh draws a saloon in every paint. A class with nothing in view is
-  hidden, so it costs no draw. The traffic is evaluated at `tick - 1 + alpha`, the moment
-  `smooth.ts` draws the player at, and a promoted vehicle is drawn from its record.
+- `src/render/vehicles/traffic.ts` draws the traffic of spec section 13.1 as four pools per class
+  (`Pool`, `look/pool.ts`, made by `instanced()`): the parts in the row's paint, the trim with its
+  colours per vertex, the glass and the tyres. A part whose colour is `VehicleSpec.paint` goes into
+  the paint pool, and the instance colour replaces it, so one pool draws a saloon in every paint. A
+  class with nothing in view is hidden, so it costs no draw. The traffic is evaluated at
+  `tick - 1 + alpha`, the moment `smooth.ts` draws the player at, and a promoted vehicle is drawn
+  from its record.
 - The body of an ambient car moves on its springs (`src/render/vehicles/suspension.ts`). It pitches
   with the car's change of speed and rolls with its turn, and rocks back once when either stops. The
   tyres are a mesh of their own so they stay on the road. A bike leans into a turn instead, tyres
@@ -56,7 +57,8 @@ things standing in the world in `docs/render-entities.md`.
   Over eight, the pipeline fails and nothing is drawn, with only a console error to say so. The
   crowd packs its bone and colour part into one `rig` attribute and its eight instance attributes
   into one `InstancedInterleavedBuffer`, and it uploads only the `CROWD_STRIDE` floats of each
-  person written. The rig, the props and the blends are in `docs/crowd.md`.
+  person written. The rig, the props and the blends are in `docs/crowd.md`. A `Pool` packs its
+  matrix and its tint into one buffer for the same reason: the trim of a vehicle reads six.
 - `src/render/transit/bus-stops.ts` stands a post at each kerb the buses of spec section 20.2 call
   at, and a shelter at the busy ones: two instanced meshes, so every stop in view costs two draws. A
   stop never moves, so `BusStopView.update` takes no moment, only the place the frame is drawn

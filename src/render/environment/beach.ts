@@ -15,19 +15,18 @@ import {
   Color,
   Group,
   Matrix4,
-  MeshBasicMaterial,
-  MeshStandardMaterial,
   Quaternion,
   Vector3,
   type BufferGeometry,
-  type InstancedMesh,
   type Material,
 } from 'three';
+import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import { hashInts } from '../../core/hash.ts';
 import type { BeachLife, BeachProp, PlacedBeachProp } from '../../sim/city/beach-life.ts';
 import type { Weather } from '../../sim/city/weather.ts';
 import { boxOf, coloured, instanced, merged, TRAFFIC_VIEW } from '../vehicles/traffic.ts';
 import { METAL } from '../vehicles/vehicle-mesh.ts';
+import type { Pool } from '../look/pool.ts';
 
 /** Metres each way of the point the frame is drawn round that props are drawn in. */
 const BEACH_VIEW = TRAFFIC_VIEW;
@@ -147,8 +146,8 @@ function geometryOf(boxes: readonly Box[]): BufferGeometry {
 export class BeachPropView {
   readonly group = new Group();
   private readonly life: BeachLife;
-  private readonly meshes: Record<BeachProp, InstancedMesh>;
-  private readonly flames: InstancedMesh;
+  private readonly meshes: Record<BeachProp, Pool>;
+  private readonly flames: Pool;
   private readonly materials: Material[];
   private readonly found: PlacedBeachProp[] = [];
   private readonly matrix = new Matrix4();
@@ -160,13 +159,12 @@ export class BeachPropView {
 
   constructor(life: BeachLife) {
     this.life = life;
-    const plain = new MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.02 });
-    const tinted = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 });
-    const fire = new MeshBasicMaterial({ vertexColors: true });
+    const plain = new MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.02 });
+    const tinted = new MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 });
+    const fire = new MeshBasicNodeMaterial({ vertexColors: true });
     this.materials = [plain, tinted, fire];
-    const mesh = (kind: BeachProp): InstancedMesh => {
+    const mesh = (kind: BeachProp): Pool => {
       const made = instanced(geometryOf(PROP_BOXES[kind]), TINTED.has(kind) ? tinted : plain, kind !== 'towel', CAPS[kind]);
-      // The colour attribute is made up front, so the shader is built with it the first time.
       if (TINTED.has(kind)) for (let i = 0; i < CAPS[kind]; i++) made.setColorAt(i, this.tint.set(WHITE));
       return made;
     };
@@ -220,7 +218,7 @@ export class BeachPropView {
       mesh.visible = mesh.count > 0;
       if (mesh.count === 0) continue;
       mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor !== null) mesh.instanceColor.needsUpdate = true;
+      mesh.instanceColor.needsUpdate = true;
     }
   }
 

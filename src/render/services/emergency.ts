@@ -25,11 +25,11 @@ import {
   Quaternion,
   Vector3,
   type BufferGeometry,
-  type InstancedMesh,
   type Material,
 } from 'three';
 import { onCall, UNIT_BODY, type EmergencyKind, type EmergencyUnit } from '../../sim/city/emergency.ts';
 import type { SimState } from '../../sim/simulation.ts';
+import type { Pool } from '../look/pool.ts';
 import { BeaconGlow, BeaconPhase, beaconMaterial, flashLit } from './beacons.ts';
 import { unitShape, type UnitDoor, type UnitShape } from './emergency-mesh.ts';
 import { crewOf, CREW_SIZE, type CrewMember } from '../../sim/city/emergency-crew.ts';
@@ -49,10 +49,10 @@ const HOSE_STRETCHES = 16;
 interface KindMeshes {
   kind: EmergencyKind;
   shape: UnitShape;
-  body: InstancedMesh;
+  body: Pool;
   phases: [BeaconPhase, BeaconPhase];
   /** One mesh per door of the shape, since each door turns on its own hinge. */
-  doors: InstancedMesh[];
+  doors: Pool[];
   /** Metres from the road to the middle of the body. */
   ride: number;
   drawn: number;
@@ -201,7 +201,7 @@ export class EmergencyView {
       this.turn.setFromAxisAngle(this.up, door.swing * unit.doors);
       this.hinge.compose(this.at, this.turn, this.one);
       this.swing.multiplyMatrices(this.matrix, this.hinge);
-      (meshes.doors[i] as InstancedMesh).setMatrixAt(at, this.swing);
+      (meshes.doors[i] as Pool).setMatrixAt(at, this.swing);
     }
   }
 
@@ -217,7 +217,7 @@ export class EmergencyView {
     }
   }
 
-  private meshesOf(kind: KindMeshes): InstancedMesh[] {
+  private meshesOf(kind: KindMeshes): Pool[] {
     return [kind.body, kind.phases[0].mesh, kind.phases[1].mesh, ...kind.doors];
   }
 

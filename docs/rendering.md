@@ -121,6 +121,14 @@ post chain and the colour grade in `docs/post.md`. The look all of it must keep 
   key, so an empty pool is a program nobody has built. The sun's cascades and the water's mirror
   run over the frame the same way, and `showWater` holds the sheet in it so an inland session
   compiles the mirror too.
+- three.js 0.186 puts the `uuid` of every `InstancedMesh`, and of every object whose `count` is
+  above 1, into the key of its program: the instance buffer is built into the program's bindings.
+  Each pool was a node build of its own in every pass, and the traffic, the parked cars and the
+  services hold one pool per class and part. Those 157 pools were 4.5 s of a 5.6 s warm-up on an
+  M1 (issue #786). A `Pool` of `look/pool.ts` is a plain `Mesh` over an `InstancedBufferGeometry`.
+  Its matrices and tints are geometry attributes, which the material reads by name, so every pool
+  of one material and one attribute layout shares a build: 315 builds became 130. `instanced()` in
+  `traffic.ts` makes one. The material is changed in place, so it must be drawn by pools only.
 - The program key does not say whether the mesh has instance colours. `setColorAt` makes that
   buffer on its first call, so a pool the warm-up drew before it is drawn white for the whole
   session. Every pool that colours its instances is made through `tinted` (`tint.ts`), which gives
