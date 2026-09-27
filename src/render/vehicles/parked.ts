@@ -8,7 +8,9 @@
  * been promoted. Between those the frame uploads nothing. A promoted car is
  * drawn by `traffic.ts` from its record.
  */
-import { Color, Group, Matrix4, MeshStandardMaterial, Quaternion, Vector3, type InstancedMesh, type Material } from 'three';
+import { Color, Group, Matrix4, Quaternion, Vector3, type InstancedMesh, type Material } from 'three';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
+import { EntityFade } from '../camera/fade.ts';
 import { PARKED_CLASSES, type ParkedCar, type ParkedCars } from '../../sim/traffic/parked.ts';
 import type { SimState } from '../../sim/simulation.ts';
 import { rideHeight, specOf, type VehicleClass } from '../../sim/vehicles/vehicle.ts';
@@ -54,13 +56,21 @@ export class ParkedView {
   private lastY = NaN;
   private lastTick = -Infinity;
   private lastPromoted = -1;
+  /**
+   * The dither fade of spec section 9.2, so a parked car thins in at the edge
+   * of the view rather than pops. It ends {@link MOVE} short of
+   * {@link PARKED_VIEW}: the cars are written round where the view last moved,
+   * which may be that far behind, and a car inside the fade must be written.
+   */
+  private readonly fade = new EntityFade(PARKED_VIEW - MOVE);
 
   constructor(cars: ParkedCars) {
     this.cars = cars;
-    const paint = new MeshStandardMaterial({ roughness: 0.45, metalness: 0.2 });
-    const trim = new MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.1 });
+    const paint = new MeshStandardNodeMaterial({ roughness: 0.45, metalness: 0.2 });
+    const trim = new MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.1 });
     const glass = glassMaterial();
     this.materials.push(paint, trim, glass);
+    for (const material of [paint, trim, glass]) this.fade.mask(material);
     for (const cls of PARKED_CLASSES) {
       const spec = specOf(cls);
       const parts = trafficParts(spec);
@@ -88,6 +98,7 @@ export class ParkedView {
 
   /** Draw the parked cars round a place at a tick. Called once a frame; writes only when something changed. */
   update(state: SimState, x: number, y: number): void {
+    this.fade.focus(x, y);
     const tick = state.tick;
     const moved = !(Math.abs(x - this.lastX) < MOVE && Math.abs(y - this.lastY) < MOVE);
     const stale = tick < this.lastTick || tick >= this.lastTick + REFRESH;

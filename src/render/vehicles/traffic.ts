@@ -38,13 +38,14 @@ import {
   InstancedBufferAttribute,
   InstancedMesh,
   Matrix4,
-  MeshStandardMaterial,
   Quaternion,
   Vector3,
   type BufferGeometry,
   type Material,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
+import { EntityFade } from '../camera/fade.ts';
 import { heldPose, heldTime } from '../../sim/traffic/hold.ts';
 import { Indicators } from '../../sim/traffic/indicator.ts';
 import { JobTops } from './job-tops.ts';
@@ -69,8 +70,8 @@ export const TRAFFIC_VIEW = 180;
 const CLASS_CAP = 256;
 
 /** The tinted glass of every vehicle drawn instanced: one colour, seen through. */
-export function glassMaterial(): MeshStandardMaterial {
-  return new MeshStandardMaterial({ color: GLASS, roughness: 0.1, metalness: 0.2, transparent: true, opacity: GLASS_OPACITY });
+export function glassMaterial(): MeshStandardNodeMaterial {
+  return new MeshStandardNodeMaterial({ color: GLASS, roughness: 0.1, metalness: 0.2, transparent: true, opacity: GLASS_OPACITY });
 }
 
 /** The meshes one class is drawn with: four, and a fifth for whoever is in it. */
@@ -159,6 +160,12 @@ export class TrafficView {
   /** The taxi signs and the beacons on the roofs of the vehicles at work (`job-tops.ts`). */
   private readonly tops: JobTops;
   private readonly materials: Material[] = [];
+  /**
+   * The dither fade of spec section 9.2 at the edge of {@link TRAFFIC_VIEW}, so
+   * a car driving into the view thins in rather than pops. A chase view sees
+   * that edge 180 m off (`pop-in.ts`).
+   */
+  private readonly fade = new EntityFade(TRAFFIC_VIEW);
   private readonly ids: number[] = [];
   private readonly pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
   private readonly matrix = new Matrix4();
@@ -177,7 +184,7 @@ export class TrafficView {
 
   constructor(traffic: AmbientTraffic) {
     this.traffic = traffic;
-    const paint = new MeshStandardMaterial({ roughness: 0.45, metalness: 0.2 });
+    const paint = new MeshStandardNodeMaterial({ roughness: 0.45, metalness: 0.2 });
     const glass = glassMaterial();
     this.trim = createVehicleTrim(true);
     this.plain = createVehicleTrim();
@@ -187,6 +194,7 @@ export class TrafficView {
     const trim = this.trim.material;
     const plain = this.plain.material;
     this.materials.push(paint, glass);
+    for (const material of [paint, glass, trim, plain, ...this.tops.materials]) this.fade.mask(material);
     for (const cls of AMBIENT_CLASSES) {
       const spec = specOf(cls);
       const parts = trafficParts(spec, [], true);
@@ -245,6 +253,7 @@ export class TrafficView {
     }
     this.springs.begin();
     this.tops.begin();
+    this.fade.focus(x, y);
     const minX = x - TRAFFIC_VIEW;
     const minY = y - TRAFFIC_VIEW;
     const maxX = x + TRAFFIC_VIEW;
