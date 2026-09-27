@@ -15,7 +15,7 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 - The buses
 - The bus stops
 - The vehicles at work
-- The wrecks the city tows
+- The wrecks the city tows (in `docs/towing.md`)
 - Traffic lights
 - Parked cars
 - The tram (in `docs/tram.md`)
@@ -184,20 +184,8 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
 
 ## The wrecks the city tows
 
-- `src/sim/traffic/tow.ts` takes a vehicle back out of the record, and `rejoin.ts` puts a bumped
-  car near the player back on its tour (`docs/giving-way.md`). Everything else the player touches
-  stays in `TrafficState.promoted`, so a session spent crashing into traffic leaves shells behind.
-- A shell that has stood `TOW_WAIT` ticks since it went up, with the player `TOW_REACH` metres away
-  or further, is taken. A car of the city that was only bumped, and is not on fire, is taken as
-  soon as the player is that far. The player's own car, left where they took another, carries
-  `left` and is never taken: it is still there on their return, as spec section 20.2 asks.
-  `TOW_REACH` is wider than `TRAFFIC_VIEW`, so a wreck is never taken while it is on the screen,
-  and wider than the physics box, so a towed record never leaves a Rapier body behind it.
-- The tow truck is not on the road. Driving one to the wreck needs the routing spec section 20.3
-  brings for the police, the ambulances and the fire engines; until then this is the parked cars'
-  bargain, where the city turns over while nobody is looking at it.
-- A burnt-out parked car is promoted under `PARKED_ID` plus its bay, and the bay stays empty while
-  that record lasts, so towing it also gives the kerb back to `parked.ts`.
+- The tow trucks, the wrecks they take and the parking tickets have a doc of their own,
+  `docs/towing.md`.
 
 ## Traffic lights
 

@@ -1,6 +1,7 @@
 /**
  * The emergency services (spec section 20.3): the fire engines and the
- * ambulances that answer what happens in the city.
+ * ambulances that answer what happens in the city, and the tow trucks of spec
+ * section 20.2 that take away what it leaves behind (`tow-truck.ts`).
  *
  * What happens is written down as a call on the record: a fire where a vehicle
  * is alight, a casualty where a crash was bad enough to hurt somebody or a
@@ -44,9 +45,13 @@ import type { SimState } from '../simulation.ts';
 import type { TrafficRoads } from '../traffic/traffic.ts';
 import { UnitRoads, type DrivePose } from '../police/unit-route.ts';
 import { specOf } from '../vehicles/vehicle.ts';
+import { hookUp, type TowLoad } from './tow-truck.ts';
 
-/** What a unit is: the engine that answers a fire, or the ambulance that answers a casualty. */
-export type EmergencyKind = 'engine' | 'ambulance';
+/**
+ * What a unit is: the engine that answers a fire, the ambulance that answers a
+ * casualty, or the tow truck that takes a vehicle away.
+ */
+export type EmergencyKind = 'engine' | 'ambulance' | 'tow';
 
 /** What a unit is doing. */
 type EmergencyTask =
@@ -68,6 +73,8 @@ export interface EmergencyCall {
   tick: number;
   /** The unit that has taken it, or -1 while none has. */
   unit: number;
+  /** The promoted vehicle a tow truck is called for. Undefined on the other kinds. */
+  target?: number;
 }
 
 /** One fire engine or ambulance, as the record carries it. */
@@ -105,6 +112,8 @@ export interface EmergencyUnit {
   doors: number;
   /** True once its crew have been put on the street, so they are put out once. */
   deployed: boolean;
+  /** The vehicle a tow truck has hooked and carries away. Undefined on every other unit. */
+  load?: TowLoad;
 }
 
 /** What the services are answering and who is out (spec section 20.3). */
@@ -135,20 +144,28 @@ export interface EmergencyState {
 export const UNIT_BODY: Record<EmergencyKind, { halfLength: number; halfWidth: number; halfHeight: number; ride: number }> = {
   engine: { halfLength: 4.4, halfWidth: 1.25, halfHeight: 1.45, ride: 1.9 },
   ambulance: { halfLength: 3, halfWidth: 1.1, halfHeight: 1.3, ride: 1.65 },
+  tow: { halfLength: 3.7, halfWidth: 1.2, halfHeight: 1.2, ride: 1.55 },
 };
 
 /**
- * Whether a unit has its lights and siren on: on the way to a scene and at it,
- * and off once it is done and driving away.
+ * Whether a unit has its lights on: on the way to a scene and at it, and off
+ * once it is done and driving away. A tow truck is in no hurry and lights its
+ * beacons only while it stands working.
  */
 export function onCall(unit: EmergencyUnit): boolean {
-  return unit.task !== 'leave';
+  return unit.kind === 'tow' ? unit.task === 'work' : unit.task !== 'leave';
+}
+
+/** Whether a unit sounds its siren: an engine or an ambulance on call. A tow truck has none. */
+export function sounding(unit: EmergencyUnit): unit is EmergencyUnit & { kind: Exclude<EmergencyKind, 'tow'> } {
+  return unit.kind !== 'tow' && onCall(unit);
 }
 
 /** Metres per second each kind drives at. An engine is heavy; an ambulance is not. */
 const UNIT_SPEED: Record<EmergencyKind, number> = {
   engine: 22,
   ambulance: 28,
+  tow: 18,
 };
 
 /** How much of a road's speed limit a unit drives, which is over it: the siren is on. */
@@ -221,10 +238,14 @@ const ARRIVE_RANGE = 10;
 export const WORK_TICKS: Record<EmergencyKind, number> = {
   engine: 18 * TICK_RATE,
   ambulance: 12 * TICK_RATE,
+  tow: 11 * TICK_RATE,
 };
 
-/** The most units of both services out at once. */
+/** The most engines and ambulances out at once. */
 export const UNITS_OUT = 3;
+
+/** The most tow trucks out at once, on top of {@link UNITS_OUT}: a wreck never keeps an engine from a fire. */
+export const TOWS_OUT = 1;
 
 /** Ticks between one dispatch and the next, on top of the district's response time. */
 const DISPATCH_GAP = 3 * TICK_RATE;
@@ -258,6 +279,17 @@ export function callAmbulance(state: SimState, x: number, y: number): void {
   raiseCall(state, 'ambulance', x, y);
 }
 
+/**
+ * Call a tow truck to the promoted vehicle `target`, standing at `(x, y)`. A
+ * truck takes one vehicle, so each is a call of its own, however near the next.
+ */
+export function callTow(state: SimState, target: number, x: number, y: number): void {
+  if (state.emergency.calls.some((call) => call.kind === 'tow' && call.target === target)) return;
+  const id = state.emergency.nextCall;
+  state.emergency.nextCall = id + 1;
+  state.emergency.calls.push({ id, kind: 'tow', x, y, tick: state.tick, unit: -1, target });
+}
+
 /** Add a call, unless the same scene is already on the record. */
 function raiseCall(state: SimState, kind: EmergencyKind, x: number, y: number): void {
   const calls = state.emergency.calls;
@@ -268,6 +300,12 @@ function raiseCall(state: SimState, kind: EmergencyKind, x: number, y: number): 
   const id = state.emergency.nextCall;
   state.emergency.nextCall = id + 1;
   calls.push({ id, kind, x, y, tick: state.tick, unit: -1 });
+}
+
+/** Whether a kind already has as many units out as it may. */
+function full(state: SimState, kind: EmergencyKind): boolean {
+  const tows = state.emergency.units.filter((unit: EmergencyUnit) => unit.kind === 'tow').length;
+  return kind === 'tow' ? tows >= TOWS_OUT : state.emergency.units.length - tows >= UNITS_OUT;
 }
 
 /**
@@ -322,7 +360,7 @@ export class EmergencyServices {
    */
   private dispatch(state: SimState): void {
     const service = state.emergency;
-    if (service.units.length >= UNITS_OUT || state.tick < service.dispatchTick) return;
+    if (state.tick < service.dispatchTick) return;
     const call = this.waiting(state);
     if (call === undefined) return;
     const id = service.nextUnit;
@@ -342,10 +380,13 @@ export class EmergencyServices {
     service.dispatchTick = state.tick + DISPATCH_GAP;
   }
 
-  /** The oldest call nobody is on and the district has had time to answer, if there is one. */
+  /**
+   * The oldest call nobody is on and the district has had time to answer, if
+   * there is one, of a kind that may send another unit.
+   */
   private waiting(state: SimState): EmergencyCall | undefined {
     for (const call of state.emergency.calls) {
-      if (call.unit >= 0) continue;
+      if (call.unit >= 0 || full(state, call.kind)) continue;
       if (state.tick - call.tick < responseTicks(this.districtAt(call.x, call.y))) continue;
       return call;
     }
@@ -405,6 +446,8 @@ export class EmergencyServices {
     if (unit.task === 'respond' && arrived) {
       unit.task = 'work';
       unit.until = state.tick + WORK_TICKS[unit.kind];
+      // A tow truck that finds nothing to hook is done as soon as it is there.
+      if (unit.kind === 'tow' && !hookUp(state, unit, this.targetOf(state, unit))) unit.until = state.tick;
     }
     if (unit.task === 'work') {
       // The doors, the crew that climb down through them and the walk back:
@@ -422,6 +465,11 @@ export class EmergencyServices {
     // vanishing where somebody is watching.
     if (unit.task === 'leave' && arrived) this.onward(state, unit);
     this.run(state, unit);
+  }
+
+  /** The vehicle the call a unit is on was raised for, or -1. */
+  private targetOf(state: SimState, unit: EmergencyUnit): number {
+    return state.emergency.calls.find((call) => call.id === unit.call)?.target ?? -1;
   }
 
   /**
@@ -518,7 +566,9 @@ export class EmergencyServices {
       if (call.unit >= 0) continue;
       const alight = fires.some((fire) => hypot(fire.x - call.x, fire.y - call.y) <= CALL_RANGE);
       if (call.kind === 'engine' && alight) continue;
-      if (call.kind !== 'engine' && state.tick - call.tick < CALL_STALE) continue;
+      // A vehicle that has gone before any truck set out needs none.
+      const gone = call.kind === 'tow' && !state.traffic.promoted.some((record) => record.id === call.target);
+      if (call.kind !== 'engine' && !gone && state.tick - call.tick < CALL_STALE) continue;
       calls.splice(i, 1);
     }
   }

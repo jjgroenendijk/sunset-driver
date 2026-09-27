@@ -81,11 +81,14 @@ export interface FallenCrew {
   body: Casualty;
 }
 
-/** People each kind of unit carries. */
-export const CREW_SIZE: Record<EmergencyKind, number> = { engine: 2, ambulance: 2 };
+/**
+ * People each kind of unit puts on the street. A tow truck's driver works the
+ * winch from the cab, so it puts nobody out.
+ */
+export const CREW_SIZE: Record<EmergencyKind, number> = { engine: 2, ambulance: 2, tow: 0 };
 
-/** The role each kind's crew are. */
-const CREW_ROLE: Record<EmergencyKind, CrewRole> = { engine: 'firefighter', ambulance: 'medic' };
+/** The role each kind's crew are. A tow truck puts nobody out, so its entry is never read. */
+const CREW_ROLE: Record<EmergencyKind, CrewRole> = { engine: 'firefighter', ambulance: 'medic', tow: 'medic' };
 
 /** What one of them can take before they fall, on the player's own scale. */
 export const CREW_HEALTH = MAX_HEALTH;

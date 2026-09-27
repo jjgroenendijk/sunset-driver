@@ -11,6 +11,7 @@ import { createSimState } from '../../../src/sim/simulation.ts';
 import { specOf } from '../../../src/sim/vehicles/vehicle.ts';
 import { BEACON_DARK, BEACON_GLOW, FLASH_CYCLE, flashLit } from '../../../src/render/services/beacons.ts';
 import { AMBULANCE_RED, unitShape } from '../../../src/render/services/emergency-mesh.ts';
+import { DECK_UP } from '../../../src/sim/city/tow-truck.ts';
 
 /** A unit of the service standing where a test wants it. */
 function unit(id: number, kind: EmergencyUnit['kind'], x: number, y: number): EmergencyUnit {
@@ -41,16 +42,40 @@ function unit(id: number, kind: EmergencyUnit['kind'], x: number, y: number): Em
 describe('the emergency services, drawn (spec section 20.3)', () => {
   /**
    * The meshes of the view by what they are: per kind a body, two beacon
-   * phases and a door each side, then the glow, the water and the hoses.
+   * phases and a door each side (a tow truck has none), then the glow, the
+   * water and the hoses.
    */
   function parts(view: EmergencyView): InstancedMesh[] {
     return view.group.children as InstancedMesh[];
   }
   const ENGINE_PHASES = [1, 2];
   const ENGINE_DOORS = [3, 4];
-  const GLOW = 10;
-  const WATER = 11;
-  const HOSES = 12;
+  const TOW_BODY = 10;
+  const GLOW = 13;
+  const WATER = 14;
+  const HOSES = 15;
+
+  it('draws a tow truck with its beacons dark on the way and lit at the scene', () => {
+    const view = new EmergencyView();
+    const state = createSimState(4);
+    const truck = unit(0, 'tow', 5, 0);
+    state.emergency.units.push(truck);
+    view.update(state, 0, 0);
+    expect(parts(view)[TOW_BODY]?.count).toBe(1);
+    expect(parts(view)[GLOW]?.count).toBe(0);
+    truck.task = 'work';
+    let lit = 0;
+    for (let tick = 0; tick < FLASH_CYCLE; tick++) {
+      state.tick = tick;
+      view.update(state, 0, 0);
+      lit += parts(view)[GLOW]?.count ?? 0;
+    }
+    expect(lit).toBeGreaterThan(0);
+    // Its deck stands where the winch puts a load.
+    const deck = unitShape('tow').boxes[2];
+    expect((deck?.y ?? 0) + (deck?.height ?? 0) / 2 + UNIT_BODY.tow.ride).toBeCloseTo(DECK_UP);
+    view.dispose();
+  });
 
   it('draws the units in view and leaves out the ones over the horizon', () => {
     const view = new EmergencyView();

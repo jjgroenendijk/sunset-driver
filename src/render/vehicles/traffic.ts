@@ -52,6 +52,7 @@ import type { SimState } from '../../sim/simulation.ts';
 import { AMBIENT_CLASSES, promotedOf, type AmbientPose, type AmbientTraffic } from '../../sim/traffic/traffic.ts';
 import { rideHeight, specOf, type VehicleClass, type VehicleSpec } from '../../sim/vehicles/vehicle.ts';
 import { outInThis } from '../../sim/city/weather.ts';
+import { loadPose, type LoadPose } from '../../sim/city/tow-truck.ts';
 import { riderStruts, type RiderStrut } from './bike-rider.ts';
 import { SignalView } from '../roads/signals.ts';
 import { Suspension, type Lean } from './suspension.ts';
@@ -173,6 +174,7 @@ export class TrafficView {
   private readonly turn = new Quaternion();
   /** The turn of the body on its springs, on top of {@link turn}. */
   private readonly body = new Quaternion();
+  private readonly load: LoadPose = { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 };
   private readonly tilt = new Quaternion();
   private readonly tiltAngles = new Euler();
   private readonly springs = new Suspension();
@@ -300,6 +302,19 @@ export class TrafficView {
       // Nobody drives a promoted vehicle, so a bike the player has touched
       // rolls on with an empty saddle.
       this.add(meshes, record.paint, false, 0);
+    }
+    // A vehicle a tow truck has hooked rides on its deck (`sim/city/tow-truck.ts`).
+    for (const unit of state.emergency.units) {
+      const load = unit.load;
+      if (load === undefined) continue;
+      const pose = loadPose(unit, load, state.tick, this.load);
+      if (pose.x < minX || pose.x > maxX || pose.z < minY || pose.z > maxY) continue;
+      this.at.set(pose.x, pose.y, pose.z);
+      this.turn.set(pose.qx, pose.qy, pose.qz, pose.qw);
+      this.body.copy(this.turn);
+      // Only the classes of the traffic have meshes here.
+      const meshes = this.classes.find((held) => held.cls === load.cls);
+      if (meshes !== undefined) this.add(meshes, load.paint, false, 0);
     }
   }
 

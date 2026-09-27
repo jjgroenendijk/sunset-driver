@@ -3,6 +3,7 @@ import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import { TrafficView, trafficParts } from '../../../src/render/vehicles/traffic.ts';
 import { createSimState } from '../../../src/sim/simulation.ts';
+import type { EmergencyUnit } from '../../../src/sim/city/emergency.ts';
 import { AMBIENT_CLASSES, type AmbientPose } from '../../../src/sim/traffic/traffic.ts';
 import { createVehicleState, specOf } from '../../../src/sim/vehicles/vehicle.ts';
 import { sweepSeeds } from '../../support/helpers.ts';
@@ -51,6 +52,12 @@ describe('the traffic, drawn (spec section 13.1)', () => {
     state.traffic.promoted.push({ id, paint: vehicle.paint, vehicle: createVehicleState(specOf(vehicle.cls), 5, 5, 1, 0) });
     view.update(state, tick, 0, 0);
     expect(view.drawn).toBe(inView + far);
+
+    // A vehicle on a tow truck's deck is drawn once more.
+    const load = { id: 99, cls: 'saloon' as const, paint: 0x2255aa, since: 0, x: 3, y: 1, z: 3, qx: 0, qy: 0, qz: 0, qw: 1 };
+    state.emergency.units.push({ ...({} as EmergencyUnit), kind: 'tow', x: 3, y: 3, height: 0, heading: 0, load });
+    view.update(state, tick, 0, 0);
+    expect(view.drawn).toBe(inView + far + 1);
     view.dispose();
   });
 });

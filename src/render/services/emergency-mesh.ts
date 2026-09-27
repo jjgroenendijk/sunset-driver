@@ -1,5 +1,6 @@
 /**
- * The shape of a fire engine and an ambulance (spec sections 10.1, 20.3).
+ * The shape of a fire engine, an ambulance and a tow truck (spec sections
+ * 10.1, 20.2, 20.3).
  *
  * `vehicle-mesh.ts` says which boxes each row of the roster is. Neither
  * service is a row, since nobody drives one, so this is their file: the same
@@ -9,7 +10,9 @@
  * The camera looks down from 60 m, so each is built on what reads from there.
  * An engine is a long red body with a white cab roof, grey lockers down its
  * flanks and a ladder that runs the length of the roof. An ambulance is a white
- * box on a short cab, with a red band round it and a red cross on the roof.
+ * box on a short cab, with a red band round it and a red cross on the roof. A
+ * tow truck is a yellow cab with an amber bar on its roof, and a long flat deck
+ * behind it that the vehicle it takes away rides on.
  *
  * The lamps that flash are kept apart as {@link Beacon}s, in two phases, so
  * `emergency.ts` can light one half of a bar while the other is dark. Like
@@ -17,6 +20,7 @@
  * headless.
  */
 import { UNIT_BODY, type EmergencyKind } from '../../sim/city/emergency.ts';
+import { DECK_UP } from '../../sim/city/tow-truck.ts';
 import { doorAlong, OUTLET_ALONG, OUTLET_UP } from '../../sim/city/emergency-crew.ts';
 import { GLASS, LAMP, METAL, TAIL, type Beacon, type VehicleBox } from '../vehicles/vehicle-mesh.ts';
 
@@ -37,10 +41,16 @@ export const AMBULANCE_RED = 0xd02a2a;
 const AMBULANCE_ORANGE = 0xf08a1c;
 const STAR_BLUE = 0x1f55c0;
 
+/** The colours of a tow truck. */
+const TOW_YELLOW = 0xe8b21c;
+const TOW_DECK = 0x3a3d42;
+const TOW_STRIPE = 0x1b1c1f;
+
 /** The colours a beacon burns. */
 const FLASH_RED = 0xff2a22;
 const FLASH_BLUE = 0x2a64ff;
 const FLASH_WHITE = 0xfff4e0;
+const FLASH_AMBER = 0xffa51f;
 
 /** How big a cab door of an engine is, how high it rides, and how far it opens. */
 const CAB_DOOR = 1.3;
@@ -103,6 +113,7 @@ function beacon(length: number, height: number, width: number, colour: number, x
 
 /** The shape of a kind of unit. */
 export function unitShape(kind: EmergencyKind): UnitShape {
+  if (kind === 'tow') return towTruck();
   return kind === 'engine' ? engine() : ambulance();
 }
 
@@ -271,4 +282,50 @@ function ambulance(): UnitShape {
     swing: side * REAR_SWING,
   }));
   return { boxes, beacons, wheels: axles('ambulance', [hl - 0.75, -hl + 1.05], 0.4, 0.3), doors, couplings: [] };
+}
+
+/**
+ * A tow truck: a yellow cab at the nose with an amber bar on its roof, and a
+ * flat deck behind it at the height `tow-truck.ts` winches a load up to. The
+ * deck is dark and edged in black and yellow, so it reads as empty from above
+ * and the load on it stands out.
+ */
+function towTruck(): UnitShape {
+  const { halfLength: hl, halfWidth: hw, halfHeight: hh, ride } = UNIT_BODY.tow;
+  const width = hw * 2;
+  const cabBack = hl - 2.2;
+  const cabTop = hh;
+  const cabX = (hl + cabBack) / 2;
+  // The top of the deck, in the unit's own frame, and its length behind the cab.
+  const deckTop = DECK_UP - ride;
+  const deckLength = hl + cabBack - 0.1;
+  const deckX = (cabBack - 0.1 - hl) / 2;
+  const boxes: UnitBox[] = [
+    // The cab, and the chassis under the deck.
+    box(hl - cabBack, cabTop + hh, width * 0.94, TOW_YELLOW, cabX, (cabTop - hh) / 2, 0),
+    box(deckLength, deckTop + hh - 0.15, width * 0.6, TOW_STRIPE, deckX, (deckTop - hh - 0.15) / 2, 0),
+    // The deck, with a black and yellow edge down each side and across the tail.
+    box(deckLength, 0.15, width, TOW_DECK, deckX, deckTop - 0.075, 0),
+    box(deckLength, 0.16, 0.08, TOW_YELLOW, deckX, deckTop - 0.07, hw - 0.04),
+    box(deckLength, 0.16, 0.08, TOW_YELLOW, deckX, deckTop - 0.07, -hw + 0.04),
+    box(0.1, 0.3, width, TOW_STRIPE, -hl + 0.05, deckTop - 0.1, 0),
+    // The headboard behind the cab, which keeps a load off it.
+    box(0.12, 0.9, width * 0.9, TOW_STRIPE, cabBack - 0.1, deckTop + 0.45, 0),
+    // The windscreen, a window down each side of the cab, the grille and the bumper.
+    box(0.08, 0.8, width * 0.84, GLASS, hl + 0.01, cabTop - 0.55, 0),
+    box(1.2, 0.65, width * 0.96, GLASS, cabX + 0.2, cabTop - 0.5, 0),
+    box(0.06, 0.6, width * 0.5, GRILLE, hl + 0.02, -hh + 0.55, 0),
+    box(0.2, 0.24, width * 0.98, METAL, hl + 0.05, -hh + 0.14, 0),
+  ];
+  for (const side of [1, -1]) {
+    boxes.push(box(0.1, 0.22, 0.34, LAMP, hl + 0.02, -hh + 0.6, side * hw * 0.7));
+    boxes.push(box(0.1, 0.2, 0.3, TAIL, -hl - 0.01, deckTop - 0.2, side * hw * 0.78));
+  }
+  // The amber bar across the cab roof, one half of it lit at a time.
+  boxes.push(box(0.34, 0.08, width * 0.8, GRILLE, cabX, cabTop + 0.04, 0));
+  const beacons: Beacon[] = [
+    beacon(0.28, 0.14, width * 0.34, FLASH_AMBER, cabX, cabTop + 0.15, hw * 0.42, 0),
+    beacon(0.28, 0.14, width * 0.34, FLASH_AMBER, cabX, cabTop + 0.15, -hw * 0.42, 1),
+  ];
+  return { boxes, beacons, wheels: axles('tow', [hl - 1.1, -hl + 1.9, -hl + 0.9], 0.45, 0.36), doors: [], couplings: [] };
 }

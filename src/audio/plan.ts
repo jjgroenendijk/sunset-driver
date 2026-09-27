@@ -23,7 +23,7 @@ import { hashInts } from '../core/hash.ts';
 import { rngFor, Subsystem } from '../core/rng.ts';
 import { gameTime, TICK_RATE } from '../sim/clock.ts';
 import type { InputFrame } from '../sim/input.ts';
-import { onCall, type EmergencyKind, type EmergencyUnit } from '../sim/city/emergency.ts';
+import { sounding, type EmergencyKind, type EmergencyUnit } from '../sim/city/emergency.ts';
 import type { PoliceUnit } from '../sim/police/police.ts';
 import type { SimState } from '../sim/simulation.ts';
 import type { TramBell, TramNoise } from '../sim/transit/tram.ts';
@@ -119,7 +119,7 @@ const BLAST_STREAM = 0x0b1a;
 type SirenSound = 'two-tone' | 'wail' | 'yelp';
 
 /** The sound, the ticks of one cycle and the pitch, as a multiple of the police car's, of each service's siren. */
-const SIREN_OF: Readonly<Record<'police' | EmergencyKind, { sound: SirenSound; ticks: number; pitch: number }>> = Object.freeze({
+const SIREN_OF: Readonly<Record<'police' | Exclude<EmergencyKind, 'tow'>, { sound: SirenSound; ticks: number; pitch: number }>> = Object.freeze({
   police: { sound: 'two-tone', ticks: WAIL_TICKS, pitch: 1 },
   engine: { sound: 'wail', ticks: 240, pitch: 0.72 },
   ambulance: { sound: 'yelp', ticks: 22, pitch: 1.05 },
@@ -547,7 +547,7 @@ export function sirensOf(state: SimState, listener: Listener): SirenPlan[] {
     if (at.gain > 0) heard.push({ id: unit.id, of: 'police', at });
   }
   for (const unit of state.emergency.units as readonly EmergencyUnit[]) {
-    if (!onCall(unit)) continue;
+    if (!sounding(unit)) continue;
     const at = hear(listener, unit.x, unit.y);
     if (at.gain > 0) heard.push({ id: EMERGENCY_SIREN + unit.id, of: unit.kind, at });
   }

@@ -265,7 +265,8 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
 
 ## The emergency services
 
-- `src/sim/city/emergency.ts` is the fire engines and the ambulances of spec section 20.3. It is not
+- `src/sim/city/emergency.ts` is the fire engines and the ambulances of spec section 20.3, and the
+  tow trucks of 20.2 (`docs/towing.md`). It is not
   the police: the police come out on the heat, which is about the player, and these come out on what
   has happened, which is not — a car left burning across town draws an engine whether anybody is
   watching or not. What has happened is written down as an `EmergencyCall` on the record. A call
@@ -273,6 +274,7 @@ The aircraft, how they fly and what the police do about them are in `docs/aircra
   firefight that goes on for a minute are each one call.
 - A call waits the district's own `responseTicks`, the police's own function, and is then given to a
   unit. `UNITS_OUT` is the ceiling on both services together, so a long fire never empties the city.
+  The tow trucks have a ceiling of their own, `TOWS_OUT`, on top of it.
   A unit comes in on a road `SPAWN_RANGE` from the scene, drives to it, works it for
   `WORK_TICKS`, and drives back out; it is taken off the map once it is `RETIRE_RANGE` from the
   player, and drives another `SPAWN_RANGE` out rather than standing in the street if it gets home
