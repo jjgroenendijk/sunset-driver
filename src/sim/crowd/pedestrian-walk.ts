@@ -192,7 +192,7 @@ function standAt(steps: PlanBuilder, stop: Stop, d: number): void {
 }
 
 /** The step a moment of the loop falls in, how far into it, and the distance round the loop there. */
-export function planAt(plan: WalkPlan, at: number, out: PlanPoint): PlanPoint {
+function planAt(plan: WalkPlan, at: number, out: PlanPoint): PlanPoint {
   const start = plan.start;
   let lo = 0;
   let hi = start.length - 1;
@@ -201,6 +201,27 @@ export function planAt(plan: WalkPlan, at: number, out: PlanPoint): PlanPoint {
     if ((start[mid] as number) <= at) lo = mid;
     else hi = mid - 1;
   }
+  return planOn(plan, lo, at, out);
+}
+
+/**
+ * {@link planAt}, tried first at step `hint` and the one after it. A person is
+ * read a tick after the last reading, so the step is nearly always one of the
+ * two, and the search of the whole plan is left for the rest (issue #778).
+ */
+export function planNear(plan: WalkPlan, at: number, hint: number, out: PlanPoint): PlanPoint {
+  const start = plan.start;
+  const n = start.length;
+  if (hint >= 0 && hint < n && (start[hint] as number) <= at) {
+    if (hint + 1 >= n || (start[hint + 1] as number) > at) return planOn(plan, hint, at, out);
+    if (hint + 2 >= n || (start[hint + 2] as number) > at) return planOn(plan, hint + 1, at, out);
+  }
+  return planAt(plan, at, out);
+}
+
+/** The point of a plan at moment `at` of it, which falls in step `lo`. */
+function planOn(plan: WalkPlan, lo: number, at: number, out: PlanPoint): PlanPoint {
+  const start = plan.start;
   const into = at - (start[lo] as number);
   const from = plan.from[lo] as number;
   const f = Math.min(1, into / (plan.ticks[lo] as number));

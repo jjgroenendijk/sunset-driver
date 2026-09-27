@@ -78,7 +78,7 @@ export class JunctionClear {
       if (at === edge) return false;
       left = true;
       if (traffic.metresOf(this.cursor) < need) continue;
-      const pose = traffic.pose(this.cursor, this.pose);
+      const pose = traffic.pose(this.cursor, this.pose, false);
       const spot = this.spot;
       spot.x = pose.x;
       spot.y = pose.y;

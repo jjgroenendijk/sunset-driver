@@ -67,7 +67,7 @@ export class FollowThrough {
     const path: Sample[] = [];
     for (let k = 1; k <= SAMPLES; k++) {
       this.traffic.cursorAt(car.id, this.tick - car.lag + k * EVERY, this.cursor);
-      const pose = this.traffic.pose(this.cursor, this.pose);
+      const pose = this.traffic.pose(this.cursor, this.pose, false);
       const box = { x: pose.x, y: pose.y, heading: pose.heading, halfLength: car.box.halfLength, halfWidth: car.box.halfWidth };
       path.push({ box, cos: cos(pose.heading), sin: sin(pose.heading) });
     }

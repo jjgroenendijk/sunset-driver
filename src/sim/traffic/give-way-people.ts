@@ -18,7 +18,7 @@ import type { CrowdSource } from '../weapons/melee.ts';
 import { cityHit } from './city-strike.ts';
 import { Detours, type DetourScene } from './detour.ts';
 import { away, CROSS_TIME, meets, othersBlock, PERSON_ROOM, within, type Other } from './give-way-geometry.ts';
-import { Grid, NearCache, type BoxFrame } from './give-way-grid.ts';
+import { FarCache, Grid, NearCache, type BoxFrame } from './give-way-grid.ts';
 import { FREE, OTHER, type Car, type Person } from './give-way-scene.ts';
 import { heldTime, holdOf, type Hold } from './hold.ts';
 
@@ -51,6 +51,7 @@ const STRIKE_SPEED = 1;
  */
 export type Crowd = CrowdSource & {
   edgeAt?(id: number, time: number): number;
+  edgeLeft?(id: number, time: number): number;
   edgeMeets?(edge: number, minX: number, minY: number, maxX: number, maxY: number): boolean;
 };
 
@@ -58,6 +59,7 @@ export class CrowdWay {
   private readonly crowd: Crowd | undefined;
   private readonly frame: BoxFrame;
   private readonly crowdNear = new NearCache();
+  private readonly far = new FarCache();
   private readonly detours: Detours;
   private readonly walk: PedestrianPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0, cycle: 0, gait: 'stand' };
   private readonly near: number[] = [];
@@ -81,6 +83,27 @@ export class CrowdWay {
     this.detours = new Detours(scene);
   }
 
+  /**
+   * True for a person giving way leaves out before their pose is read: a
+   * casualty, or somebody whose walk is on an edge far from the box round
+   * `(x, y)`. Somebody far from it is noted as far for as long as that holds.
+   */
+  private skipsBox(crowd: Crowd, state: SimState, id: number, x: number, y: number): boolean {
+    const peds = state.pedestrians;
+    if (peds.casualties.length > 0 && casualtyOf(peds, id) !== undefined) return true;
+    if (crowd.edgeAt === undefined || crowd.edgeMeets === undefined) return false;
+    const time = heldTime(peds.held, id, state.tick);
+    const offset = time - state.tick;
+    if (this.far.skips(id, state.tick, offset, x, y)) return true;
+    const r = CROWD_REACH;
+    const edge = crowd.edgeAt(id, time);
+    const meets = crowd.edgeMeets.bind(crowd, edge);
+    if (meets(x - r, y - r, x + r, y + r)) return false;
+    const left = crowd.edgeLeft;
+    if (left !== undefined) this.far.note(id, state.tick, offset, x, y, r, meets, () => left.call(crowd, id, time));
+    return true;
+  }
+
   /** Empty the grids for a box of `cells` buckets. */
   reset(cells: number): void {
     this.grid.reset(cells);
@@ -97,7 +120,7 @@ export class CrowdWay {
     const y = this.frame.midY;
     const r = CROWD_REACH;
     for (const id of this.crowdNear.of(x, y, r, (a, b, c, d, out) => crowd.near(a, b, c, d, out))) {
-      if (skipsBox(crowd, state, id, x, y, r)) continue;
+      if (this.skipsBox(crowd, state, id, x, y)) continue;
       const walking = peds.startled.length === 0 || startledOf(peds, id) === undefined;
       if (crowdPoseOf(crowd, peds, id, state.tick, this.walk) === undefined) continue;
       if (Math.abs(this.walk.x - x) > CROWD_REACH || Math.abs(this.walk.y - y) > CROWD_REACH) continue;
@@ -283,15 +306,3 @@ function crossing(person: Person, car: Car): boolean {
   return Math.abs(-cos(person.heading) * car.sin + sin(person.heading) * car.cos) > CROSSING_SHARE;
 }
 
-/**
- * True for a person giving way leaves out before their pose is read: a
- * casualty, or somebody whose walk is on an edge far from the box of reach `r`
- * round `(x, y)`.
- */
-function skipsBox(crowd: Crowd, state: SimState, id: number, x: number, y: number, r: number): boolean {
-  const peds = state.pedestrians;
-  if (peds.casualties.length > 0 && casualtyOf(peds, id) !== undefined) return true;
-  if (crowd.edgeAt === undefined || crowd.edgeMeets === undefined) return false;
-  const time = heldTime(peds.held, id, state.tick);
-  return !crowd.edgeMeets(crowd.edgeAt(id, time), x - r, y - r, x + r, y + r);
-}

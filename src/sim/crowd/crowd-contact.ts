@@ -31,6 +31,9 @@ const RAY_CHUNK = 20;
 export interface CrowdLookup {
   near(minX: number, minY: number, maxX: number, maxY: number, out: number[]): number[];
   poseAt(id: number, time: number, out: PedestrianPose): PedestrianPose;
+  /** The edge a person walks at a moment, and whether an edge reaches a box: what skips a far person. */
+  edgeAt?(id: number, time: number): number;
+  edgeMeets?(edge: number, minX: number, minY: number, maxX: number, maxY: number): boolean;
 }
 
 /** A person a line met, how far along it, and where they stood. */
