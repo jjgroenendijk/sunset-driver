@@ -27,7 +27,7 @@ import { groundPart } from '../environment/ground.ts';
 import type { Lamp } from '../roads/lamp-mesh.ts';
 import type { LampLights, LampScenery } from '../roads/lamps.ts';
 import type { MetroScenery } from '../transit/metro.ts';
-import { reflected } from '../environment/mirror.ts';
+import { mirroredOnly, reflected } from '../environment/mirror.ts';
 import type { Poster } from '../signage/poster-mesh.ts';
 import type { PosterScenery } from '../signage/posters.ts';
 import { entityBudget, thinned, type QualityTier } from '../frame/quality.ts';
@@ -240,6 +240,9 @@ export class ChunkTiles {
     if (payload.blocks.length > 0) {
       this.queueJob(tile, () => this.add(tile, kit.buildings.build('block', payload.blocks)));
     }
+    if (payload.mirrors.length > 0) {
+      this.queueJob(tile, () => this.add(tile, kit.buildings.standIns(payload.mirrors)));
+    }
     // A chunk places only what its category's cap and the tier's density allow
     // (spec section 9.2). The thinning is done here rather than in the worker
     // because the tier can change between a chunk being asked for and it
@@ -332,6 +335,7 @@ export class ChunkTiles {
         object.receiveShadow = true;
       }
       if (part.mirrored === true) reflected(object);
+      else if (part.mirrored === 'only') mirroredOnly(object);
       (tile.holder ?? this.scene).add(object);
     }
     tile.parts.push(part);

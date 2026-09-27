@@ -263,7 +263,7 @@ function filled(fill: BatchFill): Batch {
  */
 export function tilePartOf(
   fills: readonly BatchFill[],
-  passes: { castsShadow?: boolean; mirrored?: boolean } = {},
+  passes: { castsShadow?: boolean; mirrored?: boolean | 'only' } = {},
 ): TilePart {
   const meshes = fills.map((fill) => fill.mesh);
   return {

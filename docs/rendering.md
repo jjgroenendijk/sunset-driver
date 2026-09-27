@@ -246,10 +246,17 @@ post chain and the colour grade in `docs/post.md`. The look all of it must keep 
   the sky and what stands tall behind it; the ground, the roads, their markings, the plants, the
   traffic and the crowd lie flat along the shore, where the surface gives back two per cent of what
   falls on it. The mirror draws no ink: the edge pass runs once, on the finished frame. The layer
-  is added to an object, never set on it, so nothing is ever in the mirror alone and a new object
-  that says nothing is simply left out of it. The lights are the exception that has to be carried:
-  a pass lit by a different set of lights than the view builds every material's shader a second
-  time.
+  is added to an object, never set on it, so a new object that says nothing is simply left out of
+  it. The lights are the exception that has to be carried: a pass lit by a different set of lights
+  than the view builds every material's shader a second time.
+- **The mirror draws a generated facade as its massing** (issue #781). The facades were 3.5 ms of
+  the 4.4 ms the pass took on the phone preset, the same at every mirror size: the pass paid for
+  vertices, not pixels. The worker builds each facade's far-detail massing too (`standInOf`,
+  `building-mesh.ts`), and `payload.mirrors` puts it on the mirror's layer alone (`mirroredOnly`).
+  It casts no shadow, since the shadow camera draws that layer as well. It uses the block
+  material the mirror already draws, so it compiles nothing. The pass now costs about 1 ms. Seen
+  from above, the towers keep their shape and their lit windows in the water; a waterside frame
+  differs from one with the facades by 4 to 5 of 255 on the mean.
 - The pass a session never runs is a pass it never compiles. An inland session first shows the sheet
   when the player reaches the sea, and that frame compiled every material again for the mirror:
   about 1.4 s, on a frame the player is driving through. `WaterSurface.show`, through

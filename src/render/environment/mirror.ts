@@ -23,9 +23,11 @@
  * showed.
  *
  * {@link reflected} adds the layer rather than setting it, so an object stays
- * in the view and in the shadow pass. Nothing is ever on the mirror's layer
- * alone. A new object that says nothing is left out of the mirror, which costs
- * a reflection nobody asked for and never a frame.
+ * in the view and in the shadow pass. A new object that says nothing is left
+ * out of the mirror, which costs a reflection nobody asked for and never a
+ * frame. The one thing on the mirror's layer alone is the massing a generated
+ * facade stands in for there ({@link mirroredOnly}): the facades were most of
+ * what the pass cost, for windows a mirror this small never shows (issue #781).
  */
 import type { Camera, Object3D, Scene } from 'three';
 
@@ -38,6 +40,17 @@ export const MIRROR_LAYER = 1;
 /** Draw this object in the water's mirror as well as in the view. */
 export function reflected<T extends Object3D>(object: T): T {
   object.layers.enable(MIRROR_LAYER);
+  return object;
+}
+
+/**
+ * Draw this object in the water's mirror and nowhere else. It is the one
+ * exception to {@link reflected}: a cheap stand-in for something too dear to
+ * draw twice, which is itself left out of the mirror. It must cast no shadow,
+ * since the shadow camera draws this layer too.
+ */
+export function mirroredOnly<T extends Object3D>(object: T): T {
+  object.layers.set(MIRROR_LAYER);
   return object;
 }
 

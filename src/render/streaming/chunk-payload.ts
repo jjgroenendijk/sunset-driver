@@ -134,6 +134,11 @@ export interface ChunkPayload {
   facades: PackedBatch[];
   /** The buildings built as blocks, which past near detail is all of them, a batch per cell. */
   blocks: PackedBatch[];
+  /**
+   * The massing each generated facade is drawn as in the water's mirror, and
+   * only there, a batch per cell (`standInOf`, `building-mesh.ts`).
+   */
+  mirrors: PackedBatch[];
   /** One box per building, as `roofs.ts` packs them, so the camera knows what it stands in. */
   roofs: Float32Array;
   plants: PackedPlants;
@@ -217,7 +222,7 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
   const near = detail === 'near';
   const posters = near ? postersIn(placements, lookups.buildings) : [];
   const signs = near ? signsIn(placements, lookups.buildings, lookups.tradeOf) : [];
-  const { facades, blocks, roofs } = packBuildings(placements);
+  const { facades, blocks, mirrors, roofs } = packBuildings(placements);
 
   const plants = far ? noPlants() : packPlants(chunk, lookups.plants);
 
@@ -230,6 +235,7 @@ export function buildChunkPayload(chunk: WorldChunk, lookups: ChunkLookups, deta
     roads,
     facades: packCells(grid, facades),
     blocks: packCells(grid, blocks),
+    mirrors: packCells(grid, mirrors),
     roofs,
     plants,
     lamps: far ? [] : lampsIn(chunk, lookups.ribbons),
@@ -283,14 +289,16 @@ function packRoads(traced: WorldChunk, lookups: ChunkLookups, grid: CellGrid, fa
   return roads;
 }
 
-/** Take the geometry of every building placed in a chunk: the facades, the blocks and the roofs. */
+/** Take the geometry of every building placed in a chunk: the facades, the blocks, their stand-ins in the mirror and the roofs. */
 function packBuildings(placements: readonly BuildingPlacement[]): {
   facades: PackedPart[];
   blocks: PackedPart[];
+  mirrors: PackedPart[];
   roofs: Float32Array;
 } {
   const facades: PackedPart[] = [];
   const blocks: PackedPart[] = [];
+  const mirrors: PackedPart[] = [];
   const roofs = new Float32Array(placements.length * ROOF_STRIDE);
   for (const [i, placed] of placements.entries()) {
     writeRoof(roofs, i * ROOF_STRIDE, placed.shell, placed.matrix);
@@ -302,8 +310,10 @@ function packBuildings(placements: readonly BuildingPlacement[]): {
     if (placed.dress !== undefined) blocks.push({ geometry: takeGeometry(placed.dress), matrix });
     // The footing under a building on a slope is drawn with the blocks as well.
     if (placed.footing !== undefined) blocks.push({ geometry: takeGeometry(placed.footing), matrix });
+    const standIn = placed.standIn;
+    if (standIn !== undefined) mirrors.push({ geometry: takeGeometry(standIn.shell), matrix: new Float32Array(standIn.matrix.toArray()) });
   }
-  return { facades, blocks, roofs };
+  return { facades, blocks, mirrors, roofs };
 }
 
 /**
@@ -373,6 +383,7 @@ export function payloadTransfers(payload: ChunkPayload): ArrayBuffer[] {
   }
   payload.facades.forEach(takeBatch);
   payload.blocks.forEach(takeBatch);
+  payload.mirrors.forEach(takeBatch);
   take(payload.roofs);
   take(payload.plants.models);
   take(payload.plants.matrices);

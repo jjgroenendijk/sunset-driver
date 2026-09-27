@@ -38,6 +38,7 @@ function payload(detail: ChunkDetail): ChunkPayload {
     roads: [],
     facades: [],
     blocks: [{}],
+    mirrors: [],
     roofs: new Float32Array(0),
     plants: { models: [] },
     lamps: [],

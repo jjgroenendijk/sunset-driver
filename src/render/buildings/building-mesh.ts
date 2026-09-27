@@ -94,6 +94,11 @@ export interface BuildingPlacement {
   footing: BufferGeometry | undefined;
   /** The building's frame in the world. */
   matrix: Matrix4;
+  /**
+   * What a generated facade is drawn as in the water's mirror, and nowhere
+   * else: its massing at far detail, in its own frame (`standInOf`).
+   */
+  standIn?: { shell: BufferGeometry; matrix: Matrix4 };
 }
 
 /**
@@ -254,9 +259,34 @@ export function buildChunkBuildings(
       dress,
       footing,
       matrix: matrixOf(building, stand.top, massing, fit),
+      ...(batch === 'facade' ? { standIn: standInOf(building, massing, shape, tint, finish, stand.top) } : {}),
     });
   }
   return out;
+}
+
+/**
+ * The massing a generated facade stands in for in the water's mirror: the
+ * building as far detail builds it, placed where far detail places it. The
+ * mirror is a few hundred pixels across and seen through waves, where a
+ * facade's windows and ledges never show, and drawing them there was most of
+ * what the mirror's pass cost (issue #781).
+ */
+function standInOf(
+  building: Building,
+  massing: BuildingMassing,
+  shape: BuildingShape,
+  tint: Rgb,
+  finish: FinishCode,
+  ground: number,
+): { shell: BufferGeometry; matrix: Matrix4 } {
+  const shell = buildMassingGeometry(tint, finish, farBoxes(shape, massing));
+  const { box } = centreOnLot(shell, undefined);
+  const covers = { min: box.min.x, max: box.max.x, depth: box.max.z - box.min.z };
+  const fit = fitOf(covers, massing, building.shared, undefined, spreadOf(leanOf(building, massing), massing));
+  const lean = leanOf(building, massing, fit.shift);
+  if (lean !== undefined) leanGeometry(shell, lean, fit);
+  return { shell, matrix: matrixOf(building, ground, massing, fit) };
 }
 
 /**
