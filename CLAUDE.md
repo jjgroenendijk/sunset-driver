@@ -46,8 +46,8 @@ Both ceilings are wall clock, the work divided by the cores it runs on, so compa
 
 One doc per subsystem under `docs/`, named for it, read when the work touches it. Each holds the
 gotchas that directory costs a session and opens with a contents list: read the section, not the
-file. `docs/performance.md` is how the test tiers are measured and where their cost goes, and
-`docs/claude-md.md` what belongs in this file.
+file. `docs/performance.md` is how the test tiers are measured, `docs/performance-budget.md` what a
+smooth frame is on a phone, and `docs/claude-md.md` what belongs in this file.
 
 A skill under `.claude/skills/` carries the pointers and the first moves for the work it names, and
 loads itself when the work matches it. `rendering`, `world-generation` and `sim-and-ui` open the

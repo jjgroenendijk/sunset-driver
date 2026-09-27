@@ -24,6 +24,8 @@ performance change: the answer is a number from one of these tools, not a readin
 | What does a tick of the simulation cost, and in which part? | `sim-profile.ts <seed>` |
 | Did my change make it faster or slower? | `--json` on each build, then `profile-compare.ts` |
 | What does a material's shader really compute? | `render-profile.ts <seed> --shaders=<dir>` |
+| Does the city pop in, and where? | `render-profile.ts <seed> --view=third-person` |
+| Is the frame smooth on a phone? | `render-profile.ts <seed> --device=phone`, and `?dev` on the phone |
 
 The frame of a session is the simulation step and then the draw. `render-profile.ts` times the draw
 alone and runs no simulation. `sim-profile.ts` times the step alone. The two add up to the frame.
@@ -39,6 +41,12 @@ had already paid for behind its loading screen. Its switches take one part of th
 drive, at the drive frames named, the way the game's own monitor changes it — which is how a tier
 change is timed, by what the frames around it compiled. `--memory` adds what the GPU and the page
 hold, settled and at the most over the drive; `docs/performance.md` has the numbers it gave.
+
+Every run also prints the pop-in of the drive (`pop-in.ts`): the nearest chunk in sight that is
+missing or half built, and each edge of what is drawn with how near it showed. `--view` draws from
+the chase or first-person camera, which see the horizon. `--rings=N,F` prices a draw distance.
+`--device=phone`, `--worker-slowdown` and `--cpu-slowdown` stand in for a phone;
+`docs/performance-budget.md` has them and the budget they are read against.
 
 It needs a real GPU. SwiftShader draws on the processor and says nothing about a frame, so it does
 not run in a cloud container. `docs/dev-tooling.md` says how the browser is found.
