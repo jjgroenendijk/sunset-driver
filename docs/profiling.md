@@ -104,6 +104,8 @@ and of each part of it. It runs anywhere Node does, a cloud container included.
 - `--mode=walk` walks instead of driving. The drive takes slow curves from the nearest road.
 - `--heat=4` holds the heat at four stars, so the police chase throughout.
 - `--cpuprofile` and `--json` work as they do in `render-profile.ts`.
+- `--hash` prints a hash of the whole state after the last tick. A change that should only make
+  the step faster must print the same hash as the build before it, on each drive it is run on.
 
 Each part is timed by wrapping, from the script, the one method the physics steps it through. That
 keeps any clock out of `src/sim`. The parts the wrapping cannot reach are counted in

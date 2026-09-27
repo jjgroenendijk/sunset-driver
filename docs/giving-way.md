@@ -30,8 +30,18 @@ tour is in `docs/city-life.md`, and how a person walks their loop in `docs/crowd
 - A car that comes into the box on top of another is moved back along its tour until it stands
   clear. The box is wider than the view, so nobody sees the jump. On the first tick of a session
   every car counts as new. That is why `createHolds` starts at tick -1.
-- The step costs about 2 ms a tick in the core of seed 1. Most of it is reading poses. The
-  candidates are looked up again only when the player moves to another `NEAR_SNAP` of the map.
+- The step costs about 2 ms a tick in the core. Most of it is reading poses. The candidates are
+  looked up again only when the player moves to another `NEAR_SNAP` of the map.
+- **Most candidates are far from the box, and are skipped** (`FarCache`, issue #778). One whose
+  edge misses the box grown by a margin is noted with the ticks their loop keeps them on that edge
+  (`edgeLeft`), and skipped until those run out, their hold changes or the box moves past the
+  margin. The answer is the one the full test gives: `sim-profile.ts --hash` prints the same hash
+  with the cache as without it, and `give-way-far.test.ts` runs giving way with its caches kept
+  and built again every tick. A step of a walk can run over several legs, so a person's ticks are
+  counted inside a step; counting whole steps only noted almost nobody.
+- A look further ahead than the next tick reads the pose memo without writing it
+  (`AmbientTraffic.pose(cursor, out, false)`). The memo holds two ticks a car, and the look ahead
+  of `give-way-follow.ts` pushed out the pose the next tick asked for.
 - Each peer of a multiplayer room gives way round its own player, so `applyWorld` keeps the local
   holds when it writes the host's traffic and crowd.
 
