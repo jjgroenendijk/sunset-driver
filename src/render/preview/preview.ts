@@ -63,6 +63,7 @@ import type { StandingPerson } from '../people/pedestrians.ts';
 import type { WorldScene } from '../world-scene.ts';
 import { namedWeather, weatherAt, type Weather } from '../../sim/city/weather.ts';
 import { roomOf, SHOP_KINDS, type Shop } from '../../world/city/shops.ts';
+import { ROOM_CUTS } from '../camera/cutaway.ts';
 import { entryOf } from '../../sim/places/shop.ts';
 
 export type { PreviewRequest, PreviewResult } from './preview-request.ts';
@@ -265,8 +266,10 @@ async function placeFor(request: PreviewRequest, tier: QualityTier, world: World
     // Where the game stands a player who walks in: just inside the door.
     ({ x, y } = entryOf(room));
     await scene.settle(x, y, radius);
-    scene.shopInside({ kind: shop.kind, id: shop.id, wealth: shop.wealth, room });
   }
+  // The rooms of the shops round the place, and of the one stood in, as the
+  // game shows them. The game builds one a frame; a picture wants them all.
+  for (let i = 0; i < ROOM_CUTS; i++) showRooms(scene, { x, y, shop }, 0);
   // A gallery is moved onto the nearest ground clear of buildings, and the
   // player with it, because a model behind a wall is not in the picture.
   if (request.gallery !== undefined && shop === undefined) {
@@ -459,6 +462,8 @@ function pointCamera(
   const driving = request.onFoot !== true && shop === undefined;
   const on = { x: eye.x, y: eye.y, height: groundOf(scene, eye, shop !== undefined), heading: eye.heading, speed: request.speed, driving };
   camera.update(0, on, { view: look, pull, turn, zoom: zoomOf(loadout) });
+  // Each room's lid is lifted off for a camera over it.
+  showRooms(scene, place, camera.camera.position.y);
   showHands(scene, camera, loadout, look === 'first-person' && !driving, tick);
   const seen = aimCamera(request, scene, camera.camera, on, gallery, stand);
   if (look !== 'top-down' && request.lookUp !== undefined) tiltUp(camera.camera, request.lookUp);
@@ -467,7 +472,19 @@ function pointCamera(
   scene.seeThrough(camera.camera.position, seen.x, seen.height, seen.y, shop !== undefined);
 }
 
-/** The view the request asks for; a shop is seen in first person, as the game sees it (spec section 10.7). */
+/**
+ * The rooms of the shops round a place, and of the shop stood in, with each lid
+ * lifted off for a camera `cameraY` high.
+ */
+function showRooms(scene: WorldScene, place: { x: number; y: number; shop: Shop | undefined }, cameraY: number): void {
+  const places = (scene.shops ?? []).map((shop) => ({ kind: shop.kind, id: shop.id, wealth: shop.wealth, room: roomOf(shop), x: shop.x, y: shop.y }));
+  scene.shopRooms(places, place.x, place.y, place.shop?.id, cameraY);
+}
+
+/**
+ * The view the request asks for. A shop is seen in first person unless another
+ * view is asked for, since the room is what `--shop` is there to look at.
+ */
 function viewOf(request: PreviewRequest, inShop: boolean): CameraView {
   const asked = CAMERA_VIEWS.find((choice) => choice.value === request.view)?.value;
   if (asked !== undefined) return asked;
@@ -477,7 +494,7 @@ function viewOf(request: PreviewRequest, inShop: boolean): CameraView {
 /** The height of the feet the camera stands over: inside a shop, the room's floor, as the game stands them (`frame.ts`). */
 function groundOf(scene: WorldScene, at: { x: number; y: number }, inShop: boolean): number {
   const ground = scene.heightAt(at.x, at.y);
-  const floor = inShop ? scene.interior.floor : undefined;
+  const floor = inShop ? scene.rooms.floor : undefined;
   return floor === undefined ? ground : Math.max(ground, floor);
 }
 
@@ -540,7 +557,7 @@ function clearStage(scene: WorldScene): void {
   scene.dress(DEFAULT_APPEARANCE);
   scene.pickups.hovered = undefined;
   scene.pickups.update([], 0);
-  scene.shopInside(undefined);
+  scene.shopRooms([], 0, 0, undefined, 0);
 }
 
 /**

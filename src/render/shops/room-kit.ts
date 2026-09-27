@@ -3,9 +3,15 @@
  *
  * A furnished café is several hundred boxes and cylinders: floorboards,
  * bricks, chair legs, bottles. One mesh each would be several hundred draw
- * calls for one room, so the kit collects the parts by material and merges
- * each material's parts into one geometry when the room is done. A room is
- * built once, when the player walks in, so the merge costs nothing a frame.
+ * calls for one room, so the kit collects the parts by finish, writes each
+ * part's colour into its vertices, and merges each finish into one geometry
+ * when the room is done: a room is three draws or so, however it is fitted
+ * out. A room is built once, when the player comes near it, so the merge
+ * costs nothing a frame.
+ *
+ * The parts of the lid — the ceiling and what hangs from it — are merged
+ * apart from the rest, so the lid can be lifted off for a camera that looks
+ * down into the room (`interior.ts`).
  *
  * Every surface gives off a little of its own colour, tinted by the room's
  * light. A room stands in the shadow of its own building, and a real light in
@@ -19,6 +25,7 @@
  */
 import {
   BoxGeometry,
+  BufferAttribute,
   BufferGeometry,
   Color,
   CylinderGeometry,
@@ -26,7 +33,6 @@ import {
   Group,
   Matrix4,
   Mesh,
-  MeshStandardMaterial,
   Quaternion,
   SphereGeometry,
   TorusGeometry,
@@ -34,6 +40,8 @@ import {
   type Material,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
+import { attribute, vec3 } from '../tsl.ts';
 
 /** How a part is shaded: a plain surface, a lamp that glows, or a pane of glass. */
 export type Finish = 'matte' | 'lamp' | 'glass';
@@ -56,18 +64,35 @@ const scratchQuaternion = new Quaternion();
 const scratchEuler = new Euler();
 const scratchScale = new Vector3(1, 1, 1);
 const scratchPosition = new Vector3();
+const scratchColour = new Color();
 
-/** The parts of one room, by material, until {@link RoomKit.build} merges them. */
+/** Which part of the room a part belongs to: the room itself, or its lid. */
+export type Layer = 'room' | 'lid';
+
+/** What {@link RoomKit.build} hands over: the room, its lid, and what they are made of. */
+export interface BuiltRoom {
+  group: Group;
+  lid: Group;
+  geometries: BufferGeometry[];
+  materials: Material[];
+}
+
+/** The parts of one room, by finish, until {@link RoomKit.build} merges them. */
 export class RoomKit {
   /** How much of its own colour a matte surface gives off. */
   glow: number;
   /** The colour of the room's light, which tints what every surface gives off. */
   readonly light: Color;
-  private readonly parts = new Map<string, { finish: Finish; colour: number; geometries: BufferGeometry[] }>();
+  /** The layer the parts laid now go into. `room-shell.ts` lays the lid under `lid`. */
+  layer: Layer = 'room';
+  /** What every opaque material is given once it is made: the cut of `cutaway.ts`. */
+  private readonly dress: ((material: MeshStandardNodeMaterial) => void) | undefined;
+  private readonly parts = new Map<string, { finish: Finish; layer: Layer; geometries: BufferGeometry[] }>();
 
-  constructor(glow: number, light: number) {
+  constructor(glow: number, light: number, dress?: (material: MeshStandardNodeMaterial) => void) {
     this.glow = glow;
     this.light = new Color(light);
+    this.dress = dress;
   }
 
   /** A box `w` across, `h` high and `d` deep, its middle at `(x, y, z)`. */
@@ -103,23 +128,31 @@ export class RoomKit {
     this.put(new TorusGeometry(radius, tube, 6, 20), x, y, z, colour, finish, turn);
   }
 
-  /** Merge the parts into one mesh a material, and hand them over with what they are made of. */
-  build(): { group: Group; geometries: BufferGeometry[]; materials: Material[] } {
+  /**
+   * Merge the parts into one mesh a finish and a layer, and hand them over
+   * with what they are made of. The lid is a child of the room's group.
+   */
+  build(): BuiltRoom {
     const group = new Group();
+    const lid = new Group();
+    group.add(lid);
     const geometries: BufferGeometry[] = [];
-    const materials: Material[] = [];
+    const materials = new Map<Finish, MeshStandardNodeMaterial>();
     for (const part of this.parts.values()) {
       const merged = mergeParts(part.geometries);
       if (merged === null) continue;
-      const material = this.material(part.finish, part.colour);
+      let material = materials.get(part.finish);
+      if (material === undefined) {
+        material = this.material(part.finish);
+        materials.set(part.finish, material);
+      }
       const mesh = new Mesh(merged, material);
       mesh.renderOrder = part.finish === 'glass' ? 1 : 0;
-      group.add(mesh);
+      (part.layer === 'lid' ? lid : group).add(mesh);
       geometries.push(merged);
-      materials.push(material);
     }
     this.parts.clear();
-    return { group, geometries, materials };
+    return { group, lid, geometries, materials: [...materials.values()] };
   }
 
   private put(geometry: BufferGeometry, x: number, y: number, z: number, colour: number, finish: Finish, turn?: Turn): void {
@@ -129,36 +162,43 @@ export class RoomKit {
     scratchQuaternion.setFromEuler(scratchEuler);
     scratchMatrix.compose(scratchPosition.set(x, y, z), scratchQuaternion, scratchScale);
     geometry.applyMatrix4(scratchMatrix);
-    const key = `${finish}|${colour}`;
+    // The colour rides in the vertices, so every part of one finish shares a
+    // material and merges into one draw.
+    scratchColour.set(colour);
+    const count = geometry.getAttribute('position').count;
+    const colours = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) scratchColour.toArray(colours, i * 3);
+    geometry.setAttribute('color', new BufferAttribute(colours, 3));
+    const key = `${this.layer}|${finish}`;
     let part = this.parts.get(key);
     if (part === undefined) {
-      part = { finish, colour, geometries: [] };
+      part = { finish, layer: this.layer, geometries: [] };
       this.parts.set(key, part);
     }
     part.geometries.push(geometry);
   }
 
-  private material(finish: Finish, colour: number): MeshStandardMaterial {
-    const base = new Color(colour);
-    if (finish === 'lamp') {
-      return new MeshStandardMaterial({ color: base, emissive: base, emissiveIntensity: LAMP_GLOW, roughness: 0.5 });
-    }
+  private material(finish: Finish): MeshStandardNodeMaterial {
+    const colour = attribute('color', 'vec3');
     if (finish === 'glass') {
-      return new MeshStandardMaterial({
-        color: base,
+      const glass = new MeshStandardNodeMaterial({
         roughness: 0.05,
         metalness: 0.1,
         transparent: true,
         opacity: GLASS_OPACITY,
         depthWrite: false,
       });
+      glass.vertexColors = true;
+      return glass;
     }
-    return new MeshStandardMaterial({
-      color: base,
-      roughness: 0.8,
-      emissive: base.clone().multiply(this.light),
-      emissiveIntensity: this.glow,
-    });
+    const material = new MeshStandardNodeMaterial({ roughness: finish === 'lamp' ? 0.5 : 0.8 });
+    material.vertexColors = true;
+    // A lamp gives off its own colour hard; every other surface a little of
+    // it, tinted by the room's light.
+    const light = vec3(this.light.r, this.light.g, this.light.b);
+    material.emissiveNode = finish === 'lamp' ? colour.mul(LAMP_GLOW) : colour.mul(light).mul(this.glow);
+    this.dress?.(material);
+    return material;
   }
 }
 

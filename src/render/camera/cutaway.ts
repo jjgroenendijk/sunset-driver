@@ -16,6 +16,11 @@
  *   away whole. From inside, its walls stand on every side of the view, and
  *   even a ghost of them veils the whole screen.
  *
+ * A third cut opens the shops: the room behind each shopfront near the player
+ * (`rooms.ts`) is cut out of the building that holds it, so the room's own
+ * glazed front and lit inside stand where the building's ground floor was, and
+ * the street can look in (spec section 16.1).
+ *
  * The cut is the ordered dither of `fade.ts`: a fragment is kept or discarded,
  * never blended, so nothing is sorted. The shadow pass reads none of this, so a
  * ghost still casts its shadow.
@@ -24,6 +29,7 @@ import type { Vector3 } from 'three';
 import type { NodeMaterial } from 'three/webgpu';
 import { bayer4 } from './fade.ts';
 import type { RoofBox } from '../buildings/roofs.ts';
+import { SHOP_ROOM_HEIGHT, SHOP_WALL, type ShopRoom } from '../../world/city/shops.ts';
 import { float, max, positionWorld, screenCoordinate, smoothstep, step, uniform, vec3, type TslNode } from '../tsl.ts';
 
 /** How much of a ghosted building is kept: five of the sixteen dither cells. */
@@ -62,6 +68,36 @@ const AIM_HEIGHT = 1;
 
 type Uniform = { value: number } & TslNode;
 
+/** The most shop rooms cut out of their buildings at once. `rooms.ts` holds no more than this. */
+export const ROOM_CUTS = 4;
+
+/**
+ * Metres the cut of a room reaches out past its shopfront, and over its
+ * ceiling: enough to take the building's own ground-floor glazing and the
+ * slab over the room, and no more, so an awning or a fascia over the door
+ * stays.
+ */
+const ROOM_OUT = 0.3;
+const ROOM_OVER = 0.15;
+
+/** One room's box as the shader reads it: its middle, its axes, its half sizes and its height. */
+interface RoomSlot {
+  x: Uniform;
+  z: Uniform;
+  ux: Uniform;
+  uz: Uniform;
+  halfAlong: Uniform;
+  halfAcross: Uniform;
+  bottom: Uniform;
+  top: Uniform;
+}
+
+/** A room to cut, as `rooms.ts` shows it: the room, and the height of its floor. */
+export interface RoomCut {
+  room: ShopRoom;
+  floor: number;
+}
+
 /** The uniforms every building material reads, and the node that says how much is cut. */
 export class BuildingCutaway {
   private readonly on = uniform(1);
@@ -78,8 +114,20 @@ export class BuildingCutaway {
     bottom: uniform(0),
     top: uniform(0),
   };
+  private readonly slots: RoomSlot[] = Array.from({ length: ROOM_CUTS }, () => ({
+    x: uniform(0),
+    z: uniform(0),
+    ux: uniform(1),
+    uz: uniform(0),
+    halfAlong: uniform(0),
+    halfAcross: uniform(0),
+    // An empty slot stands wholly under the ground.
+    bottom: uniform(-1e6),
+    top: uniform(-1e6),
+  }));
   private readonly occluding: TslNode = this.buildCone().mul(this.on);
   private readonly inBox: TslNode = this.buildBox().mul(this.on);
+  private readonly inRoom: TslNode = this.buildRooms();
 
   /** Whether buildings are cut at all. Off draws every building whole. */
   get enabled(): boolean {
@@ -106,9 +154,51 @@ export class BuildingCutaway {
     for (const key of Object.keys(this.box) as (keyof RoofBox)[]) this.box[key].value = inside[key];
   }
 
-  /** Cut a lit shell to a ghost. */
+  /**
+   * The shop rooms to cut out of their buildings this frame, at most
+   * {@link ROOM_CUTS}. The cut does not hang on the See-through setting: it
+   * is a window, not a way to see the player.
+   */
+  cutRooms(rooms: readonly RoomCut[]): void {
+    for (let i = 0; i < this.slots.length; i++) {
+      const slot = this.slots[i] as RoomSlot;
+      const cut = rooms[i];
+      if (cut === undefined) {
+        slot.bottom.value = -1e6;
+        slot.top.value = -1e6;
+        continue;
+      }
+      const { room, floor } = cut;
+      const ux = Math.cos(room.facing);
+      const uz = Math.sin(room.facing);
+      // From the inside of the back wall to a little past the shopfront.
+      const back = room.halfDepth;
+      const front = room.halfDepth + SHOP_WALL + ROOM_OUT;
+      const middle = (front - back) / 2;
+      slot.x.value = room.x + ux * middle;
+      slot.z.value = room.y + uz * middle;
+      slot.ux.value = ux;
+      slot.uz.value = uz;
+      slot.halfAlong.value = (front + back) / 2;
+      slot.halfAcross.value = room.halfWidth + SHOP_WALL;
+      slot.bottom.value = floor - 1;
+      slot.top.value = floor + SHOP_ROOM_HEIGHT + ROOM_OVER;
+    }
+  }
+
+  /** Cut a lit shell to a ghost, and out of the rooms of the shops. */
   dressShell(material: NodeMaterial): void {
-    material.opacityNode = float(1).sub(max(this.occluding.mul(1 - GHOST), this.inBox));
+    material.opacityNode = float(1).sub(max(max(this.occluding.mul(1 - GHOST), this.inBox), this.inRoom));
+    material.alphaTestNode = bayer4(screenCoordinate);
+  }
+
+  /**
+   * Cut a shop room to a ghost where it stands between the camera and the
+   * player, as a building is. The box the camera stands in is left alone:
+   * with the player inside, that box holds the room.
+   */
+  dressRoom(material: NodeMaterial): void {
+    material.opacityNode = float(1).sub(this.occluding.mul(1 - GHOST));
     material.alphaTestNode = bayer4(screenCoordinate);
   }
 
@@ -155,6 +245,23 @@ export class BuildingCutaway {
     const nearer = float(1).sub(smoothstep(reach.sub(MARGIN + BAND), reach.sub(MARGIN), depth));
     const inCone = float(1).sub(smoothstep(CONE * 0.7, CONE, off));
     return nearer.mul(inCone).mul(step(0, depth));
+  }
+
+  /** 1 inside the box of any shop room being cut, 0 everywhere else. */
+  private buildRooms(): TslNode {
+    let inside: TslNode = float(0);
+    for (const slot of this.slots) {
+      const dx = positionWorld.x.sub(slot.x);
+      const dz = positionWorld.z.sub(slot.z);
+      const along = dx.mul(slot.ux).add(dz.mul(slot.uz)).abs();
+      const across = dz.mul(slot.ux).sub(dx.mul(slot.uz)).abs();
+      const box = step(along, slot.halfAlong)
+        .mul(step(across, slot.halfAcross))
+        .mul(step(slot.bottom, positionWorld.y))
+        .mul(step(positionWorld.y, slot.top));
+      inside = max(inside, box);
+    }
+    return inside;
   }
 
   /** 1 on the building the camera stands inside, 0 everywhere else. */

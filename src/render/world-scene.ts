@@ -31,7 +31,7 @@ import { buildCarve, type RoadCarve } from '../world/carve/carve.ts';
 import { buildRoadGraph } from '../world/roads/graph.ts';
 import { buildJunctions } from '../world/junctions/junctions.ts';
 import type { MetroStation } from '../world/transit/metro.ts';
-import type { Shop, ShopKind, ShopRoom } from '../world/city/shops.ts';
+import type { Shop, ShopRoom } from '../world/city/shops.ts';
 import type { ParkingBays } from '../world/city/parking.ts';
 import type { Surface } from '../world/terrain/surface.ts';
 import type { Point, WorldDescription } from '../world/types.ts';
@@ -47,7 +47,7 @@ import { beaconPhase, daylightAt, type Daylight } from './environment/daylight.t
 import { EntityFade } from './camera/fade.ts';
 import { createGroundMaterial } from './environment/ground-material.ts';
 import { Headlights } from './vehicles/headlights.ts';
-import { ShopInterior } from './shops/interior.ts';
+import { ShopRooms, type RoomPlace } from './shops/rooms.ts';
 import type { ChunkContents } from './frame/frame-contents.ts';
 import { LampLights, LampScenery } from './roads/lamps.ts';
 import type { Gore } from './people/gore.ts';
@@ -118,8 +118,6 @@ export class WorldScene {
   readonly viewModel = new ViewModel(this.weaponArt);
   /** The weapons lying in the world to be picked up. */
   readonly pickups = new PickupModels(this.weaponArt);
-  /** The room of the shop the player is standing in (spec section 16.1). */
-  readonly interior = new ShopInterior();
   /** The smoke, fire and blast of the vehicle's damage (spec section 11.3). */
   readonly fx = new DamageFx();
   /** The bursts a melee weapon throws off what it lands on (spec section 11.6). */
@@ -142,6 +140,8 @@ export class WorldScene {
   /** What cuts away a building that hides the player (spec section 10.7). */
   readonly cutaway = new BuildingCutaway();
   private readonly buildings = new BuildingScenery(this.cutaway);
+  /** The rooms of the shops near the player, and of the one they stand in (spec section 16.1). */
+  readonly rooms = new ShopRooms((material) => this.cutaway.dressRoom(material));
   /**
    * How far the plants and the street lamps are drawn, and the dither that
    * takes them away at that edge (spec section 9.2). It is made before the two
@@ -237,7 +237,7 @@ export class WorldScene {
     this.scene.add(this.held.group);
     this.scene.add(this.viewModel.group);
     this.scene.add(this.pickups.group);
-    this.scene.add(this.interior.group);
+    this.scene.add(this.rooms.group);
     this.scene.add(this.fx.group);
     this.scene.add(this.melee.group);
     this.scene.add(this.shots.group);
@@ -529,17 +529,16 @@ export class WorldScene {
   }
 
   /**
-   * Draw the inside of the shop the player is standing in (spec section 16.1),
-   * and nothing where they are out on the street. The room stands on the carved
-   * ground under its own floor.
+   * Draw the rooms of the shops near the player (spec section 16.1), and of
+   * the one they are inside, whose id is `inside`, and cut each out of the
+   * building that holds it so the street can look in. A room stands on the
+   * carved ground under its own floor, and its lid is lifted off while the
+   * camera, `cameraY` high, stands over it.
    */
-  shopInside(place: { kind: ShopKind; id: number; wealth: number; room: ShopRoom } | undefined): void {
-    if (place === undefined) {
-      this.interior.hide();
-      return;
-    }
-    const look = { kind: place.kind, id: place.id, wealth: place.wealth, seed: this.world.seed };
-    this.interior.show(place.room, this.floorUnder(place.room), look);
+  shopRooms(places: readonly RoomPlace[], x: number, y: number, inside: number | undefined, cameraY: number): void {
+    const picked = this.rooms.pick(places, x, y, inside);
+    const cuts = this.rooms.update(picked, inside, this.world.seed, (room) => this.floorUnder(room), cameraY);
+    this.cutaway.cutRooms(cuts);
   }
 
   /**
@@ -684,6 +683,8 @@ export class WorldScene {
     this.posters.dispose();
     this.signs.dispose();
     this.character.dispose();
+    this.scene.remove(this.rooms.group);
+    this.rooms.dispose();
     this.scene.remove(this.remotes.group);
     this.remotes.dispose();
     this.scene.remove(this.vehicle.group);

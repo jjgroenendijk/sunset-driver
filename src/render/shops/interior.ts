@@ -2,15 +2,14 @@
  * The inside of a shop, drawn (spec sections 16.1, 10.3).
  *
  * A handful of shop types are enterable and nothing else has an interior at
- * all, so exactly one room is ever in the scene: the one the player is standing
- * in. It is built when they walk in and let go when they walk out, which is why
- * nothing here streams and nothing here is batched.
+ * all. This is one room; `rooms.ts` keeps the few near the player, so the
+ * street can look into them, and lets each go when the player walks away.
  *
- * The player sees the room through their own eyes: the camera goes to first
- * person at the door (spec section 10.7), whatever view they play in. So the
- * room is closed — a floor, four walls, a ceiling — with a shopfront of glass
- * that the street shows through, since the building the room stands in is cut
- * away while they are inside.
+ * The room is closed — a floor, four walls, a ceiling — with a shopfront of
+ * glass. The building it stands in is cut away where the room is, so from the
+ * street the shopfront is the room's own, and from inside the street shows
+ * through it. The ceiling is a lid, lifted off whenever the camera stands over
+ * it: a player who plays top down looks down into the room they walk into.
  *
  * Every room is dealt from the seed and its shop (`room-style.ts`): the theme
  * it is fitted out in, the floor, the walls, the ceiling, the lamps and the
@@ -24,6 +23,7 @@
  * the lamps glow hard enough for the bloom to light them.
  */
 import { Group, type BufferGeometry, type Material } from 'three';
+import type { MeshStandardNodeMaterial } from 'three/webgpu';
 import { genRng, Subsystem } from '../../core/rng.ts';
 import { isVenue, type ShopKind, type ShopRoom } from '../../world/city/shops.ts';
 import { CharacterModel } from '../people/character.ts';
@@ -63,9 +63,13 @@ export interface RoomLook {
   wealth: number;
 }
 
-/** The one room in the scene: the shop the player is standing in, or nothing. */
+/** One shop's room, or nothing. */
 export class ShopInterior {
   readonly group = new Group();
+  /** The ceiling and the lamps hung from it, which {@link ShopInterior.open} lifts off. */
+  private lid: Group | undefined;
+  /** What each opaque material of the room is given: the cut of `cutaway.ts`. */
+  private readonly dress: ((material: MeshStandardNodeMaterial) => void) | undefined;
   private readonly geometries: BufferGeometry[] = [];
   private readonly materials: Material[] = [];
   private readonly figures: CharacterModel[] = [];
@@ -81,8 +85,19 @@ export class ShopInterior {
    */
   floor: number | undefined;
 
-  constructor() {
+  constructor(dress?: (material: MeshStandardNodeMaterial) => void) {
+    this.dress = dress;
     this.group.visible = false;
+  }
+
+  /** Whether the lid is lifted off. */
+  get open(): boolean {
+    return this.lid?.visible === false;
+  }
+
+  /** Lift the lid off, or put it back. A room with nothing built ignores it. */
+  set open(value: boolean) {
+    if (this.lid !== undefined) this.lid.visible = !value;
   }
 
   /**
@@ -124,12 +139,13 @@ export class ShopInterior {
     const venue = isVenue(look.kind);
     const style = roomStyleOf(look.seed, look.id, look.kind, look.wealth, TRADE_COLOUR[look.kind]);
     this.style = style;
-    const kit = new RoomKit(style.glow, style.light);
+    const kit = new RoomKit(style.glow, style.light, this.dress);
     const rng = genRng(look.seed, Subsystem.Venues, look.id + 0x30000);
     const shell = buildShell(kit, rng, style, room.halfWidth, room.halfDepth);
     const figures = venue ? fitVenue(kit, rng, style, shell, look.kind === 'bar') : [];
     if (!venue) this.fitTrade(kit, style, shell, look.kind);
     const built = kit.build();
+    this.lid = built.lid;
     this.group.add(built.group);
     this.geometries.push(...built.geometries);
     this.materials.push(...built.materials);
@@ -182,6 +198,7 @@ export class ShopInterior {
     this.geometries.length = 0;
     this.materials.length = 0;
     this.shown = '';
+    this.lid = undefined;
     this.style = undefined;
     this.floor = undefined;
   }

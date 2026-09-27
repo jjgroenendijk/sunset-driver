@@ -23,8 +23,8 @@ in `docs/dev-tooling.md`.
 - First person stands the eyes a little ahead of the middle of the head. At the middle, the inside
   of the head fills the view. At the wheel it stands them over the bonnet, or the bonnet fills half
   the frame.
-- Inside a shop the view is first person whatever the setting (`Frame.follow`), and back to the
-  setting at the door. `docs/shops.md` has the room it looks at.
+- Inside a shop the view is the setting, as everywhere. A camera over a room's ceiling sees the room
+  with its lid lifted off (`rooms.ts`). `docs/shops.md` has the room it looks at.
 - `node scripts/render-preview.ts <seed> out.png --view=third-person` draws a chase view, and
   `--on-foot` follows the character instead of the car.
 
@@ -55,6 +55,9 @@ in `docs/dev-tooling.md`.
   camera turns only when a roof comes between, and stays where the last turn left it. It does not
   go back to north once north is clear: that second turn moves the view when nothing asked it to.
   Switching the setting away from Turn puts the heading back to north.
+- `cutaway.ts` also cuts the room of each shop near the player out of its building, whatever the
+  setting says: that cut is a window onto the shop, not a way to see the player. `ROOM_CUTS` boxes
+  are tested in every building fragment, so a fifth room needs a fifth box, not a longer list.
 - A player inside a footprint, or deep in an alley between towers, has no clear heading at all.
   The camera then keeps its heading and the cut does the work. A preview at such a spot shows no
   turn, which is correct: pick a place on a street beside one tall building to see it.
