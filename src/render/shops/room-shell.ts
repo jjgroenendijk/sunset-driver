@@ -2,12 +2,15 @@
  * The shell of a shop's room: the floor, the four walls, the ceiling, the
  * lamps and the shopfront, in the finish its {@link RoomStyle} deals.
  *
- * The room is seen from the player's own eyes (spec section 10.7), so what
- * matters is what a person standing in it sees: boards or tiles underfoot,
- * brick or panelling on the walls, beams or ducts overhead, and the street
- * through the shopfront's glass. The shopfront has a door and windows cut into
- * it, and the building the room stands in is cut away while the player is
- * inside, so the street outside is the street they walked in from.
+ * The room is seen from the player's own eyes in first person, and from the
+ * street through its glass, so what matters is what a person sees: boards or
+ * tiles underfoot, brick or panelling on the walls, beams or ducts overhead,
+ * and the street through the shopfront's glass. The shopfront has a door and
+ * windows cut into it, and the building the room stands in is cut away where
+ * the room is, so the shopfront is the one the street sees.
+ *
+ * The ceiling and the lamps hung from it go into the kit's lid, which is lifted
+ * off for a camera over the room (`rooms.ts`).
  *
  * Everything goes into the room's {@link RoomKit}, in the room's own frame:
  * `x` across the front, `z` out towards the door, the floor at 0.
@@ -56,8 +59,13 @@ export function buildShell(kit: RoomKit, rng: Rng, style: RoomStyle, halfWidth: 
   floor(kit, rng, style, halfWidth, halfDepth);
   walls(kit, style, halfWidth, halfDepth);
   shopfront(kit, style, halfWidth, halfDepth, door);
+  // The ceiling and the lamps that hang from it are the lid, which is lifted
+  // off for a camera looking down into the room.
+  kit.layer = 'lid';
   ceiling(kit, style, halfWidth, halfDepth);
   lamps(kit, rng, style, halfWidth, halfDepth);
+  kit.layer = 'room';
+  wallLights(kit, style, halfWidth, halfDepth);
   return { halfWidth, halfDepth, door };
 }
 
@@ -314,6 +322,10 @@ function lamps(kit: RoomKit, rng: Rng, style: RoomStyle, w: number, d: number): 
   for (const share of across) {
     for (let j = 0; j < along; j++) hang(kit, rng, style, share * w, -d + ((j + 0.5) * 2 * d) / along);
   }
+}
+
+/** The lights on the side walls: a pair to a wall, in the warmer themes. */
+function wallLights(kit: RoomKit, style: RoomStyle, w: number, d: number): void {
   // Wall lights on the side walls, a pair to a wall, in the warmer themes.
   if (style.lamps.kind !== 'lanterns' && style.lamps.kind !== 'fans' && style.lamps.kind !== 'bulbs') return;
   for (const side of [-1, 1]) {

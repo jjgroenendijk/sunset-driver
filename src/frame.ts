@@ -180,7 +180,7 @@ export class SessionFrame {
     const judged = !flying && !paused && this.parts.settings.graphics.auto;
     const change = judged ? session.quality.sample(elapsed) : undefined;
     if (change !== undefined) applyQuality(session, change);
-    this.drawPanels(session, p.inShop);
+    this.drawPanels(session, p);
     this.drawAim(session, flying || menu);
     this.drawMaps(session, p, flying);
     session.world.gore = this.parts.settings.gore;
@@ -339,13 +339,12 @@ export class SessionFrame {
     // Inside a shop the eyes stand on the room's floor, which stands on the
     // highest ground under it: on a slope the ground the player walks on is
     // lower, and eyes over it would look at the floor from below.
-    const floor = inShop ? session.world.interior.floor : undefined;
+    const floor = inShop ? session.world.rooms.floor : undefined;
     const eye = floor === undefined ? p : { ...p, height: Math.max(p.height, floor) };
     camera.update(elapsed / 1000, eye, {
-      // Inside a shop the room is seen through the player's eyes, whatever the
-      // view they play in (spec section 10.7): from 30 m over the street a
-      // room is a box with its lid off.
-      view: inShop ? 'first-person' : settings.view,
+      // A shop keeps the view the player plays in (spec section 10.7): the
+      // room's lid is lifted off for a camera over it.
+      view: settings.view,
       pull: settings.buildingView === 'pull-back' ? this.roofTop : undefined,
       turn: settings.buildingView === 'turn' ? this.sightTop : undefined,
       mouse: this.parts.look.active,
@@ -525,7 +524,7 @@ export class SessionFrame {
   }
 
   /** The HUD and every panel and mark that reads the record. */
-  private drawPanels(session: Session, inShop: ReturnType<typeof visiting>): void {
+  private drawPanels(session: Session, p: { round: Viewpoint; inShop: ReturnType<typeof visiting> }): void {
     session.hud.update(
       session.state,
       session.world.drawCallsPerChunk,
@@ -547,13 +546,14 @@ export class SessionFrame {
     // The metro panel of spec section 13.3: where the player may travel from
     // the station they are standing at, and the fade of a trip in progress.
     session.travel.update(session.state, session.metro, stationAt(session.metro, session.state), session.state.tick);
-    // The shop of spec section 16.1: the counter on screen, and the room the
-    // player is standing in, which is the only interior the scene ever holds.
-    // The counter's keys are read once, since a read spends them, and handed to
-    // both panels; only one of the two is ever open.
+    // The shop of spec section 16.1: the counter on screen, and the rooms of
+    // the shops round the player and the one they stand in, the only interiors
+    // the scene ever holds. The counter's keys are read once, since a read
+    // spends them, and handed to both panels; only one of the two is ever open.
     const nav = this.parts.keyboard.menuKeys();
     session.shopPanel.update(session.state, session.shops, session.safehouses, nav);
-    session.world.shopInside(inShop);
+    const cameraY = this.parts.camera.camera.position.y;
+    session.world.shopRooms(session.shops, p.round.x, p.round.y, p.inShop?.id, cameraY);
     // The contraband market of spec section 16.2: where the dealers are
     // standing this spell, and the prices of the one the player is with.
     session.dealerMarks.update(session.state.tick, session.world);

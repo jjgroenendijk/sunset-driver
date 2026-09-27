@@ -469,7 +469,8 @@ black. The day is bright and sweet; the night is neon on indigo, and the crime t
   building kind with open decks, and not on open car parks.
 - A handful of shop types are enterable; every other building is exterior only, with lit windows and
   moving silhouettes. No generated interiors beyond shops and safehouses. A shop's room is closed,
-  with a glazed shopfront, and is seen in first person (section 10.7).
+  with a glazed shopfront. The rooms of the shops near the player are drawn and cut out of the
+  buildings that hold them, so the street looks into them through the glass.
 - Every shop room is generated from the seed and the shop: a theme, then its floor, wall finish,
   ceiling, lamps, colours and furniture. Cafés and bars vary most, from a diner to a speakeasy, so
   two of one city rarely look alike.
@@ -520,8 +521,8 @@ and turns after them, on foot or in a car. **First person** stands at the player
 with them. On foot, the walking keys follow the camera's heading in every view, so `W` walks up the
 screen.
 
-Inside a shop the view is first person, whatever the setting: from 30 m up a room is a box with its
-lid off. It goes back to the chosen view at the door.
+Inside a shop the view stays the one the player chose. A camera over a room's ceiling sees the room
+with its lid lifted off, so top down looks down into it; first person sees the ceiling.
 
 In the two chase views the mouse turns the view, under pointer lock. On foot the mouse steers the
 view alone, and the player walks the way it looks. At the wheel the mouse looks aside from the car,
@@ -779,7 +780,8 @@ Each has a distinct minimap icon.
 | Café | Coffee, tea, cakes and light meals; a menu of its own, priced by district |
 | Bar | Beer, wine, cocktails, spirits and bar food; a menu of its own, priced by district |
 
-Storefronts you cannot enter still work as robbery targets and scenery.
+A shop stands on a shop row, or on the ground floor of some towers and mid-rises. Storefronts you
+cannot enter still work as robbery targets and scenery.
 
 ### 16.2 Contraband trading
 

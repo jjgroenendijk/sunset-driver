@@ -21,9 +21,14 @@ corners, and has its own page in `docs/market.md`.
 ## Which building is a shop
 
 - `buildShops(world, buildings)` (`src/world/city/shops.ts`) deals the trades over the buildings.
-  Only a `shop-row` can hold one — a storefront the player cannot enter is still scenery and still a
-  robbery target — and the trades are dealt per district, because a district's own shop rows are its
-  high street.
+  `holdsShop` says which can hold one: every `shop-row`, and `TALL_SHOP_SHARE` of the towers and
+  mid-rises, drawn from the building's seed. A storefront the player cannot enter is still scenery
+  and still a robbery target. The trades are dealt per district, because a district's own shop
+  rows and towers are its high street.
+- A tall building takes a shop only on a lot no deeper than `TALL_SHOP_DEPTH`. A deeper lot may be
+  massed as an L, a U or a courtyard, whose front wing is too shallow for a room: the room would
+  stand out of the back of the wing into the yard. `shops.test.ts` pins that every plan a
+  shallower lot can take has a box on the ground under the whole footprint.
 - `SHOP_ORDER` runs commonest first, and a district fills from the top of it: one shop row gets the
   convenience store, and only a long high street reaches the property broker. So a small district
   is never the only one with a gun shop, and no district is left with nothing.
@@ -55,6 +60,10 @@ corners, and has its own page in `docs/market.md`.
   target. A café or a bar takes `VENUE_FRONT` and `VENUE_ROOM_DEPTH` instead: tables and a way
   between them need more floor. A lot too narrow to stand in is grown to the least room a person
   fits, because a shop the player cannot be inside is not enterable.
+- A tall building's front wall stands in from its lot: its margin, and for a generated facade the
+  reach of its cornices. `groundFloorOf` puts the shop's front on that wall, so the room is not a
+  glass box out on the pavement. Its numbers copy `building-plan.ts`, which the world may not
+  import, and `shops.test.ts` holds the two together.
 - `facing` points out of the lot at its road, as `Building.facing` does. Everything here is in
   those terms: the door is at `+facing` of the room and the counter at `-facing`.
 
@@ -162,15 +171,24 @@ corners, and has its own page in `docs/market.md`.
 
 ## The interior, drawn
 
-- `ShopInterior` (`src/render/shops/interior.ts`) holds exactly one room: the one the player is
-  standing in. Nothing here streams and nothing is batched, because no second interior ever exists —
-  every other building is exterior only (spec section 10.3).
-- Inside a shop the camera is first person, whatever the View setting: `Frame.follow` passes
-  `first-person` while `inShop`. The counter keeps the pointer, so the mouse does not look; the
-  view turns after the player as they walk, and they walk in facing the counter.
-- The room is closed: a floor, four walls, a ceiling and a shopfront with a door and glass.
-  `WorldScene.seeThrough` is given whether the player is inside a shop, and cuts away the building
-  over them, so the street shows through the glass.
+- `ShopInterior` (`src/render/shops/interior.ts`) is one room. `ShopRooms` (`rooms.ts`) keeps
+  the rooms of the shops within `ROOM_REACH` of the player, and always the one they stand in. It
+  builds at most one new room a frame, since a furnished bar is a hitch to build, but the room the
+  player walks into at once. Every other building is exterior only (spec section 10.3).
+- The street looks in. `BuildingCutaway.cutRooms` cuts each room's box out of the building shell,
+  so the room's own shopfront stands where the building's ground floor was. The box reaches a
+  little past the shopfront and over the ceiling, and no further, so the fascia over the door
+  stays. At most `ROOM_CUTS` rooms stand at once, because each is a box every building fragment
+  tests.
+- Inside a shop the camera keeps the View setting. The counter keeps the pointer, so the mouse
+  does not look; they walk in facing the counter.
+- The room is closed: a floor, four walls, a ceiling and a shopfront with a door and glass. The
+  ceiling and the lamps hung from it are the lid (`RoomKit.layer`), lifted off whenever the camera
+  stands over it, so top down looks down into the room. `WorldScene.seeThrough` is given whether
+  the player is inside a shop, and cuts away the building over them.
+- A room stands between the camera and the player now and then, as a building does, so its
+  materials take the cone of the cut (`dressRoom`), but not the box the camera stands in: with
+  the player inside, that box holds the room.
 - `WorldScene.floorUnder` stands the floor on the highest ground under the room. At the height of
   its middle, a sloping street comes up through the back half of the floor.
 - `roomStyleOf` (`room-style.ts`) deals the look from the seed and the shop. A café and a bar pick
@@ -182,7 +200,8 @@ corners, and has its own page in `docs/market.md`.
   `venue-fit.ts` furnishes a café or a bar: a counter at the back or down one side, then strips of
   floor either side of the way in, each seated as the style prefers and has room for. Every other
   trade keeps its counter, shelves and goods (`interior-goods.ts`).
-- `RoomKit` (`room-kit.ts`) merges every part of one material into one mesh. A furnished bar is
+- `RoomKit` (`room-kit.ts`) writes each part's colour into its vertices and merges every part of
+  one finish into one mesh: a room is about three draws, however it is fitted. A furnished bar is
   several hundred boxes, and a mesh each would be a draw call each. The furniture of
   `furniture.ts` is written in a `Spot`'s frame, `dz` out of its front, so a piece stands against
   any wall.
@@ -191,7 +210,9 @@ corners, and has its own page in `docs/market.md`.
   clustered lighting would then rebuild every lit shader in the city on the first step through a
   door.
 - `render-preview.ts --shop=cafe --nth=2` draws the third nearest café, from where the player walks
-  in. `--heading=180` looks back out of the door.
+  in. `--heading=180` looks back out of the door, and `--view=top-down` looks down into the room.
+  To look in from the street, stand the player on the pavement with `--on-foot` and
+  `--view=third-person`, facing the shop.
 
 ## The map
 

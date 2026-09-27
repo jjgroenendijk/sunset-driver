@@ -101,11 +101,13 @@ is one frame and a call takes the best part of a minute.
 node scripts/render-preview.ts sunset cafe.png --shop=cafe --nth=2
 ```
 
-`--shop=weapons|workshop|convenience|clothing|clinic|broker|cafe|bar|any` is the one way to see an
-interior. It moves the frame off `--x` and `--y` to the nearest such shop, or with `--nth=N` the
+`--shop=weapons|workshop|convenience|clothing|clinic|broker|cafe|bar|any` stands the player inside
+an interior. It moves the frame off `--x` and `--y` to the nearest such shop, or with `--nth=N` the
 N-th nearest, and the line it prints says where it ended up. The view is first person from where
-the player walks in, facing the counter, as in the game. `--heading=180` looks back out of the
-door. Every room is dealt from the seed and the shop, so `--nth` compares the looks of one city.
+the player walks in, facing the counter, unless `--view` asks for another. `--heading=180` looks
+back out of the door. Every room is dealt from the seed and the shop, so `--nth` compares the looks
+of one city. The rooms of the shops near any picture are drawn too: stand the player on the
+pavement with `--on-foot --view=third-person`, facing a shop, to look in from the street.
 
 ## The tram
 
