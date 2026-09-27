@@ -35,6 +35,12 @@
  *   --shaders=<dir>  write the WGSL of every stage the frames compiled, as
  *                    `<n>.vert.wgsl` and `<n>.frag.wgsl`, to read what a
  *                    material's shader really does.
+ *   --view           the camera view: top-down, third-person or first-person.
+ *                    Default top-down.
+ *   --device=phone   the screen of an iPhone 13 Pro held sideways, 844x390 at
+ *                    3x, and the tier a touch session starts on. The GPU is
+ *                    still this machine's: `docs/performance-budget.md` says
+ *                    how its numbers are read against the phone's.
  *   --json=<file>    write every sample of the run, for `profile-compare.ts`.
  *   --memory         report what the page and the GPU hold: settled after the
  *                    still frames, and at the most over the drive. The GPU is
@@ -55,6 +61,7 @@ import { createServer, type ViteDevServer } from 'vite';
 import { seedFromString } from '../src/core/rng.ts';
 import { compareStrings } from '../src/core/sort.ts';
 import type { FrameSample, ProfileRequest, ProfileResult } from '../src/render/preview/profile.ts';
+import { EDGES, type PopIn } from '../src/render/frame/pop-in.ts';
 import { chromiumPath } from './chromium.ts';
 import { printProfile, saveProfile, summariseProfile, type CpuProfile, type CpuSummary } from './cpu-profile.ts';
 import { percentile, saveRun } from './profile-run.ts';
@@ -78,18 +85,29 @@ function num(name: string, fallback: number): number {
   return value;
 }
 
+/** The screens `--device` names: the size of the page, its pixel ratio and the tier a session starts on. */
+const DEVICES: Record<string, { width: number; height: number; dpr: number; quality: string }> = {
+  phone: { width: 844, height: 390, dpr: 3, quality: 'medium' },
+};
+
+const device = options.has('device') ? DEVICES[options.get('device') as string] : undefined;
+if (options.has('device') && device === undefined) throw new Error(`--device knows ${Object.keys(DEVICES).join(', ')}`);
+const quality = options.get('quality') ?? device?.quality;
+const dpr = num('dpr', device?.dpr ?? 1);
+
 const seedText = positional[0] ?? 'sunset';
 const request: ProfileRequest = {
   seed: seedFromString(seedText),
   x: num('x', 0),
   y: num('y', 0),
-  width: num('width', 1600),
-  height: num('height', 900),
+  width: num('width', device?.width ?? 1600),
+  height: num('height', device?.height ?? 900),
   hour: num('hour', 12),
   still: num('still', 240),
   drive: num('drive', 480),
   speed: num('speed', 25),
-  ...(options.has('quality') ? { quality: options.get('quality') as string } : {}),
+  ...(quality === undefined ? {} : { quality }),
+  ...(options.has('view') ? { view: options.get('view') as ProfileRequest['view'] } : {}),
   ...(options.has('weather') ? { weather: options.get('weather') as string } : {}),
   noWater: options.has('no-water'),
   noShadows: options.has('no-shadows'),
@@ -113,7 +131,7 @@ interface HeapUsage {
 const mb = (bytes: number): string => `${(bytes / 2 ** 20).toFixed(0)} MB`;
 
 /** The fields of a frame that are one number each. */
-type Field = Exclude<keyof FrameSample, 'passes'>;
+type Field = Exclude<keyof FrameSample, 'passes' | 'popIn'>;
 
 /** A percentile of one field of the samples. */
 function pct(samples: readonly FrameSample[], field: Field, p: number): number {
@@ -165,6 +183,28 @@ function report(name: string, samples: readonly FrameSample[]): void {
   );
 }
 
+/** The nearest of a list of distances, as a reader wants it: `none` when nothing showed. */
+function metres(value: number): string {
+  return Number.isFinite(value) ? `${value.toFixed(0)} m` : 'none';
+}
+
+/**
+ * Where the drive showed things pop in (`pop-in.ts`): for each edge, the share
+ * of frames it was in sight and the nearest it stood to the camera.
+ */
+function reportPopIn(samples: readonly FrameSample[]): void {
+  if (samples.length === 0) return;
+  const line = (name: string, pick: (p: PopIn) => number): string => {
+    const values = samples.map((s) => pick(s.popIn));
+    const seen = values.filter(Number.isFinite);
+    const share = ((seen.length / values.length) * 100).toFixed(0);
+    return `${name} ${metres(Math.min(...values))} (${share}%)`;
+  };
+  console.log(`pop-in, nearest to the camera (share of drive frames in sight):`);
+  console.log(`  streaming late: ${line('hole', (p) => p.hole)}, ${line('old detail', (p) => p.late)}`);
+  console.log(`  edges: ${EDGES.map((edge) => line(edge, (p) => p.edges[edge])).join(', ')}`);
+}
+
 let server: ViteDevServer | undefined;
 const browser = await chromium.launch({
   executablePath: chromiumPath({ hardware: true }),
@@ -186,7 +226,7 @@ try {
   if (url === undefined) throw new Error('Vite started without a local address.');
   const page = await browser.newPage({
     viewport: { width: request.width, height: request.height },
-    deviceScaleFactor: num('dpr', 1),
+    deviceScaleFactor: dpr,
   });
   page.on('pageerror', (error) => console.error(`page error: ${error.message}`));
   // WebGPU is offered to a secure page only, so the page is served rather than opened blank.
@@ -238,12 +278,16 @@ try {
   } else {
     result = await pending;
   }
-  console.log(`seed ${seedText}, ${request.width}x${request.height} at ${num('dpr', 1)}x, ${request.quality ?? 'full'} quality`);
+  console.log(
+    `seed ${seedText}, ${request.width}x${request.height} at ${dpr}x, ${request.quality ?? 'full'} quality, ` +
+      `${request.view ?? 'top-down'} view`,
+  );
   for (const [kind, batch] of Object.entries(result.kinds).sort((a, b) => b[1].vertices - a[1].vertices)) {
     console.log(`  ${kind}: ${batch.batches} batches, ${batch.parts} parts, ${(batch.vertices / 1e3).toFixed(0)}k vertices`);
   }
   report('still', result.still);
   report('drive', result.drive);
+  reportPopIn(result.drive);
   if (request.passes === true && !result.timed) console.log('the adapter offers no timestamp queries; no pass was timed');
   if (result.timed) {
     reportPasses('still', result.still);

@@ -17,11 +17,12 @@ import { DEFAULT_APPEARANCE } from '../../sim/player/character.ts';
 import { nearestRoadPlace } from '../../world/terrain/surface.ts';
 import { namedWeather } from '../../sim/city/weather.ts';
 import { generateWorld } from '../../world/world.ts';
-import { FollowCamera } from '../camera/camera.ts';
+import { FollowCamera, type CameraView } from '../camera/camera.ts';
 import { PassTimer, type PassTimes } from '../frame/gpu-passes.ts';
 import { tickAtHour } from '../environment/daylight.ts';
 import { PostChain } from '../look/post.ts';
 import { geometryBytes, gpuMemory, gpuPeak, installGpuLedger, type GpuMemory } from '../frame/memory.ts';
+import { popIn, type PopIn } from '../frame/pop-in.ts';
 import { FULL_TIER, QUALITY_TIERS } from '../frame/quality.ts';
 import { createRenderer, disposeRenderer } from '../renderer.ts';
 import { warmPasses } from '../frame/warm.ts';
@@ -68,6 +69,8 @@ export interface ProfileRequest {
   weather?: string;
   /** Return the WGSL of every program the frames built, to read what a shader does. */
   shaders?: boolean;
+  /** The camera view to draw from. Left out, top down. */
+  view?: CameraView;
 }
 
 /** One frame, timed. */
@@ -88,6 +91,8 @@ export interface FrameSample {
   streaming: number;
   /** Milliseconds of GPU time by pass, when the passes are timed. */
   passes?: PassTimes;
+  /** Where the frame showed things pop in (`pop-in.ts`). */
+  popIn: PopIn;
 }
 
 /** What the batches of one kind hold, over every chunk in the scene. */
@@ -197,7 +202,8 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
     const t0 = performance.now();
     scene.update(x, y);
     const t1 = performance.now();
-    camera.update(1 / 60, { x, y, height: scene.heightAt(x, y), heading, speed });
+    const ground = scene.heightAt(x, y);
+    camera.update(1 / 60, { x, y, height: ground, heading, speed, driving: speed > 0 }, { view: request.view ?? 'top-down' });
     if (request.noPost === true) {
       // The post chain brings the world matrices up to date, and the renderer does not.
       scene.scene.updateMatrixWorld();
@@ -219,6 +225,8 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
       pipelines: caches._pipelines.caches.size,
       builds: caches._nodes.nodeBuilderCache.size,
       streaming: scene.streaming,
+      // Read after the frame, as the player saw it: the upload of this frame is in.
+      popIn: popIn(camera.camera, scene, x, y, ground),
     };
   };
 

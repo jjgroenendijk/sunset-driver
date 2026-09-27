@@ -12,7 +12,7 @@ import { nextView, type CameraView } from './render/camera/camera-view.ts';
 import { commitCrime } from './sim/police/police.ts';
 import type { SimState } from './sim/simulation.ts';
 import { FREE_CAMERA_KEY, type FreeCameraControls } from './ui/input/free-camera.ts';
-import { DEV_INFO_KEY } from './ui/hud/hud.ts';
+import { DEV_INFO_CLASS, DEV_INFO_KEY } from './ui/hud/hud.ts';
 import { MAP_CENTRE_KEY, MAP_KEY, MAP_LEGEND_KEY, type MapScreen } from './ui/map/map-screen.ts';
 import type { Minimap } from './ui/map/minimap.ts';
 import type { MouseLook } from './ui/input/mouse-look.ts';
@@ -117,7 +117,7 @@ export function listenForKeys(target: Window, keys: KeyTargets): void {
     // The developer block of the HUD. F3 is the browser's find-next too.
     if (event.code === DEV_INFO_KEY) {
       event.preventDefault();
-      target.document.body.classList.toggle('dev-info');
+      target.document.body.classList.toggle(DEV_INFO_CLASS);
     }
   });
 }

@@ -16,7 +16,7 @@ import { glassMaterial, instanced, trafficParts } from './traffic.ts';
 import { tinted } from '../look/tint.ts';
 
 /** Metres each way of the point the frame is drawn round that parked cars are drawn in. */
-const PARKED_VIEW = 170;
+export const PARKED_VIEW = 170;
 
 /** Metres the point the frame is drawn round may move before the view is written again. */
 const MOVE = 10;
