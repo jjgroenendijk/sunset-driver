@@ -38,6 +38,7 @@ describe('the traffic, drawn (spec section 13.1)', () => {
     const pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
     let inView = 0;
     for (const vehicle of traffic.vehicles) {
+      if (!traffic.outAt(vehicle.id, tick)) continue;
       const at = traffic.poseAt(vehicle.id, tick, pose);
       if (Math.abs(at.x) <= 180 && Math.abs(at.y) <= 180) inView++;
     }
@@ -48,7 +49,7 @@ describe('the traffic, drawn (spec section 13.1)', () => {
     const id = traffic.near(-10, -10, 10, 10, [])[0] as number;
     const vehicle = traffic.vehicles[id] as (typeof traffic.vehicles)[number];
     const at = traffic.poseAt(id, tick, pose);
-    const far = Math.abs(at.x) <= 180 && Math.abs(at.y) <= 180 ? 0 : 1;
+    const far = Math.abs(at.x) <= 180 && Math.abs(at.y) <= 180 && traffic.outAt(id, tick) ? 0 : 1;
     state.traffic.promoted.push({ id, paint: vehicle.paint, vehicle: createVehicleState(specOf(vehicle.cls), 5, 5, 1, 0) });
     view.update(state, tick, 0, 0);
     expect(view.drawn).toBe(inView + far);

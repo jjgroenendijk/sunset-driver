@@ -42,6 +42,7 @@ import { RouteSampler, type BedTilt, type RouteAround, type RoutePoint } from '.
 import { SIGNAL_CYCLE, TrafficSignals } from './signals.ts';
 import { legAt, legNear, timeTour, walkTour, type Permit, type Tour } from './traffic-tour.ts';
 import type { CallPlan } from './traffic-timing.ts';
+import { TrafficHours } from './traffic-hours.ts';
 import { endSpeeds, plateauOf, stepMotion, turnSpeed, type Plateau, type StepMotion } from './traffic-motion.ts';
 import { tramGuardOf, type TramGuard } from '../transit/tram-guard.ts';
 import { laneInner, offsetIn, PLATFORM_LANE, tramLanes } from './tram-lanes.ts';
@@ -245,6 +246,8 @@ export class AmbientTraffic {
    * draws them standing there.
    */
   readonly demand: BusDemand;
+  /** Who of the traffic is out on the road at a tick: the hour, and the streets an event shuts. */
+  readonly hours: TrafficHours;
   private readonly sampler: RouteSampler;
   private readonly point: RoutePoint;
   /** 1 on each run the tram drives either way, and {@link PLATFORM_LANE} where it also calls. */
@@ -269,6 +272,7 @@ export class AmbientTraffic {
   private readonly memo: PoseMemo;
   /** The step of its tour each vehicle was last found at, where the next search starts. */
   private readonly steps: Int32Array;
+  private readonly outCursor: TrafficCursor = { id: 0, step: 0, into: 0 };
 
   constructor(seed: number, roads: TrafficRoads) {
     this.roads = roads;
@@ -293,6 +297,7 @@ export class AmbientTraffic {
     const vehicles: AmbientVehicle[] = [];
     for (const edge of graph.edges) this.place(seed, edge, busy, vehicles);
     this.vehicles = vehicles;
+    this.hours = new TrafficHours(seed, vehicles, graph);
     this.memo = new PoseMemo(vehicles.length);
     this.steps = new Int32Array(vehicles.length);
     this.ends = new Array<Float64Array | undefined>(vehicles.length);
@@ -310,6 +315,16 @@ export class AmbientTraffic {
     this.steps[id] = out.step;
     out.into = at - (tour.stepStart[out.step] as number);
     return out;
+  }
+
+  /**
+   * True while a vehicle is out on the road at a tick (`traffic-hours.ts`).
+   * Every reader that puts a vehicle in the world asks, at the tick it reads
+   * the vehicle's pose at.
+   */
+  outAt(id: number, tick: number): boolean {
+    const whole = Math.floor(tick);
+    return this.hours.isOut(this.cursorAt(id, whole, this.outCursor), whole);
   }
 
   /** Step a cursor one tick along its tour. */

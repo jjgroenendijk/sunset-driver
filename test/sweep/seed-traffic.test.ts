@@ -33,8 +33,10 @@ sweepSuite('traffic', () => {
       // A two-way run is two edges on one road; a ramp is one.
       for (const edge of graph.edges) length[edge.tier] = (length[edge.tier] ?? 0) + (edge.twin >= 0 ? edge.length / 2 : edge.length);
 
-      // At the start of the day and at noon: a tier is not empty at one moment and full at another.
-      for (const tick of [0, 12 * TICKS_PER_HOUR]) checkMoment(seed, graph, traffic, length, tick, cursor, pose);
+      // At the start of the day, at rush hour and at noon: a tier is not empty
+      // at one moment and full at another, and the thickest traffic of the day
+      // is not stood in piles.
+      for (const tick of [0, 8 * TICKS_PER_HOUR, 12 * TICKS_PER_HOUR]) checkMoment(seed, graph, traffic, length, tick, cursor, pose);
 
       // The traffic gets on and off the highway over the ramps of its
       // interchanges (spec section 6.2), so some tour drives one.
@@ -75,8 +77,11 @@ function checkMoment(
     traffic.pose(cursor, pose);
     const spec = specOf(vehicle.cls);
     const box = { x: pose.x, y: pose.y, heading: pose.heading, halfLength: spec.halfLength, halfWidth: spec.halfWidth };
-    standing.push(box);
-    if (pose.speed === 0) stopped.push(box);
+    // Only a vehicle out on the road at this hour stands on it (`traffic-hours.ts`).
+    if (traffic.outAt(vehicle.id, tick)) {
+      standing.push(box);
+      if (pose.speed === 0) stopped.push(box);
+    }
     if (vehicle.id % 7 !== 0) continue;
     // A vehicle takes a corner inside the junction, so it may stand a
     // few metres off its own run there; it never leaves the carriageway.

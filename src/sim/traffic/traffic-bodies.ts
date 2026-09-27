@@ -231,9 +231,15 @@ export class TrafficBodies {
       if (known !== undefined) this.drop(known);
       return undefined;
     }
+    const time = heldTime(held, id, state.tick + 1);
+    // A vehicle at home, or kept off a shut street, has no body (`traffic-hours.ts`).
+    if (!traffic.outAt(id, time)) {
+      if (known !== undefined) this.drop(known);
+      return undefined;
+    }
     const entry = known ?? this.arrive(state, id);
     if (entry === undefined) return undefined;
-    traffic.cursorAt(id, heldTime(held, id, state.tick + 1), entry.cursor);
+    traffic.cursorAt(id, time, entry.cursor);
     this.poseOf(state, entry);
     if (!this.inside(this.pose)) {
       this.drop(entry);
