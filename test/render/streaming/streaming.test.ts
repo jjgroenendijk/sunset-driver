@@ -424,7 +424,7 @@ function pooled(): { pool: ChunkPool; workers: FakeWorker[] } {
 }
 
 describe('the pool of chunk workers', () => {
-  it('sends every worker the world and waits for it to be ready', () => {
+  it('sends every worker the world before any chunk', () => {
     const { pool, workers } = pooled();
     expect(workers).toHaveLength(2);
     for (const worker of workers) expect(worker.orders[0]).toMatchObject({ type: 'start', world });
@@ -432,13 +432,31 @@ describe('the pool of chunk workers', () => {
     // answer, so only the first is asked to spend the time on them.
     expect(workers.map((worker) => (worker.orders[0] as { bays?: boolean }).bays)).toEqual([true, false]);
 
-    // Nothing is handed out before a worker says its layers are built.
+    // A worker takes its chunks in order, so one handed out now is built
+    // straight after the layers.
     pool.want([{ cx: 0, cy: 0, detail: 'near' }]);
-    expect(workers[0]?.chunks).toHaveLength(0);
-    workers[0]?.ready();
-    expect(workers[0]?.chunks).toEqual([{ type: 'chunk', cx: 0, cy: 0, detail: 'near' }]);
+    expect(workers[0]?.orders.map((order) => order.type)).toEqual(['start', 'chunk']);
     pool.dispose();
     for (const worker of workers) expect(worker.terminated).toBe(true);
+  });
+
+  it('hands out the first chunks before the workers are ready, spread over them', () => {
+    const { pool, workers } = pooled();
+    // The ground under a new session: the chunk it stands in and the eight around it.
+    const wants: ChunkWant[] = [];
+    for (let cy = -1; cy <= 1; cy++) for (let cx = -1; cx <= 1; cx++) wants.push({ cx, cy, detail: 'near' });
+    wants.push({ cx: 2, cy: 0, detail: 'near' }, { cx: 3, cy: 0, detail: 'near' });
+    pool.want(wants);
+    // Every chunk of the nine is with a worker, the nearest first on each, and
+    // the rest wait for the workers to answer.
+    expect(workers[0]?.chunks).toHaveLength(5);
+    expect(workers[1]?.chunks).toHaveLength(5);
+    expect(workers[0]?.chunks[0]).toMatchObject(wants[0] as ChunkWant);
+    expect(workers[1]?.chunks[0]).toMatchObject(wants[1] as ChunkWant);
+    // Once ready, a worker takes nothing more until what it holds is answered.
+    for (const worker of workers) worker.ready();
+    expect(workers[0]?.chunks).toHaveLength(5);
+    pool.dispose();
   });
 
   it('keeps both workers busy and never gives one chunk to two of them', () => {

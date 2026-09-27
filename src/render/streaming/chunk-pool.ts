@@ -28,6 +28,18 @@ import type { ChunkDetail, ChunkWant } from './streaming.ts';
  */
 const MAX_WORKERS = 2;
 
+/**
+ * Chunks a worker is handed before its layers are built. A worker works
+ * through its messages in order, so it builds these straight after its layers.
+ * The session asks for the ground under the player just before `buildCity`
+ * holds the main thread for seconds, and no answer can be read until that ends.
+ * With one chunk each, two workers would build two of the nine the loading
+ * screen waits for and then stand idle (`docs/loading.md`). After the first
+ * answer a worker takes one chunk at a time, so a chunk nobody wants any more
+ * can still be dropped before a worker starts on it.
+ */
+const EARLY_CHUNKS = 5;
+
 /** Where the scene gets its chunks from. */
 export interface ChunkStream {
   /** Ask for these chunks, nearest first, and forget every request not in the list. */
@@ -59,8 +71,8 @@ interface Slot {
   worker: ChunkWorker;
   /** False until the worker has built its layers. */
   ready: boolean;
-  /** The chunk it is building, if any. */
-  busy?: string;
+  /** The chunks it has been handed and has not answered, in the order it builds them. */
+  jobs: string[];
 }
 
 /** A pool of workers, each with a copy of the world. */
@@ -79,7 +91,7 @@ export class ChunkPool implements ChunkStream {
 
   constructor(world: WorldDescription, spawn: () => ChunkWorker = takeChunkWorker, size = poolSize()) {
     for (let i = 0; i < size; i++) {
-      const slot: Slot = { worker: spawn(), ready: false };
+      const slot: Slot = { worker: spawn(), ready: false, jobs: [] };
       this.slots.push(slot);
       slot.worker.onReply((reply) => this.receive(slot, reply));
       // Only the first worker lays out the parking bays: the answer is the
@@ -121,28 +133,36 @@ export class ChunkPool implements ChunkStream {
       if (reply.shops !== undefined) this.shops ??= reply.shops;
       if (reply.bays !== undefined) this.bays ??= reply.bays;
       slot.ready = true;
-      slot.busy = undefined;
       this.pump();
       return;
     }
     const payload = reply.payload;
     const key = keyOf(payload.cx, payload.cy);
+    // A worker answers its chunks in the order it was handed them.
+    slot.jobs.shift();
     this.inFlight.delete(key);
     // A chunk nobody wants any more is dropped rather than drawn: the player
     // drove out of reach of it while it was being built.
     if (this.wanted.has(key)) this.arrived.push(payload);
   }
 
-  /** Hand the next chunks to whichever workers are free. */
+  /**
+   * Hand the next chunks to whichever workers have room, one to each in turn,
+   * so the nearest chunks are spread over the workers rather than stacked on one.
+   */
   private pump(): void {
-    for (const slot of this.slots) {
-      if (!slot.ready || slot.busy !== undefined) continue;
-      const want = this.nextWant();
-      if (want === undefined) return;
-      const key = keyOf(want.cx, want.cy);
-      slot.busy = key;
-      this.inFlight.set(key, want.detail);
-      slot.worker.post({ type: 'chunk', cx: want.cx, cy: want.cy, detail: want.detail });
+    for (let handed = true; handed; ) {
+      handed = false;
+      for (const slot of this.slots) {
+        if (slot.jobs.length >= (slot.ready ? 1 : EARLY_CHUNKS)) continue;
+        const want = this.nextWant();
+        if (want === undefined) return;
+        const key = keyOf(want.cx, want.cy);
+        slot.jobs.push(key);
+        this.inFlight.set(key, want.detail);
+        slot.worker.post({ type: 'chunk', cx: want.cx, cy: want.cy, detail: want.detail });
+        handed = true;
+      }
     }
   }
 
