@@ -9,7 +9,7 @@
  * true one, and that it never falls a step behind.
  */
 import { describe, expect, it } from 'vitest';
-import { Scene } from 'three';
+import { DirectionalLight, Scene } from 'three';
 import { daylightAt } from '../../../src/render/environment/daylight.ts';
 import { shadowReach, SkyLighting, SUN_SHADOW_STEP } from '../../../src/render/environment/sky.ts';
 import { TICKS_PER_DAY } from '../../../src/sim/clock.ts';
@@ -58,6 +58,25 @@ describe('SkyLighting', () => {
     const sky = new SkyLighting(new Scene(), 10, 100);
     sky.set(morning);
     expect(sky.shadowReach).toBe(shadowReach(sky.shadowSunDirection.y));
+    sky.dispose();
+  });
+
+  it('turns the shadow off at a map size of 0, and back on', () => {
+    const scene = new Scene();
+    const sky = new SkyLighting(scene, 10, 100);
+    sky.set(daylightAt(TICKS_PER_DAY / 2));
+    const sun = scene.children.find((child) => child instanceof DirectionalLight) as DirectionalLight;
+    sky.shadowMapSize = 0;
+    expect(sky.shadowMapSize).toBe(0);
+    expect(sun.shadow.intensity).toBe(0);
+    sun.shadow.needsUpdate = false;
+    sky.drawShadowOnce();
+    expect(sun.shadow.needsUpdate).toBe(false);
+    sky.shadowMapSize = 512;
+    expect(sky.shadowMapSize).toBe(512);
+    expect(sun.shadow.intensity).toBe(1);
+    sky.drawShadowOnce();
+    expect(sun.shadow.needsUpdate).toBe(true);
     sky.dispose();
   });
 });

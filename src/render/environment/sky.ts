@@ -191,6 +191,8 @@ export class SkyLighting {
   private readonly sun = new DirectionalLight(0xffffff, 1);
   private readonly fill = new HemisphereLight(0xffffff, 0x000000, 1);
   private readonly cascades: CSMShadowNode;
+  /** False while the tier draws no shadow; see {@link SkyLighting.shadowMapSize}. */
+  private shadowsOn = true;
   private readonly fog: Fog;
   private readonly background = new Color();
   private readonly scene: Scene;
@@ -323,7 +325,7 @@ export class SkyLighting {
    * with no strength throws no shadow, so at night the maps are not drawn.
    */
   drawShadowOnce(): void {
-    if (this.sun.intensity <= 0) return;
+    if (this.sun.intensity <= 0 || !this.shadowsOn) return;
     // A cascade is built at the first render, and each one clones the sun's own
     // shadow as it is built. Asking on that clone template is what draws the
     // shadow of a frame rendered before there is a cascade to ask: the first
@@ -363,7 +365,16 @@ export class SkyLighting {
    * texels of it.
    */
   set shadowMapSize(pixels: number) {
-    if (this.sun.shadow.mapSize.width === pixels) return;
+    // A size of 0 is a tier that draws no shadow (spec section 9.2). The maps
+    // keep their size, and are neither drawn nor read: each shadow's intensity
+    // is a uniform, so turning it to 0 lights every surface fully and rebuilds
+    // no shader. Turning the shadow program off instead rebuilds every shader
+    // in the city, which is the hitch a tier change must not cost.
+    this.shadowsOn = pixels > 0;
+    const intensity = this.shadowsOn ? 1 : 0;
+    this.sun.shadow.intensity = intensity;
+    for (const cascade of this.cascades.lights) if (cascade.shadow !== undefined) cascade.shadow.intensity = intensity;
+    if (!this.shadowsOn || this.sun.shadow.mapSize.width === pixels) return;
     this.sun.shadow.mapSize.set(pixels, pixels);
     // Each cascade cloned the sun's shadow when it was built, so the size has
     // to be written onto the clones as well. Written only on the sun, a tier
@@ -376,7 +387,7 @@ export class SkyLighting {
   }
 
   get shadowMapSize(): number {
-    return this.sun.shadow.mapSize.width;
+    return this.shadowsOn ? this.sun.shadow.mapSize.width : 0;
   }
 
   /**

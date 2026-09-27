@@ -59,6 +59,11 @@ dark. `spec.md` sections 10.5 and 13.4 are the design. What is drawn is in `docs
   therefore moves the sun the shadow is cast from in steps of `SUN_SHADOW_STEP`, while the dome, the
   colours and the haze follow the true sun every frame. Moved every frame, the grid turns under the
   snap and every shadow edge crawls.
+- A map size of 0 turns the shadow off (issue #774). `SkyLighting.shadowMapSize` sets each
+  shadow's `intensity` to 0 and `drawShadowOnce` stops asking for the maps. The intensity is a
+  uniform, so no shader is rebuilt. Setting `castShadow` or `shadowMap.enabled` instead rebuilds
+  every program in the city, which is the hitch a tier change must not cost. Redrawing the maps
+  was about 45 % of the GPU frame on a phone's screen, whatever their size.
 - Each cascade clones the sun's shadow when it is built, so a size written on `sun.shadow.mapSize`
   alone reaches none of them: `SkyLighting.shadowMapSize` writes the clones as well, or a quality
   tier draws every cascade at the size of the tier above and pays for it. `SHADOW_NORMAL_BIAS` is
