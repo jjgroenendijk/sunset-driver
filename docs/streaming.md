@@ -49,6 +49,11 @@ details in `docs/buildings.md`, and the frame and memory measurements in `docs/p
   worker starts only between tasks on the main thread, and the pool is made just before `buildCity`
   holds that thread for 2 s or more. Made there, a worker received its world 2.6 s late
   (`docs/loading.md`).
+- Each world `WorldSource` builds on the title screen gets its session's pool at once, through
+  `onBuilt` and `prepareChunkPool`. The workers build their layers, and the nine chunks under a
+  new game's start, while the player chooses a look. `takeChunkPool` hands that pool to the session
+  of the same seed, and stops it for any other seed. A save's start is not known on the title
+  screen, so a loaded game gets the layers and not the chunks.
 - A worker is handed up to `EARLY_CHUNKS` chunks before its layers are built, and one at a time
   after. `main.ts` asks for the ground at the start before `buildCity`, and no answer is read until
   `buildCity` ends, so with one chunk each two workers built two of the nine and then stood idle.

@@ -15,10 +15,11 @@
 import type { MetroStation } from '../../world/transit/metro.ts';
 import type { ParkingBays } from '../../world/city/parking.ts';
 import type { Shop } from '../../world/city/shops.ts';
+import { chunkAt } from '../../world/chunks.ts';
 import type { Point, WorldDescription } from '../../world/types.ts';
 import type { ChunkPayload } from './chunk-payload.ts';
 import type { WorkerCommand, WorkerReply } from './chunk-worker.ts';
-import type { ChunkDetail, ChunkWant } from './streaming.ts';
+import { wantedChunks, type ChunkDetail, type ChunkWant } from './streaming.ts';
 
 /**
  * Workers building chunks, at most. Each one holds its own copy of the
@@ -39,6 +40,9 @@ const MAX_WORKERS = 2;
  * can still be dropped before a worker starts on it.
  */
 const EARLY_CHUNKS = 5;
+
+/** The chunks under the start a pool made ahead of its session builds: the ones the loading screen waits for. */
+const START_CHUNKS = 9;
 
 /** Where the scene gets its chunks from. */
 export interface ChunkStream {
@@ -199,6 +203,42 @@ const started: ChunkWorker[] = [];
  */
 export function startChunkWorkers(): void {
   while (started.length < poolSize()) started.push(spawnChunkWorker());
+}
+
+/** A pool made for a world before its session, and the seed of that world. */
+let ahead: { seed: number; pool: ChunkPool } | null = null;
+
+/**
+ * Make the pool of the next session now, for the world the title screen has
+ * built, and have it build the chunks under `start`.
+ *
+ * Each worker builds its own copy of the whole-map layers first, about 1 s on
+ * an Apple M1 and more on a phone's slow cores. Made while the player chooses
+ * a look, the pool has its layers, and often its first chunks, by the time Play
+ * is pressed (`docs/loading.md`). A pool made for another seed is stopped.
+ */
+export function prepareChunkPool(
+  world: WorldDescription,
+  start: Point | undefined,
+  spawn: () => ChunkWorker = takeChunkWorker,
+): void {
+  if (ahead?.seed === world.seed) return;
+  ahead?.pool.dispose();
+  const pool = new ChunkPool(world, spawn);
+  if (start !== undefined) {
+    const here = chunkAt(start.x, start.y);
+    pool.want(wantedChunks(here.cx, here.cy).slice(0, START_CHUNKS));
+  }
+  ahead = { seed: world.seed, pool };
+}
+
+/** The pool made ahead for `world`, or a new one when none was. */
+export function takeChunkPool(world: WorldDescription, spawn: () => ChunkWorker = takeChunkWorker): ChunkPool {
+  const held = ahead;
+  ahead = null;
+  if (held?.seed === world.seed) return held.pool;
+  held?.pool.dispose();
+  return new ChunkPool(world, spawn);
 }
 
 /** A worker started ahead of its world, or a new one. */
