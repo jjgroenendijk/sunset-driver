@@ -4,8 +4,9 @@
  * The mirror is a second pass over the scene, so the cheapest thing it can do
  * is draw less of the scene than the view does. It draws a layer of its own,
  * and what is pinned here is the two halves of that: an object put on the layer
- * is drawn in both passes and never in the mirror alone, and a camera held to
- * the layer draws what was put there and nothing else.
+ * is drawn in both passes, and a camera held to the layer draws what was put
+ * there and nothing else. The one thing drawn in the mirror alone is the cheap
+ * massing a generated facade is drawn as there (issue #781).
  */
 import { Camera, DirectionalLight, Group, Mesh, PerspectiveCamera, PointLight, Scene } from 'three';
 import { describe, expect, it } from 'vitest';
@@ -14,7 +15,7 @@ import { cellGrid } from '../../../src/render/streaming/cells.ts';
 import { BuildingCutaway } from '../../../src/render/camera/cutaway.ts';
 import { EntityFade } from '../../../src/render/camera/fade.ts';
 import { LampScenery } from '../../../src/render/roads/lamps.ts';
-import { MIRROR_LAYER, pointAtMirror, reflected, reflectLights } from '../../../src/render/environment/mirror.ts';
+import { MIRROR_LAYER, mirroredOnly, pointAtMirror, reflected, reflectLights } from '../../../src/render/environment/mirror.ts';
 import { RoadScenery } from '../../../src/render/roads/roads.ts';
 import { SkyLighting } from '../../../src/render/environment/sky.ts';
 import { PlantScenery } from '../../../src/render/environment/vegetation.ts';
@@ -60,6 +61,14 @@ describe('the mirror layer', () => {
     expect(plain.layers.test(camera.layers)).toBe(false);
     // The view still draws both: the layer is added to the object, never moved.
     expect(plain.layers.test(viewCamera().layers)).toBe(true);
+  });
+
+  it('draws a stand-in in the mirror alone', () => {
+    const standIn = mirroredOnly(new Mesh());
+    const reflector = stubReflector();
+    pointAtMirror(reflector);
+    expect(standIn.layers.test(reflector.getVirtualCamera(viewCamera()).layers)).toBe(true);
+    expect(standIn.layers.test(viewCamera().layers)).toBe(false);
   });
 
   it('holds every camera the reflector is asked for to the layer, and keeps the clone', () => {
@@ -156,9 +165,15 @@ describe('the pieces of a chunk', () => {
     const plants = new PlantScenery(fade);
     const roads = new RoadScenery();
 
-    // A building is what a grazing eye sees in the water.
-    expect(buildings.build('facade', []).mirrored).toBe(true);
+    // A building is what a grazing eye sees in the water. A generated facade
+    // is drawn there as its massing, which casts no shadow and costs the view
+    // no draw call; the facade itself is left out.
+    expect(buildings.build('facade', []).mirrored).toBe(false);
     expect(buildings.build('block', []).mirrored).toBe(true);
+    const standIns = buildings.standIns([]);
+    expect(standIns.mirrored).toBe('only');
+    expect(standIns.castsShadow).toBe(false);
+    expect(standIns.drawCalls).toBe(0);
     expect(lamps.build(GRID, []).mirrored).toBe(true);
 
     // The ground and everything lying flat on it stays out of the second pass.

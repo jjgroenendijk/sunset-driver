@@ -52,8 +52,10 @@ export interface TilePart {
    * (`mirror.ts`). Left out, they are not: the mirror is a second pass over the
    * scene and draws only what stands tall enough to reach the part of the sheet
    * a grazing eye reads. The building shells and the lamp masts say otherwise.
+   * `'only'` draws them in the mirror and nowhere else: the massing a generated
+   * facade stands in for there (`standInOf`, `building-mesh.ts`).
    */
-  mirrored?: boolean;
+  mirrored?: boolean | 'only';
   /** Release the geometry. The materials belong to the world and are left alone. */
   dispose(): void;
 }

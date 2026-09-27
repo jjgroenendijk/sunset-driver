@@ -67,12 +67,23 @@ export class BuildingScenery {
    * uploaded one at a time, so a chunk of the core spreads over more frames
    * than a chunk of houses rather than stalling one of them.
    *
-   * Both kinds cast a shadow, and both are drawn in the water's mirror
-   * (`mirror.ts`): a building is what a grazing eye sees in the sea.
+   * Both kinds cast a shadow. A block is drawn in the water's mirror
+   * (`mirror.ts`), since a building is what a grazing eye sees in the sea. A
+   * generated facade is not: {@link standIns} draws its massing there instead.
    */
   build(batch: BuildingBatchKind, cells: readonly PackedBatch[]): TilePart {
     const fills = cells.map((cell) => fillOfPacked(cell, this.materials[batch]));
-    return tilePartOf(fills, { castsShadow: true, mirrored: true });
+    return tilePartOf(fills, { castsShadow: true, mirrored: batch === 'block' });
+  }
+
+  /**
+   * Put the massing of one chunk's generated facades into the scene, drawn in
+   * the water's mirror and nowhere else. It casts no shadow, since the facade
+   * it stands in for already does, and costs the view no draw call.
+   */
+  standIns(cells: readonly PackedBatch[]): TilePart {
+    const fills = cells.map((cell) => fillOfPacked(cell, this.materials.block));
+    return { ...tilePartOf(fills, { castsShadow: false, mirrored: 'only' }), drawCalls: 0 };
   }
 
   /** Release the materials every chunk shared. */

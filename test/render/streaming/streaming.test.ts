@@ -244,6 +244,9 @@ describe('a chunk as a payload', () => {
     // Every building is one part of a batch, and a roof dressed with plant is
     // one more part of the block batch, whatever shell stands under it.
     expect(partsIn(payload.blocks) + partsIn(payload.facades)).toBeGreaterThanOrEqual(chunk.buildings.length);
+    // Each generated facade brings its massing, which the water's mirror draws instead.
+    expect(partsIn(payload.facades)).toBeGreaterThan(0);
+    expect(partsIn(payload.mirrors)).toBe(partsIn(payload.facades));
     // The most a chunk costs is answered off the chunk alone, before any
     // geometry is built; the payload counts the cells it fills.
     expect(payload.drawCalls).toBeLessThanOrEqual(chunkDrawCalls(chunk));
@@ -268,6 +271,8 @@ describe('a chunk as a payload', () => {
     // The far ring is not cut: a draw costs more there than culling saves.
     const far = payloadOf(MIDDLE.cx, MIDDLE.cy, 'far');
     expect(far.blocks).toHaveLength(1);
+    // Past near detail a tower is a block already, and the mirror draws that.
+    expect(far.mirrors).toHaveLength(0);
     expect(far.drawCalls).toBe(1 + far.roads.length + 1);
   });
 
@@ -700,8 +705,14 @@ describe('the scene as the player drives', () => {
     // Paving on the ground shades only itself, so a road cell with nothing
     // raised in it casts none (`roads.ts`). Everything else does.
     const road = (batch: Batch): boolean => batch.geometry.hasAttribute('across');
-    expect(rest.some((batch) => road(batch) && !batch.castShadow)).toBe(true);
-    expect(rest.filter((batch) => !road(batch)).every((batch) => batch.castShadow)).toBe(true);
+    const viewed = rest.filter((batch) => batch.layers.isEnabled(0));
+    expect(viewed.some((batch) => road(batch) && !batch.castShadow)).toBe(true);
+    expect(viewed.filter((batch) => !road(batch)).every((batch) => batch.castShadow)).toBe(true);
+    // The massing a facade is drawn as in the water's mirror casts none: the
+    // facade already does, and the shadow camera draws the mirror's layer too.
+    const standIns = rest.filter((batch) => !batch.layers.isEnabled(0));
+    expect(standIns.length).toBeGreaterThan(0);
+    expect(standIns.every((batch) => !batch.castShadow)).toBe(true);
     // Every batch still takes the shadow of what stands over it.
     expect(rest.every((batch) => batch.receiveShadow)).toBe(true);
     scene.dispose();
