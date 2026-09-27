@@ -166,7 +166,7 @@ pose in `src/net`, which `src/sim` may not import.
   in the body of a player who has since got into their car goes into the car.
 - **A `hit` names the weapon and the direction, never the damage.** The owner reads what the round
   is worth from its own arsenal, so a peer can claim a hit but not the size of one.
-- Only rounds reach another player. A swing, a blast and a thrown thing do not yet.
+- Only rounds reach another player. A swing, a blast and a thrown thing do not yet (#812).
 
 ## When the host leaves
 
