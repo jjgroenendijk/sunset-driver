@@ -14,7 +14,14 @@
  *
  * Tone.js is not in the page's first download: `graph.ts` is loaded once the
  * first gesture has unlocked the audio, so a muted game never fetches it.
+ *
+ * The gesture makes its context from `standardized-audio-context`, the library
+ * Tone.js wraps its own contexts in, not from the browser's `AudioContext`.
+ * Tone.js reads `listener.positionX` as it takes a context. Firefox's native
+ * listener has none, and the library adds it. With a native context, Firefox
+ * threw on every frame before the scene was drawn.
  */
+import type { IAudioContext } from 'standardized-audio-context';
 import type { InputFrame } from '../sim/input.ts';
 import type { SimState } from '../sim/simulation.ts';
 import type { SiteSource } from './ambience.ts';
@@ -45,11 +52,18 @@ export interface OnAirLine {
 /** The half of the audio that holds Tone.js, loaded after the first gesture. */
 type Graph = typeof import('./graph.ts');
 
+/** The class the gesture makes its context from, loaded when the audio is armed. */
+type ContextClass = typeof import('standardized-audio-context').AudioContext;
+
 export class GameAudio {
   private readonly planner = new AudioPlanner();
   private mixer: Mixer | null = null;
+  /** The class of the context, once it has loaded. */
+  private maker: ContextClass | null = null;
   /** The context the first gesture made, or null before one has arrived. */
-  private context: AudioContext | null = null;
+  private context: IAudioContext | null = null;
+  /** True once the graph failed to build. The game then plays on in silence. */
+  private broken = false;
   /** `graph.ts`, once it has loaded. */
   private graph: Graph | null = null;
   /** True once the browser has handed over a running audio context. */
@@ -87,6 +101,15 @@ export class GameAudio {
    */
   arm(target: Window): void {
     this.target = target;
+    // The context must be made inside the gesture's own handler, so its class
+    // is loaded now. A gesture that comes before it arrives is not taken, and
+    // the listener waits for the next one.
+    void import('standardized-audio-context').then(
+      (library) => {
+        this.maker = library.AudioContext;
+      },
+      (error: unknown) => console.warn('The audio could not be loaded.', error),
+    );
     for (const event of GESTURES) target.addEventListener(event, this.onGesture);
     target.document.addEventListener('visibilitychange', this.onVisibility);
   }
@@ -150,18 +173,14 @@ export class GameAudio {
    * screen.
    */
   update(state: SimState, input: InputFrame, listener: Listener): void {
-    if (this.silent || !this.running || this.graph === null || this.context === null) {
+    const mixer = this.silent ? null : (this.mixer ?? this.build(state));
+    if (mixer === null) {
       this.air = null;
       return;
     }
     this.hushedAt = null;
     this.resting = false;
     this.wake();
-    if (this.mixer === null) {
-      this.mixer = this.graph.mixerOn(this.context);
-      this.mixer.start();
-      this.planner.resync(state);
-    }
     const plan = this.planner.plan(
       state,
       input,
@@ -171,9 +190,29 @@ export class GameAudio {
       this.corners ?? undefined,
       this.traffic ?? undefined,
     );
-    this.mixer.apply(plan, listener);
+    mixer.apply(plan, listener);
     const radio = plan.radio;
     this.air = radio.station === null ? null : { name: radio.name, text: radio.text, from: radio.from };
+  }
+
+  /**
+   * Build the graph on the first frame that plays, once the context is running
+   * and Tone.js has loaded. A browser whose audio Tone.js cannot drive gets a
+   * silent game: a throw here would stop every frame before the scene is drawn.
+   */
+  private build(state: SimState): Mixer | null {
+    if (this.broken || !this.running || this.graph === null || this.context === null) return null;
+    try {
+      const mixer = this.graph.mixerOn(this.context);
+      mixer.start();
+      this.mixer = mixer;
+    } catch (error: unknown) {
+      this.broken = true;
+      console.warn('The audio could not be built, so the game plays in silence.', error);
+      return null;
+    }
+    this.planner.resync(state);
+    return this.mixer;
   }
 
   /**
@@ -239,8 +278,8 @@ export class GameAudio {
    * context came up and that the graph arrived.
    */
   private readonly onGesture = (): void => {
-    if (this.running || this.silent) return;
-    this.context ??= new AudioContext({ latencyHint: 'interactive' });
+    if (this.running || this.silent || this.maker === null) return;
+    this.context ??= new this.maker({ latencyHint: 'interactive' });
     void this.context.resume().then(
       () => {
         this.running = true;
