@@ -60,6 +60,11 @@ details in `docs/buildings.md`, and the frame and memory measurements in `docs/p
 - Only the first worker of the pool is asked for the parking bays. Every worker builds the same
   bays from the same layers and the pool keeps one answer, so asking them all cost every worker but
   one a chunk's worth of time before its first chunk.
+- The pool runs two workers, whatever the machine (issue #790). A worker keeps 55-60 MB after a
+  collection and reaches about 190 MB between collections, and each one is a whole copy of the
+  layers. Four workers on an Apple M1 did not bring a hole of a fast drive nearer. The frame's
+  upload budget sets the pace there, and the main thread paid 1-2 ms a frame more to take the
+  extra chunks in. `render-profile.ts --workers=N --memory` measures it again.
 - WebGPU compiles a pipeline the first time it draws with it, so a session drawing its first frame
   compiles the whole city over that frame and the twenty after it: the street stutters into place
   while the player is already driving on it. `main.ts` calls `renderer.compileAsync(scene, camera)`
