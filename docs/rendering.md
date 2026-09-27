@@ -133,18 +133,20 @@ post chain and the colour grade in `docs/post.md`. The look all of it must keep 
   buffer on its first call, so a pool the warm-up drew before it is drawn white for the whole
   session. Every pool that colours its instances is made through `tinted` (`tint.ts`), which gives
   it the buffer at once (issue #457).
-- One material group is drawn per animation frame, and the frame is waited for between them, so the
-  loading screen keeps painting its own progress — which it counts out, one material at a time —
-  and no browser is handed a block minutes long. The whole warm-up on an M1 laptop is about 2 s in
-  WebKit and about 1 s in Chromium, against 20 s to 35 s and about 12 s when it drew the whole city
-  at once.
-- A frame of its own per group is also what warms the shadow pass. three.js draws a shadow map for
-  the first pass of an animation frame that asks for it and hands that map to every later pass, so
-  groups drawn inside one frame share one shadow pass between them, and every shadow program the
-  shared pass did not meet is built while the player drives: on seed `sunset` one poster batch cost
-  106 ms at one spot of the drive (issue #364). `WorldScene.drawShadow` is the ask the warm-up
-  makes, as `look` makes it in the session. Measured through `render-profile.ts`, a frame per group
-  took the warm-up from about 2.5 s to about 3.2 s and the drive's builds to none.
+- Each material group is drawn in a three.js frame of its own. three.js draws the scene pass and
+  the sun's shadow maps once per frame of its own, and hands the same map to every later pass of
+  that frame. Its frame advances only when the browser paints, so groups drawn inside one
+  animation frame shared one shadow pass. Every shadow program the shared pass did not meet was
+  built while the player drove: on seed `sunset` one poster batch cost 106 ms at one spot of the
+  drive (issue #364). `WorldScene.drawShadow` is the ask the warm-up makes, as `look` makes it in
+  the session.
+- `PostChain.nextFrame` advances the three.js frame by hand, so several groups share an
+  animation frame (issue #799). Groups are drawn until `FRAME_BUDGET_MS` is spent, and then the
+  browser paints, so the loading screen keeps drawing its own progress. On an M1 in Chromium most
+  of the first 56 groups of `sunset` cost about 2 ms and share frames. The other 62 each build a
+  program and take 20 ms to 180 ms, so each still ends a frame. The `shaders` step stayed at
+  3.5 s to 4.9 s: it is compile time, not waiting. `render-profile.ts --long` still shows no
+  builds on the drive.
 - It therefore runs last of everything the loading screen covers, after every view is in the scene.
   A view added after it would compile on the frame it first draws.
 - An object that streams or spawns afterwards costs nothing: a chunk worker builds every batch of a

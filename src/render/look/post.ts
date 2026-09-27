@@ -138,6 +138,9 @@ interface Chain {
   drawn: boolean;
 }
 
+/** The renderer's private frame counter, which `@types/three` does not name. */
+type NodeFrameOwner = { _nodes: { nodeFrame: { update(): void } } };
+
 /** Everything on, at the display's own resolution. */
 export const FULL_QUALITY: PostQuality = { renderScale: 1, bloom: true, smaa: true, grade: true };
 
@@ -316,6 +319,17 @@ export class PostChain {
     this.scene.updateMatrixWorld();
     this.pipeline.render();
     if (this.current !== undefined) this.current.drawn = true;
+  }
+
+  /**
+   * Start a new three.js frame without waiting for the display. three.js runs
+   * the scene pass and the sun's shadow pass once per frame, and its frame
+   * advances only when the browser paints, so a second {@link render} inside
+   * one animation frame draws neither again. The warm-up calls this between
+   * the groups it draws inside one animation frame (issue #799).
+   */
+  nextFrame(): void {
+    (this.renderer as unknown as NodeFrameOwner)._nodes.nodeFrame.update();
   }
 
   dispose(): void {
