@@ -22,12 +22,16 @@
  *   held hidden (issue #784). The rest is hidden by its layers, not by
  *   `visible`, because a hidden parent would hide a child of another group
  *   with it. The water sheet is never hidden: its mirror is a pass of its own,
- *   and it runs only in a frame that draws the sheet. A frame costs what one material costs to compile, and an
- *   animation frame is waited for after each, so the loading screen keeps
- *   drawing its own progress however dear a material proves. The wait is also
- *   what gives each group a frame of its own: three.js draws a shadow map once
- *   per animation frame however many times the scene is rendered, so two groups
- *   drawn in one frame warm one shadow pass between them.
+ *   and it runs only in a frame that draws the sheet. A frame costs what one
+ *   material costs to compile.
+ * - **A three.js frame per group, several groups per animation frame.**
+ *   three.js draws the scene pass and the shadow maps once per frame of its
+ *   own, however many times the chain is rendered, and that frame advances
+ *   only when the browser paints. `PostChain.nextFrame` advances it by hand
+ *   before each group, so each group meets its own shadow pass (issue #364).
+ *   Groups are drawn until {@link FRAME_BUDGET_MS} is spent, and then the
+ *   browser paints, so the loading screen keeps drawing its own progress
+ *   however dear a material proves (issue #799).
  * - **Every object of the material, drawn or not.** Hidden objects are shown
  *   and frustum culling comes off for the group's frame, and an empty
  *   instanced pool — most of what a session meets while driving — is given one
@@ -47,6 +51,13 @@ import type { Object3D } from 'three';
 import { postGraphs, type PostChain } from '../look/post.ts';
 import { QUALITY_TIERS } from './quality.ts';
 import type { WorldScene } from '../world-scene.ts';
+
+/**
+ * How long the warm-up draws groups before it lets the browser paint, in ms.
+ * Most groups build nothing new and cost about 2 ms, so a frame holds several
+ * of them, and a group that builds a program still ends its frame alone.
+ */
+const FRAME_BUDGET_MS = 12;
 
 /** One material and every object the scene draws with it. */
 interface MaterialGroup {
@@ -75,7 +86,11 @@ export async function warmPasses(
   const sheet = world.showWater();
   const drawn = groups.flatMap((group) => group.objects).filter((object) => object !== sheet);
   let done = 0;
+  let start = performance.now();
   while (done < groups.length) {
+    // A three.js frame of the group's own, so its scene pass and its shadow
+    // pass are both drawn however many groups this animation frame has held.
+    post.nextFrame();
     // The sun's shadow maps are drawn for the first pass of a frame that asks
     // for them and reused by the rest, and `WorldScene.look` is what asks. The
     // warm-up draws its frames without it.
@@ -83,7 +98,9 @@ export async function warmPasses(
     drawGroup(groups[done] as MaterialGroup, drawn, post);
     done++;
     progress?.(done, groups.length);
+    if (performance.now() - start < FRAME_BUDGET_MS) continue;
     await new Promise((frame) => requestAnimationFrame(frame));
+    start = performance.now();
   }
   await warmGraphs(post);
 }
