@@ -49,6 +49,9 @@ details in `docs/buildings.md`, and the frame and memory measurements in `docs/p
   worker starts only between tasks on the main thread, and the pool is made just before `buildCity`
   holds that thread for 2 s or more. Made there, a worker received its world 2.6 s late
   (`docs/loading.md`).
+- A worker is handed up to `EARLY_CHUNKS` chunks before its layers are built, and one at a time
+  after. `main.ts` asks for the ground at the start before `buildCity`, and no answer is read until
+  `buildCity` ends, so with one chunk each two workers built two of the nine and then stood idle.
 - Only the first worker of the pool is asked for the parking bays. Every worker builds the same
   bays from the same layers and the pool keeps one answer, so asking them all cost every worker but
   one a chunk's worth of time before its first chunk.

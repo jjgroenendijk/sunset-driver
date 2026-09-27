@@ -108,7 +108,12 @@ post chain and the colour grade in `docs/post.md`. The look all of it must keep 
   all. Measured in WebKit, that set cost about 15 s behind the loading screen and was thrown away
   by the first frame through the chain; on a phone it is the difference between a city that loads
   and one that never does.
-- One frame is drawn for each material, with the rest of the scene held hidden, so a frame costs
+- A graph without SMAA reads the frame through two copies (`atSmaaDepth`, `post.ts`). three.js
+  keys a program on the renderer's call depth, and SMAA draws the scene pass three calls deep.
+  Read straight from the output, the scene pass is one call deep, and every material of the city
+  is built again for it: 3.5 s behind the loading screen on an M1 (issue #783).
+- One frame is drawn for each material, with the rest of the scene taken off its layers (issue
+  #784), so a frame costs
   one material's programs whatever the city around it weighs. Hidden objects are shown, frustum
   culling comes off and an empty instanced pool is given one instance for the frame: the ambient
   traffic, the parked cars, the police and the crowd each hold a pool per class that is empty until
