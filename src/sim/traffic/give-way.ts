@@ -32,7 +32,7 @@
 import { cos, hypot, sin } from '../../core/libm.ts';
 import type { CasualtyGround } from '../crowd/casualty.ts';
 import { UNIT_BODY } from '../city/emergency.ts';
-import { BoxFrame, Grid, NearCache } from './give-way-grid.ts';
+import { BoxFrame, FarCache, Grid, NearCache } from './give-way-grid.ts';
 import { apart, close, crossesStop, setAhead, within, type Other } from './give-way-geometry.ts';
 import { CrowdWay, PERSON_RADIUS, type Crowd } from './give-way-people.ts';
 import { holdOf, type Hold } from './hold.ts';
@@ -102,6 +102,7 @@ const RING_HOPS = 16;
 export class GiveWay {
   private readonly traffic: AmbientTraffic;
   private readonly trafficNear = new NearCache();
+  private readonly far = new FarCache();
   private readonly frame = new BoxFrame();
   private readonly crowd: CrowdWay;
   private readonly spare: number[] = [];
@@ -235,8 +236,15 @@ export class GiveWay {
     const max = 2 * GIVE_WAY_REACH;
     const hold = holdOf(state.traffic.held, id);
     const lag = hold?.lag ?? 0;
+    const frame = this.frame;
+    if (this.far.skips(id, state.tick, -lag, frame.midX, frame.midY)) return undefined;
     traffic.cursorAt(id, state.tick - lag, this.cursor);
-    if (!traffic.edgeMeets(traffic.edgeOf(this.cursor), this.frame.minX, this.frame.minY, this.frame.minX + max, this.frame.minY + max)) return undefined;
+    const edge = traffic.edgeOf(this.cursor);
+    if (!traffic.edgeMeets(edge, frame.minX, frame.minY, frame.minX + max, frame.minY + max)) {
+      const meets = (a: number, b: number, c: number, d: number): boolean => traffic.edgeMeets(edge, a, b, c, d);
+      this.far.note(id, state.tick, -lag, frame.midX, frame.midY, GIVE_WAY_REACH, meets, () => traffic.edgeLeft(this.cursor));
+      return undefined;
+    }
     const pose = traffic.pose(this.cursor, this.pose);
     if (!this.frame.inBox(pose.x, pose.y)) return undefined;
     const spec = specOf((traffic.vehicles[id] as AmbientTraffic['vehicles'][number]).cls);

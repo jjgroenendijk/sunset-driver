@@ -36,11 +36,11 @@ import { TICK_RATE } from '../clock.ts';
 import { asideOf, type Aside } from './crowd-aside.ts';
 import { EdgeIndex } from '../traffic/edge-index.ts';
 import { strideOf, type Gait } from './pedestrian-look.ts';
-import { placeOnEdge, planPointAt, walkable, type AmbientPedestrian } from './pedestrian-place.ts';
+import { placeOnEdge, planPointNear, walkable, type AmbientPedestrian } from './pedestrian-place.ts';
 import { Pavements, pavementOffset, type WalkPoint } from './pedestrian-route.ts';
-import { HURRY, IDLES, INSIDE, KERB, LINGER, PAUSE, STEP_IN, STEP_OUT, walks, type PlanPoint } from './pedestrian-walk.ts';
+import { HURRY, IDLES, INSIDE, KERB, LINGER, PAUSE, STEP_IN, STEP_OUT, walks, type PlanPoint, type WalkPlan } from './pedestrian-walk.ts';
 import { PoseMemo, type MemoPose } from '../traffic/pose-memo.ts';
-import { legNear } from '../traffic/traffic-tour.ts';
+import { legAt, legNear } from '../traffic/traffic-tour.ts';
 import type { Casualty } from './casualty-motion.ts';
 import { createHolds, heldStep, heldTime, type Holds } from '../traffic/hold.ts';
 import type { TrafficSignals } from '../traffic/signals.ts';
@@ -225,6 +225,35 @@ export function walkingPose(crowd: PoseSource, state: PedestrianState, id: numbe
   return out;
 }
 
+/** The crowd as {@link offBox} reads it: the edge a person walks, and whether an edge reaches a box. */
+interface EdgeSource {
+  edgeAt?(id: number, time: number): number;
+  edgeMeets?(edge: number, minX: number, minY: number, maxX: number, maxY: number): boolean;
+}
+
+/**
+ * True for somebody on their loop whose edge does not reach a box, so their
+ * pose cannot fall in it. The index hands over everyone whose loop passes a
+ * box at any time, and reading all their poses was the dearest part of a car
+ * among people (issue #778). Somebody startled runs off their loop, and
+ * somebody stepped aside stands off it, so both are always read.
+ */
+export function offBox(
+  crowd: EdgeSource,
+  state: PedestrianState,
+  id: number,
+  tick: number,
+  minX: number,
+  minY: number,
+  maxX: number,
+  maxY: number,
+): boolean {
+  if (crowd.edgeAt === undefined || crowd.edgeMeets === undefined) return false;
+  if (state.startled.length > 0 && startledOf(state, id) !== undefined) return false;
+  if (state.aside.length > 0 && asideOf(state.aside, id) !== undefined) return false;
+  return !crowd.edgeMeets(crowd.edgeAt(id, heldTime(state.held, id, tick)), minX, minY, maxX, maxY);
+}
+
 /** The record of a startled person, or undefined while they still walk their loop. */
 export function startledOf(state: PedestrianState, id: number): StartledPedestrian | undefined {
   return byId(state.startled, id);
@@ -240,6 +269,8 @@ export class AmbientPedestrians {
   private readonly memo: PoseMemo;
   /** The leg of their loop each person was last found on, where the next search starts. */
   private readonly legs: Int32Array;
+  /** The step of their plan each person was last found at, where the next search starts. */
+  private readonly steps: Int32Array;
   private readonly point: PlanPoint = { step: 0, into: 0, distance: 0 };
   private readonly mid: MemoPose = { x: 0, y: 0, height: 0, heading: 0 };
 
@@ -261,6 +292,7 @@ export class AmbientPedestrians {
     this.people = people;
     this.memo = new PoseMemo(people.length);
     this.legs = new Int32Array(people.length);
+    this.steps = new Int32Array(people.length);
   }
 
   /** Where a person is on their loop at a tick, evaluated without stepping them there. */
@@ -299,10 +331,47 @@ export class AmbientPedestrians {
   edgeAt(id: number, time: number): number {
     const person = this.people[id] as AmbientPedestrian;
     const route = person.route;
-    const distance = planPointAt(person.plan, time + person.phase, this.point).distance % route.length;
+    const distance = this.planPoint(id, person.plan, time + person.phase).distance % route.length;
     const leg = legNear(route.start, distance, this.legs[id] as number);
     this.legs[id] = leg;
     return route.edges[leg] as number;
+  }
+
+  /**
+   * Ticks from a moment that a person stays on the edge {@link edgeAt} gives.
+   * A step of their plan may run over several legs of their loop, so each
+   * step counts the ticks it keeps to the leg, and a step that keeps to it to
+   * the end hands on to the next. It stops where the plan starts again.
+   */
+  edgeLeft(id: number, time: number): number {
+    const person = this.people[id] as AmbientPedestrian;
+    const plan = person.plan;
+    const point = this.planPoint(id, plan, time + person.phase);
+    const length = person.route.length;
+    const turn = Math.floor(point.distance / length);
+    const leg = this.legOf(person, point.distance);
+    const keeps = (d: number): boolean => Math.floor(d / length) === turn && this.legOf(person, d) === leg;
+    let left = 0;
+    let into = point.into;
+    for (let step = point.step; step < plan.start.length; step++) {
+      const kept = keptTicks(plan, step, into, keeps);
+      left += kept;
+      if (kept < (plan.ticks[step] as number) - into) break;
+      into = 0;
+    }
+    return left;
+  }
+
+  /** Where person `id` stands in a plan at moment `at` of it, searched from where they stood last. */
+  private planPoint(id: number, plan: WalkPlan, at: number): PlanPoint {
+    const point = planPointNear(plan, at, this.steps[id] as number, this.point);
+    this.steps[id] = point.step;
+    return point;
+  }
+
+  /** The leg of their loop a person stands on at a distance round it. */
+  private legOf(person: AmbientPedestrian, distance: number): number {
+    return legAt(person.route.start, distance % person.route.length);
   }
 
   /** True when an edge, grown by the reach of its pavements and corners, overlaps a box. */
@@ -332,6 +401,7 @@ export class AmbientPedestrians {
     const pose = emptyPose();
     let count = 0;
     for (const id of this.near(x - radius, y - radius, x + radius, y + radius, ids)) {
+      if (offBox(this, state, id, tick, x - radius, y - radius, x + radius, y + radius)) continue;
       if (startledOf(state, id) !== undefined) continue;
       if (state.casualties.length > 0 && casualtyOf(state, id) !== undefined) continue;
       walkingPose(this, state, id, tick, pose);
@@ -366,7 +436,7 @@ export class AmbientPedestrians {
     const person = this.people[id] as AmbientPedestrian;
     const lead = this.people[person.lead] as AmbientPedestrian;
     const plan = lead.plan;
-    const point = planPointAt(plan, at, this.point);
+    const point = this.planPoint(id, plan, at);
     const k = point.step;
     const kind = plan.kind[k] as number;
     const f = Math.min(1, point.into / (plan.ticks[k] as number));
@@ -582,6 +652,30 @@ function byId<T extends { id: number }>(list: readonly T[], id: number): T | und
     else hi = mid - 1;
   }
   return undefined;
+}
+
+/**
+ * Ticks of step `step` of a plan, from `into`, over which the distance it
+ * reaches stays where `keeps` says. It is read the way `planAt` reads it, and
+ * the distance only moves one way through a step, so the last tick kept
+ * answers for every tick before it.
+ */
+function keptTicks(plan: WalkPlan, step: number, into: number, keeps: (d: number) => boolean): number {
+  const ticks = plan.ticks[step] as number;
+  const from = plan.from[step] as number;
+  const to = plan.to[step] as number;
+  const distanceAt = (i: number): number => from + (to - from) * Math.min(1, i / ticks);
+  if (!keeps(distanceAt(into))) return 0;
+  if (keeps(to)) return ticks - into;
+  // The last tick kept, found by halving: kept up to it, and never again after.
+  let n = ticks - into;
+  let lo = 1;
+  while (lo < n) {
+    const mid = (lo + n + 1) >> 1;
+    if (keeps(distanceAt(into + mid - 1))) lo = mid;
+    else n = mid - 1;
+  }
+  return lo;
 }
 
 function mod(value: number, by: number): number {

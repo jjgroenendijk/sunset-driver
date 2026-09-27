@@ -25,7 +25,7 @@ import { BODY_RADIUS, type CrowdLookup } from '../crowd/crowd-contact.ts';
 import { damageVehicle } from './damage.ts';
 import { markHit } from '../weapons/melee.ts';
 import type { CrowdSource } from '../weapons/melee.ts';
-import { crowdPoseOf, type PedestrianPose } from '../crowd/pedestrians.ts';
+import { crowdPoseOf, offBox, type PedestrianPose } from '../crowd/pedestrians.ts';
 import type { SimState } from '../simulation.ts';
 import { headingOf, type VehicleSpec } from './vehicle.ts';
 
@@ -126,7 +126,12 @@ function gatherWalkers(
   const reach = foot.spec.halfLength + foot.spec.halfWidth + BODY_RADIUS;
   const peds = state.pedestrians;
   const pose: PedestrianPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0, cycle: 0, gait: 'stand' };
-  for (const id of crowd.near(v.x - reach, v.z - reach, v.x + reach, v.z + reach, ids)) {
+  const minX = v.x - reach;
+  const minY = v.z - reach;
+  const maxX = v.x + reach;
+  const maxY = v.z + reach;
+  for (const id of crowd.near(minX, minY, maxX, maxY, ids)) {
+    if (offBox(crowd, peds, id, state.tick, minX, minY, maxX, maxY)) continue;
     if (crowdPoseOf(crowd, peds, id, state.tick, pose) === undefined) continue;
     const across = insideFootprint(foot, pose.x, pose.y, pose.height, BODY_RADIUS);
     if (across !== undefined) standing.push({ id, x: pose.x, y: pose.y, height: pose.height, heading: pose.heading, across });

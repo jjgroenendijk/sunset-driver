@@ -31,6 +31,80 @@ export class NearCache {
 }
 
 /**
+ * Metres a box is grown by for {@link FarCache}, at most, and the least it is
+ * tried at. The most differs by id, so the entries a tick notes do not all run
+ * out on one tick. Somebody whose edge the grown box meets is tried again at
+ * half the margin, down to the least.
+ */
+const FAR_MARGIN = 40;
+const FAR_SPREAD = 5;
+const FAR_LEAST = 5;
+
+/**
+ * Who was found far from the box, and for how long that holds, so their loop
+ * is not read again every tick (issue #778).
+ *
+ * A car or a person whose edge does not meet the box, grown by a margin, stays
+ * out of the box while two things hold: they stay on that edge, and the box
+ * moves less than the margin. The first is read off their loop once, as ticks
+ * left on the edge. Their hold may change the time they stand at, so the
+ * entry also keeps the time's offset from the tick. The answer is exactly the
+ * one the full test gives, so a replay without the cache matches one with it.
+ */
+export class FarCache {
+  private until: number[] = [];
+  private offset: number[] = [];
+  private margin: number[] = [];
+  private atX: number[] = [];
+  private atY: number[] = [];
+
+  /** True while `id`, standing at `offset` ticks from the tick, is known to be out of the box round `(x, y)`. */
+  skips(id: number, tick: number, offset: number, x: number, y: number): boolean {
+    const until = this.until[id];
+    if (until === undefined || tick >= until || this.offset[id] !== offset) return false;
+    const margin = this.margin[id] as number;
+    return Math.abs(x - (this.atX[id] as number)) <= margin && Math.abs(y - (this.atY[id] as number)) <= margin;
+  }
+
+  /**
+   * Note `id` as out of the box of `reach` round `(x, y)` for `left` ticks,
+   * at the widest margin that `meets` says their edge misses.
+   */
+  note(
+    id: number,
+    tick: number,
+    offset: number,
+    x: number,
+    y: number,
+    reach: number,
+    meets: (minX: number, minY: number, maxX: number, maxY: number) => boolean,
+    left: () => number,
+  ): void {
+    let margin = FAR_MARGIN + (id % 8) * FAR_SPREAD;
+    while (margin >= FAR_LEAST) {
+      const r = reach + margin;
+      if (!meets(x - r, y - r, x + r, y + r)) break;
+      margin /= 2;
+    }
+    if (margin < FAR_LEAST) return;
+    const ticks = left();
+    if (ticks <= 0) return;
+    while (this.until.length <= id) {
+      this.until.push(-1);
+      this.offset.push(0);
+      this.margin.push(0);
+      this.atX.push(0);
+      this.atY.push(0);
+    }
+    this.until[id] = tick + ticks;
+    this.offset[id] = offset;
+    this.margin[id] = margin;
+    this.atX[id] = x;
+    this.atY[id] = y;
+  }
+}
+
+/**
  * Buckets of the box, each a list of indices. Only the buckets filled on the
  * last tick are emptied for the next: a few hundred of more than a thousand.
  */

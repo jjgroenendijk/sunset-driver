@@ -317,9 +317,13 @@ export class AmbientTraffic {
     cursor.step = (cursor.step + 1) % tour.stepTicks.length;
   }
 
-  /** The pose a cursor stands at. */
-  pose(cursor: TrafficCursor, out: AmbientPose): AmbientPose {
-    return this.poseOn(cursor.id, cursor.step, cursor.into, out);
+  /**
+   * The pose a cursor stands at. `keep` false reads the memo of `pose-memo.ts`
+   * without writing to it: a look further ahead than the next tick, which
+   * would push out the pose the next tick asks for (issue #778).
+   */
+  pose(cursor: TrafficCursor, out: AmbientPose, keep = true): AmbientPose {
+    return this.poseOn(cursor.id, cursor.step, cursor.into, out, keep);
   }
 
   /**
@@ -339,6 +343,23 @@ export class AmbientTraffic {
   edgeOf(cursor: TrafficCursor): number {
     const tour = (this.vehicles[cursor.id] as AmbientVehicle).tour;
     return tour.edges[tour.stepLeg[cursor.step] as number] as number;
+  }
+
+  /**
+   * Ticks of its tour a cursor stays on the edge it drives, from where it
+   * stands: the rest of its step and every step after it on the same edge.
+   */
+  edgeLeft(cursor: TrafficCursor): number {
+    const tour = (this.vehicles[cursor.id] as AmbientVehicle).tour;
+    const edge = this.edgeOf(cursor);
+    const count = tour.stepTicks.length;
+    let left = (tour.stepTicks[cursor.step] as number) - cursor.into;
+    for (let k = 1; k < count; k++) {
+      const step = (cursor.step + k) % count;
+      if (tour.edges[tour.stepLeg[step] as number] !== edge) break;
+      left += tour.stepTicks[step] as number;
+    }
+    return left;
   }
 
   /** Metres along its edge a cursor stands at. */
@@ -397,7 +418,7 @@ export class AmbientTraffic {
     return this.index.near(minX, minY, maxX, maxY, out);
   }
 
-  private poseOn(id: number, step: number, into: number, out: AmbientPose): AmbientPose {
+  private poseOn(id: number, step: number, into: number, out: AmbientPose, keep = true): AmbientPose {
     const vehicle = this.vehicles[id] as AmbientVehicle;
     const tour = vehicle.tour;
     const leg = tour.stepLeg[step] as number;
@@ -435,7 +456,7 @@ export class AmbientTraffic {
         out.y = y / 8;
         out.height = height / 8;
       }
-      if (whole) this.memo.write(id, at, out);
+      if (whole && keep) this.memo.write(id, at, out);
     }
     out.speed = ticks > 0 && metres > 0 ? motion.speed : 0;
     return out;

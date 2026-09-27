@@ -24,7 +24,7 @@ import type { District, Zone } from '../../world/types.ts';
 import { signalCrossings } from './pedestrian-crossing.ts';
 import { lookOf, strideOf, type PedestrianLook } from './pedestrian-look.ts';
 import type { Pavements, WalkLeg, WalkRoute } from './pedestrian-route.ts';
-import { planAt, planWalk, stopsOf, type PlanPoint, type WalkPlan } from './pedestrian-walk.ts';
+import { planNear, planWalk, stopsOf, type PlanPoint, type WalkPlan } from './pedestrian-walk.ts';
 import { SIGNAL_CYCLE, type TrafficSignals } from '../traffic/signals.ts';
 import { backOf, walkOut } from '../traffic/traffic-tour.ts';
 
@@ -285,9 +285,12 @@ export function walkable(edge: RoadEdge): boolean {
   return TIERS[edge.tier].walkers > 0 && TIERS[edge.tier].pavement > 0 && !edge.tunnel;
 }
 
-/** The step and distance of a plan at a moment of its loop, which wraps. */
-export function planPointAt(plan: WalkPlan, at: number, out: PlanPoint): PlanPoint {
-  return planAt(plan, mod(at, plan.period), out);
+/**
+ * The step and distance of a plan at a moment of its loop, which wraps, tried
+ * first at step `hint` (`planNear`).
+ */
+export function planPointNear(plan: WalkPlan, at: number, hint: number, out: PlanPoint): PlanPoint {
+  return planNear(plan, mod(at, plan.period), hint, out);
 }
 
 function mod(value: number, by: number): number {
