@@ -20,6 +20,9 @@ const SCAN = 18;
 /** Metres between two readings of the walk. */
 const STEP = 0.5;
 
+/** Metres taken off the room ahead of a reading, far more than it is ever rounded by. */
+const HAIR = 1e-6;
+
 /** Metres back from the carriageway a person stands to wait for the light, at the least. */
 const KERB_BACK = 0.6;
 
@@ -73,8 +76,15 @@ interface CrossingScene {
 }
 
 /**
- * Walk the loop over `span` round the corner at `node`, a step at a time, and
- * push a crossing for every stretch of carriageway under lights it goes over.
+ * Walk the loop over `span` round the corner at `node`, on a grid of steps,
+ * and push a crossing for every stretch of carriageway under lights it goes
+ * over.
+ *
+ * Between two bends of the walk a place moves no more than a step for each
+ * step round the loop. So a reading holds for the steps that stand nearer than
+ * both the next bend and the nearest edge of a carriageway, and the walk skips
+ * them. It finds the crossings a reading at every step finds from a fraction
+ * of the readings (#787).
  */
 function scanCorner(
   scene: CrossingScene,
@@ -87,11 +97,18 @@ function scanCorner(
 ): void {
   const { pavements, graph, route, signals } = scene;
   const [from, to] = span;
+  // The last step stands past `to` when the span is not a whole number of steps, and reads as off the road.
+  const last = Math.floor((to - from) / STEP + 0.5);
+  const room = { clear: 0 };
   let open = -1;
   let edge = -1;
-  for (let d = from; d <= to + STEP / 2; d += STEP) {
-    pavements.sample(route, d, point);
-    const on = d <= to ? pavements.carriagewayAt(node, point.x, point.y) : -1;
+  for (let k = 0; ; ) {
+    const d = from + k * STEP;
+    let on = -1;
+    if (d <= to) {
+      pavements.sample(route, d, point, false);
+      on = pavements.carriagewayAt(node, point.x, point.y, room);
+    }
     if (on >= 0 && open < 0) {
       open = d;
       edge = on;
@@ -100,6 +117,11 @@ function scanCorner(
       if (axis !== undefined) out.push({ at: wrap(open - back, route.length), end: wrap(d, route.length), junction, axis });
       open = -1;
     }
+    if (k === last) return;
+    // Every step skipped stands nearer than the nearest kerb and before the next bend. A kerb often
+    // stands on a step, so the room is read a hair short, lest rounding carry the walk past it.
+    const ahead = Math.min(room.clear, pavements.straightFor(route, d)) - HAIR;
+    k = Math.min(last, k + Math.max(1, Math.ceil(ahead / STEP)));
   }
 }
 

@@ -68,6 +68,11 @@ the casualties under their own heading there.
   how long a person at the kerb waits. Nobody starts once the crossing has closed, or so late that
   the traffic gets its green with them halfway over. A crossing too long to walk in the whole
   green is started in its first moments only.
+- The scan reads the walk on a grid of 0.5 m steps, but skips the steps nearer than both the
+  nearest kerb (`carriagewayAt` with `room`) and the next bend (`straightFor`). So it finds what a
+  reading at every step finds, to the bit, from about a sixth of the readings (#787). A change to
+  how `sample` places a point must change `straightFor` with it; the test in
+  `pedestrian-crossing.test.ts` holds the two to a reading at every step.
 - They wait `KERB_BACK` short of the carriageway, and up to `KERB_SPREAD` further back at a depth
   of their own (`kerbDepth`). Without it the people who meet at one corner stand on one spot
   (#721). A jaywalker's slant is skipped: it waits for no light, and the bold take it at
