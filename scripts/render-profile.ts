@@ -37,6 +37,8 @@
  *                    material's shader really does.
  *   --view           the camera view: top-down, third-person or first-person.
  *                    Default top-down.
+ *   --rings=N,F      the near and far streaming rings, in chunks, instead of
+ *                    the tier's own: what a draw distance costs.
  *   --device=phone   the screen of an iPhone 13 Pro held sideways, 844x390 at
  *                    3x, and the tier a touch session starts on. The GPU is
  *                    still this machine's: `docs/performance-budget.md` says
@@ -61,7 +63,7 @@ import { createServer, type ViteDevServer } from 'vite';
 import { seedFromString } from '../src/core/rng.ts';
 import { compareStrings } from '../src/core/sort.ts';
 import type { FrameSample, ProfileRequest, ProfileResult } from '../src/render/preview/profile.ts';
-import { EDGES, type PopIn } from '../src/render/frame/pop-in.ts';
+import { EDGES, FADING, type PopIn } from '../src/render/frame/pop-in.ts';
 import { chromiumPath } from './chromium.ts';
 import { printProfile, saveProfile, summariseProfile, type CpuProfile, type CpuSummary } from './cpu-profile.ts';
 import { percentile, saveRun } from './profile-run.ts';
@@ -83,6 +85,13 @@ function num(name: string, fallback: number): number {
   const value = Number(raw);
   if (!Number.isFinite(value)) throw new Error(`--${name} wants a number, not ${raw}`);
   return value;
+}
+
+/** `--rings=2,3` as the rings it names. */
+function ringsOf(text: string): { near: number; far: number } {
+  const [near, far] = text.split(',').map(Number);
+  if (!Number.isInteger(near) || !Number.isInteger(far)) throw new Error(`--rings wants two whole numbers, not ${text}`);
+  return { near: near as number, far: far as number };
 }
 
 /** The screens `--device` names: the size of the page, its pixel ratio and the tier a session starts on. */
@@ -108,6 +117,7 @@ const request: ProfileRequest = {
   speed: num('speed', 25),
   ...(quality === undefined ? {} : { quality }),
   ...(options.has('view') ? { view: options.get('view') as ProfileRequest['view'] } : {}),
+  ...(options.has('rings') ? { rings: ringsOf(options.get('rings') as string) } : {}),
   ...(options.has('weather') ? { weather: options.get('weather') as string } : {}),
   noWater: options.has('no-water'),
   noShadows: options.has('no-shadows'),
@@ -202,7 +212,12 @@ function reportPopIn(samples: readonly FrameSample[]): void {
   };
   console.log(`pop-in, nearest to the camera (share of drive frames in sight):`);
   console.log(`  streaming late: ${line('hole', (p) => p.hole)}, ${line('old detail', (p) => p.late)}`);
-  console.log(`  edges: ${EDGES.map((edge) => line(edge, (p) => p.edges[edge])).join(', ')}`);
+  const edges = (fade: boolean): string =>
+    EDGES.filter((edge) => FADING.has(edge) === fade)
+      .map((edge) => line(edge, (p) => p.edges[edge]))
+      .join(', ');
+  console.log(`  edges that pop: ${edges(false)}`);
+  console.log(`  edges that fade: ${edges(true)}`);
 }
 
 let server: ViteDevServer | undefined;
