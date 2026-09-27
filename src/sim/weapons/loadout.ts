@@ -253,14 +253,22 @@ export function reloading(loadout: LoadoutState): boolean {
  * reload already running.
  */
 export function beginReload(loadout: LoadoutState, tick: number): boolean {
+  if (!canReload(loadout)) return false;
+  loadout.reloadTick = tick + slotSpec(currentSlot(loadout)).reloadTicks;
+  return true;
+}
+
+/**
+ * Whether a reload would start now. The phone's pad shows its Load button only
+ * while this holds (`ui/input/touch-play.ts`).
+ */
+export function canReload(loadout: LoadoutState): boolean {
   if (reloading(loadout)) return false;
   const slot = currentSlot(loadout);
   const spec = slotSpec(slot);
   if (spec.capacity === 0 || spec.calibre === undefined) return false;
   if (slot.loaded >= spec.capacity) return false;
-  if (loadout.ammo[spec.calibre] <= 0) return false;
-  loadout.reloadTick = tick + spec.reloadTicks;
-  return true;
+  return loadout.ammo[spec.calibre] > 0;
 }
 
 /**
