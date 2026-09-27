@@ -11,6 +11,7 @@ import { createRenderer, probeWebGpu, resizeRenderer } from './render/renderer.t
 import { createTitleScene } from './render/title/scene.ts';
 import { RenderSmoother } from './render/frame/smooth.ts';
 import { WorldSource } from './render/streaming/world-source.ts';
+import { startChunkWorkers } from './render/streaming/chunk-pool.ts';
 import { warmPasses } from './render/frame/warm.ts';
 import { WorldScene } from './render/world-scene.ts';
 import { FixedStepClock } from './sim/clock.ts';
@@ -234,6 +235,9 @@ async function boot(): Promise<void> {
   // Where the world of a seed is built (spec section 9.1). It is a worker, so
   // neither the title screen's map nor the wait after Start stops the frame.
   const worlds = new WorldSource();
+  // The chunk workers are started now, while the thread is free for them, and
+  // wait for the world the player picks.
+  startChunkWorkers();
 
   // The session is null until the title screen hands over a seed and a look.
   let session: Session | null = null;

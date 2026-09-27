@@ -77,7 +77,7 @@ export class ChunkPool implements ChunkStream {
   /** The bays the one worker that was asked for them laid out. */
   bays: ParkingBays | undefined;
 
-  constructor(world: WorldDescription, spawn: () => ChunkWorker = spawnChunkWorker, size = poolSize()) {
+  constructor(world: WorldDescription, spawn: () => ChunkWorker = takeChunkWorker, size = poolSize()) {
     for (let i = 0; i < size; i++) {
       const slot: Slot = { worker: spawn(), ready: false };
       this.slots.push(slot);
@@ -163,6 +163,27 @@ export class ChunkPool implements ChunkStream {
 function poolSize(): number {
   const cores = typeof navigator === 'undefined' ? 4 : (navigator.hardwareConcurrency ?? 4);
   return Math.max(1, Math.min(MAX_WORKERS, cores - 1));
+}
+
+/** Workers started before there was a world for them, which the next pool takes first. */
+const started: ChunkWorker[] = [];
+
+/**
+ * Start the workers of the next pool before its world is known.
+ *
+ * A module worker is started through the page's main thread: its script is
+ * fetched and run there only between tasks. A pool made just before a long
+ * task on that thread — the city of `city.ts` is 2.3 s on an Apple M1 — has
+ * workers that start after it, and the ground waits for them
+ * (`docs/loading.md`). Started early, a worker is running when its world arrives.
+ */
+export function startChunkWorkers(): void {
+  while (started.length < poolSize()) started.push(spawnChunkWorker());
+}
+
+/** A worker started ahead of its world, or a new one. */
+function takeChunkWorker(): ChunkWorker {
+  return started.shift() ?? spawnChunkWorker();
 }
 
 /** A real worker, running `chunk-worker.ts` as a module. */
