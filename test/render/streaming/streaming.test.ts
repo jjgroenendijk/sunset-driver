@@ -1,4 +1,4 @@
-import { Matrix4, MeshBasicMaterial, Vector3 } from 'three';
+import { Matrix4, Mesh, MeshBasicMaterial, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { Batch, batchOfPacked } from '../../../src/render/streaming/batch.ts';
 import { buildChunkBuildings } from '../../../src/render/buildings/building-mesh.ts';
@@ -636,7 +636,15 @@ describe('the scene as the player drives', () => {
     const scene = new WorldScene(world, DEFAULT_APPEARANCE, stream);
     expect(scene.quality).toBe(FULL_TIER);
     await scene.settle(0, 0);
-    const atFull = scene.scene.children.length;
+    // Meshes rather than children: a chunk that replaced another holds its batches in a group.
+    const meshes = (): number => {
+      let count = 0;
+      scene.scene.traverse((object) => {
+        if (object instanceof Mesh) count++;
+      });
+      return count;
+    };
+    const atFull = meshes();
 
     const low = QUALITY_TIERS[QUALITY_TIERS.length - 1] as QualityTier;
     scene.quality = low;
@@ -644,7 +652,7 @@ describe('the scene as the player drives', () => {
     await scene.settle(0, 0);
 
     // The far ring is nearer, so the city the scene holds is smaller.
-    expect(scene.scene.children.length).toBeLessThan(atFull);
+    expect(meshes()).toBeLessThan(atFull);
     for (const want of stream.asked) {
       expect(Math.max(Math.abs(want.cx), Math.abs(want.cy))).toBeLessThanOrEqual(low.rings.far);
     }
@@ -657,7 +665,7 @@ describe('the scene as the player drives', () => {
     // Back at full quality the city comes back whole, piece for piece.
     scene.quality = FULL_TIER;
     await scene.settle(0, 0);
-    expect(scene.scene.children).toHaveLength(atFull);
+    expect(meshes()).toBe(atFull);
     scene.dispose();
   });
 
