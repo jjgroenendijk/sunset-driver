@@ -17,7 +17,9 @@
  *   on green. It stops at the line when the light is not green. It makes up
  *   the lag at the next place its tour stands still, which it leaves on time.
  * - At a junction without lights a car waits at the mouth while another
- *   car's path through it comes first (`give-way-junction.ts`).
+ *   car's path through it comes first (`give-way-junction.ts`), and it keeps
+ *   out of the turn of a car ahead of it from its own road
+ *   (`give-way-follow.ts`).
  * - A person does not step into a car or into the road just ahead of a moving
  *   one. A person a car has stopped for, who would walk into it, steps aside.
  * - A moving car that meets a person all the same hits them. That is the
@@ -38,6 +40,7 @@ import { FREE, HEAD_ON, LIGHT, OTHER, PERSON, sideOf, STANDING, type Car, type P
 import { Steering } from './swerve.ts';
 import { JunctionClear } from './junction-clear.ts';
 import { JunctionYield } from './give-way-junction.ts';
+import { FollowThrough } from './give-way-follow.ts';
 import { Rejoin } from './rejoin.ts';
 import type { SimState } from '../simulation.ts';
 import { footprintsTouch, promotedOf, turnedTouch, type AmbientPose, type AmbientTraffic, type Footprint, type Kerbs, type TrafficCursor } from './traffic.ts';
@@ -117,6 +120,7 @@ export class GiveWay {
   private readonly rejoin: Rejoin;
   private readonly junctions: JunctionClear;
   private readonly yielding: JunctionYield;
+  private readonly following: FollowThrough;
   private readonly kerbCursor: TrafficCursor = { id: 0, step: 0, into: 0 };
   private tick = 0;
 
@@ -135,6 +139,7 @@ export class GiveWay {
     });
     this.rejoin = new Rejoin(traffic);
     this.yielding = new JunctionYield(traffic.roads.graph, traffic.roads.junctions, traffic.signals);
+    this.following = new FollowThrough(traffic);
     this.junctions = new JunctionClear(traffic, {
       get cars() {
         return scene.cars;
@@ -366,6 +371,7 @@ export class GiveWay {
     setAhead(this.reach, box, fx, fy, slowRoom);
     this.lookSide(car, i);
     this.lookJunction(i, slowRoom);
+    this.lookLeaders(i);
     this.lookAhead(car, i);
     this.lookOthers(car);
     this.lookPeople(car);
@@ -539,6 +545,7 @@ export class GiveWay {
   private placeAtJunctions(state: SimState): void {
     const traffic = this.traffic;
     this.yielding.reset(this.cars.length);
+    this.following.reset(state.tick, this.cars.length);
     for (let i = 0; i < this.cars.length; i++) {
       const car = this.cars[i] as Car;
       traffic.cursorAt(car.id, state.tick - car.lag, this.cursor);
@@ -556,6 +563,14 @@ export class GiveWay {
     else {
       this.block(car, wait.car);
       car.yields = true;
+    }
+  }
+
+  /** A car stops while its next step meets the ground a car from its road, further through the junction, is about to cover. */
+  private lookLeaders(i: number): void {
+    const car = this.cars[i] as Car;
+    for (const j of this.yielding.leaders(i, this.spare)) {
+      if (this.following.meets(car, this.cars, j)) this.block(car, j);
     }
   }
 
