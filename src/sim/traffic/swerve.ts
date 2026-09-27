@@ -309,8 +309,10 @@ export class Steering {
       moved.halfLength = other.box.halfLength;
       moved.halfWidth = other.box.halfWidth;
       const speed = other.stop ? 0 : other.speed;
-      // One standing behind it the same way round queues behind it, and follows it out.
-      const following = other.cos * car.laneCos + other.sin * car.laneSin > 0 && speed < STANDING;
+      // One standing behind it the same way round queues behind it, and follows it out. So does one
+      // that stops for it at an angle, turning in behind it at a junction (issue #748).
+      const behind = other.cos * car.laneCos + other.sin * car.laneSin > 0 || (other.stop && other.blocker === i);
+      const following = behind && speed < STANDING;
       if (following && spanOf(car, other.box, other.cos, other.sin, this.span).a1 < -car.box.halfLength + 0.5) continue;
       for (let k = 0; k <= 3; k++) {
         const run = (speed * seconds * k) / 3;

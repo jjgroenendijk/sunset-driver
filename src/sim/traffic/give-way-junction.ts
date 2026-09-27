@@ -14,7 +14,9 @@
  * Two cars whose paths do not meet pass together: one behind the other on
  * the same road in, and two that go straight past each other from opposite
  * sides. Any other pair of paths is taken to meet, turns to the right
- * included, since a car that waits a moment too long does no harm.
+ * included, since a car that waits a moment too long does no harm. Of two
+ * cars from one road, the one behind keeps out of the turn of the one ahead
+ * (`give-way-follow.ts`).
  */
 import type { Junction, JunctionMap } from '../../world/junctions/junctions.ts';
 import type { RoadEdge, RoadGraph } from '../../world/roads/graph.ts';
@@ -50,6 +52,8 @@ interface Passage {
   /** Seconds until it reaches its mouth, and until it has driven out of the junction. */
   eta: number;
   clear: number;
+  /** Metres it drives before it is out of the junction: the car with less is further through. */
+  due: number;
   /** Metres its next step takes it along its road. */
   step: number;
 }
@@ -106,7 +110,7 @@ export class JunctionYield {
     const edge = tour.edges[leg] as number;
     const metres = traffic.metresOf(cursor);
     const next = traffic.edgeOf(ahead) === edge ? traffic.metresOf(ahead) : Infinity;
-    const passage: Passage = { node: -1, from: -1, to: -1, left: 0, eta: 0, clear: 0, step: next - metres };
+    const passage: Passage = { node: -1, from: -1, to: -1, left: 0, eta: 0, clear: 0, due: 0, step: next - metres };
     const out = this.cutOut[edge] as number;
     const into = this.cutIn[edge] as number;
     const e = this.graph.edges[edge] as RoadEdge;
@@ -116,6 +120,7 @@ export class JunctionYield {
       passage.from = tour.edges[(leg + legs - 1) % legs] as number;
       passage.to = edge;
       passage.left = -1;
+      passage.due = out + halfLength - metres;
     } else if (into >= 0) {
       const left = e.length - into - halfLength - MOUTH_GAP - metres;
       if (left > Math.max(HORIZON_MIN, speed * HORIZON)) return this.keep(i, passage);
@@ -127,6 +132,7 @@ export class JunctionYield {
       const through = into + Math.max(0, this.cutOut[passage.to] as number) + 2 * halfLength + MOUTH_GAP;
       passage.eta = Math.max(0, left) / pace;
       passage.clear = (Math.max(0, left) + through) / pace;
+      passage.due = left + through;
     }
     this.keep(i, passage);
   }
@@ -149,6 +155,22 @@ export class JunctionYield {
       if (b.left < 0 || this.before(b, ids(j), a, ids(i))) return { car: j, stop };
     }
     return undefined;
+  }
+
+  /**
+   * The cars that came into car `i`'s junction on its road and are further
+   * through it, written into `out`. Their paths are not taken to meet, so
+   * `give-way-follow.ts` checks the ground they sweep.
+   */
+  leaders(i: number, out: number[]): number[] {
+    out.length = 0;
+    const a = this.passages[i];
+    if (a === undefined || a.node < 0) return out;
+    for (const j of this.atNode.get(a.node) ?? []) {
+      const b = this.passages[j] as Passage;
+      if (j !== i && b.from === a.from && b.due < a.due) out.push(j);
+    }
+    return out;
   }
 
   private keep(i: number, passage: Passage): void {

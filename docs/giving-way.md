@@ -66,6 +66,12 @@ tour is in `docs/city-life.md`, and how a person walks their loop in `docs/crowd
   road has it, then the car that arrives first, then the lower id. So one car of a junction can
   always go, and a ring never releases a car that waits at a mouth. Issue #360 asked for it: on
   the first sweep seeds, cross traffic drove through itself at every busy junction without lights.
+- `give-way-follow.ts`: two cars that come in on the same road are not taken to meet there. A car
+  stops while its next step meets the ground that a car from its road, further through the
+  junction, covers over the next 2 s of its tour. The probe ahead is a straight lane, and a car
+  turning from the next lane crosses it. Without this the car behind stood inside that turn, and
+  the two stood on each other at an angle (issue #748). A turn of more than about 120° still
+  sweeps back over the mouth behind it, where the next car already stands.
 - The mouth is the junction's `cut` on each road. A car inside one junction that its tour takes
   straight into the next, over an edge shorter than the two cuts, never waits at the second mouth:
   it is already past it.
@@ -82,7 +88,8 @@ tour is in `docs/city-life.md`, and how a person walks their loop in `docs/crowd
   two-way road gives the oncoming half too. A one-way run that is not a ramp gives only its own.
 - It sets off only when the ground it passes over is clear, with every car near it run on
   `PASS_TIME` at its speed. A car standing behind it the same way round is left out: that one
-  queues behind it and follows it out. Counting it once stood every queue still.
+  queues behind it and follows it out. Counting it once stood every queue still. So is one that
+  stands behind it at an angle and stops for it: a car turning in behind it at a junction.
 - It does not start at a red light: `queuedAtRed` stands a car within `QUEUE_REACH` of a stop line
   that is not green, or in a wait of its tour. Without it a car overtook a queue at a light. After
   `RED_PATIENCE` it starts anyway. A car held back stands at a frozen moment of its tour, and when
