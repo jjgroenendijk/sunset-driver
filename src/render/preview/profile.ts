@@ -17,6 +17,7 @@ import { DEFAULT_APPEARANCE } from '../../sim/player/character.ts';
 import { nearestRoadPlace } from '../../world/terrain/surface.ts';
 import { namedWeather } from '../../sim/city/weather.ts';
 import { generateWorld } from '../../world/world.ts';
+import type { WorldDescription } from '../../world/types.ts';
 import { FollowCamera, type CameraView } from '../camera/camera.ts';
 import { PassTimer, type PassTimes } from '../frame/gpu-passes.ts';
 import { tickAtHour } from '../environment/daylight.ts';
@@ -27,6 +28,7 @@ import { FULL_TIER, QUALITY_TIERS } from '../frame/quality.ts';
 import { createRenderer, disposeRenderer } from '../renderer.ts';
 import { warmPasses } from '../frame/warm.ts';
 import { WorldScene } from '../world-scene.ts';
+import { ChunkPool, slowedWorker, spawnChunkWorker } from '../streaming/chunk-pool.ts';
 
 /** What to draw, for how long, and what to leave out. */
 export interface ProfileRequest {
@@ -73,6 +75,8 @@ export interface ProfileRequest {
   view?: CameraView;
   /** The streaming rings to draw at instead of the tier's own, to price a draw distance. */
   rings?: { near: number; far: number };
+  /** How many times slower the chunk workers answer, as a phone's slow cores would (`slowedWorker`). */
+  workerSlowdown?: number;
 }
 
 /** One frame, timed. */
@@ -167,7 +171,7 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
   const caches = renderer as unknown as RendererCaches;
 
   const world = generateWorld(request.seed);
-  const scene = new WorldScene(world, DEFAULT_APPEARANCE);
+  const scene = new WorldScene(world, DEFAULT_APPEARANCE, streamOf(world, request.workerSlowdown ?? 1));
   scene.quality = tier;
   const tick = tickAtHour(request.hour);
   const weather = namedWeather(request.weather);
@@ -334,4 +338,9 @@ function batchKinds(scene: WorldScene, noCast: ReadonlySet<string>): Record<stri
     entry.vertices += object.geometry.getAttribute('position')?.count ?? 0;
   });
   return kinds;
+}
+
+/** The chunk workers of a run: the scene's own, or ones that answer `slowdown` times later. */
+function streamOf(world: WorldDescription, slowdown: number): ChunkPool | undefined {
+  return slowdown > 1 ? new ChunkPool(world, () => slowedWorker(spawnChunkWorker(), slowdown)) : undefined;
 }
