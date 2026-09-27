@@ -13,6 +13,9 @@
  * A garbage truck is a truck, and a truck of the roster carries an open deck.
  * The bin body that makes it a garbage truck stands on that deck, as a second
  * instanced box in a lit material and the job's livery: one more draw.
+ *
+ * A parking ticket (`sim/traffic/ticket.ts`) is a top too: a bright slip laid
+ * flat on the roof, over the windscreen of the car it was written for.
  */
 import { BoxGeometry, Color, Group, InstancedMesh, Matrix4, Quaternion, Vector3 } from 'three';
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
@@ -33,6 +36,10 @@ const BEACON_DARK = 0x5c3a12;
 
 /** The taxi sign's size in metres: along the car, up and across. */
 const SIGN = { length: 0.3, height: 0.2, width: 0.8 };
+
+/** The ticket's colour, and its size in metres, along, up and across, and how far forward of the middle it lies. */
+const TICKET = 0xffe23a;
+const SLIP = { length: 0.3, height: 0.03, width: 0.45, along: 0.3 };
 
 /** The beacon's size in metres. */
 const BEACON = 0.28;
@@ -117,6 +124,18 @@ export class JobTops {
     this.local.compose(this.at, this.still, this.size);
     this.mesh.setMatrixAt(index, this.matrix.multiplyMatrices(body, this.local));
     this.mesh.setColorAt(index, this.colour);
+    this.mesh.count = index + 1;
+  }
+
+  /** Lay a ticket on the roof of a car of `spec`, where `body` is the matrix its body is drawn with. */
+  ticket(spec: VehicleSpec, body: Matrix4): void {
+    const index = this.mesh.count;
+    if (index >= TOP_CAP) return;
+    this.at.set(spec.halfLength * SLIP.along, spec.halfHeight + SLIP.height / 2, spec.halfWidth * 0.3);
+    this.size.set(SLIP.length, SLIP.height, SLIP.width);
+    this.local.compose(this.at, this.still, this.size);
+    this.mesh.setMatrixAt(index, this.matrix.multiplyMatrices(body, this.local));
+    this.mesh.setColorAt(index, this.colour.set(TICKET));
     this.mesh.count = index + 1;
   }
 

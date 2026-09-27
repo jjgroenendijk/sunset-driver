@@ -10,7 +10,8 @@
  * The city tows them. A shell that has stood {@link TOW_WAIT} ticks since it
  * went up draws a tow truck (`city/tow-truck.ts`), which drives to it over the
  * road graph, winches it onto its deck and takes it away while the player
- * watches.
+ * watches. The same truck comes for a car that has stood ticketed too long
+ * (`ticket.ts`).
  *
  * Out of sight nobody needs to watch. A shell that is due and lies
  * {@link TOW_REACH} metres or more from the player is simply taken, and its

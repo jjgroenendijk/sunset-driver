@@ -302,6 +302,8 @@ export class TrafficView {
       // Nobody drives a promoted vehicle, so a bike the player has touched
       // rolls on with an empty saddle.
       this.add(meshes, record.paint, false, 0);
+      // The player's car, ticketed where they left it (`sim/traffic/ticket.ts`).
+      if (record.ticket !== undefined) this.tops.ticket(meshes.spec, this.matrix);
     }
     // A vehicle a tow truck has hooked rides on its deck (`sim/city/tow-truck.ts`).
     for (const unit of state.emergency.units) {
