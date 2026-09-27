@@ -1,4 +1,5 @@
-import { Box3, Mesh, Vector3, type InstancedMesh } from 'three';
+import { Box3, Mesh, Vector3 } from 'three';
+import { Pool } from '../../../src/render/look/pool.ts';
 import { describe, expect, it } from 'vitest';
 import { riderStruts } from '../../../src/render/vehicles/bike-rider.ts';
 import { strutOf, TrafficView } from '../../../src/render/vehicles/traffic.ts';
@@ -87,7 +88,7 @@ describe('the traffic drawn with its riders', () => {
     const view = new TrafficView(traffic);
     // Every class has a paint mesh and a mesh of whoever is in it: the rider
     // astride a bike, the driver behind the glass of a car (`occupant.ts`).
-    const shadowed = view.group.children.filter((child) => (child as InstancedMesh).isInstancedMesh && child.castShadow);
+    const shadowed = view.group.children.filter((child) => child instanceof Pool && child.castShadow);
     expect(shadowed).toHaveLength(AMBIENT_CLASSES.length * 2);
 
     const state = createSimState(seed, undefined, 0);
@@ -110,12 +111,14 @@ describe('the traffic drawn with its riders', () => {
   });
 });
 
-/** How many riders the last frame wrote: the instances of the one shadowed mesh with no paint on it. */
+/**
+ * How many riders the last frame wrote: the instances of the one shadowed pool
+ * whose colours are on its vertices, where the paint's are its instances' own.
+ */
 function riderCount(view: TrafficView): number {
   let count = 0;
   for (const child of view.group.children) {
-    const mesh = child as InstancedMesh;
-    if (mesh.isInstancedMesh && mesh.castShadow && mesh.instanceColor === null) count += mesh.count;
+    if (child instanceof Pool && child.castShadow && child.material.vertexColors) count += child.count;
   }
   return count;
 }

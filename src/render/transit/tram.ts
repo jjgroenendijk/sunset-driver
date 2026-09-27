@@ -19,7 +19,8 @@
  * the traffic is. The people waiting at the stops are drawn with the crowd
  * (`pedestrians.ts`).
  */
-import { Group, Matrix4, Quaternion, Vector3, type BufferGeometry, type InstancedMesh } from 'three';
+import { Group, Matrix4, Quaternion, Vector3, type BufferGeometry } from 'three';
+import type { Pool } from '../look/pool.ts';
 import type { AmbientPose } from '../../sim/traffic/traffic.ts';
 import { TRAM_CARS, type TramDesign, type TramLine } from '../../sim/transit/tram.ts';
 import { createVehicleTrim, type VehicleTrim } from '../vehicles/vehicle-glow.ts';
@@ -74,7 +75,7 @@ const SPARK_SPEED = 2;
 interface ModuleMeshes {
   design: TramDesign;
   module: TramModule;
-  body: InstancedMesh;
+  body: Pool;
   count: number;
 }
 
@@ -83,11 +84,11 @@ export class TramView {
   private readonly line: TramLine;
   private readonly meshes: ModuleMeshes[] = [];
   /** The door leaves of every car in view, which slide back while a tram stands at a stop. */
-  private readonly doors: InstancedMesh;
+  private readonly doors: Pool;
   private doorCount = 0;
   private readonly slide = new Matrix4();
   /** The arc at the collector of each tram, on the frames it strikes one. */
-  private readonly sparks: InstancedMesh;
+  private readonly sparks: Pool;
   private sparkCount = 0;
   private readonly trim: VehicleTrim;
   private readonly pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };

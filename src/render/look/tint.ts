@@ -9,9 +9,14 @@
  * whole session. Every pool that colours its instances passes through here.
  */
 import { InstancedBufferAttribute, type InstancedMesh } from 'three';
+import { Pool } from './pool.ts';
 
-/** Give a pool white instance colours for its whole capacity, and return it. */
-export function tinted(mesh: InstancedMesh): InstancedMesh {
+/**
+ * Give a pool white instance colours for its whole capacity, and return it. A
+ * `Pool` of `pool.ts` has them from the start.
+ */
+export function tinted<T extends InstancedMesh | Pool>(mesh: T): T {
+  if (mesh instanceof Pool) return mesh;
   const cap = mesh.instanceMatrix.count;
   mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(cap * 3).fill(1), 3);
   return mesh;

@@ -18,7 +18,9 @@
  * The units are drawn where the record put them. They are stepped every tick
  * like the player, so nothing is evaluated between two ticks here.
  */
-import { Color, Group, Matrix4, MeshStandardMaterial, Quaternion, Vector3, type BufferGeometry, type InstancedMesh, type Material } from 'three';
+import { Color, Group, Matrix4, Quaternion, Vector3, type BufferGeometry, type Material } from 'three';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
+import type { Pool } from '../look/pool.ts';
 import { HELICOPTER_HEIGHT } from '../../sim/police/police.ts';
 import type { SimState } from '../../sim/simulation.ts';
 import { rideHeight, specOf, type VehicleSpec } from '../../sim/vehicles/vehicle.ts';
@@ -39,15 +41,15 @@ const LENS_GROW = 0.012;
 
 export class PoliceView {
   readonly group = new Group();
-  private readonly paint: InstancedMesh;
-  private readonly trim: InstancedMesh;
-  private readonly glass: InstancedMesh;
-  private readonly driver: InstancedMesh;
+  private readonly paint: Pool;
+  private readonly trim: Pool;
+  private readonly glass: Pool;
+  private readonly driver: Pool;
   private readonly doors: PatrolDoors;
   private readonly phases: [BeaconPhase, BeaconPhase];
   private readonly glow: BeaconGlow;
-  private readonly heli: InstancedMesh;
-  private readonly rotor: InstancedMesh;
+  private readonly heli: Pool;
+  private readonly rotor: Pool;
   /** Where the rotor's hub stands on the helicopter, and the turn of the blades about it. */
   private readonly hub = new Matrix4();
   private readonly spin = new Matrix4();
@@ -65,7 +67,7 @@ export class PoliceView {
     const spec = specOf('emergency');
     this.ride = rideHeight(spec);
     const parts = trafficParts(spec, PATROL_LEAVES);
-    const paint = new MeshStandardMaterial({ roughness: 0.4, metalness: 0.2 });
+    const paint = new MeshStandardNodeMaterial({ roughness: 0.4, metalness: 0.2 });
     const glass = glassMaterial();
     this.trimMaterial = createVehicleTrim();
     const trim = this.trimMaterial.material;
@@ -194,7 +196,7 @@ export class PoliceView {
       mesh.visible = flying > 0;
       if (flying > 0) mesh.instanceMatrix.needsUpdate = true;
     }
-    if (cars > 0 && this.paint.instanceColor !== null) this.paint.instanceColor.needsUpdate = true;
+    if (cars > 0) this.paint.instanceColor.needsUpdate = true;
   }
 }
 

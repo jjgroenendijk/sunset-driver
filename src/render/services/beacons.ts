@@ -27,6 +27,8 @@ import {
   Vector3,
   type BufferGeometry,
 } from 'three';
+import { MeshBasicNodeMaterial } from 'three/webgpu';
+import type { Pool } from '../look/pool.ts';
 import type { Beacon } from './emergency-mesh.ts';
 import { boxOf, coloured, instanced, merged } from '../vehicles/traffic.ts';
 import { tinted } from '../look/tint.ts';
@@ -75,14 +77,14 @@ export function flashLit(tick: number, id: number, phase: 0 | 1): boolean {
   return (BURSTS[phase] ?? []).some(([from, to]) => at >= from && at < to);
 }
 
-/** One phase of the beacons of a kind of unit, as one instanced mesh. */
+/** One phase of the beacons of a kind of unit, as one pool. */
 export class BeaconPhase {
-  readonly mesh: InstancedMesh;
+  readonly mesh: Pool;
   /** The colour of the first lamp of this phase, which is the colour its light throws. */
   readonly colour: Color;
   private readonly bright = new Color();
 
-  constructor(beacons: readonly Beacon[], phase: 0 | 1, material: MeshBasicMaterial, cap: number) {
+  constructor(beacons: readonly Beacon[], phase: 0 | 1, material: MeshBasicNodeMaterial, cap: number) {
     const own = beacons.filter((beacon) => beacon.phase === phase);
     this.colour = new Color(own[0]?.box.colour ?? 0xffffff);
     this.mesh = tinted(instanced(merged(own.map((beacon) => coloured(boxOf(beacon.box), beacon.box.colour))), material, false, cap));
@@ -101,13 +103,13 @@ export class BeaconPhase {
     this.mesh.visible = count > 0;
     if (count === 0) return;
     this.mesh.instanceMatrix.needsUpdate = true;
-    if (this.mesh.instanceColor !== null) this.mesh.instanceColor.needsUpdate = true;
+    this.mesh.instanceColor.needsUpdate = true;
   }
 }
 
 /** The material every beacon is drawn with: its own colour, unlit, and past the tone map so it blooms. */
-export function beaconMaterial(): MeshBasicMaterial {
-  return new MeshBasicMaterial({ vertexColors: true, toneMapped: false });
+export function beaconMaterial(): MeshBasicNodeMaterial {
+  return new MeshBasicNodeMaterial({ vertexColors: true, toneMapped: false });
 }
 
 /** A disc bright in the middle and black at the rim, which added over the scene is a soft pool of light. */

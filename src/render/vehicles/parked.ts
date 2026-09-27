@@ -8,7 +8,8 @@
  * been promoted. Between those the frame uploads nothing. A promoted car is
  * drawn by `traffic.ts` from its record.
  */
-import { Color, Group, Matrix4, Quaternion, Vector3, type InstancedMesh, type Material } from 'three';
+import { Color, Group, Matrix4, Quaternion, Vector3, type Material } from 'three';
+import type { Pool } from '../look/pool.ts';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { EntityFade } from '../camera/fade.ts';
 import { PARKED_CLASSES, type ParkedCar, type ParkedCars } from '../../sim/traffic/parked.ts';
@@ -35,7 +36,7 @@ const PARKED_CAP = 1024;
 interface ClassMeshes {
   cls: VehicleClass;
   lift: number;
-  meshes: InstancedMesh[];
+  meshes: Pool[];
 }
 
 export class ParkedView {
@@ -87,7 +88,7 @@ export class ParkedView {
   /** How many parked cars the view holds. */
   get drawn(): number {
     let count = 0;
-    for (const entry of this.classes) count += (entry.meshes[0] as InstancedMesh).count;
+    for (const entry of this.classes) count += (entry.meshes[0] as Pool).count;
     return count;
   }
 
@@ -119,7 +120,7 @@ export class ParkedView {
   private place(bay: number): void {
     const bays = this.cars.bays;
     const entry = this.classes.find((c) => c.cls === this.car.cls) as ClassMeshes;
-    const paint = entry.meshes[0] as InstancedMesh;
+    const paint = entry.meshes[0] as Pool;
     const index = paint.count;
     if (index >= PARKED_CAP) return;
     this.at.set(bays.x[bay] as number, (bays.height[bay] as number) + entry.lift, bays.y[bay] as number);
@@ -146,11 +147,11 @@ export class ParkedView {
 
 /** Show a class only when it holds a car, and upload what was written to it. */
 function flagUpload(entry: ClassMeshes): void {
-  const count = (entry.meshes[0] as InstancedMesh).count;
+  const count = (entry.meshes[0] as Pool).count;
   for (const mesh of entry.meshes) {
     mesh.visible = count > 0;
     if (count > 0) mesh.instanceMatrix.needsUpdate = true;
   }
-  const colours = (entry.meshes[0] as InstancedMesh).instanceColor;
-  if (count > 0 && colours !== null) colours.needsUpdate = true;
+  const colours = (entry.meshes[0] as Pool).instanceColor;
+  if (count > 0) colours.needsUpdate = true;
 }

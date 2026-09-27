@@ -17,7 +17,8 @@
  * up from the road, and `+z` to the left of travel — so the platform, which is
  * to the right of the track, stands at negative `z`.
  */
-import { Group, Matrix4, Quaternion, Vector3, type BufferGeometry, type InstancedMesh } from 'three';
+import { Group, Matrix4, Quaternion, Vector3, type BufferGeometry } from 'three';
+import type { Pool } from '../look/pool.ts';
 import { CAR_HALF_WIDTH, TRAM_LENGTH, type TramLine } from '../../sim/transit/tram.ts';
 import { PLATFORM_RAMP, PLATFORM_RISE, SHELTER_LONG, SHELTER_TALL } from '../../sim/transit/tram-stop-place.ts';
 import { TRAM_LANE } from '../../world/roads/tiers.ts';
@@ -204,7 +205,7 @@ function tramStopParts(): { platform: BufferGeometry; shelter: BufferGeometry; f
 export class TramStopView {
   readonly group = new Group();
   private readonly line: TramLine;
-  private readonly meshes: InstancedMesh[];
+  private readonly meshes: Pool[];
   private readonly trim: VehicleTrim;
   private readonly matrix = new Matrix4();
   private readonly at = new Vector3();

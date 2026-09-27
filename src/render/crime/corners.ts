@@ -9,7 +9,9 @@
  * corner in view costs four draws however many there are. A prop's frame has
  * `+x` at the road and `+y` up from the pavement.
  */
-import { Group, Matrix4, MeshStandardMaterial, Quaternion, Vector3, type BufferGeometry, type InstancedMesh } from 'three';
+import { Group, Matrix4, Quaternion, Vector3, type BufferGeometry } from 'three';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
+import type { Pool } from '../look/pool.ts';
 import type { CornerProp, PlacedProp, StreetCorners } from '../../sim/crime/corners.ts';
 import { boxOf, coloured, instanced, merged, TRAFFIC_VIEW } from '../vehicles/traffic.ts';
 import { METAL } from '../vehicles/vehicle-mesh.ts';
@@ -84,8 +86,8 @@ function propGeometry(kind: CornerProp): BufferGeometry {
 export class CornerPropView {
   readonly group = new Group();
   private readonly corners: StreetCorners;
-  private readonly meshes: Record<CornerProp, InstancedMesh>;
-  private readonly material: MeshStandardMaterial;
+  private readonly meshes: Record<CornerProp, Pool>;
+  private readonly material: MeshStandardNodeMaterial;
   private readonly found: PlacedProp[] = [];
   private readonly matrix = new Matrix4();
   private readonly at = new Vector3();
@@ -95,8 +97,8 @@ export class CornerPropView {
 
   constructor(corners: StreetCorners) {
     this.corners = corners;
-    this.material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.05 });
-    const mesh = (kind: CornerProp): InstancedMesh => instanced(propGeometry(kind), this.material, true, CORNER_DRAW_CAP);
+    this.material = new MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.05 });
+    const mesh = (kind: CornerProp): Pool => instanced(propGeometry(kind), this.material, true, CORNER_DRAW_CAP);
     this.meshes = { amp: mesh('amp'), cart: mesh('cart'), stall: mesh('stall'), dog: mesh('dog') };
     for (const kind of KINDS) this.group.add(this.meshes[kind]);
   }

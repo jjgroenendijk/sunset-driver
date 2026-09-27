@@ -59,6 +59,9 @@ type Drawn = Object3D & { material?: unknown };
 /** The instanced-mesh fields the warm-up reads, which a plain `Object3D` lacks. */
 type Pool = { isInstancedMesh?: boolean; count: number };
 
+/** The instanced-geometry fields the warm-up reads. */
+type Shape = { isInstancedBufferGeometry?: boolean; instanceCount: number };
+
 export async function warmPasses(
   world: WorldScene,
   post: PostChain,
@@ -168,6 +171,14 @@ function drawGroup(group: MaterialGroup, drawn: readonly Object3D[], post: PostC
       pool.count = 1;
       restore.push(() => {
         pool.count = 0;
+      });
+    }
+    // A pool of `pool.ts` draws its geometry's instances, and none is no draw.
+    const shape = (object as Drawn & { geometry?: Shape }).geometry;
+    if (shape?.isInstancedBufferGeometry === true && shape.instanceCount === 0) {
+      shape.instanceCount = 1;
+      restore.push(() => {
+        shape.instanceCount = 0;
       });
     }
   }

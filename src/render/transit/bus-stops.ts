@@ -18,7 +18,9 @@
  * its uploads back, but {@link STOP_DRAW_CAP} posts is a few kilobytes rather
  * than the megabyte a full car park costs.
  */
-import { Group, Matrix4, MeshStandardMaterial, Quaternion, Vector3, type BufferGeometry, type InstancedMesh } from 'three';
+import { Group, Matrix4, Quaternion, Vector3, type BufferGeometry } from 'three';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
+import type { Pool } from '../look/pool.ts';
 import { SHELTER_RIDERS, type BusStop, type BusStops } from '../../sim/transit/bus-stops.ts';
 import { boxOf, coloured, instanced, merged, TRAFFIC_VIEW } from '../vehicles/traffic.ts';
 import { GLASS, METAL } from '../vehicles/vehicle-mesh.ts';
@@ -98,9 +100,9 @@ function busStopParts(): { post: BufferGeometry; shelter: BufferGeometry } {
 export class BusStopView {
   readonly group = new Group();
   private readonly stops: BusStops;
-  private readonly post: InstancedMesh;
-  private readonly shelter: InstancedMesh;
-  private readonly material: MeshStandardMaterial;
+  private readonly post: Pool;
+  private readonly shelter: Pool;
+  private readonly material: MeshStandardNodeMaterial;
   private readonly found: BusStop[] = [];
   private readonly matrix = new Matrix4();
   private readonly at = new Vector3();
@@ -111,7 +113,7 @@ export class BusStopView {
   constructor(stops: BusStops) {
     this.stops = stops;
     const parts = busStopParts();
-    this.material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.1 });
+    this.material = new MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.1 });
     const cap = Math.max(1, Math.min(STOP_DRAW_CAP, stops.count));
     this.post = instanced(parts.post, this.material, true, cap);
     this.shelter = instanced(parts.shelter, this.material, true, cap);
@@ -149,7 +151,7 @@ export class BusStopView {
     this.group.clear();
   }
 
-  private write(mesh: InstancedMesh, count: number): void {
+  private write(mesh: Pool, count: number): void {
     mesh.count = count;
     mesh.visible = count > 0;
     if (count > 0) mesh.instanceMatrix.needsUpdate = true;

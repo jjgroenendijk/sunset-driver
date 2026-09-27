@@ -266,6 +266,18 @@ export const normalGeometry: TslNode = tsl.normalGeometry;
 /** The vertex's normal in the object's frame, which the lighting reads; assignable in the vertex stage. */
 export const normalLocal: TslNode = tsl.normalLocal;
 
+/** The vertex's place in the object's frame, as far as the vertex stage has moved it. */
+export const positionLocal: TslNode = tsl.positionLocal;
+
+/** A 4×4 matrix from its four columns. */
+export const mat4 = tsl.mat4 as unknown as (c0: TslNode, c1: TslNode, c2: TslNode, c3: TslNode) => TslNode;
+
+/** A normal carried through a matrix that may scale: the inverse transpose, renormalised. */
+export const transformNormal = tsl.transformNormal as unknown as (normal: TslNode, matrix: TslNode) => TslNode;
+
+/** The material's own `color`, which a `colorNode` replaces. */
+export const materialColor: TslNode = tsl.materialColor;
+
 /** Sine and cosine of an angle in radians. */
 export const sin = tsl.sin as unknown as (x: TslNode) => TslNode;
 export const cos = tsl.cos as unknown as (x: TslNode) => TslNode;

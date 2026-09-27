@@ -36,7 +36,6 @@ import {
   Euler,
   Group,
   InstancedBufferAttribute,
-  InstancedMesh,
   Matrix4,
   Quaternion,
   Vector3,
@@ -44,7 +43,7 @@ import {
   type Material,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { MeshStandardNodeMaterial } from 'three/webgpu';
+import { MeshStandardNodeMaterial, type NodeMaterial } from 'three/webgpu';
 import { EntityFade } from '../camera/fade.ts';
 import { heldPose, heldTime } from '../../sim/traffic/hold.ts';
 import { Indicators } from '../../sim/traffic/indicator.ts';
@@ -61,6 +60,7 @@ import { partGeometry } from './vehicle-geometry.ts';
 import { createVehicleTrim, flashOf, glowOf, type VehicleTrim } from './vehicle-glow.ts';
 import { GLASS, TYRE, vehicleBoxes, type VehicleBox } from './vehicle-mesh.ts';
 import { GLASS_OPACITY } from './vehicle-parts.ts';
+import { Pool } from '../look/pool.ts';
 import { tinted } from '../look/tint.ts';
 
 /** Metres each way of the point the frame is drawn round that traffic is drawn in. */
@@ -78,10 +78,10 @@ export function glassMaterial(): MeshStandardNodeMaterial {
 interface ClassMeshes {
   cls: VehicleClass;
   spec: VehicleSpec;
-  paint: InstancedMesh;
-  trim: InstancedMesh;
-  glass: InstancedMesh;
-  tyres: InstancedMesh;
+  paint: Pool;
+  trim: Pool;
+  glass: Pool;
+  tyres: Pool;
   /** The side whose indicators are lit on each vehicle of the trim: 1 right, -1 left, 0 none. */
   signal: InstancedBufferAttribute;
   /**
@@ -91,7 +91,7 @@ interface ClassMeshes {
    * drawn carry one: one the player has touched has nobody in it, and a
    * parked one has nobody in it either.
    */
-  rider: InstancedMesh | undefined;
+  rider: Pool | undefined;
 }
 
 /** The geometry of one class, split by how each part is coloured. */
@@ -360,7 +360,7 @@ function finish(meshes: ClassMeshes): void {
     if (count === 0) continue;
     mesh.instanceMatrix.needsUpdate = true;
   }
-  if (count > 0 && meshes.paint.instanceColor !== null) meshes.paint.instanceColor.needsUpdate = true;
+  if (count > 0) meshes.paint.instanceColor.needsUpdate = true;
   if (count > 0) meshes.signal.needsUpdate = true;
   const rider = meshes.rider;
   if (rider === undefined) return;
@@ -368,15 +368,13 @@ function finish(meshes: ClassMeshes): void {
   if (rider.count > 0) rider.instanceMatrix.needsUpdate = true;
 }
 
-/** An instanced mesh of up to `cap` vehicles, drawing none until it is filled. */
-export function instanced(geometry: BufferGeometry, material: Material, shadow: boolean, cap: number): InstancedMesh {
-  const mesh = new InstancedMesh(geometry, material, cap);
-  // The instances are spread over hundreds of metres; the geometry's own bounds say nothing about them.
-  mesh.frustumCulled = false;
-  mesh.castShadow = shadow;
-  mesh.receiveShadow = true;
-  mesh.count = 0;
-  return mesh;
+/**
+ * A pool of up to `cap` vehicles, drawing none until it is filled. Every pool
+ * of one material shares its shader (`pool.ts`), so `material` must be drawn
+ * by pools and by nothing else.
+ */
+export function instanced(geometry: BufferGeometry, material: NodeMaterial, shadow: boolean, cap: number): Pool {
+  return new Pool(geometry, material, cap, shadow);
 }
 
 /** One part of the plan, box or lofted, as a geometry already standing in the vehicle's frame. */
