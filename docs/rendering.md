@@ -278,6 +278,11 @@ post chain and the colour grade in `docs/post.md`. The look all of it must keep 
   the fill that light the ground, and adds a dark blue that keeps the sea visible at night. The
   addon's diffuse term is `sunColour` squared with no tint, so a sun colour scaled by its intensity
   turns the sea white.
+- **Real water shows almost nothing of the mirror to a camera looking down.** Schlick's falloff
+  starts at 2 %, and the game's cameras look down, so no building showed in the sea. The falloff
+  starts at `MIRROR_FLOOR` (0.15) instead: spec section 7.2 makes reflections central to the night
+  look. At 0.25 the sky's reflection turned the day sea pale. A preview of the water needs the
+  camera above the sea: at seed 1 the chase view at (-295, 115) stands in a river bed, below it.
 - The top-down camera (`docs/camera.md`) never sees the sky, so the dome is drawn after the ground
   and the buildings and the depth buffer throws most of it away. It is still worth its draw:
   the water mirror looks up, so the sky is what the sea reflects.

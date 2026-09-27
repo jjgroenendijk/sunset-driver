@@ -74,6 +74,15 @@ import {
 /** Metres of depth over which the surface fades in at a shore. */
 const SHORE_FADE = 3;
 
+/**
+ * The share of the mirror the eye sees when it looks straight down on the sea.
+ * Real water reflects 2 % there, so from the game's camera, which looks down,
+ * no building showed in the water. Spec section 7.2 makes reflections central
+ * to the night look. At 0.15 the towers and their lit windows show, and the
+ * sea keeps its turquoise by day; at 0.25 the sky's reflection washed it pale.
+ */
+const MIRROR_FLOOR = 0.15;
+
 /** How solid the water is where it is deep. Short of opaque, so the seabed reads through it. */
 const DEEP_ALPHA = 0.93;
 
@@ -295,9 +304,10 @@ function drawWater(mesh: WaterMesh, waves: DataTexture): { resolutionScale: numb
   mesh.add(mirror.target);
 
   // What the sea is made of: the lit colour of the water itself where the eye
-  // stands squarely on it, and what the mirror shows where it grazes it.
+  // stands squarely on it, and what the mirror shows where it grazes it. The
+  // falloff is Schlick's, from `MIRROR_FLOOR` rather than from real water's 2 %.
   const theta = eyeDirection.dot(surfaceNormal).max(0);
-  const reflectance = float(1).sub(theta).pow(5).mul(0.98).add(0.02);
+  const reflectance = float(1).sub(theta).pow(5).mul(1 - MIRROR_FLOOR).add(MIRROR_FLOOR);
   const scatter = surfaceNormal.dot(eyeDirection).max(0).mul(waterColor);
   mesh.material.colorNode = mix(sunColor.mul(diffuse).mul(0.3).add(scatter), mirror.rgb.add(glare), reflectance);
   return mirror.reflector;
