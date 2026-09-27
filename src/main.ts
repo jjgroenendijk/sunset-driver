@@ -81,6 +81,23 @@ function mark(step: string): void {
   performance.mark(`load ${step}`);
 }
 
+/**
+ * Where a session starts: the nearest road to the core rather than wherever
+ * the origin happens to fall. The chunk workers are asked for the ground there
+ * at once, so they build it while `buildCity` holds this thread. A save starts
+ * somewhere else, and its ground is asked for once it is loaded.
+ */
+function startPlace(
+  description: WorldDescription,
+  world: WorldScene,
+  origin: { x: number; y: number },
+  load: boolean,
+): ReturnType<typeof nearestRoadPlace> {
+  const start = nearestRoadPlace(description, origin.x, origin.y);
+  if (!load && start) world.update(start.x, start.y, 0);
+  return start;
+}
+
 /** The loading screen of the session being started, so a failure can be put on it. */
 let loadingNow: LoadingScreen | null = null;
 
@@ -301,12 +318,12 @@ async function boot(): Promise<void> {
   }
   mark('plan');
   const world = new WorldScene(description, state.character);
+  const start = startPlace(description, world, state.player, choice.load);
   loading.say('Laying out the streets', LOADED.plan);
 
   // The city the seed is played in: the traffic, the crowd, the tram, the
   // police and the emergency services, and the ground the physics drives on
-  // (`city.ts`). The session starts on the nearest road to the core rather
-  // than wherever the origin happens to fall.
+  // (`city.ts`).
   const { ground, roads, traffic, busStops, corners, beach, crowd, tram, wildlife } = buildCity(state.seed, description, world);
   // The bells of spec section 13.2 are a function of the tick rather than part
   // of the record, so the audio is given the line itself to ask.
@@ -318,7 +335,6 @@ async function boot(): Promise<void> {
   audio.hearBuskers(corners);
   // The drivers of the traffic honk at what they stand behind (spec section 20.2).
   audio.hearTraffic(traffic);
-  const start = nearestRoadPlace(description, state.player.x, state.player.y);
   mark('city');
   // Rapier was fetched while the graphics were being set up, and this is the
   // first line that needs it.
