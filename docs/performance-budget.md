@@ -86,7 +86,7 @@ chase view, which sees the horizon, so every edge shows there. The third holds e
 answer back until four times its build, as a phone whose workers run on its slow cores; a hole it
 finds is streaming that falls behind. Chrome cannot throttle a worker, which is why the pool does
 it (`slowedWorker`, `chunk-pool.ts`). `--cpu-slowdown=N` slows the page alone. `--memory` adds what
-the page and the GPU hold. The fourth is the simulation, in Node.
+the page, the GPU and each chunk worker hold. The fourth is the simulation, in Node.
 
 ## Where the frame stands
 

@@ -77,6 +77,8 @@ export interface ProfileRequest {
   rings?: { near: number; far: number };
   /** How many times slower the chunk workers answer, as a phone's slow cores would (`slowedWorker`). */
   workerSlowdown?: number;
+  /** How many chunk workers to run instead of the pool's own count, to price a worker. */
+  workers?: number;
 }
 
 /** One frame, timed. */
@@ -171,7 +173,7 @@ export async function runProfile(request: ProfileRequest): Promise<ProfileResult
   const caches = renderer as unknown as RendererCaches;
 
   const world = generateWorld(request.seed);
-  const scene = new WorldScene(world, DEFAULT_APPEARANCE, streamOf(world, request.workerSlowdown ?? 1));
+  const scene = new WorldScene(world, DEFAULT_APPEARANCE, streamOf(world, request.workerSlowdown ?? 1, request.workers));
   scene.quality = tier;
   const tick = tickAtHour(request.hour);
   const weather = namedWeather(request.weather);
@@ -340,7 +342,12 @@ function batchKinds(scene: WorldScene, noCast: ReadonlySet<string>): Record<stri
   return kinds;
 }
 
-/** The chunk workers of a run: the scene's own, or ones that answer `slowdown` times later. */
-function streamOf(world: WorldDescription, slowdown: number): ChunkPool | undefined {
-  return slowdown > 1 ? new ChunkPool(world, () => slowedWorker(spawnChunkWorker(), slowdown)) : undefined;
+/**
+ * The chunk workers of a run: the scene's own, or `workers` of them, or ones
+ * that answer `slowdown` times later.
+ */
+function streamOf(world: WorldDescription, slowdown: number, workers?: number): ChunkPool | undefined {
+  if (slowdown <= 1 && workers === undefined) return undefined;
+  const spawn = slowdown > 1 ? () => slowedWorker(spawnChunkWorker(), slowdown) : spawnChunkWorker;
+  return new ChunkPool(world, spawn, workers);
 }

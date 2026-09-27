@@ -42,6 +42,8 @@
  *   --cpu-slowdown=N run the page N times slower, through Chrome's CPU
  *                    throttling. Chrome refuses to throttle a worker, so the
  *                    chunk workers run at full speed. The GPU is not slowed.
+ *   --workers=N      run N chunk workers instead of the pool's own count: with
+ *                    --memory, what one more worker costs the page.
  *   --worker-slowdown=N  hold each chunk worker's answer back until N times
  *                    its build: a phone whose workers land on its slow cores.
  *   --device=phone   the screen of an iPhone 13 Pro held sideways, 844x390 at
@@ -53,7 +55,8 @@
  *                    still frames, and at the most over the drive. The GPU is
  *                    counted by wrapping `createBuffer`, `createTexture` and
  *                    `destroy` (`src/render/frame/memory.ts`); the page's heap and its
- *                    typed arrays come from DevTools, after a collection.
+ *                    typed arrays come from DevTools, after a collection. Each
+ *                    chunk worker's heap and typed arrays are listed apart.
  *
  * GPU timings move by several milliseconds from one run to the next. Compare two
  * builds by running them in turn, more than once each.
@@ -63,7 +66,7 @@
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { chromium } from 'playwright-core';
+import { chromium, type CDPSession } from 'playwright-core';
 import { createServer, type ViteDevServer } from 'vite';
 import { seedFromString } from '../src/core/rng.ts';
 import { compareStrings } from '../src/core/sort.ts';
@@ -123,6 +126,7 @@ const request: ProfileRequest = {
   ...(quality === undefined ? {} : { quality }),
   ...(options.has('view') ? { view: options.get('view') as ProfileRequest['view'] } : {}),
   ...(options.has('rings') ? { rings: ringsOf(options.get('rings') as string) } : {}),
+  ...(options.has('workers') ? { workers: num('workers', 2) } : {}),
   ...(options.has('worker-slowdown') ? { workerSlowdown: num('worker-slowdown', 1) } : {}),
   ...(options.has('weather') ? { weather: options.get('weather') as string } : {}),
   noWater: options.has('no-water'),
@@ -142,6 +146,37 @@ const request: ProfileRequest = {
 interface HeapUsage {
   usedSize: number;
   backingStorageSize?: number;
+}
+
+/**
+ * The heaps of the chunk workers, in bytes: what `Runtime.getHeapUsage` on the
+ * page leaves out. A worker is reached through the browser's session, since a
+ * page's session does not see it.
+ */
+async function workerHeaps(cdp: CDPSession): Promise<number[]> {
+  const { targetInfos } = (await cdp.send('Target.getTargets')) as { targetInfos: { type: string; targetId: string }[] };
+  const workers = targetInfos.filter((t) => t.type === 'worker');
+  const heaps: number[] = [];
+  for (const { targetId } of workers) {
+    const { sessionId } = (await cdp.send('Target.attachToTarget', { targetId, flatten: false })) as { sessionId: string };
+    const answer = new Promise<number>((resolve) => {
+      const listen = (event: { sessionId: string; message: string }): void => {
+        if (event.sessionId !== sessionId) return;
+        const reply = JSON.parse(event.message) as { id: number; result?: HeapUsage };
+        if (reply.id !== 2) return;
+        cdp.off('Target.receivedMessageFromTarget', listen);
+        resolve((reply.result?.usedSize ?? 0) + (reply.result?.backingStorageSize ?? 0));
+      };
+      cdp.on('Target.receivedMessageFromTarget', listen);
+    });
+    // Collected first, as the page is, so the heap is what the worker keeps.
+    for (const [id, method] of [[1, 'HeapProfiler.collectGarbage'], [2, 'Runtime.getHeapUsage']] as const) {
+      await cdp.send('Target.sendMessageToTarget', { sessionId, message: JSON.stringify({ id, method }) });
+    }
+    heaps.push(await answer);
+    await cdp.send('Target.detachFromTarget', { sessionId });
+  }
+  return heaps;
 }
 
 const mb = (bytes: number): string => `${(bytes / 2 ** 20).toFixed(0)} MB`;
@@ -265,6 +300,7 @@ try {
   let result: ProfileResult;
   let cpu: CpuSummary | undefined;
   let heap: { settled: HeapUsage; peak: HeapUsage } | undefined;
+  let workers: number[] = [];
   if (request.gate === true) {
     await page.waitForFunction('window.driveReady === true', undefined, { timeout: 600_000 });
     const cdp = await page.context().newCDPSession(page);
@@ -275,6 +311,7 @@ try {
       const settled = (await cdp.send('Runtime.getHeapUsage')) as HeapUsage;
       const peak = { ...settled };
       heap = { settled, peak };
+      workers = await workerHeaps(await browser.newBrowserCDPSession());
       watching = true;
       watch = (async () => {
         while (watching) {
@@ -349,7 +386,8 @@ try {
       `memory settled: gpu ${mb(gpu.total)} (vertex ${mb(gpu.vertex)}, index ${mb(gpu.index)}, ` +
         `textures ${mb(gpu.textures)}, other buffers ${mb(gpu.otherBuffers)}) | ` +
         `js heap ${mb(heap.settled.usedSize)}, typed arrays ${mb(heap.settled.backingStorageSize ?? 0)}, ` +
-        `of them scene geometry ${mb(memory.geometry)}`,
+        `of them scene geometry ${mb(memory.geometry)} | ` +
+        `chunk workers ${workers.map(mb).join(', ')}`,
     );
     console.log(
       `memory drive peak: gpu ${mb(memory.drivePeak)} | js heap ${mb(heap.peak.usedSize)}, ` +
