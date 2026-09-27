@@ -39,6 +39,9 @@
  *                    Default top-down.
  *   --rings=N,F      the near and far streaming rings, in chunks, instead of
  *                    the tier's own: what a draw distance costs.
+ *   --cpu-slowdown=N run the page and its chunk workers N times slower, through
+ *                    Chrome's CPU throttling: a phone whose workers land on
+ *                    its slow cores. The GPU is not slowed.
  *   --device=phone   the screen of an iPhone 13 Pro held sideways, 844x390 at
  *                    3x, and the tier a touch session starts on. The GPU is
  *                    still this machine's: `docs/performance-budget.md` says
@@ -244,6 +247,10 @@ try {
     deviceScaleFactor: dpr,
   });
   page.on('pageerror', (error) => console.error(`page error: ${error.message}`));
+  if (options.has('cpu-slowdown')) {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: num('cpu-slowdown', 1) });
+  }
   // WebGPU is offered to a secure page only, so the page is served rather than opened blank.
   await page.goto(new URL('scripts/render-profile.html', url).href);
   await page.waitForFunction('window.profileReady === true');
