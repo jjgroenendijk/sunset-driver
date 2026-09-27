@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildShops,
+  groundFloorOf,
+  holdsShop,
   roomOf,
+  TALL_SHOP_DEPTH,
+  TALL_SHOP_SHARE,
   SHOP_KINDS,
   SHOP_ORDER,
   SHOP_FRONT,
@@ -18,6 +22,8 @@ import {
   type Shop,
 } from '../../../src/world/city/shops.ts';
 import { compareStrings } from '../../../src/core/sort.ts';
+import { batchOf, facadeFootprint, plan } from '../../../src/render/buildings/building-plan.ts';
+import { shapeOf } from '../../../src/render/buildings/building-shape.ts';
 import type { Building, BuildingKind, BuildingMap } from '../../../src/world/city/buildings.ts';
 import type { District, WorldDescription, Zone } from '../../../src/world/types.ts';
 
@@ -30,7 +36,7 @@ function district(id: number, wealth: number, zone: Zone = 'inner'): District {
  * A building on a lot 10 m across and 14 m deep, fronting north. The shops read
  * the front, the facing, the width and the depth of one and nothing else.
  */
-function building(id: number, districtId: number, kind: BuildingKind = 'shop-row'): Building {
+function building(id: number, districtId: number, kind: BuildingKind = 'shop-row', width = 10, depth = 14): Building {
   const x = id * 12;
   return {
     id,
@@ -38,14 +44,14 @@ function building(id: number, districtId: number, kind: BuildingKind = 'shop-row
     kind,
     seed: id + 1,
     lot: [
-      { x: x - 5, y: 0 },
-      { x: x + 5, y: 0 },
-      { x: x + 5, y: -14 },
-      { x: x - 5, y: -14 },
+      { x: x - width / 2, y: 0 },
+      { x: x + width / 2, y: 0 },
+      { x: x + width / 2, y: -depth },
+      { x: x - width / 2, y: -depth },
     ],
-    area: 140,
-    width: 10,
-    depth: 14,
+    area: width * depth,
+    width,
+    depth,
     front: { x, y: 0 },
     // Facing +y: the road runs along the front of the row.
     facing: Math.PI / 2,
@@ -85,9 +91,51 @@ describe('shops', () => {
     expect(shops.map((shop) => shop.kind)).toEqual(SHOP_ORDER.slice(0, 2));
   });
 
-  it('gives a district with no shop row no shop at all', () => {
-    const shops = buildShops(world([district(0, 0.5)]), map(street(0, 0, ['tower', 'house', 'warehouse'])));
+  it('gives a district with no shop row and no tower no shop at all', () => {
+    const shops = buildShops(world([district(0, 0.5)]), map(street(0, 0, ['house', 'warehouse', 'roadhouse'])));
     expect(shops).toEqual([]);
+  });
+
+  it('opens a shop on the ground floor of some of the towers', () => {
+    const towers = Array.from({ length: 400 }, (_, i) => building(i, 0, i % 2 === 0 ? 'tower' : 'mid-rise', 24, 16));
+    const share = towers.filter(holdsShop).length / towers.length;
+    expect(share).toBeGreaterThan(TALL_SHOP_SHARE - 0.08);
+    expect(share).toBeLessThan(TALL_SHOP_SHARE + 0.08);
+    // A deep lot may be massed round a yard, so it takes none.
+    expect(towers.map((b) => ({ ...b, depth: TALL_SHOP_DEPTH + 1 })).some(holdsShop)).toBe(false);
+    const shops = buildShops(world([district(0, 0.5)]), map(towers));
+    expect(shops.map((shop) => shop.kind)).toContain('broker');
+  });
+
+  it('puts a tower shop on the wall its shell is built with, square to the front', () => {
+    for (const [width, depth] of [[24, 16], [11, 11], [30, 20], [14, 18]] as const) {
+      for (const kind of ['tower', 'mid-rise'] as const) {
+        const b = building(3, 0, kind, width, depth);
+        const ground = groundFloorOf(b);
+        const massing = plan(b);
+        const shell = batchOf(kind, massing) === 'facade' ? facadeFootprint(massing) : massing;
+        // The lot fronts +y at y = 0, so the front wall stands this far in.
+        expect(-ground.y).toBeCloseTo((depth - shell.depth) / 2, 6);
+        expect(ground.x).toBeCloseTo(b.front.x, 6);
+      }
+    }
+  });
+
+  it('only opens a tower shop where the box on the ground covers the whole footprint', () => {
+    for (let seed = 0; seed < 400; seed++) {
+      for (const kind of ['tower', 'mid-rise'] as const) {
+        const massing = { width: 40, depth: TALL_SHOP_DEPTH - 1, height: 120 };
+        // A step is two halves side by side, and a podium the podium: each
+        // point of the footprint is under one of the boxes on the ground.
+        const ground = shapeOf(seed, kind, massing).parts.filter((part) => part.from === 0);
+        for (let x = -0.49; x < 0.5; x += 0.07) {
+          for (let z = -0.49; z < 0.5; z += 0.07) {
+            const under = ground.some((p) => Math.abs(x - p.x) <= p.width / 2 && Math.abs(z - p.z) <= p.depth / 2);
+            expect(under).toBe(true);
+          }
+        }
+      }
+    }
   });
 
   it('keeps each district to its own buildings and numbers the shops in district order', () => {
