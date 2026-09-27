@@ -71,6 +71,15 @@ const LOADED = { plan: 0.35, ground: 0.85 };
  */
 const TOUCH_START_TIER = 1;
 
+/**
+ * Mark a step of the load on the page's timeline, as `load <step>`.
+ * `scripts/load-profile.ts` reads the marks back, and the Performance panel of
+ * DevTools draws them (`docs/loading.md`).
+ */
+function mark(step: string): void {
+  performance.mark(`load ${step}`);
+}
+
 /** The loading screen of the session being started, so a failure can be put on it. */
 let loadingNow: LoadingScreen | null = null;
 
@@ -95,7 +104,10 @@ async function boot(): Promise<void> {
   // where it is first needed. The error is carried rather than thrown, because
   // nothing is awaiting this promise yet.
   const physicsReady: Promise<Error | null> = initPhysics().then(
-    () => null,
+    () => {
+      mark('physics');
+      return null;
+    },
     (error: unknown) => (error instanceof Error ? error : new Error(String(error))),
   );
 
@@ -108,6 +120,7 @@ async function boot(): Promise<void> {
   say('Starting the graphics…');
   const canvas = document.getElementById('game') as HTMLCanvasElement;
   const renderer = await createRenderer(canvas);
+  mark('renderer');
   document.getElementById('splash')?.remove();
   canvas.hidden = false;
 
@@ -258,6 +271,7 @@ async function boot(): Promise<void> {
   });
 
   history.replaceState(null, '', writeSeedToHash(location.hash, choice.seed));
+  mark('start');
 
   // The wait between the title screen and the street. It is drawn rather than
   // announced: every step the screen shows is one really being taken, and
@@ -281,6 +295,7 @@ async function boot(): Promise<void> {
     console.error(error);
     return;
   }
+  mark('plan');
   const world = new WorldScene(description, state.character);
   loading.say('Laying out the streets', LOADED.plan);
 
@@ -300,6 +315,7 @@ async function boot(): Promise<void> {
   // The drivers of the traffic honk at what they stand behind (spec section 20.2).
   audio.hearTraffic(traffic);
   const start = nearestRoadPlace(description, state.player.x, state.player.y);
+  mark('city');
   // Rapier was fetched while the graphics were being set up, and this is the
   // first line that needs it.
   const physicsError = await physicsReady;
@@ -310,6 +326,7 @@ async function boot(): Promise<void> {
     return;
   }
   let physics = new SimPhysics(ground, state);
+  mark('physics world');
   physics.spawn(state, start?.x ?? state.player.x, start?.y ?? state.player.y, start?.heading ?? 0);
   // The session starts on foot beside the car rather than behind its wheel.
   physics.alight(state);
@@ -356,7 +373,9 @@ async function boot(): Promise<void> {
   // The parcels are built in the chunk workers, so every place dealt over them
   // is known once a worker has answered, which `settle` waited for. `places.ts`
   // asks each system where its own places stand and fills the ground with them.
+  mark('ground');
   const places = buildPlaces(state.seed, description, world, roads, ground);
+  mark('places');
   const { metro, shops, dealers, safehouses, turf, missions, parked } = places;
 
   loading.say('Getting the first frame ready', LOADED.ground);
@@ -370,6 +389,7 @@ async function boot(): Promise<void> {
   // means the first frame is antialiased like every frame after it.
   const post = new PostChain(renderer, world.scene, camera.camera, undefined, state.seed, world.cutaway);
   await post.ready();
+  mark('post');
   // The tier the session opens on has to be put on the two halves that draw at
   // it, because nothing has changed a tier yet for `applyQuality` to report.
   drawAt(world, post, drawnTier(settings.graphics, quality));
@@ -425,6 +445,7 @@ async function boot(): Promise<void> {
   // The presses that open a menu, a map or a picker (`keys.ts`).
   listenForKeys(window, { state, pause, map, minimap, picker, weapons, free, camera, look, view: menuSettings.view });
 
+  mark('menus');
   const views = buildViews(world, { traffic, busStops, corners, beach, crowd, tram, wildlife }, parked, emergencyCrews.standing, giverBodies.markers);
 
   // WebGPU compiles a pipeline the first time it draws with it, so a session
@@ -439,6 +460,7 @@ async function boot(): Promise<void> {
       LOADED.ground + (done / Math.max(total, 1)) * (1 - LOADED.ground),
     );
   });
+  mark('shaders');
 
   session = {
     ...views,
@@ -505,6 +527,7 @@ async function boot(): Promise<void> {
   // The city is handed over rather than cut to: the screen waits for the first
   // frame of the session to be drawn under it and then fades off it.
   await loading.reveal();
+  mark('revealed');
   loadingNow = null;
 }
 
