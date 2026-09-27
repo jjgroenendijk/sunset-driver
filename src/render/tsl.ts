@@ -236,6 +236,17 @@ export const bloom = bloomNode as unknown as (
 /** Subpixel morphological antialiasing. It wants linear colour, not encoded. */
 export const smaa = smaaNode as unknown as (colour: TslNode) => TslNode;
 
+/**
+ * Draw a node into a texture of its own each frame, and read it back from
+ * there. `options` goes to the render target, as `{ depthBuffer: false }`.
+ */
+export const rtt = tsl.rtt as unknown as (
+  node: TslNode,
+  width?: number | null,
+  height?: number | null,
+  options?: { depthBuffer?: boolean },
+) => TslNode;
+
 
 // The crowd of spec section 13.1: a skinned body drawn instanced, its bones read from a texture.
 

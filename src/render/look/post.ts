@@ -66,6 +66,7 @@ import {
   mix,
   pass,
   renderOutput,
+  rtt,
   smaa,
   step,
   texture3D,
@@ -389,6 +390,8 @@ export class PostChain {
       effects.push(edges);
       antialias = edges;
       colour = edges;
+    } else {
+      colour = atSmaaDepth(colour, effects);
     }
 
     // The tone mapping above is the frame's; this is the encode the display
@@ -413,6 +416,25 @@ export class PostChain {
     const graded = lut3D(encoded, texture3D(this.lut), LUT_SIZE, 1);
     return vec4(graded.rgb.pow(LUT_GAMMA), colour.a);
   }
+}
+
+/**
+ * Draw a frame without SMAA as deep in the renderer's calls as SMAA draws it.
+ *
+ * three.js keys a program on its render context, and the context on the
+ * renderer's call depth. SMAA draws its quads a call deep, and reads the frame
+ * through a texture it draws a call deeper still, so the scene pass under it is
+ * drawn three calls deep. Read straight from the output, the scene pass is one
+ * call deep, and every material of the city is a program of its own there: 3.5 s
+ * of the loading screen on an Apple M1, and each program held twice (issue #783).
+ * Two copies of the frame put the scene pass where SMAA puts it, for the price of
+ * two full-screen copies. They carry no depth, which the frame no longer needs.
+ */
+function atSmaaDepth(colour: TslNode, effects: TslNode[]): TslNode {
+  const inner = rtt(colour, null, null, { depthBuffer: false });
+  const outer = rtt(inner, null, null, { depthBuffer: false });
+  effects.push(inner, outer);
+  return outer;
 }
 
 /**
