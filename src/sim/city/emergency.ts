@@ -46,6 +46,7 @@ import type { TrafficRoads } from '../traffic/traffic.ts';
 import { UnitRoads, type DrivePose } from '../police/unit-route.ts';
 import { specOf } from '../vehicles/vehicle.ts';
 import { hookUp, type TowLoad } from './tow-truck.ts';
+import { ParkingWardens } from '../traffic/ticket.ts';
 
 /**
  * What a unit is: the engine that answers a fire, the ambulance that answers a
@@ -316,6 +317,8 @@ function full(state: SimState, kind: EmergencyKind): boolean {
 export class EmergencyServices {
   private readonly roads: UnitRoads;
   private readonly districtAt: DistrictAt;
+  /** The parking wardens, who ticket the player's car where it stands badly and call a truck for it. */
+  private readonly wardens: ParkingWardens;
   private readonly pose: DrivePose = { x: 0, y: 0, height: 0, heading: 0 };
   /** The units that were out last tick, so the routes of the ones that have gone are forgotten. */
   private out: number[] = [];
@@ -323,6 +326,7 @@ export class EmergencyServices {
   constructor(roads: TrafficRoads, districtAt: DistrictAt) {
     this.roads = new UnitRoads(roads);
     this.districtAt = districtAt;
+    this.wardens = new ParkingWardens(roads);
   }
 
   /**
@@ -338,6 +342,7 @@ export class EmergencyServices {
     // what says an unanswered one is over.
     const fires = firesOf(state);
     this.listen(state, fires, crash);
+    this.wardens.step(state);
     this.dispatch(state);
     for (const unit of state.emergency.units) this.drive(state, unit);
     this.close(state, fires);

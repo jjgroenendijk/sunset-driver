@@ -24,7 +24,8 @@ getting into a vehicle and out of it.
 metro. Read it instead when the work is one of those. The tram has `docs/tram.md` of its own,
 the pedestrians `docs/crowd.md`, and how the cars and the people keep out of each other near the
 player — the holds, a car steering round what stands in its lane, a person stepping out of a car's
-way — `docs/giving-way.md`. The aircraft, their flight, the airside and the hangar are in
+way — `docs/giving-way.md`. The tow trucks, the wrecks they take and the parking tickets are in
+`docs/towing.md`. The aircraft, their flight, the airside and the hangar are in
 `docs/aircraft.md`.
 
 `docs/menus.md` holds the screens around play: the title screen and its menu walk, the loading

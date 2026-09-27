@@ -51,5 +51,8 @@ export function swapInto(state: SimState, id: number): void {
   record.vehicle = state.vehicle;
   record.paint = state.vehicle.paint;
   record.left = true;
+  // The ticket went with the car the player drove off in, not onto the one they left.
+  delete record.offence;
+  delete record.ticket;
   state.vehicle = stolen;
 }

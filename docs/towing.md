@@ -1,14 +1,15 @@
-# Towing
+# Towing and tickets
 
-The gotchas of the tow trucks of spec section 20.2: the wrecks the city takes away and what it
-drops unseen. The code is `src/sim/traffic/tow.ts` and
-`src/sim/city/tow-truck.ts`. The truck is dispatched and driven by
+The gotchas of the tow trucks of spec section 20.2: the wrecks the city takes away, the player's
+car it tickets and tows, and what it drops unseen. The code is `src/sim/traffic/tow.ts`,
+`src/sim/traffic/ticket.ts` and `src/sim/city/tow-truck.ts`. The truck is dispatched and driven by
 `src/sim/city/emergency.ts`, which `docs/sim-and-ui.md` covers. The parked cars and the traffic
 are in `docs/city-life.md`.
 
 ## Contents
 
 - The wrecks the city tows
+- Parking tickets
 
 ## The wrecks the city tows
 
@@ -30,6 +31,18 @@ are in `docs/city-life.md`.
   dropped as soon as the player is that far. `TOW_REACH` is wider than `TRAFFIC_VIEW` and than the
   physics box, so nothing vanishes on screen and a dropped record never leaves a Rapier body.
 - The player's own car, left where they took another, carries `left` and is never dropped. It is
-  still there on their return, as spec section 20.2 asks.
+  still there on their return, as spec section 20.2 asks, unless the wardens tow it (below).
 - A burnt-out parked car is promoted under `PARKED_ID` plus its bay, and the bay stays empty while
   that record lasts, so towing it also gives the kerb back to `parked.ts`.
+
+## Parking tickets
+
+- `src/sim/traffic/ticket.ts` is the wardens. `EmergencyServices` owns them, since it holds the
+  roads. Every `WARDEN_EVERY` ticks they look at the player's `left` car. `offenceAt` says where no
+  car may stand: inside a junction's outline, on the crossing just outside a mouth, or on a
+  pavement. A car in any road's carriageway, `KERB_SLACK` included, is in the road, not on a
+  pavement.
+- A car that has stood still on such a place for `TICKET_AFTER` ticks is ticketed: `FINE` comes off
+  the money and `ticket` goes on the record. `job-tops.ts` draws the yellow slip on its roof. Still
+  there `TOW_AFTER` ticks later, it calls a tow truck. A car that moves forgets how long it stood,
+  and `swapInto` drops the ticket when the player takes the car back.

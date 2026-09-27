@@ -184,6 +184,10 @@ export interface PromotedVehicle {
   vehicle: VehicleState;
   /** True for the player's own vehicle, left under this id when they took another: it stays where they left it. */
   left?: boolean;
+  /** The tick a left vehicle was first seen standing where it should not (`ticket.ts`). */
+  offence?: number;
+  /** The tick a left vehicle was ticketed on. A truck comes for it if it stays. */
+  ticket?: number;
 }
 
 /** What the simulation record holds of the traffic: only what has left its trajectory. */
