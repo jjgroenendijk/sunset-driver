@@ -31,7 +31,10 @@
  *                  area, by file and by function. --cpuprofile=sim.cpuprofile
  *                  also writes the profile, for Chrome DevTools.
  *   --json=<file>  write every tick's times, for `profile-compare.ts`.
+ *   --hash         print a hash of the whole state after the last tick. A
+ *                  change that only makes the step faster keeps it the same.
  */
+import { createHash } from 'node:crypto';
 import { Session as Inspector } from 'node:inspector/promises';
 import { performance } from 'node:perf_hooks';
 import { seedFromString } from '../src/core/rng.ts';
@@ -190,6 +193,7 @@ for (const [name, values] of series) {
 }
 const over = (series.get('tick') ?? []).filter((v) => v > 1000 / 60).length;
 console.log(`${over} ticks over 16.7 ms`);
+if (options.has('hash')) console.log(`state hash ${createHash('sha256').update(JSON.stringify(state)).digest('hex').slice(0, 16)}`);
 
 const json = options.get('json');
 if (json !== undefined) {
