@@ -128,7 +128,8 @@ const BILLBOARD_MAX_WALL = 28;
  * Which board a kind of building carries. A storefront and a roadhouse carry
  * their own sign; the flat wide roofs carry the advertising. A tower carries
  * neither: its wall is the generated glass of spec section 10.3 and its roof is
- * too far up to read.
+ * too far up to read. A tower or a mid-rise with a shop on its ground floor
+ * carries that shop's fascia instead (`signsIn`).
  */
 const SIGN_KIND: Partial<Record<BuildingKind, 'fascia' | 'billboard'>> = {
   'shop-row': 'fascia',
@@ -212,7 +213,9 @@ export function signsIn(
   const out: Sign[] = [];
   for (const placed of placements) {
     const building = placed.building;
-    const shape = SIGN_KIND[building.kind];
+    // A tower whose ground floor is a shop carries that shop's fascia over its
+    // door, whatever its kind carries otherwise.
+    const shape = tradeOf(building) === undefined ? SIGN_KIND[building.kind] : 'fascia';
     if (shape === undefined) continue;
     const district = lookup.districtOf(building);
     if (shape === 'billboard') {

@@ -26,7 +26,7 @@ import { GradedLand } from '../../src/world/carve/graded-land.ts';
 import { Heightfield } from '../../src/world/terrain/heightfield.ts';
 import { LandMasses } from '../../src/world/terrain/landmass.ts';
 import { type Parcel } from '../../src/world/city/parcels.ts';
-import { buildShops, roomOf, MAX_LICENCE, MIN_LICENCE, SHOP_KINDS, type Shop } from '../../src/world/city/shops.ts';
+import { buildShops, holdsShop, roomOf, MAX_LICENCE, MIN_LICENCE, SHOP_KINDS, type Shop } from '../../src/world/city/shops.ts';
 import { TIERS } from '../../src/world/roads/tiers.ts';
 import { type Beach, type Corridor, type Point, type RoadCurve, type WorldDescription } from '../../src/world/types.ts';
 import { ringArea } from '../support/helpers.ts';
@@ -221,7 +221,7 @@ function checkOwnedSand(w: WorldDescription, footprint: RoadFootprint, parcels: 
 function checkShop(shop: Shop, buildings: BuildingMap, fault: Fault): void {
   const row = buildings.buildings[shop.building];
   if (row === undefined) fault(`shop ${shop.id} stands on no building`);
-  else if (row.kind !== 'shop-row') fault(`shop ${shop.id} stands on a ${row.kind}`);
+  else if (!holdsShop(row)) fault(`shop ${shop.id} stands on a ${row.kind}`);
   else if (row.district !== shop.district) fault(`shop ${shop.id} is in the wrong district`);
   if (shop.licence < MIN_LICENCE || shop.licence > MAX_LICENCE) fault(`shop ${shop.id} holds licence ${shop.licence}`);
   // The room it holds stands inside the lot the building was given.

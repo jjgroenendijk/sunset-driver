@@ -2,10 +2,11 @@
  * Which buildings are shops (spec section 16.1).
  *
  * A handful of shop types are enterable; every other building is exterior only
- * (spec section 10.3). This says which shop row holds which of them. The row
- * itself is a building like any other: `buildings.ts` has already put it on its
- * lot, and a shop is that building with a trade written on it, so nothing here
- * moves a wall or claims a piece of ground.
+ * (spec section 10.3). This says which shop row, or which tower's ground floor,
+ * holds which of them. The building itself is a building like any other:
+ * `buildings.ts` has already put it on its lot, and a shop is that building with
+ * a trade written on it, so nothing here moves a wall or claims a piece of
+ * ground.
  *
  * The shops are dealt by district, one trade per building. A district's own
  * shop rows are its high street, and {@link SHOP_ORDER} is the order the trades
@@ -18,6 +19,7 @@
  * buildings. Built in the chunk workers beside the buildings, like the police
  * and metro stations, and answered to the main thread once.
  */
+import { hashInts } from '../../core/hash.ts';
 import { spread } from '../../core/math.ts';
 import { genRng, Subsystem } from '../../core/rng.ts';
 import { cos, sin } from '../../core/libm.ts';
@@ -76,6 +78,37 @@ export const SHOP_ORDER: readonly ShopKind[] = [
  */
 export const VENUE_ROWS = 12;
 export const MAX_EXTRA_VENUES = 4;
+
+/**
+ * The share of the tall buildings whose ground floor is a shop. A tower's
+ * ground floor is a row of shopfronts (`docs/buildings.md`), and a high street
+ * of the core runs past towers as often as past shop rows.
+ */
+export const TALL_SHOP_SHARE = 0.3;
+
+/**
+ * The deepest lot a tall building may stand on and still take a shop. A deeper
+ * one may be massed as an L, a U or a courtyard (`building-shape.ts`), whose
+ * front wing is too shallow for a room: the room would stand out of the back
+ * of the wing into the yard. On a shallower lot the box on the ground covers
+ * the whole footprint.
+ */
+export const TALL_SHOP_DEPTH = 20;
+
+/**
+ * Metres a tall building's ground floor stands in from the front of its lot:
+ * its margin, and for a generated facade the reach of the cornices the
+ * generator is drawn in from. The shop's front is put on that wall, not on
+ * the edge of the lot. `test/world/city/shops.test.ts` holds these to the
+ * numbers `building-plan.ts` builds the shell with.
+ */
+const TALL_MARGIN = 0.5;
+const TALL_CORNICE = 2;
+/** Metres of facade the generator needs each way, past which a tall building is a block. */
+const TALL_MIN_FACADE = 8;
+
+/** The salt of the draw that says whether a tower's ground floor is a shop. */
+const SALT_TALL_SHOP = 0x5409;
 
 /** The lowest and the highest licence a weapon shop can hold (spec section 16.1). */
 export const MIN_LICENCE = 1;
@@ -201,16 +234,17 @@ export function buildShops(world: WorldDescription, buildings: BuildingMap): Sho
     const picks = spread(rows.length, trades.length, Math.floor(rng.float() * rows.length));
     for (let i = 0; i < trades.length; i++) {
       const row = rows[picks[i] as number] as Building;
+      const ground = groundFloorOf(row);
       shops.push({
         id: shops.length,
         kind: trades[i] as ShopKind,
         building: row.id,
         district,
-        x: row.front.x,
-        y: row.front.y,
+        x: ground.x,
+        y: ground.y,
         facing: row.facing,
-        width: row.width,
-        depth: row.depth,
+        width: ground.width,
+        depth: ground.depth,
         licence: licenceFor(world.districts[district]),
         wealth: world.districts[district]?.wealth ?? 0,
       });
@@ -233,17 +267,49 @@ export function tradesFor(rows: number): ShopKind[] {
 }
 
 /**
- * The shop rows of each district, by district id, ascending by building id. A
- * district with none has an empty street and takes no shop: nothing here turns
- * a house or a tower into one.
+ * The buildings of each district that can hold a shop, by district id,
+ * ascending by building id: every shop row, and {@link TALL_SHOP_SHARE} of the
+ * towers and mid-rises on a lot shallow enough. A district with none has an
+ * empty street and takes no shop: nothing here turns a house into one.
  */
 function highStreets(world: WorldDescription, buildings: readonly Building[]): Building[][] {
   const streets: Building[][] = world.districts.map(() => []);
   for (const building of buildings) {
-    if (building.kind !== 'shop-row') continue;
+    if (!holdsShop(building)) continue;
     streets[building.district]?.push(building);
   }
   return streets;
+}
+
+/** Whether a building's ground floor can be a shop. */
+export function holdsShop(building: Building): boolean {
+  if (building.kind === 'shop-row') return true;
+  if (building.kind !== 'tower' && building.kind !== 'mid-rise') return false;
+  if (building.depth > TALL_SHOP_DEPTH) return false;
+  return hashInts(building.seed, SALT_TALL_SHOP) / 0x100000000 < TALL_SHOP_SHARE;
+}
+
+/**
+ * The front of a building's ground floor: the middle of its front wall, and
+ * the width and the depth of the ground behind it. A shop row's room stands on
+ * the edge of its lot, as it always has. A tall building's front wall stands
+ * {@link TALL_MARGIN} in, and a generated facade {@link TALL_CORNICE} more,
+ * so its shop starts at that wall and not out on the pavement.
+ */
+export function groundFloorOf(building: Building): { x: number; y: number; width: number; depth: number } {
+  const { front, facing, width, depth } = building;
+  if (building.kind !== 'tower' && building.kind !== 'mid-rise') return { x: front.x, y: front.y, width, depth };
+  // A side edge the lot shares takes no margin (`building-plan.ts`).
+  const sides = (building.shared.left ? 0 : 1) + (building.shared.right ? 0 : 1);
+  const massing = { width: width - sides * TALL_MARGIN, depth: depth - 2 * TALL_MARGIN };
+  const facade = Math.min(massing.width, massing.depth) - 2 * TALL_CORNICE >= TALL_MIN_FACADE;
+  const inset = TALL_MARGIN + (facade ? TALL_CORNICE : 0);
+  return {
+    x: front.x - cos(facing) * inset,
+    y: front.y - sin(facing) * inset,
+    width: width - 2 * inset,
+    depth: depth - 2 * inset,
+  };
 }
 
 /**
