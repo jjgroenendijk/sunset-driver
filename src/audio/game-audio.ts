@@ -11,14 +11,16 @@
  * Everything below the door is split in two: `plan.ts` decides what to play,
  * from the record alone and with no Tone.js anywhere in it, and `mixer.ts`
  * plays it. That is what lets the rules be tested headless.
+ *
+ * Tone.js is not in the page's first download: `graph.ts` is loaded once the
+ * first gesture has unlocked the audio, so a muted game never fetches it.
  */
-import { getContext, start } from 'tone';
 import type { InputFrame } from '../sim/input.ts';
 import type { SimState } from '../sim/simulation.ts';
 import type { SiteSource } from './ambience.ts';
 import type { BuskerSource } from './busking.ts';
 import type { HonkSource } from './honks.ts';
-import { Mixer } from './mixer.ts';
+import type { Mixer } from './mixer.ts';
 import { AudioPlanner, type BellSource } from './plan.ts';
 import type { Listener } from './space.ts';
 
@@ -40,9 +42,16 @@ export interface OnAirLine {
   from: string;
 }
 
+/** The half of the audio that holds Tone.js, loaded after the first gesture. */
+type Graph = typeof import('./graph.ts');
+
 export class GameAudio {
   private readonly planner = new AudioPlanner();
   private mixer: Mixer | null = null;
+  /** The context the first gesture made, or null before one has arrived. */
+  private context: AudioContext | null = null;
+  /** `graph.ts`, once it has loaded. */
+  private graph: Graph | null = null;
   /** True once the browser has handed over a running audio context. */
   private running = false;
   private silent: boolean;
@@ -141,7 +150,7 @@ export class GameAudio {
    * screen.
    */
   update(state: SimState, input: InputFrame, listener: Listener): void {
-    if (this.silent || !this.running) {
+    if (this.silent || !this.running || this.graph === null || this.context === null) {
       this.air = null;
       return;
     }
@@ -149,7 +158,7 @@ export class GameAudio {
     this.resting = false;
     this.wake();
     if (this.mixer === null) {
-      this.mixer = new Mixer();
+      this.mixer = this.graph.mixerOn(this.context);
       this.mixer.start();
       this.planner.resync(state);
     }
@@ -208,12 +217,9 @@ export class GameAudio {
    */
   private wake(): void {
     const suspend = this.running && (this.resting || this.hidden);
-    if (suspend === this.suspended || !this.running) return;
+    if (suspend === this.suspended || !this.running || this.context === null) return;
     this.suspended = suspend;
-    const context = getContext().rawContext;
-    // Only a realtime context can be suspended without a time to do it at.
-    if (!('close' in context)) return;
-    const done = suspend ? context.suspend() : context.resume();
+    const done = suspend ? this.context.suspend() : this.context.resume();
     done.catch((error: unknown) => console.warn('The browser would not change the audio state.', error));
   }
 
@@ -228,18 +234,27 @@ export class GameAudio {
   }
 
   /**
-   * `start` has to be called from the gesture itself, so it is called here and
-   * the promise is only used to record that the context came up.
+   * The context has to be made and resumed from the gesture itself, so it is
+   * done here, before Tone.js is loaded; the promises only record that the
+   * context came up and that the graph arrived.
    */
   private readonly onGesture = (): void => {
     if (this.running || this.silent) return;
-    void start().then(
+    this.context ??= new AudioContext({ latencyHint: 'interactive' });
+    void this.context.resume().then(
       () => {
         this.running = true;
         if (this.target === null) return;
         for (const event of GESTURES) this.target.removeEventListener(event, this.onGesture);
       },
       (error: unknown) => console.warn('The browser would not start the audio.', error),
+    );
+    if (this.graph !== null) return;
+    void import('./graph.ts').then(
+      (graph) => {
+        this.graph = graph;
+      },
+      (error: unknown) => console.warn('The audio could not be loaded.', error),
     );
   };
 }
