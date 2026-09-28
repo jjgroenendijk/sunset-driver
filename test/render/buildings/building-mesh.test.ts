@@ -13,6 +13,7 @@ import {
   type BuildingLookup,
   type BuildingPlacement,
 } from '../../../src/render/buildings/building-mesh.ts';
+import { leanOf } from '../../../src/render/buildings/building-plan.ts';
 import { CHUNK_DRAW_CALL_CAP, chunkDrawCalls } from '../../../src/render/streaming/chunk-cost.ts';
 import type { Building, BuildingKind } from '../../../src/world/city/buildings.ts';
 import { buildLayers, chunkBounds, ChunkSource, CHUNK_SIZE, type WorldChunk } from '../../../src/world/chunks.ts';
@@ -267,6 +268,31 @@ describe('a building on its lot', () => {
         });
         expect(outside, `${where}, off its ground`).toBe(0);
       }
+    }
+  });
+
+  it('builds a skewed lot as wide as it is leaned, so its facade is not stretched', () => {
+    // A lot whose side edges lean 12 m over its 26 m of depth. The widest box
+    // square to its front is 8 m, but the lean maps the shell onto the 20 m
+    // between the side edges: built at 8 m, its bays came out 2.5 times as wide.
+    const lot = [
+      { x: -10, y: 0 },
+      { x: 10, y: 0 },
+      { x: 22, y: 26 },
+      { x: 2, y: 26 },
+    ];
+    for (const kind of KINDS) {
+      const building = buildingOf(kind, 8, 26, { lot, front: { x: 0, y: 0 }, shared: { left: true, right: true } });
+      const massing = massingOf(building, QUIET, 0);
+      const lean = leanOf(building, massing);
+      expect(lean?.scale, kind).toBeCloseTo(1, 6);
+      expect(lean?.shift, kind).toBeCloseTo(0, 6);
+      const one = placed([building], lookupOf(undefined, 0, QUIET))[0] as BuildingPlacement;
+      let outside = 0;
+      eachWorldVertex(one.shell, one, (vertex) => {
+        if (!pointInRing({ x: vertex.x, y: vertex.z }, standingGround(one.building))) outside++;
+      });
+      expect(outside, `${kind} off its ground`).toBe(0);
     }
   });
 
