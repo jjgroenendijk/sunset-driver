@@ -33,7 +33,7 @@ import { cos, hypot, sin } from '../../core/libm.ts';
 import type { CasualtyGround } from '../crowd/casualty.ts';
 import { UNIT_BODY } from '../city/emergency.ts';
 import { BoxFrame, FarCache, Grid, NearCache } from './give-way-grid.ts';
-import { apart, close, crossesStop, setAhead, within, type Other } from './give-way-geometry.ts';
+import { close, crossesStop, gapBetween, setAhead, within, type Other } from './give-way-geometry.ts';
 import { CrowdWay, PERSON_RADIUS, type Crowd } from './give-way-people.ts';
 import { holdOf, type Hold } from './hold.ts';
 import { FREE, HEAD_ON, LIGHT, OTHER, PERSON, sideOf, STANDING, type Car, type Person } from './give-way-scene.ts';
@@ -292,7 +292,7 @@ export class GiveWay {
     this.filed.add(this.frame.cellOf(car.box.x, car.box.y), this.cars.length - 1);
   }
 
-  /** Move a car that has come into the box back along its tour until it stands on no other car. */
+  /** Move a car that has come into the box back along its tour until it stands on no other car and on nobody. */
   private clear(state: SimState, car: Car): void {
     const traffic = this.traffic;
     for (let tries = 0; tries <= BACK_TRIES && this.onAnother(car); tries++) {
@@ -317,9 +317,14 @@ export class GiveWay {
     }
   }
 
+  /** True when a car stands on another car, or on a person of the crowd. */
   private onAnother(car: Car): boolean {
     for (const j of this.around(this.filed, car.box, 8, this.spare)) {
       if (footprintsTouch(car.box, (this.cars[j] as Car).box, STOP_GAP)) return true;
+    }
+    for (const k of this.around(this.crowd.grid, car.box, 1, this.spare)) {
+      const person = this.crowd.people[k] as Person;
+      if (within(car.box, car.cos, car.sin, person.x, person.y, PERSON_RADIUS + STEP_ROOM)) return true;
     }
     return false;
   }
@@ -410,8 +415,9 @@ export class GiveWay {
         turnedTouch(car.next, nc, ns, other.next, other.nextCos, other.nextSin, SIDE_ROOM);
       if (!into) continue;
       // Two cars already this close may move apart, or on past each other where the step really touches nothing.
-      const touching = turnedTouch(box, car.cos, car.sin, other.box, other.cos, other.sin, SIDE_ROOM);
-      if (!touching || (apart(car.next, other.box) <= apart(box, other.box) && this.brushes(car, other))) this.block(car, j);
+      // Apart is measured between the bodies: a turning car's tail swings closer while its middle moves away.
+      const now = gapBetween(box, car.cos, car.sin, other.box, other.cos, other.sin);
+      if (now > SIDE_ROOM || (gapBetween(car.next, nc, ns, other.box, other.cos, other.sin) <= now && this.brushes(car, other))) this.block(car, j);
     }
   }
 
@@ -604,22 +610,43 @@ export class GiveWay {
     }
   }
 
-  /** True when car `i` stands in a ring of cars that each stop for the next, and is the one of it that goes. */
+  /**
+   * True when car `i` stands in a ring of cars that each stop for the next,
+   * and is the one of it that goes. A car whose next step drives into the
+   * one it stops for never goes: that one stands still, so the step would put
+   * the two on each other. A ring where every car would do that stands, and
+   * the steering takes one of them round.
+   */
   private leadsRing(i: number): boolean {
     const cars = this.cars;
     const car = cars[i] as Car;
-    let lowest = car.id;
-    let free = car.yields ? Infinity : car.id;
-    let at = car.blocker;
+    const ring = this.ringOf(i);
+    if (ring === undefined) return false;
+    const clear = ring.filter((k) => !this.drivesInto(k));
+    const free = clear.filter((k) => !(cars[k] as Car).yields);
+    return lowestId(cars, free.length > 0 ? free : clear) === car.id;
+  }
+
+  /** The ring of cars that each stop for the next that car `i` stands in, starting at it, or undefined. */
+  private ringOf(i: number): number[] | undefined {
+    const cars = this.cars;
+    const ring = [i];
+    let at = (cars[i] as Car).blocker;
     for (let hop = 0; hop < RING_HOPS && at >= 0; hop++) {
-      if (at === i) return (free < Infinity ? free : lowest) === car.id;
+      if (at === i) return ring;
       const next = cars[at] as Car;
-      if (!next.stop) return false;
-      lowest = Math.min(lowest, next.id);
-      if (!next.yields) free = Math.min(free, next.id);
+      if (!next.stop) return undefined;
+      ring.push(at);
       at = next.blocker;
     }
-    return false;
+    return undefined;
+  }
+
+  /** True when the next step of car `k` meets the car it stops for, where that one stands. */
+  private drivesInto(k: number): boolean {
+    const car = this.cars[k] as Car;
+    const other = this.cars[car.blocker] as Car;
+    return turnedTouch(car.next, car.nextCos, car.nextSin, other.box, other.cos, other.sin, BRUSH);
   }
 
   /** Write the cars' holds for the next tick, and where each will stand on it. */
@@ -656,6 +683,13 @@ export class GiveWay {
   }
 
 
+}
+
+/** The id of the lowest of the cars at indices `ring`. */
+function lowestId(cars: readonly Car[], ring: readonly number[]): number {
+  let lowest = Infinity;
+  for (const k of ring) lowest = Math.min(lowest, (cars[k] as Car).id);
+  return lowest;
 }
 
 /** The ticks a car will have stood for the player, a wreck or a person on the next tick. */

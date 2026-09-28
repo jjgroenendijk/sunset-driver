@@ -27,9 +27,10 @@ tour is in `docs/city-life.md`, and how a person walks their loop in `docs/crowd
   physics (`traffic-bodies.ts`), the renderers and the tests do. `heldPose` applies the lag and the
   swerve. A reader that forgets it draws a car on top of the one it waits behind, or in the lane it
   has already steered out of. A reader that steps a cursor calls `swerveOnto` on the pose it read.
-- A car that comes into the box on top of another is moved back along its tour until it stands
-  clear. The box is wider than the view, so nobody sees the jump. On the first tick of a session
-  every car counts as new. That is why `createHolds` starts at tick -1.
+- A car that comes into the box on top of another, or on a person, is moved back along its tour
+  until it stands clear. The box is wider than the view, so nobody sees the jump. On the first tick
+  of a session every car counts as new. That is why `createHolds` starts at tick -1. A bus let in
+  on the people at its stop once kept them inside it for the whole run.
 - The step costs about 2 ms a tick in the core. Most of it is reading poses. The candidates are
   looked up again only when the player moves to another `NEAR_SNAP` of the map.
 - **Most candidates are far from the box, and are skipped** (`FarCache`, issue #778). One whose
@@ -49,7 +50,12 @@ tour is in `docs/city-life.md`, and how a person walks their loop in `docs/crowd
 
 - A car stops for what is in the lane ahead of it and slows for what is further ahead. It also
   stops when its next step meets a car coming in from the side. When cars stop for each other in a
-  ring, the car with the lowest id goes. Two cars that already touch may only move apart.
+  ring, the car with the lowest id goes, of those whose next step keeps clear of the car they stop
+  for. A ring where no car can step clear stands, and the steering takes one round. Releasing one
+  anyway drove a bus through a bus turning across it (issue #600).
+- Two cars that already touch may only move apart. **Apart is the gap between the bodies, never the
+  distance between the middles** (`gapBetween`). A turning truck's tail swings into the car behind
+  it while its middle moves away. The same holds for a person against a car (`away`).
 - A car coming the other way is in its own lane and is not looked at, unless one of the two has
   steered out of its lane. Then the two see each other.
 - Besides the player, their car and the wrecks, a car stops for the police cars, the fire engines
@@ -123,7 +129,9 @@ tour is in `docs/city-life.md`, and how a person walks their loop in `docs/crowd
   of the body (`yaw`) and what the side changed by on the last tick (`drift`), which the renderer
   reads between two ticks.
 - A step sideways or a turn that would put a corner against something is not taken. A car turned
-  in place next to the player on foot and promoted itself on them before this rule.
+  in place next to the player on foot and promoted itself on them before this rule. A car already
+  that close may still move, but not closer: a held bus unwinding its yaw once turned its nose into
+  the bus it waited for.
 - A swerving car keeps `PASS_ROOM` from the player, their car, a wreck or a unit, not
   `OTHER_ROOM`. That is under `SQUEEZE` and over the 0.1 m touch that promotes a car.
 - Two cars already within `SIDE_ROOM` of each other may still move past each other while the step

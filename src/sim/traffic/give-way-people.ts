@@ -274,7 +274,7 @@ export class CrowdWay {
       // A car standing for this person waits for them, so they keep clear of its body only.
       if (car.person >= 0 && this.people[car.person] === person && !within(box, fx, fy, person.nextX, person.nextY, PERSON_RADIUS)) continue;
       // Somebody already against a car walks on only when the step takes them away from it.
-      if (!meets(box, fx, fy, 0, person.x, person.y) || !away(box, person)) return car;
+      if (!meets(box, fx, fy, 0, person.x, person.y) || !away(box, fx, fy, person)) return car;
     }
     if (person.waited >= PATIENCE) return undefined;
     return othersBlock(others, person) ? null : undefined;
