@@ -200,7 +200,15 @@ export const SERVED_BY: Record<Zone, ServingTier> = {
  * ground the serving tier cannot climb to is a knoll or a ledge behind a cliff
  * where no road of that tier runs (issue #399).
  */
-function sampleSiteInZone(rng: Rng, layout: ZoneLayout, zone: Zone, hf: Heightfield, land: LandMasses, graded: GradedLand): Point {
+function sampleSiteInZone(
+  rng: Rng,
+  layout: ZoneLayout,
+  zone: Zone,
+  hf: Heightfield,
+  land: LandMasses,
+  graded: GradedLand,
+  taken: readonly Point[],
+): Point {
   const s = layout.size;
   const rMax: Record<Zone, [number, number]> = {
     core: [0, ZONE_RADII.core],
@@ -229,7 +237,7 @@ function sampleSiteInZone(rng: Rng, layout: ZoneLayout, zone: Zone, hf: Heightfi
   };
   const site = draw(true);
   if (site !== undefined) return site;
-  const fallback = zoneFallback(layout, zone, hf, land, graded);
+  const fallback = zoneFallback(layout, zone, hf, land, graded, taken);
   if (fallback.climbed !== undefined) return fallback.climbed;
   // The zone holds no ground of its own the tier can climb to: a ring the water
   // left in pieces, or one a mountain closed off. Its districts are drawn again
@@ -240,9 +248,12 @@ function sampleSiteInZone(rng: Rng, layout: ZoneLayout, zone: Zone, hf: Heightfi
 }
 
 /**
- * What a zone has to offer a site the sampled points all missed: the first cell
- * in grid order the tier can climb to, and the first one a road can reach at
- * all. Both are deterministic, and `climbed` is the one a site takes.
+ * What a zone has to offer a site the sampled points all missed: the cell the
+ * tier can climb to that stands farthest from every site already `taken`, and
+ * the same among the cells a road can reach at all. Both are deterministic,
+ * and `climbed` is the one a site takes. Farthest from the taken sites, so two
+ * districts of a zone that both fall back do not stand on one cell (issue
+ * #598). With nothing taken, each is the first such cell in grid order.
  *
  * A zone closed off to its tier — a shelf of an outer island, a ring the water
  * left in pieces — still gets its districts, on `loose`. The sweep asks this
@@ -255,19 +266,39 @@ export function zoneFallback(
   hf: Heightfield,
   land: LandMasses,
   graded: GradedLand,
+  taken: readonly Point[] = [],
 ): { climbed: Point | undefined; loose: Point | undefined } {
-  let loose: Point | undefined;
+  const cells = zoneCells(layout, zone, hf, land);
+  const climbed = cells.filter((c) => graded.at(c.x, c.y));
+  return { climbed: clearest(climbed, taken), loose: clearest(cells, taken) };
+}
+
+/** The cells of a zone, every second one in grid order, on dry land a road can reach. */
+function zoneCells(layout: ZoneLayout, zone: Zone, hf: Heightfield, land: LandMasses): Point[] {
+  const cells: Point[] = [];
   for (let iy = 0; iy < hf.gridSize; iy += 2) {
     for (let ix = 0; ix < hf.gridSize; ix += 2) {
       const x = hf.worldX(ix);
       const y = hf.worldY(iy);
-      if (zoneAt(layout, x, y) !== zone || hf.at(ix, iy) < DRY) continue;
-      if (!land.reaches(x, y)) continue;
-      if (graded.at(x, y)) return { climbed: { x, y }, loose };
-      loose ??= { x, y };
+      if (zoneAt(layout, x, y) === zone && hf.at(ix, iy) >= DRY && land.reaches(x, y)) cells.push({ x, y });
     }
   }
-  return { climbed: undefined, loose };
+  return cells;
+}
+
+/** The cell farthest from every taken site; on a tie, the first of them. */
+function clearest(cells: readonly Point[], taken: readonly Point[]): Point | undefined {
+  let best: Point | undefined;
+  let bestClear = -1;
+  for (const c of cells) {
+    let clear = Infinity;
+    for (const t of taken) clear = Math.min(clear, dist2(t.x, t.y, c.x, c.y));
+    if (clear > bestClear) {
+      best = c;
+      bestClear = clear;
+    }
+  }
+  return best;
 }
 
 /** Place district sites and hand out names, cultures and stats. */
@@ -313,7 +344,7 @@ export function generateDistricts(seed: number, layout: ZoneLayout, hf: Heightfi
 
   for (const spec of SITE_SPECS) {
     for (let i = 0; i < spec.count; i++) {
-      const p = sampleSiteInZone(rng, layout, spec.zone, hf, land, climbsTo(spec.zone));
+      const p = sampleSiteInZone(rng, layout, spec.zone, hf, land, climbsTo(spec.zone), districts);
       pushDistrict(spec.zone, p, nameFor(spec.zone), 'none', spec);
     }
   }
@@ -351,7 +382,7 @@ export function generateDistricts(seed: number, layout: ZoneLayout, hf: Heightfi
   // Island district, always its own place: the developed outer island.
   const suburbIsland = layout.suburbIsland;
   if (suburbIsland) {
-    const p = sampleSiteInZone(rng, { ...layout, core: { x: suburbIsland.x, y: suburbIsland.y } }, 'core', hf, land, climbsTo('suburban'));
+    const p = sampleSiteInZone(rng, { ...layout, core: { x: suburbIsland.x, y: suburbIsland.y } }, 'core', hf, land, climbsTo('suburban'), districts);
     districts.push({
       id: id++,
       name: 'Gull Island',
