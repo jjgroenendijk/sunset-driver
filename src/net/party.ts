@@ -32,6 +32,7 @@ import type { InputFrame } from '../sim/input.ts';
 import type { SimState } from '../sim/simulation.ts';
 import type { PeerHit } from '../sim/physics/peer-bodies.ts';
 import { takeRound } from '../sim/weapons/struck.ts';
+import { readTake, SharedMap, TAKE_LIMIT, type Take } from './captures.ts';
 import { applyWorld, readWorld, WorldSender, type WorldUpdate } from './divergence.ts';
 import { readHit, type Hit } from './fire.ts';
 import { frameOf, packFrame, readFrame } from './move.ts';
@@ -50,8 +51,8 @@ import { beatDue, TickLock } from './tick-lock.ts';
 /** Players in one room, spec section 21.1. The seventh is turned away at the handshake. */
 export const MAX_PLAYERS = 6;
 
-/** What a message weighs on the wire: a `hello`, a tick, a player's frame, or the world. */
-export type MessageBody = Hello | { tick: number } | WorldUpdate | Hit | Float32Array;
+/** What a message weighs on the wire: a `hello`, a tick, a player's frame, the world, a hit or a take. */
+export type MessageBody = Hello | { tick: number } | WorldUpdate | Hit | Take | Float32Array;
 
 /**
  * The half of the room that owns a socket. `link.ts` is the one that really
@@ -127,12 +128,11 @@ export class Party {
   /** The host tick of the last update written in, so a late one does not undo a newer one. */
   private applied = -1;
   /**
-   * The blocks this player held before the session's shared map was written
-   * over them, or null on a peer that never took one in. Spec section 21.3
-   * keeps a session's territory out of everybody's save, so it is handed back
-   * when the room closes and the player's own map is as they left it.
+   * The session's shared map of taken blocks (spec section 21.3): what a
+   * joiner took and has to tell the host, and the single-player map it came in
+   * with, which is handed back when the room closes.
    */
-  private ownCaptured: number[] | null = null;
+  private readonly map = new SharedMap();
   /** Whether anybody ever got through, so an empty room is told from a room that emptied. */
   private joined = false;
   private phase: PartyPhase = 'waiting';
@@ -190,6 +190,7 @@ export class Party {
   frame(state: SimState, input: InputFrame, steps: number): number {
     this.now = state.tick;
     if (this.phase === 'offline') return steps;
+    if (!this.isHost) this.tellHost(this.map.fresh(state));
     this.settle(state);
     if (this.isHost) this.broadcast(state);
     this.report(state, input);
@@ -201,7 +202,7 @@ export class Party {
    * null where it never did. `control.ts` writes them back as the room closes.
    */
   get ownCaptures(): number[] | null {
-    return this.ownCaptured;
+    return this.map.ownCaptures;
   }
 
   /** Everybody else, as the frame draws them at this tick (spec section 21.5). */
@@ -220,6 +221,7 @@ export class Party {
     this.roster.clear();
     this.incoming.length = 0;
     this.struck.length = 0;
+    this.map.clear();
     this.world = null;
     this.link.onPeerJoin = null;
     this.link.onPeerLeave = null;
@@ -249,15 +251,25 @@ export class Party {
   private settle(state: SimState): void {
     for (const hit of this.struck) takeRound(state, hit.weapon, hit.part, hit.dx, hit.dh, hit.dy);
     this.struck.length = 0;
+    if (this.isHost) this.map.merge(state);
     for (const update of this.incoming) {
       if (this.isHost || update.tick < this.applied) continue;
       this.applied = update.tick;
-      if (this.ownCaptured === null && update.parts.captured !== undefined) {
-        this.ownCaptured = [...state.factions.captured];
-      }
-      applyWorld(state, update);
+      this.tellHost(this.map.write(state, update, () => applyWorld(state, update)));
     }
     this.incoming.length = 0;
+  }
+
+  /**
+   * Tell the host about blocks this joiner took (spec section 21.3). With no
+   * host known, the next correction snapshot asks for them again.
+   */
+  private tellHost(blocks: number[]): void {
+    const host = this.hostId();
+    if (host === null) return;
+    for (let at = 0; at < blocks.length; at += TAKE_LIMIT) {
+      this.link.send('take', { blocks: blocks.slice(at, at + TAKE_LIMIT) }, host);
+    }
   }
 
   /** The host's side of a frame: the beat of the shared clock, and what it owns. */
@@ -300,6 +312,14 @@ export class Party {
     else if (kind === 'world') this.told(body, from);
     else if (kind === 'host') this.claimed(body, from);
     else if (kind === 'hit') this.shot(body, from);
+    else if (kind === 'take') this.took(body, from);
+  }
+
+  /** A joiner's block, for the session's map. Only the host keeps one, and only a joiner sends one. */
+  private took(body: unknown, from: string): void {
+    if (!this.isHost || this.peers.get(from) !== false) return;
+    const take = readTake(body);
+    if (take !== null) this.map.heard(take);
   }
 
   /** A round another player put into this one. It is kept until the next frame takes it. */
@@ -429,6 +449,7 @@ export class Party {
     }
     this.isHost = true;
     this.applied = -1;
+    this.map.hosting();
     this.lock.release();
     this.lastBeat = this.now;
     this.world = new WorldSender(this.now);

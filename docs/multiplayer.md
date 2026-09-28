@@ -34,6 +34,8 @@ in `docs/menus.md`.
 - `roster.ts` — everybody else: their looks, their replicas, and who is owed a frame now.
 - `fire.ts` — a round one player put into another, as it crosses the wire.
 - `divergence.ts` — the parts of a record the host owns, the deltas and the correction snapshots.
+- `captures.ts` — the session's shared map of taken blocks: what a joiner took and tells the host,
+  and the single-player map it came in with.
 - `party.ts` — the room as a state machine: the handshake, the peer count, the refusals and the fall
   back to single player. It holds no Trystero and no DOM; `NetLink` is the whole of its contact with
   a socket. `test/net/multiplayer.test.ts` drives it with a link that has nothing behind it, and
@@ -144,6 +146,13 @@ Spec section 21.4 splits authority three ways, and every file above sits on one 
 - **A session's territory is in the set, and is written to nobody's save.** Spec section 21.3 says
   a room's captures last as long as the room. So a joiner keeps the blocks it came in with, and
   `control.ts` puts them back as the room closes: the single-player map is as the player left it.
+- **A joiner's block reaches the room through the host.** A block in the joiner's record that was
+  not in the host's last map is one it took, so it sends a `take` to the host. The host writes it
+  in at the top of its next frame, and the next delta carries it to everyone.
+- The joiner keeps a block it told the host about until the host's map carries it, so the block
+  does not flicker back. A correction snapshot that still lacks it sends the `take` again.
+- A block taken before the host's first map arrives is not sent: it cannot be told from a block
+  the joiner held in single player. A host keeps the session's map when the room closes.
 - A part arriving is refused unless it is the shape that part of a record has, and it is copied
   through JSON before it is written in. The host is trusted to describe its own world; this is what
   keeps a malformed peer from putting something in a record that the simulation then steps.

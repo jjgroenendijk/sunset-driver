@@ -8,6 +8,7 @@ import {
   WorldSender,
 } from '../../src/net/divergence.ts';
 import { compareStrings } from '../../src/core/sort.ts';
+import { readTake, TAKE_LIMIT } from '../../src/net/captures.ts';
 import { FRAME_LENGTH, frameOf, packFrame, readFrame, type PlayerFrame } from '../../src/net/move.ts';
 import { MAX_PLAYERS, Party, type MessageBody, type NetLink } from '../../src/net/party.ts';
 import type { MessageKind } from '../../src/net/protocol.ts';
@@ -345,5 +346,106 @@ describe('the host leaving', () => {
     leaves(host, all);
     expect(joiner.party.state.phase).toBe('offline');
     expect(joiner.party.state.message).toContain('host');
+  });
+});
+
+describe('a block a joiner takes (spec section 21.3)', () => {
+  /** A host holding block 9, and two joiners that have its map. */
+  function room(): { host: Member; b: Member; c: Member; all: Member[] } {
+    const wires: Wire[] = [];
+    const host = new Member('a', wires, true, 1_000);
+    const b = new Member('b', wires, false, 0);
+    const c = new Member('c', wires, false, 0);
+    const all = [host, b, c];
+    meet(...all);
+    b.state.factions.captured = [1, 2];
+    host.state.factions.captured = [9];
+    host.run(DELTA_TICKS * 4);
+    b.run(1);
+    c.run(1);
+    return { host, b, c, all };
+  }
+
+  it('reaches the host and every other player in the room', () => {
+    const { host, b, c } = room();
+    expect(c.state.factions.captured).toEqual([9]);
+    b.state.factions.captured = [5, 9];
+    b.run(1);
+    expect(b.link.sent.filter((m) => m.kind === 'take')).toEqual([{ kind: 'take', body: { blocks: [5] }, to: 'a' }]);
+    host.run(DELTA_TICKS + 1);
+    b.run(1);
+    c.run(1);
+    expect(host.state.factions.captured).toEqual([5, 9]);
+    expect(b.state.factions.captured).toEqual([5, 9]);
+    expect(c.state.factions.captured).toEqual([5, 9]);
+    // Told once: the host's map carries it now.
+    b.run(3);
+    expect(b.link.sent.filter((m) => m.kind === 'take')).toHaveLength(1);
+  });
+
+  it("stays the host's when the room closes, and the joiner leaves with its own map", () => {
+    const { host, b } = room();
+    b.state.factions.captured = [5, 9];
+    b.run(1);
+    host.run(DELTA_TICKS + 1);
+    b.run(1);
+    b.party.close();
+    host.party.close();
+    expect(b.party.ownCaptures).toEqual([1, 2]);
+    expect(host.state.factions.captured).toEqual([5, 9]);
+    expect(host.party.ownCaptures).toBeNull();
+  });
+
+  it('keeps the block while the take is lost, and asks again on the next snapshot', () => {
+    const { host, b, c } = room();
+    host.link.gone = true;
+    b.state.factions.captured = [5, 9];
+    b.run(1);
+    host.link.gone = false;
+    // The correction snapshot does not carry block 5 yet, and the joiner holds on to it.
+    host.run(SNAPSHOT_TICKS + 1);
+    b.run(1);
+    expect(host.state.factions.captured).toEqual([9]);
+    expect(b.state.factions.captured).toEqual([5, 9]);
+    host.run(DELTA_TICKS + 1);
+    c.run(1);
+    expect(c.state.factions.captured).toEqual([5, 9]);
+  });
+
+  it("does not send a block taken before the host's first map arrived", () => {
+    const wires: Wire[] = [];
+    const host = new Member('a', wires, true, 1_000);
+    const b = new Member('b', wires, false, 0);
+    meet(host, b);
+    b.state.factions.captured = [4];
+    b.run(2);
+    host.run(DELTA_TICKS * 4);
+    b.run(2);
+    expect(b.link.sent.some((m) => m.kind === 'take')).toBe(false);
+    expect(b.state.factions.captured).toEqual([]);
+  });
+
+  it('is taken by the host only, from a joiner only', () => {
+    const { host, b, c } = room();
+    // A joiner hears a take and keeps the host's map.
+    c.link.onMessage?.('take', { blocks: [7] }, 'b');
+    c.run(1);
+    expect(c.state.factions.captured).toEqual([9]);
+    // The host does not take one from a stranger.
+    host.link.onMessage?.('take', { blocks: [7] }, 'z');
+    host.run(1);
+    expect(host.state.factions.captured).toEqual([9]);
+    expect(b.state.factions.captured).toEqual([9]);
+  });
+
+  it('reads a take into block keys, or refuses it', () => {
+    expect(readTake({ blocks: [3, 1] })).toEqual({ blocks: [3, 1] });
+    expect(readTake({ blocks: [] })).toBeNull();
+    expect(readTake({ blocks: [-1] })).toBeNull();
+    expect(readTake({ blocks: [1.5] })).toBeNull();
+    expect(readTake({ blocks: [1024 * 1024] })).toBeNull();
+    expect(readTake({ blocks: ['3'] })).toBeNull();
+    expect(readTake({ blocks: Array.from({ length: TAKE_LIMIT + 1 }, (_, i) => i) })).toBeNull();
+    expect(readTake(null)).toBeNull();
   });
 });
