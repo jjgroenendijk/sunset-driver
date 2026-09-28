@@ -46,10 +46,25 @@ describe('weapons', () => {
   /**
    * The same with the aim raised. A person 6 m off is about as wide as the
    * cone of a rifle fired from the hip, so whether a hip-fired round meets
-   * them is down to the tick it is fired on; an aimed one always does.
+   * them is down to the tick it is fired on; an aimed one always does, while
+   * no recoil stands from the shots before it.
    */
   function shootAimed(session: Session, ticks: number): void {
     drive(session, ticks, { fire: true, aim: true });
+    drive(session, 1);
+  }
+
+  /**
+   * Single aimed rounds, with the aim held until the recoil of each has settled
+   * (`RECOIL_SETTLE`, then `RECOIL_RECOVERY`). A burst held on the trigger
+   * widens the cone round by round until it is as wide as a person 6 m off,
+   * and then the tick decides again.
+   */
+  function tapAimed(session: Session, rounds: number): void {
+    for (let round = 0; round < rounds; round++) {
+      drive(session, 1, { fire: true, aim: true });
+      drive(session, 30, { aim: true });
+    }
     drive(session, 1);
   }
 
@@ -234,7 +249,7 @@ describe('weapons', () => {
     const session = armed('ak-47', ramp('asphalt', 0));
     const { state } = session;
     plant(session, 6);
-    shootAimed(session, 30);
+    tapAimed(session, 6);
     expect(state.enforcers.units).toHaveLength(0);
     expect(state.pickups.some((pickup) => pickup.weapon === 'glock-17')).toBe(true);
     session.physics.dispose();
@@ -430,7 +445,7 @@ describe('weapons', () => {
     const session = armed('ak-47', ramp('asphalt', 0));
     const { state } = session;
     const member = medic(session, 6);
-    shootAimed(session, 30);
+    tapAimed(session, 6);
     expect(state.emergency.crew).toHaveLength(0);
     expect(state.emergency.fallen).toHaveLength(1);
     expect(state.emergency.fallen[0]?.body.x).toBeCloseTo(member.x, 1);
