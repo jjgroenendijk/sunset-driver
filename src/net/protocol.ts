@@ -17,7 +17,7 @@ export const APP_ID = 'sunset-driver';
  * shape, because two builds that read the same field differently would diverge
  * quietly, which is the one failure the shared clock cannot show.
  */
-export const PROTOCOL = 3;
+export const PROTOCOL = 4;
 
 /**
  * The kinds of message. Each is one Trystero action.
@@ -34,8 +34,10 @@ export const PROTOCOL = 3;
  *   21.4). It carries the new host's tick, which the others lock to.
  * - `hit` — a round one player put into another, sent to that one only
  *   (`fire.ts`). Friendly fire is on (spec section 21.5).
+ * - `take` — blocks a joiner took, sent to the host only, which writes them
+ *   into the session's shared map (`captures.ts`, spec section 21.3).
  */
-export const MESSAGE_KINDS = ['hello', 'tick', 'move', 'world', 'host', 'hit'] as const;
+export const MESSAGE_KINDS = ['hello', 'tick', 'move', 'world', 'host', 'hit', 'take'] as const;
 export type MessageKind = (typeof MESSAGE_KINDS)[number];
 
 /** The first thing either side says: who it is, which city it is in, and what time it is there. */
