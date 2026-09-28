@@ -30,6 +30,7 @@
  */
 import { hashInts } from '../../core/hash.ts';
 import type { BuildingKind } from '../../world/city/buildings.ts';
+import { facadeFootprint } from './building-plan.ts';
 
 /** How a tall building is massed. */
 export type BuildingPlan = 'box' | 'step' | 'ell' | 'u' | 'court' | 'podium' | 'setbacks';
@@ -95,7 +96,8 @@ const FLOOR_HEIGHT = 4;
  * one row differ in both, so the row reads as a street of buildings rather than
  * as one long block; the variation runs upward only, because a narrower bay is
  * another pier and another window on every floor of a tower, and a generated
- * facade is the dearest thing a chunk builds.
+ * facade is the dearest thing a chunk builds. The one exception is a part too
+ * narrow for two bays, which {@link fitBay} narrows the bay for.
  */
 const BAY_SPREAD = 0.62;
 const FLOOR_SPREAD = 0.26;
@@ -147,9 +149,28 @@ export function shapeOf(
   want?: BuildingPlan,
 ): BuildingShape {
   const floorHeight = FLOOR_HEIGHT * (1 + FLOOR_SPREAD * unit(seed, 31));
-  const bayWidth = BAY_WIDTH * (1 + BAY_SPREAD * unit(seed, 32));
   const plan = planOf(seed, kind, massing, shared, want);
-  return { plan, parts: partsOf(plan, seed, massing, floorHeight, shared), floorHeight, bayWidth };
+  const parts = partsOf(plan, seed, massing, floorHeight, shared);
+  const bayWidth = fitBay(BAY_WIDTH * (1 + BAY_SPREAD * unit(seed, 32)), parts, massing);
+  return { plan, parts, floorHeight, bayWidth };
+}
+
+/**
+ * A bay narrow enough that each part standing on a side edge of the lot is two
+ * bays wide. The generator never builds a crown narrower than two bays, so a
+ * part of one bay and a half gets a crown that hangs past its walls on both
+ * sides. Past a shared edge that is more than the neighbour's wall allows, and
+ * the fit then pulls the walls short of the edge. The width is the one a
+ * generated facade is built on, since only that facade has a crown.
+ */
+function fitBay(bay: number, parts: readonly ShapePart[], massing: { width: number; depth: number }): number {
+  const width = facadeFootprint(massing).width;
+  let fitted = bay;
+  for (const part of parts) {
+    if (Math.abs(part.x) + part.width / 2 < 0.5 - 1e-6) continue;
+    fitted = Math.min(fitted, (part.width * width) / 2);
+  }
+  return fitted;
 }
 
 /** Which side edges of a lot carry a neighbour's wall: `left` is the lot's +x side. */

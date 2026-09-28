@@ -142,4 +142,19 @@ describe('the shape a tall building is massed in', () => {
     expect(storeys.size).toBeGreaterThan(15);
     expect(bays.size).toBeGreaterThan(15);
   });
+
+  it('makes each part on a side edge two bays wide, so its crown stays over its walls', () => {
+    // The narrowest lot a step fits on: its facade is 13 m wide.
+    const lot = { width: 17, depth: 16, height: 40 };
+    let steps = 0;
+    for (let seed = 1; seed < 400; seed++) {
+      const shape = shapeOf(seed, 'mid-rise', lot, { left: true, right: true });
+      if (shape.plan !== 'step') continue;
+      steps++;
+      for (const box of boxesOf(shape, { width: lot.width - 4, depth: lot.depth - 4 }, lot.height, 0)) {
+        expect(box.width).toBeGreaterThanOrEqual(shape.bayWidth * 2 - 1e-9);
+      }
+    }
+    expect(steps).toBeGreaterThan(20);
+  });
 });

@@ -55,6 +55,10 @@ and what lights them in `docs/lighting.md`.
   every floor of every tower of the core, and a generated facade is the dearest thing a chunk
   builds. Widening them is what paid for the extra boxes — the quick tier costs a fifth less CPU
   than it did, and the dearest chunk of five seeds costs fewer vertices at near detail than before.
+- The one exception: `fitBay` narrows the bay until every part on a side edge is two bays wide on
+  the facade footprint. The generator never builds a crown narrower than two bays, so a narrow
+  half of a `step` otherwise gets a crown up to 5 m wider than its walls, and on a shared edge the
+  walls then stop short (issue #623).
 
 ## The style a tall building is dressed in
 
