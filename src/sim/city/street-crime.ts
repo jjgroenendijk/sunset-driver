@@ -119,6 +119,9 @@ export const CRIME_ORDER: readonly CrimeKind[] = Object.freeze(['mugging', 'shoo
 /** Ticks one slot of the diary runs for: twenty minutes of game clock. */
 export const SLOT_TICKS = Math.round(TICKS_PER_HOUR / 3);
 
+/** Slots before the current one an incident can still be running from: the longest kind's span. */
+const LOOKBACK = Math.ceil(Math.max(...CRIME_ORDER.map((kind) => CRIMES[kind].ticks)) / SLOT_TICKS);
+
 /** Corners of its own each district keeps for this. */
 const CORNERS = 6;
 
@@ -212,10 +215,8 @@ export function crimeGrounds(
 export function crimesAt(seed: number, tick: number, grounds: readonly CrimeGround[], state?: CrimeState): StreetCrime[] {
   const live: StreetCrime[] = [];
   const slot = Math.floor(Math.max(0, tick) / SLOT_TICKS);
-  // An incident started in the slot before this one may still be running.
-  for (const before of [1, 0]) {
-    const at = slot - before;
-    if (at < 0) continue;
+  // Every kind outlasts a slot, so an incident from up to LOOKBACK slots back may still be running.
+  for (let at = Math.max(0, slot - LOOKBACK); at <= slot; at++) {
     for (const [i, ground] of grounds.entries()) {
       const crime = crimeOn(seed, at, i, ground, grounds.length);
       if (crime === undefined) continue;

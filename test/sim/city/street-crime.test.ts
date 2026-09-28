@@ -87,6 +87,18 @@ describe('what is going on', () => {
     }
   });
 
+  it('lists an incident up to its last tick and no further (#526)', () => {
+    let checked = 0;
+    for (let tick = 0; tick < TICKS_PER_DAY; tick += SLOT_TICKS) {
+      for (const crime of crimesAt(5, tick, grounds)) {
+        expect(crimesAt(5, crime.to - 1, grounds).map((one) => one.id)).toContain(crime.id);
+        expect(crimesAt(5, crime.to, grounds).map((one) => one.id)).not.toContain(crime.id);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
   it('keeps each kind to its own hours and its own zones', () => {
     for (let tick = 0; tick < 4 * TICKS_PER_DAY; tick += SLOT_TICKS) {
       for (const crime of crimesAt(5, tick, grounds)) {
