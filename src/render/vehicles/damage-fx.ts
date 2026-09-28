@@ -81,11 +81,25 @@ const MAX_CATCH_UP = 30;
 /** Metres a second smoke leaves the fire at, rising. */
 const SMOKE_RISE = 2.4;
 
-/** Where the stream ids of a blaze's smoke begin, clear of every other stream of the subsystem. */
-const BLAZE_SMOKE_STREAM = 60_000;
+/**
+ * Where the stream ids of the blazes begin, clear of every other stream of the
+ * subsystem: the blast, the melee sparks and the impacts of rounds all stay
+ * under 2 000. Each blaze takes {@link BLAZE_PARTS} ids of its own in a row, one
+ * per part it draws, so no blaze id, however high, reaches another's streams.
+ */
+const BLAZE_STREAM = 60_000;
 
-/** Where the stream ids of a blaze's haze begin, past those of its smoke. */
-const BLAZE_HAZE_STREAM = 70_000;
+/** The parts of a blaze that each draw from a stream of their own. */
+const BLAZE_FLAME = 0;
+const BLAZE_SMOKE = 1;
+const BLAZE_HAZE = 2;
+const BLAZE_EMBER = 3;
+const BLAZE_PARTS = 4;
+
+/** The stream id one part of one blaze is jittered from. */
+export function blazeStream(id: number, part: number): number {
+  return BLAZE_STREAM + id * BLAZE_PARTS + part;
+}
 
 /** The smoke and fire of the player's vehicle. */
 export class DamageFx {
@@ -246,12 +260,12 @@ export class DamageFx {
   private spawnBlaze(blaze: Blaze, seed: number, tick: number): void {
     const height = this.groundAt(blaze.x, blaze.y);
     if (tick % BLAZE_PERIOD === 0) {
-      const rng = rngFor(seed, tick, Subsystem.Damage, 300 + blaze.id);
+      const rng = rngFor(seed, tick, Subsystem.Damage, blazeStream(blaze.id, BLAZE_FLAME));
       this.at.set(blaze.x + rng.range(-1, 1) * BLAZE_SPREAD, height + 0.3, blaze.y + rng.range(-1, 1) * BLAZE_SPREAD);
       this.flame.add(this.flamePuff(tick, FLAME_LIFE, rng.range(0.3, 1.2), rng.range(1.4, 2.4), rng.range(0, 1)));
     }
     if (tick % BLAZE_SMOKE_PERIOD === 0) {
-      const rng = rngFor(seed, tick, Subsystem.Damage, BLAZE_SMOKE_STREAM + blaze.id);
+      const rng = rngFor(seed, tick, Subsystem.Damage, blazeStream(blaze.id, BLAZE_SMOKE));
       this.smoke.add(
         smokePuff(
           {
@@ -272,12 +286,12 @@ export class DamageFx {
       );
     }
     if (tick % BLAZE_HAZE_PERIOD === 0) {
-      const rng = rngFor(seed, tick, Subsystem.Damage, BLAZE_HAZE_STREAM + blaze.id);
+      const rng = rngFor(seed, tick, Subsystem.Damage, blazeStream(blaze.id, BLAZE_HAZE));
       this.at.set(blaze.x + rng.range(-0.4, 0.4) * BLAZE_SPREAD, height + 1.2, blaze.y + rng.range(-0.4, 0.4) * BLAZE_SPREAD);
       this.heat.add(this.hazePuff(tick, BLAZE_SPREAD * rng.range(1.3, 1.8), rng.range(0, 1)));
     }
     if (tick % EMBER_PERIOD !== 0) return;
-    const rng = rngFor(seed, tick, Subsystem.Damage, 400 + blaze.id);
+    const rng = rngFor(seed, tick, Subsystem.Damage, blazeStream(blaze.id, BLAZE_EMBER));
     const heading = rng.range(0, Math.PI * 2);
     const speed = rng.range(0.3, 1) * EMBER_SPEED;
     this.flame.add({
