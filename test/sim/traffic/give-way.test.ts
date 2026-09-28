@@ -21,10 +21,15 @@ import { gridTraffic, gridTrafficRoads } from '../../support/traffic-grid.ts';
  * seed's, so the scenarios below — a car driving over one patch of lane, a
  * queue standing behind another — hold at some seeds and not at others, and a
  * change to how the traffic is timed moves them. Pick a seed the scenarios
- * hold at again rather than softening what they check. How far the overlaps
- * they leave depend on the seed is issue #600.
+ * hold at again rather than softening what they check.
  */
 const SEED = 4;
+/**
+ * The seeds the overlaps are counted at. Nobody standing on anybody is an
+ * invariant, not a reading of one seed (issue #600). 15, 27, 38, 43, 53 and
+ * 1234 each left a bus on a car or on a person. The full tier counts at more.
+ */
+const OVERLAP_SEEDS = process.env.SWEEP_SEEDS ? [SEED, 15, 27, 38, 43, 53, 1234, ...range(100, 106)] : [SEED, 38];
 const TICKS = 600;
 /** Metres each way of the player the cars and the people are drawn in. */
 const VIEW = 110;
@@ -32,11 +37,25 @@ const VIEW = 110;
 const traffic = gridTraffic(SEED);
 const crowd = new AmbientPedestrians(SEED, gridTrafficRoads());
 
+/** The grid's traffic and crowd at one seed. */
+interface Grid {
+  traffic: AmbientTraffic;
+  crowd: AmbientPedestrians;
+}
+
+const atSeed: Grid = { traffic, crowd };
+
+function range(from: number, to: number): number[] {
+  const out: number[] = [];
+  for (let seed = from; seed < to; seed++) out.push(seed);
+  return out;
+}
+
 const walk = (): PedestrianPose => ({ x: 0, y: 0, height: 0, heading: 0, speed: 0, cycle: 0, gait: 'stand' });
 
 /** A session on foot at the middle of the grid, with the player's car left far off it. */
-function session(): SimState {
-  const state = createSimState(SEED, undefined, 0);
+function session(seed = SEED): SimState {
+  const state = createSimState(seed, undefined, 0);
   state.player.driving = false;
   state.player.x = 0;
   state.player.y = 0;
@@ -46,7 +65,7 @@ function session(): SimState {
 }
 
 /** Every car of the traffic in view, where the holds put it. */
-function cars(state: SimState, lagged: boolean): Footprint[] {
+function cars(state: SimState, lagged: boolean, { traffic } = atSeed): Footprint[] {
   const pose: AmbientPose = { x: 0, y: 0, height: 0, heading: 0, speed: 0 };
   const out: Footprint[] = [];
   for (const id of traffic.near(-VIEW, -VIEW, VIEW, VIEW, [])) {
@@ -61,18 +80,18 @@ function cars(state: SimState, lagged: boolean): Footprint[] {
 }
 
 /** Pairs of cars standing on each other, and people standing in a car, summed over a run. */
-function overlaps(giving: boolean): { cars: number; people: number } {
-  const state = session();
-  const way = new GiveWay(traffic, crowd);
+function overlaps(giving: boolean, seed: number, grid: Grid): { cars: number; people: number } {
+  const state = session(seed);
+  const way = new GiveWay(grid.traffic, grid.crowd);
   const count = { cars: 0, people: 0 };
   const pose = walk();
   for (let i = 0; i < TICKS; i++) {
     if (giving) way.step(state, 0, 0);
     state.tick++;
     if (i % 10 !== 0) continue;
-    const boxes = cars(state, giving);
+    const boxes = cars(state, giving, grid);
     count.cars += carsOnCars(boxes);
-    count.people += peopleInCars(state, boxes, pose);
+    count.people += peopleInCars(state, boxes, pose, grid.crowd);
   }
   return count;
 }
@@ -87,10 +106,10 @@ function carsOnCars(boxes: readonly Footprint[]): number {
 }
 
 /** People of the crowd in view standing in a car, counted once for each car. */
-function peopleInCars(state: SimState, boxes: readonly Footprint[], pose: PedestrianPose): number {
+function peopleInCars(state: SimState, boxes: readonly Footprint[], pose: PedestrianPose, people: AmbientPedestrians): number {
   let inside = 0;
-  for (const id of crowd.near(-VIEW, -VIEW, VIEW, VIEW, [])) {
-    if (crowdPoseOf(crowd, state.pedestrians, id, state.tick, pose) === undefined) continue;
+  for (const id of people.near(-VIEW, -VIEW, VIEW, VIEW, [])) {
+    if (crowdPoseOf(people, state.pedestrians, id, state.tick, pose) === undefined) continue;
     if (Math.abs(pose.x) > VIEW || Math.abs(pose.y) > VIEW) continue;
     const person = { x: pose.x, y: pose.y, heading: 0, halfLength: 0.1, halfWidth: 0.1 };
     for (const box of boxes) if (footprintsTouch(person, box, 0)) inside++;
@@ -103,15 +122,17 @@ describe('giving way', () => {
     expect(UNSEEN).toBeGreaterThan(TRAFFIC_VIEW);
   });
 
-  it('keeps the cars off each other and the people out of the cars', () => {
-    const loose = overlaps(false);
-    const kept = overlaps(true);
-    // Without it the tours stand cars on cars and walk people through them.
+  it('stands cars on cars and people in cars without it', () => {
+    const loose = overlaps(false, SEED, atSeed);
     expect(loose.cars).toBeGreaterThan(0);
     expect(loose.people).toBeGreaterThan(0);
-    // A car turning into a junction may touch another for a tick; nobody walks into a car.
-    expect(kept.cars).toBeLessThanOrEqual(loose.cars / 10);
-    expect(kept.people).toBe(0);
+  });
+
+  it('keeps the cars off each other and the people out of the cars, at every seed', () => {
+    for (const seed of OVERLAP_SEEDS) {
+      const grid = seed === SEED ? atSeed : { traffic: gridTraffic(seed), crowd: new AmbientPedestrians(seed, gridTrafficRoads()) };
+      expect(overlaps(true, seed, grid), `seed ${seed}`).toEqual({ cars: 0, people: 0 });
+    }
   });
 
   it('queues the traffic behind a car standing across its lane', () => {

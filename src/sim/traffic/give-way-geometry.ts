@@ -32,15 +32,27 @@ export function setAhead(out: Footprint, box: Footprint, fx: number, fy: number,
   out.halfWidth = box.halfWidth * LANE_SHARE;
 }
 
-/** True when a person's next step takes them further from the middle of a footprint. */
-export function away(box: Footprint, person: Stepping): boolean {
-  const was = (person.x - box.x) ** 2 + (person.y - box.y) ** 2;
-  return (person.nextX - box.x) ** 2 + (person.nextY - box.y) ** 2 > was;
+/**
+ * True when a person's next step takes them further from the body of a
+ * footprint heading along `(fx, fy)`. The middle is no measure: somebody
+ * walking along the side of a bus moves away from its middle and into it.
+ * Only somebody already inside it is measured from the middle.
+ */
+export function away(box: Footprint, fx: number, fy: number, person: Stepping): boolean {
+  const was = outside(box, fx, fy, person.x, person.y);
+  const will = outside(box, fx, fy, person.nextX, person.nextY);
+  if (was > 0 || will > 0) return will > was;
+  // Somebody inside it walks out the nearest way: away from its middle.
+  return (person.nextX - box.x) ** 2 + (person.nextY - box.y) ** 2 > (person.x - box.x) ** 2 + (person.y - box.y) ** 2;
 }
 
-/** The square of the distance between the middles of two footprints. */
-export function apart(a: Footprint, b: Footprint): number {
-  return (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+/** The square of how far a point stands outside a footprint heading along `(fx, fy)`, 0 inside it. */
+export function outside(box: Footprint, fx: number, fy: number, x: number, y: number): number {
+  const rx = x - box.x;
+  const ry = y - box.y;
+  const along = Math.max(0, Math.abs(rx * fx + ry * fy) - box.halfLength);
+  const across = Math.max(0, Math.abs(-rx * fy + ry * fx) - box.halfWidth);
+  return along * along + across * across;
 }
 
 /** True when two footprints stand near enough that their boxes may touch. */
@@ -79,7 +91,7 @@ export function meets(box: Footprint, fx: number, fy: number, speed: number, x: 
 export function othersBlock(others: readonly Other[], person: Stepping): boolean {
   for (const other of others) {
     if (!meets(other, other.cos, other.sin, 0, person.nextX, person.nextY)) continue;
-    if (!meets(other, other.cos, other.sin, 0, person.x, person.y) || !away(other, person)) return true;
+    if (!meets(other, other.cos, other.sin, 0, person.x, person.y) || !away(other, other.cos, other.sin, person)) return true;
   }
   return false;
 }
@@ -87,4 +99,23 @@ export function othersBlock(others: readonly Other[], person: Stepping): boolean
 /** True when a step from `here` to `there` metres along an edge crosses the stop line at `stop`. */
 export function crossesStop(here: number, there: number, stop: number): boolean {
   return here <= stop + 1e-6 && there > stop + 1e-6;
+}
+
+/**
+ * Metres between two footprints whose headings have cosines and sines `ca, sa`
+ * and `cb, sb`: the widest gap along the axes of either, negative where they
+ * overlap. Two footprints touch with a margin exactly where it is no more than that.
+ */
+export function gapBetween(a: Footprint, ca: number, sa: number, b: Footprint, cb: number, sb: number): number {
+  return Math.max(gapAlong(a, ca, sa, b, cb, sb, ca, sa), gapAlong(a, ca, sa, b, cb, sb, -sa, ca), gapAlong(a, ca, sa, b, cb, sb, cb, sb), gapAlong(a, ca, sa, b, cb, sb, -sb, cb));
+}
+
+function gapAlong(a: Footprint, ca: number, sa: number, b: Footprint, cb: number, sb: number, ax: number, ay: number): number {
+  const reach = reachAlong(a, ca, sa, ax, ay) + reachAlong(b, cb, sb, ax, ay);
+  return Math.abs((b.x - a.x) * ax + (b.y - a.y) * ay) - reach;
+}
+
+/** Half the length of a box heading along `(fx, fy)` along an axis. */
+function reachAlong(box: Footprint, fx: number, fy: number, ax: number, ay: number): number {
+  return box.halfLength * Math.abs(fx * ax + fy * ay) + box.halfWidth * Math.abs(-fy * ax + fx * ay);
 }
