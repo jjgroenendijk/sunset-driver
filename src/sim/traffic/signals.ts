@@ -8,7 +8,8 @@
  * most traffic, so its axis has the longer green. The whole cycle is
  * {@link SIGNAL_CYCLE} ticks at every junction, shifted by an offset each
  * junction draws from the seed, so the lights of one street do not all change
- * on one tick.
+ * on one tick. Junctions a short block apart are the exception: they change in
+ * step, so the block between them is never a road nobody may leave.
  *
  * A light is a function of the tick alone. Nothing here is stepped or stored,
  * so a replay, a save and a vehicle evaluated far in the future all read the
@@ -54,6 +55,9 @@ const GREEN_START: readonly [number, number] = [0, SIGNAL_GREEN[0] + SIGNAL_AMBE
  * long car and a gap.
  */
 export const STOP_BACK = 3.5;
+
+/** Metres of road between two junctions with lights under which the two change in step. */
+const SHORT_BLOCK = 60;
 
 /** Metres of road an approach needs before its stop line to take a signal at all. */
 const MIN_APPROACH = 4;
@@ -154,6 +158,7 @@ export class TrafficSignals {
       this.clear[junction.node] = 1;
       this.byNode[junction.node] = i;
     }
+    inStep(junctions, approaches, this.byEdge, graph);
   }
 
   /**
@@ -220,6 +225,42 @@ export class TrafficSignals {
     const at = this.junctions[junction] as SignalJunction;
     return mod(Math.floor(tick) + at.offset - GREEN_START[axis], SIGNAL_CYCLE);
   }
+}
+
+/**
+ * Put the lights of junctions a short block apart in step (issue #488): the
+ * road that joins them turns green at both on the same tick. Lights out of
+ * step can leave a block that holds one car with no moment where a driver
+ * may cross both lines, and every car behind then stands on that one spot.
+ * A cluster of such junctions takes the offset of its first junction, and a
+ * junction reached twice keeps the offset it was reached with first.
+ */
+function inStep(junctions: SignalJunction[], approaches: readonly SignalApproach[], byEdge: Int32Array, graph: RoadGraph): void {
+  const done = new Uint8Array(junctions.length);
+  for (let root = 0; root < junctions.length; root++) {
+    if (done[root] === 1) continue;
+    done[root] = 1;
+    const queue = [root];
+    for (let q = 0; q < queue.length; q++) {
+      const at = junctions[queue[q] as number] as SignalJunction;
+      for (const index of at.approaches) {
+        const approach = approaches[index] as SignalApproach;
+        const back = backAlong(approach, approaches, byEdge, graph);
+        if (back === undefined || done[back.junction] === 1) continue;
+        // The approach back along the same road lies on that road's axis at the other end.
+        (junctions[back.junction] as SignalJunction).offset = mod(at.offset - GREEN_START[approach.axis] + GREEN_START[back.axis], SIGNAL_CYCLE);
+        done[back.junction] = 1;
+        queue.push(back.junction);
+      }
+    }
+  }
+}
+
+/** The approach back along the same road where `approach` arrives over a short block from another light; undefined elsewhere. */
+function backAlong(approach: SignalApproach, approaches: readonly SignalApproach[], byEdge: Int32Array, graph: RoadGraph): SignalApproach | undefined {
+  const edge = graph.edges[approach.edge] as RoadEdge;
+  if (edge.length >= SHORT_BLOCK || edge.twin < 0) return undefined;
+  return approaches[byEdge[edge.twin] ?? -1];
 }
 
 /**

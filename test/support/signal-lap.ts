@@ -24,7 +24,10 @@ export interface SignalLap {
  * light that is not green or in the moment its driver takes over a green that
  * has just started, and it drives over a stop line only from a tick that is
  * green, or amber where its driver takes ambers. Nobody crosses on red, and
- * nobody waits within {@link QUEUE_CLEAR} of a node that keeps clear.
+ * nobody waits within {@link QUEUE_CLEAR} of a node that keeps clear. A
+ * vehicle at a green light may wait while the light at the end of the next
+ * leg holds it, since the queue for that one may not run back into the
+ * junction between them.
  *
  * A turn a tram crosses is held on a green as well (`tram-guard.ts`): a
  * vehicle may stand while the tram is in the junction, and while it would
@@ -66,7 +69,11 @@ function standStill(traffic: AmbientTraffic, vehicle: AmbientVehicle, lap: Signa
   // A queue that runs back onto the leg before a light is held by that light.
   const holding = approach ?? signals.approachOf(vehicle.tour.edges[(now.leg + 1) % vehicle.tour.edges.length] as number);
   lap.stops++;
-  if (!heldBy(traffic, vehicle, holding, now.leg, tick)) {
+  // At a green of its own it may wait for the light at the end of the next
+  // leg, where the queue for that light already fills the block (issue #488).
+  const edges = vehicle.tour.edges;
+  const ahead = approach === undefined ? undefined : signals.approachOf(edges[(now.leg + 1) % edges.length] as number);
+  if (!heldBy(traffic, vehicle, holding, now.leg, tick) && !heldBy(traffic, vehicle, ahead, (now.leg + 1) % edges.length, tick)) {
     lap.faults.push(`vehicle ${vehicle.id} stands still at tick ${tick} with no red light`);
   }
   // Nor does it wait in a junction with lights or a level crossing behind it.
