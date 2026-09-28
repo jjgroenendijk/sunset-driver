@@ -42,8 +42,11 @@ const PULL_UP = 7;
 /** Metres from the player a car that is done drives off to, past where it is taken off the map. */
 const LEAVE_REACH = 320;
 
-/** Brings a patrol car out on the road nearest a place, or answers nothing where there is none. */
-export type Raise = (id: number, x: number, y: number) => PoliceUnit | undefined;
+/**
+ * Brings a patrol car out on the road nearest a place, facing the way that
+ * leads to a goal, or answers nothing where there is no road.
+ */
+export type Raise = (id: number, x: number, y: number, goalX: number, goalY: number) => PoliceUnit | undefined;
 
 /** The incidents going on within {@link ANSWER_NEAR} of the player, in id order. */
 export function incidentsNear(state: SimState, grounds: readonly CrimeGround[], quarry: Quarry): StreetCrime[] {
@@ -87,9 +90,9 @@ export function patrol(state: SimState, quarry: Quarry, grounds: readonly CrimeG
     const id = police.nextUnit;
     const rng = rngFor(state.seed, state.tick, Subsystem.Patrol, id);
     const away = atan2(crime.y - quarry.y, crime.x - quarry.x) + rng.range(-APPROACH_SPREAD, APPROACH_SPREAD);
-    const unit = raise(id, crime.x + cos(away) * APPROACH, crime.y + sin(away) * APPROACH);
-    if (unit === undefined) continue;
     const goal = answerGoal(crime);
+    const unit = raise(id, crime.x + cos(away) * APPROACH, crime.y + sin(away) * APPROACH, goal.x, goal.y);
+    if (unit === undefined) continue;
     unit.task = 'answer';
     unit.incident = crime.id;
     unit.goalX = goal.x;
