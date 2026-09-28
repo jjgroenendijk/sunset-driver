@@ -214,7 +214,9 @@ export function buildChunkBuildings(
     // masonry is generated; the other four are built from boxes, so they join
     // the block batch and cost no draw call of their own.
     const look = styleOf(building, district, stand.top, massing.height);
-    const generated = look === 'masonry' ? batchOf(building.kind, massing) : 'block';
+    // The batch is chosen on the box square to the front, as the draw call
+    // count and the shops of the world choose it; a leaned massing is wider.
+    const generated = look === 'masonry' ? batchOf(building.kind, plan(building)) : 'block';
     const batch = detail === 'near' ? generated : 'block';
     // A tower keeps its colour at every detail, so the skyline does not change
     // colour where the detail steps down.
