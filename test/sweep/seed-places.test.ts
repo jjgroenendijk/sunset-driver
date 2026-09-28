@@ -28,7 +28,7 @@ import { LandMasses } from '../../src/world/terrain/landmass.ts';
 import { type Parcel } from '../../src/world/city/parcels.ts';
 import { buildShops, holdsShop, roomOf, MAX_LICENCE, MIN_LICENCE, SHOP_KINDS, type Shop } from '../../src/world/city/shops.ts';
 import { TIERS } from '../../src/world/roads/tiers.ts';
-import { type Beach, type Corridor, type Point, type RoadCurve, type WorldDescription } from '../../src/world/types.ts';
+import { type Beach, type Corridor, type District, type Point, type RoadCurve, type WorldDescription } from '../../src/world/types.ts';
 import { ringArea } from '../support/helpers.ts';
 import {
   FOOTPRINT_COUNT,
@@ -47,6 +47,15 @@ import { sweepSuite } from './seed-suite.ts';
 
 /** The districts `generateDistricts` names with a culture of their own. */
 const FIXED_NAMES = new Set(['The Barrio', 'Little Italy', 'Chinatown', 'The Blocks', 'The Docks', 'Freight Yards', 'Gull Island', 'Roadhouse Strip']);
+
+/** The first two districts that stand within a metre of each other, by name. */
+function sharedSite(districts: readonly District[]): string | undefined {
+  for (const [i, a] of districts.entries()) {
+    const b = districts.slice(i + 1).find((d) => Math.hypot(a.x - d.x, a.y - d.y) <= 1);
+    if (b) return `${a.name} and ${b.name} share a site`;
+  }
+  return undefined;
+}
 
 /** Records the first fault a check finds. */
 type Fault = (text: string) => void;
@@ -429,6 +438,9 @@ sweepSuite('places', () => {
       const names = new Set(w.districts.map((d) => d.name));
       for (const r of required) expect(names.has(r), `${r} in seed ${seed}`).toBe(true);
       expect(names.size, `duplicate district name in seed ${seed}`).toBe(w.districts.length);
+      // No two districts share a site, or the map names one place twice and
+      // `districtAt` never returns the second (issue #598).
+      expect(sharedSite(w.districts), `seed ${seed}`).toBeUndefined();
       // The Boardwalk is the neighbourhood of a real boardwalk: the name goes
       // to a district a resort beach runs through (issue #104).
       const boardwalk = w.districts.find((d) => d.name === 'The Boardwalk');

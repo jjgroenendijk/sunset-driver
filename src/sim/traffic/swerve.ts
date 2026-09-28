@@ -25,15 +25,20 @@
 import { cos, sin } from '../../core/libm.ts';
 import { TICK_RATE } from '../clock.ts';
 import { HEAD_ON, STANDING, sideOf, type Car, type Person } from './give-way-scene.ts';
-import { within, type Other } from './give-way-geometry.ts';
+import { gapBetween, outside, within, type Other } from './give-way-geometry.ts';
 import type { Swerve } from './hold.ts';
-import { turnedTouch, type Footprint, type Kerbs } from './traffic.ts';
+import type { Footprint, Kerbs } from './traffic.ts';
 
 /** Metres ahead of its front bumper a car steers round something standing in its lane. */
 const LOOK = 12;
 
 /** Metres behind its rear bumper something it passes still counts as beside it. */
 const PAST = 1.5;
+
+/** Metres a step sideways or a turn keeps from another car, from the player, their car, a wreck or a unit, and from a person. */
+const CAR_TOUCH = 0.1;
+const OTHER_TOUCH = 0.25;
+const PERSON_TOUCH = 0.4;
 
 /** Metres a car keeps from the side of what it passes, and from a kerb. */
 const ROOM = 0.6;
@@ -346,36 +351,48 @@ export class Steering {
     return true;
   }
 
-  /** True when moving car `i` `drift` metres sideways where it stands puts it against a car, another or a person. */
+  /**
+   * True when moving car `i` `drift` metres sideways where it stands, and
+   * turning it by `turn`, puts it against a car, another or a person. A car
+   * already that close to one may still move, but not closer to it: a car
+   * held against a bus it waits for would otherwise turn its corner into it.
+   */
   private stepTouches(i: number, drift: number, turn: number): boolean {
     const scene = this.scene;
     const car = scene.cars[i] as Car;
-    if (this.touchesAny(i, car.box, car.cos, car.sin)) return false;
     const moved = this.moved;
     moved.x = car.box.x - car.laneSin * drift;
     moved.y = car.box.y + car.laneCos * drift;
     moved.heading = car.box.heading + turn;
     moved.halfLength = car.box.halfLength;
     moved.halfWidth = car.box.halfWidth;
-    return this.touchesAny(i, moved, cos(moved.heading), sin(moved.heading));
-  }
-
-  private touchesAny(i: number, box: Footprint, c: number, s: number): boolean {
-    const scene = this.scene;
-    for (const j of scene.carsNear(box.x, box.y, box.halfLength + 8, this.near)) {
+    const mc = cos(moved.heading);
+    const ms = sin(moved.heading);
+    const box = car.box;
+    for (const j of scene.carsNear(moved.x, moved.y, moved.halfLength + 8, this.near)) {
       if (j === i) continue;
       const other = scene.cars[j] as Car;
-      if (turnedTouch(box, c, s, other.box, other.cos, other.sin, 0.1)) return true;
+      if (closer(box, car.cos, car.sin, moved, mc, ms, other.box, other.cos, other.sin, CAR_TOUCH)) return true;
     }
     for (const other of scene.others) {
-      if (turnedTouch(box, c, s, other, other.cos, other.sin, 0.25)) return true;
+      if (closer(box, car.cos, car.sin, moved, mc, ms, other, other.cos, other.sin, OTHER_TOUCH)) return true;
     }
-    for (const k of scene.peopleNear(box.x, box.y, box.halfLength + 2, this.near)) {
+    for (const k of scene.peopleNear(moved.x, moved.y, moved.halfLength + 2, this.near)) {
       const person = scene.people[k] as Person;
-      if (within(box, c, s, person.x, person.y, 0.4)) return true;
+      if (!within(moved, mc, ms, person.x, person.y, PERSON_TOUCH)) continue;
+      if (outside(moved, mc, ms, person.x, person.y) < outside(box, car.cos, car.sin, person.x, person.y) - 1e-9) return true;
     }
     return false;
   }
+}
+
+/**
+ * True when a box moved from `box` to `moved` comes within `margin` of
+ * `other`, and nearer to it than it was.
+ */
+function closer(box: Footprint, c: number, s: number, moved: Footprint, mc: number, ms: number, other: Footprint, oc: number, os: number, margin: number): boolean {
+  const after = gapBetween(moved, mc, ms, other, oc, os);
+  return after <= margin && after < gapBetween(box, c, s, other, oc, os) - 1e-9;
 }
 
 /** A footprint's reach along a car's lane and across it, measured from the middle of the lane where the car stands. */

@@ -55,6 +55,10 @@ and what lights them in `docs/lighting.md`.
   every floor of every tower of the core, and a generated facade is the dearest thing a chunk
   builds. Widening them is what paid for the extra boxes — the quick tier costs a fifth less CPU
   than it did, and the dearest chunk of five seeds costs fewer vertices at near detail than before.
+- The one exception: `fitBay` narrows the bay until every part on a side edge is two bays wide on
+  the facade footprint. The generator never builds a crown narrower than two bays, so a narrow
+  half of a `step` otherwise gets a crown up to 5 m wider than its walls, and on a shared edge the
+  walls then stop short (issue #623).
 
 ## The style a tall building is dressed in
 
@@ -196,8 +200,11 @@ and what lights them in `docs/lighting.md`.
   `building-plan.ts`): each place moves along `x` by an amount linear in `x` at its depth, which
   maps the massing's sides onto the lot's side edges. A shear in the matrix cannot do this, because
   a trapezoid is wider at one end. The normals and the facade's `roomCenter` are leaned with the
-  places. `node scripts/wall-gaps.ts <seed> [near|mid|far]` measures the daylight left at each
-  shared edge around the core.
+  places. A leaned massing is as wide as the span between the side edges at mid-depth, not
+  `building.width`: that is the widest box square to the front, and on a skewed lot a shell built to
+  it came out stretched up to three times (#556). The batch is still chosen on that box (`plan`).
+  `node scripts/wall-gaps.ts <seed> [near|mid|far]` measures the daylight left at each shared edge
+  around the core.
 - A generated facade carries the room behind each window in its vertices: `roomCenter` and
   `roomSize`, baked by the generator in the building's own frame. The material casts the view ray
   into that box against `positionLocal`, and hashes the room's furniture off `roomCenter`. So a
