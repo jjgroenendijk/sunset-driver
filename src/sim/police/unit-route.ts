@@ -16,7 +16,7 @@
  * point. Nothing here reads a clock or a random stream.
  */
 import { atan2, hypot } from '../../core/libm.ts';
-import type { RoadEdge, RoadGraph } from '../../world/roads/graph.ts';
+import type { RoadEdge, RoadGraph, RoadNode } from '../../world/roads/graph.ts';
 import { heightOff, RouteSampler, type RouteLegs, type RoutePoint } from '../traffic/route-sample.ts';
 import { offsetIn, tramLanes, type TrafficRoads } from '../traffic/traffic.ts';
 import { TIERS } from '../../world/roads/tiers.ts';
@@ -67,6 +67,23 @@ export class UnitRoads {
   /** The edge nearest a place, or -1 where the world has no roads at all. */
   edgeNear(x: number, y: number): number {
     return this.graph.nearestEdge(x, y)?.edge ?? -1;
+  }
+
+  /**
+   * The edge nearest a place, in the direction of travel that ends nearer a
+   * goal, or -1 where the world has no roads. A car raised on it heads for the
+   * goal rather than first driving a block away from it.
+   */
+  edgeToward(x: number, y: number, goalX: number, goalY: number): number {
+    const edge = this.graph.edges[this.edgeNear(x, y)];
+    if (edge === undefined) return -1;
+    const twin = this.graph.edges[edge.twin];
+    if (twin === undefined) return edge.id;
+    const gap = (e: RoadEdge): number => {
+      const end = this.graph.nodes[e.to] as RoadNode;
+      return hypot(end.x - goalX, end.y - goalY);
+    };
+    return gap(twin) < gap(edge) ? twin.id : edge.id;
   }
 
   /** The node nearest a place, or -1 on a world with no roads. */

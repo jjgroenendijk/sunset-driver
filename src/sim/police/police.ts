@@ -32,7 +32,7 @@ import { bark, CREW, type Bark, type Cuffs, type FallenOfficer, type Officer } f
 import { dropPoliceCar } from '../weapons/pickup.ts';
 import { inSight, Squad, type Quarry } from './squad.ts';
 import { helicopterFire, unitFire } from './officer-fire.ts';
-import { patrol } from './patrol.ts';
+import { patrol, type Raise } from './patrol.ts';
 import type { CrimeGround } from '../city/street-crime.ts';
 import { UnitRoads, type DrivePose } from './unit-route.ts';
 import type { SimState } from '../simulation.ts';
@@ -379,7 +379,7 @@ export class PoliceForce {
   private readonly squad: Squad;
   private readonly pose: DrivePose = { x: 0, y: 0, height: 0, heading: 0 };
   /** How `patrol.ts` brings a car out onto the road nearest a place. */
-  private readonly raiser = (id: number, x: number, y: number): PoliceUnit | undefined => this.raise(id, 'patrol', x, y);
+  private readonly raiser: Raise = (id, x, y, goalX, goalY) => this.raise(id, 'patrol', x, y, goalX, goalY);
   /** The units that were out last tick, so the routes of the ones that have gone are forgotten. */
   private out: number[] = [];
 
@@ -502,9 +502,10 @@ export class PoliceForce {
   /**
    * A unit standing on the road nearest a place, or undefined where there is no
    * road to come in on. The helicopter needs none: it starts in the air where
-   * it was called to.
+   * it was called to. With a goal, the car faces the way along the road that
+   * leads towards it.
    */
-  private raise(id: number, kind: PoliceKind, x: number, y: number): PoliceUnit | undefined {
+  private raise(id: number, kind: PoliceKind, x: number, y: number, goalX?: number, goalY?: number): PoliceUnit | undefined {
     const unit: PoliceUnit = {
       id,
       kind,
@@ -527,7 +528,7 @@ export class PoliceForce {
       incident: -1,
     };
     if (kind === 'helicopter') return unit;
-    const edge = this.roads.edgeNear(x, y);
+    const edge = goalX === undefined || goalY === undefined ? this.roads.edgeNear(x, y) : this.roads.edgeToward(x, y, goalX, goalY);
     if (edge < 0) return undefined;
     unit.edges = [edge];
     this.roads.pose(id, unit.edges, 0, this.pose);
