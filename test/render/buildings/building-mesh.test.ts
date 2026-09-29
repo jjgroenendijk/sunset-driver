@@ -137,6 +137,20 @@ function eachWorldVertex(
  * overhang its walls, but its walls carry most of the places near the edge: its
  * wall is the distance from the edge the most places share, to the centimetre.
  */
+/**
+ * Every third of the edge is met, and nothing but the relief of a tall wall,
+ * which hangs over the neighbour as a cornice does, stands past it. A wing or a
+ * fence that stands short of the edge would leave one third bare.
+ */
+function expectEdgeMet(one: BuildingPlacement | undefined, side: 'left' | 'right', name: string): void {
+  if (one === undefined || one.batch !== 'block') return;
+  const reach = wallReach(one, side);
+  for (const third of ['most', 'front', 'back'] as const) {
+    expect(reach[third], `${name} ${side} ${third}`).toBeGreaterThan(-0.06);
+    if (one.building.kind !== 'mid-rise') expect(reach[third], `${name} ${side} ${third}`).toBeLessThan(0.06);
+  }
+}
+
 function wallReach(one: BuildingPlacement, side: 'left' | 'right'): SideReach {
   const each = (visit: (p: Point) => void): void =>
     eachWorldVertex(one.shell, one, (vertex) => visit({ x: vertex.x, y: vertex.z }));
@@ -224,6 +238,20 @@ describe('a building on its lot', () => {
           if (!pointInRing({ x: vertex.x, y: vertex.z }, standingGround(one.at))) outside++;
         });
         expect(outside, `${kind} off its ground`).toBe(0);
+      }
+    }
+  });
+
+  it('reaches the wall it shares at near detail whatever it builds beyond its walls', () => {
+    // A fence, a garage or a relief that stands wider than the walls must not
+    // decide where the shell is stretched to: the walls have to meet the edge.
+    for (const kind of ['house', 'shop-row', 'mid-rise'] as const) {
+      for (let seed = 1; seed <= 24; seed++) {
+        const west = buildingOf(kind, 22, 26, { seed, front: { x: 0, y: 0 }, shared: { left: false, right: true } });
+        const east = buildingOf(kind, 22, 26, { seed, front: { x: 22, y: 0 }, shared: { left: true, right: false } });
+        const both = placed([west, east], lookupOf(undefined, 0, QUIET));
+        expectEdgeMet(both[0], 'right', `${kind} ${seed}`);
+        expectEdgeMet(both[1], 'left', `${kind} ${seed}`);
       }
     }
   });

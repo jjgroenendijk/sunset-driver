@@ -136,6 +136,12 @@ export interface BlockStyle {
   wealth: number;
   detail: 'near' | 'mid';
   /**
+   * The side edges the lot shares with a neighbour, where the building has to
+   * meet the wall next door. A wing that stands shallower than the house is
+   * kept off them.
+   */
+  shared?: { left: boolean; right: boolean };
+  /**
    * How a tower or a mid-rise block is dressed (spec section 10.3), where it is
    * one of the four styles `tall-mesh.ts` builds, and the bay rhythm its shape
    * drew for itself. Undefined on every other kind, and on the classical
@@ -333,6 +339,21 @@ export class Shell {
    * stood where it belongs afterwards.
    */
   offset = 0;
+
+  /**
+   * Where the walls stand along the frontage, or undefined where the whole shell
+   * is to be fitted. A tall block sets it: the relief it wears at near detail
+   * reaches past its walls, and the fit to a shared edge is measured on the
+   * walls (`fitOf`).
+   */
+  walls: { min: number; max: number } | undefined;
+
+  /** Note that a wall stands between two places, before `offset` moves them. */
+  spanWalls(x0: number, x1: number): void {
+    const min = x0 + this.offset;
+    const max = x1 + this.offset;
+    this.walls = this.walls === undefined ? { min, max } : { min: Math.min(this.walls.min, min), max: Math.max(this.walls.max, max) };
+  }
 
   /** How many vertices have been collected, which is what a cap is counted in. */
   get count(): number {
