@@ -80,6 +80,8 @@ export interface BlockGeometry {
   shell: BufferGeometry;
   /** The rooftop dressing, in the same frame, or undefined where there is none. */
   dress: BufferGeometry | undefined;
+  /** Where the walls stand along the frontage, in the shell's frame, if it built any. */
+  walls: { min: number; max: number } | undefined;
 }
 
 /**
@@ -118,7 +120,7 @@ export function buildBlockGeometry(
       deck = house(shell, massing, style);
       break;
   }
-  return { shell: shell.geometry(tint, finish), dress: buildDressGeometry(deck, style, tint, finish) };
+  return { shell: shell.geometry(tint, finish), dress: buildDressGeometry(deck, style, tint, finish), walls: shell.walls };
 }
 
 /**
@@ -194,6 +196,7 @@ function tall(shell: Shell, massing: BuildingMassing, style: BlockStyle, boxes: 
       styledBox(shell, style.tall.look, outer, one.from, one.to, at, style.detail, style.tall.bay, one.to >= crown);
     } else {
       box(shell, walls, one.from, one.to, BLOCK_WALL, at);
+      shell.spanWalls(at.x - walls.width / 2, at.x + walls.width / 2);
       windowBands(shell, walls, one.from, one.to, ALL_SIDES, at);
     }
     // A parapet is a ring a third of a metre wide. The camera is 200 m out at

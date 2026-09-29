@@ -78,9 +78,9 @@ export function house(shell: Shell, massing: BuildingMassing, style: BlockStyle)
   const porched = near && unit(seed, SALT_PORCH) < 0.4;
   const outer = shrink(massing, porched ? PORCH_REACH : EAVES);
   // A garage takes one end of the lot, and the body of the house the rest.
-  const garage = near && outer.width > GARAGE_ROOM && unit(seed, SALT_GARAGE) < 0.45;
+  const side = garageSide(seed, style.shared);
+  const garage = near && side !== 0 && outer.width > GARAGE_ROOM && unit(seed, SALT_GARAGE) < 0.45;
   const wing = garage ? Math.min(GARAGE_WIDE, outer.width * GARAGE_SHARE) : 0;
-  const side = unit(seed, SALT_SIDE) < 0.5 ? -1 : 1;
   const walls = { ...outer, width: outer.width - wing };
 
   const storeys = unit(seed, SALT_STOREYS) < 0.45 ? 1 : 2;
@@ -104,8 +104,22 @@ export function house(shell: Shell, massing: BuildingMassing, style: BlockStyle)
 
   shell.offset = 0;
   if (wing > 0) garageWing(shell, outer, side, wing, cover);
-  if (near && unit(seed, SALT_FENCE) < 0.45) fence(shell, massing);
+  if (near && unit(seed, SALT_FENCE) < 0.45) fence(shell, outer);
   return deck;
+}
+
+/**
+ * The end of the house a garage takes: -1 or 1, and 0 where both ends share a
+ * wall. The wing is shallower than the house, so it stands at an end that no
+ * neighbour's wall meets, or it would leave a gap beside it. The first corner
+ * of the lot, and so its left edge, is at +x.
+ */
+function garageSide(seed: number, shared: { left: boolean; right: boolean } | undefined): number {
+  const drawn = unit(seed, SALT_SIDE) < 0.5 ? -1 : 1;
+  if (shared === undefined) return drawn;
+  if (shared.left && shared.right) return 0;
+  if (shared.left) return -1;
+  return shared.right ? 1 : drawn;
 }
 
 /** A porch: a slab over the door, on two posts. */
@@ -132,10 +146,14 @@ function garageWing(shell: Shell, outer: BuildingMassing, side: number, wide: nu
   shell.box(x0 + 0.4, x1 - 0.4, 0, top - 0.5, hd, hd + 0.08, BLOCK_METAL);
 }
 
-/** A fence along the front of the lot, with the path left open in the middle. */
-function fence(shell: Shell, massing: BuildingMassing): void {
-  const hw = massing.width / 2 - 0.1;
-  const z = massing.depth / 2 - 0.2;
+/**
+ * A fence along the front of the house, with the path left open in the middle.
+ * It runs the width of the walls, so that where the lot shares a wall the fence
+ * does not hang over the neighbour once the walls are stretched to it.
+ */
+function fence(shell: Shell, outer: BuildingMassing): void {
+  const hw = outer.width / 2;
+  const z = outer.depth / 2 + 0.3;
   const gap = 1.2;
   shell.box(-hw, -gap, 0, FENCE_RISE, z - FENCE_THICK, z, BLOCK_TRIM);
   shell.box(gap, hw, 0, FENCE_RISE, z - FENCE_THICK, z, BLOCK_TRIM);

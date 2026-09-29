@@ -232,6 +232,7 @@ export function buildChunkBuildings(
       seed: building.seed,
       wealth: district.wealth,
       detail: detail === 'near' ? 'near' : 'mid',
+      shared: building.shared,
     };
     // How the building is massed inside its box: the same shape at every
     // detail, laid out on whatever rectangle that detail builds on. An Art Deco
@@ -243,10 +244,10 @@ export function buildChunkBuildings(
     // A block fills its massing; the walls of a generated facade stand short of
     // it, so where the lot has a wall against it the shell is stretched until
     // they reach it. The walls move with the shell.
-    const moved = walls === undefined ? undefined : { min: walls.min + dx, max: walls.max + dx };
+    const covers = { min: box.min.x, max: box.max.x, depth: box.max.z - box.min.z };
+    const moved = wallsOf(walls, dx, covers);
     // The lean widens what hangs over a shared edge, so the fit is told by how
     // much. Its scale does not depend on the fit; only its shift does.
-    const covers = { min: box.min.x, max: box.max.x, depth: box.max.z - box.min.z };
     const spread = spreadOf(leanOf(building, massing), massing);
     const fit = fitOf(covers, massing, building.shared, moved, spread);
     const footing = footingGeometry(shape, box, fit, stand.footing, tint, finish);
@@ -265,6 +266,16 @@ export function buildChunkBuildings(
     });
   }
   return out;
+}
+
+/** Where the walls stand once the shell is centred, held inside what the shell covers. */
+function wallsOf(
+  walls: { min: number; max: number } | undefined,
+  dx: number,
+  covers: { min: number; max: number },
+): { min: number; max: number } | undefined {
+  if (walls === undefined) return undefined;
+  return { min: Math.max(walls.min + dx, covers.min), max: Math.min(walls.max + dx, covers.max) };
 }
 
 /**
@@ -315,7 +326,7 @@ function shellOf(
     return { shell: buildMassingGeometry(tint, finish, farBoxes(shape, massing)), dress: undefined, walls: undefined };
   }
   const built = buildBlockGeometry(building.kind, massing, tint, finish, style, boxesOf(shape, massing, massing.height, 0));
-  return { shell: built.shell, dress: built.dress, walls: undefined };
+  return { shell: built.shell, dress: built.dress, walls: built.walls };
 }
 
 /** Lean the shell, the dressing and the footing of one building alike. */

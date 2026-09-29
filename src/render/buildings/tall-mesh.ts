@@ -117,6 +117,7 @@ export function styledBox(
   // the edge it shares; the relief that draws a near wall in is not built there.
   const reach = detail === 'near' ? REACH[look] : PROUD;
   const walls = inset(outer, reach);
+  shell.spanWalls(at.x - walls.width / 2, at.x + walls.width / 2);
   if (detail === 'mid' || look !== 'miami') box(shell, walls, from, to, WALL_PART[look], at);
   // At mid detail the box and its parapet are the whole building. Every one of
   // the four styles carries its windows in its material — the panes of a
