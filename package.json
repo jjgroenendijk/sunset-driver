@@ -27,7 +27,7 @@
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.8.1",
     "@swc/core": "^1.16.2",
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.3",
     "@types/three": "^0.186.0",
     "@webgpu/types": "^0.1.74",
     "dependency-cruiser": "^18.4.0",
@@ -39,11 +39,11 @@
     "typescript": "^7.0.2",
     "typescript-eslint": "^8.70.1",
     "vite": "^8.3.1",
-    "vitest": "^5.0.1",
-    "wrangler": "^4.139.0"
+    "vitest": "^5.0.2",
+    "wrangler": "^4.141.0"
   },
   "dependencies": {
-    "@dimforge/rapier3d-compat": "^0.20.0",
+    "@dimforge/rapier3d-compat": "^0.21.0",
     "@trystero-p2p/core": "^0.25.4",
     "@trystero-p2p/mqtt": "^0.25.4",
     "@trystero-p2p/nostr": "^0.25.4",
