@@ -226,9 +226,19 @@ the map, the physics and the vehicles the player drives — is in `docs/sim-and-
   keep clear (issue #357). Without that, every place on a short approach maps to the same car, and
   a whole red's worth of vehicles stands on one spot. `test/support/signal-lap.ts` holds a vehicle
   standing there to the light of the next leg. A bus never spills back, so its halt never lands
-  on its own call. What still stacks is a short block between two junctions with lights: the
-  queue may not run into the junction behind, and holding the overflow at the light before is
-  issue #488.
+  on its own call.
+- A block between two junctions with lights is the other case (issue #488). Its queue may not run
+  back into the junction behind, so the place is counted over the block and the approach before
+  it. A place that does not fit the block waits at the light before (`holdBefore`), through that
+  light's green while the light ahead is red, and pulls away when both show green. That wait is
+  taken only where it brings the vehicle over both lines on a colour it may take. Otherwise the
+  vehicle queues in the block as before. `signal-lap.ts` lets a vehicle stand at a green light
+  while the light of the next leg holds it.
+- Junctions with lights less than `SHORT_BLOCK` apart change in step (`inStep` in `signals.ts`):
+  the road between them turns green at both ends on the same tick. With offsets drawn apart, a
+  block that holds one car often had no moment where both lights were green, and every car behind
+  stood on that one spot. Traffic that turns into such a block from the road across still has no
+  shared green, and it still queues in the block.
 - A leg with a light is driven in two at the stop line even when the light is green, so the drive
   over the line starts on the tick the colour was read at. One drive over the whole leg rounds the
   crossing a tick early, and on the first tick of a green that tick is still red.

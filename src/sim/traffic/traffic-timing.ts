@@ -20,7 +20,8 @@
  * red light ends. Each takes its own place in it instead, drawn once from its
  * own stream and kept at every light it meets: whole cars back from the line,
  * as far as the road behind the line will hold, and on through a junction
- * without lights onto the road before it. That place is the only thing
+ * without lights onto the road before it. A place a block between two lights
+ * cannot hold waits at the light before instead. That place is the only thing
  * that holds two vehicles apart, and it holds them apart while they drive too,
  * since a vehicle further back pulls away later and stays behind for the rest
  * of the lap. The lap closes at the anchor the same way, so a light that many
@@ -41,123 +42,13 @@ import { NO_CALL, type BusRoute } from '../transit/bus.ts';
 import { STEADY, type Driver } from './driver.ts';
 import { SIGNAL_AMBER, SIGNAL_CYCLE, SIGNAL_GREEN, type SignalApproach, type TrafficSignals } from './signals.ts';
 import type { TramGuard } from '../transit/tram-guard.ts';
-import { ACCEL, FREE, rampTicks, throughSpeed } from './traffic-motion.ts';
+import { ACCEL, FREE, throughSpeed } from './traffic-motion.ts';
+import { callOf, driveLeg, driveTicks, finish, legTicks, NOTHING, overLine, share, Steps, topOf, type Call, type Tour } from './traffic-steps.ts';
 
-/** Fraction of the speed limit ambient traffic drives at. */
-export const CRUISE = 0.9;
+export { CRUISE, finish, legAt, legNear, Steps, type Tour } from './traffic-steps.ts';
 
 /** Metres of a run the junction behind a queue may take: the back of the queue stops short of it. */
 export const QUEUE_CLEAR = 20;
-
-/** One closed route and how it is driven. */
-export interface Tour {
-  /** The edges in the order they are driven; the last one ends where the first starts. */
-  edges: Int32Array;
-  /** Metres along the route each leg starts at. */
-  startDistance: Float64Array;
-  /** Metres once round. */
-  length: number;
-  /** The leg each step is on. */
-  stepLeg: Int32Array;
-  /** Metres along its leg each step starts and ends; the same for a wait. */
-  stepFrom: Float64Array;
-  stepTo: Float64Array;
-  /** Ticks each step takes, at least one. */
-  stepTicks: Int32Array;
-  /** The tick of the route each step starts on. */
-  stepStart: Int32Array;
-  /** 1 on each step that is a call at a stop on the route: a bus at the kerb (`bus.ts`). */
-  stepCall: Uint8Array;
-  /**
-   * Metres per second the vehicle may run through the join after each leg at:
-   * the turn there, and the cruise of the slower of the two roads
-   * (`traffic-motion.ts`). {@link FREE} where nothing holds it back.
-   */
-  turns: Float64Array;
-  /** Ticks once round. */
-  period: number;
-  /**
-   * The tick of the signal cycle, 0 to {@link SIGNAL_CYCLE}, that tick 0 of the
-   * tour has to fall on; -1 for a tour that meets no signal.
-   */
-  sync: number;
-}
-
-/** The steps of a tour while they are laid down. The tram (`tram-timing.ts`) lays its own down with it. */
-export class Steps {
-  readonly leg: number[] = [];
-  readonly from: number[] = [];
-  readonly to: number[] = [];
-  readonly ticks: number[] = [];
-  /** 1 on a step that is a call at a stop, which is a wait nothing on the road is holding. */
-  readonly call: number[] = [];
-  tick = 0;
-
-  add(leg: number, from: number, to: number, ticks: number, call = false): void {
-    if (ticks <= 0) return;
-    this.leg.push(leg);
-    this.from.push(from);
-    this.to.push(to);
-    this.ticks.push(ticks);
-    this.call.push(call ? 1 : 0);
-    this.tick += ticks;
-  }
-
-  /**
-   * Spread extra ticks over the drives from step `first` on, in proportion to
-   * their ticks. A wait is never grown: a driver held longer at a green they
-   * were sent away on, or a bus held longer at a kerb, is a vehicle standing
-   * still where nothing is holding it. Where there is no drive left to slow,
-   * the extra goes on the last step, since the lap still has to close.
-   */
-  stretch(first: number, extra: number): void {
-    if (extra <= 0) return;
-    let total = 0;
-    let longest = -1;
-    for (let i = first; i < this.ticks.length; i++) {
-      if (this.from[i] === this.to[i]) continue;
-      total += this.ticks[i] as number;
-      if (longest < 0 || (this.ticks[i] as number) > (this.ticks[longest] as number)) longest = i;
-    }
-    if (longest < 0) {
-      const last = this.ticks.length - 1;
-      this.ticks[last] = (this.ticks[last] as number) + extra;
-      this.tick += extra;
-      return;
-    }
-    let given = 0;
-    for (let i = first; i < this.ticks.length; i++) {
-      if (this.from[i] === this.to[i]) continue;
-      const more = Math.floor((extra * (this.ticks[i] as number)) / total);
-      this.ticks[i] = (this.ticks[i] as number) + more;
-      given += more;
-    }
-    this.ticks[longest] = (this.ticks[longest] as number) + extra - given;
-    this.tick += extra;
-  }
-
-  /** Take back the steps from `first` on, to lay that stretch down again. */
-  truncate(first: number): void {
-    for (let i = first; i < this.ticks.length; i++) this.tick -= this.ticks[i] as number;
-    this.leg.length = first;
-    this.from.length = first;
-    this.to.length = first;
-    this.ticks.length = first;
-    this.call.length = first;
-  }
-
-  /** Ticks the drives from step `first` on take. */
-  ticksFrom(first: number): number {
-    let total = 0;
-    for (let i = first; i < this.ticks.length; i++) total += this.ticks[i] as number;
-    return total;
-  }
-}
-
-/** Ticks a whole edge takes at a cruising speed, {@link CRUISE} of the limit unless a driver says otherwise. */
-function driveTicks(edge: RoadEdge, cruise: number = CRUISE): number {
-  return Math.max(1, Math.round((edge.length / (edge.speedLimit * cruise)) * TICK_RATE));
-}
 
 /**
  * The timing of a route. Without signals, or where the route meets none, each
@@ -240,43 +131,6 @@ export interface TourPlan {
 
 /** The calls of a route: metres along each leg a vehicle stands at, and for how long. */
 export type CallPlan = (graph: RoadGraph, route: readonly number[], signals: TrafficSignals | undefined) => BusRoute;
-
-/** A call on one leg: where it stands and for how long, or no call at all. */
-interface Call {
-  at: number;
-  dwell: number;
-}
-
-const NOTHING: Call = { at: NO_CALL, dwell: 0 };
-
-/** The call on one leg of a route that has been walked for its stops. */
-function callOf(calls: BusRoute | undefined, leg: number): Call {
-  if (calls === undefined) return NOTHING;
-  return { at: calls.at[leg] as number, dwell: calls.dwell[leg] as number };
-}
-
-/**
- * Drive a stretch of a leg, standing at the kerb on the way where the route
- * calls there. `call` is metres along the leg, or {@link NO_CALL}; a call
- * beyond the stretch is one this stretch does not reach.
- */
-function driveLeg(steps: Steps, leg: number, edge: RoadEdge, from: number, to: number, call: Call, driver: Driver, enter = FREE, leave = FREE): void {
-  const at = call.at;
-  if (at <= from || at >= to) {
-    steps.add(leg, from, to, share(edge, to - from, driver, enter, leave));
-    return;
-  }
-  steps.add(leg, from, at, share(edge, at - from, driver, enter, 0));
-  steps.add(leg, at, at, call.dwell, true);
-  steps.add(leg, at, to, share(edge, to - at, driver, 0, leave));
-}
-
-/** Ticks {@link driveLeg} will take over a stretch, before it lays anything down. */
-function legTicks(edge: RoadEdge, from: number, to: number, call: Call, driver: Driver, enter = FREE, leave = FREE): number {
-  const at = call.at;
-  if (at <= from || at >= to) return share(edge, to - from, driver, enter, leave);
-  return share(edge, at - from, driver, enter, 0) + call.dwell + share(edge, to - at, driver, 0, leave);
-}
 
 /**
  * The speed the route may run through the join after each of its legs at,
@@ -447,12 +301,9 @@ function layLeg(lap: Lap, i: number): void {
   const red = colour === 'red' || (colour === 'amber' && !driver.runsAmber);
   const guarded = guard !== undefined && guard.guards(edge.id);
   const tram = guarded && !red && guard.blocks(edge.id, next, sync + arrive);
-  let hold: Hold | undefined;
-  let clear: number | undefined;
-  if (red || tram) {
-    hold = holdOf(lap, i, edge, approach);
-    if (guarded) clear = releaseAt(lap, i, edge, approach, hold, call, arrive);
-  }
+  const held = red || tram ? heldAt(lap, i, edge, approach, { red, guarded, call, arrive }) : FREE_RUN;
+  if (held.laid) return;
+  const { hold, clear } = held;
   if (hold === undefined || (!red && clear === undefined)) {
     // Driven in two at the line, so the drive over it starts on the tick
     // the colour was read at. One drive over the whole leg would cross the
@@ -569,6 +420,127 @@ function release(
   return undefined;
 }
 
+/** A short block: the leg before one with a light, which ends at a light of its own. */
+interface Block {
+  prev: RoadEdge;
+  /** The light at the end of `prev`. */
+  light: SignalApproach;
+  /** Metres behind that light the overflow of the queue ahead may stand in. */
+  room: number;
+}
+
+/**
+ * The block leg `i` of a lap runs along, where it starts at a junction with
+ * lights that the leg before drives into: the queue at the end of leg `i` may
+ * not run back through that junction, so what does not fit waits at its
+ * light instead (issue #488). Undefined where a call, a tram or a turn back
+ * along the same road would make that wait something else.
+ */
+function blockOf(lap: Lap, i: number, edge: RoadEdge): Block | undefined {
+  if (i < 1 || lap.callOn(i).at !== NO_CALL || lap.callOn(i - 1).at !== NO_CALL) return undefined;
+  const prev = lap.graph.edges[lap.turned[i - 1] as number] as RoadEdge;
+  const light = lap.signals.approachOf(prev.id);
+  if (light === undefined || prev.twin === edge.id) return undefined;
+  return { prev, light, room: light.stop - Math.min(QUEUE_CLEAR, light.stop) };
+}
+
+/** How a vehicle is held at a light: where it waits, and when a tram lets it go. */
+interface Held {
+  hold?: Hold;
+  /** The tick it pulls away on where a tram crosses its turn (`releaseAt`). */
+  clear?: number;
+  /** True where it was laid down waiting at the light before, and leg `i` with it. */
+  laid: boolean;
+}
+
+const FREE_RUN: Held = { laid: false };
+
+/** What held a vehicle at the light of leg `i`, as {@link layLeg} found it on arriving. */
+interface Arrival {
+  red: boolean;
+  guarded: boolean;
+  call: Call;
+  arrive: number;
+}
+
+/** How a vehicle that finds the light of leg `i` red, or its turn crossed by a tram, is held there. */
+function heldAt(lap: Lap, i: number, edge: RoadEdge, approach: SignalApproach, at: Arrival): Held {
+  const block = at.red ? blockOf(lap, i, edge) : undefined;
+  let hold: Hold | undefined;
+  if (block !== undefined) {
+    // Its place is counted over the block and the approach before it.
+    const road = roadBehind(undefined, approach);
+    const back = queueBack(edge, block.prev, approach, lap.place, lap.driver, road + block.room);
+    if (back <= road) hold = { on: edge, halt: approach.stop - back, spilt: false };
+    else if (holdBefore(lap, i, edge, approach, block, back - road)) return { laid: true };
+  }
+  hold ??= holdOf(lap, i, edge, approach);
+  const clear = at.guarded ? releaseAt(lap, i, edge, approach, hold, at.call, at.arrive) : undefined;
+  return { hold, clear, laid: false };
+}
+
+/**
+ * Lay legs `i - 1` and `i` again for a vehicle whose place in the queue at
+ * the end of leg `i` is `over` metres past the room of its block. It waits
+ * that far back from the light before, through that light's green while the
+ * light ahead is red, and pulls away once both are green, as a driver keeps
+ * out of a junction they could not leave. False, with nothing laid, where
+ * that does not bring it over both lines on a colour it may take:
+ * the lights never both show green, or the one ahead turns before it gets there.
+ */
+function holdBefore(lap: Lap, i: number, edge: RoadEdge, approach: SignalApproach, block: Block, over: number): boolean {
+  const { signals, sync, driver, steps } = lap;
+  const { prev, light } = block;
+  let first = steps.ticks.length;
+  while (first > 0 && steps.leg[first - 1] === i - 1) first--;
+  const halt = light.stop - over;
+  const start = steps.tick - steps.ticksFrom(first);
+  const reach = start + legTicks(prev, 0, halt, NOTHING, driver, lap.into(i - 1), 0);
+  const green = (a: SignalApproach, t: number): boolean => signals.light(a, sync + t) === 'green';
+  const both = (t: number): boolean => green(light, t) && green(approach, t);
+  // It comes to rest once the lights no longer both show green, and pulls away
+  // on the next tick one of them turns green while the other already is.
+  const next = (a: SignalApproach): number => reach + 1 + mod(signals.greenStart(a) - sync - reach - 1, SIGNAL_CYCLE);
+  // A start a whole cycle later shows the same colours, so the two within one cycle are all there is.
+  const early = Math.min(next(light), next(approach));
+  const late = Math.max(next(light), next(approach));
+  const go = both(early) ? early : late;
+  const rest = both(reach) ? reach + Math.min(untilRed(signals, light, sync + reach), untilRed(signals, approach, sync + reach)) : reach;
+  if (!both(go) || go <= rest) return false;
+  // The ticks it crosses the two lines on, as `overLine` lays the drives to them.
+  const before = throughSpeed(topOf(prev, driver), 0, light.stop - halt, lap.out(i - 1), prev.length - light.stop);
+  const cross = go + driver.react + share(prev, light.stop - halt, driver, 0, before);
+  const onto = cross + share(prev, prev.length - light.stop, driver, before, lap.out(i - 1));
+  const line = throughSpeed(topOf(edge, driver), lap.into(i), approach.stop, lap.out(i), edge.length - approach.stop);
+  const arrive = onto + share(edge, approach.stop, driver, lap.into(i), line);
+  const after = lap.turned[(i + 1) % lap.turned.length] as number;
+  const taken = (a: SignalApproach, t: number): boolean => {
+    const colour = signals.light(a, sync + t);
+    return colour === 'green' || (colour === 'amber' && driver.runsAmber);
+  };
+  if (!taken(light, cross) || !taken(approach, arrive) || !clearOf(lap, prev, edge.id, cross) || !clearOf(lap, edge, after, arrive)) return false;
+  steps.truncate(first);
+  driveLeg(steps, i - 1, prev, 0, halt, NOTHING, driver, lap.into(i - 1), 0);
+  steps.stretch(first, rest - steps.tick);
+  steps.add(i - 1, halt, halt, go - steps.tick + driver.react);
+  overLine(steps, i - 1, prev, halt, light.stop, driver, 0, lap.out(i - 1));
+  lap.legFirst = steps.ticks.length;
+  overLine(steps, i, edge, 0, approach.stop, driver, lap.into(i), lap.out(i));
+  lap.free = steps.ticks.length;
+  return true;
+}
+
+/** True where no tram crosses the turn from `edge` into `next` on tick `at` of the lap. */
+function clearOf(lap: Lap, edge: RoadEdge, next: number, at: number): boolean {
+  const guard = lap.guard;
+  return guard === undefined || !guard.guards(edge.id) || !guard.blocks(edge.id, next, lap.sync + at);
+}
+
+/** Ticks from `tick` to the end of an approach's green. */
+function untilRed(signals: TrafficSignals, approach: SignalApproach, tick: number): number {
+  return SIGNAL_GREEN[approach.axis] - mod(tick - signals.greenStart(approach), SIGNAL_CYCLE);
+}
+
 /**
  * The leg a queue for a light may run back onto: `prev`, which leads into
  * `next`, where the node between them is one a queue may stand in. A queue
@@ -601,13 +573,9 @@ function behind(graph: RoadGraph, signals: TrafficSignals, prev: number, next: n
  * Neither ever stands past the room the approach has, so a queue of careful
  * drivers ends at the last metre that fits rather than out in the junction.
  */
-function queueBack(edge: RoadEdge, prev: RoadEdge | undefined, approach: SignalApproach, place: number, driver: Driver): number {
+function queueBack(edge: RoadEdge, prev: RoadEdge | undefined, approach: SignalApproach, place: number, driver: Driver, road = roadBehind(prev, approach)): number {
   let pace = edge.length / driveTicks(edge, driver.cruise);
-  let road = Math.max(0, approach.stop - QUEUE_CLEAR);
-  if (prev !== undefined) {
-    pace = Math.min(pace, prev.length / driveTicks(prev, driver.cruise));
-    road = approach.stop + Math.max(0, prev.length - QUEUE_CLEAR);
-  }
+  if (prev !== undefined) pace = Math.min(pace, prev.length / driveTicks(prev, driver.cruise));
   // Pulling away from rest loses the ticks half the climb to cruise takes (`traffic-motion.ts`).
   const lose = Math.ceil((topOf(edge, driver) / (2 * ACCEL)) * TICK_RATE);
   const room = Math.min(road, Math.max(0, SIGNAL_GREEN[approach.axis] / 2 - lose) * pace);
@@ -615,88 +583,9 @@ function queueBack(edge: RoadEdge, prev: RoadEdge | undefined, approach: SignalA
   return Math.min(cars * driver.gap, room);
 }
 
-/**
- * Drive from `from` to the end of a leg in two, split at its stop line. A
- * vehicle pulling away from a queue picks up speed as it goes
- * (`traffic-motion.ts`), so inside one drive it would reach the line later than
- * an even speed does. Split there, it crosses on the tick the drive to the line
- * ends, which is the tick the light and the tram guard were read at.
- */
-function overLine(steps: Steps, leg: number, edge: RoadEdge, from: number, stop: number, driver: Driver, enter: number, leave: number): void {
-  // A vehicle that stood on the line pulls away in the drive past it.
-  const line = stop > from ? throughSpeed(topOf(edge, driver), enter, stop - from, leave, edge.length - stop) : enter;
-  steps.add(leg, from, stop, share(edge, stop - from, driver, enter, line));
-  steps.add(leg, stop, edge.length, share(edge, edge.length - stop, driver, line, leave));
-}
-
-/** Metres per second this driver cruises at on an edge. */
-function topOf(edge: RoadEdge, driver: Driver): number {
-  return edge.speedLimit * driver.cruise;
-}
-
-/**
- * Ticks a stretch of an edge takes at this driver's cruising speed, rounded up
- * so it never drives faster, and the ticks it loses changing speed from
- * `enter` and to `leave` metres per second at its ends (`traffic-motion.ts`).
- */
-function share(edge: RoadEdge, metres: number, driver: Driver, enter = FREE, leave = FREE): number {
-  if (metres <= 0) return 0;
-  const even = Math.ceil((driveTicks(edge, driver.cruise) * metres) / edge.length);
-  return even + rampTicks(metres, topOf(edge, driver), enter, leave);
-}
-
-/** Pack the steps of a route into a {@link Tour}. */
-export function finish(graph: RoadGraph, route: readonly number[], steps: Steps, sync: number, turns?: Float64Array): Tour {
-  const count = route.length;
-  const tour: Tour = {
-    edges: Int32Array.from(route),
-    startDistance: new Float64Array(count),
-    length: 0,
-    stepLeg: Int32Array.from(steps.leg),
-    stepFrom: Float64Array.from(steps.from),
-    stepTo: Float64Array.from(steps.to),
-    stepTicks: Int32Array.from(steps.ticks),
-    stepStart: new Int32Array(steps.ticks.length),
-    stepCall: Uint8Array.from(steps.call),
-    turns: turns ?? new Float64Array(route.length).fill(FREE),
-    period: 0,
-    sync,
-  };
-  for (let i = 0; i < count; i++) {
-    tour.startDistance[i] = tour.length;
-    tour.length += (graph.edges[route[i] as number] as RoadEdge).length;
-  }
-  for (let i = 0; i < steps.ticks.length; i++) {
-    tour.stepStart[i] = tour.period;
-    tour.period += steps.ticks[i] as number;
-  }
-  return tour;
-}
-
-/** The last index whose value is at or below a number, in an ascending list that starts at 0. */
-export function legAt(starts: Int32Array | Float64Array, value: number): number {
-  let lo = 0;
-  let hi = starts.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if ((starts[mid] as number) <= value) lo = mid;
-    else hi = mid - 1;
-  }
-  return lo;
-}
-
-/**
- * The same index as {@link legAt}, trying `hint` and the index after it
- * first. A loop read one tick after another moves on by at most one index,
- * so the last answer given for it is nearly always the right hint.
- */
-export function legNear(starts: Int32Array | Float64Array, value: number, hint: number): number {
-  const n = starts.length;
-  if (hint >= 0 && hint < n && (starts[hint] as number) <= value) {
-    if (hint + 1 >= n || (starts[hint + 1] as number) > value) return hint;
-    if (hint + 2 >= n || (starts[hint + 2] as number) > value) return hint + 1;
-  }
-  return legAt(starts, value);
+/** Metres a queue for a light may take: its own road, and the leg before where it runs back onto it. */
+function roadBehind(prev: RoadEdge | undefined, approach: SignalApproach): number {
+  return prev === undefined ? Math.max(0, approach.stop - QUEUE_CLEAR) : approach.stop + Math.max(0, prev.length - QUEUE_CLEAR);
 }
 
 function mod(value: number, by: number): number {
